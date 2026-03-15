@@ -11,8 +11,10 @@ const assert = require('node:assert/strict');
 
 const {
   fetchTokenPriceUsd,
+  fetchHistoricalPriceGecko,
   _fetchDexScreener,
   _fetchDexTools,
+  _fetchGeckoTerminalOhlcv,
   _cache,
   _CACHE_TTL_MS,
 } = require('../src/price-fetcher');
@@ -356,5 +358,101 @@ describe('No DexTools key', () => {
 
     assert.strictEqual(price, 0);
     assert.strictEqual(fetchCallCount, 1, 'only DexScreener attempted');
+  });
+});
+
+// ── GeckoTerminal OHLCV ─────────────────────────────────────────────────────
+
+const POOL = '0x1234567890abcdef1234567890abcdef12345678';
+const TIMESTAMP = 1700000000;
+
+describe('GeckoTerminal _fetchGeckoTerminalOhlcv', () => {
+  it('returns close price from a valid OHLCV candle', async () => {
+    globalThis.fetch = mockFetch({
+      data: {
+        attributes: {
+          ohlcv_list: [[1700000000, 0.10, 0.12, 0.09, 0.11, 50000]],
+        },
+      },
+    });
+
+    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    assert.strictEqual(price, 0.11, 'should return close price (index 4)');
+  });
+
+  it('returns 0 on HTTP error', async () => {
+    globalThis.fetch = mockFetch({}, 500);
+
+    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    assert.strictEqual(price, 0);
+  });
+
+  it('returns 0 when ohlcv_list is empty', async () => {
+    globalThis.fetch = mockFetch({
+      data: { attributes: { ohlcv_list: [] } },
+    });
+
+    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    assert.strictEqual(price, 0);
+  });
+
+  it('returns 0 when response has no attributes', async () => {
+    globalThis.fetch = mockFetch({ data: {} });
+
+    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    assert.strictEqual(price, 0);
+  });
+
+  it('returns 0 on network error', async () => {
+    globalThis.fetch = _mockFetchError('network timeout');
+
+    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    assert.strictEqual(price, 0);
+  });
+
+  it('returns 0 when close price is NaN', async () => {
+    globalThis.fetch = mockFetch({
+      data: {
+        attributes: {
+          ohlcv_list: [[1700000000, 0.10, 0.12, 0.09, 'bad', 50000]],
+        },
+      },
+    });
+
+    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    assert.strictEqual(price, 0);
+  });
+});
+
+describe('GeckoTerminal fetchHistoricalPriceGecko', () => {
+  it('returns both base and quote prices', async () => {
+    let callIndex = 0;
+    const candles = [
+      [[1700000000, 0.10, 0.12, 0.09, 0.50, 1000]],
+      [[1700000000, 1.00, 1.05, 0.95, 1.02, 2000]],
+    ];
+
+    globalThis.fetch = async () => {
+      const ohlcv = candles[callIndex] || [];
+      callIndex += 1;
+      return {
+        ok: true,
+        json: async () => ({
+          data: { attributes: { ohlcv_list: ohlcv } },
+        }),
+      };
+    };
+
+    const { price0, price1 } = await fetchHistoricalPriceGecko(POOL, TIMESTAMP);
+    assert.strictEqual(price0, 0.50, 'base token price');
+    assert.strictEqual(price1, 1.02, 'quote token price');
+  });
+
+  it('returns zeros when both calls fail', async () => {
+    globalThis.fetch = _mockFetchError('server down');
+
+    const { price0, price1 } = await fetchHistoricalPriceGecko(POOL, TIMESTAMP);
+    assert.strictEqual(price0, 0);
+    assert.strictEqual(price1, 0);
   });
 });

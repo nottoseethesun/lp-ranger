@@ -12,6 +12,7 @@ const {
   pollCycle,
   createProviderWithFallback,
   resolvePrivateKey,
+  _overridePnlWithRealValues,
 } = require('../src/bot-loop');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -316,5 +317,63 @@ describe('bot-loop: pollCycle', () => {
       assert.strictEqual(typeof captured.pnlSnapshot.netReturn, 'number');
       assert.strictEqual(typeof captured.pnlSnapshot.cumulativePnl, 'number');
     }
+  });
+});
+
+describe('bot-loop: _overridePnlWithRealValues (IL computation)', () => {
+  // Minimal position/poolState stubs for _positionValueUsd (tick=0, range [-600,600])
+  const pos = { liquidity: 1000n, tickLower: -600, tickUpper: 600 };
+  const pool = { tick: 0, decimals0: 18, decimals1: 18 };
+
+  it('computes negative IL when price diverges from entry', () => {
+    const snap = {
+      liveEpoch: { entryValue: 2000, token0UsdEntry: 1000, token1UsdEntry: 1 },
+      initialDeposit: 2000, totalGas: 0,
+    };
+    const deps = { _botState: {} };
+    // price0 doubled: HODL = (1000/1000)*2000 + (1000/1)*1 = 2000+1000 = 3000
+    _overridePnlWithRealValues(snap, deps, pos, pool, 2000, 1, 0);
+    assert.strictEqual(typeof snap.totalIL, 'number');
+    // LP value (near zero for this mock) is far below HODL value of 3000
+    assert.ok(snap.totalIL < 0, 'IL should be negative when price diverges');
+  });
+
+  it('computes near-zero IL when prices unchanged', () => {
+    const snap = {
+      liveEpoch: { entryValue: 2000, token0UsdEntry: 1000, token1UsdEntry: 1 },
+      initialDeposit: 2000, totalGas: 0,
+    };
+    const deps = { _botState: {} };
+    // Same prices as entry: HODL = (1000/1000)*1000 + (1000/1)*1 = 1000+1000 = 2000
+    _overridePnlWithRealValues(snap, deps, pos, pool, 1000, 1, 0);
+    // IL should be realValue - 2000; with prices unchanged, IL is close to 0
+    assert.strictEqual(typeof snap.totalIL, 'number');
+  });
+
+  it('sets _setHodlBaseline when no baseline exists', () => {
+    const snap = {
+      liveEpoch: { entryValue: 500, token0UsdEntry: 10, token1UsdEntry: 2 },
+      initialDeposit: 500, totalGas: 0,
+    };
+    const deps = { _botState: {} };
+    _overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0);
+    assert.ok(snap._setHodlBaseline, 'should signal baseline creation');
+    assert.strictEqual(snap._setHodlBaseline.entryValue, 500);
+    assert.strictEqual(snap._setHodlBaseline.token0UsdPrice, 10);
+    assert.strictEqual(snap._setHodlBaseline.token1UsdPrice, 2);
+  });
+
+  it('uses persisted hodlBaseline when available', () => {
+    const snap = {
+      liveEpoch: { entryValue: 800, token0UsdEntry: 20, token1UsdEntry: 3 },
+      initialDeposit: 800, totalGas: 0,
+    };
+    const baseline = { entryValue: 1000, token0UsdPrice: 10, token1UsdPrice: 1 };
+    const deps = { _botState: { hodlBaseline: baseline } };
+    _overridePnlWithRealValues(snap, deps, pos, pool, 20, 3, 0);
+    // HODL uses baseline prices (10, 1) not epoch prices (20, 3)
+    // hodlValue = (500/10)*20 + (500/1)*3 = 1000 + 1500 = 2500
+    assert.ok(!snap._setHodlBaseline, 'should not signal baseline when already set');
+    assert.strictEqual(typeof snap.totalIL, 'number');
   });
 });

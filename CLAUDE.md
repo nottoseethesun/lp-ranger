@@ -50,7 +50,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   ├── config.js                 # SINGLE SOURCE OF TRUTH for all config — reads .env
 │   ├── rebalancer.js             # Core rebalance: remove liquidity → swap → mint (V3-only guard)
 │   ├── event-scanner.js          # On-chain rebalance history via Transfer events (5-year lookback)
-│   ├── price-fetcher.js          # USD pricing: DexScreener (primary) → DexTools (fallback, needs API key)
+│   ├── price-fetcher.js          # USD pricing: DexScreener (primary) → DexTools (fallback) → GeckoTerminal (historical)
+│   ├── hodl-baseline.js          # HODL baseline init: GeckoTerminal historical prices at NFT mint time
 │   ├── throttle.js               # Timing enforcement: min interval, daily cap, doubling mode
 │   ├── pnl-tracker.js            # Per-epoch and cumulative P&L accounting
 │   ├── range-math.js             # Uniswap v3 tick/price math utilities
@@ -65,6 +66,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   └── optimizer-scheduler.js    # Toggle + 10-min polling loop + queryNow()
 └── test/
     ├── bot-loop.test.js
+    ├── hodl-baseline.test.js
     ├── config.test.js
     ├── rebalancer.test.js
     ├── event-scanner.test.js
@@ -97,7 +99,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
 
-**667 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**686 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
 
 ---
 
@@ -162,7 +164,7 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 
 **Rebalance pipeline:** `src/bot-loop.js` provides the shared bot logic used by both `server.js` and `bot.js`. It polls the pool at `CHECK_INTERVAL_SEC`, checks if the current tick is outside [tickLower, tickUpper], checks throttle, then calls `executeRebalance()` which does: getPoolState → removeLiquidity → computeDesiredAmounts → swapIfNeeded → mintPosition. All functions accept injected `signer`, `ethersLib`, and config objects for testability.
 
-**USD pricing:** DexScreener (primary, no key) → DexTools (fallback, requires `DEXTOOLS_API_KEY`). 60s in-memory cache. See `src/price-fetcher.js`. USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
+**USD pricing:** DexScreener (primary, no key) → DexTools (fallback, requires `DEXTOOLS_API_KEY`). 60s in-memory cache. See `src/price-fetcher.js`. Historical prices fetched from GeckoTerminal OHLCV API (free, no key, 30 calls/min). USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
 
 **Single position per pool:** The tool manages one active LP position per wallet per liquidity pool. When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned — the bot does not call `burn()`. Rebalance history is detected via consecutive mint events (Transfer from 0x0 to wallet), not burn+mint pairs.
 
@@ -191,6 +193,8 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 **History tables:** Per-day P&L (31 days) and Rebalance Events (5-year lookback with copy-to-clipboard TX hash icons) rendered by `dashboard-history.js` from `/api/status` data. Historical rebalance events also populate the Activity Log on first load.
 
 **Lifetime P&L:** User-entered "Initial deposit" (USD) is persisted to both localStorage and server `.bot-config.json`. Lifetime P&L = currentValue + fees + realized − initialDeposit. If no user-entered value, falls back to bot-detected entry value. "Realized gains" is also user-entered for coins sold out of the LP.
+
+**Impermanent loss/gain:** Standard HODL comparison: `IL = LP_value − HODL_value` where `HODL_value = (entryValue/2 / token0PriceAtEntry) × token0PriceNow + (entryValue/2 / token1PriceAtEntry) × token1PriceNow`. Negative = loss vs holding. HODL baseline (entry prices + value) is auto-detected from GeckoTerminal historical prices at NFT mint timestamp (`src/hodl-baseline.js`). Falls back to live epoch prices if GeckoTerminal unavailable. Persisted to `.bot-config.json` via `hodlBaseline` key. Dashboard shows a confirmation dialog on first detection; shows a warning dialog if historical prices were unavailable. Displayed as a signed integer in the Net Return KPI tile.
 
 **Throttle/doubling:** 3 rebalances within 4× minInterval activates doubling mode (10m → 20m → 40m → 80m…). Clears after 4× currentWait quiet period or midnight reset.
 

@@ -234,12 +234,66 @@ function _updateKpis(d) {
     apr.textContent = 'APR: \u2014';
   }
 
+  _updateNetReturn(d, total);
+}
+
+/**
+ * Update the Net Return KPI card and its IL breakdown.
+ * @param {object} d      Status response object.
+ * @param {number} total  Computed net return value.
+ */
+function _updateNetReturn(d, total) {
   const net = g('kpiNet');
   if (d.pnlSnapshot) {
-    const nr = total;
-    net.textContent = _fmtUsd(nr);
-    net.className = 'kpi-value ' + (nr >= 0 ? 'pos' : 'neg');
+    net.textContent = _fmtUsd(total);
+    net.className = 'kpi-value ' + (total >= 0 ? 'pos' : 'neg');
   }
+  const ilEl = g('netIL');
+  if (ilEl && d.pnlSnapshot) {
+    const ilVal = Math.round(d.pnlSnapshot.totalIL || 0);
+    ilEl.textContent = (ilVal === 0 ? '' : ilVal > 0 ? '+' : '\u2212')
+      + '$usd ' + Math.abs(ilVal);
+    ilEl.className = ilVal === 0 ? '9mm-pos-mgr-pnl-val-neu'
+      : ilVal > 0 ? '9mm-pos-mgr-pnl-val-pos' : '9mm-pos-mgr-pnl-val-neg';
+  }
+}
+
+/**
+ * Show the HODL baseline confirmation dialog once when first detected.
+ * Shows a warning variant when GeckoTerminal historical prices were unavailable
+ * and live prices are being used as fallback.
+ * @param {object} d  Status response object.
+ */
+function _checkHodlBaselineDialog(d) {
+  const isFallback = d.hodlBaselineFallback
+    && !localStorage.getItem('9mm_hodl_baseline_fallback_acked');
+  const isNew = d.hodlBaselineNew && d.hodlBaseline
+    && !localStorage.getItem('9mm_hodl_baseline_acked');
+  if (!isFallback && !isNew) return;
+  const amt = g('hodlBaselineAmt');
+  const date = g('hodlBaselineDate');
+  const msg = g('hodlBaselineMsg');
+  if (!amt) return;
+  if (isFallback && !isNew) {
+    if (msg) msg.textContent = 'CoinGecko could not retrieve historical prices for this pool. '
+      + 'The IL baseline will use current prices instead. '
+      + 'For an accurate baseline, enter your original deposit in Initial Deposit at top left.';
+    amt.textContent = '';
+    if (date) date.textContent = '';
+  } else {
+    amt.textContent = _fmtUsd(d.hodlBaseline.entryValue);
+    if (date) date.textContent = d.hodlBaseline.mintDate || '\u2014';
+  }
+  g('hodlBaselineModal').className = 'modal-overlay';
+  const ok = g('hodlBaselineOk');
+  const close = g('hodlBaselineClose');
+  const dismiss = () => {
+    localStorage.setItem('9mm_hodl_baseline_acked', '1');
+    if (isFallback) localStorage.setItem('9mm_hodl_baseline_fallback_acked', '1');
+    g('hodlBaselineModal').className = 'modal-overlay hidden';
+  };
+  if (ok) ok.onclick = dismiss;
+  if (close) close.onclick = dismiss;
 }
 
 /**
@@ -557,6 +611,7 @@ function updateDashboardFromStatus(data) {
   _updateComposition(data);
   _updateBotStatus(data);
   _updateThrottleKpis(data);
+  _checkHodlBaselineDialog(data);
 
   if (!data.rebalanceEvents || data.rebalanceEvents.length === 0) {
     const cached = _loadCachedRebalanceEvents();

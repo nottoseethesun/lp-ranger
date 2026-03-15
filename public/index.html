@@ -319,6 +319,26 @@
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="hodlBaselineModal">
+  <div class="modal 9mm-pos-mgr-modal-sm">
+    <div class="modal-logo">
+      <div class="modal-logo-icon">📊</div>
+      <div><h2>IL Baseline Detected</h2></div>
+      <button class="9mm-pos-mgr-modal-close-btn" id="hodlBaselineClose">×</button>
+    </div>
+    <div class="9mm-pos-mgr-confirm-body" id="hodlBaselineMsg">
+      Your LP entry value was detected as <strong id="hodlBaselineAmt">$0</strong> on <strong id="hodlBaselineDate">—</strong>.
+      <div class="9mm-pos-mgr-confirm-footer">
+        This assumes a <strong>50/50 USD split</strong> between both tokens at entry.
+        If this is incorrect, edit <strong>Initial Deposit</strong> at top left to override.
+      </div>
+    </div>
+    <div class="9mm-pos-mgr-btn-row">
+      <button class="modal-btn primary 9mm-pos-mgr-flex-fill" id="hodlBaselineOk">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ DASHBOARD ═══ -->
 <div class="app">
 
@@ -408,7 +428,9 @@
   <div class="kpi-card neu"><div class="kpi-label">Total Fees (USD)</div><div class="kpi-value neu" id="kpiFees">—</div><div class="kpi-sub" id="kpiApr">APR: —</div></div>
   <div class="kpi-card wrn"><div class="kpi-label">Today / Limit</div><div class="kpi-value wrn" id="kpiToday">0 / 20</div><div class="kpi-sub" id="kpiTodaySub">resets at midnight</div></div>
   <div class="kpi-card dbl"><div class="kpi-label">Rebalance Interval</div><div class="kpi-value dbl" id="kpiCountdown">—</div><div class="kpi-sub" id="kpiCDSub">Only triggered when out-of-range</div></div>
-  <div class="kpi-card neu"><div class="kpi-label">Net Return (USD)</div><div class="kpi-value neu" id="kpiNet">—</div><div class="kpi-sub">lifetime fees + price change − gas</div></div>
+  <div class="kpi-card neu"><div class="kpi-label">Net Return (USD)</div><div class="kpi-value neu" id="kpiNet">—</div><div class="kpi-sub">lifetime fees + price change − gas</div>
+    <div class="9mm-pos-mgr-pnl-breakdown"><div class="9mm-pos-mgr-pnl-row"><span>Impermanent loss/gain</span><span id="netIL" class="9mm-pos-mgr-pnl-val-neu">—</span></div></div>
+  </div>
 </div>
 
 <!-- Row 1: Range Monitor | Activity Log -->

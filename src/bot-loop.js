@@ -28,6 +28,7 @@ const rangeMath          = require('./range-math');
 const walletManager      = require('./wallet-manager');
 const { createPnlTracker }      = require('./pnl-tracker');
 const { fetchTokenPriceUsd }   = require('./price-fetcher');
+const { initHodlBaseline }    = require('./hodl-baseline');
 const { scanRebalanceHistory } = require('./event-scanner');
 const { createCacheStore }     = require('./cache-store');
 
@@ -370,6 +371,44 @@ async function _executeAndRecord(deps, ethersLib) {
   return { rebalanced: result.success, error: result.error };
 }
 
+/**
+ * Override the pnl snapshot with real on-chain values and compute HODL-based IL.
+ * @param {object} snap      PnL snapshot to mutate.
+ * @param {object} deps      Poll cycle dependencies.
+ * @param {object} position  Active V3 position.
+ * @param {object} poolState Current pool state.
+ * @param {number} price0    Current token0 USD price.
+ * @param {number} price1    Current token1 USD price.
+ * @param {number} feesUsd   Unclaimed fees in USD.
+ */
+function _overridePnlWithRealValues(snap, deps, position, poolState, price0, price1, feesUsd) {
+  const realValue = _positionValueUsd(position, poolState, price0, price1);
+  const priorFees = deps._collectedFeesUsd || 0;
+  const lifetimeFees = priorFees + feesUsd;
+  snap.currentValue = realValue + feesUsd;
+  snap.totalFees = lifetimeFees;
+  const entryVal = snap.liveEpoch
+    ? snap.liveEpoch.entryValue : snap.initialDeposit;
+  snap.priceChangePnl = realValue - entryVal;
+  snap.cumulativePnl = snap.priceChangePnl + lifetimeFees - snap.totalGas;
+  snap.netReturn = lifetimeFees - snap.totalGas + snap.priceChangePnl;
+  // Real IL: LP value vs HODL benchmark (negative = loss vs holding)
+  const bl = deps._botState?.hodlBaseline;
+  const t0E = bl?.token0UsdPrice || snap.liveEpoch?.token0UsdEntry;
+  const t1E = bl?.token1UsdPrice || snap.liveEpoch?.token1UsdEntry;
+  const hodlEntry = bl?.entryValue || entryVal;
+  if (t0E > 0 && t1E > 0) {
+    const hodlValue = (hodlEntry / 2 / t0E) * price0
+                    + (hodlEntry / 2 / t1E) * price1;
+    snap.totalIL = realValue - hodlValue;
+    if (!bl) {
+      snap._setHodlBaseline = {
+        entryValue: entryVal, token0UsdPrice: t0E, token1UsdPrice: t1E,
+      };
+    }
+  }
+}
+
 // ── Poll cycle ───────────────────────────────────────────────────────────────
 
 /**
@@ -422,20 +461,7 @@ async function pollCycle(deps) {
       deps._lastUnclaimedFeesUsd = feesUsd;
       pnlTracker.updateLiveEpoch({ currentPrice: poolState.price, feesAccrued: feesUsd });
       pnlSnapshot = pnlTracker.snapshot(poolState.price);
-      // Override with real on-chain values instead of IL approximation
-      const realValue = _positionValueUsd(position, poolState, price0, price1);
-      const priorFees = deps._collectedFeesUsd || 0;
-      const lifetimeFees = priorFees + feesUsd;
-      pnlSnapshot.currentValue = realValue + feesUsd;
-      pnlSnapshot.totalFees = lifetimeFees;
-      // Real price-change P&L: position value change (excludes fees)
-      const entryVal = pnlSnapshot.liveEpoch
-        ? pnlSnapshot.liveEpoch.entryValue : pnlSnapshot.initialDeposit;
-      pnlSnapshot.priceChangePnl = realValue - entryVal;
-      pnlSnapshot.cumulativePnl = pnlSnapshot.priceChangePnl + lifetimeFees
-        - pnlSnapshot.totalGas;
-      pnlSnapshot.netReturn = lifetimeFees - pnlSnapshot.totalGas
-        + pnlSnapshot.priceChangePnl;
+      _overridePnlWithRealValues(pnlSnapshot, deps, position, poolState, price0, price1, feesUsd);
     } catch (err) {
       console.warn('[bot] P&L update error:', err.message);
     }
@@ -625,6 +651,10 @@ async function startBotLoop(opts) {
     console.warn('[bot] P&L tracker init error:', err.message);
   }
 
+  // Initialize HODL baseline from historical prices (non-blocking)
+  initHodlBaseline(provider, ethersLib, position, botState, updateBotState)
+    .catch((err) => console.warn('[bot] HODL baseline background error:', err.message));
+
   // Create throttle
   const throttle = createThrottle({
     minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60 * 1000,
@@ -721,4 +751,5 @@ module.exports = {
   createProviderWithFallback,
   resolvePrivateKey,
   startBotLoop,
+  _overridePnlWithRealValues,
 };

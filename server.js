@@ -206,7 +206,7 @@ const _PERSISTED_KEYS = [
   'rangeWidthPct', 'slippagePct', 'checkIntervalSec',
   'minRebalanceIntervalMin', 'maxRebalancesPerDay',
   'gasStrategy', 'triggerType', 'triggerEdgePct', 'triggerSchedHours',
-  'initialDepositUsd',
+  'initialDepositUsd', 'hodlBaseline',
 ];
 
 /**
@@ -277,6 +277,16 @@ _loadBotConfig(botState);
  * @param {Partial<typeof botState>} patch
  */
 function updateBotState(patch) {
+  // Persist HODL baseline on first detection (for IL calculation)
+  if (patch.pnlSnapshot?._setHodlBaseline && !botState.hodlBaseline) {
+    botState.hodlBaseline = patch.pnlSnapshot._setHodlBaseline;
+    delete patch.pnlSnapshot._setHodlBaseline;
+    _saveBotConfig(botState);
+  }
+  // Persist HODL baseline from historical price lookup
+  if (patch.hodlBaseline && !botState.hodlBaseline) {
+    _saveBotConfig({ ...botState, ...patch });
+  }
   Object.assign(botState, patch, { updatedAt: new Date().toISOString() });
 }
 

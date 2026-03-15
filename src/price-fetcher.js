@@ -190,12 +190,68 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
   return 0;
 }
 
+// ── GeckoTerminal (historical prices) ────────────────────────────────────────
+
+/**
+ * Fetch a historical USD price from GeckoTerminal OHLCV candles.
+ *
+ * Queries the free GeckoTerminal API for daily candle data at the given
+ * timestamp.  Returns the close price of the nearest candle, or 0 on failure.
+ *
+ * @param {string} poolAddress  - V3 pool contract address.
+ * @param {number} timestamp    - Unix seconds of the target date.
+ * @param {'base'|'quote'} [token='base'] - Which pool token to price.
+ * @param {string} [network='pulsechain'] - GeckoTerminal network identifier.
+ * @returns {Promise<number>} USD close price (0 if unavailable).
+ */
+async function _fetchGeckoTerminalOhlcv(poolAddress, timestamp, token = 'base', network = 'pulsechain') {
+  // Request the candle containing the target timestamp
+  const before = timestamp + 86400;
+  const url = `https://api.geckoterminal.com/api/v2/networks/${network}`
+    + `/pools/${poolAddress}/ohlcv/day`
+    + `?before_timestamp=${before}&limit=1&currency=usd&token=${token}`;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return 0;
+    const json = await res.json();
+    const candles = json?.data?.attributes?.ohlcv_list;
+    if (!Array.isArray(candles) || candles.length === 0) return 0;
+    // Candle format: [timestamp, open, high, low, close, volume]
+    const close = Number(candles[0][4]);
+    return Number.isFinite(close) ? close : 0;
+  } catch (err) {
+    console.warn('[price-fetcher] GeckoTerminal OHLCV error:', err.message ?? err);
+    return 0;
+  }
+}
+
+/**
+ * Fetch historical USD prices for both tokens in a pool from GeckoTerminal.
+ *
+ * @param {string} poolAddress  - V3 pool contract address.
+ * @param {number} timestamp    - Unix seconds of the target date.
+ * @param {string} [network='pulsechain'] - GeckoTerminal network identifier.
+ * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.
+ */
+async function fetchHistoricalPriceGecko(poolAddress, timestamp, network = 'pulsechain') {
+  const [price0, price1] = await Promise.all([
+    _fetchGeckoTerminalOhlcv(poolAddress, timestamp, 'base', network),
+    _fetchGeckoTerminalOhlcv(poolAddress, timestamp, 'quote', network),
+  ]);
+  return { price0, price1 };
+}
+
 // ── exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
   fetchTokenPriceUsd,
+  fetchHistoricalPriceGecko,
   _fetchDexScreener,
   _fetchDexTools,
+  _fetchGeckoTerminalOhlcv,
   _cache,
   _CACHE_TTL_MS,
 };
