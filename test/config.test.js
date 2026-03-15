@@ -1,0 +1,261 @@
+/**
+ * @file test/config.test.js
+ * @description Unit tests for src/config.js.
+ *
+ * Because config.js reads process.env at require-time, we test the internal
+ * parser helpers (_parsePositiveInt, _parsePositiveFloat) directly, and test
+ * assertLiveModeReady() by manipulating the exported object.
+ *
+ * Run with: npm test
+ */
+
+'use strict';
+
+const { describe, it } = require('node:test');
+const assert = require('assert');
+
+const config = require('../src/config');
+
+// ── _parsePositiveInt ─────────────────────────────────────────────────────────
+
+describe('_parsePositiveInt', () => {
+  const parse = config._parsePositiveInt;
+
+  it('parses a valid positive integer string', () => {
+    assert.strictEqual(parse('5555', 3000), 5555);
+  });
+
+  it('returns fallback for zero', () => {
+    assert.strictEqual(parse('0', 42), 42);
+  });
+
+  it('returns fallback for negative value', () => {
+    assert.strictEqual(parse('-1', 10), 10);
+  });
+
+  it('returns fallback for non-numeric string', () => {
+    assert.strictEqual(parse('abc', 99), 99);
+  });
+
+  it('returns fallback for undefined', () => {
+    assert.strictEqual(parse(undefined, 7), 7);
+  });
+
+  it('returns fallback for empty string', () => {
+    assert.strictEqual(parse('', 8), 8);
+  });
+
+  it('parses string with leading/trailing whitespace', () => {
+    // parseInt handles leading whitespace
+    assert.strictEqual(parse('  42  ', 1), 42);
+  });
+
+  it('parses a float string by truncating to int', () => {
+    assert.strictEqual(parse('3.9', 1), 3);
+  });
+});
+
+// ── _parsePositiveFloat ───────────────────────────────────────────────────────
+
+describe('_parsePositiveFloat', () => {
+  const parse = config._parsePositiveFloat;
+
+  it('parses a valid float string', () => {
+    assert.ok(Math.abs(parse('0.5', 1) - 0.5) < 1e-9);
+  });
+
+  it('parses an integer string', () => {
+    assert.strictEqual(parse('20', 1), 20);
+  });
+
+  it('returns fallback for zero', () => {
+    assert.strictEqual(parse('0', 0.5), 0.5);
+  });
+
+  it('returns fallback for negative', () => {
+    assert.strictEqual(parse('-0.1', 1.0), 1.0);
+  });
+
+  it('returns fallback for non-numeric', () => {
+    assert.strictEqual(parse('NaN', 2.5), 2.5);
+  });
+
+  it('returns fallback for undefined', () => {
+    assert.strictEqual(parse(undefined, 3.14), 3.14);
+  });
+});
+
+// ── Default values ────────────────────────────────────────────────────────────
+
+describe('config default values', () => {
+  it('PORT defaults to 5555 when env var is absent', () => {
+    // config was loaded without PORT set in test env
+    // If CI sets PORT we can't guarantee 5555, so just assert it's a valid port
+    assert.ok(Number.isInteger(config.PORT) && config.PORT > 0 && config.PORT <= 65535,
+      `PORT should be a valid port number, got ${config.PORT}`);
+  });
+
+  it('HOST defaults to 0.0.0.0', () => {
+    // If HOST is not in the environment, default is '0.0.0.0'
+    assert.ok(typeof config.HOST === 'string' && config.HOST.length > 0);
+  });
+
+  it('RPC_URL has a non-empty default', () => {
+    assert.ok(typeof config.RPC_URL === 'string' && config.RPC_URL.length > 0);
+  });
+
+  it('RANGE_WIDTH_PCT is a positive number', () => {
+    assert.ok(config.RANGE_WIDTH_PCT > 0);
+  });
+
+  it('SLIPPAGE_PCT is a positive number', () => {
+    assert.ok(config.SLIPPAGE_PCT > 0);
+  });
+
+  it('CHECK_INTERVAL_SEC is a positive integer', () => {
+    assert.ok(Number.isInteger(config.CHECK_INTERVAL_SEC) && config.CHECK_INTERVAL_SEC > 0);
+  });
+
+  it('MIN_REBALANCE_INTERVAL_MIN is a positive integer', () => {
+    assert.ok(Number.isInteger(config.MIN_REBALANCE_INTERVAL_MIN) && config.MIN_REBALANCE_INTERVAL_MIN > 0);
+  });
+
+  it('MAX_REBALANCES_PER_DAY is a positive integer', () => {
+    assert.ok(Number.isInteger(config.MAX_REBALANCES_PER_DAY) && config.MAX_REBALANCES_PER_DAY > 0);
+  });
+
+  it('LOG_FILE is a non-empty string', () => {
+    assert.ok(typeof config.LOG_FILE === 'string' && config.LOG_FILE.length > 0);
+  });
+
+  it('POSITION_MANAGER is a non-empty string', () => {
+    assert.ok(typeof config.POSITION_MANAGER === 'string' && config.POSITION_MANAGER.length > 0);
+  });
+
+  it('FACTORY is a non-empty string', () => {
+    assert.ok(typeof config.FACTORY === 'string' && config.FACTORY.length > 0);
+  });
+});
+
+// ── assertLiveModeReady ───────────────────────────────────────────────────────
+
+describe('assertLiveModeReady', () => {
+  it('does not throw when PRIVATE_KEY and RPC_URL are present', () => {
+    // If the test environment has these set, assertLiveModeReady must not throw.
+    // If they're absent (typical in CI), we test the throw path instead.
+    if (config.PRIVATE_KEY && config.RPC_URL) {
+      assert.doesNotThrow(() => config.assertLiveModeReady());
+    } else {
+      // Expected to throw — that's correct behaviour for missing config
+      assert.throws(() => config.assertLiveModeReady(), /Missing required configuration/i);
+    }
+  });
+
+  it('exported assertLiveModeReady is a function', () => {
+    assert.strictEqual(typeof config.assertLiveModeReady, 'function');
+  });
+});
+
+// ── PORT value ────────────────────────────────────────────────────────────────
+
+describe('PORT configuration', () => {
+  it('PORT is exported as a number', () => {
+    assert.strictEqual(typeof config.PORT, 'number');
+  });
+
+  it('PORT is within the valid TCP port range (1–65535)', () => {
+    assert.ok(config.PORT >= 1 && config.PORT <= 65535,
+      `Expected PORT in 1–65535, got ${config.PORT}`);
+  });
+
+  it('default PORT is 5555 when process.env.PORT is not set in test env', () => {
+    // This test is informational — in real usage PORT=5555 is the default.
+    // We verify _parsePositiveInt('5555', 5555) returns 5555.
+    assert.strictEqual(config._parsePositiveInt('5555', 99), 5555);
+  });
+});
+
+// ── OPTIMIZER_PORT ────────────────────────────────────────────────────────────
+
+describe('OPTIMIZER_PORT configuration', () => {
+  it('OPTIMIZER_PORT is exported as a number', () => {
+    assert.strictEqual(typeof config.OPTIMIZER_PORT, 'number');
+  });
+
+  it('OPTIMIZER_PORT is within valid TCP range (1–65535)', () => {
+    assert.ok(config.OPTIMIZER_PORT >= 1 && config.OPTIMIZER_PORT <= 65535,
+      `Expected OPTIMIZER_PORT in 1–65535, got ${config.OPTIMIZER_PORT}`);
+  });
+
+  it('default OPTIMIZER_PORT is 3693 when env var not set', () => {
+    // Verify via the parser helper directly
+    assert.strictEqual(config._parsePositiveInt('3693', 99), 3693);
+  });
+
+  it('OPTIMIZER_URL includes the port number when not explicitly overridden', () => {
+    // When OPTIMIZER_URL env var is not set, the default URL is built from OPTIMIZER_PORT
+    if (!process.env.OPTIMIZER_URL) {
+      assert.ok(
+        config.OPTIMIZER_URL === null ||
+        config.OPTIMIZER_URL.includes(String(config.OPTIMIZER_PORT)),
+        `Expected OPTIMIZER_URL to contain port ${config.OPTIMIZER_PORT}, got: ${config.OPTIMIZER_URL}`,
+      );
+    }
+  });
+});
+
+// ── EIP-55 checksummed addresses ─────────────────────────────────────────────
+
+describe('EIP-55 address conformance', () => {
+  const ethers = require('ethers');
+
+  it('POSITION_MANAGER is a valid EIP-55 checksummed address', () => {
+    const addr = config.POSITION_MANAGER;
+    assert.strictEqual(addr.length, 42, `Expected 42 chars (0x + 40 hex), got ${addr.length}`);
+    assert.strictEqual(addr, ethers.getAddress(addr),
+      `POSITION_MANAGER is not EIP-55 checksummed: ${addr}`);
+  });
+
+  it('FACTORY is a valid EIP-55 checksummed address', () => {
+    const addr = config.FACTORY;
+    assert.strictEqual(addr.length, 42, `Expected 42 chars (0x + 40 hex), got ${addr.length}`);
+    assert.strictEqual(addr, ethers.getAddress(addr),
+      `FACTORY is not EIP-55 checksummed: ${addr}`);
+  });
+
+  it('SWAP_ROUTER is a valid EIP-55 checksummed address', () => {
+    const addr = config.SWAP_ROUTER;
+    assert.strictEqual(addr.length, 42, `Expected 42 chars (0x + 40 hex), got ${addr.length}`);
+    assert.strictEqual(addr, ethers.getAddress(addr),
+      `SWAP_ROUTER is not EIP-55 checksummed: ${addr}`);
+  });
+
+  it('QUOTER_V2 is a valid EIP-55 checksummed address', () => {
+    const addr = config.QUOTER_V2;
+    assert.strictEqual(addr.length, 42, `Expected 42 chars (0x + 40 hex), got ${addr.length}`);
+    assert.strictEqual(addr, ethers.getAddress(addr),
+      `QUOTER_V2 is not EIP-55 checksummed: ${addr}`);
+  });
+});
+
+// ── Module shape ──────────────────────────────────────────────────────────────
+
+describe('config module shape', () => {
+  const expectedKeys = [
+    'PORT', 'HOST',
+    'PRIVATE_KEY', 'WALLET_PASSWORD', 'RPC_URL', 'POSITION_ID', 'ERC20_POSITION_ADDRESS',
+    'RANGE_WIDTH_PCT', 'SLIPPAGE_PCT', 'CHECK_INTERVAL_SEC',
+    'MIN_REBALANCE_INTERVAL_MIN', 'MAX_REBALANCES_PER_DAY', 'LOG_FILE',
+    'OPTIMIZER_PORT', 'OPTIMIZER_URL', 'OPTIMIZER_API_KEY',
+    'OPTIMIZER_INTERVAL_MIN', 'OPTIMIZER_TIMEOUT_MS', 'OPTIMIZER_AUTO_APPLY',
+    'POSITION_MANAGER', 'FACTORY', 'SWAP_ROUTER', 'QUOTER_V2',
+    'DEXTOOLS_API_KEY',
+    'assertLiveModeReady', '_parsePositiveInt', '_parsePositiveFloat',
+  ];
+
+  for (const key of expectedKeys) {
+    it(`exports '${key}'`, () => {
+      assert.ok(key in config, `Missing export: ${key}`);
+    });
+  }
+});

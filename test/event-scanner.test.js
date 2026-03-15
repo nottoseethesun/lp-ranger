@@ -1,0 +1,275 @@
+'use strict';
+
+/**
+ * @file test/event-scanner.test.js
+ * @description Unit tests for the event-scanner module.
+ */
+
+const { describe, it } = require('node:test');
+const assert = require('assert');
+const {
+  scanRebalanceHistory, findPoolCreationBlock,
+  _BLOCKS_PER_YEAR, _DEFAULT_CHUNK_SIZE, _PAIRING_WINDOW_SEC, _CHUNK_DELAY_MS,
+} = require('../src/event-scanner');
+
+const WALLET = '0xABCDEF0000000000000000000000000000000001';
+const POS_MGR = '0x1234560000000000000000000000000000000099';
+const ZERO = '0x0000000000000000000000000000000000000000';
+const BASE_TS = 1_700_000_000;
+
+function mkProvider(block = 1_000_000, base = BASE_TS) {
+  return { getBlockNumber: async () => block, getBlock: async (n) => ({ timestamp: base + n }) };
+}
+
+function mkEvent(from, to, tokenId, block, tx, idx = 0) {
+  return { args: [from, to, { toString: () => tokenId }], blockNumber: block, transactionHash: tx, index: idx };
+}
+
+function mkEthers(inEv = [], outEv = []) {
+  return { Contract: class {
+    constructor() {
+      this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
+      this.queryFilter = async (filter) => filter._from === null ? inEv : outEv;
+    }
+  } };
+}
+
+function mkCache() {
+  const s = new Map();
+  return { _store: s, async get(k) { return s.get(k) ?? null; }, async set(k, v) { s.set(k, v); } };
+}
+
+const scanOpts = (extra = {}) => ({
+  positionManagerAddress: POS_MGR, walletAddress: WALLET,
+  maxYears: 1, chunkSize: 50_000, ...extra,
+});
+
+const wOut = (id, block, tx) => mkEvent(WALLET.toLowerCase(), ZERO, id, block, tx);
+const wIn = (id, block, tx) => mkEvent(ZERO, WALLET.toLowerCase(), id, block, tx);
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+describe('Constants', () => {
+  it('_BLOCKS_PER_YEAR ≈ 3,155,760', () => {
+    assert.ok(Math.abs(_BLOCKS_PER_YEAR - 3_155_760) < 10);
+  });
+  it('_DEFAULT_CHUNK_SIZE is 10000', () => assert.strictEqual(_DEFAULT_CHUNK_SIZE, 10000));
+  it('_PAIRING_WINDOW_SEC is 300', () => assert.strictEqual(_PAIRING_WINDOW_SEC, 300));
+  it('_CHUNK_DELAY_MS is 250', () => assert.strictEqual(_CHUNK_DELAY_MS, 250));
+});
+
+// ── scanRebalanceHistory ─────────────────────────────────────────────────────
+
+describe('scanRebalanceHistory', () => {
+  it('returns empty when no events', async () => {
+    const r = await scanRebalanceHistory(mkProvider(5000), mkEthers(), scanOpts({ chunkSize: 10_000 }));
+    assert.deepStrictEqual(r, []);
+  });
+
+  it('pairs transfer-out + transfer-in within 5 min', async () => {
+    const r = await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      mkEthers([wIn('43', 110, '0xbbb')], [wOut('42', 100, '0xaaa')]),
+      scanOpts(),
+    );
+    assert.strictEqual(r.length, 1);
+    assert.strictEqual(r[0].oldTokenId, '42');
+    assert.strictEqual(r[0].newTokenId, '43');
+    assert.strictEqual(r[0].txHash, '0xbbb');
+  });
+
+  it('does not pair events beyond 5 min window', async () => {
+    const r = await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      mkEthers([wIn('43', 401, '0xbbb')], [wOut('42', 100, '0xaaa')]),
+      scanOpts(),
+    );
+    assert.strictEqual(r.length, 0);
+  });
+
+  it('handles multiple pairs chronologically', async () => {
+    const r = await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      mkEthers(
+        [wIn('11', 105, '0xb1'), wIn('21', 1005, '0xb2')],
+        [wOut('10', 100, '0xa1'), wOut('20', 1000, '0xa2')],
+      ),
+      scanOpts(),
+    );
+    assert.strictEqual(r.length, 2);
+    assert.strictEqual(r[0].oldTokenId, '10');
+    assert.strictEqual(r[1].oldTokenId, '20');
+  });
+
+  it('assigns 1-based index', async () => {
+    const r = await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      mkEthers(
+        [wIn('11', 105, '0xb1'), wIn('21', 505, '0xb2')],
+        [wOut('10', 100, '0xa1'), wOut('20', 500, '0xa2')],
+      ),
+      scanOpts(),
+    );
+    assert.strictEqual(r[0].index, 1);
+    assert.strictEqual(r[1].index, 2);
+  });
+
+  it('computes correct fromBlock based on maxYears', async () => {
+    const currentBlock = 20_000_000;
+    const maxYears = 2;
+    const expected = currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR);
+    const ranges = [];
+    const ethers = { Contract: class {
+      constructor() {
+        this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
+        this.queryFilter = async (_f, from) => { ranges.push(from); return []; };
+      }
+    } };
+    await scanRebalanceHistory(mkProvider(currentBlock), ethers,
+      scanOpts({ maxYears, chunkSize: _DEFAULT_CHUNK_SIZE }));
+    assert.strictEqual(ranges[0], expected);
+  });
+
+  it('handles RPC errors gracefully', async () => {
+    const warnings = [];
+    const origWarn = console.warn;
+    console.warn = (...a) => { warnings.push(a.join(' ')); };
+    try {
+      const ethers = { Contract: class {
+        constructor() {
+          this.filters = { Transfer: () => ({ _from: null, topics: [] }) };
+          this.queryFilter = async () => { throw new Error('RPC timeout'); };
+        }
+      } };
+      const r = await scanRebalanceHistory(mkProvider(5000), ethers, scanOpts());
+      assert.deepStrictEqual(r, []);
+      assert.ok(warnings.some((w) => w.includes('failed')));
+    } finally { console.warn = origWarn; }
+  });
+
+  it('uses cache to skip scanned blocks', async () => {
+    const ranges = [];
+    const ethers = { Contract: class {
+      constructor() {
+        this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
+        this.queryFilter = async (_f, from) => { ranges.push(from); return []; };
+      }
+    } };
+    const cache = mkCache();
+    const key = `rebalance:${WALLET.toLowerCase()}:${POS_MGR.toLowerCase()}`;
+    cache._store.set(key, {
+      events: [{ index: 1, timestamp: BASE_TS + 100, oldTokenId: '1', newTokenId: '2', txHash: '0x111', blockNumber: 100 }],
+      lastBlock: 4000,
+    });
+    const r = await scanRebalanceHistory(mkProvider(5000, BASE_TS), ethers,
+      scanOpts({ cache }));
+    assert.ok(ranges[0] >= 4001, `Expected ≥4001, got ${ranges[0]}`);
+    assert.ok(r.some((e) => e.txHash === '0x111'));
+  });
+
+  it('returns cached results when no new blocks', async () => {
+    const cache = mkCache();
+    const key = `rebalance:${WALLET.toLowerCase()}:${POS_MGR.toLowerCase()}`;
+    cache._store.set(key, {
+      events: [{ index: 1, timestamp: BASE_TS + 100, oldTokenId: '10', newTokenId: '11', txHash: '0xaaa', blockNumber: 100 }],
+      lastBlock: 4000,
+    });
+    const r = await scanRebalanceHistory(mkProvider(4000, BASE_TS), mkEthers(),
+      scanOpts({ cache }));
+    assert.strictEqual(r.length, 1);
+    assert.strictEqual(r[0].txHash, '0xaaa');
+  });
+
+  it('pairs consecutive mints when old NFT is not burned', async () => {
+    const r = await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      mkEthers([wIn('10', 100, '0xa1'), wIn('11', 200, '0xa2'), wIn('12', 600, '0xa3')], []),
+      scanOpts(),
+    );
+    assert.strictEqual(r.length, 2);
+    assert.strictEqual(r[0].oldTokenId, '10');
+    assert.strictEqual(r[0].newTokenId, '11');
+    assert.strictEqual(r[1].oldTokenId, '11');
+    assert.strictEqual(r[1].newTokenId, '12');
+  });
+
+  it('deduplicates by txHash + logIndex', async () => {
+    const dup = wIn('43', 110, '0xbbb');
+    const ethers = { Contract: class {
+      constructor() {
+        this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
+        this.queryFilter = async (filter) =>
+          filter._from === null ? [dup, dup] : [wOut('42', 100, '0xaaa')];
+      }
+    } };
+    const r = await scanRebalanceHistory(mkProvider(5000, BASE_TS), ethers, scanOpts());
+    assert.strictEqual(r.length, 1);
+  });
+});
+
+// ── findPoolCreationBlock ────────────────────────────────────────────────────
+
+describe('findPoolCreationBlock', () => {
+  const FACTORY = '0xFACT000000000000000000000000000000000001';
+  const POOL = '0xP00L000000000000000000000000000000000002';
+  const poolOpts = (extra = {}) => ({
+    factoryAddress: FACTORY, poolAddress: POOL, fromBlock: 0, toBlock: 10_000, ...extra,
+  });
+
+  function mkFactoryEthers(events) {
+    return { Contract: class {
+      constructor() {
+        this.filters = { PoolCreated: () => ({ topics: [] }) };
+        this.queryFilter = async () => events;
+      }
+    } };
+  }
+
+  it('returns block when pool found', async () => {
+    const r = await findPoolCreationBlock(mkProvider(10_000),
+      mkFactoryEthers([{ args: [null, null, null, null, POOL], blockNumber: 5000 }]),
+      poolOpts());
+    assert.strictEqual(r, 5000);
+  });
+
+  it('returns null when not found', async () => {
+    const r = await findPoolCreationBlock(mkProvider(10_000), mkFactoryEthers([]), poolOpts());
+    assert.strictEqual(r, null);
+  });
+
+  it('returns null when addresses missing', async () => {
+    const e = { Contract: class {} };
+    assert.strictEqual(await findPoolCreationBlock(mkProvider(), e, poolOpts({ factoryAddress: null })), null);
+    assert.strictEqual(await findPoolCreationBlock(mkProvider(), e, poolOpts({ poolAddress: null })), null);
+  });
+
+  it('handles RPC errors gracefully', async () => {
+    const ethers = { Contract: class {
+      constructor() {
+        this.filters = { PoolCreated: () => ({ topics: [] }) };
+        this.queryFilter = async () => { throw new Error('RPC'); };
+      }
+    } };
+    assert.strictEqual(await findPoolCreationBlock(mkProvider(), ethers, poolOpts()), null);
+  });
+
+  it('pool-age optimisation skips blocks before creation', async () => {
+    const ranges = [];
+    const creationBlock = 3000;
+    const ethers = { Contract: class {
+      constructor(_a, abi) {
+        if (abi.some((a) => a.includes('PoolCreated'))) {
+          this.filters = { PoolCreated: () => ({ topics: [] }) };
+          this.queryFilter = async () => [{ args: [null, null, null, null, '0xPOOL'], blockNumber: creationBlock }];
+        } else {
+          this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
+          this.queryFilter = async (_f, from) => { ranges.push(from); return []; };
+        }
+      }
+    } };
+    await scanRebalanceHistory(mkProvider(5000, BASE_TS), ethers,
+      scanOpts({ factoryAddress: '0xFACTORY', poolAddress: '0xPOOL' }));
+    assert.ok(ranges.length > 0);
+    assert.ok(ranges[0] >= creationBlock, `Expected ≥${creationBlock}, got ${ranges[0]}`);
+  });
+});

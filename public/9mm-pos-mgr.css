@@ -1,0 +1,544 @@
+/**
+ * @file 9mm-pos-mgr.css
+ * Semantic utility classes for the 9mm v3 Position Manager dashboard.
+ * All custom classes are prefixed with `9mm-pos-mgr-` to avoid collisions.
+ */
+
+/* ── Display & Visibility ─────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-initially-hidden {
+  display: none;
+}
+
+.\39 mm-pos-mgr-disabled {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.\39 mm-pos-mgr-subtle {
+  opacity: 0.8;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.\39 mm-pos-mgr-action-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.\39 mm-pos-mgr-btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.\39 mm-pos-mgr-stats-bar {
+  display: flex;
+  gap: 16px;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.\39 mm-pos-mgr-flex-fill {
+  flex: 1;
+}
+
+.\39 mm-pos-mgr-btn-compact {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 11px 16px;
+}
+
+.\39 mm-pos-mgr-table-scroll {
+  overflow-x: auto;
+}
+
+.\39 mm-pos-mgr-scrollable-card {
+  overflow-y: auto;
+  max-height: 860px;
+}
+
+/* ── Text & Color ─────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-text-muted {
+  color: var(--muted);
+}
+
+.\39 mm-pos-mgr-text-primary {
+  color: var(--text);
+}
+
+.\39 mm-pos-mgr-text-accent {
+  color: var(--accent);
+}
+
+.\39 mm-pos-mgr-text-accent2 {
+  color: var(--accent2);
+}
+
+.\39 mm-pos-mgr-text-accent3 {
+  color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-text-nft {
+  color: #c471ed;
+}
+
+.\39 mm-pos-mgr-text-warn {
+  color: var(--warn);
+}
+
+.\39 mm-pos-mgr-text-danger {
+  color: var(--danger);
+}
+
+.\39 mm-pos-mgr-secret-key {
+  color: var(--danger);
+  font-size: 9px;
+}
+
+.\39 mm-pos-mgr-seed-phrase {
+  color: var(--warn);
+}
+
+.\39 mm-pos-mgr-text-muted-sm {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.\39 mm-pos-mgr-text-accent-sm {
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.\39 mm-pos-mgr-text-md {
+  font-size: 11px;
+}
+
+.\39 mm-pos-mgr-text-left {
+  text-align: left;
+}
+
+/* ── Hints & Help Text ────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-hint {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.\39 mm-pos-mgr-micro-hint {
+  font-size: 8px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.\39 mm-pos-mgr-empty-msg {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 8px 0;
+}
+
+.\39 mm-pos-mgr-table-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 12px;
+}
+
+/* ── Spacing ──────────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-mt-xs {
+  margin-top: 4px;
+}
+
+.\39 mm-pos-mgr-mt-sm {
+  margin-top: 6px;
+}
+
+.\39 mm-pos-mgr-mt-md {
+  margin-top: 8px;
+}
+
+.\39 mm-pos-mgr-mt-lg {
+  margin-top: 10px;
+}
+
+.\39 mm-pos-mgr-mt-xl {
+  margin-top: 12px;
+}
+
+.\39 mm-pos-mgr-mt-2xl {
+  margin-top: 14px;
+}
+
+.\39 mm-pos-mgr-ml-auto {
+  margin-left: auto;
+}
+
+/* ── Modal Variants ───────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-modal-md {
+  max-width: 560px;
+}
+
+.\39 mm-pos-mgr-modal-sm {
+  max-width: 440px;
+}
+
+.\39 mm-pos-mgr-modal-close-btn {
+  width: auto;
+  padding: 6px 14px;
+  margin-top: 0;
+  margin-left: auto;
+  font-size: 10px;
+}
+
+/* ── Section Titles ───────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-section-title {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.\39 mm-pos-mgr-section-title-spaced {
+  margin-top: 14px;
+  margin-bottom: 8px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-btn-green {
+  background: rgb(124 252 0 / 7%);
+  border-color: rgb(124 252 0 / 20%);
+  color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-btn-danger {
+  background: var(--danger);
+}
+
+/* ── Info & Notice Boxes ──────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-info-box {
+  font-size: 10px;
+  color: var(--accent);
+  padding: 7px 9px;
+  background: rgb(0 229 255 / 4%);
+  border: 1px solid rgb(0 229 255 / 12%);
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.\39 mm-pos-mgr-notice-box {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 7px 9px;
+  background: rgb(255 59 92 / 5%);
+  border: 1px solid rgb(255 59 92 / 15%);
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+/* ── Confirm Dialog ───────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-confirm-body {
+  font-size: 11px;
+  color: var(--fg);
+  line-height: 1.6;
+  padding: 12px 0;
+}
+
+.\39 mm-pos-mgr-confirm-list {
+  margin: 8px 0 0 16px;
+  padding: 0;
+}
+
+.\39 mm-pos-mgr-confirm-footer {
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+/* ── Wallet Strip ─────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-last-check {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* ── Import+LP Tab ────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-or-divider {
+  font-size: 10px;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.\39 mm-pos-mgr-label-spaced {
+  margin-top: 6px;
+}
+
+.\39 mm-pos-mgr-input-spaced {
+  margin-top: 4px;
+}
+
+/* ── Optimizer Controls ───────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-input-narrow {
+  max-width: 160px;
+}
+
+.\39 mm-pos-mgr-opt-auto-row {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.\39 mm-pos-mgr-opt-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+.\39 mm-pos-mgr-toggle-value {
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+/* ── Range Visual ─────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-range-start {
+  left: 0;
+}
+
+.\39 mm-pos-mgr-range-end {
+  left: 100%;
+}
+
+/* ── Trigger Hint ─────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-trigger-hint {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+/* ── Token Label with Copy ───────────────────────────────────────────────── */
+
+/* ── Realized Gains ──────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-realized-hint {
+  font-size: 8px;
+  color: var(--muted);
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.\39 mm-pos-mgr-pnl-breakdown {
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.\39 mm-pos-mgr-pnl-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.\39 mm-pos-mgr-pnl-val-pos {
+  color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-pnl-val-neg {
+  color: var(--danger);
+}
+
+.\39 mm-pos-mgr-pnl-val-neu {
+  color: var(--text);
+}
+
+/* ── Sync Status ────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-sync-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgb(255 255 255 / 6%);
+}
+
+.\39 mm-pos-mgr-sync-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgb(255 193 7 / 15%);
+  color: #ffc107;
+}
+
+.\39 mm-pos-mgr-sync-badge.done {
+  background: rgb(0 200 83 / 15%);
+  color: #00c853;
+}
+
+/* ── Range Boundary Lines ───────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-range-line {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 30px;
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  transition: left 0.4s;
+}
+
+/* ── Error Modal ────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.\39 mm-pos-mgr-modal {
+  background: var(--bg2);
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  padding: 24px 32px;
+  max-width: 420px;
+  text-align: center;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.\39 mm-pos-mgr-modal h3 {
+  color: var(--danger);
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.\39 mm-pos-mgr-modal p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+
+.\39 mm-pos-mgr-modal-close {
+  margin-top: 16px;
+  padding: 6px 24px;
+  background: rgb(255 107 53 / 15%);
+  border: 1px solid var(--danger);
+  border-radius: 5px;
+  color: var(--danger);
+  cursor: pointer;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+}
+
+.\39 mm-pos-mgr-modal-close:hover {
+  background: rgb(255 107 53 / 25%);
+}
+
+/* ── Token Label with Copy ───────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-token-copy-btn {
+  cursor: pointer;
+  opacity: 0.5;
+  font-size: 10px;
+  margin-left: 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 0;
+}
+
+.\39 mm-pos-mgr-token-copy-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* ── Copy Icon (inline) ─────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-copy-icon {
+  cursor: pointer;
+  opacity: 0.5;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.\39 mm-pos-mgr-copy-icon:hover {
+  opacity: 1;
+}
+
+/* ── Help Popover ────────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-help-popover {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  width: 320px;
+  margin-top: 8px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
+
+.\39 mm-pos-mgr-help-popover.\39 mm-pos-mgr-visible {
+  display: block;
+}
+
+.\39 mm-pos-mgr-help-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.\39 mm-pos-mgr-help-list {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.\39 mm-pos-mgr-help-list li {
+  margin-bottom: 6px;
+}
+
+.\39 mm-pos-mgr-help-close {
+  margin-top: 12px;
+  width: 100%;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.\39 mm-pos-mgr-help-close:hover {
+  background: rgb(255 255 255 / 5%);
+  color: #fff;
+}
