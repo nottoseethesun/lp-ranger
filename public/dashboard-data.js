@@ -4,12 +4,13 @@
  * 9mm v3 Position Manager dashboard.  Replaces placeholder values with
  * real data from the bot backend.
  *
- * Depends on: dashboard-helpers.js (g, botConfig, fmtMs).
+ * Depends on: dashboard-helpers.js, dashboard-positions.js,
+ *             dashboard-history.js.
  */
 
-/* global g, botConfig, updateHistoryFromStatus, fmtDateTime, posStore,
-          updatePosStripUI, act, _9mmPositionMgr */
-'use strict';
+import { g, botConfig, fmtDateTime, act } from './dashboard-helpers.js';
+import { posStore, updatePosStripUI } from './dashboard-positions.js';
+import { updateHistoryFromStatus } from './dashboard-history.js';
 
 /** Polling interval handle. */
 let _dataTimerId = null;
@@ -25,7 +26,7 @@ let _historyPopulated = false;
 const _REALIZED_GAINS_KEY = '9mm_realized_gains';
 
 /** Load realized gains from localStorage. */
-function loadRealizedGains() {
+export function loadRealizedGains() {
   try {
     const v = parseFloat(localStorage.getItem(_REALIZED_GAINS_KEY));
     return Number.isFinite(v) && v >= 0 ? v : 0;
@@ -33,7 +34,7 @@ function loadRealizedGains() {
 }
 
 /** Toggle the realized gains input field visibility. */
-function toggleRealizedInput() {
+export function toggleRealizedInput() {
   const wrap = g('realizedGainsInputWrap');
   if (!wrap) return;
   const show = wrap.style.display === 'none';
@@ -45,7 +46,7 @@ function toggleRealizedInput() {
 }
 
 /** Save realized gains to localStorage and update the display. */
-function saveRealizedGains() {
+export function saveRealizedGains() {
   const inp = g('realizedGainsInput');
   if (!inp) return;
   const val = parseFloat(inp.value);
@@ -54,7 +55,6 @@ function saveRealizedGains() {
   _setPnlVal('pnlRealized', amount);
   const wrap = g('realizedGainsInputWrap');
   if (wrap) wrap.style.display = 'none';
-  // Re-render P&L with updated realized gains
   if (_lastStatus) _updateKpis(_lastStatus);
 }
 
@@ -63,7 +63,7 @@ function saveRealizedGains() {
 const _INITIAL_DEPOSIT_KEY = '9mm_initial_deposit';
 
 /** Load initial deposit from localStorage. */
-function loadInitialDeposit() {
+export function loadInitialDeposit() {
   try {
     const v = parseFloat(localStorage.getItem(_INITIAL_DEPOSIT_KEY));
     return Number.isFinite(v) && v > 0 ? v : 0;
@@ -79,7 +79,7 @@ function _refreshDepositLabel() {
 }
 
 /** Toggle the initial deposit input field visibility. */
-function toggleInitialDeposit() {
+export function toggleInitialDeposit() {
   const wrap = g('initialDepositInputWrap');
   if (!wrap) return;
   const show = wrap.style.display === 'none';
@@ -91,7 +91,7 @@ function toggleInitialDeposit() {
 }
 
 /** Save initial deposit to localStorage + server and update the display. */
-function saveInitialDeposit() {
+export function saveInitialDeposit() {
   const inp = g('initialDepositInput');
   if (!inp) return;
   const val = parseFloat(inp.value);
@@ -110,6 +110,7 @@ let _errorModalShown = false;
 
 /**
  * Show an informational modal when rebalance has been failing for over 1 hour.
+ * Uses data attributes for close-button event delegation.
  * @param {string|null} message  Error message from the bot.
  */
 function _showRebalanceErrorModal(message) {
@@ -124,7 +125,7 @@ function _showRebalanceErrorModal(message) {
     '<p>' + message + '</p>' +
     '<p class="9mm-pos-mgr-text-muted">The bot has been unable to rebalance for over 1 hour. ' +
     'Check the server logs for details. You may need to rebalance manually or adjust slippage settings.</p>' +
-    '<button class="9mm-pos-mgr-modal-close" onclick="this.closest(\'.9mm-pos-mgr-modal-overlay\').remove()">OK</button>' +
+    '<button class="9mm-pos-mgr-modal-close" data-dismiss-modal>OK</button>' +
     '</div>';
   document.body.appendChild(overlay);
 }
@@ -134,7 +135,7 @@ function _showRebalanceErrorModal(message) {
  * @param {number} val
  * @returns {string}
  */
-function _fmtUsd(val) {
+export function _fmtUsd(val) {
   if (val === null || val === undefined || isNaN(val)) return '—';
   const abs = Math.abs(val).toFixed(2);
   if (abs === '0.00') return '$usd 0.00';
@@ -205,7 +206,6 @@ function _updateKpis(d) {
   const feesVal  = d.pnlSnapshot ? (d.pnlSnapshot.totalFees || 0) : 0;
   const currentValue = d.pnlSnapshot ? (d.pnlSnapshot.currentValue || 0) : 0;
 
-  // Use user-entered deposit for lifetime P&L; fall back to server-persisted, then bot-detected
   const deposit = userDeposit > 0 ? userDeposit
     : (d.initialDepositUsd > 0 ? d.initialDepositUsd
       : (d.pnlSnapshot ? d.pnlSnapshot.initialDeposit : 0));
@@ -214,12 +214,10 @@ function _updateKpis(d) {
 
   _updatePnlHeader(d, total, realized);
 
-  // Breakdown rows
   _setPnlVal('pnlFees', feesVal);
   _setPnlVal('pnlPrice', priceChange);
   _setPnlVal('pnlRealized', realized);
 
-  // Current Value
   const val = g('kpiValue');
   const dep = g('kpiDeposit');
   if (d.pnlSnapshot) {
@@ -229,7 +227,6 @@ function _updateKpis(d) {
     dep.textContent = 'awaiting price data';
   }
 
-  // Total Fees
   const fees = g('kpiFees');
   const apr = g('kpiApr');
   if (d.pnlSnapshot) {
@@ -237,7 +234,6 @@ function _updateKpis(d) {
     apr.textContent = 'APR: \u2014';
   }
 
-  // Net Return = currentValue + realized + fees - deposit
   const net = g('kpiNet');
   if (d.pnlSnapshot) {
     const nr = total;
@@ -270,7 +266,7 @@ function _updatePositionTicks(d) {
  * @returns {{t0: string, t1: string}}
  */
 function _activeTokenNames() {
-  const a = typeof posStore !== 'undefined' ? posStore.getActive() : null;
+  const a = posStore.getActive();
   return {
     t0: a ? (a.token0Symbol || 'Token 0') : 'Token 0',
     t1: a ? (a.token1Symbol || 'Token 1') : 'Token 1',
@@ -308,34 +304,16 @@ function _updateComposition(d) {
 }
 
 /**
- * Update the price marker on the range monitor from pool/position state.
- * @param {object} d  Status response object.
- */
-function _updatePriceMarker(d) {
-  if (!d.poolState || !d.activePosition) return;
-  botConfig.price = d.poolState.price;
-  const pmlabel = g('pmlabel');
-  if (pmlabel) pmlabel.textContent = d.poolState.price.toFixed(6) + ' ' + _activeToken1Symbol();
-  botConfig.tL = d.activePosition.tickLower || 0;
-  botConfig.tU = d.activePosition.tickUpper || 0;
-  botConfig.lower = Math.pow(1.0001, botConfig.tL);
-  botConfig.upper = Math.pow(1.0001, botConfig.tU);
-  _9mmPositionMgr.positionRangeVisual();
-}
-
-/**
  * Get the token1 symbol from the active position in posStore.
  * @returns {string}
  */
 function _activeToken1Symbol() {
-  if (typeof posStore === 'undefined') return '';
   const a = posStore.getActive();
   return a ? (a.token1Symbol || '?') : '?';
 }
 
 /**
  * Update the red range-width preview lines on the price monitor.
- * Shows where the *next* rebalance range would be, centered on current price.
  * @param {Function} pct       Price-to-CSS-percent converter.
  * @param {number}   previewLo Preview lower price.
  * @param {number}   previewHi Preview upper price.
@@ -350,16 +328,13 @@ function _updateRangePreviewLines(pct, previewLo, previewHi) {
 
 /**
  * Position the range bar, handles, labels, and price marker on the visual
- * track based on current botConfig values.  Maps prices to 0–100% using a
- * window that pads 30% beyond the lower/upper bounds.
+ * track based on current botConfig values.
  */
-_9mmPositionMgr.positionRangeVisual = function _positionRangeVisual() {
+export function positionRangeVisual() {
   const lo = botConfig.lower;
   const hi = botConfig.upper;
   if (!lo || !hi || lo >= hi) return;
 
-  // Viewport is anchored to the position range with fixed 30% padding.
-  // Preview lines are placed within this viewport and clipped if they fall outside.
   const rw = botConfig.rangeW || 20;
   const previewLo = botConfig.price > 0 ? botConfig.price * (1 - rw / 100) : lo;
   const previewHi = botConfig.price > 0 ? botConfig.price * (1 + rw / 100) : hi;
@@ -368,12 +343,10 @@ _9mmPositionMgr.positionRangeVisual = function _positionRangeVisual() {
   const pad = span * 0.3;
   let vMin = Math.max(0, lo - pad);
   let vMax = hi + pad;
-  // Extend viewport to include preview lines if they exceed position bounds
   if (previewLo < vMin) vMin = Math.max(0, previewLo - span * 0.1);
   if (previewHi > vMax) vMax = previewHi + span * 0.1;
   const vSpan = vMax - vMin;
 
-  /** Convert a price to a CSS left percentage. */
   const pct = (p) => ((p - vMin) / vSpan * 100).toFixed(2) + '%';
 
   const ra = g('rangeActive');
@@ -392,7 +365,23 @@ _9mmPositionMgr.positionRangeVisual = function _positionRangeVisual() {
   if (pm && botConfig.price > 0) pm.style.left = pct(botConfig.price);
 
   _updateRangePreviewLines(pct, previewLo, previewHi);
-};
+}
+
+/**
+ * Update the price marker on the range monitor from pool/position state.
+ * @param {object} d  Status response object.
+ */
+function _updatePriceMarker(d) {
+  if (!d.poolState || !d.activePosition) return;
+  botConfig.price = d.poolState.price;
+  const pmlabel = g('pmlabel');
+  if (pmlabel) pmlabel.textContent = d.poolState.price.toFixed(6) + ' ' + _activeToken1Symbol();
+  botConfig.tL = d.activePosition.tickLower || 0;
+  botConfig.tU = d.activePosition.tickUpper || 0;
+  botConfig.lower = Math.pow(1.0001, botConfig.tL);
+  botConfig.upper = Math.pow(1.0001, botConfig.tU);
+  positionRangeVisual();
+}
 
 /**
  * Set the status pill, dot, and label to a given state.
@@ -484,7 +473,6 @@ function _syncConfigFromServer(d) {
     const disp = g('activeRangeW');
     if (disp) disp.textContent = d.rangeWidthPct;
   }
-  // Sync initial deposit from server if not already in localStorage
   if (d.initialDepositUsd > 0 && !loadInitialDeposit()) {
     try { localStorage.setItem(_INITIAL_DEPOSIT_KEY, String(d.initialDepositUsd)); } catch { /* */ }
   }
@@ -533,16 +521,14 @@ function _updateSyncBadge(complete) {
 
 /**
  * Sync the active position from bot status back to the browser posStore.
- * Updates token ID, ticks, and fee when a rebalance produces a new NFT.
  * @param {object} d  Status response object.
  */
 function _syncActivePosition(d) {
-  if (!d.activePosition || typeof posStore === 'undefined') return;
+  if (!d.activePosition) return;
   const active = posStore.getActive();
   if (!active || active.positionType !== 'nft') return;
   const botPos = d.activePosition;
 
-  // Detect new rebalance by comparing tokenId or lastRebalanceAt
   const isNew = d.lastRebalanceAt && d.lastRebalanceAt !== _lastRebalanceAt;
   if (isNew) {
     _lastRebalanceAt = d.lastRebalanceAt;
@@ -550,12 +536,11 @@ function _syncActivePosition(d) {
       'NFT #' + botPos.tokenId + ' \u00B7 ticks [' + botPos.tickLower + ', ' + botPos.tickUpper + ']');
   }
 
-  // Update posStore entry if token ID changed
   if (botPos.tokenId && String(botPos.tokenId) !== String(active.tokenId)) {
     active.tokenId   = String(botPos.tokenId);
     active.tickLower = botPos.tickLower;
     active.tickUpper = botPos.tickUpper;
-    if (typeof updatePosStripUI === 'function') updatePosStripUI();
+    updatePosStripUI();
   }
 }
 
@@ -573,7 +558,6 @@ function updateDashboardFromStatus(data) {
   _updateBotStatus(data);
   _updateThrottleKpis(data);
 
-  // Use cached rebalance events if server hasn't sent any yet
   if (!data.rebalanceEvents || data.rebalanceEvents.length === 0) {
     const cached = _loadCachedRebalanceEvents();
     if (cached && cached.length > 0) data.rebalanceEvents = cached;
@@ -581,10 +565,8 @@ function updateDashboardFromStatus(data) {
     _cacheRebalanceEvents(data.rebalanceEvents);
   }
 
-  // Update sync status indicator
   _updateSyncBadge(data.rebalanceScanComplete === true);
 
-  // Populate Activity Log with historical rebalance events (once)
   if (!_historyPopulated && data.rebalanceEvents && data.rebalanceEvents.length > 0) {
     _historyPopulated = true;
     const sorted = [...data.rebalanceEvents].sort((a, b) => a.timestamp - b.timestamp);
@@ -595,9 +577,7 @@ function updateDashboardFromStatus(data) {
     }
   }
 
-  if (typeof updateHistoryFromStatus === 'function') {
-    updateHistoryFromStatus(data);
-  }
+  updateHistoryFromStatus(data);
 }
 
 /** Count consecutive poll failures for HALTED detection. */
@@ -627,14 +607,14 @@ function _showHalted() {
 }
 
 /** Start polling /api/status at 3-second intervals. */
-function startDataPolling() {
+export function startDataPolling() {
   if (_dataTimerId) return;
   _pollStatus();
   _dataTimerId = setInterval(_pollStatus, 3000);
 }
 
 /** Stop polling. */
-function stopDataPolling() {
+export function stopDataPolling() {
   if (_dataTimerId) {
     clearInterval(_dataTimerId);
     _dataTimerId = null;

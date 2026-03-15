@@ -5,16 +5,30 @@
  * selection, and text filtering.  Updates {@link botConfig} when a
  * position is activated.
  *
- * Depends on: dashboard-helpers.js (g, act, botConfig),
- *             dashboard-wallet.js  (wallet, markWalletKnown, isKnownWallet,
- *                                   wvSetStatus, wvIsImportAllowed,
- *                                   applyWalletUI, closeWalletModal),
- *             ethers.js (global from CDN).
+ * Depends on: dashboard-helpers.js (g, act, botConfig, loadPositionRangeW),
+ *             dashboard-wallet.js  (wallet, getRpcUrl).
+ *
+ * NOTE: Import of positionRangeVisual from data.js creates a circular
+ * reference (data imports posStore from here). This is safe because
+ * positionRangeVisual is only called inside function bodies, not at
+ * module evaluation time.
  */
 
-/* global g, act, wallet, botConfig, loadPositionRangeW,
-          _9mmPositionMgr */
-'use strict';
+import { g, act, botConfig, loadPositionRangeW } from './dashboard-helpers.js';
+import { wallet, getRpcUrl } from './dashboard-wallet.js';
+
+// Late-bound import to avoid circular dep at evaluation time.
+// Populated by dashboard-init.js after all modules load.
+let _positionRangeVisual = null;
+
+/**
+ * Inject data-module references after all modules are loaded.
+ * Called once from dashboard-init.js.
+ * @param {object} deps  { positionRangeVisual }
+ */
+export function injectPositionDeps(deps) {
+  _positionRangeVisual = deps.positionRangeVisual;
+}
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -37,7 +51,7 @@ function _persistPosStore() {
 }
 
 /** Load posStore from localStorage. */
-function _loadPosStore() {
+export function _loadPosStore() {
   try {
     const raw = localStorage.getItem(_POS_STORE_KEY);
     if (!raw) return;
@@ -57,7 +71,7 @@ function _loadPosStore() {
  * supports pagination and active-position selection.
  * Persisted to localStorage across page reloads.
  */
-const posStore = {
+export const posStore = {
   entries:   [],
   activeIdx: -1,
 
@@ -73,7 +87,6 @@ const posStore = {
         : e.contractAddress === entry.contractAddress)
     );
     if (dup !== -1) {
-      // Update mutable fields on the existing entry (e.g. refreshed token names)
       const existing = this.entries[dup];
       if (entry.token0Symbol) existing.token0Symbol = entry.token0Symbol;
       if (entry.token1Symbol) existing.token1Symbol = entry.token1Symbol;
@@ -153,7 +166,7 @@ let posBrowserPage     = 0;
 let posBrowserSelected = -1;
 
 /** Update the compact position strip shown beneath the header. */
-function updatePosStripUI() {
+export function updatePosStripUI() {
   const count  = posStore.count();
   const active = posStore.getActive();
   g('headerPosLabel').textContent = count + ' Position' + (count !== 1 ? 's' : '');
@@ -181,7 +194,7 @@ function updatePosStripUI() {
 // ── Position browser modal ──────────────────────────────────────────────────
 
 /** Open the position browser modal. */
-function openPosBrowser() {
+export function openPosBrowser() {
   posBrowserPage = 0;
   posBrowserSelected = -1;
   g('posBrowserModal').className = 'modal-overlay';
@@ -189,10 +202,10 @@ function openPosBrowser() {
 }
 
 /** Close the position browser modal. */
-function closePosBrowser() { g('posBrowserModal').className = 'modal-overlay hidden'; }
+export function closePosBrowser() { g('posBrowserModal').className = 'modal-overlay hidden'; }
 
 /** Render the paginated, filterable position list inside the browser modal. */
-function renderPosBrowser() {
+export function renderPosBrowser() {
   const filter   = (g('posSearchInput').value || '').toLowerCase();
   const all      = posStore.entries;
   const filtered = filter
@@ -248,7 +261,7 @@ function renderPosBrowser() {
  * Toggle row selection in the position browser.
  * @param {number} idx  Position index.
  */
-function posRowClick(idx) {
+export function posRowClick(idx) {
   posBrowserSelected = (posBrowserSelected === idx) ? -1 : idx;
   renderPosBrowser();
 }
@@ -257,13 +270,13 @@ function posRowClick(idx) {
  * Navigate to the next/previous page of positions.
  * @param {number} dir  +1 for next, -1 for previous.
  */
-function posChangePage(dir) {
+export function posChangePage(dir) {
   posBrowserPage += dir;
   renderPosBrowser();
 }
 
 /** Make the highlighted position the active one and close the browser. */
-function activateSelectedPos() {
+export function activateSelectedPos() {
   if (posBrowserSelected < 0) return;
   posStore.select(posBrowserSelected);
   updatePosStripUI();
@@ -275,7 +288,6 @@ function activateSelectedPos() {
     botConfig.tL = active.tickLower || 0;
     botConfig.tU = active.tickUpper || 0;
 
-    // Restore saved range width for this position (defaults to 20% if none saved)
     const savedRangeW = loadPositionRangeW(active);
     botConfig.rangeW = savedRangeW;
     const rangeInput = g('inRangeW');
@@ -284,7 +296,7 @@ function activateSelectedPos() {
     if (rangeDisplay) rangeDisplay.textContent = savedRangeW;
 
     _applyLocalPositionData(active);
-    if (_9mmPositionMgr.positionRangeVisual) _9mmPositionMgr.positionRangeVisual();
+    if (_positionRangeVisual) _positionRangeVisual();
     act('\u{1F4CD}', 'fee', 'Position switched', 'Now managing: ' + formatPosLabel(active) + ' (\u00B1' + savedRangeW + '%)');
     closePosBrowser();
   }
@@ -304,6 +316,7 @@ function _tokenName(symbol, address) {
 
 /**
  * Render a single position row for the browser modal.
+ * Uses data-pos-idx for event delegation instead of inline onclick.
  * @param {object} e  Position entry from posStore.
  * @returns {string}  HTML string for the row.
  */
@@ -319,7 +332,7 @@ function _renderPosRow(e) {
   const walletShort   = e.walletAddress.slice(0, 8) + '\u2026' + e.walletAddress.slice(-4);
   const isHighlighted = e.index === posBrowserSelected;
   const isActive      = e.active;
-  return `<div class="pos-row ${isActive ? 'active-pos' : ''} ${isHighlighted ? 'selected' : ''}" onclick="posRowClick(${e.index})">
+  return `<div class="pos-row ${isActive ? 'active-pos' : ''} ${isHighlighted ? 'selected' : ''}" data-pos-idx="${e.index}">
     <div class="pos-row-idx ${isActive ? 'active-idx' : ''}">${e.index + 1}</div>
     <span class="pos-type-chip ${e.positionType}">${e.positionType.toUpperCase()}</span>
     <div class="pos-row-body">
@@ -331,7 +344,7 @@ function _renderPosRow(e) {
 }
 
 /**
- * Build a token label with a copy-address button.
+ * Build a token label with a copy-address button using data attributes.
  * @param {string} symbol   Token symbol (e.g. "WPLS").
  * @param {string} address  Full contract address.
  * @returns {string}  HTML string.
@@ -340,9 +353,8 @@ function _tokenLabelHtml(symbol, address) {
   if (!address || address === '\u2014') return symbol || '\u2014';
   const escaped = address.replace(/'/g, '&#39;');
   return symbol +
-    '<button class="9mm-pos-mgr-token-copy-btn" onclick="navigator.clipboard.writeText(\'' +
-    escaped + '\');this.textContent=\'\\u2713\';setTimeout(()=>this.textContent=\'\\u{1F4CB}\',1200)" ' +
-    'title="Copy contract address: ' + escaped + '">\u{1F4CB}</button>';
+    '<button class="9mm-pos-mgr-token-copy-btn" data-copy-addr="' +
+    escaped + '" title="Copy contract address: ' + escaped + '">\u{1F4CB}</button>';
 }
 
 /**
@@ -370,7 +382,7 @@ function _setHtml(id, html) {
  * Called when a position is activated from the browser (no bot needed).
  * @param {object} pos  Position entry from posStore.
  */
-function _applyLocalPositionData(pos) {
+export function _applyLocalPositionData(pos) {
   _setText('sTL', pos.tickLower ?? '\u2014');
   _setText('sTU', pos.tickUpper ?? '\u2014');
   _setText('sLiq', pos.liquidity ? String(pos.liquidity) : '\u2014');
@@ -387,7 +399,7 @@ function _applyLocalPositionData(pos) {
 }
 
 /** Remove the highlighted position from the store. */
-function removeSelectedPos() {
+export function removeSelectedPos() {
   if (posBrowserSelected < 0) return;
   const entry = posStore.entries[posBrowserSelected];
   if (!entry) return;
@@ -403,7 +415,7 @@ function removeSelectedPos() {
  * @param {object} e  Position entry.
  * @returns {string}
  */
-function formatPosLabel(e) {
+export function formatPosLabel(e) {
   const pair = _tokenName(e.token0Symbol, e.token0) + '/' + _tokenName(e.token1Symbol, e.token1);
   return (e.positionType === 'nft' ? 'NFT #' + e.tokenId : 'ERC-20') + ' \u00B7 ' + pair;
 }
@@ -412,7 +424,7 @@ function formatPosLabel(e) {
  * Scan the current wallet for LP positions via the server API.
  * Requires a connected wallet (imported via the wallet modal).
  */
-async function scanPositions() {
+export async function scanPositions() {
   if (!wallet.address) {
     act('\u26A0', 'alert', 'No wallet loaded', 'Import a wallet first to scan for positions');
     return;
@@ -427,7 +439,7 @@ async function scanPositions() {
     const res = await fetch('/api/positions/scan', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ rpcUrl: _9mmPositionMgr.getRpcUrl() }),
+      body:    JSON.stringify({ rpcUrl: getRpcUrl() }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
@@ -439,7 +451,6 @@ async function scanPositions() {
       `Found ${nftCount} NFT + ${ercCount} ERC-20 positions. Added ${added} new.`);
     updatePosStripUI();
 
-    // Apply position data to the dashboard if an active position exists
     const active = posStore.getActive();
     if (active) {
       botConfig.lower = Math.pow(1.0001, active.tickLower || 0);
@@ -447,7 +458,7 @@ async function scanPositions() {
       botConfig.tL = active.tickLower || 0;
       botConfig.tU = active.tickUpper || 0;
       _applyLocalPositionData(active);
-      if (_9mmPositionMgr.positionRangeVisual) _9mmPositionMgr.positionRangeVisual();
+      if (_positionRangeVisual) _positionRangeVisual();
     }
   } catch (e) {
     act('\u26A0', 'alert', 'Scan failed', e.message);
@@ -490,5 +501,3 @@ function _addScannedPositions(data) {
   }
   return added;
 }
-
-

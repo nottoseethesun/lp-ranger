@@ -71,12 +71,12 @@
     <div class="modal-logo">
       <div class="modal-logo-icon">9mm</div>
       <div><h2>Wallet Setup</h2><p>v3 Position Manager · PulseChain</p></div>
-      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn" onclick="closeWalletModal()">✕ Close</button>
+      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
     <div class="modal-tabs">
-      <button class="modal-tab active" id="wtab-generate" onclick="wTab('generate')">✦ Generate New</button>
-      <button class="modal-tab" id="wtab-seed" onclick="wTab('seed')">Seed Phrase</button>
-      <button class="modal-tab" id="wtab-key" onclick="wTab('key')">Private Key</button>
+      <button class="modal-tab active" id="wtab-generate">✦ Generate New</button>
+      <button class="modal-tab" id="wtab-seed">Seed Phrase</button>
+      <button class="modal-tab" id="wtab-key">Private Key</button>
     </div>
 
     <!-- GENERATE -->
@@ -84,26 +84,26 @@
       <div class="modal-info">ℹ Generates a brand-new wallet entirely in your browser. Nothing is transmitted.</div>
       <div id="genResult" class="9mm-pos-mgr-initially-hidden">
         <div class="gen-result">
-          <div class="grl">Address <button class="copy-btn" onclick="copyText('genAddr')">copy</button></div>
+          <div class="grl">Address <button class="copy-btn">copy</button></div>
           <div class="grv" id="genAddr">—</div>
           <div class="modal-divider"></div>
-          <div class="grl">Seed Phrase (12 words) <button class="copy-btn" onclick="copyText('genMnemonic')">copy</button></div>
+          <div class="grl">Seed Phrase (12 words) <button class="copy-btn">copy</button></div>
           <div class="grv sm 9mm-pos-mgr-seed-phrase" id="genMnemonic">—</div>
           <div class="modal-divider"></div>
-          <div class="grl">Private Key <button class="copy-btn" onclick="copyText('genKey')">copy</button></div>
+          <div class="grl">Private Key <button class="copy-btn">copy</button></div>
           <div class="grv sm 9mm-pos-mgr-secret-key" id="genKey">—</div>
           <div class="warn-note">⚠ Write down your seed phrase now and store it offline. It cannot be recovered. Never share your private key.</div>
         </div>
       </div>
-      <button class="modal-btn primary 9mm-pos-mgr-mt-2xl" onclick="generateWallet()" id="genBtn">Generate Wallet</button>
+      <button class="modal-btn primary 9mm-pos-mgr-mt-2xl" id="genBtn">Generate Wallet</button>
       <div class="modal-field 9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-lg" id="genPwField">
         <label>Session password (protects your key on the server)</label>
-        <input type="password" class="modal-input" id="genPassword" placeholder="Set a password…" oninput="checkPasswordMatch('gen')">
-        <input type="password" class="modal-input 9mm-pos-mgr-mt-xs" id="genPasswordConfirm" placeholder="Confirm password…" oninput="checkPasswordMatch('gen')">
+        <input type="password" class="modal-input" id="genPassword" placeholder="Set a password…">
+        <input type="password" class="modal-input 9mm-pos-mgr-mt-xs" id="genPasswordConfirm" placeholder="Confirm password…">
         <div class="9mm-pos-mgr-hint" id="genPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
-      <button class="modal-btn secondary 9mm-pos-mgr-mt-md 9mm-pos-mgr-initially-hidden" id="genConfirmBtn" onclick="confirmWallet()" disabled>I've saved my seed phrase — Continue</button>
+      <button class="modal-btn secondary 9mm-pos-mgr-mt-md 9mm-pos-mgr-initially-hidden" id="genConfirmBtn" disabled>I've saved my seed phrase — Continue</button>
     </div>
 
     <!-- SEED -->
@@ -111,11 +111,11 @@
       <div class="modal-warning">⚠ Only enter your seed phrase on a device you fully trust.</div>
       <div class="modal-field">
         <label>12 or 24 word seed phrase</label>
-        <textarea class="modal-input" id="seedInput" rows="3" placeholder="word1 word2 word3 … word12" oninput="validateSeed()"></textarea>
+        <textarea class="modal-input" id="seedInput" rows="3" placeholder="word1 word2 word3 … word12"></textarea>
       </div>
       <div class="modal-field">
         <label>Derivation path</label>
-        <input type="text" class="modal-input" id="seedPath" value="m/44'/60'/0'/0/0" oninput="validateSeed()">
+        <input type="text" class="modal-input" id="seedPath" value="m/44'/60'/0'/0/0">
       </div>
 
       <!-- Validation status badge -->
@@ -137,19 +137,19 @@
           Only continue if you are deliberately creating a new wallet from this phrase.
         </div>
         <label class="wv-confirm-check">
-          <input type="checkbox" id="seedConfirmCheck" onchange="onSeedConfirmChange()">
+          <input type="checkbox" id="seedConfirmCheck">
           <span>I have verified the phrase is correct and wish to continue</span>
         </label>
       </div>
 
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label>Session password (protects your key on the server)</label>
-        <input type="password" class="modal-input" id="seedPassword" placeholder="Set a password…" oninput="checkPasswordMatch('seed')">
-        <input type="password" class="modal-input 9mm-pos-mgr-mt-xs" id="seedPasswordConfirm" placeholder="Confirm password…" oninput="checkPasswordMatch('seed')">
+        <input type="password" class="modal-input" id="seedPassword" placeholder="Set a password…">
+        <input type="password" class="modal-input 9mm-pos-mgr-mt-xs" id="seedPasswordConfirm" placeholder="Confirm password…">
         <div class="9mm-pos-mgr-hint" id="seedPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
-      <button class="modal-btn primary 9mm-pos-mgr-mt-2xl" onclick="importSeed()" id="seedImportBtn" disabled>Import Wallet</button>
+      <button class="modal-btn primary 9mm-pos-mgr-mt-2xl" id="seedImportBtn" disabled>Import Wallet</button>
     </div>
 
     <!-- KEY -->
@@ -157,7 +157,7 @@
       <div class="modal-warning">⚠ Entering a private key carries risk. Use only on a trusted, offline-capable device.</div>
       <div class="modal-field">
         <label>Private key (hex, with or without 0x)</label>
-        <input type="password" class="modal-input" id="keyInput" placeholder="0x…" oninput="validateKey()" autocomplete="off">
+        <input type="password" class="modal-input" id="keyInput" placeholder="0x…" autocomplete="off">
       </div>
 
       <!-- Validation status badge -->
@@ -179,19 +179,19 @@
           Only continue if you are deliberately creating a new wallet from this key.
         </div>
         <label class="wv-confirm-check">
-          <input type="checkbox" id="keyConfirmCheck" onchange="onKeyConfirmChange()">
+          <input type="checkbox" id="keyConfirmCheck">
           <span>I have verified the key is correct and wish to continue</span>
         </label>
       </div>
 
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label>Session password (protects your key on the server)</label>
-        <input type="password" class="modal-input" id="keyPassword" placeholder="Set a password…" oninput="checkPasswordMatch('key')">
-        <input type="password" class="modal-input 9mm-pos-mgr-mt-xs" id="keyPasswordConfirm" placeholder="Confirm password…" oninput="checkPasswordMatch('key')">
+        <input type="password" class="modal-input" id="keyPassword" placeholder="Set a password…">
+        <input type="password" class="modal-input 9mm-pos-mgr-mt-xs" id="keyPasswordConfirm" placeholder="Confirm password…">
         <div class="9mm-pos-mgr-hint" id="keyPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
-      <button class="modal-btn primary 9mm-pos-mgr-mt-2xl" onclick="importKey()" id="keyImportBtn" disabled>Import Wallet</button>
+      <button class="modal-btn primary 9mm-pos-mgr-mt-2xl" id="keyImportBtn" disabled>Import Wallet</button>
     </div>
 
   </div>
@@ -206,14 +206,14 @@
         <h2>LP Position Browser</h2>
         <p>Browse, import &amp; select positions</p>
       </div>
-      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn" onclick="closePosBrowser()">✕ Close</button>
+      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
 
     <!-- Search + scan -->
     <div class="pos-search-row">
-      <input type="text" class="pos-search-input" id="posSearchInput" placeholder="Filter by pair, token ID, wallet address…" oninput="renderPosBrowser()">
-      <button class="pos-scan-btn" id="posScanBtn" onclick="scanPositions()">⟳ Scan Wallet</button>
-      <button class="pos-scan-btn 9mm-pos-mgr-btn-green" onclick="openWalletModal()">+ Import Wallet</button>
+      <input type="text" class="pos-search-input" id="posSearchInput" placeholder="Filter by pair, token ID, wallet address…">
+      <button class="pos-scan-btn" id="posScanBtn">⟳ Scan Wallet</button>
+      <button class="pos-scan-btn 9mm-pos-mgr-btn-green">+ Import Wallet</button>
     </div>
 
     <!-- Stats bar -->
@@ -235,17 +235,17 @@
 
     <!-- Pagination -->
     <div class="pos-pagination">
-      <button class="pos-pag-btn" id="posPrevBtn" onclick="posChangePage(-1)" disabled>← Prev</button>
+      <button class="pos-pag-btn" id="posPrevBtn" disabled>← Prev</button>
       <span id="posPageLabel">Page 1 of 1</span>
-      <button class="pos-pag-btn" id="posNextBtn" onclick="posChangePage(1)" disabled>Next →</button>
+      <button class="pos-pag-btn" id="posNextBtn" disabled>Next →</button>
     </div>
 
     <!-- Action buttons -->
     <div class="9mm-pos-mgr-action-row">
-      <button class="modal-btn primary 9mm-pos-mgr-flex-fill" id="posSelectBtn" onclick="activateSelectedPos()" disabled>
+      <button class="modal-btn primary 9mm-pos-mgr-flex-fill" id="posSelectBtn" disabled>
         ✓ Use Selected Position
       </button>
-      <button class="modal-btn secondary 9mm-pos-mgr-btn-compact" id="posRemoveBtn" onclick="removeSelectedPos()" disabled>
+      <button class="modal-btn secondary 9mm-pos-mgr-btn-compact" id="posRemoveBtn" disabled>
         🗑 Remove
       </button>
     </div>
@@ -258,11 +258,11 @@
     <div class="modal-logo">
       <div class="modal-logo-icon">🔑</div>
       <div><h2>Reveal Wallet Key</h2><p>Enter your session password to view secrets</p></div>
-      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn" onclick="closeRevealModal()">✕ Close</button>
+      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
     <div class="modal-field">
       <label>Session password</label>
-      <input type="password" class="modal-input" id="revealPassword" placeholder="Enter your session password…" onkeydown="if(event.key==='Enter')revealWallet()">
+      <input type="password" class="modal-input" id="revealPassword" placeholder="Enter your session password…">
     </div>
     <div id="revealError" class="import-result err 9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-md"></div>
     <div id="revealResult" class="9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-xl">
@@ -270,11 +270,11 @@
         <div class="grl">Address</div>
         <div class="grv" id="revealAddr">—</div>
         <div class="modal-divider"></div>
-        <div class="grl">Private Key <button class="copy-btn" onclick="copyText('revealKey')">copy</button></div>
+        <div class="grl">Private Key <button class="copy-btn">copy</button></div>
         <div class="grv sm 9mm-pos-mgr-secret-key" id="revealKey">—</div>
         <div class="modal-divider"></div>
         <div id="revealMnemonicSection">
-          <div class="grl">Seed Phrase <button class="copy-btn" onclick="copyText('revealMnemonic')">copy</button></div>
+          <div class="grl">Seed Phrase <button class="copy-btn">copy</button></div>
           <div class="grv sm 9mm-pos-mgr-seed-phrase" id="revealMnemonic">—</div>
         </div>
         <div id="revealNoMnemonic" class="9mm-pos-mgr-initially-hidden">
@@ -290,7 +290,7 @@
         <div class="warn-note 9mm-pos-mgr-mt-lg">⚠ Never share your private key or seed phrase. This information will auto-hide after 60 seconds.</div>
       </div>
     </div>
-    <button class="modal-btn primary 9mm-pos-mgr-mt-xl" onclick="revealWallet()" id="revealBtn">Reveal</button>
+    <button class="modal-btn primary 9mm-pos-mgr-mt-xl" id="revealBtn">Reveal</button>
   </div>
 </div>
 
@@ -313,8 +313,8 @@
       </div>
     </div>
     <div class="9mm-pos-mgr-btn-row">
-      <button class="modal-btn secondary 9mm-pos-mgr-flex-fill" onclick="closeClearWalletModal()">Cancel</button>
-      <button class="modal-btn primary 9mm-pos-mgr-flex-fill 9mm-pos-mgr-btn-danger" onclick="confirmClearWallet()">Clear Wallet</button>
+      <button class="modal-btn secondary 9mm-pos-mgr-flex-fill">Cancel</button>
+      <button class="modal-btn primary 9mm-pos-mgr-flex-fill 9mm-pos-mgr-btn-danger">Clear Wallet</button>
     </div>
   </div>
 </div>
@@ -329,14 +329,14 @@
   </div>
   <div class="header-right">
     <div class="chain-badge">⛓ PulseChain</div>
-    <button class="pos-browser-btn" onclick="openPosBrowser()">📂 <span id="headerPosLabel">0 Positions</span></button>
-    <button class="pos-browser-btn" onclick="scanPositions()" title="Re-scan wallet for positions">⟳ Scan</button>
-    <button class="hwbtn" onclick="openWalletModal()">🔑 <span id="headerWalletLabel">Set Wallet</span></button>
+    <button class="pos-browser-btn">📂 <span id="headerPosLabel">0 Positions</span></button>
+    <button class="pos-browser-btn" title="Re-scan wallet for positions">⟳ Scan</button>
+    <button class="hwbtn">🔑 <span id="headerWalletLabel">Set Wallet</span></button>
     <div class="status-pill active" id="botStatusPill">
       <div class="dot green" id="botDot"></div>
       <span id="botStatusText">BOT ACTIVE</span>
     </div>
-    <button class="pos-browser-btn" id="helpBtn" onclick="toggleHelpPopover()" title="Help">? Help</button>
+    <button class="pos-browser-btn" id="helpBtn" title="Help">? Help</button>
     <div class="9mm-pos-mgr-help-popover" id="helpPopover">
       <div class="9mm-pos-mgr-help-title">How It Works</div>
       <ul class="9mm-pos-mgr-help-list">
@@ -346,7 +346,7 @@
         <li>Only V3 concentrated liquidity (NFT) positions are supported.</li>
         <li>Historical rebalance events are scanned up to 5 years back.</li>
       </ul>
-      <button class="9mm-pos-mgr-help-close" onclick="toggleHelpPopover()">Close</button>
+      <button class="9mm-pos-mgr-help-close">Close</button>
     </div>
   </div>
 </header>
@@ -356,12 +356,12 @@
   <span>🔑</span>
   <span class="ws-addr" id="wsAddr">No wallet loaded</span>
   <span class="ws-badge none" id="wsBadge">NOT SET</span>
-  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" onclick="openRevealModal()" title="View private key / seed phrase">👁 View Key</button>
-  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" onclick="clearWalletUI()" title="Clear wallet from server and browser">✕ Clear</button>
+  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase">👁 View Key</button>
+  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
   <span class="pt-badge nft" id="ptBadge">NFT POSITION</span>
   <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">Position NFT #</span><strong id="wsToken">—</strong>
   <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
-  <div class="ws-pos-summary" onclick="openPosBrowser()" title="Browse all positions">
+  <div class="ws-pos-summary" title="Browse all positions">
     <span id="wsActivePosLabel">No active position</span>
     <span class="9mm-pos-mgr-text-muted">·</span>
     <span id="wsPosCount" class="ws-pos-count">0 total</span>
@@ -382,21 +382,21 @@
       <div class="9mm-pos-mgr-pnl-row"><span>Realized gains</span><span id="pnlRealized" class="9mm-pos-mgr-pnl-val-neu">$0.00</span></div>
     </div>
     <div class="realized-gains-row" id="initialDepositRow">
-      <span class="realized-gains-label" id="initialDepositLabel" onclick="toggleInitialDeposit()" title="Click to set your original deposit amount for lifetime P&amp;L">Edit initial deposit</span>
+      <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your original deposit amount for lifetime P&amp;L">Edit initial deposit</span>
       <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">USD value when you first created this LP position</div>
       <div class="realized-gains-input-wrap" id="initialDepositInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
-        <input type="number" class="realized-gains-input" id="initialDepositInput" step="0.01" min="0" placeholder="0.00" onchange="saveInitialDeposit()">
-        <button class="realized-gains-save" onclick="saveInitialDeposit()">Save</button>
+        <input type="number" class="realized-gains-input" id="initialDepositInput" step="0.01" min="0" placeholder="0.00">
+        <button class="realized-gains-save">Save</button>
       </div>
     </div>
     <div class="realized-gains-row" id="realizedGainsRow">
-      <span class="realized-gains-label" id="realizedGainsLabel" onclick="toggleRealizedInput()" title="Click to edit realized gains from sold LP tokens">Edit realized gains</span>
+      <span class="realized-gains-label" id="realizedGainsLabel" title="Click to edit realized gains from sold LP tokens">Edit realized gains</span>
       <div class="9mm-pos-mgr-realized-hint" id="realizedGainsNote">Lifetime gains from coins sold out of this LP position</div>
       <div class="realized-gains-input-wrap" id="realizedGainsInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
-        <input type="number" class="realized-gains-input" id="realizedGainsInput" step="0.01" min="0" placeholder="0.00" onchange="saveRealizedGains()">
-        <button class="realized-gains-save" onclick="saveRealizedGains()">Save</button>
+        <input type="number" class="realized-gains-input" id="realizedGainsInput" step="0.01" min="0" placeholder="0.00">
+        <button class="realized-gains-save">Save</button>
       </div>
     </div>
     <div class="9mm-pos-mgr-sync-row" id="syncRow">
@@ -474,9 +474,9 @@
     <div class="cfg-block">
       <div class="cfg-title">Trigger Type <span class="live-badge">EDITABLE</span></div>
       <div class="ttype-row">
-        <button class="ttype-btn active" id="tb-oor" onclick="setTType(_9mmPosMgr.TRIGGER_OOR)">Out of Range</button>
-        <button class="ttype-btn" id="tb-edge" onclick="setTType(_9mmPosMgr.TRIGGER_EDGE)">Near Edge</button>
-        <button class="ttype-btn" id="tb-time" onclick="setTType(_9mmPosMgr.TRIGGER_TIME)">Scheduled</button>
+        <button class="ttype-btn active" id="tb-oor">Out of Range</button>
+        <button class="ttype-btn" id="tb-edge">Near Edge</button>
+        <button class="ttype-btn" id="tb-time">Scheduled</button>
       </div>
       <div id="tparams"></div>
     </div>
@@ -488,14 +488,14 @@
       <div class="prow">
         <span class="plbl">Min time between rebalances</span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inMinInterval" value="10" min="1" max="1440" step="1" oninput="onParamChange()">
+          <input type="number" class="pinput w55" id="inMinInterval" value="10" min="1" max="1440" step="1">
           <span class="punit">min</span>
         </div>
       </div>
       <div class="prow">
         <span class="plbl">Max rebalances / day</span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inMaxReb" value="20" min="1" max="200" step="1" oninput="onParamChange()">
+          <input type="number" class="pinput w55" id="inMaxReb" value="20" min="1" max="200" step="1">
           <span class="punit">/day</span>
         </div>
       </div>
@@ -532,7 +532,7 @@
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inRangeW" value="20" min="1" max="100" step="1">
           <span class="punit">%</span>
-          <button class="save-range-btn" onclick="saveRangeWidth()">Save</button>
+          <button class="save-range-btn">Save</button>
         </div>
       </div>
       <div class="prow">
@@ -584,7 +584,7 @@
       </div>
     </div>
 
-    <button class="apply-btn" id="applyAllBtn" onclick="applyAll()">Apply All Settings</button>
+    <button class="apply-btn" id="applyAllBtn">Apply All Settings</button>
   </div>
 </div>
 
@@ -615,9 +615,9 @@
       </table>
     </div>
     <div class="pos-pagination 9mm-pos-mgr-mt-md">
-      <button class="pos-pag-btn" id="rebPrevBtn" onclick="rebChangePage(-1)" disabled>&larr; Prev</button>
+      <button class="pos-pag-btn" id="rebPrevBtn" disabled>&larr; Prev</button>
       <span id="rebPageLabel" class="9mm-pos-mgr-text-muted-sm">Page 1 of 1</span>
-      <button class="pos-pag-btn" id="rebNextBtn" onclick="rebChangePage(1)" disabled>Next &rarr;</button>
+      <button class="pos-pag-btn" id="rebNextBtn" disabled>Next &rarr;</button>
     </div>
   </div>
 </div>
@@ -635,9 +635,9 @@
     <!-- URL + ping -->
     <div class="opt-url-row">
       <span class="opt-url-label">Engine URL</span>
-      <input type="text" class="opt-url-input" id="optUrl" placeholder="http://localhost:3693" oninput="optUrlChanged()">
+      <input type="text" class="opt-url-input" id="optUrl" placeholder="http://localhost:3693">
       <input type="text" class="opt-url-input 9mm-pos-mgr-input-narrow" id="optApiKey" placeholder="API key (optional)">
-      <button class="opt-ping-btn" id="optPingBtn" onclick="optPing()">⏱ Ping</button>
+      <button class="opt-ping-btn" id="optPingBtn">⏱ Ping</button>
     </div>
 
     <!-- Connection-required notice (shown when disconnected) -->
@@ -650,14 +650,14 @@
     <div class="opt-controls">
       <div class="opt-toggle-wrap 9mm-pos-mgr-disabled" id="optToggleWrap" title="Requires connected engine">
         <span class="opt-toggle-label">Auto-poll every 10 min</span>
-        <div class="toggle" id="optToggle" onclick="optTogglePolling()"><div class="tknob"></div></div>
+        <div class="toggle" id="optToggle"><div class="tknob"></div></div>
         <span class="cv 9mm-pos-mgr-text-md" id="optToggleLabel">OFF</span>
       </div>
-      <button class="opt-query-btn" id="optQueryBtn" onclick="optQueryNow()" disabled title="Requires connected engine">⚡ Query Now</button>
+      <button class="opt-query-btn" id="optQueryBtn" disabled title="Requires connected engine">⚡ Query Now</button>
       <div class="9mm-pos-mgr-flex-fill"></div>
       <div class="opt-auto-apply-row 9mm-pos-mgr-opt-auto-row">
         <span class="9mm-pos-mgr-opt-label">Auto-apply recommendations</span>
-        <div class="toggle 9mm-pos-mgr-disabled" id="optAutoApplyToggle" onclick="optToggleAutoApply()" title="Requires connected engine"><div class="tknob"></div></div>
+        <div class="toggle 9mm-pos-mgr-disabled" id="optAutoApplyToggle" title="Requires connected engine"><div class="tknob"></div></div>
         <span class="cv 9mm-pos-mgr-toggle-value" id="optAutoApplyLabel">OFF</span>
       </div>
     </div>
@@ -689,7 +689,7 @@
       <div class="opt-changes-grid" id="optChangesGrid"></div>
 
       <!-- Apply button (shown when auto-apply is OFF) -->
-      <button class="opt-apply-btn" id="optApplyBtn" onclick="optApplyLast()" disabled>✓ Apply Recommendation</button>
+      <button class="opt-apply-btn" id="optApplyBtn" disabled>✓ Apply Recommendation</button>
     </div>
 
     <!-- Fetch history -->
@@ -699,15 +699,8 @@
 
 </div><!-- /app -->
 
-<!-- Dashboard modules (dependency order) -->
-<script src="dashboard-helpers.js"></script>
-<script src="dashboard-wallet.js"></script>
-<script src="dashboard-positions.js"></script>
-<script src="dashboard-throttle.js"></script>
-<script src="dashboard-optimizer.js"></script>
-<script src="dashboard-data.js"></script>
-<script src="dashboard-history.js"></script>
-<script src="dashboard-init.js"></script>
+<!-- Dashboard entry point (ES module) -->
+<script type="module" src="dashboard-init.js"></script>
 <!-- END dashboard scripts -->
 </body>
 </html>
