@@ -48,7 +48,8 @@ const SHARED_RULES = {
 module.exports = [
   // ── 1. Files to lint ────────────────────────────────────────────────────────
   {
-    files: ['src/**/*.js', 'test/**/*.js', 'server.js', 'bot.js', 'public/dashboard-*.js'],
+    files: ['src/**/*.js', 'test/**/*.js', 'server.js', 'bot.js',
+      'public/dashboard-*.js', 'public/ethers-adapter.js'],
   },
 
   // ── 2. Files to ignore entirely ─────────────────────────────────────────────
@@ -81,35 +82,20 @@ module.exports = [
     },
   },
 
-  // ── 4. Dashboard files — browser environment ──────────────────────────────
-  //
-  // Cross-file dependencies are declared via /* global */ comments in each
-  // file rather than in languageOptions.globals, to avoid no-redeclare
-  // conflicts with the file that defines them.
+  // ── 4. Dashboard files — browser ES modules ───────────────────────────────
   {
-    files: ['public/dashboard-*.js'],
+    files: ['public/dashboard-*.js', 'public/ethers-adapter.js'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType:  'script',
+      sourceType:  'module',
       globals: {
         ...globals.browser,
-        ethers: 'readonly',
       },
     },
     rules: {
       ...SHARED_RULES,
+      'strict': 'off',
       'no-console': ['warn', { allow: ['log', 'warn', 'error', 'info'] }],
-
-      // Top-level functions are exported via global scope (called from HTML
-      // onclick handlers or other dashboard scripts). Only flag unused vars
-      // inside functions, not at the top level.
-      'no-unused-vars': ['error', {
-        vars:               'local',
-        args:               'after-used',
-        argsIgnorePattern:  '^_',
-        caughtErrors:       'all',
-        caughtErrorsIgnorePattern: '^_',
-      }],
     },
   },
 

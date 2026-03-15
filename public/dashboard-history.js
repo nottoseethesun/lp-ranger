@@ -4,21 +4,23 @@
  * Rebalance Events table (up to 5-year lookback) on the dashboard.
  * Data is fetched from /api/status.
  *
- * Depends on: dashboard-helpers.js (g).
+ * Depends on: dashboard-helpers.js (g, fmtDateTime).
  */
 
-/* global g, _lastStatus, fmtDateTime */
-'use strict';
+import { g, fmtDateTime } from './dashboard-helpers.js';
 
 /** Rebalance events pagination state. */
 let _rebEventsPage = 0;
 const _REB_PAGE_SIZE = 20;
 
+/** Cached events for pagination without re-fetching. */
+let _lastEvents = null;
+
 /**
  * Render the per-day P&L table from daily P&L data.
  * @param {object[]} dailyPnl  Array of day records (newest first).
  */
-function renderDailyPnl(dailyPnl) {
+export function renderDailyPnl(dailyPnl) {
   const tbody = g('dailyPnlBody');
   if (!tbody) return;
 
@@ -50,9 +52,11 @@ function renderDailyPnl(dailyPnl) {
 
 /**
  * Render the rebalance events table with pagination.
+ * Uses data attributes for copy-icon event delegation instead of inline onclick.
  * @param {object[]} events  All rebalance events (oldest first).
  */
-function renderRebalanceEvents(events) {
+export function renderRebalanceEvents(events) {
+  _lastEvents = events;
   const tbody = g('rebEventsBody');
   const pageLabel = g('rebPageLabel');
   const prevBtn = g('rebPrevBtn');
@@ -84,7 +88,7 @@ function renderRebalanceEvents(events) {
       '<td>' + oldRange + '</td>' +
       '<td>' + newRange + '</td>' +
       '<td title="' + (e.txHash || '') + '">' + txShort +
-        (e.txHash ? ' <span class="9mm-pos-mgr-copy-icon" onclick="navigator.clipboard.writeText(\'' + e.txHash + '\')" title="Copy full TX hash">&#x1F4CB;</span>' : '') +
+        (e.txHash ? ' <span class="9mm-pos-mgr-copy-icon" data-copy-tx="' + e.txHash + '" title="Copy full TX hash">&#x1F4CB;</span>' : '') +
       '</td>' +
       '</tr>';
   });
@@ -99,10 +103,10 @@ function renderRebalanceEvents(events) {
  * Navigate rebalance events pages.
  * @param {number} dir  +1 for next, -1 for previous.
  */
-function rebChangePage(dir) {
+export function rebChangePage(dir) {
   _rebEventsPage += dir;
-  if (_lastStatus && _lastStatus.rebalanceEvents) {
-    renderRebalanceEvents(_lastStatus.rebalanceEvents);
+  if (_lastEvents) {
+    renderRebalanceEvents(_lastEvents);
   }
 }
 
@@ -110,7 +114,7 @@ function rebChangePage(dir) {
  * Called by dashboard-data.js after each status poll to update history tables.
  * @param {object} data  Status response.
  */
-function updateHistoryFromStatus(data) {
+export function updateHistoryFromStatus(data) {
   if (data.dailyPnl) renderDailyPnl(data.dailyPnl);
   if (data.rebalanceEvents) renderRebalanceEvents(data.rebalanceEvents);
 }

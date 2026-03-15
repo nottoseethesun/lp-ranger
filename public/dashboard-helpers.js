@@ -5,23 +5,15 @@
  * time-formatting helpers, and the shared {@link botConfig} object used by
  * every other dashboard module.
  *
- * Must be loaded before all other dashboard-*.js scripts.
+ * Root module — no imports from other dashboard files.
  */
-
-'use strict';
-
-/**
- * Cross-module namespace for dashboard functions that need global visibility.
- * Avoids polluting the top-level scope with generic names like "getRpcUrl".
- */
-const _9mmPositionMgr = {};
 
 /**
  * Get a DOM element by its ID.
  * @param {string} id  The element's id attribute.
  * @returns {HTMLElement|null}
  */
-function g(id) { return document.getElementById(id); }
+export function g(id) { return document.getElementById(id); }
 
 /**
  * Append an entry to the on-screen activity log.
@@ -31,7 +23,7 @@ function g(id) { return document.getElementById(id); }
  * @param {string} title  Short heading text.
  * @param {string} detail Longer description text.
  */
-function act(icon, type, title, detail) {
+export function act(icon, type, title, detail) {
   const list = g('actList');
   const div  = document.createElement('div');
   div.className = 'ai';
@@ -48,7 +40,7 @@ function act(icon, type, title, detail) {
  * @param {number} ms  Duration in milliseconds.
  * @returns {string}  e.g. "10m", "30s", "10m 30s"
  */
-function fmtMs(ms) {
+export function fmtMs(ms) {
   const m = Math.floor(ms / 60000);
   const s = Math.floor((ms % 60000) / 1000);
   if (m === 0) return s + 's';
@@ -61,7 +53,7 @@ function fmtMs(ms) {
  * @param {number} ms  Remaining milliseconds.
  * @returns {string}  e.g. "02:15" or "READY"
  */
-function fmtCountdown(ms) {
+export function fmtCountdown(ms) {
   if (ms <= 0) return 'READY';
   const m = Math.floor(ms / 60000);
   const s = Math.floor((ms % 60000) / 1000);
@@ -90,7 +82,7 @@ function tzCode() {
  * @param {boolean} [opts.dateOnly]  If true, show only the date (no time).
  * @returns {string}  e.g. "2026-03-15 14:30 UTC (3/15/2026 10:30 AM EST)"
  */
-function fmtDateTime(input, opts) {
+export function fmtDateTime(input, opts) {
   if (!input) return '\u2014';
   const d = input instanceof Date ? input : new Date(input);
   if (isNaN(d.getTime())) return '\u2014';
@@ -115,7 +107,7 @@ function fmtDateTime(input, opts) {
  * Updated by the bot config panel, position selection, and optimizer.
  * Price/range fields are placeholders until live on-chain data is wired.
  */
-const botConfig = {
+export const botConfig = {
   rangeW:      20,
   price:       0,
   lower:       0,
@@ -130,7 +122,7 @@ const botConfig = {
  * Used by the throttle module for daily counter resets.
  * @returns {number}
  */
-function nextMidnight() {
+export function nextMidnight() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.getTime() + 86400000;
@@ -163,14 +155,6 @@ function setCookie(name, value) {
     + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
 }
 
-/**
- * Delete a cookie by setting it to expire in the past.
- * @param {string} name
- */
-function deleteCookie(name) {
-  document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax';
-}
-
 // ── Per-position localStorage helpers ────────────────────────────────────────
 
 /** localStorage key prefix for per-position range width. */
@@ -194,7 +178,7 @@ function posStorageKey(pos) {
  * @param {object} pos       Position entry.
  * @param {number} rangeWPct Range width percentage.
  */
-function savePositionRangeW(pos, rangeWPct) {
+export function savePositionRangeW(pos, rangeWPct) {
   const key = posStorageKey(pos);
   if (!key) return;
   try { localStorage.setItem(key, String(rangeWPct)); } catch (_) { /* private browsing */ }
@@ -207,7 +191,7 @@ function savePositionRangeW(pos, rangeWPct) {
  * @param {number} [fallback=20]  Default range width.
  * @returns {number}
  */
-function loadPositionRangeW(pos, fallback) {
+export function loadPositionRangeW(pos, fallback) {
   const def = fallback !== undefined ? fallback : 20;
   const key = posStorageKey(pos);
   if (!key) return def;
@@ -223,7 +207,7 @@ function loadPositionRangeW(pos, fallback) {
  * Show the disclaimer modal (blocks app access until accepted).
  * If the user previously accepted with "Don't show this again", skips.
  */
-function initDisclaimer() {
+export function initDisclaimer() {
   const overlay  = g('disclaimerOverlay');
   const disabled = g('appDisabledOverlay');
   if (!overlay) return;
@@ -260,7 +244,7 @@ function initDisclaimer() {
 }
 
 /** Toggle the help popover visibility. */
-function toggleHelpPopover() {
+export function toggleHelpPopover() {
   const pop = g('helpPopover');
   if (!pop) return;
   pop.classList.toggle('9mm-pos-mgr-visible');

@@ -1,26 +1,50 @@
 /**
  * @file dashboard-init.js
  * @description Bootstrap / initialisation for the 9mm v3 Position Manager
- * dashboard.  Populates the known-wallet registry, starts the optimizer
- * probe, and kicks off the throttle UI interval.
+ * dashboard.  Imports all modules, wires up cross-module dependencies,
+ * binds event handlers, and starts intervals.
  *
- * Must be loaded last — after all other dashboard-*.js scripts.
+ * This is the single entry-point module loaded by index.html.
  */
 
-/* global g, act, setTType, renderTParams, initDisclaimer,
-          posStore, markWalletKnown, updatePosStripUI, OPT_DEFAULT_URL, optState,
-          _optRestartProbe, onParamChange, updateThrottleUI, startDataPolling,
-          loadPositionRangeW, botConfig, checkServerWalletStatus,
-          loadRealizedGains, _fmtUsd, _loadPosStore, _applyLocalPositionData,
-          _9mmPosMgr */
-'use strict';
+import { g, act, botConfig, loadPositionRangeW, initDisclaimer } from './dashboard-helpers.js';
+import {
+  markWalletKnown, checkServerWalletStatus, injectWalletDeps,
+} from './dashboard-wallet.js';
+import {
+  posStore, updatePosStripUI, _loadPosStore, _applyLocalPositionData,
+  injectPositionDeps, scanPositions,
+} from './dashboard-positions.js';
+import {
+  setTType, renderTParams, onParamChange, updateThrottleUI,
+  TRIGGER_OOR, injectThrottleDeps,
+} from './dashboard-throttle.js';
+import {
+  OPT_DEFAULT_URL, optState, _optRestartProbe, optSyncParamsFromUI,
+  startOptCountdown,
+} from './dashboard-optimizer.js';
+import {
+  startDataPolling, loadRealizedGains, _fmtUsd, positionRangeVisual,
+} from './dashboard-data.js';
+import { bindAllEvents } from './dashboard-events.js';
+
+// ── Wire cross-module dependencies (breaks circular imports) ────────────────
+
+injectWalletDeps({ updatePosStripUI, scanPositions, posStore });
+injectPositionDeps({ positionRangeVisual });
+injectThrottleDeps({ optSyncParamsFromUI, optState, positionRangeVisual });
+
+// ── Bind all event handlers ─────────────────────────────────────────────────
+
+bindAllEvents();
 
 // ── Disclaimer gate (must run before any dashboard init) ───────────────────
+
 initDisclaimer();
 
 // ── Initialise trigger UI ──────────────────────────────────────────────────
 
-setTType(_9mmPosMgr.TRIGGER_OOR);
+setTType(TRIGGER_OOR);
 renderTParams();
 
 // Restore positions from localStorage (persisted across page reloads)
@@ -46,7 +70,7 @@ updatePosStripUI();
     botConfig.upper = Math.pow(1.0001, active.tickUpper || 0);
     botConfig.tL = active.tickLower || 0;
     botConfig.tU = active.tickUpper || 0;
-    if (typeof _applyLocalPositionData === 'function') _applyLocalPositionData(active);
+    _applyLocalPositionData(active);
   }
 }());
 
@@ -79,4 +103,5 @@ checkServerWalletStatus();
 
 onParamChange();
 setInterval(updateThrottleUI, 1000);
+startOptCountdown();
 startDataPolling();

@@ -5,29 +5,50 @@
  * generate / seed / key import flows, on-chain activity detection, the
  * known-wallet registry, server-side wallet sync, and key reveal.
  *
- * Depends on: dashboard-helpers.js (g, act), ethers.js (global from CDN).
+ * Depends on: dashboard-helpers.js (g, act), ethers-adapter.js (ethers).
+ *
+ * NOTE: Imports from positions (updatePosStripUI, scanPositions, posStore)
+ * are resolved at call time, not at parse time, so the circular reference
+ * between wallet and positions is safe.
  */
 
-/* global g, act, updatePosStripUI, scanPositions, posStore, _9mmPositionMgr */
-'use strict';
+import { g, act } from './dashboard-helpers.js';
+import { ethers } from './ethers-adapter.js';
+
+// Late-bound imports to avoid circular dep at evaluation time.
+// Populated by dashboard-init.js after all modules load.
+let _updatePosStripUI = null;
+let _scanPositions = null;
+let _posStore = null;
+
+/**
+ * Inject position-module references after all modules are loaded.
+ * Called once from dashboard-init.js.
+ * @param {object} deps  { updatePosStripUI, scanPositions, posStore }
+ */
+export function injectWalletDeps(deps) {
+  _updatePosStripUI = deps.updatePosStripUI;
+  _scanPositions = deps.scanPositions;
+  _posStore = deps.posStore;
+}
 
 // ── Wallet state ────────────────────────────────────────────────────────────
 
 /** Active wallet data. Mutated by import flows. */
-let wallet = { address: null, privateKey: null, mnemonic: null, source: null };
+export const wallet = { address: null, privateKey: null, mnemonic: null, source: null };
 
 /**
  * Set of lowercase wallet addresses seen in this browser session.
  * Populated from posStore entries on load and from each successful import.
  * Also populated by on-chain activity detection.
  */
-const knownWallets = new Set();
+export const knownWallets = new Set();
 
 /**
  * Register an address as known. Accepts any casing.
  * @param {string} address  Checksummed or lowercased address.
  */
-function markWalletKnown(address) {
+export function markWalletKnown(address) {
   if (address) knownWallets.add(address.toLowerCase());
 }
 
@@ -36,7 +57,7 @@ function markWalletKnown(address) {
  * @param {string} address
  * @returns {boolean}
  */
-function isKnownWallet(address) {
+export function isKnownWallet(address) {
   return address ? knownWallets.has(address.toLowerCase()) : false;
 }
 
@@ -46,10 +67,10 @@ function isKnownWallet(address) {
  * Get the RPC URL from the config input or use the PulseChain default.
  * @returns {string}
  */
-_9mmPositionMgr.getRpcUrl = function getRpcUrl() {
+export function getRpcUrl() {
   const el = g('inRpc');
   return (el && el.value.trim()) || 'https://rpc-pulsechain.g4mm4.io';
-};
+}
 
 /**
  * Check if an address has on-chain transaction history.
@@ -60,7 +81,7 @@ _9mmPositionMgr.getRpcUrl = function getRpcUrl() {
  */
 async function hasOnChainActivity(address) {
   try {
-    const provider = new ethers.JsonRpcProvider(_9mmPositionMgr.getRpcUrl());
+    const provider = new ethers.JsonRpcProvider(getRpcUrl());
     const txCount  = await provider.getTransactionCount(address);
     return txCount > 0;
   } catch {
@@ -74,7 +95,7 @@ async function hasOnChainActivity(address) {
  * Switch the active tab inside the wallet modal.
  * @param {string} t  Tab key: 'generate' | 'seed' | 'key'
  */
-function wTab(t) {
+export function wTab(t) {
   ['generate', 'seed', 'key'].forEach(k => {
     g('wtab-' + k).className  = 'modal-tab' + (k === t ? ' active' : '');
     g('wpanel-' + k).className = 'modal-panel' + (k === t ? ' active' : '');
@@ -167,11 +188,6 @@ async function sendWalletToServer(w, password) {
   }
 }
 
-/**
- * Check whether password and confirm fields match, and update the hint label.
- * Disables/enables the import button based on match.
- * @param {string} prefix  Tab prefix: 'gen' | 'seed' | 'key'
- */
 /** Map password field prefix to its import button ID. */
 const _PW_BTN_MAP = {
   gen: 'genConfirmBtn', seed: 'seedImportBtn',
@@ -189,7 +205,12 @@ function _passwordsMatch(prefix) {
   return !!(pw && conf && pw.value && conf.value && pw.value === conf.value);
 }
 
-function checkPasswordMatch(prefix) {
+/**
+ * Check whether password and confirm fields match, and update the hint label.
+ * Disables/enables the import button based on match.
+ * @param {string} prefix  Tab prefix: 'gen' | 'seed' | 'key'
+ */
+export function checkPasswordMatch(prefix) {
   const pw   = g(prefix + 'Password');
   const conf = g(prefix + 'PasswordConfirm');
   const hint = g(prefix + 'PwMatch');
@@ -224,7 +245,6 @@ function checkPasswordMatch(prefix) {
 /**
  * Read the session password from the active wallet tab.
  * Requires password and confirm fields to match.
- * Each tab has its own password field: genPassword, seedPassword, keyPassword.
  * @returns {string} The password, or empty string if not entered or mismatched.
  */
 function getActivePassword() {
@@ -243,7 +263,7 @@ function getActivePassword() {
 // ── Generate ────────────────────────────────────────────────────────────────
 
 /** Generate a new random wallet and display the result. */
-async function generateWallet() {
+export async function generateWallet() {
   try {
     const w = ethers.Wallet.createRandom();
     g('genAddr').textContent     = w.address;
@@ -264,7 +284,7 @@ async function generateWallet() {
  * Confirm the pending wallet — encrypts on server, copies _pending into
  * the active wallet, updates the UI, and closes the modal.
  */
-async function confirmWallet() {
+export async function confirmWallet() {
   const p = wallet._pending;
   if (!p) return;
 
@@ -280,7 +300,10 @@ async function confirmWallet() {
     return;
   }
 
-  wallet = { ...p };
+  wallet.address    = p.address;
+  wallet.privateKey = p.privateKey;
+  wallet.mnemonic   = p.mnemonic;
+  wallet.source     = p.source;
   delete wallet._pending;
 
   const revealBtn = g('wsRevealBtn');
@@ -292,9 +315,9 @@ async function confirmWallet() {
   closeWalletModal();
 
   // Auto-scan for positions after wallet import
-  if (typeof scanPositions === 'function') {
+  if (_scanPositions) {
     act('\u{1F50D}', 'start', 'Auto-scanning', 'Looking for LP positions\u2026');
-    scanPositions();
+    _scanPositions();
   }
 }
 
@@ -302,7 +325,8 @@ async function confirmWallet() {
 
 let _validateSeedSeq = 0;
 
-async function validateSeed() {
+/** Validate the seed phrase input and update the validation badge. */
+export async function validateSeed() {
   const seq   = ++_validateSeedSeq;
   const raw   = g('seedInput').value;
   const words = raw.trim().split(/\s+/);
@@ -353,18 +377,21 @@ async function validateSeed() {
   }
 }
 
-function onSeedConfirmChange() {
+/** Handle seed confirm checkbox change. */
+export function onSeedConfirmChange() {
   const btn = g('seedImportBtn');
   if (btn) btn.disabled = !wvIsImportAllowed('valid-new', 'seed') || !_passwordsMatch('seed');
 }
 
-async function importSeed() { await confirmWallet(); }
+/** Import wallet from seed phrase. */
+export async function importSeed() { await confirmWallet(); }
 
 // ── Private key ─────────────────────────────────────────────────────────────
 
 let _validateKeySeq = 0;
 
-async function validateKey() {
+/** Validate the private key input and update the validation badge. */
+export async function validateKey() {
   const seq = ++_validateKeySeq;
   const raw = g('keyInput').value.trim();
   const hex = raw.startsWith('0x') ? raw.slice(2) : raw;
@@ -421,12 +448,14 @@ async function validateKey() {
   }
 }
 
-function onKeyConfirmChange() {
+/** Handle key confirm checkbox change. */
+export function onKeyConfirmChange() {
   const btn = g('keyImportBtn');
   if (btn) btn.disabled = !wvIsImportAllowed('valid-new', 'key') || !_passwordsMatch('key');
 }
 
-async function importKey() { await confirmWallet(); }
+/** Import wallet from private key. */
+export async function importKey() { await confirmWallet(); }
 
 // ── Reveal key modal ────────────────────────────────────────────────────────
 
@@ -434,7 +463,7 @@ async function importKey() { await confirmWallet(); }
 let _revealTimer = null;
 
 /** Open the reveal-key modal. */
-function openRevealModal() {
+export function openRevealModal() {
   if (!wallet.address) {
     act('\u26A0', 'alert', 'No wallet loaded', 'Import a wallet first');
     return;
@@ -447,7 +476,7 @@ function openRevealModal() {
 }
 
 /** Close the reveal-key modal and clear displayed secrets. */
-function closeRevealModal() {
+export function closeRevealModal() {
   g('revealModal').className = 'modal-overlay hidden';
   g('revealKey').textContent      = '\u2014';
   g('revealMnemonic').textContent = '\u2014';
@@ -459,7 +488,7 @@ function closeRevealModal() {
  * Reveal the wallet key by sending the password to the server for decryption.
  * Secrets are displayed for 60 seconds then auto-hidden.
  */
-async function revealWallet() {
+export async function revealWallet() {
   const password = g('revealPassword').value.trim();
   if (!password) return;
 
@@ -515,13 +544,13 @@ async function revealWallet() {
  * Update the wallet strip and header with the current wallet state.
  * Registers the address as known for future import checks.
  */
-function applyWalletUI() {
+export function applyWalletUI() {
   if (!wallet.address) {
     g('wsAddr').textContent  = 'No wallet loaded';
     g('wsBadge').textContent = 'NOT SET';
     g('wsBadge').className   = 'ws-badge none';
     g('headerWalletLabel').textContent = 'Set Wallet';
-    updatePosStripUI();
+    if (_updatePosStripUI) _updatePosStripUI();
     return;
   }
   const addr  = wallet.address;
@@ -539,20 +568,20 @@ function applyWalletUI() {
 
   markWalletKnown(addr);
   act('\u{1F511}', 'wallet', 'Wallet loaded', short + ' (' + wallet.source + ')');
-  updatePosStripUI();
+  if (_updatePosStripUI) _updatePosStripUI();
 }
 
 /** Open the wallet modal. */
-function openWalletModal() { g('walletModal').className = 'modal-overlay'; }
+export function openWalletModal() { g('walletModal').className = 'modal-overlay'; }
 
 /** Close the wallet modal. */
-function closeWalletModal() { g('walletModal').className = 'modal-overlay hidden'; }
+export function closeWalletModal() { g('walletModal').className = 'modal-overlay hidden'; }
 
 /**
  * Copy the text content of an element to the clipboard.
  * @param {string} id  Element id whose textContent to copy.
  */
-function copyText(id) {
+export function copyText(id) {
   const el = g(id);
   if (!el) return;
   navigator.clipboard.writeText(el.textContent).catch(() => {});
@@ -569,7 +598,7 @@ function copyText(id) {
  * On page load, check if the server already has a wallet loaded
  * (e.g. from a previous session before page refresh).
  */
-async function checkServerWalletStatus() {
+export async function checkServerWalletStatus() {
   try {
     const res  = await fetch('/api/wallet/status');
     const data = await res.json();
@@ -583,8 +612,8 @@ async function checkServerWalletStatus() {
       applyWalletUI();
 
       // Auto-scan for positions if none are loaded yet
-      if (typeof scanPositions === 'function' && typeof posStore !== 'undefined' && posStore.count() === 0) {
-        scanPositions();
+      if (_scanPositions && _posStore && _posStore.count() === 0) {
+        _scanPositions();
       }
     } else {
       applyWalletUI();
@@ -596,19 +625,19 @@ async function checkServerWalletStatus() {
 }
 
 /** Show the "Are you sure?" confirmation modal before clearing wallet. */
-function clearWalletUI() {
+export function clearWalletUI() {
   const modal = g('clearWalletModal');
   if (modal) modal.className = 'modal-overlay';
 }
 
 /** Close the clear wallet confirmation modal. */
-function closeClearWalletModal() {
+export function closeClearWalletModal() {
   const modal = g('clearWalletModal');
   if (modal) modal.className = 'modal-overlay hidden';
 }
 
 /** Execute wallet clear after user confirms. */
-async function confirmClearWallet() {
+export async function confirmClearWallet() {
   closeClearWalletModal();
   try {
     await fetch('/api/wallet', { method: 'DELETE' });
@@ -623,9 +652,9 @@ async function confirmClearWallet() {
   if (clearBtn) clearBtn.style.display = 'none';
 
   // Clear position store and related localStorage data
-  if (typeof posStore !== 'undefined') {
-    while (posStore.count() > 0) posStore.remove(0);
-    if (typeof updatePosStripUI === 'function') updatePosStripUI();
+  if (_posStore) {
+    while (_posStore.count() > 0) _posStore.remove(0);
+    if (_updatePosStripUI) _updatePosStripUI();
   }
   try { localStorage.removeItem('9mm_posStore'); } catch { /* private mode */ }
   try { localStorage.removeItem('9mm_realized_gains'); } catch { /* private mode */ }

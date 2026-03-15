@@ -4,12 +4,12 @@
  * Manager dashboard.  Handles health probing, auto-poll toggle, fetch cycles,
  * recommendation rendering, parameter application, and history tracking.
  *
- * Depends on: dashboard-helpers.js  (g, act, fmtMs, botConfig),
+ * Depends on: dashboard-helpers.js  (g, act, fmtMs, fmtDateTime, botConfig),
  *             dashboard-throttle.js (trigger, throttle, setTType).
  */
 
-/* global g, act, fmtMs, fmtDateTime, botConfig, trigger, throttle, setTType */
-'use strict';
+import { g, act, fmtMs, fmtDateTime, botConfig } from './dashboard-helpers.js';
+import { trigger, throttle, setTType } from './dashboard-throttle.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -17,7 +17,7 @@
 const OPT_DEFAULT_PORT = 3693;
 
 /** Default optimizer base URL. */
-const OPT_DEFAULT_URL  = `http://localhost:${OPT_DEFAULT_PORT}`;
+export const OPT_DEFAULT_URL  = `http://localhost:${OPT_DEFAULT_PORT}`;
 
 /** How often the dashboard probes the engine's /health endpoint (ms). */
 const OPT_PROBE_INTERVAL_MS = 15_000;
@@ -40,7 +40,7 @@ const botParams = {
 };
 
 /** In-memory optimizer state. */
-const optState = {
+export const optState = {
   connected:      false,
   enabled:        false,
   autoApply:      false,
@@ -122,7 +122,7 @@ function optSetConnState(state, latencyMs) {
 }
 
 /** Handle URL input changes: reset connection and restart probing. */
-function optUrlChanged() {
+export function optUrlChanged() {
   optState.url = (g('optUrl').value || '').trim() || OPT_DEFAULT_URL;
   optSetConnState('unknown');
   _optSetControlsEnabled(false);
@@ -149,7 +149,7 @@ async function _optProbeOnce() {
 }
 
 /** Stop and restart the health-probe loop. */
-function _optRestartProbe() {
+export function _optRestartProbe() {
   clearTimeout(optState.probeTimer);
   _optProbeOnce().then(() => {
     optState.probeTimer = setInterval(_optProbeOnce, OPT_PROBE_INTERVAL_MS);
@@ -159,7 +159,7 @@ function _optRestartProbe() {
 // ── Manual ping ─────────────────────────────────────────────────────────────
 
 /** Ping the optimizer engine and log the result. */
-async function optPing() {
+export async function optPing() {
   optState.url = (g('optUrl').value || '').trim() || OPT_DEFAULT_URL;
   const btn = g('optPingBtn');
   if (btn) { btn.disabled = true; btn.textContent = '\u23F1 \u2026'; }
@@ -176,7 +176,7 @@ async function optPing() {
 // ── Toggle auto-poll ────────────────────────────────────────────────────────
 
 /** Toggle the optimizer auto-poll on/off. */
-function optTogglePolling() {
+export function optTogglePolling() {
   if (!optState.connected) return;
   optState.enabled = !optState.enabled;
   const tog   = g('optToggle');
@@ -199,7 +199,7 @@ function optTogglePolling() {
 }
 
 /** Toggle the auto-apply setting on/off. */
-function optToggleAutoApply() {
+export function optToggleAutoApply() {
   if (!optState.connected) return;
   optState.autoApply = !optState.autoApply;
   const tog   = g('optAutoApplyToggle');
@@ -213,7 +213,7 @@ function optToggleAutoApply() {
 // ── Sync helpers ────────────────────────────────────────────────────────────
 
 /** Read current UI values into botParams. */
-function optSyncParamsFromUI() {
+export function optSyncParamsFromUI() {
   botParams.rangeWidthPct           = parseFloat(g('inRangeW')?.value) || 20;
   botParams.triggerType             = trigger.type;
   botParams.edgePct                 = trigger.edgePct || 5;
@@ -367,10 +367,15 @@ function _optRenderNextLabel() {
   el.textContent = `Next: ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+/** Start the 1-second countdown label interval. */
+export function startOptCountdown() {
+  setInterval(_optRenderNextLabel, 1000);
+}
+
 // ── Manual query ────────────────────────────────────────────────────────────
 
 /** Manually trigger one fetch cycle. */
-async function optQueryNow() {
+export async function optQueryNow() {
   if (!optState.connected) return;
   const btn = g('optQueryBtn');
   if (btn) { btn.disabled = true; btn.textContent = '\u23F3 Querying\u2026'; }
@@ -476,7 +481,7 @@ function optApplyRec(rec) {
 }
 
 /** Apply the most recently received recommendation. */
-function optApplyLast() {
+export function optApplyLast() {
   if (optState.lastRec) optApplyRec(optState.lastRec);
 }
 
@@ -520,6 +525,3 @@ function _optRenderStatus() {
   if (err) err.innerHTML  = optState.lastError
     ? `<span class="opt-status-err">\u26A0 ${optState.lastError}</span>` : '';
 }
-
-// Refresh countdown label every second
-setInterval(_optRenderNextLabel, 1000);
