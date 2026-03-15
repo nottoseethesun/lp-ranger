@@ -24,6 +24,7 @@ const PM_ABI = [
   'function collect(tuple(uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) external payable returns (uint256 amount0, uint256 amount1)',
   'function mint(tuple(address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, address recipient, uint256 deadline) params) external payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)',
   'function positions(uint256 tokenId) external view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
+  'function multicall(bytes[] calldata data) external payable returns (bytes[] memory results)',
 ];
 
 const SWAP_ROUTER_ABI = [
@@ -146,22 +147,26 @@ async function removeLiquidity(signer, ethersLib, {
     ]);
   }
 
-  const decreaseTx = await pm.decreaseLiquidity({
+  // Bundle decreaseLiquidity + collect into a single atomic multicall,
+  // matching the pattern the 9mm Pro UI uses.  This ensures no state can
+  // change between the two operations and eliminates rounding dust that
+  // can remain when they run as separate transactions.
+  const decreaseData = pm.interface.encodeFunctionData('decreaseLiquidity', [{
     tokenId,
     liquidity,
     amount0Min: 0n,
     amount1Min: 0n,
     deadline: dl,
-  });
-  await decreaseTx.wait();
-
-  const collectTx = await pm.collect({
+  }]);
+  const collectData = pm.interface.encodeFunctionData('collect', [{
     tokenId,
     recipient,
     amount0Max: _MAX_UINT128,
     amount1Max: _MAX_UINT128,
-  });
-  const receipt = await collectTx.wait();
+  }]);
+
+  const multicallTx = await pm.multicall([decreaseData, collectData]);
+  const receipt = await multicallTx.wait();
 
   // Determine collected amounts via balance diff (robust across all ABIs)
   let amount0 = 0n;

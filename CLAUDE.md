@@ -31,6 +31,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 ├── bot.js                        # Headless bot wrapper (no dashboard UI)
 ├── scripts/check.sh              # Combined lint + test + coverage check
 ├── README.md                     # Concise — refers to server.js for details
+├── eslint-rules/
+│   └── no-separate-contract-calls.js  # Custom rule: require multicall for atomic EVM method pairs
 ├── public/
 │   ├── index.html                # Dashboard HTML (no inline JS or CSS)
 │   ├── style.css                 # Core dashboard styles (extracted from index.html)
@@ -88,7 +90,9 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
     ├── rebalancer-failures.test.js   # Failure-mode tests: reverts, partial failures, malformed data
     ├── rebalancer-integration.test.js # Stateful simulation: balance tracking across remove→swap→mint
     ├── gitignore.test.js             # Ensures .gitignore covers sensitive files (.wallet.json, .env, etc.)
-    └── wallet-manager.test.js        # Wallet import/clear + encrypted disk persistence
+    ├── wallet-manager.test.js        # Wallet import/clear + encrypted disk persistence
+    └── eslint-rules/
+        └── no-separate-contract-calls.test.js  # RuleTester cases for the custom multicall rule
 ├── .stylelintrc.json                 # stylelint config (extends stylelint-config-standard)
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
@@ -212,6 +216,7 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 - `eqeqeq always` + `no-var` + `prefer-const` + `strict global`
 - `no-unused-vars` — `vars: 'all'` for src/test, `vars: 'local'` for dashboard
 - `no-restricted-syntax` — disallows `window.*` assignments
+- `9mm/no-separate-contract-calls` — custom rule requiring atomic EVM method pairs (e.g. `decreaseLiquidity` + `collect`) to use `multicall`, not separate awaits. Configurable via `pairs` option. Source: `eslint-rules/no-separate-contract-calls.js`
 - `--max-warnings 0` treats warnings as errors
 - No `eslint-disable` directives
 

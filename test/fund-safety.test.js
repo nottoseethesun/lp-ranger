@@ -73,7 +73,7 @@ function defaultDispatch() {
     },
     [ADDR.pm]: {
       ownerOf: async () => ADDR.signer,
-      positions: async () => ({ liquidity: 5000n }),
+      positions: async () => ({ liquidity: 5000n, tokensOwed0: 0n, tokensOwed1: 0n }),
       decreaseLiquidity: async () => makeTx('0xdec'),
       collect: async () => { collected = true; return { wait: async () => ({ hash: '0xcol', logs: [] }) }; },
       mint: async () => makeMintTx('0xmint'),
@@ -84,9 +84,28 @@ function defaultDispatch() {
 function buildMockEthersLib(overrides = {}) {
   const contractDispatch = overrides.contractDispatch ?? defaultDispatch();
   function MockContract(addr, _abi, _signer) {
+    const self = this;
     const methods = contractDispatch[addr];
     if (!methods) throw new Error(`No mock for address: ${addr}`);
     for (const [name, fn] of Object.entries(methods)) this[name] = fn;
+    const _pending = [];
+    this.interface = {
+      encodeFunctionData: (name, args) => {
+        const idx = _pending.length;
+        _pending.push({ method: name, args: args[0] });
+        return `mock_call_${idx}`;
+      },
+    };
+    if (!this.multicall) {
+      this.multicall = async (calls) => {
+        for (const ref of calls) {
+          const idx = parseInt(ref.replace('mock_call_', ''), 10);
+          const { method, args } = _pending[idx];
+          if (self[method]) await self[method](args);
+        }
+        return makeTx('0xmulticall');
+      };
+    }
   }
   return {
     Contract: MockContract,

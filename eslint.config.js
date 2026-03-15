@@ -49,7 +49,7 @@ module.exports = [
   // ── 1. Files to lint ────────────────────────────────────────────────────────
   {
     files: ['src/**/*.js', 'test/**/*.js', 'server.js', 'bot.js',
-      'public/dashboard-*.js', 'public/ethers-adapter.js'],
+      'public/dashboard-*.js', 'public/ethers-adapter.js', 'eslint-rules/**/*.js'],
   },
 
   // ── 2. Files to ignore entirely ─────────────────────────────────────────────
@@ -64,7 +64,14 @@ module.exports = [
 
   // ── 3. Source files — Node.js environment ───────────────────────────────────
   {
-    files: ['src/**/*.js', 'server.js', 'bot.js'],
+    files: ['src/**/*.js', 'server.js', 'bot.js', 'eslint-rules/**/*.js'],
+    plugins: {
+      '9mm': {
+        rules: {
+          'no-separate-contract-calls': require('./eslint-rules/no-separate-contract-calls'),
+        },
+      },
+    },
     languageOptions: {
       ecmaVersion:   2022,
       sourceType:    'commonjs',
@@ -79,6 +86,9 @@ module.exports = [
     rules: {
       ...SHARED_RULES,
       'no-console': ['warn', { allow: ['log', 'warn', 'error', 'info'] }],
+      '9mm/no-separate-contract-calls': ['error', {
+        pairs: [['decreaseLiquidity', 'collect']],
+      }],
     },
   },
 

@@ -74,7 +74,7 @@ function createSimulation(opts) {
     },
     [ADDR.pm]: {
       ownerOf: async () => ADDR.signer,
-      positions: async () => ({ liquidity: 10000n }),
+      positions: async () => ({ liquidity: 10000n, tokensOwed0: 0n, tokensOwed1: 0n }),
       decreaseLiquidity: async () => {
         // Tokens stay in PM until collect
         return { wait: async () => ({ hash: '0xdec', logs: [] }) };
@@ -175,9 +175,28 @@ function createSimulation(opts) {
   };
 
   function MockContract(addr, _abi, _signer) {
+    const self = this;
     const methods = dispatch[addr];
     if (!methods) throw new Error(`No mock for ${addr}`);
     for (const [name, fn] of Object.entries(methods)) this[name] = fn;
+    const _pending = [];
+    this.interface = {
+      encodeFunctionData: (name, args) => {
+        const idx = _pending.length;
+        _pending.push({ method: name, args: args[0] });
+        return `mock_call_${idx}`;
+      },
+    };
+    if (!this.multicall) {
+      this.multicall = async (calls) => {
+        for (const ref of calls) {
+          const idx = parseInt(ref.replace('mock_call_', ''), 10);
+          const { method, args } = _pending[idx];
+          if (self[method]) await self[method](args);
+        }
+        return { wait: async () => ({ hash: '0xmulticall', logs: [] }) };
+      };
+    }
   }
   const ethersLib = { Contract: MockContract, ZeroAddress: ZERO_ADDRESS };
 

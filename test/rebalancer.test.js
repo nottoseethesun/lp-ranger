@@ -73,7 +73,7 @@ function defaultDispatch() {
     },
     [ADDR.pm]: {
       ownerOf: async () => ADDR.signer,
-      positions: async () => ({ liquidity: 5000n }),
+      positions: async () => ({ liquidity: 5000n, tokensOwed0: 0n, tokensOwed1: 0n }),
       decreaseLiquidity: async () => makeTx('0xdecrease'),
       collect: async () => { collected = true; return { wait: async () => ({ hash: '0xcollect', logs: [] }) }; },
       mint: async () => makeMintTx('0xmint'),
@@ -85,9 +85,29 @@ function defaultDispatch() {
 function buildMockEthersLib(overrides = {}) {
   const contractDispatch = overrides.contractDispatch ?? defaultDispatch();
   function MockContract(addr, _abi, _signer) {
+    const self = this;
     const methods = contractDispatch[addr];
     if (!methods) throw new Error(`No mock for address: ${addr}`);
     for (const [name, fn] of Object.entries(methods)) this[name] = fn;
+    // Mock interface.encodeFunctionData + multicall for atomic decrease+collect
+    const _pending = [];
+    this.interface = {
+      encodeFunctionData: (name, args) => {
+        const idx = _pending.length;
+        _pending.push({ method: name, args: args[0] });
+        return `mock_call_${idx}`;
+      },
+    };
+    if (!this.multicall) {
+      this.multicall = async (calls) => {
+        for (const ref of calls) {
+          const idx = parseInt(ref.replace('mock_call_', ''), 10);
+          const { method, args } = _pending[idx];
+          if (self[method]) await self[method](args);
+        }
+        return makeTx('0xmulticall');
+      };
+    }
   }
   return {
     Contract: MockContract,
@@ -159,7 +179,7 @@ describe('removeLiquidity', () => {
     token0: ADDR.token0, token1: ADDR.token1, ...extra,
   });
 
-  it('calls decrease then collect, returns amounts via balance-diff', async () => {
+  it('calls decrease then collect via multicall, returns amounts via balance-diff', async () => {
     const order = [];
     let phase = 0;
     const d = defaultDispatch();
@@ -169,10 +189,11 @@ describe('removeLiquidity', () => {
       ...d[ADDR.pm],
       decreaseLiquidity: async () => { order.push('decrease'); return makeTx('0xdec'); },
       collect: async () => { order.push('collect'); phase = 2; return { wait: async () => ({ hash: '0xcol', logs: [] }) }; },
+      positions: async () => ({ liquidity: 5000n, tokensOwed0: 0n, tokensOwed1: 0n }),
     };
     const r = await removeLiquidity(mockSigner(), buildMockEthersLib({ contractDispatch: d }), rmArgs());
     assert.deepStrictEqual(order, ['decrease', 'collect']);
-    assert.strictEqual(r.txHash, '0xcol');
+    assert.strictEqual(r.txHash, '0xmulticall');
     assert.strictEqual(r.amount0, ONE_ETH);
     assert.strictEqual(r.amount1, ONE_ETH);
   });
@@ -187,6 +208,7 @@ describe('removeLiquidity', () => {
     d[ADDR.pm] = {
       ...d[ADDR.pm],
       collect: async (p) => { captured = p; callCount = 2; return { wait: async () => ({ hash: '0xc', logs: [] }) }; },
+      positions: async () => ({ liquidity: 5000n, tokensOwed0: 0n, tokensOwed1: 0n }),
     };
     await removeLiquidity(mockSigner(), buildMockEthersLib({ contractDispatch: d }), rmArgs());
     assert.strictEqual(captured.amount0Max, _MAX_UINT128);
@@ -216,6 +238,7 @@ describe('removeLiquidity', () => {
     d[ADDR.pm] = {
       ...d[ADDR.pm],
       collect: async () => ({ wait: async () => ({ hash: '0xc', logs: [] }) }),
+      positions: async () => ({ liquidity: 5000n, tokensOwed0: 0n, tokensOwed1: 0n }),
     };
     await assert.rejects(
       () => removeLiquidity(mockSigner(), buildMockEthersLib({ contractDispatch: d }), rmArgs()),

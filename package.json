@@ -9,11 +9,11 @@
     "bot": "node bot.js",
     "stop": "node -e \"const http=require('http');const r=http.request({hostname:'127.0.0.1',port:process.env.PORT||5555,path:'/api/shutdown',method:'POST'},s=>{let d='';s.on('data',c=>d+=c);s.on('end',()=>{console.log(d);process.exit(0)})});r.on('error',e=>{console.error('Server not running or unreachable:',e.message);process.exit(1)});r.end()\"",
     "check": "bash scripts/check.sh",
-    "lint": "eslint src/ test/ server.js bot.js public/dashboard-*.js --max-warnings 0 && stylelint public/*.css",
-    "lint:fix": "eslint src/ test/ server.js bot.js public/dashboard-*.js --fix && stylelint public/*.css --fix",
-    "test": "node --test test/*.test.js",
-    "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
-    "test:watch": "node --test --watch test/*.test.js",
+    "lint": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --max-warnings 0 && stylelint public/*.css",
+    "lint:fix": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix",
+    "test": "node --test test/*.test.js test/eslint-rules/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.js test/eslint-rules/*.test.js",
+    "test:watch": "node --test --watch test/*.test.js test/eslint-rules/*.test.js",
     "knip": "knip"
   },
   "dependencies": {
