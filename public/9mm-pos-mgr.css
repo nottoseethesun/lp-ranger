@@ -464,6 +464,24 @@
   background: rgb(255 107 53 / 25%);
 }
 
+.\39 mm-pos-mgr-modal-caution {
+  border-color: var(--warn);
+}
+
+.\39 mm-pos-mgr-modal-caution h3 {
+  color: var(--warn);
+}
+
+.\39 mm-pos-mgr-modal-caution .\39 mm-pos-mgr-modal-close {
+  background: rgb(255 184 0 / 15%);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.\39 mm-pos-mgr-modal-caution .\39 mm-pos-mgr-modal-close:hover {
+  background: rgb(255 184 0 / 25%);
+}
+
 /* ── Token Label with Copy ───────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-token-copy-btn {

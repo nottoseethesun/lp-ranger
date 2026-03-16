@@ -19,18 +19,18 @@ const fs     = require('fs');
 const path   = require('path');
 const ethers = require('ethers');
 
-const config             = require('./config');
+const config = require('./config');
+const rangeMath = require('./range-math');
+const walletManager = require('./wallet-manager');
 const { createThrottle } = require('./throttle');
 const { loadAndDecrypt } = require('./key-store');
-const { detectPositionType }    = require('./position-detector');
+const { detectPositionType } = require('./position-detector');
 const { getPoolState, executeRebalance, V3_FEE_TIERS } = require('./rebalancer');
-const rangeMath          = require('./range-math');
-const walletManager      = require('./wallet-manager');
-const { createPnlTracker }      = require('./pnl-tracker');
-const { fetchTokenPriceUsd }   = require('./price-fetcher');
-const { initHodlBaseline }    = require('./hodl-baseline');
+const { createPnlTracker } = require('./pnl-tracker');
+const { fetchTokenPriceUsd } = require('./price-fetcher');
+const { initHodlBaseline } = require('./hodl-baseline');
 const { scanRebalanceHistory } = require('./event-scanner');
-const { createCacheStore }     = require('./cache-store');
+const { createCacheStore } = require('./cache-store');
 const { createResidualTracker } = require('./residual-tracker');
 
 // ── Log helpers ──────────────────────────────────────────────────────────────
@@ -138,11 +138,8 @@ async function _readUnclaimedFees(provider, ethersLib, tokenId) {
  * @returns {number}  Position value in USD.
  */
 function _positionValueUsd(position, poolState, price0, price1) {
-  const amounts = rangeMath.positionAmounts(
-    position.liquidity, poolState.tick,
-    position.tickLower, position.tickUpper,
-    poolState.decimals0, poolState.decimals1,
-  );
+  const amounts = rangeMath.positionAmounts(position.liquidity, poolState.tick,
+    position.tickLower, position.tickUpper, poolState.decimals0, poolState.decimals1);
   return amounts.amount0 * price0 + amounts.amount1 * price1;
 }
 
@@ -166,15 +163,10 @@ function _toFloat(amount, decimals) {
 async function _estimateGasCostUsd(provider) {
   try {
     const feeData = await provider.getFeeData();
-    const gasPrice = feeData.gasPrice ?? 0n;
-    const gasUsed = 800_000n; // typical rebalance gas
-    const costWei = gasPrice * gasUsed;
-    const costPls = Number(costWei) / 1e18;
+    const costWei = (feeData.gasPrice ?? 0n) * 800_000n; // typical rebalance gas
     const plsPrice = await fetchTokenPriceUsd(_WPLS, { dextoolsApiKey: config.DEXTOOLS_API_KEY });
-    return costPls * plsPrice;
-  } catch {
-    return 0;
-  }
+    return (Number(costWei) / 1e18) * plsPrice;
+  } catch { return 0; }
 }
 
 /**
@@ -256,9 +248,8 @@ async function _scanHistory(provider, ethersLib, address, position, cache, event
       const recent = found.filter((e) => e.timestamp >= cutoff).length;
       if (recent > 0) throttle.rehydrate(recent);
     }
-    const scanUpdate = { rebalanceEvents: [...events], rebalanceScanComplete: true };
-    if (throttle) scanUpdate.throttleState = throttle.getState();
-    updateState(scanUpdate);
+    updateState({ rebalanceEvents: [...events], rebalanceScanComplete: true,
+      ...(throttle ? { throttleState: throttle.getState() } : {}) });
   } catch (err) {
     console.warn('[bot] Event scan error:', err.message);
     updateState({ rebalanceScanComplete: true });
@@ -288,42 +279,29 @@ async function _executeAndRecord(deps, ethersLib) {
 
   console.log('[bot] Position out of range — rebalancing…');
   const state = deps._botState || {};
-  const result = await executeRebalance(signer, ethersLib, {
-    position,
-    factoryAddress: config.FACTORY,
-    positionManagerAddress: config.POSITION_MANAGER,
-    swapRouterAddress: config.SWAP_ROUTER,
-    rangeWidthPct: state.rangeWidthPct ?? config.RANGE_WIDTH_PCT,
-    slippagePct: state.slippagePct ?? config.SLIPPAGE_PCT,
-  });
-
+  const result = await executeRebalance(signer, ethersLib, { position,
+    factoryAddress: config.FACTORY, positionManagerAddress: config.POSITION_MANAGER,
+    swapRouterAddress: config.SWAP_ROUTER, rangeWidthPct: state.rangeWidthPct ?? config.RANGE_WIDTH_PCT,
+    slippagePct: state.slippagePct ?? config.SLIPPAGE_PCT });
   if (result.success) {
     throttle.recordRebalance();
-
     try { // Enrich log with USD values before writing
       const { price0, price1 } = await _fetchTokenPrices(deps.position.token0, deps.position.token1);
       result.token0UsdPrice = price0;  result.token1UsdPrice = price1;
       result.exitValueUsd  = _toFloat(result.amount0Collected, 18) * price0 + _toFloat(result.amount1Collected, 18) * price1;
       result.entryValueUsd = _toFloat(result.amount0Minted, 18) * price0 + _toFloat(result.amount1Minted, 18) * price1;
     } catch (_) { /* prices unavailable */ }
-
     _recordResidual(deps, result);
-
     appendLog(result);
     console.log('[bot] Rebalance OK — new tokenId:', String(result.newTokenId));
 
     // Close P&L epoch (old range) and open new one (new range)
     await _closePnlEpoch(deps, result);
 
-    if (result.newTokenId && result.newTokenId !== 0n) {
-      position.tokenId = result.newTokenId;
-    }
-    position.tickLower = result.newTickLower;
-    position.tickUpper = result.newTickUpper;
+    if (result.newTokenId && result.newTokenId !== 0n) position.tokenId = result.newTokenId;
+    position.tickLower = result.newTickLower;  position.tickUpper = result.newTickUpper;
     if (result.liquidity !== undefined) position.liquidity = result.liquidity;
-
-    // Append to runtime rebalance events list
-    const events = deps._rebalanceEvents;
+    const events = deps._rebalanceEvents; // Append to runtime rebalance events list
     if (events) {
       const ts = Math.floor(Date.now() / 1000);
       events.push({ index: events.length + 1, timestamp: ts, dateStr: new Date(ts * 1000).toISOString(),
@@ -332,20 +310,12 @@ async function _executeAndRecord(deps, ethersLib) {
     }
 
     if (updateBotState) {
-      updateBotState({
-        rebalanceCount: (deps._rebalanceCount || 0) + 1,
-        lastRebalanceAt: new Date().toISOString(),
-        throttleState: throttle.getState(),
+      updateBotState({ rebalanceCount: (deps._rebalanceCount || 0) + 1,
+        lastRebalanceAt: new Date().toISOString(), throttleState: throttle.getState(),
         rebalanceEvents: events ? [...events] : undefined,
-        activePosition: {
-          tokenId: String(position.tokenId),
-          token0: position.token0,
-          token1: position.token1,
-          fee: position.fee,
-          tickLower: position.tickLower,
-          tickUpper: position.tickUpper,
-        },
-      });
+        activePosition: { tokenId: String(position.tokenId), token0: position.token0,
+          token1: position.token1, fee: position.fee,
+          tickLower: position.tickLower, tickUpper: position.tickUpper } });
     }
   } else {
     console.error('[bot] Rebalance failed:', result.error);
@@ -485,7 +455,7 @@ async function pollCycle(deps) {
   // 2. Check if in range (V3: upper tick is exclusive); skip on forced rebalance
   const forced = deps._botState?.forceRebalance;
   const inRange = poolState.tick >= position.tickLower && poolState.tick < position.tickUpper;
-  if (inRange && !forced) return { rebalanced: false };
+  if (inRange && !forced) return { rebalanced: false, inRange: true };
 
   // 3. Throttle check (skip on forced rebalance)
   if (!forced) {
@@ -663,47 +633,22 @@ async function startBotLoop(opts) {
   const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache.json') });
   _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle);
 
-  updateBotState({
-    running: true,
-    dryRun,
-    startedAt: new Date().toISOString(),
-    throttleState: throttle.getState(),
-    rebalanceEvents,
-    activePosition: {
-      tokenId: String(position.tokenId),
-      token0: position.token0,
-      token1: position.token1,
-      fee: position.fee,
-      tickLower: position.tickLower,
-      tickUpper: position.tickUpper,
-    },
-  });
+  const _activePos = () => ({ tokenId: String(position.tokenId), token0: position.token0,
+    token1: position.token1, fee: position.fee, tickLower: position.tickLower, tickUpper: position.tickUpper });
+  updateBotState({ running: true, dryRun, startedAt: new Date().toISOString(),
+    throttleState: throttle.getState(), rebalanceEvents, activePosition: _activePos() });
 
   let collectedFeesUsd = 0, rebalanceCount = 0, firstFailureAt = null, polling = false;
-  const intervalMs = config.CHECK_INTERVAL_SEC * 1000, FAILURE_WINDOW_MS = 3600_000;
+  const intervalMs = config.CHECK_INTERVAL_SEC * 1000;
 
   const poll = async () => {
     if (polling) return;
-
-    // If failures are older than 1 hour, stop auto-retrying
-    if (firstFailureAt && (Date.now() - firstFailureAt) > FAILURE_WINDOW_MS) {
-      updateBotState({
-        rebalanceError: 'Rebalance has been failing for over 1 hour. Manual intervention required.',
-        rebalancePaused: true,
-      });
-      return;
-    }
-
     polling = true;
     try {
       const result = await pollCycle({
-        signer, provider, position, throttle, dryRun,
-        updateBotState,
-        _rebalanceCount: rebalanceCount,
-        _botState: botState,
-        _pnlTracker: pnlTracker,
-        _rebalanceEvents: rebalanceEvents,
-        _collectedFeesUsd: collectedFeesUsd,
+        signer, provider, position, throttle, dryRun, updateBotState,
+        _rebalanceCount: rebalanceCount, _botState: botState, _pnlTracker: pnlTracker,
+        _rebalanceEvents: rebalanceEvents, _collectedFeesUsd: collectedFeesUsd,
         _addCollectedFees: (usd) => { collectedFeesUsd += usd; },
         _residualTracker: residualTracker,
       });
@@ -714,15 +659,19 @@ async function startBotLoop(opts) {
       } else if (result.error) {
         if (!firstFailureAt) firstFailureAt = Date.now();
         const elapsed = Math.round((Date.now() - firstFailureAt) / 60_000);
-        console.error(`[bot] Rebalance failed: ${result.error} (${elapsed}m into 60m retry window)`);
+        console.error(`[bot] Rebalance failed: ${result.error} (${elapsed}m of failures)`);
+        updateBotState({ rebalanceError: result.error, rebalancePaused: true });
+      } else if (firstFailureAt) {
+        const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
+        console.log(`[bot] Price returned to range after ~${oorMin}m of failures — clearing`);
+        firstFailureAt = null;
+        updateBotState({ rebalanceError: null, rebalancePaused: false, oorRecoveredMin: oorMin });
       }
     } catch (err) {
       if (!firstFailureAt) firstFailureAt = Date.now();
       const elapsed = Math.round((Date.now() - firstFailureAt) / 60_000);
-      console.error(`[bot] Poll error: ${err.message} (${elapsed}m into 60m retry window)`);
-    } finally {
-      polling = false;
-    }
+      console.error(`[bot] Poll error: ${err.message} (${elapsed}m of failures)`);
+    } finally { polling = false; }
   };
 
   // Run first poll immediately, then on interval

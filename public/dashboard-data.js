@@ -105,29 +105,50 @@ export function saveInitialDeposit() {
   if (_lastStatus) _updateKpis(_lastStatus);
 }
 
-/** Track whether the error modal is already visible to avoid duplicates. */
-let _errorModalShown = false;
+/** Track whether the error/recovery modal is already visible to avoid duplicates. */
+let _errorModalShown = false, _recoveryModalShown = false;
+
+/** Remove any active rebalance error modal (auto-dismiss on recovery). */
+function _dismissRebalanceModal() {
+  const el = document.getElementById('rebalanceErrorModal');
+  if (el) el.remove();
+  _errorModalShown = false;
+}
+
+/** Create and append a modal overlay with given CSS class, title, and body HTML. */
+function _createModal(id, cssClass, title, bodyHtml) {
+  const overlay = document.createElement('div');
+  overlay.className = '9mm-pos-mgr-modal-overlay';
+  if (id) overlay.id = id;
+  overlay.innerHTML = '<div class="9mm-pos-mgr-modal ' + cssClass + '"><h3>' + title + '</h3>' +
+    bodyHtml + '<button class="9mm-pos-mgr-modal-close" data-dismiss-modal>OK</button></div>';
+  document.body.appendChild(overlay);
+}
 
 /**
- * Show an informational modal when rebalance has been failing for over 1 hour.
- * Uses data attributes for close-button event delegation.
+ * Show a red danger modal while rebalance is actively failing.
  * @param {string|null} message  Error message from the bot.
  */
 function _showRebalanceErrorModal(message) {
   if (_errorModalShown || !message) return;
-  _errorModalShown = true;
+  _errorModalShown = true;  _recoveryModalShown = false;
+  _createModal('rebalanceErrorModal', '', 'Rebalance Failing',
+    '<p>' + message + '</p><p class="9mm-pos-mgr-text-muted">The bot will keep retrying automatically. ' +
+    'Check the server logs for details.</p>');
+}
 
-  const overlay = document.createElement('div');
-  overlay.className = '9mm-pos-mgr-modal-overlay';
-  overlay.innerHTML =
-    '<div class="9mm-pos-mgr-modal">' +
-    '<h3>Rebalance Paused</h3>' +
-    '<p>' + message + '</p>' +
-    '<p class="9mm-pos-mgr-text-muted">The bot has been unable to rebalance for over 1 hour. ' +
-    'Check the server logs for details. You may need to rebalance manually or adjust slippage settings.</p>' +
-    '<button class="9mm-pos-mgr-modal-close" data-dismiss-modal>OK</button>' +
-    '</div>';
-  document.body.appendChild(overlay);
+/**
+ * Show a yellow caution modal after price returns to range following failures.
+ * @param {number} minutes  Approximate minutes the position was out of range.
+ */
+function _showRecoveryModal(minutes) {
+  if (_recoveryModalShown) return;
+  _recoveryModalShown = true;
+  const s = minutes === 1 ? '' : 's';
+  _createModal(null, '9mm-pos-mgr-modal-caution', 'Position Recovered',
+    '<p>Price returned to range after approximately <strong>' + minutes + ' minute' + s +
+    '</strong> of failed rebalance attempts.</p>' +
+    '<p class="9mm-pos-mgr-text-muted">No rebalance was needed. Check the server logs if the failures persist.</p>');
 }
 
 /**
@@ -458,8 +479,12 @@ function _setStatusPill(pillCls, dotCls, label) {
  * @param {object} d  Status response object.
  */
 function _updateBotStatus(d) {
+  if (d.oorRecoveredMin > 0 && !d.rebalancePaused) {
+    _dismissRebalanceModal();
+    _showRecoveryModal(d.oorRecoveredMin);
+  }
   if (d.rebalancePaused) {
-    _setStatusPill('status-pill danger', 'dot red', 'PAUSED');
+    _setStatusPill('status-pill danger', 'dot red', 'RETRYING');
     _showRebalanceErrorModal(d.rebalanceError);
   } else if (d.halted) {
     _setStatusPill('status-pill danger', 'dot red', 'HALTED');
