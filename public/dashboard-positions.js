@@ -358,7 +358,7 @@ function _renderPosRow(e) {
       <div class="pos-row-title">${idStr} \u00B7 ${pair} \u00B7 ${feePct}${isActive ? ' \u2605' : ''}</div>
       <div class="pos-row-meta">${walletShort} \u00B7 ticks [${e.tickLower || 0}, ${e.tickUpper || 0}]</div>
     </div>
-    <div class="pos-row-status ${inR ? 'in' : 'out'}">${inR ? '\u2713 IN' : '\u2717 OUT'}</div>
+    <div class="pos-row-status ${isActive ? (inR ? 'in' : 'out') : 'closed'}">${isActive ? (inR ? '\u2713 IN' : '\u2717 OUT') : 'CLOSED'}</div>
   </div>`;
 }
 
