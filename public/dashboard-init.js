@@ -16,7 +16,7 @@ import {
   injectPositionDeps, scanPositions,
 } from './dashboard-positions.js';
 import {
-  onParamChange, updateThrottleUI, injectThrottleDeps,
+  onParamChange, updateThrottleUI, injectThrottleDeps, snapshotApplied,
 } from './dashboard-throttle.js';
 import {
   startDataPolling, loadRealizedGains, _fmtUsd, positionRangeVisual,
@@ -83,5 +83,6 @@ checkServerWalletStatus();
 // ── Start intervals ─────────────────────────────────────────────────────────
 
 onParamChange();
+snapshotApplied();
 setInterval(updateThrottleUI, 1000);
 startDataPolling();

@@ -88,7 +88,7 @@ export function renderRebalanceEvents(events) {
       '<td>' + oldRange + '</td>' +
       '<td>' + newRange + '</td>' +
       '<td title="' + (e.txHash || '') + '">' + txShort +
-        (e.txHash ? ' <span class="9mm-pos-mgr-copy-icon" data-copy-tx="' + e.txHash + '" title="Copy full TX hash">&#x1F4CB;</span>' : '') +
+        (e.txHash ? ' <span class="9mm-pos-mgr-copy-icon" data-copy-tx="' + e.txHash + '" title="Copy full TX hash">&#x274F;</span>' : '') +
       '</td>' +
       '</tr>';
   });

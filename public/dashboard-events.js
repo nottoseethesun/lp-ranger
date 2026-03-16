@@ -20,7 +20,7 @@ import {
   posChangePage, activateSelectedPos, removeSelectedPos, posRowClick,
 } from './dashboard-positions.js';
 import {
-  onParamChange, saveRangeWidth, saveAndRebalance, applyAll,
+  onParamChange, saveRangeWidth, saveAndRebalance, applyAll, checkApplyDirty,
 } from './dashboard-throttle.js';
 import {
   toggleInitialDeposit, saveInitialDeposit, toggleRealizedInput, saveRealizedGains,
@@ -184,6 +184,12 @@ export function bindAllEvents() {
   _input('inMinInterval', onParamChange);
   _input('inMaxReb', onParamChange);
 
+  // Track dirty state for Apply All button
+  ['inMinInterval', 'inMaxReb', 'inRangeW', 'inSlip', 'inInterval', 'inGas'].forEach(id => {
+    _input(id, checkApplyDirty);
+    _change(id, checkApplyDirty);
+  });
+
   // Save Range Width button
   document.querySelectorAll('.save-range-btn').forEach(btn => {
     btn.addEventListener('click', saveRangeWidth);
@@ -219,7 +225,7 @@ export function bindAllEvents() {
       if (btn) {
         navigator.clipboard.writeText(btn.dataset.copyAddr).catch(() => {});
         btn.textContent = '\u2713';
-        setTimeout(() => { btn.textContent = '\u{1F4CB}'; }, 1200);
+        setTimeout(() => { btn.textContent = '\u274F'; }, 1200);
       }
     });
   }

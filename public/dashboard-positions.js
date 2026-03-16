@@ -354,7 +354,7 @@ function _tokenLabelHtml(symbol, address) {
   const escaped = address.replace(/'/g, '&#39;');
   return symbol +
     '<button class="9mm-pos-mgr-token-copy-btn" data-copy-addr="' +
-    escaped + '" title="Copy contract address: ' + escaped + '">\u{1F4CB}</button>';
+    escaped + '" title="Copy contract address: ' + escaped + '">\u274F</button>';
 }
 
 /**

@@ -976,6 +976,20 @@ header{
   text-transform:uppercase;
 }
 
+.pchain-link{
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:6px;
+  background:rgb(255 255 255 / 8%);
+  color:var(--accent);
+  text-decoration:none;
+  font-weight:600;
+  cursor:pointer;
+  position:relative;
+  z-index:2;
+}
+.pchain-link:hover{background:rgb(255 255 255 / 15%);}
+
 .header-right{
   display:flex;
   align-items:center;
@@ -1527,7 +1541,7 @@ header{
   border:1px solid rgb(0 229 255 / 12%);
   border-radius:7px;
   margin-bottom:10px;
-  font-size:11px;
+  font-size:14px;
 }
 .at-label{color:var(--muted);}
 
@@ -1755,7 +1769,12 @@ header{
   letter-spacing:1px;
   transition:all .2s;
 }
-.apply-btn:hover{background:rgb(0 229 255 / 14%);}
+.apply-btn:hover:not(:disabled){background:rgb(0 229 255 / 14%);}
+
+.apply-btn:disabled{
+  opacity:0.35;
+  cursor:default;
+}
 
 .apply-btn.saved{
   border-color:var(--accent3);

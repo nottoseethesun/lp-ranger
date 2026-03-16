@@ -210,6 +210,45 @@ export function saveAndRebalance() {
     .catch(function () { /* dashboard-only mode */ });
 }
 
+// ── Apply All dirty tracking ─────────────────────────────────────────────────
+
+/** IDs of all config inputs in the Bot Configuration panel. */
+const _CONFIG_IDS = ['inMinInterval', 'inMaxReb', 'inRangeW', 'inSlip', 'inInterval', 'inGas'];
+
+/** Snapshot of last-applied values. */
+let _appliedSnapshot = {};
+
+/** Take a snapshot of current config input values. */
+function _snapshot() {
+  const snap = {};
+  for (const id of _CONFIG_IDS) { const el = g(id); if (el) snap[id] = el.value; }
+  return snap;
+}
+
+/** Check whether any config input differs from the last-applied snapshot. */
+function _isDirty() {
+  for (const id of _CONFIG_IDS) {
+    const el = g(id);
+    if (el && el.value !== _appliedSnapshot[id]) return true;
+  }
+  return false;
+}
+
+/**
+ * Update the Apply All button disabled state based on whether inputs changed.
+ * Called on every config input event.
+ */
+export function checkApplyDirty() {
+  const btn = g('applyAllBtn');
+  if (btn) btn.disabled = !_isDirty();
+}
+
+/** Capture the current config values as the "applied" baseline. */
+export function snapshotApplied() {
+  _appliedSnapshot = _snapshot();
+  checkApplyDirty();
+}
+
 /** Read all settings from the UI and apply them, persisting to the backend. */
 export function applyAll() {
   onParamChange();
@@ -243,9 +282,11 @@ export function applyAll() {
     body: JSON.stringify(patch),
   }).catch(function () { /* dashboard-only mode — no backend running */ });
 
+  snapshotApplied();
   const btn = g('applyAllBtn');
   btn.textContent = '\u2713 Applied';
   btn.className   = 'apply-btn saved';
+  btn.disabled    = true;
   setTimeout(function () { btn.textContent = 'Apply All Settings'; btn.className = 'apply-btn'; }, 2000);
   act('\u2699', 'start', 'Settings applied',
     `Trigger: ${tLbl} \u00B7 \u00B1${botConfig.rangeW}% \u00B7 Min interval: ${g('inMinInterval').value}m \u00B7 Max ${g('inMaxReb').value}/day`);
