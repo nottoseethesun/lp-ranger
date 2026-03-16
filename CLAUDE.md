@@ -63,7 +63,9 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   ├── key-store.js              # AES-256-GCM encrypted private key storage (PBKDF2-SHA512)
 │   ├── optimizer-client.js       # HTTP client for the LP Optimization Engine API
 │   ├── optimizer-applicator.js   # Applies optimizer recommendations to live BotParams
-│   └── optimizer-scheduler.js    # Toggle + 10-min polling loop + queryNow()
+│   ├── optimizer-scheduler.js    # Toggle + 10-min polling loop + queryNow()
+│   ├── residual-tracker.js       # Per-pool wallet residual tracking (tokens left after rebalance)
+│   └── wallet-manager.js         # Wallet import/clear + encrypted disk persistence
 └── test/
     ├── bot-loop.test.js
     ├── hodl-baseline.test.js
@@ -91,6 +93,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
     ├── range-math-fuzz.test.js       # Property-based fuzz tests (500 iterations × 10 properties)
     ├── rebalancer-failures.test.js   # Failure-mode tests: reverts, partial failures, malformed data
     ├── rebalancer-integration.test.js # Stateful simulation: balance tracking across remove→swap→mint
+    ├── residual-tracker.test.js      # Per-pool residual tracking, capping, serialization
     ├── gitignore.test.js             # Ensures .gitignore covers sensitive files (.wallet.json, .env, etc.)
     ├── wallet-manager.test.js        # Wallet import/clear + encrypted disk persistence
     └── eslint-rules/
@@ -99,7 +102,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
 
-**686 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**706 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
 
 ---
 
@@ -196,7 +199,9 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 
 **Impermanent loss/gain:** Standard HODL comparison: `IL = LP_value − HODL_value` where `HODL_value = (entryValue/2 / token0PriceAtEntry) × token0PriceNow + (entryValue/2 / token1PriceAtEntry) × token1PriceNow`. Negative = loss vs holding. HODL baseline (entry prices + value) is auto-detected from GeckoTerminal historical prices at NFT mint timestamp (`src/hodl-baseline.js`). Falls back to live epoch prices if GeckoTerminal unavailable. Persisted to `.bot-config.json` via `hodlBaseline` key. Dashboard shows a confirmation dialog on first detection; shows a warning dialog if historical prices were unavailable. Displayed as a signed integer in the Net Return KPI tile.
 
-**Throttle/doubling:** 3 rebalances within 4× minInterval activates doubling mode (10m → 20m → 40m → 80m…). Clears after 4× currentWait quiet period or midnight reset.
+**Wallet residual tracking:** `src/residual-tracker.js` tracks per-pool token residuals (collected − minted deltas across rebalances). Residuals are capped to actual wallet `balanceOf` when computing USD value, so sold/transferred tokens aren't over-counted. Users account for sold tokens via "Edit Realized Gains". Persisted to `.bot-config.json` via `residuals` key.
+
+**Throttle/doubling:** 3 rebalances within 4× minInterval activates doubling mode (10m → 20m → 40m → 80m…). Clears after 4× currentWait quiet period or midnight UTC reset. All timing resets are UTC-based.
 
 **Optimizer interface:** Three decoupled modules: `optimizer-client.js` (HTTP), `optimizer-applicator.js` (apply logic), `optimizer-scheduler.js` (toggle + polling).
 
@@ -204,7 +209,7 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 
 **FOUC prevention:** Range status banner is hidden on page load and only shown after real price data arrives from the bot. Prevents false "OUT OF RANGE" flash on refresh.
 
-**Help popover:** "? Help" button in the header explains the single-position-per-pool model and dashboard scope.
+**Help popover:** "? Help" button in the header explains the single-position-per-pool model, fund tracking/recycling, range width, and volatility doubling.
 
 **Sync indicator:** "Done Syncing" / "Syncing..." badge at the bottom of the Cumulative P&L card tracks the 5-year event scanner progress.
 
