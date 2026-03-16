@@ -370,6 +370,8 @@
       <p class="9mm-pos-mgr-help-text">When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
       <div class="9mm-pos-mgr-help-title">Range Width</div>
       <p class="9mm-pos-mgr-help-text">The <strong>New Range Width %</strong> is initially set based on the first liquidity position detected on the wallet. To adjust it, manually create a new LP position with your desired range on 9mm Pro, then reload the app in your browser and select the new position. The bot will adopt its range width going forward.</p>
+      <div class="9mm-pos-mgr-help-title">Volatility Doubling</div>
+      <p class="9mm-pos-mgr-help-text">If <strong>3 rebalances</strong> occur within <strong>4&times; the minimum interval</strong> (e.g. 40 minutes when the minimum is 10 min), the bot enters <em>doubling mode</em>. Each subsequent rebalance must wait twice as long as the previous one: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This prevents rapid-fire rebalancing during high volatility. Doubling mode clears automatically if no rebalance is needed for 4&times; the current wait, or at the daily midnight UTC reset.</p>
       <button class="9mm-pos-mgr-help-close">Close</button>
     </div>
   </div>
