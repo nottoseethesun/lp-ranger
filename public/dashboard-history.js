@@ -115,6 +115,7 @@ export function rebChangePage(dir) {
  * @param {object} data  Status response.
  */
 export function updateHistoryFromStatus(data) {
-  if (data.dailyPnl) renderDailyPnl(data.dailyPnl);
+  const dailyPnl = data.pnlSnapshot?.dailyPnl || data.dailyPnl;
+  if (dailyPnl) renderDailyPnl(dailyPnl);
   if (data.rebalanceEvents) renderRebalanceEvents(data.rebalanceEvents);
 }

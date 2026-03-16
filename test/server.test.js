@@ -228,4 +228,23 @@ describe('updateBotState', () => {
     updateBotState({ rebalanceCount: 0 });
     assert.strictEqual(botState.host, original);
   });
+
+  it('pnlSnapshot with dailyPnl is exposed via /api/status', async () => {
+    const _srv = await start(54399);
+    try {
+      const mockSnapshot = {
+        totalPnl: 42, dailyPnl: [
+          { date: '2026-03-15', priceChangePnl: 10, feePnl: 5, gasCost: 0.1, netPnl: 14.9, cumulative: 14.9 },
+          { date: '2026-03-14', priceChangePnl: -3, feePnl: 8, gasCost: 0.2, netPnl: 4.8, cumulative: 4.8 },
+        ],
+      };
+      updateBotState({ pnlSnapshot: mockSnapshot });
+      const res = await req({ port: 54399, path: '/api/status' });
+      const body = JSON.parse(res.body);
+      assert.ok(body.pnlSnapshot, 'pnlSnapshot should be present in status response');
+      assert.ok(Array.isArray(body.pnlSnapshot.dailyPnl), 'dailyPnl should be an array');
+      assert.strictEqual(body.pnlSnapshot.dailyPnl.length, 2);
+      assert.strictEqual(body.pnlSnapshot.dailyPnl[0].date, '2026-03-15');
+    } finally { await stop(); }
+  });
 });

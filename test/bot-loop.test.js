@@ -541,3 +541,24 @@ describe('bot-loop: gas deferral', () => {
     assert.strictEqual(r.inRange, true);
   });
 });
+
+describe('bot-loop: pnlSnapshot with dailyPnl', () => {
+  it('emits pnlSnapshot containing dailyPnl in updateBotState when in range with tracker', async () => {
+    const { createPnlTracker } = require('../src/pnl-tracker');
+    const deps = buildPollDeps({ tick: 0 }); // in range
+    const tracker = createPnlTracker({ initialDeposit: 100 });
+    tracker.openEpoch({ entryValue: 100, entryPrice: 1, lowerPrice: 0.8, upperPrice: 1.2,
+      token0UsdPrice: 0.001, token1UsdPrice: 0.0005 });
+    const stateUpdates = [];
+    await pollCycle({
+      signer: deps.signer, provider: {}, position: deps.position,
+      throttle: deps.throttle, _ethersLib: deps.ethersLib,
+      _botState: {}, _pnlTracker: tracker,
+      updateBotState: (u) => stateUpdates.push(u),
+    });
+    const snapUpdate = stateUpdates.find((u) => u.pnlSnapshot);
+    assert.ok(snapUpdate, 'updateBotState should include pnlSnapshot');
+    assert.ok(Array.isArray(snapUpdate.pnlSnapshot.dailyPnl),
+      'pnlSnapshot should contain dailyPnl array');
+  });
+});
