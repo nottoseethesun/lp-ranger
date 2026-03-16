@@ -482,6 +482,21 @@
   background: rgb(255 184 0 / 25%);
 }
 
+.\39 mm-pos-mgr-scan-help {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  font-size: 10px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
+  color: var(--text-dim);
+  cursor: help;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 /* ── Token Label with Copy ───────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-token-copy-btn {
