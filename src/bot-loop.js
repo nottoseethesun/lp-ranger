@@ -389,6 +389,26 @@ async function _residualValueUsd(deps, ethersLib, provider, position, poolState,
 // ── Poll cycle ───────────────────────────────────────────────────────────────
 
 /**
+ * Check if estimated gas cost exceeds 0.5% of position value.
+ * @param {import('ethers').JsonRpcProvider} provider
+ * @param {object} position  Active V3 NFT position data.
+ * @param {object} poolState Pool state from getPoolState().
+ * @returns {Promise<boolean>} True if gas is too expensive and rebalance should be deferred.
+ */
+async function _isGasTooHigh(provider, position, poolState) {
+  try {
+    const gasCost = await _estimateGasCostUsd(provider);
+    const prices = await _fetchTokenPrices(position.token0, position.token1);
+    const posValue = _positionValueUsd(position, poolState, prices.price0, prices.price1);
+    if (posValue > 0 && gasCost > 0 && gasCost / posValue > 0.005) {
+      console.warn(`[bot] Gas too high: $${gasCost.toFixed(4)} is ${(gasCost / posValue * 100).toFixed(2)}% of position ($${posValue.toFixed(2)}) — deferring`);
+      return true;
+    }
+  } catch (_) { /* proceed if gas check fails */ }
+  return false;
+}
+
+/**
  * Single poll iteration.  Checks position range, throttle, and rebalances
  * if allowed and needed.
  *
@@ -473,7 +493,10 @@ async function pollCycle(deps) {
     return { rebalanced: false };
   }
 
-  // 5. Execute rebalance
+  // 5. Gas cost check — defer if gas > 0.5% of position value
+  if (await _isGasTooHigh(provider, position, poolState)) return { rebalanced: false, gasDeferred: true };
+
+  // 6. Execute rebalance
   return _executeAndRecord(deps, ethersLib);
 }
 
@@ -639,7 +662,11 @@ async function startBotLoop(opts) {
     throttleState: throttle.getState(), rebalanceEvents, activePosition: _activePos() });
 
   let collectedFeesUsd = 0, rebalanceCount = 0, firstFailureAt = null, polling = false;
-  const intervalMs = config.CHECK_INTERVAL_SEC * 1000;
+  const baseIntervalMs = config.CHECK_INTERVAL_SEC * 1000;
+  const GAS_DEFER_MS = 3600_000; // 1 hour when gas is too high
+  let currentIntervalMs = baseIntervalMs, timer = null;
+
+  function _scheduleNext() { timer = setTimeout(poll, currentIntervalMs); }
 
   const poll = async () => {
     if (polling) return;
@@ -655,7 +682,11 @@ async function startBotLoop(opts) {
       if (result.rebalanced) {
         rebalanceCount++;
         firstFailureAt = null;
+        currentIntervalMs = baseIntervalMs;
         updateBotState({ rebalanceError: null, rebalancePaused: false, forceRebalance: false });
+      } else if (result.gasDeferred) {
+        currentIntervalMs = GAS_DEFER_MS;
+        console.log(`[bot] Next retry in ${GAS_DEFER_MS / 60_000}m (gas deferral)`);
       } else if (result.error) {
         if (!firstFailureAt) firstFailureAt = Date.now();
         const elapsed = Math.round((Date.now() - firstFailureAt) / 60_000);
@@ -664,24 +695,22 @@ async function startBotLoop(opts) {
       } else if (firstFailureAt) {
         const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
         console.log(`[bot] Price returned to range after ~${oorMin}m of failures — clearing`);
-        firstFailureAt = null;
+        firstFailureAt = null;  currentIntervalMs = baseIntervalMs;
         updateBotState({ rebalanceError: null, rebalancePaused: false, oorRecoveredMin: oorMin });
       }
     } catch (err) {
       if (!firstFailureAt) firstFailureAt = Date.now();
       const elapsed = Math.round((Date.now() - firstFailureAt) / 60_000);
       console.error(`[bot] Poll error: ${err.message} (${elapsed}m of failures)`);
-    } finally { polling = false; }
+    } finally { polling = false; _scheduleNext(); }
   };
 
-  // Run first poll immediately, then on interval
-  await poll();
-  const timer = setInterval(poll, intervalMs);
+  await poll(); // first poll immediate; subsequent via setTimeout
   console.log(`[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`);
 
   return {
     stop() {
-      clearInterval(timer);
+      clearTimeout(timer);
       updateBotState({ running: false });
       console.log('[bot] Bot loop stopped');
     },
