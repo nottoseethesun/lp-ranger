@@ -977,18 +977,22 @@ header{
 }
 
 .pchain-link{
-  display:inline-block;
-  padding:2px 8px;
-  border-radius:6px;
-  background:rgb(255 255 255 / 8%);
-  color:var(--accent);
+  height:42px;
+  padding:0 11px;
+  background:linear-gradient(135deg,#6930c3,#8338ec);
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-family:Syne,sans-serif;
+  font-weight:800;
+  font-size:14px;
+  color:#fff;
   text-decoration:none;
-  font-weight:600;
   cursor:pointer;
-  position:relative;
-  z-index:2;
+  box-shadow:0 0 20px rgb(131 56 236 / 30%);
 }
-.pchain-link:hover{background:rgb(255 255 255 / 15%);}
+.pchain-link:hover{background:linear-gradient(135deg,#7b2ff7,#9b59b6);}
 
 .header-right{
   display:flex;
