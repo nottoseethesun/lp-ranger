@@ -8,93 +8,32 @@
  * quick succession.  The UI badge, bar, and countdown are refreshed
  * every second by {@link updateThrottleUI}.
  *
- * Depends on: dashboard-helpers.js, dashboard-positions.js (posStore),
- *             dashboard-optimizer.js (optSyncParamsFromUI, optState).
- *
- * NOTE: Imports from optimizer and data are resolved at call time via
- * function bodies, not at parse time, so circular references are safe.
+ * Depends on: dashboard-helpers.js, dashboard-positions.js (posStore).
  */
 
 import { g, act, fmtMs, fmtCountdown, nextMidnight, botConfig, savePositionRangeW } from './dashboard-helpers.js';
 import { posStore } from './dashboard-positions.js';
 
-// Late-bound imports to avoid circular dep issues at evaluation time.
-// These are populated by dashboard-init.js after all modules load.
-let _optSyncParamsFromUI = null;
-let _optState = null;
+// Late-bound import to avoid circular dep issues at evaluation time.
+// Populated by dashboard-init.js after all modules load.
 let _positionRangeVisual = null;
 
 /**
- * Inject optimizer and data references after all modules are loaded.
+ * Inject data references after all modules are loaded.
  * Called once from dashboard-init.js.
- * @param {object} deps  { optSyncParamsFromUI, optState, positionRangeVisual }
+ * @param {object} deps  { positionRangeVisual }
  */
 export function injectThrottleDeps(deps) {
-  _optSyncParamsFromUI = deps.optSyncParamsFromUI;
-  _optState = deps.optState;
   _positionRangeVisual = deps.positionRangeVisual;
 }
 
-// ── Trigger type constants ──────────────────────────────────────────────────
+// ── Trigger type ────────────────────────────────────────────────────────────
 
-/** Trigger type: out of range. */
+/** Trigger type: out of range (only supported type). */
 export const TRIGGER_OOR  = 'oor';
 
-/** Trigger type: near edge. */
-export const TRIGGER_EDGE = 'edge';
-
-/** Trigger type: scheduled. */
-export const TRIGGER_TIME = 'time';
-
-/** All valid trigger types. */
-export const TRIGGER_TYPES = Object.freeze(['oor', 'edge', 'time']);
-
-// ── Trigger config ──────────────────────────────────────────────────────────
-
 /** Active trigger configuration. */
-export const trigger = { type: TRIGGER_OOR, edgePct: 5, schedHours: 24 };
-
-/**
- * Switch the active trigger type and update button styling.
- * @param {string} t  Trigger key: 'oor' | 'edge' | 'time'
- */
-export function setTType(t) {
-  trigger.type = t;
-  botConfig.triggerType = t;
-  TRIGGER_TYPES.forEach(k => {
-    g('tb-' + k).className = 'ttype-btn' + (k === t ? ' active' : '');
-  });
-  renderTParams();
-
-  // Show/hide range boundary lines based on trigger mode
-  const hide = t === TRIGGER_TIME;
-  const lnL = g('rangeLnL');
-  const lnR = g('rangeLnR');
-  if (lnL) lnL.style.display = hide ? 'none' : '';
-  if (lnR) lnR.style.display = hide ? 'none' : '';
-}
-
-/** Render the trigger-specific parameter inputs. */
-export function renderTParams() {
-  const p = g('tparams');
-  if (trigger.type === TRIGGER_OOR) {
-    p.innerHTML =
-      '<div class="9mm-pos-mgr-info-box">' +
-      'Fires the moment tick exits [tickLower, tickUpper].</div>';
-  } else if (trigger.type === TRIGGER_EDGE) {
-    p.innerHTML =
-      '<div class="prow 9mm-pos-mgr-mt-md"><span class="plbl">Fire when price within X% of edge</span>' +
-      '<div class="9mm-pos-mgr-input-row">' +
-      `<input type="number" class="pinput w55" id="inEdge" value="${trigger.edgePct}" min="1" max="49" step="0.5">` +
-      '<span class="punit">%</span></div></div>';
-  } else {
-    p.innerHTML =
-      '<div class="prow 9mm-pos-mgr-mt-md"><span class="plbl">Rebalance every N hours</span>' +
-      '<div class="9mm-pos-mgr-input-row">' +
-      `<input type="number" class="pinput w55" id="inSched" value="${trigger.schedHours}" min="1" max="168" step="1">` +
-      '<span class="punit">hrs</span></div></div>';
-  }
-}
+export const trigger = { type: TRIGGER_OOR };
 
 // ── Throttle state ──────────────────────────────────────────────────────────
 
@@ -212,11 +151,7 @@ export function updateThrottleUI() {
   if (can.allowed) {
     g('kpiCountdown').textContent = minIntervalMin + ' min';
     g('kpiCountdown').className   = 'kpi-value neu';
-    g('kpiCDSub').textContent     = trigger.type === TRIGGER_EDGE
-      ? 'Triggered within ' + trigger.edgePct + '% of range edge'
-      : trigger.type === TRIGGER_TIME
-        ? 'Scheduled every ' + trigger.schedHours + ' hour' + (trigger.schedHours !== 1 ? 's' : '')
-        : 'Only triggered when out-of-range';
+    g('kpiCDSub').textContent     = 'Only triggered when out-of-range';
   } else {
     g('kpiCountdown').textContent = fmtCountdown(msLeft);
     g('kpiCountdown').className   = 'kpi-value ' + (throttle.doublingActive ? 'dbl' : 'wrn');
@@ -245,32 +180,12 @@ export function updateThrottleUI() {
  * @returns {string}
  */
 function _triggerLabel() {
-  if (trigger.type === TRIGGER_EDGE) return `WITHIN ${trigger.edgePct}% OF EDGE`;
-  if (trigger.type === TRIGGER_TIME) return `EVERY ${trigger.schedHours}H`;
   return 'OUT OF RANGE';
-}
-
-/** Read trigger-specific parameters from the UI inputs. */
-function _readTriggerParams() {
-  if (trigger.type === TRIGGER_EDGE) trigger.edgePct   = parseFloat(g('inEdge')?.value || 5);
-  if (trigger.type === TRIGGER_TIME) trigger.schedHours = parseFloat(g('inSched')?.value || 24);
 }
 
 /** Update the position token label from the active position. */
 function _updatePosTokenLabel() {
-  const posType = posStore.getActive()?.positionType || 'nft';
-  g('wsToken').textContent = posType === 'nft'
-    ? (g('inNFT')?.value || '\u2014')
-    : (g('inERC20Addr')?.value || '\u2014');
-}
-
-/** Sync optimizer URL and API key from UI inputs. */
-function _syncOptimizerFromUI() {
-  if (_optSyncParamsFromUI) _optSyncParamsFromUI();
-  if (_optState) {
-    _optState.url    = (g('optUrl')?.value || '').trim();
-    _optState.apiKey = (g('optApiKey')?.value || '').trim();
-  }
+  g('wsToken').textContent = g('inNFT')?.value || '\u2014';
 }
 
 /** Save just the range width, update the preview, and persist to backend. */
@@ -297,7 +212,6 @@ export function saveAndRebalance() {
 
 /** Read all settings from the UI and apply them, persisting to the backend. */
 export function applyAll() {
-  _readTriggerParams();
   onParamChange();
   botConfig.rangeW = parseFloat(g('inRangeW').value) || 20;
   g('activeRangeW').textContent = botConfig.rangeW;
@@ -311,7 +225,6 @@ export function applyAll() {
   _updatePosTokenLabel();
   g('dblWindowLabel').textContent = fmtMs(4 * throttle.minIntervalMs);
 
-  _syncOptimizerFromUI();
   if (_positionRangeVisual) _positionRangeVisual();
 
   // Persist settings to the backend bot process
@@ -323,8 +236,6 @@ export function applyAll() {
     maxRebalancesPerDay:     parseInt(g('inMaxReb').value, 10) || 20,
     gasStrategy:             g('inGas').value || 'auto',
     triggerType:             trigger.type,
-    triggerEdgePct:          trigger.edgePct,
-    triggerSchedHours:       trigger.schedHours,
   };
   fetch('/api/config', {
     method: 'POST',

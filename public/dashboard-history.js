@@ -34,9 +34,9 @@ export function renderDailyPnl(dailyPnl) {
     const pricePnl = d.priceChangePnl || 0;
     const net = (d.feePnl || d.fees || 0) + pricePnl - (d.gasCost || d.gas || 0);
     cumulative += net;
-    const netCls = net >= 0 ? 'pos' : 'neg';
-    const cumCls = cumulative >= 0 ? 'pos' : 'neg';
-    const pCls   = pricePnl >= 0 ? 'pos' : 'neg';
+    const netCls = Math.round(net * 100) === 0 ? '' : net > 0 ? 'pos' : 'neg';
+    const cumCls = Math.round(cumulative * 100) === 0 ? '' : cumulative > 0 ? 'pos' : 'neg';
+    const pCls   = Math.round(pricePnl * 100) === 0 ? '' : pricePnl > 0 ? 'pos' : 'neg';
     return '<tr>' +
       '<td>' + (d.date || '—') + '</td>' +
       '<td>$' + (d.feePnl || d.fees || 0).toFixed(2) + '</td>' +

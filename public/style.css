@@ -958,6 +958,8 @@ header{
   font-size:16px;
   color:#000;
   box-shadow:0 0 20px rgb(0 229 255 / 30%);
+  text-decoration:none;
+  cursor:pointer;
 }
 
 .logo-text h1{

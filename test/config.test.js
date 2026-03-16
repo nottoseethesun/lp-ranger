@@ -175,35 +175,6 @@ describe('PORT configuration', () => {
   });
 });
 
-// ── OPTIMIZER_PORT ────────────────────────────────────────────────────────────
-
-describe('OPTIMIZER_PORT configuration', () => {
-  it('OPTIMIZER_PORT is exported as a number', () => {
-    assert.strictEqual(typeof config.OPTIMIZER_PORT, 'number');
-  });
-
-  it('OPTIMIZER_PORT is within valid TCP range (1–65535)', () => {
-    assert.ok(config.OPTIMIZER_PORT >= 1 && config.OPTIMIZER_PORT <= 65535,
-      `Expected OPTIMIZER_PORT in 1–65535, got ${config.OPTIMIZER_PORT}`);
-  });
-
-  it('default OPTIMIZER_PORT is 3693 when env var not set', () => {
-    // Verify via the parser helper directly
-    assert.strictEqual(config._parsePositiveInt('3693', 99), 3693);
-  });
-
-  it('OPTIMIZER_URL includes the port number when not explicitly overridden', () => {
-    // When OPTIMIZER_URL env var is not set, the default URL is built from OPTIMIZER_PORT
-    if (!process.env.OPTIMIZER_URL) {
-      assert.ok(
-        config.OPTIMIZER_URL === null ||
-        config.OPTIMIZER_URL.includes(String(config.OPTIMIZER_PORT)),
-        `Expected OPTIMIZER_URL to contain port ${config.OPTIMIZER_PORT}, got: ${config.OPTIMIZER_URL}`,
-      );
-    }
-  });
-});
-
 // ── EIP-55 checksummed addresses ─────────────────────────────────────────────
 
 describe('EIP-55 address conformance', () => {
@@ -246,8 +217,6 @@ describe('config module shape', () => {
     'PRIVATE_KEY', 'WALLET_PASSWORD', 'RPC_URL', 'POSITION_ID', 'ERC20_POSITION_ADDRESS',
     'RANGE_WIDTH_PCT', 'SLIPPAGE_PCT', 'CHECK_INTERVAL_SEC',
     'MIN_REBALANCE_INTERVAL_MIN', 'MAX_REBALANCES_PER_DAY', 'LOG_FILE',
-    'OPTIMIZER_PORT', 'OPTIMIZER_URL', 'OPTIMIZER_API_KEY',
-    'OPTIMIZER_INTERVAL_MIN', 'OPTIMIZER_TIMEOUT_MS', 'OPTIMIZER_AUTO_APPLY',
     'POSITION_MANAGER', 'FACTORY', 'SWAP_ROUTER', 'QUOTER_V2',
     'DEXTOOLS_API_KEY',
     'assertLiveModeReady', '_parsePositiveInt', '_parsePositiveFloat',

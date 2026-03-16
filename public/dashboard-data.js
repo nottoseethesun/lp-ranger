@@ -395,11 +395,10 @@ function _activeToken1Symbol() {
  * @param {number}   previewHi Preview upper price.
  */
 function _updateRangePreviewLines(pct, previewLo, previewHi) {
-  const isScheduled = botConfig.triggerType === 'time';
   const lnL = g('rangeLnL');
   const lnR = g('rangeLnR');
-  if (lnL) { lnL.style.left = pct(previewLo); lnL.style.display = isScheduled ? 'none' : ''; }
-  if (lnR) { lnR.style.left = pct(previewHi); lnR.style.display = isScheduled ? 'none' : ''; }
+  if (lnL) lnL.style.left = pct(previewLo);
+  if (lnR) lnR.style.left = pct(previewHi);
 }
 
 /**

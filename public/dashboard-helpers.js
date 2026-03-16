@@ -104,7 +104,7 @@ export function fmtDateTime(input, opts) {
 
 /**
  * Shared configuration and live-position state for the dashboard.
- * Updated by the bot config panel, position selection, and optimizer.
+ * Updated by the bot config panel and position selection.
  * Price/range fields are placeholders until live on-chain data is wired.
  */
 export const botConfig = {

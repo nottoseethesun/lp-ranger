@@ -20,10 +20,6 @@ import {
   TRIGGER_OOR, injectThrottleDeps,
 } from './dashboard-throttle.js';
 import {
-  OPT_DEFAULT_URL, optState, _optRestartProbe, optSyncParamsFromUI,
-  startOptCountdown,
-} from './dashboard-optimizer.js';
-import {
   startDataPolling, loadRealizedGains, _fmtUsd, positionRangeVisual,
 } from './dashboard-data.js';
 import { bindAllEvents } from './dashboard-events.js';
@@ -32,7 +28,7 @@ import { bindAllEvents } from './dashboard-events.js';
 
 injectWalletDeps({ updatePosStripUI, scanPositions, posStore });
 injectPositionDeps({ positionRangeVisual });
-injectThrottleDeps({ optSyncParamsFromUI, optState, positionRangeVisual });
+injectThrottleDeps({ positionRangeVisual });
 
 // ── Bind all event handlers ─────────────────────────────────────────────────
 
@@ -74,17 +70,6 @@ updatePosStripUI();
   }
 }());
 
-// ── Initialise optimizer ────────────────────────────────────────────────────
-
-(function initOptimizer() {
-  const urlField = g('optUrl');
-  if (urlField && !urlField.value) urlField.value = OPT_DEFAULT_URL;
-  optState.url = OPT_DEFAULT_URL;
-  const probeEl = g('optProbeUrl');
-  if (probeEl) probeEl.textContent = OPT_DEFAULT_URL;
-  _optRestartProbe();
-}());
-
 // ── Activity log ─────────────────────────────────────────────────────────────
 
 act('\u{1F680}', 'start', 'Dashboard ready', 'Import a wallet to begin');
@@ -103,5 +88,4 @@ checkServerWalletStatus();
 
 onParamChange();
 setInterval(updateThrottleUI, 1000);
-startOptCountdown();
 startDataPolling();

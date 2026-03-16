@@ -40,17 +40,6 @@
  * PRICING (optional)
  *   DEXTOOLS_API_KEY       API key for DexTools price fallback (DexScreener is primary).
  *
- * OPTIMIZER (optional — leave blank to disable)
- *   OPTIMIZER_PORT         TCP port the Optimization Engine listens on. Default: 3693.
- *                          Used to build the default OPTIMIZER_URL when that is not set.
- *   OPTIMIZER_URL          Full base URL of the LP Optimization Engine.
- *                          Defaults to http://localhost:{OPTIMIZER_PORT} when not set.
- *   OPTIMIZER_API_KEY      Bearer token for Authorization header (if the engine requires auth).
- *   OPTIMIZER_INTERVAL_MIN How often to auto-query the engine, in minutes. Default: 10.
- *   OPTIMIZER_TIMEOUT_MS   Per-request timeout in ms. Default: 10 000.
- *   OPTIMIZER_AUTO_APPLY   Whether to auto-apply recommendations when engine is toggled ON.
- *                          '1' or 'true' to enable. Default: false.
- *
  * @example
  * const { PORT, HOST, RPC_URL } = require('./src/config');
  * console.log(`Serving on http://${HOST}:${PORT}`);
@@ -149,41 +138,6 @@ const MAX_REBALANCES_PER_DAY = parsePositiveInt(
 /** File path for the JSON rebalance event log. */
 const LOG_FILE = process.env.LOG_FILE || './rebalance_log.json';
 
-// ── Optimizer ──────────────────────────────────────────────────────────────────
-
-/**
- * TCP port the LP Optimization Engine listens on.
- * Used to build the default OPTIMIZER_URL when that env var is not explicitly set.
- */
-const OPTIMIZER_PORT = parsePositiveInt(process.env.OPTIMIZER_PORT, 3693);
-
-/**
- * Base URL of the LP Optimization Engine.
- * When OPTIMIZER_URL is not set, defaults to http://localhost:{OPTIMIZER_PORT}.
- * Set to null only when explicitly passed as empty string, signalling "disabled".
- */
-const OPTIMIZER_URL = process.env.OPTIMIZER_URL !== undefined
-  ? (process.env.OPTIMIZER_URL.trim() || null)
-  : `http://localhost:${OPTIMIZER_PORT}`;
-
-/** Bearer token for the Optimization Engine's Authorization header. */
-const OPTIMIZER_API_KEY = process.env.OPTIMIZER_API_KEY || null;
-
-/** How often to auto-query the engine, in minutes (when the toggle is ON). */
-const OPTIMIZER_INTERVAL_MIN = parsePositiveInt(process.env.OPTIMIZER_INTERVAL_MIN, 10);
-
-/** Per-request timeout for optimizer HTTP calls, in ms. */
-const OPTIMIZER_TIMEOUT_MS = parsePositiveInt(process.env.OPTIMIZER_TIMEOUT_MS, 10_000);
-
-/**
- * Whether to automatically apply recommendations when the toggle is ON.
- * When false, recommendations are fetched and displayed but not applied
- * until the user clicks "Apply".
- */
-const OPTIMIZER_AUTO_APPLY = ['1', 'true', 'yes'].includes(
-  (process.env.OPTIMIZER_AUTO_APPLY || '').toLowerCase(),
-);
-
 // ── Contracts ──────────────────────────────────────────────────────────────────
 
 /**
@@ -270,14 +224,6 @@ module.exports = {
   MIN_REBALANCE_INTERVAL_MIN,
   MAX_REBALANCES_PER_DAY,
   LOG_FILE,
-
-  // Optimizer
-  OPTIMIZER_PORT,
-  OPTIMIZER_URL,
-  OPTIMIZER_API_KEY,
-  OPTIMIZER_INTERVAL_MIN,
-  OPTIMIZER_TIMEOUT_MS,
-  OPTIMIZER_AUTO_APPLY,
 
   // Contracts
   POSITION_MANAGER,

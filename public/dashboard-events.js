@@ -20,13 +20,8 @@ import {
   posChangePage, activateSelectedPos, removeSelectedPos, posRowClick,
 } from './dashboard-positions.js';
 import {
-  setTType, onParamChange, saveRangeWidth, saveAndRebalance, applyAll,
-  TRIGGER_OOR, TRIGGER_EDGE, TRIGGER_TIME,
+  onParamChange, saveRangeWidth, saveAndRebalance, applyAll,
 } from './dashboard-throttle.js';
-import {
-  optUrlChanged, optPing, optTogglePolling, optQueryNow,
-  optToggleAutoApply, optApplyLast,
-} from './dashboard-optimizer.js';
 import {
   toggleInitialDeposit, saveInitialDeposit, toggleRealizedInput, saveRealizedGains,
 } from './dashboard-data.js';
@@ -186,10 +181,6 @@ export function bindAllEvents() {
   if (realSaveBtn) realSaveBtn.addEventListener('click', saveRealizedGains);
 
   // ── Bot configuration ─────────────────────────────────────────────────────
-  _click('tb-oor',  () => setTType(TRIGGER_OOR));
-  _click('tb-edge', () => setTType(TRIGGER_EDGE));
-  _click('tb-time', () => setTType(TRIGGER_TIME));
-
   _input('inMinInterval', onParamChange);
   _input('inMaxReb', onParamChange);
 
@@ -208,14 +199,6 @@ export function bindAllEvents() {
   // ── Rebalance events pagination ───────────────────────────────────────────
   _click('rebPrevBtn', () => rebChangePage(-1));
   _click('rebNextBtn', () => rebChangePage(1));
-
-  // ── Optimizer ─────────────────────────────────────────────────────────────
-  _input('optUrl', optUrlChanged);
-  _click('optPingBtn', optPing);
-  _click('optToggle', optTogglePolling);
-  _click('optQueryBtn', optQueryNow);
-  _click('optAutoApplyToggle', optToggleAutoApply);
-  _click('optApplyBtn', optApplyLast);
 
   // ── Event delegation for dynamically generated elements ───────────────────
 

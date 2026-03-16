@@ -344,8 +344,8 @@
 
 <header>
   <div class="logo">
-    <div class="logo-text"><h1>Position Manager</h1><p>v3 · PulseChain · Auto-Rebalance</p></div>
-    <div class="logo-icon">for 9mm</div>
+    <div class="logo-text"><h1>Position Manager</h1><p>v3 · <a href="https://pulsechain.com/" target="_blank" rel="noopener noreferrer" class="9mm-pos-mgr-btn-link-sm">PulseChain</a> · Auto-Rebalance</p></div>
+    <a class="logo-icon" href="https://9mm.pro/" target="_blank" rel="noopener noreferrer" title="Visit 9mm Pro">for 9mm</a>
   </div>
   <div class="header-right">
     <div class="chain-badge">⛓ PulseChain</div>
@@ -361,10 +361,11 @@
       <div class="9mm-pos-mgr-help-title">How It Works</div>
       <ul class="9mm-pos-mgr-help-list">
         <li>This dashboard manages <strong>one active liquidity position</strong> per wallet per liquidity pool.</li>
-        <li>When rebalancing, the old position is drained and a new one is minted.</li>
+        <li>When the price moves out of the configured range, the bot automatically rebalances by draining the old position and minting a new one centered on the current price.</li>
         <li>All data on this page is scoped to a <strong>single wallet</strong> and a <strong>single liquidity pool</strong>.</li>
         <li>Only V3 concentrated liquidity (NFT) positions are supported.</li>
-        <li>Historical rebalance events are scanned up to 5 years back.</li>
+        <li>Historical rebalance events are scanned up to 5 years back and used to calculate lifetime P&amp;L.</li>
+        <li>The $usd value of the initial deposit is automatically detected. In case of a problem with that, a dialog pops up to notify the user of the opportunity to enter it manually instead at top left in the app under &ldquo;Initial Deposit&rdquo;. Manual entries there always override any auto-detected value.</li>
       </ul>
       <div class="9mm-pos-mgr-help-title">Fund Tracking</div>
       <p class="9mm-pos-mgr-help-text">When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
@@ -410,8 +411,8 @@
       <div class="9mm-pos-mgr-pnl-row"><span>Realized gains</span><span id="pnlRealized" class="9mm-pos-mgr-pnl-val-neu">$0.00</span></div>
     </div>
     <div class="realized-gains-row" id="initialDepositRow">
-      <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your original deposit amount for lifetime P&amp;L">Edit initial deposit</span>
-      <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">USD value when you first created this LP position</div>
+      <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your original deposit amount for lifetime P&amp;L">Edit Initial Deposit</span>
+      <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">USD value when you first created this LP position<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
       <div class="realized-gains-input-wrap" id="initialDepositInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
         <input type="number" class="realized-gains-input" id="initialDepositInput" step="0.01" min="0" placeholder="0.00">
@@ -419,8 +420,8 @@
       </div>
     </div>
     <div class="realized-gains-row" id="realizedGainsRow">
-      <span class="realized-gains-label" id="realizedGainsLabel" title="Click to edit realized gains from sold LP tokens">Edit realized gains</span>
-      <div class="9mm-pos-mgr-realized-hint" id="realizedGainsNote">Lifetime gains from coins sold out of this LP position</div>
+      <span class="realized-gains-label" id="realizedGainsLabel" title="Click to edit realized gains from sold LP tokens">Edit Realized Gains</span>
+      <div class="9mm-pos-mgr-realized-hint" id="realizedGainsNote">Lifetime gains from coins sold out of this LP position<br>This is done manually only, in the input box below.</div>
       <div class="realized-gains-input-wrap" id="realizedGainsInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
         <input type="number" class="realized-gains-input" id="realizedGainsInput" step="0.01" min="0" placeholder="0.00">
@@ -437,9 +438,9 @@
   <div class="kpi-card wrn"><div class="kpi-label">Today / Limit</div><div class="kpi-value wrn" id="kpiToday">0 / 20</div><div class="kpi-sub" id="kpiTodaySub">resets at midnight</div></div>
   <div class="kpi-card dbl"><div class="kpi-label">Rebalance Interval</div><div class="kpi-value dbl" id="kpiCountdown">—</div><div class="kpi-sub" id="kpiCDSub">Only triggered when out-of-range</div></div>
   <div class="kpi-card neu">
-    <div class="kpi-label">Net Return</div><div class="kpi-value neu" id="kpiNet">—</div><div class="kpi-sub">lifetime fees + price change − gas</div>
+    <div class="kpi-label">Net Return</div><div class="kpi-value neu" id="kpiNet">—</div><div class="kpi-sub">Lifetime fees + price change − lifetime gas</div>
     <hr class="9mm-pos-mgr-kpi-divider">
-    <div class="kpi-label">Impermanent Loss/Gain</div><div class="kpi-value neu" id="netIL">—</div><div class="kpi-sub">LP value vs holding tokens</div>
+    <div class="kpi-label">Impermanent Loss/Gain</div><div class="kpi-value neu" id="netIL">—</div><div class="kpi-sub">Lifetime LP value vs holding tokens</div>
   </div>
 </div>
 
@@ -500,17 +501,6 @@
       <span class="at-label">Trigger:</span>
       <span class="at-value" id="activeTriggerDisplay">OUT OF RANGE</span>
       <span class="9mm-pos-mgr-trigger-hint">±<span id="activeRangeW">20</span>%</span>
-    </div>
-
-    <!-- Trigger type -->
-    <div class="cfg-block">
-      <div class="cfg-title">Trigger Type <span class="live-badge">EDITABLE</span></div>
-      <div class="ttype-row">
-        <button class="ttype-btn active" id="tb-oor">Out of Range</button>
-        <button class="ttype-btn" id="tb-edge">Near Edge</button>
-        <button class="ttype-btn" id="tb-time">Scheduled</button>
-      </div>
-      <div id="tparams"></div>
     </div>
 
     <!-- Timing & throttle -->
@@ -594,18 +584,9 @@
     <div class="cfg-block">
       <div class="cfg-title">Contracts &amp; Network</div>
 
-      <!-- Auto-detect notice -->
-      <div class="9mm-pos-mgr-info-box">
-        ⚡ Position type (NFT / ERC-20) is <strong>auto-detected</strong>. Browse &amp; select positions via the <strong>📂 Positions</strong> button in the header.
-      </div>
-
       <div class="pcol">
         <span class="plbl">Position Manager (NonfungiblePositionManager)</span>
         <input type="text" class="pinput full" id="inPM" value="0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2" placeholder="0x…">
-      </div>
-      <div class="pcol 9mm-pos-mgr-mt-md">
-        <span class="plbl">ERC-20 Position Token (optional fallback)</span>
-        <input type="text" class="pinput full" id="inERC20Addr" value="" placeholder="0x… (leave blank for NFT-only pools)">
       </div>
       <div class="pcol 9mm-pos-mgr-mt-md">
         <span class="plbl">RPC URL</span>
@@ -652,81 +633,6 @@
       <span id="rebPageLabel" class="9mm-pos-mgr-text-muted-sm">Page 1 of 1</span>
       <button class="pos-pag-btn" id="rebNextBtn" disabled>Next &rarr;</button>
     </div>
-  </div>
-</div>
-
-<!-- Row 2c: LP Optimization Engine -->
-<div class="row c1">
-  <div class="opt-panel">
-    <div class="opt-header">
-      <div class="opt-conn-dot unknown" id="optConnDot"></div>
-      <span class="opt-conn-label" id="optConnLabel">Not connected</span>
-      <span class="opt-title">LP Optimization Engine</span>
-      <span class="9mm-pos-mgr-text-muted-sm" id="optNextLabel"></span>
-    </div>
-
-    <!-- URL + ping -->
-    <div class="opt-url-row">
-      <span class="opt-url-label">Engine URL</span>
-      <input type="text" class="opt-url-input" id="optUrl" placeholder="http://localhost:3693">
-      <input type="text" class="opt-url-input 9mm-pos-mgr-input-narrow" id="optApiKey" placeholder="API key (optional)">
-      <button class="opt-ping-btn" id="optPingBtn">⏱ Ping</button>
-    </div>
-
-    <!-- Connection-required notice (shown when disconnected) -->
-    <div id="optDisabledNotice" class="9mm-pos-mgr-notice-box">
-      ⚠ Controls are disabled until an active Optimization Engine is detected on the configured URL.
-      The dashboard probes <code id="optProbeUrl" class="9mm-pos-mgr-text-accent"></code> every 15 s.
-    </div>
-
-    <!-- Controls row (disabled until connected) -->
-    <div class="opt-controls">
-      <div class="opt-toggle-wrap 9mm-pos-mgr-disabled" id="optToggleWrap" title="Requires connected engine">
-        <span class="opt-toggle-label">Auto-poll every 10 min</span>
-        <div class="toggle" id="optToggle"><div class="tknob"></div></div>
-        <span class="cv 9mm-pos-mgr-text-md" id="optToggleLabel">OFF</span>
-      </div>
-      <button class="opt-query-btn" id="optQueryBtn" disabled title="Requires connected engine">⚡ Query Now</button>
-      <div class="9mm-pos-mgr-flex-fill"></div>
-      <div class="opt-auto-apply-row 9mm-pos-mgr-opt-auto-row">
-        <span class="9mm-pos-mgr-opt-label">Auto-apply recommendations</span>
-        <div class="toggle 9mm-pos-mgr-disabled" id="optAutoApplyToggle" title="Requires connected engine"><div class="tknob"></div></div>
-        <span class="cv 9mm-pos-mgr-toggle-value" id="optAutoApplyLabel">OFF</span>
-      </div>
-    </div>
-
-    <!-- Status row -->
-    <div class="opt-status-row" id="optStatusRow">
-      <span>Fetches: <strong id="optTotalFetches">0</strong></span>
-      <span>Success: <strong id="optSuccessFetches" class="opt-status-ok">0</strong></span>
-      <span id="optLastErrLabel"></span>
-    </div>
-
-    <!-- Last recommendation -->
-    <div class="opt-rec-panel hidden" id="optRecPanel">
-      <div class="opt-rec-header">
-        <span class="opt-rec-title">Last Recommendation</span>
-        <span class="opt-rec-time" id="optRecTime">—</span>
-      </div>
-
-      <!-- Confidence bar -->
-      <div class="opt-conf-bar-wrap 9mm-pos-mgr-initially-hidden" id="optConfWrap">
-        <div class="opt-conf-labels"><span>Confidence</span><span id="optConfPct">—</span></div>
-        <div class="opt-conf-bar"><div class="opt-conf-fill" id="optConfFill" style="width:0%;background:var(--accent3);"></div></div>
-      </div>
-
-      <!-- Rationale -->
-      <div class="opt-rationale 9mm-pos-mgr-initially-hidden" id="optRationale"></div>
-
-      <!-- Changes grid -->
-      <div class="opt-changes-grid" id="optChangesGrid"></div>
-
-      <!-- Apply button (shown when auto-apply is OFF) -->
-      <button class="opt-apply-btn" id="optApplyBtn" disabled>✓ Apply Recommendation</button>
-    </div>
-
-    <!-- Fetch history -->
-    <div class="opt-history" id="optHistory"></div>
   </div>
 </div>
 

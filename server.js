@@ -79,15 +79,6 @@
  *   SWAP_ROUTER             V3 SwapRouter (default: 0x7bE8fb…)
  *   QUOTER_V2               V3 QuoterV2 (default: 0x500260…)
  *
- * LP Optimization Engine (optional)
- * ──────────────────────────────────
- *   OPTIMIZER_PORT           Port for local engine (default: 3693)
- *   OPTIMIZER_URL            Full URL override (default: http://localhost:{port})
- *   OPTIMIZER_API_KEY        Bearer token for engine auth
- *   OPTIMIZER_INTERVAL_MIN   Auto-query interval (default: 10)
- *   OPTIMIZER_TIMEOUT_MS     HTTP timeout (default: 10000)
- *   OPTIMIZER_AUTO_APPLY     Auto-apply recommendations (default: false)
- *
  * ═══════════════════════════════════════════════════════════════════════════════
  * USD PRICING — DexScreener + DexTools
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -166,6 +157,12 @@
  *
  * // start bot (requires PRIVATE_KEY):
  * node bot.js
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ROAD MAP
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * See README.md § Road Map for planned features.
  */
 
 'use strict';
@@ -205,7 +202,7 @@ const _BOT_CONFIG_PATH = path.join(process.cwd(), '.bot-config.json');
 const _PERSISTED_KEYS = [
   'rangeWidthPct', 'slippagePct', 'checkIntervalSec',
   'minRebalanceIntervalMin', 'maxRebalancesPerDay',
-  'gasStrategy', 'triggerType', 'triggerEdgePct', 'triggerSchedHours',
+  'gasStrategy', 'triggerType',
   'initialDepositUsd', 'hodlBaseline', 'residuals',
 ];
 
@@ -256,8 +253,6 @@ const botState = {
   maxRebalancesPerDay:    config.MAX_REBALANCES_PER_DAY,
   gasStrategy:            'auto',
   triggerType:            'oor',
-  triggerEdgePct:         5,
-  triggerSchedHours:      24,
   positionManager:        config.POSITION_MANAGER,
   factory:                config.FACTORY,
   activePosition:         null,
@@ -375,7 +370,7 @@ async function _handleApiConfig(req, res) {
   const allowed = [
     'rangeWidthPct', 'slippagePct', 'checkIntervalSec',
     'minRebalanceIntervalMin', 'maxRebalancesPerDay',
-    'gasStrategy', 'triggerType', 'triggerEdgePct', 'triggerSchedHours',
+    'gasStrategy', 'triggerType',
     'initialDepositUsd',
   ];
   const patch = {};

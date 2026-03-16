@@ -104,3 +104,13 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
 full text.
 
 Currently, only supports liquidity positions on a single liquidity pool per wallet. Support for multiple liquidity pools on one wallet is planned. Currently, one LP position is selected for a given wallet, and P&L is tracked for only that liquidity pool.
+
+---
+
+## Road Map
+
+Planned features for future releases:
+
+- **Near Edge Trigger** — trigger a rebalance when the current price approaches the edge of the active range (configurable threshold), rather than waiting until out of range.
+- **LP Optimization Engine** — integrate with an external optimization service that recommends optimal range width, rebalance timing, and fee tier based on historical pool data and volatility analysis.
+- **Multiple Pools per Wallet** — manage LP positions across multiple liquidity pools from a single wallet, with per-pool P&L tracking.
