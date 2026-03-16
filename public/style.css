@@ -61,7 +61,7 @@ body::before{
 }
 
 .opt-title{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:12px;
   font-weight:700;
   letter-spacing:1px;
@@ -207,7 +207,7 @@ body::before{
 }
 
 .opt-rec-title{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:11px;
   font-weight:700;
   letter-spacing:0.5px;
@@ -611,15 +611,17 @@ body::before{
   color:var(--accent);
   cursor:pointer;
   transition:color .2s;
+  text-decoration:underline;
 }
 .realized-gains-label:hover{color:var(--text);}
 
 .realized-gains-input-wrap{
-  display:flex;
+  display:none;
   align-items:center;
   gap:4px;
   margin-top:4px;
 }
+.realized-gains-input-wrap.open{display:flex;}
 
 .realized-gains-input{
   width:90px;
@@ -733,7 +735,7 @@ body::before{
   display:flex;
   align-items:center;
   justify-content:center;
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-weight:800;
   font-size:15px;
   color:#000;
@@ -741,7 +743,7 @@ body::before{
 }
 
 .modal-logo h2{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:18px;
   font-weight:800;
 }
@@ -953,7 +955,7 @@ header{
   display:flex;
   align-items:center;
   justify-content:center;
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-weight:800;
   font-size:16px;
   color:#000;
@@ -963,7 +965,7 @@ header{
 }
 
 .logo-text h1{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:20px;
   font-weight:800;
   letter-spacing:-0.5px;
@@ -984,7 +986,7 @@ header{
   display:flex;
   align-items:center;
   justify-content:center;
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-weight:800;
   font-size:14px;
   color:#fff;
@@ -1175,7 +1177,7 @@ header{
 /* ── KPI ── */
 .kpi-grid{
   display:grid;
-  grid-template-columns:repeat(7,1fr);
+  grid-template-columns:repeat(5,1fr);
   gap:8px;
   margin-bottom:14px;
 }
@@ -1215,14 +1217,14 @@ header{
 }
 
 .kpi-value{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:18px;
   font-weight:700;
   line-height:1;
   margin-bottom:4px;
 }
 .kpi-value.pos{color:var(--accent3);}.kpi-value.neg{color:var(--danger);}
-.kpi-value.neu{color:var(--accent);}.kpi-value.wrn{color:var(--warn);}
+.kpi-value.neu{color:var(--text);}.kpi-value.wrn{color:var(--warn);}
 .kpi-value.dbl{color:#c471ed;}
 
 .kpi-sub{
@@ -1239,7 +1241,7 @@ header{
 }
 
 .card-title{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:12px;
   font-weight:700;
   letter-spacing:1px;
@@ -1494,7 +1496,7 @@ header{
 }
 
 .cfg-title{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:13px;
   font-weight:700;
   letter-spacing:1px;
@@ -1603,7 +1605,7 @@ header{
   font-size:12px;
   font-weight:700;
   padding:4px 8px;
-  text-align:right;
+  text-align:left;
   outline:none;
   transition:border-color .2s;
 }
@@ -1647,6 +1649,67 @@ header{
   flex-direction:column;
   font-size:11px;
   margin-bottom:8px;
+}
+
+/* ── RPC combo input ── */
+
+.rpc-combo{
+  position:relative;
+  display:flex;
+  align-items:stretch;
+}
+
+.rpc-combo-input{
+  flex:1;
+  border-top-right-radius:0;
+  border-bottom-right-radius:0;
+}
+
+.rpc-combo-toggle{
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-left:0;
+  border-radius:0 6px 6px 0;
+  color:var(--muted);
+  cursor:pointer;
+  font-size:10px;
+  padding:0 8px;
+  transition:background .2s;
+}
+
+.rpc-combo-toggle:hover{
+  background:var(--border);
+}
+
+.rpc-combo-list{
+  display:none;
+  position:absolute;
+  top:100%;
+  left:0;
+  right:0;
+  list-style:none;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:0 0 6px 6px;
+  z-index:20;
+  max-height:180px;
+  overflow-y:auto;
+}
+
+.rpc-combo-list.open{
+  display:block;
+}
+
+.rpc-combo-list li{
+  padding:8px 10px;
+  font-size:12px;
+  color:var(--text);
+  cursor:pointer;
+  transition:background .15s;
+}
+
+.rpc-combo-list li:hover{
+  background:var(--bg3);
 }
 
 /* Token type selector */
@@ -1741,7 +1804,7 @@ header{
 }
 
 .countdown{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:18px;
   font-weight:700;
   color:#c471ed;
@@ -2125,7 +2188,7 @@ tbody tr.live-row{background:rgb(0 229 255 / 2%);}
 }
 
 .disclaimer-header h2{
-  font-family:Syne,sans-serif;
+  font-family:Urbanist,sans-serif;
   font-size:16px;
   font-weight:800;
   text-transform:uppercase;

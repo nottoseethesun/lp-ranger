@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Position Manager for 9mm</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Urbanist:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="9mm-pos-mgr.css">
@@ -350,7 +350,6 @@
     <a class="pchain-link" href="https://pulsechain.com/" target="_blank" rel="noopener noreferrer" title="Visit PulseChain">PulseChain</a>
   </div>
   <div class="header-right">
-    <div class="chain-badge">⛓ PulseChain</div>
     <button class="pos-browser-btn">📂 <span id="headerPosLabel">0 Positions</span></button>
     <button class="pos-browser-btn" title="Re-scan wallet for positions">⟳ Scan</button><span class="9mm-pos-mgr-scan-help" title="Re-scans the wallet for all V3 NFT positions on PulseChain. Use after creating or receiving new LP positions on 9mm Pro.">?</span>
     <button class="hwbtn">🔑 <span id="headerWalletLabel">Set Wallet</span></button>
@@ -392,29 +391,70 @@
   <span class="pt-badge nft" id="ptBadge">NFT POSITION</span>
   <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">Position NFT #</span><strong id="wsToken">—</strong>
   <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
-  <div class="ws-pos-summary" title="Browse all positions">
-    <span id="wsActivePosLabel">No active position</span>
-    <span class="9mm-pos-mgr-text-muted">·</span>
-    <span id="wsPosCount" class="ws-pos-count">0 total</span>
-    <span class="9mm-pos-mgr-text-muted">📂</span>
-  </div>
-  <span class="9mm-pos-mgr-last-check" id="lastCheckLabel">—</span>
 </div>
 
-<!-- KPI Row — 6 cards (live data populated once on-chain connection is wired) -->
+<!-- KPI Row — 3 cards: Current Position | Rebalances | Lifetime -->
 <div class="kpi-grid">
+  <!-- ── Current Position ── -->
   <div class="kpi-card neu kpi-card-wide">
-    <div class="kpi-label">Cumulative P&amp;L (USD)</div>
+    <div class="kpi-label">Current LP Position <span class="9mm-pos-mgr-pos-status" id="curPosStatus"></span></div>
     <div class="kpi-value neu" id="kpiPnl">—</div>
-    <div class="kpi-sub" id="kpiPnlPct">start bot for live data</div>
+    <div class="kpi-sub" id="kpiPnlPct">Start Bot for Live Data</div>
     <div class="9mm-pos-mgr-pnl-breakdown" id="pnlBreakdown">
-      <div class="9mm-pos-mgr-pnl-row"><span>Fees earned</span><span id="pnlFees" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
-      <div class="9mm-pos-mgr-pnl-row"><span>Price gain/loss</span><span id="pnlPrice" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
-      <div class="9mm-pos-mgr-pnl-row"><span>Realized gains</span><span id="pnlRealized" class="9mm-pos-mgr-pnl-val-neu">$0.00</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Current Value</span><span id="kpiValue" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Fees Earned</span><span id="pnlFees" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Price Gain/Loss</span><span id="pnlPrice" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Realized Gains</span><span id="pnlRealized" class="9mm-pos-mgr-pnl-val-neu">$0.00</span></div>
     </div>
+    <div class="kpi-sub" id="kpiDeposit">No Position Selected</div>
+    <div class="kpi-sub" id="kpiApr">APR: —</div>
+    <hr class="9mm-pos-mgr-kpi-divider">
+    <div class="kpi-label">Impermanent Loss/Gain</div>
+    <div class="kpi-value neu" id="curIL">—</div>
+    <div class="kpi-sub">LP Value vs Holding Tokens (This Position)</div>
+    <div class="realized-gains-row" id="curDepositRow">
+      <div class="9mm-pos-mgr-pnl-row"><span>Initial Deposit</span><span id="curDepositDisplay" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
+      <span class="realized-gains-label" id="curDepositLabel" title="Click to set the deposit amount for this LP position">Edit Initial Deposit</span>
+      <div class="9mm-pos-mgr-realized-hint" id="curDepositNote">USD value when you created this specific LP position.<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
+      <div class="realized-gains-input-wrap" id="curDepositInputWrap">
+        <span class="9mm-pos-mgr-text-muted">$usd</span>
+        <input type="number" class="realized-gains-input" id="curDepositInput" step="0.01" min="0" placeholder="0.00">
+        <button class="realized-gains-save" id="curDepositSaveBtn">Save</button>
+      </div>
+    </div>
+    <div class="realized-gains-row" id="curRealizedRow">
+      <span class="realized-gains-label" id="curRealizedLabel" title="Click to set realized gains for this LP position">Edit Realized Gains</span>
+      <div class="9mm-pos-mgr-realized-hint" id="curRealizedNote">Coins sold or withdrawn from this specific LP position. You must also update the lifetime Realized Gains separately.</div>
+      <div class="realized-gains-input-wrap" id="curRealizedInputWrap">
+        <span class="9mm-pos-mgr-text-muted">$usd</span>
+        <input type="number" class="realized-gains-input" id="curRealizedInput" step="0.01" min="0" placeholder="0.00">
+        <button class="realized-gains-save" id="curRealizedSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Rebalances ── -->
+  <div class="kpi-card wrn">
+    <div class="kpi-label">Rebalances</div>
+    <div class="kpi-sub 9mm-pos-mgr-mt-xs">Number of Rebalances Done This Period</div>
+    <div class="kpi-value wrn" id="kpiToday">0 / 20</div>
+    <div class="kpi-sub" id="kpiTodaySub">Resets at Midnight</div>
+    <hr class="9mm-pos-mgr-kpi-divider">
+    <div class="kpi-sub">Rebalance Interval</div>
+    <div class="kpi-value dbl" id="kpiCountdown">—</div>
+    <div class="kpi-sub" id="kpiCDSub">Rebalance is only triggered when the position is out-of-range by the % set below.</div>
+  </div>
+
+  <!-- ── Lifetime ── -->
+  <div class="kpi-card neu kpi-card-wide">
+    <div class="kpi-label">Lifetime</div>
+    <div class="kpi-label">Net Return</div><div class="kpi-value neu" id="kpiNet">—</div><div class="kpi-sub">Lifetime Fees + Price Change − Lifetime Gas</div>
+    <hr class="9mm-pos-mgr-kpi-divider">
+    <div class="kpi-label">Impermanent Loss/Gain</div><div class="kpi-value neu" id="netIL">—</div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
     <div class="realized-gains-row" id="initialDepositRow">
+      <div class="9mm-pos-mgr-pnl-row"><span>Initial Deposit</span><span id="lifetimeDepositDisplay" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
       <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your original deposit amount for lifetime P&amp;L">Edit Initial Deposit</span>
-      <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">USD value when you first created this LP position.<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
+      <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">USD value when you first created this LP position in this liquidity pool on this wallet (up to five years back).<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
       <div class="realized-gains-input-wrap" id="initialDepositInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
         <input type="number" class="realized-gains-input" id="initialDepositInput" step="0.01" min="0" placeholder="0.00">
@@ -431,18 +471,9 @@
       </div>
     </div>
     <div class="9mm-pos-mgr-sync-row" id="syncRow">
-      <span class="9mm-pos-mgr-text-muted-sm">Lifetime figures cover up to 5 years back</span>
+      <span class="9mm-pos-mgr-text-muted-sm">Lifetime figures cover up to 5 years back.</span>
       <span class="9mm-pos-mgr-sync-badge" id="syncBadge">Syncing...</span>
     </div>
-  </div>
-  <div class="kpi-card neu"><div class="kpi-label">Current Value (USD)</div><div class="kpi-value neu" id="kpiValue">—</div><div class="kpi-sub" id="kpiDeposit">no position selected</div></div>
-  <div class="kpi-card neu"><div class="kpi-label">Total Fees (USD)</div><div class="kpi-value neu" id="kpiFees">—</div><div class="kpi-sub" id="kpiApr">APR: —</div></div>
-  <div class="kpi-card wrn"><div class="kpi-label">Today / Limit</div><div class="kpi-value wrn" id="kpiToday">0 / 20</div><div class="kpi-sub" id="kpiTodaySub">resets at midnight</div></div>
-  <div class="kpi-card dbl"><div class="kpi-label">Rebalance Interval</div><div class="kpi-value dbl" id="kpiCountdown">—</div><div class="kpi-sub" id="kpiCDSub">Only triggered when out-of-range</div></div>
-  <div class="kpi-card neu">
-    <div class="kpi-label">Net Return</div><div class="kpi-value neu" id="kpiNet">—</div><div class="kpi-sub">Lifetime fees + price change − lifetime gas</div>
-    <hr class="9mm-pos-mgr-kpi-divider">
-    <div class="kpi-label">Impermanent Loss/Gain</div><div class="kpi-value neu" id="netIL">—</div><div class="kpi-sub">Lifetime LP value vs holding tokens</div>
   </div>
 </div>
 
@@ -483,7 +514,8 @@
       <div class="stat-item"><div class="stat-label">Tick Lower</div><div class="stat-val acc" id="sTL">—</div></div>
       <div class="stat-item"><div class="stat-label">Tick Upper</div><div class="stat-val acc" id="sTU">—</div></div>
       <div class="stat-item"><div class="stat-label">Current Tick</div><div class="stat-val" id="sTC">—</div></div>
-      <div class="stat-item"><div class="stat-label" id="statLiqLabel">Liquidity</div><div class="stat-val" id="sLiq">—</div></div>
+      <div class="stat-item"><div class="stat-label" id="statShare0Label">Pool Share Token 0</div><div class="stat-val" id="sShare0">—</div></div>
+      <div class="stat-item"><div class="stat-label" id="statShare1Label">Pool Share Token 1</div><div class="stat-val" id="sShare1">—</div></div>
     </div>
   </div>
 
@@ -500,7 +532,7 @@
     <div class="card-title">Bot Configuration <span class="tag">ALL PARAMS LIVE</span></div>
 
     <div class="active-trigger-row">
-      <span class="at-label">Trigger:</span>
+      <span class="at-label">Trigger Type:</span>
       <span class="at-value" id="activeTriggerDisplay">OUT OF RANGE</span>
       <span class="9mm-pos-mgr-trigger-hint">±<span id="activeRangeW">20</span>%</span>
     </div>
@@ -510,21 +542,21 @@
       <div class="cfg-title">Rebalance Timing &amp; Throttle <span id="throttleBadge" class="live-badge">OK</span></div>
 
       <div class="prow">
-        <span class="plbl">Min time between rebalances</span>
+        <span class="plbl">Min Time Between Rebalances</span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inMinInterval" value="10" min="1" max="1440" step="1">
           <span class="punit">min</span>
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Max rebalances / day</span>
+        <span class="plbl">Max Rebalances / Day</span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inMaxReb" value="20" min="1" max="200" step="1">
           <span class="punit">/day</span>
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Doubling trigger window</span>
+        <span class="plbl">Doubling Trigger Window</span>
         <div class="9mm-pos-mgr-input-row">
           <span class="9mm-pos-mgr-text-accent-sm" id="dblWindowLabel">40 min</span>
           <span class="punit">(auto)</span>
@@ -552,7 +584,7 @@
     <div class="cfg-block">
       <div class="cfg-title">Range &amp; Execution</div>
       <div class="prow">
-        <span class="plbl">New range width (±%)</span>
+        <span class="plbl">New Range Width (±%)</span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inRangeW" value="20" min="1" max="100" step="1">
           <span class="punit">%</span>
@@ -561,21 +593,21 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Slippage tolerance</span>
+        <span class="plbl">Slippage Tolerance</span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inSlip" value="0.5" min="0.1" max="5" step="0.1">
           <span class="punit">%</span>
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Check interval</span>
+        <span class="plbl">Check Interval</span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inInterval" value="60" min="10" max="3600" step="10">
           <span class="punit">sec</span>
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Gas strategy</span>
+        <span class="plbl">Gas Strategy</span>
         <select class="pinput w100 9mm-pos-mgr-text-left" id="inGas">
           <option value="auto">Auto</option><option value="fast">Fast</option><option value="slow">Economy</option>
         </select>
@@ -587,12 +619,20 @@
       <div class="cfg-title">Contracts &amp; Network</div>
 
       <div class="pcol">
-        <span class="plbl">Position Manager (NonfungiblePositionManager)</span>
-        <input type="text" class="pinput full" id="inPM" value="0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2" placeholder="0x…">
+        <span class="plbl">RPC URL</span>
+        <div class="rpc-combo">
+          <input type="text" class="pinput full rpc-combo-input" id="inRpc" value="https://rpc-pulsechain.g4mm4.io" placeholder="https://rpc-pulsechain.g4mm4.io">
+          <button type="button" class="rpc-combo-toggle" id="rpcToggle" title="Show RPC presets">&#x25BC;</button>
+          <ul class="rpc-combo-list" id="rpcList">
+            <li data-rpc="https://rpc-pulsechain.g4mm4.io">rpc-pulsechain.g4mm4.io (primary)</li>
+            <li data-rpc="https://rpc.pulsechain.com">rpc.pulsechain.com (official)</li>
+            <li data-rpc="https://pulsechain-rpc.publicnode.com">pulsechain-rpc.publicnode.com</li>
+          </ul>
+        </div>
       </div>
       <div class="pcol 9mm-pos-mgr-mt-md">
-        <span class="plbl">RPC URL</span>
-        <input type="text" class="pinput full" id="inRpc" value="https://rpc-pulsechain.g4mm4.io" placeholder="https://rpc-pulsechain.g4mm4.io">
+        <span class="plbl">Position Manager (NonfungiblePositionManager)</span>
+        <input type="text" class="pinput full" id="inPM" value="0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2" placeholder="0x…">
       </div>
       <div class="pcol 9mm-pos-mgr-mt-md">
         <span class="plbl">Factory Address</span>
@@ -611,7 +651,7 @@
     <div class="card-title">Per-Day P&amp;L (USD) <span class="tag">UP TO 31 DAYS</span></div>
     <div class="9mm-pos-mgr-table-scroll">
       <table class="hist-table">
-        <thead><tr><th>Date</th><th>Fees</th><th>Gas</th><th>Price</th><th>Net P&amp;L</th><th>Cumulative</th></tr></thead>
+        <thead><tr><th>Date</th><th>Fees ($usd)</th><th>Gas ($usd)</th><th>Price ($usd)</th><th>Net P&amp;L ($usd)</th><th>Cumulative ($usd)</th></tr></thead>
         <tbody id="dailyPnlBody">
           <tr><td colspan="6" class="9mm-pos-mgr-table-empty">No P&amp;L data yet</td></tr>
         </tbody>

@@ -165,26 +165,45 @@ export const posStore = {
 let posBrowserPage     = 0;
 let posBrowserSelected = -1;
 
+/**
+ * Populate wallet-strip fields for the active position.
+ * @param {object} active  Active position entry from posStore.
+ */
+function _updateActiveStripDetails(active) {
+  const pair    = _tokenName(active.token0Symbol, active.token0) + '/' + _tokenName(active.token1Symbol, active.token1);
+  const isNft   = active.positionType === 'nft';
+  const typeStr = isNft ? 'NFT #' + active.tokenId : 'ERC-20';
+  const activeLabel = g('wsActivePosLabel');
+  if (activeLabel) activeLabel.textContent = typeStr + ' \u00B7 ' + pair;
+  const badge = g('ptBadge');
+  if (badge) {
+    badge.textContent = isNft ? 'NFT POSITION' : 'ERC-20 POSITION';
+    badge.className   = 'pt-badge ' + (isNft ? 'nft' : 'erc20');
+  }
+  const tokenLabel = g('posTokenLabel');
+  if (tokenLabel) tokenLabel.textContent = isNft ? 'Position NFT #' : 'ERC-20: ';
+  const wsToken = g('wsToken');
+  if (wsToken) wsToken.textContent = isNft
+    ? (active.tokenId || '\u2014')
+    : (active.contractAddress || '\u2014').slice(0, 10) + '\u2026';
+  const wsPool = g('wsPool');
+  if (wsPool) wsPool.textContent = pair + ' \u00B7 ' + (active.fee / 10000).toFixed(2) + '%';
+}
+
 /** Update the compact position strip shown beneath the header. */
 export function updatePosStripUI() {
   const count  = posStore.count();
   const active = posStore.getActive();
-  g('headerPosLabel').textContent = count + ' Position' + (count !== 1 ? 's' : '');
-  g('wsPosCount').textContent     = count + ' total';
+  const headerLabel = g('headerPosLabel');
+  if (headerLabel) headerLabel.textContent = count + ' Position' + (count !== 1 ? 's' : '');
+  const posCount = g('wsPosCount');
+  if (posCount) posCount.textContent = count + ' total';
 
   if (active) {
-    const pair    = _tokenName(active.token0Symbol, active.token0) + '/' + _tokenName(active.token1Symbol, active.token1);
-    const typeStr = active.positionType === 'nft' ? 'NFT #' + active.tokenId : 'ERC-20';
-    g('wsActivePosLabel').textContent = typeStr + ' \u00B7 ' + pair;
-    g('ptBadge').textContent  = active.positionType === 'nft' ? 'NFT POSITION' : 'ERC-20 POSITION';
-    g('ptBadge').className    = 'pt-badge ' + (active.positionType === 'nft' ? 'nft' : 'erc20');
-    g('posTokenLabel').textContent = active.positionType === 'nft' ? 'Position NFT #' : 'ERC-20: ';
-    g('wsToken').textContent = active.positionType === 'nft'
-      ? (active.tokenId || '\u2014')
-      : (active.contractAddress || '\u2014').slice(0, 10) + '\u2026';
-    g('wsPool').textContent = pair + ' \u00B7 ' + (active.fee / 10000).toFixed(2) + '%';
+    _updateActiveStripDetails(active);
   } else {
-    g('wsActivePosLabel').textContent = 'No active position';
+    const activeLabel = g('wsActivePosLabel');
+    if (activeLabel) activeLabel.textContent = 'No active position';
   }
 
   const capWarn = g('posCapWarn');
@@ -385,17 +404,25 @@ function _setHtml(id, html) {
 export function _applyLocalPositionData(pos) {
   _setText('sTL', pos.tickLower ?? '\u2014');
   _setText('sTU', pos.tickUpper ?? '\u2014');
-  _setText('sLiq', pos.liquidity ? String(pos.liquidity) : '\u2014');
 
   const t0Sym = _tokenName(pos.token0Symbol, pos.token0) || '\u2014';
   const t1Sym = _tokenName(pos.token1Symbol, pos.token1) || '\u2014';
 
   _setHtml('statT0Label', _tokenLabelHtml(t0Sym, pos.token0 || ''));
   _setHtml('statT1Label', _tokenLabelHtml(t1Sym, pos.token1 || ''));
+  _setText('statShare0Label', 'Pool Share ' + t0Sym);
+  _setText('statShare1Label', 'Pool Share ' + t1Sym);
   _setText('cl0', '\u25A0 ' + t0Sym + ': 50%');
   _setText('cl1', '\u25A0 ' + t1Sym + ': 50%');
   _setText('wsPool', t0Sym + ' / ' + t1Sym + ' \u00B7 ' + (pos.fee / 10000).toFixed(2) + '%');
   _setText('kpiDeposit', 'start bot for USD values');
+  const statusEl = g('curPosStatus');
+  if (statusEl) {
+    const liq = pos.liquidity;
+    const isClosed = liq !== undefined && liq !== null && String(liq) === '0';
+    statusEl.textContent = isClosed ? 'CLOSED' : 'ACTIVE';
+    statusEl.className = '9mm-pos-mgr-pos-status ' + (isClosed ? 'closed' : 'active');
+  }
 }
 
 /** Remove the highlighted position from the store. */

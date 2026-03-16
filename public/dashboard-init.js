@@ -19,7 +19,8 @@ import {
   onParamChange, updateThrottleUI, injectThrottleDeps, snapshotApplied,
 } from './dashboard-throttle.js';
 import {
-  startDataPolling, loadRealizedGains, _fmtUsd, positionRangeVisual,
+  startDataPolling, loadRealizedGains, loadInitialDeposit, _fmtUsd, positionRangeVisual,
+  refreshCurDepositDisplay,
 } from './dashboard-data.js';
 import { bindAllEvents } from './dashboard-events.js';
 
@@ -64,20 +65,37 @@ updatePosStripUI();
     botConfig.tU = active.tickUpper || 0;
     _applyLocalPositionData(active);
   }
+  refreshCurDepositDisplay();
 }());
 
 // ── Activity log ─────────────────────────────────────────────────────────────
+
+// Restore RPC URL from localStorage
+(function restoreRpcUrl() {
+  try {
+    const saved = localStorage.getItem('9mm_rpc_url');
+    if (saved) {
+      const el = g('inRpc');
+      if (el) el.value = saved;
+    }
+  } catch { /* private mode */ }
+}());
 
 act('\u{1F680}', 'start', 'Dashboard ready', 'Import a wallet to begin');
 
 // Check if the server already has a wallet loaded (e.g. from a previous page load)
 checkServerWalletStatus();
 
-// Populate realized gains display from localStorage
-(function initRealizedGains() {
-  const val = loadRealizedGains();
-  const el = g('pnlRealized');
-  if (el) el.textContent = _fmtUsd(val);
+// Populate realized gains and lifetime deposit displays from localStorage
+(function initSavedValues() {
+  const rg = loadRealizedGains();
+  const rgEl = g('pnlRealized');
+  if (rgEl) rgEl.textContent = _fmtUsd(rg);
+  const dep = loadInitialDeposit();
+  const depDisp = g('lifetimeDepositDisplay');
+  if (depDisp) depDisp.textContent = dep > 0 ? '$usd ' + dep.toFixed(2) : '—';
+  const depLabel = g('initialDepositLabel');
+  if (depLabel) depLabel.textContent = dep > 0 ? 'Initial Deposit: $' + dep.toFixed(2) : 'Edit Initial Deposit';
 }());
 
 // ── Start intervals ─────────────────────────────────────────────────────────

@@ -38,26 +38,18 @@ function mockEthersLib({ primaryFails = false, fallbackFails = false } = {}) {
 // ── RPC fallback (via bot-loop directly) ─────────────────────────────────────
 
 describe('bot-loop: createProviderWithFallback', () => {
+  const PRI = 'https://primary.rpc', FALL = 'https://fallback.rpc';
   it('uses primary when it is reachable', async () => {
-    const lib = mockEthersLib();
-    const provider = await createProviderWithFallback(
-      'https://primary.rpc', 'https://fallback.rpc', lib,
-    );
-    assert.strictEqual(provider.url, 'https://primary.rpc');
+    const p = await createProviderWithFallback(PRI, FALL, mockEthersLib());
+    assert.strictEqual(p.url, PRI);
   });
-
   it('falls back when primary is unreachable', async () => {
-    const lib = mockEthersLib({ primaryFails: true });
-    const provider = await createProviderWithFallback(
-      'https://primary.rpc', 'https://fallback.rpc', lib,
-    );
-    assert.strictEqual(provider.url, 'https://fallback.rpc');
+    const p = await createProviderWithFallback(PRI, FALL, mockEthersLib({ primaryFails: true }));
+    assert.strictEqual(p.url, FALL);
   });
-
   it('throws when both are unreachable', async () => {
-    const lib = mockEthersLib({ primaryFails: true, fallbackFails: true });
     await assert.rejects(
-      () => createProviderWithFallback('https://primary.rpc', 'https://fallback.rpc', lib),
+      () => createProviderWithFallback(PRI, FALL, mockEthersLib({ primaryFails: true, fallbackFails: true })),
       { message: 'fallback unreachable' },
     );
   });
@@ -66,54 +58,25 @@ describe('bot-loop: createProviderWithFallback', () => {
 // ── resolvePrivateKey ────────────────────────────────────────────────────────
 
 describe('bot-loop: resolvePrivateKey', () => {
-  const config = require('../src/config');
-  let origPrivateKey;
-  let origKeyFile;
-  let origKeyPassword;
-  let origWalletPassword;
-
-  beforeEach(() => {
-    origPrivateKey = config.PRIVATE_KEY;
-    origKeyFile = config.KEY_FILE;
-    origKeyPassword = config.KEY_PASSWORD;
-    origWalletPassword = config.WALLET_PASSWORD;
-  });
-
-  afterEach(() => {
-    config.PRIVATE_KEY = origPrivateKey;
-    config.KEY_FILE = origKeyFile;
-    config.KEY_PASSWORD = origKeyPassword;
-    config.WALLET_PASSWORD = origWalletPassword;
-  });
-
+  const cfg = require('../src/config');
+  let orig;
+  beforeEach(() => { orig = { pk: cfg.PRIVATE_KEY, kf: cfg.KEY_FILE, kp: cfg.KEY_PASSWORD, wp: cfg.WALLET_PASSWORD }; });
+  afterEach(() => { cfg.PRIVATE_KEY = orig.pk; cfg.KEY_FILE = orig.kf; cfg.KEY_PASSWORD = orig.kp; cfg.WALLET_PASSWORD = orig.wp; });
   it('returns PRIVATE_KEY when set', async () => {
-    config.PRIVATE_KEY = '0xabc123';
-    const key = await resolvePrivateKey({ askPassword: null });
-    assert.strictEqual(key, '0xabc123');
+    cfg.PRIVATE_KEY = '0xabc123';
+    assert.strictEqual(await resolvePrivateKey({ askPassword: null }), '0xabc123');
   });
-
   it('returns null when no sources available', async () => {
-    config.PRIVATE_KEY = null;
-    config.KEY_FILE = null;
-    config.WALLET_PASSWORD = null;
-    const key = await resolvePrivateKey({ askPassword: null });
-    assert.strictEqual(key, null);
+    cfg.PRIVATE_KEY = null; cfg.KEY_FILE = null; cfg.WALLET_PASSWORD = null;
+    assert.strictEqual(await resolvePrivateKey({ askPassword: null }), null);
   });
-
   it('returns null for KEY_FILE without password in non-interactive mode', async () => {
-    config.PRIVATE_KEY = null;
-    config.KEY_FILE = '/tmp/fake-keyfile';
-    config.KEY_PASSWORD = null;
-    const key = await resolvePrivateKey({ askPassword: null });
-    assert.strictEqual(key, null);
+    cfg.PRIVATE_KEY = null; cfg.KEY_FILE = '/tmp/fake-keyfile'; cfg.KEY_PASSWORD = null;
+    assert.strictEqual(await resolvePrivateKey({ askPassword: null }), null);
   });
-
   it('PRIVATE_KEY takes priority over KEY_FILE', async () => {
-    config.PRIVATE_KEY = '0xfirst';
-    config.KEY_FILE = '/tmp/fake-keyfile';
-    config.KEY_PASSWORD = 'pw';
-    const key = await resolvePrivateKey({ askPassword: null });
-    assert.strictEqual(key, '0xfirst');
+    cfg.PRIVATE_KEY = '0xfirst'; cfg.KEY_FILE = '/tmp/fake-keyfile'; cfg.KEY_PASSWORD = 'pw';
+    assert.strictEqual(await resolvePrivateKey({ askPassword: null }), '0xfirst');
   });
 });
 
@@ -227,148 +190,71 @@ function buildPollDeps(opts = {}) {
   return { ethersLib, signer, position, throttle, dispatch };
 }
 
+/** Helper: run pollCycle with buildPollDeps + overrides. */
+function _poll(tick, overrides = {}) {
+  const deps = buildPollDeps({ tick });
+  if (overrides.setupDeps) overrides.setupDeps(deps);
+  const stateUpdates = overrides.collectStates ? [] : null;
+  const captured = overrides.captureState ? {} : null;
+  return pollCycle({
+    signer: deps.signer, provider: overrides.provider || {},
+    position: deps.position, throttle: deps.throttle,
+    _ethersLib: deps.ethersLib, dryRun: overrides.dryRun,
+    _botState: overrides.botState || { rangeWidthPct: 20, slippagePct: 0.5 },
+    _pnlTracker: overrides.tracker,
+    updateBotState: stateUpdates ? (u) => stateUpdates.push(u)
+      : captured ? (u) => Object.assign(captured, u) : () => {},
+  }).then(r => ({ r, deps, stateUpdates, captured }));
+}
+
 describe('bot-loop: pollCycle', () => {
   it('returns rebalanced:false when in range', async () => {
-    const deps = buildPollDeps({ tick: 0 });
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: { rangeWidthPct: 20, slippagePct: 0.5 },
-      updateBotState: () => {},
-    });
+    const { r } = await _poll(0);
     assert.strictEqual(r.rebalanced, false);
   });
-
   it('rebalances when out of range', async () => {
-    const deps = buildPollDeps({ tick: 600 });
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: { rangeWidthPct: 20, slippagePct: 0.5 },
-      updateBotState: () => {},
-    });
+    const { r, deps } = await _poll(600);
     assert.strictEqual(r.rebalanced, true);
     assert.strictEqual(deps.position.tokenId, 99n);
   });
-
   it('does not rebalance when throttled', async () => {
-    const deps = buildPollDeps({ tick: 700 });
-    deps.throttle.canRebalance = () => ({
-      allowed: false, msUntilAllowed: 60000, reason: 'min_interval',
-    });
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: {},
-      updateBotState: () => {},
-    });
+    const { r } = await _poll(700, { botState: {},
+      setupDeps: d => { d.throttle.canRebalance = () => ({ allowed: false, msUntilAllowed: 60000, reason: 'min_interval' }); } });
     assert.strictEqual(r.rebalanced, false);
   });
-
   it('does not rebalance in dry-run mode', async () => {
-    const deps = buildPollDeps({ tick: 700 });
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      dryRun: true,
-      _ethersLib: deps.ethersLib,
-      _botState: {},
-      updateBotState: () => {},
-    });
+    const { r } = await _poll(700, { dryRun: true, botState: {} });
     assert.strictEqual(r.rebalanced, false);
   });
-
   it('overrides pnlSnapshot with real on-chain values when tracker is present', async () => {
-    const deps = buildPollDeps({ tick: 0 });
     const { createPnlTracker } = require('../src/pnl-tracker');
     const tracker = createPnlTracker({ initialDeposit: 100 });
-    tracker.openEpoch({
-      entryValue: 100, entryPrice: 1.0,
-      lowerPrice: 0.8, upperPrice: 1.2,
-      token0UsdPrice: 1.0, token1UsdPrice: 1.0,
-    });
-    const captured = {};
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: { rangeWidthPct: 20, slippagePct: 0.5 },
-      _pnlTracker: tracker,
-      updateBotState: (state) => { Object.assign(captured, state); },
-    });
+    tracker.openEpoch({ entryValue: 100, entryPrice: 1.0, lowerPrice: 0.8, upperPrice: 1.2,
+      token0UsdPrice: 1.0, token1UsdPrice: 1.0 });
+    const { r, captured } = await _poll(0, { tracker, captureState: true });
     assert.strictEqual(r.rebalanced, false);
-    // pnlSnapshot should exist (even if prices are 0 due to mock)
     if (captured.pnlSnapshot) {
-      assert.strictEqual(typeof captured.pnlSnapshot.currentValue, 'number');
-      assert.strictEqual(typeof captured.pnlSnapshot.priceChangePnl, 'number');
-      assert.strictEqual(typeof captured.pnlSnapshot.netReturn, 'number');
-      assert.strictEqual(typeof captured.pnlSnapshot.cumulativePnl, 'number');
+      for (const k of ['currentValue', 'priceChangePnl', 'netReturn', 'cumulativePnl']) {
+        assert.strictEqual(typeof captured.pnlSnapshot[k], 'number');
+      }
     }
   });
 });
 
 describe('bot-loop: forceRebalance', () => {
   it('rebalances even when in range if forceRebalance is set', async () => {
-    const deps = buildPollDeps({ tick: 0 }); // tick 0 is in range [-600, 600]
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: { forceRebalance: true, rangeWidthPct: 20, slippagePct: 0.5 },
-      updateBotState: () => {},
-    });
+    const { r } = await _poll(0, { botState: { forceRebalance: true, rangeWidthPct: 20, slippagePct: 0.5 } });
     assert.strictEqual(r.rebalanced, true, 'should rebalance when forced even if in range');
   });
-
   it('skips throttle check on forced rebalance', async () => {
-    const deps = buildPollDeps({ tick: 0 });
-    deps.throttle.canRebalance = () => ({
-      allowed: false, msUntilAllowed: 60000, reason: 'daily_limit',
-    });
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: { forceRebalance: true, rangeWidthPct: 20, slippagePct: 0.5 },
-      updateBotState: () => {},
-    });
+    const { r } = await _poll(0, { botState: { forceRebalance: true, rangeWidthPct: 20, slippagePct: 0.5 },
+      setupDeps: d => { d.throttle.canRebalance = () => ({ allowed: false, msUntilAllowed: 60000, reason: 'daily_limit' }); } });
     assert.strictEqual(r.rebalanced, true, 'should bypass throttle when forced');
   });
-
   it('does not clear forceRebalance flag on failure', async () => {
-    // Build deps with a mint that always throws (simulating slippage failure)
-    const deps = buildPollDeps({ tick: 0 });
-    deps.dispatch[ADDR.pm].mint = async () => { throw new Error('Price slippage check'); };
-    // Rebuild ethersLib so new MockContract instances pick up the failing mint
-    const failDeps = buildPollDeps({ tick: 0 });
-    failDeps.dispatch[ADDR.pm].mint = async () => { throw new Error('Price slippage check'); };
     const botState = { forceRebalance: true, rangeWidthPct: 20, slippagePct: 0.5 };
-    const r = await pollCycle({
-      signer: failDeps.signer,
-      provider: {},
-      position: failDeps.position,
-      throttle: failDeps.throttle,
-      _ethersLib: failDeps.ethersLib,
-      _botState: botState,
-      updateBotState: (patch) => { Object.assign(botState, patch); },
-    });
+    const { r } = await _poll(0, { botState, captureState: false,
+      setupDeps: d => { d.dispatch[ADDR.pm].mint = async () => { throw new Error('Price slippage check'); }; } });
     assert.strictEqual(r.rebalanced, false);
     assert.strictEqual(botState.forceRebalance, true, 'flag should persist after failure');
   });
@@ -466,37 +352,18 @@ describe('bot-loop: _overridePnlWithRealValues (IL computation)', () => {
 
 describe('bot-loop: throttleState in updateBotState', () => {
   it('emits throttleState after a successful rebalance', async () => {
-    const deps = buildPollDeps({ tick: 700 });
-    const stateUpdates = [];
-    deps.throttle.getState = () => ({ dailyCount: 3, dailyMax: 20 });
-    await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: { rangeWidthPct: 20, slippagePct: 0.5 },
-      updateBotState: (u) => stateUpdates.push(u),
-    });
+    const { stateUpdates } = await _poll(700, { collectStates: true,
+      setupDeps: d => { d.throttle.getState = () => ({ dailyCount: 3, dailyMax: 20 }); } });
     const ts = stateUpdates.find((u) => u.throttleState)?.throttleState;
     assert.ok(ts, 'throttleState should be emitted after rebalance');
     assert.strictEqual(ts.dailyCount, 3);
   });
-
   it('emits throttleState when throttle rejects', async () => {
-    const deps = buildPollDeps({ tick: 700 });
-    const stateUpdates = [];
-    deps.throttle.canRebalance = () => ({ allowed: false, msUntilAllowed: 60000, reason: 'daily_max' });
-    deps.throttle.getState = () => ({ dailyCount: 20, dailyMax: 20 });
-    await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: {},
-      updateBotState: (u) => stateUpdates.push(u),
-    });
+    const { stateUpdates } = await _poll(700, { botState: {}, collectStates: true,
+      setupDeps: d => {
+        d.throttle.canRebalance = () => ({ allowed: false, msUntilAllowed: 60000, reason: 'daily_max' });
+        d.throttle.getState = () => ({ dailyCount: 20, dailyMax: 20 });
+      } });
     const ts = stateUpdates.find((u) => u.throttleState)?.throttleState;
     assert.ok(ts, 'throttleState should be emitted on throttle rejection');
     assert.strictEqual(ts.dailyCount, 20);
@@ -505,38 +372,12 @@ describe('bot-loop: throttleState in updateBotState', () => {
 
 describe('bot-loop: gas deferral', () => {
   it('returns gasDeferred when gas exceeds 0.5% of position value', async () => {
-    const deps = buildPollDeps({ tick: 700 }); // out of range
-    // Mock provider with very high gas price
-    const provider = {
-      mockProvider: true,
-      getFeeData: async () => ({ gasPrice: 100_000_000_000_000n }), // 0.0001 PLS per gas unit
-    };
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider,
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: { rangeWidthPct: 20, slippagePct: 0.5 },
-      updateBotState: () => {},
-    });
-    // Gas check will likely fail (no real price feed) and proceed to rebalance
-    // The key invariant: result has either rebalanced or gasDeferred
-    assert.ok(r.rebalanced === true || r.gasDeferred === true,
-      'should either rebalance or defer on gas');
+    const provider = { mockProvider: true, getFeeData: async () => ({ gasPrice: 100_000_000_000_000n }) };
+    const { r } = await _poll(700, { provider });
+    assert.ok(r.rebalanced === true || r.gasDeferred === true, 'should either rebalance or defer on gas');
   });
-
   it('returns inRange:true when position is in range', async () => {
-    const deps = buildPollDeps({ tick: 0 }); // in range
-    const r = await pollCycle({
-      signer: deps.signer,
-      provider: {},
-      position: deps.position,
-      throttle: deps.throttle,
-      _ethersLib: deps.ethersLib,
-      _botState: {},
-      updateBotState: () => {},
-    });
+    const { r } = await _poll(0, { botState: {} });
     assert.strictEqual(r.rebalanced, false);
     assert.strictEqual(r.inRange, true);
   });
@@ -545,20 +386,62 @@ describe('bot-loop: gas deferral', () => {
 describe('bot-loop: pnlSnapshot with dailyPnl', () => {
   it('emits pnlSnapshot containing dailyPnl in updateBotState when in range with tracker', async () => {
     const { createPnlTracker } = require('../src/pnl-tracker');
-    const deps = buildPollDeps({ tick: 0 }); // in range
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.openEpoch({ entryValue: 100, entryPrice: 1, lowerPrice: 0.8, upperPrice: 1.2,
       token0UsdPrice: 0.001, token1UsdPrice: 0.0005 });
-    const stateUpdates = [];
-    await pollCycle({
-      signer: deps.signer, provider: {}, position: deps.position,
-      throttle: deps.throttle, _ethersLib: deps.ethersLib,
-      _botState: {}, _pnlTracker: tracker,
-      updateBotState: (u) => stateUpdates.push(u),
-    });
+    const { stateUpdates } = await _poll(0, { botState: {}, tracker, collectStates: true });
     const snapUpdate = stateUpdates.find((u) => u.pnlSnapshot);
     assert.ok(snapUpdate, 'updateBotState should include pnlSnapshot');
-    assert.ok(Array.isArray(snapUpdate.pnlSnapshot.dailyPnl),
-      'pnlSnapshot should contain dailyPnl array');
+    assert.ok(Array.isArray(snapUpdate.pnlSnapshot.dailyPnl), 'pnlSnapshot should contain dailyPnl array');
+  });
+});
+
+describe('bot-loop: positionStats balance and activePosition liquidity', () => {
+  it('emits balance0 and balance1 in positionStats when in range', async () => {
+    const { captured } = await _poll(0, { botState: {}, captureState: true });
+    assert.ok(captured.positionStats, 'positionStats should be emitted');
+    assert.strictEqual(typeof captured.positionStats.balance0, 'string');
+    assert.strictEqual(typeof captured.positionStats.balance1, 'string');
+    assert.ok(captured.positionStats.balance0.includes('.'), 'balance0 should be a decimal string');
+  });
+  it('emits balance0 and balance1 when out of range', async () => {
+    const { stateUpdates } = await _poll(700, { collectStates: true });
+    const stats = stateUpdates.find((u) => u.positionStats);
+    assert.ok(stats, 'positionStats should be emitted');
+    assert.strictEqual(typeof stats.positionStats.balance0, 'string');
+    assert.strictEqual(typeof stats.positionStats.balance1, 'string');
+  });
+  it('emits liquidity in activePosition after rebalance', async () => {
+    const { stateUpdates } = await _poll(700, { collectStates: true });
+    const posUpdate = stateUpdates.find((u) => u.activePosition);
+    assert.ok(posUpdate, 'activePosition should be emitted after rebalance');
+    assert.strictEqual(typeof posUpdate.activePosition.liquidity, 'string');
+  });
+  it('includes compositionRatio alongside balances', async () => {
+    const { captured } = await _poll(0, { botState: {}, captureState: true });
+    assert.strictEqual(typeof captured.positionStats.compositionRatio, 'number');
+    assert.ok(captured.positionStats.compositionRatio >= 0 && captured.positionStats.compositionRatio <= 1);
+  });
+});
+
+describe('bot-loop: lifetime P&L is independent of selected position', () => {
+  it('pnlSnapshot.initialDeposit is from tracker, not from position tokenId', async () => {
+    const { createPnlTracker } = require('../src/pnl-tracker');
+    const LIFETIME_DEPOSIT = 500;
+    const tracker = createPnlTracker({ initialDeposit: LIFETIME_DEPOSIT });
+    tracker.openEpoch({ entryValue: 500, entryPrice: 1, lowerPrice: 0.8, upperPrice: 1.2,
+      token0UsdPrice: 1.0, token1UsdPrice: 1.0 });
+    // Run with default position (tokenId=1n)
+    const { captured: cap1 } = await _poll(0, { botState: {}, tracker, captureState: true });
+    assert.ok(cap1.pnlSnapshot, 'pnlSnapshot should be emitted');
+    const deposit1 = cap1.pnlSnapshot.initialDeposit;
+    assert.strictEqual(deposit1, LIFETIME_DEPOSIT, 'deposit should match tracker config');
+    // Run again — same tracker, different poll cycle; tokenId on the position object is irrelevant
+    const tracker2 = createPnlTracker({ initialDeposit: LIFETIME_DEPOSIT });
+    tracker2.openEpoch({ entryValue: 500, entryPrice: 1, lowerPrice: 0.8, upperPrice: 1.2,
+      token0UsdPrice: 1.0, token1UsdPrice: 1.0 });
+    const { captured: cap2 } = await _poll(0, { botState: {}, tracker: tracker2, captureState: true });
+    assert.strictEqual(cap2.pnlSnapshot.initialDeposit, LIFETIME_DEPOSIT,
+      'lifetime deposit should be the same regardless of which position is selected in the browser');
   });
 });

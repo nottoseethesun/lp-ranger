@@ -9,6 +9,18 @@
 
 import { g, fmtDateTime } from './dashboard-helpers.js';
 
+/**
+ * Format a number as a USD table cell value.
+ * Zero shows without sign; negative puts sign before currency symbol.
+ * @param {number} val  Numeric value.
+ * @returns {string}  Formatted string, e.g. "$usd 1.23" or "\u2212$usd 1.23".
+ */
+function _tblUsd(val) {
+  if (Math.round(val * 100) === 0) return '0.00';
+  const sign = val < 0 ? '\u2212' : '';
+  return sign + Math.abs(val).toFixed(2);
+}
+
 /** Rebalance events pagination state. */
 let _rebEventsPage = 0;
 const _REB_PAGE_SIZE = 20;
@@ -39,11 +51,11 @@ export function renderDailyPnl(dailyPnl) {
     const pCls   = Math.round(pricePnl * 100) === 0 ? '' : pricePnl > 0 ? 'pos' : 'neg';
     return '<tr>' +
       '<td>' + (d.date || '—') + '</td>' +
-      '<td>$' + (d.feePnl || d.fees || 0).toFixed(2) + '</td>' +
-      '<td>$' + (d.gasCost || d.gas || 0).toFixed(2) + '</td>' +
-      '<td class="' + pCls + '">$' + pricePnl.toFixed(2) + '</td>' +
-      '<td class="' + netCls + '">$' + net.toFixed(2) + '</td>' +
-      '<td class="' + cumCls + '">$' + cumulative.toFixed(2) + '</td>' +
+      '<td>' + _tblUsd(d.feePnl || d.fees || 0) + '</td>' +
+      '<td>' + _tblUsd(d.gasCost || d.gas || 0) + '</td>' +
+      '<td class="' + pCls + '">' + _tblUsd(pricePnl) + '</td>' +
+      '<td class="' + netCls + '">' + _tblUsd(net) + '</td>' +
+      '<td class="' + cumCls + '">' + _tblUsd(cumulative) + '</td>' +
       '</tr>';
   });
 

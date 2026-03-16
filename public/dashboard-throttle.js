@@ -129,8 +129,8 @@ export function updateThrottleUI() {
   const fill = g('throttleFill');
   fill.style.width      = pct + '%';
   fill.style.background = pct < 60 ? 'var(--accent3)' : pct < 90 ? 'var(--warn)' : 'var(--danger)';
-  g('throttleLeft').textContent  = throttle.dailyCount + ' today';
-  g('throttleRight').textContent = 'limit: ' + throttle.dailyMax;
+  g('throttleLeft').textContent  = throttle.dailyCount + ' Today';
+  g('throttleRight').textContent = 'Limit per Day: ' + throttle.dailyMax;
 
   _renderThrottleBadge(pct);
 
@@ -151,13 +151,13 @@ export function updateThrottleUI() {
   if (can.allowed) {
     g('kpiCountdown').textContent = minIntervalMin + ' min';
     g('kpiCountdown').className   = 'kpi-value neu';
-    g('kpiCDSub').textContent     = 'Only triggered when out-of-range';
+    g('kpiCDSub').textContent     = 'Rebalance is only triggered when the position is out-of-range by the % set below.';
   } else {
     g('kpiCountdown').textContent = fmtCountdown(msLeft);
     g('kpiCountdown').className   = 'kpi-value ' + (throttle.doublingActive ? 'dbl' : 'wrn');
     g('kpiCDSub').textContent     = can.reason === 'daily_limit'
-      ? 'daily limit reached'
-      : throttle.doublingActive ? 'volatility doubling' : 'waiting \u2014 ' + fmtCountdown(msLeft) + ' left';
+      ? 'Daily Limit Reached'
+      : throttle.doublingActive ? 'Volatility Doubling' : 'Waiting \u2014 ' + fmtCountdown(msLeft) + ' Left';
   }
 
   _renderRangeBanner(can);
@@ -166,7 +166,7 @@ export function updateThrottleUI() {
   if (throttle.doublingActive && !can.allowed) {
     g('dblCountdown').textContent      = fmtCountdown(msLeft);
     g('dblCountdown').className        = 'countdown';
-    g('dblCountdownLabel').textContent = 'time until next rebalance allowed';
+    g('dblCountdownLabel').textContent = 'Time Until Next Rebalance Allowed';
   } else if (throttle.doublingActive) {
     g('dblCountdown').textContent = 'READY';
     g('dblCountdown').className   = 'countdown ok';
@@ -213,7 +213,7 @@ export function saveAndRebalance() {
 // ── Apply All dirty tracking ─────────────────────────────────────────────────
 
 /** IDs of all config inputs in the Bot Configuration panel. */
-const _CONFIG_IDS = ['inMinInterval', 'inMaxReb', 'inRangeW', 'inSlip', 'inInterval', 'inGas'];
+const _CONFIG_IDS = ['inMinInterval', 'inMaxReb', 'inRangeW', 'inSlip', 'inInterval', 'inGas', 'inRpc', 'inPM', 'inFactory'];
 
 /** Snapshot of last-applied values. */
 let _appliedSnapshot = {};

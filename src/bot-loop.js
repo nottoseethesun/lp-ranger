@@ -130,6 +130,29 @@ async function _readUnclaimedFees(provider, ethersLib, tokenId) {
 }
 
 /**
+ * Compute per-token pool share percentages and attach to posStats.
+ * @param {object} posStats   Stats object to augment.
+ * @param {object} amounts    Position amounts (amount0, amount1).
+ * @param {object} position   Position with token0, token1.
+ * @param {object} poolState  Pool state with poolAddress, decimals.
+ * @param {object} ethersLib  Ethers library.
+ * @param {object} provider   RPC provider.
+ */
+async function _addPoolShare(posStats, amounts, position, poolState, ethersLib, provider) {
+  try {
+    const { Contract } = ethersLib;
+    const abi = ['function balanceOf(address) view returns (uint256)'];
+    const [pool0, pool1] = await Promise.all([
+      new Contract(position.token0, abi, provider).balanceOf(poolState.poolAddress),
+      new Contract(position.token1, abi, provider).balanceOf(poolState.poolAddress),
+    ]);
+    const p0f = _toFloat(pool0, poolState.decimals0), p1f = _toFloat(pool1, poolState.decimals1);
+    posStats.poolShare0Pct = p0f > 0 ? (amounts.amount0 / p0f) * 100 : 0;
+    posStats.poolShare1Pct = p1f > 0 ? (amounts.amount1 / p1f) * 100 : 0;
+  } catch { /* non-critical — pool share is informational only */ }
+}
+
+/**
  * Calculate the USD value of a V3 position.
  * @param {object}  position   Position with liquidity, tickLower, tickUpper, token0, token1.
  * @param {object}  poolState  Pool state with tick, decimals0, decimals1.
@@ -274,6 +297,23 @@ function _recordResidual(deps, result) {
  * @param {object} ethersLib  ethers library (real or mock).
  * @returns {Promise<{rebalanced: boolean, error?: string}>}
  */
+/**
+ * Notify the dashboard of a successful rebalance.
+ * @param {object} deps       Injected dependencies.
+ * @param {object} throttle   Throttle handle.
+ * @param {object} position   Updated position data.
+ * @param {object[]} events   Rebalance events list.
+ */
+function _notifyRebalance(deps, throttle, position, events) {
+  deps.updateBotState({ rebalanceCount: (deps._rebalanceCount || 0) + 1,
+    lastRebalanceAt: new Date().toISOString(), throttleState: throttle.getState(),
+    rebalanceEvents: events ? [...events] : undefined,
+    activePosition: { tokenId: String(position.tokenId), token0: position.token0,
+      token1: position.token1, fee: position.fee,
+      tickLower: position.tickLower, tickUpper: position.tickUpper,
+      liquidity: String(position.liquidity || 0) } });
+}
+
 async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle, updateBotState } = deps;
 
@@ -309,14 +349,7 @@ async function _executeAndRecord(deps, ethersLib) {
         txHash: (result.txHashes && result.txHashes[result.txHashes.length - 1]) || '', blockNumber: 0 });
     }
 
-    if (updateBotState) {
-      updateBotState({ rebalanceCount: (deps._rebalanceCount || 0) + 1,
-        lastRebalanceAt: new Date().toISOString(), throttleState: throttle.getState(),
-        rebalanceEvents: events ? [...events] : undefined,
-        activePosition: { tokenId: String(position.tokenId), token0: position.token0,
-          token1: position.token1, fee: position.fee,
-          tickLower: position.tickLower, tickUpper: position.tickUpper } });
-    }
+    if (updateBotState) _notifyRebalance(deps, throttle, position, events);
   } else {
     console.error('[bot] Rebalance failed:', result.error);
   }
@@ -464,10 +497,12 @@ async function pollCycle(deps) {
   }
 
   if (updateBotState) {
-    const stateUpdate = {
-      poolState: { price: poolState.price, tick: poolState.tick },
-      positionStats: { compositionRatio: ratio },
-    };
+    const amounts = rangeMath.positionAmounts(position.liquidity, poolState.tick,
+      position.tickLower, position.tickUpper, poolState.decimals0, poolState.decimals1);
+    const posStats = { compositionRatio: ratio,
+      balance0: amounts.amount0.toFixed(6), balance1: amounts.amount1.toFixed(6) };
+    await _addPoolShare(posStats, amounts, position, poolState, ethersLib, provider);
+    const stateUpdate = { poolState: { price: poolState.price, tick: poolState.tick }, positionStats: posStats };
     if (pnlSnapshot) stateUpdate.pnlSnapshot = pnlSnapshot;
     updateBotState(stateUpdate);
   }
@@ -657,7 +692,8 @@ async function startBotLoop(opts) {
   _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle);
 
   const _activePos = () => ({ tokenId: String(position.tokenId), token0: position.token0,
-    token1: position.token1, fee: position.fee, tickLower: position.tickLower, tickUpper: position.tickUpper });
+    token1: position.token1, fee: position.fee, tickLower: position.tickLower, tickUpper: position.tickUpper,
+    liquidity: String(position.liquidity || 0) });
   updateBotState({ running: true, dryRun, startedAt: new Date().toISOString(),
     throttleState: throttle.getState(), rebalanceEvents, activePosition: _activePos() });
 

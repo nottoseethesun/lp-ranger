@@ -494,3 +494,55 @@ describe('formatPositionSummary', () => {
     assert.ok(!summary.includes('✓') && !summary.includes('✗'));
   });
 });
+
+// ── Closed position detection (zero liquidity) ──────────────────────────────
+
+describe('closed position detection', () => {
+  it('stores zero liquidity as 0n bigint', () => {
+    const store = createPositionStore();
+    store.add({ ...NFT_BASE, liquidity: 0n });
+    const active = store.getActive();
+    assert.strictEqual(active.liquidity, 0n);
+  });
+
+  it('stores non-zero liquidity correctly', () => {
+    const store = createPositionStore();
+    store.add({ ...NFT_BASE, liquidity: 124839201n });
+    assert.strictEqual(store.getActive().liquidity, 124839201n);
+  });
+
+  it('zero-liquidity position is returned by getActive', () => {
+    const store = createPositionStore();
+    store.add({ ...NFT_BASE, liquidity: 0n });
+    const active = store.getActive();
+    assert.ok(active !== null);
+    assert.strictEqual(BigInt(active.liquidity), 0n);
+  });
+
+  it('selecting a closed position makes it active', () => {
+    const store = createPositionStore();
+    store.add({ ...NFT_BASE, tokenId: '100', liquidity: 500n });
+    store.add({ ...NFT_BASE, tokenId: '101', liquidity: 0n });
+    store.select(1);
+    const active = store.getActive();
+    assert.strictEqual(active.tokenId, '101');
+    assert.strictEqual(active.liquidity, 0n);
+  });
+
+  it('closed positions coexist with active in same store', () => {
+    const store = createPositionStore();
+    store.add({ ...NFT_BASE, tokenId: '200', liquidity: 1000n });
+    store.add({ ...NFT_BASE, tokenId: '201', liquidity: 0n });
+    store.add({ ...NFT_BASE, tokenId: '202', liquidity: 0n });
+    assert.strictEqual(store.count(), 3);
+    const all = store.toArray();
+    const closed = all.filter(e => e.liquidity === 0n);
+    assert.strictEqual(closed.length, 2);
+  });
+
+  it('numeric 0 liquidity converts to 0n bigint', () => {
+    const store = createPositionStore();
+    store.add({ ...NFT_BASE, liquidity: 0 });
+    assert.strictEqual(store.getActive().liquidity, 0n);
+  });
+});

@@ -24,6 +24,7 @@ import {
 } from './dashboard-throttle.js';
 import {
   toggleInitialDeposit, saveInitialDeposit, toggleRealizedInput, saveRealizedGains,
+  toggleCurDeposit, saveCurDeposit, toggleCurRealized, saveCurRealized,
 } from './dashboard-data.js';
 import { rebChangePage } from './dashboard-history.js';
 
@@ -55,6 +56,17 @@ function _input(id, fn) {
 function _change(id, fn) {
   const el = g(id);
   if (el) el.addEventListener('change', fn);
+}
+
+/** localStorage key for persisted RPC URL. */
+const _RPC_KEY = '9mm_rpc_url';
+
+/**
+ * Persist the current RPC URL to localStorage.
+ * @param {string} url  RPC URL to save.
+ */
+function _saveRpc(url) {
+  try { localStorage.setItem(_RPC_KEY, url); } catch { /* private mode */ }
 }
 
 /** Wire up all static event handlers and event delegation. */
@@ -180,15 +192,44 @@ export function bindAllEvents() {
   const realSaveBtn = document.querySelector('#realizedGainsRow .realized-gains-save');
   if (realSaveBtn) realSaveBtn.addEventListener('click', saveRealizedGains);
 
+  // Current-position deposit
+  _click('curDepositLabel', toggleCurDeposit);
+  _change('curDepositInput', saveCurDeposit);
+  _click('curDepositSaveBtn', saveCurDeposit);
+
+  // Current-position realized gains
+  _click('curRealizedLabel', toggleCurRealized);
+  _change('curRealizedInput', saveCurRealized);
+  _click('curRealizedSaveBtn', saveCurRealized);
+
   // ── Bot configuration ─────────────────────────────────────────────────────
   _input('inMinInterval', onParamChange);
   _input('inMaxReb', onParamChange);
 
   // Track dirty state for Apply All button
-  ['inMinInterval', 'inMaxReb', 'inRangeW', 'inSlip', 'inInterval', 'inGas'].forEach(id => {
+  ['inMinInterval', 'inMaxReb', 'inRangeW', 'inSlip', 'inInterval', 'inGas', 'inRpc', 'inPM', 'inFactory'].forEach(id => {
     _input(id, checkApplyDirty);
     _change(id, checkApplyDirty);
   });
+
+  // RPC URL combo dropdown + localStorage persistence
+  const rpcToggle = g('rpcToggle');
+  const rpcList = g('rpcList');
+  if (rpcToggle && rpcList) {
+    rpcToggle.addEventListener('click', () => rpcList.classList.toggle('open'));
+    rpcList.addEventListener('click', e => {
+      const li = e.target.closest('[data-rpc]');
+      if (!li) return;
+      const inp = g('inRpc');
+      if (inp) { inp.value = li.dataset.rpc; _saveRpc(inp.value); checkApplyDirty(); }
+      rpcList.classList.remove('open');
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.rpc-combo')) rpcList.classList.remove('open');
+    });
+  }
+  const rpcInput = g('inRpc');
+  if (rpcInput) rpcInput.addEventListener('change', () => _saveRpc(rpcInput.value));
 
   // Save Range Width button
   document.querySelectorAll('.save-range-btn').forEach(btn => {
