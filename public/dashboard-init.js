@@ -16,8 +16,7 @@ import {
   injectPositionDeps, scanPositions,
 } from './dashboard-positions.js';
 import {
-  setTType, renderTParams, onParamChange, updateThrottleUI,
-  TRIGGER_OOR, injectThrottleDeps,
+  onParamChange, updateThrottleUI, injectThrottleDeps,
 } from './dashboard-throttle.js';
 import {
   startDataPolling, loadRealizedGains, _fmtUsd, positionRangeVisual,
@@ -39,9 +38,6 @@ bindAllEvents();
 initDisclaimer();
 
 // ── Initialise trigger UI ──────────────────────────────────────────────────
-
-setTType(TRIGGER_OOR);
-renderTParams();
 
 // Restore positions from localStorage (persisted across page reloads)
 _loadPosStore();
