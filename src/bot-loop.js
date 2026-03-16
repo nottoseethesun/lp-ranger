@@ -252,11 +252,13 @@ async function _scanHistory(provider, ethersLib, address, position, cache, event
     events.push(...found);
     console.log(`[bot] Found ${found.length} historical rebalance events`);
     if (throttle && found.length > 0) {
-      const cutoff = Math.floor(Date.now() / 1000) - 86400;
+      const cutoff = Math.floor((throttle.getState().dailyResetAt - 86_400_000) / 1000);
       const recent = found.filter((e) => e.timestamp >= cutoff).length;
       if (recent > 0) throttle.rehydrate(recent);
     }
-    updateState({ rebalanceEvents: [...events], rebalanceScanComplete: true });
+    const scanUpdate = { rebalanceEvents: [...events], rebalanceScanComplete: true };
+    if (throttle) scanUpdate.throttleState = throttle.getState();
+    updateState(scanUpdate);
   } catch (err) {
     console.warn('[bot] Event scan error:', err.message);
     updateState({ rebalanceScanComplete: true });
@@ -665,6 +667,7 @@ async function startBotLoop(opts) {
     running: true,
     dryRun,
     startedAt: new Date().toISOString(),
+    throttleState: throttle.getState(),
     rebalanceEvents,
     activePosition: {
       tokenId: String(position.tokenId),

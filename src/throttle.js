@@ -62,13 +62,13 @@
  */
 
 /**
- * Compute the Unix ms timestamp for the next midnight in local time.
+ * Compute the Unix ms timestamp for the next midnight UTC.
  * @param {Function} nowFn - Clock function returning current ms timestamp.
  * @returns {number}
  */
 function nextMidnight(nowFn) {
   const d = new Date(nowFn());
-  d.setHours(0, 0, 0, 0);
+  d.setUTCHours(0, 0, 0, 0);
   return d.getTime() + 86_400_000;
 }
 

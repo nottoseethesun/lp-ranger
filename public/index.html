@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>9mm v3 Position Manager</title>
+<title>Position Manager for 9mm</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
@@ -69,8 +69,8 @@
 <div class="modal-overlay hidden" id="walletModal">
   <div class="modal">
     <div class="modal-logo">
-      <div class="modal-logo-icon">9mm</div>
       <div><h2>Wallet Setup</h2><p>v3 Position Manager · PulseChain</p></div>
+      <div class="modal-logo-icon">for 9mm</div>
       <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
     <div class="modal-tabs">
@@ -201,11 +201,11 @@
 <div class="modal-overlay hidden" id="posBrowserModal">
   <div class="modal pos-browser-modal">
     <div class="modal-logo">
-      <div class="modal-logo-icon">9mm</div>
       <div>
         <h2>LP Position Browser</h2>
         <p>Browse, import &amp; select positions</p>
       </div>
+      <div class="modal-logo-icon">for 9mm</div>
       <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
 
@@ -344,8 +344,8 @@
 
 <header>
   <div class="logo">
-    <div class="logo-icon">9mm</div>
     <div class="logo-text"><h1>Position Manager</h1><p>v3 · PulseChain · Auto-Rebalance</p></div>
+    <div class="logo-icon">for 9mm</div>
   </div>
   <div class="header-right">
     <div class="chain-badge">⛓ PulseChain</div>
@@ -368,6 +368,8 @@
       </ul>
       <div class="9mm-pos-mgr-help-title">Fund Tracking</div>
       <p class="9mm-pos-mgr-help-text">When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
+      <div class="9mm-pos-mgr-help-title">Range Width</div>
+      <p class="9mm-pos-mgr-help-text">The <strong>New Range Width %</strong> is initially set based on the first liquidity position detected on the wallet. To adjust it, manually create a new LP position with your desired range on 9mm Pro, then reload the app in your browser and select the new position. The bot will adopt its range width going forward.</p>
       <button class="9mm-pos-mgr-help-close">Close</button>
     </div>
   </div>
@@ -428,7 +430,7 @@
   </div>
   <div class="kpi-card neu"><div class="kpi-label">Current Value (USD)</div><div class="kpi-value neu" id="kpiValue">—</div><div class="kpi-sub" id="kpiDeposit">no position selected</div></div>
   <div class="kpi-card neu"><div class="kpi-label">Total Fees (USD)</div><div class="kpi-value neu" id="kpiFees">—</div><div class="kpi-sub" id="kpiApr">APR: —</div></div>
-  <div class="kpi-card wrn"><div class="kpi-label">Today / Limit</div><div class="kpi-value wrn" id="kpiToday">0 / 20</div><div class="kpi-sub" id="kpiTodaySub">resets at midnight UTC</div></div>
+  <div class="kpi-card wrn"><div class="kpi-label">Today / Limit</div><div class="kpi-value wrn" id="kpiToday">0 / 20</div><div class="kpi-sub" id="kpiTodaySub">resets at midnight</div></div>
   <div class="kpi-card dbl"><div class="kpi-label">Rebalance Interval</div><div class="kpi-value dbl" id="kpiCountdown">—</div><div class="kpi-sub" id="kpiCDSub">Only triggered when out-of-range</div></div>
   <div class="kpi-card neu">
     <div class="kpi-label">Net Return</div><div class="kpi-value neu" id="kpiNet">—</div><div class="kpi-sub">lifetime fees + price change − gas</div>

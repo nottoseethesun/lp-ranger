@@ -463,3 +463,42 @@ describe('bot-loop: _overridePnlWithRealValues (IL computation)', () => {
     assert.strictEqual(typeof snap.totalIL, 'number', 'should compute IL from persisted baseline');
   });
 });
+
+describe('bot-loop: throttleState in updateBotState', () => {
+  it('emits throttleState after a successful rebalance', async () => {
+    const deps = buildPollDeps({ tick: 700 });
+    const stateUpdates = [];
+    deps.throttle.getState = () => ({ dailyCount: 3, dailyMax: 20 });
+    await pollCycle({
+      signer: deps.signer,
+      provider: {},
+      position: deps.position,
+      throttle: deps.throttle,
+      _ethersLib: deps.ethersLib,
+      _botState: { rangeWidthPct: 20, slippagePct: 0.5 },
+      updateBotState: (u) => stateUpdates.push(u),
+    });
+    const ts = stateUpdates.find((u) => u.throttleState)?.throttleState;
+    assert.ok(ts, 'throttleState should be emitted after rebalance');
+    assert.strictEqual(ts.dailyCount, 3);
+  });
+
+  it('emits throttleState when throttle rejects', async () => {
+    const deps = buildPollDeps({ tick: 700 });
+    const stateUpdates = [];
+    deps.throttle.canRebalance = () => ({ allowed: false, msUntilAllowed: 60000, reason: 'daily_max' });
+    deps.throttle.getState = () => ({ dailyCount: 20, dailyMax: 20 });
+    await pollCycle({
+      signer: deps.signer,
+      provider: {},
+      position: deps.position,
+      throttle: deps.throttle,
+      _ethersLib: deps.ethersLib,
+      _botState: {},
+      updateBotState: (u) => stateUpdates.push(u),
+    });
+    const ts = stateUpdates.find((u) => u.throttleState)?.throttleState;
+    assert.ok(ts, 'throttleState should be emitted on throttle rejection');
+    assert.strictEqual(ts.dailyCount, 20);
+  });
+});

@@ -485,14 +485,15 @@ function _updateBotStatus(d) {
  * Update throttle KPIs from /api/status.
  * @param {object} d  Status response object.
  */
-/** Format next midnight UTC in local time with timezone code. */
-function _nextMidnightUtcLocal() {
-  const now = new Date();
-  const utcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-  const localTime = utcMidnight.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const tz = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(now)
+/** Format the throttle reset time from the server's dailyResetAt timestamp. */
+function _fmtResetTime(dailyResetAt) {
+  if (!dailyResetAt) return '';
+  const d = new Date(dailyResetAt);
+  const utc = d.toISOString().slice(11, 16) + ' UTC';
+  const local = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const tz = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(d)
     .find(function (p) { return p.type === 'timeZoneName'; });
-  return 'Resets at ' + localTime + ' ' + (tz ? tz.value : 'local');
+  return 'Resets ' + utc + ' (' + local + ' ' + (tz ? tz.value : 'local') + ')';
 }
 
 function _updateThrottleKpis(d) {
@@ -501,8 +502,9 @@ function _updateThrottleKpis(d) {
   const today = g('kpiToday');
   if (today) today.textContent = ts.dailyCount + ' / ' + ts.dailyMax;
   const todaySub = g('kpiTodaySub');
-  if (todaySub && d.rebalanceEvents && d.rebalanceEvents.length > 0) {
-    todaySub.innerHTML = d.rebalanceEvents.length + ' lifetime \u00B7 resets at midnight UTC<br>' + _nextMidnightUtcLocal();
+  if (todaySub) {
+    const lifetime = d.rebalanceEvents ? d.rebalanceEvents.length : 0;
+    todaySub.innerHTML = lifetime + ' lifetime<br>' + _fmtResetTime(ts.dailyResetAt);
   }
 }
 

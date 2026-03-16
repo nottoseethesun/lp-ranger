@@ -1,7 +1,7 @@
 # 9mm v3 Position Manager
 
 Auto-rebalancing concentrated liquidity manager for [9mm Pro](https://9mm.pro)
-(Uniswap v3 fork) on PulseChain.
+(Uniswap v3 fork) on PulseChain, with complete P&L stats extending back up to five years for a single liquidity pool on a given wallet address. With Position Manager, you know where you're at.
 
 **V3 positions only** — V2 positions are not supported.
 
@@ -102,3 +102,5 @@ template.
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
 full text.
+
+Currently, only supports liquidity positions on a single liquidity pool per wallet. Support for multiple liquidity pools on one wallet is planned. Currently, one LP position is selected for a given wallet, and P&L is tracked for only that liquidity pool.
