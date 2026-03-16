@@ -133,7 +133,7 @@
 
 .\39 mm-pos-mgr-panel-title {
   font-family: Urbanist, sans-serif;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 1.5px;
 }
@@ -225,11 +225,13 @@
 .\39 mm-pos-mgr-section-title {
   margin-top: 4px;
   margin-bottom: 8px;
+  font-size: 14px;
 }
 
 .\39 mm-pos-mgr-section-title-spaced {
   margin-top: 14px;
   margin-bottom: 8px;
+  font-size: 14px;
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
