@@ -148,6 +148,32 @@ describe('createThrottle — daily reset', () => {
   });
 });
 
+// ── rehydrate ────────────────────────────────────────────────────────────────
+
+describe('createThrottle — rehydrate', () => {
+  it('seeds dailyCount from historical events', () => {
+    const t = createThrottle({ minIntervalMs: MIN, dailyMax: 5 });
+    assert.strictEqual(t.getState().dailyCount, 0);
+    t.rehydrate(3);
+    assert.strictEqual(t.getState().dailyCount, 3);
+  });
+
+  it('enforces daily limit after rehydration', () => {
+    const t = createThrottle({ minIntervalMs: MIN, dailyMax: 5 });
+    t.rehydrate(5);
+    const res = t.canRebalance();
+    assert.strictEqual(res.allowed, false);
+    assert.strictEqual(res.reason, 'daily_limit');
+  });
+
+  it('allows rebalance when rehydrated count is below limit', () => {
+    const t = createThrottle({ minIntervalMs: MIN, dailyMax: 5 });
+    t.rehydrate(2);
+    assert.strictEqual(t.canRebalance().allowed, true);
+    assert.strictEqual(t.getState().dailyCount, 2);
+  });
+});
+
 // ── doubling mode activation ──────────────────────────────────────────────────
 
 describe('createThrottle — doubling mode', () => {

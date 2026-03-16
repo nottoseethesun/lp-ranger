@@ -261,15 +261,14 @@ async function _closePnlEpoch(deps, result) {
  * @param {object[]} events      Mutable array to push results into.
  * @param {Function} updateState updateBotState callback.
  */
-async function _scanHistory(provider, ethersLib, address, position, cache, events, updateState) {
+async function _scanHistory(provider, ethersLib, address, position, cache, events, updateState, throttle) {
   try {
     updateState({ rebalanceScanComplete: false });
     const poolState = await getPoolState(provider, ethersLib, {
       factoryAddress: config.FACTORY,
       token0: position.token0, token1: position.token1, fee: position.fee,
     });
-    console.log(`[bot] Scanning rebalance history for ${address} on pool ${poolState.poolAddress}`);
-    console.log(`[bot] Position Manager: ${config.POSITION_MANAGER}`);
+    console.log(`[bot] Scanning rebalance history for ${address} (pool ${poolState.poolAddress})`);
     const found = await scanRebalanceHistory(provider, ethersLib, {
       walletAddress: address,
       positionManagerAddress: config.POSITION_MANAGER,
@@ -280,6 +279,11 @@ async function _scanHistory(provider, ethersLib, address, position, cache, event
     });
     events.push(...found);
     console.log(`[bot] Found ${found.length} historical rebalance events`);
+    if (throttle && found.length > 0) {
+      const cutoff = Math.floor(Date.now() / 1000) - 86400;
+      const recent = found.filter((e) => e.timestamp >= cutoff).length;
+      if (recent > 0) throttle.rehydrate(recent);
+    }
     updateState({ rebalanceEvents: [...events], rebalanceScanComplete: true });
   } catch (err) {
     console.warn('[bot] Event scan error:', err.message);
@@ -435,10 +439,8 @@ async function pollCycle(deps) {
   let poolState;
   try {
     poolState = await getPoolState(provider, ethersLib, {
-      factoryAddress: config.FACTORY,
-      token0: position.token0,
-      token1: position.token1,
-      fee: position.fee,
+      factoryAddress: config.FACTORY, token0: position.token0,
+      token1: position.token1, fee: position.fee,
     });
   } catch (err) {
     console.error('[bot] Pool state error:', err.message);
@@ -492,9 +494,7 @@ async function pollCycle(deps) {
 
   // 4. Dry-run: log and skip
   if (dryRun) {
-    console.log('[bot] DRY RUN — position out of range, would rebalance but skipping');
-    console.log(`[bot]   price=${poolState.price}  tick=${poolState.tick}`);
-    console.log(`[bot]   range=[${position.tickLower}, ${position.tickUpper}]`);
+    console.log(`[bot] DRY RUN — OOR, price=${poolState.price} tick=${poolState.tick} range=[${position.tickLower},${position.tickUpper}]`);
     return { rebalanced: false };
   }
 
@@ -651,20 +651,15 @@ async function startBotLoop(opts) {
     console.warn('[bot] P&L tracker init error:', err.message);
   }
 
-  // Initialize HODL baseline from historical prices (non-blocking)
   initHodlBaseline(provider, ethersLib, position, botState, updateBotState)
     .catch((err) => console.warn('[bot] HODL baseline background error:', err.message));
-
-  // Create throttle
   const throttle = createThrottle({
-    minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60 * 1000,
+    minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60_000,
     dailyMax: config.MAX_REBALANCES_PER_DAY,
   });
-
-  // Scan on-chain rebalance history (non-blocking)
   const rebalanceEvents = [];
   const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache.json') });
-  _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState);
+  _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle);
 
   updateBotState({
     running: true,
@@ -681,15 +676,12 @@ async function startBotLoop(opts) {
     },
   });
 
-  // Accumulated fees from past rebalances (USD) — current uncollected fees added on top
   let collectedFeesUsd = 0;
-
-  // Poll loop with concurrency guard and failure tracking
   let rebalanceCount = 0;
   let firstFailureAt = null;
   let polling = false;
   const intervalMs = config.CHECK_INTERVAL_SEC * 1000;
-  const FAILURE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+  const FAILURE_WINDOW_MS = 3600_000;
 
   const poll = async () => {
     if (polling) return;

@@ -236,7 +236,15 @@ function createThrottle(opts = {}) {
     if (newOpts.dailyMax !== null && newOpts.dailyMax !== undefined) state.dailyMax = newOpts.dailyMax;
   }
 
-  return { canRebalance, recordRebalance, tick, getState, configure };
+  /**
+   * Rehydrate dailyCount from historical events (e.g. after bot restart).
+   * @param {number} count  Number of rebalances in the current daily window.
+   */
+  function rehydrate(count) {
+    state.dailyCount = count;
+  }
+
+  return { canRebalance, recordRebalance, tick, getState, configure, rehydrate };
 }
 
 // ── exports ──────────────────────────────────────────────────────────────────
