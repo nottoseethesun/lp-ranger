@@ -14,11 +14,9 @@
  */
 
 'use strict';
-
 const fs     = require('fs');
 const path   = require('path');
 const ethers = require('ethers');
-
 const config = require('./config');
 const rangeMath = require('./range-math');
 const walletManager = require('./wallet-manager');
@@ -32,8 +30,6 @@ const { initHodlBaseline } = require('./hodl-baseline');
 const { scanRebalanceHistory } = require('./event-scanner');
 const { createCacheStore } = require('./cache-store');
 const { createResidualTracker } = require('./residual-tracker');
-
-// ── Log helpers ──────────────────────────────────────────────────────────────
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -85,22 +81,16 @@ async function createProviderWithFallback(primaryUrl, fallbackUrl, ethersLib) {
   }
 }
 
-// ── Token price + fee helpers ────────────────────────────────────────────────
-
 /** Wrapped PLS address for gas cost USD conversion. */
 const _WPLS = '0xA1077a294dDE1B09bB078844df40758a5D0f9a27';
-
 /** ERC-20 balanceOf ABI for wallet residual cap check. */
 const _ERC20_BAL_ABI = ['function balanceOf(address) view returns (uint256)'];
-
 /** ABI for PositionManager: positions view + collect for static call. */
 const _PM_ABI = [
   'function positions(uint256 tokenId) external view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
   'function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) external returns (uint256 amount0, uint256 amount1)',
 ];
-
-/** Maximum uint128 for collect() simulation. */
-const _MAX_UINT128 = 2n ** 128n - 1n;
+const _MAX_UINT128 = 2n ** 128n - 1n; // max uint128 for collect() simulation
 
 /**
  * Fetch USD prices for both tokens in a position.
@@ -153,37 +143,21 @@ async function _addPoolShare(posStats, amounts, position, poolState, ethersLib, 
     posStats.poolShare1Pct = p1f > 0 ? (amounts.amount1 / p1f) * 100 : 0;
   } catch { /* non-critical — pool share is informational only */ }
 }
-
 /** Calculate the USD value of a V3 position from on-chain amounts. */
 function _positionValueUsd(position, poolState, price0, price1) {
-  const amounts = rangeMath.positionAmounts(position.liquidity, poolState.tick,
-    position.tickLower, position.tickUpper, poolState.decimals0, poolState.decimals1);
-  return amounts.amount0 * price0 + amounts.amount1 * price1;
+  const a = rangeMath.positionAmounts(position.liquidity, poolState.tick, position.tickLower, position.tickUpper, poolState.decimals0, poolState.decimals1);
+  return a.amount0 * price0 + a.amount1 * price1;
 }
-
 /** Convert a BigInt token amount to a float given its decimals. */
-function _toFloat(amount, decimals) {
-  return Number(amount) / Math.pow(10, decimals);
-}
-
-// ── P&L epoch management ────────────────────────────────────────────────────
+function _toFloat(amount, decimals) { return Number(amount) / Math.pow(10, decimals); }
 
 /** Compute actual gas cost in USD from total PLS spent (in wei). */
 async function _actualGasCostUsd(gasCostWei) {
-  try {
-    const plsPrice = await fetchTokenPriceUsd(_WPLS, { dextoolsApiKey: config.DEXTOOLS_API_KEY });
-    return (Number(gasCostWei) / 1e18) * plsPrice;
-  } catch { return 0; }
+  try { const p = await fetchTokenPriceUsd(_WPLS, { dextoolsApiKey: config.DEXTOOLS_API_KEY }); return (Number(gasCostWei) / 1e18) * p; } catch { return 0; }
 }
-
-/** Estimate gas cost in USD for a rebalance (≈ 800k gas). Fallback only. */
+/** Estimate gas cost in USD for a rebalance (~800k gas). Fallback only. */
 async function _estimateGasCostUsd(provider) {
-  try {
-    const feeData = await provider.getFeeData();
-    const costWei = (feeData.gasPrice ?? 0n) * 800_000n; // typical rebalance gas
-    const plsPrice = await fetchTokenPriceUsd(_WPLS, { dextoolsApiKey: config.DEXTOOLS_API_KEY });
-    return (Number(costWei) / 1e18) * plsPrice;
-  } catch { return 0; }
+  try { const f = await provider.getFeeData(); const c = (f.gasPrice ?? 0n) * 800_000n; const p = await fetchTokenPriceUsd(_WPLS, { dextoolsApiKey: config.DEXTOOLS_API_KEY }); return (Number(c) / 1e18) * p; } catch { return 0; }
 }
 
 /** Close the current P&L epoch after a rebalance and open a new one. */
@@ -211,8 +185,6 @@ async function _closePnlEpoch(deps, result) {
   } catch (err) { console.warn('[bot] P&L epoch close error:', err.message); }
 }
 
-// ── Event history scan ───────────────────────────────────────────────────────
-
 /** Resolve pool address and scan on-chain rebalance history (fire-and-forget). */
 async function _scanHistory(provider, ethersLib, address, position, cache, events, updateState, throttle) {
   try {
@@ -237,7 +209,14 @@ async function _scanHistory(provider, ethersLib, address, position, cache, event
       const recent = found.filter((e) => e.timestamp >= cutoff).length;
       if (recent > 0) throttle.rehydrate(recent);
     }
+    const _d = (ts) => ts ? new Date(ts * 1000).toISOString().slice(0, 10) : undefined;
+    const mintEv = found.find((e) => String(e.newTokenId) === String(position.tokenId));
+    const mintDate = _d(mintEv?.timestamp), poolFirstMintDate = _d(found.firstMintTimestamp);
+    if (mintDate) console.log(`[bot] Position #${position.tokenId} minted on ${mintDate}`);
+    if (poolFirstMintDate) console.log(`[bot] Pool first LP minted on ${poolFirstMintDate}`);
     updateState({ rebalanceEvents: [...events], rebalanceScanComplete: true,
+      ...(mintDate ? { positionMintDate: mintDate } : {}),
+      ...(poolFirstMintDate ? { poolFirstMintDate } : {}),
       ...(throttle ? { throttleState: throttle.getState() } : {}) });
   } catch (err) {
     console.warn('[bot] Event scan error:', err.message);
@@ -253,21 +232,19 @@ function _recordResidual(deps, result) {
   if (deps.updateBotState) deps.updateBotState({ residuals: deps._residualTracker.serialize() });
 }
 
-// ── Rebalance execution helper ───────────────────────────────────────────────
-
 /** Build a serialisable activePosition snapshot from a position object. */
 function _activePosSummary(p) {
   return { tokenId: String(p.tokenId), token0: p.token0, token1: p.token1,
     fee: p.fee, tickLower: p.tickLower, tickUpper: p.tickUpper,
     liquidity: String(p.liquidity || 0) };
 }
-
 /** Notify the dashboard of a successful rebalance. */
 function _notifyRebalance(deps, throttle, position, events) {
   deps.updateBotState({ rebalanceCount: (deps._rebalanceCount || 0) + 1,
     lastRebalanceAt: new Date().toISOString(), throttleState: throttle.getState(),
     rebalanceEvents: events ? [...events] : undefined,
-    activePosition: _activePosSummary(position) });
+    activePosition: _activePosSummary(position),
+    activePositionId: String(position.tokenId) });
 }
 
 async function _executeAndRecord(deps, ethersLib) {
@@ -293,8 +270,7 @@ async function _executeAndRecord(deps, ethersLib) {
     if (result.newTokenId && result.newTokenId !== 0n) position.tokenId = result.newTokenId;
     position.tickLower = result.newTickLower;  position.tickUpper = result.newTickUpper;
     if (result.liquidity !== undefined) position.liquidity = result.liquidity;
-    const events = deps._rebalanceEvents; // Append to runtime rebalance events list
-    if (events) {
+    const events = deps._rebalanceEvents; if (events) {
       const ts = Math.floor(Date.now() / 1000);
       events.push({ index: events.length + 1, timestamp: ts, dateStr: new Date(ts * 1000).toISOString(),
         oldTokenId: String(result.oldTokenId || '?'), newTokenId: String(result.newTokenId || '?'),
@@ -400,9 +376,7 @@ async function _isGasTooHigh(provider, position, poolState) {
 async function pollCycle(deps) {
   const { provider, position, throttle, dryRun, updateBotState } = deps;
   const ethersLib = deps._ethersLib || ethers;
-
   throttle.tick();
-
   // 1. Read pool state
   let poolState;
   try {
@@ -498,10 +472,8 @@ async function pollCycle(deps) {
  */
 async function resolvePrivateKey(opts = {}) {
   const { askPassword } = opts;
-
   // 1. PRIVATE_KEY env var
   if (config.PRIVATE_KEY) return config.PRIVATE_KEY;
-
   // 2. Encrypted key file
   if (config.KEY_FILE) {
     let password = config.KEY_PASSWORD;
@@ -514,7 +486,6 @@ async function resolvePrivateKey(opts = {}) {
     }
     return null;
   }
-
   // 3. Wallet manager (dashboard-imported wallet)
   if (walletManager.hasWallet()) {
     let password = config.WALLET_PASSWORD;
@@ -532,9 +503,6 @@ async function resolvePrivateKey(opts = {}) {
   return null;
 }
 
-// ── Bot loop lifecycle ───────────────────────────────────────────────────────
-
-/**
 /** Initialize or restore the P&L tracker with epoch data. */
 function _initPnlTracker(ev, botState, poolState, lowerPrice, upperPrice, price0, price1) {
   const tracker = createPnlTracker({ initialDeposit: ev });
@@ -632,14 +600,11 @@ async function startBotLoop(opts) {
     .catch((err) => console.warn('[bot] HODL baseline background error:', err.message));
   const throttle = createThrottle({ minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60_000, dailyMax: config.MAX_REBALANCES_PER_DAY });
   const rebalanceEvents = [];
-  _scanHistory(provider, ethersLib, address, position,
-    createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache.json') }),
-    rebalanceEvents, updateBotState, throttle);
-
+  const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache.json') });
+  _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle);
   updateBotState({ running: true, dryRun, startedAt: new Date().toISOString(),
-    throttleState: throttle.getState(), rebalanceEvents,
+    throttleState: throttle.getState(), rebalanceEvents, walletAddress: address,
     activePosition: _activePosSummary(position) });
-
   let collectedFeesUsd = 0, rebalanceCount = 0, firstFailureAt = null, polling = false;
   const baseIntervalMs = config.CHECK_INTERVAL_SEC * 1000, GAS_DEFER_MS = 3600_000;
   let currentIntervalMs = baseIntervalMs, timer = null;

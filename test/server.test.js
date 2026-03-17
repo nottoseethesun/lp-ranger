@@ -14,6 +14,8 @@
 const { describe, it } = require('node:test');
 const assert  = require('assert');
 const http    = require('http');
+const fs      = require('fs');
+const path    = require('path');
 const { start, stop, updateBotState, botState } = require('../server');
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -227,16 +229,28 @@ describe('POST /api/position/switch', () => {
 
   it('returns 200 with valid tokenId and persists activePositionId', async () => {
     port = 54351;
+    const cfgPath = path.join(__dirname, '..', '.bot-config.json');
+    const origCfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : null;
+    const origId = botState.activePositionId;
+    // Prevent bot from actually starting (would connect to RPC and hang the test)
+    const config = require('../src/config');
+    const origPk = config.PRIVATE_KEY, origWp = config.WALLET_PASSWORD;
+    config.PRIVATE_KEY = ''; config.WALLET_PASSWORD = '';
     await start(port);
     try {
-      // Will fail to start bot (no wallet) but should still return 200
-      const res = await req({ port, method: 'POST', path: '/api/position/switch', body: { tokenId: '12345' } });
+      const res = await req({ port, method: 'POST', path: '/api/position/switch', body: { tokenId: '99999' } });
       assert.strictEqual(res.status, 200);
       const body = JSON.parse(res.body);
       assert.strictEqual(body.ok, true);
-      assert.strictEqual(body.tokenId, '12345');
-      assert.strictEqual(botState.activePositionId, '12345');
-    } finally { await stop(); }
+      assert.strictEqual(body.tokenId, '99999');
+      assert.strictEqual(botState.activePositionId, '99999');
+    } finally {
+      botState.activePositionId = origId || undefined;
+      if (origCfg) fs.writeFileSync(cfgPath, origCfg);
+      config.PRIVATE_KEY = origPk || '';
+      config.WALLET_PASSWORD = origWp || '';
+      await stop();
+    }
   });
 });
 

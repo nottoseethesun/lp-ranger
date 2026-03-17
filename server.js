@@ -281,8 +281,19 @@ function updateBotState(patch) {
     _saveBotConfig(botState);
   }
   // Persist HODL baseline from historical price lookup
-  if (patch.hodlBaseline && !botState.hodlBaseline) {
+  if (patch.hodlBaseline) {
     _saveBotConfig({ ...botState, ...patch });
+  }
+  // Merge positionMintDate into hodlBaseline
+  if (patch.positionMintDate && botState.hodlBaseline) {
+    botState.hodlBaseline.mintDate = patch.positionMintDate;
+    _saveBotConfig(botState);
+    delete patch.positionMintDate;
+  }
+  // Persist activePositionId when it changes (e.g. after rebalance mints new NFT)
+  if (patch.activePositionId && patch.activePositionId !== botState.activePositionId) {
+    Object.assign(botState, patch);
+    _saveBotConfig(botState);
   }
   Object.assign(botState, patch, { updatedAt: new Date().toISOString() });
 }
@@ -557,7 +568,9 @@ async function _handlePositionSwitch(req, res) {
     });
     botState.activePositionId = String(body.tokenId);
     _saveBotConfig(botState);
-    await _tryStartBot(null);
+    _tryStartBot(null).catch(err => {
+      console.warn('[server] Bot restart after position switch failed:', err.message);
+    });
     jsonResponse(res, 200, { ok: true, tokenId: String(body.tokenId) });
   } catch (err) {
     jsonResponse(res, 500, { ok: false, error: err.message });

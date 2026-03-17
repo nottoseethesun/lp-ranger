@@ -70,9 +70,9 @@ const POSITION = {
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe('initHodlBaseline', () => {
-  it('skips if hodlBaseline already set', async () => {
+  it('skips if hodlBaseline already set with mintDate', async () => {
     const { initHodlBaseline } = require('../src/hodl-baseline');
-    const botState = { hodlBaseline: { entryValue: 100 } };
+    const botState = { hodlBaseline: { entryValue: 100, mintDate: '2023-11-14' } };
     const updateBotState = mock.fn();
 
     await initHodlBaseline(mockProvider(), mockEthersLib(), POSITION, botState, updateBotState);

@@ -80,7 +80,8 @@ function _positionValueUsd(position, poolState, price0, price1) {
  * @param {Function} updateBotState  State update callback.
  */
 async function initHodlBaseline(provider, ethersLib, position, botState, updateBotState) {
-  if (botState.hodlBaseline) return;
+  const needsMintDate = botState.hodlBaseline && !botState.hodlBaseline.mintDate;
+  if (botState.hodlBaseline && !needsMintDate) return;
   try {
     // Find pool address via Factory
     const factoryAbi = ['function getPool(address,address,uint24) view returns (address)'];
@@ -89,21 +90,25 @@ async function initHodlBaseline(provider, ethersLib, position, botState, updateB
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return;
     // Find NFT mint timestamp via Transfer(from=0x0)
     const iface = new ethersLib.Interface(_TRANSFER_ABI);
+    const tokenIdHex = '0x' + BigInt(position.tokenId).toString(16).padStart(64, '0');
+    const zeroAddr = ethersLib.zeroPadValue ? ethersLib.zeroPadValue('0x' + '0'.repeat(40), 32)
+      : '0x' + '0'.repeat(64);
     const mintFilter = {
-      address: config.POSITION_MANAGER,
-      topics: [
-        iface.getEvent('Transfer').topicHash,
-        ethersLib.zeroPadValue?.('0x' + '0'.repeat(40), 32)
-          || '0x' + '0'.repeat(64),
-        null,
-        '0x' + BigInt(position.tokenId).toString(16).padStart(64, '0'),
-      ],
+      address: config.POSITION_MANAGER, fromBlock: 0, toBlock: 'latest',
+      topics: [iface.getEvent('Transfer').topicHash, zeroAddr, null, tokenIdHex],
     };
     const logs = await provider.getLogs(mintFilter);
-    if (!logs.length) return;
+    if (!logs.length) { console.log('[bot] No mint logs found for tokenId', position.tokenId); return; }
     const block = await provider.getBlock(logs[0].blockNumber);
-    if (!block) return;
+    if (!block) { console.log('[bot] Block not found for mint log'); return; }
     const mintTimestamp = block.timestamp;
+    // If baseline exists but mintDate is missing, just patch it and return
+    if (needsMintDate) {
+      botState.hodlBaseline.mintDate = new Date(mintTimestamp * 1000).toISOString().slice(0, 10);
+      updateBotState({ hodlBaseline: botState.hodlBaseline });
+      console.log(`[bot] Added mintDate to existing baseline: ${botState.hodlBaseline.mintDate}`);
+      return;
+    }
     // Fetch historical prices from GeckoTerminal
     const { price0, price1 } = await fetchHistoricalPriceGecko(poolAddress, mintTimestamp);
     if (price0 <= 0 || price1 <= 0) {

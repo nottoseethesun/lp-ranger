@@ -316,7 +316,9 @@ async function loadCache(cache, cacheKey, fromBlock) {
   if (!cache) return { cachedEvents: [], scanFrom: fromBlock };
   const cached = await cache.get(cacheKey);
   if (cached && cached.events && cached.lastBlock) {
-    return { cachedEvents: cached.events, scanFrom: cached.lastBlock + 1 };
+    const evts = cached.events;
+    if (cached.firstMintTimestamp) evts.firstMintTimestamp = cached.firstMintTimestamp;
+    return { cachedEvents: evts, scanFrom: cached.lastBlock + 1 };
   }
   return { cachedEvents: [], scanFrom: fromBlock };
 }
@@ -389,7 +391,8 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
   if (rawEvents.length === 0 && cachedEvents.length === 0) return [];
   if (rawEvents.length === 0) {
-    if (cache) await cache.set(cacheKey, { events: cachedEvents, lastBlock: currentBlock });
+    const fmts = cachedEvents.firstMintTimestamp || null;
+    if (cache) await cache.set(cacheKey, { events: cachedEvents, lastBlock: currentBlock, firstMintTimestamp: fmts });
     return cachedEvents;
   }
 
@@ -398,7 +401,14 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
   const transfers = buildTransferDescriptors(unique, walletAddress, tsMap);
   const merged = mergeAndIndex(cachedEvents, pairTransfers(transfers));
 
-  if (cache) await cache.set(cacheKey, { events: merged, lastBlock: currentBlock });
+  // Find the earliest mint-from-zero timestamp (= first LP position creation)
+  const ZERO = '0x0000000000000000000000000000000000000000';
+  const firstMint = transfers.filter((t) => t.direction === 'in' && t.from === ZERO)
+    .sort((a, b) => a.timestamp - b.timestamp)[0];
+  const fmt = firstMint ? firstMint.timestamp : (cachedEvents.firstMintTimestamp || null);
+  if (fmt) merged.firstMintTimestamp = fmt;
+
+  if (cache) await cache.set(cacheKey, { events: merged, lastBlock: currentBlock, firstMintTimestamp: fmt });
   return merged;
 }
 

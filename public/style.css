@@ -372,6 +372,10 @@ body::before{
 /* ── POSITION BROWSER ── */
 .pos-browser-modal{max-width:860px;}
 
+.pos-search-filter-row{
+  margin-bottom:8px;
+}
+
 .pos-search-row{
   display:flex;
   gap:8px;
@@ -379,7 +383,8 @@ body::before{
 }
 
 .pos-search-input{
-  flex:1;
+  width:100%;
+  box-sizing:border-box;
   background:var(--bg3);
   border:1px solid var(--border);
   border-radius:8px;

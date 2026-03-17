@@ -101,11 +101,11 @@ function _renderThrottleBadge(pct) {
  */
 function _renderRangeBanner(can) {
   const banner = g('rangeBanner');
-  if (!botConfig.price) { banner.style.display = 'none'; return; }
-  banner.style.display = '';
   const active = posStore.getActive();
   const liq = active ? active.liquidity : undefined;
-  if (liq !== undefined && liq !== null && String(liq) === '0') {
+  if (!botConfig.price || !botConfig.lower || !botConfig.upper || liq === undefined || liq === null) { banner.style.display = 'none'; return; }
+  banner.style.display = '';
+  if (String(liq) === '0') {
     banner.className = 'range-status-banner wait';
     g('rangeIcon').textContent  = '\u2014';
     g('rangeLabel').textContent = 'POSITION CLOSED';

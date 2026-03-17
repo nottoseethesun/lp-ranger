@@ -1,5 +1,8 @@
 # Position Manager for 9mm v3
 
+[![Lint](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml/badge.svg?branch=main&event=push&job=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
+[![Tests](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml/badge.svg?branch=main&event=push&job=test)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
+
 Auto-rebalancing concentrated liquidity manager for [9mm Pro](https://9mm.pro)
 (Uniswap v3 fork) on PulseChain, with complete P&L stats extending back up to five years for a single liquidity pool on a given wallet address. With Position Manager, you know where you're at.
 

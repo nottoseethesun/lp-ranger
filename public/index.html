@@ -209,8 +209,10 @@
     </div>
 
     <!-- Search + scan -->
-    <div class="pos-search-row">
+    <div class="pos-search-filter-row">
       <input type="text" class="pos-search-input" id="posSearchInput" placeholder="Filter by pair, token ID, wallet address…">
+    </div>
+    <div class="pos-search-row">
       <button class="pos-scan-btn" id="posScanBtn">⟳ Scan Wallet</button>
       <button class="pos-scan-btn 9mm-pos-mgr-btn-green">+ Import Wallet</button>
     </div>
@@ -374,6 +376,8 @@
       <p class="9mm-pos-mgr-help-text">If <strong>3 rebalances</strong> occur within <strong>4&times; the minimum interval</strong> (e.g. 40 minutes when the minimum is 10 min), the bot enters <em>doubling mode</em>. Each subsequent rebalance must wait twice as long as the previous one: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This prevents rapid-fire rebalancing during high volatility. Doubling mode clears automatically if no rebalance is needed for 4&times; the current wait, or at the daily midnight UTC reset.</p>
       <div class="9mm-pos-mgr-help-title">Gas Cost Protection</div>
       <p class="9mm-pos-mgr-help-text">Before each rebalance, the bot estimates gas cost in USD. If gas would exceed <strong>0.5%</strong> of the LP position value, the rebalance is deferred and the bot retries once per hour instead of once per minute. Normal polling resumes automatically once gas drops or a rebalance succeeds. The bot always starts with the normal polling interval.</p>
+      <div class="9mm-pos-mgr-help-title">Closed Positions</div>
+      <p class="9mm-pos-mgr-help-text">When you select a closed position (zero liquidity), the bot will display its data but will <strong>not</strong> attempt to rebalance it. If you re-open a previously closed position by adding liquidity back to the same NFT on 9mm Pro, the bot treats it as brand new&mdash;duration, fees, and P&amp;L all start from the original mint date. <strong>Recommendation:</strong> instead of re-opening a closed position, mint a fresh LP position on 9mm Pro. This gives you a clean start with accurate tracking and avoids any ambiguity in your P&amp;L history.</p>
       <button class="9mm-pos-mgr-help-close">Close</button>
     </div>
   </div>

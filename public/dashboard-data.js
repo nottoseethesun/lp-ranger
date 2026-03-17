@@ -12,7 +12,7 @@ import { g, botConfig, fmtDateTime, act } from './dashboard-helpers.js';
 import { posStore, updatePosStripUI } from './dashboard-positions.js';
 import { updateHistoryFromStatus } from './dashboard-history.js';
 
-let _dataTimerId = null, _lastStatus = null, _historyPopulated = false;
+let _dataTimerId = null, _lastStatus = null, _historyPopulated = false, _poolFirstDate = null;
 
 // ── Realized gains (user-entered, persisted in localStorage) ────────────────
 
@@ -139,17 +139,19 @@ function _setPctSpan(id, val, deposit) {
   const el = g(id); if (!el) return;
   if (!deposit || deposit <= 0) { el.textContent = ''; return; }
   const pct = (val / deposit) * 100;
-  const sign = pct > 0 ? '+' : '';
-  el.textContent = sign + pct.toFixed(2) + '%';
+  const rounded = pct.toFixed(2);
+  const isZero = rounded === '0.00' || rounded === '-0.00';
+  const sign = isZero ? '' : pct > 0 ? '+' : '';
+  el.textContent = sign + (isZero ? '0.00' : rounded) + '%';
 }
 
 /** Compute annualized APR and display on a span. Green/red/white coloring. */
 function _setAprSpan(id, val, deposit, firstDate) {
   const el = g(id); if (!el) return;
-  if (!deposit || deposit <= 0 || !firstDate) { el.textContent = ''; return; }
+  if (!deposit || deposit <= 0 || !firstDate) { el.textContent = '\u2014'; return; }
   const startMs = new Date(firstDate + 'T00:00:00Z').getTime();
   const elapsedSec = (Date.now() - startMs) / 1000;
-  if (elapsedSec <= 0) { el.textContent = ''; return; }
+  if (elapsedSec <= 0) { el.textContent = '\u2014'; return; }
   const apr = (val / deposit) / (elapsedSec / (365.25 * 24 * 3600)) * 100;
   if (Math.abs(apr) < 0.005) { el.textContent = 'APR 0.00%'; el.style.color = ''; return; }
   if (apr > 0) { el.textContent = 'APR ' + apr.toFixed(2) + '%'; el.style.color = '#0f0'; }
@@ -179,9 +181,9 @@ function _updatePnlHeader(d, total, realized, curDeposit) {
     pnl.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row ' + (_isDisplayZero(total) ? 'neu' : total > 0 ? 'pos' : 'neg');
     _setPctSpan('kpiPnlPctVal', total, curDeposit);
     const epoch = d.pnlSnapshot.liveEpoch;
-    const epochStart = epoch ? new Date(epoch.openTime).toISOString().slice(0, 10) : null;
-    _setAprSpan('kpiPnlApr', epoch ? (epoch.fees || 0) : 0, curDeposit, epochStart);
-    const from = epochStart, to = d.pnlSnapshot.snapshotDateUtc;
+    const posStart = d.hodlBaseline?.mintDate || null;
+    _setAprSpan('kpiPnlApr', epoch ? (epoch.fees || 0) : 0, curDeposit, posStart);
+    const from = posStart, to = d.pnlSnapshot.snapshotDateUtc;
     if (from) {
       const fmtFrom = fmtDateTime(from + 'T00:00:00Z', { dateOnly: true });
       const fmtTo   = fmtDateTime(to + 'T00:00:00Z', { dateOnly: true });
@@ -211,14 +213,14 @@ function _updateCurIL(d, deposit) {
   _setPctSpan('curILPct', curIlVal, deposit);
 }
 
-/** Update the position duration display using on-chain mint date. */
+/** Update the position active-duration display using mint date from rebalance history. */
 function _updatePosDuration(d) {
   const el = g('kpiPosDuration'); if (!el) return;
   const mintDate = d.hodlBaseline?.mintDate;
-  if (!mintDate) { el.textContent = ''; return; }
-  const mintMs = new Date(mintDate + 'T00:00:00Z').getTime();
-  const ms = Date.now() - mintMs;
-  el.textContent = ms > 0 ? 'Position Duration: ' + _fmtDuration(ms) : '';
+  if (!mintDate) { el.textContent = '\u2014'; return; }
+  const startMs = new Date(mintDate + 'T00:00:00Z').getTime();
+  const ms = Date.now() - startMs;
+  el.textContent = ms > 0 ? 'Total Active Duration: ' + _fmtDuration(ms) : '';
 }
 
 function _applySnapshotKpis(d, deposit, curRealized) {
@@ -296,7 +298,7 @@ function _updateNetReturn(d, total, ltDeposit) {
     _setLeadingText(net, _fmtUsd(total));
     net.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row ' + (_isDisplayZero(total) ? 'neu' : total > 0 ? 'pos' : 'neg');
     _setPctSpan('kpiNetPct', total, ltDeposit);
-    _setAprSpan('kpiNetApr', total, ltDeposit, d.pnlSnapshot.firstEpochDateUtc);
+    _setAprSpan('kpiNetApr', total, ltDeposit, _poolFirstDate || d.pnlSnapshot.firstEpochDateUtc);
     const bd = g('kpiNetBreakdown'), s = d.pnlSnapshot;
     if (bd) bd.textContent = (s.totalFees || 0).toFixed(2) + ' + ' + (s.priceChangePnl || 0).toFixed(2) + ' \u2212 ' + (s.totalGas || 0).toFixed(2);
   }
@@ -306,7 +308,7 @@ function _updateNetReturn(d, total, ltDeposit) {
     _setLeadingText(ilEl, _fmtUsd(il));
     ilEl.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row ' + (_isDisplayZero(il) ? 'neu' : il > 0 ? 'pos' : 'neg');
     _setPctSpan('netILPct', il, ltDeposit);
-    _setAprSpan('netILApr', il, ltDeposit, d.pnlSnapshot.firstEpochDateUtc);
+    _setAprSpan('netILApr', il, ltDeposit, _poolFirstDate || d.pnlSnapshot.firstEpochDateUtc);
   }
 }
 
@@ -516,9 +518,22 @@ function _updateSyncBadge(complete) {
   badge.classList.toggle('done', complete);
 }
 
+/** Auto-add the bot's active position to the store if the store is empty. */
+function _ensureActiveInStore(d) {
+  if (posStore.count() > 0 || !d.activePosition?.tokenId) return;
+  const bp = d.activePosition;
+  const wallet = d.walletAddress || d.wallet || '';
+  if (!wallet) return;
+  posStore.add({ positionType: 'nft', tokenId: String(bp.tokenId),
+    walletAddress: wallet, token0Symbol: bp.token0Symbol || bp.token0 || '',
+    token1Symbol: bp.token1Symbol || bp.token1 || '', liquidity: String(bp.liquidity ?? '0'),
+    fee: bp.fee });
+}
+
 /** Sync the active position from bot status back to the browser posStore. */
 function _syncActivePosition(d) {
   if (!d.activePosition) return;
+  _ensureActiveInStore(d);
   const active = posStore.getActive();
   if (!active || active.positionType !== 'nft') return;
   const botPos = d.activePosition;
@@ -530,6 +545,7 @@ function _syncActivePosition(d) {
       'NFT #' + botPos.tokenId + ' \u00B7 ticks [' + botPos.tickLower + ', ' + botPos.tickUpper + ']');
   }
 
+  if (botPos.liquidity !== undefined) active.liquidity = String(botPos.liquidity);
   if (botPos.tokenId && String(botPos.tokenId) !== String(active.tokenId)) {
     active.tokenId   = String(botPos.tokenId);
     active.tickLower = botPos.tickLower;
@@ -560,13 +576,14 @@ function updateDashboardFromStatus(data) {
 
   _updateSyncBadge(data.rebalanceScanComplete === true);
 
+  if (!_poolFirstDate && data.poolFirstMintDate) _poolFirstDate = data.poolFirstMintDate;
   if (!_historyPopulated && data.rebalanceEvents && data.rebalanceEvents.length > 0) {
     _historyPopulated = true;
     const sorted = [...data.rebalanceEvents].sort((a, b) => a.timestamp - b.timestamp);
     for (const ev of sorted) {
-      const time = ev.dateStr || new Date(ev.timestamp * 1000).toISOString();
+      const evDate = ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000);
       act('\u2699', 'fee', 'Rebalance #' + ev.index,
-        'NFT #' + ev.oldTokenId + ' \u2192 #' + ev.newTokenId + ' \u00B7 ' + time);
+        'NFT #' + ev.oldTokenId + ' \u2192 #' + ev.newTokenId, evDate);
     }
   }
 

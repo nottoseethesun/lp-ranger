@@ -23,14 +23,14 @@ export function g(id) { return document.getElementById(id); }
  * @param {string} title  Short heading text.
  * @param {string} detail Longer description text.
  */
-export function act(icon, type, title, detail) {
+export function act(icon, type, title, detail, when) {
   const list = g('actList');
   const div  = document.createElement('div');
   div.className = 'ai';
   div.innerHTML =
     `<div class="aico ${type}">${icon}</div>` +
     `<div class="ab"><div class="att">${title}</div><div class="adt">${detail}</div></div>` +
-    `<div class="atm">${fmtDateTime(new Date())}</div>`;
+    `<div class="atm">${fmtDateTime(when || new Date())}</div>`;
   list.insertBefore(div, list.firstChild);
   if (list.children.length > 50) list.removeChild(list.lastChild);
 }
