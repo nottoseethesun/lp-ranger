@@ -115,6 +115,7 @@
  *   GET  /public/*      → static files from public/
  *   GET  /api/status    → JSON snapshot of bot + position state
  *   POST /api/config    → Update runtime config (throttle params, etc.)
+ *   POST /api/position/switch → Switch bot to a different NFT position
  *   POST /api/shutdown  → Graceful shutdown (stops bot + server)
  *   GET  /health        → 200 OK (used by load-balancers / pm2)
  *
@@ -204,6 +205,7 @@ const _PERSISTED_KEYS = [
   'minRebalanceIntervalMin', 'maxRebalancesPerDay',
   'gasStrategy', 'triggerType',
   'initialDepositUsd', 'hodlBaseline', 'residuals', 'pnlEpochs',
+  'activePositionId',
 ];
 
 /**
@@ -450,6 +452,7 @@ async function _tryStartBot(password) {
       dryRun: config.DRY_RUN,
       updateBotState,
       botState,
+      positionId: botState.activePositionId || undefined,
     });
     console.log('[server] Bot started');
   } finally {
@@ -531,10 +534,40 @@ async function _handlePositionsScan(req, res) {
   });
 }
 
+/**
+ * Switch the bot to a different NFT position.
+ * Stops the current bot loop, clears position-specific state, and restarts.
+ * @param {http.IncomingMessage} req
+ * @param {http.ServerResponse}  res
+ */
+async function _handlePositionSwitch(req, res) {
+  const body = await readJsonBody(req);
+  if (!body.tokenId) {
+    jsonResponse(res, 400, { ok: false, error: 'Missing tokenId' });
+    return;
+  }
+  try {
+    if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
+    // Clear position-specific state
+    Object.assign(botState, {
+      pnlEpochs: undefined, hodlBaseline: undefined, residuals: undefined,
+      rebalanceScanComplete: false, rebalanceEvents: undefined,
+      activePosition: null, rebalanceCount: 0, lastRebalanceAt: null,
+      rebalanceError: null, rebalancePaused: false,
+    });
+    botState.activePositionId = String(body.tokenId);
+    _saveBotConfig(botState);
+    await _tryStartBot(null);
+    jsonResponse(res, 200, { ok: true, tokenId: String(body.tokenId) });
+  } catch (err) {
+    jsonResponse(res, 500, { ok: false, error: err.message });
+  }
+}
+
 async function _handleShutdown(_req, res) {
   jsonResponse(res, 200, { ok: true, message: 'Shutting down…' });
   console.log('[server] Shutdown requested via API');
-  if (_botHandle) { _botHandle.stop(); _botHandle = null; }
+  if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
   server.close(() => process.exit(0));
 }
 
@@ -549,6 +582,7 @@ const _routes = {
   'POST /api/wallet':          _handleWalletImport,
   'POST /api/wallet/reveal':   _handleWalletReveal,
   'POST /api/positions/scan':  _handlePositionsScan,
+  'POST /api/position/switch': _handlePositionSwitch,
   'POST /api/rebalance':       (_, res) => {
     updateBotState({ forceRebalance: true });
     jsonResponse(res, 200, { ok: true, message: 'Rebalance requested' });
@@ -646,9 +680,9 @@ if (require.main === module) {
     .then(() => _tryStartBot(null))
     .then(() => {
       // Graceful shutdown on Ctrl-C / kill
-      const shutdown = () => {
+      const shutdown = async () => {
         console.log('\n[server] Shutting down…');
-        if (_botHandle) { _botHandle.stop(); _botHandle = null; }
+        if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
         server.close(() => process.exit(0));
       };
       process.on('SIGINT', shutdown);

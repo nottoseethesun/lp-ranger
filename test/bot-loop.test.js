@@ -424,6 +424,34 @@ describe('bot-loop: positionStats balance and activePosition liquidity', () => {
   });
 });
 
+describe('bot-loop: closed position guard', () => {
+  it('skips rebalance when position has zero liquidity', async () => {
+    const { r } = await _poll(700, {
+      setupDeps: d => { d.position.liquidity = 0n; },
+    });
+    assert.strictEqual(r.rebalanced, false, 'should not rebalance a closed position');
+  });
+
+  it('still publishes stats for a closed position', async () => {
+    const result = await _poll(700, {
+      captureState: true,
+      setupDeps: d => { d.position.liquidity = 0n; },
+    });
+    assert.strictEqual(result.r.rebalanced, false);
+    assert.ok(result.captured.positionStats, 'positionStats should still be emitted for closed positions');
+  });
+});
+
+describe('bot-loop: closed position skips range check', () => {
+  it('does not attempt rebalance even with forceRebalance set', async () => {
+    const { r } = await _poll(700, {
+      botState: { forceRebalance: true, rangeWidthPct: 20, slippagePct: 0.5 },
+      setupDeps: d => { d.position.liquidity = 0n; },
+    });
+    assert.strictEqual(r.rebalanced, false, 'should not rebalance closed position even when forced');
+  });
+});
+
 describe('bot-loop: lifetime P&L is independent of selected position', () => {
   it('pnlSnapshot.initialDeposit is from tracker, not from position tokenId', async () => {
     const { createPnlTracker } = require('../src/pnl-tracker');

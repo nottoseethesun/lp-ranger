@@ -19,17 +19,11 @@ let _dataTimerId = null, _lastStatus = null, _historyPopulated = false;
 const _REALIZED_GAINS_KEY = '9mm_realized_gains';
 
 /** Load lifetime realized gains — pool-scoped key takes priority, then global fallback. */
-export function loadRealizedGains() {
-  const poolVal = _loadNum(_poolKey('9mm_realized_pool_'), true);
-  return poolVal > 0 ? poolVal : _loadNum(_REALIZED_GAINS_KEY, true);
-}
+export function loadRealizedGains() { const v = _loadNum(_poolKey('9mm_realized_pool_'), true); return v > 0 ? v : _loadNum(_REALIZED_GAINS_KEY, true); }
 /** Toggle the lifetime realized gains input. */
 export function toggleRealizedInput() { _toggleWrap('realizedGainsInputWrap', 'realizedGainsInput', loadRealizedGains); }
 /** Save lifetime realized gains to pool-scoped key. */
-export function saveRealizedGains() {
-  const key = _poolKey('9mm_realized_pool_') || _REALIZED_GAINS_KEY;
-  _saveInput(key, 'realizedGainsInput', 'realizedGainsInputWrap', () => { if (_lastStatus) _updateKpis(_lastStatus); }, true);
-}
+export function saveRealizedGains() { const key = _poolKey('9mm_realized_pool_') || _REALIZED_GAINS_KEY; _saveInput(key, 'realizedGainsInput', 'realizedGainsInputWrap', () => { if (_lastStatus) _updateKpis(_lastStatus); }, true); }
 
 // ── Shared toggle/save helpers ───────────────────────────────────────────────
 
@@ -79,25 +73,16 @@ export function saveCurRealized() { _saveInput(_posKey('9mm_realized_pos_'), 'cu
 
 const _INITIAL_DEPOSIT_KEY = '9mm_initial_deposit';
 /** Load initial deposit — pool-scoped key takes priority, then global fallback. */
-export function loadInitialDeposit() {
-  const poolVal = _loadNum(_poolKey('9mm_deposit_pool_'), false);
-  return poolVal > 0 ? poolVal : _loadNum(_INITIAL_DEPOSIT_KEY, false);
-}
+export function loadInitialDeposit() { const v = _loadNum(_poolKey('9mm_deposit_pool_'), false); return v > 0 ? v : _loadNum(_INITIAL_DEPOSIT_KEY, false); }
 
-function _refreshDepositLabel() {
-  const saved = loadInitialDeposit(), disp = g('lifetimeDepositDisplay');
-  if (disp) disp.textContent = saved > 0 ? '$usd ' + saved.toFixed(2) : '—';
-}
+function _refreshDepositLabel() { const s = loadInitialDeposit(), d = g('lifetimeDepositDisplay'); if (d) d.textContent = s > 0 ? '$usd ' + s.toFixed(2) : '—'; }
 
 // ── Current-position deposit ─────────────────────────────────────────────────
 
 /** Load the current position's deposit. */
 export function loadCurDeposit() { return _loadNum(_posKey('9mm_deposit_pos_'), false); }
 
-export function refreshCurDepositDisplay(fallback) {
-  const val = loadCurDeposit() || (fallback || 0), disp = g('curDepositDisplay');
-  if (disp) disp.textContent = val > 0 ? '$usd ' + val.toFixed(2) : '—';
-}
+export function refreshCurDepositDisplay(fallback) { const v = loadCurDeposit() || (fallback || 0), d = g('curDepositDisplay'); if (d) d.textContent = v > 0 ? '$usd ' + v.toFixed(2) : '—'; }
 /** Toggle the current-position deposit input. */
 export function toggleCurDeposit() { _toggleWrap('curDepositInputWrap', 'curDepositInput', loadCurDeposit); }
 /** Save the current-position deposit. */
@@ -142,19 +127,6 @@ export function _fmtUsd(val) {
   if (abs === '0.00') return '$usd 0.00';
   const sign = val < 0 ? '-' : '';
   return sign + '$usd ' + abs;
-}
-
-/** Compute annualized APR from fees, deposit, and first epoch date. */
-function _computeApr(fees, deposit, firstEpochDate) {
-  if (!deposit || deposit <= 0 || !firstEpochDate) return { text: '\u2014', cls: '' };
-  const startMs = new Date(firstEpochDate + 'T00:00:00Z').getTime();
-  const elapsedSec = (Date.now() - startMs) / 1000;
-  if (elapsedSec <= 0) return { text: '\u2014', cls: '' };
-  const secPerYear = 365.25 * 24 * 3600;
-  const apr = (fees / deposit) / (elapsedSec / secPerYear) * 100;
-  const sign = apr < 0 ? '\u2212' : '';
-  const cls = Math.abs(apr) < 0.005 ? '' : apr > 0 ? 'pos' : 'neg';
-  return { text: sign + Math.abs(apr).toFixed(2) + '%', cls };
 }
 
 /** Check if a value rounds to zero at 2 decimal places. */
@@ -229,8 +201,8 @@ function _fmtDuration(ms) {
 }
 
 /** Update the current-position IL value and percentage. */
-function _updateCurIL(epoch, deposit) {
-  const curIlVal = epoch ? (epoch.il || 0) : 0;
+function _updateCurIL(d, deposit) {
+  const curIlVal = d.pnlSnapshot ? (d.pnlSnapshot.totalIL || 0) : 0;
   const curIlEl = g('curIL');
   if (curIlEl) {
     _setLeadingText(curIlEl, _fmtUsd(curIlVal));
@@ -258,11 +230,7 @@ function _applySnapshotKpis(d, deposit, curRealized) {
   _setPnlVal('pnlPrice', deposit > 0 ? currentValue - deposit : (d.pnlSnapshot.priceChangePnl || 0));
   _setPnlVal('pnlRealized', curRealized);
   const dep = g('kpiDeposit'); if (dep) dep.textContent = _fmtUsd(deposit);
-  _updateCurIL(epoch, deposit);
-  const epochStart = epoch ? new Date(epoch.openTime).toISOString().slice(0, 10) : null;
-  const aprResult = _computeApr(curFees, deposit, epochStart);
-  const aprEl = g('kpiApr');
-  if (aprEl) { aprEl.textContent = aprResult.text; aprEl.className = '9mm-pos-mgr-pnl-val-' + (aprResult.cls || 'neu'); }
+  _updateCurIL(d, deposit);
   _updatePosDuration(d);
 }
 
@@ -291,31 +259,34 @@ function _updatePosStatus(d) {
   if (!el) return;
   const active = posStore.getActive();
   if (!active) { el.textContent = ''; el.className = '9mm-pos-mgr-pos-status'; return; }
-  const liq = d?.activePosition?.liquidity ?? active.liquidity;
+  const liq = d.activePosition ? (d.activePosition.liquidity ?? active.liquidity) : active.liquidity;
   const isClosed = liq !== undefined && liq !== null && BigInt(liq) === 0n;
   el.textContent = isClosed ? 'CLOSED' : 'ACTIVE';
   el.className = '9mm-pos-mgr-pos-status ' + (isClosed ? 'closed' : 'active');
 }
 
-function _updateKpis(d) {
-  const ltRealized = loadRealizedGains();
-  const curRealized = loadCurRealized();
+/** Resolve lifetime and current-position totals for KPI display. */
+function _resolveKpiTotals(d) {
+  const ltRealized = loadRealizedGains(), curRealized = loadCurRealized();
   const ltFees = d.pnlSnapshot ? (d.pnlSnapshot.totalFees || 0) : 0;
   const curFees = d.pnlSnapshot?.liveEpoch?.fees || 0;
-  const currentValue = d.pnlSnapshot ? (d.pnlSnapshot.currentValue || 0) : 0;
-  const curDeposit = _resolveCurDeposit(d);
-  const curTotal = _priceChangePnl(d, curDeposit, currentValue) + curFees + curRealized;
-  const ltUserDep = loadInitialDeposit();
-  const ltDeposit = ltUserDep > 0 ? ltUserDep : _botDetectedDeposit(d);
-  const ltTotal = _priceChangePnl(d, ltDeposit, currentValue) + ltFees + ltRealized;
-  _updatePnlHeader(d, curTotal, curRealized, curDeposit);
-  if (d.pnlSnapshot) { _applySnapshotKpis(d, curDeposit, curRealized); }
+  const cv = d.pnlSnapshot ? (d.pnlSnapshot.currentValue || 0) : 0;
+  const curDep = _resolveCurDeposit(d), ltUserDep = loadInitialDeposit();
+  const ltDep = ltUserDep > 0 ? ltUserDep : _botDetectedDeposit(d);
+  return { curTotal: _priceChangePnl(d, curDep, cv) + curFees + curRealized,
+    ltTotal: _priceChangePnl(d, ltDep, cv) + ltFees + ltRealized,
+    curDep, ltDep, curRealized };
+}
+
+function _updateKpis(d) {
+  const t = _resolveKpiTotals(d);
+  _updatePnlHeader(d, t.curTotal, t.curRealized, t.curDep);
+  if (d.pnlSnapshot) { _applySnapshotKpis(d, t.curDep, t.curRealized); }
   else if (d.running) { const dep = g('kpiDeposit'); if (dep) dep.textContent = 'Awaiting Price Data'; }
-  _updateNetReturn(d, ltTotal, ltDeposit);
+  _updateNetReturn(d, t.ltTotal, t.ltDep);
   const ltDisp = g('lifetimeDepositDisplay');
-  if (ltDisp) ltDisp.textContent = ltDeposit > 0 ? '$usd ' + ltDeposit.toFixed(2) : '—';
+  if (ltDisp) ltDisp.textContent = t.ltDep > 0 ? '$usd ' + t.ltDep.toFixed(2) : '—';
   refreshCurDepositDisplay(d.pnlSnapshot?.liveEpoch?.entryValue || 0);
-  _updatePosStatus(d);
 }
 
 /** Update the Net Return KPI card and its IL breakdown. */
@@ -363,12 +334,12 @@ function _checkHodlBaselineDialog(d) {
 
 /** Update position ticks and pool share from active position data. */
 function _updatePositionTicks(d) {
+  if (d.poolState) { const tc = g('sTC'); if (tc) tc.textContent = d.poolState.tick ?? '—'; }
   if (!d.activePosition) return;
   const pos = d.activePosition;
   const tl = g('sTL'), tu = g('sTU');
   if (tl) tl.textContent = pos.tickLower ?? '—';
   if (tu) tu.textContent = pos.tickUpper ?? '—';
-  if (d.poolState) { const tc = g('sTC'); if (tc) tc.textContent = d.poolState.tick ?? '—'; }
   if (d.positionStats) {
     const s0 = g('sShare0'), s1 = g('sShare1');
     if (s0) s0.textContent = d.positionStats.poolShare0Pct !== undefined ? d.positionStats.poolShare0Pct.toFixed(4) + '%' : '—';
@@ -443,12 +414,14 @@ function _updateRangePctLabels(price, lower, upper) {
 
 /** Update the price marker on the range monitor from pool/position state. */
 function _updatePriceMarker(d) {
-  if (!d.poolState || !d.activePosition) return;
+  if (!d.poolState) return;
   botConfig.price = d.poolState.price;
   const pml = g('pmlabel');
   if (pml) pml.textContent = d.poolState.price.toFixed(6) + ' ' + _activeToken1Symbol();
-  botConfig.tL = d.activePosition.tickLower || 0;  botConfig.tU = d.activePosition.tickUpper || 0;
-  botConfig.lower = Math.pow(1.0001, botConfig.tL);  botConfig.upper = Math.pow(1.0001, botConfig.tU);
+  if (d.activePosition) {
+    botConfig.tL = d.activePosition.tickLower || 0;  botConfig.tU = d.activePosition.tickUpper || 0;
+    botConfig.lower = Math.pow(1.0001, botConfig.tL); botConfig.upper = Math.pow(1.0001, botConfig.tU);
+  }
   _updateRangePctLabels(d.poolState.price, botConfig.lower, botConfig.upper);
   positionRangeVisual();
 }
@@ -570,6 +543,7 @@ function updateDashboardFromStatus(data) {
   _lastStatus = data;
   _syncConfigFromServer(data);
   _syncActivePosition(data);
+  _updatePosStatus(data);
   _updateKpis(data);
   _updatePositionTicks(data);
   _updateComposition(data);

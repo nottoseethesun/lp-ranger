@@ -108,7 +108,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
 
-**633 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**638 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
 
 ---
 
@@ -178,7 +178,7 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 
 **USD pricing:** DexScreener (primary, no key) → DexTools (fallback, requires `DEXTOOLS_API_KEY`). 60s in-memory cache. See `src/price-fetcher.js`. Historical prices fetched from GeckoTerminal OHLCV API (free, no key, 30 calls/min). USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
 
-**Single position per pool:** The tool manages one active LP position per wallet per liquidity pool. When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned — the bot does not call `burn()`. Rebalance history is detected via consecutive mint events (Transfer from 0x0 to wallet), not burn+mint pairs.
+**Single position per pool:** The tool manages one active LP position per wallet per liquidity pool. When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned — the bot does not call `burn()`. Rebalance history is detected via consecutive mint events (Transfer from 0x0 to wallet), not burn+mint pairs. **Runtime position switching:** `POST /api/position/switch` stops the bot, clears position-specific state, and restarts on the new NFT. The dashboard calls this when the user selects a position in the Position Browser. `activePositionId` is persisted to `.bot-config.json` so the selection survives restarts. Closed positions (liquidity=0) are displayed but the bot skips rebalance checks.
 
 **P&L breakdown:** Two components: (a) price-change P&L (position value change from token price movements, including IL), and (b) fee P&L (trading fees earned while in range). Per-day aggregation (up to 31 days) with running cumulative. Historical USD token prices stored per-epoch for accurate retrospective P&L.
 
@@ -186,7 +186,7 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 
 **Event scanner rate limiting:** 250ms delay between RPC chunk queries (`_CHUNK_DELAY_MS`) to avoid overwhelming the endpoint. With 10,000-block chunks, a 5-year scan (~15.8M blocks) takes ~1,580 chunks. Pool-age optimisation reduces this for younger pools.
 
-**Bot config persistence:** Dashboard settings (range width, slippage, intervals, trigger config, initial deposit) are saved to `.bot-config.json` on every `POST /api/config` and loaded on server startup. Survives restarts.
+**Bot config persistence:** Dashboard settings (range width, slippage, intervals, trigger config, initial deposit, `activePositionId`) are saved to `.bot-config.json` on every `POST /api/config` or position switch, and loaded on server startup. Survives restarts.
 
 **Pool-age optimisation:** Event scanner checks the V3 Factory's `PoolCreated` event to find when the pool was deployed, then skips all blocks before that. Can save thousands of RPC queries for pools younger than 5 years.
 

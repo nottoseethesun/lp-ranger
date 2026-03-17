@@ -255,15 +255,19 @@ function _recordResidual(deps, result) {
 
 // ── Rebalance execution helper ───────────────────────────────────────────────
 
+/** Build a serialisable activePosition snapshot from a position object. */
+function _activePosSummary(p) {
+  return { tokenId: String(p.tokenId), token0: p.token0, token1: p.token1,
+    fee: p.fee, tickLower: p.tickLower, tickUpper: p.tickUpper,
+    liquidity: String(p.liquidity || 0) };
+}
+
 /** Notify the dashboard of a successful rebalance. */
 function _notifyRebalance(deps, throttle, position, events) {
   deps.updateBotState({ rebalanceCount: (deps._rebalanceCount || 0) + 1,
     lastRebalanceAt: new Date().toISOString(), throttleState: throttle.getState(),
     rebalanceEvents: events ? [...events] : undefined,
-    activePosition: { tokenId: String(position.tokenId), token0: position.token0,
-      token1: position.token1, fee: position.fee,
-      tickLower: position.tickLower, tickUpper: position.tickUpper,
-      liquidity: String(position.liquidity || 0) } });
+    activePosition: _activePosSummary(position) });
 }
 
 async function _executeAndRecord(deps, ethersLib) {
@@ -445,12 +449,18 @@ async function pollCycle(deps) {
     updateBotState(stateUpdate);
   }
 
-  // 2. Check if in range (V3: upper tick is exclusive); skip on forced rebalance
+  // 2. Skip rebalance for closed positions (liquidity=0) — still publish stats above
+  if (BigInt(position.liquidity) === 0n) {
+    console.log('[bot] Position closed (0 liquidity) — skipping rebalance');
+    return { rebalanced: false };
+  }
+
+  // 3. Check if in range (V3: upper tick is exclusive); skip on forced rebalance
   const forced = deps._botState?.forceRebalance;
   const inRange = poolState.tick >= position.tickLower && poolState.tick < position.tickUpper;
   if (inRange && !forced) return { rebalanced: false, inRange: true };
 
-  // 3. Throttle check (skip on forced rebalance)
+  // 4. Throttle check (skip on forced rebalance)
   if (!forced) {
     const can = throttle.canRebalance();
     if (!can.allowed) {
@@ -460,16 +470,16 @@ async function pollCycle(deps) {
     }
   }
 
-  // 4. Dry-run: log and skip
+  // 5. Dry-run: log and skip
   if (dryRun) {
     console.log(`[bot] DRY RUN — OOR, price=${poolState.price} tick=${poolState.tick} range=[${position.tickLower},${position.tickUpper}]`);
     return { rebalanced: false };
   }
 
-  // 5. Gas cost check — defer if gas > 0.5% of position value
+  // 6. Gas cost check — defer if gas > 0.5% of position value
   if (await _isGasTooHigh(provider, position, poolState)) return { rebalanced: false, gasDeferred: true };
 
-  // 6. Execute rebalance
+  // 7. Execute rebalance
   return _executeAndRecord(deps, ethersLib);
 }
 
@@ -540,6 +550,27 @@ function _initPnlTracker(ev, botState, poolState, lowerPrice, upperPrice, price0
 }
 
 /**
+ * Detect and select the target NFT position from on-chain data.
+ * @param {object} provider   ethers provider.
+ * @param {string} address    Wallet address.
+ * @param {string} [targetId] Specific NFT token ID to select.
+ * @returns {Promise<object>}  Selected position data.
+ */
+async function _detectPosition(provider, address, targetId) {
+  const detection = await detectPositionType(provider, {
+    walletAddress: address, positionManagerAddress: config.POSITION_MANAGER,
+    tokenId: targetId, candidateAddress: config.ERC20_POSITION_ADDRESS || undefined,
+  });
+  if (detection.type !== 'nft' || !detection.nftPositions?.length) {
+    throw new Error('No V3 NFT position found. This tool only supports V3 positions.');
+  }
+  const valid = detection.nftPositions.filter((p) => V3_FEE_TIERS.includes(p.fee));
+  if (!valid.length) throw new Error(`No positions with supported fee tiers. V3 tiers: ${V3_FEE_TIERS.join(', ')}`);
+  if (targetId) return valid.find((p) => String(p.tokenId) === String(targetId)) || valid[0];
+  return valid.reduce((best, p) => BigInt(p.liquidity || 0n) > BigInt(best.liquidity || 0n) ? p : best);
+}
+
+/**
  * Start the bot polling loop.  Creates provider, signer, detects position,
  * and begins periodic polling.
  *
@@ -549,6 +580,7 @@ function _initPnlTracker(ev, botState, poolState, lowerPrice, upperPrice, price0
  * @param {Function} opts.updateBotState   Callback to update shared bot state.
  * @param {object}   opts.botState         Shared bot state object for runtime params.
  * @param {object}   [opts.ethersLib]      Injected ethers (for testing).
+ * @param {string}   [opts.positionId]     NFT token ID to manage (overrides config).
  * @returns {Promise<{ stop: Function }>}  Handle with stop() method.
  */
 async function startBotLoop(opts) {
@@ -557,11 +589,7 @@ async function startBotLoop(opts) {
   const ethersLib = opts.ethersLib || ethers;
 
   if (dryRun) console.log('\n  ┌──────────────────────────────────────────────┐\n  │  DRY RUN MODE — no transactions will be sent │\n  └──────────────────────────────────────────────┘\n');
-
-  const provider = await createProviderWithFallback(
-    config.RPC_URL, config.RPC_URL_FALLBACK, ethersLib,
-  );
-
+  const provider = await createProviderWithFallback(config.RPC_URL, config.RPC_URL_FALLBACK, ethersLib);
   let signer, address;
   if (dryRun && !privateKey) {
     const randomWallet = ethersLib.Wallet.createRandom();
@@ -574,29 +602,7 @@ async function startBotLoop(opts) {
   }
 
   console.log(`[bot] Wallet: ${address}`);
-
-  // Detect position
-  const detection = await detectPositionType(provider, {
-    walletAddress: address,
-    positionManagerAddress: config.POSITION_MANAGER,
-    tokenId: config.POSITION_ID || undefined,
-    candidateAddress: config.ERC20_POSITION_ADDRESS || undefined,
-  });
-
-  if (detection.type !== 'nft' || !detection.nftPositions?.length) {
-    throw new Error('No V3 NFT position found. This tool only supports V3 positions.');
-  }
-
-  // Pick the position with the highest liquidity (skip drained old positions)
-  const validPositions = detection.nftPositions.filter(
-    (p) => V3_FEE_TIERS.includes(p.fee),
-  );
-  if (!validPositions.length) {
-    throw new Error(`No positions with supported fee tiers. V3 tiers: ${V3_FEE_TIERS.join(', ')}`);
-  }
-  const position = validPositions.reduce((best, p) =>
-    BigInt(p.liquidity || 0n) > BigInt(best.liquidity || 0n) ? p : best);
-
+  const position = await _detectPosition(provider, address, opts.positionId || config.POSITION_ID || undefined);
   console.log(`[bot] Managing NFT #${position.tokenId} (${position.token0}/${position.token1} fee=${position.fee})`);
 
   // Initialize P&L tracker with token prices
@@ -622,28 +628,21 @@ async function startBotLoop(opts) {
 
   const residualTracker = createResidualTracker();
   if (botState.residuals) residualTracker.deserialize(botState.residuals);
-
   initHodlBaseline(provider, ethersLib, position, botState, updateBotState)
     .catch((err) => console.warn('[bot] HODL baseline background error:', err.message));
-  const throttle = createThrottle({
-    minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60_000,
-    dailyMax: config.MAX_REBALANCES_PER_DAY,
-  });
+  const throttle = createThrottle({ minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60_000, dailyMax: config.MAX_REBALANCES_PER_DAY });
   const rebalanceEvents = [];
-  const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache.json') });
-  _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle);
+  _scanHistory(provider, ethersLib, address, position,
+    createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache.json') }),
+    rebalanceEvents, updateBotState, throttle);
 
-  const _activePos = () => ({ tokenId: String(position.tokenId), token0: position.token0,
-    token1: position.token1, fee: position.fee, tickLower: position.tickLower, tickUpper: position.tickUpper,
-    liquidity: String(position.liquidity || 0) });
   updateBotState({ running: true, dryRun, startedAt: new Date().toISOString(),
-    throttleState: throttle.getState(), rebalanceEvents, activePosition: _activePos() });
+    throttleState: throttle.getState(), rebalanceEvents,
+    activePosition: _activePosSummary(position) });
 
   let collectedFeesUsd = 0, rebalanceCount = 0, firstFailureAt = null, polling = false;
-  const baseIntervalMs = config.CHECK_INTERVAL_SEC * 1000;
-  const GAS_DEFER_MS = 3600_000; // 1 hour when gas is too high
+  const baseIntervalMs = config.CHECK_INTERVAL_SEC * 1000, GAS_DEFER_MS = 3600_000;
   let currentIntervalMs = baseIntervalMs, timer = null;
-
   function _scheduleNext() { timer = setTimeout(poll, currentIntervalMs); }
 
   const poll = async () => {
@@ -683,14 +682,19 @@ async function startBotLoop(opts) {
     } finally { polling = false; _scheduleNext(); }
   };
 
-  await poll(); // first poll immediate; subsequent via setTimeout
+  await poll();
   console.log(`[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`);
-
+  let _stopped = false;
   return {
     stop() {
-      clearTimeout(timer);
+      if (_stopped) return Promise.resolve();
+      _stopped = true; clearTimeout(timer);
       updateBotState({ running: false });
       console.log('[bot] Bot loop stopped');
+      if (!polling) return Promise.resolve();
+      return new Promise((resolve) => {
+        const check = setInterval(() => { if (!polling) { clearInterval(check); resolve(); } }, 50);
+      });
     },
   };
 }

@@ -103,6 +103,14 @@ function _renderRangeBanner(can) {
   const banner = g('rangeBanner');
   if (!botConfig.price) { banner.style.display = 'none'; return; }
   banner.style.display = '';
+  const active = posStore.getActive();
+  const liq = active ? active.liquidity : undefined;
+  if (liq !== undefined && liq !== null && String(liq) === '0') {
+    banner.className = 'range-status-banner wait';
+    g('rangeIcon').textContent  = '\u2014';
+    g('rangeLabel').textContent = 'POSITION CLOSED';
+    return;
+  }
   const inR    = botConfig.price >= botConfig.lower && botConfig.price <= botConfig.upper;
   if (!inR && !can.allowed) {
     const icon  = throttle.doublingActive ? '\u26A1' : '\u23F3';

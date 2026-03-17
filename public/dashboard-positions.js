@@ -50,15 +50,25 @@ function _persistPosStore() {
   } catch { /* private mode or quota exceeded */ }
 }
 
-/** Load posStore from localStorage. */
+/** Load posStore from localStorage, deduplicating entries. */
 export function _loadPosStore() {
   try {
     const raw = localStorage.getItem(_POS_STORE_KEY);
     if (!raw) return;
     const data = JSON.parse(raw);
     if (Array.isArray(data.entries)) {
-      posStore.entries   = data.entries;
-      posStore.activeIdx = typeof data.activeIdx === 'number' ? data.activeIdx : -1;
+      const seen = new Set(), deduped = [];
+      for (const e of data.entries) {
+        const key = (e.walletAddress || '').toLowerCase() + '|' + e.positionType + '|' +
+          (e.positionType === 'nft' ? String(e.tokenId) : (e.contractAddress || ''));
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push({ ...e, index: deduped.length });
+      }
+      posStore.entries = deduped;
+      const idx = typeof data.activeIdx === 'number' ? data.activeIdx : -1;
+      posStore.activeIdx = idx >= 0 && idx < deduped.length ? idx : (deduped.length > 0 ? 0 : -1);
+      _persistPosStore();
     }
   } catch { /* corrupt data — start fresh */ }
 }
@@ -227,13 +237,17 @@ export function closePosBrowser() { g('posBrowserModal').className = 'modal-over
 export function renderPosBrowser() {
   const filter   = (g('posSearchInput').value || '').toLowerCase();
   const all      = posStore.entries;
-  const filtered = filter
+  const unsorted = filter
     ? all.filter(e => {
       const hay = [e.token0, e.token1, e.tokenId, e.contractAddress,
         e.walletAddress, e.positionType].join(' ').toLowerCase();
       return hay.includes(filter);
     })
     : all;
+  const filtered = [...unsorted].sort((a, b) => {
+    const idA = Number(a.tokenId || 0), idB = Number(b.tokenId || 0);
+    return idB - idA;
+  });
 
   // Stats bar
   const nftCount = filtered.filter(e => e.positionType === 'nft').length;
@@ -316,6 +330,16 @@ export function activateSelectedPos() {
 
     _applyLocalPositionData(active);
     if (_positionRangeVisual) _positionRangeVisual();
+
+    // Notify server to switch the bot to this position
+    if (active.positionType === 'nft' && active.tokenId) {
+      fetch('/api/position/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenId: active.tokenId }),
+      }).catch(() => {});
+    }
+
     act('\u{1F4CD}', 'fee', 'Position switched', 'Now managing: ' + formatPosLabel(active) + ' (\u00B1' + savedRangeW + '%)');
     closePosBrowser();
   }
@@ -331,6 +355,20 @@ function _tokenName(symbol, address) {
   if (symbol) return symbol;
   if (address && address.length > 10) return address.slice(0, 6) + '\u2026' + address.slice(-4);
   return address || '?';
+}
+
+/**
+ * Determine status CSS class and label for a position row.
+ * @param {object}  e         Position entry.
+ * @param {boolean} isActive  Whether this is the active position.
+ * @param {boolean} inRange   Whether the current price is inside the position's range.
+ * @returns {{cls: string, label: string}}
+ */
+function _posRowStatus(e, isActive, inRange) {
+  const isClosed = e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0';
+  if (isClosed) return { cls: 'closed', label: 'CLOSED' };
+  if (isActive) return inRange ? { cls: 'in', label: '\u2713 IN' } : { cls: 'out', label: '\u2717 OUT' };
+  return { cls: 'closed', label: '\u2014' };
 }
 
 /**
@@ -351,6 +389,7 @@ function _renderPosRow(e) {
   const walletShort   = e.walletAddress.slice(0, 8) + '\u2026' + e.walletAddress.slice(-4);
   const isHighlighted = e.index === posBrowserSelected;
   const isActive      = e.active;
+  const { cls: statusCls, label: statusLabel } = _posRowStatus(e, isActive, inR);
   return `<div class="pos-row ${isActive ? 'active-pos' : ''} ${isHighlighted ? 'selected' : ''}" data-pos-idx="${e.index}">
     <div class="pos-row-idx ${isActive ? 'active-idx' : ''}">${e.index + 1}</div>
     <span class="pos-type-chip ${e.positionType}">${e.positionType.toUpperCase()}</span>
@@ -358,7 +397,7 @@ function _renderPosRow(e) {
       <div class="pos-row-title">${idStr} \u00B7 ${pair} \u00B7 ${feePct}${isActive ? ' \u2605' : ''}</div>
       <div class="pos-row-meta">${walletShort} \u00B7 ticks [${e.tickLower || 0}, ${e.tickUpper || 0}]</div>
     </div>
-    <div class="pos-row-status ${isActive ? (inR ? 'in' : 'out') : 'closed'}">${isActive ? (inR ? '\u2713 IN' : '\u2717 OUT') : 'CLOSED'}</div>
+    <div class="pos-row-status ${statusCls}">${statusLabel}</div>
   </div>`;
 }
 

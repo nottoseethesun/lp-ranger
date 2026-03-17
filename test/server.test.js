@@ -208,6 +208,38 @@ describe('server', () => {
   });
 });
 
+// ── POST /api/position/switch ──────────────────────────────────────────────────
+
+describe('POST /api/position/switch', () => {
+  let port;
+
+  it('returns 400 when tokenId is missing', async () => {
+    port = 54350;
+    await start(port);
+    try {
+      const res = await req({ port, method: 'POST', path: '/api/position/switch', body: {} });
+      assert.strictEqual(res.status, 400);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.ok, false);
+      assert.ok(body.error.includes('tokenId'));
+    } finally { await stop(); }
+  });
+
+  it('returns 200 with valid tokenId and persists activePositionId', async () => {
+    port = 54351;
+    await start(port);
+    try {
+      // Will fail to start bot (no wallet) but should still return 200
+      const res = await req({ port, method: 'POST', path: '/api/position/switch', body: { tokenId: '12345' } });
+      assert.strictEqual(res.status, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.ok, true);
+      assert.strictEqual(body.tokenId, '12345');
+      assert.strictEqual(botState.activePositionId, '12345');
+    } finally { await stop(); }
+  });
+});
+
 // ── updateBotState (unit, no server needed) ───────────────────────────────────
 
 describe('updateBotState', () => {
