@@ -1,14 +1,47 @@
 /**
  * @file dashboard-router.js
  * @description Client-side URL routing for the 9mm v3 Position Manager dashboard.
- * Uses Navigo for pushState-based routing so that positions are bookmarkable
+ * Uses Navigo v8 for pushState-based routing so that positions are bookmarkable
  * and shareable via URL paths like /pulsechain/:wallet/:contract/:tokenId.
+ *
+ * ## Navigo architecture
+ *
+ * Navigo (root: '/') owns all URL state.  Three routes are registered:
+ *   - /pulsechain/:wallet/:contract/:tokenId  — deep-link to a specific NFT position
+ *   - /pulsechain/:wallet                     — wallet loaded, no position selected
+ *   - /                                       — root, no URL-driven state
+ *
+ * Route handlers fire on initial resolve() and on popstate (back/forward).
+ * Navigo's `navigate()` API is used for all URL updates with two modes:
+ *   - pushState (default) — explicit user actions (position browser selection)
+ *   - replaceState (via `historyAPIMethod: 'replaceState'`) — automatic flows
+ *     and wallet-level changes that should not pollute browser history
+ *
+ * `getCurrentLocation().url` is used instead of `window.location.pathname`
+ * to read the current route through Navigo's API.  Paths are built without
+ * leading slashes (Navigo normalises them internally).
+ *
+ * `navigate({ callHandler: false })` updates the URL bar without re-firing
+ * route handlers, used when the app already applied the state change and
+ * only needs the URL to reflect it.
+ *
+ * ## bfcache support
+ *
+ * Full-page navigations (user typing a URL) create browser history entries
+ * that restore via bfcache on back/forward.  Navigo's popstate listener does
+ * not fire for bfcache restores, and its "already" hook blocks re-resolution
+ * of the same URL.  A `pageshow` listener clears Navigo's `lastResolved`
+ * state via `_setCurrent(null)` and calls `resolve()` to re-fire the route
+ * handler, which re-syncs the server's active position via activateByTokenId.
+ *
+ * ## URL update contract
  *
  * The router is the single authority on URL state.  Other modules call
  * updateRouteForPosition/updateRouteForWallet only for explicit user actions
  * (position selection, wallet import/clear).  Automatic flows (scan, wallet
- * status restore) should NOT overwrite the URL — the router handles deep-link
- * resolution via pending route targets and retry logic.
+ * status restore) use syncRouteToState, which refuses to overwrite an
+ * existing deep-link URL (4+ path segments).  The router handles deep-link
+ * resolution via pending route targets and retry logic (3 attempts, 2s apart).
  *
  * Depends on: navigo (npm), dashboard-helpers.js (act).
  */
