@@ -269,9 +269,10 @@ function createPnlTracker(opts = {}) {
   /**
    * Return a complete snapshot of current P&L state.
    * @param {number} [currentPrice]  Required for live epoch P&L estimate.
+   * @param {string|null} [fromDate]  ISO date (YYYY-MM-DD) for daily P&L day-fill.
    * @returns {PnlSnapshot}
    */
-  function snapshot(currentPrice) {
+  function snapshot(currentPrice, fromDate) {
     const closedPnl = closedEpochs.reduce((s, e) => s + e.epochPnl, 0);
     const livePnl   = currentPrice !== null ? _computeLivePnl(currentPrice) : 0;
 
@@ -295,7 +296,7 @@ function createPnlTracker(opts = {}) {
     const feePnl = totalFees;
 
     // ── Per-day P&L (up to 31 days) ──────────────────────────────────────────
-    const dailyPnl = _buildDailyPnl(closedEpochs, liveEpoch);
+    const dailyPnl = _buildDailyPnl(closedEpochs, liveEpoch, fromDate);
 
     // ── Date range for lifetime P&L ───────────────────────────────────────────
     const allEpochs = liveEpoch ? [...closedEpochs, liveEpoch] : closedEpochs;
@@ -352,14 +353,17 @@ function createPnlTracker(opts = {}) {
 }
 
 /**
- * Aggregate epoch data into per-day P&L records (up to 31 days).
+ * Aggregate epoch data into per-day P&L records.
  * Each day shows the breakdown of price-change P&L vs fee P&L.
+ * When `fromDate` is provided, fills in zero-value rows for every day
+ * between `fromDate` and today so the table shows the full timeline.
  *
  * @param {Epoch[]} closedEpochs
  * @param {Epoch|null} liveEpoch
+ * @param {string|null} [fromDate]  ISO date (YYYY-MM-DD) for day-fill start.
  * @returns {DailyPnl[]}
  */
-function _buildDailyPnl(closedEpochs, liveEpoch) {
+function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
   /** @type {Map<string, {priceChangePnl: number, feePnl: number, gasCost: number}>} */
   const dayMap = new Map();
 
@@ -372,9 +376,9 @@ function _buildDailyPnl(closedEpochs, liveEpoch) {
     dayMap.set(day, entry);
   }
 
-  // Include live epoch on today's date
+  // Include live epoch on TODAY's date (not openTime) so it always appears in the current row
   if (liveEpoch) {
-    const today = new Date(liveEpoch.openTime).toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
     const entry = dayMap.get(today) || { priceChangePnl: 0, feePnl: 0, gasCost: 0 };
     entry.priceChangePnl += liveEpoch.priceChangePnl ?? 0;
     entry.feePnl += liveEpoch.feePnl ?? liveEpoch.fees;
@@ -382,10 +386,23 @@ function _buildDailyPnl(closedEpochs, liveEpoch) {
     dayMap.set(today, entry);
   }
 
-  // Sort by date descending, limit to 31 days
+  // Fill zero-value days from fromDate to today
+  if (fromDate) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const cursor = new Date(fromDate + 'T00:00:00Z');
+    const end = new Date(todayStr + 'T00:00:00Z');
+    while (cursor <= end) {
+      const key = cursor.toISOString().slice(0, 10);
+      if (!dayMap.has(key)) {
+        dayMap.set(key, { priceChangePnl: 0, feePnl: 0, gasCost: 0 });
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  // Sort by date descending (no limit — show all days)
   const sorted = [...dayMap.entries()]
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .slice(0, 31);
+    .sort((a, b) => b[0].localeCompare(a[0]));
 
   let cumulative = 0;
   // Reverse to compute cumulative from oldest to newest, then reverse back

@@ -35,6 +35,11 @@ const POOL_CREATED_ABI = [
   'event PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing, address pool)',
 ];
 
+/** Minimal ABI to look up which pool a tokenId belongs to. */
+const POSITIONS_ABI = [
+  'function positions(uint256) external view returns (uint96, address, address, address, uint24, int24, int24, uint128, uint256, uint256, uint128, uint128)',
+];
+
 /**
  * @typedef {object} RebalanceEvent
  * @property {number}  index       - 1-based sequence number.
@@ -251,6 +256,30 @@ function buildTransferDescriptors(unique, walletAddress, tsMap) {
 }
 
 /**
+ * Look up the pool (token0/token1/fee) for each tokenId via positions().
+ * @param {object} provider  ethers provider.
+ * @param {object} ethersLib ethers library.
+ * @param {string} positionManagerAddress  NonfungiblePositionManager address.
+ * @param {string[]} tokenIds  Unique token IDs to look up.
+ * @returns {Promise<Map<string, string>>}  tokenId → "token0-token1-fee" key.
+ */
+async function _lookupTokenPools(provider, ethersLib, positionManagerAddress, tokenIds) {
+  const pm = new ethersLib.Contract(positionManagerAddress, POSITIONS_ABI, provider);
+  const map = new Map();
+  for (let i = 0; i < tokenIds.length; i += 10) {
+    const batch = tokenIds.slice(i, i + 10);
+    const results = await Promise.all(batch.map((id) => pm.positions(id).catch(() => null)));
+    for (let j = 0; j < results.length; j++) {
+      if (results[j]) {
+        const r = results[j];
+        map.set(batch[j], `${r[2].toLowerCase()}-${r[3].toLowerCase()}-${Number(r[4])}`);
+      }
+    }
+  }
+  return map;
+}
+
+/**
  * Merge cached and new events, deduplicate by txHash, re-index.
  * @param {RebalanceEvent[]} cachedEvents
  * @param {RebalanceEvent[]} newEvents
@@ -352,6 +381,40 @@ async function scanChunks(contract, walletAddress, scanFrom, currentBlock, chunk
 }
 
 /**
+ * Build the cache key, appending pool info when pool filtering is active.
+ * @param {string} walletAddress
+ * @param {string} positionManagerAddress
+ * @param {string|null} poolToken0  @param {string|null} poolToken1
+ * @param {number|null} poolFee
+ * @returns {string}
+ */
+function _buildCacheKey(walletAddress, positionManagerAddress, poolToken0, poolToken1, poolFee) {
+  const base = `rebalance:${walletAddress.toLowerCase()}:${positionManagerAddress.toLowerCase()}`;
+  if (poolToken0 && poolToken1 && poolFee !== null && poolFee !== undefined) {
+    return `${base}:${poolToken0.toLowerCase()}-${poolToken1.toLowerCase()}-${poolFee}`;
+  }
+  return base;
+}
+
+/**
+ * Filter transfer descriptors to only include tokenIds belonging to a target pool.
+ * Prevents cross-pool consecutive mint pairing when a wallet has multiple pools.
+ * @param {object} provider  @param {object} ethersLib
+ * @param {string} positionManagerAddress
+ * @param {object[]} transfers  Transfer descriptors.
+ * @param {string} poolToken0  @param {string} poolToken1  @param {number} poolFee
+ * @returns {Promise<object[]>}  Filtered transfers.
+ */
+async function _filterByPool(provider, ethersLib, positionManagerAddress, transfers, poolToken0, poolToken1, poolFee) {
+  const tids = [...new Set(transfers.map((t) => t.tokenId))];
+  const poolMap = await _lookupTokenPools(provider, ethersLib, positionManagerAddress, tids);
+  const target = `${poolToken0.toLowerCase()}-${poolToken1.toLowerCase()}-${poolFee}`;
+  const filtered = transfers.filter((t) => poolMap.get(t.tokenId) === target);
+  console.log(`[event-scanner] Pool filter: ${transfers.length} transfers → ${filtered.length} same-pool`);
+  return filtered;
+}
+
+/**
  * Scan on-chain rebalance history for a wallet.
  *
  * When a `cache` store is provided, previously scanned results are loaded and
@@ -367,20 +430,51 @@ async function scanChunks(contract, walletAddress, scanFrom, currentBlock, chunk
  * @param {object} [opts.cache]
  * @param {string} [opts.factoryAddress]
  * @param {string} [opts.poolAddress]
+ * @param {string} [opts.poolToken0]  Pool token0 address for pool-aware filtering.
+ * @param {string} [opts.poolToken1]  Pool token1 address for pool-aware filtering.
+ * @param {number} [opts.poolFee]     Pool fee tier for pool-aware filtering.
  * @returns {Promise<RebalanceEvent[]>}
  */
+/**
+ * Process raw events into paired rebalance records, optionally filtering by pool.
+ * @param {object} provider  @param {object} ethersLib
+ * @param {object[]} rawEvents  Raw ethers event objects.
+ * @param {string} walletAddress  @param {string} positionManagerAddress
+ * @param {RebalanceEvent[]} cachedEvents  Previously cached events.
+ * @param {object} poolFilter  { poolToken0, poolToken1, poolFee } or all nulls.
+ * @returns {Promise<{merged: RebalanceEvent[], firstMintTimestamp: number|null}>}
+ */
+async function _processRawEvents(provider, ethersLib, rawEvents, walletAddress, positionManagerAddress, cachedEvents, poolFilter) {
+  const unique = deduplicateRawEvents(rawEvents);
+  const tsMap = await fetchTimestamps(provider, unique.map((e) => e.blockNumber));
+  let transfers = buildTransferDescriptors(unique, walletAddress, tsMap);
+
+  const { poolToken0, poolToken1, poolFee } = poolFilter;
+  if (poolToken0 && poolToken1 && poolFee !== null && poolFee !== undefined) {
+    transfers = await _filterByPool(provider, ethersLib, positionManagerAddress, transfers, poolToken0, poolToken1, poolFee);
+  }
+
+  const merged = mergeAndIndex(cachedEvents, pairTransfers(transfers));
+  const ZERO = '0x0000000000000000000000000000000000000000';
+  const firstMint = transfers.filter((t) => t.direction === 'in' && t.from === ZERO)
+    .sort((a, b) => a.timestamp - b.timestamp)[0];
+  const firstMintTimestamp = firstMint ? firstMint.timestamp : (cachedEvents.firstMintTimestamp || null);
+  if (firstMintTimestamp) merged.firstMintTimestamp = firstMintTimestamp;
+  return { merged, firstMintTimestamp };
+}
+
 async function scanRebalanceHistory(provider, ethersLib, opts) {
   const {
     positionManagerAddress, walletAddress,
     maxYears = 5, chunkSize = _DEFAULT_CHUNK_SIZE,
     cache = null, factoryAddress = null, poolAddress = null,
+    poolToken0 = null, poolToken1 = null, poolFee = null,
   } = opts;
 
   const currentBlock = await provider.getBlockNumber();
   const baseFrom = Math.max(0, currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR));
   const fromBlock = await resolveFromBlock(provider, ethersLib, currentBlock, baseFrom, factoryAddress, poolAddress);
-
-  const cacheKey = `rebalance:${walletAddress.toLowerCase()}:${positionManagerAddress.toLowerCase()}`;
+  const cacheKey = _buildCacheKey(walletAddress, positionManagerAddress, poolToken0, poolToken1, poolFee);
   const { cachedEvents, scanFrom } = await loadCache(cache, cacheKey, fromBlock);
 
   if (scanFrom > currentBlock && cachedEvents.length > 0) return cachedEvents;
@@ -396,19 +490,11 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     return cachedEvents;
   }
 
-  const unique = deduplicateRawEvents(rawEvents);
-  const tsMap = await fetchTimestamps(provider, unique.map((e) => e.blockNumber));
-  const transfers = buildTransferDescriptors(unique, walletAddress, tsMap);
-  const merged = mergeAndIndex(cachedEvents, pairTransfers(transfers));
+  const { merged, firstMintTimestamp } = await _processRawEvents(
+    provider, ethersLib, rawEvents, walletAddress, positionManagerAddress,
+    cachedEvents, { poolToken0, poolToken1, poolFee });
 
-  // Find the earliest mint-from-zero timestamp (= first LP position creation)
-  const ZERO = '0x0000000000000000000000000000000000000000';
-  const firstMint = transfers.filter((t) => t.direction === 'in' && t.from === ZERO)
-    .sort((a, b) => a.timestamp - b.timestamp)[0];
-  const fmt = firstMint ? firstMint.timestamp : (cachedEvents.firstMintTimestamp || null);
-  if (fmt) merged.firstMintTimestamp = fmt;
-
-  if (cache) await cache.set(cacheKey, { events: merged, lastBlock: currentBlock, firstMintTimestamp: fmt });
+  if (cache) await cache.set(cacheKey, { events: merged, lastBlock: currentBlock, firstMintTimestamp });
   return merged;
 }
 

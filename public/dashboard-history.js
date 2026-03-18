@@ -42,7 +42,7 @@ export function renderDailyPnl(dailyPnl) {
   }
 
   let cumulative = 0;
-  const rows = dailyPnl.slice(0, 31).map(d => {
+  const rows = dailyPnl.map(d => {
     const pricePnl = d.priceChangePnl || 0;
     const net = (d.feePnl || d.fees || 0) + pricePnl - (d.gasCost || d.gas || 0);
     cumulative += net;

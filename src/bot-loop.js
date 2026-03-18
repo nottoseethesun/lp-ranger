@@ -194,7 +194,8 @@ async function _scanHistory(provider, ethersLib, address, position, cache, event
     console.log(`[bot] Scanning rebalance history for ${address} (pool ${poolState.poolAddress})`);
     const found = await scanRebalanceHistory(provider, ethersLib, { walletAddress: address,
       positionManagerAddress: config.POSITION_MANAGER, factoryAddress: config.FACTORY,
-      poolAddress: poolState.poolAddress || null, maxYears: 5, cache });
+      poolAddress: poolState.poolAddress || null, maxYears: 5, cache,
+      poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee });
     events.push(...found);
     console.log(`[bot] Found ${found.length} historical rebalance events`);
     if (throttle && found.length > 0) {
@@ -361,7 +362,7 @@ async function _updatePnlAndStats(deps, poolState, ethersLib) {
       deps._lastUnclaimedFeesUsd = feesUsd;
       const residualUsd = await _residualValueUsd(deps, ethersLib, provider, position, poolState, price0, price1);
       pnlTracker.updateLiveEpoch({ currentPrice: poolState.price, feesAccrued: feesUsd });
-      pnlSnapshot = pnlTracker.snapshot(poolState.price);
+      pnlSnapshot = pnlTracker.snapshot(poolState.price, deps._botState?.poolFirstMintDate);
       _overridePnlWithRealValues(pnlSnapshot, deps, position, poolState, price0, price1, feesUsd, residualUsd);
     } catch (err) { console.warn('[bot] P&L update error:', err.message); }
   }

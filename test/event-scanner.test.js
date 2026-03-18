@@ -207,6 +207,50 @@ describe('scanRebalanceHistory', () => {
   });
 });
 
+  it('filters consecutive mints by pool when pool filter provided', async () => {
+    const TOKEN0_A = '0xAAAA000000000000000000000000000000000001';
+    const TOKEN1_A = '0xAAAA000000000000000000000000000000000002';
+    const TOKEN0_B = '0xBBBB000000000000000000000000000000000001';
+    const TOKEN1_B = '0xBBBB000000000000000000000000000000000002';
+    const FEE = 3000;
+
+    // Three mints: token 10 (pool A), token 11 (pool B), token 12 (pool A)
+    // Without filtering: pairs 10→11 and 11→12 (both wrong cross-pool)
+    // With pool A filter: pairs 10→12 (correct)
+    const positionsData = {
+      '10': { token0: TOKEN0_A, token1: TOKEN1_A, fee: FEE },
+      '11': { token0: TOKEN0_B, token1: TOKEN1_B, fee: FEE },
+      '12': { token0: TOKEN0_A, token1: TOKEN1_A, fee: FEE },
+    };
+
+    const ethers = { Contract: class {
+      constructor(_addr, abi) {
+        if (abi.some((a) => a.includes('positions'))) {
+          this.positions = async (id) => {
+            const p = positionsData[id.toString()];
+            if (!p) throw new Error('not found');
+            return [0, ZERO, p.token0, p.token1, p.fee, 0, 0, 0, 0, 0, 0, 0];
+          };
+        } else {
+          this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
+          this.queryFilter = async (filter) =>
+            filter._from === null
+              ? [wIn('10', 100, '0xa1'), wIn('11', 200, '0xa2'), wIn('12', 300, '0xa3')]
+              : [];
+        }
+      }
+    } };
+
+    const r = await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      ethers,
+      scanOpts({ poolToken0: TOKEN0_A, poolToken1: TOKEN1_A, poolFee: FEE }),
+    );
+    assert.strictEqual(r.length, 1, `expected 1 pair, got ${r.length}`);
+    assert.strictEqual(r[0].oldTokenId, '10');
+    assert.strictEqual(r[0].newTokenId, '12');
+  });
+
 // ── findPoolCreationBlock ────────────────────────────────────────────────────
 
 describe('findPoolCreationBlock', () => {

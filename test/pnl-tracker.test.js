@@ -362,7 +362,7 @@ describe('createPnlTracker — daily P&L', () => {
     assert.ok(newest.cumulative >= oldest.cumulative);
   });
 
-  it('dailyPnl limits to 31 days', () => {
+  it('dailyPnl includes all days when no limit', () => {
     const tracker = createPnlTracker({ initialDeposit: 1000 });
     const baseDate = new Date('2025-01-01T12:00:00Z');
 
@@ -374,7 +374,7 @@ describe('createPnlTracker — daily P&L', () => {
     }
 
     const snap = tracker.snapshot();
-    assert.ok(snap.dailyPnl.length <= 31, `expected ≤31, got ${snap.dailyPnl.length}`);
+    assert.strictEqual(snap.dailyPnl.length, 35, `expected 35, got ${snap.dailyPnl.length}`);
   });
 
   it('each DailyPnl has netPnl = priceChangePnl + feePnl - gasCost', () => {
@@ -430,10 +430,11 @@ describe('_buildDailyPnl', () => {
     assert.deepStrictEqual(_buildDailyPnl([], null), []);
   });
 
-  it('includes live epoch in today\'s entry', () => {
+  it('includes live epoch in today\'s entry regardless of openTime', () => {
     const today = new Date().toISOString().slice(0, 10);
+    const pastTime = new Date('2025-01-01T12:00:00Z').getTime();
     const liveEpoch = {
-      openTime: Date.now(),
+      openTime: pastTime,
       priceChangePnl: -5,
       feePnl: 3,
       fees: 3,
@@ -444,5 +445,42 @@ describe('_buildDailyPnl', () => {
     assert.strictEqual(result[0].date, today);
     assert.strictEqual(result[0].priceChangePnl, -5);
     assert.strictEqual(result[0].feePnl, 3);
+  });
+
+  it('fills zero-value days from fromDate to today', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+    const result = _buildDailyPnl([], null, threeDaysAgo);
+    // Should have 4 days: threeDaysAgo, twoDaysAgo, yesterday, today
+    assert.strictEqual(result.length, 4);
+    assert.strictEqual(result[0].date, today);
+    assert.strictEqual(result[result.length - 1].date, threeDaysAgo);
+    // All zero
+    result.forEach((d) => {
+      assert.strictEqual(d.netPnl, 0);
+      assert.strictEqual(d.cumulative, 0);
+    });
+  });
+
+  it('merges fromDate fill with epoch data', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
+    const fromDate = twoDaysAgo.toISOString().slice(0, 10);
+    const closedEpoch = {
+      closeTime: twoDaysAgo.getTime(),
+      priceChangePnl: 10,
+      feePnl: 5,
+      fees: 5,
+      gas: 1,
+    };
+    const result = _buildDailyPnl([closedEpoch], null, fromDate);
+    assert.strictEqual(result.length, 3); // twoDaysAgo, yesterday, today
+    // Oldest day (twoDaysAgo) has the epoch data
+    const oldest = result[result.length - 1];
+    assert.strictEqual(oldest.date, fromDate);
+    assert.strictEqual(oldest.feePnl, 5);
+    // Today has zeros
+    assert.strictEqual(result[0].date, today);
+    assert.strictEqual(result[0].netPnl, 0);
   });
 });

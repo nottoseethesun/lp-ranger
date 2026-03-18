@@ -111,7 +111,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
 
-**652 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**653 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
 
 ---
 
