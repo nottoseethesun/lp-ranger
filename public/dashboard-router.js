@@ -1,0 +1,236 @@
+/**
+ * @file dashboard-router.js
+ * @description Client-side URL routing for the 9mm v3 Position Manager dashboard.
+ * Uses Navigo for pushState-based routing so that positions are bookmarkable
+ * and shareable via URL paths like /pulsechain/:wallet/:contract/:tokenId.
+ *
+ * The router is the single authority on URL state.  Other modules call
+ * updateRouteForPosition/updateRouteForWallet only for explicit user actions
+ * (position selection, wallet import/clear).  Automatic flows (scan, wallet
+ * status restore) should NOT overwrite the URL — the router handles deep-link
+ * resolution via pending route targets and retry logic.
+ *
+ * Depends on: navigo (npm), dashboard-helpers.js (act).
+ */
+
+import Navigo from 'navigo';
+import { act } from './dashboard-helpers.js';
+
+/** Blockchain name used as the first URL segment. */
+const CHAIN = 'pulsechain';
+
+/** @type {Navigo|null} Router instance. */
+let _router = null;
+
+// Late-bound deps injected from dashboard-init.js
+let _posStore = null;
+let _scanPositions = null;
+let _wallet = null;
+let _activateByTokenId = null;
+
+/** Pending route target when wallet is not yet loaded. */
+let _pendingRouteTarget = null;
+
+/**
+ * Inject references from other dashboard modules.
+ * Called once from dashboard-init.js after all modules load.
+ * @param {object} deps  { posStore, scanPositions, wallet, activateByTokenId }
+ */
+export function injectRouterDeps(deps) {
+  _posStore = deps.posStore;
+  _scanPositions = deps.scanPositions;
+  _wallet = deps.wallet;
+  _activateByTokenId = deps.activateByTokenId;
+}
+
+/**
+ * Initialise the Navigo router, register routes, and resolve the initial URL.
+ * Must be called after injectRouterDeps() and after checkServerWalletStatus().
+ */
+export function initRouter() {
+  _router = new Navigo('/');
+
+  _router
+    .on('/' + CHAIN + '/:wallet/:contract/:tokenId', ({ data }) => {
+      _handlePositionRoute(data.wallet, data.contract, data.tokenId);
+    })
+    .on('/' + CHAIN + '/:wallet', ({ data }) => {
+      _handleWalletRoute(data.wallet);
+    })
+    .on('/', () => {
+      // Root — no URL-driven state
+    });
+
+  _router.resolve();
+
+  // Handle bfcache restoration (back/forward from full page navigations).
+  // When the browser restores a page from bfcache, scripts don't re-run,
+  // but the URL may have changed and the server's active position may differ.
+  // Clear Navigo's lastResolved so the "already" hook doesn't block, then
+  // re-resolve to fire the route handler and re-sync server state.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+      _router._setCurrent(null);
+      _router.resolve();
+    }
+  });
+}
+
+/**
+ * Handle a deep-link to a specific position.
+ * @param {string} walletAddr  Wallet address from URL.
+ * @param {string} contract    NFT contract address from URL.
+ * @param {string} tokenId     Token ID from URL.
+ */
+function _handlePositionRoute(walletAddr, contract, tokenId) {
+  if (!_posStore || !_wallet) return;
+
+  if (_wallet.address && _wallet.address.toLowerCase() === walletAddr.toLowerCase()) {
+    _tryActivatePosition(tokenId, 0);
+    return;
+  }
+
+  _pendingRouteTarget = { wallet: walletAddr, contract, tokenId };
+}
+
+/**
+ * Handle a wallet-only route (no specific position).
+ * @param {string} walletAddr  Wallet address from URL.
+ */
+function _handleWalletRoute(walletAddr) {
+  if (!_wallet) return;
+
+  if (!_wallet.address || _wallet.address.toLowerCase() !== walletAddr.toLowerCase()) {
+    _pendingRouteTarget = { wallet: walletAddr, contract: null, tokenId: null };
+  }
+}
+
+/**
+ * Attempt to activate a position by tokenId, with retry logic.
+ * @param {string} tokenId  Token ID to find and activate.
+ * @param {number} attempt  Current attempt number (max 3).
+ * @returns {boolean}  True if the position was found and activated synchronously.
+ */
+function _tryActivatePosition(tokenId, attempt) {
+  if (!_posStore) return false;
+
+  const idx = _posStore.entries.findIndex(
+    e => e.positionType === 'nft' && String(e.tokenId) === String(tokenId)
+  );
+
+  if (idx >= 0) {
+    if (_activateByTokenId) _activateByTokenId(tokenId);
+    act('\u{1F517}', 'start', 'Position loaded from URL', 'NFT #' + tokenId);
+    return true;
+  }
+
+  if (attempt < 3) {
+    if (attempt === 0 && _scanPositions) {
+      _scanPositions();
+    }
+    setTimeout(() => _tryActivatePosition(tokenId, attempt + 1), 2000);
+  }
+  return false;
+}
+
+/**
+ * Whether the router has a pending deep-link target awaiting resolution.
+ * @returns {boolean}
+ */
+export function hasPendingRoute() {
+  return _pendingRouteTarget !== null;
+}
+
+/**
+ * Check and resolve any pending route target after wallet loads.
+ * @returns {boolean}  True if a pending route was resolved synchronously.
+ */
+export function resolvePendingRoute() {
+  if (!_pendingRouteTarget || !_wallet || !_wallet.address) return false;
+  const target = _pendingRouteTarget;
+  _pendingRouteTarget = null;
+
+  if (_wallet.address.toLowerCase() !== target.wallet.toLowerCase()) return false;
+
+  if (target.tokenId) {
+    return _tryActivatePosition(target.tokenId, 0);
+  }
+  return false;
+}
+
+/**
+ * Get the current URL path from Navigo (no leading slash, root-stripped).
+ * @returns {string}  Current path, e.g. "pulsechain/0xabc/0xdef/123".
+ */
+function _currentPath() {
+  return _router.getCurrentLocation().url;
+}
+
+/**
+ * Build the URL path for a given position (no leading slash, for Navigo).
+ * @param {object} active  Position entry from posStore.
+ * @returns {string|null}  URL path, or null if insufficient data.
+ */
+function _buildPositionPath(active) {
+  if (!active || !_wallet || !_wallet.address) return null;
+  const w = _wallet.address.toLowerCase();
+  const contract = (active.contractAddress || '').toLowerCase();
+  const tokenId = active.tokenId;
+  if (active.positionType === 'nft' && tokenId && contract) {
+    return CHAIN + '/' + w + '/' + contract + '/' + tokenId;
+  }
+  return CHAIN + '/' + w;
+}
+
+/**
+ * Update the URL bar to reflect the active position.
+ * Uses pushState (creates a history entry).
+ * Called only from explicit user actions (position browser selection,
+ * router deep-link activation).
+ * @param {object|null} active  Active position entry from posStore.
+ */
+export function updateRouteForPosition(active) {
+  if (!_router) return;
+  const target = _buildPositionPath(active);
+  if (!target) { updateRouteForWallet(null); return; }
+
+  if (_currentPath().toLowerCase() === target.toLowerCase()) return;
+
+  _router.navigate(target, { callHandler: false });
+}
+
+/**
+ * Update the URL bar for wallet-level state (no specific position).
+ * Uses replaceState to avoid polluting browser history.
+ * @param {string|null} address  Wallet address, or null to reset to root.
+ */
+export function updateRouteForWallet(address) {
+  if (!_router) return;
+  const target = address ? CHAIN + '/' + address.toLowerCase() : '';
+  if (_currentPath().toLowerCase() === target.toLowerCase()) return;
+
+  _router.navigate(target, { callHandler: false, historyAPIMethod: 'replaceState' });
+}
+
+/**
+ * Set the URL to reflect the current app state without creating a history entry.
+ * Used by automatic flows (scan completion, wallet status restore) that should
+ * reflect state in the URL but must NOT overwrite an existing deep-link URL.
+ * @param {object|null} active  Active position entry from posStore.
+ */
+export function syncRouteToState(active) {
+  if (!_router || !_wallet || !_wallet.address) return;
+
+  // Never overwrite a URL that already has a position path — the user or
+  // router put it there and it takes precedence over automatic state sync.
+  const curPath = _currentPath();
+  const segments = curPath.split('/').filter(Boolean);
+  if (segments.length >= 4) return;
+
+  const target = _buildPositionPath(active);
+  if (!target) return;
+
+  if (curPath.toLowerCase() === target.toLowerCase()) return;
+
+  _router.navigate(target, { callHandler: false, historyAPIMethod: 'replaceState' });
+}

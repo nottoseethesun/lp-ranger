@@ -20,14 +20,18 @@ import { wallet, getRpcUrl } from './dashboard-wallet.js';
 // Late-bound import to avoid circular dep at evaluation time.
 // Populated by dashboard-init.js after all modules load.
 let _positionRangeVisual = null;
+let _updateRouteForPosition = null;
+let _syncRouteToState = null;
 
 /**
  * Inject data-module references after all modules are loaded.
  * Called once from dashboard-init.js.
- * @param {object} deps  { positionRangeVisual }
+ * @param {object} deps  { positionRangeVisual, updateRouteForPosition, syncRouteToState }
  */
 export function injectPositionDeps(deps) {
   _positionRangeVisual = deps.positionRangeVisual;
+  if (deps.updateRouteForPosition) _updateRouteForPosition = deps.updateRouteForPosition;
+  if (deps.syncRouteToState) _syncRouteToState = deps.syncRouteToState;
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -101,6 +105,7 @@ export const posStore = {
       if (entry.token0Symbol) existing.token0Symbol = entry.token0Symbol;
       if (entry.token1Symbol) existing.token1Symbol = entry.token1Symbol;
       if (entry.liquidity !== undefined) existing.liquidity = entry.liquidity;
+      if (entry.contractAddress) existing.contractAddress = entry.contractAddress;
       _persistPosStore();
       return { ok: false, error: 'Position already in store at index ' + dup };
     }
@@ -340,9 +345,53 @@ export function activateSelectedPos() {
       }).catch(() => {});
     }
 
+    if (_updateRouteForPosition) _updateRouteForPosition(active);
     act('\u{1F4CD}', 'fee', 'Position switched', 'Now managing: ' + formatPosLabel(active) + ' (OOR threshold: ' + savedOor + '%)');
     closePosBrowser();
   }
+}
+
+/**
+ * Activate a position by its NFT token ID (used by the router for deep links).
+ * Finds the position in posStore, selects it, updates the UI, and notifies the server.
+ * @param {string} tokenId  NFT token ID to activate.
+ * @returns {boolean}  True if the position was found and activated.
+ */
+export function activateByTokenId(tokenId) {
+  const idx = posStore.entries.findIndex(
+    e => e.positionType === 'nft' && String(e.tokenId) === String(tokenId)
+  );
+  if (idx < 0) return false;
+
+  posStore.select(idx);
+  updatePosStripUI();
+
+  const active = posStore.getActive();
+  if (active) {
+    botConfig.lower = Math.pow(1.0001, active.tickLower || 0);
+    botConfig.upper = Math.pow(1.0001, active.tickUpper || 0);
+    botConfig.tL = active.tickLower || 0;
+    botConfig.tU = active.tickUpper || 0;
+
+    const savedOor = loadPositionOorThreshold(active);
+    botConfig.oorThreshold = savedOor;
+    const oorInput = g('inOorThreshold');
+    if (oorInput) oorInput.value = savedOor;
+    const oorDisplay = g('activeOorThreshold');
+    if (oorDisplay) oorDisplay.textContent = savedOor;
+
+    _applyLocalPositionData(active);
+    if (_positionRangeVisual) _positionRangeVisual();
+
+    if (active.positionType === 'nft' && active.tokenId) {
+      fetch('/api/position/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenId: active.tokenId }),
+      }).catch(() => {});
+    }
+  }
+  return true;
 }
 
 /**
@@ -524,6 +573,7 @@ export async function scanPositions() {
       botConfig.tU = active.tickUpper || 0;
       _applyLocalPositionData(active);
       if (_positionRangeVisual) _positionRangeVisual();
+      if (_syncRouteToState) _syncRouteToState(active);
     }
   } catch (e) {
     act('\u26A0', 'alert', 'Scan failed', e.message);
@@ -547,6 +597,7 @@ function _addScannedPositions(data) {
     if (!pos.fee || ![100, 500, 2500, 3000, 10000].includes(pos.fee)) continue;
     const result = posStore.add({
       walletAddress: wallet.address, positionType: 'nft',
+      contractAddress: data.positionManagerAddress || null,
       tokenId: pos.tokenId, token0: pos.token0, token1: pos.token1,
       token0Symbol: pos.token0Symbol || null, token1Symbol: pos.token1Symbol || null,
       fee: pos.fee, tickLower: pos.tickLower, tickUpper: pos.tickUpper,

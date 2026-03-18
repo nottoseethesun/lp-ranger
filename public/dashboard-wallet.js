@@ -20,16 +20,22 @@ import { ethers } from './ethers-adapter.js';
 let _updatePosStripUI = null;
 let _scanPositions = null;
 let _posStore = null;
+let _updateRouteForWallet = null;
+let _resolvePendingRoute = null;
+let _syncRouteToState = null;
 
 /**
  * Inject position-module references after all modules are loaded.
  * Called once from dashboard-init.js.
- * @param {object} deps  { updatePosStripUI, scanPositions, posStore }
+ * @param {object} deps  { updatePosStripUI, scanPositions, posStore, updateRouteForWallet, resolvePendingRoute, syncRouteToState }
  */
 export function injectWalletDeps(deps) {
   _updatePosStripUI = deps.updatePosStripUI;
   _scanPositions = deps.scanPositions;
   _posStore = deps.posStore;
+  if (deps.updateRouteForWallet) _updateRouteForWallet = deps.updateRouteForWallet;
+  if (deps.resolvePendingRoute) _resolvePendingRoute = deps.resolvePendingRoute;
+  if (deps.syncRouteToState) _syncRouteToState = deps.syncRouteToState;
 }
 
 // ── Wallet state ────────────────────────────────────────────────────────────
@@ -313,6 +319,9 @@ export async function confirmWallet() {
 
   applyWalletUI();
   closeWalletModal();
+
+  const routeResolved = _resolvePendingRoute ? _resolvePendingRoute() : false;
+  if (!routeResolved && _updateRouteForWallet) _updateRouteForWallet(wallet.address);
 
   // Auto-scan for positions after wallet import
   if (_scanPositions) {
@@ -611,6 +620,21 @@ export async function checkServerWalletStatus() {
       if (clearBtn) clearBtn.style.display = 'inline-block';
       applyWalletUI();
 
+      // Resolve any pending deep-link first (may switch the active position).
+      // If resolved, the route was already updated — skip our own route sync.
+      const routeResolved = _resolvePendingRoute ? _resolvePendingRoute() : false;
+
+      if (!routeResolved) {
+        // Sync URL to reflect current state without overwriting deep-link URLs.
+        // Uses replaceState — this is an automatic restore, not a user action.
+        const active = _posStore ? _posStore.getActive() : null;
+        if (active && _syncRouteToState) {
+          _syncRouteToState(active);
+        } else if (_updateRouteForWallet) {
+          _updateRouteForWallet(data.address);
+        }
+      }
+
       // Auto-scan for positions if none are loaded yet
       if (_scanPositions && _posStore && _posStore.count() === 0) {
         _scanPositions();
@@ -660,5 +684,6 @@ export async function confirmClearWallet() {
   try { localStorage.removeItem('9mm_realized_gains'); } catch { /* private mode */ }
 
   applyWalletUI();
+  if (_updateRouteForWallet) _updateRouteForWallet(null);
   act('\u{1F510}', 'wallet', 'Wallet cleared', 'All wallet data removed from server and browser');
 }

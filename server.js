@@ -120,6 +120,46 @@
  *   GET  /health        → 200 OK (used by load-balancers / pm2)
  *
  * ═══════════════════════════════════════════════════════════════════════════════
+ * CLIENT-SIDE URL ROUTING
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * The dashboard uses Navigo (pushState-based router, ~5KB) for bookmarkable,
+ * shareable URLs that reflect the active wallet and position.
+ *
+ * URL structure
+ * ─────────────
+ *   /                                          Root (no state)
+ *   /pulsechain/:wallet                        Wallet loaded, no position selected
+ *   /pulsechain/:wallet/:contract/:tokenId     Specific NFT position deep-link
+ *
+ * Example: /pulsechain/0xabc123.../0xCC05bf.../157149
+ *
+ * SPA catch-all
+ * ─────────────
+ * The server serves index.html for any extensionless GET path that doesn't
+ * match a known API route or static file.  Paths with file extensions (e.g.
+ * .js, .css, .woff2) that don't match a real file return 404.  This allows
+ * Navigo to handle routing on the client side after page load.
+ *
+ * Deep-link resolution flow
+ * ─────────────────────────
+ *   1. Navigo parses wallet, contract, tokenId from the URL path.
+ *   2. If the wallet matches the loaded wallet → search posStore for the
+ *      tokenId → activate if found.
+ *   3. If the wallet is not yet loaded → store as a pending route target,
+ *      resolved after wallet import or server restore.
+ *   4. If the position is not in the store → trigger scanPositions() and
+ *      retry lookup (up to 3 retries at 2-second intervals).
+ *
+ * URL updates
+ * ───────────
+ * When the user selects a position or imports/clears a wallet, the URL bar
+ * is updated via router.navigate() with callHandler: false (no page reload,
+ * no re-triggering of route handlers).  Addresses are lowercased in URLs.
+ *
+ * Source: public/dashboard-router.js
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
  * DEVELOPMENT TOOLS
  * ═══════════════════════════════════════════════════════════════════════════════
  *
@@ -532,7 +572,7 @@ async function _handlePositionsScan(req, res) {
   }));
 
   jsonResponse(res, 200, {
-    ok: true, type: result.type,
+    ok: true, type: result.type, positionManagerAddress: pmAddr,
     nftPositions: (result.nftPositions || []).map(p => ({
       ...p, tokenId: String(p.tokenId), liquidity: String(p.liquidity),
       token0Symbol: symbolMap[p.token0] || '?', token1Symbol: symbolMap[p.token1] || '?',
@@ -637,11 +677,17 @@ async function handleRequest(req, res) {
   }
 
   // ── Static files: / and /public/* ─────────────────────────────────────────
+  // SPA catch-all: extensionless GET paths serve index.html (client-side routing)
   if (method === 'GET') {
     const served = serveStatic(url, res);
     if (!served) {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('404 Not Found');
+      const cleanPath = url.split('?')[0];
+      if (!path.extname(cleanPath)) {
+        serveStatic('/', res);
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('404 Not Found');
+      }
     }
     return;
   }

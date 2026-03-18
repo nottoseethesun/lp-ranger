@@ -9,11 +9,11 @@
 
 import { g, act, botConfig, loadPositionOorThreshold, initDisclaimer } from './dashboard-helpers.js';
 import {
-  markWalletKnown, checkServerWalletStatus, injectWalletDeps,
+  markWalletKnown, checkServerWalletStatus, injectWalletDeps, wallet,
 } from './dashboard-wallet.js';
 import {
   posStore, updatePosStripUI, _loadPosStore, _applyLocalPositionData,
-  injectPositionDeps, scanPositions,
+  injectPositionDeps, scanPositions, activateByTokenId,
 } from './dashboard-positions.js';
 import {
   onParamChange, updateThrottleUI, injectThrottleDeps, snapshotApplied,
@@ -23,11 +23,16 @@ import {
   refreshCurDepositDisplay,
 } from './dashboard-data.js';
 import { bindAllEvents } from './dashboard-events.js';
+import {
+  injectRouterDeps, initRouter, updateRouteForPosition, updateRouteForWallet,
+  resolvePendingRoute, syncRouteToState,
+} from './dashboard-router.js';
 
 // ── Wire cross-module dependencies (breaks circular imports) ────────────────
 
-injectWalletDeps({ updatePosStripUI, scanPositions, posStore });
-injectPositionDeps({ positionRangeVisual });
+injectRouterDeps({ posStore, scanPositions, wallet, activateByTokenId });
+injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, resolvePendingRoute, syncRouteToState });
+injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState });
 injectThrottleDeps({ positionRangeVisual });
 
 // ── Bind all event handlers ─────────────────────────────────────────────────
@@ -85,6 +90,9 @@ act('\u{1F680}', 'start', 'Dashboard ready', 'Import a wallet to begin');
 
 // Check if the server already has a wallet loaded (e.g. from a previous page load)
 checkServerWalletStatus();
+
+// Initialise client-side URL routing (must run after wallet status check starts)
+initRouter();
 
 // Populate realized gains and lifetime deposit displays from localStorage
 (function initSavedValues() {

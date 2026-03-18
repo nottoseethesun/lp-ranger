@@ -10,8 +10,9 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 - **HTTP server:** Node built-in `http` module (`server.js`) — dashboard + bot auto-start
 - **Bot loop:** `src/bot-loop.js` — shared rebalance logic (used by both server.js and bot.js)
 - **Bot (headless):** `bot.js` — standalone bot without dashboard UI
-- **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`) + 8 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
-- **Build:** esbuild bundles dashboard JS + ethers.js from npm; fonts self-hosted via `@fontsource` (no CDN dependencies)
+- **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`) + 9 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
+- **Client-side routing:** Navigo (pushState) — bookmarkable URLs like `/:wallet/:contract/:tokenId`
+- **Build:** esbuild bundles dashboard JS + ethers.js + navigo from npm; fonts self-hosted via `@fontsource` (no CDN dependencies)
 - **On-chain:** ethers.js v6.7.1
 - **Linter:** ESLint v10 flat config (`eslint.config.js`) + stylelint (`stylelint-config-standard`)
 - **Dead code:** knip (devDependency)
@@ -50,7 +51,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   ├── dashboard-optimizer.js    # LP Optimization Engine interface (probe, poll, render, apply, history)
 │   ├── dashboard-data.js         # Polls /api/status, updates all KPIs, position stats, bot status
 │   ├── dashboard-history.js      # Per-day P&L table (31 days), Rebalance Events table (5-year lookback)
-│   └── dashboard-init.js         # Bootstrap: populate wallets, start optimizer probe, data polling, intervals
+│   ├── dashboard-router.js       # Client-side URL routing (Navigo pushState): /pulsechain/:wallet/:contract/:tokenId
+│   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: pollCycle, resolvePrivateKey, startBotLoop
 │   ├── config.js                 # SINGLE SOURCE OF TRUTH for all config — reads .env
@@ -87,6 +89,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
     ├── position-detector.test.js
     ├── position-store.test.js
     ├── server.test.js
+    ├── server-spa-fallback.test.js   # SPA catch-all: extensionless paths → index.html, file extensions → 404
     ├── bot.test.js
     ├── cache-store.test.js
     ├── disclaimer.test.js
@@ -108,7 +111,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
 
-**647 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**652 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
 
 ---
 
@@ -200,7 +203,7 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 
 **Wallet persistence:** Encrypted wallet state (AES-256-GCM, PBKDF2-SHA512) is persisted to `.wallet.json` on disk, surviving server restarts. Plaintext private keys are never written to disk. File is gitignored. `DELETE /api/wallet` removes the file. Position store persists to localStorage in the browser.
 
-**Dashboard modular JS:** 8 ES module source files in `public/`, bundled by esbuild into `public/dist/bundle.js` (IIFE format). Entry point: `dashboard-init.js`. `ethers` is bundled from npm — no CDN dependencies. Fonts self-hosted via `@fontsource` packages.
+**Dashboard modular JS:** 9 ES module source files in `public/`, bundled by esbuild into `public/dist/bundle.js` (IIFE format). Entry point: `dashboard-init.js`. `ethers` is bundled from npm — no CDN dependencies. Fonts self-hosted via `@fontsource` packages.
 
 **Shared state:** `botConfig` (in `dashboard-helpers.js`) holds range width, current price, and tick boundaries. Updated by bot config panel, position selection, and optimizer.
 
@@ -226,7 +229,9 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 
 **Sync indicator:** "Done Syncing" / "Syncing..." badge at the bottom of the Cumulative P&L card tracks the 5-year event scanner progress.
 
-**Dead code detection:** `knip` is installed as a devDependency. The 8 dashboard files show as "unused" because knip can't trace HTML `<script>` tags — these are false positives.
+**Client-side URL routing:** Navigo (~5KB) provides pushState-based routing. URLs follow the pattern `/pulsechain/:walletAddress/:nftContractAddress/:tokenId` for bookmarkable/shareable deep links. The first segment is the blockchain name (`pulsechain`). Server has a SPA catch-all: extensionless GET paths serve `index.html`; paths with file extensions that don't match a real file return 404. Deep-link resolution: if the wallet matches the loaded wallet, the router looks up the tokenId in posStore and activates it; if not found, triggers a scan and retries (up to 3 attempts at 2s intervals). Pending route targets are stored when the wallet isn't loaded yet and resolved after wallet import/restore. URL updates use `router.navigate()` with `callHandler: false` to avoid re-triggering route handlers.
+
+**Dead code detection:** `knip` is installed as a devDependency. The 9 dashboard files show as "unused" because knip can't trace HTML `<script>` tags — these are false positives.
 
 ---
 
