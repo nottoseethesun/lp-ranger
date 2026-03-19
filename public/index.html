@@ -70,7 +70,7 @@
   <div class="modal">
     <div class="modal-logo">
       <div><h2>Wallet Setup</h2><p>v3 Position Manager · PulseChain</p></div>
-      <div class="modal-logo-icon">for 9mm</div>
+      <div class="modal-logo-icon"><span class="9mm-pos-mgr-logo-on">for</span> <img src="9mm-pro-logo-transparent.png" alt="9mm Pro" class="9mm-pos-mgr-header-logo"></div>
       <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
     <div class="modal-tabs">
@@ -205,7 +205,7 @@
         <h2>LP Position Browser</h2>
         <p>Browse, import &amp; select positions</p>
       </div>
-      <div class="modal-logo-icon">for 9mm</div>
+      <div class="modal-logo-icon"><span class="9mm-pos-mgr-logo-on">for</span> <img src="9mm-pro-logo-transparent.png" alt="9mm Pro" class="9mm-pos-mgr-header-logo"></div>
       <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
 
@@ -392,13 +392,16 @@
 <header>
   <div class="logo">
     <div class="logo-text"><h1>Position Manager</h1><p>v3 · Auto-Rebalance</p></div>
-    <a class="logo-icon" href="https://9mm.pro/" target="_blank" rel="noopener noreferrer" title="Visit 9mm Pro">for 9mm</a>
-    <a class="pchain-link" href="https://pulsechain.com/" target="_blank" rel="noopener noreferrer" title="Visit PulseChain">PulseChain</a>
+    <span class="9mm-pos-mgr-logo-on">for</span>
+    <a class="logo-icon" href="https://9mm.pro/" target="_blank" rel="noopener noreferrer" title="Visit 9mm Pro"><img src="9mm-pro-logo-transparent.png" alt="9mm Pro" class="9mm-pos-mgr-header-logo"></a>
+    <span class="9mm-pos-mgr-logo-on">on</span>
+    <a class="pchain-link" href="https://pulsechain.com/" target="_blank" rel="noopener noreferrer" title="Visit PulseChain"><img src="pulsechain-logo-transparent.png" alt="PulseChain" class="9mm-pos-mgr-header-logo 9mm-pos-mgr-pchain-logo"></a>
   </div>
   <div class="header-right">
     <button class="pos-browser-btn">📂 <span id="headerPosLabel">0 Positions</span></button>
     <button class="pos-browser-btn" title="Re-scan wallet for positions">⟳ Scan</button><span class="9mm-pos-mgr-scan-help" title="Re-scans the wallet for all V3 NFT positions on PulseChain. Use after creating or receiving new LP positions on 9mm Pro.">?</span>
     <button class="hwbtn">🔑 <span id="headerWalletLabel">Set Wallet</span></button>
+    <span class="9mm-pos-mgr-sync-badge" id="syncBadge">Syncing...</span>
     <div class="status-pill active" id="botStatusPill">
       <div class="dot green" id="botDot"></div>
       <span id="botStatusText">BOT ACTIVE</span>
@@ -530,7 +533,6 @@
     </div>
     <div class="9mm-pos-mgr-sync-row" id="syncRow">
       <span class="9mm-pos-mgr-text-muted-sm">Lifetime figures cover up to 5 years back.</span>
-      <span class="9mm-pos-mgr-sync-badge" id="syncBadge">Syncing...</span>
     </div>
   </div>
 </div>

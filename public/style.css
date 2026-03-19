@@ -743,17 +743,12 @@ body::before{
 
 .modal-logo-icon{
   height:38px;
-  padding:0 10px;
-  background:linear-gradient(135deg,var(--accent),#06f);
-  border-radius:9px;
   display:flex;
   align-items:center;
   justify-content:center;
   font-family:Urbanist,sans-serif;
   font-weight:800;
   font-size:15px;
-  color:#000;
-  box-shadow:0 0 18px rgb(0 229 255 / 30%);
 }
 
 .modal-logo h2{
@@ -963,17 +958,9 @@ header{
 
 .logo-icon{
   height:42px;
-  padding:0 11px;
-  background:linear-gradient(135deg,var(--accent),#06f);
-  border-radius:10px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-family:Urbanist,sans-serif;
-  font-weight:800;
-  font-size:16px;
-  color:#000;
-  box-shadow:0 0 20px rgb(0 229 255 / 30%);
   text-decoration:none;
   cursor:pointer;
 }
@@ -994,21 +981,12 @@ header{
 
 .pchain-link{
   height:42px;
-  padding:0 11px;
-  background:linear-gradient(135deg,#6930c3,#8338ec);
-  border-radius:10px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-family:Urbanist,sans-serif;
-  font-weight:800;
-  font-size:14px;
-  color:#fff;
   text-decoration:none;
   cursor:pointer;
-  box-shadow:0 0 20px rgb(131 56 236 / 30%);
 }
-.pchain-link:hover{background:linear-gradient(135deg,#7b2ff7,#9b59b6);}
 
 .header-right{
   display:flex;

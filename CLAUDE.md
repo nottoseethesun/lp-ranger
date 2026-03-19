@@ -168,6 +168,7 @@ npm run test:coverage  # with --experimental-test-coverage (Node 20+)
 npm run test:watch     # watch mode
 npm run check          # Combined lint (JS+CSS) + test + coverage check
 npm run reset-wallet   # Delete .wallet.json + clear WALLET_PASSWORD from .env
+npm run clean          # reset-wallet + delete bot config, rebalance log, event cache
 ```
 
 ---

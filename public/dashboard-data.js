@@ -497,9 +497,12 @@ function _cacheRebalanceEvents(events) { try { localStorage.setItem(_REB_EVENTS_
 function _loadCachedRebalanceEvents() { try { const r = localStorage.getItem(_REB_EVENTS_CACHE_KEY); if (!r) return null; const p = JSON.parse(r); return Array.isArray(p) ? p : null; } catch { return null; } }
 
 let _scanWasComplete = false;
-function _updateSyncBadge(complete) {
+function _updateSyncBadge(complete, progress) {
   const badge = g('syncBadge'); if (!badge) return;
-  badge.textContent = complete ? 'Done Syncing' : 'Syncing\u2026';
+  const pct = typeof progress === 'number' ? progress : 0;
+  badge.textContent = complete ? 'Synced' : pct > 0 ? 'Syncing ' + pct + '%' : 'Syncing\u2026';
+  badge.style.background = !complete && pct > 0
+    ? 'linear-gradient(to right, rgb(255 184 0 / 20%) ' + pct + '%, rgb(255 184 0 / 6%) ' + pct + '%)' : '';
   badge.classList.toggle('done', complete);
   if (complete && !_scanWasComplete && isViewingClosedPos()) refetchClosedPosHistory();
   _scanWasComplete = complete;
@@ -580,7 +583,7 @@ function updateDashboardFromStatus(data) {
 
   _syncConfigFromServer(data);
   _syncRebalanceCache(data);
-  _updateSyncBadge(data.rebalanceScanComplete === true || !posStore.getActive());
+  _updateSyncBadge(data.rebalanceScanComplete === true || !posStore.getActive(), data.rebalanceScanProgress);
 
   if (!_poolFirstDate && data.poolFirstMintDate) _poolFirstDate = data.poolFirstMintDate;
   if (!_historyPopulated && data.rebalanceEvents && data.rebalanceEvents.length > 0) {

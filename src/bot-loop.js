@@ -184,14 +184,17 @@ async function _closePnlEpoch(deps, result) {
 /** Resolve pool address and scan on-chain rebalance history (fire-and-forget). */
 async function _scanHistory(provider, ethersLib, address, position, cache, events, updateState, throttle) {
   try {
-    updateState({ rebalanceScanComplete: false });
+    updateState({ rebalanceScanComplete: false, rebalanceScanProgress: 0 });
     const poolState = await getPoolState(provider, ethersLib, { factoryAddress: config.FACTORY,
       token0: position.token0, token1: position.token1, fee: position.fee });
     console.log(`[bot] Scanning rebalance history for ${address} (pool ${poolState.poolAddress})`);
+    updateState({ rebalanceScanProgress: 5 });
     const found = await scanRebalanceHistory(provider, ethersLib, { walletAddress: address,
       positionManagerAddress: config.POSITION_MANAGER, factoryAddress: config.FACTORY,
       poolAddress: poolState.poolAddress || null, maxYears: 5, cache,
-      poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee });
+      poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee,
+      onProgress: (done, total) => updateState({ rebalanceScanProgress: 5 + Math.round(done / total * 90) }) });
+    updateState({ rebalanceScanProgress: 95 });
     events.push(...found);
     console.log(`[bot] Found ${found.length} historical rebalance events`);
     if (throttle && found.length > 0) {

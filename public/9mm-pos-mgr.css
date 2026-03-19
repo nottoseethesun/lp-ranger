@@ -433,17 +433,41 @@
 }
 
 .\39 mm-pos-mgr-sync-badge {
-  font-size: 14px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgb(255 193 7 / 15%);
-  color: #ffc107;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  padding: 7px 0;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: rgb(255 184 0 / 10%);
+  color: var(--warn);
+  border: 1px solid rgb(255 184 0 / 20%);
 }
 
 .\39 mm-pos-mgr-sync-badge.done {
-  background: rgb(0 200 83 / 15%);
-  color: #00c853;
+  background: rgb(124 252 0 / 10%);
+  color: var(--accent3);
+  border-color: rgb(124 252 0 / 20%);
+}
+
+.\39 mm-pos-mgr-header-logo {
+  height: 45px;
+  width: auto;
+}
+
+.\39 mm-pos-mgr-pchain-logo {
+  height: 41px;
+}
+
+.\39 mm-pos-mgr-logo-on {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  align-self: center;
+  margin-right: 6px;
 }
 
 .\39 mm-pos-mgr-range-pct-row {

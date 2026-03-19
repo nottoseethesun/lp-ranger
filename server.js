@@ -178,6 +178,8 @@
  * ─────────────────
  *   npm run reset-wallet  Delete .wallet.json + clear WALLET_PASSWORD from .env.
  *                         Forces a fresh wallet import via the dashboard on next start.
+ *   npm run clean         reset-wallet + delete .bot-config.json, rebalance_log.json,
+ *                         and tmp/event-cache.json.  Full state reset.
  *
  * Dead Code Detection
  * ───────────────────
