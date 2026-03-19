@@ -687,6 +687,43 @@
   color: #fff;
 }
 
+/* ── Closed-Position History Banner ────────────────────────────────────── */
+
+.\39 mm-pos-mgr-closed-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  margin: 0 0 10px;
+  background: rgb(255 193 7 / 12%);
+  border: 1px solid rgb(255 193 7 / 30%);
+  border-radius: 6px;
+  color: #ffc107;
+  font-size: 12px;
+  font-family: Urbanist, sans-serif;
+}
+
+.\39 mm-pos-mgr-closed-banner.hidden {
+  display: none;
+}
+
+.\39 mm-pos-mgr-btn-small {
+  padding: 4px 12px;
+  font-size: 11px;
+  border: 1px solid rgb(255 193 7 / 40%);
+  border-radius: 4px;
+  background: rgb(255 193 7 / 15%);
+  color: #ffc107;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: 'Space Mono', monospace;
+}
+
+.\39 mm-pos-mgr-btn-small:hover {
+  background: rgb(255 193 7 / 25%);
+}
+
 .\39 mm-pos-mgr-disclaimer-license {
   margin-top: 10px;
   font-size: 11px;

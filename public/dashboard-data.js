@@ -12,6 +12,7 @@ import { g, botConfig, fmtDateTime, act } from './dashboard-helpers.js';
 import { posStore, updatePosStripUI } from './dashboard-positions.js';
 import { updateHistoryFromStatus } from './dashboard-history.js';
 import { wallet } from './dashboard-wallet.js';
+import { isViewingClosedPos, refetchClosedPosHistory } from './dashboard-closed-pos.js';
 
 let _dataTimerId = null, _lastStatus = null, _historyPopulated = false, _poolFirstDate = null;
 
@@ -23,8 +24,7 @@ const _REALIZED_GAINS_KEY = '9mm_realized_gains';
 export function loadRealizedGains() { const v = _loadNum(_poolKey('9mm_realized_pool_'), true); return v > 0 ? v : _loadNum(_REALIZED_GAINS_KEY, true); }
 /** Toggle the lifetime realized gains input. */
 export function toggleRealizedInput() { _toggleWrap('realizedGainsInputWrap', 'realizedGainsInput', loadRealizedGains); }
-/** Save lifetime realized gains to pool-scoped key. */
-export function saveRealizedGains() { const key = _poolKey('9mm_realized_pool_') || _REALIZED_GAINS_KEY; _saveInput(key, 'realizedGainsInput', 'realizedGainsInputWrap', () => { if (_lastStatus) _updateKpis(_lastStatus); }, true); }
+/** Save lifetime realized gains to pool-scoped key. */ export function saveRealizedGains() { const key = _poolKey('9mm_realized_pool_') || _REALIZED_GAINS_KEY; _saveInput(key, 'realizedGainsInput', 'realizedGainsInputWrap', () => { if (_lastStatus) _updateKpis(_lastStatus); }, true); }
 
 // ── Shared toggle/save helpers ───────────────────────────────────────────────
 
@@ -63,33 +63,25 @@ function _saveInput(key, inputId, wrapId, afterSave, allowZero) {
 
 // ── Per-position realized gains ──────────────────────────────────────────────
 
-/** Load realized gains for the current position. */
-export function loadCurRealized() { return _loadNum(_posKey('9mm_realized_pos_'), true); }
-/** Toggle the current-position realized gains input. */
-export function toggleCurRealized() { _toggleWrap('curRealizedInputWrap', 'curRealizedInput', loadCurRealized); }
-/** Save current-position realized gains. */
-export function saveCurRealized() { _saveInput(_posKey('9mm_realized_pos_'), 'curRealizedInput', 'curRealizedInputWrap', () => { if (_lastStatus) _updateKpis(_lastStatus); }, true); }
+/** Load realized gains for the current position. */ export function loadCurRealized() { return _loadNum(_posKey('9mm_realized_pos_'), true); }
+/** Toggle the current-position realized gains input. */ export function toggleCurRealized() { _toggleWrap('curRealizedInputWrap', 'curRealizedInput', loadCurRealized); }
+/** Save current-position realized gains. */ export function saveCurRealized() { _saveInput(_posKey('9mm_realized_pos_'), 'curRealizedInput', 'curRealizedInputWrap', () => { if (_lastStatus) _updateKpis(_lastStatus); }, true); }
 
 // ── Initial deposit (user-entered, persisted in localStorage) ────────────────
 
 const _INITIAL_DEPOSIT_KEY = '9mm_initial_deposit';
 /** Load initial deposit — pool-scoped key takes priority, then global fallback. */
 export function loadInitialDeposit() { const v = _loadNum(_poolKey('9mm_deposit_pool_'), false); return v > 0 ? v : _loadNum(_INITIAL_DEPOSIT_KEY, false); }
-
 function _refreshDepositLabel() { const s = loadInitialDeposit(), d = g('lifetimeDepositDisplay'); if (d) d.textContent = s > 0 ? '$usd ' + s.toFixed(2) : '—'; }
 
 // ── Current-position deposit ─────────────────────────────────────────────────
 
 /** Load the current position's deposit. */
 export function loadCurDeposit() { return _loadNum(_posKey('9mm_deposit_pos_'), false); }
-
 export function refreshCurDepositDisplay(fallback) { const v = loadCurDeposit() || (fallback || 0), d = g('curDepositDisplay'); if (d) d.textContent = v > 0 ? '$usd ' + v.toFixed(2) : '—'; }
-/** Toggle the current-position deposit input. */
-export function toggleCurDeposit() { _toggleWrap('curDepositInputWrap', 'curDepositInput', loadCurDeposit); }
-/** Save the current-position deposit. */
-export function saveCurDeposit() { _saveInput(_posKey('9mm_deposit_pos_'), 'curDepositInput', 'curDepositInputWrap', () => refreshCurDepositDisplay(), false); }
-/** Toggle the initial deposit input. */
-export function toggleInitialDeposit() { _toggleWrap('initialDepositInputWrap', 'initialDepositInput', loadInitialDeposit); }
+/** Toggle the current-position deposit input. */ export function toggleCurDeposit() { _toggleWrap('curDepositInputWrap', 'curDepositInput', loadCurDeposit); }
+/** Save the current-position deposit. */ export function saveCurDeposit() { _saveInput(_posKey('9mm_deposit_pos_'), 'curDepositInput', 'curDepositInputWrap', () => refreshCurDepositDisplay(), false); }
+/** Toggle the initial deposit input. */ export function toggleInitialDeposit() { _toggleWrap('initialDepositInputWrap', 'initialDepositInput', loadInitialDeposit); }
 /** Save initial deposit to pool-scoped key + server. */
 export function saveInitialDeposit() {
   const key = _poolKey('9mm_deposit_pool_') || _INITIAL_DEPOSIT_KEY;
@@ -144,13 +136,12 @@ function _setPctSpan(id, val, deposit) {
 function _setAprSpan(id, val, deposit, firstDate) {
   const el = g(id); if (!el) return;
   if (!deposit || deposit <= 0 || !firstDate) { el.textContent = '\u2014'; return; }
-  const startMs = new Date(firstDate + 'T00:00:00Z').getTime();
-  const elapsedSec = (Date.now() - startMs) / 1000;
+  const elapsedSec = (Date.now() - new Date(firstDate + 'T00:00:00Z').getTime()) / 1000;
   if (elapsedSec <= 0) { el.textContent = '\u2014'; return; }
   const apr = (val / deposit) / (elapsedSec / (365.25 * 24 * 3600)) * 100;
   if (Math.abs(apr) < 0.005) { el.textContent = 'APR 0.00%'; el.style.color = ''; return; }
-  if (apr > 0) { el.textContent = 'APR ' + apr.toFixed(2) + '%'; el.style.color = '#0f0'; }
-  else { el.textContent = 'APR \u2212' + Math.abs(apr).toFixed(2) + '%'; el.style.color = '#f44'; }
+  el.textContent = apr > 0 ? 'APR ' + apr.toFixed(2) + '%' : 'APR \u2212' + Math.abs(apr).toFixed(2) + '%';
+  el.style.color = apr > 0 ? '#0f0' : '#f44';
 }
 
 /** Set only the leading text node of an element, preserving child spans. */
@@ -271,6 +262,14 @@ function _resolveKpiTotals(d) {
     curDep, ltDep, curRealized, ltFees, ltRealized, ltPriceChange: lpc };
 }
 
+/** Update Lifetime (Net Return) panel — runs regardless of closed-position view. */
+function _updateLifetimeKpis(d) {
+  if (!posStore.getActive() || !d.pnlSnapshot) return;
+  const t = _resolveKpiTotals(d);
+  _updateNetReturn(d, t.ltTotal, t.ltDep, t.ltFees, t.ltPriceChange, t.ltRealized);
+  const dd = g('lifetimeDepositDisplay');
+  if (dd) dd.textContent = t.ltDep > 0 ? '$usd ' + t.ltDep.toFixed(2) : '\u2014';
+}
 function _updateKpis(d) {
   if (!posStore.getActive()) return;
   const t = _resolveKpiTotals(d);
@@ -376,9 +375,8 @@ export function positionRangeVisual() {
   const hi = botConfig.upper;
   if (!lo || !hi || lo >= hi) return;
 
-  // Red threshold bars are placed relative to the range bar width, not absolute prices.
-  // If the bar spans 0%–100%, a 10% threshold puts bars at -10% and 110% of the bar.
-  // This gives a meaningful visual regardless of the 0-to-infinity horizontal scale.
+  // Red threshold bars: X% of range width beyond each boundary.
+  // Bot's _isBeyondThreshold uses the same formula.
   const threshPct = (botConfig.oorThreshold || 5) / 100;
   const rangeSpan = hi - lo;
   const previewLo = lo - rangeSpan * threshPct;
@@ -400,8 +398,9 @@ export function positionRangeVisual() {
   if (rlL) { rlL.style.left = pct(lo); rlL.textContent = lo.toFixed(6) + ' ' + rsym; }
   if (rlR) { rlR.style.left = pct(hi); rlR.textContent = hi.toFixed(6) + ' ' + rsym; }
   const pm = g('pm');  if (pm && botConfig.price > 0) pm.style.left = pct(botConfig.price);
-  const lnL = g('rangeLnL'), lnR = g('rangeLnR');
-  if (lnL) lnL.style.left = pct(previewLo);  if (lnR) lnR.style.left = pct(previewHi);
+  const lnL = g('rangeLnL'), lnR = g('rangeLnR'), rsym2 = _activeToken1Symbol();
+  if (lnL) { lnL.style.left = pct(previewLo); lnL.title = 'Rebalance trigger: ' + previewLo.toFixed(6) + ' ' + rsym2 + ' (' + botConfig.oorThreshold + '% below lower)'; }
+  if (lnR) { lnR.style.left = pct(previewHi); lnR.title = 'Rebalance trigger: ' + previewHi.toFixed(6) + ' ' + rsym2 + ' (' + botConfig.oorThreshold + '% above upper)'; }
 }
 
 function _updateRangePctLabels(price, lower, upper) {
@@ -482,14 +481,11 @@ let _lastRebalanceAt = null, _configSynced = false;
 function _syncConfigFromServer(d) {
   if (_configSynced) return;
   _configSynced = true;
-  const map = { rebalanceOutOfRangeThresholdPercent: 'inOorThreshold', slippagePct: 'inSlip', checkIntervalSec: 'inInterval',
+  // OOR threshold excluded — localStorage per-position value is the source of truth,
+  // synced to server on startup and position switch via POST /api/config.
+  const map = { slippagePct: 'inSlip', checkIntervalSec: 'inInterval',
     minRebalanceIntervalMin: 'inMinInterval', maxRebalancesPerDay: 'inMaxReb', gasStrategy: 'inGas' };
   for (const [key, elId] of Object.entries(map)) { if (d[key] !== undefined && d[key] !== null) { const el = g(elId); if (el) el.value = d[key]; } }
-  if (d.rebalanceOutOfRangeThresholdPercent !== undefined) {
-    botConfig.oorThreshold = d.rebalanceOutOfRangeThresholdPercent;
-    const disp = g('activeOorThreshold');
-    if (disp) disp.textContent = d.rebalanceOutOfRangeThresholdPercent;
-  }
   if (d.initialDepositUsd > 0 && !loadInitialDeposit()) {
     try { localStorage.setItem(_INITIAL_DEPOSIT_KEY, String(d.initialDepositUsd)); } catch { /* */ }
   }
@@ -497,30 +493,22 @@ function _syncConfigFromServer(d) {
 }
 
 const _REB_EVENTS_CACHE_KEY = '9mm_rebalance_events';
-function _cacheRebalanceEvents(events) {
-  try { localStorage.setItem(_REB_EVENTS_CACHE_KEY, JSON.stringify(events)); } catch { /* */ }
-}
+function _cacheRebalanceEvents(events) { try { localStorage.setItem(_REB_EVENTS_CACHE_KEY, JSON.stringify(events)); } catch { /* */ } }
+function _loadCachedRebalanceEvents() { try { const r = localStorage.getItem(_REB_EVENTS_CACHE_KEY); if (!r) return null; const p = JSON.parse(r); return Array.isArray(p) ? p : null; } catch { return null; } }
 
-/** Load cached rebalance events from localStorage. */
-function _loadCachedRebalanceEvents() {
-  try { const r = localStorage.getItem(_REB_EVENTS_CACHE_KEY); if (!r) return null;
-    const p = JSON.parse(r); return Array.isArray(p) ? p : null; } catch { return null; }
-}
-
-/**
- * Update the sync status badge in the Cumulative P&L panel.
- * @param {boolean} complete  Whether the 5-year scan is complete.
- */
+let _scanWasComplete = false;
 function _updateSyncBadge(complete) {
   const badge = g('syncBadge'); if (!badge) return;
   badge.textContent = complete ? 'Done Syncing' : 'Syncing\u2026';
   badge.classList.toggle('done', complete);
+  if (complete && !_scanWasComplete && isViewingClosedPos()) refetchClosedPosHistory();
+  _scanWasComplete = complete;
 }
 
 /** Reset all wallet-specific polling state. Called on wallet change. */
 export function resetPollingState() {
   _lastStatus = null; _historyPopulated = false; _poolFirstDate = null;
-  _lastRebalanceAt = null; _configSynced = false;
+  _lastRebalanceAt = null; _configSynced = false; _scanWasComplete = false;
   try { localStorage.removeItem(_REB_EVENTS_CACHE_KEY); } catch { /* */ }
   _updateSyncBadge(true);
   const dd = g('lifetimeDepositDisplay'); if (dd) dd.textContent = '\u2014';
@@ -591,16 +579,7 @@ function updateDashboardFromStatus(data) {
   if (sw && (!wallet.address || wallet.address.toLowerCase() !== sw.toLowerCase())) return;
 
   _syncConfigFromServer(data);
-
-  _syncActivePosition(data);
-  _updatePosStatus(data);
-  _updateKpis(data);
-  _updatePositionTicks(data);
-  _updateComposition(data);
-  _checkHodlBaselineDialog(data);
-
   _syncRebalanceCache(data);
-
   _updateSyncBadge(data.rebalanceScanComplete === true || !posStore.getActive());
 
   if (!_poolFirstDate && data.poolFirstMintDate) _poolFirstDate = data.poolFirstMintDate;
@@ -615,27 +594,34 @@ function updateDashboardFromStatus(data) {
   }
 
   updateHistoryFromStatus(data);
+
+  // Always update the range monitor so the chart shows the bot's active position
+  _updatePriceMarker(data);
+  // Lifetime panel updates regardless of closed-position view
+  _updateLifetimeKpis(data);
+
+  // While viewing a closed position, keep non-KPI updates running above
+  // but skip position/KPI overwrites so historical data stays visible.
+  if (isViewingClosedPos()) return;
+
+  _syncActivePosition(data);
+  _updatePosStatus(data);
+  _updateKpis(data);
+  _updatePositionTicks(data);
+  _updateComposition(data);
+  _checkHodlBaselineDialog(data);
 }
 
 let _pollFailCount = 0;
+function _onPollFail() { _pollFailCount++; if (_pollFailCount >= 3) _setStatusPill('status-pill danger', 'dot red', 'HALTED'); }
 async function _pollStatus() {
   try {
     const res = await fetch('/api/status');
-    if (!res.ok) {
-      _pollFailCount++;
-      if (_pollFailCount >= 3) _showHalted();
-      return;
-    }
+    if (!res.ok) { _onPollFail(); return; }
     _pollFailCount = 0;
-    const data = await res.json();
-    updateDashboardFromStatus(data);
-  } catch (_) {
-    _pollFailCount++;
-    if (_pollFailCount >= 3) _showHalted();
-  }
+    updateDashboardFromStatus(await res.json());
+  } catch (_) { _onPollFail(); }
 }
-
-function _showHalted() { _setStatusPill('status-pill danger', 'dot red', 'HALTED'); }
 /** Start polling /api/status at 3-second intervals. */
 export function startDataPolling() {
   if (_dataTimerId) return;

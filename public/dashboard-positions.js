@@ -22,6 +22,9 @@ import { wallet, getRpcUrl } from './dashboard-wallet.js';
 let _positionRangeVisual = null;
 let _updateRouteForPosition = null;
 let _syncRouteToState = null;
+let _enterClosedPosView = null;
+let _exitClosedPosView = null;
+let _isViewingClosedPos = null;
 
 /**
  * Inject data-module references after all modules are loaded.
@@ -32,6 +35,9 @@ export function injectPositionDeps(deps) {
   _positionRangeVisual = deps.positionRangeVisual;
   if (deps.updateRouteForPosition) _updateRouteForPosition = deps.updateRouteForPosition;
   if (deps.syncRouteToState) _syncRouteToState = deps.syncRouteToState;
+  if (deps.enterClosedPosView) _enterClosedPosView = deps.enterClosedPosView;
+  if (deps.exitClosedPosView) _exitClosedPosView = deps.exitClosedPosView;
+  if (deps.isViewingClosedPos) _isViewingClosedPos = deps.isViewingClosedPos;
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -316,47 +322,92 @@ export function posChangePage(dir) {
   renderPosBrowser();
 }
 
-/** Make the highlighted position the active one and close the browser. */
-export function activateSelectedPos() {
-  if (posBrowserSelected < 0) return;
-  posStore.select(posBrowserSelected);
-  updatePosStripUI();
-
-  const active = posStore.getActive();
-  if (active) {
-    botConfig.lower = Math.pow(1.0001, active.tickLower || 0);
-    botConfig.upper = Math.pow(1.0001, active.tickUpper || 0);
-    botConfig.tL = active.tickLower || 0;
-    botConfig.tU = active.tickUpper || 0;
-
-    const savedOor = loadPositionOorThreshold(active);
-    botConfig.oorThreshold = savedOor;
-    const oorInput = g('inOorThreshold');
-    if (oorInput) oorInput.value = savedOor;
-    const oorDisplay = g('activeOorThreshold');
-    if (oorDisplay) oorDisplay.textContent = savedOor;
-
-    _applyLocalPositionData(active);
-    if (_positionRangeVisual) _positionRangeVisual();
-
-    // Notify server to switch the bot to this position
-    if (active.positionType === 'nft' && active.tokenId) {
-      fetch('/api/position/switch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokenId: active.tokenId }),
-      }).catch(() => {});
-    }
-
-    if (_updateRouteForPosition) _updateRouteForPosition(active);
-    act('\u{1F4CD}', 'fee', 'Position switched', 'Now managing: ' + formatPosLabel(active) + ' (OOR threshold: ' + savedOor + '%)');
-    closePosBrowser();
+/**
+ * Exit any active closed-position view.
+ */
+function _exitClosedViewIfActive() {
+  if (_isViewingClosedPos && _isViewingClosedPos() && _exitClosedPosView) {
+    _exitClosedPosView();
   }
 }
 
 /**
+ * Apply OOR threshold and tick boundaries from a position entry to botConfig and UI.
+ * @param {object} active  Active position entry from posStore.
+ * @returns {number}  The saved OOR threshold value.
+ */
+function _applyPositionConfig(active) {
+  botConfig.lower = Math.pow(1.0001, active.tickLower || 0);
+  botConfig.upper = Math.pow(1.0001, active.tickUpper || 0);
+  botConfig.tL = active.tickLower || 0;
+  botConfig.tU = active.tickUpper || 0;
+  const savedOor = loadPositionOorThreshold(active);
+  botConfig.oorThreshold = savedOor;
+  const oorInput = g('inOorThreshold');
+  if (oorInput) oorInput.value = savedOor;
+  const oorDisplay = g('activeOorThreshold');
+  if (oorDisplay) oorDisplay.textContent = savedOor;
+  // Sync per-position threshold to server so the bot rebalancer uses the correct value
+  fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rebalanceOutOfRangeThresholdPercent: savedOor }) }).catch(() => {});
+  return savedOor;
+}
+
+/**
+ * Check if a position is closed (liquidity=0).
+ * @param {object} pos  Position entry.
+ * @returns {boolean}
+ */
+function _isPositionClosed(pos) {
+  return pos.liquidity !== undefined && pos.liquidity !== null && String(pos.liquidity) === '0';
+}
+
+/**
+ * Tell the server to switch the bot to the given NFT position.
+ * @param {object} active  Active position entry.
+ */
+function _notifyServerSwitch(active) {
+  if (active.positionType === 'nft' && active.tokenId) {
+    fetch('/api/position/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokenId: active.tokenId }),
+    }).catch(() => {});
+  }
+}
+
+/** Make the highlighted position the active one and close the browser. */
+export function activateSelectedPos() {
+  if (posBrowserSelected < 0) return;
+  _exitClosedViewIfActive();
+
+  posStore.select(posBrowserSelected);
+  updatePosStripUI();
+
+  const active = posStore.getActive();
+  if (!active) return;
+
+  _applyLocalPositionData(active);
+
+  if (_isPositionClosed(active) && _enterClosedPosView) {
+    // Don't apply tick config — keep botConfig showing the bot's active position
+    _enterClosedPosView(active);
+    if (_updateRouteForPosition) _updateRouteForPosition(active);
+    act('\u{1F4C2}', 'fee', 'View closed position', 'NFT #' + active.tokenId);
+    closePosBrowser();
+    return;
+  }
+
+  const savedOor = _applyPositionConfig(active);
+  if (_positionRangeVisual) _positionRangeVisual();
+  _notifyServerSwitch(active);
+  if (_updateRouteForPosition) _updateRouteForPosition(active);
+  act('\u{1F4CD}', 'fee', 'Position switched', 'Now managing: ' + formatPosLabel(active) + ' (OOR threshold: ' + savedOor + '%)');
+  closePosBrowser();
+}
+
+/**
  * Activate a position by its NFT token ID (used by the router for deep links).
- * Finds the position in posStore, selects it, updates the UI, and notifies the server.
  * @param {string} tokenId  NFT token ID to activate.
  * @returns {boolean}  True if the position was found and activated.
  */
@@ -365,57 +416,37 @@ export function activateByTokenId(tokenId) {
     e => e.positionType === 'nft' && String(e.tokenId) === String(tokenId)
   );
   if (idx < 0) return false;
+  _exitClosedViewIfActive();
 
   posStore.select(idx);
   updatePosStripUI();
 
   const active = posStore.getActive();
-  if (active) {
-    botConfig.lower = Math.pow(1.0001, active.tickLower || 0);
-    botConfig.upper = Math.pow(1.0001, active.tickUpper || 0);
-    botConfig.tL = active.tickLower || 0;
-    botConfig.tU = active.tickUpper || 0;
+  if (!active) return true;
 
-    const savedOor = loadPositionOorThreshold(active);
-    botConfig.oorThreshold = savedOor;
-    const oorInput = g('inOorThreshold');
-    if (oorInput) oorInput.value = savedOor;
-    const oorDisplay = g('activeOorThreshold');
-    if (oorDisplay) oorDisplay.textContent = savedOor;
+  _applyLocalPositionData(active);
 
-    _applyLocalPositionData(active);
-    if (_positionRangeVisual) _positionRangeVisual();
-
-    if (active.positionType === 'nft' && active.tokenId) {
-      fetch('/api/position/switch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokenId: active.tokenId }),
-      }).catch(() => {});
-    }
+  if (_isPositionClosed(active) && _enterClosedPosView) {
+    // Don't apply tick config — keep botConfig showing the bot's active position
+    _enterClosedPosView(active);
+    act('\u{1F4C2}', 'fee', 'View closed position', 'NFT #' + active.tokenId);
+    return true;
   }
+
+  _applyPositionConfig(active);
+  if (_positionRangeVisual) _positionRangeVisual();
+  _notifyServerSwitch(active);
   return true;
 }
 
-/**
- * Resolve a display name for a token: prefer symbol, fall back to short address.
- * @param {string|null} symbol   Token symbol from on-chain lookup.
- * @param {string|null} address  Full contract address.
- * @returns {string}
- */
+/** Resolve a display name for a token: prefer symbol, fall back to short address. */
 function _tokenName(symbol, address) {
   if (symbol) return symbol;
   if (address && address.length > 10) return address.slice(0, 6) + '\u2026' + address.slice(-4);
   return address || '?';
 }
 
-/**
- * Determine status CSS class and label for a position row.
- * @param {object}  e         Position entry.
- * @param {boolean} isActive  Whether this is the active position.
- * @param {boolean} inRange   Whether the current price is inside the position's range.
- * @returns {{cls: string, label: string}}
- */
+/** Determine status CSS class and label for a position row. */
 function _posRowStatus(e, isActive, inRange) {
   const isClosed = e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0';
   if (isClosed) return { cls: 'closed', label: 'CLOSED' };
@@ -453,12 +484,7 @@ function _renderPosRow(e) {
   </div>`;
 }
 
-/**
- * Build a token label with a copy-address button using data attributes.
- * @param {string} symbol   Token symbol (e.g. "WPLS").
- * @param {string} address  Full contract address.
- * @returns {string}  HTML string.
- */
+/** Build a token label with a copy-address button. */
 function _tokenLabelHtml(symbol, address) {
   if (!address || address === '\u2014') return symbol || '\u2014';
   const escaped = address.replace(/'/g, '&#39;');
@@ -467,25 +493,8 @@ function _tokenLabelHtml(symbol, address) {
     escaped + '" title="Copy contract address: ' + escaped + '">\u274F</button>';
 }
 
-/**
- * Set an element's text content if the element exists.
- * @param {string} id   Element ID.
- * @param {string} text Text to set.
- */
-function _setText(id, text) {
-  const el = g(id);
-  if (el) el.textContent = text;
-}
-
-/**
- * Set an element's innerHTML if the element exists.
- * @param {string} id   Element ID.
- * @param {string} html HTML to set.
- */
-function _setHtml(id, html) {
-  const el = g(id);
-  if (el) el.innerHTML = html;
-}
+function _setText(id, text) { const el = g(id); if (el) el.textContent = text; }
+function _setHtml(id, html) { const el = g(id); if (el) el.innerHTML = html; }
 
 /** Show a dialog explaining that no LP positions were found. */
 function _showNoPositionsDialog() {
@@ -596,6 +605,21 @@ export function removeSelectedPos() {
 export function formatPosLabel(e) {
   const pair = _tokenName(e.token0Symbol, e.token0) + '/' + _tokenName(e.token1Symbol, e.token1);
   return (e.positionType === 'nft' ? 'NFT #' + e.tokenId : 'ERC-20') + ' \u00B7 ' + pair;
+}
+
+/** Exit closed-position view and navigate back to the bot's active position. */
+export async function returnToActivePosition() {
+  _exitClosedViewIfActive();
+  let tid = null;
+  try { tid = (await (await fetch('/api/status')).json()).activePosition?.tokenId; } catch { /* */ }
+  if (tid) { const i = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(tid)); if (i >= 0 && i !== posStore.activeIdx) posStore.select(i); }
+  else { const i = posStore.entries.findIndex(e => !_isPositionClosed(e)); if (i >= 0 && i !== posStore.activeIdx) posStore.select(i); }
+  updatePosStripUI();
+  const active = posStore.getActive();
+  if (!active) return;
+  _applyPositionConfig(active); _applyLocalPositionData(active);
+  if (_positionRangeVisual) _positionRangeVisual();
+  if (_updateRouteForPosition) _updateRouteForPosition(active);
 }
 
 /**

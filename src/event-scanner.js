@@ -27,17 +27,10 @@ const _PAIRING_WINDOW_SEC = 300;
 /** Milliseconds to wait between RPC chunk queries (rate limiting). */
 const _CHUNK_DELAY_MS = 250;
 
-const TRANSFER_EVENT_ABI = [
-  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
-];
+const { PM_ABI } = require('./pm-abi');
 
 const POOL_CREATED_ABI = [
   'event PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing, address pool)',
-];
-
-/** Minimal ABI to look up which pool a tokenId belongs to. */
-const POSITIONS_ABI = [
-  'function positions(uint256) external view returns (uint96, address, address, address, uint24, int24, int24, uint128, uint256, uint256, uint128, uint128)',
 ];
 
 /**
@@ -264,7 +257,7 @@ function buildTransferDescriptors(unique, walletAddress, tsMap) {
  * @returns {Promise<Map<string, string>>}  tokenId → "token0-token1-fee" key.
  */
 async function _lookupTokenPools(provider, ethersLib, positionManagerAddress, tokenIds) {
-  const pm = new ethersLib.Contract(positionManagerAddress, POSITIONS_ABI, provider);
+  const pm = new ethersLib.Contract(positionManagerAddress, PM_ABI, provider);
   const map = new Map();
   for (let i = 0; i < tokenIds.length; i += 10) {
     const batch = tokenIds.slice(i, i + 10);
@@ -479,7 +472,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 
   if (scanFrom > currentBlock && cachedEvents.length > 0) return cachedEvents;
 
-  const contract = new ethersLib.Contract(positionManagerAddress, TRANSFER_EVENT_ABI, provider);
+  const contract = new ethersLib.Contract(positionManagerAddress, PM_ABI, provider);
   const rawEvents = await scanChunks(contract, walletAddress, scanFrom, currentBlock, chunkSize);
 
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);

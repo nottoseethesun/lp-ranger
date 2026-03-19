@@ -28,12 +28,15 @@ import {
   injectRouterDeps, initRouter, updateRouteForPosition, updateRouteForWallet,
   resolvePendingRoute, syncRouteToState, getPendingRouteWallet,
 } from './dashboard-router.js';
+import {
+  enterClosedPosView, exitClosedPosView, isViewingClosedPos,
+} from './dashboard-closed-pos.js';
 
 // ── Wire cross-module dependencies (breaks circular imports) ────────────────
 
 injectRouterDeps({ posStore, scanPositions, wallet, activateByTokenId });
 injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, resolvePendingRoute, syncRouteToState, clearPositionDisplay, resetPollingState, clearHistory, getPendingRouteWallet });
-injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState });
+injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState, enterClosedPosView, exitClosedPosView, isViewingClosedPos });
 injectThrottleDeps({ positionRangeVisual });
 
 // ── Bind all event handlers ─────────────────────────────────────────────────
@@ -62,6 +65,9 @@ updatePosStripUI();
   if (el) el.value = saved;
   const disp = g('activeOorThreshold');
   if (disp) disp.textContent = saved;
+  // Sync per-position threshold to server so the bot uses the correct value
+  fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rebalanceOutOfRangeThresholdPercent: saved }) }).catch(() => {});
 
   // Populate stat grid from stored position data
   if (active) {

@@ -13,6 +13,7 @@
 
 import { g, act, fmtMs, fmtCountdown, nextMidnight, botConfig, savePositionOorThreshold } from './dashboard-helpers.js';
 import { posStore } from './dashboard-positions.js';
+import { isViewingClosedPos } from './dashboard-closed-pos.js';
 
 // Late-bound import to avoid circular dep issues at evaluation time.
 // Populated by dashboard-init.js after all modules load.
@@ -96,21 +97,36 @@ function _renderThrottleBadge(pct) {
 }
 
 /**
- * Render the range status banner based on price position and throttle state.
- * @param {{allowed:boolean, msUntilAllowed:number, reason:string}} can
+ * Check banner visibility and handle closed-position display.
+ * @param {HTMLElement} banner  The range banner element.
+ * @returns {boolean}  true if the caller should continue rendering OOR state.
  */
-function _renderRangeBanner(can) {
-  const banner = g('rangeBanner');
+function _checkBannerVisibility(banner) {
+  if (isViewingClosedPos()) {
+    if (!botConfig.price || !botConfig.lower || !botConfig.upper) { banner.style.display = 'none'; return false; }
+    banner.style.display = '';
+    return true;
+  }
   const active = posStore.getActive();
   const liq = active ? active.liquidity : undefined;
-  if (!botConfig.price || !botConfig.lower || !botConfig.upper || liq === undefined || liq === null) { banner.style.display = 'none'; return; }
+  if (!botConfig.price || !botConfig.lower || !botConfig.upper || liq === undefined || liq === null) { banner.style.display = 'none'; return false; }
   banner.style.display = '';
   if (String(liq) === '0') {
     banner.className = 'range-status-banner wait';
     g('rangeIcon').textContent  = '\u2014';
     g('rangeLabel').textContent = 'POSITION CLOSED';
-    return;
+    return false;
   }
+  return true;
+}
+
+/**
+ * Render the range status banner based on price position and throttle state.
+ * @param {{allowed:boolean, msUntilAllowed:number, reason:string}} can
+ */
+function _renderRangeBanner(can) {
+  const banner = g('rangeBanner');
+  if (!_checkBannerVisibility(banner)) return;
   const inR    = botConfig.price >= botConfig.lower && botConfig.price <= botConfig.upper;
   if (!inR && botConfig.withinThreshold) {
     banner.className = 'range-status-banner wait';

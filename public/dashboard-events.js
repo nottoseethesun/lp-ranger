@@ -18,6 +18,7 @@ import {
 import {
   openPosBrowser, closePosBrowser, renderPosBrowser, scanPositions,
   posChangePage, activateSelectedPos, removeSelectedPos, posRowClick,
+  returnToActivePosition,
 } from './dashboard-positions.js';
 import {
   onParamChange, saveOorThreshold, saveAndRebalance, applyAll, checkApplyDirty,
@@ -29,6 +30,7 @@ import {
   toggleCurDeposit, saveCurDeposit, toggleCurRealized, saveCurRealized,
 } from './dashboard-data.js';
 import { rebChangePage } from './dashboard-history.js';
+import { isViewingClosedPos } from './dashboard-closed-pos.js';
 
 /**
  * Bind a click handler to an element by ID.
@@ -156,6 +158,11 @@ export function bindAllEvents() {
       if (row) posRowClick(parseInt(row.dataset.posIdx, 10));
     });
   }
+
+  // ── Closed-position history banner ─────────────────────────────────────
+  _click('closedPosReturnBtn', () => {
+    if (isViewingClosedPos()) returnToActivePosition();
+  });
 
   // ── Header buttons ────────────────────────────────────────────────────────
   document.querySelectorAll('header .pos-browser-btn').forEach(btn => {

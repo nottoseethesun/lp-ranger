@@ -224,20 +224,17 @@ describe('scanRebalanceHistory', () => {
     };
 
     const ethers = { Contract: class {
-      constructor(_addr, abi) {
-        if (abi.some((a) => a.includes('positions'))) {
-          this.positions = async (id) => {
-            const p = positionsData[id.toString()];
-            if (!p) throw new Error('not found');
-            return [0, ZERO, p.token0, p.token1, p.fee, 0, 0, 0, 0, 0, 0, 0];
-          };
-        } else {
-          this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
-          this.queryFilter = async (filter) =>
-            filter._from === null
-              ? [wIn('10', 100, '0xa1'), wIn('11', 200, '0xa2'), wIn('12', 300, '0xa3')]
-              : [];
-        }
+      constructor() {
+        this.positions = async (id) => {
+          const p = positionsData[id.toString()];
+          if (!p) throw new Error('not found');
+          return [0, ZERO, p.token0, p.token1, p.fee, 0, 0, 0, 0, 0, 0, 0];
+        };
+        this.filters = { Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }) };
+        this.queryFilter = async (filter) =>
+          filter._from === null
+            ? [wIn('10', 100, '0xa1'), wIn('11', 200, '0xa2'), wIn('12', 300, '0xa3')]
+            : [];
       }
     } };
 
@@ -301,8 +298,8 @@ describe('findPoolCreationBlock', () => {
     const ranges = [];
     const creationBlock = 3000;
     const ethers = { Contract: class {
-      constructor(_a, abi) {
-        if (abi.some((a) => a.includes('PoolCreated'))) {
+      constructor(addr) {
+        if (addr === '0xFACTORY') {
           this.filters = { PoolCreated: () => ({ topics: [] }) };
           this.queryFilter = async () => [{ args: [null, null, null, null, '0xPOOL'], blockNumber: creationBlock }];
         } else {

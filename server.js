@@ -174,6 +174,11 @@
  *   npm run test:watch    Re-run tests on file changes
  *   npm run check         Combined lint + test + 80% coverage gate (matches CI)
  *
+ * Wallet Management
+ * ─────────────────
+ *   npm run reset-wallet  Delete .wallet.json + clear WALLET_PASSWORD from .env.
+ *                         Forces a fresh wallet import via the dashboard on next start.
+ *
  * Dead Code Detection
  * ───────────────────
  *   npm run knip          Knip — finds unused exports, files, and dependencies.
@@ -216,6 +221,7 @@ const config = require('./src/config');
 const walletManager = require('./src/wallet-manager');
 const { detectPositionType } = require('./src/position-detector');
 const { startBotLoop, resolvePrivateKey } = require('./src/bot-loop');
+const { getPositionHistory } = require('./src/position-history');
 
 // ── Bot handle (module-level) ────────────────────────────────────────────────
 
@@ -427,11 +433,8 @@ async function _handleApiConfig(req, res) {
     'initialDepositUsd',
   ];
   const patch = {};
-  for (const key of allowed) {
-    if (body[key] !== undefined) patch[key] = body[key];
-  }
-  updateBotState(patch);
-  _saveBotConfig(botState);
+  for (const key of allowed) { if (body[key] !== undefined) patch[key] = body[key]; }
+  updateBotState(patch); _saveBotConfig(botState);
   jsonResponse(res, 200, { ok: true, applied: patch });
 }
 
@@ -449,15 +452,11 @@ async function _handleWalletImport(req, res) {
   // Stop the running bot (if any) and clear position-specific state so the
   // dashboard doesn't display stale data from the previous wallet.
   if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
-  Object.assign(botState, {
-    activePosition: null, activePositionId: undefined,
-    rebalanceCount: 0, lastRebalanceAt: null,
-    rebalanceError: null, rebalancePaused: false,
+  Object.assign(botState, { activePosition: null, activePositionId: undefined,
+    rebalanceCount: 0, lastRebalanceAt: null, rebalanceError: null, rebalancePaused: false,
     rebalanceScanComplete: false, rebalanceEvents: undefined,
-    pnlEpochs: undefined, hodlBaseline: undefined, residuals: undefined,
-  });
+    pnlEpochs: undefined, hodlBaseline: undefined, residuals: undefined });
   _saveBotConfig(botState);
-
   jsonResponse(res, 200, { ok: true, address: body.address });
 
   // Auto-start bot with the new wallet
@@ -496,7 +495,10 @@ function _persistWalletPassword(password) {
  * @param {string|null} [password]  Password override for wallet decryption.
  * @returns {Promise<void>}
  */
+let _botStarting = false;
 async function _tryStartBot(password) {
+  if (_botStarting) { console.log('[server] Bot start already in progress — skipping'); return; }
+  _botStarting = true;
   // Temporarily override WALLET_PASSWORD if a password was provided
   const origWalletPw = config.WALLET_PASSWORD;
   if (password && !config.WALLET_PASSWORD) {
@@ -508,6 +510,7 @@ async function _tryStartBot(password) {
       console.log('[server] No wallet key — dashboard-only mode. Import a wallet via the dashboard to start the bot.');
       return;
     }
+    if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
     _botHandle = await startBotLoop({
       privateKey,
       dryRun: config.DRY_RUN,
@@ -518,6 +521,7 @@ async function _tryStartBot(password) {
     console.log('[server] Bot started');
   } finally {
     config.WALLET_PASSWORD = origWalletPw;
+    _botStarting = false;
   }
 }
 
@@ -610,12 +614,9 @@ async function _handlePositionSwitch(req, res) {
   try {
     if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
     // Clear position-specific state
-    Object.assign(botState, {
-      pnlEpochs: undefined, hodlBaseline: undefined, residuals: undefined,
-      rebalanceScanComplete: false, rebalanceEvents: undefined,
-      activePosition: null, rebalanceCount: 0, lastRebalanceAt: null,
-      rebalanceError: null, rebalancePaused: false,
-    });
+    Object.assign(botState, { pnlEpochs: undefined, hodlBaseline: undefined, residuals: undefined,
+      rebalanceScanComplete: false, rebalanceEvents: undefined, activePosition: null,
+      rebalanceCount: 0, lastRebalanceAt: null, rebalanceError: null, rebalancePaused: false });
     botState.activePositionId = String(body.tokenId);
     _saveBotConfig(botState);
     _tryStartBot(null).catch(err => {
@@ -633,6 +634,8 @@ async function _handleShutdown(_req, res) {
   if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
   server.close(() => process.exit(0));
 }
+
+// ── Position history (delegated to src/position-history.js) ──────────────────
 
 // ── Route table ──────────────────────────────────────────────────────────────
 
@@ -683,6 +686,15 @@ async function handleRequest(req, res) {
       const code = err.message === 'Wrong password' ? 403 : 400;
       jsonResponse(res, code, { ok: false, error: err.message });
     }
+    return;
+  }
+
+  // ── Dynamic GET routes ──────────────────────────────────────────────────
+  if (method === 'GET' && url.startsWith('/api/position/') && url.endsWith('/history')) {
+    const tokenId = url.slice('/api/position/'.length, -'/history'.length);
+    jsonResponse(res, 200, await getPositionHistory(tokenId, {
+      rebalanceEvents: botState.rebalanceEvents, activePosition: botState.activePosition,
+    }));
     return;
   }
 

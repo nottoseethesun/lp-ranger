@@ -18,6 +18,7 @@ const fs     = require('fs');
 const path   = require('path');
 const ethers = require('ethers');
 const config = require('./config');
+const { PM_ABI } = require('./pm-abi');
 const rangeMath = require('./range-math');
 const walletManager = require('./wallet-manager');
 const { createThrottle } = require('./throttle');
@@ -85,11 +86,6 @@ async function createProviderWithFallback(primaryUrl, fallbackUrl, ethersLib) {
 const _WPLS = '0xA1077a294dDE1B09bB078844df40758a5D0f9a27';
 /** ERC-20 balanceOf ABI for wallet residual cap check. */
 const _ERC20_BAL_ABI = ['function balanceOf(address) view returns (uint256)'];
-/** ABI for PositionManager: positions view + collect for static call. */
-const _PM_ABI = [
-  'function positions(uint256 tokenId) external view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
-  'function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) external returns (uint256 amount0, uint256 amount1)',
-];
 const _MAX_UINT128 = 2n ** 128n - 1n; // max uint128 for collect() simulation
 
 /**
@@ -116,14 +112,14 @@ async function _fetchTokenPrices(token0, token1) {
 async function _readUnclaimedFees(provider, ethersLib, tokenId, signer) {
   if (signer) {
     try {
-      const pm = new ethersLib.Contract(config.POSITION_MANAGER, _PM_ABI, signer);
+      const pm = new ethersLib.Contract(config.POSITION_MANAGER, PM_ABI, signer);
       const r = await pm.collect.staticCall({ tokenId, recipient: await signer.getAddress(),
         amount0Max: _MAX_UINT128, amount1Max: _MAX_UINT128 });
       return { tokensOwed0: r.amount0, tokensOwed1: r.amount1 };
     } catch { /* fall through to positions() fallback */ }
   }
   try {
-    const pm = new ethersLib.Contract(config.POSITION_MANAGER, _PM_ABI, provider);
+    const pm = new ethersLib.Contract(config.POSITION_MANAGER, PM_ABI, provider);
     const d = await pm.positions(tokenId);
     return { tokensOwed0: d.tokensOwed0, tokensOwed1: d.tokensOwed1 };
   } catch { return { tokensOwed0: 0n, tokensOwed1: 0n }; }
@@ -341,7 +337,8 @@ function _isBeyondThreshold(poolState, position, botState) {
   if (threshPct <= 0) return true;
   const lp = rangeMath.tickToPrice(position.tickLower, poolState.decimals0, poolState.decimals1);
   const up = rangeMath.tickToPrice(position.tickUpper, poolState.decimals0, poolState.decimals1);
-  if (poolState.price < lp * (1 - threshPct) || poolState.price > up * (1 + threshPct)) return true;
+  const rangeSpan = up - lp;
+  if (poolState.price < lp - rangeSpan * threshPct || poolState.price > up + rangeSpan * threshPct) return true;
   console.log(`[bot] OOR but within ${threshPct * 100}% threshold`);
   return false;
 }

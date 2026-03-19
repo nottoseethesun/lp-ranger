@@ -167,6 +167,7 @@ npm test               # node --test test/*.test.js
 npm run test:coverage  # with --experimental-test-coverage (Node 20+)
 npm run test:watch     # watch mode
 npm run check          # Combined lint (JS+CSS) + test + coverage check
+npm run reset-wallet   # Delete .wallet.json + clear WALLET_PASSWORD from .env
 ```
 
 ---
@@ -268,3 +269,4 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 - All dollar amounts denominated in USD
 - V3 positions only — reject V2 with helpful error message
 - **Never use `npx`** — always use `npm` (e.g. `npm run lint`, not `npx eslint`)
+- **Prefer well-known npm packages** for anything mildly specialized (e.g. Uniswap v3 math, NFT reading, token decoding) rather than hand-rolling custom implementations

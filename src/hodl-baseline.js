@@ -10,13 +10,9 @@
 'use strict';
 
 const config = require('./config');
+const { PM_ABI } = require('./pm-abi');
 const { fetchHistoricalPriceGecko } = require('./price-fetcher');
 const { getPoolState } = require('./rebalancer');
-
-/** ABI fragment for ERC-721 Transfer events. */
-const _TRANSFER_ABI = [
-  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
-];
 
 /**
  * Compute token amounts for a V3 position at a given tick.
@@ -89,7 +85,7 @@ async function initHodlBaseline(provider, ethersLib, position, botState, updateB
     const poolAddress = await factory.getPool(position.token0, position.token1, position.fee);
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return;
     // Find NFT mint timestamp via Transfer(from=0x0)
-    const iface = new ethersLib.Interface(_TRANSFER_ABI);
+    const iface = new ethersLib.Interface(PM_ABI);
     const tokenIdHex = '0x' + BigInt(position.tokenId).toString(16).padStart(64, '0');
     const zeroAddr = ethersLib.zeroPadValue ? ethersLib.zeroPadValue('0x' + '0'.repeat(40), 32)
       : '0x' + '0'.repeat(64);
