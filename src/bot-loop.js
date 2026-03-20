@@ -31,6 +31,7 @@ const { initHodlBaseline } = require('./hodl-baseline');
 const { scanRebalanceHistory } = require('./event-scanner');
 const { createCacheStore } = require('./cache-store');
 const { createResidualTracker } = require('./residual-tracker');
+const { reconstructEpochs } = require('./epoch-reconstructor');
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -228,17 +229,13 @@ function _recordResidual(deps, result) {
 
 /** Build a serialisable activePosition snapshot from a position object. */
 function _activePosSummary(p) {
-  return { tokenId: String(p.tokenId), token0: p.token0, token1: p.token1,
-    fee: p.fee, tickLower: p.tickLower, tickUpper: p.tickUpper,
-    liquidity: String(p.liquidity || 0) };
+  return { tokenId: String(p.tokenId), token0: p.token0, token1: p.token1, fee: p.fee, tickLower: p.tickLower, tickUpper: p.tickUpper, liquidity: String(p.liquidity || 0) };
 }
 /** Notify the dashboard of a successful rebalance. */
 function _notifyRebalance(deps, throttle, position, events) {
-  deps.updateBotState({ rebalanceCount: (deps._rebalanceCount || 0) + 1,
-    lastRebalanceAt: new Date().toISOString(), throttleState: throttle.getState(),
-    rebalanceEvents: events ? [...events] : undefined,
-    activePosition: _activePosSummary(position),
-    activePositionId: String(position.tokenId) });
+  deps.updateBotState({ rebalanceCount: (deps._rebalanceCount || 0) + 1, lastRebalanceAt: new Date().toISOString(),
+    throttleState: throttle.getState(), rebalanceEvents: events ? [...events] : undefined,
+    activePosition: _activePosSummary(position), activePositionId: String(position.tokenId) });
 }
 
 async function _executeAndRecord(deps, ethersLib) {
@@ -587,7 +584,9 @@ async function startBotLoop(opts) {
   const throttle = createThrottle({ minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60_000, dailyMax: config.MAX_REBALANCES_PER_DAY });
   const rebalanceEvents = [];
   const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache.json') });
-  _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle).then(() => _scheduleNext(500));
+  _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle)
+    .then(() => reconstructEpochs({ pnlTracker, rebalanceEvents, botState, updateBotState }).catch(e => console.warn('[pnl] Epoch reconstruction error:', e.message)))
+    .then(() => _scheduleNext(500));
   updateBotState({ running: true, dryRun, startedAt: new Date().toISOString(),
     throttleState: throttle.getState(), rebalanceEvents, walletAddress: address,
     activePosition: _activePosSummary(position) });

@@ -19,6 +19,9 @@ keyfile*.json
 # Runtime bot config (persisted by server.js)
 .bot-config.json
 
+# Reconstructed epoch cache (persisted by epoch-reconstructor.js)
+.epoch-cache.json
+
 # Rebalance log (may contain sensitive position data)
 rebalance_log.json
 

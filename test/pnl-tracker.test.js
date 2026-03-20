@@ -481,29 +481,45 @@ describe('_buildDailyPnl', () => {
     assert.ok(result[0].feePnl > 9.9, 'today should have all fees');
   });
 
-  it('positionStartDate distributes fees from mint date, not fromDate', () => {
+  it('positionStartDate distributes live fees from mint date, not fromDate', () => {
     const fiveDaysAgo = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
     const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
     const liveEpoch = {
       openTime: Date.now(), priceChangePnl: 0, feePnl: 12, fees: 12, gas: 0,
     };
-    // fromDate creates 6 rows, but fees only distribute from positionStartDate (3 days)
     const result = _buildDailyPnl([], liveEpoch, fiveDaysAgo, twoDaysAgo);
     assert.strictEqual(result.length, 6, `expected 6 days, got ${result.length}`);
     const totalFees = result.reduce((s, d) => s + d.feePnl, 0);
     assert.ok(Math.abs(totalFees - 12) < 0.01, 'total fees should sum to 12');
-    // Days before positionStartDate should have $0 fees
     const earlyDays = result.filter((d) => d.date < twoDaysAgo);
     for (const d of earlyDays) {
       assert.strictEqual(d.feePnl, 0, `day ${d.date} should have $0 fees`);
     }
-    // Days from positionStartDate onward should share fees equally (3 days)
     const dailyFee = 12 / 3;
     const activeDays = result.filter((d) => d.date >= twoDaysAgo);
     assert.strictEqual(activeDays.length, 3);
     for (const d of activeDays) {
       assert.ok(Math.abs(d.feePnl - dailyFee) < 0.01,
         `day ${d.date} feePnl=${d.feePnl}, expected ~${dailyFee}`);
+    }
+  });
+
+  it('distributes closed epoch fees across open→close duration', () => {
+    const day1 = new Date('2025-06-01T10:00:00Z').getTime();
+    const day3 = new Date('2025-06-03T14:00:00Z').getTime();
+    const closedEpoch = {
+      openTime: day1, closeTime: day3,
+      priceChangePnl: -6, feePnl: 3, fees: 3, gas: 0.3,
+    };
+    const result = _buildDailyPnl([closedEpoch], null);
+    assert.strictEqual(result.length, 3, 'should have 3 days');
+    assert.strictEqual(result[0].date, '2025-06-03', 'newest first');
+    assert.strictEqual(result[2].date, '2025-06-01', 'oldest last');
+    const totalFees = result.reduce((s, d) => s + d.feePnl, 0);
+    assert.ok(Math.abs(totalFees - 3) < 0.01, 'total fees should sum to 3');
+    // Each day gets 1/3
+    for (const d of result) {
+      assert.ok(Math.abs(d.feePnl - 1) < 0.01, `day ${d.date} should have ~$1 fee`);
     }
   });
 

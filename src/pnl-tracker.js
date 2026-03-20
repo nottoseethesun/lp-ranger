@@ -354,6 +354,31 @@ function createPnlTracker(opts = {}) {
 }
 
 /**
+ * Distribute P&L values evenly across a date range (inclusive).
+ * @param {Map} dayMap       Day accumulator map.
+ * @param {string} startDay  ISO date (YYYY-MM-DD) for range start.
+ * @param {string} endDay    ISO date (YYYY-MM-DD) for range end.
+ * @param {number} feePnl    Total fee P&L to distribute.
+ * @param {number} priceChangePnl  Total price-change P&L to distribute.
+ * @param {number} gas       Total gas cost to distribute.
+ */
+function _distributeToRange(dayMap, startDay, endDay, feePnl, priceChangePnl, gas) {
+  const cursor = new Date(startDay + 'T00:00:00Z');
+  const end = new Date(endDay + 'T00:00:00Z');
+  const totalDays = Math.max(1, Math.round((end - cursor) / 86_400_000) + 1);
+  const dFee = feePnl / totalDays, dPrice = priceChangePnl / totalDays, dGas = gas / totalDays;
+  while (cursor <= end) {
+    const key = cursor.toISOString().slice(0, 10);
+    const entry = dayMap.get(key) || { priceChangePnl: 0, feePnl: 0, gasCost: 0 };
+    entry.priceChangePnl += dPrice;
+    entry.feePnl += dFee;
+    entry.gasCost += dGas;
+    dayMap.set(key, entry);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+}
+
+/**
  * Aggregate epoch data into per-day P&L records.
  * Each day shows the breakdown of price-change P&L vs fee P&L.
  * When `fromDate` is provided, fills in zero-value rows for every day
@@ -369,37 +394,21 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate, positionStartDate) {
   /** @type {Map<string, {priceChangePnl: number, feePnl: number, gasCost: number}>} */
   const dayMap = new Map();
 
+  // Distribute closed epochs across their open→close duration
   for (const ep of closedEpochs) {
-    const day = new Date(ep.closeTime).toISOString().slice(0, 10);
-    const entry = dayMap.get(day) || { priceChangePnl: 0, feePnl: 0, gasCost: 0 };
-    entry.priceChangePnl += ep.priceChangePnl ?? 0;
-    entry.feePnl += ep.feePnl ?? ep.fees;
-    entry.gasCost += ep.gas;
-    dayMap.set(day, entry);
+    const openDay = ep.openTime ? new Date(ep.openTime).toISOString().slice(0, 10) : null;
+    const closeDay = new Date(ep.closeTime).toISOString().slice(0, 10);
+    _distributeToRange(dayMap, openDay || closeDay, closeDay,
+      ep.feePnl ?? ep.fees, ep.priceChangePnl ?? 0, ep.gas);
   }
 
-  // Distribute live epoch P&L evenly across each day it has been open
+  // Distribute live epoch P&L from positionStartDate (or epochDay) to today
   if (liveEpoch) {
     const epochDay = new Date(liveEpoch.openTime).toISOString().slice(0, 10);
     const openDay = positionStartDate && positionStartDate < epochDay ? positionStartDate : epochDay;
     const today = new Date().toISOString().slice(0, 10);
-    const cursor = new Date(openDay + 'T00:00:00Z');
-    const end = new Date(today + 'T00:00:00Z');
-    const totalDays = Math.max(1, Math.round((end - cursor) / 86_400_000) + 1);
-    console.log('[pnl] _buildDailyPnl: positionStartDate=%s fromDate=%s openDay=%s totalDays=%d feePnl=%s',
-      positionStartDate, fromDate, openDay, totalDays, liveEpoch.feePnl);
-    const dailyFee = (liveEpoch.feePnl ?? liveEpoch.fees) / totalDays;
-    const dailyPrice = (liveEpoch.priceChangePnl ?? 0) / totalDays;
-    const dailyGas = liveEpoch.gas / totalDays;
-    while (cursor <= end) {
-      const key = cursor.toISOString().slice(0, 10);
-      const entry = dayMap.get(key) || { priceChangePnl: 0, feePnl: 0, gasCost: 0 };
-      entry.priceChangePnl += dailyPrice;
-      entry.feePnl += dailyFee;
-      entry.gasCost += dailyGas;
-      dayMap.set(key, entry);
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
+    _distributeToRange(dayMap, openDay, today,
+      liveEpoch.feePnl ?? liveEpoch.fees, liveEpoch.priceChangePnl ?? 0, liveEpoch.gas);
   }
 
   // Fill zero-value days from fromDate to today
