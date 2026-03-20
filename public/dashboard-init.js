@@ -35,7 +35,7 @@ import {
 // ── Wire cross-module dependencies (breaks circular imports) ────────────────
 
 injectRouterDeps({ posStore, scanPositions, wallet, activateByTokenId });
-injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, resolvePendingRoute, syncRouteToState, clearPositionDisplay, resetPollingState, clearHistory, getPendingRouteWallet });
+injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, resolvePendingRoute, clearPositionDisplay, resetPollingState, clearHistory, getPendingRouteWallet });
 injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState, enterClosedPosView, exitClosedPosView, isViewingClosedPos });
 injectThrottleDeps({ positionRangeVisual });
 
@@ -44,11 +44,12 @@ injectThrottleDeps({ positionRangeVisual });
 bindAllEvents();
 restorePrivacyMode();
 
-// ── Disclaimer gate (must run before any dashboard init) ───────────────────
+// ── Disclaimer gate (must resolve before any dashboard init) ────────────────
 
-initDisclaimer();
+initDisclaimer().then(() => { _afterDisclaimer(); });
 
-// ── Initialise trigger UI ──────────────────────────────────────────────────
+/** All dashboard init runs after the disclaimer is accepted. */
+function _afterDisclaimer() {
 
 // Restore positions from localStorage (persisted across page reloads)
 _loadPosStore();
@@ -120,3 +121,5 @@ onParamChange();
 snapshotApplied();
 setInterval(updateThrottleUI, 1000);
 startDataPolling();
+
+} // end _afterDisclaimer

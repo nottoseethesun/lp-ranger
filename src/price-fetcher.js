@@ -8,6 +8,14 @@
  * requires an API key) to resolve token prices.  Results are cached in memory
  * with a 60-second TTL to reduce network traffic.
  *
+ * GeckoTerminal rate limiting
+ * ──────────────────────────
+ * The free GeckoTerminal OHLCV API allows 30 calls/min.  A centralized
+ * sliding-window rate limiter (`_geckoRateLimit()`) is applied inside
+ * `_fetchGeckoTerminalOhlcv()` so ALL callers (HODL baseline, epoch
+ * reconstruction, position history) share a single budget.  If the
+ * window is full the caller automatically waits until a slot opens.
+ *
  * Inspired by {@link https://github.com/nottoseethesun/crypto-price-fetchers}.
  *
  * @example
@@ -192,6 +200,31 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
 
 // ── GeckoTerminal (historical prices) ────────────────────────────────────────
 
+// ── GeckoTerminal rate limiter (sliding window, 25 calls / 60 s) ─────────────
+
+/** @type {number[]} Timestamps (ms) of recent GeckoTerminal API calls. */
+const _geckoCallTimes = [];
+const _GECKO_MAX_CALLS = 25;       // leave margin below the 30/min hard limit
+const _GECKO_WINDOW_MS = 60_000;
+
+/**
+ * Wait if necessary to stay within GeckoTerminal's rate limit.
+ * Uses a sliding window: tracks the last N call timestamps and waits
+ * until the oldest one falls outside the window before proceeding.
+ */
+async function _geckoRateLimit() {
+  const now = Date.now();
+  while (_geckoCallTimes.length > 0 && _geckoCallTimes[0] < now - _GECKO_WINDOW_MS) {
+    _geckoCallTimes.shift();
+  }
+  if (_geckoCallTimes.length >= _GECKO_MAX_CALLS) {
+    const waitMs = _geckoCallTimes[0] + _GECKO_WINDOW_MS - now + 200;
+    console.log(`[price-fetcher] GeckoTerminal rate limit — waiting ${Math.ceil(waitMs / 1000)}s`);
+    await new Promise(r => setTimeout(r, waitMs));
+  }
+  _geckoCallTimes.push(Date.now());
+}
+
 /**
  * Fetch a historical USD price from GeckoTerminal OHLCV candles.
  *
@@ -205,7 +238,7 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
  * @returns {Promise<number>} USD close price (0 if unavailable).
  */
 async function _fetchGeckoTerminalOhlcv(poolAddress, timestamp, token = 'base', network = 'pulsechain') {
-  // Request the candle containing the target timestamp
+  await _geckoRateLimit();
   const before = timestamp + 86400;
   const url = `https://api.geckoterminal.com/api/v2/networks/${network}`
     + `/pools/${poolAddress}/ohlcv/day`

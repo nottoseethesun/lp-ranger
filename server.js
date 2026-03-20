@@ -165,6 +165,13 @@
  *
  * All dev tools are available via npm scripts — no npx needed.
  *
+ * Build & Run
+ * ───────────
+ *   npm run build          esbuild bundle + cache-bust stamp (bundle.js?v=<ms>)
+ *   npm start              Start server only (no build — use after `npm run build`)
+ *   npm run build-and-start  Build + start in one command (replaces old `npm start`)
+ *   npm run dev            Build + start with --watch (auto-restart on file changes)
+ *
  * Lint & Test
  * ───────────
  *   npm run lint          ESLint — 0 warnings, complexity ≤17, max-lines ≤500
@@ -178,8 +185,12 @@
  * ─────────────────
  *   npm run reset-wallet  Delete .wallet.json + clear WALLET_PASSWORD from .env.
  *                         Forces a fresh wallet import via the dashboard on next start.
- *   npm run clean         reset-wallet + delete .bot-config.json, rebalance_log.json,
- *                         and tmp/event-cache.json.  Full state reset.
+ *   npm run clean         reset-wallet + delete .bot-config.json, .epoch-cache.json,
+ *                         rebalance_log.json, and tmp/event-cache.json.  Full state
+ *                         reset.  Note: browser localStorage is NOT cleared by this
+ *                         command — use the Settings gear icon → "Clear Local Storage
+ *                         & Cookies" in the dashboard, or open DevTools → Application
+ *                         → Local Storage → Clear All.
  *
  * Dead Code Detection
  * ───────────────────
@@ -313,6 +324,7 @@ const botState = {
   rebalanceError:         null,
   rebalancePaused:        false,
   rebalanceScanComplete:  false,
+  rebalanceScanProgress:  0,
   updatedAt:              null,
 };
 

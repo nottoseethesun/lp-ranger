@@ -241,10 +241,8 @@ export function updatePosStripUI() {
 
 /** Open the position browser modal. */
 export function openPosBrowser() {
-  posBrowserPage = 0;
-  posBrowserSelected = -1;
-  g('posBrowserModal').className = 'modal-overlay';
-  renderPosBrowser();
+  posBrowserPage = 0; posBrowserSelected = -1;
+  g('posBrowserModal').className = 'modal-overlay'; renderPosBrowser();
 }
 
 /** Close the position browser modal. */
@@ -330,9 +328,7 @@ export function posChangePage(dir) {
  * Exit any active closed-position view.
  */
 function _exitClosedViewIfActive() {
-  if (_isViewingClosedPos && _isViewingClosedPos() && _exitClosedPosView) {
-    _exitClosedPosView();
-  }
+  if (_isViewingClosedPos && _isViewingClosedPos() && _exitClosedPosView) _exitClosedPosView();
 }
 
 /**
@@ -366,10 +362,7 @@ function _isPositionClosed(pos) {
   return pos.liquidity !== undefined && pos.liquidity !== null && String(pos.liquidity) === '0';
 }
 
-/**
- * Tell the server to switch the bot to the given NFT position.
- * @param {object} active  Active position entry.
- */
+/** Tell the server to switch the bot to the given NFT position. */
 function _notifyServerSwitch(active) {
   if (active.positionType === 'nft' && active.tokenId) {
     fetch('/api/position/switch', {
@@ -450,13 +443,20 @@ function _tokenName(symbol, address) {
   return address || '?';
 }
 
-/** Update the bot's active tokenId (called from dashboard-data poll). */
-export function setBotActiveTokenId(tid) { _botActiveTokenId = tid ? String(tid) : null; }
+/** Update the bot's active tokenId, auto-select in store, and sync URL. */
+export function setBotActiveTokenId(tid) {
+  _botActiveTokenId = tid ? String(tid) : null; if (!_botActiveTokenId) return;
+  const cur = posStore.getActive(); if (cur && String(cur.tokenId) === _botActiveTokenId) return;
+  const idx = posStore.entries.findIndex(e => String(e.tokenId) === _botActiveTokenId);
+  if (idx < 0) return;
+  posStore.select(idx); updatePosStripUI();
+  const selected = posStore.getActive();
+  if (selected && _syncRouteToState) _syncRouteToState(selected);
+}
 
 /** Determine status CSS class and label for a position row. */
 function _posRowStatus(e, isBotActive, inRange) {
-  const isClosed = e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0';
-  if (isClosed) return { cls: 'closed', label: 'CLOSED' };
+  if (e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0') return { cls: 'closed', label: 'CLOSED' };
   if (isBotActive) return inRange ? { cls: 'in', label: '\u2713 IN' } : { cls: 'out', label: '\u2717 OUT' };
   return { cls: 'closed', label: '\u2014' };
 }
@@ -468,15 +468,12 @@ function _posRowStatus(e, isBotActive, inRange) {
  * @returns {string}  HTML string for the row.
  */
 function _renderPosRow(e) {
-  const lp    = Math.pow(1.0001, e.tickLower || 0);
-  const up    = Math.pow(1.0001, e.tickUpper || 0);
-  const inR   = botConfig.price >= lp && botConfig.price <= up;
-  const pair  = _tokenName(e.token0Symbol, e.token0) + '/' + _tokenName(e.token1Symbol, e.token1);
+  const lp = Math.pow(1.0001, e.tickLower || 0), up = Math.pow(1.0001, e.tickUpper || 0);
+  const inR = botConfig.price >= lp && botConfig.price <= up;
+  const pair = _tokenName(e.token0Symbol, e.token0) + '/' + _tokenName(e.token1Symbol, e.token1);
   const feePct = e.fee ? (e.fee / 10000).toFixed(2) + '%' : '\u2014';
-  const idStr  = e.positionType === 'nft'
-    ? 'NFT #' + e.tokenId
-    : e.contractAddress ? e.contractAddress.slice(0, 10) + '\u2026' : 'ERC-20';
-  const walletShort   = e.walletAddress.slice(0, 8) + '\u2026' + e.walletAddress.slice(-4);
+  const idStr = e.positionType === 'nft' ? 'NFT #' + e.tokenId : e.contractAddress ? e.contractAddress.slice(0, 10) + '\u2026' : 'ERC-20';
+  const walletShort = e.walletAddress.slice(0, 8) + '\u2026' + e.walletAddress.slice(-4);
   const isHighlighted = e.index === posBrowserSelected;
   const isBotActive = e.positionType === 'nft' && _botActiveTokenId && String(e.tokenId) === _botActiveTokenId;
   const { cls: statusCls, label: statusLabel } = _posRowStatus(e, isBotActive, inR);
@@ -522,6 +519,7 @@ function _showNoPositionsDialog() {
  * active duration, IL breakdown, and the activity log.
  */
 export function clearPositionDisplay() {
+  _botActiveTokenId = null;
   // Stat grid: ticks, token labels, pool shares, balances
   _setText('sTL', '\u2014'); _setText('sTU', '\u2014'); _setText('sTC', '\u2014');
   _setHtml('statT0Label', '\u2014'); _setHtml('statT1Label', '\u2014');
@@ -585,8 +583,7 @@ export function _applyLocalPositionData(pos) {
   _setText('kpiDeposit', '—');
   const statusEl = g('curPosStatus');
   if (statusEl) {
-    const liq = pos.liquidity;
-    const isClosed = liq !== undefined && liq !== null && String(liq) === '0';
+    const isClosed = pos.liquidity !== undefined && pos.liquidity !== null && String(pos.liquidity) === '0';
     statusEl.textContent = isClosed ? 'CLOSED' : 'ACTIVE';
     statusEl.className = '9mm-pos-mgr-pos-status ' + (isClosed ? 'closed' : 'active');
   }
@@ -619,30 +616,43 @@ export async function returnToActivePosition() {
   _exitClosedViewIfActive();
   let tid = null;
   try { tid = (await (await fetch('/api/status')).json()).activePosition?.tokenId; } catch { /* */ }
-  if (tid) { const i = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(tid)); if (i >= 0 && i !== posStore.activeIdx) posStore.select(i); }
-  else { const i = posStore.entries.findIndex(e => !_isPositionClosed(e)); if (i >= 0 && i !== posStore.activeIdx) posStore.select(i); }
+  const findIdx = tid
+    ? posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(tid))
+    : posStore.entries.findIndex(e => !_isPositionClosed(e));
+  if (findIdx >= 0 && findIdx !== posStore.activeIdx) posStore.select(findIdx);
   updatePosStripUI();
-  const active = posStore.getActive();
-  if (!active) return;
+  const active = posStore.getActive(); if (!active) return;
   _applyPositionConfig(active); _applyLocalPositionData(active);
   if (_positionRangeVisual) _positionRangeVisual();
   if (_updateRouteForPosition) _updateRouteForPosition(active);
 }
 
+/** Select the bot's active position, apply config, and update the URL (manual scan only). */
+async function _syncAfterManualScan() {
+  try { const tid = (await (await fetch('/api/status')).json()).activePosition?.tokenId;
+    if (tid) { const i = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(tid)); if (i >= 0 && i !== posStore.activeIdx) posStore.select(i); }
+  } catch { /* next poll will sync */ }
+  const active = posStore.getActive(); if (!active) return;
+  _applyPositionConfig(active); _applyLocalPositionData(active);
+  if (_positionRangeVisual) _positionRangeVisual();
+  if (_syncRouteToState) _syncRouteToState(active);
+}
+
 /**
  * Scan the current wallet for LP positions via the server API.
- * Requires a connected wallet (imported via the wallet modal).
+ * @param {object} [opts]  Options.
+ * @param {boolean} [opts.navigate=true]  After scan, select the bot's active position,
+ *   apply config, and update the URL.  Pass `false` for automatic scans (wallet
+ *   import/restore) — the 3-second polling loop handles all of that instead.
  */
-export async function scanPositions() {
+export async function scanPositions(opts) {
+  const navigate = !opts || opts.navigate !== false;
   if (!wallet.address) {
     act('\u26A0', 'alert', 'No wallet loaded', 'Import a wallet first to scan for positions');
     return;
   }
   const btn = g('posScanBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = '\u27F3 Scanning\u2026';
-  }
+  if (btn) { btn.disabled = true; btn.textContent = '\u27F3 Scanning\u2026'; }
 
   try {
     const res = await fetch('/api/positions/scan', {
@@ -657,26 +667,16 @@ export async function scanPositions() {
     const nftCount = (data.nftPositions || []).length;
     act('\u{1F50D}', 'start', 'Scan complete',
       `Found ${nftCount} NFT positions. Added ${added} new.`);
-    updatePosStripUI();
+    if (navigate) updatePosStripUI();
     if (nftCount === 0) _showNoPositionsDialog();
 
-    // Sync to the bot's active position if it differs from the dashboard selection
-    try { const tid = (await (await fetch('/api/status')).json()).activePosition?.tokenId;
-      if (tid) { const i = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(tid)); if (i >= 0 && i !== posStore.activeIdx) posStore.select(i); }
-    } catch { /* next poll will sync */ }
-    const active = posStore.getActive();
-    if (active) {
-      _applyPositionConfig(active); _applyLocalPositionData(active);
-      if (_positionRangeVisual) _positionRangeVisual();
-      if (_syncRouteToState) _syncRouteToState(active);
-    }
+    // Manual scans (position browser): sync to bot's active position + navigate.
+    // Automatic scans (wallet import/restore): skip — the poll loop does this.
+    if (navigate) await _syncAfterManualScan();
   } catch (e) {
     act('\u26A0', 'alert', 'Scan failed', e.message);
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '\u27F3 Scan Wallet';
-    }
+    if (btn) { btn.disabled = false; btn.textContent = '\u27F3 Scan Wallet'; }
     renderPosBrowser();
   }
 }

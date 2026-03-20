@@ -5,13 +5,13 @@
  *
  * Throttle state tracks daily rebalance counts and an optional
  * doubling-mode wait that activates when too many rebalances fire in
- * quick succession.  The UI badge, bar, and countdown are refreshed
+ * quick succession.  The UI badge and countdown are refreshed
  * every second by {@link updateThrottleUI}.
  *
  * Depends on: dashboard-helpers.js, dashboard-positions.js (posStore).
  */
 
-import { g, act, fmtMs, fmtCountdown, nextMidnight, botConfig, savePositionOorThreshold } from './dashboard-helpers.js';
+import { g, act, fmtCountdown, nextMidnight, botConfig, savePositionOorThreshold } from './dashboard-helpers.js';
 import { posStore } from './dashboard-positions.js';
 import { isViewingClosedPos } from './dashboard-closed-pos.js';
 
@@ -71,11 +71,10 @@ export function canRebalance() {
 
 /** Re-read UI inputs and update throttle parameters. */
 export function onParamChange() {
-  const newMin = parseInt(g('inMinInterval').value) || 10;
-  throttle.minIntervalMs = newMin * 60 * 1000;
-  throttle.dailyMax      = parseInt(g('inMaxReb').value) || 20;
+  const minEl = g('inMinInterval'), maxEl = g('inMaxReb');
+  throttle.minIntervalMs = (parseInt(minEl?.value) || 10) * 60 * 1000;
+  throttle.dailyMax      = parseInt(maxEl?.value) || 20;
   if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
-  g('dblWindowLabel').textContent = fmtMs(4 * throttle.minIntervalMs);
   updateThrottleUI();
 }
 
@@ -85,6 +84,7 @@ export function onParamChange() {
  */
 function _renderThrottleBadge(pct) {
   const badge = g('throttleBadge');
+  if (!badge) return;
   if (throttle.dailyCount >= throttle.dailyMax) {
     badge.textContent = 'LIMIT HIT'; badge.className = 'warn-badge';
   } else if (throttle.doublingActive) {
@@ -126,7 +126,7 @@ function _checkBannerVisibility(banner) {
  */
 function _renderRangeBanner(can) {
   const banner = g('rangeBanner');
-  if (!_checkBannerVisibility(banner)) return;
+  if (!banner || !_checkBannerVisibility(banner)) return;
   const inR    = botConfig.price >= botConfig.lower && botConfig.price <= botConfig.upper;
   if (!inR && botConfig.withinThreshold) {
     banner.className = 'range-status-banner wait';
@@ -156,55 +156,29 @@ function _renderRangeBanner(can) {
   }
 }
 
-/** Refresh all throttle-related UI elements (badge, bar, countdown, banner). */
+/** Update the rebalance interval KPI. */
+function _renderCountdownKpi(can) {
+  const minIntervalEl = g('inMinInterval');
+  const minIntervalMin = minIntervalEl ? parseInt(minIntervalEl.value, 10) || 10 : 10;
+  const cd = g('kpiCountdown'), cds = g('kpiCDSub');
+  if (can.allowed) {
+    if (cd) { cd.textContent = minIntervalMin + ' min'; cd.className = 'kpi-value neu'; }
+    if (cds) cds.textContent = 'Rebalance is only triggered when the position is out-of-range by the % set below.';
+  } else {
+    if (cd) { cd.textContent = fmtCountdown(can.msUntilAllowed); cd.className = 'kpi-value ' + (throttle.doublingActive ? 'dbl' : 'wrn'); }
+    if (cds) cds.textContent = can.reason === 'daily_limit'
+      ? 'Daily Limit Reached'
+      : throttle.doublingActive ? 'Volatility Doubling' : 'Waiting \u2014 ' + fmtCountdown(can.msUntilAllowed) + ' Left';
+  }
+}
+
+/** Refresh all throttle-related UI elements (badge, countdown, banner). */
 export function updateThrottleUI() {
   const can = canRebalance();
   const pct = Math.min(100, (throttle.dailyCount / throttle.dailyMax) * 100);
-  const fill = g('throttleFill');
-  fill.style.width      = pct + '%';
-  fill.style.background = pct < 60 ? 'var(--accent3)' : pct < 90 ? 'var(--warn)' : 'var(--danger)';
-  g('throttleLeft').textContent  = throttle.dailyCount + ' Today';
-  g('throttleRight').textContent = 'Limit per Day: ' + throttle.dailyMax;
-
   _renderThrottleBadge(pct);
-
-  // Doubling panel
-  const panel = g('dblPanel');
-  if (throttle.doublingActive) {
-    panel.className = 'dbl-panel';
-    g('dblCurrentWait').textContent = fmtMs(throttle.currentWaitMs);
-    g('dblCount').textContent       = throttle.doublingCount;
-  } else {
-    panel.className = 'dbl-panel hidden';
-  }
-
-  // Rebalance Interval KPI
-  const msLeft = can.msUntilAllowed;
-  const minIntervalEl = g('inMinInterval');
-  const minIntervalMin = minIntervalEl ? parseInt(minIntervalEl.value, 10) || 10 : 10;
-  if (can.allowed) {
-    g('kpiCountdown').textContent = minIntervalMin + ' min';
-    g('kpiCountdown').className   = 'kpi-value neu';
-    g('kpiCDSub').textContent     = 'Rebalance is only triggered when the position is out-of-range by the % set below.';
-  } else {
-    g('kpiCountdown').textContent = fmtCountdown(msLeft);
-    g('kpiCountdown').className   = 'kpi-value ' + (throttle.doublingActive ? 'dbl' : 'wrn');
-    g('kpiCDSub').textContent     = can.reason === 'daily_limit'
-      ? 'Daily Limit Reached'
-      : throttle.doublingActive ? 'Volatility Doubling' : 'Waiting \u2014 ' + fmtCountdown(msLeft) + ' Left';
-  }
-
+  _renderCountdownKpi(can);
   _renderRangeBanner(can);
-
-  // Doubling countdown
-  if (throttle.doublingActive && !can.allowed) {
-    g('dblCountdown').textContent      = fmtCountdown(msLeft);
-    g('dblCountdown').className        = 'countdown';
-    g('dblCountdownLabel').textContent = 'Time Until Next Rebalance Allowed';
-  } else if (throttle.doublingActive) {
-    g('dblCountdown').textContent = 'READY';
-    g('dblCountdown').className   = 'countdown ok';
-  }
 }
 
 // ── Apply All ───────────────────────────────────────────────────────────────
@@ -219,14 +193,15 @@ function _triggerLabel() {
 
 /** Update the position token label from the active position. */
 function _updatePosTokenLabel() {
-  g('wsToken').textContent = g('inNFT')?.value || '\u2014';
+  const ws = g('wsToken'); if (ws) ws.textContent = g('inNFT')?.value || '\u2014';
 }
 
 /** Save the OOR timeout setting and persist to backend. */
 export function saveOorTimeout() {
-  const val = parseInt(g('inOorTimeout').value, 10);
+  const el = g('inOorTimeout');
+  const val = parseInt(el?.value, 10);
   const timeoutMin = Number.isFinite(val) && val >= 0 ? val : 180;
-  g('inOorTimeout').value = timeoutMin;
+  if (el) el.value = timeoutMin;
   fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -236,9 +211,9 @@ export function saveOorTimeout() {
 
 /** Save just the OOR threshold, update the preview, and persist to backend. */
 export function saveOorThreshold() {
-  botConfig.oorThreshold = Math.min(100, Math.max(1, parseFloat(g('inOorThreshold').value) || 5));
-  g('inOorThreshold').value = botConfig.oorThreshold;
-  g('activeOorThreshold').textContent = botConfig.oorThreshold;
+  botConfig.oorThreshold = Math.min(100, Math.max(1, parseFloat(g('inOorThreshold')?.value) || 5));
+  const inp = g('inOorThreshold'); if (inp) inp.value = botConfig.oorThreshold;
+  const disp = g('activeOorThreshold'); if (disp) disp.textContent = botConfig.oorThreshold;
   const activePos = posStore.getActive();
   if (activePos) savePositionOorThreshold(activePos, botConfig.oorThreshold);
   if (_positionRangeVisual) _positionRangeVisual();
@@ -289,48 +264,42 @@ export function snapshotApplied() {
   checkApplyDirty();
 }
 
+/** Build the config patch from current UI input values. */
+function _buildConfigPatch() {
+  return {
+    rebalanceOutOfRangeThresholdPercent: botConfig.oorThreshold,
+    slippagePct:             parseFloat(g('inSlip')?.value) || 0.5,
+    checkIntervalSec:        parseInt(g('inInterval')?.value, 10) || 60,
+    minRebalanceIntervalMin: parseInt(g('inMinInterval')?.value, 10) || 10,
+    maxRebalancesPerDay:     parseInt(g('inMaxReb')?.value, 10) || 20,
+    gasStrategy:             g('inGas')?.value || 'auto',
+    triggerType:             trigger.type,
+    rebalanceTimeoutMin:     parseInt(g('inOorTimeout')?.value, 10) || 0,
+  };
+}
+
 /** Read all settings from the UI and apply them, persisting to the backend. */
 export function applyAll() {
   onParamChange();
-  botConfig.oorThreshold = parseFloat(g('inOorThreshold').value) || 5;
-  g('activeOorThreshold').textContent = botConfig.oorThreshold;
-
-  // Persist OOR threshold for the active position in localStorage
+  botConfig.oorThreshold = parseFloat(g('inOorThreshold')?.value) || 5;
+  const aot = g('activeOorThreshold'); if (aot) aot.textContent = botConfig.oorThreshold;
   const activePos = posStore.getActive();
   if (activePos) savePositionOorThreshold(activePos, botConfig.oorThreshold);
-
-  const tLbl = _triggerLabel();
-  g('activeTriggerDisplay').textContent = tLbl;
+  const atd = g('activeTriggerDisplay'); if (atd) atd.textContent = _triggerLabel();
   _updatePosTokenLabel();
-  g('dblWindowLabel').textContent = fmtMs(4 * throttle.minIntervalMs);
-
   if (_positionRangeVisual) _positionRangeVisual();
 
-  // Persist settings to the backend bot process
-  const patch = {
-    rebalanceOutOfRangeThresholdPercent: botConfig.oorThreshold,
-    slippagePct:             parseFloat(g('inSlip').value) || 0.5,
-    checkIntervalSec:        parseInt(g('inInterval').value, 10) || 60,
-    minRebalanceIntervalMin: parseInt(g('inMinInterval').value, 10) || 10,
-    maxRebalancesPerDay:     parseInt(g('inMaxReb').value, 10) || 20,
-    gasStrategy:             g('inGas').value || 'auto',
-    triggerType:             trigger.type,
-    rebalanceTimeoutMin:     parseInt(g('inOorTimeout').value, 10) || 0,
-  };
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  }).catch(function () { /* dashboard-only mode — no backend running */ });
+  fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(_buildConfigPatch()),
+  }).catch(function () { /* dashboard-only mode */ });
 
   snapshotApplied();
   const btn = g('applyAllBtn');
-  btn.textContent = '\u2713 Applied';
-  btn.className   = 'apply-btn saved';
-  btn.disabled    = true;
-  setTimeout(function () { btn.textContent = 'Apply All Settings'; btn.className = 'apply-btn'; }, 2000);
-  act('\u2699', 'start', 'Settings applied',
-    `Trigger: ${tLbl} \u00B7 OOR threshold: ${botConfig.oorThreshold}% \u00B7 Min interval: ${g('inMinInterval').value}m \u00B7 Max ${g('inMaxReb').value}/day`);
+  if (btn) {
+    btn.textContent = '\u2713 Applied'; btn.className = 'apply-btn saved'; btn.disabled = true;
+    setTimeout(function () { btn.textContent = 'Apply All Settings'; btn.className = 'apply-btn'; }, 2000);
+  }
+  act('\u2699', 'start', 'Settings applied', 'OOR threshold: ' + botConfig.oorThreshold + '%');
 }
 
 // ── Rebalance with Updated Range ─────────────────────────────────────────────

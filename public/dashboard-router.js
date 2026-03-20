@@ -117,6 +117,12 @@ export function initRouter() {
  */
 function _handlePositionRoute(walletAddr, contract, tokenId) {
   if (!_posStore || !_wallet) return;
+  // Stale deep-link URL after clean start — clear it so syncRouteToState
+  // can later set the correct position (its guard refuses to overwrite 4-segment paths).
+  if (!_wallet.address && _posStore.count() === 0) {
+    _router.navigate('', { callHandler: false, historyAPIMethod: 'replaceState' });
+    return;
+  }
 
   if (_wallet.address && _wallet.address.toLowerCase() === walletAddr.toLowerCase()) {
     _tryActivatePosition(tokenId, 0);

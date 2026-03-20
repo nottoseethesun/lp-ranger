@@ -135,7 +135,7 @@ describe('initHodlBaseline', () => {
     assert.strictEqual(updateBotState.mock.callCount(), 0);
   });
 
-  it('sets fallback flag when GeckoTerminal returns zero prices', async () => {
+  it('creates baseline with zero entryValue when GeckoTerminal returns no prices', async () => {
     const { initHodlBaseline } = require('../src/hodl-baseline');
     const botState = {};
     const updateBotState = mock.fn();
@@ -148,9 +148,8 @@ describe('initHodlBaseline', () => {
 
     await initHodlBaseline(mockProvider(), mockEthersLib(), POSITION, botState, updateBotState);
 
-    assert.strictEqual(updateBotState.mock.callCount(), 1, 'should call updateBotState with fallback flag');
-    assert.strictEqual(botState.hodlBaselineFallback, true);
-    assert.strictEqual(botState.hodlBaseline, undefined, 'should not set hodlBaseline');
+    assert.ok(botState.hodlBaseline, 'should still set hodlBaseline with deposited amounts');
+    assert.strictEqual(botState.hodlBaseline.entryValue, 0, 'entryValue should be 0 without prices');
   });
 
   it('catches and logs errors without throwing', async () => {

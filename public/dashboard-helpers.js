@@ -205,43 +205,47 @@ export function loadPositionOorThreshold(pos, fallback) {
 }
 
 /**
- * Show the disclaimer modal (blocks app access until accepted).
- * If the user previously accepted with "Don't show this again", skips.
+ * Show the disclaimer modal and return a Promise that resolves when accepted.
+ * All dashboard initialization should await this before starting polling,
+ * routing, or position sync.  If previously accepted (cookie), resolves immediately.
+ * @returns {Promise<void>}
  */
 export function initDisclaimer() {
   const overlay  = g('disclaimerOverlay');
   const disabled = g('appDisabledOverlay');
-  if (!overlay) return;
+  if (!overlay) return Promise.resolve();
 
   // If cookie exists, user already accepted — hide modal and proceed
   if (getCookie(DISCLAIMER_COOKIE) === '1') {
     overlay.classList.add('hidden');
-    return;
+    return Promise.resolve();
   }
 
-  // Show modal
+  // Show modal — return promise that resolves on accept
   overlay.classList.remove('hidden');
 
   const acceptBtn  = g('disclaimerAccept');
   const declineBtn = g('disclaimerDecline');
   const rememberCb = g('disclaimerRemember');
 
-  if (acceptBtn) {
-    acceptBtn.onclick = function () {
-      // If "Don't show this again" is checked, set cookie
-      if (rememberCb && rememberCb.checked) {
-        setCookie(DISCLAIMER_COOKIE, '1');
-      }
-      overlay.classList.add('hidden');
-    };
-  }
-
-  if (declineBtn) {
-    declineBtn.onclick = function () {
-      overlay.classList.add('hidden');
-      if (disabled) disabled.classList.add('active');
-    };
-  }
+  return new Promise((resolve) => {
+    if (acceptBtn) {
+      acceptBtn.onclick = function () {
+        if (rememberCb && rememberCb.checked) {
+          setCookie(DISCLAIMER_COOKIE, '1');
+        }
+        overlay.classList.add('hidden');
+        resolve();
+      };
+    }
+    if (declineBtn) {
+      declineBtn.onclick = function () {
+        overlay.classList.add('hidden');
+        if (disabled) disabled.classList.add('active');
+        // Don't resolve — app stays disabled
+      };
+    }
+  });
 }
 
 /** Toggle the help popover visibility. */
@@ -249,4 +253,23 @@ export function toggleHelpPopover() {
   const pop = g('helpPopover');
   if (!pop) return;
   pop.classList.toggle('9mm-pos-mgr-visible');
+}
+
+/** Toggle the settings popover visibility. */
+export function toggleSettingsPopover() {
+  const pop = g('settingsPopover');
+  if (!pop) return;
+  pop.classList.toggle('9mm-pos-mgr-visible');
+}
+
+/** Clear all localStorage and cookies, then reload. */
+export function clearLocalStorageAndCookies() {
+  const msg = 'This will clear all locally stored settings including wallet preferences, initial deposit, and realized gains. Continue?';
+  if (!confirm(msg)) return;
+  localStorage.clear();
+  for (const c of document.cookie.split(';')) {
+    const name = c.split('=')[0].trim();
+    if (name) document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+  }
+  location.reload();
 }

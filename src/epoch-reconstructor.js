@@ -8,12 +8,20 @@
  * `getPositionHistory()` and builds closed epoch objects that the tracker
  * can restore.  Results are cached to `.epoch-cache.json` (gitignored)
  * keyed by blockchain/wallet/contract/tokenId for fast restarts.
+ *
+ * Rate limiting
+ * ─────────────
+ * Each position lookup may trigger up to 4 GeckoTerminal API calls
+ * (base+quote × open+close prices).  Rate limiting is handled centrally
+ * by the sliding-window limiter in `price-fetcher.js` (25 calls / 60 s),
+ * so no per-position delay is needed here.
  */
 
 'use strict';
 
 const { getPositionHistory } = require('./position-history');
 const { getCachedEpochs, setCachedEpochs } = require('./epoch-cache');
+
 
 const EPOCH_COLORS = [
   '#00e5ff', '#ff6b35', '#7cfc00', '#c471ed',
@@ -31,9 +39,11 @@ function _buildClosedEpoch(h, index) {
   const openTime = h.mintDate ? new Date(h.mintDate).getTime() : 0;
   const closeTime = h.closeDate ? new Date(h.closeDate).getTime() : 0;
   if (!openTime && !closeTime) return null;
+  // Skip if exit value is unknown — would create a fake total-loss entry
+  if (h.exitValueUsd === null || h.exitValueUsd === undefined) return null;
 
   const entryValue = h.entryValueUsd || 0;
-  const exitValue = h.exitValueUsd || 0;
+  const exitValue = h.exitValueUsd;
   const fees = h.feesEarnedUsd || 0;
 
   return {
@@ -45,6 +55,8 @@ function _buildClosedEpoch(h, index) {
     epochPnl: (exitValue - entryValue) + fees,
     priceChangePnl: exitValue - entryValue - fees,
     feePnl: fees,
+    hodlAmount0: h.entryAmount0 || 0,
+    hodlAmount1: h.entryAmount1 || 0,
     token0UsdEntry: h.token0UsdPriceAtOpen || 0,
     token1UsdEntry: h.token1UsdPriceAtOpen || 0,
     token0UsdExit: h.token0UsdPriceAtClose || 0,
@@ -80,22 +92,30 @@ function _cacheKeyFromState(botState) {
 
 /**
  * Fetch closed epoch data from chain for each closed NFT in the rebalance chain.
- * @param {string[]} closedIds    Old token IDs to query.
- * @param {Array}    events       Rebalance events for context.
- * @param {object|null} activePos Active position for pool lookup.
+ * GeckoTerminal rate limiting is handled centrally in price-fetcher.js — no
+ * per-position delay needed here.
+ * @param {string[]} closedIds      Old token IDs to query.
+ * @param {Array}    events         Rebalance events for context.
+ * @param {object|null} activePos   Active position for pool lookup.
+ * @param {object|null} fallbackPrices  Current prices {price0, price1} for when historical unavailable.
+ * @param {Function|null} onProgress  Optional (done, total) callback for UI progress.
  * @returns {Promise<object[]>}   Array of closed Epoch objects (unsorted).
  */
-async function _fetchEpochsFromChain(closedIds, events, activePos) {
+async function _fetchEpochsFromChain(closedIds, events, activePos, fallbackPrices, onProgress) {
   const closedEpochs = [];
-  for (const tokenId of closedIds) {
+  for (let i = 0; i < closedIds.length; i++) {
+    if (onProgress) onProgress(i, closedIds.length);
+    const tokenId = closedIds[i];
     try {
       const h = await getPositionHistory(tokenId, {
-        rebalanceEvents: events, activePosition: activePos,
+        rebalanceEvents: events, activePosition: activePos, fallbackPrices,
       });
       const epoch = _buildClosedEpoch(h, closedEpochs.length);
       if (epoch) {
         closedEpochs.push(epoch);
         console.log(`[pnl] Epoch #${closedEpochs.length}: NFT #${tokenId} — fees $${epoch.fees.toFixed(2)}`);
+      } else {
+        console.log(`[pnl] NFT #${tokenId}: skipped (incomplete data)`);
       }
     } catch (err) {
       console.warn(`[pnl] Could not reconstruct epoch for NFT #${tokenId}:`, err.message);
@@ -120,7 +140,7 @@ function _mergeAndPersist(pnlTracker, closedEpochs, liveEpoch, updateBotState, c
   if (cacheKey) setCachedEpochs(cacheKey, closedEpochs);
 }
 
-async function reconstructEpochs({ pnlTracker, rebalanceEvents, botState, updateBotState }) {
+async function reconstructEpochs({ pnlTracker, rebalanceEvents, botState, updateBotState, fallbackPrices }) {
   if (!pnlTracker || !rebalanceEvents?.length) return 0;
 
   const current = pnlTracker.serialize();
@@ -144,7 +164,8 @@ async function reconstructEpochs({ pnlTracker, rebalanceEvents, botState, update
   }
 
   console.log(`[pnl] Reconstructing ${closedIds.length} historical epoch(s) from chain…`);
-  const closedEpochs = await _fetchEpochsFromChain(closedIds, rebalanceEvents, botState.activePosition);
+  const _progress = updateBotState ? (done, total) => updateBotState({ rebalanceScanProgress: 95 + Math.round(done / total * 5) }) : null;
+  const closedEpochs = await _fetchEpochsFromChain(closedIds, rebalanceEvents, botState.activePosition, fallbackPrices, _progress);
   if (!closedEpochs.length) return 0;
 
   _mergeAndPersist(pnlTracker, closedEpochs, current.liveEpoch, updateBotState, cacheKey);

@@ -287,7 +287,7 @@ function _updateNetReturn(d, total, ltDeposit, ltFees, ltPriceChange, ltRealized
     if (bd) _updateNetBreakdown(bd, ltFees, ltPriceChange, ltRealized);
   }
   const ilEl = g('netIL');
-  if (ilEl && d.pnlSnapshot) { const il = d.pnlSnapshot.totalIL || 0;
+  if (ilEl && d.pnlSnapshot) { const il = d.pnlSnapshot.lifetimeIL ?? d.pnlSnapshot.totalIL ?? 0;
     _setLeadingText(ilEl, _fmtUsd(il));
     ilEl.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row ' + (_isDisplayZero(il) ? 'neu' : il > 0 ? 'pos' : 'neg');
     _setPctSpan('netILPct', il, ltDeposit);
@@ -386,7 +386,7 @@ export function positionRangeVisual() {
   const rsym = _activeToken1Symbol(), rlL = g('rlL'), rlR = g('rlR');
   if (rlL) { rlL.style.left = pct(lo); rlL.textContent = lo.toFixed(6) + ' ' + rsym; }
   if (rlR) { rlR.style.left = pct(hi); rlR.textContent = hi.toFixed(6) + ' ' + rsym; }
-  const pm = g('pm');  if (pm && botConfig.price > 0) pm.style.left = pct(botConfig.price);
+  const pm = g('pm');  if (pm && botConfig.price > 0) { pm.style.left = pct(botConfig.price); pm.style.visibility = 'visible'; }
   const lnL = g('rangeLnL'), lnR = g('rangeLnR'), rsym2 = _activeToken1Symbol();
   if (lnL) { lnL.style.left = pct(previewLo); lnL.title = 'Rebalance trigger: ' + previewLo.toFixed(6) + ' ' + rsym2 + ' (' + botConfig.oorThreshold + '% below lower)'; }
   if (lnR) { lnR.style.left = pct(previewHi); lnR.title = 'Rebalance trigger: ' + previewHi.toFixed(6) + ' ' + rsym2 + ' (' + botConfig.oorThreshold + '% above upper)'; }
@@ -407,7 +407,7 @@ function _updatePriceMarker(d) {
   if (pml) pml.textContent = d.poolState.price.toFixed(6) + ' ' + _activeToken1Symbol();
   if (d.activePosition) {
     botConfig.tL = d.activePosition.tickLower || 0;  botConfig.tU = d.activePosition.tickUpper || 0;
-    const decAdj = Math.pow(10, (d.poolState.decimals0 || 18) - (d.poolState.decimals1 || 18));
+    const decAdj = (d.poolState.decimals0 !== undefined && d.poolState.decimals1 !== undefined) ? Math.pow(10, d.poolState.decimals0 - d.poolState.decimals1) : 1;
     botConfig.lower = Math.pow(1.0001, botConfig.tL) * decAdj;
     botConfig.upper = Math.pow(1.0001, botConfig.tU) * decAdj;
   }
@@ -503,13 +503,13 @@ export function resetPollingState() {
   _lastStatus = null; _historyPopulated = false; _poolFirstDate = null;
   _lastRebalanceAt = null; _configSynced = false; _scanWasComplete = false;
   try { localStorage.removeItem(_REB_EVENTS_CACHE_KEY); } catch { /* */ }
-  _updateSyncBadge(true); refreshCurDepositDisplay(0);
+  _scanWasComplete = false; refreshCurDepositDisplay(0);
   const dd = g('lifetimeDepositDisplay'); if (dd) dd.textContent = '\u2014';
 }
 
-/** Auto-add the bot's active position to the store if the store is empty. */
+/** Auto-add the bot's active position to the store if the store is empty and bot is running. */
 function _ensureActiveInStore(d) {
-  if (posStore.count() > 0 || !d.activePosition?.tokenId) return;
+  if (posStore.count() > 0 || !d.activePosition?.tokenId || !d.running) return;
   const bp = d.activePosition, sw = d.walletAddress || d.wallet || '';
   if (sw) posStore.add({ positionType: 'nft', tokenId: String(bp.tokenId), walletAddress: sw,
     token0Symbol: bp.token0Symbol || bp.token0 || '', token1Symbol: bp.token1Symbol || bp.token1 || '',
@@ -594,7 +594,7 @@ function updateDashboardFromStatus(data) {
   if (sw && (!wallet.address || wallet.address.toLowerCase() !== sw.toLowerCase())) return;
 
   _syncConfigFromServer(data); setBotActiveTokenId(data.activePosition?.tokenId);
-  _syncRebalanceCache(data);  _updateSyncBadge(data.rebalanceScanComplete === true || !posStore.getActive(), data.rebalanceScanProgress);
+  _syncRebalanceCache(data);  _updateSyncBadge(data.running ? data.rebalanceScanComplete === true : true, data.rebalanceScanProgress);
 
   if (!_poolFirstDate && data.poolFirstMintDate) _poolFirstDate = data.poolFirstMintDate;
   _populateHistoryOnce(data);

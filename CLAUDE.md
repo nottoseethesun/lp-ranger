@@ -59,7 +59,10 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   ├── rebalancer.js             # Core rebalance: remove liquidity → swap → mint (V3-only guard)
 │   ├── event-scanner.js          # On-chain rebalance history via Transfer events (5-year lookback)
 │   ├── price-fetcher.js          # USD pricing: DexScreener (primary) → DexTools (fallback) → GeckoTerminal (historical)
-│   ├── hodl-baseline.js          # HODL baseline init: GeckoTerminal historical prices at NFT mint time
+│   ├── hodl-baseline.js          # HODL baseline init: deposited amounts from IncreaseLiquidity + GeckoTerminal for deposit auto-detect
+│   ├── il-calculator.js          # Consolidated IL/G math: calcIlMultiplier, estimateLiveValue, computeHodlIL
+│   ├── epoch-reconstructor.js    # Reconstructs historical P&L epochs from on-chain rebalance chain
+│   ├── epoch-cache.js            # Disk cache for reconstructed epochs, keyed by blockchain/wallet/contract/tokenId
 │   ├── throttle.js               # Timing enforcement: min interval, daily cap, doubling mode
 │   ├── pnl-tracker.js            # Per-epoch and cumulative P&L accounting
 │   ├── range-math.js             # Uniswap v3 tick/price math utilities
@@ -155,10 +158,11 @@ Contract address source: https://github.com/9mm-exchange/deployments/blob/main/p
 ### npm Scripts
 
 ```bash
-npm run build          # esbuild: bundle dashboard JS + ethers into public/dist/bundle.js
+npm run build          # esbuild bundle + cache-bust stamp (bundle.js?v=<ms>)
 npm run build:watch    # esbuild in watch mode (rebuilds on file change)
 npm run copy-fonts     # Copy WOFF2 font files from node_modules to public/fonts/
-npm start              # build + node server.js  (dashboard + bot on PORT, default 5555)
+npm start              # node server.js only (no build — run `npm run build` first)
+npm run build-and-start # build + start in one command
 npm run dev            # build + node --watch server.js
 npm run bot            # node bot.js  (headless bot, no dashboard)
 npm run stop           # Graceful shutdown via POST /api/shutdown
@@ -169,7 +173,8 @@ npm run test:coverage  # with --experimental-test-coverage (Node 20+)
 npm run test:watch     # watch mode
 npm run check          # Combined lint (JS+CSS) + test + coverage check
 npm run reset-wallet   # Delete .wallet.json + clear WALLET_PASSWORD from .env
-npm run clean          # reset-wallet + delete bot config, rebalance log, event cache
+npm run clean          # reset-wallet + delete bot config, epoch cache, rebalance log, event cache
+                       # NOTE: also clear browser localStorage via Settings gear → "Clear Local Storage & Cookies"
 ```
 
 ---
@@ -218,7 +223,7 @@ npm run clean          # reset-wallet + delete bot config, rebalance log, event 
 
 **Lifetime P&L:** User-entered "Initial deposit" (USD) is persisted to both localStorage and server `.bot-config.json`. Lifetime P&L = currentValue + fees + realized − initialDeposit. If no user-entered value, falls back to bot-detected entry value. "Realized gains" is also user-entered for coins sold out of the LP.
 
-**Impermanent loss/gain:** Standard HODL comparison: `IL = LP_value − HODL_value` where `HODL_value = (entryValue/2 / token0PriceAtEntry) × token0PriceNow + (entryValue/2 / token1PriceAtEntry) × token1PriceNow`. Negative = loss vs holding. HODL baseline (entry prices + value) is auto-detected from GeckoTerminal historical prices at NFT mint timestamp (`src/hodl-baseline.js`). Falls back to live epoch prices if GeckoTerminal unavailable. Persisted to `.bot-config.json` via `hodlBaseline` key. Dashboard shows a confirmation dialog on first detection; shows a warning dialog if historical prices were unavailable. Displayed as a signed integer in the Net Return KPI tile.
+**Impermanent loss/gain:** All IL/G math is consolidated in `src/il-calculator.js` — single source of truth, no duplication. Three exported functions: `calcIlMultiplier(priceRatio)` (v2 formula), `estimateLiveValue(entryValue, priceRatio)` (v3 estimate), and `computeHodlIL({ lpValue, hodlAmount0, hodlAmount1, currentPrice0, currentPrice1 })` (HODL comparison using actual deposited token amounts). The HODL comparison uses **only current prices** for valuation — the original deposited token amounts (from the `IncreaseLiquidity` event on the mint TX) determine the HODL portfolio. No historical USD prices are needed for IL. `IL = LP_value − (amount0_deposited × currentPrice0 + amount1_deposited × currentPrice1)`. Negative = loss vs holding. Two separate IL values: `snap.totalIL` (current position, from `hodl-baseline.js`) and `snap.lifetimeIL` (from first epoch's deposited amounts). HODL baseline stores actual deposited amounts (`hodlAmount0`, `hodlAmount1`) plus historical prices only for initial deposit auto-detection. Persisted to `.bot-config.json` via `hodlBaseline` key.
 
 **Wallet residual tracking:** `src/residual-tracker.js` tracks per-pool token residuals (collected − minted deltas across rebalances). Residuals are capped to actual wallet `balanceOf` when computing USD value, so sold/transferred tokens aren't over-counted. Users account for sold tokens via "Edit Realized Gains". Persisted to `.bot-config.json` via `residuals` key.
 

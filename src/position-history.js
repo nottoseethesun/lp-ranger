@@ -238,6 +238,8 @@ async function _supplementAmountsFromChain(result, tokenId) {
     const amounts = await _parseEventFromReceipt(
       result.mintTxHash, 'IncreaseLiquidity', tokenId, prov);
     if (amounts) {
+      result.entryAmount0 = Number(amounts.amount0) / (10 ** dec0);
+      result.entryAmount1 = Number(amounts.amount1) / (10 ** dec1);
       result.entryValueUsd = _computeUsdValue(
         amounts.amount0, amounts.amount1, dec0, dec1,
         result.token0UsdPriceAtOpen, result.token1UsdPriceAtOpen);
@@ -269,12 +271,15 @@ async function _supplementAmountsFromChain(result, tokenId) {
   }
 }
 
-/** Fetch historical token prices with in-memory caching. */
+/** Fetch historical token prices with in-memory caching (daily granularity). */
 async function _cachedGeckoPrice(pool, ts) {
-  const ck = `${pool.toLowerCase()}:${ts}`;
+  // Normalize to UTC day start — GeckoTerminal returns daily candles, so all
+  // lookups on the same day return the same data.  Avoids redundant API calls.
+  const dayTs = ts - (ts % 86400);
+  const ck = `${pool.toLowerCase()}:${dayTs}`;
   const cached = _histPriceCache.get(ck);
   if (cached) return cached;
-  const prices = await fetchHistoricalPriceGecko(pool, ts);
+  const prices = await fetchHistoricalPriceGecko(pool, dayTs);
   if (prices.price0 > 0 || prices.price1 > 0) _histPriceCache.set(ck, prices);
   return prices;
 }
@@ -334,6 +339,7 @@ async function _supplementHistoricalPrices(result, activePosition) {
  * @param {object}   opts
  * @param {object[]} opts.rebalanceEvents  From the event scanner.
  * @param {object}   opts.activePosition   Bot's active position (for pool lookup).
+ * @param {object}   [opts.fallbackPrices] Current prices {price0, price1} used when historical unavailable.
  * @returns {Promise<object>}  Historical data (null fields where unavailable).
  */
 async function getPositionHistory(tokenId, opts = {}) {
@@ -342,6 +348,7 @@ async function getPositionHistory(tokenId, opts = {}) {
     mintDate: null, closeDate: null, entryValueUsd: null, exitValueUsd: null,
     token0UsdPriceAtOpen: null, token1UsdPriceAtOpen: null,
     token0UsdPriceAtClose: null, token1UsdPriceAtClose: null,
+    entryAmount0: null, entryAmount1: null,
     feesEarnedUsd: null, gasCostWei: null, mintTxHash: null, closeTxHash: null,
   };
   const entries = _readRebalanceLog();
@@ -353,6 +360,14 @@ async function getPositionHistory(tokenId, opts = {}) {
   _supplementFromEvents(result, tokenId, opts.rebalanceEvents);
   if (!result.mintDate) await _supplementMintFromChain(result, tokenId);
   await _supplementHistoricalPrices(result, opts.activePosition);
+  // Fill remaining null prices from current prices (better than no data)
+  if (opts.fallbackPrices) {
+    const fb = opts.fallbackPrices;
+    if (!result.token0UsdPriceAtOpen && fb.price0 > 0) result.token0UsdPriceAtOpen = fb.price0;
+    if (!result.token1UsdPriceAtOpen && fb.price1 > 0) result.token1UsdPriceAtOpen = fb.price1;
+    if (!result.token0UsdPriceAtClose && fb.price0 > 0) result.token0UsdPriceAtClose = fb.price0;
+    if (!result.token1UsdPriceAtClose && fb.price1 > 0) result.token1UsdPriceAtClose = fb.price1;
+  }
   await _supplementAmountsFromChain(result, tokenId);
   return result;
 }

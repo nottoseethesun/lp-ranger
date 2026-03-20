@@ -44,17 +44,12 @@ describe('_buildClosedEpoch', () => {
     assert.strictEqual(ep.closeTime, ep.openTime);
   });
 
-  it('handles missing USD values gracefully', () => {
+  it('returns null when exitValueUsd is missing', () => {
     const h = {
       mintDate: '2026-03-15T10:00:00Z', closeDate: '2026-03-16T10:00:00Z',
-      entryValueUsd: null, exitValueUsd: null, feesEarnedUsd: null,
+      entryValueUsd: 293.99, exitValueUsd: null, feesEarnedUsd: null,
     };
-    const ep = _buildClosedEpoch(h, 2);
-    assert.ok(ep);
-    assert.strictEqual(ep.entryValue, 0);
-    assert.strictEqual(ep.exitValue, 0);
-    assert.strictEqual(ep.fees, 0);
-    assert.strictEqual(ep.id, 3);
+    assert.strictEqual(_buildClosedEpoch(h, 2), null);
   });
 
   it('assigns correct colour per index', () => {

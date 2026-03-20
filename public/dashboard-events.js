@@ -7,7 +7,7 @@
  * Called once from dashboard-init.js after all modules are loaded.
  */
 
-import { g, toggleHelpPopover } from './dashboard-helpers.js';
+import { g, toggleHelpPopover, toggleSettingsPopover, clearLocalStorageAndCookies } from './dashboard-helpers.js';
 import {
   closeWalletModal, wTab, copyText, generateWallet, checkPasswordMatch,
   confirmWallet, validateSeed, onSeedConfirmChange, importSeed,
@@ -183,6 +183,10 @@ export function bindAllEvents() {
     btn.addEventListener('click', toggleHelpPopover);
   });
 
+  // Settings popover
+  _click('settingsBtn', toggleSettingsPopover);
+  _click('clearStorageBtn', clearLocalStorageAndCookies);
+
   // ── Wallet strip ──────────────────────────────────────────────────────────
   _click('wsRevealBtn', openRevealModal);
   _click('wsClearBtn', clearWalletUI);
@@ -316,7 +320,20 @@ export function bindAllEvents() {
     // Dismiss help popover
     const pop = g('helpPopover');
     if (pop && pop.classList.contains('9mm-pos-mgr-visible')) {
-      toggleHelpPopover();
+      toggleHelpPopover(); return;
+    }
+    // Dismiss settings popover
+    const sp = g('settingsPopover');
+    if (sp && sp.classList.contains('9mm-pos-mgr-visible')) {
+      toggleSettingsPopover();
+    }
+  });
+
+  // Close settings popover on outside click
+  document.addEventListener('click', e => {
+    const sp = g('settingsPopover');
+    if (sp && sp.classList.contains('9mm-pos-mgr-visible') && !e.target.closest('.9mm-pos-mgr-settings-wrap')) {
+      toggleSettingsPopover();
     }
   });
 }

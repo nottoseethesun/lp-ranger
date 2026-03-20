@@ -558,6 +558,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       oldTickLower: position.tickLower, oldTickUpper: position.tickUpper,
       newTickLower: newRange.lowerTick, newTickUpper: newRange.upperTick,
       currentPrice: poolState.price, poolAddress: poolState.poolAddress,
+      decimals0: poolState.decimals0, decimals1: poolState.decimals1,
       amount0Collected: removed.amount0, amount1Collected: removed.amount1,
       liquidity: mintResult.liquidity,
       amount0Minted: mintResult.amount0, amount1Minted: mintResult.amount1,
@@ -571,9 +572,27 @@ async function executeRebalance(signer, ethersLib, opts) {
   }
 }
 
+/**
+ * Enrich a rebalance result with USD values using current token prices.
+ * Uses `result.decimals0/decimals1` from the pool state (not hardcoded 18).
+ * @param {object}   result   Rebalance result from executeRebalance().
+ * @param {Function} priceFn  Async fn(token0, token1) → {price0, price1}.
+ * @param {string}   token0   Token0 address.
+ * @param {string}   token1   Token1 address.
+ */
+async function enrichResultUsd(result, priceFn, token0, token1) {
+  const { price0, price1 } = await priceFn(token0, token1);
+  const d0 = result.decimals0 ?? 18, d1 = result.decimals1 ?? 18;
+  const toFloat = (amt, dec) => Number(amt) / (10 ** dec);
+  result.token0UsdPrice = price0; result.token1UsdPrice = price1;
+  result.exitValueUsd = toFloat(result.amount0Collected, d0) * price0 + toFloat(result.amount1Collected, d1) * price1;
+  result.entryValueUsd = toFloat(result.amount0Minted, d0) * price0 + toFloat(result.amount1Minted, d1) * price1;
+}
+
 // ── Module exports ───────────────────────────────────────────────────────────
 
 module.exports = {
+  enrichResultUsd,
   executeRebalance,
   getPoolState,
   removeLiquidity,

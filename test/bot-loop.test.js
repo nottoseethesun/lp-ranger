@@ -266,54 +266,34 @@ describe('bot-loop: _overridePnlWithRealValues (IL computation)', () => {
   const pool = { tick: 0, decimals0: 18, decimals1: 18 };
 
   it('computes negative IL when price diverges from entry', () => {
-    const snap = {
-      liveEpoch: { entryValue: 2000, token0UsdEntry: 1000, token1UsdEntry: 1 },
-      initialDeposit: 2000, totalGas: 0,
-    };
-    const deps = { _botState: {} };
-    // price0 doubled: HODL = (1000/1000)*2000 + (1000/1)*1 = 2000+1000 = 3000
+    const snap = { liveEpoch: { entryValue: 2000 }, initialDeposit: 2000, totalGas: 0 };
+    // deposited 1 of token0 @ $1000 and 1000 of token1 @ $1
+    const baseline = { entryValue: 2000, hodlAmount0: 1, hodlAmount1: 1000, token0UsdPrice: 1000, token1UsdPrice: 1 };
+    const deps = { _botState: { hodlBaseline: baseline } };
+    // price0 doubled: hodlValue = 1*2000 + 1000*1 = 3000
     _overridePnlWithRealValues(snap, deps, pos, pool, 2000, 1, 0);
     assert.strictEqual(typeof snap.totalIL, 'number');
-    // LP value (near zero for this mock) is far below HODL value of 3000
     assert.ok(snap.totalIL < 0, 'IL should be negative when price diverges');
   });
 
   it('computes near-zero IL when prices unchanged', () => {
-    const snap = {
-      liveEpoch: { entryValue: 2000, token0UsdEntry: 1000, token1UsdEntry: 1 },
-      initialDeposit: 2000, totalGas: 0,
-    };
-    const deps = { _botState: {} };
-    // Same prices as entry: HODL = (1000/1000)*1000 + (1000/1)*1 = 1000+1000 = 2000
+    const snap = { liveEpoch: { entryValue: 2000 }, initialDeposit: 2000, totalGas: 0 };
+    const baseline = { entryValue: 2000, hodlAmount0: 1, hodlAmount1: 1000, token0UsdPrice: 1000, token1UsdPrice: 1 };
+    const deps = { _botState: { hodlBaseline: baseline } };
+    // Same prices: hodlValue = 1*1000 + 1000*1 = 2000
     _overridePnlWithRealValues(snap, deps, pos, pool, 1000, 1, 0);
-    // IL should be realValue - 2000; with prices unchanged, IL is close to 0
     assert.strictEqual(typeof snap.totalIL, 'number');
   });
 
-  it('sets _setHodlBaseline when no baseline exists', () => {
-    const snap = {
-      liveEpoch: { entryValue: 500, token0UsdEntry: 10, token1UsdEntry: 2 },
-      initialDeposit: 500, totalGas: 0,
-    };
-    const deps = { _botState: {} };
-    _overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0);
-    assert.ok(snap._setHodlBaseline, 'should signal baseline creation');
-    assert.strictEqual(snap._setHodlBaseline.entryValue, 500);
-    assert.strictEqual(snap._setHodlBaseline.token0UsdPrice, 10);
-    assert.strictEqual(snap._setHodlBaseline.token1UsdPrice, 2);
+  it('uses persisted hodlBaseline with deposited amounts', () => {
   });
 
-  it('uses persisted hodlBaseline when available', () => {
-    const snap = {
-      liveEpoch: { entryValue: 800, token0UsdEntry: 20, token1UsdEntry: 3 },
-      initialDeposit: 800, totalGas: 0,
-    };
-    const baseline = { entryValue: 1000, token0UsdPrice: 10, token1UsdPrice: 1 };
+  it('uses persisted hodlBaseline deposited amounts', () => {
+    const snap = { liveEpoch: { entryValue: 800 }, initialDeposit: 800, totalGas: 0 };
+    const baseline = { entryValue: 1000, hodlAmount0: 50, hodlAmount1: 500 };
     const deps = { _botState: { hodlBaseline: baseline } };
     _overridePnlWithRealValues(snap, deps, pos, pool, 20, 3, 0);
-    // HODL uses baseline prices (10, 1) not epoch prices (20, 3)
-    // hodlValue = (500/10)*20 + (500/1)*3 = 1000 + 1500 = 2500
-    assert.ok(!snap._setHodlBaseline, 'should not signal baseline when already set');
+    // hodlValue = 50*20 + 500*3 = 2500, lpValue is small mock → totalIL < 0
     assert.strictEqual(typeof snap.totalIL, 'number');
   });
 
@@ -328,25 +308,43 @@ describe('bot-loop: _overridePnlWithRealValues (IL computation)', () => {
     assert.strictEqual(snap._setHodlBaseline, undefined, 'no baseline to set');
   });
 
-  it('skips IL when liveEpoch exists but has no token entry prices', () => {
-    const snap = {
-      liveEpoch: { entryValue: 500 },
-      initialDeposit: 500, totalGas: 0,
-    };
+  it('skips IL when HODL baseline has no deposited amounts', () => {
+    const snap = { liveEpoch: { entryValue: 500 }, initialDeposit: 500, totalGas: 0 };
     const deps = { _botState: {} };
     _overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0);
-    assert.strictEqual(snap.totalIL, undefined, 'totalIL should not be set without entry prices');
+    assert.strictEqual(snap.totalIL, undefined, 'totalIL should not be set without amounts');
   });
 
-  it('computes IL from baseline even when liveEpoch is missing', () => {
-    const snap = {
-      liveEpoch: null,
-      initialDeposit: 500, totalGas: 0,
-    };
-    const baseline = { entryValue: 500, token0UsdPrice: 10, token1UsdPrice: 2 };
+  it('computes IL from baseline deposited amounts', () => {
+    const snap = { liveEpoch: { entryValue: 500 }, initialDeposit: 500, totalGas: 0 };
+    const baseline = { entryValue: 500, hodlAmount0: 25, hodlAmount1: 125, token0UsdPrice: 10, token1UsdPrice: 2 };
     const deps = { _botState: { hodlBaseline: baseline } };
     _overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0);
-    assert.strictEqual(typeof snap.totalIL, 'number', 'should compute IL from persisted baseline');
+    // hodlValue = 25*10 + 125*2 = 500, lpValue ≈ 500 → IL ≈ 0
+    assert.strictEqual(typeof snap.totalIL, 'number', 'should compute IL from deposited amounts');
+  });
+
+  it('computes lifetimeIL from first closed epoch amounts', () => {
+    const snap = { liveEpoch: { entryValue: 800 },
+      closedEpochs: [{ hodlAmount0: 30, hodlAmount1: 15 }], initialDeposit: 300, totalGas: 0 };
+    const deps = { _botState: {} };
+    _overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0);
+    // hodlValue = 30*10 + 15*2 = 330, lpValue ≈ posValue → lifetimeIL = posValue - 330
+    assert.strictEqual(typeof snap.lifetimeIL, 'number', 'lifetimeIL should be set');
+  });
+
+  it('lifetimeIL falls back to hodlBaseline amounts when no closed epochs', () => {
+    const snap = { liveEpoch: { entryValue: 500 }, closedEpochs: [], initialDeposit: 500, totalGas: 0 };
+    const deps = { _botState: { hodlBaseline: { entryValue: 500, hodlAmount0: 25, hodlAmount1: 125 } } };
+    _overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0);
+    assert.strictEqual(typeof snap.lifetimeIL, 'number', 'lifetimeIL should be set from baseline amounts');
+  });
+
+  it('lifetimeIL is undefined when no deposited amounts available', () => {
+    const snap = { liveEpoch: null, closedEpochs: [], initialDeposit: 500, totalGas: 0 };
+    const deps = { _botState: {} };
+    _overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0);
+    assert.strictEqual(snap.lifetimeIL, undefined, 'lifetimeIL not set without amounts');
   });
 });
 

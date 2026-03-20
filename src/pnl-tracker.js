@@ -42,6 +42,8 @@
 
 'use strict';
 
+const { calcIlMultiplier, estimateLiveValue } = require('./il-calculator');
+
 /**
  * @typedef {Object} EpochOpenParams
  * @property {number} entryValue       USD value of assets entering this epoch.
@@ -127,29 +129,6 @@ const EPOCH_COLORS = [
   '#f7971e', '#43e97b', '#fa709a', '#4facfe',
   '#a8edea', '#fed6e3',
 ];
-
-/**
- * Calculate the impermanent loss multiplier for a v2/v3 position.
- * Returns a value in [−1, 0] where 0 means no IL and −1 means total loss.
- * @param {number} priceRatio  currentPrice / entryPrice
- * @returns {number}
- */
-function calcIlMultiplier(priceRatio) {
-  if (priceRatio <= 0) return 0;
-  return (2 * Math.sqrt(priceRatio)) / (1 + priceRatio) - 1;
-}
-
-/**
- * Estimate current position value using the v3 IL approximation.
- * @param {number} entryValue
- * @param {number} priceRatio   currentPrice / entryPrice
- * @param {number} [ilFactor]   Sensitivity factor (0–1).  Default 0.38.
- * @returns {number}
- */
-function estimateLiveValue(entryValue, priceRatio, ilFactor = 0.38) {
-  const ilMult = calcIlMultiplier(priceRatio);
-  return entryValue * (1 + ilMult * ilFactor);
-}
 
 /**
  * Factory that creates a P&L tracker instance.

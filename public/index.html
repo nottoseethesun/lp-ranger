@@ -407,6 +407,12 @@
       <span id="botStatusText">BOT ACTIVE</span>
     </div>
     <button class="pos-browser-btn" id="helpBtn" title="Help">? Help</button>
+    <div class="9mm-pos-mgr-settings-wrap">
+      <button class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="18" height="18" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
+      <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
+        <button class="9mm-pos-mgr-settings-item" id="clearStorageBtn">Clear Local Storage &amp; Cookies</button>
+      </div>
+    </div>
     <div class="9mm-pos-mgr-help-popover" id="helpPopover">
       <div class="9mm-pos-mgr-help-title">How It Works</div>
       <ul class="9mm-pos-mgr-help-list">
@@ -636,11 +642,6 @@
         </div>
       </div>
 
-      <!-- Throttle progress bar -->
-      <div class="9mm-pos-mgr-mt-sm">
-        <div class="throttle-bar"><div class="throttle-fill" id="throttleFill" style="width:0%;"></div></div>
-        <div class="throttle-row"><span id="throttleLeft">0 today</span><span id="throttleRight">limit: 20</span></div>
-      </div>
 
       <!-- Doubling mode panel -->
       <div class="dbl-panel hidden" id="dblPanel">
@@ -765,6 +766,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=4"></script>
+<script src="dist/bundle.js?v=1773992901090"></script>
 </body>
 </html>

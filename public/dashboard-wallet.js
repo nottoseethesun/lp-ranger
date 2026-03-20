@@ -22,7 +22,6 @@ let _scanPositions = null;
 let _posStore = null;
 let _updateRouteForWallet = null;
 let _resolvePendingRoute = null;
-let _syncRouteToState = null;
 let _clearPositionDisplay = null;
 let _resetPollingState = null;
 let _clearHistory = null;
@@ -35,7 +34,6 @@ export function injectWalletDeps(deps) {
   _posStore = deps.posStore;
   if (deps.updateRouteForWallet) _updateRouteForWallet = deps.updateRouteForWallet;
   if (deps.resolvePendingRoute) _resolvePendingRoute = deps.resolvePendingRoute;
-  if (deps.syncRouteToState) _syncRouteToState = deps.syncRouteToState;
   if (deps.clearPositionDisplay) _clearPositionDisplay = deps.clearPositionDisplay;
   if (deps.resetPollingState) _resetPollingState = deps.resetPollingState;
   if (deps.clearHistory) _clearHistory = deps.clearHistory;
@@ -314,10 +312,11 @@ export async function confirmWallet() {
   const routeResolved = _resolvePendingRoute ? _resolvePendingRoute() : false;
   if (!routeResolved && _updateRouteForWallet) _updateRouteForWallet(wallet.address);
 
-  // Auto-scan for positions after wallet import
+  // Auto-scan for positions after wallet import (navigate: false — let the
+  // polling loop navigate to the bot's real active position once it responds)
   if (_scanPositions) {
     act('\u{1F50D}', 'start', 'Auto-scanning', 'Looking for LP positions\u2026');
-    _scanPositions();
+    _scanPositions({ navigate: false });
   }
 }
 
@@ -613,17 +612,15 @@ function _restoreServerWallet(data) {
   _purgeOtherWalletPositions(data.address);
   applyWalletUI();
   const routeResolved = _resolvePendingRoute ? _resolvePendingRoute() : false;
-  if (!routeResolved) {
-    const active = _posStore ? _posStore.getActive() : null;
-    if (active && _syncRouteToState) {
-      _syncRouteToState(active);
-    } else if (_updateRouteForWallet) {
-      _updateRouteForWallet(data.address);
-    }
+  // Don't navigate to posStore's active position here — it may be stale
+  // (e.g. a closed NFT from localStorage). The polling loop's
+  // setBotActiveTokenId will navigate to the bot's real active position.
+  if (!routeResolved && _updateRouteForWallet) {
+    _updateRouteForWallet(data.address);
   }
 
   if (_scanPositions && _posStore && _posStore.count() === 0) {
-    _scanPositions();
+    _scanPositions({ navigate: false });
   }
 }
 
