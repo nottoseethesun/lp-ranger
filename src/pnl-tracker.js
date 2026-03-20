@@ -381,8 +381,7 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate, positionStartDate) {
   // Distribute live epoch P&L evenly across each day it has been open
   if (liveEpoch) {
     const epochDay = new Date(liveEpoch.openTime).toISOString().slice(0, 10);
-    const startDate = [positionStartDate, fromDate].filter(Boolean).sort()[0] || null;
-    const openDay = startDate && startDate < epochDay ? startDate : epochDay;
+    const openDay = positionStartDate && positionStartDate < epochDay ? positionStartDate : epochDay;
     const today = new Date().toISOString().slice(0, 10);
     const cursor = new Date(openDay + 'T00:00:00Z');
     const end = new Date(today + 'T00:00:00Z');
