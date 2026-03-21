@@ -21,48 +21,55 @@ function _tblUsd(val) {
   return sign + Math.abs(val).toFixed(2);
 }
 
+const _PAGE_SIZE = 8;
+
 /** Rebalance events pagination state. */
 let _rebEventsPage = 0;
-const _REB_PAGE_SIZE = 20;
 
 /** Cached events for pagination without re-fetching. */
 let _lastEvents = null;
+
+/** Per-day P&L pagination state. */
+let _pnlPage = 0, _lastDailyPnl = null;
 
 /**
  * Render the per-day P&L table from daily P&L data.
  * @param {object[]} dailyPnl  Array of day records (newest first).
  */
 export function renderDailyPnl(dailyPnl) {
-  const tbody = g('dailyPnlBody');
+  const tbody = g('dailyPnlBody'), pageLabel = g('pnlPageLabel');
   if (!tbody) return;
-
   if (!dailyPnl || dailyPnl.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px;">No P&L data yet</td></tr>';
-    return;
+    tbody.innerHTML = '<tr><td colspan="6" class="9mm-pos-mgr-table-empty">No P&L data yet</td></tr>';
+    _setPnlPagBtns(0, 1); return;
   }
-
-  // Compute net per day, then cumulative from oldest→newest (array is newest-first)
+  _lastDailyPnl = dailyPnl;
+  const totalPages = Math.max(1, Math.ceil(dailyPnl.length / _PAGE_SIZE));
+  if (_pnlPage >= totalPages) _pnlPage = totalPages - 1;
+  const page = _pnlPage, start = page * _PAGE_SIZE;
+  const slice = dailyPnl.slice(start, start + _PAGE_SIZE);
+  // Compute net + cumulative over the FULL array, then render only the page slice
   const nets = dailyPnl.map(d => (d.feePnl || d.fees || 0) + (d.priceChangePnl || 0) - (d.gasCost || d.gas || 0));
-  const cums = new Array(nets.length);
-  let cum = 0;
+  const cums = new Array(nets.length); let cum = 0;
   for (let i = nets.length - 1; i >= 0; i--) { cum += nets[i]; cums[i] = cum; }
-
-  const rows = dailyPnl.map((d, i) => {
-    const pricePnl = d.priceChangePnl || 0;
+  tbody.innerHTML = slice.map((d, si) => {
+    const i = start + si, pricePnl = d.priceChangePnl || 0;
     const netCls = Math.round(nets[i] * 100) === 0 ? '' : nets[i] > 0 ? 'pos' : 'neg';
     const cumCls = Math.round(cums[i] * 100) === 0 ? '' : cums[i] > 0 ? 'pos' : 'neg';
     const pCls   = Math.round(pricePnl * 100) === 0 ? '' : pricePnl > 0 ? 'pos' : 'neg';
-    return '<tr>' +
-      '<td>' + (d.date || '—') + '</td>' +
-      '<td>' + _tblUsd(d.feePnl || d.fees || 0) + '</td>' +
-      '<td>' + _tblUsd(d.gasCost || d.gas || 0) + '</td>' +
-      '<td class="' + pCls + '">' + _tblUsd(pricePnl) + '</td>' +
-      '<td class="' + netCls + '">' + _tblUsd(nets[i]) + '</td>' +
-      '<td class="' + cumCls + '">' + _tblUsd(cums[i]) + '</td>' +
-      '</tr>';
-  });
+    return '<tr><td>' + (d.date || '—') + '</td><td>' + _tblUsd(d.feePnl || d.fees || 0) + '</td>' +
+      '<td>' + _tblUsd(d.gasCost || d.gas || 0) + '</td><td class="' + pCls + '">' + _tblUsd(pricePnl) + '</td>' +
+      '<td class="' + netCls + '">' + _tblUsd(nets[i]) + '</td><td class="' + cumCls + '">' + _tblUsd(cums[i]) + '</td></tr>';
+  }).join('');
+  if (pageLabel) pageLabel.textContent = 'Page ' + (page + 1) + ' of ' + totalPages;
+  _setPnlPagBtns(page, totalPages);
+}
 
-  tbody.innerHTML = rows.join('');
+/** Update Per-Day P&L pagination button states. */
+function _setPnlPagBtns(page, totalPages) {
+  const prev = g('pnlPrevBtn'), next = g('pnlNextBtn');
+  if (prev) prev.disabled = page <= 0;
+  if (next) next.disabled = page >= totalPages - 1;
 }
 
 /**
@@ -86,11 +93,11 @@ export function renderRebalanceEvents(events) {
     return;
   }
 
-  const totalPages = Math.max(1, Math.ceil(events.length / _REB_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(events.length / _PAGE_SIZE));
   _rebEventsPage = Math.min(_rebEventsPage, totalPages - 1);
   const page = _rebEventsPage;
-  const start = page * _REB_PAGE_SIZE;
-  const pageEvents = events.slice(start, start + _REB_PAGE_SIZE);
+  const start = page * _PAGE_SIZE;
+  const pageEvents = events.slice(start, start + _PAGE_SIZE);
 
   const rows = pageEvents.map(e => {
     const txShort = e.txHash ? e.txHash.slice(0, 10) + '\u2026' : '—';
@@ -102,7 +109,7 @@ export function renderRebalanceEvents(events) {
       '<td data-privacy="blur">' + time + '</td>' +
       '<td data-privacy="blur">' + oldRange + '</td>' +
       '<td data-privacy="blur">' + newRange + '</td>' +
-      '<td title="' + (e.txHash || '') + '">' + txShort +
+      '<td data-privacy="blur" title="' + (e.txHash || '') + '">' + txShort +
         (e.txHash ? ' <span class="9mm-pos-mgr-copy-icon" data-copy-tx="' + e.txHash + '" title="Copy full TX hash">&#x274F;</span>' : '') +
       '</td>' +
       '</tr>';
@@ -120,9 +127,13 @@ export function renderRebalanceEvents(events) {
  */
 export function rebChangePage(dir) {
   _rebEventsPage += dir;
-  if (_lastEvents) {
-    renderRebalanceEvents(_lastEvents);
-  }
+  if (_lastEvents) renderRebalanceEvents(_lastEvents);
+}
+
+/** Navigate Per-Day P&L table pages. */
+export function pnlChangePage(dir) {
+  _pnlPage += dir;
+  if (_lastDailyPnl) renderDailyPnl(_lastDailyPnl);
 }
 
 /**

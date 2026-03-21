@@ -272,18 +272,19 @@ export function updateRouteForWallet(address) {
  * @param {object|null} active  Active position entry from posStore.
  */
 export function syncRouteToState(active) {
+  const curPath = _currentPath();
+  console.log('[dash] syncRouteToState: active=#%s contract=%s router=%s wallet=%s cur=%s',
+    active?.tokenId, active?.contractAddress || 'none', !!_router, _wallet?.address?.slice(0, 10) || 'none', curPath);
   if (!_router || !_wallet || !_wallet.address) return;
 
-  // Never overwrite a URL that already has a position path — the user or
-  // router put it there and it takes precedence over automatic state sync.
-  const curPath = _currentPath();
+  // Only overwrite a full position URL if the tokenId has changed (e.g. after rebalance).
   const segments = curPath.split('/').filter(Boolean);
-  if (segments.length >= 4) return;
+  if (segments.length >= 4 && active.tokenId && segments[3] === String(active.tokenId)) return;
 
   const target = _buildPositionPath(active);
   if (!target) return;
-
   if (curPath.toLowerCase() === target.toLowerCase()) return;
 
+  console.log('[dash] syncRouteToState: navigating to %s', target);
   _router.navigate(target, { callHandler: false, historyAPIMethod: 'replaceState' });
 }

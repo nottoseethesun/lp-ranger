@@ -416,7 +416,7 @@
     <div class="9mm-pos-mgr-help-popover" id="helpPopover">
       <div class="9mm-pos-mgr-help-title">How It Works</div>
       <ul class="9mm-pos-mgr-help-list">
-        <li>This dashboard manages <strong>one active liquidity position</strong> per wallet per liquidity pool. To get started: if you don&rsquo;t currently have a liquidity position on your current wallet address, create one or send the LP NFT to your wallet, and then click the &ldquo;Scan&rdquo; button at top middle. If you already have one, just select it from the LP Position Browser, directly to the left of the &ldquo;Scan&rdquo; button.</li>
+        <li>This dashboard manages <strong>one active liquidity position</strong> per wallet per liquidity pool. To get started: if you don&rsquo;t currently have a liquidity position on your current wallet address, create one (use a 50/50 split between the token pair, unless you are expert) or send the LP NFT to your wallet, and then click the &ldquo;Scan&rdquo; button at top middle. If you already have one, just select it from the LP Position Browser, directly to the left of the &ldquo;Scan&rdquo; button.</li>
         <li>When the price moves out of the configured range, the bot automatically rebalances by draining the old position and minting a new one centered on the current price.</li>
         <li>All data on this page is scoped to a <strong>single wallet</strong> and a <strong>single liquidity pool</strong>.</li>
         <li>Only V3 concentrated liquidity (NFT) positions are supported.</li>
@@ -433,6 +433,10 @@
       <p class="9mm-pos-mgr-help-text">Before each rebalance, the bot estimates gas cost in USD. If gas would exceed <strong>0.5%</strong> of the LP position value, the rebalance is deferred and the bot retries once per hour instead of once per minute. Normal polling resumes automatically once gas drops or a rebalance succeeds. The bot always starts with the normal polling interval.</p>
       <div class="9mm-pos-mgr-help-title">Closed Positions</div>
       <p class="9mm-pos-mgr-help-text">When you select a closed position (zero liquidity), the bot will display its data but will <strong>not</strong> attempt to rebalance it. If you re-open a previously closed position by adding liquidity back to the same NFT on 9mm Pro, the bot treats it as brand new&mdash;duration, fees, and P&amp;L all start from the original mint date. <strong>Recommendation:</strong> instead of re-opening a closed position, mint a fresh LP position on 9mm Pro. This gives you a clean start with accurate tracking and avoids any ambiguity in your P&amp;L history.</p>
+      <div class="9mm-pos-mgr-help-title">Troubleshooting</div>
+      <ul class="9mm-pos-mgr-help-list">
+        <li><strong>Rebalance Not Completing:</strong> If the blockchain is busy, a rebalance could take longer than expected. The transaction can be sped up or cancelled with the user&rsquo;s wallet. The progress of a rebalance can be seen on the Activity Log of this app, where the creation of the new NFT will be seen logged as a distinct log item. Also, it can be monitored by viewing the server console log.</li>
+      </ul>
       <button class="9mm-pos-mgr-help-close">Close</button>
     </div>
   </div>
@@ -742,6 +746,11 @@
         </tbody>
       </table>
     </div>
+    <div class="pos-pagination">
+      <button class="pos-pag-btn" id="pnlPrevBtn" disabled>&larr; Prev</button>
+      <span id="pnlPageLabel" class="9mm-pos-mgr-text-muted-sm">Page 1 of 1</span>
+      <button class="pos-pag-btn" id="pnlNextBtn" disabled>Next &rarr;</button>
+    </div>
   </div>
   <div class="card">
     <div class="card-title">Rebalance Events
@@ -755,7 +764,7 @@
         </tbody>
       </table>
     </div>
-    <div class="pos-pagination 9mm-pos-mgr-mt-md">
+    <div class="pos-pagination">
       <button class="pos-pag-btn" id="rebPrevBtn" disabled>&larr; Prev</button>
       <span id="rebPageLabel" class="9mm-pos-mgr-text-muted-sm">Page 1 of 1</span>
       <button class="pos-pag-btn" id="rebNextBtn" disabled>Next &rarr;</button>
@@ -766,6 +775,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774036965288"></script>
+<script src="dist/bundle.js?v=1774055842009"></script>
 </body>
 </html>

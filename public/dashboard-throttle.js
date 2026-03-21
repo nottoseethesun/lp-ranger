@@ -331,15 +331,18 @@ function _updateRangeHint() {
 }
 
 /** Confirm and trigger a rebalance with the custom range width. */
-export function confirmRebalanceRange() {
+export async function confirmRebalanceRange() {
   const input = g('rebalanceRangeInput');
   const total = parseFloat(input?.value) || 10;
   closeRebalanceRangeModal();
-  fetch('/api/rebalance', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ customRangeWidthPct: total }),
-  }).catch(function () { /* dashboard-only mode */ });
+  try {
+    const res = await fetch('/api/rebalance', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customRangeWidthPct: total }),
+    });
+    const data = await res.json();
+    if (!data.ok) { act('\u26A0', 'alert', 'Rebalance blocked', data.error); return; }
+  } catch { act('\u26A0', 'alert', 'Rebalance failed', 'Server unreachable'); return; }
   act('\u21C4', 'start', 'Rebalance with custom range',
     `Total width: ${total}% (${(total / 2).toFixed(1)}% per side)`);
 }

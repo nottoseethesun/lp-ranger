@@ -257,6 +257,16 @@
   margin-top: 0;
   margin-left: auto;
   font-size: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.\39 mm-pos-mgr-modal-close-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ── Section Titles ───────────────────────────────────────────────────────── */
@@ -817,8 +827,9 @@
 .\39 mm-pos-mgr-help-list {
   margin: 0;
   padding: 0 0 0 18px;
-  font-size: 12px;
-  line-height: 1.6;
+  font-family: Urbanist, sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -962,4 +973,5 @@
 .\39 mm-pos-mgr-disclaimer-license a:hover {
   text-decoration: underline;
 }
+
 

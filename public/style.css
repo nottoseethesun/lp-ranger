@@ -43,6 +43,7 @@ body::before{
   max-width:1500px;
   margin:0 auto;
   padding:24px;
+  zoom:1.2;
 }
 
 /* ── OPTIMIZER PANEL ── */
@@ -534,7 +535,8 @@ body::before{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  margin-top:10px;
+  margin-top:auto;
+  padding-top:10px;
   font-size:13px;
   color:var(--muted);
 }
@@ -1052,6 +1054,7 @@ header{
   color:var(--muted);
   margin-left:6px;
   position:relative;
+  text-transform:none;
 }
 .help-tip:hover{color:var(--accent);}
 
@@ -1219,6 +1222,11 @@ header{
   border:1px solid var(--border);
   border-radius:12px;
   padding:18px;
+}
+
+.card:has(.pos-pagination){
+  display:flex;
+  flex-direction:column;
 }
 
 .card-title{

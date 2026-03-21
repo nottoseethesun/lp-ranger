@@ -432,7 +432,9 @@ export function activateByTokenId(tokenId) {
 
   _applyPositionConfig(active);
   if (_positionRangeVisual) _positionRangeVisual();
-  _notifyServerSwitch(active);
+  // Never call _notifyServerSwitch here — this function is called by the router
+  // on page load/deep links. Only explicit user actions (position browser) should
+  // tell the server to switch the bot. The poll loop handles bot→dashboard sync.
   return true;
 }
 
@@ -443,15 +445,33 @@ function _tokenName(symbol, address) {
   return address || '?';
 }
 
+/** Select a position by tokenId, apply its data, and sync the URL. */
+function _selectAndSync(tokenId) {
+  const idx = posStore.entries.findIndex(e => String(e.tokenId) === tokenId);
+  if (idx < 0) return;
+  _exitClosedViewIfActive();
+  posStore.select(idx);
+  const s = posStore.getActive(); if (!s) return;
+  _applyLocalPositionData(s); updatePosStripUI();
+  if (_syncRouteToState) _syncRouteToState(s);
+  console.log('[dash] selected #%s at idx=%d, URL synced', tokenId, idx);
+}
+
 /** Update the bot's active tokenId, auto-select in store, and sync URL. */
+let _rescanPending = false;
 export function setBotActiveTokenId(tid) {
   _botActiveTokenId = tid ? String(tid) : null; if (!_botActiveTokenId) return;
-  const cur = posStore.getActive(); if (cur && String(cur.tokenId) === _botActiveTokenId) return;
-  const idx = posStore.entries.findIndex(e => String(e.tokenId) === _botActiveTokenId);
-  if (idx < 0) return;
-  posStore.select(idx); updatePosStripUI();
-  const selected = posStore.getActive();
-  if (selected && _syncRouteToState) _syncRouteToState(selected);
+  const cur = posStore.getActive();
+  const alreadyActive = cur && String(cur.tokenId) === _botActiveTokenId;
+  const entry = alreadyActive ? cur : posStore.entries.find(e => String(e.tokenId) === _botActiveTokenId) || null;
+  const bad = !entry || !entry.contractAddress || !entry.token0Symbol || /^0x[0-9a-fA-F]{40}$/i.test(entry.token0Symbol);
+  if (bad && !_rescanPending) {
+    console.log('[dash] setBotActiveTokenId: rescan for #%s (exists=%s)', _botActiveTokenId, !!entry);
+    _rescanPending = true;
+    scanPositions({ navigate: false }).then(() => _selectAndSync(_botActiveTokenId)).finally(() => { _rescanPending = false; });
+    if (!entry) return;
+  }
+  if (!alreadyActive) _selectAndSync(_botActiveTokenId);
 }
 
 /** Determine status CSS class and label for a position row. */
@@ -548,17 +568,9 @@ export function clearPositionDisplay() {
 
 /** Reset all KPI card elements to default empty state. */
 function _clearKpiElements() {
-  const ids = ['kpiPnl', 'kpiNet', 'curIL', 'netIL'];
-  for (const id of ids) {
-    const el = g(id);
-    if (el) { el.textContent = '\u2014'; el.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row neu'; }
-  }
-  const txtIds = ['kpiPnlPct', 'kpiNetBreakdown', 'kpiPosDuration', 'pnlRealized'];
-  for (const id of txtIds) { _setText(id, '\u2014'); }
-  const pctIds = ['kpiPnlPctVal', 'kpiPnlApr', 'kpiNetPct', 'kpiNetApr', 'curILPct', 'netILPct', 'netILApr'];
-  for (const id of pctIds) {
-    const el = g(id); if (el) el.textContent = '';
-  }
+  for (const id of ['kpiPnl', 'kpiNet', 'curIL', 'netIL']) { const el = g(id); if (el) { el.textContent = '\u2014'; el.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row neu'; } }
+  for (const id of ['kpiPnlPct', 'kpiNetBreakdown', 'kpiPosDuration', 'pnlRealized']) _setText(id, '\u2014');
+  for (const id of ['kpiPnlPctVal', 'kpiPnlApr', 'kpiNetPct', 'kpiNetApr', 'curILPct', 'netILPct', 'netILApr']) { const el = g(id); if (el) el.textContent = ''; }
 }
 
 /**
@@ -567,25 +579,18 @@ function _clearKpiElements() {
  * @param {object} pos  Position entry from posStore.
  */
 export function _applyLocalPositionData(pos) {
-  _setText('sTL', pos.tickLower ?? '\u2014');
-  _setText('sTU', pos.tickUpper ?? '\u2014');
-
+  _setText('sTL', pos.tickLower ?? '\u2014'); _setText('sTU', pos.tickUpper ?? '\u2014');
   const t0Sym = _tokenName(pos.token0Symbol, pos.token0) || '\u2014';
   const t1Sym = _tokenName(pos.token1Symbol, pos.token1) || '\u2014';
-
-  _setHtml('statT0Label', _tokenLabelHtml(t0Sym, pos.token0 || ''));
-  _setHtml('statT1Label', _tokenLabelHtml(t1Sym, pos.token1 || ''));
-  _setText('statShare0Label', 'Pool Share ' + t0Sym);
-  _setText('statShare1Label', 'Pool Share ' + t1Sym);
+  _setHtml('statT0Label', _tokenLabelHtml(t0Sym, pos.token0 || '')); _setHtml('statT1Label', _tokenLabelHtml(t1Sym, pos.token1 || ''));
+  _setText('statShare0Label', 'Pool Share ' + t0Sym); _setText('statShare1Label', 'Pool Share ' + t1Sym);
   _setText('cl0', '\u25A0 ' + t0Sym + ': 50%');
   _setText('cl1', '\u25A0 ' + t1Sym + ': 50%');
   _setText('wsPool', t0Sym + ' / ' + t1Sym + ' \u00B7 ' + (pos.fee / 10000).toFixed(2) + '%');
   _setText('kpiDeposit', '—');
-  const statusEl = g('curPosStatus');
-  if (statusEl) {
-    const isClosed = pos.liquidity !== undefined && pos.liquidity !== null && String(pos.liquidity) === '0';
-    statusEl.textContent = isClosed ? 'CLOSED' : 'ACTIVE';
-    statusEl.className = '9mm-pos-mgr-pos-status ' + (isClosed ? 'closed' : 'active');
+  const statusEl = g('curPosStatus'); if (statusEl) {
+    const closed = pos.liquidity !== undefined && pos.liquidity !== null && String(pos.liquidity) === '0';
+    statusEl.textContent = closed ? 'CLOSED' : 'ACTIVE'; statusEl.className = '9mm-pos-mgr-pos-status ' + (closed ? 'closed' : 'active');
   }
 }
 

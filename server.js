@@ -359,6 +359,7 @@ function updateBotState(patch) {
   }
   // Persist activePositionId when it changes (e.g. after rebalance mints new NFT)
   if (patch.activePositionId && patch.activePositionId !== botState.activePositionId) {
+    console.log('[server] activePositionId changing: %s → %s', botState.activePositionId, patch.activePositionId);
     Object.assign(botState, patch);
     _saveBotConfig(botState);
   }
@@ -466,6 +467,7 @@ async function _handleApiConfig(req, res) {
 
 async function _handleWalletImport(req, res) {
   const body = await readJsonBody(req);
+  console.log('[server] Wallet import requested for %s (bot running: %s)', body.address?.slice(0, 10), !!_botHandle);
   await walletManager.importWallet({
     address: body.address, privateKey: body.privateKey,
     mnemonic: body.mnemonic || null, source: body.source || 'key',
@@ -537,6 +539,7 @@ async function _tryStartBot(password) {
       return;
     }
     if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
+    console.log('[server] Starting bot with activePositionId=%s', botState.activePositionId || 'none (will auto-detect)');
     _botHandle = await startBotLoop({
       privateKey,
       dryRun: config.DRY_RUN,
@@ -633,8 +636,16 @@ async function _handlePositionsScan(req, res) {
  */
 async function _handlePositionSwitch(req, res) {
   const body = await readJsonBody(req);
+  console.log('[server] Position switch requested: tokenId=%s (current=%s)', body.tokenId, botState.activePositionId);
   if (!body.tokenId) {
     jsonResponse(res, 400, { ok: false, error: 'Missing tokenId' });
+    return;
+  }
+  // No-op if already managing this position — avoids killing the bot mid-rebalance
+  const cur = botState.activePositionId || botState.activePosition?.tokenId;
+  if (cur && String(cur) === String(body.tokenId)) {
+    console.log('[server] Already on #%s — skipping switch', body.tokenId);
+    jsonResponse(res, 200, { ok: true, tokenId: String(body.tokenId), alreadyActive: true });
     return;
   }
   try {
@@ -667,7 +678,12 @@ async function _handleShutdown(_req, res) {
 
 const _routes = {
   'GET /health':               (_, res) => jsonResponse(res, 200, { ok: true, port: config.PORT, ts: Date.now() }),
-  'GET /api/status':           (_, res) => jsonResponse(res, 200, { ...botState, walletAddress: walletManager.getAddress(), hodlBaseline: botState.hodlBaseline || null }),
+  'GET /api/status':           (_, res) => {
+    const snap = { ...botState, walletAddress: walletManager.getAddress(), hodlBaseline: botState.hodlBaseline || null };
+    // One-shot: clear oorRecoveredMin after delivering it so it doesn't re-show on refresh
+    if (botState.oorRecoveredMin > 0) botState.oorRecoveredMin = 0;
+    jsonResponse(res, 200, snap);
+  },
   'GET /api/wallet/status':    (_, res) => jsonResponse(res, 200, walletManager.getStatus()),
   'DELETE /api/wallet':        (_, res) => { walletManager.clearWallet(); jsonResponse(res, 200, { ok: true }); },
   'POST /api/config':          _handleApiConfig,
@@ -676,6 +692,10 @@ const _routes = {
   'POST /api/positions/scan':  _handlePositionsScan,
   'POST /api/position/switch': _handlePositionSwitch,
   'POST /api/rebalance':       async (req, res) => {
+    if (!_botHandle || !botState.running) {
+      jsonResponse(res, 409, { ok: false, error: 'Bot is not running. Import a wallet and wait for the bot to start.' });
+      return;
+    }
     let body = {};
     try { body = await readJsonBody(req); } catch { /* empty body OK */ }
     const patch = { forceRebalance: true };

@@ -15,6 +15,12 @@ import { updateILDebugData } from './dashboard-il-debug.js';
 
 let _dataTimerId = null, _lastStatus = null, _historyPopulated = false, _poolFirstDate = null;
 
+/** Format a tx hash as "0x…wxyz" with a copy-to-clipboard icon. */
+function _fmtTxCopy(hash) {
+  const short = hash.slice(0, 4) + '\u2026' + hash.slice(-4);
+  return `<span class="9mm-pos-mgr-copy-icon" title="Copy full TX hash" data-copy-tx="${hash}">${short} &#x274F;</span>`;
+}
+
 // ── Realized gains (user-entered, persisted in localStorage) ────────────────
 
 const _REALIZED_GAINS_KEY = '9mm_realized_gains';
@@ -165,7 +171,7 @@ function _updatePnlHeader(d, total, realized, curDeposit) {
     pnl.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row ' + (_isDisplayZero(total) ? 'neu' : total > 0 ? 'pos' : 'neg');
     _setPctSpan('kpiPnlPctVal', total, curDeposit);
     const posStart = d.hodlBaseline?.mintDate || null;
-    _setAprSpan('kpiPnlApr', d.pnlSnapshot.liveEpoch ? (d.pnlSnapshot.liveEpoch.fees || 0) : 0, curDeposit, posStart);
+    _setAprSpan('kpiPnlApr', total, curDeposit, posStart);
     if (posStart) {
       pnlSub.textContent = fmtDateTime(posStart + 'T00:00:00Z', { dateOnly: true }) + ' \u2192 ' + fmtDateTime(d.pnlSnapshot.snapshotDateUtc + 'T00:00:00Z', { dateOnly: true });
     } else { pnlSub.textContent = 'cumulative'; }
@@ -419,7 +425,7 @@ function _setStatusPill(pillCls, dotCls, label) {
 
 /** Update bot status pill and timestamps from /api/status. */
 function _updateBotStatus(d) {
-  if (d.oorRecoveredMin > 0 && !d.rebalancePaused) {
+  if (d.oorRecoveredMin > 0 && !d.rebalancePaused && !_recoveryModalShown) {
     _dismissRebalanceModal();
     _showRecoveryModal(d.oorRecoveredMin);
   }
@@ -503,28 +509,22 @@ export function resetPollingState() {
   const dd = g('lifetimeDepositDisplay'); if (dd) dd.textContent = '\u2014';
 }
 
-/** Auto-add the bot's active position to the store if the store is empty and bot is running. */
+/** Auto-add the bot's active position to the store if the store is empty and bot is running.
+ *  Skipped when store is empty — the rescan in setBotActiveTokenId handles discovery with full metadata. */
 function _ensureActiveInStore(d) {
   if (posStore.count() > 0 || !d.activePosition?.tokenId || !d.running) return;
-  const bp = d.activePosition, sw = d.walletAddress || d.wallet || '';
-  if (sw) posStore.add({ positionType: 'nft', tokenId: String(bp.tokenId), walletAddress: sw,
-    token0Symbol: bp.token0Symbol || bp.token0 || '', token1Symbol: bp.token1Symbol || bp.token1 || '',
-    liquidity: String(bp.liquidity ?? '0'), fee: bp.fee });
+  // Store is empty — a rescan is needed to get full metadata (symbols, contractAddress).
+  // setBotActiveTokenId triggers the rescan; no need to add incomplete entries here.
 }
 
-/** Ensure the bot's active tokenId is in posStore; add if missing, select if not active. */
+/** Ensure the bot's active tokenId is in posStore; select if found, skip if missing.
+ *  Missing positions are discovered by the rescan triggered in setBotActiveTokenId. */
 function _ensureBotPosSelected(d, active) {
   const bp = d.activePosition;
   if (!bp.tokenId || String(bp.tokenId) === String(active.tokenId)) return false;
-  let idx = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(bp.tokenId));
-  if (idx < 0) {
-    const sw = d.walletAddress || d.wallet || active.walletAddress || '';
-    posStore.add({ positionType: 'nft', tokenId: String(bp.tokenId), walletAddress: sw,
-      token0Symbol: bp.token0Symbol || bp.token0 || '', token1Symbol: bp.token1Symbol || bp.token1 || '',
-      liquidity: String(bp.liquidity ?? '0'), fee: bp.fee, tickLower: bp.tickLower, tickUpper: bp.tickUpper });
-    idx = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(bp.tokenId));
-  }
-  if (idx >= 0 && idx !== posStore.activeIdx) { posStore.select(idx); updatePosStripUI(); return true; }
+  const idx = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(bp.tokenId));
+  if (idx < 0) return false; // Not in store yet — rescan will add it with full metadata
+  if (idx !== posStore.activeIdx) { posStore.select(idx); updatePosStripUI(); return true; }
   return false;
 }
 
@@ -540,18 +540,19 @@ function _syncActivePosition(d) {
   const isNew = d.lastRebalanceAt && d.lastRebalanceAt !== _lastRebalanceAt;
   if (isNew) {
     _lastRebalanceAt = d.lastRebalanceAt;
-    const rebNum = d.rebalanceCount || (d.rebalanceEvents ? d.rebalanceEvents.length : '?');
-    act('\u2699', 'fee', 'Rebalance #' + rebNum,
-      'NFT #' + active.tokenId + ' \u2192 #' + botPos.tokenId);
+    // Use the last rebalance event for accurate old→new tokenId
+    const evts = d.rebalanceEvents || [];
+    const lastEv = evts.length ? evts[evts.length - 1] : null;
+    if (lastEv) {
+      const txPart = lastEv.txHash ? ' ' + _fmtTxCopy(lastEv.txHash) : '';
+      act('\u2699', 'fee', 'Rebalance',
+        'NFT #' + lastEv.oldTokenId + ' \u2192 #' + lastEv.newTokenId + txPart);
+    }
   }
 
   if (botPos.liquidity !== undefined) active.liquidity = String(botPos.liquidity);
-  if (botPos.tokenId && String(botPos.tokenId) !== String(active.tokenId)) {
-    active.tokenId   = String(botPos.tokenId);
-    active.tickLower = botPos.tickLower;
-    active.tickUpper = botPos.tickUpper;
-    updatePosStripUI();
-  }
+  // Don't mutate active entry's tokenId — setBotActiveTokenId handles the switch
+  // via rescan, which adds the new NFT with full metadata (symbols, contractAddress).
 }
 
 /** Load cached rebalance events if server provided none, or cache new ones. */
@@ -567,12 +568,16 @@ function _updateTriggerDisplay(d) {
   const to = g('activeOorTimeout'); if (to) to.textContent = d.rebalanceTimeoutMin > 0 ? d.rebalanceTimeoutMin : d.rebalanceTimeoutMin === 0 ? 'disabled' : '\u2014';
 }
 
-/** Populate the activity log with historical rebalance events (one-time). */
+/** Populate the activity log with historical rebalance events (once scan completes). */
 function _populateHistoryOnce(data) {
   if (_historyPopulated || !data.rebalanceEvents || !data.rebalanceEvents.length) return;
+  // Wait for the event scanner to finish so we get the full set, not stale localStorage cache
+  if (data.rebalanceScanComplete !== true) return;
   _historyPopulated = true;
   [...data.rebalanceEvents].sort((a, b) => a.timestamp - b.timestamp).forEach(ev => {
-    act('\u2699', 'fee', 'Rebalance #' + ev.index, 'NFT #' + ev.oldTokenId + ' \u2192 #' + ev.newTokenId, ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000));
+    const txPart = ev.txHash ? ' ' + _fmtTxCopy(ev.txHash) : '';
+    act('\u2699', 'fee', 'Rebalance', 'NFT #' + ev.oldTokenId + ' \u2192 #' + ev.newTokenId + txPart,
+      ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000));
   });
 }
 
@@ -590,6 +595,7 @@ function updateDashboardFromStatus(data) {
   const sw = data.walletAddress || data.wallet || '';
   if (sw && (!wallet.address || wallet.address.toLowerCase() !== sw.toLowerCase())) return;
 
+  if (data.activePosition?.tokenId) console.log('[dash] poll: server activePosition=#%s', data.activePosition.tokenId);
   _syncConfigFromServer(data); setBotActiveTokenId(data.activePosition?.tokenId);
   _syncRebalanceCache(data);  _updateSyncBadge(data.running ? data.rebalanceScanComplete === true : true, data.rebalanceScanProgress);
 

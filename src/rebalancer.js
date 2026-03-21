@@ -80,14 +80,9 @@ async function _ensureAllowance(tokenContract, owner, spender, requiredAmount) {
 /** Fetch current pool state (price, tick, decimals) from on-chain contracts. */
 async function getPoolState(provider, ethersLib, { factoryAddress, token0, token1, fee }) {
   const { Contract, ZeroAddress } = ethersLib;
-
   const factory = new Contract(factoryAddress, FACTORY_ABI, provider);
   const poolAddress = await factory.getPool(token0, token1, fee);
-
-  if (poolAddress === ZeroAddress) {
-    throw new Error(`Pool not found for ${token0}/${token1} fee=${fee}`);
-  }
-
+  if (poolAddress === ZeroAddress) throw new Error(`Pool not found for ${token0}/${token1} fee=${fee}`);
   const pool = new Contract(poolAddress, POOL_ABI, provider);
   const token0Contract = new Contract(token0, ERC20_ABI, provider);
   const token1Contract = new Contract(token1, ERC20_ABI, provider);
@@ -98,18 +93,9 @@ async function getPoolState(provider, ethersLib, { factoryAddress, token0, token
     token1Contract.decimals(),
   ]);
 
-  const sqrtPriceX96 = slot0.sqrtPriceX96;
-  const tick = Number(slot0.tick);
+  const sqrtPriceX96 = slot0.sqrtPriceX96, tick = Number(slot0.tick);
   const price = rangeMath.sqrtPriceX96ToPrice(sqrtPriceX96, Number(decimals0), Number(decimals1));
-
-  return {
-    sqrtPriceX96,
-    tick,
-    price,
-    poolAddress,
-    decimals0: Number(decimals0),
-    decimals1: Number(decimals1),
-  };
+  return { sqrtPriceX96, tick, price, poolAddress, decimals0: Number(decimals0), decimals1: Number(decimals1) };
 }
 
 /**
@@ -129,56 +115,29 @@ async function removeLiquidity(signer, ethersLib, {
   const dl = deadline ?? _deadline();
 
   // Snapshot balances before collect so we can diff
-  let bal0Before = 0n;
-  let bal1Before = 0n;
+  let bal0Before = 0n, bal1Before = 0n;
   if (token0 && token1) {
-    const t0 = new Contract(token0, ERC20_ABI, provider);
-    const t1 = new Contract(token1, ERC20_ABI, provider);
-    [bal0Before, bal1Before] = await Promise.all([
-      t0.balanceOf(recipient),
-      t1.balanceOf(recipient),
-    ]);
+    const t0 = new Contract(token0, ERC20_ABI, provider), t1 = new Contract(token1, ERC20_ABI, provider);
+    [bal0Before, bal1Before] = await Promise.all([t0.balanceOf(recipient), t1.balanceOf(recipient)]);
   }
 
   // Bundle decreaseLiquidity + collect into a single atomic multicall,
   // matching the pattern the 9mm Pro UI uses.  This ensures no state can
   // change between the two operations and eliminates rounding dust that
   // can remain when they run as separate transactions.
-  const decreaseData = pm.interface.encodeFunctionData('decreaseLiquidity', [{
-    tokenId,
-    liquidity,
-    amount0Min: 0n,
-    amount1Min: 0n,
-    deadline: dl,
-  }]);
-  const collectData = pm.interface.encodeFunctionData('collect', [{
-    tokenId,
-    recipient,
-    amount0Max: _MAX_UINT128,
-    amount1Max: _MAX_UINT128,
-  }]);
-
-  const multicallTx = await pm.multicall([decreaseData, collectData]);
-  const receipt = await multicallTx.wait();
+  const decreaseData = pm.interface.encodeFunctionData('decreaseLiquidity', [{ tokenId, liquidity, amount0Min: 0n, amount1Min: 0n, deadline: dl }]);
+  const collectData = pm.interface.encodeFunctionData('collect', [{ tokenId, recipient, amount0Max: _MAX_UINT128, amount1Max: _MAX_UINT128 }]);
+  const receipt = await (await pm.multicall([decreaseData, collectData])).wait();
 
   // Determine collected amounts via balance diff (robust across all ABIs)
-  let amount0 = 0n;
-  let amount1 = 0n;
+  let amount0 = 0n, amount1 = 0n;
   if (token0 && token1) {
-    const t0 = new Contract(token0, ERC20_ABI, provider);
-    const t1 = new Contract(token1, ERC20_ABI, provider);
-    const [bal0After, bal1After] = await Promise.all([
-      t0.balanceOf(recipient),
-      t1.balanceOf(recipient),
-    ]);
-    amount0 = bal0After - bal0Before;
-    amount1 = bal1After - bal1Before;
+    const t0 = new Contract(token0, ERC20_ABI, provider), t1 = new Contract(token1, ERC20_ABI, provider);
+    const [bal0After, bal1After] = await Promise.all([t0.balanceOf(recipient), t1.balanceOf(recipient)]);
+    amount0 = bal0After - bal0Before; amount1 = bal1After - bal1Before;
   }
-
   if (amount0 === 0n && amount1 === 0n) {
-    throw new Error(
-      'Collected 0 tokens after removing liquidity — aborting to prevent empty mint',
-    );
+    throw new Error('Collected 0 tokens after removing liquidity — aborting to prevent empty mint');
   }
 
   const gasCostWei = (receipt.gasUsed ?? 0n) * (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
@@ -253,12 +212,8 @@ function computeDesiredAmounts(available, range, tokens) {
     swapAmount,
   };
 
-  // ── Postcondition: desired amounts must never be negative ────────────────
   if (result.amount0Desired < 0n || result.amount1Desired < 0n) {
-    throw new Error(
-      `computeDesiredAmounts: negative desired amount `
-      + `(a0=${result.amount0Desired}, a1=${result.amount1Desired})`,
-    );
+    throw new Error(`computeDesiredAmounts: negative desired (a0=${result.amount0Desired}, a1=${result.amount1Desired})`);
   }
   return result;
 }
@@ -293,44 +248,23 @@ async function swapIfNeeded(signer, ethersLib, {
   }
 
   const { Contract } = ethersLib;
-  const tokenContract = new Contract(tokenIn, ERC20_ABI, signer);
   const signerAddress = await signer.getAddress();
-
-  await _ensureAllowance(tokenContract, signerAddress, swapRouterAddress, amountIn);
-
+  await _ensureAllowance(new Contract(tokenIn, ERC20_ABI, signer), signerAddress, swapRouterAddress, amountIn);
   const router = new Contract(swapRouterAddress, SWAP_ROUTER_ABI, signer);
-  const dl = deadline ?? _deadline();
-
-  // Compute expected output using pool price, then apply slippage.
-  // price = token1 per token0.
-  //   token0→token1: expectedOut = amountIn × price × 10^(decimalsOut−decimalsIn)
-  //   token1→token0: expectedOut = amountIn / price × 10^(decimalsOut−decimalsIn)
+  const dl = deadline || _deadline();
+  // Expected output: price = token1/token0. Apply slippage for minimum.
   const floatIn = Number(amountIn);
   const rate = isToken0To1 ? currentPrice : (1 / currentPrice);
   const decimalShift = 10 ** (decimalsOut - decimalsIn);
   const expectedOut = BigInt(Math.floor(floatIn * rate * decimalShift));
-
-  const slipMul = BigInt(Math.floor((100 - (slippagePct ?? 0.5)) * 100));
-  const amountOutMinimum = (expectedOut * slipMul) / 10000n;
-
-  // Snapshot output token balance before swap for balance-diff
-  const provider = signer.provider ?? signer;
+  const amountOutMinimum = (expectedOut * BigInt(Math.floor((100 - (slippagePct || 0.5)) * 100))) / 10000n;
+  const provider = signer.provider || signer;
   const outContract = new Contract(tokenOut, ERC20_ABI, provider);
   const balBefore = await outContract.balanceOf(recipient);
 
-  const tx = await router.exactInputSingle({
-    tokenIn,
-    tokenOut,
-    fee,
-    recipient,
-    deadline: dl,
-    amountIn,
-    amountOutMinimum,
-    sqrtPriceLimitX96: 0n,
-  });
+  const tx = await router.exactInputSingle({ tokenIn, tokenOut, fee, recipient,
+    deadline: dl, amountIn, amountOutMinimum, sqrtPriceLimitX96: 0n });
   const receipt = await tx.wait();
-
-  // Use actual balance diff (not estimate) so mint uses correct amounts
   const balAfter = await outContract.balanceOf(recipient);
   const actualOut = balAfter - balBefore;
   const gasCostWei = (receipt.gasUsed ?? 0n) * (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
@@ -348,10 +282,12 @@ async function mintPosition(signer, ethersLib, {
   const token0Contract = new Contract(token0, ERC20_ABI, signer);
   const token1Contract = new Contract(token1, ERC20_ABI, signer);
 
+  console.log('[rebalance] Step 7a: ensureAllowance for both tokens…');
   await Promise.all([
     _ensureAllowance(token0Contract, signerAddress, positionManagerAddress, amount0Desired),
     _ensureAllowance(token1Contract, signerAddress, positionManagerAddress, amount1Desired),
   ]);
+  console.log('[rebalance] Step 7a done: allowances OK');
 
   // Mint mins are 0 — adding liquidity doesn't move price (no sandwich
   // risk), undeposited tokens stay in wallet, and narrow ranges make
@@ -362,6 +298,7 @@ async function mintPosition(signer, ethersLib, {
   const pm = new Contract(positionManagerAddress, PM_ABI, signer);
   const dl = deadline ?? _deadline();
 
+  console.log('[rebalance] Step 7b: submitting mint TX…');
   const tx = await pm.mint({
     token0,
     token1,
@@ -375,7 +312,10 @@ async function mintPosition(signer, ethersLib, {
     recipient,
     deadline: dl,
   });
+  console.log('[rebalance] Step 7b done: mint TX submitted, hash=%s', tx.hash);
+  console.log('[rebalance] Step 7c: waiting for confirmation…');
   const receipt = await tx.wait();
+  console.log('[rebalance] Step 7c done: mint TX confirmed, block=%s', receipt.blockNumber);
 
   // Try to parse the IncreaseLiquidity event for actual values.
   // Topic0 = keccak256('IncreaseLiquidity(uint256,uint128,uint256,uint256)')
@@ -428,99 +368,81 @@ async function _walletBalances(ethersLib, provider, token0, token1, owner) {
 
 /** Perform swap if needed and return adjusted amounts + gas. */
 async function _swapAndAdjust(signer, ethersLib, ctx) {
-  const { desired, position, poolState, swapRouterAddress, slippagePct, signerAddress } = ctx;
-  const empty = { txHash: null, extra0: 0n, extra1: 0n, gasCostWei: 0n };
-  if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD) return empty;
+  const { desired, position: p, poolState: ps, swapRouterAddress, slippagePct, signerAddress } = ctx;
+  if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD) return { txHash: null, extra0: 0n, extra1: 0n, gasCostWei: 0n };
   const is0to1 = desired.swapDirection === 'token0to1';
-  const result = await swapIfNeeded(signer, ethersLib, {
-    swapRouterAddress,
-    tokenIn: is0to1 ? position.token0 : position.token1,
-    tokenOut: is0to1 ? position.token1 : position.token0,
-    fee: position.fee, amountIn: desired.swapAmount, slippagePct,
-    currentPrice: poolState.price,
-    decimalsIn: is0to1 ? poolState.decimals0 : poolState.decimals1,
-    decimalsOut: is0to1 ? poolState.decimals1 : poolState.decimals0,
-    isToken0To1: is0to1, recipient: signerAddress,
-  });
-  return {
-    txHash: result.txHash, gasCostWei: result.gasCostWei ?? 0n,
-    extra0: is0to1 ? 0n : result.amountOut, extra1: is0to1 ? result.amountOut : 0n,
-  };
+  const result = await swapIfNeeded(signer, ethersLib, { swapRouterAddress, fee: p.fee, amountIn: desired.swapAmount,
+    tokenIn: is0to1 ? p.token0 : p.token1, tokenOut: is0to1 ? p.token1 : p.token0, slippagePct, currentPrice: ps.price,
+    decimalsIn: is0to1 ? ps.decimals0 : ps.decimals1, decimalsOut: is0to1 ? ps.decimals1 : ps.decimals0,
+    isToken0To1: is0to1, recipient: signerAddress });
+  return { txHash: result.txHash, gasCostWei: result.gasCostWei || 0n,
+    extra0: is0to1 ? 0n : result.amountOut, extra1: is0to1 ? result.amountOut : 0n };
+}
+
+/** Verify wallet owns the NFT. Throws on failure. */
+async function _verifyOwnership(ethersLib, provider, pmAddr, tokenId, signer) {
+  console.log('[rebalance] Step 2: ownerOf NFT #%s…', tokenId);
+  const c = new ethersLib.Contract(pmAddr, ['function ownerOf(uint256 tokenId) view returns (address)'], provider);
+  let owner; try { owner = await c.ownerOf(tokenId); } catch (e) { throw new Error(`Cannot verify ownership of NFT #${tokenId}: ${e.message}`, { cause: e }); }
+  if (owner.toLowerCase() !== signer.toLowerCase()) throw new Error(`Wallet ${signer} does not own NFT #${tokenId} (owner: ${owner})`);
+  console.log('[rebalance] Step 2 done: owner=%s signer=%s', owner, signer);
+}
+
+/** Remove liquidity or use wallet balances if already drained. */
+async function _removeLiquidityStep(signer, ethersLib, provider, opts) {
+  const { positionManagerAddress, position, signerAddress } = opts;
+  console.log('[rebalance] Step 3: reading on-chain liquidity…');
+  const pmRead = new ethersLib.Contract(positionManagerAddress, PM_ABI, provider);
+  const onChainLiquidity = (await pmRead.positions(position.tokenId)).liquidity;
+  console.log('[rebalance] Step 3 done: onChainLiquidity=%s', String(onChainLiquidity));
+  let removed;
+  if (onChainLiquidity > 0n) {
+    console.log('[rebalance] Step 3a: removeLiquidity…');
+    removed = await removeLiquidity(signer, ethersLib, { positionManagerAddress,
+      tokenId: position.tokenId, liquidity: onChainLiquidity,
+      recipient: signerAddress, token0: position.token0, token1: position.token1 });
+  } else {
+    console.log('[rebalance] Step 3a: 0 liquidity — using wallet balances');
+    removed = await _walletBalances(ethersLib, provider, position.token0, position.token1, signerAddress);
+  }
+  console.log('[rebalance] Step 3a done: amount0=%s amount1=%s', String(removed.amount0), String(removed.amount1));
+  return removed;
+}
+
+/** Sum gas costs from multiple rebalance step results. */
+function _sumGas(...steps) { return steps.reduce((sum, s) => sum + (s.gasCostWei || 0n), 0n); }
+
+/** Compute new tick range: custom width or preserve existing spread. */
+function _computeRange(ps, pos, crw) {
+  return crw ? rangeMath.computeNewRange(ps.price, crw / 2, pos.fee, ps.decimals0, ps.decimals1)
+    : rangeMath.preserveRange(ps.tick, pos.tickLower, pos.tickUpper, pos.fee, ps.decimals0, ps.decimals1);
 }
 
 /** Execute a complete rebalance: remove → swap → mint at new range. */
 async function executeRebalance(signer, ethersLib, opts) {
-  const {
-    position, factoryAddress, positionManagerAddress,
-    swapRouterAddress, slippagePct, customRangeWidthPct,
-  } = opts;
-
-  // V3-only guard
+  const { position, factoryAddress, positionManagerAddress, swapRouterAddress, slippagePct, customRangeWidthPct } = opts;
   if (!position.tokenId || !V3_FEE_TIERS.includes(position.fee)) {
-    throw new Error(
-      'Only V3 NFT positions are supported. V2 positions use a different '
-      + 'contract and cannot be rebalanced by this tool.',
-    );
+    throw new Error('Only V3 NFT positions are supported. V2 positions use a different contract and cannot be rebalanced by this tool.');
   }
-
   try {
-    const txHashes = [];
-    const signerAddress = await signer.getAddress();
-    const provider = signer.provider ?? signer;
+    const txHashes = [], signerAddress = await signer.getAddress(), provider = signer.provider || signer;
 
     // 1. Get current pool state
+    console.log('[rebalance] Step 1: getPoolState…');
     const poolState = await getPoolState(provider, ethersLib, {
-      factoryAddress,
-      token0: position.token0,
-      token1: position.token1,
-      fee: position.fee,
+      factoryAddress, token0: position.token0, token1: position.token1, fee: position.fee,
     });
+    console.log('[rebalance] Step 1 done: tick=%d price=%s', poolState.tick, poolState.price);
 
-    // 2. Verify position ownership before removing liquidity
-    const pmContract = new ethersLib.Contract(
-      positionManagerAddress,
-      ['function ownerOf(uint256 tokenId) view returns (address)'],
-      provider,
-    );
-    let owner;
-    try {
-      owner = await pmContract.ownerOf(position.tokenId);
-    } catch (err) {
-      throw new Error(`Cannot verify ownership of NFT #${position.tokenId}: ${err.message}`, { cause: err });
-    }
-    if (owner.toLowerCase() !== signerAddress.toLowerCase()) {
-      throw new Error(
-        `Wallet ${signerAddress} does not own NFT #${position.tokenId} (owner: ${owner})`,
-      );
-    }
+    // 2. Verify ownership
+    await _verifyOwnership(ethersLib, provider, positionManagerAddress, position.tokenId, signerAddress);
 
-    // 3. Read on-chain liquidity (may differ from in-memory after partial failure)
-    const pmRead = new ethersLib.Contract(positionManagerAddress, PM_ABI, provider);
-    const posData = await pmRead.positions(position.tokenId);
-    const onChainLiquidity = posData.liquidity;
-
-    // 3a. Remove existing liquidity (skip if already drained — e.g. prior failed mint)
-    let removed;
-    if (onChainLiquidity > 0n) {
-      removed = await removeLiquidity(signer, ethersLib, {
-        positionManagerAddress,
-        tokenId: position.tokenId,
-        liquidity: onChainLiquidity,
-        recipient: signerAddress,
-        token0: position.token0,
-        token1: position.token1,
-      });
-      txHashes.push(removed.txHash);
-    } else {
-      // Position already drained — use wallet balances directly (recovery mode)
-      console.log('[bot] Position has 0 liquidity on-chain — using wallet balances for mint');
-      removed = await _walletBalances(ethersLib, provider, position.token0, position.token1, signerAddress);
-    }
+    // 3. Remove liquidity (or use wallet balances if drained)
+    const removed = await _removeLiquidityStep(signer, ethersLib, provider, { positionManagerAddress, position, signerAddress });
+    if (removed.txHash) txHashes.push(removed.txHash);
 
     // 4. Compute new range — custom width if specified, else preserve existing tick spread
-    const newRange = customRangeWidthPct
-      ? rangeMath.computeNewRange(poolState.price, customRangeWidthPct / 2, position.fee, poolState.decimals0, poolState.decimals1)
-      : rangeMath.preserveRange(poolState.tick, position.tickLower, position.tickUpper, position.fee, poolState.decimals0, poolState.decimals1);
+    const newRange = _computeRange(poolState, position, customRangeWidthPct);
 
     // 5. Determine desired amounts and whether a swap is needed
     const desired = computeDesiredAmounts(
@@ -530,45 +452,35 @@ async function executeRebalance(signer, ethersLib, opts) {
     );
 
     // 6. Swap if needed — track amounts from collection, not wallet balance
+    console.log('[rebalance] Step 6: swap…');
     const swapped = await _swapAndAdjust(signer, ethersLib, {
       desired, position, poolState, swapRouterAddress, slippagePct, signerAddress,
     });
     if (swapped.txHash) txHashes.push(swapped.txHash);
-    const mintAmount0 = desired.amount0Desired + swapped.extra0;
-    const mintAmount1 = desired.amount1Desired + swapped.extra1;
+    console.log('[rebalance] Step 6 done: extra0=%s extra1=%s', String(swapped.extra0), String(swapped.extra1));
 
     // 7. Mint new position with collected + swapped amounts (NOT full wallet balance)
+    console.log('[rebalance] Step 7: mint…');
     const mintResult = await mintPosition(signer, ethersLib, {
-      positionManagerAddress,
-      token0: position.token0,
-      token1: position.token1,
-      fee: position.fee,
-      tickLower: newRange.lowerTick,
-      tickUpper: newRange.upperTick,
-      amount0Desired: mintAmount0,
-      amount1Desired: mintAmount1,
+      positionManagerAddress, token0: position.token0, token1: position.token1, fee: position.fee,
+      tickLower: newRange.lowerTick, tickUpper: newRange.upperTick,
+      amount0Desired: desired.amount0Desired + swapped.extra0,
+      amount1Desired: desired.amount1Desired + swapped.extra1,
       recipient: signerAddress,
     });
+    console.log('[rebalance] Step 7 done: newTokenId=%s txHash=%s', String(mintResult.tokenId), mintResult.txHash);
     txHashes.push(mintResult.txHash);
-    const totalGasCostWei = (removed.gasCostWei ?? 0n) + (swapped.gasCostWei ?? 0n) + (mintResult.gasCostWei ?? 0n);
 
-    return {
-      success: true,
+    return { success: true, txHashes, totalGasCostWei: _sumGas(removed, swapped, mintResult),
       oldTokenId: position.tokenId, newTokenId: mintResult.tokenId,
       oldTickLower: position.tickLower, oldTickUpper: position.tickUpper,
       newTickLower: newRange.lowerTick, newTickUpper: newRange.upperTick,
       currentPrice: poolState.price, poolAddress: poolState.poolAddress,
       decimals0: poolState.decimals0, decimals1: poolState.decimals1,
       amount0Collected: removed.amount0, amount1Collected: removed.amount1,
-      liquidity: mintResult.liquidity,
-      amount0Minted: mintResult.amount0, amount1Minted: mintResult.amount1,
-      totalGasCostWei, txHashes,
-    };
+      liquidity: mintResult.liquidity, amount0Minted: mintResult.amount0, amount1Minted: mintResult.amount1 };
   } catch (err) {
-    return {
-      success: false,
-      error: err.message || String(err),
-    };
+    return { success: false, error: err.message || String(err) };
   }
 }
 
