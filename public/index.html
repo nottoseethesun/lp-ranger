@@ -491,6 +491,10 @@
       <div class="9mm-pos-mgr-pnl-row"><span>Deposit</span><span id="kpiDeposit" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
     </div>
     <hr class="9mm-pos-mgr-kpi-divider">
+    <div class="kpi-label">Profit</div>
+    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curProfit">—</div>
+    <div class="kpi-sub">Fees &minus; Gas +/&minus; IL/G (This Position)</div>
+    <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="curILInfo" title="Show IL/G calculation details">i</span></div>
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curIL">—<span class="9mm-pos-mgr-kpi-pct" id="curILPct"></span></div>
     <div class="kpi-sub">LP Value vs Holding Tokens (This Position)</div>
@@ -532,6 +536,10 @@
     <div class="kpi-label 9mm-pos-mgr-panel-title">Lifetime</div>
     <div class="kpi-label">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet">—<span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div><div class="kpi-sub">Lifetime Fees + Price Change + Realized Gains</div>
     <div class="kpi-sub" id="kpiNetBreakdown"></div>
+    <hr class="9mm-pos-mgr-kpi-divider">
+    <div class="kpi-label">Profit</div>
+    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="ltProfit">—</div>
+    <div class="kpi-sub">Lifetime Fees &minus; Gas +/&minus; IL/G</div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="ltILInfo" title="Show IL/G calculation details">i</span></div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL">—<span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
     <div class="realized-gains-row" id="initialDepositRow">
@@ -783,6 +791,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774118436512"></script>
+<script src="dist/bundle.js?v=1774118941968"></script>
 </body>
 </html>

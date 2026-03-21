@@ -560,7 +560,7 @@ export function clearPositionDisplay() {
 
 /** Reset all KPI card elements to default empty state. */
 function _clearKpiElements() {
-  for (const id of ['kpiPnl', 'kpiNet', 'curIL', 'netIL']) { const el = g(id); if (el) { el.textContent = '\u2014'; el.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row neu'; } }
+  for (const id of ['kpiPnl', 'kpiNet', 'curIL', 'netIL', 'curProfit', 'ltProfit']) { const el = g(id); if (el) { el.textContent = '\u2014'; el.className = 'kpi-value 9mm-pos-mgr-kpi-pct-row neu'; } }
   for (const id of ['kpiPnlPct', 'kpiNetBreakdown', 'kpiPosDuration', 'pnlRealized']) _setText(id, '\u2014');
   for (const id of ['kpiPnlPctVal', 'kpiPnlApr', 'kpiNetPct', 'kpiNetApr', 'curILPct', 'netILPct', 'netILApr']) { const el = g(id); if (el) el.textContent = ''; }
 }
