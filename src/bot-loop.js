@@ -243,7 +243,9 @@ function _applyRebalanceResult(deps, result) {
       txHash: (result.txHashes && result.txHashes[result.txHashes.length - 1]) || '', blockNumber: 0 });
   }
   if (deps._botState) deps._botState.oorSince = null; const mintNow = new Date().toISOString();
-  if (deps._botState?.hodlBaseline) { deps._botState.hodlBaseline.mintDate = mintNow.slice(0, 10); deps._botState.hodlBaseline.mintTimestamp = mintNow; }
+  if (deps._botState) { const d0 = result.decimals0 ?? 18, d1 = result.decimals1 ?? 18;
+    const a0 = _toFloat(result.amount0Minted, d0), a1 = _toFloat(result.amount1Minted, d1), p0 = result.token0UsdPrice || 0, p1 = result.token1UsdPrice || 0;
+    deps._botState.hodlBaseline = { mintDate: mintNow.slice(0, 10), mintTimestamp: mintNow, entryValue: a0 * p0 + a1 * p1, hodlAmount0: a0, hodlAmount1: a1, token0UsdPrice: p0, token1UsdPrice: p1 }; }
   console.log('[bot] Post-rebalance: position.tokenId=%s (was old, now new)', String(position.tokenId));
   if (deps.updateBotState) {
     _notifyRebalance(deps, deps.throttle || deps._throttle, position, events);
@@ -393,10 +395,8 @@ async function _isGasTooHigh(provider, position, poolState) {
     const posValue = _positionValueUsd(position, poolState, prices.price0, prices.price1);
     if (posValue > 0 && gasCost > 0 && gasCost / posValue > 0.005) {
       console.warn(`[bot] Gas too high: $${gasCost.toFixed(4)} is ${(gasCost / posValue * 100).toFixed(2)}% of position ($${posValue.toFixed(2)}) — deferring`);
-      return true;
-    }
-  } catch (_) { /* proceed if gas check fails */ }
-  return false;
+      return true; }
+  } catch (_) { /* proceed if gas check fails */ } return false;
 }
 
 /** Check range, threshold, and OOR timeout.  Returns early result or null. */
@@ -555,7 +555,6 @@ async function startBotLoop(opts) {
   const signer = dryRun && !privateKey ? ethersLib.Wallet.createRandom().connect(provider) : new ethersLib.Wallet(privateKey, provider);
   const address = await signer.getAddress();
   if (dryRun && !privateKey) console.log(`[bot] DRY RUN — using random address: ${address}`);
-
   console.log(`[bot] Wallet: ${address}`);
   const position = await _detectPosition(provider, address, opts.positionId || config.POSITION_ID || undefined);
   console.log(`[bot] Managing NFT #${position.tokenId} (${position.token0}/${position.token1} fee=${position.fee})`);
@@ -570,9 +569,7 @@ async function startBotLoop(opts) {
       pnlTracker = _initPnlTracker(_positionValueUsd(position, poolState, price0, price1) || 1, botState, poolState, lp, up, price0, price1);
       if (!botState.pnlEpochs) updateBotState({ pnlEpochs: pnlTracker.serialize() });
     } else { console.warn('[bot] Could not fetch token prices — P&L tracking disabled'); }
-  } catch (err) {
-    console.warn('[bot] P&L tracker init error:', err.message);
-  }
+  } catch (err) { console.warn('[bot] P&L tracker init error:', err.message); }
 
   const residualTracker = createResidualTracker(); if (botState.residuals) residualTracker.deserialize(botState.residuals);
   initHodlBaseline(provider, ethersLib, position, botState, updateBotState).catch((err) => console.warn('[bot] HODL baseline background error:', err.message));
@@ -583,13 +580,16 @@ async function startBotLoop(opts) {
     activePosition: _activePosSummary(position) });
 
   let collectedFeesUsd = botState.collectedFeesUsd || 0, rebalanceCount = 0, firstFailureAt = null, polling = false, _stopped = false;
-  const baseIntervalMs = config.CHECK_INTERVAL_SEC * 1000, GAS_DEFER_MS = 3600_000;
-  let currentIntervalMs = baseIntervalMs, timer = null;
+  const GAS_DEFER_MS = 3600_000;
+  let currentIntervalMs = config.CHECK_INTERVAL_SEC * 1000, timer = null;
   function _scheduleNext(ms) { clearTimeout(timer); timer = setTimeout(poll, ms ?? currentIntervalMs); }
 
   const poll = async () => {
     if (polling) return;
     polling = true;
+    // Hot-reload settings from dashboard (POST /api/config → botState)
+    if (botState.checkIntervalSec) currentIntervalMs = botState.checkIntervalSec * 1000;
+    throttle.configure({ minIntervalMs: (botState.minRebalanceIntervalMin || 10) * 60_000, dailyMax: botState.maxRebalancesPerDay || 20 });
     try {
       const result = await pollCycle({
         signer, provider, position, throttle, dryRun, updateBotState,
@@ -599,7 +599,7 @@ async function startBotLoop(opts) {
         _residualTracker: residualTracker,
       });
       if (result.rebalanced) {
-        rebalanceCount++; firstFailureAt = null; currentIntervalMs = baseIntervalMs;
+        rebalanceCount++; firstFailureAt = null; currentIntervalMs = (botState.checkIntervalSec || config.CHECK_INTERVAL_SEC) * 1000;
         cache.clear().catch(() => {}); // Invalidate event cache so next scan finds the new NFT
         updateBotState({ rebalanceError: null, rebalancePaused: false, forceRebalance: false });
       } else if (result.gasDeferred) {
@@ -611,7 +611,7 @@ async function startBotLoop(opts) {
       } else if (firstFailureAt) {
         const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
         console.log(`[bot] Price returned to range after ~${oorMin}m of failures — clearing`);
-        firstFailureAt = null; currentIntervalMs = baseIntervalMs;
+        firstFailureAt = null; currentIntervalMs = (botState.checkIntervalSec || config.CHECK_INTERVAL_SEC) * 1000;
         updateBotState({ rebalanceError: null, rebalancePaused: false, oorRecoveredMin: oorMin });
         // Clear after one poll so the dashboard doesn't re-show on refresh
         setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);
@@ -628,19 +628,14 @@ async function startBotLoop(opts) {
     _scheduleNext();
   };
 
-  // First poll immediately — gives the dashboard current position data
-  await poll();
+  await poll(); // First poll — gives the dashboard current position data
   console.log(`[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`);
-
-  // Then scan history + reconstruct epochs (sequential, no concurrent rebalance)
-  clearTimeout(timer);
+  clearTimeout(timer); // Scan history + reconstruct epochs (sequential, no concurrent rebalance)
   await _scanHistory(provider, ethersLib, address, position, cache, rebalanceEvents, updateBotState, throttle);
   const _fb = await _fetchTokenPrices(position.token0, position.token1).catch(() => ({ price0: 0, price1: 0 }));
   await reconstructEpochs({ pnlTracker, rebalanceEvents, botState, updateBotState, fallbackPrices: _fb }).catch(e => console.warn('[pnl] Epoch reconstruction error:', e.message));
   updateBotState({ rebalanceScanComplete: true });
-
-  // Resume normal polling
-  await poll();
+  await poll(); // Resume normal polling
   return {
     stop() {
       if (_stopped) return Promise.resolve();

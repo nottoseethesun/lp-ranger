@@ -464,7 +464,7 @@ function _updateThrottleKpis(d) {
   if (!d.throttleState) return;
   const ts = d.throttleState;
   const today = g('kpiToday');
-  if (today) today.textContent = ts.dailyCount + ' / ' + ts.dailyMax;
+  if (today) today.textContent = ts.dailyCount + ' / ' + (d.maxRebalancesPerDay || ts.dailyMax);
   const todaySub = g('kpiTodaySub');
   if (todaySub) {
     const lifetime = d.rebalanceEvents ? d.rebalanceEvents.length : 0;

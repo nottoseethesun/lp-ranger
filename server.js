@@ -711,11 +711,12 @@ const _routes = {
   'POST /api/position/switch': _handlePositionSwitch,
   'POST /api/rebalance':       async (req, res) => {
     if (!_botHandle || !botState.running) {
-      jsonResponse(res, 409, { ok: false, error: 'Bot is not running. Import a wallet and wait for the bot to start.' });
+      jsonResponse(res, 409, { ok: false, error: 'Bot is either busy (just wait for the Syncing indicator at top to register synced) or (unlikely) not running.' });
       return;
     }
     let body = {};
     try { body = await readJsonBody(req); } catch { /* empty body OK */ }
+    console.log('[server] Manual rebalance requested (customRange=%s)', body.customRangeWidthPct || 'default');
     const patch = { forceRebalance: true };
     if (body.customRangeWidthPct > 0) patch.customRangeWidthPct = Number(body.customRangeWidthPct);
     updateBotState(patch);

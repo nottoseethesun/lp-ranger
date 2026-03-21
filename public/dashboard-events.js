@@ -21,7 +21,7 @@ import {
   returnToActivePosition,
 } from './dashboard-positions.js';
 import {
-  onParamChange, saveOorThreshold, saveOorTimeout, applyAll, checkApplyDirty,
+  onParamChange, saveOorThreshold, saveOorTimeout, applyAll, checkApplyDirty, saveMinInterval, saveMaxReb, saveSlippage, saveCheckInterval,
   openRebalanceRangeModal, closeRebalanceRangeModal, updateRebalanceRangeHint,
   confirmRebalanceRange,
 } from './dashboard-throttle.js';
@@ -259,6 +259,10 @@ export function bindAllEvents() {
 
 
   _click('applyAllBtn', applyAll);
+  _click('saveMinIntervalBtn', saveMinInterval);
+  _click('saveMaxRebBtn', saveMaxReb);
+  _click('saveSlipBtn', saveSlippage);
+  _click('saveIntervalBtn', saveCheckInterval);
 
   // ── Rebalance with Updated Range modal ──────────────────────────────────
   _click('rebalanceWithRangeBtn', openRebalanceRangeModal);

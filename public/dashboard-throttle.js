@@ -225,6 +225,27 @@ export function saveOorThreshold() {
 }
 
 
+/** Save a single config key from an input element. */
+function _saveSingleConfig(inputId, key, parse) {
+  const val = parse(g(inputId)?.value);
+  fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [key]: val }) }).catch(() => {});
+  act('\u2699', 'start', 'Setting saved', key + ' = ' + val);
+}
+
+/** Save min rebalance interval. */
+export function saveMinInterval() { _saveSingleConfig('inMinInterval', 'minRebalanceIntervalMin', v => parseInt(v, 10) || 10); }
+/** Save max rebalances per day. */
+export function saveMaxReb() {
+  const val = parseInt(g('inMaxReb')?.value, 10) || 20;
+  _saveSingleConfig('inMaxReb', 'maxRebalancesPerDay', () => val);
+  const el = g('kpiToday'); if (el) el.textContent = el.textContent.replace(/\/\s*\d+/, '/ ' + val);
+}
+/** Save slippage tolerance. */
+export function saveSlippage() { _saveSingleConfig('inSlip', 'slippagePct', v => parseFloat(v) || 0.5); }
+/** Save check interval. */
+export function saveCheckInterval() { _saveSingleConfig('inInterval', 'checkIntervalSec', v => parseInt(v, 10) || 60); }
+
 // ── Apply All dirty tracking ─────────────────────────────────────────────────
 
 /** IDs of all config inputs in the Bot Configuration panel. */

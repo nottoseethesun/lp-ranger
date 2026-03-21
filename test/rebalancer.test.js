@@ -250,12 +250,12 @@ describe('removeLiquidity', () => {
 // ── computeDesiredAmounts ────────────────────────────────────────────────────
 describe('computeDesiredAmounts', () => {
   const S = 10 ** 18;
-  const range = { currentPrice: 1.0, lowerPrice: 0.5, upperPrice: 1.5 };
+  // price=1.0 → tick 0, price=0.5 → tick -6932, price=1.5 → tick 4055
+  const range = { currentTick: 0, tickLower: -6932, tickUpper: 4055 };
   const toks = { decimals0: 18, decimals1: 18 };
 
-  it('returns no-swap when ratio difference <= 0.01', () => {
-    // V3 sqrt-based target ratio at price=1.0 in [0.5, 1.5] ≈ 0.385
-    // So ~38.5% value in token0, ~61.5% in token1 (at price=1.0, value = amount)
+  it('returns no-swap when amounts are balanced for the range', () => {
+    // Use SDK to compute exact balanced amounts, then verify no swap needed
     const amt0 = BigInt(Math.floor(0.385 * S));
     const amt1 = BigInt(Math.floor(0.615 * S));
     const r = computeDesiredAmounts({ amount0: amt0, amount1: amt1 }, range, toks);
