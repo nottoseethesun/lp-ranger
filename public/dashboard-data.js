@@ -597,7 +597,7 @@ function updateDashboardFromStatus(data) {
 
   if (data.activePosition?.tokenId) console.log('[dash] poll: server activePosition=#%s', data.activePosition.tokenId);
   _syncConfigFromServer(data); setBotActiveTokenId(data.activePosition?.tokenId);
-  _syncRebalanceCache(data);  _updateSyncBadge(data.running ? data.rebalanceScanComplete === true : true, data.rebalanceScanProgress);
+  _syncRebalanceCache(data);  _updateSyncBadge(data.rebalanceScanComplete === true, data.rebalanceScanProgress);
 
   if (!_poolFirstDate && data.poolFirstMintDate) _poolFirstDate = data.poolFirstMintDate;
   _populateHistoryOnce(data);

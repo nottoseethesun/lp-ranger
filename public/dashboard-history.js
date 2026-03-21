@@ -7,7 +7,7 @@
  * Depends on: dashboard-helpers.js (g, fmtDateTime).
  */
 
-import { g, fmtDateTime } from './dashboard-helpers.js';
+import { g, tzCode } from './dashboard-helpers.js';
 
 /**
  * Format a number as a USD table cell value.
@@ -40,7 +40,7 @@ export function renderDailyPnl(dailyPnl) {
   const tbody = g('dailyPnlBody'), pageLabel = g('pnlPageLabel');
   if (!tbody) return;
   if (!dailyPnl || dailyPnl.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="9mm-pos-mgr-table-empty">No P&L data yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="9mm-pos-mgr-table-empty">No P&L data yet</td></tr>';
     _setPnlPagBtns(0, 1); return;
   }
   _lastDailyPnl = dailyPnl;
@@ -53,13 +53,13 @@ export function renderDailyPnl(dailyPnl) {
   const cums = new Array(nets.length); let cum = 0;
   for (let i = nets.length - 1; i >= 0; i--) { cum += nets[i]; cums[i] = cum; }
   tbody.innerHTML = slice.map((d, si) => {
-    const i = start + si, pricePnl = d.priceChangePnl || 0;
-    const netCls = Math.round(nets[i] * 100) === 0 ? '' : nets[i] > 0 ? 'pos' : 'neg';
-    const cumCls = Math.round(cums[i] * 100) === 0 ? '' : cums[i] > 0 ? 'pos' : 'neg';
-    const pCls   = Math.round(pricePnl * 100) === 0 ? '' : pricePnl > 0 ? 'pos' : 'neg';
-    return '<tr><td>' + (d.date || '—') + '</td><td>' + _tblUsd(d.feePnl || d.fees || 0) + '</td>' +
-      '<td>' + _tblUsd(d.gasCost || d.gas || 0) + '</td><td class="' + pCls + '">' + _tblUsd(pricePnl) + '</td>' +
-      '<td class="' + netCls + '">' + _tblUsd(nets[i]) + '</td><td class="' + cumCls + '">' + _tblUsd(cums[i]) + '</td></tr>';
+    const i = start + si, fees = d.feePnl || d.fees || 0, gas = d.gasCost || d.gas || 0, ilg = d.priceChangePnl || 0;
+    const profit = Math.round((fees - gas + ilg) * 100) / 100;
+    const cc = (v) => Math.round(v * 100) === 0 ? '' : v > 0 ? 'pos' : 'neg';
+    return '<tr><td>' + (d.date || '—') + '</td><td>' + _tblUsd(fees) + '</td>' +
+      '<td>' + _tblUsd(gas) + '</td><td class="' + cc(ilg) + '">' + _tblUsd(ilg) + '</td>' +
+      '<td class="' + cc(profit) + '">' + _tblUsd(profit) + '</td>' +
+      '<td class="' + cc(nets[i]) + '">' + _tblUsd(nets[i]) + '</td><td class="' + cc(cums[i]) + '">' + _tblUsd(cums[i]) + '</td></tr>';
   }).join('');
   if (pageLabel) pageLabel.textContent = 'Page ' + (page + 1) + ' of ' + totalPages;
   _setPnlPagBtns(page, totalPages);
@@ -102,12 +102,14 @@ export function renderRebalanceEvents(events) {
 
   const rows = pageEvents.map(e => {
     const txShort = e.txHash ? e.txHash.slice(0, 10) + '\u2026' : '—';
-    const time = e.dateStr || fmtDateTime(e.timestamp ? e.timestamp * 1000 : e.loggedAt);
+    const ts = e.dateStr ? new Date(e.dateStr) : e.timestamp ? new Date(e.timestamp * 1000) : null;
+    const utc = ts ? ts.toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : '—';
+    const local = ts ? ts.toLocaleDateString() + ' ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + tzCode() : '';
     const oldRange = e.oldRange || (e.oldTokenId ? 'ID ' + e.oldTokenId : '—');
     const newRange = e.newRange || (e.newTokenId ? 'ID ' + e.newTokenId : '—');
     return '<tr>' +
       '<td>' + (e.index || '') + '</td>' +
-      '<td data-privacy="blur">' + time + '</td>' +
+      '<td data-privacy="blur">' + utc + (local ? '<br><span class="9mm-pos-mgr-text-muted-sm">' + local + '</span>' : '') + '</td>' +
       '<td data-privacy="blur">' + oldRange + '</td>' +
       '<td data-privacy="blur">' + newRange + '</td>' +
       '<td data-privacy="blur" title="' + (e.txHash || '') + '">' + txShort +

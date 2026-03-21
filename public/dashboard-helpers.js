@@ -65,7 +65,7 @@ export function fmtCountdown(ms) {
  * Falls back to the IANA timezone name if no abbreviation is available.
  * @returns {string}
  */
-function tzCode() {
+export function tzCode() {
   try {
     const parts = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(new Date());
     const tz = parts.find(p => p.type === 'timeZoneName');
