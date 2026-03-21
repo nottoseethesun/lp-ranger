@@ -510,26 +510,24 @@
 /* ── IL/G debug popover ────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-il-info-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--muted);
+  line-height: 16px;
+  text-align: center;
   font-size: 10px;
-  font-weight: 700;
-  font-style: italic;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
   color: var(--muted);
   text-transform: lowercase;
   cursor: pointer;
   margin-left: 6px;
   vertical-align: middle;
-  line-height: 1;
+  padding-left: 1px;
+  padding-bottom: 1px;
 }
 
 .\39 mm-pos-mgr-il-info-btn:hover {
-  border-color: var(--accent3);
   color: var(--accent3);
 }
 

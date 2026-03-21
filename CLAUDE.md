@@ -10,7 +10,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 - **HTTP server:** Node built-in `http` module (`server.js`) — dashboard + bot auto-start
 - **Bot loop:** `src/bot-loop.js` — shared rebalance logic (used by both server.js and bot.js)
 - **Bot (headless):** `bot.js` — standalone bot without dashboard UI
-- **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`) + 9 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
+- **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`) + 12 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
 - **Client-side routing:** Navigo (pushState) — bookmarkable URLs like `/:wallet/:contract/:tokenId`
 - **Build:** esbuild bundles dashboard JS + ethers.js + navigo from npm; fonts self-hosted via `@fontsource` (no CDN dependencies)
 - **On-chain:** ethers.js v6.7.1
@@ -50,8 +50,11 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   ├── dashboard-throttle.js     # Trigger config, throttle state/UI, Apply All
 │   ├── dashboard-optimizer.js    # LP Optimization Engine interface (probe, poll, render, apply, history)
 │   ├── dashboard-data.js         # Polls /api/status, updates all KPIs, position stats, bot status
-│   ├── dashboard-history.js      # Per-day P&L table (31 days), Rebalance Events table (5-year lookback)
+│   ├── dashboard-history.js      # Per-day P&L table (8/page), Rebalance Events table (8/page, 5-year lookback)
 │   ├── dashboard-router.js       # Client-side URL routing (Navigo pushState): /pulsechain/:wallet/:contract/:tokenId
+│   ├── dashboard-events.js       # DOM event wiring: clicks, modals, privacy toggle, pagination, copy icons
+│   ├── dashboard-il-debug.js     # IL/G debug popover: shows calculation inputs for current and lifetime IL
+│   ├── dashboard-closed-pos.js   # Closed-position history view: fetches and displays P&L for drained NFTs
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: pollCycle, resolvePrivateKey, startBotLoop
@@ -76,7 +79,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   ├── optimizer-applicator.js   # Applies optimizer recommendations to live BotParams
 │   ├── optimizer-scheduler.js    # Toggle + 10-min polling loop + queryNow()
 │   ├── residual-tracker.js       # Per-pool wallet residual tracking (tokens left after rebalance)
-│   └── wallet-manager.js         # Wallet import/clear + encrypted disk persistence
+│   ├── wallet-manager.js         # Wallet import/clear + encrypted disk persistence
+│   └── position-history.js       # Historical data lookup for closed NFT positions (rebalance log, events, prices)
 └── test/
     ├── bot-loop.test.js
     ├── hodl-baseline.test.js
@@ -108,13 +112,16 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
     ├── residual-tracker.test.js      # Per-pool residual tracking, capping, serialization
     ├── gitignore.test.js             # Ensures .gitignore covers sensitive files (.wallet.json, .env, etc.)
     ├── wallet-manager.test.js        # Wallet import/clear + encrypted disk persistence
+    ├── token-symbols.test.js         # Guards against contract addresses leaking into display names
+    ├── closed-position-history.test.js # Closed position data fetch + rendering
+    ├── epoch-reconstructor.test.js   # Historical P&L epoch reconstruction from chain events
     └── eslint-rules/
         └── no-separate-contract-calls.test.js  # RuleTester cases for the custom multicall rule
 ├── .stylelintrc.json                 # stylelint config (extends stylelint-config-standard)
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
 
-**668 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**696 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
 
 ---
 
@@ -181,7 +188,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 ### Architecture Decisions
 
-**V3-only:** The rebalancer only supports V3 NFT positions. `executeRebalance()` guards on `position.fee ∈ [500, 3000, 10000]` and rejects V2 positions with a clear error.
+**V3-only:** The rebalancer only supports V3 NFT positions. `executeRebalance()` guards on `position.fee ∈ [500, 2500, 3000, 10000]` and rejects V2 positions with a clear error.
 
 **Unified entry point:** `npm start` runs `server.js` which starts the dashboard and auto-starts the bot loop when a wallet key is available (via `PRIVATE_KEY`, `KEY_FILE`, or `WALLET_PASSWORD`). If no key is available, runs in dashboard-only mode; importing a wallet via the dashboard UI auto-starts the bot. `npm run bot` runs headless (no dashboard). `npm run stop` sends `POST /api/shutdown` for graceful shutdown of both.
 
@@ -195,11 +202,13 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **USD pricing:** DexScreener (primary, no key) → DexTools (fallback, requires `DEXTOOLS_API_KEY`). 60s in-memory cache. See `src/price-fetcher.js`. Historical prices fetched from GeckoTerminal OHLCV API (free, no key, 30 calls/min). USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
 
-**Single position per pool:** The tool manages one active LP position per wallet per liquidity pool. When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned — the bot does not call `burn()`. Rebalance history is detected via consecutive mint events (Transfer from 0x0 to wallet), not burn+mint pairs. **Runtime position switching:** `POST /api/position/switch` stops the bot, clears position-specific state, and restarts on the new NFT. The dashboard calls this when the user selects a position in the Position Browser. `activePositionId` is persisted to `.bot-config.json` so the selection survives restarts. Closed positions (liquidity=0) are displayed but the bot skips rebalance checks.
+**Single position per pool:** The tool manages one active LP position per wallet per liquidity pool. When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned — the bot does not call `burn()`. Rebalance history is detected via consecutive mint events (Transfer from 0x0 to wallet), not burn+mint pairs. **Runtime position switching:** `POST /api/position/switch` stops the bot, clears position-specific state, and restarts on the new NFT. The dashboard calls this **only** from explicit user actions in the Position Browser — never from URL routing or page loads (`activateByTokenId` is display-only). The server guards against no-op switches (same tokenId) to avoid killing the bot mid-rebalance. `activePositionId` is persisted to `.bot-config.json` so the selection survives restarts. Closed positions (liquidity=0) are displayed but the bot skips rebalance checks.
+
+**Post-rebalance dashboard sync:** After a successful rebalance mints a new NFT, the bot sends the new `activePositionId` via `updateBotState`. The dashboard's `setBotActiveTokenId()` detects the new NFT is not in the position store (or has corrupt metadata like addresses-as-symbols) and triggers an automatic rescan via `scanPositions()`. The rescan callback selects the new entry, applies its data to the UI, and updates the URL — all in one atomic `_selectAndSync()` call. The HODL baseline `mintDate` and `positionMintTimestamp` are updated to "now" after each rebalance so the Active Duration resets correctly.
 
 **P&L breakdown:** Two components: (a) price-change P&L (position value change from token price movements, including IL), and (b) fee P&L (trading fees earned while in range). Per-day aggregation (up to 31 days) with running cumulative. Historical USD token prices stored per-epoch for accurate retrospective P&L.
 
-**Disk cache:** `src/cache-store.js` provides JSON file-based caching with TTL for expensive blockchain queries (event scanner 5-year lookback, P&L history). App remains stateless — cache is pure performance optimisation, rebuilt from blockchain if deleted. Browser caches rebalance events in localStorage (`9mm_rebalance_events`) for instant display on page load.
+**Disk cache:** `src/cache-store.js` provides JSON file-based caching with TTL for expensive blockchain queries (event scanner 5-year lookback, P&L history). App remains stateless — cache is pure performance optimisation, rebuilt from blockchain if deleted. **Event cache is invalidated after every successful rebalance** (`cache.clear()` in bot-loop.js) so the next scanner run finds the new NFT mint event. Browser caches rebalance events in localStorage (`9mm_rebalance_events`) for instant display on page load.
 
 **Event scanner rate limiting:** 250ms delay between RPC chunk queries (`_CHUNK_DELAY_MS`) to avoid overwhelming the endpoint. With 10,000-block chunks, a 5-year scan (~15.8M blocks) takes ~1,580 chunks. Pool-age optimisation reduces this for younger pools.
 
@@ -207,19 +216,19 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **Pool-age optimisation:** Event scanner checks the V3 Factory's `PoolCreated` event to find when the pool was deployed, then skips all blocks before that. Can save thousands of RPC queries for pools younger than 5 years.
 
-**CSS architecture:** All styles externalized — zero inline `<style>` blocks, near-zero inline `style="..."` (only dynamic `width` values set by JS remain). Three CSS files: `fonts.css` (self-hosted `@font-face` declarations), `style.css` (core layout/components), and `9mm-pos-mgr.css` (semantic utility classes, all prefixed `9mm-pos-mgr-`). All pass `stylelint-config-standard`. Custom CSS classes use the `9mm-pos-mgr-` namespace to avoid collisions.
+**CSS architecture:** All styles externalized — zero inline `<style>` blocks, near-zero inline `style="..."` (only dynamic `width` values set by JS remain). Three CSS files: `fonts.css` (self-hosted `@font-face` declarations), `style.css` (core layout/components), and `9mm-pos-mgr.css` (semantic utility classes, all prefixed `9mm-pos-mgr-`). All pass `stylelint-config-standard`. Custom CSS classes use the `9mm-pos-mgr-` namespace to avoid collisions. **Global UI scale:** `body { zoom: 1.5 }` in `style.css` scales all elements uniformly — fonts, margins, icons, modals, popovers.
 
 **Date/time display:** All user-visible timestamps show **both UTC and local time** with timezone code, e.g. `2026-03-15 14:30 UTC (3/15/2026 10:30 AM CDT)`. Centralized via `fmtDateTime()` in `dashboard-helpers.js`. Relative times ("5s ago") are timezone-neutral with full timestamp in tooltip.
 
 **Wallet persistence:** Encrypted wallet state (AES-256-GCM, PBKDF2-SHA512) is persisted to `.wallet.json` on disk, surviving server restarts. Plaintext private keys are never written to disk. File is gitignored. `DELETE /api/wallet` removes the file. Position store persists to localStorage in the browser.
 
-**Dashboard modular JS:** 9 ES module source files in `public/`, bundled by esbuild into `public/dist/bundle.js` (IIFE format). Entry point: `dashboard-init.js`. `ethers` is bundled from npm — no CDN dependencies. Fonts self-hosted via `@fontsource` packages.
+**Dashboard modular JS:** 12 ES module source files in `public/`, bundled by esbuild into `public/dist/bundle.js` (IIFE format). Entry point: `dashboard-init.js`. `ethers` is bundled from npm — no CDN dependencies. Fonts self-hosted via `@fontsource` packages.
 
 **Shared state:** `botConfig` (in `dashboard-helpers.js`) holds range width, current price, and tick boundaries. Updated by bot config panel, position selection, and optimizer.
 
 **Server → Dashboard data flow:** `startBotLoop()` (in `src/bot-loop.js`) receives `updateBotState` as a callback. Dashboard polls `GET /api/status` every 3 seconds via `dashboard-data.js`.
 
-**History tables:** Per-day P&L (31 days) and Rebalance Events (5-year lookback with copy-to-clipboard TX hash icons) rendered by `dashboard-history.js` from `/api/status` data. Historical rebalance events also populate the Activity Log on first load.
+**History tables:** Per-day P&L (8 per page, up to 31 days) and Rebalance Events (8 per page, 5-year lookback with copy-to-clipboard TX hash icons) rendered by `dashboard-history.js` from `/api/status` data. Both tables have Prev/Next pagination pinned to the card bottom. Historical rebalance events also populate the Activity Log once the event scanner completes (gated by `rebalanceScanComplete` to avoid stale localStorage cache).
 
 **Lifetime P&L:** User-entered "Initial deposit" (USD) is persisted to both localStorage and server `.bot-config.json`. Lifetime P&L = currentValue + fees + realized − initialDeposit. If no user-entered value, falls back to bot-detected entry value. "Realized gains" is also user-entered for coins sold out of the LP.
 
@@ -235,13 +244,17 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **FOUC prevention:** Range status banner is hidden on page load and only shown after real price data arrives from the bot. Prevents false "OUT OF RANGE" flash on refresh.
 
-**Help popover:** "? Help" button in the header explains the single-position-per-pool model, fund tracking/recycling, range width, and volatility doubling.
+**Closed position viewing:** Users can browse closed positions (liquidity=0) in the Position Browser. `dashboard-closed-pos.js` manages a "history viewing mode" that fetches historical P&L data via `GET /api/position/:tokenId/history` (backed by `src/position-history.js`) and displays it without disrupting the bot's active position. An amber banner shows "Viewing closed position NFT #..." with a "Return to Active Position" button. KPI updates are paused in closed-view mode (`isViewingClosedPos()` gate in poll handler).
+
+**Help popover:** "? Help" button in the header explains the single-position-per-pool model, fund tracking/recycling, range width, volatility doubling, gas cost protection, closed positions, and troubleshooting (rebalance timing).
 
 **Sync indicator:** "Done Syncing" / "Syncing..." badge at the bottom of the Cumulative P&L card tracks the 5-year event scanner progress.
 
-**Client-side URL routing:** Navigo (~5KB) provides pushState-based routing. URLs follow the pattern `/pulsechain/:walletAddress/:nftContractAddress/:tokenId` for bookmarkable/shareable deep links. The first segment is the blockchain name (`pulsechain`). Server has a SPA catch-all: extensionless GET paths serve `index.html`; paths with file extensions that don't match a real file return 404. Deep-link resolution: if the wallet matches the loaded wallet, the router looks up the tokenId in posStore and activates it; if not found, triggers a scan and retries (up to 3 attempts at 2s intervals). Pending route targets are stored when the wallet isn't loaded yet and resolved after wallet import/restore. URL updates use `router.navigate()` with `callHandler: false` to avoid re-triggering route handlers.
+**Client-side URL routing:** Navigo (~5KB) provides pushState-based routing. URLs follow the pattern `/pulsechain/:walletAddress/:nftContractAddress/:tokenId` for bookmarkable/shareable deep links. The first segment is the blockchain name (`pulsechain`). Server has a SPA catch-all: extensionless GET paths serve `index.html`; paths with file extensions that don't match a real file return 404. Deep-link resolution: if the wallet matches the loaded wallet, the router looks up the tokenId in posStore and activates it via `activateByTokenId()` (display-only — does NOT trigger server position switch). If not found, triggers a scan and retries (up to 3 attempts at 2s intervals). Pending route targets are stored when the wallet isn't loaded yet and resolved after wallet import/restore. URL updates use `router.navigate()` with `callHandler: false` to avoid re-triggering route handlers. `syncRouteToState()` updates the URL when the bot's active position changes (e.g. after rebalance), allowing the update when the URL's tokenId differs from the active position's tokenId.
 
-**Dead code detection:** `knip` is installed as a devDependency. The 9 dashboard files show as "unused" because knip can't trace HTML `<script>` tags — these are false positives.
+**Dead code detection:** `knip` is installed as a devDependency. The 12 dashboard files show as "unused" because knip can't trace HTML `<script>` tags — these are false positives.
+
+**Rebalance diagnostic logs:** Step-by-step console logs trace the entire rebalance pipeline: Steps 1 (getPoolState), 2 (ownerOf), 3 (readLiquidity), 3a (removeLiquidity), 6 (swap), 7a (allowance), 7b (mint TX submit), 7c (mint TX confirm). Position detection, bot state changes, and `activePositionId` transitions are also logged. These logs are permanent — not removed after debugging.
 
 ---
 
