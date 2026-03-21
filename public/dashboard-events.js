@@ -264,6 +264,12 @@ export function bindAllEvents() {
   _click('saveSlipBtn', saveSlippage);
   _click('saveIntervalBtn', saveCheckInterval);
 
+  // ── Throttle info modal ─────────────────────────────────────────────────
+  _click('throttleInfoBtn', () => { const m = g('throttleInfoModal'); if (m) m.classList.remove('hidden'); });
+  const _closeThrottleInfo = () => { const m = g('throttleInfoModal'); if (m) m.classList.add('hidden'); };
+  _click('throttleInfoClose', _closeThrottleInfo);
+  _click('throttleInfoOk', _closeThrottleInfo);
+
   // ── Rebalance with Updated Range modal ──────────────────────────────────
   _click('rebalanceWithRangeBtn', openRebalanceRangeModal);
   _click('rebalanceRangeClose', closeRebalanceRangeModal);
@@ -309,8 +315,8 @@ export function bindAllEvents() {
   document.body.addEventListener('click', e => {
     const btn = e.target.closest('[data-dismiss-modal]');
     if (btn) {
-      const overlay = btn.closest('[class~="9mm-pos-mgr-modal-overlay"]');
-      if (overlay) overlay.remove();
+      const overlay = btn.closest('.9mm-pos-mgr-modal-overlay, .modal-overlay');
+      if (overlay) { if (overlay.id) overlay.classList.add('hidden'); else overlay.remove(); }
     }
   });
 
@@ -323,6 +329,7 @@ export function bindAllEvents() {
       { id: 'revealModal',         close: closeRevealModal },
       { id: 'clearWalletModal',    close: closeClearWalletModal },
       { id: 'rebalanceRangeModal', close: closeRebalanceRangeModal },
+      { id: 'throttleInfoModal',   close: () => { const m = g('throttleInfoModal'); if (m) m.classList.add('hidden'); } },
     ];
     for (const m of modals) {
       const el = g(m.id);

@@ -638,7 +638,25 @@
 
     <!-- Timing & throttle -->
     <div class="cfg-block">
-      <div class="cfg-title">Rebalance Timing &amp; Throttle <span id="throttleBadge" class="live-badge">OK</span></div>
+      <div class="cfg-title">Rebalance Timing &amp; Throttle <span id="throttleBadge" class="live-badge">OK</span> <span class="help-tip" id="throttleInfoBtn">i</span></div>
+
+<!-- Throttle info modal -->
+<div class="modal-overlay hidden" id="throttleInfoModal">
+  <div class="modal 9mm-pos-mgr-modal-md">
+    <div class="modal-logo">
+      <div class="modal-logo-icon">&#x23F1;</div>
+      <div><h2>Rebalance Timing &amp; Throttle</h2></div>
+      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn" id="throttleInfoClose">&#x2715; Close</button>
+    </div>
+    <div class="9mm-pos-mgr-confirm-body">
+      <p class="9mm-pos-mgr-help-text"><strong>OK</strong> means the bot is free to rebalance whenever the position goes out of range. No cooldown or rate limit is active.</p>
+      <p class="9mm-pos-mgr-help-text"><strong>THROTTLED</strong> appears during the minimum-interval cooldown. After each rebalance, the bot waits at least the configured &ldquo;Min Time Between Rebalances&rdquo; before allowing the next one. This prevents unnecessary rapid-fire rebalancing.</p>
+      <p class="9mm-pos-mgr-help-text"><strong>DOUBLING</strong> activates when 3 or more rebalances occur within 4&times; the minimum interval. DOUBLING means that the rebalance must cool down just like under regular THROTTLED. It also means that the cool-down period is longer than under THROTTLED. The cooldown doubles after each rebalance: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This protects against excessive gas spending and excessive loss to slippage and swap fees during high volatility. Doubling mode clears automatically after 4&times; the Min Time Between Rebalances with no rebalance, or at the daily midnight UTC reset. For example, if the cooldown window is now 20 minutes, the Min Time Between Rebalances is 10 minutes as set here in this UI, and there has been no rebalance for 40 minutes, then Doubling mode clears.</p>
+      <p class="9mm-pos-mgr-help-text"><strong>CAPPED</strong> means the daily rebalance limit (&ldquo;Max Rebalances / Day&rdquo;) has been reached. No more rebalances will occur until the counter resets at midnight UTC, or the &ldquo;Max Rebalances / Day&rdquo; setting has been manually increased.</p>
+    </div>
+    <button class="modal-btn secondary" id="throttleInfoOk">OK</button>
+  </div>
+</div>
 
       <div class="prow">
         <span class="plbl">Min Time Between Rebalances</span>
@@ -795,6 +813,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774124977897"></script>
+<script src="dist/bundle.js?v=1774126532509"></script>
 </body>
 </html>
