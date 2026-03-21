@@ -366,7 +366,7 @@
     <div class="modal-logo">
       <div class="modal-logo-icon">↔</div>
       <div><h2>Rebalance with Updated Range</h2></div>
-      <button class="9mm-pos-mgr-modal-close-btn" id="rebalanceRangeClose">×</button>
+      <button class="modal-btn secondary 9mm-pos-mgr-modal-close-btn" id="rebalanceRangeClose">✕ Close</button>
     </div>
     <div class="9mm-pos-mgr-confirm-body">
       <p>Create a new LP position centered on the current price with a custom range width.</p>
@@ -379,6 +379,7 @@
       </div>
       <p class="9mm-pos-mgr-text-muted" id="rebalanceRangeHint">5% on either side of the current price</p>
     </div>
+    <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Note: Rebalancing can take some time as it involves on-chain transactions. Use your wallet software and/or check this app&rsquo;s logs for details.</p>
     <div class="9mm-pos-mgr-btn-row">
       <button class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="rebalanceRangeCancelBtn">Cancel</button>
       <button class="modal-btn primary 9mm-pos-mgr-flex-fill" id="rebalanceRangeConfirmBtn">Rebalance</button>
@@ -410,13 +411,19 @@
     <div class="9mm-pos-mgr-settings-wrap">
       <button class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="18" height="18" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
       <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
+        <label class="9mm-pos-mgr-settings-item 9mm-pos-mgr-privacy-setting" title="Toggle privacy mode — blur addresses and NFT IDs">
+          <input type="checkbox" id="privacySwitch">
+          <span class="9mm-pos-mgr-privacy-icon" id="privacyIcon">&#x1F441;</span>
+          <span>Privacy Mode</span>
+          <span class="9mm-pos-mgr-toggle-track"></span>
+        </label>
         <button class="9mm-pos-mgr-settings-item" id="clearStorageBtn">Clear Local Storage &amp; Cookies</button>
       </div>
     </div>
     <div class="9mm-pos-mgr-help-popover" id="helpPopover">
       <div class="9mm-pos-mgr-help-title">How It Works</div>
       <ul class="9mm-pos-mgr-help-list">
-        <li>This dashboard manages <strong>one active liquidity position</strong> per wallet per liquidity pool. To get started: if you don&rsquo;t currently have a liquidity position on your current wallet address, create one or send the LP NFT to your wallet, and then click the &ldquo;Scan&rdquo; button at top middle. If you already have one, just select it from the LP Position Browser, directly to the left of the &ldquo;Scan&rdquo; button.</li>
+        <li>This dashboard manages <strong>one active liquidity position</strong> per wallet per liquidity pool. To get started: if you don&rsquo;t currently have a liquidity position on your current wallet address, create one (use a 50/50 split between the token pair, unless you are expert) or send the LP NFT to your wallet, and then click the &ldquo;Scan&rdquo; button at top middle. If you already have one, just select it from the LP Position Browser, directly to the left of the &ldquo;Scan&rdquo; button.</li>
         <li>When the price moves out of the configured range, the bot automatically rebalances by draining the old position and minting a new one centered on the current price.</li>
         <li>All data on this page is scoped to a <strong>single wallet</strong> and a <strong>single liquidity pool</strong>.</li>
         <li>Only V3 concentrated liquidity (NFT) positions are supported.</li>
@@ -433,25 +440,29 @@
       <p class="9mm-pos-mgr-help-text">Before each rebalance, the bot estimates gas cost in USD. If gas would exceed <strong>0.5%</strong> of the LP position value, the rebalance is deferred and the bot retries once per hour instead of once per minute. Normal polling resumes automatically once gas drops or a rebalance succeeds. The bot always starts with the normal polling interval.</p>
       <div class="9mm-pos-mgr-help-title">Closed Positions</div>
       <p class="9mm-pos-mgr-help-text">When you select a closed position (zero liquidity), the bot will display its data but will <strong>not</strong> attempt to rebalance it. If you re-open a previously closed position by adding liquidity back to the same NFT on 9mm Pro, the bot treats it as brand new&mdash;duration, fees, and P&amp;L all start from the original mint date. <strong>Recommendation:</strong> instead of re-opening a closed position, mint a fresh LP position on 9mm Pro. This gives you a clean start with accurate tracking and avoids any ambiguity in your P&amp;L history.</p>
+      <div class="9mm-pos-mgr-help-title">Troubleshooting</div>
+      <ul class="9mm-pos-mgr-help-list">
+        <li><strong>Rebalance Not Completing:</strong> If the blockchain is busy, a rebalance could take longer than expected. The transaction can be sped up or cancelled with the user&rsquo;s wallet. The progress of a rebalance can be seen on the Activity Log of this app, where the creation of the new NFT will be seen logged as a distinct log item. Also, it can be monitored by viewing the server console log.</li>
+      </ul>
       <button class="9mm-pos-mgr-help-close">Close</button>
     </div>
   </div>
 </header>
 
 <!-- Wallet strip -->
-<div class="wallet-strip">
-  <span>🔑</span>
-  <span class="ws-addr" id="wsAddr">No wallet loaded</span>
-  <span class="ws-badge none" id="wsBadge">NOT SET</span>
-  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase">👁 View Key</button>
-  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
-  <span class="pt-badge nft" id="ptBadge">NFT POSITION</span>
-  <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">Position NFT #</span><strong id="wsToken">—</strong>
-  <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
-  <label class="9mm-pos-mgr-privacy-toggle" title="Toggle privacy mode — blur addresses and NFT IDs">
-    <input type="checkbox" id="privacySwitch">
-    <span class="9mm-pos-mgr-privacy-icon" id="privacyIcon">&#x1F441;</span>
-  </label>
+<div class="wallet-strip-row">
+  <div class="wallet-strip">
+    <span>🔑</span>
+    <span class="ws-addr" id="wsAddr">No wallet loaded</span>
+    <span class="ws-badge none" id="wsBadge">NOT SET</span>
+    <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase">👁 View Key</button>
+    <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
+  </div>
+  <div class="wallet-strip">
+    <span class="pt-badge nft" id="ptBadge">NFT POSITION</span>
+    <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">Position NFT #</span><strong id="wsToken">—</strong>
+    <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
+  </div>
 </div>
 
 <!-- Closed-position history banner (hidden by default) -->
@@ -742,10 +753,15 @@
         </tbody>
       </table>
     </div>
+    <div class="pos-pagination">
+      <button class="pos-pag-btn" id="pnlPrevBtn" disabled>&larr; Prev</button>
+      <span id="pnlPageLabel" class="9mm-pos-mgr-text-muted-sm">Page 1 of 1</span>
+      <button class="pos-pag-btn" id="pnlNextBtn" disabled>Next &rarr;</button>
+    </div>
   </div>
   <div class="card">
     <div class="card-title">Rebalance Events
-      <span class="help-tip" title="On-chain lookback limited to 5 years. Events are paired from NonfungiblePositionManager Transfer logs.">&#9432;</span>
+      <span class="help-tip" title="On-chain lookback limited to 5 years. Events are paired from NonfungiblePositionManager Transfer logs.">i</span>
     </div>
     <div class="9mm-pos-mgr-table-scroll">
       <table class="hist-table">
@@ -755,7 +771,7 @@
         </tbody>
       </table>
     </div>
-    <div class="pos-pagination 9mm-pos-mgr-mt-md">
+    <div class="pos-pagination">
       <button class="pos-pag-btn" id="rebPrevBtn" disabled>&larr; Prev</button>
       <span id="rebPageLabel" class="9mm-pos-mgr-text-muted-sm">Page 1 of 1</span>
       <button class="pos-pag-btn" id="rebNextBtn" disabled>Next &rarr;</button>
@@ -766,6 +782,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774036965288"></script>
+<script src="dist/bundle.js?v=1774062093255"></script>
 </body>
 </html>

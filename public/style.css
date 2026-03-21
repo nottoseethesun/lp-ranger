@@ -25,6 +25,7 @@ body{
   font-family:'Space Mono',monospace;
   min-height:100vh;
   overflow-x:hidden;
+  zoom:1.5;
 }
 
 body::before{
@@ -534,7 +535,8 @@ body::before{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  margin-top:10px;
+  margin-top:auto;
+  padding-top:10px;
   font-size:13px;
   color:var(--muted);
 }
@@ -1047,13 +1049,26 @@ header{
 .hist-table td.pos{color:var(--accent3);}.hist-table td.neg{color:var(--danger);}
 
 .help-tip{
-  cursor:help;
-  font-size:13px;
+  display:inline-block;
+  width:16px;
+  height:16px;
+  line-height:16px;
+  text-align:center;
+  font-size:10px;
+  border-radius:50%;
+  background:rgb(255 255 255 / 10%);
   color:var(--muted);
+  text-transform:none;
+  cursor:help;
   margin-left:6px;
-  position:relative;
+  vertical-align:middle;
+  padding-left:1px;
+  padding-bottom:1px;
 }
-.help-tip:hover{color:var(--accent);}
+
+.help-tip:hover{
+  color:var(--accent);
+}
 
 .hwbtn{
   padding:7px 14px;
@@ -1086,6 +1101,12 @@ header{
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.4;}}
 
 /* ── WALLET STRIP ── */
+.wallet-strip-row{
+  display:flex;
+  gap:8px;
+  margin-bottom:14px;
+}
+
 .wallet-strip{
   display:flex;
   align-items:center;
@@ -1095,9 +1116,9 @@ header{
   border-radius:8px;
   font-size:11px;
   color:var(--muted);
-  margin-bottom:14px;
   flex-wrap:wrap;
   gap:8px;
+  flex:1;
 }
 
 .ws-addr{
@@ -1219,6 +1240,11 @@ header{
   border:1px solid var(--border);
   border-radius:12px;
   padding:18px;
+}
+
+.card:has(.pos-pagination){
+  display:flex;
+  flex-direction:column;
 }
 
 .card-title{

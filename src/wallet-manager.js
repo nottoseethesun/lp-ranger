@@ -76,6 +76,7 @@ function _saveToDisk() {
 
 /** Remove .wallet.json from disk. */
 function _removeFromDisk() {
+  console.warn('[wallet] Deleting .wallet.json — stack:', new Error().stack);
   try { fs.unlinkSync(_WALLET_FILE); } catch { /* file may not exist */ }
 }
 

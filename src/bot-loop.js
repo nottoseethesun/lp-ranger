@@ -231,9 +231,28 @@ function _notifyRebalance(deps, throttle, position, events) {
     activePosition: _activePosSummary(position), activePositionId: String(position.tokenId) });
 }
 
+/** Update in-memory position + events after a successful rebalance. */
+function _applyRebalanceResult(deps, result) {
+  const { position } = deps;
+  if (result.newTokenId && result.newTokenId !== 0n) position.tokenId = result.newTokenId;
+  position.tickLower = result.newTickLower; position.tickUpper = result.newTickUpper; if (result.liquidity !== undefined) position.liquidity = result.liquidity;
+  const events = deps._rebalanceEvents; if (events) {
+    const ts = Math.floor(Date.now() / 1000);
+    events.push({ index: events.length + 1, timestamp: ts, dateStr: new Date(ts * 1000).toISOString(),
+      oldTokenId: String(result.oldTokenId || '?'), newTokenId: String(result.newTokenId || '?'),
+      txHash: (result.txHashes && result.txHashes[result.txHashes.length - 1]) || '', blockNumber: 0 });
+  }
+  if (deps._botState) deps._botState.oorSince = null; const mintNow = new Date().toISOString();
+  if (deps._botState?.hodlBaseline) { deps._botState.hodlBaseline.mintDate = mintNow.slice(0, 10); deps._botState.hodlBaseline.mintTimestamp = mintNow; }
+  console.log('[bot] Post-rebalance: position.tokenId=%s (was old, now new)', String(position.tokenId));
+  if (deps.updateBotState) {
+    _notifyRebalance(deps, deps.throttle || deps._throttle, position, events);
+    deps.updateBotState({ oorSince: null, positionMintDate: mintNow.slice(0, 10), positionMintTimestamp: mintNow });
+  }
+}
+
 async function _executeAndRecord(deps, ethersLib) {
-  const { signer, position, throttle, updateBotState } = deps;
-  console.log('[bot] Position out of range — rebalancing…');
+  const { signer, position, throttle } = deps; console.log('[bot] Position out of range — rebalancing…');
   const state = deps._botState || {};
   const crw = state.customRangeWidthPct; if (crw) delete state.customRangeWidthPct;
   const result = await executeRebalance(signer, ethersLib, { position,
@@ -243,26 +262,13 @@ async function _executeAndRecord(deps, ethersLib) {
   if (result.success) {
     throttle.recordRebalance();
     try { await enrichResultUsd(result, () => _fetchTokenPrices(position.token0, position.token1), position.token0, position.token1); } catch (_) { /* prices unavailable */ }
-    _recordResidual(deps, result);
-    appendLog(result);
+    _recordResidual(deps, result); appendLog(result);
     console.log('[bot] Rebalance OK — new tokenId:', String(result.newTokenId));
     await _closePnlEpoch(deps, result);
-    if (result.newTokenId && result.newTokenId !== 0n) position.tokenId = result.newTokenId;
-    position.tickLower = result.newTickLower;  position.tickUpper = result.newTickUpper;
-    if (result.liquidity !== undefined) position.liquidity = result.liquidity;
-    const events = deps._rebalanceEvents; if (events) {
-      const ts = Math.floor(Date.now() / 1000);
-      events.push({ index: events.length + 1, timestamp: ts, dateStr: new Date(ts * 1000).toISOString(),
-        oldTokenId: String(result.oldTokenId || '?'), newTokenId: String(result.newTokenId || '?'),
-        txHash: (result.txHashes && result.txHashes[result.txHashes.length - 1]) || '', blockNumber: 0 });
-    }
-
-    if (deps._botState) deps._botState.oorSince = null;
-    if (updateBotState) { _notifyRebalance(deps, throttle, position, events); updateBotState({ oorSince: null }); }
+    _applyRebalanceResult(deps, result);
   } else {
     console.error('[bot] Rebalance failed:', result.error);
   }
-
   return { rebalanced: result.success, error: result.error };
 }
 
@@ -438,6 +444,7 @@ async function pollCycle(deps) {
   const rangeCheck = _checkRangeAndThreshold(deps, poolState, emit);
   if (rangeCheck) return rangeCheck;
   const forced = !!deps._botState?.forceRebalance;
+  console.log('[bot] pollCycle: OOR on #%s, forced=%s, tick=%d range=[%d,%d]', position.tokenId, forced, poolState.tick, position.tickLower, position.tickUpper);
   const can = !forced && throttle.canRebalance();
   if (can && !can.allowed) {
     console.log(`[bot] OOR but throttled (${can.reason}), wait ${Math.ceil(can.msUntilAllowed / 1000)}s`);
@@ -517,10 +524,14 @@ async function _detectPosition(provider, address, targetId) {
   }
   const valid = detection.nftPositions.filter((p) => V3_FEE_TIERS.includes(p.fee));
   if (!valid.length) throw new Error(`No positions with supported fee tiers. V3 tiers: ${V3_FEE_TIERS.join(', ')}`);
-  if (targetId) return valid.find((p) => String(p.tokenId) === String(targetId)) || valid[0];
+  console.log('[bot] _detectPosition: targetId=%s, found %d valid NFTs: %s', targetId || 'none',
+    valid.length, valid.map(p => `#${p.tokenId}(liq=${String(p.liquidity).slice(0, 8)})`).join(', '));
+  if (targetId) { const m = valid.find((p) => String(p.tokenId) === String(targetId)); console.log('[bot] _detectPosition: targetId match=%s', m ? `#${m.tokenId}` : 'MISS→fallback'); return m || valid[0]; }
   const active = valid.filter((p) => BigInt(p.liquidity || 0n) > 0n);
   const pool = active.length > 0 ? active : valid;
-  return pool.reduce((best, p) => BigInt(p.liquidity || 0n) > BigInt(best.liquidity || 0n) ? p : best);
+  const picked = pool.reduce((best, p) => BigInt(p.liquidity || 0n) > BigInt(best.liquidity || 0n) ? p : best);
+  console.log('[bot] _detectPosition: picked #%s (active=%d, total=%d)', picked.tokenId, active.length, valid.length);
+  return picked;
 }
 
 /**
@@ -595,6 +606,7 @@ async function startBotLoop(opts) {
       });
       if (result.rebalanced) {
         rebalanceCount++; firstFailureAt = null; currentIntervalMs = baseIntervalMs;
+        cache.clear().catch(() => {}); // Invalidate event cache so next scan finds the new NFT
         updateBotState({ rebalanceError: null, rebalancePaused: false, forceRebalance: false });
       } else if (result.gasDeferred) {
         currentIntervalMs = GAS_DEFER_MS; console.log(`[bot] Next retry in ${GAS_DEFER_MS / 60_000}m (gas deferral)`);
@@ -607,6 +619,8 @@ async function startBotLoop(opts) {
         console.log(`[bot] Price returned to range after ~${oorMin}m of failures — clearing`);
         firstFailureAt = null; currentIntervalMs = baseIntervalMs;
         updateBotState({ rebalanceError: null, rebalancePaused: false, oorRecoveredMin: oorMin });
+        // Clear after one poll so the dashboard doesn't re-show on refresh
+        setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);
       }
     } catch (err) {
       if (!firstFailureAt) firstFailureAt = Date.now();

@@ -29,7 +29,7 @@ import {
   toggleInitialDeposit, saveInitialDeposit, toggleRealizedInput, saveRealizedGains,
   toggleCurDeposit, saveCurDeposit, toggleCurRealized, saveCurRealized,
 } from './dashboard-data.js';
-import { rebChangePage } from './dashboard-history.js';
+import { rebChangePage, pnlChangePage } from './dashboard-history.js';
 import { isViewingClosedPos } from './dashboard-closed-pos.js';
 import { showILDebug } from './dashboard-il-debug.js';
 
@@ -267,9 +267,11 @@ export function bindAllEvents() {
   _click('rebalanceRangeConfirmBtn', confirmRebalanceRange);
   _input('rebalanceRangeInput', updateRebalanceRangeHint);
 
-  // ── Rebalance events pagination ───────────────────────────────────────────
+  // ── Table pagination ─────────────────────────────────────────────────────
   _click('rebPrevBtn', () => rebChangePage(-1));
   _click('rebNextBtn', () => rebChangePage(1));
+  _click('pnlPrevBtn', () => pnlChangePage(-1));
+  _click('pnlNextBtn', () => pnlChangePage(1));
 
   // ── IL/G debug popover ──────────────────────────────────────────────────
   _click('curILInfo', () => showILDebug('cur'));
@@ -277,10 +279,10 @@ export function bindAllEvents() {
 
   // ── Event delegation for dynamically generated elements ───────────────────
 
-  // TX hash copy icons in rebalance events table
-  const rebEvents = g('rebEventsBody');
-  if (rebEvents) {
-    rebEvents.addEventListener('click', e => {
+  // TX hash copy icons in rebalance events table + activity log
+  for (const id of ['rebEventsBody', 'actList']) {
+    const el = g(id);
+    if (el) el.addEventListener('click', e => {
       const icon = e.target.closest('[data-copy-tx]');
       if (icon) navigator.clipboard.writeText(icon.dataset.copyTx).catch(() => {});
     });
@@ -360,6 +362,7 @@ function _togglePrivacy() {
   const cls = '9mm-pos-mgr-privacy-blur';
   for (const id of _PRIVACY_TARGETS) { const el = g(id); if (el) el.classList.toggle(cls, on); }
   for (const sel of _PRIVACY_SELECTORS) document.querySelectorAll(sel).forEach(el => el.classList.toggle(cls, on));
+  const icon = g('privacyIcon'); if (icon) icon.classList.toggle('9mm-pos-mgr-privacy-active', on);
   try { localStorage.setItem('9mm_privacy_mode', on ? '1' : '0'); } catch { /* */ }
 }
 

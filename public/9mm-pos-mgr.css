@@ -6,27 +6,60 @@
 
 /* ── Privacy Toggle ──────────────────────────────────────────────────────── */
 
-.\39 mm-pos-mgr-privacy-toggle {
-  margin-left: auto;
-  cursor: pointer;
+.\39 mm-pos-mgr-settings-item.\39 mm-pos-mgr-privacy-setting {
   display: flex;
   align-items: center;
+  gap: 8px;
+  cursor: pointer;
   user-select: none;
+  line-height: 1;
 }
 
-.\39 mm-pos-mgr-privacy-toggle input { display: none; }
+.\39 mm-pos-mgr-privacy-setting input { display: none; }
 
 .\39 mm-pos-mgr-privacy-icon {
-  font-size: 18px;
-  opacity: 0.5;
-  transition: opacity 0.2s;
+  font-size: 14px;
+  opacity: 0.6;
 }
 
-.\39 mm-pos-mgr-privacy-icon:hover { opacity: 0.8; }
-
-.\39 mm-pos-mgr-privacy-toggle input:checked ~ .\39 mm-pos-mgr-privacy-icon {
+.\39 mm-pos-mgr-privacy-icon.\39 mm-pos-mgr-privacy-active {
   opacity: 1;
   text-decoration: line-through;
+}
+
+.\39 mm-pos-mgr-toggle-track {
+  width: 36px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgb(124 252 0 / 20%);
+  border: 1px solid rgb(124 252 0 / 30%);
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.\39 mm-pos-mgr-toggle-track::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track {
+  background: rgb(124 252 0 / 35%);
+  border-color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track::after {
+  transform: translateX(18px);
+  background: var(--accent3);
+  box-shadow: 0 0 4px var(--accent3);
 }
 
 .\39 mm-pos-mgr-privacy-blur {
@@ -251,12 +284,23 @@
   max-width: 440px;
 }
 
+.\39 mm-pos-mgr-modal-sm .modal-logo-icon {
+  font-size: 30px;
+  height: auto;
+  margin-top: -8px;
+}
+
+.\39 mm-pos-mgr-modal-note {
+  margin-top: 12px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .\39 mm-pos-mgr-modal-close-btn {
   width: auto;
-  padding: 6px 14px;
-  margin-top: 0;
   margin-left: auto;
-  font-size: 10px;
+  margin-top: 0;
+  flex-shrink: 0;
 }
 
 /* ── Section Titles ───────────────────────────────────────────────────────── */
@@ -282,13 +326,18 @@
 }
 
 .\39 mm-pos-mgr-btn-sm {
-  font-size: 11px;
+  font-family: "Space Mono", monospace;
+  font-size: 12px;
   padding: 4px 10px;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 4px;
-  background: rgb(255 255 255 / 5%);
+  border: 1px solid rgb(0 229 255 / 20%);
+  border-radius: 5px;
+  background: rgb(0 229 255 / 7%);
   color: var(--accent);
   cursor: pointer;
+}
+
+.\39 mm-pos-mgr-btn-sm:hover {
+  background: rgb(0 229 255 / 15%);
 }
 
 .\39 mm-pos-mgr-btn-danger {
@@ -494,26 +543,24 @@
 /* ── IL/G debug popover ────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-il-info-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--muted);
+  line-height: 16px;
+  text-align: center;
   font-size: 10px;
-  font-weight: 700;
-  font-style: italic;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
   color: var(--muted);
   text-transform: lowercase;
   cursor: pointer;
   margin-left: 6px;
   vertical-align: middle;
-  line-height: 1;
+  padding-left: 1px;
+  padding-bottom: 1px;
 }
 
 .\39 mm-pos-mgr-il-info-btn:hover {
-  border-color: var(--accent3);
   color: var(--accent3);
 }
 
@@ -817,8 +864,9 @@
 .\39 mm-pos-mgr-help-list {
   margin: 0;
   padding: 0 0 0 18px;
-  font-size: 12px;
-  line-height: 1.6;
+  font-family: Urbanist, sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -962,4 +1010,5 @@
 .\39 mm-pos-mgr-disclaimer-license a:hover {
   text-decoration: underline;
 }
+
 
