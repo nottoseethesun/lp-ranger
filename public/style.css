@@ -1101,6 +1101,12 @@ header{
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.4;}}
 
 /* ── WALLET STRIP ── */
+.wallet-strip-row{
+  display:flex;
+  gap:8px;
+  margin-bottom:14px;
+}
+
 .wallet-strip{
   display:flex;
   align-items:center;
@@ -1110,9 +1116,9 @@ header{
   border-radius:8px;
   font-size:11px;
   color:var(--muted);
-  margin-bottom:14px;
   flex-wrap:wrap;
   gap:8px;
+  flex:1;
 }
 
 .ws-addr{

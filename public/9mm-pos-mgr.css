@@ -6,27 +6,60 @@
 
 /* ── Privacy Toggle ──────────────────────────────────────────────────────── */
 
-.\39 mm-pos-mgr-privacy-toggle {
-  margin-left: auto;
-  cursor: pointer;
+.\39 mm-pos-mgr-settings-item.\39 mm-pos-mgr-privacy-setting {
   display: flex;
   align-items: center;
+  gap: 8px;
+  cursor: pointer;
   user-select: none;
+  line-height: 1;
 }
 
-.\39 mm-pos-mgr-privacy-toggle input { display: none; }
+.\39 mm-pos-mgr-privacy-setting input { display: none; }
 
 .\39 mm-pos-mgr-privacy-icon {
-  font-size: 18px;
-  opacity: 0.5;
-  transition: opacity 0.2s;
+  font-size: 14px;
+  opacity: 0.6;
 }
 
-.\39 mm-pos-mgr-privacy-icon:hover { opacity: 0.8; }
-
-.\39 mm-pos-mgr-privacy-toggle input:checked ~ .\39 mm-pos-mgr-privacy-icon {
+.\39 mm-pos-mgr-privacy-icon.\39 mm-pos-mgr-privacy-active {
   opacity: 1;
   text-decoration: line-through;
+}
+
+.\39 mm-pos-mgr-toggle-track {
+  width: 36px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgb(124 252 0 / 20%);
+  border: 1px solid rgb(124 252 0 / 30%);
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.\39 mm-pos-mgr-toggle-track::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track {
+  background: rgb(124 252 0 / 35%);
+  border-color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track::after {
+  transform: translateX(18px);
+  background: var(--accent3);
+  box-shadow: 0 0 4px var(--accent3);
 }
 
 .\39 mm-pos-mgr-privacy-blur {

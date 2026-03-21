@@ -362,6 +362,7 @@ function _togglePrivacy() {
   const cls = '9mm-pos-mgr-privacy-blur';
   for (const id of _PRIVACY_TARGETS) { const el = g(id); if (el) el.classList.toggle(cls, on); }
   for (const sel of _PRIVACY_SELECTORS) document.querySelectorAll(sel).forEach(el => el.classList.toggle(cls, on));
+  const icon = g('privacyIcon'); if (icon) icon.classList.toggle('9mm-pos-mgr-privacy-active', on);
   try { localStorage.setItem('9mm_privacy_mode', on ? '1' : '0'); } catch { /* */ }
 }
 

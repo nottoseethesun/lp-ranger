@@ -411,6 +411,12 @@
     <div class="9mm-pos-mgr-settings-wrap">
       <button class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="18" height="18" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
       <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
+        <label class="9mm-pos-mgr-settings-item 9mm-pos-mgr-privacy-setting" title="Toggle privacy mode — blur addresses and NFT IDs">
+          <input type="checkbox" id="privacySwitch">
+          <span class="9mm-pos-mgr-privacy-icon" id="privacyIcon">&#x1F441;</span>
+          <span>Privacy Mode</span>
+          <span class="9mm-pos-mgr-toggle-track"></span>
+        </label>
         <button class="9mm-pos-mgr-settings-item" id="clearStorageBtn">Clear Local Storage &amp; Cookies</button>
       </div>
     </div>
@@ -444,19 +450,19 @@
 </header>
 
 <!-- Wallet strip -->
-<div class="wallet-strip">
-  <span>🔑</span>
-  <span class="ws-addr" id="wsAddr">No wallet loaded</span>
-  <span class="ws-badge none" id="wsBadge">NOT SET</span>
-  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase">👁 View Key</button>
-  <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
-  <span class="pt-badge nft" id="ptBadge">NFT POSITION</span>
-  <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">Position NFT #</span><strong id="wsToken">—</strong>
-  <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
-  <label class="9mm-pos-mgr-privacy-toggle" title="Toggle privacy mode — blur addresses and NFT IDs">
-    <input type="checkbox" id="privacySwitch">
-    <span class="9mm-pos-mgr-privacy-icon" id="privacyIcon">&#x1F441;</span>
-  </label>
+<div class="wallet-strip-row">
+  <div class="wallet-strip">
+    <span>🔑</span>
+    <span class="ws-addr" id="wsAddr">No wallet loaded</span>
+    <span class="ws-badge none" id="wsBadge">NOT SET</span>
+    <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase">👁 View Key</button>
+    <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
+  </div>
+  <div class="wallet-strip">
+    <span class="pt-badge nft" id="ptBadge">NFT POSITION</span>
+    <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">Position NFT #</span><strong id="wsToken">—</strong>
+    <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
+  </div>
 </div>
 
 <!-- Closed-position history banner (hidden by default) -->
@@ -776,6 +782,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774061265802"></script>
+<script src="dist/bundle.js?v=1774062093255"></script>
 </body>
 </html>
