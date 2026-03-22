@@ -65,7 +65,8 @@ describe('SPA catch-all routing', () => {
     const res = await req({ port: PORT, path: '/api/status' });
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
-    assert.ok('running' in body);
+    assert.ok('global' in body, 'status should have global section');
+    assert.ok('positions' in body, 'status should have positions section');
   });
 
   it('GET /health returns JSON (health route unaffected)', async () => {

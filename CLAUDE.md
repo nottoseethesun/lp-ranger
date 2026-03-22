@@ -1,11 +1,13 @@
 ## 9mm v3 Position Manager — Project Summary
 
 ### Purpose
-Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on PulseChain. **V3 positions only** — V2 positions are rejected with a clear error message. Manages **one active LP position per wallet per liquidity pool**. All NFT positions for the same pool form a rebalance chain (old positions are drained, not burned). Position token type is **auto-detected**. Supports up to 300 NFT (ERC-721) and ERC-20/PRC-20 LP positions in the browser position store.
+
+Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on PulseChain. **V3 positions only** — V2 positions are rejected with a clear error message. Manages **multiple LP positions simultaneously** across different pools from a single wallet, with per-position start/stop/pause/resume lifecycle. All NFT positions for the same pool form a rebalance chain (old positions are drained, not burned). Position token type is **auto-detected**. Supports up to 300 NFT (ERC-721) and ERC-20/PRC-20 LP positions in the browser position store.
 
 ---
 
 ### Stack
+
 - **Runtime:** Node.js ≥ 18 (no framework)
 - **HTTP server:** Node built-in `http` module (`server.js`) — dashboard + bot auto-start
 - **Bot loop:** `src/bot-loop.js` — shared rebalance logic (used by both server.js and bot.js)
@@ -13,7 +15,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 - **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`) + 12 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
 - **Client-side routing:** Navigo (pushState) — bookmarkable URLs like `/:wallet/:contract/:tokenId`
 - **Build:** esbuild bundles dashboard JS + ethers.js + navigo from npm; fonts self-hosted via `@fontsource` (no CDN dependencies)
-- **On-chain:** ethers.js v6.7.1, @uniswap/v3-sdk + jsbi (exact ratio math)
+- **On-chain:** ethers.js v6.7.1, @uniswap/v3-sdk ~3.28.0 + jsbi (exact ratio math)
+- **Concurrency:** async-mutex (rebalance lock for nonce-safe TX serialization across positions)
 - **Linter:** ESLint v10 flat config (`eslint.config.js`) + stylelint (`stylelint-config-standard`)
 - **Dead code:** knip (devDependency)
 - **Tests:** Node built-in `node:test` runner — zero external test framework
@@ -23,7 +26,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 
 ### Directory Structure
 
-```
+```text
 9mm-manager/
 ├── .env.example                  # All config keys with defaults and comments
 ├── .github/workflows/ci.yml      # CI: lint → test (Node 18/20/22 matrix)
@@ -33,6 +36,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 ├── bot.js                        # Headless bot wrapper (no dashboard UI)
 ├── scripts/check.sh              # Combined lint + test + coverage check
 ├── scripts/copy-fonts.sh         # Copies self-hosted WOFF2 fonts from node_modules to public/fonts/
+├── scripts/wipe-settings.sh      # Back up user settings to tmp/.settings-backup/ (fresh-install sim)
+├── scripts/restore-settings.sh   # Restore settings backed up by wipe-settings.sh
 ├── README.md                     # Concise — refers to server.js for details
 ├── eslint-rules/
 │   └── no-separate-contract-calls.js  # Custom rule: require multicall for atomic EVM method pairs
@@ -58,8 +63,12 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: pollCycle, resolvePrivateKey, startBotLoop
+│   ├── bot-config-v2.js          # V2 config: load/save/migrate .bot-config.json (global + per-position)
 │   ├── config.js                 # SINGLE SOURCE OF TRUTH for all config — reads .env
+│   ├── position-manager.js       # Multi-position orchestrator: start/stop/pause/resume per position
+│   ├── rebalance-lock.js         # Async mutex (via async-mutex) for nonce-safe TX serialization
 │   ├── rebalancer.js             # Core rebalance: remove liquidity → SDK ratio swap → mint (V3-only guard)
+│   ├── server-positions.js       # Multi-position API route handlers + per-position state management
 │   ├── event-scanner.js          # On-chain rebalance history via Transfer events (5-year lookback)
 │   ├── price-fetcher.js          # USD pricing: DexScreener (primary) → DexTools (fallback) → GeckoTerminal (historical)
 │   ├── hodl-baseline.js          # HODL baseline init: deposited amounts from IncreaseLiquidity + GeckoTerminal for deposit auto-detect
@@ -83,6 +92,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   └── position-history.js       # Historical data lookup for closed NFT positions (rebalance log, events, prices)
 └── test/
     ├── bot-loop.test.js
+    ├── bot-config-v2.test.js        # V2 config: load, save, migrate v1→v2, composite keys
     ├── hodl-baseline.test.js
     ├── config.test.js
     ├── rebalancer.test.js
@@ -102,7 +112,9 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
     ├── disclaimer.test.js
     ├── fund-safety.test.js
     ├── key-store.test.js
+    ├── position-manager.test.js     # Multi-position orchestrator: start/stop/pause/resume, daily cap
     ├── position-rangeW.test.js
+    ├── rebalance-lock.test.js       # Async mutex: FIFO ordering, pending count, serialization
     ├── optimizer-client.test.js
     ├── optimizer-applicator.test.js
     ├── optimizer-scheduler.test.js
@@ -121,14 +133,14 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 └── tmp/                              # Local temp dir for tests (gitignored)
 ```
 
-**707 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**739 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
 
 ---
 
 ### Key Config Keys (`.env` / `src/config.js`)
 
 | Key | Default | Notes |
-|-----|---------|-------|
+| --- | ------- | ----- |
 | `PORT` | `5555` | Dashboard server port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `PRIVATE_KEY` | — | Required for live bot (or use KEY_FILE) |
@@ -158,7 +170,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 | `OPTIMIZER_TIMEOUT_MS` | `10000` | Per-request timeout |
 | `OPTIMIZER_AUTO_APPLY` | `false` | Auto-apply recommendations |
 
-Contract address source: https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json
+Contract address source: <https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json>
 
 ---
 
@@ -182,6 +194,9 @@ npm run check          # Combined lint (JS+CSS) + test + coverage check
 npm run reset-wallet   # Delete .wallet.json + clear WALLET_PASSWORD from .env
 npm run clean          # reset-wallet + delete bot config, epoch cache, rebalance log, event cache
                        # NOTE: also clear browser localStorage via Settings gear → "Clear Local Storage & Cookies"
+npm run nuke           # Delete node_modules + package-lock.json for a clean reinstall
+npm run wipe-settings  # Back up user settings to tmp/.settings-backup/ (fresh-install simulation)
+npm run restore-settings # Restore settings backed up by wipe-settings
 ```
 
 ---
@@ -190,7 +205,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **V3-only:** The rebalancer only supports V3 NFT positions. `executeRebalance()` guards on `position.fee ∈ [100, 500, 2500, 3000, 10000]` and rejects V2 positions with a clear error.
 
-**Unified entry point:** `npm start` runs `server.js` which starts the dashboard and auto-starts the bot loop when a wallet key is available (via `PRIVATE_KEY`, `KEY_FILE`, or `WALLET_PASSWORD`). If no key is available, runs in dashboard-only mode; importing a wallet via the dashboard UI auto-starts the bot. `npm run bot` runs headless (no dashboard). `npm run stop` sends `POST /api/shutdown` for graceful shutdown of both.
+**Unified entry point:** `npm start` runs `server.js` which starts the dashboard, resolves the private key, and auto-starts all managed positions with `status: 'running'` from v2 config. If no key is available, runs in dashboard-only mode; importing a wallet via the dashboard resolves the key for future position starts. `npm run bot` runs headless (no dashboard). `npm run stop` sends `POST /api/shutdown` which calls `positionMgr.stopAll()` for graceful shutdown.
 
 **Rebalance pipeline:** `src/bot-loop.js` provides the shared bot logic used by both `server.js` and `bot.js`. It polls the pool at `CHECK_INTERVAL_SEC`, checks if the current tick is outside [tickLower, tickUpper], applies the OOR threshold check, checks throttle, then calls `executeRebalance()` which does: getPoolState → removeLiquidity → computeDesiredAmounts → swapIfNeeded → mintPosition. All functions accept injected `signer`, `ethersLib`, and config objects for testability.
 
@@ -210,9 +225,17 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **USD pricing:** DexScreener (primary, no key) → DexTools (fallback, requires `DEXTOOLS_API_KEY`). 60s in-memory cache. See `src/price-fetcher.js`. Historical prices fetched from GeckoTerminal OHLCV API (free, no key, 30 calls/min). USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
 
-**Single position per pool:** The tool manages one active LP position per wallet per liquidity pool. When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned — the bot does not call `burn()`. Rebalance history is detected via consecutive mint events (Transfer from 0x0 to wallet), not burn+mint pairs. **Runtime position switching:** `POST /api/position/switch` stops the bot, clears position-specific state, and restarts on the new NFT. The dashboard calls this **only** from explicit user actions in the Position Browser — never from URL routing or page loads (`activateByTokenId` is display-only). The server guards against no-op switches (same tokenId) to avoid killing the bot mid-rebalance. `activePositionId` is persisted to `.bot-config.json` so the selection survives restarts. Closed positions (liquidity=0) are displayed but the bot skips rebalance checks.
+**Multi-position management:** The tool manages **multiple LP positions simultaneously** across different pools from a single wallet. Each managed position gets its own independent `startBotLoop()` instance sharing a single provider/signer. A **rebalance lock** (`src/rebalance-lock.js`, backed by `async-mutex`) ensures only one position sends transactions at a time (same wallet = same nonce), while all positions continue polling independently. The `src/position-manager.js` orchestrator tracks all managed positions with start/stop/pause/resume lifecycle. When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned. Rebalance history is detected via consecutive mint events. Closed positions (liquidity=0) are displayed but the bot skips rebalance checks.
 
-**Post-rebalance dashboard sync:** After a successful rebalance mints a new NFT, the bot sends the new `activePositionId` via `updateBotState`. The dashboard's `setBotActiveTokenId()` detects the new NFT is not in the position store (or has corrupt metadata like addresses-as-symbols) and triggers an automatic rescan via `scanPositions()`. The rescan callback selects the new entry, applies its data to the UI, and updates the URL — all in one atomic `_selectAndSync()` call. The HODL baseline `mintDate` and `positionMintTimestamp` are updated to "now" after each rebalance so the Active Duration resets correctly.
+**Position key format:** All per-position state is keyed by a **composite key**: `blockchain-wallet-contract-tokenId` (dash-separated). Example: `pulsechain-0x4e448...-0xCC05b...-157149`. Built/parsed by `compositeKey()` / `parseCompositeKey()` in `src/bot-config-v2.js`. The same components appear in the URL path.
+
+**Position lifecycle:** `POST /api/position/manage { tokenId }` starts a new bot loop. `POST /api/position/pause { key }` stops the loop but retains config for resume. `POST /api/position/resume { key }` restarts from saved config. `DELETE /api/position/manage { key }` removes from management. On server restart, all positions with `status: 'running'` in config auto-start. Focus is client-side (URL determines which position a browser tab shows) — the server does NOT track focus.
+
+**Rebalance lock:** No timeout-based release — blockchains can hold a TX pending indefinitely. If stuck, the lock holder speed-ups (1.5× gas) then sends a 0-PLS self-cancel at the stuck nonce. Lock only releases after TX confirmation. This guarantees the nonce is always clear before the next position rebalances.
+
+**Throttling:** Per-position throttle (independent doubling mode per pool), but **wallet-level daily cap** (default 20, shared across all positions). A volatile pool's doubling doesn't slow a stable pool.
+
+**Post-rebalance key migration:** When a position rebalances and mints a new NFT, the composite key changes (new tokenId). `position-manager.migrateKey()` and `bot-config-v2.migratePositionKey()` carry over all P&L epochs, HODL baseline, and residuals from the old key to the new key.
 
 **P&L breakdown:** Two components: (a) price-change P&L (position value change from token price movements, including IL), and (b) fee P&L (trading fees earned while in range). Per-day aggregation (up to 31 days) with running cumulative. Historical USD token prices stored per-epoch for accurate retrospective P&L.
 
@@ -220,7 +243,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **Event scanner rate limiting:** 250ms delay between RPC chunk queries (`_CHUNK_DELAY_MS`) to avoid overwhelming the endpoint. With 10,000-block chunks, a 5-year scan (~15.8M blocks) takes ~1,580 chunks. Pool-age optimisation reduces this for younger pools.
 
-**Bot config persistence:** Dashboard settings (range width, slippage, intervals, trigger config, initial deposit, `activePositionId`) are saved to `.bot-config.json` on every `POST /api/config` or position switch, and loaded on server startup. Survives restarts.
+**Bot config persistence (v2):** `.bot-config.json` uses a v2 format with `version: 2`, `global` (slippage, intervals, gas strategy), `managedPositions` (array of composite keys), and `positions` (per-key config: threshold, timeout, P&L epochs, HODL baseline, residuals). V1 flat configs are auto-migrated on first load (original backed up as `.bot-config.v1.json`). `POST /api/config` accepts optional `positionKey` to target a specific position; without it, position-specific keys apply to all managed positions. Managed by `src/bot-config-v2.js`.
 
 **Pool-age optimisation:** Event scanner checks the V3 Factory's `PoolCreated` event to find when the pool was deployed, then skips all blocks before that. Can save thousands of RPC queries for pools younger than 5 years.
 
@@ -234,7 +257,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **Shared state:** `botConfig` (in `dashboard-helpers.js`) holds range width, current price, and tick boundaries. Updated by bot config panel, position selection, and optimizer.
 
-**Server → Dashboard data flow:** `startBotLoop()` (in `src/bot-loop.js`) receives `updateBotState` as a callback. Dashboard polls `GET /api/status` every 3 seconds via `dashboard-data.js`.
+**Server → Dashboard data flow:** Each bot loop receives a position-scoped `updateBotState` callback (in `src/server-positions.js`) that writes to the per-position state map and persists to v2 config. `GET /api/status` returns `{ global: {...}, positions: { [compositeKey]: {...} } }` — each browser tab reads its own position's data by key. Dashboard polls every 3 seconds via `dashboard-data.js`.
 
 **History tables:** Per-day P&L (8 per page, up to 31 days) and Rebalance Events (8 per page, 5-year lookback with copy-to-clipboard TX hash icons) rendered by `dashboard-history.js` from `/api/status` data. Both tables have Prev/Next pagination pinned to the card bottom. Historical rebalance events also populate the Activity Log once the event scanner completes (gated by `rebalanceScanComplete` to avoid stale localStorage cache).
 
@@ -269,6 +292,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 ### Lint Rules
 
 **ESLint** (`eslint:recommended` + custom):
+
 - `complexity ≤ 17` (error)
 - `max-lines ≤ 500` skipBlankLines skipComments (error)
 - `eqeqeq always` + `no-var` + `prefer-const` + `strict global`
@@ -279,12 +303,14 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 - No `eslint-disable` directives
 
 **stylelint** (`stylelint-config-standard`, `.stylelintrc.json`):
+
 - Standard CSS rules with overrides for: `selector-class-pattern` (allows `9mm-pos-mgr-` prefix), `custom-property-pattern`, `no-descending-specificity`
 - Runs on `public/*.css`
 
 ---
 
 ### Constraints to Maintain
+
 - Every `src/` and `public/dashboard-*.js` file ≤ 500 non-comment lines of code
 - No function with cyclomatic complexity > 17
 - No `eslint-disable` directives; no `stylelint-disable` directives
@@ -303,3 +329,4 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 - **Read all comments before touching code** — file-header JSDoc, function comments, and inline comments document design decisions and data sources (e.g. GeckoTerminal for historical prices, HODL baseline from IncreaseLiquidity events). Understand them before making any changes.
 - **Show dashes (—) for missing data, not $0.00** — when a value hasn't been computed yet (e.g. IL before HODL baseline resolves), display — instead of a false zero
 - **No band-aid fixes** — fix the root cause, not the symptom. If a display shows wrong data, fix the data source, not the display layer
+- **Functional pattern for new code** — no classes, no mutable object state scattered across instances. Functions receive data, return results. When a data source changes, all dependent code runs with the fresh data from the source of truth. Existing code is not refactored to this pattern.

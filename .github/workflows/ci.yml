@@ -34,7 +34,7 @@ jobs:
 
   # ── Job 1: Lint ──────────────────────────────────────────────────────────────
   lint:
-    name: ESLint
+    name: Lint (JS + CSS + Markdown)
     runs-on: ubuntu-latest
 
     steps:
@@ -50,10 +50,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run ESLint
+      - name: Run lint (ESLint + stylelint + markdownlint)
         # --max-warnings 0 means any ESLint warning is also treated as a failure.
-        # The config only emits warnings for no-console in src files; keeping
-        # the bar high ensures warnings don't accumulate unnoticed.
+        # Covers JS (eslint), CSS (stylelint), and Markdown (markdownlint-cli2).
         run: npm run lint
 
   # ── Job 2: Tests ─────────────────────────────────────────────────────────────

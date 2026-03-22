@@ -13,6 +13,8 @@
  * lock holder is responsible for speed-up or 0-value self-cancel before
  * releasing.
  *
+ * Uses the `async-mutex` package (Mutex) for the underlying lock.
+ *
  * @example
  * const lock = createRebalanceLock();
  * const release = await lock.acquire();
@@ -21,14 +23,17 @@
 
 'use strict';
 
+const { Mutex } = require('async-mutex');
+
 /**
  * Create a rebalance lock (async mutex).
  *
  * @returns {{ acquire: () => Promise<() => void>, pending: () => number }}
  */
 function createRebalanceLock() {
-  const _queue = [];   // waiting callers (resolve functions)
-  let _locked = false;
+  const _mutex = new Mutex();
+  let _acquireCount = 0;  // total calls to acquire (including holder)
+  let _releaseCount = 0;  // total releases completed
 
   /**
    * Acquire the lock.  Resolves with a release function once it's this
@@ -36,29 +41,22 @@ function createRebalanceLock() {
    * @returns {Promise<() => void>}  Call the returned function to release.
    */
   function acquire() {
-    const release = () => {
-      const next = _queue.shift();
-      if (next) {
-        next(release);
-      } else {
-        _locked = false;
-      }
-    };
-
-    if (!_locked) {
-      _locked = true;
-      return Promise.resolve(release);
-    }
-
-    return new Promise((resolve) => { _queue.push(resolve); });
+    _acquireCount++;
+    return _mutex.acquire().then((release) => () => {
+      _releaseCount++;
+      release();
+    });
   }
 
   /**
    * Number of callers currently waiting to acquire the lock (not including
-   * the current holder).
+   * the current holder).  Computed as: total_acquires - total_releases - 1 (holder).
    * @returns {number}
    */
-  function pending() { return _queue.length; }
+  function pending() {
+    const active = _acquireCount - _releaseCount;
+    return Math.max(0, active - (_mutex.isLocked() ? 1 : 0));
+  }
 
   return { acquire, pending };
 }

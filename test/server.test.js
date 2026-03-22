@@ -14,9 +14,7 @@
 const { describe, it } = require('node:test');
 const assert  = require('assert');
 const http    = require('http');
-const fs      = require('fs');
-const path    = require('path');
-const { start, stop, updateBotState, botState } = require('../server');
+const { start, stop } = require('../server');
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
@@ -59,7 +57,6 @@ function req(opts) {
 
 // ── Test suite ────────────────────────────────────────────────────────────────
 
-// Use a random high port so we don't conflict with any running instance
 const TEST_PORT = 54321;
 let   serverInstance;
 
@@ -83,62 +80,43 @@ describe('server', () => {
     assert.ok(typeof body.ts   === 'number');
   });
 
-  // ── /api/status ─────────────────────────────────────────────────────────────
+  // ── /api/status (v2: global + positions) ──────────────────────────────────
 
-  it('GET /api/status returns 200 with bot state', async () => {
+  it('GET /api/status returns 200 with global and positions', async () => {
     const res = await req({ port: TEST_PORT, path: '/api/status' });
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
-    assert.ok('running'       in body);
-    assert.ok('port'          in body);
-    assert.ok('rebalanceOutOfRangeThresholdPercent' in body);
+    assert.ok('global'    in body, 'status should have global section');
+    assert.ok('positions' in body, 'status should have positions section');
+    assert.ok('port'      in body.global);
+    assert.ok('walletAddress' in body.global);
   });
 
-  it('GET /api/status reflects updateBotState() changes', async () => {
-    updateBotState({ rebalanceCount: 42, running: true });
-    const res  = await req({ port: TEST_PORT, path: '/api/status' });
-    const body = JSON.parse(res.body);
-    assert.strictEqual(body.rebalanceCount, 42);
-    assert.strictEqual(body.running,        true);
-  });
-
-  it('/api/status includes updatedAt timestamp after update', async () => {
-    updateBotState({ rebalanceCount: 1 });
-    const res  = await req({ port: TEST_PORT, path: '/api/status' });
-    const body = JSON.parse(res.body);
-    assert.ok(typeof body.updatedAt === 'string', 'updatedAt should be a string');
-  });
-
-  // ── /api/config ──────────────────────────────────────────────────────────────
+  // ── /api/config ───────────────────────────────────────────────────────────
 
   it('POST /api/config updates allowed fields', async () => {
     const res = await req({
       port: TEST_PORT, method: 'POST', path: '/api/config',
-      body: { rebalanceOutOfRangeThresholdPercent: 25, slippagePct: 1.0 },
+      body: { slippagePct: 1.0 },
     });
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok,                    true);
-    assert.strictEqual(body.applied.rebalanceOutOfRangeThresholdPercent, 25);
     assert.strictEqual(body.applied.slippagePct,   1.0);
-    // Verify it propagated into botState
-    assert.strictEqual(botState.rebalanceOutOfRangeThresholdPercent, 25);
   });
 
   it('POST /api/config ignores unknown fields', async () => {
     const res = await req({
       port: TEST_PORT, method: 'POST', path: '/api/config',
-      body: { rebalanceOutOfRangeThresholdPercent: 30, PRIVATE_KEY: 'hacked', PORT: 9999 },
+      body: { slippagePct: 0.5, PRIVATE_KEY: 'hacked', PORT: 9999 },
     });
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
-    // Only whitelisted key should appear in applied
     assert.ok('PRIVATE_KEY' in body.applied === false);
     assert.ok('PORT'        in body.applied === false);
   });
 
   it('POST /api/config returns 400 for invalid JSON', async () => {
-    // Send malformed JSON directly
     const options = {
       hostname: '127.0.0.1', port: TEST_PORT,
       path: '/api/config', method: 'POST',
@@ -157,32 +135,51 @@ describe('server', () => {
     assert.strictEqual(result.status, 400);
     const body = JSON.parse(result.body);
     assert.strictEqual(body.ok, false);
-    assert.ok(typeof body.error === 'string');
   });
 
-  // ── Static files ─────────────────────────────────────────────────────────────
+  // ── /api/positions/managed ────────────────────────────────────────────────
+
+  it('GET /api/positions/managed returns managed list', async () => {
+    const res = await req({ port: TEST_PORT, path: '/api/positions/managed' });
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.ok(Array.isArray(body.positions));
+    assert.ok(typeof body.dailyRebalanceCount === 'number');
+  });
+
+  // ── /api/rebalance ────────────────────────────────────────────────────────
+
+  it('POST /api/rebalance returns 400 without positionKey', async () => {
+    const res = await req({
+      port: TEST_PORT, method: 'POST', path: '/api/rebalance',
+      body: {},
+    });
+    assert.strictEqual(res.status, 400);
+    const body = JSON.parse(res.body);
+    assert.ok(body.error.includes('positionKey'));
+  });
+
+  // ── Static files ─────────────────────────────────────────────────────────
 
   it('GET / serves index.html with 200', async () => {
     const res = await req({ port: TEST_PORT, path: '/' });
     assert.strictEqual(res.status, 200);
     assert.ok(res.headers['content-type'].includes('text/html'));
-    assert.ok(res.body.includes('<!DOCTYPE html') || res.body.includes('<html'),
-      'Body should contain HTML doctype or html tag');
+    assert.ok(res.body.includes('<!DOCTYPE html') || res.body.includes('<html'));
   });
 
   it('GET /nonexistent returns 403 or 404', async () => {
     const res = await req({ port: TEST_PORT, path: '/this-does-not-exist.xyz' });
-    assert.ok(res.status === 404 || res.status === 403,
-      `Expected 404 or 403 for unknown path, got ${res.status}`);
+    assert.ok(res.status === 404 || res.status === 403);
   });
 
   it('GET with path traversal attempt returns 403 or 404', async () => {
     const res = await req({ port: TEST_PORT, path: '/../../etc/passwd' });
-    assert.ok(res.status === 403 || res.status === 404,
-      `Expected 403 or 404 for path traversal, got ${res.status}`);
+    assert.ok(res.status === 403 || res.status === 404);
   });
 
-  // ── CORS ──────────────────────────────────────────────────────────────────────
+  // ── CORS ──────────────────────────────────────────────────────────────────
 
   it('responses include CORS headers', async () => {
     const res = await req({ port: TEST_PORT, path: '/health' });
@@ -194,103 +191,17 @@ describe('server', () => {
     assert.strictEqual(res.status, 204);
   });
 
-  // ── Method not allowed ────────────────────────────────────────────────────────
+  // ── Method not allowed ────────────────────────────────────────────────────
 
   it('DELETE / returns 405', async () => {
     const res = await req({ port: TEST_PORT, method: 'DELETE', path: '/' });
     assert.strictEqual(res.status, 405);
   });
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   it('stop() closes the server cleanly', async () => {
     await stop();
-    assert.strictEqual(serverInstance.listening, false,
-      'Server should no longer be listening after stop()');
-  });
-});
-
-// ── POST /api/position/switch ──────────────────────────────────────────────────
-
-describe('POST /api/position/switch', () => {
-  let port;
-
-  it('returns 400 when tokenId is missing', async () => {
-    port = 54350;
-    await start(port);
-    try {
-      const res = await req({ port, method: 'POST', path: '/api/position/switch', body: {} });
-      assert.strictEqual(res.status, 400);
-      const body = JSON.parse(res.body);
-      assert.strictEqual(body.ok, false);
-      assert.ok(body.error.includes('tokenId'));
-    } finally { await stop(); }
-  });
-
-  it('returns 200 with valid tokenId and persists activePositionId', async () => {
-    port = 54351;
-    const cfgPath = path.join(__dirname, '..', '.bot-config.json');
-    const origCfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : null;
-    const origId = botState.activePositionId;
-    // Prevent bot from actually starting (would connect to RPC and hang the test)
-    const config = require('../src/config');
-    const origPk = config.PRIVATE_KEY, origWp = config.WALLET_PASSWORD;
-    config.PRIVATE_KEY = ''; config.WALLET_PASSWORD = '';
-    await start(port);
-    try {
-      const res = await req({ port, method: 'POST', path: '/api/position/switch', body: { tokenId: '99999' } });
-      assert.strictEqual(res.status, 200);
-      const body = JSON.parse(res.body);
-      assert.strictEqual(body.ok, true);
-      assert.strictEqual(body.tokenId, '99999');
-      assert.strictEqual(botState.activePositionId, '99999');
-    } finally {
-      botState.activePositionId = origId || undefined;
-      if (origCfg) fs.writeFileSync(cfgPath, origCfg);
-      config.PRIVATE_KEY = origPk || '';
-      config.WALLET_PASSWORD = origWp || '';
-      await stop();
-    }
-  });
-});
-
-// ── updateBotState (unit, no server needed) ───────────────────────────────────
-
-describe('updateBotState', () => {
-  it('merges a patch into botState', () => {
-    const before = botState.rebalanceCount;
-    updateBotState({ rebalanceCount: before + 10 });
-    assert.strictEqual(botState.rebalanceCount, before + 10);
-  });
-
-  it('sets updatedAt to an ISO string', () => {
-    updateBotState({ running: false });
-    assert.ok(typeof botState.updatedAt === 'string');
-    assert.ok(!isNaN(Date.parse(botState.updatedAt)));
-  });
-
-  it('does not remove keys absent from the patch', () => {
-    const original = botState.host;
-    updateBotState({ rebalanceCount: 0 });
-    assert.strictEqual(botState.host, original);
-  });
-
-  it('pnlSnapshot with dailyPnl is exposed via /api/status', async () => {
-    const _srv = await start(54399);
-    try {
-      const mockSnapshot = {
-        totalPnl: 42, dailyPnl: [
-          { date: '2026-03-15', priceChangePnl: 10, feePnl: 5, gasCost: 0.1, netPnl: 14.9, cumulative: 14.9 },
-          { date: '2026-03-14', priceChangePnl: -3, feePnl: 8, gasCost: 0.2, netPnl: 4.8, cumulative: 4.8 },
-        ],
-      };
-      updateBotState({ pnlSnapshot: mockSnapshot });
-      const res = await req({ port: 54399, path: '/api/status' });
-      const body = JSON.parse(res.body);
-      assert.ok(body.pnlSnapshot, 'pnlSnapshot should be present in status response');
-      assert.ok(Array.isArray(body.pnlSnapshot.dailyPnl), 'dailyPnl should be an array');
-      assert.strictEqual(body.pnlSnapshot.dailyPnl.length, 2);
-      assert.strictEqual(body.pnlSnapshot.dailyPnl[0].date, '2026-03-15');
-    } finally { await stop(); }
+    assert.strictEqual(serverInstance.listening, false);
   });
 });

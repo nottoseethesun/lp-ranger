@@ -35,6 +35,16 @@ else
   lint_detail="${lint_detail}${css_lint_output}"
 fi
 
+# ── Lint (Markdown) ──────────────────────────────────────────────────────────
+md_lint_ok=0
+md_lint_output=$(./node_modules/.bin/markdownlint-cli2 README.md CLAUDE.md 2>&1)
+if [ $? -eq 0 ]; then
+  md_lint_ok=1
+else
+  lint_ok=0
+  lint_detail="${lint_detail}${md_lint_output}"
+fi
+
 # ── Tests + Coverage ─────────────────────────────────────────────────────────
 test_output=$(node --test --experimental-test-coverage test/*.test.js 2>&1)
 test_exit=$?

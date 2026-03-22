@@ -260,10 +260,6 @@ const _positionMgr = createPositionManager({
   dailyMax: config.MAX_REBALANCES_PER_DAY,
 });
 
-// Legacy compat — _botHandle still used during migration to multi-position
-/** @type {{ stop: Function }|null} Active bot loop handle, or null if not running. */
-let _botHandle = null;
-
 // ── MIME type map ─────────────────────────────────────────────────────────────
 
 const MIME = {
@@ -282,128 +278,8 @@ const MIME = {
 /** V2 config loaded from disk (auto-migrates v1 on first load). */
 const _diskConfig = loadConfig();
 
-/**
- * Legacy: Load persisted bot config from v2 disk config into a flat target.
- * Bridges the v2 config to the existing flat botState during transition.
- * @param {object} target  Object to merge saved values into.
- */
-function _loadBotConfig(target) {
-  // Apply global settings
-  for (const key of GLOBAL_KEYS) {
-    if (_diskConfig.global[key] !== undefined) target[key] = _diskConfig.global[key];
-  }
-  // Apply first managed position's settings (legacy single-position compat)
-  const firstKey = _diskConfig.managedPositions[0];
-  if (firstKey) {
-    const pos = _diskConfig.positions[firstKey] || {};
-    for (const [k, v] of Object.entries(pos)) {
-      if (k !== 'status') target[k] = v;
-    }
-    // Extract tokenId from composite key for legacy activePositionId
-    const parts = firstKey.split('-');
-    if (parts.length >= 4) target.activePositionId = parts[parts.length - 1];
-  }
-  if (_diskConfig.managedPositions.length > 0) {
-    console.log('[server] Loaded bot config v2 (%d managed positions)', _diskConfig.managedPositions.length);
-  }
-}
-
-/**
- * Save the current bot config values to disk via v2 format.
- * @param {object} source  Object containing current values (flat botState).
- */
-function _saveBotConfig(source) {
-  // Update global keys
-  for (const key of GLOBAL_KEYS) {
-    if (source[key] !== undefined) _diskConfig.global[key] = source[key];
-  }
-  // Update first managed position (legacy single-position compat)
-  const firstKey = _diskConfig.managedPositions[0];
-  if (firstKey) {
-    const pos = getPositionConfig(_diskConfig, firstKey);
-    for (const key of POSITION_KEYS) {
-      if (source[key] !== undefined) pos[key] = source[key];
-    }
-  }
-  saveConfig(_diskConfig);
-}
-
-// ── In-memory state written by bot.js, read by /api/status ───────────────────
-
-/** @type {object} Mutable shared state updated by the bot process. */
-const botState = {
-  running:    false,
-  startedAt:  null,
-  port:       config.PORT,
-  host:       config.HOST,
-  rpcUrl:     config.RPC_URL,
-  rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
-  rebalanceTimeoutMin:    config.REBALANCE_TIMEOUT_MIN,
-  slippagePct:            config.SLIPPAGE_PCT,
-  checkIntervalSec:       config.CHECK_INTERVAL_SEC,
-  minRebalanceIntervalMin: config.MIN_REBALANCE_INTERVAL_MIN,
-  maxRebalancesPerDay:    config.MAX_REBALANCES_PER_DAY,
-  gasStrategy:            'auto',
-  triggerType:            'oor',
-  positionManager:        config.POSITION_MANAGER,
-  factory:                config.FACTORY,
-  activePosition:         null,
-  rebalanceCount:         0,
-  lastRebalanceAt:        null,
-  rebalanceError:         null,
-  rebalancePaused:        false,
-  rebalanceScanComplete:  false,
-  rebalanceScanProgress:  0,
-  updatedAt:              null,
-};
-
-// Load saved bot config from disk (overrides defaults above)
-_loadBotConfig(botState);
-
-/**
- * Update the shared bot state.  Called by bot.js when it starts or rebalances.
- * @param {Partial<typeof botState>} patch
- */
-function updateBotState(patch) {
-  // Persist pnlEpochs on first creation (so openTime survives restarts)
-  if (patch.pnlEpochs && !botState.pnlEpochs) {
-    Object.assign(botState, patch);
-    _saveBotConfig(botState);
-  }
-  // Persist HODL baseline on first detection (for IL calculation)
-  if (patch.pnlSnapshot?._setHodlBaseline && !botState.hodlBaseline) {
-    botState.hodlBaseline = patch.pnlSnapshot._setHodlBaseline;
-    delete patch.pnlSnapshot._setHodlBaseline;
-    _saveBotConfig(botState);
-  }
-  // Persist HODL baseline from historical price lookup
-  if (patch.hodlBaseline) {
-    _saveBotConfig({ ...botState, ...patch });
-  }
-  // Merge positionMintDate into hodlBaseline
-  if (patch.positionMintDate && botState.hodlBaseline) {
-    botState.hodlBaseline.mintDate = patch.positionMintDate;
-    _saveBotConfig(botState);
-    delete patch.positionMintDate;
-  }
-  // Persist activePositionId when it changes (e.g. after rebalance mints new NFT)
-  if (patch.activePositionId && patch.activePositionId !== botState.activePositionId) {
-    console.log('[server] activePositionId changing: %s → %s', botState.activePositionId, patch.activePositionId);
-    Object.assign(botState, patch);
-    _saveBotConfig(botState);
-  }
-  const hadBaseline = !!botState.hodlBaseline;
-  Object.assign(botState, patch, { updatedAt: new Date().toISOString() });
-  if (hadBaseline && !botState.hodlBaseline) {
-    console.warn('[server] hodlBaseline CLEARED by patch with keys:', Object.keys(patch).join(', '));
-  }
-  // Execute queued position switch after bot stops (e.g. rebalance finished)
-  if (patch.running === false && botState.pendingSwitch) {
-    const tid = botState.pendingSwitch;
-    console.log('[server] Executing queued switch to #%s', tid);
-    _botHandle = null;
-    _executePositionSwitch(tid, null);
-  }
+if (_diskConfig.managedPositions.length > 0) {
+  console.log('[server] Loaded bot config v2 (%d managed positions)', _diskConfig.managedPositions.length);
 }
 
 // ── Static file helper ────────────────────────────────────────────────────────
@@ -488,38 +364,41 @@ function readJsonBody(req) {
 
 async function _handleApiConfig(req, res) {
   const body = await readJsonBody(req);
-  const allowed = [...GLOBAL_KEYS, ...POSITION_KEYS];
-  const patch = {};
-  for (const key of allowed) { if (body[key] !== undefined) patch[key] = body[key]; }
-  updateBotState(patch); _saveBotConfig(botState);
-  jsonResponse(res, 200, { ok: true, applied: patch });
+  const globalPatch = {}, posPatch = {};
+  for (const key of GLOBAL_KEYS) { if (body[key] !== undefined) globalPatch[key] = body[key]; }
+  for (const key of POSITION_KEYS) { if (body[key] !== undefined) posPatch[key] = body[key]; }
+  Object.assign(_diskConfig.global, globalPatch);
+  // Apply position-specific keys to the specified position (or all managed)
+  if (body.positionKey) {
+    Object.assign(getPositionConfig(_diskConfig, body.positionKey), posPatch);
+  } else {
+    for (const key of _diskConfig.managedPositions) {
+      Object.assign(getPositionConfig(_diskConfig, key), posPatch);
+    }
+  }
+  saveConfig(_diskConfig);
+  jsonResponse(res, 200, { ok: true, applied: { ...globalPatch, ...posPatch } });
 }
 
 async function _handleWalletImport(req, res) {
   const body = await readJsonBody(req);
-  console.log('[server] Wallet import requested for %s (bot running: %s)', body.address?.slice(0, 10), !!_botHandle);
+  console.log('[server] Wallet import requested for %s (running: %d positions)',
+    body.address?.slice(0, 10), _positionMgr.runningCount());
   await walletManager.importWallet({
     address: body.address, privateKey: body.privateKey,
     mnemonic: body.mnemonic || null, source: body.source || 'key',
     password: body.password,
   });
 
-  // Persist WALLET_PASSWORD to .env so the bot auto-starts on restart
   _persistWalletPassword(body.password);
 
-  // Stop the running bot (if any) and clear position-specific state so the
-  // dashboard doesn't display stale data from the previous wallet.
-  if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
-  Object.assign(botState, { activePosition: null, activePositionId: undefined,
-    rebalanceCount: 0, lastRebalanceAt: null, rebalanceError: null, rebalancePaused: false,
-    rebalanceScanComplete: false, rebalanceEvents: undefined,
-    pnlEpochs: undefined, hodlBaseline: undefined, residuals: undefined });
-  _saveBotConfig(botState);
+  // Stop all running positions (new wallet = different positions)
+  await _positionMgr.stopAll();
   jsonResponse(res, 200, { ok: true, address: body.address });
 
-  // Auto-start bot with the new wallet
-  _tryStartBot(body.password).catch(err => {
-    console.warn('[server] Auto-start bot after import failed:', err.message);
+  // Resolve private key for future position starts
+  _tryResolveKey(body.password).catch(err => {
+    console.warn('[server] Key resolution after import failed:', err.message);
   });
 }
 
@@ -549,19 +428,16 @@ function _persistWalletPassword(password) {
 }
 
 /**
- * Attempt to start the bot loop.  Used at startup and after wallet import.
+ * Resolve the private key and auto-start all managed positions from v2 config.
  * @param {string|null} [password]  Password override for wallet decryption.
  * @returns {Promise<void>}
  */
-let _botStarting = false;
-async function _tryStartBot(password) {
-  if (_botStarting) { console.log('[server] Bot start already in progress — skipping'); return; }
-  _botStarting = true;
-  // Temporarily override WALLET_PASSWORD if a password was provided
+let _starting = false;
+async function _tryResolveKey(password) {
+  if (_starting) { console.log('[server] Start already in progress — skipping'); return; }
+  _starting = true;
   const origWalletPw = config.WALLET_PASSWORD;
-  if (password && !config.WALLET_PASSWORD) {
-    config.WALLET_PASSWORD = password;
-  }
+  if (password && !config.WALLET_PASSWORD) config.WALLET_PASSWORD = password;
   try {
     const privateKey = await resolvePrivateKey({ askPassword: null });
     if (!privateKey) {
@@ -569,20 +445,44 @@ async function _tryStartBot(password) {
       return;
     }
     _resolvedPrivateKey = privateKey;
-    if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
-    console.log('[server] Starting bot with activePositionId=%s', botState.activePositionId || 'none (will auto-detect)');
-    _botHandle = await startBotLoop({
-      privateKey,
-      dryRun: config.DRY_RUN,
-      updateBotState,
-      botState,
-      positionId: botState.activePositionId || undefined,
-    });
-    console.log('[server] Bot started');
+    // Auto-start all managed positions with status 'running'
+    await _autoStartManagedPositions();
   } finally {
     config.WALLET_PASSWORD = origWalletPw;
-    _botStarting = false;
+    _starting = false;
   }
+}
+
+/**
+ * Start bot loops for all managed positions that have status 'running' in config.
+ * Called on server startup and after key resolution.
+ */
+async function _autoStartManagedPositions() {
+  const { createPerPositionBotState, updatePositionState } = require('./src/server-positions');
+  for (const key of _diskConfig.managedPositions) {
+    const posConfig = getPositionConfig(_diskConfig, key);
+    if (posConfig.status !== 'running') {
+      console.log('[server] Skipping paused position %s', key);
+      continue;
+    }
+    const tokenId = key.split('-').pop();
+    const posBotState = createPerPositionBotState(_diskConfig.global, posConfig);
+    try {
+      await _positionMgr.startPosition(key, {
+        tokenId,
+        startLoop: () => startBotLoop({
+          privateKey: _resolvedPrivateKey, dryRun: config.DRY_RUN,
+          updateBotState: (patch) => updatePositionState(key, patch, _diskConfig, _positionMgr),
+          botState: posBotState, positionId: tokenId,
+        }),
+        savedConfig: posConfig,
+      });
+    } catch (err) {
+      console.warn('[server] Failed to auto-start position %s: %s', key, err.message);
+    }
+  }
+  console.log('[server] Auto-started %d of %d managed positions',
+    _positionMgr.runningCount(), _diskConfig.managedPositions.length);
 }
 
 async function _handleWalletReveal(req, res) {
@@ -659,58 +559,9 @@ async function _handlePositionsScan(req, res) {
   });
 }
 
-/**
- * Switch the bot to a different NFT position.
- * Stops the current bot loop, clears position-specific state, and restarts.
- * @param {http.IncomingMessage} req
- * @param {http.ServerResponse}  res
- */
-async function _handlePositionSwitch(req, res) {
-  const body = await readJsonBody(req);
-  console.log('[server] Position switch requested: tokenId=%s (current=%s)', body.tokenId, botState.activePositionId);
-  if (!body.tokenId) {
-    jsonResponse(res, 400, { ok: false, error: 'Missing tokenId' });
-    return;
-  }
-  const cur = botState.activePositionId || botState.activePosition?.tokenId;
-  if (cur && String(cur) === String(body.tokenId)) {
-    console.log('[server] Already on #%s — skipping switch', body.tokenId);
-    jsonResponse(res, 200, { ok: true, tokenId: String(body.tokenId), alreadyActive: true });
-    return;
-  }
-  // Queue the switch if a rebalance is in progress — don't kill the bot mid-transaction
-  if (botState.rebalanceInProgress) {
-    botState.pendingSwitch = String(body.tokenId);
-    console.log('[server] Rebalance in progress — queued switch to #%s', body.tokenId);
-    jsonResponse(res, 202, { ok: true, tokenId: String(body.tokenId), queued: true });
-    return;
-  }
-  _executePositionSwitch(String(body.tokenId), res);
-}
-
-/** Execute a position switch immediately: stop bot, clear state, restart. */
-function _executePositionSwitch(tokenId, res) {
-  try {
-    if (_botHandle) { _botHandle.stop().then(() => { _botHandle = null; }); _botHandle = null; }
-    Object.assign(botState, { pnlEpochs: undefined, hodlBaseline: undefined, residuals: undefined,
-      rebalanceScanComplete: false, rebalanceEvents: undefined, activePosition: null,
-      rebalanceCount: 0, lastRebalanceAt: null, rebalanceError: null, rebalancePaused: false,
-      pendingSwitch: undefined });
-    botState.activePositionId = tokenId;
-    _saveBotConfig(botState);
-    _tryStartBot(null).catch(err => {
-      console.warn('[server] Bot restart after position switch failed:', err.message);
-    });
-    if (res) jsonResponse(res, 200, { ok: true, tokenId });
-  } catch (err) {
-    if (res) jsonResponse(res, 500, { ok: false, error: err.message });
-  }
-}
-
 async function _handleShutdown(_req, res) {
   jsonResponse(res, 200, { ok: true, message: 'Shutting down…' });
   console.log('[server] Shutdown requested via API');
-  if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
   await _positionMgr.stopAll();
   server.close(() => process.exit(0));
 }
@@ -735,13 +586,26 @@ const _positionRoutes = createPositionRoutes({
 
 // ── Route table ──────────────────────────────────────────────────────────────
 
+const { getAllPositionBotStates } = require('./src/server-positions');
+
 const _routes = {
   'GET /health':               (_, res) => jsonResponse(res, 200, { ok: true, port: config.PORT, ts: Date.now() }),
   'GET /api/status':           (_, res) => {
-    const snap = { ...botState, walletAddress: walletManager.getAddress(), hodlBaseline: botState.hodlBaseline || null };
-    // One-shot: clear oorRecoveredMin after delivering it so it doesn't re-show on refresh
-    if (botState.oorRecoveredMin > 0) botState.oorRecoveredMin = 0;
-    jsonResponse(res, 200, snap);
+    const positions = {};
+    for (const [key, state] of getAllPositionBotStates()) {
+      positions[key] = { ...state };
+    }
+    jsonResponse(res, 200, {
+      global: {
+        walletAddress: walletManager.getAddress(),
+        port: config.PORT, host: config.HOST, rpcUrl: config.RPC_URL,
+        positionManager: config.POSITION_MANAGER, factory: config.FACTORY,
+        ..._diskConfig.global,
+        dailyRebalanceCount: _positionMgr.getDailyCount(),
+        managedPositions: _positionMgr.getAll(),
+      },
+      positions,
+    });
   },
   'GET /api/wallet/status':    (_, res) => jsonResponse(res, 200, walletManager.getStatus()),
   'DELETE /api/wallet':        (_, res) => { console.warn('[server] DELETE /api/wallet received — clearing wallet file'); walletManager.clearWallet(); jsonResponse(res, 200, { ok: true }); },
@@ -749,18 +613,21 @@ const _routes = {
   'POST /api/wallet':          _handleWalletImport,
   'POST /api/wallet/reveal':   _handleWalletReveal,
   'POST /api/positions/scan':  _handlePositionsScan,
-  'POST /api/position/switch': _handlePositionSwitch,
   'POST /api/rebalance':       async (req, res) => {
-    if (!_botHandle || !botState.running) {
-      jsonResponse(res, 409, { ok: false, error: 'Bot is syncing — wait for the "Synced" indicator, then try again.' });
-      return;
-    }
     let body = {};
     try { body = await readJsonBody(req); } catch { /* empty body OK */ }
-    console.log('[server] Manual rebalance requested (customRange=%s)', body.customRangeWidthPct || 'default');
-    const patch = { forceRebalance: true };
-    if (body.customRangeWidthPct > 0) patch.customRangeWidthPct = Number(body.customRangeWidthPct);
-    updateBotState(patch);
+    if (!body.positionKey) {
+      jsonResponse(res, 400, { ok: false, error: 'Missing positionKey' });
+      return;
+    }
+    const state = getAllPositionBotStates().get(body.positionKey);
+    if (!state || !state.running) {
+      jsonResponse(res, 409, { ok: false, error: 'Position not running or syncing' });
+      return;
+    }
+    console.log('[server] Manual rebalance for %s (customRange=%s)', body.positionKey, body.customRangeWidthPct || 'default');
+    state.forceRebalance = true;
+    if (body.customRangeWidthPct > 0) state.customRangeWidthPct = Number(body.customRangeWidthPct);
     jsonResponse(res, 200, { ok: true, message: 'Rebalance requested' });
   },
   'POST /api/shutdown':        _handleShutdown,
@@ -801,8 +668,13 @@ async function handleRequest(req, res) {
   // ── Dynamic GET routes ──────────────────────────────────────────────────
   if (method === 'GET' && url.startsWith('/api/position/') && url.endsWith('/history')) {
     const tokenId = url.slice('/api/position/'.length, -'/history'.length);
+    // Find the position state that matches this tokenId
+    let posState = null;
+    for (const [, s] of getAllPositionBotStates()) {
+      if (s.activePosition && String(s.activePosition.tokenId) === tokenId) { posState = s; break; }
+    }
     jsonResponse(res, 200, await getPositionHistory(tokenId, {
-      rebalanceEvents: botState.rebalanceEvents, activePosition: botState.activePosition,
+      rebalanceEvents: posState?.rebalanceEvents, activePosition: posState?.activePosition,
     }));
     return;
   }
@@ -871,12 +743,10 @@ function stop() {
 // When required as a module (e.g. in tests), the caller controls lifecycle.
 if (require.main === module) {
   start()
-    .then(() => _tryStartBot(null))
+    .then(() => _tryResolveKey(null))
     .then(() => {
-      // Graceful shutdown on Ctrl-C / kill
       const shutdown = () => {
         console.log('\n[server] Shutting down…');
-        if (_botHandle) { _botHandle.stop().catch(() => {}); _botHandle = null; }
         _positionMgr.stopAll().catch(() => {});
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(0), 3000);
@@ -890,4 +760,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { start, stop, updateBotState, botState, handleRequest };
+module.exports = { start, stop, handleRequest, _diskConfig, _positionMgr };

@@ -16,8 +16,8 @@
     "reset-wallet": "rm -f .wallet.json && sed -i 's/^WALLET_PASSWORD=.*/WALLET_PASSWORD=/' .env 2>/dev/null; echo 'Wallet cleared — re-import via dashboard on next start'",
     "clean": "npm run stop 2>/dev/null; npm run reset-wallet && rm -f .bot-config.json .epoch-cache.json rebalance_log.json tmp/event-cache.json && echo 'Cleaned: server stopped, wallet, bot config, epoch cache, rebalance log, event cache' && echo 'TIP: Also clear browser localStorage & cookies via the Settings gear icon in the dashboard.'",
     "check": "bash scripts/check.sh",
-    "lint": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --max-warnings 0 && stylelint public/*.css",
-    "lint:fix": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix",
+    "lint": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --max-warnings 0 && stylelint public/*.css && markdownlint-cli2 README.md CLAUDE.md",
+    "lint:fix": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix && markdownlint-cli2 --fix README.md CLAUDE.md",
     "test": "node --test test/*.test.js test/eslint-rules/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js test/eslint-rules/*.test.js",
     "test:watch": "node --test --watch test/*.test.js test/eslint-rules/*.test.js",
@@ -29,6 +29,7 @@
   "dependencies": {
     "@uniswap/v3-periphery": "^1.4.4",
     "@uniswap/v3-sdk": "~3.28.0",
+    "async-mutex": "^0.5.0",
     "dotenv": "^16.0.0",
     "ethers": "^6.7.1",
     "jsbi": "^4.3.0",
@@ -42,6 +43,7 @@
     "eslint": "^10.0.3",
     "globals": "^17.4.0",
     "knip": "^5.86.0",
+    "markdownlint-cli2": "^0.22.0",
     "stylelint": "^17.4.0",
     "stylelint-config-standard": "^40.0.0"
   },

@@ -1,12 +1,12 @@
 # Position Manager for 9mm v3
 
-[![Lint](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml/badge.svg?branch=main&event=push&job=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
-[![Tests](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml/badge.svg?branch=main&event=push&job=test)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
+[![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
+[![Tests (Node 20/22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
 
 Auto-rebalancing concentrated liquidity manager, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
-(Uniswap v3 fork) on PulseChain, with complete P&L stats extending back up to five years for a single liquidity pool on a given wallet address.
+(Uniswap v3 fork) on PulseChain. Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool.
 
-Looks back up to five years on your wallet to show you how you're doing with a given liquidity pool: With Position Manager, you know where you're at.
+Looks back up to five years on your wallet to show you how you're doing with each liquidity pool: With Position Manager, you know where you're at.
 
 **V3 positions only** — V2 positions are not supported.
 
@@ -130,8 +130,6 @@ template.
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
 full text.
 
-Currently, only supports liquidity positions on a single liquidity pool per wallet. Support for multiple liquidity pools on one wallet is planned. Currently, one LP position is selected for a given wallet, and P&L is tracked for only that liquidity pool.
-
 ---
 
 ## Road Map
@@ -140,4 +138,3 @@ Planned features for future releases:
 
 - **Near Edge Trigger** — trigger a rebalance when the current price approaches the edge of the active range (configurable threshold), rather than waiting until out of range.
 - **LP Optimization Engine** — integrate with an external optimization service that recommends optimal range width, rebalance timing, and fee tier based on historical pool data and volatility analysis.
-- **Multiple Pools per Wallet** — manage LP positions across multiple liquidity pools from a single wallet, with per-pool P&L tracking.
