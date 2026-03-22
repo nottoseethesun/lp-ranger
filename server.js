@@ -193,6 +193,18 @@
  *                         & Cookies" in the dashboard, or open DevTools → Application
  *                         → Local Storage → Clear All.
  *
+ * Housekeeping
+ * ────────────
+ *   npm run nuke             Delete node_modules + package-lock.json for a clean
+ *                            reinstall.  Run `npm install` afterwards.
+ *   npm run wipe-settings    Back up all user settings/state (.env, .wallet.json,
+ *                            .bot-config.json, .epoch-cache.json, rebalance_log.json,
+ *                            tmp/event-cache.json, *.keyfile.json) to tmp/.settings-backup/
+ *                            and remove them — simulates a fresh install.  Also clear
+ *                            browser localStorage via Settings gear → "Clear Local
+ *                            Storage & Cookies" to complete the simulation.
+ *   npm run restore-settings Restore settings previously backed up by wipe-settings.
+ *
  * Dead Code Detection
  * ───────────────────
  *   npm run knip          Knip — finds unused exports, files, and dependencies.

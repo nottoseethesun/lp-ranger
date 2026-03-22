@@ -21,11 +21,14 @@
     "test": "node --test test/*.test.js test/eslint-rules/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js test/eslint-rules/*.test.js",
     "test:watch": "node --test --watch test/*.test.js test/eslint-rules/*.test.js",
-    "knip": "knip"
+    "knip": "knip",
+    "nuke": "rm -rf node_modules package-lock.json && echo 'Nuked node_modules + package-lock.json — run npm install to reinstall'",
+    "wipe-settings": "bash scripts/wipe-settings.sh",
+    "restore-settings": "bash scripts/restore-settings.sh"
   },
   "dependencies": {
     "@uniswap/v3-periphery": "^1.4.4",
-    "@uniswap/v3-sdk": "^3.13.1",
+    "@uniswap/v3-sdk": "~3.28.0",
     "dotenv": "^16.0.0",
     "ethers": "^6.7.1",
     "jsbi": "^4.3.0",
@@ -41,6 +44,15 @@
     "knip": "^5.86.0",
     "stylelint": "^17.4.0",
     "stylelint-config-standard": "^40.0.0"
+  },
+  "overrides": {
+    "@uniswap/v3-staker": "1.0.2",
+    "@uniswap/swap-router-contracts": {
+      "hardhat-watcher": {
+        "hardhat": "npm:empty-npm-package@1.0.0"
+      }
+    },
+    "flatted": "^3.4.2"
   },
   "engines": {
     "node": ">=18.0.0"
