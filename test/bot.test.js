@@ -7,7 +7,7 @@
 
 const { describe, it } = require('node:test');
 const assert = require('assert');
-const { createProviderWithFallback, pollCycle } = require('../bot');
+const { createProviderWithFallback, pollCycle } = require('../src/bot-loop');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

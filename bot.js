@@ -19,13 +19,11 @@
 const readline = require('readline');
 
 const config = require('./src/config');
-const {
-  pollCycle,
-  appendLog,
-  createProviderWithFallback,
-  resolvePrivateKey,
-  startBotLoop,
-} = require('./src/bot-loop');
+const { resolvePrivateKey, startBotLoop } = require('./src/bot-loop');
+const { createRebalanceLock } = require('./src/rebalance-lock');
+const { createPositionManager } = require('./src/position-manager');
+const { loadConfig, getPositionConfig } = require('./src/bot-config-v2');
+const { createPerPositionBotState, updatePositionState } = require('./src/server-positions');
 
 // ── Interactive password prompt ─────────────────────────────────────────────
 
@@ -51,30 +49,11 @@ function _askPassword(prompt) {
   });
 }
 
-// ── Headless bot state (console-only, no HTTP server) ────────────────────────
-
-const _botState = {
-  running: false,
-  rangeWidthPct: config.RANGE_WIDTH_PCT,
-  slippagePct: config.SLIPPAGE_PCT,
-};
-
-/**
- * Minimal state updater for headless mode — logs key events to console.
- * @param {object} patch  State patch.
- */
-function _updateBotState(patch) {
-  Object.assign(_botState, patch);
-}
-
 // ── Main entry ───────────────────────────────────────────────────────────────
 
 async function main() {
   const dryRun = config.DRY_RUN;
-
-  if (!dryRun) {
-    config.assertLiveModeReady();
-  }
+  if (!dryRun) config.assertLiveModeReady();
 
   const privateKey = await resolvePrivateKey({ askPassword: _askPassword });
   if (!privateKey && !dryRun) {
@@ -82,18 +61,62 @@ async function main() {
     process.exit(1);
   }
 
-  const handle = await startBotLoop({
-    privateKey,
-    dryRun,
-    updateBotState: _updateBotState,
-    botState: _botState,
+  const diskConfig = loadConfig();
+  const rebalanceLock = createRebalanceLock();
+  const positionMgr = createPositionManager({
+    rebalanceLock,
+    dailyMax: diskConfig.global.maxRebalancesPerDay || config.MAX_REBALANCES_PER_DAY,
   });
 
-  // Graceful shutdown
+  // If no managed positions in config, fall back to POSITION_ID env var (single-position start)
+  if (diskConfig.managedPositions.length === 0 && (config.POSITION_ID || !dryRun)) {
+    console.log('[bot] No managed positions in config — starting single-position mode');
+    const botState = createPerPositionBotState(diskConfig.global, {});
+    const handle = await startBotLoop({
+      privateKey, dryRun,
+      updateBotState: (patch) => { Object.assign(botState, patch); },
+      botState, positionId: config.POSITION_ID || undefined,
+    });
+    _awaitShutdown(() => { handle.stop(); positionMgr.stopAll(); });
+    return;
+  }
+
+  // Auto-start all managed positions with status 'running'
+  let started = 0;
+  for (const key of diskConfig.managedPositions) {
+    const posConfig = getPositionConfig(diskConfig, key);
+    if (posConfig.status !== 'running') {
+      console.log('[bot] Skipping paused position %s', key);
+      continue;
+    }
+    const tokenId = key.split('-').pop();
+    const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
+    try {
+      await positionMgr.startPosition(key, {
+        tokenId,
+        startLoop: () => startBotLoop({
+          privateKey, dryRun,
+          updateBotState: (patch) => updatePositionState(key, patch, diskConfig, positionMgr),
+          botState: posBotState, positionId: tokenId,
+        }),
+        savedConfig: posConfig,
+      });
+      started++;
+    } catch (err) {
+      console.error('[bot] Failed to start position %s: %s', key, err.message);
+    }
+  }
+  console.log('[bot] Started %d of %d managed positions', started, diskConfig.managedPositions.length);
+
+  _awaitShutdown(() => positionMgr.stopAll());
+}
+
+/** Register SIGINT/SIGTERM handlers for graceful shutdown. */
+function _awaitShutdown(stopFn) {
   const shutdown = () => {
     console.log('\n[bot] Shutting down…');
-    handle.stop();
-    process.exit(0);
+    Promise.resolve(stopFn()).then(() => process.exit(0)).catch(() => process.exit(1));
+    setTimeout(() => process.exit(0), 3000);
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
@@ -106,4 +129,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { pollCycle, appendLog, createProviderWithFallback };
+module.exports = { main };
