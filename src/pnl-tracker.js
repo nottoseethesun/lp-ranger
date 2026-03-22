@@ -308,6 +308,8 @@ function createPnlTracker(opts = {}) {
   function epochCount() {
     return closedEpochs.length + (liveEpoch ? 1 : 0);
   }
+  /** Returns the live (open) epoch, or null if none exists. */
+  function getLiveEpoch() { return liveEpoch ? { ...liveEpoch } : null; }
 
   /** Serialize all epoch data for disk persistence. */
   function serialize() {
@@ -324,7 +326,7 @@ function createPnlTracker(opts = {}) {
     if (data.liveEpoch) liveEpoch = { ...data.liveEpoch };
   }
 
-  return { openEpoch, updateLiveEpoch, closeEpoch, snapshot, epochCount, serialize, restore };
+  return { openEpoch, updateLiveEpoch, closeEpoch, snapshot, epochCount, getLiveEpoch, serialize, restore };
 }
 
 /**

@@ -302,3 +302,4 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 - **Prefer well-known npm packages** for anything mildly specialized (e.g. Uniswap v3 math, NFT reading, token decoding) rather than hand-rolling custom implementations
 - **Read all comments before touching code** — file-header JSDoc, function comments, and inline comments document design decisions and data sources (e.g. GeckoTerminal for historical prices, HODL baseline from IncreaseLiquidity events). Understand them before making any changes.
 - **Show dashes (—) for missing data, not $0.00** — when a value hasn't been computed yet (e.g. IL before HODL baseline resolves), display — instead of a false zero
+- **No band-aid fixes** — fix the root cause, not the symptom. If a display shows wrong data, fix the data source, not the display layer

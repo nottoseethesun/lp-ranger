@@ -58,6 +58,13 @@ OR OTHER DEALINGS IN THE SOFTWARE.
 
 ---
 
+## Pre-requisites
+
+- Node.js 20+
+- Web browser
+
+---
+
 ## Quick Start
 
 ```bash

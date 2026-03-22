@@ -143,7 +143,7 @@ async function _readUnclaimedFees(provider, ethersLib, tokenId, signer) {
     const pm = new ethersLib.Contract(config.POSITION_MANAGER, PM_ABI, signer);
     const r = await pm.collect.staticCall({ tokenId, recipient: await signer.getAddress(), amount0Max: _MAX_UINT128, amount1Max: _MAX_UINT128 });
     return { tokensOwed0: r.amount0, tokensOwed1: r.amount1 };
-  } catch { /* fall through to positions() fallback */ } }
+  } catch (e) { console.warn('[bot] collect.staticCall failed for #%s: %s', String(tokenId), e.message); } }
   try { const d = await new ethersLib.Contract(config.POSITION_MANAGER, PM_ABI, provider).positions(tokenId); return { tokensOwed0: d.tokensOwed0, tokensOwed1: d.tokensOwed1 };
   } catch { return { tokensOwed0: 0n, tokensOwed1: 0n }; }
 }
@@ -299,11 +299,8 @@ async function _executeAndRecord(deps, ethersLib) {
  * @param {number} price1    Current token1 USD price.
  * @param {number} feesUsd   Unclaimed fees in USD.
  */
-/** Compute lifetime fees: max of runtime-collected vs tracker's closed epoch total, plus current unclaimed. */
-function _computeLifetimeFees(snap, deps, feesUsd) {
-  const closedEpochFees = snap.totalFees - (snap.liveEpoch?.fees ?? 0);
-  return Math.max(deps._collectedFeesUsd || 0, closedEpochFees) + feesUsd;
-}
+/** Compute lifetime fees: max of runtime-collected vs tracker's closed-epoch total, plus current unclaimed. */
+function _computeLifetimeFees(snap, deps, feesUsd) { const cf = snap.totalFees - (snap.liveEpoch?.fees ?? 0); return Math.max(deps._collectedFeesUsd || 0, cf) + feesUsd; }
 
 /** Resolve HODL amounts: prefer source, fall back to baseline. */
 function _hodlAmounts(source, bl) { return { a0: source?.hodlAmount0 || bl?.hodlAmount0 || 0, a1: source?.hodlAmount1 || bl?.hodlAmount1 || 0 }; }
@@ -367,8 +364,12 @@ async function _updatePnlAndStats(deps, poolState, ethersLib) {
   if (pnlTracker) {
     try {
       const { price0, price1 } = await _fetchTokenPrices(position.token0, position.token1);
+      if (!pnlTracker.getLiveEpoch()) { const ev = _positionValueUsd(position, poolState, price0, price1) || 1; // Auto-open if missing (failed rebalance / corrupt saved state)
+        pnlTracker.openEpoch({ entryValue: ev, entryPrice: poolState.price, lowerPrice: lp, upperPrice: up, token0UsdPrice: price0, token1UsdPrice: price1 });
+        console.log('[bot] Auto-opened missing live epoch (entryValue=$%s)', ev.toFixed(2)); }
       const fees = await _readUnclaimedFees(provider, ethersLib, position.tokenId, deps.signer);
       const feesUsd = _toFloat(fees.tokensOwed0, poolState.decimals0) * price0 + _toFloat(fees.tokensOwed1, poolState.decimals1) * price1;
+      console.log('[bot] fees: owed0=%s owed1=%s dec0=%d dec1=%d p0=%s p1=%s usd=%s', String(fees.tokensOwed0), String(fees.tokensOwed1), poolState.decimals0, poolState.decimals1, price0, price1, feesUsd.toFixed(6));
       deps._lastUnclaimedFeesUsd = feesUsd;
       const residualUsd = await _residualValueUsd(deps, ethersLib, provider, position, poolState, price0, price1);
       pnlTracker.updateLiveEpoch({ currentPrice: poolState.price, feesAccrued: feesUsd });
