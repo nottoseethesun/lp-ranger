@@ -268,12 +268,13 @@ async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle } = deps; console.log('[bot] Position out of range — rebalancing…');
   const state = deps._botState || {};
   state.rebalanceInProgress = true;
-  const crw = state.customRangeWidthPct; if (crw) delete state.customRangeWidthPct;
+  const crw = state.customRangeWidthPct;
   const result = await executeRebalance(signer, ethersLib, { position,
     factoryAddress: config.FACTORY, positionManagerAddress: config.POSITION_MANAGER,
     swapRouterAddress: config.SWAP_ROUTER, slippagePct: state.slippagePct ?? config.SLIPPAGE_PCT,
     ...(crw ? { customRangeWidthPct: crw } : {}) });
   if (result.success) {
+    if (crw) delete state.customRangeWidthPct;
     throttle.recordRebalance();
     try { await enrichResultUsd(result, () => _fetchTokenPrices(position.token0, position.token1), position.token0, position.token1); } catch (_) { /* prices unavailable */ }
     _recordResidual(deps, result); appendLog(result);
