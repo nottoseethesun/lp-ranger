@@ -63,6 +63,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: pollCycle, resolvePrivateKey, startBotLoop
+│   ├── bot-pnl-updater.js       # P&L snapshot computation (extracted from bot-loop for line-count)
 │   ├── bot-config-v2.js          # V2 config: load/save/migrate .bot-config.json (global + per-position)
 │   ├── config.js                 # SINGLE SOURCE OF TRUTH for all config — reads .env
 │   ├── position-manager.js       # Multi-position orchestrator: start/stop/pause/resume per position

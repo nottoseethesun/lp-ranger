@@ -22,7 +22,7 @@ import {
   startDataPolling, loadRealizedGains, loadInitialDeposit, _fmtUsd, positionRangeVisual,
   refreshCurDepositDisplay, resetPollingState,
 } from './dashboard-data.js';
-import { bindAllEvents, restorePrivacyMode } from './dashboard-events.js';
+import { bindAllEvents, restorePrivacyMode, injectPosStoreForEvents } from './dashboard-events.js';
 import { clearHistory } from './dashboard-history.js';
 import {
   injectRouterDeps, initRouter, updateRouteForPosition, updateRouteForWallet,
@@ -38,6 +38,7 @@ injectRouterDeps({ posStore, scanPositions, wallet, activateByTokenId });
 injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, resolvePendingRoute, clearPositionDisplay, resetPollingState, clearHistory, getPendingRouteWallet });
 injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState, enterClosedPosView, exitClosedPosView, isViewingClosedPos });
 injectThrottleDeps({ positionRangeVisual });
+injectPosStoreForEvents(posStore);
 
 // ── Bind all event handlers ─────────────────────────────────────────────────
 

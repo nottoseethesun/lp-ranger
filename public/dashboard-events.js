@@ -18,7 +18,7 @@ import {
 import {
   openPosBrowser, closePosBrowser, renderPosBrowser, scanPositions,
   posChangePage, activateSelectedPos, removeSelectedPos, posRowClick,
-  returnToActivePosition,
+  returnToActivePosition, toggleShowClosed, toggleOpenInNewTab,
 } from './dashboard-positions.js';
 import {
   onParamChange, saveOorThreshold, saveOorTimeout, applyAll, checkApplyDirty, saveMinInterval, saveMaxReb, saveSlippage, saveCheckInterval,
@@ -164,6 +164,14 @@ export function bindAllEvents() {
   _click('closedPosReturnBtn', () => {
     if (isViewingClosedPos()) returnToActivePosition();
   });
+
+  // ── Pool Details modal + Manage toggle ───────────────────────────────────
+  _click('poolDetailsBtn', _openPoolDetailsModal);
+  _click('manageToggleBtn', _toggleManagePosition);
+
+  // ── Position Browser toggles ────────────────────────────────────────────
+  _click('posClosedToggle', toggleShowClosed);
+  _click('posNewTabToggle', toggleOpenInNewTab);
 
   // ── Header buttons ────────────────────────────────────────────────────────
   document.querySelectorAll('header .pos-browser-btn').forEach(btn => {
@@ -400,4 +408,53 @@ function _bindCopyBtn(id) {
   if (!el) return;
   const btn = el.parentElement?.querySelector('.copy-btn');
   if (btn) btn.addEventListener('click', () => copyText(id));
+}
+
+// ── Pool Details modal + Manage toggle handlers ────────────────────────────
+
+function _openPoolDetailsModal() {
+  const active = _posStoreRef?.getActive?.();
+  if (!active) return;
+  const m = g('poolDetailsModal'); if (!m) return;
+  const pair = (active.token0Symbol || '?') + '/' + (active.token1Symbol || '?');
+  const fee = active.fee ? (active.fee / 10000).toFixed(2) + '%' : '—';
+  const el = (id, txt) => { const e = g(id); if (e) e.textContent = txt; };
+  el('pdType', active.positionType === 'nft' ? 'NFT (ERC-721)' : 'ERC-20');
+  el('pdTokenId', active.tokenId || '—');
+  el('pdPair', pair);
+  el('pdFee', fee);
+  el('pdContract', active.contractAddress || '—');
+  m.classList.remove('hidden');
+}
+
+let _posStoreRef = null;
+/** Inject posStore reference for Pool Details modal (avoids circular dep). */
+export function injectPosStoreForEvents(posStore) { _posStoreRef = posStore; }
+
+function _toggleManagePosition() {
+  const active = _posStoreRef?.getActive?.();
+  if (!active?.tokenId || active.positionType !== 'nft') return;
+  const badge = g('manageBadge');
+  const isManaged = badge?.classList.contains('managed');
+  if (isManaged) {
+    // Build composite key and pause
+    const w = _posStoreRef.getActive()?.walletAddress;
+    const c = active.contractAddress;
+    const key = `pulsechain-${w}-${c}-${active.tokenId}`;
+    fetch('/api/position/pause', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }) }).catch(() => {});
+  } else {
+    fetch('/api/position/manage', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokenId: active.tokenId, contract: active.contractAddress }) }).catch(() => {});
+  }
+}
+
+/** Update the manage badge based on managed positions from status poll. */
+export function updateManageBadge(managedList, activeTokenId) {
+  const badge = g('manageBadge'); if (!badge) return;
+  const btn = g('manageToggleBtn'); if (!btn) return;
+  const isManaged = Array.isArray(managedList) && managedList.some(p => String(p.tokenId) === String(activeTokenId) && p.status === 'running');
+  badge.classList.toggle('managed', isManaged);
+  badge.textContent = isManaged ? 'Being Actively Managed' : 'Not Actively Managed';
+  btn.textContent = isManaged ? 'Stop Managing' : 'Manage';
 }

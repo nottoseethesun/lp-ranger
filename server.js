@@ -114,11 +114,16 @@
  *
  *   GET  /              → public/index.html (dashboard)
  *   GET  /public/*      → static files from public/
- *   GET  /api/status    → JSON snapshot of bot + position state
- *   POST /api/config    → Update runtime config (throttle params, etc.)
- *   POST /api/position/switch → Switch bot to a different NFT position
- *   POST /api/shutdown  → Graceful shutdown (stops bot + server)
- *   GET  /health        → 200 OK (used by load-balancers / pm2)
+ *   GET  /api/status           → JSON: { global, positions: { [key]: {...} } }
+ *   POST /api/config           → Update runtime config (throttle params, etc.)
+ *   POST /api/position/manage  → Start managing a position (tokenId)
+ *   POST /api/position/pause   → Pause a managed position (key)
+ *   POST /api/position/resume  → Resume a paused position (key)
+ *   DELETE /api/position/manage → Remove position from management (key)
+ *   GET  /api/positions/managed → List all managed positions with status
+ *   POST /api/rebalance        → Force-rebalance a position (positionKey)
+ *   POST /api/shutdown         → Graceful shutdown (stops all positions + server)
+ *   GET  /health               → 200 OK (used by load-balancers / pm2)
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  * CLIENT-SIDE URL ROUTING

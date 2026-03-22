@@ -239,6 +239,11 @@ export function updatePosStripUI() {
   if (capWarn) capWarn.textContent = posStore.isFull() ? '\u26A0 Store full (300/300)' : '';
 }
 
+let _showClosedPositions = false, _openInNewTab = false;
+export function toggleShowClosed() { _showClosedPositions = !_showClosedPositions; renderPosBrowser(); }
+export function toggleOpenInNewTab() { _openInNewTab = !_openInNewTab; const el = g('posNewTabToggle'); if (el) el.classList.toggle('active', _openInNewTab); }
+export function isOpenInNewTab() { return _openInNewTab; }
+
 // ── Position browser modal ──────────────────────────────────────────────────
 
 /** Open the position browser modal. */
@@ -253,7 +258,9 @@ export function closePosBrowser() { g('posBrowserModal').className = 'modal-over
 /** Render the paginated, filterable position list inside the browser modal. */
 export function renderPosBrowser() {
   const filter   = (g('posSearchInput').value || '').toLowerCase();
-  const all      = posStore.entries;
+  let all = posStore.entries;
+  if (!_showClosedPositions) all = all.filter(e => !(e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0'));
+  const closedToggle = g('posClosedToggle'); if (closedToggle) closedToggle.classList.toggle('active', _showClosedPositions);
   const unsorted = filter
     ? all.filter(e => {
       const hay = [e.token0, e.token1, e.tokenId, e.contractAddress,
@@ -364,17 +371,11 @@ function _isPositionClosed(pos) {
   return pos.liquidity !== undefined && pos.liquidity !== null && String(pos.liquidity) === '0';
 }
 
-/**
- * Tell the server to start managing the given NFT position.
- * In multi-position mode, this starts a new bot loop — it doesn't stop existing ones.
- */
+/** Tell the server to start managing the given NFT position. */
 function _notifyServerManage(active) {
   if (!active.tokenId || active.positionType !== 'nft') return;
-  fetch('/api/position/manage', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tokenId: active.tokenId, contract: active.contractAddress }) })
-    .then(r => r.json()).then(data => {
-      if (data.ok) console.log('[dash] Server managing position #%s (key=%s)', active.tokenId, data.key);
-    }).catch(() => {});
+  fetch('/api/position/manage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tokenId: active.tokenId, contract: active.contractAddress }) })
+    .then(r => r.json()).then(d => { if (d.ok) console.log('[dash] Managing #%s key=%s', active.tokenId, d.key); }).catch(() => {});
 }
 
 /** Make the highlighted position the active one and close the browser. */
@@ -477,11 +478,7 @@ export function setBotActiveTokenId(tid) {
 }
 
 /** Update the set of managed tokenIds from the server's managed positions list. */
-export function updateManagedPositions(managedList) {
-  _managedTokenIds.clear();
-  if (!Array.isArray(managedList)) return;
-  for (const p of managedList) if (p.tokenId && p.status === 'running') _managedTokenIds.add(String(p.tokenId));
-}
+export function updateManagedPositions(list) { _managedTokenIds.clear(); if (Array.isArray(list)) for (const p of list) if (p.tokenId && p.status === 'running') _managedTokenIds.add(String(p.tokenId)); }
 
 /** Determine status CSS class and label for a position row. */
 function _posRowStatus(e, isManaged, inRange) {

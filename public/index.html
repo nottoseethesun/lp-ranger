@@ -216,6 +216,8 @@
     <div class="pos-search-row">
       <button class="pos-scan-btn" id="posScanBtn">⟳ Scan Wallet</button>
       <button class="pos-scan-btn 9mm-pos-mgr-btn-green">+ Import Wallet</button>
+      <button class="9mm-pos-mgr-btn-small 9mm-pos-mgr-toggle-btn" id="posClosedToggle">Show Closed</button>
+      <button class="9mm-pos-mgr-btn-small 9mm-pos-mgr-toggle-btn" id="posNewTabToggle">Open in New Tab</button>
     </div>
 
     <!-- Stats bar -->
@@ -423,10 +425,10 @@
     <div class="9mm-pos-mgr-help-popover" id="helpPopover">
       <div class="9mm-pos-mgr-help-title">How It Works</div>
       <ul class="9mm-pos-mgr-help-list">
-        <li>This dashboard manages <strong>one active liquidity position</strong> per wallet per liquidity pool. To get started: if you don&rsquo;t currently have a liquidity position on your current wallet address, create one (use a 50/50 split between the token pair, unless you are expert) or send the LP NFT to your wallet, and then click the &ldquo;Scan&rdquo; button at top middle. If you already have one, just select it from the LP Position Browser, directly to the left of the &ldquo;Scan&rdquo; button.</li>
+        <li>This dashboard manages <strong>multiple LP positions simultaneously</strong> across different pools from a single wallet. To get started: scan your wallet for existing positions, then click &ldquo;Manage&rdquo; on any position to start the bot for that pool. Each managed position runs its own independent rebalance loop.</li>
         <li>Wait for the &ldquo;Sync&rdquo; label near top right to finish (&ldquo;Synced&rdquo;).</li>
-        <li>When the price moves out of the configured range, the bot automatically rebalances by draining the old position and minting a new one centered on the current price.</li>
-        <li>All data on this page is scoped to a <strong>single wallet</strong> and a <strong>single liquidity pool</strong>.</li>
+        <li>When the price moves out of the configured range, the bot automatically rebalances by draining the old position and minting a new one centered on the current price. A rebalance lock ensures only one position transacts at a time (same wallet = same nonce).</li>
+        <li>Each browser tab shows one position via URL. Open multiple tabs to monitor multiple pools simultaneously.</li>
         <li>Only V3 concentrated liquidity (NFT) positions are supported.</li>
         <li>Historical rebalance events are scanned up to 5 years back and used to calculate lifetime P&amp;L.</li>
         <li>The $usd value of the initial deposit is automatically detected. In case of a problem with that, a dialog pops up to notify the user of the opportunity to enter it manually instead at top left in the app under &ldquo;Initial Deposit&rdquo;. Manual entries there always override any auto-detected value.</li>
@@ -460,9 +462,28 @@
     <button class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
   </div>
   <div class="wallet-strip">
-    <span class="pt-badge nft" id="ptBadge">NFT POSITION</span>
-    <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">Position NFT #</span><strong id="wsToken">—</strong>
+    <button class="9mm-pos-mgr-btn-small" id="poolDetailsBtn" title="View pool and contract details">Pool Details</button>
+    <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">NFT #</span><strong id="wsToken">—</strong>
     <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
+    <span class="9mm-pos-mgr-manage-cluster">
+      <button class="9mm-pos-mgr-btn-small" id="manageToggleBtn">Manage</button>
+      <span class="9mm-pos-mgr-manage-badge" id="manageBadge">Not Actively Managed</span>
+    </span>
+  </div>
+</div>
+
+<!-- Pool Details modal (opened by Pool Details button in NFT bar) -->
+<div id="poolDetailsModal" class="9mm-pos-mgr-modal-overlay hidden">
+  <div class="9mm-pos-mgr-modal">
+    <h3>Pool Details</h3>
+    <div class="9mm-pos-mgr-pool-detail-grid">
+      <div><span class="9mm-pos-mgr-text-muted">Position Type</span> <strong id="pdType">—</strong></div>
+      <div><span class="9mm-pos-mgr-text-muted">NFT Token ID</span> <strong id="pdTokenId">—</strong></div>
+      <div><span class="9mm-pos-mgr-text-muted">Pool Pair</span> <strong id="pdPair">—</strong></div>
+      <div><span class="9mm-pos-mgr-text-muted">Fee Tier</span> <strong id="pdFee">—</strong></div>
+      <div><span class="9mm-pos-mgr-text-muted">NFT Contract</span> <strong id="pdContract" class="9mm-pos-mgr-monospace">—</strong></div>
+    </div>
+    <button class="9mm-pos-mgr-modal-close" data-dismiss-modal>Close</button>
   </div>
 </div>
 
@@ -813,6 +834,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774217012223"></script>
+<script src="dist/bundle.js?v=1774221088695"></script>
 </body>
 </html>

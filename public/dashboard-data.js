@@ -9,7 +9,7 @@ import { g, botConfig, compositeKey, fmtDateTime, act } from './dashboard-helper
 import { posStore, updatePosStripUI, setBotActiveTokenId, updateManagedPositions } from './dashboard-positions.js';
 import { updateHistoryFromStatus } from './dashboard-history.js';
 import { wallet } from './dashboard-wallet.js';
-import { reapplyPrivacyBlur } from './dashboard-events.js';
+import { reapplyPrivacyBlur, updateManageBadge } from './dashboard-events.js';
 import { isViewingClosedPos, refetchClosedPosHistory } from './dashboard-closed-pos.js';
 import { updateILDebugData } from './dashboard-il-debug.js';
 
@@ -564,7 +564,11 @@ function _populateHistoryOnce(data) {
 /** Main update function — routes /api/status data to all UI elements. */
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
-  if (data._managedPositions) updateManagedPositions(data._managedPositions);
+  if (data._managedPositions) {
+    updateManagedPositions(data._managedPositions);
+    const active = posStore.getActive();
+    if (active) updateManageBadge(data._managedPositions, active.tokenId);
+  }
   updateILDebugData(data, posStore);
 
   if (data.withinThreshold !== undefined) botConfig.withinThreshold = data.withinThreshold;
