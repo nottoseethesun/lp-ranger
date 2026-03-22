@@ -143,6 +143,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 | `REBALANCE_OOR_THRESHOLD_PCT` | `10` | % price must move beyond position boundary before rebalance triggers |
 | `REBALANCE_TIMEOUT_MIN` | `180` | Minutes of continuous OOR before auto-rebalance (0 = disabled) |
 | `SLIPPAGE_PCT` | `0.5` | |
+| `TX_SPEEDUP_SEC` | `120` | Seconds before a pending TX is speed-up-replaced with higher gas |
 | `CHECK_INTERVAL_SEC` | `60` | On-chain poll frequency |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | |
 | `MAX_REBALANCES_PER_DAY` | `20` | |
@@ -194,6 +195,8 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 **Rebalance pipeline:** `src/bot-loop.js` provides the shared bot logic used by both `server.js` and `bot.js`. It polls the pool at `CHECK_INTERVAL_SEC`, checks if the current tick is outside [tickLower, tickUpper], applies the OOR threshold check, checks throttle, then calls `executeRebalance()` which does: getPoolState → removeLiquidity → computeDesiredAmounts → swapIfNeeded → mintPosition. All functions accept injected `signer`, `ethersLib`, and config objects for testability.
 
 **PulseChain gas price patch:** PulseChain supports EIP-1559 but ethers.js v6's `getFeeData()` intermittently returns null/0 for all fee fields, causing TXs with 0 gas price that sit pending forever. `createProviderWithFallback()` in `bot-loop.js` patches `provider.getFeeData()` at creation time: if the original returns zero/null, it falls back to a raw `eth_gasPrice` RPC call. This ensures ALL transactions (multicall, swap, mint) automatically get proper gas pricing — no per-call-site overrides needed.
+
+**TX speed-up:** `_waitOrSpeedUp()` in `rebalancer.js` wraps every `tx.wait()` call. If a TX hasn't confirmed within `TX_SPEEDUP_SEC` (default 120s), it fetches current gas price (via the patched `getFeeData`), takes the higher of current vs original gas, bumps by 1.5×, and resends with the same nonce via `signer.sendTransaction()`. The network treats this as a replacement TX. Covers all four TX types: approve, multicall (removeLiquidity), swap, and mint. Timer is cleaned up in `finally` to prevent test hangs.
 
 **SDK ratio math:** `computeDesiredAmounts` uses `@uniswap/v3-sdk` exact 160-bit sqrtPrice math (`maxLiquidityForAmounts` + `SqrtPriceMath`) to determine the precise token ratio the Position Manager needs for the target tick range, then computes the swap to convert excess into the deficient token. Falls back to a 50/50 USD value split when no tick range is provided (e.g. price-only callers). The SDK path requires `jsbi` (direct dependency).
 
@@ -259,7 +262,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 
 **Dead code detection:** `knip` is installed as a devDependency. The 12 dashboard files show as "unused" because knip can't trace HTML `<script>` tags — these are false positives.
 
-**Rebalance diagnostic logs:** Step-by-step console logs trace the entire rebalance pipeline: Steps 1 (getPoolState), 2 (ownerOf), 3 (readLiquidity), 3a (removeLiquidity), 6 (swap), 7a (allowance), 7b (mint TX submit), 7c (mint TX confirm). Position detection, bot state changes, and `activePositionId` transitions are also logged. These logs are permanent — not removed after debugging.
+**Rebalance diagnostic logs:** Step-by-step console logs trace the entire rebalance pipeline: Steps 1 (getPoolState), 2 (ownerOf), 3 (readLiquidity), 3a (removeLiquidity), 6 (swap), 7a (allowance), 7b (mint TX submit), 7c (mint TX confirm). Each TX confirmation logs `gasUsed`, `gasPrice`, and `blockNumber`. Every `getFeeData()` call logs the returned `gasPrice`, `maxFeePerGas`, and `maxPriorityFeePerGas` values. Speed-up replacements log original/current/bumped gas and the replacement TX hash. Position detection, bot state changes, and `activePositionId` transitions are also logged. These logs are permanent — not removed after debugging.
 
 ---
 

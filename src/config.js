@@ -127,6 +127,9 @@ const REBALANCE_TIMEOUT_MIN = (() => {
 /** Maximum slippage tolerance for rebalance transactions (percent). */
 const SLIPPAGE_PCT = parsePositiveFloat(process.env.SLIPPAGE_PCT, 0.5);
 
+/** Seconds before a pending TX is speed-up-replaced with higher gas. Default: 120 (2 min). */
+const TX_SPEEDUP_SEC = parsePositiveInt(process.env.TX_SPEEDUP_SEC, 120);
+
 /** How often the bot checks the on-chain position, in seconds. */
 const CHECK_INTERVAL_SEC = parsePositiveInt(process.env.CHECK_INTERVAL_SEC, 60);
 
@@ -219,6 +222,7 @@ module.exports = {
   REBALANCE_OOR_THRESHOLD_PCT,
   REBALANCE_TIMEOUT_MIN,
   SLIPPAGE_PCT,
+  TX_SPEEDUP_SEC,
   CHECK_INTERVAL_SEC,
   MIN_REBALANCE_INTERVAL_MIN,
   MAX_REBALANCES_PER_DAY,

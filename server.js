@@ -65,7 +65,9 @@
  *   RPC_URL                 JSON-RPC endpoint (default: https://rpc-pulsechain.g4mm4.io)
  *   RPC_URL_FALLBACK        Fallback RPC (default: https://rpc.pulsechain.com)
  *   REBALANCE_OOR_THRESHOLD_PCT  % beyond boundary to trigger rebalance (default: 10)
+ *   REBALANCE_TIMEOUT_MIN   Minutes of continuous OOR before auto-rebalance (default: 180, 0=disabled)
  *   SLIPPAGE_PCT            Max slippage for txns (default: 0.5)
+ *   TX_SPEEDUP_SEC          Seconds before a pending TX is speed-up-replaced (default: 120)
  *   CHECK_INTERVAL_SEC      Poll interval (default: 60)
  *   MIN_REBALANCE_INTERVAL_MIN   Min wait between rebalances (default: 10)
  *   MAX_REBALANCES_PER_DAY  Hard daily cap (default: 20)
@@ -833,6 +835,7 @@ if (require.main === module) {
         console.log('\n[server] Shutting down…');
         if (_botHandle) { await _botHandle.stop(); _botHandle = null; }
         server.close(() => process.exit(0));
+        setTimeout(() => { console.log('[server] Force exit (connections still open)'); process.exit(0); }, 3000);
       };
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);

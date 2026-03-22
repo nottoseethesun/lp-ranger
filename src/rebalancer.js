@@ -8,6 +8,7 @@
 'use strict';
 
 const rangeMath = require('./range-math');
+const config = require('./config');
 const { PM_ABI } = require('./pm-abi');
 const { maxLiquidityForAmounts, TickMath, SqrtPriceMath } = require('@uniswap/v3-sdk');
 const JSBI = require('jsbi');
@@ -47,6 +48,12 @@ const _MIN_SWAP_THRESHOLD = 1000n;
 /** Valid V3 fee tiers (basis-point units). */
 const V3_FEE_TIERS = [100, 500, 2500, 3000, 10000];
 
+/** Timeout (ms) before a pending TX is speed-up-replaced with higher gas. */
+const _SPEEDUP_TIMEOUT_MS = (config.TX_SPEEDUP_SEC || 120) * 1000;
+
+/** Gas price multiplier for speed-up replacement TXs. */
+const _SPEEDUP_GAS_BUMP = 1.5;
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -56,6 +63,38 @@ const V3_FEE_TIERS = [100, 500, 2500, 3000, 10000];
  */
 function _deadline(offsetSeconds = _DEADLINE_SECONDS) {
   return BigInt(Math.floor(Date.now() / 1000) + offsetSeconds);
+}
+
+/**
+ * Wait for a TX to confirm, automatically speeding it up if it hasn't
+ * confirmed within `_SPEEDUP_TIMEOUT_MS`.  Resends the same TX data with
+ * the same nonce but a bumped gas price so miners/validators prefer it.
+ * @param {import('ethers').TransactionResponse} tx  Submitted transaction.
+ * @param {import('ethers').Signer} signer           Signer that sent the TX.
+ * @param {string} label  Log label for diagnostics (e.g. 'removeLiq').
+ * @returns {Promise<import('ethers').TransactionReceipt>}
+ */
+async function _waitOrSpeedUp(tx, signer, label) {
+  let timer;
+  try {
+    const receipt = await Promise.race([
+      tx.wait(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('_SPEEDUP_TIMEOUT')), _SPEEDUP_TIMEOUT_MS); }),
+    ]);
+    return receipt;
+  } catch (err) {
+    if (err.message !== '_SPEEDUP_TIMEOUT') throw err;
+    console.warn('[rebalance] %s: TX %s not confirmed after %ds — speeding up', label, tx.hash, _SPEEDUP_TIMEOUT_MS / 1000);
+    const provider = signer.provider || signer;
+    const fd = await provider.getFeeData();
+    const curGas = fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
+    const origGas = tx.gasPrice ?? tx.maxFeePerGas ?? 0n;
+    const bumped = BigInt(Math.ceil(Number(curGas > origGas ? curGas : origGas) * _SPEEDUP_GAS_BUMP));
+    console.log('[rebalance] %s: speedup origGas=%s curGas=%s bumped=%s nonce=%d', label, String(origGas), String(curGas), String(bumped), tx.nonce);
+    const replacement = await signer.sendTransaction({ to: tx.to, data: tx.data, value: tx.value, nonce: tx.nonce, gasLimit: tx.gasLimit, gasPrice: bumped });
+    console.log('[rebalance] %s: replacement TX submitted, hash=%s nonce=%d', label, replacement.hash, replacement.nonce);
+    return replacement.wait();
+  } finally { clearTimeout(timer); }
 }
 
 /**
@@ -74,8 +113,8 @@ async function _ensureAllowance(tokenContract, owner, spender, requiredAmount) {
   // Approve only the exact amount needed (not unlimited) to limit exposure
   // if the spender contract is compromised.
   const tx = await tokenContract.approve(spender, requiredAmount);
-  console.log('[rebalance] approve: TX submitted, hash=%s', tx.hash);
-  const rcpt = await tx.wait();
+  console.log('[rebalance] approve: TX submitted, hash=%s nonce=%d', tx.hash, tx.nonce);
+  const rcpt = await _waitOrSpeedUp(tx, tokenContract.runner, 'approve');
   console.log('[rebalance] approve: confirmed, gasUsed=%s gasPrice=%s', String(rcpt.gasUsed), String(rcpt.gasPrice ?? rcpt.effectiveGasPrice));
 }
 
@@ -132,8 +171,8 @@ async function removeLiquidity(signer, ethersLib, {
   const decreaseData = pm.interface.encodeFunctionData('decreaseLiquidity', [{ tokenId, liquidity, amount0Min: 0n, amount1Min: 0n, deadline: dl }]);
   const collectData = pm.interface.encodeFunctionData('collect', [{ tokenId, recipient, amount0Max: _MAX_UINT128, amount1Max: _MAX_UINT128 }]);
   const tx = await pm.multicall([decreaseData, collectData]);
-  console.log('[rebalance] removeLiq: TX submitted, hash=%s — waiting for confirmation…', tx.hash);
-  const receipt = await tx.wait();
+  console.log('[rebalance] removeLiq: TX submitted, hash=%s nonce=%d — waiting for confirmation…', tx.hash, tx.nonce);
+  const receipt = await _waitOrSpeedUp(tx, signer, 'removeLiq');
   console.log('[rebalance] removeLiq: confirmed, gasUsed=%s gasPrice=%s block=%s', String(receipt.gasUsed), String(receipt.gasPrice ?? receipt.effectiveGasPrice), receipt.blockNumber);
 
   // Determine collected amounts via balance diff (robust across all ABIs)
@@ -310,8 +349,8 @@ async function swapIfNeeded(signer, ethersLib, {
 
   const tx = await router.exactInputSingle({ tokenIn, tokenOut, fee, recipient,
     deadline: dl, amountIn, amountOutMinimum, sqrtPriceLimitX96: 0n });
-  console.log('[rebalance] swap: TX submitted, hash=%s — waiting for confirmation…', tx.hash);
-  const receipt = await tx.wait();
+  console.log('[rebalance] swap: TX submitted, hash=%s nonce=%d — waiting for confirmation…', tx.hash, tx.nonce);
+  const receipt = await _waitOrSpeedUp(tx, signer, 'swap');
   console.log('[rebalance] swap: confirmed, gasUsed=%s gasPrice=%s block=%s', String(receipt.gasUsed), String(receipt.gasPrice ?? receipt.effectiveGasPrice), receipt.blockNumber);
   const balAfter = await outContract.balanceOf(recipient);
   const actualOut = balAfter - balBefore;
@@ -359,9 +398,9 @@ async function mintPosition(signer, ethersLib, {
     recipient,
     deadline: dl,
   });
-  console.log('[rebalance] Step 7b done: mint TX submitted, hash=%s', tx.hash);
+  console.log('[rebalance] Step 7b done: mint TX submitted, hash=%s nonce=%d', tx.hash, tx.nonce);
   console.log('[rebalance] Step 7c: waiting for confirmation…');
-  const receipt = await tx.wait();
+  const receipt = await _waitOrSpeedUp(tx, signer, 'mint');
   console.log('[rebalance] Step 7c done: mint TX confirmed, block=%s gasUsed=%s gasPrice=%s', receipt.blockNumber, String(receipt.gasUsed), String(receipt.gasPrice ?? receipt.effectiveGasPrice));
 
   // Try to parse the IncreaseLiquidity event for actual values.
