@@ -120,6 +120,7 @@ export const posStore = {
       if (entry.liquidity !== undefined) existing.liquidity = entry.liquidity;
       if (entry.contractAddress) existing.contractAddress = entry.contractAddress;
       if (entry.poolTick !== undefined && entry.poolTick !== null) existing.poolTick = entry.poolTick;
+      if (entry.scanInRange !== undefined && entry.scanInRange !== null) existing.scanInRange = entry.scanInRange;
       _persistPosStore();
       return { ok: false, error: 'Position already in store at index ' + dup };
     }
@@ -484,7 +485,7 @@ export function updateManagedPositions(list, allStates) { _managedTokenIds.clear
 
 /** Determine status CSS class and label for a position row. */
 /** Check if a position is in range. Uses: 1) server bot state tick, 2) scan poolTick, 3) same-pool botConfig.price. */
-function _checkInRange(e) { for (const [, st] of Object.entries(_allPositionStates)) { if (st.activePosition && String(st.activePosition.tokenId) === String(e.tokenId) && st.poolState) return st.poolState.tick >= e.tickLower && st.poolState.tick < e.tickUpper; } if (e.poolTick !== undefined && e.poolTick !== null) return e.poolTick >= e.tickLower && e.poolTick < e.tickUpper; const a = posStore.getActive(); if (a && botConfig.price > 0 && e.token0 === a.token0 && e.token1 === a.token1 && e.fee === a.fee) { const lp = Math.pow(1.0001, e.tickLower || 0), up = Math.pow(1.0001, e.tickUpper || 0); return botConfig.price >= lp && botConfig.price <= up; } return null; }
+function _checkInRange(e) { for (const [, st] of Object.entries(_allPositionStates)) { if (st.activePosition && String(st.activePosition.tokenId) === String(e.tokenId) && st.poolState) return st.poolState.tick >= e.tickLower && st.poolState.tick < e.tickUpper; } if (e.poolTick !== undefined && e.poolTick !== null) return e.poolTick >= e.tickLower && e.poolTick < e.tickUpper; if (e.scanInRange !== undefined && e.scanInRange !== null) return e.scanInRange; return null; }
 function _posRowStatus(e, isManaged, inRange) { if (e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0') return { cls: 'closed', label: 'CLOSED', managed: false }; if (inRange === null) return { cls: 'closed', label: '\u2014', managed: isManaged }; return inRange ? { cls: 'in', label: '\u2713 IN', managed: isManaged } : { cls: 'out', label: '\u2717 OUT', managed: isManaged }; }
 
 /**
@@ -695,6 +696,7 @@ function _addScannedPositions(data) {
       token0Symbol: pos.token0Symbol || null, token1Symbol: pos.token1Symbol || null,
       fee: pos.fee, tickLower: pos.tickLower, tickUpper: pos.tickUpper,
       liquidity: pos.liquidity, poolTick: pos.poolTick,
+      scanInRange: (pos.poolTick !== null && pos.poolTick !== undefined) ? (pos.poolTick >= pos.tickLower && pos.poolTick < pos.tickUpper) : null,
     });
     if (result.ok) added++;
   }
