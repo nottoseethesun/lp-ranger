@@ -446,7 +446,7 @@ function _updateThrottleKpis(d) {
   if (!d.throttleState) return;
   const ts = d.throttleState;
   const today = g('kpiToday');
-  if (today) today.textContent = ts.dailyCount + ' / ' + (d.maxRebalancesPerDay || ts.dailyMax);
+  if (today) { const max = d.maxRebalancesPerDay || ts.dailyMax, ratio = max > 0 ? ts.dailyCount / max : 0; today.textContent = ts.dailyCount + ' / ' + max; today.style.color = ratio > 0.9 ? '#ff3b5c' : ratio > 0.66 ? '#ff6b35' : ratio > 0.5 ? '#ffb800' : '#e0eaf4'; }
   const todaySub = g('kpiTodaySub');
   if (todaySub) {
     const lifetime = d.rebalanceEvents ? d.rebalanceEvents.length : 0;
@@ -571,7 +571,7 @@ function _populateHistoryOnce(data) {
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
   if (data._managedPositions) {
-    updateManagedPositions(data._managedPositions);
+    updateManagedPositions(data._managedPositions, data._allPositionStates);
     const active = posStore.getActive();
     if (active) updateManageBadge(data._managedPositions, active.tokenId);
   }

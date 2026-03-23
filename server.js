@@ -560,11 +560,24 @@ async function _handlePositionsScan(req, res) {
     symbolMap[addr] = await _resolveTokenSymbol(provider, addr);
   }));
 
+  // Fetch current tick for each unique pool (for in-range display)
+  const poolTickMap = {};
+  const { getPoolState } = require('./src/rebalancer');
+  const pools = new Set((result.nftPositions || []).filter(p => p.fee && p.fee > 0).map(p => p.token0 + '-' + p.token1 + '-' + p.fee));
+  await Promise.all([...pools].map(async (key) => {
+    try {
+      const [t0, t1, fee] = key.split('-'); const feeN = Number(fee);
+      const ps = await getPoolState(provider, ethers, { factoryAddress: config.FACTORY, token0: t0, token1: t1, fee: feeN });
+      poolTickMap[key] = ps.tick;
+    } catch { /* pool query failed — skip */ }
+  }));
+
   jsonResponse(res, 200, {
     ok: true, type: result.type, positionManagerAddress: pmAddr,
     nftPositions: (result.nftPositions || []).map(p => ({
       ...p, tokenId: String(p.tokenId), liquidity: String(p.liquidity),
       token0Symbol: symbolMap[p.token0] || '?', token1Symbol: symbolMap[p.token1] || '?',
+      poolTick: poolTickMap[p.token0 + '-' + p.token1 + '-' + p.fee] ?? null,
     })),
     erc20Positions: (result.erc20Positions || []).map(p => ({
       ...p,

@@ -28,6 +28,8 @@ let _enterClosedPosView = null;
 let _botActiveTokenId = null;
 /** Set of tokenIds currently being managed by the server (from /api/status). */
 const _managedTokenIds = new Set();
+/** All per-position bot states from server (keyed by composite key). */
+let _allPositionStates = {};
 let _exitClosedPosView = null;
 let _isViewingClosedPos = null;
 
@@ -476,15 +478,13 @@ export function setBotActiveTokenId(tid) {
   if (!alreadyActive && !(_isViewingClosedPos && _isViewingClosedPos())) _selectAndSync(_botActiveTokenId);
 }
 
-/** Update the set of managed tokenIds from the server's managed positions list. */
-export function updateManagedPositions(list) { _managedTokenIds.clear(); if (Array.isArray(list)) for (const p of list) if (p.tokenId && p.status === 'running') _managedTokenIds.add(String(p.tokenId)); }
+/** Update the set of managed tokenIds and all position states from the server. */
+export function updateManagedPositions(list, allStates) { _managedTokenIds.clear(); if (Array.isArray(list)) for (const p of list) if (p.tokenId && p.status === 'running') _managedTokenIds.add(String(p.tokenId)); _allPositionStates = allStates || {}; }
 
 /** Determine status CSS class and label for a position row. */
-function _posRowStatus(e, isManaged, inRange) {
-  if (e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0') return { cls: 'closed', label: 'CLOSED', managed: false };
-  if (isManaged) return inRange ? { cls: 'in', label: '\u2713 IN', managed: true } : { cls: 'out', label: '\u2717 OUT', managed: true };
-  return { cls: 'closed', label: '\u2014', managed: false };
-}
+/** Check if a position is in range. Uses: 1) server bot state tick, 2) scan poolTick, 3) same-pool botConfig.price. */
+function _checkInRange(e) { for (const [, st] of Object.entries(_allPositionStates)) { if (st.activePosition && String(st.activePosition.tokenId) === String(e.tokenId) && st.poolState) return st.poolState.tick >= e.tickLower && st.poolState.tick < e.tickUpper; } if (e.poolTick !== undefined && e.poolTick !== null) return e.poolTick >= e.tickLower && e.poolTick < e.tickUpper; const a = posStore.getActive(); if (a && botConfig.price > 0 && e.token0 === a.token0 && e.token1 === a.token1 && e.fee === a.fee) { const lp = Math.pow(1.0001, e.tickLower || 0), up = Math.pow(1.0001, e.tickUpper || 0); return botConfig.price >= lp && botConfig.price <= up; } return null; }
+function _posRowStatus(e, isManaged, inRange) { if (e.liquidity !== undefined && e.liquidity !== null && String(e.liquidity) === '0') return { cls: 'closed', label: 'CLOSED', managed: false }; if (inRange === null) return { cls: 'closed', label: '\u2014', managed: isManaged }; return inRange ? { cls: 'in', label: '\u2713 IN', managed: isManaged } : { cls: 'out', label: '\u2717 OUT', managed: isManaged }; }
 
 /**
  * Render a single position row for the browser modal.
@@ -493,8 +493,7 @@ function _posRowStatus(e, isManaged, inRange) {
  * @returns {string}  HTML string for the row.
  */
 function _renderPosRow(e) {
-  const lp = Math.pow(1.0001, e.tickLower || 0), up = Math.pow(1.0001, e.tickUpper || 0);
-  const inR = botConfig.price >= lp && botConfig.price <= up;
+  const inR = _checkInRange(e);
   const pair = _tokenName(e.token0Symbol, e.token0) + '/' + _tokenName(e.token1Symbol, e.token1);
   const feePct = e.fee ? (e.fee / 10000).toFixed(2) + '%' : '\u2014';
   const idStr = e.positionType === 'nft' ? 'NFT #' + e.tokenId : e.contractAddress ? e.contractAddress.slice(0, 10) + '\u2026' : 'ERC-20';
@@ -694,7 +693,7 @@ function _addScannedPositions(data) {
       tokenId: pos.tokenId, token0: pos.token0, token1: pos.token1,
       token0Symbol: pos.token0Symbol || null, token1Symbol: pos.token1Symbol || null,
       fee: pos.fee, tickLower: pos.tickLower, tickUpper: pos.tickUpper,
-      liquidity: pos.liquidity,
+      liquidity: pos.liquidity, poolTick: pos.poolTick,
     });
     if (result.ok) added++;
   }

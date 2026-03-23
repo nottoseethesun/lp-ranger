@@ -51,12 +51,14 @@
   transition: transform 0.2s, background 0.2s;
 }
 
-.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track {
+.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track,
+.\39 mm-pos-mgr-browser-toggle input:checked ~ .\39 mm-pos-mgr-toggle-track {
   background: rgb(124 252 0 / 35%);
   border-color: var(--accent3);
 }
 
-.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track::after {
+.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track::after,
+.\39 mm-pos-mgr-browser-toggle input:checked ~ .\39 mm-pos-mgr-toggle-track::after {
   transform: translateX(18px);
   background: var(--accent3);
   box-shadow: 0 0 4px var(--accent3);
@@ -1196,6 +1198,10 @@
 }
 
 /* ── Toggle Switches (Position Browser) ─────────────────────────────────── */
+
+.\39 mm-pos-mgr-justify-end {
+  justify-content: flex-end;
+}
 
 .\39 mm-pos-mgr-browser-toggle {
   display: flex;
