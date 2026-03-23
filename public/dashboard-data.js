@@ -350,6 +350,8 @@ export function positionRangeVisual() {
   const hi = botConfig.upper;
   if (!lo || !hi || lo >= hi) return;
   if (isFullRange(lo, hi)) { _showFullRange(); return; }
+  ['hl', 'hr', 'rangeLnL', 'rangeLnR', 'rlL', 'rlR', 'rangeStartLabel', 'rangeEndLabel'].forEach(id => { const e = g(id); if (e) { e.style.display = ''; e.style.visibility = ''; e.style.transform = ''; } }); // restore after _showFullRange
+  const _rv = document.querySelector('.range-visual'); if (_rv) { _rv.style.overflow = ''; _rv.style.marginBottom = ''; } const _fr = g('fullRangeLabels'); if (_fr) _fr.hidden = true;
 
   // Red threshold bars: X% of range width beyond each boundary.
   // Bot's _isBeyondThreshold uses the same formula.

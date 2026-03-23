@@ -167,46 +167,26 @@ function pairTransfers(transfers) {
  * @returns {Promise<number|null>} Block number of pool creation, or null.
  */
 async function findPoolCreationBlock(provider, ethersLib, opts) {
-  const {
-    factoryAddress,
-    poolAddress,
-    fromBlock,
-    toBlock,
-    chunkSize = 50_000,
-  } = opts;
-
+  const { factoryAddress, poolAddress, fromBlock, toBlock, chunkSize = 50_000, onProgress } = opts;
   if (!factoryAddress || !poolAddress) return null;
-
   try {
-    const factory = new ethersLib.Contract(
-      factoryAddress,
-      POOL_CREATED_ABI,
-      provider
-    );
+    const factory = new ethersLib.Contract(factoryAddress, POOL_CREATED_ABI, provider);
     const poolLower = poolAddress.toLowerCase();
-
+    const totalChunks = Math.ceil((toBlock - fromBlock + 1) / chunkSize);
+    let chunkIdx = 0;
     for (let start = fromBlock; start <= toBlock; start += chunkSize) {
       const end = Math.min(start + chunkSize - 1, toBlock);
+      if (onProgress) onProgress(chunkIdx, totalChunks);
       try {
-        const events = await factory.queryFilter(
-          factory.filters.PoolCreated(),
-          start,
-          end
-        );
+        const events = await factory.queryFilter(factory.filters.PoolCreated(), start, end);
         for (const ev of events) {
-          // The pool address is the last non-indexed arg
           const createdPool = ev.args[4] || ev.args.pool;
-          if (createdPool && createdPool.toLowerCase() === poolLower) {
-            return ev.blockNumber;
-          }
+          if (createdPool && createdPool.toLowerCase() === poolLower) return ev.blockNumber;
         }
-      } catch (_) {
-        // Skip failed chunks — non-critical optimisation
-      }
+      } catch (_) { /* skip failed chunks */ }
+      chunkIdx++;
     }
-  } catch (_) {
-    // Factory query not supported or failed — fall back to full scan
-  }
+  } catch (_) { /* factory query failed — fall back to full scan */ }
   return null;
 }
 
@@ -319,10 +299,10 @@ function mergeAndIndex(cachedEvents, newEvents) {
  * @param {string|null} poolAddress
  * @returns {Promise<number>}
  */
-async function resolveFromBlock(provider, ethersLib, currentBlock, fromBlock, factoryAddress, poolAddress) {
+async function resolveFromBlock(provider, ethersLib, currentBlock, fromBlock, factoryAddress, poolAddress, onProgress) {
   if (!factoryAddress || !poolAddress) return fromBlock;
   const creationBlock = await findPoolCreationBlock(provider, ethersLib, {
-    factoryAddress, poolAddress, fromBlock, toBlock: currentBlock,
+    factoryAddress, poolAddress, fromBlock, toBlock: currentBlock, onProgress,
   });
   return (creationBlock !== null && creationBlock > fromBlock) ? creationBlock : fromBlock;
 }
@@ -466,7 +446,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 
   const currentBlock = await provider.getBlockNumber();
   const baseFrom = Math.max(0, currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR));
-  const fromBlock = await resolveFromBlock(provider, ethersLib, currentBlock, baseFrom, factoryAddress, poolAddress);
+  const fromBlock = await resolveFromBlock(provider, ethersLib, currentBlock, baseFrom, factoryAddress, poolAddress, opts.onProgress);
   const cacheKey = _buildCacheKey(walletAddress, positionManagerAddress, poolToken0, poolToken1, poolFee);
   const { cachedEvents, scanFrom } = await loadCache(cache, cacheKey, fromBlock);
 
