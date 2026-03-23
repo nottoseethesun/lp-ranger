@@ -106,11 +106,7 @@ initRouter();
 
 // Restore last-viewed position from localStorage (if URL doesn't specify one)
 const _path = window.location.pathname.replace(/\/+$/, '');
-console.log('[init] path=%s segments=%d, restoring=%s', _path, _path.split('/').length, !_path || _path === '/' || _path.split('/').length < 5);
-if (!_path || _path === '/' || _path.split('/').length < 5) {
-  const restored = restoreLastPosition();
-  console.log('[init] restoreLastPosition returned:', restored);
-}
+if (!_path || _path === '/' || _path.split('/').length < 5) restoreLastPosition();
 
 // Populate realized gains and lifetime deposit displays from localStorage
 (function initSavedValues() {

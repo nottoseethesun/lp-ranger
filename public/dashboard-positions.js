@@ -457,7 +457,7 @@ function _selectAndSync(tokenId) {
 }
 
 /** Restore the last-viewed position from localStorage. */
-export function restoreLastPosition() { try { const t = localStorage.getItem('9mm_last_position'); console.log('[pos] restoreLastPosition: stored=%s, entries=%d', t, posStore.entries.length); if (t) return activateByTokenId(t); } catch (e) { console.warn('[pos] restoreLastPosition error:', e); } return false; }
+export function restoreLastPosition() { try { const t = localStorage.getItem('9mm_last_position'); if (t) return activateByTokenId(t); } catch { /* */ } return false; }
 
 /** Update the bot's active tokenId, auto-select in store, and sync URL. */
 let _rescanPending = false;
