@@ -145,7 +145,8 @@ async function _scanHistory(provider, ethersLib, address, position, cache, event
       positionManagerAddress: config.POSITION_MANAGER, factoryAddress: config.FACTORY,
       poolAddress: poolState.poolAddress || null, maxYears: 5, cache,
       poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee,
-      onProgress: (done, total) => updateState({ rebalanceScanProgress: 5 + Math.round(done / total * 90) }) });
+      onPoolCreationProgress: (done, total) => updateState({ rebalanceScanProgress: 5 + Math.round(done / total * 45) }),
+      onProgress: (done, total) => updateState({ rebalanceScanProgress: 50 + Math.round(done / total * 45) }) });
     updateState({ rebalanceScanProgress: 95 }); events.push(...found);
     console.log(`[bot] Found ${found.length} historical rebalance events`);
     if (throttle && found.length > 0) { const cutoff = Math.floor((throttle.getState().dailyResetAt - 86_400_000) / 1000); const recent = found.filter((e) => e.timestamp >= cutoff).length; if (recent > 0) throttle.rehydrate(recent); }

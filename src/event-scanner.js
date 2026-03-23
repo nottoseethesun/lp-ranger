@@ -446,7 +446,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 
   const currentBlock = await provider.getBlockNumber();
   const baseFrom = Math.max(0, currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR));
-  const fromBlock = await resolveFromBlock(provider, ethersLib, currentBlock, baseFrom, factoryAddress, poolAddress, opts.onProgress);
+  const fromBlock = await resolveFromBlock(provider, ethersLib, currentBlock, baseFrom, factoryAddress, poolAddress, opts.onPoolCreationProgress);
   const cacheKey = _buildCacheKey(walletAddress, positionManagerAddress, poolToken0, poolToken1, poolFee);
   const { cachedEvents, scanFrom } = await loadCache(cache, cacheKey, fromBlock);
 
