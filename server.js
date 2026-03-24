@@ -638,6 +638,8 @@ const _routes = {
         walletAddress: walletManager.getAddress(),
         port: config.PORT, host: config.HOST, rpcUrl: config.RPC_URL,
         positionManager: config.POSITION_MANAGER, factory: config.FACTORY,
+        rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
+        rebalanceTimeoutMin: config.REBALANCE_TIMEOUT_MIN,
         ..._diskConfig.global,
         dailyRebalanceCount: _positionMgr.getDailyCount(),
         managedPositions: _positionMgr.getAll(),
