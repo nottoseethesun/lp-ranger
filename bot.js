@@ -98,13 +98,14 @@ async function main() {
     const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, positionMgr);
     try {
+      const keyRef = { current: key };
       await positionMgr.startPosition(key, {
         tokenId,
         startLoop: () => startBotLoop({
           privateKey, dryRun,
-          updateBotState: (patch) => updatePositionState(key, patch, diskConfig, positionMgr),
+          updateBotState: (patch) => updatePositionState(keyRef, patch, diskConfig, positionMgr),
           botState: posBotState, positionId: tokenId,
-          getConfig: (k) => readConfigValue(diskConfig, key, k),
+          getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
         }),
         savedConfig: posConfig,
       });

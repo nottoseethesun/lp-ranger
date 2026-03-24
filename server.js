@@ -492,13 +492,14 @@ async function _autoStartManagedPositions() {
     const posBotState = createPerPositionBotState(_diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, _positionMgr);
     try {
+      const keyRef = { current: key };
       await _positionMgr.startPosition(key, {
         tokenId,
         startLoop: () => startBotLoop({
           privateKey: _resolvedPrivateKey, dryRun: config.DRY_RUN,
-          updateBotState: (patch) => updatePositionState(key, patch, _diskConfig, _positionMgr),
+          updateBotState: (patch) => updatePositionState(keyRef, patch, _diskConfig, _positionMgr),
           botState: posBotState, positionId: tokenId,
-          getConfig: (k) => readConfigValue(_diskConfig, key, k),
+          getConfig: (k) => readConfigValue(_diskConfig, keyRef.current, k),
         }),
         savedConfig: posConfig,
       });

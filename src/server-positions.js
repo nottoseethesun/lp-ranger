@@ -54,7 +54,8 @@ function createPerPositionBotState(_globalCfg, saved) {
  * @param {object} diskConfig   V2 disk config (mutated + saved).
  * @param {object} positionMgr  Position manager instance.
  */
-function updatePositionState(key, patch, diskConfig, positionMgr) {
+function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
+  const key = keyRef.current;
   let state = _positionBotStates.get(key);
   if (!state) { state = {}; _positionBotStates.set(key, state); }
   Object.assign(state, patch, { updatedAt: new Date().toISOString() });
@@ -71,7 +72,8 @@ function updatePositionState(key, patch, diskConfig, positionMgr) {
     saveConfig(diskConfig);
   }
 
-  // Handle key migration after rebalance (new tokenId) — save disk first, then memory
+  // Handle key migration after rebalance (new tokenId) — save disk first, then memory.
+  // Update keyRef.current so ALL closures (updateBotState, getConfig) use the new key.
   const parsed = parseCompositeKey(key);
   if (parsed && patch.activePositionId && String(patch.activePositionId) !== parsed.tokenId) {
     const newKey = compositeKey(parsed.blockchain, parsed.wallet, parsed.contract, String(patch.activePositionId));
@@ -82,6 +84,7 @@ function updatePositionState(key, patch, diskConfig, positionMgr) {
     state.forceRebalance = false; state.rebalancePaused = false; state.rebalanceError = null;
     _positionBotStates.set(newKey, state);
     _positionBotStates.delete(key);
+    keyRef.current = newKey;
   }
 }
 
@@ -153,13 +156,14 @@ function createPositionRoutes(deps) {
     _positionBotStates.set(key, posBotState);
 
     const t0 = Date.now();
+    const keyRef = { current: key };
     await positionMgr.startPosition(key, {
       tokenId: String(body.tokenId),
       startLoop: () => startBotLoop({
         privateKey: pk, dryRun: config.DRY_RUN,
-        updateBotState: (patch) => updatePositionState(key, patch, diskConfig, positionMgr),
+        updateBotState: (patch) => updatePositionState(keyRef, patch, diskConfig, positionMgr),
         botState: posBotState, positionId: String(body.tokenId),
-        getConfig: (k) => readConfigValue(diskConfig, key, k),
+        getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
       }),
       savedConfig: posConfig,
     });
@@ -197,11 +201,12 @@ function createPositionRoutes(deps) {
     _positionBotStates.set(body.key, posBotState);
 
     const t0 = Date.now();
+    const keyRef = { current: body.key };
     await positionMgr.resumePosition(body.key, () => startBotLoop({
       privateKey: pk, dryRun: config.DRY_RUN,
-      updateBotState: (patch) => updatePositionState(body.key, patch, diskConfig, positionMgr),
+      updateBotState: (patch) => updatePositionState(keyRef, patch, diskConfig, positionMgr),
       botState: posBotState, positionId: entry.tokenId,
-      getConfig: (k) => readConfigValue(diskConfig, body.key, k),
+      getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
     }));
     console.log('[pos-route] Position resumed in %dms (running: %d)', Date.now() - t0, positionMgr.runningCount());
 
