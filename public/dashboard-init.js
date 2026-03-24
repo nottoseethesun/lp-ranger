@@ -12,7 +12,7 @@ import {
   markWalletKnown, checkServerWalletStatus, injectWalletDeps, wallet,
 } from './dashboard-wallet.js';
 import {
-  posStore, updatePosStripUI, _loadPosStore, _applyLocalPositionData,
+  posStore, updatePosStripUI, _loadPosStore, _applyLocalPositionData, isPositionManaged,
   injectPositionDeps, scanPositions, activateByTokenId, clearPositionDisplay, restoreLastPosition,
 } from './dashboard-positions.js';
 import {
@@ -80,6 +80,7 @@ updatePosStripUI();
     botConfig.tL = active.tickLower || 0;
     botConfig.tU = active.tickUpper || 0;
     _applyLocalPositionData(active);
+    if (!isPositionManaged(active.tokenId)) fetchUnmanagedDetails(active);
   }
   refreshCurDepositDisplay();
 }());

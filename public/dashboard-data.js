@@ -486,8 +486,9 @@ let _scanWasComplete = false;
 function _updateSyncBadge(d) {
   const badge = g('syncBadge'); if (!badge) return;
   let complete = true, pct = 100;
+  if (wallet.address && posStore.count() === 0) { complete = false; pct = 0; }
   if (d._allPositionStates) { for (const [, s] of Object.entries(d._allPositionStates)) { if (!s.rebalanceScanComplete) { complete = false; pct = Math.min(pct, s.rebalanceScanProgress || 0); } } }
-  else { complete = d.rebalanceScanComplete === true; pct = d.rebalanceScanProgress || 0; }
+  else if (d.rebalanceScanComplete !== true) { complete = false; pct = d.rebalanceScanProgress || 0; }
   badge.textContent = complete ? 'Synced' : pct > 5 ? 'Syncing ' + pct + '%' : 'Syncing\u2026';
   badge.style.background = !complete && pct > 5 ? 'linear-gradient(to right, rgb(255 184 0 / 20%) ' + pct + '%, rgb(255 184 0 / 6%) ' + pct + '%)' : '';
   badge.classList.toggle('done', complete);
@@ -638,9 +639,4 @@ export function startDataPolling() {
 
 
 /** Stop polling. */
-export function stopDataPolling() {
-  if (_dataTimerId) {
-    clearInterval(_dataTimerId);
-    _dataTimerId = null;
-  }
-}
+export function stopDataPolling() { if (_dataTimerId) { clearInterval(_dataTimerId); _dataTimerId = null; } }
