@@ -6,7 +6,7 @@
  */
 
 import { g, botConfig, compositeKey, fmtDateTime, act, ACT_ICONS, truncName, fmtNum, isFullRange } from './dashboard-helpers.js';
-import { posStore, updatePosStripUI, setBotActiveTokenId, updateManagedPositions } from './dashboard-positions.js';
+import { posStore, updateManagedPositions } from './dashboard-positions.js';
 import { updateHistoryFromStatus } from './dashboard-history.js';
 import { wallet } from './dashboard-wallet.js';
 import { reapplyPrivacyBlur, updateManageBadge } from './dashboard-events.js';
@@ -499,50 +499,18 @@ export function resetPollingState() {
   const dd = g('lifetimeDepositDisplay'); if (dd) dd.textContent = '\u2014';
 }
 
-/** Auto-add the bot's active position to the store if the store is empty and bot is running.
- *  Skipped when store is empty — the rescan in setBotActiveTokenId handles discovery with full metadata. */
-function _ensureActiveInStore(d) {
-  if (posStore.count() > 0 || !d.activePosition?.tokenId || !d.running) return;
-  // Store is empty — a rescan is needed to get full metadata (symbols, contractAddress).
-  // setBotActiveTokenId triggers the rescan; no need to add incomplete entries here.
-}
-
-/** Ensure the bot's active tokenId is in posStore; select if found, skip if missing.
- *  Missing positions are discovered by the rescan triggered in setBotActiveTokenId. */
-function _ensureBotPosSelected(d, active) {
-  const bp = d.activePosition;
-  if (!bp.tokenId || String(bp.tokenId) === String(active.tokenId)) return false;
-  const idx = posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(bp.tokenId));
-  if (idx < 0) return false; // Not in store yet — rescan will add it with full metadata
-  if (idx !== posStore.activeIdx) { posStore.select(idx); updatePosStripUI(); return true; }
-  return false;
-}
-
-/** Sync the active position from bot status back to the browser posStore. */
+/** Sync rebalance events and liquidity from server to posStore. */
 function _syncActivePosition(d) {
   if (!d.activePosition) return;
-  _ensureActiveInStore(d);
   const active = posStore.getActive();
   if (!active || active.positionType !== 'nft') return;
-  const botPos = d.activePosition;
-  if (_ensureBotPosSelected(d, active)) return;
-
   const isNew = d.lastRebalanceAt && d.lastRebalanceAt !== _lastRebalanceAt;
   if (isNew) {
     _lastRebalanceAt = d.lastRebalanceAt;
-    // Use the last rebalance event for accurate old→new tokenId
-    const evts = d.rebalanceEvents || [];
-    const lastEv = evts.length ? evts[evts.length - 1] : null;
-    if (lastEv) {
-      const txPart = lastEv.txHash ? ' ' + _fmtTxCopy(lastEv.txHash) : '';
-      act(ACT_ICONS.gear, 'fee', 'Rebalance',
-        'NFT #' + lastEv.oldTokenId + ' \u2192 #' + lastEv.newTokenId + txPart);
-    }
+    const evts = d.rebalanceEvents || [], lastEv = evts.length ? evts[evts.length - 1] : null;
+    if (lastEv) { const txPart = lastEv.txHash ? ' ' + _fmtTxCopy(lastEv.txHash) : ''; act(ACT_ICONS.gear, 'fee', 'Rebalance', 'NFT #' + lastEv.oldTokenId + ' \u2192 #' + lastEv.newTokenId + txPart); }
   }
-
-  if (botPos.liquidity !== undefined) active.liquidity = String(botPos.liquidity);
-  // Don't mutate active entry's tokenId — setBotActiveTokenId handles the switch
-  // via rescan, which adds the new NFT with full metadata (symbols, contractAddress).
+  if (d.activePosition.liquidity !== undefined) active.liquidity = String(d.activePosition.liquidity);
 }
 
 /** Load cached rebalance events if server provided none, or cache new ones. */
@@ -590,8 +558,7 @@ function updateDashboardFromStatus(data) {
   const sw = data.walletAddress || data.wallet || '';
   if (sw && (!wallet.address || wallet.address.toLowerCase() !== sw.toLowerCase())) return;
 
-  if (data.activePosition?.tokenId) console.log('[dash] poll: server activePosition=#%s', data.activePosition.tokenId);
-  _syncConfigFromServer(data); setBotActiveTokenId(data.activePosition?.tokenId);
+  _syncConfigFromServer(data);
   _syncRebalanceCache(data); _updateSyncBadge(data);
 
   if (!_poolFirstDate && data.poolFirstMintDate) _poolFirstDate = data.poolFirstMintDate;
@@ -623,7 +590,13 @@ function _flattenV2Status(v2) {
   const global = v2.global || {}, positions = v2.positions || {};
   const active = posStore.getActive();
   const myKey = active ? compositeKey('pulsechain', global.walletAddress, active.contractAddress, active.tokenId) : null;
-  const posData = (myKey && positions[myKey]) || positions[Object.keys(positions)[0]] || null;
+  let posData = myKey ? positions[myKey] : null;
+  // Rebalance key migration: if exact key not found, look for same pool prefix with new tokenId
+  if (!posData && active?.contractAddress && global.walletAddress) {
+    const pfx = 'pulsechain-' + global.walletAddress + '-' + active.contractAddress + '-';
+    const mk = Object.keys(positions).find(k => k.startsWith(pfx) && k !== myKey);
+    if (mk) { posData = positions[mk]; const nid = mk.split('-').pop(); if (nid !== active.tokenId) posStore.updateActiveTokenId(nid); }
+  }
   const flat = { ...global, ...(posData || {}) };
   flat._managedPositions = global.managedPositions || [];
   flat._allPositionStates = positions;

@@ -24,8 +24,6 @@ let _updateRouteForPosition = null;
 let _syncRouteToState = null;
 let _enterClosedPosView = null;
 
-/** The bot's actual active tokenId (from server), distinct from posStore selection. */
-let _botActiveTokenId = null;
 /** Set of tokenIds currently being managed by the server (from /api/status). */
 const _managedTokenIds = new Set();
 /** All per-position bot states from server (keyed by composite key). */
@@ -170,6 +168,8 @@ export const posStore = {
     if (this.activeIdx < 0 || this.activeIdx >= this.entries.length) return null;
     return this.entries[this.activeIdx];
   },
+  /** Update active entry's tokenId after rebalance key migration. */
+  updateActiveTokenId(newId) { const a = this.getActive(); if (!a) return; const old = a.tokenId; a.tokenId = String(newId); _persistPosStore(); try { localStorage.setItem('9mm_last_position', String(newId)); } catch { /* */ } console.log('[pos] rebalance follow: #%s → #%s', old, newId); if (_syncRouteToState) _syncRouteToState(a); },
 
   /** @param {number} [page=0]  @param {number} [size]  @returns {object} */
   getPage(page = 0, size = PAGE_SIZE) {
@@ -445,41 +445,10 @@ function _tokenName(symbol, address) {
   return address || '?';
 }
 
-/** Select a position by tokenId, apply its data, and sync the URL. */
-function _selectAndSync(tokenId) {
-  const idx = posStore.entries.findIndex(e => String(e.tokenId) === tokenId);
-  if (idx < 0) return;
-  _exitClosedViewIfActive();
-  posStore.select(idx);
-  const s = posStore.getActive(); if (!s) return;
-  _applyLocalPositionData(s); updatePosStripUI();
-  if (_syncRouteToState) _syncRouteToState(s);
-  try { localStorage.setItem('9mm_last_position', String(tokenId)); } catch { /* */ }
-  console.log('[dash] selected #%s at idx=%d, URL synced', tokenId, idx);
-}
 
 /** Restore the last-viewed position from localStorage. */
 export function restoreLastPosition() { try { const t = localStorage.getItem('9mm_last_position'); if (t) return activateByTokenId(t); } catch { /* */ } return false; }
 
-/** Update the bot's active tokenId, auto-select in store, and sync URL. */
-let _rescanPending = false;
-export function setBotActiveTokenId(tid) {
-  const prev = _botActiveTokenId;
-  _botActiveTokenId = tid ? String(tid) : null; if (!_botActiveTokenId) return;
-  const cur = posStore.getActive();
-  const alreadyActive = cur && String(cur.tokenId) === _botActiveTokenId;
-  const entry = alreadyActive ? cur : posStore.entries.find(e => String(e.tokenId) === _botActiveTokenId) || null;
-  const bad = !entry || !entry.contractAddress || !entry.token0Symbol || /^0x[0-9a-fA-F]{40}$/i.test(entry.token0Symbol);
-  if (bad && !_rescanPending) {
-    console.log('[dash] setBotActiveTokenId: rescan for #%s (exists=%s)', _botActiveTokenId, !!entry);
-    _rescanPending = true;
-    scanPositions({ navigate: false }).then(() => _selectAndSync(_botActiveTokenId)).finally(() => { _rescanPending = false; });
-    if (!entry) return;
-  }
-  // Only auto-switch when tokenId changed (e.g. rebalance minted new NFT), not on every poll
-  const isNewToken = prev && prev !== _botActiveTokenId;
-  if (isNewToken && !alreadyActive && !(_isViewingClosedPos && _isViewingClosedPos())) _selectAndSync(_botActiveTokenId);
-}
 
 /** Update the set of managed tokenIds and all position states from the server. */
 export function updateManagedPositions(list, allStates) { _managedTokenIds.clear(); if (Array.isArray(list)) for (const p of list) if (p.tokenId && p.status === 'running') _managedTokenIds.add(String(p.tokenId)); _allPositionStates = allStates || {}; }
@@ -544,7 +513,6 @@ function _showNoPositionsDialog() {
  * active duration, IL breakdown, and the activity log.
  */
 export function clearPositionDisplay() {
-  _botActiveTokenId = null;
   // Stat grid: ticks, token labels, pool shares, balances
   _setText('sTL', '\u2014'); _setText('sTU', '\u2014'); _setText('sTC', '\u2014');
   _setHtml('statT0Label', '\u2014'); _setHtml('statT1Label', '\u2014');
