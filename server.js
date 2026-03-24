@@ -383,10 +383,13 @@ async function _handleApiConfig(req, res) {
     }
   }
   saveConfig(_diskConfig);
-  // If slippage was changed, clear rebalancePaused so the bot retries with new setting
-  if (posPatch.slippagePct !== undefined) {
+  // Propagate global config changes to live bot states so the bot picks them up
+  if (Object.keys(globalPatch).length > 0) {
     for (const [, state] of getAllPositionBotStates()) {
-      if (state.rebalancePaused) { state.rebalancePaused = false; state.rebalanceError = null; }
+      Object.assign(state, globalPatch);
+      if (globalPatch.slippagePct !== undefined && state.rebalancePaused) {
+        state.rebalancePaused = false; state.rebalanceError = null;
+      }
     }
   }
   jsonResponse(res, 200, { ok: true, applied: { ...globalPatch, ...posPatch } });

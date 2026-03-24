@@ -320,12 +320,18 @@ function _checkRangeAndThreshold(deps, poolState, emit) {
 }
 
 /** Check throttle, daily cap, dry-run, and gas before executing.  Returns early result or null. */
+/** Rewrite low-level RPC errors into user-readable messages. */
+function _humanizeError(msg) {
+  if (/insufficient funds|INSUFFICIENT_FUNDS/i.test(msg)) return 'Wallet has insufficient gas to send transactions. Send native tokens (e.g. PLS) to the wallet and retry.';
+  return msg;
+}
+
 function _checkRebalanceGates(deps, poolState, forced) {
   const { throttle, dryRun } = deps;
   const emit = deps.updateBotState || (() => {});
   // Skip rebalance while paused from a prior swap abort (user must adjust slippage
   // or use the manual Rebalance button, which sets forceRebalance and clears the flag)
-  if (!forced && deps._botState?.rebalancePaused) return { rebalanced: false };
+  if (!forced && deps._botState?.rebalancePaused) return { rebalanced: false, paused: true };
   const can = !forced && throttle.canRebalance();
   if (can && !can.allowed) {
     console.log(`[bot] OOR but throttled (${can.reason}), wait ${Math.ceil(can.msUntilAllowed / 1000)}s`);
@@ -519,11 +525,10 @@ async function startBotLoop(opts) {
         currentIntervalMs = GAS_DEFER_MS; console.log(`[bot] Next retry in ${GAS_DEFER_MS / 60_000}m (gas deferral)`);
       } else if (result.error) {
         if (!firstFailureAt) firstFailureAt = Date.now();
-        const isNoGas = /insufficient funds|INSUFFICIENT_FUNDS/i.test(result.error);
-        const errMsg = isNoGas ? 'Wallet has insufficient gas to send transactions. Send native tokens (e.g. PLS) to the wallet and retry.' : result.error;
+        const errMsg = _humanizeError(result.error);
         console.error(`[bot] Rebalance failed: ${errMsg} (${Math.round((Date.now() - firstFailureAt) / 60_000)}m of failures)`);
         updateBotState({ rebalanceError: errMsg, rebalancePaused: true });
-      } else if (firstFailureAt) {
+      } else if (firstFailureAt && !result.paused) {
         const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
         console.log(`[bot] Price returned to range after ~${oorMin}m of failures — clearing`);
         firstFailureAt = null; currentIntervalMs = (botState.checkIntervalSec || config.CHECK_INTERVAL_SEC) * 1000;

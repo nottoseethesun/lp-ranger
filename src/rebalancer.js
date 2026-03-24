@@ -410,7 +410,7 @@ async function swapIfNeeded(signer, ethersLib, {
   const spotRate = isToken0To1 ? currentPrice : (1 / currentPrice);
   const spotExpected = (Number(amountIn) / 10 ** decimalsIn) * spotRate * (10 ** decimalsOut);
   const impactPct = spotExpected > 0 ? Math.max(0, (spotExpected - Number(quotedOut)) / spotExpected * 100) : 0;
-  console.log('[rebalance] swap quote: quoted=%s spotExpected=%s impact=%.2f%% slippage=%.1f%%', String(quotedOut), spotExpected.toFixed(0), impactPct, slip);
+  console.log('[rebalance] swap quote: quoted=%s spotExpected=%s impact=%s%% slippage=%s%%', String(quotedOut), spotExpected.toFixed(0), impactPct.toFixed(2), slip);
   _checkSwapImpact(impactPct, slip);
   const slipBps = Math.round(slip * 100);
   const amountOutMinimum = quotedOut * BigInt(10000 - slipBps) / 10000n;

@@ -11,7 +11,7 @@
  * Depends on: dashboard-helpers.js, dashboard-positions.js (posStore).
  */
 
-import { g, act, ACT_ICONS, fmtCountdown, nextMidnight, botConfig, savePositionOorThreshold } from './dashboard-helpers.js';
+import { g, act, ACT_ICONS, fmtCountdown, nextMidnight, botConfig, savePositionOorThreshold, compositeKey } from './dashboard-helpers.js';
 import { posStore, isPositionManaged } from './dashboard-positions.js';
 import { _createModal } from './dashboard-data.js';
 import { isViewingClosedPos } from './dashboard-closed-pos.js';
@@ -372,9 +372,12 @@ export async function confirmRebalanceRange() {
   const total = parseFloat(input?.value) || 10;
   closeRebalanceRangeModal();
   try {
+    const active = posStore.getActive();
+    if (!active) { _createModal(null, '9mm-pos-mgr-modal-caution', 'Rebalance Blocked', '<p>No active position selected</p>'); return; }
+    const positionKey = compositeKey('pulsechain', active.walletAddress, active.contractAddress, active.tokenId);
     const res = await fetch('/api/rebalance', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customRangeWidthPct: total }),
+      body: JSON.stringify({ positionKey, customRangeWidthPct: total }),
     });
     const data = await res.json();
     if (!data.ok) { _createModal(null, '9mm-pos-mgr-modal-caution', 'Rebalance Blocked', '<p>' + (data.error || 'Unknown error') + '</p>'); act(ACT_ICONS.warn, 'alert', 'Rebalance Blocked', data.error); return; }
