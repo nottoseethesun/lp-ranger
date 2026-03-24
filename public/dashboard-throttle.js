@@ -12,7 +12,7 @@
  */
 
 import { g, act, ACT_ICONS, fmtCountdown, nextMidnight, botConfig, savePositionOorThreshold } from './dashboard-helpers.js';
-import { posStore } from './dashboard-positions.js';
+import { posStore, isPositionManaged } from './dashboard-positions.js';
 import { _createModal } from './dashboard-data.js';
 import { isViewingClosedPos } from './dashboard-closed-pos.js';
 
@@ -124,15 +124,9 @@ function _checkBannerVisibility(banner) {
   return true;
 }
 
-/**
- * Render the range status banner based on price position and throttle state.
- * @param {{allowed:boolean, msUntilAllowed:number, reason:string}} can
- */
-function _renderRangeBanner(can) {
-  const banner = g('rangeBanner');
-  if (!banner || !_checkBannerVisibility(banner)) return;
-  const inR    = botConfig.price >= botConfig.lower && botConfig.price <= botConfig.upper;
-  if (!inR && botConfig.withinThreshold) {
+/** Render OOR sub-state for a managed position (threshold, doubling, triggered). */
+function _renderManagedOor(banner, can) {
+  if (botConfig.withinThreshold) {
     banner.className = 'range-status-banner wait';
     g('rangeIcon').textContent  = '\u26A0';
     let threshLabel = 'OUT OF RANGE \u2014 WITHIN THRESHOLD';
@@ -142,22 +136,39 @@ function _renderRangeBanner(can) {
       threshLabel += ' \u00B7 Timeout: ' + fmtCountdown(remaining);
     }
     g('rangeLabel').textContent = threshLabel;
-  } else if (!inR && !can.allowed) {
+  } else if (!can.allowed) {
     const icon  = throttle.doublingActive ? '\u26A1' : '\u23F3';
     const cls   = throttle.doublingActive ? 'dbl' : 'wait';
     const label = throttle.doublingActive ? 'DOUBLING WAIT' : 'WAITING';
     banner.className = 'range-status-banner ' + cls;
     g('rangeIcon').textContent  = icon;
     g('rangeLabel').textContent = 'OUT OF RANGE \u2014 ' + label + ': ' + fmtCountdown(can.msUntilAllowed);
-  } else if (!inR) {
+  } else {
     banner.className = 'range-status-banner out';
     g('rangeIcon').textContent  = '\u2717';
     g('rangeLabel').textContent = 'OUT OF RANGE \u2014 REBALANCE TRIGGERED';
-  } else {
+  }
+}
+
+/**
+ * Render the range status banner based on price position and throttle state.
+ * @param {{allowed:boolean, msUntilAllowed:number, reason:string}} can
+ */
+function _renderRangeBanner(can) {
+  const banner = g('rangeBanner');
+  if (!banner || !_checkBannerVisibility(banner)) return;
+  const inR = botConfig.price >= botConfig.lower && botConfig.price <= botConfig.upper;
+  if (inR) {
     banner.className = 'range-status-banner in';
     g('rangeIcon').textContent  = '\u2713';
     g('rangeLabel').textContent = 'PRICE IN RANGE \u2014 EARNING FEES';
+    return;
   }
+  const active = posStore.getActive();
+  if (active && isPositionManaged(active.tokenId)) { _renderManagedOor(banner, can); return; }
+  banner.className = 'range-status-banner out';
+  g('rangeIcon').textContent  = '\u2717';
+  g('rangeLabel').textContent = 'OUT OF RANGE';
 }
 
 /** Update the rebalance interval KPI. */

@@ -455,6 +455,9 @@ export function restoreLastPosition() { try { const t = localStorage.getItem('9m
 /** Update the set of managed tokenIds and all position states from the server. */
 export function updateManagedPositions(list, allStates) { _managedTokenIds.clear(); if (Array.isArray(list)) for (const p of list) if (p.tokenId && p.status === 'running') _managedTokenIds.add(String(p.tokenId)); _allPositionStates = allStates || {}; }
 
+/** Whether the given tokenId is actively managed. */
+export function isPositionManaged(tokenId) { return _managedTokenIds.has(String(tokenId)); }
+
 /** Refresh the manage badge for the given position using the local managed set. */
 function _refreshManageBadge(active) { if (!active) return; const badge = g('manageBadge'), btn = g('manageToggleBtn'); if (!badge || !btn) return; const m = _managedTokenIds.has(String(active.tokenId)); badge.classList.toggle('managed', m); badge.innerHTML = m ? '<span class="9mm-pos-mgr-manage-dot"></span>Being Actively Managed' : 'Not Actively Managed'; btn.textContent = m ? 'Stop Managing' : 'Manage'; }
 
