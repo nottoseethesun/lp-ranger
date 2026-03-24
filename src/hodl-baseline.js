@@ -158,4 +158,25 @@ async function initHodlBaseline(provider, ethersLib, position, botState, updateB
   }
 }
 
-module.exports = { initHodlBaseline, _positionValueUsd };
+/**
+ * Compute position baseline (entry amounts, entry value, mint date) from chain data.
+ * Standalone version of initHodlBaseline — no bot state needed.
+ * @returns {Promise<{entryValue, hodlAmount0, hodlAmount1, mintDate, price0, price1}|null>}
+ */
+async function getPositionBaseline(provider, ethersLib, position) {
+  try {
+    const factoryAbi = ['function getPool(address,address,uint24) view returns (address)'];
+    const factory = new ethersLib.Contract(config.FACTORY, factoryAbi, provider);
+    const poolAddress = await factory.getPool(position.token0, position.token1, position.fee);
+    if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return null;
+    const iface = new ethersLib.Interface(PM_ABI);
+    const { mintTimestamp, mintLog } = await _findMintEvent(provider, ethersLib, iface, position.tokenId);
+    if (!mintTimestamp || !mintLog) return null;
+    const { hodlAmount0, hodlAmount1 } = await _readMintedAmounts(provider, ethersLib, iface, position, mintLog.transactionHash);
+    const { price0, price1 } = await fetchHistoricalPriceGecko(poolAddress, mintTimestamp);
+    const entryValue = (price0 > 0 || price1 > 0) ? hodlAmount0 * price0 + hodlAmount1 * price1 : 0;
+    return { entryValue, hodlAmount0, hodlAmount1, mintDate: new Date(mintTimestamp * 1000).toISOString().slice(0, 10), price0, price1 };
+  } catch { return null; }
+}
+
+module.exports = { initHodlBaseline, getPositionBaseline, _positionValueUsd };

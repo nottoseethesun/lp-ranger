@@ -27,13 +27,30 @@ function _applyComposition(d, pos) {
   }
 }
 
+/** Set a KPI element's text and color class. */
+function _setKpi(id, val) {
+  const el = g(id); if (!el) return;
+  if (val === null || val === undefined) { el.textContent = '\u2014'; return; }
+  el.textContent = _fmtUsd(val);
+  el.className = el.className.replace(/\b(pos|neg|neu)\b/g, '') + ' ' + (val > 0.005 ? 'pos' : val < -0.005 ? 'neg' : 'neu');
+}
+
 /** Apply one-shot position details to the dashboard UI. */
 function _apply(d, pos) {
   botConfig.price = d.poolState.price; botConfig.lower = d.lowerPrice; botConfig.upper = d.upperPrice;
   botConfig.tL = pos.tickLower; botConfig.tU = pos.tickUpper;
   positionRangeVisual();
-  const val = g('kpiValue'); if (val) val.textContent = d.value > 0 ? _fmtUsd(d.value) : '\u2014';
-  const fe = g('pnlFees'); if (fe && d.feesUsd > 0) fe.textContent = _fmtUsd(d.feesUsd);
+  // Current panel KPIs
+  _setKpi('kpiValue', d.value > 0 ? d.value : null);
+  _setKpi('pnlFees', d.feesUsd > 0 ? d.feesUsd : null);
+  _setKpi('pnlPrice', d.priceGainLoss);
+  _setKpi('kpiDeposit', d.entryValue > 0 ? d.entryValue : null);
+  _setKpi('kpiPnl', d.netPnl);
+  _setKpi('curProfit', d.profit);
+  _setKpi('curIL', d.il);
+  // Mint date
+  if (d.mintDate) { const dur = g('kpiPosDuration'); if (dur) dur.textContent = 'Since ' + d.mintDate; }
+  // Composition + balances
   _applyComposition(d, pos);
   const sw = g('sWpls'); if (sw) sw.textContent = d.amounts.amount0.toFixed(4);
   const su = g('sUsdc'); if (su) su.textContent = d.amounts.amount1.toFixed(4);
