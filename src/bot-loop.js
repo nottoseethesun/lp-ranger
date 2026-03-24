@@ -237,7 +237,7 @@ async function _executeAndRecord(deps, ethersLib) {
     const crw = state.customRangeWidthPct;
     const result = await executeRebalance(signer, ethersLib, { position,
       factoryAddress: config.FACTORY, positionManagerAddress: config.POSITION_MANAGER,
-      swapRouterAddress: config.SWAP_ROUTER, slippagePct: state.slippagePct ?? config.SLIPPAGE_PCT,
+      swapRouterAddress: config.SWAP_ROUTER, slippagePct: deps._getConfig?.('slippagePct') ?? config.SLIPPAGE_PCT,
       ...(crw ? { customRangeWidthPct: crw } : {}) });
     if (result.success) {
       if (crw) delete state.customRangeWidthPct;
@@ -263,11 +263,11 @@ async function _executeAndRecord(deps, ethersLib) {
 }
 
 /** Check whether the OOR timeout has expired (position continuously OOR). */
-function _isTimeoutExpired(bs) { const t = bs.rebalanceTimeoutMin ?? config.REBALANCE_TIMEOUT_MIN; return t > 0 && bs.oorSince && Date.now() - bs.oorSince >= t * 60_000; }
+function _isTimeoutExpired(bs, gc) { const t = gc?.('rebalanceTimeoutMin') ?? config.REBALANCE_TIMEOUT_MIN; return t > 0 && bs.oorSince && Date.now() - bs.oorSince >= t * 60_000; }
 
 /** Check whether the price has moved beyond the OOR threshold. */
-function _isBeyondThreshold(poolState, position, botState) {
-  const threshPct = (botState.rebalanceOutOfRangeThresholdPercent ?? config.REBALANCE_OOR_THRESHOLD_PCT ?? 5) / 100;
+function _isBeyondThreshold(poolState, position, gc) {
+  const threshPct = (gc?.('rebalanceOutOfRangeThresholdPercent') ?? config.REBALANCE_OOR_THRESHOLD_PCT ?? 5) / 100;
   if (threshPct <= 0) return true;
   const lp = rangeMath.tickToPrice(position.tickLower, poolState.decimals0, poolState.decimals1), up = rangeMath.tickToPrice(position.tickUpper, poolState.decimals0, poolState.decimals1);
   if (poolState.price < lp - (up - lp) * threshPct || poolState.price > up + (up - lp) * threshPct) return true;
@@ -304,10 +304,11 @@ function _checkRangeAndThreshold(deps, poolState, emit) {
     if (botSt.oorSince) { botSt.oorSince = null; emit({ oorSince: null }); }
     return { rebalanced: false, inRange: true };
   }
-  const beyondThreshold = forced || _isBeyondThreshold(poolState, position, botSt);
+  const gc = deps._getConfig;
+  const beyondThreshold = forced || _isBeyondThreshold(poolState, position, gc);
   if (!beyondThreshold) {
     if (!botSt.oorSince) { botSt.oorSince = Date.now(); emit({ oorSince: botSt.oorSince }); }
-    if (!_isTimeoutExpired(botSt)) {
+    if (!_isTimeoutExpired(botSt, gc)) {
       emit({ withinThreshold: true });
       return { rebalanced: false, withinThreshold: true };
     }
@@ -465,8 +466,32 @@ async function _detectPosition(provider, address, targetId) {
  * @param {string}   [opts.positionId]     NFT token ID to manage (overrides config).
  * @returns {Promise<{ stop: Function }>}  Handle with stop() method.
  */
+/** Initialize P&L tracker from token prices. Returns null if prices unavailable. */
+async function _tryInitPnlTracker(provider, ethersLib, position, botState, updateBotState) {
+  try {
+    const { price0, price1 } = await _fetchTokenPrices(position.token0, position.token1);
+    if (price0 > 0 || price1 > 0) {
+      const ps = await getPoolState(provider, ethersLib, { factoryAddress: config.FACTORY, token0: position.token0, token1: position.token1, fee: position.fee });
+      const lp = rangeMath.tickToPrice(position.tickLower, ps.decimals0, ps.decimals1);
+      const up = rangeMath.tickToPrice(position.tickUpper, ps.decimals0, ps.decimals1);
+      const t = _initPnlTracker(_positionValueUsd(position, ps, price0, price1) || 1, botState, ps, lp, up, price0, price1);
+      if (!botState.pnlEpochs) updateBotState({ pnlEpochs: t.serialize() });
+      return t;
+    }
+    console.warn('[bot] Could not fetch token prices — P&L tracking disabled');
+  } catch (err) { console.warn('[bot] P&L tracker init error:', err.message); }
+  return null;
+}
+
+/** Reload config values from disk on each poll cycle. */
+function _reloadFromConfig(gc, throttle, setIntervalMs) {
+  const ci = gc('checkIntervalSec'); if (ci) setIntervalMs(ci * 1000);
+  throttle.configure({ minIntervalMs: (gc('minRebalanceIntervalMin') || 10) * 60_000, dailyMax: gc('maxRebalancesPerDay') || 20 });
+}
+
 async function startBotLoop(opts) {
   const { privateKey, updateBotState, botState } = opts;
+  const gc = opts.getConfig || (() => undefined);
   const dryRun = opts.dryRun ?? config.DRY_RUN, ethersLib = opts.ethersLib || ethers;
   if (dryRun) console.log('\n  ┌──────────────────────────────────────────────┐\n  │  DRY RUN MODE — no transactions will be sent │\n  └──────────────────────────────────────────────┘\n');
   const provider = await createProviderWithFallback(config.RPC_URL, config.RPC_URL_FALLBACK, ethersLib);
@@ -477,17 +502,7 @@ async function startBotLoop(opts) {
   const position = await _detectPosition(provider, address, opts.positionId || config.POSITION_ID || undefined);
   console.log(`[bot] Managing NFT #${position.tokenId} (${position.token0}/${position.token1} fee=${position.fee})`);
 
-  let pnlTracker = null; // Initialize P&L tracker with token prices
-  try {
-    const { price0, price1 } = await _fetchTokenPrices(position.token0, position.token1);
-    if (price0 > 0 || price1 > 0) {
-      const poolState = await getPoolState(provider, ethersLib, { factoryAddress: config.FACTORY, token0: position.token0, token1: position.token1, fee: position.fee });
-      const lp = rangeMath.tickToPrice(position.tickLower, poolState.decimals0, poolState.decimals1);
-      const up = rangeMath.tickToPrice(position.tickUpper, poolState.decimals0, poolState.decimals1);
-      pnlTracker = _initPnlTracker(_positionValueUsd(position, poolState, price0, price1) || 1, botState, poolState, lp, up, price0, price1);
-      if (!botState.pnlEpochs) updateBotState({ pnlEpochs: pnlTracker.serialize() });
-    } else { console.warn('[bot] Could not fetch token prices — P&L tracking disabled'); }
-  } catch (err) { console.warn('[bot] P&L tracker init error:', err.message); }
+  const pnlTracker = await _tryInitPnlTracker(provider, ethersLib, position, botState, updateBotState);
 
   const residualTracker = createResidualTracker(); if (botState.residuals) residualTracker.deserialize(botState.residuals);
   initHodlBaseline(provider, ethersLib, position, botState, updateBotState).catch((err) => console.warn('[bot] HODL baseline background error:', err.message));
@@ -505,19 +520,17 @@ async function startBotLoop(opts) {
   const poll = async () => {
     if (polling) return;
     polling = true;
-    // Hot-reload settings from dashboard (POST /api/config → botState)
-    if (botState.checkIntervalSec) currentIntervalMs = botState.checkIntervalSec * 1000;
-    throttle.configure({ minIntervalMs: (botState.minRebalanceIntervalMin || 10) * 60_000, dailyMax: botState.maxRebalancesPerDay || 20 });
+    _reloadFromConfig(gc, throttle, (ms) => { currentIntervalMs = ms; });
     try {
       const result = await pollCycle({
         signer, provider, position, throttle, dryRun, updateBotState,
         _rebalanceCount: rebalanceCount, _botState: botState, _pnlTracker: pnlTracker,
         _rebalanceEvents: rebalanceEvents, _collectedFeesUsd: collectedFeesUsd,
         _addCollectedFees: (usd) => { collectedFeesUsd += usd; updateBotState({ collectedFeesUsd }); },
-        _residualTracker: residualTracker,
+        _residualTracker: residualTracker, _getConfig: gc,
       });
       if (result.rebalanced) {
-        rebalanceCount++; firstFailureAt = null; currentIntervalMs = (botState.checkIntervalSec || config.CHECK_INTERVAL_SEC) * 1000;
+        rebalanceCount++; firstFailureAt = null; currentIntervalMs = (gc('checkIntervalSec') || config.CHECK_INTERVAL_SEC) * 1000;
         cache.clear().catch(() => {}); // Invalidate event cache so next scan finds the new NFT
         updateBotState({ rebalanceError: null, rebalancePaused: false, forceRebalance: false });
         if (botState.rangeRounded) setTimeout(() => updateBotState({ rangeRounded: null }), 5000);
@@ -531,7 +544,7 @@ async function startBotLoop(opts) {
       } else if (firstFailureAt && !result.paused) {
         const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
         console.log(`[bot] Price returned to range after ~${oorMin}m of failures — clearing`);
-        firstFailureAt = null; currentIntervalMs = (botState.checkIntervalSec || config.CHECK_INTERVAL_SEC) * 1000;
+        firstFailureAt = null; currentIntervalMs = (gc('checkIntervalSec') || config.CHECK_INTERVAL_SEC) * 1000;
         updateBotState({ rebalanceError: null, rebalancePaused: false, oorRecoveredMin: oorMin });
         // Clear after one poll so the dashboard doesn't re-show on refresh
         setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);

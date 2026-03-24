@@ -239,6 +239,12 @@ function buildPollDeps(opts = {}) {
   return { ethersLib, signer, position, throttle, dispatch };
 }
 
+/** Build pollCycle args with _getConfig derived from _botState. */
+function _pollArgs(deps, botState, extra) {
+  return { signer: deps.signer, provider: {}, position: deps.position, throttle: deps.throttle,
+    _ethersLib: deps.ethersLib, _botState: botState, _getConfig: (k) => botState[k], ...extra };
+}
+
 describe('pollCycle — full pipeline', () => {
   it('returns rebalanced:false when in range', async () => {
     const deps = buildPollDeps({ tick: 0 }); // tick 0 is in [-600, 600)
@@ -249,6 +255,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 20, slippagePct: 0.5 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 20, slippagePct: 0.5 })[k],
     });
     assert.strictEqual(r.rebalanced, false);
   });
@@ -263,6 +270,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 })[k],
     });
     assert.strictEqual(r.rebalanced, true);
     // Verify position was updated in-place
@@ -279,6 +287,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 })[k],
     });
     // makeMintTx returns liquidity=8000n
     assert.strictEqual(deps.position.liquidity, '8000',
@@ -294,6 +303,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 })[k],
     });
     // New ticks should be centered around the current price (tick=-700)
     assert.ok(deps.position.tickLower < deps.position.tickUpper);
@@ -313,6 +323,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 0 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 })[k],
     });
     assert.strictEqual(r.rebalanced, false);
     // Position should be unchanged
@@ -329,6 +340,7 @@ describe('pollCycle — full pipeline', () => {
       dryRun: true,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 0 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 })[k],
     });
     assert.strictEqual(r.rebalanced, false);
     assert.strictEqual(deps.position.tokenId, 1n, 'position unchanged in dry run');
@@ -344,6 +356,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 50, slippagePct: 0.5 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 50, slippagePct: 0.5 })[k],
     });
     assert.strictEqual(r.rebalanced, false);
     assert.strictEqual(r.withinThreshold, true);
@@ -359,6 +372,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 })[k],
     });
     assert.strictEqual(r.rebalanced, true);
   });
@@ -377,6 +391,7 @@ describe('pollCycle — full pipeline', () => {
       throttle: deps.throttle,
       _ethersLib: deps.ethersLib,
       _botState: { rebalanceOutOfRangeThresholdPercent: 0 },
+      _getConfig: (k) => ({ rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 })[k],
     });
     assert.strictEqual(r.rebalanced, false);
     assert.strictEqual(deps.position.tokenId, posBefore.tokenId);

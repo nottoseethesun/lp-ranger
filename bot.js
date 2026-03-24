@@ -22,7 +22,7 @@ const config = require('./src/config');
 const { resolvePrivateKey, startBotLoop } = require('./src/bot-loop');
 const { createRebalanceLock } = require('./src/rebalance-lock');
 const { createPositionManager } = require('./src/position-manager');
-const { loadConfig, getPositionConfig } = require('./src/bot-config-v2');
+const { loadConfig, getPositionConfig, readConfigValue } = require('./src/bot-config-v2');
 const { createPerPositionBotState, attachMultiPosDeps, updatePositionState } = require('./src/server-positions');
 
 // ── Interactive password prompt ─────────────────────────────────────────────
@@ -76,6 +76,7 @@ async function main() {
       privateKey, dryRun,
       updateBotState: (patch) => { Object.assign(botState, patch); },
       botState, positionId: config.POSITION_ID || undefined,
+      getConfig: (k) => diskConfig.global[k],
     });
     _awaitShutdown(() => { handle.stop(); positionMgr.stopAll(); });
     return;
@@ -103,6 +104,7 @@ async function main() {
           privateKey, dryRun,
           updateBotState: (patch) => updatePositionState(key, patch, diskConfig, positionMgr),
           botState: posBotState, positionId: tokenId,
+          getConfig: (k) => readConfigValue(diskConfig, key, k),
         }),
         savedConfig: posConfig,
       });

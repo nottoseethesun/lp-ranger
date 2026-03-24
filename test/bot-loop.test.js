@@ -237,10 +237,10 @@ function _poll(tick, overrides = {}) {
     signer: deps.signer, provider: overrides.provider || {},
     position: deps.position, throttle: deps.throttle,
     _ethersLib: deps.ethersLib, dryRun: overrides.dryRun,
-    _botState: overrides.botState || { rebalanceOutOfRangeThresholdPercent: 0, slippagePct: 0.5 },
+    _botState: overrides.botState || { rebalanceOutOfRangeThresholdPercent: 0 },
+    _getConfig: overrides.getConfig || ((k) => (overrides.botState || { slippagePct: 0.5, rebalanceOutOfRangeThresholdPercent: 0 })[k]),
     _pnlTracker: overrides.tracker,
-    updateBotState: stateUpdates ? (u) => stateUpdates.push(u)
-      : captured ? (u) => Object.assign(captured, u) : () => {},
+    updateBotState: stateUpdates ? (u) => stateUpdates.push(u) : captured ? (u) => Object.assign(captured, u) : () => {},
   }).then(r => ({ r, deps, stateUpdates, captured }));
 }
 

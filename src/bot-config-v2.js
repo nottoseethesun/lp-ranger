@@ -209,12 +209,28 @@ function migratePositionKey(cfg, oldKey, newKey) {
   cfg.managedPositions = cfg.managedPositions.map((k) => k === oldKey ? newKey : k);
 }
 
+/**
+ * Read a config value for a position, falling back to global.
+ * Single lookup path — no copies, no sync.
+ * @param {object} cfg           V2 config object (source of truth).
+ * @param {string} positionKey   Composite key.
+ * @param {string} key           Config key to read.
+ * @returns {*}  The value, or undefined if not set in either scope.
+ */
+function readConfigValue(cfg, positionKey, key) {
+  const pos = cfg.positions[positionKey];
+  if (pos && pos[key] !== undefined) return pos[key];
+  if (cfg.global[key] !== undefined) return cfg.global[key];
+  return undefined;
+}
+
 module.exports = {
   compositeKey,
   parseCompositeKey,
   loadConfig,
   saveConfig,
   getPositionConfig,
+  readConfigValue,
   addManagedPosition,
   removeManagedPosition,
   migratePositionKey,

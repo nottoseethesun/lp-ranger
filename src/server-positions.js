@@ -17,7 +17,7 @@ const config = require('./config');
 const { startBotLoop } = require('./bot-loop');
 const {
   compositeKey, parseCompositeKey, saveConfig,
-  getPositionConfig, addManagedPosition, removeManagedPosition,
+  getPositionConfig, readConfigValue, addManagedPosition, removeManagedPosition,
   migratePositionKey: migrateConfigKey,
 } = require('./bot-config-v2');
 
@@ -30,32 +30,19 @@ const _positionBotStates = new Map();
  * @param {object} [saved]    Saved position config from disk.
  * @returns {object}
  */
-function createPerPositionBotState(globalCfg, saved) {
+function createPerPositionBotState(_globalCfg, saved) {
   const state = {
     running: false, startedAt: null,
-    slippagePct: globalCfg.slippagePct ?? config.SLIPPAGE_PCT,
-    checkIntervalSec: globalCfg.checkIntervalSec ?? config.CHECK_INTERVAL_SEC,
-    minRebalanceIntervalMin: globalCfg.minRebalanceIntervalMin ?? config.MIN_REBALANCE_INTERVAL_MIN,
-    maxRebalancesPerDay: globalCfg.maxRebalancesPerDay ?? config.MAX_REBALANCES_PER_DAY,
-    gasStrategy: globalCfg.gasStrategy || 'auto',
-    triggerType: globalCfg.triggerType || 'oor',
     activePosition: null,
     rebalanceCount: 0, lastRebalanceAt: null,
     rebalanceError: null, rebalancePaused: false,
     rebalanceScanComplete: false, rebalanceScanProgress: 0,
   };
   if (saved) {
-    if (saved.rebalanceOutOfRangeThresholdPercent !== undefined) state.rebalanceOutOfRangeThresholdPercent = saved.rebalanceOutOfRangeThresholdPercent;
-    else state.rebalanceOutOfRangeThresholdPercent = config.REBALANCE_OOR_THRESHOLD_PCT;
-    if (saved.rebalanceTimeoutMin !== undefined) state.rebalanceTimeoutMin = saved.rebalanceTimeoutMin;
-    else state.rebalanceTimeoutMin = config.REBALANCE_TIMEOUT_MIN;
     if (saved.pnlEpochs) state.pnlEpochs = saved.pnlEpochs;
     if (saved.hodlBaseline) state.hodlBaseline = saved.hodlBaseline;
     if (saved.residuals) state.residuals = saved.residuals;
     if (saved.collectedFeesUsd) state.collectedFeesUsd = saved.collectedFeesUsd;
-  } else {
-    state.rebalanceOutOfRangeThresholdPercent = config.REBALANCE_OOR_THRESHOLD_PCT;
-    state.rebalanceTimeoutMin = config.REBALANCE_TIMEOUT_MIN;
   }
   return state;
 }
@@ -171,6 +158,7 @@ function createPositionRoutes(deps) {
         privateKey: pk, dryRun: config.DRY_RUN,
         updateBotState: (patch) => updatePositionState(key, patch, diskConfig, positionMgr),
         botState: posBotState, positionId: String(body.tokenId),
+        getConfig: (k) => readConfigValue(diskConfig, key, k),
       }),
       savedConfig: posConfig,
     });
@@ -212,6 +200,7 @@ function createPositionRoutes(deps) {
       privateKey: pk, dryRun: config.DRY_RUN,
       updateBotState: (patch) => updatePositionState(body.key, patch, diskConfig, positionMgr),
       botState: posBotState, positionId: entry.tokenId,
+      getConfig: (k) => readConfigValue(diskConfig, body.key, k),
     }));
     console.log('[pos-route] Position resumed in %dms (running: %d)', Date.now() - t0, positionMgr.runningCount());
 

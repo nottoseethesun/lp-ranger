@@ -256,7 +256,7 @@ const { startBotLoop, resolvePrivateKey } = require('./src/bot-loop');
 const { getPositionHistory } = require('./src/position-history');
 const { createRebalanceLock } = require('./src/rebalance-lock');
 const { createPositionManager } = require('./src/position-manager');
-const { loadConfig, saveConfig, getPositionConfig, GLOBAL_KEYS, POSITION_KEYS } = require('./src/bot-config-v2');
+const { loadConfig, saveConfig, getPositionConfig, readConfigValue, GLOBAL_KEYS, POSITION_KEYS } = require('./src/bot-config-v2');
 
 // ── Position manager (module-level) ──────────────────────────────────────────
 
@@ -383,13 +383,10 @@ async function _handleApiConfig(req, res) {
     }
   }
   saveConfig(_diskConfig);
-  // Propagate global config changes to live bot states so the bot picks them up
-  if (Object.keys(globalPatch).length > 0) {
+  // Clear rebalancePaused when slippage changes so the bot retries with new setting
+  if (globalPatch.slippagePct !== undefined) {
     for (const [, state] of getAllPositionBotStates()) {
-      Object.assign(state, globalPatch);
-      if (globalPatch.slippagePct !== undefined && state.rebalancePaused) {
-        state.rebalancePaused = false; state.rebalanceError = null;
-      }
+      if (state.rebalancePaused) { state.rebalancePaused = false; state.rebalanceError = null; }
     }
   }
   jsonResponse(res, 200, { ok: true, applied: { ...globalPatch, ...posPatch } });
@@ -498,6 +495,7 @@ async function _autoStartManagedPositions() {
           privateKey: _resolvedPrivateKey, dryRun: config.DRY_RUN,
           updateBotState: (patch) => updatePositionState(key, patch, _diskConfig, _positionMgr),
           botState: posBotState, positionId: tokenId,
+          getConfig: (k) => readConfigValue(_diskConfig, key, k),
         }),
         savedConfig: posConfig,
       });
@@ -631,7 +629,9 @@ const _routes = {
   'GET /api/status':           (_, res) => {
     const positions = {};
     for (const [key, state] of getAllPositionBotStates()) {
-      positions[key] = { ...state };
+      // Merge position-specific config from disk (source of truth) into the response
+      const posConfig = _diskConfig.positions[key] || {};
+      positions[key] = { ...state, ...posConfig };
     }
     jsonResponse(res, 200, {
       global: {
