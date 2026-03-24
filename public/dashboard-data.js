@@ -591,11 +591,23 @@ function _flattenV2Status(v2) {
   const active = posStore.getActive();
   const myKey = active ? compositeKey('pulsechain', global.walletAddress, active.contractAddress, active.tokenId) : null;
   let posData = myKey ? positions[myKey] : null;
-  // Rebalance key migration: if exact key not found, look for same pool prefix with new tokenId
-  if (!posData && active?.contractAddress && global.walletAddress) {
+  // Rebalance key migration: if exact key not found, look for a server-tracked
+  // position in the SAME POOL (token0 + token1 + fee).  Only that qualifies as
+  // a rebalance — the old NFT was drained and a new one minted in the same pool.
+  if (!posData && active?.token0 && active?.contractAddress && global.walletAddress) {
     const pfx = 'pulsechain-' + global.walletAddress + '-' + active.contractAddress + '-';
-    const mk = Object.keys(positions).find(k => k.startsWith(pfx) && k !== myKey);
-    if (mk) { posData = positions[mk]; const nid = mk.split('-').pop(); if (nid !== active.tokenId) posStore.updateActiveTokenId(nid); }
+    const mk = Object.keys(positions).find(k => {
+      if (!k.startsWith(pfx) || k === myKey) return false;
+      const ap = positions[k]?.activePosition;
+      return ap && ap.token0?.toLowerCase() === active.token0.toLowerCase()
+                && ap.token1?.toLowerCase() === active.token1.toLowerCase()
+                && ap.fee === active.fee;
+    });
+    if (mk) {
+      posData = positions[mk];
+      const nid = mk.split('-').pop();
+      if (nid !== active.tokenId) posStore.updateActiveTokenId(nid);
+    }
   }
   const flat = { ...global, ...(posData || {}) };
   flat._managedPositions = global.managedPositions || [];
