@@ -39,7 +39,7 @@ const ERC20_ABI = [
 /** Abort swap if price impact is too high or exceeds slippage setting. */
 function _checkSwapImpact(impactPct, slip) {
   if (!isFinite(impactPct)) throw new Error('Swap quote validation failed: price impact is ' + impactPct);
-  if (impactPct >= _MAX_IMPACT_PCT) throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds ${_MAX_IMPACT_PCT}% safety limit. Pool liquidity is too thin.`);
+  if (impactPct >= _MAX_IMPACT_PCT) throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds ${_MAX_IMPACT_PCT}% safety limit. Pool liquidity is too thin for safe rebalancing. Consider sourcing tokens externally, recreating the position, and selecting the new NFT in the app.`);
   if (impactPct > slip) { const s = Math.ceil(impactPct * 10) / 10 + 0.5; throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds slippage ${slip}%. Increase to at least ${s.toFixed(1)}% and manually rebalance.`); }
 }
 
@@ -405,7 +405,7 @@ async function swapIfNeeded(signer, ethersLib, {
   let quotedOut;
   try { quotedOut = await router.exactInputSingle.staticCall(swapParams); }
   catch (e) { throw new Error('Swap quote simulation failed: ' + e.message, { cause: e }); }
-  if (quotedOut === 0n) throw new Error('Swap quote returned 0 output — pool has no liquidity for this trade');
+  if (quotedOut === 0n) throw new Error('Swap aborted: pool has no liquidity for this trade. Consider sourcing tokens externally, recreating the position, and selecting the new NFT in the app.');
   const slip = slippagePct !== null && slippagePct !== undefined ? slippagePct : 0.5;
   const spotRate = isToken0To1 ? currentPrice : (1 / currentPrice);
   const spotExpected = (Number(amountIn) / 10 ** decimalsIn) * spotRate * (10 ** decimalsOut);

@@ -84,7 +84,11 @@ export function _createModal(id, cssClass, title, bodyHtml) {
 
 function _showRebalanceErrorModal(message) {
   if (_errorModalShown || !message) return; _errorModalShown = true; _recoveryModalShown = false;
-  _createModal('rebalanceErrorModal', '', 'Rebalance Failing', '<p>' + message + '</p><p class="9mm-pos-mgr-text-muted">The bot will keep retrying. Check server logs.</p>');
+  const thin = message.includes('liquidity is too thin') || message.includes('no liquidity');
+  const slip = !thin && message.includes('exceeds slippage');
+  const footer = thin ? 'Source tokens externally, recreate the LP position, then select the new NFT in this app.'
+    : slip ? 'Adjust the slippage setting for this position, then use the manual Rebalance button.' : 'The bot will keep retrying. Check server logs.';
+  _createModal('rebalanceErrorModal', '', (thin || slip) ? 'Rebalance Paused' : 'Rebalance Failing', '<p>' + message + '</p><p class="9mm-pos-mgr-text-muted">' + footer + '</p>');
 }
 function _showRecoveryModal(minutes) {
   if (_recoveryModalShown) return; _recoveryModalShown = true;
