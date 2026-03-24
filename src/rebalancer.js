@@ -38,7 +38,8 @@ const ERC20_ABI = [
 
 /** Abort swap if price impact is too high or exceeds slippage setting. */
 function _checkSwapImpact(impactPct, slip) {
-  if (impactPct > _MAX_IMPACT_PCT) throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds ${_MAX_IMPACT_PCT}% safety limit. Pool liquidity is too thin.`);
+  if (!isFinite(impactPct)) throw new Error('Swap quote validation failed: price impact is ' + impactPct);
+  if (impactPct >= _MAX_IMPACT_PCT) throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds ${_MAX_IMPACT_PCT}% safety limit. Pool liquidity is too thin.`);
   if (impactPct > slip) { const s = Math.ceil(impactPct * 10) / 10 + 0.5; throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds slippage ${slip}%. Increase to at least ${s.toFixed(1)}% and manually rebalance.`); }
 }
 
@@ -401,15 +402,18 @@ async function swapIfNeeded(signer, ethersLib, {
     amountIn, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n };
 
   // Simulate swap to get real expected output (accounts for pool price impact)
-  const quotedOut = await router.exactInputSingle.staticCall(swapParams);
-  const slip = slippagePct || 0.5;
+  let quotedOut;
+  try { quotedOut = await router.exactInputSingle.staticCall(swapParams); }
+  catch (e) { throw new Error('Swap quote simulation failed: ' + e.message, { cause: e }); }
+  if (quotedOut === 0n) throw new Error('Swap quote returned 0 output — pool has no liquidity for this trade');
+  const slip = slippagePct !== null && slippagePct !== undefined ? slippagePct : 0.5;
   const spotRate = isToken0To1 ? currentPrice : (1 / currentPrice);
   const spotExpected = (Number(amountIn) / 10 ** decimalsIn) * spotRate * (10 ** decimalsOut);
-  const impactPct = spotExpected > 0 ? ((spotExpected - Number(quotedOut)) / spotExpected * 100) : 0;
+  const impactPct = spotExpected > 0 ? Math.max(0, (spotExpected - Number(quotedOut)) / spotExpected * 100) : 0;
   console.log('[rebalance] swap quote: quoted=%s spotExpected=%s impact=%.2f%% slippage=%.1f%%', String(quotedOut), spotExpected.toFixed(0), impactPct, slip);
   _checkSwapImpact(impactPct, slip);
-  // Apply slippage to the quoted output — protects against execution drift
-  const amountOutMinimum = quotedOut * BigInt(Math.floor((100 - slip) * 100)) / 10000n;
+  const slipBps = Math.round(slip * 100);
+  const amountOutMinimum = quotedOut * BigInt(10000 - slipBps) / 10000n;
 
   const provider = signer.provider || signer;
   const outContract = new Contract(tokenOut, ERC20_ABI, provider);
