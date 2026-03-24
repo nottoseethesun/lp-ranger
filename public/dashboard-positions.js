@@ -649,6 +649,12 @@ export async function scanPositions(opts) {
 
     const added = _addScannedPositions(data);
     const nftCount = (data.nftPositions || []).length;
+    // Auto-select first position if none is active (clean start)
+    if (posStore.activeIdx < 0 && posStore.count() > 0) {
+      posStore.select(0);
+      const first = posStore.getActive();
+      if (first) { _applyLocalPositionData(first); _applyPositionConfig(first); }
+    }
     act(ACT_ICONS.scan, 'start', 'Scan Complete',
       `Found ${nftCount} NFT positions. Added ${added} new.`);
     updatePosStripUI();

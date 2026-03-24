@@ -15,9 +15,8 @@ function _apply(d, pos) {
   botConfig.price = d.poolState.price; botConfig.lower = d.lowerPrice; botConfig.upper = d.upperPrice;
   botConfig.tL = pos.tickLower; botConfig.tU = pos.tickUpper;
   positionRangeVisual();
-  // Current Value + Deposit
+  // Current Value (Deposit stays as — since we don't have historical entry value)
   const val = g('kpiValue'); if (val) val.textContent = d.value > 0 ? _fmtUsd(d.value) : '\u2014';
-  const dep = g('kpiDeposit'); if (dep) dep.textContent = d.value > 0 ? _fmtUsd(d.value) : '\u2014';
   // Unclaimed fees
   const fe = g('pnlFees'); if (fe && d.feesUsd > 0) fe.textContent = _fmtUsd(d.feesUsd);
   // Token composition bar
