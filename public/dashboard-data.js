@@ -84,11 +84,12 @@ export function _createModal(id, cssClass, title, bodyHtml) {
 
 function _showRebalanceErrorModal(message) {
   if (_errorModalShown || !message) return; _errorModalShown = true; _recoveryModalShown = false;
-  const thin = message.includes('liquidity is too thin') || message.includes('no liquidity');
-  const slip = !thin && message.includes('exceeds slippage');
-  const footer = thin ? 'Source tokens externally, recreate the LP position, then select the new NFT in this app.'
-    : slip ? 'Adjust the slippage setting for this position, then use the manual Rebalance button.' : 'The bot will keep retrying. Check server logs.';
-  _createModal('rebalanceErrorModal', '', (thin || slip) ? 'Rebalance Paused' : 'Rebalance Failing', '<p>' + message + '</p><p class="9mm-pos-mgr-text-muted">' + footer + '</p>');
+  const t = message.includes('liquidity is too thin') || message.includes('no liquidity') ? 'thin'
+    : message.includes('exceeds slippage') ? 'slip' : message.includes('insufficient gas') ? 'gas' : '';
+  const footer = t === 'thin' ? 'Source tokens externally, recreate the LP position, then select the new NFT in this app.'
+    : t === 'slip' ? 'Adjust the slippage setting, then use the manual Rebalance button.'
+    : t === 'gas' ? 'Send native tokens to the wallet address shown above, then use the manual Rebalance button.' : 'The bot will keep retrying. Check server logs.';
+  _createModal('rebalanceErrorModal', '', t ? 'Rebalance Paused' : 'Rebalance Failing', '<p>' + message + '</p><p class="9mm-pos-mgr-text-muted">' + footer + '</p>');
 }
 function _showRecoveryModal(minutes) {
   if (_recoveryModalShown) return; _recoveryModalShown = true;
