@@ -137,40 +137,24 @@ function createSimulation(opts) {
       },
     },
     [ADDR.router]: {
-      exactInputSingle: async (params) => {
-        const amountIn = params.amountIn;
-        const tokenIn = params.tokenIn;
-        const tokenOut = params.tokenOut;
-
-        // Debit input from wallet
-        if (balances[tokenIn] < amountIn) {
-          throw new Error(`Swap: insufficient ${tokenIn}`);
-        }
+      exactInputSingle: Object.assign(async (params) => {
+        const { amountIn, tokenIn, tokenOut } = params;
+        if (balances[tokenIn] < amountIn) throw new Error(`Swap: insufficient ${tokenIn}`);
         balances[tokenIn] -= amountIn;
-
-        // Credit output to wallet (using the pool price)
-        let amountOut;
-        if (tokenIn === ADDR.token0) {
-          // Selling token0 for token1
-          const floatIn = Number(amountIn) / (10 ** decimals0);
-          const floatOut = floatIn * price;
-          amountOut = BigInt(Math.floor(floatOut * (10 ** decimals1)));
-        } else {
-          // Selling token1 for token0
-          const floatIn = Number(amountIn) / (10 ** decimals1);
-          const floatOut = floatIn / price;
-          amountOut = BigInt(Math.floor(floatOut * (10 ** decimals0)));
-        }
+        const amountOut = tokenIn === ADDR.token0
+          ? BigInt(Math.floor(Number(amountIn) / (10 ** decimals0) * price * (10 ** decimals1)))
+          : BigInt(Math.floor(Number(amountIn) / (10 ** decimals1) / price * (10 ** decimals0)));
         balances[tokenOut] += amountOut;
-
-        invariantChecks.push({
-          step: 'swap',
-          tokenIn, tokenOut, amountIn, amountOut,
-          bal0: balances[ADDR.token0], bal1: balances[ADDR.token1],
-        });
-
+        invariantChecks.push({ step: 'swap', tokenIn, tokenOut, amountIn, amountOut, bal0: balances[ADDR.token0], bal1: balances[ADDR.token1] });
         return { wait: async () => ({ hash: '0xswap', logs: [] }) };
-      },
+      }, {
+        staticCall: async (params) => {
+          const { amountIn, tokenIn } = params;
+          return tokenIn === ADDR.token0
+            ? BigInt(Math.floor(Number(amountIn) / (10 ** decimals0) * price * (10 ** decimals1)))
+            : BigInt(Math.floor(Number(amountIn) / (10 ** decimals1) / price * (10 ** decimals0)));
+        },
+      }),
     },
   };
 

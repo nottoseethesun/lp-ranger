@@ -36,6 +36,12 @@ const ERC20_ABI = [
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
+/** Abort swap if price impact is too high or exceeds slippage setting. */
+function _checkSwapImpact(impactPct, slip) {
+  if (impactPct > _MAX_IMPACT_PCT) throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds ${_MAX_IMPACT_PCT}% safety limit. Pool liquidity is too thin.`);
+  if (impactPct > slip) { const s = Math.ceil(impactPct * 10) / 10 + 0.5; throw new Error(`Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds slippage ${slip}%. Increase to at least ${s.toFixed(1)}% and manually rebalance.`); }
+}
+
 /** Maximum uint128 value used for the collect() call. */
 const _MAX_UINT128 = 2n ** 128n - 1n;
 
@@ -55,6 +61,9 @@ const _CANCEL_TIMEOUT_MS = (config.TX_CANCEL_SEC || 1200) * 1000;
 
 /** Gas price multiplier for speed-up replacement TXs. */
 const _SPEEDUP_GAS_BUMP = 1.5;
+
+/** Maximum acceptable price impact (%) before the bot aborts the swap. */
+const _MAX_IMPACT_PCT = 5;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -376,7 +385,7 @@ function computeDesiredAmounts(available, range, tokens) {
  */
 async function swapIfNeeded(signer, ethersLib, {
   swapRouterAddress, tokenIn, tokenOut, fee, amountIn,
-  currentPrice, decimalsIn, decimalsOut, isToken0To1,
+  slippagePct, currentPrice, decimalsIn, decimalsOut, isToken0To1,
   recipient, deadline,
 }) {
   if (amountIn < _MIN_SWAP_THRESHOLD) {
@@ -388,33 +397,30 @@ async function swapIfNeeded(signer, ethersLib, {
   await _ensureAllowance(new Contract(tokenIn, ERC20_ABI, signer), signerAddress, swapRouterAddress, amountIn);
   const router = new Contract(swapRouterAddress, SWAP_ROUTER_ABI, signer);
   const dl = deadline || _deadline();
-  // amountOutMinimum = 0: the bot acts on its own behalf — no sandwich/MEV
-  // risk on PulseChain.  Slippage protection happens at the ratio level
-  // (computeDesiredAmounts computes the exact split).  Setting a non-zero
-  // minimum based on spot price fails for large single-sided swaps because
-  // it doesn't account for price impact within the pool.
-  const amountOutMinimum = 0n;
+  const swapParams = { tokenIn, tokenOut, fee, recipient, deadline: dl,
+    amountIn, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n };
+
+  // Simulate swap to get real expected output (accounts for pool price impact)
+  const quotedOut = await router.exactInputSingle.staticCall(swapParams);
+  const slip = slippagePct || 0.5;
+  const spotRate = isToken0To1 ? currentPrice : (1 / currentPrice);
+  const spotExpected = (Number(amountIn) / 10 ** decimalsIn) * spotRate * (10 ** decimalsOut);
+  const impactPct = spotExpected > 0 ? ((spotExpected - Number(quotedOut)) / spotExpected * 100) : 0;
+  console.log('[rebalance] swap quote: quoted=%s spotExpected=%s impact=%.2f%% slippage=%.1f%%', String(quotedOut), spotExpected.toFixed(0), impactPct, slip);
+  _checkSwapImpact(impactPct, slip);
+  // Apply slippage to the quoted output — protects against execution drift
+  const amountOutMinimum = quotedOut * BigInt(Math.floor((100 - slip) * 100)) / 10000n;
+
   const provider = signer.provider || signer;
   const outContract = new Contract(tokenOut, ERC20_ABI, provider);
   const balBefore = await outContract.balanceOf(recipient);
-
-  const tx = await router.exactInputSingle({ tokenIn, tokenOut, fee, recipient,
-    deadline: dl, amountIn, amountOutMinimum, sqrtPriceLimitX96: 0n });
-  console.log('[rebalance] swap: TX submitted, hash=%s nonce=%d — waiting for confirmation…', tx.hash, tx.nonce);
+  swapParams.amountOutMinimum = amountOutMinimum;
+  const tx = await router.exactInputSingle(swapParams);
+  console.log('[rebalance] swap: TX submitted, hash=%s nonce=%d min=%s', tx.hash, tx.nonce, String(amountOutMinimum));
   const receipt = await _waitOrSpeedUp(tx, signer, 'swap');
-  console.log('[rebalance] swap: confirmed, gasUsed=%s gasPrice=%s block=%s', String(receipt.gasUsed), String(receipt.gasPrice ?? receipt.effectiveGasPrice), receipt.blockNumber);
-  const balAfter = await outContract.balanceOf(recipient);
-  const actualOut = balAfter - balBefore;
-  // Log effective rate vs spot for diagnostics
-  const fIn = Number(amountIn) / 10 ** decimalsIn, fOut = Number(actualOut) / 10 ** decimalsOut;
-  if (fIn > 0) {
-    const spotRate = isToken0To1 ? currentPrice : (1 / currentPrice);
-    const effectiveRate = fOut / fIn;
-    const impact = ((spotRate - effectiveRate) / spotRate * 100).toFixed(2);
-    console.log('[rebalance] swap: in=%s out=%s effectiveRate=%s spotRate=%s impact=%s%%', fIn.toFixed(4), fOut.toFixed(4), effectiveRate.toFixed(6), spotRate.toFixed(6), impact);
-  }
-  const gasCostWei = (receipt.gasUsed ?? 0n) * (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
-  return { amountOut: actualOut > 0n ? actualOut : 0n, txHash: receipt.hash, gasCostWei };
+  console.log('[rebalance] swap: confirmed, gasUsed=%s block=%s', String(receipt.gasUsed), receipt.blockNumber);
+  const actualOut = (await outContract.balanceOf(recipient)) - balBefore;
+  return { amountOut: actualOut > 0n ? actualOut : 0n, txHash: receipt.hash, gasCostWei: (receipt.gasUsed ?? 0n) * (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n) };
 }
 
 /** Mint a new V3 liquidity position via the NonfungiblePositionManager. */
@@ -424,43 +430,21 @@ async function mintPosition(signer, ethersLib, {
 }) {
   const { Contract } = ethersLib;
   const signerAddress = await signer.getAddress();
-
   const token0Contract = new Contract(token0, ERC20_ABI, signer);
   const token1Contract = new Contract(token1, ERC20_ABI, signer);
-
-  console.log('[rebalance] Step 7a: ensureAllowance — a0=%s a1=%s spender=%s', String(amount0Desired), String(amount1Desired), positionManagerAddress);
-  const [allow0, allow1] = await Promise.all([token0Contract.allowance(signerAddress, positionManagerAddress), token1Contract.allowance(signerAddress, positionManagerAddress)]);
-  console.log('[rebalance] Step 7a: current allowance0=%s allowance1=%s', String(allow0), String(allow1));
+  console.log('[rebalance] Step 7a: ensureAllowance — a0=%s a1=%s', String(amount0Desired), String(amount1Desired));
   await Promise.all([
     _ensureAllowance(token0Contract, signerAddress, positionManagerAddress, amount0Desired),
     _ensureAllowance(token1Contract, signerAddress, positionManagerAddress, amount1Desired),
   ]);
-  const [postAllow0, postAllow1] = await Promise.all([token0Contract.allowance(signerAddress, positionManagerAddress), token1Contract.allowance(signerAddress, positionManagerAddress)]);
-  console.log('[rebalance] Step 7a done: postAllowance0=%s postAllowance1=%s', String(postAllow0), String(postAllow1));
 
-  const amount0Min = 0n, amount1Min = 0n;
   const pm = new Contract(positionManagerAddress, PM_ABI, signer);
   const dl = deadline ?? _deadline();
-
-  console.log('[rebalance] Step 7b: mint params — token0=%s token1=%s fee=%d tL=%d tU=%d a0d=%s a1d=%s deadline=%s',
-    token0, token1, fee, tickLower, tickUpper, String(amount0Desired), String(amount1Desired), String(dl));
-  const tx = await pm.mint({
-    token0,
-    token1,
-    fee,
-    tickLower,
-    tickUpper,
-    amount0Desired,
-    amount1Desired,
-    amount0Min,
-    amount1Min,
-    recipient,
-    deadline: dl,
-  });
-  console.log('[rebalance] Step 7b done: mint TX submitted, hash=%s nonce=%d', tx.hash, tx.nonce);
-  console.log('[rebalance] Step 7c: waiting for confirmation…');
+  console.log('[rebalance] Step 7b: mint — fee=%d tL=%d tU=%d a0d=%s a1d=%s', fee, tickLower, tickUpper, String(amount0Desired), String(amount1Desired));
+  const tx = await pm.mint({ token0, token1, fee, tickLower, tickUpper, amount0Desired, amount1Desired, amount0Min: 0n, amount1Min: 0n, recipient, deadline: dl });
+  console.log('[rebalance] Step 7b: TX submitted, hash=%s nonce=%d', tx.hash, tx.nonce);
   const receipt = await _waitOrSpeedUp(tx, signer, 'mint');
-  console.log('[rebalance] Step 7c done: mint TX confirmed, block=%s gasUsed=%s gasPrice=%s', receipt.blockNumber, String(receipt.gasUsed), String(receipt.gasPrice ?? receipt.effectiveGasPrice));
+  console.log('[rebalance] Step 7c: mint confirmed, block=%s gasUsed=%s', receipt.blockNumber, String(receipt.gasUsed));
 
   // Try to parse the IncreaseLiquidity event for actual values.
   // Topic0 = keccak256('IncreaseLiquidity(uint256,uint128,uint256,uint256)')
@@ -515,11 +499,11 @@ async function _walletBalances(ethersLib, provider, token0, token1, owner) {
 
 /** Perform swap if needed and return adjusted amounts + gas. */
 async function _swapAndAdjust(signer, ethersLib, ctx) {
-  const { desired, position: p, poolState: ps, swapRouterAddress, signerAddress } = ctx;
+  const { desired, position: p, poolState: ps, swapRouterAddress, slippagePct, signerAddress } = ctx;
   if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD) return { txHash: null, extra0: 0n, extra1: 0n, gasCostWei: 0n };
   const is0to1 = desired.swapDirection === 'token0to1';
   const result = await swapIfNeeded(signer, ethersLib, { swapRouterAddress, fee: p.fee, amountIn: desired.swapAmount,
-    tokenIn: is0to1 ? p.token0 : p.token1, tokenOut: is0to1 ? p.token1 : p.token0, currentPrice: ps.price,
+    tokenIn: is0to1 ? p.token0 : p.token1, tokenOut: is0to1 ? p.token1 : p.token0, slippagePct, currentPrice: ps.price,
     decimalsIn: is0to1 ? ps.decimals0 : ps.decimals1, decimalsOut: is0to1 ? ps.decimals1 : ps.decimals0,
     isToken0To1: is0to1, recipient: signerAddress });
   return { txHash: result.txHash, gasCostWei: result.gasCostWei || 0n,
@@ -560,9 +544,16 @@ async function _removeLiquidityStep(signer, ethersLib, provider, opts) {
 function _sumGas(...steps) { return steps.reduce((sum, s) => sum + (s.gasCostWei || 0n), 0n); }
 
 /** Compute new tick range: custom width or preserve existing spread. */
-function _computeRange(ps, pos, crw) {
-  return crw ? rangeMath.computeNewRange(ps.price, crw / 2, pos.fee, ps.decimals0, ps.decimals1)
-    : rangeMath.preserveRange(ps.tick, pos.tickLower, pos.tickUpper, pos.fee, ps.decimals0, ps.decimals1);
+function _computeRange(ps, pos, crw) { return crw ? rangeMath.computeNewRange(ps.price, crw / 2, pos.fee, ps.decimals0, ps.decimals1) : rangeMath.preserveRange(ps.tick, pos.tickLower, pos.tickUpper, pos.fee, ps.decimals0, ps.decimals1); }
+
+/** Build success result for executeRebalance. */
+function _buildRebalanceResult(txHashes, removed, swapped, mintResult, position, newRange, poolState, crw) {
+  const ePct = crw ? ((newRange.upperPrice - newRange.lowerPrice) / poolState.price * 100) : undefined;
+  return { success: true, txHashes, totalGasCostWei: _sumGas(removed, swapped, mintResult), oldTokenId: position.tokenId, newTokenId: mintResult.tokenId,
+    oldTickLower: position.tickLower, oldTickUpper: position.tickUpper, newTickLower: newRange.lowerTick, newTickUpper: newRange.upperTick,
+    currentPrice: poolState.price, poolAddress: poolState.poolAddress, decimals0: poolState.decimals0, decimals1: poolState.decimals1,
+    amount0Collected: removed.amount0, amount1Collected: removed.amount1, liquidity: mintResult.liquidity, amount0Minted: mintResult.amount0, amount1Minted: mintResult.amount1,
+    ...(crw ? { requestedRangePct: crw, effectiveRangePct: Number(ePct.toFixed(2)) } : {}) };
 }
 
 /** Execute a complete rebalance: remove → swap → mint at new range. */
@@ -620,25 +611,10 @@ async function executeRebalance(signer, ethersLib, opts) {
     // 7. Mint new position with FULL wallet balance (collected + residuals + swapped)
     const [mintBal0, mintBal1] = await Promise.all([t0c.balanceOf(signerAddress), t1c.balanceOf(signerAddress)]);
     console.log('[rebalance] Step 7: mintBal0=%s mintBal1=%s', String(mintBal0), String(mintBal1));
-    const mintResult = await mintPosition(signer, ethersLib, {
-      positionManagerAddress, token0: position.token0, token1: position.token1, fee: position.fee,
-      tickLower: newRange.lowerTick, tickUpper: newRange.upperTick,
-      amount0Desired: mintBal0, amount1Desired: mintBal1,
-      recipient: signerAddress,
-    });
-    console.log('[rebalance] Step 7 done: newTokenId=%s txHash=%s', String(mintResult.tokenId), mintResult.txHash);
+    const mintResult = await mintPosition(signer, ethersLib, { positionManagerAddress, token0: position.token0, token1: position.token1,
+      fee: position.fee, tickLower: newRange.lowerTick, tickUpper: newRange.upperTick, amount0Desired: mintBal0, amount1Desired: mintBal1, recipient: signerAddress });
     txHashes.push(mintResult.txHash);
-
-    const _effectivePct = customRangeWidthPct ? ((newRange.upperPrice - newRange.lowerPrice) / poolState.price * 100) : undefined;
-    return { success: true, txHashes, totalGasCostWei: _sumGas(removed, swapped, mintResult),
-      oldTokenId: position.tokenId, newTokenId: mintResult.tokenId,
-      oldTickLower: position.tickLower, oldTickUpper: position.tickUpper,
-      newTickLower: newRange.lowerTick, newTickUpper: newRange.upperTick,
-      currentPrice: poolState.price, poolAddress: poolState.poolAddress,
-      decimals0: poolState.decimals0, decimals1: poolState.decimals1,
-      amount0Collected: removed.amount0, amount1Collected: removed.amount1,
-      liquidity: mintResult.liquidity, amount0Minted: mintResult.amount0, amount1Minted: mintResult.amount1,
-      ...(customRangeWidthPct ? { requestedRangePct: customRangeWidthPct, effectiveRangePct: Number(_effectivePct.toFixed(2)) } : {}) };
+    return _buildRebalanceResult(txHashes, removed, swapped, mintResult, position, newRange, poolState, customRangeWidthPct);
   } catch (err) {
     return { success: false, error: err.message || String(err), cancelled: !!err.cancelled, cancelTxHash: err.cancelTxHash || null };
   }

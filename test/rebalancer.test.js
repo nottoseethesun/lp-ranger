@@ -78,7 +78,7 @@ function defaultDispatch() {
       collect: async () => { collected = true; return { wait: async () => ({ hash: '0xcollect', logs: [] }) }; },
       mint: async () => makeMintTx('0xmint'),
     },
-    [ADDR.router]: { exactInputSingle: async () => makeTx('0xswap') },
+    [ADDR.router]: { exactInputSingle: Object.assign(async () => makeTx('0xswap'), { staticCall: async (p) => p.amountIn }) },
   };
 }
 
@@ -399,7 +399,7 @@ describe('swapIfNeeded', () => {
     const calls = [];
     const d = defaultDispatch();
     d[ADDR.token0] = { ...d[ADDR.token0], allowance: async () => 0n, approve: async () => { calls.push('approve'); return makeTx('0xa'); } };
-    d[ADDR.router] = { exactInputSingle: async () => { calls.push('swap'); return makeTx('0xs'); } };
+    d[ADDR.router] = { exactInputSingle: Object.assign(async () => { calls.push('swap'); return makeTx('0xs'); }, { staticCall: async (p) => p.amountIn }) };
     await swapIfNeeded(mockSigner(), buildMockEthersLib({ contractDispatch: d }), swArgs());
     assert.ok(calls.includes('approve'));
     assert.ok(calls.includes('swap'));
@@ -409,13 +409,14 @@ describe('swapIfNeeded', () => {
     assert.strictEqual(r.txHash, '0xswap');
   });
 
-  it('sets amountOutMinimum to 0 (no MEV risk, bot acts on own behalf)', async () => {
+  it('applies slippage to quoted output, not spot price', async () => {
     let captured;
+    const quotedOut = 1_998_000_000n; // 0.1% impact (within 0.5% slippage)
     const d = defaultDispatch();
-    d[ADDR.router] = { exactInputSingle: async (p) => { captured = p; return makeTx('0xs'); } };
+    d[ADDR.router] = { exactInputSingle: Object.assign(async (p) => { captured = p; return makeTx('0xs'); }, { staticCall: async () => quotedOut }) };
     await swapIfNeeded(mockSigner(), buildMockEthersLib({ contractDispatch: d }),
-      swArgs({ amountIn: ONE_ETH, currentPrice: 2000, decimalsIn: 18, decimalsOut: 6, isToken0To1: true }));
-    assert.strictEqual(captured.amountOutMinimum, 0n);
+      swArgs({ amountIn: ONE_ETH, currentPrice: 2000, decimalsIn: 18, decimalsOut: 6, isToken0To1: true, slippagePct: 0.5 }));
+    assert.strictEqual(captured.amountOutMinimum, 1_988_010_000n); // 1998000000 * 9950 / 10000
   });
 });
 
@@ -494,11 +495,10 @@ describe('swapIfNeeded — balance-diff output', () => {
     let swapped = false;
     const d = defaultDispatch();
     d[ADDR.token1] = { ...d[ADDR.token1], balanceOf: async () => (swapped ? 1500n : 0n) };
-    d[ADDR.router] = { exactInputSingle: async () => { swapped = true; return makeTx('0xs'); } };
+    d[ADDR.router] = { exactInputSingle: Object.assign(async () => { swapped = true; return makeTx('0xs'); }, { staticCall: async (p) => p.amountIn }) };
     const r = await swapIfNeeded(mockSigner(), buildMockEthersLib({ contractDispatch: d }),
       { swapRouterAddress: ADDR.router, tokenIn: ADDR.token0, tokenOut: ADDR.token1,
-        fee: 3000, amountIn: 2000n, slippagePct: 0.5, recipient: ADDR.signer,
-        currentPrice: 1.0, decimalsIn: 18, decimalsOut: 18, isToken0To1: true, deadline: 9999999999n });
+        fee: 3000, amountIn: 2000n, slippagePct: 0.5, recipient: ADDR.signer, currentPrice: 1.0, decimalsIn: 18, decimalsOut: 18, isToken0To1: true, deadline: 9999999999n });
     assert.strictEqual(r.amountOut, 1500n);
   });
 });

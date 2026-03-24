@@ -73,7 +73,7 @@ function defaultDispatch() {
       collect: async () => { collected = true; return { wait: async () => ({ hash: '0xcol', logs: [] }) }; },
       mint: async () => makeMintTx('0xmint'),
     },
-    [ADDR.router]: { exactInputSingle: async () => makeTx('0xswap') },
+    [ADDR.router]: { exactInputSingle: Object.assign(async () => makeTx('0xswap'), { staticCall: async (p) => p.amountIn }) },
   };
 }
 function buildMockEthersLib(overrides = {}) {
@@ -191,9 +191,8 @@ describe('Failure: swapIfNeeded', () => {
 
   it('throws when exactInputSingle reverts', async () => {
     const d = defaultDispatch();
-    d[ADDR.router] = {
-      exactInputSingle: async () => { throw new Error('SWAP_REVERTED'); },
-    };
+    const revert = async () => { throw new Error('SWAP_REVERTED'); };
+    d[ADDR.router] = { exactInputSingle: Object.assign(revert, { staticCall: revert }) };
     await assert.rejects(
       () => swapIfNeeded(mockSigner(), buildMockEthersLib({ contractDispatch: d }), swArgs()),
       { message: /SWAP_REVERTED/ },
@@ -208,9 +207,7 @@ describe('Failure: swapIfNeeded', () => {
       ...d[ADDR.token1],
       balanceOf: async () => (swapped ? 50n : 100n),
     };
-    d[ADDR.router] = {
-      exactInputSingle: async () => { swapped = true; return makeTx('0xs'); },
-    };
+    d[ADDR.router] = { exactInputSingle: Object.assign(async () => { swapped = true; return makeTx('0xs'); }, { staticCall: async (p) => p.amountIn }) };
     const r = await swapIfNeeded(mockSigner(), buildMockEthersLib({ contractDispatch: d }), swArgs());
     assert.strictEqual(r.amountOut, 0n, 'negative diff should return 0n');
   });
@@ -326,9 +323,8 @@ describe('Failure: executeRebalance pipeline', () => {
 
   it('returns success:false when remove succeeds but swap reverts', async () => {
     const d = defaultDispatch();
-    d[ADDR.router] = {
-      exactInputSingle: async () => { throw new Error('SWAP_FAILED'); },
-    };
+    const fail = async () => { throw new Error('SWAP_FAILED'); };
+    d[ADDR.router] = { exactInputSingle: Object.assign(fail, { staticCall: fail }) };
     // Rebalance will try to swap because collected amounts are imbalanced
     // (all token0, no token1 scenario doesn't trigger because mock returns equal)
     // Use a scenario where swap is needed by making mint fail after swap attempt

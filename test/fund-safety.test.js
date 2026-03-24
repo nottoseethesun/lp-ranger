@@ -78,7 +78,7 @@ function defaultDispatch() {
       collect: async () => { collected = true; return { wait: async () => ({ hash: '0xcol', logs: [] }) }; },
       mint: async () => makeMintTx('0xmint'),
     },
-    [ADDR.router]: { exactInputSingle: async () => makeTx('0xswap') },
+    [ADDR.router]: { exactInputSingle: Object.assign(async () => makeTx('0xswap'), { staticCall: async (p) => p.amountIn }) },
   };
 }
 function buildMockEthersLib(overrides = {}) {
@@ -133,14 +133,16 @@ describe('Fund safety — swap slippage', () => {
     deadline: 9999999999n, ...extra,
   });
 
-  it('amountOutMinimum is 0 (bot acts on own behalf, no MEV risk)', async () => {
+  it('amountOutMinimum derived from quote simulation, not spot price', async () => {
     let captured;
+    const quotedOut = 999_000n; // 0.1% impact (within 0.5% slippage)
     const d = defaultDispatch();
-    d[ADDR.router] = {
-      exactInputSingle: async (p) => { captured = p; return makeTx('0xs'); },
-    };
+    d[ADDR.router] = { exactInputSingle: Object.assign(
+      async (p) => { captured = p; return makeTx('0xs'); },
+      { staticCall: async () => quotedOut }) };
     await swapIfNeeded(mockSigner(), buildMockEthersLib({ contractDispatch: d }), swArgs());
-    assert.strictEqual(captured.amountOutMinimum, 0n);
+    // amountOutMinimum = 999000 * 9950 / 10000 = 994005
+    assert.strictEqual(captured.amountOutMinimum, 994005n);
   });
 });
 

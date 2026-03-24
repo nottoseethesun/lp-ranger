@@ -176,7 +176,7 @@ function buildPollDeps(opts = {}) {
       collect: async () => { collected = true; return { wait: async () => ({ hash: '0xcol', logs: [] }) }; },
       mint: async () => makeMintTx('0xmint', 99n, 8000n),
     },
-    [ADDR.router]: { exactInputSingle: async () => makeTx('0xswap') },
+    [ADDR.router]: { exactInputSingle: Object.assign(async () => makeTx('0xswap'), { staticCall: async (p) => p.amountIn }) },
   };
 
   function MockContract(addr, _abi) {
