@@ -323,6 +323,9 @@ function _checkRangeAndThreshold(deps, poolState, emit) {
 function _checkRebalanceGates(deps, poolState, forced) {
   const { throttle, dryRun } = deps;
   const emit = deps.updateBotState || (() => {});
+  // Skip rebalance while paused from a prior swap abort (user must adjust slippage
+  // or use the manual Rebalance button, which sets forceRebalance and clears the flag)
+  if (!forced && deps._botState?.rebalancePaused) return { rebalanced: false };
   const can = !forced && throttle.canRebalance();
   if (can && !can.allowed) {
     console.log(`[bot] OOR but throttled (${can.reason}), wait ${Math.ceil(can.msUntilAllowed / 1000)}s`);

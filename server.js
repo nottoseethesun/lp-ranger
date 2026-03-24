@@ -383,6 +383,12 @@ async function _handleApiConfig(req, res) {
     }
   }
   saveConfig(_diskConfig);
+  // If slippage was changed, clear rebalancePaused so the bot retries with new setting
+  if (posPatch.slippagePct !== undefined) {
+    for (const [, state] of getAllPositionBotStates()) {
+      if (state.rebalancePaused) { state.rebalancePaused = false; state.rebalanceError = null; }
+    }
+  }
   jsonResponse(res, 200, { ok: true, applied: { ...globalPatch, ...posPatch } });
 }
 
@@ -655,7 +661,7 @@ const _routes = {
       return;
     }
     console.log('[server] Manual rebalance for %s (customRange=%s)', body.positionKey, body.customRangeWidthPct || 'default');
-    state.forceRebalance = true;
+    state.forceRebalance = true; state.rebalancePaused = false; state.rebalanceError = null;
     if (body.customRangeWidthPct > 0) state.customRangeWidthPct = Number(body.customRangeWidthPct);
     jsonResponse(res, 200, { ok: true, message: 'Rebalance requested' });
   },
