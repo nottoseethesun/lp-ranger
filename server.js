@@ -261,7 +261,7 @@ const { getPositionBaseline } = require('./src/hodl-baseline');
 const { computeHodlIL } = require('./src/il-calculator');
 const { createRebalanceLock } = require('./src/rebalance-lock');
 const { createPositionManager } = require('./src/position-manager');
-const { loadConfig, saveConfig, getPositionConfig, readConfigValue, GLOBAL_KEYS, POSITION_KEYS } = require('./src/bot-config-v2');
+const { loadConfig, saveConfig, getPositionConfig, readConfigValue, compositeKey: _compositeKey, GLOBAL_KEYS, POSITION_KEYS } = require('./src/bot-config-v2');
 
 // ── Position manager (module-level) ──────────────────────────────────────────
 
@@ -628,9 +628,15 @@ const _positionRoutes = createPositionRoutes({
 
 // ── One-shot position details (unmanaged positions) ─────────────────────────
 
-/** Compute P&L fields from baseline + current data. */
-async function _computePnlFields(provider, ethersLib, position, value, price0, price1, feesUsd) {
-  const baseline = await getPositionBaseline(provider, ethersLib, position);
+/** Compute P&L fields from baseline + current data.  Caches baseline to disk. */
+async function _computePnlFields(provider, ethersLib, position, posKey, value, price0, price1, feesUsd) {
+  // Check disk config for cached baseline first
+  const saved = _diskConfig.positions[posKey]?.hodlBaseline;
+  let baseline = saved && saved.entryValue > 0 ? saved : null;
+  if (!baseline) {
+    baseline = await getPositionBaseline(provider, ethersLib, position);
+    if (baseline) { const pos = getPositionConfig(_diskConfig, posKey); pos.hodlBaseline = baseline; saveConfig(_diskConfig); }
+  }
   const entryValue = baseline?.entryValue || 0;
   const priceGainLoss = entryValue > 0 ? value - entryValue : null;
   const il = baseline ? computeHodlIL({ lpValue: value, hodlAmount0: baseline.hodlAmount0, hodlAmount1: baseline.hodlAmount1, currentPrice0: price0, currentPrice1: price1 }) : null;
@@ -667,7 +673,9 @@ async function _handlePositionDetails(req, res) {
     const poolState = { tick: ps.tick, price: ps.price, decimals0: ps.decimals0, decimals1: ps.decimals1, poolAddress: ps.poolAddress };
     const total = amounts.amount0 * price0 + amounts.amount1 * price1;
     const comp = total > 0 ? (amounts.amount0 * price0) / total : null;
-    const pnl = await _computePnlFields(provider, ethersLib, position, value, price0, price1, feesUsd);
+    const walletAddr = body.walletAddress || walletManager.getAddress() || '';
+    const posKey = _compositeKey('pulsechain', walletAddr, body.contractAddress || config.POSITION_MANAGER, body.tokenId);
+    const pnl = await _computePnlFields(provider, ethersLib, position, posKey, value, price0, price1, feesUsd);
     jsonResponse(res, 200, { ok: true, poolState, price0, price1, value, amounts, feesUsd, inRange, lowerPrice: lp, upperPrice: up, composition: comp, ...pnl });
   } catch (err) {
     console.error('[server] Position details error:', err.message);

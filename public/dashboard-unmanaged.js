@@ -62,7 +62,8 @@ export async function fetchUnmanagedDetails(pos) {
   try {
     const res = await fetch('/api/position/details', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tokenId: pos.tokenId, token0: pos.token0, token1: pos.token1, fee: pos.fee,
-        tickLower: pos.tickLower, tickUpper: pos.tickUpper, liquidity: String(pos.liquidity || 0) }) });
+        tickLower: pos.tickLower, tickUpper: pos.tickUpper, liquidity: String(pos.liquidity || 0),
+        walletAddress: pos.walletAddress, contractAddress: pos.contractAddress }) });
     const d = await res.json();
     if (d.ok) _apply(d, pos);
   } catch (e) { console.warn('[data] fetchUnmanagedDetails:', e.message); }
