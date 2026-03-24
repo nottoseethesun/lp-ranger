@@ -619,16 +619,13 @@ async function _syncAfterManualScan() {
  *   import/restore) — the 3-second polling loop handles all of that instead.
  */
 export async function scanPositions(opts) {
-  console.log('[scan] scanPositions called: wallet=%s, navigate=%s', wallet.address || 'NONE', opts?.navigate);
   const navigate = !opts || opts.navigate !== false;
   if (!wallet.address) {
-    console.warn('[scan] ABORTED: no wallet address');
     act(ACT_ICONS.warn, 'alert', 'No Wallet Loaded', 'Import a wallet first to scan for positions');
     return;
   }
   const btn = g('posScanBtn');
   if (btn) { btn.disabled = true; btn.textContent = '\u27F3 Scanning\u2026'; }
-  console.log('[scan] fetching /api/positions/scan rpc=%s', getRpcUrl());
 
   try {
     const res = await fetch('/api/positions/scan', {
@@ -636,20 +633,18 @@ export async function scanPositions(opts) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ rpcUrl: getRpcUrl() }),
     });
-    console.log('[scan] fetch returned status=%d', res.status);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
 
     const added = _addScannedPositions(data);
     const nftCount = (data.nftPositions || []).length;
-    console.log('[scan] found %d NFTs, added %d new to posStore (total=%d)', nftCount, added, posStore.count());
     act(ACT_ICONS.scan, 'start', 'Scan Complete',
       `Found ${nftCount} NFT positions. Added ${added} new.`);
     updatePosStripUI();
     if (nftCount === 0) _showNoPositionsDialog();
     if (navigate) await _syncAfterManualScan();
   } catch (e) {
-    console.error('[scan] FAILED:', e.message);
+    console.error('Position scan failed:', e.message);
     act(ACT_ICONS.warn, 'alert', 'Scan Failed', e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '\u27F3 Scan Wallet'; }

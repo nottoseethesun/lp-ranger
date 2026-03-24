@@ -315,12 +315,10 @@ export async function confirmWallet() {
 
   // Auto-scan for positions after wallet import (navigate: false — let the
   // polling loop navigate to the bot's real active position once it responds)
-  console.log('[wallet] import complete: _scanPositions=%s, posCount=%d', !!_scanPositions, _posStore?.count() || 0);
   if (_scanPositions) {
-    console.log('[wallet] firing auto-scan after import');
     act(ACT_ICONS.scan, 'start', 'Auto-Scanning', 'Looking for LP positions\u2026');
     _scanPositions({ navigate: false });
-  } else { console.warn('[wallet] _scanPositions is null — cannot auto-scan'); }
+  }
 }
 
 // ── Seed phrase ─────────────────────────────────────────────────────────────

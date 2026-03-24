@@ -130,11 +130,9 @@ startDataPolling();
 // One-shot: if posStore is empty after 5s (wallet loaded but no positions), auto-scan once.
 let _initScanDone = false;
 setTimeout(() => {
-  console.log('[init] 5s check: _initScanDone=%s, posCount=%d, wallet=%s', _initScanDone, posStore.count(), wallet.address || 'none');
   if (_initScanDone || posStore.count() > 0) return;
   _initScanDone = true;
-  if (wallet.address) { console.log('[init] firing one-shot auto-scan'); act(ACT_ICONS.scan, 'start', 'Auto-Scanning', 'Looking for LP positions\u2026'); scanPositions({ navigate: false }); }
-  else { console.log('[init] no wallet — skipping auto-scan'); }
+  if (wallet.address) { act(ACT_ICONS.scan, 'start', 'Auto-Scanning', 'Looking for LP positions\u2026'); scanPositions({ navigate: false }); }
 }, 5000);
 
 } // end _afterDisclaimer
