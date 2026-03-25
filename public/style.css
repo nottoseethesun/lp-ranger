@@ -375,6 +375,7 @@ body::before{
 
 .pos-search-filter-row{
   margin-bottom:8px;
+  position:relative;
 }
 
 .pos-search-row{

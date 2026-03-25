@@ -304,7 +304,7 @@ export function renderPosBrowser() {
   // Render list
   const list = g('posList');
   if (!filtered.length) {
-    list.innerHTML = '<div class="pos-empty"><div class="pos-empty-icon">\u{1F4C2}</div><div>' +
+    list.innerHTML = '<div class="pos-empty"><div class="pos-empty-icon">\u25CB</div><div>' +
       (all.length ? 'No positions match your filter.' : 'No positions loaded. Import a wallet or click Scan.') +
       '</div></div>';
   } else {

@@ -138,7 +138,8 @@ export function bindAllEvents() {
   document.querySelectorAll('#posBrowserModal [class~="9mm-pos-mgr-modal-close-btn"]').forEach(btn => {
     btn.addEventListener('click', closePosBrowser);
   });
-  _input('posSearchInput', renderPosBrowser);
+  _input('posSearchInput', () => { renderPosBrowser(); const c = g('posSearchClear'); if (c) c.classList.toggle('hidden', !g('posSearchInput')?.value); });
+  _click('posSearchClear', () => { const inp = g('posSearchInput'); if (inp) { inp.value = ''; renderPosBrowser(); } const c = g('posSearchClear'); if (c) c.classList.add('hidden'); });
   _click('posScanBtn', scanPositions);
 
   _click('posPrevBtn', () => posChangePage(-1));
