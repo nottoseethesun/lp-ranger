@@ -643,7 +643,7 @@ function _computePnlFields(baseline, value, price0, price1, feesUsd) {
   const pgl = ev > 0 ? value - ev : null;
   const il = baseline ? computeHodlIL({ lpValue: value, hodlAmount0: baseline.hodlAmount0, hodlAmount1: baseline.hodlAmount1, currentPrice0: price0, currentPrice1: price1 }) : null;
   return { entryValue: ev, priceGainLoss: pgl, il, netPnl: ev > 0 ? (pgl || 0) + feesUsd : null, profit: il !== null ? feesUsd + il : null,
-    mintDate: baseline?.mintDate || null, hodlAmount0: baseline?.hodlAmount0 ?? null, hodlAmount1: baseline?.hodlAmount1 ?? null };
+    mintDate: baseline?.mintDate || null, mintTimestamp: baseline?.mintTimestamp || null, hodlAmount0: baseline?.hodlAmount0 ?? null, hodlAmount1: baseline?.hodlAmount1 ?? null };
 }
 
 async function _handlePositionDetails(req, res) {

@@ -6,7 +6,7 @@
  *   and populates the dashboard KPIs.
  */
 
-import { g, botConfig, truncName, fmtNum } from './dashboard-helpers.js';
+import { g, botConfig, truncName, fmtNum, fmtDateTime } from './dashboard-helpers.js';
 import { positionRangeVisual, _fmtUsd } from './dashboard-data.js';
 import { updateILDebugData } from './dashboard-il-debug.js';
 import { posStore } from './dashboard-positions.js';
@@ -52,8 +52,15 @@ function _apply(d, pos) {
   _setKpi('kpiPnl', d.netPnl);
   _setKpi('curProfit', d.profit);
   _setKpi('curIL', d.il);
-  // Mint date
-  if (d.mintDate) { const dur = g('kpiPosDuration'); if (dur) dur.textContent = 'Since ' + d.mintDate; }
+  // Position age + mint date
+  if (d.mintTimestamp) {
+    const dur = g('kpiPosDuration');
+    if (dur) {
+      const ms = Date.now() - d.mintTimestamp * 1000;
+      const dd = Math.floor(ms / 86400000), hh = Math.floor((ms % 86400000) / 3600000), mm = Math.floor((ms % 3600000) / 60000);
+      dur.textContent = 'Active: ' + dd + 'd ' + hh + 'h ' + mm + 'm \u00B7 Minted: ' + fmtDateTime(new Date(d.mintTimestamp * 1000));
+    }
+  }
   // Inject IL debug data so the "i" buttons work for unmanaged positions
   if (d.il !== null && d.il !== undefined && d.hodlAmount0 !== null) {
     const hodl = { hodlAmount0: d.hodlAmount0, hodlAmount1: d.hodlAmount1 };

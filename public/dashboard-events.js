@@ -426,10 +426,10 @@ function _openPoolDetailsModal() {
   const fee = active.fee ? (active.fee / 10000).toFixed(2) + '%' : '—';
   const el = (id, txt) => { const e = g(id); if (e) e.textContent = txt; };
   el('pdType', active.positionType === 'nft' ? 'NFT (ERC-721)' : 'ERC-20');
-  el('pdToken0', active.token0Symbol || '?');
-  el('pdToken1', active.token1Symbol || '?');
+  const t0 = g('pdToken0'); if (t0) t0.innerHTML = (active.token0Symbol || '?') + (active.token0 ? '<br>\u00A0\u00A0\u00A0\u00A0' + active.token0 : '');
+  const t1 = g('pdToken1'); if (t1) t1.innerHTML = (active.token1Symbol || '?') + (active.token1 ? '<br>\u00A0\u00A0\u00A0\u00A0' + active.token1 : '');
   el('pdFee', fee);
-  el('pdContract', active.contractAddress || '—');
+  el('pdContract', active.contractAddress || '\u2014');
   m.classList.remove('hidden');
 }
 

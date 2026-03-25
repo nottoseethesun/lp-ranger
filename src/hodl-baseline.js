@@ -175,7 +175,7 @@ async function getPositionBaseline(provider, ethersLib, position) {
     const { hodlAmount0, hodlAmount1 } = await _readMintedAmounts(provider, ethersLib, iface, position, mintLog.transactionHash);
     const { price0, price1 } = await fetchHistoricalPriceGecko(poolAddress, mintTimestamp);
     const entryValue = (price0 > 0 || price1 > 0) ? hodlAmount0 * price0 + hodlAmount1 * price1 : 0;
-    return { entryValue, hodlAmount0, hodlAmount1, mintDate: new Date(mintTimestamp * 1000).toISOString().slice(0, 10), price0, price1 };
+    return { entryValue, hodlAmount0, hodlAmount1, mintDate: new Date(mintTimestamp * 1000).toISOString().slice(0, 10), mintTimestamp, price0, price1 };
   } catch { return null; }
 }
 
