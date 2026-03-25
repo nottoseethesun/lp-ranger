@@ -6,7 +6,7 @@
  *   and populates the dashboard KPIs.
  */
 
-import { g, botConfig, truncName } from './dashboard-helpers.js';
+import { g, botConfig, truncName, fmtNum } from './dashboard-helpers.js';
 import { positionRangeVisual, _fmtUsd } from './dashboard-data.js';
 import { updateILDebugData } from './dashboard-il-debug.js';
 import { posStore } from './dashboard-positions.js';
@@ -41,6 +41,8 @@ function _setKpi(id, val) {
 function _apply(d, pos) {
   botConfig.price = d.poolState.price; botConfig.lower = d.lowerPrice; botConfig.upper = d.upperPrice;
   botConfig.tL = pos.tickLower; botConfig.tU = pos.tickUpper;
+  const sym = truncName(pos.token1Symbol || '?', 12);
+  const pml = g('pmlabel'); if (pml) { pml.textContent = fmtNum(d.poolState.price) + ' ' + sym; pml.title = String(d.poolState.price); }
   positionRangeVisual();
   // Current panel KPIs
   _setKpi('kpiValue', d.value > 0 ? d.value : null);

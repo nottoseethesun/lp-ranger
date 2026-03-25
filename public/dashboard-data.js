@@ -6,7 +6,7 @@
  */
 
 import { g, botConfig, compositeKey, fmtDateTime, act, ACT_ICONS, truncName, fmtNum, isFullRange } from './dashboard-helpers.js';
-import { posStore, updateManagedPositions } from './dashboard-positions.js';
+import { posStore, updateManagedPositions, isPositionManaged } from './dashboard-positions.js';
 import { updateHistoryFromStatus } from './dashboard-history.js';
 import { wallet } from './dashboard-wallet.js';
 import { reapplyPrivacyBlur, updateManageBadge } from './dashboard-events.js';
@@ -398,6 +398,8 @@ function _updateRangePctLabels(price, lower, upper) {
 /** Update the price marker on the range monitor from pool/position state. */
 function _updatePriceMarker(d) {
   if (!d.poolState) return;
+  const act = posStore.getActive();
+  if (act && !isPositionManaged(act.tokenId)) return;
   botConfig.price = d.poolState.price;
   const pml = g('pmlabel');
   if (pml) { pml.textContent = fmtNum(d.poolState.price) + ' ' + _activeToken1Symbol(); pml.title = d.poolState.price.toString(); }
@@ -577,9 +579,11 @@ function updateDashboardFromStatus(data) {
   // Lifetime panel updates regardless of closed-position view
   _updateLifetimeKpis(data);
 
-  // While viewing a closed position, keep non-KPI updates running above
-  // but skip position/KPI overwrites so historical data stays visible.
+  // Skip position/KPI overwrites when viewing a closed or unmanaged position
+  // so the one-shot data stays visible.
   if (isViewingClosedPos()) return;
+  const _act = posStore.getActive();
+  if (_act && !isPositionManaged(_act.tokenId)) return;
 
   _syncActivePosition(data);
   _updatePosStatus(data);
