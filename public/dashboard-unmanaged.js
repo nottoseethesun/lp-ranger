@@ -107,5 +107,6 @@ export async function fetchUnmanagedDetails(pos) {
         initialDeposit: loadInitialDeposit() || 0 }) });
     const d = await res.json();
     if (d.ok) _apply(d, pos);
-  } catch (e) { console.warn('[data] fetchUnmanagedDetails:', e.message); }
+    else console.warn('[unmanaged] details error:', d.error);
+  } catch (e) { console.warn('[unmanaged] fetch failed:', e.message); }
 }

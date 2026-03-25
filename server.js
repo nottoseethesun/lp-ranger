@@ -627,6 +627,7 @@ const _positionRoutes = createPositionRoutes({
 /** Load or fetch + cache the HODL baseline for a position. */
 async function _handlePositionDetails(req, res) {
   const body = await readJsonBody(req);
+  console.log('[server] POST /api/position/details tokenId=%s', body.tokenId);
   if (!body.tokenId || !body.token0 || !body.token1 || !body.fee) {
     return jsonResponse(res, 400, { ok: false, error: 'Missing tokenId, token0, token1, or fee' });
   }
