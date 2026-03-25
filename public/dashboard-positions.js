@@ -467,7 +467,7 @@ export function updateManagedPositions(list, allStates) { _managedTokenIds.clear
 export function isPositionManaged(tokenId) { return _managedTokenIds.has(String(tokenId)); }
 
 /** Refresh the manage badge for the given position using the local managed set. */
-function _refreshManageBadge(active) { if (!active) return; const badge = g('manageBadge'), btn = g('manageToggleBtn'); if (!badge || !btn) return; const m = _managedTokenIds.has(String(active.tokenId)); badge.classList.toggle('managed', m); badge.innerHTML = m ? '<span class="9mm-pos-mgr-manage-dot"></span>Being Actively Managed' : 'Not Actively Managed'; btn.textContent = m ? 'Stop Managing' : 'Manage'; }
+function _refreshManageBadge(active) { if (!active) return; const badge = g('manageBadge'), btn = g('manageToggleBtn'); if (!badge || !btn) return; const closed = active.liquidity !== undefined && active.liquidity !== null && String(active.liquidity) === '0'; const m = !closed && _managedTokenIds.has(String(active.tokenId)); badge.classList.toggle('managed', m); badge.innerHTML = closed ? 'Position Closed' : m ? '<span class="9mm-pos-mgr-manage-dot"></span>Being Actively Managed' : 'Not Actively Managed'; btn.textContent = m ? 'Stop Managing' : 'Manage'; btn.disabled = closed; }
 
 /** Determine status CSS class and label for a position row. */
 /** Check if a position is in range. Uses: 1) server bot state tick, 2) scan poolTick, 3) same-pool botConfig.price. */
