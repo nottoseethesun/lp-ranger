@@ -41,7 +41,9 @@ export function renderDailyPnl(dailyPnl) {
   const tbody = g('dailyPnlBody'), pageLabel = g('pnlPageLabel');
   if (!tbody) return;
   if (!dailyPnl || dailyPnl.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="9mm-pos-mgr-table-empty">No P&L data yet</td></tr>';
+    const active = posStore.getActive();
+    const closed = active && active.liquidity !== undefined && String(active.liquidity) === '0';
+    tbody.innerHTML = '<tr><td colspan="7" class="9mm-pos-mgr-table-empty">' + (closed ? 'Position Closed' : 'No P&L data yet') + '</td></tr>';
     _setPnlPagBtns(0, 1); return;
   }
   _lastDailyPnl = dailyPnl;

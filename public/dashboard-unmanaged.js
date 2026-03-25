@@ -12,6 +12,7 @@ import {
   updateRangePctLabels, setKpiValue, resetKpis,
 } from './dashboard-data.js';
 import { updateILDebugData } from './dashboard-il-debug.js';
+import { renderDailyPnl, renderRebalanceEvents } from './dashboard-history.js';
 import { posStore } from './dashboard-positions.js';
 
 const _ALL_KPIS = ['kpiValue', 'pnlFees', 'pnlPrice', 'kpiDeposit', 'kpiPnl', 'curProfit', 'curIL', 'pnlRealized',
@@ -49,6 +50,9 @@ function _applyLifetime(d) {
     const days = ((Date.now() - new Date(startDate).getTime()) / 86400000).toFixed(2);
     const ltLabel = g('ltPnlLabel'); if (ltLabel) ltLabel.textContent = 'Net Profit and Loss Return over ' + days + ' days';
   }
+  // Bottom tables — render if data available from lifetime scan
+  if (d.dailyPnl) renderDailyPnl(d.dailyPnl);
+  if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
 }
 
 /** Apply phase-1 (fast) position details to the dashboard UI. */

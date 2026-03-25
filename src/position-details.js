@@ -45,17 +45,15 @@ async function _getLifetimeSnapshot(provider, ethersLib, position, walletAddr, d
   const saved = diskConfig.positions[posKey]?.pnlEpochs;
   const tracker = createPnlTracker({ initialDeposit: deposit || 0 });
   if (saved) tracker.restore(saved);
-  if (tracker.epochCount() === 0) {
-    const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache-' + position.tokenId + '.json') });
-    const events = await scanRebalanceHistory(provider, ethersLib, { positionManagerAddress: config.POSITION_MANAGER, walletAddress: walletAddr,
-      maxYears: 5, cache, factoryAddress: config.FACTORY, poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee });
-    if (events.length > 0) {
-      await reconstructEpochs({ pnlTracker: tracker, rebalanceEvents: events,
-        botState: { activePosition: position, walletAddress: walletAddr, positionManager: config.POSITION_MANAGER }, fallbackPrices: prices });
-      const pos = getPositionConfig(diskConfig, posKey); pos.pnlEpochs = tracker.serialize(); saveConfig(diskConfig);
-    }
+  const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache-' + position.tokenId + '.json') });
+  const events = await scanRebalanceHistory(provider, ethersLib, { positionManagerAddress: config.POSITION_MANAGER, walletAddress: walletAddr,
+    maxYears: 5, cache, factoryAddress: config.FACTORY, poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee });
+  if (tracker.epochCount() === 0 && events.length > 0) {
+    await reconstructEpochs({ pnlTracker: tracker, rebalanceEvents: events,
+      botState: { activePosition: position, walletAddress: walletAddr, positionManager: config.POSITION_MANAGER }, fallbackPrices: prices });
+    const pos = getPositionConfig(diskConfig, posKey); pos.pnlEpochs = tracker.serialize(); saveConfig(diskConfig);
   }
-  return tracker;
+  return { tracker, events };
 }
 
 /** Compute current-epoch P&L from baseline + prices. */
@@ -141,9 +139,11 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
   const { baseline, entryValue } = _resolveEntryValueCached(diskConfig, posKey, body, price0, price1);
   const value = positionValueUsd(position, ps, price0, price1);
   const cur = _currentPnl(baseline, value, entryValue, 0, price0, price1);
-  const tracker = await _getLifetimeSnapshot(provider, ethersLib, position, body.walletAddress || '', diskConfig, posKey, { price0, price1 }, entryValue);
+  const { tracker, events } = await _getLifetimeSnapshot(provider, ethersLib, position, body.walletAddress || '', diskConfig, posKey, { price0, price1 }, entryValue);
+  const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
   const lt = _lifetimePnl(tracker, ps, entryValue, cur, 0);
-  return { ok: true, ...lt, firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null };
+  return { ok: true, ...lt, firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null,
+    dailyPnl: snap?.dailyPnl || null, rebalanceEvents: events.length > 0 ? events : null };
 }
 
 module.exports = { computeQuickDetails, computeLifetimeDetails };
