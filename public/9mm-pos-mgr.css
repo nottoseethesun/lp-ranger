@@ -338,9 +338,14 @@
   cursor: pointer;
 }
 
+.\39 mm-pos-mgr-eye-btn {
+  line-height: 1;
+  padding: 4px 8px;
+}
+
 .\39 mm-pos-mgr-btn-sm:disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: help;
 }
 
 .\39 mm-pos-mgr-btn-sm:hover:not(:disabled) {

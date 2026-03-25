@@ -13,7 +13,7 @@ import {
   confirmWallet, validateSeed, onSeedConfirmChange, importSeed,
   validateKey, onKeyConfirmChange, importKey, closeRevealModal, revealWallet,
   openRevealModal, clearWalletUI, closeClearWalletModal, confirmClearWallet,
-  openWalletModal, submitUnlock, dismissToViewOnly, toggleUnlockEye,
+  openWalletModal, submitUnlock, dismissToViewOnly,
 } from './dashboard-wallet.js';
 import {
   openPosBrowser, closePosBrowser, renderPosBrowser, scanPositions,
@@ -173,8 +173,12 @@ export function bindAllEvents() {
   // ── Wallet unlock ───────────────────────────────────────────────────────
   const _unlockForm = g('unlockForm'); if (_unlockForm) _unlockForm.addEventListener('submit', submitUnlock);
   _click('viewOnlyBtn', dismissToViewOnly);
-  _click('unlockEyeBtn', toggleUnlockEye);
   _click('unlockWalletBtn', () => { const m = g('walletUnlockModal'); if (m) m.classList.remove('hidden'); });
+
+  // ── Eye toggle buttons (all password fields) ───────────────────────────
+  document.querySelectorAll('[data-eye]').forEach(btn => {
+    btn.addEventListener('click', () => { const inp = g(btn.dataset.eye); if (inp) inp.type = inp.type === 'password' ? 'text' : 'password'; });
+  });
 
   // ── Position Browser toggles ────────────────────────────────────────────
   const _managedEl = g('posManagedOnlyToggle'); if (_managedEl) _managedEl.addEventListener('change', () => { renderPosBrowser(); });

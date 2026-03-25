@@ -694,4 +694,3 @@ export async function submitUnlock(e) {
   } catch { if (errEl) { errEl.textContent = 'Server unreachable'; errEl.classList.remove('hidden'); } }
 }
 export function dismissToViewOnly() { _viewOnly = true; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) { b.disabled = false; b.title = 'Unlock wallet to manage positions'; } const mg = g('manageToggleBtn'); if (mg) mg.disabled = true; }
-export function toggleUnlockEye() { const pw = g('unlockPassword'); if (pw) pw.type = pw.type === 'password' ? 'text' : 'password'; }
