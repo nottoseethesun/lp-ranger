@@ -443,8 +443,13 @@ async function _autoStartManagedPositions() {
   const { createPerPositionBotState, attachMultiPosDeps, updatePositionState } = require('./src/server-positions');
   const count = _diskConfig.managedPositions.length;
   const staggerMs = count > 1 ? Math.floor((config.CHECK_INTERVAL_SEC * 1000) / count) : 0;
+  // Verify ownership before starting — remove positions not owned by this wallet
+  const ethersLib = require('ethers');
+  const provider = new ethersLib.JsonRpcProvider(config.RPC_URL);
+  const pmContract = new ethersLib.Contract(config.POSITION_MANAGER, ['function ownerOf(uint256) view returns (address)'], provider);
+  const walletAddr = walletManager.getAddress();
   let i = 0;
-  for (const key of _diskConfig.managedPositions) {
+  for (const key of [..._diskConfig.managedPositions]) {
     const posConfig = getPositionConfig(_diskConfig, key);
     if (posConfig.status !== 'running') {
       console.log('[server] Skipping paused position %s', key);
@@ -456,6 +461,11 @@ async function _autoStartManagedPositions() {
       await new Promise((r) => setTimeout(r, staggerMs));
     }
     const tokenId = key.split('-').pop();
+    // Verify wallet owns this NFT before starting
+    if (walletAddr) {
+      try { const owner = await pmContract.ownerOf(tokenId); if (owner.toLowerCase() !== walletAddr.toLowerCase()) throw new Error('not owned'); }
+      catch (_e) { console.warn('[server] NFT #%s not owned by wallet — removing from managed', tokenId); const { removeManagedPosition } = require('./src/bot-config-v2'); removeManagedPosition(_diskConfig, key); saveConfig(_diskConfig); i++; continue; }
+    }
     const posBotState = createPerPositionBotState(_diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, _positionMgr);
     try {
