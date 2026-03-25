@@ -484,7 +484,6 @@
     <div class="9mm-pos-mgr-nft-row">
       <span class="9mm-pos-mgr-text-muted" id="posTokenLabel">NFT #</span><strong id="wsToken">—</strong>
       <button class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-nft-detail-btn" id="poolDetailsBtn" title="View pool and contract details">Pool Details</button>
-      <button class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-nft-detail-btn hidden" id="unlockWalletBtn" title="Unlock wallet to manage positions">Unlock Wallet</button>
     </div>
     <div class="9mm-pos-mgr-nft-row">
       <span class="9mm-pos-mgr-text-muted">Pool:</span><strong id="wsPool">—</strong>
@@ -493,6 +492,7 @@
     <div class="9mm-pos-mgr-nft-row">
       <button class="9mm-pos-mgr-btn-sm" id="manageToggleBtn">Manage</button>
       <span class="9mm-pos-mgr-manage-badge" id="manageBadge">Not Actively Managed</span>
+      <button class="9mm-pos-mgr-btn-sm" id="unlockWalletBtn" disabled title="Wallet is already unlocked">Unlock Wallet</button>
     </div>
   </div>
 </div>
@@ -510,7 +510,7 @@
         <input type="hidden" name="username" value="wallet" autocomplete="username">
         <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mb-6">
           <input type="password" name="password" id="unlockPassword" class="pinput" style="width:100%" autocomplete="current-password" placeholder="Wallet password">
-          <button type="button" class="9mm-pos-mgr-btn-sm" id="unlockEyeBtn" title="Show/hide password">&#x25C9;</button>
+          <button type="button" class="9mm-pos-mgr-btn-sm" id="unlockEyeBtn" title="Show/hide password">&#x1F441;</button>
         </div>
         <div id="unlockError" class="9mm-pos-mgr-text-danger hidden" style="margin-bottom:8px"></div>
         <div style="display:flex;gap:8px">
@@ -896,6 +896,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774323041295"></script>
+<script src="dist/bundle.js?v=1774465933028"></script>
 </body>
 </html>

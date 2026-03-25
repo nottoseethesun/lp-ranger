@@ -685,13 +685,13 @@ export async function confirmClearWallet() {
 // ── Wallet unlock (password-security) ────────────────────────────────────────
 let _viewOnly = false;
 export function isViewOnly() { return _viewOnly; }
-export async function checkWalletLocked() { try { const s = await (await fetch('/api/wallet/status')).json(); if (s.locked) { const m = g('walletUnlockModal'); if (m) m.classList.remove('hidden'); const pw = g('unlockPassword'); if (pw) pw.focus(); } } catch { /* */ } }
+export async function checkWalletLocked() { try { const s = await (await fetch('/api/wallet/status')).json(); if (s.locked) { const m = g('walletUnlockModal'); if (m) m.classList.remove('hidden'); const pw = g('unlockPassword'); if (pw) pw.focus(); const ub = g('unlockWalletBtn'); if (ub) { ub.disabled = false; ub.title = 'Unlock wallet to manage positions'; } } } catch { /* */ } }
 export async function submitUnlock(e) {
   if (e) e.preventDefault(); const pw = g('unlockPassword'); if (!pw) return; const errEl = g('unlockError');
   try { const d = await (await fetch('/api/wallet/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw.value }) })).json();
-    if (d.ok) { _viewOnly = false; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) b.classList.add('hidden'); const mg = g('manageToggleBtn'); if (mg) mg.disabled = false; act(ACT_ICONS.play, 'wallet', 'Wallet Unlocked', 'Position management enabled'); }
+    if (d.ok) { _viewOnly = false; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) { b.disabled = true; b.title = 'Wallet is already unlocked'; } const mg = g('manageToggleBtn'); if (mg) mg.disabled = false; act(ACT_ICONS.play, 'wallet', 'Wallet Unlocked', 'Position management enabled'); }
     else if (errEl) { errEl.textContent = d.error || 'Wrong password'; errEl.classList.remove('hidden'); }
   } catch { if (errEl) { errEl.textContent = 'Server unreachable'; errEl.classList.remove('hidden'); } }
 }
-export function dismissToViewOnly() { _viewOnly = true; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) b.classList.remove('hidden'); const mg = g('manageToggleBtn'); if (mg) mg.disabled = true; }
+export function dismissToViewOnly() { _viewOnly = true; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) { b.disabled = false; b.title = 'Unlock wallet to manage positions'; } const mg = g('manageToggleBtn'); if (mg) mg.disabled = true; }
 export function toggleUnlockEye() { const pw = g('unlockPassword'); if (pw) pw.type = pw.type === 'password' ? 'text' : 'password'; }
