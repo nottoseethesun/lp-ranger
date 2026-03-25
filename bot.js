@@ -18,6 +18,8 @@
 
 const readline = require('readline');
 
+const { installColorLogger } = require('./src/logger');
+installColorLogger();
 const config = require('./src/config');
 const { resolvePrivateKey, startBotLoop } = require('./src/bot-loop');
 const { createRebalanceLock } = require('./src/rebalance-lock');

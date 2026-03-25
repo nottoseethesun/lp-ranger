@@ -454,7 +454,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 
   const contract = new ethersLib.Contract(positionManagerAddress, PM_ABI, provider);
   const rawEvents = await scanChunks(contract, walletAddress, scanFrom, currentBlock, chunkSize, opts.onProgress,
-    'Rebalance history for ' + walletAddress.slice(0, 10));
+    'Rebalance history for ' + walletAddress);
 
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
   if (rawEvents.length === 0 && cachedEvents.length === 0) return [];

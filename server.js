@@ -245,6 +245,9 @@
 
 'use strict';
 
+const { installColorLogger } = require('./src/logger');
+installColorLogger();
+
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
@@ -781,10 +784,13 @@ function start(portOverride) {
     server.once('error', reject);
     server.listen(port, host, () => {
       const addr = `http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`;
-      console.log(`[server] Dashboard: ${addr}`);
-      console.log(`[server] API:       ${addr}/api/status`);
-      console.log(`[server] Port:      ${port}  (change with PORT= in .env)`);
-      console.log(`[server] Health:    ${addr}/health`);
+      console.log(`[server] Blockchain:  PulseChain (chainId 369)`);
+      console.log(`[server] NFT Factory: ${config.POSITION_MANAGER}`);
+      console.log(`[server] Wallet:      ${walletManager.getAddress() || '(not loaded)'}`);
+      console.log(`[server] Dashboard:   ${addr}`);
+      console.log(`[server] API:         ${addr}/api/status`);
+      console.log(`[server] Port:        ${port}  (change with PORT= in .env)`);
+      console.log(`[server] Health:      ${addr}/health`);
       resolve(server);
     });
   });
