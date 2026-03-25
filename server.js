@@ -254,14 +254,10 @@ const walletManager = require('./src/wallet-manager');
 const { detectPositionType } = require('./src/position-detector');
 const { startBotLoop, resolvePrivateKey } = require('./src/bot-loop');
 const { getPositionHistory } = require('./src/position-history');
-const { getPoolState: _getPoolState } = require('./src/rebalancer');
-const { positionValueUsd: _posValueUsd, fetchTokenPrices: _fetchPrices, readUnclaimedFees: _readFees } = require('./src/bot-pnl-updater');
-const rangeMath = require('./src/range-math');
-const { getPositionBaseline } = require('./src/hodl-baseline');
-const { computeHodlIL } = require('./src/il-calculator');
+const { computePositionDetails: _computePositionDetails } = require('./src/position-details');
 const { createRebalanceLock } = require('./src/rebalance-lock');
 const { createPositionManager } = require('./src/position-manager');
-const { loadConfig, saveConfig, getPositionConfig, readConfigValue, compositeKey: _compositeKey, GLOBAL_KEYS, POSITION_KEYS } = require('./src/bot-config-v2');
+const { loadConfig, saveConfig, getPositionConfig, readConfigValue, GLOBAL_KEYS, POSITION_KEYS } = require('./src/bot-config-v2');
 
 // ── Position manager (module-level) ──────────────────────────────────────────
 
@@ -629,57 +625,18 @@ const _positionRoutes = createPositionRoutes({
 // ── One-shot position details (unmanaged positions) ─────────────────────────
 
 /** Load or fetch + cache the HODL baseline for a position. */
-async function _resolveBaseline(provider, ethersLib, position, posKey) {
-  const saved = _diskConfig.positions[posKey]?.hodlBaseline;
-  if (saved && saved.entryValue > 0) return saved;
-  const baseline = await getPositionBaseline(provider, ethersLib, position);
-  if (baseline) { const pos = getPositionConfig(_diskConfig, posKey); pos.hodlBaseline = baseline; saveConfig(_diskConfig); }
-  return baseline;
-}
-
-/** Compute P&L fields from baseline + current data. */
-function _computePnlFields(baseline, value, price0, price1, feesUsd, userDeposit) {
-  const ev = userDeposit > 0 ? userDeposit : (baseline?.entryValue || 0);
-  const pgl = ev > 0 ? value - ev : null;
-  const il = baseline ? computeHodlIL({ lpValue: value, hodlAmount0: baseline.hodlAmount0, hodlAmount1: baseline.hodlAmount1, currentPrice0: price0, currentPrice1: price1 }) : null;
-  return { entryValue: ev, priceGainLoss: pgl, il, netPnl: ev > 0 ? (pgl || 0) + feesUsd : null, profit: il !== null ? feesUsd + il : null,
-    mintDate: baseline?.mintDate || null, mintTimestamp: baseline?.mintTimestamp || null, hodlAmount0: baseline?.hodlAmount0 ?? null, hodlAmount1: baseline?.hodlAmount1 ?? null };
-}
-
 async function _handlePositionDetails(req, res) {
   const body = await readJsonBody(req);
   if (!body.tokenId || !body.token0 || !body.token1 || !body.fee) {
     return jsonResponse(res, 400, { ok: false, error: 'Missing tokenId, token0, token1, or fee' });
   }
-  const ethersLib = require('ethers');
   try {
+    const ethersLib = require('ethers');
     const provider = new ethersLib.JsonRpcProvider(config.RPC_URL);
-    const ps = await _getPoolState(provider, ethersLib, { factoryAddress: config.FACTORY, token0: body.token0, token1: body.token1, fee: body.fee });
-    const { price0, price1 } = await _fetchPrices(body.token0, body.token1);
-    const position = { tokenId: body.tokenId, token0: body.token0, token1: body.token1, fee: body.fee,
-      tickLower: body.tickLower, tickUpper: body.tickUpper, liquidity: body.liquidity };
-    const value = _posValueUsd(position, ps, price0, price1);
-    const amounts = rangeMath.positionAmounts(BigInt(body.liquidity || 0), ps.tick, body.tickLower, body.tickUpper, ps.decimals0, ps.decimals1);
-    const lp = rangeMath.tickToPrice(body.tickLower, ps.decimals0, ps.decimals1);
-    const up = rangeMath.tickToPrice(body.tickUpper, ps.decimals0, ps.decimals1);
-    const inRange = ps.tick >= body.tickLower && ps.tick < body.tickUpper;
-    let feesUsd = 0;
-    if (_resolvedPrivateKey) {
-      try {
-        const signer = new ethersLib.Wallet(_resolvedPrivateKey, provider);
-        const fees = await _readFees(provider, ethersLib, body.tokenId, signer);
-        feesUsd = (Number(fees.tokensOwed0) / 10 ** ps.decimals0) * price0 + (Number(fees.tokensOwed1) / 10 ** ps.decimals1) * price1;
-      } catch (_) { /* fees unavailable without signer */ }
-    }
-    const poolState = { tick: ps.tick, price: ps.price, decimals0: ps.decimals0, decimals1: ps.decimals1, poolAddress: ps.poolAddress };
-    const total = amounts.amount0 * price0 + amounts.amount1 * price1;
-    const comp = total > 0 ? (amounts.amount0 * price0) / total : null;
-    const walletAddr = body.walletAddress || walletManager.getAddress() || '';
-    const posKey = _compositeKey('pulsechain', walletAddr, body.contractAddress || config.POSITION_MANAGER, body.tokenId);
-    const baseline = await _resolveBaseline(provider, ethersLib, position, posKey);
-    const userDeposit = _diskConfig.positions[posKey]?.initialDepositUsd || body.initialDeposit || 0;
-    const pnl = _computePnlFields(baseline, value, price0, price1, feesUsd, userDeposit);
-    jsonResponse(res, 200, { ok: true, poolState, price0, price1, value, amounts, feesUsd, inRange, lowerPrice: lp, upperPrice: up, composition: comp, ...pnl });
+    body.walletAddress = body.walletAddress || walletManager.getAddress() || '';
+    body.contractAddress = body.contractAddress || config.POSITION_MANAGER;
+    const result = await _computePositionDetails(provider, ethersLib, body, _diskConfig, _resolvedPrivateKey);
+    jsonResponse(res, 200, result);
   } catch (err) {
     console.error('[server] Position details error:', err.message);
     jsonResponse(res, 500, { ok: false, error: err.message });

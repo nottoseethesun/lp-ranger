@@ -39,14 +39,15 @@ function _setKpi(id, val) {
 
 /** Populate the Lifetime panel + subtitle from one-shot data. */
 function _applyLifetime(d) {
-  _setKpi('kpiNet', d.netPnl);
-  _setKpi('ltProfit', d.profit);
+  _setKpi('kpiNet', d.ltNetPnl !== undefined ? d.ltNetPnl : d.netPnl);
+  _setKpi('ltProfit', d.ltProfit !== undefined ? d.ltProfit : d.profit);
   _setKpi('netIL', d.il);
   const ltDep = g('lifetimeDepositDisplay'); if (ltDep && d.entryValue > 0) ltDep.textContent = '$usd ' + d.entryValue.toFixed(2);
-  // Always clear "Start Bot for Live Data" subtitle
-  const sub = g('kpiPnlPct'); if (sub) sub.textContent = d.mintDate ? (d.mintDate + ' \u2192 ' + new Date().toISOString().slice(0, 10)) : '';
-  if (d.mintTimestamp) {
-    const days = ((Date.now() - d.mintTimestamp * 1000) / 86400000).toFixed(2);
+  // Lifetime date range uses firstEpochDate (pool start), not current NFT mint
+  const startDate = d.firstEpochDate || d.mintDate;
+  const sub = g('kpiPnlPct'); if (sub) sub.textContent = startDate ? (startDate + ' \u2192 ' + new Date().toISOString().slice(0, 10)) : '';
+  if (startDate) {
+    const days = ((Date.now() - new Date(startDate).getTime()) / 86400000).toFixed(2);
     const ltLabel = g('ltPnlLabel'); if (ltLabel) ltLabel.textContent = 'Net Profit and Loss Return over ' + days + ' days';
   }
 }
