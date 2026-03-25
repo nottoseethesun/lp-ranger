@@ -1104,6 +1104,7 @@
 
 .\39 mm-pos-mgr-nft-bar .\39 mm-pos-mgr-nft-row:nth-child(2) {
   font-size: 12px;
+  align-items: flex-end;
 }
 
 .\39 mm-pos-mgr-nft-detail-btn {
