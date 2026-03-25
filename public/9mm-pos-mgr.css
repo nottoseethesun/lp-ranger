@@ -1252,13 +1252,22 @@
 }
 
 
-.\39 mm-pos-mgr-ranger-star {
-  height: 33px;
+.\39 mm-pos-mgr-ranger-star-wrap {
+  display: inline-block;
   width: 33px;
+  height: 33px;
   position: relative;
   top: 7px;
   margin: 0 4px;
   cursor: help;
+  background: linear-gradient(135deg, #ff3b8b, #9b30ff 50%, #00c8ff);
+  border-radius: 4px;
+}
+
+.\39 mm-pos-mgr-ranger-star {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .\39 mm-pos-mgr-hover-only {
