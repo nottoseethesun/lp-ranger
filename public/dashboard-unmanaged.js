@@ -43,6 +43,9 @@ function _applyLifetime(d) {
   _setKpi('ltProfit', d.ltProfit !== undefined ? d.ltProfit : d.profit);
   _setKpi('netIL', d.il);
   const ltDep = g('lifetimeDepositDisplay'); if (ltDep && d.entryValue > 0) ltDep.textContent = '$usd ' + d.entryValue.toFixed(2);
+  // Lifetime breakdown: fees + priceChange + realized
+  const bd = g('kpiNetBreakdown');
+  if (bd && d.ltFees !== undefined) { const f = (d.ltFees || 0).toFixed(2), pc = d.ltPriceChange || 0; bd.textContent = f + (pc >= 0 ? ' + ' : ' \u2212 ') + Math.abs(pc).toFixed(2) + ' + 0.00'; }
   // Lifetime date range uses firstEpochDate (pool start), not current NFT mint
   const startDate = d.firstEpochDate || d.mintDate;
   const sub = g('kpiPnlPct'); if (sub) sub.textContent = startDate ? (startDate + ' \u2192 ' + new Date().toISOString().slice(0, 10)) : '';
@@ -50,6 +53,13 @@ function _applyLifetime(d) {
     const days = ((Date.now() - new Date(startDate).getTime()) / 86400000).toFixed(2);
     const ltLabel = g('ltPnlLabel'); if (ltLabel) ltLabel.textContent = 'Net Profit and Loss Return over ' + days + ' days';
   }
+}
+
+/** Set the ACTIVE/CLOSED badge from position liquidity. */
+function _applyStatusBadge(pos) {
+  const closed = pos.liquidity !== undefined && String(pos.liquidity) === '0';
+  const el = g('curPosStatus');
+  if (el) { el.textContent = closed ? 'CLOSED' : 'ACTIVE'; el.className = '9mm-pos-mgr-pos-status ' + (closed ? 'closed' : 'active'); }
 }
 
 /** Apply one-shot position details to the dashboard UI. */
@@ -66,14 +76,17 @@ function _apply(d, pos) {
     if (rLo) rLo.textContent = ((lo - p) / p * 100).toFixed(3) + '% below price';
     if (rHi) rHi.textContent = '+' + ((hi - p) / p * 100).toFixed(3) + '% above price';
   }
-  // Current panel KPIs
-  _setKpi('kpiValue', d.value > 0 ? d.value : null);
-  _setKpi('pnlFees', d.feesUsd > 0 ? d.feesUsd : null);
+  // ACTIVE/CLOSED badge
+  _applyStatusBadge(pos);
+  // Current panel KPIs — show $0.00 (not dash) for zero values on active positions
+  _setKpi('kpiValue', d.value);
+  _setKpi('pnlFees', d.feesUsd);
   _setKpi('pnlPrice', d.priceGainLoss);
   _setKpi('kpiDeposit', d.entryValue > 0 ? d.entryValue : null);
   _setKpi('kpiPnl', d.netPnl);
   _setKpi('curProfit', d.profit);
   _setKpi('curIL', d.il);
+  _setKpi('pnlRealized', 0);
   // Position age + mint date
   if (d.mintTimestamp) {
     const dur = g('kpiPosDuration');
