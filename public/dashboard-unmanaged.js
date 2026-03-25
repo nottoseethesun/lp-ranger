@@ -37,6 +37,18 @@ function _setKpi(id, val) {
   el.className = el.className.replace(/\b(pos|neg|neu)\b/g, '') + ' ' + (val > 0.005 ? 'pos' : val < -0.005 ? 'neg' : 'neu');
 }
 
+/** Populate the Lifetime panel from one-shot data. */
+function _applyLifetime(d) {
+  _setKpi('kpiNet', d.netPnl);
+  _setKpi('ltProfit', d.profit);
+  _setKpi('netIL', d.il);
+  const ltDep = g('lifetimeDepositDisplay'); if (ltDep && d.entryValue > 0) ltDep.textContent = '$usd ' + d.entryValue.toFixed(2);
+  if (d.mintTimestamp) {
+    const days = ((Date.now() - d.mintTimestamp * 1000) / 86400000).toFixed(2);
+    const ltLabel = g('ltPnlLabel'); if (ltLabel) ltLabel.textContent = 'Net Profit and Loss Return over ' + days + ' days';
+  }
+}
+
 /** Apply one-shot position details to the dashboard UI. */
 function _apply(d, pos) {
   botConfig.price = d.poolState.price; botConfig.lower = d.lowerPrice; botConfig.upper = d.upperPrice;
@@ -68,6 +80,7 @@ function _apply(d, pos) {
       dur.textContent = 'Active: ' + dd + 'd ' + hh + 'h ' + mm + 'm \u00B7 Minted: ' + fmtDateTime(new Date(d.mintTimestamp * 1000));
     }
   }
+  _applyLifetime(d);
   // Inject IL debug data so the "i" buttons work for unmanaged positions
   if (d.il !== null && d.il !== undefined && d.hodlAmount0 !== null) {
     const hodl = { hodlAmount0: d.hodlAmount0, hodlAmount1: d.hodlAmount1 };
