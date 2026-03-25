@@ -99,8 +99,9 @@
       <button class="modal-btn primary 9mm-pos-mgr-mt-2xl" id="genBtn">Generate Wallet</button>
       <div class="modal-field 9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-lg" id="genPwField">
         <label>Session password (protects your key on the server)</label>
-        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="genPassword" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPassword" title="Show/hide password">&#x1F441;</button></div>
-        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="genPasswordConfirm" placeholder="Confirm password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+        <input type="hidden" name="username" value="wallet" autocomplete="username">
+        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="genPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPassword" title="Show/hide password">&#x1F441;</button></div>
+        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="genPasswordConfirm" autocomplete="off" placeholder="Confirm password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
         <div class="9mm-pos-mgr-hint" id="genPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
@@ -145,8 +146,9 @@
 
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label>Session password (protects your key on the server)</label>
-        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="seedPassword" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPassword" title="Show/hide password">&#x1F441;</button></div>
-        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="seedPasswordConfirm" placeholder="Confirm password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+        <input type="hidden" name="username" value="wallet" autocomplete="username">
+        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="seedPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPassword" title="Show/hide password">&#x1F441;</button></div>
+        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="seedPasswordConfirm" autocomplete="off" placeholder="Confirm password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
         <div class="9mm-pos-mgr-hint" id="seedPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
@@ -187,8 +189,9 @@
 
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label>Session password (protects your key on the server)</label>
-        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="keyPassword" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPassword" title="Show/hide password">&#x1F441;</button></div>
-        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="keyPasswordConfirm" placeholder="Confirm password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+        <input type="hidden" name="username" value="wallet" autocomplete="username">
+        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="keyPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPassword" title="Show/hide password">&#x1F441;</button></div>
+        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="keyPasswordConfirm" autocomplete="off" placeholder="Confirm password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
         <div class="9mm-pos-mgr-hint" id="keyPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
@@ -896,6 +899,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774469041153"></script>
+<script src="dist/bundle.js?v=1774469947542"></script>
 </body>
 </html>
