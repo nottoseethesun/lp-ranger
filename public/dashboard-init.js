@@ -117,9 +117,12 @@ if (!_path || _path === '/' || _path.split('/').length < 5) restoreLastPosition(
   if (rgEl) rgEl.textContent = _fmtUsd(rg);
   const dep = loadInitialDeposit();
   const depDisp = g('lifetimeDepositDisplay');
-  if (depDisp) depDisp.textContent = dep > 0 ? '$usd ' + dep.toFixed(2) : '—';
+  if (depDisp) depDisp.textContent = dep > 0 ? '$usd ' + dep.toFixed(2) : '\u2014';
   const depLabel = g('initialDepositLabel');
   if (depLabel) depLabel.textContent = dep > 0 ? 'Initial Deposit: $' + dep.toFixed(2) : 'Edit Initial Deposit';
+  // Re-sync localStorage deposit to server (survives npm run clean)
+  if (dep > 0) fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initialDepositUsd: dep }) }).catch(() => {});
 }());
 
 // ── Start intervals ─────────────────────────────────────────────────────────

@@ -677,7 +677,7 @@ async function _handlePositionDetails(req, res) {
     const walletAddr = body.walletAddress || walletManager.getAddress() || '';
     const posKey = _compositeKey('pulsechain', walletAddr, body.contractAddress || config.POSITION_MANAGER, body.tokenId);
     const baseline = await _resolveBaseline(provider, ethersLib, position, posKey);
-    const userDeposit = _diskConfig.positions[posKey]?.initialDepositUsd || body.initialDeposit || 0;
+    const userDeposit = _diskConfig.positions[posKey]?.initialDepositUsd || 0;
     const pnl = _computePnlFields(baseline, value, price0, price1, feesUsd, userDeposit);
     jsonResponse(res, 200, { ok: true, poolState, price0, price1, value, amounts, feesUsd, inRange, lowerPrice: lp, upperPrice: up, composition: comp, ...pnl });
   } catch (err) {

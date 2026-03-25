@@ -7,7 +7,7 @@
  */
 
 import { g, botConfig, truncName, fmtNum, fmtDateTime } from './dashboard-helpers.js';
-import { positionRangeVisual, _fmtUsd, loadInitialDeposit } from './dashboard-data.js';
+import { positionRangeVisual, _fmtUsd } from './dashboard-data.js';
 import { updateILDebugData } from './dashboard-il-debug.js';
 import { posStore } from './dashboard-positions.js';
 
@@ -101,7 +101,7 @@ export async function fetchUnmanagedDetails(pos) {
     const res = await fetch('/api/position/details', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tokenId: pos.tokenId, token0: pos.token0, token1: pos.token1, fee: pos.fee,
         tickLower: pos.tickLower, tickUpper: pos.tickUpper, liquidity: String(pos.liquidity || 0),
-        walletAddress: pos.walletAddress, contractAddress: pos.contractAddress, initialDeposit: loadInitialDeposit() || 0 }) });
+        walletAddress: pos.walletAddress, contractAddress: pos.contractAddress }) });
     const d = await res.json();
     if (d.ok) _apply(d, pos);
   } catch (e) { console.warn('[data] fetchUnmanagedDetails:', e.message); }
