@@ -44,6 +44,13 @@ function _apply(d, pos) {
   const sym = truncName(pos.token1Symbol || '?', 12);
   const pml = g('pmlabel'); if (pml) { pml.textContent = fmtNum(d.poolState.price) + ' ' + sym; pml.title = String(d.poolState.price); }
   positionRangeVisual();
+  // Range percent labels (normally set by _updatePriceMarker which skips unmanaged)
+  const p = d.poolState.price, lo = d.lowerPrice, hi = d.upperPrice;
+  if (p > 0) {
+    const rLo = g('rangePctLower'), rHi = g('rangePctUpper');
+    if (rLo) rLo.textContent = ((lo - p) / p * 100).toFixed(3) + '% below price';
+    if (rHi) rHi.textContent = '+' + ((hi - p) / p * 100).toFixed(3) + '% above price';
+  }
   // Current panel KPIs
   _setKpi('kpiValue', d.value > 0 ? d.value : null);
   _setKpi('pnlFees', d.feesUsd > 0 ? d.feesUsd : null);
