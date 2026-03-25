@@ -334,7 +334,7 @@ async function loadCache(cache, cacheKey, fromBlock) {
  * @param {number} chunkSize
  * @returns {Promise<object[]>}
  */
-async function scanChunks(contract, walletAddress, scanFrom, currentBlock, chunkSize, onProgress) {
+async function scanChunks(contract, walletAddress, scanFrom, currentBlock, chunkSize, onProgress, label) {
   const rawEvents = [];
   const totalChunks = Math.ceil((currentBlock - scanFrom + 1) / chunkSize);
   let done = 0;
@@ -343,7 +343,7 @@ async function scanChunks(contract, walletAddress, scanFrom, currentBlock, chunk
     rawEvents.push(...await queryChunk(contract, walletAddress, start, end));
     done++;
     if (done % 50 === 0 || done === totalChunks) {
-      console.log(`[event-scanner] ${done}/${totalChunks} chunks scanned (${rawEvents.length} events)`);
+      console.log('[event-scanner] %s: %d/%d chunks scanned (%d events)', label, done, totalChunks, rawEvents.length);
     }
     if (onProgress) onProgress(done, totalChunks);
     if (done < totalChunks) {
@@ -453,7 +453,8 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
   if (scanFrom > currentBlock && cachedEvents.length > 0) return cachedEvents;
 
   const contract = new ethersLib.Contract(positionManagerAddress, PM_ABI, provider);
-  const rawEvents = await scanChunks(contract, walletAddress, scanFrom, currentBlock, chunkSize, opts.onProgress);
+  const rawEvents = await scanChunks(contract, walletAddress, scanFrom, currentBlock, chunkSize, opts.onProgress,
+    'Rebalance history for ' + walletAddress.slice(0, 10));
 
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
   if (rawEvents.length === 0 && cachedEvents.length === 0) return [];
