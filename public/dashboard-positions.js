@@ -284,7 +284,6 @@ export function renderPosBrowser() {
 
   // Stats bar
   const nftCount = filtered.filter(e => e.positionType === 'nft').length;
-  const ercCount = filtered.filter(e => e.positionType === 'erc20').length;
   const inRangeCount = filtered.filter(e => {
     const lp = Math.pow(1.0001, e.tickLower || 0);
     const up = Math.pow(1.0001, e.tickUpper || 0);
@@ -292,7 +291,6 @@ export function renderPosBrowser() {
   }).length;
   g('posTotalCount').textContent   = filtered.length;
   g('posNftCount').textContent     = nftCount;
-  g('posErcCount').textContent     = ercCount;
   g('posInRangeCount').textContent = inRangeCount;
   const capWarn = g('posCapWarn');
   if (capWarn) capWarn.textContent = posStore.isFull() ? '\u26A0 Store full (300/300)' : '';
