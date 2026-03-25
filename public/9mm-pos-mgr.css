@@ -320,12 +320,6 @@
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 
-.\39 mm-pos-mgr-btn-green {
-  background: rgb(124 252 0 / 7%);
-  border-color: rgb(124 252 0 / 20%);
-  color: var(--accent3);
-}
-
 .\39 mm-pos-mgr-btn-sm {
   font-family: "Space Mono", monospace;
   font-size: 12px;

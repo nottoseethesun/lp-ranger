@@ -141,11 +141,6 @@ export function bindAllEvents() {
   _input('posSearchInput', renderPosBrowser);
   _click('posScanBtn', scanPositions);
 
-  // "Import Wallet" button inside position browser
-  document.querySelectorAll('#posBrowserModal [class~="9mm-pos-mgr-btn-green"]').forEach(btn => {
-    btn.addEventListener('click', openWalletModal);
-  });
-
   _click('posPrevBtn', () => posChangePage(-1));
   _click('posNextBtn', () => posChangePage(1));
   _click('posSelectBtn', activateSelectedPos);
