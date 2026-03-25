@@ -51,7 +51,10 @@ const POSITION_KEYS = [
  * @returns {string}
  */
 function compositeKey(blockchain, wallet, contract, tokenId) {
-  return `${blockchain}-${wallet}-${contract}-${tokenId}`;
+  const { getAddress } = require('ethers');
+  const w = wallet && wallet.startsWith('0x') ? getAddress(wallet) : wallet;
+  const c = contract && contract.startsWith('0x') ? getAddress(contract) : contract;
+  return `${blockchain}-${w}-${c}-${tokenId}`;
 }
 
 /**

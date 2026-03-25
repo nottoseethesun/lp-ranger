@@ -29,7 +29,7 @@ function mockPositionMgr() {
 describe('key migration on rebalance', () => {
   it('keyRef.current updates so subsequent calls use the new key', () => {
     const diskConfig = { version: 2, global: {}, positions: {}, managedPositions: [] };
-    const oldKey = compositeKey('pulsechain', '0xWallet', '0xContract', '100');
+    const oldKey = compositeKey('pulsechain', '0x4e44847675763D5540B32Bee8a713CfDcb4bE61A', '0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2', '100');
     const newTokenId = '200';
     const mgr = mockPositionMgr();
 
@@ -53,7 +53,7 @@ describe('key migration on rebalance', () => {
     // Trigger migration by setting activePositionId
     updateBotState({ activePositionId: newTokenId });
 
-    const newKey = compositeKey('pulsechain', '0xWallet', '0xContract', newTokenId);
+    const newKey = compositeKey('pulsechain', '0x4e44847675763D5540B32Bee8a713CfDcb4bE61A', '0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2', newTokenId);
     assert.strictEqual(keyRef.current, newKey, 'keyRef.current should be updated to new key');
     assert.strictEqual(getAllPositionBotStates().has(oldKey), false, 'old key should be deleted');
     assert.ok(getAllPositionBotStates().has(newKey), 'new key should exist');
@@ -76,7 +76,7 @@ describe('key migration on rebalance', () => {
 
   it('forceRebalance is cleared during migration', () => {
     const diskConfig = { version: 2, global: {}, positions: {}, managedPositions: [] };
-    const oldKey = compositeKey('pulsechain', '0xW', '0xC', '50');
+    const oldKey = compositeKey('pulsechain', '0x4e44847675763D5540B32Bee8a713CfDcb4bE61A', '0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2', '50');
     const mgr = mockPositionMgr();
 
     addManagedPosition(diskConfig, oldKey);
@@ -87,7 +87,7 @@ describe('key migration on rebalance', () => {
     const keyRef = { current: oldKey };
     updatePositionState(keyRef, { activePositionId: '51' }, diskConfig, mgr);
 
-    const newKey = compositeKey('pulsechain', '0xW', '0xC', '51');
+    const newKey = compositeKey('pulsechain', '0x4e44847675763D5540B32Bee8a713CfDcb4bE61A', '0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2', '51');
     const state = getAllPositionBotStates().get(newKey);
     assert.strictEqual(state.forceRebalance, false, 'forceRebalance should be cleared');
     assert.strictEqual(state.rebalancePaused, false, 'rebalancePaused should be cleared');

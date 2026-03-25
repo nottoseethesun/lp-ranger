@@ -28,19 +28,23 @@ describe('bot-config-v2', () => {
   // ── compositeKey / parseCompositeKey ─────────────────────────────────────
 
   describe('compositeKey()', () => {
-    it('builds a dash-separated key', () => {
-      const key = compositeKey('pulsechain', '0xABCD', '0x1234', '42');
-      assert.equal(key, 'pulsechain-0xABCD-0x1234-42');
+    it('builds a dash-separated key with checksummed addresses', () => {
+      const w = '0x4e44847675763D5540B32Bee8a713CfDcb4bE61A';
+      const c = '0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2';
+      const key = compositeKey('pulsechain', w, c, '42');
+      assert.equal(key, 'pulsechain-' + w + '-' + c + '-42');
     });
   });
 
   describe('parseCompositeKey()', () => {
     it('round-trips with compositeKey', () => {
-      const key = compositeKey('pulsechain', '0xWallet', '0xContract', '99');
+      const w = '0x4e44847675763D5540B32Bee8a713CfDcb4bE61A';
+      const c = '0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2';
+      const key = compositeKey('pulsechain', w, c, '99');
       const parsed = parseCompositeKey(key);
       assert.equal(parsed.blockchain, 'pulsechain');
-      assert.equal(parsed.wallet, '0xWallet');
-      assert.equal(parsed.contract, '0xContract');
+      assert.equal(parsed.wallet, w);
+      assert.equal(parsed.contract, c);
       assert.equal(parsed.tokenId, '99');
     });
 
