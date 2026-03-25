@@ -8,6 +8,8 @@
 
 import { g, botConfig, truncName } from './dashboard-helpers.js';
 import { positionRangeVisual, _fmtUsd } from './dashboard-data.js';
+import { updateILDebugData } from './dashboard-il-debug.js';
+import { posStore } from './dashboard-positions.js';
 
 /** Update the composition bar + labels, or show grey "no price data" state. */
 function _applyComposition(d, pos) {
@@ -50,6 +52,12 @@ function _apply(d, pos) {
   _setKpi('curIL', d.il);
   // Mint date
   if (d.mintDate) { const dur = g('kpiPosDuration'); if (dur) dur.textContent = 'Since ' + d.mintDate; }
+  // Inject IL debug data so the "i" buttons work for unmanaged positions
+  if (d.il !== null && d.il !== undefined && d.hodlAmount0 !== null) {
+    const hodl = { hodlAmount0: d.hodlAmount0, hodlAmount1: d.hodlAmount1 };
+    updateILDebugData({ pnlSnapshot: { totalIL: d.il, lifetimeIL: d.il,
+      ilInputs: { lpValue: d.value, price0: d.price0, price1: d.price1, cur: hodl, lt: hodl } } }, posStore);
+  }
   // Composition + balances
   _applyComposition(d, pos);
   const sw = g('sWpls'); if (sw) sw.textContent = d.amounts.amount0.toFixed(4);

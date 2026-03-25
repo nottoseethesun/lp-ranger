@@ -628,21 +628,22 @@ const _positionRoutes = createPositionRoutes({
 
 // ── One-shot position details (unmanaged positions) ─────────────────────────
 
-/** Compute P&L fields from baseline + current data.  Caches baseline to disk. */
-async function _computePnlFields(provider, ethersLib, position, posKey, value, price0, price1, feesUsd) {
-  // Check disk config for cached baseline first
+/** Load or fetch + cache the HODL baseline for a position. */
+async function _resolveBaseline(provider, ethersLib, position, posKey) {
   const saved = _diskConfig.positions[posKey]?.hodlBaseline;
-  let baseline = saved && saved.entryValue > 0 ? saved : null;
-  if (!baseline) {
-    baseline = await getPositionBaseline(provider, ethersLib, position);
-    if (baseline) { const pos = getPositionConfig(_diskConfig, posKey); pos.hodlBaseline = baseline; saveConfig(_diskConfig); }
-  }
-  const entryValue = baseline?.entryValue || 0;
-  const priceGainLoss = entryValue > 0 ? value - entryValue : null;
+  if (saved && saved.entryValue > 0) return saved;
+  const baseline = await getPositionBaseline(provider, ethersLib, position);
+  if (baseline) { const pos = getPositionConfig(_diskConfig, posKey); pos.hodlBaseline = baseline; saveConfig(_diskConfig); }
+  return baseline;
+}
+
+/** Compute P&L fields from baseline + current data. */
+function _computePnlFields(baseline, value, price0, price1, feesUsd) {
+  const ev = baseline?.entryValue || 0;
+  const pgl = ev > 0 ? value - ev : null;
   const il = baseline ? computeHodlIL({ lpValue: value, hodlAmount0: baseline.hodlAmount0, hodlAmount1: baseline.hodlAmount1, currentPrice0: price0, currentPrice1: price1 }) : null;
-  const netPnl = entryValue > 0 ? (priceGainLoss || 0) + feesUsd : null;
-  const profit = il !== null ? feesUsd + il : null;
-  return { entryValue, priceGainLoss, il, netPnl, profit, mintDate: baseline?.mintDate || null };
+  return { entryValue: ev, priceGainLoss: pgl, il, netPnl: ev > 0 ? (pgl || 0) + feesUsd : null, profit: il !== null ? feesUsd + il : null,
+    mintDate: baseline?.mintDate || null, hodlAmount0: baseline?.hodlAmount0 ?? null, hodlAmount1: baseline?.hodlAmount1 ?? null };
 }
 
 async function _handlePositionDetails(req, res) {
@@ -675,7 +676,8 @@ async function _handlePositionDetails(req, res) {
     const comp = total > 0 ? (amounts.amount0 * price0) / total : null;
     const walletAddr = body.walletAddress || walletManager.getAddress() || '';
     const posKey = _compositeKey('pulsechain', walletAddr, body.contractAddress || config.POSITION_MANAGER, body.tokenId);
-    const pnl = await _computePnlFields(provider, ethersLib, position, posKey, value, price0, price1, feesUsd);
+    const baseline = await _resolveBaseline(provider, ethersLib, position, posKey);
+    const pnl = _computePnlFields(baseline, value, price0, price1, feesUsd);
     jsonResponse(res, 200, { ok: true, poolState, price0, price1, value, amounts, feesUsd, inRange, lowerPrice: lp, upperPrice: up, composition: comp, ...pnl });
   } catch (err) {
     console.error('[server] Position details error:', err.message);
