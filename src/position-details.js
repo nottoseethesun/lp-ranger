@@ -84,6 +84,7 @@ async function _fetchPoolData(provider, ethersLib, body, privateKey) {
   const { price0, price1 } = await fetchTokenPrices(body.token0, body.token1);
   const value = positionValueUsd(position, ps, price0, price1);
   const amounts = rangeMath.positionAmounts(BigInt(body.liquidity || 0), ps.tick, body.tickLower, body.tickUpper, ps.decimals0, ps.decimals1);
+  console.log('[details] tokenId=%s liq=%s tick=%d tL=%d tU=%d amt0=%s amt1=%s p0=%s p1=%s', body.tokenId, body.liquidity, ps.tick, body.tickLower, body.tickUpper, amounts.amount0.toFixed(4), amounts.amount1.toFixed(4), price0, price1);
   const feesUsd = await _readFees(provider, ethersLib, body.tokenId, privateKey, ps.decimals0, ps.decimals1, price0, price1);
   const total = amounts.amount0 * price0 + amounts.amount1 * price1;
   return { position, ps, price0, price1, value, amounts, feesUsd, composition: total > 0 ? (amounts.amount0 * price0) / total : null };

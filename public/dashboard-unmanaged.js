@@ -107,6 +107,8 @@ function _apply(d, pos) {
   _applyComposition(d, pos);
   const sw = g('sWpls'); if (sw) sw.textContent = d.amounts.amount0.toFixed(4);
   const su = g('sUsdc'); if (su) su.textContent = d.amounts.amount1.toFixed(4);
+  // Position stats
+  const tc = g('sTC'); if (tc && d.poolState.tick !== undefined) tc.textContent = d.poolState.tick;
 }
 
 /** Fetch and display details for an unmanaged position (one-shot). */
