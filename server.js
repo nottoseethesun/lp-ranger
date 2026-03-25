@@ -502,7 +502,10 @@ async function _autoStartManagedPositions() {
         savedConfig: posConfig,
       });
     } catch (err) {
-      console.warn('[server] Failed to auto-start position %s: %s', key, err.message);
+      console.warn('[server] Failed to auto-start position %s: %s — removing from managed', key, err.message);
+      const { removeManagedPosition } = require('./src/bot-config-v2');
+      removeManagedPosition(_diskConfig, key);
+      saveConfig(_diskConfig);
     }
     i++;
   }
