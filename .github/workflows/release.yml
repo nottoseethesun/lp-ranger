@@ -47,29 +47,29 @@ jobs:
 
       - name: Pin dependency versions
         run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-            function pinSection(section) {
-              if (!section) return;
-              for (const name of Object.keys(section)) {
-                const resolved = lock.packages['node_modules/' + name];
-                if (resolved && resolved.version) section[name] = resolved.version;
-                else section[name] = section[name].replace(/^[\^~]/, '');
-              }
+          node <<'PINSCRIPT'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          function pinSection(section) {
+            if (!section) return;
+            for (const name of Object.keys(section)) {
+              const resolved = lock.packages['node_modules/' + name];
+              if (resolved && resolved.version) section[name] = resolved.version;
+              else section[name] = section[name].replace(/^[\^~]/, '');
             }
-            pinSection(pkg.dependencies);
-            pinSection(pkg.devDependencies);
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-            console.log('Pinned all dependency versions in package.json');
-          "
+          }
+          pinSection(pkg.dependencies);
+          pinSection(pkg.devDependencies);
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          console.log('Pinned all dependency versions in package.json');
+          PINSCRIPT
 
       - name: Add .npmrc (save-exact)
         run: echo 'save-exact=true' > .npmrc
 
       - name: Regenerate lockfile from pinned versions
-        run: npm install --package-lock-only
+        run: npm install --package-lock-only --ignore-scripts
 
       - name: Build bundle
         run: npm run build
@@ -81,7 +81,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json .npmrc public/dist/bundle.js public/index.html
+          git add -f package.json package-lock.json .npmrc public/dist/bundle.js public/index.html
           git commit -m "release: v${{ inputs.version }} — pinned deps + built bundle"
 
       - name: Push release branch + tag
