@@ -65,14 +65,31 @@ OR OTHER DEALINGS IN THE SOFTWARE.
 
 ---
 
-## Quick Start
+## Install
+
+### Production
+
+Download the latest official release from
+[GitHub Releases](../../releases), then:
+
+```bash
+npm ci                           # install exact pinned dependencies
+cp .env.example .env             # edit with your values
+npm run build-and-start          # dashboard + bot at http://localhost:5555
+```
+
+Production releases pin every dependency to an exact version and include
+`package-lock.json`. Always use `npm ci` (not `npm install`) to ensure
+you get the exact tested versions with no version drift.
+
+### Development
 
 ```bash
 git clone <repo-url>
 cd 9mm-manager
-npm install
-cp .env.example .env        # edit with your values
-npm run build-and-start      # dashboard + bot at http://localhost:5555
+npm install                      # allows version ranges for dev flexibility
+cp .env.example .env             # edit with your values
+npm run dev                      # build + watch mode
 ```
 
 ---
