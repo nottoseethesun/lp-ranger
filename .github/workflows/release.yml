@@ -17,6 +17,14 @@ on:
         description: 'Release version (e.g. 2.1.0)'
         required: true
         type: string
+      title:
+        description: 'Release title (e.g. "Per-pool settings + price override")'
+        required: false
+        type: string
+      notes:
+        description: 'Brief release notes (shown on the GitHub Release page)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -93,6 +101,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ inputs.version }}"
-          name: "v${{ inputs.version }}"
+          name: "${{ inputs.title && format('{0} (v{1})', inputs.title, inputs.version) || format('v{0}', inputs.version) }}"
+          body: "${{ inputs.notes || '' }}"
           generate_release_notes: true
           target_commitish: "release-${{ inputs.version }}"
