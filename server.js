@@ -654,7 +654,7 @@ const _routes = {
       positions[key] = { ...posDefaults, ...state, ...posConfig };
     }
     // Include lightweight config for unmanaged positions so the dashboard gets per-pool settings
-    const _SETTINGS_KEYS = ['rebalanceOutOfRangeThresholdPercent', 'rebalanceTimeoutMin', 'slippagePct', 'checkIntervalSec', 'minRebalanceIntervalMin', 'maxRebalancesPerDay', 'gasStrategy'];
+    const _SETTINGS_KEYS = ['rebalanceOutOfRangeThresholdPercent', 'rebalanceTimeoutMin', 'slippagePct', 'checkIntervalSec', 'minRebalanceIntervalMin', 'maxRebalancesPerDay', 'gasStrategy', 'priceOverride0', 'priceOverride1', 'priceOverrideForce'];
     for (const [key, posConfig] of Object.entries(_diskConfig.positions)) {
       if (!positions[key]) { const s = { ...posDefaults }; for (const k of _SETTINGS_KEYS) if (posConfig[k] !== undefined) s[k] = posConfig[k]; positions[key] = s; }
     }

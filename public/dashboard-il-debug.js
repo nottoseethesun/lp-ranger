@@ -64,7 +64,7 @@ function _buildSection(label, inputs, lpValue, price0, price1, ilResult, t0sym, 
   const hasData = a0 > 0 || a1 > 0;
   const d = '\u2014';
   const hodlValue = hasData ? (a0 * price0 + a1 * price1) : 0;
-  const ilCls = ilResult > 0 ? '9mm-pos-mgr-pnl-val-pos' : ilResult < 0 ? '9mm-pos-mgr-pnl-val-neg' : '';
+  const ilCls = ilResult > 0 ? 'kpi-value pos' : ilResult < 0 ? 'kpi-value neg' : '';
   return `<div class="9mm-pos-mgr-il-section">
     <div class="9mm-pos-mgr-il-heading">${label}</div>
     <table class="9mm-pos-mgr-il-table">

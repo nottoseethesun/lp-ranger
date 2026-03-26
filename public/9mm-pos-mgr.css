@@ -485,17 +485,52 @@
   gap: 8px;
 }
 
-.\39 mm-pos-mgr-pnl-val-pos {
-  color: var(--accent3);
+.\39 mm-pos-mgr-edit-link {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 10px;
+  opacity: 0.7;
+  margin-left: 4px;
 }
 
-.\39 mm-pos-mgr-pnl-val-neg {
-  color: var(--danger);
+.\39 mm-pos-mgr-edit-link:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
-.\39 mm-pos-mgr-pnl-val-neu {
+.\39 mm-pos-mgr-price-override-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.\39 mm-pos-mgr-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0;
+  cursor: pointer;
+}
+
+.\39 mm-pos-mgr-price-override-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.\39 mm-pos-mgr-price-override-input input {
+  width: 120px;
+  background: var(--surface);
+  border: 1px solid var(--border);
   color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: "Space Mono", monospace;
+  font-size: 12px;
 }
+
 
 /* ── KPI Divider ───────────────────────────────────────────────────────── */
 
@@ -985,24 +1020,6 @@
 
 /* ── Closed-Position History Banner ────────────────────────────────────── */
 
-.\39 mm-pos-mgr-closed-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 16px;
-  margin: 0 0 10px;
-  background: rgb(255 193 7 / 12%);
-  border: 1px solid rgb(255 193 7 / 30%);
-  border-radius: 6px;
-  color: #ffc107;
-  font-size: 12px;
-  font-family: Urbanist, sans-serif;
-}
-
-.\39 mm-pos-mgr-closed-banner.hidden {
-  display: none;
-}
 
 .\39 mm-pos-mgr-btn-small {
   padding: 4px 12px;

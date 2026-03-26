@@ -18,7 +18,6 @@ import {
 import {
   openPosBrowser, closePosBrowser, renderPosBrowser, scanPositions,
   posChangePage, activateSelectedPos, removeSelectedPos, posRowClick,
-  returnToActivePosition,
 } from './dashboard-positions.js';
 import {
   onParamChange, saveOorThreshold, saveOorTimeout, applyAll, checkApplyDirty, saveMinInterval, saveMaxReb, saveSlippage, saveCheckInterval,
@@ -29,8 +28,8 @@ import {
   toggleInitialDeposit, saveInitialDeposit, toggleRealizedInput, saveRealizedGains,
   toggleCurDeposit, saveCurDeposit, toggleCurRealized, saveCurRealized,
 } from './dashboard-data.js';
+import { openPriceOverrideDialog, savePriceOverrideDialog, closePriceOverrideDialog } from './dashboard-price-override.js';
 import { rebChangePage, rebFirstPage, rebLastPage, pnlChangePage, pnlFirstPage, pnlLastPage } from './dashboard-history.js';
-import { isViewingClosedPos } from './dashboard-closed-pos.js';
 import { showILDebug } from './dashboard-il-debug.js';
 
 /**
@@ -156,15 +155,17 @@ export function bindAllEvents() {
     });
   }
 
-  // ── Closed-position history banner ─────────────────────────────────────
-  _click('closedPosReturnBtn', () => {
-    if (isViewingClosedPos()) returnToActivePosition();
-  });
-
   // ── Pool Details modal + Manage toggle ───────────────────────────────────
   _click('poolDetailsBtn', _openPoolDetailsModal);
   _click('poolDetailsCloseBtn', () => { const m = g('poolDetailsModal'); if (m) m.classList.add('hidden'); });
   _click('manageToggleBtn', _toggleManagePosition);
+
+  // ── Token price override ────────────────────────────────────────────────
+  _click('editPricesLink', openPriceOverrideDialog);
+  _click('editPricesLinkLt', openPriceOverrideDialog);
+  _click('priceOverrideSave', savePriceOverrideDialog);
+  _click('priceOverrideCancel', closePriceOverrideDialog);
+  _click('priceOverrideClose', closePriceOverrideDialog);
 
   // ── Wallet unlock ───────────────────────────────────────────────────────
   const _unlockForm = g('unlockForm'); if (_unlockForm) _unlockForm.addEventListener('submit', submitUnlock);

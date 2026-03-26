@@ -108,6 +108,17 @@ async function estimateGasCostUsd(provider) { try { const f = await provider.get
 /** Compute actual gas cost in USD from total PLS spent (in wei). */
 async function actualGasCostUsd(gasCostWei) { try { const p = await fetchTokenPriceUsd(_WPLS, { dextoolsApiKey: config.DEXTOOLS_API_KEY }); return (Number(gasCostWei) / 1e18) * p; } catch { return 0; } }
 
+/** Fetch token prices, applying per-position overrides when fetcher returns 0. */
+async function _fetchWithOverrides(position, deps) {
+  let { price0, price1 } = await fetchTokenPrices(position.token0, position.token1);
+  const gc = deps._getConfig || (() => undefined);
+  const ov0 = gc('priceOverride0'), ov1 = gc('priceOverride1');
+  const force = gc('priceOverrideForce');
+  if (ov0 > 0 && (force || price0 <= 0)) { console.log('[pnl] using priceOverride0=%s (fetched=%s force=%s)', ov0, price0, !!force); price0 = ov0; }
+  if (ov1 > 0 && (force || price1 <= 0)) { console.log('[pnl] using priceOverride1=%s (fetched=%s force=%s)', ov1, price1, !!force); price1 = ov1; }
+  return { price0, price1 };
+}
+
 /** Fetch P&L snapshot and publish position stats to the dashboard. */
 async function updatePnlAndStats(deps, poolState, ethersLib) {
   const { provider, position, updateBotState } = deps;
@@ -117,7 +128,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
   const pnlTracker = deps._pnlTracker; let pnlSnapshot = null;
   if (pnlTracker) {
     try {
-      const { price0, price1 } = await fetchTokenPrices(position.token0, position.token1);
+      const { price0, price1 } = await _fetchWithOverrides(position, deps);
       if (!pnlTracker.getLiveEpoch()) { const ev = positionValueUsd(position, poolState, price0, price1) || 1;
         pnlTracker.openEpoch({ entryValue: ev, entryPrice: poolState.price, lowerPrice: lp, upperPrice: up, token0UsdPrice: price0, token1UsdPrice: price1 });
         console.log('[bot] Auto-opened missing live epoch (entryValue=$%s)', ev.toFixed(2)); }

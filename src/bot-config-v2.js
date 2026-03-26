@@ -36,7 +36,7 @@ const POSITION_KEYS = [
   'slippagePct', 'checkIntervalSec', 'minRebalanceIntervalMin',
   'maxRebalancesPerDay', 'gasStrategy',
   'pnlEpochs', 'hodlBaseline', 'residuals',
-  'collectedFeesUsd', 'initialDepositUsd',
+  'collectedFeesUsd', 'initialDepositUsd', 'priceOverride0', 'priceOverride1', 'priceOverrideForce',
 ];
 
 /**

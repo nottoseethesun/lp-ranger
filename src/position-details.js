@@ -24,7 +24,7 @@ const { compositeKey, getPositionConfig, saveConfig } = require('./bot-config-v2
 /** Load or fetch + cache the HODL baseline for a position. */
 async function _resolveBaseline(provider, ethersLib, position, posKey, diskConfig) {
   const saved = diskConfig.positions[posKey]?.hodlBaseline;
-  if (saved && saved.entryValue > 0) return saved;
+  if (saved && saved.entryValue > 0 && (saved.price0 > 0 || saved.price1 > 0)) return saved;
   const bl = await getPositionBaseline(provider, ethersLib, position);
   if (bl) { const pos = getPositionConfig(diskConfig, posKey); pos.hodlBaseline = bl; saveConfig(diskConfig); }
   return bl;
@@ -79,8 +79,15 @@ function _lifetimePnl(tracker, ps, entryValue, cur, feesUsd) {
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
   const s = _extractSnap(snap, cur, feesUsd);
   return { ltNetPnl: entryValue > 0 ? (s.ltPc || 0) + s.ltFees : null, ltFees: s.ltFees, ltGas: s.ltGas, ltPriceChange: s.ltPc,
-    ltProfit: s.il !== null && s.il !== undefined ? s.ltFees - s.ltGas + s.il : cur.profit, il: s.il,
+    ltProfit: s.il !== null && s.il !== undefined ? s.ltFees - s.ltGas + s.il : cur.profit,
     firstEpochDate: s.firstEpochDate, rebalanceCount: s.rebalanceCount };
+}
+
+/** Apply client-provided price overrides. Force mode overrides even valid fetched prices. */
+function _applyPriceOverrides(prices, body) {
+  const force = body.priceOverrideForce;
+  if (body.priceOverride0 > 0 && (force || prices.price0 <= 0)) prices.price0 = body.priceOverride0;
+  if (body.priceOverride1 > 0 && (force || prices.price1 <= 0)) prices.price1 = body.priceOverride1;
 }
 
 /** Fetch pool state, prices, amounts, value — the non-P&L data. */
@@ -88,7 +95,10 @@ async function _fetchPoolData(provider, ethersLib, body, privateKey) {
   const position = { tokenId: body.tokenId, token0: body.token0, token1: body.token1, fee: body.fee,
     tickLower: body.tickLower, tickUpper: body.tickUpper, liquidity: body.liquidity };
   const ps = await getPoolState(provider, ethersLib, { factoryAddress: config.FACTORY, token0: body.token0, token1: body.token1, fee: body.fee });
-  const { price0, price1 } = await fetchTokenPrices(body.token0, body.token1);
+  const prices = await fetchTokenPrices(body.token0, body.token1);
+  const fetchedPrice0 = prices.price0, fetchedPrice1 = prices.price1;
+  _applyPriceOverrides(prices, body);
+  const { price0, price1 } = prices;
   const value = positionValueUsd(position, ps, price0, price1);
   const amounts = rangeMath.positionAmounts(BigInt(body.liquidity || 0), ps.tick, body.tickLower, body.tickUpper, ps.decimals0, ps.decimals1);
   console.log('[details] tokenId=%s liq=%s tick=%d tL=%d tU=%d amt0=%s amt1=%s p0=%s p1=%s', body.tokenId, body.liquidity, ps.tick, body.tickLower, body.tickUpper, amounts.amount0.toFixed(4), amounts.amount1.toFixed(4), price0, price1);
@@ -96,41 +106,49 @@ async function _fetchPoolData(provider, ethersLib, body, privateKey) {
   const total = amounts.amount0 * price0 + amounts.amount1 * price1;
   const poolShare = {};
   await addPoolShare(poolShare, amounts, position, ps, ethersLib, provider);
-  return { position, ps, price0, price1, value, amounts, feesUsd, composition: total > 0 ? (amounts.amount0 * price0) / total : null,
+  return { position, ps, price0, price1, fetchedPrice0, fetchedPrice1, value, amounts, feesUsd,
+    composition: total > 0 ? (amounts.amount0 * price0) / total : null,
     poolShare0Pct: poolShare.poolShare0Pct, poolShare1Pct: poolShare.poolShare1Pct };
 }
 
-/** Resolve entry value from user deposit, disk config, chain baseline, or current prices. */
-async function _resolveEntryValue(provider, ethersLib, position, posKey, diskConfig, body, price0, price1) {
+/** Resolve entry value from user deposit, disk config, or chain baseline (historical prices). */
+async function _resolveEntryValue(provider, ethersLib, position, posKey, diskConfig) {
   const baseline = await _resolveBaseline(provider, ethersLib, position, posKey, diskConfig);
-  const deposit = diskConfig.positions[posKey]?.initialDepositUsd || body.initialDeposit || 0;
-  let entryValue = deposit > 0 ? deposit : (baseline?.entryValue || 0);
-  // Fallback: if baseline has amounts but no historical prices, estimate from current prices
-  if (entryValue <= 0 && baseline?.hodlAmount0 > 0 && price0 > 0) entryValue = baseline.hodlAmount0 * price0 + (baseline.hodlAmount1 || 0) * price1;
+  const deposit = diskConfig.positions[posKey]?.initialDepositUsd || 0;
+  const entryValue = deposit > 0 ? deposit : (baseline?.entryValue || 0);
+  console.log('[details] entryValue for %s: deposit=%s baseline.entry=%s → %s', posKey, deposit, baseline?.entryValue, entryValue);
   return { baseline, entryValue };
+}
+
+/** Summarize baseline for client consumption. */
+function _baselineSummary(bl) {
+  if (!bl) return { hodlBaseline: null, baselineEntryValue: 0, hodlBaselineNew: false, hodlBaselineFallback: false, mintDate: null, mintTimestamp: null, hodlAmount0: null, hodlAmount1: null };
+  const hasAmounts = bl.hodlAmount0 > 0 || bl.hodlAmount1 > 0;
+  return { hodlBaseline: bl, baselineEntryValue: bl.entryValue || 0,
+    hodlBaselineNew: bl.entryValue > 0, hodlBaselineFallback: !bl.entryValue && hasAmounts,
+    mintDate: bl.mintDate || null, mintTimestamp: bl.mintTimestamp || null,
+    hodlAmount0: bl.hodlAmount0 ?? null, hodlAmount1: bl.hodlAmount1 ?? null };
 }
 
 /** Phase 1: fast data (pool state, prices, value, composition, current P&L). */
 async function computeQuickDetails(provider, ethersLib, body, diskConfig, privateKey) {
-  const { position, ps, price0, price1, value, amounts, feesUsd, composition, poolShare0Pct, poolShare1Pct } = await _fetchPoolData(provider, ethersLib, body, privateKey);
+  const { position, ps, price0, price1, fetchedPrice0, fetchedPrice1, value, amounts, feesUsd, composition, poolShare0Pct, poolShare1Pct } = await _fetchPoolData(provider, ethersLib, body, privateKey);
   const posKey = compositeKey('pulsechain', body.walletAddress || '', body.contractAddress || config.POSITION_MANAGER, body.tokenId);
-  const { baseline, entryValue } = await _resolveEntryValue(provider, ethersLib, position, posKey, diskConfig, body, price0, price1);
+  const { baseline, entryValue } = await _resolveEntryValue(provider, ethersLib, position, posKey, diskConfig);
   const cur = _currentPnl(baseline, value, entryValue, feesUsd, price0, price1);
   const poolState = { tick: ps.tick, price: ps.price, decimals0: ps.decimals0, decimals1: ps.decimals1, poolAddress: ps.poolAddress };
-  return { ok: true, poolState, price0, price1, value, amounts, feesUsd, composition, poolShare0Pct, poolShare1Pct,
+  return { ok: true, poolState, price0, price1, fetchedPrice0, fetchedPrice1, value, amounts, feesUsd, composition, poolShare0Pct, poolShare1Pct,
     inRange: ps.tick >= body.tickLower && ps.tick < body.tickUpper,
     lowerPrice: rangeMath.tickToPrice(body.tickLower, ps.decimals0, ps.decimals1),
     upperPrice: rangeMath.tickToPrice(body.tickUpper, ps.decimals0, ps.decimals1),
-    entryValue, ...cur, mintDate: baseline?.mintDate || null, mintTimestamp: baseline?.mintTimestamp || null,
-    hodlAmount0: baseline?.hodlAmount0 ?? null, hodlAmount1: baseline?.hodlAmount1 ?? null };
+    entryValue, ...cur, ..._baselineSummary(baseline) };
 }
 
 /** Resolve entry value from disk config for phase 2 (no chain baseline fetch). */
-function _resolveEntryValueCached(diskConfig, posKey, body, price0, price1) {
-  const deposit = diskConfig.positions[posKey]?.initialDepositUsd || body.initialDeposit || 0;
+function _resolveEntryValueCached(diskConfig, posKey) {
+  const deposit = diskConfig.positions[posKey]?.initialDepositUsd || 0;
   const bl = diskConfig.positions[posKey]?.hodlBaseline || null;
-  let ev = deposit > 0 ? deposit : (bl?.entryValue || 0);
-  if (ev <= 0 && bl?.hodlAmount0 > 0 && price0 > 0) ev = bl.hodlAmount0 * price0 + (bl.hodlAmount1 || 0) * price1;
+  const ev = deposit > 0 ? deposit : (bl?.entryValue || 0);
   return { baseline: bl, entryValue: ev };
 }
 
@@ -140,18 +158,21 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     tickLower: body.tickLower, tickUpper: body.tickUpper, liquidity: body.liquidity };
   const posKey = compositeKey('pulsechain', body.walletAddress || '', body.contractAddress || config.POSITION_MANAGER, body.tokenId);
   const ps = await getPoolState(provider, ethersLib, { factoryAddress: config.FACTORY, token0: body.token0, token1: body.token1, fee: body.fee });
-  const { price0, price1 } = await fetchTokenPrices(body.token0, body.token1);
-  const { baseline, entryValue } = _resolveEntryValueCached(diskConfig, posKey, body, price0, price1);
+  const prices = await fetchTokenPrices(body.token0, body.token1);
+  _applyPriceOverrides(prices, body);
+  const { price0, price1 } = prices;
+  const { baseline, entryValue } = _resolveEntryValueCached(diskConfig, posKey);
   const value = positionValueUsd(position, ps, price0, price1);
   const cur = _currentPnl(baseline, value, entryValue, 0, price0, price1);
   const { tracker, events } = await _getLifetimeSnapshot(provider, ethersLib, position, body.walletAddress || '', diskConfig, posKey, { price0, price1 }, entryValue);
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
   const lt = _lifetimePnl(tracker, ps, entryValue, cur, 0);
+  console.log('[details] lifetime tokenId=%s epochs=%d baseline=%s cur.il=%s lt.il=%s', body.tokenId, tracker.epochCount(), !!baseline, cur.il, lt.il);
   // If no historical epochs but position is 1+ days old, build a single-day entry
   const ageMs = baseline?.mintTimestamp ? Date.now() - baseline.mintTimestamp * 1000 : 0;
   const dailyPnl = snap?.dailyPnl || (entryValue > 0 && ageMs >= 86400000 ? [{ date: new Date().toISOString().slice(0, 10),
     feePnl: 0, gasCost: 0, priceChangePnl: value - entryValue }] : null);
-  return { ok: true, ...lt, firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null,
+  return { ok: true, ...lt, entryValue, firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null,
     dailyPnl, rebalanceEvents: events.length > 0 ? events : null };
 }
 

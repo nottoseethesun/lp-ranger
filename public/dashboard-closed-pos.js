@@ -35,14 +35,6 @@ export async function enterClosedPosView(posEntry) {
   _viewingClosed = true;
   _closedPosEntry = posEntry;
 
-  const banner = g('closedPosBanner');
-  const bannerText = g('closedPosBannerText');
-  if (banner) banner.classList.remove('hidden');
-  if (bannerText) {
-    bannerText.textContent = 'Viewing closed position NFT #' + (posEntry.tokenId || '?') +
-      ' \u2014 bot continues on active position';
-  }
-
   // Render "CLOSED" status
   const statusEl = g('curPosStatus');
   if (statusEl) {
@@ -86,8 +78,6 @@ export async function refetchClosedPosHistory() {
 export function exitClosedPosView() {
   _viewingClosed = false;
   _closedPosEntry = null;
-  const banner = g('closedPosBanner');
-  if (banner) banner.classList.add('hidden');
 }
 
 /**
@@ -202,15 +192,14 @@ function _renderFees(data, pnl) {
   const feesEl = g('pnlFees');
   if (feesEl) {
     feesEl.textContent = _hasVal(data.feesEarnedUsd) ? _fmtUsd(data.feesEarnedUsd) : '\u2014';
-    feesEl.className = data.feesEarnedUsd > 0 ? '9mm-pos-mgr-pnl-val-pos' : '9mm-pos-mgr-pnl-val-neu';
+    feesEl.className = 'kpi-value ' + (data.feesEarnedUsd > 0 ? 'pos' : 'neu');
   }
   const priceEl = g('pnlPrice');
   if (priceEl) {
     const hasFees = _hasVal(data.feesEarnedUsd);
     const priceChange = pnl !== null && hasFees ? pnl - data.feesEarnedUsd : null;
     priceEl.textContent = priceChange !== null ? _fmtUsd(priceChange) : '\u2014';
-    priceEl.className = priceChange > 0 ? '9mm-pos-mgr-pnl-val-pos'
-      : priceChange < 0 ? '9mm-pos-mgr-pnl-val-neg' : '9mm-pos-mgr-pnl-val-neu';
+    priceEl.className = 'kpi-value ' + (priceChange > 0 ? 'pos' : priceChange < 0 ? 'neg' : 'neu');
   }
 }
 

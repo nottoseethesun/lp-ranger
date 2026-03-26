@@ -31,6 +31,7 @@ const _managedTokenIds = new Set();
 let _allPositionStates = {};
 let _exitClosedPosView = null;
 let _isViewingClosedPos = null;
+let _refreshDepositLabel = null;
 
 /**
  * Inject data-module references after all modules are loaded.
@@ -44,6 +45,7 @@ export function injectPositionDeps(deps) {
   if (deps.enterClosedPosView) _enterClosedPosView = deps.enterClosedPosView;
   if (deps.exitClosedPosView) _exitClosedPosView = deps.exitClosedPosView;
   if (deps.isViewingClosedPos) _isViewingClosedPos = deps.isViewingClosedPos;
+  if (deps.refreshDepositLabel) _refreshDepositLabel = deps.refreshDepositLabel;
   if (deps.fetchUnmanagedDetails) _fetchUnmanagedDetails = deps.fetchUnmanagedDetails;
 }
 
@@ -388,9 +390,9 @@ export function activateSelectedPos() {
   if (!active) return;
 
   _applyLocalPositionData(active);
+  if (_refreshDepositLabel) _refreshDepositLabel();
 
   if (_isPositionClosed(active) && _enterClosedPosView) {
-    // Don't apply tick config — keep botConfig showing the bot's active position
     _enterClosedPosView(active);
     if (_updateRouteForPosition) _updateRouteForPosition(active);
     act(ACT_ICONS.grid, 'fee', 'View Closed Position', 'NFT #' + active.tokenId);
@@ -427,9 +429,9 @@ export function activateByTokenId(tokenId) {
   if (!active) return true;
 
   _applyLocalPositionData(active);
+  if (_refreshDepositLabel) _refreshDepositLabel();
 
   if (_isPositionClosed(active) && _enterClosedPosView) {
-    // Don't apply tick config — keep botConfig showing the bot's active position
     _enterClosedPosView(active);
     act(ACT_ICONS.grid, 'fee', 'View Closed Position', 'NFT #' + active.tokenId);
     return true;
@@ -590,21 +592,6 @@ export function formatPosLabel(e) {
   return (e.positionType === 'nft' ? 'NFT #' + e.tokenId : 'ERC-20') + ' \u00B7 ' + pair;
 }
 
-/** Exit closed-position view and navigate back to the bot's active position. */
-export async function returnToActivePosition() {
-  _exitClosedViewIfActive();
-  let tid = null;
-  try { tid = (await (await fetch('/api/status')).json()).activePosition?.tokenId; } catch { /* */ }
-  const findIdx = tid
-    ? posStore.entries.findIndex(e => e.positionType === 'nft' && String(e.tokenId) === String(tid))
-    : posStore.entries.findIndex(e => !_isPositionClosed(e));
-  if (findIdx >= 0 && findIdx !== posStore.activeIdx) posStore.select(findIdx);
-  updatePosStripUI();
-  const active = posStore.getActive(); if (!active) return;
-  _applyPositionConfig(active); _applyLocalPositionData(active);
-  if (_positionRangeVisual) _positionRangeVisual();
-  if (_updateRouteForPosition) _updateRouteForPosition(active);
-}
 
 /** Select the bot's active position, apply config, and update the URL (manual scan only). */
 async function _syncAfterManualScan() {

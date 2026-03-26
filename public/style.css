@@ -630,9 +630,13 @@ body::before{
   color:var(--accent);
   cursor:pointer;
   transition:color .2s;
-  text-decoration:underline;
+  text-decoration:none;
 }
-.realized-gains-label:hover{color:var(--text);}
+
+.realized-gains-label:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
 
 .realized-gains-input-wrap{
   display:none;

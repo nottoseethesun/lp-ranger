@@ -8,9 +8,10 @@
 
 import { g, botConfig, truncName, fmtNum, fmtDateTime } from './dashboard-helpers.js';
 import {
-  positionRangeVisual, loadInitialDeposit, setUnmanagedSyncing,
-  updateRangePctLabels, setKpiValue, resetKpis,
+  positionRangeVisual, setUnmanagedSyncing,
+  updateRangePctLabels, setKpiValue, resetKpis, checkHodlBaselineDialog,
 } from './dashboard-data.js';
+import { loadPriceOverrides, loadForceOverride, setLastPrices, clearPriceOverrideIfFetched } from './dashboard-price-override.js';
 import { updateILDebugData } from './dashboard-il-debug.js';
 import { renderDailyPnl, renderRebalanceEvents } from './dashboard-history.js';
 import { posStore } from './dashboard-positions.js';
@@ -36,21 +37,26 @@ function _applyComposition(d, pos) {
   }
 }
 
-/** Populate the Lifetime panel from phase-2 response. */
-function _applyLifetime(d) {
-  setKpiValue('kpiNet', d.ltNetPnl !== undefined ? d.ltNetPnl : d.netPnl);
-  setKpiValue('ltProfit', d.ltProfit !== undefined ? d.ltProfit : d.profit);
-  setKpiValue('netIL', d.il);
-  const ltDep = g('lifetimeDepositDisplay'); if (ltDep && d.entryValue > 0) ltDep.textContent = '$usd ' + d.entryValue.toFixed(2);
-  const bd = g('kpiNetBreakdown');
-  if (bd && d.ltFees !== undefined) { const f = (d.ltFees || 0).toFixed(2), pc = d.ltPriceChange || 0; bd.textContent = f + (pc >= 0 ? ' + ' : ' \u2212 ') + Math.abs(pc).toFixed(2) + ' + 0.00'; }
+/** Update the lifetime date range label and duration. */
+function _applyLifetimeDates(d) {
   const startDate = d.firstEpochDate || d.mintDate;
   const sub = g('kpiPnlPct'); if (sub) sub.textContent = startDate ? (startDate + ' \u2192 ' + new Date().toISOString().slice(0, 10)) : '';
   if (startDate) {
     const days = ((Date.now() - new Date(startDate).getTime()) / 86400000).toFixed(2);
     const ltLabel = g('ltPnlLabel'); if (ltLabel) ltLabel.textContent = 'Net Profit and Loss Return over ' + days + ' days';
   }
-  // Bottom tables — render if data available from lifetime scan
+}
+
+/** Populate the Lifetime panel from phase-2 response. */
+function _applyLifetime(d) {
+  setKpiValue('kpiNet', d.ltNetPnl !== undefined ? d.ltNetPnl : d.netPnl);
+  setKpiValue('ltProfit', d.ltProfit !== undefined ? d.ltProfit : d.profit);
+  if (d.il !== null && d.il !== undefined) setKpiValue('netIL', d.il);
+  console.log('[unmanaged] lifetime entryValue=%s', d.entryValue);
+  const ltDep = g('lifetimeDepositDisplay'); if (ltDep && d.entryValue > 0) ltDep.textContent = '$usd ' + d.entryValue.toFixed(2);
+  const bd = g('kpiNetBreakdown');
+  if (bd && d.ltFees !== undefined) { const f = (d.ltFees || 0).toFixed(2), pc = d.ltPriceChange || 0; bd.textContent = f + (pc >= 0 ? ' + ' : ' \u2212 ') + Math.abs(pc).toFixed(2) + ' + 0.00'; }
+  _applyLifetimeDates(d);
   if (d.dailyPnl) renderDailyPnl(d.dailyPnl);
   if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
 }
@@ -78,11 +84,16 @@ function _apply(d, pos) {
   const closed = pos.liquidity !== undefined && String(pos.liquidity) === '0';
   const badge = g('curPosStatus');
   if (badge) { badge.textContent = closed ? 'CLOSED' : 'ACTIVE'; badge.className = '9mm-pos-mgr-pos-status ' + (closed ? 'closed' : 'active'); }
+  console.log('[unmanaged] prices: p0=%s p1=%s fetched0=%s fetched1=%s', d.price0, d.price1, d.fetchedPrice0, d.fetchedPrice1);
+  setLastPrices(d.price0, d.price1);
+  clearPriceOverrideIfFetched(d.fetchedPrice0 || 0, d.fetchedPrice1 || 0);
   // Current panel KPIs (using shared setKpiValue)
   setKpiValue('kpiValue', d.value);
+  const ltVal = g('ltCurrentValue'); if (ltVal) setKpiValue('ltCurrentValue', d.value);
   setKpiValue('pnlFees', d.feesUsd);
   setKpiValue('pnlPrice', d.priceGainLoss);
-  setKpiValue('kpiDeposit', d.entryValue > 0 ? d.entryValue : null);
+  console.log('[unmanaged] phase1 entryValue=%s baseline=%s', d.entryValue, d.baselineEntryValue);
+  setKpiValue('kpiDeposit', d.baselineEntryValue > 0 ? d.baselineEntryValue : (d.entryValue > 0 ? d.entryValue : null));
   setKpiValue('kpiPnl', d.netPnl);
   setKpiValue('curProfit', d.profit);
   setKpiValue('curIL', d.il);
@@ -106,13 +117,15 @@ function _apply(d, pos) {
   }
   _applyComposition(d, pos);
   _applyPositionStats(d);
+  checkHodlBaselineDialog(d);
 }
 
 /** Build the request body for position detail endpoints. */
 function _detailBody(pos) {
   return { tokenId: pos.tokenId, token0: pos.token0, token1: pos.token1, fee: pos.fee,
     tickLower: pos.tickLower, tickUpper: pos.tickUpper, liquidity: String(pos.liquidity || 0),
-    walletAddress: pos.walletAddress, contractAddress: pos.contractAddress, initialDeposit: loadInitialDeposit() || 0 };
+    walletAddress: pos.walletAddress, contractAddress: pos.contractAddress,
+    ...(() => { const ov = loadPriceOverrides(), r = {}; if (ov.price0 > 0) r.priceOverride0 = ov.price0; if (ov.price1 > 0) r.priceOverride1 = ov.price1; if (loadForceOverride()) r.priceOverrideForce = true; return r; })() };
 }
 
 let _lastFetchedId = null;

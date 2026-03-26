@@ -361,6 +361,33 @@
   </div>
 </div>
 
+<!-- Token price override dialog -->
+<div class="modal-overlay hidden" id="priceOverrideModal">
+  <div class="modal 9mm-pos-mgr-modal-sm">
+    <div class="modal-logo">
+      <div><h2>Token Prices</h2></div>
+      <button class="9mm-pos-mgr-modal-close-btn" id="priceOverrideClose">&times;</button>
+    </div>
+    <div class="9mm-pos-mgr-confirm-body">
+      <p class="9mm-pos-mgr-text-muted">Enter USD prices for tokens when auto-detection fails. Non-zero fetched prices will automatically replace these.</p>
+      <div class="9mm-pos-mgr-price-override-row">
+        <label id="priceOverrideLabel0" class="9mm-pos-mgr-text-muted">Token 0</label>
+        <div class="9mm-pos-mgr-price-override-input"><span class="9mm-pos-mgr-text-muted">$</span><input type="number" id="priceOverrideInput0" step="any" min="0" placeholder="0.00"></div>
+      </div>
+      <div class="9mm-pos-mgr-price-override-row">
+        <label id="priceOverrideLabel1" class="9mm-pos-mgr-text-muted">Token 1</label>
+        <div class="9mm-pos-mgr-price-override-input"><span class="9mm-pos-mgr-text-muted">$</span><input type="number" id="priceOverrideInput1" step="any" min="0" placeholder="0.00"></div>
+      </div>
+    </div>
+    <label class="9mm-pos-mgr-toggle-row"><input type="checkbox" id="priceOverrideForce"><span class="9mm-pos-mgr-text-muted" style="font-size:11px">Make manual entry override any future valid automatic price updates</span></label>
+    <p class="9mm-pos-mgr-text-muted" style="font-size:11px">Price may need a minute or two to take effect.</p>
+    <div class="9mm-pos-mgr-btn-row">
+      <button class="modal-btn 9mm-pos-mgr-flex-fill" id="priceOverrideCancel">Cancel</button>
+      <button class="modal-btn primary 9mm-pos-mgr-flex-fill" id="priceOverrideSave">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay hidden" id="noPositionsModal">
   <div class="modal 9mm-pos-mgr-modal-sm">
     <div class="modal-logo">
@@ -539,11 +566,6 @@
   </div>
 </div>
 
-<!-- Closed-position history banner (hidden by default) -->
-<div id="closedPosBanner" class="9mm-pos-mgr-closed-banner hidden">
-  <span id="closedPosBannerText"></span>
-  <button id="closedPosReturnBtn" class="9mm-pos-mgr-btn-small">Return to Active Position</button>
-</div>
 
 <!-- KPI Row — 3 cards: Current Position | Rebalances | Lifetime -->
 <div class="kpi-grid">
@@ -555,13 +577,13 @@
     <div class="kpi-sub" id="kpiPnlPct">Start Bot for Live Data</div>
     <div class="kpi-sub" id="kpiPosDuration"></div>
     <div class="9mm-pos-mgr-pnl-breakdown" id="pnlBreakdown">
-      <div class="9mm-pos-mgr-pnl-row"><span>Current Value</span><span id="kpiValue" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
-      <div class="9mm-pos-mgr-pnl-row"><span>Fees Earned</span><span id="pnlFees" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
-      <div class="9mm-pos-mgr-pnl-row"><span>Price Gain/Loss</span><span id="pnlPrice" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
-      <div class="9mm-pos-mgr-pnl-row"><span>Realized Gains</span><span id="pnlRealized" class="9mm-pos-mgr-pnl-val-neu">$0.00</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Current Value <span class="9mm-pos-mgr-edit-link" id="editPricesLink" title="Override token prices when auto-detection fails">Edit</span></span><span id="kpiValue" class="kpi-value neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Fees Earned</span><span id="pnlFees" class="kpi-value neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Price Gain/Loss</span><span id="pnlPrice" class="kpi-value neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Realized Gains</span><span id="pnlRealized" class="kpi-value neu">$0.00</span></div>
     </div>
     <div class="9mm-pos-mgr-pnl-breakdown">
-      <div class="9mm-pos-mgr-pnl-row"><span>Deposit</span><span id="kpiDeposit" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Deposit</span><span id="kpiDeposit" class="kpi-value neu">—</span></div>
     </div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Profit</div>
@@ -572,7 +594,7 @@
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curIL">—<span class="9mm-pos-mgr-kpi-pct" id="curILPct"></span></div>
     <div class="kpi-sub">LP Value vs Holding Tokens (This Position)</div>
     <div class="realized-gains-row" id="curDepositRow">
-      <div class="9mm-pos-mgr-pnl-row"><span>Initial Deposit</span><span id="curDepositDisplay" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Initial Deposit</span><span id="curDepositDisplay" class="kpi-value neu">—</span></div>
       <span class="realized-gains-label" id="curDepositLabel" title="Click to set the deposit amount for this LP position">Edit Initial Deposit</span>
       <div class="9mm-pos-mgr-realized-hint" id="curDepositNote">USD value when you created this specific LP position.<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
       <div class="realized-gains-input-wrap" id="curDepositInputWrap">
@@ -609,6 +631,7 @@
     <div class="kpi-label 9mm-pos-mgr-panel-title">Lifetime</div>
     <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet">—<span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div><div class="kpi-sub">Lifetime Fees + Price Change + Realized Gains</div>
     <div class="kpi-sub" id="kpiNetBreakdown"></div>
+    <div class="9mm-pos-mgr-pnl-breakdown"><div class="9mm-pos-mgr-pnl-row"><span>Current Value <span class="9mm-pos-mgr-edit-link" id="editPricesLinkLt" title="Override token prices when auto-detection fails">Edit</span></span><span id="ltCurrentValue" class="kpi-value neu">&mdash;</span></div></div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Profit</div>
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="ltProfit">—</div>
@@ -616,7 +639,7 @@
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="ltILInfo" title="Show IL/G calculation details">i</span></div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL">—<span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
     <div class="realized-gains-row" id="initialDepositRow">
-      <div class="9mm-pos-mgr-pnl-row"><span>Initial Deposit</span><span id="lifetimeDepositDisplay" class="9mm-pos-mgr-pnl-val-neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Initial Deposit</span><span id="lifetimeDepositDisplay" class="kpi-value neu">—</span></div>
       <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your original deposit amount for lifetime P&amp;L">Edit Initial Deposit</span>
       <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">USD value when you first created the very first LP position in this liquidity pool on this wallet (up to five years back).<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
       <div class="realized-gains-input-wrap" id="initialDepositInputWrap">
@@ -898,6 +921,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774503237837"></script>
+<script src="dist/bundle.js?v=1774558134575"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@
  * This is the single entry-point module loaded by index.html.
  */
 
-import { g, act, ACT_ICONS, botConfig, loadPositionOorThreshold, initDisclaimer } from './dashboard-helpers.js';
+import { g, act, ACT_ICONS, botConfig, loadPositionOorThreshold, initDisclaimer, compositeKey } from './dashboard-helpers.js';
 import {
   markWalletKnown, checkServerWalletStatus, injectWalletDeps, wallet, checkWalletLocked,
 } from './dashboard-wallet.js';
@@ -20,9 +20,10 @@ import {
 } from './dashboard-throttle.js';
 import {
   startDataPolling, loadRealizedGains, loadInitialDeposit, _fmtUsd, positionRangeVisual,
-  refreshCurDepositDisplay, resetPollingState,
+  refreshCurDepositDisplay, resetPollingState, injectDataDeps, refreshDepositLabel,
 } from './dashboard-data.js';
 import { fetchUnmanagedDetails, resetLastFetchedId } from './dashboard-unmanaged.js';
+import { injectPriceOverrideDeps } from './dashboard-price-override.js';
 import { bindAllEvents, restorePrivacyMode, injectPosStoreForEvents } from './dashboard-events.js';
 import { clearHistory } from './dashboard-history.js';
 import {
@@ -37,9 +38,12 @@ import {
 
 injectRouterDeps({ posStore, scanPositions, wallet, activateByTokenId });
 injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, syncRouteToState, resolvePendingRoute, clearPositionDisplay, resetPollingState, clearHistory, getPendingRouteWallet, resetLastFetchedId, fetchUnmanagedDetails });
-injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState, enterClosedPosView, exitClosedPosView, isViewingClosedPos, fetchUnmanagedDetails });
+injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState, enterClosedPosView, exitClosedPosView, isViewingClosedPos, fetchUnmanagedDetails, refreshDepositLabel });
 injectThrottleDeps({ positionRangeVisual });
 injectPosStoreForEvents(posStore);
+const _refetch = (pos) => { resetLastFetchedId(); fetchUnmanagedDetails(pos); };
+injectDataDeps({ refetchUnmanaged: _refetch });
+injectPriceOverrideDeps({ refetchUnmanaged: _refetch });
 
 // ── Bind all event handlers ─────────────────────────────────────────────────
 
@@ -122,8 +126,8 @@ if (!_path || _path === '/' || _path.split('/').length < 5) restoreLastPosition(
   const depLabel = g('initialDepositLabel');
   if (depLabel) depLabel.textContent = dep > 0 ? 'Initial Deposit: $' + dep.toFixed(2) : 'Edit Initial Deposit';
   // Re-sync localStorage deposit to server (survives npm run clean)
-  if (dep > 0) fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ initialDepositUsd: dep }) }).catch(() => {});
+  if (dep > 0) { const a = posStore.getActive(), pk = a ? compositeKey('pulsechain', a.walletAddress, a.contractAddress, a.tokenId) : undefined;
+    fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initialDepositUsd: dep, positionKey: pk }) }).catch(() => {}); }
 }());
 
 // ── Start intervals ─────────────────────────────────────────────────────────
