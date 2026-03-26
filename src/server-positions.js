@@ -96,9 +96,10 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
  */
 function attachMultiPosDeps(botState, positionMgr) {
   botState._rebalanceLock = positionMgr.getRebalanceLock();
-  botState._canRebalanceDaily = positionMgr.canRebalanceDaily;
-  botState._recordDailyRebalance = positionMgr.recordDailyRebalance;
   botState._scanLock = positionMgr.getScanLock();
+  botState._poolKey = positionMgr.poolKey;
+  botState._canRebalancePool = positionMgr.canRebalancePool;
+  botState._recordPoolRebalance = positionMgr.recordPoolRebalance;
 }
 
 /**
@@ -234,10 +235,7 @@ function createPositionRoutes(deps) {
       const bs = _positionBotStates.get(p.key);
       return { ...p, ...(bs ? { activePosition: bs.activePosition, running: bs.running } : {}) };
     });
-    jsonResponse(res, 200, {
-      ok: true, positions,
-      dailyRebalanceCount: positionMgr.getDailyCount(),
-    });
+    jsonResponse(res, 200, { ok: true, positions });
   }
 
   return {

@@ -54,13 +54,12 @@ describe('position-manager', () => {
       assert.equal(mgr.runningCount(), 1, 'only one position should be running');
     });
 
-    it('exposes daily cap helpers on the manager', async () => {
+    it('exposes lock and scan helpers on the manager', async () => {
       const lock = createRebalanceLock();
-      const mgr = createPositionManager({ rebalanceLock: lock, dailyMax: 5 });
+      const mgr = createPositionManager({ rebalanceLock: lock });
       await mgr.startPosition('key-1', { tokenId: '100', startLoop: fakeStartLoop() });
-      assert.equal(typeof mgr.canRebalanceDaily, 'function');
-      assert.equal(typeof mgr.recordDailyRebalance, 'function');
-      assert.ok(mgr.canRebalanceDaily());
+      assert.equal(typeof mgr.getRebalanceLock, 'function');
+      assert.equal(typeof mgr.getScanLock, 'function');
     });
   });
 
@@ -189,42 +188,6 @@ describe('position-manager', () => {
     });
   });
 
-  // ── Daily cap ───────────────────────────────────────────────────────────
-
-  describe('daily rebalance cap', () => {
-    it('canRebalanceDaily returns false after cap reached', () => {
-      const mgr = makeMgr({ dailyMax: 3 });
-      assert.ok(mgr.canRebalanceDaily());
-      mgr.recordDailyRebalance();
-      mgr.recordDailyRebalance();
-      mgr.recordDailyRebalance();
-      assert.equal(mgr.canRebalanceDaily(), false);
-    });
-
-    it('resets at midnight UTC', () => {
-      let now = new Date('2026-03-22T23:59:59Z').getTime();
-      const mgr = createPositionManager({
-        rebalanceLock: createRebalanceLock(),
-        dailyMax: 2,
-        nowFn: () => now,
-      });
-      mgr.recordDailyRebalance();
-      mgr.recordDailyRebalance();
-      assert.equal(mgr.canRebalanceDaily(), false);
-
-      // Advance past midnight
-      now = new Date('2026-03-23T00:00:01Z').getTime();
-      assert.ok(mgr.canRebalanceDaily());
-      assert.equal(mgr.getDailyCount(), 0);
-    });
-
-    it('getDailyCount reflects current count', () => {
-      const mgr = makeMgr();
-      assert.equal(mgr.getDailyCount(), 0);
-      mgr.recordDailyRebalance();
-      assert.equal(mgr.getDailyCount(), 1);
-    });
-  });
 
   // ── Multiple positions with shared lock ─────────────────────────────────
 

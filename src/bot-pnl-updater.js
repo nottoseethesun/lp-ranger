@@ -56,8 +56,8 @@ async function addPoolShare(posStats, amounts, position, poolState, ethersLib, p
       new ethersLib.Contract(position.token0, _ERC20_BAL_ABI, provider).balanceOf(poolState.poolAddress),
       new ethersLib.Contract(position.token1, _ERC20_BAL_ABI, provider).balanceOf(poolState.poolAddress)]);
     const p0f = toFloat(pool0, poolState.decimals0), p1f = toFloat(pool1, poolState.decimals1);
-    posStats.poolShare0Pct = p0f > 0 ? (amounts.amount0 / p0f) * 100 : 0;
-    posStats.poolShare1Pct = p1f > 0 ? (amounts.amount1 / p1f) * 100 : 0;
+    posStats.poolShare0Pct = p0f > 0 ? Math.min(100, (amounts.amount0 / p0f) * 100) : 0;
+    posStats.poolShare1Pct = p1f > 0 ? Math.min(100, (amounts.amount1 / p1f) * 100) : 0;
   } catch { /* non-critical */ }
 }
 

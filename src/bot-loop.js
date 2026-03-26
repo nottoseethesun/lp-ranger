@@ -144,7 +144,7 @@ async function _scanHistory(provider, ethersLib, address, position, cache, event
     updateState({ rebalanceScanProgress: 5 });
     const found = await scanRebalanceHistory(provider, ethersLib, { walletAddress: address,
       positionManagerAddress: config.POSITION_MANAGER, factoryAddress: config.FACTORY,
-      poolAddress: poolState.poolAddress || null, maxYears: 5, cache,
+      poolAddress: poolState.poolAddress || null, maxYears: 5, cache, tokenId: String(position.tokenId),
       poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee,
       onPoolCreationProgress: (done, total) => updateState({ rebalanceScanProgress: 5 + Math.round(done / total * 45) }),
       onProgress: (done, total) => updateState({ rebalanceScanProgress: 50 + Math.round(done / total * 45) }) });
@@ -243,7 +243,7 @@ async function _executeAndRecord(deps, ethersLib) {
     if (result.success) {
       if (crw) delete state.customRangeWidthPct;
       throttle.recordRebalance();
-      if (deps._recordDailyRebalance) deps._recordDailyRebalance();
+      if (deps._recordPoolRebalance && deps._poolKey) deps._recordPoolRebalance(deps._poolKey(position.token0, position.token1, position.fee));
       try { await enrichResultUsd(result, () => _fetchTokenPrices(position.token0, position.token1), position.token0, position.token1); } catch (_) { /* prices unavailable */ }
       _recordResidual(deps, result); appendLog(result);
       console.log('[bot] Rebalance OK — new tokenId: #%s %s', String(result.newTokenId), emojiId(String(result.newTokenId)));
@@ -340,9 +340,13 @@ function _checkRebalanceGates(deps, poolState, forced) {
     emit({ throttleState: throttle.getState() });
     return { rebalanced: false };
   }
-  if (!forced && deps._canRebalanceDaily && !deps._canRebalanceDaily()) {
-    console.log('[bot] OOR but wallet daily rebalance cap reached — deferring');
-    return { rebalanced: false };
+  if (!forced && deps._canRebalancePool && deps._poolKey) {
+    const pk = deps._poolKey(deps.position.token0, deps.position.token1, deps.position.fee);
+    const max = deps.throttle.getState().dailyMax || config.MAX_REBALANCES_PER_DAY;
+    if (!deps._canRebalancePool(pk, max)) {
+      console.log('[bot] OOR but pool daily rebalance cap reached (%d/%d) — deferring', max, max);
+      return { rebalanced: false };
+    }
   }
   if (dryRun) {
     console.log(`[bot] DRY RUN — OOR, price=${poolState.price} tick=${poolState.tick} range=[${deps.position.tickLower},${deps.position.tickUpper}]`);
@@ -487,7 +491,7 @@ async function _tryInitPnlTracker(provider, ethersLib, position, botState, updat
 /** Reload config values from disk on each poll cycle. */
 function _reloadFromConfig(gc, throttle, setIntervalMs) {
   const ci = gc('checkIntervalSec'); if (ci) setIntervalMs(ci * 1000);
-  throttle.configure({ minIntervalMs: (gc('minRebalanceIntervalMin') || 10) * 60_000, dailyMax: gc('maxRebalancesPerDay') || 20 });
+  throttle.configure({ minIntervalMs: (gc('minRebalanceIntervalMin') || config.MIN_REBALANCE_INTERVAL_MIN) * 60_000, dailyMax: gc('maxRebalancesPerDay') || config.MAX_REBALANCES_PER_DAY });
 }
 
 async function startBotLoop(opts) {

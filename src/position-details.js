@@ -12,7 +12,7 @@ const path = require('path');
 const config = require('./config');
 const rangeMath = require('./range-math');
 const { getPoolState } = require('./rebalancer');
-const { positionValueUsd, fetchTokenPrices, readUnclaimedFees } = require('./bot-pnl-updater');
+const { positionValueUsd, fetchTokenPrices, readUnclaimedFees, addPoolShare } = require('./bot-pnl-updater');
 const { getPositionBaseline } = require('./hodl-baseline');
 const { computeHodlIL } = require('./il-calculator');
 const { scanRebalanceHistory } = require('./event-scanner');
@@ -36,8 +36,10 @@ async function _readFees(provider, ethersLib, tokenId, privateKey, decimals0, de
   try {
     const signer = new ethersLib.Wallet(privateKey, provider);
     const f = await readUnclaimedFees(provider, ethersLib, tokenId, signer);
-    return (Number(f.tokensOwed0) / 10 ** decimals0) * price0 + (Number(f.tokensOwed1) / 10 ** decimals1) * price1;
-  } catch { return 0; }
+    const usd = (Number(f.tokensOwed0) / 10 ** decimals0) * price0 + (Number(f.tokensOwed1) / 10 ** decimals1) * price1;
+    console.log('[details] fees for #%s: owed0=%s owed1=%s usd=%s', tokenId, String(f.tokensOwed0), String(f.tokensOwed1), usd.toFixed(4));
+    return usd;
+  } catch (e) { console.warn('[details] fee read failed for #%s: %s', tokenId, e.message); return 0; }
 }
 
 /** Run event scan + epoch reconstruction. Reads from disk cache if available. */
@@ -47,7 +49,7 @@ async function _getLifetimeSnapshot(provider, ethersLib, position, walletAddr, d
   if (saved) tracker.restore(saved);
   const cache = createCacheStore({ filePath: path.join(process.cwd(), 'tmp', 'event-cache-' + position.tokenId + '.json') });
   const events = await scanRebalanceHistory(provider, ethersLib, { positionManagerAddress: config.POSITION_MANAGER, walletAddress: walletAddr,
-    maxYears: 5, cache, factoryAddress: config.FACTORY, poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee });
+    maxYears: 5, cache, factoryAddress: config.FACTORY, tokenId: String(position.tokenId), poolToken0: position.token0, poolToken1: position.token1, poolFee: position.fee });
   if (tracker.epochCount() === 0 && events.length > 0) {
     await reconstructEpochs({ pnlTracker: tracker, rebalanceEvents: events,
       botState: { activePosition: position, walletAddress: walletAddr, positionManager: config.POSITION_MANAGER }, fallbackPrices: prices });
@@ -92,7 +94,10 @@ async function _fetchPoolData(provider, ethersLib, body, privateKey) {
   console.log('[details] tokenId=%s liq=%s tick=%d tL=%d tU=%d amt0=%s amt1=%s p0=%s p1=%s', body.tokenId, body.liquidity, ps.tick, body.tickLower, body.tickUpper, amounts.amount0.toFixed(4), amounts.amount1.toFixed(4), price0, price1);
   const feesUsd = await _readFees(provider, ethersLib, body.tokenId, privateKey, ps.decimals0, ps.decimals1, price0, price1);
   const total = amounts.amount0 * price0 + amounts.amount1 * price1;
-  return { position, ps, price0, price1, value, amounts, feesUsd, composition: total > 0 ? (amounts.amount0 * price0) / total : null };
+  const poolShare = {};
+  await addPoolShare(poolShare, amounts, position, ps, ethersLib, provider);
+  return { position, ps, price0, price1, value, amounts, feesUsd, composition: total > 0 ? (amounts.amount0 * price0) / total : null,
+    poolShare0Pct: poolShare.poolShare0Pct, poolShare1Pct: poolShare.poolShare1Pct };
 }
 
 /** Resolve entry value from user deposit, disk config, chain baseline, or current prices. */
@@ -107,12 +112,12 @@ async function _resolveEntryValue(provider, ethersLib, position, posKey, diskCon
 
 /** Phase 1: fast data (pool state, prices, value, composition, current P&L). */
 async function computeQuickDetails(provider, ethersLib, body, diskConfig, privateKey) {
-  const { position, ps, price0, price1, value, amounts, feesUsd, composition } = await _fetchPoolData(provider, ethersLib, body, privateKey);
+  const { position, ps, price0, price1, value, amounts, feesUsd, composition, poolShare0Pct, poolShare1Pct } = await _fetchPoolData(provider, ethersLib, body, privateKey);
   const posKey = compositeKey('pulsechain', body.walletAddress || '', body.contractAddress || config.POSITION_MANAGER, body.tokenId);
   const { baseline, entryValue } = await _resolveEntryValue(provider, ethersLib, position, posKey, diskConfig, body, price0, price1);
   const cur = _currentPnl(baseline, value, entryValue, feesUsd, price0, price1);
   const poolState = { tick: ps.tick, price: ps.price, decimals0: ps.decimals0, decimals1: ps.decimals1, poolAddress: ps.poolAddress };
-  return { ok: true, poolState, price0, price1, value, amounts, feesUsd, composition,
+  return { ok: true, poolState, price0, price1, value, amounts, feesUsd, composition, poolShare0Pct, poolShare1Pct,
     inRange: ps.tick >= body.tickLower && ps.tick < body.tickUpper,
     lowerPrice: rangeMath.tickToPrice(body.tickLower, ps.decimals0, ps.decimals1),
     upperPrice: rangeMath.tickToPrice(body.tickUpper, ps.decimals0, ps.decimals1),

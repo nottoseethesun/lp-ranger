@@ -245,7 +245,7 @@
 
 'use strict';
 
-const { installColorLogger } = require('./src/logger');
+const { installColorLogger, emojiId } = require('./src/logger');
 installColorLogger();
 
 const http = require('http');
@@ -267,7 +267,6 @@ const { loadConfig, saveConfig, getPositionConfig, readConfigValue, GLOBAL_KEYS,
 const _rebalanceLock = createRebalanceLock();
 const _positionMgr = createPositionManager({
   rebalanceLock: _rebalanceLock,
-  dailyMax: config.MAX_REBALANCES_PER_DAY,
 });
 
 // ── MIME type map ─────────────────────────────────────────────────────────────
@@ -613,6 +612,7 @@ const _positionRoutes = createPositionRoutes({
 async function _handlePositionDetails(req, res) {
   const body = await readJsonBody(req);
   if (!body.tokenId || !body.token0 || !body.token1 || !body.fee) return jsonResponse(res, 400, { ok: false, error: 'Missing tokenId, token0, token1, or fee' });
+  console.log('[server] Position selected: NFT #%s %s', body.tokenId, emojiId(String(body.tokenId)));
   try {
     const ethersLib = require('ethers');
     const provider = new ethersLib.JsonRpcProvider(config.RPC_URL);
@@ -642,21 +642,30 @@ const _routes = {
   'GET /health':               (_, res) => jsonResponse(res, 200, { ok: true, port: config.PORT, ts: Date.now() }),
   'GET /api/status':           (_, res) => {
     const positions = {};
-    const posDefaults = { rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT, rebalanceTimeoutMin: config.REBALANCE_TIMEOUT_MIN };
+    const posDefaults = {
+      rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
+      rebalanceTimeoutMin: config.REBALANCE_TIMEOUT_MIN,
+      slippagePct: config.SLIPPAGE_PCT, checkIntervalSec: config.CHECK_INTERVAL_SEC,
+      minRebalanceIntervalMin: config.MIN_REBALANCE_INTERVAL_MIN,
+      maxRebalancesPerDay: config.MAX_REBALANCES_PER_DAY, gasStrategy: 'auto',
+    };
     for (const [key, state] of getAllPositionBotStates()) {
       const posConfig = _diskConfig.positions[key] || {};
       positions[key] = { ...posDefaults, ...state, ...posConfig };
+    }
+    // Include lightweight config for unmanaged positions so the dashboard gets per-pool settings
+    const _SETTINGS_KEYS = ['rebalanceOutOfRangeThresholdPercent', 'rebalanceTimeoutMin', 'slippagePct', 'checkIntervalSec', 'minRebalanceIntervalMin', 'maxRebalancesPerDay', 'gasStrategy'];
+    for (const [key, posConfig] of Object.entries(_diskConfig.positions)) {
+      if (!positions[key]) { const s = { ...posDefaults }; for (const k of _SETTINGS_KEYS) if (posConfig[k] !== undefined) s[k] = posConfig[k]; positions[key] = s; }
     }
     jsonResponse(res, 200, {
       global: {
         walletAddress: walletManager.getAddress(),
         port: config.PORT, host: config.HOST, rpcUrl: config.RPC_URL,
         positionManager: config.POSITION_MANAGER, factory: config.FACTORY,
-        rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
-        rebalanceTimeoutMin: config.REBALANCE_TIMEOUT_MIN,
-        ..._diskConfig.global,
-        dailyRebalanceCount: _positionMgr.getDailyCount(),
+        ...posDefaults, ..._diskConfig.global,
         managedPositions: _positionMgr.getAll(),
+        poolDailyCounts: _positionMgr.getPoolDailyCounts(),
       },
       positions,
     });
@@ -689,7 +698,8 @@ const _routes = {
       jsonResponse(res, 409, { ok: false, error: 'Position not running or syncing' });
       return;
     }
-    console.log('[server] Manual rebalance for %s (customRange=%s)', body.positionKey, body.customRangeWidthPct || 'default');
+    const tokenId = body.positionKey.split('-').pop();
+    console.log('[server] Manual rebalance for %s %s (customRange=%s)', body.positionKey, emojiId(tokenId), body.customRangeWidthPct || 'default');
     state.forceRebalance = true; state.rebalancePaused = false; state.rebalanceError = null;
     if (body.customRangeWidthPct > 0) state.customRangeWidthPct = Number(body.customRangeWidthPct);
     jsonResponse(res, 200, { ok: true, message: 'Rebalance requested' });

@@ -442,15 +442,22 @@ function _fmtResetTime(dailyResetAt) {
   return 'Resets ' + utc + ' (' + local + ' ' + (tz ? tz.value : 'local') + ')';
 }
 
+/** Build a normalized pool key matching the server's position-manager.poolKey(). */
+function _normalizedPoolKey(pos) { if (!pos?.token0 || !pos?.token1 || !pos?.fee) return null; const a = pos.token0.toLowerCase(), b = pos.token1.toLowerCase(); return (a < b ? a + '-' + b : b + '-' + a) + '-' + pos.fee; }
+
 function _updateThrottleKpis(d) {
-  if (!d.throttleState) return;
-  const ts = d.throttleState;
-  const today = g('kpiToday');
-  if (today) { const max = d.maxRebalancesPerDay || ts.dailyMax, ratio = max > 0 ? ts.dailyCount / max : 0; today.textContent = ts.dailyCount + ' / ' + max; today.style.color = ratio > 0.9 ? '#ff3b5c' : ratio > 0.66 ? '#ff6b35' : ratio > 0.5 ? '#ffb800' : '#e0eaf4'; }
+  const ts = d.throttleState, today = g('kpiToday');
+  if (today) {
+    const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
+    const pk = _normalizedPoolKey(posStore.getActive());
+    const count = (pk && d._poolDailyCounts) ? (d._poolDailyCounts[pk] || 0) : (ts ? ts.dailyCount : 0);
+    if (!max) { today.textContent = '\u2014'; today.style.color = ''; }
+    else { const ratio = count / max; today.textContent = count + ' / ' + max; today.style.color = ratio >= 0.9 ? '#ff3b5c' : ratio >= 0.66 ? '#ff6b35' : ratio >= 0.5 ? '#ffb800' : '#e0eaf4'; }
+  }
   const todaySub = g('kpiTodaySub');
   if (todaySub) {
     const lifetime = d.rebalanceEvents ? d.rebalanceEvents.length : 0;
-    todaySub.innerHTML = lifetime + ' Lifetime<br>' + _fmtResetTime(ts.dailyResetAt);
+    todaySub.innerHTML = lifetime + ' Lifetime<br>' + _fmtResetTime(ts?.dailyResetAt);
   }
 }
 
@@ -481,7 +488,7 @@ export function setUnmanagedSyncing(v) { _unmanagedSyncing = v; }
 function _syncStatus(d) {
   if (wallet.address && posStore.count() === 0) return { complete: false, pct: 0 };
   let c = true, p = 100;
-  if (d._allPositionStates) { for (const [, s] of Object.entries(d._allPositionStates)) { if (!s.rebalanceScanComplete) { c = false; p = Math.min(p, s.rebalanceScanProgress || 0); } } }
+  if (d._allPositionStates) { for (const [, s] of Object.entries(d._allPositionStates)) if (s.running && !s.rebalanceScanComplete) { c = false; p = Math.min(p, s.rebalanceScanProgress || 0); } }
   else if (d.rebalanceScanComplete !== true) { c = false; p = d.rebalanceScanProgress || 0; }
   return { complete: c, pct: p };
 }
@@ -491,7 +498,7 @@ function _updateSyncBadge(d) {
   badge.textContent = c ? 'Synced' : pct > 5 ? 'Syncing ' + pct + '%' : 'Syncing\u2026';
   badge.style.background = !c && pct > 5 ? 'linear-gradient(to right, rgb(255 184 0 / 20%) ' + pct + '%, rgb(255 184 0 / 6%) ' + pct + '%)' : '';
   badge.classList.toggle('done', c);
-  ['manageToggleBtn', 'posBrowserBtn'].forEach(id => { const b = g(id); if (b) b.disabled = !c; });
+  ['manageToggleBtn', 'posBrowserBtn'].forEach(id => { const b = g(id); if (b) { b.disabled = !c; b.title = !c ? 'Waiting for sync to complete\u2026' : ''; } });
   if (c && !_scanWasComplete && isViewingClosedPos()) refetchClosedPosHistory(); _scanWasComplete = c;
 }
 
@@ -500,30 +507,26 @@ export function resetPollingState() {
   _lastStatus = null; _historyPopulated = false; _poolFirstDate = null;
   _lastRebalanceAt = null; _configSynced = false; _scanWasComplete = false;
   try { localStorage.removeItem(_REB_EVENTS_CACHE_KEY); } catch { /* */ }
-  _scanWasComplete = false; refreshCurDepositDisplay(0);
+  refreshCurDepositDisplay(0);
   const dd = g('lifetimeDepositDisplay'); if (dd) dd.textContent = '\u2014';
 }
 
-/** Sync rebalance events and liquidity from server to posStore. */
+/** Sync rebalance events, liquidity, and ticks from server to posStore. */
 function _syncActivePosition(d) {
   if (!d.activePosition) return;
-  const active = posStore.getActive();
-  if (!active || active.positionType !== 'nft') return;
-  const isNew = d.lastRebalanceAt && d.lastRebalanceAt !== _lastRebalanceAt;
-  if (isNew) {
+  const active = posStore.getActive(); if (!active || active.positionType !== 'nft') return;
+  if (d.lastRebalanceAt && d.lastRebalanceAt !== _lastRebalanceAt) {
     _lastRebalanceAt = d.lastRebalanceAt;
     const evts = d.rebalanceEvents || [], lastEv = evts.length ? evts[evts.length - 1] : null;
     if (lastEv) { const txPart = lastEv.txHash ? ' ' + _fmtTxCopy(lastEv.txHash) : ''; act(ACT_ICONS.gear, 'fee', 'Rebalance', 'NFT #' + lastEv.oldTokenId + ' \u2192 #' + lastEv.newTokenId + txPart); }
   }
-  if (d.activePosition.liquidity !== undefined) active.liquidity = String(d.activePosition.liquidity);
+  const ap = d.activePosition;
+  if (ap.liquidity !== undefined) active.liquidity = String(ap.liquidity);
+  if (ap.tickLower !== undefined) { active.tickLower = ap.tickLower; active.tickUpper = ap.tickUpper; }
 }
 
 /** Load cached rebalance events if server provided none, or cache new ones. */
-function _syncRebalanceCache(d) {
-  const evts = d.rebalanceEvents;
-  if (!evts || evts.length === 0) { const c = _loadCachedRebalanceEvents(); if (c && c.length > 0) d.rebalanceEvents = c; }
-  else _cacheRebalanceEvents(evts);
-}
+function _syncRebalanceCache(d) { const evts = d.rebalanceEvents; if (!evts || evts.length === 0) { const c = _loadCachedRebalanceEvents(); if (c?.length > 0) d.rebalanceEvents = c; } else _cacheRebalanceEvents(evts); }
 
 /** Confirm trigger settings in the header row from server data. */
 function _updateTriggerDisplay(d) {
@@ -533,14 +536,11 @@ function _updateTriggerDisplay(d) {
 
 /** Populate the activity log with historical rebalance events (once scan completes). */
 function _populateHistoryOnce(data) {
-  if (_historyPopulated || !data.rebalanceEvents || !data.rebalanceEvents.length) return;
-  // Wait for the event scanner to finish so we get the full set, not stale localStorage cache
-  if (data.rebalanceScanComplete !== true) return;
+  if (_historyPopulated || !data.rebalanceEvents?.length || data.rebalanceScanComplete !== true) return;
   _historyPopulated = true;
   [...data.rebalanceEvents].sort((a, b) => a.timestamp - b.timestamp).forEach(ev => {
     const txPart = ev.txHash ? ' ' + _fmtTxCopy(ev.txHash) : '';
-    act(ACT_ICONS.gear, 'fee', 'Rebalance', 'NFT #' + ev.oldTokenId + ' \u2192 #' + ev.newTokenId + txPart,
-      ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000));
+    act(ACT_ICONS.gear, 'fee', 'Rebalance', 'NFT #' + ev.oldTokenId + ' \u2192 #' + ev.newTokenId + txPart, ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000));
   });
 }
 
@@ -619,6 +619,7 @@ function _flattenV2Status(v2) {
   const flat = { ...global, ...(posData || {}) };
   flat._managedPositions = global.managedPositions || [];
   flat._allPositionStates = positions;
+  flat._poolDailyCounts = global.poolDailyCounts || {};
   return flat;
 }
 

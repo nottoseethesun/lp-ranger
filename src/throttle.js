@@ -83,7 +83,7 @@ function createThrottle(opts = {}) {
   /** @type {ThrottleState} */
   const state = {
     minIntervalMs:  opts.minIntervalMs ?? 600_000,
-    dailyMax:       opts.dailyMax      ?? 20,
+    dailyMax:       opts.dailyMax      ?? 5,
     dailyCount:     0,
     lastRebTime:    0,
     rebTimestamps:  [],

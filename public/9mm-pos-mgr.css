@@ -338,6 +338,7 @@
 .\39 mm-pos-mgr-btn-sm:disabled {
   opacity: 0.5;
   cursor: help;
+  pointer-events: all;
 }
 
 .\39 mm-pos-mgr-btn-sm:hover:not(:disabled) {

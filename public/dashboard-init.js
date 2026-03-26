@@ -22,7 +22,7 @@ import {
   startDataPolling, loadRealizedGains, loadInitialDeposit, _fmtUsd, positionRangeVisual,
   refreshCurDepositDisplay, resetPollingState,
 } from './dashboard-data.js';
-import { fetchUnmanagedDetails } from './dashboard-unmanaged.js';
+import { fetchUnmanagedDetails, resetLastFetchedId } from './dashboard-unmanaged.js';
 import { bindAllEvents, restorePrivacyMode, injectPosStoreForEvents } from './dashboard-events.js';
 import { clearHistory } from './dashboard-history.js';
 import {
@@ -36,7 +36,7 @@ import {
 // ── Wire cross-module dependencies (breaks circular imports) ────────────────
 
 injectRouterDeps({ posStore, scanPositions, wallet, activateByTokenId });
-injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, syncRouteToState, resolvePendingRoute, clearPositionDisplay, resetPollingState, clearHistory, getPendingRouteWallet });
+injectWalletDeps({ updatePosStripUI, scanPositions, posStore, updateRouteForWallet, syncRouteToState, resolvePendingRoute, clearPositionDisplay, resetPollingState, clearHistory, getPendingRouteWallet, resetLastFetchedId, fetchUnmanagedDetails });
 injectPositionDeps({ positionRangeVisual, updateRouteForPosition, syncRouteToState, enterClosedPosView, exitClosedPosView, isViewingClosedPos, fetchUnmanagedDetails });
 injectThrottleDeps({ positionRangeVisual });
 injectPosStoreForEvents(posStore);

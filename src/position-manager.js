@@ -36,12 +36,9 @@ const { emojiId } = require('./logger');
  *
  * @param {object} opts
  * @param {object}   opts.rebalanceLock   Lock from createRebalanceLock().
- * @param {number}   [opts.dailyMax=20]   Wallet-level daily rebalance cap.
- * @param {Function} [opts.nowFn]         Injectable clock (for testing).
  * @returns {object}  Position manager handle.
  */
 function createPositionManager(opts) {
-  const { dailyMax = 20, nowFn } = opts;
   const _rebalanceLock = opts.rebalanceLock;
 
   /** @type {Map<string, ManagedPosition>} */
@@ -50,32 +47,33 @@ function createPositionManager(opts) {
   /** Shared scan lock — ensures only one event scan runs at a time across all positions. */
   const _scanLock = new Mutex();
 
-  /** Wallet-level daily rebalance counter (shared across all positions). */
-  let _dailyCount = 0;
-  const _clock = nowFn || Date.now;
-  let _dailyResetAt = nextMidnight(_clock);
+  /** Per-pool daily rebalance counters. Key = "token0-token1-fee" (lowercase). */
+  const _poolDailyCounts = new Map();
+  const _clock = opts.nowFn || Date.now;
+  let _poolResetAt = nextMidnight(_clock);
 
-  /** Reset daily counter at midnight UTC. */
-  function _tickDaily() {
-    if (_clock() >= _dailyResetAt) {
-      _dailyCount = 0;
-      _dailyResetAt = nextMidnight(_clock);
-    }
+  /** Build a normalized pool key from token addresses and fee tier. */
+  function poolKey(token0, token1, fee) {
+    const a = String(token0).toLowerCase(), b = String(token1).toLowerCase();
+    return (a < b ? a + '-' + b : b + '-' + a) + '-' + fee;
   }
 
-  /**
-   * Check whether the wallet-level daily cap allows another rebalance.
-   * @returns {boolean}
-   */
-  function canRebalanceDaily() {
-    _tickDaily();
-    return _dailyCount < dailyMax;
+  /** Reset all pool counters at midnight UTC. */
+  function _tickPoolDaily() {
+    if (_clock() >= _poolResetAt) { _poolDailyCounts.clear(); _poolResetAt = nextMidnight(_clock); }
   }
 
-  /** Record a wallet-level rebalance (called after successful TX). */
-  function recordDailyRebalance() {
-    _dailyCount++;
-  }
+  /** Get the current daily rebalance count for a pool. */
+  function getPoolDailyCount(pk) { _tickPoolDaily(); return _poolDailyCounts.get(pk) || 0; }
+
+  /** Check whether a pool can rebalance (count < max). */
+  function canRebalancePool(pk, max) { return getPoolDailyCount(pk) < max; }
+
+  /** Record a rebalance for a pool. */
+  function recordPoolRebalance(pk) { _tickPoolDaily(); _poolDailyCounts.set(pk, (_poolDailyCounts.get(pk) || 0) + 1); }
+
+  /** Get all pool daily counts (for status response). */
+  function getPoolDailyCounts() { _tickPoolDaily(); return Object.fromEntries(_poolDailyCounts); }
 
   /**
    * Start managing a position.
@@ -211,9 +209,6 @@ function createPositionManager(opts) {
     return n;
   }
 
-  /** Current daily rebalance count (wallet-level). */
-  function getDailyCount() { _tickDaily(); return _dailyCount; }
-
   /** The shared rebalance lock (for callers that need nonce-safe TX serialization). */
   function getRebalanceLock() { return _rebalanceLock; }
 
@@ -231,9 +226,11 @@ function createPositionManager(opts) {
     get,
     count,
     runningCount,
-    getDailyCount,
-    canRebalanceDaily,
-    recordDailyRebalance,
+    poolKey,
+    getPoolDailyCount,
+    canRebalancePool,
+    recordPoolRebalance,
+    getPoolDailyCounts,
     getRebalanceLock,
     getScanLock,
   };

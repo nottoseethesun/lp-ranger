@@ -55,6 +55,16 @@ function _applyLifetime(d) {
   if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
 }
 
+/** Apply balances, pool share, and tick to the position stats panel. */
+function _applyPositionStats(d) {
+  const sw = g('sWpls'); if (sw) sw.textContent = d.amounts.amount0.toFixed(4);
+  const su = g('sUsdc'); if (su) su.textContent = d.amounts.amount1.toFixed(4);
+  const s0 = g('sShare0'), s1 = g('sShare1');
+  if (s0) s0.textContent = d.poolShare0Pct !== undefined ? d.poolShare0Pct.toFixed(4) + '%' : '\u2014';
+  if (s1) s1.textContent = d.poolShare1Pct !== undefined ? d.poolShare1Pct.toFixed(4) + '%' : '\u2014';
+  const tc = g('sTC'); if (tc && d.poolState.tick !== undefined) tc.textContent = d.poolState.tick;
+}
+
 /** Apply phase-1 (fast) position details to the dashboard UI. */
 function _apply(d, pos) {
   // Range chart + price marker
@@ -94,12 +104,8 @@ function _apply(d, pos) {
     updateILDebugData({ pnlSnapshot: { totalIL: d.il, lifetimeIL: d.il,
       ilInputs: { lpValue: d.value, price0: d.price0, price1: d.price1, cur: hodl, lt: hodl } } }, posStore);
   }
-  // Composition + balances
   _applyComposition(d, pos);
-  const sw = g('sWpls'); if (sw) sw.textContent = d.amounts.amount0.toFixed(4);
-  const su = g('sUsdc'); if (su) su.textContent = d.amounts.amount1.toFixed(4);
-  // Position stats
-  const tc = g('sTC'); if (tc && d.poolState.tick !== undefined) tc.textContent = d.poolState.tick;
+  _applyPositionStats(d);
 }
 
 /** Build the request body for position detail endpoints. */
@@ -110,6 +116,10 @@ function _detailBody(pos) {
 }
 
 let _lastFetchedId = null;
+
+/** Reset the dedup guard so the next fetchUnmanagedDetails call will re-fetch. */
+export function resetLastFetchedId() { _lastFetchedId = null; }
+
 /** Fetch and display details for an unmanaged position (two-phase). */
 export async function fetchUnmanagedDetails(pos) {
   if (!pos?.tokenId || !pos?.token0 || !pos?.token1 || !pos?.fee) return;

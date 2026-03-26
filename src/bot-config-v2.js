@@ -28,15 +28,13 @@ const CONFIG_FILE = '.bot-config.json';
 const BACKUP_FILE = '.bot-config.v1.json';
 
 /** Keys that belong in the global section. */
-const GLOBAL_KEYS = [
-  'slippagePct', 'checkIntervalSec',
-  'minRebalanceIntervalMin', 'maxRebalancesPerDay',
-  'gasStrategy', 'triggerType',
-];
+const GLOBAL_KEYS = ['triggerType'];
 
-/** Keys that belong in a per-position section. */
+/** Keys that belong in a per-position (per-pool) section. */
 const POSITION_KEYS = [
   'rebalanceOutOfRangeThresholdPercent', 'rebalanceTimeoutMin',
+  'slippagePct', 'checkIntervalSec', 'minRebalanceIntervalMin',
+  'maxRebalancesPerDay', 'gasStrategy',
   'pnlEpochs', 'hodlBaseline', 'residuals',
   'collectedFeesUsd', 'initialDepositUsd',
 ];

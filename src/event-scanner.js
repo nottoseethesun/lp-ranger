@@ -436,6 +436,11 @@ async function _processRawEvents(provider, ethersLib, rawEvents, walletAddress, 
   return { merged, firstMintTimestamp };
 }
 
+/** Build a human-readable label for scan progress logs. */
+function _scanLabel(tokenId, walletAddress) {
+  return 'Rebalance history' + (tokenId ? ' for NFT #' + tokenId : '') + ' (wallet ' + walletAddress + ')';
+}
+
 async function scanRebalanceHistory(provider, ethersLib, opts) {
   const {
     positionManagerAddress, walletAddress,
@@ -454,7 +459,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 
   const contract = new ethersLib.Contract(positionManagerAddress, PM_ABI, provider);
   const rawEvents = await scanChunks(contract, walletAddress, scanFrom, currentBlock, chunkSize, opts.onProgress,
-    'Rebalance history for wallet address ' + walletAddress);
+    _scanLabel(opts.tokenId, walletAddress));
 
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
   if (rawEvents.length === 0 && cachedEvents.length === 0) return [];

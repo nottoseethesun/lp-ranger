@@ -48,7 +48,7 @@ export const throttle = {
   currentWaitMs:  10 * 60 * 1000,
   lastRebTime:    0,
   dailyCount:     0,
-  dailyMax:       20,
+  dailyMax:       0,
   dailyResetAt:   nextMidnight(),
 };
 
@@ -74,7 +74,7 @@ export function canRebalance() {
 export function onParamChange() {
   const minEl = g('inMinInterval'), maxEl = g('inMaxReb');
   throttle.minIntervalMs = (parseInt(minEl?.value) || 10) * 60 * 1000;
-  throttle.dailyMax      = parseInt(maxEl?.value) || 20;
+  throttle.dailyMax      = parseInt(maxEl?.value) || throttle.dailyMax;
   if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
   updateThrottleUI();
 }
@@ -217,10 +217,11 @@ export function saveOorTimeout() {
   const val = parseInt(el?.value, 10);
   const timeoutMin = Number.isFinite(val) && val >= 0 ? val : 180;
   if (el) el.value = timeoutMin;
+  const active = posStore.getActive();
+  const positionKey = active ? compositeKey('pulsechain', active.walletAddress, active.contractAddress, active.tokenId) : undefined;
   fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rebalanceTimeoutMin: timeoutMin }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rebalanceTimeoutMin: timeoutMin, positionKey }),
   }).catch(function () { /* dashboard-only mode */ });
 }
 
@@ -232,10 +233,10 @@ export function saveOorThreshold() {
   const activePos = posStore.getActive();
   if (activePos) savePositionOorThreshold(activePos, botConfig.oorThreshold);
   if (_positionRangeVisual) _positionRangeVisual();
+  const positionKey = activePos ? compositeKey('pulsechain', activePos.walletAddress, activePos.contractAddress, activePos.tokenId) : undefined;
   fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rebalanceOutOfRangeThresholdPercent: botConfig.oorThreshold }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rebalanceOutOfRangeThresholdPercent: botConfig.oorThreshold, positionKey }),
   }).catch(function () { /* dashboard-only mode */ });
 }
 
@@ -243,8 +244,10 @@ export function saveOorThreshold() {
 /** Save a single config key from an input element. */
 function _saveSingleConfig(inputId, key, parse) {
   const val = parse(g(inputId)?.value);
+  const active = posStore.getActive();
+  const positionKey = active ? compositeKey('pulsechain', active.walletAddress, active.contractAddress, active.tokenId) : undefined;
   fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ [key]: val }) }).catch(() => {});
+    body: JSON.stringify({ [key]: val, positionKey }) }).catch(() => {});
   act(ACT_ICONS.gear, 'start', 'Setting Saved', key + ' = ' + val);
 }
 
@@ -252,9 +255,9 @@ function _saveSingleConfig(inputId, key, parse) {
 export function saveMinInterval() { _saveSingleConfig('inMinInterval', 'minRebalanceIntervalMin', v => parseInt(v, 10) || 10); }
 /** Save max rebalances per day. */
 export function saveMaxReb() {
-  const val = parseInt(g('inMaxReb')?.value, 10) || 20;
+  const val = parseInt(g('inMaxReb')?.value, 10) || throttle.dailyMax;
   _saveSingleConfig('inMaxReb', 'maxRebalancesPerDay', () => val);
-  const el = g('kpiToday'); if (el) el.textContent = el.textContent.replace(/\/\s*\d+/, '/ ' + val);
+  const el = g('kpiToday'); if (el) { const cur = parseInt(el.textContent, 10) || 0; el.textContent = cur + ' / ' + val; }
 }
 /** Save slippage tolerance. */
 export function saveSlippage() { _saveSingleConfig('inSlip', 'slippagePct', v => parseFloat(v) || 0.5); }
@@ -307,7 +310,7 @@ function _buildConfigPatch() {
     slippagePct:             parseFloat(g('inSlip')?.value) || 0.5,
     checkIntervalSec:        parseInt(g('inInterval')?.value, 10) || 60,
     minRebalanceIntervalMin: parseInt(g('inMinInterval')?.value, 10) || 10,
-    maxRebalancesPerDay:     parseInt(g('inMaxReb')?.value, 10) || 20,
+    maxRebalancesPerDay:     parseInt(g('inMaxReb')?.value, 10) || throttle.dailyMax,
     gasStrategy:             g('inGas')?.value || 'auto',
     triggerType:             trigger.type,
     rebalanceTimeoutMin:     parseInt(g('inOorTimeout')?.value, 10) || 0,
@@ -325,8 +328,9 @@ export function applyAll() {
   _updatePosTokenLabel();
   if (_positionRangeVisual) _positionRangeVisual();
 
+  const positionKey = activePos ? compositeKey('pulsechain', activePos.walletAddress, activePos.contractAddress, activePos.tokenId) : undefined;
   fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(_buildConfigPatch()),
+    body: JSON.stringify({ ..._buildConfigPatch(), positionKey }),
   }).catch(function () { /* dashboard-only mode */ });
 
   snapshotApplied();

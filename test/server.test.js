@@ -11,10 +11,17 @@
 
 'use strict';
 
-const { describe, it } = require('node:test');
+const { describe, it, before, after } = require('node:test');
 const assert  = require('assert');
 const http    = require('http');
+const fs      = require('fs');
+const path    = require('path');
 const { start, stop } = require('../server');
+
+// ── Config snapshot: save before tests, restore after ─────────────────────────
+
+const _CONFIG_PATH = path.join(process.cwd(), '.bot-config.json');
+let _configSnapshot = null;
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
@@ -61,6 +68,16 @@ const TEST_PORT = 54321;
 let   serverInstance;
 
 describe('server', () => {
+
+  before(() => {
+    try { _configSnapshot = fs.readFileSync(_CONFIG_PATH, 'utf8'); } catch { /* no config file */ }
+  });
+
+  after(async () => {
+    // Restore .bot-config.json to its pre-test state
+    if (_configSnapshot !== null) fs.writeFileSync(_CONFIG_PATH, _configSnapshot, 'utf8');
+    else try { fs.unlinkSync(_CONFIG_PATH); } catch { /* didn't exist before, doesn't now */ }
+  });
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -145,7 +162,6 @@ describe('server', () => {
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
     assert.ok(Array.isArray(body.positions));
-    assert.ok(typeof body.dailyRebalanceCount === 'number');
   });
 
   // ── /api/rebalance ────────────────────────────────────────────────────────

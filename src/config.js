@@ -138,9 +138,9 @@ const MIN_REBALANCE_INTERVAL_MIN = parsePositiveInt(
   process.env.MIN_REBALANCE_INTERVAL_MIN, 10,
 );
 
-/** Maximum rebalances permitted within a single 24-hour window. */
+/** Maximum rebalances per liquidity pool within a single 24-hour window. */
 const MAX_REBALANCES_PER_DAY = parsePositiveInt(
-  process.env.MAX_REBALANCES_PER_DAY, 20,
+  process.env.MAX_REBALANCES_PER_DAY, 5,
 );
 
 /** File path for the JSON rebalance event log. */

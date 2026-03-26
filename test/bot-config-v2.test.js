@@ -97,13 +97,13 @@ describe('bot-config-v2', () => {
 
       const loaded = loadConfig(dir);
       assert.equal(loaded.version, 2);
-      assert.equal(loaded.global.slippagePct, 0.3);
-      assert.equal(loaded.global.checkIntervalSec, 30);
       assert.equal(loaded.managedPositions.length, 1);
 
       const posKey = loaded.managedPositions[0];
       assert.ok(posKey.endsWith('-12345'));
       assert.equal(loaded.positions[posKey].status, 'running');
+      assert.equal(loaded.positions[posKey].slippagePct, 0.3);
+      assert.equal(loaded.positions[posKey].checkIntervalSec, 30);
       assert.equal(loaded.positions[posKey].rebalanceOutOfRangeThresholdPercent, 15);
       assert.deepEqual(loaded.positions[posKey].pnlEpochs, { some: 'data' });
       assert.equal(loaded.positions[posKey].collectedFeesUsd, 42);
@@ -115,12 +115,12 @@ describe('bot-config-v2', () => {
 
     it('v1 migration with no activePositionId produces empty managed set', () => {
       const dir = tmpDir();
-      const v1 = { slippagePct: 0.5 };
+      const v1 = { triggerType: 'threshold' };
       fs.writeFileSync(path.join(dir, '.bot-config.json'), JSON.stringify(v1));
 
       const loaded = loadConfig(dir);
       assert.equal(loaded.version, 2);
-      assert.equal(loaded.global.slippagePct, 0.5);
+      assert.equal(loaded.global.triggerType, 'threshold');
       assert.deepEqual(loaded.managedPositions, []);
       assert.deepEqual(loaded.positions, {});
     });

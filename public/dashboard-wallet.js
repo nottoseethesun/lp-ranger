@@ -26,6 +26,8 @@ let _clearPositionDisplay = null;
 let _resetPollingState = null;
 let _clearHistory = null;
 let _getPendingRouteWallet = null;
+let _resetLastFetchedId = null;
+let _fetchUnmanagedDetails = null;
 
 /** Inject position-module references. Called once from dashboard-init.js. */
 export function injectWalletDeps(deps) {
@@ -39,6 +41,8 @@ export function injectWalletDeps(deps) {
   if (deps.resetPollingState) _resetPollingState = deps.resetPollingState;
   if (deps.clearHistory) _clearHistory = deps.clearHistory;
   if (deps.getPendingRouteWallet) _getPendingRouteWallet = deps.getPendingRouteWallet;
+  if (deps.resetLastFetchedId) _resetLastFetchedId = deps.resetLastFetchedId;
+  if (deps.fetchUnmanagedDetails) _fetchUnmanagedDetails = deps.fetchUnmanagedDetails;
 }
 
 // ── Wallet state ────────────────────────────────────────────────────────────
@@ -70,31 +74,29 @@ export function isKnownWallet(address) {
   return address ? knownWallets.has(address.toLowerCase()) : false;
 }
 
+/** Reset display, polling, and history state. */
+function _resetDisplayState() {
+  if (_clearPositionDisplay) _clearPositionDisplay();
+  if (_resetPollingState) _resetPollingState();
+  if (_clearHistory) _clearHistory();
+}
+
 /** Remove positions from other wallets and reset display if any were purged. */
 function _purgeOtherWalletPositions(address) {
   if (!_posStore || !address) return false;
   const addr = address.toLowerCase();
   let purged = false;
   for (let i = _posStore.count() - 1; i >= 0; i--) {
-    if (_posStore.entries[i].walletAddress.toLowerCase() !== addr) {
-      _posStore.remove(i);
-      purged = true;
-    }
+    if (_posStore.entries[i].walletAddress.toLowerCase() !== addr) { _posStore.remove(i); purged = true; }
   }
-  if (purged) {
-    if (_clearPositionDisplay) _clearPositionDisplay();
-    if (_resetPollingState) _resetPollingState();
-    if (_clearHistory) _clearHistory();
-  }
+  if (purged) _resetDisplayState();
   return purged;
 }
 
 /** Clear all positions and reset all wallet-specific display state. */
 function _clearAllPositionState() {
   if (_posStore) { while (_posStore.count() > 0) _posStore.remove(0); }
-  if (_clearPositionDisplay) _clearPositionDisplay();
-  if (_resetPollingState) _resetPollingState();
-  if (_clearHistory) _clearHistory();
+  _resetDisplayState();
 }
 
 // ── On-chain activity check ─────────────────────────────────────────────────
@@ -197,10 +199,7 @@ async function sendWalletToServer(w, password) {
 }
 
 /** Map password field prefix to its import button ID. */
-const _PW_BTN_MAP = {
-  gen: 'genConfirmBtn', seed: 'seedImportBtn',
-  key: 'keyImportBtn',
-};
+const _PW_BTN_MAP = { gen: 'genConfirmBtn', seed: 'seedImportBtn', key: 'keyImportBtn' };
 
 function _passwordsMatch(prefix) {
   const pw   = g(prefix + 'Password');
@@ -689,8 +688,12 @@ export async function checkWalletLocked() { try { const s = await (await fetch('
 export async function submitUnlock(e) {
   if (e) e.preventDefault(); const pw = g('unlockPassword'); if (!pw) return; const errEl = g('unlockError');
   try { const d = await (await fetch('/api/wallet/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw.value }) })).json();
-    if (d.ok) { _viewOnly = false; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) { b.disabled = true; b.title = 'Wallet is already unlocked'; } const mg = g('manageToggleBtn'); if (mg) mg.disabled = false; act(ACT_ICONS.play, 'wallet', 'Wallet Unlocked', 'Position management enabled'); }
+    if (d.ok) { _viewOnly = false; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) { b.disabled = true; b.title = 'Wallet is already unlocked'; } const mg = g('manageToggleBtn'); if (mg) { mg.disabled = false; mg.title = ''; } act(ACT_ICONS.play, 'wallet', 'Wallet Unlocked', 'Position management enabled');
+      // Re-fetch unmanaged position details now that the wallet key is available (fees need it)
+      const active = _posStore?.getActive?.();
+      if (active && _resetLastFetchedId && _fetchUnmanagedDetails) { _resetLastFetchedId(); _fetchUnmanagedDetails(active); }
+    }
     else if (errEl) { errEl.textContent = d.error || 'Wrong password'; errEl.classList.remove('hidden'); }
   } catch { if (errEl) { errEl.textContent = 'Server unreachable'; errEl.classList.remove('hidden'); } }
 }
-export function dismissToViewOnly() { _viewOnly = true; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) { b.disabled = false; b.title = 'Unlock wallet to manage positions'; } const mg = g('manageToggleBtn'); if (mg) mg.disabled = true; }
+export function dismissToViewOnly() { _viewOnly = true; const m = g('walletUnlockModal'); if (m) m.classList.add('hidden'); const b = g('unlockWalletBtn'); if (b) { b.disabled = false; b.title = 'Unlock wallet to manage positions'; } const mg = g('manageToggleBtn'); if (mg) { mg.disabled = true; mg.title = 'Unlock wallet to manage positions'; } }
