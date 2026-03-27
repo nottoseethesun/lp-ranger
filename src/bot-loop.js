@@ -14,763 +14,37 @@
  */
 
 'use strict';
-const fs = require('fs');
 const path = require('path');
 const ethers = require('ethers');
 const config = require('./config');
 const rangeMath = require('./range-math');
-const walletManager = require('./wallet-manager');
 const { createThrottle } = require('./throttle');
-const { loadAndDecrypt } = require('./key-store');
 const { emojiId } = require('./logger');
 const { detectPositionType } = require('./position-detector');
-const {
-  getPoolState,
-  executeRebalance,
-  enrichResultUsd,
-} = require('./rebalancer');
+const { getPoolState } = require('./rebalancer');
 const { createPnlTracker } = require('./pnl-tracker');
 const {
-  toFloat: _toFloat,
   positionValueUsd: _positionValueUsd,
   fetchTokenPrices: _fetchTokenPrices,
-  estimateGasCostUsd: _estimateGasCostUsd,
-  actualGasCostUsd: _actualGasCostUsd,
-  updatePnlAndStats: _updatePnlAndStats,
   overridePnlWithRealValues: _overridePnlWithRealValues,
 } = require('./bot-pnl-updater');
 const { initHodlBaseline } = require('./hodl-baseline');
-const { scanRebalanceHistory } = require('./event-scanner');
 const { createCacheStore } = require('./cache-store');
 const { createResidualTracker } = require('./residual-tracker');
-const { reconstructEpochs } = require('./epoch-reconstructor');
-
-/** JSON-safe replacer that converts BigInt to string. */
-function _bigIntReplacer(_key, value) {
-  return typeof value === 'bigint' ? value.toString() : value;
-}
-
-/**
- * Append a rebalance result to the on-disk JSON log.
- * Creates the file if it does not exist.
- * @param {object} result  The rebalance result object.
- */
-function appendLog(result) {
-  const logPath = path.resolve(config.LOG_FILE);
-  let entries = [];
-  try {
-    const raw = fs.readFileSync(logPath, 'utf8');
-    entries = JSON.parse(raw);
-  } catch (_) {
-    // File missing or corrupt — start fresh.
-  }
-  entries.push({ ...result, loggedAt: new Date().toISOString() });
-  fs.writeFileSync(logPath, JSON.stringify(entries, _bigIntReplacer, 2));
-}
-
-// ── RPC provider with automatic fallback ─────────────────────────────────────
-
-/**
- * Patch `provider.getFeeData()` to guarantee a non-zero gas price.
- * PulseChain supports EIP-1559 but ethers.js v6's `getFeeData()` intermittently
- * returns null/0 for all fee fields.  When this happens, ethers submits TXs with
- * 0 gas price — they sit pending forever or get mined as failed.  This patch
- * intercepts the call and falls back to raw `eth_gasPrice` RPC when needed.
- * @param {import('ethers').JsonRpcProvider} provider
- */
-function _patchFeeData(provider) {
-  if (typeof provider.getFeeData !== 'function') return;
-  const _orig = provider.getFeeData.bind(provider);
-  provider.getFeeData = async () => {
-    const fd = await _orig();
-    console.log(
-      '[bot] feeData: gasPrice=%s maxFee=%s maxPriority=%s',
-      String(fd.gasPrice),
-      String(fd.maxFeePerGas),
-      String(fd.maxPriorityFeePerGas),
-    );
-    if (
-      (fd.gasPrice && fd.gasPrice > 0n) ||
-      (fd.maxFeePerGas && fd.maxFeePerGas > 0n)
-    )
-      return fd;
-    console.warn(
-      '[bot] getFeeData returned zero/null — falling back to eth_gasPrice RPC',
-    );
-    try {
-      const gp = BigInt(await provider.send('eth_gasPrice', []));
-      if (gp > 0n) {
-        console.log('[bot] eth_gasPrice fallback: %s', String(gp));
-        return new ethers.FeeData(gp, null, null);
-      }
-    } catch (e) {
-      console.warn('[bot] eth_gasPrice fallback failed:', e.message);
-    }
-    return fd;
-  };
-}
-
-/**
- * Creates a JsonRpcProvider, trying the primary URL first and falling back
- * to the secondary if the primary is unreachable.  The returned provider's
- * `getFeeData()` is patched to guarantee non-zero gas pricing on PulseChain.
- * @param {string} primaryUrl    Primary RPC endpoint.
- * @param {string} fallbackUrl   Fallback RPC endpoint.
- * @param {object} [ethersLib]   Injected ethers library (for testing).
- * @returns {Promise<import('ethers').JsonRpcProvider>}
- */
-async function createProviderWithFallback(
-  primaryUrl,
-  fallbackUrl,
-  ethersLib,
-) {
-  const lib = ethersLib || ethers;
-  try {
-    const provider = new lib.JsonRpcProvider(primaryUrl);
-    await provider.getBlockNumber();
-    console.log(`[bot] RPC:    ${primaryUrl}`);
-    _patchFeeData(provider);
-    return provider;
-  } catch (err) {
-    console.warn(
-      `[bot] Primary RPC unreachable (${primaryUrl}): ${err.message}`,
-    );
-    console.log(`[bot] Falling back to ${fallbackUrl}`);
-    const provider = new lib.JsonRpcProvider(fallbackUrl);
-    await provider.getBlockNumber();
-    console.log(`[bot] RPC:    ${fallbackUrl} (fallback)`);
-    _patchFeeData(provider);
-    return provider;
-  }
-}
-
-/** Close the current P&L epoch after a rebalance and open a new one. */
-async function _closePnlEpoch(deps, result) {
-  const tracker = deps._pnlTracker;
-  if (!tracker || tracker.epochCount() === 0) return;
-  try {
-    let price0 = result.token0UsdPrice,
-      price1 = result.token1UsdPrice;
-    if (price0 === undefined || price1 === undefined) {
-      const p = await _fetchTokenPrices(
-        deps.position.token0,
-        deps.position.token1,
-      );
-      price0 = p.price0;
-      price1 = p.price1;
-    }
-    const rd0 = result.decimals0 ?? 18,
-      rd1 = result.decimals1 ?? 18;
-    const exitVal =
-      result.exitValueUsd ||
-      _toFloat(result.amount0Collected, rd0) * price0 +
-        _toFloat(result.amount1Collected, rd1) * price1;
-    const gasCost = result.totalGasCostWei
-      ? await _actualGasCostUsd(result.totalGasCostWei)
-      : await _estimateGasCostUsd(deps.provider);
-    tracker.closeEpoch({
-      exitValue: exitVal,
-      gasCost,
-      token0UsdPrice: price0,
-      token1UsdPrice: price1,
-    });
-    if (deps.updateBotState)
-      deps.updateBotState({ pnlEpochs: tracker.serialize() });
-    if (deps._addCollectedFees && deps._lastUnclaimedFeesUsd) {
-      deps._addCollectedFees(deps._lastUnclaimedFeesUsd);
-      deps._lastUnclaimedFeesUsd = 0;
-    }
-    const entryVal =
-      result.entryValueUsd ||
-      _toFloat(result.amount0Minted, rd0) * price0 +
-        _toFloat(result.amount1Minted, rd1) * price1;
-    tracker.openEpoch({
-      entryValue: entryVal || exitVal,
-      entryPrice: result.currentPrice,
-      lowerPrice: rangeMath.tickToPrice(result.newTickLower, rd0, rd1),
-      upperPrice: rangeMath.tickToPrice(result.newTickUpper, rd0, rd1),
-      token0UsdPrice: price0,
-      token1UsdPrice: price1,
-    });
-  } catch (err) {
-    console.warn('[bot] P&L epoch close error:', err.message);
-  }
-}
-
-/** Resolve pool address and scan on-chain rebalance history (fire-and-forget). */
-async function _scanHistory(
-  provider,
-  ethersLib,
-  address,
-  position,
-  cache,
-  events,
-  updateState,
-  throttle,
-) {
-  try {
-    updateState({
-      rebalanceScanComplete: false,
-      rebalanceScanProgress: 0,
-    });
-    const poolState = await getPoolState(provider, ethersLib, {
-      factoryAddress: config.FACTORY,
-      token0: position.token0,
-      token1: position.token1,
-      fee: position.fee,
-    });
-    console.log(
-      `[bot] Scanning rebalance history for ${address} (pool ${poolState.poolAddress})`,
-    );
-    updateState({ rebalanceScanProgress: 5 });
-    const found = await scanRebalanceHistory(provider, ethersLib, {
-      walletAddress: address,
-      positionManagerAddress: config.POSITION_MANAGER,
-      factoryAddress: config.FACTORY,
-      poolAddress: poolState.poolAddress || null,
-      maxYears: 5,
-      cache,
-      tokenId: String(position.tokenId),
-      poolToken0: position.token0,
-      poolToken1: position.token1,
-      poolFee: position.fee,
-      onPoolCreationProgress: (done, total) =>
-        updateState({
-          rebalanceScanProgress: 5 + Math.round((done / total) * 45),
-        }),
-      onProgress: (done, total) =>
-        updateState({
-          rebalanceScanProgress: 50 + Math.round((done / total) * 45),
-        }),
-    });
-    updateState({ rebalanceScanProgress: 95 });
-    events.push(...found);
-    console.log(`[bot] Found ${found.length} historical rebalance events`);
-    if (throttle && found.length > 0) {
-      const cutoff = Math.floor(
-        (throttle.getState().dailyResetAt - 86_400_000) / 1000,
-      );
-      const recent = found.filter((e) => e.timestamp >= cutoff).length;
-      if (recent > 0) throttle.rehydrate(recent);
-    }
-    const _d = (ts) =>
-      ts ? new Date(ts * 1000).toISOString().slice(0, 10) : undefined;
-    const mintEv = found.find(
-      (e) => String(e.newTokenId) === String(position.tokenId),
-    );
-    const mintTs = mintEv?.timestamp
-      ? new Date(mintEv.timestamp * 1000).toISOString()
-      : undefined;
-    const mintDate = mintTs ? mintTs.slice(0, 10) : undefined,
-      poolFirstMintDate = _d(found.firstMintTimestamp);
-    if (mintDate)
-      console.log(
-        `[bot] Position #${position.tokenId} minted on ${mintDate}`,
-      );
-    if (poolFirstMintDate)
-      console.log(`[bot] Pool first LP minted on ${poolFirstMintDate}`);
-    const stPatch = {
-      rebalanceEvents: [...events],
-      rebalanceScanProgress: 100,
-    };
-    if (mintDate) {
-      stPatch.positionMintDate = mintDate;
-      stPatch.positionMintTimestamp = mintTs;
-    }
-    if (poolFirstMintDate) stPatch.poolFirstMintDate = poolFirstMintDate;
-    if (throttle) stPatch.throttleState = throttle.getState();
-    updateState(stPatch);
-  } catch (err) {
-    console.warn('[bot] Event scan error:', err.message);
-    updateState({ rebalanceScanComplete: true }); // error path: mark complete so UI isn't stuck
-  }
-}
-
-/** Scan history and reconstruct P&L epochs, holding the scan lock if available. */
-async function _scanAndReconstruct(
-  provider,
-  ethersLib,
-  address,
-  position,
-  cache,
-  events,
-  updateState,
-  throttle,
-  pnlTracker,
-  botState,
-) {
-  const scanLock = botState._scanLock || null;
-  const release = scanLock ? await scanLock.acquire() : null;
-  if (scanLock)
-    console.log('[bot] Scan lock acquired for #%s', position.tokenId);
-  try {
-    await _scanHistory(
-      provider,
-      ethersLib,
-      address,
-      position,
-      cache,
-      events,
-      updateState,
-      throttle,
-    );
-  } finally {
-    if (release) {
-      release();
-      console.log('[bot] Scan lock released for #%s', position.tokenId);
-    }
-  }
-  const fb = await _fetchTokenPrices(
-    position.token0,
-    position.token1,
-  ).catch(() => ({ price0: 0, price1: 0 }));
-  await reconstructEpochs({
-    pnlTracker,
-    rebalanceEvents: events,
-    botState,
-    updateBotState: updateState,
-    fallbackPrices: fb,
-  }).catch((e) =>
-    console.warn('[pnl] Epoch reconstruction error:', e.message),
-  );
-  updateState({ rebalanceScanComplete: true, rebalanceScanProgress: 100 });
-}
-
-/** Record residual delta and persist. */
-function _recordResidual(deps, result) {
-  if (!deps._residualTracker || !result.poolAddress) return;
-  deps._residualTracker.addDelta(
-    result.poolAddress,
-    result.amount0Collected - result.amount0Minted,
-    result.amount1Collected - result.amount1Minted,
-  );
-  if (deps.updateBotState)
-    deps.updateBotState({ residuals: deps._residualTracker.serialize() });
-}
-
-/** Build a serialisable activePosition snapshot from a position object. */
-function _activePosSummary(p) {
-  return {
-    tokenId: String(p.tokenId),
-    token0: p.token0,
-    token1: p.token1,
-    fee: p.fee,
-    tickLower: p.tickLower,
-    tickUpper: p.tickUpper,
-    liquidity: String(p.liquidity || 0),
-  };
-}
-/** Notify the dashboard of a successful rebalance. */
-function _notifyRebalance(deps, throttle, position, events) {
-  deps.updateBotState({
-    rebalanceCount: (deps._rebalanceCount || 0) + 1,
-    lastRebalanceAt: new Date().toISOString(),
-    throttleState: throttle.getState(),
-    rebalanceEvents: events ? [...events] : undefined,
-    activePosition: _activePosSummary(position),
-    activePositionId: String(position.tokenId),
-  });
-}
-
-/** Update HODL baseline from rebalance result. */
-function _updateHodlBaseline(botState, result, mintNow) {
-  const d0 = result.decimals0 ?? 18,
-    d1 = result.decimals1 ?? 18;
-  const a0 = _toFloat(result.amount0Minted, d0),
-    a1 = _toFloat(result.amount1Minted, d1),
-    p0 = result.token0UsdPrice || 0,
-    p1 = result.token1UsdPrice || 0;
-  botState.hodlBaseline = {
-    mintDate: mintNow.slice(0, 10),
-    mintTimestamp: mintNow,
-    entryValue: a0 * p0 + a1 * p1,
-    hodlAmount0: a0,
-    hodlAmount1: a1,
-    token0UsdPrice: p0,
-    token1UsdPrice: p1,
-  };
-}
-/** Update in-memory position + events after a successful rebalance. */
-function _applyRebalanceResult(deps, result) {
-  const { position } = deps;
-  if (result.newTokenId && result.newTokenId !== 0n)
-    position.tokenId = String(result.newTokenId);
-  position.tickLower = result.newTickLower;
-  position.tickUpper = result.newTickUpper;
-  if (result.liquidity !== undefined)
-    position.liquidity = String(result.liquidity);
-  const events = deps._rebalanceEvents;
-  if (events) {
-    const ts = Math.floor(Date.now() / 1000);
-    events.push({
-      index: events.length + 1,
-      timestamp: ts,
-      dateStr: new Date(ts * 1000).toISOString(),
-      oldTokenId: String(result.oldTokenId || '?'),
-      newTokenId: String(result.newTokenId || '?'),
-      txHash:
-        (result.txHashes && result.txHashes[result.txHashes.length - 1]) ||
-        '',
-      blockNumber: 0,
-    });
-  }
-  const mintNow = new Date().toISOString();
-  if (deps._botState) {
-    deps._botState.oorSince = null;
-    _updateHodlBaseline(deps._botState, result, mintNow);
-  }
-  console.log(
-    '[bot] Post-rebalance: position.tokenId=%s (was old, now new)',
-    String(position.tokenId),
-  );
-  if (!deps.updateBotState) return;
-  _notifyRebalance(
-    deps,
-    deps.throttle || deps._throttle,
-    position,
-    events,
-  );
-  const patch = {
-    oorSince: null,
-    positionMintDate: mintNow.slice(0, 10),
-    positionMintTimestamp: mintNow,
-    pnlSnapshot: null,
-  };
-  if (
-    result.requestedRangePct &&
-    result.effectiveRangePct &&
-    Math.abs(result.effectiveRangePct - result.requestedRangePct) > 0.01
-  )
-    patch.rangeRounded = {
-      requested: result.requestedRangePct,
-      effective: result.effectiveRangePct,
-    };
-  deps.updateBotState(patch);
-}
-
-async function _executeAndRecord(deps, ethersLib) {
-  const { signer, position, throttle } = deps;
-  console.log(
-    '[bot] Position out of range — rebalancing… %s NFT #%s',
-    emojiId(position.tokenId),
-    position.tokenId,
-  );
-  const lock = deps._rebalanceLock;
-  const release = lock ? await lock.acquire() : null;
-  if (lock)
-    console.log(
-      '[bot] Rebalance lock acquired for #%s (pending: %d)',
-      position.tokenId,
-      lock.pending(),
-    );
-  const state = deps._botState || {};
-  state.rebalanceInProgress = true;
-  try {
-    const crw = state.customRangeWidthPct;
-    const result = await executeRebalance(signer, ethersLib, {
-      position,
-      factoryAddress: config.FACTORY,
-      positionManagerAddress: config.POSITION_MANAGER,
-      swapRouterAddress: config.SWAP_ROUTER,
-      slippagePct: deps._getConfig?.('slippagePct') ?? config.SLIPPAGE_PCT,
-      ...(crw ? { customRangeWidthPct: crw } : {}),
-    });
-    if (result.success) {
-      if (crw) delete state.customRangeWidthPct;
-      throttle.recordRebalance();
-      if (deps._recordPoolRebalance && deps._poolKey)
-        deps._recordPoolRebalance(
-          deps._poolKey(position.token0, position.token1, position.fee),
-        );
-      try {
-        await enrichResultUsd(
-          result,
-          () => _fetchTokenPrices(position.token0, position.token1),
-          position.token0,
-          position.token1,
-        );
-      } catch (_) {
-        /* prices unavailable */
-      }
-      _recordResidual(deps, result);
-      appendLog(result);
-      console.log(
-        '[bot] Rebalance OK — new tokenId: #%s %s',
-        String(result.newTokenId),
-        emojiId(String(result.newTokenId)),
-      );
-      await _closePnlEpoch(deps, result);
-      _applyRebalanceResult(deps, result);
-    } else {
-      console.error('[bot] Rebalance failed:', result.error);
-      if (result.cancelled) {
-        console.warn(
-          '[bot] TX was auto-cancelled (nonce freed). Cancel TX: %s',
-          result.cancelTxHash || 'unknown',
-        );
-        if (deps.updateBotState)
-          deps.updateBotState({
-            txCancelled: {
-              message: result.error,
-              cancelTxHash: result.cancelTxHash,
-              at: new Date().toISOString(),
-            },
-          });
-      }
-    }
-    state.rebalanceInProgress = false;
-    return {
-      rebalanced: result.success,
-      error: result.error,
-      cancelled: result.cancelled,
-    };
-  } finally {
-    if (release) {
-      release();
-      console.log(
-        '[bot] Rebalance lock released for #%s',
-        position.tokenId,
-      );
-    }
-  }
-}
-
-/** Check whether the OOR timeout has expired (position continuously OOR). */
-function _isTimeoutExpired(bs, gc) {
-  const t = gc?.('rebalanceTimeoutMin') ?? config.REBALANCE_TIMEOUT_MIN;
-  return t > 0 && bs.oorSince && Date.now() - bs.oorSince >= t * 60_000;
-}
-
-/** Check whether the price has moved beyond the OOR threshold. */
-function _isBeyondThreshold(poolState, position, gc) {
-  const threshPct =
-    (gc?.('rebalanceOutOfRangeThresholdPercent') ??
-      config.REBALANCE_OOR_THRESHOLD_PCT ??
-      5) / 100;
-  if (threshPct <= 0) return true;
-  const lp = rangeMath.tickToPrice(
-      position.tickLower,
-      poolState.decimals0,
-      poolState.decimals1,
-    ),
-    up = rangeMath.tickToPrice(
-      position.tickUpper,
-      poolState.decimals0,
-      poolState.decimals1,
-    );
-  if (
-    poolState.price < lp - (up - lp) * threshPct ||
-    poolState.price > up + (up - lp) * threshPct
-  )
-    return true;
-  console.log(`[bot] OOR but within ${threshPct * 100}% threshold`);
-  return false;
-}
-
-// ── Poll cycle ───────────────────────────────────────────────────────────────
-
-/**
- * Check if estimated gas cost exceeds 0.5% of position value.
- * @param {import('ethers').JsonRpcProvider} provider
- * @param {object} position  Active V3 NFT position data.
- * @param {object} poolState Pool state from getPoolState().
- * @returns {Promise<boolean>} True if gas is too expensive and rebalance should be deferred.
- */
-async function _isGasTooHigh(provider, position, poolState) {
-  try {
-    const gasCost = await _estimateGasCostUsd(provider);
-    const prices = await _fetchTokenPrices(
-      position.token0,
-      position.token1,
-    );
-    const posValue = _positionValueUsd(
-      position,
-      poolState,
-      prices.price0,
-      prices.price1,
-    );
-    if (posValue > 0 && gasCost > 0 && gasCost / posValue > 0.005) {
-      console.warn(
-        `[bot] Gas too high: $${gasCost.toFixed(4)} is ${((gasCost / posValue) * 100).toFixed(2)}% of position ($${posValue.toFixed(2)}) — deferring`,
-      );
-      return true;
-    }
-  } catch (_) {
-    /* proceed if gas check fails */
-  }
-  return false;
-}
-
-/** Check range, threshold, and OOR timeout.  Returns early result or null. */
-function _checkRangeAndThreshold(deps, poolState, emit) {
-  const { position } = deps;
-  const forced = !!deps._botState?.forceRebalance;
-  const botSt = deps._botState || {};
-  const inRange =
-    poolState.tick >= position.tickLower &&
-    poolState.tick < position.tickUpper;
-  if (inRange && !forced) {
-    if (botSt.oorSince) {
-      botSt.oorSince = null;
-      emit({ oorSince: null });
-    }
-    return { rebalanced: false, inRange: true };
-  }
-  const gc = deps._getConfig;
-  const beyondThreshold =
-    forced || _isBeyondThreshold(poolState, position, gc);
-  if (!beyondThreshold) {
-    if (!botSt.oorSince) {
-      botSt.oorSince = Date.now();
-      emit({ oorSince: botSt.oorSince });
-    }
-    if (!_isTimeoutExpired(botSt, gc)) {
-      emit({ withinThreshold: true });
-      return { rebalanced: false, withinThreshold: true };
-    }
-    console.log('[bot] OOR timeout expired — triggering rebalance');
-  } else if (!forced && !botSt.oorSince) {
-    botSt.oorSince = Date.now();
-    emit({ oorSince: botSt.oorSince });
-  }
-  emit({ withinThreshold: false });
-  return null;
-}
-
-/** Check throttle, daily cap, dry-run, and gas before executing.  Returns early result or null. */
-/** Rewrite low-level RPC errors into user-readable messages. */
-function _humanizeError(msg) {
-  if (/insufficient funds|INSUFFICIENT_FUNDS/i.test(msg))
-    return 'Wallet has insufficient gas to send transactions. Send native tokens (e.g. PLS) to the wallet and retry.';
-  return msg;
-}
-
-function _checkRebalanceGates(deps, poolState, forced) {
-  const { throttle, dryRun } = deps;
-  const emit = deps.updateBotState || (() => {});
-  // Skip rebalance while paused from a prior swap abort (user must adjust slippage
-  // or use the manual Rebalance button, which sets forceRebalance and clears the flag)
-  if (!forced && deps._botState?.rebalancePaused)
-    return { rebalanced: false, paused: true };
-  const can = !forced && throttle.canRebalance();
-  if (can && !can.allowed) {
-    console.log(
-      `[bot] OOR but throttled (${can.reason}), wait ${Math.ceil(can.msUntilAllowed / 1000)}s`,
-    );
-    emit({ throttleState: throttle.getState() });
-    return { rebalanced: false };
-  }
-  if (!forced && deps._canRebalancePool && deps._poolKey) {
-    const pk = deps._poolKey(
-      deps.position.token0,
-      deps.position.token1,
-      deps.position.fee,
-    );
-    const max =
-      deps.throttle.getState().dailyMax || config.MAX_REBALANCES_PER_DAY;
-    if (!deps._canRebalancePool(pk, max)) {
-      console.log(
-        '[bot] OOR but pool daily rebalance cap reached (%d/%d) — deferring',
-        max,
-        max,
-      );
-      return { rebalanced: false };
-    }
-  }
-  if (dryRun) {
-    console.log(
-      `[bot] DRY RUN — OOR, price=${poolState.price} tick=${poolState.tick} range=[${deps.position.tickLower},${deps.position.tickUpper}]`,
-    );
-    return { rebalanced: false };
-  }
-  return null;
-}
-
-/** Single poll iteration: check range, threshold, throttle, then rebalance if needed. */
-async function pollCycle(deps) {
-  const { provider, position, throttle } = deps;
-  const ethersLib = deps._ethersLib || ethers;
-  const emit = deps.updateBotState || (() => {});
-  throttle.tick();
-  let poolState;
-  try {
-    poolState = await getPoolState(provider, ethersLib, {
-      factoryAddress: config.FACTORY,
-      token0: position.token0,
-      token1: position.token1,
-      fee: position.fee,
-    });
-  } catch (err) {
-    console.error('[bot] Pool state error:', err.message);
-    return { rebalanced: false, error: err.message };
-  }
-  await _updatePnlAndStats(deps, poolState, ethersLib);
-  if (
-    BigInt(position.liquidity) === 0n &&
-    !deps._botState?.forceRebalance
-  ) {
-    console.log(
-      '[bot] Position closed (0 liquidity, force=%s) — skipping',
-      !!deps._botState?.forceRebalance,
-    );
-    return { rebalanced: false };
-  }
-  const rangeCheck = _checkRangeAndThreshold(deps, poolState, emit);
-  if (rangeCheck) return rangeCheck;
-  const forced = !!deps._botState?.forceRebalance;
-  console.log(
-    '[bot] pollCycle: OOR on #%s, forced=%s, tick=%d range=[%d,%d]',
-    position.tokenId,
-    forced,
-    poolState.tick,
-    position.tickLower,
-    position.tickUpper,
-  );
-  const gate = _checkRebalanceGates(deps, poolState, forced);
-  if (gate) return gate;
-  if (await _isGasTooHigh(provider, position, poolState))
-    return { rebalanced: false, gasDeferred: true };
-  return _executeAndRecord(deps, ethersLib);
-}
-
-// ── Private key resolution ───────────────────────────────────────────────────
-
-/**
- * Resolve a private key from available sources, in priority order:
- *   1. config.PRIVATE_KEY (env var)
- *   2. config.KEY_FILE + password → loadAndDecrypt()
- *   3. walletManager.hasWallet() + password → walletManager.revealWallet()
- *   4. Returns null if none available.
- *
- * @param {object} opts
- * @param {Function|null} [opts.askPassword]  Interactive password prompt (null = non-interactive).
- * @returns {Promise<string|null>}  Hex private key, or null.
- */
-async function resolvePrivateKey(opts = {}) {
-  const { askPassword } = opts;
-  // 1. PRIVATE_KEY env var
-  if (config.PRIVATE_KEY) return config.PRIVATE_KEY;
-  // 2. Encrypted key file
-  if (config.KEY_FILE) {
-    const password =
-      config.KEY_PASSWORD ||
-      (askPassword &&
-        (await askPassword('[bot] Enter key-file password: ')));
-    if (!password) return null;
-    console.log(
-      `[bot] Loading private key from encrypted file: ${config.KEY_FILE}`,
-    );
-    return loadAndDecrypt(password, config.KEY_FILE);
-  }
-  // 3. Wallet manager (dashboard-imported wallet) — interactive prompt only (no .env password)
-  if (walletManager.hasWallet() && askPassword) {
-    const password = await askPassword('[bot] Enter wallet password: ');
-    if (!password) return null;
-    console.log('[bot] Loading private key from imported wallet');
-    return (await walletManager.revealWallet(password)).privateKey;
-  }
-  return null;
-}
+const {
+  createProviderWithFallback,
+} = require('./bot-provider');
+const {
+  appendLog,
+  _scanAndReconstruct,
+  _activePosSummary,
+} = require('./bot-recorder');
+const {
+  pollCycle,
+  resolvePrivateKey,
+  _reloadFromConfig,
+  _humanizeError,
+} = require('./bot-cycle');
 
 /** Initialize or restore the P&L tracker with epoch data. */
 function _initPnlTracker(
@@ -814,32 +88,44 @@ async function _detectPosition(provider, address, targetId) {
     walletAddress: address,
     positionManagerAddress: config.POSITION_MANAGER,
     tokenId: targetId,
-    candidateAddress: config.ERC20_POSITION_ADDRESS || undefined,
+    candidateAddress:
+      config.ERC20_POSITION_ADDRESS || undefined,
   });
   if (detection.type !== 'nft' || !detection.nftPositions?.length)
     throw new Error(
       'No V3 NFT position found. This tool only supports V3 positions.',
     );
-  const valid = detection.nftPositions.filter((p) => p.fee && p.fee > 0);
+  const valid = detection.nftPositions.filter(
+    (p) => p.fee && p.fee > 0,
+  );
   if (!valid.length)
-    throw new Error('No positions with a valid V3 fee tier found.');
+    throw new Error(
+      'No positions with a valid V3 fee tier found.',
+    );
   console.log(
     '[bot] _detectPosition: targetId=%s, found %d valid NFTs: %s',
     targetId || 'none',
     valid.length,
     valid
-      .map((p) => `#${p.tokenId}(liq=${String(p.liquidity).slice(0, 8)})`)
+      .map(
+        (p) =>
+          `#${p.tokenId}(liq=${String(p.liquidity).slice(0, 8)})`,
+      )
       .join(', '),
   );
   if (targetId) {
-    const m = valid.find((p) => String(p.tokenId) === String(targetId));
+    const m = valid.find(
+      (p) => String(p.tokenId) === String(targetId),
+    );
     console.log(
       '[bot] _detectPosition: targetId match=%s',
       m ? `#${m.tokenId}` : 'MISS→fallback',
     );
     return m || valid[0];
   }
-  const active = valid.filter((p) => BigInt(p.liquidity || 0n) > 0n);
+  const active = valid.filter(
+    (p) => BigInt(p.liquidity || 0n) > 0n,
+  );
   const picked =
     active.length > 0
       ? active.reduce((best, p) =>
@@ -859,19 +145,6 @@ async function _detectPosition(provider, address, targetId) {
   return picked;
 }
 
-/**
- * Start the bot polling loop.  Creates provider, signer, detects position,
- * and begins periodic polling.
- *
- * @param {object} opts
- * @param {string}   opts.privateKey       Hex private key.
- * @param {boolean}  [opts.dryRun]         Dry-run mode (default: config.DRY_RUN).
- * @param {Function} opts.updateBotState   Callback to update shared bot state.
- * @param {object}   opts.botState         Shared bot state object for runtime params.
- * @param {object}   [opts.ethersLib]      Injected ethers (for testing).
- * @param {string}   [opts.positionId]     NFT token ID to manage (overrides config).
- * @returns {Promise<{ stop: Function }>}  Handle with stop() method.
- */
 /** Initialize P&L tracker from token prices. Returns null if prices unavailable. */
 async function _tryInitPnlTracker(
   provider,
@@ -924,18 +197,19 @@ async function _tryInitPnlTracker(
   return null;
 }
 
-/** Reload config values from disk on each poll cycle. */
-function _reloadFromConfig(gc, throttle, setIntervalMs) {
-  const ci = gc('checkIntervalSec');
-  if (ci) setIntervalMs(ci * 1000);
-  throttle.configure({
-    minIntervalMs:
-      (gc('minRebalanceIntervalMin') ||
-        config.MIN_REBALANCE_INTERVAL_MIN) * 60_000,
-    dailyMax: gc('maxRebalancesPerDay') || config.MAX_REBALANCES_PER_DAY,
-  });
-}
-
+/**
+ * Start the bot polling loop.  Creates provider, signer, detects position,
+ * and begins periodic polling.
+ *
+ * @param {object} opts
+ * @param {string}   opts.privateKey       Hex private key.
+ * @param {boolean}  [opts.dryRun]         Dry-run mode (default: config.DRY_RUN).
+ * @param {Function} opts.updateBotState   Callback to update shared bot state.
+ * @param {object}   opts.botState         Shared bot state object for runtime params.
+ * @param {object}   [opts.ethersLib]      Injected ethers (for testing).
+ * @param {string}   [opts.positionId]     NFT token ID to manage (overrides config).
+ * @returns {Promise<{ stop: Function }>}  Handle with stop() method.
+ */
 async function startBotLoop(opts) {
   const { privateKey, updateBotState, botState } = opts;
   const gc = opts.getConfig || (() => undefined);
@@ -956,7 +230,9 @@ async function startBotLoop(opts) {
       : new ethersLib.Wallet(privateKey, provider);
   const address = await signer.getAddress();
   if (dryRun && !privateKey)
-    console.log(`[bot] DRY RUN — using random address: ${address}`);
+    console.log(
+      `[bot] DRY RUN — using random address: ${address}`,
+    );
   console.log(`[bot] Wallet: ${address}`);
   const position = await _detectPosition(
     provider,
@@ -976,7 +252,8 @@ async function startBotLoop(opts) {
   );
 
   const residualTracker = createResidualTracker();
-  if (botState.residuals) residualTracker.deserialize(botState.residuals);
+  if (botState.residuals)
+    residualTracker.deserialize(botState.residuals);
   initHodlBaseline(
     provider,
     ethersLib,
@@ -984,10 +261,14 @@ async function startBotLoop(opts) {
     botState,
     updateBotState,
   ).catch((err) =>
-    console.warn('[bot] HODL baseline background error:', err.message),
+    console.warn(
+      '[bot] HODL baseline background error:',
+      err.message,
+    ),
   );
   const throttle = createThrottle({
-    minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60_000,
+    minIntervalMs:
+      config.MIN_REBALANCE_INTERVAL_MIN * 60_000,
     dailyMax: config.MAX_REBALANCES_PER_DAY,
   });
   const rebalanceEvents = [],
@@ -995,7 +276,9 @@ async function startBotLoop(opts) {
       filePath: path.join(
         process.cwd(),
         'tmp',
-        'event-cache-' + String(position.tokenId) + '.json',
+        'event-cache-' +
+          String(position.tokenId) +
+          '.json',
       ),
     });
   updateBotState({
@@ -1051,7 +334,8 @@ async function startBotLoop(opts) {
         rebalanceCount++;
         firstFailureAt = null;
         currentIntervalMs =
-          (gc('checkIntervalSec') || config.CHECK_INTERVAL_SEC) * 1000;
+          (gc('checkIntervalSec') ||
+            config.CHECK_INTERVAL_SEC) * 1000;
         cache.clear().catch(() => {}); // Invalidate event cache so next scan finds the new NFT
         updateBotState({
           rebalanceError: null,
@@ -1059,7 +343,10 @@ async function startBotLoop(opts) {
           forceRebalance: false,
         });
         if (botState.rangeRounded)
-          setTimeout(() => updateBotState({ rangeRounded: null }), 5000);
+          setTimeout(
+            () => updateBotState({ rangeRounded: null }),
+            5000,
+          );
       } else if (result.gasDeferred) {
         currentIntervalMs = GAS_DEFER_MS;
         console.log(
@@ -1071,22 +358,31 @@ async function startBotLoop(opts) {
         console.error(
           `[bot] Rebalance failed: ${errMsg} (${Math.round((Date.now() - firstFailureAt) / 60_000)}m of failures)`,
         );
-        updateBotState({ rebalanceError: errMsg, rebalancePaused: true });
+        updateBotState({
+          rebalanceError: errMsg,
+          rebalancePaused: true,
+        });
       } else if (firstFailureAt && !result.paused) {
-        const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
+        const oorMin = Math.round(
+          (Date.now() - firstFailureAt) / 60_000,
+        );
         console.log(
           `[bot] Price returned to range after ~${oorMin}m of failures — clearing`,
         );
         firstFailureAt = null;
         currentIntervalMs =
-          (gc('checkIntervalSec') || config.CHECK_INTERVAL_SEC) * 1000;
+          (gc('checkIntervalSec') ||
+            config.CHECK_INTERVAL_SEC) * 1000;
         updateBotState({
           rebalanceError: null,
           rebalancePaused: false,
           oorRecoveredMin: oorMin,
         });
         // Clear after one poll so the dashboard doesn't re-show on refresh
-        setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);
+        setTimeout(
+          () => updateBotState({ oorRecoveredMin: 0 }),
+          5000,
+        );
       }
     } catch (err) {
       if (!firstFailureAt) firstFailureAt = Date.now();
@@ -1111,7 +407,9 @@ async function startBotLoop(opts) {
   };
 
   await poll(); // First poll — gives the dashboard current position data
-  console.log(`[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`);
+  console.log(
+    `[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`,
+  );
   clearTimeout(timer);
   await _scanAndReconstruct(
     provider,
