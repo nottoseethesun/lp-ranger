@@ -439,6 +439,8 @@ export function _applyLocalPositionData(pos) {
   _setText('wsPool', t0Sym + ' / ' + t1Sym);
   _setText('wsFee', (pos.fee / 10000).toFixed(2) + '%');
   _setText('kpiDeposit', '\u2014');
+  _setText('ltPnlLabel', 'Net Profit and Loss Return');
+  _setText('kpiPnlPct', '');
   const statusEl = g('curPosStatus');
   if (statusEl) {
     const closed = isPositionClosed(pos);
