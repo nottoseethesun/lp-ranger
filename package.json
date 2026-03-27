@@ -1,6 +1,6 @@
 {
   "name": "9mm-v3-position-manager",
-  "version": "2.0.0",
+  "version": "0.2.2",
   "description": "Auto-rebalancing position manager for 9mm v3 (Uniswap v3 fork) on PulseChain",
   "main": "server.js",
   "scripts": {
@@ -27,26 +27,26 @@
     "restore-settings": "bash scripts/restore-settings.sh"
   },
   "dependencies": {
-    "@fontsource/rye": "^5.2.7",
-    "@uniswap/v3-periphery": "^1.4.4",
-    "@uniswap/v3-sdk": "~3.28.0",
-    "async-mutex": "^0.5.0",
-    "dotenv": "^16.0.0",
-    "ethers": "^6.7.1",
-    "jsbi": "^4.3.0",
-    "navigo": "^8.11.1"
+    "@fontsource/rye": "5.2.7",
+    "@uniswap/v3-periphery": "1.4.4",
+    "@uniswap/v3-sdk": "3.28.0",
+    "async-mutex": "0.5.0",
+    "dotenv": "16.6.1",
+    "ethers": "6.16.0",
+    "jsbi": "4.3.2",
+    "navigo": "8.11.1"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@fontsource/space-mono": "^5.2.9",
-    "@fontsource/urbanist": "^5.2.7",
-    "esbuild": "^0.27.4",
-    "eslint": "^10.0.3",
-    "globals": "^17.4.0",
-    "knip": "^5.86.0",
-    "markdownlint-cli2": "^0.22.0",
-    "stylelint": "^17.4.0",
-    "stylelint-config-standard": "^40.0.0"
+    "@eslint/js": "10.0.1",
+    "@fontsource/space-mono": "5.2.9",
+    "@fontsource/urbanist": "5.2.7",
+    "esbuild": "0.27.4",
+    "eslint": "10.1.0",
+    "globals": "17.4.0",
+    "knip": "5.88.1",
+    "markdownlint-cli2": "0.22.0",
+    "stylelint": "17.5.0",
+    "stylelint-config-standard": "40.0.0"
   },
   "overrides": {
     "@uniswap/v3-staker": "1.0.2",
