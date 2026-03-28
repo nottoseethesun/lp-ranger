@@ -580,6 +580,8 @@ const _routes = {
     _routeHandlers._handleWalletReveal,
   'POST /api/positions/scan':
     _routeHandlers._handlePositionsScan,
+  'POST /api/positions/refresh':
+    _routeHandlers._handlePositionsRefresh,
   'POST /api/rebalance': async (req, res) => {
     let body = {};
     try {

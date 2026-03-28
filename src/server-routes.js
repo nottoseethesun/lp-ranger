@@ -12,9 +12,7 @@ const {
   getPositionConfig, saveConfig,
   readConfigValue, GLOBAL_KEYS, POSITION_KEYS,
 } = require('./bot-config-v2');
-const {
-  detectPositionType,
-} = require('./position-detector');
+// position-detector used via server-scan.js
 const {
   startBotLoop, resolvePrivateKey,
 } = require('./bot-loop');
@@ -136,111 +134,29 @@ function createRouteHandlers(deps) {
     });
   }
 
-  /**
-   * Resolve the on-chain symbol for a token.
-   * @param {object} provider  ethers provider
-   * @param {string} address   Token address
-   * @returns {Promise<string>}
-   */
-  async function _resolveTokenSymbol(prov, addr) {
-    if (!addr) return '?';
-    const fb =
-      addr.slice(0, 6) + '\u2026' + addr.slice(-4);
-    try {
-      const eth = require('ethers');
-      const c = new eth.Contract(addr, [
-        'function symbol() view returns (string)',
-        'function name() view returns (string)',
-      ], prov);
-      const nm = await c.name().catch(() => null);
-      if (nm) return nm;
-      const sym =
-        await c.symbol().catch(() => null);
-      return sym || fb;
-    } catch { return fb; }
-  }
-
-  async function _handlePositionsScan(req, res) {
-    const wSt = walletManager.getStatus();
-    if (!wSt.loaded)
-      return jsonResponse(res, 400, {
-        ok: false,
-        error: 'No wallet loaded.'
-          + ' Import a wallet first.',
-      });
-    const body = await readJsonBody(req);
-    const rpcUrl = body.rpcUrl || config.RPC_URL;
-    const pmAddr = body.positionManagerAddress
-      || config.POSITION_MANAGER;
-    const ethers = require('ethers');
-    const prov = new ethers.JsonRpcProvider(rpcUrl);
-    const result = await detectPositionType(prov, {
-      walletAddress: wSt.address,
-      positionManagerAddress: pmAddr,
-      candidateAddress:
-        body.erc20Address || undefined,
-    });
-    const addrSet = new Set();
-    for (const p of result.nftPositions || []) {
-      addrSet.add(p.token0); addrSet.add(p.token1);
-    }
-    for (const p of result.erc20Positions || []) {
-      if (p.token0) addrSet.add(p.token0);
-      if (p.token1) addrSet.add(p.token1);
-    }
-    const symMap = {};
-    await Promise.all([...addrSet].map(async (a) => {
-      symMap[a] = await _resolveTokenSymbol(prov, a);
-    }));
-    const poolTickMap = {};
-    const { getPoolState } = require('./rebalancer');
-    const poolSet = new Set(
-      (result.nftPositions || [])
-        .filter((p) => p.fee && p.fee > 0)
-        .map((p) =>
-          p.token0 + '-' + p.token1 + '-' + p.fee),
-    );
-    await Promise.all([...poolSet].map(async (k) => {
-      try {
-        const [t0, t1, fee] = k.split('-');
-        const ps = await getPoolState(
-          prov, ethers, {
-            factoryAddress: config.FACTORY,
-            token0: t0, token1: t1,
-            fee: Number(fee),
-          },
-        );
-        poolTickMap[k] = ps.tick;
-      } catch { /* pool query failed */ }
-    }));
-    const poolKey = (p) =>
-      p.token0 + '-' + p.token1 + '-' + p.fee;
-    jsonResponse(res, 200, {
-      ok: true,
-      type: result.type,
-      positionManagerAddress: pmAddr,
-      nftPositions: (result.nftPositions || []).map(
-        (p) => ({
-          ...p,
-          tokenId: String(p.tokenId),
-          liquidity: String(p.liquidity),
-          token0Symbol: symMap[p.token0] || '?',
-          token1Symbol: symMap[p.token1] || '?',
-          poolTick:
-            poolTickMap[poolKey(p)] ?? null,
-        }),
-      ),
-      erc20Positions: (
-        result.erc20Positions || []
-      ).map((p) => ({
-        ...p,
-        token0Symbol: p.token0
-          ? symMap[p.token0] || '?' : '?',
-        token1Symbol: p.token1
-          ? symMap[p.token1] || '?' : '?',
-      })),
-    });
-  }
+  // Scan handlers delegated to server-scan.js
+  const { createScanHandlers } = require('./server-scan');
+  let _globalScanStatus = 'idle';
+  let _globalScanProgress = null;
+  const scanHandlers = createScanHandlers({
+    walletManager,
+    jsonResponse,
+    readJsonBody,
+    getGlobalScanStatus: () => ({
+      status: _globalScanStatus,
+      progress: _globalScanProgress,
+    }),
+    setGlobalScanStatus: (s, p) => {
+      _globalScanStatus = s;
+      _globalScanProgress = p || null;
+    },
+  });
+  const _handlePositionsScan =
+    scanHandlers._handlePositionsScan;
+  const _handlePositionsRefresh =
+    scanHandlers._handlePositionsRefresh;
+  const _resolveTokenSymbol =
+    scanHandlers.resolveTokenSymbol;
 
   async function _handleShutdown(_req, res, srv) {
     jsonResponse(res, 200, {
@@ -470,6 +386,7 @@ function createRouteHandlers(deps) {
     _handleWalletReveal,
     _resolveTokenSymbol,
     _handlePositionsScan,
+    _handlePositionsRefresh,
     _handleShutdown,
     _handlePositionDetails,
     _handlePositionLifetime,
