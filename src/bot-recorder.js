@@ -227,12 +227,18 @@ async function _scanAndReconstruct(
   pnlTracker,
   botState,
 ) {
-  const scanLock = botState._scanLock || null;
+  const pk = botState._poolKey && position.token0
+    ? botState._poolKey(
+      position.token0, position.token1, position.fee,
+    ) : null;
+  const scanLock = pk && botState._getPoolScanLock
+    ? botState._getPoolScanLock(pk)
+    : (botState._scanLock || null);
   const release = scanLock ? await scanLock.acquire() : null;
   if (scanLock)
     console.log(
-      '[bot] Scan lock acquired for #%s',
-      position.tokenId,
+      '[bot] Scan lock acquired for #%s (pool %s)',
+      position.tokenId, pk || 'global',
     );
   try {
     await _scanHistory(
@@ -249,8 +255,8 @@ async function _scanAndReconstruct(
     if (release) {
       release();
       console.log(
-        '[bot] Scan lock released for #%s',
-        position.tokenId,
+        '[bot] Scan lock released for #%s (pool %s)',
+        position.tokenId, pk || 'global',
       );
     }
   }

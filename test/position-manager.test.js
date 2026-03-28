@@ -293,4 +293,33 @@ describe('position-manager', () => {
       assert.equal(mgr.runningCount(), 2);
     });
   });
+
+  describe('getPoolScanLock', () => {
+    it('returns same mutex for same pool key', () => {
+      const mgr = createPositionManager({
+        rebalanceLock: createRebalanceLock(),
+      });
+      const a = mgr.getPoolScanLock('0xa-0xb-3000');
+      const b = mgr.getPoolScanLock('0xa-0xb-3000');
+      assert.equal(a, b);
+    });
+
+    it('returns different mutex for different pool keys', () => {
+      const mgr = createPositionManager({
+        rebalanceLock: createRebalanceLock(),
+      });
+      const a = mgr.getPoolScanLock('0xa-0xb-3000');
+      const b = mgr.getPoolScanLock('0xa-0xb-10000');
+      assert.notEqual(a, b);
+    });
+
+    it('is independent from global scan lock', () => {
+      const mgr = createPositionManager({
+        rebalanceLock: createRebalanceLock(),
+      });
+      const global = mgr.getScanLock();
+      const pool = mgr.getPoolScanLock('0xa-0xb-3000');
+      assert.notEqual(global, pool);
+    });
+  });
 });

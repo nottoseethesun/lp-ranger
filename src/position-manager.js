@@ -44,8 +44,11 @@ function createPositionManager(opts) {
   /** @type {Map<string, ManagedPosition>} */
   const _positions = new Map();
 
-  /** Shared scan lock — ensures only one event scan runs at a time across all positions. */
+  /** Global scan lock — fallback for callers without pool context. */
   const _scanLock = new Mutex();
+
+  /** Per-pool scan locks — different pools scan in parallel, same pool serializes. */
+  const _poolScanLocks = new Map();
 
   /** Per-pool daily rebalance counters. Key = "token0-token1-fee" (lowercase). */
   const _poolDailyCounts = new Map();
@@ -258,6 +261,17 @@ function createPositionManager(opts) {
     return _scanLock;
   }
 
+  /**
+   * Per-pool scan lock — different pools scan in parallel.
+   * @param {string} pk  Pool key from poolKey().
+   * @returns {Mutex}
+   */
+  function getPoolScanLock(pk) {
+    if (!_poolScanLocks.has(pk))
+      _poolScanLocks.set(pk, new Mutex());
+    return _poolScanLocks.get(pk);
+  }
+
   return {
     startPosition,
     pausePosition,
@@ -276,6 +290,7 @@ function createPositionManager(opts) {
     getPoolDailyCounts,
     getRebalanceLock,
     getScanLock,
+    getPoolScanLock,
   };
 }
 

@@ -134,6 +134,7 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
 function attachMultiPosDeps(botState, positionMgr) {
   botState._rebalanceLock = positionMgr.getRebalanceLock();
   botState._scanLock = positionMgr.getScanLock();
+  botState._getPoolScanLock = positionMgr.getPoolScanLock;
   botState._poolKey = positionMgr.poolKey;
   botState._canRebalancePool = positionMgr.canRebalancePool;
   botState._recordPoolRebalance = positionMgr.recordPoolRebalance;
