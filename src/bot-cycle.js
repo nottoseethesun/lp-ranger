@@ -343,8 +343,10 @@ async function pollCycle(deps) {
  */
 async function resolvePrivateKey(opts = {}) {
   const { askPassword } = opts;
-  // 1. PRIVATE_KEY env var
-  if (config.PRIVATE_KEY) return config.PRIVATE_KEY;
+  // 1. PRIVATE_KEY env var (must be valid 32-byte hex)
+  if (config.PRIVATE_KEY
+    && /^(0x)?[0-9a-f]{64}$/i.test(config.PRIVATE_KEY))
+    return config.PRIVATE_KEY;
   // 2. Encrypted key file
   if (config.KEY_FILE) {
     const password =

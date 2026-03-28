@@ -166,11 +166,21 @@ describe('bot-loop: resolvePrivateKey', () => {
     cfg.KEY_PASSWORD = orig.kp;
     cfg.WALLET_PASSWORD = orig.wp;
   });
-  it('returns PRIVATE_KEY when set', async () => {
-    cfg.PRIVATE_KEY = '0xabc123';
+  it('returns PRIVATE_KEY when valid 32-byte hex', async () => {
+    const validKey = '0x' + 'ab'.repeat(32);
+    cfg.PRIVATE_KEY = validKey;
     assert.strictEqual(
       await resolvePrivateKey({ askPassword: null }),
-      '0xabc123',
+      validKey,
+    );
+  });
+  it('rejects placeholder PRIVATE_KEY as invalid', async () => {
+    cfg.PRIVATE_KEY = '0xYOUR_WALLET_PRIVATE_KEY';
+    cfg.KEY_FILE = null;
+    cfg.WALLET_PASSWORD = null;
+    assert.strictEqual(
+      await resolvePrivateKey({ askPassword: null }),
+      null,
     );
   });
   it('returns null when no sources available', async () => {
@@ -192,12 +202,13 @@ describe('bot-loop: resolvePrivateKey', () => {
     );
   });
   it('PRIVATE_KEY takes priority over KEY_FILE', async () => {
-    cfg.PRIVATE_KEY = '0xfirst';
+    const validKey = '0x' + 'cd'.repeat(32);
+    cfg.PRIVATE_KEY = validKey;
     cfg.KEY_FILE = '/tmp/fake-keyfile';
     cfg.KEY_PASSWORD = 'pw';
     assert.strictEqual(
       await resolvePrivateKey({ askPassword: null }),
-      '0xfirst',
+      validKey,
     );
   });
 });
