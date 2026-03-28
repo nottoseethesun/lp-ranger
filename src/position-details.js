@@ -8,7 +8,6 @@
 
 'use strict';
 
-const path = require('path');
 const config = require('./config');
 const rangeMath = require('./range-math');
 const { getPoolState } = require('./rebalancer');
@@ -23,7 +22,7 @@ const { computeHodlIL } = require('./il-calculator');
 const { scanRebalanceHistory } = require('./event-scanner');
 const { reconstructEpochs } = require('./epoch-reconstructor');
 const { createPnlTracker } = require('./pnl-tracker');
-const { createCacheStore } = require('./cache-store');
+const { createCacheStore, eventCachePath } = require('./cache-store');
 const {
   compositeKey,
   getPositionConfig,
@@ -110,11 +109,7 @@ async function _getLifetimeSnapshot(
   const tracker = createPnlTracker({ initialDeposit: deposit || 0 });
   if (saved) tracker.restore(saved);
   const cache = createCacheStore({
-    filePath: path.join(
-      process.cwd(),
-      'tmp',
-      'event-cache-' + position.tokenId + '.json',
-    ),
+    filePath: eventCachePath(position),
   });
   const events = await scanRebalanceHistory(provider, ethersLib, {
     positionManagerAddress: config.POSITION_MANAGER,

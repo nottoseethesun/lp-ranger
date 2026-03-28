@@ -8,7 +8,8 @@
 
 const { describe, it, beforeEach } = require('node:test');
 const assert = require('assert');
-const { createCacheStore } = require('../src/cache-store');
+const { createCacheStore, eventCachePath } = require('../src/cache-store');
+const path = require('path');
 
 // ── Mock fs ─────────────────────────────────────────────────────────────────
 
@@ -188,5 +189,48 @@ describe('cache-store — error resilience', () => {
     } finally {
       console.warn = origWarn;
     }
+  });
+});
+
+// ── eventCachePath ─────────────────────────────────────────────────────────
+
+describe('cache-store — eventCachePath', () => {
+  it('builds a pool-keyed path from position tokens and fee', () => {
+    const pos = {
+      token0: '0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39',
+      token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
+      fee: 2500,
+    };
+    const result = eventCachePath(pos);
+    assert.strictEqual(
+      path.basename(result),
+      'event-cache-pool-2b591e99-57fde0a7-2500.json',
+    );
+    assert.ok(result.endsWith(path.join('tmp', path.basename(result))));
+  });
+
+  it('produces the same path for different tokenIds in the same pool', () => {
+    const base = {
+      token0: '0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39',
+      token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
+      fee: 2500,
+    };
+    const a = eventCachePath({ ...base, tokenId: '157804' });
+    const b = eventCachePath({ ...base, tokenId: '157939' });
+    assert.strictEqual(a, b);
+  });
+
+  it('produces different paths for different pools', () => {
+    const poolA = {
+      token0: '0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39',
+      token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
+      fee: 2500,
+    };
+    const poolB = {
+      token0: '0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39',
+      token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
+      fee: 10000,
+    };
+    assert.notStrictEqual(eventCachePath(poolA), eventCachePath(poolB));
   });
 });

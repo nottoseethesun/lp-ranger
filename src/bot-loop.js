@@ -14,7 +14,6 @@
  */
 
 'use strict';
-const path = require('path');
 const ethers = require('ethers');
 const config = require('./config');
 const rangeMath = require('./range-math');
@@ -29,7 +28,7 @@ const {
   overridePnlWithRealValues: _overridePnlWithRealValues,
 } = require('./bot-pnl-updater');
 const { initHodlBaseline } = require('./hodl-baseline');
-const { createCacheStore } = require('./cache-store');
+const { createCacheStore, eventCachePath } = require('./cache-store');
 const { createResidualTracker } = require('./residual-tracker');
 const {
   createProviderWithFallback,
@@ -273,13 +272,7 @@ async function startBotLoop(opts) {
   });
   const rebalanceEvents = [],
     cache = createCacheStore({
-      filePath: path.join(
-        process.cwd(),
-        'tmp',
-        'event-cache-' +
-          String(position.tokenId) +
-          '.json',
-      ),
+      filePath: eventCachePath(position),
     });
   updateBotState({
     running: true,

@@ -26,7 +26,6 @@ FILES=(
   .bot-config.json
   .epoch-cache.json
   rebalance_log.json
-  tmp/event-cache.json
 )
 
 backed=0
@@ -34,6 +33,16 @@ for f in "${FILES[@]}"; do
   if [ -f "$f" ]; then
     # Preserve directory structure inside backup
     mkdir -p "$BACKUP_DIR/$(dirname "$f")"
+    mv "$f" "$BACKUP_DIR/$f"
+    echo "  backed up: $f"
+    backed=$((backed + 1))
+  fi
+done
+
+# Back up event cache files (pool-keyed and legacy tokenId-keyed)
+for f in tmp/event-cache*.json; do
+  if [ -f "$f" ]; then
+    mkdir -p "$BACKUP_DIR/tmp"
     mv "$f" "$BACKUP_DIR/$f"
     echo "  backed up: $f"
     backed=$((backed + 1))

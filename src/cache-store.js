@@ -153,4 +153,22 @@ function createCacheStore(opts) {
   return { get, set, delete: del, clear, size };
 }
 
-module.exports = { createCacheStore };
+/**
+ * Build a deterministic cache file path for event scanning, keyed by pool
+ * (token0 + token1 + fee) instead of tokenId. This lets cache survive across
+ * rebalances that mint new NFTs in the same pool.
+ *
+ * @param {{ token0: string, token1: string, fee: number|string }} position
+ * @returns {string} Absolute path under tmp/
+ */
+function eventCachePath(position) {
+  const t0 = position.token0.slice(2, 10).toLowerCase();
+  const t1 = position.token1.slice(2, 10).toLowerCase();
+  return path.join(
+    process.cwd(),
+    'tmp',
+    `event-cache-pool-${t0}-${t1}-${position.fee}.json`,
+  );
+}
+
+module.exports = { createCacheStore, eventCachePath };
