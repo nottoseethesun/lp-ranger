@@ -566,14 +566,14 @@ async function _processRawEvents(
 }
 
 /** Build a human-readable label for scan progress logs. */
-function _scanLabel(tokenId, walletAddress) {
-  return (
-    'Rebalance history' +
-    (tokenId ? ' for NFT #' + tokenId : '') +
-    ' (wallet ' +
-    walletAddress +
-    ')'
-  );
+function _scanLabel(walletAddress, poolToken0, poolToken1, poolFee) {
+  const wallet = walletAddress.slice(0, 8) + '…';
+  if (poolToken0 && poolToken1 && poolFee) {
+    const t0 = poolToken0.slice(0, 8) + '…';
+    const t1 = poolToken1.slice(0, 8) + '…';
+    return `Pool ${t0}/${t1} fee=${poolFee} (wallet ${wallet})`;
+  }
+  return `All pools (wallet ${wallet})`;
 }
 
 async function scanRebalanceHistory(provider, ethersLib, opts) {
@@ -632,7 +632,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     currentBlock,
     chunkSize,
     opts.onProgress,
-    _scanLabel(opts.tokenId, walletAddress),
+    _scanLabel(walletAddress, poolToken0, poolToken1, poolFee),
   );
 
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
