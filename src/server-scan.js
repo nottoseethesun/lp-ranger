@@ -21,7 +21,11 @@ const {
 } = require('./lp-position-cache');
 const { PM_ABI } = require('./pm-abi');
 
-const _TAG = '\x1b[38;5;118;48;5;94m[lp-cache]\x1b[0m';
+const _C = '\x1b[38;5;118;48;5;94m';
+const _R = '\x1b[0m';
+function _log(msg, ...a) {
+  console.log(_C + '[lp-cache] ' + msg + _R, ...a);
+}
 
 /**
  * Resolve the on-chain symbol for a token.
@@ -144,7 +148,7 @@ function createScanHandlers(deps) {
       });
 
     if (_scanRunning && _scanPromise) {
-      console.log(_TAG + ' Scan already running \u2014 waiting');
+      _log(' Scan already running \u2014 waiting');
       const result = await _scanPromise;
       return jsonResponse(res, 200, result);
     }
@@ -166,8 +170,8 @@ function createScanHandlers(deps) {
   ) {
     const cached = loadLpPositionCache(wSt.address);
     if (!cached) {
-      console.log(
-        _TAG + ' No cache for wallet %s',
+      _log(
+        ' No cache for wallet %s',
         wSt.address.slice(0, 8) + '\u2026',
       );
       return null;
@@ -185,8 +189,8 @@ function createScanHandlers(deps) {
       );
     if (!hasActivity) {
       const w = wSt.address.slice(0, 8) + '\u2026';
-      console.log(
-        _TAG + ' Cache hit for wallet %s'
+      _log(
+        ' Cache hit for wallet %s'
         + ' (lastBlock %d \u2192 %d, no activity)',
         w, cached.lastBlock, currentBlock,
       );
@@ -196,8 +200,8 @@ function createScanHandlers(deps) {
       );
       return cached;
     }
-    console.log(
-      _TAG + ' Cache invalidated for'
+    _log(
+      'Cache invalidated for'
       + ' wallet %s \u2014 activity since block %d',
       wSt.address.slice(0, 8) + '\u2026',
       cached.lastBlock,
@@ -213,10 +217,7 @@ function createScanHandlers(deps) {
       'scanning', { done: 0, total: 0 },
     );
     const w = wSt.address.slice(0, 8) + '\u2026';
-    console.log(
-      _TAG + ' Full scan started for wallet %s',
-      w,
-    );
+    _log('Full scan started for wallet %s', w);
     const result = await detectPositionType(prov, {
       walletAddress: wSt.address,
       positionManagerAddress: pmAddr,
@@ -252,8 +253,8 @@ function createScanHandlers(deps) {
       saveLpPositionCache(
         wSt.address, nfts, currentBlock,
       );
-      console.log(
-        _TAG + ' Full scan complete for'
+      _log(
+        ' Full scan complete for'
         + ' wallet %s \u2014 cached %d positions'
         + ' at block %d',
         w, nfts.length, currentBlock,
@@ -274,7 +275,7 @@ function createScanHandlers(deps) {
     const currentBlock = await prov.getBlockNumber();
 
     if (force)
-      console.log(_TAG + ' Force rescan requested');
+      _log(' Force rescan requested');
     const cached = force
       ? null
       : await _checkCache(
@@ -354,8 +355,8 @@ function createScanHandlers(deps) {
       (p) => p.tokenId,
     );
 
-    console.log(
-      _TAG + ' Background refresh for %d positions',
+    _log(
+      'Background refresh for %d positions',
       tokenIds.length,
     );
     const [liqMap, poolTickMap] = await Promise.all([

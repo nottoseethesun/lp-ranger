@@ -17,7 +17,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const _TAG = '\x1b[38;5;118;48;5;94m[lp-cache]\x1b[0m';
+const _C = '\x1b[38;5;118;48;5;94m';
+const _R = '\x1b[0m';
 
 /**
  * Build deterministic cache file path for a wallet's LP positions.
@@ -71,7 +72,7 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
       'utf8',
     );
   } catch (err) {
-    console.warn(_TAG + ' Failed to persist cache:', err.message);
+    console.warn(_C + '[lp-cache] Failed to persist cache: ' + err.message + _R);
   }
 }
 
