@@ -43,6 +43,16 @@
  *   4. `npm run bot`        — headless bot only (no dashboard)
  *
  * ═══════════════════════════════════════════════════════════════════════════════
+ * COMMAND-LINE FLAGS
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ *   --verbose, -v   Enable verbose logging.  Shows per-cycle fee details and
+ *                   out-of-range poll diagnostics that are hidden by default.
+ *                   Can also be set via VERBOSE=1 in .env or environment.
+ *
+ *   --help, -h      Show all command-line options and exit.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
  * ENVIRONMENT VARIABLES
  * ═══════════════════════════════════════════════════════════════════════════════
  *
@@ -247,6 +257,38 @@
 
 const { installColorLogger, emojiId } = require('./src/logger');
 installColorLogger();
+
+// ── --help / -h ──────────────────────────────────────────────────────────────
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(`
+9mm v3 Position Manager — Dashboard + Auto-Rebalancing Bot
+
+Usage:
+  node server.js [options]
+  npm start                     Start the dashboard server
+  npm run bot                   Headless bot (no dashboard)
+  npm run build-and-start       Build dashboard JS + start server
+
+Options:
+  --verbose, -v   Show detailed per-cycle logs (fee details,
+                  OOR poll diagnostics). Also: VERBOSE=1 in .env.
+  --help, -h      Show this help message and exit.
+
+Environment:
+  All configuration is via .env file. See .env.example for the
+  full list of keys. Key settings:
+
+  PORT              Dashboard port (default: 5555)
+  PRIVATE_KEY       Wallet private key (or use KEY_FILE)
+  DRY_RUN           Read-only mode, no transactions (default: false)
+  RPC_URL           PulseChain RPC endpoint
+  SLIPPAGE_PCT      Swap slippage tolerance (default: 0.5)
+  CHECK_INTERVAL_SEC  Poll frequency in seconds (default: 60)
+
+  See server.js file header or .env.example for the complete list.
+`);
+  process.exit(0);
+}
 
 const http = require('http');
 const fs = require('fs');
