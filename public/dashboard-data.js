@@ -177,10 +177,10 @@ function _updatePosStatus(d) {
   el.className = '9mm-pos-mgr-pos-status ' +
     (isClosed ? 'closed' : 'active');
 }
-function _setStatusPill(pillCls, dotCls, label) {
+function _setStatusPill(pillCls, dotCls, label, tip) {
   const pill = g('botStatusPill'), dot = g('botDot'),
     text = g('botStatusText');
-  if (pill) pill.className = pillCls;
+  if (pill) { pill.className = pillCls; pill.title = tip || ''; }
   if (dot) dot.className = dotCls;
   if (text) text.textContent = label;
 }
@@ -239,7 +239,12 @@ function _updateBotStatus(d) {
   } else if (d.running) {
     _setStatusPill('status-pill active', 'dot green', 'RUNNING');
   } else {
-    _setStatusPill('status-pill warning', 'dot yellow', 'IDLE');
+    const mp = d._managedPositions || [];
+    const tip = mp.length === 0
+      ? 'No positions are being managed, so the bot is idle.'
+        + ' Select a position and click the Manage button.'
+      : '';
+    _setStatusPill('status-pill warning', 'dot yellow', 'IDLE', tip);
   }
   _updatePriceMarker(d);
   const tag = g('lastCheckTag');
