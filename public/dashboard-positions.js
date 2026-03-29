@@ -63,6 +63,8 @@ let _exitClosedPosView = null;
 let _isViewingClosedPos = null;
 let _refreshDepositLabel = null;
 let _fetchUnmanagedDetails = null;
+let _clearHistory = null;
+let _resetHistoryFlag = null;
 
 /**
  * Inject data-module references after all modules
@@ -84,6 +86,8 @@ export function injectPositionDeps(deps) {
     _isViewingClosedPos = deps.isViewingClosedPos;
   if (deps.refreshDepositLabel)
     _refreshDepositLabel = deps.refreshDepositLabel;
+  if (deps.clearHistory) _clearHistory = deps.clearHistory;
+  if (deps.resetHistoryFlag) _resetHistoryFlag = deps.resetHistoryFlag;
   if (deps.fetchUnmanagedDetails) {
     _fetchUnmanagedDetails = deps.fetchUnmanagedDetails;
     setFetchUnmanagedDetails(deps.fetchUnmanagedDetails);
@@ -237,6 +241,8 @@ export function activateSelectedPos() {
   if (posBrowserSelected < 0) return;
   _exitClosedViewIfActive();
 
+  if (_clearHistory) _clearHistory();
+  if (_resetHistoryFlag) _resetHistoryFlag();
   posStore.select(posBrowserSelected);
   updatePosStripUI();
 
@@ -591,29 +597,21 @@ function _addScannedPositions(data) {
   return added;
 }
 
-/** Background refresh of mutable data (liquidity + pool ticks) after cache hit. */
+/** Background refresh of mutable data after cache hit. */
 async function _backgroundRefresh() {
   try {
     const res = await fetch('/api/positions/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    const data = await res.json();
-    if (!data.ok) return;
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}) });
+    const d = await res.json();
+    if (!d.ok) return;
     for (let i = 0; i < posStore.count(); i++) {
-      const p = posStore.get(i);
-      if (!p) continue;
-      const tid = String(p.tokenId);
-      const liq = data.liquidities[tid];
+      const p = posStore.get(i); if (!p) continue;
+      const liq = d.liquidities[String(p.tokenId)];
       if (liq !== undefined) p.liquidity = liq;
-      const pk = p.token0 + '-' + p.token1
-        + '-' + p.fee;
-      const tick = data.poolTicks[pk];
+      const tick = d.poolTicks[p.token0 + '-' + p.token1 + '-' + p.fee];
       if (tick !== undefined) p.poolTick = tick;
     }
     renderPosBrowser();
-  } catch (e) {
-    console.warn('[dashboard] Background refresh failed:', e.message);
-  }
+  } catch (e) { console.warn('[dashboard] Background refresh failed:', e.message); }
 }

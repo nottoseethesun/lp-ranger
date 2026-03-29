@@ -209,6 +209,11 @@ function _updatePriceMarker(d) {
     botConfig.upper);
   positionRangeVisual();
 }
+function _setIdlePill(d) {
+  _setStatusPill('status-pill warning', 'dot yellow', 'IDLE',
+    (d._managedPositions || []).length === 0
+      ? 'No positions are being managed. After syncing, select a position and click Manage.' : '');
+}
 function _updateBotStatus(d) {
   if (d.oorRecoveredMin > 0 &&
     !d.rebalancePaused && !_recoveryModalShown) {
@@ -239,12 +244,7 @@ function _updateBotStatus(d) {
   } else if (d.running) {
     _setStatusPill('status-pill active', 'dot green', 'RUNNING');
   } else {
-    const mp = d._managedPositions || [];
-    const tip = mp.length === 0
-      ? 'No positions are being managed, so the bot is idle.'
-        + ' After the app is done syncing, select a position and click the Manage button.'
-      : '';
-    _setStatusPill('status-pill warning', 'dot yellow', 'IDLE', tip);
+    _setIdlePill(d);
   }
   _updatePriceMarker(d);
   const tag = g('lastCheckTag');
@@ -355,6 +355,7 @@ function _updateSyncBadge(d) {
     refetchClosedPosHistory();
   _scanWasComplete = c;
 }
+export function resetHistoryFlag() { _historyPopulated = false; }
 export function resetPollingState() {
   _lastStatus = null; _historyPopulated = false; setPoolFirstDate(null);
   _lastRebalanceAt = null; _configSynced = false; _scanWasComplete = false;

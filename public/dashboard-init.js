@@ -49,6 +49,7 @@ import {
   positionRangeVisual,
   refreshCurDepositDisplay,
   resetPollingState,
+  resetHistoryFlag,
   injectDataDeps,
   refreshDepositLabel,
 } from './dashboard-data.js';
@@ -104,6 +105,8 @@ injectPositionDeps({
   isViewingClosedPos,
   fetchUnmanagedDetails,
   refreshDepositLabel,
+  clearHistory,
+  resetHistoryFlag,
 });
 injectThrottleDeps({ positionRangeVisual });
 injectPosStoreForEvents(posStore);
