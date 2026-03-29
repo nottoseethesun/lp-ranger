@@ -422,11 +422,13 @@ async function startBotLoop(opts) {
     await botState._triggerScan();
   } else {
     // If epochs were already restored from config (e.g. scanned
-    // while unmanaged), mark scan complete immediately.
+    // while unmanaged), show cached data immediately but trigger
+    // a background freshness check for new events since lastBlock.
     const hasEpochs = pnlTracker.epochCount() > 0;
     updateBotState({
       rebalanceScanComplete: hasEpochs,
     });
+    if (hasEpochs) botState._triggerScan();
     _scheduleNext();
   }
   return {
