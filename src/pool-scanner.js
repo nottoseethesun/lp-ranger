@@ -18,6 +18,8 @@ const config = require('./config');
 const { scanRebalanceHistory } = require('./event-scanner');
 const { createCacheStore, eventCachePath } = require('./cache-store');
 
+const _TAG = '\x1b[30;48;5;123m[pool-scan]\x1b[0m';
+
 /** Per-pool scan locks — different pools scan in parallel. */
 const _locks = new Map();
 
@@ -64,9 +66,9 @@ async function scanPoolHistory(provider, ethersLib, opts) {
   const tag = `${t0s}\u2026/${t1s}\u2026 fee=${position.fee}`;
   const pending = lock.isLocked();
   if (pending)
-    console.log('[pool-scan] Waiting for lock on %s', tag);
+    console.log(_TAG + ' Waiting for lock on %s', tag);
   const release = await lock.acquire();
-  console.log('[pool-scan] Lock acquired for %s', tag);
+  console.log(_TAG + ' Lock acquired for %s', tag);
   try {
     const cache = createCacheStore({
       filePath: eventCachePath(position),
@@ -88,17 +90,17 @@ async function scanPoolHistory(provider, ethersLib, opts) {
       },
     );
     console.log(
-      '[pool-scan] Scan complete for %s \u2014 %d events',
+      _TAG + ' Scan complete for %s \u2014 %d events',
       tag, events.length,
     );
     if (opts.afterScan) {
-      console.log('[pool-scan] Running afterScan for %s', tag);
+      console.log(_TAG + ' Running afterScan for %s', tag);
       await opts.afterScan(events);
     }
     return events;
   } finally {
     release();
-    console.log('[pool-scan] Lock released for %s', tag);
+    console.log(_TAG + ' Lock released for %s', tag);
   }
 }
 
@@ -113,7 +115,7 @@ async function clearPoolCache(position) {
   });
   await cache.clear();
   console.log(
-    '[pool-scan] Event cache cleared for %s\u2026/%s\u2026 fee=%s',
+    _TAG + ' Event cache cleared for %s\u2026/%s\u2026 fee=%s',
     position.token0.slice(0, 8),
     position.token1.slice(0, 8),
     position.fee,
