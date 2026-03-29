@@ -22,23 +22,7 @@ const { installColorLogger } = require('./src/logger');
 installColorLogger();
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`
-9mm v3 Position Manager — Headless Bot (no dashboard)
-
-Usage:
-  node bot.js [options]
-  npm run bot
-
-Options:
-  --verbose, -v   Show detailed per-cycle logs (fee details,
-                  OOR poll diagnostics). Also: VERBOSE=1 in .env.
-  --help, -h      Show this help message and exit.
-
-Environment:
-  Requires PRIVATE_KEY or KEY_FILE in .env.
-  See .env.example for the full list of configuration keys.
-`);
-  process.exit(0);
+  require('./src/cli-help')('bot'); process.exit(0);
 }
 
 const config = require('./src/config');

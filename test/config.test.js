@@ -271,7 +271,7 @@ describe('config module shape', () => {
     'SWAP_ROUTER',
     'DEXTOOLS_API_KEY',
     'assertLiveModeReady',
-    '_parsePositiveInt',
+    'VERBOSE', '_parsePositiveInt',
     '_parsePositiveFloat',
   ];
 
@@ -280,4 +280,24 @@ describe('config module shape', () => {
       assert.ok(key in config, `Missing export: ${key}`);
     });
   }
+});
+describe('cli-help', () => {
+  it('prints server help without throwing', () => {
+    const orig = console.log;
+    let out = '';
+    console.log = (s) => { out += s; };
+    try {
+      require('../src/cli-help')('server');
+      assert.ok(out.includes('Dashboard'));
+    } finally { console.log = orig; }
+  });
+  it('prints bot help without throwing', () => {
+    const orig = console.log;
+    let out = '';
+    console.log = (s) => { out += s; };
+    try {
+      require('../src/cli-help')('bot');
+      assert.ok(out.includes('Headless'));
+    } finally { console.log = orig; }
+  });
 });

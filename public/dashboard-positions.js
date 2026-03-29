@@ -315,7 +315,8 @@ export function activateByTokenId(tokenId) {
   );
   if (idx < 0) return false;
   _exitClosedViewIfActive();
-
+  if (_clearHistory) _clearHistory();
+  if (_resetHistoryFlag) _resetHistoryFlag();
   posStore.select(idx);
   updatePosStripUI();
 
@@ -471,7 +472,10 @@ async function _syncAfterManualScan() {
         (e) =>
           e.positionType === 'nft' && String(e.tokenId) === String(tid),
       );
-      if (i >= 0 && i !== posStore.activeIdx) posStore.select(i);
+      if (i >= 0 && i !== posStore.activeIdx)
+        { if (_clearHistory) _clearHistory();
+          if (_resetHistoryFlag) _resetHistoryFlag();
+          posStore.select(i); }
     }
   } catch {
     /* next poll will sync */
@@ -502,11 +506,9 @@ export async function scanPositions(opts) {
     return;
   }
   const btn = g('posScanBtn');
-  if (btn) {
-    btn.disabled = true;
+  if (btn) { btn.disabled = true;
     btn.textContent = '\u27F3 Scanning\u2026';
-    btn.title = 'Scan in progress\u2026';
-  }
+    btn.title = 'Scan in progress\u2026'; }
 
   try {
     const res = await fetch('/api/positions/scan', {
