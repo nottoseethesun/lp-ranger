@@ -15,7 +15,7 @@
 
 const { Mutex } = require('async-mutex');
 const config = require('./config');
-const { scanRebalanceHistory } = require('./event-scanner');
+const { scanRebalanceHistory, buildCacheKey } = require('./event-scanner');
 const { createCacheStore, eventCachePath } = require('./cache-store');
 
 const _C = '\x1b[30;48;5;123m';
@@ -122,6 +122,56 @@ async function clearPoolCache(position, wallet) {
     position.token1.slice(0, 8), position.fee);
 }
 
+/**
+ * Append a rebalance event to the pool's event cache.
+ * Avoids clearing the entire cache and forcing a full rescan.
+ * @param {object} position  Must have token0, token1, fee.
+ * @param {string} wallet    Wallet address.
+ * @param {object} result    Rebalance result from executeRebalance.
+ */
+async function appendToPoolCache(position, wallet, result) {
+  const cache = createCacheStore({
+    filePath: eventCachePath(
+      position, 'pulsechain',
+      config.POSITION_MANAGER, wallet),
+  });
+  const cacheKey = buildCacheKey(
+    wallet, config.POSITION_MANAGER,
+    position.token0, position.token1, position.fee,
+  );
+  const existing = await cache.get(cacheKey);
+  const events = existing?.events || [];
+  const ts = Math.floor(Date.now() / 1000);
+  const txHash = Array.isArray(result.txHashes)
+    ? result.txHashes[result.txHashes.length - 1]
+    : '';
+  events.push({
+    index: 0,
+    timestamp: ts,
+    dateStr: new Date(ts * 1000).toISOString(),
+    oldTokenId: String(result.oldTokenId || '?'),
+    newTokenId: String(result.newTokenId || '?'),
+    txHash: txHash || '',
+    blockNumber: result.blockNumber || 0,
+  });
+  events.sort((a, b) => a.timestamp - b.timestamp);
+  events.forEach((e, i) => { e.index = i + 1; });
+  const lastBlock = result.blockNumber
+    || existing?.lastBlock || 0;
+  await cache.set(cacheKey, {
+    events,
+    lastBlock,
+    firstMintTimestamp: existing?.firstMintTimestamp
+      || null,
+  });
+  _log('Appended rebalance event to cache for'
+    + ' %s\u2026/%s\u2026 fee=%s (%d events)',
+    position.token0.slice(0, 8),
+    position.token1.slice(0, 8),
+    position.fee, events.length);
+}
+
 module.exports = {
-  scanPoolHistory, getPoolScanLock, clearPoolCache,
+  scanPoolHistory, getPoolScanLock,
+  clearPoolCache, appendToPoolCache,
 };

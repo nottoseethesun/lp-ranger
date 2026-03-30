@@ -670,6 +670,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 module.exports = {
   scanRebalanceHistory,
   findPoolCreationBlock,
+  buildCacheKey: _buildCacheKey,
   _BLOCKS_PER_YEAR,
   _DEFAULT_CHUNK_SIZE,
   _PAIRING_WINDOW_SEC,

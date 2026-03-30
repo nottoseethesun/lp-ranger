@@ -112,6 +112,10 @@ async function _executeAndRecord(deps, ethersLib) {
       rebalanced: result.success,
       error: result.error,
       cancelled: result.cancelled,
+      newTokenId: result.newTokenId,
+      oldTokenId: result.oldTokenId,
+      txHashes: result.txHashes,
+      blockNumber: result.blockNumber,
     };
   } finally {
     if (release) {

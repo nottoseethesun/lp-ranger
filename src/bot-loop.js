@@ -29,7 +29,7 @@ const {
   overridePnlWithRealValues: _overridePnlWithRealValues,
 } = require('./bot-pnl-updater');
 const { initHodlBaseline } = require('./hodl-baseline');
-const { clearPoolCache } = require('./pool-scanner');
+const { appendToPoolCache } = require('./pool-scanner');
 const { createResidualTracker } = require('./residual-tracker');
 const {
   createProviderWithFallback,
@@ -334,7 +334,7 @@ async function startBotLoop(opts) {
         currentIntervalMs =
           (gc('checkIntervalSec') ||
             config.CHECK_INTERVAL_SEC) * 1000;
-        clearPoolCache(position, address).catch(() => {}); // Invalidate event cache so next scan finds the new NFT
+        appendToPoolCache(position, address, result).catch(() => {});
         updateBotState({
           rebalanceError: null,
           rebalancePaused: false,

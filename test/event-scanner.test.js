@@ -10,6 +10,7 @@ const assert = require('assert');
 const {
   scanRebalanceHistory,
   findPoolCreationBlock,
+  buildCacheKey,
   _BLOCKS_PER_YEAR,
   _DEFAULT_CHUNK_SIZE,
   _PAIRING_WINDOW_SEC,
@@ -89,6 +90,22 @@ describe('Constants', () => {
     assert.strictEqual(_PAIRING_WINDOW_SEC, 300));
   it('_CHUNK_DELAY_MS is 250', () =>
     assert.strictEqual(_CHUNK_DELAY_MS, 250));
+});
+
+describe('buildCacheKey', () => {
+  it('builds pool-scoped key from components', () => {
+    const key = buildCacheKey(
+      WALLET, '0xPM', '0xAAA', '0xBBB', 2500);
+    assert.ok(key.startsWith('rebalance:'));
+    assert.ok(key.includes(WALLET.toLowerCase()));
+    assert.ok(key.includes('0xaaa-0xbbb-2500'));
+  });
+
+  it('returns base key without pool tokens', () => {
+    const key = buildCacheKey(WALLET, '0xPM');
+    assert.ok(key.startsWith('rebalance:'));
+    assert.ok(!key.includes('-'));
+  });
 });
 
 // ── scanRebalanceHistory ─────────────────────────────────────────────────────
