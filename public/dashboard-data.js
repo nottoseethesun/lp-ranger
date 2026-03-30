@@ -35,6 +35,7 @@ import {
   positionRangeVisual, updateRangePctLabels,
   _activeToken1Symbol,
 } from './dashboard-data-kpi.js';
+import { updateTriggerDisplay } from './dashboard-throttle.js';
 export {
   injectDataDeps, loadRealizedGains,
   toggleRealizedInput, saveRealizedGains,
@@ -276,26 +277,24 @@ function _normalizedPoolKey(pos) {
 }
 function _updateThrottleKpis(d) {
   const ts = d.throttleState, today = g('kpiToday');
-  if (today) {
-    const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
+  if (today) { const max = (ts && ts.dailyMax)
+      || d.maxRebalancesPerDay || null;
     const pk = _normalizedPoolKey(posStore.getActive());
-    const count = pk && d._poolDailyCounts
-      ? d._poolDailyCounts[pk] || 0 : ts ? ts.dailyCount : 0;
+    const cnt = pk && d._poolDailyCounts
+      ? d._poolDailyCounts[pk] || 0
+      : ts ? ts.dailyCount : 0;
     if (!max) { today.textContent = '\u2014'; today.style.color = ''; }
-    else {
-      const ratio = count / max;
-      today.textContent = count + ' / ' + max;
-      today.style.color = ratio >= 0.9 ? '#ff3b5c' : ratio >= 0.66
-        ? '#ff6b35' : ratio >= 0.5 ? '#ffb800' : '#e0eaf4';
-    }
-  }
+    else { const ratio = cnt / max;
+      today.textContent = cnt + ' / ' + max;
+      today.style.color = ratio >= 0.9 ? '#ff3b5c'
+        : ratio >= 0.66 ? '#ff6b35'
+        : ratio >= 0.5 ? '#ffb800' : '#e0eaf4'; } }
   const todaySub = g('kpiTodaySub');
   if (todaySub) {
-    const lifetime = d.rebalanceEvents ? d.rebalanceEvents.length : 0;
-    todaySub.innerHTML = lifetime + ' Lifetime<br>' +
-      _fmtResetTime(ts?.dailyResetAt);
-  }
-}
+    const lt = d.rebalanceEvents
+      ? d.rebalanceEvents.length : 0;
+    todaySub.innerHTML = lt + ' Lifetime<br>'
+      + _fmtResetTime(ts?.dailyResetAt); } }
 function _syncConfigFromServer(d) {
   if (_configSynced) return;
   _configSynced = true;
@@ -316,45 +315,53 @@ function _syncConfigFromServer(d) {
 }
 const _REB_EVENTS_CACHE_KEY = '9mm_rebalance_events';
 function _cacheRebalanceEvents(events) {
-  try { localStorage.setItem(_REB_EVENTS_CACHE_KEY,
-    JSON.stringify(events)); } catch { /* */ }
-}
+  try { localStorage.setItem(
+    _REB_EVENTS_CACHE_KEY, JSON.stringify(events));
+  } catch { /* */ } }
 function _loadCachedRebalanceEvents() {
-  try {
-    const r = localStorage.getItem(_REB_EVENTS_CACHE_KEY);
-    if (!r) return null;
-    const p = JSON.parse(r);
-    return Array.isArray(p) ? p : null;
-  } catch { return null; }
-}
+  try { const r = localStorage.getItem(_REB_EVENTS_CACHE_KEY);
+    if (!r) return null; const p = JSON.parse(r);
+    return Array.isArray(p) ? p : null; } catch { return null; } }
 let _scanWasComplete = false, _unmanagedSyncing = false;
 export function setUnmanagedSyncing(v) { _unmanagedSyncing = v; }
 function _syncStatus(d) {
-  if (wallet.address && posStore.count() === 0) return { complete: false, label: '' };
+  if (wallet.address && posStore.count() === 0)
+    return { complete: false, label: '' };
   const ps = d._positionScan;
-  if (ps && ps.status === 'scanning') {
-    const p = ps.progress;
-    return { complete: false, label: p && p.total > 0
-      ? 'Syncing positions\u2026 ' + p.done + '/' + p.total : 'Syncing positions\u2026' };
-  }
-  return { complete: true, label: 'Synced' };
-}
+  if (ps && ps.status === 'scanning') { const p = ps.progress;
+    return { complete: false, label: p?.total > 0
+      ? 'Syncing positions\u2026 ' + p.done + '/' + p.total
+      : 'Syncing positions\u2026' }; }
+  return { complete: true, label: 'Synced' }; }
 function _updateSyncBadge(d) {
   const badge = g('syncBadge');
   if (!badge || _unmanagedSyncing) return;
   const { complete: c, label } = _syncStatus(d);
   badge.textContent = label || 'Syncing\u2026';
-  badge.style.background = '';
-  badge.classList.toggle('done', c);
-  ['manageToggleBtn', 'posBrowserBtn'].forEach((id) => {
-    const b = g(id);
-    if (b) { b.disabled = !c;
-      b.title = !c ? 'Waiting for sync to complete\u2026' : ''; }
-  });
+  badge.style.background = ''; badge.classList.toggle('done', c);
+  const t = !c ? 'Wait until Syncing badge reads "Synced".' : '';
+  ['manageToggleBtn', 'posBrowserBtn'].forEach(
+    (id) => { const b = g(id);
+      if (b) { b.disabled = !c; b.title = t; } });
   if (c && !_scanWasComplete && isViewingClosedPos())
     refetchClosedPosHistory();
-  _scanWasComplete = c;
-}
+  _scanWasComplete = c; }
+
+const _REB_HELP = 'LP Ranger is currently submitting'
+  + ' transactions to rebalance this LP Position.';
+function _updateRebalanceButtons(d) {
+  const on = !!d.rebalanceInProgress;
+  const btn = g('manageToggleBtn'), rb = g('rebalanceWithRangeBtn');
+  const h = g('rebalanceInProgressHelp');
+  if (on) {
+    if (btn) { btn.disabled = true; btn.title = _REB_HELP; }
+    if (rb) { rb.disabled = true; rb.title = _REB_HELP; }
+    if (h) { h.textContent = _REB_HELP; h.classList.remove('hidden'); }
+  } else {
+    if (btn && _scanWasComplete) { btn.disabled = false; btn.title = ''; }
+    if (rb) { rb.disabled = false; rb.title = ''; }
+    if (h) { h.textContent = ''; h.classList.add('hidden'); }
+  } }
 export function resetHistoryFlag() {
   _historyPopulated = false;
   try { localStorage.removeItem(
@@ -371,38 +378,26 @@ function _syncActivePosition(d) {
   if (!active || active.positionType !== 'nft') return;
   if (d.lastRebalanceAt && d.lastRebalanceAt !== _lastRebalanceAt) {
     _lastRebalanceAt = d.lastRebalanceAt;
-    const evts = d.rebalanceEvents || [],
-      lastEv = evts.length ? evts[evts.length - 1] : null;
+    const evts = d.rebalanceEvents || [];
+    const lastEv = evts.length ? evts[evts.length - 1] : null;
     if (lastEv) {
-      const txPart = lastEv.txHash ? ' ' + _fmtTxCopy(lastEv.txHash) : '';
+      const tx = lastEv.txHash
+        ? ' ' + _fmtTxCopy(lastEv.txHash) : '';
       act(ACT_ICONS.gear, 'fee', 'Rebalance',
-        'NFT #' + lastEv.oldTokenId + ' \u2192 #' +
-          lastEv.newTokenId + txPart);
-    }
-  }
+        'NFT #' + lastEv.oldTokenId +
+          ' \u2192 #' + lastEv.newTokenId + tx);
+    } }
   const ap = d.activePosition;
   if (ap.liquidity !== undefined)
     active.liquidity = String(ap.liquidity);
   if (ap.tickLower !== undefined) {
-    active.tickLower = ap.tickLower; active.tickUpper = ap.tickUpper;
-  }
-}
+    active.tickLower = ap.tickLower;
+    active.tickUpper = ap.tickUpper; } }
 function _syncRebalanceCache(d) {
   const evts = d.rebalanceEvents;
-  if (!evts || evts.length === 0) {
-    const c = _loadCachedRebalanceEvents();
+  if (!evts || evts.length === 0) { const c = _loadCachedRebalanceEvents();
     if (c?.length > 0) d.rebalanceEvents = c;
-  } else _cacheRebalanceEvents(evts);
-}
-function _updateTriggerDisplay(d) {
-  const th = g('activeOorThreshold');
-  if (th && d.rebalanceOutOfRangeThresholdPercent !== undefined)
-    th.textContent = d.rebalanceOutOfRangeThresholdPercent;
-  const to = g('activeOorTimeout');
-  if (to) to.textContent = d.rebalanceTimeoutMin > 0
-    ? d.rebalanceTimeoutMin
-    : d.rebalanceTimeoutMin === 0 ? 'disabled' : '\u2014';
-}
+  } else _cacheRebalanceEvents(evts); }
 function _populateHistoryOnce(data) {
   if (_historyPopulated || !data.rebalanceEvents?.length) return;
   if (data.running && data.rebalanceScanComplete !== true) return;
@@ -422,7 +417,11 @@ function updateDashboardFromStatus(data) {
       data._managedPositions,
       data._allPositionStates);
     const active = posStore.getActive();
-    if (active) updateManageBadge(data._managedPositions, active.tokenId);
+    if (active) updateManageBadge(
+      data._managedPositions,
+      active.tokenId,
+      data.rebalanceInProgress,
+    );
   }
   const _a = posStore.getActive();
   if (!_a || isPositionManaged(_a.tokenId))
@@ -432,12 +431,13 @@ function updateDashboardFromStatus(data) {
   botConfig.oorSince = data.oorSince || null;
   _updateBotStatus(data);
   _updateThrottleKpis(data);
-  _updateTriggerDisplay(data);
+  updateTriggerDisplay(data);
   const sw = data.walletAddress || data.wallet || '';
   if (sw && (!wallet.address ||
     wallet.address.toLowerCase() !== sw.toLowerCase())) return;
   _syncConfigFromServer(data); _syncRebalanceCache(data);
   _updateSyncBadge(data);
+  _updateRebalanceButtons(data);
   if (!getPoolFirstDate() && data.poolFirstMintDate)
     setPoolFirstDate(data.poolFirstMintDate);
   updateHistorySyncLabels(data);

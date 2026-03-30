@@ -591,4 +591,24 @@ export async function confirmRebalanceRange() {
     'Rebalance with Custom Range',
     `Total width: ${total}% (${(total / 2).toFixed(3).replace(/\.?0+$/, '')}% per side)`,
   );
+  /* Optimistic disable while rebalance TXs are in flight. */
+  const _help = 'LP Ranger is currently submitting transactions'
+    + ' to the blockchain to rebalance this LP Position.';
+  const _btn = g('manageToggleBtn');
+  const _rebBtn = g('rebalanceWithRangeBtn');
+  const _helpEl = g('rebalanceInProgressHelp');
+  if (_btn) { _btn.disabled = true; _btn.title = _help; }
+  if (_rebBtn) { _rebBtn.disabled = true; _rebBtn.title = _help; }
+  if (_helpEl) { _helpEl.textContent = _help; _helpEl.classList.remove('hidden'); }
+}
+
+/** Update OOR threshold + timeout display from status. */
+export function updateTriggerDisplay(d) {
+  const th = g('activeOorThreshold');
+  if (th && d.rebalanceOutOfRangeThresholdPercent !== undefined)
+    th.textContent = d.rebalanceOutOfRangeThresholdPercent;
+  const to = g('activeOorTimeout');
+  if (to) to.textContent = d.rebalanceTimeoutMin > 0
+    ? d.rebalanceTimeoutMin
+    : d.rebalanceTimeoutMin === 0 ? 'disabled' : '\u2014';
 }

@@ -8,7 +8,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 
 ### Stack
 
-- **Runtime:** Node.js ≥ 18 (no framework)
+- **Runtime:** Node.js ≥ 22 (no framework)
 - **HTTP server:** Node built-in `http` module (`server.js`) — dashboard + bot auto-start
 - **Bot loop:** `src/bot-loop.js` — shared rebalance logic (used by both server.js and bot.js)
 - **Bot (headless):** `bot.js` — standalone bot without dashboard UI
@@ -20,7 +20,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 - **Linter:** ESLint v10 flat config (`eslint.config.js`) + stylelint (`stylelint-config-standard`)
 - **Dead code:** knip (devDependency)
 - **Tests:** Node built-in `node:test` runner — zero external test framework
-- **CI:** GitHub Actions (`.github/workflows/ci.yml`) — lint → test (Node 18/20/22 matrix)
+- **CI:** GitHub Actions (`.github/workflows/ci.yml`) — lint → test (Node 22/24 matrix)
 
 ---
 
@@ -29,7 +29,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 ```text
 9mm-manager/
 ├── .env.example                  # All config keys with defaults and comments
-├── .github/workflows/ci.yml      # CI: lint → test (Node 18/20/22 matrix)
+├── .github/workflows/ci.yml      # CI: lint → test (Node 22/24 matrix)
 ├── eslint.config.js              # ESLint v10 flat config, complexity ≤17, max-lines ≤500
 ├── package.json                  # Scripts: start, dev, bot, stop, lint, lint:fix, test, test:coverage, test:watch, check
 ├── server.js                     # HTTP server + bot auto-start + MAIN DOCUMENTATION
@@ -362,3 +362,5 @@ All use abbreviated prefixes (first 5-6 chars) to keep filenames manageable.
 - **Consolidate duplication on contact** — when adding a cross-cutting concern (locking, caching, rate limiting) that applies to an operation done in multiple places, consolidate the duplicated codepaths into one shared function FIRST, then add the concern once. Do not add parallel implementations that don't coordinate. Grep for ALL call sites of the underlying operation before implementing.
 - **Functional pattern for new code** — no classes, no mutable object state scattered across instances. Functions receive data, return results. When a data source changes, all dependent code runs with the fresh data from the source of truth. Existing code is not refactored to this pattern.
 - **No skeuomorphic icons** — avoid emoji icons that mimic real-world objects (folders, keys, magnifying glasses). Use minimal inline SVG or Unicode geometric symbols instead. Icons should be abstract, clean, and consistent with the dashboard's dark terminal aesthetic.
+- **No backwards compatibility** — never add migration code, version discriminators, fallback paths, or legacy support unless explicitly ordered. When changing data formats or config schemas, just change them. If old data is incompatible, let it fail cleanly (return empty/default).
+- **CI before merge** — always push the branch to GitHub first and wait for CI (GitHub Actions) to pass before merging to main. Never merge to main with failing or untested CI.

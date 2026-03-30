@@ -68,10 +68,8 @@ jobs:
       # Run all matrix versions even if one fails, so we see the full picture.
       fail-fast: false
       matrix:
-        # Test on current LTS and latest stable.
-        # Node 20 = minimum supported (LTS until April 2026).
         # Node 22 = current LTS, Node 24 = latest stable.
-        node-version: ['20', '22', '24']
+        node-version: ['22', '24']
 
     steps:
       - name: Checkout repository

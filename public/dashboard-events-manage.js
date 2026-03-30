@@ -229,7 +229,26 @@ export function _toggleManagePosition() {
         tokenId: active.tokenId,
         contract: active.contractAddress,
       }),
-    }).catch(() => {});
+    }).then(() => _setRebalanceUI(true))
+      .catch(() => {});
+  }
+}
+
+/** Optimistically disable/enable manage + rebalance buttons. */
+function _setRebalanceUI(active) {
+  const help = 'LP Ranger is currently submitting transactions'
+    + ' to the blockchain to rebalance this LP Position.';
+  const btn = g('manageToggleBtn');
+  const rebBtn = g('rebalanceWithRangeBtn');
+  const helpEl = g('rebalanceInProgressHelp');
+  if (active) {
+    if (btn) { btn.disabled = true; btn.title = help; }
+    if (rebBtn) { rebBtn.disabled = true; rebBtn.title = help; }
+    if (helpEl) { helpEl.textContent = help; helpEl.classList.remove('hidden'); }
+  } else {
+    if (btn) { btn.disabled = false; btn.title = ''; }
+    if (rebBtn) { rebBtn.disabled = false; rebBtn.title = ''; }
+    if (helpEl) { helpEl.textContent = ''; helpEl.classList.add('hidden'); }
   }
 }
 
@@ -242,6 +261,7 @@ export function _toggleManagePosition() {
 export function updateManageBadge(
   managedList,
   activeTokenId,
+  rebalanceInProgress,
 ) {
   const badge = g('manageBadge');
   if (!badge) return;
@@ -260,9 +280,13 @@ export function updateManageBadge(
     ? '<span class="9mm-pos-mgr-manage-dot">' +
       '</span>Being Actively Managed'
     : 'Not Actively Managed';
-  btn.textContent = isManaged
-    ? 'Stop Managing'
-    : 'Manage';
+  if (rebalanceInProgress) {
+    btn.textContent = 'Rebalancing\u2026';
+  } else {
+    btn.textContent = isManaged
+      ? 'Stop Managing'
+      : 'Manage';
+  }
 }
 
 // ── Delegated events + Escape ───────────────────
