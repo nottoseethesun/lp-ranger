@@ -25,7 +25,6 @@ const { getCachedEpochs, setCachedEpochs } = require('./epoch-cache');
 const { scanPoolHistory } = require('./pool-scanner');
 const {
   compositeKey,
-  parseCompositeKey,
   getPositionConfig,
   saveConfig,
 } = require('./bot-config-v2');
@@ -106,11 +105,13 @@ async function _getLifetimeSnapshot(
   prices,
   deposit,
 ) {
-  const pk = parseCompositeKey(posKey);
-  const cached = pk ? getCachedEpochs({
-    wallet: pk.wallet, contract: pk.contract,
-    tokenId: pk.tokenId,
-  }) : null;
+  const poolCacheKey = position.token0 && walletAddr
+    ? { wallet: walletAddr,
+      token0: position.token0,
+      token1: position.token1, fee: position.fee }
+    : null;
+  const cached = poolCacheKey
+    ? getCachedEpochs(poolCacheKey) : null;
   const tracker = createPnlTracker({ initialDeposit: deposit || 0 });
   if (cached) tracker.restore(cached);
   const events = await scanPoolHistory(
@@ -129,10 +130,8 @@ async function _getLifetimeSnapshot(
           },
           fallbackPrices: prices,
         });
-        if (pk) setCachedEpochs({
-          wallet: pk.wallet, contract: pk.contract,
-          tokenId: pk.tokenId,
-        }, tracker.serialize());
+        if (poolCacheKey)
+          setCachedEpochs(poolCacheKey, tracker.serialize());
       },
     });
   return { tracker, events };

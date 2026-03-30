@@ -98,11 +98,12 @@ function _buildClosedEpoch(h, index) {
  */
 function _cacheKeyFromState(botState) {
   const ap = botState.activePosition;
-  if (!ap) return null;
+  if (!ap || !ap.token0 || !ap.token1) return null;
   return {
     wallet: botState.walletAddress || '',
-    contract: botState.positionManager || '',
-    tokenId: ap.tokenId,
+    token0: ap.token0,
+    token1: ap.token1,
+    fee: ap.fee,
   };
 }
 

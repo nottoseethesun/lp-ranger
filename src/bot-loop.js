@@ -16,6 +16,7 @@
 'use strict';
 const ethers = require('ethers');
 const config = require('./config');
+const { getCachedEpochs } = require('./epoch-cache');
 const rangeMath = require('./range-math');
 const { createThrottle } = require('./throttle');
 const { emojiId } = require('./logger');
@@ -54,11 +55,19 @@ function _initPnlTracker(
   upperPrice,
   price0,
   price1,
+  position,
 ) {
   const tracker = createPnlTracker({ initialDeposit: ev });
-  if (botState.pnlEpochs) {
-    tracker.restore(botState.pnlEpochs);
-    console.log('[bot] Restored P&L epochs from saved config');
+  const cached = position && botState.walletAddress
+    ? getCachedEpochs({
+      wallet: botState.walletAddress,
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee,
+    }) : null;
+  if (cached) {
+    tracker.restore(cached);
+    console.log('[bot] Restored P&L epochs from cache');
   } else {
     tracker.openEpoch({
       entryValue: ev,
@@ -176,15 +185,10 @@ async function _tryInitPnlTracker(
       );
       const t = _initPnlTracker(
         _positionValueUsd(position, ps, price0, price1) || 1,
-        botState,
-        ps,
-        lp,
-        up,
-        price0,
-        price1,
+        botState, ps, lp, up, price0, price1,
+        position,
       );
-      if (!botState.pnlEpochs)
-        updateBotState({ pnlEpochs: t.serialize() });
+      updateBotState({ pnlEpochs: t.serialize() });
       return t;
     }
     console.warn(

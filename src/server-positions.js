@@ -14,7 +14,7 @@
 'use strict';
 
 const config = require('./config');
-const { getCachedEpochs, setCachedEpochs } = require('./epoch-cache');
+const { setCachedEpochs } = require('./epoch-cache');
 const { startBotLoop } = require('./bot-loop');
 const {
   compositeKey,
@@ -36,7 +36,7 @@ const _positionBotStates = new Map();
  * @param {object} [saved]    Saved position config from disk.
  * @returns {object}
  */
-function createPerPositionBotState(_globalCfg, saved, posKey) {
+function createPerPositionBotState(_globalCfg, saved) {
   const state = {
     running: false,
     startedAt: null,
@@ -54,17 +54,16 @@ function createPerPositionBotState(_globalCfg, saved, posKey) {
     if (saved.collectedFeesUsd)
       state.collectedFeesUsd = saved.collectedFeesUsd;
   }
-  if (posKey) {
-    const pk = parseCompositeKey(posKey);
-    if (pk) {
-      const cached = getCachedEpochs({
-        wallet: pk.wallet, contract: pk.contract,
-        tokenId: pk.tokenId,
-      });
-      if (cached) state.pnlEpochs = cached;
-    }
-  }
   return state;
+}
+
+function _persistEpochCache(state, epochs) {
+  const ap = state.activePosition;
+  if (!ap || !ap.token0 || !ap.fee) return;
+  setCachedEpochs({
+    wallet: state.walletAddress || '',
+    token0: ap.token0, token1: ap.token1, fee: ap.fee,
+  }, epochs);
 }
 
 /**
@@ -84,13 +83,8 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
   Object.assign(state, patch, { updatedAt: new Date().toISOString() });
 
   // Persist position-specific data to v2 config when important fields change
-  if (patch.pnlEpochs) {
-    const pk = parseCompositeKey(key);
-    if (pk) setCachedEpochs({
-      wallet: pk.wallet, contract: pk.contract,
-      tokenId: pk.tokenId,
-    }, patch.pnlEpochs);
-  }
+  if (patch.pnlEpochs)
+    _persistEpochCache(state, patch.pnlEpochs);
   const shouldPersist =
     patch.hodlBaseline ||
     patch.residuals ||
@@ -130,13 +124,7 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
     );
     migrateConfigKey(diskConfig, key, newKey);
     saveConfig(diskConfig);
-    // Migrate epoch-cache entry to new key
-    const oldPk = parseCompositeKey(key);
-    const newPk = parseCompositeKey(newKey);
-    if (oldPk && newPk) {
-      const old = getCachedEpochs(oldPk);
-      if (old) setCachedEpochs(newPk, old);
-    }
+    // No epoch-cache migration needed — keyed by pool, not tokenId
     positionMgr.migrateKey(key, newKey, String(patch.activePositionId));
     state.forceRebalance = false;
     state.rebalancePaused = false;
@@ -257,7 +245,7 @@ function createPositionRoutes(deps) {
 
     const posConfig = getPositionConfig(diskConfig, key);
     const posBotState = createPerPositionBotState(
-      diskConfig.global, posConfig, key,
+      diskConfig.global, posConfig,
     );
     attachMultiPosDeps(posBotState, positionMgr);
     _positionBotStates.set(key, posBotState);
@@ -344,7 +332,7 @@ function createPositionRoutes(deps) {
     );
 
     const posBotState = createPerPositionBotState(
-      diskConfig.global, posConfig, body.key,
+      diskConfig.global, posConfig,
     );
     attachMultiPosDeps(posBotState, positionMgr);
     _positionBotStates.set(body.key, posBotState);
