@@ -328,7 +328,7 @@ async function startBotLoop(opts) {
         currentIntervalMs =
           (gc('checkIntervalSec') ||
             config.CHECK_INTERVAL_SEC) * 1000;
-        clearPoolCache(position).catch(() => {}); // Invalidate event cache so next scan finds the new NFT
+        clearPoolCache(position, address).catch(() => {}); // Invalidate event cache so next scan finds the new NFT
         updateBotState({
           rebalanceError: null,
           rebalancePaused: false,

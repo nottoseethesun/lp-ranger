@@ -201,7 +201,7 @@ describe('cache-store — eventCachePath', () => {
       token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
       fee: 2500,
     };
-    const result = eventCachePath(pos, 'pulsechain', '0xCC05bf');
+    const result = eventCachePath(pos, 'pulsechain', '0xCC05bf', '0x4e4484');
     assert.ok(path.basename(result).startsWith('event-cache-pulse'));
     assert.ok(path.basename(result).includes('2b591e99'));
     assert.ok(result.includes('tmp'));
@@ -213,8 +213,8 @@ describe('cache-store — eventCachePath', () => {
       token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
       fee: 2500,
     };
-    const a = eventCachePath({ ...base, tokenId: '157804' }, 'pc', '0xPM');
-    const b = eventCachePath({ ...base, tokenId: '157939' }, 'pc', '0xPM');
+    const a = eventCachePath({ ...base, tokenId: '157804' }, 'pc', '0xPM', '0xW');
+    const b = eventCachePath({ ...base, tokenId: '157939' }, 'pc', '0xPM', '0xW');
     assert.strictEqual(a, b);
   });
 
@@ -230,7 +230,7 @@ describe('cache-store — eventCachePath', () => {
       fee: 10000,
     };
     assert.notStrictEqual(
-      eventCachePath(poolA, 'pc', '0xPM'),
-      eventCachePath(poolB, 'pc', '0xPM'));
+      eventCachePath(poolA, 'pc', '0xPM', '0xW'),
+      eventCachePath(poolB, 'pc', '0xPM', '0xW'));
   });
 });

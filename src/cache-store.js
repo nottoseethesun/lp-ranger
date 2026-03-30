@@ -162,14 +162,15 @@ function createCacheStore(opts) {
  * @param {string} [contract]    NFT factory / position manager address.
  * @returns {string} Absolute path under tmp/
  */
-function eventCachePath(position, blockchain, contract) {
+function eventCachePath(position, blockchain, contract, wallet) {
   const bc = (blockchain || 'pulsechain').slice(0, 5);
   const pm = (contract || '').slice(2, 8).toLowerCase();
+  const w = (wallet || '').slice(2, 8).toLowerCase();
   const t0 = position.token0.slice(2, 10).toLowerCase();
   const t1 = position.token1.slice(2, 10).toLowerCase();
   return path.join(
     process.cwd(), 'tmp',
-    `event-cache-${bc}-${pm}-${t0}-${t1}-${position.fee}.json`,
+    `event-cache-${bc}-${pm}-${w}-${t0}-${t1}-${position.fee}.json`,
   );
 }
 

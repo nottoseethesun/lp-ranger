@@ -75,7 +75,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
   _log(' Lock acquired for %s', tag);
   try {
     const cache = createCacheStore({
-      filePath: eventCachePath(position, 'pulsechain', config.POSITION_MANAGER),
+      filePath: eventCachePath(position, 'pulsechain', config.POSITION_MANAGER, walletAddress),
     });
     const events = await scanRebalanceHistory(
       provider, ethersLib, {
@@ -110,10 +110,11 @@ async function scanPoolHistory(provider, ethersLib, opts) {
  * Clear the event cache for a pool.  Called after rebalance
  * so the next scan picks up the new NFT mint event.
  * @param {object} position  Must have token0, token1, fee.
+ * @param {string} wallet    Wallet address.
  */
-async function clearPoolCache(position) {
+async function clearPoolCache(position, wallet) {
   const cache = createCacheStore({
-    filePath: eventCachePath(position, 'pulsechain', config.POSITION_MANAGER),
+    filePath: eventCachePath(position, 'pulsechain', config.POSITION_MANAGER, wallet),
   });
   await cache.clear();
   _log('Event cache cleared for %s\u2026/%s\u2026 fee=%s',
