@@ -295,13 +295,12 @@ const MIME = {
 
 // ── Bot config persistence (v2) ─────────────────────
 
-/** V2 config loaded from disk (auto-migrates v1). */
+/** Bot config loaded from disk. */
 const _diskConfig = loadConfig();
 
 if (_diskConfig.managedPositions.length > 0) {
   console.log(
-    '[server] Loaded bot config v2'
-      + ' (%d managed positions)',
+    '[server] Loaded bot config (%d managed positions)',
     _diskConfig.managedPositions.length,
   );
 }

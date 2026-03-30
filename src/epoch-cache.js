@@ -89,6 +89,18 @@ function setCachedEpochs(keyOpts, data) {
   const value = Array.isArray(data)
     ? { closedEpochs: data, liveEpoch: null }
     : data;
+  /* Never lose historical epochs — if the existing cache has more
+     closed epochs than the incoming data, prepend the missing ones.
+     This prevents a fresh tracker (1 epoch after rebalance) from
+     overwriting the full reconstructed history. */
+  const existing = cache[key];
+  const existingEpochs = existing?.closedEpochs || [];
+  const incomingEpochs = value.closedEpochs || [];
+  if (existingEpochs.length > incomingEpochs.length) {
+    const missing = existingEpochs.slice(
+      0, existingEpochs.length - incomingEpochs.length);
+    value.closedEpochs = [...missing, ...incomingEpochs];
+  }
   cache[key] = { ...value, cachedAt: new Date().toISOString() };
   _writeCache(cache);
 }

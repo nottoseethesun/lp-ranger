@@ -56,17 +56,20 @@ function _initPnlTracker(
   price0,
   price1,
   position,
+  walletAddress,
 ) {
   const tracker = createPnlTracker({ initialDeposit: ev });
-  const cached = position ? getCachedEpochs({
+  const wallet = walletAddress || botState.walletAddress;
+  const _epochKey = position ? {
     contract: config.POSITION_MANAGER,
-    wallet: botState.walletAddress,
+    wallet,
     token0: position.token0,
     token1: position.token1, fee: position.fee,
-  }) : null;
+  } : null;
+  const cached = _epochKey ? getCachedEpochs(_epochKey) : null;
   if (cached) {
     tracker.restore(cached);
-    console.log('[bot] Restored P&L epochs from cache');
+    console.log('[bot] Restored P&L epochs from cache (%d closed)', cached.closedEpochs?.length);
   } else {
     tracker.openEpoch({
       entryValue: ev,
@@ -159,6 +162,7 @@ async function _tryInitPnlTracker(
   position,
   botState,
   updateBotState,
+  walletAddress,
 ) {
   try {
     const { price0, price1 } = await _fetchTokenPrices(
@@ -185,7 +189,7 @@ async function _tryInitPnlTracker(
       const t = _initPnlTracker(
         _positionValueUsd(position, ps, price0, price1) || 1,
         botState, ps, lp, up, price0, price1,
-        position,
+        position, walletAddress,
       );
       updateBotState({ pnlEpochs: t.serialize() });
       return t;
@@ -251,6 +255,7 @@ async function startBotLoop(opts) {
     position,
     botState,
     updateBotState,
+    address,
   );
 
   const residualTracker = createResidualTracker();

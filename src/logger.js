@@ -44,9 +44,9 @@ const COLORS = {
   '[rebalance]': '\x1b[33m', // yellow
   '[event-scanner]': '\x1b[38;2;60;80;180;48;2;255;228;196m', // dark blue on bisque
   '[history]': '\x1b[38;2;160;120;80m', // light brown
-  '[pos-mgr]': '\x1b[35m', // magenta
-  '[pos-route]': '\x1b[35m', // magenta
-  '[pos-state]': '\x1b[35m', // magenta
+  '[pos-mgr]': '\x1b[35;48;2;242;242;242m', // magenta on 95% white
+  '[pos-route]': '\x1b[35;48;2;255;255;255m', // magenta on white
+  '[pos-state]': '\x1b[35;48;2;230;230;230m', // magenta on 90% white
   '[pnl]': '\x1b[38;2;0;130;0m', // dark green
   '[details]': '\x1b[38;2;0;191;255m', // azure blue (server-side)
   '[native]': '\x1b[33m', // yellow

@@ -1,6 +1,6 @@
 /**
  * @file test/bot-config-v2.test.js
- * @description Tests for bot-config-v2: load, save, migrate, composite keys.
+ * @description Tests for bot-config-v2: load, save, composite keys.
  */
 
 'use strict';
@@ -67,80 +67,37 @@ describe('bot-config-v2', () => {
   // ── loadConfig / saveConfig ─────────────────────────────────────────────
 
   describe('loadConfig()', () => {
-    it('returns empty v2 structure when no file exists', () => {
+    it('returns empty structure when no file exists', () => {
       const dir = tmpDir();
       const cfg = loadConfig(dir);
-      assert.equal(cfg.version, 2);
       assert.deepEqual(cfg.global, {});
       assert.deepEqual(cfg.managedPositions, []);
       assert.deepEqual(cfg.positions, {});
     });
 
-    it('loads an existing v2 config', () => {
+    it('loads an existing config', () => {
       const dir = tmpDir();
-      const v2 = {
-        version: 2,
+      const saved = {
         global: { slippagePct: 1.0 },
         managedPositions: ['key-1'],
         positions: { 'key-1': { status: 'running' } },
       };
       fs.writeFileSync(
         path.join(dir, '.bot-config.json'),
-        JSON.stringify(v2),
+        JSON.stringify(saved),
       );
       const loaded = loadConfig(dir);
-      assert.equal(loaded.version, 2);
       assert.equal(loaded.global.slippagePct, 1.0);
       assert.deepEqual(loaded.managedPositions, ['key-1']);
     });
 
-    it('migrates v1 to v2 on first load', () => {
+    it('returns empty structure for malformed config', () => {
       const dir = tmpDir();
-      const v1 = {
-        slippagePct: 0.3,
-        checkIntervalSec: 30,
-        rebalanceOutOfRangeThresholdPercent: 15,
-        activePositionId: '12345',
-        collectedFeesUsd: 42,
-      };
       fs.writeFileSync(
         path.join(dir, '.bot-config.json'),
-        JSON.stringify(v1),
+        JSON.stringify({ foo: 'bar' }),
       );
-
       const loaded = loadConfig(dir);
-      assert.equal(loaded.version, 2);
-      assert.equal(loaded.managedPositions.length, 1);
-
-      const posKey = loaded.managedPositions[0];
-      assert.ok(posKey.endsWith('-12345'));
-      assert.equal(loaded.positions[posKey].status, 'running');
-      assert.equal(loaded.positions[posKey].slippagePct, 0.3);
-      assert.equal(loaded.positions[posKey].checkIntervalSec, 30);
-      assert.equal(
-        loaded.positions[posKey].rebalanceOutOfRangeThresholdPercent,
-        15,
-      );
-      assert.equal(loaded.positions[posKey].collectedFeesUsd, 42);
-
-      // Backup file created
-      const backup = JSON.parse(
-        fs.readFileSync(path.join(dir, '.bot-config.v1.json'), 'utf8'),
-      );
-      assert.equal(backup.activePositionId, '12345');
-    });
-
-    it('v1 migration with no activePositionId produces empty managed set', () => {
-      const dir = tmpDir();
-      const v1 = { triggerType: 'threshold' };
-      fs.writeFileSync(
-        path.join(dir, '.bot-config.json'),
-        JSON.stringify(v1),
-      );
-
-      const loaded = loadConfig(dir);
-      assert.equal(loaded.version, 2);
-      assert.equal(loaded.global.triggerType, 'threshold');
       assert.deepEqual(loaded.managedPositions, []);
       assert.deepEqual(loaded.positions, {});
     });
@@ -150,7 +107,6 @@ describe('bot-config-v2', () => {
     it('writes valid JSON to disk', () => {
       const dir = tmpDir();
       const cfg = {
-        version: 2,
         global: { slippagePct: 0.7 },
         managedPositions: [],
         positions: {},
@@ -160,8 +116,23 @@ describe('bot-config-v2', () => {
       const raw = JSON.parse(
         fs.readFileSync(path.join(dir, '.bot-config.json'), 'utf8'),
       );
-      assert.equal(raw.version, 2);
       assert.equal(raw.global.slippagePct, 0.7);
+      assert.equal(raw.version, undefined, 'version field should not be written');
+    });
+
+    it('strips legacy version field', () => {
+      const dir = tmpDir();
+      const cfg = {
+        global: {},
+        managedPositions: [],
+        positions: {},
+      };
+      saveConfig(cfg, dir);
+
+      const raw = JSON.parse(
+        fs.readFileSync(path.join(dir, '.bot-config.json'), 'utf8'),
+      );
+      assert.equal(raw.version, undefined);
     });
   });
 
@@ -170,7 +141,6 @@ describe('bot-config-v2', () => {
   describe('getPositionConfig()', () => {
     it('creates entry if missing', () => {
       const cfg = {
-        version: 2,
         global: {},
         managedPositions: [],
         positions: {},
@@ -182,7 +152,6 @@ describe('bot-config-v2', () => {
 
     it('returns existing entry', () => {
       const cfg = {
-        version: 2,
         global: {},
         managedPositions: [],
         positions: { 'key-1': { status: 'paused' } },
@@ -195,7 +164,6 @@ describe('bot-config-v2', () => {
   describe('addManagedPosition()', () => {
     it('adds to managedPositions and sets status', () => {
       const cfg = {
-        version: 2,
         global: {},
         managedPositions: [],
         positions: {},
@@ -207,7 +175,6 @@ describe('bot-config-v2', () => {
 
     it('does not duplicate on re-add', () => {
       const cfg = {
-        version: 2,
         global: {},
         managedPositions: ['key-1'],
         positions: { 'key-1': { status: 'paused' } },
@@ -221,7 +188,6 @@ describe('bot-config-v2', () => {
   describe('removeManagedPosition()', () => {
     it('removes from managed set and marks stopped', () => {
       const cfg = {
-        version: 2,
         global: {},
         managedPositions: ['key-1', 'key-2'],
         positions: {
@@ -238,7 +204,6 @@ describe('bot-config-v2', () => {
   describe('migratePositionKey()', () => {
     it('moves config from old key to new key', () => {
       const cfg = {
-        version: 2,
         global: {},
         managedPositions: ['old-key'],
         positions: { 'old-key': { status: 'running', pnlEpochs: [1, 2] } },
@@ -252,7 +217,6 @@ describe('bot-config-v2', () => {
 
     it('no-op when old === new', () => {
       const cfg = {
-        version: 2,
         global: {},
         managedPositions: ['key-1'],
         positions: { 'key-1': { status: 'running' } },

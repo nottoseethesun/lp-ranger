@@ -201,16 +201,17 @@ async function reconstructEpochs({
   // Try disk cache first (fast restart path)
   if (cacheKey) {
     const cached = getCachedEpochs(cacheKey);
-    if (cached?.length > 0) {
-      console.log(`[pnl] Restored ${cached.length} epoch(s) from cache`);
+    const cachedEpochs = cached?.closedEpochs || [];
+    if (cachedEpochs.length > 0) {
+      console.log(`[pnl] Restored ${cachedEpochs.length} epoch(s) from cache`);
       _mergeAndPersist(
         pnlTracker,
-        cached,
+        cachedEpochs,
         current.liveEpoch,
         updateBotState,
         null,
       );
-      return cached.length;
+      return cachedEpochs.length;
     }
   }
 

@@ -2,18 +2,12 @@
  * @file src/bot-config-v2.js
  * @module bot-config-v2
  * @description
- * Load, save, and migrate `.bot-config.json` for multi-position management.
+ * Load and save `.bot-config.json` for multi-position management.
  *
- * V2 structure:
- *   { version: 2,
- *     global: { slippagePct, checkIntervalSec, … },
+ * Structure:
+ *   { global: { slippagePct, checkIntervalSec, … },
  *     managedPositions: [ compositeKey, … ],
  *     positions: { [compositeKey]: { status, thresholdPct, … } } }
- *
- * V1 (no `version` field) is a flat object with all keys at the top level.
- * On first load the flat structure is migrated: global keys move to `global`,
- * position-specific keys move to `positions[activePositionId]`, and the
- * original is backed up as `.bot-config.v1.json`.
  *
  * Focus is entirely client-side (determined by the URL in each browser tab),
  * so there is no `focusedPositionKey` in the config.
@@ -25,7 +19,6 @@ const fs = require('fs');
 const path = require('path');
 
 const CONFIG_FILE = '.bot-config.json';
-const BACKUP_FILE = '.bot-config.v1.json';
 
 /** Keys that belong in the global section. */
 const GLOBAL_KEYS = ['triggerType'];
@@ -100,75 +93,25 @@ function _configPath(dir) {
   return path.join(dir || process.cwd(), CONFIG_FILE);
 }
 
-/**
- * Migrate a v1 flat config to v2 structure.
- * @param {object} v1       Parsed v1 config (flat keys).
- * @param {string} [dir]    Directory for backup file.
- * @returns {object}        V2 config object.
- */
-function migrateV1toV2(v1, dir) {
-  // Back up original
-  try {
-    const backupPath = path.join(dir || process.cwd(), BACKUP_FILE);
-    fs.writeFileSync(backupPath, JSON.stringify(v1, null, 2), 'utf8');
-    console.log('[config] Backed up v1 config to %s', BACKUP_FILE);
-  } catch (err) {
-    console.warn('[config] Could not back up v1 config:', err.message);
-  }
-
-  const global = {};
-  const positionData = {};
-
-  for (const key of GLOBAL_KEYS) {
-    if (v1[key] !== undefined) global[key] = v1[key];
-  }
-  for (const key of POSITION_KEYS) {
-    if (v1[key] !== undefined) positionData[key] = v1[key];
-  }
-
-  const activeId = v1.activePositionId
-    ? String(v1.activePositionId)
-    : null;
-  const managedPositions = [];
-  const positions = {};
-
-  if (activeId) {
-    // Use a placeholder composite key — the full key (with blockchain/wallet/contract)
-    // will be resolved on first bot startup when position detection runs.
-    const placeholderKey = `pulsechain-unknown-unknown-${activeId}`;
-    positionData.status = 'running';
-    positions[placeholderKey] = positionData;
-    managedPositions.push(placeholderKey);
-  }
-
-  console.log(
-    '[config] Migrated v1 → v2 (managed: %d positions)',
-    managedPositions.length,
-  );
-
-  return { version: 2, global, managedPositions, positions };
+/** @private Empty config structure. */
+function _empty() {
+  return { global: {}, managedPositions: [], positions: {} };
 }
 
 /**
- * Load bot config from disk.  Auto-migrates v1 to v2 on first load.
+ * Load bot config from disk.
  * @param {string} [dir]  Directory override (default: cwd).
- * @returns {object}       V2 config (or empty v2 structure if no file).
+ * @returns {object}       Config object (or empty structure if no file).
  */
 function loadConfig(dir) {
   const filePath = _configPath(dir);
-  let raw;
   try {
-    raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!Array.isArray(raw.managedPositions)) return _empty();
+    return raw;
   } catch {
-    return { version: 2, global: {}, managedPositions: [], positions: {} };
+    return _empty();
   }
-
-  if (raw.version === 2) return raw;
-
-  // No version field → v1, migrate
-  const v2 = migrateV1toV2(raw, dir);
-  saveConfig(v2, dir);
-  return v2;
 }
 
 /**
@@ -177,6 +120,7 @@ function loadConfig(dir) {
  * @param {string} [dir] Directory override.
  */
 function saveConfig(cfg, dir) {
+  delete cfg.version; // strip legacy field if present
   try {
     fs.writeFileSync(
       _configPath(dir),
@@ -273,7 +217,6 @@ module.exports = {
   addManagedPosition,
   removeManagedPosition,
   migratePositionKey,
-  migrateV1toV2,
   GLOBAL_KEYS,
   POSITION_KEYS,
 };

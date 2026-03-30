@@ -337,18 +337,24 @@ function createRouteHandlers(deps) {
         try {
           const own = await pmC.ownerOf(tokenId);
           if (own.toLowerCase()
-            !== wAddr.toLowerCase())
-            throw new Error('not owned');
+            !== wAddr.toLowerCase()) {
+            console.warn(
+              '[server] NFT #%s not owned'
+                + ' — removing from managed',
+              tokenId,
+            );
+            const { removeManagedPosition } =
+              require('./bot-config-v2');
+            removeManagedPosition(diskConfig, key);
+            saveConfig(diskConfig);
+            i++; continue;
+          }
         } catch (_e) {
           console.warn(
-            '[server] NFT #%s not owned'
-              + ' — removing from managed',
-            tokenId,
+            '[server] ownerOf #%s failed: %s'
+              + ' — skipping (will retry next start)',
+            tokenId, _e.message,
           );
-          const { removeManagedPosition } =
-            require('./bot-config-v2');
-          removeManagedPosition(diskConfig, key);
-          saveConfig(diskConfig);
           i++; continue;
         }
       }

@@ -11,6 +11,8 @@ import {
   toggleSettingsPopover,
 } from './dashboard-helpers.js';
 import { copyText } from './dashboard-wallet.js';
+import { resetHistoryFlag } from './dashboard-data.js';
+import { clearHistory } from './dashboard-history.js';
 
 // ── Privacy ─────────────────────────────────────────
 
@@ -197,6 +199,11 @@ export function _toggleManagePosition() {
   const badge = g('manageBadge');
   const isManaged =
     badge?.classList.contains('managed');
+  /* Clear stale history so the next poll
+     renders data for the correct position. */
+  clearHistory();
+  resetHistoryFlag();
+
   if (isManaged) {
     // Build composite key and pause
     const w =

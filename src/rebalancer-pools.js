@@ -86,6 +86,20 @@ function _deadline(offsetSeconds = _DEADLINE_SECONDS) {
 }
 
 /**
+ * Compute a cancel gas price that beats the stuck replacement TX.
+ * Uses 2× the higher of current network gas or the stuck TX's gas.
+ * @param {object} provider - ethers provider.
+ * @param {bigint} stuckGas - Gas price of the stuck replacement TX.
+ * @returns {Promise<bigint>}
+ */
+async function _cancelGasPrice(provider, stuckGas) {
+  const fd = await provider.getFeeData();
+  const cur = fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
+  const base = cur > stuckGas ? cur : stuckGas;
+  return base * 2n;
+}
+
+/**
  * Wait for a TX to confirm, automatically speeding it up if it hasn't
  * confirmed within `_SPEEDUP_TIMEOUT_MS`.  Resends the same TX data with
  * the same nonce but a bumped gas price so miners/validators prefer it.
@@ -202,7 +216,8 @@ async function _waitOrSpeedUp(tx, signer, label) {
     tx.nonce,
   );
   try {
-    const cancelGas = 50_000_000_000n; // 50 Gwei — reasonable cancel gas
+    const cancelGas = await _cancelGasPrice(
+      provider, replacement?.gasPrice ?? bumped ?? 0n);
     const addr = await signer.getAddress();
     const cancelTx = await signer.sendTransaction({
       to: addr,

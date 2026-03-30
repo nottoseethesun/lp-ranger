@@ -104,6 +104,7 @@ async function _getLifetimeSnapshot(
   posKey,
   prices,
   deposit,
+  poolAddress,
 ) {
   const poolCacheKey = position.token0
     ? { contract: config.POSITION_MANAGER,
@@ -119,6 +120,7 @@ async function _getLifetimeSnapshot(
     provider, ethersLib, {
       walletAddress: walletAddr,
       position,
+      poolAddress: poolAddress || null,
       afterScan: async (evts) => {
         if (tracker.epochCount() > 0 || evts.length === 0) return;
         await reconstructEpochs({
@@ -475,6 +477,7 @@ async function computeLifetimeDetails(
     posKey,
     { price0, price1 },
     entryValue,
+    ps.poolAddress,
   );
   const snap =
     tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
