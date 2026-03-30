@@ -10,19 +10,19 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const config = require('../src/config');
 const { getPositionHistory } = require('../src/position-history');
 
-const LOG_PATH = path.join(process.cwd(), 'rebalance_log.json');
+const TMP = path.join(process.cwd(), 'tmp');
+const LOG_PATH = path.join(TMP, 'test-rebalance-log.json');
 
 describe('getPositionHistory', () => {
-  let origLog = null;
+  let origLogFile = null;
 
   before(() => {
-    try {
-      origLog = fs.readFileSync(LOG_PATH, 'utf8');
-    } catch {
-      origLog = null;
-    }
+    fs.mkdirSync(TMP, { recursive: true });
+    origLogFile = config.LOG_FILE;
+    config.LOG_FILE = 'tmp/test-rebalance-log.json';
 
     const testEntries = [
       {
@@ -52,14 +52,8 @@ describe('getPositionHistory', () => {
   });
 
   after(() => {
-    if (origLog !== null) fs.writeFileSync(LOG_PATH, origLog, 'utf8');
-    else {
-      try {
-        fs.unlinkSync(LOG_PATH);
-      } catch {
-        /* no file */
-      }
-    }
+    try { fs.unlinkSync(LOG_PATH); } catch { /* */ }
+    if (origLogFile !== null) config.LOG_FILE = origLogFile;
   });
 
   it('returns mint and close data for a mid-chain tokenId (200)', async () => {
