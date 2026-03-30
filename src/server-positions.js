@@ -130,6 +130,13 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
     );
     migrateConfigKey(diskConfig, key, newKey);
     saveConfig(diskConfig);
+    // Migrate epoch-cache entry to new key
+    const oldPk = parseCompositeKey(key);
+    const newPk = parseCompositeKey(newKey);
+    if (oldPk && newPk) {
+      const old = getCachedEpochs(oldPk);
+      if (old) setCachedEpochs(newPk, old);
+    }
     positionMgr.migrateKey(key, newKey, String(patch.activePositionId));
     state.forceRebalance = false;
     state.rebalancePaused = false;
