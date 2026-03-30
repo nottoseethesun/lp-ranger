@@ -154,20 +154,22 @@ function createCacheStore(opts) {
 }
 
 /**
- * Build a deterministic cache file path for event scanning, keyed by pool
- * (token0 + token1 + fee) instead of tokenId. This lets cache survive across
- * rebalances that mint new NFTs in the same pool.
+ * Build a deterministic cache file path for event scanning, keyed by
+ * blockchain + contract + pool identity.
  *
  * @param {{ token0: string, token1: string, fee: number|string }} position
+ * @param {string} [blockchain]  Default: 'pulsechain'.
+ * @param {string} [contract]    NFT factory / position manager address.
  * @returns {string} Absolute path under tmp/
  */
-function eventCachePath(position) {
+function eventCachePath(position, blockchain, contract) {
+  const bc = (blockchain || 'pulsechain').slice(0, 5);
+  const pm = (contract || '').slice(2, 8).toLowerCase();
   const t0 = position.token0.slice(2, 10).toLowerCase();
   const t1 = position.token1.slice(2, 10).toLowerCase();
   return path.join(
-    process.cwd(),
-    'tmp',
-    `event-cache-pool-${t0}-${t1}-${position.fee}.json`,
+    process.cwd(), 'tmp',
+    `event-cache-${bc}-${pm}-${t0}-${t1}-${position.fee}.json`,
   );
 }
 

@@ -42,18 +42,15 @@ const WALLET = '0x4e44847675763D5540B32Bee8a713CfDcb4bE61A';
 // ── lpPositionCachePath ─────────────────────────────────────────────────────
 
 describe('lp-position-cache — lpPositionCachePath', () => {
-  it('builds path from wallet address prefix', () => {
-    const result = lpPositionCachePath(WALLET);
-    assert.strictEqual(
-      path.basename(result),
-      'lp-position-cache-4e4484.json',
-    );
-    assert.ok(result.includes(path.join('tmp', 'lp-position-cache-')));
+  it('builds path with blockchain + contract + wallet', () => {
+    const result = lpPositionCachePath(WALLET, 'pulsechain', '0xCC05bf');
+    assert.ok(path.basename(result).startsWith('lp-position-cache-pulse'));
+    assert.ok(result.includes('tmp'));
   });
 
   it('is case-insensitive', () => {
-    const a = lpPositionCachePath('0xABCDEF1234567890');
-    const b = lpPositionCachePath('0xabcdef1234567890');
+    const a = lpPositionCachePath('0xABCDEF1234567890', 'pulsechain', '0xCC');
+    const b = lpPositionCachePath('0xabcdef1234567890', 'pulsechain', '0xCC');
     assert.strictEqual(a, b);
   });
 });

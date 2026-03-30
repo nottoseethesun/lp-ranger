@@ -75,7 +75,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
   _log(' Lock acquired for %s', tag);
   try {
     const cache = createCacheStore({
-      filePath: eventCachePath(position),
+      filePath: eventCachePath(position, 'pulsechain', config.POSITION_MANAGER),
     });
     const events = await scanRebalanceHistory(
       provider, ethersLib, {
@@ -113,7 +113,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
  */
 async function clearPoolCache(position) {
   const cache = createCacheStore({
-    filePath: eventCachePath(position),
+    filePath: eventCachePath(position, 'pulsechain', config.POSITION_MANAGER),
   });
   await cache.clear();
   _log('Event cache cleared for %s\u2026/%s\u2026 fee=%s',

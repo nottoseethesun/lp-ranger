@@ -23,11 +23,16 @@ const _R = '\x1b[0m';
 /**
  * Build deterministic cache file path for a wallet's LP positions.
  * @param {string} walletAddress  Checksummed 0x-prefixed address.
- * @returns {string}  Absolute path, e.g. tmp/lp-position-cache-4e4484.json
+ * @param {string} [blockchain]  Default: 'pulsechain'.
+ * @param {string} [contract]    NFT factory / position manager address.
+ * @returns {string}  Absolute path under tmp/
  */
-function lpPositionCachePath(walletAddress) {
-  const prefix = walletAddress.slice(2, 8).toLowerCase();
-  return path.join(process.cwd(), 'tmp', `lp-position-cache-${prefix}.json`);
+function lpPositionCachePath(walletAddress, blockchain, contract) {
+  const bc = (blockchain || 'pulsechain').slice(0, 5);
+  const pm = (contract || '').slice(2, 8).toLowerCase();
+  const w = walletAddress.slice(2, 8).toLowerCase();
+  return path.join(process.cwd(), 'tmp',
+    `lp-position-cache-${bc}-${pm}-${w}.json`);
 }
 
 /**
@@ -40,7 +45,8 @@ function lpPositionCachePath(walletAddress) {
 function loadLpPositionCache(walletAddress, opts) {
   const _fs = (opts && opts.fsModule) || fs;
   try {
-    const raw = _fs.readFileSync(lpPositionCachePath(walletAddress), 'utf8');
+    const raw = _fs.readFileSync(
+      lpPositionCachePath(walletAddress, opts?.blockchain, opts?.contract), 'utf8');
     const data = JSON.parse(raw);
     if (Array.isArray(data.positions) && typeof data.lastBlock === 'number') {
       return data;
@@ -61,7 +67,8 @@ function loadLpPositionCache(walletAddress, opts) {
  */
 function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
   const _fs = (opts && opts.fsModule) || fs;
-  const filePath = lpPositionCachePath(walletAddress);
+  const filePath = lpPositionCachePath(
+    walletAddress, opts?.blockchain, opts?.contract);
   const dir = path.dirname(filePath);
   try {
     _fs.mkdirSync(dir, { recursive: true });
@@ -86,7 +93,8 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
 function clearLpPositionCache(walletAddress, opts) {
   const _fs = (opts && opts.fsModule) || fs;
   try {
-    _fs.unlinkSync(lpPositionCachePath(walletAddress));
+    _fs.unlinkSync(lpPositionCachePath(
+      walletAddress, opts?.blockchain, opts?.contract));
   } catch {
     /* file may not exist */
   }

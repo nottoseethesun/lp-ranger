@@ -322,7 +322,8 @@ function _applyRebalanceResult(deps, result) {
   );
   // Invalidate LP position cache (tokenId list changed)
   if (deps._botState && deps._botState.walletAddress)
-    clearLpPositionCache(deps._botState.walletAddress);
+    clearLpPositionCache(deps._botState.walletAddress,
+      { contract: config.POSITION_MANAGER });
   if (!deps.updateBotState) return;
   _notifyRebalance(
     deps,

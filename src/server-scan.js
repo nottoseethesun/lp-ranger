@@ -168,7 +168,8 @@ function createScanHandlers(deps) {
   async function _checkCache(
     prov, ethers, wSt, pmAddr, currentBlock,
   ) {
-    const cached = loadLpPositionCache(wSt.address);
+    const cached = loadLpPositionCache(wSt.address,
+      { contract: config.POSITION_MANAGER });
     if (!cached) {
       _log(
         ' No cache for wallet %s',
@@ -195,8 +196,8 @@ function createScanHandlers(deps) {
         w, cached.lastBlock, currentBlock,
       );
       saveLpPositionCache(
-        wSt.address, cached.positions,
-        currentBlock,
+        wSt.address, cached.positions, currentBlock,
+        { contract: config.POSITION_MANAGER },
       );
       return cached;
     }
@@ -252,7 +253,7 @@ function createScanHandlers(deps) {
     if (nfts.length > 0) {
       saveLpPositionCache(
         wSt.address, nfts, currentBlock,
-      );
+        { contract: config.POSITION_MANAGER });
       _log(
         ' Full scan complete for'
         + ' wallet %s \u2014 cached %d positions'
@@ -338,7 +339,8 @@ function createScanHandlers(deps) {
         ok: false, error: 'No wallet loaded.',
       });
 
-    const cached = loadLpPositionCache(wSt.address);
+    const cached = loadLpPositionCache(wSt.address,
+      { contract: config.POSITION_MANAGER });
     if (!cached)
       return jsonResponse(res, 200, {
         ok: true,
@@ -373,7 +375,7 @@ function createScanHandlers(deps) {
     }));
     saveLpPositionCache(
       wSt.address, updated, cached.lastBlock,
-    );
+      { contract: config.POSITION_MANAGER });
 
     const liquidities = {};
     for (const [k, v] of liqMap) liquidities[k] = v;

@@ -195,18 +195,16 @@ describe('cache-store — error resilience', () => {
 // ── eventCachePath ─────────────────────────────────────────────────────────
 
 describe('cache-store — eventCachePath', () => {
-  it('builds a pool-keyed path from position tokens and fee', () => {
+  it('builds path with blockchain + contract + pool', () => {
     const pos = {
       token0: '0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39',
       token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
       fee: 2500,
     };
-    const result = eventCachePath(pos);
-    assert.strictEqual(
-      path.basename(result),
-      'event-cache-pool-2b591e99-57fde0a7-2500.json',
-    );
-    assert.ok(result.endsWith(path.join('tmp', path.basename(result))));
+    const result = eventCachePath(pos, 'pulsechain', '0xCC05bf');
+    assert.ok(path.basename(result).startsWith('event-cache-pulse'));
+    assert.ok(path.basename(result).includes('2b591e99'));
+    assert.ok(result.includes('tmp'));
   });
 
   it('produces the same path for different tokenIds in the same pool', () => {
@@ -215,8 +213,8 @@ describe('cache-store — eventCachePath', () => {
       token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
       fee: 2500,
     };
-    const a = eventCachePath({ ...base, tokenId: '157804' });
-    const b = eventCachePath({ ...base, tokenId: '157939' });
+    const a = eventCachePath({ ...base, tokenId: '157804' }, 'pc', '0xPM');
+    const b = eventCachePath({ ...base, tokenId: '157939' }, 'pc', '0xPM');
     assert.strictEqual(a, b);
   });
 
@@ -231,6 +229,8 @@ describe('cache-store — eventCachePath', () => {
       token1: '0x57fde0a71132198BBeC939B98976993d8D89D225',
       fee: 10000,
     };
-    assert.notStrictEqual(eventCachePath(poolA), eventCachePath(poolB));
+    assert.notStrictEqual(
+      eventCachePath(poolA, 'pc', '0xPM'),
+      eventCachePath(poolB, 'pc', '0xPM'));
   });
 });
