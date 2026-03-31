@@ -358,10 +358,11 @@ function createRouteHandlers(deps) {
           i++; continue;
         }
       }
-      const bState = createPerPositionBotState(
+      const perPositionBotState = createPerPositionBotState(
         diskConfig.global, pc,
       );
-      attachMultiPosDeps(bState, positionMgr);
+      attachMultiPosDeps(perPositionBotState, positionMgr);
+      getAllPositionBotStates().set(key, perPositionBotState);
       try {
         const kRef = { current: key };
         await positionMgr.startPosition(key, {
@@ -375,7 +376,7 @@ function createRouteHandlers(deps) {
                 kRef, patch,
                 diskConfig, positionMgr,
               ),
-            botState: bState,
+            botState: perPositionBotState,
             positionId: tokenId,
             getConfig: (k) => readConfigValue(
               diskConfig, kRef.current, k,

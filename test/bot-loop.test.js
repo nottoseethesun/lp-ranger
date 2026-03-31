@@ -310,7 +310,7 @@ describe('bot-loop: forceRebalance', () => {
       'should bypass throttle when forced',
     );
   });
-  it('does not clear forceRebalance flag on failure', async () => {
+  it('clears forceRebalance flag after attempt', async () => {
     const botState = {
       forceRebalance: true,
       rebalanceOutOfRangeThresholdPercent: 20,
@@ -328,8 +328,8 @@ describe('bot-loop: forceRebalance', () => {
     assert.strictEqual(r.rebalanced, false);
     assert.strictEqual(
       botState.forceRebalance,
-      true,
-      'flag should persist after failure',
+      false,
+      'flag should clear after attempt',
     );
   });
 });

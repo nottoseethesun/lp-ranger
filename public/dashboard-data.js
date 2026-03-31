@@ -338,7 +338,8 @@ function _updateSyncBadge(d) {
   badge.textContent = label || 'Syncing\u2026';
   badge.style.background = ''; badge.classList.toggle('done', c);
   const t = !c ? 'Wait until Syncing badge reads "Synced".' : '';
-  ['manageToggleBtn', 'posBrowserBtn'].forEach(
+  ['manageToggleBtn', 'posBrowserBtn',
+    'rebalanceWithRangeBtn'].forEach(
     (id) => { const b = g(id);
       if (b) { b.disabled = !c; b.title = t; } });
   if (c && !_scanWasComplete && isViewingClosedPos())

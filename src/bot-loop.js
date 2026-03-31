@@ -338,7 +338,6 @@ async function startBotLoop(opts) {
         updateBotState({
           rebalanceError: null,
           rebalancePaused: false,
-          forceRebalance: false,
         });
         if (botState.rangeRounded)
           setTimeout(

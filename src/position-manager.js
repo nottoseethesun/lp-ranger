@@ -117,7 +117,7 @@ function createPositionManager(opts) {
 
     _positions.set(key, { key, tokenId, status: 'running', handle });
     console.log(
-      '[pos-mgr] Started position %s (tokenId=%s %s)',
+      '[pos-mgr] Started managing position %s (tokenId=%s %s)',
       key,
       tokenId,
       emojiId(tokenId),

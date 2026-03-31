@@ -28,11 +28,16 @@ function _patchFeeData(provider) {
       String(fd.maxFeePerGas),
       String(fd.maxPriorityFeePerGas),
     );
+    const _GAS_MULT = 10n;
     if (
       (fd.gasPrice && fd.gasPrice > 0n) ||
       (fd.maxFeePerGas && fd.maxFeePerGas > 0n)
     )
-      return fd;
+      return new ethers.FeeData(
+        fd.gasPrice ? fd.gasPrice * _GAS_MULT : null,
+        fd.maxFeePerGas ? fd.maxFeePerGas * _GAS_MULT : null,
+        fd.maxPriorityFeePerGas,
+      );
     console.warn(
       '[bot] getFeeData returned zero/null — falling back to eth_gasPrice RPC',
     );

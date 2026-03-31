@@ -90,19 +90,58 @@ function _supplementFromEvents(result, tokenId, events) {
   }
 }
 
+const _MINT_CACHE_PATH = path.join(
+  process.cwd(), 'tmp', 'nft-mint-date-cache.json');
+const _mintCache = new Map();
+
+/** Load disk mint cache into memory on first use. */
+function _loadMintCache() {
+  if (_mintCache.size > 0) return;
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(_MINT_CACHE_PATH, 'utf8'));
+    for (const [k, v] of Object.entries(raw))
+      _mintCache.set(k, v);
+  } catch { /* no file or corrupt — start empty */ }
+}
+
+/** Persist in-memory mint cache to disk. */
+function _saveMintCache() {
+  try {
+    fs.mkdirSync(path.dirname(_MINT_CACHE_PATH),
+      { recursive: true });
+    fs.writeFileSync(_MINT_CACHE_PATH,
+      JSON.stringify(Object.fromEntries(_mintCache), null, 2),
+      'utf8');
+  } catch { /* best-effort */ }
+}
+
 /**
  * Look up NFT's original mint timestamp via Transfer(from=0x0) on-chain.
+ * Results are cached to disk (`tmp/nft-mint-date-cache.json`)
+ * and in memory to avoid repeated full-chain scans.
  * @param {object} result   Result object to supplement.
  * @param {string} tokenId  NFT token ID.
  */
 async function _supplementMintFromChain(result, tokenId) {
+  _loadMintCache();
+  const cached = _mintCache.get(String(tokenId));
+  if (cached) {
+    result.mintDate = result.mintDate || cached.mintDate;
+    result.mintTxHash = result.mintTxHash || cached.txHash;
+    return;
+  }
   try {
     const ethers = require('ethers');
     const prov = new ethers.JsonRpcProvider(config.RPC_URL);
     const iface = new ethers.Interface(PM_ABI);
+    /* Search recent blocks only — NFTs are minted within
+       the last ~5 years max (~15.8M blocks on PulseChain). */
+    const latest = await prov.getBlockNumber();
+    const from = Math.max(0, latest - 15_800_000);
     const logs = await prov.getLogs({
       address: config.POSITION_MANAGER,
-      fromBlock: 0,
+      fromBlock: from,
       toBlock: 'latest',
       topics: [
         iface.getEvent('Transfer').topicHash,
@@ -116,6 +155,9 @@ async function _supplementMintFromChain(result, tokenId) {
     if (!block) return;
     result.mintDate = new Date(block.timestamp * 1000).toISOString();
     result.mintTxHash = result.mintTxHash || logs[0].transactionHash;
+    _mintCache.set(String(tokenId),
+      { mintDate: result.mintDate, txHash: logs[0].transactionHash });
+    _saveMintCache();
     console.log(
       '[history] Mint date from chain for #' +
         tokenId +
@@ -516,8 +558,14 @@ async function getPositionHistory(tokenId, opts = {}) {
   if (close) _applyCloseEntry(result, close);
 
   _supplementFromEvents(result, tokenId, opts.rebalanceEvents);
-  if (!result.mintDate) await _supplementMintFromChain(result, tokenId);
+  if (!result.mintDate) {
+    const _t1 = Date.now();
+    await _supplementMintFromChain(result, tokenId);
+    console.log('[history] _supplementMintFromChain #%s: %dms', tokenId, Date.now() - _t1);
+  }
+  const _t2 = Date.now();
   await _supplementHistoricalPrices(result, opts.activePosition);
+  console.log('[history] _supplementHistoricalPrices #%s: %dms', tokenId, Date.now() - _t2);
   // Fill remaining null prices from current prices (better than no data)
   if (opts.fallbackPrices) {
     const fb = opts.fallbackPrices;
@@ -530,7 +578,9 @@ async function getPositionHistory(tokenId, opts = {}) {
     if (!result.token1UsdPriceAtClose && fb.price1 > 0)
       result.token1UsdPriceAtClose = fb.price1;
   }
+  const _t3 = Date.now();
   await _supplementAmountsFromChain(result, tokenId);
+  console.log('[history] _supplementAmountsFromChain #%s: %dms', tokenId, Date.now() - _t3);
   return result;
 }
 

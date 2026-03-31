@@ -78,6 +78,8 @@ export async function refetchClosedPosHistory() {
 export function exitClosedPosView() {
   _viewingClosed = false;
   _closedPosEntry = null;
+  const dur = g('kpiPosDuration');
+  if (dur) dur.style.color = '';
 }
 
 /**
@@ -239,6 +241,7 @@ function _renderDuration(data) {
     return;
   }
   el.textContent = parts.join(' | ');
+  el.style.color = '#888';
 }
 
 /**

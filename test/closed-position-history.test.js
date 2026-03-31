@@ -159,4 +159,25 @@ describe('getPositionHistory', () => {
     assert.strictEqual(body.entryValueUsd, null);
     fs.writeFileSync(LOG_PATH, '[]', 'utf8');
   });
+
+  it('returns fallback prices when provided', async () => {
+    fs.writeFileSync(LOG_PATH, '[]', 'utf8');
+    const body = await getPositionHistory('888', {
+      fallbackPrices: { price0: 1.5, price1: 0.8 },
+    });
+    assert.strictEqual(body.tokenId, '888');
+    assert.strictEqual(body.token0UsdPriceAtOpen, 1.5);
+    assert.strictEqual(body.token1UsdPriceAtOpen, 0.8);
+  });
+
+  it('returns complete result shape', async () => {
+    fs.writeFileSync(LOG_PATH, '[]', 'utf8');
+    const body = await getPositionHistory('999', {});
+    assert.strictEqual(body.tokenId, '999');
+    assert.ok('mintDate' in body);
+    assert.ok('closeDate' in body);
+    assert.ok('entryValueUsd' in body);
+    assert.ok('exitValueUsd' in body);
+    assert.ok('feesEarnedUsd' in body);
+  });
 });

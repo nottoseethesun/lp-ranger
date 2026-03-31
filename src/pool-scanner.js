@@ -55,11 +55,14 @@ function getPoolScanLock(token0, token1, fee) {
  * @param {string} [opts.poolAddress]  Resolved pool address (optional, for pool-age optimisation).
  * @param {function} [opts.onPoolCreationProgress]  (done, total) callback.
  * @param {function} [opts.onProgress]  (done, total) callback for chunk progress.
- * @param {function} [opts.afterScan]   Called with (events) while the lock is
+ * @param {function} [opts.computeFromHistoricalPrices]   Called with (events) while the lock is
  *   still held — use for epoch reconstruction so the second caller finds
  *   cached results instead of reconstructing in parallel.
  * @returns {Promise<object[]>}  Array of RebalanceEvent objects.
  */
+const _recentScans = new Map();
+const _RECENT_TTL_MS = 60_000;
+
 async function scanPoolHistory(provider, ethersLib, opts) {
   const { walletAddress, position } = opts;
   const lock = getPoolScanLock(
@@ -68,16 +71,35 @@ async function scanPoolHistory(provider, ethersLib, opts) {
   const t0s = position.token0.slice(0, 8);
   const t1s = position.token1.slice(0, 8);
   const tag = `${t0s}\u2026/${t1s}\u2026 fee=${position.fee}`;
+  const recentKey = tag + ':' + (walletAddress || '').slice(0, 8);
+  const recent = _recentScans.get(recentKey);
+  if (recent && Date.now() - recent.at < _RECENT_TTL_MS) {
+    _log(' Using recent scan result for %s', tag);
+    if (opts.computeFromHistoricalPrices)
+      await opts.computeFromHistoricalPrices(recent.events);
+    return recent.events;
+  }
   const pending = lock.isLocked();
   if (pending)
     _log(' Waiting for lock on %s', tag);
+  const _lockWaitStart = Date.now();
   const release = await lock.acquire();
-  _log(' Lock acquired for %s', tag);
+  const _lockWaitMs = Date.now() - _lockWaitStart;
+  const recent2 = _recentScans.get(recentKey);
+  if (recent2 && Date.now() - recent2.at < _RECENT_TTL_MS) {
+    release();
+    _log(' Using recent result for %s (waited %dms)',
+      tag, _lockWaitMs);
+    if (opts.computeFromHistoricalPrices)
+      await opts.computeFromHistoricalPrices(recent2.events);
+    return recent2.events; }
+  _log(' Lock acquired for %s (waited %dms)', tag, _lockWaitMs);
+  let events;
   try {
     const cache = createCacheStore({
       filePath: eventCachePath(position, 'pulsechain', config.POSITION_MANAGER, walletAddress),
     });
-    const events = await scanRebalanceHistory(
+    events = await scanRebalanceHistory(
       provider, ethersLib, {
         positionManagerAddress: config.POSITION_MANAGER,
         walletAddress,
@@ -93,17 +115,24 @@ async function scanPoolHistory(provider, ethersLib, opts) {
         onProgress: opts.onProgress,
       },
     );
-    _log('Scan complete for %s \u2014 %d events',
-      tag, events.length);
-    if (opts.afterScan) {
-      _log('Running afterScan for %s', tag);
-      await opts.afterScan(events);
-    }
-    return events;
+    _log('Scan complete for %s \u2014 %d events (scan took %dms)',
+      tag, events.length, Date.now() - _lockWaitStart - _lockWaitMs);
   } finally {
     release();
-    _log(' Lock released for %s', tag);
+    _log(' Lock released for %s (held %dms)',
+      tag, Date.now() - _lockWaitStart - _lockWaitMs);
   }
+  _recentScans.set(recentKey, { events, at: Date.now() });
+  if (opts.computeFromHistoricalPrices) {
+    const _priceT0 = Date.now();
+    _log('Computing P&L — fetching price data from'
+      + ' cache or remote API for %s\u2026'
+      + ' (run with --verbose for detail)', tag);
+    await opts.computeFromHistoricalPrices(events);
+    _log('P&L computation done for %s (%dms)',
+      tag, Date.now() - _priceT0);
+  }
+  return events;
 }
 
 /**

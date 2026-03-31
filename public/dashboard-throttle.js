@@ -511,6 +511,15 @@ export function applyAll() {
 
 /** Open the Rebalance with Updated Range modal. */
 export function openRebalanceRangeModal() {
+  const a = posStore.getActive();
+  const managed = a && isPositionManaged(a.tokenId);
+  const synced = g('syncBadge')?.classList.contains('done');
+  if (!managed || !synced) { _createModal(null,
+    '9mm-pos-mgr-modal-caution', 'Rebalance Blocked',
+    '<p>' + (!managed ? 'Click Manage first, then wait'
+      + ' for syncing to finish.' : 'Wait for syncing'
+      + ' to finish before rebalancing.') + '</p>');
+    return; }
   const modal = g('rebalanceRangeModal');
   if (modal) modal.classList.remove('hidden');
   _updateRangeHint();
@@ -518,10 +527,8 @@ export function openRebalanceRangeModal() {
 
 /** Close the Rebalance with Updated Range modal. */
 export function closeRebalanceRangeModal() {
-  const modal = g('rebalanceRangeModal');
-  if (modal) modal.classList.add('hidden');
-}
-
+  const m = g('rebalanceRangeModal');
+  if (m) m.classList.add('hidden'); }
 /** Update the hint text showing per-side percentage. */
 export function updateRebalanceRangeHint() {
   _updateRangeHint();

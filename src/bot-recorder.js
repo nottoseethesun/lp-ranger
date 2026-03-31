@@ -113,7 +113,7 @@ async function _closePnlEpoch(deps, result) {
 /** Resolve pool address and scan on-chain rebalance history (fire-and-forget). */
 async function _scanHistory(
   provider, ethersLib, address, position,
-  events, updateState, throttle, afterScan,
+  events, updateState, throttle, computeFromHistoricalPrices,
 ) {
   try {
     updateState({
@@ -142,7 +142,8 @@ async function _scanHistory(
         onProgress: (done, total) =>
           updateState({ rebalanceScanProgress:
             50 + Math.round((done / total) * 45) }),
-        afterScan: afterScan || undefined,
+        computeFromHistoricalPrices:
+          computeFromHistoricalPrices || undefined,
       });
     updateState({ rebalanceScanProgress: 95 });
     events.push(...found);
@@ -205,6 +206,10 @@ async function _scanAndReconstruct(
     provider, ethersLib, address, position,
     events, updateState, throttle,
     async () => {
+      if (!events.length) return;
+      console.log(
+        '[bot] Reconstructing epochs (%d events)\u2026',
+        events.length);
       const fb = await _fetchTokenPrices(
         position.token0, position.token1,
       ).catch(() => ({ price0: 0, price1: 0 }));
@@ -222,6 +227,7 @@ async function _scanAndReconstruct(
       );
     },
   );
+  console.log('[bot] Scan + epoch reconstruction complete');
   updateState({
     rebalanceScanComplete: true,
     rebalanceScanProgress: 100,

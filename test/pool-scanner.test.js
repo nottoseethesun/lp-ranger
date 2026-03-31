@@ -85,3 +85,13 @@ describe('clearPoolCache', () => {
     await clearPoolCache(pos, wallet);
   });
 });
+
+describe('module exports', () => {
+  it('exports expected functions', () => {
+    const m = require('../src/pool-scanner');
+    for (const fn of ['scanPoolHistory',
+      'appendToPoolCache', 'getPoolScanLock',
+      'clearPoolCache'])
+      assert.equal(typeof m[fn], 'function');
+  });
+});

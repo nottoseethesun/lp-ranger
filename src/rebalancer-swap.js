@@ -21,6 +21,7 @@ const {
   _waitOrSpeedUp,
   _ensureAllowance,
 } = require('./rebalancer-pools');
+const { swapViaAggregator } = require('./rebalancer-aggregator');
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -405,110 +406,143 @@ function computeDesiredAmounts(available, range, tokens) {
  * @param {bigint} [params.deadline]
  * @returns {Promise<{amountOut: bigint, txHash: string|null}>}
  */
-async function swapIfNeeded(
-  signer,
-  ethersLib,
-  {
-    swapRouterAddress,
-    tokenIn,
-    tokenOut,
-    fee,
-    amountIn,
-    slippagePct,
-    currentPrice,
-    decimalsIn,
-    decimalsOut,
-    isToken0To1,
-    recipient,
-    deadline,
-  },
-) {
-  if (amountIn < _MIN_SWAP_THRESHOLD) {
-    return { amountOut: 0n, txHash: null };
-  }
+/** Compute gas cost from a TX receipt. */
+function _gasCost(r) {
+  return (r.gasUsed ?? 0n) * (r.gasPrice ?? r.effectiveGasPrice ?? 0n); }
+async function _balanceDiff(ethersLib, tokenOut, recipient, prov, fn) {
+  const outC = new ethersLib.Contract(tokenOut, ERC20_ABI, prov);
+  const before = await outC.balanceOf(recipient);
+  const result = await fn();
+  const diff = (await outC.balanceOf(recipient)) - before;
+  return { ...result, amountOut: diff > 0n ? diff : 0n }; }
 
+/** Swap via aggregator — delegates to rebalancer-aggregator.js. */
+async function _swapViaAggregator(signer, ethersLib, params) {
+  return swapViaAggregator(signer, ethersLib, params, _balanceDiff);
+}
+
+/**
+ * Swap via V3 SwapRouter (fallback path — single pool).
+ * This is the original swap logic, preserved as a fallback.
+ */
+async function _swapViaRouter(signer, ethersLib, params) {
+  const { swapRouterAddress, tokenIn, tokenOut, fee,
+    amountIn, slippagePct, currentPrice, decimalsIn,
+    decimalsOut, isToken0To1, recipient, deadline } = params;
   const { Contract } = ethersLib;
-  const signerAddress = await signer.getAddress();
+  const signerAddr = await signer.getAddress();
   await _ensureAllowance(
     new Contract(tokenIn, ERC20_ABI, signer),
-    signerAddress,
-    swapRouterAddress,
-    amountIn,
-  );
+    signerAddr, swapRouterAddress, amountIn);
   const router = new Contract(swapRouterAddress, SWAP_ROUTER_ABI, signer);
   const dl = deadline || _deadline();
-  const swapParams = {
-    tokenIn,
-    tokenOut,
-    fee,
-    recipient,
-    deadline: dl,
-    amountIn,
-    amountOutMinimum: 0n,
-    sqrtPriceLimitX96: 0n,
-  };
-
-  // Simulate swap to get real expected output (accounts for pool price impact)
+  const swapParams = { tokenIn, tokenOut, fee,
+    recipient, deadline: dl, amountIn,
+    amountOutMinimum: 0n, sqrtPriceLimitX96: 0n };
   let quotedOut;
-  try {
-    quotedOut = await router.exactInputSingle.staticCall(swapParams);
-  } catch (e) {
-    throw new Error('Swap quote simulation failed: ' + e.message, {
-      cause: e,
-    });
-  }
-  if (quotedOut === 0n)
-    throw new Error(
-      'Swap aborted: pool has no liquidity for this trade. Consider sourcing tokens externally, recreating the position, and selecting the new NFT in the app.',
-    );
-  const slip =
-    slippagePct !== null && slippagePct !== undefined ? slippagePct : 0.5;
-  const spotRate = isToken0To1 ? currentPrice : 1 / currentPrice;
-  const spotExpected =
-    (Number(amountIn) / 10 ** decimalsIn) * spotRate * 10 ** decimalsOut;
-  const impactPct =
-    spotExpected > 0
-      ? Math.max(
-          0,
-          ((spotExpected - Number(quotedOut)) / spotExpected) * 100,
-        )
-      : 0;
+  try { quotedOut = await router.exactInputSingle.staticCall(swapParams);
+  } catch (e) { throw new Error('Swap quote failed: ' + e.message, { cause: e }); }
+  if (quotedOut === 0n) throw new Error('Swap aborted: no pool liquidity.');
+  const slip = slippagePct ?? 0.5;
+  const spotRate = isToken0To1
+    ? currentPrice : 1 / currentPrice;
+  const spotExpected = (Number(amountIn) / 10 ** decimalsIn)
+    * spotRate * 10 ** decimalsOut;
+  const impactPct = spotExpected > 0
+    ? Math.max(0, ((spotExpected - Number(quotedOut))
+        / spotExpected) * 100) : 0;
   console.log(
-    '[rebalance] swap quote: quoted=%s spotExpected=%s impact=%s%% slippage=%s%%',
-    String(quotedOut),
-    spotExpected.toFixed(0),
-    impactPct.toFixed(2),
-    slip,
-  );
+    '[rebalance] swap (V3 router): quote=%s spot=%s impact=%s%% slip=%s%%',
+    String(quotedOut), spotExpected.toFixed(0),
+    impactPct.toFixed(2), slip);
   _checkSwapImpact(impactPct, slip);
   const slipBps = Math.round(slip * 100);
-  const amountOutMinimum = (quotedOut * BigInt(10000 - slipBps)) / 10000n;
-
+  swapParams.amountOutMinimum =
+    (quotedOut * BigInt(10000 - slipBps)) / 10000n;
   const provider = signer.provider || signer;
-  const outContract = new Contract(tokenOut, ERC20_ABI, provider);
-  const balBefore = await outContract.balanceOf(recipient);
-  swapParams.amountOutMinimum = amountOutMinimum;
-  const tx = await router.exactInputSingle(swapParams);
-  console.log(
-    '[rebalance] swap: TX submitted, hash=%s nonce=%d min=%s',
-    tx.hash,
-    tx.nonce,
-    String(amountOutMinimum),
-  );
-  const receipt = await _waitOrSpeedUp(tx, signer, 'swap');
-  console.log(
-    '[rebalance] swap: confirmed, gasUsed=%s block=%s',
-    String(receipt.gasUsed),
-    receipt.blockNumber,
-  );
-  const actualOut = (await outContract.balanceOf(recipient)) - balBefore;
-  return {
-    amountOut: actualOut > 0n ? actualOut : 0n,
-    txHash: receipt.hash,
-    gasCostWei:
-      (receipt.gasUsed ?? 0n) *
-      (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n),
-  };
+  return _balanceDiff(ethersLib, tokenOut,
+    recipient, provider, async () => {
+    const tx = await router.exactInputSingle(swapParams);
+    console.log('[rebalance] swap (V3 router): TX hash=%s nonce=%d',
+      tx.hash, tx.nonce);
+    const receipt = await _waitOrSpeedUp(tx, signer, 'swap');
+    console.log('[rebalance] swap (V3 router): confirmed gasUsed=%s',
+      String(receipt.gasUsed));
+    return { txHash: receipt.hash, gasCostWei: _gasCost(receipt) };
+  });
+}
+
+/** True when the error is a slippage/impact abort. */
+function _isSlippageError(err) {
+  return err?.message?.startsWith('Swap aborted'); }
+
+/**
+ * Execute a swap in N equal chunks to reduce per-swap impact.
+ * Each chunk runs sequentially (prior chunks move the price).
+ */
+async function _swapInChunks(
+  swapFn, signer, ethersLib, params, n,
+) {
+  const total = params.amountIn;
+  const chunk = total / BigInt(n);
+  const remainder = total - chunk * BigInt(n);
+  let amountOut = 0n, gasCostWei = 0n, txHash = null;
+  for (let i = 0; i < n; i++) {
+    const amt = i === n - 1 ? chunk + remainder : chunk;
+    if (amt < _MIN_SWAP_THRESHOLD) continue;
+    console.log('[rebalance] chunk %d/%d: %s',
+      i + 1, n, String(amt));
+    const r = await swapFn(signer, ethersLib,
+      { ...params, amountIn: amt });
+    amountOut += r.amountOut;
+    gasCostWei += r.gasCostWei || 0n;
+    txHash = r.txHash || txHash;
+  }
+  return { amountOut, txHash, gasCostWei };
+}
+
+/**
+ * Try a swap function full, then in 3 chunks on slippage error.
+ */
+async function _swapWithChunking(
+  swapFn, signer, ethersLib, params,
+) {
+  try {
+    return await swapFn(signer, ethersLib, params);
+  } catch (err) {
+    if (!_isSlippageError(err)) throw err;
+    console.warn(
+      '[rebalance] %s \u2014 retrying in 3 chunks',
+      err.message);
+    return _swapInChunks(
+      swapFn, signer, ethersLib, params, 3);
+  }
+}
+
+/**
+ * Swap tokens if needed for rebalancing.
+ * Tries 9mm DEX Aggregator first (lowest slippage),
+ * falls back to V3 SwapRouter on failure.
+ * Both paths try chunking (3 equal parts) on slippage error.
+ * @param {object} signer      ethers Signer.
+ * @param {object} ethersLib   ethers library.
+ * @param {object} params      Swap parameters.
+ * @returns {Promise<{amountOut: bigint, txHash: string|null, gasCostWei: bigint}>}
+ */
+async function swapIfNeeded(signer, ethersLib, params) {
+  if (params.amountIn < _MIN_SWAP_THRESHOLD)
+    return { amountOut: 0n, txHash: null, gasCostWei: 0n };
+  try {
+    return await _swapWithChunking(
+      _swapViaAggregator, signer, ethersLib, params);
+  } catch (err) {
+    console.warn(
+      '[rebalance] Aggregator failed: %s'
+        + ' \u2014 falling back to V3 router',
+      err.message);
+    return await _swapWithChunking(
+      _swapViaRouter, signer, ethersLib, params);
+  }
 }
 
 // ── Module exports ───────────────────────────────────────────────────────────

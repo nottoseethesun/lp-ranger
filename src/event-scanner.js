@@ -576,6 +576,19 @@ function _scanLabel(walletAddress, poolToken0, poolToken1, poolFee) {
   return `All pools (wallet ${wallet})`;
 }
 
+/** Check cache; skip pool-creation lookup if cached data exists. */
+async function _resolveCache(
+  provider, ethersLib, cache, cacheKey, baseFrom,
+  currentBlock, factoryAddress, poolAddress, onProgress,
+) {
+  const pre = await loadCache(cache, cacheKey, baseFrom);
+  if (pre.scanFrom > baseFrom) return pre;
+  const from = await resolveFromBlock(
+    provider, ethersLib, currentBlock, baseFrom,
+    factoryAddress, poolAddress, onProgress);
+  return loadCache(cache, cacheKey, from);
+}
+
 async function scanRebalanceHistory(provider, ethersLib, opts) {
   const {
     positionManagerAddress,
@@ -591,19 +604,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
   } = opts;
 
   const currentBlock = await provider.getBlockNumber();
-  const baseFrom = Math.max(
-    0,
-    currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR),
-  );
-  const fromBlock = await resolveFromBlock(
-    provider,
-    ethersLib,
-    currentBlock,
-    baseFrom,
-    factoryAddress,
-    poolAddress,
-    opts.onPoolCreationProgress,
-  );
   const cacheKey = _buildCacheKey(
     walletAddress,
     positionManagerAddress,
@@ -611,11 +611,14 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     poolToken1,
     poolFee,
   );
-  const { cachedEvents, scanFrom } = await loadCache(
-    cache,
-    cacheKey,
-    fromBlock,
+  const baseFrom = Math.max(
+    0,
+    currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR),
   );
+  const { cachedEvents, scanFrom } = await _resolveCache(
+    provider, ethersLib, cache, cacheKey, baseFrom,
+    currentBlock, factoryAddress, poolAddress,
+    opts.onPoolCreationProgress);
 
   if (scanFrom > currentBlock && cachedEvents.length > 0)
     return cachedEvents;

@@ -48,6 +48,7 @@ async function _executeAndRecord(deps, ethersLib) {
     );
   const state = deps._botState || {};
   state.rebalanceInProgress = true;
+  state.forceRebalance = false;
   try {
     const crw = state.customRangeWidthPct;
     const result = await executeRebalance(signer, ethersLib, {
@@ -312,6 +313,8 @@ async function pollCycle(deps) {
     );
     return { rebalanced: false };
   }
+  if (deps._botState?.forceRebalance)
+    console.log('[bot] Force rebalance requested');
   const rangeCheck = _checkRangeAndThreshold(
     deps,
     poolState,

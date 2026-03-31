@@ -121,7 +121,7 @@ async function _getLifetimeSnapshot(
       walletAddress: walletAddr,
       position,
       poolAddress: poolAddress || null,
-      afterScan: async (evts) => {
+      computeFromHistoricalPrices: async (evts) => {
         if (tracker.epochCount() > 0 || evts.length === 0) return;
         await reconstructEpochs({
           pnlTracker: tracker,
@@ -447,6 +447,10 @@ async function computeLifetimeDetails(
     tickUpper: body.tickUpper,
     liquidity: body.liquidity,
   };
+  const _ltT0 = Date.now();
+  console.log(
+    '[details] Computing lifetime P&L for #%s\u2026',
+    body.tokenId);
   const posKey = compositeKey(
     'pulsechain',
     body.walletAddress || '',
@@ -495,6 +499,8 @@ async function computeLifetimeDetails(
     ? [{ date: new Date().toISOString().slice(0, 10),
       feePnl: body.feesUsd || 0, gasCost: 0,
       priceChangePnl: value - entryValue }] : null);
+  console.log('[details] Lifetime P&L for #%s done (%dms)',
+    body.tokenId, Date.now() - _ltT0);
   return {
     ok: true,
     ...lt,

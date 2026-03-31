@@ -39,10 +39,6 @@ function _checkSwapImpact(impactPct, slip) {
     throw new Error(
       'Swap quote validation failed: price impact is ' + impactPct,
     );
-  if (impactPct >= _MAX_IMPACT_PCT)
-    throw new Error(
-      `Swap aborted: price impact ${impactPct.toFixed(1)}% exceeds ${_MAX_IMPACT_PCT}% safety limit. Pool liquidity is too thin for safe rebalancing. Consider sourcing tokens externally, recreating the position, and selecting the new NFT in the app.`,
-    );
   if (impactPct > slip) {
     const s = Math.ceil(impactPct * 10) / 10 + 0.5;
     throw new Error(

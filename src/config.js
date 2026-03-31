@@ -179,6 +179,10 @@ const FACTORY =
 const SWAP_ROUTER =
   process.env.SWAP_ROUTER || '0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA';
 
+/** 9mm DEX Aggregator API URL (primary swap path — lowest slippage). */
+const AGGREGATOR_URL =
+  process.env.AGGREGATOR_URL || 'https://api.9mm.pro';
+
 // ── Pricing ───────────────────────────────────────────────────────────────────
 
 /** DexTools API key for USD price fallback (DexScreener is tried first). */
@@ -247,6 +251,7 @@ module.exports = {
   POSITION_MANAGER,
   FACTORY,
   SWAP_ROUTER,
+  AGGREGATOR_URL,
 
   // Pricing
   DEXTOOLS_API_KEY,
