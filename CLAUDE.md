@@ -40,6 +40,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 ├── scripts/wipe-settings.sh      # Back up user settings to tmp/.settings-backup/ (fresh-install sim)
 ├── scripts/restore-settings.sh   # Restore settings backed up by wipe-settings.sh
 ├── README.md                     # Concise — refers to server.js for details
+├── config/
+│   └── chains.json               # Per-blockchain tunables (aggregator cancel gas, wait timeout, retry count)
 ├── eslint-rules/
 │   └── no-separate-contract-calls.js  # Custom rule: require multicall for atomic EVM method pairs
 ├── public/
@@ -82,7 +84,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 │   ├── position-manager.js       # Multi-position orchestrator: start/stop/pause/resume per position
 │   ├── rebalance-lock.js         # Async mutex (via async-mutex) for nonce-safe TX serialization
 │   ├── rebalancer.js             # Core rebalance: remove liquidity → SDK ratio swap → mint (V3-only guard)
-│   ├── rebalancer-swap.js        # Swap logic and amount computation for rebalancer
+│   ├── rebalancer-aggregator.js  # 9mm DEX Aggregator swap path with cancel-and-requote + revert retry
+│   ├── rebalancer-swap.js        # Swap orchestration: aggregator (primary) → V3 router (fallback)
 │   ├── rebalancer-pools.js       # ABIs, constants, helpers, pool state, and liquidity removal
 │   ├── server-positions.js       # Multi-position API route handlers + per-position state management
 │   ├── server-routes.js          # Route handler functions extracted from server.js
@@ -186,6 +189,8 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 | `POSITION_MANAGER` | `0xCC05bf…` | NonfungiblePositionManager (9mm Pro V3) |
 | `FACTORY` | `0xe50Dbd…` | V3 Factory (9mm Pro) |
 | `SWAP_ROUTER` | `0x7bE8fb…` | V3 SwapRouter (9mm Pro) |
+| `AGGREGATOR_URL` | `https://api.9mm.pro` | 9mm DEX Aggregator API (0x v1 fork) |
+| `AGGREGATOR_API_KEY` | *(built-in)* | 0x-api-key header for aggregator quotes |
 | `DEXTOOLS_API_KEY` | — | Optional — for USD price fallback |
 
 Contract address source: <https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json>
@@ -227,13 +232,15 @@ npm run restore-settings # Restore settings backed up by wipe-settings
 
 **Rebalance pipeline:** `src/bot-loop.js` provides the shared bot logic used by both `server.js` and `bot.js`. It polls the pool at `CHECK_INTERVAL_SEC`, checks if the current tick is outside [tickLower, tickUpper], applies the OOR threshold check, checks throttle, then calls `executeRebalance()` which does: getPoolState → removeLiquidity → computeDesiredAmounts → swapIfNeeded → mintPosition. All functions accept injected `signer`, `ethersLib`, and config objects for testability.
 
+**DEX Aggregator swap (primary):** `src/rebalancer-aggregator.js` implements the 9mm DEX Aggregator swap path (fork of 0x API v1). `swapIfNeeded` tries the aggregator first (lowest slippage, multi-hop routing across all PulseChain DEXes), falling back to the V3 SwapRouter on failure. The aggregator's `_sendWithRetry` handles two failure modes: (a) **timeout** — TX not confirmed in `waitMs` → cancel nonce at chain-configured gas multiplier, re-quote with fresh calldata, retry; (b) **on-chain revert** (CALL_EXCEPTION, status=0) — route's encoded pool states went stale → nonce already consumed, skip cancel, re-quote immediately, retry. Up to `maxAttempts` (default 3). Chain-specific tunables (`cancelGasMultiplier`, `waitMs`, `maxAttempts`) live in `config/chains.json`, loaded via `config.CHAIN.aggregator`. Uses `quote.gas` (API-provided with buffer) for gasLimit per 0x docs. HTTP error responses are parsed for `reason`, `validationErrors`, and `issues` (balance/allowance).
+
 **PulseChain gas price patch:** PulseChain supports EIP-1559 but ethers.js v6's `getFeeData()` intermittently returns null/0 for all fee fields, causing TXs with 0 gas price that sit pending forever. `createProviderWithFallback()` in `bot-loop.js` patches `provider.getFeeData()` at creation time: if the original returns zero/null, it falls back to a raw `eth_gasPrice` RPC call. This ensures ALL transactions (multicall, swap, mint) automatically get proper gas pricing — no per-call-site overrides needed.
 
 **TX speed-up + auto-cancel:** `_waitOrSpeedUp()` in `rebalancer.js` wraps every `tx.wait()` call with a 4-phase recovery pipeline. **Phase 1:** wait for confirmation up to `TX_SPEEDUP_SEC` (default 120s). **Phase 2:** speed-up — fetch current gas price, take the higher of current vs original, bump by 1.5×, resend at the same nonce. **Phase 3:** wait for either original or replacement to confirm up to `TX_CANCEL_SEC` (default 1200s = 20 min total). **Phase 4:** auto-cancel — send a 0-PLS self-transfer at the stuck nonce with 50 Gwei gas to free the nonce, then throw a `cancelled: true` error so the bot resumes polling. All four TX types are covered: approve, multicall (removeLiquidity), swap, and mint. Each phase logs clearly to the server console.
 
 **SDK ratio math:** `computeDesiredAmounts` uses `@uniswap/v3-sdk` exact 160-bit sqrtPrice math (`maxLiquidityForAmounts` + `SqrtPriceMath`) to determine the precise token ratio the Position Manager needs for the target tick range, then computes the swap to convert excess into the deficient token. Falls back to a 50/50 USD value split when no tick range is provided (e.g. price-only callers). The SDK path requires `jsbi` (direct dependency).
 
-**Quote-based swap slippage:** Before executing a swap, the bot simulates it via `staticCall` to get the real expected output (accounting for price impact). The user's slippage % is applied to the *quoted* output, not the spot price — so `amountOutMinimum` is realistic for the pool's actual liquidity. Two safety guards abort the swap: (1) price impact >= 5% — pool too thin, user must source tokens externally and recreate the position; (2) price impact > slippage setting — user must increase slippage and manually rebalance. When a swap abort pauses the bot, it stops retrying until the user changes slippage (which auto-clears the pause) or triggers a manual rebalance.
+**Quote-based swap slippage:** Before executing a swap, the bot simulates it via `staticCall` to get the real expected output (accounting for price impact). The user's slippage % is applied to the *quoted* output, not the spot price — so `amountOutMinimum` is realistic for the pool's actual liquidity. The safety guard aborts the swap when price impact exceeds the user's slippage setting — user must increase slippage and manually rebalance. When a swap abort pauses the bot, it stops retrying until the user changes slippage (which auto-clears the pause) or triggers a manual rebalance.
 
 **Preserve tick spread:** On rebalance, the bot preserves the existing position's tick spread (tickUpper − tickLower) and re-centers it on the current price via `rangeMath.preserveRange()`. This prevents narrow positions from being widened to match `REBALANCE_OOR_THRESHOLD_PCT`. The range width is determined by the original position, not a config setting.
 

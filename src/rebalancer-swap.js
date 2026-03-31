@@ -237,6 +237,13 @@ function _sdkSwap(
     String(excess0),
     String(excess1),
   );
+  const swapAmt = excess0 > 0n ? excess0 : excess1;
+  const swapDec = excess0 > 0n ? decimals0 : decimals1;
+  const dir = excess0 > 0n ? 'token0 \u2192 token1' : 'token1 \u2192 token0';
+  if (swapAmt > 0n) console.log(
+    '[rebalance] Swap needed: %s %s (%s raw)',
+    (Number(swapAmt) / 10 ** swapDec).toFixed(4), dir,
+    String(swapAmt));
 
   // When SDK returns 0/0 but tick is IN range (needs both tokens), compute
   // the target ratio from the range geometry and swap to achieve it.
@@ -476,6 +483,10 @@ async function _swapViaRouter(signer, ethersLib, params) {
 function _isSlippageError(err) {
   return err?.message?.startsWith('Swap aborted'); }
 
+/** True when aggregator exhausted all retry attempts (reverts + timeouts). */
+function _isAggregatorExhausted(err) {
+  return err?.message?.startsWith('Aggregator swap failed after'); }
+
 /**
  * Execute a swap in N equal chunks to reduce per-swap impact.
  * Each chunk runs sequentially (prior chunks move the price).
@@ -536,10 +547,28 @@ async function swapIfNeeded(signer, ethersLib, params) {
     return await _swapWithChunking(
       _swapViaAggregator, signer, ethersLib, params);
   } catch (err) {
-    console.warn(
-      '[rebalance] Aggregator failed: %s'
-        + ' \u2014 falling back to V3 router',
-      err.message);
+    // Aggregator exhausted all retries at full amount — try 3 smaller
+    // chunks via the aggregator before giving up on it entirely.
+    // Smaller amounts = lower impact on multi-hop routes.
+    if (_isAggregatorExhausted(err)) {
+      console.warn(
+        '[rebalance] Aggregator failed at full amount'
+          + ' — retrying in 3 chunks via aggregator');
+      try {
+        return await _swapInChunks(
+          _swapViaAggregator, signer, ethersLib, params, 3);
+      } catch (chunkErr) {
+        console.warn(
+          '[rebalance] Aggregator chunks also failed: %s'
+            + ' — falling back to V3 router',
+          chunkErr.message);
+      }
+    } else {
+      console.warn(
+        '[rebalance] Aggregator failed: %s'
+          + ' — falling back to V3 router',
+        err.message);
+    }
     return await _swapWithChunking(
       _swapViaRouter, signer, ethersLib, params);
   }

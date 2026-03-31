@@ -46,6 +46,8 @@
 
 'use strict';
 
+const path = require('path');
+
 // Load .env file if present (silently skip in production where env vars are
 // injected by the platform).
 try {
@@ -53,6 +55,17 @@ try {
 } catch (_) {
   // dotenv not installed or .env absent — rely on process.env as-is
 }
+
+// ── Per-blockchain config ────────────────────────────────────────────────────
+
+/** Per-blockchain settings loaded from config/chains.json. */
+const CHAINS = require(path.join(__dirname, '..', 'config', 'chains.json'));
+
+/** Active chain name (only PulseChain supported currently). */
+const CHAIN_NAME = (process.env.CHAIN_NAME || 'pulsechain').toLowerCase();
+
+/** Active chain config (aggregator tunables, chainId, etc.). */
+const CHAIN = CHAINS[CHAIN_NAME] || CHAINS.pulsechain;
 
 /**
  * Parse a positive integer from a string, returning `fallback` on failure.
@@ -260,6 +273,10 @@ module.exports = {
 
   // Pricing
   DEXTOOLS_API_KEY,
+
+  // Per-blockchain
+  CHAIN,
+  CHAIN_NAME,
 
   // Helpers
   assertLiveModeReady,

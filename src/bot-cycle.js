@@ -18,6 +18,7 @@ const {
   executeRebalance,
   enrichResultUsd,
 } = require('./rebalancer');
+const { getTokenSymbol } = require('./server-scan');
 const {
   positionValueUsd: _positionValueUsd,
   fetchTokenPrices: _fetchTokenPrices,
@@ -58,6 +59,8 @@ async function _executeAndRecord(deps, ethersLib) {
       swapRouterAddress: config.SWAP_ROUTER,
       slippagePct:
         deps._getConfig?.('slippagePct') ?? config.SLIPPAGE_PCT,
+      symbol0: getTokenSymbol(position.token0),
+      symbol1: getTokenSymbol(position.token1),
       ...(crw ? { customRangeWidthPct: crw } : {}),
     });
     if (result.success) {

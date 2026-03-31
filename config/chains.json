@@ -1,0 +1,11 @@
+{
+  "pulsechain": {
+    "chainId": 369,
+    "gasPriceMultiplier": 3,
+    "aggregator": {
+      "cancelGasMultiplier": 1.5,
+      "waitMs": 30000,
+      "maxAttempts": 3
+    }
+  }
+}

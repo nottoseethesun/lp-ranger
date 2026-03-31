@@ -8,6 +8,7 @@
 
 'use strict';
 const ethers = require('ethers');
+const config = require('./config');
 
 /**
  * Patch `provider.getFeeData()` to guarantee a non-zero gas price.
@@ -28,7 +29,9 @@ function _patchFeeData(provider) {
       String(fd.maxFeePerGas),
       String(fd.maxPriorityFeePerGas),
     );
-    const _GAS_MULT = 10n;
+    // Chain-specific gas price multiplier from config/chains.json.
+    // PulseChain: 10x compensates for ethers.js v6 under-reporting.
+    const _GAS_MULT = BigInt(config.CHAIN.gasPriceMultiplier || 1);
     if (
       (fd.gasPrice && fd.gasPrice > 0n) ||
       (fd.maxFeePerGas && fd.maxFeePerGas > 0n)

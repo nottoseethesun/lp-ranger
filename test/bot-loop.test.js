@@ -12,6 +12,7 @@ const {
   createProviderWithFallback,
   resolvePrivateKey,
 } = require('../src/bot-loop');
+const { CHAIN } = require('../src/config');
 const { ADDR, _poll } = require('./_bot-loop-helpers');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -94,7 +95,8 @@ describe('bot-loop: _patchFeeData via createProviderWithFallback', () => {
         maxPriorityFeePerGas: null,
       })),
     );
-    assert.strictEqual((await p.getFeeData()).gasPrice, 5000n);
+    const mul = BigInt(CHAIN.gasPriceMultiplier || 1);
+    assert.strictEqual((await p.getFeeData()).gasPrice, 5000n * mul);
   });
   it('returns original feeData when maxFeePerGas > 0', async () => {
     const p = await createProviderWithFallback(
@@ -106,7 +108,8 @@ describe('bot-loop: _patchFeeData via createProviderWithFallback', () => {
         maxPriorityFeePerGas: 100n,
       })),
     );
-    assert.strictEqual((await p.getFeeData()).maxFeePerGas, 8000n);
+    const mul = BigInt(CHAIN.gasPriceMultiplier || 1);
+    assert.strictEqual((await p.getFeeData()).maxFeePerGas, 8000n * mul);
   });
   it('falls back to eth_gasPrice when feeData returns all zeros', async () => {
     const p = await createProviderWithFallback(

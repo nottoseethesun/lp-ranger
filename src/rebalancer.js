@@ -188,9 +188,8 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     desired,
     position: p,
     poolState: ps,
-    swapRouterAddress,
-    slippagePct,
-    signerAddress,
+    swapRouterAddress, slippagePct,
+    signerAddress, symbol0, symbol1,
   } = ctx;
   if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD)
     return { txHash: null, extra0: 0n, extra1: 0n, gasCostWei: 0n };
@@ -207,6 +206,8 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     decimalsOut: is0to1 ? ps.decimals1 : ps.decimals0,
     isToken0To1: is0to1,
     recipient: signerAddress,
+    symbolIn: is0to1 ? symbol0 : symbol1,
+    symbolOut: is0to1 ? symbol1 : symbol0,
   });
   return {
     txHash: result.txHash,
@@ -363,8 +364,6 @@ function _buildRebalanceResult(
   };
 }
 
-// ── Orchestration ────────────────────────────────────────────────────────────
-
 /** Execute a complete rebalance: remove → swap → mint at new range. */
 async function executeRebalance(signer, ethersLib, opts) {
   const {
@@ -437,9 +436,9 @@ async function executeRebalance(signer, ethersLib, opts) {
       );
       if (Math.abs(Number(effectivePct) - customRangeWidthPct) > 0.01) {
         console.warn(
-          '[rebalance] Step 4: tick spacing for fee=%d rounded %.2f%% → %s%%',
+          '[rebalance] Step 4: tick spacing for fee=%d rounded %s%% → %s%%',
           position.fee,
-          customRangeWidthPct,
+          String(customRangeWidthPct),
           effectivePct,
         );
       }
@@ -485,6 +484,8 @@ async function executeRebalance(signer, ethersLib, opts) {
       swapRouterAddress,
       slippagePct,
       signerAddress,
+      symbol0: opts.symbol0,
+      symbol1: opts.symbol1,
     });
     if (swapped.txHash) txHashes.push(swapped.txHash);
     console.log(
