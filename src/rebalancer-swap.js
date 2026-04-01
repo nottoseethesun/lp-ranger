@@ -22,6 +22,7 @@ const {
   _ensureAllowance,
 } = require('./rebalancer-pools');
 const { swapViaAggregator } = require('./rebalancer-aggregator');
+const config = require('./config');
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -469,7 +470,8 @@ async function _swapViaRouter(signer, ethersLib, params) {
   const provider = signer.provider || signer;
   return _balanceDiff(ethersLib, tokenOut,
     recipient, provider, async () => {
-    const tx = await router.exactInputSingle(swapParams);
+    const tx = await router.exactInputSingle(swapParams,
+      { type: config.TX_TYPE });
     console.log('[rebalance] swap (V3 router): TX hash=%s nonce=%d',
       tx.hash, tx.nonce);
     const receipt = await _waitOrSpeedUp(tx, signer, 'swap');

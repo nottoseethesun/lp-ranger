@@ -15,7 +15,7 @@ const {
   ERC20_ABI, PM_ABI, _MAX_UINT128, _DEADLINE_SECONDS,
   _MIN_SWAP_THRESHOLD, V3_FEE_TIERS, _deadline,
   _waitOrSpeedUp, _ensureAllowance,
-  getPoolState, removeLiquidity, rangeMath,
+  getPoolState, removeLiquidity, rangeMath, config,
 } = pools;
 
 // ── Mint ─────────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ async function mintPosition(
     amount1Min: 0n,
     recipient,
     deadline: dl,
-  });
+  }, { type: config.TX_TYPE });
   console.log(
     '[rebalance] Step 7b: TX submitted, hash=%s nonce=%d',
     tx.hash,

@@ -282,7 +282,8 @@ async function _ensureAllowance(
   if (current >= requiredAmount) return;
   // Approve only the exact amount needed (not unlimited) to limit exposure
   // if the spender contract is compromised.
-  const tx = await tokenContract.approve(spender, requiredAmount);
+  const tx = await tokenContract.approve(spender, requiredAmount,
+    { type: config.TX_TYPE });
   console.log(
     '[rebalance] approve: TX submitted, hash=%s nonce=%d',
     tx.hash,
@@ -393,7 +394,8 @@ async function removeLiquidity(
       amount1Max: _MAX_UINT128,
     },
   ]);
-  const tx = await pm.multicall([decreaseData, collectData]);
+  const tx = await pm.multicall([decreaseData, collectData],
+    { type: config.TX_TYPE });
   console.log(
     '[rebalance] removeLiq: TX submitted, hash=%s nonce=%d — waiting for confirmation…',
     tx.hash,
