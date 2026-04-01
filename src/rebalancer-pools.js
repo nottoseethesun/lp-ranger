@@ -439,6 +439,21 @@ async function removeLiquidity(
   return { amount0, amount1, txHash: receipt.hash, gasCostWei };
 }
 
+/** Log swap direction with human-readable token symbols. */
+function logSwapNeeded(desired, pos, ps, sym0, sym1) {
+  const is0 = desired.swapDirection === 'token0to1';
+  const d = is0 ? ps.decimals0 : ps.decimals1;
+  const from = is0
+    ? (sym0 || pos.token0.slice(0, 8))
+    : (sym1 || pos.token1.slice(0, 8));
+  const to = is0
+    ? (sym1 || pos.token1.slice(0, 8))
+    : (sym0 || pos.token0.slice(0, 8));
+  console.log('[rebalance] Swap needed: %s %s -> %s (%s raw)',
+    (Number(desired.swapAmount) / 10 ** d).toFixed(4),
+    from, to, String(desired.swapAmount));
+}
+
 // ── Module exports ───────────────────────────────────────────────────────────
 
 module.exports = {
@@ -465,6 +480,7 @@ module.exports = {
   // Functions
   getPoolState,
   removeLiquidity,
+  logSwapNeeded,
   // Re-exported deps
   rangeMath,
   config,

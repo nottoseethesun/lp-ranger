@@ -238,13 +238,6 @@ function _sdkSwap(
     String(excess0),
     String(excess1),
   );
-  const swapAmt = excess0 > 0n ? excess0 : excess1;
-  const swapDec = excess0 > 0n ? decimals0 : decimals1;
-  const dir = excess0 > 0n ? 'token0 \u2192 token1' : 'token1 \u2192 token0';
-  if (swapAmt > 0n) console.log(
-    '[rebalance] Swap needed: %s %s (%s raw)',
-    (Number(swapAmt) / 10 ** swapDec).toFixed(4), dir,
-    String(swapAmt));
 
   // When SDK returns 0/0 but tick is IN range (needs both tokens), compute
   // the target ratio from the range geometry and swap to achieve it.

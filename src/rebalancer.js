@@ -15,7 +15,8 @@ const {
   ERC20_ABI, PM_ABI, _MAX_UINT128, _DEADLINE_SECONDS,
   _MIN_SWAP_THRESHOLD, V3_FEE_TIERS, _deadline,
   _waitOrSpeedUp, _ensureAllowance,
-  getPoolState, removeLiquidity, rangeMath, config,
+  getPoolState, removeLiquidity,
+  logSwapNeeded, rangeMath, config,
 } = pools;
 
 // ── Mint ─────────────────────────────────────────────────────────────────────
@@ -200,12 +201,10 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     amountIn: desired.swapAmount,
     tokenIn: is0to1 ? p.token0 : p.token1,
     tokenOut: is0to1 ? p.token1 : p.token0,
-    slippagePct,
-    currentPrice: ps.price,
+    slippagePct, currentPrice: ps.price,
     decimalsIn: is0to1 ? ps.decimals0 : ps.decimals1,
     decimalsOut: is0to1 ? ps.decimals1 : ps.decimals0,
-    isToken0To1: is0to1,
-    recipient: signerAddress,
+    isToken0To1: is0to1, recipient: signerAddress,
     symbolIn: is0to1 ? symbol0 : symbol1,
     symbolOut: is0to1 ? symbol1 : symbol0,
   });
@@ -476,15 +475,16 @@ async function executeRebalance(signer, ethersLib, opts) {
       },
       { decimals0: poolState.decimals0, decimals1: poolState.decimals1 },
     );
+    if (desired.needsSwap)
+      logSwapNeeded(desired, position, poolState,
+        opts.symbol0, opts.symbol1);
     console.log('[rebalance] Step 6: swap…');
     const swapped = await _swapAndAdjust(signer, ethersLib, {
       desired,
       position,
       poolState,
-      swapRouterAddress,
-      slippagePct,
-      signerAddress,
-      symbol0: opts.symbol0,
+      swapRouterAddress, slippagePct,
+      signerAddress, symbol0: opts.symbol0,
       symbol1: opts.symbol1,
     });
     if (swapped.txHash) txHashes.push(swapped.txHash);
