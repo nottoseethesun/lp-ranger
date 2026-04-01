@@ -114,7 +114,7 @@ async function _cancelNonce(signer, provider, nonce, waitMs) {
   const c = await signer.sendTransaction({
     to: addr, value: 0, nonce,
     gasPrice: cancelGp, gasLimit: 21000,
-    type: 0,
+    type: config.CHAIN.txType ?? 0,
   });
   await Promise.race([
     c.wait().catch(() => {}),
@@ -179,7 +179,7 @@ async function _sendWithRetry(
       to: quote.to, data: quote.data,
       value: BigInt(quote.value || 0),
       gasLimit: gl, gasPrice: gp,
-      type: 0,
+      type: config.CHAIN.txType ?? 0,
     };
     console.log(
       '[rebalance] swap (aggregator attempt %d/%d):'
