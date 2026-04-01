@@ -67,6 +67,12 @@ const CHAIN_NAME = (process.env.CHAIN_NAME || 'pulsechain').toLowerCase();
 /** Active chain config (aggregator tunables, chainId, etc.). */
 const CHAIN = CHAINS[CHAIN_NAME] || CHAINS.pulsechain;
 
+/** Map human-readable TX type names to EIP-2718 type numbers. */
+const TX_TYPES = { legacy: 0, eip1559: 2 };
+
+/** Resolved TX type number for the active chain. */
+const TX_TYPE = TX_TYPES[CHAIN.txType] ?? 0;
+
 /**
  * Parse a positive integer from a string, returning `fallback` on failure.
  * @param {string|undefined} value
@@ -277,6 +283,7 @@ module.exports = {
   // Per-blockchain
   CHAIN,
   CHAIN_NAME,
+  TX_TYPE,
 
   // Helpers
   assertLiveModeReady,
