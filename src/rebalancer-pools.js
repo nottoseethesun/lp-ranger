@@ -285,9 +285,11 @@ async function _ensureAllowance(
   const tx = await tokenContract.approve(spender, requiredAmount,
     { type: config.TX_TYPE });
   console.log(
-    '[rebalance] approve: TX submitted, hash=%s nonce=%d',
-    tx.hash,
-    tx.nonce,
+    '[rebalance] approve: TX submitted, hash=%s nonce=%d'
+      + ' type=%s gasPrice=%s',
+    tx.hash, tx.nonce,
+    String(tx.type),
+    String(tx.gasPrice ?? tx.maxFeePerGas ?? '—'),
   );
   const rcpt = await _waitOrSpeedUp(tx, tokenContract.runner, 'approve');
   console.log(
@@ -397,9 +399,9 @@ async function removeLiquidity(
   const tx = await pm.multicall([decreaseData, collectData],
     { type: config.TX_TYPE });
   console.log(
-    '[rebalance] removeLiq: TX submitted, hash=%s nonce=%d — waiting for confirmation…',
-    tx.hash,
-    tx.nonce,
+    '[rebalance] removeLiq: TX submitted, hash=%s nonce=%d'
+      + ' type=%s — waiting for confirmation…',
+    tx.hash, tx.nonce, String(tx.type),
   );
   const receipt = await _waitOrSpeedUp(tx, signer, 'removeLiq');
   console.log(
