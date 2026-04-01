@@ -532,7 +532,12 @@ const _routes = {
         factory: config.FACTORY,
         ...posDefaults,
         ..._diskConfig.global,
-        managedPositions: _positionMgr.getAll(),
+        managedPositions: (() => {
+          const running = _positionMgr.getAll();
+          const disk = _diskConfig.managedPositions;
+          return [...running,
+            ...disk.filter((k) => !running.includes(k))];
+        })(),
         poolDailyCounts:
           _positionMgr.getPoolDailyCounts(),
       },
