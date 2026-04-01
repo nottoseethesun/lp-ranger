@@ -468,7 +468,7 @@
     <div class="9mm-pos-mgr-help-popover" id="helpPopover">
       <div class="9mm-pos-mgr-help-title">How It Works</div>
       <ul class="9mm-pos-mgr-help-list">
-        <li>This dashboard manages <strong>multiple LP positions simultaneously</strong> across different pools from a single wallet. To get started: scan your wallet for existing positions, then click &ldquo;Manage&rdquo; on any position to start the bot for that pool. Each managed position runs its own independent rebalance loop.</li>
+        <li>This dashboard manages <strong>multiple LP positions simultaneously</strong> across different pools from a single wallet. To get started: scan your wallet for existing positions, then click &ldquo;Manage&rdquo; on any position to start the bot for that pool, and finally, be sure to set a slippage percent that is appropriate for that pair (otherwise, the swaps to rebalance your LP position will fail due to insufficient slippage, or will be too costly if you set slippage too high). Each managed position runs its own independent rebalance loop.</li>
         <li>Wait for the &ldquo;Sync&rdquo; label near top right to finish (&ldquo;Synced&rdquo;).</li>
         <li>When the price moves out of the configured range, the bot automatically rebalances by draining the old position and minting a new one centered on the current price. A rebalance lock ensures only one position transacts at a time (same wallet = same nonce).</li>
         <li>Each browser tab shows one position via URL. Open multiple tabs to monitor multiple pools simultaneously.</li>
@@ -923,6 +923,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1774887492385"></script>
+<script src="dist/bundle.js?v=1775025623395"></script>
 </body>
 </html>
