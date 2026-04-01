@@ -86,7 +86,7 @@ async function mintPosition(
     deadline: dl,
   }, { type: config.TX_TYPE });
   console.log(
-    '[rebalance] Step 7b: TX submitted, hash=%s nonce=%d type=%s',
+    '[rebalance] Step 7b: TX submitted, hash= %s nonce=%d type=%s',
     tx.hash, tx.nonce, String(tx.type),
   );
   const receipt = await _waitOrSpeedUp(tx, signer, 'mint');

@@ -166,6 +166,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
   let replacement;
   try {
     replacement = await signer.sendTransaction({
+      type: config.TX_TYPE,
       to: tx.to,
       data: tx.data,
       value: tx.value,
@@ -174,7 +175,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
       gasPrice: bumped,
     });
     console.log(
-      '[rebalance] %s: replacement TX submitted, hash=%s nonce=%d',
+      '[rebalance] %s: replacement TX submitted, hash= %s nonce=%d',
       label,
       replacement.hash,
       replacement.nonce,
@@ -216,6 +217,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
       provider, replacement?.gasPrice ?? bumped ?? 0n);
     const addr = await signer.getAddress();
     const cancelTx = await signer.sendTransaction({
+      type: config.TX_TYPE,
       to: addr,
       value: 0,
       nonce: tx.nonce,
@@ -223,7 +225,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
       gasLimit: 21000,
     });
     console.log(
-      '[rebalance] %s: cancel TX submitted, hash=%s nonce=%d gasPrice=%s',
+      '[rebalance] %s: cancel TX submitted, hash= %s nonce=%d gasPrice=%s',
       label,
       cancelTx.hash,
       cancelTx.nonce,
@@ -285,7 +287,7 @@ async function _ensureAllowance(
   const tx = await tokenContract.approve(spender, requiredAmount,
     { type: config.TX_TYPE });
   console.log(
-    '[rebalance] approve: TX submitted, hash=%s nonce=%d'
+    '[rebalance] approve: TX submitted, hash= %s nonce=%d'
       + ' type=%s gasPrice=%s',
     tx.hash, tx.nonce,
     String(tx.type),
@@ -399,7 +401,7 @@ async function removeLiquidity(
   const tx = await pm.multicall([decreaseData, collectData],
     { type: config.TX_TYPE });
   console.log(
-    '[rebalance] removeLiq: TX submitted, hash=%s nonce=%d'
+    '[rebalance] removeLiq: TX submitted, hash= %s nonce=%d'
       + ' type=%s — waiting for confirmation…',
     tx.hash, tx.nonce, String(tx.type),
   );

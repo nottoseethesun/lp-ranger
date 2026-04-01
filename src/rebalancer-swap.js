@@ -465,7 +465,7 @@ async function _swapViaRouter(signer, ethersLib, params) {
     recipient, provider, async () => {
     const tx = await router.exactInputSingle(swapParams,
       { type: config.TX_TYPE });
-    console.log('[rebalance] swap (V3 router): TX hash=%s nonce=%d'
+    console.log('[rebalance] swap (V3 router): TX hash= %s nonce=%d'
         + ' type=%s gasPrice=%s',
       tx.hash, tx.nonce, String(tx.type),
       String(tx.gasPrice ?? tx.maxFeePerGas ?? '—'));

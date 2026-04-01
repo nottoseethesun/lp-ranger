@@ -33,11 +33,13 @@ function _patchFeeData(provider) {
     // Return ONLY gasPrice (no maxFeePerGas/maxPriorityFeePerGas) so
     // ethers.js sends legacy type 0 TXs. PulseChain validators don't
     // reliably include EIP-1559 type 2 TXs — they sit pending forever.
-    const _GAS_MULT = BigInt(config.CHAIN.gasPriceMultiplier || 1);
+    const _mult = config.CHAIN.gasPriceMultiplier || 1;
     const gp = (fd.gasPrice && fd.gasPrice > 0n)
       ? fd.gasPrice : fd.maxFeePerGas;
-    if (gp && gp > 0n)
-      return new ethers.FeeData(gp * _GAS_MULT, null, null);
+    if (gp && gp > 0n) {
+      const scaled = gp * BigInt(Math.round(_mult * 1000)) / 1000n;
+      return new ethers.FeeData(scaled, null, null);
+    }
     console.warn(
       '[bot] getFeeData returned zero/null — falling back to eth_gasPrice RPC',
     );

@@ -192,7 +192,7 @@ async function _sendWithRetry(
       txReq.to, String(txReq.value), String(txReq.gasLimit));
     const tx = await signer.sendTransaction(txReq);
     console.log(
-      '[aggregator] TX sent: hash=%s nonce=%d type=%s'
+      '[aggregator] TX sent: hash= %s nonce=%d type=%s'
         + ' gasPrice=%s maxFee=%s maxPrio=%s',
       tx.hash, tx.nonce, String(tx.type),
       String(tx.gasPrice ?? '—'),
