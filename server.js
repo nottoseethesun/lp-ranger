@@ -533,10 +533,14 @@ const _routes = {
         ...posDefaults,
         ..._diskConfig.global,
         managedPositions: (() => {
-          const running = _positionMgr.getAll();
-          const disk = _diskConfig.managedPositions;
-          return [...running,
-            ...disk.filter((k) => !running.includes(k))];
+          const r = _positionMgr.getAll();
+          const rk = new Set(r.map((p) => p.key));
+          return [...r, ..._diskConfig.managedPositions
+            .filter((k) => !rk.has(k))
+            .map((k) => ({ key: k,
+              tokenId: k.split('-').pop(),
+              status: (_diskConfig.positions[k]
+                ?.status) || 'stopped' }))];
         })(),
         poolDailyCounts:
           _positionMgr.getPoolDailyCounts(),
