@@ -312,7 +312,10 @@ async function pollCycle(deps) {
   }
   await _refreshPosition(position, ethersLib, provider);
   await _updatePnlAndStats(deps, poolState, ethersLib);
-  if (BigInt(position.liquidity) === 0n && !deps._botState?.forceRebalance) {
+  if (
+    BigInt(position.liquidity || 0) === 0n &&
+    !deps._botState?.forceRebalance
+  ) {
     console.log(
       "[bot] Position closed (0 liquidity, force=%s) — skipping",
       !!deps._botState?.forceRebalance,

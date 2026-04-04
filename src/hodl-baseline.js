@@ -65,7 +65,7 @@ function _positionAmounts(
  */
 function _positionValueUsd(position, poolState, price0, price1) {
   const amounts = _positionAmounts(
-    position.liquidity,
+    position.liquidity || 0,
     poolState.tick,
     position.tickLower,
     position.tickUpper,

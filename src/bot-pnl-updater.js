@@ -28,7 +28,7 @@ function toFloat(amount, decimals) {
 /** Calculate the USD value of a V3 position from on-chain amounts. */
 function positionValueUsd(p, ps, pr0, pr1) {
   const a = rangeMath.positionAmounts(
-    p.liquidity,
+    p.liquidity || 0,
     ps.tick,
     p.tickLower,
     p.tickUpper,
