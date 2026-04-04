@@ -448,12 +448,18 @@ export function _applyLocalPositionData(pos) {
   _setText('sTU', pos.tickUpper ?? '\u2014');
   const t0Sym = _tokenName(pos.token0Symbol, pos.token0) || '\u2014';
   const t1Sym = _tokenName(pos.token1Symbol, pos.token1) || '\u2014';
+  const t0Full = pos.token0Symbol || t0Sym;
+  const t1Full = pos.token1Symbol || t1Sym;
   _setHtml('statT0Label', _tokenLabelHtml(t0Sym, pos.token0 || ''));
   _setHtml('statT1Label', _tokenLabelHtml(t1Sym, pos.token1 || ''));
+  const _title = (id, t) => { const e = g(id); if (e) e.title = t; };
+  _title('statT0Label', t0Full); _title('statT1Label', t1Full);
   _setText('statShare0Label', 'Pool Share ' + t0Sym);
   _setText('statShare1Label', 'Pool Share ' + t1Sym);
+  _title('statShare0Label', t0Full); _title('statShare1Label', t1Full);
   _setText('cl0', '\u25A0 ' + t0Sym + ': 50%');
   _setText('cl1', '\u25A0 ' + t1Sym + ': 50%');
+  _title('cl0', t0Full); _title('cl1', t1Full);
   _setText('wsPool', t0Sym + ' / ' + t1Sym);
   _setText('wsFee', (pos.fee / 10000).toFixed(2) + '%');
   _setText('kpiDeposit', '\u2014');
