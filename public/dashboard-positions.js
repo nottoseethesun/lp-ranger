@@ -287,7 +287,7 @@ export function activateSelectedPos() {
   if (posBrowserSelected < 0) return;
   const active = _activateCore(posBrowserSelected);
   if (active && !isPositionClosed(active)) {
-    const oor = botConfig.oorThresholdPct || "—";
+    const oor = botConfig.oorThreshold || "\u2014";
     const pl = _posLabel();
     act(
       ACT_ICONS.target,

@@ -51,10 +51,12 @@ function _buildClosedEpoch(h, index) {
   const entryValue = h.entryValueUsd || 0;
   const exitValue = h.exitValueUsd;
   const fees = h.feesEarnedUsd || 0;
+  const missingPrice = !h.entryValueUsd || !h.exitValueUsd;
 
   return {
     id: index + 1,
     color: EPOCH_COLORS[index % EPOCH_COLORS.length],
+    missingPrice,
     entryValue,
     entryPrice: 0,
     lowerPrice: 0,

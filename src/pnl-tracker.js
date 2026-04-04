@@ -467,6 +467,10 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
       ep.priceChangePnl ?? 0,
       ep.gas,
     );
+    if (ep.missingPrice) {
+      const day = dayMap.get(openDay || closeDay);
+      if (day) day.missingPrice = true;
+    }
   }
 
   _computeResiduals(dayMap, closedEpochs, liveEpoch);
@@ -501,6 +505,7 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
       netPnl,
       residual,
       cumulative,
+      missingPrice: !!d.missingPrice,
     };
   });
 

@@ -76,9 +76,11 @@ export function renderDailyPnl(dailyPnl) {
     cum += nets[i] + (dailyPnl[i].residual || 0);
     cums[i] = cum;
   }
+  const _d = "\u2014";
   tbody.innerHTML = slice
     .map((d, si) => {
       const i = start + si,
+        mp = d.missingPrice,
         fees = d.feePnl || d.fees || 0,
         gas = d.gasCost || d.gas || 0,
         ilg = d.priceChangePnl || 0,
@@ -86,32 +88,33 @@ export function renderDailyPnl(dailyPnl) {
       const profit = Math.round((fees - gas + ilg) * 100) / 100;
       const cc = (v) =>
         Math.round(v * 100) === 0 ? "" : v > 0 ? "pos" : "neg";
+      const v = (val) => (mp ? _d : _tblUsd(val));
       return (
         "<tr><td>" +
-        (d.date || "\u2014") +
+        (d.date || _d) +
         "</td><td>" +
-        _tblUsd(fees) +
+        v(fees) +
         "</td>" +
         "<td>" +
-        _tblUsd(gas) +
+        v(gas) +
         '</td><td class="' +
-        cc(ilg) +
+        (mp ? "" : cc(ilg)) +
         '">' +
-        _tblUsd(ilg) +
+        v(ilg) +
         "</td>" +
         '<td class="' +
-        cc(profit) +
+        (mp ? "" : cc(profit)) +
         '">' +
-        _tblUsd(profit) +
+        v(profit) +
         "</td>" +
         '<td class="' +
-        cc(nets[i]) +
+        (mp ? "" : cc(nets[i])) +
         '">' +
-        _tblUsd(nets[i]) +
+        v(nets[i]) +
         '</td><td class="' +
-        cc(res) +
+        (mp ? "" : cc(res)) +
         '">' +
-        _tblUsd(res) +
+        v(res) +
         '</td><td class="' +
         cc(cums[i]) +
         '">' +
