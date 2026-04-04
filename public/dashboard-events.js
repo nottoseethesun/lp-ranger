@@ -52,8 +52,6 @@ import {
   onParamChange,
   saveOorThreshold,
   saveOorTimeout,
-  applyAll,
-  checkApplyDirty,
   saveMinInterval,
   saveMaxReb,
   saveSlippage,
@@ -129,6 +127,16 @@ const _RPC_KEY = "9mm_rpc_url";
 function _saveRpc(url) {
   try {
     localStorage.setItem(_RPC_KEY, url);
+  } catch {
+    /* private mode */
+  }
+}
+/** Save a text input value to localStorage. */
+function _saveLs(key, inputId) {
+  const el = g(inputId);
+  if (!el) return;
+  try {
+    localStorage.setItem(key, el.value);
   } catch {
     /* private mode */
   }
@@ -312,8 +320,8 @@ export function bindAllEvents() {
     "inPM",
     "inFactory",
   ].forEach((id) => {
-    _input(id, checkApplyDirty);
-    _change(id, checkApplyDirty);
+    _input(id, () => {});
+    _change(id, () => {});
   });
 
   const rpcToggle = g("rpcToggle");
@@ -327,7 +335,6 @@ export function bindAllEvents() {
       if (inp) {
         inp.value = li.dataset.rpc;
         _saveRpc(inp.value);
-        checkApplyDirty();
       }
       rpcList.classList.remove("open");
     });
@@ -339,12 +346,16 @@ export function bindAllEvents() {
   if (rpcInp) rpcInp.addEventListener("change", () => _saveRpc(rpcInp.value));
 
   _qa(
-    ".save-range-btn" + ":not(.save-oor-timeout-btn)",
+    ".save-range-btn" +
+      ":not(.save-oor-timeout-btn)" +
+      ":not(#savePMBtn)" +
+      ":not(#saveFactoryBtn)",
     "click",
     saveOorThreshold,
   );
   _click("saveOorTimeoutBtn", saveOorTimeout);
-  _click("applyAllBtn", applyAll);
+  _click("savePMBtn", () => _saveLs("9mm_pm_address", "inPM"));
+  _click("saveFactoryBtn", () => _saveLs("9mm_factory_address", "inFactory"));
   _click("saveMinIntervalBtn", saveMinInterval);
   _click("saveMaxRebBtn", saveMaxReb);
   _click("saveSlipBtn", saveSlippage);

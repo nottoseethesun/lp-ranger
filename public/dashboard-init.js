@@ -40,7 +40,6 @@ import {
   onParamChange,
   updateThrottleUI,
   injectThrottleDeps,
-  snapshotApplied,
 } from "./dashboard-throttle.js";
 import {
   startDataPolling,
@@ -248,7 +247,6 @@ function _afterDisclaimer() {
   // ── Start intervals ─────────────────────────────────────────────────────────
 
   onParamChange();
-  snapshotApplied();
   setInterval(updateThrottleUI, 1000);
   startDataPolling();
 
