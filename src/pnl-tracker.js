@@ -121,7 +121,8 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number} feePnl         Fees earned on this day.
  * @property {number} gasCost        Gas spent on this day.
  * @property {number} netPnl         priceChangePnl + feePnl − gasCost.
- * @property {number} cumulative     Running cumulative net P&L through this day.
+ * @property {number} residual       Wallet residual adjustment (entry(N+1) − exit(N)) at rebalances on this day.
+ * @property {number} cumulative     Running cumulative net P&L through this day (includes residuals).
  */
 
 const EPOCH_COLORS = [
@@ -405,8 +406,51 @@ function _distributeToRange(
  * @param {string|null} [fromDate]  ISO date (YYYY-MM-DD) for day-fill start.
  * @returns {DailyPnl[]}
  */
+/** Create a blank day entry. */
+function _newDay() {
+  return { priceChangePnl: 0, feePnl: 0, gasCost: 0, residual: 0 };
+}
+
+/**
+ * Compute wallet residuals at each epoch transition and attribute them to the
+ * rebalance day.  residual = entry(N+1) − exit(N): value that moved between
+ * wallet and LP.  Including this in the cumulative makes the P&L telescope.
+ */
+function _computeResiduals(dayMap, closedEpochs, liveEpoch) {
+  for (let i = 0; i < closedEpochs.length - 1; i++) {
+    const gap = closedEpochs[i + 1].entryValue - closedEpochs[i].exitValue;
+    const rebDay = new Date(closedEpochs[i].closeTime)
+      .toISOString()
+      .slice(0, 10);
+    const entry = dayMap.get(rebDay) || _newDay();
+    entry.residual = (entry.residual || 0) + gap;
+    dayMap.set(rebDay, entry);
+  }
+  if (closedEpochs.length > 0 && liveEpoch) {
+    const last = closedEpochs[closedEpochs.length - 1];
+    const gap = (liveEpoch.entryValue || 0) - last.exitValue;
+    const rebDay = new Date(last.closeTime).toISOString().slice(0, 10);
+    const entry = dayMap.get(rebDay) || _newDay();
+    entry.residual = (entry.residual || 0) + gap;
+    dayMap.set(rebDay, entry);
+  }
+}
+
+/** Fill zero-value rows for every day between fromDate and today. */
+function _fillDayRange(dayMap, fromDate) {
+  if (!fromDate) return;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const cursor = new Date(fromDate + "T00:00:00Z");
+  const end = new Date(todayStr + "T00:00:00Z");
+  while (cursor <= end) {
+    const key = cursor.toISOString().slice(0, 10);
+    if (!dayMap.has(key)) dayMap.set(key, _newDay());
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+}
+
 function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
-  /** @type {Map<string, {priceChangePnl: number, feePnl: number, gasCost: number}>} */
+  /** @type {Map<string, {priceChangePnl: number, feePnl: number, gasCost: number, residual: number}>} */
   const dayMap = new Map();
 
   // Distribute closed epochs across their open→close duration
@@ -425,34 +469,19 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
     );
   }
 
+  _computeResiduals(dayMap, closedEpochs, liveEpoch);
+
   // Live epoch: put accumulated values on today only
-  // (we don't know per-day breakdown without continuous tracking)
   if (liveEpoch) {
     const today = new Date().toISOString().slice(0, 10);
-    const entry = dayMap.get(today) || {
-      priceChangePnl: 0,
-      feePnl: 0,
-      gasCost: 0,
-    };
+    const entry = dayMap.get(today) || _newDay();
     entry.feePnl += liveEpoch.feePnl ?? liveEpoch.fees ?? 0;
     entry.priceChangePnl += liveEpoch.priceChangePnl ?? 0;
     entry.gasCost += liveEpoch.gas ?? 0;
     dayMap.set(today, entry);
   }
 
-  // Fill zero-value days from fromDate to today
-  if (fromDate) {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const cursor = new Date(fromDate + "T00:00:00Z");
-    const end = new Date(todayStr + "T00:00:00Z");
-    while (cursor <= end) {
-      const key = cursor.toISOString().slice(0, 10);
-      if (!dayMap.has(key)) {
-        dayMap.set(key, { priceChangePnl: 0, feePnl: 0, gasCost: 0 });
-      }
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-  }
+  _fillDayRange(dayMap, fromDate);
 
   // Sort by date descending (no limit — show all days)
   const sorted = [...dayMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
@@ -462,13 +491,15 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
   sorted.reverse();
   const result = sorted.map(([date, d]) => {
     const netPnl = d.priceChangePnl + d.feePnl - d.gasCost;
-    cumulative += netPnl;
+    const residual = d.residual || 0;
+    cumulative += netPnl + residual;
     return {
       date,
       priceChangePnl: d.priceChangePnl,
       feePnl: d.feePnl,
       gasCost: d.gasCost,
       netPnl,
+      residual,
       cumulative,
     };
   });

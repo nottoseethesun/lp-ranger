@@ -49,7 +49,7 @@ export function renderDailyPnl(dailyPnl) {
       active.liquidity !== undefined &&
       String(active.liquidity) === "0";
     tbody.innerHTML =
-      '<tr><td colspan="7" class="9mm-pos-mgr-table-empty">' +
+      '<tr><td colspan="8" class="9mm-pos-mgr-table-empty">' +
       (closed ? "Position Closed" : "No P&L data yet") +
       "</td></tr>";
     _setPnlPagBtns(0, 1);
@@ -61,7 +61,8 @@ export function renderDailyPnl(dailyPnl) {
   const page = _pnlPage,
     start = page * _PAGE_SIZE;
   const slice = dailyPnl.slice(start, start + _PAGE_SIZE);
-  // Compute net + cumulative over the FULL array, then render only the page slice
+  // Compute net + cumulative over the FULL array, then render only the page slice.
+  // Cumulative includes wallet residuals so the total telescopes correctly.
   const nets = dailyPnl.map(
     (d) =>
       (d.feePnl || d.fees || 0) +
@@ -71,7 +72,7 @@ export function renderDailyPnl(dailyPnl) {
   const cums = new Array(nets.length);
   let cum = 0;
   for (let i = nets.length - 1; i >= 0; i--) {
-    cum += nets[i];
+    cum += nets[i] + (dailyPnl[i].residual || 0);
     cums[i] = cum;
   }
   tbody.innerHTML = slice
@@ -79,13 +80,14 @@ export function renderDailyPnl(dailyPnl) {
       const i = start + si,
         fees = d.feePnl || d.fees || 0,
         gas = d.gasCost || d.gas || 0,
-        ilg = d.priceChangePnl || 0;
+        ilg = d.priceChangePnl || 0,
+        res = d.residual || 0;
       const profit = Math.round((fees - gas + ilg) * 100) / 100;
       const cc = (v) =>
         Math.round(v * 100) === 0 ? "" : v > 0 ? "pos" : "neg";
       return (
         "<tr><td>" +
-        (d.date || "—") +
+        (d.date || "\u2014") +
         "</td><td>" +
         _tblUsd(fees) +
         "</td>" +
@@ -105,6 +107,10 @@ export function renderDailyPnl(dailyPnl) {
         cc(nets[i]) +
         '">' +
         _tblUsd(nets[i]) +
+        '</td><td class="' +
+        cc(res) +
+        '">' +
+        _tblUsd(res) +
         '</td><td class="' +
         cc(cums[i]) +
         '">' +
@@ -190,8 +196,8 @@ export function renderRebalanceEvents(events) {
         " " +
         tzCode()
       : "";
-    const oldRange = e.oldRange || (e.oldTokenId ? "ID " + e.oldTokenId : "—");
-    const newRange = e.newRange || (e.newTokenId ? "ID " + e.newTokenId : "—");
+    const oldRange = e.oldRange || (e.oldTokenId ? e.oldTokenId : "\u2014");
+    const newRange = e.newRange || (e.newTokenId ? e.newTokenId : "\u2014");
     return (
       "<tr>" +
       "<td>" +
