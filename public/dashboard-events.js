@@ -131,15 +131,15 @@ function _saveRpc(url) {
     /* private mode */
   }
 }
-/** Save a text input value to localStorage. */
-function _saveLs(key, inputId) {
+/** Save a global config key from an input element to the server. */
+function _saveGlobalConfig(inputId, configKey) {
   const el = g(inputId);
   if (!el) return;
-  try {
-    localStorage.setItem(key, el.value);
-  } catch {
-    /* private mode */
-  }
+  fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ [configKey]: el.value }),
+  }).catch(() => {});
 }
 
 const _CLOSE = '[class~="9mm-pos-mgr-modal-close-btn"]';
@@ -354,8 +354,8 @@ export function bindAllEvents() {
     saveOorThreshold,
   );
   _click("saveOorTimeoutBtn", saveOorTimeout);
-  _click("savePMBtn", () => _saveLs("9mm_pm_address", "inPM"));
-  _click("saveFactoryBtn", () => _saveLs("9mm_factory_address", "inFactory"));
+  _click("savePMBtn", () => _saveGlobalConfig("inPM", "positionManager"));
+  _click("saveFactoryBtn", () => _saveGlobalConfig("inFactory", "factory"));
   _click("saveMinIntervalBtn", saveMinInterval);
   _click("saveMaxRebBtn", saveMaxReb);
   _click("saveSlipBtn", saveSlippage);

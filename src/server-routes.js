@@ -282,6 +282,13 @@ function createRouteHandlers(deps) {
    * that have status 'running' in config.
    */
   async function _autoStartManagedPositions() {
+    for (const k of Object.keys(diskConfig.positions)) {
+      console.log(
+        "[auto-start] position %s status= %s",
+        k.split("-").pop(),
+        diskConfig.positions[k].status,
+      );
+    }
     const keys = managedKeys(diskConfig);
     const cnt = keys.length;
     const stMs =
