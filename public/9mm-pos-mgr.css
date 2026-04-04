@@ -1310,3 +1310,191 @@
 .\39 mm-pos-mgr-search-clear:hover {
   color: var(--accent);
 }
+
+/* ── Mission Control ────────────────────────────── */
+
+.\39 mm-pos-mgr-mission-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.\39 mm-pos-mgr-mission-control {
+  background: #ff3600;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin: 0 0 10px;
+  color: #260700;
+}
+
+
+.\39 mm-pos-mgr-mission-title {
+  color: #260700;
+}
+
+.\39 mm-pos-mgr-mission-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border: 1px solid #260700;
+  border-radius: 6px;
+  background: rgb(38 7 0 / 15%);
+  color: #260700;
+  font-family: "Space Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.\39 mm-pos-mgr-mission-btn:hover:not(:disabled) {
+  background: rgb(38 7 0 / 30%);
+}
+
+.\39 mm-pos-mgr-mission-btn:disabled {
+  opacity: 0.5;
+  cursor: help;
+  pointer-events: all;
+}
+
+.\39 mm-pos-mgr-mission-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #260700;
+}
+
+.\39 mm-pos-mgr-mission-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.\39 mm-pos-mgr-mission-label {
+  font-weight: 600;
+  font-size: 12px;
+  color: #260700;
+}
+
+.\39 mm-pos-mgr-mission-currency {
+  font-weight: 700;
+  font-size: 18px;
+  color: #260700;
+}
+
+.\39 mm-pos-mgr-mission-input {
+  width: 60px;
+  padding: 3px 6px;
+  border: 1px solid #260700;
+  border-radius: 4px;
+  background: rgb(38 7 0 / 10%);
+  color: #260700;
+  font-family: "Space Mono", monospace;
+  font-size: 14px;
+}
+
+.\39 mm-pos-mgr-mission-spacer {
+  flex: 1;
+}
+
+.\39 mm-pos-mgr-mission-divider {
+  border: none;
+  border-top: 1px solid #6b2a0a;
+  margin: 18px 0;
+}
+
+.\39 mm-pos-mgr-mission-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-family: "Space Mono", monospace;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.\39 mm-pos-mgr-mission-badge.on {
+  background: rgb(124 252 0 / 10%);
+  color: var(--accent3);
+  border: 1px solid rgb(124 252 0 / 20%);
+}
+
+.\39 mm-pos-mgr-mission-badge.off {
+  background: rgb(38 7 0 / 10%);
+  color: #6b2a0a;
+  border: 1px solid rgb(38 7 0 / 20%);
+}
+
+.\39 mm-pos-mgr-compound-toggle {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.\39 mm-pos-mgr-compound-toggle input {
+  display: none;
+}
+
+.\39 mm-pos-mgr-compound-track {
+  width: 32px;
+  height: 16px;
+  border-radius: 8px;
+  background: rgb(38 7 0 / 15%);
+  border: 1px solid #6b2a0a;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.\39 mm-pos-mgr-compound-track::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6b2a0a;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.\39 mm-pos-mgr-compound-toggle input:checked ~ .\39 mm-pos-mgr-compound-track {
+  background: rgb(124 252 0 / 20%);
+  border-color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-compound-toggle input:checked ~ .\39 mm-pos-mgr-compound-track::after {
+  transform: translateX(16px);
+  background: var(--accent3);
+  box-shadow: 0 0 4px var(--accent3);
+}
+
+.\39 mm-pos-mgr-mission-btn-sm {
+  padding: 3px 8px;
+  border: 1px solid #260700;
+  border-radius: 4px;
+  background: rgb(38 7 0 / 15%);
+  color: #260700;
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.\39 mm-pos-mgr-mission-btn-sm:hover {
+  background: rgb(38 7 0 / 30%);
+}
+
+.\39 mm-pos-mgr-mission-help {
+  font-size: 10px;
+  margin-top: 4px;
+  min-height: 14px;
+}

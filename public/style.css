@@ -1195,7 +1195,7 @@ header{
 /* ── KPI ── */
 .kpi-grid{
   display:grid;
-  grid-template-columns:repeat(5,1fr);
+  grid-template-columns:2fr 1.5fr 2fr;
   gap:8px;
   margin-bottom:14px;
 }
@@ -1210,7 +1210,6 @@ header{
   transition:border-color .2s;
 }
 .kpi-card:hover{border-color:var(--accent);}
-.kpi-card-wide{grid-column:span 2;}
 
 .kpi-card::before{
   content:'';

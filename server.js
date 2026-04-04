@@ -502,6 +502,8 @@ const _routes = {
           config.CHAIN.contracts?.positionManager?.name || "",
         chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
         defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
+        compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
+        compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
         factory: config.FACTORY,
         ...posDefaults,
         ..._diskConfig.global,

@@ -301,12 +301,13 @@ async function _checkCompound(deps, poolState, ethersLib) {
   const _gc = (k) => (deps._getConfig ? deps._getConfig(k) : undefined);
   const forced = !!botSt.forceCompound;
   const autoEnabled = _gc("autoCompoundEnabled") || false;
-  const threshold = _gc("autoCompoundThresholdUsd") || 5;
+  const threshold =
+    _gc("autoCompoundThresholdUsd") || config.COMPOUND_DEFAULT_THRESHOLD_USD;
   const feesUsd = deps._lastUnclaimedFeesUsd || 0;
 
   if (!forced && !autoEnabled) return;
   if (!forced && feesUsd < threshold) return;
-  if (!forced && feesUsd < 1) return;
+  if (!forced && feesUsd < config.COMPOUND_MIN_FEE_USD) return;
 
   // Auto-compound throttle: max(5 × checkInterval, 300s)
   const lastAt = _gc("lastCompoundAt");
