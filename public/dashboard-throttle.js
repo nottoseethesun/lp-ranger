@@ -391,6 +391,10 @@ export function saveCheckInterval() {
     (v) => parseInt(v, 10) || 60,
   );
 }
+/** Save gas strategy. */
+export function saveGasStrategy() {
+  _saveSingleConfig("inGas", "gasStrategy", (v) => v || "auto");
+}
 
 export {
   openRebalanceRangeModal,

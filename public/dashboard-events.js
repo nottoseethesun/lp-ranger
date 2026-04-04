@@ -56,6 +56,7 @@ import {
   saveMaxReb,
   saveSlippage,
   saveCheckInterval,
+  saveGasStrategy,
   openRebalanceRangeModal,
   closeRebalanceRangeModal,
   updateRebalanceRangeHint,
@@ -130,6 +131,7 @@ function _saveRpc(url) {
   } catch {
     /* private mode */
   }
+  _saveGlobalConfig("inRpc", "rpcUrl");
 }
 /** Save a global config key from an input element to the server. */
 function _saveGlobalConfig(inputId, configKey) {
@@ -309,21 +311,6 @@ export function bindAllEvents() {
   /* ── Bot configuration ────────────────── */
   _input("inMinInterval", onParamChange);
   _input("inMaxReb", onParamChange);
-  [
-    "inMinInterval",
-    "inMaxReb",
-    "inOorThreshold",
-    "inSlip",
-    "inInterval",
-    "inGas",
-    "inRpc",
-    "inPM",
-    "inFactory",
-  ].forEach((id) => {
-    _input(id, () => {});
-    _change(id, () => {});
-  });
-
   const rpcToggle = g("rpcToggle");
   const rpcList = g("rpcList");
   if (rpcToggle && rpcList) {
@@ -344,6 +331,7 @@ export function bindAllEvents() {
   }
   const rpcInp = g("inRpc");
   if (rpcInp) rpcInp.addEventListener("change", () => _saveRpc(rpcInp.value));
+  _change("inGas", saveGasStrategy);
 
   _qa(
     ".save-range-btn" +

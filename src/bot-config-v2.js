@@ -26,7 +26,7 @@ const path = require("path");
 const CONFIG_FILE = ".bot-config.json";
 
 /** Keys that belong in the global section. */
-const GLOBAL_KEYS = ["triggerType", "positionManager", "factory"];
+const GLOBAL_KEYS = ["triggerType", "positionManager", "factory", "rpcUrl"];
 
 /** Keys that belong in a per-position (per-pool) section. */
 const POSITION_KEYS = [
