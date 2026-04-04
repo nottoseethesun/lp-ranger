@@ -44,6 +44,11 @@ const POSITION_KEYS = [
   "priceOverride0",
   "priceOverride1",
   "priceOverrideForce",
+  "autoCompoundEnabled",
+  "autoCompoundThresholdUsd",
+  "compoundHistory",
+  "totalCompoundedUsd",
+  "lastCompoundAt",
 ];
 
 /**
