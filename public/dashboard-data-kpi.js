@@ -302,10 +302,17 @@ function _fillBaselineCtx() {
   const a = posStore.getActive();
   if (!a) { ctx.textContent = ''; return; }
   const pair = (a.token0Symbol || '?') + '/' + (a.token1Symbol || '?');
-  const fee = a.fee ? (a.fee / 10000).toFixed(2) + '% fee' : '';
+  const chain = botConfig.chainName || 'PulseChain';
   const pm = botConfig.pmName || (a.contractAddress || '').slice(0, 10);
-  ctx.innerHTML = pair + (pm ? ' on ' + pm : '') + '<br>NFT #'
-    + a.tokenId + (fee ? ' \u00B7 ' + fee : '');
+  const w = a.walletAddress
+    ? a.walletAddress.slice(0, 6) + '\u2026' + a.walletAddress.slice(-4) : '';
+  const fee = a.fee ? (a.fee / 10000).toFixed(2) + '% fee' : '';
+  const _br = () => ctx.appendChild(document.createElement('br'));
+  const _t = (s) => ctx.appendChild(document.createTextNode(s));
+  ctx.textContent = 'Blockchain: ' + chain; _br();
+  _t('Wallet: ' + w); _br();
+  _t(pair + (pm ? ' on ' + pm : '')); _br();
+  _t('NFT #' + a.tokenId + (fee ? ' \u00B7 ' + fee : ''));
 }
 export function _showBaselineModal(
   d, isFallback, isNew, curMissing, missing,

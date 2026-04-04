@@ -163,21 +163,23 @@ export function _openPoolDetailsModal() {
       : 'ERC-20',
   );
   const t0 = g('pdToken0');
-  if (t0)
-    t0.innerHTML =
-      (active.token0Symbol || '?') +
-      (active.token0
-        ? '<br>\u00A0\u00A0\u00A0\u00A0' +
-          active.token0
-        : '');
+  if (t0) {
+    t0.textContent = active.token0Symbol || '?';
+    if (active.token0) {
+      t0.appendChild(document.createElement('br'));
+      t0.appendChild(document.createTextNode(
+        '\u00A0\u00A0\u00A0\u00A0' + active.token0));
+    }
+  }
   const t1 = g('pdToken1');
-  if (t1)
-    t1.innerHTML =
-      (active.token1Symbol || '?') +
-      (active.token1
-        ? '<br>\u00A0\u00A0\u00A0\u00A0' +
-          active.token1
-        : '');
+  if (t1) {
+    t1.textContent = active.token1Symbol || '?';
+    if (active.token1) {
+      t1.appendChild(document.createElement('br'));
+      t1.appendChild(document.createTextNode(
+        '\u00A0\u00A0\u00A0\u00A0' + active.token1));
+    }
+  }
   el('pdFee', fee);
   el(
     'pdContract',
