@@ -18,7 +18,8 @@ tags = ["key", "ethereum"]
 [[rules]]
 id = "raw-hex-private-key"
 description = "Raw 0x-prefixed 64-char hex (potential private key)"
-regex = '''(?<![0-9a-fA-F])0x[0-9a-fA-F]{64}(?![0-9a-fA-F])'''
+# RE2 does not support lookbehind — use non-hex prefix instead
+regex = '''(?:^|[^0-9a-fA-F])0x[0-9a-fA-F]{64}(?![0-9a-fA-F])'''
 tags = ["key", "ethereum"]
 [rules.allowlist]
 paths = [
