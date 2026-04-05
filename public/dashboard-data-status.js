@@ -327,8 +327,6 @@ export function _setStatusPill(pillCls, dotCls, label, tip) {
 /** Update the price marker and range boundaries from pool state. */
 export function _updatePriceMarker(d) {
   if (!d.poolState) return;
-  const a = posStore.getActive();
-  if (a && !isPositionManaged(a.tokenId)) return;
   botConfig.price = d.poolState.price;
   const pml = g("pmlabel");
   if (pml) {
@@ -345,6 +343,8 @@ export function _updatePriceMarker(d) {
     botConfig.lower = Math.pow(1.0001, botConfig.tL) * decAdj;
     botConfig.upper = Math.pow(1.0001, botConfig.tU) * decAdj;
   }
+  const a = posStore.getActive();
+  if (a && !isPositionManaged(a.tokenId)) return;
   updateRangePctLabels(d.poolState.price, botConfig.lower, botConfig.upper);
   positionRangeVisual();
 }

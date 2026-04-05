@@ -164,7 +164,12 @@ async function residualValueUsd(
 
 function _computeLifetimeFees(snap, deps, feesUsd) {
   const cf = snap.totalFees - (snap.liveEpoch?.fees ?? 0);
-  return Math.max(deps._collectedFeesUsd || 0, cf) + feesUsd;
+  // Compounded fees are both collected AND re-deposited. For live compounds,
+  // _collectedFeesUsd already includes them. For historical compounds detected
+  // on-chain, only totalCompoundedUsd is set. Use the larger of the two.
+  const compounded = deps._botState?.totalCompoundedUsd || 0;
+  const collected = Math.max(deps._collectedFeesUsd || 0, compounded);
+  return Math.max(collected, cf) + feesUsd;
 }
 function _hodlAmounts(source, bl) {
   return {

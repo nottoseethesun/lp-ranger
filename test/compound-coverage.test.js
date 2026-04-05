@@ -476,3 +476,27 @@ describe("bot-pnl-updater compound override", () => {
     assert.equal(snap.totalCompoundedUsd, 0);
   });
 });
+
+describe("_computeLifetimeFees includes historical compounds", () => {
+  it("counts compounded fees when _collectedFeesUsd is 0", () => {
+    const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
+    const snap = {
+      totalFees: 0,
+      totalGas: 0,
+      liveEpoch: { entryValue: 100, fees: 1 },
+      closedEpochs: [],
+    };
+    const deps = {
+      _collectedFeesUsd: 0,
+      _botState: { totalCompoundedUsd: 50 },
+    };
+    const pos = { liquidity: 1000n, tickLower: -600, tickUpper: 600 };
+    const pool = { tick: 0, decimals0: 18, decimals1: 18 };
+    overridePnlWithRealValues(snap, deps, pos, pool, 1, 1, 1, 0);
+    // totalFees should include compounded: max(0, 50) + 1 = 51
+    assert.ok(
+      snap.totalFees >= 50,
+      "lifetime fees must include compounded ($" + snap.totalFees + ")",
+    );
+  });
+});
