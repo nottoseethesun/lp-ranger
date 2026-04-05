@@ -117,9 +117,18 @@ function _applyLifetime(d) {
   const bd = g("kpiNetBreakdown");
   if (bd && d.ltFees !== undefined) {
     const f = (d.ltFees || 0).toFixed(2),
-      pc = d.ltPriceChange || 0;
+      c = (d.ltCompounded || 0).toFixed(2),
+      pc = d.ltPriceChange || 0,
+      r = "0.00";
+    /* Order matches label 1:1: Fees − Compounded + Price Change + Realized */
     bd.textContent =
-      f + (pc >= 0 ? " + " : " \u2212 ") + Math.abs(pc).toFixed(2) + " + 0.00";
+      f +
+      " \u2212 " +
+      c +
+      (pc >= 0 ? " + " : " \u2212 ") +
+      Math.abs(pc).toFixed(2) +
+      " + " +
+      r;
   }
   _applyLifetimeDates(d);
   if (d.dailyPnl) renderDailyPnl(d.dailyPnl);

@@ -817,6 +817,18 @@ if (require.main === module) {
       };
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
+      // Diagnostic: log config state at exit to catch position-loss bugs
+      process.on("exit", () => {
+        const pk = Object.keys(_diskConfig.positions || {});
+        const r = pk.filter(
+          (k) => _diskConfig.positions[k]?.status === "running",
+        ).length;
+        console.log(
+          "[server] exit: %d positions in memory (%d running)",
+          pk.length,
+          r,
+        );
+      });
     })
     .catch((err) => {
       console.error("[server] Failed to start:", err.message);

@@ -164,14 +164,17 @@ function _extractSnap(snap, cur, feesUsd) {
 }
 
 /** Compute lifetime P&L from tracker snapshot. */
-function _lifetimePnl(tracker, ps, entryValue, cur, feesUsd) {
+function _lifetimePnl(tracker, ps, entryValue, cur, feesUsd, currentValue) {
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
   const s = _extractSnap(snap, cur, feesUsd);
+  // Price change = current position value − initial deposit.
+  // NOT the epoch-chain cumulative (which leaks value through residuals).
+  const ltPc = entryValue > 0 ? currentValue - entryValue : s.ltPc || 0;
   return {
-    ltNetPnl: entryValue > 0 ? (s.ltPc || 0) + s.ltFees : null,
+    ltNetPnl: entryValue > 0 ? ltPc + s.ltFees : null,
     ltFees: s.ltFees,
     ltGas: s.ltGas,
-    ltPriceChange: s.ltPc,
+    ltPriceChange: ltPc,
     ltProfit:
       s.il !== null && s.il !== undefined
         ? s.ltFees - s.ltGas + s.il
@@ -439,7 +442,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ps.poolAddress,
   );
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
-  const lt = _lifetimePnl(tracker, ps, entryValue, cur, 0);
+  const lt = _lifetimePnl(tracker, ps, entryValue, cur, 0, value);
   console.log(
     "[details] lifetime tokenId=%s epochs=%d baseline=%s cur.il=%s lt.il=%s",
     body.tokenId,
