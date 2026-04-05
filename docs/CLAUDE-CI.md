@@ -37,7 +37,7 @@ getting code from a feature branch into `main`. The remote must
 | ----- | ------ |
 | **ESLint** | JS lint (`src/`, `test/`, `server.js`, `bot.js`, dashboard files, eslint-rules) — 0 warnings |
 | **stylelint** | CSS lint (`public/*.css`) |
-| **markdownlint** | Markdown lint (`README.md`, `CLAUDE.md`, `docs/CLAUDE-SECURITY.md`) |
+| **markdownlint** | Markdown lint (`README.md`, `CLAUDE.md`, `docs/CLAUDE-SECURITY.md`, `docs/CLAUDE-CI.md`) |
 | **Tests** | `node --test test/*.test.js` — all must pass |
 | **Coverage** | 80% line coverage minimum |
 | **Security: deps** | `npm run audit:deps` — no high-severity CVEs |
