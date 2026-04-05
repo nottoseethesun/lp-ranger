@@ -1316,9 +1316,13 @@
 .\39 mm-pos-mgr-mission-panel {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .\39 mm-pos-mgr-mission-control {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   background: #260700;
   border-radius: 10px;
   padding: 14px 20px;
@@ -1363,7 +1367,21 @@
   align-items: center;
   gap: 8px;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 14px;
+  color: #ff8f42;
+}
+
+.\39 mm-pos-mgr-mission-compound-block {
+  margin-top: auto;
+  padding-bottom: 6px;
+}
+
+.\39 mm-pos-mgr-mission-grid {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 14px;
   color: #ff8f42;
 }
 
@@ -1385,6 +1403,7 @@
   font-weight: 400;
   font-size: 20px;
   color: #ff8f42;
+  margin-right: -4px;
 }
 
 .\39 mm-pos-mgr-mission-input {
@@ -1411,12 +1430,15 @@
 .\39 mm-pos-mgr-mission-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 32px;
   padding: 1px 7px;
   border-radius: 999px;
   font-size: 12px;
   font-family: "Space Mono", monospace;
   font-weight: 400;
   letter-spacing: 0.5px;
+  text-align: center;
 }
 
 .\39 mm-pos-mgr-mission-badge.on {

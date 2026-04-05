@@ -92,13 +92,29 @@ function _persistPositionConfig(patch, diskConfig, key) {
     "totalCompoundedUsd",
     "lastCompoundAt",
   ];
-  const needsSave =
-    patch.activePositionId || _PERSIST.some((k) => patch[k] !== undefined);
+  const changed = _PERSIST.filter((k) => patch[k] !== undefined);
+  const needsSave = !!patch.activePositionId || changed.length > 0;
   if (!needsSave) return;
   const pos = getPositionConfig(diskConfig, key);
-  for (const k of _PERSIST) if (patch[k] !== undefined) pos[k] = patch[k];
-  if (patch.hodlBaseline)
-    console.log("[pos-state] Persisted hodlBaseline for %s", key);
+  const hadStatus = pos.status;
+  for (const k of changed) pos[k] = patch[k];
+  /* Guard: if we're saving for a managed position, ensure status survives */
+  if (!pos.status) {
+    console.warn(
+      "[pos-state] status missing for %s (was %s) — restoring to running. " +
+        "Patch keys: %s",
+      key,
+      hadStatus,
+      Object.keys(patch).join(", "),
+    );
+    pos.status = "running";
+  }
+  console.log(
+    "[pos-state] Persist %s for %s (status=%s)",
+    changed.join(", ") || "activePositionId",
+    key,
+    pos.status,
+  );
   saveConfig(diskConfig);
 }
 

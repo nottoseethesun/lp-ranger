@@ -113,13 +113,35 @@ function _empty() {
 function loadConfig(dir) {
   const filePath = _configPath(dir);
   try {
-    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const text = fs.readFileSync(filePath, "utf8");
+    if (!text || text.trim().length === 0) {
+      console.warn(
+        "[config] loadConfig: file exists but is EMPTY — %s",
+        filePath,
+      );
+      return _empty();
+    }
+    const raw = JSON.parse(text);
+    const posCount = Object.keys(raw.positions || {}).length;
+    const managed = Object.values(raw.positions || {}).filter(
+      (p) => p.status === "running",
+    ).length;
+    console.log(
+      "[config] loadConfig: %d positions (%d running) from %s (%d bytes)",
+      posCount,
+      managed,
+      filePath,
+      text.length,
+    );
     return {
       global: raw.global || {},
       positions: raw.positions || {},
     };
-  } catch {
-    console.log("[config] loadConfig: no file or parse error — starting empty");
+  } catch (err) {
+    console.log(
+      "[config] loadConfig: no file or parse error — starting empty (%s)",
+      err.message,
+    );
     return _empty();
   }
 }
@@ -132,6 +154,14 @@ function loadConfig(dir) {
 function saveConfig(cfg, dir) {
   delete cfg.version; // strip legacy field if present
   delete cfg.managedPositions; // strip obsolete field
+  // Log status of each position for debugging persistence issues
+  for (const [k, v] of Object.entries(cfg.positions || {})) {
+    if (!v.status)
+      console.warn(
+        "[config] saveConfig: position %s has NO status field!",
+        k.slice(-10),
+      );
+  }
   // Atomic write: temp file + rename prevents empty-file corruption if
   // the process exits mid-write (SIGINT during shutdown race).
   const filePath = _configPath(dir);
@@ -182,7 +212,13 @@ function getPositionConfig(cfg, positionKey) {
  */
 function addManagedPosition(cfg, positionKey) {
   const pos = getPositionConfig(cfg, positionKey);
+  const prev = pos.status;
   pos.status = "running";
+  console.log(
+    "[config] addManagedPosition %s (was %s → running)",
+    positionKey.slice(-10),
+    prev || "undefined",
+  );
 }
 
 /**
@@ -192,6 +228,11 @@ function addManagedPosition(cfg, positionKey) {
  */
 function removeManagedPosition(cfg, positionKey) {
   if (cfg.positions[positionKey]) {
+    console.log(
+      "[config] removeManagedPosition %s (was %s → stopped)",
+      positionKey.slice(-10),
+      cfg.positions[positionKey].status || "undefined",
+    );
     cfg.positions[positionKey].status = "stopped";
   }
 }

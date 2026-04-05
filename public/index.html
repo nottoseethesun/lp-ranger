@@ -627,23 +627,23 @@
       <button class="9mm-pos-mgr-mission-btn" id="rebalanceWithRangeBtn" disabled title="Manually force a rebalance. Automatic rebalancing stays in effect.">Rebalance Now</button>
       <hr class="9mm-pos-mgr-mission-divider">
       <button class="9mm-pos-mgr-mission-btn" id="compoundNowBtn" disabled title="Enabled when Fees available are > $usd 1">Compound Now</button>
-      <div class="9mm-pos-mgr-mission-row">
+      <div class="9mm-pos-mgr-mission-compound-block">
+      <div class="9mm-pos-mgr-mission-grid">
         <span class="9mm-pos-mgr-mission-label">Auto-compound</span>
+        <span></span>
         <span id="autoCompoundBadge" class="9mm-pos-mgr-mission-badge off">OFF</span>
         <label class="9mm-pos-mgr-compound-toggle">
           <input type="checkbox" id="autoCompoundToggle">
           <span class="9mm-pos-mgr-compound-track"></span>
         </label>
-      </div>
-      <div class="9mm-pos-mgr-mission-row">
         <span class="9mm-pos-mgr-mission-label">Threshold</span>
         <span class="9mm-pos-mgr-mission-currency">$</span>
         <input type="number" class="9mm-pos-mgr-mission-input" id="autoCompoundThreshold" value="5" min="1" step="0.01">
         <button class="9mm-pos-mgr-mission-btn-sm" id="saveCompoundThresholdBtn">Save</button>
       </div>
       <div class="9mm-pos-mgr-mission-help" id="compoundHelp"></div>
+      </div>
     </div>
-    <div class="9mm-pos-mgr-mission-spacer"></div>
     <!-- Rebalances (pinned to bottom) -->
     <div class="9mm-pos-mgr-mission-rebalances">
       <hr class="9mm-pos-mgr-kpi-divider">
@@ -955,6 +955,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775341027711"></script>
+<script src="dist/bundle.js?v=1775364103752"></script>
 </body>
 </html>

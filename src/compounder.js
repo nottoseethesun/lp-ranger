@@ -14,6 +14,8 @@
 
 "use strict";
 
+const { emojiId } = require("./logger");
+
 const config = require("./config");
 const {
   PM_ABI,
@@ -341,14 +343,15 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
   }));
   const s0 = opts.token0Symbol || "Token0";
   const s1 = opts.token1Symbol || "Token1";
-  console.log(
-    "[compound] Historical detection for #%s: %d IncreaseLiquidity (%d compounds), %d Collect",
-    tokenId,
-    ilLogs.length,
-    compounds.length,
-    colLogs.length,
-  );
   if (compounds.length > 0) {
+    console.log(
+      "[compound] Historical detection for #%s %s: %d IncreaseLiquidity (%d compounds), %d Collect",
+      tokenId,
+      emojiId(tokenId),
+      ilLogs.length,
+      compounds.length,
+      colLogs.length,
+    );
     console.log(
       "[compound]   compounded: %s=%s %s=%s (capped: %s=%s %s=%s) → $%s",
       s0,

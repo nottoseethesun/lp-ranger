@@ -78,7 +78,15 @@ function createRouteHandlers(deps) {
         });
         return;
       }
-      Object.assign(getPositionConfig(diskConfig, body.positionKey), pPatch);
+      const posRef = getPositionConfig(diskConfig, body.positionKey);
+      const statusBefore = posRef.status;
+      Object.assign(posRef, pPatch);
+      if (statusBefore && !posRef.status)
+        console.warn(
+          "[api/config] status WIPED for %s! pPatch keys: %s",
+          body.positionKey.slice(-10),
+          Object.keys(pPatch).join(", "),
+        );
     }
     saveConfig(diskConfig);
     if (pPatch.slippagePct !== undefined) {

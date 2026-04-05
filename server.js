@@ -297,10 +297,18 @@ const MIME = {
 /** Bot config loaded from disk. */
 const _diskConfig = loadConfig();
 
-if (managedKeys(_diskConfig).length > 0)
+const _managedAtStartup = managedKeys(_diskConfig);
+if (_managedAtStartup.length > 0)
   console.log(
     "[server] Loaded bot config (%d managed positions)",
-    managedKeys(_diskConfig).length,
+    _managedAtStartup.length,
+  );
+for (const [k, v] of Object.entries(_diskConfig.positions || {}))
+  console.log(
+    "[server] Config position %s: status=%s keys=%s",
+    k.slice(-10),
+    v.status || "MISSING",
+    Object.keys(v).join(","),
   );
 
 // ── Static file helper ──────────────────────────────

@@ -193,7 +193,16 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   setKpiValue("pnlFees", curFees);
   setKpiValue("pnlCompounded", compounded > 0 ? compounded : null);
   const curGas = d.pnlSnapshot.totalGas || 0;
-  setKpiValue("pnlGas", curGas > 0 ? curGas : null);
+  if (curGas > 0 && curGas < 0.01) {
+    const el = g("pnlGas");
+    if (el) {
+      el.textContent = "< $usd 0.01, > 0";
+      el.className = el.className.replace(/\b(pos|neg|neu)\b/g, "").trim();
+      el.classList.add("neg");
+    }
+  } else {
+    setKpiValue("pnlGas", curGas > 0 ? curGas : null);
+  }
   setKpiValue("pnlPrice", deposit > 0 ? cv - deposit : 0);
   setKpiValue("pnlRealized", curRealized);
   const dep = g("kpiDeposit");
@@ -303,7 +312,6 @@ export function _updateNetBreakdown(
   priceChange,
   realized,
   compounded,
-  gas,
 ) {
   if (fees === undefined && priceChange === undefined) {
     bd.textContent = "\u2014";
@@ -312,12 +320,12 @@ export function _updateNetBreakdown(
   const f = (fees || 0).toFixed(2),
     p = priceChange || 0,
     c = compounded || 0,
-    g = gas || 0,
     r = (realized || 0).toFixed(2);
-  let text =
-    f + (p >= 0 ? " + " : " \u2212 ") + Math.abs(p).toFixed(2) + " + " + r;
+  /* Order matches label: Fees − Compounded + Price Change + Realized */
+  let text = f;
   if (c > 0) text += " \u2212 " + c.toFixed(2);
-  if (g > 0) text += " \u2212 " + g.toFixed(2);
+  text += (p >= 0 ? " + " : " \u2212 ") + Math.abs(p).toFixed(2);
+  text += " + " + r;
   bd.textContent = text;
 }
 export function _setProfitKpi(id, fees, gas, ilg, compounded) {
@@ -388,17 +396,9 @@ export function _updateNetReturn(
           " Days"
         : "Net Profit and Loss Return";
     const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
-    const ltGas = d.pnlSnapshot?.totalGas || 0;
     const bd = g("kpiNetBreakdown");
     if (bd)
-      _updateNetBreakdown(
-        bd,
-        ltFees,
-        ltPriceChange,
-        ltRealized,
-        ltCompounded,
-        ltGas,
-      );
+      _updateNetBreakdown(bd, ltFees, ltPriceChange, ltRealized, ltCompounded);
     const ltVal = g("ltCurrentValue");
     if (ltVal) ltVal.textContent = _fmtUsd(d.pnlSnapshot.currentValue || 0);
   }

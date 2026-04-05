@@ -23,6 +23,7 @@ const {
   positionValueUsd: _positionValueUsd,
   fetchTokenPrices: _fetchTokenPrices,
   estimateGasCostUsd: _estimateGasCostUsd,
+  actualGasCostUsd: _actualGasCostUsd,
   updatePnlAndStats: _updatePnlAndStats,
 } = require("./bot-pnl-updater");
 const {
@@ -333,6 +334,45 @@ async function _checkCompound(deps, poolState, ethersLib) {
   await _refreshPosition(deps.position, ethersLib, deps.provider);
 }
 
+/** Record a successful compound: update history, P&L tracker gas, collected fees. */
+async function _recordCompound(deps, result) {
+  const emit = deps.updateBotState || (() => {});
+  const _gc = (k) => (deps._getConfig ? deps._getConfig(k) : undefined);
+  const gasWei = BigInt(result.gasCostWei || 0);
+  const gasCostUsd = gasWei > 0n ? await _actualGasCostUsd(gasWei) : 0;
+  const history = _gc("compoundHistory") || [];
+  history.push({
+    timestamp: result.timestamp,
+    txHash: result.depositTxHash,
+    amount0Deposited: result.amount0Deposited,
+    amount1Deposited: result.amount1Deposited,
+    usdValue: result.usdValue,
+    price0: result.price0,
+    price1: result.price1,
+    gasCostUsd,
+    trigger: result.trigger,
+  });
+  const total = (_gc("totalCompoundedUsd") || 0) + result.usdValue;
+  emit({
+    compoundHistory: history,
+    totalCompoundedUsd: total,
+    lastCompoundAt: result.timestamp,
+  });
+  /* Add compound gas to the P&L tracker so it shows in the Gas KPI */
+  const tracker = deps._pnlTracker;
+  if (tracker && tracker.epochCount() > 0) {
+    tracker.addGas(gasCostUsd);
+    emit({ pnlEpochs: tracker.serialize() });
+  }
+  if (deps._addCollectedFees) deps._addCollectedFees(result.usdValue);
+  console.log(
+    "[bot] Compound complete: $%s reinvested, gas $%s (total: $%s)",
+    result.usdValue.toFixed(2),
+    gasCostUsd.toFixed(4),
+    total.toFixed(2),
+  );
+}
+
 /**
  * Execute a compound: collect fees → increaseLiquidity.
  * Acquires the rebalance lock for nonce safety.
@@ -370,31 +410,7 @@ async function _executeCompound(deps, poolState, ethersLib, trigger) {
     });
 
     if (result.compounded) {
-      const _gc = (k) => (deps._getConfig ? deps._getConfig(k) : undefined);
-      const history = _gc("compoundHistory") || [];
-      history.push({
-        timestamp: result.timestamp,
-        txHash: result.depositTxHash,
-        amount0Deposited: result.amount0Deposited,
-        amount1Deposited: result.amount1Deposited,
-        usdValue: result.usdValue,
-        price0: result.price0,
-        price1: result.price1,
-        gasCostUsd: 0,
-        trigger: result.trigger,
-      });
-      const total = (_gc("totalCompoundedUsd") || 0) + result.usdValue;
-      emit({
-        compoundHistory: history,
-        totalCompoundedUsd: total,
-        lastCompoundAt: result.timestamp,
-      });
-      if (deps._addCollectedFees) deps._addCollectedFees(result.usdValue);
-      console.log(
-        "[bot] Compound complete: $%s reinvested (total compounded: $%s)",
-        result.usdValue.toFixed(2),
-        total.toFixed(2),
-      );
+      await _recordCompound(deps, result);
     } else {
       console.log("[bot] Compound skipped: %s", result.reason);
     }

@@ -463,8 +463,10 @@ export function _syncAutoCompound(d) {
     badge.className = "9mm-pos-mgr-mission-badge " + (on ? "on" : "off");
   }
   const th = g("autoCompoundThreshold");
-  if (th && !d.autoCompoundThresholdUsd)
-    th.value = botConfig.compoundDefaultThreshold || 5;
+  if (th && document.activeElement !== th) {
+    if (d.autoCompoundThresholdUsd) th.value = d.autoCompoundThresholdUsd;
+    else if (!th.value) th.value = botConfig.compoundDefaultThreshold || 5;
+  }
 }
 
 /** Enable/disable the Compound Now button based on fee threshold. */
