@@ -299,7 +299,7 @@ async function executeCompound(signer, ethersLib, opts) {
  * IncreaseLiquidity, Collect, and DecreaseLiquidity events.  First
  * IncreaseLiquidity = mint deposit (skipped); subsequent ones are compound
  * candidates.  An IncreaseLiquidity that follows a DecreaseLiquidity within
- * 50k blocks is a reposition (drain → re-deposit), not a compound, and is
+ * 50k blocks is a rebalance (drain → re-deposit), not a compound, and is
  * excluded.  Compound amounts are capped per-token by total Collect amounts
  * (fees can't exceed collections).
  * Uses THREE getLogs calls (IL + Collect + DL), run in parallel.
@@ -330,10 +330,10 @@ function _parseLogs(iface, logs) {
 /**
  * Filter IncreaseLiquidity candidates: remove any that follow a
  * DecreaseLiquidity (drain) within a block window. A drain followed by
- * re-deposit is a reposition, not a compound.
+ * re-deposit is a rebalance, not a compound.
  */
 const _DRAIN_WINDOW = 50_000; // ~14 hours on PulseChain (1s blocks)
-function _filterRepositions(candidates, dlEvents) {
+function _filterRebalances(candidates, dlEvents) {
   const drainBlocks = [];
   for (const e of dlEvents) {
     if ((e.liquidity ?? 0n) > 0n) drainBlocks.push(e.blockNumber);
@@ -380,7 +380,7 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
       .catch(() => []),
   ]);
   const candidateILs = _parseLogs(iface, ilLogs).slice(1); // skip first = mint
-  const compoundEvents = _filterRepositions(
+  const compoundEvents = _filterRebalances(
     candidateILs,
     _parseLogs(iface, dlLogs),
   );
@@ -445,5 +445,5 @@ module.exports = {
   addLiquidity,
   executeCompound,
   detectCompoundsOnChain,
-  _filterRepositions,
+  _filterRebalances,
 };
