@@ -345,6 +345,11 @@ function createPnlTracker(opts = {}) {
     if (data.liveEpoch) liveEpoch = { ...data.liveEpoch };
   }
 
+  /** Add gas cost (USD) to the live epoch. */
+  function addGas(usd) {
+    if (liveEpoch && usd > 0) liveEpoch.gas += usd;
+  }
+
   return {
     openEpoch,
     updateLiveEpoch,
@@ -352,6 +357,7 @@ function createPnlTracker(opts = {}) {
     snapshot,
     epochCount,
     getLiveEpoch,
+    addGas,
     serialize,
     restore,
   };

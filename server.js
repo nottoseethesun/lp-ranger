@@ -297,10 +297,18 @@ const MIME = {
 /** Bot config loaded from disk. */
 const _diskConfig = loadConfig();
 
-if (managedKeys(_diskConfig).length > 0)
+const _managedAtStartup = managedKeys(_diskConfig);
+if (_managedAtStartup.length > 0)
   console.log(
     "[server] Loaded bot config (%d managed positions)",
-    managedKeys(_diskConfig).length,
+    _managedAtStartup.length,
+  );
+for (const [k, v] of Object.entries(_diskConfig.positions || {}))
+  console.log(
+    "[server] Config position %s: status=%s keys=%s",
+    k.slice(-10),
+    v.status || "MISSING",
+    Object.keys(v).join(","),
   );
 
 // ── Static file helper ──────────────────────────────
@@ -481,6 +489,10 @@ const _routes = {
       "priceOverride0",
       "priceOverride1",
       "priceOverrideForce",
+      "autoCompoundEnabled",
+      "autoCompoundThresholdUsd",
+      "totalCompoundedUsd",
+      "lastCompoundAt",
     ];
     for (const [key, posConfig] of Object.entries(_diskConfig.positions)) {
       if (!positions[key]) {
@@ -502,6 +514,8 @@ const _routes = {
           config.CHAIN.contracts?.positionManager?.name || "",
         chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
         defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
+        compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
+        compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
         factory: config.FACTORY,
         ...posDefaults,
         ..._diskConfig.global,
@@ -606,6 +620,40 @@ const _routes = {
     jsonResponse(res, 200, {
       ok: true,
       message: "Rebalance requested",
+    });
+  },
+  "POST /api/compound": async (req, res) => {
+    let body = {};
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      /* empty body OK */
+    }
+    if (!body.positionKey) {
+      jsonResponse(res, 400, {
+        ok: false,
+        error: "Missing positionKey",
+      });
+      return;
+    }
+    const state = getAllPositionBotStates().get(body.positionKey);
+    if (!state || !state.running) {
+      jsonResponse(res, 409, {
+        ok: false,
+        error: "Position not running or syncing",
+      });
+      return;
+    }
+    const tokenId = body.positionKey.split("-").pop();
+    console.log(
+      "[server] Manual compound for %s %s",
+      body.positionKey,
+      emojiId(tokenId),
+    );
+    state.forceCompound = true;
+    jsonResponse(res, 200, {
+      ok: true,
+      message: "Compound requested",
     });
   },
   "POST /api/position/details": _routeHandlers._handlePositionDetails,

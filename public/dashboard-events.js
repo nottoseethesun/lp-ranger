@@ -11,6 +11,7 @@
 
 import {
   g,
+  botConfig,
   toggleHelpPopover,
   toggleSettingsPopover,
   clearLocalStorageAndCookies,
@@ -62,6 +63,11 @@ import {
   updateRebalanceRangeHint,
   confirmRebalanceRange,
 } from "./dashboard-throttle.js";
+import {
+  compoundNow,
+  toggleAutoCompound,
+  saveCompoundThreshold,
+} from "./dashboard-compound.js";
 import {
   toggleInitialDeposit,
   saveInitialDeposit,
@@ -361,12 +367,17 @@ export function bindAllEvents() {
   _click("throttleInfoClose", closeTI);
   _click("throttleInfoOk", closeTI);
 
-  /* ── Rebalance with Updated Range ─────── */
+  /* ── Mission Control ──────────────────── */
   _click("rebalanceWithRangeBtn", openRebalanceRangeModal);
   _click("rebalanceRangeClose", closeRebalanceRangeModal);
   _click("rebalanceRangeCancelBtn", closeRebalanceRangeModal);
   _click("rebalanceRangeConfirmBtn", confirmRebalanceRange);
   _input("rebalanceRangeInput", updateRebalanceRangeHint);
+  _click("compoundNowBtn", compoundNow);
+  _change("autoCompoundToggle", toggleAutoCompound);
+  _click("saveCompoundThresholdBtn", () =>
+    saveCompoundThreshold(botConfig.compoundMinFee || 1),
+  );
 
   /* ── Table pagination ─────────────────── */
   _click("rebFirstBtn", rebFirstPage);

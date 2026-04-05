@@ -219,9 +219,13 @@ function overridePnlWithRealValues(
   const entryVal = snap.liveEpoch
     ? snap.liveEpoch.entryValue
     : snap.initialDeposit;
+  const compounded = deps._botState?.totalCompoundedUsd || 0;
+  snap.totalCompoundedUsd = compounded;
   snap.priceChangePnl = realValue - entryVal;
-  snap.cumulativePnl = snap.priceChangePnl + lifetimeFees - snap.totalGas;
-  snap.netReturn = lifetimeFees - snap.totalGas + snap.priceChangePnl;
+  snap.cumulativePnl =
+    snap.priceChangePnl + lifetimeFees - snap.totalGas - compounded;
+  snap.netReturn =
+    lifetimeFees - snap.totalGas + snap.priceChangePnl - compounded;
   _computeIL(snap, deps, realValue, price0, price1);
 }
 
@@ -337,6 +341,8 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
           feesUsd.toFixed(6),
         );
       deps._lastUnclaimedFeesUsd = feesUsd;
+      deps._lastPrice0 = price0;
+      deps._lastPrice1 = price1;
       const rUsd = await residualValueUsd(
         deps,
         ethersLib,

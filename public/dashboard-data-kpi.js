@@ -89,6 +89,8 @@ export function _resetCurrentKpis() {
     "kpiValue",
     "kpiDeposit",
     "pnlFees",
+    "pnlCompounded",
+    "pnlGas",
     "pnlPrice",
     "pnlRealized",
     "curProfit",
@@ -188,7 +190,21 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
     cv = d.pnlSnapshot.currentValue || 0;
   const val = g("kpiValue");
   if (val) val.textContent = _fmtUsd(cv);
-  setKpiValue("pnlFees", ep ? ep.fees || 0 : 0);
+  const compounded = d.pnlSnapshot.totalCompoundedUsd || 0;
+  const curFees = (ep ? ep.fees || 0 : 0) + compounded;
+  setKpiValue("pnlFees", curFees);
+  setKpiValue("pnlCompounded", compounded > 0 ? compounded : null);
+  const curGas = d.pnlSnapshot.totalGas || 0;
+  if (curGas > 0 && curGas < 0.01) {
+    const el = g("pnlGas");
+    if (el) {
+      el.textContent = "< $usd 0.01, > 0";
+      el.className = el.className.replace(/\b(pos|neg|neu)\b/g, "").trim();
+      el.classList.add("neg");
+    }
+  } else {
+    setKpiValue("pnlGas", curGas > 0 ? curGas : null);
+  }
   setKpiValue("pnlPrice", deposit > 0 ? cv - deposit : 0);
   setKpiValue("pnlRealized", curRealized);
   const dep = g("kpiDeposit");
@@ -197,9 +213,10 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   _updatePosDuration(d);
   _setProfitKpi(
     "curProfit",
-    ep ? ep.fees || 0 : 0,
+    curFees,
     ep ? ep.gas || 0 : 0,
     d.pnlSnapshot.totalIL,
+    compounded,
   );
 }
 export function _botDetectedDeposit(d) {
@@ -229,9 +246,11 @@ export function _resolveKpiTotals(d) {
   const ltDep = ltUserDep > 0 ? ltUserDep : _botDetectedDeposit(d);
   const curPc = _priceChangePnl(d, curDep),
     ltPc = _priceChangePnl(d, ltDep);
+  const compounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
+  const ltGas = d.pnlSnapshot?.totalGas || 0;
   return {
-    curTotal: curPc + curFees + curRealized,
-    ltTotal: ltPc + ltFees + ltRealized,
+    curTotal: curPc + curFees + curRealized - compounded,
+    ltTotal: ltPc + ltFees + ltRealized - compounded - ltGas,
     curDep,
     ltDep,
     curRealized,
@@ -289,18 +308,29 @@ export function _updateKpis(d) {
     );
   }
 }
-export function _updateNetBreakdown(bd, fees, priceChange, realized) {
+export function _updateNetBreakdown(
+  bd,
+  fees,
+  priceChange,
+  realized,
+  compounded,
+) {
   if (fees === undefined && priceChange === undefined) {
     bd.textContent = "\u2014";
     return;
   }
   const f = (fees || 0).toFixed(2),
     p = priceChange || 0,
+    c = compounded || 0,
     r = (realized || 0).toFixed(2);
-  bd.textContent =
-    f + (p >= 0 ? " + " : " \u2212 ") + Math.abs(p).toFixed(2) + " + " + r;
+  /* Order matches label: Fees − Compounded + Price Change + Realized */
+  let text = f;
+  if (c > 0) text += " \u2212 " + c.toFixed(2);
+  text += (p >= 0 ? " + " : " \u2212 ") + Math.abs(p).toFixed(2);
+  text += " + " + r;
+  bd.textContent = text;
 }
-export function _setProfitKpi(id, fees, gas, ilg) {
+export function _setProfitKpi(id, fees, gas, ilg, compounded) {
   const el = g(id);
   if (!el) return;
   if (ilg === null || ilg === undefined) {
@@ -308,7 +338,7 @@ export function _setProfitKpi(id, fees, gas, ilg) {
     el.className = "kpi-value 9mm-pos-mgr-kpi-pct-row neu";
     return;
   }
-  const p = (fees || 0) - (gas || 0) + ilg;
+  const p = (fees || 0) - (gas || 0) + ilg - (compounded || 0);
   _setLeadingText(el, _fmtUsd(p));
   el.className =
     "kpi-value 9mm-pos-mgr-kpi-pct-row " +
@@ -367,13 +397,16 @@ export function _updateNetReturn(
           ).toFixed(2) +
           " Days"
         : "Net Profit and Loss Return";
+    const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
     const bd = g("kpiNetBreakdown");
-    if (bd) _updateNetBreakdown(bd, ltFees, ltPriceChange, ltRealized);
+    if (bd)
+      _updateNetBreakdown(bd, ltFees, ltPriceChange, ltRealized, ltCompounded);
     const ltVal = g("ltCurrentValue");
     if (ltVal) ltVal.textContent = _fmtUsd(d.pnlSnapshot.currentValue || 0);
   }
   const il = _updateIL(d, ltDeposit);
-  _setProfitKpi("ltProfit", ltFees, d.pnlSnapshot?.totalGas || 0, il);
+  const ltComp = d.pnlSnapshot?.totalCompoundedUsd || 0;
+  _setProfitKpi("ltProfit", ltFees, d.pnlSnapshot?.totalGas || 0, il, ltComp);
 }
 export function _missingPriceNames(d) {
   const a = posStore.getActive(),

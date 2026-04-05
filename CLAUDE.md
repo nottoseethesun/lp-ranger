@@ -15,14 +15,15 @@ CI and merge protocol: [docs/CLAUDE-CI.md](docs/CLAUDE-CI.md)
 - **HTTP server:** Node built-in `http` module (`server.js`) — dashboard + bot auto-start
 - **Bot loop:** `src/bot-loop.js` — shared rebalance logic (used by both server.js and bot.js)
 - **Bot (headless):** `bot.js` — standalone bot without dashboard UI
-- **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`) + 17 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
+- **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`) + 20 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
 - **Client-side routing:** Navigo (pushState) — bookmarkable URLs like `/:wallet/:contract/:tokenId`
 - **Build:** esbuild bundles dashboard JS + ethers.js + navigo from npm; fonts self-hosted via `@fontsource` (no CDN dependencies)
 - **On-chain:** ethers.js v6.7.1, @uniswap/v3-sdk ~3.28.0 + jsbi (exact ratio math)
 - **Concurrency:** async-mutex (rebalance lock for nonce-safe TX serialization across positions)
+- **Formatting:** Prettier (pre-commit hook via husky + lint-staged)
 - **Linter:** ESLint v10 flat config (`eslint.config.js`) + stylelint (`stylelint-config-standard`)
 - **Dead code:** knip (devDependency)
-- **Tests:** Node built-in `node:test` runner — zero external test framework
+- **Tests:** Node built-in `node:test` runner + ganache (in-memory EVM for blockchain mocks)
 - **CI:** GitHub Actions (`.github/workflows/ci.yml`) — lint → test (Node 22/24 matrix)
 
 ---
@@ -61,11 +62,15 @@ CI and merge protocol: [docs/CLAUDE-CI.md](docs/CLAUDE-CI.md)
 │   ├── dashboard-positions.js    # Position activation, browser modal, shared _activateCore helper
 │   ├── dashboard-positions-store.js # In-browser position store with localStorage persistence, rendering
 │   ├── dashboard-unmanaged.js    # One-shot detail fetch for unmanaged LP positions
-│   ├── dashboard-throttle.js     # Trigger config, throttle state/UI, Apply All
+│   ├── dashboard-throttle.js     # Trigger config, throttle state/UI
+│   ├── dashboard-throttle-rebalance.js # Rebalance with Updated Range modal
+│   ├── dashboard-compound.js     # Compound button handlers, auto-compound toggle, threshold save
 │   ├── dashboard-data.js         # Polls /api/status, updates position stats, bot status, resetHistoryFlag
+│   ├── dashboard-data-status.js  # Bot status display, alerts, modals, position context helpers
 │   ├── dashboard-data-kpi.js     # KPI calculation and display (price, range, fees, P&L)
+│   ├── dashboard-data-range.js   # Position range visual rendering (bar, handles, price marker)
 │   ├── dashboard-data-deposit.js # Deposit, realized gains, and shared localStorage helpers
-│   ├── dashboard-history.js      # Per-day P&L table (8/page), Rebalance Events table (8/page, 5-year lookback)
+│   ├── dashboard-history.js      # Per-day P&L table (11/page) with Residual column, Rebalance Events (4/page, 5-year lookback)
 │   ├── dashboard-router.js       # Client-side URL routing (Navigo pushState): /pulsechain/:wallet/:contract/:tokenId
 │   ├── dashboard-events.js       # DOM event wiring: clicks, pagination, copy icons
 │   ├── dashboard-events-manage.js # Privacy toggle, pool details modal, manage-position toggle
@@ -86,6 +91,7 @@ CI and merge protocol: [docs/CLAUDE-CI.md](docs/CLAUDE-CI.md)
 │   ├── pm-abi.js                 # Single source of truth for the NonfungiblePositionManager ABI
 │   ├── position-manager.js       # Multi-position orchestrator: start/stop per position
 │   ├── rebalance-lock.js         # Async mutex (via async-mutex) for nonce-safe TX serialization
+│   ├── compounder.js             # Compound execution: collect fees → increaseLiquidity + historical detection
 │   ├── rebalancer.js             # Core rebalance: remove liquidity → SDK ratio swap → mint (V3-only guard)
 │   ├── rebalancer-aggregator.js  # 9mm DEX Aggregator swap path with cancel-and-requote + revert retry
 │   ├── rebalancer-swap.js        # Swap orchestration: aggregator (primary) → V3 router (fallback)
@@ -156,13 +162,16 @@ CI and merge protocol: [docs/CLAUDE-CI.md](docs/CLAUDE-CI.md)
     ├── token-symbols.test.js         # Guards against contract addresses leaking into display names
     ├── closed-position-history.test.js # Closed position data fetch + rendering
     ├── epoch-reconstructor.test.js   # Historical P&L epoch reconstruction from chain events
+    ├── compounder.test.js           # Compound execution mocks, config keys, atomic write, P&L math
+    ├── compound-cycle.test.js       # pollCycle compound gates, config defaults, P&L integration
+    ├── compound-coverage.test.js    # Force/auto-compound trigger paths, state persistence, residuals
     └── eslint-rules/
         └── no-separate-contract-calls.test.js  # RuleTester cases for the custom multicall rule
 ├── .stylelintrc.json                 # stylelint config (extends stylelint-config-standard)
 └── tmp/                              # Local temp dir for tests + disk caches (gitignored)
 ```
 
-**827 tests passing. ESLint + stylelint: 0 errors, 0 warnings.**
+**883 tests passing. ESLint + stylelint + Prettier: 0 errors, 0 warnings.**
 
 ---
 
@@ -264,6 +273,10 @@ npm run restore-settings # Restore settings backed up by wipe-settings
 **Rebalance lock:** No timeout-based release — blockchains can hold a TX pending indefinitely. If stuck, the lock holder speed-ups (1.5× gas) then sends a 0-PLS self-cancel at the stuck nonce. Lock only releases after TX confirmation. This guarantees the nonce is always clear before the next position rebalances.
 
 **Throttling:** Per-position throttle (independent doubling mode per pool), but **wallet-level daily cap** (default 20, shared across all positions). A volatile pool's doubling doesn't slow a stable pool.
+
+**Compounding:** `src/compounder.js` collects unclaimed fees via `pm.collect()` then re-deposits them as liquidity via `pm.increaseLiquidity()` on the same NFT — no swap, no range change, no new NFT. Mission Control panel in the dashboard provides manual "Compound Now" (disabled when fees < `COMPOUND_MIN_FEE_USD`, default $1) and auto-compound (toggle + USD threshold, default $5). Auto-compound checks every poll cycle when in-range, throttled to `max(5 × CHECK_INTERVAL_SEC, 300s)` between executions. Compound amounts are tracked in `totalCompoundedUsd` (per-position in `.bot-config.json`) and subtracted from both Net P&L Return and Profit to avoid double-counting fees. "Fees Earned" includes compounded fees (hover text explains). Historical compounds are detected by scanning `IncreaseLiquidity` events for all NFTs in the rebalance chain (first event = mint deposit, subsequent = compounds), capped by total `Collect` amounts. Config write uses atomic temp-file + rename to prevent empty-file corruption from shutdown races.
+
+**Atomic config write:** `saveConfig` writes to `.bot-config.json.tmp` first, then atomically renames to `.bot-config.json`. Prevents empty-file corruption if the process exits mid-write (SIGINT race during shutdown).
 
 **Post-rebalance key migration:** When a position rebalances and mints a new NFT, the composite key changes (new tokenId). `position-manager.migrateKey()` and `bot-config-v2.migratePositionKey()` carry over HODL baseline and residuals from the old key to the new key. P&L epochs do NOT need migration — they're keyed by pool identity, not tokenId (see epoch cache below).
 

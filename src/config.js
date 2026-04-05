@@ -288,6 +288,10 @@ module.exports = {
   CHAIN_NAME,
   TX_TYPE,
 
+  // Compound
+  COMPOUND_MIN_FEE_USD: 1,
+  COMPOUND_DEFAULT_THRESHOLD_USD: 5,
+
   // Helpers
   assertLiveModeReady,
   VERBOSE,

@@ -78,7 +78,15 @@ function createRouteHandlers(deps) {
         });
         return;
       }
-      Object.assign(getPositionConfig(diskConfig, body.positionKey), pPatch);
+      const posRef = getPositionConfig(diskConfig, body.positionKey);
+      const statusBefore = posRef.status;
+      Object.assign(posRef, pPatch);
+      if (statusBefore && !posRef.status)
+        console.warn(
+          "[api/config] status WIPED for %s! pPatch keys: %s",
+          body.positionKey.slice(-10),
+          Object.keys(pPatch).join(", "),
+        );
     }
     saveConfig(diskConfig);
     if (pPatch.slippagePct !== undefined) {
@@ -282,13 +290,6 @@ function createRouteHandlers(deps) {
    * that have status 'running' in config.
    */
   async function _autoStartManagedPositions() {
-    for (const k of Object.keys(diskConfig.positions)) {
-      console.log(
-        "[auto-start] position %s status= %s",
-        k.split("-").pop(),
-        diskConfig.positions[k].status,
-      );
-    }
     const keys = managedKeys(diskConfig);
     const cnt = keys.length;
     const stMs =

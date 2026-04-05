@@ -228,11 +228,89 @@ async function _scanAndReconstruct(
       );
     },
   );
+  // Detect historical compounds across ALL NFTs in the rebalance chain
+  await _detectHistoricalCompounds(
+    position,
+    botState,
+    updateState,
+    events,
+    address,
+  );
   console.log("[bot] Scan + epoch reconstruction complete");
   updateState({
     rebalanceScanComplete: true,
     rebalanceScanProgress: 100,
   });
+}
+
+/**
+ * Detect historical compounds across ALL NFTs in the rebalance chain.
+ * Scans IncreaseLiquidity + Collect events for each tokenId (2 getLogs per NFT).
+ * Only runs on first scan (skips if compoundHistory already exists).
+ */
+async function _detectHistoricalCompounds(
+  position,
+  botState,
+  updateState,
+  rebalanceEvents,
+  walletAddress,
+) {
+  const gc = botState._getConfig
+    ? botState._getConfig("compoundHistory")
+    : undefined;
+  if (gc && gc.length > 0) return;
+  try {
+    const { detectCompoundsOnChain } = require("./compounder");
+    const prices = await _fetchTokenPrices(
+      position.token0,
+      position.token1,
+    ).catch(() => ({ price0: 0, price1: 0 }));
+    const opts = {
+      decimals0: position.decimals0,
+      decimals1: position.decimals1,
+      price0: prices.price0,
+      price1: prices.price1,
+      token0Symbol: position.token0Symbol || "Token0",
+      token1Symbol: position.token1Symbol || "Token1",
+      wallet: walletAddress,
+    };
+    // Collect all unique tokenIds from the rebalance chain + current
+    const ids = new Set([String(position.tokenId)]);
+    for (const ev of rebalanceEvents || []) {
+      if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
+      if (ev.newTokenId) ids.add(String(ev.newTokenId));
+    }
+    const allCompounds = [];
+    let totalUsd = 0;
+    for (const tid of ids) {
+      const r = await detectCompoundsOnChain(tid, opts);
+      for (const c of r.compounds) allCompounds.push({ ...c, tokenId: tid });
+      totalUsd += r.totalCompoundedUsd;
+    }
+    console.log(
+      "[bot] Lifetime compound scan: %d NFTs, %d total compounds, $%s",
+      ids.size,
+      allCompounds.length,
+      totalUsd.toFixed(2),
+    );
+    if (allCompounds.length > 0) {
+      const history = allCompounds.map((c) => ({
+        timestamp: null,
+        txHash: null,
+        tokenId: c.tokenId,
+        amount0Deposited: c.amount0Deposited,
+        amount1Deposited: c.amount1Deposited,
+        usdValue: totalUsd / allCompounds.length,
+        trigger: "historical",
+      }));
+      updateState({
+        compoundHistory: history,
+        totalCompoundedUsd: totalUsd,
+      });
+    }
+  } catch (err) {
+    console.warn("[bot] Historical compound detection failed:", err.message);
+  }
 }
 
 /** Record residual delta and persist. */

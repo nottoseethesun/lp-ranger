@@ -580,7 +580,9 @@
     <div class="kpi-sub" id="kpiPosDuration"></div>
     <div class="9mm-pos-mgr-pnl-breakdown" id="pnlBreakdown">
       <div class="9mm-pos-mgr-pnl-row"><span>Current Value <span class="9mm-pos-mgr-edit-link" id="editPricesLink" title="Override token prices when auto-detection fails">Edit</span></span><span id="kpiValue" class="kpi-value neu">—</span></div>
-      <div class="9mm-pos-mgr-pnl-row"><span>Fees Earned</span><span id="pnlFees" class="kpi-value neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Fees Earned <span class="help-tip" title="Includes any fees that were compounded.">i</span></span><span id="pnlFees" class="kpi-value neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Fees Compounded</span><span id="pnlCompounded" class="kpi-value neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Gas</span><span id="pnlGas" class="kpi-value neu">—</span></div>
       <div class="9mm-pos-mgr-pnl-row"><span>Price Gain/Loss</span><span id="pnlPrice" class="kpi-value neu">—</span></div>
       <div class="9mm-pos-mgr-pnl-row"><span>Realized Gains</span><span id="pnlRealized" class="kpi-value neu">$0.00</span></div>
     </div>
@@ -590,7 +592,7 @@
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Profit</div>
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curProfit">—</div>
-    <div class="kpi-sub">Fees &minus; Gas +/&minus; IL/G (This Position)</div>
+    <div class="kpi-sub">Fees &minus; Compounded &minus; Gas +/&minus; IL/G (This Position)</div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="curILInfo" title="Show IL/G calculation details">i</span></div>
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curIL">—<span class="9mm-pos-mgr-kpi-pct" id="curILPct"></span></div>
@@ -616,28 +618,56 @@
     </div>
   </div>
 
-  <!-- ── Rebalances ── -->
-  <div class="kpi-card wrn">
-    <div class="kpi-label 9mm-pos-mgr-panel-title">Rebalances</div>
-    <div class="kpi-sub 9mm-pos-mgr-mt-xs">Number of Rebalances Done This Period</div>
-    <div class="kpi-value wrn" id="kpiToday">&mdash;</div>
-    <div class="kpi-sub" id="kpiTodaySub">Resets at Midnight UTC</div>
-    <hr class="9mm-pos-mgr-kpi-divider">
-    <div class="kpi-sub">Rebalance Interval</div>
-    <div class="kpi-value dbl" id="kpiCountdown">—</div>
-    <div class="kpi-sub" id="kpiCDSub">Rebalance is only triggered when the position is out-of-range by the % set below.</div>
+  <!-- ── Mission Control + Rebalances ── -->
+  <div class="kpi-card wrn 9mm-pos-mgr-mission-panel">
+    <!-- Mission Control -->
+    <div class="9mm-pos-mgr-mission-control">
+      <div class="kpi-label 9mm-pos-mgr-panel-title 9mm-pos-mgr-mission-title">Mission Control</div>
+      <div style="height:12px"></div>
+      <button class="9mm-pos-mgr-mission-btn" id="rebalanceWithRangeBtn" disabled title="Manually force a rebalance. Automatic rebalancing stays in effect.">Rebalance Now</button>
+      <hr class="9mm-pos-mgr-mission-divider">
+      <button class="9mm-pos-mgr-mission-btn" id="compoundNowBtn" disabled title="Enabled when Fees available are > $usd 1">Compound Now</button>
+      <div class="9mm-pos-mgr-mission-compound-block">
+      <div class="9mm-pos-mgr-mission-grid">
+        <span class="9mm-pos-mgr-mission-label">Auto-compound</span>
+        <span></span>
+        <span id="autoCompoundBadge" class="9mm-pos-mgr-mission-badge off">OFF</span>
+        <label class="9mm-pos-mgr-compound-toggle">
+          <input type="checkbox" id="autoCompoundToggle">
+          <span class="9mm-pos-mgr-compound-track"></span>
+        </label>
+        <span class="9mm-pos-mgr-mission-label">Threshold</span>
+        <span class="9mm-pos-mgr-mission-currency">$</span>
+        <input type="number" class="9mm-pos-mgr-mission-input" id="autoCompoundThreshold" value="5" min="1" step="0.01">
+        <button class="9mm-pos-mgr-mission-btn-sm" id="saveCompoundThresholdBtn">Save</button>
+      </div>
+      <div class="9mm-pos-mgr-mission-help" id="compoundHelp"></div>
+      </div>
+    </div>
+    <!-- Rebalances (pinned to bottom) -->
+    <div class="9mm-pos-mgr-mission-rebalances">
+      <hr class="9mm-pos-mgr-kpi-divider">
+      <div class="kpi-label 9mm-pos-mgr-panel-title">Rebalances</div>
+      <div class="kpi-sub 9mm-pos-mgr-mt-xs">Number of Rebalances Done This Period</div>
+      <div class="kpi-value wrn" id="kpiToday">&mdash;</div>
+      <div class="kpi-sub" id="kpiTodaySub">Resets at Midnight UTC</div>
+      <hr class="9mm-pos-mgr-kpi-divider">
+      <div class="kpi-sub">Rebalance Interval</div>
+      <div class="kpi-value dbl" id="kpiCountdown">—</div>
+      <div class="kpi-sub" id="kpiCDSub">Rebalance is only triggered when the position is out-of-range by the % set below.</div>
+    </div>
   </div>
 
   <!-- ── Lifetime ── -->
   <div class="kpi-card neu kpi-card-wide">
     <div class="kpi-label 9mm-pos-mgr-panel-title">Lifetime</div>
-    <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet">—<span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div><div class="kpi-sub">Lifetime Fees + Price Change + Realized Gains</div>
+    <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet">—<span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div><div class="kpi-sub">Lifetime Fees &minus; Compounded + Price Change + Realized Gains</div>
     <div class="kpi-sub" id="kpiNetBreakdown"></div>
     <div class="9mm-pos-mgr-pnl-breakdown"><div class="9mm-pos-mgr-pnl-row"><span>Current Value <span class="9mm-pos-mgr-edit-link" id="editPricesLinkLt" title="Override token prices when auto-detection fails">Edit</span></span><span id="ltCurrentValue" class="kpi-value neu">&mdash;</span></div></div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Profit</div>
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="ltProfit">—</div>
-    <div class="kpi-sub">Lifetime Fees &minus; Gas +/&minus; IL/G</div>
+    <div class="kpi-sub">Lifetime Fees &minus; Compounded &minus; Gas +/&minus; IL/G</div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="ltILInfo" title="Show IL/G calculation details">i</span></div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL">—<span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
     <div class="realized-gains-row" id="initialDepositRow">
@@ -730,6 +760,7 @@
     <div class="card-title">Bot Configuration</div>
 
     <div class="active-trigger-row 9mm-pos-mgr-trigger-grid">
+      <div class="cfg-title" style="margin-bottom:6px">Auto-Rebalance Settings</div>
       <div class="9mm-pos-mgr-trigger-row">
         <span class="at-label">Trigger Type:</span>
         <span class="9mm-pos-mgr-trigger-badge" id="activeTriggerDisplay">OUT OF RANGE</span>
@@ -737,7 +768,7 @@
         <span class="ws-badge imp">±<span id="activeOorThreshold">5</span>%</span></span>
       </div>
       <div class="9mm-pos-mgr-trigger-row">
-        <span class="9mm-pos-mgr-trigger-right"><span class="at-label">Timeout Before Rebalance Is Triggered (minutes):</span>
+        <span class="9mm-pos-mgr-trigger-right"><span class="at-label">Timeout Before Next Rebalance Can Be Triggered (minutes):</span>
         <span class="ws-badge imp"><span id="activeOorTimeout">—</span></span></span>
       </div>
     </div>
@@ -803,10 +834,6 @@
     <!-- Range & execution -->
     <div class="cfg-block">
       <div class="cfg-title">Range &amp; Execution</div>
-      <div class="9mm-pos-mgr-text-right 9mm-pos-mgr-mb-6">
-        <button class="9mm-pos-mgr-btn-sm" id="rebalanceWithRangeBtn"
-          title="Create a new lp position for the current liquidity pool, with an optionally updated range.">Rebalance with Updated Range</button>
-      </div>
       <div class="prow">
         <span class="plbl">OOR Threshold Before Rebalance Is Triggered (±%)</span>
         <div class="9mm-pos-mgr-input-row">
@@ -928,6 +955,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775317011365"></script>
+<script src="dist/bundle.js?v=1775367793950"></script>
 </body>
 </html>

@@ -1310,3 +1310,213 @@
 .\39 mm-pos-mgr-search-clear:hover {
   color: var(--accent);
 }
+
+/* ── Mission Control ────────────────────────────── */
+
+.\39 mm-pos-mgr-mission-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.\39 mm-pos-mgr-mission-control {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background: #260700;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin: 0 0 10px;
+  color: #ff8f42;
+}
+
+
+.\39 mm-pos-mgr-mission-title {
+  color: #ff8f42;
+}
+
+.\39 mm-pos-mgr-mission-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border: 1px solid #ff8f42;
+  border-radius: 6px;
+  background: rgb(255 143 66 / 10%);
+  color: #ff8f42;
+  font-family: "Space Mono", monospace;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.\39 mm-pos-mgr-mission-btn:hover:not(:disabled) {
+  background: rgb(255 143 66 / 20%);
+}
+
+.\39 mm-pos-mgr-mission-btn:disabled {
+  opacity: 0.55;
+  cursor: help;
+  pointer-events: all;
+}
+
+.\39 mm-pos-mgr-mission-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 14px;
+  color: #ff8f42;
+}
+
+.\39 mm-pos-mgr-mission-compound-block {
+  margin-top: auto;
+  padding-bottom: 6px;
+}
+
+.\39 mm-pos-mgr-mission-grid {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 14px;
+  color: #ff8f42;
+}
+
+.\39 mm-pos-mgr-mission-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.\39 mm-pos-mgr-mission-label {
+  font-weight: 400;
+  font-size: 14px;
+  color: #ff8f42;
+}
+
+.\39 mm-pos-mgr-mission-currency {
+  font-weight: 400;
+  font-size: 20px;
+  color: #ff8f42;
+  margin-right: -4px;
+}
+
+.\39 mm-pos-mgr-mission-input {
+  width: 60px;
+  padding: 3px 6px;
+  border: 1px solid #ff8f42;
+  border-radius: 4px;
+  background: rgb(255 143 66 / 8%);
+  color: #ff8f42;
+  font-family: "Space Mono", monospace;
+  font-size: 14px;
+}
+
+.\39 mm-pos-mgr-mission-spacer {
+  flex: 1;
+}
+
+.\39 mm-pos-mgr-mission-divider {
+  border: none;
+  border-top: 1px solid #cc3000;
+  margin: 18px 0;
+}
+
+.\39 mm-pos-mgr-mission-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: "Space Mono", monospace;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+.\39 mm-pos-mgr-mission-badge.on {
+  background: rgb(124 252 0 / 10%);
+  color: var(--accent3);
+  border: 1px solid rgb(124 252 0 / 20%);
+}
+
+.\39 mm-pos-mgr-mission-badge.off {
+  background: transparent;
+  color: #ff8f42;
+  border: 1px solid #ff8f42;
+}
+
+.\39 mm-pos-mgr-compound-toggle {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.\39 mm-pos-mgr-compound-toggle input {
+  display: none;
+}
+
+.\39 mm-pos-mgr-compound-track {
+  width: 36px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgb(255 143 66 / 10%);
+  border: 1px solid #cc3000;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.\39 mm-pos-mgr-compound-track::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #cc3000;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.\39 mm-pos-mgr-compound-toggle input:checked ~ .\39 mm-pos-mgr-compound-track {
+  background: rgb(124 252 0 / 20%);
+  border-color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-compound-toggle input:checked ~ .\39 mm-pos-mgr-compound-track::after {
+  transform: translateX(18px);
+  background: var(--accent3);
+  box-shadow: 0 0 4px var(--accent3);
+}
+
+.\39 mm-pos-mgr-mission-btn-sm {
+  padding: 3px 8px;
+  border: 1px solid #ff8f42;
+  border-radius: 5px;
+  background: rgb(255 143 66 / 10%);
+  color: #ff8f42;
+  font-family: "Space Mono", monospace;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.\39 mm-pos-mgr-mission-btn-sm:hover {
+  background: rgb(255 143 66 / 20%);
+}
+
+.\39 mm-pos-mgr-mission-help {
+  font-size: 10px;
+  margin-top: 4px;
+  min-height: 14px;
+}

@@ -72,6 +72,8 @@ import {
   _updatePriceMarker,
   _updateBotStatus,
   _updateThrottleKpis,
+  _syncAutoCompound,
+  _updateCompoundButton,
 } from "./dashboard-data-status.js";
 export {
   injectDataDeps,
@@ -132,6 +134,7 @@ function _syncConfigFromServer(d) {
     gasStrategy: "inGas",
     rebalanceTimeoutMin: "inOorTimeout",
     rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
+    autoCompoundThresholdUsd: "autoCompoundThreshold",
   };
   for (const [key, elId] of Object.entries(map)) {
     if (d[key] !== undefined && d[key] !== null) {
@@ -139,6 +142,7 @@ function _syncConfigFromServer(d) {
       if (el) el.value = d[key];
     }
   }
+  _syncAutoCompound(d);
   const dpk = _poolKey("9mm_deposit_pool_");
   if (dpk && d.initialDepositUsd > 0 && !loadInitialDeposit())
     try {
@@ -248,13 +252,15 @@ function _updateRebalanceButtons(d) {
     }
     if (rb) {
       rb.disabled = false;
-      rb.title = "";
+      rb.title =
+        "Manually force a rebalance. Automatic rebalancing stays in effect.";
     }
     if (h) {
       h.textContent = "";
       h.classList.add("hidden");
     }
   }
+  _updateCompoundButton(d, on);
 }
 export function resetHistoryFlag() {
   _historyPopulated = false;
@@ -379,6 +385,10 @@ function _syncManagedAndGlobals(data) {
   botConfig.chainName = data.chainDisplayName || botConfig.chainName || "";
   if (data.defaultSlippagePct > 0)
     botConfig.defaultSlip = data.defaultSlippagePct;
+  if (data.compoundMinFeeUsd > 0)
+    botConfig.compoundMinFee = data.compoundMinFeeUsd;
+  if (data.compoundDefaultThresholdUsd > 0)
+    botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
 }
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
@@ -394,6 +404,7 @@ function updateDashboardFromStatus(data) {
   )
     return;
   _syncConfigFromServer(data);
+  _syncAutoCompound(data);
   _syncRebCache(data);
   _updateSyncBadge(data);
   _updateRebalanceButtons(data);

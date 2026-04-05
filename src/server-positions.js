@@ -52,6 +52,10 @@ function createPerPositionBotState(_globalCfg, saved) {
     if (saved.hodlBaseline) state.hodlBaseline = saved.hodlBaseline;
     if (saved.residuals) state.residuals = saved.residuals;
     if (saved.collectedFeesUsd) state.collectedFeesUsd = saved.collectedFeesUsd;
+    if (saved.totalCompoundedUsd)
+      state.totalCompoundedUsd = saved.totalCompoundedUsd;
+    if (saved.compoundHistory) state.compoundHistory = saved.compoundHistory;
+    if (saved.lastCompoundAt) state.lastCompoundAt = saved.lastCompoundAt;
   }
   return state;
 }
@@ -78,6 +82,42 @@ function _persistEpochCache(state, epochs) {
  * @param {object} diskConfig   V2 disk config (mutated + saved).
  * @param {object} positionMgr  Position manager instance.
  */
+/** Persist position-scoped fields from a bot state patch to disk config. */
+function _persistPositionConfig(patch, diskConfig, key) {
+  const _PERSIST = [
+    "hodlBaseline",
+    "residuals",
+    "collectedFeesUsd",
+    "compoundHistory",
+    "totalCompoundedUsd",
+    "lastCompoundAt",
+  ];
+  const changed = _PERSIST.filter((k) => patch[k] !== undefined);
+  const needsSave = !!patch.activePositionId || changed.length > 0;
+  if (!needsSave) return;
+  const pos = getPositionConfig(diskConfig, key);
+  const hadStatus = pos.status;
+  for (const k of changed) pos[k] = patch[k];
+  /* Guard: if we're saving for a managed position, ensure status survives */
+  if (!pos.status) {
+    console.warn(
+      "[pos-state] status missing for %s (was %s) — restoring to running. " +
+        "Patch keys: %s",
+      key,
+      hadStatus,
+      Object.keys(patch).join(", "),
+    );
+    pos.status = "running";
+  }
+  console.log(
+    "[pos-state] Persist %s for %s (status=%s)",
+    changed.join(", ") || "activePositionId",
+    key,
+    pos.status,
+  );
+  saveConfig(diskConfig);
+}
+
 function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
   const key = keyRef.current;
   let state = _positionBotStates.get(key);
@@ -89,22 +129,7 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
 
   // Persist position-specific data to v2 config when important fields change
   if (patch.pnlEpochs) _persistEpochCache(state, patch.pnlEpochs);
-  const shouldPersist =
-    patch.hodlBaseline ||
-    patch.residuals ||
-    patch.collectedFeesUsd !== undefined ||
-    patch.activePositionId;
-  if (shouldPersist) {
-    const pos = getPositionConfig(diskConfig, key);
-    if (patch.hodlBaseline) {
-      pos.hodlBaseline = patch.hodlBaseline;
-      console.log("[pos-state] Persisted hodlBaseline for %s", key);
-    }
-    if (patch.residuals) pos.residuals = patch.residuals;
-    if (patch.collectedFeesUsd !== undefined)
-      pos.collectedFeesUsd = patch.collectedFeesUsd;
-    saveConfig(diskConfig);
-  }
+  _persistPositionConfig(patch, diskConfig, key);
 
   // Handle key migration after rebalance (new tokenId) — save disk first, then memory.
   // Update keyRef.current so ALL closures (updateBotState, getConfig) use the new key.
@@ -243,6 +268,11 @@ function createPositionRoutes(deps) {
 
     addManagedPosition(diskConfig, key);
     const posConfig = getPositionConfig(diskConfig, key);
+    // Default auto-compound ON for active positions, OFF for closed
+    if (posConfig.autoCompoundEnabled === undefined) {
+      const liq = body.liquidity;
+      posConfig.autoCompoundEnabled = !liq || BigInt(liq) > 0n;
+    }
     saveConfig(diskConfig);
     const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, positionMgr);
