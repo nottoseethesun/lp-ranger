@@ -189,8 +189,11 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   const val = g("kpiValue");
   if (val) val.textContent = _fmtUsd(cv);
   const compounded = d.pnlSnapshot.totalCompoundedUsd || 0;
-  setKpiValue("pnlFees", ep ? ep.fees || 0 : 0);
+  const curFees = (ep ? ep.fees || 0 : 0) + compounded;
+  setKpiValue("pnlFees", curFees);
   setKpiValue("pnlCompounded", compounded > 0 ? compounded : null);
+  const curGas = d.pnlSnapshot.totalGas || 0;
+  setKpiValue("pnlGas", curGas > 0 ? curGas : null);
   setKpiValue("pnlPrice", deposit > 0 ? cv - deposit : 0);
   setKpiValue("pnlRealized", curRealized);
   const dep = g("kpiDeposit");
@@ -199,7 +202,7 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   _updatePosDuration(d);
   _setProfitKpi(
     "curProfit",
-    ep ? ep.fees || 0 : 0,
+    curFees,
     ep ? ep.gas || 0 : 0,
     d.pnlSnapshot.totalIL,
     compounded,
@@ -233,9 +236,10 @@ export function _resolveKpiTotals(d) {
   const curPc = _priceChangePnl(d, curDep),
     ltPc = _priceChangePnl(d, ltDep);
   const compounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
+  const ltGas = d.pnlSnapshot?.totalGas || 0;
   return {
     curTotal: curPc + curFees + curRealized - compounded,
-    ltTotal: ltPc + ltFees + ltRealized - compounded,
+    ltTotal: ltPc + ltFees + ltRealized - compounded - ltGas,
     curDep,
     ltDep,
     curRealized,
@@ -293,16 +297,28 @@ export function _updateKpis(d) {
     );
   }
 }
-export function _updateNetBreakdown(bd, fees, priceChange, realized) {
+export function _updateNetBreakdown(
+  bd,
+  fees,
+  priceChange,
+  realized,
+  compounded,
+  gas,
+) {
   if (fees === undefined && priceChange === undefined) {
     bd.textContent = "\u2014";
     return;
   }
   const f = (fees || 0).toFixed(2),
     p = priceChange || 0,
+    c = compounded || 0,
+    g = gas || 0,
     r = (realized || 0).toFixed(2);
-  bd.textContent =
+  let text =
     f + (p >= 0 ? " + " : " \u2212 ") + Math.abs(p).toFixed(2) + " + " + r;
+  if (c > 0) text += " \u2212 " + c.toFixed(2);
+  if (g > 0) text += " \u2212 " + g.toFixed(2);
+  bd.textContent = text;
 }
 export function _setProfitKpi(id, fees, gas, ilg, compounded) {
   const el = g(id);
@@ -371,20 +387,24 @@ export function _updateNetReturn(
           ).toFixed(2) +
           " Days"
         : "Net Profit and Loss Return";
+    const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
+    const ltGas = d.pnlSnapshot?.totalGas || 0;
     const bd = g("kpiNetBreakdown");
-    if (bd) _updateNetBreakdown(bd, ltFees, ltPriceChange, ltRealized);
+    if (bd)
+      _updateNetBreakdown(
+        bd,
+        ltFees,
+        ltPriceChange,
+        ltRealized,
+        ltCompounded,
+        ltGas,
+      );
     const ltVal = g("ltCurrentValue");
     if (ltVal) ltVal.textContent = _fmtUsd(d.pnlSnapshot.currentValue || 0);
   }
   const il = _updateIL(d, ltDeposit);
-  const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
-  _setProfitKpi(
-    "ltProfit",
-    ltFees,
-    d.pnlSnapshot?.totalGas || 0,
-    il,
-    ltCompounded,
-  );
+  const ltComp = d.pnlSnapshot?.totalCompoundedUsd || 0;
+  _setProfitKpi("ltProfit", ltFees, d.pnlSnapshot?.totalGas || 0, il, ltComp);
 }
 export function _missingPriceNames(d) {
   const a = posStore.getActive(),

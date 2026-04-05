@@ -52,6 +52,10 @@ function createPerPositionBotState(_globalCfg, saved) {
     if (saved.hodlBaseline) state.hodlBaseline = saved.hodlBaseline;
     if (saved.residuals) state.residuals = saved.residuals;
     if (saved.collectedFeesUsd) state.collectedFeesUsd = saved.collectedFeesUsd;
+    if (saved.totalCompoundedUsd)
+      state.totalCompoundedUsd = saved.totalCompoundedUsd;
+    if (saved.compoundHistory) state.compoundHistory = saved.compoundHistory;
+    if (saved.lastCompoundAt) state.lastCompoundAt = saved.lastCompoundAt;
   }
   return state;
 }

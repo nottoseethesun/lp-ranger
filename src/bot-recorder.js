@@ -257,6 +257,8 @@ async function _detectHistoricalCompounds(position, botState, updateState) {
       decimals1: position.decimals1,
       price0: prices.price0,
       price1: prices.price1,
+      token0Symbol: position.token0Symbol || "Token0",
+      token1Symbol: position.token1Symbol || "Token1",
     });
     if (result.compounds.length > 0) {
       const history = result.compounds.map((c) => ({

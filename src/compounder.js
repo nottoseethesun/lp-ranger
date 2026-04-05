@@ -339,14 +339,29 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
     amount1Deposited: String(e.amount1),
     blockNumber: e.blockNumber,
   }));
+  const s0 = opts.token0Symbol || "Token0";
+  const s1 = opts.token1Symbol || "Token1";
   console.log(
-    "[compound] Historical detection for #%s: %d IncreaseLiquidity (%d compounds), %d Collect, compounded $%s",
+    "[compound] Historical detection for #%s: %d IncreaseLiquidity (%d compounds), %d Collect",
     tokenId,
     ilLogs.length,
     compounds.length,
     colLogs.length,
-    totalCompoundedUsd.toFixed(2),
   );
+  if (compounds.length > 0) {
+    console.log(
+      "[compound]   compounded: %s=%s %s=%s (capped: %s=%s %s=%s) → $%s",
+      s0,
+      String(sum0),
+      s1,
+      String(sum1),
+      s0,
+      String(cap0),
+      s1,
+      String(cap1),
+      totalCompoundedUsd.toFixed(2),
+    );
+  }
   return { compounds, totalCompoundedUsd };
 }
 

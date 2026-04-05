@@ -114,20 +114,10 @@ function loadConfig(dir) {
   const filePath = _configPath(dir);
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    const cfg = {
+    return {
       global: raw.global || {},
       positions: raw.positions || {},
     };
-    const keys = Object.keys(cfg.positions);
-    const statuses = keys.map(
-      (k) => k.split("-").pop() + "=" + (cfg.positions[k].status || "none"),
-    );
-    console.log(
-      "[config] loadConfig: %d positions [%s]",
-      keys.length,
-      statuses.join(", "),
-    );
-    return cfg;
   } catch {
     console.log("[config] loadConfig: no file or parse error — starting empty");
     return _empty();
@@ -142,23 +132,20 @@ function loadConfig(dir) {
 function saveConfig(cfg, dir) {
   delete cfg.version; // strip legacy field if present
   delete cfg.managedPositions; // strip obsolete field
-  const keys = Object.keys(cfg.positions || {});
-  const statuses = keys.map(
-    (k) => k.split("-").pop() + "=" + (cfg.positions[k].status || "none"),
-  );
-  console.log(
-    "[config] saveConfig: %d positions [%s]",
-    keys.length,
-    statuses.join(", "),
-  );
-  console.log(
-    "[config] saveConfig caller: %s",
-    new Error().stack.split("\n").slice(1, 4).join(" <- "),
-  );
+  // Atomic write: temp file + rename prevents empty-file corruption if
+  // the process exits mid-write (SIGINT during shutdown race).
+  const filePath = _configPath(dir);
+  const tmpPath = filePath + ".tmp";
   try {
-    fs.writeFileSync(_configPath(dir), JSON.stringify(cfg, null, 2), "utf8");
+    fs.writeFileSync(tmpPath, JSON.stringify(cfg, null, 2), "utf8");
+    fs.renameSync(tmpPath, filePath);
   } catch (err) {
     console.warn("[config] Could not save bot config:", err.message);
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      /* tmp cleanup */
+    }
   }
 }
 
