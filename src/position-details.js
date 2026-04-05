@@ -469,9 +469,14 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     body.tokenId,
     Date.now() - _ltT0,
   );
+  // Read persisted compound total from disk config (detected by bot loop's
+  // compound scan, or by a previous managed session).
+  const posConfig = diskConfig.positions[posKey] || {};
+  const ltCompounded = posConfig.totalCompoundedUsd || 0;
   return {
     ok: true,
     ...lt,
+    ltCompounded,
     entryValue,
     firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null,
     dailyPnl,
