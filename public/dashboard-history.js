@@ -63,7 +63,7 @@ export function renderDailyPnl(dailyPnl) {
     start = page * _PNL_PAGE_SIZE;
   const slice = dailyPnl.slice(start, start + _PNL_PAGE_SIZE);
   // Compute net + cumulative over the FULL array, then render only the page slice.
-  // Cumulative includes wallet residuals so the total telescopes correctly.
+  // Residuals (wallet↔LP transfers) are excluded — they're not profit/loss.
   const nets = dailyPnl.map(
     (d) =>
       (d.feePnl || d.fees || 0) +
@@ -73,7 +73,7 @@ export function renderDailyPnl(dailyPnl) {
   const cums = new Array(nets.length);
   let cum = 0;
   for (let i = nets.length - 1; i >= 0; i--) {
-    cum += nets[i] + (dailyPnl[i].residual || 0);
+    cum += nets[i];
     cums[i] = cum;
   }
   const _d = "\u2014";
