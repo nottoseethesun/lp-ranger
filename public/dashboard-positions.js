@@ -15,7 +15,7 @@
  * evaluation time.
  */
 
-import { g, act, ACT_ICONS, botConfig } from "./dashboard-helpers.js";
+import { g, act, ACT_ICONS, botConfig, emojiId } from "./dashboard-helpers.js";
 import { _posLabel } from "./dashboard-data.js";
 import { wallet, getRpcUrl } from "./dashboard-wallet.js";
 import {
@@ -35,6 +35,7 @@ import {
   refreshManageBadge,
   renderPosRow,
   restoreManagedPositions,
+  bestAutoSelectIdx,
   setSyncRouteToState,
   setFetchUnmanagedDetails,
 } from "./dashboard-positions-store.js";
@@ -263,13 +264,13 @@ function _activateCore(idx, opts) {
   if (!active) return null;
   _applyLocalPositionData(active);
   if (_refreshDepositLabel) _refreshDepositLabel();
+  _applyPositionConfig(active);
+  if (_positionRangeVisual) _positionRangeVisual();
   if (isPositionClosed(active) && _enterClosedPosView) {
     _enterClosedPosView(active);
     _updateRoute(active, updateRoute, syncRoute);
     return active;
   }
-  _applyPositionConfig(active);
-  if (_positionRangeVisual) _positionRangeVisual();
   _updateRoute(active, updateRoute, syncRoute);
   try {
     localStorage.setItem("9mm_last_position", String(active.tokenId));
@@ -350,11 +351,23 @@ function _fetchUnmanagedIfNeeded(active) {
     _fetchUnmanagedDetails(active);
 }
 
-/** Restore last-viewed position from localStorage. */
+/** Restore last-viewed position from localStorage, preferring open positions. */
 export function restoreLastPosition() {
   try {
     const t = localStorage.getItem("9mm_last_position");
-    if (t) return activateByTokenId(t);
+    if (t) {
+      const idx = posStore.entries.findIndex(
+        (e) => e.positionType === "nft" && String(e.tokenId) === String(t),
+      );
+      if (idx >= 0 && !isPositionClosed(posStore.entries[idx]))
+        return activateByTokenId(t);
+      // Last-viewed position is closed — prefer youngest open position
+      const best = bestAutoSelectIdx();
+      if (best >= 0) {
+        _activateCore(best);
+        return true;
+      }
+    }
   } catch {
     /* */
   }
@@ -365,14 +378,15 @@ export function restoreLastPosition() {
 
 /** Reset all KPI card elements to empty. */
 function _clearKpiElements() {
-  for (const id of [
+  const _kpiReset = [
     "kpiPnl",
     "kpiNet",
     "curIL",
     "netIL",
     "curProfit",
     "ltProfit",
-  ]) {
+  ];
+  for (const id of _kpiReset) {
     const el = g(id);
     if (el) {
       el.textContent = "\u2014";
@@ -386,7 +400,7 @@ function _clearKpiElements() {
     "pnlRealized",
   ])
     _setText(id, "\u2014");
-  for (const id of [
+  const _pctClear = [
     "kpiPnlPctVal",
     "kpiPnlApr",
     "kpiNetPct",
@@ -394,7 +408,8 @@ function _clearKpiElements() {
     "curILPct",
     "netILPct",
     "netILApr",
-  ]) {
+  ];
+  for (const id of _pctClear) {
     const el = g(id);
     if (el) el.textContent = "";
   }
@@ -488,13 +503,35 @@ async function _fetchAndApplyScan() {
   if (!data.ok) throw new Error(data.error);
   const added = _addScannedPositions(data);
   const nftCount = (data.nftPositions || []).length;
+  console.log(
+    "[scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d",
+    nftCount,
+    added,
+    posStore.count(),
+    posStore.activeIdx,
+  );
   if (posStore.activeIdx < 0 && posStore.count() > 0) {
-    posStore.select(0);
+    const bestIdx = bestAutoSelectIdx();
+    posStore.select(bestIdx >= 0 ? bestIdx : 0);
     const first = posStore.getActive();
+    console.log(
+      "[scan] auto-selected #%s %s (idx=%d)",
+      first?.tokenId,
+      first ? emojiId(first.tokenId) : "",
+      bestIdx,
+    );
     if (first) {
       _applyLocalPositionData(first);
       _applyPositionConfig(first);
     }
+  } else if (posStore.activeIdx >= 0) {
+    const cur = posStore.getActive();
+    console.log(
+      "[scan] already selected #%s %s (idx=%d) — skipping auto-select",
+      cur?.tokenId,
+      cur ? emojiId(cur.tokenId) : "",
+      posStore.activeIdx,
+    );
   }
   updatePosStripUI();
   if (data.cached) _backgroundRefresh();

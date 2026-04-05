@@ -30,6 +30,7 @@ import {
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import { renderDailyPnl, renderRebalanceEvents } from "./dashboard-history.js";
 import { posStore } from "./dashboard-positions.js";
+import { enterClosedPosView } from "./dashboard-closed-pos.js";
 
 const _ALL_KPIS = [
   "kpiValue",
@@ -282,6 +283,63 @@ export function resetLastFetchedId() {
   _lastFetchedId = null;
 }
 
+/**
+ * Check if the server response indicates a fully drained (closed) position.
+ * Both token amounts and USD value must be zero.
+ * @param {object} d  Phase-1 API response.
+ * @returns {boolean}
+ */
+function _isResponseDrained(d) {
+  return (
+    d.amounts &&
+    d.amounts.amount0 === 0 &&
+    d.amounts.amount1 === 0 &&
+    d.value === 0
+  );
+}
+
+/**
+ * Run phase-1 (fast) detail fetch.  If the server reveals the position was
+ * fully drained, updates posStore and switches to the closed-pos history view.
+ * @param {object} pos   posStore entry.
+ * @param {object} body  Request body (mutated: feesUsd added on success).
+ * @returns {Promise<boolean>}  True if switched to closed-pos view.
+ */
+async function _phase1(pos, body) {
+  try {
+    const r = await fetch("/api/position/details", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      console.warn("[unmanaged] details error:", d.error);
+      return false;
+    }
+    if (_isResponseDrained(d)) {
+      pos.liquidity = "0";
+      enterClosedPosView(pos);
+      return true;
+    }
+    _apply(d, pos);
+    body.feesUsd = d.feesUsd;
+  } catch (e) {
+    console.warn("[unmanaged] phase 1 failed:", e.message);
+  }
+  return false;
+}
+
+/** Set the sync badge to its "done" state. */
+function _markSynced(badge) {
+  setUnmanagedSyncing(false);
+  if (badge) {
+    badge.textContent = "Synced";
+    badge.classList.add("done");
+    badge.style.background = "";
+  }
+}
+
 /** Fetch and display details for an unmanaged position (two-phase). */
 export async function fetchUnmanagedDetails(pos) {
   if (!pos?.tokenId || !pos?.token0 || !pos?.token1 || !pos?.fee) return;
@@ -299,27 +357,18 @@ export async function fetchUnmanagedDetails(pos) {
     badge.style.background = "";
   }
   const body = _detailBody(pos);
-  const hdrs = { "Content-Type": "application/json" };
-  // Phase 1: fast — pool state, value, composition, current P&L
-  try {
-    const r1 = await fetch("/api/position/details", {
-      method: "POST",
-      headers: hdrs,
-      body: JSON.stringify(body),
-    });
-    const d1 = await r1.json();
-    if (d1.ok) {
-      _apply(d1, pos);
-      body.feesUsd = d1.feesUsd;
-    } else console.warn("[unmanaged] details error:", d1.error);
-  } catch (e) {
-    console.warn("[unmanaged] phase 1 failed:", e.message);
+  // Phase 1: fast — pool state, value, composition, current P&L.
+  // If the position turns out to be closed (fully drained), phase 1
+  // switches to the closed-pos history view and skips phase 2.
+  if (await _phase1(pos, body)) {
+    _markSynced(badge);
+    return;
   }
   // Phase 2: slow — lifetime P&L (event scan + epoch reconstruction)
   try {
     const r2 = await fetch("/api/position/lifetime", {
       method: "POST",
-      headers: hdrs,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     const d2 = await r2.json();
@@ -327,10 +376,5 @@ export async function fetchUnmanagedDetails(pos) {
   } catch (e) {
     console.warn("[unmanaged] phase 2 failed:", e.message);
   }
-  setUnmanagedSyncing(false);
-  if (badge) {
-    badge.textContent = "Synced";
-    badge.classList.add("done");
-    badge.style.background = "";
-  }
+  _markSynced(badge);
 }

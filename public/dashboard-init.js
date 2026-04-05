@@ -251,12 +251,14 @@ function _afterDisclaimer() {
   startDataPolling();
 
   // One-shot: auto-scan on wallet load to populate symbols + fresh data from LP cache.
+  // Navigate to the bot's active position only on fresh starts (no position selected yet).
   let _initScanDone = false;
   setTimeout(() => {
     if (_initScanDone) return;
     _initScanDone = true;
     if (wallet.address) {
-      scanPositions({ navigate: false });
+      const fresh = posStore.activeIdx < 0;
+      scanPositions({ navigate: fresh, silent: !fresh });
     }
   }, 5000);
 } // end _afterDisclaimer

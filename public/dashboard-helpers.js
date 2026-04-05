@@ -17,6 +17,49 @@ export function g(id) {
   return document.getElementById(id);
 }
 
+const _EMOJI = [
+  "🌵",
+  "🔥",
+  "⚡",
+  "🌊",
+  "🎯",
+  "💎",
+  "🚀",
+  "🌙",
+  "⭐",
+  "🎪",
+  "🦅",
+  "🐎",
+  "🌻",
+  "🍀",
+  "🎲",
+  "🔔",
+];
+/**
+ * Convert a string to a 3-emoji fingerprint (browser-side).
+ * Uses the same emoji set and algorithm as src/logger.js emojiId
+ * so server and browser logs show matching fingerprints.
+ * @param {string} str  Input string (e.g. NFT token ID).
+ * @returns {string}  3-emoji string.
+ */
+export function emojiId(str) {
+  const s = String(str);
+  let h0 = 0,
+    h1 = 0,
+    h2 = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h0 = (h0 * 31 + c) | 0;
+    h1 = (h1 * 37 + c) | 0;
+    h2 = (h2 * 41 + c) | 0;
+  }
+  return (
+    _EMOJI[Math.abs(h0) % 16] +
+    _EMOJI[Math.abs(h1) % 16] +
+    _EMOJI[Math.abs(h2) % 16]
+  );
+}
+
 /**
  * Append an entry to the on-screen activity log.
  * Newest entries appear at the top; the list is capped at 50 items.

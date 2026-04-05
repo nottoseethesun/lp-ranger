@@ -414,10 +414,10 @@ function updateDashboardFromStatus(data) {
   _populateHistoryOnce(data);
   updateHistoryFromStatus(data);
   _updatePriceMarker(data);
-  _updateLifetimeKpis(data);
   if (isViewingClosedPos()) return;
   const _a2 = posStore.getActive();
   if (_a2 && !isPositionManaged(_a2.tokenId)) return;
+  _updateLifetimeKpis(data);
   _syncActivePosition(data);
   _updatePosStatus(data, _scanWasComplete);
   _updateKpis(data);
