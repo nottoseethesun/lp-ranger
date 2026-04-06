@@ -320,6 +320,7 @@ function _parseLogs(iface, logs) {
         amount1: p.args.amount1,
         liquidity: p.args.liquidity,
         blockNumber: log.blockNumber,
+        txHash: log.transactionHash,
       });
     } catch {
       /* skip unparseable */
@@ -346,6 +347,35 @@ function _filterRebalances(candidates, dlEvents) {
     }
     return true;
   });
+}
+
+/** Fetch TX receipts for compound events and compute gas costs. */
+async function _fetchCompoundGas(prov, compoundEvents) {
+  let totalGasWei = 0n;
+  const compounds = [];
+  for (const e of compoundEvents) {
+    let gasWei = 0n;
+    if (e.txHash) {
+      try {
+        const rcpt = await prov.getTransactionReceipt(e.txHash);
+        if (rcpt)
+          gasWei =
+            (rcpt.gasUsed ?? 0n) *
+            (rcpt.gasPrice ?? rcpt.effectiveGasPrice ?? 0n);
+      } catch {
+        /* receipt fetch failed — gas stays 0 */
+      }
+    }
+    totalGasWei += gasWei;
+    compounds.push({
+      amount0Deposited: String(e.amount0),
+      amount1Deposited: String(e.amount1),
+      blockNumber: e.blockNumber,
+      txHash: e.txHash || null,
+      gasCostWei: String(gasWei),
+    });
+  }
+  return { compounds, totalGasWei };
 }
 
 async function detectCompoundsOnChain(tokenId, opts = {}) {
@@ -404,11 +434,10 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
   const totalCompoundedUsd =
     (Number(cap0) / 10 ** d0) * (opts.price0 || 0) +
     (Number(cap1) / 10 ** d1) * (opts.price1 || 0);
-  const compounds = compoundEvents.map((e) => ({
-    amount0Deposited: String(e.amount0),
-    amount1Deposited: String(e.amount1),
-    blockNumber: e.blockNumber,
-  }));
+  const { compounds, totalGasWei } = await _fetchCompoundGas(
+    prov,
+    compoundEvents,
+  );
   const s0 = opts.token0Symbol || "Token0";
   const s1 = opts.token1Symbol || "Token1";
   if (compounds.length > 0) {
@@ -438,7 +467,7 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
       totalCompoundedUsd.toFixed(2),
     );
   }
-  return { compounds, totalCompoundedUsd };
+  return { compounds, totalCompoundedUsd, totalGasWei: String(totalGasWei) };
 }
 
 module.exports = {

@@ -235,12 +235,22 @@ async function _scanAndReconstruct(
     updateState,
     events,
     address,
+    pnlTracker,
   );
   console.log("[bot] Scan + epoch reconstruction complete");
   updateState({
     rebalanceScanComplete: true,
     rebalanceScanProgress: 100,
   });
+}
+
+/** Add historical compound gas to the P&L tracker if available. */
+async function _applyCompoundGas(totalGasWei, pnlTracker) {
+  if (!totalGasWei || totalGasWei === 0n) return;
+  if (!pnlTracker || pnlTracker.epochCount() === 0) return;
+  const { actualGasCostUsd } = require("./bot-pnl-updater");
+  const gasUsd = await actualGasCostUsd(totalGasWei);
+  if (gasUsd > 0) pnlTracker.addGas(gasUsd);
 }
 
 /**
@@ -254,6 +264,7 @@ async function _detectHistoricalCompounds(
   updateState,
   rebalanceEvents,
   walletAddress,
+  pnlTracker,
 ) {
   const gc = botState._getConfig
     ? botState._getConfig("compoundHistory")
@@ -282,10 +293,12 @@ async function _detectHistoricalCompounds(
     }
     const allCompounds = [];
     let totalUsd = 0;
+    let totalCompoundGasWei = 0n;
     for (const tid of ids) {
       const r = await detectCompoundsOnChain(tid, opts);
       for (const c of r.compounds) allCompounds.push({ ...c, tokenId: tid });
       totalUsd += r.totalCompoundedUsd;
+      totalCompoundGasWei += BigInt(r.totalGasWei || "0");
     }
     console.log(
       "[bot] Lifetime compound scan: %d NFTs, %d total compounds, $%s",
@@ -307,6 +320,7 @@ async function _detectHistoricalCompounds(
         compoundHistory: history,
         totalCompoundedUsd: totalUsd,
       });
+      await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
     }
   } catch (err) {
     console.warn("[bot] Historical compound detection failed:", err.message);
