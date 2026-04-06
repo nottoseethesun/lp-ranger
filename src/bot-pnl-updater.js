@@ -16,7 +16,6 @@ const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { computeHodlIL } = require("./il-calculator");
 const { PM_ABI } = require("./pm-abi");
 
-const _WPLS = "0xA1077a294dDE1B09bB078844df40758a5D0f9a27";
 const _ERC20_BAL_ABI = ["function balanceOf(address) view returns (uint256)"];
 const _MAX_UINT128 = 2n ** 128n - 1n;
 
@@ -261,8 +260,9 @@ async function _applyMintGas(deps, pnlTracker) {
   const wei = BigInt(bl.mintGasWei);
   if (wei <= 0n) return;
   const usd = await actualGasCostUsd(wei);
+  const native = Number(wei) / 1e18;
   if (usd > 0) {
-    pnlTracker.addGas(usd);
+    pnlTracker.addGas(usd, native);
     if (deps._botState) deps._botState._mintGasApplied = true;
     console.log("[bot] Applied initial mint gas: $%s", usd.toFixed(4));
   }
@@ -273,7 +273,7 @@ async function estimateGasCostUsd(provider) {
   try {
     const f = await provider.getFeeData();
     const c = (f.gasPrice ?? 0n) * 800_000n;
-    const p = await fetchTokenPriceUsd(_WPLS, {
+    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken, {
       dextoolsApiKey: config.DEXTOOLS_API_KEY,
     });
     return (Number(c) / 1e18) * p;
@@ -285,7 +285,7 @@ async function estimateGasCostUsd(provider) {
 /** Compute actual gas cost in USD from total PLS spent (in wei). */
 async function actualGasCostUsd(gasCostWei) {
   try {
-    const p = await fetchTokenPriceUsd(_WPLS, {
+    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken, {
       dextoolsApiKey: config.DEXTOOLS_API_KEY,
     });
     return (Number(gasCostWei) / 1e18) * p;

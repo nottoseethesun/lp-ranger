@@ -138,7 +138,8 @@ async function _recordCancelGas(result, deps) {
   if (!result.cancelGasCostWei || result.cancelGasCostWei <= 0n) return;
   if (!deps._pnlTracker) return;
   const gasUsd = await _actualGasCostUsd(result.cancelGasCostWei);
-  if (gasUsd > 0) deps._pnlTracker.addGas(gasUsd);
+  const gasNative = Number(result.cancelGasCostWei) / 1e18;
+  if (gasUsd > 0) deps._pnlTracker.addGas(gasUsd, gasNative);
 }
 
 /** Check whether the OOR timeout has expired (position continuously OOR). */
@@ -366,7 +367,8 @@ async function _recordCompound(deps, result) {
   /* Add compound gas to the P&L tracker so it shows in the Gas KPI */
   const tracker = deps._pnlTracker;
   if (tracker && tracker.epochCount() > 0) {
-    tracker.addGas(gasCostUsd);
+    const gasNative = Number(gasWei) / 1e18;
+    tracker.addGas(gasCostUsd, gasNative);
     emit({ pnlEpochs: tracker.serialize() });
   }
   if (deps._addCollectedFees) deps._addCollectedFees(result.usdValue);

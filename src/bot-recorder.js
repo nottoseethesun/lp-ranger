@@ -70,9 +70,13 @@ async function _closePnlEpoch(deps, result) {
     const gasCost = result.totalGasCostWei
       ? await _actualGasCostUsd(result.totalGasCostWei)
       : await _estimateGasCostUsd(deps.provider);
+    const gasNative = result.totalGasCostWei
+      ? Number(BigInt(result.totalGasCostWei)) / 1e18
+      : 0;
     tracker.closeEpoch({
       exitValue: exitVal,
       gasCost,
+      gasNative,
       token0UsdPrice: price0,
       token1UsdPrice: price1,
     });
@@ -250,7 +254,8 @@ async function _applyCompoundGas(totalGasWei, pnlTracker) {
   if (!pnlTracker || pnlTracker.epochCount() === 0) return;
   const { actualGasCostUsd } = require("./bot-pnl-updater");
   const gasUsd = await actualGasCostUsd(totalGasWei);
-  if (gasUsd > 0) pnlTracker.addGas(gasUsd);
+  const gasNative = Number(totalGasWei) / 1e18;
+  if (gasUsd > 0) pnlTracker.addGas(gasUsd, gasNative);
 }
 
 /**

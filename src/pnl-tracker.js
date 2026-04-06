@@ -173,6 +173,7 @@ function createPnlTracker(opts = {}) {
       fees: 0,
       il: 0,
       gas: params.gasCost ?? 0,
+      gasNative: params.gasNative ?? 0,
       exitValue: null,
       epochPnl: null,
       priceChangePnl: null,
@@ -238,6 +239,7 @@ function createPnlTracker(opts = {}) {
     if (!liveEpoch) throw new Error("No open epoch to close.");
     liveEpoch.exitValue = params.exitValue;
     liveEpoch.gas += params.gasCost;
+    if (params.gasNative) liveEpoch.gasNative += params.gasNative;
     liveEpoch.closeTime = params.closeTime ?? nowFn();
     liveEpoch.token0UsdExit = params.token0UsdPrice ?? 0;
     liveEpoch.token1UsdExit = params.token1UsdPrice ?? 0;
@@ -272,6 +274,9 @@ function createPnlTracker(opts = {}) {
       closedEpochs.reduce((s, e) => s + e.il, 0) + (liveEpoch?.il ?? 0);
     const totalGas =
       closedEpochs.reduce((s, e) => s + e.gas, 0) + (liveEpoch?.gas ?? 0);
+    const totalGasNative =
+      closedEpochs.reduce((s, e) => s + (e.gasNative ?? 0), 0) +
+      (liveEpoch?.gasNative ?? 0);
 
     // ── P&L breakdown: price-change vs fees ──────────────────────────────────
     const closedPriceChange = closedEpochs.reduce(
@@ -307,6 +312,7 @@ function createPnlTracker(opts = {}) {
       totalFees,
       totalIL,
       totalGas,
+      totalGasNative,
       netReturn: totalFees - totalIL - totalGas,
       initialDeposit,
       dailyPnl,
@@ -345,9 +351,11 @@ function createPnlTracker(opts = {}) {
     if (data.liveEpoch) liveEpoch = { ...data.liveEpoch };
   }
 
-  /** Add gas cost (USD) to the live epoch. */
-  function addGas(usd) {
-    if (liveEpoch && usd > 0) liveEpoch.gas += usd;
+  /** Add gas cost (USD + native token) to the live epoch. */
+  function addGas(usd, native) {
+    if (!liveEpoch) return;
+    if (usd > 0) liveEpoch.gas += usd;
+    if (native > 0) liveEpoch.gasNative += native;
   }
 
   return {
