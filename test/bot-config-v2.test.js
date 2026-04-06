@@ -22,6 +22,7 @@ const {
   managedKeys,
   GLOBAL_KEYS,
   POSITION_KEYS,
+  readConfigValue,
 } = require("../src/bot-config-v2");
 
 /** Create a temp directory for each test. */
@@ -298,6 +299,39 @@ describe("bot-config-v2", () => {
         [],
         "Global and position keys must not overlap",
       );
+    });
+  });
+
+  describe("readConfigValue", () => {
+    it("returns position-level value when set", () => {
+      const cfg = {
+        global: { slippagePct: 0.5 },
+        positions: { k1: { slippagePct: 1.0 } },
+      };
+      assert.equal(readConfigValue(cfg, "k1", "slippagePct"), 1.0);
+    });
+
+    it("falls back to global when position key is missing", () => {
+      const cfg = {
+        global: { slippagePct: 0.5 },
+        positions: { k1: {} },
+      };
+      assert.equal(readConfigValue(cfg, "k1", "slippagePct"), 0.5);
+    });
+
+    it("returns undefined when neither scope has the key", () => {
+      const cfg = { global: {}, positions: { k1: {} } };
+      assert.equal(readConfigValue(cfg, "k1", "missing"), undefined);
+    });
+  });
+
+  describe("loadConfig edge cases", () => {
+    it("returns empty config for an empty file", () => {
+      const dir = tmpDir();
+      fs.writeFileSync(path.join(dir, ".bot-config.json"), "", "utf8");
+      const cfg = loadConfig(dir);
+      assert.deepEqual(cfg, { global: {}, positions: {} });
+      fs.rmSync(dir, { recursive: true });
     });
   });
 });

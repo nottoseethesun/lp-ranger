@@ -527,4 +527,8 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
   };
 }
 
-module.exports = { computeQuickDetails, computeLifetimeDetails };
+module.exports = {
+  computeQuickDetails,
+  computeLifetimeDetails,
+  _scanCompounds,
+};

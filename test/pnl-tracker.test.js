@@ -571,22 +571,3 @@ describe("snapshot — date range fields", () => {
     assert.strictEqual(snap.firstEpochDateUtc, "2025-01-10");
   });
 });
-
-describe("dailyPnl cumulative excludes residuals", () => {
-  it("cumulative sums netPnl only, not residuals", () => {
-    const tracker = createPnlTracker();
-    // prettier-ignore
-    tracker.openEpoch({ entryValue: 100, entryPrice: 1, lowerPrice: 0.8, upperPrice: 1.2, openTime: "2025-06-01T12:00:00Z" });
-    // prettier-ignore
-    tracker.closeEpoch({ exitValue: 110, gasCost: 0.5, token0UsdPrice: 1.1, token1UsdPrice: 1, closeTime: "2025-06-01T12:00:00Z" });
-    // Epoch 2 entry > epoch 1 exit → positive residual gap (120 − 110 = 10)
-    // prettier-ignore
-    tracker.openEpoch({ entryValue: 120, entryPrice: 1.1, lowerPrice: 0.9, upperPrice: 1.3, openTime: "2025-06-02T12:00:00Z" });
-    tracker.updateLiveEpoch({ currentPrice: 1.15, feesAccrued: 2 });
-    const daily = tracker.snapshot(1.15, "2025-06-01").dailyPnl;
-    assert.ok(daily.length >= 2, "should have at least 2 days");
-    const last = daily[0]; // newest first
-    // prettier-ignore
-    assert.ok(Math.abs(last.cumulative) < 50, "cumulative should not include residual gap (got " + last.cumulative.toFixed(2) + ")");
-  });
-});

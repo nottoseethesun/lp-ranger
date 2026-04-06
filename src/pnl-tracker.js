@@ -498,13 +498,13 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
 
   let cumulative = 0;
   // Reverse to compute cumulative from oldest to newest, then reverse back.
-  // Residuals (wallet↔LP transfers at rebalance boundaries) are NOT included
-  // in cumulative — they are value transfers, not profit/loss.
+  // Residuals bridge epoch-boundary gaps so the cumulative telescopes to
+  // the correct total (currentValue − initialDeposit + fees − gas).
   sorted.reverse();
   const result = sorted.map(([date, d]) => {
     const netPnl = d.priceChangePnl + d.feePnl - d.gasCost;
     const residual = d.residual || 0;
-    cumulative += netPnl;
+    cumulative += netPnl + residual;
     return {
       date,
       priceChangePnl: d.priceChangePnl,
