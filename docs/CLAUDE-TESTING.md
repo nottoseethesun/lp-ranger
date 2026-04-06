@@ -45,6 +45,13 @@ When adding a new disk-backed cache or config file:
 2. If it lives at the project root, add it to `_PROD_FILES` in `scripts/check.sh`
 3. Document it in this file under "Protected files"
 
+### Vanilla config fixtures
+
+Vanilla (default) config files live in `test/fixtures/`:
+- `test/fixtures/bot-config.json` — empty config with no positions
+
+Before tests run, `check.sh` copies the vanilla configs over the production files so tests always start from a known clean state. After tests, production files are restored from backup.
+
 ### Test config files
 
 Tests that need config files should either:
