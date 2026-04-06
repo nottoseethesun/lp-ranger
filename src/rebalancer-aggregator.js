@@ -117,7 +117,10 @@ function _gasLimit(quote) {
   return BigInt(Math.ceil(raw * (_agg.gasLimitMultiplier || 2)));
 }
 
-/** Cancel a pending nonce with a 0-value self-transfer at higher gas. */
+/**
+ * Cancel a pending nonce with a 0-value self-transfer at higher gas.
+ * @returns {Promise<bigint>} Gas cost of the cancel TX in wei (0n if unconfirmed).
+ */
 async function _cancelNonce(signer, provider, nonce, waitMs) {
   const gp = await _getGasPrice(provider);
   const cancelGp = BigInt(Math.ceil(Number(gp) * _agg.cancelGasMultiplier));
@@ -135,13 +138,21 @@ async function _cancelNonce(signer, provider, nonce, waitMs) {
     gasLimit: 21000,
     type: config.TX_TYPE,
   });
-  await Promise.race([
-    c.wait().catch(() => {}),
-    new Promise((r) => setTimeout(r, waitMs)),
+  const receipt = await Promise.race([
+    c.wait().catch(() => null),
+    new Promise((r) => setTimeout(r, waitMs)).then(() => null),
   ]);
+  if (!receipt) return 0n;
+  return (
+    (receipt.gasUsed ?? 0n) *
+    (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n)
+  );
 }
 
-/** Handle a retryable aggregator error (timeout or on-chain revert). */
+/**
+ * Handle a retryable aggregator error (timeout or on-chain revert).
+ * @returns {Promise<bigint>} Cancel gas cost in wei (0n if no cancel or revert).
+ */
 async function _handleSwapError(
   err,
   signer,
@@ -161,21 +172,22 @@ async function _handleSwapError(
       nonce,
       String(_agg.cancelGasMultiplier),
     );
-    await _cancelNonce(signer, provider, nonce, waitMs);
+    const cancelGas = await _cancelNonce(signer, provider, nonce, waitMs);
     console.log(
       "[rebalance] swap (aggregator): nonce %d cancelled" +
         " (or original confirmed)",
       nonce,
     );
-  } else {
-    console.warn(
-      "[rebalance] swap (aggregator): %s -> %s reverted" +
-        " on-chain (gasUsed=%s) — re-quoting",
-      fromSym,
-      toSym,
-      String(err.receipt?.gasUsed ?? "?"),
-    );
+    return cancelGas;
   }
+  console.warn(
+    "[rebalance] swap (aggregator): %s -> %s reverted" +
+      " on-chain (gasUsed=%s) — re-quoting",
+    fromSym,
+    toSym,
+    String(err.receipt?.gasUsed ?? "?"),
+  );
+  return 0n;
 }
 
 /**
@@ -206,6 +218,7 @@ async function _sendWithRetry(
   const fromSym = symIn || tokenIn.slice(0, 10);
   const toSym = symOut || tokenOut.slice(0, 10);
 
+  let cancelGasTotal = 0n;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const gp = await _getGasPrice(provider);
     const qgp = BigInt(quote.gasPrice || 0);
@@ -265,11 +278,11 @@ async function _sendWithRetry(
         String(r.gasUsed),
         costPls,
       );
-      return { txHash: r.hash, gasCostWei: _gasCost(r) };
+      return { txHash: r.hash, gasCostWei: _gasCost(r) + cancelGasTotal };
     } catch (err) {
       if (err.message !== "_AGG_TIMEOUT" && err.code !== "CALL_EXCEPTION")
         throw err;
-      await _handleSwapError(
+      cancelGasTotal += await _handleSwapError(
         err,
         signer,
         provider,
