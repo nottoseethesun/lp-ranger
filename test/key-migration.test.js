@@ -34,6 +34,7 @@ function mockPositionMgr() {
   };
 }
 
+// Production file protection handled by scripts/check.sh
 describe("key migration on rebalance", () => {
   it("keyRef.current updates so subsequent calls use the new key", () => {
     const diskConfig = {

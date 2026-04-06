@@ -58,9 +58,24 @@ sec_secrets_ok=0
 sec_secrets_output=$(npm run audit:secrets 2>&1)
 if [ $? -eq 0 ]; then sec_secrets_ok=1; fi
 
+# ── Backup production files before tests ─────────────────────────────────────
+_BACKUP_DIR=$(mktemp -d)
+for _f in .bot-config.json tmp/pnl-epochs-cache.json tmp/historical-price-cache.json; do
+  [ -f "$_f" ] && cp "$_f" "$_BACKUP_DIR/$(basename "$_f")"
+done
+
 # ── Tests + Coverage ─────────────────────────────────────────────────────────
 test_output=$(node --test --experimental-test-coverage test/*.test.js 2>&1)
 test_exit=$?
+
+# ── Restore production files after tests ─────────────────────────────────────
+for _f in .bot-config.json tmp/pnl-epochs-cache.json tmp/historical-price-cache.json; do
+  _bk="$_BACKUP_DIR/$(basename "$_f")"
+  if [ -f "$_bk" ]; then
+    cp "$_bk" "$_f"
+  fi
+done
+rm -rf "$_BACKUP_DIR"
 if [ $test_exit -eq 0 ]; then
   test_ok=1
 fi
