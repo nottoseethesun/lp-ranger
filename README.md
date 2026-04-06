@@ -94,6 +94,14 @@ npm run dev                      # build + watch mode
 
 ---
 
+## Uninstall
+
+```bash
+rm -rf 9mm-lp-position-manager/
+```
+
+---
+
 ## Usage
 
 See the first paragraph in the Help text on the app (click at top right on the app).
@@ -153,7 +161,7 @@ full text.
 
 Planned features for future releases:
 
-- **Near Edge Trigger** — trigger a rebalance when the current price approaches the edge of the active range (configurable threshold), rather than waiting until out of range.
+- **Multi-chain support** — add support for 9mm on Ethereum, and after that, the other blockchains that 9mm supports.
 - **LP Optimization Engine** — integrate with an external optimization service that recommends optimal range width, rebalance timing, and fee tier based on historical pool data and volatility analysis.
 
 ---

@@ -33,7 +33,6 @@ import {
   isPositionClosed,
   formatPosLabel,
   refreshManageBadge,
-  renderPosRow,
   restoreManagedPositions,
   bestAutoSelectIdx,
   setSyncRouteToState,
@@ -55,6 +54,21 @@ export {
   restoreManagedPositions,
   isPositionManaged,
   formatPosLabel,
+};
+import {
+  openPosBrowser,
+  closePosBrowser,
+  renderPosBrowser,
+  posRowClick,
+  posChangePage,
+  getPosBrowserSelected,
+} from "./dashboard-positions-browser.js";
+export {
+  openPosBrowser,
+  closePosBrowser,
+  renderPosBrowser,
+  posRowClick,
+  posChangePage,
 };
 
 // ── Late-bound deps ──────────────────────────────
@@ -99,11 +113,6 @@ export function injectPositionDeps(deps) {
   }
 }
 
-// ── Browser state ────────────────────────────────
-
-let posBrowserPage = 0;
-let posBrowserSelected = -1;
-
 // ── Toggle helpers ───────────────────────────────
 
 export function toggleShowClosed() {
@@ -123,114 +132,7 @@ export function isOpenInNewTab() {
 // ── Position browser modal ───────────────────────
 
 /** Open the position browser modal. */
-export function openPosBrowser() {
-  posBrowserPage = 0;
-  posBrowserSelected = -1;
-  g("posBrowserModal").className = "modal-overlay";
-  renderPosBrowser();
-}
-
-/** Close the position browser modal. */
-export function closePosBrowser() {
-  g("posBrowserModal").className = "modal-overlay hidden";
-}
-
-/** Render the paginated, filterable position list. */
-export function renderPosBrowser() {
-  const filter = (g("posSearchInput").value || "").toLowerCase();
-  let all = posStore.entries;
-  if (g("posManagedOnlyToggle")?.checked)
-    all = all.filter((e) => isPositionManaged(e.tokenId));
-  if (!g("posClosedToggle")?.checked)
-    all = all.filter((e) => !isPositionClosed(e));
-  const unsorted = filter
-    ? all.filter((e) => {
-        const hay = [
-          e.token0,
-          e.token1,
-          e.tokenId,
-          e.contractAddress,
-          e.walletAddress,
-          e.positionType,
-        ]
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(filter);
-      })
-    : all;
-  const filtered = [...unsorted].sort((a, b) => {
-    const idA = Number(a.tokenId || 0),
-      idB = Number(b.tokenId || 0);
-    return idB - idA;
-  });
-
-  // Stats bar
-  const nftCount = filtered.filter((e) => e.positionType === "nft").length;
-  const inRangeCount = filtered.filter((e) => {
-    const lp = Math.pow(1.0001, e.tickLower || 0);
-    const up = Math.pow(1.0001, e.tickUpper || 0);
-    return botConfig.price >= lp && botConfig.price <= up;
-  }).length;
-  g("posTotalCount").textContent = filtered.length;
-  g("posNftCount").textContent = nftCount;
-  g("posInRangeCount").textContent = inRangeCount;
-  const capWarn = g("posCapWarn");
-  if (capWarn)
-    capWarn.textContent = posStore.isFull()
-      ? "\u26A0 Store full (300/300)"
-      : "";
-
-  // Paginate
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const page = Math.min(posBrowserPage, totalPages - 1);
-  posBrowserPage = page;
-  const pageItems = filtered.slice(
-    page * PAGE_SIZE,
-    page * PAGE_SIZE + PAGE_SIZE,
-  );
-
-  // Render list
-  const list = g("posList");
-  if (!filtered.length) {
-    list.innerHTML =
-      '<div class="pos-empty">' +
-      '<div class="pos-empty-icon">\u25CB</div>' +
-      "<div>" +
-      (all.length
-        ? "No positions match your filter."
-        : "No positions loaded. Import a wallet or click Scan.") +
-      "</div></div>";
-  } else {
-    list.innerHTML = pageItems
-      .map((e) => renderPosRow(e, posBrowserSelected))
-      .join("");
-    if (localStorage.getItem("9mm_privacy_mode") === "1")
-      list
-        .querySelectorAll(".pos-row-title, .pos-row-meta")
-        .forEach((el) => el.classList.add("9mm-pos-mgr-privacy-blur"));
-  }
-
-  // Pagination controls
-  g("posPageLabel").textContent = "Page " + (page + 1) + " of " + totalPages;
-  g("posPrevBtn").disabled = page <= 0;
-  g("posNextBtn").disabled = page >= totalPages - 1;
-
-  // Action buttons
-  g("posSelectBtn").disabled = posBrowserSelected < 0;
-  g("posRemoveBtn").disabled = posBrowserSelected < 0;
-}
-
-/** Toggle row selection. */
-export function posRowClick(idx) {
-  posBrowserSelected = posBrowserSelected === idx ? -1 : idx;
-  renderPosBrowser();
-}
-
-/** Navigate to next/previous page. */
-export function posChangePage(dir) {
-  posBrowserPage += dir;
-  renderPosBrowser();
-}
+// Position browser functions are in dashboard-positions-browser.js.
 
 // ── Activation ───────────────────────────────────
 
@@ -286,8 +188,9 @@ function _activateCore(idx, opts) {
 
 /** Make the highlighted position active and close the browser. */
 export function activateSelectedPos() {
-  if (posBrowserSelected < 0) return;
-  const active = _activateCore(posBrowserSelected);
+  const sel = getPosBrowserSelected();
+  if (sel < 0) return;
+  const active = _activateCore(sel);
   if (active && !isPositionClosed(active)) {
     const oor = botConfig.oorThreshold || "\u2014";
     const pl = _posLabel();
@@ -311,11 +214,11 @@ export function activateSelectedPos() {
 
 /** Remove the highlighted position from store. */
 export function removeSelectedPos() {
-  if (posBrowserSelected < 0) return;
-  const entry = posStore.entries[posBrowserSelected];
+  const sel = getPosBrowserSelected();
+  if (sel < 0) return;
+  const entry = posStore.entries[sel];
   if (!entry) return;
-  posStore.remove(posBrowserSelected);
-  posBrowserSelected = -1;
+  posStore.remove(sel);
   updatePosStripUI();
   act(
     ACT_ICONS.cross,
@@ -379,10 +282,19 @@ export function restoreLastPosition() {
 
 /** Reset all KPI card elements to empty. */
 function _clearKpiElements() {
-  // prettier-ignore
-  for (const id of ["kpiPnl","kpiNet","curIL","netIL","curProfit","ltProfit"]) {
+  for (const id of [
+    "kpiPnl",
+    "kpiNet",
+    "curIL",
+    "netIL",
+    "curProfit",
+    "ltProfit",
+  ]) {
     const el = g(id);
-    if (el) { el.textContent = "\u2014"; el.className = "kpi-value 9mm-pos-mgr-kpi-pct-row neu"; }
+    if (el) {
+      el.textContent = "\u2014";
+      el.className = "kpi-value 9mm-pos-mgr-kpi-pct-row neu";
+    }
   }
   for (const id of [
     "kpiPnlPct",
@@ -391,9 +303,17 @@ function _clearKpiElements() {
     "pnlRealized",
   ])
     _setText(id, "\u2014");
-  // prettier-ignore
-  for (const id of ["kpiPnlPctVal","kpiPnlApr","kpiNetPct","kpiNetApr","curILPct","netILPct","netILApr"]) {
-    const el = g(id); if (el) el.textContent = "";
+  for (const id of [
+    "kpiPnlPctVal",
+    "kpiPnlApr",
+    "kpiNetPct",
+    "kpiNetApr",
+    "curILPct",
+    "netILPct",
+    "netILApr",
+  ]) {
+    const el = g(id);
+    if (el) el.textContent = "";
   }
 }
 
@@ -485,14 +405,23 @@ async function _fetchAndApplyScan() {
   if (!data.ok) throw new Error(data.error);
   const added = _addScannedPositions(data);
   const nftCount = (data.nftPositions || []).length;
-  // prettier-ignore
-  console.log("[scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d", nftCount, added, posStore.count(), posStore.activeIdx);
+  console.log(
+    "[scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d",
+    nftCount,
+    added,
+    posStore.count(),
+    posStore.activeIdx,
+  );
   if (posStore.activeIdx < 0 && posStore.count() > 0) {
     const bestIdx = bestAutoSelectIdx();
     posStore.select(bestIdx >= 0 ? bestIdx : 0);
     const first = posStore.getActive();
-    // prettier-ignore
-    console.log("[scan] auto-selected #%s %s (idx=%d)", first?.tokenId, first ? emojiId(first.tokenId) : "", bestIdx);
+    console.log(
+      "[scan] auto-selected #%s %s (idx=%d)",
+      first?.tokenId,
+      first ? emojiId(first.tokenId) : "",
+      bestIdx,
+    );
     if (first) {
       _applyLocalPositionData(first);
       _applyPositionConfig(first);
@@ -500,8 +429,12 @@ async function _fetchAndApplyScan() {
     }
   } else if (posStore.activeIdx >= 0) {
     const cur = posStore.getActive();
-    // prettier-ignore
-    console.log("[scan] already selected #%s %s (idx=%d) — skipping", cur?.tokenId, cur ? emojiId(cur.tokenId) : "", posStore.activeIdx);
+    console.log(
+      "[scan] already selected #%s %s (idx=%d) — skipping",
+      cur?.tokenId,
+      cur ? emojiId(cur.tokenId) : "",
+      posStore.activeIdx,
+    );
   }
   updatePosStripUI();
   if (data.cached) _backgroundRefresh();

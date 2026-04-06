@@ -41,8 +41,17 @@ async function _scanCompounds(
       if (e.oldTokenId) ids.add(String(e.oldTokenId));
       if (e.newTokenId) ids.add(String(e.newTokenId));
     }
-    // prettier-ignore
-    const opts = { positionManagerAddress: config.POSITION_MANAGER, token0: position.token0, token1: position.token1, fee: position.fee, walletAddress: body.walletAddress, price0: prices.price0, price1: prices.price1, decimals0: ps.decimals0, decimals1: ps.decimals1 };
+    const opts = {
+      positionManagerAddress: config.POSITION_MANAGER,
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee,
+      walletAddress: body.walletAddress,
+      price0: prices.price0,
+      price1: prices.price1,
+      decimals0: ps.decimals0,
+      decimals1: ps.decimals1,
+    };
     let total = 0;
     for (const tid of ids)
       total += (await detectCompoundsOnChain(tid, opts)).totalCompoundedUsd;

@@ -136,6 +136,11 @@ export function isPositionManaged(tokenId) {
   return _managedTokenIds.has(String(tokenId));
 }
 
+/** Access the managed tokenId set (for browser row rendering). */
+export function _getManagedTokenIds() {
+  return _managedTokenIds;
+}
+
 // ── In-browser position store ────────────────────
 
 /**
@@ -355,8 +360,19 @@ export function bestAutoSelectIdx() {
   const pe = pick >= 0 ? posStore.entries[pick] : null;
   const tier =
     best.managed >= 0 ? "managed" : best.open >= 0 ? "open" : "closed";
-  // prettier-ignore
-  console.log("[posStore] bestAutoSelect: total=%d managed=%d open=%d closed=%d noLiq=%d → #%s %s (idx=%d, liq=%s, tier=%s)", posStore.entries.length, counts.managed, counts.open, counts.closed, counts.noLiq, pe?.tokenId || "none", pe ? emojiId(pe.tokenId) : "", pick, pe ? String(pe.liquidity) : "n/a", tier);
+  console.log(
+    "[posStore] bestAutoSelect: total=%d managed=%d open=%d closed=%d noLiq=%d → #%s %s (idx=%d, liq=%s, tier=%s)",
+    posStore.entries.length,
+    counts.managed,
+    counts.open,
+    counts.closed,
+    counts.noLiq,
+    pe?.tokenId || "none",
+    pe ? emojiId(pe.tokenId) : "",
+    pick,
+    pe ? String(pe.liquidity) : "n/a",
+    tier,
+  );
   return pick;
 }
 
@@ -528,8 +544,11 @@ export function refreshManageBadge(active) {
   const closed = isPositionClosed(active);
   const m = !closed && _managedTokenIds.has(String(active.tokenId));
   badge.classList.toggle("managed", m);
-  // prettier-ignore
-  badge.innerHTML = closed ? "Position Closed" : m ? '<span class="9mm-pos-mgr-manage-dot"></span>Being Actively Managed' : "Not Actively Managed";
+  badge.innerHTML = closed
+    ? "Position Closed"
+    : m
+      ? '<span class="9mm-pos-mgr-manage-dot"></span>Being Actively Managed'
+      : "Not Actively Managed";
   btn.textContent = m ? "Stop Managing" : "Manage";
   btn.disabled = closed;
   btn.title = closed ? "Cannot manage a closed position (liquidity = 0)" : "";
@@ -552,41 +571,4 @@ export function checkInRange(e) {
   return null;
 }
 
-/** Determine status CSS class and label. */
-function _posRowStatus(e, isManaged, inRange) {
-  if (isPositionClosed(e))
-    return { cls: "closed", label: "CLOSED", managed: false };
-  if (inRange === null)
-    return { cls: "closed", label: "\u2014", managed: isManaged };
-  return inRange
-    ? { cls: "in", label: "\u2713 IN", managed: isManaged }
-    : { cls: "out", label: "\u2717 OUT", managed: isManaged };
-}
-
-/** Render a single position row for the browser. */
-export function renderPosRow(e, selectedIdx) {
-  const inR = checkInRange(e);
-  const pair =
-    _tokenName(e.token0Symbol, e.token0) +
-    "/" +
-    _tokenName(e.token1Symbol, e.token1);
-  const feePct = e.fee ? (e.fee / 10000).toFixed(2) + "%" : "\u2014";
-  const idStr =
-    e.positionType === "nft"
-      ? "NFT #" + e.tokenId
-      : e.contractAddress
-        ? e.contractAddress.slice(0, 10) + "\u2026"
-        : "ERC-20";
-  const ws = e.walletAddress.slice(0, 8) + "\u2026" + e.walletAddress.slice(-4);
-  const hl = e.index === selectedIdx;
-  const mgd =
-    e.positionType === "nft" && _managedTokenIds.has(String(e.tokenId));
-  const { cls, label, managed } = _posRowStatus(e, mgd, inR);
-  // prettier-ignore
-  const dot = managed ? '<span class="9mm-pos-mgr-managed-dot" title="Being actively managed"></span>' : "";
-  const star = mgd ? " \u2605" : "";
-  const tL = e.tickLower || 0,
-    tU = e.tickUpper || 0;
-  // prettier-ignore
-  return '<div class="pos-row ' + (e.active ? "active-pos" : "") + " " + (hl ? "selected" : "") + '" data-pos-idx="' + e.index + '">' + '<div class="pos-row-idx ' + (mgd ? "active-idx" : "") + '">' + (e.index + 1) + dot + "</div>" + '<span class="pos-type-chip ' + e.positionType + '">' + e.positionType.toUpperCase() + "</span>" + '<div class="pos-row-body"><div class="pos-row-title">' + idStr + " \u00B7 " + pair + " \u00B7 " + feePct + star + '</div><div class="pos-row-meta">' + ws + " \u00B7 ticks [" + tL + ", " + tU + "]</div></div>" + '<div class="pos-row-status ' + cls + '">' + label + "</div></div>";
-}
+// renderPosRow moved to dashboard-positions-browser.js
