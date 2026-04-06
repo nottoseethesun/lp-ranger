@@ -159,10 +159,21 @@ function saveConfig(cfg, dir) {
     (k) => cfg.positions[k]?.status === "running",
   ).length;
   if (posKeys.length === 0 && !dir) {
-    console.warn(
-      "[config] saveConfig: EMPTY positions object! Stack:\n%s",
-      new Error().stack,
-    );
+    // Never overwrite a non-empty config with an empty one — this would lose
+    // managed positions.  Only write if the file is also empty or missing.
+    const filePath = _configPath(dir);
+    try {
+      const existing = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      if (Object.keys(existing.positions || {}).length > 0) {
+        console.warn(
+          "[config] saveConfig: REFUSING to overwrite %d positions with empty config",
+          Object.keys(existing.positions).length,
+        );
+        return;
+      }
+    } catch {
+      /* file missing or corrupt — safe to write */
+    }
   }
   console.log(
     "[config] saveConfig: %d positions (%d running)",
@@ -173,12 +184,21 @@ function saveConfig(cfg, dir) {
   // Data-only entries (e.g. just hodlBaseline from unmanaged detail views)
   // legitimately have no status — only warn when status key exists but is falsy
   // (indicates a managed position that lost its status).
-  for (const [k, v] of Object.entries(cfg.positions || {})) {
-    if ("status" in v && !v.status)
-      console.warn(
-        "[config] saveConfig: position %s has NO status field!",
-        k.slice(-10),
-      );
+  // Detect managed positions that lost their running status
+  const filePath2 = _configPath(dir);
+  try {
+    const prev = JSON.parse(fs.readFileSync(filePath2, "utf8"));
+    for (const [k, v] of Object.entries(prev.positions || {})) {
+      if (v.status === "running" && cfg.positions[k]?.status !== "running") {
+        console.warn(
+          "[config] saveConfig: position %s LOST running status! Stack:\n%s",
+          k.slice(-10),
+          new Error().stack,
+        );
+      }
+    }
+  } catch {
+    /* no previous file to compare */
   }
   // Atomic write: temp file + rename prevents empty-file corruption if
   // the process exits mid-write (SIGINT during shutdown race).
