@@ -495,6 +495,11 @@
         <li><strong>Persistent Transaction Problems:</strong> If transactions continue to fail or get stuck, try switching to a different RPC endpoint using the RPC URL control toward the bottom of the app under Bot Configuration.</li>
         <li><strong>Price Discovery Failures:</strong> If USD price lookups are failing (DexScreener is the default), you can configure alternative price services such as DexTools by setting the appropriate API key in your <code>.env</code> file. See the detailed documentation in the file-header of <code>server.js</code> for all available pricing options.</li>
       </ul>
+      <div class="9mm-pos-mgr-help-title">Details</div>
+      <ul class="9mm-pos-mgr-help-list">
+        <li><strong>Gas Costs:</strong> All crypto gas costs displayed in this app are computed using the <strong>current price</strong> of the native gas token (e.g. PLS on PulseChain). This means gas figures always reflect what the gas would cost at today&rsquo;s price, not the price at the time of the original transaction.</li>
+        <li><strong>Historical Prices:</strong> Historical token prices (from GeckoTerminal) are used in two ways: (1) to show the original value of the initial deposit into an LP position at the time it was created, and (2) to show the original value of the first historical LP position deposit for the purpose of calculating lifetime gain/loss over a five-year lookback on the current wallet.</li>
+      </ul>
       <button class="9mm-pos-mgr-help-close">Close</button>
     </div>
   </div>
@@ -955,6 +960,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775462612326"></script>
+<script src="dist/bundle.js?v=1775497827877"></script>
 </body>
 </html>
