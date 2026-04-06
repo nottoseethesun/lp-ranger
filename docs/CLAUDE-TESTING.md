@@ -18,11 +18,13 @@ npm run check           # Combined lint (JS+CSS) + test + coverage check (≥80%
 ### Protected files
 
 **Root-level:**
+
 - `.bot-config.json` — managed position status, HODL baselines, compound history
 - `.wallet.json` — encrypted wallet key
 - `rebalance_log.json` — transaction history
 
 **`tmp/` directory (all JSON files):**
+
 - `pnl-epochs-cache.json` — reconstructed P&L epochs (expensive to rebuild)
 - `historical-price-cache.json` — GeckoTerminal OHLCV prices (rate-limited API)
 - `event-cache-*.json` — per-pool rebalance event scan results
@@ -42,6 +44,7 @@ This is the ONLY protection mechanism. Individual test files do NOT need their o
 ### Adding new cache or config files
 
 When adding a new disk-backed cache or config file:
+
 1. If it lives in `tmp/` as `*.json`, it's automatically protected (glob match)
 2. If it lives at the project root, add it to `_PROD_FILES` in `scripts/check.sh`
 3. Document it in this file under "Protected files"
@@ -53,6 +56,7 @@ Before tests run, `check.sh` deletes all production config and cache files so th
 ### Test config files
 
 Tests that need config files should either:
+
 - Use a temp directory via `fs.mkdtempSync()` and pass the `dir` parameter to `loadConfig(dir)` / `saveConfig(cfg, dir)`
 - Or use the production path knowing that `check.sh` will restore the original after tests complete
 
