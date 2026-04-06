@@ -16,6 +16,7 @@ import {
   toggleSettingsPopover,
   clearLocalStorageAndCookies,
 } from "./dashboard-helpers.js";
+import { markInputDirty } from "./dashboard-data.js";
 import {
   closeWalletModal,
   wTab,
@@ -354,6 +355,18 @@ export function bindAllEvents() {
   _click("saveMaxRebBtn", saveMaxReb);
   _click("saveSlipBtn", saveSlippage);
   _click("saveIntervalBtn", saveCheckInterval);
+
+  /* ── Dirty-flag: mark config inputs as edited so poll skips overwrite ── */
+  for (const id of [
+    "inOorThreshold",
+    "inOorTimeout",
+    "inSlip",
+    "inInterval",
+    "inMinInterval",
+    "inMaxReb",
+    "autoCompoundThreshold",
+  ])
+    _change(id, () => markInputDirty(id));
 
   /* ── Throttle info modal ──────────────── */
   _click("throttleInfoBtn", () => {

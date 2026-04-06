@@ -106,6 +106,30 @@ let _dataTimerId = null,
   _lastStatus = null,
   _historyPopulated = false,
   _configSynced = false;
+/**
+ * Dirty-flag cache for form inputs being edited by the user.
+ * Key: fully-qualified string (blockchain-wallet-contract-tokenId-elementId).
+ * Value: "EDITED" while the user has changed the input.
+ * Cleared at the end of each poll cycle so future polls resume writing.
+ */
+const _dirtyInputs = new Map();
+
+/** Mark a form input as dirty (user-edited). Skips poll overwrites this cycle. */
+export function markInputDirty(elementId) {
+  const active = posStore.getActive();
+  if (!active) return;
+  const key = `pulsechain-${active.walletAddress}-${active.contractAddress}-${active.tokenId}-${elementId}`;
+  _dirtyInputs.set(key, "EDITED");
+}
+
+/** Check if a form input is dirty. */
+function _isInputDirty(elementId) {
+  const active = posStore.getActive();
+  if (!active) return false;
+  const key = `pulsechain-${active.walletAddress}-${active.contractAddress}-${active.tokenId}-${elementId}`;
+  return _dirtyInputs.has(key);
+}
+
 const _lastRebAt = new Map(),
   _txCancelSeen = new Set();
 _wireDepositKpis(
@@ -137,7 +161,7 @@ function _syncConfigFromServer(d) {
     autoCompoundThresholdUsd: "autoCompoundThreshold",
   };
   for (const [key, elId] of Object.entries(map)) {
-    if (d[key] !== undefined && d[key] !== null) {
+    if (d[key] !== undefined && d[key] !== null && !_isInputDirty(elId)) {
       const el = g(elId);
       if (el) el.value = d[key];
     }
@@ -460,6 +484,7 @@ function updateDashboardFromStatus(data) {
   _updateComposition(data);
   checkHodlBaselineDialog(data);
   reapplyPrivacyBlur();
+  _dirtyInputs.clear();
 }
 let _pollFailCount = 0;
 function _onPollFail() {
