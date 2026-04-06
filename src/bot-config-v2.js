@@ -187,12 +187,7 @@ function saveConfig(cfg, dir) {
   for (const k of posKeys) {
     const v = cfg.positions[k];
     const fields = Object.keys(v).join(",");
-    console.log(
-      "[config]   %s status=%s keys=%s",
-      k.slice(-10),
-      v.status || "—",
-      fields,
-    );
+    console.log("[config]   %s status=%s keys=%s", k, v.status || "—", fields);
   }
   // Atomic write: temp file + rename prevents empty-file corruption if
   // the process exits mid-write (SIGINT during shutdown race).
