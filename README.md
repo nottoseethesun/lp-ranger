@@ -12,6 +12,8 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 
 ![9mm v3 Position Manager Dashboard](docs/dashboard-screenshot.png)
 
+![9mm v3 Position Manager Dashboard 2](docs/dashboard-screenshot-2.png)
+
 ![Help Text](docs/dashboard-screenshot-help-text.png)
 
 ![Rebalance Throttling](docs/dashboard-screenshot-rebalance-throttling.png)
@@ -21,6 +23,22 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 ![Position Browser](docs/dashboard-screenshot-position-browser.png)
 
 ![Settings](docs/dashboard-screenshot-settings.png)
+
+---
+
+## Table of Contents
+
+- [Disclaimer](#disclaimer)
+- [Pre-requisites](#pre-requisites)
+- [Install](#install)
+- [Uninstall](#uninstall)
+- [Usage](#usage)
+- [Lint & Test](#lint--test)
+- [Private Key Security](#private-key-security)
+- [Configuration & Development](#configuration--development)
+- [License](#license)
+- [Road Map](#road-map)
+- [Contributing](#contributing)
 
 ---
 
@@ -60,7 +78,7 @@ OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## Pre-requisites
 
-- Node.js 20+
+- Node.js 22+
 - Web browser
 
 ---
