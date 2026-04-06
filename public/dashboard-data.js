@@ -212,6 +212,7 @@ function _syncStatus(d) {
     const tip = p?.total > 0 ? p.done + "/" + p.total + " positions" : "";
     return { complete: false, label: "Syncing\u2026", tip };
   }
+  if (_unmanagedSyncing) return { complete: false, label: "Syncing\u2026" };
   if (d.running && (d.rebalanceScanComplete !== true || !d.pnlSnapshot)) {
     _postScanPollCount = 0;
     return { complete: false, label: "Syncing\u2026" };
@@ -224,7 +225,7 @@ function _syncStatus(d) {
 }
 function _updateSyncBadge(d) {
   const badge = g("syncBadge");
-  if (!badge || _unmanagedSyncing) return;
+  if (!badge) return;
   const { complete: c, label, tip } = _syncStatus(d);
   badge.textContent = label || "Syncing\u2026";
   badge.title = tip || "";
