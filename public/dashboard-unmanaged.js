@@ -362,12 +362,12 @@ export async function fetchUnmanagedDetails(pos) {
   const sub = g("kpiPnlPct");
   if (sub) sub.textContent = "";
   const badge = g("syncBadge");
-  setUnmanagedSyncing(true);
   if (badge) {
     badge.textContent = "Syncing\u2026";
     badge.classList.remove("done");
     badge.style.background = "";
   }
+  setUnmanagedSyncing(true);
   const body = _detailBody(pos);
   // Phase 1: fast — pool state, value, composition, current P&L.
   // If the position turns out to be closed (fully drained), phase 1
