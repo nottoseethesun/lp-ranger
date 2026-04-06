@@ -7,6 +7,7 @@ Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on
 Security audit guide: [docs/CLAUDE-SECURITY.md](docs/CLAUDE-SECURITY.md)
 CI and merge protocol: [docs/CLAUDE-CI.md](docs/CLAUDE-CI.md)
 Code style and formatting: [docs/CLAUDE-CODE-STYLE.md](docs/CLAUDE-CODE-STYLE.md)
+Best practices: [docs/CLAUDE-BEST-PRACTICES.md](docs/CLAUDE-BEST-PRACTICES.md)
 
 ---
 
@@ -372,24 +373,11 @@ All use abbreviated prefixes (first 5-6 chars) to keep filenames manageable.
 - No `eslint-disable` directives for main lint rules; no `stylelint-disable` directives. Security lint rules (`9mm/no-number-from-bigint`, `9mm/no-secret-logging`) may use per-line `eslint-disable-next-line` with a documented `-- Safe: <reason>` comment
 - Never exclude entire files from any lint pass — use per-line directives for specific exceptions
 - No `window.*` property assignments
-- No inline `style="..."` in HTML (except dynamic JS-set `width` values)
-- All custom CSS classes prefixed with `9mm-pos-mgr-`
-- All date/time displays show both UTC and local time with timezone code
 - Full JSDoc on every file and exported function
 - All new code covered by tests in `test/`
 - `npm run check` must pass clean before any commit
 - EVM addresses use EIP-55 checksummed capitalization
 - All dollar amounts denominated in USD
 - V3 positions only — reject V2 with helpful error message
-- **Never use `npx`** — always use `npm` (e.g. `npm run lint`, not `npx eslint`)
-- **Prefer well-known npm packages** for anything mildly specialized (e.g. Uniswap v3 math, NFT reading, token decoding) rather than hand-rolling custom implementations
-- **Read all comments before touching code** — file-header JSDoc, function comments, and inline comments document design decisions and data sources (e.g. GeckoTerminal for historical prices, HODL baseline from IncreaseLiquidity events). Understand them before making any changes.
-- **Show dashes (—) for missing data, not $0.00** — when a value hasn't been computed yet (e.g. IL before HODL baseline resolves), display — instead of a false zero
-- **No band-aid fixes** — fix the root cause, not the symptom. If a display shows wrong data, fix the data source, not the display layer. When fixing a bug, always search for the same pattern elsewhere in the codebase before considering it done — a single symptom fix should trigger an audit for the same class of bug
-- **Consolidate duplication on contact** — when adding a cross-cutting concern (locking, caching, rate limiting) that applies to an operation done in multiple places, consolidate the duplicated codepaths into one shared function FIRST, then add the concern once. Do not add parallel implementations that don't coordinate. Grep for ALL call sites of the underlying operation before implementing.
-- **Functional pattern for new code** — no classes, no mutable object state scattered across instances. Functions receive data, return results. When a data source changes, all dependent code runs with the fresh data from the source of truth. Existing code is not refactored to this pattern.
-- **No skeuomorphic icons** — avoid emoji icons that mimic real-world objects (folders, keys, magnifying glasses). Use minimal inline SVG or Unicode geometric symbols instead. Icons should be abstract, clean, and consistent with the dashboard's dark terminal aesthetic.
-- **No backwards compatibility** — never add migration code, version discriminators, fallback paths, or legacy support unless explicitly ordered. When changing data formats or config schemas, just change them. If old data is incompatible, let it fail cleanly (return empty/default).
-- **Log hashes with a space after `=`** — write `hash= %s` not `hash=%s` so the hash is a separate word that can be double-click-copied in the terminal. Applies to all TX hashes, cancel hashes, and any hex value a developer might need to copy.
-- **CI before merge** — always push the branch to GitHub first and wait for CI (GitHub Actions) to pass before merging to main. Never merge to main with failing or untested CI.
-- **Stay on the feature branch** — never checkout main or merge until the user explicitly says to. After CI passes, inform the user and wait. The user must manually test before giving the merge order.
+
+See [docs/CLAUDE-BEST-PRACTICES.md](docs/CLAUDE-BEST-PRACTICES.md) for coding, testing, formatting, UI, and workflow best practices.
