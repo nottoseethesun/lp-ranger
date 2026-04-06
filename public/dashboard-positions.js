@@ -496,6 +496,7 @@ async function _fetchAndApplyScan() {
     if (first) {
       _applyLocalPositionData(first);
       _applyPositionConfig(first);
+      _fetchUnmanagedIfNeeded(first);
     }
   } else if (posStore.activeIdx >= 0) {
     const cur = posStore.getActive();
