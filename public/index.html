@@ -570,7 +570,7 @@
 
 
 <!-- KPI Row — 3 cards: Current Position | Rebalances | Lifetime -->
-<div class="kpi-grid">
+<div class="kpi-grid" id="kpiGrid">
   <!-- ── Current Position ── -->
   <div class="kpi-card neu kpi-card-wide">
     <div class="kpi-label 9mm-pos-mgr-panel-title">Current LP Position <span class="9mm-pos-mgr-pos-status" id="curPosStatus"></span></div>
@@ -696,7 +696,7 @@
 </div>
 
 <!-- Row 1: Range Monitor | Activity Log -->
-<div class="row c2">
+<div class="row c2" id="rangeRow">
 
   <!-- Range Monitor -->
   <div class="card">
@@ -910,7 +910,7 @@
 
 
 <!-- Row 2b: Per-Day P&L and Rebalance Events -->
-<div class="row c2 c2-hist">
+<div class="row c2 c2-hist" id="historyRow">
   <div class="card">
     <div class="card-title">Per-Day P&amp;L ($USD) <span id="dailyPnlSync" class="9mm-pos-mgr-text-muted-sm"></span></div>
     <div class="9mm-pos-mgr-table-scroll">
@@ -955,6 +955,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775460514886"></script>
+<script src="dist/bundle.js?v=1775462612326"></script>
 </body>
 </html>

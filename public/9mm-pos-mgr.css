@@ -1520,3 +1520,11 @@
   margin-top: 4px;
   min-height: 14px;
 }
+
+/* Blur panels while syncing — applied/removed by _updateSyncBadge */
+.\39 mm-pos-mgr-syncing-blur {
+  filter: blur(3px);
+  opacity: 0.5;
+  pointer-events: none;
+  transition: filter 0.3s, opacity 0.3s;
+}

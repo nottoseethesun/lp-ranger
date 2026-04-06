@@ -186,6 +186,15 @@ let _scanWasComplete = false,
   _unmanagedSyncing = false;
 export function setUnmanagedSyncing(v) {
   _unmanagedSyncing = v;
+  _toggleSyncBlur();
+}
+
+/** Apply or remove blur — mirrors the sync badge state. */
+function _toggleSyncBlur() {
+  const synced = g("syncBadge")?.classList.contains("done");
+  const cls = "9mm-pos-mgr-syncing-blur";
+  for (const id of ["kpiGrid", "rangeRow", "historyRow"])
+    g(id)?.classList.toggle(cls, !synced);
 }
 function _syncStatus(d) {
   if (wallet.address && posStore.count() === 0)
@@ -212,17 +221,20 @@ function _updateSyncBadge(d) {
   badge.style.background = "";
   badge.classList.toggle("done", c);
   const t = !c ? 'Wait until Syncing badge reads "Synced".' : "";
-  ["manageToggleBtn", "posBrowserBtn", "rebalanceWithRangeBtn"].forEach(
-    (id) => {
-      const b = g(id);
-      if (b) {
-        b.disabled = !c;
-        b.title = t;
-      }
-    },
-  );
+  for (const id of [
+    "manageToggleBtn",
+    "posBrowserBtn",
+    "rebalanceWithRangeBtn",
+  ]) {
+    const b = g(id);
+    if (b) {
+      b.disabled = !c;
+      b.title = t;
+    }
+  }
   if (c && !_scanWasComplete && isViewingClosedPos()) refetchClosedPosHistory();
   _scanWasComplete = c;
+  _toggleSyncBlur();
 }
 
 const _REB_HELP =
