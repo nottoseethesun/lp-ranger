@@ -423,6 +423,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       error: err.message || String(err),
       cancelled: !!err.cancelled,
       cancelTxHash: err.cancelTxHash || null,
+      cancelGasCostWei: err.cancelGasCostWei || 0n,
     };
   }
 }

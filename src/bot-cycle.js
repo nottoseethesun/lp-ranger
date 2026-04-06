@@ -119,6 +119,7 @@ async function _executeAndRecord(deps, ethersLib) {
         console.warn("[bot] TX was auto-cancelled (nonce freed). Cancel TX: %s", result.cancelTxHash || "unknown");
         // prettier-ignore
         if (deps.updateBotState) deps.updateBotState({ txCancelled: { message: result.error, cancelTxHash: result.cancelTxHash, at: new Date().toISOString() } });
+        await _recordCancelGas(result, deps);
       }
     }
     state.rebalanceInProgress = false;
@@ -130,6 +131,14 @@ async function _executeAndRecord(deps, ethersLib) {
       console.log("[bot] Rebalance lock released for #%s", position.tokenId);
     }
   }
+}
+
+/** Record cancel TX gas in the P&L tracker when a rebalance is cancelled. */
+async function _recordCancelGas(result, deps) {
+  if (!result.cancelGasCostWei || result.cancelGasCostWei <= 0n) return;
+  if (!deps._pnlTracker) return;
+  const gasUsd = await _actualGasCostUsd(result.cancelGasCostWei);
+  if (gasUsd > 0) deps._pnlTracker.addGas(gasUsd);
 }
 
 /** Check whether the OOR timeout has expired (position continuously OOR). */

@@ -95,6 +95,11 @@ async function _cancelGasPrice(provider, stuckGas) {
   return base * 2n;
 }
 
+/** Extract gas cost in wei from a TX receipt. */
+function _receiptGas(rcpt) {
+  return (rcpt.gasUsed ?? 0n) * (rcpt.gasPrice ?? rcpt.effectiveGasPrice ?? 0n);
+}
+
 /**
  * Wait for a TX to confirm, automatically speeding it up if it hasn't
  * confirmed within `_SPEEDUP_TIMEOUT_MS`.  Resends the same TX data with
@@ -248,6 +253,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
     );
     cancelErr.cancelled = true;
     cancelErr.cancelTxHash = cancelTx.hash;
+    cancelErr.cancelGasCostWei = _receiptGas(cancelReceipt);
     throw cancelErr;
   } catch (cancelErr) {
     if (cancelErr.cancelled) throw cancelErr;
@@ -296,7 +302,7 @@ async function _ensureAllowance(tokenContract, owner, spender, requiredAmount) {
     String(rcpt.gasUsed),
     String(rcpt.gasPrice ?? rcpt.effectiveGasPrice),
   );
-  return (rcpt.gasUsed ?? 0n) * (rcpt.gasPrice ?? rcpt.effectiveGasPrice ?? 0n);
+  return _receiptGas(rcpt);
 }
 
 // ── Exported functions ───────────────────────────────────────────────────────
