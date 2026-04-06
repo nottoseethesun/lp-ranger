@@ -250,6 +250,20 @@ describe("pnl-tracker gasNative", () => {
     assert.ok(snap.dailyPnl.length > 0);
   });
 
+  it("openEpoch with gasCost includes gasNative in snapshot", () => {
+    const t = createPnlTracker({ initialDeposit: 200 });
+    t.openEpoch({
+      entryValue: 200,
+      entryPrice: 2,
+      lowerPrice: 1.5,
+      upperPrice: 2.5,
+      gasCost: 0.3,
+      gasNative: 1500,
+    });
+    const snap = t.snapshot(2);
+    assert.equal(snap.liveEpoch.gasNative, 1500);
+  });
+
   it("addGas with no native arg defaults gasNative to 0", () => {
     const t = createPnlTracker({ initialDeposit: 100 });
     t.openEpoch({

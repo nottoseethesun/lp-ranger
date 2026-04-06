@@ -115,7 +115,7 @@ async function _getLifetimeSnapshot(
 
 /** Extract lifetime data from a tracker snapshot (or fall back to current-epoch data). */
 function _extractSnap(snap, cur, feesUsd) {
-  const ltFees = snap ? snap.totalFees : feesUsd;
+  const ltFees = snap ? snap.totalFees + feesUsd : feesUsd;
   const ltGas = snap ? snap.totalGas : 0;
   const ltPc = snap ? snap.priceChangePnl : cur.priceGainLoss;
   const il = snap?.lifetimeIL ?? snap?.totalIL ?? cur.il;
@@ -218,7 +218,8 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
   const { price0, price1 } = prices;
   const { baseline, entryValue } = _resolveEntryValueCached(diskConfig, posKey);
   const value = positionValueUsd(position, ps, price0, price1);
-  const cur = _currentPnl(baseline, value, entryValue, 0, price0, price1);
+  const feesUsd = body.feesUsd || 0;
+  const cur = _currentPnl(baseline, value, entryValue, feesUsd, price0, price1);
   const { tracker, events } = await _getLifetimeSnapshot(
     provider,
     ethersLib,
@@ -231,7 +232,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ps.poolAddress,
   );
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
-  const lt = _lifetimePnl(tracker, ps, entryValue, cur, 0, value);
+  const lt = _lifetimePnl(tracker, ps, entryValue, cur, feesUsd, value);
   console.log(
     "[details] lifetime tokenId=%s epochs=%d baseline=%s cur.il=%s lt.il=%s",
     body.tokenId,
