@@ -56,6 +56,14 @@ const SHARED_RULES = {
     },
   ],
 
+  "no-warning-comments": [
+    "error",
+    {
+      terms: ["prettier-ignore"],
+      location: "anywhere",
+    },
+  ],
+
   "no-restricted-syntax": [
     "error",
     {

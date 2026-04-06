@@ -8,6 +8,7 @@
     "shorthand-property-no-redundant-values": null,
     "keyframes-name-pattern": null,
     "declaration-property-value-no-unknown": null,
-    "at-rule-prelude-no-invalid": null
+    "at-rule-prelude-no-invalid": null,
+    "comment-word-disallowed-list": [["prettier-ignore"]]
   }
 }
