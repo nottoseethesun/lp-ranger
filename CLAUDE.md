@@ -195,7 +195,7 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 | `ERC20_POSITION_ADDRESS` | — | ERC-20 position token (optional fallback) |
 | `REBALANCE_OOR_THRESHOLD_PCT` | `10` | % price must move beyond position boundary before rebalance triggers |
 | `REBALANCE_TIMEOUT_MIN` | `180` | Minutes of continuous OOR before auto-rebalance (0 = disabled) |
-| `SLIPPAGE_PCT` | `0.5` | |
+| `SLIPPAGE_PCT` | `0.75` | |
 | `TX_SPEEDUP_SEC` | `120` | Seconds before a pending TX is speed-up-replaced with higher gas |
 | `TX_CANCEL_SEC` | `1200` | Seconds before a stuck TX is cancelled via 0-PLS self-transfer (20 min) |
 | `CHECK_INTERVAL_SEC` | `60` | On-chain poll frequency |

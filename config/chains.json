@@ -17,7 +17,7 @@
       "gasLimitMultiplier": 2,
       "cancelGasMultiplier": 1.5,
       "waitMs": 90000,
-      "maxAttempts": 3
+      "maxAttempts": 4
     }
   }
 }

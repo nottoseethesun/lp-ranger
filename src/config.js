@@ -25,7 +25,7 @@
  *   POSITION_ID            NFT token ID (optional — auto-detected otherwise).
  *   ERC20_POSITION_ADDRESS ERC-20 position token contract (optional).
  *   REBALANCE_OOR_THRESHOLD_PCT  % price must move beyond boundary before rebalance. Default: 5
- *   SLIPPAGE_PCT           Max slippage tolerance.               Default: 0.5
+ *   SLIPPAGE_PCT           Max slippage tolerance.               Default: 0.75
  *   CHECK_INTERVAL_SEC     How often the bot polls on-chain.     Default: 60
  *   MIN_REBALANCE_INTERVAL_MIN  Min minutes between rebalances.  Default: 10
  *   MAX_REBALANCES_PER_DAY      Daily rebalance cap.             Default: 20
@@ -145,7 +145,7 @@ const REBALANCE_TIMEOUT_MIN = (() => {
 })();
 
 /** Default slippage tolerance (percent). Fallback when user input is invalid. */
-const DEFAULT_SLIPPAGE_PCT = 0.5;
+const DEFAULT_SLIPPAGE_PCT = 0.75;
 
 /** Maximum slippage tolerance for rebalance transactions (percent). */
 const SLIPPAGE_PCT = parsePositiveFloat(
