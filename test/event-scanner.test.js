@@ -70,6 +70,7 @@ const scanOpts = (extra = {}) => ({
   walletAddress: WALLET,
   maxYears: 1,
   chunkSize: 50_000,
+  chunkDelayMs: 0,
   ...extra,
 });
 

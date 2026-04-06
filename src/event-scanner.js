@@ -394,6 +394,7 @@ async function scanChunks(
   chunkSize,
   onProgress,
   label,
+  delayMs,
 ) {
   const rawEvents = [];
   const totalChunks = Math.ceil((currentBlock - scanFrom + 1) / chunkSize);
@@ -413,7 +414,7 @@ async function scanChunks(
     }
     if (onProgress) onProgress(done, totalChunks);
     if (done < totalChunks) {
-      await new Promise((r) => setTimeout(r, _CHUNK_DELAY_MS));
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
   return rawEvents;
@@ -582,6 +583,11 @@ async function _resolveCache(
   return loadCache(cache, cacheKey, from);
 }
 
+/** True when the cache already covers all blocks — no new scan needed. */
+function _cacheCovers(scanFrom, currentBlock, cached) {
+  return scanFrom > currentBlock && cached.length > 0;
+}
+
 async function scanRebalanceHistory(provider, ethersLib, opts) {
   const {
     positionManagerAddress,
@@ -595,6 +601,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     poolToken1 = null,
     poolFee = null,
   } = opts;
+  const chunkDelayMs = opts.chunkDelayMs ?? _CHUNK_DELAY_MS;
 
   const currentBlock = await provider.getBlockNumber();
   const cacheKey = _buildCacheKey(
@@ -620,7 +627,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     opts.onPoolCreationProgress,
   );
 
-  if (scanFrom > currentBlock && cachedEvents.length > 0) return cachedEvents;
+  if (_cacheCovers(scanFrom, currentBlock, cachedEvents)) return cachedEvents;
 
   const contract = new ethersLib.Contract(
     positionManagerAddress,
@@ -635,6 +642,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     chunkSize,
     opts.onProgress,
     _scanLabel(walletAddress, poolToken0, poolToken1, poolFee),
+    chunkDelayMs,
   );
 
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
