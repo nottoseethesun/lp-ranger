@@ -636,6 +636,7 @@ const _routes = {
       body.customRangeWidthPct || "default",
     );
     state.forceRebalance = true;
+    state.rebalanceInProgress = true;
     state.rebalancePaused = false;
     state.rebalanceError = null;
     if (body.customRangeWidthPct > 0)
