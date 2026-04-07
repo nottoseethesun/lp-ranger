@@ -183,6 +183,7 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 
 | Key | Default | Notes |
 | --- | ------- | ----- |
+| `CHAIN_NAME` | `pulsechain` | Blockchain: `pulsechain` or `pulsechain-testnet` |
 | `PORT` | `5555` | Dashboard server port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `PRIVATE_KEY` | — | Required for live bot (or use KEY_FILE) |

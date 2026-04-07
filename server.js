@@ -61,6 +61,13 @@
  *   PORT                    HTTP port (default: 5555)
  *   HOST                    Bind address (default: '0.0.0.0')
  *
+ * Chain
+ * ─────
+ *   CHAIN_NAME              Blockchain to connect to (default: 'pulsechain').
+ *                           Set to 'pulsechain-testnet' for PulseChain Testnet v4.
+ *                           Chain config (RPC URLs, contract addresses, gas
+ *                           multipliers) is loaded from config/chains.json.
+ *
  * Wallet (required for bot)
  * ─────────────────────────
  *   PRIVATE_KEY             Hex private key (0x-prefixed)

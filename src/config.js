@@ -61,7 +61,7 @@ try {
 /** Per-blockchain settings loaded from config/chains.json. */
 const CHAINS = require(path.join(__dirname, "..", "config", "chains.json"));
 
-/** Active chain name (only PulseChain supported currently). */
+/** Active chain name. Set CHAIN_NAME=pulsechain-testnet for testnet. */
 const CHAIN_NAME = (process.env.CHAIN_NAME || "pulsechain").toLowerCase();
 
 /** Active chain config (aggregator tunables, chainId, etc.). */
@@ -119,12 +119,17 @@ const DRY_RUN = ["1", "true", "yes"].includes(
   (process.env.DRY_RUN || "").toLowerCase(),
 );
 
-/** Primary PulseChain JSON-RPC endpoint. */
-const RPC_URL = process.env.RPC_URL || "https://rpc-pulsechain.g4mm4.io";
+/** Primary JSON-RPC endpoint (chain-aware default from chains.json). */
+const RPC_URL =
+  process.env.RPC_URL ||
+  CHAIN.rpc?.primary ||
+  "https://rpc-pulsechain.g4mm4.io";
 
 /** Fallback RPC endpoint — used automatically if the primary is unreachable. */
 const RPC_URL_FALLBACK =
-  process.env.RPC_URL_FALLBACK || "https://rpc.pulsechain.com";
+  process.env.RPC_URL_FALLBACK ||
+  CHAIN.rpc?.fallback ||
+  "https://rpc.pulsechain.com";
 
 /** NFT token ID for single-position NFT mode (optional). */
 const POSITION_ID = process.env.POSITION_ID || null;
@@ -195,21 +200,27 @@ const LOG_FILE = process.env.LOG_FILE || "./rebalance_log.json";
  * Source: https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json
  */
 const POSITION_MANAGER =
-  process.env.POSITION_MANAGER || "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
+  process.env.POSITION_MANAGER ||
+  CHAIN.contracts?.positionManager?.address ||
+  "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 
 /**
- * V3 factory contract address (9mm Pro on PulseChain).
+ * V3 factory contract address (chain-aware default from chains.json).
  * Source: https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json
  */
 const FACTORY =
-  process.env.FACTORY || "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68";
+  process.env.FACTORY ||
+  CHAIN.contracts?.factory ||
+  "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68";
 
 /**
- * V3 SwapRouter contract address (9mm Pro on PulseChain).
+ * V3 SwapRouter contract address (chain-aware default from chains.json).
  * Used for token swaps during rebalancing.
  */
 const SWAP_ROUTER =
-  process.env.SWAP_ROUTER || "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA";
+  process.env.SWAP_ROUTER ||
+  CHAIN.contracts?.swapRouter ||
+  "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA";
 
 /** 9mm DEX Aggregator API URL (primary swap path — lowest slippage). */
 const AGGREGATOR_URL = process.env.AGGREGATOR_URL || "https://api.9mm.pro";
