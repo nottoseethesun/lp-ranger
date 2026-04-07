@@ -22,7 +22,7 @@ import {
   compositeKey,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import { _createModal, _posLabel } from "./dashboard-data.js";
+import { _createModal, _posLabel, markInputDirty } from "./dashboard-data.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
 
 // Late-bound import to avoid circular dep issues at evaluation time.
@@ -258,6 +258,7 @@ export function saveOorTimeout() {
   const val = parseInt(el?.value, 10);
   const timeoutMin = Number.isFinite(val) && val >= 0 ? val : 180;
   if (el) el.value = timeoutMin;
+  markInputDirty("inOorTimeout");
   const active = posStore.getActive();
   const positionKey = active
     ? compositeKey(
@@ -284,6 +285,7 @@ export function saveOorThreshold() {
   );
   const inp = g("inOorThreshold");
   if (inp) inp.value = botConfig.oorThreshold;
+  markInputDirty("inOorThreshold");
   const disp = g("activeOorThreshold");
   if (disp) disp.textContent = botConfig.oorThreshold;
   const activePos = posStore.getActive();
@@ -311,6 +313,7 @@ export function saveOorThreshold() {
 
 /** Save a single config key from an input element. */
 function _saveSingleConfig(inputId, key, parse) {
+  markInputDirty(inputId);
   const val = parse(g(inputId)?.value);
   const active = posStore.getActive();
   const positionKey = active
