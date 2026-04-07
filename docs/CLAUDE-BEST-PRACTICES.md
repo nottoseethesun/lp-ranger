@@ -21,6 +21,10 @@
 - **Use temp directories for test-specific files** — tests that create their own config/cache files should use `os.tmpdir()` or `fs.mkdtempSync()`, not the project's `tmp/` directory. Pass the `dir` parameter to functions that support it (e.g. `saveConfig(cfg, dir)`, `loadConfig(dir)`).
 - **NEVER run `npm run check` inside a sub-agent** — `check.sh` backs up production files (`.bot-config.json`, epoch caches, etc.) and restores them via an EXIT trap. Sub-agents may be killed mid-process (timeout, SIGKILL), bypassing the trap and destroying production data. Always run `npm run check` directly in the main session where the process lifecycle is controlled.
 
+## Coverage
+
+- **Maintain coverage at least 1% above the minimum** — Node 22 and Node 24 report slightly different coverage numbers due to instrumentation differences. If local coverage is at 80.01% (minimum 80%), it may report 79.97% on CI. Always ensure coverage is at least 81% locally to avoid CI flakes from rounding variance.
+
 ## Debugging & Investigation
 
 - **Trace the COMPLETE data flow before writing fixes** — do not make incremental guesses. Read every function in the chain from trigger to effect. Identify the exact line where the bug manifests. A fix that addresses the wrong layer creates a new bug.

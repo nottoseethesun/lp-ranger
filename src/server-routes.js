@@ -12,6 +12,7 @@ const {
   getPositionConfig,
   saveConfig,
   managedKeys,
+  compositeKey,
   parseCompositeKey,
   readConfigValue,
   GLOBAL_KEYS,
@@ -257,6 +258,22 @@ function createRouteHandlers(deps) {
       body.contractAddress = body.contractAddress || config.POSITION_MANAGER;
       const result = await computeLifetimeDetails(prov, eth, body, diskConfig);
       await _recomputeGasUsd(result);
+      // Mark scan complete in the position's server state so the poll
+      // cycle reports it — same path as managed positions.  This is the
+      // ONLY way the dashboard detects "Synced" (no separate client flag).
+      const pk = compositeKey(
+        config.CHAIN_NAME,
+        body.walletAddress,
+        body.contractAddress,
+        body.tokenId,
+      );
+      if (pk) {
+        const states = getAllPositionBotStates();
+        const s = states.get(pk) || {};
+        s.rebalanceScanComplete = true;
+        if (result.pnlSnapshot) s.pnlSnapshot = result.pnlSnapshot;
+        if (!states.has(pk)) states.set(pk, s);
+      }
       jsonResponse(res, 200, result);
     } catch (err) {
       console.error("[server] Lifetime details error:", err.message);

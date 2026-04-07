@@ -183,6 +183,19 @@ Epoch data is cached to disk (`tmp/pnl-epochs-cache.json`) keyed by pool
 identity — not by tokenId — so P&L history survives rebalances (which mint
 new NFTs) without migration.
 
+### Lifetime Sync vs Bot Loop
+
+The lifetime P&L scan (event scan, epoch reconstruction, price fetching) is
+**the same work** for managed and unmanaged positions. The bot loop exists
+solely to monitor the position and act on it — rebalance when out of range,
+auto-compound when the fee threshold is hit. The lifetime sync is not a
+bot-loop concern. Dashboard readiness (the "Synced" badge and blur overlay)
+tracks whether the lifetime scan has completed, not whether the bot loop is
+running. This separation prevents the badge from coupling to bot startup
+timing (e.g. stagger delays between positions) or falsely showing "Synced"
+when an unmanaged detail fetch completes for a position whose managed scan
+hasn't started yet.
+
 ---
 
 ## Security Model

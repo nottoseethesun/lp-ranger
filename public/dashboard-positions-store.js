@@ -73,7 +73,7 @@ export function _loadPosStore() {
       else if (isPositionClosed(deduped[idx])) idx = bestAutoSelectIdx();
       posStore.activeIdx = idx;
       console.log(
-        "[posStore] loaded %d positions from localStorage, activeIdx=%d",
+        "[lp-ranger] [posStore] loaded %d positions from localStorage, activeIdx=%d",
         deduped.length,
         idx,
       );
@@ -250,7 +250,7 @@ export const posStore = {
     } catch {
       /* */
     }
-    console.log("[pos] rebalance follow: #%s → #%s", old, newId);
+    console.log("[lp-ranger] [pos] rebalance follow: #%s → #%s", old, newId);
     if (_syncRouteToState) _syncRouteToState(a);
     updatePosStripUI();
   },
@@ -319,7 +319,7 @@ function _tokenLabelHtml(symbol, address) {
 export function isPositionClosed(pos) {
   if (pos.liquidity === undefined || pos.liquidity === null) {
     console.warn(
-      "[posStore] NFT #%s %s has no liquidity data",
+      "[lp-ranger] [posStore] NFT #%s %s has no liquidity data",
       pos.tokenId,
       emojiId(pos.tokenId),
     );
@@ -361,7 +361,7 @@ export function bestAutoSelectIdx() {
   const tier =
     best.managed >= 0 ? "managed" : best.open >= 0 ? "open" : "closed";
   console.log(
-    "[posStore] bestAutoSelect: total=%d managed=%d open=%d closed=%d noLiq=%d → #%s %s (idx=%d, liq=%s, tier=%s)",
+    "[lp-ranger] [posStore] bestAutoSelect: total=%d managed=%d open=%d closed=%d noLiq=%d → #%s %s (idx=%d, liq=%s, tier=%s)",
     posStore.entries.length,
     counts.managed,
     counts.open,

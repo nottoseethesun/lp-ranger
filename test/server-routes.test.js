@@ -356,6 +356,28 @@ describe("server-routes createRouteHandlers", () => {
       await h._handlePositionLifetime({}, res);
       assert.strictEqual(res._status, 400);
     });
+
+    it("returns 500 and logs error on computeLifetimeDetails failure", async () => {
+      const posStates = new Map();
+      const deps = makeDeps({
+        readJsonBody: async () => ({
+          tokenId: "100",
+          token0: "0xA",
+          token1: "0xB",
+          fee: 3000,
+          walletAddress: "0xW",
+          contractAddress: "0xC",
+        }),
+        getAllPositionBotStates: () => posStates,
+      });
+      const h = createRouteHandlers(deps);
+      const res = makeRes();
+      // computeLifetimeDetails will throw (no real RPC) → 500
+      await h._handlePositionLifetime({}, res);
+      assert.strictEqual(res._status, 500);
+      assert.strictEqual(res._body.ok, false);
+      assert.ok(res._body.error);
+    });
   });
 
   // ── _handlePositionsScan ──────────────────────────────────────────────────

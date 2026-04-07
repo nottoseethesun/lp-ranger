@@ -161,18 +161,7 @@ function _syncConfigFromServer(d) {
     }
   refreshDepositLabel();
 }
-let _scanWasComplete = false,
-  _lifetimeReady = false;
-/**
- * Mark lifetime P&L as ready (true) or pending (false).
- * Used by BOTH managed and unmanaged flows:
- *   - Unmanaged: false when detail fetch starts, true in _markSynced.
- *   - Managed: false on position switch, true via _promoteManaged.
- */
-export function setLifetimeReady(v) {
-  _lifetimeReady = !!v;
-  applySyncBlur();
-}
+let _scanWasComplete = false;
 
 /** Apply or remove blur — mirrors the sync badge state.
  *  @param {boolean} [force] Reset badge to Syncing and force blur on. */
@@ -187,17 +176,13 @@ export function applySyncBlur(force) {
   for (const id of ["kpiGrid", "rangeRow", "historyRow"])
     g(id)?.classList.toggle(cls, !synced);
 }
-/**
- * Sync _lifetimeReady for managed positions based on scan + snapshot state.
- * Promotes to true when both are available; demotes to false when not.
- * Called every poll cycle from _syncStatus.
- */
-function _syncManagedReady(d) {
-  if (!d.running) return;
-  const ready = d.rebalanceScanComplete === true && !!d.pnlSnapshot;
-  if (ready !== _lifetimeReady) _lifetimeReady = ready;
-}
 
+/**
+ * Derive sync readiness from poll data.  The lifetime P&L scan is the
+ * same work for managed and unmanaged positions — it is NOT a bot-loop
+ * concern.  Both paths write rebalanceScanComplete to the server state,
+ * so the poll is the single source of truth.  No client-side flag needed.
+ */
 function _syncStatus(d) {
   if (!posStore.getActive()) return { complete: true, label: "" };
   if (wallet.address && posStore.count() === 0)
@@ -208,8 +193,8 @@ function _syncStatus(d) {
     const tip = p?.total > 0 ? p.done + "/" + p.total + " positions" : "";
     return { complete: false, label: "Syncing\u2026", tip };
   }
-  _syncManagedReady(d);
-  if (!_lifetimeReady) return { complete: false, label: "Syncing\u2026" };
+  const ready = d.rebalanceScanComplete === true && !!d.pnlSnapshot;
+  if (!ready) return { complete: false, label: "Syncing\u2026" };
   return { complete: true, label: "Synced" };
 }
 function _updateSyncBadge(d) {
@@ -270,8 +255,6 @@ export function resetPollingState() {
   _lastRebAt.clear();
   _txCancelSeen.clear();
   _scanWasComplete = false;
-  _lifetimeReady = true;
-
   refreshCurDepositDisplay(0);
   const dd = g("lifetimeDepositDisplay");
   if (dd) dd.textContent = "\u2014";
