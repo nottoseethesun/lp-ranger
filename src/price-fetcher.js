@@ -4,9 +4,10 @@
  * @description
  * Fetches USD prices for tokens on PulseChain for the 9mm v3 Position Manager.
  *
- * Uses DexScreener (primary, no API key), GeckoTerminal (fallback, no API key,
- * rate-limited 30/min), and DexTools (final fallback, requires API key) to
- * resolve token prices.  Results are cached in memory with a 60-second TTL.
+ * Uses GeckoTerminal (primary, free, rate-limited 30/min) and DexScreener
+ * (fallback, free) to resolve token prices.  GeckoTerminal is preferred
+ * because DexScreener drops tokens with no 24h LP activity.  Results are
+ * cached in memory with a 60-second TTL.
  *
  * GeckoTerminal rate limiting
  * ──────────────────────────
@@ -107,38 +108,6 @@ async function _fetchDexScreener(tokenAddress, chain = "pulsechain") {
   return Number.isFinite(price) ? price : 0;
 }
 
-// ── DexTools ─────────────────────────────────────────────────────────────────
-
-/**
- * Fetch USD price for a token from the DexTools API.
- *
- * Requires a valid API key passed via the `apiKey` parameter.
- *
- * @param {string} tokenAddress - ERC-20 contract address.
- * @param {string} apiKey       - DexTools API key.
- * @param {string} [chain='pulsechain'] - Chain identifier for the URL path.
- * @returns {Promise<number>} USD price (0 if unavailable or on error).
- */
-async function _fetchDexTools(tokenAddress, apiKey, chain = "pulsechain") {
-  const url = `https://public-api.dextools.io/free/v2/token/${chain}/${tokenAddress}/price`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      "X-API-Key": apiKey,
-      Accept: "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    return 0;
-  }
-
-  const json = await res.json();
-  const price = Number(json?.data?.price ?? json?.data?.priceUsd ?? 0);
-  return Number.isFinite(price) ? price : 0;
-}
-
 // ── GeckoTerminal (current price) ────────────────────────────────────────────
 
 /**
@@ -175,8 +144,7 @@ async function _fetchGeckoTerminalCurrent(
 
 /**
  * @typedef {Object} FetchTokenPriceOpts
- * @property {string}      [chain='pulsechain']  Chain identifier.
- * @property {string|null} [dextoolsApiKey=null] DexTools API key (null to skip fallback).
+ * @property {string} [chain='pulsechain']  Chain identifier.
  */
 
 /**
@@ -184,10 +152,9 @@ async function _fetchGeckoTerminalCurrent(
  *
  * Resolution order:
  *  1. Return cached value if still within the TTL window.
- *  2. Try DexScreener (free, no API key).
- *  3. Try GeckoTerminal (free, no API key, rate-limited 30/min).
- *  4. Try DexTools (only when `dextoolsApiKey` is provided).
- *  5. Return 0 if all sources fail or return no data.
+ *  2. Try GeckoTerminal (free, no API key, rate-limited 30/min).
+ *  3. Try DexScreener (free, no API key — drops tokens with no 24h activity).
+ *  4. Return 0 if all sources fail or return no data.
  *
  * All network errors are caught and logged via `console.warn` so that
  * callers never receive a rejected promise.
@@ -198,7 +165,6 @@ async function _fetchGeckoTerminalCurrent(
  */
 async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
   const chain = opts.chain ?? "pulsechain";
-  const dextoolsApiKey = opts.dextoolsApiKey ?? null;
   const key = _cacheKey(chain, tokenAddress);
 
   // 1. Cache check.
@@ -207,18 +173,7 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
     return cached.price;
   }
 
-  // 2. DexScreener (primary).
-  try {
-    const price = await _fetchDexScreener(tokenAddress, chain);
-    if (price > 0) {
-      _cache.set(key, { price, ts: Date.now() });
-      return price;
-    }
-  } catch (err) {
-    console.warn("[price-fetcher] DexScreener error:", err.message ?? err);
-  }
-
-  // 3. GeckoTerminal (fallback — free, rate-limited).
+  // 2. GeckoTerminal (primary — free, rate-limited, no 24h activity requirement).
   try {
     const price = await _fetchGeckoTerminalCurrent(tokenAddress, chain);
     if (price > 0) {
@@ -229,20 +184,18 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
     console.warn("[price-fetcher] GeckoTerminal error:", err.message ?? err);
   }
 
-  // 4. DexTools (fallback — only if API key provided).
-  if (dextoolsApiKey) {
-    try {
-      const price = await _fetchDexTools(tokenAddress, dextoolsApiKey, chain);
-      if (price > 0) {
-        _cache.set(key, { price, ts: Date.now() });
-        return price;
-      }
-    } catch (err) {
-      console.warn("[price-fetcher] DexTools error:", err.message ?? err);
+  // 3. DexScreener (fallback — free, drops tokens with no 24h activity).
+  try {
+    const price = await _fetchDexScreener(tokenAddress, chain);
+    if (price > 0) {
+      _cache.set(key, { price, ts: Date.now() });
+      return price;
     }
+  } catch (err) {
+    console.warn("[price-fetcher] DexScreener error:", err.message ?? err);
   }
 
-  // 5. Nothing worked.
+  // 4. Nothing worked.
   return 0;
 }
 
@@ -371,7 +324,6 @@ module.exports = {
   fetchTokenPriceUsd,
   fetchHistoricalPriceGecko,
   _fetchDexScreener,
-  _fetchDexTools,
   _fetchGeckoTerminalOhlcv,
   _cache,
   _CACHE_TTL_MS,

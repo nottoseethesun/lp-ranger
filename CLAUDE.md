@@ -105,7 +105,7 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 │   ├── server-scan.js            # LP position scan route handlers with cache integration + symbol resolution
 │   ├── event-scanner.js          # On-chain rebalance history via Transfer events (5-year lookback)
 │   ├── pool-scanner.js           # Consolidated entry point for pool rebalance history scan with per-pool locking
-│   ├── price-fetcher.js          # USD pricing: DexScreener (primary) → DexTools (fallback) → GeckoTerminal (historical)
+│   ├── price-fetcher.js          # USD pricing: DexScreener (primary) → GeckoTerminal (historical)
 │   ├── hodl-baseline.js          # HODL baseline init: deposited amounts from IncreaseLiquidity + GeckoTerminal for deposit auto-detect
 │   ├── il-calculator.js          # Consolidated IL/G math: calcIlMultiplier, estimateLiveValue, computeHodlIL
 │   ├── epoch-reconstructor.js    # Reconstructs historical P&L epochs from on-chain rebalance chain
@@ -208,7 +208,6 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 | `SWAP_ROUTER` | `0x7bE8fb…` | V3 SwapRouter (9mm Pro) |
 | `AGGREGATOR_URL` | `https://api.9mm.pro` | 9mm DEX Aggregator API (0x v1 fork) |
 | `AGGREGATOR_API_KEY` | *(built-in)* | 0x-api-key header for aggregator quotes |
-| `DEXTOOLS_API_KEY` | — | Optional — for USD price fallback |
 
 Contract address source: <https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json>
 
@@ -268,7 +267,7 @@ npm run swagger        # Start Swagger UI at http://localhost:5556 (API docs)
 
 **OOR timeout:** `REBALANCE_TIMEOUT_MIN` (default 180, i.e. 3 hours) triggers a rebalance after the position has been continuously OOR for the configured duration, even if the price hasn't crossed the OOR threshold bars. The bot tracks `oorSince` (timestamp of first OOR detection). When the timeout expires, the rebalance falls through to the existing throttle + execution path — no special bypass. `oorSince` is cleared when the price returns to range or after a successful rebalance. Set to 0 to disable. The dashboard shows a countdown ("Timeout: MM:SS") in the "WITHIN THRESHOLD" banner. The setting has its own Save button and is persisted to `.bot-config.json`.
 
-**USD pricing:** DexScreener (primary, no key) → DexTools (fallback, requires `DEXTOOLS_API_KEY`). 60s in-memory cache. See `src/price-fetcher.js`. Historical prices fetched from GeckoTerminal OHLCV API (free, no key, 30 calls/min). USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
+**USD pricing:** DexScreener (primary, no key). 60s in-memory cache. See `src/price-fetcher.js`. Historical prices fetched from GeckoTerminal OHLCV API (free, no key, 30 calls/min). USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
 
 **Multi-position management:** The tool manages **multiple LP positions simultaneously** across different pools from a single wallet. Each managed position gets its own independent `startBotLoop()` instance sharing a single provider/signer. A **rebalance lock** (`src/rebalance-lock.js`, backed by `async-mutex`) ensures only one position sends transactions at a time (same wallet = same nonce), while all positions continue polling independently. The `src/position-manager.js` orchestrator tracks all managed positions with start/stop lifecycle (two states: `'running'` and `'stopped'`). When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned. Rebalance history is detected via consecutive mint events. Closed positions (liquidity=0) are displayed but the bot skips rebalance checks.
 

@@ -40,12 +40,8 @@ function positionValueUsd(p, ps, pr0, pr1) {
 /** Fetch USD prices for both tokens in a position. */
 async function fetchTokenPrices(token0, token1) {
   const [price0, price1] = await Promise.all([
-    fetchTokenPriceUsd(token0, {
-      dextoolsApiKey: config.DEXTOOLS_API_KEY,
-    }),
-    fetchTokenPriceUsd(token1, {
-      dextoolsApiKey: config.DEXTOOLS_API_KEY,
-    }),
+    fetchTokenPriceUsd(token0),
+    fetchTokenPriceUsd(token1),
   ]);
   return { price0, price1 };
 }
@@ -243,7 +239,6 @@ async function overridePnlWithRealValues(
     try {
       const nativePrice = await fetchTokenPriceUsd(
         config.CHAIN.nativeWrappedToken,
-        { dextoolsApiKey: config.DEXTOOLS_API_KEY },
       );
       snap.totalGas = snap.totalGasNative * nativePrice;
       // Recompute per-day gas costs at current price
@@ -291,9 +286,7 @@ async function estimateGasCostUsd(provider) {
   try {
     const f = await provider.getFeeData();
     const c = (f.gasPrice ?? 0n) * 800_000n;
-    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken, {
-      dextoolsApiKey: config.DEXTOOLS_API_KEY,
-    });
+    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
     return (Number(c) / 1e18) * p;
   } catch {
     return 0;
@@ -303,9 +296,7 @@ async function estimateGasCostUsd(provider) {
 /** Compute actual gas cost in USD from total PLS spent (in wei). */
 async function actualGasCostUsd(gasCostWei) {
   try {
-    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken, {
-      dextoolsApiKey: config.DEXTOOLS_API_KEY,
-    });
+    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
     return (Number(gasCostWei) / 1e18) * p;
   } catch {
     return 0;

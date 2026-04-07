@@ -13,7 +13,6 @@ const {
   fetchTokenPriceUsd,
   fetchHistoricalPriceGecko,
   _fetchDexScreener,
-  _fetchDexTools,
   _fetchGeckoTerminalOhlcv,
   _cache,
   _CACHE_TTL_MS,
@@ -111,119 +110,49 @@ describe("DexScreener success", () => {
   });
 });
 
-// ── DexScreener no PulseChain pairs ──────────────────────────────────────────
+// ── GeckoTerminal → DexScreener fallback ─────────────────────────────────────
 
-describe("DexScreener no PulseChain pairs", () => {
-  it("falls through to DexTools when DexScreener has no matching chain pairs", async () => {
+describe("GeckoTerminal fails, DexScreener succeeds", () => {
+  it("falls through to DexScreener when GeckoTerminal returns no price", async () => {
     let callCount = 0;
 
     globalThis.fetch = async (_url, _opts) => {
       callCount += 1;
 
-      // First call: DexScreener — return only ethereum pairs.
+      // First call: GeckoTerminal — no token_prices.
       if (callCount === 1) {
-        return {
-          ok: true,
-          json: async () => ({
-            pairs: [
-              {
-                chainId: "ethereum",
-                priceUsd: "9.99",
-                liquidity: { usd: 100000 },
-              },
-            ],
-          }),
-        };
-      }
-
-      // Second call: GeckoTerminal — return 0 (no data).
-      if (callCount === 2) {
         return {
           ok: true,
           json: async () => ({ data: { attributes: {} } }),
         };
       }
 
-      // Third call: DexTools — return a valid price.
+      // Second call: DexScreener — valid price.
       return {
         ok: true,
         json: async () => ({
-          data: { price: 2.34 },
+          pairs: [
+            {
+              chainId: "pulsechain",
+              priceUsd: "2.34",
+              liquidity: { usd: 50000 },
+            },
+          ],
         }),
       };
     };
 
-    const price = await fetchTokenPriceUsd(TOKEN, {
-      dextoolsApiKey: "test-key",
-    });
+    const price = await fetchTokenPriceUsd(TOKEN);
 
-    assert.strictEqual(price, 2.34, "should fall through to DexTools");
-    assert.strictEqual(callCount, 3, "should have made three fetch calls");
-  });
-});
-
-// ── DexTools success ─────────────────────────────────────────────────────────
-
-describe("DexTools success", () => {
-  it("returns price when DexScreener fails with HTTP error", async () => {
-    let callCount = 0;
-
-    globalThis.fetch = async (_url, _opts) => {
-      callCount += 1;
-
-      // First call: DexScreener — 500 error.
-      if (callCount === 1) {
-        return { ok: false, status: 500, json: async () => ({}) };
-      }
-
-      // Second call: GeckoTerminal — no data.
-      if (callCount === 2) {
-        return {
-          ok: true,
-          json: async () => ({ data: { attributes: {} } }),
-        };
-      }
-
-      // Third call: DexTools — valid response.
-      return {
-        ok: true,
-        json: async () => ({ data: { priceUsd: 3.45 } }),
-      };
-    };
-
-    const price = await fetchTokenPriceUsd(TOKEN, {
-      dextoolsApiKey: "test-key",
-    });
-
-    assert.strictEqual(price, 3.45, "should return DexTools price");
-  });
-
-  it("returns price via _fetchDexTools directly", async () => {
-    globalThis.fetch = mockFetch({ data: { price: 7.89 } });
-
-    const price = await _fetchDexTools(TOKEN, "my-api-key", "pulsechain");
-    assert.strictEqual(price, 7.89);
-  });
-
-  it("handles priceUsd field in DexTools response", async () => {
-    globalThis.fetch = mockFetch({ data: { priceUsd: 4.56 } });
-
-    const price = await _fetchDexTools(TOKEN, "my-api-key");
-    assert.strictEqual(price, 4.56);
-  });
-
-  it("returns 0 when DexTools returns non-ok response", async () => {
-    globalThis.fetch = mockFetch({}, 401);
-
-    const price = await _fetchDexTools(TOKEN, "bad-key");
-    assert.strictEqual(price, 0);
+    assert.strictEqual(price, 2.34, "should fall through to DexScreener");
+    assert.strictEqual(callCount, 2, "should have made two fetch calls");
   });
 });
 
 // ── Both fail ────────────────────────────────────────────────────────────────
 
 describe("Both fail", () => {
-  it("returns 0 when both DexScreener and DexTools fail", async () => {
+  it("returns 0 when both GeckoTerminal and DexScreener fail", async () => {
     let callCount = 0;
 
     globalThis.fetch = async () => {
@@ -231,23 +160,14 @@ describe("Both fail", () => {
       throw new Error(`network error ${callCount}`);
     };
 
-    const price = await fetchTokenPriceUsd(TOKEN, {
-      dextoolsApiKey: "test-key",
-    });
+    const price = await fetchTokenPriceUsd(TOKEN);
 
     assert.strictEqual(price, 0, "should return 0 when all sources fail");
-    assert.strictEqual(callCount, 3, "should have attempted all three sources");
+    assert.strictEqual(callCount, 2, "should have attempted both sources");
   });
 
-  it("returns 0 when DexScreener returns empty pairs and no DexTools key", async () => {
-    globalThis.fetch = mockFetch({ pairs: [] });
-
-    const price = await fetchTokenPriceUsd(TOKEN);
-    assert.strictEqual(price, 0);
-  });
-
-  it("returns 0 when DexScreener returns null pairs", async () => {
-    globalThis.fetch = mockFetch({ pairs: null });
+  it("returns 0 when both return no usable data", async () => {
+    globalThis.fetch = mockFetch({ data: { attributes: {} } });
 
     const price = await fetchTokenPriceUsd(TOKEN);
     assert.strictEqual(price, 0);
@@ -262,16 +182,15 @@ describe("Cache hit", () => {
 
     globalThis.fetch = async (_url, _opts) => {
       fetchCallCount += 1;
+      // GeckoTerminal returns a valid price on first call.
       return {
         ok: true,
         json: async () => ({
-          pairs: [
-            {
-              chainId: "pulsechain",
-              priceUsd: "1.11",
-              liquidity: { usd: 1000 },
+          data: {
+            attributes: {
+              token_prices: { [TOKEN.toLowerCase()]: "1.11" },
             },
-          ],
+          },
         }),
       };
     };
@@ -286,14 +205,15 @@ describe("Cache hit", () => {
   });
 
   it("cache key is case-insensitive on token address", async () => {
-    globalThis.fetch = mockFetch({
-      pairs: [
-        {
-          chainId: "pulsechain",
-          priceUsd: "2.22",
-          liquidity: { usd: 500 },
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        data: {
+          attributes: {
+            token_prices: { [TOKEN.toLowerCase()]: "2.22" },
+          },
         },
-      ],
+      }),
     });
 
     await fetchTokenPriceUsd(TOKEN.toLowerCase());
@@ -310,18 +230,17 @@ describe("Cache expiry", () => {
     const prices = ["1.00", "2.00"];
 
     globalThis.fetch = async () => {
-      const priceUsd = prices[fetchCallCount] || "0";
+      const p = prices[fetchCallCount] || "0";
       fetchCallCount += 1;
+      // GeckoTerminal-shaped response (primary oracle).
       return {
         ok: true,
         json: async () => ({
-          pairs: [
-            {
-              chainId: "pulsechain",
-              priceUsd,
-              liquidity: { usd: 1000 },
+          data: {
+            attributes: {
+              token_prices: { [TOKEN.toLowerCase()]: p },
             },
-          ],
+          },
         }),
       };
     };
@@ -342,52 +261,6 @@ describe("Cache expiry", () => {
 
   it("_CACHE_TTL_MS is 60000", () => {
     assert.strictEqual(_CACHE_TTL_MS, 60_000);
-  });
-});
-
-// ── No DexTools key ──────────────────────────────────────────────────────────
-
-describe("No DexTools key", () => {
-  it("skips DexTools fallback entirely when no API key is provided", async () => {
-    let fetchCallCount = 0;
-
-    globalThis.fetch = async () => {
-      fetchCallCount += 1;
-      // DexScreener returns no pairs.
-      return {
-        ok: true,
-        json: async () => ({ pairs: [] }),
-      };
-    };
-
-    const price = await fetchTokenPriceUsd(TOKEN);
-
-    assert.strictEqual(price, 0, "should return 0");
-    assert.strictEqual(
-      fetchCallCount,
-      2,
-      "should call DexScreener + GeckoTerminal, not DexTools",
-    );
-  });
-
-  it("skips DexTools when dextoolsApiKey is explicitly null", async () => {
-    let fetchCallCount = 0;
-
-    globalThis.fetch = async () => {
-      fetchCallCount += 1;
-      return { ok: false, status: 500, json: async () => ({}) };
-    };
-
-    const price = await fetchTokenPriceUsd(TOKEN, {
-      dextoolsApiKey: null,
-    });
-
-    assert.strictEqual(price, 0);
-    assert.strictEqual(
-      fetchCallCount,
-      2,
-      "DexScreener + GeckoTerminal attempted",
-    );
   });
 });
 

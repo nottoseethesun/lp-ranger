@@ -36,8 +36,6 @@
  *   FACTORY                V3 factory address.
  *   SWAP_ROUTER            V3 SwapRouter address.
  *
- * PRICING (optional)
- *   DEXTOOLS_API_KEY       API key for DexTools price fallback (DexScreener is primary).
  *
  * @example
  * const { PORT, HOST, RPC_URL } = require('./src/config');
@@ -229,11 +227,6 @@ const AGGREGATOR_URL = process.env.AGGREGATOR_URL || "https://api.9mm.pro";
 const AGGREGATOR_API_KEY =
   process.env.AGGREGATOR_API_KEY || "f9275849-2a1d-406b-b2a2-a6be1ac127dc";
 
-// ── Pricing ───────────────────────────────────────────────────────────────────
-
-/** DexTools API key for USD price fallback (DexScreener is tried first). */
-const DEXTOOLS_API_KEY = process.env.DEXTOOLS_API_KEY || null;
-
 // ── Validation helper ─────────────────────────────────────────────────────────
 
 /**
@@ -302,9 +295,6 @@ module.exports = {
   SWAP_ROUTER,
   AGGREGATOR_URL,
   AGGREGATOR_API_KEY,
-
-  // Pricing
-  DEXTOOLS_API_KEY,
 
   // Per-blockchain
   CHAIN,

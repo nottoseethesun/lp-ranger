@@ -99,29 +99,15 @@
  *   SWAP_ROUTER             V3 SwapRouter (default: 0x7bE8fb…)
  *
  * ═══════════════════════════════════════════════════════════════════════════════
- * USD PRICING — DexScreener + DexTools
+ * USD PRICING — DexScreener
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * Token prices (for P&L display) are resolved in this order:
+ * Token prices (for P&L display) are resolved via:
  *
- *   1. **DexScreener** (primary) — no API key needed.
+ *   **DexScreener** — no API key needed.
  *      Endpoint: GET https://api.dexscreener.com/latest/dex/tokens/{address}
  *      Filters to `chainId === 'pulsechain'` and picks the highest-liquidity pair.
  *      Works for any actively traded pair on PulseChain.
- *
- *   2. **DexTools** (fallback) — requires an API key.
- *      Endpoint: GET https://public-api.dextools.io/free/v2/token/{chain}/{address}/price
- *      Only queried when DexScreener returns no result AND an API key is configured.
- *
- * How to configure DexTools:
- * ─────────────────────────
- *   1. Sign up at https://developer.dextools.io
- *   2. Create a free API key under your dashboard
- *   3. Add to .env:   DEXTOOLS_API_KEY=your-key-here
- *   4. Restart the bot.  The fallback activates automatically.
- *
- * Leave DEXTOOLS_API_KEY blank (the default) to use DexScreener only — it
- * covers the vast majority of PulseChain pairs without any key.
  *
  * Prices are cached in-memory for 60 seconds to reduce API calls.
  * See src/price-fetcher.js for implementation details.
@@ -274,7 +260,6 @@
  * // .env
  * PORT=5555
  * HOST=0.0.0.0
- * DEXTOOLS_API_KEY=           # leave blank for DexScreener-only
  *
  * // start dashboard:
  * node server.js              // → http://localhost:5555

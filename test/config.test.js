@@ -263,7 +263,6 @@ describe("config module shape", () => {
     "POSITION_MANAGER",
     "FACTORY",
     "SWAP_ROUTER",
-    "DEXTOOLS_API_KEY",
     "assertLiveModeReady",
     "VERBOSE",
     "_parsePositiveInt",

@@ -30,9 +30,7 @@ const { fetchTokenPriceUsd } = require("./price-fetcher");
 async function _recomputeGasUsd(result) {
   if (!result.totalGasNative) return;
   try {
-    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken, {
-      dextoolsApiKey: config.DEXTOOLS_API_KEY,
-    });
+    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
     result.ltGas = result.totalGasNative * p;
     if (result.dailyPnl)
       for (const d of result.dailyPnl)
