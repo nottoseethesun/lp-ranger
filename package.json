@@ -31,7 +31,8 @@
     "knip": "knip",
     "nuke": "rm -rf node_modules package-lock.json && echo 'Nuked node_modules + package-lock.json — run npm install to reinstall'",
     "wipe-settings": "bash scripts/wipe-settings.sh",
-    "restore-settings": "bash scripts/restore-settings.sh"
+    "restore-settings": "bash scripts/restore-settings.sh",
+    "swagger": "node scripts/swagger.js"
   },
   "dependencies": {
     "@fontsource/rye": "^5.2.7",
@@ -61,7 +62,8 @@
     "prettier": "^3.8.1",
     "secretlint": "^11.4.1",
     "stylelint": "^17.4.0",
-    "stylelint-config-standard": "^40.0.0"
+    "stylelint-config-standard": "^40.0.0",
+    "swagger-ui-dist": "^5.32.1"
   },
   "overrides": {
     "@uniswap/v3-staker": "1.0.2",

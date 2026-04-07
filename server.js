@@ -123,16 +123,38 @@
  * ROUTES
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- *   GET  /              → public/index.html (dashboard)
- *   GET  /public/*      → static files from public/
- *   GET  /api/status           → JSON: { global, positions: { [key]: {...} } }
- *   POST /api/config           → Update runtime config (throttle params, etc.)
- *   POST /api/position/manage  → Start managing a position (tokenId)
- *   DELETE /api/position/manage → Stop managing a position (key)
- *   GET  /api/positions/managed → List all managed positions with status
- *   POST /api/rebalance        → Force-rebalance a position (positionKey)
- *   POST /api/shutdown         → Graceful shutdown (stops all positions + server)
- *   GET  /health               → 200 OK (used by load-balancers / pm2)
+ *   GET  /                          → public/index.html (dashboard)
+ *   GET  /public/*                  → static files from public/
+ *   GET  /health                    → 200 OK (load-balancers / pm2)
+ *
+ *   Status & Config
+ *   GET  /api/status                → { global, positions: { [key]: {...} } }
+ *   POST /api/config                → Update runtime config (throttle, slippage, etc.)
+ *
+ *   Wallet
+ *   GET  /api/wallet/status         → Wallet address, lock state
+ *   POST /api/wallet                → Import wallet (seed or private key)
+ *   POST /api/wallet/unlock         → Decrypt wallet with password
+ *   POST /api/wallet/reveal         → Return plaintext private key (requires password)
+ *   DELETE /api/wallet              → Delete wallet file from disk
+ *
+ *   Positions
+ *   POST /api/positions/scan        → Scan wallet for up to 300 LP positions
+ *   POST /api/positions/refresh     → Re-read on-chain liquidity for scanned positions
+ *   GET  /api/positions/managed     → List all managed positions with status
+ *   POST /api/position/manage       → Start managing a position (tokenId)
+ *   DELETE /api/position/manage     → Stop managing a position (composite key)
+ *   POST /api/position/details      → Quick details: pool state, value, fees (Phase 1)
+ *   POST /api/position/lifetime     → Lifetime P&L: event scan + epochs (Phase 2, slow)
+ *   GET  /api/position/:tokenId/history → Closed position historical P&L
+ *
+ *   Actions
+ *   POST /api/rebalance             → Force-rebalance a position (positionKey)
+ *   POST /api/compound              → Force-compound fees on a position (positionKey)
+ *   POST /api/shutdown              → Graceful shutdown (stops all positions + server)
+ *
+ *   Full OpenAPI 3.0 spec: docs/openapi.json
+ *   Interactive docs:      npm run swagger → http://localhost:5556
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  * CLIENT-SIDE URL ROUTING
@@ -219,6 +241,11 @@
  *                            Storage & Cookies" to complete the simulation.
  *   npm run restore-settings Restore settings previously backed up by wipe-settings.
  *
+ * API Documentation
+ * ─────────────────
+ *   npm run swagger       Start Swagger UI at http://localhost:5556 — interactive
+ *                         API docs from docs/openapi.json (OpenAPI 3.0 spec).
+ *
  * Dead Code Detection
  * ───────────────────
  *   npm run knip          Knip — finds unused exports, files, and dependencies.
@@ -230,6 +257,7 @@
  *   eslint (v10)          Linter — flat config in eslint.config.js
  *   @eslint/js            ESLint recommended rules
  *   globals               Browser/Node global variable definitions for ESLint
+ *   swagger-ui-dist       Swagger UI static assets for API documentation
  *   knip (v5)             Dead code / unused export detector
  *
  * @example

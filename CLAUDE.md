@@ -44,6 +44,7 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 ├── scripts/check.sh              # Combined lint + test + coverage check
 ├── scripts/copy-fonts.sh         # Copies self-hosted WOFF2 fonts from node_modules to public/fonts/
 ├── scripts/stop.sh               # Graceful shutdown helper (POST /api/shutdown)
+├── scripts/swagger.js            # Swagger UI server for API docs (npm run swagger → :5556)
 ├── scripts/wipe-settings.sh      # Back up user settings to tmp/.settings-backup/ (fresh-install sim)
 ├── scripts/restore-settings.sh   # Restore settings backed up by wipe-settings.sh
 ├── README.md                     # Concise — refers to server.js for details
@@ -235,6 +236,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 npm run nuke           # Delete node_modules + package-lock.json for a clean reinstall
 npm run wipe-settings  # Back up user settings to tmp/.settings-backup/ (fresh-install simulation)
 npm run restore-settings # Restore settings backed up by wipe-settings
+npm run swagger        # Start Swagger UI at http://localhost:5556 (API docs)
 ```
 
 ---

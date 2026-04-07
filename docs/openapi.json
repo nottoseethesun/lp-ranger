@@ -1,0 +1,488 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LP Ranger API",
+    "version": "2.0.0",
+    "description": "REST API for the LP Ranger auto-rebalancing concentrated liquidity manager. Manages V3 NFT positions on 9mm Pro (PulseChain)."
+  },
+  "servers": [
+    { "url": "http://localhost:5555", "description": "Local development" }
+  ],
+  "tags": [
+    { "name": "Status", "description": "Server and position status" },
+    { "name": "Config", "description": "Runtime configuration" },
+    { "name": "Wallet", "description": "Wallet import, unlock, and management" },
+    { "name": "Positions", "description": "Position scanning, management, and details" },
+    { "name": "Rebalance", "description": "Manual rebalance triggers" },
+    { "name": "Compound", "description": "Fee compounding" },
+    { "name": "System", "description": "Health check and shutdown" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health check",
+        "description": "Returns 200 OK with server port and timestamp. Used by load balancers and process managers.",
+        "responses": {
+          "200": {
+            "description": "Server is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "port": { "type": "integer", "example": 5555 },
+                    "ts": { "type": "integer", "description": "Unix timestamp in ms" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "tags": ["Status"],
+        "summary": "Full server and position status",
+        "description": "Returns global server state and per-position bot state. Polled every 3 seconds by the dashboard.",
+        "responses": {
+          "200": {
+            "description": "Status response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "global": {
+                      "type": "object",
+                      "properties": {
+                        "walletAddress": { "type": "string" },
+                        "port": { "type": "integer" },
+                        "rpcUrl": { "type": "string" },
+                        "positionManager": { "type": "string" },
+                        "managedPositions": { "type": "array", "items": { "type": "object" } }
+                      }
+                    },
+                    "positions": {
+                      "type": "object",
+                      "description": "Per-position state keyed by composite key (blockchain-wallet-contract-tokenId)",
+                      "additionalProperties": { "type": "object" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "post": {
+        "tags": ["Config"],
+        "summary": "Update runtime configuration",
+        "description": "Update global or per-position config. Position-specific keys require a positionKey (composite key validated by parseCompositeKey).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "positionKey": { "type": "string", "description": "Composite key (blockchain-wallet-contract-tokenId). Required for position-specific keys." },
+                  "rebalanceOutOfRangeThresholdPercent": { "type": "number" },
+                  "rebalanceTimeoutMin": { "type": "integer" },
+                  "slippagePct": { "type": "number" },
+                  "checkIntervalSec": { "type": "integer" },
+                  "minRebalanceIntervalMin": { "type": "integer" },
+                  "maxRebalancesPerDay": { "type": "integer" },
+                  "gasStrategy": { "type": "string", "enum": ["auto"] },
+                  "initialDepositUsd": { "type": "number" },
+                  "priceOverride0": { "type": "number" },
+                  "priceOverride1": { "type": "number" },
+                  "priceOverrideForce": { "type": "boolean" },
+                  "autoCompoundEnabled": { "type": "boolean" },
+                  "autoCompoundThresholdUsd": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Config saved" },
+          "400": { "description": "Missing or invalid positionKey for position-specific keys" }
+        }
+      }
+    },
+    "/api/wallet/status": {
+      "get": {
+        "tags": ["Wallet"],
+        "summary": "Get wallet status",
+        "description": "Returns whether a wallet is loaded, its address, and lock state.",
+        "responses": {
+          "200": {
+            "description": "Wallet status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hasWallet": { "type": "boolean" },
+                    "address": { "type": "string" },
+                    "locked": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallet/unlock": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Unlock encrypted wallet",
+        "description": "Decrypt the wallet file with the provided password.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["password"],
+                "properties": {
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Wallet unlocked" },
+          "400": { "description": "Missing password" },
+          "401": { "description": "Invalid password" }
+        }
+      }
+    },
+    "/api/wallet": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Import wallet",
+        "description": "Import a wallet via seed phrase or private key. Encrypts and persists to .wallet.json.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "seed": { "type": "string", "description": "BIP-39 mnemonic seed phrase" },
+                  "privateKey": { "type": "string", "description": "Hex private key (alternative to seed)" },
+                  "password": { "type": "string", "description": "Encryption password for disk storage" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Wallet imported and encrypted" },
+          "400": { "description": "Invalid input" }
+        }
+      },
+      "delete": {
+        "tags": ["Wallet"],
+        "summary": "Clear wallet",
+        "description": "Delete the encrypted wallet file from disk.",
+        "responses": {
+          "200": { "description": "Wallet file deleted" }
+        }
+      }
+    },
+    "/api/wallet/reveal": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Reveal wallet private key",
+        "description": "Decrypt and return the plaintext private key. Requires password.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["password"],
+                "properties": {
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Private key returned" },
+          "401": { "description": "Invalid password" }
+        }
+      }
+    },
+    "/api/positions/scan": {
+      "post": {
+        "tags": ["Positions"],
+        "summary": "Scan wallet for LP positions",
+        "description": "Enumerate up to 300 NFT and ERC-20 LP positions for the loaded wallet. Results are cached.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "walletAddress": { "type": "string", "description": "Optional override wallet address" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Scan results with position list" }
+        }
+      }
+    },
+    "/api/positions/refresh": {
+      "post": {
+        "tags": ["Positions"],
+        "summary": "Refresh position liquidity amounts",
+        "description": "Re-read on-chain liquidity for previously scanned positions.",
+        "responses": {
+          "200": { "description": "Refreshed position data" }
+        }
+      }
+    },
+    "/api/positions/managed": {
+      "get": {
+        "tags": ["Positions"],
+        "summary": "List managed positions",
+        "description": "Returns all positions currently managed by the bot with their status.",
+        "responses": {
+          "200": {
+            "description": "List of managed positions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "positions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": { "type": "string" },
+                          "tokenId": { "type": "string" },
+                          "status": { "type": "string", "enum": ["running", "stopped"] }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/position/manage": {
+      "post": {
+        "tags": ["Positions"],
+        "summary": "Start managing a position",
+        "description": "Start a bot loop for the specified NFT position. Requires a loaded wallet with a private key.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tokenId"],
+                "properties": {
+                  "tokenId": { "type": "string", "description": "NFT token ID to manage" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Position started" },
+          "400": { "description": "Missing tokenId or no private key" },
+          "409": { "description": "Position already managed" }
+        }
+      },
+      "delete": {
+        "tags": ["Positions"],
+        "summary": "Stop managing a position",
+        "description": "Stop the bot loop for a position. Sets status to 'stopped' but keeps config data.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["key"],
+                "properties": {
+                  "key": { "type": "string", "description": "Composite key (blockchain-wallet-contract-tokenId)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Position stopped" },
+          "400": { "description": "Missing key" }
+        }
+      }
+    },
+    "/api/position/details": {
+      "post": {
+        "tags": ["Positions"],
+        "summary": "Quick position details (Phase 1)",
+        "description": "Fast fetch of pool state, token prices, value, composition, and current P&L for an unmanaged position.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tokenId", "token0", "token1", "fee"],
+                "properties": {
+                  "tokenId": { "type": "string" },
+                  "token0": { "type": "string" },
+                  "token1": { "type": "string" },
+                  "fee": { "type": "integer" },
+                  "tickLower": { "type": "integer" },
+                  "tickUpper": { "type": "integer" },
+                  "liquidity": { "type": "string" },
+                  "walletAddress": { "type": "string" },
+                  "contractAddress": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Position details with pool state, value, and P&L" },
+          "400": { "description": "Missing required fields" }
+        }
+      }
+    },
+    "/api/position/lifetime": {
+      "post": {
+        "tags": ["Positions"],
+        "summary": "Lifetime P&L (Phase 2)",
+        "description": "Slow fetch: event scan + epoch reconstruction for historical P&L data. May take several minutes on first call (cold cache).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tokenId", "token0", "token1", "fee"],
+                "properties": {
+                  "tokenId": { "type": "string" },
+                  "token0": { "type": "string" },
+                  "token1": { "type": "string" },
+                  "fee": { "type": "integer" },
+                  "walletAddress": { "type": "string" },
+                  "contractAddress": { "type": "string" },
+                  "feesUsd": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Lifetime P&L with daily breakdown, gas costs, and rebalance events" },
+          "400": { "description": "Missing required fields" }
+        }
+      }
+    },
+    "/api/position/{tokenId}/history": {
+      "get": {
+        "tags": ["Positions"],
+        "summary": "Closed position history",
+        "description": "Fetch historical P&L data for a closed (drained) NFT position.",
+        "parameters": [
+          {
+            "name": "tokenId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "NFT token ID"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Historical P&L for the closed position" }
+        }
+      }
+    },
+    "/api/rebalance": {
+      "post": {
+        "tags": ["Rebalance"],
+        "summary": "Force rebalance",
+        "description": "Trigger a manual rebalance for a managed position. Optionally specify a custom range width.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["positionKey"],
+                "properties": {
+                  "positionKey": { "type": "string", "description": "Composite key" },
+                  "customRangeWidthPct": { "type": "number", "description": "Optional custom range width %" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Rebalance requested" },
+          "400": { "description": "Missing positionKey" },
+          "409": { "description": "Position not running" }
+        }
+      }
+    },
+    "/api/compound": {
+      "post": {
+        "tags": ["Compound"],
+        "summary": "Force compound",
+        "description": "Collect unclaimed fees and reinvest as liquidity on the same NFT position.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["positionKey"],
+                "properties": {
+                  "positionKey": { "type": "string", "description": "Composite key" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Compound requested" },
+          "400": { "description": "Missing positionKey" },
+          "409": { "description": "Position not running" }
+        }
+      }
+    },
+    "/api/shutdown": {
+      "post": {
+        "tags": ["System"],
+        "summary": "Graceful shutdown",
+        "description": "Stop all managed positions and shut down the server.",
+        "responses": {
+          "200": { "description": "Shutdown initiated" }
+        }
+      }
+    }
+  }
+}
