@@ -405,7 +405,7 @@ async function _fetchAndApplyScan() {
   const added = _addScannedPositions(data);
   const nftCount = (data.nftPositions || []).length;
   console.log(
-    "[scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d",
+    "[lp-ranger] [scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d",
     nftCount,
     added,
     posStore.count(),
@@ -416,7 +416,7 @@ async function _fetchAndApplyScan() {
     posStore.select(bestIdx >= 0 ? bestIdx : 0);
     const first = posStore.getActive();
     console.log(
-      "[scan] auto-selected #%s %s (idx=%d)",
+      "[lp-ranger] [scan] auto-selected #%s %s (idx=%d)",
       first?.tokenId,
       first ? emojiId(first.tokenId) : "",
       bestIdx,
@@ -429,7 +429,7 @@ async function _fetchAndApplyScan() {
   } else if (posStore.activeIdx >= 0) {
     const cur = posStore.getActive();
     console.log(
-      "[scan] already selected #%s %s (idx=%d) — skipping",
+      "[lp-ranger] [scan] already selected #%s %s (idx=%d) — skipping",
       cur?.tokenId,
       cur ? emojiId(cur.tokenId) : "",
       posStore.activeIdx,
@@ -470,7 +470,7 @@ export async function scanPositions(opts) {
       if (!opts || opts.navigate !== false) await _syncAfterManualScan();
     }
   } catch (e) {
-    console.error("Position scan failed:", e.message);
+    console.error("[lp-ranger] Position scan failed:", e.message);
     if (!silent) act(ACT_ICONS.warn, "alert", "Scan Failed", e.message);
   } finally {
     if (btn && !silent) {
@@ -547,6 +547,9 @@ async function _backgroundRefresh() {
     }
     renderPosBrowser();
   } catch (e) {
-    console.warn("[dashboard] Background refresh failed:", e.message);
+    console.warn(
+      "[lp-ranger] [dashboard] Background refresh failed:",
+      e.message,
+    );
   }
 }

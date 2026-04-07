@@ -185,7 +185,7 @@ export function saveInitialDeposit() {
               active.tokenId,
             )
           : undefined;
-      console.log("[deposit] save %s to %s", amount, pk);
+      console.log("[lp-ranger] [deposit] save %s to %s", amount, pk);
       await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -29,7 +29,7 @@ import {
 } from "./dashboard-price-override.js";
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import { renderDailyPnl, renderRebalanceEvents } from "./dashboard-history.js";
-import { posStore } from "./dashboard-positions.js";
+import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { enterClosedPosView } from "./dashboard-closed-pos.js";
 
 const _ALL_KPIS = [
@@ -115,7 +115,7 @@ function _applyLifetime(d) {
   setKpiValue("kpiNet", _adjCompounded(d.ltNetPnl, d.netPnl, comp));
   setKpiValue("ltProfit", _adjCompounded(d.ltProfit, d.profit, comp));
   if (d.il !== null && d.il !== undefined) setKpiValue("netIL", d.il);
-  console.log("[unmanaged] lifetime entryValue=%s", d.entryValue);
+  console.log("[lp-ranger] [unmanaged] lifetime entryValue=%s", d.entryValue);
   const ltDep = g("lifetimeDepositDisplay");
   if (ltDep && d.entryValue > 0)
     ltDep.textContent = "$usd " + d.entryValue.toFixed(2);
@@ -173,7 +173,7 @@ function _applyCurrentKpis(d) {
   setKpiValue("pnlFees", d.feesUsd);
   setKpiValue("pnlPrice", d.priceGainLoss);
   console.log(
-    "[unmanaged] phase1 entryValue=%s baseline=%s",
+    "[lp-ranger] [unmanaged] phase1 entryValue=%s baseline=%s",
     d.entryValue,
     d.baselineEntryValue,
   );
@@ -209,7 +209,7 @@ function _apply(d, pos) {
       "9mm-pos-mgr-pos-status " + (closed ? "closed" : "active");
   }
   console.log(
-    "[unmanaged] prices: p0=%s p1=%s fetched0=%s fetched1=%s",
+    "[lp-ranger] [unmanaged] prices: p0=%s p1=%s fetched0=%s fetched1=%s",
     d.price0,
     d.price1,
     d.fetchedPrice0,
@@ -329,7 +329,7 @@ async function _phase1(pos, body) {
     });
     const d = await r.json();
     if (!d.ok) {
-      console.warn("[unmanaged] details error:", d.error);
+      console.warn("[lp-ranger] [unmanaged] details error:", d.error);
       return false;
     }
     if (_isResponseDrained(d)) {
@@ -340,13 +340,17 @@ async function _phase1(pos, body) {
     _apply(d, pos);
     body.feesUsd = d.feesUsd;
   } catch (e) {
-    console.warn("[unmanaged] phase 1 failed:", e.message);
+    console.warn("[lp-ranger] [unmanaged] phase 1 failed:", e.message);
   }
   return false;
 }
 
-/** Set the sync badge to its "done" state. */
+/** Set the sync badge to its "done" state.
+ *  Skips if the position has since been recognized as managed — the managed
+ *  poll path controls lifetime readiness via _syncManagedReady instead. */
 function _markSynced(badge) {
+  const a = posStore.getActive();
+  if (a && isPositionManaged(a.tokenId)) return;
   setLifetimeReady(true);
   if (badge) {
     badge.textContent = "Synced";
@@ -367,7 +371,7 @@ async function _phase2(body, gen, badge) {
     const d2 = await r2.json();
     if (d2.ok) _applyLifetime(d2);
   } catch (e) {
-    console.warn("[unmanaged] phase 2 failed:", e.message);
+    console.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
   }
   if (gen === _fetchGen) _markSynced(badge);
 }
