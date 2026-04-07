@@ -180,6 +180,10 @@ See `src/key-store.js` for details and `.env.example` for the template.
 
 ## Configuration & Development
 
+For an overview of LP Ranger's architecture — how the bot and dashboard
+interact, the rebalance pipeline, P&L tracking, and security model — see
+**[`docs/architecture.md`](docs/architecture.md)**.
+
 **For all details** — environment variables, contract addresses, pricing API
 setup, development tools, and architecture — see the file-header JSDoc of
 **[`server.js`](server.js)**.  That is the authoritative reference for this
