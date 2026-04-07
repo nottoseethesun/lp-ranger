@@ -228,6 +228,9 @@
  *                         command — use the Settings gear icon → "Clear Local Storage
  *                         & Cookies" in the dashboard, or open DevTools → Application
  *                         → Local Storage → Clear All.
+ *   npm run dev-clean     Same as clean but preserves the historical price cache
+ *                         (tmp/historical-price-cache.json) for faster restart during
+ *                         development.  Avoids re-fetching GeckoTerminal OHLCV data.
  *
  * Housekeeping
  * ────────────
