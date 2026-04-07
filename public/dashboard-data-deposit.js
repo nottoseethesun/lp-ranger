@@ -137,11 +137,13 @@ export function loadInitialDeposit() {
 export function refreshDepositLabel() {
   const s = loadInitialDeposit(),
     d = g("lifetimeDepositDisplay"),
-    l = g("initialDepositLabel");
+    l = g("initialDepositLabel"),
+    k = g("kpiDeposit");
   if (d) d.textContent = s > 0 ? "$usd " + s.toFixed(2) : "\u2014";
   if (l)
     l.textContent =
       s > 0 ? "Initial Deposit: $" + s.toFixed(2) : "Edit Initial Deposit";
+  if (k && s > 0) k.textContent = "$usd " + s.toFixed(2);
 }
 export function loadCurDeposit() {
   return _loadNum(_posKey("9mm_deposit_pos_"), false);

@@ -96,6 +96,7 @@ export function _resetCurrentKpis() {
     "curProfit",
     "curIL",
   ]);
+  _setDepositDisplay(0);
 }
 /** Set KPI with USD value and sign-colored class. */
 export function setKpiValue(id, val) {
@@ -198,7 +199,7 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   if (curGas > 0 && curGas < 0.01) {
     const el = g("pnlGas");
     if (el) {
-      el.textContent = "< $usd 0.01, > 0";
+      el.textContent = "< $0.01";
       el.className = el.className.replace(/\b(pos|neg|neu)\b/g, "").trim();
       el.classList.add("neg");
     }
@@ -225,7 +226,7 @@ export function _botDetectedDeposit(d) {
   return d.pnlSnapshot ? d.pnlSnapshot.initialDeposit || 0 : 0;
 }
 export function _resolveCurDeposit(d) {
-  const saved = loadCurDeposit();
+  const saved = loadCurDeposit() || loadInitialDeposit();
   if (saved > 0) return saved;
   return d.hodlBaseline?.entryValue > 0
     ? d.hodlBaseline.entryValue
