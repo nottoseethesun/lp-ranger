@@ -16,7 +16,7 @@
 "use strict";
 const ethers = require("ethers");
 const config = require("./config");
-const { getCachedEpochs } = require("./epoch-cache");
+const { getCachedEpochs, getCachedLifetimeHodl } = require("./epoch-cache");
 const rangeMath = require("./range-math");
 const { createThrottle } = require("./throttle");
 const { emojiId } = require("./logger");
@@ -84,10 +84,12 @@ function _initPnlTracker(
       token1UsdPrice: price1,
     });
   }
+  const cachedHodl = _epochKey ? getCachedLifetimeHodl(_epochKey) : null;
+  if (cachedHodl) botState.lifetimeHodlAmounts = cachedHodl;
   console.log(
     `[bot] P&L tracker initialized (T0=$${price0.toFixed(6)}, T1=$${price1.toFixed(6)})`,
   );
-  return tracker;
+  return { tracker, epochKey: _epochKey };
 }
 
 /**
@@ -176,7 +178,7 @@ async function _tryInitPnlTracker(
         ps.decimals0,
         ps.decimals1,
       );
-      const t = _initPnlTracker(
+      const { tracker: t, epochKey: ek } = _initPnlTracker(
         _positionValueUsd(position, ps, price0, price1) || 1,
         botState,
         ps,
@@ -188,6 +190,7 @@ async function _tryInitPnlTracker(
         walletAddress,
       );
       updateBotState({ pnlEpochs: t.serialize() });
+      t._epochKey = ek;
       return t;
     }
     console.warn("[bot] Could not fetch token prices — P&L tracking disabled");
@@ -409,6 +412,7 @@ async function startBotLoop(opts) {
         throttle,
         pnlTracker,
         botState,
+        pnlTracker?._epochKey,
       );
       await poll();
     } finally {
@@ -456,4 +460,7 @@ module.exports = {
   resolvePrivateKey,
   startBotLoop,
   _overridePnlWithRealValues,
+  _initPnlTracker,
+  _detectPosition,
+  _tryInitPnlTracker,
 };

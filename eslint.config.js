@@ -164,7 +164,10 @@ module.exports = [
     rules: {
       ...SHARED_RULES,
       strict: "off",
-      "no-console": ["warn", { allow: ["log", "warn", "error", "info"] }],
+      "no-console": [
+        "warn",
+        { allow: ["log", "warn", "error", "info", "debug"] },
+      ],
     },
   },
 

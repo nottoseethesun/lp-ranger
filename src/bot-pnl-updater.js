@@ -178,31 +178,47 @@ function _computeLifetimeFees(snap, deps, feesUsd) {
   const collected = Math.max(deps._collectedFeesUsd || 0, compounded);
   return Math.max(collected, cf) + feesUsd;
 }
-function _hodlAmounts(source, bl) {
+/** Compute HODL IL for a given pair of token amounts. */
+function _ilFor(realValue, a0, a1, price0, price1) {
+  return a0 > 0 || a1 > 0
+    ? computeHodlIL({
+        lpValue: realValue,
+        hodlAmount0: a0,
+        hodlAmount1: a1,
+        currentPrice0: price0,
+        currentPrice1: price1,
+      })
+    : undefined;
+}
+
+/** Pick the larger of two candidate amounts. */
+function _maxAmount(a, b) {
+  return a > b ? a : b;
+}
+
+/** Resolve lifetime HODL amounts from best available source. */
+function _lifetimeAmounts(deps, snap) {
+  const ltHodl = deps._botState?.lifetimeHodlAmounts;
+  const bl = deps._botState?.hodlBaseline;
+  const first = Array.isArray(snap.closedEpochs) ? snap.closedEpochs[0] : null;
+  // Use the larger of lifetime scan vs current baseline — the baseline
+  // always reflects actual deposited amounts including coins added
+  // during a rebalance (which the event scan can't distinguish).
+  const lt0 = ltHodl?.amount0 || first?.hodlAmount0 || 0;
+  const lt1 = ltHodl?.amount1 || first?.hodlAmount1 || 0;
   return {
-    a0: source?.hodlAmount0 || bl?.hodlAmount0 || 0,
-    a1: source?.hodlAmount1 || bl?.hodlAmount1 || 0,
+    a0: _maxAmount(lt0, bl?.hodlAmount0 || 0),
+    a1: _maxAmount(lt1, bl?.hodlAmount1 || 0),
   };
 }
 
 function _computeIL(snap, deps, realValue, price0, price1) {
   const bl = deps._botState?.hodlBaseline;
-  const _il = (a0, a1) =>
-    a0 > 0 || a1 > 0
-      ? computeHodlIL({
-          lpValue: realValue,
-          hodlAmount0: a0,
-          hodlAmount1: a1,
-          currentPrice0: price0,
-          currentPrice1: price1,
-        })
-      : undefined;
   const curA0 = bl?.hodlAmount0 || 0,
     curA1 = bl?.hodlAmount1 || 0;
-  snap.totalIL = _il(curA0, curA1);
-  const first = Array.isArray(snap.closedEpochs) ? snap.closedEpochs[0] : null;
-  const { a0, a1 } = _hodlAmounts(first, bl);
-  snap.lifetimeIL = _il(a0, a1);
+  snap.totalIL = _ilFor(realValue, curA0, curA1, price0, price1);
+  const { a0, a1 } = _lifetimeAmounts(deps, snap);
+  snap.lifetimeIL = _ilFor(realValue, a0, a1, price0, price1);
   snap.ilInputs = {
     lpValue: realValue,
     price0,
@@ -471,4 +487,7 @@ module.exports = {
   actualGasCostUsd,
   updatePnlAndStats,
   _applyMintGas,
+  _lifetimeAmounts,
+  _ilFor,
+  _maxAmount,
 };

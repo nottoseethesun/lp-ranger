@@ -375,11 +375,19 @@ function _syncManagedAndGlobals(data) {
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";
 const _LO = "color:#0f0;background:#012;padding:1px 4px;border-radius:2px";
+function _applyManagedUpdates(data, managed) {
+  if (!managed) return;
+  _syncActivePosition(data);
+  _updatePositionTicks(data);
+  _updateComposition(data);
+  checkHodlBaselineDialog(data);
+}
+
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
   const _tid = posStore.getActive()?.tokenId;
-  console.log(
-    "%c[lp-ranger] poll #%s hasPosData=%s stats=%s pool=%s",
+  console.debug(
+    "%c[lp-ranger] [poll] #%s hasPosData=%s stats=%s pool=%s",
     _LC,
     _tid,
     data._hasPositionData,
@@ -410,23 +418,22 @@ function updateDashboardFromStatus(data) {
   _updatePriceMarker(data);
   if (isViewingClosedPos()) return;
   const _a2 = posStore.getActive();
-  if (_a2 && !isPositionManaged(_a2.tokenId)) {
-    console.log("%c[lp-ranger] skip: #%s not managed", _LW, _a2.tokenId);
+  const _managed = _a2 && isPositionManaged(_a2.tokenId);
+  if (!_managed && !data._hasPositionData) {
+    console.debug("%c[lp-ranger] [skip] #%s no data yet", _LW, _a2?.tokenId);
     return;
   }
-  console.log(
-    "%c[lp-ranger] managed #%s comp=%s",
+  console.debug(
+    "%c[lp-ranger] [update] #%s managed=%s comp=%s",
     _LO,
     _a2?.tokenId,
+    _managed,
     data.positionStats?.compositionRatio,
   );
   _updateLifetimeKpis(data);
-  _syncActivePosition(data);
   _updatePosStatus(data, _scanWasComplete);
   _updateKpis(data);
-  _updatePositionTicks(data);
-  _updateComposition(data);
-  checkHodlBaselineDialog(data);
+  _applyManagedUpdates(data, _managed);
   reapplyPrivacyBlur();
   clearDirtyInputs();
 }

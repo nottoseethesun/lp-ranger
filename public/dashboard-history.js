@@ -98,25 +98,25 @@ export function renderDailyPnl(dailyPnl) {
         "</td>" +
         "<td>" +
         v(gas) +
-        '</td><td class="' +
+        '</td><td class="9mm-pos-mgr-text-right ' +
         (mp ? "" : cc(ilg)) +
         '">' +
         v(ilg) +
         "</td>" +
-        '<td class="' +
+        '<td class="9mm-pos-mgr-text-right ' +
         (mp ? "" : cc(profit)) +
         '">' +
         v(profit) +
         "</td>" +
-        '<td class="' +
+        '<td class="9mm-pos-mgr-text-right ' +
         (mp ? "" : cc(nets[i])) +
         '">' +
         v(nets[i]) +
-        '</td><td class="' +
+        '</td><td class="9mm-pos-mgr-text-right ' +
         (mp ? "" : cc(res)) +
         '">' +
         v(res) +
-        '</td><td class="' +
+        '</td><td class="9mm-pos-mgr-text-right ' +
         cc(cums[i]) +
         '">' +
         _tblUsd(cums[i]) +

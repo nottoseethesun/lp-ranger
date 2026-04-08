@@ -211,6 +211,15 @@
  *   npm run test:watch    Re-run tests on file changes
  *   npm run check         Combined lint + test + 80% coverage gate (matches CI)
  *
+ * CAUTION: `npm run check` (and `npm test`) actively write to config and cache
+ * files during test execution.  Those files are backed up before the tests start
+ * and restored automatically when the process exits.  However, if you Ctrl-C the
+ * process mid-run, the restore may not complete and the files will be left in a
+ * state that is only appropriate for the automated tests (stub position keys,
+ * missing managed positions, etc.).  Always let tests and checks finish before
+ * interrupting.  If you do fall into this problem, run `npm run clean` — the app
+ * will run full-length blockchain wallet scans on next start to rebuild caches.
+ *
  * Wallet Management
  * ─────────────────
  *   npm run reset-wallet  Delete .wallet.json + clear WALLET_PASSWORD from .env.
@@ -247,6 +256,19 @@
  *   npm run knip          Knip — finds unused exports, files, and dependencies.
  *                         Note: the 8 public/dashboard-*.js files are false
  *                         positives because knip cannot trace HTML <script> tags.
+ *
+ * Debugging
+ * ─────────
+ *   Server logs are printed to the terminal (stdout/stderr) with bracketed
+ *   prefixes like [bot], [server], [rebalance], [compound], [event-scanner].
+ *   Use --verbose (-v) for additional per-cycle detail.
+ *
+ *   Browser console logs use the [lp-ranger] prefix with a colored log-type
+ *   signifier, e.g. [lp-ranger] [scan], [lp-ranger] [unmanaged].  High-
+ *   frequency per-poll-cycle logs ([poll], [update], [skip], [deposit]) use
+ *   console.debug and are hidden by default in Chrome DevTools.  To see them,
+ *   open DevTools → Console → click the log-level dropdown (defaults to
+ *   "Default levels") and enable "Verbose".
  *
  * DevDependencies
  * ───────────────

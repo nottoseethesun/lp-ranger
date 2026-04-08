@@ -299,7 +299,8 @@ export function updateRouteForWallet(address) {
 export function syncRouteToState(active) {
   const curPath = _currentPath();
   console.log(
-    "[lp-ranger] [dash] syncRouteToState: active=#%s contract=%s router=%s wallet=%s cur=%s",
+    "%c[lp-ranger] [dash] syncRouteToState: active=#%s contract=%s router=%s wallet=%s cur=%s",
+    "color:#c8f",
     active?.tokenId,
     active?.contractAddress || "none",
     !!_router,
@@ -321,7 +322,11 @@ export function syncRouteToState(active) {
   if (!target) return;
   if (curPath.toLowerCase() === target.toLowerCase()) return;
 
-  console.log("[lp-ranger] [dash] syncRouteToState: navigating to %s", target);
+  console.log(
+    "%c[lp-ranger] [dash] syncRouteToState: navigating to %s",
+    "color:#c8f",
+    target,
+  );
   _router.navigate(target, {
     callHandler: false,
     historyAPIMethod: "replaceState",

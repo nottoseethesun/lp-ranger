@@ -260,4 +260,11 @@ async function reconstructEpochs({
   return closedEpochs.length;
 }
 
-module.exports = { reconstructEpochs, _buildClosedEpoch };
+module.exports = {
+  reconstructEpochs,
+  _buildClosedEpoch,
+  _cacheKeyFromState,
+  _mergeAndPersist,
+  _hasValidTimestamps,
+  _assembleEpoch,
+};

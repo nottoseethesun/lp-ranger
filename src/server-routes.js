@@ -230,6 +230,31 @@ function createRouteHandlers(deps) {
     }
   }
 
+  /** Sync lifetime result into the position's bot state for poll access. */
+  function _syncLifetimeState(pk, result) {
+    if (!pk) return;
+    const states = getAllPositionBotStates();
+    const s = states.get(pk) || {};
+    s.rebalanceScanComplete = true;
+    // pnlSnapshot is already enriched by computeLifetimeDetails with
+    // currentValue, lifetimeIL, totalCompoundedUsd, initialDeposit.
+    if (result.pnlSnapshot) s.pnlSnapshot = result.pnlSnapshot;
+    if (result.entryValue) s.entryValue = result.entryValue;
+    const bl = diskConfig.positions[pk]?.hodlBaseline;
+    if (bl) s.hodlBaseline = bl;
+    if (!states.has(pk)) states.set(pk, s);
+    const _sn = s.pnlSnapshot;
+    console.log(
+      "[server] _syncLifetimeState %s: fees=%s gas=%s comp=%s entry=%s bl=%s",
+      pk.split("-").pop(),
+      _sn?.totalFees,
+      _sn?.totalGas,
+      _sn?.totalCompoundedUsd,
+      s.entryValue || "none",
+      !!s.hodlBaseline,
+    );
+  }
+
   async function _handlePositionLifetime(req, res) {
     const body = await readJsonBody(req);
     if (!body.tokenId || !body.token0 || !body.token1 || !body.fee)
@@ -267,13 +292,7 @@ function createRouteHandlers(deps) {
         body.contractAddress,
         body.tokenId,
       );
-      if (pk) {
-        const states = getAllPositionBotStates();
-        const s = states.get(pk) || {};
-        s.rebalanceScanComplete = true;
-        if (result.pnlSnapshot) s.pnlSnapshot = result.pnlSnapshot;
-        if (!states.has(pk)) states.set(pk, s);
-      }
+      _syncLifetimeState(pk, result);
       jsonResponse(res, 200, result);
     } catch (err) {
       console.error("[server] Lifetime details error:", err.message);

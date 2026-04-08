@@ -73,7 +73,8 @@ export function _loadPosStore() {
       else if (isPositionClosed(deduped[idx])) idx = bestAutoSelectIdx();
       posStore.activeIdx = idx;
       console.log(
-        "[lp-ranger] [posStore] loaded %d positions from localStorage, activeIdx=%d",
+        "%c[lp-ranger] [posStore] loaded %d positions from localStorage, activeIdx=%d",
+        "color:#cf8",
         deduped.length,
         idx,
       );
@@ -319,7 +320,8 @@ function _tokenLabelHtml(symbol, address) {
 export function isPositionClosed(pos) {
   if (pos.liquidity === undefined || pos.liquidity === null) {
     console.warn(
-      "[lp-ranger] [posStore] NFT #%s %s has no liquidity data",
+      "%c[lp-ranger] [posStore] NFT #%s %s has no liquidity data",
+      "color:#cf8",
       pos.tokenId,
       emojiId(pos.tokenId),
     );
@@ -361,7 +363,8 @@ export function bestAutoSelectIdx() {
   const tier =
     best.managed >= 0 ? "managed" : best.open >= 0 ? "open" : "closed";
   console.log(
-    "[lp-ranger] [posStore] bestAutoSelect: total=%d managed=%d open=%d closed=%d noLiq=%d → #%s %s (idx=%d, liq=%s, tier=%s)",
+    "%c[lp-ranger] [posStore] bestAutoSelect: total=%d managed=%d open=%d closed=%d noLiq=%d → #%s %s (idx=%d, liq=%s, tier=%s)",
+    "color:#cf8",
     posStore.entries.length,
     counts.managed,
     counts.open,

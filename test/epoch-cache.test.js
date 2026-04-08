@@ -80,4 +80,28 @@ describe("epoch-cache", () => {
     assert.strictEqual(got.closedEpochs[1].id, 2);
     assert.strictEqual(got.closedEpochs[2].id, 3);
   });
+
+  it("stores and retrieves lifetime HODL amounts", () => {
+    const {
+      setCachedLifetimeHodl,
+      getCachedLifetimeHodl,
+    } = require("../src/epoch-cache");
+    const key = { wallet: "0xABC", token0: "0xT0", token1: "0xT1", fee: 500 };
+    assert.strictEqual(getCachedLifetimeHodl(key), null);
+    setCachedLifetimeHodl(key, { amount0: 100, amount1: 200 });
+    const got = getCachedLifetimeHodl(key);
+    assert.strictEqual(got.amount0, 100);
+    assert.strictEqual(got.amount1, 200);
+  });
+
+  it("stores and retrieves lastNftScanBlock", () => {
+    const {
+      setLastNftScanBlock,
+      getLastNftScanBlock,
+    } = require("../src/epoch-cache");
+    const key = { wallet: "0xABC", token0: "0xT0", token1: "0xT1", fee: 500 };
+    assert.strictEqual(getLastNftScanBlock(key), 0);
+    setLastNftScanBlock(key, 12345);
+    assert.strictEqual(getLastNftScanBlock(key), 12345);
+  });
 });

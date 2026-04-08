@@ -25,6 +25,10 @@
 
 - **Maintain coverage at least 1% above the minimum** — Node 22 and Node 24 report slightly different coverage numbers due to instrumentation differences. If local coverage is at 80.01% (minimum 80%), it may report 79.97% on CI. Always ensure coverage is at least 81% locally to avoid CI flakes from rounding variance.
 
+## RPC & Network
+
+- **Never duplicate RPC calls** — when multiple features need the same on-chain data (e.g. IncreaseLiquidity events for both compound detection and HODL baseline), fetch once and pass the results to all consumers. RPC calls are slow, rate-limited, and costly at scale. Design data-fetching as a separate layer from classification/business logic so the same raw data can be reused. This is a high priority in all designs.
+
 ## Debugging & Investigation
 
 - **Trace the COMPLETE data flow before writing fixes** — do not make incremental guesses. Read every function in the chain from trigger to effect. Identify the exact line where the bug manifests. A fix that addresses the wrong layer creates a new bug.

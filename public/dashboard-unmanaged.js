@@ -115,7 +115,11 @@ function _applyLifetime(d) {
   setKpiValue("kpiNet", _adjCompounded(d.ltNetPnl, d.netPnl, comp));
   setKpiValue("ltProfit", _adjCompounded(d.ltProfit, d.profit, comp));
   if (d.il !== null && d.il !== undefined) setKpiValue("netIL", d.il);
-  console.log("[lp-ranger] [unmanaged] lifetime entryValue=%s", d.entryValue);
+  console.log(
+    "%c[lp-ranger] [unmanaged] lifetime entryValue=%s",
+    "color:#fa0",
+    d.entryValue,
+  );
   const ltDep = g("lifetimeDepositDisplay");
   if (ltDep && d.entryValue > 0)
     ltDep.textContent = "$usd " + d.entryValue.toFixed(2);
@@ -173,7 +177,8 @@ function _applyCurrentKpis(d) {
   setKpiValue("pnlFees", d.feesUsd);
   setKpiValue("pnlPrice", d.priceGainLoss);
   console.log(
-    "[lp-ranger] [unmanaged] phase1 entryValue=%s baseline=%s",
+    "%c[lp-ranger] [unmanaged] phase1 entryValue=%s baseline=%s",
+    "color:#fa0",
     d.entryValue,
     d.baselineEntryValue,
   );
@@ -209,7 +214,8 @@ function _apply(d, pos) {
       "9mm-pos-mgr-pos-status " + (closed ? "closed" : "active");
   }
   console.log(
-    "[lp-ranger] [unmanaged] prices: p0=%s p1=%s fetched0=%s fetched1=%s",
+    "%c[lp-ranger] [unmanaged] prices: p0=%s p1=%s fetched0=%s fetched1=%s",
+    "color:#fa0",
     d.price0,
     d.price1,
     d.fetchedPrice0,

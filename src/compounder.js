@@ -378,17 +378,25 @@ async function _fetchCompoundGas(prov, compoundEvents) {
   return { compounds, totalGasWei };
 }
 
-async function detectCompoundsOnChain(tokenId, opts = {}) {
+/**
+ * Fetch IncreaseLiquidity, Collect, and DecreaseLiquidity logs for one NFT.
+ * Single RPC round-trip (3 parallel getLogs).  Pure data — no classification.
+ * @param {string|number} tokenId
+ * @param {{ fromBlock?: number }} [scanOpts]
+ * @returns {Promise<{ilEvents: object[], collectEvents: object[], dlEvents: object[], ilLogsCount: number}>}
+ */
+async function scanNftEvents(tokenId, scanOpts = {}) {
   const ethers = require("ethers");
   const iface = new ethers.Interface(PM_ABI);
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const addr = config.POSITION_MANAGER;
+  const from = scanOpts.fromBlock ?? 0;
   const [ilLogs, colLogs, dlLogs] = await Promise.all([
     prov
       .getLogs({
         address: addr,
-        fromBlock: 0,
+        fromBlock: from,
         toBlock: "latest",
         topics: [iface.getEvent("IncreaseLiquidity").topicHash, tidHex],
       })
@@ -396,7 +404,7 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
     prov
       .getLogs({
         address: addr,
-        fromBlock: 0,
+        fromBlock: from,
         toBlock: "latest",
         topics: [iface.getEvent("Collect").topicHash, tidHex],
       })
@@ -404,20 +412,37 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
     prov
       .getLogs({
         address: addr,
-        fromBlock: 0,
+        fromBlock: from,
         toBlock: "latest",
         topics: [iface.getEvent("DecreaseLiquidity").topicHash, tidHex],
       })
       .catch(() => []),
   ]);
-  const candidateILs = _parseLogs(iface, ilLogs).slice(1); // skip first = mint
-  const compoundEvents = _filterRebalances(
-    candidateILs,
-    _parseLogs(iface, dlLogs),
-  );
+  return {
+    ilEvents: _parseLogs(iface, ilLogs),
+    collectEvents: _parseLogs(iface, colLogs),
+    dlEvents: _parseLogs(iface, dlLogs),
+    ilLogsCount: ilLogs.length,
+  };
+}
+
+/**
+ * Classify compound events from pre-fetched NFT events.
+ * First IL = mint (skipped); subsequent non-rebalance ILs = compounds,
+ * capped per-token by total Collect amounts.
+ * @param {{ ilEvents, collectEvents, dlEvents, ilLogsCount }} nftEvents
+ * @param {object} opts  { decimals0, decimals1, price0, price1, token0Symbol, token1Symbol, wallet, tokenId }
+ * @returns {Promise<{compounds: object[], totalCompoundedUsd: number, totalGasWei: string}>}
+ */
+async function classifyCompounds(nftEvents, opts = {}) {
+  const ethers = require("ethers");
+  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const { ilEvents, collectEvents, dlEvents, ilLogsCount } = nftEvents;
+  const candidateILs = ilEvents.slice(1); // skip first = mint
+  const compoundEvents = _filterRebalances(candidateILs, dlEvents);
   let totalCollected0 = 0n,
     totalCollected1 = 0n;
-  for (const e of _parseLogs(iface, colLogs)) {
+  for (const e of collectEvents) {
     totalCollected0 += e.amount0 ?? 0n;
     totalCollected1 += e.amount1 ?? 0n;
   }
@@ -442,7 +467,7 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
   const s1 = opts.token1Symbol || "Token1";
   if (compounds.length > 0) {
     const chain = config.CHAIN_NAME || "PulseChain";
-    const nft = "#" + tokenId + " " + emojiId(tokenId);
+    const nft = "#" + (opts.tokenId || "?") + " " + emojiId(opts.tokenId);
     console.log(
       "[compound] %s %s %s %s/%s: %d IncreaseLiquidity (%d compounds), %d Collect",
       chain,
@@ -450,9 +475,9 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
       nft,
       s0,
       s1,
-      ilLogs.length,
+      ilLogsCount,
       compounds.length,
-      colLogs.length,
+      collectEvents.length,
     );
     console.log(
       "[compound]   compounded: %s=%s %s=%s (capped: %s=%s %s=%s) → $%s",
@@ -470,10 +495,22 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
   return { compounds, totalCompoundedUsd, totalGasWei: String(totalGasWei) };
 }
 
+/**
+ * Detect historical compounds for a single NFT (backward-compat wrapper).
+ * Fetches events via scanNftEvents, then classifies via classifyCompounds.
+ */
+async function detectCompoundsOnChain(tokenId, opts = {}) {
+  const nftEvents = await scanNftEvents(tokenId);
+  return classifyCompounds(nftEvents, { ...opts, tokenId });
+}
+
 module.exports = {
   collectFees,
   addLiquidity,
   executeCompound,
   detectCompoundsOnChain,
+  scanNftEvents,
+  classifyCompounds,
   _filterRebalances,
+  _parseLogs,
 };

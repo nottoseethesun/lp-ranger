@@ -13,12 +13,16 @@ describe("compounder", () => {
     // Access the internal via module — the function is used by addLiquidity
     // but not directly exported; test indirectly through executeCompound mock
 
-    it("module exports collectFees, addLiquidity, executeCompound, detectCompoundsOnChain", () => {
+    it("module exports all expected functions", () => {
       const mod = require("../src/compounder");
       assert.equal(typeof mod.collectFees, "function");
       assert.equal(typeof mod.addLiquidity, "function");
       assert.equal(typeof mod.executeCompound, "function");
       assert.equal(typeof mod.detectCompoundsOnChain, "function");
+      assert.equal(typeof mod.scanNftEvents, "function");
+      assert.equal(typeof mod.classifyCompounds, "function");
+      assert.equal(typeof mod._filterRebalances, "function");
+      assert.equal(typeof mod._parseLogs, "function");
     });
   });
 

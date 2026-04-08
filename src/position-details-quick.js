@@ -308,4 +308,5 @@ module.exports = {
   // Shared helpers used by position-details.js (lifetime path)
   _currentPnl,
   _applyPriceOverrides,
+  _baselineSummary,
 };

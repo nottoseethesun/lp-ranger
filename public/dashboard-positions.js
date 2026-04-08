@@ -405,7 +405,8 @@ async function _fetchAndApplyScan() {
   const added = _addScannedPositions(data);
   const nftCount = (data.nftPositions || []).length;
   console.log(
-    "[lp-ranger] [scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d",
+    "%c[lp-ranger] [scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d",
+    "color:#0cf",
     nftCount,
     added,
     posStore.count(),
@@ -416,7 +417,8 @@ async function _fetchAndApplyScan() {
     posStore.select(bestIdx >= 0 ? bestIdx : 0);
     const first = posStore.getActive();
     console.log(
-      "[lp-ranger] [scan] auto-selected #%s %s (idx=%d)",
+      "%c[lp-ranger] [scan] auto-selected #%s %s (idx=%d)",
+      "color:#0cf",
       first?.tokenId,
       first ? emojiId(first.tokenId) : "",
       bestIdx,
@@ -429,7 +431,8 @@ async function _fetchAndApplyScan() {
   } else if (posStore.activeIdx >= 0) {
     const cur = posStore.getActive();
     console.log(
-      "[lp-ranger] [scan] already selected #%s %s (idx=%d) — skipping",
+      "%c[lp-ranger] [scan] already selected #%s %s (idx=%d) — skipping",
+      "color:#0cf",
       cur?.tokenId,
       cur ? emojiId(cur.tokenId) : "",
       posStore.activeIdx,

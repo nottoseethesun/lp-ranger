@@ -227,6 +227,9 @@ async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
     const iface = new ethers.Interface(PM_ABI);
     const receipt = await provider.getTransactionReceipt(txHash);
     if (!receipt) return null;
+    const gasWei =
+      (receipt.gasUsed ?? 0n) *
+      (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
     const tid = BigInt(tokenId);
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== config.POSITION_MANAGER.toLowerCase())
@@ -241,18 +244,34 @@ async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
         return {
           amount0: parsed.args.amount0,
           amount1: parsed.args.amount1,
+          gasWei,
         };
       } catch {
         /* not our event */
       }
     }
-    return null;
+    return { amount0: null, amount1: null, gasWei };
   } catch (err) {
     console.warn(
       "[history] Receipt parse failed for " + eventName + " in " + txHash + ":",
       err.message,
     );
     return null;
+  }
+}
+
+/** Fetch gas cost from a TX receipt. */
+async function _receiptGasWei(txHash, provider) {
+  if (!txHash) return 0n;
+  try {
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) return 0n;
+    return (
+      (receipt.gasUsed ?? 0n) *
+      (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n)
+    );
+  } catch {
+    return 0n;
   }
 }
 
@@ -319,6 +338,35 @@ function _computeUsdValue(amount0, amount1, dec0, dec1, price0, price1) {
  * @param {object} result   History result to supplement in-place.
  * @param {string} tokenId  NFT token ID.
  */
+/** Extract entry value + gas from the mint TX receipt. Returns mint gas (BigInt). */
+async function _supplementEntryFromChain(result, tokenId, dec0, dec1, prov) {
+  const amounts = await _parseEventFromReceipt(
+    result.mintTxHash,
+    "IncreaseLiquidity",
+    tokenId,
+    prov,
+  );
+  if (!amounts) return 0n;
+  if (amounts.amount0 !== null && amounts.amount0 !== undefined) {
+    result.entryAmount0 = Number(amounts.amount0) / 10 ** dec0;
+    result.entryAmount1 = Number(amounts.amount1) / 10 ** dec1;
+    result.entryValueUsd = _computeUsdValue(
+      amounts.amount0,
+      amounts.amount1,
+      dec0,
+      dec1,
+      result.token0UsdPriceAtOpen,
+      result.token1UsdPriceAtOpen,
+    );
+    console.log(
+      "[history] Entry value from chain for #%s: $%s",
+      tokenId,
+      result.entryValueUsd.toFixed(2),
+    );
+  }
+  return amounts.gasWei || 0n;
+}
+
 async function _supplementAmountsFromChain(result, tokenId) {
   const needEntry =
     !result.entryValueUsd && result.mintTxHash && result.token0UsdPriceAtOpen;
@@ -334,32 +382,9 @@ async function _supplementAmountsFromChain(result, tokenId) {
     _getDecimals(tokens.token1, prov),
   ]);
 
-  if (needEntry) {
-    const amounts = await _parseEventFromReceipt(
-      result.mintTxHash,
-      "IncreaseLiquidity",
-      tokenId,
-      prov,
-    );
-    if (amounts) {
-      result.entryAmount0 = Number(amounts.amount0) / 10 ** dec0;
-      result.entryAmount1 = Number(amounts.amount1) / 10 ** dec1;
-      result.entryValueUsd = _computeUsdValue(
-        amounts.amount0,
-        amounts.amount1,
-        dec0,
-        dec1,
-        result.token0UsdPriceAtOpen,
-        result.token1UsdPriceAtOpen,
-      );
-      console.log(
-        "[history] Entry value from chain for #" +
-          tokenId +
-          ": $" +
-          result.entryValueUsd.toFixed(2),
-      );
-    }
-  }
+  const mintGasWei = needEntry
+    ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
+    : 0n;
   if (needExit) {
     const collected = await _findLastEventOnChain("Collect", tokenId, prov);
     if (collected) {
@@ -404,6 +429,18 @@ async function _supplementAmountsFromChain(result, tokenId) {
       }
     }
   }
+  if (!result.gasCostWei)
+    await _supplementGasFromChain(result, mintGasWei, prov);
+}
+
+/** Extract rebalance gas from mint + close TX receipts. */
+async function _supplementGasFromChain(result, mintGasWei, prov) {
+  let totalGas = mintGasWei;
+  if (!totalGas && result.mintTxHash)
+    totalGas += await _receiptGasWei(result.mintTxHash, prov);
+  if (result.closeTxHash)
+    totalGas += await _receiptGasWei(result.closeTxHash, prov);
+  if (totalGas > 0n) result.gasCostWei = String(totalGas);
 }
 
 /**

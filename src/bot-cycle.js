@@ -509,6 +509,7 @@ module.exports = {
   _checkRangeAndThreshold,
   _humanizeError,
   _checkRebalanceGates,
+  _activateSwapBackoff,
   pollCycle,
   resolvePrivateKey,
   _reloadFromConfig,

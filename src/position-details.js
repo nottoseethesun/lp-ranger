@@ -12,7 +12,12 @@ const { getPoolState } = require("./rebalancer");
 const { positionValueUsd, fetchTokenPrices } = require("./bot-pnl-updater");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { createPnlTracker } = require("./pnl-tracker");
-const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
+const {
+  getCachedEpochs,
+  setCachedEpochs,
+  getCachedLifetimeHodl,
+  setCachedLifetimeHodl,
+} = require("./epoch-cache");
 const { scanPoolHistory } = require("./pool-scanner");
 const {
   compositeKey,
@@ -198,6 +203,71 @@ async function _resolveCompounded(
   return _scanCompounds(position, events, body, ps, prices, diskConfig, posKey);
 }
 
+/** Compute lifetime IL using accumulated HODL amounts across rebalance chain. */
+async function _computeLifetimeIL(
+  position,
+  events,
+  body,
+  lpValue,
+  price0,
+  price1,
+) {
+  const poolCacheKey = _poolCacheKey(position);
+  const cached = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
+  let hodl = cached;
+  if (!hodl) {
+    try {
+      const { scanNftEvents } = require("./compounder");
+      const { computeLifetimeHodl } = require("./lifetime-hodl");
+      const ids = new Set([String(body.tokenId)]);
+      for (const ev of events || []) {
+        if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
+        if (ev.newTokenId) ids.add(String(ev.newTokenId));
+      }
+      const allNftEvents = new Map();
+      for (const tid of ids) {
+        allNftEvents.set(tid, await scanNftEvents(tid));
+      }
+      hodl = computeLifetimeHodl(allNftEvents, {
+        rebalanceEvents: events,
+        position,
+      });
+      if (poolCacheKey) setCachedLifetimeHodl(poolCacheKey, hodl);
+    } catch (err) {
+      console.warn("[details] Lifetime HODL error:", err.message);
+      return null;
+    }
+  }
+  if (!hodl || (hodl.amount0 <= 0 && hodl.amount1 <= 0)) return null;
+  const { computeHodlIL } = require("./il-calculator");
+  return computeHodlIL({
+    lpValue,
+    hodlAmount0: hodl.amount0,
+    hodlAmount1: hodl.amount1,
+    currentPrice0: price0,
+    currentPrice1: price1,
+  });
+}
+
+/** Pick the IL value closer to zero (from the larger HODL). */
+function _pickSmaller(a, b) {
+  if (a === null || a === undefined) return b;
+  if (b === null || b === undefined) return a;
+  return Math.abs(a) < Math.abs(b) ? a : b;
+}
+
+/** Build pool cache key from position data. */
+function _poolCacheKey(pos) {
+  if (!pos.token0 || !pos.fee) return null;
+  return {
+    contract: config.POSITION_MANAGER,
+    wallet: pos.walletAddress || "",
+    token0: pos.token0,
+    token1: pos.token1,
+    fee: pos.fee,
+  };
+}
+
 async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
   const position = {
     tokenId: body.tokenId,
@@ -265,15 +335,44 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     diskConfig,
     posKey,
   );
+  // Compute lifetime HODL from chain events (same as managed path)
+  const _posWithMeta = {
+    ...position,
+    walletAddress: body.walletAddress,
+    decimals0: ps.decimals0,
+    decimals1: ps.decimals1,
+  };
+  const ltIl = await _computeLifetimeIL(
+    _posWithMeta,
+    events,
+    body,
+    value,
+    price0,
+    price1,
+  );
+  // Enrich snapshot with fields the dashboard expects from managed path
+  if (snap) {
+    snap.currentValue = value;
+    // Use the IL closest to zero (largest HODL) — cur.il uses the current
+    // baseline which includes wallet-level deposits the scan can't detect.
+    const bestIl = _pickSmaller(ltIl, cur.il) ?? snap.totalIL;
+    snap.totalIL = bestIl;
+    snap.lifetimeIL = bestIl;
+    snap.totalCompoundedUsd = ltCompounded;
+    snap.currentCompoundedUsd = 0;
+    snap.initialDeposit = entryValue;
+  }
   return {
     totalGasNative: snap?.totalGasNative || 0,
     ok: true,
     ...lt,
     ltCompounded,
     entryValue,
+    currentValue: value,
     firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null,
     dailyPnl,
     rebalanceEvents: events.length > 0 ? events : null,
+    pnlSnapshot: snap,
   };
 }
 
@@ -281,4 +380,9 @@ module.exports = {
   computeQuickDetails: require("./position-details-quick").computeQuickDetails,
   computeLifetimeDetails,
   _scanCompounds,
+  _extractSnap,
+  _lifetimePnl,
+  _resolveEntryValueCached,
+  _buildDailyFallback,
+  _pickSmaller,
 };

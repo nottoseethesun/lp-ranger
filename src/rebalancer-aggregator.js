@@ -409,4 +409,11 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
   });
 }
 
-module.exports = { swapViaAggregator };
+module.exports = {
+  swapViaAggregator,
+  _gasCost,
+  _gasLimit,
+  _baseSigner,
+  _getGasPrice,
+  _handleSwapError,
+};

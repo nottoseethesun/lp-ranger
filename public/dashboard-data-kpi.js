@@ -228,9 +228,9 @@ export function _botDetectedDeposit(d) {
 export function _resolveCurDeposit(d) {
   const saved = loadCurDeposit() || loadInitialDeposit();
   if (saved > 0) return saved;
-  if (d._hasPositionData && d.hodlBaseline?.entryValue > 0)
-    return d.hodlBaseline.entryValue;
-  return d._hasPositionData ? d.pnlSnapshot?.liveEpoch?.entryValue || 0 : 0;
+  const bl = d.hodlBaseline?.entryValue || 0,
+    lv = d.pnlSnapshot?.liveEpoch?.entryValue || 0;
+  return d._hasPositionData ? (bl > 0 ? bl : lv) : 0;
 }
 export function _priceChangePnl(d, deposit) {
   return d.pnlSnapshot && deposit > 0
@@ -290,25 +290,27 @@ export function _updateLifetimeKpis(d) {
 export function _updateKpis(d) {
   if (!posStore.getActive()) return;
   const t = _resolveKpiTotals(d);
-  _updatePnlHeader(d, t.curTotal, t.curRealized, t.curDep);
-  if (d.pnlSnapshot) _applySnapshotKpis(d, t.curDep, t.curRealized);
-  else if (d.running) _resetCurrentKpis();
-  if (d.pnlSnapshot) {
-    if (!d.running || d.rebalanceScanComplete) {
-      _updateNetReturn(
-        d,
-        t.ltTotal,
-        t.ltDep,
-        t.ltFees,
-        t.ltPriceChange,
-        t.ltRealized,
-      );
-      _setDepositDisplay(t.ltDep);
-    }
-    refreshCurDepositDisplay(
-      d.hodlBaseline?.entryValue || d.pnlSnapshot.liveEpoch?.entryValue || 0,
-    );
+  // Current-epoch KPIs: only for managed (unmanaged sets these via quick details)
+  if (d.running) {
+    _updatePnlHeader(d, t.curTotal, t.curRealized, t.curDep);
+    if (d.pnlSnapshot) _applySnapshotKpis(d, t.curDep, t.curRealized);
+    else _resetCurrentKpis();
   }
+  // Lifetime + deposit: for both managed and unmanaged
+  if (d.pnlSnapshot && (!d.running || d.rebalanceScanComplete)) {
+    _updateNetReturn(
+      d,
+      t.ltTotal,
+      t.ltDep,
+      t.ltFees,
+      t.ltPriceChange,
+      t.ltRealized,
+    );
+    _setDepositDisplay(t.ltDep);
+  }
+  refreshCurDepositDisplay(
+    d.hodlBaseline?.entryValue || d.pnlSnapshot?.liveEpoch?.entryValue || 0,
+  );
 }
 export function _updateNetBreakdown(
   bd,

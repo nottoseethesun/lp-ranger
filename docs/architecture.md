@@ -183,6 +183,65 @@ Epoch data is cached to disk (`tmp/pnl-epochs-cache.json`) keyed by pool
 identity — not by tokenId — so P&L history survives rebalances (which mint
 new NFTs) without migration.
 
+### Lifetime P&L Components
+
+Three data points feed the Lifetime panel's P&L calculation, each computed
+during the startup scan and cached in the epoch cache
+(`tmp/pnl-epochs-cache.json`, pool-keyed):
+
+- **Lifetime deposited amounts** (`lifetimeHodlAmounts`) — the total tokens
+  externally deposited into the pool across the entire rebalance chain.
+  Computed by `src/lifetime-hodl.js` from IncreaseLiquidity events.  The first
+  NFT's mint is the original deposit; subsequent IncreaseLiquidity events that
+  exceed collected fees are classified as external deposits.  Rebalance mints
+  (drain → swap → re-mint) contribute zero because the token ratio change is
+  from the swap, not from new capital.  When the event scan cannot distinguish
+  wallet-level deposits that were swept into a rebalance mint, the system falls
+  back to the current HODL baseline (which always reflects the latest mint's
+  actual token amounts).
+
+- **Lifetime compounded amount** (`totalCompoundedUsd`) — the total USD value
+  of fees that were re-deposited as liquidity via compound operations.
+  Detected by scanning IncreaseLiquidity events after the mint on each NFT and
+  filtering out rebalance-adjacent ones (`_filterRebalances`).  Amounts are
+  capped per-token by total Collect amounts so compounds never exceed
+  collected fees.
+
+- **Lifetime gas** (`totalGas`) — the cumulative gas cost in USD across all
+  rebalance and compound transactions.  Extracted from TX receipts during
+  epoch reconstruction: the mint TX receipt (already fetched for entry value)
+  and the close TX receipt (one additional RPC call per epoch).
+
+### Lifetime Impermanent Loss / Gain
+
+Lifetime IL/G answers: "compared to simply holding every token I deposited,
+how has LPing performed?"  The formula:
+
+```text
+IL = LP_value − (hodlAmount0 × currentPrice0 + hodlAmount1 × currentPrice1)
+```
+
+Both the managed and unmanaged paths use the same `computeHodlIL` function
+from `src/il-calculator.js`.  The HODL amounts come from
+`lifetimeHodlAmounts` (accumulated external deposits) or the current HODL
+baseline — whichever produces the larger HODL value, since the baseline
+captures wallet-level deposits the event scan may miss.
+
+### Scan Architecture: Single Fetch, Two Classifiers
+
+To avoid duplicate RPC calls, the lifetime scan fetches IncreaseLiquidity,
+DecreaseLiquidity, and Collect events **once per NFT** via `scanNftEvents`
+(3 parallel `getLogs` calls per NFT).  The same pre-fetched events are then
+passed to two classifiers:
+
+1. **Compound classifier** (`classifyCompounds`) — identifies fee re-deposits.
+2. **Lifetime HODL classifier** (`computeLifetimeHodl`) — accumulates external
+   deposits.
+
+Both classifiers share `_filterRebalances` to distinguish rebalance-adjacent
+events from genuine deposits/compounds.  The scan is incremental:
+`lastNftScanBlock` is cached so subsequent startups only query new blocks.
+
 ### Lifetime Sync vs Bot Loop
 
 The lifetime P&L scan (event scan, epoch reconstruction, price fetching) is

@@ -202,6 +202,7 @@ async function _scanAndReconstruct(
   throttle,
   pnlTracker,
   botState,
+  epochKey,
 ) {
   await _scanHistory(
     provider,
@@ -232,14 +233,14 @@ async function _scanAndReconstruct(
       );
     },
   );
-  // Detect historical compounds across ALL NFTs in the rebalance chain
-  await _detectHistoricalCompounds(
+  await _scanLifetimePoolData(
     position,
     botState,
     updateState,
     events,
     address,
     pnlTracker,
+    epochKey,
   );
   console.log("[bot] Scan + epoch reconstruction complete");
   updateState({
@@ -258,25 +259,102 @@ async function _applyCompoundGas(totalGasWei, pnlTracker) {
   if (gasUsd > 0) pnlTracker.addGas(gasUsd, gasNative);
 }
 
+/** Classify compounds across all NFTs and persist results. */
+async function _classifyAllCompounds(
+  ids,
+  allNftEvents,
+  opts,
+  updateState,
+  pnlTracker,
+) {
+  const { classifyCompounds } = require("./compounder");
+  const allCompounds = [];
+  let totalUsd = 0;
+  let totalCompoundGasWei = 0n;
+  for (const tid of ids) {
+    const r = await classifyCompounds(allNftEvents.get(tid), {
+      ...opts,
+      tokenId: tid,
+    });
+    for (const c of r.compounds) allCompounds.push({ ...c, tokenId: tid });
+    totalUsd += r.totalCompoundedUsd;
+    totalCompoundGasWei += BigInt(r.totalGasWei || "0");
+  }
+  console.log(
+    "[bot] Lifetime compound scan: %d NFTs, %d compounds, $%s",
+    ids.size,
+    allCompounds.length,
+    totalUsd.toFixed(2),
+  );
+  if (allCompounds.length > 0) {
+    const history = allCompounds.map((c) => ({
+      timestamp: null,
+      txHash: null,
+      tokenId: c.tokenId,
+      amount0Deposited: c.amount0Deposited,
+      amount1Deposited: c.amount1Deposited,
+      usdValue: totalUsd / allCompounds.length,
+      trigger: "historical",
+    }));
+    updateState({ compoundHistory: history, totalCompoundedUsd: totalUsd });
+    await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
+  }
+}
+
+/** Collect all unique tokenIds from rebalance chain + current position. */
+function _collectTokenIds(position, rebalanceEvents) {
+  const ids = new Set([String(position.tokenId)]);
+  for (const ev of rebalanceEvents || []) {
+    if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
+    if (ev.newTokenId) ids.add(String(ev.newTokenId));
+  }
+  return ids;
+}
+
+/** Fetch NFT events for all tokenIds, track max block for incremental scan. */
+async function _fetchAllNftEvents(ids, fromBlock) {
+  const { scanNftEvents } = require("./compounder");
+  const allNftEvents = new Map();
+  let maxBlock = fromBlock;
+  for (const tid of ids) {
+    const ev = await scanNftEvents(tid, { fromBlock });
+    allNftEvents.set(tid, ev);
+    for (const e of [...ev.ilEvents, ...ev.collectEvents, ...ev.dlEvents]) {
+      if (e.blockNumber > maxBlock) maxBlock = e.blockNumber;
+    }
+  }
+  return { allNftEvents, maxBlock };
+}
+
 /**
- * Detect historical compounds across ALL NFTs in the rebalance chain.
- * Scans IncreaseLiquidity + Collect events for each tokenId (2 getLogs per NFT).
- * Only runs on first scan (skips if compoundHistory already exists).
+ * Unified lifetime pool scan: fetch NFT events once per tokenId, then run
+ * both compound classification and lifetime HODL accumulation.
+ * Incremental: reads lastNftScanBlock from epoch cache, scans only new blocks.
  */
-async function _detectHistoricalCompounds(
+async function _scanLifetimePoolData(
   position,
   botState,
   updateState,
   rebalanceEvents,
   walletAddress,
   pnlTracker,
+  epochKey,
 ) {
+  const {
+    getCachedLifetimeHodl,
+    setCachedLifetimeHodl,
+    getLastNftScanBlock,
+    setLastNftScanBlock,
+  } = require("./epoch-cache");
+  const cachedHodl = epochKey ? getCachedLifetimeHodl(epochKey) : null;
   const gc = botState._getConfig
     ? botState._getConfig("compoundHistory")
     : undefined;
-  if (gc && gc.length > 0) return;
+  const hasCompounds = gc && gc.length > 0;
+  if (hasCompounds && cachedHodl) return;
   try {
-    const { detectCompoundsOnChain } = require("./compounder");
+    const { computeLifetimeHodl } = require("./lifetime-hodl");
+    const fromBlock = epochKey ? getLastNftScanBlock(epochKey) : 0;
     const prices = await _fetchTokenPrices(
       position.token0,
       position.token1,
@@ -290,45 +368,41 @@ async function _detectHistoricalCompounds(
       token1Symbol: position.token1Symbol || "Token1",
       wallet: walletAddress,
     };
-    // Collect all unique tokenIds from the rebalance chain + current
-    const ids = new Set([String(position.tokenId)]);
-    for (const ev of rebalanceEvents || []) {
-      if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
-      if (ev.newTokenId) ids.add(String(ev.newTokenId));
+    const ids = _collectTokenIds(position, rebalanceEvents);
+    const { allNftEvents, maxBlock } = await _fetchAllNftEvents(ids, fromBlock);
+    if (!hasCompounds) {
+      await _classifyAllCompounds(
+        ids,
+        allNftEvents,
+        opts,
+        updateState,
+        pnlTracker,
+      );
     }
-    const allCompounds = [];
-    let totalUsd = 0;
-    let totalCompoundGasWei = 0n;
-    for (const tid of ids) {
-      const r = await detectCompoundsOnChain(tid, opts);
-      for (const c of r.compounds) allCompounds.push({ ...c, tokenId: tid });
-      totalUsd += r.totalCompoundedUsd;
-      totalCompoundGasWei += BigInt(r.totalGasWei || "0");
-    }
-    console.log(
-      "[bot] Lifetime compound scan: %d NFTs, %d total compounds, $%s",
-      ids.size,
-      allCompounds.length,
-      totalUsd.toFixed(2),
-    );
-    if (allCompounds.length > 0) {
-      const history = allCompounds.map((c) => ({
-        timestamp: null,
-        txHash: null,
-        tokenId: c.tokenId,
-        amount0Deposited: c.amount0Deposited,
-        amount1Deposited: c.amount1Deposited,
-        usdValue: totalUsd / allCompounds.length,
-        trigger: "historical",
-      }));
-      updateState({
-        compoundHistory: history,
-        totalCompoundedUsd: totalUsd,
+    if (!cachedHodl) {
+      const hodl = computeLifetimeHodl(allNftEvents, {
+        rebalanceEvents,
+        position: {
+          ...position,
+          decimals0: opts.decimals0,
+          decimals1: opts.decimals1,
+        },
       });
-      await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
+      botState.lifetimeHodlAmounts = hodl;
+      updateState({ lifetimeHodlAmounts: hodl });
+      if (epochKey) setCachedLifetimeHodl(epochKey, hodl);
+      console.log(
+        "[bot] Lifetime HODL: amount0=%s amount1=%s",
+        hodl.amount0.toFixed(6),
+        hodl.amount1.toFixed(6),
+      );
+    } else {
+      botState.lifetimeHodlAmounts = cachedHodl;
     }
+    if (epochKey && maxBlock > fromBlock)
+      setLastNftScanBlock(epochKey, maxBlock);
   } catch (err) {
-    console.warn("[bot] Historical compound detection failed:", err.message);
+    console.warn("[bot] Lifetime pool scan failed:", err.message);
   }
 }
 
@@ -469,4 +543,7 @@ module.exports = {
   _notifyRebalance,
   _updateHodlBaseline,
   _applyRebalanceResult,
+  _collectTokenIds,
+  _pushRebalanceEvent,
+  _applyCompoundGas,
 };

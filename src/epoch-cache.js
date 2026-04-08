@@ -107,4 +107,57 @@ function setCachedEpochs(keyOpts, data) {
   _writeCache(cache);
 }
 
-module.exports = { getCachedEpochs, setCachedEpochs };
+/**
+ * Read cached lifetime HODL amounts for a pool.
+ * @param {object} keyOpts  Options for _cacheKey.
+ * @returns {{ amount0: number, amount1: number }|null}
+ */
+function getCachedLifetimeHodl(keyOpts) {
+  const cache = _readCache();
+  const entry = cache[_cacheKey(keyOpts)];
+  return entry?.lifetimeHodlAmounts || null;
+}
+
+/**
+ * Save lifetime HODL amounts for a pool.
+ * @param {object} keyOpts  Options for _cacheKey.
+ * @param {{ amount0: number, amount1: number }} hodl
+ */
+function setCachedLifetimeHodl(keyOpts, hodl) {
+  const cache = _readCache();
+  const key = _cacheKey(keyOpts);
+  cache[key] = { ...(cache[key] || {}), lifetimeHodlAmounts: hodl };
+  _writeCache(cache);
+}
+
+/**
+ * Read the last NFT scan block for incremental scanning.
+ * @param {object} keyOpts  Options for _cacheKey.
+ * @returns {number} Last scanned block, or 0 if not cached.
+ */
+function getLastNftScanBlock(keyOpts) {
+  const cache = _readCache();
+  const entry = cache[_cacheKey(keyOpts)];
+  return entry?.lastNftScanBlock || 0;
+}
+
+/**
+ * Save the last NFT scan block.
+ * @param {object} keyOpts  Options for _cacheKey.
+ * @param {number} block
+ */
+function setLastNftScanBlock(keyOpts, block) {
+  const cache = _readCache();
+  const key = _cacheKey(keyOpts);
+  cache[key] = { ...(cache[key] || {}), lastNftScanBlock: block };
+  _writeCache(cache);
+}
+
+module.exports = {
+  getCachedEpochs,
+  setCachedEpochs,
+  getCachedLifetimeHodl,
+  setCachedLifetimeHodl,
+  getLastNftScanBlock,
+  setLastNftScanBlock,
+};
