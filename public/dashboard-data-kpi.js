@@ -481,22 +481,19 @@ export function _showBaselineModal(d, isFallback, isNew, curMissing, missing) {
   }
   const modal = g("hodlBaselineModal");
   if (modal) modal.className = "modal-overlay";
+  const _setKey = (p, s) => {
+    const k = _poolKey(p);
+    if (k) (s || localStorage).setItem(k, "1");
+  };
   const dismiss = () => {
-    const bk = _poolKey("9mm_hodl_acked_");
-    if (bk) localStorage.setItem(bk, "1");
-    if (isFallback) {
-      const fk = _poolKey("9mm_hodl_fb_acked_");
-      if (fk) localStorage.setItem(fk, "1");
-    }
-    if (curMissing) {
-      const pk = _poolKey("9mm_price_missing_acked_");
-      if (pk) sessionStorage.setItem(pk, "1");
-    }
+    _setKey("9mm_hodl_acked_");
+    if (isFallback) _setKey("9mm_hodl_fb_acked_");
+    if (curMissing) _setKey("9mm_price_missing_acked_", sessionStorage);
     if (modal) modal.className = "modal-overlay hidden";
   };
-  const ok = g("hodlBaselineOk");
+  const ok = g("hodlBaselineOk"),
+    close = g("hodlBaselineClose");
   if (ok) ok.onclick = dismiss;
-  const close = g("hodlBaselineClose");
   if (close) close.onclick = dismiss;
 }
 function _poolAcked(p) {
