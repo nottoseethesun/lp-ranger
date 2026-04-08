@@ -15,7 +15,7 @@ getting code from a feature branch into `main`. The remote must
 | **3** | Local merge-to-main check | `git checkout main && git merge <branch>` then `npm run check` — verifies the merged result passes locally before touching the remote |
 | **4** | Undo local merge | `git reset --hard origin/main` — main stays clean locally |
 | **5** | Push branch to GitHub | `git push -u origin <branch>` — remote CI runs automatically |
-| **6** | PR + merge on GitHub | `gh pr create` then `gh pr merge` — branch protection enforces status checks |
+| **6** | PR + merge on GitHub | `gh pr create` then `gh pr merge --merge --delete-branch` — never squash; preserve full commit history |
 | **7** | Pull main locally | `git pull origin main` |
 | **8** | Verify main CI green | `gh run list -b main -L 2` — confirm the merge commit's CI passes on main before starting new work |
 
