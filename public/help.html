@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LP Ranger Help and User Manual</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/9mm-pos-mgr.css">
+  <link rel="stylesheet" href="/fonts.css">
+  <link rel="stylesheet" href="/help.css">
+</head>
+<body>
+  <h1>LP Ranger Help and User Manual</h1>
+
+  <div class="help-toc">
+    <div class="help-toc-title">Contents</div>
+    <ol>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#fund-tracking">Fund Tracking</a></li>
+      <li><a href="#range-width">Range Width</a></li>
+      <li><a href="#volatility-doubling">Volatility Doubling</a></li>
+      <li><a href="#gas-cost-protection">Gas Cost Protection</a></li>
+      <li><a href="#closed-positions">Closed Positions</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#details">Details</a></li>
+      <li><a href="#supported-pool-managers">Supported Liquidity Pool Managers</a></li>
+      <li><a href="#supported-blockchains">Supported Blockchains</a></li>
+    </ol>
+  </div>
+
+  <h2 id="how-it-works">How It Works</h2>
+  <ul>
+    <li>This dashboard manages <strong>multiple LP positions simultaneously</strong> across different pools from a single wallet. To get started: Be sure that you are using a wallet address that you will use exclusively for LP Ranger activity (manual interactions with the dApps of supported DEX Pools, such as the 9mm Liquidity Manager, are okay as well). This kind of wallet segregation is a security best-practice. Separately but as well, will ensure that LP Ranger&rsquo;s Lifetime Net Profit and Lifetime Impermanent Loss/Gain (IL/G) numbers are correct. Make sure you have at least one liquidity position from a <a href="#supported-pool-managers">Supported Liquidity Pool Manager</a>, on a <a href="#supported-blockchains">Supported Blockchain</a>.</li>
+    <li>Next, click &ldquo;Manage&rdquo; on any position to start the bot for that pool, and finally, be sure to set a slippage percent that is appropriate for that pair (otherwise, the swaps to rebalance your LP position will fail due to insufficient slippage, or will be too costly if you set slippage too high). Each managed position runs its own independent rebalance loop.</li>
+    <li>Wait for the &ldquo;Sync&rdquo; label near top right to finish (&ldquo;Synced&rdquo;). Syncing usually just takes a few minutes, but for a very long chain of liquidity positions in a given pool, it can take longer: Almost never more than 10 minutes, but possibly more. Don&rsquo;t worry though: The results are cached so that, normally, you won&rsquo;t have to wait again.</li>
+    <li>When the price moves out of the configured range, the bot automatically rebalances by draining the old position and minting a new one centered on the current price. A rebalance lock ensures only one position transacts at a time (same wallet = same nonce).</li>
+    <li>Each browser tab shows one position via URL. Open multiple tabs to monitor multiple pools simultaneously.</li>
+    <li>Historical rebalance events are scanned up to 5 years back and used to calculate lifetime P&amp;L.</li>
+    <li>The $usd value of the total lifetime deposit is automatically detected. In case of a problem with that, a dialog pops up to notify the user of the opportunity to enter it manually instead at top left in the app under &ldquo;Total Lifetime Deposit&rdquo;. Manual entries there always override any auto-detected value.</li>
+    <li><strong>Wallet Residuals:</strong> When a position is rebalanced with a narrow price range, some tokens may not fit the new range and remain in your wallet. These residual tokens are automatically counted as assets in Current Value, Net P&amp;L, and Impermanent Loss/Gain calculations. If multiple positions share a token, the wallet balance is split pro-rata based on each position&rsquo;s in-range token amount.</li>
+  </ul>
+
+  <h2 id="fund-tracking">Fund Tracking</h2>
+  <p>When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
+
+  <h2 id="range-width">Range Width</h2>
+  <p>The <strong>New Range Width %</strong> is initially set based on the first liquidity position detected on the wallet. To adjust it, manually create a new LP position with your desired range on 9mm Pro, then reload the app in your browser and select the new position. The bot will adopt its range width going forward.</p>
+
+  <h2 id="volatility-doubling">Volatility Doubling</h2>
+  <p>If <strong>3 rebalances</strong> occur within <strong>4&times; the minimum interval</strong> (e.g. 40 minutes when the minimum is 10 min), the bot enters <em>doubling mode</em>. Each subsequent rebalance must wait twice as long as the previous one: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This prevents rapid-fire rebalancing during high volatility. Doubling mode clears automatically if no rebalance is needed for 4&times; the current wait, or at the daily midnight UTC reset.</p>
+
+  <h2 id="gas-cost-protection">Gas Cost Protection</h2>
+  <p>Before each rebalance, the bot estimates gas cost in USD. If gas would exceed <strong>0.5%</strong> of the LP position value, the rebalance is deferred and the bot retries once per hour instead of once per minute. Normal polling resumes automatically once gas drops or a rebalance succeeds. The bot always starts with the normal polling interval.</p>
+
+  <h2 id="closed-positions">Closed Positions</h2>
+  <p>When you select a closed position (zero liquidity), the bot will display its data but will <strong>not</strong> attempt to rebalance it. If you re-open a previously closed position by adding liquidity back to the same NFT on 9mm Pro, the bot treats it as brand new&mdash;duration, fees, and P&amp;L all start from the original mint date. <strong>Recommendation:</strong> instead of re-opening a closed position, mint a fresh LP position on 9mm Pro. This gives you a clean start with accurate tracking and avoids any ambiguity in your P&amp;L history.</p>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <ul>
+    <li><strong>Check Sync Status:</strong> Does the &ldquo;Sync&rdquo; status at top right show &ldquo;Synced&rdquo;? If not, wait for it. Data and controls may be incomplete until the initial blockchain scan finishes.</li>
+    <li><strong>Rebalance Not Completing:</strong> If the blockchain is busy, a rebalance could take longer than expected. The progress of a rebalance can be seen on the Activity Log of this app, where the creation of the new NFT will be seen logged as a distinct log item. Also, it can be monitored by viewing the server console log.</li>
+    <li><strong>Stuck Transaction Auto-Cancel:</strong> If a rebalance transaction does not confirm within <strong>2 minutes</strong>, the bot automatically resends it with higher gas (1.5&times; bump). If the transaction is still stuck after <strong>20 minutes total</strong>, the bot cancels it by sending a zero-value self-transfer at the same nonce, freeing the wallet for future transactions. Each phase is reported in this app&rsquo;s Activity Log and on the server console. These timeouts are configurable via <code>TX_SPEEDUP_SEC</code> (default 120) and <code>TX_CANCEL_SEC</code> (default 1200) in the <code>.env</code> file.</li>
+    <li><strong>Persistent Transaction Problems:</strong> If transactions continue to fail or get stuck, try switching to a different RPC endpoint using the RPC URL control toward the bottom of the app under Bot Configuration.</li>
+    <li><strong>Price Discovery Failures:</strong> If USD price lookups are failing (DexScreener is the default), you can configure alternative price services such as DexTools by setting the appropriate API key in your <code>.env</code> file. See the detailed documentation in the file-header of <code>server.js</code> for all available pricing options.</li>
+    <li><strong>Prices Don&rsquo;t Look Right:</strong> Try adding your Moralis API key (free) so that Moralis can be a data source. Click the gear icon (top right) to add your key in Settings.</li>
+    <li><strong>Slow Initial Scans:</strong> The first blockchain scan fetches historical prices for every rebalance epoch. Adding a Moralis API key (free) makes this much faster by bypassing GeckoTerminal rate limits. Click the gear icon (top right) &rarr; Settings.</li>
+  </ul>
+
+  <h2 id="details">Details</h2>
+  <ul>
+    <li><strong>Gas Costs:</strong> All crypto gas costs displayed in this app are computed using the <strong>current price</strong> of the native gas token (e.g. PLS on PulseChain). This means gas figures always reflect what the gas would cost at today&rsquo;s price, not the price at the time of the original transaction.</li>
+    <li><strong>Historical Prices:</strong> Historical token prices (from GeckoTerminal) are used in two ways: (1) to show the original value of the total lifetime deposit into an LP position at the time it was created, and (2) to show the original value of the first historical LP position deposit for the purpose of calculating lifetime gain/loss over a five-year lookback on the current wallet.</li>
+  </ul>
+
+  <h2 id="supported-pool-managers">Supported Liquidity Pool Managers</h2>
+  <ul>
+    <li><strong><a href="https://9mm.pro" target="_blank" rel="noopener">9mm V3</a></strong> &mdash; Concentrated liquidity (Uniswap V3 fork) on PulseChain. LP Ranger manages V3 NFT positions created through the 9mm Pro Liquidity Manager.</li>
+  </ul>
+
+  <h2 id="supported-blockchains">Supported Blockchains</h2>
+  <ul>
+    <li><strong><a href="https://pulsechain.com" target="_blank" rel="noopener">PulseChain</a></strong> &mdash; EVM-compatible Layer 1 blockchain (Chain ID 369).</li>
+  </ul>
+</body>
+</html>

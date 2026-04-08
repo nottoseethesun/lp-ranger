@@ -1,0 +1,80 @@
+/**
+ * @file public/help.css
+ * @description Styles for the Help and User Manual page (help.html).
+ */
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 16px;
+  line-height: 1.7;
+  padding: 2rem;
+  max-width: 960px;
+  margin: 0 auto;
+  zoom: 1;
+}
+
+h1 {
+  font-family: "Space Mono", monospace;
+  font-size: 36px;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+h2 {
+  font-family: "Space Mono", monospace;
+  font-size: 26px;
+  color: #e0e8ef;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+ul,
+p {
+  font-size: 22px;
+  line-height: 1.7;
+  color: #b0c4d0;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+
+.help-toc {
+  margin: 1.5rem 0;
+  padding: 1rem 1.5rem;
+  background: var(--card);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+}
+
+.help-toc-title {
+  font-family: "Space Mono", monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: #b0c4d0;
+  margin-bottom: 0.5rem;
+}
+
+.help-toc ol {
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  font-family: Urbanist, sans-serif;
+  font-size: 20px;
+  line-height: 2;
+  color: #b0c4d0;
+}
+
+.help-toc a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.help-toc a:hover {
+  text-decoration: underline;
+}
