@@ -332,81 +332,6 @@ async function _fetchAllNftEvents(ids, fromBlock) {
  * both compound classification and lifetime HODL accumulation.
  * Incremental: reads lastNftScanBlock from epoch cache, scans only new blocks.
  */
-/** Compute lifetime HODL amounts and persist fresh deposit cache. */
-async function _computeAndCacheHodl(
-  computeFn,
-  allNftEvents,
-  rebalanceEvents,
-  position,
-  opts,
-  walletAddress,
-  epochKey,
-) {
-  const ethers = require("ethers");
-  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
-  const cachedFresh = epochKey
-    ? _epochCache.getCachedFreshDeposits(epochKey)
-    : null;
-  const ps = await getPoolState(prov, ethers, {
-    factoryAddress: config.FACTORY,
-    token0: position.token0,
-    token1: position.token1,
-    fee: position.fee,
-  }).catch(() => ({}));
-  const hodl = await computeFn(allNftEvents, {
-    rebalanceEvents,
-    position: {
-      ...position,
-      decimals0: opts.decimals0,
-      decimals1: opts.decimals1,
-    },
-    provider: prov,
-    ethersLib: ethers,
-    walletAddress,
-    excludeFromAddrs: [config.POSITION_MANAGER, ps.poolAddress],
-    cachedFreshDeposits: cachedFresh,
-  });
-  if (epochKey) {
-    _epochCache.setCachedLifetimeHodl(epochKey, hodl);
-    if (hodl.lastBlock > (cachedFresh?.lastBlock || 0))
-      _epochCache.setCachedFreshDeposits(epochKey, {
-        raw0: hodl.raw0,
-        raw1: hodl.raw1,
-        lastBlock: hodl.lastBlock,
-        deposits: hodl.deposits,
-      });
-  }
-  console.log(
-    "[bot] Lifetime HODL: amount0=%s amount1=%s",
-    hodl.amount0.toFixed(6),
-    hodl.amount1.toFixed(6),
-  );
-  return hodl;
-}
-
-/** Compute total lifetime deposit USD from HODL deposit entries. */
-async function _computeDepositUsd(botState, updateState, position, opts) {
-  const deposits = botState.lifetimeHodlAmounts?.deposits;
-  if (!deposits?.length) return;
-  const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
-  const { fetchHistoricalPriceGecko: _fhp } = require("./price-fetcher");
-  const pFn = (block) =>
-    _fhp("", Math.floor(Date.now() / 1000), "pulsechain", {
-      token0Address: position.token0,
-      token1Address: position.token1,
-      blockNumber: block,
-    });
-  const dep = await _totalLifetimeDeposit(
-    deposits,
-    opts.decimals0,
-    opts.decimals1,
-    pFn,
-  );
-  if (dep <= 0) return;
-  botState.totalLifetimeDepositUsd = dep;
-  updateState({ totalLifetimeDepositUsd: dep });
-}
-
 async function _scanLifetimePoolData(
   position,
   botState,
@@ -451,7 +376,8 @@ async function _scanLifetimePoolData(
         pnlTracker,
       );
     if (!cachedHodl) {
-      const hodl = await _computeAndCacheHodl(
+      const { computeAndCacheHodl } = require("./bot-hodl-scan");
+      const hodl = await computeAndCacheHodl(
         computeLifetimeHodl,
         allNftEvents,
         rebalanceEvents,
@@ -465,7 +391,8 @@ async function _scanLifetimePoolData(
     } else {
       botState.lifetimeHodlAmounts = cachedHodl;
     }
-    await _computeDepositUsd(botState, updateState, position, opts);
+    const { computeDepositUsd } = require("./bot-hodl-scan");
+    await computeDepositUsd(botState, updateState, position, opts);
     if (epochKey && maxBlock > fromBlock)
       _epochCache.setLastNftScanBlock(epochKey, maxBlock);
   } catch (err) {
