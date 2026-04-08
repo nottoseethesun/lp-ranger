@@ -180,6 +180,10 @@
   color: var(--muted);
 }
 
+.\39 mm-pos-mgr-text-muted-sm a {
+  color: var(--accent);
+}
+
 .\39 mm-pos-mgr-text-accent-sm {
   font-size: 10px;
   color: var(--accent);
@@ -1017,6 +1021,52 @@
 .\39 mm-pos-mgr-settings-item:hover {
   background: rgb(255 255 255 / 8%);
   color: #fff;
+}
+
+.\39 mm-pos-mgr-settings-key-row {
+  cursor: default;
+}
+
+.\39 mm-pos-mgr-settings-key-row:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
+.\39 mm-pos-mgr-settings-key-row label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.\39 mm-pos-mgr-settings-key-wrap {
+  display: flex;
+  gap: 4px;
+}
+
+.\39 mm-pos-mgr-settings-key-input {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--card-bg, #0d1b2a);
+  color: var(--text);
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+}
+
+.\39 mm-pos-mgr-settings-key-save {
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent);
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.\39 mm-pos-mgr-settings-key-save:hover {
+  background: var(--accent);
+  color: #000;
 }
 
 /* ── Closed-Position History Banner ────────────────────────────────────── */

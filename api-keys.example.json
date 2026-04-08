@@ -1,0 +1,9 @@
+{
+  "moralisEncrypted": {
+    "version": 1,
+    "kdfParams": { "digest": "sha512", "iterations": 600000, "saltHex": "…" },
+    "ivHex": "…",
+    "authTagHex": "…",
+    "ciphertextHex": "…"
+  }
+}

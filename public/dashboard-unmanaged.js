@@ -31,6 +31,7 @@ import { updateILDebugData } from "./dashboard-il-debug.js";
 import { renderDailyPnl, renderRebalanceEvents } from "./dashboard-history.js";
 import { posStore } from "./dashboard-positions.js";
 import { enterClosedPosView } from "./dashboard-closed-pos.js";
+import { isWalletUnlocked } from "./dashboard-wallet.js";
 
 const _ALL_KPIS = [
   "kpiValue",
@@ -378,6 +379,8 @@ async function _phase2(body, gen) {
 /** Fetch and display details for an unmanaged position (two-phase). */
 export async function fetchUnmanagedDetails(pos) {
   if (!pos?.tokenId || !pos?.token0 || !pos?.token1 || !pos?.fee) return;
+  // Defer until wallet is unlocked — API keys (Moralis etc.) need the password.
+  if (!isWalletUnlocked()) return;
   const tid = String(pos.tokenId);
   if (tid === _lastFetchedId) return;
   _lastFetchedId = tid;

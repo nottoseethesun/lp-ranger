@@ -33,6 +33,7 @@ const {
   flushPriceCache,
   toUtcDayKey,
 } = require("./price-cache");
+const { getApiKey } = require("./api-key-holder");
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -195,7 +196,18 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
     console.warn("[price-fetcher] DexScreener error:", err.message ?? err);
   }
 
-  // 4. Nothing worked.
+  // 4. Moralis (requires API key — supports meme tokens others miss).
+  try {
+    const price = await _fetchMoralisCurrent(tokenAddress, chain);
+    if (price > 0) {
+      _cache.set(key, { price, ts: Date.now() });
+      return price;
+    }
+  } catch (err) {
+    console.warn("[price-fetcher] Moralis error:", err.message ?? err);
+  }
+
+  // 5. Nothing worked.
   return 0;
 }
 
@@ -277,6 +289,27 @@ async function _fetchGeckoTerminalOhlcv(
 }
 
 /**
+ * Try Moralis historical API for any zero-priced tokens.
+ * @returns {{ price0: number, price1: number }}
+ */
+async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
+  let price0 = p0,
+    price1 = p1;
+  if (!blockNumber || (price0 > 0 && price1 > 0)) return { price0, price1 };
+  if (price0 === 0 && t0) {
+    price0 = await _fetchMoralisHistorical(t0, blockNumber, network);
+    if (price0 > 0)
+      console.log("[price-fetcher] Moralis historical fallback for token0");
+  }
+  if (price1 === 0 && t1) {
+    price1 = await _fetchMoralisHistorical(t1, blockNumber, network);
+    if (price1 > 0)
+      console.log("[price-fetcher] Moralis historical fallback for token1");
+  }
+  return { price0, price1 };
+}
+
+/**
  * Fetch historical USD prices for both tokens in a pool from GeckoTerminal.
  * When `token0Address` and `token1Address` are provided, results are cached
  * to disk (via price-cache) keyed by token contract address + UTC date.
@@ -287,6 +320,7 @@ async function _fetchGeckoTerminalOhlcv(
  * @param {object} [opts]       - Optional token addresses for disk caching.
  * @param {string} [opts.token0Address] - Token0 contract address.
  * @param {string} [opts.token1Address] - Token1 contract address.
+ * @param {number} [opts.blockNumber]   - Block number for Moralis fallback.
  * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.
  */
 async function fetchHistoricalPriceGecko(
@@ -303,7 +337,7 @@ async function fetchHistoricalPriceGecko(
   const c1 = t1 ? getHistoricalPrice(network, t1, utcKey) : null;
   if (c0 !== null && c1 !== null) return { price0: c0, price1: c1 };
   // Fetch only missing prices from GeckoTerminal
-  const [price0, price1] = await Promise.all([
+  const [g0, g1] = await Promise.all([
     c0 !== null
       ? c0
       : _fetchGeckoTerminalOhlcv(poolAddress, timestamp, "base", network),
@@ -311,11 +345,96 @@ async function fetchHistoricalPriceGecko(
       ? c1
       : _fetchGeckoTerminalOhlcv(poolAddress, timestamp, "quote", network),
   ]);
+  // Moralis fallback for tokens GeckoTerminal can't price
+  const { price0, price1 } = await _moralisFallback(
+    g0,
+    g1,
+    t0,
+    t1,
+    opts.blockNumber,
+    network,
+  );
   // Persist to disk cache
   if (t0 && price0 > 0) setHistoricalPrice(network, t0, utcKey, price0);
   if (t1 && price1 > 0) setHistoricalPrice(network, t1, utcKey, price1);
   if (t0 || t1) flushPriceCache();
   return { price0, price1 };
+}
+
+// ── Moralis (current + historical by block) ─────────────────────────────
+
+/** Map GeckoTerminal/internal chain names to Moralis chain identifiers. */
+const _MORALIS_CHAINS = { pulsechain: "0x171" };
+
+/**
+ * Fetch current USD price from the Moralis Token API.
+ * Requires a decrypted Moralis API key in api-key-holder.
+ *
+ * @param {string} tokenAddress - ERC-20 contract address.
+ * @param {string} [chain='pulsechain'] - Internal chain name.
+ * @returns {Promise<number>} USD price (0 if unavailable).
+ */
+async function _fetchMoralisCurrent(tokenAddress, chain = "pulsechain") {
+  const apiKey = getApiKey("moralis");
+  if (!apiKey) return 0;
+  const chainHex = _MORALIS_CHAINS[chain];
+  if (!chainHex) return 0;
+  const url =
+    `https://deep-index.moralis.io/api/v2.2/erc20` +
+    `/${tokenAddress}/price?chain=${chainHex}&include=percent_change`;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json", "X-API-Key": apiKey },
+    });
+    if (!res.ok) return 0;
+    const json = await res.json();
+    const price = Number(json?.usdPrice ?? 0);
+    return Number.isFinite(price) && price > 0 ? price : 0;
+  } catch (err) {
+    console.warn("[price-fetcher] Moralis current error:", err.message ?? err);
+    return 0;
+  }
+}
+
+/**
+ * Fetch a historical USD price from the Moralis Token API by block number.
+ * Requires a decrypted Moralis API key in api-key-holder.
+ *
+ * @param {string} tokenAddress - ERC-20 contract address.
+ * @param {number} blockNumber  - Block number for the historical price.
+ * @param {string} [chain='pulsechain'] - Internal chain name.
+ * @returns {Promise<number>} USD price (0 if unavailable).
+ */
+async function _fetchMoralisHistorical(
+  tokenAddress,
+  blockNumber,
+  chain = "pulsechain",
+) {
+  const apiKey = getApiKey("moralis");
+  if (!apiKey) return 0;
+  const chainHex = _MORALIS_CHAINS[chain];
+  if (!chainHex) return 0;
+  const url =
+    `https://deep-index.moralis.io/api/v2.2/erc20` +
+    `/${tokenAddress}/price` +
+    `?chain=${chainHex}&to_block=${blockNumber}`;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json", "X-API-Key": apiKey },
+    });
+    if (!res.ok) return 0;
+    const json = await res.json();
+    const price = Number(json?.usdPrice ?? 0);
+    return Number.isFinite(price) && price > 0 ? price : 0;
+  } catch (err) {
+    console.warn(
+      "[price-fetcher] Moralis historical error:",
+      err.message ?? err,
+    );
+    return 0;
+  }
 }
 
 // ── exports ──────────────────────────────────────────────────────────────────
@@ -325,6 +444,8 @@ module.exports = {
   fetchHistoricalPriceGecko,
   _fetchDexScreener,
   _fetchGeckoTerminalOhlcv,
+  _fetchMoralisCurrent,
+  _fetchMoralisHistorical,
   _cache,
   _CACHE_TTL_MS,
 };

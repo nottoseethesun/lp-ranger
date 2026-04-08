@@ -11,6 +11,7 @@
 
 import {
   g,
+  act,
   botConfig,
   toggleHelpPopover,
   toggleSettingsPopover,
@@ -151,6 +152,39 @@ function _saveGlobalConfig(inputId, configKey) {
   }).catch(() => {});
 }
 
+/** Save the Moralis API key (encrypted with wallet password). */
+async function _saveMoralisKey() {
+  const inp = g("moralisKeyInput");
+  if (!inp || !inp.value.trim()) return;
+  const pw = prompt("Enter your wallet password to encrypt the key:");
+  if (!pw) return;
+  try {
+    const res = await fetch("/api/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service: "moralis",
+        key: inp.value.trim(),
+        password: pw,
+      }),
+    });
+    const d = await res.json();
+    if (d.ok) {
+      inp.value = "";
+      act(
+        "\u{1F511}",
+        "info",
+        "API Key Saved",
+        "Moralis key encrypted & saved",
+      );
+    } else {
+      act("\u274C", "error", "Save Failed", d.error || "Unknown error");
+    }
+  } catch (err) {
+    act("\u274C", "error", "Save Failed", err.message);
+  }
+}
+
 const _CLOSE = '[class~="9mm-pos-mgr-modal-close-btn"]';
 
 /** Wire up all static event handlers. */
@@ -288,6 +322,7 @@ export function bindAllEvents() {
   _qa('[class~="9mm-pos-mgr-help-close"]', "click", toggleHelpPopover);
   _click("settingsBtn", toggleSettingsPopover);
   _click("clearStorageBtn", clearLocalStorageAndCookies);
+  _click("moralisKeySaveBtn", _saveMoralisKey);
 
   /* ── Wallet strip ─────────────────────── */
   _click("wsRevealBtn", openRevealModal);

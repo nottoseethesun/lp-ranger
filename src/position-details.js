@@ -96,6 +96,13 @@ async function _getLifetimeSnapshot(
   const cached = poolCacheKey ? getCachedEpochs(poolCacheKey) : null;
   const tracker = createPnlTracker({ initialDeposit: deposit || 0 });
   if (cached) tracker.restore(cached);
+  console.log(
+    "[details] epoch cache: key=%s cached=%d restored=%d t0=%s",
+    !!poolCacheKey,
+    cached?.closedEpochs?.length || 0,
+    tracker.epochCount(),
+    position.token0?.slice(0, 8) || "MISSING",
+  );
   const events = await scanPoolHistory(provider, ethersLib, {
     walletAddress: walletAddr,
     position,

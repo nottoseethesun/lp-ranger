@@ -601,6 +601,11 @@ const _routes = {
       ).privateKey;
       console.log("[server] Wallet unlocked via dashboard");
       _routeHandlers
+        ._decryptApiKeys(body.password)
+        .catch((e) =>
+          console.warn("[server] API key decrypt failed:", e.message),
+        );
+      _routeHandlers
         ._autoStartManagedPositions()
         .catch((e) =>
           console.warn(
@@ -624,6 +629,7 @@ const _routes = {
     jsonResponse(res, 200, { ok: true });
   },
   "POST /api/config": _routeHandlers._handleApiConfig,
+  "POST /api/api-keys": _routeHandlers._handleApiKeySave,
   "POST /api/wallet": _routeHandlers._handleWalletImport,
   "POST /api/wallet/reveal": _routeHandlers._handleWalletReveal,
   "POST /api/positions/scan": _routeHandlers._handlePositionsScan,

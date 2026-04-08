@@ -327,6 +327,7 @@ export async function confirmWallet() {
   wallet.privateKey = p.privateKey;
   wallet.mnemonic = p.mnemonic;
   wallet.source = p.source;
+  _walletUnlocked = true;
   delete wallet._pending;
 
   const revealBtn = g("wsRevealBtn");
@@ -503,10 +504,16 @@ export function getCurWalletAddress() {
 // ── Wallet unlock (password-security) ─────────────────────
 
 let _viewOnly = false;
+let _walletUnlocked = false;
 
 /** @returns {boolean} True if in view-only mode. */
 export function isViewOnly() {
   return _viewOnly;
+}
+
+/** @returns {boolean} True if the wallet has been unlocked this session. */
+export function isWalletUnlocked() {
+  return _walletUnlocked;
 }
 
 /** Check if the wallet is locked and show unlock modal. */
@@ -523,6 +530,9 @@ export async function checkWalletLocked() {
         ub.disabled = false;
         ub.title = "Unlock wallet to manage positions";
       }
+    } else if (s.address) {
+      // Wallet exists and is already unlocked (e.g. WALLET_PASSWORD env var).
+      _walletUnlocked = true;
     }
   } catch {
     /* */
@@ -545,6 +555,7 @@ export async function submitUnlock(e) {
     ).json();
     if (d.ok) {
       _viewOnly = false;
+      _walletUnlocked = true;
       const m = g("walletUnlockModal");
       if (m) m.classList.add("hidden");
       const b = g("unlockWalletBtn");
@@ -563,8 +574,8 @@ export async function submitUnlock(e) {
         "Wallet Unlocked",
         "Position management enabled",
       );
-      // Re-fetch unmanaged position details now that the
-      // wallet key is available (fees need it)
+      // Now that API keys are decrypted, fetch position details
+      // (deferred from initial selection — prices need Moralis key).
       const active = _posStore?.getActive?.();
       if (active && _resetLastFetchedId && _fetchUnmanagedDetails) {
         _resetLastFetchedId();

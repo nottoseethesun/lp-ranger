@@ -227,7 +227,8 @@ function _renderCountdownKpi(can) {
     }
     if (cds)
       cds.textContent =
-        "Rebalance is only triggered when the position is out-of-range by the % set below.";
+        "Rebalance is only triggered when the position is out-of-range" +
+        " by the % set below, for the time duration (minutes) set below.";
   } else {
     if (cd) {
       cd.textContent = fmtCountdown(can.msUntilAllowed);

@@ -13,6 +13,10 @@ import {
 import { copyText } from "./dashboard-wallet.js";
 import { resetHistoryFlag } from "./dashboard-data.js";
 import { clearHistory } from "./dashboard-history.js";
+import {
+  fetchUnmanagedDetails,
+  resetLastFetchedId,
+} from "./dashboard-unmanaged.js";
 
 // ── Privacy ─────────────────────────────────────────
 
@@ -182,7 +186,14 @@ export function _toggleManagePosition() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ key }),
-    }).catch(() => {});
+    })
+      .then(() => {
+        // Position is now unmanaged — trigger unmanaged detail fetch
+        // so the sync badge resolves and KPIs stay populated.
+        resetLastFetchedId();
+        fetchUnmanagedDetails(active);
+      })
+      .catch(() => {});
   } else {
     fetch("/api/position/manage", {
       method: "POST",

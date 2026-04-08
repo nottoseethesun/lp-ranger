@@ -9,6 +9,12 @@
 
 const config = require("./config");
 const {
+  saveEncryptedKey,
+  loadEncryptedKey,
+  hasEncryptedKey,
+} = require("./api-key-store");
+const { setApiKey } = require("./api-key-holder");
+const {
   getPositionConfig,
   saveConfig,
   managedKeys,
@@ -142,6 +148,7 @@ function createRouteHandlers(deps) {
         await walletManager.revealWallet(body.password)
       ).privateKey;
       console.log("[bot] Loading key from imported wallet");
+      _decryptApiKeys(body.password).catch(() => {});
       await _autoStartManagedPositions();
     } catch (err) {
       console.warn("[server] Key resolution after import:", err.message);
@@ -328,6 +335,8 @@ function createRouteHandlers(deps) {
         return;
       }
       privateKeyRef.current = pk;
+      if (process.env.WALLET_PASSWORD)
+        _decryptApiKeys(process.env.WALLET_PASSWORD).catch(() => {});
       await _autoStartManagedPositions();
     } finally {
       _starting = false;
@@ -424,6 +433,42 @@ function createRouteHandlers(deps) {
     );
   }
 
+  /** Encrypt and save a third-party API key. */
+  async function _handleApiKeySave(req, res) {
+    const body = await readJsonBody(req);
+    if (!body.service || !body.key || !body.password)
+      return jsonResponse(res, 400, {
+        ok: false,
+        error: "service, key, and password are required",
+      });
+    try {
+      await saveEncryptedKey(body.service, body.key, body.password);
+      setApiKey(body.service, body.key);
+      console.log("[server] API key saved for %s", body.service);
+      jsonResponse(res, 200, { ok: true });
+    } catch (err) {
+      console.error("[server] API key save error:", err.message);
+      jsonResponse(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  /**
+   * Decrypt all known API keys after wallet unlock.
+   * @param {string} password  Wallet password.
+   */
+  async function _decryptApiKeys(password) {
+    for (const svc of ["moralis"]) {
+      if (!hasEncryptedKey(svc)) continue;
+      try {
+        const key = await loadEncryptedKey(svc, password);
+        setApiKey(svc, key);
+        console.log("[server] Decrypted API key: %s", svc);
+      } catch (err) {
+        console.warn("[server] Failed to decrypt %s key: %s", svc, err.message);
+      }
+    }
+  }
+
   return {
     _handleApiConfig,
     _handleWalletImport,
@@ -440,6 +485,8 @@ function createRouteHandlers(deps) {
     _handlePositionLifetime,
     _tryResolveKey,
     _autoStartManagedPositions,
+    _handleApiKeySave,
+    _decryptApiKeys,
   };
 }
 

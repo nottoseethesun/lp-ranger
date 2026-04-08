@@ -463,6 +463,13 @@
           <span>Privacy Mode</span>
           <span class="9mm-pos-mgr-toggle-track"></span>
         </label>
+        <div class="9mm-pos-mgr-settings-item 9mm-pos-mgr-settings-key-row">
+          <label for="moralisKeyInput">Moralis API Key <span class="9mm-pos-mgr-text-muted-sm">(<a href="https://moralis.com/" target="_blank" rel="noopener">free sign-up</a>)</span></label>
+          <div class="9mm-pos-mgr-settings-key-wrap">
+            <input type="text" id="moralisKeyInput" class="9mm-pos-mgr-settings-key-input" placeholder="Paste key here" autocomplete="off" data-1p-ignore data-lpignore="true">
+            <button class="9mm-pos-mgr-settings-key-save" id="moralisKeySaveBtn">Save</button>
+          </div>
+        </div>
         <button class="9mm-pos-mgr-settings-item" id="clearStorageBtn">Clear Local Storage &amp; Cookies</button>
       </div>
     </div>
@@ -494,6 +501,7 @@
         <li><strong>Stuck Transaction Auto-Cancel:</strong> If a rebalance transaction does not confirm within <strong>2 minutes</strong>, the bot automatically resends it with higher gas (1.5&times; bump). If the transaction is still stuck after <strong>20 minutes total</strong>, the bot cancels it by sending a zero-value self-transfer at the same nonce, freeing the wallet for future transactions. Each phase is reported in this app&rsquo;s Activity Log and on the server console. These timeouts are configurable via <code>TX_SPEEDUP_SEC</code> (default 120) and <code>TX_CANCEL_SEC</code> (default 1200) in the <code>.env</code> file.</li>
         <li><strong>Persistent Transaction Problems:</strong> If transactions continue to fail or get stuck, try switching to a different RPC endpoint using the RPC URL control toward the bottom of the app under Bot Configuration.</li>
         <li><strong>Price Discovery Failures:</strong> If USD price lookups are failing (DexScreener is the default), you can configure alternative price services such as DexTools by setting the appropriate API key in your <code>.env</code> file. See the detailed documentation in the file-header of <code>server.js</code> for all available pricing options.</li>
+        <li><strong>Prices Don&rsquo;t Look Right:</strong> Try adding your Moralis API key (free) so that Moralis can be a data source. Click the gear icon (top right) to add your key in Settings.</li>
       </ul>
       <div class="9mm-pos-mgr-help-title">Details</div>
       <ul class="9mm-pos-mgr-help-list">
@@ -958,6 +966,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775616756348"></script>
+<script src="dist/bundle.js?v=1775635399038"></script>
 </body>
 </html>

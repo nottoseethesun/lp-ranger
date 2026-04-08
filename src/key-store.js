@@ -239,6 +239,9 @@ async function loadAndDecrypt(password, filePath) {
 module.exports = {
   encryptAndSave,
   loadAndDecrypt,
+  _deriveKey,
+  _encrypt,
+  _decrypt,
   _FORMAT_VERSION,
   _PBKDF2_ITERATIONS,
 };

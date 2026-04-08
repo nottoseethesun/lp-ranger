@@ -12,6 +12,7 @@
 *.keyfile.json
 keyfile.json
 keyfile*.json
+api-keys.json
 
 # Encrypted wallet state (persisted by wallet-manager.js)
 .wallet.json
