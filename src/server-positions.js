@@ -177,6 +177,26 @@ function attachMultiPosDeps(botState, positionMgr) {
   botState._poolKey = positionMgr.poolKey;
   botState._canRebalancePool = positionMgr.canRebalancePool;
   botState._recordPoolRebalance = positionMgr.recordPoolRebalance;
+  /**
+   * Sum the in-position amount of a token across all managed positions.
+   * Used for pro-rata wallet residual split.
+   * @param {string} tokenAddress  ERC-20 address to look up.
+   * @returns {number} Total human-readable amount across all positions.
+   */
+  botState._getTokenPositionAmounts = (tokenAddress) => {
+    const ta = tokenAddress.toLowerCase();
+    let total = 0;
+    for (const [, s] of _positionBotStates) {
+      if (!s.running || !s.positionStats) continue;
+      const ap = s.activePosition;
+      if (!ap) continue;
+      if (ap.token0?.toLowerCase() === ta)
+        total += Number(s.positionStats.balance0) || 0;
+      if (ap.token1?.toLowerCase() === ta)
+        total += Number(s.positionStats.balance1) || 0;
+    }
+    return total;
+  };
 }
 
 /**

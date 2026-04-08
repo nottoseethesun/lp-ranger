@@ -24,6 +24,75 @@ const {
   saveConfig,
 } = require("./bot-config-v2");
 
+const _ERC20_BAL_ABI = ["function balanceOf(address) view returns (uint256)"];
+
+/**
+ * Fetch this position's pro-rata share of wallet token balances.
+ * @param {object} provider
+ * @param {object} ethersLib
+ * @param {object} position   { token0, token1, liquidity, tickLower, tickUpper }
+ * @param {object} ps         Pool state with tick, decimals0, decimals1.
+ * @param {number} price0
+ * @param {number} price1
+ * @param {string} walletAddr
+ * @param {Function} [getTokenAmounts]  Sum of in-position amounts across all managed positions.
+ * @returns {Promise<{ usd: number, amount0: number, amount1: number }>}
+ */
+async function _walletResiduals(
+  provider,
+  ethersLib,
+  position,
+  ps,
+  price0,
+  price1,
+  walletAddr,
+  getTokenAmounts,
+) {
+  const empty = { usd: 0, amount0: 0, amount1: 0 };
+  if (!walletAddr) return empty;
+  try {
+    const t0c = new ethersLib.Contract(
+      position.token0,
+      _ERC20_BAL_ABI,
+      provider,
+    );
+    const t1c = new ethersLib.Contract(
+      position.token1,
+      _ERC20_BAL_ABI,
+      provider,
+    );
+    const [wb0, wb1] = await Promise.all([
+      t0c.balanceOf(walletAddr),
+      t1c.balanceOf(walletAddr),
+    ]);
+    const wf0 = Number(wb0) / 10 ** ps.decimals0;
+    const wf1 = Number(wb1) / 10 ** ps.decimals1;
+    const pa = rangeMath.positionAmounts(
+      position.liquidity || 0,
+      ps.tick,
+      position.tickLower,
+      position.tickUpper,
+      ps.decimals0,
+      ps.decimals1,
+    );
+    const total0 = getTokenAmounts
+      ? getTokenAmounts(position.token0)
+      : pa.amount0;
+    const total1 = getTokenAmounts
+      ? getTokenAmounts(position.token1)
+      : pa.amount1;
+    const share0 = total0 > 0 ? (pa.amount0 / total0) * wf0 : wf0;
+    const share1 = total1 > 0 ? (pa.amount1 / total1) * wf1 : wf1;
+    return {
+      usd: share0 * price0 + share1 * price1,
+      amount0: share0,
+      amount1: share1,
+    };
+  } catch (_) {
+    return empty;
+  }
+}
+
 /** Load or fetch + cache the HODL baseline for a position. */
 async function _resolveBaseline(
   provider,
@@ -77,11 +146,20 @@ async function _readFees(
 }
 
 /** Compute current-epoch P&L from baseline + prices. */
-function _currentPnl(baseline, value, entryValue, feesUsd, price0, price1) {
-  const pgl = entryValue > 0 ? value - entryValue : null;
+function _currentPnl(
+  baseline,
+  value,
+  entryValue,
+  feesUsd,
+  price0,
+  price1,
+  residuals,
+) {
+  const totalValue = value + (residuals?.usd || 0);
+  const pgl = entryValue > 0 ? totalValue - entryValue : null;
   const il = baseline
     ? computeHodlIL({
-        lpValue: value,
+        lpValue: totalValue,
         hodlAmount0: baseline.hodlAmount0,
         hodlAmount1: baseline.hodlAmount1,
         currentPrice0: price0,
@@ -89,10 +167,12 @@ function _currentPnl(baseline, value, entryValue, feesUsd, price0, price1) {
       })
     : null;
   return {
+    value: totalValue,
     priceGainLoss: pgl,
     il,
     netPnl: entryValue > 0 ? (pgl || 0) + feesUsd : null,
     profit: il !== null ? feesUsd + il : null,
+    residualValueUsd: residuals?.usd || 0,
   };
 }
 
@@ -265,7 +345,24 @@ async function computeQuickDetails(
     posKey,
     diskConfig,
   );
-  const cur = _currentPnl(baseline, value, entryValue, feesUsd, price0, price1);
+  const residuals = await _walletResiduals(
+    provider,
+    ethersLib,
+    position,
+    ps,
+    price0,
+    price1,
+    body.walletAddress || "",
+  );
+  const cur = _currentPnl(
+    baseline,
+    value,
+    entryValue,
+    feesUsd,
+    price0,
+    price1,
+    residuals,
+  );
   const poolState = {
     tick: ps.tick,
     price: ps.price,
@@ -280,7 +377,7 @@ async function computeQuickDetails(
     price1,
     fetchedPrice0,
     fetchedPrice1,
-    value,
+    value: cur.value,
     amounts,
     feesUsd,
     composition,
@@ -309,4 +406,5 @@ module.exports = {
   _currentPnl,
   _applyPriceOverrides,
   _baselineSummary,
+  _walletResiduals,
 };

@@ -483,6 +483,7 @@
         <li>Only V3 concentrated liquidity (NFT) positions are supported.</li>
         <li>Historical rebalance events are scanned up to 5 years back and used to calculate lifetime P&amp;L.</li>
         <li>The $usd value of the initial deposit is automatically detected. In case of a problem with that, a dialog pops up to notify the user of the opportunity to enter it manually instead at top left in the app under &ldquo;Initial Deposit&rdquo;. Manual entries there always override any auto-detected value.</li>
+        <li><strong>Wallet Residuals:</strong> When a position is rebalanced with a narrow price range, some tokens may not fit the new range and remain in your wallet. These residual tokens are automatically counted as assets in Current Value, Net P&amp;L, and Impermanent Loss/Gain calculations. If multiple positions share a token, the wallet balance is split pro-rata based on each position&rsquo;s in-range token amount.</li>
       </ul>
       <div class="9mm-pos-mgr-help-title">Fund Tracking</div>
       <p class="9mm-pos-mgr-help-text">When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
@@ -966,6 +967,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775635399038"></script>
+<script src="dist/bundle.js?v=1775638352933"></script>
 </body>
 </html>
