@@ -241,4 +241,70 @@ describe("position-manager", () => {
       assert.notEqual(global, pool);
     });
   });
+
+  // ── pool daily counts ───────────────────────────────────────────────
+
+  describe("poolKey()", () => {
+    it("normalizes and sorts token addresses", () => {
+      const mgr = makeMgr();
+      const k1 = mgr.poolKey("0xAAA", "0xBBB", 3000);
+      const k2 = mgr.poolKey("0xBBB", "0xAAA", 3000);
+      assert.strictEqual(k1, k2);
+    });
+
+    it("includes fee in the key", () => {
+      const mgr = makeMgr();
+      const k1 = mgr.poolKey("0xa", "0xb", 3000);
+      const k2 = mgr.poolKey("0xa", "0xb", 500);
+      assert.notStrictEqual(k1, k2);
+    });
+  });
+
+  describe("canRebalancePool()", () => {
+    it("returns true when count is below max", () => {
+      const mgr = makeMgr();
+      const pk = mgr.poolKey("0xa", "0xb", 3000);
+      assert.strictEqual(mgr.canRebalancePool(pk, 5), true);
+    });
+
+    it("returns false after reaching max", () => {
+      const mgr = makeMgr();
+      const pk = mgr.poolKey("0xa", "0xb", 3000);
+      for (let i = 0; i < 5; i++) mgr.recordPoolRebalance(pk);
+      assert.strictEqual(mgr.canRebalancePool(pk, 5), false);
+    });
+  });
+
+  describe("recordPoolRebalance()", () => {
+    it("increments pool daily count", () => {
+      const mgr = makeMgr();
+      const pk = mgr.poolKey("0xa", "0xb", 3000);
+      mgr.recordPoolRebalance(pk);
+      mgr.recordPoolRebalance(pk);
+      const counts = mgr.getPoolDailyCounts();
+      assert.strictEqual(counts[pk], 2);
+    });
+  });
+
+  describe("getPoolDailyCounts()", () => {
+    it("returns empty object initially", () => {
+      const mgr = makeMgr();
+      assert.deepStrictEqual(mgr.getPoolDailyCounts(), {});
+    });
+
+    it("resets at midnight boundary", () => {
+      // Use a custom clock that jumps past midnight
+      let now = Date.now();
+      const mgr = createPositionManager({
+        rebalanceLock: createRebalanceLock(),
+        nowFn: () => now,
+      });
+      const pk = mgr.poolKey("0xa", "0xb", 3000);
+      mgr.recordPoolRebalance(pk);
+      assert.strictEqual(mgr.getPoolDailyCounts()[pk], 1);
+      // Jump 25 hours into the future
+      now += 25 * 60 * 60 * 1000;
+      assert.deepStrictEqual(mgr.getPoolDailyCounts(), {});
+    });
+  });
 });

@@ -456,4 +456,25 @@ describe("preserveRange", () => {
     assert.ok(r.upperTick > 12000, "upperTick should be > currentTick");
     assert.strictEqual(r.upperTick - r.lowerTick, 700, "spread preserved");
   });
+
+  it("tick containment shifts range when currentTick < newLower", () => {
+    const r = preserveRange(-12000, 5000, 5700, 2500, d0, d1);
+    assert.ok(r.lowerTick <= -12000, "lowerTick should be ≤ currentTick");
+    assert.ok(r.upperTick > -12000, "upperTick should be > currentTick");
+    assert.strictEqual(r.upperTick - r.lowerTick, 700, "spread preserved");
+  });
+});
+
+// ── priceToTick edge cases ──────────────────────────────────────────
+
+describe("priceToTick edge cases", () => {
+  const { priceToTick } = require("../src/range-math");
+
+  it("throws for zero price", () => {
+    assert.throws(() => priceToTick(0, 18, 18), /must be > 0/);
+  });
+
+  it("throws for negative price", () => {
+    assert.throws(() => priceToTick(-1, 18, 18), /must be > 0/);
+  });
 });
