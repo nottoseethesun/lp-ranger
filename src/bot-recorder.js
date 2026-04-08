@@ -545,4 +545,5 @@ module.exports = {
   _applyRebalanceResult,
   _collectTokenIds,
   _pushRebalanceEvent,
+  _applyCompoundGas,
 };

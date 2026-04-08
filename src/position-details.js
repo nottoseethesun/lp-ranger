@@ -380,4 +380,9 @@ module.exports = {
   computeQuickDetails: require("./position-details-quick").computeQuickDetails,
   computeLifetimeDetails,
   _scanCompounds,
+  _extractSnap,
+  _lifetimePnl,
+  _resolveEntryValueCached,
+  _buildDailyFallback,
+  _pickSmaller,
 };
