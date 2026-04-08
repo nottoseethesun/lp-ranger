@@ -17,6 +17,8 @@ const {
   setCachedEpochs,
   getCachedLifetimeHodl,
   setCachedLifetimeHodl,
+  getCachedFreshDeposits,
+  setCachedFreshDeposits,
 } = require("./epoch-cache");
 const { scanPoolHistory } = require("./pool-scanner");
 const {
@@ -219,6 +221,7 @@ async function _computeLifetimeIL(
   lpValue,
   price0,
   price1,
+  poolAddress,
 ) {
   const poolCacheKey = _poolCacheKey(position);
   const cached = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
@@ -236,11 +239,31 @@ async function _computeLifetimeIL(
       for (const tid of ids) {
         allNftEvents.set(tid, await scanNftEvents(tid));
       }
-      hodl = computeLifetimeHodl(allNftEvents, {
+      const ethers = require("ethers");
+      const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+      const cachedFresh = poolCacheKey
+        ? getCachedFreshDeposits(poolCacheKey)
+        : null;
+      hodl = await computeLifetimeHodl(allNftEvents, {
         rebalanceEvents: events,
         position,
+        provider: prov,
+        ethersLib: ethers,
+        walletAddress: body.walletAddress,
+        excludeFromAddrs: [config.POSITION_MANAGER, poolAddress],
+        cachedFreshDeposits: cachedFresh,
       });
-      if (poolCacheKey) setCachedLifetimeHodl(poolCacheKey, hodl);
+      if (poolCacheKey) {
+        setCachedLifetimeHodl(poolCacheKey, hodl);
+        if (hodl.lastBlock > (cachedFresh?.lastBlock || 0)) {
+          setCachedFreshDeposits(poolCacheKey, {
+            raw0: hodl.raw0,
+            raw1: hodl.raw1,
+            lastBlock: hodl.lastBlock,
+            deposits: hodl.deposits,
+          });
+        }
+      }
     } catch (err) {
       console.warn("[details] Lifetime HODL error:", err.message);
       return null;
@@ -262,6 +285,22 @@ function _pickSmaller(a, b) {
   if (a === null || a === undefined) return b;
   if (b === null || b === undefined) return a;
   return Math.abs(a) < Math.abs(b) ? a : b;
+}
+
+/** Compute total lifetime deposit USD from cached fresh deposit entries. */
+async function _computeDepositUsd(position, ps) {
+  const poolCK = _poolCacheKey(position);
+  const deps = (poolCK ? getCachedFreshDeposits(poolCK) : null)?.deposits;
+  if (!deps?.length) return 0;
+  const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
+  const { fetchHistoricalPriceGecko } = require("./price-fetcher");
+  return _totalLifetimeDeposit(deps, ps.decimals0, ps.decimals1, (block) =>
+    fetchHistoricalPriceGecko("", Math.floor(Date.now() / 1000), "pulsechain", {
+      token0Address: position.token0,
+      token1Address: position.token1,
+      blockNumber: block,
+    }),
+  );
 }
 
 /** Build pool cache key from position data. */
@@ -374,6 +413,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     cur.value,
     price0,
     price1,
+    ps.poolAddress,
   );
   // Enrich snapshot with fields the dashboard expects from managed path
   if (snap) {
@@ -386,6 +426,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     snap.totalCompoundedUsd = ltCompounded;
     snap.currentCompoundedUsd = 0;
     snap.initialDeposit = entryValue;
+    snap.totalLifetimeDeposit = await _computeDepositUsd(_posWithMeta, ps);
   }
   return {
     totalGasNative: snap?.totalGasNative || 0,

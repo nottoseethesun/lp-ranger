@@ -191,14 +191,34 @@ during the startup scan and cached in the epoch cache
 
 - **Lifetime deposited amounts** (`lifetimeHodlAmounts`) — the total tokens
   externally deposited into the pool across the entire rebalance chain.
-  Computed by `src/lifetime-hodl.js` from IncreaseLiquidity events.  The first
-  NFT's mint is the original deposit; subsequent IncreaseLiquidity events that
-  exceed collected fees are classified as external deposits.  Rebalance mints
-  (drain → swap → re-mint) contribute zero because the token ratio change is
-  from the swap, not from new capital.  When the event scan cannot distinguish
-  wallet-level deposits that were swept into a rebalance mint, the system falls
-  back to the current HODL baseline (which always reflects the latest mint's
-  actual token amounts).
+  Computed by `src/lifetime-hodl.js`.  The first NFT's mint is the original
+  deposit; subsequent IncreaseLiquidity events that exceed collected fees are
+  classified as external deposits.
+
+  **Fresh deposit detection algorithm** — for each rebalance boundary
+  (drain on NFT[i-1] → mint/IncreaseLiquidity on NFT[i]):
+
+  1. **Identify the window** — from the previous NFT's mint block to the
+     current NFT's mint (or IncreaseLiquidity) block.
+  2. **Scan wallet Transfer events** for token0 and token1 across the
+     full window.  This covers both pre-drain deposits and post-drain
+     deposits without counting residuals from prior rebalances.
+  3. **Group transfers by txHash** — if a single TX decreases one token
+     and increases the other, it is a **swap** and both legs are excluded.
+  4. **Sum remaining inbound transfers** — these are genuine fresh deposits.
+  5. **Accumulate** into lifetime HODL amounts.
+
+  The first NFT in the chain has no drain — its full mint amounts are the
+  original deposit.  When no provider is available (e.g. tests without
+  RPC), rebalance mints contribute zero and the system falls back to the
+  current HODL baseline.
+
+  **Incremental caching:** Fresh deposit totals (raw BigInt amounts + last
+  scanned block) are cached in `tmp/pnl-epochs-cache.json` via
+  `getCachedFreshDeposits` / `setCachedFreshDeposits` in `epoch-cache.js`.
+  On subsequent runs, only rebalance boundaries past the cached block are
+  scanned — previously accumulated fresh amounts are restored from cache.
+  RPC cost per boundary: 4 `getLogs` calls (2 tokens × in/out).
 
 - **Lifetime compounded amount** (`totalCompoundedUsd`) — the total USD value
   of fees that were re-deposited as liquidity via compound operations.
@@ -223,9 +243,9 @@ IL = LP_value − (hodlAmount0 × currentPrice0 + hodlAmount1 × currentPrice1)
 
 Both the managed and unmanaged paths use the same `computeHodlIL` function
 from `src/il-calculator.js`.  The HODL amounts come from
-`lifetimeHodlAmounts` (accumulated external deposits) or the current HODL
-baseline — whichever produces the larger HODL value, since the baseline
-captures wallet-level deposits the event scan may miss.
+`lifetimeHodlAmounts` (accumulated via the fresh deposit detection
+algorithm) with fallback to the first closed epoch or the current HODL
+baseline when the scan hasn't run yet.
 
 ### Scan Architecture: Single Fetch, Two Classifiers
 

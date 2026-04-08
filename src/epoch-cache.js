@@ -153,6 +153,30 @@ function setLastNftScanBlock(keyOpts, block) {
   _writeCache(cache);
 }
 
+/**
+ * Read cached fresh deposit totals for a pool.
+ * @param {object} keyOpts  Options for _cacheKey.
+ * @returns {{ raw0: string, raw1: string, lastBlock: number }|null}
+ *   raw0/raw1 are BigInt-as-string for lossless storage.
+ */
+function getCachedFreshDeposits(keyOpts) {
+  const cache = _readCache();
+  const entry = cache[_cacheKey(keyOpts)];
+  return entry?.freshDeposits || null;
+}
+
+/**
+ * Save fresh deposit totals for a pool.
+ * @param {object} keyOpts  Options for _cacheKey.
+ * @param {{ raw0: string, raw1: string, lastBlock: number }} data
+ */
+function setCachedFreshDeposits(keyOpts, data) {
+  const cache = _readCache();
+  const key = _cacheKey(keyOpts);
+  cache[key] = { ...(cache[key] || {}), freshDeposits: data };
+  _writeCache(cache);
+}
+
 module.exports = {
   getCachedEpochs,
   setCachedEpochs,
@@ -160,4 +184,6 @@ module.exports = {
   setCachedLifetimeHodl,
   getLastNftScanBlock,
   setLastNftScanBlock,
+  getCachedFreshDeposits,
+  setCachedFreshDeposits,
 };

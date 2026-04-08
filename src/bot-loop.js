@@ -168,6 +168,9 @@ async function _tryInitPnlTracker(
         token1: position.token1,
         fee: position.fee,
       });
+      // Cache decimals on position so downstream scans don't need pool state
+      position.decimals0 = ps.decimals0;
+      position.decimals1 = ps.decimals1;
       const lp = rangeMath.tickToPrice(
         position.tickLower,
         ps.decimals0,

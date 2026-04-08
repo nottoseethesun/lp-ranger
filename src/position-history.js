@@ -69,17 +69,17 @@ function _supplementFromEvents(result, tokenId, events) {
   if (!events) return;
   const mintEv = events.find((e) => String(e.newTokenId) === String(tokenId));
   if (mintEv) {
-    if (!result.mintDate && mintEv.timestamp) {
+    if (!result.mintDate && mintEv.timestamp)
       result.mintDate = new Date(mintEv.timestamp * 1000).toISOString();
-    }
     if (!result.mintTxHash) result.mintTxHash = mintEv.txHash || null;
+    if (mintEv.blockNumber) result.mintBlockNumber = mintEv.blockNumber;
   }
   const closeEv = events.find((e) => String(e.oldTokenId) === String(tokenId));
   if (closeEv) {
-    if (!result.closeDate && closeEv.timestamp) {
+    if (!result.closeDate && closeEv.timestamp)
       result.closeDate = new Date(closeEv.timestamp * 1000).toISOString();
-    }
     if (!result.closeTxHash) result.closeTxHash = closeEv.txHash || null;
+    if (closeEv.blockNumber) result.closeBlockNumber = closeEv.blockNumber;
   }
 }
 
@@ -500,24 +500,28 @@ async function _supplementHistoricalPrices(result, activePosition) {
         token1Address: activePosition.token1,
       }
     : {};
-  const fill = async (date, k0, k1) => {
+  const fill = async (date, k0, k1, blockNumber) => {
     const ts = Math.floor(new Date(date).getTime() / 1000);
-    const p = await fetchHistoricalPriceGecko(
-      pool,
-      ts,
-      "pulsechain",
-      tokenOpts,
-    );
+    const p = await fetchHistoricalPriceGecko(pool, ts, "pulsechain", {
+      ...tokenOpts,
+      blockNumber,
+    });
     if (p.price0 > 0) result[k0] = p.price0;
     if (p.price1 > 0) result[k1] = p.price1;
   };
   if (needOpen)
-    await fill(result.mintDate, "token0UsdPriceAtOpen", "token1UsdPriceAtOpen");
+    await fill(
+      result.mintDate,
+      "token0UsdPriceAtOpen",
+      "token1UsdPriceAtOpen",
+      result.mintBlockNumber,
+    );
   if (needClose)
     await fill(
       result.closeDate,
       "token0UsdPriceAtClose",
       "token1UsdPriceAtClose",
+      result.closeBlockNumber,
     );
 }
 

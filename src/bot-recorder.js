@@ -16,6 +16,7 @@ const { getPoolState } = require("./rebalancer");
 const { scanPoolHistory } = require("./pool-scanner");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
+const _epochCache = require("./epoch-cache");
 const {
   toFloat: _toFloat,
   fetchTokenPrices: _fetchTokenPrices,
@@ -331,6 +332,81 @@ async function _fetchAllNftEvents(ids, fromBlock) {
  * both compound classification and lifetime HODL accumulation.
  * Incremental: reads lastNftScanBlock from epoch cache, scans only new blocks.
  */
+/** Compute lifetime HODL amounts and persist fresh deposit cache. */
+async function _computeAndCacheHodl(
+  computeFn,
+  allNftEvents,
+  rebalanceEvents,
+  position,
+  opts,
+  walletAddress,
+  epochKey,
+) {
+  const ethers = require("ethers");
+  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const cachedFresh = epochKey
+    ? _epochCache.getCachedFreshDeposits(epochKey)
+    : null;
+  const ps = await getPoolState(prov, ethers, {
+    factoryAddress: config.FACTORY,
+    token0: position.token0,
+    token1: position.token1,
+    fee: position.fee,
+  }).catch(() => ({}));
+  const hodl = await computeFn(allNftEvents, {
+    rebalanceEvents,
+    position: {
+      ...position,
+      decimals0: opts.decimals0,
+      decimals1: opts.decimals1,
+    },
+    provider: prov,
+    ethersLib: ethers,
+    walletAddress,
+    excludeFromAddrs: [config.POSITION_MANAGER, ps.poolAddress],
+    cachedFreshDeposits: cachedFresh,
+  });
+  if (epochKey) {
+    _epochCache.setCachedLifetimeHodl(epochKey, hodl);
+    if (hodl.lastBlock > (cachedFresh?.lastBlock || 0))
+      _epochCache.setCachedFreshDeposits(epochKey, {
+        raw0: hodl.raw0,
+        raw1: hodl.raw1,
+        lastBlock: hodl.lastBlock,
+        deposits: hodl.deposits,
+      });
+  }
+  console.log(
+    "[bot] Lifetime HODL: amount0=%s amount1=%s",
+    hodl.amount0.toFixed(6),
+    hodl.amount1.toFixed(6),
+  );
+  return hodl;
+}
+
+/** Compute total lifetime deposit USD from HODL deposit entries. */
+async function _computeDepositUsd(botState, updateState, position, opts) {
+  const deposits = botState.lifetimeHodlAmounts?.deposits;
+  if (!deposits?.length) return;
+  const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
+  const { fetchHistoricalPriceGecko: _fhp } = require("./price-fetcher");
+  const pFn = (block) =>
+    _fhp("", Math.floor(Date.now() / 1000), "pulsechain", {
+      token0Address: position.token0,
+      token1Address: position.token1,
+      blockNumber: block,
+    });
+  const dep = await _totalLifetimeDeposit(
+    deposits,
+    opts.decimals0,
+    opts.decimals1,
+    pFn,
+  );
+  if (dep <= 0) return;
+  botState.totalLifetimeDepositUsd = dep;
+  updateState({ totalLifetimeDepositUsd: dep });
+}
+
 async function _scanLifetimePoolData(
   position,
   botState,
@@ -340,21 +416,17 @@ async function _scanLifetimePoolData(
   pnlTracker,
   epochKey,
 ) {
-  const {
-    getCachedLifetimeHodl,
-    setCachedLifetimeHodl,
-    getLastNftScanBlock,
-    setLastNftScanBlock,
-  } = require("./epoch-cache");
-  const cachedHodl = epochKey ? getCachedLifetimeHodl(epochKey) : null;
+  const cachedHodl = epochKey
+    ? _epochCache.getCachedLifetimeHodl(epochKey)
+    : null;
   const gc = botState._getConfig
     ? botState._getConfig("compoundHistory")
     : undefined;
-  const hasCompounds = gc && gc.length > 0;
+  const hasCompounds = gc?.length > 0;
   if (hasCompounds && cachedHodl) return;
   try {
     const { computeLifetimeHodl } = require("./lifetime-hodl");
-    const fromBlock = epochKey ? getLastNftScanBlock(epochKey) : 0;
+    const fromBlock = epochKey ? _epochCache.getLastNftScanBlock(epochKey) : 0;
     const prices = await _fetchTokenPrices(
       position.token0,
       position.token1,
@@ -370,7 +442,7 @@ async function _scanLifetimePoolData(
     };
     const ids = _collectTokenIds(position, rebalanceEvents);
     const { allNftEvents, maxBlock } = await _fetchAllNftEvents(ids, fromBlock);
-    if (!hasCompounds) {
+    if (!hasCompounds)
       await _classifyAllCompounds(
         ids,
         allNftEvents,
@@ -378,29 +450,24 @@ async function _scanLifetimePoolData(
         updateState,
         pnlTracker,
       );
-    }
     if (!cachedHodl) {
-      const hodl = computeLifetimeHodl(allNftEvents, {
+      const hodl = await _computeAndCacheHodl(
+        computeLifetimeHodl,
+        allNftEvents,
         rebalanceEvents,
-        position: {
-          ...position,
-          decimals0: opts.decimals0,
-          decimals1: opts.decimals1,
-        },
-      });
+        position,
+        opts,
+        walletAddress,
+        epochKey,
+      );
       botState.lifetimeHodlAmounts = hodl;
       updateState({ lifetimeHodlAmounts: hodl });
-      if (epochKey) setCachedLifetimeHodl(epochKey, hodl);
-      console.log(
-        "[bot] Lifetime HODL: amount0=%s amount1=%s",
-        hodl.amount0.toFixed(6),
-        hodl.amount1.toFixed(6),
-      );
     } else {
       botState.lifetimeHodlAmounts = cachedHodl;
     }
+    await _computeDepositUsd(botState, updateState, position, opts);
     if (epochKey && maxBlock > fromBlock)
-      setLastNftScanBlock(epochKey, maxBlock);
+      _epochCache.setLastNftScanBlock(epochKey, maxBlock);
   } catch (err) {
     console.warn("[bot] Lifetime pool scan failed:", err.message);
   }
@@ -420,7 +487,6 @@ function _recordResidual(deps, result) {
     });
 }
 
-/** Build a serialisable activePosition snapshot from a position object. */
 function _activePosSummary(p) {
   return {
     tokenId: String(p.tokenId),
@@ -433,7 +499,6 @@ function _activePosSummary(p) {
   };
 }
 
-/** Notify the dashboard of a successful rebalance. */
 function _notifyRebalance(deps, throttle, position, events) {
   deps.updateBotState({
     rebalanceCount: (deps._rebalanceCount || 0) + 1,
@@ -498,6 +563,11 @@ function _applyRebalanceResult(deps, result) {
     deps._botState.oorSince = null;
     // Reset mint gas flag so the new position's mint gas gets applied
     deps._botState._mintGasApplied = false;
+    // Clear cached HODL so re-scan picks up the new rebalance boundary
+    deps._botState.lifetimeHodlAmounts = null;
+    deps._botState.totalLifetimeDepositUsd = 0;
+    if (deps._pnlTracker?._epochKey)
+      _epochCache.setCachedLifetimeHodl(deps._pnlTracker._epochKey, null);
     _updateHodlBaseline(deps._botState, result, mintNow);
   }
   console.log(

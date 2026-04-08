@@ -151,6 +151,8 @@ async function _executeAndRecord(deps, ethersLib) {
       );
       await _closePnlEpoch(deps, result);
       _applyRebalanceResult(deps, result);
+      // Re-scan to pick up the new rebalance boundary for HODL tracking
+      if (deps._botState?._triggerScan) deps._botState._triggerScan();
     } else {
       console.error("[bot] Rebalance failed:", result.error);
       if (result.cancelled) {

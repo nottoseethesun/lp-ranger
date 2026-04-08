@@ -323,6 +323,35 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
  * @param {number} [opts.blockNumber]   - Block number for Moralis fallback.
  * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.
  */
+/** Try Moralis first when API key is available, then GeckoTerminal for zeros. */
+async function _fetchHistoricalPair(
+  poolAddr,
+  ts,
+  network,
+  t0,
+  t1,
+  c0,
+  c1,
+  blockNumber,
+) {
+  const useMoralis = getApiKey("moralis") && blockNumber;
+  let p0 = c0 ?? 0,
+    p1 = c1 ?? 0;
+  if (useMoralis) {
+    if (p0 === 0 && t0)
+      p0 = await _fetchMoralisHistorical(t0, blockNumber, network);
+    if (p1 === 0 && t1)
+      p1 = await _fetchMoralisHistorical(t1, blockNumber, network);
+  }
+  if (p0 === 0 && c0 === null)
+    p0 = await _fetchGeckoTerminalOhlcv(poolAddr, ts, "base", network);
+  if (p1 === 0 && c1 === null)
+    p1 = await _fetchGeckoTerminalOhlcv(poolAddr, ts, "quote", network);
+  if (!useMoralis)
+    return _moralisFallback(p0, p1, t0, t1, blockNumber, network);
+  return { price0: p0, price1: p1 };
+}
+
 async function fetchHistoricalPriceGecko(
   poolAddress,
   timestamp,
@@ -332,27 +361,18 @@ async function fetchHistoricalPriceGecko(
   const utcKey = toUtcDayKey(timestamp);
   const t0 = opts.token0Address;
   const t1 = opts.token1Address;
-  // Check disk cache for both tokens
   const c0 = t0 ? getHistoricalPrice(network, t0, utcKey) : null;
   const c1 = t1 ? getHistoricalPrice(network, t1, utcKey) : null;
   if (c0 !== null && c1 !== null) return { price0: c0, price1: c1 };
-  // Fetch only missing prices from GeckoTerminal
-  const [g0, g1] = await Promise.all([
-    c0 !== null
-      ? c0
-      : _fetchGeckoTerminalOhlcv(poolAddress, timestamp, "base", network),
-    c1 !== null
-      ? c1
-      : _fetchGeckoTerminalOhlcv(poolAddress, timestamp, "quote", network),
-  ]);
-  // Moralis fallback for tokens GeckoTerminal can't price
-  const { price0, price1 } = await _moralisFallback(
-    g0,
-    g1,
+  const { price0, price1 } = await _fetchHistoricalPair(
+    poolAddress,
+    timestamp,
+    network,
     t0,
     t1,
+    c0,
+    c1,
     opts.blockNumber,
-    network,
   );
   // Persist to disk cache
   if (t0 && price0 > 0) setHistoricalPrice(network, t0, utcKey, price0);
