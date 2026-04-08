@@ -27,6 +27,7 @@ const {
 const {
   _currentPnl,
   _applyPriceOverrides,
+  _walletResiduals,
 } = require("./position-details-quick");
 
 /** Detect compounds across all NFTs in the rebalance chain and cache result. */
@@ -305,7 +306,24 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
   const { baseline, entryValue } = _resolveEntryValueCached(diskConfig, posKey);
   const value = positionValueUsd(position, ps, price0, price1);
   const feesUsd = body.feesUsd || 0;
-  const cur = _currentPnl(baseline, value, entryValue, feesUsd, price0, price1);
+  const residuals = await _walletResiduals(
+    provider,
+    ethersLib,
+    position,
+    ps,
+    price0,
+    price1,
+    body.walletAddress || "",
+  );
+  const cur = _currentPnl(
+    baseline,
+    value,
+    entryValue,
+    feesUsd,
+    price0,
+    price1,
+    residuals,
+  );
   const { tracker, events } = await _getLifetimeSnapshot(
     provider,
     ethersLib,
@@ -318,7 +336,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ps.poolAddress,
   );
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
-  const lt = _lifetimePnl(tracker, ps, entryValue, cur, feesUsd, value);
+  const lt = _lifetimePnl(tracker, ps, entryValue, cur, feesUsd, cur.value);
   console.log(
     "[details] lifetime tokenId=%s epochs=%d baseline=%s cur.il=%s lt.il=%s",
     body.tokenId,
@@ -327,7 +345,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     cur.il,
     lt.il,
   );
-  const dailyPnl = _buildDailyFallback(snap, entryValue, value, body);
+  const dailyPnl = _buildDailyFallback(snap, entryValue, cur.value, body);
   console.log(
     "[details] Lifetime P&L for #%s done (%dms)",
     body.tokenId,
@@ -353,13 +371,13 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     _posWithMeta,
     events,
     body,
-    value,
+    cur.value,
     price0,
     price1,
   );
   // Enrich snapshot with fields the dashboard expects from managed path
   if (snap) {
-    snap.currentValue = value;
+    snap.currentValue = cur.value;
     // Use the IL closest to zero (largest HODL) — cur.il uses the current
     // baseline which includes wallet-level deposits the scan can't detect.
     const bestIl = _pickSmaller(ltIl, cur.il) ?? snap.totalIL;
@@ -375,7 +393,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ...lt,
     ltCompounded,
     entryValue,
-    currentValue: value,
+    currentValue: cur.value,
     firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null,
     dailyPnl,
     rebalanceEvents: events.length > 0 ? events : null,

@@ -322,6 +322,7 @@ async function startBotLoop(opts) {
           updateBotState({ collectedFeesUsd });
         },
         _residualTracker: residualTracker,
+        _getTokenPositionAmounts: botState._getTokenPositionAmounts || null,
         _getConfig: gc,
       });
       if (result.rebalanced) {

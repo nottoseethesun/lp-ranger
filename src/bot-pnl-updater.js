@@ -115,8 +115,15 @@ async function addPoolShare(
   }
 }
 
-/** Compute the USD value of wallet residuals, capped to actual balances. */
-async function residualValueUsd(
+/**
+ * Compute this position's pro-rata share of wallet token balances.
+ * Each token's wallet balance is split across all managed positions
+ * that use it, proportional to the in-position amount.
+ *
+ * @returns {{ usd: number, amount0: number, amount1: number }}
+ *   amount0/amount1 are human-readable floats (this position's share).
+ */
+async function walletResiduals(
   deps,
   ethersLib,
   provider,
@@ -125,35 +132,46 @@ async function residualValueUsd(
   price0,
   price1,
 ) {
-  const rt = deps._residualTracker;
-  if (!rt || !poolState.poolAddress) return 0;
+  const empty = { usd: 0, amount0: 0, amount1: 0 };
   try {
     const addr = await deps.signer.getAddress();
-    const t0 = new ethersLib.Contract(
+    const t0c = new ethersLib.Contract(
       position.token0,
       _ERC20_BAL_ABI,
       provider,
     );
-    const t1 = new ethersLib.Contract(
+    const t1c = new ethersLib.Contract(
       position.token1,
       _ERC20_BAL_ABI,
       provider,
     );
     const [wb0, wb1] = await Promise.all([
-      t0.balanceOf(addr),
-      t1.balanceOf(addr),
+      t0c.balanceOf(addr),
+      t1c.balanceOf(addr),
     ]);
-    return rt.cappedValueUsd(
-      poolState.poolAddress,
-      wb0,
-      wb1,
-      price0,
-      price1,
-      poolState.decimals0,
-      poolState.decimals1,
+    const d0 = poolState.decimals0,
+      d1 = poolState.decimals1;
+    const wf0 = toFloat(wb0, d0),
+      wf1 = toFloat(wb1, d1);
+    // This position's in-range token amounts
+    const pa = rangeMath.positionAmounts(
+      position.liquidity || 0,
+      poolState.tick,
+      position.tickLower,
+      position.tickUpper,
+      d0,
+      d1,
     );
+    // Pro-rata: query all managed positions' amounts for shared tokens
+    const gta = deps._getTokenPositionAmounts;
+    const total0 = gta ? gta(position.token0) : pa.amount0;
+    const total1 = gta ? gta(position.token1) : pa.amount1;
+    const share0 = total0 > 0 ? (pa.amount0 / total0) * wf0 : wf0;
+    const share1 = total1 > 0 ? (pa.amount1 / total1) * wf1 : wf1;
+    const usd = share0 * price0 + share1 * price1;
+    return { usd, amount0: share0, amount1: share1 };
   } catch (_) {
-    return 0;
+    return empty;
   }
 }
 
@@ -212,15 +230,17 @@ function _lifetimeAmounts(deps, snap) {
   };
 }
 
-function _computeIL(snap, deps, realValue, price0, price1) {
+function _computeIL(snap, deps, realValue, price0, price1, residuals) {
   const bl = deps._botState?.hodlBaseline;
   const curA0 = bl?.hodlAmount0 || 0,
     curA1 = bl?.hodlAmount1 || 0;
-  snap.totalIL = _ilFor(realValue, curA0, curA1, price0, price1);
+  // IL = (LP value + residual value) - HODL value
+  const totalValue = realValue + (residuals?.usd || 0);
+  snap.totalIL = _ilFor(totalValue, curA0, curA1, price0, price1);
   const { a0, a1 } = _lifetimeAmounts(deps, snap);
-  snap.lifetimeIL = _ilFor(realValue, a0, a1, price0, price1);
+  snap.lifetimeIL = _ilFor(totalValue, a0, a1, price0, price1);
   snap.ilInputs = {
-    lpValue: realValue,
+    lpValue: totalValue,
     price0,
     price1,
     cur: { hodlAmount0: curA0, hodlAmount1: curA1 },
@@ -237,12 +257,13 @@ async function overridePnlWithRealValues(
   price0,
   price1,
   feesUsd,
-  rUsd,
+  residuals,
 ) {
   const realValue = positionValueUsd(position, poolState, price0, price1);
+  const rUsd = residuals?.usd || 0;
   const lifetimeFees = _computeLifetimeFees(snap, deps, feesUsd);
-  snap.residualValueUsd = rUsd || 0;
-  snap.currentValue = realValue;
+  snap.residualValueUsd = rUsd;
+  snap.currentValue = realValue + rUsd;
   snap.totalFees = lifetimeFees;
   const entryVal = snap.liveEpoch
     ? snap.liveEpoch.entryValue
@@ -267,12 +288,13 @@ async function overridePnlWithRealValues(
       /* keep historical USD sums as fallback */
     }
   }
-  snap.priceChangePnl = realValue - entryVal;
+  // currentValue already includes residuals (realValue + rUsd)
+  snap.priceChangePnl = snap.currentValue - entryVal;
   snap.cumulativePnl =
     snap.priceChangePnl + lifetimeFees - snap.totalGas - compounded;
   snap.netReturn =
     lifetimeFees - snap.totalGas + snap.priceChangePnl - compounded;
-  _computeIL(snap, deps, realValue, price0, price1);
+  _computeIL(snap, deps, realValue, price0, price1, residuals);
 }
 
 /**
@@ -407,7 +429,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
       deps._lastUnclaimedFeesUsd = feesUsd;
       deps._lastPrice0 = price0;
       deps._lastPrice1 = price1;
-      const rUsd = await residualValueUsd(
+      const residuals = await walletResiduals(
         deps,
         ethersLib,
         provider,
@@ -433,7 +455,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         price0,
         price1,
         feesUsd,
-        rUsd,
+        residuals,
       );
     } catch (err) {
       console.warn("[bot] P&L update error:", err.message);
@@ -481,7 +503,7 @@ module.exports = {
   fetchTokenPrices,
   readUnclaimedFees,
   addPoolShare,
-  residualValueUsd,
+  walletResiduals,
   overridePnlWithRealValues,
   estimateGasCostUsd,
   actualGasCostUsd,
