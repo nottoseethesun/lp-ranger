@@ -321,6 +321,31 @@ async function _computeDepositUsd(position, ps) {
   );
 }
 
+/** Enrich a tracker snapshot with fields the dashboard expects. */
+async function _enrichSnap(
+  snap,
+  cur,
+  ltIl,
+  ltResult,
+  ltComp,
+  entry,
+  bl,
+  pos,
+  ps,
+  p0,
+  p1,
+) {
+  if (!snap) return;
+  snap.currentValue = cur.value;
+  snap.totalIL = cur.il ?? snap.totalIL;
+  snap.lifetimeIL = ltIl ?? cur.il ?? snap.totalIL;
+  snap.totalCompoundedUsd = ltComp;
+  snap.currentCompoundedUsd = 0;
+  snap.initialDeposit = entry;
+  snap.totalLifetimeDeposit = await _computeDepositUsd(pos, ps);
+  snap.ilInputs = _buildIlInputs(cur.value, p0, p1, bl, ltResult);
+}
+
 /** Build pool cache key from position data. */
 function _poolCacheKey(pos) {
   if (!pos.token0 || !pos.fee) return null;
@@ -434,26 +459,19 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ps.poolAddress,
   );
   const ltIl = ltResult?.il ?? null;
-  // Enrich snapshot with fields the dashboard expects from managed path
-  if (snap) {
-    snap.currentValue = cur.value;
-    // Use the IL closest to zero (largest HODL) — cur.il uses the current
-    // baseline which includes wallet-level deposits the scan can't detect.
-    const bestIl = _pickSmaller(ltIl, cur.il) ?? snap.totalIL;
-    snap.totalIL = bestIl;
-    snap.lifetimeIL = bestIl;
-    snap.totalCompoundedUsd = ltCompounded;
-    snap.currentCompoundedUsd = 0;
-    snap.initialDeposit = entryValue;
-    snap.totalLifetimeDeposit = await _computeDepositUsd(_posWithMeta, ps);
-    snap.ilInputs = _buildIlInputs(
-      cur.value,
-      price0,
-      price1,
-      baseline,
-      ltResult,
-    );
-  }
+  await _enrichSnap(
+    snap,
+    cur,
+    ltIl,
+    ltResult,
+    ltCompounded,
+    entryValue,
+    baseline,
+    _posWithMeta,
+    ps,
+    price0,
+    price1,
+  );
   return {
     totalGasNative: snap?.totalGasNative || 0,
     ok: true,
