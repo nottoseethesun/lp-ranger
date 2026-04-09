@@ -399,12 +399,42 @@ export function initDisclaimer() {
   });
 }
 
-/** Toggle the help popover visibility. */
 /** Toggle the settings popover visibility. */
 export function toggleSettingsPopover() {
   const pop = g("settingsPopover");
   if (!pop) return;
+  const opening = !pop.classList.contains("9mm-pos-mgr-visible");
   pop.classList.toggle("9mm-pos-mgr-visible");
+  if (opening) checkMoralisKeyStatus();
+}
+
+/** Ping the server to check Moralis API key status and update the dot. */
+export async function checkMoralisKeyStatus() {
+  const dot = g("moralisKeyDot");
+  if (!dot) return;
+  try {
+    const res = await fetch("/api/api-keys/status");
+    const data = await res.json();
+    const s = data.moralis || "none";
+    dot.classList.remove(
+      "9mm-pos-mgr-api-dot--valid",
+      "9mm-pos-mgr-api-dot--invalid",
+    );
+    void dot.offsetWidth; // force reflow to restart animation
+    if (s === "valid") {
+      dot.classList.add("9mm-pos-mgr-api-dot--valid");
+      dot.title = "Moralis API key is active and valid";
+    } else if (s === "invalid") {
+      dot.classList.add("9mm-pos-mgr-api-dot--invalid");
+      dot.title = "Moralis API key is invalid — check your key";
+    } else if (s === "locked") {
+      dot.title = "Moralis API key stored but wallet is locked";
+    } else {
+      dot.title = "No Moralis API key configured";
+    }
+  } catch {
+    /* network error — leave dot in default state */
+  }
 }
 
 /** Clear all localStorage and cookies, then reload. */

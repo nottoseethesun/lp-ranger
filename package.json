@@ -4,7 +4,7 @@
   "description": "Auto-rebalancing position manager for 9mm v3 (Uniswap v3 fork) on PulseChain",
   "main": "server.js",
   "scripts": {
-    "build": "esbuild public/dashboard-init.js --bundle --outfile=public/dist/bundle.js --format=iife --platform=browser --target=es2020 && node scripts/cache-bust.js && echo 'Cache-bust: v='$(date +%s%3N)",
+    "build": "esbuild public/dashboard-init.js --bundle --outfile=public/dist/bundle.js --format=iife --platform=browser --target=es2020 && node scripts/cache-bust.js",
     "build:watch": "esbuild public/dashboard-init.js --bundle --outfile=public/dist/bundle.js --format=iife --platform=browser --target=es2020 --watch",
     "copy-fonts": "bash scripts/copy-fonts.sh",
     "postinstall": "bash scripts/copy-fonts.sh",

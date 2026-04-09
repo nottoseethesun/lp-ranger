@@ -313,12 +313,23 @@ async function _computeDepositUsd(position, ps) {
   if (!deps?.length) return 0;
   const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
   const { fetchHistoricalPriceGecko } = require("./price-fetcher");
-  return _totalLifetimeDeposit(deps, ps.decimals0, ps.decimals1, (block) =>
-    fetchHistoricalPriceGecko("", Math.floor(Date.now() / 1000), "pulsechain", {
-      token0Address: position.token0,
-      token1Address: position.token1,
-      blockNumber: block,
-    }),
+  const poolAddr = ps.poolAddress || "";
+  return _totalLifetimeDeposit(
+    deps,
+    ps.decimals0,
+    ps.decimals1,
+    (block) =>
+      fetchHistoricalPriceGecko(
+        poolAddr,
+        Math.floor(Date.now() / 1000),
+        "pulsechain",
+        {
+          token0Address: position.token0,
+          token1Address: position.token1,
+          blockNumber: block,
+        },
+      ),
+    { token0: position.token0, token1: position.token1 },
   );
 }
 

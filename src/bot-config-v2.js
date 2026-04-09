@@ -133,6 +133,14 @@ function loadConfig(dir) {
       filePath,
       text.length,
     );
+    // Backup on load — safety net for config stomping investigation
+    if (posCount > 0) {
+      try {
+        fs.copyFileSync(filePath, filePath.replace(".json", ".backup.json"));
+      } catch {
+        /* best-effort */
+      }
+    }
     return {
       global: raw.global || {},
       positions: raw.positions || {},
@@ -151,6 +159,46 @@ function loadConfig(dir) {
  * @param {object} cfg   Config object.
  * @param {string} [dir] Directory override.
  */
+/** Read disk config for guard comparison. */
+function _readDiskConfig(filePath) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const pos = raw.positions || {};
+    return {
+      count: Object.keys(pos).length,
+      running: Object.values(pos).filter((p) => p.status === "running").length,
+      positions: pos,
+    };
+  } catch {
+    return { count: 0, running: 0, positions: {} };
+  }
+}
+
+/**
+ * Guard: refuse to write if running positions would silently vanish.
+ * Returns true if the save should be blocked.
+ */
+function _guardRunningPositions(cfg, disk) {
+  const lost = Object.entries(disk.positions).filter(
+    ([k, v]) =>
+      v.status === "running" && cfg.positions[k]?.status !== "running",
+  );
+  const unexplained = lost.filter(
+    ([k]) => !cfg.positions[k] || cfg.positions[k].status === undefined,
+  );
+  if (unexplained.length === 0) return false;
+  console.warn(
+    "[config] saveConfig: REFUSING — %d running positions would vanish:",
+    unexplained.length,
+  );
+  for (const [k] of unexplained) console.warn("[config]   LOST: %s", k);
+  console.warn(
+    "[config]   caller=%s",
+    new Error().stack?.split("\n")[3]?.trim(),
+  );
+  return true;
+}
+
 function saveConfig(cfg, dir) {
   delete cfg.version; // strip legacy field if present
   delete cfg.managedPositions; // strip obsolete field
@@ -158,40 +206,45 @@ function saveConfig(cfg, dir) {
   const running = posKeys.filter(
     (k) => cfg.positions[k]?.status === "running",
   ).length;
-  if (posKeys.length === 0 && !dir) {
-    // Never overwrite a non-empty config with an empty one — this would lose
-    // managed positions.  Only write if the file is also empty or missing.
-    const filePath = _configPath(dir);
-    try {
-      const existing = JSON.parse(fs.readFileSync(filePath, "utf8"));
-      if (Object.keys(existing.positions || {}).length > 0) {
-        console.warn(
-          "[config] saveConfig: REFUSING to overwrite %d positions with empty config",
-          Object.keys(existing.positions).length,
-        );
-        return;
-      }
-    } catch {
-      /* file missing or corrupt — safe to write */
-    }
+  const filePath = _configPath(dir);
+  const disk = _readDiskConfig(filePath);
+  // Refuse to overwrite a non-empty config with an empty one
+  if (posKeys.length === 0 && disk.count > 0 && !dir) {
+    console.warn(
+      "[config] saveConfig: REFUSING to overwrite %d positions with empty config",
+      disk.count,
+    );
+    return;
   }
-  // Log every save with position count, running count, and each position's
-  // key suffix + status + field list for traceability.
+  // Refuse to reduce running count unless positions were explicitly stopped
+  if (running < disk.running && !dir && _guardRunningPositions(cfg, disk))
+    return;
+  // ── Diagnostic logging ─────────────────────────────────────────────────
   const caller = new Error().stack?.split("\n")[2]?.trim() || "";
-  console.log(
-    "[config] saveConfig: %d positions (%d running) caller=%s",
-    posKeys.length,
-    running,
-    caller,
-  );
+  if (posKeys.length < disk.count)
+    console.warn(
+      "[config] saveConfig: position count DECREASED %d → %d caller=%s",
+      disk.count,
+      posKeys.length,
+      caller,
+    );
+  else
+    console.log(
+      "[config] saveConfig: %d positions (%d running) caller=%s",
+      posKeys.length,
+      running,
+      caller,
+    );
   for (const k of posKeys) {
     const v = cfg.positions[k];
-    const fields = Object.keys(v).join(",");
-    console.log("[config]   %s status=%s keys=%s", k, v.status || "—", fields);
+    console.log(
+      "[config]   %s status=%s keys=%s",
+      k,
+      v.status || "—",
+      Object.keys(v).join(","),
+    );
   }
-  // Atomic write: temp file + rename prevents empty-file corruption if
-  // the process exits mid-write (SIGINT during shutdown race).
-  const filePath = _configPath(dir);
+  // ── Atomic write ───────────────────────────────────────────────────────
   const tmpPath = filePath + ".tmp";
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(cfg, null, 2), "utf8");

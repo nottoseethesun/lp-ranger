@@ -4,10 +4,10 @@
  * @description
  * Fetches USD prices for tokens on PulseChain for the 9mm v3 Position Manager.
  *
- * Uses GeckoTerminal (primary, free, rate-limited 30/min) and DexScreener
- * (fallback, free) to resolve token prices.  GeckoTerminal is preferred
- * because DexScreener drops tokens with no 24h LP activity.  Results are
- * cached in memory with a 60-second TTL.
+ * Uses three price sources in priority order: Moralis (primary, requires
+ * API key, most reliable for meme tokens), GeckoTerminal (free, rate-limited
+ * 30/min), and DexScreener (free, but drops tokens with no 24h LP activity).
+ * Results are cached in memory with a 60-second TTL.
  *
  * GeckoTerminal rate limiting
  * ──────────────────────────
@@ -141,6 +141,29 @@ async function _fetchGeckoTerminalCurrent(
   return Number.isFinite(price) && price > 0 ? price : 0;
 }
 
+// ── price source chain ──────────────────────────────────────────────────────
+
+/**
+ * Try a list of price sources in priority order, returning the first
+ * non-zero result.  Each source is { name, fn } where fn is an async
+ * function returning a USD price (0 = unavailable).  Errors are caught
+ * and logged so callers never receive a rejected promise.
+ *
+ * @param {{ name: string, fn: () => Promise<number> }[]} sources
+ * @returns {Promise<number>} USD price (0 if all sources fail).
+ */
+async function tryPriceSources(sources) {
+  for (const { name, fn } of sources) {
+    try {
+      const price = await fn();
+      if (price > 0) return price;
+    } catch (err) {
+      console.warn(`[price-fetcher] ${name} error:`, err.message ?? err);
+    }
+  }
+  return 0;
+}
+
 // ── main entry point ─────────────────────────────────────────────────────────
 
 /**
@@ -153,9 +176,10 @@ async function _fetchGeckoTerminalCurrent(
  *
  * Resolution order:
  *  1. Return cached value if still within the TTL window.
- *  2. Try GeckoTerminal (free, no API key, rate-limited 30/min).
- *  3. Try DexScreener (free, no API key — drops tokens with no 24h activity).
- *  4. Return 0 if all sources fail or return no data.
+ *  2. Try Moralis (requires API key — most reliable for meme tokens).
+ *  3. Try GeckoTerminal (free, no API key, rate-limited 30/min).
+ *  4. Try DexScreener (free, no API key — drops tokens with no 24h activity).
+ *  5. Return 0 if all sources fail or return no data.
  *
  * All network errors are caught and logged via `console.warn` so that
  * callers never receive a rejected promise.
@@ -168,47 +192,19 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
   const chain = opts.chain ?? "pulsechain";
   const key = _cacheKey(chain, tokenAddress);
 
-  // 1. Cache check.
   const cached = _cache.get(key);
-  if (cached && Date.now() - cached.ts < _CACHE_TTL_MS) {
-    return cached.price;
-  }
+  if (cached && Date.now() - cached.ts < _CACHE_TTL_MS) return cached.price;
 
-  // 2. GeckoTerminal (primary — free, rate-limited, no 24h activity requirement).
-  try {
-    const price = await _fetchGeckoTerminalCurrent(tokenAddress, chain);
-    if (price > 0) {
-      _cache.set(key, { price, ts: Date.now() });
-      return price;
-    }
-  } catch (err) {
-    console.warn("[price-fetcher] GeckoTerminal error:", err.message ?? err);
-  }
-
-  // 3. DexScreener (fallback — free, drops tokens with no 24h activity).
-  try {
-    const price = await _fetchDexScreener(tokenAddress, chain);
-    if (price > 0) {
-      _cache.set(key, { price, ts: Date.now() });
-      return price;
-    }
-  } catch (err) {
-    console.warn("[price-fetcher] DexScreener error:", err.message ?? err);
-  }
-
-  // 4. Moralis (requires API key — supports meme tokens others miss).
-  try {
-    const price = await _fetchMoralisCurrent(tokenAddress, chain);
-    if (price > 0) {
-      _cache.set(key, { price, ts: Date.now() });
-      return price;
-    }
-  } catch (err) {
-    console.warn("[price-fetcher] Moralis error:", err.message ?? err);
-  }
-
-  // 5. Nothing worked.
-  return 0;
+  const price = await tryPriceSources([
+    { name: "Moralis", fn: () => _fetchMoralisCurrent(tokenAddress, chain) },
+    {
+      name: "GeckoTerminal",
+      fn: () => _fetchGeckoTerminalCurrent(tokenAddress, chain),
+    },
+    { name: "DexScreener", fn: () => _fetchDexScreener(tokenAddress, chain) },
+  ]);
+  if (price > 0) _cache.set(key, { price, ts: Date.now() });
+  return price;
 }
 
 // ── GeckoTerminal (historical prices) ────────────────────────────────────────
@@ -466,6 +462,7 @@ async function _fetchMoralisHistorical(
 module.exports = {
   fetchTokenPriceUsd,
   fetchHistoricalPriceGecko,
+  tryPriceSources,
   _fetchDexScreener,
   _fetchGeckoTerminalOhlcv,
   _fetchMoralisCurrent,

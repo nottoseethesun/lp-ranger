@@ -1,14 +1,22 @@
-/** @file dashboard-data-kpi.js — KPI calculation and display. */
-import {
-  g,
-  truncName,
-  fmtDateTime,
-  botConfig,
-  fmtDuration,
-} from "./dashboard-helpers.js";
+/**
+ * @file dashboard-data-kpi.js — KPI calculation and display.
+ *
+ * Deposit Resolution: Both panels have user-editable deposit fields
+ * persisted to localStorage (per-position for Current, per-pool for
+ * Lifetime) + synced to .bot-config.json.  User values always win.
+ *
+ * Lifetime Deposit Fallback Chain (_resolveLifetimeDeposit):
+ *  ● Scan total (totalLifetimeDeposit) — Lifetime panel only, never
+ *    Current.  HODL scan sums fresh deposits at historical prices.
+ *  ● First closed epoch entry (closedEpochs[0].entryValue) — original
+ *    position's value when the bot first started tracking.
+ *  ● Current baseline (hodlBaseline.entryValue) — current NFT's entry
+ *    value at most recent rebalance.  Always available but not the
+ *    original deposit.
+ */
+import { g, fmtDateTime, fmtDuration } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 import {
-  _poolKey,
   loadRealizedGains,
   loadCurRealized,
   loadInitialDeposit,
@@ -47,13 +55,10 @@ export function _setPctSpan(id, val, deposit) {
 export function _setAprSpan(id, val, deposit, firstDate) {
   const el = g(id);
   if (!el) return;
-  if (!deposit || deposit <= 0 || !firstDate) {
-    el.textContent = "\u2014";
-    return;
-  }
-  const sec =
-    (Date.now() - new Date(firstDate + "T00:00:00Z").getTime()) / 1000;
-  if (sec <= 0) {
+  const sec = firstDate
+    ? (Date.now() - new Date(firstDate + "T00:00:00Z").getTime()) / 1000
+    : 0;
+  if (!deposit || deposit <= 0 || sec <= 0) {
     el.textContent = "\u2014";
     return;
   }
@@ -63,10 +68,8 @@ export function _setAprSpan(id, val, deposit, firstDate) {
     el.style.color = "";
     return;
   }
-  el.textContent =
-    (apr > 0
-      ? "APR " + apr.toFixed(2)
-      : "APR \u2212" + Math.abs(apr).toFixed(2)) + "%";
+  const sign = apr > 0 ? "APR " : "APR \u2212";
+  el.textContent = sign + Math.abs(apr).toFixed(2) + "%";
   el.style.color = apr > 0 ? "#0f0" : "#f44";
 }
 export function _setLeadingText(el, text) {
@@ -217,6 +220,16 @@ export function _botDetectedDeposit(d) {
       ? d.hodlBaseline.entryValue
       : d.pnlSnapshot?.initialDeposit || 0;
 }
+/** Resolve lifetime deposit: user → scan total → first epoch → baseline. */
+export function _resolveLifetimeDeposit(d) {
+  const user = loadInitialDeposit();
+  if (user > 0) return user; // manual override
+  return (
+    d.pnlSnapshot?.totalLifetimeDeposit || // scan total
+    d.pnlSnapshot?.closedEpochs?.[0]?.entryValue || // first epoch
+    _botDetectedDeposit(d)
+  ); // current baseline
+}
 export function _resolveCurDeposit(d) {
   const saved = loadCurDeposit();
   if (saved > 0) return saved;
@@ -238,10 +251,8 @@ export function _resolveKpiTotals(d) {
     curRealized = loadCurRealized();
   const ltFees = d.pnlSnapshot ? d.pnlSnapshot.totalFees || 0 : 0;
   const curFees = d.pnlSnapshot?.liveEpoch?.fees || 0;
-  const curDep = _resolveCurDeposit(d),
-    ltUserDep = loadInitialDeposit();
-  const ltAuto = d.pnlSnapshot?.totalLifetimeDeposit || _botDetectedDeposit(d);
-  const ltDep = ltUserDep > 0 ? ltUserDep : ltAuto;
+  const curDep = _resolveCurDeposit(d);
+  const ltDep = _resolveLifetimeDeposit(d);
   const curPc = _priceChangePnl(d, curDep, false),
     ltPc = _priceChangePnl(d, ltDep, true);
   const compounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
@@ -429,75 +440,10 @@ function _setLtCurrentValue(d) {
     (d.pnlSnapshot.currentValue || 0) + (d.pnlSnapshot.residualValueUsd || 0);
   el.textContent = _fmtUsd(cv);
 }
-function _missingPriceNames(d) {
-  const a = posStore.getActive(),
-    n = [];
-  if (d.fetchedPrice0 !== undefined && d.fetchedPrice0 <= 0)
-    n.push(truncName(a?.token0Symbol || "Token 0", 16));
-  if (d.fetchedPrice1 !== undefined && d.fetchedPrice1 <= 0)
-    n.push(truncName(a?.token1Symbol || "Token 1", 16));
-  return n;
-}
-function _fillBaselineCtx() {
-  const ctx = g("hodlBaselineCtx");
-  if (!ctx) return;
-  const a = posStore.getActive();
-  if (!a) {
-    ctx.textContent = "";
-    return;
-  }
-  const w = a.walletAddress
-    ? a.walletAddress.slice(0, 6) + "\u2026" + a.walletAddress.slice(-4)
-    : "";
-  const fee = a.fee ? " \u00B7 " + (a.fee / 10000).toFixed(2) + "% fee" : "";
-  const pm = botConfig.pmName || (a.contractAddress || "").slice(0, 10);
-  const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
-  ctx.innerHTML = `Blockchain: ${botConfig.chainName || "PulseChain"}<br>Wallet: ${w}<br>${pair}${pm ? " on " + pm : ""}<br>NFT #${a.tokenId}${fee}`;
-}
-export function _showBaselineModal(d, isFallback, isNew, curMissing, missing) {
-  const amt = g("hodlBaselineAmt"),
-    msg = g("hodlBaselineMsg"),
-    date = g("hodlBaselineDate");
-  if (!amt) return;
-  _fillBaselineCtx();
-  if ((isFallback || curMissing) && !isNew) {
-    if (msg)
-      msg.textContent =
-        (missing.length
-          ? "Price unavailable for " + missing.join(" and ") + ". "
-          : "") + 'Use "Edit" next to Current Value to enter prices manually.';
-    amt.textContent = "";
-    if (date) date.textContent = "";
-  } else {
-    amt.textContent = _fmtUsd(d.hodlBaseline.entryValue);
-    if (date) date.textContent = d.hodlBaseline.mintDate || "\u2014";
-  }
-  const modal = g("hodlBaselineModal");
-  if (modal) modal.className = "modal-overlay";
-  const _setKey = (p, s) => {
-    const k = _poolKey(p);
-    if (k) (s || localStorage).setItem(k, "1");
-  };
-  const dismiss = () => {
-    _setKey("9mm_hodl_acked_");
-    if (isFallback) _setKey("9mm_hodl_fb_acked_");
-    if (curMissing) _setKey("9mm_price_missing_acked_", sessionStorage);
-    if (modal) modal.className = "modal-overlay hidden";
-  };
-  const ok = g("hodlBaselineOk"),
-    close = g("hodlBaselineClose");
-  if (ok) ok.onclick = dismiss;
-  if (close) close.onclick = dismiss;
-}
-export function checkHodlBaselineDialog(d) {
-  const _a = (p) => _poolKey(p) && !!localStorage.getItem(_poolKey(p));
-  const fb = d.hodlBaselineFallback && !_a("9mm_hodl_fb_acked_");
-  const isNew = d.hodlBaselineNew && d.hodlBaseline && !_a("9mm_hodl_acked_");
-  const missing = _missingPriceNames(d);
-  const pmk = _poolKey("9mm_price_missing_acked_");
-  const cm = missing.length > 0 && !(pmk && sessionStorage.getItem(pmk));
-  if (fb || isNew || cm) _showBaselineModal(d, fb, isNew, cm, missing);
-}
+export {
+  _showBaselineModal,
+  checkHodlBaselineDialog,
+} from "./dashboard-data-baseline.js";
 export {
   _activeToken1Symbol,
   positionRangeVisual,

@@ -19,6 +19,7 @@ api-keys.json
 
 # Runtime bot config (persisted by server.js)
 .bot-config.json
+.bot-config.backup.json
 
 # Reconstructed epoch cache (persisted by epoch-reconstructor.js)
 .epoch-cache.json

@@ -33,6 +33,13 @@
  * This is the primary configuration reference for the project.  All environment
  * variables, contract addresses, and pricing API setup are documented here.
  *
+ * TERMINOLOGY — "epoch"
+ * In this codebase an "epoch" is a P&L tracking period that spans one NFT
+ * position's lifetime — from mint to drain (rebalance).  Each rebalance
+ * closes the current epoch and opens a new one for the freshly minted NFT.
+ * This is unrelated to the blockchain meaning of "epoch" (a fixed group of
+ * blocks used for consensus or validator rotation).
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  * QUICK START
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -245,6 +252,19 @@
  *                            browser localStorage via Settings gear → "Clear Local
  *                            Storage & Cookies" to complete the simulation.
  *   npm run restore-settings Restore settings previously backed up by wipe-settings.
+ *
+ * Config Safety
+ * ─────────────
+ *   On startup, the bot copies `.bot-config.json` to `.bot-config.backup.json`
+ *   as a safety net.  If your managed positions or settings are ever lost, you
+ *   can restore from this backup by copying it back:
+ *
+ *     cp .bot-config.backup.json .bot-config.json
+ *
+ *   The save logic also guards against accidental data loss: it refuses to write
+ *   if running positions would silently vanish (logged as `[config] REFUSING`).
+ *   If you see these warnings in the server log, the backup file contains the
+ *   last known-good config.
  *
  * API Documentation
  * ─────────────────
@@ -642,6 +662,7 @@ const _routes = {
   },
   "POST /api/config": _routeHandlers._handleApiConfig,
   "POST /api/api-keys": _routeHandlers._handleApiKeySave,
+  "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,
   "POST /api/wallet": _routeHandlers._handleWalletImport,
   "POST /api/wallet/reveal": _routeHandlers._handleWalletReveal,
   "POST /api/positions/scan": _routeHandlers._handlePositionsScan,

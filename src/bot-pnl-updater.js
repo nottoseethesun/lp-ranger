@@ -220,56 +220,9 @@ function _first(vals) {
   return 0;
 }
 
-/**
- * Compute total lifetime deposit USD from per-deposit token amounts
- * and historical prices.  Each deposit entry has { raw0, raw1, block }
- * from the HODL scan.  Prices are fetched per-block for accuracy.
- *
- * @param {object[]} deposits  Array of { raw0: string, raw1: string, block: number }.
- * @param {number} d0  Token0 decimals.
- * @param {number} d1  Token1 decimals.
- * @param {Function} fetchPrices  async (blockNumber) => { price0, price1 }.
- * @returns {Promise<number>} Total deposit USD.
- */
-async function _totalLifetimeDeposit(deposits, d0, d1, fetchPrices) {
-  if (!deposits || !deposits.length || !fetchPrices) return 0;
-  let total = 0;
-  for (let i = 0; i < deposits.length; i++) {
-    const dep = deposits[i];
-    if (dep.usd > 0) {
-      console.log(
-        "[deposit] #%d block=%d cached=$%s",
-        i + 1,
-        dep.block,
-        dep.usd.toFixed(2),
-      );
-      total += dep.usd;
-      continue;
-    }
-    const a0 = Number(BigInt(dep.raw0)) / 10 ** d0;
-    const a1 = Number(BigInt(dep.raw1)) / 10 ** d1;
-    if (a0 <= 0 && a1 <= 0) continue;
-    const { price0, price1 } = await fetchPrices(dep.block);
-    dep.usd = a0 * price0 + a1 * price1;
-    console.log(
-      "[deposit] #%d block=%d a0=%s a1=%s p0=%s p1=%s → $%s",
-      i + 1,
-      dep.block,
-      a0.toFixed(2),
-      a1.toFixed(2),
-      price0,
-      price1,
-      dep.usd.toFixed(2),
-    );
-    total += dep.usd;
-  }
-  console.log(
-    "[deposit] Total lifetime deposit: $%s (%d entries)",
-    total.toFixed(2),
-    deposits.length,
-  );
-  return total;
-}
+const {
+  totalLifetimeDeposit: _totalLifetimeDeposit,
+} = require("./bot-deposit");
 
 /** Resolve lifetime HODL amounts from best available source. */
 function _lifetimeAmounts(deps, snap) {

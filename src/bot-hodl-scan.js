@@ -55,10 +55,13 @@ async function computeAndCacheHodl(
         deposits: hodl.deposits,
       });
   }
+  // Store pool address for deposit USD computation
+  if (ps.poolAddress) hodl.poolAddress = ps.poolAddress;
   console.log(
-    "[bot] Lifetime HODL: amount0=%s amount1=%s",
+    "[bot] Lifetime HODL: amount0=%s amount1=%s pool=%s",
     hodl.amount0.toFixed(6),
     hodl.amount1.toFixed(6),
+    ps.poolAddress || "unknown",
   );
   return hodl;
 }
@@ -69,8 +72,9 @@ async function computeDepositUsd(botState, updateState, position, opts) {
   if (!deposits?.length) return;
   const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
   const { fetchHistoricalPriceGecko: _fhp } = require("./price-fetcher");
+  const poolAddr = botState.lifetimeHodlAmounts?.poolAddress || "";
   const pFn = (block) =>
-    _fhp("", Math.floor(Date.now() / 1000), "pulsechain", {
+    _fhp(poolAddr, Math.floor(Date.now() / 1000), "pulsechain", {
       token0Address: position.token0,
       token1Address: position.token1,
       blockNumber: block,
@@ -80,6 +84,7 @@ async function computeDepositUsd(botState, updateState, position, opts) {
     opts.decimals0,
     opts.decimals1,
     pFn,
+    { token0: position.token0, token1: position.token1 },
   );
   if (dep <= 0) return;
   botState.totalLifetimeDepositUsd = dep;

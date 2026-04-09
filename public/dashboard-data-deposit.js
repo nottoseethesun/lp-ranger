@@ -141,7 +141,9 @@ export function refreshDepositLabel() {
   if (d) d.textContent = s > 0 ? "$usd " + s.toFixed(2) : "\u2014";
   if (l)
     l.textContent =
-      s > 0 ? "Initial Deposit: $" + s.toFixed(2) : "Edit Initial Deposit";
+      s > 0
+        ? "Total Lifetime Deposit: $" + s.toFixed(2)
+        : "Edit Total Lifetime Deposit";
 }
 export function loadCurDeposit() {
   return _loadNum(_posKey("9mm_deposit_pos_"), false);

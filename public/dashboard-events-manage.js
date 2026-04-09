@@ -351,7 +351,7 @@ export function bindDelegatedEvents(closers) {
     if (
       sp &&
       sp.classList.contains("9mm-pos-mgr-visible") &&
-      !e.target.closest(".9mm-pos-mgr-settings-wrap")
+      !e.target.closest('[class*="pos-mgr-settings-wrap"]')
     )
       toggleSettingsPopover();
   });

@@ -15,6 +15,7 @@ import {
   botConfig,
   toggleSettingsPopover,
   clearLocalStorageAndCookies,
+  checkMoralisKeyStatus,
 } from "./dashboard-helpers.js";
 import { markInputDirty } from "./dashboard-data.js";
 import {
@@ -152,18 +153,20 @@ function _saveGlobalConfig(inputId, configKey) {
 }
 
 /**
- * Save a Moralis API key (encrypted with wallet password).
+ * Save a Moralis API key (encrypted with the cached session password).
  * @param {string} key   - The API key value.
- * @param {string} pw    - Wallet password for encryption.
+ * @param {string} [pw]  - Wallet password (optional; server uses cached).
  * @param {HTMLInputElement} [inp] - Input to clear on success.
  * @returns {Promise<boolean>} true if saved successfully.
  */
 export async function saveMoralisApiKey(key, pw, inp) {
+  const body = { service: "moralis", key };
+  if (pw) body.password = pw;
   try {
     const res = await fetch("/api/api-keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ service: "moralis", key, password: pw }),
+      body: JSON.stringify(body),
     });
     const d = await res.json();
     if (d.ok) {
@@ -183,13 +186,12 @@ export async function saveMoralisApiKey(key, pw, inp) {
   return false;
 }
 
-/** Settings menu handler: prompts for password, then saves. */
+/** Settings menu handler: saves using the cached session password. */
 async function _saveMoralisKey() {
   const inp = g("moralisKeyInput");
   if (!inp || !inp.value.trim()) return;
-  const pw = prompt("Enter your wallet password to encrypt the key:");
-  if (!pw) return;
-  await saveMoralisApiKey(inp.value.trim(), pw, inp);
+  await saveMoralisApiKey(inp.value.trim(), null, inp);
+  checkMoralisKeyStatus();
 }
 
 const _CLOSE = '[class~="9mm-pos-mgr-modal-close-btn"]';
