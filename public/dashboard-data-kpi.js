@@ -218,7 +218,7 @@ export function _botDetectedDeposit(d) {
       : d.pnlSnapshot?.initialDeposit || 0;
 }
 export function _resolveCurDeposit(d) {
-  const saved = loadCurDeposit() || loadInitialDeposit();
+  const saved = loadCurDeposit();
   if (saved > 0) return saved;
   const bl = d.hodlBaseline?.entryValue || 0;
   return d._hasPositionData
