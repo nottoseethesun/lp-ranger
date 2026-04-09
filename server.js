@@ -808,6 +808,9 @@ async function handleRequest(req, res) {
 // ── Server lifecycle ────────────────────────────────
 
 const server = http.createServer(handleRequest);
+// Lifetime P&L scans can take 5+ minutes for old pools (555 chunks × 250ms).
+// Node 22's default requestTimeout is 300s — raise to 10 minutes.
+server.requestTimeout = 600_000;
 
 /**
  * Start the server on the configured port and host.

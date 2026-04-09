@@ -370,13 +370,15 @@ async function _phase2(body, gen) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (gen !== _fetchGen) return;
-    const d2 = await r2.json();
-    if (d2.ok) _applyLifetime(d2);
+    if (gen === _fetchGen) {
+      const d2 = await r2.json();
+      if (d2.ok) _applyLifetime(d2);
+    }
   } catch (e) {
     console.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
   }
-  if (gen === _fetchGen) _markSynced();
+  // Always clear Syncing badge — even on timeout or gen mismatch
+  _markSynced();
 }
 
 /** Fetch and display details for an unmanaged position (two-phase). */
