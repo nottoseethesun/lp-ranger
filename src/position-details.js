@@ -271,13 +271,31 @@ async function _computeLifetimeIL(
   }
   if (!hodl || (hodl.amount0 <= 0 && hodl.amount1 <= 0)) return null;
   const { computeHodlIL } = require("./il-calculator");
-  return computeHodlIL({
+  const il = computeHodlIL({
     lpValue,
     hodlAmount0: hodl.amount0,
     hodlAmount1: hodl.amount1,
     currentPrice0: price0,
     currentPrice1: price1,
   });
+  return { il, hodlAmount0: hodl.amount0, hodlAmount1: hodl.amount1 };
+}
+
+/** Build ilInputs for the IL debug popover from baseline and lifetime scan. */
+function _buildIlInputs(value, price0, price1, baseline, ltResult) {
+  const curHodl = {
+    hodlAmount0: baseline?.hodlAmount0 || 0,
+    hodlAmount1: baseline?.hodlAmount1 || 0,
+  };
+  return {
+    lpValue: value,
+    price0,
+    price1,
+    cur: curHodl,
+    lt: ltResult
+      ? { hodlAmount0: ltResult.hodlAmount0, hodlAmount1: ltResult.hodlAmount1 }
+      : curHodl,
+  };
 }
 
 /** Pick the IL value closer to zero (from the larger HODL). */
@@ -406,7 +424,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     decimals0: ps.decimals0,
     decimals1: ps.decimals1,
   };
-  const ltIl = await _computeLifetimeIL(
+  const ltResult = await _computeLifetimeIL(
     _posWithMeta,
     events,
     body,
@@ -415,6 +433,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     price1,
     ps.poolAddress,
   );
+  const ltIl = ltResult?.il ?? null;
   // Enrich snapshot with fields the dashboard expects from managed path
   if (snap) {
     snap.currentValue = cur.value;
@@ -427,6 +446,13 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     snap.currentCompoundedUsd = 0;
     snap.initialDeposit = entryValue;
     snap.totalLifetimeDeposit = await _computeDepositUsd(_posWithMeta, ps);
+    snap.ilInputs = _buildIlInputs(
+      cur.value,
+      price0,
+      price1,
+      baseline,
+      ltResult,
+    );
   }
   return {
     totalGasNative: snap?.totalGasNative || 0,

@@ -146,6 +146,9 @@ function _applyLifetime(d) {
   _applyLifetimeDates(d);
   if (d.dailyPnl) renderDailyPnl(d.dailyPnl);
   if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
+  // Update IL debug popover with lifetime HODL amounts from phase 2
+  if (d.pnlSnapshot?.ilInputs)
+    updateILDebugData({ pnlSnapshot: d.pnlSnapshot });
 }
 
 /** Apply balances, pool share, and tick to the position stats panel. */
