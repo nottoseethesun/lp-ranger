@@ -519,7 +519,7 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
   const result = sorted.map(([date, d]) => {
     const netPnl = d.priceChangePnl + d.feePnl - d.gasCost;
     const residual = d.residual || 0;
-    cumulative += netPnl + residual;
+    cumulative += netPnl;
     return {
       date,
       priceChangePnl: d.priceChangePnl,

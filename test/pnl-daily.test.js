@@ -10,8 +10,8 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 const { createPnlTracker } = require("../src/pnl-tracker");
 
-describe("dailyPnl cumulative includes residuals for telescoping", () => {
-  it("residuals bridge epoch gaps in the cumulative", () => {
+describe("dailyPnl cumulative excludes residuals", () => {
+  it("cumulative equals running sum of netPnl without residuals", () => {
     const tracker = createPnlTracker();
     tracker.openEpoch({
       entryValue: 100,
@@ -27,7 +27,6 @@ describe("dailyPnl cumulative includes residuals for telescoping", () => {
       token1UsdPrice: 1,
       closeTime: "2025-06-01T12:00:00Z",
     });
-    // Epoch 2 entry > epoch 1 exit → positive residual (120 − 110 = 10)
     tracker.openEpoch({
       entryValue: 120,
       entryPrice: 1.1,
@@ -38,13 +37,15 @@ describe("dailyPnl cumulative includes residuals for telescoping", () => {
     tracker.updateLiveEpoch({ currentPrice: 1.15, feesAccrued: 2 });
     const daily = tracker.snapshot(1.15, "2025-06-01").dailyPnl;
     assert.ok(daily.length >= 2, "should have at least 2 days");
+    // Residual column still populated for display
     const rebDay = daily.find((d) => d.residual !== 0);
     assert.ok(rebDay, "should have a day with residual");
-    // Cumulative with residuals should be larger than without
-    const cumWithout = daily.reduce((s, d) => s + d.netPnl, 0);
+    // Cumulative should equal running sum of netPnl (no residuals)
+    const cumNetOnly = daily.reduce((s, d) => s + d.netPnl, 0);
+    const lastCum = daily[0].cumulative;
     assert.ok(
-      daily[0].cumulative > cumWithout,
-      "cumulative with residuals should exceed sum of netPnl alone",
+      Math.abs(lastCum - cumNetOnly) < 0.01,
+      `cumulative ${lastCum} should equal sum of netPnl ${cumNetOnly}`,
     );
   });
 
