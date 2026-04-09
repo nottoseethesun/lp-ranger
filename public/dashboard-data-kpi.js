@@ -227,10 +227,11 @@ export function _resolveCurDeposit(d) {
       : d.pnlSnapshot?.liveEpoch?.entryValue || 0
     : 0;
 }
-export function _priceChangePnl(d, deposit) {
-  return d.pnlSnapshot && deposit > 0
-    ? (d.pnlSnapshot.currentValue || 0) - deposit
-    : 0;
+export function _priceChangePnl(d, deposit, includeResiduals) {
+  if (!d.pnlSnapshot || deposit <= 0) return 0;
+  const cv = d.pnlSnapshot.currentValue || 0;
+  const r = includeResiduals ? d.pnlSnapshot.residualValueUsd || 0 : 0;
+  return cv + r - deposit;
 }
 export function _resolveKpiTotals(d) {
   const ltRealized = loadRealizedGains(),
@@ -241,8 +242,8 @@ export function _resolveKpiTotals(d) {
     ltUserDep = loadInitialDeposit();
   const ltAuto = d.pnlSnapshot?.totalLifetimeDeposit || _botDetectedDeposit(d);
   const ltDep = ltUserDep > 0 ? ltUserDep : ltAuto;
-  const curPc = _priceChangePnl(d, curDep),
-    ltPc = _priceChangePnl(d, ltDep);
+  const curPc = _priceChangePnl(d, curDep, false),
+    ltPc = _priceChangePnl(d, ltDep, true);
   const compounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
   const curCompounded = d.pnlSnapshot?.currentCompoundedUsd || 0;
   const ltGas = d.pnlSnapshot?.totalGas || 0;
@@ -415,12 +416,18 @@ export function _updateNetReturn(
         ltCompounded,
         ltGas2,
       );
-    const ltVal = g("ltCurrentValue");
-    if (ltVal) ltVal.textContent = _fmtUsd(d.pnlSnapshot.currentValue || 0);
+    _setLtCurrentValue(d);
   }
   const il = _updateIL(d, ltDeposit);
   const ltComp = d.pnlSnapshot?.totalCompoundedUsd || 0;
   _setProfitKpi("ltProfit", ltFees, d.pnlSnapshot?.totalGas || 0, il, ltComp);
+}
+function _setLtCurrentValue(d) {
+  const el = g("ltCurrentValue");
+  if (!el) return;
+  const cv =
+    (d.pnlSnapshot.currentValue || 0) + (d.pnlSnapshot.residualValueUsd || 0);
+  el.textContent = _fmtUsd(cv);
 }
 function _missingPriceNames(d) {
   const a = posStore.getActive(),

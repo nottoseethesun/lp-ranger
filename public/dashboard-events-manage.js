@@ -13,6 +13,7 @@ import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
 } from "./dashboard-unmanaged.js";
+import { suppressAutoCompoundSync } from "./dashboard-data-status.js";
 
 // ── Privacy ─────────────────────────────────────────
 
@@ -176,6 +177,8 @@ export function _toggleManagePosition() {
     const w = _posStoreRef.getActive()?.walletAddress;
     const c = active.contractAddress;
     const key = `pulsechain-${w}-${c}-` + `${active.tokenId}`;
+    // Suppress poll-driven auto-compound sync so it doesn't race back on
+    suppressAutoCompoundSync(5000);
     fetch("/api/position/manage", {
       method: "DELETE",
       headers: {
@@ -184,6 +187,11 @@ export function _toggleManagePosition() {
       body: JSON.stringify({ key }),
     })
       .then(() => {
+        // Turn off auto-compound UI
+        const acCb = g("autoCompoundToggle");
+        if (acCb) acCb.checked = false;
+        const acBadge = g("autoCompoundBadge");
+        if (acBadge) acBadge.textContent = "OFF";
         // Position is now unmanaged — trigger unmanaged detail fetch
         // so the sync badge resolves and KPIs stay populated.
         resetLastFetchedId();

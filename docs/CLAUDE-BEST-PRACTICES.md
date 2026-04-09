@@ -42,6 +42,11 @@
 - All custom CSS classes prefixed with `9mm-pos-mgr-`.
 - No inline `style="..."` in HTML (except dynamic JS-set `width` values).
 
+## HTTP Caching
+
+- **HTML files: never cache** — serve with `Cache-Control: no-cache, no-store, must-revalidate`, `Pragma: no-cache`, `Expires: 0`. This ensures the browser always fetches fresh HTML, which contains the cache-bust query string for JS/CSS bundles. Note: `no-cache` alone does NOT mean "don't cache" — it means "cache but revalidate." `no-store` is required to actually prevent caching.
+- **Versioned assets (JS, CSS, fonts): long-lived immutable caching** — serve with `Cache-Control: public, max-age=31536000, immutable`. Freshness is handled by the cache-bust query string (`bundle.js?v=<timestamp>`) in the HTML, which changes on every build.
+
 ## Dependencies & Tooling
 
 - **Never use `npx`** — always use `npm` (e.g. `npm run lint`, not `npx eslint`).

@@ -155,11 +155,11 @@ function _currentPnl(
   price1,
   residuals,
 ) {
-  const totalValue = value + (residuals?.usd || 0);
-  const pgl = entryValue > 0 ? totalValue - entryValue : null;
+  const rUsd = residuals?.usd || 0;
+  const pgl = entryValue > 0 ? value - entryValue : null;
   const il = baseline
     ? computeHodlIL({
-        lpValue: totalValue,
+        lpValue: value,
         hodlAmount0: baseline.hodlAmount0,
         hodlAmount1: baseline.hodlAmount1,
         currentPrice0: price0,
@@ -167,12 +167,12 @@ function _currentPnl(
       })
     : null;
   return {
-    value: totalValue,
+    value,
     priceGainLoss: pgl,
     il,
     netPnl: entryValue > 0 ? (pgl || 0) + feesUsd : null,
     profit: il !== null ? feesUsd + il : null,
-    residualValueUsd: residuals?.usd || 0,
+    residualValueUsd: rUsd,
   };
 }
 

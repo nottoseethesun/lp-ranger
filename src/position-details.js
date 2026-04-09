@@ -41,6 +41,7 @@ async function _scanCompounds(
   prices,
   diskConfig,
   posKey,
+  dir,
 ) {
   try {
     const { detectCompoundsOnChain } = require("./compounder");
@@ -65,7 +66,7 @@ async function _scanCompounds(
       total += (await detectCompoundsOnChain(tid, opts)).totalCompoundedUsd;
     if (total > 0) {
       getPositionConfig(diskConfig, posKey).totalCompoundedUsd = total;
-      saveConfig(diskConfig);
+      saveConfig(diskConfig, dir);
     }
     return total;
   } catch (e) {

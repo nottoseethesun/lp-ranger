@@ -134,16 +134,20 @@ function _showRebalanceErrorModal(message) {
   _recoveryModalShown = false;
   const m = message;
   const t =
-    m.includes("liquidity is too thin") || m.includes("no liquidity")
-      ? "thin"
-      : m.includes("exceeds slippage")
-        ? "slip"
-        : m.includes("insufficient gas")
-          ? "gas"
-          : m.includes("too volatile")
-            ? "volatile"
-            : "";
+    m.includes("mid-rebalance") || m.includes("Mid-rebalance")
+      ? "midway"
+      : m.includes("liquidity is too thin") || m.includes("no liquidity")
+        ? "thin"
+        : m.includes("exceeds slippage")
+          ? "slip"
+          : m.includes("insufficient gas")
+            ? "gas"
+            : m.includes("too volatile")
+              ? "volatile"
+              : "";
   const _footers = {
+    midway:
+      "Tokens are safe in your wallet. The bot retried 3 times. Use the manual Rebalance button to retry.",
     thin: "Source tokens externally, recreate the LP position, then select the new NFT.",
     slip: "Adjust the slippage setting, then use the manual Rebalance button.",
     gas: "Send native tokens to the wallet address, then manual Rebalance.",
@@ -459,7 +463,15 @@ export function _updateThrottleKpis(d) {
 }
 
 /** Sync the auto-compound toggle, badge, and threshold from server status data. */
+let _suppressAutoCompoundUntil = 0;
+
+/** Suppress auto-compound sync for a brief window (e.g. after Stop Managing). */
+export function suppressAutoCompoundSync(ms) {
+  _suppressAutoCompoundUntil = Date.now() + (ms || 5000);
+}
+
 export function _syncAutoCompound(d) {
+  if (Date.now() < _suppressAutoCompoundUntil) return;
   const on = !!d.autoCompoundEnabled;
   const cb = g("autoCompoundToggle");
   if (cb) cb.checked = on;

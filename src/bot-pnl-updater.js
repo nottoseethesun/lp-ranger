@@ -287,13 +287,13 @@ function _computeIL(snap, deps, realValue, price0, price1, residuals) {
   const bl = deps._botState?.hodlBaseline;
   const curA0 = bl?.hodlAmount0 || 0,
     curA1 = bl?.hodlAmount1 || 0;
-  // IL = (LP value + residual value) - HODL value
-  const totalValue = realValue + (residuals?.usd || 0);
-  snap.totalIL = _ilFor(totalValue, curA0, curA1, price0, price1);
+  const rUsd = residuals?.usd || 0;
+  // Current IL uses LP-only value; lifetime IL includes residuals
+  snap.totalIL = _ilFor(realValue, curA0, curA1, price0, price1);
   const { a0, a1 } = _lifetimeAmounts(deps, snap);
-  snap.lifetimeIL = _ilFor(totalValue, a0, a1, price0, price1);
+  snap.lifetimeIL = _ilFor(realValue + rUsd, a0, a1, price0, price1);
   snap.ilInputs = {
-    lpValue: totalValue,
+    lpValue: realValue,
     price0,
     price1,
     cur: { hodlAmount0: curA0, hodlAmount1: curA1 },
@@ -316,7 +316,7 @@ async function overridePnlWithRealValues(
   const rUsd = residuals?.usd || 0;
   const lifetimeFees = _computeLifetimeFees(snap, deps, feesUsd);
   snap.residualValueUsd = rUsd;
-  snap.currentValue = realValue + rUsd;
+  snap.currentValue = realValue;
   snap.totalFees = lifetimeFees;
   const entryVal = snap.liveEpoch
     ? snap.liveEpoch.entryValue
@@ -341,7 +341,7 @@ async function overridePnlWithRealValues(
       /* keep historical USD sums as fallback */
     }
   }
-  // currentValue already includes residuals (realValue + rUsd)
+  // currentValue is LP-only; residuals tracked separately
   snap.priceChangePnl = snap.currentValue - entryVal;
   snap.cumulativePnl =
     snap.priceChangePnl + lifetimeFees - snap.totalGas - compounded;
@@ -447,19 +447,23 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
     try {
       const { price0, price1 } = await _fetchWithOverrides(position, deps);
       if (!pnlTracker.getLiveEpoch()) {
-        const ev = positionValueUsd(position, poolState, price0, price1) || 1;
-        pnlTracker.openEpoch({
-          entryValue: ev,
-          entryPrice: poolState.price,
-          lowerPrice: lp,
-          upperPrice: up,
-          token0UsdPrice: price0,
-          token1UsdPrice: price1,
-        });
-        console.log(
-          "[bot] Auto-opened missing live epoch (entryValue=$%s)",
-          ev.toFixed(2),
-        );
+        const ev = positionValueUsd(position, poolState, price0, price1);
+        // Don't open an epoch with 0 value — position may be drained
+        // (mid-rebalance failure). Wait until mint restores liquidity.
+        if (ev > 0) {
+          pnlTracker.openEpoch({
+            entryValue: ev,
+            entryPrice: poolState.price,
+            lowerPrice: lp,
+            upperPrice: up,
+            token0UsdPrice: price0,
+            token1UsdPrice: price1,
+          });
+          console.log(
+            "[bot] Auto-opened missing live epoch (entryValue=$%s)",
+            ev.toFixed(2),
+          );
+        }
       }
       const fees = await readUnclaimedFees(
         provider,

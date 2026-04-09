@@ -16,6 +16,7 @@ describe("_scanCompounds", () => {
   let _scanCompounds;
   let _mockResult = { totalCompoundedUsd: 0 };
   const _origRequire = Module.prototype.require;
+  const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-shared-"));
 
   before(() => {
     // Intercept require("./compounder") to return a mock
@@ -48,6 +49,7 @@ describe("_scanCompounds", () => {
       { price0: 1, price1: 1 },
       cfg,
       "test-key",
+      dir,
     );
     assert.strictEqual(result, 0);
     fs.rmSync(dir, { recursive: true });
@@ -55,6 +57,7 @@ describe("_scanCompounds", () => {
 
   it("returns total and updates in-memory config when compounds found", async () => {
     _mockResult = { totalCompoundedUsd: 5.5 };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test2-"));
     const cfg = { global: {}, positions: {} };
     const result = await _scanCompounds(
       { tokenId: "200", token0: "0xA", token1: "0xB", fee: 3000 },
@@ -64,11 +67,12 @@ describe("_scanCompounds", () => {
       { price0: 1, price1: 1 },
       cfg,
       "test-key",
+      dir,
     );
     assert.ok(result > 0, "should return compound total");
-    // Verifies in-memory config was updated (saveConfig also writes to disk)
     // Mock returns 5.5 per NFT, 2 NFTs scanned (199, 200) = 11
     assert.strictEqual(cfg.positions["test-key"].totalCompoundedUsd, 11);
+    fs.rmSync(dir, { recursive: true });
   });
 
   it("collects NFT IDs from events and position", async () => {
@@ -96,6 +100,7 @@ describe("_scanCompounds", () => {
       { price0: 1, price1: 1 },
       cfg,
       "test-key",
+      _tmpDir,
     );
     // Should scan all unique IDs: 298, 299, 300
     assert.ok(scannedIds.includes("298"));
@@ -123,6 +128,7 @@ describe("_scanCompounds", () => {
       { price0: 1, price1: 1 },
       cfg,
       "test-key",
+      _tmpDir,
     );
     assert.strictEqual(result, 0);
   });

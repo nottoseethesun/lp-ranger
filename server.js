@@ -396,10 +396,21 @@ function serveStatic(urlPath, res) {
 
   try {
     const data = fs.readFileSync(filePath);
-    res.writeHead(200, {
+    // HTML: no-cache so index.html (with cache-bust query) is always fresh.
+    // JS/CSS/fonts: immutable-style caching (cache-bust query handles updates).
+    const isHtml = ext === ".html";
+    const headers = {
       "Content-Type": mimeType,
       "Content-Length": data.length,
-    });
+      "Cache-Control": isHtml
+        ? "no-cache, no-store, must-revalidate"
+        : "public, max-age=31536000, immutable",
+    };
+    if (isHtml) {
+      headers["Pragma"] = "no-cache";
+      headers["Expires"] = "0";
+    }
+    res.writeHead(200, headers);
     res.end(data);
   } catch (_) {
     res.writeHead(500, {

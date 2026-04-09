@@ -128,10 +128,25 @@ async function _executeAndRecord(deps, ethersLib) {
       state.swapBackoffUntil = 0;
       state.swapBackoffAttempts = 0;
       throttle.recordRebalance();
-      if (deps._recordPoolRebalance && deps._poolKey)
-        deps._recordPoolRebalance(
-          deps._poolKey(position.token0, position.token1, position.fee),
+      if (deps._recordPoolRebalance && deps._poolKey) {
+        const pk = deps._poolKey(
+          position.token0,
+          position.token1,
+          position.fee,
         );
+        deps._recordPoolRebalance(pk);
+        console.log(
+          "[bot] Recorded pool rebalance: %s (daily=%d)",
+          pk,
+          throttle.getState().dailyCount,
+        );
+      } else {
+        console.warn(
+          "[bot] Pool rebalance NOT recorded: _recordPoolRebalance=%s _poolKey=%s",
+          !!deps._recordPoolRebalance,
+          !!deps._poolKey,
+        );
+      }
       try {
         await enrichResultUsd(
           result,
@@ -380,8 +395,12 @@ async function _refreshPosition(position, ethersLib, provider) {
     position.liquidity = String(d.liquidity);
     if (d.tickLower !== undefined) position.tickLower = Number(d.tickLower);
     if (d.tickUpper !== undefined) position.tickUpper = Number(d.tickUpper);
-  } catch (_) {
-    /* keep cached value */
+  } catch (err) {
+    console.warn(
+      "[bot] _refreshPosition failed for #%s: %s",
+      position.tokenId,
+      err.message,
+    );
   }
 }
 
@@ -392,6 +411,29 @@ async function _refreshPosition(position, ethersLib, provider) {
  * @param {object} poolState  Current pool state.
  * @param {object} ethersLib  ethers module.
  */
+/** Check if position has 0 liquidity and should skip. Returns early-return object or null. */
+function _checkZeroLiquidity(deps) {
+  const { position } = deps;
+  const midwayFail = !!deps._botState?.rebalanceFailedMidway;
+  if (
+    BigInt(position.liquidity || 0) === 0n &&
+    !deps._botState?.forceRebalance &&
+    !midwayFail
+  ) {
+    console.log(
+      "[bot] Position closed (0 liquidity, force=%s) — skipping",
+      !!deps._botState?.forceRebalance,
+    );
+    return { rebalanced: false };
+  }
+  if (midwayFail) {
+    console.log(
+      "[bot] Mid-rebalance recovery: 0 liquidity, retrying mint from wallet balances",
+    );
+  }
+  return null;
+}
+
 /** Single poll iteration: check range, threshold, throttle, then rebalance if needed. */
 async function pollCycle(deps) {
   const { provider, position, throttle } = deps;
@@ -412,16 +454,8 @@ async function pollCycle(deps) {
   }
   await _refreshPosition(position, ethersLib, provider);
   await _updatePnlAndStats(deps, poolState, ethersLib);
-  if (
-    BigInt(position.liquidity || 0) === 0n &&
-    !deps._botState?.forceRebalance
-  ) {
-    console.log(
-      "[bot] Position closed (0 liquidity, force=%s) — skipping",
-      !!deps._botState?.forceRebalance,
-    );
-    return { rebalanced: false };
-  }
+  const zeroLiqResult = _checkZeroLiquidity(deps);
+  if (zeroLiqResult) return zeroLiqResult;
   await _handleForceCompound(
     deps,
     poolState,

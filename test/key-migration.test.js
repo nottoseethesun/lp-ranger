@@ -34,8 +34,12 @@ function mockPositionMgr() {
   };
 }
 
-// Production file protection handled by scripts/check.sh
 describe("key migration on rebalance", () => {
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+  const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "key-mig-"));
+
   it("keyRef.current updates so subsequent calls use the new key", () => {
     const diskConfig = {
       global: {},
@@ -61,7 +65,7 @@ describe("key migration on rebalance", () => {
     // Simulate what the server does: create keyRef + closures
     const keyRef = { current: oldKey };
     const updateBotState = (patch) =>
-      updatePositionState(keyRef, patch, diskConfig, mgr);
+      updatePositionState(keyRef, patch, diskConfig, mgr, _tmpDir);
     const getConfig = (k) => readConfigValue(diskConfig, keyRef.current, k);
 
     // Register in the global map (server-positions internal)
@@ -134,7 +138,13 @@ describe("key migration on rebalance", () => {
     getAllPositionBotStates().set(oldKey, posBotState);
 
     const keyRef = { current: oldKey };
-    updatePositionState(keyRef, { activePositionId: "51" }, diskConfig, mgr);
+    updatePositionState(
+      keyRef,
+      { activePositionId: "51" },
+      diskConfig,
+      mgr,
+      _tmpDir,
+    );
 
     const newKey = compositeKey(
       "pulsechain",

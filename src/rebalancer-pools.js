@@ -70,6 +70,60 @@ const _SPEEDUP_GAS_BUMP = 1.5;
 /** Maximum acceptable price impact (%) before the bot aborts the swap. */
 const _MAX_IMPACT_PCT = 5;
 
+/** Substrings that identify transient RPC errors safe to retry. */
+const _TRANSIENT_PATTERNS = [
+  "sub-pool is full",
+  "internal_error",
+  "could not coalesce",
+  "connection refused",
+  "etimedout",
+  "econnreset",
+  "econnrefused",
+  "rate limit",
+  "server error",
+  "502 bad gateway",
+  "503 service",
+];
+
+/** Maximum TX send retries for transient RPC errors. */
+const _RETRY_MAX = 3;
+/** Base delay between retries (ms). Multiplied by attempt number: 30s, 60s, 90s. */
+const _RETRY_BASE_DELAY_MS = 30_000;
+
+/**
+ * Wrap a TX-submitting function with retry logic for transient RPC errors.
+ * Retries up to 3 times with 30s / 60s / 90s backoff.
+ * Non-transient errors (nonce, revert, insufficient funds) throw immediately.
+ * @param {Function} fn    Async function that submits a TX.
+ * @param {string}   label Log label for diagnostics.
+ * @returns {Promise<*>}   The TX response from `fn()`.
+ */
+async function _retrySend(fn, label, _baseDelayMs) {
+  const baseMs = _baseDelayMs ?? _RETRY_BASE_DELAY_MS;
+  for (let attempt = 0; attempt <= _RETRY_MAX; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = (err.message || "").toLowerCase();
+      const transient = _TRANSIENT_PATTERNS.some((p) => msg.includes(p));
+      if (!transient || attempt === _RETRY_MAX) throw err;
+      const delay = baseMs * (attempt + 1);
+      console.warn(
+        "[rebalance] %s: transient RPC error — retrying in %ds (%d/%d): %s",
+        label,
+        delay / 1000,
+        attempt + 1,
+        _RETRY_MAX,
+        err.message,
+      );
+      await new Promise((r) => {
+        const t = setTimeout(r, delay);
+        t.unref?.();
+      });
+    }
+  }
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -305,9 +359,11 @@ async function _ensureAllowance(tokenContract, owner, spender, requiredAmount) {
   if (current >= requiredAmount) return 0n;
   // Approve only the exact amount needed (not unlimited) to limit exposure
   // if the spender contract is compromised.
-  const tx = await tokenContract.approve(spender, requiredAmount, {
-    type: config.TX_TYPE,
-  });
+  const tx = await _retrySend(
+    () =>
+      tokenContract.approve(spender, requiredAmount, { type: config.TX_TYPE }),
+    "approve",
+  );
   console.log(
     "[rebalance] Step 7a: approve: TX submitted, hash= %s nonce=%d" +
       " type=%s gasPrice=%s",
@@ -421,9 +477,10 @@ async function removeLiquidity(
       amount1Max: _MAX_UINT128,
     },
   ]);
-  const tx = await pm.multicall([decreaseData, collectData], {
-    type: config.TX_TYPE,
-  });
+  const tx = await _retrySend(
+    () => pm.multicall([decreaseData, collectData], { type: config.TX_TYPE }),
+    "removeLiq",
+  );
   console.log(
     "[rebalance] Step 3a: removeLiq: TX submitted, hash= %s nonce=%d" +
       " type=%s — waiting for confirmation…",
@@ -515,6 +572,8 @@ module.exports = {
   getPoolState,
   removeLiquidity,
   logSwapNeeded,
+  _retrySend,
+  _TRANSIENT_PATTERNS,
   // Re-exported deps
   rangeMath,
   config,

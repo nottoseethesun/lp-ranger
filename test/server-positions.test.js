@@ -149,6 +149,11 @@ describe("attachMultiPosDeps", () => {
 // ── updatePositionState ─────────────────────────────────────────────────────
 
 describe("updatePositionState", () => {
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+  const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pos-state-"));
+
   it("creates state entry if not exists and applies patch", () => {
     const key = "pulsechain-0xW-0xC-999";
     const keyRef = { current: key };
@@ -158,7 +163,7 @@ describe("updatePositionState", () => {
     // Clear state from prior tests
     getAllPositionBotStates().delete(key);
 
-    updatePositionState(keyRef, { running: true }, diskConfig, mgr);
+    updatePositionState(keyRef, { running: true }, diskConfig, mgr, _tmpDir);
     const state = getAllPositionBotStates().get(key);
     assert.ok(state);
     assert.strictEqual(state.running, true);
@@ -179,6 +184,7 @@ describe("updatePositionState", () => {
       { pnlEpochs: [{ day: "2026-01-01" }] },
       diskConfig,
       mgr,
+      _tmpDir,
     );
     assert.strictEqual(
       diskConfig.positions[key]?.pnlEpochs,
@@ -200,6 +206,7 @@ describe("updatePositionState", () => {
       { hodlBaseline: { amount0: "100", amount1: "200" } },
       diskConfig,
       mgr,
+      _tmpDir,
     );
     assert.deepStrictEqual(diskConfig.positions[key].hodlBaseline, {
       amount0: "100",
@@ -216,7 +223,13 @@ describe("updatePositionState", () => {
     const mgr = makePositionMgr();
     getAllPositionBotStates().delete(key);
 
-    updatePositionState(keyRef, { collectedFeesUsd: 55.5 }, diskConfig, mgr);
+    updatePositionState(
+      keyRef,
+      { collectedFeesUsd: 55.5 },
+      diskConfig,
+      mgr,
+      _tmpDir,
+    );
     assert.strictEqual(diskConfig.positions[key].collectedFeesUsd, 55.5);
 
     getAllPositionBotStates().delete(key);
@@ -238,7 +251,13 @@ describe("updatePositionState", () => {
     });
     getAllPositionBotStates().delete(key);
 
-    updatePositionState(keyRef, { activePositionId: "200" }, diskConfig, mgr);
+    updatePositionState(
+      keyRef,
+      { activePositionId: "200" },
+      diskConfig,
+      mgr,
+      _tmpDir,
+    );
 
     const newKey = `pulsechain-${WALLET}-${CONTRACT}-200`;
     assert.strictEqual(keyRef.current, newKey);
@@ -257,7 +276,13 @@ describe("updatePositionState", () => {
     const mgr = makePositionMgr();
     getAllPositionBotStates().delete(key);
 
-    updatePositionState(keyRef, { activePositionId: "300" }, diskConfig, mgr);
+    updatePositionState(
+      keyRef,
+      { activePositionId: "300" },
+      diskConfig,
+      mgr,
+      _tmpDir,
+    );
 
     assert.strictEqual(keyRef.current, key);
 

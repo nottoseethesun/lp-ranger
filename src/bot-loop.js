@@ -291,6 +291,7 @@ async function startBotLoop(opts) {
   let collectedFeesUsd = botState.collectedFeesUsd || 0,
     rebalanceCount = 0,
     firstFailureAt = null,
+    midwayRetryCount = 0,
     polling = false,
     _stopped = false;
   const GAS_DEFER_MS = 3600_000;
@@ -299,6 +300,48 @@ async function startBotLoop(opts) {
   function _scheduleNext(ms) {
     clearTimeout(timer);
     timer = setTimeout(poll, ms ?? currentIntervalMs);
+  }
+
+  function _handleError(result) {
+    if (!firstFailureAt) firstFailureAt = Date.now();
+    const errMsg = _humanizeError(result.error);
+    const isMidway = BigInt(position.liquidity || 0) === 0n;
+    if (isMidway) midwayRetryCount++;
+    const midwayExhausted = isMidway && midwayRetryCount >= 4;
+    console.error(
+      "[bot] Rebalance failed: %s (%dm of failures%s)",
+      errMsg,
+      Math.round((Date.now() - firstFailureAt) / 60_000),
+      isMidway ? `, mid-rebalance retry ${midwayRetryCount}/4` : "",
+    );
+    const isSwapAbort = /swap aborted/i.test(errMsg);
+    const paused = isSwapAbort || midwayExhausted;
+    const displayErr = midwayExhausted
+      ? "Mid-rebalance recovery failed after 4 attempts: " + errMsg
+      : errMsg;
+    updateBotState({
+      rebalanceError: displayErr,
+      rebalancePaused: paused,
+      rebalanceFailedMidway: isMidway && !midwayExhausted,
+    });
+  }
+
+  function _handleRecovery() {
+    const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
+    console.log(
+      `[bot] Price returned to range after ~${oorMin}m of failures — clearing`,
+    );
+    firstFailureAt = null;
+    midwayRetryCount = 0;
+    currentIntervalMs =
+      (gc("checkIntervalSec") || config.CHECK_INTERVAL_SEC) * 1000;
+    updateBotState({
+      rebalanceError: null,
+      rebalancePaused: false,
+      rebalanceFailedMidway: false,
+      oorRecoveredMin: oorMin,
+    });
+    setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);
   }
 
   const poll = async () => {
@@ -327,16 +370,23 @@ async function startBotLoop(opts) {
         _residualTracker: residualTracker,
         _getTokenPositionAmounts: botState._getTokenPositionAmounts || null,
         _getConfig: gc,
+        _poolKey: botState._poolKey || null,
+        _recordPoolRebalance: botState._recordPoolRebalance || null,
+        _canRebalancePool: botState._canRebalancePool || null,
       });
       if (result.rebalanced) {
         rebalanceCount++;
         firstFailureAt = null;
+        midwayRetryCount = 0;
         currentIntervalMs =
           (gc("checkIntervalSec") || config.CHECK_INTERVAL_SEC) * 1000;
         appendToPoolCache(position, address, result).catch(() => {});
         updateBotState({
           rebalanceError: null,
           rebalancePaused: false,
+          rebalanceFailedMidway: false,
+          activePosition: _activePosSummary(position),
+          throttleState: throttle.getState(),
         });
         if (botState.rangeRounded)
           setTimeout(() => updateBotState({ rangeRounded: null }), 5000);
@@ -346,33 +396,13 @@ async function startBotLoop(opts) {
           `[bot] Next retry in ${GAS_DEFER_MS / 60_000}m (gas deferral)`,
         );
       } else if (result.error) {
-        if (!firstFailureAt) firstFailureAt = Date.now();
-        const errMsg = _humanizeError(result.error);
-        console.error(
-          `[bot] Rebalance failed: ${errMsg} (${Math.round((Date.now() - firstFailureAt) / 60_000)}m of failures)`,
-        );
-        // Only pause for swap aborts (user must adjust slippage).
-        // TX stuck/cancelled errors are transient — retry next cycle.
-        const isSwapAbort = /swap aborted/i.test(errMsg);
-        updateBotState({
-          rebalanceError: errMsg,
-          rebalancePaused: isSwapAbort,
-        });
-      } else if (firstFailureAt && !result.paused) {
-        const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
-        console.log(
-          `[bot] Price returned to range after ~${oorMin}m of failures — clearing`,
-        );
-        firstFailureAt = null;
-        currentIntervalMs =
-          (gc("checkIntervalSec") || config.CHECK_INTERVAL_SEC) * 1000;
-        updateBotState({
-          rebalanceError: null,
-          rebalancePaused: false,
-          oorRecoveredMin: oorMin,
-        });
-        // Clear after one poll so the dashboard doesn't re-show on refresh
-        setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);
+        _handleError(result);
+      } else if (
+        firstFailureAt &&
+        !result.paused &&
+        !botState.rebalanceFailedMidway
+      ) {
+        _handleRecovery();
       }
     } catch (err) {
       if (!firstFailureAt) firstFailureAt = Date.now();

@@ -29,6 +29,7 @@ const {
   _deadline,
   _waitOrSpeedUp,
   _ensureAllowance,
+  _retrySend,
   getPoolState,
   removeLiquidity,
   logSwapNeeded,
@@ -88,24 +89,29 @@ async function mintPosition(
     String(amount0Desired),
     String(amount1Desired),
   );
-  const tx = await pm.mint(
-    {
-      token0,
-      token1,
-      fee,
-      tickLower,
-      tickUpper,
-      amount0Desired,
-      amount1Desired,
-      amount0Min: 0n,
-      amount1Min: 0n,
-      recipient,
-      deadline: dl,
-    },
-    {
-      type: config.TX_TYPE,
-      gasLimit: config.CHAIN.contracts?.positionManager?.mintGasLimit || 600000,
-    },
+  const tx = await _retrySend(
+    () =>
+      pm.mint(
+        {
+          token0,
+          token1,
+          fee,
+          tickLower,
+          tickUpper,
+          amount0Desired,
+          amount1Desired,
+          amount0Min: 0n,
+          amount1Min: 0n,
+          recipient,
+          deadline: dl,
+        },
+        {
+          type: config.TX_TYPE,
+          gasLimit:
+            config.CHAIN.contracts?.positionManager?.mintGasLimit || 600000,
+        },
+      ),
+    "mint",
   );
   console.log(
     "[rebalance] Step 7b: TX submitted, hash= %s nonce=%d type=%s gasLimit=%s gasPrice=%s",

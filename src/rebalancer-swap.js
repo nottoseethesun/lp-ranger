@@ -492,9 +492,6 @@ async function _swapViaRouter(signer, ethersLib, params) {
 }
 
 /** True when the error is a slippage/impact abort. */
-function _isSlippageError(err) {
-  return err?.message?.startsWith("Swap aborted");
-}
 
 /** True when aggregator exhausted all retry attempts (reverts + timeouts). */
 function _isAggregatorExhausted(err) {
@@ -528,13 +525,7 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
  * Try a swap function full, then in 3 chunks on slippage error.
  */
 async function _swapWithChunking(swapFn, signer, ethersLib, params) {
-  try {
-    return await swapFn(signer, ethersLib, params);
-  } catch (err) {
-    if (!_isSlippageError(err)) throw err;
-    console.warn("[rebalance] %s \u2014 retrying in 3 chunks", err.message);
-    return _swapInChunks(swapFn, signer, ethersLib, params, 3);
-  }
+  return swapFn(signer, ethersLib, params);
 }
 
 /**

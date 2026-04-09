@@ -151,23 +151,8 @@ function _afterDisclaimer() {
     if (el) el.value = saved;
     const disp = g("activeOorThreshold");
     if (disp) disp.textContent = saved;
-    // Sync per-position threshold to server so the bot uses the correct value
-    const pk = active
-      ? compositeKey(
-          "pulsechain",
-          active.walletAddress,
-          active.contractAddress,
-          active.tokenId,
-        )
-      : undefined;
-    fetch("/api/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rebalanceOutOfRangeThresholdPercent: saved,
-        positionKey: pk,
-      }),
-    }).catch(() => {});
+    // Server is source of truth for config — _syncConfigFromServer() in
+    // dashboard-data.js will populate UI inputs from the server on first poll.
 
     // Populate stat grid from stored position data
     if (active) {

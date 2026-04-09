@@ -348,6 +348,10 @@ describe("server-positions compound state", () => {
   });
 
   it("updatePositionState persists compound fields", () => {
+    const fs = require("fs");
+    const os = require("os");
+    const path = require("path");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-persist-"));
     const { updatePositionState } = require("../src/server-positions");
     const { getPositionConfig } = require("../src/bot-config-v2");
     const cfg = { global: {}, positions: {} };
@@ -359,10 +363,12 @@ describe("server-positions compound state", () => {
       { totalCompoundedUsd: 99, lastCompoundAt: "2026-06-01T00:00:00Z" },
       cfg,
       { migrateKey: () => {} },
+      tmpDir,
     );
     assert.equal(cfg.positions.test.totalCompoundedUsd, 99);
     assert.equal(cfg.positions.test.lastCompoundAt, "2026-06-01T00:00:00Z");
     assert.equal(cfg.positions.test.status, "running");
+    fs.rmSync(tmpDir, { recursive: true });
   });
 });
 

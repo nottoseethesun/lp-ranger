@@ -446,3 +446,65 @@ describe("Failure: executeRebalance pipeline", () => {
     assert.ok(walletBal1 > 0n, "token1 should still be in wallet");
   });
 });
+
+// ── _retrySend ──────────────────────────────────────────────────────────────
+
+const { _retrySend, _TRANSIENT_PATTERNS } = require("../src/rebalancer-pools");
+
+describe("_retrySend", () => {
+  it("returns immediately on success", async () => {
+    const result = await _retrySend(() => Promise.resolve("ok"), "test");
+    assert.strictEqual(result, "ok");
+  });
+
+  it("throws immediately for non-transient errors", async () => {
+    await assert.rejects(
+      () =>
+        _retrySend(() => Promise.reject(new Error("nonce too low")), "test"),
+      { message: "nonce too low" },
+    );
+  });
+
+  it("retries transient errors and succeeds", async () => {
+    let attempts = 0;
+    const result = await _retrySend(
+      () => {
+        attempts++;
+        if (attempts < 2)
+          return Promise.reject(new Error("INTERNAL_ERROR: sub-pool is full"));
+        return Promise.resolve("recovered");
+      },
+      "test",
+      1, // 1ms delay for fast tests
+    );
+    assert.strictEqual(result, "recovered");
+    assert.strictEqual(attempts, 2);
+  });
+
+  it("exhausts retries for persistent transient errors", async () => {
+    let attempts = 0;
+    await assert.rejects(
+      () =>
+        _retrySend(
+          () => {
+            attempts++;
+            return Promise.reject(
+              new Error("INTERNAL_ERROR: sub-pool is full"),
+            );
+          },
+          "test",
+          1, // 1ms delay for fast tests
+        ),
+      { message: /sub-pool is full/ },
+    );
+    assert.strictEqual(attempts, 4); // 1 original + 3 retries
+  });
+
+  it("recognises all transient patterns", () => {
+    assert.ok(_TRANSIENT_PATTERNS.length >= 5);
+    for (const p of _TRANSIENT_PATTERNS) {
+      assert.strictEqual(typeof p, "string");
+      assert.ok(p.length > 0);
+    }
+  });
+});

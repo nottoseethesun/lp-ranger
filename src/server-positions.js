@@ -83,7 +83,7 @@ function _persistEpochCache(state, epochs) {
  * @param {object} positionMgr  Position manager instance.
  */
 /** Persist position-scoped fields from a bot state patch to disk config. */
-function _persistPositionConfig(patch, diskConfig, key) {
+function _persistPositionConfig(patch, diskConfig, key, dir) {
   const _PERSIST = [
     "hodlBaseline",
     "residuals",
@@ -115,10 +115,10 @@ function _persistPositionConfig(patch, diskConfig, key) {
     key,
     pos.status,
   );
-  saveConfig(diskConfig);
+  saveConfig(diskConfig, dir);
 }
 
-function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
+function updatePositionState(keyRef, patch, diskConfig, positionMgr, dir) {
   const key = keyRef.current;
   let state = _positionBotStates.get(key);
   if (!state) {
@@ -129,7 +129,7 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
 
   // Persist position-specific data to v2 config when important fields change
   if (patch.pnlEpochs) _persistEpochCache(state, patch.pnlEpochs);
-  _persistPositionConfig(patch, diskConfig, key);
+  _persistPositionConfig(patch, diskConfig, key, dir);
 
   // Handle key migration after rebalance (new tokenId) — save disk first, then memory.
   // Update keyRef.current so ALL closures (updateBotState, getConfig) use the new key.
@@ -152,7 +152,7 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr) {
       patch.activePositionId,
     );
     migrateConfigKey(diskConfig, key, newKey);
-    saveConfig(diskConfig);
+    saveConfig(diskConfig, dir);
     // No epoch-cache migration needed — keyed by pool, not tokenId
     positionMgr.migrateKey(key, newKey, String(patch.activePositionId));
     state.forceRebalance = false;
@@ -364,6 +364,9 @@ function createPositionRoutes(deps) {
       );
     }
     removeManagedPosition(diskConfig, body.key);
+    // Clear auto-compound so it doesn't re-enable on next manage
+    const posRef = diskConfig.positions[body.key];
+    if (posRef) posRef.autoCompoundEnabled = false;
     saveConfig(diskConfig);
     _positionBotStates.delete(body.key);
     console.log(

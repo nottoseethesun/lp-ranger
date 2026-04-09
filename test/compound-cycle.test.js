@@ -423,15 +423,26 @@ describe("addManagedPosition logging", () => {
 
 describe("_persistPositionConfig status guard", () => {
   it("restores missing status to running on persist", () => {
+    const fs = require("fs");
+    const os = require("os");
+    const path = require("path");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cycle-guard-"));
     const { updatePositionState } = require("../src/server-positions");
     const { getPositionConfig } = require("../src/bot-config-v2");
     const cfg = { global: {}, positions: {} };
     getPositionConfig(cfg, "test-guard");
     const keyRef = { current: "test-guard" };
     const pm = { migrateKey: () => {} };
-    updatePositionState(keyRef, { hodlBaseline: { entryValue: 50 } }, cfg, pm);
+    updatePositionState(
+      keyRef,
+      { hodlBaseline: { entryValue: 50 } },
+      cfg,
+      pm,
+      tmpDir,
+    );
     assert.equal(cfg.positions["test-guard"].status, "running");
     assert.equal(cfg.positions["test-guard"].hodlBaseline.entryValue, 50);
+    fs.rmSync(tmpDir, { recursive: true });
   });
 });
 

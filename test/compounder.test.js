@@ -182,7 +182,6 @@ describe("compounder", () => {
       assert.equal(result.txHash, "0xcollect");
     });
   });
-
   describe("addLiquidity with mocked contract", () => {
     it("calls increaseLiquidity and returns amounts", async () => {
       const { addLiquidity } = require("../src/compounder");
@@ -332,7 +331,6 @@ describe("compounder", () => {
       assert.equal(cap1, 50n); // not capped
     });
   });
-
   describe("atomic config write", () => {
     const fs = require("fs");
     const os = require("os");
@@ -364,7 +362,6 @@ describe("compounder", () => {
       fs.rmSync(dir, { recursive: true });
     });
   });
-
   describe("bot state restoration", () => {
     it("createPerPositionBotState copies compound fields from saved config", () => {
       const { createPerPositionBotState } = require("../src/server-positions");
@@ -386,7 +383,6 @@ describe("compounder", () => {
       assert.equal(state.compoundHistory, undefined);
     });
   });
-
   describe("P&L override with compound", () => {
     it("overridePnlWithRealValues subtracts totalCompoundedUsd", () => {
       const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
@@ -442,28 +438,25 @@ describe("compounder", () => {
       }
     });
   });
-
   describe("_persistPositionConfig with compound fields", () => {
+    const _fs = require("fs"),
+      _os = require("os"),
+      _p = require("path");
+    const _dir = _fs.mkdtempSync(_p.join(_os.tmpdir(), "comp-persist-"));
     it("persists compound fields to in-memory config", () => {
       const { getPositionConfig } = require("../src/bot-config-v2");
       const { updatePositionState } = require("../src/server-positions");
       const cfg = { global: {}, positions: {} };
       getPositionConfig(cfg, "test-key");
       cfg.positions["test-key"].status = "running";
-
       const keyRef = { current: "test-key" };
       const pm = { migrateKey: () => {} };
-      updatePositionState(
-        keyRef,
-        {
-          totalCompoundedUsd: 7.5,
-          lastCompoundAt: "2026-04-04T15:00:00Z",
-          compoundHistory: [{ trigger: "auto" }],
-        },
-        cfg,
-        pm,
-      );
-
+      const patch = {
+        totalCompoundedUsd: 7.5,
+        lastCompoundAt: "2026-04-04T15:00:00Z",
+        compoundHistory: [{ trigger: "auto" }],
+      };
+      updatePositionState(keyRef, patch, cfg, pm, _dir);
       assert.equal(cfg.positions["test-key"].totalCompoundedUsd, 7.5);
       assert.equal(
         cfg.positions["test-key"].lastCompoundAt,
@@ -489,14 +482,12 @@ describe("compounder", () => {
       const snap = tracker.snapshot(1.0);
       assert.equal(snap.totalGas, 0.08);
     });
-
     it("addGas does nothing when no live epoch", () => {
       const { createPnlTracker } = require("../src/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
       tracker.addGas(1.0); // no epoch open — should not throw
       assert.equal(tracker.epochCount(), 0);
     });
-
     it("addGas ignores zero and negative", () => {
       const { createPnlTracker } = require("../src/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
@@ -526,14 +517,12 @@ describe("_filterRebalances", () => {
     assert.equal(result.length, 1, "rebalance should be filtered");
     assert.equal(result[0].blockNumber, 100000, "only real compound kept");
   });
-
   it("keeps all when no drains exist", () => {
     const { _filterRebalances } = require("../src/compounder");
     const candidates = [{ amount0: 50n, amount1: 10n, blockNumber: 100 }];
     const result = _filterRebalances(candidates, []);
     assert.equal(result.length, 1);
   });
-
   it("ignores zero-liquidity DecreaseLiquidity", () => {
     const { _filterRebalances } = require("../src/compounder");
     const candidates = [{ amount0: 50n, amount1: 10n, blockNumber: 100 }];
