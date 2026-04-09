@@ -33,6 +33,13 @@
  * This is the primary configuration reference for the project.  All environment
  * variables, contract addresses, and pricing API setup are documented here.
  *
+ * TERMINOLOGY — "epoch"
+ * In this codebase an "epoch" is a P&L tracking period that spans one NFT
+ * position's lifetime — from mint to drain (rebalance).  Each rebalance
+ * closes the current epoch and opens a new one for the freshly minted NFT.
+ * This is unrelated to the blockchain meaning of "epoch" (a fixed group of
+ * blocks used for consensus or validator rotation).
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  * QUICK START
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -642,6 +649,7 @@ const _routes = {
   },
   "POST /api/config": _routeHandlers._handleApiConfig,
   "POST /api/api-keys": _routeHandlers._handleApiKeySave,
+  "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,
   "POST /api/wallet": _routeHandlers._handleWalletImport,
   "POST /api/wallet/reveal": _routeHandlers._handleWalletReveal,
   "POST /api/positions/scan": _routeHandlers._handlePositionsScan,

@@ -208,8 +208,8 @@ function _afterDisclaimer() {
     if (depLabel)
       depLabel.textContent =
         dep > 0
-          ? "Initial Deposit: $" + dep.toFixed(2)
-          : "Edit Initial Deposit";
+          ? "Total Lifetime Deposit: $" + dep.toFixed(2)
+          : "Edit Total Lifetime Deposit";
     // Re-sync localStorage deposit to server (survives npm run clean)
     if (dep > 0) {
       const a = posStore.getActive(),

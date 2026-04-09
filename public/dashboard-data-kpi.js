@@ -1,4 +1,42 @@
-/** @file dashboard-data-kpi.js — KPI calculation and display. */
+/**
+ * @file dashboard-data-kpi.js — KPI calculation and display.
+ *
+ * Deposit Resolution
+ * ──────────────────
+ * Both the Current and Lifetime panels have user-editable deposit
+ * fields.  When the user clicks "Edit" and saves a value, it is
+ * persisted to localStorage (per-position key for Current, per-pool
+ * key for Lifetime) and, for Lifetime, also synced to the server's
+ * .bot-config.json via POST /api/config (initialDepositUsd).  A
+ * user-entered value always takes priority over any auto-detected
+ * fallback, and survives server restarts and browser refreshes.
+ *
+ * Lifetime Deposit Fallback Chain (_resolveLifetimeDeposit)
+ * ─────────────────────────────────────────────────────────
+ * When the user hasn't manually set a lifetime deposit, the dashboard
+ * resolves it automatically via three fallbacks, tried in order:
+ *
+ *  ● Scan total (totalLifetimeDeposit): Used only for "Total Lifetime
+ *    Deposit" in the Lifetime panel, never "Initial Deposit" in the
+ *    Current panel.  The HODL scan walks the
+ *    entire rebalance chain, finds every fresh deposit (original mint
+ *    + any external top-ups), fetches historical prices at each
+ *    deposit's block, and sums them.  Most accurate lifetime number
+ *    but fails when GeckoTerminal can't return historical prices for
+ *    a token.
+ *
+ *  ● First closed epoch entry value (closedEpochs[0].entryValue): The
+ *    USD value recorded when the very first P&L epoch opened — i.e. the
+ *    original position's deposit.  Available whenever at least one
+ *    rebalance has occurred (creating a closed epoch).  Uses the price
+ *    at the time the bot first started tracking, not historical API.
+ *
+ *  ● Current baseline (_botDetectedDeposit → hodlBaseline.entryValue):
+ *    The USD value of the tokens minted into the current NFT, computed
+ *    using prices at the time of the most recent rebalance.  Always
+ *    available but only represents this position's entry, not the
+ *    original deposit.
+ */
 import {
   g,
   truncName,
@@ -217,6 +255,16 @@ export function _botDetectedDeposit(d) {
       ? d.hodlBaseline.entryValue
       : d.pnlSnapshot?.initialDeposit || 0;
 }
+/** Resolve lifetime deposit: user → scan total → first epoch → baseline. */
+export function _resolveLifetimeDeposit(d) {
+  const user = loadInitialDeposit();
+  if (user > 0) return user; // manual override
+  return (
+    d.pnlSnapshot?.totalLifetimeDeposit || // scan total
+    d.pnlSnapshot?.closedEpochs?.[0]?.entryValue || // first epoch
+    _botDetectedDeposit(d)
+  ); // current baseline
+}
 export function _resolveCurDeposit(d) {
   const saved = loadCurDeposit();
   if (saved > 0) return saved;
@@ -238,10 +286,8 @@ export function _resolveKpiTotals(d) {
     curRealized = loadCurRealized();
   const ltFees = d.pnlSnapshot ? d.pnlSnapshot.totalFees || 0 : 0;
   const curFees = d.pnlSnapshot?.liveEpoch?.fees || 0;
-  const curDep = _resolveCurDeposit(d),
-    ltUserDep = loadInitialDeposit();
-  const ltAuto = d.pnlSnapshot?.totalLifetimeDeposit || _botDetectedDeposit(d);
-  const ltDep = ltUserDep > 0 ? ltUserDep : ltAuto;
+  const curDep = _resolveCurDeposit(d);
+  const ltDep = _resolveLifetimeDeposit(d);
   const curPc = _priceChangePnl(d, curDep, false),
     ltPc = _priceChangePnl(d, ltDep, true);
   const compounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
