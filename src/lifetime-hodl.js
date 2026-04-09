@@ -158,14 +158,26 @@ function _sumNonSwapInbound(xfers0, xfers1) {
     }
     let tx0 = 0n,
       tx1 = 0n;
-    for (const t of group.t0) if (t.dir === "in") tx0 += t.amount;
-    for (const t of group.t1) if (t.dir === "in") tx1 += t.amount;
+    const fromAddrs = [];
+    for (const t of group.t0) {
+      if (t.dir === "in") {
+        tx0 += t.amount;
+        if (t.from) fromAddrs.push(t.from.slice(24));
+      }
+    }
+    for (const t of group.t1) {
+      if (t.dir === "in") {
+        tx1 += t.amount;
+        if (t.from) fromAddrs.push(t.from.slice(24));
+      }
+    }
     if (tx0 > 0n || tx1 > 0n)
       console.log(
-        "[hodl]   deposit TX %s: t0=%s t1=%s",
+        "[hodl]   deposit TX %s: t0=%s t1=%s from=[%s]",
         txHash.slice(0, 10),
         String(tx0),
         String(tx1),
+        fromAddrs.join(","),
       );
     sum0 += tx0;
     sum1 += tx1;
@@ -225,16 +237,29 @@ async function _freshDeposits(
     ),
   ]);
   // Drop inbound transfers from LP infrastructure (PM + pool)
+  const validAddrs = (excludeFromAddrs || []).filter(Boolean);
+  if (validAddrs.length < 2)
+    console.warn(
+      "[hodl]   WARN: only %d exclude addrs (need PM + pool)",
+      validAddrs.length,
+    );
   const excluded = new Set(
-    (excludeFromAddrs || [])
-      .filter(Boolean)
-      .map((a) => ethersLib.zeroPadValue(a, 32).toLowerCase()),
+    validAddrs.map((a) => ethersLib.zeroPadValue(a, 32).toLowerCase()),
   );
   const keep = (t) => t.dir === "out" || !excluded.has(t.from?.toLowerCase());
-  const { sum0, sum1 } = _sumNonSwapInbound(
-    xfers0.filter(keep),
-    xfers1.filter(keep),
-  );
+  const kept0 = xfers0.filter(keep),
+    kept1 = xfers1.filter(keep);
+  if (xfers0.length > 0 || xfers1.length > 0)
+    console.log(
+      "[hodl]   scan %d→%d: raw t0=%d t1=%d, after exclude t0=%d t1=%d",
+      scanFrom,
+      nextMintBlock,
+      xfers0.length,
+      xfers1.length,
+      kept0.length,
+      kept1.length,
+    );
+  const { sum0, sum1 } = _sumNonSwapInbound(kept0, kept1);
   return { f0: sum0, f1: sum1 };
 }
 
@@ -277,10 +302,11 @@ async function _rebalanceFresh(opts, allNftEvents, ordered, i, mintIl) {
   );
 }
 
-/** Record a deposit entry for USD computation. */
+/** Record a deposit entry for USD computation (skip if block already cached). */
 function _addDeposit(ctx, raw0, raw1, block) {
-  if (raw0 > 0n || raw1 > 0n)
-    ctx.deposits.push({ raw0: String(raw0), raw1: String(raw1), block });
+  if (raw0 <= 0n && raw1 <= 0n) return;
+  if (ctx._cachedBlocks && ctx._cachedBlocks.has(block)) return;
+  ctx.deposits.push({ raw0: String(raw0), raw1: String(raw1), block });
 }
 
 /** Process one NFT in the rebalance chain, returning deposit + external amounts. */
@@ -342,6 +368,8 @@ async function computeLifetimeHodl(allNftEvents, opts) {
   const d0 = position.decimals0 ?? 18;
   const d1 = position.decimals1 ?? 18;
   const cached = opts.cachedFreshDeposits;
+  const cachedDeps = cached?.deposits ? [...cached.deposits] : [];
+  const cachedBlocks = new Set(cachedDeps.map((d) => d.block));
   const ctx = {
     canScan: !!(
       provider &&
@@ -356,7 +384,8 @@ async function computeLifetimeHodl(allNftEvents, opts) {
     maxBlock: cached?.lastBlock || 0,
     total0: 0n,
     total1: 0n,
-    deposits: cached?.deposits ? [...cached.deposits] : [],
+    deposits: cachedDeps,
+    _cachedBlocks: cachedBlocks,
   };
 
   for (let i = 0; i < ordered.length; i++)

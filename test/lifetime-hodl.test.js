@@ -1,7 +1,3 @@
-/**
- * @file test/lifetime-hodl.test.js
- * @description Tests for lifetime HODL amount accumulation across rebalance chains.
- */
 "use strict";
 
 const { describe, it } = require("node:test");
@@ -38,13 +34,9 @@ function dlEvent(liq, block = 150, a0 = 0, a1 = 0) {
   };
 }
 
-function _topicsMatch(logTopics, filterTopics) {
-  if (!filterTopics) return true;
-  for (let i = 0; i < filterTopics.length; i++) {
-    if (filterTopics[i] === null) continue;
-    if (logTopics[i] !== filterTopics[i]) return false;
-  }
-  return true;
+function _topicsMatch(lt, ft) {
+  if (!ft) return true;
+  return ft.every((f, i) => f === null || lt[i] === f);
 }
 
 function mockProvider(opts = {}) {
@@ -376,6 +368,28 @@ describe("lifetime-hodl", () => {
       });
       assert.strictEqual(r.amount0, 1500);
       assert.strictEqual(r.amount1, 2300);
+    });
+
+    it("does not duplicate deposits from cached entries", async () => {
+      const events = new Map();
+      events.set("100", {
+        ilEvents: [ilEvent(1000_00000000, 2000_00000000, 10)],
+        collectEvents: [],
+        dlEvents: [],
+      });
+      const r = await computeLifetimeHodl(events, {
+        rebalanceEvents: [],
+        position: pos8,
+        cachedFreshDeposits: {
+          raw0: "0",
+          raw1: "0",
+          lastBlock: 10,
+          deposits: [{ raw0: "100000000000", raw1: "200000000000", block: 10 }],
+        },
+      });
+      assert.strictEqual(r.deposits.length, 1);
+      assert.strictEqual(r.amount0, 1000);
+      assert.strictEqual(r.amount1, 2000);
     });
 
     it("handles empty events gracefully", async () => {

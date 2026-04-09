@@ -358,7 +358,11 @@ async function fetchHistoricalPriceGecko(
   network = "pulsechain",
   opts = {},
 ) {
-  const utcKey = toUtcDayKey(timestamp);
+  // When a block number is provided, scope the disk cache key to the block
+  // so different blocks don't collide (deposits at different blocks need
+  // different historical prices, even if fetched on the same calendar day).
+  const baseKey = toUtcDayKey(timestamp);
+  const utcKey = opts.blockNumber ? `${baseKey}@${opts.blockNumber}` : baseKey;
   const t0 = opts.token0Address;
   const t1 = opts.token1Address;
   const c0 = t0 ? getHistoricalPrice(network, t0, utcKey) : null;
