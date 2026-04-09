@@ -231,7 +231,19 @@ function _first(vals) {
  * @param {Function} fetchPrices  async (blockNumber) => { price0, price1 }.
  * @returns {Promise<number>} Total deposit USD.
  */
-async function _totalLifetimeDeposit(deposits, d0, d1, fetchPrices) {
+/** Fall back to current prices when historical sources return 0. */
+async function _currentPriceFallback(p0, p1, opts, idx, block) {
+  let price0 = p0,
+    price1 = p1;
+  if ((price0 > 0 && price1 > 0) || !opts?.token0) return { price0, price1 };
+  if (price0 <= 0) price0 = await fetchTokenPriceUsd(opts.token0);
+  if (price1 <= 0) price1 = await fetchTokenPriceUsd(opts.token1);
+  if (price0 > 0 || price1 > 0)
+    console.log("[deposit] #%d block=%d current-price fallback", idx, block);
+  return { price0, price1 };
+}
+
+async function _totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
   if (!deposits || !deposits.length || !fetchPrices) return 0;
   let total = 0;
   for (let i = 0; i < deposits.length; i++) {
@@ -249,7 +261,14 @@ async function _totalLifetimeDeposit(deposits, d0, d1, fetchPrices) {
     const a0 = Number(BigInt(dep.raw0)) / 10 ** d0;
     const a1 = Number(BigInt(dep.raw1)) / 10 ** d1;
     if (a0 <= 0 && a1 <= 0) continue;
-    const { price0, price1 } = await fetchPrices(dep.block);
+    const hist = await fetchPrices(dep.block);
+    const { price0, price1 } = await _currentPriceFallback(
+      hist.price0,
+      hist.price1,
+      opts,
+      i + 1,
+      dep.block,
+    );
     dep.usd = a0 * price0 + a1 * price1;
     console.log(
       "[deposit] #%d block=%d a0=%s a1=%s p0=%s p1=%s → $%s",

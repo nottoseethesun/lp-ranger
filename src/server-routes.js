@@ -484,7 +484,10 @@ function createRouteHandlers(deps) {
   async function _decryptApiKeys(password) {
     _sessionPassword = password;
     for (const svc of ["moralis"]) {
-      if (!hasEncryptedKey(svc)) continue;
+      if (!hasEncryptedKey(svc)) {
+        console.log("[server] No %s API key configured", svc);
+        continue;
+      }
       try {
         const key = await loadEncryptedKey(svc, password);
         setApiKey(svc, key);
@@ -492,6 +495,31 @@ function createRouteHandlers(deps) {
       } catch (err) {
         console.warn("[server] Failed to decrypt %s key: %s", svc, err.message);
       }
+    }
+    // Validate Moralis key after decryption
+    _validateMoralisKey();
+  }
+
+  /** Ping Moralis to validate the decrypted key; log result. */
+  async function _validateMoralisKey() {
+    const key = getApiKey("moralis");
+    if (!key) return;
+    try {
+      const r = await fetch(
+        "https://deep-index.moralis.io/api/v2.2/erc20" +
+          "/0xA1077a294dDE1B09bB078844df40758a5D0f9a27/price?chain=0x171",
+        { headers: { Accept: "application/json", "X-API-Key": key } },
+      );
+      if (r.ok) {
+        console.log("[server] Moralis API key validated successfully");
+      } else {
+        console.warn(
+          "[server] Moralis API key INVALID (status %d) — re-enter in Settings",
+          r.status,
+        );
+      }
+    } catch (err) {
+      console.warn("[server] Moralis validation failed: %s", err.message);
     }
   }
 

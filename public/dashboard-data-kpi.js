@@ -1,40 +1,17 @@
 /**
  * @file dashboard-data-kpi.js — KPI calculation and display.
  *
- * Deposit Resolution
- * ──────────────────
- * Both the Current and Lifetime panels have user-editable deposit
- * fields.  When the user clicks "Edit" and saves a value, it is
- * persisted to localStorage (per-position key for Current, per-pool
- * key for Lifetime) and, for Lifetime, also synced to the server's
- * .bot-config.json via POST /api/config (initialDepositUsd).  A
- * user-entered value always takes priority over any auto-detected
- * fallback, and survives server restarts and browser refreshes.
+ * Deposit Resolution: Both panels have user-editable deposit fields
+ * persisted to localStorage (per-position for Current, per-pool for
+ * Lifetime) + synced to .bot-config.json.  User values always win.
  *
- * Lifetime Deposit Fallback Chain (_resolveLifetimeDeposit)
- * ─────────────────────────────────────────────────────────
- * When the user hasn't manually set a lifetime deposit, the dashboard
- * resolves it automatically via three fallbacks, tried in order:
- *
- *  ● Scan total (totalLifetimeDeposit): Used only for "Total Lifetime
- *    Deposit" in the Lifetime panel, never "Initial Deposit" in the
- *    Current panel.  The HODL scan walks the
- *    entire rebalance chain, finds every fresh deposit (original mint
- *    + any external top-ups), fetches historical prices at each
- *    deposit's block, and sums them.  Most accurate lifetime number
- *    but fails when GeckoTerminal can't return historical prices for
- *    a token.
- *
- *  ● First closed epoch entry value (closedEpochs[0].entryValue): The
- *    USD value recorded when the very first P&L epoch opened — i.e. the
- *    original position's deposit.  Available whenever at least one
- *    rebalance has occurred (creating a closed epoch).  Uses the price
- *    at the time the bot first started tracking, not historical API.
- *
- *  ● Current baseline (_botDetectedDeposit → hodlBaseline.entryValue):
- *    The USD value of the tokens minted into the current NFT, computed
- *    using prices at the time of the most recent rebalance.  Always
- *    available but only represents this position's entry, not the
+ * Lifetime Deposit Fallback Chain (_resolveLifetimeDeposit):
+ *  ● Scan total (totalLifetimeDeposit) — Lifetime panel only, never
+ *    Current.  HODL scan sums fresh deposits at historical prices.
+ *  ● First closed epoch entry (closedEpochs[0].entryValue) — original
+ *    position's value when the bot first started tracking.
+ *  ● Current baseline (hodlBaseline.entryValue) — current NFT's entry
+ *    value at most recent rebalance.  Always available but not the
  *    original deposit.
  */
 import {
@@ -85,13 +62,10 @@ export function _setPctSpan(id, val, deposit) {
 export function _setAprSpan(id, val, deposit, firstDate) {
   const el = g(id);
   if (!el) return;
-  if (!deposit || deposit <= 0 || !firstDate) {
-    el.textContent = "\u2014";
-    return;
-  }
-  const sec =
-    (Date.now() - new Date(firstDate + "T00:00:00Z").getTime()) / 1000;
-  if (sec <= 0) {
+  const sec = firstDate
+    ? (Date.now() - new Date(firstDate + "T00:00:00Z").getTime()) / 1000
+    : 0;
+  if (!deposit || deposit <= 0 || sec <= 0) {
     el.textContent = "\u2014";
     return;
   }
@@ -101,10 +75,8 @@ export function _setAprSpan(id, val, deposit, firstDate) {
     el.style.color = "";
     return;
   }
-  el.textContent =
-    (apr > 0
-      ? "APR " + apr.toFixed(2)
-      : "APR \u2212" + Math.abs(apr).toFixed(2)) + "%";
+  const sign = apr > 0 ? "APR " : "APR \u2212";
+  el.textContent = sign + Math.abs(apr).toFixed(2) + "%";
   el.style.color = apr > 0 ? "#0f0" : "#f44";
 }
 export function _setLeadingText(el, text) {

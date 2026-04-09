@@ -547,6 +547,7 @@ export async function checkWalletLocked() {
     } else if (s.address) {
       // Wallet exists and is already unlocked (e.g. WALLET_PASSWORD env var).
       _walletUnlocked = true;
+      _validateMoralisAfterUnlock();
     }
   } catch {
     /* */
