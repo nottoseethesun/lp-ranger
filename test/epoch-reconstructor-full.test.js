@@ -246,7 +246,13 @@ describe("reconstructEpochs full flow", () => {
     await mod.reconstructEpochs({
       pnlTracker: tracker,
       rebalanceEvents: [{ oldTokenId: "100", newTokenId: "101" }],
-      botState: { activePosition: { token0: "0xA", token1: "0xB", fee: 500 } },
+      botState: {
+        activePosition: {
+          token0: `0xFB${process.pid}`,
+          token1: "0xFB1",
+          fee: 500,
+        },
+      },
       fallbackPrices: fb,
     });
     assert.ok(capturedOpts);

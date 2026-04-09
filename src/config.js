@@ -305,6 +305,9 @@ module.exports = {
   COMPOUND_MIN_FEE_USD: 1,
   COMPOUND_DEFAULT_THRESHOLD_USD: 5,
 
+  // Scan
+  SCAN_TIMEOUT_MS: 1_200_000, // 20 minutes — server requestTimeout + client fetch abort
+
   // Helpers
   assertLiveModeReady,
   VERBOSE,

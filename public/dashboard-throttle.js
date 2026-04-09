@@ -218,29 +218,24 @@ function _renderCountdownKpi(can) {
   const minIntervalMin = minIntervalEl
     ? parseInt(minIntervalEl.value, 10) || 10
     : 10;
-  const cd = g("kpiCountdown"),
-    cds = g("kpiCDSub");
+  const cd = g("kpiCountdown");
   if (can.allowed) {
     if (cd) {
       cd.textContent = minIntervalMin + " min";
       cd.className = "kpi-value neu";
     }
-    if (cds)
-      cds.textContent =
-        "Rebalance is only triggered when the position is out-of-range" +
-        " by the % set below, for the time duration (minutes) set below.";
   } else {
+    const reason =
+      can.reason === "daily_limit"
+        ? "Daily Limit"
+        : throttle.doublingActive
+          ? "Doubling"
+          : "";
     if (cd) {
-      cd.textContent = fmtCountdown(can.msUntilAllowed);
+      cd.textContent =
+        fmtCountdown(can.msUntilAllowed) + (reason ? " \u2014 " + reason : "");
       cd.className = "kpi-value " + (throttle.doublingActive ? "dbl" : "wrn");
     }
-    if (cds)
-      cds.textContent =
-        can.reason === "daily_limit"
-          ? "Daily Limit Reached"
-          : throttle.doublingActive
-            ? "Volatility Doubling"
-            : "Waiting \u2014 " + fmtCountdown(can.msUntilAllowed) + " Left";
   }
 }
 

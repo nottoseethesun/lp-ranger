@@ -493,8 +493,10 @@ function _applyRebalanceResult(deps, result) {
     // Clear cached HODL so re-scan picks up the new rebalance boundary
     deps._botState.lifetimeHodlAmounts = null;
     deps._botState.totalLifetimeDepositUsd = 0;
-    if (deps._pnlTracker?._epochKey)
+    if (deps._pnlTracker?._epochKey) {
       _epochCache.setCachedLifetimeHodl(deps._pnlTracker._epochKey, null);
+      _epochCache.setCachedFreshDeposits(deps._pnlTracker._epochKey, null);
+    }
     _updateHodlBaseline(deps._botState, result, mintNow);
   }
   console.log(

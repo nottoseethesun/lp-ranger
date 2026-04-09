@@ -193,8 +193,8 @@ function _syncStatus(d) {
     const tip = p?.total > 0 ? p.done + "/" + p.total + " positions" : "";
     return { complete: false, label: "Syncing\u2026", tip };
   }
-  const ready = d.rebalanceScanComplete === true && !!d.pnlSnapshot;
-  if (!ready) return { complete: false, label: "Syncing\u2026" };
+  if (!d.rebalanceScanComplete)
+    return { complete: false, label: "Syncing\u2026" };
   return { complete: true, label: "Synced" };
 }
 function _updateSyncBadge(d) {
@@ -371,6 +371,7 @@ function _syncManagedAndGlobals(data) {
     botConfig.compoundMinFee = data.compoundMinFeeUsd;
   if (data.compoundDefaultThresholdUsd > 0)
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
+  if (data.scanTimeoutMs > 0) botConfig.scanTimeoutMs = data.scanTimeoutMs;
 }
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";

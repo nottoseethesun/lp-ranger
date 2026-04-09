@@ -146,6 +146,9 @@ function _applyLifetime(d) {
   _applyLifetimeDates(d);
   if (d.dailyPnl) renderDailyPnl(d.dailyPnl);
   if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
+  // Update IL debug popover with lifetime HODL amounts from phase 2
+  if (d.pnlSnapshot?.ilInputs)
+    updateILDebugData({ pnlSnapshot: d.pnlSnapshot });
 }
 
 /** Apply balances, pool share, and tick to the position stats panel. */
@@ -359,21 +362,61 @@ function _markSynced() {
   pollNow();
 }
 
+/** Show a modal informing the user the scan timed out. */
+function _showScanTimeoutDialog() {
+  const existing = document.getElementById("scanTimeoutModal");
+  if (existing) existing.remove();
+  const el = document.createElement("div");
+  el.className = "9mm-pos-mgr-il-popover";
+  el.id = "scanTimeoutModal";
+  el.innerHTML = `<div class="9mm-pos-mgr-il-popover-inner">
+    <div class="9mm-pos-mgr-il-heading">Blockchain Scan Timeout</div>
+    <p style="margin:0.8em 0">The blockchain scan for this position is taking
+    abnormally long. This can happen with very old pools that have extensive
+    on-chain history.</p>
+    <p style="margin:0.8em 0">Please try again at a different time when the
+    RPC endpoint may be less congested.</p>
+    <button type="button" class="9mm-pos-mgr-il-ok-btn" data-dismiss>OK</button>
+  </div>`;
+  el.querySelector("[data-dismiss]").addEventListener("click", () =>
+    el.remove(),
+  );
+  el.addEventListener("click", (e) => {
+    if (e.target === el) el.remove();
+  });
+  document.body.appendChild(el);
+}
+
 /** Phase 2: slow — lifetime P&L (event scan + epoch reconstruction). */
 async function _phase2(body, gen) {
+  const timeoutMs = botConfig.scanTimeoutMs || 1_200_000;
   try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const r2 = await fetch("/api/position/lifetime", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: ctrl.signal,
     });
-    if (gen !== _fetchGen) return;
-    const d2 = await r2.json();
-    if (d2.ok) _applyLifetime(d2);
+    clearTimeout(timer);
+    if (gen === _fetchGen) {
+      const d2 = await r2.json();
+      if (d2.ok) _applyLifetime(d2);
+    }
   } catch (e) {
-    console.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
+    if (e.name === "AbortError") {
+      console.warn(
+        "[lp-ranger] [unmanaged] phase 2 timed out after %ds",
+        timeoutMs / 1000,
+      );
+      if (gen === _fetchGen) _showScanTimeoutDialog();
+    } else {
+      console.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
+    }
   }
-  if (gen === _fetchGen) _markSynced();
+  // Always clear Syncing badge — even on timeout or gen mismatch
+  _markSynced();
 }
 
 /** Fetch and display details for an unmanaged position (two-phase). */
