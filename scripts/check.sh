@@ -35,6 +35,16 @@ else
   lint_detail="${lint_detail}${css_lint_output}"
 fi
 
+# ── Lint (HTML) ──────────────────────────────────────────────────────────────
+html_lint_ok=0
+html_lint_output=$(./node_modules/.bin/html-validate public/*.html 2>&1)
+if [ $? -eq 0 ]; then
+  html_lint_ok=1
+else
+  lint_ok=0
+  lint_detail="${lint_detail}${html_lint_output}"
+fi
+
 # ── Lint (Markdown) ──────────────────────────────────────────────────────────
 md_lint_ok=0
 md_lint_output=$(./node_modules/.bin/markdownlint-cli2 README.md CLAUDE.md docs/CLAUDE-SECURITY.md 2>&1)
