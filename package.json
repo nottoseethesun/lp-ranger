@@ -22,9 +22,9 @@
     "check": "bash scripts/check.sh",
     "view-report": "xdg-open test/report-artifacts/report.pdf",
     "prelint": "npm run clean:reports",
-    "lint": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --max-warnings 0 && stylelint public/*.css && html-validate public/*.html && markdownlint-cli2 README.md CLAUDE.md docs/CLAUDE-SECURITY.md docs/CLAUDE-BEST-PRACTICES.md docs/CLAUDE-TESTING.md docs/architecture.md",
+    "lint": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --max-warnings 0 && stylelint public/*.css && html-validate public/*.html && markdownlint-cli2 README.md CLAUDE.md docs/claude/CLAUDE-SECURITY.md docs/claude/CLAUDE-BEST-PRACTICES.md docs/claude/CLAUDE-TESTING.md docs/architecture.md docs/engineering.md",
     "prelint:fix": "npm run clean:reports",
-    "lint:fix": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix && html-validate public/*.html && markdownlint-cli2 --fix README.md CLAUDE.md docs/CLAUDE-SECURITY.md docs/CLAUDE-BEST-PRACTICES.md docs/CLAUDE-TESTING.md",
+    "lint:fix": "eslint src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix && html-validate public/*.html && markdownlint-cli2 --fix README.md CLAUDE.md docs/claude/CLAUDE-SECURITY.md docs/claude/CLAUDE-BEST-PRACTICES.md docs/claude/CLAUDE-TESTING.md",
     "preaudit:deps": "npm run clean:reports",
     "audit:deps": "npm audit --audit-level=high",
     "preaudit:security": "npm run clean:reports",
@@ -43,7 +43,7 @@
     "nuke": "rm -rf node_modules package-lock.json && echo 'Nuked node_modules + package-lock.json — run npm install to reinstall'",
     "wipe-settings": "bash scripts/wipe-settings.sh",
     "restore-settings": "bash scripts/restore-settings.sh",
-    "swagger": "node scripts/swagger.js"
+    "api-doc": "node scripts/api-doc.js"
   },
   "dependencies": {
     "@fontsource/rye": "^5.2.7",
@@ -59,6 +59,7 @@
     "@eslint/js": "^10.0.1",
     "@fontsource/space-mono": "^5.2.9",
     "@fontsource/urbanist": "^5.2.7",
+    "@scalar/api-reference": "^1.52.0",
     "@secretlint/secretlint-rule-preset-recommend": "^11.4.1",
     "cli-table3": "^0.6.5",
     "esbuild": "^0.27.4",
@@ -76,8 +77,7 @@
     "prettier": "^3.8.1",
     "secretlint": "^11.4.1",
     "stylelint": "^17.4.0",
-    "stylelint-config-standard": "^40.0.0",
-    "swagger-ui-dist": "^5.32.1"
+    "stylelint-config-standard": "^40.0.0"
   },
   "overrides": {
     "@uniswap/v3-staker": "1.0.2",
