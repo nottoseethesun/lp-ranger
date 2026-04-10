@@ -190,8 +190,26 @@ export async function saveMoralisApiKey(key, pw, inp) {
 async function _saveMoralisKey() {
   const inp = g("moralisKeyInput");
   if (!inp || !inp.value.trim()) return;
-  await saveMoralisApiKey(inp.value.trim(), null, inp);
-  checkMoralisKeyStatus();
+  const saved = await saveMoralisApiKey(inp.value.trim(), null, inp);
+  if (!saved) return;
+  const status = await checkMoralisKeyStatus();
+  if (status === "valid") {
+    act("\u2705", "info", "Moralis Key Valid", "API key verified — working");
+  } else if (status === "quota") {
+    act(
+      "\u26A0\uFE0F",
+      "warning",
+      "Moralis Quota Exhausted",
+      "Key is valid but daily free-plan quota used up — resets tomorrow",
+    );
+  } else if (status === "invalid") {
+    act(
+      "\u26A0\uFE0F",
+      "warning",
+      "Moralis Key Invalid",
+      "Saved but Moralis rejected the key — check it",
+    );
+  }
 }
 
 const _CLOSE = '[class~="9mm-pos-mgr-modal-close-btn"]';

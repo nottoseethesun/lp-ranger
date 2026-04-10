@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1775768143071">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1775768143071">
+<link rel="stylesheet" href="style.css?v=1775790580995">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1775790580995">
 </head>
 <body>
 
@@ -589,7 +589,7 @@
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curProfit">—</div>
     <div class="kpi-sub">Fees &minus; Compounded &minus; Gas +/&minus; IL/G (This Position)</div>
     <hr class="9mm-pos-mgr-kpi-divider">
-    <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="curILInfo" title="Show IL/G calculation details">i</span></div>
+    <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="curILInfo" title="Click to show IL/G calculation details">i</span></div>
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curIL">—<span class="9mm-pos-mgr-kpi-pct" id="curILPct"></span></div>
     <div class="kpi-sub">LP Value vs Holding Tokens (This Position)</div>
     <div class="realized-gains-row" id="curDepositRow">
@@ -664,9 +664,9 @@
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="ltProfit">—</div>
     <div class="kpi-sub">Lifetime Fees &minus; Compounded &minus; Gas +/&minus; IL/G</div>
     <hr class="9mm-pos-mgr-kpi-divider">
-    <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="ltILInfo" title="Show IL/G calculation details">i</span></div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL">—<span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
+    <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="ltILInfo" title="Click to show IL/G calculation details">i</span></div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL">—<span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
     <div class="realized-gains-row" id="initialDepositRow">
-      <div class="9mm-pos-mgr-pnl-row"><span>Total Lifetime Deposit</span><span id="lifetimeDepositDisplay" class="kpi-value neu">—</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Total Lifetime Deposit <span class="9mm-pos-mgr-info-dot" id="ltDepositPriceInfo" title="Price source info">i</span></span><span id="lifetimeDepositDisplay" class="kpi-value neu">—</span></div>
       <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your total lifetime deposit amount for lifetime P&amp;L">Edit Total Lifetime Deposit</span>
       <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">Total USD value of all deposits into this liquidity pool on this wallet (up to five years back).<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
       <div class="realized-gains-input-wrap" id="initialDepositInputWrap">
@@ -950,6 +950,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775768143071"></script>
+<script src="dist/bundle.js?v=1775790580995"></script>
 </body>
 </html>

@@ -411,7 +411,7 @@ export function toggleSettingsPopover() {
 /** Ping the server to check Moralis API key status and update the dot. */
 export async function checkMoralisKeyStatus() {
   const dot = g("moralisKeyDot");
-  if (!dot) return;
+  if (!dot) return "none";
   try {
     const res = await fetch("/api/api-keys/status");
     const data = await res.json();
@@ -419,11 +419,16 @@ export async function checkMoralisKeyStatus() {
     dot.classList.remove(
       "9mm-pos-mgr-api-dot--valid",
       "9mm-pos-mgr-api-dot--invalid",
+      "9mm-pos-mgr-api-dot--quota",
     );
     void dot.offsetWidth; // force reflow to restart animation
     if (s === "valid") {
       dot.classList.add("9mm-pos-mgr-api-dot--valid");
       dot.title = "Moralis API key is active and valid";
+    } else if (s === "quota") {
+      dot.classList.add("9mm-pos-mgr-api-dot--quota");
+      dot.title =
+        "Moralis API key is valid but daily quota exhausted — resets tomorrow";
     } else if (s === "invalid") {
       dot.classList.add("9mm-pos-mgr-api-dot--invalid");
       dot.title = "Moralis API key is invalid — check your key";
@@ -432,8 +437,10 @@ export async function checkMoralisKeyStatus() {
     } else {
       dot.title = "No Moralis API key configured";
     }
+    return s;
   } catch {
     /* network error — leave dot in default state */
+    return "none";
   }
 }
 

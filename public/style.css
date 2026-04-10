@@ -1077,7 +1077,7 @@ header{
   background:rgb(255 255 255 / 10%);
   color:var(--muted);
   text-transform:none;
-  cursor:pointer;
+  cursor:help;
   margin-left:6px;
   vertical-align:middle;
   padding-left:1px;

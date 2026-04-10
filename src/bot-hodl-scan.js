@@ -79,16 +79,20 @@ async function computeDepositUsd(botState, updateState, position, opts) {
       token1Address: position.token1,
       blockNumber: block,
     });
-  const dep = await _totalLifetimeDeposit(
+  const result = await _totalLifetimeDeposit(
     deposits,
     opts.decimals0,
     opts.decimals1,
     pFn,
     { token0: position.token0, token1: position.token1 },
   );
-  if (dep <= 0) return;
-  botState.totalLifetimeDepositUsd = dep;
-  updateState({ totalLifetimeDepositUsd: dep });
+  if (result.total <= 0) return;
+  botState.totalLifetimeDepositUsd = result.total;
+  botState.depositUsedFallback = result.usedFallback;
+  updateState({
+    totalLifetimeDepositUsd: result.total,
+    depositUsedFallback: result.usedFallback,
+  });
 }
 
 module.exports = { computeAndCacheHodl, computeDepositUsd };

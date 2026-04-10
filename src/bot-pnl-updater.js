@@ -301,8 +301,10 @@ async function overridePnlWithRealValues(
   snap.netReturn =
     lifetimeFees - snap.totalGas + snap.priceChangePnl - compounded;
   _computeIL(snap, deps, realValue, price0, price1, residuals);
-  if (deps._botState?.totalLifetimeDepositUsd > 0)
+  if (deps._botState?.totalLifetimeDepositUsd > 0) {
     snap.totalLifetimeDeposit = deps._botState.totalLifetimeDepositUsd;
+    snap.depositUsedFallback = deps._botState.depositUsedFallback || false;
+  }
 }
 
 /**

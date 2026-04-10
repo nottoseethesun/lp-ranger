@@ -35,7 +35,7 @@ export function getPoolFirstDate() {
 export function _fmtUsd(val) {
   if (val === null || val === undefined || isNaN(val)) return "\u2014";
   const abs = Math.abs(val).toFixed(2);
-  return abs === "0.00" ? "$usd 0.00" : (val < 0 ? "-" : "") + "$usd " + abs;
+  return abs === "0.00" ? "$usd 0.00" : "$usd " + (val < 0 ? "-" : "") + abs;
 }
 export function _isDisplayZero(val) {
   return Math.abs(val).toFixed(2) === "0.00";
@@ -99,7 +99,7 @@ export function _resetCurrentKpis() {
   resetKpis(_CUR_KPI_IDS);
   _setDepositDisplay(0);
 }
-export function setKpiValue(id, val) {
+export function setKpiValue(id, val, forceClass) {
   const el = g(id);
   if (!el) return;
   if (val === null || val === undefined) {
@@ -107,7 +107,8 @@ export function setKpiValue(id, val) {
     el.className = "kpi-value neu";
     return;
   }
-  const cls = _isDisplayZero(val) ? "neu" : val > 0 ? "pos" : "neg";
+  const cls =
+    forceClass || (_isDisplayZero(val) ? "neu" : val > 0 ? "pos" : "neg");
   el.textContent = _fmtUsd(val);
   el.className = el.className
     .replace(/\b(pos|neg|neu)\b/g, "")
@@ -199,7 +200,7 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
       el.classList.add("neg");
     }
   } else {
-    setKpiValue("pnlGas", curGas > 0 ? curGas : null);
+    setKpiValue("pnlGas", curGas > 0 ? curGas : null, "neg");
   }
   setKpiValue("pnlPrice", deposit > 0 ? cv - deposit : 0);
   setKpiValue("pnlRealized", curRealized);
@@ -269,7 +270,7 @@ export function _resolveKpiTotals(d) {
     ltPriceChange: ltPc,
   };
 }
-export function _setDepositDisplay(dep, totalLifetimeDep) {
+export function _setDepositDisplay(dep, totalLifetimeDep, usedFallback) {
   const v = totalLifetimeDep > 0 ? totalLifetimeDep : dep;
   const dd = g("lifetimeDepositDisplay");
   if (dd) dd.textContent = v > 0 ? "$usd " + v.toFixed(2) : "\u2014";
@@ -279,6 +280,11 @@ export function _setDepositDisplay(dep, totalLifetimeDep) {
       v > 0
         ? "Total Lifetime Deposit: $" + v.toFixed(2)
         : "Edit Total Lifetime Deposit";
+  const info = g("ltDepositPriceInfo");
+  if (info && totalLifetimeDep > 0)
+    info.title = usedFallback
+      ? "Valued using Current Price (historical price unavailable)"
+      : "Valued using Historical Price at the time of each deposit";
 }
 export function _updateLifetimeKpis(d) {
   if (
@@ -296,7 +302,11 @@ export function _updateLifetimeKpis(d) {
     t.ltPriceChange,
     t.ltRealized,
   );
-  _setDepositDisplay(t.ltDep, d.pnlSnapshot?.totalLifetimeDeposit);
+  _setDepositDisplay(
+    t.ltDep,
+    d.pnlSnapshot?.totalLifetimeDeposit,
+    d.pnlSnapshot?.depositUsedFallback,
+  );
 }
 export function _updateKpis(d) {
   if (!posStore.getActive()) return;
@@ -317,7 +327,11 @@ export function _updateKpis(d) {
       t.ltPriceChange,
       t.ltRealized,
     );
-    _setDepositDisplay(t.ltDep, d.pnlSnapshot?.totalLifetimeDeposit);
+    _setDepositDisplay(
+      t.ltDep,
+      d.pnlSnapshot?.totalLifetimeDeposit,
+      d.pnlSnapshot?.depositUsedFallback,
+    );
   }
   refreshCurDepositDisplay(
     d.hodlBaseline?.entryValue || d.pnlSnapshot?.liveEpoch?.entryValue || 0,

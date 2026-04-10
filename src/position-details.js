@@ -310,7 +310,7 @@ function _pickSmaller(a, b) {
 async function _computeDepositUsd(position, ps) {
   const poolCK = _poolCacheKey(position);
   const deps = (poolCK ? getCachedFreshDeposits(poolCK) : null)?.deposits;
-  if (!deps?.length) return 0;
+  if (!deps?.length) return { total: 0, usedFallback: false };
   const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
   const { fetchHistoricalPriceGecko } = require("./price-fetcher");
   const poolAddr = ps.poolAddress || "";
@@ -354,7 +354,9 @@ async function _enrichSnap(
   snap.totalCompoundedUsd = ltComp;
   snap.currentCompoundedUsd = 0;
   snap.initialDeposit = entry;
-  snap.totalLifetimeDeposit = await _computeDepositUsd(pos, ps);
+  const depResult = await _computeDepositUsd(pos, ps);
+  snap.totalLifetimeDeposit = depResult.total;
+  snap.depositUsedFallback = depResult.usedFallback;
   snap.ilInputs = _buildIlInputs(cur.value, p0, p1, bl, ltResult);
 }
 

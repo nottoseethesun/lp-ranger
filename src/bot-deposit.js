@@ -13,12 +13,14 @@ const { fetchTokenPriceUsd } = require("./price-fetcher");
 async function _currentPriceFallback(p0, p1, opts, idx, block) {
   let price0 = p0,
     price1 = p1;
-  if ((price0 > 0 && price1 > 0) || !opts?.token0) return { price0, price1 };
+  if ((price0 > 0 && price1 > 0) || !opts?.token0)
+    return { price0, price1, fallback: false };
   if (price0 <= 0) price0 = await fetchTokenPriceUsd(opts.token0);
   if (price1 <= 0) price1 = await fetchTokenPriceUsd(opts.token1);
-  if (price0 > 0 || price1 > 0)
+  const used = price0 > 0 || price1 > 0;
+  if (used)
     console.log("[deposit] #%d block=%d current-price fallback", idx, block);
-  return { price0, price1 };
+  return { price0, price1, fallback: used };
 }
 
 /**
@@ -37,17 +39,21 @@ async function _currentPriceFallback(p0, p1, opts, idx, block) {
  * @returns {Promise<number>} Total deposit USD.
  */
 async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
-  if (!deposits || !deposits.length || !fetchPrices) return 0;
+  if (!deposits || !deposits.length || !fetchPrices)
+    return { total: 0, usedFallback: false };
   let total = 0;
+  let usedFallback = false;
   for (let i = 0; i < deposits.length; i++) {
     const dep = deposits[i];
     if (dep.usd > 0) {
       console.log(
-        "[deposit] #%d block=%d cached=$%s",
+        "[deposit] #%d block=%d cached=$%s%s",
         i + 1,
         dep.block,
         dep.usd.toFixed(2),
+        dep.fallback ? " (fallback)" : "",
       );
+      if (dep.fallback) usedFallback = true;
       total += dep.usd;
       continue;
     }
@@ -55,7 +61,7 @@ async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
     const a1 = Number(BigInt(dep.raw1)) / 10 ** d1;
     if (a0 <= 0 && a1 <= 0) continue;
     const hist = await fetchPrices(dep.block);
-    const { price0, price1 } = await _currentPriceFallback(
+    const { price0, price1, fallback } = await _currentPriceFallback(
       hist.price0,
       hist.price1,
       opts,
@@ -63,6 +69,8 @@ async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
       dep.block,
     );
     dep.usd = a0 * price0 + a1 * price1;
+    dep.fallback = fallback;
+    if (fallback) usedFallback = true;
     console.log(
       "[deposit] #%d block=%d a0=%s a1=%s p0=%s p1=%s → $%s",
       i + 1,
@@ -76,11 +84,12 @@ async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
     total += dep.usd;
   }
   console.log(
-    "[deposit] Total lifetime deposit: $%s (%d entries)",
+    "[deposit] Total lifetime deposit: $%s (%d entries%s)",
     total.toFixed(2),
     deposits.length,
+    usedFallback ? ", fallback used" : "",
   );
-  return total;
+  return { total, usedFallback };
 }
 
 module.exports = { totalLifetimeDeposit };

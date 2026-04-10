@@ -491,6 +491,7 @@ function _applyRebalanceResult(deps, result) {
     // Clear cached HODL so re-scan picks up the new rebalance boundary
     deps._botState.lifetimeHodlAmounts = null;
     deps._botState.totalLifetimeDepositUsd = 0;
+    deps._botState.depositUsedFallback = false;
     if (deps._pnlTracker?._epochKey) {
       _epochCache.setCachedLifetimeHodl(deps._pnlTracker._epochKey, null);
       _epochCache.setCachedFreshDeposits(deps._pnlTracker._epochKey, null);
