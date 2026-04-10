@@ -107,6 +107,24 @@ function parseMarkdownlintText(txt) {
 }
 
 /**
+ * Count the active rules in a resolved-config dump from either
+ * `eslint --print-config` or `stylelint --print-config`. Both tools emit
+ * a JSON object whose `rules` key is a map of rule-name → settings; a
+ * simple Object.keys() over that map is the accurate rule count after
+ * all plugins and extends have been merged.
+ *
+ * `eslint.json` and `stylelint.json` (the regular lint output) cannot be
+ * used for this — their `metadata.rulesMeta` only includes rules that
+ * actually fired during the run, so a clean lint pass shows 0 rules.
+ * @param {object|null} json  Parsed `*-config.json` dump.
+ * @returns {number|null}  Rule count, or null if unavailable.
+ */
+function parseConfigRuleCount(json) {
+  if (!json || typeof json !== "object" || !json.rules) return null;
+  return Object.keys(json.rules).length;
+}
+
+/**
  * Parse npm audit `--json` output. Pulls the severity breakdown and total
  * vulnerability count from metadata.
  * @param {object|null} json
@@ -236,4 +254,5 @@ module.exports = {
   parseNpmAudit,
   parseSecretlint,
   parseTapTests,
+  parseConfigRuleCount,
 };

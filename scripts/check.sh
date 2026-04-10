@@ -48,6 +48,13 @@ head -n 1 "$_eslint_tmp" > "$RAW_DIR/eslint.json"
 tail -n +2 "$_eslint_tmp" > "$TXT_DIR/eslint-timing.txt"
 rm -f "$_eslint_tmp"
 
+# Resolved-config dump: includes every rule active for server.js after all
+# plugins and extends have been merged. Used by check-report.js to show the
+# true "rules loaded" count — eslint.json's rulesMeta is empty when nothing
+# fires, which would otherwise make the Lint table say "0 rules".
+./node_modules/.bin/eslint --print-config server.js \
+  > "$RAW_DIR/eslint-config.json" 2>/dev/null
+
 # ── Lint (CSS) ───────────────────────────────────────────────────────────────
 # stylelint's json formatter writes to stderr when stdout is redirected —
 # use --output-file to pipe directly to the raw-data file.
@@ -55,6 +62,11 @@ rm -f "$_eslint_tmp"
   -o "$RAW_DIR/stylelint.json" >/dev/null 2>&1
 stylelint_exit=$?
 [ -s "$RAW_DIR/stylelint.json" ] || echo "[]" > "$RAW_DIR/stylelint.json"
+
+# Same reasoning as eslint above: --print-config gives us the true rule
+# count. stylelint writes the JSON to stdout, no stderr trick needed here.
+./node_modules/.bin/stylelint --print-config public/style.css \
+  > "$RAW_DIR/stylelint-config.json" 2>/dev/null
 
 # ── Lint (HTML) ──────────────────────────────────────────────────────────────
 ./node_modules/.bin/html-validate -f json public/*.html \
@@ -67,7 +79,7 @@ html_file_count=$(ls public/*.html 2>/dev/null | wc -l)
 # ── Lint (Markdown) ──────────────────────────────────────────────────────────
 # markdownlint-cli2 has no native JSON reporter — capture stylish text.
 ./node_modules/.bin/markdownlint-cli2 \
-  README.md CLAUDE.md docs/CLAUDE-SECURITY.md \
+  README.md CLAUDE.md docs/claude/CLAUDE-SECURITY.md \
   > "$TXT_DIR/markdownlint.txt" 2>&1
 markdownlint_exit=$?
 
@@ -83,6 +95,12 @@ audit_deps_exit=$?
   --max-warnings 0 --format json \
   > "$RAW_DIR/security-lint.json" 2>/dev/null
 security_lint_exit=$?
+
+# Resolved-config dump for the security-lint pass, same reasoning as the
+# main eslint dump above — security-lint.json's rulesMeta is empty on a
+# clean run, so we need the full config to count rules.
+./node_modules/.bin/eslint -c eslint-security.config.js --print-config server.js \
+  > "$RAW_DIR/security-lint-config.json" 2>/dev/null
 
 # ── Security: secretlint ─────────────────────────────────────────────────────
 ./node_modules/.bin/secretlint \

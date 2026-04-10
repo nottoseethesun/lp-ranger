@@ -195,7 +195,7 @@ function _lintSection(data) {
       files: 3,
       errors: data.markdownlint.errors,
       warnings: 0,
-      rules: "—",
+      rules: null,
     }),
   ];
   content.push({
@@ -225,10 +225,15 @@ function _lintSection(data) {
 }
 
 function _lintRow(name, d) {
+  // `rules` is null for tools without a --print-config dump (html-validate,
+  // markdownlint). Render those as an em dash so the column stays aligned
+  // instead of leaking "undefined".
+  const rulesText =
+    d.rules === null || d.rules === undefined ? "—" : String(d.rules);
   return [
     name,
     String(d.files),
-    String(d.rules),
+    rulesText,
     String(d.errors),
     String(d.warnings),
   ];

@@ -109,25 +109,49 @@ function loadResults() {
   const secretlint = P.parseSecretlint(_readJson("secretlint.json"));
   const tests = P.parseTapTests(_readText("tests.tap"));
 
+  // Rule counts from --print-config dumps. eslint.json, stylelint.json,
+  // and security-lint.json only know about rules that fired; for the true
+  // "rules loaded" count we read the resolved-config dumps that check.sh
+  // captures alongside the regular lint output. html-validate and
+  // markdownlint don't have an equivalent, so their rule counts stay null
+  // → rendered as "—".
+  const eslintRules = P.parseConfigRuleCount(_readJson("eslint-config.json"));
+  const stylelintRules = P.parseConfigRuleCount(
+    _readJson("stylelint-config.json"),
+  );
+  const securityLintRules = P.parseConfigRuleCount(
+    _readJson("security-lint-config.json"),
+  );
+  if (eslintRules !== null) eslint.rules = eslintRules;
+  stylelint.rules = stylelintRules;
+  if (securityLintRules !== null) securityLint.rules = securityLintRules;
+  htmlValidate.rules = null;
+  markdownlint.rules = null;
+
   const minCoverage = 80;
   const coverageOk = tests.coverage !== null && tests.coverage >= minCoverage;
+
+  // Format a rule count as "N rules" or "— rules" so every detail string
+  // reads identically whether the count is known or not.
+  const _rulesFrag = (n) =>
+    n === null || n === undefined ? "— rules" : `${n} rules`;
 
   const checks = {
     eslint: {
       ok: exitCodes.eslint === 0,
-      detail: `${eslint.errors} err, ${eslint.warnings} warn, ${eslint.files} files, ${eslint.rules} rules`,
+      detail: `${eslint.errors} err, ${eslint.warnings} warn, ${eslint.files} files, ${_rulesFrag(eslint.rules)}`,
     },
     stylelint: {
       ok: exitCodes.stylelint === 0,
-      detail: `${stylelint.errors} err, ${stylelint.warnings} warn, ${stylelint.files} files`,
+      detail: `${stylelint.errors} err, ${stylelint.warnings} warn, ${stylelint.files} files, ${_rulesFrag(stylelint.rules)}`,
     },
     htmlValidate: {
       ok: exitCodes.htmlValidate === 0,
-      detail: `${htmlValidate.errors} err, ${htmlValidate.warnings} warn, ${htmlValidate.files} files`,
+      detail: `${htmlValidate.errors} err, ${htmlValidate.warnings} warn, ${htmlValidate.files} files, ${_rulesFrag(htmlValidate.rules)}`,
     },
     markdownlint: {
       ok: exitCodes.markdownlint === 0,
-      detail: `${markdownlint.errors} violations`,
+      detail: `${markdownlint.errors} violations, ${_rulesFrag(markdownlint.rules)}`,
     },
     tests: {
       ok: exitCodes.tests === 0,
@@ -148,7 +172,7 @@ function loadResults() {
     },
     securityLint: {
       ok: exitCodes.securityLint === 0,
-      detail: `${securityLint.errors} err, ${securityLint.rules} rules, ${securityLint.files} files`,
+      detail: `${securityLint.errors} err, ${_rulesFrag(securityLint.rules)}, ${securityLint.files} files`,
     },
     secretlint: {
       ok: exitCodes.secretlint === 0,
