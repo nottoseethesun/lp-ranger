@@ -19,14 +19,17 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# Files to back up and remove
+# Files to back up and remove. Runtime config now lives under app-config/.
+# See the `app-config/` section of server.js for the layout.
 FILES=(
   .env
-  .wallet.json
-  .bot-config.json
-  .epoch-cache.json
+  app-config/.wallet.json
+  app-config/.bot-config.json
+  app-config/.bot-config.backup.json
+  app-config/.bot-config.v1.json
+  app-config/api-keys.json
+  app-config/rebalance_log.json
   tmp/pnl-epochs-cache.json
-  rebalance_log.json
 )
 
 backed=0

@@ -15,11 +15,11 @@
 
 ## Test Isolation
 
-- **Tests must NEVER overwrite production files** — any test that touches files in `tmp/` or the project root (`.bot-config.json`, `pnl-epochs-cache.json`, `historical-price-cache.json`, etc.) must snapshot the file in a `before` hook and restore it in an `after` hook. Deleting a production cache file in a test `afterEach` destroys the user's cached data and forces expensive multi-minute reconstruction on next restart.
+- **Tests must NEVER overwrite production files** — any test that touches files in `tmp/` or `app-config/` (`.bot-config.json`, `pnl-epochs-cache.json`, `historical-price-cache.json`, `.wallet.json`, `api-keys.json`, `rebalance_log.json`, etc.) must snapshot the file in a `before` hook and restore it in an `after` hook. Deleting a production cache file in a test `afterEach` destroys the user's cached data and forces expensive multi-minute reconstruction on next restart.
 - **Audit ALL test files after adding new caches or config files** — when a new disk-backed cache or config file is added, search all test files (`grep -rn "filename" test/`) to verify no test deletes or overwrites it without snapshot/restore. A single unprotected test file can silently destroy hours of cached data on every `npm run check` (including pre-commit hooks).
 - **In-memory singletons must also be restored** — if a test imports a module that has a module-level singleton (e.g. `_diskConfig` in `server.js`), the `after` hook must restore the in-memory object to match the restored file. Otherwise, subsequent `saveConfig` calls re-write stale test data over the restored production file.
 - **Use temp directories for test-specific files** — tests that create their own config/cache files should use `os.tmpdir()` or `fs.mkdtempSync()`, not the project's `tmp/` directory. Pass the `dir` parameter to functions that support it (e.g. `saveConfig(cfg, dir)`, `loadConfig(dir)`).
-- **NEVER run `npm run check` inside a sub-agent** — `check.sh` backs up production files (`.bot-config.json`, epoch caches, etc.) and restores them via an EXIT trap. Sub-agents may be killed mid-process (timeout, SIGKILL), bypassing the trap and destroying production data. Always run `npm run check` directly in the main session where the process lifecycle is controlled.
+- **NEVER run `npm run check` inside a sub-agent** — `check.sh` backs up production files (`app-config/.bot-config.json`, epoch caches, etc.) and restores them via an EXIT trap. Sub-agents may be killed mid-process (timeout, SIGKILL), bypassing the trap and destroying production data. Always run `npm run check` directly in the main session where the process lifecycle is controlled.
 
 ## Coverage
 

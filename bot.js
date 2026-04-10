@@ -41,6 +41,11 @@ const {
   attachMultiPosDeps,
   updatePositionState,
 } = require("./src/server-positions");
+const { migrateAppConfig } = require("./src/migrate-app-config");
+
+// One-time migration of legacy root-level config files into app-config/.
+// Idempotent: a no-op after the first successful run.
+migrateAppConfig();
 
 // ── Interactive password prompt ─────────────────────────────────────────────
 

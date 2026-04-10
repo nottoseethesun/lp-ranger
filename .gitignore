@@ -8,24 +8,19 @@
 .env.*
 !.env.example
 
-# Encrypted private key files
+# App-managed runtime config + state lives in app-config/.
+# Ignore everything in the top level of that directory EXCEPT:
+#   - the static-tunables/ subdir (tracked, user-editable tunables)
+#   - the api-keys.example.json format template (tracked)
+# See the `app-config/` section of server.js for the full layout.
+app-config/*
+!app-config/static-tunables/
+!app-config/api-keys.example.json
+
+# Encrypted private key files (legacy root drops — always gitignore-safe)
 *.keyfile.json
 keyfile.json
 keyfile*.json
-api-keys.json
-
-# Encrypted wallet state (persisted by wallet-manager.js)
-.wallet.json
-
-# Runtime bot config (persisted by server.js)
-.bot-config.json
-.bot-config.backup.json
-
-# Reconstructed epoch cache (persisted by epoch-reconstructor.js)
-.epoch-cache.json
-
-# Rebalance log (may contain sensitive position data)
-rebalance_log.json
 
 # Local temp directory (used by tests)
 tmp/

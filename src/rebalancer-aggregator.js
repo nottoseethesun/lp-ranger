@@ -6,7 +6,7 @@
  *   swap path; V3 router in rebalancer-swap.js is the fallback.
  *
  *   Chain-specific tunables (cancel gas multiplier, wait timeout,
- *   max attempts) are loaded from config/chains.json via config.CHAIN.
+ *   max attempts) are loaded from app-config/static-tunables/chains.json via config.CHAIN.
  */
 
 "use strict";
@@ -18,7 +18,7 @@ const {
   _ensureAllowance,
 } = require("./rebalancer-pools");
 
-/** Chain-specific aggregator tunables from config/chains.json. */
+/** Chain-specific aggregator tunables from app-config/static-tunables/chains.json. */
 const _agg = config.CHAIN.aggregator;
 
 /**
@@ -231,7 +231,7 @@ async function _handleSwapError(
  *    consumed — just re-quote and submit at the next nonce.
  *
  * Chain-specific tunables (waitMs, cancelGasMultiplier, maxAttempts)
- * come from config/chains.json.
+ * come from app-config/static-tunables/chains.json.
  */
 async function _sendWithRetry(
   signer,

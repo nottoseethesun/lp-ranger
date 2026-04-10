@@ -2,7 +2,7 @@
  * @file src/bot-config-v2.js
  * @module bot-config-v2
  * @description
- * Load and save `.bot-config.json` for multi-position management.
+ * Load and save `app-config/.bot-config.json` for multi-position management.
  *
  * Structure:
  *   { global: { slippagePct, checkIntervalSec, … },
@@ -16,6 +16,11 @@
  *
  * Focus is entirely client-side (determined by the URL
  * in each browser tab).
+ *
+ * Storage location: `app-config/.bot-config.json` (gitignored). See the
+ * `app-config/` section of server.js for the full layout. Tests pass a
+ * `dir` override to `loadConfig(dir)` / `saveConfig(cfg, dir)` and write
+ * directly to `${dir}/.bot-config.json`, bypassing the app-config/ prefix.
  */
 
 "use strict";
@@ -23,6 +28,8 @@
 const fs = require("fs");
 const path = require("path");
 
+/** Default directory that holds the runtime bot config file. */
+const APP_CONFIG_DIR = path.join(process.cwd(), "app-config");
 const CONFIG_FILE = ".bot-config.json";
 
 /** Keys that belong in the global section. */
@@ -93,11 +100,14 @@ function parseCompositeKey(key) {
 
 /**
  * Resolve the config file path.
- * @param {string} [dir]  Directory override (default: cwd).
+ * Production calls `loadConfig()` / `saveConfig(cfg)` with no `dir` — the
+ * file resolves to `<cwd>/app-config/.bot-config.json`. Tests pass an
+ * explicit `dir = tmpDir()` and get `${dir}/.bot-config.json`.
+ * @param {string} [dir]  Directory override (default: `app-config/`).
  * @returns {string}
  */
 function _configPath(dir) {
-  return path.join(dir || process.cwd(), CONFIG_FILE);
+  return path.join(dir || APP_CONFIG_DIR, CONFIG_FILE);
 }
 
 /** @private Empty config structure. */
@@ -245,6 +255,9 @@ function saveConfig(cfg, dir) {
     );
   }
   // ── Atomic write ───────────────────────────────────────────────────────
+  // Ensure the parent directory exists (e.g. app-config/ on first run
+  // after a fresh install, or a test tmp dir that hasn't been populated).
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmpPath = filePath + ".tmp";
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(cfg, null, 2), "utf8");

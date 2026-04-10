@@ -23,7 +23,10 @@ const _decimalsCache = new Map();
 function _readRebalanceLog() {
   try {
     const raw = fs.readFileSync(
-      path.join(process.cwd(), config.LOG_FILE || "rebalance_log.json"),
+      path.join(
+        process.cwd(),
+        config.LOG_FILE || "app-config/rebalance_log.json",
+      ),
       "utf8",
     );
     const parsed = JSON.parse(raw);

@@ -44,6 +44,8 @@ function appendLog(result) {
     // File missing or corrupt — start fresh.
   }
   entries.push({ ...result, loggedAt: new Date().toISOString() });
+  // Ensure parent dir exists (e.g. app-config/ on first run).
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
   fs.writeFileSync(logPath, JSON.stringify(entries, _bigIntReplacer, 2));
 }
 

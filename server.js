@@ -73,7 +73,8 @@
  *   CHAIN_NAME              Blockchain to connect to (default: 'pulsechain').
  *                           Set to 'pulsechain-testnet' for PulseChain Testnet v4.
  *                           Chain config (RPC URLs, contract addresses, gas
- *                           multipliers) is loaded from config/chains.json.
+ *                           multipliers) is loaded from
+ *                           app-config/static-tunables/chains.json.
  *
  * Wallet (required for bot)
  * ─────────────────────────
@@ -96,7 +97,7 @@
  *   CHECK_INTERVAL_SEC      Poll interval (default: 60)
  *   MIN_REBALANCE_INTERVAL_MIN   Min wait between rebalances (default: 10)
  *   MAX_REBALANCES_PER_DAY  Hard daily cap (default: 20)
- *   LOG_FILE                JSON log path (default: ./rebalance_log.json)
+ *   LOG_FILE                JSON log path (default: ./app-config/rebalance_log.json)
  *
  * Contract Addresses (9mm Pro V3 on PulseChain)
  * ──────────────────────────────────────────────
@@ -229,42 +230,180 @@
  *
  * Wallet Management
  * ─────────────────
- *   npm run reset-wallet  Delete .wallet.json + clear WALLET_PASSWORD from .env.
- *                         Forces a fresh wallet import via the dashboard on next start.
- *   npm run clean         reset-wallet + delete .bot-config.json, .epoch-cache.json,
- *                         rebalance_log.json, and tmp/event-cache.json.  Full state
+ *   npm run reset-wallet  Delete app-config/.wallet.json + clear WALLET_PASSWORD
+ *                         from .env.  Forces a fresh wallet import via the
+ *                         dashboard on next start.
+ *   npm run clean         reset-wallet + delete every runtime file in app-config/
+ *                         (.bot-config.json, .bot-config.backup.json, api-keys.json,
+ *                         rebalance_log.json) plus all tmp/ caches.  Full state
  *                         reset.  Note: browser localStorage is NOT cleared by this
  *                         command — use the Settings gear icon → "Clear Local Storage
  *                         & Cookies" in the dashboard, or open DevTools → Application
  *                         → Local Storage → Clear All.
  *   npm run dev-clean     Same as clean but preserves the historical price cache
- *                         (tmp/historical-price-cache.json) for faster restart during
- *                         development.  Avoids re-fetching GeckoTerminal OHLCV data.
+ *                         (tmp/historical-price-cache.json), the block-time cache
+ *                         (tmp/block-time-cache.json), and the gecko-pool orientation
+ *                         cache (tmp/gecko-pool-cache.json) for faster restart
+ *                         during development.  Avoids re-fetching GeckoTerminal data.
  *
  * Housekeeping
  * ────────────
  *   npm run nuke             Delete node_modules + package-lock.json for a clean
  *                            reinstall.  Run `npm install` afterwards.
- *   npm run wipe-settings    Back up all user settings/state (.env, .wallet.json,
- *                            .bot-config.json, .epoch-cache.json, rebalance_log.json,
- *                            tmp/event-cache.json, *.keyfile.json) to tmp/.settings-backup/
- *                            and remove them — simulates a fresh install.  Also clear
- *                            browser localStorage via Settings gear → "Clear Local
- *                            Storage & Cookies" to complete the simulation.
+ *   npm run wipe-settings    Back up all user settings/state (.env, every runtime
+ *                            file in app-config/, tmp/pnl-epochs-cache.json,
+ *                            tmp/event-cache*.json, *.keyfile.json) to
+ *                            tmp/.settings-backup/ and remove them — simulates a
+ *                            fresh install.  Also clear browser localStorage via
+ *                            Settings gear → "Clear Local Storage & Cookies" to
+ *                            complete the simulation.
  *   npm run restore-settings Restore settings previously backed up by wipe-settings.
  *
- * Config Safety
- * ─────────────
- *   On startup, the bot copies `.bot-config.json` to `.bot-config.backup.json`
- *   as a safety net.  If your managed positions or settings are ever lost, you
- *   can restore from this backup by copying it back:
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * THE `app-config/` DIRECTORY  (READ THIS BEFORE ADDING NEW CONFIG FILES)
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
- *     cp .bot-config.backup.json .bot-config.json
+ * Every file the app reads or writes for its own configuration and runtime
+ * state lives in ONE dedicated directory at the project root:
  *
- *   The save logic also guards against accidental data loss: it refuses to write
- *   if running positions would silently vanish (logged as `[config] REFUSING`).
- *   If you see these warnings in the server log, the backup file contains the
- *   last known-good config.
+ *     lp-ranger/
+ *     └── app-config/
+ *         ├── static-tunables/      ← tracked in git, user-editable
+ *         │   └── chains.json       ← per-blockchain tunables (RPC, contracts, gas)
+ *         ├── api-keys.example.json ← tracked format template (documentation)
+ *         ├── .bot-config.json      ← runtime (gitignored) — managed positions
+ *         ├── .bot-config.backup.json  ← runtime (gitignored) — auto snapshot
+ *         ├── .bot-config.v1.json   ← legacy format, kept for rollback
+ *         ├── .wallet.json          ← runtime (gitignored) — encrypted wallet
+ *         ├── api-keys.json         ← runtime (gitignored) — encrypted API keys
+ *         └── rebalance_log.json    ← runtime (gitignored) — historical P&L events
+ *
+ * Pure performance caches (historical prices, block times, OHLCV pool orientation,
+ * event scanner results, LP position enumeration) DO NOT belong here — they live
+ * in `tmp/` and are rebuilt on demand from the blockchain or APIs.  Deleting any
+ * cache file in `tmp/` is always safe; the app will regenerate it.
+ *
+ * File inventory — what each file is for:
+ * ───────────────────────────────────────
+ *
+ *   static-tunables/chains.json       Tracked.  Per-blockchain config: RPC endpoints,
+ *                                     contract addresses (PositionManager, Factory,
+ *                                     SwapRouter), gas multipliers, aggregator cancel
+ *                                     timeout, wait window, retry count.  Read once
+ *                                     at module load by src/config.js.  Users edit
+ *                                     this file directly for chain-specific tweaks.
+ *
+ *   api-keys.example.json             Tracked.  Format template showing the structure
+ *                                     of the encrypted api-keys.json.  NOT a tunable,
+ *                                     NOT a runtime file — pure documentation.
+ *                                     Lives at app-config/ top level because it
+ *                                     directly documents its gitignored sibling.
+ *
+ *   .bot-config.json                  Runtime, gitignored.  Managed position lifecycle
+ *                                     (status: running/stopped), per-position settings
+ *                                     (HODL baseline, residuals, thresholds, slippage,
+ *                                     auto-compound config, compound history, initial
+ *                                     deposit overrides), global bot settings.
+ *                                     Read/written by src/bot-config-v2.js via
+ *                                     loadConfig() / saveConfig().  Atomic write
+ *                                     (tmp + rename); every write is logged with the
+ *                                     caller's stack for config-stomp debugging.
+ *
+ *   .bot-config.backup.json           Runtime, gitignored.  Automatic snapshot created
+ *                                     by bot-config-v2 on every successful load.  Safety
+ *                                     net for the ongoing config-stomp investigation —
+ *                                     if `.bot-config.json` is ever accidentally
+ *                                     truncated, copy this file back over it:
+ *
+ *                                         cp app-config/.bot-config.backup.json \
+ *                                            app-config/.bot-config.json
+ *
+ *                                     The save guard also logs `[config] REFUSING`
+ *                                     when it detects that running positions would
+ *                                     vanish; if you see that warning, use the backup.
+ *
+ *   .bot-config.v1.json               Legacy format from before the v1→v2 migration.
+ *                                     Kept on disk for rollback history; not read by
+ *                                     the current code.
+ *
+ *   .wallet.json                      Runtime, gitignored.  Encrypted wallet state
+ *                                     (AES-256-GCM with PBKDF2-SHA512 key derivation
+ *                                     from the user's password).  Holds address, source
+ *                                     (generated/seed/key), encrypted private key and
+ *                                     mnemonic.  Plaintext secrets are NEVER written
+ *                                     to disk.  Read/written by src/wallet-manager.js.
+ *                                     Tests override the path via the
+ *                                     `WALLET_FILE_PATH` environment variable.
+ *
+ *   api-keys.json                     Runtime, gitignored.  Encrypted storage for
+ *                                     third-party API keys (e.g. Moralis), using the
+ *                                     same wallet password and encryption scheme as
+ *                                     .wallet.json.  Read/written by src/api-key-store.js.
+ *                                     Tests override the path via the
+ *                                     `API_KEYS_FILE_PATH` environment variable.
+ *
+ *   rebalance_log.json                Runtime, gitignored.  JSON array of every
+ *                                     rebalance event ever: timestamps, fees collected,
+ *                                     gas cost, exit/entry USD values, token balances.
+ *                                     Appended to by src/bot-recorder.js.  Read by
+ *                                     src/position-history.js for closed-position P&L
+ *                                     display.  Configurable via the `LOG_FILE`
+ *                                     environment variable.
+ *
+ * Rules for where future config files should live:
+ * ────────────────────────────────────────────────
+ *
+ *   ① PURE static tunable (tracked, user-editable, NEVER rewritten by the app
+ *      at runtime) → `app-config/static-tunables/<name>.json`
+ *
+ *   ② RUNTIME state (written by the app, not meant for the user to hand-edit)
+ *      → `app-config/<name>.json`  (add to .gitignore via the `app-config/*` glob)
+ *
+ *   ③ MIXED static + dynamic (has tracked defaults that the app also overwrites
+ *      during normal operation) → `app-config/<name>.json` (NOT `static-tunables/`).
+ *      The `static-tunables/` subdir is reserved for files that are read-only
+ *      at runtime — if the app can rewrite the file, it doesn't belong there.
+ *
+ *   ④ FORMAT template documenting a runtime file → `app-config/<name>.example.json`
+ *      (tracked; add an explicit un-ignore rule to .gitignore).
+ *
+ *   ⑤ PURE performance cache (can be deleted with no loss of data; rebuilt on
+ *      demand from the blockchain or an API) → `tmp/<name>.json`.  DO NOT put
+ *      caches in `app-config/`.
+ *
+ * One-time migration from the legacy layout:
+ * ──────────────────────────────────────────
+ * Existing installations prior to this refactor kept runtime files at the
+ * project root (`.bot-config.json`, `.wallet.json`, `api-keys.json`, etc.).
+ * On every startup, `src/migrate-app-config.js` runs `migrateAppConfig()`
+ * which moves any surviving legacy root file into `app-config/`.  The
+ * migration is fully idempotent:
+ *
+ *   - Fresh install → creates `app-config/`, moves nothing.
+ *   - Upgrade → `fs.renameSync` each legacy file into place, logs each move.
+ *   - Conflict (both root AND `app-config/` exist) → refuses, logs a warning,
+ *     leaves both files untouched so the operator can resolve manually.
+ *   - After a successful migration → subsequent restarts are completely silent
+ *     (source files no longer exist at root).
+ *
+ * `fs.renameSync` is atomic within a single filesystem, so there is no window
+ * where a file could be lost to an interrupted move.
+ *
+ * Test-time protection in scripts/check.sh:
+ * ─────────────────────────────────────────
+ * `scripts/check.sh` (which `npm run check` invokes) backs up every top-level
+ * file in `app-config/` before running tests, wipes them, runs the full test
+ * suite, then restores the originals via an EXIT trap.  This prevents
+ * test-created fixtures from ever clobbering live user state.  The
+ * `static-tunables/` subdir and the `api-keys.example.json` template are
+ * explicitly excluded from the backup/wipe — they're tracked repo files.
+ *
+ * Tests that need to write config without touching the live files either pass
+ * an explicit `dir` argument to `loadConfig(dir)` / `saveConfig(cfg, dir)`
+ * (bot-config-v2), or set the `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH`
+ * environment variables to a temp path before require-ing the module.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
  * API Documentation
  * ─────────────────
@@ -336,6 +475,13 @@ const { getPositionHistory } = require("./src/position-history");
 const { createRebalanceLock } = require("./src/rebalance-lock");
 const { createPositionManager } = require("./src/position-manager");
 const { loadConfig, managedKeys } = require("./src/bot-config-v2");
+const { migrateAppConfig } = require("./src/migrate-app-config");
+
+// ── app-config migration ─────────────────────────────
+// One-time move of legacy root-level config files into app-config/.
+// Idempotent: a no-op after the first successful run. See
+// src/migrate-app-config.js and the app-config/ section of this file.
+migrateAppConfig();
 
 // ── Position manager (module-level) ─────────────────
 

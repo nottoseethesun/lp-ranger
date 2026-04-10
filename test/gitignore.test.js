@@ -36,17 +36,27 @@ describe(".gitignore safety", () => {
     );
   });
 
-  it("ignores .wallet.json (encrypted wallet state)", () => {
+  it("ignores runtime files inside app-config/ (glob)", () => {
+    // app-config/.wallet.json, .bot-config.json, api-keys.json, etc. are
+    // all covered by this glob. The matching un-ignore rules below keep
+    // static-tunables/ and api-keys.example.json tracked.
     assert.ok(
-      lines.includes(".wallet.json"),
-      ".wallet.json should be in .gitignore",
+      lines.includes("app-config/*"),
+      "app-config/* should be in .gitignore to cover runtime state files",
     );
   });
 
-  it("ignores rebalance_log.json", () => {
+  it("un-ignores app-config/static-tunables/ (tracked tunables)", () => {
     assert.ok(
-      lines.includes("rebalance_log.json"),
-      "rebalance_log.json should be in .gitignore",
+      lines.includes("!app-config/static-tunables/"),
+      "app-config/static-tunables/ should be whitelisted (tracked tunables)",
+    );
+  });
+
+  it("un-ignores app-config/api-keys.example.json (tracked template)", () => {
+    assert.ok(
+      lines.includes("!app-config/api-keys.example.json"),
+      "app-config/api-keys.example.json should be whitelisted (tracked template)",
     );
   });
 

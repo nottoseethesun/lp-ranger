@@ -29,7 +29,7 @@
  *   CHECK_INTERVAL_SEC     How often the bot polls on-chain.     Default: 60
  *   MIN_REBALANCE_INTERVAL_MIN  Min minutes between rebalances.  Default: 10
  *   MAX_REBALANCES_PER_DAY      Daily rebalance cap.             Default: 20
- *   LOG_FILE               Path for the JSON rebalance log.      Default: './rebalance_log.json'
+ *   LOG_FILE               Path for the JSON rebalance log.      Default: './app-config/rebalance_log.json'
  *
  * CONTRACTS (9mm Pro V3 on PulseChain — verify on scan.9mm.pro)
  *   POSITION_MANAGER       NonfungiblePositionManager address.
@@ -56,8 +56,15 @@ try {
 
 // ── Per-blockchain config ────────────────────────────────────────────────────
 
-/** Per-blockchain settings loaded from config/chains.json. */
-const CHAINS = require(path.join(__dirname, "..", "config", "chains.json"));
+/**
+ * Per-blockchain settings loaded from `app-config/static-tunables/chains.json`.
+ * This is a tracked, user-editable static-tunable file (never rewritten at
+ * runtime). See the `app-config/` section of server.js for the full layout
+ * and rules for where future config files should live.
+ */
+const CHAINS = require(
+  path.join(__dirname, "..", "app-config", "static-tunables", "chains.json"),
+);
 
 /** Active chain name. Set CHAIN_NAME=pulsechain-testnet for testnet. */
 const CHAIN_NAME = (process.env.CHAIN_NAME || "pulsechain").toLowerCase();
@@ -189,7 +196,7 @@ const REBALANCE_RETRY_SWAP_LIMIT = parsePositiveInt(
 );
 
 /** File path for the JSON rebalance event log. */
-const LOG_FILE = process.env.LOG_FILE || "./rebalance_log.json";
+const LOG_FILE = process.env.LOG_FILE || "./app-config/rebalance_log.json";
 
 // ── Contracts ──────────────────────────────────────────────────────────────────
 

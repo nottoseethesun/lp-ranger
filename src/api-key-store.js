@@ -2,8 +2,13 @@
  * @file src/api-key-store.js
  * @description Encrypted storage for third-party API keys.
  * Keys are encrypted with the user's wallet password (AES-256-GCM,
- * PBKDF2-SHA512) and persisted to `api-keys.json`.  Each service
+ * PBKDF2-SHA512) and persisted to `app-config/api-keys.json`.  Each service
  * gets its own encrypted entry (e.g. `moralisEncrypted`).
+ *
+ * Storage location: `app-config/api-keys.json` (gitignored). A format
+ * template lives at `app-config/api-keys.example.json` (tracked). See the
+ * `app-config/` section of server.js for the full layout. Tests can
+ * override the path via the `API_KEYS_FILE_PATH` environment variable.
  *
  * File format:
  *   {
@@ -28,7 +33,9 @@ const {
   _PBKDF2_ITERATIONS,
 } = require("./key-store");
 
-const _FILE = path.join(process.cwd(), "api-keys.json");
+const _FILE =
+  process.env.API_KEYS_FILE_PATH ||
+  path.join(process.cwd(), "app-config", "api-keys.json");
 
 /** Read the full api-keys.json from disk. */
 function _readStore() {
@@ -41,6 +48,8 @@ function _readStore() {
 
 /** Write the full store to disk (atomic). */
 function _writeStore(data) {
+  // Ensure parent dir exists (e.g. app-config/ on first run).
+  fs.mkdirSync(path.dirname(_FILE), { recursive: true });
   const tmp = _FILE + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
   fs.renameSync(tmp, _FILE);

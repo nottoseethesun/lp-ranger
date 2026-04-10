@@ -107,17 +107,23 @@ server updates the per-position config on disk.
 
 ### Persistence
 
-The bot persists its state to three locations:
+The bot persists its state to two locations:
 
-1. **`.bot-config.json`** — the single source of truth for which positions are
-   managed and their per-position settings (threshold, slippage, HODL baseline,
-   residuals, compound history). Written atomically via temp-file + rename.
+1. **`app-config/` directory** — all app-managed config and state. The single
+   source of truth for every non-cache file the app reads or writes. Contains
+   tracked tunables (`static-tunables/chains.json`), a runtime config file
+   (`.bot-config.json`, per-position settings, HODL baselines, compound
+   history), an automatic backup snapshot (`.bot-config.backup.json`), an
+   encrypted wallet (`.wallet.json`, AES-256-GCM with PBKDF2-SHA512, 600,000
+   iterations), encrypted third-party API keys (`api-keys.json`), and the
+   historical rebalance event log (`rebalance_log.json`). All runtime files
+   are gitignored; tracked files are whitelisted via `!` rules. See the
+   `app-config/` section of `server.js`'s file-header JSDoc for the full
+   layout, inventory, and placement rules.
 2. **`tmp/` directory** — JSON file caches for expensive blockchain queries
-   (event scan results, P&L epoch history, historical prices, LP position
-   lists). Pure performance optimization — deleting these forces a rebuild
-   from the blockchain on next startup.
-3. **`.wallet.json`** — AES-256-GCM encrypted wallet key (PBKDF2-SHA512,
-   600,000 iterations). Survives server restarts. Gitignored.
+   (event scan results, P&L epoch history, historical prices, block times,
+   LP position lists, pool orientation). Pure performance optimization —
+   deleting these forces a rebuild from the blockchain on next startup.
 
 The dashboard persists its own state to browser `localStorage` — the position
 store (up to 300 entries), last-viewed position, realized gains, and initial

@@ -44,8 +44,11 @@ const _CIPHER = "aes-256-gcm";
 // ── Persistence ─────────────────────────────────────────────────────────────
 
 // Tests set WALLET_FILE_PATH to a temp file so they don't destroy the real wallet.
+// Production default is app-config/.wallet.json — see the app-config/ section
+// of server.js for the full layout.
 const _WALLET_FILE =
-  process.env.WALLET_FILE_PATH || path.join(process.cwd(), ".wallet.json");
+  process.env.WALLET_FILE_PATH ||
+  path.join(process.cwd(), "app-config", ".wallet.json");
 
 // ── In-memory state ─────────────────────────────────────────────────────────
 
@@ -71,7 +74,7 @@ function _deriveKey(password, salt) {
   });
 }
 
-/** Persist current _state to .wallet.json (encrypted — no plaintext secrets). */
+/** Persist current _state to app-config/.wallet.json (encrypted — no plaintext secrets). */
 function _saveToDisk() {
   const data = {
     address: _state.address,
@@ -79,17 +82,22 @@ function _saveToDisk() {
     hasMnemonic: _state.hasMnemonic,
     encrypted: _state.encrypted,
   };
+  // Ensure parent dir exists (e.g. app-config/ on first run).
+  fs.mkdirSync(path.dirname(_WALLET_FILE), { recursive: true });
   fs.writeFileSync(_WALLET_FILE, JSON.stringify(data, null, 2), "utf8");
   console.log(
-    "[wallet] Saved .wallet.json (%d bytes, exists=%s)",
+    "[wallet] Saved app-config/.wallet.json (%d bytes, exists=%s)",
     JSON.stringify(data).length,
     fs.existsSync(_WALLET_FILE),
   );
 }
 
-/** Remove .wallet.json from disk. */
+/** Remove app-config/.wallet.json from disk. */
 function _removeFromDisk() {
-  console.warn("[wallet] Deleting .wallet.json — stack:", new Error().stack);
+  console.warn(
+    "[wallet] Deleting app-config/.wallet.json — stack:",
+    new Error().stack,
+  );
   try {
     fs.unlinkSync(_WALLET_FILE);
   } catch {

@@ -48,8 +48,15 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 ├── scripts/wipe-settings.sh      # Back up user settings to tmp/.settings-backup/ (fresh-install sim)
 ├── scripts/restore-settings.sh   # Restore settings backed up by wipe-settings.sh
 ├── README.md                     # Concise — refers to server.js for details
-├── config/
-│   └── chains.json               # Per-blockchain tunables (aggregator cancel gas, wait timeout, retry count)
+├── app-config/                   # ALL app-managed config + state (see server.js file-header for rules)
+│   ├── static-tunables/          #   Tracked, user-editable tunables (never rewritten at runtime)
+│   │   └── chains.json           #     Per-blockchain tunables (aggregator cancel gas, wait timeout, retry count)
+│   ├── api-keys.example.json     #   Tracked format template for the encrypted api-keys.json
+│   ├── .bot-config.json          #   Gitignored. Managed positions, HODL baselines, per-position settings
+│   ├── .bot-config.backup.json   #   Gitignored. Automatic snapshot created on every load
+│   ├── .wallet.json              #   Gitignored. AES-256-GCM encrypted wallet state
+│   ├── api-keys.json             #   Gitignored. AES-256-GCM encrypted third-party API keys (Moralis, etc.)
+│   └── rebalance_log.json        #   Gitignored. JSON array of historical rebalance events
 ├── eslint-rules/
 │   └── no-separate-contract-calls.js  # Custom rule: require multicall for atomic EVM method pairs
 ├── public/
@@ -88,7 +95,8 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 │   ├── bot-pnl-updater.js        # P&L snapshot computation (extracted from bot-loop for line-count)
 │   ├── bot-recorder.js           # Logging, epoch closing, history scanning, rebalance recording, HODL baseline
 │   ├── bot-provider.js           # RPC provider with automatic fallback and fee data patching
-│   ├── bot-config-v2.js          # V2 config: load/save/migrate .bot-config.json (global + per-position)
+│   ├── bot-config-v2.js          # V2 config: load/save app-config/.bot-config.json (global + per-position)
+│   ├── migrate-app-config.js     # One-time migration of legacy root config files into app-config/
 │   ├── config.js                 # SINGLE SOURCE OF TRUTH for all config — reads .env
 │   ├── cli-help.js               # Print --help text for server.js or bot.js
 │   ├── logger.js                 # Colored console logging for server-side log prefixes
@@ -230,7 +238,7 @@ npm test               # node --test test/*.test.js
 npm run test:coverage  # with --experimental-test-coverage (Node 20+)
 npm run test:watch     # watch mode
 npm run check          # Combined lint (JS+CSS) + test + coverage check
-npm run reset-wallet   # Delete .wallet.json + clear WALLET_PASSWORD from .env
+npm run reset-wallet   # Delete app-config/.wallet.json + clear WALLET_PASSWORD from .env
 npm run clean          # reset-wallet + delete bot config, epoch cache, rebalance log, event cache
                        # NOTE: also clear browser localStorage via Settings gear → "Clear Local Storage & Cookies"
 npm run nuke           # Delete node_modules + package-lock.json for a clean reinstall
@@ -281,7 +289,9 @@ npm run swagger        # Start Swagger UI at http://localhost:5556 (API docs)
 
 **Compounding:** `src/compounder.js` collects unclaimed fees via `pm.collect()` then re-deposits them as liquidity via `pm.increaseLiquidity()` on the same NFT — no swap, no range change, no new NFT. Mission Control panel in the dashboard provides manual "Compound Now" (disabled when fees < `COMPOUND_MIN_FEE_USD`, default $1) and auto-compound (toggle + USD threshold, default $5). Auto-compound checks every poll cycle when in-range, throttled to `max(5 × CHECK_INTERVAL_SEC, 300s)` between executions. Compound amounts are tracked in `totalCompoundedUsd` (per-position in `.bot-config.json`) and subtracted from both Net P&L Return and Profit to avoid double-counting fees. "Fees Earned" includes compounded fees (hover text explains). Historical compounds are detected by scanning `IncreaseLiquidity` events for all NFTs in the rebalance chain (first event = mint deposit, subsequent = compounds), capped by total `Collect` amounts. Config write uses atomic temp-file + rename to prevent empty-file corruption from shutdown races.
 
-**Atomic config write:** `saveConfig` writes to `.bot-config.json.tmp` first, then atomically renames to `.bot-config.json`. Prevents empty-file corruption if the process exits mid-write (SIGINT race during shutdown).
+**Atomic config write:** `saveConfig` writes to `app-config/.bot-config.json.tmp` first, then atomically renames to `app-config/.bot-config.json`. Prevents empty-file corruption if the process exits mid-write (SIGINT race during shutdown).
+
+**App-managed config layout:** All runtime state files and static tunables live under `app-config/`. See the `app-config/` section of `server.js`'s file-header JSDoc for the full layout, file inventory, migration behavior, and the rules for where future config files should go.
 
 **Post-rebalance key migration:** When a position rebalances and mints a new NFT, the composite key changes (new tokenId). `position-manager.migrateKey()` and `bot-config-v2.migratePositionKey()` carry over HODL baseline and residuals from the old key to the new key. P&L epochs do NOT need migration — they're keyed by pool identity, not tokenId (see epoch cache below).
 

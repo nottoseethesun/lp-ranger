@@ -30,7 +30,7 @@ This tool manages a wallet that signs on-chain transactions. A leaked
 private key means total loss of funds. Keys flow through:
 
 - `PRIVATE_KEY` env var or `KEY_FILE` (AES-256-GCM encrypted, PBKDF2-SHA512)
-- `.wallet.json` (encrypted on disk, gitignored)
+- `app-config/.wallet.json` (encrypted on disk, gitignored)
 - In-memory only during signing (never written to disk in plaintext)
 
 **secretlint** catches hardcoded keys before they reach the repo.
@@ -191,7 +191,7 @@ liquidity pools.
 
 `src/key-store.js` uses AES-256-GCM with PBKDF2-SHA512 key
 derivation (100,000 iterations). Plaintext keys exist only in memory
-during signing. The encrypted `.wallet.json` file is gitignored.
+during signing. The encrypted `app-config/.wallet.json` file is gitignored.
 
 ### Config validation
 

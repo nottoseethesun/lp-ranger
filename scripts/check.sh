@@ -70,36 +70,39 @@ if [ $? -eq 0 ]; then sec_secrets_ok=1; fi
 
 # ── Backup production files before tests ─────────────────────────────────────
 _BACKUP_DIR=$(mktemp -d)
-# All production cache and config files that tests might overwrite.
-# Uses glob for tmp/ to catch per-pool event caches (event-cache-*.json).
-_PROD_FILES=".bot-config.json .wallet.json rebalance_log.json"
-_PROD_TMP_GLOB="tmp/*.json"
-# Backup root-level files
-for _f in $_PROD_FILES; do
-  [ -f "$_f" ] && cp "$_f" "$_BACKUP_DIR/$(basename "$_f")"
-done
+# Everything the app manages as runtime state lives in app-config/ (top level).
+# static-tunables/ and api-keys.example.json are tracked repo files — leave
+# them alone. tmp/ is all pure performance caches. See the `app-config/` section
+# of server.js for the full layout.
+mkdir -p "$_BACKUP_DIR/app-config"
+if [ -d app-config ]; then
+  find app-config -maxdepth 1 -type f ! -name api-keys.example.json \
+    -exec cp {} "$_BACKUP_DIR/app-config/" \;
+fi
 # Backup all tmp/*.json files (preserves per-pool event caches, symbol cache, etc.)
 mkdir -p "$_BACKUP_DIR/tmp"
-for _f in $_PROD_TMP_GLOB; do
+for _f in tmp/*.json; do
   [ -f "$_f" ] && cp "$_f" "$_BACKUP_DIR/tmp/$(basename "$_f")"
 done
 
-# Replace with vanilla state — delete all production files so the code
-# creates fresh defaults from its own built-in defaults (loadConfig
-# returns {global:{},positions:{}} when no file exists).
-rm -f $_PROD_FILES
+# Replace with vanilla state — delete runtime app-config files and tmp files
+# so the code creates fresh defaults. Leave static-tunables/ and the
+# api-keys.example.json template alone.
+if [ -d app-config ]; then
+  find app-config -maxdepth 1 -type f ! -name api-keys.example.json -delete
+fi
 rm -f tmp/*.json
 
 _restore_prod_files() {
-  # Restore root-level files
-  for _f in $_PROD_FILES; do
-    _bk="$_BACKUP_DIR/$(basename "$_f")"
-    if [ -f "$_bk" ]; then
-      cp "$_bk" "$_f"
-    elif [ -f "$_f" ]; then
-      rm "$_f"
-    fi
-  done
+  # Wipe any test-created runtime files at the top of app-config/, then copy
+  # backed-up originals back. static-tunables/ is untouched throughout.
+  if [ -d app-config ]; then
+    find app-config -maxdepth 1 -type f ! -name api-keys.example.json -delete
+  fi
+  if [ -d "$_BACKUP_DIR/app-config" ]; then
+    find "$_BACKUP_DIR/app-config" -maxdepth 1 -type f \
+      -exec cp {} app-config/ \;
+  fi
   # Restore tmp/*.json — remove any test-created files, restore originals
   for _f in tmp/*.json; do
     [ -f "$_f" ] && rm "$_f"

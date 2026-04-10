@@ -169,7 +169,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Import wallet",
-        "description": "Import a wallet via seed phrase or private key. Encrypts and persists to .wallet.json.",
+        "description": "Import a wallet via seed phrase or private key. Encrypts and persists to app-config/.wallet.json.",
         "requestBody": {
           "required": true,
           "content": {
