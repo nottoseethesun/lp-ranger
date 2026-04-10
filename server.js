@@ -405,6 +405,71 @@
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  *
+ * Check report artifacts
+ * ──────────────────────
+ * `npm run check` (via `scripts/check.sh`) runs lint + tests + coverage +
+ * security audits and writes a full set of report artifacts to
+ * `test/report-artifacts/`.  The whole directory is gitignored — timings and
+ * machine-specific data are noisy and not worth committing.
+ *
+ * Layout:
+ *
+ *     test/report-artifacts/
+ *     ├── report.pdf                Unified PDF of all results (pdfmake + Roboto)
+ *     ├── tests.tap                 Raw TAP v14 from `node --test`
+ *     ├── text-reports/             Human-readable text outputs
+ *     │   ├── summary.txt               Overall overview (cli-table3, no ANSI)
+ *     │   ├── tests-summary.txt         Test rollup: slowest, failures, coverage
+ *     │   ├── eslint-timing.txt         ESLint TIMING=1 slowest-rules capture
+ *     │   └── markdownlint.txt          markdownlint-cli2 stylish text output
+ *     └── raw-data/                 Machine-readable tool outputs
+ *         ├── eslint.json               eslint --format json-with-metadata
+ *         ├── stylelint.json            stylelint --formatter json
+ *         ├── html-validate.json        html-validate -f json
+ *         ├── npm-audit.json            npm audit --json
+ *         ├── security-lint.json        eslint -c eslint-security.config.js --format json
+ *         ├── secretlint.json           secretlint --format json
+ *         └── exit-codes.json           Per-tool exit codes captured by check.sh
+ *
+ * What's in the summary / PDF:
+ *   - Overall PASS / FAIL
+ *   - Per-check result row (pass/fail + one-line detail: error counts,
+ *     rules loaded, files scanned, duration, coverage %)
+ *   - Slowest 5 ESLint rules (from TIMING=1)
+ *   - Slowest 5 tests (parsed from TAP per-test duration_ms)
+ *   - Test failures (name + count, up to 10)
+ *   - npm audit severity breakdown (critical / high / moderate / low / info)
+ *
+ * Workflow:
+ *   1. `npm run check` runs each tool, writes its raw output into
+ *      `raw-data/` (and the two text-only captures directly into
+ *      `text-reports/`), then runs `scripts/check-report.js` which parses
+ *      everything, prints the terminal summary, and writes
+ *      `text-reports/summary.txt`, `text-reports/tests-summary.txt`, and
+ *      `report.pdf`.
+ *   2. `npm run view-report` opens the PDF (uses `xdg-open`; Linux dev box).
+ *   3. To re-render the summaries and PDF **without** re-running any tools
+ *      (e.g. after tweaking `scripts/check-report-pdf.js`), just run
+ *      `node scripts/check-report.js` — the aggregator reads the
+ *      previously-captured `raw-data/` files and regenerates everything.
+ *
+ * Adding a new tool to the report:
+ *   - Add the tool invocation to `scripts/check.sh` with its JSON/TAP
+ *     formatter flag, redirecting stdout into `raw-data/<tool>.json`.
+ *   - Capture its exit code into `exit-codes.json` alongside the others.
+ *   - Add a parser function to `scripts/check-report-parse.js`.
+ *   - Wire it into `loadResults()` in `scripts/check-report.js` and add a
+ *     row to `overviewRows`.
+ *   - Add a section (or table row) to `scripts/check-report-pdf.js` if it
+ *     deserves its own block in the PDF.
+ *
+ * The aggregator never re-runs tools itself, and check.sh never parses
+ * JSON — keeping the two concerns separate means a broken PDF template
+ * can't corrupt raw tool data, and a broken parser can't corrupt a
+ * previously-good PDF.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
  * API Documentation
  * ─────────────────
  *   npm run swagger       Start Swagger UI at http://localhost:5556 — interactive

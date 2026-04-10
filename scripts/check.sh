@@ -1,79 +1,104 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# check.sh — Run lint + tests + coverage and print a concise summary.
-# Exit code is 0 only when all pass (GitHub CI compatible).
+# check.sh — Run lint + tests + coverage + security audits and emit a full
+# report of the results.
 #
-# Coverage threshold: 80% line coverage required.
+# Outputs (all under test/report-artifacts/, gitignored):
+#   raw-data/*.json            Machine-readable tool outputs (eslint,
+#                              stylelint, html-validate, npm audit,
+#                              security-lint, secretlint, plus
+#                              exit-codes.json with every tool's exit code)
+#   text-reports/summary.txt          Human-readable overview (cli-table3)
+#   text-reports/tests-summary.txt    Parsed test rollup (slowest, failures)
+#   text-reports/eslint-timing.txt    ESLint TIMING=1 slowest-rule capture
+#   text-reports/markdownlint.txt     markdownlint-cli2 text output
+#   tests.tap                  Raw TAP v14 from `node --test`
+#   report.pdf                 Unified PDF of all results (pdfmake)
+#
+# After capturing raw outputs this script defers to
+# scripts/check-report.js to parse, print the terminal summary, and write
+# summary.txt + tests-summary.txt + report.pdf. The aggregator's exit code
+# (0 = all checks green, 1 = at least one failed) becomes this script's
+# exit code — so GitHub CI still fails on any red result.
+#
+# See the "Check report artifacts" section of server.js for the full layout
+# and regeneration workflow.
 # ─────────────────────────────────────────────────────────────────────────────
 set -o pipefail
 
-GREEN='\033[1;32m'
-RED='\033[1;31m'
-DIM='\033[2m'
-RESET='\033[0m'
+REPORT_DIR="test/report-artifacts"
+RAW_DIR="$REPORT_DIR/raw-data"
+TXT_DIR="$REPORT_DIR/text-reports"
 
-MIN_COVERAGE=80
-lint_ok=0
-test_ok=0
-cov_ok=0
+# Clean prior outputs so stale artifacts don't leak into a new run.
+rm -rf "$REPORT_DIR"
+mkdir -p "$RAW_DIR" "$TXT_DIR"
 
 # ── Lint (JS) ────────────────────────────────────────────────────────────────
-lint_output=$(./node_modules/.bin/eslint src/ test/ server.js bot.js public/dashboard-*.js --max-warnings 0 2>&1)
-if [ $? -eq 0 ]; then
-  lint_ok=1
-else
-  lint_detail="$lint_output"
-fi
+# TIMING=1 writes the slowest-rules table to stdout *after* the JSON blob
+# (which is itself a single line). Capture the combined stream, then split:
+# line 1 is the JSON, lines 2+ are the TIMING table.
+_eslint_tmp=$(mktemp)
+TIMING=1 ./node_modules/.bin/eslint \
+  src/ test/ server.js bot.js public/dashboard-*.js eslint-rules/ \
+  --max-warnings 0 --format json-with-metadata \
+  > "$_eslint_tmp" 2>/dev/null
+eslint_exit=$?
+head -n 1 "$_eslint_tmp" > "$RAW_DIR/eslint.json"
+tail -n +2 "$_eslint_tmp" > "$TXT_DIR/eslint-timing.txt"
+rm -f "$_eslint_tmp"
 
 # ── Lint (CSS) ───────────────────────────────────────────────────────────────
-css_lint_ok=0
-css_lint_output=$(./node_modules/.bin/stylelint public/*.css 2>&1)
-if [ $? -eq 0 ]; then
-  css_lint_ok=1
-else
-  lint_ok=0
-  lint_detail="${lint_detail}${css_lint_output}"
-fi
+# stylelint's json formatter writes to stderr when stdout is redirected —
+# use --output-file to pipe directly to the raw-data file.
+./node_modules/.bin/stylelint public/*.css --formatter json \
+  -o "$RAW_DIR/stylelint.json" >/dev/null 2>&1
+stylelint_exit=$?
+[ -s "$RAW_DIR/stylelint.json" ] || echo "[]" > "$RAW_DIR/stylelint.json"
 
 # ── Lint (HTML) ──────────────────────────────────────────────────────────────
-html_lint_ok=0
-html_lint_output=$(./node_modules/.bin/html-validate public/*.html 2>&1)
-if [ $? -eq 0 ]; then
-  html_lint_ok=1
-else
-  lint_ok=0
-  lint_detail="${lint_detail}${html_lint_output}"
-fi
+./node_modules/.bin/html-validate -f json public/*.html \
+  > "$RAW_DIR/html-validate.json" 2>/dev/null
+htmlvalidate_exit=$?
+# Count the scanned HTML files ourselves — html-validate's JSON reporter
+# omits clean files entirely, so we can't derive a file count from it.
+html_file_count=$(ls public/*.html 2>/dev/null | wc -l)
 
 # ── Lint (Markdown) ──────────────────────────────────────────────────────────
-md_lint_ok=0
-md_lint_output=$(./node_modules/.bin/markdownlint-cli2 README.md CLAUDE.md docs/CLAUDE-SECURITY.md 2>&1)
-if [ $? -eq 0 ]; then
-  md_lint_ok=1
-else
-  lint_ok=0
-  lint_detail="${lint_detail}${md_lint_output}"
-fi
+# markdownlint-cli2 has no native JSON reporter — capture stylish text.
+./node_modules/.bin/markdownlint-cli2 \
+  README.md CLAUDE.md docs/CLAUDE-SECURITY.md \
+  > "$TXT_DIR/markdownlint.txt" 2>&1
+markdownlint_exit=$?
 
-# ── Security Audit ───────────────────────────────────────────────────────────
-sec_deps_ok=0
-sec_deps_output=$(npm run audit:deps 2>&1)
-if [ $? -eq 0 ]; then sec_deps_ok=1; fi
+# ── Security: npm audit ─────────────────────────────────────────────────────
+# Keep --audit-level=high so moderate pre-existing advisories don't fail the
+# check, but store the full report for review.
+npm audit --audit-level=high --json \
+  > "$RAW_DIR/npm-audit.json" 2>/dev/null
+audit_deps_exit=$?
 
-sec_lint_ok=0
-sec_lint_output=$(npm run audit:security 2>&1)
-if [ $? -eq 0 ]; then sec_lint_ok=1; fi
+# ── Security: eslint-security rules ──────────────────────────────────────────
+./node_modules/.bin/eslint -c eslint-security.config.js src/ server.js bot.js \
+  --max-warnings 0 --format json \
+  > "$RAW_DIR/security-lint.json" 2>/dev/null
+security_lint_exit=$?
 
-sec_secrets_ok=0
-sec_secrets_output=$(npm run audit:secrets 2>&1)
-if [ $? -eq 0 ]; then sec_secrets_ok=1; fi
+# ── Security: secretlint ─────────────────────────────────────────────────────
+./node_modules/.bin/secretlint \
+  'src/**/*.js' 'server.js' 'bot.js' '.env*' '*.json' \
+  --format json --output "$RAW_DIR/secretlint.json" 2>/dev/null
+secretlint_exit=$?
+# secretlint --output produces the file but may return non-zero on findings;
+# an empty file with exit 0 means clean. Normalise: ensure the file exists.
+[ -f "$RAW_DIR/secretlint.json" ] || echo "[]" > "$RAW_DIR/secretlint.json"
 
 # ── Backup production files before tests ─────────────────────────────────────
-_BACKUP_DIR=$(mktemp -d)
 # Everything the app manages as runtime state lives in app-config/ (top level).
 # static-tunables/ and api-keys.example.json are tracked repo files — leave
 # them alone. tmp/ is all pure performance caches. See the `app-config/` section
 # of server.js for the full layout.
+_BACKUP_DIR=$(mktemp -d)
 mkdir -p "$_BACKUP_DIR/app-config"
 if [ -d app-config ]; then
   find app-config -maxdepth 1 -type f ! -name api-keys.example.json \
@@ -115,101 +140,32 @@ _restore_prod_files() {
 trap _restore_prod_files EXIT
 
 # ── Tests + Coverage ─────────────────────────────────────────────────────────
-test_output=$(node --test --experimental-test-coverage test/*.test.js 2>&1)
-test_exit=$?
+# Force --test-reporter=tap so the output is deterministic TAP v14 regardless
+# of Node version or TTY state. The aggregator parses tests.tap for totals,
+# per-test timings, failures, and the coverage block at the end.
+node --test --experimental-test-coverage --test-reporter=tap test/*.test.js \
+  > "$REPORT_DIR/tests.tap" 2>&1
+tests_exit=$?
 
-# Restore happens automatically via EXIT trap (_restore_prod_files)
-if [ $test_exit -eq 0 ]; then
-  test_ok=1
-fi
+# Restore happens automatically via EXIT trap (_restore_prod_files).
 
-# Parse counts from Node test runner output
-tests_total=$(echo "$test_output" | sed -n 's/^ℹ tests \([0-9]*\)/\1/p')
-suites_total=$(echo "$test_output" | sed -n 's/^ℹ suites \([0-9]*\)/\1/p')
-tests_pass=$(echo "$test_output" | sed -n 's/^ℹ pass \([0-9]*\)/\1/p')
-tests_fail=$(echo "$test_output" | sed -n 's/^ℹ fail \([0-9]*\)/\1/p')
-duration=$(echo "$test_output" | sed -n 's/^ℹ duration_ms \([0-9.]*\)/\1/p')
-coverage=$(echo "$test_output" | grep 'all files' | sed 's/[^0-9.]/ /g' | awk '{print $1}')
+# ── Write exit codes + file counts for the aggregator ───────────────────────
+cat > "$RAW_DIR/exit-codes.json" <<EOF
+{
+  "eslint": $eslint_exit,
+  "stylelint": $stylelint_exit,
+  "htmlValidate": $htmlvalidate_exit,
+  "markdownlint": $markdownlint_exit,
+  "auditDeps": $audit_deps_exit,
+  "securityLint": $security_lint_exit,
+  "secretlint": $secretlint_exit,
+  "tests": $tests_exit,
+  "htmlFileCount": $html_file_count
+}
+EOF
 
-: "${tests_total:=?}" "${suites_total:=?}" "${tests_pass:=?}" "${tests_fail:=0}" "${duration:=?}" "${coverage:=?}"
-
-# Check coverage threshold
-if [ "$coverage" != "?" ]; then
-  cov_int=${coverage%.*}
-  if [ "$cov_int" -ge "$MIN_COVERAGE" ] 2>/dev/null; then
-    cov_ok=1
-  fi
-fi
-
-# ── Summary ──────────────────────────────────────────────────────────────────
-sec_ok=0
-if [ $sec_deps_ok -eq 1 ] && [ $sec_lint_ok -eq 1 ] && [ $sec_secrets_ok -eq 1 ]; then sec_ok=1; fi
-
-all_ok=0
-if [ $lint_ok -eq 1 ] && [ $test_ok -eq 1 ] && [ $cov_ok -eq 1 ] && [ $sec_ok -eq 1 ]; then
-  all_ok=1
-fi
-
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-if [ $all_ok -eq 1 ]; then
-  echo -e "  ${GREEN}✔ PASS${RESET}"
-else
-  echo -e "  ${RED}✘ FAIL${RESET}"
-fi
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-
-# Lint
-if [ $lint_ok -eq 1 ]; then
-  echo -e "  ${GREEN}✔${RESET} Lint       0 errors, 0 warnings"
-else
-  errors=$(echo "$lint_output" | grep -oE '[0-9]+ error' | head -1)
-  echo -e "  ${RED}✘${RESET} Lint       ${errors:-errors found}"
-fi
-
-# Tests
-if [ $test_ok -eq 1 ]; then
-  echo -e "  ${GREEN}✔${RESET} Tests      ${tests_pass} passed, ${suites_total} suites  ${DIM}(${duration}ms)${RESET}"
-else
-  echo -e "  ${RED}✘${RESET} Tests      ${tests_fail} failed, ${tests_pass}/${tests_total} passed"
-fi
-
-# Coverage
-if [ $cov_ok -eq 1 ]; then
-  echo -e "  ${GREEN}✔${RESET} Coverage   ${coverage}% lines  ${DIM}(min ${MIN_COVERAGE}%)${RESET}"
-elif [ "$coverage" != "?" ]; then
-  echo -e "  ${RED}✘${RESET} Coverage   ${coverage}% lines  ${DIM}(min ${MIN_COVERAGE}%)${RESET}"
-else
-  echo -e "  ${DIM}─${RESET} Coverage   unavailable"
-fi
-
-# Security
-if [ $sec_ok -eq 1 ]; then
-  echo -e "  ${GREEN}✔${RESET} Security   deps + lint clean"
-else
-  echo -e "  ${RED}✘${RESET} Security   audit failed"
-fi
-
-echo ""
-
-# On failure, show details (capped)
-if [ $lint_ok -eq 0 ]; then
-  echo -e "${DIM}── Lint errors ──${RESET}"
-  echo "$lint_detail" | grep -E '^\s+[0-9]+:[0-9]+' | head -15
-  echo ""
-fi
-
-if [ $test_ok -eq 0 ]; then
-  echo -e "${DIM}── Failed tests ──${RESET}"
-  echo "$test_output" | grep -E '✗|not ok|FAIL' | head -15
-  echo ""
-fi
-
-if [ $cov_ok -eq 0 ] && [ "$coverage" != "?" ]; then
-  echo -e "${DIM}── Low coverage files ──${RESET}"
-  echo "$test_output" | grep -E '^\u2139\s' | grep -v 'all files' | grep -v '^\u2139 file' | grep -v '^\u2139 ---' | awk -F'|' '{gsub(/^ℹ /,"",$1); pct=$2+0; if(pct < 80 && pct > 0) printf "  %-28s %s\n", $1, $2"%"}' | head -10
-  echo ""
-fi
-
-exit $( [ $all_ok -eq 1 ] && echo 0 || echo 1 )
+# ── Aggregate + print summary + write PDF ────────────────────────────────────
+# The aggregator prints the terminal overview, writes summary.txt +
+# tests-summary.txt + report.pdf, and exits 0 only if every check is green.
+node scripts/check-report.js
+exit $?
