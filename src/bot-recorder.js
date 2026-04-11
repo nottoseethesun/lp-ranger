@@ -392,7 +392,7 @@ async function _scanLifetimePoolData(
       botState.lifetimeHodlAmounts = cachedHodl;
     }
     const { computeDepositUsd } = require("./bot-hodl-scan");
-    await computeDepositUsd(botState, updateState, position, opts);
+    await computeDepositUsd(botState, updateState, position, opts, epochKey);
     if (epochKey && maxBlock > fromBlock)
       _epochCache.setLastNftScanBlock(epochKey, maxBlock);
   } catch (err) {

@@ -10,19 +10,95 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const Module = require("module");
 const config = require("../src/config");
 const { getPositionHistory } = require("../src/position-history");
 
 const TMP = path.join(process.cwd(), "tmp");
 const LOG_PATH = path.join(TMP, "test-rebalance-log.json");
 
+/**
+ * Offline ethers stub used by the whole describe block. position-history.js
+ * calls `require("ethers")` at RUNTIME inside `_supplementMintFromChain` and
+ * `_resolvePoolAddress`, so we keep `Module.prototype.require` patched for
+ * the entire test run (installed in before(), restored in after()). Without
+ * this, those helpers instantiate a real JsonRpcProvider and each test waits
+ * ~60s for RPC timeouts — blowing past the CI budget.
+ */
+const _origRequire = Module.prototype.require;
+const _ethersStub = {
+  JsonRpcProvider: class {
+    async getBlockNumber() {
+      return 0;
+    }
+    async getLogs() {
+      return [];
+    }
+    async getBlock() {
+      return null;
+    }
+    destroy() {}
+  },
+  Contract: class {
+    async getPool() {
+      return "0x0000000000000000000000000000000000000000";
+    }
+    async positions() {
+      return null;
+    }
+  },
+  Interface: class {
+    getEvent() {
+      return { topicHash: "0x" + "0".repeat(64) };
+    }
+  },
+  ZeroAddress: "0x0000000000000000000000000000000000000000",
+};
+
+/**
+ * Stub fetch so `_supplementHistoricalPrices` inside `getPositionHistory`
+ * does NOT hit real GeckoTerminal / DexScreener during tests. Before this
+ * stub, these tests took ~60s each because each call did a real network
+ * round-trip (and after the 429-retry change, ~7 minutes — which blew past
+ * the CI budget). The tests don't depend on actual prices — they just verify
+ * timestamp / txHash supplementation — so an empty-list response is fine.
+ */
+function _installOfflineFetchStub() {
+  return async (url) => {
+    // DexScreener shape
+    if (typeof url === "string" && url.includes("dexscreener.com")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ pairs: [] }),
+      };
+    }
+    // GeckoTerminal OHLCV / pool-info shape
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
+    };
+  };
+}
+
 describe("getPositionHistory", () => {
   let origLogFile = null;
+  let origFetch = null;
 
   before(() => {
     fs.mkdirSync(TMP, { recursive: true });
     origLogFile = config.LOG_FILE;
     config.LOG_FILE = "tmp/test-rebalance-log.json";
+    origFetch = globalThis.fetch;
+    globalThis.fetch = _installOfflineFetchStub();
+    // Install ethers stub for the duration of the describe block — restored
+    // in after(). Patches Module.prototype.require so runtime ethers calls
+    // inside position-history.js return the stub.
+    Module.prototype.require = function (id) {
+      if (id === "ethers") return _ethersStub;
+      return _origRequire.apply(this, arguments);
+    };
 
     const testEntries = [
       {
@@ -58,6 +134,8 @@ describe("getPositionHistory", () => {
       /* */
     }
     if (origLogFile !== null) config.LOG_FILE = origLogFile;
+    if (origFetch) globalThis.fetch = origFetch;
+    Module.prototype.require = _origRequire;
   });
 
   it("returns mint and close data for a mid-chain tokenId (200)", async () => {

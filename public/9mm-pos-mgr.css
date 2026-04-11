@@ -683,6 +683,10 @@
   font-size: 13px;
 }
 
+.\39 mm-pos-mgr-il-popover-inner.\39 mm-pos-mgr-il-popover-wide {
+  max-width: 484px;
+}
+
 .\39 mm-pos-mgr-il-heading {
   font-weight: 700;
   font-size: 14px;
@@ -720,6 +724,14 @@
   color: var(--muted);
   margin-bottom: 14px;
   font-family: var(--mono);
+}
+
+.\39 mm-pos-mgr-il-now-vs-hodl {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding-top: 12px;
+  padding-bottom: 4px;
+  margin-bottom: 14px;
 }
 
 .\39 mm-pos-mgr-il-ok-btn {

@@ -34,7 +34,7 @@ const {
   toUtcDayKey,
 } = require("./price-cache");
 const { getApiKey } = require("./api-key-holder");
-const { geckoRateLimit } = require("./gecko-rate-limit");
+const { geckoRateLimit, noteGecko429 } = require("./gecko-rate-limit");
 const {
   getGeckoPoolOrientation,
   flushGeckoPoolCache,
@@ -236,6 +236,55 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
  * @param {'day'|'hour'|'minute'} timeframe  Candle granularity.
  * @returns {Promise<number>}  USD close price (0 if unavailable).
  */
+/**
+ * Retry delays (ms) when GeckoTerminal OHLCV returns HTTP 429. The first
+ * delay (3s) gives the server's short-term burst counter a moment to drain;
+ * the second (10s) covers longer cool-downs. Kept short enough that the worst
+ * case per call (~13s) doesn't blow up the test suite, long enough that we
+ * usually recover a genuine transient rate limit.
+ *
+ * Exposed via `_setOhlcv429Delays` so tests can shrink them to near-zero.
+ * @type {number[]}
+ */
+let _ohlcv429DelaysMs = [3_000, 10_000];
+
+/** Override the OHLCV 429 retry schedule (tests only). */
+function _setOhlcv429Delays(delays) {
+  _ohlcv429DelaysMs = delays;
+}
+
+/**
+ * Perform one OHLCV HTTP request. Returns `{ status, close }`:
+ *  - `status` is the HTTP response code (0 on network/parse error).
+ *  - `close` is the numeric close price or 0 when unavailable.
+ *
+ * Splitting this from the retry wrapper lets the caller distinguish 429
+ * (retry) from 200-with-empty-list (genuine no-data, no retry).
+ */
+async function _fetchOhlcvOnce(url, timeframe) {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return { status: res.status, close: 0 };
+    const json = await res.json();
+    const candles = json?.data?.attributes?.ohlcv_list;
+    if (!Array.isArray(candles) || candles.length === 0)
+      return { status: 200, close: 0 };
+    // Candle format: [timestamp, open, high, low, close, volume]
+    const close = Number(candles[0][4]);
+    return { status: 200, close: Number.isFinite(close) ? close : 0 };
+  } catch (err) {
+    console.warn(
+      "[price-fetcher] GeckoTerminal OHLCV error (%s): %s",
+      timeframe,
+      err.message ?? err,
+    );
+    return { status: 0, close: 0 };
+  }
+}
+
 async function _fetchGeckoOhlcvAtTimeframe(
   poolAddress,
   timestamp,
@@ -252,26 +301,37 @@ async function _fetchGeckoOhlcvAtTimeframe(
     `https://api.geckoterminal.com/api/v2/networks/${network}` +
     `/pools/${poolAddress}/ohlcv/${timeframe}` +
     `?before_timestamp=${before}&limit=1&currency=usd&token=${token}`;
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) return 0;
-    const json = await res.json();
-    const candles = json?.data?.attributes?.ohlcv_list;
-    if (!Array.isArray(candles) || candles.length === 0) return 0;
-    // Candle format: [timestamp, open, high, low, close, volume]
-    const close = Number(candles[0][4]);
-    return Number.isFinite(close) ? close : 0;
-  } catch (err) {
+  let res = await _fetchOhlcvOnce(url, timeframe);
+  // Retry 429s: GeckoTerminal enforces a server-side rate limit on top of
+  // our in-process limiter (the limiter tracks our intent, not their
+  // counter). During startup bursts Gecko trips even when our limiter says
+  // OK. A 429 means "retry later", distinct from "no data" — retry it with
+  // backoff AND push the shared gecko-rate-limit window forward so
+  // subsequent callers in the same burst also back off, preventing a cascade
+  // of 429s.
+  for (let i = 0; res.status === 429 && i < _ohlcv429DelaysMs.length; i++) {
+    const delay = _ohlcv429DelaysMs[i];
+    noteGecko429(delay);
     console.warn(
-      "[price-fetcher] GeckoTerminal OHLCV error (%s): %s",
+      "[price-fetcher] GeckoTerminal OHLCV %s pool=%s 429 — retry %d/%d in %dms",
       timeframe,
-      err.message ?? err,
+      poolAddress,
+      i + 1,
+      _ohlcv429DelaysMs.length,
+      delay,
     );
-    return 0;
+    await new Promise((r) => setTimeout(r, delay));
+    res = await _fetchOhlcvOnce(url, timeframe);
   }
+  if (res.status !== 200 && res.status !== 0) {
+    console.warn(
+      "[price-fetcher] GeckoTerminal OHLCV %s pool=%s status=%d (treating as empty)",
+      timeframe,
+      poolAddress,
+      res.status,
+    );
+  }
+  return res.close;
 }
 
 /**
@@ -552,6 +612,7 @@ module.exports = {
   _fetchGeckoOhlcvAtTimeframe,
   _fetchMoralisCurrent,
   _fetchMoralisHistorical,
+  _setOhlcv429Delays,
   _cache,
   _CACHE_TTL_MS,
 };

@@ -333,6 +333,9 @@ describe("GeckoTerminal _fetchGeckoTerminalOhlcv", () => {
   });
 });
 
+// 429-retry tests live in test/price-fetcher-429-retry.test.js to keep this
+// file under the 500-line limit.
+
 // ── GeckoTerminal OHLCV cascading timeframe fallback ────────────────────────
 
 describe("GeckoTerminal OHLCV cascade (day → hour → minute)", () => {

@@ -313,7 +313,7 @@ module.exports = {
   COMPOUND_DEFAULT_THRESHOLD_USD: 5,
 
   // Scan
-  SCAN_TIMEOUT_MS: 1_200_000, // 20 minutes — server requestTimeout + client fetch abort
+  SCAN_TIMEOUT_MS: 7_200_000, // 2 hours — server requestTimeout + client fetch abort
 
   // Helpers
   assertLiveModeReady,
