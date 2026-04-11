@@ -63,29 +63,31 @@ function _pct(now, hodl) {
 }
 
 /**
- * Build the "Now vs HODL" comparison block. Shows current LP token amounts
- * and what percentage they represent of the HODL counts. Marked off by a
- * subtle gray divider line above and below.
+ * Build the "Coin Count: Now vs <baseline>" comparison block. Shows current
+ * LP token amounts and what percentage they represent of the baseline
+ * (Initial Deposit for the current NFT, or HODL for lifetime). Marked off by
+ * a subtle gray divider line above and below.
  *
- * @param {number} now0    Current LP amount of token0.
- * @param {number} now1    Current LP amount of token1.
- * @param {number} hodl0   HODL deposited amount of token0.
- * @param {number} hodl1   HODL deposited amount of token1.
- * @param {string} t0sym   Token0 symbol.
- * @param {string} t1sym   Token1 symbol.
+ * @param {number} now0       Current LP amount of token0.
+ * @param {number} now1       Current LP amount of token1.
+ * @param {number} base0      Baseline deposited amount of token0.
+ * @param {number} base1      Baseline deposited amount of token1.
+ * @param {string} t0sym      Token0 symbol.
+ * @param {string} t1sym      Token1 symbol.
+ * @param {string} baseLabel  Baseline label ("HODL" or "Initial Deposit for This LP").
  * @returns {string} HTML string (empty if no current amounts).
  */
-function _buildNowVsHodl(now0, now1, hodl0, hodl1, t0sym, t1sym) {
+function _buildNowVsHodl(now0, now1, base0, base1, t0sym, t1sym, baseLabel) {
   if (!Number.isFinite(now0) || !Number.isFinite(now1)) return "";
   return `<div class="9mm-pos-mgr-il-now-vs-hodl">
-    <div class="9mm-pos-mgr-il-heading">Coin Count: Now vs HODL</div>
+    <div class="9mm-pos-mgr-il-heading">Coin Count: Now vs ${baseLabel}</div>
     <table class="9mm-pos-mgr-il-table">
       <tr><td>Now ${t0sym}</td><td>${_fmt(now0)}</td></tr>
-      <tr><td>HODL ${t0sym}</td><td>${_fmt(hodl0)}</td></tr>
-      <tr class="9mm-pos-mgr-il-result"><td>${t0sym} Now / HODL</td><td>${_pct(now0, hodl0)}</td></tr>
+      <tr><td>${baseLabel} ${t0sym}</td><td>${_fmt(base0)}</td></tr>
+      <tr class="9mm-pos-mgr-il-result"><td>${t0sym} Now / ${baseLabel}</td><td>${_pct(now0, base0)}</td></tr>
       <tr class="9mm-pos-mgr-il-sep"><td>Now ${t1sym}</td><td>${_fmt(now1)}</td></tr>
-      <tr><td>HODL ${t1sym}</td><td>${_fmt(hodl1)}</td></tr>
-      <tr class="9mm-pos-mgr-il-result"><td>${t1sym} Now / HODL</td><td>${_pct(now1, hodl1)}</td></tr>
+      <tr><td>${baseLabel} ${t1sym}</td><td>${_fmt(base1)}</td></tr>
+      <tr class="9mm-pos-mgr-il-result"><td>${t1sym} Now / ${baseLabel}</td><td>${_pct(now1, base1)}</td></tr>
     </table>
   </div>`;
 }
@@ -165,6 +167,7 @@ export function showILDebug(panel) {
   const ps = _lastData?.positionStats;
   const now0 = ps?.balance0 !== undefined ? Number(ps.balance0) : NaN;
   const now1 = ps?.balance1 !== undefined ? Number(ps.balance1) : NaN;
+  const baseLabel = isCur ? "Initial Deposit for This LP" : "HODL";
   const nowVsHodl = _buildNowVsHodl(
     now0,
     now1,
@@ -172,12 +175,16 @@ export function showILDebug(panel) {
     sectionInputs?.hodlAmount1,
     t0sym,
     t1sym,
+    baseLabel,
   );
 
   const el = document.createElement("div");
   el.className = "9mm-pos-mgr-il-popover";
   el.id = "9mm-il-debug-popover";
-  el.innerHTML = `<div class="9mm-pos-mgr-il-popover-inner">
+  const innerCls = isCur
+    ? "9mm-pos-mgr-il-popover-inner 9mm-pos-mgr-il-popover-wide"
+    : "9mm-pos-mgr-il-popover-inner";
+  el.innerHTML = `<div class="${innerCls}">
     ${_buildSection(label, sectionInputs, inputs.lpValue, inputs.price0, inputs.price1, ilResult, t0sym, t1sym)}
     <div class="9mm-pos-mgr-il-formula">IL = LP Value \u2212 (${t0sym} deposited \u00D7 ${t0sym} price + ${t1sym} deposited \u00D7 ${t1sym} price)</div>
     ${nowVsHodl}

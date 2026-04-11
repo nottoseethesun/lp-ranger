@@ -683,6 +683,10 @@
   font-size: 13px;
 }
 
+.\39 mm-pos-mgr-il-popover-inner.\39 mm-pos-mgr-il-popover-wide {
+  max-width: 484px;
+}
+
 .\39 mm-pos-mgr-il-heading {
   font-weight: 700;
   font-size: 14px;
