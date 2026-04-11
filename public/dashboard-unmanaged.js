@@ -175,7 +175,7 @@ function _showScanTimeoutDialog() {
 
 /** Phase 2: slow — lifetime P&L (event scan + epoch reconstruction). */
 async function _phase2(body, gen) {
-  const timeoutMs = botConfig.scanTimeoutMs || 1_200_000;
+  const timeoutMs = botConfig.scanTimeoutMs || 7_200_000;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
