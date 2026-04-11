@@ -55,6 +55,41 @@ function _usdPrecise(v) {
   return (v < 0 ? "-" : "") + "$" + abs.toFixed(4);
 }
 
+/** Format a percentage with 2 decimals; em-dash for invalid. */
+function _pct(now, hodl) {
+  if (!Number.isFinite(now) || !Number.isFinite(hodl) || hodl <= 0)
+    return "\u2014";
+  return (100 * (now / hodl)).toFixed(2) + "%";
+}
+
+/**
+ * Build the "Now vs HODL" comparison block. Shows current LP token amounts
+ * and what percentage they represent of the HODL counts. Marked off by a
+ * subtle gray divider line above and below.
+ *
+ * @param {number} now0    Current LP amount of token0.
+ * @param {number} now1    Current LP amount of token1.
+ * @param {number} hodl0   HODL deposited amount of token0.
+ * @param {number} hodl1   HODL deposited amount of token1.
+ * @param {string} t0sym   Token0 symbol.
+ * @param {string} t1sym   Token1 symbol.
+ * @returns {string} HTML string (empty if no current amounts).
+ */
+function _buildNowVsHodl(now0, now1, hodl0, hodl1, t0sym, t1sym) {
+  if (!Number.isFinite(now0) || !Number.isFinite(now1)) return "";
+  return `<div class="9mm-pos-mgr-il-now-vs-hodl">
+    <div class="9mm-pos-mgr-il-heading">Coin Count: Now vs HODL</div>
+    <table class="9mm-pos-mgr-il-table">
+      <tr><td>Now ${t0sym}</td><td>${_fmt(now0)}</td></tr>
+      <tr><td>HODL ${t0sym}</td><td>${_fmt(hodl0)}</td></tr>
+      <tr class="9mm-pos-mgr-il-result"><td>${t0sym} Now / HODL</td><td>${_pct(now0, hodl0)}</td></tr>
+      <tr class="9mm-pos-mgr-il-sep"><td>Now ${t1sym}</td><td>${_fmt(now1)}</td></tr>
+      <tr><td>HODL ${t1sym}</td><td>${_fmt(hodl1)}</td></tr>
+      <tr class="9mm-pos-mgr-il-result"><td>${t1sym} Now / HODL</td><td>${_pct(now1, hodl1)}</td></tr>
+    </table>
+  </div>`;
+}
+
 /**
  * Build the HTML content for one IL calculation section.
  * @param {string} label       Section heading.
@@ -127,12 +162,25 @@ export function showILDebug(panel) {
   const ilResult = isCur ? snap.totalIL : snap.lifetimeIL;
   const label = isCur ? "Current Position IL/G" : "Lifetime IL/G";
 
+  const ps = _lastData?.positionStats;
+  const now0 = ps?.balance0 !== undefined ? Number(ps.balance0) : NaN;
+  const now1 = ps?.balance1 !== undefined ? Number(ps.balance1) : NaN;
+  const nowVsHodl = _buildNowVsHodl(
+    now0,
+    now1,
+    sectionInputs?.hodlAmount0,
+    sectionInputs?.hodlAmount1,
+    t0sym,
+    t1sym,
+  );
+
   const el = document.createElement("div");
   el.className = "9mm-pos-mgr-il-popover";
   el.id = "9mm-il-debug-popover";
   el.innerHTML = `<div class="9mm-pos-mgr-il-popover-inner">
     ${_buildSection(label, sectionInputs, inputs.lpValue, inputs.price0, inputs.price1, ilResult, t0sym, t1sym)}
     <div class="9mm-pos-mgr-il-formula">IL = LP Value \u2212 (${t0sym} deposited \u00D7 ${t0sym} price + ${t1sym} deposited \u00D7 ${t1sym} price)</div>
+    ${nowVsHodl}
     <button class="9mm-pos-mgr-il-ok-btn" data-dismiss-il>OK</button>
   </div>`;
   el.querySelector("[data-dismiss-il]").addEventListener(

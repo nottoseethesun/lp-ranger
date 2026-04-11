@@ -87,6 +87,15 @@ function _adjCompounded(raw, fallback, compounded) {
   return raw !== undefined ? raw - (compounded || 0) : fallback;
 }
 
+/** Build positionStats payload for IL debug popover from unmanaged details. */
+function _balanceStats(amounts) {
+  if (!amounts) return undefined;
+  return {
+    balance0: amounts.amount0.toFixed(6),
+    balance1: amounts.amount1.toFixed(6),
+  };
+}
+
 /** Populate the Lifetime panel from phase-2 response. */
 export function _applyLifetime(d) {
   const comp = d.ltCompounded || 0;
@@ -125,7 +134,10 @@ export function _applyLifetime(d) {
   if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
   // Update IL debug popover with lifetime HODL amounts from phase 2
   if (d.pnlSnapshot?.ilInputs)
-    updateILDebugData({ pnlSnapshot: d.pnlSnapshot });
+    updateILDebugData({
+      pnlSnapshot: d.pnlSnapshot,
+      positionStats: _balanceStats(d.amounts),
+    });
 }
 
 /** Apply balances, pool share, and tick to the position stats panel. */
@@ -206,6 +218,7 @@ function _applyILDebug(d) {
           lt: hodl,
         },
       },
+      positionStats: _balanceStats(d.amounts),
     },
     posStore,
   );
