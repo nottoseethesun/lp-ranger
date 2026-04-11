@@ -296,6 +296,13 @@ export function bindDelegatedEvents(closers) {
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    // The IL/G debug popover is created and removed dynamically (no
+    // hidden class), so checking for its presence in the DOM is enough.
+    const ilPop = g("9mm-il-debug-popover");
+    if (ilPop && closers.ilDebug) {
+      closers.ilDebug();
+      return;
+    }
     const modals = [
       {
         id: "walletModal",

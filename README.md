@@ -10,26 +10,26 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 
 **V3 positions only** — V2 positions are not supported.
 
-![9mm v3 Position Manager Dashboard](docs/dashboard-screenshot.png)
+![9mm v3 Position Manager Dashboard](docs/images/dashboard-screenshot.png)
 
-![9mm v3 Position Manager Dashboard 2](docs/dashboard-screenshot-2.png)
+![9mm v3 Position Manager Dashboard 2](docs/images/dashboard-screenshot-2.png)
 
-![Help Text](docs/dashboard-screenshot-help-text.png)
+![Help Text](docs/images/dashboard-screenshot-help-text.png)
 
-![Rebalance Throttling](docs/dashboard-screenshot-rebalance-throttling.png)
+![Rebalance Throttling](docs/images/dashboard-screenshot-rebalance-throttling.png)
 
-![Manual Rebalance](docs/dashboard-screenshot-manual-rebalance.png)
+![Manual Rebalance](docs/images/dashboard-screenshot-manual-rebalance.png)
 
-![Position Browser](docs/dashboard-screenshot-position-browser.png)
+![Position Browser](docs/images/dashboard-screenshot-position-browser.png)
 
-![Settings](docs/dashboard-screenshot-settings.png)
+![Settings](docs/images/dashboard-screenshot-settings.png)
 
 ---
 
 ## Table of Contents
 
 - [Disclaimer](#disclaimer)
-- [Pre-requisites](#pre-requisites)
+- [Pre-Requisites](#pre-requisites)
 - [Install](#install)
 - [Uninstall](#uninstall)
 - [Usage](#usage)
@@ -76,7 +76,7 @@ OR OTHER DEALINGS IN THE SOFTWARE.
 
 ---
 
-## Pre-requisites
+## Pre-Requisites
 
 - Node.js 22+
 - Web browser
@@ -187,9 +187,9 @@ interact, the rebalance pipeline, P&L tracking, and security model — see
 **[`docs/architecture.md`](docs/architecture.md)**.
 
 **For all details** — environment variables, contract addresses, pricing API
-setup, development tools, and architecture — see the file-header JSDoc of
-**[`server.js`](server.js)**.  That is the authoritative reference for this
-project.
+setup, development tools, the `app-config/` layout, and the check-report
+pipeline — see **[`docs/engineering.md`](docs/engineering.md)**.  That is the
+authoritative engineering reference for this project.
 
 See also: [`.env.example`](.env.example) for a ready-to-copy configuration
 template.

@@ -2,18 +2,27 @@
 #
 # Continuous Integration pipeline for the 9mm v3 Position Manager.
 #
-# Job order
-# ─────────
-# 1. lint   — ESLint must pass cleanly before any tests are attempted.
-#             A lint failure aborts the run immediately, saving runner minutes
-#             and giving reviewers a clear signal that the code needs cleanup
-#             before test results are meaningful.
+# Single job
+# ──────────
+# A single `check` job per Node version runs `npm run check`, which handles
+# lint (JS + CSS + HTML + Markdown) → tests + coverage → security audits
+# (npm audit + security-lint + secretlint) in one pass and writes a full
+# set of report artifacts under `test/report-artifacts/` (summary.txt,
+# summary.md, tests-summary.txt, tests.tap, report.pdf, raw-data/*.json).
 #
-# 2. test   — Runs only when the lint job succeeds (needs: lint).
-#             Uses Node.js's built-in test runner (node --test) with coverage.
+# After the check runs:
+#   1. text-reports/summary.md is appended to $GITHUB_STEP_SUMMARY so the
+#      overall PASS/FAIL rollup, per-check detail, slowest tests, and
+#      security summary render inline on every workflow run page — no
+#      clicks required to see what happened.
+#   2. The entire test/report-artifacts/ directory (including the PDF and
+#      all raw JSON outputs) is uploaded as a workflow artifact, retained
+#      for 30 days. Download it from the run page "Artifacts" section to
+#      open the PDF or dig into any tool's raw output.
 #
-# This ordering means every PR check list shows "lint" as the first required
-# status and "test" as the second.  A PR cannot be merged until both pass.
+# A lint failure no longer aborts the job before tests run — `npm run check`
+# always executes every tool and reports on all of them together, so the
+# artifact always contains complete data even when something is red.
 #
 # Triggers
 # ────────
@@ -32,40 +41,12 @@ on:
 
 jobs:
 
-  # ── Job 1: Lint ──────────────────────────────────────────────────────────────
-  lint:
-    name: Lint (JS + CSS + Markdown)
+  check:
+    name: Check (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run lint (ESLint + stylelint + markdownlint)
-        # --max-warnings 0 means any ESLint warning is also treated as a failure.
-        # Covers JS (eslint), CSS (stylelint), and Markdown (markdownlint-cli2).
-        run: npm run lint
-
-  # ── Job 2: Tests ─────────────────────────────────────────────────────────────
-  test:
-    name: Tests (Node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
-
-    # This job will not start until the lint job completes successfully.
-    # If lint fails, this job is skipped entirely.
-    needs: lint
 
     strategy:
-      # Run all matrix versions even if one fails, so we see the full picture.
+      # Run every matrix version even if one fails, so we see the full picture.
       fail-fast: false
       matrix:
         # Node 22 = current LTS, Node 24 = latest stable.
@@ -84,30 +65,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
+      - name: Run npm run check (lint + tests + coverage + security audits)
+        # `npm run check` writes its full output to test/report-artifacts/
+        # and exits non-zero iff any individual check failed. The 80% line
+        # coverage threshold is enforced inside the aggregator.
+        run: npm run check
 
-      - name: Run tests with coverage and enforce 80% minimum
-        # Coverage reporting requires Node 20+ (--experimental-test-coverage).
-        # On Node 24, enforce 80% line coverage — fail the job if below.
+      - name: Publish markdown summary to workflow run page
+        # Append text-reports/summary.md to $GITHUB_STEP_SUMMARY so the
+        # rollup renders inline on the run page. `if: always()` ensures
+        # the summary is published even when the check step fails, so
+        # reviewers can still see which check was red at a glance.
+        if: always()
         run: |
-          output=$(npm run test:coverage 2>&1)
-          echo "$output"
-          if [ "${{ matrix.node-version }}" = "24" ]; then
-            coverage=$(echo "$output" | grep 'all files' | sed 's/[^0-9.]/ /g' | awk '{print $1}')
-            echo "Line coverage: ${coverage}%"
-            cov_int=${coverage%.*}
-            if [ "$cov_int" -lt 80 ]; then
-              echo "::error::Coverage ${coverage}% is below the 80% minimum"
-              exit 1
-            fi
+          if [ -f test/report-artifacts/text-reports/summary.md ]; then
+            cat test/report-artifacts/text-reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ⚠️ summary.md was not generated" >> "$GITHUB_STEP_SUMMARY"
+            echo "The check step failed before the aggregator could run." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload coverage report
-        if: matrix.node-version == '24'
-        uses: actions/upload-artifact@v7
+      - name: Upload check report artifact
+        # Upload even on failure so reviewers can download the PDF + raw
+        # JSON to investigate what broke. One artifact per Node version.
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 14
-        continue-on-error: true
+          name: check-report-node-${{ matrix.node-version }}
+          path: test/report-artifacts/
+          retention-days: 30
+          if-no-files-found: warn

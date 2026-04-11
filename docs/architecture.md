@@ -3,8 +3,30 @@
 LP Ranger is built as two cooperating halves: a **backend bot** that handles all
 data-side and networking work, and a **web application** that serves as a
 real-time view into the bot with GUI controls. The two halves communicate
-through a well-defined HTTP API, documented in an interactive local Swagger
-doc-set (`npm run swagger`).
+through a well-defined HTTP API, documented in an interactive local Scalar
+API reference (`npm run api-doc`).
+
+---
+
+## Table of Contents
+
+- [The Two Halves](#the-two-halves)
+  - [Backend: The Bot](#backend-the-bot)
+  - [Frontend: The Web App](#frontend-the-web-app)
+- [The API Layer](#the-api-layer)
+- [Data Flow](#data-flow)
+  - [Bot → Dashboard](#bot--dashboard)
+  - [Dashboard → Bot](#dashboard--bot)
+  - [Persistence](#persistence)
+- [The Rebalance Pipeline](#the-rebalance-pipeline)
+- [Multi-Position Concurrency](#multi-position-concurrency)
+- [P&L Tracking](#pl-tracking)
+  - [Lifetime P&L Components](#lifetime-pl-components)
+  - [Lifetime Impermanent Loss / Gain](#lifetime-impermanent-loss--gain)
+  - [Scan Architecture: Single Fetch, Two Classifiers](#scan-architecture-single-fetch-two-classifiers)
+  - [Lifetime Sync vs Bot Loop](#lifetime-sync-vs-bot-loop)
+- [Security Model](#security-model)
+- [Technology Choices](#technology-choices)
 
 ---
 
@@ -58,7 +80,7 @@ an API endpoint.
 
 The HTTP API is the contract between the two halves. It is documented in an
 OpenAPI 3.0 spec (`docs/openapi.json`) and can be browsed interactively via
-Swagger UI (`npm run swagger` on port 5556).
+the Scalar API reference (`npm run api-doc` on port 5556).
 
 The API has roughly 20 endpoints organized into groups:
 

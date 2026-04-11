@@ -4,11 +4,11 @@
 
 Auto-rebalancing concentrated liquidity manager for 9mm Pro (Uniswap v3 fork) on PulseChain. **V3 positions only** — V2 positions are rejected with a clear error message. Manages **multiple LP positions simultaneously** across different pools from a single wallet, with per-position start/stop lifecycle (two states: `'running'` and `'stopped'`). All NFT positions for the same pool form a rebalance chain (old positions are drained, not burned). Position token type is **auto-detected**. Supports up to 300 NFT (ERC-721) and ERC-20/PRC-20 LP positions in the browser position store.
 
-Security audit guide: [docs/CLAUDE-SECURITY.md](docs/CLAUDE-SECURITY.md)
-CI and merge protocol: [docs/CLAUDE-CI.md](docs/CLAUDE-CI.md)
-Code style and formatting: [docs/CLAUDE-CODE-STYLE.md](docs/CLAUDE-CODE-STYLE.md)
-Best practices: [docs/CLAUDE-BEST-PRACTICES.md](docs/CLAUDE-BEST-PRACTICES.md)
-Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
+Security audit guide: [docs/claude/CLAUDE-SECURITY.md](docs/claude/CLAUDE-SECURITY.md)
+CI and merge protocol: [docs/claude/CLAUDE-CI.md](docs/claude/CLAUDE-CI.md)
+Code style and formatting: [docs/claude/CLAUDE-CODE-STYLE.md](docs/claude/CLAUDE-CODE-STYLE.md)
+Best practices: [docs/claude/CLAUDE-BEST-PRACTICES.md](docs/claude/CLAUDE-BEST-PRACTICES.md)
+Testing: [docs/claude/CLAUDE-TESTING.md](docs/claude/CLAUDE-TESTING.md)
 
 ---
 
@@ -44,7 +44,7 @@ Testing: [docs/CLAUDE-TESTING.md](docs/CLAUDE-TESTING.md)
 ├── scripts/check.sh              # Combined lint + test + coverage check
 ├── scripts/copy-fonts.sh         # Copies self-hosted WOFF2 fonts from node_modules to public/fonts/
 ├── scripts/stop.sh               # Graceful shutdown helper (POST /api/shutdown)
-├── scripts/swagger.js            # Swagger UI server for API docs (npm run swagger → :5556)
+├── scripts/api-doc.js            # Scalar API reference server (npm run api-doc → :5556)
 ├── scripts/wipe-settings.sh      # Back up user settings to tmp/.settings-backup/ (fresh-install sim)
 ├── scripts/restore-settings.sh   # Restore settings backed up by wipe-settings.sh
 ├── README.md                     # Concise — refers to server.js for details
@@ -244,7 +244,7 @@ npm run clean          # reset-wallet + delete bot config, epoch cache, rebalanc
 npm run nuke           # Delete node_modules + package-lock.json for a clean reinstall
 npm run wipe-settings  # Back up user settings to tmp/.settings-backup/ (fresh-install simulation)
 npm run restore-settings # Restore settings backed up by wipe-settings
-npm run swagger        # Start Swagger UI at http://localhost:5556 (API docs)
+npm run api-doc        # Start Scalar API reference at http://localhost:5556 (API docs)
 ```
 
 ---
@@ -393,4 +393,4 @@ All use abbreviated prefixes (first 5-6 chars) to keep filenames manageable.
 - All dollar amounts denominated in USD
 - V3 positions only — reject V2 with helpful error message
 
-See [docs/CLAUDE-BEST-PRACTICES.md](docs/CLAUDE-BEST-PRACTICES.md) for coding, testing, formatting, UI, and workflow best practices.
+See [docs/claude/CLAUDE-BEST-PRACTICES.md](docs/claude/CLAUDE-BEST-PRACTICES.md) for coding, testing, formatting, UI, and workflow best practices.

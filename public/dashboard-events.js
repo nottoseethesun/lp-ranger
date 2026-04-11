@@ -93,7 +93,7 @@ import {
   pnlFirstPage,
   pnlLastPage,
 } from "./dashboard-history.js";
-import { showILDebug } from "./dashboard-il-debug.js";
+import { showILDebug, dismissILDebug } from "./dashboard-il-debug.js";
 import {
   _togglePrivacy,
   _bindCopyBtn,
@@ -474,5 +474,6 @@ export function bindAllEvents() {
     clearWallet: closeClearWalletModal,
     rebalanceRange: closeRebalanceRangeModal,
     throttleInfo: closeTI,
+    ilDebug: dismissILDebug,
   });
 }

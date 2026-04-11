@@ -52,7 +52,7 @@
 
 - **Never use `npx`** — always use `npm` (e.g. `npm run lint`, not `npx eslint`).
 - **Prefer well-known npm packages** for anything mildly specialized (e.g. Uniswap v3 math, NFT reading, token decoding) rather than hand-rolling custom implementations.
-- **Always provide Swagger or equivalent API documentation** for HTTP endpoints. The OpenAPI 3.0 spec lives in `docs/openapi.json`. When adding, removing, or changing an API endpoint, update the spec to match. Run `npm run swagger` to verify the docs render correctly.
+- **Always provide API documentation** for HTTP endpoints. The OpenAPI 3.0 spec lives in `docs/openapi.json`. When adding, removing, or changing an API endpoint, update the spec to match. Run `npm run api-doc` to verify the docs render correctly (Scalar, on port 5556).
 
 ## Git & CI
 
