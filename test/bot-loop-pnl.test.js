@@ -543,10 +543,6 @@ describe("bot-loop: OOR timeout", () => {
     };
     const { r } = await _poll(600, { botState });
     assert.strictEqual(r.rebalanced, true);
-    assert.strictEqual(
-      botState.oorSince,
-      null,
-      "oorSince cleared — prevents immediate re-trigger",
-    );
+    assert.strictEqual(botState.oorSince, null, "oorSince cleared");
   });
 });
