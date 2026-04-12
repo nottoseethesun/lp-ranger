@@ -123,6 +123,7 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number} netPnl         priceChangePnl + feePnl − gasCost.
  * @property {number} residual       Wallet residual adjustment (entry(N+1) − exit(N)) at rebalances on this day.
  * @property {number} cumulative     Running cumulative net P&L through this day (includes residuals).
+ * @property {boolean} noData       True when no epoch event occurred on this day (display "–" in UI).
  */
 
 const EPOCH_COLORS = [
@@ -372,40 +373,18 @@ function createPnlTracker(opts = {}) {
 }
 
 /**
- * Distribute P&L values evenly across a date range (inclusive).
- * @param {Map} dayMap       Day accumulator map.
- * @param {string} startDay  ISO date (YYYY-MM-DD) for range start.
- * @param {string} endDay    ISO date (YYYY-MM-DD) for range end.
- * @param {number} feePnl    Total fee P&L to distribute.
- * @param {number} priceChangePnl  Total price-change P&L to distribute.
- * @param {number} gas       Total gas cost to distribute.
+ * Attribute all epoch P&L to a single day.  We only know totals per epoch,
+ * not per-day actuals, so we never fabricate a per-day breakdown.
+ * Days without real data display "–" in the UI via the `noData` flag.
  */
-function _distributeToRange(
-  dayMap,
-  startDay,
-  endDay,
-  feePnl,
-  priceChangePnl,
-  gas,
-  gasNative,
-) {
-  const cursor = new Date(startDay + "T00:00:00Z");
-  const end = new Date(endDay + "T00:00:00Z");
-  const totalDays = Math.max(1, Math.round((end - cursor) / 86_400_000) + 1);
-  const dFee = feePnl / totalDays,
-    dPrice = priceChangePnl / totalDays,
-    dGas = gas / totalDays,
-    dNative = (gasNative || 0) / totalDays;
-  while (cursor <= end) {
-    const key = cursor.toISOString().slice(0, 10);
-    const entry = dayMap.get(key) || _newDay();
-    entry.priceChangePnl += dPrice;
-    entry.feePnl += dFee;
-    entry.gasCost += dGas;
-    entry.gasNative += dNative;
-    dayMap.set(key, entry);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
+function _attributeToDay(dayMap, day, feePnl, priceChangePnl, gas, gasNative) {
+  const entry = dayMap.get(day) || _newDay();
+  entry.priceChangePnl += priceChangePnl;
+  entry.feePnl += feePnl;
+  entry.gasCost += gas;
+  entry.gasNative += gasNative || 0;
+  entry.noData = false;
+  dayMap.set(day, entry);
 }
 
 /**
@@ -427,6 +406,7 @@ function _newDay() {
     gasCost: 0,
     gasNative: 0,
     residual: 0,
+    noData: true,
   };
 }
 
@@ -472,15 +452,11 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
   /** @type {Map<string, {priceChangePnl: number, feePnl: number, gasCost: number, residual: number}>} */
   const dayMap = new Map();
 
-  // Distribute closed epochs across their open→close duration
+  // Attribute closed epoch totals to their close day (no fabricated per-day split)
   for (const ep of closedEpochs) {
-    const openDay = ep.openTime
-      ? new Date(ep.openTime).toISOString().slice(0, 10)
-      : null;
     const closeDay = new Date(ep.closeTime).toISOString().slice(0, 10);
-    _distributeToRange(
+    _attributeToDay(
       dayMap,
-      openDay || closeDay,
       closeDay,
       ep.feePnl ?? ep.fees,
       ep.priceChangePnl ?? 0,
@@ -488,22 +464,24 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
       ep.gasNative ?? 0,
     );
     if (ep.missingPrice) {
-      const day = dayMap.get(openDay || closeDay);
+      const day = dayMap.get(closeDay);
       if (day) day.missingPrice = true;
     }
   }
 
   _computeResiduals(dayMap, closedEpochs, liveEpoch);
 
-  // Live epoch: put accumulated values on today only
+  // Live epoch: attribute totals to today
   if (liveEpoch) {
     const today = new Date().toISOString().slice(0, 10);
-    const entry = dayMap.get(today) || _newDay();
-    entry.feePnl += liveEpoch.feePnl ?? liveEpoch.fees ?? 0;
-    entry.priceChangePnl += liveEpoch.priceChangePnl ?? 0;
-    entry.gasCost += liveEpoch.gas ?? 0;
-    entry.gasNative += liveEpoch.gasNative ?? 0;
-    dayMap.set(today, entry);
+    _attributeToDay(
+      dayMap,
+      today,
+      liveEpoch.feePnl ?? liveEpoch.fees ?? 0,
+      liveEpoch.priceChangePnl ?? 0,
+      liveEpoch.gas ?? 0,
+      liveEpoch.gasNative ?? 0,
+    );
   }
 
   _fillDayRange(dayMap, fromDate);
@@ -530,6 +508,7 @@ function _buildDailyPnl(closedEpochs, liveEpoch, fromDate) {
       residual,
       cumulative,
       missingPrice: !!d.missingPrice,
+      noData: !!d.noData,
     };
   });
 

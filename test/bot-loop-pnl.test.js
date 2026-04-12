@@ -7,10 +7,21 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const { _overridePnlWithRealValues } = require("../src/bot-loop");
 const { _poll } = require("./_bot-loop-helpers");
+const { _resetForTest } = require("../src/gecko-rate-limit");
+
+let _originalFetch;
+beforeEach(() => {
+  _originalFetch = globalThis.fetch;
+  _resetForTest();
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({}) });
+});
+afterEach(() => {
+  globalThis.fetch = _originalFetch;
+});
 
 // ── IL/PnL override ─────────────────────────────────────────────────────────
 

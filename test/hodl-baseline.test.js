@@ -11,11 +11,14 @@ const assert = require("node:assert/strict");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+const { _resetForTest } = require("../src/gecko-rate-limit");
+
 /** Save and restore the real global fetch around every test. */
 let _originalFetch;
 
 beforeEach(() => {
   _originalFetch = globalThis.fetch;
+  _resetForTest();
 });
 
 afterEach(() => {

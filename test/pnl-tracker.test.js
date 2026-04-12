@@ -488,6 +488,22 @@ describe("createPnlTracker — daily P&L", () => {
     );
   });
 
+  it("live epoch puts all fees on today, filler days are noData", () => {
+    const tracker = createPnlTracker({ initialDeposit: 1000 });
+    tracker.openEpoch({
+      entryValue: 1000,
+      entryPrice: 1,
+      lowerPrice: 0.8,
+      upperPrice: 1.2,
+      openTime: Date.now() - 5 * 86_400_000,
+    });
+    tracker.updateLiveEpoch({ currentPrice: 1, feesAccrued: 12 });
+    const { dailyPnl } = tracker.snapshot(1);
+    const today = dailyPnl[0];
+    assert.ok(Math.abs(today.feePnl - 12) < 0.01, "all fees on today");
+    assert.strictEqual(today.noData, false, "today has real data");
+  });
+
   it("each DailyPnl has netPnl = priceChangePnl + feePnl - gasCost", () => {
     const tracker = createPnlTracker({ initialDeposit: 1000 });
     const ts = new Date("2025-06-01T12:00:00Z").getTime();

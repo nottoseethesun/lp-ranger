@@ -72,7 +72,7 @@ export function renderDailyPnl(dailyPnl) {
   tbody.innerHTML = slice
     .map((d, si) => {
       const i = start + si,
-        mp = d.missingPrice,
+        mp = d.missingPrice || d.noData,
         fees = d.feePnl || d.fees || 0,
         gas = d.gasCost || d.gas || 0,
         ilg = d.priceChangePnl || 0,
