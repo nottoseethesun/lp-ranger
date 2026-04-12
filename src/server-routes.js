@@ -568,6 +568,7 @@ function createRouteHandlers(deps) {
     _handleApiKeySave,
     _handleApiKeyStatus,
     _decryptApiKeys,
+    getSessionPassword: () => _sessionPassword,
   };
 }
 

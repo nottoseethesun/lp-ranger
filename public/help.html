@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/9mm-pos-mgr.css">
   <link rel="stylesheet" href="/fonts.css">
-  <link rel="stylesheet" href="/help.css">
+  <link rel="stylesheet" href="/help.css?v=4">
 </head>
 <body>
   <h1>LP Ranger Help and User Manual</h1>
@@ -22,6 +22,7 @@
       <li><a href="#volatility-doubling">Volatility Doubling</a></li>
       <li><a href="#gas-cost-protection">Gas Cost Protection</a></li>
       <li><a href="#closed-positions">Closed Positions</a></li>
+      <li><a href="#telegram-notifications">Telegram Notifications</a></li>
       <li><a href="#troubleshooting">Troubleshooting</a></li>
       <li><a href="#details">Details</a></li>
       <li><a href="#supported-pool-managers">Supported Liquidity Pool Managers</a></li>
@@ -55,6 +56,29 @@
 
   <h2 id="closed-positions">Closed Positions</h2>
   <p>When you select a closed position (zero liquidity), the bot will display its data but will <strong>not</strong> attempt to rebalance it. If you re-open a previously closed position by adding liquidity back to the same NFT on 9mm Pro, the bot treats it as brand new&mdash;duration, fees, and P&amp;L all start from the original mint date. <strong>Recommendation:</strong> instead of re-opening a closed position, mint a fresh LP position on 9mm Pro. This gives you a clean start with accurate tracking and avoids any ambiguity in your P&amp;L history.</p>
+
+  <h2 id="telegram-notifications">Telegram Notifications</h2>
+  <p>LP Ranger can send real-time alerts to your phone via Telegram. You choose which events trigger a notification:</p>
+  <ul>
+    <li><strong>OOR Timeout Triggered</strong> (default ON) &mdash; the position has been continuously out of range for longer than the configured timeout, and a rebalance is about to begin.</li>
+    <li><strong>Rebalance Succeeded</strong> (default OFF) &mdash; a rebalance completed successfully and a new NFT was minted.</li>
+    <li><strong>Rebalance Failed</strong> (default ON) &mdash; a rebalance attempt failed (on-chain revert, RPC error, etc.).</li>
+    <li><strong>Compound Succeeded</strong> (default OFF) &mdash; unclaimed fees were successfully compounded back into the position.</li>
+    <li><strong>Compound Failed</strong> (default ON) &mdash; a compound attempt failed.</li>
+    <li><strong>Other Error</strong> (default ON) &mdash; an unexpected error occurred during a poll cycle, including stuck transactions that were auto-cancelled.</li>
+  </ul>
+  <p><strong>Setup:</strong></p>
+  <ol>
+    <li>Open Telegram and message <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>. Send <code>/newbot</code>, follow the prompts, and it will give you a <strong>bot token</strong> (looks like <code>123456789:ABCdefGhI...</code>).</li>
+    <li>Save the bot token to a safe place. You will need to copy it soon.</li>
+    <li>Start a chat with your new bot and send any message (just type something and press Enter).</li>
+    <li>In your web browser, go to: <code>https://api.telegram.org/bot&lt;your-bot-token&gt;/getUpdates</code> (replace <code>&lt;your-bot-token&gt;</code> with the token from Step 2, no brackets).</li>
+    <li>In the JSON response, find your <strong>chat ID</strong> at <code>result[0].message.chat.id</code> &mdash; it is a numeric value near the top of the response, inside the first <code>result</code> entry, under <code>message</code> &rarr; <code>chat</code> &rarr; <code>id</code>. Copy this number.</li>
+    <li>In LP Ranger, open the Telegram setup dialog from the <strong>Settings</strong> gear menu or from the wallet setup screen.</li>
+    <li>Paste your bot token and chat ID, select the events you want, and click <strong>Save</strong>.</li>
+    <li>Click <strong>Test</strong> to verify &mdash; you should receive a test message in Telegram.</li>
+  </ol>
+  <p>Your bot token is encrypted on disk with the same wallet password used for your private key. It is never sent anywhere except the Telegram Bot API.</p>
 
   <h2 id="troubleshooting">Troubleshooting</h2>
   <ul>

@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1775951367309">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1775951367309">
+<link rel="stylesheet" href="style.css?v=1775971066480">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1775971066480">
 </head>
 <body>
 
@@ -103,6 +103,7 @@
         <div class="9mm-pos-mgr-settings-key-wrap 9mm-pos-mgr-mt-xs">
           <input type="text" class="9mm-pos-mgr-settings-key-input setupMoralisKeyInput" placeholder="Paste Moralis API key here" autocomplete="off" data-1p-ignore data-lpignore="true">
         </div>
+        <button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-mt-sm setupTelegramBtn">Set Up Telegram Notifications</button>
       </div>
       <div class="modal-field 9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-lg" id="genPwField">
         <label>Session password (protects your key on the server)</label>
@@ -157,6 +158,7 @@
         <div class="9mm-pos-mgr-settings-key-wrap 9mm-pos-mgr-mt-xs">
           <input type="text" class="9mm-pos-mgr-settings-key-input setupMoralisKeyInput" placeholder="Paste Moralis API key here" autocomplete="off" data-1p-ignore data-lpignore="true">
         </div>
+        <button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-mt-sm setupTelegramBtn">Set Up Telegram Notifications</button>
       </div>
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label>Session password (protects your key on the server)</label>
@@ -207,6 +209,7 @@
         <div class="9mm-pos-mgr-settings-key-wrap 9mm-pos-mgr-mt-xs">
           <input type="text" class="9mm-pos-mgr-settings-key-input setupMoralisKeyInput" placeholder="Paste Moralis API key here" autocomplete="off" data-1p-ignore data-lpignore="true">
         </div>
+        <button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-mt-sm setupTelegramBtn">Set Up Telegram Notifications</button>
       </div>
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label>Session password (protects your key on the server)</label>
@@ -491,6 +494,7 @@
             <button type="button" class="9mm-pos-mgr-settings-key-save" id="moralisKeySaveBtn">Save</button>
           </div>
         </div>
+        <button type="button" class="9mm-pos-mgr-settings-item" id="telegramSettingsBtn">Telegram Notifications</button>
         <button type="button" class="9mm-pos-mgr-settings-item" id="clearStorageBtn">Clear Local Storage &amp; Cookies</button>
       </div>
     </div>
@@ -947,9 +951,40 @@
   </div>
 </div>
 
+<!-- Telegram setup modal -->
+<div id="telegramModal" class="modal-overlay hidden 9mm-pos-mgr-tg-modal">
+  <div class="modal">
+    <h3>Telegram Notifications</h3>
+    <p class="9mm-pos-mgr-text-muted-sm">Get alerts on your phone when positions rebalance, compound, or hit errors.</p>
+    <div class="modal-field 9mm-pos-mgr-mt-sm">
+      <label for="tgBotToken"><span class="9mm-pos-mgr-text-muted">Bot Token</span> <span class="9mm-pos-mgr-text-muted-sm">(<a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>)</span></label>
+      <input type="text" class="modal-input" id="tgBotToken" placeholder="123456789:ABCdefGhI..." autocomplete="off" data-1p-ignore data-lpignore="true">
+    </div>
+    <div class="modal-field 9mm-pos-mgr-mt-sm">
+      <label for="tgChatId"><span class="9mm-pos-mgr-text-muted">Chat ID</span> <span class="9mm-pos-mgr-text-muted-sm">(see Help for how to find this)</span></label>
+      <input type="text" class="modal-input" id="tgChatId" placeholder="123456789" autocomplete="off" data-1p-ignore data-lpignore="true">
+    </div>
+    <fieldset class="9mm-pos-mgr-mt-md 9mm-pos-mgr-tg-events">
+      <legend class="9mm-pos-mgr-text-muted-sm">Events to notify</legend>
+      <label><input type="checkbox" id="tgEvt_oorTimeout" checked> OOR Timeout Triggered</label>
+      <label><input type="checkbox" id="tgEvt_rebalanceSuccess"> Rebalance Succeeded</label>
+      <label><input type="checkbox" id="tgEvt_rebalanceFail" checked> Rebalance Failed</label>
+      <label><input type="checkbox" id="tgEvt_compoundSuccess"> Compound Succeeded</label>
+      <label><input type="checkbox" id="tgEvt_compoundFail" checked> Compound Failed</label>
+      <label><input type="checkbox" id="tgEvt_otherError" checked> Other Error</label>
+    </fieldset>
+    <div class="9mm-pos-mgr-mt-sm" id="tgStatus"></div>
+    <div class="9mm-pos-mgr-modal-btn-row">
+      <button type="button" class="pos-scan-btn" id="tgSaveBtn">Save</button>
+      <button type="button" class="pos-scan-btn" id="tgTestBtn" disabled>Test</button>
+      <button type="button" class="pos-scan-btn" id="tgCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775951367309"></script>
+<script src="dist/bundle.js?v=1775971066480"></script>
 </body>
 </html>

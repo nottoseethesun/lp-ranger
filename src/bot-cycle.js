@@ -19,6 +19,7 @@ const {
   enrichResultUsd,
 } = require("./rebalancer");
 const { getTokenSymbol } = require("./server-scan");
+const { notify } = require("./telegram");
 const {
   positionValueUsd: _positionValueUsd,
   fetchTokenPrices: _fetchTokenPrices,
@@ -37,6 +38,15 @@ const {
   checkCompound: _checkCompound,
   handleForceCompound: _handleForceCompound,
 } = require("./bot-cycle-compound");
+
+/** Build a position descriptor for Telegram notifications. */
+function _notifyPos(position) {
+  return {
+    tokenId: position.tokenId,
+    token0Symbol: getTokenSymbol(position.token0),
+    token1Symbol: getTokenSymbol(position.token1),
+  };
+}
 
 /**
  * Activate exponential swap-backoff after a priceVolatile result.
@@ -164,17 +174,31 @@ async function _executeAndRecord(deps, ethersLib) {
         String(result.newTokenId),
         emojiId(String(result.newTokenId)),
       );
+      notify("rebalanceSuccess", {
+        position: _notifyPos(position),
+        message: `New NFT #${result.newTokenId}`,
+        txHash: result.txHashes?.mint,
+      });
       await _closePnlEpoch(deps, result);
       _applyRebalanceResult(deps, result);
       // Re-scan to pick up the new rebalance boundary for HODL tracking
       if (deps._botState?._triggerScan) deps._botState._triggerScan();
     } else {
       console.error("[bot] Rebalance failed:", result.error);
+      notify("rebalanceFail", {
+        position: _notifyPos(position),
+        error: result.error,
+      });
       if (result.cancelled) {
         console.warn(
           "[bot] TX was auto-cancelled (nonce freed). Cancel TX: %s",
           result.cancelTxHash || "unknown",
         );
+        notify("otherError", {
+          position: _notifyPos(position),
+          error: "TX auto-cancelled (stuck nonce freed)",
+          txHash: result.cancelTxHash,
+        });
         if (deps.updateBotState)
           deps.updateBotState({
             txCancelled: {
@@ -297,6 +321,10 @@ function _checkRangeAndThreshold(deps, poolState, emit) {
       return { rebalanced: false, withinThreshold: true };
     }
     console.log("[bot] OOR timeout expired — triggering rebalance");
+    notify("oorTimeout", {
+      position: _notifyPos(deps.position),
+      message: "Position has been out of range beyond the configured timeout.",
+    });
   } else if (!forced && !botSt.oorSince) {
     botSt.oorSince = Date.now();
     emit({ oorSince: botSt.oorSince });

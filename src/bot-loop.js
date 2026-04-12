@@ -37,6 +37,7 @@ const {
   _scanAndReconstruct,
   _activePosSummary,
 } = require("./bot-recorder");
+const { notify: _notify } = require("./telegram");
 const {
   pollCycle,
   resolvePrivateKey,
@@ -409,6 +410,10 @@ async function startBotLoop(opts) {
       console.error(
         `[bot] Poll error: ${err.message} (${Math.round((Date.now() - firstFailureAt) / 60_000)}m of failures)`,
       );
+      _notify("otherError", {
+        position: { tokenId: position.tokenId },
+        error: err.message,
+      });
     } finally {
       polling = false;
     }

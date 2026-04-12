@@ -59,6 +59,7 @@ import {
   resetLastFetchedId,
 } from "./dashboard-unmanaged.js";
 import { injectPriceOverrideDeps } from "./dashboard-price-override.js";
+import { initTelegram } from "./dashboard-telegram.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import {
   bindAllEvents,
@@ -189,6 +190,7 @@ function _afterDisclaimer() {
 
   // Initialise client-side URL routing (must run after wallet status check starts)
   initRouter();
+  initTelegram();
 
   // Restore last-viewed position from localStorage (if URL doesn't specify one)
   const _path = window.location.pathname.replace(/\/+$/, "");

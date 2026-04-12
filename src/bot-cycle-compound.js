@@ -8,6 +8,8 @@
 
 const config = require("./config");
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
+const { notify } = require("./telegram");
+const { getTokenSymbol } = require("./server-scan");
 
 /** Check if compound conditions are met and execute if so. */
 async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
@@ -120,12 +122,28 @@ async function executeCompound(deps, poolState, ethersLib, trigger) {
 
     if (result.compounded) {
       await recordCompound(deps, result);
+      notify("compoundSuccess", {
+        position: {
+          tokenId: position.tokenId,
+          token0Symbol: getTokenSymbol(position.token0),
+          token1Symbol: getTokenSymbol(position.token1),
+        },
+        message: `Compounded $${(result.usdValue || 0).toFixed(2)} in fees`,
+      });
     } else {
       console.log("[bot] Compound skipped: %s", result.reason);
     }
   } catch (err) {
     console.error("[bot] Compound failed:", err.message);
     emit({ compoundError: err.message });
+    notify("compoundFail", {
+      position: {
+        tokenId: position.tokenId,
+        token0Symbol: getTokenSymbol(position.token0),
+        token1Symbol: getTokenSymbol(position.token1),
+      },
+      error: err.message,
+    });
   } finally {
     emit({ compoundInProgress: false });
     if (release) release();
