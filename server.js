@@ -419,19 +419,12 @@ const _routes = {
         await walletManager.revealWallet(body.password)
       ).privateKey;
       console.log("[server] Wallet unlocked via dashboard");
-      _routeHandlers
-        ._decryptApiKeys(body.password)
-        .catch((e) =>
-          console.warn("[server] API key decrypt failed:", e.message),
-        );
+      const _pw = body.password;
+      const _w = (t) => (e) => console.warn("[server] %s: %s", t, e.message);
+      _routeHandlers._decryptApiKeys(_pw).catch(_w("API key decrypt failed"));
       _routeHandlers
         ._autoStartManagedPositions()
-        .catch((e) =>
-          console.warn(
-            "[server] Auto-start after unlock" + " failed:",
-            e.message,
-          ),
-        );
+        .catch(_w("Auto-start failed"));
       jsonResponse(res, 200, { ok: true });
     } catch (_err) {
       jsonResponse(res, 401, {
@@ -450,6 +443,9 @@ const _routes = {
   "POST /api/config": _routeHandlers._handleApiConfig,
   "POST /api/api-keys": _routeHandlers._handleApiKeySave,
   "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,
+  "POST /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramConfig,
+  "GET /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramStatus,
+  "POST /api/telegram/test": _routeHandlers._tgHandlers.handleTelegramTest,
   "POST /api/wallet": _routeHandlers._handleWalletImport,
   "POST /api/wallet/reveal": _routeHandlers._handleWalletReveal,
   "POST /api/positions/scan": _routeHandlers._handlePositionsScan,

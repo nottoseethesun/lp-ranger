@@ -1713,6 +1713,36 @@
   min-height: 14px;
 }
 
+/* Telegram events fieldset */
+.\39 mm-pos-mgr-tg-events {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.\39 mm-pos-mgr-tg-events legend {
+  padding: 0 4px;
+}
+
+.\39 mm-pos-mgr-tg-events label {
+  display: block;
+  margin: 4px 0;
+  cursor: pointer;
+}
+
+.\39 mm-pos-mgr-text-ok {
+  color: var(--accent);
+}
+
+.\39 mm-pos-mgr-text-err {
+  color: #f44;
+}
+
+/* Telegram modal — must sit above wallet setup modal (both z-index:1000) */
+.\39 mm-pos-mgr-tg-modal {
+  z-index: 1001;
+}
+
 /* Blur panels while syncing — applied/removed by _updateSyncBadge */
 .\39 mm-pos-mgr-syncing-blur {
   filter: blur(3px);
