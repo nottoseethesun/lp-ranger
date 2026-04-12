@@ -73,3 +73,54 @@ export function isInputDirty(elementId) {
 export function clearDirtyInputs() {
   _dirtyInputs.clear();
 }
+
+// ── V2 status flattening ────────────────────────────────────────────────────
+
+/**
+ * Flatten the V2 status response into a single object for the active position.
+ * Merges global + per-position data, with tokenId reconciliation when the
+ * server's active position differs from the browser's.
+ */
+export function flattenV2Status(v2) {
+  const global = v2.global || {},
+    positions = v2.positions || {};
+  const active = posStore.getActive();
+  const myKey = active
+    ? compositeKey(
+        "pulsechain",
+        global.walletAddress,
+        active.contractAddress,
+        active.tokenId,
+      )
+    : null;
+  let posData = myKey ? positions[myKey] : null;
+  if (
+    !posData &&
+    active?.token0 &&
+    active?.contractAddress &&
+    global.walletAddress
+  ) {
+    const pfx =
+      "pulsechain-" + global.walletAddress + "-" + active.contractAddress + "-";
+    const at0 = active.token0.toLowerCase();
+    const mk = Object.keys(positions).find((k) => {
+      if (!k.startsWith(pfx) || k === myKey) return false;
+      const ap = positions[k]?.activePosition;
+      return ap && ap.fee === active.fee && ap.token0?.toLowerCase() === at0;
+    });
+    if (mk) {
+      posData = positions[mk];
+      const nid = mk.split("-").pop();
+      if (nid !== active.tokenId) posStore.updateActiveTokenId(nid);
+    }
+  }
+  return {
+    ...global,
+    ...(posData || {}),
+    _hasPositionData: !!posData,
+    _managedPositions: global.managedPositions || [],
+    _allPositionStates: positions,
+    _poolDailyCounts: global.poolDailyCounts || {},
+    _positionScan: global.positionScan || null,
+  };
+}

@@ -356,6 +356,7 @@ const _routes = {
       "autoCompoundThresholdUsd",
       "totalCompoundedUsd",
       "lastCompoundAt",
+      "offsetToken0Pct",
     ];
     for (const [key, posConfig] of Object.entries(_diskConfig.positions)) {
       if (!positions[key]) {

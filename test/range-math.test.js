@@ -478,3 +478,4 @@ describe("priceToTick edge cases", () => {
     assert.throws(() => priceToTick(-1, 18, 18), /must be > 0/);
   });
 });
+// Offset tests are in test/range-math-offset.test.js

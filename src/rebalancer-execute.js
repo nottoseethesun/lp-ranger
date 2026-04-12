@@ -163,6 +163,9 @@ function _sumGas(...steps) {
  *
  * A second check (Step 6c) runs right before mint to catch the case
  * where the price keeps moving even after this adjustment.
+ *
+ * When an offset is active (≠ 50), the tick may intentionally be
+ * outside the range.  Skip the adjustment to preserve offset intent.
  */
 async function _adjustRangeAfterSwap(
   provider,
@@ -171,7 +174,9 @@ async function _adjustRangeAfterSwap(
   factoryAddress,
   poolState,
   newRange,
+  offset,
 ) {
+  if (offset !== undefined && offset !== 50) return;
   const ps = await getPoolState(provider, ethersLib, {
     factoryAddress,
     token0: position.token0,
@@ -198,7 +203,8 @@ async function _adjustRangeAfterSwap(
 }
 
 /** Compute new tick range: custom width or preserve existing spread. */
-function _computeRange(ps, pos, crw) {
+function _computeRange(ps, pos, crw, offset) {
+  const opts = { offsetToken0Pct: offset ?? 50 };
   return crw
     ? rangeMath.computeNewRange(
         ps.price,
@@ -206,7 +212,10 @@ function _computeRange(ps, pos, crw) {
         pos.fee,
         ps.decimals0,
         ps.decimals1,
-        { currentTick: ps.tick },
+        {
+          currentTick: ps.tick,
+          ...opts,
+        },
       )
     : rangeMath.preserveRange(
         ps.tick,
@@ -215,6 +224,7 @@ function _computeRange(ps, pos, crw) {
         pos.fee,
         ps.decimals0,
         ps.decimals1,
+        opts,
       );
 }
 
@@ -258,6 +268,41 @@ function _buildRebalanceResult(
   };
 }
 
+/**
+ * Step 6c pre-mint volatility check.  Returns a failure result if the
+ * tick moved outside the range after the swap, or null to continue.
+ * Skipped when offset ≠ 50 (one-sided positions are intentional).
+ */
+async function _preMintTickCheck(
+  provider,
+  ethersLib,
+  position,
+  factoryAddress,
+  newRange,
+  offset,
+) {
+  if (offset !== 50) return null;
+  const ps = await getPoolState(provider, ethersLib, {
+    factoryAddress,
+    token0: position.token0,
+    token1: position.token1,
+    fee: position.fee,
+  });
+  if (ps.tick >= newRange.lowerTick && ps.tick < newRange.upperTick)
+    return null;
+  console.warn(
+    "[rebalance] Step 6c: tick %d still outside [%d, %d] after adjustment — price too volatile",
+    ps.tick,
+    newRange.lowerTick,
+    newRange.upperTick,
+  );
+  return {
+    success: false,
+    priceVolatile: true,
+    error: "Price moved during rebalance — backing off",
+  };
+}
+
 module.exports = {
   _walletBalances,
   _swapAndAdjust,
@@ -267,4 +312,5 @@ module.exports = {
   _adjustRangeAfterSwap,
   _computeRange,
   _buildRebalanceResult,
+  _preMintTickCheck,
 };

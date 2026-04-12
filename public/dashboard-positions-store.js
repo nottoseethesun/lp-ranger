@@ -480,10 +480,19 @@ export function _applyLocalPositionData(pos) {
   const t1Full = pos.token1Symbol || t1Sym;
   _setText("statT0Name", t0Sym);
   _setText("statT1Name", t1Sym);
-  const cp0 = g("copyT0"),
-    cp1 = g("copyT1");
-  if (cp0) cp0.dataset.copyAddr = pos.token0 || "";
-  if (cp1) cp1.dataset.copyAddr = pos.token1 || "";
+  // Set copy-to-clipboard addresses for all copy icons
+  for (const [id, addr] of [
+    ["copyT0", pos.token0],
+    ["copyT1", pos.token1],
+    ["copyOffsetT0", pos.token0],
+    ["copyOffsetT1", pos.token1],
+  ]) {
+    const el = g(id);
+    if (el) el.dataset.copyAddr = addr || "";
+  }
+  // Offset row labels
+  _setText("offsetT0Name", t0Sym);
+  _setText("offsetT1Name", t1Sym);
   const _t = (id, t) => {
     const e = g(id);
     if (e) e.title = t;
