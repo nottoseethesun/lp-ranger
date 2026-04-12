@@ -70,7 +70,7 @@ describe("_buildDailyPnl", () => {
     assert.deepStrictEqual(_buildDailyPnl([], null), []);
   });
 
-  it("puts live epoch P&L on today only", () => {
+  it("attributes live epoch P&L to today only, older days show noData", () => {
     const today = new Date().toISOString().slice(0, 10);
     const liveEpoch = {
       openTime: Date.now() - 2 * 86_400_000,
@@ -80,30 +80,28 @@ describe("_buildDailyPnl", () => {
       gas: 0.3,
     };
     const result = _buildDailyPnl([], liveEpoch);
-    assert.strictEqual(result.length, 1, "only today");
+    assert.strictEqual(
+      result.length,
+      1,
+      "only today (no filler without fromDate)",
+    );
     assert.strictEqual(result[0].date, today);
     assert.ok(Math.abs(result[0].feePnl - 3) < 0.01, "all fees on today");
-    assert.ok(
-      Math.abs(result[0].priceChangePnl - -6) < 0.01,
-      "all price change on today",
-    );
-    assert.ok(Math.abs(result[0].gasCost - 0.3) < 0.01, "all gas on today");
+    assert.strictEqual(result[0].noData, false, "today has real data");
   });
 
-  it("fills zero-value days from fromDate to today", () => {
+  it("fills noData days from fromDate to today", () => {
     const today = new Date().toISOString().slice(0, 10);
     const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000)
       .toISOString()
       .slice(0, 10);
     const result = _buildDailyPnl([], null, threeDaysAgo);
-    // Should have 4 days: threeDaysAgo, twoDaysAgo, yesterday, today
     assert.strictEqual(result.length, 4);
     assert.strictEqual(result[0].date, today);
     assert.strictEqual(result[result.length - 1].date, threeDaysAgo);
-    // All zero
     result.forEach((d) => {
+      assert.strictEqual(d.noData, true, `${d.date} should be noData`);
       assert.strictEqual(d.netPnl, 0);
-      assert.strictEqual(d.cumulative, 0);
     });
   });
 
@@ -153,7 +151,7 @@ describe("_buildDailyPnl", () => {
       assert.strictEqual(d.feePnl, 0, `${d.date} should have $0 fees`);
   });
 
-  it("distributes closed epoch fees across open→close duration", () => {
+  it("attributes closed epoch totals to close day only", () => {
     const day1 = new Date("2025-06-01T10:00:00Z").getTime();
     const day3 = new Date("2025-06-03T14:00:00Z").getTime();
     const closedEpoch = {
@@ -165,18 +163,10 @@ describe("_buildDailyPnl", () => {
       gas: 0.3,
     };
     const result = _buildDailyPnl([closedEpoch], null);
-    assert.strictEqual(result.length, 3, "should have 3 days");
-    assert.strictEqual(result[0].date, "2025-06-03", "newest first");
-    assert.strictEqual(result[2].date, "2025-06-01", "oldest last");
-    const totalFees = result.reduce((s, d) => s + d.feePnl, 0);
-    assert.ok(Math.abs(totalFees - 3) < 0.01, "total fees should sum to 3");
-    // Each day gets 1/3
-    for (const d of result) {
-      assert.ok(
-        Math.abs(d.feePnl - 1) < 0.01,
-        `day ${d.date} should have ~$1 fee`,
-      );
-    }
+    assert.strictEqual(result.length, 1, "only close day");
+    assert.strictEqual(result[0].date, "2025-06-03");
+    assert.ok(Math.abs(result[0].feePnl - 3) < 0.01, "all fees on close day");
+    assert.strictEqual(result[0].noData, false);
   });
 
   it("merges fromDate fill with epoch data", () => {

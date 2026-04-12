@@ -245,7 +245,11 @@ function createRouteHandlers(deps) {
     if (!pk) return;
     const states = getAllPositionBotStates();
     const s = states.get(pk) || {};
-    s.rebalanceScanComplete = true;
+    // For managed positions the bot loop owns the sync flag — setting it
+    // here would cause a "Done Syncing" → "Syncing…" flash when the bot's
+    // own scan starts moments later.
+    const isManaged = diskConfig.positions[pk]?.status === "running";
+    if (!isManaged) s.rebalanceScanComplete = true;
     // pnlSnapshot is already enriched by computeLifetimeDetails with
     // currentValue, lifetimeIL, totalCompoundedUsd, initialDeposit.
     if (result.pnlSnapshot) s.pnlSnapshot = result.pnlSnapshot;
