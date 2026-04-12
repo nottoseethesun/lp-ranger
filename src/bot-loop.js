@@ -38,6 +38,7 @@ const {
   _activePosSummary,
 } = require("./bot-recorder");
 const { notify: _notify } = require("./telegram");
+const { checkGasBalance } = require("./gas-monitor");
 const {
   pollCycle,
   resolvePrivateKey,
@@ -345,6 +346,17 @@ async function startBotLoop(opts) {
     setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);
   }
 
+  function _checkGas() {
+    if (!botState._gasAlertState) botState._gasAlertState = { alerted: false };
+    checkGasBalance({
+      provider,
+      address,
+      pnlTracker,
+      position,
+      alertState: botState._gasAlertState,
+    }).catch(() => {});
+  }
+
   const poll = async () => {
     if (polling) return;
     polling = true;
@@ -417,6 +429,7 @@ async function startBotLoop(opts) {
     } finally {
       polling = false;
     }
+    _checkGas();
     // Honor queued position switch (requested while rebalance was in progress)
     if (botState.pendingSwitch) {
       console.log(

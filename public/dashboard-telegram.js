@@ -25,6 +25,7 @@ const _EVENT_IDS = [
   "compoundSuccess",
   "compoundFail",
   "otherError",
+  "lowGasBalance",
 ];
 
 /** Track whether the wallet modal was open when we launched. */

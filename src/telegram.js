@@ -26,6 +26,7 @@ const EVENT_DEFAULTS = {
   compoundSuccess: false,
   compoundFail: true,
   otherError: true,
+  lowGasBalance: true,
 };
 
 /** Human-readable labels for each event type. */
@@ -36,6 +37,7 @@ const EVENT_LABELS = {
   compoundSuccess: "Compound Succeeded",
   compoundFail: "Compound Failed",
   otherError: "Other Error",
+  lowGasBalance: "Low Gas Balance",
 };
 
 /** Currently enabled events (mutated in place by setEnabledEvents). */

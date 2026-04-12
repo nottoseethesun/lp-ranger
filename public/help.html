@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/9mm-pos-mgr.css">
   <link rel="stylesheet" href="/fonts.css">
-  <link rel="stylesheet" href="/help.css?v=4">
+  <link rel="stylesheet" href="/help.css?v=6">
 </head>
 <body>
   <h1>LP Ranger Help and User Manual</h1>
@@ -24,7 +24,9 @@
       <li><a href="#closed-positions">Closed Positions</a></li>
       <li><a href="#telegram-notifications">Telegram Notifications</a></li>
       <li><a href="#troubleshooting">Troubleshooting</a></li>
-      <li><a href="#details">Details</a></li>
+      <li><a href="#details">Details</a>
+        <ul><li><a href="#edit-deposit">Edit Initial / Lifetime Deposit</a></li></ul>
+      </li>
       <li><a href="#supported-pool-managers">Supported Liquidity Pool Managers</a></li>
       <li><a href="#supported-blockchains">Supported Blockchains</a></li>
     </ol>
@@ -66,7 +68,9 @@
     <li><strong>Compound Succeeded</strong> (default OFF) &mdash; unclaimed fees were successfully compounded back into the position.</li>
     <li><strong>Compound Failed</strong> (default ON) &mdash; a compound attempt failed.</li>
     <li><strong>Other Error</strong> (default ON) &mdash; an unexpected error occurred during a poll cycle, including stuck transactions that were auto-cancelled.</li>
+    <li><strong>Low Gas Balance</strong> (default ON) &mdash; the wallet&rsquo;s native token balance (e.g. PLS) has dropped below the estimated cost of the next rebalance. The threshold is 4&times; the last rebalance&rsquo;s actual gas cost, or if no rebalance has occurred yet, an estimate based on current gas prices doubled for safety. The alert fires once and resets when the balance recovers, so you won&rsquo;t be spammed.</li>
   </ul>
+  <br>
   <p><strong>Setup:</strong></p>
   <ol>
     <li>Open Telegram and message <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>. Send <code>/newbot</code>, follow the prompts, and it will give you a <strong>bot token</strong> (looks like <code>123456789:ABCdefGhI...</code>).</li>
@@ -95,8 +99,18 @@
   <h2 id="details">Details</h2>
   <ul>
     <li><strong>Gas Costs:</strong> All crypto gas costs displayed in this app are computed using the <strong>current price</strong> of the native gas token (e.g. PLS on PulseChain). This means gas figures always reflect what the gas would cost at today&rsquo;s price, not the price at the time of the original transaction.</li>
-    <li><strong>Historical Prices:</strong> Historical token prices (from GeckoTerminal) are used in two ways: (1) to show the original value of the total lifetime deposit into an LP position at the time it was created, and (2) to show the original value of the first historical LP position deposit for the purpose of calculating lifetime gain/loss over a five-year lookback on the current wallet.</li>
+    <li><strong>Historical Prices:</strong> Historical token prices (from GeckoTerminal, Moralis, etc) are used in two ways: (1) to show the original value of the total lifetime deposit into an LP position at the time it was created, and (2) to show the original value of the first historical LP position deposit for the purpose of calculating lifetime gain/loss over a five-year lookback on the current wallet.</li>
   </ul>
+
+  <h3 id="edit-deposit">Edit Initial / Lifetime Deposit</h3>
+  <p>LP Ranger automatically detects the USD value of your initial deposit by looking up historical token prices at the time you minted the position. This auto-detected value appears in the Lifetime panel as the deposit amount. However, historical prices are not always available (especially for newer or low-liquidity tokens), so the app lets you enter the deposit value manually.</p>
+  <p><strong>How it works:</strong></p>
+  <ul>
+    <li>If you enter a value and save, your manual entry takes priority over the auto-detected value. The app will never overwrite your manual entry.</li>
+    <li>The auto-detected deposit from the blockchain scan runs independently in the background. It does not change your saved value &mdash; it only serves as a fallback when no manual value is set.</li>
+    <li>To revert to auto-detection, clear the input field (leave it empty) and click Save. This removes your manual override, and the app will use the auto-detected value on the next refresh.</li>
+  </ul>
+  <p>A small info icon next to the deposit value tells you which source is being used: &ldquo;Manually entered&rdquo;, &ldquo;Valued using Historical Price&rdquo;, or &ldquo;Valued using Current Price&rdquo; (when historical prices were unavailable and the current price was used as a fallback).</p>
 
   <h2 id="supported-pool-managers">Supported Liquidity Pool Managers</h2>
   <ul>
