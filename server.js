@@ -115,7 +115,7 @@ const walletManager = require("./src/wallet-manager");
 const { getPositionHistory } = require("./src/position-history");
 const { createRebalanceLock } = require("./src/rebalance-lock");
 const { createPositionManager } = require("./src/position-manager");
-const { loadConfig, saveConfig, managedKeys } = require("./src/bot-config-v2");
+const { loadConfig, managedKeys } = require("./src/bot-config-v2");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 
 // ── app-config migration ─────────────────────────────
@@ -286,7 +286,6 @@ const {
 } = require("./src/server-positions");
 
 const { createRouteHandlers } = require("./src/server-routes");
-const { createTelegramHandlers } = require("./src/server-telegram");
 
 const _routeHandlers = createRouteHandlers({
   diskConfig: _diskConfig,
@@ -299,14 +298,6 @@ const _routeHandlers = createRouteHandlers({
   createPerPositionBotState,
   attachMultiPosDeps,
   updatePositionState,
-});
-
-const _telegramHandlers = createTelegramHandlers({
-  readJsonBody,
-  jsonResponse,
-  saveConfig,
-  diskConfig: _diskConfig,
-  getSessionPassword: () => _routeHandlers.getSessionPassword(),
 });
 
 // ── Multi-position management routes ────────────────
@@ -429,17 +420,11 @@ const _routes = {
       ).privateKey;
       console.log("[server] Wallet unlocked via dashboard");
       const _pw = body.password;
-      const _warn = (tag) => (e) =>
-        console.warn("[server] %s: %s", tag, e.message);
-      _routeHandlers
-        ._decryptApiKeys(_pw)
-        .catch(_warn("API key decrypt failed"));
-      _telegramHandlers
-        .decryptTelegramKeys(_pw)
-        .catch(_warn("Telegram decrypt failed"));
+      const _w = (t) => (e) => console.warn("[server] %s: %s", t, e.message);
+      _routeHandlers._decryptApiKeys(_pw).catch(_w("API key decrypt failed"));
       _routeHandlers
         ._autoStartManagedPositions()
-        .catch(_warn("Auto-start failed"));
+        .catch(_w("Auto-start failed"));
       jsonResponse(res, 200, { ok: true });
     } catch (_err) {
       jsonResponse(res, 401, {
@@ -458,9 +443,9 @@ const _routes = {
   "POST /api/config": _routeHandlers._handleApiConfig,
   "POST /api/api-keys": _routeHandlers._handleApiKeySave,
   "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,
-  "POST /api/telegram/config": _telegramHandlers.handleTelegramConfig,
-  "GET /api/telegram/config": _telegramHandlers.handleTelegramStatus,
-  "POST /api/telegram/test": _telegramHandlers.handleTelegramTest,
+  "POST /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramConfig,
+  "GET /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramStatus,
+  "POST /api/telegram/test": _routeHandlers._tgHandlers.handleTelegramTest,
   "POST /api/wallet": _routeHandlers._handleWalletImport,
   "POST /api/wallet/reveal": _routeHandlers._handleWalletReveal,
   "POST /api/positions/scan": _routeHandlers._handlePositionsScan,

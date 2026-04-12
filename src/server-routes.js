@@ -14,6 +14,7 @@ const {
   hasEncryptedKey,
 } = require("./api-key-store");
 const { setApiKey, getApiKey } = require("./api-key-holder");
+const { createTelegramHandlers } = require("./server-telegram");
 const {
   getPositionConfig,
   saveConfig,
@@ -518,8 +519,17 @@ function createRouteHandlers(deps) {
    * Decrypt all known API keys after wallet unlock.
    * @param {string} password  Wallet password.
    */
+  const _tgHandlers = createTelegramHandlers({
+    readJsonBody,
+    jsonResponse,
+    diskConfig,
+    getSessionPassword: () => _sessionPassword,
+    saveConfig: (cfg) => saveConfig(cfg),
+  });
+
   async function _decryptApiKeys(password) {
     _sessionPassword = password;
+    _tgHandlers.decryptTelegramKeys(password).catch(() => {});
     for (const svc of ["moralis"]) {
       if (!hasEncryptedKey(svc)) {
         console.log("[server] No %s API key configured", svc);
@@ -568,7 +578,7 @@ function createRouteHandlers(deps) {
     _handleApiKeySave,
     _handleApiKeyStatus,
     _decryptApiKeys,
-    getSessionPassword: () => _sessionPassword,
+    _tgHandlers,
   };
 }
 
