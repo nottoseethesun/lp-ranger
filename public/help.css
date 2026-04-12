@@ -80,6 +80,12 @@ a:hover {
   color: #b0c4d0;
 }
 
+.help-toc ul {
+  margin: 0;
+  padding: 0 0 0 1.5rem;
+  line-height: 2;
+}
+
 .help-toc a {
   color: var(--accent);
   text-decoration: none;
