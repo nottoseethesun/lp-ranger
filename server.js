@@ -304,9 +304,9 @@ const _routeHandlers = createRouteHandlers({
 const _telegramHandlers = createTelegramHandlers({
   readJsonBody,
   jsonResponse,
+  saveConfig,
   diskConfig: _diskConfig,
   getSessionPassword: () => _routeHandlers.getSessionPassword(),
-  saveConfig: (cfg) => saveConfig(cfg),
 });
 
 // ── Multi-position management routes ────────────────
@@ -439,12 +439,7 @@ const _routes = {
         .catch(_warn("Telegram decrypt failed"));
       _routeHandlers
         ._autoStartManagedPositions()
-        .catch((e) =>
-          console.warn(
-            "[server] Auto-start after unlock" + " failed:",
-            e.message,
-          ),
-        );
+        .catch(_warn("Auto-start failed"));
       jsonResponse(res, 200, { ok: true });
     } catch (_err) {
       jsonResponse(res, 401, {
