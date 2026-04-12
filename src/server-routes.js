@@ -522,9 +522,9 @@ function createRouteHandlers(deps) {
   const _tgHandlers = createTelegramHandlers({
     readJsonBody,
     jsonResponse,
+    saveConfig,
     diskConfig,
     getSessionPassword: () => _sessionPassword,
-    saveConfig: (cfg) => saveConfig(cfg),
   });
 
   async function _decryptApiKeys(password) {
