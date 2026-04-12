@@ -68,7 +68,9 @@
     <li><strong>Compound Succeeded</strong> (default OFF) &mdash; unclaimed fees were successfully compounded back into the position.</li>
     <li><strong>Compound Failed</strong> (default ON) &mdash; a compound attempt failed.</li>
     <li><strong>Other Error</strong> (default ON) &mdash; an unexpected error occurred during a poll cycle, including stuck transactions that were auto-cancelled.</li>
+    <li><strong>Low Gas Balance</strong> (default ON) &mdash; the wallet&rsquo;s native token balance (e.g. PLS) has dropped below the estimated cost of the next rebalance. The threshold is 4&times; the last rebalance&rsquo;s actual gas cost, or if no rebalance has occurred yet, an estimate based on current gas prices doubled for safety. The alert fires once and resets when the balance recovers, so you won&rsquo;t be spammed.</li>
   </ul>
+  <br>
   <p><strong>Setup:</strong></p>
   <ol>
     <li>Open Telegram and message <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>. Send <code>/newbot</code>, follow the prompts, and it will give you a <strong>bot token</strong> (looks like <code>123456789:ABCdefGhI...</code>).</li>
