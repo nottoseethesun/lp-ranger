@@ -17,6 +17,7 @@ const {
   _adjustRangeAfterSwap,
   _computeRange,
   _buildRebalanceResult,
+  _preMintTickCheck,
 } = require("./rebalancer-execute");
 
 const {
@@ -205,7 +206,9 @@ async function executeRebalance(signer, ethersLib, opts) {
     swapRouterAddress,
     slippagePct,
     customRangeWidthPct,
+    offsetToken0Pct,
   } = opts;
+  const offset = offsetToken0Pct ?? 50;
   if (!position.tokenId || !position.fee || position.fee <= 0) {
     throw new Error(
       "Only V3 NFT positions are supported. V2 positions use a different contract and cannot be rebalanced by this tool.",
@@ -248,7 +251,21 @@ async function executeRebalance(signer, ethersLib, opts) {
     if (removed.txHash) txHashes.push(removed.txHash);
 
     // 4. Compute new range — custom width if specified, else preserve existing tick spread
-    const newRange = _computeRange(poolState, position, customRangeWidthPct);
+    const newRange = _computeRange(
+      poolState,
+      position,
+      customRangeWidthPct,
+      offset,
+    );
+    if (offset !== 50) {
+      console.log(
+        "[rebalance] Step 4: offset=%d%% token0 / %d%% token1, ticks=[%d,%d]",
+        offset,
+        100 - offset,
+        newRange.lowerTick,
+        newRange.upperTick,
+      );
+    }
     if (customRangeWidthPct) {
       const ePct = (
         ((newRange.upperPrice - newRange.lowerPrice) / poolState.price) *
@@ -316,6 +333,7 @@ async function executeRebalance(signer, ethersLib, opts) {
 
     // 6b. Re-read pool tick after swap — price impact may have moved it
     //     outside the range computed in step 4.  Shift if needed.
+    //     Skipped when offset ≠ 50 (tick may be intentionally at edge).
     await _adjustRangeAfterSwap(
       provider,
       ethersLib,
@@ -323,32 +341,19 @@ async function executeRebalance(signer, ethersLib, opts) {
       factoryAddress,
       poolState,
       newRange,
+      offset,
     );
 
-    // 6c. Final tick check before mint — if price STILL moved outside the
-    //     adjusted range, the market is too volatile to mint safely.
-    const preMintState = await getPoolState(provider, ethersLib, {
+    // 6c. Final tick check — skipped when offset ≠ 50 (one-sided OK).
+    const volatileResult = await _preMintTickCheck(
+      provider,
+      ethersLib,
+      position,
       factoryAddress,
-      token0: position.token0,
-      token1: position.token1,
-      fee: position.fee,
-    });
-    if (
-      preMintState.tick < newRange.lowerTick ||
-      preMintState.tick >= newRange.upperTick
-    ) {
-      console.warn(
-        "[rebalance] Step 6c: tick %d still outside [%d, %d] after adjustment — price too volatile",
-        preMintState.tick,
-        newRange.lowerTick,
-        newRange.upperTick,
-      );
-      return {
-        success: false,
-        priceVolatile: true,
-        error: "Price moved during rebalance — backing off",
-      };
-    }
+      newRange,
+      offset,
+    );
+    if (volatileResult) return volatileResult;
 
     // 7. Mint new position with FULL wallet balance (collected + residuals + swapped)
     const [mintBal0, mintBal1] = await Promise.all([

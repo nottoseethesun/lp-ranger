@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1775973450117">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1775973450117">
+<link rel="stylesheet" href="style.css?v=1776027855602">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776027855602">
 </head>
 <body>
 
@@ -449,7 +449,7 @@
           <span class="punit">%</span>
         </div>
       </div>
-      <p class="9mm-pos-mgr-text-muted" id="rebalanceRangeHint">5% on either side of the current price</p>
+      <p class="9mm-pos-mgr-text-muted"><span id="rebalanceRangeHint">5% on either side of the current price</span> <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" role="img" aria-label="Offset info">i</span><span class="9mm-pos-mgr-info-popover 9mm-pos-mgr-info-popover-above">Set the Position Offset in the Range &amp; Execution panel, or click &ldquo;No Offset&rdquo; there to set it to 50/50.</span></span></p>
     </div>
     <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Note: Rebalancing can take some time as it involves on-chain transactions. Use your wallet software and/or check this app&rsquo;s logs for details.</p>
     <div class="9mm-pos-mgr-btn-row">
@@ -871,6 +871,27 @@
           <option value="auto">Auto</option><option value="fast">Fast</option><option value="slow">Economy</option>
         </select>
       </div>
+      <div class="prow 9mm-pos-mgr-offset-row">
+        <span class="plbl">Position Offset</span>
+        <div class="9mm-pos-mgr-offset-inputs">
+          <span class="plbl">
+            <span id="offsetT0Name">Token 0</span>
+            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT0" data-copy-addr="" title="Copy contract address">&#x274F;</span>
+          </span>
+          <input type="number" class="pinput w55" id="inOffsetToken0" value="50" min="0" max="100" step="1">
+          <span class="punit">%</span>
+          <span class="plbl 9mm-pos-mgr-ml-sm">
+            <span id="offsetT1Name">Token 1</span>
+            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT1" data-copy-addr="" title="Copy contract address">&#x274F;</span>
+          </span>
+          <input type="number" class="pinput w55" id="inOffsetToken1" value="50" min="0" max="100" step="1">
+          <span class="punit">%</span>
+        </div>
+        <div class="9mm-pos-mgr-input-row">
+          <button type="button" class="save-range-btn" id="resetOffsetBtn" title="Reset to 50/50">No Offset</button>
+          <button type="button" class="save-range-btn" id="saveOffsetBtn" title="Save rebalance offset">Save</button>
+        </div>
+      </div>
     </div>
 
     <!-- Contracts & Network -->
@@ -986,6 +1007,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1775973450117"></script>
+<script src="dist/bundle.js?v=1776027855602"></script>
 </body>
 </html>

@@ -13,8 +13,20 @@ function _updateRangeHint() {
   const hint = g("rebalanceRangeHint");
   if (!input || !hint) return;
   const total = parseFloat(input.value) || 10;
-  const half = (total / 2).toFixed(3).replace(/\.?0+$/, "");
-  hint.textContent = `${half}% on either side of the current price`;
+  const offset = parseInt(g("inOffsetToken0")?.value, 10) || 50;
+  if (offset === 50) {
+    const half = (total / 2).toFixed(3).replace(/\.?0+$/, "");
+    hint.textContent = `${half}% on either side of the current price`;
+  } else {
+    const below = ((total * (100 - offset)) / 100)
+      .toFixed(3)
+      .replace(/\.?0+$/, "");
+    const above = ((total * offset) / 100).toFixed(3).replace(/\.?0+$/, "");
+    const a = posStore.getActive();
+    const t0 = a?.token0Symbol || "Token 0";
+    const t1 = a?.token1Symbol || "Token 1";
+    hint.textContent = `${below}% below / ${above}% above current price (${offset}% ${t0} / ${100 - offset}% ${t1})`;
+  }
 }
 
 /** Open the Rebalance with Updated Range modal. */

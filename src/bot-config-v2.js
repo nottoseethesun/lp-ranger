@@ -56,6 +56,7 @@ const POSITION_KEYS = [
   "compoundHistory",
   "totalCompoundedUsd",
   "lastCompoundAt",
+  "offsetToken0Pct",
 ];
 
 /**

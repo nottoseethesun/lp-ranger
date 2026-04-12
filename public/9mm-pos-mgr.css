@@ -93,6 +93,23 @@
   gap: 6px;
 }
 
+.\39 mm-pos-mgr-offset-inputs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.\39 mm-pos-mgr-offset-row {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.\39 mm-pos-mgr-ml-sm {
+  margin-left: 6px;
+}
+
 .\39 mm-pos-mgr-action-row {
   display: flex;
   gap: 8px;
@@ -661,6 +678,14 @@
 
 .\39 mm-pos-mgr-info-wrap:hover .\39 mm-pos-mgr-info-popover {
   display: block;
+}
+
+.\39 mm-pos-mgr-info-popover-above {
+  top: auto;
+  bottom: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  transform: none;
 }
 
 .\39 mm-pos-mgr-il-popover {

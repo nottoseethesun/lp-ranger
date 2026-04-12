@@ -395,6 +395,37 @@ export function saveGasStrategy() {
   _saveSingleConfig("inGas", "gasStrategy", (v) => v || "auto");
 }
 
+/** Update the complement offset input when one changes. */
+export function updateOffsetComplement(sourceId) {
+  const src = g(sourceId);
+  if (!src) return;
+  const val = Math.max(0, Math.min(100, parseInt(src.value, 10) || 0));
+  src.value = val;
+  const otherId =
+    sourceId === "inOffsetToken0" ? "inOffsetToken1" : "inOffsetToken0";
+  const other = g(otherId);
+  if (other) other.value = 100 - val;
+}
+
+/** Save the current offset value. */
+export function saveOffset() {
+  const el = g("inOffsetToken0");
+  const val = Math.max(0, Math.min(100, parseInt(el?.value, 10) || 50));
+  if (el) el.value = val;
+  const other = g("inOffsetToken1");
+  if (other) other.value = 100 - val;
+  _saveSingleConfig("inOffsetToken0", "offsetToken0Pct", () => val);
+}
+
+/** Reset offset to 50/50 and save. */
+export function resetOffset() {
+  const el0 = g("inOffsetToken0");
+  const el1 = g("inOffsetToken1");
+  if (el0) el0.value = 50;
+  if (el1) el1.value = 50;
+  saveOffset();
+}
+
 export {
   openRebalanceRangeModal,
   closeRebalanceRangeModal,

@@ -2,13 +2,7 @@
  * @file dashboard-data.js
  * @description Polls /api/status, updates live UI elements. Re-exports.
  */
-import {
-  g,
-  botConfig,
-  compositeKey,
-  act,
-  ACT_ICONS,
-} from "./dashboard-helpers.js";
+import { g, botConfig, act, ACT_ICONS } from "./dashboard-helpers.js";
 import {
   posStore,
   updateManagedPositions,
@@ -112,6 +106,7 @@ import {
   clearDirtyInputs,
   cacheRebalanceEvents,
   loadCachedRebalanceEvents,
+  flattenV2Status,
 } from "./dashboard-data-cache.js";
 export { markInputDirty };
 
@@ -130,7 +125,7 @@ function _syncRebCache(d) {
 }
 function _syncConfigFromServer(d) {
   // Skip until position-specific data is available (wallet may be locked,
-  // so _flattenV2Status can't match a position key). Re-syncs on switch.
+  // so flattenV2Status can't match a position key). Re-syncs on switch.
   if (!d._hasPositionData) return;
   const posKey = posStore.getActive()?.tokenId;
   if (!posKey || _configSynced === posKey) return;
@@ -144,12 +139,19 @@ function _syncConfigFromServer(d) {
     rebalanceTimeoutMin: "inOorTimeout",
     rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
     autoCompoundThresholdUsd: "autoCompoundThreshold",
+    offsetToken0Pct: "inOffsetToken0",
   };
   for (const [key, elId] of Object.entries(map)) {
     if (d[key] !== undefined && d[key] !== null && !isInputDirty(elId)) {
       const el = g(elId);
       if (el) el.value = d[key];
     }
+  }
+  // Keep the complement offset input in sync
+  const offEl0 = g("inOffsetToken0");
+  const offEl1 = g("inOffsetToken1");
+  if (offEl0 && offEl1) {
+    offEl1.value = 100 - (parseInt(offEl0.value, 10) || 50);
   }
   _syncAutoCompound(d);
   const dpk = _poolKey("9mm_deposit_pool_");
@@ -448,49 +450,6 @@ function _onPollFail() {
   if (_pollFailCount >= 3)
     _setStatusPill("status-pill danger", "dot red", "HALTED");
 }
-function _flattenV2Status(v2) {
-  const global = v2.global || {},
-    positions = v2.positions || {};
-  const active = posStore.getActive();
-  const myKey = active
-    ? compositeKey(
-        "pulsechain",
-        global.walletAddress,
-        active.contractAddress,
-        active.tokenId,
-      )
-    : null;
-  let posData = myKey ? positions[myKey] : null;
-  if (
-    !posData &&
-    active?.token0 &&
-    active?.contractAddress &&
-    global.walletAddress
-  ) {
-    const pfx =
-      "pulsechain-" + global.walletAddress + "-" + active.contractAddress + "-";
-    const at0 = active.token0.toLowerCase();
-    const mk = Object.keys(positions).find((k) => {
-      if (!k.startsWith(pfx) || k === myKey) return false;
-      const ap = positions[k]?.activePosition;
-      return ap && ap.fee === active.fee && ap.token0?.toLowerCase() === at0;
-    });
-    if (mk) {
-      posData = positions[mk];
-      const nid = mk.split("-").pop();
-      if (nid !== active.tokenId) posStore.updateActiveTokenId(nid);
-    }
-  }
-  return {
-    ...global,
-    ...(posData || {}),
-    _hasPositionData: !!posData,
-    _managedPositions: global.managedPositions || [],
-    _allPositionStates: positions,
-    _poolDailyCounts: global.poolDailyCounts || {},
-    _positionScan: global.positionScan || null,
-  };
-}
 async function _pollStatus() {
   try {
     const res = await fetch("/api/status");
@@ -499,7 +458,7 @@ async function _pollStatus() {
       return;
     }
     _pollFailCount = 0;
-    updateDashboardFromStatus(_flattenV2Status(await res.json()));
+    updateDashboardFromStatus(flattenV2Status(await res.json()));
   } catch (_) {
     _onPollFail();
   }

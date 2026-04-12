@@ -60,6 +60,9 @@ import {
   saveSlippage,
   saveCheckInterval,
   saveGasStrategy,
+  saveOffset,
+  resetOffset,
+  updateOffsetComplement,
   openRebalanceRangeModal,
   closeRebalanceRangeModal,
   updateRebalanceRangeHint,
@@ -404,7 +407,9 @@ export function bindAllEvents() {
     ".save-range-btn" +
       ":not(.save-oor-timeout-btn)" +
       ":not(#savePMBtn)" +
-      ":not(#saveFactoryBtn)",
+      ":not(#saveFactoryBtn)" +
+      ":not(#saveOffsetBtn)" +
+      ":not(#resetOffsetBtn)",
     "click",
     saveOorThreshold,
   );
@@ -415,6 +420,26 @@ export function bindAllEvents() {
   _click("saveMaxRebBtn", saveMaxReb);
   _click("saveSlipBtn", saveSlippage);
   _click("saveIntervalBtn", saveCheckInterval);
+  _click("saveOffsetBtn", saveOffset);
+  _click("resetOffsetBtn", resetOffset);
+
+  /* ── Offset linked inputs ── */
+  _change("inOffsetToken0", () => updateOffsetComplement("inOffsetToken0"));
+  _change("inOffsetToken1", () => updateOffsetComplement("inOffsetToken1"));
+
+  /* ── Offset copy icons (delegate on prow) ── */
+  const offsetRow = g("copyOffsetT0")?.closest(".prow");
+  if (offsetRow)
+    offsetRow.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-copy-addr]");
+      if (!b || !b.dataset.copyAddr) return;
+      navigator.clipboard.writeText(b.dataset.copyAddr).catch(() => {});
+      const orig = b.textContent;
+      b.textContent = "\u2713";
+      setTimeout(() => {
+        b.textContent = orig;
+      }, 1200);
+    });
 
   /* ── Dirty-flag: mark config inputs as edited so poll skips overwrite ── */
   for (const id of [
@@ -425,6 +450,7 @@ export function bindAllEvents() {
     "inMinInterval",
     "inMaxReb",
     "autoCompoundThreshold",
+    "inOffsetToken0",
   ])
     _change(id, () => markInputDirty(id));
 

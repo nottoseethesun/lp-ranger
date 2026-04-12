@@ -109,11 +109,60 @@ async function _prepareRebalance(deps) {
   return { release, state };
 }
 
+/** Handle all post-rebalance bookkeeping on success. */
+async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
+  state.swapBackoffMs = 0;
+  state.swapBackoffUntil = 0;
+  state.swapBackoffAttempts = 0;
+  throttle.recordRebalance();
+  if (deps._recordPoolRebalance && deps._poolKey) {
+    const pk = deps._poolKey(pos.token0, pos.token1, pos.fee);
+    deps._recordPoolRebalance(pk);
+    console.log(
+      "[bot] Recorded pool rebalance: %s (daily=%d)",
+      pk,
+      throttle.getState().dailyCount,
+    );
+  } else {
+    console.warn(
+      "[bot] Pool rebalance NOT recorded: _recordPoolRebalance=%s _poolKey=%s",
+      !!deps._recordPoolRebalance,
+      !!deps._poolKey,
+    );
+  }
+  try {
+    await enrichResultUsd(
+      result,
+      () => _fetchTokenPrices(pos.token0, pos.token1),
+      pos.token0,
+      pos.token1,
+    );
+  } catch (_) {
+    /* prices unavailable */
+  }
+  _recordResidual(deps, result);
+  appendLog(result);
+  console.log(
+    "[bot] Rebalance OK — new tokenId: #%s %s",
+    String(result.newTokenId),
+    emojiId(String(result.newTokenId)),
+  );
+  notify("rebalanceSuccess", {
+    position: _notifyPos(pos),
+    message: `New NFT #${result.newTokenId}`,
+    txHash: result.txHashes?.mint,
+  });
+  await _closePnlEpoch(deps, result);
+  _applyRebalanceResult(deps, result);
+  if (deps._botState?._triggerScan) deps._botState._triggerScan();
+}
+
 async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle } = deps;
   const { release, state } = await _prepareRebalance(deps);
   try {
     const crw = state.customRangeWidthPct;
+    const offset = deps._getConfig?.("offsetToken0Pct") ?? 50;
     const result = await executeRebalance(signer, ethersLib, {
       position,
       factoryAddress: config.FACTORY,
@@ -123,6 +172,7 @@ async function _executeAndRecord(deps, ethersLib) {
       symbol0: getTokenSymbol(position.token0),
       symbol1: getTokenSymbol(position.token1),
       ...(crw ? { customRangeWidthPct: crw } : {}),
+      offsetToken0Pct: offset,
     });
     // Price moved too fast — tokens are removed+swapped but not minted.
     // Activate exponential backoff so the next poll cycle waits before
@@ -133,56 +183,7 @@ async function _executeAndRecord(deps, ethersLib) {
     }
     if (result.success) {
       if (crw) delete state.customRangeWidthPct;
-      // Clear swap backoff on success — market stabilised
-      state.swapBackoffMs = 0;
-      state.swapBackoffUntil = 0;
-      state.swapBackoffAttempts = 0;
-      throttle.recordRebalance();
-      if (deps._recordPoolRebalance && deps._poolKey) {
-        const pk = deps._poolKey(
-          position.token0,
-          position.token1,
-          position.fee,
-        );
-        deps._recordPoolRebalance(pk);
-        console.log(
-          "[bot] Recorded pool rebalance: %s (daily=%d)",
-          pk,
-          throttle.getState().dailyCount,
-        );
-      } else {
-        console.warn(
-          "[bot] Pool rebalance NOT recorded: _recordPoolRebalance=%s _poolKey=%s",
-          !!deps._recordPoolRebalance,
-          !!deps._poolKey,
-        );
-      }
-      try {
-        await enrichResultUsd(
-          result,
-          () => _fetchTokenPrices(position.token0, position.token1),
-          position.token0,
-          position.token1,
-        );
-      } catch (_) {
-        /* prices unavailable */
-      }
-      _recordResidual(deps, result);
-      appendLog(result);
-      console.log(
-        "[bot] Rebalance OK — new tokenId: #%s %s",
-        String(result.newTokenId),
-        emojiId(String(result.newTokenId)),
-      );
-      notify("rebalanceSuccess", {
-        position: _notifyPos(position),
-        message: `New NFT #${result.newTokenId}`,
-        txHash: result.txHashes?.mint,
-      });
-      await _closePnlEpoch(deps, result);
-      _applyRebalanceResult(deps, result);
-      // Re-scan to pick up the new rebalance boundary for HODL tracking
-      if (deps._botState?._triggerScan) deps._botState._triggerScan();
+      await _handleRebalanceSuccess(deps, result, state, throttle, position);
     } else {
       console.error("[bot] Rebalance failed:", result.error);
       notify("rebalanceFail", {

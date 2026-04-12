@@ -111,6 +111,31 @@ function nearestUsableTick(tick, feeTier) {
 }
 
 /**
+ * Shift ticks so that currentTick is contained: lowerTick ≤ currentTick < upperTick.
+ * Width is preserved.  Returns the (possibly shifted) ticks.
+ * @param {number} lT    Lower tick.
+ * @param {number} uT    Upper tick.
+ * @param {number} tick   Current pool tick.
+ * @param {number} sp     Tick spacing.
+ * @param {number} fee    Fee tier.
+ * @returns {{ lowerTick: number, upperTick: number }}
+ */
+function _containTick(lT, uT, tick, sp, fee) {
+  const w = uT - lT;
+  if (tick < lT) {
+    lT = Math.floor(tick / sp) * sp;
+    uT = lT + w;
+  } else if (tick >= uT) {
+    uT = (Math.floor(tick / sp) + 1) * sp;
+    lT = uT - w;
+  }
+  if (lT < MIN_TICK) lT = nearestUsableTick(MIN_TICK, fee);
+  if (uT > MAX_TICK) uT = nearestUsableTick(MAX_TICK, fee);
+  if (lT >= uT) uT = lT + sp;
+  return { lowerTick: lT, upperTick: uT };
+}
+
+/**
  * Compute new lower and upper ticks for a rebalance centered on currentPrice
  * with a ±widthPct range.
  *
@@ -121,6 +146,10 @@ function nearestUsableTick(tick, feeTier) {
  * @param {number} decimals1      Token1 decimals.
  * @param {object} [opts]         Options.
  * @param {number} [opts.currentTick]  Actual pool tick (avoids float→tick rounding error).
+ * @param {number} [opts.offsetToken0Pct]  Token0 offset (0–100, default 50 = centered).
+ *   Controls how much of the range sits above the current price.
+ *   At 60, 60% of the range is above (more token0 deposited).
+ *   At 100, the entire range is above (one-sided token0).
  * @returns {{ lowerTick: number, upperTick: number, lowerPrice: number, upperPrice: number }}
  */
 function computeNewRange(
@@ -131,10 +160,16 @@ function computeNewRange(
   decimals1,
   opts,
 ) {
-  const factor = widthPct / 100;
-  // Clamp lowerPrice to a tiny positive value to avoid log(0)
-  const lowerPrice = Math.max(currentPrice * (1 - factor), Number.EPSILON);
-  const upperPrice = currentPrice * (1 + factor);
+  const offset = opts?.offsetToken0Pct ?? 50;
+  const fullWidth = (widthPct * 2) / 100; // total range as a fraction
+  // Distribute the range above/below current price according to offset.
+  // offset=50 → symmetric (same as the original factor = widthPct/100).
+  // offset=60 → 60% above, 40% below.  offset=100 → all above.
+  const lowerPrice = Math.max(
+    currentPrice * (1 - (fullWidth * (100 - offset)) / 100),
+    Number.EPSILON,
+  );
+  const upperPrice = currentPrice * (1 + (fullWidth * offset) / 100);
 
   let lowerTick = nearestUsableTick(
     priceToTick(lowerPrice, decimals0, decimals1),
@@ -172,23 +207,21 @@ function computeNewRange(
   // The rebalancer also re-checks the tick after the swap
   // (_adjustRangeAfterSwap) and before the mint (step 6c) as a second and
   // third line of defence.
+  //
+  // When the user has set an offset (≠ 50), the tick may intentionally be
+  // at or outside the boundary (one-sided position).  Skip the guard so
+  // the offset intent is preserved.
   const currentTick =
     opts?.currentTick ?? priceToTick(currentPrice, decimals0, decimals1);
-  const width = upperTick - lowerTick;
-  if (currentTick < lowerTick) {
-    // Tick is below the range — shift range down
-    lowerTick = Math.floor(currentTick / spacing) * spacing;
-    upperTick = lowerTick + width;
-  } else if (currentTick >= upperTick) {
-    // Tick is above the range — shift range up
-    upperTick = (Math.floor(currentTick / spacing) + 1) * spacing;
-    lowerTick = upperTick - width;
+  if (offset === 50) {
+    ({ lowerTick, upperTick } = _containTick(
+      lowerTick,
+      upperTick,
+      currentTick,
+      spacing,
+      feeTier,
+    ));
   }
-
-  // Re-clamp after shift
-  if (lowerTick < MIN_TICK) lowerTick = nearestUsableTick(MIN_TICK, feeTier);
-  if (upperTick > MAX_TICK) upperTick = nearestUsableTick(MAX_TICK, feeTier);
-  if (lowerTick >= upperTick) upperTick = lowerTick + spacing;
 
   // ── Postcondition: ticks must be valid V3 values ─────────────────────────
   if (lowerTick < MIN_TICK || upperTick > MAX_TICK || lowerTick >= upperTick) {
@@ -317,6 +350,9 @@ function isNearEdge(price, lower, upper, edgePct) {
  * @param {number} feeTier      Pool fee tier (500 | 3000 | 10000).
  * @param {number} decimals0    Token0 decimals.
  * @param {number} decimals1    Token1 decimals.
+ * @param {object} [opts]       Options.
+ * @param {number} [opts.offsetToken0Pct]  Token0 offset (0–100, default 50).
+ *   See {@link computeNewRange} for offset semantics.
  * @returns {{ lowerTick: number, upperTick: number, lowerPrice: number, upperPrice: number }}
  */
 function preserveRange(
@@ -326,15 +362,17 @@ function preserveRange(
   feeTier,
   decimals0,
   decimals1,
+  opts,
 ) {
   const spread = tickUpper - tickLower;
-  const half = Math.floor(spread / 2);
+  const offset = opts?.offsetToken0Pct ?? 50;
+  // Distribute the spread above/below the current tick according to offset.
+  // offset=50 → half above, half below (original centering behaviour).
+  const belowTicks = Math.round((spread * (100 - offset)) / 100);
   const spacing = TICK_SPACINGS[feeTier] ?? 60;
 
-  // Round each boundary independently — the spread itself is already valid
-  // because the original position's ticks were on-chain-enforced boundaries.
-  let newLower = nearestUsableTick(currentTick - half, feeTier);
-  let newUpper = nearestUsableTick(currentTick - half + spread, feeTier);
+  let newLower = nearestUsableTick(currentTick - belowTicks, feeTier);
+  let newUpper = nearestUsableTick(newLower + spread, feeTier);
 
   // Ensure the range is at least as wide as the original (rounding may shrink)
   if (newUpper - newLower < spread) newUpper += spacing;
@@ -347,24 +385,16 @@ function preserveRange(
   if (newLower >= newUpper) newUpper = newLower + spacing;
 
   // ── Tick containment guard (see computeNewRange for detailed explanation) ──
-  // nearestUsableTick rounding can push boundaries past the current tick,
-  // especially with coarse spacing (e.g. 50 for 0.25% fee tier).  Example:
-  // currentTick=7396, spacing=50, half=350 → newLower=7050, but if the
-  // centering math rounds up → newLower=7400 > 7396 → PM rejects token1.
-  // Shift the entire range to contain the tick, preserving width.
-  const w = newUpper - newLower;
-  if (currentTick < newLower) {
-    newLower = Math.floor(currentTick / spacing) * spacing;
-    newUpper = newLower + w;
-  } else if (currentTick >= newUpper) {
-    newUpper = (Math.floor(currentTick / spacing) + 1) * spacing;
-    newLower = newUpper - w;
+  // Skip when offset ≠ 50 — the user intentionally positioned the range.
+  if (offset === 50) {
+    ({ lowerTick: newLower, upperTick: newUpper } = _containTick(
+      newLower,
+      newUpper,
+      currentTick,
+      spacing,
+      feeTier,
+    ));
   }
-
-  // Re-clamp after shift
-  if (newLower < MIN_TICK) newLower = nearestUsableTick(MIN_TICK, feeTier);
-  if (newUpper > MAX_TICK) newUpper = nearestUsableTick(MAX_TICK, feeTier);
-  if (newLower >= newUpper) newUpper = newLower + spacing;
 
   // ── Postcondition: ticks must be valid V3 values ─────────────────────────
   if (newLower < MIN_TICK || newUpper > MAX_TICK || newLower >= newUpper) {
