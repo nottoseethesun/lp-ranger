@@ -38,9 +38,13 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 
 Here you can see LP Ranger really doing its job! The user has rebalanced too many times. That's because the user is the dev, and there isn't a complete toolchain on testnet, so he's doing the Only Way to Fly, "Testing in Production". But you can see the impact of that on Impermanent Loss/Gain.
 
+Click the image to see a larger version.
+
 ![Dashboard Overview](docs/images/dashboard-screenshot.png)
 
 ### Configuration, P&L History, and Rebalance Events
+
+Click the image to see a larger version.
 
 ![Configuration, P&L History, and Rebalance Events](docs/images/dashboard-screenshot-2.png)
 
