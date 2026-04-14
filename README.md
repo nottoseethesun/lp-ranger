@@ -12,19 +12,20 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 
 ## Table of Contents
 
-- [Dashboard Overview](#dashboard-overview)
-- [Configuration, P&L History, and Rebalance Events](#configuration-pl-history-and-rebalance-events)
-- [Impermanent Loss/Gain and Coin Count Stats](#impermanent-lossgain-and-coin-count-stats)
-- [Help and User Manual](#help-and-user-manual)
-- [Rebalance Throttling](#rebalance-throttling)
-- [Manual Rebalance](#manual-rebalance)
-- [Position Browser](#position-browser)
-- [Settings](#settings)
+- [Screenshots](#screenshots)
+  - [Dashboard Overview](#dashboard-overview)
+  - [Configuration, P&L History, and Rebalance Events](#configuration-pl-history-and-rebalance-events)
+  - [Impermanent Loss/Gain and Coin Count Stats](#impermanent-lossgain-and-coin-count-stats)
+  - [Rebalance Throttling](#rebalance-throttling)
+  - [Manual Rebalance](#manual-rebalance)
+  - [Position Browser](#position-browser)
+  - [Settings](#settings)
 - [Disclaimer](#disclaimer)
 - [Pre-Requisites](#pre-requisites)
 - [Install](#install)
 - [Uninstall](#uninstall)
 - [Usage](#usage)
+  - [Help and User Manual](#help-and-user-manual)
 - [Lint & Test](#lint--test)
 - [Private Key Security](#private-key-security)
 - [Configuration & Development](#configuration--development)
@@ -33,6 +34,8 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 - [Contributing](#contributing)
 
 ---
+
+## Screenshots
 
 ### Dashboard Overview
 
@@ -51,10 +54,6 @@ Click the image to see a larger version.
 ### Impermanent Loss/Gain and Coin Count Stats
 
 ![Impermanent Loss/Gain and Coin Count Stats](docs/images/dashboard-screenshot-il-g-and-coin-count-stats.png)
-
-### Help and User Manual
-
-**[View the full Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help.html)**
 
 ### Rebalance Throttling
 
@@ -182,6 +181,10 @@ rm -rf lp-ranger/
 3. If you will be using a pre-existing wallet address: If you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one at <https://dex.9mm.pro/liquidity>, making sure to use V3. Otherwise, go back to this step after Step 4, and then click on "Scan Wallet" on the LP Ranger App, in the LP Browser dialog (click the "Positions" button on the app, near top middle).
 4. Visit `http://localhost:5555` in your web browser.
 5. See the first paragraph in the Help text on the app (click at top right on the app).
+
+### Help and User Manual
+
+**[View the full Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help.html)**
 
 ---
 
