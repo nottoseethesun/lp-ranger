@@ -24,6 +24,9 @@ function _log(msg, ...a) {
   console.log(_C + "[pool-scan] " + msg + _R, ...a);
 }
 
+/** Event cache TTL — 1 year; cache is explicitly cleared on rebalance. */
+const _EVENT_CACHE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
 /** Per-pool scan locks — different pools scan in parallel. */
 const _locks = new Map();
 
@@ -104,6 +107,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
         config.POSITION_MANAGER,
         walletAddress,
       ),
+      defaultTtlMs: _EVENT_CACHE_TTL_MS,
     });
     events = await scanRebalanceHistory(provider, ethersLib, {
       positionManagerAddress: config.POSITION_MANAGER,
@@ -161,6 +165,7 @@ async function clearPoolCache(position, wallet) {
       config.POSITION_MANAGER,
       wallet,
     ),
+    defaultTtlMs: _EVENT_CACHE_TTL_MS,
   });
   await cache.clear();
   _log(
@@ -186,6 +191,7 @@ async function appendToPoolCache(position, wallet, result) {
       config.POSITION_MANAGER,
       wallet,
     ),
+    defaultTtlMs: _EVENT_CACHE_TTL_MS,
   });
   const cacheKey = buildCacheKey(
     wallet,

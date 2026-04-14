@@ -10,24 +10,16 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 
 **V3 positions only** — V2 positions are not supported.
 
-![9mm v3 Position Manager Dashboard](docs/images/dashboard-screenshot.png)
-
-![9mm v3 Position Manager Dashboard 2](docs/images/dashboard-screenshot-2.png)
-
-![Help Text](docs/images/dashboard-screenshot-help-text.png)
-
-![Rebalance Throttling](docs/images/dashboard-screenshot-rebalance-throttling.png)
-
-![Manual Rebalance](docs/images/dashboard-screenshot-manual-rebalance.png)
-
-![Position Browser](docs/images/dashboard-screenshot-position-browser.png)
-
-![Settings](docs/images/dashboard-screenshot-settings.png)
-
----
-
 ## Table of Contents
 
+- [Dashboard Overview](#dashboard-overview)
+- [Configuration, P&L History, and Rebalance Events](#configuration-pl-history-and-rebalance-events)
+- [Impermanent Loss/Gain and Coin Count Stats](#impermanent-lossgain-and-coin-count-stats)
+- [Help Text](#help-text)
+- [Rebalance Throttling](#rebalance-throttling)
+- [Manual Rebalance](#manual-rebalance)
+- [Position Browser](#position-browser)
+- [Settings](#settings)
 - [Disclaimer](#disclaimer)
 - [Pre-Requisites](#pre-requisites)
 - [Install](#install)
@@ -39,6 +31,48 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 - [License](#license)
 - [Road Map](#road-map)
 - [Contributing](#contributing)
+
+---
+
+### Dashboard Overview
+
+Here you can see LP Ranger really doing its job! The user has rebalanced too many times. That's because the user is the dev, and there isn't a complete toolchain on testnet, so he's doing the Only Way to Fly, "Testing in Production". But you can see the impact of that on Impermanent Loss/Gain.
+
+![Dashboard Overview](docs/images/dashboard-screenshot.png)
+
+### Configuration, P&L History, and Rebalance Events
+
+![Configuration, P&L History, and Rebalance Events](docs/images/dashboard-screenshot-2.png)
+
+### Impermanent Loss/Gain and Coin Count Stats
+
+![Impermanent Loss/Gain and Coin Count Stats](docs/images/dashboard-screenshot-il-g-and-coin-count-stats.png)
+
+### Help Text
+
+![Help Text — Overview](docs/images/dashboard-screenshot-help-text.png)
+
+![Help Text — Range, Volatility, Gas, Closed Positions, and Telegram](docs/images/dashboard-screenshot-help-text-2.png)
+
+![Help Text — Troubleshooting and Details](docs/images/dashboard-screenshot-help-text-3.png)
+
+![Help Text — Deposit Editing and Supported Platforms](docs/images/dashboard-screenshot-help-text-4.png)
+
+### Rebalance Throttling
+
+![Rebalance Throttling](docs/images/dashboard-screenshot-rebalance-throttling.png)
+
+### Manual Rebalance
+
+![Manual Rebalance](docs/images/dashboard-screenshot-manual-rebalance.png)
+
+### Position Browser
+
+![Position Browser](docs/images/dashboard-screenshot-position-browser.png)
+
+### Settings
+
+![Settings](docs/images/dashboard-screenshot-settings.png)
 
 ---
 

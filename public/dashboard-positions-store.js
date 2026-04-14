@@ -412,10 +412,12 @@ function _updateActiveStripDetails(active) {
 /** Update the compact position strip beneath the header. */
 export function updatePosStripUI() {
   const count = posStore.count();
+  const openCount = posStore.entries.filter((e) => !isPositionClosed(e)).length;
   const active = posStore.getActive();
   const headerLabel = g("headerPosLabel");
   if (headerLabel)
-    headerLabel.textContent = count + " Position" + (count !== 1 ? "s" : "");
+    headerLabel.textContent =
+      openCount + " Open Position" + (openCount !== 1 ? "s" : "");
   const posCount = g("wsPosCount");
   if (posCount) posCount.textContent = count + " total";
 
