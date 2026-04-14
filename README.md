@@ -107,6 +107,8 @@ OR OTHER DEALINGS IN THE SOFTWARE.
 ## Pre-Requisites
 
 - Node.js 22+
+  - Linux, Mac: <https://formulae.brew.sh/formula/node#default>
+  - Windows: <https://community.chocolatey.org/packages/nodejs-lts>
 - Web browser
 
 ---

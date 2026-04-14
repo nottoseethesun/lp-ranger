@@ -1,0 +1,70 @@
+# .github/workflows/pages.yml
+#
+# Deploy the Help and User Manual to GitHub Pages.
+#
+# Assembles the site from docs/ (images, architecture docs) plus public/
+# (help.html, CSS, fonts) so there are no duplicate files in the repo.
+# The help.html CSS paths are rewritten from absolute (/style.css) to
+# relative (style.css) since GitHub Pages serves under /lp-ranger/.
+
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/help.html"
+      - "public/help.css"
+      - "public/style.css"
+      - "public/9mm-pos-mgr.css"
+      - "public/fonts.css"
+      - "public/fonts/**"
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/fonts _site/images
+
+          # Copy help page and rewrite absolute CSS paths to relative
+          sed -e 's|href="/style.css"|href="style.css"|' \
+              -e 's|href="/9mm-pos-mgr.css"|href="9mm-pos-mgr.css"|' \
+              -e 's|href="/fonts.css"|href="fonts.css"|' \
+              -e 's|href="/help.css?v=[0-9]*"|href="help.css"|' \
+              -e 's|href="favicon.png"||' \
+              public/help.html > _site/help.html
+
+          # Copy CSS
+          cp public/style.css public/9mm-pos-mgr.css public/fonts.css public/help.css _site/
+
+          # Copy self-hosted fonts from node_modules
+          npm ci --ignore-scripts
+          npm run copy-fonts
+          cp public/fonts/*.woff2 _site/fonts/
+
+          # Copy docs assets (images, etc.)
+          cp -r docs/images _site/images
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
