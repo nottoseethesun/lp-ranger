@@ -735,6 +735,7 @@ body::before{
   position:relative;
   max-height:92vh;
   overflow-y:auto;
+  overflow-x:hidden;
 }
 
 .modal-logo{
@@ -1150,10 +1151,11 @@ header{
   align-items:center;
   padding:0 8px;
   border-radius:999px;
-  font-size:12px;
+  font-size:9px;
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:0.5px;
+  margin-left:auto;
 }
 
 .ws-badge.gen{
@@ -1295,7 +1297,7 @@ header{
 }
 .row.c3{grid-template-columns:1fr 1fr 360px;}
 .row.c2{grid-template-columns:1fr 1fr;}
-.row.c2-hist{grid-template-columns:2fr 1fr;}
+.row.c2-hist{grid-template-columns:2fr 3fr;}
 .row.c1{grid-template-columns:1fr;}
 
 /* ── RANGE MONITOR ── */

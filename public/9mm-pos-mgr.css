@@ -618,6 +618,111 @@
   color: var(--accent3);
   border-color: rgb(124 252 0 / 20%);
   animation: none;
+  cursor: help;
+}
+
+/* ── Donate modal ────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-donate-box {
+  background: var(--bg2);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  max-width: 480px;
+  width: 90%;
+  margin: auto;
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 0 40px rgb(0 229 255 / 12%);
+}
+
+.\39 mm-pos-mgr-donate-header {
+  font-family: Urbanist, sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+.\39 mm-pos-mgr-donate-body {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.\39 mm-pos-mgr-donate-addr-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.\39 mm-pos-mgr-donate-addr {
+  display: inline-flex;
+  align-items: center;
+  cursor: text;
+  user-select: all;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.\39 mm-pos-mgr-copy-icon.\39 mm-pos-mgr-donate-copy {
+  font-size: 26px;
+  margin-left: 0;
+}
+
+.\39 mm-pos-mgr-donate-thanks {
+  margin-top: 20px;
+}
+
+/* ── About modal ─────────────────────────────────────────────────────── */
+
+.\39 mm-pos-mgr-about-box {
+  max-width: 440px;
+}
+
+.\39 mm-pos-mgr-about-body {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.\39 mm-pos-mgr-about-logo {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.\39 mm-pos-mgr-about-title {
+  font-family: Rye, Urbanist, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  color: var(--fg);
+}
+
+.\39 mm-pos-mgr-about-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.\39 mm-pos-mgr-about-update {
+  color: var(--accent3);
+  font-weight: 700;
+}
+
+.\39 mm-pos-mgr-about-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.\39 mm-pos-mgr-about-body a:hover {
+  text-decoration: underline;
 }
 
 /* ── IL/G debug popover ────────────────────────────────────────────────── */
@@ -1084,7 +1189,7 @@
   border: none;
   padding: 4px 6px;
   cursor: pointer;
-  color: inherit;
+  color: var(--accent);
   display: inline-flex;
   align-items: center;
   opacity: 0.7;
@@ -1783,6 +1888,10 @@
 /* Telegram modal — must sit above wallet setup modal (both z-index:1000) */
 .\39 mm-pos-mgr-tg-modal {
   z-index: 1001;
+}
+
+.\39 mm-pos-mgr-tg-modal h3 {
+  color: var(--accent);
 }
 
 /* Blur panels while syncing — applied/removed by _updateSyncBadge */

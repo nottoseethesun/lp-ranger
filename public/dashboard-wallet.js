@@ -388,8 +388,9 @@ export function applyWalletUI() {
     return;
   }
   const addr = wallet.address;
-  const short = addr.slice(0, 8) + "\u2026" + addr.slice(-6);
   g("wsAddr").textContent = addr;
+  const cpIcon = g("wsAddrCopy");
+  if (cpIcon) cpIcon.style.display = "inline";
   g("wsBadge").textContent =
     wallet.source === "generated"
       ? "GENERATED"
@@ -398,7 +399,7 @@ export function applyWalletUI() {
         : "KEY IMPORT";
   g("wsBadge").className =
     "ws-badge " + (wallet.source === "key" ? "imp" : "gen");
-  g("headerWalletLabel").textContent = short;
+  g("headerWalletLabel").textContent = "Change Wallet Address";
 
   const revealBtn = g("wsRevealBtn");
   if (revealBtn) revealBtn.style.display = "inline-block";
@@ -406,11 +407,12 @@ export function applyWalletUI() {
   if (clrBtn) clrBtn.style.display = "inline-block";
 
   markWalletKnown(addr);
+  const shortAddr = addr.slice(0, 8) + "\u2026" + addr.slice(-6);
   act(
     ACT_ICONS.diamond,
     "wallet",
     "Wallet Loaded",
-    short + " (" + wallet.source + ")",
+    shortAddr + " (" + wallet.source + ")",
   );
   if (_updatePosStripUI) _updatePosStripUI();
   // Sync URL with restored position (restoreLastPosition
