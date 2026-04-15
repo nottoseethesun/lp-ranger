@@ -81,7 +81,7 @@
  * @example
  * // .env
  * PORT=5555
- * HOST=0.0.0.0
+ * HOST=127.0.0.1
  *
  * // start dashboard:
  * node server.js              // → http://localhost:5555
@@ -111,6 +111,8 @@ const fs = require("fs");
 const path = require("path");
 
 const config = require("./src/config");
+const { handleCors } = require("./src/server-cors");
+const { handleCsrf } = require("./src/server-csrf");
 const walletManager = require("./src/wallet-manager");
 const { getPositionHistory } = require("./src/position-history");
 const { createRebalanceLock } = require("./src/rebalance-lock");
@@ -544,16 +546,8 @@ const _routes = {
 async function handleRequest(req, res) {
   const { method, url } = req;
 
-  // CORS headers for local dev
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+  if (handleCors(req, res, _serverPort, jsonResponse)) return;
+  if (handleCsrf(req, res, jsonResponse)) return;
 
   const routeKey = method + " " + url;
   const handler = _routes[routeKey];
@@ -624,6 +618,9 @@ async function handleRequest(req, res) {
 
 // ── Server lifecycle ────────────────────────────────
 
+/** Actual listening port — updated in start() for test overrides. */
+let _serverPort = config.PORT;
+
 const server = http.createServer(handleRequest);
 // Lifetime P&L scans can take 5+ minutes for old pools (555 chunks × 250ms).
 // Node 22's default requestTimeout is 300s — raise via config.
@@ -638,12 +635,14 @@ server.requestTimeout = config.SCAN_TIMEOUT_MS;
  */
 function start(portOverride) {
   const port = portOverride !== undefined ? portOverride : config.PORT;
+  _serverPort = port;
   const host = config.HOST;
 
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {
-      const addr = `http://${host === "0.0.0.0" ? "localhost" : host}:${port}`;
+      const loopback = host === "0.0.0.0" || host === "127.0.0.1";
+      const addr = `http://${loopback ? "localhost" : host}:${port}`;
       console.log("[server] Blockchain:" + "  PulseChain (chainId 369)");
       console.log(`[server] NFT Factory:` + ` ${config.POSITION_MANAGER}`);
       console.log(

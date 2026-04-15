@@ -3,7 +3,13 @@
  * @description Compound button handlers, auto-compound toggle, and threshold
  * save for the Mission Control panel.
  */
-import { g, act, ACT_ICONS, compositeKey } from "./dashboard-helpers.js";
+import {
+  g,
+  act,
+  ACT_ICONS,
+  compositeKey,
+  csrfHeaders,
+} from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { _createModal, _posLabel, _posContextHtml } from "./dashboard-data.js";
 
@@ -31,7 +37,7 @@ export async function compoundNow() {
   try {
     const res = await fetch("/api/compound", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({ positionKey }),
     });
     const data = await res.json();
@@ -93,7 +99,7 @@ export function toggleAutoCompound() {
   );
   fetch("/api/config", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify({ autoCompoundEnabled: enabled, positionKey }),
   }).catch(() => {});
   const pl = _posLabel();
@@ -133,7 +139,7 @@ export function saveCompoundThreshold(minFee) {
     : undefined;
   fetch("/api/config", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify({ autoCompoundThresholdUsd: val, positionKey }),
   }).catch(() => {});
   const pl = _posLabel();

@@ -6,7 +6,7 @@
  *   and populates the dashboard KPIs using shared rendering functions.
  */
 
-import { g, botConfig } from "./dashboard-helpers.js";
+import { g, botConfig, csrfHeaders } from "./dashboard-helpers.js";
 import { resetKpis, pollNow } from "./dashboard-data.js";
 import {
   loadPriceOverrides,
@@ -96,7 +96,7 @@ async function _phase1(pos, body) {
   try {
     const r = await fetch("/api/position/details", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify(body),
     });
     const d = await r.json();
@@ -181,7 +181,7 @@ async function _phase2(body, gen) {
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const r2 = await fetch("/api/position/lifetime", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });

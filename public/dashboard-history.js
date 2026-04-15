@@ -151,7 +151,7 @@ export function renderRebalanceEvents(events) {
       String(active.liquidity) === "0";
     const msg = closed ? "Position Closed" : "No rebalance events found";
     tbody.innerHTML =
-      '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:12px;">' +
+      '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px;">' +
       msg +
       "</td></tr>";
     if (pageLabel) pageLabel.textContent = "Page 1 of 1";
@@ -206,6 +206,9 @@ export function renderRebalanceEvents(events) {
       "</td>" +
       '<td data-privacy="blur">' +
       newRange +
+      "</td>" +
+      "<td>" +
+      (e.swapSources || "\u2014") +
       "</td>" +
       '<td data-privacy="blur" title="' +
       (e.txHash || "") +

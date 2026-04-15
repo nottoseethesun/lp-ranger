@@ -265,6 +265,7 @@ function _buildRebalanceResult(
     ...(crw
       ? { requestedRangePct: crw, effectiveRangePct: Number(ePct.toFixed(2)) }
       : {}),
+    ...(swapped.swapSources ? { swapSources: swapped.swapSources } : {}),
   };
 }
 

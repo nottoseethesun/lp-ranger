@@ -6,13 +6,13 @@
  * Depends on: dashboard-helpers.js (g).
  */
 
-import { g } from "./dashboard-helpers.js";
+import { g, csrfHeaders } from "./dashboard-helpers.js";
 
 /** POST JSON and return parsed response. */
 async function _post(url, body) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify(body),
   });
   return res.json();

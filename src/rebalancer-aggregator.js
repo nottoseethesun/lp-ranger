@@ -342,7 +342,7 @@ async function _sendWithRetry(
  * @param {object} ethersLib  ethers library.
  * @param {object} params     Swap parameters.
  * @param {function} balanceDiff  Balance-diff wrapper.
- * @returns {Promise<{amountOut: bigint, txHash: string|null, gasCostWei: bigint}>}
+ * @returns {Promise<{amountOut: bigint, txHash: string|null, gasCostWei: bigint, swapSources: string}>}
  */
 async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
   const {
@@ -405,6 +405,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
       symOut,
     );
     result.gasCostWei = (result.gasCostWei || 0n) + (aggApprovalGas || 0n);
+    result.swapSources = sources;
     return result;
   });
 }

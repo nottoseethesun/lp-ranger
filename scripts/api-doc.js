@@ -80,6 +80,6 @@ const server = http.createServer((req, res) => {
   res.end();
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "127.0.0.1", () => {
   console.log(`LP Ranger API Reference: http://localhost:${PORT}`);
 });

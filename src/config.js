@@ -14,7 +14,7 @@
  * ──────────────────
  * SERVER
  *   PORT                   HTTP port for the dashboard server.   Default: 5555
- *   HOST                   Bind address.                         Default: '0.0.0.0'
+ *   HOST                   Bind address.                         Default: '127.0.0.1'
  *
  * BOT
  *   PRIVATE_KEY            Wallet private key (required unless KEY_FILE is set).
@@ -105,8 +105,8 @@ function parsePositiveFloat(value, fallback) {
 /** HTTP port the dashboard server listens on. */
 const PORT = parsePositiveInt(process.env.PORT, 5555);
 
-/** Network interface the server binds to. '0.0.0.0' = all interfaces. */
-const HOST = process.env.HOST || "0.0.0.0";
+/** Network interface the server binds to. '127.0.0.1' = localhost only. */
+const HOST = process.env.HOST || "127.0.0.1";
 
 // ── Bot / wallet ───────────────────────────────────────────────────────────────
 

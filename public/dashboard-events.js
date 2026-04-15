@@ -16,6 +16,8 @@ import {
   toggleSettingsPopover,
   clearLocalStorageAndCookies,
   checkMoralisKeyStatus,
+  csrfHeaders,
+  showDisclosure,
 } from "./dashboard-helpers.js";
 import { markInputDirty } from "./dashboard-data.js";
 import {
@@ -150,7 +152,7 @@ function _saveGlobalConfig(inputId, configKey) {
   if (!el) return;
   fetch("/api/config", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify({ [configKey]: el.value }),
   }).catch(() => {});
 }
@@ -168,7 +170,7 @@ export async function saveMoralisApiKey(key, pw, inp) {
   try {
     const res = await fetch("/api/api-keys", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify(body),
     });
     const d = await res.json();
@@ -349,6 +351,7 @@ export function bindAllEvents() {
   });
   _qa(".hwbtn", "click", openWalletModal);
   _click("settingsBtn", toggleSettingsPopover);
+  _click("disclosuresBtn", showDisclosure);
   _click("clearStorageBtn", clearLocalStorageAndCookies);
   _click("moralisKeySaveBtn", _saveMoralisKey);
 

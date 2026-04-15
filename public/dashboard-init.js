@@ -15,6 +15,8 @@ import {
   loadPositionOorThreshold,
   initDisclaimer,
   compositeKey,
+  refreshCsrfToken,
+  csrfHeaders,
 } from "./dashboard-helpers.js";
 import {
   markWalletKnown,
@@ -129,7 +131,8 @@ restorePrivacyMode();
 
 // ── Disclaimer gate (must resolve before any dashboard init) ────────────────
 
-initDisclaimer().then(() => {
+initDisclaimer().then(async () => {
+  await refreshCsrfToken();
   _afterDisclaimer();
 });
 
@@ -225,7 +228,7 @@ function _afterDisclaimer() {
           : undefined;
       fetch("/api/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeaders() },
         body: JSON.stringify({ initialDepositUsd: dep, positionKey: pk }),
       }).catch(() => {});
     }

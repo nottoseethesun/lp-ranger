@@ -310,8 +310,9 @@ hasn't started yet.
 - **Private keys** exist only in memory during signing. On disk, they are
   encrypted with AES-256-GCM (PBKDF2-SHA512 key derivation, 600,000
   iterations). The encrypted file is gitignored.
-- **No remote access** by default. The server binds to `0.0.0.0` but is
-  intended for local use. There is no authentication on the API.
+- **Localhost only** by default. The server binds to `127.0.0.1` so only
+  local connections are accepted. CORS is locked to `localhost:<PORT>` and
+  mutating requests from non-localhost origins are rejected.
 - **Nonce safety** is enforced by the async mutex rebalance lock — only one
   transaction chain executes at a time.
 - **Slippage protection** uses quote-based minimums (not spot price) and

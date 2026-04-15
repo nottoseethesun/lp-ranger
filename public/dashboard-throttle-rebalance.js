@@ -3,7 +3,13 @@
  * @description Rebalance with Updated Range modal: open, close, confirm,
  * and range hint display. Split from dashboard-throttle.js.
  */
-import { g, act, ACT_ICONS, compositeKey } from "./dashboard-helpers.js";
+import {
+  g,
+  act,
+  ACT_ICONS,
+  compositeKey,
+  csrfHeaders,
+} from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { _createModal, _posContextHtml, _posLabel } from "./dashboard-data.js";
 
@@ -106,7 +112,7 @@ export async function confirmRebalanceRange() {
     );
     const res = await fetch("/api/rebalance", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({ positionKey, customRangeWidthPct: total }),
     });
     const data = await res.json();

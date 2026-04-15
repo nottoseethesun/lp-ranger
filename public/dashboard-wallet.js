@@ -16,7 +16,7 @@
  * and positions is safe.
  */
 
-import { g, act, ACT_ICONS } from "./dashboard-helpers.js";
+import { g, act, ACT_ICONS, csrfHeaders } from "./dashboard-helpers.js";
 import { saveMoralisApiKey } from "./dashboard-events.js";
 import { ethers } from "./ethers-adapter.js";
 
@@ -197,7 +197,7 @@ async function sendWalletToServer(w, password) {
   try {
     const res = await fetch("/api/wallet", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({
         address: w.address,
         privateKey: w.privateKey,
@@ -564,7 +564,7 @@ export async function submitUnlock(e) {
     const d = await (
       await fetch("/api/wallet/unlock", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeaders() },
         body: JSON.stringify({ password: pw.value }),
       })
     ).json();

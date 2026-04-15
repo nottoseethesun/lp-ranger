@@ -2,7 +2,14 @@
  * @file dashboard-data.js
  * @description Polls /api/status, updates live UI elements. Re-exports.
  */
-import { g, botConfig, act, ACT_ICONS } from "./dashboard-helpers.js";
+import {
+  g,
+  botConfig,
+  act,
+  ACT_ICONS,
+  csrfNeedsRefresh,
+  refreshCsrfToken,
+} from "./dashboard-helpers.js";
 import {
   posStore,
   updateManagedPositions,
@@ -228,6 +235,17 @@ function _updateSyncBadge(d) {
   applySyncBlur();
 }
 
+/** Update "Routing through: ..." badge with actual sources after rebalance. */
+function _updateSwapSourcesBadge(d) {
+  const badge = g("swapSourcesBadge");
+  if (!badge) return;
+  const sources = d.swapSources;
+  if (sources) {
+    badge.textContent = "Routing through: " + sources;
+    badge.title = "Swap venues used in last rebalance: " + sources;
+  }
+}
+
 const _REB_HELP =
   "LP Ranger is currently submitting transactions to rebalance this LP Position.";
 const _REB_MANUAL =
@@ -416,6 +434,7 @@ function updateDashboardFromStatus(data) {
   _syncAutoCompound(data);
   _syncRebCache(data);
   _updateSyncBadge(data);
+  _updateSwapSourcesBadge(data);
   _updateRebalanceButtons(data);
   if (!getPoolFirstDate() && data.poolFirstMintDate)
     setPoolFirstDate(data.poolFirstMintDate);
@@ -451,6 +470,7 @@ function _onPollFail() {
     _setStatusPill("status-pill danger", "dot red", "HALTED");
 }
 async function _pollStatus() {
+  if (csrfNeedsRefresh()) refreshCsrfToken();
   try {
     const res = await fetch("/api/status");
     if (!res.ok) {

@@ -7,53 +7,23 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776153469212">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776153469212">
+<link rel="stylesheet" href="style.css?v=1776212162598">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776212162598">
 </head>
 <body>
 
-<!-- ═══ DISCLAIMER MODAL ═══ -->
+<!-- ═══ DISCLOSURE MODAL (startup + Settings → Disclosure) ═══ -->
 <div class="disclaimer-overlay hidden" id="disclaimerOverlay">
   <div class="disclaimer-box">
     <div class="disclaimer-header">
-      <h2>Disclaimer — Use at Your Own Risk</h2>
+      <h2>Disclosure — Use at Your Own Risk</h2>
     </div>
-    <div class="disclaimer-body">
-      <p><strong>THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-      EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-      MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.</strong></p>
-
-      <p><strong>BY USING THIS SOFTWARE, YOU ACKNOWLEDGE AND AGREE THAT:</strong></p>
-      <ol>
-        <li>You are solely responsible for any and all financial losses, including
-            loss of cryptocurrency, tokens, or other digital assets, that may
-            result from the use or misuse of this software.</li>
-        <li>This software interacts with decentralized protocols and smart
-            contracts on public blockchains. Transactions are irreversible.
-            The authors have no ability to recover lost funds.</li>
-        <li>This software has not been formally audited. It may contain bugs,
-            errors, or vulnerabilities that could result in partial or total
-            loss of funds.</li>
-        <li>You assume full responsibility for evaluating the risks associated
-            with using this software, including smart contract risk, impermanent
-            loss, slippage, MEV attacks, oracle failures, and network congestion.</li>
-        <li>You are responsible for complying with all applicable laws and
-            regulations in your jurisdiction.</li>
-        <li>The authors and contributors expressly disclaim any fiduciary duty
-            or advisory relationship with users of this software.</li>
-      </ol>
-      <p><strong>DO NOT USE THIS SOFTWARE WITH FUNDS YOU CANNOT AFFORD TO LOSE.</strong></p>
-    </div>
+    <div class="disclaimer-body" id="disclaimerBody"></div>
     <div class="disclaimer-footer">
       <div class="disclaimer-btns">
         <button type="button" class="disclaimer-btn decline" id="disclaimerDecline">I Do Not Accept</button>
-        <button type="button" class="disclaimer-btn accept" id="disclaimerAccept">I Accept</button>
+        <button type="button" class="disclaimer-btn accept" id="disclaimerAccept">I have read and understood this Disclosure</button>
       </div>
-      <label class="disclaimer-remember">
-        <input type="checkbox" id="disclaimerRemember"/>
-        Don't show this again
-      </label>
-      <p class="9mm-pos-mgr-disclaimer-license">This software is licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache 2.0 License</a>.</p>
     </div>
   </div>
 </div>
@@ -468,13 +438,13 @@
     <span class="9mm-pos-mgr-logo-on">for</span>
     <div class="9mm-pos-mgr-logo-buy">
       <a class="logo-icon" href="https://9mm.pro/" target="_blank" rel="noopener noreferrer" title="Visit 9mm Pro"><img src="9mm-pro-logo-transparent.png" alt="9mm Pro" class="9mm-pos-mgr-header-logo"></a>
-      <a class="9mm-pos-mgr-buy-link" href="https://9x.9mm.pro/#/swap?chainId=369" target="_blank" rel="noopener noreferrer">Buy $9mm Token</a>
     </div>
     <span class="9mm-pos-mgr-logo-on">on</span>
     <a class="pchain-link" href="https://pulsechain.com/" target="_blank" rel="noopener noreferrer" title="Visit PulseChain"><img src="pulsechain-logo-transparent.png" alt="PulseChain" class="9mm-pos-mgr-header-logo 9mm-pos-mgr-pchain-logo"></a>
   </div>
   <div class="header-right">
     <button type="button" class="pos-browser-btn" id="posBrowserBtn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg> <span id="headerPosLabel">0 Positions</span></button>
+    <span class="9mm-pos-mgr-sync-badge 9mm-pos-mgr-sources-badge" id="swapSourcesBadge" title="Primary swap routing venue">Routing through: 9mm Aggregator</span>
     <span class="9mm-pos-mgr-sync-badge" id="syncBadge">Pending</span>
     <div class="status-pill active" id="botStatusPill">
       <div class="dot green" id="botDot"></div>
@@ -484,6 +454,7 @@
     <div class="9mm-pos-mgr-settings-wrap">
       <button type="button" class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="18" height="18" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
       <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
+        <button type="button" class="9mm-pos-mgr-settings-item" id="disclosuresBtn">Disclosures</button>
         <label class="9mm-pos-mgr-settings-item 9mm-pos-mgr-privacy-setting" title="Toggle privacy mode — blur addresses and NFT IDs">
           <input type="checkbox" id="privacySwitch">
           <span class="9mm-pos-mgr-privacy-icon" id="privacyIcon">&#x1F441;</span>
@@ -959,9 +930,9 @@
     </div>
     <div class="9mm-pos-mgr-table-scroll">
       <table class="hist-table">
-        <thead><tr><th scope="col">#</th><th scope="col">Time</th><th scope="col">Old Position</th><th scope="col">New Position</th><th scope="col">Tx Hash</th></tr></thead>
+        <thead><tr><th scope="col">#</th><th scope="col">Time</th><th scope="col">Old Position</th><th scope="col">New Position</th><th scope="col">Routed Via</th><th scope="col">Tx Hash</th></tr></thead>
         <tbody id="rebEventsBody">
-          <tr><td colspan="5" class="9mm-pos-mgr-table-empty">No rebalance events found</td></tr>
+          <tr><td colspan="6" class="9mm-pos-mgr-table-empty">No rebalance events found</td></tr>
         </tbody>
       </table>
     </div>
@@ -1010,6 +981,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776153469212"></script>
+<script src="dist/bundle.js?v=1776212162598"></script>
 </body>
 </html>

@@ -9,8 +9,12 @@ PORT="${PORT:-5555}"
 
 echo "Stopping 9mm Position Manager on port $PORT..."
 
-# Try graceful shutdown first (5s timeout)
-if curl -sf -m 5 -X POST "http://127.0.0.1:${PORT}/api/shutdown" >/dev/null 2>&1; then
+# Fetch a CSRF token, then try graceful shutdown (5s timeout each)
+CSRF=$(curl -sf -m 5 "http://127.0.0.1:${PORT}/api/csrf-token" 2>/dev/null \
+  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+if [ -n "$CSRF" ] && curl -sf -m 5 -X POST \
+  -H "x-csrf-token: ${CSRF}" \
+  "http://127.0.0.1:${PORT}/api/shutdown" >/dev/null 2>&1; then
   echo "✔ Graceful shutdown succeeded"
   exit 0
 fi

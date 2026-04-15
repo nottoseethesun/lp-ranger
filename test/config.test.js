@@ -97,8 +97,7 @@ describe("config default values", () => {
     );
   });
 
-  it("HOST defaults to 0.0.0.0", () => {
-    // If HOST is not in the environment, default is '0.0.0.0'
+  it("HOST defaults to 127.0.0.1 (localhost only)", () => {
     assert.ok(typeof config.HOST === "string" && config.HOST.length > 0);
   });
 

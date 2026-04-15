@@ -15,7 +15,14 @@
  * evaluation time.
  */
 
-import { g, act, ACT_ICONS, botConfig, emojiId } from "./dashboard-helpers.js";
+import {
+  g,
+  act,
+  ACT_ICONS,
+  botConfig,
+  emojiId,
+  csrfHeaders,
+} from "./dashboard-helpers.js";
 import { _posLabel, applySyncBlur } from "./dashboard-data.js";
 import { wallet, getRpcUrl } from "./dashboard-wallet.js";
 import {
@@ -418,7 +425,7 @@ async function _syncAfterManualScan() {
 async function _fetchAndApplyScan() {
   const res = await fetch("/api/positions/scan", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify({ rpcUrl: getRpcUrl() }),
   });
   const data = await res.json();
@@ -557,7 +564,7 @@ async function _backgroundRefresh() {
   try {
     const res = await fetch("/api/positions/refresh", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({}),
     });
     const d = await res.json();

@@ -37,12 +37,15 @@ function req(opts) {
       port: opts.port,
       path: urlPath,
       method,
-      headers: payload
-        ? {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(payload),
-          }
-        : {},
+      headers: {
+        ...(payload
+          ? {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(payload),
+            }
+          : {}),
+        ...(opts.headers || {}),
+      },
     };
 
     const request = http.request(options, (res) => {
@@ -67,6 +70,12 @@ function req(opts) {
 
 const TEST_PORT = 54321;
 let serverInstance;
+
+/** Fetch a fresh CSRF token from the running server. */
+async function csrfToken() {
+  const r = await req({ port: TEST_PORT, path: "/api/csrf-token" });
+  return JSON.parse(r.body).token;
+}
 
 describe("server", () => {
   // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -111,6 +120,7 @@ describe("server", () => {
       method: "POST",
       path: "/api/config",
       body: { slippagePct: 1.0, positionKey: pk },
+      headers: { "x-csrf-token": await csrfToken() },
     });
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
@@ -124,6 +134,7 @@ describe("server", () => {
       method: "POST",
       path: "/api/config",
       body: { slippagePct: 0.5 },
+      headers: { "x-csrf-token": await csrfToken() },
     });
     assert.strictEqual(res.status, 400);
     const body = JSON.parse(res.body);
@@ -142,6 +153,7 @@ describe("server", () => {
         PRIVATE_KEY: "hacked",
         PORT: 9999,
       },
+      headers: { "x-csrf-token": await csrfToken() },
     });
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
@@ -150,12 +162,13 @@ describe("server", () => {
   });
 
   it("POST /api/config returns 400 for invalid JSON", async () => {
+    const tok = await csrfToken();
     const options = {
       hostname: "127.0.0.1",
       port: TEST_PORT,
       path: "/api/config",
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-csrf-token": tok },
     };
     const result = await new Promise((resolve, reject) => {
       const r = http.request(options, (res) => {
@@ -198,6 +211,7 @@ describe("server", () => {
       method: "POST",
       path: "/api/rebalance",
       body: {},
+      headers: { "x-csrf-token": await csrfToken() },
     });
     assert.strictEqual(res.status, 400);
     const body = JSON.parse(res.body);
@@ -230,9 +244,12 @@ describe("server", () => {
 
   // ── CORS ──────────────────────────────────────────────────────────────────
 
-  it("responses include CORS headers", async () => {
+  it("responses include localhost-locked CORS header", async () => {
     const res = await req({ port: TEST_PORT, path: "/health" });
-    assert.strictEqual(res.headers["access-control-allow-origin"], "*");
+    assert.match(
+      res.headers["access-control-allow-origin"],
+      /^http:\/\/localhost:\d+$/,
+    );
   });
 
   it("OPTIONS preflight returns 204", async () => {
@@ -244,6 +261,77 @@ describe("server", () => {
     assert.strictEqual(res.status, 204);
   });
 
+  it("POST with localhost Origin is allowed", async () => {
+    const res = await req({
+      port: TEST_PORT,
+      method: "POST",
+      path: "/api/config",
+      body: {},
+      headers: {
+        Origin: `http://localhost:${TEST_PORT}`,
+        "x-csrf-token": await csrfToken(),
+      },
+    });
+    // May be 400 (missing positionKey) but NOT 403
+    assert.notStrictEqual(res.status, 403);
+  });
+
+  it("POST with foreign Origin is rejected 403", async () => {
+    const res = await req({
+      port: TEST_PORT,
+      method: "POST",
+      path: "/api/config",
+      body: {},
+      headers: { Origin: "http://evil.com" },
+    });
+    assert.strictEqual(res.status, 403);
+  });
+
+  it("POST with no Origin header is allowed (programmatic)", async () => {
+    const res = await req({
+      port: TEST_PORT,
+      method: "POST",
+      path: "/api/config",
+      body: {},
+      headers: { "x-csrf-token": await csrfToken() },
+    });
+    // May be 400 but NOT 403
+    assert.notStrictEqual(res.status, 403);
+  });
+
+  // ── CSRF ──────────────────────────────────────────────────────────────────
+
+  it("GET /api/csrf-token returns a token", async () => {
+    const res = await req({ port: TEST_PORT, path: "/api/csrf-token" });
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.ok(body.token, "should have a token");
+    assert.ok(body.expiresAt > Date.now(), "should expire in the future");
+  });
+
+  it("POST without CSRF token is rejected 403", async () => {
+    const res = await req({
+      port: TEST_PORT,
+      method: "POST",
+      path: "/api/config",
+      body: {},
+    });
+    assert.strictEqual(res.status, 403);
+    const body = JSON.parse(res.body);
+    assert.ok(body.error.includes("csrf") || body.error.includes("CSRF"));
+  });
+
+  it("POST with invalid CSRF token is rejected 403", async () => {
+    const res = await req({
+      port: TEST_PORT,
+      method: "POST",
+      path: "/api/config",
+      body: {},
+      headers: { "x-csrf-token": "bogus-token" },
+    });
+    assert.strictEqual(res.status, 403);
+  });
+
   // ── Method not allowed ────────────────────────────────────────────────────
 
   it("DELETE / returns 405", async () => {
@@ -251,6 +339,7 @@ describe("server", () => {
       port: TEST_PORT,
       method: "DELETE",
       path: "/",
+      headers: { "x-csrf-token": await csrfToken() },
     });
     assert.strictEqual(res.status, 405);
   });

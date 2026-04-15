@@ -76,15 +76,6 @@
   align-items: center;
 }
 
-.\39 mm-pos-mgr-buy-link {
-  color: var(--accent);
-  font-size: 11px;
-  text-decoration: none;
-}
-
-.\39 mm-pos-mgr-buy-link:hover {
-  text-decoration: underline;
-}
 
 /* ── Display & Visibility ─────────────────────────────────────────────────── */
 
@@ -617,6 +608,16 @@
 @keyframes sync-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+.\39 mm-pos-mgr-sources-badge {
+  width: auto;
+  min-width: 80px;
+  padding: 0 10px;
+  background: rgb(124 252 0 / 10%);
+  color: var(--accent3);
+  border-color: rgb(124 252 0 / 20%);
+  animation: none;
 }
 
 /* ── IL/G debug popover ────────────────────────────────────────────────── */

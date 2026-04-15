@@ -5,7 +5,7 @@
  * Split from dashboard-events.js for maintainability.
  */
 
-import { g, toggleSettingsPopover } from "./dashboard-helpers.js";
+import { g, toggleSettingsPopover, csrfHeaders } from "./dashboard-helpers.js";
 import { copyText } from "./dashboard-wallet.js";
 import { resetHistoryFlag } from "./dashboard-data.js";
 import { clearHistory } from "./dashboard-history.js";
@@ -183,6 +183,7 @@ export function _toggleManagePosition() {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
+        ...csrfHeaders(),
       },
       body: JSON.stringify({ key }),
     })
@@ -203,6 +204,7 @@ export function _toggleManagePosition() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...csrfHeaders(),
       },
       body: JSON.stringify({
         tokenId: active.tokenId,

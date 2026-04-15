@@ -5,7 +5,12 @@
  *   in detail requests. Non-zero fetched prices automatically replace overrides.
  */
 
-import { g, truncName, compositeKey } from "./dashboard-helpers.js";
+import {
+  g,
+  truncName,
+  compositeKey,
+  csrfHeaders,
+} from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 
 let _refetchUnmanaged = null;
@@ -128,7 +133,7 @@ export function savePriceOverrideDialog() {
   );
   fetch("/api/config", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify({
       priceOverride0: p0,
       priceOverride1: p1,

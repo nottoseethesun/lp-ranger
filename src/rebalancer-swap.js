@@ -487,6 +487,7 @@ async function _swapViaRouter(signer, ethersLib, params) {
     return {
       txHash: receipt.hash,
       gasCostWei: _gasCost(receipt) + (approvalGas || 0n),
+      swapSources: "9mm V3 Router",
     };
   });
 }

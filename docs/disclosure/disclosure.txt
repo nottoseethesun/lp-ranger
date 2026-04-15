@@ -1,0 +1,309 @@
+LP Ranger — Factual Brief for SEC Disclaimer Drafting
+
+Re: SEC Staff Statement on Covered User Interface Providers
+(File No. 4-894, April 13 2026)
+
+
+Creator, Offeror, and/or Operator
+
+LP Ranger is free, open-source software published on GitHub. Depending on
+the reader's relationship to this software, one or more of the following
+characterizations applies.
+
+The Creator is the individual developer who authored LP Ranger and published
+it on GitHub. The Creator is not registered with or regulated by the U.S.
+Securities and Exchange Commission in connection with the creation of this
+software. The Creator does not operate any deployed instance of LP Ranger,
+does not custody any user funds, does not receive any compensation in
+connection with the software's operation, has no visibility into any
+transaction executed by any deployed instance, and exercises no control over
+any running instance of this software.
+
+The Offeror is any person — including the Creator, to the extent the Creator
+mentions, describes, distributes, or promotes LP Ranger in any context — who
+makes this software available to others. The Offeror is not registered with
+or regulated by the U.S. Securities and Exchange Commission in connection
+with the offering of this software. Nothing communicated by the Offeror in
+connection with LP Ranger constitutes a solicitation to engage in any
+specific transaction, investment advice, or a recommendation regarding any
+crypto asset, trading venue, execution route, or liquidity position.
+
+The Operator is the person running this software — the end user. The
+Operator downloaded this software, deployed it on their own infrastructure,
+connected it to their own self-custodial wallet, and configured it according
+to their own parameters. The Operator is not registered with or regulated by
+the U.S. Securities and Exchange Commission in connection with the operation
+of this software for the Operator's own self-custodial wallet. All
+transactions executed by LP Ranger are initiated by the Operator's own
+configuration, signed by the Operator's own wallet, and submitted to the
+public blockchain on the Operator's own behalf.
+
+If the Operator is running LP Ranger as a hosted service for third parties —
+that is, if other users are accessing a deployed instance to manage their own
+wallets and positions — the Operator is acting as a Covered User Interface
+Provider within the meaning of the SEC Staff Statement Regarding Broker-
+Dealer Registration of Certain User Interfaces Utilized to Prepare
+Transactions in Crypto Asset Securities (File No. 4-894, April 13, 2026).
+In that capacity, additional obligations may apply under federal securities
+law. The Operator should review that statement and consider seeking legal
+counsel before operating LP Ranger as a hosted service for others.
+
+
+1. Fees
+
+LP Ranger charges no fees. No percentage, flat, per-transaction, or protocol
+fee is collected. All trading fees earned from liquidity provision go directly
+to the user's wallet (recipient: opts.recipient in src/compounder.js). The
+only costs incurred are standard blockchain gas fees paid to the PulseChain
+network.
+
+
+2. Venue Relationships — No Affiliation
+
+The Creator, Offeror, and Operator of LP Ranger have no affiliation of any
+kind — including no ownership interest, no revenue-sharing arrangement, no
+control relationship, no contractual relationship, no compensation
+arrangement, no referral or incentive agreement, and no other formal or
+informal relationship — with 9mm, the 9mm DEX Aggregator, 9mm Pro V3,
+PulseChain, or any person or entity associated with their creation, offering,
+or operation.
+
+LP Ranger connects to and interacts with the following trading venues and
+distributed ledger trading systems on PulseChain solely because they are the
+protocol for which this software was designed:
+
+- 9mm DEX Aggregator (api.9mm.pro) — a liquidity aggregator that routes
+  swap transactions across multiple PulseChain DEXes to minimize slippage.
+  LP Ranger uses this aggregator as its primary swap execution path.
+
+- 9mm Pro V3 SwapRouter — a single-pool direct swap router, used as a
+  fallback if the aggregator is unavailable.
+
+- 9mm Pro V3 NonfungiblePositionManager — the smart contract through which
+  all liquidity positions are created, modified, and closed.
+
+This disclosure is presented to users in the disclosure modal on app load.
+
+
+3. Execution Routes Displayed
+
+Single execution path — the bot automatically selects: aggregator first, V3
+router fallback. Users cannot choose between alternative routes. However,
+after each swap the venues used are disclosed to the user in two places:
+(a) a "Routed: ..." status badge in the dashboard header (shows the venues
+from the most recent swap), and (b) a "Routed Via" column in the Rebalance
+Events history table (shows venues per rebalance). The aggregator routes
+through multiple PulseChain DEXes; the sources array from the aggregator
+response identifies which venues handled the swap.
+
+
+4. User-Customizable Transaction Parameters
+
+All parameters are configurable per-position via the dashboard or
+.bot-config.json:
+
+  Parameter                          Default     Range           UI Control
+  --------------------------------------------------------------------------
+  Slippage tolerance                 0.75%       0.1-5%          inSlip
+  OOR threshold (% beyond boundary)  5%          1-100%          inOorThreshold
+  OOR timeout (continuous OOR)       180 min     0-1440 min      inOorTimeout
+  Min rebalance interval             10 min      1-1440 min      inMinInterval
+  Max rebalances/day                 20          1-200           inMaxReb
+  Check interval                     60 sec      10-3600 sec     inInterval
+  Auto-compound threshold            $5          $1+             autoCompoundThreshold
+  Gas strategy                       —           dropdown        inGas
+  Token0 allocation offset           50%         0-100%          inOffsetToken0
+  Dry-run mode                       off         on/off          DRY_RUN env var
+
+Not user-customizable: swap venue/route selection, TX speed-up timing (120s),
+cancel timing (1200s), gas bump multiplier (1.5x), swap deadline (5 min).
+
+
+5. Data Storage
+
+Server-side (local disk only):
+
+- app-config/.bot-config.json — position config, HODL baselines, residuals
+- app-config/.wallet.json — AES-256-GCM encrypted wallet state (gitignored)
+- app-config/rebalance_log.json — historical rebalance events with TX hashes,
+  amounts, USD values
+- tmp/ — performance caches (event data, prices, epochs), rebuildable from
+  chain
+
+Client-side (browser localStorage):
+
+- Position metadata (wallet, tokenId, liquidity, fees)
+- RPC URL selection
+- No private keys or mnemonics in localStorage
+
+External APIs contacted:
+
+- PulseChain RPC endpoints (read chain state, submit signed TXs)
+- 9mm DEX Aggregator (swap quotes — sends token addresses and amounts, not
+  wallet addresses or keys)
+- DexScreener / GeckoTerminal (USD price lookups by token address)
+- Moralis (historical prices, if API key provided)
+
+No trade data is sent to the LP Ranger operator or any analytics service. All
+data stays local or on-chain.
+
+
+6. MEV Exposure
+
+Transactions are submitted to the public PulseChain mempool. No MEV protection
+is implemented:
+
+- No Flashbots Protect or private mempool routing
+- No atomic/batch swap execution
+- No sandwich attack defenses beyond slippage tolerance
+
+Slippage protections in place:
+
+- amountOutMinimum calculated from a staticCall quote (real expected output),
+  not spot price
+- Price impact check aborts the swap if impact exceeds the user's slippage
+  setting (_checkSwapImpact() in src/rebalancer-pools.js)
+- Aggregator quotes include guaranteedPrice floor
+
+The existing disclaimer warns users (in public/index.html lines 15-59): users
+"assume full responsibility" for "MEV, impermanent loss, slippage, oracle
+failures."
+
+
+7. Post-Trade Results Displayed
+
+Yes. The dashboard shows:
+
+- TX hashes — clickable, with copy-to-clipboard, for all rebalance
+  transactions (remove, swap, mint)
+- Token amounts — collected from old position (amount0/1Collected) and
+  deposited into new (amount0/1Minted)
+- USD values — exit value, entry value, and token prices at time of trade
+- Gas costs — total gas in wei, converted to USD, tracked per epoch
+- Tick range — old and new tick boundaries
+- Per-day P&L table — fee P&L, price-change P&L, gas costs, impermanent loss,
+  residuals (up to 31 days)
+- Rebalance event log — paginated history (8/page) with 5-year lookback
+
+All post-trade information is derived exclusively from publicly available
+on-chain data — specifically, transaction receipts and event logs recorded on
+the PulseChain public ledger, which are readable by anyone with access to a
+PulseChain RPC endpoint.
+
+All such data is retrieved directly from the blockchain by the software
+running on the user's own machine and stored locally in a rebalance_log.json
+file on the user's own infrastructure. No trade data, transaction history,
+wallet addresses, token amounts, or any other post-trade information is
+transmitted to, processed by, stored by, or accessible to the developer,
+offeror, or any third party in connection with the operation of this
+interface. The developer has no visibility into any transaction executed or
+any position managed using this software.
+
+This local transaction history is maintained solely for the user's own
+operational reference. It is the equivalent of reading one's own transaction
+history from a public block explorer — the operator of this software is the
+user, reading data that is already public, on hardware they control.
+
+
+8. Investment Advice
+
+No. LP Ranger provides no investment advice, recommendations, or route
+commentary. It executes only user-configured automated rebalancing logic. The
+dashboard displays historical results, not forward-looking projections. One
+operational suggestion exists in help documentation: "instead of re-opening a
+closed position, mint a fresh LP position" — this is procedural guidance, not
+financial advice.
+
+The existing disclaimer explicitly states: "expressly disclaim any fiduciary
+duty or advisory relationship."
+
+
+9. Cybersecurity Controls
+
+  Control                Implementation
+  ---------------------------------------------------------------------------
+  Private key encryption AES-256-GCM + PBKDF2-SHA512 (600K iterations for
+                         key files, 100K for wallet state)
+  API key encryption     AES-256-GCM, encrypted at rest in api-keys.json
+  Key in memory          Plaintext exists only during decrypt/sign window;
+                         never written to disk unencrypted
+  Nonce safety           Async-mutex rebalance lock serializes all TXs across
+                         positions (one nonce at a time)
+  TX recovery            4-phase pipeline: wait -> speed-up (1.5x gas) ->
+                         wait -> auto-cancel (0-PLS self-transfer)
+  Input validation       Composite key parsing, wallet address checksumming,
+                         seed phrase BIP-39 validation
+  File access            No user-controlled filesystem paths; all paths use
+                         path.join(cwd, CONSTANT)
+  Sensitive files        .gitignore covers .env, .wallet.json,
+                         .bot-config.json, api-keys.json, *.keyfile.json
+  Network binding        Server binds to 127.0.0.1 (localhost) by default.
+                         Only local connections are accepted at the network
+                         level. Users may override to 0.0.0.0 for LAN access
+                         via the HOST env var. The API documentation server
+                         (scripts/api-doc.js) is also locked to 127.0.0.1.
+                         The headless bot (bot.js) opens no inbound ports.
+  CSRF protection        Three layers of defense:
+                         (1) Network binding: server binds to 127.0.0.1 by
+                         default, accepting only local connections.
+                         (2) CORS origin guard: mutating requests (POST,
+                         DELETE) with a non-localhost Origin are rejected 403.
+                         (3) CSRF tokens: all mutating requests must include
+                         a valid, non-expired token in the x-csrf-token
+                         header. Tokens are cryptographically generated via
+                         the `csrf` package (pillarjs), expire after 1 hour,
+                         and are served via GET /api/csrf-token. The
+                         dashboard fetches a token on init and auto-refreshes
+                         before expiry. Programmatic callers (curl, scripts)
+                         must also obtain a token before sending mutations.
+                         ESLint security plugin scans for CSRF-related code
+                         patterns at lint time.
+  Port configuration     Server port is user-configurable via PORT env var
+                         (default 5555). The CORS origin guard dynamically
+                         tracks the actual listening port.
+  Security scanning      ESLint security plugin, secretlint, npm audit
+                         (documented in CLAUDE-SECURITY.md)
+
+The app is designed for local, single-node use (localhost only by default).
+Because no application traffic traverses the public Internet, the class of
+network attacks on messages in flight (eavesdropping, man-in-the-middle,
+replay) is eliminated. TLS is a network-level concern handled by a reverse
+proxy or network configuration if the user overrides HOST for remote access.
+
+Gaps noted: no API rate limiting, though the server is not exposed outside
+of 127.0.0.1 (localhost) by default, so remote attackers cannot abuse API
+rate.
+
+
+10. Default Transaction Parameters and Determination
+
+  Parameter          Default           How Determined
+  ---------------------------------------------------------------------------
+  Slippage           0.75%             Conservative default in src/config.js;
+                                       balances execution success vs. price
+                                       protection
+  OOR threshold      5%                Prevents rebalancing on minor
+                                       fluctuations; based on typical v3
+                                       position behavior
+  OOR timeout        180 min (3 hr)    Allows temporary OOR to self-correct
+                                       before triggering gas spend
+  Min interval       10 min            Prevents rapid-fire rebalances during
+                                       volatility
+  Daily cap          20                Wallet-level safety ceiling; prevents
+                                       runaway gas spending
+  Check interval     60 sec            Balances RPC load vs. responsiveness
+  TX speed-up        120 sec           PulseChain block time consideration
+  TX cancel          1200 sec (20 min) Extended window for PulseChain network
+                                       congestion
+  Gas bump           1.5x              Standard replacement TX multiplier
+  Swap deadline      5 min             Hardcoded; prevents stale swaps from
+                                       executing
+  Mint gas limit     600,000           Per-chain tunable in chains.json; sized
+                                       for v3 mint complexity
+  Aggregator retry   4 attempts        Per-chain tunable; balances reliability
+                                       vs. latency
+
+Defaults are developer-chosen based on PulseChain network characteristics and
+Uniswap v3 position management patterns. All user-facing defaults are
+overridable. Hardcoded values (gas bump, deadline, gas limits) are not exposed
+to users.

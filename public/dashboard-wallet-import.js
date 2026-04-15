@@ -12,7 +12,7 @@
  * dashboard-wallet.js (wallet state, confirmWallet, etc.).
  */
 
-import { g, act, ACT_ICONS } from "./dashboard-helpers.js";
+import { g, act, ACT_ICONS, csrfHeaders } from "./dashboard-helpers.js";
 import { ethers } from "./ethers-adapter.js";
 import {
   wallet,
@@ -386,7 +386,7 @@ export async function revealWallet() {
   try {
     const res = await fetch("/api/wallet/reveal", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({ password }),
     });
     const data = await res.json();
@@ -449,7 +449,7 @@ export function closeClearWalletModal() {
 export async function confirmClearWallet() {
   closeClearWalletModal();
   try {
-    await fetch("/api/wallet", { method: "DELETE" });
+    await fetch("/api/wallet", { method: "DELETE", headers: csrfHeaders() });
   } catch {
     /* server unavailable */
   }
