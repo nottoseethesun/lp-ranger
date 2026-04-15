@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776283191842">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776283191842">
+<link rel="stylesheet" href="style.css?v=1776293838988">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776293838988">
 </head>
 <body>
 
@@ -462,7 +462,7 @@
           <span class="9mm-pos-mgr-toggle-track"></span>
         </label>
         <div class="9mm-pos-mgr-settings-item 9mm-pos-mgr-settings-key-row">
-          <label for="moralisKeyInput"><span class="9mm-pos-mgr-api-dot" id="moralisKeyDot" title="No Moralis API key configured"></span> Moralis API Key <span class="9mm-pos-mgr-text-muted-sm">(<a href="https://moralis.com/" target="_blank" rel="noopener">free sign-up</a>)</span></label>
+          <label for="moralisKeyInput"><span class="9mm-pos-mgr-api-dot" id="moralisKeyDot" title="No Moralis API key configured"></span> Moralis API Key <span class="9mm-pos-mgr-il-info-btn" data-param-help="moralisKey" title="Learn about the Moralis API key">i</span> <span class="9mm-pos-mgr-text-muted-sm">(<a href="https://moralis.com/" target="_blank" rel="noopener">free sign-up</a>)</span></label>
           <div class="9mm-pos-mgr-settings-key-wrap">
             <input type="text" id="moralisKeyInput" class="9mm-pos-mgr-settings-key-input" placeholder="Paste key here" autocomplete="off" data-1p-ignore data-lpignore="true">
             <button type="button" class="9mm-pos-mgr-settings-key-save" id="moralisKeySaveBtn">Save</button>
@@ -586,7 +586,7 @@
   <div class="kpi-card neu kpi-card-wide">
     <div class="kpi-label 9mm-pos-mgr-panel-title">Current LP Position <span class="9mm-pos-mgr-pos-status" id="curPosStatus"></span></div>
     <div class="kpi-label">Net Profit and Loss Return</div>
-    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiPnl">—<span class="9mm-pos-mgr-kpi-pct" id="kpiPnlPctVal"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiPnlApr"></span></div>
+    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiPnl"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="curNetPnlInfo" title="Show P&amp;L breakdown details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="kpiPnlPctVal"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiPnlApr"></span></div>
     <div class="kpi-sub" id="kpiPnlPct">Start Bot for Live Data</div>
     <div class="kpi-sub" id="kpiPosDuration"></div>
     <div class="9mm-pos-mgr-pnl-breakdown" id="pnlBreakdown">
@@ -599,15 +599,15 @@
     </div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Profit</div>
-    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curProfit">—</div>
-    <div class="kpi-sub">Fees &minus; Compounded &minus; Gas +/&minus; IL/G (This Position)</div>
+    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curProfit"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" data-param-help="curProfit" title="Show Profit breakdown details">i</span></span></div>
+    <div class="kpi-sub">Fees &minus; Fees Compounded &minus; Gas +/&minus; IL/G (This Position)</div>
     <hr class="9mm-pos-mgr-kpi-divider">
-    <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="curILInfo" title="Click to show IL/G calculation details">i</span></div>
-    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curIL">—<span class="9mm-pos-mgr-kpi-pct" id="curILPct"></span></div>
+    <div class="kpi-label">Impermanent Loss/Gain</div>
+    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="curIL"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="curILInfo" title="Click to show IL/G calculation details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="curILPct"></span></div>
     <div class="kpi-sub">LP Value vs Holding Tokens (This Position)</div>
     <div class="realized-gains-row" id="curDepositRow">
       <div class="9mm-pos-mgr-pnl-row"><span>Initial Deposit for This LP <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" id="curDepositPriceInfo">i</span><span class="9mm-pos-mgr-info-popover" id="curDepositPriceInfoText"></span></span></span><span id="curDepositDisplay" class="kpi-value neu">—</span></div>
-      <span class="realized-gains-label" id="curDepositLabel" title="Click to set the deposit amount for this LP position">Edit Initial Deposit for This LP</span>
+      <span class="realized-gains-label" id="curDepositLabel" title="Click to set the deposit amount for this LP position">Edit Initial Deposit for This LP</span> <span class="9mm-pos-mgr-il-info-btn" data-param-help="curDepositInput" title="Learn about initial deposit">i</span>
       <div class="9mm-pos-mgr-realized-hint" id="curDepositNote">USD value when you created this specific LP position.<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
       <div class="realized-gains-input-wrap" id="curDepositInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
@@ -616,7 +616,7 @@
       </div>
     </div>
     <div class="realized-gains-row" id="curRealizedRow">
-      <span class="realized-gains-label" id="curRealizedLabel" title="Click to set realized gains for this LP position">Edit Realized Gains</span>
+      <span class="realized-gains-label" id="curRealizedLabel" title="Click to set realized gains for this LP position">Edit Realized Gains</span> <span class="9mm-pos-mgr-il-info-btn" data-param-help="curRealizedInput" title="Learn about realized gains">i</span>
       <div class="9mm-pos-mgr-realized-hint" id="curRealizedNote">Coins sold or withdrawn from this specific LP position. You must also update the lifetime Realized Gains separately.</div>
       <div class="realized-gains-input-wrap" id="curRealizedInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
@@ -637,14 +637,14 @@
       <button type="button" class="9mm-pos-mgr-mission-btn" id="compoundNowBtn" disabled title="Enabled when Fees available are > $usd 1">Compound Now</button>
       <div class="9mm-pos-mgr-mission-compound-block">
       <div class="9mm-pos-mgr-mission-grid">
-        <span class="9mm-pos-mgr-mission-label">Auto-compound</span>
+        <span class="9mm-pos-mgr-mission-label">Auto-compound <span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-info-accent2" data-param-help="autoCompoundToggle" title="Learn about auto-compound">i</span></span>
         <span></span>
         <span id="autoCompoundBadge" class="9mm-pos-mgr-mission-badge off">OFF</span>
         <label class="9mm-pos-mgr-compound-toggle">
           <input type="checkbox" id="autoCompoundToggle">
           <span class="9mm-pos-mgr-compound-track"></span>
         </label>
-        <span class="9mm-pos-mgr-mission-label">Threshold</span>
+        <span class="9mm-pos-mgr-mission-label">Threshold <span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-info-accent2" data-param-help="autoCompoundThreshold" title="Learn about compound threshold">i</span></span>
         <span class="9mm-pos-mgr-mission-currency">$</span>
         <input type="number" class="9mm-pos-mgr-mission-input" id="autoCompoundThreshold" value="5" min="1" step="0.01">
         <button type="button" class="9mm-pos-mgr-mission-btn-sm" id="saveCompoundThresholdBtn">Save</button>
@@ -669,18 +669,18 @@
   <!-- ── Lifetime ── -->
   <div class="kpi-card neu kpi-card-wide">
     <div class="kpi-label 9mm-pos-mgr-panel-title">Lifetime</div>
-    <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet">—<span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div><div class="kpi-sub">Lifetime Fees &minus; Compounded &minus; Gas + Price Change + Realized Gains</div>
+    <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="ltNetPnlInfo" title="Show P&amp;L breakdown details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div><div class="kpi-sub">Lifetime Fees &minus; Fees Compounded &minus; Gas + Price Change + Realized Gains</div>
     <div class="kpi-sub" id="kpiNetBreakdown"></div>
     <div class="9mm-pos-mgr-pnl-breakdown"><div class="9mm-pos-mgr-pnl-row"><span>Current Value <span class="9mm-pos-mgr-edit-link" id="editPricesLinkLt" title="Override token prices when auto-detection fails">Edit</span></span><span id="ltCurrentValue" class="kpi-value neu">&mdash;</span></div></div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Profit</div>
-    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="ltProfit">—</div>
-    <div class="kpi-sub">Lifetime Fees &minus; Compounded &minus; Gas +/&minus; IL/G</div>
+    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="ltProfit"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" data-param-help="ltProfit" title="Show Profit breakdown details">i</span></span></div>
+    <div class="kpi-sub">Lifetime Fees &minus; Fees Compounded &minus; Gas +/&minus; IL/G</div>
     <hr class="9mm-pos-mgr-kpi-divider">
-    <div class="kpi-label">Impermanent Loss/Gain <span class="9mm-pos-mgr-il-info-btn" id="ltILInfo" title="Click to show IL/G calculation details">i</span></div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL">—<span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
+    <div class="kpi-label">Impermanent Loss/Gain</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="ltILInfo" title="Click to show IL/G calculation details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
     <div class="realized-gains-row" id="initialDepositRow">
       <div class="9mm-pos-mgr-pnl-row"><span>Total Lifetime Deposit <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" id="ltDepositPriceInfo">i</span><span class="9mm-pos-mgr-info-popover" id="ltDepositPriceInfoText"></span></span></span><span id="lifetimeDepositDisplay" class="kpi-value neu">—</span></div>
-      <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your total lifetime deposit amount for lifetime P&amp;L">Edit Total Lifetime Deposit</span>
+      <span class="realized-gains-label" id="initialDepositLabel" title="Click to set your total lifetime deposit amount for lifetime P&amp;L">Edit Total Lifetime Deposit</span> <span class="9mm-pos-mgr-il-info-btn" data-param-help="initialDepositInput" title="Learn about lifetime deposit">i</span>
       <div class="9mm-pos-mgr-realized-hint" id="initialDepositNote">Total USD value of all deposits into this liquidity pool on this wallet (up to five years back).<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
       <div class="realized-gains-input-wrap" id="initialDepositInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
@@ -689,7 +689,7 @@
       </div>
     </div>
     <div class="realized-gains-row" id="realizedGainsRow">
-      <span class="realized-gains-label" id="realizedGainsLabel" title="Click to edit realized gains from sold LP tokens">Edit Realized Gains</span>
+      <span class="realized-gains-label" id="realizedGainsLabel" title="Click to edit realized gains from sold LP tokens">Edit Realized Gains</span> <span class="9mm-pos-mgr-il-info-btn" data-param-help="realizedGainsInput" title="Learn about lifetime realized gains">i</span>
       <div class="9mm-pos-mgr-realized-hint" id="realizedGainsNote">Lifetime gains from coins sold out of this LP position.<br>This is done manually only, in the input box below.</div>
       <div class="realized-gains-input-wrap" id="realizedGainsInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
@@ -799,12 +799,12 @@
       <p class="9mm-pos-mgr-help-text"><strong>DOUBLING</strong> activates when 3 or more rebalances occur within 4&times; the minimum interval. DOUBLING means that the rebalance must cool down just like under regular THROTTLED. It also means that the cool-down period is longer than under THROTTLED. The cooldown doubles after each rebalance: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This protects against excessive gas spending and excessive loss to slippage and swap fees during high volatility. Doubling mode clears automatically after 4&times; the Min Time Between Rebalances with no rebalance, or at the daily midnight UTC reset. For example, if the cooldown window is now 20 minutes, the Min Time Between Rebalances is 10 minutes as set here in this UI, and there has been no rebalance for 40 minutes, then Doubling mode clears.</p>
       <p class="9mm-pos-mgr-help-text"><strong>CAPPED</strong> means the daily rebalance limit (&ldquo;Max Rebalances / Day&rdquo;) has been reached. No more rebalances will occur until the counter resets at midnight UTC, or the &ldquo;Max Rebalances / Day&rdquo; setting has been manually increased.</p>
     </div>
-    <button type="button" class="modal-btn secondary" id="throttleInfoOk">OK</button>
+    <button type="button" class="modal-btn secondary" id="throttleInfoOk">Close</button>
   </div>
 </div>
 
       <div class="prow">
-        <span class="plbl">Min Time Between Rebalances</span>
+        <span class="plbl">Min Time Between Rebalances <span class="9mm-pos-mgr-il-info-btn" data-param-help="inMinInterval" title="Learn about min interval">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inMinInterval" value="10" min="1" max="1440" step="1">
           <span class="punit">min</span>
@@ -812,7 +812,7 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Max Rebalances / Day</span>
+        <span class="plbl">Max Rebalances / Day <span class="9mm-pos-mgr-il-info-btn" data-param-help="inMaxReb" title="Learn about daily cap">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inMaxReb" value="20" min="1" max="200" step="1">
           <span class="punit">/day</span>
@@ -820,7 +820,7 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Doubling Trigger Window</span>
+        <span class="plbl">Doubling Trigger Window <span class="9mm-pos-mgr-il-info-btn" data-param-help="dblWindowLabel" title="Learn about doubling mode">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <span class="9mm-pos-mgr-text-accent-sm" id="dblWindowLabel">40 min</span>
           <span class="punit">(auto)</span>
@@ -843,7 +843,7 @@
     <div class="cfg-block">
       <div class="cfg-title">Range &amp; Execution</div>
       <div class="prow">
-        <span class="plbl">OOR Threshold Before Rebalance Is Triggered (±%)</span>
+        <span class="plbl">OOR Threshold Before Rebalance Is Triggered (±%) <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOorThreshold" title="Learn about OOR threshold">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inOorThreshold" value="5" min="1" max="100" step="1">
           <span class="punit">%</span>
@@ -851,7 +851,7 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">OOR Rebalance Time Threshold (minutes out of range, 0 = disabled)</span>
+        <span class="plbl">OOR Rebalance Time Threshold (minutes out of range, 0 = disabled) <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOorTimeout" title="Learn about OOR timeout">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inOorTimeout" value="180" min="0" max="1440" step="10">
           <span class="punit">min</span>
@@ -859,7 +859,7 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Slippage Tolerance</span>
+        <span class="plbl">Slippage Tolerance <span class="9mm-pos-mgr-il-info-btn" data-param-help="inSlip" title="Learn about slippage">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inSlip" value="0.5" min="0.1" max="5" step="0.1">
           <span class="punit">%</span>
@@ -867,7 +867,7 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Check Interval</span>
+        <span class="plbl">Check Interval <span class="9mm-pos-mgr-il-info-btn" data-param-help="inInterval" title="Learn about check interval">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inInterval" value="60" min="10" max="3600" step="10">
           <span class="punit">sec</span>
@@ -875,13 +875,13 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Gas Strategy</span>
+        <span class="plbl">Gas Strategy <span class="9mm-pos-mgr-il-info-btn" data-param-help="inGas" title="Learn about gas strategy">i</span></span>
         <select class="pinput w100 9mm-pos-mgr-text-left" id="inGas">
           <option value="auto">Auto</option><option value="fast">Fast</option><option value="slow">Economy</option>
         </select>
       </div>
       <div class="prow 9mm-pos-mgr-offset-row">
-        <span class="plbl">Position Offset</span>
+        <span class="plbl">Position Offset <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOffsetToken0" title="Learn about position offset">i</span></span>
         <div class="9mm-pos-mgr-offset-inputs">
           <span class="plbl">
             <span id="offsetT0Name">Token 0</span>
@@ -908,7 +908,7 @@
       <div class="cfg-title">Contracts &amp; Network</div>
 
       <div class="pcol">
-        <span class="plbl">RPC URL</span>
+        <span class="plbl">RPC URL <span class="9mm-pos-mgr-il-info-btn" data-param-help="inRpc" title="Learn about RPC URL">i</span></span>
         <div class="rpc-combo">
           <input type="text" class="pinput full rpc-combo-input" id="inRpc" value="https://rpc-pulsechain.g4mm4.io" placeholder="https://rpc-pulsechain.g4mm4.io">
           <button type="button" class="rpc-combo-toggle" id="rpcToggle" title="Show RPC presets">&#x25BC;</button>
@@ -920,14 +920,14 @@
         </div>
       </div>
       <div class="pcol 9mm-pos-mgr-mt-md">
-        <span class="plbl">Position Manager (NonfungiblePositionManager)</span>
+        <span class="plbl">Position Manager (NonfungiblePositionManager) <span class="9mm-pos-mgr-il-info-btn" data-param-help="inPM" title="Learn about Position Manager">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="text" class="pinput full" id="inPM" value="0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2" placeholder="0x…">
           <button type="button" class="save-range-btn" id="savePMBtn">Save</button>
         </div>
       </div>
       <div class="pcol 9mm-pos-mgr-mt-md">
-        <span class="plbl">Factory Address</span>
+        <span class="plbl">Factory Address <span class="9mm-pos-mgr-il-info-btn" data-param-help="inFactory" title="Learn about Factory address">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="text" class="pinput full" id="inFactory" value="0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68" placeholder="0x…">
           <button type="button" class="save-range-btn" id="saveFactoryBtn">Save</button>
@@ -1016,6 +1016,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776283191842"></script>
+<script src="dist/bundle.js?v=1776293838988"></script>
 </body>
 </html>

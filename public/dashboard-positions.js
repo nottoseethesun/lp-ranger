@@ -24,6 +24,7 @@ import {
   csrfHeaders,
 } from "./dashboard-helpers.js";
 import { _posLabel, applySyncBlur } from "./dashboard-data.js";
+import { _setLeadingText } from "./dashboard-data-kpi.js";
 import { wallet, getRpcUrl } from "./dashboard-wallet.js";
 import {
   posStore,
@@ -320,7 +321,7 @@ function _clearKpiElements() {
   ]) {
     const el = g(id);
     if (el) {
-      el.textContent = "\u2014";
+      _setLeadingText(el, "\u2014");
       el.className = "kpi-value 9mm-pos-mgr-kpi-pct-row neu";
     }
   }

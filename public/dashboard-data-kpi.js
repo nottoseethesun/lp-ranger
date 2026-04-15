@@ -32,6 +32,36 @@ export function getPoolFirstDate() {
   return _poolFirstDate;
 }
 
+/** Cached P&L breakdowns for the info dialogs. */
+const _ltBreakdown = {
+  fees: 0,
+  compounded: 0,
+  gas: 0,
+  priceChange: 0,
+  realized: 0,
+  total: 0,
+  currentValue: 0,
+  deposit: 0,
+};
+const _curBreakdown = {
+  fees: 0,
+  compounded: 0,
+  gas: 0,
+  priceChange: 0,
+  realized: 0,
+  total: 0,
+  currentValue: 0,
+  deposit: 0,
+};
+/** @returns {typeof _ltBreakdown} */
+export function getLtBreakdown() {
+  return _ltBreakdown;
+}
+/** @returns {typeof _curBreakdown} */
+export function getCurBreakdown() {
+  return _curBreakdown;
+}
+
 export function _fmtUsd(val) {
   if (val === null || val === undefined || isNaN(val)) return "\u2014";
   const abs = Math.abs(val).toFixed(2);
@@ -74,14 +104,18 @@ export function _setAprSpan(id, val, deposit, firstDate) {
 }
 export function _setLeadingText(el, text) {
   if (!el) return;
-  if (el.firstChild?.nodeType === 3) el.firstChild.textContent = text;
-  else el.insertBefore(document.createTextNode(text), el.firstChild);
+  // If first child is a wrapper span (9mm-pos-mgr-kpi-val-wrap), update inside it
+  const target = el.firstChild?.classList?.contains("9mm-pos-mgr-kpi-val-wrap")
+    ? el.firstChild
+    : el;
+  if (target.firstChild?.nodeType === 3) target.firstChild.textContent = text;
+  else target.insertBefore(document.createTextNode(text), target.firstChild);
 }
 export function resetKpis(ids) {
   for (const id of ids) {
     const el = g(id);
     if (!el) continue;
-    el.textContent = "\u2014";
+    _setLeadingText(el, "\u2014");
     el.className = "kpi-value neu";
   }
 }
@@ -103,13 +137,13 @@ export function setKpiValue(id, val, forceClass) {
   const el = g(id);
   if (!el) return;
   if (val === null || val === undefined) {
-    el.textContent = "\u2014";
+    _setLeadingText(el, "\u2014");
     el.className = "kpi-value neu";
     return;
   }
   const cls =
     forceClass || (_isDisplayZero(val) ? "neu" : val > 0 ? "pos" : "neg");
-  el.textContent = _fmtUsd(val);
+  _setLeadingText(el, _fmtUsd(val));
   el.className = el.className
     .replace(/\b(pos|neg|neu)\b/g, "")
     .replace(/\bkpi-value\b/, "")
@@ -202,8 +236,19 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   } else {
     setKpiValue("pnlGas", curGas > 0 ? curGas : null, "neg");
   }
-  setKpiValue("pnlPrice", deposit > 0 ? cv - deposit : 0);
+  const curPc = deposit > 0 ? cv - deposit : 0;
+  setKpiValue("pnlPrice", curPc);
   setKpiValue("pnlRealized", curRealized);
+  Object.assign(_curBreakdown, {
+    fees: curFees,
+    compounded: curCompounded,
+    gas: curGas,
+    priceChange: curPc,
+    realized: curRealized,
+    total: curPc + curFees + curRealized - curCompounded,
+    currentValue: cv,
+    deposit,
+  });
   _updateCurIL(d, deposit);
   _updatePosDuration(d);
   _setProfitKpi(
@@ -363,11 +408,11 @@ export function _updateNetBreakdown(
     c = compounded || 0,
     g2 = gas || 0,
     r = (realized || 0).toFixed(2);
-  /* Order: Fees − Compounded − Gas + Price Change + Realized */
+  /* Order: Fees - Compounded - Gas + Price Change + Realized */
   let text = f;
-  text += " \u2212 " + c.toFixed(2);
-  text += " \u2212 " + g2.toFixed(2);
-  text += (p >= 0 ? " + " : " \u2212 ") + Math.abs(p).toFixed(2);
+  text += " - " + c.toFixed(2);
+  text += " - " + g2.toFixed(2);
+  text += (p >= 0 ? " + " : " - ") + Math.abs(p).toFixed(2);
   text += " + " + r;
   bd.textContent = text;
 }
@@ -451,6 +496,18 @@ export function _updateNetReturn(
         ltGas2,
       );
     _setLtCurrentValue(d);
+    const cv =
+      (d.pnlSnapshot.currentValue || 0) + (d.pnlSnapshot.residualValueUsd || 0);
+    Object.assign(_ltBreakdown, {
+      fees: ltFees,
+      compounded: ltCompounded,
+      gas: ltGas2,
+      priceChange: ltPriceChange,
+      realized: ltRealized,
+      total,
+      currentValue: cv,
+      deposit: ltDeposit,
+    });
   }
   const il = _updateIL(d, ltDeposit);
   const ltComp = d.pnlSnapshot?.totalCompoundedUsd || 0;

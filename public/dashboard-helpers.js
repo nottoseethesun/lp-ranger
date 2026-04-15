@@ -381,7 +381,12 @@ export function initDisclaimer() {
 export function showDisclosure() {
   _populateDisclosure();
   const overlay = g("disclaimerOverlay");
-  if (overlay) overlay.classList.remove("hidden");
+  if (overlay) {
+    overlay.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      overlay.scrollTop = 0;
+    });
+  }
 }
 
 /** Toggle the settings popover visibility. */

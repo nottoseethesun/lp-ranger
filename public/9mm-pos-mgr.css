@@ -750,6 +750,27 @@
   color: #27303a;
 }
 
+.\39 mm-pos-mgr-kpi-val-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.\39 mm-pos-mgr-kpi-info {
+  flex-shrink: 0;
+  position: relative;
+  top: -3px;
+}
+
+.\39 mm-pos-mgr-il-info-btn.\39 mm-pos-mgr-info-accent2 {
+  color: var(--accent2);
+}
+
+.\39 mm-pos-mgr-il-info-btn.\39 mm-pos-mgr-info-accent2:hover {
+  background: var(--accent2);
+  color: #27303a;
+}
+
 .\39 mm-pos-mgr-info-dot {
   display: inline-block;
   width: 16px;
@@ -885,17 +906,16 @@
   display: block;
   margin: 0 auto;
   padding: 6px 28px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent);
   border-radius: 6px;
-  background: var(--card);
-  color: var(--text);
+  background: rgb(0 229 255 / 10%);
+  color: var(--accent);
   font-size: 13px;
   cursor: pointer;
 }
 
 .\39 mm-pos-mgr-il-ok-btn:hover {
-  border-color: var(--accent3);
-  color: var(--accent3);
+  background: rgb(0 229 255 / 20%);
 }
 
 .\39 mm-pos-mgr-header-logo {
@@ -1035,6 +1055,83 @@
 
 .\39 mm-pos-mgr-modal-close:hover {
   background: rgb(255 107 53 / 25%);
+}
+
+/* ── Param Help Modal (educational, accent-blue) ─────────────────────── */
+
+.\39 mm-pos-mgr-modal.\39 mm-pos-mgr-modal-help {
+  border-color: var(--accent);
+  text-align: left;
+}
+
+.\39 mm-pos-mgr-modal-help h3 {
+  color: var(--accent);
+}
+
+.\39 mm-pos-mgr-modal-help .\39 mm-pos-mgr-modal-close {
+  background: rgb(0 229 255 / 10%);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  align-self: center;
+  padding: 6px 28px;
+}
+
+.\39 mm-pos-mgr-modal-help .\39 mm-pos-mgr-modal-close:hover {
+  background: rgb(0 229 255 / 20%);
+}
+
+.\39 mm-pos-mgr-help-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  margin: -8px 0 12px;
+}
+
+.\39 mm-pos-mgr-help-heading {
+  color: var(--accent);
+  font-family: Urbanist, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 16px 0 4px;
+}
+
+.\39 mm-pos-mgr-help-heading:first-child {
+  margin-top: 0;
+}
+
+.\39 mm-pos-mgr-pnl-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.\39 mm-pos-mgr-pnl-breakdown-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.\39 mm-pos-mgr-pnl-breakdown-table td:last-child {
+  text-align: right;
+  font-family: 'Space Mono', monospace;
+}
+
+.\39 mm-pos-mgr-pnl-breakdown-total td {
+  border-top: 2px solid var(--accent);
+  border-bottom: none;
+  color: var(--accent);
+}
+
+.\39 mm-pos-mgr-modal-help a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.\39 mm-pos-mgr-modal-help a:hover {
+  text-decoration: underline;
 }
 
 .\39 mm-pos-mgr-modal-caution {

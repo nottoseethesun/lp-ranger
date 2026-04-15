@@ -188,7 +188,7 @@ export function showILDebug(panel) {
     ${_buildSection(label, sectionInputs, inputs.lpValue, inputs.price0, inputs.price1, ilResult, t0sym, t1sym)}
     <div class="9mm-pos-mgr-il-formula">IL = LP Value \u2212 (${t0sym} deposited \u00D7 ${t0sym} price + ${t1sym} deposited \u00D7 ${t1sym} price)</div>
     ${nowVsHodl}
-    <button class="9mm-pos-mgr-il-ok-btn" data-dismiss-il>OK</button>
+    <button class="9mm-pos-mgr-il-ok-btn" data-dismiss-il>Close</button>
   </div>`;
   el.querySelector("[data-dismiss-il]").addEventListener(
     "click",

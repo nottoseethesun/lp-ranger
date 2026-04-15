@@ -100,6 +100,10 @@ import {
 } from "./dashboard-history.js";
 import { showILDebug, dismissILDebug } from "./dashboard-il-debug.js";
 import {
+  showNetPnlBreakdown,
+  showCurPnlBreakdown,
+} from "./dashboard-param-help.js";
+import {
   _togglePrivacy,
   _bindCopyBtn,
   _openPoolDetailsModal,
@@ -130,6 +134,14 @@ function _input(id, fn) {
 function _change(id, fn) {
   const el = g(id);
   if (el) el.addEventListener("change", fn);
+}
+function _show(id) {
+  const o = g(id);
+  if (o) o.classList.remove("hidden");
+}
+function _hide(id) {
+  const o = g(id);
+  if (o) o.classList.add("hidden");
 }
 /** querySelectorAll + forEach addEventListener */
 function _qa(sel, evt, fn) {
@@ -407,26 +419,16 @@ export function bindAllEvents() {
   });
   _qa(".hwbtn", "click", openWalletModal);
   _click("settingsBtn", toggleSettingsPopover);
-  _click("donateBtn", () => {
-    const o = g("donateOverlay");
-    if (o) o.classList.remove("hidden");
-  });
-  _click("donateClose", () => {
-    const o = g("donateOverlay");
-    if (o) o.classList.add("hidden");
-  });
+  _click("donateBtn", () => _show("donateOverlay"));
+  _click("donateClose", () => _hide("donateOverlay"));
   _click("donateCopyBtn", () => copyText("donateAddr"));
   _click("disclosuresBtn", showDisclosure);
   _click("clearStorageBtn", clearLocalStorageAndCookies);
   _click("aboutBtn", () => {
-    const o = g("aboutOverlay");
-    if (o) o.classList.remove("hidden");
+    _show("aboutOverlay");
     _checkForUpdate();
   });
-  _click("aboutClose", () => {
-    const o = g("aboutOverlay");
-    if (o) o.classList.add("hidden");
-  });
+  _click("aboutClose", () => _hide("aboutOverlay"));
   _click("wsAddrCopy", () => copyText("wsAddr"));
   _click("moralisKeySaveBtn", _saveMoralisKey);
 
@@ -569,6 +571,8 @@ export function bindAllEvents() {
   /* ── IL/G debug popover ───────────────── */
   _click("curILInfo", () => showILDebug("cur"));
   _click("ltILInfo", () => showILDebug("lt"));
+  _click("curNetPnlInfo", showCurPnlBreakdown);
+  _click("ltNetPnlInfo", showNetPnlBreakdown);
 
   /* ── Delegated events + Escape key ────── */
   bindDelegatedEvents({
@@ -579,13 +583,7 @@ export function bindAllEvents() {
     rebalanceRange: closeRebalanceRangeModal,
     throttleInfo: closeTI,
     ilDebug: dismissILDebug,
-    donate: () => {
-      const o = g("donateOverlay");
-      if (o) o.classList.add("hidden");
-    },
-    about: () => {
-      const o = g("aboutOverlay");
-      if (o) o.classList.add("hidden");
-    },
+    donate: () => _hide("donateOverlay"),
+    about: () => _hide("aboutOverlay"),
   });
 }

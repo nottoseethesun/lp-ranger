@@ -62,6 +62,7 @@ import {
 } from "./dashboard-unmanaged.js";
 import { injectPriceOverrideDeps } from "./dashboard-price-override.js";
 import { initTelegram } from "./dashboard-telegram.js";
+import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import {
   bindAllEvents,
@@ -127,6 +128,7 @@ injectPriceOverrideDeps({ refetchUnmanaged: _refetch });
 // ── Bind all event handlers ─────────────────────────────────────────────────
 
 bindAllEvents();
+bindParamHelpButtons();
 restorePrivacyMode();
 
 // ── Disclaimer gate (must resolve before any dashboard init) ────────────────
