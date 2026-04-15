@@ -246,6 +246,31 @@ function _updateSwapSourcesBadge(d) {
   }
 }
 
+import {
+  BUILD_COMMIT,
+  BUILD_COMMIT_DATE,
+  BUILD_RELEASE_TAG,
+} from "./build-info.js";
+
+/** Populate About dialog from build-time constants (one-shot on load). */
+function _populateAboutInfo() {
+  if (BUILD_RELEASE_TAG) {
+    const row = g("aboutReleaseRow");
+    if (row) {
+      row.textContent = "Release: " + BUILD_RELEASE_TAG;
+      row.classList.remove("9mm-pos-mgr-hidden");
+    }
+  }
+  const c = g("aboutCommit");
+  if (c) c.textContent = BUILD_COMMIT;
+  const dt = g("aboutCommitDate");
+  if (dt && BUILD_COMMIT_DATE !== "unknown")
+    dt.textContent = new Date(BUILD_COMMIT_DATE).toLocaleDateString();
+  const row = g("aboutUpdateRow");
+  if (row) row.dataset.commitDate = BUILD_COMMIT_DATE;
+}
+_populateAboutInfo();
+
 const _REB_HELP =
   "LP Ranger is currently submitting transactions to rebalance this LP Position.";
 const _REB_MANUAL =

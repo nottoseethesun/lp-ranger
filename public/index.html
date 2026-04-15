@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776212162598">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776212162598">
+<link rel="stylesheet" href="style.css?v=1776281794057">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776281794057">
 </head>
 <body>
 
@@ -40,8 +40,7 @@
 <div class="modal-overlay hidden" id="walletModal">
   <div class="modal">
     <div class="modal-logo">
-      <div><h2>Wallet Setup</h2><p>LP Ranger · PulseChain</p></div>
-      <div class="modal-logo-icon"><span class="9mm-pos-mgr-logo-on">for</span> <img src="9mm-pro-logo-transparent.png" alt="9mm Pro" class="9mm-pos-mgr-header-logo"></div>
+      <div><h2>Wallet Setup</h2></div>
       <button type="button" class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
     <div class="modal-tabs">
@@ -444,7 +443,7 @@
   </div>
   <div class="header-right">
     <button type="button" class="pos-browser-btn" id="posBrowserBtn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg> <span id="headerPosLabel">0 Positions</span></button>
-    <span class="9mm-pos-mgr-sync-badge 9mm-pos-mgr-sources-badge" id="swapSourcesBadge" title="Primary swap routing venue">Routing through: 9mm Aggregator</span>
+    <span class="9mm-pos-mgr-sync-badge 9mm-pos-mgr-sources-badge" id="swapSourcesBadge" title="This is the routing venue for the token swaps that this app uses. Others exist as well.">Routing through: 9mm Aggregator</span>
     <span class="9mm-pos-mgr-sync-badge" id="syncBadge">Pending</span>
     <div class="status-pill active" id="botStatusPill">
       <div class="dot green" id="botDot"></div>
@@ -454,6 +453,7 @@
     <div class="9mm-pos-mgr-settings-wrap">
       <button type="button" class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="18" height="18" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
       <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
+        <button type="button" class="9mm-pos-mgr-settings-item" id="donateBtn">Donate</button>
         <button type="button" class="9mm-pos-mgr-settings-item" id="disclosuresBtn">Disclosures</button>
         <label class="9mm-pos-mgr-settings-item 9mm-pos-mgr-privacy-setting" title="Toggle privacy mode — blur addresses and NFT IDs">
           <input type="checkbox" id="privacySwitch">
@@ -470,20 +470,56 @@
         </div>
         <button type="button" class="9mm-pos-mgr-settings-item" id="telegramSettingsBtn">Telegram Notifications</button>
         <button type="button" class="9mm-pos-mgr-settings-item" id="clearStorageBtn">Clear Local Storage &amp; Cookies</button>
+        <button type="button" class="9mm-pos-mgr-settings-item" id="aboutBtn">About</button>
       </div>
     </div>
   </div>
 </header>
 
+<!-- ═══ DONATE MODAL ═══ -->
+<div class="modal-overlay hidden" id="donateOverlay">
+  <div class="9mm-pos-mgr-donate-box">
+    <div class="9mm-pos-mgr-donate-header">Donate</div>
+    <div class="9mm-pos-mgr-donate-body">
+      <p>Donations help to make LP Ranger be all it can be.</p>
+      <p>Send Pulse ($PLS), Ether ($ETH), or the token of your choice to:</p>
+      <p class="9mm-pos-mgr-donate-addr-row"><span class="pos-browser-btn 9mm-pos-mgr-donate-addr" id="donateAddr">0x335C7F02F39d35916568647323E6e3fe988617e6</span><span class="9mm-pos-mgr-copy-icon 9mm-pos-mgr-donate-copy" id="donateCopyBtn" title="Copy address">&#x274F;</span></p>
+      <p class="9mm-pos-mgr-donate-thanks"><em>Thank you for your generosity!</em></p>
+    </div>
+    <button type="button" class="disclaimer-btn accept" id="donateClose">Close</button>
+  </div>
+</div>
+
+<!-- ═══ ABOUT MODAL ═══ -->
+<div class="modal-overlay hidden" id="aboutOverlay">
+  <div class="9mm-pos-mgr-donate-box 9mm-pos-mgr-about-box">
+    <div class="9mm-pos-mgr-donate-header">About</div>
+    <div class="9mm-pos-mgr-about-body">
+      <div class="9mm-pos-mgr-about-logo">
+        <h1 class="9mm-pos-mgr-about-title">LP <span class="9mm-pos-mgr-ranger-star-wrap" title="The Lone Star of LP Ranger"><img src="lp-ranger-star.png" alt="The Lone Star of LP Ranger" class="9mm-pos-mgr-ranger-star"></span> Ranger</h1>
+        <p class="9mm-pos-mgr-about-subtitle">Auto-Rebalancer for On-Chain Liquidity Pools, with Reporting</p>
+      </div>
+      <p id="aboutReleaseRow" class="9mm-pos-mgr-hidden"></p>
+      <p>Commit: <span id="aboutCommit">—</span> (<span id="aboutCommitDate">—</span>)</p>
+      <p id="aboutUpdateRow" class="9mm-pos-mgr-about-update"></p>
+      <p><a href="https://github.com/nottoseethesun/lp-ranger" target="_blank" rel="noopener noreferrer">github.com/nottoseethesun/lp-ranger</a></p>
+    </div>
+    <button type="button" class="disclaimer-btn accept" id="aboutClose">Close</button>
+  </div>
+</div>
+
 <!-- Wallet strip -->
 <div class="wallet-strip-row">
   <div class="wallet-strip">
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>
+    <svg class="9mm-pos-mgr-wallet-icon" width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.5"><rect x="1" y="3" width="14" height="11" rx="2"/><path d="M1 6h14"/><circle cx="12" cy="10" r="1.5"/></svg>
+    <span class="9mm-pos-mgr-text-muted">Current Wallet Address:</span>
     <span class="ws-addr" id="wsAddr">No wallet loaded</span>
+    <span class="9mm-pos-mgr-copy-icon 9mm-pos-mgr-initially-hidden" id="wsAddrCopy" title="Copy wallet address" data-copy-addr="">&#x274F;</span>
     <span class="ws-badge none" id="wsBadge">NOT SET</span>
-    <button type="button" class="hwbtn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="11" rx="2"/><path d="M1 6h14"/><circle cx="12" cy="10" r="1.5"/></svg> <span id="headerWalletLabel">Set Wallet</span></button>
     <button type="button" class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg> View Key</button>
     <button type="button" class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
+    <button type="button" class="9mm-pos-mgr-btn-sm" id="unlockWalletBtn" disabled title="Wallet is already unlocked" style="margin-left:auto">Unlock Wallet</button>
+    <button type="button" class="hwbtn"><span id="headerWalletLabel">Set Wallet</span></button>
   </div>
   <div class="wallet-strip 9mm-pos-mgr-nft-bar">
     <div class="9mm-pos-mgr-nft-row">
@@ -497,7 +533,6 @@
     <div class="9mm-pos-mgr-nft-row">
       <button type="button" class="9mm-pos-mgr-btn-sm" id="manageToggleBtn">Manage</button>
       <span class="9mm-pos-mgr-manage-badge" id="manageBadge">Not Actively Managed</span>
-      <button type="button" class="9mm-pos-mgr-btn-sm" id="unlockWalletBtn" disabled title="Wallet is already unlocked" style="margin-left:auto">Unlock Wallet</button>
     </div>
     <p class="9mm-pos-mgr-text-muted hidden" id="rebalanceInProgressHelp"></p>
   </div>
@@ -909,7 +944,7 @@
     <div class="card-title">Per-Day P&amp;L ($USD) <span id="dailyPnlSync" class="9mm-pos-mgr-text-muted-sm"></span></div>
     <div class="9mm-pos-mgr-table-scroll">
       <table class="hist-table">
-        <thead><tr><th scope="col">Date</th><th scope="col">Fees</th><th scope="col">Gas</th><th scope="col" class="9mm-pos-mgr-text-right">IL/G</th><th scope="col" class="9mm-pos-mgr-text-right">Profit</th><th scope="col" class="9mm-pos-mgr-text-right">Net P&amp;L</th><th scope="col" class="9mm-pos-mgr-text-right">Residual</th></tr></thead>
+        <thead><tr><th scope="col">Date</th><th scope="col">Fees</th><th scope="col">Gas</th><th scope="col" class="9mm-pos-mgr-text-right">IL/G</th><th scope="col" class="9mm-pos-mgr-text-right">Profit</th><th scope="col" class="9mm-pos-mgr-text-right">Net P&amp;L</th><th scope="col" class="9mm-pos-mgr-text-right">Residual<span class="help-tip" title="Coins remaining in the wallet.">i</span></th></tr></thead>
         <tbody id="dailyPnlBody">
           <tr><td colspan="7" class="9mm-pos-mgr-table-empty">No P&amp;L data yet</td></tr>
         </tbody>
@@ -981,6 +1016,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776212162598"></script>
+<script src="dist/bundle.js?v=1776281794057"></script>
 </body>
 </html>

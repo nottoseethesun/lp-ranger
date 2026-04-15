@@ -337,6 +337,14 @@ export function bindDelegatedEvents(closers) {
           if (m) m.classList.add("hidden");
         },
       },
+      {
+        id: "donateOverlay",
+        close: closers.donate,
+      },
+      {
+        id: "aboutOverlay",
+        close: closers.about,
+      },
     ];
     for (const m of modals) {
       const el = g(m.id);
