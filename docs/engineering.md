@@ -806,6 +806,35 @@ password in the `_sessionPassword` module-level variable in
 subsequent API-key save/reveal operations during the same session
 don't re-prompt, and the cache is discarded when the process exits.
 
+**Two key-storage pathways, two unlock passwords.** Despite the
+name overlap, `WALLET_PASSWORD` and `KEY_PASSWORD` are **not
+redundant** — they unlock different files produced by different
+workflows:
+
+- **`WALLET_PASSWORD`** unlocks `app-config/.wallet.json`, the
+  wallet produced by the **dashboard import flow** (the user
+  pastes a seed phrase or private key into the browser UI, and
+  the server encrypts and saves it). This same password also
+  decrypts `api-keys.json`, because the dashboard is the only UI
+  for entering third-party API keys.
+- **`KEY_PASSWORD`** unlocks a separate `KEY_FILE` that the
+  operator generated **outside the dashboard** via the lower-level
+  [`src/key-store.js`](../src/key-store.js) helper (600 000 PBKDF2
+  iterations). `KEY_FILE` points to any path of the operator's
+  choosing. This pathway **predates** the dashboard import flow
+  and remains supported for pure-CLI / never-opens-the-browser
+  deployments. Unlike `WALLET_PASSWORD`, `KEY_PASSWORD` does NOT
+  decrypt `api-keys.json` — it only unlocks the signing key. An
+  operator using the `KEY_FILE` path who also wants Moralis /
+  Telegram API keys encrypted at rest must still use the dashboard
+  once to initialise them.
+
+[`src/bot-cycle.js`](../src/bot-cycle.js)'s `resolvePrivateKey()`
+consults these sources in fixed priority:
+`PRIVATE_KEY` (plaintext hex in `.env`, least secure) →
+`KEY_FILE` + `KEY_PASSWORD` → dashboard-imported wallet. Only one
+pathway is active per startup.
+
 **Unattended-startup trade-off.** Operators who need the bot to
 auto-start without interactive prompts can set `WALLET_PASSWORD` (or
 `KEY_PASSWORD` for encrypted key files) in `.env`.
