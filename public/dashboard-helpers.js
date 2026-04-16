@@ -241,6 +241,29 @@ export function truncName(name, max) {
   return name && name.length > max ? name.slice(0, max) + "\u2026" : name;
 }
 
+/**
+ * Copy `text` to the clipboard and give visual feedback by swapping
+ * `iconEl`'s textContent to a checkmark for 1200ms.
+ * @param {HTMLElement} iconEl  The clicked copy-icon element.
+ * @param {string} text  The text to copy.
+ */
+export function copyWithFeedback(iconEl, text) {
+  if (!iconEl || !text) return;
+  navigator.clipboard.writeText(text).catch(() => {});
+  const orig = iconEl.textContent;
+  iconEl.textContent = "\u2713";
+  setTimeout(() => {
+    iconEl.textContent = orig;
+  }, 1200);
+}
+
+/** Copy textContent of element `tId` via icon `bId` with checkmark feedback. */
+export function copyElText(tId, bId) {
+  const t = g(tId),
+    b = g(bId);
+  if (t && b) copyWithFeedback(b, t.textContent.trim());
+}
+
 /** Format a number: up to 6 decimals for normal, compact for huge/tiny, dash for non-finite. */
 export function fmtNum(n) {
   if (!Number.isFinite(n)) return "\u2014";
@@ -427,6 +450,12 @@ export async function checkMoralisKeyStatus() {
     } else {
       dot.title = "No Moralis API key configured";
     }
+    const inp = g("moralisKeyInput");
+    if (inp)
+      inp.placeholder =
+        s === "valid" || s === "quota" || s === "locked"
+          ? "Paste replacement key"
+          : "Paste key here";
     return s;
   } catch {
     /* network error — leave dot in default state */

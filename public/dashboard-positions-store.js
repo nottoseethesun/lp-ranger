@@ -294,7 +294,7 @@ export function _setHtml(id, html) {
 /** Resolve a display name: prefer symbol, fall back to short address. */
 export function _tokenName(symbol, address) {
   if (symbol)
-    return symbol.length > 27 ? symbol.slice(0, 27) + "\u2026" : symbol;
+    return symbol.length > 35 ? symbol.slice(0, 35) + "\u2026" : symbol;
   if (address && address.length > 10)
     return address.slice(0, 6) + "\u2026" + address.slice(-4);
   return address || "?";

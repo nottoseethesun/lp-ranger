@@ -859,7 +859,7 @@
   font-weight: 700;
   font-size: 14px;
   margin-bottom: 12px;
-  color: var(--text);
+  color: var(--accent);
 }
 
 .\39 mm-pos-mgr-il-table {
@@ -1021,7 +1021,7 @@
 }
 
 .\39 mm-pos-mgr-modal h3 {
-  color: var(--danger);
+  color: var(--accent);
   margin: 0 0 12px;
   font-size: 14px;
 }
@@ -1139,7 +1139,7 @@
 }
 
 .\39 mm-pos-mgr-modal-caution h3 {
-  color: var(--warn);
+  color: var(--accent);
 }
 
 .\39 mm-pos-mgr-modal-caution .\39 mm-pos-mgr-modal-close {
@@ -1179,6 +1179,8 @@
   color: var(--muted);
   padding: 0;
   align-self: flex-start;
+  position: relative;
+  top: -2px;
 }
 
 .stat-label:has(.\39 mm-pos-mgr-token-copy-btn) {
@@ -1186,7 +1188,8 @@
   align-items: flex-start;
 }
 
-.\39 mm-pos-mgr-token-copy-btn:hover {
+.\39 mm-pos-mgr-token-copy-btn:hover,
+.\39 mm-pos-mgr-token-copy-btn:active {
   opacity: 1;
   color: var(--accent);
 }
@@ -1198,10 +1201,15 @@
   opacity: 0.5;
   font-size: 16px;
   margin-left: 4px;
+  color: var(--muted);
+  position: relative;
+  top: -2px;
 }
 
-.\39 mm-pos-mgr-copy-icon:hover {
+.\39 mm-pos-mgr-copy-icon:hover,
+.\39 mm-pos-mgr-copy-icon:active {
   opacity: 1;
+  color: var(--accent);
 }
 
 /* ── Help Popover ────────────────────────────────────────────────────────── */
@@ -1306,7 +1314,7 @@
   top: 100%;
   right: 0;
   z-index: 100;
-  min-width: 220px;
+  min-width: 260px;
   margin-top: 8px;
   padding: 6px;
   background: var(--card);
@@ -1359,7 +1367,7 @@
 
 .\39 mm-pos-mgr-settings-key-input {
   flex: 1;
-  padding: 4px 6px;
+  padding: 4px 6px 4px 11px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--card-bg, #0d1b2a);

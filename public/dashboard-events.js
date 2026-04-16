@@ -18,6 +18,7 @@ import {
   checkMoralisKeyStatus,
   csrfHeaders,
   showDisclosure,
+  copyElText,
 } from "./dashboard-helpers.js";
 import { markInputDirty } from "./dashboard-data.js";
 import {
@@ -421,7 +422,7 @@ export function bindAllEvents() {
   _click("settingsBtn", toggleSettingsPopover);
   _click("donateBtn", () => _show("donateOverlay"));
   _click("donateClose", () => _hide("donateOverlay"));
-  _click("donateCopyBtn", () => copyText("donateAddr"));
+  _click("donateCopyBtn", () => copyElText("donateAddr", "donateCopyBtn"));
   _click("disclosuresBtn", showDisclosure);
   _click("clearStorageBtn", clearLocalStorageAndCookies);
   _click("aboutBtn", () => {
@@ -429,7 +430,8 @@ export function bindAllEvents() {
     _checkForUpdate();
   });
   _click("aboutClose", () => _hide("aboutOverlay"));
-  _click("wsAddrCopy", () => copyText("wsAddr"));
+  _click("wsAddrCopy", () => copyElText("wsAddr", "wsAddrCopy"));
+  _click("wsTokenCopy", () => copyElText("wsToken", "wsTokenCopy"));
   _click("moralisKeySaveBtn", _saveMoralisKey);
 
   /* ── Wallet strip ─────────────────────── */

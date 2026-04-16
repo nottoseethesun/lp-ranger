@@ -187,8 +187,8 @@ function _activeTokenNames() {
   const t0 = a?.token0Symbol || "Token 0",
     t1 = a?.token1Symbol || "Token 1";
   return {
-    t0: truncName(t0, 12),
-    t1: truncName(t1, 12),
+    t0: truncName(t0, 28),
+    t1: truncName(t1, 28),
     t0Full: t0,
     t1Full: t1,
   };
@@ -255,12 +255,12 @@ export function _updatePositionTicks(d) {
     if (s0)
       s0.textContent =
         d.positionStats.poolShare0Pct !== undefined
-          ? d.positionStats.poolShare0Pct.toFixed(4) + "%"
+          ? "Pool Share: " + d.positionStats.poolShare0Pct.toFixed(4) + "% "
           : "\u2014";
     if (s1)
       s1.textContent =
         d.positionStats.poolShare1Pct !== undefined
-          ? d.positionStats.poolShare1Pct.toFixed(4) + "%"
+          ? "Pool Share: " + d.positionStats.poolShare1Pct.toFixed(4) + "% "
           : "\u2014";
   }
   const oor = g("sOorDuration");
@@ -270,16 +270,16 @@ export function _updatePositionTicks(d) {
       : "n/a";
 }
 
-/** Format a TX hash as a short copy-to-clipboard span. */
+/** Format a TX hash as a short label with a copy-to-clipboard icon. */
 export function _fmtTxCopy(hash) {
   const short = hash.slice(0, 4) + "\u2026" + hash.slice(-4);
   return (
-    '<span class="9mm-pos-mgr-copy-icon" title="Copy full TX hash"' +
+    "<span>" +
+    short +
+    ' <span class="9mm-pos-mgr-copy-icon" title="Copy full TX hash"' +
     ' data-copy-tx="' +
     hash +
-    '">' +
-    short +
-    " &#x274F;</span>"
+    '">&#x274F;</span></span>'
   );
 }
 

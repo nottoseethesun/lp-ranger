@@ -759,6 +759,7 @@ body::before{
   font-family:Urbanist,sans-serif;
   font-size:18px;
   font-weight:800;
+  color:var(--accent);
 }
 
 .modal-logo p{
@@ -2251,7 +2252,7 @@ tbody tr.live-row{background:rgb(0 229 255 / 2%);}
   font-weight:800;
   text-transform:uppercase;
   letter-spacing:1.5px;
-  color:var(--danger);
+  color:var(--accent);
 }
 
 .disclaimer-body{
@@ -2264,6 +2265,7 @@ tbody tr.live-row{background:rgb(0 229 255 / 2%);}
 
 .disclaimer-body h3{
   margin-top:20px;
+  color:var(--accent);
 }
 
 .disclaimer-body ul,

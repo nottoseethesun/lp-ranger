@@ -5,7 +5,12 @@
  * Split from dashboard-events.js for maintainability.
  */
 
-import { g, toggleSettingsPopover, csrfHeaders } from "./dashboard-helpers.js";
+import {
+  g,
+  toggleSettingsPopover,
+  csrfHeaders,
+  copyWithFeedback,
+} from "./dashboard-helpers.js";
 import { copyText } from "./dashboard-wallet.js";
 import { resetHistoryFlag } from "./dashboard-data.js";
 import { clearHistory } from "./dashboard-history.js";
@@ -121,6 +126,21 @@ export function injectPosStoreForEvents(posStore) {
   _posStoreRef = posStore;
 }
 
+/**
+ * Build an HTML fragment for an address with an inline copy icon.
+ * @param {string} addr  EVM address (0x...).
+ * @returns {string}  HTML fragment.
+ */
+function _addrWithCopy(addr) {
+  if (!addr) return "\u2014";
+  return (
+    addr +
+    ' <span class="9mm-pos-mgr-copy-icon" title="Copy address" data-copy-addr="' +
+    addr +
+    '">\u274F</span>'
+  );
+}
+
 /** Open the pool-details modal for the active position. */
 export function _openPoolDetailsModal() {
   const active = _posStoreRef?.getActive?.();
@@ -132,30 +152,23 @@ export function _openPoolDetailsModal() {
     const e = g(id);
     if (e) e.textContent = txt;
   };
+  const elHtml = (id, html) => {
+    const e = g(id);
+    if (e) e.innerHTML = html;
+  };
   el("pdType", active.positionType === "nft" ? "NFT (ERC-721)" : "ERC-20");
-  const t0 = g("pdToken0");
-  if (t0) {
-    t0.textContent = active.token0Symbol || "?";
-    if (active.token0) {
-      t0.appendChild(document.createElement("br"));
-      t0.appendChild(
-        document.createTextNode("\u00A0\u00A0\u00A0\u00A0" + active.token0),
-      );
-    }
-  }
-  const t1 = g("pdToken1");
-  if (t1) {
-    t1.textContent = active.token1Symbol || "?";
-    if (active.token1) {
-      t1.appendChild(document.createElement("br"));
-      t1.appendChild(
-        document.createTextNode("\u00A0\u00A0\u00A0\u00A0" + active.token1),
-      );
-    }
-  }
+  const tokenHtml = (sym, addr) => {
+    const symPart = sym || "?";
+    const addrPart = addr
+      ? "<br>\u00A0\u00A0\u00A0\u00A0" + _addrWithCopy(addr)
+      : "";
+    return symPart + addrPart;
+  };
+  elHtml("pdToken0", tokenHtml(active.token0Symbol, active.token0));
+  elHtml("pdToken1", tokenHtml(active.token1Symbol, active.token1));
   el("pdFee", fee);
-  el("pdPool", active.poolAddress || "\u2014");
-  el("pdContract", active.contractAddress || "\u2014");
+  elHtml("pdPool", _addrWithCopy(active.poolAddress));
+  elHtml("pdContract", _addrWithCopy(active.contractAddress));
   m.classList.remove("hidden");
 }
 
@@ -270,8 +283,7 @@ export function bindDelegatedEvents(closers) {
     if (el)
       el.addEventListener("click", (e) => {
         const ic = e.target.closest("[data-copy-tx]");
-        if (ic)
-          navigator.clipboard.writeText(ic.dataset.copyTx).catch(() => {});
+        if (ic) copyWithFeedback(ic, ic.dataset.copyTx);
       });
   }
 
@@ -279,13 +291,14 @@ export function bindDelegatedEvents(closers) {
   if (sg)
     sg.addEventListener("click", (e) => {
       const b = e.target.closest("[data-copy-addr]");
-      if (b) {
-        navigator.clipboard.writeText(b.dataset.copyAddr).catch(() => {});
-        b.textContent = "\u2713";
-        setTimeout(() => {
-          b.textContent = "\u274F";
-        }, 1200);
-      }
+      if (b) copyWithFeedback(b, b.dataset.copyAddr);
+    });
+
+  const pdm = g("poolDetailsModal");
+  if (pdm)
+    pdm.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-copy-addr]");
+      if (b) copyWithFeedback(b, b.dataset.copyAddr);
     });
 
   document.body.addEventListener("click", (e) => {

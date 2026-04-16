@@ -151,12 +151,12 @@ export function _applyPositionStats(d) {
   if (s0)
     s0.textContent =
       d.poolShare0Pct !== undefined
-        ? d.poolShare0Pct.toFixed(4) + "%"
+        ? "Pool Share: " + d.poolShare0Pct.toFixed(4) + "% "
         : "\u2014";
   if (s1)
     s1.textContent =
       d.poolShare1Pct !== undefined
-        ? d.poolShare1Pct.toFixed(4) + "%"
+        ? "Pool Share: " + d.poolShare1Pct.toFixed(4) + "% "
         : "\u2014";
   const tc = g("sTC");
   if (tc && d.poolState.tick !== undefined) tc.textContent = d.poolState.tick;
