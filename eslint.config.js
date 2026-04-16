@@ -19,6 +19,7 @@
 const js = require("@eslint/js");
 const globals = require("globals");
 const prettierConfig = require("eslint-config-prettier");
+const securityPlugin = require("eslint-plugin-security");
 
 /** Shared quality rules applied to all linted files. */
 const SHARED_RULES = {
@@ -87,6 +88,7 @@ module.exports = [
     files: [
       "src/**/*.js",
       "test/**/*.js",
+      "scripts/**/*.js",
       "server.js",
       "bot.js",
       "public/dashboard-*.js",
@@ -108,7 +110,13 @@ module.exports = [
 
   // ── 3. Source files — Node.js environment ───────────────────────────────────
   {
-    files: ["src/**/*.js", "server.js", "bot.js", "eslint-rules/**/*.js"],
+    files: [
+      "src/**/*.js",
+      "scripts/**/*.js",
+      "server.js",
+      "bot.js",
+      "eslint-rules/**/*.js",
+    ],
     plugins: {
       "9mm": {
         rules: {
@@ -117,6 +125,7 @@ module.exports = [
           "no-number-from-bigint": require("./eslint-rules/no-number-from-bigint"),
         },
       },
+      security: securityPlugin,
     },
     languageOptions: {
       ecmaVersion: 2022,
@@ -148,6 +157,7 @@ module.exports = [
       // Registered here so per-line disable directives are recognized.
       "9mm/no-secret-logging": "off",
       "9mm/no-number-from-bigint": "off",
+      "security/detect-unsafe-regex": "off",
     },
   },
 

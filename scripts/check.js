@@ -80,6 +80,7 @@ const eslintRun = run(
   [
     "src/",
     "test/",
+    "scripts/",
     "server.js",
     "bot.js",
     ...listDashboardFiles(),
@@ -160,6 +161,7 @@ const securityLintRun = run(bin("eslint"), [
   "-c",
   "eslint-security.config.js",
   "src/",
+  "scripts/",
   "server.js",
   "bot.js",
   "--max-warnings",
@@ -185,6 +187,7 @@ fs.writeFileSync(
 // ── Security: secretlint ──────────────────────────────────────────────────
 const secretlintRun = run(bin("secretlint"), [
   "src/**/*.js",
+  "scripts/**/*.js",
   "server.js",
   "bot.js",
   ".env*",
@@ -204,7 +207,7 @@ wipeRuntimeFiles();
 // ── Tests + Coverage ──────────────────────────────────────────────────────
 // Force --test-reporter=tap so the output is deterministic TAP v14
 // regardless of Node version or TTY state.
-let testsExit = 0;
+let testsExit;
 try {
   const testsRun = run(
     "node",
@@ -223,6 +226,9 @@ try {
     path.join(REPORT_DIR, "tests.tap"),
     testsRun.stdout + testsRun.stderr,
   );
+} catch (err) {
+  testsExit = 1;
+  console.error("[check] Test runner failed:", err.message);
 } finally {
   restoreProdFiles(backupDir);
   fs.rmSync(backupDir, { recursive: true, force: true });

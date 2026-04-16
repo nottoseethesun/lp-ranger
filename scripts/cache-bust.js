@@ -11,7 +11,9 @@ const p = "public/index.html";
 const v = Date.now();
 let h = fs.readFileSync(p, "utf8");
 h = h.replace(/bundle\.js\?v=[^"']*/g, "bundle.js?v=" + v);
+// eslint-disable-next-line security/detect-unsafe-regex -- Safe: input is local index.html, not user-supplied
 h = h.replace(/style\.css(\?v=[^"']*)?"/, "style.css?v=" + v + '"');
+// eslint-disable-next-line security/detect-unsafe-regex -- Safe: input is local index.html, not user-supplied
 h = h.replace(/9mm-pos-mgr\.css(\?v=[^"']*)?"/, "9mm-pos-mgr.css?v=" + v + '"');
 fs.writeFileSync(p, h);
 console.log("[cache-bust] bundle.js, style.css, 9mm-pos-mgr.css → v=%d", v);

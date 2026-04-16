@@ -43,7 +43,7 @@ function parseEslintTiming(txt) {
   if (!txt) return [];
   const out = [];
   for (const line of txt.split("\n")) {
-    const m = line.match(/^([\w/@.\-]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)%/);
+    const m = line.match(/^([\w/@.-]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)%/);
     if (m) {
       out.push({
         rule: m[1],
@@ -180,6 +180,7 @@ function parseTapTests(txt) {
       totals[tot[1]] = parseFloat(tot[2]);
       continue;
     }
+    // eslint-disable-next-line security/detect-unsafe-regex -- Safe: input is deterministic TAP v14 from node --test
     const tm = line.match(/^(\s*)(ok|not ok) \d+ - (.+?)(?:\s*#.*)?$/);
     if (tm) {
       current = {
