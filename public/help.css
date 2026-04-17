@@ -44,6 +44,25 @@ p {
   font-size: 22px;
   line-height: 1.7;
   color: #b0c4d0;
+  margin-bottom: 1rem;
+}
+
+ul,
+ol {
+  padding-left: 2rem;
+}
+
+/*
+ * The following two classes are sized for the in-app dashboard (11-13px)
+ * where `body { zoom: 1.5 }` in style.css scales them up. The standalone
+ * help/disclosure pages run at zoom 1, so restore a readable size here.
+ */
+.\39 mm-pos-mgr-disclaimer-license {
+  font-size: 18px;
+}
+
+.\39 mm-pos-mgr-text-muted-sm {
+  font-size: 18px;
 }
 
 a {
