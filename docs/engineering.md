@@ -645,7 +645,7 @@ outcome as difficult as possible, from **multiple independent
 angles**, so that no single failure — a leaked password, a forged
 web request, a compromised npm package — can reach your funds.
 
-**Example: how defense in depth works in practice.** Suppose a
+**Example — how defense in depth works in practice:** Suppose a
 malicious website tries to send a command to your LP Ranger server to
 rebalance your position with extreme slippage settings. To succeed,
 the attacker would have to bypass **all** of these layers:
@@ -809,7 +809,7 @@ hour and are pruned from an in-memory issued-set when the set exceeds
 500 entries. The dashboard fetches a token on init via
 `GET /api/csrf-token` and refreshes before expiry.
 
-**Lint enforcement.** The custom ESLint rule
+**Lint enforcement:** The custom ESLint rule
 [`9mm/no-fetch-without-csrf`](../eslint-rules/no-fetch-without-csrf.js)
 flags any `fetch()` call with a mutating HTTP method (POST, DELETE,
 PUT, PATCH) whose `headers` object doesn't contain a
@@ -839,7 +839,7 @@ the classic `../../etc/passwd` escape. All three loopback origins
 
 #### Encryption at Rest
 
-**What the user sees.** After a server restart, the operator
+**What the user sees:** After a server restart, the operator
 provides their wallet password through one of three methods
 (in order of security recommendation):
 
@@ -862,7 +862,7 @@ password, entered once, brings every secret online for the session.
 The password is held only in server memory and discarded when the
 process exits.
 
-**How it works.** The encryption is handled by
+**How it works:** The encryption is handled by
 [`src/wallet-manager.js`](../src/wallet-manager.js) (wallet) and
 [`src/api-key-store.js`](../src/api-key-store.js) (third-party API
 keys), both backed by the cryptographic primitives in
@@ -899,7 +899,7 @@ keys), both backed by the cryptographic primitives in
    sees the encrypted file learns nothing about the plaintext by
    comparing it to other encrypted files.
 
-**One password, every secret.** Third-party API keys (Moralis,
+**One password, every secret:** Third-party API keys (Moralis,
 Telegram, etc.) are encrypted with the **same wallet password** —
 there is no separate "API-keys password" to manage or lose. After
 the unlock, the server caches the password in the
@@ -908,7 +908,7 @@ the unlock, the server caches the password in the
 subsequent API-key save/reveal operations during the same session
 don't re-prompt. The cache is discarded when the process exits.
 
-**Two ways to import the wallet — same password either way.** The
+**Two ways to import the wallet — same password either way:** The
 encrypted `.wallet.json` file can be created through either of two
 workflows, depending on how you run LP Ranger:
 
@@ -928,7 +928,7 @@ picks the signing-key source in fixed priority:
 encrypted wallet unlocked by `WALLET_PASSWORD` env var, `--headless`
 terminal prompt, or dashboard dialog.
 
-**Three startup modes.** The modes differ only in how the password
+**Three startup modes:** The modes differ only in how the password
 reaches the server — the encrypted files, the decryption process,
 and the in-memory handling are identical in all three cases:
 
@@ -943,7 +943,7 @@ provided, no `WALLET_PASSWORD` in env, no wallet imported), the
 server **exits with an error** rather than falling through to
 dashboard-only mode — there is no browser to fall back to.
 
-**Operator responsibilities when using `WALLET_PASSWORD`.**
+**Operator responsibilities when using `WALLET_PASSWORD`:**
 
 - Treat `.env` as sensitive. It is already covered by `.gitignore`
   (see `test/gitignore.test.js`), but backup hygiene, file
@@ -957,7 +957,7 @@ dashboard-only mode — there is no browser to fall back to.
   line and deletes `app-config/.wallet.json` in one step, so the
   next restart forces a fresh import.
 
-**How `reset-wallet` works.** `scripts/reset-wallet.js` (invoked via
+**How `reset-wallet` works:** `scripts/reset-wallet.js` (invoked via
 `npm run reset-wallet`) performs two idempotent actions:
 
 1. Delete `app-config/.wallet.json`.
@@ -990,7 +990,7 @@ Plaintext keys exist only during the narrow decrypt-then-sign window
 inside the bot loop. They are never written to disk unencrypted, never
 returned by `GET /api/status`, and never included in any log line.
 
-**Lint enforcement.** The custom ESLint rule
+**Lint enforcement:** The custom ESLint rule
 [`9mm/no-secret-logging`](../eslint-rules/no-secret-logging.js) flags
 any `console.log/warn/error/info` call that references an identifier,
 member expression, or template-literal expression whose name matches
@@ -1053,7 +1053,7 @@ predictable; using it for a salt or IV would reduce encryption strength
 to the PRNG's (pseudorandom number generator) state-recovery
 complexity.
 
-**Lint enforcement.** `eslint.config.js` registers a
+**Lint enforcement:** `eslint.config.js` registers a
 `no-restricted-syntax` pattern that bans
 `Math.random()` calls project-wide with the message *"Use
 crypto.randomBytes() instead of Math.random() — not cryptographically
@@ -1160,7 +1160,7 @@ All other `eslint-plugin-security` rules — including
 `detect-pseudoRandomBytes`, and `detect-new-buffer` — are enabled
 at `warn` severity.
 
-**Why `detect-non-literal-fs-filename` is off.** This rule flags
+**Why `detect-non-literal-fs-filename` is off:** This rule flags
 every `fs` call where the path argument is a variable rather than a
 string literal. In a web application that passes user input to
 `fs.readFileSync()`, that's a real vulnerability — an attacker
@@ -1266,7 +1266,7 @@ The 9mm Pro `NonfungiblePositionManager` requires
 any other transaction could reprice or front-run the liquidity that was
 just accounted for.
 
-**Lint enforcement.** The custom ESLint rule
+**Lint enforcement:** The custom ESLint rule
 [`9mm/no-separate-contract-calls`](../eslint-rules/no-separate-contract-calls.js)
 (configured with the pair `[["decreaseLiquidity", "collect"]]`) walks
 each function scope and errors if both calls appear as separate
@@ -1281,7 +1281,7 @@ routinely exceed JavaScript's
 2⁵³ integer precision. Silent truncation there would under-report
 balances and, worse, under-request minimum-out in swap calldata.
 
-**Lint enforcement.** The custom ESLint rule
+**Lint enforcement:** The custom ESLint rule
 [`9mm/no-number-from-bigint`](../eslint-rules/no-number-from-bigint.js)
 flags `Number(...)`, `parseFloat(...)`, `parseInt(...)`, and unary
 `+` applied to variables whose names match
@@ -1852,7 +1852,7 @@ run installs the exact tree recorded in the lockfile. That's why the
 three security-audit jobs, the pages build, and every matrix test job
 begin with `- run: npm ci`.
 
-**Lockfile regeneration is mandatory during development.** The
+**Lockfile regeneration is mandatory during development:** The
 lockfile exists so every developer and CI run shares an identical
 dependency tree — but it must be **periodically deleted and
 regenerated** (`rm package-lock.json && npm install`) to pick up
