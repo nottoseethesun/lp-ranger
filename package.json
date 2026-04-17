@@ -87,7 +87,8 @@
         "hardhat": "npm:empty-npm-package@1.0.0"
       }
     },
-    "flatted": "^3.4.2"
+    "flatted": "^3.4.2",
+    "protobufjs": "^7.5.5"
   },
   "lint-staged": {
     "*.js": "prettier --write"

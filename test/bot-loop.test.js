@@ -156,19 +156,16 @@ describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
 describe("bot-loop: resolvePrivateKey", () => {
   const cfg = require("../src/config");
   let orig;
+  let origEnvWp;
   beforeEach(() => {
-    orig = {
-      pk: cfg.PRIVATE_KEY,
-      kf: cfg.KEY_FILE,
-      kp: cfg.KEY_PASSWORD,
-      wp: cfg.WALLET_PASSWORD,
-    };
+    orig = { pk: cfg.PRIVATE_KEY };
+    origEnvWp = process.env.WALLET_PASSWORD;
+    delete process.env.WALLET_PASSWORD;
   });
   afterEach(() => {
     cfg.PRIVATE_KEY = orig.pk;
-    cfg.KEY_FILE = orig.kf;
-    cfg.KEY_PASSWORD = orig.kp;
-    cfg.WALLET_PASSWORD = orig.wp;
+    if (origEnvWp !== undefined) process.env.WALLET_PASSWORD = origEnvWp;
+    else delete process.env.WALLET_PASSWORD;
   });
   it("returns PRIVATE_KEY when valid 32-byte hex", async () => {
     const validKey = "0x" + "ab".repeat(32);
@@ -180,31 +177,11 @@ describe("bot-loop: resolvePrivateKey", () => {
   });
   it("rejects placeholder PRIVATE_KEY as invalid", async () => {
     cfg.PRIVATE_KEY = "0xYOUR_WALLET_PRIVATE_KEY";
-    cfg.KEY_FILE = null;
-    cfg.WALLET_PASSWORD = null;
     assert.strictEqual(await resolvePrivateKey({ askPassword: null }), null);
   });
   it("returns null when no sources available", async () => {
     cfg.PRIVATE_KEY = null;
-    cfg.KEY_FILE = null;
-    cfg.WALLET_PASSWORD = null;
     assert.strictEqual(await resolvePrivateKey({ askPassword: null }), null);
-  });
-  it("returns null for KEY_FILE without password in non-interactive mode", async () => {
-    cfg.PRIVATE_KEY = null;
-    cfg.KEY_FILE = "/tmp/fake-keyfile";
-    cfg.KEY_PASSWORD = null;
-    assert.strictEqual(await resolvePrivateKey({ askPassword: null }), null);
-  });
-  it("PRIVATE_KEY takes priority over KEY_FILE", async () => {
-    const validKey = "0x" + "cd".repeat(32);
-    cfg.PRIVATE_KEY = validKey;
-    cfg.KEY_FILE = "/tmp/fake-keyfile";
-    cfg.KEY_PASSWORD = "pw";
-    assert.strictEqual(
-      await resolvePrivateKey({ askPassword: null }),
-      validKey,
-    );
   });
 });
 

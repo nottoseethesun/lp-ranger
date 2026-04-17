@@ -7,7 +7,7 @@
  *
  * Modes
  * ─────
- *   node bot.js           Headless bot (requires PRIVATE_KEY or KEY_FILE)
+ *   node bot.js           Headless bot (requires PRIVATE_KEY or .wallet.json)
  *   DRY_RUN=1 node bot.js Read-only mode — connects, detects, polls, but
  *                          never signs or sends transactions.
  *
@@ -82,7 +82,8 @@ async function main() {
   });
   if (!privateKey && !dryRun) {
     console.error(
-      "[bot] No private key available. Set PRIVATE_KEY, KEY_FILE, or import a wallet.",
+      "[bot] No private key available. Set PRIVATE_KEY in .env, or import" +
+        " a wallet via `node scripts/import-wallet.js` (or the dashboard).",
     );
     process.exit(1);
   }

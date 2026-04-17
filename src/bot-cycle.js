@@ -11,7 +11,7 @@ const ethers = require("ethers");
 const config = require("./config");
 const rangeMath = require("./range-math");
 const walletManager = require("./wallet-manager");
-const { loadAndDecrypt } = require("./key-store");
+// key-store is retained for api-key-store.js; no longer used here directly.
 const { emojiId } = require("./logger");
 const {
   getPoolState,
@@ -519,10 +519,10 @@ async function pollCycle(deps) {
 
 /**
  * Resolve a private key from available sources, in priority order:
- *   1. config.PRIVATE_KEY (env var)
- *   2. config.KEY_FILE + password -> loadAndDecrypt()
- *   3. walletManager.hasWallet() + password -> walletManager.revealWallet()
- *   4. Returns null if none available.
+ *   1. config.PRIVATE_KEY (env var — plaintext, simplest)
+ *   2. Encrypted wallet (.wallet.json) — password from WALLET_PASSWORD
+ *      env var (unattended) or interactive prompt via `askPassword`.
+ *   3. Returns null if none available.
  *
  * @param {object} opts
  * @param {Function|null} [opts.askPassword]  Interactive password prompt (null = non-interactive).
@@ -533,20 +533,12 @@ async function resolvePrivateKey(opts = {}) {
   // 1. PRIVATE_KEY env var (must be valid 32-byte hex)
   if (config.PRIVATE_KEY && /^(0x)?[0-9a-f]{64}$/i.test(config.PRIVATE_KEY))
     return config.PRIVATE_KEY;
-  // 2. Encrypted key file
-  if (config.KEY_FILE) {
+  // 2. Encrypted wallet (.wallet.json) — try WALLET_PASSWORD env var first,
+  //    then fall back to interactive prompt.
+  if (walletManager.hasWallet()) {
     const password =
-      config.KEY_PASSWORD ||
-      (askPassword && (await askPassword("[bot] Enter key-file password: ")));
-    if (!password) return null;
-    console.log(
-      `[bot] Loading private key from encrypted file: ${config.KEY_FILE}`,
-    );
-    return loadAndDecrypt(password, config.KEY_FILE);
-  }
-  // 3. Wallet manager (dashboard-imported wallet) — interactive prompt only (no .env password)
-  if (walletManager.hasWallet() && askPassword) {
-    const password = await askPassword("[bot] Enter wallet password: ");
+      process.env.WALLET_PASSWORD ||
+      (askPassword && (await askPassword("[bot] Enter wallet password: ")));
     if (!password) return null;
     console.log("[bot] Loading private key from imported wallet");
     return (await walletManager.revealWallet(password)).privateKey;

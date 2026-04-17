@@ -34,7 +34,7 @@ const path = require("path");
 
 // ── Crypto constants ────────────────────────────────────────────────────────
 
-const _PBKDF2_ITERATIONS = 100_000;
+const _PBKDF2_ITERATIONS = 600_000;
 const _PBKDF2_DIGEST = "sha512";
 const _SALT_BYTES = 16;
 const _KEY_BYTES = 32;

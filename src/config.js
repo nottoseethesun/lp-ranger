@@ -17,9 +17,7 @@
  *   HOST                   Bind address.                         Default: '127.0.0.1'
  *
  * BOT
- *   PRIVATE_KEY            Wallet private key (required unless KEY_FILE is set).
- *   KEY_FILE               Path to an encrypted key file (alternative to PRIVATE_KEY).
- *   KEY_PASSWORD           Password to decrypt KEY_FILE (required when KEY_FILE is set).
+ *   PRIVATE_KEY            Wallet private key (or import via dashboard / CLI).
  *   RPC_URL                PulseChain RPC endpoint (default: g4mm4.io).
  *   RPC_URL_FALLBACK       Fallback RPC (default: rpc.pulsechain.com).
  *   POSITION_ID            NFT token ID (optional — auto-detected otherwise).
@@ -110,14 +108,8 @@ const HOST = process.env.HOST || "127.0.0.1";
 
 // ── Bot / wallet ───────────────────────────────────────────────────────────────
 
-/** Raw hex private key for the signing wallet (required unless KEY_FILE is set). */
+/** Raw hex private key for the signing wallet (alternative to .wallet.json). */
 const PRIVATE_KEY = process.env.PRIVATE_KEY || null;
-
-/** Path to an encrypted key file created by key-store.js (alternative to PRIVATE_KEY). */
-const KEY_FILE = process.env.KEY_FILE || null;
-
-/** Password to decrypt KEY_FILE (required when KEY_FILE is set). */
-const KEY_PASSWORD = process.env.KEY_PASSWORD || null;
 
 /** Dry-run mode — read-only, no transactions. Set to '1' or 'true' to enable. */
 const DRY_RUN = ["1", "true", "yes"].includes(
@@ -244,13 +236,13 @@ const AGGREGATOR_API_KEY =
  * @throws {Error} If any required field is absent.
  */
 function assertLiveModeReady() {
+  const walletManager = require("./wallet-manager");
   const missing = [];
-  const hasKeyFile = KEY_FILE && KEY_PASSWORD;
-  if (!PRIVATE_KEY && !hasKeyFile) {
-    missing.push("PRIVATE_KEY (or KEY_FILE + KEY_PASSWORD)");
-  }
-  if (KEY_FILE && !KEY_PASSWORD) {
-    missing.push("KEY_PASSWORD (required when KEY_FILE is set)");
+  if (!PRIVATE_KEY && !walletManager.hasWallet()) {
+    missing.push(
+      "PRIVATE_KEY in .env, or import a wallet via " +
+        "`node scripts/import-wallet.js` (or the dashboard)",
+    );
   }
   if (!RPC_URL) missing.push("RPC_URL");
   if (missing.length > 0) {
@@ -277,8 +269,6 @@ module.exports = {
 
   // Bot
   PRIVATE_KEY,
-  KEY_FILE,
-  KEY_PASSWORD,
   DRY_RUN,
   RPC_URL,
   RPC_URL_FALLBACK,

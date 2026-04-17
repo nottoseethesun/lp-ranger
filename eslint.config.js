@@ -158,6 +158,7 @@ module.exports = [
       "9mm/no-secret-logging": "off",
       "9mm/no-number-from-bigint": "off",
       "security/detect-unsafe-regex": "off",
+      "security/detect-possible-timing-attacks": "off",
     },
   },
 
