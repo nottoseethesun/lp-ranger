@@ -20,6 +20,9 @@ Looks back up to five years on your wallet to show you how you're doing with eac
   - [Manual Rebalance](#manual-rebalance)
   - [Position Browser](#position-browser)
   - [Settings](#settings)
+  - [Lifetime Net Stats](#lifetime-net-stats)
+  - [Telegram Options](#telegram-options)
+  - [Educational and Informative Material](#educational-and-informative-material)
 - [Disclaimer](#disclaimer)
 - [Pre-Requisites](#pre-requisites)
 - [Install](#install)
@@ -70,6 +73,24 @@ Click the image to see a larger version.
 ### Settings
 
 ![Settings](docs/images/dashboard-screenshot-settings.png)
+
+### Lifetime Net Stats
+
+Cumulative P&L, fees, and gas across the full rebalance chain for a pool.
+
+![Lifetime Net Stats](docs/images/dashboard-screenshot-lifetime-net-stats.png)
+
+### Telegram Options
+
+Opt in to real-time alerts for rebalances, compounds, errors, and shutdown.
+
+![Telegram Options](docs/images/dashboard-screenshot-telegram-options.png)
+
+### Educational and Informative Material
+
+Click the circle-i next to any parameter for in-app help on what it does and how to tune it.
+
+![Educational and Informative Material](docs/images/dashboard-screenshot-educational-and-informative-material.png)
 
 ---
 

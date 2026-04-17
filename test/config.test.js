@@ -15,6 +15,7 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 
 const config = require("../src/config");
+const walletManager = require("../src/wallet-manager");
 
 // ── _parsePositiveInt ─────────────────────────────────────────────────────────
 
@@ -156,9 +157,10 @@ describe("config default values", () => {
 
 describe("assertLiveModeReady", () => {
   it("does not throw when PRIVATE_KEY and RPC_URL are present", () => {
-    // If the test environment has these set, assertLiveModeReady must not throw.
-    // If they're absent (typical in CI), we test the throw path instead.
-    if (config.PRIVATE_KEY && config.RPC_URL) {
+    // assertLiveModeReady throws iff RPC_URL is missing OR
+    // (PRIVATE_KEY is missing AND no wallet file exists on disk).
+    const hasKey = !!config.PRIVATE_KEY || walletManager.hasWallet();
+    if (hasKey && config.RPC_URL) {
       assert.doesNotThrow(() => config.assertLiveModeReady());
     } else {
       // Expected to throw — that's correct behaviour for missing config

@@ -111,7 +111,6 @@ const _headless = process.argv.includes("--headless");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
 
 const config = require("./src/config");
 const { handleCors } = require("./src/server-cors");
@@ -675,27 +674,7 @@ function stop() {
   });
 }
 
-/**
- * Fire-and-forget Telegram shutdown notification.
- * Spawns a detached child process so the message survives process.exit().
- */
-function _notifyShutdown() {
-  const tg = require("./src/telegram");
-  if (!tg.isConfigured()) return;
-  console.log("[server] Sending shutdown notification via Telegram");
-  const script = path.join(__dirname, "scripts", "telegram-send.js");
-  const host = require("os").hostname();
-  const msg = `*LP Ranger on ${host}*: The Server (includes the Bot) is shutting down: Manual restart may be required.`;
-  const child = spawn(
-    process.execPath,
-    [script, tg.getBotToken(), tg.getChatId(), msg],
-    {
-      detached: true,
-      stdio: "ignore",
-    },
-  );
-  child.unref();
-}
+const { notifyShutdown: _notifyShutdown } = require("./src/server-shutdown");
 
 // ── Entry point ─────────────────────────────────────
 

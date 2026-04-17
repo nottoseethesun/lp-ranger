@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776313435877">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776313435877">
+<link rel="stylesheet" href="style.css?v=1776412474013">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776412474013">
 </head>
 <body>
 
@@ -442,7 +442,8 @@
   </div>
   <div class="header-right">
     <button type="button" class="pos-browser-btn" id="posBrowserBtn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg> <span id="headerPosLabel">0 Positions</span></button>
-    <span class="9mm-pos-mgr-sync-badge 9mm-pos-mgr-sources-badge" id="swapSourcesBadge" title="This is the routing venue for the token swaps that this app uses. Others exist as well.">Routing through: 9mm Aggregator</span>
+    <span class="9mm-pos-mgr-sync-badge 9mm-pos-mgr-sources-badge" id="swapSourcesBadge">Routing through: 9mm Aggregator</span>
+    <span class="9mm-pos-mgr-il-info-btn" data-param-help="swapRouting" title="Learn about swap routing">i</span>
     <span class="9mm-pos-mgr-sync-badge" id="syncBadge">Pending</span>
     <div class="status-pill active" id="botStatusPill">
       <div class="dot green" id="botDot"></div>
@@ -960,7 +961,7 @@
   <div class="card">
     <div class="card-title">Rebalance Events
       <span id="rebEventsSync" class="9mm-pos-mgr-text-muted-sm"></span>
-      <span class="help-tip" title="On-chain lookback limited to 5 years. Events are paired from NonfungiblePositionManager Transfer logs.">i</span>
+      <span class="9mm-pos-mgr-il-info-btn" data-param-help="rebalanceEvents" title="Learn about Rebalance Events">i</span>
     </div>
     <div class="9mm-pos-mgr-table-scroll">
       <table class="hist-table">
@@ -1002,6 +1003,7 @@
       <label><input type="checkbox" id="tgEvt_compoundFail" checked> Compound Failed</label>
       <label><input type="checkbox" id="tgEvt_otherError" checked> Other Error</label>
       <label><input type="checkbox" id="tgEvt_lowGasBalance" checked> Low Gas Balance</label>
+      <label><input type="checkbox" id="tgEvt_shutdown" checked> Server and Bot Shutdown/Exit</label>
     </fieldset>
     <div class="9mm-pos-mgr-mt-sm" id="tgStatus"></div>
     <div class="9mm-pos-mgr-modal-btn-row">
@@ -1015,6 +1017,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776313435877"></script>
+<script src="dist/bundle.js?v=1776412474013"></script>
 </body>
 </html>

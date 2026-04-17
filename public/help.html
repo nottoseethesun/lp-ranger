@@ -67,8 +67,9 @@
     <li><strong>Rebalance Failed</strong> (default ON) &mdash; a rebalance attempt failed (on-chain revert, RPC error, etc.).</li>
     <li><strong>Compound Succeeded</strong> (default OFF) &mdash; unclaimed fees were successfully compounded back into the position.</li>
     <li><strong>Compound Failed</strong> (default ON) &mdash; a compound attempt failed.</li>
-    <li><strong>Other Error</strong> (default ON) &mdash; an unexpected error occurred during a poll cycle, including stuck transactions that were auto-cancelled.</li>
+    <li><strong>Other Error</strong> (default ON) &mdash; an unexpected error occurred during a poll cycle, including stuck transactions that were auto-cancelled. Does not include server/bot shutdown, which has its own event below.</li>
     <li><strong>Low Gas Balance</strong> (default ON) &mdash; the wallet&rsquo;s native token balance (e.g. PLS) has dropped below the estimated cost of the next rebalance. The threshold is 4&times; the last rebalance&rsquo;s actual gas cost, or if no rebalance has occurred yet, an estimate based on current gas prices doubled for safety. The alert fires once and resets when the balance recovers, so you won&rsquo;t be spammed.</li>
+    <li><strong>Server and Bot Shutdown/Exit</strong> (default ON) &mdash; the server (which includes the bot) is shutting down, whether via the dashboard, <code>npm run stop</code>, or a SIGINT/SIGTERM signal. A manual restart may be required.</li>
   </ul>
   <br>
   <p><strong>Setup:</strong></p>

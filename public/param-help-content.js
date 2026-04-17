@@ -767,4 +767,51 @@ export const PARAM_HELP = {
       },
     ],
   },
+
+  // ── Rebalance Events ───────────────────────────────────────────────────
+
+  rebalanceEvents: {
+    title: "Rebalance Events",
+    sections: [
+      {
+        heading: "What this table shows",
+        body:
+          "Every rebalance LP Ranger has performed on this position, " +
+          "oldest to newest. Each row corresponds to one new NFT being " +
+          "minted to replace a drained one.",
+      },
+      {
+        heading: "Where the data comes from",
+        body:
+          "Events are paired from Transfer logs emitted by the " +
+          "NonfungiblePositionManager contract. The log data is " +
+          "fetched directly from the blockchain &mdash; nothing is " +
+          "stored on a server.",
+      },
+      {
+        heading: "Lookback limit",
+        body:
+          "On-chain lookback is limited to the last 5 years. " +
+          "Rebalances older than that will not appear here.",
+      },
+    ],
+  },
+
+  // ── Swap Routing ───────────────────────────────────────────────────────
+
+  swapRouting: {
+    title: "Swap Routing",
+    sections: [
+      {
+        heading: "About the aggregator LP Ranger uses",
+        body:
+          "While currently, LP Ranger uses a single aggregator, the " +
+          "9mm DEX Aggregator, there are other good ones as well. " +
+          'See <a href="https://switch.win/" target="_blank" ' +
+          'rel="noopener noreferrer">Switch</a> and ' +
+          '<a href="https://piteas.io/" target="_blank" ' +
+          'rel="noopener noreferrer">Piteas</a>, for just two examples.',
+      },
+    ],
+  },
 };

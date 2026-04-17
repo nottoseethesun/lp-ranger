@@ -242,7 +242,6 @@ function _updateSwapSourcesBadge(d) {
   const sources = d.swapSources;
   if (sources) {
     badge.textContent = "Routing through: " + sources;
-    badge.title = "Swap venues used in last rebalance: " + sources;
   }
 }
 

@@ -7,7 +7,8 @@
 
 "use strict";
 
-const { getApiKey, hasEncryptedKey } = require("./api-key-store");
+const { getApiKey } = require("./api-key-holder");
+const { hasEncryptedKey } = require("./api-key-store");
 
 /**
  * Ping Moralis with the in-memory key; return "valid" | "invalid" | "quota".
