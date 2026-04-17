@@ -46,6 +46,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 ├── scripts/copy-fonts.js         # Copies self-hosted WOFF2 fonts from node_modules to public/fonts/
 ├── scripts/stop.js               # Graceful shutdown helper (POST /api/shutdown)
 ├── scripts/reset-wallet.js       # Delete wallet file + scrub WALLET_PASSWORD from .env
+├── scripts/import-wallet.js      # CLI wallet import (creates .wallet.json without browser)
 ├── scripts/api-doc.js            # Scalar API reference server (npm run api-doc → :5556)
 ├── scripts/wipe-settings.js      # Back up user settings to tmp/.settings-backup/ (fresh-install sim)
 ├── scripts/restore-settings.js   # Restore settings backed up by wipe-settings.js
@@ -196,10 +197,8 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 | `CHAIN_NAME` | `pulsechain` | Blockchain: `pulsechain` or `pulsechain-testnet` |
 | `PORT` | `5555` | Dashboard server port |
 | `HOST` | `0.0.0.0` | Bind address |
-| `PRIVATE_KEY` | — | Required for live bot (or use KEY_FILE) |
-| `KEY_FILE` | — | Path to AES-256-GCM encrypted key file (alternative to PRIVATE_KEY) |
-| `KEY_PASSWORD` | — | Decrypt password; leave blank for interactive prompt |
-| `WALLET_PASSWORD` | — | Decrypt dashboard-imported wallet at startup (unattended opt-in — leaves plaintext in `.env`; see [CLAUDE-SECURITY.md § Wallet password persistence](docs/claude/CLAUDE-SECURITY.md#wallet-password-persistence)) |
+| `PRIVATE_KEY` | — | Required for live bot (or import wallet via dashboard / CLI) |
+| `WALLET_PASSWORD` | — | Auto-unlock encrypted wallet + API keys at startup (unattended opt-in — leaves plaintext in `.env`; see [CLAUDE-SECURITY.md § Wallet password persistence](docs/claude/CLAUDE-SECURITY.md#wallet-password-persistence)) |
 | `DRY_RUN` | `false` | Read-only mode — no transactions sent |
 | `RPC_URL` | `https://rpc-pulsechain.g4mm4.io` | Primary RPC; auto-fallback to official |
 | `RPC_URL_FALLBACK` | `https://rpc.pulsechain.com` | Used if primary is unreachable |

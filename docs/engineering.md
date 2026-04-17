@@ -861,12 +861,21 @@ process exits.
 wallet), and [`src/api-key-store.js`](../src/api-key-store.js)
 (third-party API keys). All three use the same scheme:
 
-1. **Your password is never stored.** Instead, it's run through a
-   slow, deliberate process called **key derivation** — specifically,
-   PBKDF2 (Password-Based Key Derivation Function 2) with SHA-512,
-   repeated **600 000 times**. The slowness is intentional: it makes
-   brute-force password guessing impractical (this follows OWASP
-   (Open Web Application Security Project) 2023 guidance).
+1. **Your password is not stored inside the encrypted files.** The
+   encrypted `.wallet.json` and `api-keys.json` files contain
+   ciphertext, salts, and IVs — but not the password itself.
+   Instead, your password is run through a slow, deliberate process
+   called **key derivation** — specifically, PBKDF2 (Password-Based
+   Key Derivation Function 2) with SHA-512, repeated **600 000
+   times** — to produce the encryption key. The slowness is
+   intentional: it makes brute-force password guessing impractical
+   (this follows OWASP (Open Web Application Security Project) 2023
+   guidance). In the default interactive flow, the password exists
+   only in the server's memory for the duration of the session and
+   is discarded when the process exits. (Operators who need
+   unattended startup can optionally store the password in `.env` —
+   see *Unattended-startup trade-off* below for the security
+   implications of that choice.)
 2. **The derived key encrypts your data** using **AES-256-GCM**
    (Advanced Encryption Standard, 256-bit key, Galois/Counter Mode).
    AES-256 is the same encryption standard used by governments and
@@ -883,75 +892,44 @@ wallet), and [`src/api-key-store.js`](../src/api-key-store.js)
    sees the encrypted file learns nothing about the plaintext by
    comparing it to other encrypted files.
 
-**One password, every secret.** Third-party API keys are encrypted
-with the **same wallet password** — there is no separate "API-keys
-password" to manage or lose. After the unlock, the server caches
-the password in the `_sessionPassword` module-level variable in
+**One password, every secret.** Third-party API keys (Moralis,
+Telegram, etc.) are encrypted with the **same wallet password** —
+there is no separate "API-keys password" to manage or lose. After
+the unlock, the server caches the password in the
+`_sessionPassword` module-level variable in
 [`src/server-routes.js`](../src/server-routes.js) (line 84) so
 subsequent API-key save/reveal operations during the same session
 don't re-prompt. The cache is discarded when the process exits.
 
-**Why two passwords exist.** There are two different ways to give
-LP Ranger your private key, and each way creates its own encrypted
-file with its own password. Which one you use depends on how you
-run LP Ranger:
+**Two ways to import the wallet — same password either way.** The
+encrypted `.wallet.json` file can be created through either of two
+workflows, depending on how you run LP Ranger:
 
-- **If you use the dashboard (the browser UI)** — you imported
-  your wallet by pasting a seed phrase or private key into the
-  web interface. The server encrypted it and saved it to
-  `app-config/.wallet.json`. The password you chose during that
-  import is called `WALLET_PASSWORD`. That same password also
-  protects any API keys you add later (Moralis, Telegram, etc.,
-  in `app-config/api-keys.json`). One password, every secret.
-  This is the default path, and the one `.env.example` guides new
-  operators toward.
+- **Through the dashboard** (browser UI) — paste a seed phrase or
+  private key into the import dialog. The server encrypts and
+  saves it.
+- **From the command line** (headless, no browser) — run
+  `node scripts/import-wallet.js`, which prompts for a private key
+  and a password, then creates the same encrypted `.wallet.json`.
 
-- **If you never open a browser** — you're running LP Ranger
-  headless (systemd, Docker, CI) and you want the signing key
-  encrypted at rest rather than stored as plaintext in
-  `PRIVATE_KEY`. You generate an encrypted key file yourself using
-  the [`src/key-store.js`](../src/key-store.js) helper (AES-256-GCM,
-  600 000 PBKDF2 iterations), store the file wherever you want
-  (`KEY_FILE` env var points to it), and set `KEY_PASSWORD` to
-  the password that decrypts it. `KEY_PASSWORD` unlocks the
-  signing key and nothing else — it doesn't touch API keys,
-  because this pathway never goes through the dashboard.
-
-The key difference: `WALLET_PASSWORD` decrypts the signing key
-**and** every API key. `KEY_PASSWORD` decrypts the signing key
-**only**.
-
-If a headless deployment using `KEY_FILE` also wants encrypted API
-keys, it must do a one-time dashboard wallet import to establish a
-`WALLET_PASSWORD` for `api-keys.json` — the two pathways can
-coexist.
+Both workflows produce the same file and use the same password.
+There is no separate "CLI password" or "dashboard password."
 
 [`src/bot-cycle.js`](../src/bot-cycle.js)'s `resolvePrivateKey()`
 picks the signing-key source in fixed priority:
-`PRIVATE_KEY` (plaintext hex in `.env`, least secure) →
-`KEY_FILE` + `KEY_PASSWORD` → dashboard wallet unlocked by
-`WALLET_PASSWORD`. API-key decryption is always a separate step
-that uses `WALLET_PASSWORD`, regardless of which signing-key
-source is active.
+`PRIVATE_KEY` (plaintext hex in `.env`, least secure) → encrypted
+wallet unlocked by `WALLET_PASSWORD`.
 
 **Unattended-startup trade-off.** Operators who need the bot to
-auto-start without interactive prompts can set `WALLET_PASSWORD` (or
-`KEY_PASSWORD` for encrypted key files) in `.env`.
-`src/server-routes.js:346-347` reads `process.env.WALLET_PASSWORD` at
-startup and calls `_decryptApiKeys()` with it, skipping the
-interactive dialog. The analogous `KEY_PASSWORD` env var does the
-same for the `KEY_FILE` pathway. Both land the passphrase on disk as
-plaintext for the lifetime of `.env` — a deliberate ergonomic choice
-that trades disk-at-rest secrecy for headless operation.
-`.env.example` flags it explicitly for the `KEY_PASSWORD` case:
-*"For best security, leave `KEY_PASSWORD` blank and run
-interactively — the bot will prompt you for the password at startup
-(never saved to disk)."* The same guidance applies to
-`WALLET_PASSWORD`, which is intentionally **not** listed as an
-encouraged option in `.env.example` — it's a fallback experienced
-operators add knowingly.
+auto-start without interactive prompts can set `WALLET_PASSWORD`
+in `.env`. The app reads `process.env.WALLET_PASSWORD` at startup,
+decrypts the wallet and all API keys, and skips the interactive
+dialog. The trade-off: the password lives as plaintext in `.env`
+for the lifetime of the file. Leave `WALLET_PASSWORD` unset to use
+the dashboard unlock dialog instead — the password is then held
+only in volatile memory, never on disk.
 
-**Operator responsibilities when using the fallback.**
+**Operator responsibilities when using `WALLET_PASSWORD`.**
 
 - Treat `.env` as sensitive. It is already covered by `.gitignore`
   (see `test/gitignore.test.js`), but backup hygiene, file
@@ -962,8 +940,8 @@ operators add knowingly.
   rotated.
 - When rotating a password, run `npm run reset-wallet` rather than
   editing `.env` by hand — the script scrubs the `WALLET_PASSWORD=`
-  line and deletes `app-config/.wallet.json` in one atomic step, so
-  the next restart forces a fresh dashboard import.
+  line and deletes `app-config/.wallet.json` in one step, so the
+  next restart forces a fresh import.
 
 **How `reset-wallet` works.** `scripts/reset-wallet.js` (invoked via
 `npm run reset-wallet`) performs two idempotent actions:
@@ -979,11 +957,6 @@ the line never existed), so the script is safe to run on any system
 state. `npm run clean` and `npm run dev-clean` both invoke
 `reset-wallet` as their first step, so they also scrub the password
 line.
-
-**What `reset-wallet` does not cover.** It does not touch
-`KEY_PASSWORD` or `KEY_FILE`. Those belong to the alternative
-encrypted-key-file pathway (rotation flow via `src/key-store.js`)
-and are unrelated to the dashboard-imported wallet.
 
 Each service gets its own entry (`{service}Encrypted`) in
 `app-config/api-keys.json` with an independently generated salt and
