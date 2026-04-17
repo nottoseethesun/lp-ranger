@@ -263,3 +263,4 @@ Planned features for future releases:
 Bug reports and ideas for new features and improvements are welcome. Use the [Issues](https://github.com/nottoseethesun/9mm-lp-position-manager/issues) tab.
 
 Due to security being the highest priority, only contributions that have been formally audited for security can be considered for acceptance.
+
