@@ -18,6 +18,7 @@
 
 import { g, act, ACT_ICONS, csrfHeaders } from "./dashboard-helpers.js";
 import { saveMoralisApiKey } from "./dashboard-events.js";
+import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
 
 // ── Re-export the import module ───────────────────────────
@@ -348,6 +349,10 @@ export async function confirmWallet() {
 
   // Save optional Moralis API key if provided during setup
   await _saveSetupMoralisKey(password);
+
+  // Flush Telegram config stashed during the setup dialog
+  // (deferred because the wallet password wasn't set yet).
+  await flushPendingTelegramConfig(password);
 
   clearAllPositionState();
   applyWalletUI();
