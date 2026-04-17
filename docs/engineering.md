@@ -31,6 +31,7 @@ sequence.
   - [Housekeeping](#housekeeping)
 - [The app-config Directory](#the-app-config-directory)
 - [Security](#security)
+  - [What's at Stake](#whats-at-stake)
   - [Summary of Primary Controls](#summary-of-primary-controls)
   - [Network](#network)
     - [Host Binding (Domain)](#host-binding-domain)
@@ -59,7 +60,7 @@ sequence.
   - [Injection Prevention](#injection-prevention)
     - [`eval` / `child_process` / Dynamic `require`](#eval--child_process--dynamic-require)
     - [Prototype Pollution](#prototype-pollution)
-    - [XSS / DOM Safety](#xss--dom-safety)
+    - [XSS (Cross-Site Scripting) / DOM Safety](#xss-cross-site-scripting--dom-safety)
   - [Filesystem Safety](#filesystem-safety)
   - [On-Chain / Transaction Security](#on-chain--transaction-security)
     - [Nonce Serialization](#nonce-serialization)
@@ -77,6 +78,7 @@ sequence.
     - [Error Guard](#error-guard)
     - [Graceful Shutdown](#graceful-shutdown)
   - [Code Review Controls](#code-review-controls)
+    - [Build and Infrastructure Scripts](#build-and-infrastructure-scripts)
   - [Test-Time State Protection](#test-time-state-protection)
 - [Check Report Artifacts](#check-report-artifacts)
 - [API Documentation](#api-documentation)
@@ -628,53 +630,98 @@ environment variables to a temp path before require-ing the module.
 
 ## Security
 
-LP Ranger signs blockchain transactions from a user-controlled wallet: a
-compromised process, a leaked key, or a single malformed HTTP request can
-drain funds irreversibly. The security model is therefore **defense in
-depth with a local-first bias** — the loopback binding eliminates the
-remote-network attack surface up front, and every inward layer (CORS,
-encryption, input validation, atomic on-chain operations) assumes the
-attacker has nonetheless reached the HTTP surface. Cryptography is never
-rolled in-house: primitives come from Node's built-in `crypto` module
-and the vetted `csrf`, `ethers`, `async-mutex`, `@uniswap/v3-sdk`, and
-`jsbi` packages.
+### What's at Stake
+
+LP Ranger manages your cryptocurrency. It holds the private key to
+your wallet and uses it to sign transactions on the blockchain —
+removing liquidity, swapping tokens, minting new positions. If an
+attacker gains access to that key, or tricks LP Ranger into signing
+a bad transaction, your funds can be stolen permanently. Blockchain
+transactions cannot be reversed: there is no bank to call, no
+chargeback to file, no undo button.
+
+The entire purpose of this security architecture is to make that
+outcome as difficult as possible, from **multiple independent
+angles**, so that no single failure — a leaked password, a forged
+web request, a compromised npm package — can reach your funds.
+
+**Example: how defense in depth works in practice.** Suppose a
+malicious website tries to send a command to your LP Ranger server to
+rebalance your position with extreme slippage settings. To succeed,
+the attacker would have to bypass **all** of these layers:
+
+1. **Network binding** — the server only accepts connections from
+   your own machine (`127.0.0.1`). The attacker can't reach it from
+   the internet.
+2. **CORS (Cross-Origin Resource Sharing) guard** — even from the
+   local machine, the server rejects requests that didn't originate
+   from the LP Ranger dashboard itself.
+3. **CSRF (Cross-Site Request Forgery) token** — even if the origin
+   check passed, the request must carry a one-time cryptographic
+   token that only the dashboard knows. Without it, the server
+   returns 403 Forbidden.
+4. **Config key `allowlist`** — even if the attacker had a valid
+   token, the server only accepts recognized setting names
+   (like `slippagePct` or `oorThreshold`). Unknown fields are
+   silently dropped.
+
+Each layer assumes the previous one might fail. That's what
+**defense in depth** means — and it's the organizing principle for
+everything in this section.
+
+All cryptography uses Node's built-in `crypto` module and vetted
+open-source packages (`csrf`, `ethers`, `async-mutex`,
+`@uniswap/v3-sdk`, `jsbi`). Nothing is rolled in-house.
 
 ### Summary of Primary Controls
 
-The following is a summary of the primary controls in effect as of the
-current Disclosure version date:
+The following is a summary of the primary controls currently in
+effect:
 
-- Private keys and API keys live on disk only as **AES-256-GCM**
-  ciphertext (with **PBKDF2-SHA-512** key derivation); plaintext key
-  material exists only briefly in volatile memory during the
-  decrypt → sign window, never in any persisted file.
-- The application is locked to **`127.0.0.1`** and accepts no
-  connections from outside the local machine, eliminating the external
-  network attack surface entirely.
-- **CSRF tokens** are required for every mutating data request and
-  command.
-- All swap transactions are constructed via **encrypted HTTPS**
-  connection to the 9mm DEX Aggregator API (primary path), or
-  directly to the RPC endpoint when falling back to the raw 9mm Pro
-  V3 SwapRouter — swap intent is never exposed to the public network
-  prior to transaction submission.
-- Transaction execution is **serialized via an async-mutex rebalance
-  lock**, preventing nonce collisions across concurrent position
-  management operations.
-- Sensitive files including wallet state, configuration, and API keys
-  are **excluded from version control**.
-- **Static analysis security scanning, secret detection, and dependency
-  vulnerability auditing** are integrated into the development workflow
-  (`npm run check` locally, mirrored in CI).
+- **Your private key is encrypted on disk** — it's never saved in
+  readable form. Only your password can unlock it, and the unlocked
+  key exists only briefly in the computer's memory during
+  transaction signing, then it's gone. (Encryption: AES-256-GCM
+  (Advanced Encryption Standard, 256-bit key, Galois/Counter Mode)
+  with PBKDF2 (Password-Based Key Derivation Function 2) SHA-512
+  key derivation.)
+- **The server only talks to localhost** — LP Ranger binds to
+  `127.0.0.1` by default. No one on the internet or your local
+  network can connect unless you explicitly override this.
+- **Every command requires a one-time token** — CSRF tokens prevent
+  a malicious website from tricking your browser into sending
+  commands to LP Ranger on the attacker's behalf.
+- **Swap transactions travel over encrypted connections** — to the
+  9mm DEX Aggregator API (primary path) or directly to the RPC
+  endpoint (fallback). Your swap intent is never exposed to the
+  public network before the transaction is submitted to the
+  blockchain.
+- **Only one transaction at a time** — an async-mutex rebalance
+  lock serializes all transaction signing across all managed
+  positions. This prevents nonce collisions (which could cause
+  stuck or lost transactions when multiple positions try to send
+  at the same moment).
+- **Sensitive files are excluded from version control** — wallet
+  state, configuration, and API keys are all gitignored so they
+  can't accidentally be committed to a public repository.
+- **Every code change is scanned before it can ship** — static
+  analysis, secret detection, and dependency vulnerability auditing
+  run on every commit (`npm run check` locally, mirrored in CI).
 
 Code cannot be included in the `main` branch unless it passes the
 rigorous security checks detailed below. And in turn, Releases cannot
 be made except from code in the `main` branch.
 
 The subsections that follow document the implementation details and
-lint/test enforcement that back each of these controls.
+lint/test enforcement behind each of these controls.
 
 ### Network
+
+The first line of defense is the simplest: LP Ranger's server only
+listens on your own machine's internal network address. An attacker on
+the internet — or even on your local Wi-Fi — simply cannot connect.
+The operating system refuses the connection before LP Ranger's code is
+even involved.
 
 #### Host Binding (Domain)
 
@@ -684,8 +731,9 @@ documented as a conscious LAN-exposure choice rather than the default.
 The headless `bot.js` opens no inbound port at all. The Scalar API-docs
 server in `scripts/api-doc.js` is likewise locked to `127.0.0.1`. Because
 no application traffic crosses the public Internet in the default
-deployment, eavesdropping, MITM, and on-path replay attacks on the
-dashboard's HTTP surface are structurally impossible — TLS termination
+deployment, eavesdropping, MITM (man-in-the-middle), and on-path
+replay attacks on the dashboard's HTTP surface are structurally
+impossible — TLS (Transport Layer Security) termination
 becomes a concern only if a reverse proxy is introduced by the operator.
 
 The CORS origin guard in [`src/server-cors.js`](../src/server-cors.js)
@@ -732,6 +780,13 @@ There is no inbound rate limit on the dashboard's own HTTP endpoints —
 the localhost-only binding makes one unnecessary.
 
 ### Message Security
+
+Even if an attacker could somehow reach the server — for example,
+through a browser on the same machine running a malicious page — every
+command sent to LP Ranger must pass through multiple checks before
+it's acted on. These checks protect against the most common class of
+web-application attacks: tricks that abuse the browser's trust
+relationship with the server.
 
 #### CORS Origin Guard
 
@@ -784,64 +839,100 @@ the classic `../../etc/passwd` escape. All three loopback origins
 
 #### Encryption at Rest
 
-[`src/key-store.js`](../src/key-store.js),
-[`src/wallet-manager.js`](../src/wallet-manager.js), and
-[`src/api-key-store.js`](../src/api-key-store.js) encrypt private
-keys, mnemonics, and third-party API keys with **AES-256-GCM**
-(authenticated encryption) using a key derived via **PBKDF2-SHA-512**
-at **600 000 iterations** (OWASP 2023 guidance for SHA-512). Salt
-(16 bytes) and IV (12 bytes, per NIST AES-GCM recommendation) are
-regenerated on every encryption and stored alongside the ciphertext.
-Auth tags are verified on every decrypt — tampering with the ciphertext
-or IV produces a hard failure, not silent corruption.
+**What the user sees.** When an operator opens the LP Ranger
+dashboard after a server restart, the first thing they encounter is
+an unlock dialog asking for the wallet password they chose during
+wallet import. Once they type it and click "Unlock," two things
+happen behind the scenes: the server decrypts the operator's
+**private signing key** (stored encrypted in
+`app-config/.wallet.json` on the server — not in the browser) and
+decrypts every **third-party API key** the operator previously
+saved (Moralis, Telegram, etc., stored encrypted in
+`app-config/api-keys.json` on the server). One password, typed once,
+brings every secret online for the session. No private keys or API
+keys are ever stored in the browser — the browser sends the password
+to the server, the server decrypts and holds the plaintext only in
+memory, and the password itself is discarded from memory when the
+process exits.
 
-**One password, every secret.** Third-party API keys (Moralis,
-Telegram bot token, etc.) are encrypted with the **same wallet
-password** the user set during wallet import — there is no separate
-"API-keys password" to manage or lose. On the **interactive path**
-(recommended), the app itself never writes the password to disk: when
-the user unlocks the wallet via the dashboard, the server caches the
-password in the `_sessionPassword` module-level variable in
+**How it works.** The encryption is handled by three modules:
+[`src/key-store.js`](../src/key-store.js) (signing-key files),
+[`src/wallet-manager.js`](../src/wallet-manager.js) (dashboard-imported
+wallet), and [`src/api-key-store.js`](../src/api-key-store.js)
+(third-party API keys). All three use the same scheme:
+
+1. **Your password is never stored.** Instead, it's run through a
+   slow, deliberate process called **key derivation** — specifically,
+   PBKDF2 (Password-Based Key Derivation Function 2) with SHA-512,
+   repeated **600 000 times**. The slowness is intentional: it makes
+   brute-force password guessing impractical (this follows OWASP
+   (Open Web Application Security Project) 2023 guidance).
+2. **The derived key encrypts your data** using **AES-256-GCM**
+   (Advanced Encryption Standard, 256-bit key, Galois/Counter Mode).
+   AES-256 is the same encryption standard used by governments and
+   banks. The "GCM" part adds tamper detection automatically — if
+   anyone modifies the encrypted file (even a single byte), the
+   decrypt fails with a hard error rather than producing corrupted
+   output.
+3. **Each encryption is unique.** A fresh random salt (16 bytes) and
+   IV (initialization vector — a one-time starting point for the
+   encryption, 12 bytes per NIST (National Institute of Standards
+   and Technology) recommendation) are generated every time something
+   is encrypted. This means encrypting the same password or key
+   twice produces completely different ciphertext — an attacker who
+   sees the encrypted file learns nothing about the plaintext by
+   comparing it to other encrypted files.
+
+**One password, every secret.** Third-party API keys are encrypted
+with the **same wallet password** — there is no separate "API-keys
+password" to manage or lose. After the unlock, the server caches
+the password in the `_sessionPassword` module-level variable in
 [`src/server-routes.js`](../src/server-routes.js) (line 84) so
 subsequent API-key save/reveal operations during the same session
-don't re-prompt, and the cache is discarded when the process exits.
+don't re-prompt. The cache is discarded when the process exits.
 
-**Two unlock passwords, with clearly distinct jobs.** The env-var
-names sound similar but the two passwords are independent and decrypt
-different files:
+**Why two passwords exist.** There are two different ways to give
+LP Ranger your private key, and each way creates its own encrypted
+file with its own password. Which one you use depends on how you
+run LP Ranger:
 
-- **`WALLET_PASSWORD` — the wallet password.** This is the default
-  path. A single password is used to encrypt **both**
-  `app-config/.wallet.json` (wallet state — signing private key,
-  optional mnemonic, address) **and** `app-config/api-keys.json`
-  (every third-party API key: Moralis, Telegram, any future
-  integrations). One password unlocks every dashboard-managed
-  secret, so a single dashboard unlock (or `WALLET_PASSWORD`
-  env-var auto-unlock) is all that's needed to bring both files
-  online at startup. This is the path `.env.example` guides new
+- **If you use the dashboard (the browser UI)** — you imported
+  your wallet by pasting a seed phrase or private key into the
+  web interface. The server encrypted it and saved it to
+  `app-config/.wallet.json`. The password you chose during that
+  import is called `WALLET_PASSWORD`. That same password also
+  protects any API keys you add later (Moralis, Telegram, etc.,
+  in `app-config/api-keys.json`). One password, every secret.
+  This is the default path, and the one `.env.example` guides new
   operators toward.
 
-- **`KEY_PASSWORD` — the key-file password.** Narrowly scoped. It
-  unlocks one specific thing: a standalone encrypted `KEY_FILE` the
-  operator generated manually via
-  [`src/key-store.js`](../src/key-store.js) (600 000 PBKDF2
-  iterations; `KEY_FILE` can live at any path the operator chose).
-  It yields a signing key and **nothing else** — in particular, it
-  never decrypts `api-keys.json`. This is the legacy pure-CLI
-  pathway, predating the dashboard import flow, retained for
-  operators who want the signing key in a file of their own
-  choosing without ever touching the browser.
+- **If you never open a browser** — you're running LP Ranger
+  headless (systemd, Docker, CI) and you want the signing key
+  encrypted at rest rather than stored as plaintext in
+  `PRIVATE_KEY`. You generate an encrypted key file yourself using
+  the [`src/key-store.js`](../src/key-store.js) helper (AES-256-GCM,
+  600 000 PBKDF2 iterations), store the file wherever you want
+  (`KEY_FILE` env var points to it), and set `KEY_PASSWORD` to
+  the password that decrypts it. `KEY_PASSWORD` unlocks the
+  signing key and nothing else — it doesn't touch API keys,
+  because this pathway never goes through the dashboard.
+
+The key difference: `WALLET_PASSWORD` decrypts the signing key
+**and** every API key. `KEY_PASSWORD` decrypts the signing key
+**only**.
+
+If a headless deployment using `KEY_FILE` also wants encrypted API
+keys, it must do a one-time dashboard wallet import to establish a
+`WALLET_PASSWORD` for `api-keys.json` — the two pathways can
+coexist.
 
 [`src/bot-cycle.js`](../src/bot-cycle.js)'s `resolvePrivateKey()`
-picks the signing key in fixed priority:
+picks the signing-key source in fixed priority:
 `PRIVATE_KEY` (plaintext hex in `.env`, least secure) →
 `KEY_FILE` + `KEY_PASSWORD` → dashboard wallet unlocked by
-`WALLET_PASSWORD`. API-key decryption is a separate, independent
-step that **always uses `WALLET_PASSWORD`** — so a deployment that
-picks `KEY_FILE` for signing must either accept plaintext API
-keys, skip third-party APIs entirely, or also do a one-time
-dashboard wallet import to establish a `WALLET_PASSWORD` that
-covers `api-keys.json`.
+`WALLET_PASSWORD`. API-key decryption is always a separate step
+that uses `WALLET_PASSWORD`, regardless of which signing-key
+source is active.
 
 **Unattended-startup trade-off.** Operators who need the bot to
 auto-start without interactive prompts can set `WALLET_PASSWORD` (or
@@ -942,19 +1033,28 @@ lines, the test fails before the unsafe change can merge.
 
 ### Cryptographic Primitives
 
+Getting encryption wrong is one of the easiest ways to create a
+vulnerability that looks secure but isn't. A home-grown cipher, a
+reused random value, or a non-authenticated encryption mode can each
+silently undermine everything the rest of the security architecture
+provides. LP Ranger avoids these pitfalls by using only established
+primitives and never inventing its own.
+
 #### No Custom Crypto
 
 All cryptographic operations call Node's built-in `crypto` module —
 `pbkdf2`, `createCipheriv('aes-256-gcm')`, `randomBytes`. The app
-never implements its own hash, cipher, or MAC. The external `csrf`
+never implements its own hash, cipher, or MAC (message authentication
+code). The external `csrf`
 package (pillarjs, widely deployed behind Express) is the single
 dependency chosen to compose cryptographic tokens.
 
 #### Authenticated Encryption
 
-AES-**GCM** (not CBC) is used everywhere so ciphertext integrity is
-verified as part of decryption. Swapping to an unauthenticated mode
-(CBC, CTR without HMAC) would make padding-oracle or bit-flip attacks
+AES-**GCM** (not CBC (Cipher Block Chaining)) is used everywhere so
+ciphertext integrity is verified as part of decryption. Swapping to
+an unauthenticated mode (CBC, CTR (Counter mode) without HMAC
+(Hash-based MAC)) would make padding-oracle or bit-flip attacks
 feasible, even against a local adversary with read access to
 `app-config/`.
 
@@ -963,7 +1063,8 @@ feasible, even against a local adversary with read access to
 All random material (PBKDF2 salt, AES-GCM IV, CSRF secret) comes from
 `crypto.randomBytes()`. `Math.random()` is statistically biased and
 predictable; using it for a salt or IV would reduce encryption strength
-to the PRNG's state-recovery complexity.
+to the PRNG's (pseudorandom number generator) state-recovery
+complexity.
 
 **Lint enforcement.** `eslint.config.js` registers a
 `no-restricted-syntax` pattern that bans
@@ -975,41 +1076,82 @@ deprecated `pseudoRandomBytes` API.
 
 ### Input Validation & Data Modeling
 
+Every piece of data that arrives from the outside — a config change
+from the dashboard, a wallet address from a URL, a position identifier
+from a deep link — must be validated before it touches internal state.
+Accepting malformed or unexpected input is how bugs become
+vulnerabilities: a garbled position key could route a rebalance to the
+wrong pool, and an unvalidated config field could overwrite internal
+bookkeeping.
+
 #### Composite Key Parsing
 
-Position-specific routes (`POST /api/config`, `DELETE /api/position/manage`,
-`POST /api/rebalance`, `POST /api/compound`) reject requests that don't
-include a well-formed composite key (`blockchain-wallet-contract-tokenId`).
-`parseCompositeKey()` in [`src/bot-config-v2.js`](../src/bot-config-v2.js)
-returns `null` unless the string has exactly four dash-separated parts
-with `0x`-prefixed wallet and contract fields; the route handler
-responds with a `400` otherwise. This prevents malformed or
-cross-position writes from silently landing in the wrong bucket.
+LP Ranger manages multiple positions simultaneously, so every
+position-specific API call must identify **which position** it's
+acting on. The identifier is a composite key — a dash-separated
+string like `pulsechain-0x4e448...-0xCC05b...-157149` that encodes
+the blockchain name, wallet address, contract address, and NFT
+token ID. A malformed or missing key could route a config change,
+a rebalance, or a stop command to the wrong position — or to no
+position at all.
+
+`parseCompositeKey()` in
+[`src/bot-config-v2.js`](../src/bot-config-v2.js) validates the
+format: exactly four dash-separated parts, with `0x`-prefixed wallet
+and contract fields. If the key is missing or doesn't match, the
+route handler returns `400` immediately. This applies to every
+position-specific route (`POST /api/config`,
+`DELETE /api/position/manage`, `POST /api/rebalance`,
+`POST /api/compound`).
 
 #### Config Key Allowlist
 
-`POST /api/config` merges incoming fields only when the key name is a
-member of the explicit `GLOBAL_KEYS` or `POSITION_KEYS` arrays in
-`src/bot-config-v2.js`. Anything else is dropped. Because the `allowlist`
-is a constant inside server code (not derived from user input), bracket
-access like `diskConfig[k]` is safe — which is why
-`eslint-plugin-security`'s `detect-object-injection` rule is disabled
-with a documented reason in `eslint-security.config.js`.
+When the dashboard saves a setting — say the user changes their
+slippage tolerance from 0.5% to 0.75% — the browser sends a JSON
+body like `{ "slippagePct": 0.75, "positionKey": "pulsechain-0x4e4..." }`
+to `POST /api/config`. A naive handler that merged every field from
+that body into the config object would let an attacker inject
+unexpected keys (for example, overwriting `status` to mark a
+position as stopped, or polluting internal bookkeeping fields).
+
+LP Ranger prevents this with a strict `allowlist`. The route handler
+in `src/server-routes.js` walks two hardcoded arrays —
+`GLOBAL_KEYS` (gas strategy, RPC URL, etc.) and `POSITION_KEYS`
+(slippage, threshold, timeout, auto-compound settings, etc.) defined
+in `src/bot-config-v2.js` — and copies only those recognized names
+from the request body. Every other field is silently dropped. Because
+the `allowlist` is a constant inside server code (never derived from
+user input), the bracket access `diskConfig[k]` that merges each
+field is safe — which is why `eslint-plugin-security`'s
+`detect-object-injection` rule is disabled with a documented reason
+in `eslint-security.config.js`.
 
 #### Checksummed Addresses
 
 Every wallet and contract address is normalized through ethers'
-`getAddress()` (EIP-55 checksumming) before it becomes part of a
+`getAddress()` (EIP-55 (Ethereum Improvement Proposal 55)
+checksumming) before it becomes part of a
 composite key or cache filename. Case-variant addresses therefore
 cannot produce duplicate state entries or cache poisoning.
 
 #### BIP-39 Seed Validation
 
-Wallet import via seed phrase validates against the BIP-39 word list
+Wallet import via seed phrase validates against the BIP-39 (Bitcoin
+Improvement Proposal 39) word list
 before key derivation runs, rejecting typos and near-matches with a
 clear error rather than silently deriving a wrong key.
 
 ### Injection Prevention
+
+Injection attacks trick a program into treating data as code. For
+example, if a server builds a database query by pasting user input
+directly into the query string, an attacker can type SQL commands
+instead of a name and take over the database. LP Ranger doesn't use
+a database, but the same class of attack applies to JavaScript's
+`eval()` (which executes arbitrary code), `child_process` (which
+runs shell commands), and `require()` (which loads modules). The
+security lint flags any use of these that could accept untrusted
+input.
 
 #### `eval` / `child_process` / Dynamic `require`
 
@@ -1039,7 +1181,7 @@ config object uses a key from the `GLOBAL_KEYS` / `POSITION_KEYS`
 bracket access from untrusted input would need to explicitly reach for
 that pattern — the server-routes code reviews in CI catch such changes.
 
-#### XSS / DOM Safety
+#### XSS (Cross-Site Scripting) / DOM Safety
 
 The dashboard's rendered HTML is built from trusted sources only: the
 Uniswap v3 SDK's numeric output, server JSON, on-chain event data, and
@@ -1055,6 +1197,11 @@ on every commit.
 
 ### Filesystem Safety
 
+LP Ranger reads and writes files — config, caches, encrypted keys —
+so it's important that an attacker can't trick it into reading or
+writing files outside its own directory (for example, reading
+`/etc/passwd` or overwriting a system file).
+
 Every `fs.readFileSync` / `fs.writeFileSync` call in `src/` resolves
 its path via `path.join(process.cwd(), CONSTANT)` — no user-controlled
 path component ever reaches the filesystem layer. Atomic writes
@@ -1064,6 +1211,14 @@ in Static Serving** above) provides the equivalent protection on the
 inbound side.
 
 ### On-Chain / Transaction Security
+
+LP Ranger's core job is sending blockchain transactions — removing
+liquidity, swapping tokens, minting positions. Each of these
+transactions costs real money (gas fees), moves real funds, and is
+irreversible once confirmed. A stuck transaction, a duplicated
+transaction, or a swap executed at a bad price can all cause financial
+loss. The controls in this section protect the transaction pipeline
+itself.
 
 #### Nonce Serialization
 
@@ -1111,7 +1266,8 @@ atomic pair can be added to the rule's `pairs` option in one line.
 
 #### BigInt Precision
 
-EVM token amounts in 18-decimal tokens routinely exceed JavaScript's
+EVM (Ethereum Virtual Machine) token amounts in 18-decimal tokens
+routinely exceed JavaScript's
 2⁵³ integer precision. Silent truncation there would under-report
 balances and, worse, under-request minimum-out in swap calldata.
 
@@ -1127,6 +1283,14 @@ display math).
 
 ### Supply Chain & Dependencies
 
+LP Ranger depends on third-party npm packages for cryptography, EVM
+(Ethereum Virtual Machine) math, and other core functions. A
+compromised package — one where an attacker publishes a malicious
+update — could steal your private key at runtime without changing a
+single line of LP Ranger's own code. This section describes how the
+dependency surface is kept small, audited, and pinned so that known-
+good versions can't be silently replaced.
+
 #### Reputable-Package Philosophy
 
 LP Ranger deliberately prefers well-vetted npm packages over in-house
@@ -1135,9 +1299,10 @@ tokens, `ethers` for EVM math and checksumming, `async-mutex` for the
 rebalance lock, `@uniswap/v3-sdk` + `jsbi` for exact sqrtPrice
 arithmetic, and `navigo` for client-side routing. The reasoning is
 that rolled-in-house crypto or lock implementations are almost always
-worse than the widely-deployed alternative, and a CVE in a popular
-package is discovered and patched far faster than one in a one-off
-module. The `"dependencies"` block in `package.json` is intentionally
+worse than the widely-deployed alternative, and a CVE (Common
+Vulnerabilities and Exposures advisory) in a popular package is
+discovered and patched far faster than one in a one-off module. The
+`"dependencies"` block in `package.json` is intentionally
 small (9 packages) so the review surface stays tractable.
 
 Dependency pins and `"overrides"` (e.g. the `flatted ^3.4.2` override)
@@ -1184,7 +1349,7 @@ moderate sits unnoticed for long.
 One known ecosystem-wide advisory is accepted rather than patched: the
 `elliptic` package (reachable transitively through `@uniswap/v3-sdk`)
 carries a long-standing timing-side-channel finding in its ECDSA
-signing path. The advisory has no fix available from the upstream
+(Elliptic Curve Digital Signature Algorithm) signing path. The advisory has no fix available from the upstream
 maintainer, and the vulnerable function is not on any code path we
 exercise — LP Ranger uses `ethers` for wallet signing, not
 `@uniswap/v3-sdk`'s internal ECDSA helpers. The residual risk is
@@ -1201,6 +1366,12 @@ The security audits run as three independent jobs in
 protection. All three also run locally under `npm run check`.
 
 ### Runtime Hardening
+
+Even with good architecture, a running process can fail in ways that
+either crash silently (hiding bugs) or stay alive in a broken state
+(hiding worse bugs). These measures ensure the process fails loudly
+on real errors, shuts down cleanly when asked, and doesn't leave
+transactions hanging.
 
 #### Strict Mode Everywhere
 
@@ -1226,6 +1397,12 @@ calling the endpoint.
 
 ### Code Review Controls
 
+Security bugs hide most easily in large, complex files that no single
+reviewer can hold in their head. The rules in this section keep files
+small and functions simple, so every change is reviewable — and
+enforce that security-sensitive deviations are documented rather than
+silently introduced.
+
 The `max-lines: 500` (skipBlankLines, skipComments) and
 `complexity: 17` ESLint rules keep every file and function small
 enough that a human reviewer can hold the whole control flow in their
@@ -1250,6 +1427,47 @@ registers the security rules at `off` with
 exist silently in the main lint pass; the separate security lint
 (`eslint-security.config.js`) is what actually enforces the rules and
 honors the directives.
+
+#### Build and Infrastructure Scripts
+
+The `scripts/` directory contains 15 Node modules that drive the
+build pipeline (`build-info.js`, `cache-bust.js`), the check/report
+pipeline (`check.js`, `check-report.js`, `check-report-parse.js`,
+`check-report-pdf.js`, `check-report-md.js`), font management
+(`copy-fonts.js`), state management (`wipe-settings.js`,
+`restore-settings.js`, `reset-wallet.js`), server lifecycle
+(`stop.js`), and auxiliary tools (`api-doc.js`,
+`clear-pool-cache.js`, `telegram-send.js`). All 15 are subject to
+the **same checks** as application source code:
+
+- **ESLint (main)** — `scripts/**/*.js` is in the section 1 file
+  list and section 3 Node-source config, so every script is held
+  to the same `complexity <= 17`, `max-lines <= 500`, `strict`,
+  `no-var`, `eqeqeq`, `prefer-const`, and `no-restricted-syntax`
+  (Math.random ban) rules as `src/` and `server.js`.
+- **Security lint** (`eslint-plugin-security` +
+  `eslint-plugin-no-secrets` + custom `9mm/*` rules) — the
+  `eslint-security.config.js` `files[]` array includes
+  `scripts/**/*.js`, and `npm run audit:security` passes `scripts/`
+  on the command line.
+- **Secret scanner** (`secretlint`) — `npm run audit:secrets`
+  includes the `scripts/**/*.js` glob.
+- **Prettier** — `format` and `format:check` include
+  `scripts/**/*.js`; the pre-commit hook (`husky` + `lint-staged`)
+  auto-formats on every commit.
+
+The `eslint-plugin-security` plugin is registered at `off` in the
+main ESLint config (alongside the custom `9mm/*` rules) so that
+per-line `// eslint-disable-next-line security/detect-unsafe-regex`
+directives in scripts are recognized by both lint passes. Three
+such directives exist in `scripts/cache-bust.js` and
+`scripts/check-report-parse.js`, each with a `-- Safe:` comment
+documenting that the regex operates on controlled local input.
+
+This means a compromised or careless infrastructure script cannot
+silently bypass the same quality and security gates that protect
+the application code — there is no "scripts are just tooling"
+carve-out.
 
 ### Test-Time State Protection
 
