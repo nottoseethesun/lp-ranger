@@ -104,8 +104,9 @@ you cannot afford to lose.
 A full Disclosure &mdash; covering risk, venue relationships, conflicts of
 interest, fees, MEV exposure, cybersecurity, and regulatory context &mdash;
 is presented to the user on every app launch and is available at any time
-via Settings &rarr; Disclosure. The Disclosure source is maintained at
-[`public/disclosure.html`](public/disclosure.html) in this repository.
+via Settings &rarr; Disclosure. The rendered Disclosure is published at
+[nottoseethesun.github.io/lp-ranger/disclosure.html](https://nottoseethesun.github.io/lp-ranger/disclosure.html);
+its HTML source is maintained at `public/disclosure.html` in this repository.
 
 ---
 
