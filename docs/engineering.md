@@ -1278,9 +1278,13 @@ discovered and patched far faster than one in a one-off module. The
 `"dependencies"` block in `package.json` is intentionally
 small (9 packages) so the review surface stays tractable.
 
-Dependency pins and `"overrides"` (e.g. the `flatted ^3.4.2` override)
-are used to force-upgrade transitive dependencies when an advisory lands
-before the direct parent has cut a new release.
+When a transitive dependency has a known issue, the first response is
+to **delete `package-lock.json` and regenerate it** (`npm install`).
+Stale lockfiles pin old transitive versions even when the parent's
+caret range already accepts the fix — most advisories resolve this
+way without any code change. `"overrides"` in `package.json` are a
+last resort, used only when the parent's declared range genuinely
+excludes the patched version (e.g. an exact pin like `"1.0.0"`).
 
 #### Pinned Production Releases
 
@@ -1329,7 +1333,8 @@ exercise — LP Ranger uses `ethers` for wallet signing, not
 accepted here rather than patched in-house because override-forking
 `elliptic` would fork every Uniswap SDK consumer that depends on it.
 The advisory is re-checked on every release; if a fix lands upstream,
-the override table above is the first place to pin the update.
+a lockfile regeneration or (if needed) an override is the path to
+pin the update.
 
 #### CI Enforcement
 
@@ -1808,26 +1813,41 @@ v3) pins the exact resolved graph that was tested at each commit.
 **CI always uses `npm ci`**, never `npm install`, so every merge-gate
 run installs the exact tree recorded in the lockfile. That's why the
 three security-audit jobs, the pages build, and every matrix test job
-begin with `- run: npm ci`. Contributors running `npm install` locally
-are free to let the range float for ergonomic reasons, but nothing
-ships to users from those floated versions — the release workflow
-re-pins from the lockfile before packaging.
+begin with `- run: npm ci`.
+
+**Lockfile regeneration is mandatory during development.** The
+lockfile exists so every developer and CI run shares an identical
+dependency tree — but it must be **periodically deleted and
+regenerated** (`rm package-lock.json && npm install`) to pick up
+patched transitive dependencies. A stale lockfile pins old versions
+even when the parent's caret range already accepts a newer release.
+Most `npm audit` findings in transitive deps resolve with a lockfile
+refresh alone, no code change or override needed. This regeneration
+is a development-only practice — production installs always use
+`npm ci` against the committed lockfile.
 
 ### Overrides
 
-The top-level `"overrides"` object in `package.json` force-upgrades
-transitive dependencies whose direct parent hasn't cut a fresh release
-yet. Current overrides:
+Overrides are a **last resort**. Before adding one, delete
+`package-lock.json` and run `npm install` — if the patched version
+satisfies the parent's declared caret range, the lockfile
+regeneration alone resolves the issue and no override is needed.
+Only add an override when the parent's range genuinely excludes the
+fix (an exact pin, a range ceiling, or a dependency that needs to be
+neutralized entirely).
+
+The top-level `"overrides"` object in `package.json` currently
+contains two entries:
 
 | Override | Reason |
 | -------- | ------ |
-| `@uniswap/v3-staker: 1.0.2` | Bypass a stale transitive pin in the Uniswap deployments graph. |
-| `@uniswap/swap-router-contracts` → `hardhat-watcher` → `hardhat: npm:empty-npm-package@1.0.0` | Hardhat is a dev-only peer we never use; this neutralizes it at install time so nothing downloads. |
-| `flatted: ^3.4.2` | Force-upgrade a transitive dependency for a prior advisory where the parent hadn't published a fix. |
+| `@uniswap/v3-staker: 1.0.2` | The parent (`@uniswap/v3-sdk`) declares an exact pin `"1.0.0"`, not a caret range. npm cannot resolve `1.0.2` without the override. No advisory — just a minor bugfix version. |
+| `@uniswap/swap-router-contracts` → `hardhat-watcher` → `hardhat: npm:empty-npm-package@1.0.0` | Hardhat is a ~200 MB Solidity compiler toolchain required as a peer dep by `hardhat-watcher`, which is itself a transitive dep of the Uniswap SDK. LP Ranger never compiles Solidity. This override replaces the entire package with an empty stub so nothing downloads. |
 
-Overrides are a last resort — they decouple the dependency graph from
-upstream's own review, so the rationale for each one belongs inline
-in a commit message and in this table.
+Each override decouples the dependency graph from upstream's own
+review, so the rationale belongs inline in a commit message and in
+this table. If you can remove an override by regenerating the
+lockfile, do so — fewer overrides means fewer surprises.
 
 ### Production Releases
 
