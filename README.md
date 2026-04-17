@@ -12,6 +12,7 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 
 ## Table of Contents
 
+- [Disclaimer](#disclaimer)
 - [Screenshots](#screenshots)
   - [Dashboard Overview](#dashboard-overview)
   - [Configuration, P&L History, and Rebalance Events](#configuration-pl-history-and-rebalance-events)
@@ -23,7 +24,6 @@ Looks back up to five years on your wallet to show you how you're doing with eac
   - [Lifetime Net Stats](#lifetime-net-stats)
   - [Telegram Options](#telegram-options)
   - [Educational and Informative Material](#educational-and-informative-material)
-- [Disclaimer](#disclaimer)
 - [Pre-Requisites](#pre-requisites)
 - [Install](#install)
 - [Uninstall](#uninstall)
@@ -35,6 +35,22 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 - [License](#license)
 - [Road Map](#road-map)
 - [Contributing](#contributing)
+
+---
+
+## Disclaimer
+
+This software is provided "as is", without warranty of any kind. It has not
+been formally audited and may contain bugs or vulnerabilities. Transactions
+executed by LP Ranger are irreversible. Do not use this software with funds
+you cannot afford to lose.
+
+A full Disclosure &mdash; covering risk, venue relationships, conflicts of
+interest, fees, MEV exposure, cybersecurity, and regulatory context &mdash;
+is presented to the user on every app launch and is available at any time
+via Settings &rarr; Disclosure. The rendered Disclosure is published at
+[nottoseethesun.github.io/lp-ranger/disclosure.html](https://nottoseethesun.github.io/lp-ranger/disclosure.html);
+its HTML source is maintained at `public/disclosure.html` in this repository.
 
 ---
 
@@ -91,22 +107,6 @@ Opt in to real-time alerts for rebalances, compounds, errors, and shutdown.
 Click the circle-i next to any parameter for in-app help on what it does and how to tune it.
 
 ![Educational and Informative Material](docs/images/dashboard-screenshot-educational-and-informative-material.png)
-
----
-
-## Disclaimer
-
-This software is provided "as is", without warranty of any kind. It has not
-been formally audited and may contain bugs or vulnerabilities. Transactions
-executed by LP Ranger are irreversible. Do not use this software with funds
-you cannot afford to lose.
-
-A full Disclosure &mdash; covering risk, venue relationships, conflicts of
-interest, fees, MEV exposure, cybersecurity, and regulatory context &mdash;
-is presented to the user on every app launch and is available at any time
-via Settings &rarr; Disclosure. The rendered Disclosure is published at
-[nottoseethesun.github.io/lp-ranger/disclosure.html](https://nottoseethesun.github.io/lp-ranger/disclosure.html);
-its HTML source is maintained at `public/disclosure.html` in this repository.
 
 ---
 
