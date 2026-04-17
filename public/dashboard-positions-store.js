@@ -380,31 +380,12 @@ export function formatPosLabel(e) {
 
 // ── Position strip UI ────────────────────────────
 
-/**
- * Format a token pair for display. When either name was truncated by
- * `_tokenName` (trailing ellipsis), append the combined original length
- * so long names don't hide silently.
- * @returns {{ pair: string, pairWithTotal: string }}
- */
-function _formatPair(sep, sym0, addr0, sym1, addr1) {
-  const tok0 = _tokenName(sym0, addr0);
-  const tok1 = _tokenName(sym1, addr1);
-  const pair = tok0 + sep + tok1;
-  const truncated = tok0.endsWith("\u2026") || tok1.endsWith("\u2026");
-  if (!truncated) return { pair, pairWithTotal: pair };
-  const origLen = (sym0 || "").length + (sym1 || "").length;
-  return { pair, pairWithTotal: pair + " (" + origLen + " chars total)" };
-}
-
 /** Populate wallet-strip fields for active pos. */
 function _updateActiveStripDetails(active) {
-  const { pair, pairWithTotal } = _formatPair(
-    "/",
-    active.token0Symbol,
-    active.token0,
-    active.token1Symbol,
-    active.token1,
-  );
+  const pair =
+    _tokenName(active.token0Symbol, active.token0) +
+    "/" +
+    _tokenName(active.token1Symbol, active.token1);
   const isNft = active.positionType === "nft";
   const typeStr = isNft ? "NFT #" + active.tokenId : "ERC-20";
   const activeLabel = g("wsActivePosLabel");
@@ -423,7 +404,7 @@ function _updateActiveStripDetails(active) {
       ? active.tokenId || "\u2014"
       : (active.contractAddress || "\u2014").slice(0, 10) + "\u2026";
   const wsPool = g("wsPool");
-  if (wsPool) wsPool.textContent = pairWithTotal;
+  if (wsPool) wsPool.textContent = pair;
   const wsFee = g("wsFee");
   if (wsFee) wsFee.textContent = (active.fee / 10000).toFixed(2) + "%";
 }
@@ -528,16 +509,7 @@ export function _applyLocalPositionData(pos) {
   _setText("cl1", "\u25A0 " + t1Sym + ": 50%");
   _t("cl0", t0Full);
   _t("cl1", t1Full);
-  _setText(
-    "wsPool",
-    _formatPair(
-      " / ",
-      pos.token0Symbol,
-      pos.token0,
-      pos.token1Symbol,
-      pos.token1,
-    ).pairWithTotal,
-  );
+  _setText("wsPool", t0Sym + " / " + t1Sym);
   _setText("wsFee", (pos.fee / 10000).toFixed(2) + "%");
   _setText("ltPnlLabel", "Net Profit and Loss Return");
   _setText("kpiPnlPct", "");
