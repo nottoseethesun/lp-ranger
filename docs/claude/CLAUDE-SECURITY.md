@@ -109,19 +109,13 @@ npm run check
 
 ### Disabled rules and why
 
-Three `eslint-plugin-security` rules are disabled in
-`eslint-security.config.js` with documented reasons:
+Two `eslint-plugin-security` rules are disabled in
+`eslint-security.config.js`. All other rules are enabled.
 
 | Rule | Why disabled |
 | ---- | ------------ |
-| `detect-object-injection` | Bracket access on config objects is intentional; keys come from server-owned arrays |
-| `detect-non-literal-fs-filename` | All fs paths use `path.join(cwd, CONSTANT)` — no user-controlled paths |
-| `detect-non-literal-require` | Dynamic require used only for `chains.json` config loading |
-
-If a disabled rule is re-enabled in the future, expect false positives
-in these files: `src/bot-config-v2.js`, `src/server-routes.js`,
-`src/config.js`, `src/key-store.js`, `src/wallet-manager.js`,
-`server.js`.
+| `detect-non-literal-fs-filename` | ~90 false positives — every `fs` call uses computed paths from `__dirname` / constants, never user input. The rule can't distinguish safe constant paths from user-controlled ones. |
+| `detect-object-injection` | Bracket access on config objects is intentional; keys come from server-owned `GLOBAL_KEYS` / `POSITION_KEYS` arrays. |
 
 ### Per-line exceptions for custom EVM rules
 

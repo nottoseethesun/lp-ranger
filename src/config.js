@@ -60,9 +60,7 @@ try {
  * runtime). See the `app-config/` section of server.js for the full layout
  * and rules for where future config files should live.
  */
-const CHAINS = require(
-  path.join(__dirname, "..", "app-config", "static-tunables", "chains.json"),
-);
+const CHAINS = require("../app-config/static-tunables/chains.json");
 
 /** Active chain name. Set CHAIN_NAME=pulsechain-testnet for testnet. */
 const CHAIN_NAME = (process.env.CHAIN_NAME || "pulsechain").toLowerCase();

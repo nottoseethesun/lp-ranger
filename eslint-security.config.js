@@ -35,8 +35,13 @@ module.exports = [
       // ── eslint-plugin-security ──────────────────
       "security/detect-unsafe-regex": "warn",
       "security/detect-non-literal-regexp": "warn",
-      // Server-side app — fs paths come from path.join(cwd, CONST),
-      // not user input. No path traversal risk.
+      // Every fs call in this app uses computed paths (path.join(__dirname,
+      // CONSTANT), os.tmpdir(), config-scoped filenames). The rule flags ALL
+      // of them (~90 warnings) because it can't distinguish path.join(cwd,
+      // CONSTANT) from path.join(cwd, userInput). No user input ever reaches
+      // any filesystem path — all paths come from __dirname-relative constants
+      // or server-owned config. Suppressing 90 lines with eslint-disable
+      // would be noisier than the rule itself.
       "security/detect-non-literal-fs-filename": "off",
       "security/detect-eval-with-expression": "warn",
       "security/detect-no-csrf-before-method-override": "warn",
@@ -45,8 +50,7 @@ module.exports = [
       "security/detect-child-process": "warn",
       "security/detect-new-buffer": "warn",
       "security/detect-disable-mustache-escape": "warn",
-      // Dynamic require used only for chains.json config — no user input.
-      "security/detect-non-literal-require": "off",
+      "security/detect-non-literal-require": "warn",
       "security/detect-object-injection": "off",
 
       // ── eslint-plugin-no-secrets ────────────────

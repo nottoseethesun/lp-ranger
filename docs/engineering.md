@@ -1077,8 +1077,8 @@ LP Ranger manages multiple positions simultaneously, so every
 position-specific API call must identify **which position** it's
 acting on. The identifier is a composite key — a dash-separated
 string like `pulsechain-0x4e448...-0xCC05b...-157149` that encodes
-the blockchain name, wallet address, contract address, and NFT
-token ID. A malformed or missing key could route a config change,
+the blockchain name, wallet address, the contract address of the
+liquidity pool provider's NFT factory, and NFT token ID. A malformed or missing key could route a config change,
 a rebalance, or a stop command to the wrong position — or to no
 position at all.
 
@@ -1146,19 +1146,42 @@ input.
 `detect-eval-with-expression`, `detect-child-process`, and
 `detect-new-buffer`. The single `child_process.spawn` call
 (`npm run stop`'s self-invocation helper) takes no user input. Three
-`eslint-plugin-security` rules are deliberately disabled in
-`eslint-security.config.js` with documented reasons:
+Two `eslint-plugin-security` rules are disabled in
+`eslint-security.config.js`:
 
 | Rule | Why disabled |
 | ---- | ------------ |
 | `detect-object-injection` | Bracket access on config objects is intentional; keys come from server-owned `GLOBAL_KEYS` / `POSITION_KEYS` arrays, never from the request body. |
-| `detect-non-literal-fs-filename` | All fs paths use `path.join(cwd, CONSTANT)` — no user-controlled paths. |
-| `detect-non-literal-require` | Dynamic `require()` is used only to load the server-owned `chains.json` config by chain name; no user input reaches the path. |
+| `detect-non-literal-fs-filename` | See detailed explanation below. |
 
-If any of these rules is re-enabled in the future, expect false
-positives in `src/bot-config-v2.js`, `src/server-routes.js`,
-`src/config.js`, `src/key-store.js`, `src/wallet-manager.js`, and
-`server.js`.
+All other `eslint-plugin-security` rules — including
+`detect-non-literal-require`, `detect-eval-with-expression`,
+`detect-child-process`, `detect-possible-timing-attacks`,
+`detect-pseudoRandomBytes`, and `detect-new-buffer` — are enabled
+at `warn` severity.
+
+**Why `detect-non-literal-fs-filename` is off.** This rule flags
+every `fs` call where the path argument is a variable rather than a
+string literal. In a web application that passes user input to
+`fs.readFileSync()`, that's a real vulnerability — an attacker
+could read `/etc/passwd` or overwrite system files. But LP Ranger
+is a local-only Node server where **no user input ever reaches any
+filesystem path**. Every `fs` call uses computed paths built from
+`__dirname`, `path.join(cwd, CONSTANT)`, `os.tmpdir()`, or
+server-owned config-scoped filenames.
+
+The rule cannot distinguish `path.join(__dirname, "app-config",
+"chains.json")` from `path.join(cwd, userInput)` — it flags both
+identically. With the rule enabled, the codebase produces **~90
+warnings** across `src/`, `scripts/`, and `server.js`. Suppressing
+each one with a per-line `eslint-disable-next-line` directive would
+add 90 noise lines without improving security, because the
+underlying condition — user-controlled paths reaching `fs` — does
+not exist in this architecture. The actual defense against
+filesystem-escape attacks is the `serveStatic()` path-traversal
+guard (see [Path Traversal in Static Serving](#path-traversal-in-static-serving)
+above), which operates at the HTTP route level, not at individual
+`fs` call sites.
 
 #### Prototype Pollution
 
