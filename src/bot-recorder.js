@@ -149,6 +149,11 @@ async function _scanHistory(
       computeFromHistoricalPrices: computeFromHistoricalPrices || undefined,
     });
     updateState({ rebalanceScanProgress: 95 });
+    /* Replace the in-memory events list with the (already deduped + merged)
+     * scan result.  A plain push(...found) caused duplicate rows because
+     * _triggerScan runs after every rebalance and the scan now includes the
+     * event appendToPoolCache just wrote to the disk cache. */
+    events.length = 0;
     events.push(...found);
     console.log("[bot] Found %d historical rebalance events", found.length);
     if (throttle && found.length > 0) {

@@ -220,6 +220,7 @@ async function _executeAndRecord(deps, ethersLib) {
       oldTokenId: result.oldTokenId,
       txHashes: result.txHashes,
       blockNumber: result.blockNumber,
+      swapSources: result.swapSources,
     };
   } finally {
     if (release) {

@@ -23,7 +23,7 @@ function _tblUsd(val) {
 }
 
 const _PNL_PAGE_SIZE = 11;
-const _REB_PAGE_SIZE = 4;
+const _REB_PAGE_SIZE = 8;
 
 /** Rebalance events pagination state. */
 let _rebEventsPage = 0;
