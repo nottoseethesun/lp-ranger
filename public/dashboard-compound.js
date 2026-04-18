@@ -16,7 +16,33 @@ import {
   _posLabel,
   _posContextHtml,
   setOptimisticSpecialAction,
+  getLastStatus,
 } from "./dashboard-data.js";
+import { findActiveAction } from "./dashboard-mission-badge.js";
+import { truncName } from "./dashboard-helpers.js";
+
+/**
+ * Show a small modal telling the user their action is queued behind
+ * an in-flight blockchain transaction. Same-wallet nonce serialization
+ * means only one TX at a time, so click-while-busy → queue.
+ * @param {"compound"|"rebalance"} requested  The action the user just clicked.
+ * @param {object} inFlight  {kind, tokenId, token0Symbol, token1Symbol}
+ */
+export function showQueuedActionModal(requested, inFlight) {
+  const reqLabel = requested === "compound" ? "Compound" : "Rebalance";
+  const inLabel = inFlight.kind === "compound" ? "compound" : "rebalance";
+  const t0 = truncName(inFlight.token0Symbol || "?", 12);
+  const t1 = truncName(inFlight.token1Symbol || "?", 12);
+  _createModal(
+    null,
+    "9mm-pos-mgr-modal-help",
+    `${reqLabel} Queued`,
+    `<p>Your ${reqLabel.toLowerCase()} request has been queued.</p>` +
+      `<p>It will run after the current in-flight ${inLabel} ` +
+      `transaction on Position #${inFlight.tokenId} (${t0}/${t1}) ` +
+      `finishes.</p>`,
+  );
+}
 
 /**
  * Request a manual compound via the server API.
@@ -39,6 +65,7 @@ export async function compoundNow() {
     a.contractAddress,
     a.tokenId,
   );
+  const inFlight = findActiveAction(getLastStatus()?._allPositionStates);
   try {
     const res = await fetch("/api/compound", {
       method: "POST",
@@ -56,6 +83,7 @@ export async function compoundNow() {
       return;
     }
     setOptimisticSpecialAction("compound");
+    if (inFlight) showQueuedActionModal("compound", inFlight);
   } catch {
     _createModal(
       null,

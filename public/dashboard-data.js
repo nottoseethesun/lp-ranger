@@ -115,6 +115,9 @@ let _dataTimerId = null,
   _lastStatus = null,
   _historyPopulated = false,
   _configSynced = false;
+export function getLastStatus() {
+  return _lastStatus;
+}
 import {
   markInputDirty,
   isInputDirty,

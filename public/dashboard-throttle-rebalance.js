@@ -16,7 +16,10 @@ import {
   _posContextHtml,
   _posLabel,
   setOptimisticSpecialAction,
+  getLastStatus,
 } from "./dashboard-data.js";
+import { findActiveAction } from "./dashboard-mission-badge.js";
+import { showQueuedActionModal } from "./dashboard-compound.js";
 
 /** @private */
 function _updateRangeHint() {
@@ -110,6 +113,7 @@ export async function confirmRebalanceRange() {
       active.contractAddress,
       active.tokenId,
     );
+    const inFlight = findActiveAction(getLastStatus()?._allPositionStates);
     const res = await fetch("/api/rebalance", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...csrfHeaders() },
@@ -133,6 +137,7 @@ export async function confirmRebalanceRange() {
       return;
     }
     setOptimisticSpecialAction("rebalance");
+    if (inFlight) showQueuedActionModal("rebalance", inFlight);
   } catch {
     _createModal(
       null,

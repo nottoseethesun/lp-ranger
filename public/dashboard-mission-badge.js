@@ -47,10 +47,14 @@ export function setOptimisticSpecialAction(kind) {
   }, _OPT_TIMEOUT_MS);
 }
 
-/*- Scan all position states for any with an action in progress.
+/**
+ * Scan all position states for any with an action in progress.
  * Same-wallet nonce serialization means at most one is active at a
- * time, so the first match is authoritative. */
-function _findActiveAction(allStates) {
+ * time, so the first match is authoritative.
+ * @param {object|undefined} allStates  Map of compositeKey → state.
+ * @returns {{kind:"compound"|"rebalance", tokenId:string, fee:number|undefined, token0Symbol:string|undefined, token1Symbol:string|undefined}|null}
+ */
+export function findActiveAction(allStates) {
   if (!allStates) return null;
   for (const [key, s] of Object.entries(allStates)) {
     const kind = s.rebalanceInProgress
@@ -137,7 +141,7 @@ function _maybeClearLatch(server) {
 export function updateMissionStatusBadge(d) {
   const badge = g("missionStatusBadge");
   if (!badge) return;
-  const server = _findActiveAction(d?._allPositionStates);
+  const server = findActiveAction(d?._allPositionStates);
   const sig = server ? server.kind + ":" + server.tokenId : null;
   if (sig !== _lastServerSig) {
     _lastServerSig = sig;
