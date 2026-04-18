@@ -83,8 +83,12 @@ async function _walletResiduals(
       : pa.amount1;
     const share0 = total0 > 0 ? (pa.amount0 / total0) * wf0 : wf0;
     const share1 = total1 > 0 ? (pa.amount1 / total1) * wf1 : wf1;
+    const usd0 = share0 * price0;
+    const usd1 = share1 * price1;
     return {
-      usd: share0 * price0 + share1 * price1,
+      usd: usd0 + usd1,
+      usd0,
+      usd1,
       amount0: share0,
       amount1: share1,
     };
@@ -173,6 +177,10 @@ function _currentPnl(
     netPnl: entryValue > 0 ? (pgl || 0) + feesUsd : null,
     profit: il !== null ? feesUsd + il : null,
     residualValueUsd: rUsd,
+    residualUsd0: residuals?.usd0 || 0,
+    residualUsd1: residuals?.usd1 || 0,
+    residualAmount0: residuals?.amount0 || 0,
+    residualAmount1: residuals?.amount1 || 0,
   };
 }
 

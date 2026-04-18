@@ -359,6 +359,8 @@ export function clearPositionDisplay() {
   _setText("sShare1", "\u2014");
   _setText("sWpls", "\u2014");
   _setText("sUsdc", "\u2014");
+  _setText("sResidual0", "\u2014");
+  _setText("sResidual1", "\u2014");
   _setText("cl0", "\u25A0 \u2014: 50%");
   _setText("cl1", "\u25A0 \u2014: 50%");
   const c0 = g("c0"),

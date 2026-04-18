@@ -254,6 +254,15 @@ function _computeIL(snap, deps, realValue, price0, price1, residuals) {
   };
 }
 
+/** Write residual USD + per-token coin amounts onto the snapshot. */
+function _applyResiduals(snap, residuals, rUsd) {
+  snap.residualValueUsd = rUsd;
+  snap.residualUsd0 = residuals?.usd0 || 0;
+  snap.residualUsd1 = residuals?.usd1 || 0;
+  snap.residualAmount0 = residuals?.amount0 || 0;
+  snap.residualAmount1 = residuals?.amount1 || 0;
+}
+
 /** Override P&L snapshot with real on-chain values and HODL-based IL. */
 async function overridePnlWithRealValues(
   snap,
@@ -268,7 +277,7 @@ async function overridePnlWithRealValues(
   const realValue = positionValueUsd(position, poolState, price0, price1);
   const rUsd = residuals?.usd || 0;
   const lifetimeFees = _computeLifetimeFees(snap, deps, feesUsd);
-  snap.residualValueUsd = rUsd;
+  _applyResiduals(snap, residuals, rUsd);
   snap.currentValue = realValue;
   snap.totalFees = lifetimeFees;
   const entryVal = snap.liveEpoch

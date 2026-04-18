@@ -235,6 +235,26 @@ export function _updateComposition(d) {
     su = g("sUsdc");
   if (ps.balance0 !== undefined && sw) sw.textContent = ps.balance0;
   if (ps.balance1 !== undefined && su) su.textContent = ps.balance1;
+  _updateResiduals(d);
+}
+
+/** Update the per-token Residual values (coins left liquid on the wallet). */
+function _updateResiduals(d) {
+  const snap = d.pnlSnapshot;
+  const r0 = g("sResidual0"),
+    r1 = g("sResidual1");
+  const fmt = (v) =>
+    typeof v === "number" && isFinite(v) ? v.toFixed(3) : "\u2014";
+  if (r0) r0.textContent = fmt(snap?.residualAmount0);
+  if (r1) r1.textContent = fmt(snap?.residualAmount1);
+  const tip0 = g("sResidual0Tip"),
+    tip1 = g("sResidual1Tip");
+  const usdFmt = (v) =>
+    typeof v === "number" && isFinite(v) ? v.toFixed(2) : "0.00";
+  if (tip0)
+    tip0.textContent = `Coins left liquid on the wallet; ~ $${usdFmt(snap?.residualUsd0)} .`;
+  if (tip1)
+    tip1.textContent = `Coins left liquid on the wallet; ~ $${usdFmt(snap?.residualUsd1)} .`;
 }
 
 /** Update tick labels and pool share percentages. */

@@ -520,6 +520,8 @@ export function _applyLocalPositionData(pos) {
   _setText("sShare1", "\u2014");
   _setText("sWpls", "\u2014");
   _setText("sUsdc", "\u2014");
+  _setText("sResidual0", "\u2014");
+  _setText("sResidual1", "\u2014");
   _setText("sOorDuration", "n/a");
   _setText("pmlabel", "");
   const statusEl = g("curPosStatus");

@@ -1210,6 +1210,27 @@
   color: var(--accent);
 }
 
+/* Residual row in token stat-items: inline to the right of the big
+ * value, sharing the same baseline so the panel height does not grow. */
+.\39 mm-pos-mgr-stat-val-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.\39 mm-pos-mgr-stat-residual {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* Info-dot's default margin-left: 6px would add space between the colon
+ * and the dot inside the residual row. Zero it so the dot sits directly
+ * adjacent to "Residual:", with a single space char before the number. */
+.\39 mm-pos-mgr-stat-residual .\39 mm-pos-mgr-info-dot {
+  margin-left: 0;
+}
+
 /* ── Copy Icon (inline) ─────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-copy-icon {
