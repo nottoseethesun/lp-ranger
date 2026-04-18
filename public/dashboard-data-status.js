@@ -252,9 +252,9 @@ function _updateResiduals(d) {
   const usdFmt = (v) =>
     typeof v === "number" && isFinite(v) ? v.toFixed(2) : "0.00";
   if (tip0)
-    tip0.textContent = `Coins left liquid on the wallet; ~ $usd ${usdFmt(snap?.residualUsd0)} .`;
+    tip0.textContent = `Coins left liquid on the wallet; ~ $usd ${usdFmt(snap?.residualUsd0)}.`;
   if (tip1)
-    tip1.textContent = `Coins left liquid on the wallet; ~ $usd ${usdFmt(snap?.residualUsd1)} .`;
+    tip1.textContent = `Coins left liquid on the wallet; ~ $usd ${usdFmt(snap?.residualUsd1)}.`;
 }
 
 /** Update tick labels and pool share percentages. */
