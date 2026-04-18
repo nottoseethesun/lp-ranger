@@ -1804,11 +1804,20 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  gap: 60px;
   background: #260700;
   border-radius: 10px;
   padding: 14px 20px;
   margin: 0 0 10px;
   color: #ff8f42;
+}
+
+.\39 mm-pos-mgr-mission-bottom {
+  margin-top: auto;
+}
+
+.\39 mm-pos-mgr-mission-top-gap {
+  height: 14px;
 }
 
 
@@ -1855,12 +1864,6 @@
 .\39 mm-pos-mgr-mission-compound-block {
   margin-top: 20px;
   padding-bottom: 6px;
-}
-
-/* Push the two buttons + divider down toward the compound block,
- * leaving a comfortable gap below the Compound button. */
-.\39 mm-pos-mgr-mission-control > .\39 mm-pos-mgr-mission-btn:first-of-type {
-  margin-top: auto;
 }
 
 /* Special-Action status badge — Mission Control orange theme.
