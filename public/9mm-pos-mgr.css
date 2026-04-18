@@ -812,7 +812,7 @@
   font-weight: 400;
   color: #00e5ff;
   white-space: normal;
-  width: 280px;
+  width: 220px;
   text-align: left;
   box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
   pointer-events: none;
@@ -822,12 +822,16 @@
   display: block;
 }
 
+/* "Above" variant: flip vertical position but keep the horizontal
+ * centring from the base class. The previous `right: 0; left: auto;
+ * transform: none` variant anchored the popover's right edge to the
+ * icon, so a 280px-wide popover extended 280px to the left and could
+ * be clipped by `.modal { overflow-x: hidden; }` on narrow viewports.
+ * Centring on the icon keeps the popover inside the modal as long as
+ * it is narrower than twice the icon's distance to each modal edge. */
 .\39 mm-pos-mgr-info-popover-above {
   top: auto;
   bottom: calc(100% + 6px);
-  right: 0;
-  left: auto;
-  transform: none;
 }
 
 .\39 mm-pos-mgr-il-popover {
