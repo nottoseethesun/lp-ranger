@@ -1853,8 +1853,14 @@
 }
 
 .\39 mm-pos-mgr-mission-compound-block {
-  margin-top: auto;
+  margin-top: 20px;
   padding-bottom: 6px;
+}
+
+/* Push the two buttons + divider down toward the compound block,
+ * leaving a comfortable gap below the Compound button. */
+.\39 mm-pos-mgr-mission-control > .\39 mm-pos-mgr-mission-btn:first-of-type {
+  margin-top: auto;
 }
 
 .\39 mm-pos-mgr-mission-grid {
