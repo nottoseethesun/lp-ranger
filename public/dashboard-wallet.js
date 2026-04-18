@@ -18,6 +18,7 @@
 
 import { g, act, ACT_ICONS, csrfHeaders } from "./dashboard-helpers.js";
 import { saveMoralisApiKey } from "./dashboard-events.js";
+import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
 
 // ── Re-export the import module ───────────────────────────
@@ -349,6 +350,10 @@ export async function confirmWallet() {
   // Save optional Moralis API key if provided during setup
   await _saveSetupMoralisKey(password);
 
+  // Flush Telegram config stashed during the setup dialog
+  // (deferred because the wallet password wasn't set yet).
+  await flushPendingTelegramConfig(password);
+
   clearAllPositionState();
   applyWalletUI();
   closeWalletModal();
@@ -550,6 +555,13 @@ export async function checkWalletLocked() {
       // Wallet exists and is already unlocked (e.g. WALLET_PASSWORD env var).
       _walletUnlocked = true;
       _validateMoralisAfterUnlock();
+      // Retry the active position's unmanaged details fetch, which may have
+      // early-returned with "wallet-locked" before this async check resolved.
+      const active = _posStore?.getActive?.();
+      if (active && _resetLastFetchedId && _fetchUnmanagedDetails) {
+        _resetLastFetchedId();
+        _fetchUnmanagedDetails(active);
+      }
     }
   } catch {
     /* */

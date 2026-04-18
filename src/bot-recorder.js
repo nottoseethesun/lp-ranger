@@ -491,13 +491,19 @@ function _applyRebalanceResult(deps, result) {
     deps._botState.oorSince = null;
     // Reset mint gas flag so the new position's mint gas gets applied
     deps._botState._mintGasApplied = false;
-    // Clear cached HODL so re-scan picks up the new rebalance boundary
+    /*- Clear cached HODL so re-scan picks up the new rebalance boundary.
+     *  `lastNftScanBlock` MUST be reset too — otherwise the next scan uses
+     *  the pre-rebalance max block as `fromBlock` and filters out every
+     *  historical IncreaseLiquidity event, caching an empty hodl/deposits
+     *  result and leaving `totalLifetimeDepositUsd` at 0.
+     */
     deps._botState.lifetimeHodlAmounts = null;
     deps._botState.totalLifetimeDepositUsd = 0;
     deps._botState.depositUsedFallback = false;
     if (deps._pnlTracker?._epochKey) {
       _epochCache.setCachedLifetimeHodl(deps._pnlTracker._epochKey, null);
       _epochCache.setCachedFreshDeposits(deps._pnlTracker._epochKey, null);
+      _epochCache.setLastNftScanBlock(deps._pnlTracker._epochKey, 0);
     }
     _updateHodlBaseline(deps._botState, result, mintNow);
   }

@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/9mm-pos-mgr.css">
   <link rel="stylesheet" href="/fonts.css">
-  <link rel="stylesheet" href="/help.css?v=6">
+  <link rel="stylesheet" href="/help.css?v=7">
 </head>
 <body>
   <h1>LP Ranger Help and User Manual</h1>
@@ -27,6 +27,7 @@
       <li><a href="#details">Details</a>
         <ul><li><a href="#edit-deposit">Edit Initial / Lifetime Deposit</a></li></ul>
       </li>
+      <li><a href="#checking-for-updates">Checking for Updates</a></li>
       <li><a href="#supported-pool-managers">Supported Liquidity Pool Managers</a></li>
       <li><a href="#supported-blockchains">Supported Blockchains</a></li>
     </ol>
@@ -95,6 +96,7 @@
     <li><strong>Prices Don&rsquo;t Look Right:</strong> Try adding your <a href="https://moralis.com/" target="_blank" rel="noopener">Moralis</a> API key (free) so that Moralis can be a data source. Moralis is a remotely-hosted crypto data API that provides token prices, historical block-level pricing, and other on-chain data. It is the most reliable price source for tokens that other free services miss. Click the gear icon (top right) to add your key in Settings.</li>
     <li><strong>Slow Initial Scans:</strong> The first blockchain scan fetches historical prices for every rebalance epoch. Adding a Moralis API key (free) makes this much faster by bypassing GeckoTerminal rate limits. Click the gear icon (top right) &rarr; Settings.</li>
     <li><strong>Lost Managed Positions or Settings:</strong> On every startup the app saves a backup of your configuration to <code>app-config/.bot-config.backup.json</code>. If your managed positions or settings are lost, copy the backup over the main file: <code>cp app-config/.bot-config.backup.json app-config/.bot-config.json</code> and restart. See the &ldquo;app-config/&rdquo; section in the file-header documentation of <code>server.js</code> for the full layout.</li>
+    <li><strong>Current or Lifetime Panel Not Populating:</strong> If the Current and/or Lifetime panels are missing data or look stale, re-select the position you want to view from the <strong>LP Browser</strong>. This triggers a fresh fetch and redraw for that position.</li>
   </ul>
 
   <h2 id="details">Details</h2>
@@ -112,6 +114,18 @@
     <li>To revert to auto-detection, clear the input field (leave it empty) and click Save. This removes your manual override, and the app will use the auto-detected value on the next refresh.</li>
   </ul>
   <p>A small info icon next to the deposit value tells you which source is being used: &ldquo;Manually entered&rdquo;, &ldquo;Valued using Historical Price&rdquo;, or &ldquo;Valued using Current Price&rdquo; (when historical prices were unavailable and the current price was used as a fallback).</p>
+
+  <h2 id="checking-for-updates">Checking for Updates</h2>
+  <p>LP Ranger checks GitHub for newer releases every time you open the <strong>About</strong> dialog. Click the <strong>Settings</strong> gear icon at top right in the app, then click <strong>About</strong>.</p>
+  <p>The About dialog shows the commit hash and commit date of your running copy. If a newer official release is available, a line appears below the commit row reading <em>&ldquo;Update available: X.Y.Z &mdash; Get the update&rdquo;</em>. The <strong>Get the update</strong> link opens that release&rsquo;s GitHub page in a new tab. If the line reads <em>&ldquo;Up to date&rdquo;</em>, you are already on the latest release.</p>
+  <p><strong>To retrieve and install an update:</strong></p>
+  <ol>
+    <li>Click <strong>Get the update</strong> in the About dialog, then download the release&rsquo;s <code>.tar.gz</code> asset from the GitHub page that opens.</li>
+    <li>Stop your running LP Ranger: in the Terminal where it is running, press <kbd>Ctrl</kbd>+<kbd>C</kbd>, or run <code>npm run stop</code> from the project directory.</li>
+    <li>Extract the new release alongside your existing install (it unpacks into a version-stamped directory such as <code>lp-ranger-X.Y.Z/</code>), then <code>cd</code> into it and run <code>npm ci</code> followed by <code>npm start</code>. Always use <code>npm ci</code> for production releases so the pinned dependency versions are installed exactly.</li>
+    <li>Your wallet, managed positions, and settings live in <code>app-config/</code>, and any custom server/bot configuration you set up lives in the optional <code>.env</code> file at the project root. Neither is replaced by extracting a new release alongside the old one. If you want to preserve them, copy <code>app-config/</code> (and <code>.env</code>, if it exists) from your old install into the new one before first start.</li>
+  </ol>
+  <p>If the About dialog does not show an update notice but you believe one is available, confirm you have network access to <code>api.github.com</code> and reload the app.</p>
 
   <h2 id="supported-pool-managers">Supported Liquidity Pool Managers</h2>
   <ul>

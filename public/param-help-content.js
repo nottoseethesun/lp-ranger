@@ -522,7 +522,9 @@ export const PARAM_HELP = {
         body:
           "Change if you experience RPC timeouts, slow responses, or " +
           "want to use a private node. The bot automatically falls back " +
-          "to the official PulseChain RPC if the primary fails.",
+          "to the official PulseChain RPC if the primary fails. " +
+          "<strong>Restart the app for the change to take effect</strong> " +
+          "(the running bot holds the provider it was started with).",
       },
     ],
   },
@@ -546,7 +548,9 @@ export const PARAM_HELP = {
           "the 9mm Pro Position Manager contract. " +
           "<strong>Do not change this unless you know " +
           "exactly what you are doing.</strong> An incorrect address will " +
-          "cause all transactions to fail or be sent to the wrong contract.",
+          "cause all transactions to fail or be sent to the wrong contract. " +
+          "<strong>Restart the app for the change to take effect</strong> " +
+          "(the running bot holds the address it was started with).",
       },
     ],
   },
@@ -569,7 +573,9 @@ export const PARAM_HELP = {
           "9inch. This app currently can only support the 9mm Pro Position " +
           "Manager contract. " +
           "<strong>Do not change this unless you are connecting to a " +
-          "different V3 deployment.</strong>",
+          "different V3 deployment.</strong> " +
+          "<strong>Restart the app for the change to take effect</strong> " +
+          "(the running bot holds the address it was started with).",
       },
     ],
   },

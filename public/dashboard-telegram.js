@@ -32,6 +32,14 @@ const _EVENT_IDS = [
 /** Track whether the wallet modal was open when we launched. */
 let _walletWasOpen = false;
 
+/**
+ * When Telegram is configured during fresh-install wallet
+ * setup, the wallet password doesn't exist yet so the server
+ * can't encrypt. Stash the config here and flush it after
+ * wallet confirmation via flushPendingTelegramConfig().
+ */
+let _pendingConfig = null;
+
 /** Show the Telegram setup modal and load current config from server. */
 export async function openTelegramModal() {
   const modal = g("telegramModal");
@@ -103,6 +111,34 @@ function _updateTestBtn(enabled) {
   if (btn) btn.disabled = !enabled;
 }
 
+/**
+ * Stash the body for deferred encryption and clear the input
+ * fields so the user sees a pending state.
+ */
+function _stashPending(body, tokenEl, chatEl) {
+  _pendingConfig = body;
+  _setStatus("Saved — will be applied after wallet setup");
+  if (tokenEl && body.botToken) {
+    tokenEl.value = "";
+    tokenEl.placeholder = "(pending)";
+  }
+  if (chatEl && body.chatId) {
+    chatEl.value = "";
+    chatEl.placeholder = "(pending)";
+  }
+  _updateTestBtn(false);
+}
+
+/** Apply post-save UI updates after a successful server save. */
+function _applySaveSuccess(body, tokenEl, chatEl) {
+  _setStatus("Saved");
+  if (tokenEl) tokenEl.value = "";
+  if (chatEl) chatEl.value = "";
+  if (tokenEl && body.botToken) tokenEl.placeholder = "(saved)";
+  if (chatEl && body.chatId) chatEl.placeholder = "(saved)";
+  _updateTestBtn(true);
+}
+
 /** Save Telegram config to the server. */
 async function _save() {
   const tokenEl = g("tgBotToken");
@@ -110,21 +146,37 @@ async function _save() {
   const body = { enabledEvents: _readEvents() };
   if (tokenEl?.value.trim()) body.botToken = tokenEl.value.trim();
   if (chatEl?.value.trim()) body.chatId = chatEl.value.trim();
+  // Fresh-install path: wallet password not set yet, so defer
+  // encryption. flushPendingTelegramConfig() runs after the
+  // wallet is confirmed.
+  if (_walletWasOpen) {
+    _stashPending(body, tokenEl, chatEl);
+    return;
+  }
   _setStatus("Saving...");
   try {
     const res = await _post("/api/telegram/config", body);
-    if (res.ok) {
-      _setStatus("Saved");
-      if (tokenEl) tokenEl.value = "";
-      if (chatEl) chatEl.value = "";
-      if (tokenEl && body.botToken) tokenEl.placeholder = "(saved)";
-      if (chatEl && body.chatId) chatEl.placeholder = "(saved)";
-      _updateTestBtn(true);
-    } else {
-      _setStatus(res.error || "Save failed", true);
-    }
+    if (res.ok) _applySaveSuccess(body, tokenEl, chatEl);
+    else _setStatus(res.error || "Save failed", true);
   } catch (err) {
     _setStatus(err.message, true);
+  }
+}
+
+/**
+ * Flush any Telegram config that was stashed during the
+ * wallet setup dialog. Called by confirmWallet() once the
+ * wallet password is available so the server can encrypt.
+ * @param {string} password - the wallet password from setup.
+ */
+export async function flushPendingTelegramConfig(password) {
+  if (!_pendingConfig) return;
+  const body = { ..._pendingConfig, password };
+  _pendingConfig = null;
+  try {
+    await _post("/api/telegram/config", body);
+  } catch {
+    // Best effort; user can re-enter via Settings if needed.
   }
 }
 

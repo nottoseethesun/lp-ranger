@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776455061381">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776455061381">
+<link rel="stylesheet" href="style.css?v=1776490490641">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776490490641">
 </head>
 <body>
 
@@ -471,6 +471,11 @@
           </div>
         </div>
         <button type="button" class="9mm-pos-mgr-settings-item" id="telegramSettingsBtn">Telegram Notifications</button>
+        <label class="9mm-pos-mgr-settings-item 9mm-pos-mgr-privacy-setting" title="Toggle UI sound effects">
+          <input type="checkbox" id="soundsSwitch">
+          <span>Sounds</span>
+          <span class="9mm-pos-mgr-toggle-track"></span>
+        </label>
         <button type="button" class="9mm-pos-mgr-settings-item" id="clearStorageBtn">Clear Local Storage &amp; Cookies</button>
         <button type="button" class="9mm-pos-mgr-settings-item" id="aboutBtn">About</button>
       </div>
@@ -504,6 +509,9 @@
       <p id="aboutReleaseRow" class="9mm-pos-mgr-hidden"></p>
       <p>Commit: <span id="aboutCommit">—</span> (<span id="aboutCommitDate">—</span>)</p>
       <p id="aboutUpdateRow" class="9mm-pos-mgr-about-update"></p>
+      <p class="9mm-pos-mgr-about-easter-egg">
+        <button type="button" class="9mm-pos-mgr-btn-sm" id="aboutEasterEggBtn" title="Play the full public-domain track">Play &ldquo;The Texas Rangers&rdquo; by Harry McClintock</button>
+      </p>
       <p><a href="https://github.com/nottoseethesun/lp-ranger" target="_blank" rel="noopener noreferrer">github.com/nottoseethesun/lp-ranger</a></p>
     </div>
     <button type="button" class="disclaimer-btn accept" id="aboutClose">Close</button>
@@ -1019,6 +1027,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776455061381"></script>
+<script src="dist/bundle.js?v=1776490490641"></script>
 </body>
 </html>

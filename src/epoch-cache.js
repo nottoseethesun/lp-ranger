@@ -103,7 +103,17 @@ function setCachedEpochs(keyOpts, data) {
     );
     value.closedEpochs = [...missing, ...incomingEpochs];
   }
-  cache[key] = { ...value, cachedAt: new Date().toISOString() };
+  /*- Merge — do NOT replace. The entry also holds `lifetimeHodlAmounts`,
+   *  `freshDeposits`, and `lastNftScanBlock` written by the lifetime-pool
+   *  scan. A naked `cache[key] = {...value, cachedAt}` silently wipes
+   *  those siblings every time epochs are persisted, re-breaking the
+   *  lifetime-deposit UI. Preserve the existing entry and only overwrite
+   *  the epoch-shaped keys. */
+  cache[key] = {
+    ...(existing || {}),
+    ...value,
+    cachedAt: new Date().toISOString(),
+  };
   _writeCache(cache);
 }
 

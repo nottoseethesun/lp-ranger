@@ -80,6 +80,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── dashboard-throttle-rebalance.js # Rebalance with Updated Range modal
 │   ├── dashboard-compound.js     # Compound button handlers, auto-compound toggle, threshold save
 │   ├── dashboard-data.js         # Polls /api/status, updates position stats, bot status, resetHistoryFlag
+│   ├── dashboard-data-events.js  # Per-position event log scanner: fires Activity entries + success sounds
 │   ├── dashboard-data-status.js  # Bot status display, alerts, modals, position context helpers
 │   ├── dashboard-data-kpi.js     # KPI calculation and display (price, range, fees, P&L)
 │   ├── dashboard-data-range.js   # Position range visual rendering (bar, handles, price marker)
@@ -91,6 +92,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── dashboard-il-debug.js     # IL/G debug popover: shows calculation inputs for current and lifetime IL
 │   ├── dashboard-price-override.js # Manual token price override for positions where auto-detection fails
 │   ├── dashboard-closed-pos.js   # Closed-position history view: fetches and displays P&L for drained NFTs
+│   ├── dashboard-sounds.js       # UI sound effects with master toggle (Settings) + localStorage persistence
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: startBotLoop, provider/signer setup, epoch cache restore
@@ -204,14 +206,14 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 | `RPC_URL_FALLBACK` | `https://rpc.pulsechain.com` | Used if primary is unreachable |
 | `POSITION_ID` | — | NFT token ID; blank = full wallet scan |
 | `ERC20_POSITION_ADDRESS` | — | ERC-20 position token (optional fallback) |
-| `REBALANCE_OOR_THRESHOLD_PCT` | `10` | % price must move beyond position boundary before rebalance triggers |
+| `REBALANCE_OOR_THRESHOLD_PCT` | `5` | % price must move beyond position boundary before rebalance triggers |
 | `REBALANCE_TIMEOUT_MIN` | `180` | Minutes of continuous OOR before auto-rebalance (0 = disabled) |
 | `SLIPPAGE_PCT` | `0.75` | |
 | `TX_SPEEDUP_SEC` | `120` | Seconds before a pending TX is speed-up-replaced with higher gas |
 | `TX_CANCEL_SEC` | `1200` | Seconds before a stuck TX is cancelled via 0-PLS self-transfer (20 min) |
 | `CHECK_INTERVAL_SEC` | `60` | On-chain poll frequency |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | |
-| `MAX_REBALANCES_PER_DAY` | `20` | |
+| `MAX_REBALANCES_PER_DAY` | `5` | |
 | `POSITION_MANAGER` | `0xCC05bf…` | NonfungiblePositionManager (9mm Pro V3) |
 | `FACTORY` | `0xe50Dbd…` | V3 Factory (9mm Pro) |
 | `SWAP_ROUTER` | `0x7bE8fb…` | V3 SwapRouter (9mm Pro) |
@@ -272,7 +274,7 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **Tick containment:** `computeNewRange` includes a post-rounding check that ensures `lowerTick < currentTick < upperTick`. When coarse tick spacing (e.g. 50 for fee tier 10000) causes both rounded ticks to land on the same side of the current tick, the range is shifted to contain it. This prevents minting out-of-range positions that accept only one token.
 
-**OOR threshold:** The `REBALANCE_OOR_THRESHOLD_PCT` setting (default 10) controls how far the price must move **beyond** the position boundary before triggering a rebalance. A value of 10 means the price must move 10% past tickLower or tickUpper. A value of 0 triggers immediately on any OOR. The dashboard shows an amber "WITHIN THRESHOLD" banner when OOR but within the threshold zone.
+**OOR threshold:** The `REBALANCE_OOR_THRESHOLD_PCT` setting (default 5) controls how far the price must move **beyond** the position boundary before triggering a rebalance. A value of 5 means the price must move 5% past tickLower or tickUpper. A value of 0 triggers immediately on any OOR. The dashboard shows an amber "WITHIN THRESHOLD" banner when OOR but within the threshold zone.
 
 **OOR timeout:** `REBALANCE_TIMEOUT_MIN` (default 180, i.e. 3 hours) triggers a rebalance after the position has been continuously OOR for the configured duration, even if the price hasn't crossed the OOR threshold bars. The bot tracks `oorSince` (timestamp of first OOR detection). When the timeout expires, the rebalance falls through to the existing throttle + execution path — no special bypass. `oorSince` is cleared when the price returns to range or after a successful rebalance. Set to 0 to disable. The dashboard shows a countdown ("Timeout: MM:SS") in the "WITHIN THRESHOLD" banner. The setting has its own Save button and is persisted to `.bot-config.json`.
 
@@ -286,7 +288,7 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **Rebalance lock:** No timeout-based release — blockchains can hold a TX pending indefinitely. If stuck, the lock holder speed-ups (1.5× gas) then sends a 0-PLS self-cancel at the stuck nonce. Lock only releases after TX confirmation. This guarantees the nonce is always clear before the next position rebalances.
 
-**Throttling:** Per-position throttle (independent doubling mode per pool), but **wallet-level daily cap** (default 20, shared across all positions). A volatile pool's doubling doesn't slow a stable pool.
+**Throttling:** Per-position throttle (independent doubling mode per pool), but **wallet-level daily cap** (default 5, shared across all positions). A volatile pool's doubling doesn't slow a stable pool.
 
 **Compounding:** `src/compounder.js` collects unclaimed fees via `pm.collect()` then re-deposits them as liquidity via `pm.increaseLiquidity()` on the same NFT — no swap, no range change, no new NFT. Mission Control panel in the dashboard provides manual "Compound Now" (disabled when fees < `COMPOUND_MIN_FEE_USD`, default $1) and auto-compound (toggle + USD threshold, default $5). Auto-compound checks every poll cycle when in-range, throttled to `max(5 × CHECK_INTERVAL_SEC, 300s)` between executions. Compound amounts are tracked in `totalCompoundedUsd` (per-position in `.bot-config.json`) and subtracted from both Net P&L Return and Profit to avoid double-counting fees. "Fees Earned" includes compounded fees (hover text explains). Historical compounds are detected by scanning `IncreaseLiquidity` events for all NFTs in the rebalance chain (first event = mint deposit, subsequent = compounds), capped by total `Collect` amounts. Config write uses atomic temp-file + rename to prevent empty-file corruption from shutdown races.
 

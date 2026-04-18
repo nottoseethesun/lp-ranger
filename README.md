@@ -129,20 +129,31 @@ First meet the [Pre-Requisites](#pre-requisites), above.
 
 ### Production
 
-Download the latest official release ".tar.gz" file from
-[GitHub Releases](../../releases), then:
+This is the install step for anyone who isn't doing dev work on LP Ranger. That's probably you. :)
+
+First, download the latest official release ".tar.gz" file from
+[GitHub Releases](../../releases).
+
+Second, on the commandline in your Terminal, do:
 
 ```bash
 tar xvzf lp-ranger-*.tar.gz     # Recommended: Instead of the star, use the full version number
 cd lp-ranger-[current-version-number]
 npm ci                           # install exact pinned dependencies
-cp .env.example .env             # edit with your values
-npm run build-and-start          # dashboard + bot at http://localhost:5555
+# The next step is optional, and not for standard set-ups.
+#    Only use it if you have a specific custom set-up in mind.
+#    Uncomment the line below for a custom set-up.
+# cp .env.example .env             # edit with your values
+npm start                        # dashboard + bot at http://localhost:5555
 ```
 
-Production releases pin every dependency to an exact version and include
-`package-lock.json`. Always use `npm ci` (not `npm install`) to ensure
-you get the exact tested versions with no version drift.
+> Note: Production releases pin every dependency to an exact version and include
+> `package-lock.json`. Always use `npm ci` (not `npm install`) to ensure
+> you get the exact tested versions with no version drift.
+
+Third, prepare your crypto wallet information per the instructions in the [Usage](#usage) section here.
+
+Finally, visit <http://localhost:5555> in your web browser.
 
 ### Development
 
@@ -172,13 +183,13 @@ cd lp-ranger-[current-version-number]
 
 **Step Three** — Clear browser data:
 
-&emsp;Click the **Settings** gear icon and click **"Clear Local Storage & Cookies"**.
+&emsp;Click the **Settings** gear icon at top right in the LP Ranger app and click **"Clear Local Storage & Cookies"**.
 
 **Step Four** — Remove the directory:
 
 ```bash
 cd ..
-rm -rf lp-ranger/
+rm -rf lp-ranger*
 ```
 
 ---
@@ -188,7 +199,7 @@ rm -rf lp-ranger/
 1. Pick a wallet address that you own (it can be a new address that LP Ranger will generate for you later, if you want it to) and that you will use exclusively for LP Ranger activity (manual interactions with the dApps of supported DEX Pools, such as the 9mm Liquidity Manager, are okay as well). This kind of wallet segregation is a security best-practice. Separately but as well, this will ensure that LP Ranger's Lifetime Net Profit and Lifetime Impermanent Loss/Gain (IL/G) numbers are correct.
 2. Ensure that you either plan to use a brand new wallet address that LP Ranger will create for you if you so choose, or that you have either the Seed Phrase or Private Key of an existing wallet address if you plan to use an existing one.
 3. If you will be using a pre-existing wallet address: If you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one at <https://dex.9mm.pro/liquidity>, making sure to use V3. Otherwise, go back to this step after Step 4, and then click on "Scan Wallet" on the LP Ranger App, in the LP Browser dialog (click the "Positions" button on the app, near top middle).
-4. Visit `http://localhost:5555` in your web browser.
+4. Visit <http://localhost:5555> in your web browser.
 5. See the first paragraph in the Help text on the app (click at top right on the app).
 
 ### Help and User Manual

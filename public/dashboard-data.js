@@ -14,7 +14,6 @@ import {
   posStore,
   updateManagedPositions,
   isPositionManaged,
-  scanPositions,
 } from "./dashboard-positions.js";
 import {
   updateHistoryFromStatus,
@@ -59,12 +58,16 @@ import {
   updateRangePctLabels,
 } from "./dashboard-data-kpi.js";
 import { updateTriggerDisplay } from "./dashboard-throttle.js";
+import { resetSoundTrackers } from "./dashboard-sounds.js";
+import {
+  logAllPositionEvents,
+  resetEventLogTrackers,
+} from "./dashboard-data-events.js";
 import {
   _createModal,
   _posLabel,
   _posContextHtml,
   _titled,
-  _logCtx,
   _fmtTxCopy,
   _updateComposition,
   _updatePositionTicks,
@@ -117,8 +120,6 @@ import {
 } from "./dashboard-data-cache.js";
 export { markInputDirty };
 
-const _lastRebAt = new Map(),
-  _txCancelSeen = new Set();
 _wireDepositKpis(
   () => _lastStatus,
   (s) => _updateKpis(s),
@@ -300,8 +301,8 @@ export function resetPollingState() {
   _lastStatus = null;
   setPoolFirstDate(null);
   resetHistoryFlag();
-  _lastRebAt.clear();
-  _txCancelSeen.clear();
+  resetEventLogTrackers();
+  resetSoundTrackers();
   _scanWasComplete = false;
   refreshCurDepositDisplay(0);
   const dd = g("lifetimeDepositDisplay");
@@ -343,40 +344,6 @@ function _populateHistoryOnce(data) {
       "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + tx + ctx,
       ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000),
     );
-  }
-}
-function _logAllPositionEvents(data) {
-  for (const [key, st] of Object.entries(data._allPositionStates || {})) {
-    const ctx = _logCtx(key, st);
-    if (st.lastRebalanceAt && st.lastRebalanceAt !== _lastRebAt.get(key)) {
-      _lastRebAt.set(key, st.lastRebalanceAt);
-      const evts = st.rebalanceEvents || [];
-      const ev = evts.length ? evts[evts.length - 1] : null;
-      if (ev) {
-        const tx = ev.txHash ? "<br>" + _fmtTxCopy(ev.txHash) : "";
-        act(
-          ACT_ICONS.gear,
-          "fee",
-          "Rebalance",
-          "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + tx + ctx,
-        );
-      }
-      scanPositions({ silent: true }).catch(() => {});
-    }
-    const tc = st.txCancelled;
-    if (tc && !_txCancelSeen.has(key + tc.at)) {
-      _txCancelSeen.add(key + tc.at);
-      act(
-        ACT_ICONS.warn,
-        "alert",
-        "TX Auto-Cancelled",
-        tc.message +
-          (tc.cancelTxHash
-            ? " (TX: " + tc.cancelTxHash.slice(0, 10) + "\u2026)"
-            : "") +
-          ctx,
-      );
-    }
   }
 }
 function _resolveManagedTid(a, mp, states) {
@@ -444,7 +411,7 @@ function updateDashboardFromStatus(data) {
     !!data.poolState,
   );
   _syncManagedAndGlobals(data);
-  _logAllPositionEvents(data);
+  logAllPositionEvents(data);
   _updateBotStatus(data);
   _updateThrottleKpis(data);
   updateTriggerDisplay(data);

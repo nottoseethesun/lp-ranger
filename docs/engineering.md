@@ -2078,7 +2078,7 @@ exactly two commands:
 
 ```bash
 npm ci                    # install exact pinned dependencies
-npm run build-and-start   # launch
+npm start                 # launch (pre-built bundle ships with the release)
 ```
 
 `npm ci`'s guarantee is strict: **it fails** if `package.json` and

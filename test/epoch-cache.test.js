@@ -106,4 +106,73 @@ describe("epoch-cache", () => {
     setLastNftScanBlock(key, 12345);
     assert.strictEqual(getLastNftScanBlock(key), 12345);
   });
+
+  it("REGRESSION: setCachedEpochs preserves pool-scan sibling fields", () => {
+    /*- The entry shares a cache slot with lifetimeHodlAmounts,
+     *  freshDeposits, and lastNftScanBlock. An earlier impl did
+     *  `cache[key] = {...value, cachedAt}` which silently nuked all
+     *  three siblings on every epoch persist — re-breaking the
+     *  lifetime-deposit UI on the next scan. This test pins the
+     *  merge contract. */
+    const {
+      setCachedLifetimeHodl,
+      getCachedLifetimeHodl,
+      setLastNftScanBlock,
+      getLastNftScanBlock,
+      setCachedFreshDeposits,
+      getCachedFreshDeposits,
+    } = require("../src/epoch-cache");
+    const key = {
+      contract: `0xMERGE${U}`,
+      wallet: "0xW",
+      token0: "0xT0",
+      token1: "0xT1",
+      fee: 2500,
+    };
+    setCachedLifetimeHodl(key, {
+      amount0: 1000,
+      amount1: 2000,
+      deposits: [{ raw0: "1", raw1: "2", block: 10 }],
+    });
+    setCachedFreshDeposits(key, {
+      raw0: "1",
+      raw1: "2",
+      lastBlock: 26_000_000,
+    });
+    setLastNftScanBlock(key, 26_000_000);
+    // Simulate epoch-reconstructor writing closed epochs — must NOT wipe
+    // the three pool-scan fields set just above.
+    setCachedEpochs(key, [{ id: 1, entryValue: 500 }]);
+    assert.ok(
+      getCachedLifetimeHodl(key),
+      "lifetimeHodlAmounts must survive setCachedEpochs",
+    );
+    assert.strictEqual(getCachedLifetimeHodl(key).amount0, 1000);
+    assert.ok(
+      getCachedFreshDeposits(key),
+      "freshDeposits must survive setCachedEpochs",
+    );
+    assert.strictEqual(
+      getLastNftScanBlock(key),
+      26_000_000,
+      "lastNftScanBlock must survive setCachedEpochs",
+    );
+    // And the epoch actually landed.
+    assert.strictEqual(getCachedEpochs(key).closedEpochs[0].id, 1);
+  });
+
+  it("setCachedEpochs grows closedEpochs monotonically across writes", () => {
+    const key = {
+      contract: `0xUP${U}`,
+      wallet: "0xW",
+      token0: "0xT0",
+      token1: "0xT1",
+      fee: 2500,
+    };
+    setCachedEpochs(key, [{ id: 1 }]);
+    setCachedEpochs(key, [{ id: 1 }, { id: 2 }]);
+    const got = getCachedEpochs(key);
+    assert.strictEqual(got.closedEpochs.length, 2);
+    assert.strictEqual(got.closedEpochs[1].id, 2);
+  });
 });

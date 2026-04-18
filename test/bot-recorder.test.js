@@ -423,6 +423,138 @@ describe("_applyRebalanceResult", () => {
   });
 });
 
+// ── _applyRebalanceResult: post-rebalance cache clears ─────────────
+
+describe("_applyRebalanceResult — post-rebalance cache invalidation", () => {
+  const { _applyRebalanceResult } = require("../src/bot-recorder");
+  const epochCache = require("../src/epoch-cache");
+
+  // Isolated cache file per-PID to avoid collision with other suites.
+  const TMP = path.join(process.cwd(), "tmp");
+  const isolatedPath = path.join(
+    TMP,
+    `pnl-epochs-cache-arr-${process.pid}.json`,
+  );
+  fs.mkdirSync(TMP, { recursive: true });
+  if (fs.existsSync(isolatedPath)) fs.unlinkSync(isolatedPath);
+  epochCache._setCachePath(isolatedPath);
+
+  /** Build a unique key so each test is independent. */
+  function uniqKey(suffix) {
+    return {
+      contract: `0xCC${suffix}`,
+      wallet: `0xWW${suffix}`,
+      token0: `0xT0${suffix}`,
+      token1: `0xT1${suffix}`,
+      fee: 2500,
+    };
+  }
+
+  /** Standard deps/result shape that reaches the cache-clear branch. */
+  function makeDeps(key) {
+    return {
+      position: { tokenId: "100", tickLower: 0, tickUpper: 0 },
+      _rebalanceEvents: [],
+      _botState: { oorSince: Date.now() },
+      _pnlTracker: { _epochKey: key },
+      throttle: { getState: () => ({}) },
+      updateBotState: () => {},
+    };
+  }
+
+  const result = {
+    newTokenId: 200n,
+    newTickLower: -100,
+    newTickUpper: 100,
+    amount0Minted: 0n,
+    amount1Minted: 0n,
+  };
+
+  it("REGRESSION: resets lastNftScanBlock to 0 on rebalance", () => {
+    // Without this reset, the next lifetime-pool scan uses the pre-rebalance
+    // max block as `fromBlock`, filters out every historical
+    // IncreaseLiquidity event, and caches an empty hodl/deposits result —
+    // leaving `totalLifetimeDepositUsd` at 0 and the Lifetime Deposit UI
+    // falling back to the first closed epoch's entryValue. See
+    // bot-recorder.js:_applyRebalanceResult for the three-way clear.
+    const key = uniqKey("A");
+    epochCache.setLastNftScanBlock(key, 26_312_976);
+    assert.strictEqual(epochCache.getLastNftScanBlock(key), 26_312_976);
+    _applyRebalanceResult(makeDeps(key), result);
+    assert.strictEqual(
+      epochCache.getLastNftScanBlock(key),
+      0,
+      "lastNftScanBlock must be reset so the next scan rescans from pool creation",
+    );
+  });
+
+  it("clears cached lifetime HODL amounts", () => {
+    const key = uniqKey("B");
+    epochCache.setCachedLifetimeHodl(key, {
+      amount0: 1000,
+      amount1: 2000,
+      deposits: [{ raw0: "1", raw1: "2", block: 10 }],
+    });
+    assert.ok(epochCache.getCachedLifetimeHodl(key));
+    _applyRebalanceResult(makeDeps(key), result);
+    assert.strictEqual(epochCache.getCachedLifetimeHodl(key), null);
+  });
+
+  it("clears cached fresh deposits", () => {
+    const key = uniqKey("C");
+    epochCache.setCachedFreshDeposits(key, {
+      raw0: "500",
+      raw1: "800",
+      lastBlock: 26_000_000,
+    });
+    assert.ok(epochCache.getCachedFreshDeposits(key));
+    _applyRebalanceResult(makeDeps(key), result);
+    assert.strictEqual(epochCache.getCachedFreshDeposits(key), null);
+  });
+
+  it("clears all three pool-scan caches together (integration)", () => {
+    // Simulates the exact sequence from commit 0b1fbe7's bug: pre-rebalance
+    // scan populated all three caches; rebalance must invalidate all three
+    // so the next scan is a full rescan that rediscovers Transfer-based
+    // fresh deposits from the start of the pool.
+    const key = uniqKey("D");
+    epochCache.setCachedLifetimeHodl(key, { amount0: 100, amount1: 200 });
+    epochCache.setCachedFreshDeposits(key, {
+      raw0: "1",
+      raw1: "2",
+      lastBlock: 123,
+    });
+    epochCache.setLastNftScanBlock(key, 999_999);
+    _applyRebalanceResult(makeDeps(key), result);
+    assert.strictEqual(epochCache.getCachedLifetimeHodl(key), null);
+    assert.strictEqual(epochCache.getCachedFreshDeposits(key), null);
+    assert.strictEqual(epochCache.getLastNftScanBlock(key), 0);
+  });
+
+  it("also zeroes the in-memory botState mirrors", () => {
+    const key = uniqKey("E");
+    const deps = makeDeps(key);
+    deps._botState.lifetimeHodlAmounts = { amount0: 9, amount1: 8 };
+    deps._botState.totalLifetimeDepositUsd = 1234;
+    deps._botState.depositUsedFallback = true;
+    _applyRebalanceResult(deps, result);
+    assert.strictEqual(deps._botState.lifetimeHodlAmounts, null);
+    assert.strictEqual(deps._botState.totalLifetimeDepositUsd, 0);
+    assert.strictEqual(deps._botState.depositUsedFallback, false);
+  });
+
+  it("is a no-op on the epoch cache when no _epochKey is present", () => {
+    // Without an epochKey (e.g. fresh position, no tracker yet), the in-memory
+    // state is still reset but the cache stays untouched.
+    const key = uniqKey("F");
+    epochCache.setLastNftScanBlock(key, 500_000);
+    const deps = makeDeps(key);
+    deps._pnlTracker = null;
+    _applyRebalanceResult(deps, result);
+    assert.strictEqual(epochCache.getLastNftScanBlock(key), 500_000);
+  });
+});
+
 // ── appendLog ───────────────────────────────────────────────────────
 
 describe("appendLog", () => {
