@@ -69,6 +69,7 @@ import {
   restorePrivacyMode,
   injectPosStoreForEvents,
 } from "./dashboard-events.js";
+import { restoreSoundsToggle, bindSoundsToggle } from "./dashboard-sounds.js";
 import { clearHistory } from "./dashboard-history.js";
 import {
   injectRouterDeps,
@@ -129,7 +130,9 @@ injectPriceOverrideDeps({ refetchUnmanaged: _refetch });
 
 bindAllEvents();
 bindParamHelpButtons();
+bindSoundsToggle();
 restorePrivacyMode();
+restoreSoundsToggle();
 
 // ── Disclaimer gate (must resolve before any dashboard init) ────────────────
 

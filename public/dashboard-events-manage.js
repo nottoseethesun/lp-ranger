@@ -19,6 +19,7 @@ import {
   resetLastFetchedId,
 } from "./dashboard-unmanaged.js";
 import { suppressAutoCompoundSync } from "./dashboard-data-status.js";
+import { playSound, SOUND_MANAGE_START } from "./dashboard-sounds.js";
 
 // ── Privacy ─────────────────────────────────────────
 
@@ -213,6 +214,7 @@ export function _toggleManagePosition() {
       })
       .catch(() => {});
   } else {
+    playSound(SOUND_MANAGE_START);
     fetch("/api/position/manage", {
       method: "POST",
       headers: {

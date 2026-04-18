@@ -91,6 +91,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── dashboard-il-debug.js     # IL/G debug popover: shows calculation inputs for current and lifetime IL
 │   ├── dashboard-price-override.js # Manual token price override for positions where auto-detection fails
 │   ├── dashboard-closed-pos.js   # Closed-position history view: fetches and displays P&L for drained NFTs
+│   ├── dashboard-sounds.js       # UI sound effects with master toggle (Settings) + localStorage persistence
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: startBotLoop, provider/signer setup, epoch cache restore
