@@ -9,6 +9,10 @@
 const rangeMath = require("./range-math");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
+const {
+  classifyRpcError,
+  innerErrorMessage,
+} = require("./rpc-error-classifier");
 
 // ── ABI fragments ────────────────────────────────────────────────────────────
 
@@ -70,43 +74,94 @@ const _SPEEDUP_GAS_BUMP = 1.5;
 /** Maximum acceptable price impact (%) before the bot aborts the swap. */
 const _MAX_IMPACT_PCT = 5;
 
-/** Substrings that identify transient RPC errors safe to retry. */
-const _TRANSIENT_PATTERNS = [
-  "sub-pool is full",
-  "internal_error",
-  "could not coalesce",
-  "connection refused",
-  "etimedout",
-  "econnreset",
-  "econnrefused",
-  "rate limit",
-  "server error",
-  "502 bad gateway",
-  "503 service",
-];
-
 /** Maximum TX send retries for transient RPC errors. */
 const _RETRY_MAX = 3;
 /** Base delay between retries (ms). Multiplied by attempt number: 30s, 60s, 90s. */
 const _RETRY_BASE_DELAY_MS = 30_000;
 
 /**
- * Wrap a TX-submitting function with retry logic for transient RPC errors.
- * Retries up to 3 times with 30s / 60s / 90s backoff.
- * Non-transient errors (nonce, revert, insufficient funds) throw immediately.
- * @param {Function} fn    Async function that submits a TX.
- * @param {string}   label Log label for diagnostics.
- * @returns {Promise<*>}   The TX response from `fn()`.
+ * Reset the NonceManager so the next TX picks up the correct chain-state
+ * nonce.  Required after a terminal-nonce-unused rejection because
+ * ethers v6's NonceManager increments `#delta` before broadcasting
+ * (see node_modules/ethers/.../signer-noncemanager.js line 60).  When
+ * broadcast fails, the delta is wrong until we reset.
+ * @param {*} signer
  */
-async function _retrySend(fn, label, _baseDelayMs) {
-  const baseMs = _baseDelayMs ?? _RETRY_BASE_DELAY_MS;
+function _resetSignerNonce(signer) {
+  if (signer && typeof signer.reset === "function") signer.reset();
+}
+
+/**
+ * Log the verbatim inner node error message so distinct mempool rejection
+ * reasons (`queued sub-pool is full` vs `replacement transaction
+ * underpriced` vs `txpool is full`) are easy to distinguish in the log.
+ * @param {string} label
+ * @param {string} bucket
+ * @param {*}      err
+ */
+function _logTerminalError(label, bucket, err) {
+  const inner = innerErrorMessage(err);
+  console.error(
+    "[rebalance] %s: terminal RPC error (%s) — %s",
+    label,
+    bucket,
+    inner,
+  );
+}
+
+/**
+ * Wrap a TX-submitting function with classifier-driven retry logic.
+ *
+ * Behaviour per classification (see src/rpc-error-classifier.js):
+ *   - "transient":               sleep, reset NonceManager, retry.
+ *   - "terminal-nonce-unused":   reset NonceManager, log verbatim inner
+ *                                message, throw (no retry).
+ *   - "terminal-nonce-consumed": log verbatim inner message, throw
+ *                                without resetting the nonce.
+ *   - "unknown":                 safe default — treat as
+ *                                terminal-nonce-consumed.
+ *
+ * NonceManager reset is required on the "nonce-unused" buckets because
+ * ethers v6's NonceManager.sendTransaction increments its internal
+ * `#delta` counter before broadcasting. A failed broadcast would
+ * otherwise leak a nonce and desync subsequent TXs.
+ *
+ * @param {Function} fn       Async function that submits a TX.
+ * @param {string}   label    Log label for diagnostics.
+ * @param {object}   [opts]
+ * @param {*}        [opts.signer]      Signer/NonceManager to reset on failure.
+ * @param {number}   [opts.baseDelayMs] Override retry backoff base (tests).
+ * @returns {Promise<*>}      The TX response from `fn()`.
+ */
+async function _retrySend(fn, label, opts = {}) {
+  // Back-compat: older callers passed the base delay as the third
+  // positional arg (a number).  Preserve that calling convention for
+  // tests that still use it.
+  const opt = typeof opts === "number" ? { baseDelayMs: opts } : opts || {};
+  const baseMs = opt.baseDelayMs ?? _RETRY_BASE_DELAY_MS;
+  const signer = opt.signer;
+
   for (let attempt = 0; attempt <= _RETRY_MAX; attempt++) {
     try {
       return await fn();
     } catch (err) {
-      const msg = (err.message || "").toLowerCase();
-      const transient = _TRANSIENT_PATTERNS.some((p) => msg.includes(p));
-      if (!transient || attempt === _RETRY_MAX) throw err;
+      const bucket = classifyRpcError(err);
+      if (bucket === "terminal-nonce-unused") {
+        _logTerminalError(label, bucket, err);
+        _resetSignerNonce(signer);
+        throw err;
+      }
+      if (bucket === "terminal-nonce-consumed" || bucket === "unknown") {
+        _logTerminalError(label, bucket, err);
+        throw err;
+      }
+      // Transient — retry with backoff after resetting nonce so the
+      // next attempt signs at the correct chain-state nonce.
+      if (attempt === _RETRY_MAX) {
+        _logTerminalError(label, "transient-exhausted", err);
+        _resetSignerNonce(signer);
+        throw err;
+      }
       const delay = baseMs * (attempt + 1);
       console.warn(
         "[rebalance] %s: transient RPC error — retrying in %ds (%d/%d): %s",
@@ -114,8 +169,9 @@ async function _retrySend(fn, label, _baseDelayMs) {
         delay / 1000,
         attempt + 1,
         _RETRY_MAX,
-        err.message,
+        innerErrorMessage(err),
       );
+      _resetSignerNonce(signer);
       await new Promise((r) => {
         const t = setTimeout(r, delay);
         if (baseMs >= _RETRY_BASE_DELAY_MS) t.unref?.();
@@ -363,6 +419,7 @@ async function _ensureAllowance(tokenContract, owner, spender, requiredAmount) {
     () =>
       tokenContract.approve(spender, requiredAmount, { type: config.TX_TYPE }),
     "approve",
+    { signer: tokenContract.runner },
   );
   console.log(
     "[rebalance] Step 7a: approve: TX submitted, hash= %s nonce=%d" +
@@ -480,6 +537,7 @@ async function removeLiquidity(
   const tx = await _retrySend(
     () => pm.multicall([decreaseData, collectData], { type: config.TX_TYPE }),
     "removeLiq",
+    { signer },
   );
   console.log(
     "[rebalance] Step 3a: removeLiq: TX submitted, hash= %s nonce=%d" +
@@ -573,7 +631,6 @@ module.exports = {
   removeLiquidity,
   logSwapNeeded,
   _retrySend,
-  _TRANSIENT_PATTERNS,
   // Re-exported deps
   rangeMath,
   config,

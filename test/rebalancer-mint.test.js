@@ -38,6 +38,48 @@ describe("mintPosition", () => {
     ...extra,
   });
 
+  it("runs the two approvals serially (never overlapping)", async () => {
+    // Regression test: parallel Promise.all approvals submit
+    // adjacent-nonce TXs that can be routed into the RPC's `queued`
+    // sub-pool under load, triggering "queued sub-pool is full"
+    // rejections.  The fix in rebalancer.js serialises them.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const gated = (tag) => async () => {
+      inFlight++;
+      if (inFlight > maxInFlight) maxInFlight = inFlight;
+      // Yield to the event loop so a parallel sibling gets a chance to
+      // overlap if serialisation were broken.
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+      inFlight--;
+      return makeTx("0x" + tag);
+    };
+    const d = defaultDispatch();
+    d[ADDR.token0] = {
+      allowance: async () => 0n,
+      approve: gated("a0"),
+    };
+    d[ADDR.token1] = {
+      allowance: async () => 0n,
+      approve: gated("a1"),
+    };
+    d[ADDR.pm] = {
+      ...d[ADDR.pm],
+      mint: async () => makeMintTx("0xm", 42n, 5000n, 5000n, 7000n),
+    };
+    await mintPosition(
+      mockSigner(),
+      buildMockEthersLib({ contractDispatch: d }),
+      mtArgs({ amount0Desired: 5000n, amount1Desired: 7000n }),
+    );
+    assert.strictEqual(
+      maxInFlight,
+      1,
+      "approvals must run one at a time — never two concurrently",
+    );
+  });
+
   it("approves exact amounts (not unlimited)", async () => {
     const approvedAmounts = [];
     const d = defaultDispatch();

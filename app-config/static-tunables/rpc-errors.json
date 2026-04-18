@@ -1,0 +1,52 @@
+{
+  "_comment": "RPC error classification data used by src/rpc-error-classifier.js. Three buckets: transient (retry), terminalNonceUnused (abort, reset NonceManager because the rejected TX never consumed its nonce), terminalNonceConsumed (abort, leave NonceManager alone because the nonce is already used on-chain). Substrings are matched case-insensitively against the verbatim inner node error message; ethersCodes are matched against err.code exactly. Keep lists lowercase. JSON-RPC code -32000 alone is a catch-all and is NOT used for classification — the node's message substring is the reliable signal.",
+  "transient": {
+    "description": "Network/infra glitches where the TX may or may not have been broadcast. Safe to reset the NonceManager and retry.",
+    "ethersCodes": ["TIMEOUT", "NETWORK_ERROR"],
+    "messageSubstrings": [
+      "etimedout",
+      "econnreset",
+      "econnrefused",
+      "socket hang up",
+      "could not coalesce",
+      "connection refused",
+      "fetch failed",
+      "rate limit",
+      "too many requests",
+      "server error",
+      "502 bad gateway",
+      "503 service",
+      "504 gateway"
+    ]
+  },
+  "terminalNonceUnused": {
+    "description": "Node rejected the TX before it was admitted to the executable pending pool. The nonce was never consumed on-chain so the NonceManager must be reset. Do NOT retry in place — the cause is typically persistent (saturation, bad params, insufficient funds).",
+    "ethersCodes": ["INSUFFICIENT_FUNDS", "UNPREDICTABLE_GAS_LIMIT", "CALL_EXCEPTION"],
+    "messageSubstrings": [
+      "queued sub-pool is full",
+      "pending sub-pool is full",
+      "txpool is full",
+      "transaction pool is full",
+      "insufficient funds",
+      "intrinsic gas too low",
+      "exceeds block gas limit",
+      "gas price below minimum",
+      "max fee per gas less than block base fee",
+      "transaction underpriced",
+      "execution reverted",
+      "always failing transaction",
+      "out of gas"
+    ]
+  },
+  "terminalNonceConsumed": {
+    "description": "The nonce is already used (either by this TX or a replacement). Abort and leave the NonceManager alone so the next TX uses nonce+1.",
+    "ethersCodes": ["NONCE_EXPIRED", "REPLACEMENT_UNDERPRICED"],
+    "messageSubstrings": [
+      "nonce too low",
+      "nonce has already been used",
+      "replacement transaction underpriced",
+      "already known",
+      "known transaction"
+    ]
+  }
+}

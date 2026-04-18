@@ -65,20 +65,25 @@ async function mintPosition(
     String(amount0Desired),
     String(amount1Desired),
   );
-  const [appGas0, appGas1] = await Promise.all([
-    _ensureAllowance(
-      token0Contract,
-      signerAddress,
-      positionManagerAddress,
-      amount0Desired,
-    ),
-    _ensureAllowance(
-      token1Contract,
-      signerAddress,
-      positionManagerAddress,
-      amount1Desired,
-    ),
-  ]);
+  // Serialise the two approvals: running them in parallel submits
+  // adjacent-nonce TXs to the RPC, which under mempool load can force
+  // the second into the `queued` sub-pool before the first reaches
+  // `pending`.  On go-ethereum nodes with a saturated per-account
+  // queued pool this causes "queued sub-pool is full" rejections and
+  // a cascade as `_retrySend` used to re-sign at ever-higher nonces.
+  // See docs/claude or MEMORY project_rpc_fallback_on_saturation.
+  const appGas0 = await _ensureAllowance(
+    token0Contract,
+    signerAddress,
+    positionManagerAddress,
+    amount0Desired,
+  );
+  const appGas1 = await _ensureAllowance(
+    token1Contract,
+    signerAddress,
+    positionManagerAddress,
+    amount1Desired,
+  );
 
   const pm = new Contract(positionManagerAddress, PM_ABI, signer);
   const dl = deadline ?? _deadline();
@@ -113,6 +118,7 @@ async function mintPosition(
         },
       ),
     "mint",
+    { signer },
   );
   console.log(
     "[rebalance] Step 7b: TX submitted, hash= %s nonce=%d type=%s gasLimit=%s gasPrice=%s",
