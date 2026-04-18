@@ -485,7 +485,7 @@ async function pollCycle(deps) {
   await _updatePnlAndStats(deps, poolState, ethersLib);
   const zeroLiqResult = _checkZeroLiquidity(deps);
   if (zeroLiqResult) return zeroLiqResult;
-  await _handleForceCompound(
+  let compounded = await _handleForceCompound(
     deps,
     poolState,
     ethersLib,
@@ -497,7 +497,13 @@ async function pollCycle(deps) {
     console.log("[bot] Force rebalance requested");
   const rangeCheck = _checkRangeAndThreshold(deps, poolState, emit);
   if (rangeCheck) {
-    await _checkCompound(deps, poolState, ethersLib, _refreshPosition);
+    const autoCompounded = await _checkCompound(
+      deps,
+      poolState,
+      ethersLib,
+      _refreshPosition,
+    );
+    if (compounded || autoCompounded) rangeCheck.compounded = true;
     return rangeCheck;
   }
   const forced = !!deps._botState?.forceRebalance;
@@ -511,10 +517,18 @@ async function pollCycle(deps) {
       position.tickUpper,
     );
   const gate = _checkRebalanceGates(deps, poolState, forced);
-  if (gate) return gate;
-  if (await _isGasTooHigh(provider, position, poolState))
-    return { rebalanced: false, gasDeferred: true };
-  return _executeAndRecord(deps, ethersLib);
+  if (gate) {
+    if (compounded) gate.compounded = true;
+    return gate;
+  }
+  if (await _isGasTooHigh(provider, position, poolState)) {
+    const r = { rebalanced: false, gasDeferred: true };
+    if (compounded) r.compounded = true;
+    return r;
+  }
+  const execResult = await _executeAndRecord(deps, ethersLib);
+  if (compounded) execResult.compounded = true;
+  return execResult;
 }
 
 /**

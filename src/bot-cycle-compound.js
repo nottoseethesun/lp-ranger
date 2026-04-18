@@ -11,7 +11,10 @@ const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { notify } = require("./telegram");
 const { getTokenSymbol } = require("./server-scan");
 
-/** Check if compound conditions are met and execute if so. */
+/**
+ * Check if compound conditions are met and execute if so.
+ * @returns {Promise<boolean>} true if executeCompound was attempted this cycle.
+ */
 async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
   const botSt = deps._botState || {};
   const _gc = (k) => (deps._getConfig ? deps._getConfig(k) : undefined);
@@ -21,16 +24,16 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
     _gc("autoCompoundThresholdUsd") || config.COMPOUND_DEFAULT_THRESHOLD_USD;
   const feesUsd = deps._lastUnclaimedFeesUsd || 0;
 
-  if (!forced && !autoEnabled) return;
-  if (!forced && feesUsd < threshold) return;
-  if (!forced && feesUsd < config.COMPOUND_MIN_FEE_USD) return;
+  if (!forced && !autoEnabled) return false;
+  if (!forced && feesUsd < threshold) return false;
+  if (!forced && feesUsd < config.COMPOUND_MIN_FEE_USD) return false;
 
   // Auto-compound throttle: max(5 × checkInterval, 300s)
   const lastAt = _gc("lastCompoundAt");
   if (!forced && lastAt) {
     const interval =
       Math.max((config.CHECK_INTERVAL_SEC || 60) * 5, 300) * 1000;
-    if (Date.now() - new Date(lastAt).getTime() < interval) return;
+    if (Date.now() - new Date(lastAt).getTime() < interval) return false;
   }
 
   console.log(
@@ -42,6 +45,7 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
   await executeCompound(deps, poolState, ethersLib, forced ? "manual" : "auto");
   // Refresh position from chain — liquidity increased after compound
   await refreshPosition(deps.position, ethersLib, deps.provider);
+  return true;
 }
 
 /** Record a successful compound: update history, P&L tracker gas, collected fees. */
@@ -152,7 +156,10 @@ async function executeCompound(deps, poolState, ethersLib, trigger) {
   }
 }
 
-/** Handle a manual forceCompound request (works regardless of range). */
+/**
+ * Handle a manual forceCompound request (works regardless of range).
+ * @returns {Promise<boolean>} true if executeCompound ran this cycle.
+ */
 async function handleForceCompound(
   deps,
   poolState,
@@ -161,9 +168,10 @@ async function handleForceCompound(
   provider,
   refreshPosition,
 ) {
-  if (!deps._botState?.forceCompound) return;
+  if (!deps._botState?.forceCompound) return false;
   await executeCompound(deps, poolState, ethersLib, "manual");
   await refreshPosition(position, ethersLib, provider);
+  return true;
 }
 
 module.exports = {

@@ -363,6 +363,10 @@ async function startBotLoop(opts) {
     _reloadFromConfig(gc, throttle, (ms) => {
       currentIntervalMs = ms;
     });
+    /* Set when a special action (rebalance/compound/nonce-cancel) completed
+     * this cycle — triggers a fast follow-up poll so the dashboard KPIs
+     * refresh immediately instead of waiting CHECK_INTERVAL_SEC. */
+    let specialActionCompleted = false;
     try {
       const result = await pollCycle({
         signer,
@@ -387,6 +391,8 @@ async function startBotLoop(opts) {
         _recordPoolRebalance: botState._recordPoolRebalance || null,
         _canRebalancePool: botState._canRebalancePool || null,
       });
+      if (result.rebalanced || result.cancelled || result.compounded)
+        specialActionCompleted = true;
       if (result.rebalanced) {
         rebalanceCount++;
         firstFailureAt = null;
@@ -441,7 +447,10 @@ async function startBotLoop(opts) {
       updateBotState({ running: false });
       return;
     }
-    _scheduleNext();
+    /* After a completed special action, poll again in ~2s so the dashboard
+     * KPI numbers refresh promptly instead of waiting CHECK_INTERVAL_SEC.
+     * Works for both user-triggered and auto-triggered actions. */
+    _scheduleNext(specialActionCompleted ? 2000 : undefined);
   };
 
   await poll(); // First poll — gives the dashboard current position data
