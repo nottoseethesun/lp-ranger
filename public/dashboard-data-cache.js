@@ -11,20 +11,112 @@ import { posStore } from "./dashboard-positions-store.js";
 
 const _REB_CACHE_KEY = "9mm_rebalance_events_cache";
 
-function _rebPosKey() {
+/*- Cache is keyed by POOL IDENTITY so the entry survives rebalances (which
+    mint new tokenIds).  Shape:
+      { [poolKey]: { [newTokenId]: eventObj } }
+    poolKey = "pulsechain-{wallet}-{contract}-{token0}-{token1}-{fee}"
+    Legacy shape (tokenId-keyed array) is migrated on first read/write. */
+
+/** True when `x` is null or undefined. */
+function _nil(x) {
+  return x === null || x === undefined;
+}
+
+/** Get the active position's event id (newTokenId) as a string, or null. */
+function _evtId(ev) {
+  return _nil(ev?.newTokenId) ? null : String(ev.newTokenId);
+}
+
+/** Merge an events array into a dest object keyed by newTokenId. */
+function _mergeEvents(dest, arr) {
+  for (const ev of arr) {
+    const id = _evtId(ev);
+    if (id && !dest[id]) dest[id] = ev;
+  }
+}
+
+/** Coerce an existing cache entry into a plain keyed object. */
+function _coerceDest(existing) {
+  return existing && typeof existing === "object" && !Array.isArray(existing)
+    ? { ...existing }
+    : {};
+}
+
+function _activePoolKey() {
   const a = posStore.getActive();
-  return a?.walletAddress && a?.contractAddress
-    ? compositeKey("pulsechain", a.walletAddress, a.contractAddress, a.tokenId)
-    : null;
+  if (
+    !a?.walletAddress ||
+    !a?.contractAddress ||
+    !a?.token0 ||
+    !a?.token1 ||
+    _nil(a?.fee)
+  ) {
+    return null;
+  }
+  return (
+    "pulsechain-" +
+    a.walletAddress.toLowerCase() +
+    "-" +
+    a.contractAddress.toLowerCase() +
+    "-" +
+    a.token0.toLowerCase() +
+    "-" +
+    a.token1.toLowerCase() +
+    "-" +
+    a.fee
+  );
+}
+
+/** Is `k` a legacy 4-segment tokenId-keyed entry for the active position? */
+function _isLegacyKey(k, prefix, newKey) {
+  if (k === newKey) return false;
+  if (!k.toLowerCase().startsWith(prefix)) return false;
+  /*- Legacy keys have 4 dash-segments (blockchain-wallet-contract-tokenId);
+      new pool keys have 6.  Addresses and numeric IDs contain no dashes. */
+  return k.split("-").length === 4;
+}
+
+/*- One-time migration: fold any legacy 4-segment (tokenId-keyed, array-
+    valued) entries for the active wallet+contract into the new pool-keyed
+    object.  Events are keyed by newTokenId so duplicates collapse. */
+function _migrateLegacyCache(cache) {
+  const a = posStore.getActive();
+  if (!a?.walletAddress || !a?.contractAddress) return false;
+  const newKey = _activePoolKey();
+  if (!newKey) return false;
+  const prefix =
+    "pulsechain-" +
+    a.walletAddress.toLowerCase() +
+    "-" +
+    a.contractAddress.toLowerCase() +
+    "-";
+  const dest = _coerceDest(cache[newKey]);
+  let migrated = false;
+  for (const k of Object.keys(cache)) {
+    if (!_isLegacyKey(k, prefix, newKey)) continue;
+    const v = cache[k];
+    if (!Array.isArray(v)) continue;
+    _mergeEvents(dest, v);
+    delete cache[k];
+    migrated = true;
+  }
+  if (migrated) cache[newKey] = dest;
+  return migrated;
 }
 
 export function cacheRebalanceEvents(events) {
-  const pk = _rebPosKey();
-  if (!pk) return;
+  const pk = _activePoolKey();
+  if (!pk || !Array.isArray(events)) return;
   try {
     const r = localStorage.getItem(_REB_CACHE_KEY);
     const c = r ? JSON.parse(r) : {};
-    c[pk] = events;
+    _migrateLegacyCache(c);
+    const dest = _coerceDest(c[pk]);
+    for (const ev of events) {
+      const id = _evtId(ev);
+      if (id) dest[id] = ev;
+    }
+    c[pk] = dest;
     localStorage.setItem(_REB_CACHE_KEY, JSON.stringify(c));
   } catch {
     /* */
@@ -32,12 +124,21 @@ export function cacheRebalanceEvents(events) {
 }
 
 export function loadCachedRebalanceEvents() {
-  const pk = _rebPosKey();
+  const pk = _activePoolKey();
   if (!pk) return null;
   try {
     const r = localStorage.getItem(_REB_CACHE_KEY);
-    const e = r ? JSON.parse(r)[pk] : null;
-    return Array.isArray(e) ? e : null;
+    if (!r) return null;
+    const c = JSON.parse(r);
+    if (_migrateLegacyCache(c)) {
+      localStorage.setItem(_REB_CACHE_KEY, JSON.stringify(c));
+    }
+    const entry = c[pk];
+    if (!entry) return null;
+    /*- Back-compat: a stray legacy array survives unchanged. */
+    if (Array.isArray(entry)) return entry.length ? entry : null;
+    const arr = Object.values(entry);
+    return arr.length ? arr : null;
   } catch {
     return null;
   }

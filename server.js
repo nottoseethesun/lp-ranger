@@ -70,6 +70,9 @@
  *   POST /api/position/lifetime     → Lifetime P&L: event scan + epochs (Phase 2, slow)
  *   GET  /api/position/:tokenId/history → Closed position historical P&L
  *
+ *   UI
+ *   GET  /api/ui-defaults           → Dashboard default preferences (sounds, etc.)
+ *
  *   Actions
  *   POST /api/rebalance             → Force-rebalance a position (positionKey)
  *   POST /api/compound              → Force-compound fees on a position (positionKey)
@@ -123,6 +126,7 @@ const { loadConfig, managedKeys } = require("./src/bot-config-v2");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
+const { handleUiDefaults } = require("./src/ui-defaults");
 
 // ── app-config migration ─────────────────────────────
 // One-time move of legacy root-level config files into app-config/.
@@ -458,6 +462,8 @@ const _routes = {
   "POST /api/config": _routeHandlers._handleApiConfig,
   "POST /api/api-keys": _routeHandlers._handleApiKeySave,
   "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,
+  "GET /api/ui-defaults": (req, res) =>
+    handleUiDefaults(req, res, jsonResponse),
   "POST /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramConfig,
   "GET /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramStatus,
   "POST /api/telegram/test": _routeHandlers._tgHandlers.handleTelegramTest,

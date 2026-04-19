@@ -44,11 +44,20 @@ export function logAllPositionEvents(data) {
       const ev = evts.length ? evts[evts.length - 1] : null;
       if (ev) {
         const tx = ev.txHash ? "<br>" + _fmtTxCopy(ev.txHash) : "";
+        /*- Use the event's on-chain timestamp so the Activity Log agrees
+            with the Rebalance Events table. Falls back to now if the event
+            carries no timestamp (shouldn't happen in practice). */
+        const when = ev.dateStr
+          ? new Date(ev.dateStr)
+          : ev.timestamp
+            ? new Date(ev.timestamp * 1000)
+            : undefined;
         act(
           ACT_ICONS.gear,
           "fee",
           "Rebalance",
           "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + tx + ctx,
+          when,
         );
       }
       scanPositions({ silent: true }).catch(() => {});

@@ -1,0 +1,4 @@
+{
+  "_comment": "Default values for dashboard preferences that are persisted per-browser in localStorage. Read at init by the dashboard via GET /api/ui-defaults; used ONLY when the corresponding localStorage key is absent (first visit or after Settings → Clear Local Storage & Cookies). User toggles in the Settings popover always override and persist locally. Change a value here to shift the default for first-time visitors across all browsers served by this install.",
+  "soundsEnabled": true
+}

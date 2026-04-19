@@ -149,6 +149,35 @@ describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
     const p = await createProviderWithFallback(PRI, FALL, mockEthersLib());
     assert.strictEqual(p.getFeeData, undefined);
   });
+
+  it("throttles feeData log to at most once per hour (non-verbose)", async () => {
+    /*- Fresh require so the module-level _lastFeeDataLogAt starts at 0.
+        We can't clear state on the cached copy used by earlier tests. */
+    delete require.cache[require.resolve("../src/bot-provider")];
+    const { _patchFeeData } = require("../src/bot-provider");
+    const provider = {
+      getFeeData: async () => ({
+        gasPrice: 1000n,
+        maxFeePerGas: null,
+        maxPriorityFeePerGas: null,
+      }),
+    };
+    _patchFeeData(provider);
+    const origLog = console.log;
+    let feeLogs = 0;
+    console.log = (...args) => {
+      if (typeof args[0] === "string" && args[0].includes("feeData:"))
+        feeLogs++;
+    };
+    try {
+      await provider.getFeeData();
+      await provider.getFeeData();
+      await provider.getFeeData();
+    } finally {
+      console.log = origLog;
+    }
+    assert.strictEqual(feeLogs, 1);
+  });
 });
 
 // ── resolvePrivateKey ────────────────────────────────────────────────────────

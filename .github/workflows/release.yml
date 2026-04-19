@@ -79,11 +79,11 @@ jobs:
       - name: Regenerate lockfile from pinned versions
         run: npm install --package-lock-only --ignore-scripts
 
-      - name: Build bundle
-        run: npm run build
-
       - name: Update package.json version
         run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Build bundle
+        run: npm run build
 
       - name: Commit release artifacts
         run: |
@@ -97,6 +97,23 @@ jobs:
           git tag "v${{ inputs.version }}"
           git push origin "release-${{ inputs.version }}" "v${{ inputs.version }}"
 
+      - name: Create release tarball
+        run: |
+          VERSION="${{ inputs.version }}"
+          tar czf "lp-ranger-${VERSION}.tar.gz" \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./tmp' \
+            --exclude='./.github' \
+            --exclude='./app-config/.bot-config.json' \
+            --exclude='./app-config/.bot-config.backup.json' \
+            --exclude='./app-config/.wallet.json' \
+            --exclude='./app-config/api-keys.json' \
+            --exclude='./app-config/rebalance_log.json' \
+            --exclude='*.tar.gz' \
+            --transform "s|^\./|lp-ranger-${VERSION}/|" \
+            .
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -105,3 +122,4 @@ jobs:
           body: "${{ inputs.notes || '' }}"
           generate_release_notes: true
           target_commitish: "release-${{ inputs.version }}"
+          files: lp-ranger-${{ inputs.version }}.tar.gz
