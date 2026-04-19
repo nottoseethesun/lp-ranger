@@ -26,6 +26,7 @@ const _EVENT_IDS = [
   "compoundFail",
   "otherError",
   "lowGasBalance",
+  "veryLowGas",
   "shutdown",
 ];
 
@@ -68,6 +69,8 @@ export async function openTelegramModal() {
         : "123456789:ABCdefGhI...";
     if (chatEl) chatEl.placeholder = data.hasChatId ? "(saved)" : "123456789";
     _updateTestBtn(data.configured);
+    if (_pendingConfig)
+      _setStatus("Previous save did not complete — Save again to retry.", true);
   } catch {
     _setStatus("Could not load config");
   }
@@ -167,16 +170,35 @@ async function _save() {
  * Flush any Telegram config that was stashed during the
  * wallet setup dialog. Called by confirmWallet() once the
  * wallet password is available so the server can encrypt.
+ *
+ * On failure the pending config is retained so a later
+ * openTelegramModal() can detect it and offer a retry. Both
+ * success and failure are logged to the browser console so
+ * the user can see what happened without reopening the modal.
+ *
  * @param {string} password - the wallet password from setup.
  */
 export async function flushPendingTelegramConfig(password) {
   if (!_pendingConfig) return;
   const body = { ..._pendingConfig, password };
-  _pendingConfig = null;
   try {
-    await _post("/api/telegram/config", body);
-  } catch {
-    // Best effort; user can re-enter via Settings if needed.
+    const res = await _post("/api/telegram/config", body);
+    if (res && res.ok) {
+      _pendingConfig = null;
+      console.log("[telegram] Deferred credentials saved after wallet setup.");
+      return;
+    }
+    console.warn(
+      "[telegram] Deferred save REJECTED by server — credentials NOT saved:",
+      res?.error || "(no error message)",
+      "Re-open Telegram Setup to retry.",
+    );
+  } catch (err) {
+    console.warn(
+      "[telegram] Deferred save FAILED — credentials NOT saved:",
+      err.message,
+      "Re-open Telegram Setup to retry.",
+    );
   }
 }
 

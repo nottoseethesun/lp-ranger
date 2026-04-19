@@ -396,6 +396,10 @@ function createRouteHandlers(deps) {
       if (password) {
         _sessionPassword = password;
         _decryptApiKeys(password).catch(() => {});
+      } else {
+        console.log(
+          "[server] Wallet key loaded without password — encrypted Telegram/Moralis keys (if any) will NOT be decrypted this session. Unlock via dashboard to enable notifications.",
+        );
       }
       await _autoStartManagedPositions();
     } finally {
@@ -473,6 +477,7 @@ function createRouteHandlers(deps) {
               botState: perPositionBotState,
               positionId: tokenId,
               getConfig: (k) => readConfigValue(diskConfig, kRef.current, k),
+              getPositionCount: () => positionMgr.runningCount(),
             }),
           savedConfig: pc,
         });

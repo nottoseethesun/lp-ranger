@@ -191,8 +191,45 @@ describe("gas-monitor — getGasStatus", () => {
 });
 
 describe("gas-monitor — checkGasBalance alert state", () => {
-  it("alerts when tier drops to 'low'", async () => {
-    const alertState = { alerted: false };
+  /*- Capture the event type of each Telegram post so tests can assert
+   *  which notification fired.  Returns the list of eventTypes observed
+   *  and installs a fetch mock that records them. */
+  function _captureNotifies() {
+    const events = [];
+    globalThis.fetch = async (_url, opts) => {
+      try {
+        const body = JSON.parse(opts.body);
+        /*- The telegram payload's first line is
+         *  "*LP Ranger on <host>*: <EVENT_LABEL>" so we can recover the
+         *  label and tell lowGasBalance from veryLowGas. */
+        if (body.text.includes("Very Low Gas")) events.push("veryLowGas");
+        else if (body.text.includes("Low Gas Balance"))
+          events.push("lowGasBalance");
+      } catch {
+        /*- ignore malformed */
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+    return events;
+  }
+
+  /*- Telegram defaults: both lowGasBalance and veryLowGas are ON, and
+   *  notify() requires bot token + chat id to actually send.  Set them
+   *  once per test via the telegram module. */
+  const tg = require("../src/telegram");
+  beforeEach(() => {
+    tg.setBotToken("tok");
+    tg.setChatId("123");
+    tg.setEnabledEvents(tg.EVENT_DEFAULTS);
+  });
+  afterEach(() => {
+    tg.setBotToken(null);
+    tg.setChatId(null);
+  });
+
+  it("fires 'lowGasBalance' when tier drops to 'low'", async () => {
+    const events = _captureNotifies();
+    const alertState = { lowAlerted: false, criticalAlerted: false };
     /* Balance between floor and recommended → low. */
     const gasPriceWei = 1_000_000_000_000n;
     const floorWei = 21_000n * 91n * gasPriceWei;
@@ -207,11 +244,14 @@ describe("gas-monitor — checkGasBalance alert state", () => {
       alertState,
       getPositionCount: () => 1,
     });
-    assert.strictEqual(alertState.alerted, true);
+    assert.strictEqual(alertState.lowAlerted, true);
+    assert.strictEqual(alertState.criticalAlerted, false);
+    assert.deepStrictEqual(events, ["lowGasBalance"]);
   });
 
-  it("alerts when tier is 'critical'", async () => {
-    const alertState = { alerted: false };
+  it("fires 'veryLowGas' when tier is 'critical'", async () => {
+    const events = _captureNotifies();
+    const alertState = { lowAlerted: false, criticalAlerted: false };
     const provider = {
       getBalance: async () => 1n,
       getFeeData: async () => ({ gasPrice: 1_000_000_000n }),
@@ -222,16 +262,40 @@ describe("gas-monitor — checkGasBalance alert state", () => {
       position: { tokenId: 42 },
       alertState,
     });
-    assert.strictEqual(alertState.alerted, true);
+    assert.strictEqual(alertState.criticalAlerted, true);
+    assert.strictEqual(alertState.lowAlerted, false);
+    assert.deepStrictEqual(events, ["veryLowGas"]);
   });
 
-  it("does not re-alert once alerted", async () => {
+  it("does not re-fire 'lowGasBalance' once lowAlerted is set", async () => {
     let fetchCount = 0;
     globalThis.fetch = async () => {
       fetchCount++;
       return { ok: true, json: async () => ({}) };
     };
-    const alertState = { alerted: true };
+    const alertState = { lowAlerted: true, criticalAlerted: false };
+    const gasPriceWei = 1_000_000_000_000n;
+    const floorWei = 21_000n * 91n * gasPriceWei;
+    const provider = {
+      getBalance: async () => floorWei + 1n,
+      getFeeData: async () => ({ gasPrice: gasPriceWei }),
+    };
+    await checkGasBalance({
+      provider,
+      address: "0x1",
+      position: { tokenId: 42 },
+      alertState,
+    });
+    assert.strictEqual(fetchCount, 0, "should not notify again");
+  });
+
+  it("does not re-fire 'veryLowGas' once criticalAlerted is set", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = async () => {
+      fetchCount++;
+      return { ok: true, json: async () => ({}) };
+    };
+    const alertState = { lowAlerted: false, criticalAlerted: true };
     const provider = {
       getBalance: async () => 1n,
       getFeeData: async () => ({ gasPrice: 1n }),
@@ -245,8 +309,42 @@ describe("gas-monitor — checkGasBalance alert state", () => {
     assert.strictEqual(fetchCount, 0, "should not notify again");
   });
 
-  it("resets alert when balance recovers to 'ok'", async () => {
-    const alertState = { alerted: true };
+  it("fires 'veryLowGas' when tier drops low → critical (after lowGas already fired)", async () => {
+    const events = _captureNotifies();
+    const alertState = { lowAlerted: true, criticalAlerted: false };
+    const provider = {
+      getBalance: async () => 1n,
+      getFeeData: async () => ({ gasPrice: 1_000_000_000n }),
+    };
+    await checkGasBalance({
+      provider,
+      address: "0x1",
+      position: { tokenId: 42 },
+      alertState,
+    });
+    assert.strictEqual(alertState.criticalAlerted, true);
+    assert.deepStrictEqual(events, ["veryLowGas"]);
+  });
+
+  it("skips 'lowGasBalance' when dropping ok → critical directly", async () => {
+    const events = _captureNotifies();
+    const alertState = { lowAlerted: false, criticalAlerted: false };
+    const provider = {
+      getBalance: async () => 1n,
+      getFeeData: async () => ({ gasPrice: 1_000_000_000n }),
+    };
+    await checkGasBalance({
+      provider,
+      address: "0x1",
+      position: { tokenId: 42 },
+      alertState,
+    });
+    assert.deepStrictEqual(events, ["veryLowGas"]);
+    assert.strictEqual(alertState.lowAlerted, false);
+  });
+
+  it("resets both alert flags when balance recovers to 'ok'", async () => {
+    const alertState = { lowAlerted: true, criticalAlerted: true };
     const provider = {
       getBalance: async () => 10n ** 25n,
       getFeeData: async () => ({ gasPrice: 1n }),
@@ -258,7 +356,35 @@ describe("gas-monitor — checkGasBalance alert state", () => {
       alertState,
       getPositionCount: () => 4,
     });
-    assert.strictEqual(alertState.alerted, false);
+    assert.strictEqual(alertState.lowAlerted, false);
+    assert.strictEqual(alertState.criticalAlerted, false);
+  });
+
+  it("dedupes alert wallet-wide when multiple positions share an address (no explicit alertState)", async () => {
+    const { _resetSharedAlertState } = require("../src/gas-monitor");
+    _resetSharedAlertState();
+    const events = _captureNotifies();
+    const gasPriceWei = 1_000_000_000_000n;
+    const floorWei = 21_000n * 91n * gasPriceWei;
+    const provider = {
+      getBalance: async () => floorWei + 1n, // 'low'
+      getFeeData: async () => ({ gasPrice: gasPriceWei }),
+    };
+    /* Simulate 3 positions polling the same wallet address concurrently — all
+     * omit alertState so they fall through to the shared wallet-level state. */
+    const addr = "0xWallet";
+    await Promise.all([
+      checkGasBalance({ provider, address: addr, position: { tokenId: 1 } }),
+      checkGasBalance({ provider, address: addr, position: { tokenId: 2 } }),
+      checkGasBalance({ provider, address: addr, position: { tokenId: 3 } }),
+    ]);
+    assert.strictEqual(
+      events.length,
+      1,
+      "only one notification should fire across N positions on one wallet",
+    );
+    assert.deepStrictEqual(events, ["lowGasBalance"]);
+    _resetSharedAlertState();
   });
 
   it("scales recommendation with getPositionCount", async () => {
@@ -267,7 +393,7 @@ describe("gas-monitor — checkGasBalance alert state", () => {
     const floorWei = 21_000n * 91n * gasPriceWei;
     /* Balance = 5 × floor → ok for N=1 (need 3×), low for N=4 (need 12×). */
     const balance = floorWei * 5n;
-    const alertState = { alerted: false };
+    const alertState = { lowAlerted: false, criticalAlerted: false };
     await checkGasBalance({
       provider: {
         getBalance: async () => balance,
@@ -278,7 +404,7 @@ describe("gas-monitor — checkGasBalance alert state", () => {
       alertState,
       getPositionCount: () => 4,
     });
-    assert.strictEqual(alertState.alerted, true);
+    assert.strictEqual(alertState.lowAlerted, true);
   });
 });
 

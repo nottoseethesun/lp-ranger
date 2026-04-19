@@ -32,6 +32,7 @@ const EVENT_DEFAULTS = {
   compoundFail: true,
   otherError: true,
   lowGasBalance: true,
+  veryLowGas: true,
   shutdown: true,
 };
 
@@ -44,6 +45,7 @@ const EVENT_LABELS = {
   compoundFail: "Compound Failed",
   otherError: "Other Error",
   lowGasBalance: "Low Gas Balance",
+  veryLowGas: "Very Low Gas",
   shutdown: "Server and Bot Shutdown/Exit",
 };
 
