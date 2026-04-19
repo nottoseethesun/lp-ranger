@@ -89,7 +89,7 @@ async function _phase1(pos, body) {
   const _t0 = Date.now();
   console.log(
     "%c[lp-ranger] [unmanaged] phase1 START #%s liquidity=%s",
-    "color:#0ff;background:#013;padding:1px 4px;border-radius:2px",
+    "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
     pos?.tokenId,
     body?.liquidity,
   );
@@ -124,7 +124,7 @@ async function _phase1(pos, body) {
     body.feesUsd = d.feesUsd;
     console.log(
       "%c[lp-ranger] [unmanaged] phase1 DONE #%s value=%s feesUsd=%s (%dms)",
-      "color:#0f0;background:#031;padding:1px 4px;border-radius:2px",
+      "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
       pos?.tokenId,
       d.value,
       d.feesUsd,
@@ -221,7 +221,7 @@ export async function fetchUnmanagedDetails(pos) {
   if (_skip) {
     console.log(
       "%c[lp-ranger] [unmanaged] ENTRY-SKIP #%s %s",
-      "color:#fa0;background:#310;padding:1px 4px;border-radius:2px",
+      "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
       _tid,
       _skip,
     );
@@ -232,7 +232,7 @@ export async function fetchUnmanagedDetails(pos) {
   const gen = ++_fetchGen;
   console.log(
     "%c[lp-ranger] [unmanaged] ENTRY #%s gen=%d → starting phase1+phase2",
-    "color:#0f0;background:#031;padding:1px 4px;border-radius:2px",
+    "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
     _tid,
     gen,
   );

@@ -259,7 +259,7 @@ function _afterDisclaimer() {
     const _logHeap = () => {
       const m = performance.memory;
       console.log(
-        "[js heap] %s MB used / %s MB allocated",
+        "[lp-ranger] [js heap] %s MB used / %s MB allocated",
         (m.usedJSHeapSize / 1048576).toFixed(1),
         (m.totalJSHeapSize / 1048576).toFixed(1),
       );
