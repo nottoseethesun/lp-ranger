@@ -351,9 +351,9 @@ async function startBotLoop(opts) {
     checkGasBalance({
       provider,
       address,
-      pnlTracker,
       position,
       alertState: botState._gasAlertState,
+      getPositionCount: opts.getPositionCount || (() => 1),
     }).catch(() => {});
   }
 
@@ -373,6 +373,12 @@ async function startBotLoop(opts) {
     });
     if (botState.rangeRounded)
       setTimeout(() => updateBotState({ rangeRounded: null }), 5000);
+    /*- Same 5s clear for residualWarning: the dashboard dedupes by
+     *  the `at` timestamp, so showing it once then clearing server-side
+     *  prevents stale warnings from re-triggering on future `/api/status`
+     *  polls after the user has already dismissed the modal. */
+    if (botState.residualWarning)
+      setTimeout(() => updateBotState({ residualWarning: null }), 5000);
   }
 
   /* Dispatch pollCycle result to the appropriate branch handler. */

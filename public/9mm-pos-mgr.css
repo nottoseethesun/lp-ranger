@@ -1877,11 +1877,11 @@
   justify-content: center;
   gap: 2px;
   width: 264px;
-  height: 54px;
+  height: 71px;
   margin: 0 auto;
   padding: 6px 14px;
   border-radius: 16px;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: 0.5px;
@@ -1928,6 +1928,69 @@
 .\39 mm-pos-mgr-mission-status.active .\39 mm-pos-mgr-mission-status-line2,
 .\39 mm-pos-mgr-mission-status.active .\39 mm-pos-mgr-mission-status-line3 {
   display: block;
+}
+
+/*
+ * Gas-status badge: two tiers.
+ *   - tier 1 ("low"): static amber, balance < recommended (N × 3× worst-case)
+ *   - tier 2 ("critical"): blinking bright/dark orange, balance < one-rebalance floor
+ * Hidden by default; the dashboard toggles visibility via JS based on
+ * global.gasStatus.level from /api/status.
+ */
+.\39 mm-pos-mgr-gas-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 264px;
+  height: 71px;
+  margin: 6px auto 0;
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: center;
+  background: rgb(255 143 66 / 15%);
+  color: #b8652f;
+  border: 1px solid rgb(255 143 66 / 35%);
+  cursor: help;
+}
+
+.\39 mm-pos-mgr-gas-status-line1 {
+  font-weight: 700;
+}
+
+.\39 mm-pos-mgr-gas-status-line2 {
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+}
+
+.\39 mm-pos-mgr-gas-hidden {
+  display: none;
+}
+
+.\39 mm-pos-mgr-gas-critical {
+  animation: gas-critical-blink 1s infinite;
+}
+
+@keyframes gas-critical-blink {
+  0%,
+  100% {
+    background: #ff6a00;
+    color: #fff;
+    border-color: #ff6a00;
+  }
+
+  50% {
+    background: #5a1e00;
+    color: #ffb77a;
+    border-color: #ffb77a;
+  }
 }
 
 .\39 mm-pos-mgr-mission-grid {

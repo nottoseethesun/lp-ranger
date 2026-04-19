@@ -121,6 +121,8 @@ const { createRebalanceLock } = require("./src/rebalance-lock");
 const { createPositionManager } = require("./src/position-manager");
 const { loadConfig, managedKeys } = require("./src/bot-config-v2");
 const { migrateAppConfig } = require("./src/migrate-app-config");
+const { buildGasStatusPayload } = require("./src/gas-monitor");
+const { actualGasCostUsd } = require("./src/bot-pnl-updater");
 
 // ── app-config migration ─────────────────────────────
 // One-time move of legacy root-level config files into app-config/.
@@ -327,7 +329,7 @@ const _routes = {
       port: config.PORT,
       ts: Date.now(),
     }),
-  "GET /api/status": (_, res) => {
+  "GET /api/status": async (_, res) => {
     const positions = {};
     const posDefaults = {
       rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
@@ -373,6 +375,10 @@ const _routes = {
         positions[key] = s;
       }
     }
+    const gasStatus = await buildGasStatusPayload({
+      positionCount: _positionMgr.runningCount(),
+      toUsd: actualGasCostUsd,
+    });
     jsonResponse(res, 200, {
       global: {
         walletAddress: walletManager.getAddress(),
@@ -406,6 +412,7 @@ const _routes = {
           ];
         })(),
         poolDailyCounts: _positionMgr.getPoolDailyCounts(),
+        gasStatus,
       },
       positions,
     });

@@ -63,6 +63,8 @@ import {
   setOptimisticSpecialAction,
   updateMissionStatusBadge,
 } from "./dashboard-mission-badge.js";
+import { updateGasStatusBadge } from "./dashboard-gas-badge.js";
+import { AGGREGATOR_LABEL } from "./dashboard-routing-labels.js";
 export { setOptimisticSpecialAction };
 import {
   logAllPositionEvents,
@@ -257,14 +259,15 @@ function _updateSyncBadge(d) {
   applySyncBlur();
 }
 
-/** Update "Routing through: ..." badge with actual sources after rebalance. */
+/** Update "Routing through: ..." badge. Always reverts to the default
+ *  "9mm Aggregator" between rebalances — the badge is a live indicator,
+ *  not a historical summary. Per-rebalance route detail lives in the
+ *  Rebalance Events table. */
 function _updateSwapSourcesBadge(d) {
   const badge = g("swapSourcesBadge");
   if (!badge) return;
-  const sources = d.swapSources;
-  if (sources) {
-    badge.textContent = "Routing through: " + sources;
-  }
+  const sources = d.swapSources || AGGREGATOR_LABEL;
+  badge.textContent = "Routing through: " + sources;
 }
 
 import {
@@ -334,6 +337,7 @@ function _updateRebalanceButtons(d) {
   _setBtn(btn, on || !_scanWasComplete, on ? _REB_HELP : "");
   _setBtn(rb, on, on ? _REB_HELP : _REB_MANUAL);
   updateMissionStatusBadge(d);
+  updateGasStatusBadge(d);
   _updateCompoundButton(d, on);
 }
 

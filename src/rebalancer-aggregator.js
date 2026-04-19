@@ -22,6 +22,24 @@ const {
 const _agg = config.CHAIN.aggregator;
 
 /**
+ * Display label for the 9mm DEX Aggregator route.  Single source of
+ * truth used by:
+ *   - this module (stamped onto result.swapSources on every successful
+ *     aggregator swap)
+ *   - the Mission Control "Routing through:" badge default
+ *     (see AGGREGATOR_LABEL in public/dashboard-routing-labels.js — the
+ *     client-side constant that MUST stay in sync with this value)
+ *   - the hard-coded fallback in public/index.html (pre-render default
+ *     before the first /api/status poll paints the badge)
+ *
+ * Intentionally coarse: we do NOT drill into the underlying pools
+ * (NineMM_V3, PulseX_V2, …) that the aggregator chose, because the
+ * aggregator owns its routing decisions and exposing them misleads
+ * users into thinking a direct pool swap was used.
+ */
+const AGGREGATOR_LABEL = "9mm Aggregator";
+
+/**
  * Fetch a quote from the 9mm DEX Aggregator.
  * @param {string} sellToken  Sell token address.
  * @param {string} buyToken   Buy token address.
@@ -360,20 +378,25 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
   const quote = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
   const impact = parseFloat(quote.estimatedPriceImpact) || 0;
   const slip = slippagePct ?? 0.5;
-  const sources =
+  /*- Display label is the AGGREGATOR_LABEL constant defined at the top
+   *  of this module.  The raw per-pool list is still logged below for
+   *  diagnostics but never surfaced to the UI. */
+  const sources = AGGREGATOR_LABEL;
+  const rawPools =
     (quote.sources || [])
       .filter((s) => s.proportion !== "0")
       .map((s) => s.name)
       .join(", ") || "unknown";
   console.log(
     "[rebalance] swap (aggregator): %s -> %s" +
-      " quote buy=%s guaranteed=%s impact=%s%% sources=%s",
+      " quote buy=%s guaranteed=%s impact=%s%% sources=%s pools=%s",
     symIn,
     symOut,
     quote.buyAmount,
     quote.guaranteedPrice || "—",
     impact.toFixed(2),
     sources,
+    rawPools,
   );
   _checkSwapImpact(impact, slip);
   const tokenC = new ethersLib.Contract(tokenIn, ERC20_ABI, signer);
@@ -406,12 +429,17 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     );
     result.gasCostWei = (result.gasCostWei || 0n) + (aggApprovalGas || 0n);
     result.swapSources = sources;
+    console.log(
+      "[route-trace] aggregator swap sources=%s",
+      sources || "(empty)",
+    );
     return result;
   });
 }
 
 module.exports = {
   swapViaAggregator,
+  AGGREGATOR_LABEL,
   _gasCost,
   _gasLimit,
   _baseSigner,

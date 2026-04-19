@@ -119,6 +119,12 @@ function createRouteHandlers(deps) {
           body.positionKey.slice(-10),
           Object.keys(pPatch).join(", "),
         );
+      if (pPatch.offsetToken0Pct !== undefined)
+        console.log(
+          "[offset-trace] POST /api/config key=%s offsetToken0Pct=%d",
+          body.positionKey.slice(-10),
+          pPatch.offsetToken0Pct,
+        );
     }
     saveConfig(diskConfig);
     if (pPatch.slippagePct !== undefined) {

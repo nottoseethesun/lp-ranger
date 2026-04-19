@@ -1,0 +1,6 @@
+{
+  "_comment": "Wallet low-gas detection tunables. Used by src/gas-monitor.js to compute two tiers for the Mission Control 'Gas Running Low' / 'Gas Critical' badge and matching Telegram alerts. Formula (chain-agnostic — gas opcodes are identical across EVMs): floor_gas_units = standardSendGas × worstCaseGasFactor (one worst-case rebalance); recommended_gas_units = floor_gas_units × safetyMultiplier × managedPositionCount. Native-token threshold = gas_units × live gasPrice. Tiers: 'ok' at balance ≥ recommended; 'low' at floor ≤ balance < recommended (amber static); 'critical' at balance < floor (blinking — next rebalance will likely fail with out-of-gas). worstCaseGasFactor=91 was derived from observed PulseChain rebalance_log.json + live logs (NFT #158965→158967) covering a rebalance that fired all 3 corrective-swap iterations: remove(~209k) + primary approve(~46k) + primary swap(~243k) + 3×corrective(approve+swap ~290k each = ~870k) + mint approves(~76k) + mint(~464k) ≈ 1,911,000 gas / 21,000 send ≈ 91. safetyMultiplier=3 is the user-specified headroom factor. standardSendGas=21000 is the EVM constant for a native-token transfer with no calldata. If the JSON is missing or malformed, gas-monitor falls back to these same defaults so the guard never silently disables.",
+  "worstCaseGasFactor": 91,
+  "safetyMultiplier": 3,
+  "standardSendGas": 21000
+}

@@ -438,6 +438,29 @@ describe("computeDesiredAmounts — SDK path", () => {
     assert.ok(r.swapAmount > _MIN_SWAP_THRESHOLD);
   });
 
+  it("fires swap when both sides have positive excess (SDK round-up dust)", () => {
+    /*- Regression: the SDK's getAmount{0,1}Delta rounds up, so the non-binding
+     *  side frequently has a tiny positive "excess" even though that side is
+     *  fully consumed. The prior strict `excess <= 0n` guards rejected the
+     *  swap whenever both sides reported positive excess, leaving meaningful
+     *  residuals (e.g. 22k CRO ≈ $47) in the wallet after every rebalance.
+     *  The ratio-direction logic should fire the swap based on `f0` vs `R*f1`
+     *  even when excess is positive on both sides. */
+    const r = computeDesiredAmounts(
+      { amount0: BigInt(Math.floor(1.5 * S)), amount1: BigInt(S) },
+      {
+        currentPrice: 1.0,
+        currentTick: 0,
+        lowerTick: -600,
+        upperTick: 600,
+      },
+      { decimals0: 18, decimals1: 18 },
+    );
+    assert.strictEqual(r.swapDirection, "token0to1");
+    assert.ok(r.needsSwap, "should swap even with dust on non-binding side");
+    assert.ok(r.swapAmount > _MIN_SWAP_THRESHOLD);
+  });
+
   it("handles asymmetric decimals (6 vs 18) with SDK path", () => {
     const r = computeDesiredAmounts(
       { amount0: 1_000_000n, amount1: BigInt(S) },

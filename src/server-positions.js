@@ -313,6 +313,7 @@ function createPositionRoutes(deps) {
             botState: posBotState,
             positionId: String(body.tokenId),
             getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
+            getPositionCount: () => positionMgr.runningCount(),
           }),
         savedConfig: posConfig,
       });

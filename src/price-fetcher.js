@@ -528,7 +528,7 @@ async function fetchHistoricalPriceGecko(
 // ── Moralis (current + historical by block) ─────────────────────────────
 
 /** Map GeckoTerminal/internal chain names to Moralis chain identifiers. */
-const _MORALIS_CHAINS = { pulsechain: "0x171" };
+const _MORALIS_CHAINS = { pulsechain: "0x171", eth: "0x1" };
 
 /**
  * Fetch current USD price from the Moralis Token API.
@@ -601,11 +601,107 @@ async function _fetchMoralisHistorical(
   }
 }
 
+// ── Dust-unit price (inflation-resistant reference asset) ──────────────────
+
+const path = require("path");
+const fs = require("fs");
+
+/** Long TTL — reference-asset prices (e.g. gold) move slowly. */
+const _DUST_UNIT_PRICE_TTL_MS = 60 * 60 * 1000;
+let _dustUnitPriceCache = null; // { price, ts }
+
+/**
+ * Path to the dust-threshold config, which carries both the threshold
+ * value and the list of price-source tokens used to derive the live
+ * USD-per-unit value.  See app-config/static-tunables/dust-threshold.json.
+ */
+const _DUST_THRESHOLD_JSON = path.join(
+  __dirname,
+  "..",
+  "app-config",
+  "static-tunables",
+  "dust-threshold.json",
+);
+
+/**
+ * Load and validate the price-source token list from disk.  Returns [] on
+ * any error so callers get a clean "no sources" result rather than a crash.
+ */
+function _loadDustPriceSources() {
+  try {
+    const raw = fs.readFileSync(_DUST_THRESHOLD_JSON, "utf8");
+    const json = JSON.parse(raw);
+    if (!Array.isArray(json?.priceSourceTokens)) return [];
+    return json.priceSourceTokens.filter(
+      (t) => t && t.address && t.chain && t.dexScreenerChain,
+    );
+  } catch (err) {
+    console.warn(
+      "[price-fetcher] Could not load %s: %s",
+      _DUST_THRESHOLD_JSON,
+      err.message ?? err,
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch the current USD price of one unit of the dust reference asset.
+ *
+ * Iterates through `priceSourceTokens` in `dust-threshold.json` (array order:
+ * first is alpha, rest are fallbacks).  Each token is tried via Moralis
+ * first, then DexScreener; first non-zero result wins.  The abstraction is
+ * deliberately generic — the reference asset's identity (currently gold,
+ * via PAXG/XAUT) lives in the JSON, not in this code.
+ *
+ * Result cached for 1 hour.  Returns 0 if all sources fail.
+ *
+ * @returns {Promise<number>} USD per reference-asset unit.
+ */
+async function fetchDustUnitPriceUsd() {
+  if (
+    _dustUnitPriceCache &&
+    Date.now() - _dustUnitPriceCache.ts < _DUST_UNIT_PRICE_TTL_MS
+  )
+    return _dustUnitPriceCache.price;
+  const tokens = _loadDustPriceSources();
+  for (const tok of tokens) {
+    const price = await tryPriceSources([
+      {
+        name: `Moralis(${tok.symbol}/${tok.chain})`,
+        fn: () => _fetchMoralisCurrent(tok.address, tok.chain),
+      },
+      {
+        name: `DexScreener(${tok.symbol}/${tok.dexScreenerChain})`,
+        fn: () => _fetchDexScreener(tok.address, tok.dexScreenerChain),
+      },
+    ]);
+    if (price > 0) {
+      console.log(
+        "[dust-unit-price] %s = $%s / unit (cached %d min)",
+        tok.symbol,
+        price.toFixed(2),
+        _DUST_UNIT_PRICE_TTL_MS / 60000,
+      );
+      _dustUnitPriceCache = { price, ts: Date.now() };
+      return price;
+    }
+  }
+  console.warn("[dust-unit-price] All sources failed — returning 0");
+  return 0;
+}
+
+/** Reset the in-memory dust-unit-price cache (for tests). */
+function _resetDustUnitPriceCache() {
+  _dustUnitPriceCache = null;
+}
+
 // ── exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
   fetchTokenPriceUsd,
   fetchHistoricalPriceGecko,
+  fetchDustUnitPriceUsd,
   tryPriceSources,
   _fetchDexScreener,
   _fetchGeckoTerminalOhlcv,
@@ -613,6 +709,8 @@ module.exports = {
   _fetchMoralisCurrent,
   _fetchMoralisHistorical,
   _setOhlcv429Delays,
+  _resetDustUnitPriceCache,
   _cache,
   _CACHE_TTL_MS,
+  _DUST_UNIT_PRICE_TTL_MS,
 };

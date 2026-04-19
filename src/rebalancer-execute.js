@@ -205,6 +205,12 @@ async function _adjustRangeAfterSwap(
 /** Compute new tick range: custom width or preserve existing spread. */
 function _computeRange(ps, pos, crw, offset) {
   const opts = { offsetToken0Pct: offset ?? 50 };
+  console.log(
+    "[offset-trace] _computeRange mode=%s offsetToken0Pct=%d tokenId=%s",
+    crw ? "custom-width" : "preserve-range",
+    opts.offsetToken0Pct,
+    String(pos.tokenId),
+  );
   return crw
     ? rangeMath.computeNewRange(
         ps.price,
@@ -228,6 +234,29 @@ function _computeRange(ps, pos, crw, offset) {
       );
 }
 
+/**
+ * Merge primary-swap and corrective-swap source strings into one display
+ * label.  When every entry is identical (e.g. all "9mm Aggregator"), we
+ * collapse to a single copy — otherwise "9mm Aggregator +3 corrective"
+ * would misread as a different route from the primary.  Examples:
+ *   primary="9mm Aggregator", corrective=["9mm Aggregator"×3]  → "9mm Aggregator"
+ *   primary="9mm Aggregator", corrective=["9mm V3 Router"]     → "9mm Aggregator +1 corrective"
+ *   primary=null, corrective=["A","B"]                          → "A,B (corrective)"
+ *   primary=null, corrective=[]                                 → undefined
+ */
+function _mergeSwapSources(primary, corrective) {
+  const cArr = Array.isArray(corrective) ? corrective.filter(Boolean) : [];
+  if (!primary && cArr.length === 0) return undefined;
+  if (!primary) {
+    const unique = Array.from(new Set(cArr));
+    if (unique.length === 1) return unique[0];
+    return cArr.join(",") + " (corrective)";
+  }
+  if (cArr.length === 0) return primary;
+  if (cArr.every((s) => s === primary)) return primary;
+  return primary + " +" + cArr.length + " corrective";
+}
+
 /** Build success result for executeRebalance. */
 function _buildRebalanceResult(
   txHashes,
@@ -238,14 +267,19 @@ function _buildRebalanceResult(
   newRange,
   poolState,
   crw,
+  corrective,
 ) {
   const ePct = crw
     ? ((newRange.upperPrice - newRange.lowerPrice) / poolState.price) * 100
     : undefined;
+  const mergedSources = _mergeSwapSources(
+    swapped.swapSources,
+    corrective?.swapSources,
+  );
   return {
     success: true,
     txHashes,
-    totalGasCostWei: _sumGas(removed, swapped, mintResult),
+    totalGasCostWei: _sumGas(removed, swapped, mintResult, corrective || {}),
     mintGasCostWei: mintResult.gasCostWei || 0n,
     oldTokenId: position.tokenId,
     newTokenId: mintResult.tokenId,
@@ -265,7 +299,16 @@ function _buildRebalanceResult(
     ...(crw
       ? { requestedRangePct: crw, effectiveRangePct: Number(ePct.toFixed(2)) }
       : {}),
-    ...(swapped.swapSources ? { swapSources: swapped.swapSources } : {}),
+    ...(mergedSources ? { swapSources: mergedSources } : {}),
+    ...(corrective?.aboveThresholdAfterCap
+      ? {
+          residualWarning: {
+            iterations: corrective.iterations,
+            imbalanceUsd: corrective.finalImbalanceUsd,
+            thresholdUsd: corrective.thresholdUsd,
+          },
+        }
+      : {}),
   };
 }
 
@@ -314,4 +357,5 @@ module.exports = {
   _computeRange,
   _buildRebalanceResult,
   _preMintTickCheck,
+  _mergeSwapSources,
 };

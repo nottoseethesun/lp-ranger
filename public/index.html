@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776553385757">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776553385757">
+<link rel="stylesheet" href="style.css?v=1776579727321">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776579727321">
 </head>
 <body>
 
@@ -442,6 +442,9 @@
   </div>
   <div class="header-middle">
     <button type="button" class="pos-browser-btn" id="posBrowserBtn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg> <span id="headerPosLabel">0 Positions</span></button>
+    <!-- Pre-render default; kept in sync with AGGREGATOR_LABEL in
+         public/dashboard-routing-labels.js and src/rebalancer-aggregator.js.
+         Overwritten on first /api/status poll by _updateSwapSourcesBadge(). -->
     <span class="9mm-pos-mgr-sync-badge 9mm-pos-mgr-sources-badge" id="swapSourcesBadge">Routing through: 9mm Aggregator</span>
     <span class="9mm-pos-mgr-il-info-btn" data-param-help="swapRouting" title="Learn about swap routing">i</span>
     <span class="9mm-pos-mgr-sync-badge" id="syncBadge">Pending</span>
@@ -644,6 +647,7 @@
         <div class="kpi-label 9mm-pos-mgr-panel-title 9mm-pos-mgr-mission-title">Mission Control</div>
         <div class="9mm-pos-mgr-mission-top-gap"></div>
         <span class="9mm-pos-mgr-mission-status" id="missionStatusBadge"><span class="9mm-pos-mgr-mission-status-line1"><span class="9mm-pos-mgr-mission-status-dot"></span><span class="9mm-pos-mgr-mission-status-text" id="missionStatusText">Special Action: None</span></span><span class="9mm-pos-mgr-mission-status-line2" id="missionStatusPos"></span><span class="9mm-pos-mgr-mission-status-line3" id="missionStatusTokens"></span></span>
+        <span class="9mm-pos-mgr-gas-status 9mm-pos-mgr-gas-hidden" id="gasStatusBadge" title=""><span class="9mm-pos-mgr-gas-status-line1" id="gasStatusText">Gas Running Low</span><span class="9mm-pos-mgr-gas-status-line2" id="gasStatusDetail"></span></span>
       </div>
       <div class="9mm-pos-mgr-mission-bottom">
         <button type="button" class="9mm-pos-mgr-mission-btn" id="rebalanceWithRangeBtn" disabled title="Manually force a rebalance. Automatic rebalancing stays in effect.">Rebalance Now</button>
@@ -1032,6 +1036,6 @@
 </div><!-- /app -->
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776553385757"></script>
+<script src="dist/bundle.js?v=1776579727321"></script>
 </body>
 </html>
