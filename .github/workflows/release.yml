@@ -1,42 +1,33 @@
-# Release workflow — creates a release branch with pinned dependencies.
+# Release artifact builder.
 #
-# Trigger manually via Actions → "Create Release" → Run workflow.
-# Provide a semantic version (e.g. 2.1.0). The workflow will:
-#   1. Verify main passes lint + test
-#   2. Create a release-x.y.z branch with pinned deps + built bundle
-#   3. Tag and publish a GitHub Release from that branch
+# Triggers automatically whenever a GitHub Release is published (via the
+# Actions UI, `gh release create`, API, or the repository web UI).  Builds
+# the dashboard bundle at the release's tagged commit, packages a
+# production-ready tarball, and uploads it as a release asset.
 #
-# The main branch is never modified.
+# Production install becomes:
+#   tar xzf lp-ranger-<version>.tar.gz
+#   cd lp-ranger-<version>
+#   npm ci
+#   npm start
 
-name: Create Release
+name: Build Release Assets
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g. 2.1.0)'
-        required: true
-        type: string
-      title:
-        description: 'Release title (e.g. "Per-pool settings + price override")'
-        required: false
-        type: string
-      notes:
-        description: 'Brief release notes (shown on the GitHub Release page)'
-        required: false
-        type: string
+  release:
+    types: [published]
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  build-assets:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main
+      - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
 
       - name: Set up Node.js 24
@@ -47,59 +38,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint + test
-        run: npm run check
-
-      - name: Create release branch
-        run: git checkout -b "release-${{ inputs.version }}"
-
-      - name: Pin dependency versions
-        run: |
-          node <<'PINSCRIPT'
-          const fs = require('fs');
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          function pinSection(section) {
-            if (!section) return;
-            for (const name of Object.keys(section)) {
-              const resolved = lock.packages['node_modules/' + name];
-              if (resolved && resolved.version) section[name] = resolved.version;
-              else section[name] = section[name].replace(/^[\^~]/, '');
-            }
-          }
-          pinSection(pkg.dependencies);
-          pinSection(pkg.devDependencies);
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          console.log('Pinned all dependency versions in package.json');
-          PINSCRIPT
-
-      - name: Add .npmrc (save-exact)
-        run: echo 'save-exact=true' > .npmrc
-
-      - name: Regenerate lockfile from pinned versions
-        run: npm install --package-lock-only --ignore-scripts
-
-      - name: Update package.json version
-        run: npm version "${{ inputs.version }}" --no-git-tag-version
-
       - name: Build bundle
         run: npm run build
 
-      - name: Commit release artifacts
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f package.json package-lock.json .npmrc public/dist/bundle.js public/index.html
-          git commit -m "release: v${{ inputs.version }} — pinned deps + built bundle"
-
-      - name: Push release branch + tag
-        run: |
-          git tag "v${{ inputs.version }}"
-          git push origin "release-${{ inputs.version }}" "v${{ inputs.version }}"
-
       - name: Create release tarball
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ github.event.release.tag_name }}"
           tar czf "lp-ranger-${VERSION}.tar.gz" \
             --exclude='./.git' \
             --exclude='./node_modules' \
@@ -114,12 +58,8 @@ jobs:
             --transform "s|^\./|lp-ranger-${VERSION}/|" \
             .
 
-      - name: Create GitHub Release
+      - name: Upload tarball to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ inputs.version }}"
-          name: "${{ inputs.title && format('{0} (v{1})', inputs.title, inputs.version) || format('v{0}', inputs.version) }}"
-          body: "${{ inputs.notes || '' }}"
-          generate_release_notes: true
-          target_commitish: "release-${{ inputs.version }}"
-          files: lp-ranger-${{ inputs.version }}.tar.gz
+          tag_name: ${{ github.event.release.tag_name }}
+          files: lp-ranger-${{ github.event.release.tag_name }}.tar.gz
