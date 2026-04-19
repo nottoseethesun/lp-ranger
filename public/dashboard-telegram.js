@@ -51,6 +51,14 @@ export async function openTelegramModal() {
   if (_walletWasOpen) wm.classList.add("hidden");
   modal.classList.remove("hidden");
   _setStatus("");
+  /*- Hide Test entirely during the initial wallet-setup flow.
+   *  A disabled button can read as "something is broken" to the
+   *  user, when in fact Test simply cannot work until the wallet
+   *  password exists and the server can decrypt the credentials.
+   *  In the Settings flow (wallet already set up), Test remains
+   *  visible and is enabled/disabled by _updateTestBtn(). */
+  const testBtn = g("tgTestBtn");
+  if (testBtn) testBtn.hidden = _walletWasOpen;
   _updateTestBtn(false);
   try {
     const res = await fetch("/api/telegram/config");
@@ -149,18 +157,26 @@ async function _save() {
   const body = { enabledEvents: _readEvents() };
   if (tokenEl?.value.trim()) body.botToken = tokenEl.value.trim();
   if (chatEl?.value.trim()) body.chatId = chatEl.value.trim();
-  // Fresh-install path: wallet password not set yet, so defer
-  // encryption. flushPendingTelegramConfig() runs after the
-  // wallet is confirmed.
-  if (_walletWasOpen) {
-    _stashPending(body, tokenEl, chatEl);
-    return;
-  }
   _setStatus("Saving...");
   try {
     const res = await _post("/api/telegram/config", body);
-    if (res.ok) _applySaveSuccess(body, tokenEl, chatEl);
-    else _setStatus(res.error || "Save failed", true);
+    if (res.ok) {
+      _applySaveSuccess(body, tokenEl, chatEl);
+      return;
+    }
+    /*- Fresh-install path: the server has no session password yet,
+     *  so it cannot encrypt. Stash the config in memory;
+     *  flushPendingTelegramConfig() will submit it with the wallet
+     *  password once confirmWallet() runs. */
+    if (res.error === "Password required") {
+      console.log(
+        "[telegram] Save deferred — server has no session password yet; " +
+          "will be submitted after wallet setup confirms.",
+      );
+      _stashPending(body, tokenEl, chatEl);
+      return;
+    }
+    _setStatus(res.error || "Save failed", true);
   } catch (err) {
     _setStatus(err.message, true);
   }
