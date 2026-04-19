@@ -30,8 +30,12 @@
  *   'low'       floor ≤ balance < recommended   (amber, static)
  *   'critical'  balance < floor                 (blinking, one rebalance would fail)
  *
- * The Telegram alert fires once per low-balance episode at the 'low' or
- * 'critical' tier and resets when balance recovers.
+ * Two independent Telegram alerts fire at most once per low-balance
+ * episode:
+ *   - 'lowGasBalance' — tier drops to 'low'      (amber warning)
+ *   - 'veryLowGas'    — tier drops to 'critical' (flashing badge)
+ * Both reset when balance recovers to 'ok'.  Dropping ok → critical
+ * directly fires only 'veryLowGas' (strictly more severe).
  *
  * The module also keeps a singleton of the latest observation so the
  * /api/status handler can surface gas status to the UI without making
@@ -42,7 +46,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { notify } = require("./telegram");
+const { notify, isConfigured } = require("./telegram");
 
 /** Defaults applied when the tunables JSON is missing or malformed.
  *  These are also the values shipped in the JSON so the guard stays
@@ -113,6 +117,28 @@ const SEND_GAS = BigInt(_TUNABLES.standardSendGas);
 /** Singleton of the latest raw observation — updated by checkGasBalance,
  *  consumed by the /api/status handler. */
 let _latestObservation = null;
+
+/** Wallet-level shared alert state keyed by address.  Gas is a wallet
+ *  property, not a position property — all managed positions share one
+ *  balance — so we dedupe alerts at the wallet level to avoid N copies
+ *  of the same Telegram notification when N positions poll in parallel. */
+const _sharedAlertState = new Map();
+
+/** Return (creating if needed) the shared alert-state slot for an address. */
+function _getSharedAlertState(address) {
+  const key = String(address || "").toLowerCase();
+  let s = _sharedAlertState.get(key);
+  if (!s) {
+    s = { lowAlerted: false, criticalAlerted: false };
+    _sharedAlertState.set(key, s);
+  }
+  return s;
+}
+
+/** Clear shared alert state (test helper). */
+function _resetSharedAlertState() {
+  _sharedAlertState.clear();
+}
 
 /**
  * Compute gas status tier from raw balance + gasPrice + position count.
@@ -189,24 +215,34 @@ async function getGasStatus({ provider, address, positionCount }) {
  * drops to 'low' or 'critical'.  Also updates the singleton observation
  * so the dashboard can surface the tier without a second RPC roundtrip.
  *
+ * Two alerts are tracked independently via `alertState`:
+ *   lowAlerted       — 'lowGasBalance' fired for the current episode
+ *   criticalAlerted  — 'veryLowGas'    fired for the current episode
+ * Both reset when the balance recovers to 'ok'.
+ *
  * @param {object} opts
  * @param {object} opts.provider
  * @param {string} opts.address
  * @param {object} opts.position               Position info for the alert label.
- * @param {{alerted: boolean}} opts.alertState Persists across poll cycles.
+ * @param {{lowAlerted: boolean, criticalAlerted: boolean}} [opts.alertState]
+ *   Optional — defaults to the wallet-level shared state keyed by address,
+ *   so alerts dedupe across all managed positions.  Tests may pass an
+ *   explicit state for isolation.
  * @param {() => number} [opts.getPositionCount]  Defaults to () => 1.
  * @returns {Promise<void>}
  */
 async function checkGasBalance(opts) {
-  const { provider, address, position, alertState, getPositionCount } = opts;
+  const { provider, address, position, getPositionCount } = opts;
   if (!provider || !address) return;
+  const alertState = opts.alertState || _getSharedAlertState(address);
   const positionCount =
     typeof getPositionCount === "function" ? getPositionCount() : 1;
   const status = await getGasStatus({ provider, address, positionCount });
   if (!status) return;
   if (status.level === "ok") {
-    if (alertState.alerted) {
-      alertState.alerted = false;
+    if (alertState.lowAlerted || alertState.criticalAlerted) {
+      alertState.lowAlerted = false;
+      alertState.criticalAlerted = false;
       console.log(
         "[gas-monitor] Gas balance recovered above recommended threshold (%s native)",
         _formatNative(status.recommendedWei),
@@ -214,29 +250,56 @@ async function checkGasBalance(opts) {
     }
     return;
   }
-  if (alertState.alerted) return;
-  alertState.alerted = true;
   const balEth = _formatNative(status.balanceWei);
   const recEth = _formatNative(status.recommendedWei);
   const floorEth = _formatNative(status.floorWei);
+  if (status.level === "critical") {
+    if (alertState.criticalAlerted) return;
+    alertState.criticalAlerted = true;
+    console.warn(
+      "[gas-monitor] Gas CRITICAL: balance=%s recommended=%s floor=%s positions=%d",
+      balEth,
+      recEth,
+      floorEth,
+      status.positionCount,
+    );
+    _fireGasAlert("veryLowGas", {
+      position,
+      message: `CRITICAL: balance ${balEth} below one-rebalance floor ${floorEth}. Next rebalance will fail — top up now (recommended ${recEth} for ${status.positionCount} positions).`,
+    });
+    return;
+  }
+  /*- status.level === 'low' */
+  if (alertState.lowAlerted) return;
+  alertState.lowAlerted = true;
   console.warn(
-    "[gas-monitor] Gas %s: balance=%s recommended=%s floor=%s positions=%d",
-    status.level.toUpperCase(),
+    "[gas-monitor] Gas LOW: balance=%s recommended=%s floor=%s positions=%d",
     balEth,
     recEth,
     floorEth,
     status.positionCount,
   );
-  notify("lowGasBalance", {
+  _fireGasAlert("lowGasBalance", {
+    position,
+    message: `Balance ${balEth} below recommended ${recEth} (${status.positionCount} positions × 3× safety). Top up to avoid missed rebalances.`,
+  });
+}
+
+/*- Fire a Telegram gas alert, logging a diagnostic warning when
+ *  Telegram isn't configured so operators can spot silent drops. */
+function _fireGasAlert(eventType, { position, message }) {
+  if (!isConfigured())
+    console.warn(
+      "[gas-monitor] Would have sent '%s' Telegram alert, but Telegram is not configured — skipping.",
+      eventType,
+    );
+  notify(eventType, {
     position: {
       tokenId: position?.tokenId,
       token0Symbol: position?.token0Symbol,
       token1Symbol: position?.token1Symbol,
     },
-    message:
-      status.level === "critical"
-        ? `CRITICAL: balance ${balEth} below one-rebalance floor ${floorEth}. Next rebalance will fail — top up now (recommended ${recEth} for ${status.positionCount} positions).`
-        : `Balance ${balEth} below recommended ${recEth} (${status.positionCount} positions × 3× safety). Top up to avoid missed rebalances.`,
+    message,
   });
 }
 
@@ -299,4 +362,5 @@ module.exports = {
   SAFETY_MULTIPLIER,
   SEND_GAS,
   _formatNative,
+  _resetSharedAlertState,
 };

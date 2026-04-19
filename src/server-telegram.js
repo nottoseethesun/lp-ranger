@@ -49,40 +49,45 @@ function createTelegramHandlers(opts) {
     const body = await readJsonBody(req);
     const pw = body.password || getSessionPassword();
 
-    // Save bot token (encrypted)
-    if (body.botToken) {
-      if (!pw)
-        return jsonResponse(res, 400, {
-          ok: false,
-          error: "Password required",
-        });
-      await saveEncryptedKey("telegramBotToken", body.botToken, pw);
-      telegram.setBotToken(body.botToken);
-      console.log("[telegram] Bot token saved");
-    }
+    try {
+      // Save bot token (encrypted)
+      if (body.botToken) {
+        if (!pw)
+          return jsonResponse(res, 400, {
+            ok: false,
+            error: "Password required",
+          });
+        await saveEncryptedKey("telegramBotToken", body.botToken, pw);
+        telegram.setBotToken(body.botToken);
+        console.log("[telegram] Bot token saved");
+      }
 
-    // Save chat ID (encrypted)
-    if (body.chatId) {
-      if (!pw)
-        return jsonResponse(res, 400, {
-          ok: false,
-          error: "Password required",
-        });
-      await saveEncryptedKey("telegramChatId", body.chatId, pw);
-      telegram.setChatId(body.chatId);
-      console.log("[telegram] Chat ID saved");
-    }
+      // Save chat ID (encrypted)
+      if (body.chatId) {
+        if (!pw)
+          return jsonResponse(res, 400, {
+            ok: false,
+            error: "Password required",
+          });
+        await saveEncryptedKey("telegramChatId", body.chatId, pw);
+        telegram.setChatId(body.chatId);
+        console.log("[telegram] Chat ID saved");
+      }
 
-    // Save event preferences to bot-config global section
-    if (body.enabledEvents && typeof body.enabledEvents === "object") {
-      if (!diskConfig.global) diskConfig.global = {};
-      diskConfig.global.telegramEvents = body.enabledEvents;
-      saveConfig(diskConfig);
-      telegram.setEnabledEvents(body.enabledEvents);
-      console.log("[telegram] Event preferences saved");
-    }
+      // Save event preferences to bot-config global section
+      if (body.enabledEvents && typeof body.enabledEvents === "object") {
+        if (!diskConfig.global) diskConfig.global = {};
+        diskConfig.global.telegramEvents = body.enabledEvents;
+        saveConfig(diskConfig);
+        telegram.setEnabledEvents(body.enabledEvents);
+        console.log("[telegram] Event preferences saved");
+      }
 
-    jsonResponse(res, 200, { ok: true });
+      jsonResponse(res, 200, { ok: true });
+    } catch (err) {
+      console.error("[telegram] Save failed:", err.message);
+      jsonResponse(res, 500, { ok: false, error: err.message });
+    }
   }
 
   /**
@@ -117,6 +122,14 @@ function createTelegramHandlers(opts) {
    * @param {string} password  Wallet password.
    */
   async function decryptTelegramKeys(password) {
+    const hasToken = hasEncryptedKey("telegramBotToken");
+    const hasChatId = hasEncryptedKey("telegramChatId");
+    if (!hasToken && !hasChatId) {
+      console.log(
+        "[telegram] No encrypted Telegram keys on disk — notifications disabled until configured in Settings.",
+      );
+      return;
+    }
     for (const svc of ["telegramBotToken", "telegramChatId"]) {
       if (!hasEncryptedKey(svc)) continue;
       try {
@@ -131,6 +144,12 @@ function createTelegramHandlers(opts) {
     // Restore event preferences from config
     const events = diskConfig.global?.telegramEvents;
     if (events) telegram.setEnabledEvents(events);
+    console.log(
+      "[telegram] Post-unlock state: configured=%s (token=%s, chatId=%s)",
+      telegram.isConfigured(),
+      hasToken ? "on-disk" : "missing",
+      hasChatId ? "on-disk" : "missing",
+    );
   }
 
   return {

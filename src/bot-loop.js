@@ -347,12 +347,15 @@ async function startBotLoop(opts) {
   }
 
   function _checkGas() {
-    if (!botState._gasAlertState) botState._gasAlertState = { alerted: false };
+    /*- alertState is intentionally omitted — gas is a wallet-level
+     *  concern, so gas-monitor maintains a shared alertState keyed by
+     *  address.  All managed positions polling in parallel will see the
+     *  same flags and only the first will fire a notification per
+     *  tier-transition. */
     checkGasBalance({
       provider,
       address,
       position,
-      alertState: botState._gasAlertState,
       getPositionCount: opts.getPositionCount || (() => 1),
     }).catch(() => {});
   }
