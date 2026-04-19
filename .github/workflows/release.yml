@@ -44,7 +44,10 @@ jobs:
       - name: Create release tarball
         run: |
           VERSION="${{ github.event.release.tag_name }}"
-          tar czf "lp-ranger-${VERSION}.tar.gz" \
+          # Write outside the tree being archived so tar doesn't try to
+          # include its own growing output file ("file changed as we read it").
+          TARBALL="${RUNNER_TEMP}/lp-ranger-${VERSION}.tar.gz"
+          tar czf "$TARBALL" \
             --exclude='./.git' \
             --exclude='./node_modules' \
             --exclude='./tmp' \
@@ -54,12 +57,12 @@ jobs:
             --exclude='./app-config/.wallet.json' \
             --exclude='./app-config/api-keys.json' \
             --exclude='./app-config/rebalance_log.json' \
-            --exclude='*.tar.gz' \
             --transform "s|^\./|lp-ranger-${VERSION}/|" \
             .
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
 
       - name: Upload tarball to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: lp-ranger-${{ github.event.release.tag_name }}.tar.gz
+          files: ${{ env.TARBALL }}
