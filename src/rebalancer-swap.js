@@ -24,6 +24,15 @@ const {
 const { swapViaAggregator } = require("./rebalancer-aggregator");
 const config = require("./config");
 
+/**
+ * Display label for the V3 router fallback route.  Stamped onto
+ * result.swapSources whenever the aggregator fails and we fall back to
+ * the 9mm V3 SwapRouter.  Surfaces to the Rebalance Events table only
+ * (the Mission Control badge intentionally doesn't track fallbacks —
+ * it always reverts to the aggregator default).
+ */
+const V3_ROUTER_LABEL = "9mm V3 Router";
+
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
@@ -500,11 +509,14 @@ async function _swapViaRouter(signer, ethersLib, params) {
       "[rebalance] swap (V3 router): confirmed gasUsed=%s",
       String(receipt.gasUsed),
     );
-    console.log("[route-trace] V3-router fallback swapSources=9mm V3 Router");
+    console.log(
+      "[route-trace] V3-router fallback swapSources=%s",
+      V3_ROUTER_LABEL,
+    );
     return {
       txHash: receipt.hash,
       gasCostWei: _gasCost(receipt) + (approvalGas || 0n),
-      swapSources: "9mm V3 Router",
+      swapSources: V3_ROUTER_LABEL,
     };
   });
 }
@@ -527,6 +539,9 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   let amountOut = 0n,
     gasCostWei = 0n,
     txHash = null;
+  /*- Preserve swapSources across chunks so the rebalance log displays
+   *  "NineMM_V3+DEX_X" rather than "(no swap)" after a chunked retry. */
+  const sources = [];
   for (let i = 0; i < n; i++) {
     const amt = i === n - 1 ? chunk + remainder : chunk;
     if (amt < _MIN_SWAP_THRESHOLD) continue;
@@ -535,8 +550,14 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
     amountOut += r.amountOut;
     gasCostWei += r.gasCostWei || 0n;
     txHash = r.txHash || txHash;
+    if (r.swapSources) sources.push(r.swapSources);
   }
-  return { amountOut, txHash, gasCostWei };
+  return {
+    amountOut,
+    txHash,
+    gasCostWei,
+    ...(sources.length ? { swapSources: sources.join("+") } : {}),
+  };
 }
 
 /**

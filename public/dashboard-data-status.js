@@ -18,10 +18,10 @@ import {
   updateRangePctLabels,
   positionRangeVisual,
 } from "./dashboard-data-kpi.js";
+import { showPostRebalanceWarnings } from "./dashboard-post-rebalance-modal.js";
 
 let _errorModalShown = false,
-  _recoveryModalShown = false,
-  _rangeRoundedShown = false;
+  _recoveryModalShown = false;
 
 function _dismissRebalanceModal() {
   const el = document.getElementById("rebalanceErrorModal");
@@ -394,20 +394,7 @@ function _showAlerts(d) {
     _dismissRebalanceModal();
     _showRecoveryModal(d.oorRecoveredMin);
   }
-  if (d.rangeRounded && !_rangeRoundedShown) {
-    _rangeRoundedShown = true;
-    _createModal(
-      null,
-      "9mm-pos-mgr-modal-caution",
-      "Range Width Adjusted",
-      _posContextHtml() +
-        "<p>Requested <strong>" +
-        d.rangeRounded.requested +
-        "%</strong> but tick spacing rounded to <strong>" +
-        d.rangeRounded.effective +
-        '%</strong>.</p><p class="9mm-pos-mgr-text-muted">V3 uses tick-spacing multiples.</p>',
-    );
-  }
+  showPostRebalanceWarnings(d, _createModal, _posContextHtml);
   if (d.rebalancePaused) _showRebalanceErrorModal(d.rebalanceError);
 }
 

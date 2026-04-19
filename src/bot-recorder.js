@@ -17,6 +17,7 @@ const { scanPoolHistory } = require("./pool-scanner");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
 const _epochCache = require("./epoch-cache");
+const { buildUpdatePatch } = require("./bot-recorder-patch");
 const {
   toFloat: _toFloat,
   fetchTokenPrices: _fetchTokenPrices,
@@ -524,26 +525,7 @@ function _applyRebalanceResult(deps, result) {
   if (!deps.updateBotState) return;
   const events = deps._rebalanceEvents;
   _notifyRebalance(deps, deps.throttle || deps._throttle, position, events);
-  const patch = {
-    oorSince: null,
-    swapSources: result.swapSources || null,
-    positionMintDate: mintNow.slice(0, 10),
-    positionMintTimestamp: mintNow,
-    pnlSnapshot: null,
-    // Push updated HODL baseline to dashboard + disk config so the deposit
-    // value reflects the new NFT's actual minted amounts, not the old one's.
-    hodlBaseline: deps._botState?.hodlBaseline || null,
-  };
-  if (
-    result.requestedRangePct &&
-    result.effectiveRangePct &&
-    Math.abs(result.effectiveRangePct - result.requestedRangePct) > 0.01
-  )
-    patch.rangeRounded = {
-      requested: result.requestedRangePct,
-      effective: result.effectiveRangePct,
-    };
-  deps.updateBotState(patch);
+  deps.updateBotState(buildUpdatePatch(deps, result, mintNow));
 }
 
 module.exports = {

@@ -1,0 +1,20 @@
+{
+  "_comment": "Universal dust threshold — the smallest amount of value the app will act on. Denominated in abstract 'units' of a reference asset (not USD) so the threshold doesn't silently loosen as fiat inflates: a USD-pegged guard would eventually cause dust-loop bugs as crypto/token prices rose with inflation. The live USD price of one unit is fetched from priceSourceTokens (first non-zero source wins; try each token via Moralis, then DexScreener). thresholdUsd = thresholdUnits × usdPerUnit. Default: 1/4800 ≈ $1 when one unit is worth $4800. Current reference asset is one troy ounce of gold, via PAXG (alpha) and XAUT (fallback) — both 1:1 redeemable for one oz physical gold. The code paths are generic; to switch reference assets, replace the tokens here (and keep thresholdUnits consistent with the new asset's price scale). 'chain' must match a key in src/price-fetcher.js _MORALIS_CHAINS; 'dexScreenerChain' is DexScreener's chain identifier. Consume via src/dust.js (DUST_THRESHOLD_UNITS export, isDust, getDustThresholdUsd).",
+  "thresholdUnits": 0.00020833333333333335,
+  "priceSourceTokens": [
+    {
+      "symbol": "PAXG",
+      "name": "Paxos Gold",
+      "chain": "eth",
+      "dexScreenerChain": "ethereum",
+      "address": "0x45804880De22913dAFE09f4980848ECE6EcbAf78"
+    },
+    {
+      "symbol": "XAUT",
+      "name": "Tether Gold",
+      "chain": "eth",
+      "dexScreenerChain": "ethereum",
+      "address": "0x68749665FF8D2d112Fa859AA293F07A622782F38"
+    }
+  ]
+}

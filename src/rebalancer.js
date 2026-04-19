@@ -19,6 +19,7 @@ const {
   _buildRebalanceResult,
   _preMintTickCheck,
 } = require("./rebalancer-execute");
+const { correctivelyRebalanceIfNeeded } = require("./rebalancer-correct");
 
 const {
   ERC20_ABI,
@@ -203,6 +204,22 @@ function _parseMintReceipt(receipt, amount0Desired, amount1Desired) {
 // _removeLiquidityStep, _adjustRangeAfterSwap, _computeRange,
 // _buildRebalanceResult) are in rebalancer-execute.js.
 
+/*- Run the post-swap corrective rebalance (Step 6d).  The primary swap
+ *  (step 6) can move our own pool's tick, shifting R=need0/need1 against
+ *  the original target and leaving residuals on the wrong side after
+ *  mint.  This fires one small corrective swap when the residual exceeds
+ *  the gold-pegged dust threshold (see src/dust.js).  Extracted here so
+ *  executeRebalance stays under the complexity cap. */
+async function _runCorrectiveSwap(signer, ethersLib, ctx, txHashes) {
+  const corrective = await correctivelyRebalanceIfNeeded(
+    signer,
+    ethersLib,
+    ctx,
+  );
+  if (corrective.txHash) txHashes.push(corrective.txHash);
+  return corrective;
+}
+
 /** Execute a complete rebalance: remove → swap → mint at new range. */
 async function executeRebalance(signer, ethersLib, opts) {
   const {
@@ -361,6 +378,24 @@ async function executeRebalance(signer, ethersLib, opts) {
     );
     if (volatileResult) return volatileResult;
 
+    // 6d. Corrective swap — see _runCorrectiveSwap.
+    const corrective = await _runCorrectiveSwap(
+      signer,
+      ethersLib,
+      {
+        provider,
+        signerAddress,
+        position,
+        factoryAddress,
+        newRange,
+        swapRouterAddress,
+        slippagePct,
+        symbol0: opts.symbol0,
+        symbol1: opts.symbol1,
+      },
+      txHashes,
+    );
+
     // 7. Mint new position with FULL wallet balance (collected + residuals + swapped)
     const [mintBal0, mintBal1] = await Promise.all([
       t0c.balanceOf(signerAddress),
@@ -392,6 +427,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       newRange,
       poolState,
       customRangeWidthPct,
+      corrective,
     );
   } catch (err) {
     return {
