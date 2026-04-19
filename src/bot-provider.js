@@ -10,6 +10,12 @@
 const ethers = require("ethers");
 const config = require("./config");
 
+/*- Throttle for the per-call feeData log line.  Every call logs in
+    --verbose mode; otherwise log at most once per hour so the terminal
+    stays readable over long sessions. */
+const _FEE_LOG_INTERVAL_MS = 60 * 60 * 1000;
+let _lastFeeDataLogAt = 0;
+
 /**
  * Patch `provider.getFeeData()` to guarantee a non-zero gas price.
  * PulseChain supports EIP-1559 but ethers.js v6's `getFeeData()` intermittently
@@ -23,12 +29,16 @@ function _patchFeeData(provider) {
   const _orig = provider.getFeeData.bind(provider);
   provider.getFeeData = async () => {
     const fd = await _orig();
-    console.log(
-      "[bot] feeData: gasPrice=%s maxFee=%s maxPriority=%s",
-      String(fd.gasPrice),
-      String(fd.maxFeePerGas),
-      String(fd.maxPriorityFeePerGas),
-    );
+    const now = Date.now();
+    if (config.VERBOSE || now - _lastFeeDataLogAt >= _FEE_LOG_INTERVAL_MS) {
+      _lastFeeDataLogAt = now;
+      console.log(
+        "[bot] feeData: gasPrice=%s maxFee=%s maxPriority=%s",
+        String(fd.gasPrice),
+        String(fd.maxFeePerGas),
+        String(fd.maxPriorityFeePerGas),
+      );
+    }
     // Chain-specific gas price multiplier from app-config/static-tunables/chains.json.
     // Return ONLY gasPrice (no maxFeePerGas/maxPriorityFeePerGas) so
     // ethers.js sends legacy type 0 TXs. PulseChain validators don't
