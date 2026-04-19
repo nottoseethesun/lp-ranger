@@ -44,7 +44,7 @@ jobs:
 
       - name: Assemble site
         run: |
-          mkdir -p _site/fonts _site/images
+          mkdir -p _site/fonts
 
           # Copy help + disclosure pages, rewrite absolute CSS paths to relative
           sed -e 's|href="/style.css"|href="style.css"|' \
