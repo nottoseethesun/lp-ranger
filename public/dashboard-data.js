@@ -266,7 +266,8 @@ function _updateSwapSourcesBadge(d) {
    *  rebalanced, d.swapSources is null and we leave the badge at its prior
    *  text (either the hard-coded default from index.html or the previously
    *  active position's sources). Acceptable while 9mm Aggregator is the
-   *  only route — revisit when multiple aggregators are supported. */
+   *  only route — revisit when multiple aggregators are supported.
+   */
   if (sources) {
     badge.textContent = "Routing through: " + sources;
   }
