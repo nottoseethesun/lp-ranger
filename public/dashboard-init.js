@@ -250,6 +250,24 @@ function _afterDisclaimer() {
   setInterval(updateThrottleUI, 1000);
   startDataPolling();
 
+  /*- Every 10 minutes, log the JS heap size.  The dashboard is designed to
+      stay open indefinitely, so a steadily-rising `used` line across hours
+      indicates a leak (event listeners, closures, cached arrays held in
+      JS).  Chrome-only (`performance.memory` is non-standard); silent on
+      other browsers. */
+  if (performance && performance.memory) {
+    const _logHeap = () => {
+      const m = performance.memory;
+      console.log(
+        "[js heap] %s MB used / %s MB allocated",
+        (m.usedJSHeapSize / 1048576).toFixed(1),
+        (m.totalJSHeapSize / 1048576).toFixed(1),
+      );
+    };
+    _logHeap();
+    setInterval(_logHeap, 10 * 60 * 1000);
+  }
+
   // One-shot: auto-scan on wallet load to populate symbols + fresh data from LP cache.
   // Navigate to the bot's active position only on fresh starts (no position selected yet).
   let _initScanDone = false;
