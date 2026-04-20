@@ -1,9 +1,18 @@
 # Release artifact builder.
 #
-# Triggers automatically whenever a GitHub Release is published (via the
-# Actions UI, `gh release create`, API, or the repository web UI).  Builds
-# the dashboard bundle at the release's tagged commit, packages a
-# production-ready tarball, and uploads it as a release asset.
+# Primary trigger: `release: published` — fires when a release is
+# published via the Actions UI, `gh release create`, API, or the
+# repository web UI.
+#
+# Fallback trigger: `push: tags` — GitHub occasionally drops release
+# events (observed on tag 0.4.7).  UI release-creation with a new tag
+# always generates a tag-push event, so this is the reliable backstop.
+# When both events fire for the same tag (the common case), the
+# concurrency group below cancels the earlier run so only one build
+# completes.
+#
+# Both paths are idempotent: softprops/action-gh-release@v2 overwrites
+# an existing asset with the same filename.
 #
 # Production install becomes:
 #   tar xzf lp-ranger-<version>.tar.gz
@@ -16,6 +25,16 @@ name: Build Release Assets
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+# Dedupe concurrent runs for the same tag.  `github.event.release.tag_name`
+# is set on release events; `github.ref_name` is the tag on tag-push events.
+concurrency:
+  group: build-release-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -23,11 +42,13 @@ permissions:
 jobs:
   build-assets:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Set up Node.js 24
@@ -43,7 +64,7 @@ jobs:
 
       - name: Create release tarball
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${RELEASE_TAG}"
           # Write outside the tree being archived so tar doesn't try to
           # include its own growing output file ("file changed as we read it").
           TARBALL="${RUNNER_TEMP}/lp-ranger-${VERSION}.tar.gz"
@@ -64,5 +85,5 @@ jobs:
       - name: Upload tarball to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
           files: ${{ env.TARBALL }}
