@@ -719,11 +719,24 @@ body::before{
   backdrop-filter:blur(6px);
   z-index:1000;
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:center;
   padding:20px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
 }
 .modal-overlay.hidden{display:none;}
+
+/*
+ * Lock page scroll while any modal or disclosure overlay is open so the
+ * user can't accidentally scroll the app behind the dialog.  Uses :has()
+ * (Chrome 105+, Safari 15.4+, Firefox 121+) — no JS body-lock needed.
+ */
+body:has(.modal-overlay:not(.hidden)),
+body:has(.disclaimer-overlay:not(.hidden)),
+body:has(.\39 mm-pos-mgr-modal-overlay){
+  overflow:hidden;
+}
 
 .modal{
   background:var(--bg2);
@@ -733,8 +746,8 @@ body::before{
   max-width:580px;
   padding:30px;
   position:relative;
-  max-height:92vh;
-  overflow-y:auto;
+  margin:auto;
+  flex-shrink:0;
   overflow-x:hidden;
 }
 
@@ -2231,6 +2244,7 @@ tbody tr.live-row{background:rgb(0 229 255 / 2%);}
   justify-content:center;
   backdrop-filter:blur(4px);
   overflow-y:auto;
+  overscroll-behavior:contain;
   padding:20px 0;
 }
 .disclaimer-overlay.hidden{display:none;}
