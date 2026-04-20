@@ -68,7 +68,6 @@ import {
   _posLabel,
   _posContextHtml,
   _titled,
-  _fmtTxCopy,
   _updateComposition,
   _updatePositionTicks,
   _updatePosStatus,
@@ -202,14 +201,24 @@ export function applySyncBlur(force) {
 
 /**
  * Derive sync readiness from poll data.  The lifetime P&L scan is the
- * same work for managed and unmanaged positions — it is NOT a bot-loop
- * concern.  Both paths write rebalanceScanComplete to the server state,
- * so the poll is the single source of truth.  No client-side flag needed.
+ * same work for managed and unmanaged-open positions — it is NOT a
+ * bot-loop concern.  Both paths write rebalanceScanComplete to the
+ * server state, so the poll is the single source of truth for those.
+ *
+ * Exception: unmanaged-closed positions.  Their detail fetch short-
+ * circuits in phase 1 (drained detected → closed view, phase 2 skipped)
+ * so the server never writes rebalanceScanComplete for them.  Treat the
+ * closed view itself as the synced signal: once isViewingClosedPos()
+ * returns true, the one-shot closed-pos history fetch has landed and
+ * there is nothing else to sync.
  */
 function _syncStatus(d) {
-  if (!posStore.getActive()) return { complete: true, label: "" };
+  const active = posStore.getActive();
+  if (!active) return { complete: true, label: "" };
   if (wallet.address && posStore.count() === 0)
     return { complete: false, label: "" };
+  if (!isPositionManaged(active.tokenId) && isViewingClosedPos())
+    return { complete: true, label: "Synced" };
   const ps = d._positionScan;
   if (ps && ps.status === "scanning") {
     const p = ps.progress;
@@ -374,13 +383,13 @@ function _populateHistoryOnce(data) {
     (a, b) => a.timestamp - b.timestamp,
   );
   for (const ev of _s) {
-    const tx = ev.txHash ? "<br>" + _fmtTxCopy(ev.txHash) : "";
     act(
       ACT_ICONS.gear,
       "fee",
       "Rebalance",
-      "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + tx + ctx,
+      "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + ctx,
       ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000),
+      ev.txHash,
     );
   }
 }

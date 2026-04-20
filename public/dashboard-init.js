@@ -89,6 +89,37 @@ import {
   exitClosedPosView,
   isViewingClosedPos,
 } from "./dashboard-closed-pos.js";
+import {
+  BUILD_COMMIT,
+  BUILD_COMMIT_DATE,
+  BUILD_RELEASE_TAG,
+  BUILD_PACKAGE_VERSION,
+} from "./build-info.js";
+
+/*-
+ * First log: version/commit banner for support triage. Logged before
+ * any other bootstrap work so it is always at the top of the browser
+ * console. Mirrors the server.js startup banner. Dev builds use the
+ * "0.0.0-dev" sentinel in package.json — when that is the version, skip
+ * the version= segment so unreleased builds don't claim a version.
+ */
+const _DEV_VERSION_SENTINEL = "0.0.0-dev";
+if (BUILD_PACKAGE_VERSION === _DEV_VERSION_SENTINEL) {
+  console.log(
+    "[lp-ranger] LP Ranger commit=%s commitDate=%s tag=%s",
+    BUILD_COMMIT,
+    BUILD_COMMIT_DATE,
+    BUILD_RELEASE_TAG || "(none)",
+  );
+} else {
+  console.log(
+    "[lp-ranger] LP Ranger version=%s commit=%s commitDate=%s tag=%s",
+    BUILD_PACKAGE_VERSION,
+    BUILD_COMMIT,
+    BUILD_COMMIT_DATE,
+    BUILD_RELEASE_TAG || "(none)",
+  );
+}
 
 // ── Wire cross-module dependencies (breaks circular imports) ────────────────
 

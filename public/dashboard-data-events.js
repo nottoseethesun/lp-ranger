@@ -10,7 +10,7 @@
 "use strict";
 
 import { act, ACT_ICONS } from "./dashboard-helpers.js";
-import { _logCtx, _fmtTxCopy } from "./dashboard-data-status.js";
+import { _logCtx } from "./dashboard-data-status.js";
 import { scanPositions } from "./dashboard-positions.js";
 import {
   checkRebalanceSound,
@@ -43,7 +43,6 @@ export function logAllPositionEvents(data) {
       const evts = st.rebalanceEvents || [];
       const ev = evts.length ? evts[evts.length - 1] : null;
       if (ev) {
-        const tx = ev.txHash ? "<br>" + _fmtTxCopy(ev.txHash) : "";
         /*- Use the event's on-chain timestamp so the Activity Log agrees
             with the Rebalance Events table. Falls back to now if the event
             carries no timestamp (shouldn't happen in practice). */
@@ -56,8 +55,9 @@ export function logAllPositionEvents(data) {
           ACT_ICONS.gear,
           "fee",
           "Rebalance",
-          "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + tx + ctx,
+          "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + ctx,
           when,
+          ev.txHash,
         );
       }
       scanPositions({ silent: true }).catch(() => {});

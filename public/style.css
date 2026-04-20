@@ -1089,6 +1089,34 @@ header{
 }
 .hist-table td.pos{color:var(--accent3);}.hist-table td.neg{color:var(--danger);}
 
+/* Every header and cell stays on one line. Combined with the
+   outer .9mm-pos-mgr-table-scroll wrapper (overflow-x: auto), this
+   keeps every page the same height: long aggregator names like
+   "NineMM_V3,NineMM_V3,NineMM_V3 (corrective)" scroll horizontally
+   rather than forcing a taller first page. The TIME cell is still
+   two lines because its template puts <br> between the UTC and
+   local spans — nowrap only prevents unintended wraps. */
+.hist-table th,
+.hist-table td{
+  white-space:nowrap;
+}
+
+/* Padding rows added to short pages so every page is the same
+   height as a full page. Cells are non-breaking spaces; opacity 0
+   hides them completely while preserving row height. */
+.hist-table tr.hist-pad-row td{
+  opacity:0;
+}
+
+/* Keep both history cards (Per-Day P&L and Rebalance Events) at the
+   same minimum height so the Rebalance card does not visually shrink
+   on its last page, where padded rows can render slightly shorter
+   than data rows (two-line TIME cell vs nbsp padding). Grid stretch
+   on .row.c2-hist keeps the two cards aligned once the floor is set. */
+.row.c2-hist .card{
+  min-height:495px;
+}
+
 .help-tip{
   display:inline-block;
   width:16px;

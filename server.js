@@ -128,6 +128,14 @@ const { migrateAppConfig } = require("./src/migrate-app-config");
 const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
 const { handleUiDefaults } = require("./src/ui-defaults");
+const _unlockLog = require("./src/server-unlock-log");
+const { logVersionBanner } = require("./src/build-info");
+
+/*-
+ * First log: version/commit banner for support triage. Logged before
+ * any other startup work so it is always at the top of the server log.
+ */
+logVersionBanner("[server]");
 
 // ── app-config migration ─────────────────────────────
 // One-time move of legacy root-level config files into app-config/.
@@ -428,17 +436,18 @@ const _routes = {
       locked: walletManager.hasWallet() && !_privateKeyRef.current,
     }),
   "POST /api/wallet/unlock": async (req, res) => {
+    _unlockLog.logUnlockRequest(req);
     const body = await readJsonBody(req);
-    if (!body.password)
-      return jsonResponse(res, 400, {
-        ok: false,
-        error: "Missing password",
-      });
+    if (!body.password) {
+      _unlockLog.logUnlockMissing();
+      return jsonResponse(res, 400, { ok: false, error: "Missing password" });
+    }
+    _unlockLog.logUnlockAttempt(String(body.password).length);
     try {
       _privateKeyRef.current = (
         await walletManager.revealWallet(body.password)
       ).privateKey;
-      console.log("[server] Wallet unlocked via dashboard");
+      _unlockLog.logUnlockSuccess(req);
       const _pw = body.password;
       const _w = (t) => (e) => console.warn("[server] %s: %s", t, e.message);
       _routeHandlers._decryptApiKeys(_pw).catch(_w("API key decrypt failed"));
@@ -447,10 +456,8 @@ const _routes = {
         .catch(_w("Auto-start failed"));
       jsonResponse(res, 200, { ok: true });
     } catch (_err) {
-      jsonResponse(res, 401, {
-        ok: false,
-        error: "Wrong password",
-      });
+      _unlockLog.logUnlockFail(_err);
+      jsonResponse(res, 401, { ok: false, error: "Wrong password" });
     }
   },
   "DELETE /api/wallet": (_, res) => {

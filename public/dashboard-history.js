@@ -7,7 +7,7 @@
  * Depends on: dashboard-helpers.js (g, fmtDateTime).
  */
 
-import { g, tzCode } from "./dashboard-helpers.js";
+import { g, tzCode, cloneTpl } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 
 /**
@@ -35,6 +35,58 @@ let _lastEvents = null;
 let _pnlPage = 0,
   _lastDailyPnl = null;
 
+const _EMDASH = "\u2014";
+
+/** Colour class for a numeric value (pos/neg/empty for near-zero). */
+function _cc(v) {
+  return Math.round(v * 100) === 0 ? "" : v > 0 ? "pos" : "neg";
+}
+
+/** Render the single "no data" empty row into a tbody. */
+function _renderEmptyRow(tbody, colSpan, msg) {
+  const frag = cloneTpl("tplTableEmptyRow");
+  if (!frag) return;
+  const cell = frag.querySelector('[data-tpl="cell"]');
+  cell.colSpan = colSpan;
+  cell.textContent = msg;
+  tbody.replaceChildren(frag);
+}
+
+/** Build a single Daily P&L row fragment from a day record. */
+function _buildPnlRow(d, netVal) {
+  const frag = cloneTpl("tplDailyPnlRow");
+  if (!frag) return null;
+  const mp = d.missingPrice || d.noData;
+  const fees = d.feePnl || d.fees || 0;
+  const gas = d.gasCost || d.gas || 0;
+  const ilg = d.priceChangePnl || 0;
+  const res = d.residual || 0;
+  const profit = Math.round((fees - gas + ilg) * 100) / 100;
+  const v = (val) => (mp ? _EMDASH : _tblUsd(val));
+  const set = (k, val, cls) => {
+    const el = frag.querySelector(`[data-tpl="${k}"]`);
+    if (!el) return;
+    el.textContent = val;
+    if (cls) el.classList.add(cls);
+  };
+  set("date", d.date || _EMDASH);
+  set("fees", v(fees));
+  set("gas", v(gas));
+  set("ilg", v(ilg), mp ? "" : _cc(ilg));
+  set("profit", v(profit), mp ? "" : _cc(profit));
+  set("net", v(netVal), mp ? "" : _cc(netVal));
+  set("residual", v(res), mp ? "" : _cc(res));
+  return frag;
+}
+
+/** True when the active position is closed (liquidity exactly 0). */
+function _activeIsClosed() {
+  const active = posStore.getActive();
+  return (
+    active && active.liquidity !== undefined && String(active.liquidity) === "0"
+  );
+}
+
 /**
  * Render the per-day P&L table from daily P&L data.
  * @param {object[]} dailyPnl  Array of day records (newest first).
@@ -44,15 +96,11 @@ export function renderDailyPnl(dailyPnl) {
     pageLabel = g("pnlPageLabel");
   if (!tbody) return;
   if (!dailyPnl || dailyPnl.length === 0) {
-    const active = posStore.getActive();
-    const closed =
-      active &&
-      active.liquidity !== undefined &&
-      String(active.liquidity) === "0";
-    tbody.innerHTML =
-      '<tr><td colspan="8" class="9mm-pos-mgr-table-empty">' +
-      (closed ? "Position Closed" : "No P&L data yet") +
-      "</td></tr>";
+    _renderEmptyRow(
+      tbody,
+      8,
+      _activeIsClosed() ? "Position Closed" : "No P&L data yet",
+    );
     _setPnlPagBtns(0, 1);
     return;
   }
@@ -68,49 +116,11 @@ export function renderDailyPnl(dailyPnl) {
       (d.priceChangePnl || 0) -
       (d.gasCost || d.gas || 0),
   );
-  const _d = "\u2014";
-  tbody.innerHTML = slice
-    .map((d, si) => {
-      const i = start + si,
-        mp = d.missingPrice || d.noData,
-        fees = d.feePnl || d.fees || 0,
-        gas = d.gasCost || d.gas || 0,
-        ilg = d.priceChangePnl || 0,
-        res = d.residual || 0;
-      const profit = Math.round((fees - gas + ilg) * 100) / 100;
-      const cc = (v) =>
-        Math.round(v * 100) === 0 ? "" : v > 0 ? "pos" : "neg";
-      const v = (val) => (mp ? _d : _tblUsd(val));
-      return (
-        "<tr><td>" +
-        (d.date || _d) +
-        "</td><td>" +
-        v(fees) +
-        "</td>" +
-        "<td>" +
-        v(gas) +
-        '</td><td class="9mm-pos-mgr-text-right ' +
-        (mp ? "" : cc(ilg)) +
-        '">' +
-        v(ilg) +
-        "</td>" +
-        '<td class="9mm-pos-mgr-text-right ' +
-        (mp ? "" : cc(profit)) +
-        '">' +
-        v(profit) +
-        "</td>" +
-        '<td class="9mm-pos-mgr-text-right ' +
-        (mp ? "" : cc(nets[i])) +
-        '">' +
-        v(nets[i]) +
-        '</td><td class="9mm-pos-mgr-text-right ' +
-        (mp ? "" : cc(res)) +
-        '">' +
-        v(res) +
-        "</td></tr>"
-      );
-    })
-    .join("");
+  tbody.replaceChildren();
+  for (let si = 0; si < slice.length; si++) {
+    const frag = _buildPnlRow(slice[si], nets[start + si]);
+    if (frag) tbody.appendChild(frag);
+  }
   if (pageLabel)
     pageLabel.textContent = "Page " + (page + 1) + " of " + totalPages;
   _setPnlPagBtns(page, totalPages);
@@ -128,6 +138,131 @@ function _setPnlPagBtns(page, totalPages) {
   if (last) last.disabled = page >= totalPages - 1;
 }
 
+/** Parse an event's timestamp (dateStr preferred, else unix timestamp). */
+function _eventTs(e) {
+  if (e.dateStr) return new Date(e.dateStr);
+  if (e.timestamp) return new Date(e.timestamp * 1000);
+  return null;
+}
+
+/** Format an event timestamp into a [utc, local] pair. */
+function _fmtEventTs(ts) {
+  if (!ts) return [_EMDASH, ""];
+  const utc = ts.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  const local =
+    ts.toLocaleDateString() +
+    " " +
+    ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+    " " +
+    tzCode();
+  return [utc, local];
+}
+
+/** Strip the local-time span and its preceding <br> when no local time exists. */
+function _clearLocalSpan(localEl) {
+  const br = localEl.previousSibling;
+  if (br && br.nodeName === "BR") br.remove();
+  localEl.remove();
+}
+
+/** Apply the TX hash cell contents, including the copy icon or its removal. */
+function _applyTxCell(frag, e, txShort) {
+  const txCell = frag.querySelector('[data-tpl="txCell"]');
+  if (e.txHash) txCell.setAttribute("title", e.txHash);
+  const shortEl = frag.querySelector('[data-tpl="txShort"]');
+  if (shortEl) shortEl.textContent = txShort;
+  const copyIcon = frag.querySelector('[data-tpl="copyIcon"]');
+  if (e.txHash) {
+    copyIcon.setAttribute("data-copy-tx", e.txHash);
+  } else {
+    const space = copyIcon.previousSibling;
+    if (space && space.nodeType === 3) space.remove();
+    copyIcon.remove();
+  }
+}
+
+/** Build a single rebalance-event row fragment. */
+function _buildRebRow(e, displayIdx) {
+  const frag = cloneTpl("tplRebEventRow");
+  if (!frag) return null;
+  const txShort = e.txHash ? e.txHash.slice(0, 10) + "\u2026" : _EMDASH;
+  const [utc, local] = _fmtEventTs(_eventTs(e));
+  const oldRange = e.oldRange || (e.oldTokenId ? e.oldTokenId : _EMDASH);
+  const newRange = e.newRange || (e.newTokenId ? e.newTokenId : _EMDASH);
+  const set = (k, val) => {
+    const el = frag.querySelector(`[data-tpl="${k}"]`);
+    if (el) el.textContent = val;
+  };
+  /*- Ignore e.index: it comes from two sources (bot-recorder's running
+      counter and event-scanner's re-sort) that don't share a scheme, so
+      a merged list shows 1..11 mixed with 73..85. Assign a single
+      chronological index here so the UI is always consistent. */
+  set(
+    "index",
+    displayIdx !== null && displayIdx !== undefined
+      ? displayIdx
+      : e.index || "",
+  );
+  set("utc", utc);
+  const localEl = frag.querySelector('[data-tpl="local"]');
+  if (local) localEl.textContent = local;
+  else _clearLocalSpan(localEl);
+  set("oldRange", oldRange);
+  set("newRange", newRange);
+  set("swap", e.swapSources || _EMDASH);
+  _applyTxCell(frag, e, txShort);
+  return frag;
+}
+
+/**
+ * Build a padding row that mirrors the template's cell layout so short
+ * pages stay the same height as full pages. All slots are filled with
+ * a non-breaking space and the tx copy-icon is removed. CSS fades the
+ * cells to opacity 0 via `.hist-pad-row`.
+ * @param {string} templateId  Template element id to clone.
+ */
+function _buildPadRow(templateId) {
+  const frag = cloneTpl(templateId);
+  if (!frag) return null;
+  const tr = frag.querySelector("tr");
+  if (tr) tr.classList.add("hist-pad-row");
+  frag.querySelectorAll("[data-tpl]").forEach((el) => {
+    el.textContent = "\u00A0";
+  });
+  /*- Classes that start with a digit (like "9mm-pos-mgr-copy-icon") are
+   *  not valid in bare CSS class-selector syntax — querySelector throws
+   *  SyntaxError. Use the template's data-tpl attribute instead, which
+   *  also unambiguously identifies the copy-icon slot.
+   */
+  const copy = frag.querySelector('[data-tpl="copyIcon"]');
+  if (copy) copy.remove();
+  return frag;
+}
+
+/** Update Rebalance Events pagination button states. */
+function _setRebPagBtns(page, totalPages) {
+  const prev = g("rebPrevBtn"),
+    next = g("rebNextBtn"),
+    first = g("rebFirstBtn"),
+    last = g("rebLastBtn");
+  const prevDis = page <= 0;
+  const nextDis = page >= totalPages - 1;
+  if (prev) prev.disabled = prevDis;
+  if (first) first.disabled = prevDis;
+  if (next) next.disabled = nextDis;
+  if (last) last.disabled = nextDis;
+  /*- Diagnostic: catch the stuck-Next bug where label says "Page 1 of 6"
+      but Next is disabled. If page+1 == 1 and totalPages > 1, Next must
+      be enabled; any mismatch means state diverged somewhere upstream. */
+  if (page + 1 === 1 && totalPages > 1 && nextDis) {
+    console.warn(
+      "[lp-ranger] [reb-pag] stuck-Next detected: page=%d totalPages=%d",
+      page,
+      totalPages,
+    );
+  }
+}
+
 /**
  * Render the rebalance events table with pagination.
  * Uses data attributes for copy-icon event delegation instead of inline onclick.
@@ -137,28 +272,15 @@ export function renderRebalanceEvents(events) {
   _lastEvents = events;
   const tbody = g("rebEventsBody");
   const pageLabel = g("rebPageLabel");
-  const prevBtn = g("rebPrevBtn"),
-    nextBtn = g("rebNextBtn"),
-    firstBtn = g("rebFirstBtn"),
-    lastBtn = g("rebLastBtn");
   if (!tbody) return;
 
   if (!events || events.length === 0) {
-    const active = posStore.getActive();
-    const closed =
-      active &&
-      active.liquidity !== undefined &&
-      String(active.liquidity) === "0";
-    const msg = closed ? "Position Closed" : "No rebalance events found";
-    tbody.innerHTML =
-      '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px;">' +
-      msg +
-      "</td></tr>";
+    const msg = _activeIsClosed()
+      ? "Position Closed"
+      : "No rebalance events found";
+    _renderEmptyRow(tbody, 6, msg);
     if (pageLabel) pageLabel.textContent = "Page 1 of 1";
-    if (prevBtn) prevBtn.disabled = true;
-    if (nextBtn) nextBtn.disabled = true;
-    if (firstBtn) firstBtn.disabled = true;
-    if (lastBtn) lastBtn.disabled = true;
+    _setRebPagBtns(0, 1);
     return;
   }
 
@@ -166,71 +288,39 @@ export function renderRebalanceEvents(events) {
     (a, b) => (b.timestamp || 0) - (a.timestamp || 0),
   );
   const totalPages = Math.max(1, Math.ceil(sorted.length / _REB_PAGE_SIZE));
-  _rebEventsPage = Math.min(_rebEventsPage, totalPages - 1);
+  const preClamp = _rebEventsPage;
+  _rebEventsPage = Math.min(Math.max(0, _rebEventsPage), totalPages - 1);
+  if (preClamp !== _rebEventsPage) {
+    console.log(
+      "[lp-ranger] [reb-pag] render clamped page %d \u2192 %d (totalPages=%d, events=%d)",
+      preClamp,
+      _rebEventsPage,
+      totalPages,
+      sorted.length,
+    );
+  }
   const page = _rebEventsPage;
   const start = page * _REB_PAGE_SIZE;
   const pageEvents = sorted.slice(start, start + _REB_PAGE_SIZE);
+  const total = sorted.length;
 
-  const rows = pageEvents.map((e) => {
-    const txShort = e.txHash ? e.txHash.slice(0, 10) + "\u2026" : "—";
-    const ts = e.dateStr
-      ? new Date(e.dateStr)
-      : e.timestamp
-        ? new Date(e.timestamp * 1000)
-        : null;
-    const utc = ts
-      ? ts.toISOString().slice(0, 16).replace("T", " ") + " UTC"
-      : "—";
-    const local = ts
-      ? ts.toLocaleDateString() +
-        " " +
-        ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
-        " " +
-        tzCode()
-      : "";
-    const oldRange = e.oldRange || (e.oldTokenId ? e.oldTokenId : "\u2014");
-    const newRange = e.newRange || (e.newTokenId ? e.newTokenId : "\u2014");
-    return (
-      "<tr>" +
-      "<td>" +
-      (e.index || "") +
-      "</td>" +
-      '<td data-privacy="blur">' +
-      utc +
-      (local
-        ? '<br><span class="9mm-pos-mgr-text-muted-sm">' + local + "</span>"
-        : "") +
-      "</td>" +
-      '<td data-privacy="blur">' +
-      oldRange +
-      "</td>" +
-      '<td data-privacy="blur">' +
-      newRange +
-      "</td>" +
-      "<td>" +
-      (e.swapSources || "\u2014") +
-      "</td>" +
-      '<td data-privacy="blur" title="' +
-      (e.txHash || "") +
-      '">' +
-      txShort +
-      (e.txHash
-        ? ' <span class="9mm-pos-mgr-copy-icon" data-copy-tx="' +
-          e.txHash +
-          '" title="Copy full TX hash">&#x274F;</span>'
-        : "") +
-      "</td>" +
-      "</tr>"
-    );
-  });
-
-  tbody.innerHTML = rows.join("");
+  tbody.replaceChildren();
+  for (let i = 0; i < pageEvents.length; i++) {
+    /*- displayIdx: oldest = 1, newest = total. sorted is descending, so
+        position (start + i) has index (total - start - i). */
+    const displayIdx = total - start - i;
+    const frag = _buildRebRow(pageEvents[i], displayIdx);
+    if (frag) tbody.appendChild(frag);
+  }
+  /*- Pad short (last) pages so every page renders at the same card
+      height — otherwise page 13 with 1 event visibly shrinks the card. */
+  for (let i = pageEvents.length; i < _REB_PAGE_SIZE; i++) {
+    const pad = _buildPadRow("tplRebEventRow");
+    if (pad) tbody.appendChild(pad);
+  }
   if (pageLabel)
     pageLabel.textContent = "Page " + (page + 1) + " of " + totalPages;
-  if (prevBtn) prevBtn.disabled = page <= 0;
-  if (firstBtn) firstBtn.disabled = page <= 0;
-  if (nextBtn) nextBtn.disabled = page >= totalPages - 1;
-  if (lastBtn) lastBtn.disabled = page >= totalPages - 1;
+  _setRebPagBtns(page, totalPages);
 }
 
 /**
@@ -238,14 +328,32 @@ export function renderRebalanceEvents(events) {
  * @param {number} dir  +1 for next, -1 for previous.
  */
 export function rebChangePage(dir) {
+  const before = _rebEventsPage;
   _rebEventsPage += dir;
+  console.log(
+    "[lp-ranger] [reb-pag] change dir=%d: %d \u2192 %d (lastEvents=%d)",
+    dir,
+    before,
+    _rebEventsPage,
+    Array.isArray(_lastEvents) ? _lastEvents.length : -1,
+  );
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }
 export function rebFirstPage() {
+  console.log(
+    "[lp-ranger] [reb-pag] first: %d \u2192 0 (lastEvents=%d)",
+    _rebEventsPage,
+    Array.isArray(_lastEvents) ? _lastEvents.length : -1,
+  );
   _rebEventsPage = 0;
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }
 export function rebLastPage() {
+  console.log(
+    "[lp-ranger] [reb-pag] last: %d \u2192 9999 (lastEvents=%d)",
+    _rebEventsPage,
+    Array.isArray(_lastEvents) ? _lastEvents.length : -1,
+  );
   _rebEventsPage = 9999;
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }

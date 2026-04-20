@@ -87,10 +87,20 @@ export function _loadPosStore() {
 // ── Late-bound callbacks ─────────────────────────
 
 let _syncRouteToState = null;
+let _exitClosedPosView = null;
 
 /** Register syncRouteToState callback. */
 export function setSyncRouteToState(fn) {
   _syncRouteToState = fn;
+}
+
+/*-
+ * Register exitClosedPosView callback. Called on rebalance-follow
+ * so the store can drop the stale closed-view flag when the active
+ * NFT migrates to a freshly-minted live position.
+ */
+export function setExitClosedPosView(fn) {
+  _exitClosedPosView = fn;
 }
 
 /** @deprecated Detail fetch moved to _activateCore — kept for API compat. */
@@ -251,6 +261,13 @@ export const posStore = {
       /* */
     }
     console.log("[lp-ranger] [pos] rebalance follow: #%s → #%s", old, newId);
+    /*-
+     * Rebalance minted a fresh live NFT. If we were pinned in
+     * closed-pos view (e.g. user rebalanced a drained position to
+     * re-enter a pool), drop that flag so KPI/status updates are
+     * no longer short-circuited in updateDashboardFromStatus.
+     */
+    if (_exitClosedPosView) _exitClosedPosView();
     if (_syncRouteToState) _syncRouteToState(a);
     updatePosStripUI();
   },
@@ -285,10 +302,6 @@ export const posStore = {
 export function _setText(id, text) {
   const el = g(id);
   if (el) el.textContent = text;
-}
-export function _setHtml(id, html) {
-  const el = g(id);
-  if (el) el.innerHTML = html;
 }
 
 /** Resolve a display name: prefer symbol, fall back to short address. */
@@ -544,11 +557,18 @@ export function refreshManageBadge(active) {
   const closed = isPositionClosed(active);
   const m = !closed && _managedTokenIds.has(String(active.tokenId));
   badge.classList.toggle("managed", m);
-  badge.innerHTML = closed
-    ? "Position Closed"
-    : m
-      ? '<span class="9mm-pos-mgr-manage-dot"></span>Being Actively Managed'
-      : "Not Actively Managed";
+  if (closed) {
+    badge.textContent = "Position Closed";
+  } else if (m) {
+    const dot = document.createElement("span");
+    dot.className = "9mm-pos-mgr-manage-dot";
+    badge.replaceChildren(
+      dot,
+      document.createTextNode("Being Actively Managed"),
+    );
+  } else {
+    badge.textContent = "Not Actively Managed";
+  }
   btn.textContent = m ? "Stop Managing" : "Manage";
   btn.disabled = closed;
   btn.title = closed ? "Cannot manage a closed position (liquidity = 0)" : "";

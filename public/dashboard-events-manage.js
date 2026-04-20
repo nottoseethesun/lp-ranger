@@ -128,18 +128,36 @@ export function injectPosStoreForEvents(posStore) {
 }
 
 /**
- * Build an HTML fragment for an address with an inline copy icon.
+ * Build a DocumentFragment for an address with an inline copy icon.
  * @param {string} addr  EVM address (0x...).
- * @returns {string}  HTML fragment.
+ * @returns {DocumentFragment}
  */
-function _addrWithCopy(addr) {
-  if (!addr) return "\u2014";
-  return (
-    addr +
-    ' <span class="9mm-pos-mgr-copy-icon" title="Copy address" data-copy-addr="' +
-    addr +
-    '">\u274F</span>'
-  );
+function _addrWithCopyFrag(addr) {
+  const frag = document.createDocumentFragment();
+  if (!addr) {
+    frag.appendChild(document.createTextNode("\u2014"));
+    return frag;
+  }
+  frag.appendChild(document.createTextNode(addr + " "));
+  const icon = document.createElement("span");
+  icon.className = "9mm-pos-mgr-copy-icon";
+  icon.title = "Copy address";
+  icon.setAttribute("data-copy-addr", addr);
+  icon.textContent = "\u274F";
+  frag.appendChild(icon);
+  return frag;
+}
+
+/** Build a symbol + (optional) address-with-copy fragment. */
+function _tokenCellFrag(sym, addr) {
+  const frag = document.createDocumentFragment();
+  frag.appendChild(document.createTextNode(sym || "?"));
+  if (addr) {
+    frag.appendChild(document.createElement("br"));
+    frag.appendChild(document.createTextNode("\u00A0\u00A0\u00A0\u00A0"));
+    frag.appendChild(_addrWithCopyFrag(addr));
+  }
+  return frag;
 }
 
 /** Open the pool-details modal for the active position. */
@@ -153,23 +171,16 @@ export function _openPoolDetailsModal() {
     const e = g(id);
     if (e) e.textContent = txt;
   };
-  const elHtml = (id, html) => {
+  const elFrag = (id, frag) => {
     const e = g(id);
-    if (e) e.innerHTML = html;
+    if (e) e.replaceChildren(frag);
   };
   el("pdType", active.positionType === "nft" ? "NFT (ERC-721)" : "ERC-20");
-  const tokenHtml = (sym, addr) => {
-    const symPart = sym || "?";
-    const addrPart = addr
-      ? "<br>\u00A0\u00A0\u00A0\u00A0" + _addrWithCopy(addr)
-      : "";
-    return symPart + addrPart;
-  };
-  elHtml("pdToken0", tokenHtml(active.token0Symbol, active.token0));
-  elHtml("pdToken1", tokenHtml(active.token1Symbol, active.token1));
+  elFrag("pdToken0", _tokenCellFrag(active.token0Symbol, active.token0));
+  elFrag("pdToken1", _tokenCellFrag(active.token1Symbol, active.token1));
   el("pdFee", fee);
-  elHtml("pdPool", _addrWithCopy(active.poolAddress));
-  elHtml("pdContract", _addrWithCopy(active.contractAddress));
+  elFrag("pdPool", _addrWithCopyFrag(active.poolAddress));
+  elFrag("pdContract", _addrWithCopyFrag(active.contractAddress));
   m.classList.remove("hidden");
 }
 
@@ -322,9 +333,16 @@ export function updateManageBadge(
         String(p.tokenId) === String(activeTokenId) && p.status === "running",
     );
   badge.classList.toggle("managed", isManaged);
-  badge.innerHTML = isManaged
-    ? '<span class="9mm-pos-mgr-manage-dot">' + "</span>Being Actively Managed"
-    : "Not Actively Managed";
+  if (isManaged) {
+    const dot = document.createElement("span");
+    dot.className = "9mm-pos-mgr-manage-dot";
+    badge.replaceChildren(
+      dot,
+      document.createTextNode("Being Actively Managed"),
+    );
+  } else {
+    badge.textContent = "Not Actively Managed";
+  }
   if (rebalanceInProgress) {
     btn.textContent = "Rebalancing\u2026";
   } else {

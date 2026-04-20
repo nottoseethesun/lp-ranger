@@ -11,6 +11,7 @@ import {
   truncName,
   fmtNum,
   fmtDuration,
+  cloneTpl,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import {
@@ -29,20 +30,28 @@ function _dismissRebalanceModal() {
   _errorModalShown = false;
 }
 
-/** Create and append a modal overlay to the document body. */
+/**
+ * Create and append a modal overlay to the document body. The shell
+ * (modal div, h3, body div, close button) comes from the tplStatusModal
+ * <template>; bodyHtml is still injected via innerHTML on the body div
+ * — Phase 2 of the html-cleanup pass will convert callers to pass a
+ * DocumentFragment instead of a string.
+ */
 export function _createModal(id, cssClass, title, bodyHtml) {
   const o = document.createElement("div");
   o.className = "9mm-pos-mgr-modal-overlay";
   if (id) o.id = id;
-  o.innerHTML =
-    '<div class="9mm-pos-mgr-modal ' +
-    cssClass +
-    '"><h3>' +
-    title +
-    '</h3><div class="9mm-pos-mgr-modal-body">' +
-    bodyHtml +
-    '</div><button class="9mm-pos-mgr-modal-close"' +
-    " data-dismiss-modal>OK</button></div>";
+  const frag = cloneTpl("tplStatusModal");
+  if (frag) {
+    const inner = frag.querySelector('[data-tpl="inner"]');
+    if (cssClass) {
+      for (const c of cssClass.split(/\s+/).filter(Boolean))
+        inner.classList.add(c);
+    }
+    frag.querySelector('[data-tpl="title"]').textContent = title;
+    frag.querySelector('[data-tpl="body"]').innerHTML = bodyHtml;
+    o.appendChild(frag);
+  }
   document.body.appendChild(o);
 }
 
@@ -71,27 +80,34 @@ export function _posLabel() {
   );
 }
 
-/** Build an HTML paragraph with position context for modal bodies. */
+/**
+ * Build an HTML paragraph with position context for modal bodies.
+ * The structure comes from the tplPosContext <template>; we populate
+ * [data-tpl] slots via textContent and return the serialized outerHTML
+ * so existing string-concat callers continue to work unchanged.
+ */
 export function _posContextHtml() {
   const a = posStore.getActive();
   if (!a) return "";
+  const frag = cloneTpl("tplPosContext");
+  if (!frag) return "";
   const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
   const pm = botConfig.pmName || _short(a.contractAddress);
   const fee = a.fee ? (a.fee / 10000).toFixed(2) + "% fee" : "";
   const c = botConfig.chainName || "PulseChain";
-  return (
-    '<p class="9mm-pos-mgr-text-muted">' +
-    pair +
-    (pm ? " on " + pm : "") +
-    "<br>NFT #" +
-    a.tokenId +
-    (fee ? " \u00B7 " + fee : "") +
-    "<br>" +
-    c +
-    " \u00B7 " +
-    _short(a.walletAddress) +
-    "</p>"
+  frag.querySelector('[data-tpl="pair"]').textContent = pair;
+  frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";
+  frag.querySelector('[data-tpl="tokenId"]').textContent = a.tokenId;
+  frag.querySelector('[data-tpl="fee"]').textContent = fee
+    ? " \u00B7 " + fee
+    : "";
+  frag.querySelector('[data-tpl="chain"]').textContent = c;
+  frag.querySelector('[data-tpl="wallet"]').textContent = _short(
+    a.walletAddress,
   );
+  const wrap = document.createElement("div");
+  wrap.appendChild(frag);
+  return wrap.innerHTML;
 }
 
 /** Append position label to a title via em-dash. */
@@ -290,19 +306,6 @@ export function _updatePositionTicks(d) {
       : "n/a";
 }
 
-/** Format a TX hash as a short label with a copy-to-clipboard icon. */
-export function _fmtTxCopy(hash) {
-  const short = hash.slice(0, 4) + "\u2026" + hash.slice(-4);
-  return (
-    "<span>" +
-    short +
-    ' <span class="9mm-pos-mgr-copy-icon" title="Copy full TX hash"' +
-    ' data-copy-tx="' +
-    hash +
-    '">&#x274F;</span></span>'
-  );
-}
-
 /**
  * Update the ACTIVE / CLOSED status pill for the current position.
  * @param {object} d  Flattened status data.
@@ -461,7 +464,11 @@ export function _updateThrottleKpis(d) {
   const sub = g("kpiTodaySub");
   if (sub) {
     const lt = d.rebalanceEvents ? d.rebalanceEvents.length : 0;
-    sub.innerHTML = lt + " Lifetime<br>" + fmtReset(ts?.dailyResetAt);
+    sub.replaceChildren(
+      document.createTextNode(lt + " Lifetime"),
+      document.createElement("br"),
+      document.createTextNode(fmtReset(ts?.dailyResetAt)),
+    );
   }
 }
 

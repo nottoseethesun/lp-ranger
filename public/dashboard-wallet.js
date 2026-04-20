@@ -20,6 +20,7 @@ import { g, act, ACT_ICONS, csrfHeaders } from "./dashboard-helpers.js";
 import { saveMoralisApiKey } from "./dashboard-events.js";
 import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
+import * as unlockLog from "./dashboard-unlock-log.js";
 
 // ── Re-export the import module ───────────────────────────
 
@@ -499,9 +500,11 @@ function _restoreServerWallet(data) {
  * refresh).
  */
 export async function checkServerWalletStatus() {
+  unlockLog.logInfo("checkServerWalletStatus: fetching status");
   try {
     const res = await fetch("/api/wallet/status");
     const data = await res.json();
+    unlockLog.logStatus("checkServerWalletStatus", data);
     if (data.loaded && data.address) {
       _restoreServerWallet(data);
     } else {
@@ -509,8 +512,9 @@ export async function checkServerWalletStatus() {
       applyWalletUI();
       openWalletModal();
     }
-  } catch {
+  } catch (err) {
     // Server not available yet — leave current state as-is
+    unlockLog.logWarn("checkServerWalletStatus failed", err);
   }
 }
 
@@ -539,20 +543,27 @@ export function isWalletUnlocked() {
 
 /** Check if the wallet is locked and show unlock modal. */
 export async function checkWalletLocked() {
+  unlockLog.logInfo("checkWalletLocked: fetching status");
   try {
     const s = await (await fetch("/api/wallet/status")).json();
+    unlockLog.logStatus("checkWalletLocked", s);
     if (s.locked) {
       const m = g("walletUnlockModal");
-      if (m) m.classList.remove("hidden");
       const pw = g("unlockPassword");
+      unlockLog.logLockedBranch(m, pw);
+      if (m) m.classList.remove("hidden");
       if (pw) pw.focus();
       const ub = g("unlockWalletBtn");
       if (ub) {
         ub.disabled = false;
         ub.title = "Unlock wallet to manage positions";
       }
+      unlockLog.logInfo("modal shown; awaiting user submit of unlockForm");
     } else if (s.address) {
       // Wallet exists and is already unlocked (e.g. WALLET_PASSWORD env var).
+      unlockLog.logInfo(
+        "server reports already-unlocked wallet — skipping modal",
+      );
       _walletUnlocked = true;
       _validateMoralisAfterUnlock();
       // Retry the active position's unmanaged details fetch, which may have
@@ -562,19 +573,27 @@ export async function checkWalletLocked() {
         _resetLastFetchedId();
         _fetchUnmanagedDetails(active);
       }
+    } else {
+      unlockLog.logInfo("no wallet loaded on server — nothing to do");
     }
-  } catch {
-    /* */
+  } catch (err) {
+    unlockLog.logWarn("checkWalletLocked failed", err);
   }
 }
 
 /** Submit the unlock password to the server. */
 export async function submitUnlock(e) {
-  if (e) e.preventDefault();
+  const m = g("walletUnlockModal");
   const pw = g("unlockPassword");
-  if (!pw) return;
+  unlockLog.logSubmitEntry(e, m, pw);
+  if (e) e.preventDefault();
+  if (!pw) {
+    unlockLog.logSubmitAbort("password field missing");
+    return;
+  }
   const errEl = g("unlockError");
   try {
+    unlockLog.logSubmitPost(pw);
     const d = await (
       await fetch("/api/wallet/unlock", {
         method: "POST",
@@ -582,6 +601,7 @@ export async function submitUnlock(e) {
         body: JSON.stringify({ password: pw.value }),
       })
     ).json();
+    unlockLog.logSubmitResponse(d);
     if (d.ok) {
       _viewOnly = false;
       _walletUnlocked = true;

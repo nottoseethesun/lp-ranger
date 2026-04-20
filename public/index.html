@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776662904786">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776662904786">
+<link rel="stylesheet" href="style.css?v=1776724515523">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776724515523">
 </head>
 <body>
 
@@ -76,9 +76,12 @@
       </div>
       <div class="modal-field 9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-lg" id="genPwField">
         <label for="genPassword">Session password (protects your key on the server)</label>
-        <input type="hidden" name="username" value="wallet" autocomplete="username">
-        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="genPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPassword" title="Show/hide password">&#x1F441;</button></div>
-        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="genPasswordConfirm" autocomplete="off" placeholder="Confirm password…" aria-label="Confirm password"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+        <form class="9mm-pos-mgr-noop-form" autocomplete="on">
+          <input type="text" class="9mm-pos-mgr-visually-hidden" name="username" value="wallet" autocomplete="username" tabindex="-1" aria-hidden="true" readonly>
+          <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="genPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPassword" title="Show/hide password">&#x1F441;</button></div>
+          <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="genPasswordConfirm" autocomplete="off" placeholder="Confirm password…" aria-label="Confirm password"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="genPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+          <button type="submit" class="9mm-pos-mgr-visually-hidden" tabindex="-1" aria-hidden="true">Submit</button>
+        </form>
         <div class="9mm-pos-mgr-hint" id="genPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
@@ -131,9 +134,12 @@
       </div>
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label for="seedPassword">Session password (protects your key on the server)</label>
-        <input type="hidden" name="username" value="wallet" autocomplete="username">
-        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="seedPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPassword" title="Show/hide password">&#x1F441;</button></div>
-        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="seedPasswordConfirm" autocomplete="off" placeholder="Confirm password…" aria-label="Confirm password"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+        <form class="9mm-pos-mgr-noop-form" autocomplete="on">
+          <input type="text" class="9mm-pos-mgr-visually-hidden" name="username" value="wallet" autocomplete="username" tabindex="-1" aria-hidden="true" readonly>
+          <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="seedPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPassword" title="Show/hide password">&#x1F441;</button></div>
+          <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="seedPasswordConfirm" autocomplete="off" placeholder="Confirm password…" aria-label="Confirm password"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="seedPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+          <button type="submit" class="9mm-pos-mgr-visually-hidden" tabindex="-1" aria-hidden="true">Submit</button>
+        </form>
         <div class="9mm-pos-mgr-hint" id="seedPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
@@ -145,7 +151,10 @@
       <div class="modal-warning">⚠ Entering a private key carries risk. Use only on a trusted, offline-capable device.</div>
       <div class="modal-field">
         <label for="keyInput">Private key (hex, with or without 0x)</label>
-        <input type="password" class="modal-input" id="keyInput" placeholder="0x…" autocomplete="off">
+        <form class="9mm-pos-mgr-noop-form" autocomplete="off">
+          <input type="password" class="modal-input" id="keyInput" placeholder="0x…" autocomplete="off">
+          <button type="submit" class="9mm-pos-mgr-visually-hidden" tabindex="-1" aria-hidden="true">Submit</button>
+        </form>
       </div>
 
       <!-- Validation status badge -->
@@ -182,9 +191,12 @@
       </div>
       <div class="modal-field 9mm-pos-mgr-mt-lg">
         <label for="keyPassword">Session password (protects your key on the server)</label>
-        <input type="hidden" name="username" value="wallet" autocomplete="username">
-        <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="keyPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPassword" title="Show/hide password">&#x1F441;</button></div>
-        <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="keyPasswordConfirm" autocomplete="off" placeholder="Confirm password…" aria-label="Confirm password"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+        <form class="9mm-pos-mgr-noop-form" autocomplete="on">
+          <input type="text" class="9mm-pos-mgr-visually-hidden" name="username" value="wallet" autocomplete="username" tabindex="-1" aria-hidden="true" readonly>
+          <div class="9mm-pos-mgr-input-row"><input type="password" class="modal-input" id="keyPassword" name="password" autocomplete="new-password" placeholder="Set a password…"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPassword" title="Show/hide password">&#x1F441;</button></div>
+          <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mt-xs"><input type="password" class="modal-input" id="keyPasswordConfirm" autocomplete="off" placeholder="Confirm password…" aria-label="Confirm password"><button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="keyPasswordConfirm" title="Show/hide password">&#x1F441;</button></div>
+          <button type="submit" class="9mm-pos-mgr-visually-hidden" tabindex="-1" aria-hidden="true">Submit</button>
+        </form>
         <div class="9mm-pos-mgr-hint" id="keyPwMatch"></div>
         <div class="9mm-pos-mgr-hint">Required to reveal your key later. Not stored — cannot be recovered.</div>
       </div>
@@ -276,7 +288,11 @@
     </div>
     <div class="modal-field">
       <label for="revealPassword">Session password</label>
-      <input type="password" class="modal-input" id="revealPassword" placeholder="Enter your session password…">
+      <form class="9mm-pos-mgr-noop-form" autocomplete="on">
+        <input type="text" class="9mm-pos-mgr-visually-hidden" name="username" value="wallet" autocomplete="username" tabindex="-1" aria-hidden="true" readonly>
+        <input type="password" class="modal-input" id="revealPassword" name="password" autocomplete="current-password" placeholder="Enter your session password…">
+        <button type="submit" class="9mm-pos-mgr-visually-hidden" tabindex="-1" aria-hidden="true">Submit</button>
+      </form>
     </div>
     <div id="revealError" class="import-result err 9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-md"></div>
     <div id="revealResult" class="9mm-pos-mgr-initially-hidden 9mm-pos-mgr-mt-xl">
@@ -563,13 +579,13 @@
     <div class="9mm-pos-mgr-confirm-body">
       <p class="9mm-pos-mgr-help-text">Enter your wallet password to enable position management.</p>
       <form id="unlockForm" autocomplete="on">
-        <input type="hidden" name="username" value="wallet" autocomplete="username">
+        <input type="text" class="9mm-pos-mgr-visually-hidden" name="username" value="wallet" autocomplete="username" tabindex="-1" aria-hidden="true" readonly>
         <div class="9mm-pos-mgr-input-row 9mm-pos-mgr-mb-6">
-          <input type="password" name="password" id="unlockPassword" class="pinput" style="width:100%" autocomplete="current-password" placeholder="Wallet password" aria-label="Wallet password">
+          <input type="password" name="password" id="unlockPassword" class="pinput 9mm-pos-mgr-pinput-full" autocomplete="current-password" placeholder="Wallet password" aria-label="Wallet password">
           <button type="button" class="9mm-pos-mgr-btn-sm 9mm-pos-mgr-eye-btn" data-eye="unlockPassword" title="Show/hide password">&#x1F441;</button>
         </div>
-        <div id="unlockError" class="9mm-pos-mgr-text-danger hidden" style="margin-bottom:8px"></div>
-        <div style="display:flex;gap:8px">
+        <div id="unlockError" class="9mm-pos-mgr-text-danger hidden 9mm-pos-mgr-mb-sm"></div>
+        <div class="9mm-pos-mgr-row-gap-sm">
           <button type="submit" class="modal-btn">Unlock</button>
           <button type="button" class="modal-btn secondary" id="viewOnlyBtn">Run in View-Only Mode</button>
         </div>
@@ -1038,7 +1054,185 @@
 
 </div><!-- /app -->
 
+<!-- Templates cloned by dashboard JS (see cloneTpl in dashboard-helpers.js) -->
+<template id="tplAboutUpdate">Update available: <strong data-tpl="ver"></strong> &mdash; <a data-tpl="link" href="#" target="_blank" rel="noopener noreferrer">Get the update</a></template>
+
+<template id="tplScanTimeoutPopover">
+  <div class="9mm-pos-mgr-il-popover-inner">
+    <div class="9mm-pos-mgr-il-heading">Blockchain Scan Timeout</div>
+    <p class="9mm-pos-mgr-il-popover-p">The blockchain scan for this position is taking abnormally long. This can happen with very old pools that have extensive on-chain history.</p>
+    <p class="9mm-pos-mgr-il-popover-p">Please try again at a different time when the RPC endpoint may be less congested.</p>
+    <button type="button" class="9mm-pos-mgr-il-ok-btn" data-dismiss>OK</button>
+  </div>
+</template>
+
+<template id="tplIlDebugPopover">
+  <div class="9mm-pos-mgr-il-popover-inner" data-tpl="inner">
+    <div data-tpl="sectionSlot"></div>
+    <div class="9mm-pos-mgr-il-formula" data-tpl="formula"></div>
+    <div data-tpl="nowVsHodlSlot"></div>
+    <button type="button" class="9mm-pos-mgr-il-ok-btn" data-dismiss-il>Close</button>
+  </div>
+</template>
+
+<template id="tplIlDebugSection">
+  <div class="9mm-pos-mgr-il-section">
+    <div class="9mm-pos-mgr-il-heading" data-tpl="heading"></div>
+    <table class="9mm-pos-mgr-il-table">
+      <tbody>
+        <tr><td>LP Value (on-chain)</td><td data-tpl="lpValue"></td></tr>
+        <tr><td data-tpl="lblA0"></td><td data-tpl="a0"></td></tr>
+        <tr><td data-tpl="lblA1"></td><td data-tpl="a1"></td></tr>
+        <tr><td data-tpl="lblP0"></td><td data-tpl="p0"></td></tr>
+        <tr><td data-tpl="lblP1"></td><td data-tpl="p1"></td></tr>
+        <tr class="9mm-pos-mgr-il-sep"><td>HODL value</td><td data-tpl="hodlValue"></td></tr>
+        <tr class="9mm-pos-mgr-il-result"><td>IL/G (LP &minus; HODL)</td><td data-tpl="ilResult"></td></tr>
+      </tbody>
+    </table>
+  </div>
+</template>
+
+<template id="tplHodlBaselineCtx">Blockchain: <span data-tpl="chain"></span><br>Wallet: <span data-tpl="wallet"></span><br><span data-tpl="pair"></span><span data-tpl="pm"></span><br>NFT #<span data-tpl="tokenId"></span><span data-tpl="fee"></span></template>
+
+<template id="tplParamHelpModal">
+  <div class="9mm-pos-mgr-modal 9mm-pos-mgr-modal-help">
+    <h3 data-tpl="title">&nbsp;</h3>
+    <p class="9mm-pos-mgr-help-subtitle" data-tpl="subtitle" hidden></p>
+    <div class="9mm-pos-mgr-modal-body" data-tpl="body"></div>
+    <button type="button" class="9mm-pos-mgr-modal-close" data-dismiss-modal>Close</button>
+  </div>
+</template>
+
+<template id="tplParamHelpSection">
+  <h4 class="9mm-pos-mgr-help-heading" data-tpl="heading">&nbsp;</h4>
+  <p data-tpl="body"></p>
+</template>
+
+<template id="tplPnlBreakdownModal">
+  <div class="9mm-pos-mgr-modal 9mm-pos-mgr-modal-help">
+    <h3 data-tpl="title">&nbsp;</h3>
+    <div class="9mm-pos-mgr-modal-body" data-tpl="body"></div>
+    <button type="button" class="9mm-pos-mgr-modal-close" data-dismiss-modal>Close</button>
+  </div>
+</template>
+
+<template id="tplPnlBreakdownTable">
+  <table class="9mm-pos-mgr-pnl-breakdown-table">
+    <tbody>
+      <tr><td data-tpl="feesLabel"></td><td data-tpl="fees"></td></tr>
+      <tr><td>Fees Compounded (subtracted)</td><td data-tpl="compounded"></td></tr>
+      <tr><td>Gas Costs</td><td data-tpl="gas"></td></tr>
+      <tr><td>Price Change</td><td data-tpl="priceChange"></td></tr>
+      <tr><td>Realized Gains</td><td data-tpl="realized"></td></tr>
+      <tr class="9mm-pos-mgr-pnl-breakdown-total"><td><strong>Net P&amp;L</strong></td><td><strong data-tpl="total"></strong></td></tr>
+    </tbody>
+  </table>
+</template>
+
+<template id="tplPnlBreakdownExplanation">
+  <h4 class="9mm-pos-mgr-help-heading">Price Change</h4>
+  <p><strong>Price Change</strong> = Current Value (<span data-tpl="currentValue"></span>) &minus; <span data-tpl="depositLabel"></span> (<span data-tpl="deposit"></span>) = <span data-tpl="priceChange"></span>. This captures both token price appreciation and impermanent loss together. If the tokens in your pool changed in price since you deposited, this figure reflects that net effect on your position&rsquo;s value.</p>
+  <h4 class="9mm-pos-mgr-help-heading">Profit</h4>
+  <p><strong>Profit</strong> is a separate metric shown below: <span data-tpl="feesLabel"></span> &minus; Fees Compounded &minus; Gas +/&minus; IL/G. It excludes Price Change but includes Impermanent Loss/Gain explicitly, showing how the position performed as a fee-earning instrument independent of token price movements.</p>
+</template>
+
+<template id="tplPnlBreakdownDaysNote">
+  <h4 class="9mm-pos-mgr-help-heading">Return Period (Days)</h4>
+  <p>The number of days shown in &ldquo;Return Over X Days&rdquo; is measured from the date of the <strong>first liquidity position</strong> that this wallet created in this pool. LP Ranger scans on-chain history (up to 5 years back) to find the earliest mint event for this wallet and pool pair. The day count runs from that first position&rsquo;s mint date to today, regardless of how many subsequent positions (rebalances) have occurred in between.</p>
+</template>
+
+<template id="tplTableEmptyRow">
+  <tr><td class="9mm-pos-mgr-table-empty" data-tpl="cell"></td></tr>
+</template>
+
+<template id="tplDailyPnlRow">
+  <tr>
+    <td data-tpl="date"></td>
+    <td data-tpl="fees"></td>
+    <td data-tpl="gas"></td>
+    <td class="9mm-pos-mgr-text-right" data-tpl="ilg"></td>
+    <td class="9mm-pos-mgr-text-right" data-tpl="profit"></td>
+    <td class="9mm-pos-mgr-text-right" data-tpl="net"></td>
+    <td class="9mm-pos-mgr-text-right" data-tpl="residual"></td>
+  </tr>
+</template>
+
+<template id="tplRebEventRow">
+  <tr>
+    <td data-tpl="index"></td>
+    <td data-privacy="blur" class="hist-time-cell"><span class="hist-time-line" data-tpl="utc"></span><br><span class="hist-time-line 9mm-pos-mgr-text-muted-sm" data-tpl="local"></span></td>
+    <td data-privacy="blur" data-tpl="oldRange"></td>
+    <td data-privacy="blur" data-tpl="newRange"></td>
+    <td data-tpl="swap"></td>
+    <td data-privacy="blur" data-tpl="txCell"><span data-tpl="txShort"></span> <span class="9mm-pos-mgr-copy-icon" data-tpl="copyIcon" title="Copy full TX hash">&#x274F;</span></td>
+  </tr>
+</template>
+
+<template id="tplStatusModal">
+  <div class="9mm-pos-mgr-modal" data-tpl="inner">
+    <h3 data-tpl="title">&nbsp;</h3>
+    <div class="9mm-pos-mgr-modal-body" data-tpl="body"></div>
+    <button type="button" class="9mm-pos-mgr-modal-close" data-dismiss-modal>OK</button>
+  </div>
+</template>
+
+<template id="tplWalletGoneModal">
+  <div class="9mm-pos-mgr-modal 9mm-pos-mgr-modal-warning">
+    <h3>Wallet file not found</h3>
+    <p>The encrypted wallet file has been deleted (e.g. via <code>npm run clean</code>). Re-import your wallet to continue.</p>
+    <button type="button" class="9mm-pos-mgr-modal-close" data-dismiss-modal>OK</button>
+  </div>
+</template>
+
+<template id="tplPosContext">
+  <p class="9mm-pos-mgr-text-muted"><span data-tpl="pair"></span><span data-tpl="pm"></span><br>NFT #<span data-tpl="tokenId"></span><span data-tpl="fee"></span><br><span data-tpl="chain"></span> &middot; <span data-tpl="wallet"></span></p>
+</template>
+
+<template id="tplIlDebugNowVsHodl">
+  <div class="9mm-pos-mgr-il-now-vs-hodl">
+    <div class="9mm-pos-mgr-il-heading" data-tpl="heading"></div>
+    <table class="9mm-pos-mgr-il-table">
+      <tbody>
+        <tr><td data-tpl="lblNow0"></td><td data-tpl="now0"></td></tr>
+        <tr><td data-tpl="lblBase0"></td><td data-tpl="base0"></td></tr>
+        <tr class="9mm-pos-mgr-il-result"><td data-tpl="lblRatio0"></td><td data-tpl="ratio0"></td></tr>
+        <tr class="9mm-pos-mgr-il-sep"><td data-tpl="lblNow1"></td><td data-tpl="now1"></td></tr>
+        <tr><td data-tpl="lblBase1"></td><td data-tpl="base1"></td></tr>
+        <tr class="9mm-pos-mgr-il-result"><td data-tpl="lblRatio1"></td><td data-tpl="ratio1"></td></tr>
+      </tbody>
+    </table>
+  </div>
+</template>
+
+<template id="tplActItem">
+  <div class="ai">
+    <div class="aico" data-tpl="aico"></div>
+    <div class="ab"><div class="att" data-tpl="title"></div><div class="adt" data-tpl="main"></div></div>
+    <div class="atm" data-tpl="when"></div>
+    <div class="ai-ctx" data-tpl="ctx" hidden></div>
+  </div>
+</template>
+
+<template id="tplPosEmptyState">
+  <div class="pos-empty">
+    <div class="pos-empty-icon">&#9675;</div>
+    <div data-tpl="msg"></div>
+  </div>
+</template>
+
+<template id="tplPosRow">
+  <div class="pos-row" data-tpl="root">
+    <div class="pos-row-idx" data-tpl="idx"></div>
+    <span class="pos-type-chip" data-tpl="chip"></span>
+    <div class="pos-row-body">
+      <div class="pos-row-title" data-tpl="title"></div>
+      <div class="pos-row-meta" data-tpl="meta"></div>
+    </div>
+    <div class="pos-row-status" data-tpl="status"></div>
+  </div>
+</template>
+
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776662904786"></script>
+<script src="dist/bundle.js?v=1776724515523"></script>
 </body>
 </html>

@@ -17,6 +17,24 @@ export function g(id) {
   return document.getElementById(id);
 }
 
+/**
+ * Clone the content of a <template> by id and return the resulting
+ * DocumentFragment. Caller fills [data-tpl="..."] slots via textContent
+ * (or sets href/src/etc.) and then appends the fragment to the DOM.
+ *
+ * This is the project-wide replacement for innerHTML assignments from
+ * JS: the static markup lives in public/index.html, and JS only owns
+ * the dynamic values. See feedback_no_new_html_in_js for the rule.
+ *
+ * @param {string} id  The <template> element's id attribute.
+ * @returns {DocumentFragment|null}
+ */
+export function cloneTpl(id) {
+  const tpl = document.getElementById(id);
+  if (!tpl || !("content" in tpl)) return null;
+  return tpl.content.cloneNode(true);
+}
+
 const _EMOJI = [
   "🌵",
   "🔥",
@@ -87,20 +105,80 @@ export const ACT_ICONS = {
 };
 /** Maximum entries in the Activity Log. */
 const ACT_LOG_MAX = 500;
-export function act(icon, type, title, detail, when) {
+const _ICON_NODE_CACHE = new Map();
+
+/**
+ * Populate an icon container. If `icon` looks like markup (starts with "<"),
+ * parse it once via DOMParser and append a clone; otherwise treat it as text.
+ * Keeps the activity log free of JS-side innerHTML.
+ */
+function _setActIcon(el, icon) {
+  if (!icon) return;
+  if (icon.charAt(0) !== "<") {
+    el.textContent = icon;
+    return;
+  }
+  let cached = _ICON_NODE_CACHE.get(icon);
+  if (!cached) {
+    const doc = new DOMParser().parseFromString(icon, "image/svg+xml");
+    cached = doc.documentElement;
+    _ICON_NODE_CACHE.set(icon, cached);
+  }
+  el.appendChild(cached.cloneNode(true));
+}
+
+/** Append a short TX hash + copy icon to the main detail element. */
+function _appendTxAffordance(adt, txHash) {
+  adt.appendChild(document.createElement("br"));
+  const wrap = document.createElement("span");
+  const short = document.createElement("span");
+  short.textContent = txHash.slice(0, 4) + "\u2026" + txHash.slice(-4) + " ";
+  const copy = document.createElement("span");
+  copy.className = "9mm-pos-mgr-copy-icon";
+  copy.title = "Copy full TX hash";
+  copy.setAttribute("data-copy-tx", txHash);
+  copy.textContent = "\u274F";
+  wrap.appendChild(short);
+  wrap.appendChild(copy);
+  adt.appendChild(wrap);
+}
+
+/**
+ * Append an entry to the Activity Log.
+ * @param {string} icon    SVG markup (ACT_ICONS.*) or plain text/emoji.
+ * @param {string} type    CSS modifier class for the icon (e.g. "start", "alert").
+ * @param {string} title   Plain-text title.
+ * @param {string} detail  Plain-text detail; first line is main, remainder is ctx.
+ * @param {Date}   [when]  Timestamp; defaults to now.
+ * @param {string} [txHash] Optional TX hash — appended as short hash + copy icon.
+ */
+export function act(icon, type, title, detail, when, txHash) {
   const list = g("actList");
   const ts = (when || new Date()).getTime();
-  const div = document.createElement("div");
-  div.className = "ai";
+  const frag = cloneTpl("tplActItem");
+  if (!frag) return;
+  const div = frag.querySelector(".ai");
   div.dataset.ts = ts;
   const nl = detail.indexOf("\n");
   const main = nl >= 0 ? detail.slice(0, nl) : detail;
   const ctx = nl >= 0 ? detail.slice(nl + 1) : "";
-  div.innerHTML =
-    `<div class="aico ${type}">${icon}</div>` +
-    `<div class="ab"><div class="att">${title}</div><div class="adt">${main}</div></div>` +
-    `<div class="atm">${fmtDateTime(when || new Date())}</div>` +
-    (ctx ? `<div class="ai-ctx">${ctx}</div>` : "");
+  const aico = div.querySelector('[data-tpl="aico"]');
+  aico.classList.add(type);
+  _setActIcon(aico, icon);
+  div.querySelector('[data-tpl="title"]').textContent = title;
+  const adt = div.querySelector('[data-tpl="main"]');
+  adt.textContent = main;
+  if (txHash) _appendTxAffordance(adt, txHash);
+  div.querySelector('[data-tpl="when"]').textContent = fmtDateTime(
+    when || new Date(),
+  );
+  const ctxEl = div.querySelector('[data-tpl="ctx"]');
+  if (ctx) {
+    ctxEl.textContent = ctx;
+    ctxEl.hidden = false;
+  } else {
+    ctxEl.remove();
+  }
   let ref = list.firstChild;
   while (ref && Number(ref.dataset?.ts) > ts) ref = ref.nextSibling;
   list.insertBefore(div, ref);

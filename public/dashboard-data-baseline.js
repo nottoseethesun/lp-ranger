@@ -4,7 +4,7 @@
  * results and prompts for manual override when prices are missing.
  * Extracted from dashboard-data-kpi.js for line-count compliance.
  */
-import { g, truncName, botConfig } from "./dashboard-helpers.js";
+import { g, truncName, botConfig, cloneTpl } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 import { _poolKey } from "./dashboard-data-deposit.js";
 import { _fmtUsd } from "./dashboard-data-kpi.js";
@@ -33,7 +33,16 @@ function _fillBaselineCtx() {
   const fee = a.fee ? " \u00B7 " + (a.fee / 10000).toFixed(2) + "% fee" : "";
   const pm = botConfig.pmName || (a.contractAddress || "").slice(0, 10);
   const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
-  ctx.innerHTML = `Blockchain: ${botConfig.chainName || "PulseChain"}<br>Wallet: ${w}<br>${pair}${pm ? " on " + pm : ""}<br>NFT #${a.tokenId}${fee}`;
+  const frag = cloneTpl("tplHodlBaselineCtx");
+  if (!frag) return;
+  frag.querySelector('[data-tpl="chain"]').textContent =
+    botConfig.chainName || "PulseChain";
+  frag.querySelector('[data-tpl="wallet"]').textContent = w;
+  frag.querySelector('[data-tpl="pair"]').textContent = pair;
+  frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";
+  frag.querySelector('[data-tpl="tokenId"]').textContent = a.tokenId;
+  frag.querySelector('[data-tpl="fee"]').textContent = fee;
+  ctx.replaceChildren(frag);
 }
 
 export function _showBaselineModal(d, isFallback, isNew, curMissing, missing) {

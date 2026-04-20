@@ -6,7 +6,7 @@
  *   and populates the dashboard KPIs using shared rendering functions.
  */
 
-import { g, botConfig, csrfHeaders } from "./dashboard-helpers.js";
+import { g, botConfig, csrfHeaders, cloneTpl } from "./dashboard-helpers.js";
 import { resetKpis, pollNow } from "./dashboard-data.js";
 import {
   loadPriceOverrides,
@@ -155,15 +155,8 @@ function _showScanTimeoutDialog() {
   const el = document.createElement("div");
   el.className = "9mm-pos-mgr-il-popover";
   el.id = "scanTimeoutModal";
-  el.innerHTML = `<div class="9mm-pos-mgr-il-popover-inner">
-    <div class="9mm-pos-mgr-il-heading">Blockchain Scan Timeout</div>
-    <p style="margin:0.8em 0">The blockchain scan for this position is taking
-    abnormally long. This can happen with very old pools that have extensive
-    on-chain history.</p>
-    <p style="margin:0.8em 0">Please try again at a different time when the
-    RPC endpoint may be less congested.</p>
-    <button type="button" class="9mm-pos-mgr-il-ok-btn" data-dismiss>OK</button>
-  </div>`;
+  const frag = cloneTpl("tplScanTimeoutPopover");
+  if (frag) el.appendChild(frag);
   el.querySelector("[data-dismiss]").addEventListener("click", () =>
     el.remove(),
   );

@@ -5,7 +5,7 @@
  *   for line-count compliance.
  */
 
-import { g } from "./dashboard-helpers.js";
+import { g, cloneTpl } from "./dashboard-helpers.js";
 import {
   posStore,
   PAGE_SIZE,
@@ -72,18 +72,9 @@ export function renderPosBrowser() {
   // Render list
   const list = g("posList");
   if (!filtered.length) {
-    list.innerHTML =
-      '<div class="pos-empty">' +
-      '<div class="pos-empty-icon">\u25CB</div>' +
-      "<div>" +
-      (all.length
-        ? "No positions match your filter."
-        : "No positions loaded. Import a wallet or click Scan.") +
-      "</div></div>";
+    _renderEmpty(list, all.length);
   } else {
-    list.innerHTML = pageItems
-      .map((e) => renderPosRow(e, posBrowserSelected))
-      .join("");
+    _renderRows(list, pageItems);
     if (localStorage.getItem("9mm_privacy_mode") === "1")
       list
         .querySelectorAll(".pos-row-title, .pos-row-meta")
@@ -130,9 +121,32 @@ function _posRowStatus(e, isManaged, inRange) {
     : { cls: "out", label: "\u2717 OUT", managed: isManaged };
 }
 
-/** Render a single position row for the browser. */
-export function renderPosRow(e, selectedIdx) {
-  const inR = checkInRange(e);
+/** Render the "no rows" empty state using the template. */
+function _renderEmpty(list, hasAny) {
+  const frag = cloneTpl("tplPosEmptyState");
+  if (!frag) {
+    list.replaceChildren();
+    return;
+  }
+  const msg = frag.querySelector('[data-tpl="msg"]');
+  if (msg)
+    msg.textContent = hasAny
+      ? "No positions match your filter."
+      : "No positions loaded. Import a wallet or click Scan.";
+  list.replaceChildren(frag);
+}
+
+/** Append rendered row elements into the list container. */
+function _renderRows(list, pageItems) {
+  list.replaceChildren();
+  for (const e of pageItems) {
+    const el = renderPosRow(e, posBrowserSelected);
+    if (el) list.appendChild(el);
+  }
+}
+
+/** Compute display-only derived values for a row. */
+function _rowDisplay(e) {
   const pair =
     _tokenName(e.token0Symbol, e.token0) +
     "/" +
@@ -145,53 +159,60 @@ export function renderPosRow(e, selectedIdx) {
         ? e.contractAddress.slice(0, 10) + "\u2026"
         : "ERC-20";
   const ws = e.walletAddress.slice(0, 8) + "\u2026" + e.walletAddress.slice(-4);
+  return { pair, feePct, idStr, ws };
+}
+
+/** Populate the idx cell (index number + optional managed dot). */
+function _fillIdxCell(cell, idxNum, mgd, managed) {
+  cell.classList.toggle("active-idx", mgd);
+  cell.replaceChildren();
+  cell.appendChild(document.createTextNode(String(idxNum)));
+  if (managed) {
+    const dot = document.createElement("span");
+    dot.className = "9mm-pos-mgr-managed-dot";
+    dot.title = "Being actively managed";
+    cell.appendChild(dot);
+  }
+}
+
+/** Render a single position row for the browser. */
+export function renderPosRow(e, selectedIdx) {
+  const frag = cloneTpl("tplPosRow");
+  if (!frag) return null;
+  const root = frag.querySelector('[data-tpl="root"]');
+  const inR = checkInRange(e);
   const hl = e.index === selectedIdx;
   const mgd =
     e.positionType === "nft" && _getManagedTokenIds().has(String(e.tokenId));
   const { cls, label, managed } = _posRowStatus(e, mgd, inR);
-  const dot = managed
-    ? '<span class="9mm-pos-mgr-managed-dot" title="Being actively managed"></span>'
-    : "";
+  const { pair, feePct, idStr, ws } = _rowDisplay(e);
   const star = mgd ? " \u2605" : "";
   const tL = e.tickLower || 0,
     tU = e.tickUpper || 0;
-  return (
-    '<div class="pos-row ' +
-    (e.active ? "active-pos" : "") +
-    " " +
-    (hl ? "selected" : "") +
-    '" data-pos-idx="' +
-    e.index +
-    '">' +
-    '<div class="pos-row-idx ' +
-    (mgd ? "active-idx" : "") +
-    '">' +
-    (e.index + 1) +
-    dot +
-    "</div>" +
-    '<span class="pos-type-chip ' +
-    e.positionType +
-    '">' +
-    e.positionType.toUpperCase() +
-    "</span>" +
-    '<div class="pos-row-body"><div class="pos-row-title">' +
-    idStr +
-    " \u00B7 " +
-    pair +
-    " \u00B7 " +
-    feePct +
-    star +
-    '</div><div class="pos-row-meta">' +
-    ws +
-    " \u00B7 ticks [" +
-    tL +
-    ", " +
-    tU +
-    "]</div></div>" +
-    '<div class="pos-row-status ' +
-    cls +
-    '">' +
-    label +
-    "</div></div>"
+
+  root.classList.toggle("active-pos", !!e.active);
+  root.classList.toggle("selected", hl);
+  root.setAttribute("data-pos-idx", String(e.index));
+
+  _fillIdxCell(
+    root.querySelector('[data-tpl="idx"]'),
+    e.index + 1,
+    mgd,
+    managed,
   );
+
+  const chip = root.querySelector('[data-tpl="chip"]');
+  chip.classList.add(e.positionType);
+  chip.textContent = e.positionType.toUpperCase();
+
+  root.querySelector('[data-tpl="title"]').textContent =
+    idStr + " \u00B7 " + pair + " \u00B7 " + feePct + star;
+  root.querySelector('[data-tpl="meta"]').textContent =
+    ws + " \u00B7 ticks [" + tL + ", " + tU + "]";
+
+  const statusEl = root.querySelector('[data-tpl="status"]');
+  statusEl.classList.add(cls);
+  statusEl.textContent = label;
+
+  return root;
 }

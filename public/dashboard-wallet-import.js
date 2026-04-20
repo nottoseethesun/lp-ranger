@@ -12,7 +12,13 @@
  * dashboard-wallet.js (wallet state, confirmWallet, etc.).
  */
 
-import { g, act, ACT_ICONS, csrfHeaders } from "./dashboard-helpers.js";
+import {
+  g,
+  act,
+  ACT_ICONS,
+  csrfHeaders,
+  cloneTpl,
+} from "./dashboard-helpers.js";
 import { ethers } from "./ethers-adapter.js";
 import {
   wallet,
@@ -338,15 +344,9 @@ function _showWalletFileGoneDialog() {
   const o = document.createElement("div");
   o.className = "9mm-pos-mgr-modal-overlay";
   o.id = id;
-  o.innerHTML =
-    '<div class="9mm-pos-mgr-modal ' +
-    '9mm-pos-mgr-modal-warning">' +
-    "<h3>Wallet file not found</h3>" +
-    "<p>The encrypted wallet file has been deleted " +
-    "(e.g. via <code>npm run clean</code>). " +
-    "Re-import your wallet to continue.</p>" +
-    '<button class="9mm-pos-mgr-modal-close" ' +
-    "data-dismiss-modal>OK</button></div>";
+  const frag = cloneTpl("tplWalletGoneModal");
+  if (!frag) return;
+  o.appendChild(frag);
   o.querySelector("[data-dismiss-modal]").addEventListener("click", () => {
     o.remove();
     openWalletModal();

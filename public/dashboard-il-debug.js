@@ -17,6 +17,8 @@
  * Depends on: dashboard-helpers.js (g).
  */
 
+import { cloneTpl } from "./dashboard-helpers.js";
+
 /** @type {object|null} Latest snapshot data from the polling loop. */
 let _lastData = null;
 let _posStore = null;
@@ -78,18 +80,27 @@ function _pct(now, hodl) {
  * @returns {string} HTML string (empty if no current amounts).
  */
 function _buildNowVsHodl(now0, now1, base0, base1, t0sym, t1sym, baseLabel) {
-  if (!Number.isFinite(now0) || !Number.isFinite(now1)) return "";
-  return `<div class="9mm-pos-mgr-il-now-vs-hodl">
-    <div class="9mm-pos-mgr-il-heading">Coin Count: Now vs ${baseLabel}</div>
-    <table class="9mm-pos-mgr-il-table">
-      <tr><td>Now ${t0sym}</td><td>${_fmt(now0)}</td></tr>
-      <tr><td>${baseLabel} ${t0sym}</td><td>${_fmt(base0)}</td></tr>
-      <tr class="9mm-pos-mgr-il-result"><td>${t0sym} Now / ${baseLabel}</td><td>${_pct(now0, base0)}</td></tr>
-      <tr class="9mm-pos-mgr-il-sep"><td>Now ${t1sym}</td><td>${_fmt(now1)}</td></tr>
-      <tr><td>${baseLabel} ${t1sym}</td><td>${_fmt(base1)}</td></tr>
-      <tr class="9mm-pos-mgr-il-result"><td>${t1sym} Now / ${baseLabel}</td><td>${_pct(now1, base1)}</td></tr>
-    </table>
-  </div>`;
+  if (!Number.isFinite(now0) || !Number.isFinite(now1)) return null;
+  const frag = cloneTpl("tplIlDebugNowVsHodl");
+  if (!frag) return null;
+  const set = (key, val) => {
+    const el = frag.querySelector(`[data-tpl="${key}"]`);
+    if (el) el.textContent = val;
+  };
+  set("heading", "Coin Count: Now vs " + baseLabel);
+  set("lblNow0", "Now " + t0sym);
+  set("now0", _fmt(now0));
+  set("lblBase0", baseLabel + " " + t0sym);
+  set("base0", _fmt(base0));
+  set("lblRatio0", t0sym + " Now / " + baseLabel);
+  set("ratio0", _pct(now0, base0));
+  set("lblNow1", "Now " + t1sym);
+  set("now1", _fmt(now1));
+  set("lblBase1", baseLabel + " " + t1sym);
+  set("base1", _fmt(base1));
+  set("lblRatio1", t1sym + " Now / " + baseLabel);
+  set("ratio1", _pct(now1, base1));
+  return frag;
 }
 
 /**
@@ -119,21 +130,32 @@ function _buildSection(
   const hasData = a0 > 0 || a1 > 0;
   const d = "\u2014";
   const hodlValue = hasData ? a0 * price0 + a1 * price1 : 0;
-  const ilCls =
-    ilResult > 0 ? "kpi-value pos" : ilResult < 0 ? "kpi-value neg" : "";
-  return `<div class="9mm-pos-mgr-il-section">
-    <div class="9mm-pos-mgr-il-heading">${label}</div>
-    <table class="9mm-pos-mgr-il-table">
-      <tr><td>LP Value (on-chain)</td><td>${_usd(lpValue)}</td></tr>
-      <tr><td>HODL ${t0sym} deposited</td><td>${hasData ? _fmt(a0) : d}</td></tr>
-      <tr><td>HODL ${t1sym} deposited</td><td>${hasData ? _fmt(a1) : d}</td></tr>
-      <tr><td>Current ${t0sym} price</td><td>${hasData ? _usd(price0) : d}</td></tr>
-      <tr><td>Current ${t1sym} price</td><td>${hasData ? _usd(price1) : d}</td></tr>
-      <tr class="9mm-pos-mgr-il-sep"><td>HODL value</td><td>${hasData ? _usd(hodlValue) : d}</td></tr>
-      <tr class="9mm-pos-mgr-il-result"><td>IL/G (LP \u2212 HODL)</td>
-        <td class="${ilCls}">${hasData ? (ilResult > 0 ? "+" : "") + _usdPrecise(ilResult) : d}</td></tr>
-    </table>
-  </div>`;
+  const frag = cloneTpl("tplIlDebugSection");
+  if (!frag) return null;
+  const set = (key, val) => {
+    const el = frag.querySelector(`[data-tpl="${key}"]`);
+    if (el) el.textContent = val;
+  };
+  set("heading", label);
+  set("lpValue", _usd(lpValue));
+  set("lblA0", "HODL " + t0sym + " deposited");
+  set("a0", hasData ? _fmt(a0) : d);
+  set("lblA1", "HODL " + t1sym + " deposited");
+  set("a1", hasData ? _fmt(a1) : d);
+  set("lblP0", "Current " + t0sym + " price");
+  set("p0", hasData ? _usd(price0) : d);
+  set("lblP1", "Current " + t1sym + " price");
+  set("p1", hasData ? _usd(price1) : d);
+  set("hodlValue", hasData ? _usd(hodlValue) : d);
+  const ilCell = frag.querySelector('[data-tpl="ilResult"]');
+  if (ilCell) {
+    ilCell.textContent = hasData
+      ? (ilResult > 0 ? "+" : "") + _usdPrecise(ilResult)
+      : d;
+    if (ilResult > 0) ilCell.className = "kpi-value pos";
+    else if (ilResult < 0) ilCell.className = "kpi-value neg";
+  }
+  return frag;
 }
 
 /** Resolve token symbols from posStore (has symbols) or activePosition (addresses only). */
@@ -181,15 +203,18 @@ export function showILDebug(panel) {
   const el = document.createElement("div");
   el.className = "9mm-pos-mgr-il-popover";
   el.id = "9mm-il-debug-popover";
-  const innerCls = isCur
-    ? "9mm-pos-mgr-il-popover-inner 9mm-pos-mgr-il-popover-wide"
-    : "9mm-pos-mgr-il-popover-inner";
-  el.innerHTML = `<div class="${innerCls}">
-    ${_buildSection(label, sectionInputs, inputs.lpValue, inputs.price0, inputs.price1, ilResult, t0sym, t1sym)}
-    <div class="9mm-pos-mgr-il-formula">IL = LP Value \u2212 (${t0sym} deposited \u00D7 ${t0sym} price + ${t1sym} deposited \u00D7 ${t1sym} price)</div>
-    ${nowVsHodl}
-    <button class="9mm-pos-mgr-il-ok-btn" data-dismiss-il>Close</button>
-  </div>`;
+  const frag = _buildPopoverFrag({
+    isCur,
+    label,
+    sectionInputs,
+    inputs,
+    ilResult,
+    t0sym,
+    t1sym,
+    nowVsHodl,
+  });
+  if (!frag) return;
+  el.appendChild(frag);
   el.querySelector("[data-dismiss-il]").addEventListener(
     "click",
     dismissILDebug,
@@ -198,6 +223,45 @@ export function showILDebug(panel) {
     if (e.target === el) dismissILDebug();
   });
   document.body.appendChild(el);
+}
+
+/**
+ * Assemble the IL-debug popover fragment from templates.
+ * Kept separate from showILDebug to keep complexity under the 17 cap.
+ */
+function _buildPopoverFrag(o) {
+  const frag = cloneTpl("tplIlDebugPopover");
+  if (!frag) return null;
+  const inner = frag.querySelector('[data-tpl="inner"]');
+  if (o.isCur) inner.classList.add("9mm-pos-mgr-il-popover-wide");
+  const sectionFrag = _buildSection(
+    o.label,
+    o.sectionInputs,
+    o.inputs.lpValue,
+    o.inputs.price0,
+    o.inputs.price1,
+    o.ilResult,
+    o.t0sym,
+    o.t1sym,
+  );
+  const sectionSlot = frag.querySelector('[data-tpl="sectionSlot"]');
+  if (sectionSlot && sectionFrag) sectionSlot.replaceWith(sectionFrag);
+  frag.querySelector('[data-tpl="formula"]').textContent =
+    "IL = LP Value \u2212 (" +
+    o.t0sym +
+    " deposited \u00D7 " +
+    o.t0sym +
+    " price + " +
+    o.t1sym +
+    " deposited \u00D7 " +
+    o.t1sym +
+    " price)";
+  const nvhSlot = frag.querySelector('[data-tpl="nowVsHodlSlot"]');
+  if (nvhSlot) {
+    if (o.nowVsHodl) nvhSlot.replaceWith(o.nowVsHodl);
+    else nvhSlot.remove();
+  }
+  return frag;
 }
 
 /** Remove the IL debug popover if open. */

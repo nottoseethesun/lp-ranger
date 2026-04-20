@@ -4,7 +4,7 @@
  * Extracted from dashboard-events.js to keep that file under the 500-line limit.
  */
 
-import { g } from "./dashboard-helpers.js";
+import { g, cloneTpl } from "./dashboard-helpers.js";
 
 const _GH_API = "https://api.github.com/repos/nottoseethesun/lp-ranger";
 
@@ -77,13 +77,12 @@ export async function checkForUpdate() {
       return;
     }
     if (newer) {
-      row.innerHTML =
-        "Update available: <strong>" +
-        latestVer +
-        "</strong> \u2014 " +
-        '<a href="' +
-        rel.html_url +
-        '" target="_blank" rel="noopener noreferrer">Get the update</a>';
+      const frag = cloneTpl("tplAboutUpdate");
+      if (frag) {
+        frag.querySelector('[data-tpl="ver"]').textContent = latestVer;
+        frag.querySelector('[data-tpl="link"]').href = rel.html_url;
+        row.replaceChildren(frag);
+      }
     } else {
       row.textContent = "Up to date";
     }
