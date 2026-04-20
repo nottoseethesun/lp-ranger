@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776667089892">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776667089892">
+<link rel="stylesheet" href="style.css?v=1776667521283">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776667521283">
 </head>
 <body>
 
@@ -1188,7 +1188,26 @@
   </div>
 </template>
 
+<template id="tplPosEmptyState">
+  <div class="pos-empty">
+    <div class="pos-empty-icon">&#9675;</div>
+    <div data-tpl="msg"></div>
+  </div>
+</template>
+
+<template id="tplPosRow">
+  <div class="pos-row" data-tpl="root">
+    <div class="pos-row-idx" data-tpl="idx"></div>
+    <span class="pos-type-chip" data-tpl="chip"></span>
+    <div class="pos-row-body">
+      <div class="pos-row-title" data-tpl="title"></div>
+      <div class="pos-row-meta" data-tpl="meta"></div>
+    </div>
+    <div class="pos-row-status" data-tpl="status"></div>
+  </div>
+</template>
+
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776667089892"></script>
+<script src="dist/bundle.js?v=1776667521283"></script>
 </body>
 </html>
