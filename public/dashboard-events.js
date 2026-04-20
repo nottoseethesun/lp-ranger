@@ -335,6 +335,13 @@ export function bindAllEvents() {
   /* ── Wallet unlock ────────────────────── */
   const uf = g("unlockForm");
   if (uf) uf.addEventListener("submit", submitUnlock);
+
+  /*- Password-manager-friendly wrapper forms have no action/handler. Prevent
+   *  Enter-key submissions from reloading the page. unlockForm has its own
+   *  submit handler above, so the noop binding below is a no-op for it. */
+  document
+    .querySelectorAll('form[class~="9mm-pos-mgr-noop-form"]')
+    .forEach((f) => f.addEventListener("submit", (e) => e.preventDefault()));
   _click("viewOnlyBtn", dismissToViewOnly);
   _click("unlockWalletBtn", () => {
     const m = g("walletUnlockModal");

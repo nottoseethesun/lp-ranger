@@ -229,7 +229,12 @@ function _buildPadRow(templateId) {
   frag.querySelectorAll("[data-tpl]").forEach((el) => {
     el.textContent = "\u00A0";
   });
-  const copy = frag.querySelector(".9mm-pos-mgr-copy-icon");
+  /*- Classes that start with a digit (like "9mm-pos-mgr-copy-icon") are
+   *  not valid in bare CSS class-selector syntax — querySelector throws
+   *  SyntaxError. Use the template's data-tpl attribute instead, which
+   *  also unambiguously identifies the copy-icon slot.
+   */
+  const copy = frag.querySelector('[data-tpl="copyIcon"]');
   if (copy) copy.remove();
   return frag;
 }
