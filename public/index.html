@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776664554502">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776664554502">
+<link rel="stylesheet" href="style.css?v=1776667089892">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776667089892">
 </head>
 <body>
 
@@ -1160,6 +1160,14 @@
   </div>
 </template>
 
+<template id="tplWalletGoneModal">
+  <div class="9mm-pos-mgr-modal 9mm-pos-mgr-modal-warning">
+    <h3>Wallet file not found</h3>
+    <p>The encrypted wallet file has been deleted (e.g. via <code>npm run clean</code>). Re-import your wallet to continue.</p>
+    <button type="button" class="9mm-pos-mgr-modal-close" data-dismiss-modal>OK</button>
+  </div>
+</template>
+
 <template id="tplPosContext">
   <p class="9mm-pos-mgr-text-muted"><span data-tpl="pair"></span><span data-tpl="pm"></span><br>NFT #<span data-tpl="tokenId"></span><span data-tpl="fee"></span><br><span data-tpl="chain"></span> &middot; <span data-tpl="wallet"></span></p>
 </template>
@@ -1181,6 +1189,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776664554502"></script>
+<script src="dist/bundle.js?v=1776667089892"></script>
 </body>
 </html>
