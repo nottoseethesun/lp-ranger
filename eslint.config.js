@@ -124,6 +124,7 @@ module.exports = [
           "no-separate-contract-calls": require("./eslint-rules/no-separate-contract-calls"),
           "no-secret-logging": require("./eslint-rules/no-secret-logging"),
           "no-number-from-bigint": require("./eslint-rules/no-number-from-bigint"),
+          "no-interpolated-innerhtml": require("./eslint-rules/no-interpolated-innerhtml"),
         },
       },
       security: securityPlugin,
@@ -154,6 +155,7 @@ module.exports = [
           pairs: [["decreaseLiquidity", "collect"]],
         },
       ],
+      "9mm/no-interpolated-innerhtml": "error",
       // Security rules registered off — enforced by security lint only.
       // Registered here so per-line disable directives are recognized.
       "9mm/no-secret-logging": "off",
@@ -170,6 +172,7 @@ module.exports = [
       "9mm": {
         rules: {
           "no-fetch-without-csrf": require("./eslint-rules/no-fetch-without-csrf"),
+          "no-interpolated-innerhtml": require("./eslint-rules/no-interpolated-innerhtml"),
         },
       },
     },
@@ -188,6 +191,7 @@ module.exports = [
         { allow: ["log", "warn", "error", "info", "debug"] },
       ],
       "9mm/no-fetch-without-csrf": "error",
+      "9mm/no-interpolated-innerhtml": "error",
     },
   },
 

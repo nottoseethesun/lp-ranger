@@ -1210,9 +1210,16 @@ addresses. There is no external script tag in
 only bundled JavaScript is `public/dist/bundle.js` produced by esbuild
 from the audited `public/dashboard-*.js` sources. Copy-to-clipboard
 operations use `textContent`, never `innerHTML`, so pasted wallet
-addresses cannot be reflected as executable markup. `html-validate`
-(run as part of `npm run lint`) enforces structural HTML correctness
-on every commit.
+addresses cannot be reflected as executable markup. The custom rule
+[`9mm/no-interpolated-innerhtml`](../eslint-rules/no-interpolated-innerhtml.js)
+blocks any new `innerHTML` / `outerHTML` / `insertAdjacentHTML`
+assignment whose right-hand side is an interpolated template literal
+or a `+`-concatenated string — the specific sink patterns that turn
+untrusted data into executable markup. Static string literals and
+trusted-constant references (e.g. the disclosure HTML) remain
+allowed, since those carry no attacker-controlled input.
+`html-validate` (run as part of `npm run lint`) enforces structural
+HTML correctness on every commit.
 
 ### Filesystem Safety
 
