@@ -286,10 +286,6 @@ export function _setText(id, text) {
   const el = g(id);
   if (el) el.textContent = text;
 }
-export function _setHtml(id, html) {
-  const el = g(id);
-  if (el) el.innerHTML = html;
-}
 
 /** Resolve a display name: prefer symbol, fall back to short address. */
 export function _tokenName(symbol, address) {
@@ -544,11 +540,18 @@ export function refreshManageBadge(active) {
   const closed = isPositionClosed(active);
   const m = !closed && _managedTokenIds.has(String(active.tokenId));
   badge.classList.toggle("managed", m);
-  badge.innerHTML = closed
-    ? "Position Closed"
-    : m
-      ? '<span class="9mm-pos-mgr-manage-dot"></span>Being Actively Managed'
-      : "Not Actively Managed";
+  if (closed) {
+    badge.textContent = "Position Closed";
+  } else if (m) {
+    const dot = document.createElement("span");
+    dot.className = "9mm-pos-mgr-manage-dot";
+    badge.replaceChildren(
+      dot,
+      document.createTextNode("Being Actively Managed"),
+    );
+  } else {
+    badge.textContent = "Not Actively Managed";
+  }
   btn.textContent = m ? "Stop Managing" : "Manage";
   btn.disabled = closed;
   btn.title = closed ? "Cannot manage a closed position (liquidity = 0)" : "";
