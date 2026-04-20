@@ -43,6 +43,7 @@ import {
   restoreManagedPositions,
   bestAutoSelectIdx,
   setSyncRouteToState,
+  setExitClosedPosView,
   setFetchUnmanagedDetails,
 } from "./dashboard-positions-store.js";
 
@@ -107,7 +108,10 @@ export function injectPositionDeps(deps) {
     setSyncRouteToState(deps.syncRouteToState);
   }
   if (deps.enterClosedPosView) _enterClosedPosView = deps.enterClosedPosView;
-  if (deps.exitClosedPosView) _exitClosedPosView = deps.exitClosedPosView;
+  if (deps.exitClosedPosView) {
+    _exitClosedPosView = deps.exitClosedPosView;
+    setExitClosedPosView(deps.exitClosedPosView);
+  }
   if (deps.isViewingClosedPos) _isViewingClosedPos = deps.isViewingClosedPos;
   if (deps.refreshDepositLabel) _refreshDepositLabel = deps.refreshDepositLabel;
   if (deps.clearHistory) _clearHistory = deps.clearHistory;

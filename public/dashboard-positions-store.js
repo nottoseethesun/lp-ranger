@@ -87,10 +87,20 @@ export function _loadPosStore() {
 // ── Late-bound callbacks ─────────────────────────
 
 let _syncRouteToState = null;
+let _exitClosedPosView = null;
 
 /** Register syncRouteToState callback. */
 export function setSyncRouteToState(fn) {
   _syncRouteToState = fn;
+}
+
+/*-
+ * Register exitClosedPosView callback. Called on rebalance-follow
+ * so the store can drop the stale closed-view flag when the active
+ * NFT migrates to a freshly-minted live position.
+ */
+export function setExitClosedPosView(fn) {
+  _exitClosedPosView = fn;
 }
 
 /** @deprecated Detail fetch moved to _activateCore — kept for API compat. */
@@ -251,6 +261,13 @@ export const posStore = {
       /* */
     }
     console.log("[lp-ranger] [pos] rebalance follow: #%s → #%s", old, newId);
+    /*-
+     * Rebalance minted a fresh live NFT. If we were pinned in
+     * closed-pos view (e.g. user rebalanced a drained position to
+     * re-enter a pool), drop that flag so KPI/status updates are
+     * no longer short-circuited in updateDashboardFromStatus.
+     */
+    if (_exitClosedPosView) _exitClosedPosView();
     if (_syncRouteToState) _syncRouteToState(a);
     updatePosStripUI();
   },

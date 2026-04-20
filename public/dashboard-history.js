@@ -240,10 +240,22 @@ function _setRebPagBtns(page, totalPages) {
     next = g("rebNextBtn"),
     first = g("rebFirstBtn"),
     last = g("rebLastBtn");
-  if (prev) prev.disabled = page <= 0;
-  if (first) first.disabled = page <= 0;
-  if (next) next.disabled = page >= totalPages - 1;
-  if (last) last.disabled = page >= totalPages - 1;
+  const prevDis = page <= 0;
+  const nextDis = page >= totalPages - 1;
+  if (prev) prev.disabled = prevDis;
+  if (first) first.disabled = prevDis;
+  if (next) next.disabled = nextDis;
+  if (last) last.disabled = nextDis;
+  /*- Diagnostic: catch the stuck-Next bug where label says "Page 1 of 6"
+      but Next is disabled. If page+1 == 1 and totalPages > 1, Next must
+      be enabled; any mismatch means state diverged somewhere upstream. */
+  if (page + 1 === 1 && totalPages > 1 && nextDis) {
+    console.warn(
+      "[lp-ranger] [reb-pag] stuck-Next detected: page=%d totalPages=%d",
+      page,
+      totalPages,
+    );
+  }
 }
 
 /**
@@ -271,7 +283,17 @@ export function renderRebalanceEvents(events) {
     (a, b) => (b.timestamp || 0) - (a.timestamp || 0),
   );
   const totalPages = Math.max(1, Math.ceil(sorted.length / _REB_PAGE_SIZE));
-  _rebEventsPage = Math.min(_rebEventsPage, totalPages - 1);
+  const preClamp = _rebEventsPage;
+  _rebEventsPage = Math.min(Math.max(0, _rebEventsPage), totalPages - 1);
+  if (preClamp !== _rebEventsPage) {
+    console.log(
+      "[lp-ranger] [reb-pag] render clamped page %d \u2192 %d (totalPages=%d, events=%d)",
+      preClamp,
+      _rebEventsPage,
+      totalPages,
+      sorted.length,
+    );
+  }
   const page = _rebEventsPage;
   const start = page * _REB_PAGE_SIZE;
   const pageEvents = sorted.slice(start, start + _REB_PAGE_SIZE);
@@ -301,14 +323,32 @@ export function renderRebalanceEvents(events) {
  * @param {number} dir  +1 for next, -1 for previous.
  */
 export function rebChangePage(dir) {
+  const before = _rebEventsPage;
   _rebEventsPage += dir;
+  console.log(
+    "[lp-ranger] [reb-pag] change dir=%d: %d \u2192 %d (lastEvents=%d)",
+    dir,
+    before,
+    _rebEventsPage,
+    Array.isArray(_lastEvents) ? _lastEvents.length : -1,
+  );
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }
 export function rebFirstPage() {
+  console.log(
+    "[lp-ranger] [reb-pag] first: %d \u2192 0 (lastEvents=%d)",
+    _rebEventsPage,
+    Array.isArray(_lastEvents) ? _lastEvents.length : -1,
+  );
   _rebEventsPage = 0;
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }
 export function rebLastPage() {
+  console.log(
+    "[lp-ranger] [reb-pag] last: %d \u2192 9999 (lastEvents=%d)",
+    _rebEventsPage,
+    Array.isArray(_lastEvents) ? _lastEvents.length : -1,
+  );
   _rebEventsPage = 9999;
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }

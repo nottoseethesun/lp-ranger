@@ -1108,6 +1108,15 @@ header{
   opacity:0;
 }
 
+/* Keep both history cards (Per-Day P&L and Rebalance Events) at the
+   same minimum height so the Rebalance card does not visually shrink
+   on its last page, where padded rows can render slightly shorter
+   than data rows (two-line TIME cell vs nbsp padding). Grid stretch
+   on .row.c2-hist keeps the two cards aligned once the floor is set. */
+.row.c2-hist .card{
+  min-height:495px;
+}
+
 .help-tip{
   display:inline-block;
   width:16px;

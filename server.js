@@ -129,6 +129,13 @@ const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
 const { handleUiDefaults } = require("./src/ui-defaults");
 const _unlockLog = require("./src/server-unlock-log");
+const { logVersionBanner } = require("./src/build-info");
+
+/*-
+ * First log: version/commit banner for support triage. Logged before
+ * any other startup work so it is always at the top of the server log.
+ */
+logVersionBanner("[server]");
 
 // ── app-config migration ─────────────────────────────
 // One-time move of legacy root-level config files into app-config/.
