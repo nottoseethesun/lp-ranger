@@ -17,6 +17,7 @@
     <div class="help-toc-title">Contents</div>
     <ol>
       <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#bookmarking-positions">Bookmarking Positions</a></li>
       <li><a href="#fund-tracking">Fund Tracking</a></li>
       <li><a href="#range-width">Range Width</a></li>
       <li><a href="#volatility-doubling">Volatility Doubling</a></li>
@@ -44,6 +45,9 @@
     <li>The $usd value of the total lifetime deposit is automatically detected. In case of a problem with that, a dialog pops up to notify the user of the opportunity to enter it manually instead at top left in the app under &ldquo;Total Lifetime Deposit&rdquo;. Manual entries there always override any auto-detected value.</li>
     <li><strong>Wallet Residuals:</strong> When a position is rebalanced with a narrow price range, some tokens may not fit the new range and remain in your wallet. To get them back into your Liquidity Pool Position, click the &ldquo;Rebalance Now&rdquo; button, and in the ensuing dialog, widen the price range by at least one percent, and click &ldquo;OK&rdquo;. These residual tokens are automatically counted as assets in Current Value, Net P&amp;L, and Impermanent Loss/Gain calculations. If multiple positions share a token, the wallet balance is split pro-rata based on each position&rsquo;s in-range token amount.</li>
   </ul>
+
+  <h2 id="bookmarking-positions">Bookmarking Positions</h2>
+  <p>The address bar updates as you switch positions. The URL looks like <code>/pulsechain/&lt;wallet&gt;/&lt;nft-contract&gt;/&lt;tokenId&gt;</code>. Add it to your browser bookmarks (or drag the address bar icon to the bookmarks bar) to jump straight to any position later. Opening a bookmark loads LP Ranger and activates that exact position as soon as the app is ready. Each bookmark is self-contained, so you can keep one per pool or one per NFT and switch between them with a single click. Bookmarks survive app restarts because they only reference on-chain identifiers &mdash; nothing in the URL depends on the server&rsquo;s current managed-positions list.</p>
 
   <h2 id="fund-tracking">Fund Tracking</h2>
   <p>When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
