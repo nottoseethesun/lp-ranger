@@ -1089,6 +1089,13 @@ header{
 }
 .hist-table td.pos{color:var(--accent3);}.hist-table td.neg{color:var(--danger);}
 
+/* Keep each TIME cell line on one line even when neighboring columns
+   (e.g. ROUTED VIA with long aggregator names) would otherwise squeeze
+   the column narrow enough to wrap the UTC/local timestamp labels. */
+.hist-table .hist-time-line{
+  white-space:nowrap;
+}
+
 .help-tip{
   display:inline-block;
   width:16px;

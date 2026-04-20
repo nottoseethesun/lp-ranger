@@ -182,7 +182,7 @@ function _applyTxCell(frag, e, txShort) {
 }
 
 /** Build a single rebalance-event row fragment. */
-function _buildRebRow(e) {
+function _buildRebRow(e, displayIdx) {
   const frag = cloneTpl("tplRebEventRow");
   if (!frag) return null;
   const txShort = e.txHash ? e.txHash.slice(0, 10) + "\u2026" : _EMDASH;
@@ -193,7 +193,16 @@ function _buildRebRow(e) {
     const el = frag.querySelector(`[data-tpl="${k}"]`);
     if (el) el.textContent = val;
   };
-  set("index", e.index || "");
+  /*- Ignore e.index: it comes from two sources (bot-recorder's running
+      counter and event-scanner's re-sort) that don't share a scheme, so
+      a merged list shows 1..11 mixed with 73..85. Assign a single
+      chronological index here so the UI is always consistent. */
+  set(
+    "index",
+    displayIdx !== null && displayIdx !== undefined
+      ? displayIdx
+      : e.index || "",
+  );
   set("utc", utc);
   const localEl = frag.querySelector('[data-tpl="local"]');
   if (local) localEl.textContent = local;
@@ -246,10 +255,14 @@ export function renderRebalanceEvents(events) {
   const page = _rebEventsPage;
   const start = page * _REB_PAGE_SIZE;
   const pageEvents = sorted.slice(start, start + _REB_PAGE_SIZE);
+  const total = sorted.length;
 
   tbody.replaceChildren();
-  for (const e of pageEvents) {
-    const frag = _buildRebRow(e);
+  for (let i = 0; i < pageEvents.length; i++) {
+    /*- displayIdx: oldest = 1, newest = total. sorted is descending, so
+        position (start + i) has index (total - start - i). */
+    const displayIdx = total - start - i;
+    const frag = _buildRebRow(pageEvents[i], displayIdx);
     if (frag) tbody.appendChild(frag);
   }
   if (pageLabel)
