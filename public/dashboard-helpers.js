@@ -17,6 +17,24 @@ export function g(id) {
   return document.getElementById(id);
 }
 
+/**
+ * Clone the content of a <template> by id and return the resulting
+ * DocumentFragment. Caller fills [data-tpl="..."] slots via textContent
+ * (or sets href/src/etc.) and then appends the fragment to the DOM.
+ *
+ * This is the project-wide replacement for innerHTML assignments from
+ * JS: the static markup lives in public/index.html, and JS only owns
+ * the dynamic values. See feedback_no_new_html_in_js for the rule.
+ *
+ * @param {string} id  The <template> element's id attribute.
+ * @returns {DocumentFragment|null}
+ */
+export function cloneTpl(id) {
+  const tpl = document.getElementById(id);
+  if (!tpl || !("content" in tpl)) return null;
+  return tpl.content.cloneNode(true);
+}
+
 const _EMOJI = [
   "🌵",
   "🔥",
