@@ -804,10 +804,36 @@ accept-localhost and reject-foreign-origin paths.
 [`src/server-csrf.js`](../src/server-csrf.js) uses the `csrf` package
 (pillarjs) to issue cryptographically random tokens bound to a
 server-generated secret. Every mutating request must carry a valid,
-non-expired token in an `x-csrf-token` header. Tokens expire after 1
-hour and are pruned from an in-memory issued-set when the set exceeds
-500 entries. The dashboard fetches a token on init via
-`GET /api/csrf-token` and refreshes before expiry.
+non-expired token in an `x-csrf-token` header. Tokens are pruned from
+an in-memory issued-set when the set exceeds 500 entries.
+
+**Lifetime and refresh cadence are tunables.**
+[`app-config/static-tunables/csrf.json`](../app-config/static-tunables/csrf.json)
+defines two values:
+
+| Field | Default | Meaning |
+| ----- | ------- | ------- |
+| `tokenTtlMs` | `3600000` (60 min) | Server-side token lifetime. After this, `verifyToken()` returns `Expired CSRF token` and the server responds `403`. |
+| `refreshIntervalMs` | `3000000` (50 min) | Delivered to the dashboard in every `GET /api/csrf-token` response. Must be strictly less than `tokenTtlMs`; keep ≥ 10 min margin to survive clock skew and a slow fetch. |
+
+**Dashboard refresh mechanism.** On init the dashboard calls
+`refreshCsrfToken()` once (in `public/dashboard-init.js`), then
+schedules `setInterval(refreshCsrfToken, csrfRefreshIntervalMs())` using
+the server-delivered interval. This timer is independent of the
+`/api/status` poll loop and fires regardless of poll health — which is
+the whole point. On a long-running host (e.g. Raspberry Pi 5 during a
+multi-hour phase-2 event scan) the status poll's in-flight guard can
+skip ticks for extended windows; if the CSRF refresh were tied to that
+path, tokens would silently expire and auto-fired background POSTs
+(silent pool-history rescans triggered by rebalance-event detection,
+unmanaged-position lifetime fetches, etc.) would 403 with no user
+action involved. The dedicated timer makes expiry impossible in
+practice without a several-minute network outage.
+
+To change either value, edit `csrf.json` and restart the server.
+`readCsrfTunable()` is called on every `createToken()` and `verifyToken()`
+so the values are always current on the server side; the client picks
+up the new `refreshIntervalMs` on its next scheduled refresh.
 
 **Lint enforcement:** The custom ESLint rule
 [`9mm/no-fetch-without-csrf`](../eslint-rules/no-fetch-without-csrf.js)

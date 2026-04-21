@@ -6,7 +6,6 @@
  *   is pegged by a phase-2 event scan on a low-powered host.
  */
 
-import { csrfNeedsRefresh, refreshCsrfToken } from "./dashboard-helpers.js";
 import { flattenV2Status } from "./dashboard-data-cache.js";
 import { _setStatusPill } from "./dashboard-data-status.js";
 
@@ -49,7 +48,6 @@ async function _pollStatus() {
   _skippedPollCount = 0;
   _statusInFlight = true;
   try {
-    if (csrfNeedsRefresh()) refreshCsrfToken();
     const res = await fetch("/api/status");
     if (!res.ok) {
       _onPollFail();
