@@ -100,12 +100,23 @@ import {
 /*-
  * First log: version/commit banner for support triage. Logged before
  * any other bootstrap work so it is always at the top of the browser
- * console. Mirrors the server.js startup banner. Dev builds use the
- * "0.0.0-dev" sentinel in package.json — when that is the version, skip
- * the version= segment so unreleased builds don't claim a version.
+ * console. Mirrors the server.js startup banner.
+ *
+ * Display-version priority — same rule as src/build-info.js
+ * `_displayVersion`:
+ *   1. Git tag (authoritative for release tarballs — pkg.json still
+ *      reads "0.0.0-dev" inside the tarball, but the tag is baked in).
+ *   2. package.json version (when not the dev sentinel).
+ *   3. Suppress the `version=` segment — unreleased dev build on an
+ *      untagged commit.
  */
 const _DEV_VERSION_SENTINEL = "0.0.0-dev";
-if (BUILD_PACKAGE_VERSION === _DEV_VERSION_SENTINEL) {
+const _displayVersion =
+  BUILD_RELEASE_TAG ||
+  (BUILD_PACKAGE_VERSION && BUILD_PACKAGE_VERSION !== _DEV_VERSION_SENTINEL
+    ? BUILD_PACKAGE_VERSION
+    : null);
+if (_displayVersion === null) {
   console.log(
     "[lp-ranger] LP Ranger commit=%s commitDate=%s tag=%s",
     BUILD_COMMIT,
@@ -115,7 +126,7 @@ if (BUILD_PACKAGE_VERSION === _DEV_VERSION_SENTINEL) {
 } else {
   console.log(
     "[lp-ranger] LP Ranger version=%s commit=%s commitDate=%s tag=%s",
-    BUILD_PACKAGE_VERSION,
+    _displayVersion,
     BUILD_COMMIT,
     BUILD_COMMIT_DATE,
     BUILD_RELEASE_TAG || "(none)",

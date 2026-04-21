@@ -33,8 +33,8 @@ const {
 // position-detector used via server-scan.js
 const { startBotLoop } = require("./bot-loop");
 const {
-  computeQuickDetails,
-  computeLifetimeDetails,
+  computeQuickDetails: _defaultComputeQuickDetails,
+  computeLifetimeDetails: _defaultComputeLifetimeDetails,
 } = require("./position-details");
 const { emojiId } = require("./logger");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
@@ -84,6 +84,10 @@ function createRouteHandlers(deps) {
     attachMultiPosDeps,
     updatePositionState,
     askPassword,
+    /*- position-details functions are overridable from tests so we
+     *  don't exercise a real RPC in unit tests. */
+    computeQuickDetails = _defaultComputeQuickDetails,
+    computeLifetimeDetails = _defaultComputeLifetimeDetails,
   } = deps;
 
   /** Cached wallet password for API key encryption (set on unlock). */

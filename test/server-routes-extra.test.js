@@ -174,6 +174,10 @@ describe("_handlePositionLifetime — trigger scan", () => {
 
 describe("_handlePositionDetails — RPC error path", () => {
   it("returns 500 when computeQuickDetails throws", async () => {
+    /*- Stub computeQuickDetails directly rather than exercising a real
+     *  JsonRpcProvider — the network-path test was flaky because
+     *  ethers can surface a failure whose `.message` is empty,
+     *  tripping the `res._body.error.length > 0` assertion. */
     const deps = makeDeps({
       readJsonBody: async () => ({
         tokenId: "1",
@@ -183,14 +187,16 @@ describe("_handlePositionDetails — RPC error path", () => {
         tickLower: -100,
         tickUpper: 100,
       }),
+      computeQuickDetails: async () => {
+        throw new Error("simulated RPC failure");
+      },
     });
     const h = createRouteHandlers(deps);
     const res = makeRes();
-    // computeQuickDetails will fail due to no real RPC
     await h._handlePositionDetails({}, res);
     assert.strictEqual(res._status, 500);
     assert.strictEqual(res._body.ok, false);
-    assert.ok(res._body.error.length > 0);
+    assert.strictEqual(res._body.error, "simulated RPC failure");
   });
 });
 
