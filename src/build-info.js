@@ -1,12 +1,17 @@
 /**
  * @file src/build-info.js
  * @description Server-side build/version info helper. Mirrors the browser's
- * auto-generated public/build-info.js but computes values lazily at require
- * time so no build step is required to run the server.
+ * auto-generated public/build-info.js.
  *
- * Reads package.json (always present) for release version and shells out to
- * git for commit + tag (may be unavailable in a release tarball — falls back
- * to "unknown").
+ * Resolution order:
+ *   1. `src/build-info.json` — baked sidecar written by
+ *      `scripts/build-info.js` during `npm run build`. Ships in release
+ *      tarballs, which don't include `.git`.
+ *   2. Live git + package.json — the fallback for dev clones that haven't
+ *      run a build yet (git metadata is available locally).
+ *
+ * Never throws — missing data degrades to "unknown" so the banner always
+ * prints something.
  */
 
 "use strict";
@@ -37,11 +42,30 @@ function _pkgVersion() {
   }
 }
 
+function _readBaked() {
+  try {
+    const baked = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "build-info.json"), "utf8"),
+    );
+    return {
+      version: baked.version || "unknown",
+      commit: baked.commit || "unknown",
+      commitDate: baked.commitDate || "unknown",
+      tag: baked.tag || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Resolve build/version info for server-side logging.
+ * Resolve build/version info for server-side logging. Prefers the baked
+ * sidecar; falls back to live git when it's absent (pre-build dev clones).
  * @returns {{version:string, commit:string, commitDate:string, tag:(string|null)}}
  */
 function getBuildInfo() {
+  const baked = _readBaked();
+  if (baked) return baked;
   return {
     version: _pkgVersion(),
     commit: _git("git rev-parse --short HEAD") || "unknown",
@@ -51,13 +75,27 @@ function getBuildInfo() {
 }
 
 /*-
- * Sentinel value for the development version in package.json. When the
- * package version matches this, the banner skips the `version=` segment
- * entirely — unreleased dev builds should not claim a version number.
- * Release workflow bumps package.json away from this sentinel before
- * building the release tarball.
+ * Sentinel value for the unreleased-dev version in package.json.  An
+ * unreleased dev build that also has no git tag on HEAD shouldn't
+ * claim any version at all in the banner.  A release tarball, by
+ * contrast, is authoritative via its baked-in git tag even though its
+ * package.json still reads "0.0.0-dev" — the tag wins.
  */
 const DEV_VERSION_SENTINEL = "0.0.0-dev";
+
+/**
+ * Compute the banner-display version. Prefers the git tag (authoritative
+ * for releases); falls back to package.json version; suppresses the
+ * segment entirely for unreleased dev builds on untagged commits.
+ * Exported for unit tests.
+ * @param {{version:string, tag:(string|null)}} bi  Build info.
+ * @returns {string|null}  Version to display, or null to suppress.
+ */
+function _displayVersion(bi) {
+  if (bi.tag) return bi.tag;
+  if (bi.version && bi.version !== DEV_VERSION_SENTINEL) return bi.version;
+  return null;
+}
 
 /**
  * Log a one-line version banner with the given prefix.
@@ -65,8 +103,8 @@ const DEV_VERSION_SENTINEL = "0.0.0-dev";
  */
 function logVersionBanner(prefix) {
   const bi = getBuildInfo();
-  const isDev = bi.version === DEV_VERSION_SENTINEL;
-  if (isDev) {
+  const display = _displayVersion(bi);
+  if (display === null) {
     console.log(
       "%s LP Ranger commit=%s commitDate=%s tag=%s",
       prefix,
@@ -78,7 +116,7 @@ function logVersionBanner(prefix) {
     console.log(
       "%s LP Ranger version=%s commit=%s commitDate=%s tag=%s",
       prefix,
-      bi.version,
+      display,
       bi.commit,
       bi.commitDate,
       bi.tag || "(none)",
@@ -86,4 +124,9 @@ function logVersionBanner(prefix) {
   }
 }
 
-module.exports = { getBuildInfo, logVersionBanner, DEV_VERSION_SENTINEL };
+module.exports = {
+  getBuildInfo,
+  logVersionBanner,
+  _displayVersion,
+  DEV_VERSION_SENTINEL,
+};

@@ -1,9 +1,15 @@
 /**
  * @file scripts/build-info.js
- * @description Generates public/build-info.js at build time with the current
- * git commit hash, commit date, and release tag (if HEAD is tagged).
- * Values are frozen at build time so they work under any deployment
- * scenario — even without the .git directory.
+ * @description Generates public/build-info.js AND src/build-info.json at
+ * build time with the current git commit hash, commit date, and release
+ * tag (if HEAD is tagged). Values are frozen at build time so they work
+ * under any deployment scenario — even without the .git directory.
+ *
+ * Two outputs:
+ *   * `public/build-info.js` — ES-module consumed by the dashboard bundle.
+ *   * `src/build-info.json`  — read by `src/build-info.js` at server
+ *     startup, so a release tarball (which excludes `.git`) can still log
+ *     its version banner without shelling out to git.
  */
 
 "use strict";
@@ -50,6 +56,25 @@ export const BUILD_PACKAGE_VERSION = ${JSON.stringify(packageVersion)};
 `;
 
 fs.writeFileSync(out, content);
+
+/*- Server-side sidecar. Mirrors the four fields above as plain JSON so
+ *  `src/build-info.js` can read them at startup inside a release tarball
+ *  that has no `.git` directory. Gitignored — regenerated on every build. */
+const jsonOut = path.join(__dirname, "..", "src", "build-info.json");
+fs.writeFileSync(
+  jsonOut,
+  JSON.stringify(
+    {
+      version: packageVersion,
+      commit,
+      commitDate,
+      tag,
+    },
+    null,
+    2,
+  ) + "\n",
+);
+
 console.log(
   "[build-info] version=%s commit=%s date=%s tag=%s",
   packageVersion,
