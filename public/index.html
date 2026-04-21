@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776741055638">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776741055638">
+<link rel="stylesheet" href="style.css?v=1776742909867">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776742909867">
 </head>
 <body>
 
@@ -598,30 +598,20 @@
 <div id="poolDetailsModal" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-logo"><div><h2>Pool Details</h2></div></div>
-    <div class="modal-field">
-      <label>Position Type</label>
-      <div class="9mm-pos-mgr-pool-detail-val" id="pdType">—</div>
-    </div>
-    <div class="modal-field">
-      <label>Fee Tier</label>
-      <div class="9mm-pos-mgr-pool-detail-val" id="pdFee">—</div>
-    </div>
-    <div class="modal-field">
-      <label>Pool Hash I.D.</label>
-      <div class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdPool">—</div>
-    </div>
-    <div class="modal-field">
-      <label>Token 0</label>
-      <div class="9mm-pos-mgr-pool-detail-val" id="pdToken0">—</div>
-    </div>
-    <div class="modal-field">
-      <label>Token 1</label>
-      <div class="9mm-pos-mgr-pool-detail-val" id="pdToken1">—</div>
-    </div>
-    <div class="modal-field">
-      <label>NFT Contract</label>
-      <div class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdContract">—</div>
-    </div>
+    <dl class="9mm-pos-mgr-pool-details-list">
+      <dt>Position Type</dt>
+      <dd class="9mm-pos-mgr-pool-detail-val" id="pdType">—</dd>
+      <dt>Fee Tier</dt>
+      <dd class="9mm-pos-mgr-pool-detail-val" id="pdFee">—</dd>
+      <dt>Pool Hash I.D.</dt>
+      <dd class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdPool">—</dd>
+      <dt>Token 0</dt>
+      <dd class="9mm-pos-mgr-pool-detail-val" id="pdToken0">—</dd>
+      <dt>Token 1</dt>
+      <dd class="9mm-pos-mgr-pool-detail-val" id="pdToken1">—</dd>
+      <dt>NFT Contract</dt>
+      <dd class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdContract">—</dd>
+    </dl>
     <div class="9mm-pos-mgr-modal-btn-row"><button type="button" class="pos-scan-btn" id="poolDetailsCloseBtn">OK</button></div>
   </div>
 </div>
@@ -1249,6 +1239,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776741055638"></script>
+<script src="dist/bundle.js?v=1776742909867"></script>
 </body>
 </html>

@@ -1585,6 +1585,27 @@
   overflow-wrap: anywhere;
 }
 
+.\39 mm-pos-mgr-pool-details-list {
+  margin: 0 0 21px;
+}
+
+.\39 mm-pos-mgr-pool-details-list dt {
+  display: block;
+  font-size: 20px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 9px;
+}
+
+.\39 mm-pos-mgr-pool-details-list dd {
+  margin: 0 0 21px;
+}
+
+.\39 mm-pos-mgr-pool-details-list dd:last-of-type {
+  margin-bottom: 0;
+}
+
 .\39 mm-pos-mgr-monospace {
   font-family: "Space Mono", monospace;
   word-break: break-all;
