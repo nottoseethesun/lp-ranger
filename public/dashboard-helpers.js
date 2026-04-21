@@ -566,14 +566,16 @@ export function fmtDuration(ms) {
 // ── CSRF token management ───────────────────────────────────────────────────
 
 let _csrfToken = null;
-let _csrfExpiresAt = 0;
-
-/** Refresh interval — fetch a new token 5 minutes before expiry. */
-const _CSRF_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+/*- Server-driven refresh cadence from app-config/static-tunables/csrf.json
+    (delivered alongside every token). Default 50 min, leaving 10 min margin
+    against the 60 min server-side TTL; survives a slow token fetch and
+    guarantees a valid token for auto-fired background POSTs (e.g. silent
+    pool-history scans) on long-running servers like Raspberry Pi 5. */
+let _csrfRefreshIntervalMs = 50 * 60 * 1000;
 
 /**
- * Fetch a fresh CSRF token from the server.  Called on init and
- * automatically before the current token expires.
+ * Fetch a fresh CSRF token from the server. Called on init and
+ * on a repeating timer set up in dashboard-init.js.
  * @returns {Promise<void>}
  */
 export async function refreshCsrfToken() {
@@ -582,7 +584,8 @@ export async function refreshCsrfToken() {
     if (res.ok) {
       const data = await res.json();
       _csrfToken = data.token;
-      _csrfExpiresAt = data.expiresAt;
+      if (typeof data.refreshIntervalMs === "number")
+        _csrfRefreshIntervalMs = data.refreshIntervalMs;
     }
   } catch {
     /* network error — keep existing token */
@@ -599,9 +602,10 @@ export function csrfHeaders() {
 }
 
 /**
- * Return true when the token needs refreshing (expired or near expiry).
- * @returns {boolean}
+ * Return the server-configured refresh interval (ms). Used by
+ * dashboard-init.js to schedule periodic refreshes.
+ * @returns {number}
  */
-export function csrfNeedsRefresh() {
-  return Date.now() > _csrfExpiresAt - _CSRF_REFRESH_BUFFER_MS;
+export function csrfRefreshIntervalMs() {
+  return _csrfRefreshIntervalMs;
 }

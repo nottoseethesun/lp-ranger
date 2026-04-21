@@ -16,6 +16,7 @@ import {
   initDisclaimer,
   compositeKey,
   refreshCsrfToken,
+  csrfRefreshIntervalMs,
   csrfHeaders,
 } from "./dashboard-helpers.js";
 import {
@@ -174,6 +175,12 @@ restoreSoundsToggle();
 
 initDisclaimer().then(async () => {
   await refreshCsrfToken();
+  /*- Schedule periodic CSRF refresh. Interval comes from the server
+      (app-config/static-tunables/csrf.json) so operators can tune
+      without a client rebuild. Fires regardless of poll-loop health —
+      auto-fired background POSTs on long-running servers (e.g. Pi 5
+      during a multi-hour phase-2 scan) always have a fresh token. */
+  setInterval(refreshCsrfToken, csrfRefreshIntervalMs());
   _afterDisclaimer();
 });
 

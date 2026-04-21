@@ -7,13 +7,26 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { createToken, verifyToken } = require("../src/server-csrf");
+const {
+  createToken,
+  verifyToken,
+  readCsrfTunable,
+} = require("../src/server-csrf");
 
 describe("CSRF token module", () => {
-  it("createToken returns a token and future expiry", () => {
-    const { token, expiresAt } = createToken();
+  it("createToken returns a token, future expiry, and refreshIntervalMs", () => {
+    const { token, expiresAt, refreshIntervalMs } = createToken();
     assert.ok(typeof token === "string" && token.length > 0);
     assert.ok(expiresAt > Date.now());
+    assert.ok(typeof refreshIntervalMs === "number" && refreshIntervalMs > 0);
+  });
+
+  it("refreshIntervalMs is strictly less than token TTL", () => {
+    const { tokenTtlMs, refreshIntervalMs } = readCsrfTunable();
+    assert.ok(
+      refreshIntervalMs < tokenTtlMs,
+      "client must refresh before server-side expiry",
+    );
   });
 
   it("verifyToken accepts a valid token", () => {
@@ -37,5 +50,11 @@ describe("CSRF token module", () => {
     const a = createToken().token;
     const b = createToken().token;
     assert.notStrictEqual(a, b);
+  });
+
+  it("readCsrfTunable returns positive numeric fields", () => {
+    const { tokenTtlMs, refreshIntervalMs } = readCsrfTunable();
+    assert.ok(typeof tokenTtlMs === "number" && tokenTtlMs > 0);
+    assert.ok(typeof refreshIntervalMs === "number" && refreshIntervalMs > 0);
   });
 });
