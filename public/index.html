@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1776724515523">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776724515523">
+<link rel="stylesheet" href="style.css?v=1776729859226">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1776729859226">
 </head>
 <body>
 
@@ -389,8 +389,8 @@
         <div class="9mm-pos-mgr-price-override-input"><span class="9mm-pos-mgr-text-muted">$</span><input type="number" id="priceOverrideInput1" step="any" min="0" placeholder="0.00"></div>
       </div>
     </div>
-    <label class="9mm-pos-mgr-toggle-row"><input type="checkbox" id="priceOverrideForce"><span class="9mm-pos-mgr-text-muted" style="font-size:11px">Make manual entry override any future valid automatic price updates</span></label>
-    <p class="9mm-pos-mgr-text-muted" style="font-size:11px">Price may need a minute or two to take effect.</p>
+    <label class="9mm-pos-mgr-toggle-row"><input type="checkbox" id="priceOverrideForce"><span class="9mm-pos-mgr-text-muted" style="font-size:17px">Make manual entry override any future valid automatic price updates</span></label>
+    <p class="9mm-pos-mgr-text-muted" style="font-size:17px">Price may need a minute or two to take effect.</p>
     <div class="9mm-pos-mgr-btn-row">
       <button type="button" class="modal-btn 9mm-pos-mgr-flex-fill" id="priceOverrideCancel">Cancel</button>
       <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="priceOverrideSave">Save</button>
@@ -597,14 +597,30 @@
 <!-- Pool Details modal -->
 <div id="poolDetailsModal" class="modal-overlay hidden">
   <div class="modal">
-    <h3>Pool Details</h3>
-    <div class="9mm-pos-mgr-pool-detail-grid">
-      <span><span class="9mm-pos-mgr-text-muted">Position Type</span> <strong id="pdType">—</strong></span>
-      <span><span class="9mm-pos-mgr-text-muted">Fee Tier</span> <strong id="pdFee">—</strong></span>
-      <span class="9mm-pos-mgr-detail-full-width"><span class="9mm-pos-mgr-text-muted">Pool Hash I.D.</span> <strong id="pdPool" class="9mm-pos-mgr-monospace">—</strong></span>
-      <span class="9mm-pos-mgr-detail-full-width"><span class="9mm-pos-mgr-text-muted">Token 0</span> <strong id="pdToken0">—</strong></span>
-      <span class="9mm-pos-mgr-detail-full-width"><span class="9mm-pos-mgr-text-muted">Token 1</span> <strong id="pdToken1">—</strong></span>
-      <span class="9mm-pos-mgr-detail-full-width"><span class="9mm-pos-mgr-text-muted">NFT Contract</span> <strong id="pdContract" class="9mm-pos-mgr-monospace">—</strong></span>
+    <div class="modal-logo"><div><h2>Pool Details</h2></div></div>
+    <div class="modal-field">
+      <label>Position Type</label>
+      <div class="9mm-pos-mgr-pool-detail-val" id="pdType">—</div>
+    </div>
+    <div class="modal-field">
+      <label>Fee Tier</label>
+      <div class="9mm-pos-mgr-pool-detail-val" id="pdFee">—</div>
+    </div>
+    <div class="modal-field">
+      <label>Pool Hash I.D.</label>
+      <div class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdPool">—</div>
+    </div>
+    <div class="modal-field">
+      <label>Token 0</label>
+      <div class="9mm-pos-mgr-pool-detail-val" id="pdToken0">—</div>
+    </div>
+    <div class="modal-field">
+      <label>Token 1</label>
+      <div class="9mm-pos-mgr-pool-detail-val" id="pdToken1">—</div>
+    </div>
+    <div class="modal-field">
+      <label>NFT Contract</label>
+      <div class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdContract">—</div>
     </div>
     <div class="9mm-pos-mgr-modal-btn-row"><button type="button" class="pos-scan-btn" id="poolDetailsCloseBtn">OK</button></div>
   </div>
@@ -805,7 +821,7 @@
     <div class="card-title">Bot Configuration</div>
 
     <div class="active-trigger-row 9mm-pos-mgr-trigger-grid">
-      <div class="cfg-title" style="margin-bottom:6px">Auto-Rebalance Settings</div>
+      <div class="cfg-title" style="margin-bottom:9px">Auto-Rebalance Settings</div>
       <div class="9mm-pos-mgr-trigger-row">
         <span class="at-label">Trigger Type:</span>
         <span class="9mm-pos-mgr-trigger-badge" id="activeTriggerDisplay">OUT OF RANGE</span>
@@ -981,7 +997,7 @@
     <div class="card-title">Per-Day P&amp;L ($USD) <span id="dailyPnlSync" class="9mm-pos-mgr-text-muted-sm"></span></div>
     <div class="9mm-pos-mgr-table-scroll">
       <table class="hist-table">
-        <thead><tr><th scope="col">Date</th><th scope="col">Fees</th><th scope="col">Gas</th><th scope="col" class="9mm-pos-mgr-text-right">IL/G</th><th scope="col" class="9mm-pos-mgr-text-right">Profit</th><th scope="col" class="9mm-pos-mgr-text-right">Net P&amp;L</th><th scope="col" class="9mm-pos-mgr-text-right">Residual<span class="help-tip" title="Coins remaining in the wallet.">i</span></th></tr></thead>
+        <thead><tr><th scope="col">Date</th><th scope="col">Fees</th><th scope="col">Gas</th><th scope="col" class="9mm-pos-mgr-text-right">IL/G</th><th scope="col" class="9mm-pos-mgr-text-right">Profit</th><th scope="col" class="9mm-pos-mgr-text-right">Net P&amp;L</th><th scope="col" class="9mm-pos-mgr-text-right">Residual <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" role="img" aria-label="Residual info">i</span><span class="9mm-pos-mgr-info-popover 9mm-pos-mgr-info-popover-right">Coins left liquid on the wallet.</span></span></th></tr></thead>
         <tbody id="dailyPnlBody">
           <tr><td colspan="7" class="9mm-pos-mgr-table-empty">No P&amp;L data yet</td></tr>
         </tbody>
@@ -1163,7 +1179,7 @@
     <td data-privacy="blur" class="hist-time-cell"><span class="hist-time-line" data-tpl="utc"></span><br><span class="hist-time-line 9mm-pos-mgr-text-muted-sm" data-tpl="local"></span></td>
     <td data-privacy="blur" data-tpl="oldRange"></td>
     <td data-privacy="blur" data-tpl="newRange"></td>
-    <td data-tpl="swap"></td>
+    <td data-tpl="swap" class="hist-via-cell"></td>
     <td data-privacy="blur" data-tpl="txCell"><span data-tpl="txShort"></span> <span class="9mm-pos-mgr-copy-icon" data-tpl="copyIcon" title="Copy full TX hash">&#x274F;</span></td>
   </tr>
 </template>
@@ -1233,6 +1249,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1776724515523"></script>
+<script src="dist/bundle.js?v=1776729859226"></script>
 </body>
 </html>
