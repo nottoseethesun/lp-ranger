@@ -12,7 +12,6 @@ body {
   padding: 2rem 4rem;
   max-width: 1125px;
   margin: 0 auto;
-  zoom: 1;
 }
 
 h1 {
@@ -53,9 +52,9 @@ ol {
 }
 
 /*
- * The following two classes are sized for the in-app dashboard (11-13px)
- * where `body { zoom: 1.5 }` in style.css scales them up. The standalone
- * help/disclosure pages run at zoom 1, so restore a readable size here.
+ * Minor overrides for the standalone help/disclosure pages — the
+ * shared utility classes pick up slightly different sizes here to
+ * fit the help-page typography (18px body scale).
  */
 .\39 mm-pos-mgr-disclaimer-license {
   font-size: 18px;
