@@ -23,6 +23,7 @@ import {
   loadCurDeposit,
   refreshCurDepositDisplay,
 } from "./dashboard-data-deposit.js";
+import { setLeadingText } from "./dashboard-kpi-dom.js";
 
 let _poolFirstDate = null;
 export function setPoolFirstDate(d) {
@@ -102,15 +103,7 @@ export function _setAprSpan(id, val, deposit, firstDate) {
   el.textContent = sign + Math.abs(apr).toFixed(2) + "%";
   el.style.color = apr > 0 ? "#0f0" : "#f44";
 }
-export function _setLeadingText(el, text) {
-  if (!el) return;
-  // If first child is a wrapper span (9mm-pos-mgr-kpi-val-wrap), update inside it
-  const target = el.firstChild?.classList?.contains("9mm-pos-mgr-kpi-val-wrap")
-    ? el.firstChild
-    : el;
-  if (target.firstChild?.nodeType === 3) target.firstChild.textContent = text;
-  else target.insertBefore(document.createTextNode(text), target.firstChild);
-}
+export const _setLeadingText = setLeadingText;
 export function resetKpis(ids) {
   for (const id of ids) {
     const el = g(id);

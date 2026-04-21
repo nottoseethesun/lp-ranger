@@ -11,6 +11,7 @@
 
 import { g, fmtDateTime } from "./dashboard-helpers.js";
 import { _fmtUsd } from "./dashboard-data.js";
+import { setLeadingText } from "./dashboard-kpi-dom.js";
 
 /** @type {boolean} Whether we are currently viewing a closed position. */
 let _viewingClosed = false;
@@ -176,10 +177,7 @@ function _renderHistoricalKpis(data) {
 function _setLeadingKpi(id, val) {
   const el = g(id);
   if (!el) return;
-  const text = _fmtUsd(val);
-  if (el.firstChild && el.firstChild.nodeType === 3)
-    el.firstChild.textContent = text;
-  else el.insertBefore(document.createTextNode(text), el.firstChild);
+  setLeadingText(el, _fmtUsd(val));
   const cls = val === null ? "neu" : val > 0 ? "pos" : val < 0 ? "neg" : "neu";
   el.className = "kpi-value 9mm-pos-mgr-kpi-pct-row " + cls;
 }

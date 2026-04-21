@@ -177,6 +177,30 @@ export function clearDirtyInputs() {
 
 // ── V2 status flattening ────────────────────────────────────────────────────
 
+/*-
+ * Rebalance-follow: when the active entry's composite key is missing
+ * from `positions` (e.g. after a rebalance mint), look for a managed
+ * bucket whose `rebalanceEvents` contains a `{oldTokenId: active,
+ * newTokenId: that bucket's tokenId}` edge and return its posData.
+ * The event is the single source of truth — no same-pool heuristic.
+ */
+function _findRebalanceTargetPosData(active, positions) {
+  if (!active?.tokenId) return null;
+  const tid = String(active.tokenId);
+  for (const [k, pd] of Object.entries(positions)) {
+    const events = pd?.rebalanceEvents || [];
+    const newTid = k.split("-").pop();
+    const hit = events.some(
+      (e) => String(e.oldTokenId) === tid && String(e.newTokenId) === newTid,
+    );
+    if (hit) {
+      if (newTid !== tid) posStore.updateActiveTokenId(newTid);
+      return pd;
+    }
+  }
+  return null;
+}
+
 /**
  * Flatten the V2 status response into a single object for the active position.
  * Merges global + per-position data, with tokenId reconciliation when the
@@ -195,25 +219,8 @@ export function flattenV2Status(v2) {
       )
     : null;
   let posData = myKey ? positions[myKey] : null;
-  if (
-    !posData &&
-    active?.token0 &&
-    active?.contractAddress &&
-    global.walletAddress
-  ) {
-    const pfx =
-      "pulsechain-" + global.walletAddress + "-" + active.contractAddress + "-";
-    const at0 = active.token0.toLowerCase();
-    const mk = Object.keys(positions).find((k) => {
-      if (!k.startsWith(pfx) || k === myKey) return false;
-      const ap = positions[k]?.activePosition;
-      return ap && ap.fee === active.fee && ap.token0?.toLowerCase() === at0;
-    });
-    if (mk) {
-      posData = positions[mk];
-      const nid = mk.split("-").pop();
-      if (nid !== active.tokenId) posStore.updateActiveTokenId(nid);
-    }
+  if (!posData) {
+    posData = _findRebalanceTargetPosData(active, positions);
   }
   return {
     ...global,

@@ -253,7 +253,32 @@ export const posStore = {
     const a = this.getActive();
     if (!a) return;
     const old = a.tokenId;
-    a.tokenId = String(newId);
+    const nid = String(newId);
+    if (old === nid) return;
+    /*-
+     * Refuse the migration if another entry already has this tokenId
+     * for the same wallet — otherwise the store ends up with two rows
+     * holding the same NFT #, corrupting the Position Browser. This is
+     * a safety net: callers should have filtered out the no-op
+     * same-pool case (e.g. viewing a closed position whose pool still
+     * has a managed live position).
+     */
+    const w = (a.walletAddress || "").toLowerCase();
+    const dup = this.entries.some(
+      (e, i) =>
+        i !== this.activeIdx &&
+        (e.walletAddress || "").toLowerCase() === w &&
+        String(e.tokenId) === nid,
+    );
+    if (dup) {
+      console.warn(
+        "[lp-ranger] [pos] rebalance follow REFUSED: #%s → #%s (duplicate tokenId in store)",
+        old,
+        nid,
+      );
+      return;
+    }
+    a.tokenId = nid;
     _persistPosStore();
     try {
       localStorage.setItem("9mm_last_position", String(newId));

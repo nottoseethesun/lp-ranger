@@ -396,16 +396,24 @@ function _populateHistoryOnce(data) {
 function _resolveManagedTid(a, mp, states) {
   const tid = String(a.tokenId);
   if (mp.some((p) => String(p.tokenId) === tid)) return tid;
-  if (!a.token0) return tid;
-  const t0 = a.token0.toLowerCase(),
-    f = a.fee;
-  const m = mp.find((p) => {
-    const ap = states[p.key]?.activePosition;
-    return ap && ap.token0?.toLowerCase() === t0 && ap.fee === f;
-  });
-  if (m && String(m.tokenId) !== tid) {
-    posStore.updateActiveTokenId(m.tokenId);
-    return m.tokenId;
+  /*-
+   * Rebalance-follow.  Migrate only when a rebalance event links the
+   * active tokenId (drained) to a currently-managed new tokenId.  The
+   * event is the single source of truth — no same-pool heuristic and
+   * no multi-hop walk (the view converges 1-hop per poll).  This is
+   * also robust when two managed positions share a pool.
+   */
+  for (const p of mp) {
+    const events = states[p.key]?.rebalanceEvents || [];
+    const hit = events.some(
+      (e) =>
+        String(e.oldTokenId) === tid &&
+        String(e.newTokenId) === String(p.tokenId),
+    );
+    if (hit) {
+      posStore.updateActiveTokenId(p.tokenId);
+      return p.tokenId;
+    }
   }
   return tid;
 }

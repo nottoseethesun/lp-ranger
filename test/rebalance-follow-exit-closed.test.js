@@ -27,30 +27,59 @@ const assert = require("assert");
 
 // ── Mirror of updateActiveTokenId from dashboard-positions-store.js ─────
 
-function makeStore({ onSyncRoute = null, onExitClosedView = null } = {}) {
+function makeStore({
+  onSyncRoute = null,
+  onExitClosedView = null,
+  entries = null,
+  activeIdx = 0,
+} = {}) {
   const calls = {
     persist: 0,
     localStorage: [],
     log: [],
+    warn: [],
     syncRoute: 0,
     exitClosedView: 0,
     stripUI: 0,
   };
-  const active = { tokenId: "158981", active: true };
+  const defaultEntries = [
+    { tokenId: "158981", walletAddress: "0xWALLET", active: true },
+  ];
   const store = {
-    entries: [active],
-    activeIdx: 0,
+    entries: entries || defaultEntries,
+    activeIdx,
     getActive() {
-      return this.activeIdx < 0 ? null : this.entries[this.activeIdx];
+      if (this.activeIdx < 0 || this.activeIdx >= this.entries.length)
+        return null;
+      return this.entries[this.activeIdx];
     },
     updateActiveTokenId(newId) {
       const a = this.getActive();
       if (!a) return;
       const old = a.tokenId;
-      a.tokenId = String(newId);
+      const nid = String(newId);
+      if (old === nid) return;
+      const w = (a.walletAddress || "").toLowerCase();
+      const dup = this.entries.some(
+        (e, i) =>
+          i !== this.activeIdx &&
+          (e.walletAddress || "").toLowerCase() === w &&
+          String(e.tokenId) === nid,
+      );
+      if (dup) {
+        calls.warn.push(
+          "[pos] rebalance follow REFUSED: #" +
+            old +
+            " \u2192 #" +
+            nid +
+            " (duplicate tokenId in store)",
+        );
+        return;
+      }
+      a.tokenId = nid;
       calls.persist++;
-      calls.localStorage.push(String(newId));
-      calls.log.push("[pos] rebalance follow: #" + old + " \u2192 #" + newId);
+      calls.localStorage.push(nid);
+      calls.log.push("[pos] rebalance follow: #" + old + " \u2192 #" + nid);
       if (onExitClosedView) {
         onExitClosedView();
         calls.exitClosedView++;
@@ -126,5 +155,63 @@ describe("posStore.updateActiveTokenId: rebalance-follow", () => {
     const { store } = makeStore();
     assert.doesNotThrow(() => store.updateActiveTokenId("159013"));
     assert.strictEqual(store.getActive().tokenId, "159013");
+  });
+
+  it("no-ops when the newId matches the current tokenId", () => {
+    const { store, calls } = makeStore({
+      onExitClosedView: () => {},
+      onSyncRoute: () => {},
+    });
+    store.updateActiveTokenId("158981");
+    assert.strictEqual(calls.persist, 0);
+    assert.strictEqual(calls.exitClosedView, 0);
+    assert.strictEqual(calls.syncRoute, 0);
+  });
+
+  it("refuses migration when another entry already has the target tokenId (same wallet)", () => {
+    /*-
+     * Reproduces the corruption bug: user is viewing a closed NFT
+     * (#158981) in the same pool as a managed live NFT (#159013).
+     * A misfire of the rebalance-follow heuristic would try to rewrite
+     * the closed entry's tokenId to 159013 — creating two rows with
+     * the same tokenId. The guard refuses that mutation.
+     */
+    const entries = [
+      { tokenId: "159013", walletAddress: "0xWALLET" }, // live managed (idx 0)
+      { tokenId: "158981", walletAddress: "0xWALLET", active: true }, // closed viewed (idx 1)
+    ];
+    const { store, calls } = makeStore({
+      entries,
+      activeIdx: 1,
+      onExitClosedView: () => {},
+      onSyncRoute: () => {},
+    });
+    store.updateActiveTokenId("159013");
+    // Active entry is untouched.
+    assert.strictEqual(store.entries[1].tokenId, "158981");
+    // Other entry is untouched.
+    assert.strictEqual(store.entries[0].tokenId, "159013");
+    // No side effects fired.
+    assert.strictEqual(calls.persist, 0);
+    assert.strictEqual(calls.exitClosedView, 0);
+    assert.strictEqual(calls.syncRoute, 0);
+    // Warning logged.
+    assert.match(calls.warn[0], /rebalance follow REFUSED/);
+  });
+
+  it("allows migration when duplicate is in a different wallet", () => {
+    const entries = [
+      { tokenId: "159013", walletAddress: "0xOTHERWALLET" },
+      { tokenId: "158981", walletAddress: "0xWALLET", active: true },
+    ];
+    const { store, calls } = makeStore({
+      entries,
+      activeIdx: 1,
+      onExitClosedView: () => {},
+      onSyncRoute: () => {},
+    });
+    store.updateActiveTokenId("159013");
+    assert.strictEqual(store.entries[1].tokenId, "159013");
+    assert.strictEqual(calls.persist, 1);
   });
 });

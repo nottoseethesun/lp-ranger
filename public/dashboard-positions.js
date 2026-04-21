@@ -61,6 +61,7 @@ export {
   updateManagedPositions,
   restoreManagedPositions,
   isPositionManaged,
+  isPositionClosed,
   formatPosLabel,
 };
 import {
