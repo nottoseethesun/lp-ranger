@@ -307,4 +307,101 @@ describe("position-manager", () => {
       assert.deepStrictEqual(mgr.getPoolDailyCounts(), {});
     });
   });
+
+  // ── seedPoolDailyCounts ─────────────────────────────────────────────────
+
+  describe("seedPoolDailyCounts()", () => {
+    /*- Use a fixed clock so we can construct log timestamps relative to
+     *  "today" deterministically. */
+    function fixedClockMgr(now) {
+      return createPositionManager({
+        rebalanceLock: createRebalanceLock(),
+        nowFn: () => now,
+      });
+    }
+
+    it("counts today-UTC log entries and skips older ones", () => {
+      const now = Date.UTC(2026, 3, 22, 15, 0, 0); // Apr 22 2026 15:00 UTC
+      const mgr = fixedClockMgr(now);
+      const todayStart = Date.UTC(2026, 3, 22, 0, 0, 0);
+      const yesterday = Date.UTC(2026, 3, 21, 23, 0, 0);
+      const entries = [
+        {
+          token0: "0xA",
+          token1: "0xB",
+          fee: 3000,
+          loggedAt: new Date(todayStart + 60_000).toISOString(),
+        },
+        {
+          token0: "0xA",
+          token1: "0xB",
+          fee: 3000,
+          loggedAt: new Date(now - 60_000).toISOString(),
+        },
+        {
+          token0: "0xA",
+          token1: "0xB",
+          fee: 3000,
+          loggedAt: new Date(yesterday).toISOString(),
+        },
+      ];
+      const n = mgr.seedPoolDailyCounts(entries);
+      assert.strictEqual(n, 2);
+      const pk = mgr.poolKey("0xA", "0xB", 3000);
+      assert.strictEqual(mgr.getPoolDailyCount(pk), 2);
+    });
+
+    it("skips entries missing token0/token1/fee", () => {
+      const now = Date.UTC(2026, 3, 22, 15, 0, 0);
+      const mgr = fixedClockMgr(now);
+      const iso = new Date(now - 60_000).toISOString();
+      const n = mgr.seedPoolDailyCounts([
+        { loggedAt: iso, poolAddress: "0xpool" }, // pre-fix row
+        { token0: "0xA", fee: 3000, loggedAt: iso }, // missing token1
+        { token0: "0xA", token1: "0xB", loggedAt: iso }, // missing fee
+        { token0: "0xA", token1: "0xB", fee: 3000, loggedAt: iso }, // valid
+      ]);
+      assert.strictEqual(n, 1);
+    });
+
+    it("groups separate pools into distinct counts", () => {
+      const now = Date.UTC(2026, 3, 22, 15, 0, 0);
+      const mgr = fixedClockMgr(now);
+      const iso = new Date(now - 60_000).toISOString();
+      const mk = (t0, t1, f) => ({
+        token0: t0,
+        token1: t1,
+        fee: f,
+        loggedAt: iso,
+      });
+      mgr.seedPoolDailyCounts([
+        mk("0xA", "0xB", 3000),
+        mk("0xA", "0xB", 3000),
+        mk("0xC", "0xD", 500),
+      ]);
+      const counts = mgr.getPoolDailyCounts();
+      assert.strictEqual(counts[mgr.poolKey("0xA", "0xB", 3000)], 2);
+      assert.strictEqual(counts[mgr.poolKey("0xC", "0xD", 500)], 1);
+    });
+
+    it("returns 0 for empty / non-array input", () => {
+      const mgr = makeMgr();
+      assert.strictEqual(mgr.seedPoolDailyCounts([]), 0);
+      assert.strictEqual(mgr.seedPoolDailyCounts(null), 0);
+      assert.strictEqual(mgr.seedPoolDailyCounts(undefined), 0);
+    });
+
+    it("is additive — subsequent live rebalances continue counting", () => {
+      const now = Date.UTC(2026, 3, 22, 15, 0, 0);
+      const mgr = fixedClockMgr(now);
+      const iso = new Date(now - 60_000).toISOString();
+      mgr.seedPoolDailyCounts([
+        { token0: "0xA", token1: "0xB", fee: 3000, loggedAt: iso },
+        { token0: "0xA", token1: "0xB", fee: 3000, loggedAt: iso },
+      ]);
+      const pk = mgr.poolKey("0xA", "0xB", 3000);
+      mgr.recordPoolRebalance(pk);
+      assert.strictEqual(mgr.getPoolDailyCount(pk), 3);
+    });
+  });
 });

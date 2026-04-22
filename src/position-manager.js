@@ -94,6 +94,34 @@ function createPositionManager(opts) {
   }
 
   /**
+   * Seed per-pool counters from historical rebalance log entries so a
+   * bot restart does not silently reset the daily cap.  Only counts
+   * entries logged since today's UTC midnight.  Entries missing
+   * token0/token1/fee (pre-fix log rows) are skipped — they simply do
+   * not contribute, which is safe (under-count, never over-count).
+   *
+   * @param {Array<object>} entries  Rebalance log rows; each expects
+   *   `token0`, `token1`, `fee`, and `loggedAt` (ISO string).
+   * @returns {number}  Number of entries counted.
+   */
+  function seedPoolDailyCounts(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return 0;
+    const startOfDay = nextMidnight(_clock) - 86_400_000;
+    let counted = 0;
+    for (const e of entries) {
+      if (!e || !e.token0 || !e.token1) continue;
+      if (e.fee === null || e.fee === undefined) continue;
+      if (!e.loggedAt) continue;
+      const ts = Date.parse(e.loggedAt);
+      if (Number.isNaN(ts) || ts < startOfDay) continue;
+      const pk = poolKey(e.token0, e.token1, e.fee);
+      _poolDailyCounts.set(pk, (_poolDailyCounts.get(pk) || 0) + 1);
+      counted++;
+    }
+    return counted;
+  }
+
+  /**
    * Start managing a position.
    *
    * @param {string} key               Composite key.
@@ -243,6 +271,7 @@ function createPositionManager(opts) {
     canRebalancePool,
     recordPoolRebalance,
     getPoolDailyCounts,
+    seedPoolDailyCounts,
     getRebalanceLock,
     getScanLock,
     getPoolScanLock,

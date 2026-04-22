@@ -123,6 +123,7 @@ const walletManager = require("./src/wallet-manager");
 const { getPositionHistory } = require("./src/position-history");
 const { createRebalanceLock } = require("./src/rebalance-lock");
 const { createPositionManager } = require("./src/position-manager");
+const botRecorder = require("./src/bot-recorder");
 const { loadConfig, managedKeys } = require("./src/bot-config-v2");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { buildGasStatusPayload } = require("./src/gas-monitor");
@@ -149,6 +150,14 @@ const _rebalanceLock = createRebalanceLock();
 const _positionMgr = createPositionManager({
   rebalanceLock: _rebalanceLock,
 });
+
+/*- Seed today's per-pool daily rebalance counts from the on-disk
+ *  rebalance log so a restart mid-day does not silently reset the
+ *  daily cap (which would otherwise allow MAX_REBALANCES_PER_DAY ×
+ *  restart-count rebalances against the intended cap). */
+const _seeded = _positionMgr.seedPoolDailyCounts(botRecorder.readLog());
+if (_seeded > 0)
+  console.log("[server] Seeded %d pool rebalance(s) for today's cap", _seeded);
 
 // ── MIME type map ────────────────────────────────────
 
