@@ -160,6 +160,36 @@ export function _applyPositionStats(d) {
         : "\u2014";
   const tc = g("sTC");
   if (tc && d.poolState.tick !== undefined) tc.textContent = d.poolState.tick;
+  _applyUnmanagedResiduals(d);
+}
+
+/*- Populate the Residual fields + tooltips for the unmanaged (one-shot)
+ *  detail flow. Server returns residualAmount0/1 + residualUsd0/1 at the
+ *  top level of the quick-details payload. Tooltip includes an extra
+ *  note that the position is unmanaged so residuals are wallet-balance
+ *  snapshots (not bot-tracked over time). */
+function _applyUnmanagedResiduals(d) {
+  const r0 = g("sResidual0"),
+    r1 = g("sResidual1");
+  const fmt = (v) =>
+    typeof v === "number" && isFinite(v) ? v.toFixed(3) : "\u2014";
+  if (r0) r0.textContent = fmt(d.residualAmount0);
+  if (r1) r1.textContent = fmt(d.residualAmount1);
+  const tip0 = g("sResidual0Tip"),
+    tip1 = g("sResidual1Tip");
+  const usdFmt = (v) =>
+    typeof v === "number" && isFinite(v) ? v.toFixed(2) : "0.00";
+  const note =
+    " (Unmanaged position: this is a current wallet-balance snapshot," +
+    " not tracked over time. Click Manage to enable bot-tracked residuals.)";
+  if (tip0)
+    tip0.textContent =
+      `Coins left liquid on the wallet; ~ $usd ${usdFmt(d.residualUsd0)}.` +
+      note;
+  if (tip1)
+    tip1.textContent =
+      `Coins left liquid on the wallet; ~ $usd ${usdFmt(d.residualUsd1)}.` +
+      note;
 }
 
 /** Apply current-panel KPIs from phase-1 data. */
