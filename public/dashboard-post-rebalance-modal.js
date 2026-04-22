@@ -1,15 +1,19 @@
 /**
  * @file dashboard-post-rebalance-modal.js
- * @description Single combined modal for post-rebalance warnings.  The
- * "tick-adjustment" warning (range width rounded to tick spacing) and
- * the "residual above threshold" warning (corrective-swap cap reached)
- * are merged into one dialog when both fire in the same status update,
- * so the user only has to dismiss one modal per rebalance.  Extracted
- * from dashboard-data-status.js for line-count compliance.
+ * @description Post-rebalance warning modals ("Range Width Adjusted"
+ * and "Residual Above Threshold"), one combined dialog per position
+ * that has a new warning in the current poll. Both dedup trackers are
+ * keyed by composite key so warnings on one position never block
+ * warnings on another, and every modal is labeled from the originating
+ * position's state (never from the currently-viewed tab).
  */
 
-let _rangeRoundedShown = false;
-let _residualWarningAtShown = null;
+/*- Per-key dedup. `_rrShown` is a Set of keys for which the current
+ *  rangeRounded has already produced a modal; `_rwShownAt` maps
+ *  key → last-shown residualWarning.at so a new residual event on the
+ *  same key re-fires. */
+const _rrShown = new Set();
+const _rwShownAt = new Map();
 
 /** Build the "Range Width Adjusted" HTML section. */
 function _rangeRoundedHtml(rr) {
@@ -48,18 +52,10 @@ function _residualWarningHtml(rw) {
   );
 }
 
-/**
- * Compose one combined modal for whichever post-rebalance warnings
- * are new in this status update.  Does nothing if neither is new.
- *
- * @param {object} d         status doc from /api/status
- * @param {Function} createModal  injected _createModal (avoids circular import)
- * @param {Function} posContextHtml  injected _posContextHtml
- */
-export function showPostRebalanceWarnings(d, createModal, posContextHtml) {
-  const rrNew = d.rangeRounded && !_rangeRoundedShown;
-  const rwAt = d.residualWarning?.at || null;
-  const rwNew = d.residualWarning && rwAt !== _residualWarningAtShown;
+function _showForKey(key, st, createModal, posContextHtmlForState) {
+  const rrNew = st.rangeRounded && !_rrShown.has(key);
+  const rwAt = st.residualWarning?.at || null;
+  const rwNew = st.residualWarning && rwAt !== _rwShownAt.get(key);
   if (!rrNew && !rwNew) return;
   const parts = [];
   let title;
@@ -67,31 +63,57 @@ export function showPostRebalanceWarnings(d, createModal, posContextHtml) {
     title = "Rebalance \u2014 Range Adjusted & Residual Left";
     parts.push(
       "<h4>Range width adjusted</h4>",
-      _rangeRoundedHtml(d.rangeRounded),
+      _rangeRoundedHtml(st.rangeRounded),
     );
     parts.push(
       "<h4>Residual above threshold</h4>",
-      _residualWarningHtml(d.residualWarning),
+      _residualWarningHtml(st.residualWarning),
     );
   } else if (rrNew) {
     title = "Range Width Adjusted";
-    parts.push(_rangeRoundedHtml(d.rangeRounded));
+    parts.push(_rangeRoundedHtml(st.rangeRounded));
   } else {
     title = "Residual Above Threshold";
-    parts.push(_residualWarningHtml(d.residualWarning));
+    parts.push(_residualWarningHtml(st.residualWarning));
   }
-  if (rrNew) _rangeRoundedShown = true;
-  if (rwNew) _residualWarningAtShown = rwAt;
+  if (rrNew) _rrShown.add(key);
+  if (rwNew) _rwShownAt.set(key, rwAt);
   createModal(
     null,
     "9mm-pos-mgr-modal-caution",
     title,
-    posContextHtml() + parts.join(""),
+    posContextHtmlForState(key, st) + parts.join(""),
   );
+}
+
+/**
+ * Compose one combined modal per position with new post-rebalance
+ * warnings. Iterates all per-position states so warnings on any
+ * managed position surface correctly — not just the viewed tab.
+ *
+ * @param {object} allStates  `_allPositionStates` from /api/status.
+ * @param {Function} createModal  injected _createModal (avoids circular import).
+ * @param {Function} posContextHtmlForState  injected (key, st) context builder.
+ */
+export function showPostRebalanceWarnings(
+  allStates,
+  createModal,
+  posContextHtmlForState,
+) {
+  const all = allStates || {};
+  /*- Reap stale rangeRounded dedup entries so a future rebalance on
+   *  the same position can re-surface. Residual uses `at` so it
+   *  self-deduplicates. */
+  for (const key of Array.from(_rrShown)) {
+    if (!all[key]?.rangeRounded) _rrShown.delete(key);
+  }
+  for (const [key, st] of Object.entries(all)) {
+    _showForKey(key, st, createModal, posContextHtmlForState);
+  }
 }
 
 /** Test-only reset for dedup state. */
 export function _resetPostRebalanceModalState() {
-  _rangeRoundedShown = false;
-  _residualWarningAtShown = null;
+  _rrShown.clear();
+  _rwShownAt.clear();
 }
