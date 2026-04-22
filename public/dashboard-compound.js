@@ -37,7 +37,8 @@ export function showQueuedActionModal(requested, inFlight) {
     null,
     "9mm-pos-mgr-modal-help",
     `${reqLabel} Queued`,
-    `<p>Your ${reqLabel.toLowerCase()} request has been queued.</p>` +
+    _posContextHtml() +
+      `<p>Your ${reqLabel.toLowerCase()} request has been queued.</p>` +
       `<p>It will run after the current in-flight ${inLabel} ` +
       `transaction on Position #${inFlight.tokenId} (${t0}/${t1}) ` +
       `finishes.</p>`,
@@ -55,7 +56,8 @@ export async function compoundNow() {
       null,
       "9mm-pos-mgr-modal-caution",
       "Compound Blocked",
-      "<p>Click Manage first, then wait for syncing to finish.</p>",
+      _posContextHtml() +
+        "<p>Click Manage first, then wait for syncing to finish.</p>",
     );
     return;
   }
@@ -115,7 +117,8 @@ export function toggleAutoCompound() {
       null,
       "9mm-pos-mgr-modal-caution",
       "Auto-compound Blocked",
-      "<p>Click Manage first, then wait for syncing to finish.</p>",
+      _posContextHtml() +
+        "<p>Click Manage first, then wait for syncing to finish.</p>",
     );
     return;
   }
@@ -161,7 +164,8 @@ export function saveCompoundThreshold(minFee) {
       null,
       "9mm-pos-mgr-modal-caution",
       "Invalid Threshold",
-      "<p>Auto-compound threshold must be at least $" +
+      _posContextHtml() +
+        "<p>Auto-compound threshold must be at least $" +
         min.toFixed(2) +
         " (the minimum fee required to compound).</p>",
     );

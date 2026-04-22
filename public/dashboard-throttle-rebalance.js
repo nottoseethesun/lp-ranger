@@ -53,7 +53,8 @@ export function openRebalanceRangeModal() {
       null,
       "9mm-pos-mgr-modal-caution",
       "Rebalance Blocked",
-      "<p>" +
+      _posContextHtml() +
+        "<p>" +
         (!managed
           ? "Click Manage first, then wait" + " for syncing to finish."
           : "Wait for syncing" + " to finish before rebalancing.") +

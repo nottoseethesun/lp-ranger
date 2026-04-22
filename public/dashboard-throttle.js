@@ -23,7 +23,12 @@ import {
   csrfHeaders,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import { _createModal, _posLabel, markInputDirty } from "./dashboard-data.js";
+import {
+  _createModal,
+  _posLabel,
+  _posContextHtml,
+  markInputDirty,
+} from "./dashboard-data.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
 
 // Late-bound import to avoid circular dep issues at evaluation time.
@@ -369,7 +374,8 @@ export function saveSlippage() {
       null,
       "9mm-pos-mgr-modal-caution",
       "Slippage Set to 0%",
-      "<p>Trades will fail with zero slippage unless pool conditions are perfectly stable.</p>" +
+      _posContextHtml() +
+        "<p>Trades will fail with zero slippage unless pool conditions are perfectly stable.</p>" +
         '<p class="9mm-pos-mgr-text-muted">Set a small value like 0.3\u20131% for normal operation.</p>',
     );
   else if (val > 20)
@@ -377,7 +383,8 @@ export function saveSlippage() {
       null,
       "9mm-pos-mgr-modal-caution",
       "Slippage Very High",
-      "<p>Slippage of " +
+      _posContextHtml() +
+        "<p>Slippage of " +
         val +
         "% may result in significant loss of funds.</p>",
     );

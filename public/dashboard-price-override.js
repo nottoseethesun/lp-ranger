@@ -12,6 +12,7 @@ import {
   csrfHeaders,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
+import { _posContextHtml } from "./dashboard-data.js";
 
 let _refetchUnmanaged = null;
 /** Inject re-fetch callback (avoids circular import). */
@@ -105,6 +106,10 @@ export function openPriceOverrideDialog() {
     l1 = g("priceOverrideLabel1");
   if (l0) l0.textContent = truncName(active.token0Symbol || "Token 0", 20);
   if (l1) l1.textContent = truncName(active.token1Symbol || "Token 1", 20);
+  /*- Populate the pool-identity header so users always know which pool
+   *  these prices apply to (provider, pair, fee tier, NFT, chain, wallet). */
+  const ctx = g("priceOverrideCtx");
+  if (ctx) ctx.innerHTML = _posContextHtml();
   const fc = g("priceOverrideForce");
   if (fc) fc.checked = _loadForce();
   const m = g("priceOverrideModal");
