@@ -19,16 +19,7 @@ import {
   updateRangePctLabels,
   positionRangeVisual,
 } from "./dashboard-data-kpi.js";
-import { showPostRebalanceWarnings } from "./dashboard-post-rebalance-modal.js";
-
-let _errorModalShown = false,
-  _recoveryModalShown = false;
-
-function _dismissRebalanceModal() {
-  const el = document.getElementById("rebalanceErrorModal");
-  if (el) el.remove();
-  _errorModalShown = false;
-}
+import { showPerPositionAlerts } from "./dashboard-alerts.js";
 
 /**
  * Create and append a modal overlay to the document body. The shell
@@ -141,60 +132,6 @@ export function _logCtx(key, st) {
     c +
     " \u00B7 " +
     _short(parts[1] || "")
-  );
-}
-
-function _showRebalanceErrorModal(message) {
-  if (_errorModalShown || !message) return;
-  _errorModalShown = true;
-  _recoveryModalShown = false;
-  const m = message;
-  const t =
-    m.includes("mid-rebalance") || m.includes("Mid-rebalance")
-      ? "midway"
-      : m.includes("liquidity is too thin") || m.includes("no liquidity")
-        ? "thin"
-        : m.includes("exceeds slippage")
-          ? "slip"
-          : m.includes("insufficient gas")
-            ? "gas"
-            : m.includes("too volatile")
-              ? "volatile"
-              : "";
-  const _footers = {
-    midway:
-      "Tokens are safe in your wallet. The bot retried 3 times. Use the manual Rebalance button to retry.",
-    thin: "Source tokens externally, recreate the LP position, then select the new NFT.",
-    slip: "Adjust the slippage setting, then use the manual Rebalance button.",
-    gas: "Send native tokens to the wallet address, then manual Rebalance.",
-    volatile:
-      "Tokens are safe in the wallet. Use the manual Rebalance button when the market calms down.",
-  };
-  const footer = _footers[t] || "The bot will keep retrying. Check logs.";
-  _createModal(
-    "rebalanceErrorModal",
-    "",
-    t ? "Rebalance Paused" : "Rebalance Failed",
-    _posContextHtml() +
-      "<p>" +
-      message +
-      '</p><p class="9mm-pos-mgr-text-muted">' +
-      footer +
-      "</p>",
-  );
-}
-
-function _showRecoveryModal(minutes) {
-  if (_recoveryModalShown) return;
-  _recoveryModalShown = true;
-  _createModal(
-    null,
-    "9mm-pos-mgr-modal-caution",
-    "Position Recovered",
-    _posContextHtml() +
-      "<p>Price returned to range after ~<strong>" +
-      minutes +
-      ' min</strong> of failed attempts.</p><p class="9mm-pos-mgr-text-muted">No rebalance needed.</p>',
   );
 }
 
@@ -392,18 +329,9 @@ function _setIdlePill(d) {
   );
 }
 
-function _showAlerts(d) {
-  if (d.oorRecoveredMin > 0 && !d.rebalancePaused && !_recoveryModalShown) {
-    _dismissRebalanceModal();
-    _showRecoveryModal(d.oorRecoveredMin);
-  }
-  showPostRebalanceWarnings(d, _createModal, _posContextHtml);
-  if (d.rebalancePaused) _showRebalanceErrorModal(d.rebalanceError);
-}
-
 /** Update the bot status pill, alerts, price marker, and last-check labels. */
 export function _updateBotStatus(d) {
-  _showAlerts(d);
+  showPerPositionAlerts(d);
   if (d.rebalancePaused) {
     _setStatusPill("status-pill danger", "dot red", "RETRYING");
   } else if (d.halted) {
