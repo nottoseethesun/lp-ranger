@@ -109,7 +109,8 @@ function createPositionManager(opts) {
     const startOfDay = nextMidnight(_clock) - 86_400_000;
     let counted = 0;
     for (const e of entries) {
-      if (!e || !e.token0 || !e.token1 || e.fee == null) continue;
+      if (!e || !e.token0 || !e.token1) continue;
+      if (e.fee === null || e.fee === undefined) continue;
       if (!e.loggedAt) continue;
       const ts = Date.parse(e.loggedAt);
       if (Number.isNaN(ts) || ts < startOfDay) continue;

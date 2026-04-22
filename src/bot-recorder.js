@@ -31,6 +31,22 @@ function _bigIntReplacer(_key, value) {
 }
 
 /**
+ * Read the on-disk rebalance log and return its entries.
+ * Returns [] for missing, empty, or malformed files — callers should
+ * treat "no seed available" the same as "no rebalances".
+ * @returns {Array<object>}
+ */
+function readLog() {
+  try {
+    const raw = fs.readFileSync(path.resolve(config.LOG_FILE), "utf8");
+    const entries = JSON.parse(raw);
+    return Array.isArray(entries) ? entries : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+/**
  * Append a rebalance result to the on-disk JSON log.
  * Creates the file if it does not exist.
  * @param {object} result  The rebalance result object.
@@ -531,6 +547,7 @@ function _applyRebalanceResult(deps, result) {
 module.exports = {
   _bigIntReplacer,
   appendLog,
+  readLog,
   _closePnlEpoch,
   _scanHistory,
   _scanAndReconstruct,
