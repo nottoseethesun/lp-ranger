@@ -18,6 +18,7 @@ import {
   setKpiValue,
   checkHodlBaselineDialog,
 } from "./dashboard-data.js";
+import { _setPctSpan, _setAprSpan } from "./dashboard-data-kpi.js";
 import {
   setLastPrices,
   clearPriceOverrideIfFetched,
@@ -96,12 +97,29 @@ function _balanceStats(amounts) {
   };
 }
 
+/*-
+ * Populate the trailing %/APR spans on the Lifetime cards so the layout
+ * matches the managed-view flow (_updateNetReturn / _updateIL). Lifetime
+ * pct/APR is relative to the total lifetime deposit and measured from the
+ * pool's first epoch (or mint date as a fallback).
+ */
+function _applyLifetimePctSpans(d, ltNet) {
+  const ltDeposit = d.entryValue || 0;
+  const ltStart = d.firstEpochDate || d.mintDate || null;
+  _setPctSpan("kpiNetPct", ltNet ?? 0, ltDeposit);
+  _setAprSpan("kpiNetApr", ltNet ?? 0, ltDeposit, ltStart);
+  _setPctSpan("netILPct", d.il ?? 0, ltDeposit);
+  _setAprSpan("netILApr", d.il ?? 0, ltDeposit, ltStart);
+}
+
 /** Populate the Lifetime panel from phase-2 response. */
 export function _applyLifetime(d) {
   const comp = d.ltCompounded || 0;
-  setKpiValue("kpiNet", _adjCompounded(d.ltNetPnl, d.netPnl, comp));
+  const ltNet = _adjCompounded(d.ltNetPnl, d.netPnl, comp);
+  setKpiValue("kpiNet", ltNet);
   setKpiValue("ltProfit", _adjCompounded(d.ltProfit, d.profit, comp));
   if (d.il !== null && d.il !== undefined) setKpiValue("netIL", d.il);
+  _applyLifetimePctSpans(d, ltNet);
   console.log(
     "%c[lp-ranger] [unmanaged] lifetime entryValue=%s",
     "color:#fa0",
@@ -209,6 +227,14 @@ export function _applyCurrentKpis(d) {
   setKpiValue("curProfit", d.profit);
   setKpiValue("curIL", d.il);
   setKpiValue("pnlRealized", 0);
+  // Populate the trailing %/APR spans on the pct-row cards so the layout
+  // is consistent with the managed-view flow (which uses _updatePnlHeader
+  // / _updateCurIL). Without these, the spans remain empty and the row
+  // visually collapses to value + info icon only.
+  const curDep = d.baselineEntryValue || d.entryValue || 0;
+  _setPctSpan("kpiPnlPctVal", d.netPnl ?? 0, curDep);
+  _setAprSpan("kpiPnlApr", d.netPnl ?? 0, curDep, d.mintDate || null);
+  _setPctSpan("curILPct", d.il ?? 0, curDep);
 }
 
 /** Position age + mint date. */

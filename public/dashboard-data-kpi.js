@@ -109,7 +109,11 @@ export function resetKpis(ids) {
     const el = g(id);
     if (!el) continue;
     _setLeadingText(el, "\u2014");
-    el.className = "kpi-value neu";
+    // Preserve layout classes (e.g. 9mm-pos-mgr-kpi-pct-row) — only swap
+    // the pos/neg/neu modifier.  Overwriting el.className drops the flex
+    // layout class that spreads the trailing %/APR spans across the row.
+    el.classList.remove("pos", "neg");
+    el.classList.add("kpi-value", "neu");
   }
 }
 const _CUR_KPI_IDS = [
@@ -129,18 +133,19 @@ export function _resetCurrentKpis() {
 export function setKpiValue(id, val, forceClass) {
   const el = g(id);
   if (!el) return;
+  // Preserve layout classes (e.g. 9mm-pos-mgr-kpi-pct-row) — only swap the
+  // pos/neg/neu modifier. Overwriting el.className drops the flex layout
+  // class that aligns the trailing %/APR spans across the row.
   if (val === null || val === undefined) {
     _setLeadingText(el, "\u2014");
-    el.className = "kpi-value neu";
+    el.classList.remove("pos", "neg");
+    el.classList.add("kpi-value", "neu");
     return;
   }
   const cls =
     forceClass || (_isDisplayZero(val) ? "neu" : val > 0 ? "pos" : "neg");
   _setLeadingText(el, _fmtUsd(val));
-  el.className = el.className
-    .replace(/\b(pos|neg|neu)\b/g, "")
-    .replace(/\bkpi-value\b/, "")
-    .trim();
+  el.classList.remove("pos", "neg", "neu");
   el.classList.add("kpi-value", cls);
 }
 export function _updatePnlHeader(d, total, realized, curDeposit) {
@@ -279,11 +284,12 @@ export function _resolveCurDeposit(d) {
       : d.pnlSnapshot?.liveEpoch?.entryValue || 0
     : 0;
 }
-export function _priceChangePnl(d, deposit, includeResiduals) {
+export function _priceChangePnl(d, deposit) {
   if (!d.pnlSnapshot || deposit <= 0) return 0;
+  // currentValue is LP-only; residuals are tracked separately and roll into
+  // lifetime deposit on the next rebalance, so they don't belong here.
   const cv = d.pnlSnapshot.currentValue || 0;
-  const r = includeResiduals ? d.pnlSnapshot.residualValueUsd || 0 : 0;
-  return cv + r - deposit;
+  return cv - deposit;
 }
 export function _resolveKpiTotals(d) {
   const ltRealized = loadRealizedGains(),
@@ -292,8 +298,8 @@ export function _resolveKpiTotals(d) {
   const curFees = d.pnlSnapshot?.liveEpoch?.fees || 0;
   const curDep = _resolveCurDeposit(d);
   const ltDep = _resolveLifetimeDeposit(d);
-  const curPc = _priceChangePnl(d, curDep, false),
-    ltPc = _priceChangePnl(d, ltDep, true);
+  const curPc = _priceChangePnl(d, curDep),
+    ltPc = _priceChangePnl(d, ltDep);
   const compounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
   const curCompounded = d.pnlSnapshot?.currentCompoundedUsd || 0;
   const ltGas = d.pnlSnapshot?.totalGas || 0;
@@ -489,8 +495,8 @@ export function _updateNetReturn(
         ltGas2,
       );
     _setLtCurrentValue(d);
-    const cv =
-      (d.pnlSnapshot.currentValue || 0) + (d.pnlSnapshot.residualValueUsd || 0);
+    // currentValue is LP-only; residuals are tracked separately.
+    const cv = d.pnlSnapshot.currentValue || 0;
     Object.assign(_ltBreakdown, {
       fees: ltFees,
       compounded: ltCompounded,
@@ -509,8 +515,8 @@ export function _updateNetReturn(
 function _setLtCurrentValue(d) {
   const el = g("ltCurrentValue");
   if (!el) return;
-  const cv =
-    (d.pnlSnapshot.currentValue || 0) + (d.pnlSnapshot.residualValueUsd || 0);
+  // currentValue is LP-only; residuals are tracked separately.
+  const cv = d.pnlSnapshot.currentValue || 0;
   el.textContent = _fmtUsd(cv);
 }
 export {

@@ -237,15 +237,15 @@ function _lifetimeAmounts(deps, snap) {
   };
 }
 
-function _computeIL(snap, deps, realValue, price0, price1, residuals) {
+function _computeIL(snap, deps, realValue, price0, price1) {
   const bl = deps._botState?.hodlBaseline;
   const curA0 = bl?.hodlAmount0 || 0,
     curA1 = bl?.hodlAmount1 || 0;
-  const rUsd = residuals?.usd || 0;
-  // Current IL uses LP-only value; lifetime IL includes residuals
+  // Both IL values use LP-only value; residuals are tracked separately
+  // and will roll into lifetime deposit on the next rebalance.
   snap.totalIL = _ilFor(realValue, curA0, curA1, price0, price1);
   const { a0, a1 } = _lifetimeAmounts(deps, snap);
-  snap.lifetimeIL = _ilFor(realValue + rUsd, a0, a1, price0, price1);
+  snap.lifetimeIL = _ilFor(realValue, a0, a1, price0, price1);
   snap.ilInputs = {
     lpValue: realValue,
     price0,
@@ -310,7 +310,7 @@ async function overridePnlWithRealValues(
     snap.priceChangePnl + lifetimeFees - snap.totalGas - compounded;
   snap.netReturn =
     lifetimeFees - snap.totalGas + snap.priceChangePnl - compounded;
-  _computeIL(snap, deps, realValue, price0, price1, residuals);
+  _computeIL(snap, deps, realValue, price0, price1);
   if (deps._botState?.totalLifetimeDepositUsd > 0) {
     snap.totalLifetimeDeposit = deps._botState.totalLifetimeDepositUsd;
     snap.depositUsedFallback = deps._botState.depositUsedFallback || false;
