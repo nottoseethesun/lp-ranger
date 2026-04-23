@@ -246,6 +246,22 @@ describe("bot-loop: pollCycle", () => {
     });
     assert.strictEqual(r.rebalanced, false);
   });
+  it("returns pollError (not error) on pool-state RPC failure", async () => {
+    const { r } = await _poll(0, {
+      setupDeps: (d) => {
+        d.dispatch[ADDR.pool].slot0 = async () => {
+          throw new Error("request timeout");
+        };
+      },
+    });
+    assert.strictEqual(r.rebalanced, false);
+    assert.strictEqual(
+      r.error,
+      undefined,
+      "pool-state failure must not surface as rebalance error — that would trigger a spurious Position Recovered modal on the next successful poll",
+    );
+    assert.match(r.pollError, /timeout/i);
+  });
   it("overrides pnlSnapshot with real on-chain values when tracker is present", async () => {
     const { createPnlTracker } = require("../src/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });

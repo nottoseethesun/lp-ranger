@@ -480,7 +480,13 @@ async function pollCycle(deps) {
     });
   } catch (err) {
     console.error("[bot] Pool state error:", err.message);
-    return { rebalanced: false, error: err.message };
+    /*- pollError (not error) — a pool-state RPC failure is a polling
+     *  hiccup, not a failed rebalance attempt.  Surfacing it as `error`
+     *  would set firstFailureAt in bot-loop and later trigger a
+     *  spurious "Position Recovered" modal on the next successful
+     *  poll, even for positions that can never go out of range (e.g.
+     *  full-range). */
+    return { rebalanced: false, pollError: err.message };
   }
   await _refreshPosition(position, ethersLib, provider);
   await _updatePnlAndStats(deps, poolState, ethersLib);

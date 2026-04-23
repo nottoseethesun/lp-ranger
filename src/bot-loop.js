@@ -395,6 +395,13 @@ async function startBotLoop(opts) {
       );
     } else if (result.error) {
       _handleError(result);
+    } else if (result.pollError) {
+      /*- Pool-state RPC hiccup — already logged by pollCycle.  Do NOT
+       *  set firstFailureAt or touch recovery state: a transient RPC
+       *  timeout is not a rebalance attempt, so treating it as one
+       *  would fire a spurious "Position Recovered" modal on the next
+       *  successful poll (most visible on full-range positions that
+       *  can never actually go OOR). */
     } else if (
       firstFailureAt &&
       !result.paused &&
