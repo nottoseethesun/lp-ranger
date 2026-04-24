@@ -16,7 +16,7 @@
   <div class="help-toc">
     <div class="help-toc-title">Contents</div>
     <ol>
-      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#how-it-works">Getting Started &amp; How to Use</a></li>
       <li><a href="#bookmarking-positions">Bookmarking Positions</a></li>
       <li><a href="#fund-tracking">Fund Tracking</a></li>
       <li><a href="#range-width">Range Width</a></li>
@@ -34,9 +34,10 @@
     </ol>
   </div>
 
-  <h2 id="how-it-works">How It Works</h2>
+  <h2 id="how-it-works">Getting Started &amp; How to Use</h2>
   <ol>
-    <li>This dashboard manages <strong>multiple LP positions simultaneously</strong> across different pools from a single wallet. To get started: Be sure that you are using a wallet address that you will use exclusively for LP Ranger activity (manual interactions with the dApps of supported DEX Pools, such as the 9mm Liquidity Manager, are okay as well). This kind of wallet segregation is a security best-practice. Separately but as well, will ensure that LP Ranger&rsquo;s Lifetime Net Profit and Lifetime Impermanent Loss/Gain (IL/G) numbers are correct. Make sure you have at least one liquidity position from a <a href="#supported-pool-managers">Supported Liquidity Pool Manager</a>, on a <a href="#supported-blockchains">Supported Blockchain</a>.</li>
+    <li>First, read the README&rsquo;s <a href="https://github.com/nottoseethesun/lp-ranger#overview">Overview</a> section, and then, read the README&rsquo;s <a href="https://github.com/nottoseethesun/lp-ranger#usage">Usage</a> section.</li>
+    <li>You must read and understand the <a href="https://github.com/nottoseethesun/lp-ranger#disclaimer">Disclaimer</a> and the Disclosure linked at the Disclaimer, before proceeding.</li>
     <li>If you are running on a Raspberry Pi 5 or similar device that defaults to a very low-resolution on the screen, consider setting the &ldquo;Zoom&rdquo; on your web browser to about 80%, to ease use of the app.</li>
     <li>On first load of the app, wait for the initial synchronization of the app with the blockchain data to complete. This initial sync handles the default selected liquidity position, if any. It will be repeated for each brand-new liquidity pool that you have a position on. This is a read-only operation but can take a while. Don&rsquo;t worry though: The results are cached so that, normally, you won&rsquo;t have to wait again. While with a valid Moralis API key that is not at its quota limit, it will be fastest, this one-time process can take up to two hours to complete. Watch for the Sync Status badge near top-right on the app to read &ldquo;Synced&rdquo;. At that time, the blur on the app details section will clear.</li>
     <li>Next, consider which Liquidity Positions you want to manage, by clicking on the &ldquo;Positions&rdquo; button near center top on the app if in three column-view, or at the left if in single-column view. Alternatively, you can just manage the currently-loaded position. Before clicking the &ldquo;Manage&rdquo; button on any position, check that all settings on the app are appropriate for the gas cost on the blockchain you are using, and for the level of slippage that you will require.</li>

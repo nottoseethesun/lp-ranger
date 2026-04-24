@@ -3,18 +3,25 @@
 [![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
 [![Tests (Node 20/22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
 
-Auto-rebalancing concentrated liquidity manager, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
-(Uniswap v3 fork) on PulseChain. Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool.
+## Overview
 
-Looks back up to five years on your wallet to show you how you're doing with each liquidity pool: ***With LP Ranger, you know where you're at.***
+LP Ranger keeps your coins concentrated around the current price point in on-blockchain liquidity pools, maximizing your earnings from fees.
+
+LP Ranger is an auto-rebalancing concentrated liquidity manager, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
+(Uniswap v3 fork) on [PulseChain](https://pulsechain.com). Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool.
+
+Looks back up to five years on your wallet to show you how you're doing with each liquidity pool.
+
+<p align="center"><em><strong>With LP Ranger, you know where you're at.</strong></em></p>
 
 **V3 positions only** — V2 positions are not supported.
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [Disclaimer](#disclaimer)
 - [Screenshot](#screenshot)
-- [Pre-Requisites](#pre-requisites)
+- [Prerequisites](#prerequisites)
 - [Install](#install)
 - [Uninstall](#uninstall)
 - [Usage](#usage)
@@ -57,8 +64,11 @@ and the responsive layout &mdash; see the
 
 ---
 
-## Pre-Requisites
+## Prerequisites
 
+- Machine: Any common computer; specifically, a 64-bit Intel, Apple, or ARM machine.
+  - Known working light-weight computer: Raspberry Pi 5 with Heat Sink and Fan
+  - Machine must be kept secure: Up-to-date with updates, free of malware, and physically secure.
 - Node.js 22+
   - Linux (including for arm64 versions of Raspberry Pi), Mac:
     1. <https://brew.sh/>
@@ -72,7 +82,7 @@ and the responsive layout &mdash; see the
 
 ## Install
 
-First meet the [Pre-Requisites](#pre-requisites), above.
+First meet the [Prerequisites](#prerequisites), above.
 
 ### Production
 
@@ -144,11 +154,13 @@ rm -rf lp-ranger*
 
 ## Usage
 
-1. Pick a wallet address that you own (it can be a new address that LP Ranger will generate for you later, if you want it to) and that you will use exclusively for LP Ranger activity (manual interactions with the dApps of supported DEX Pools, such as the 9mm Liquidity Manager, are okay as well). This kind of wallet segregation is a security best-practice. Separately but as well, this will ensure that LP Ranger's Lifetime Net Profit and Lifetime Impermanent Loss/Gain (IL/G) numbers are correct.
-2. Ensure that you either plan to use a brand new wallet address that LP Ranger will create for you if you so choose, or that you have either the Seed Phrase or Private Key of an existing wallet address if you plan to use an existing one.
-3. If you will be using a pre-existing wallet address: If you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one at <https://dex.9mm.pro/liquidity>, making sure to use V3. Otherwise, go back to this step after Step 4, and then click on "Scan Wallet" on the LP Ranger App, in the LP Browser dialog (click the "Positions" button on the app, near top middle).
-4. Visit <http://localhost:5555> in your web browser.
-5. See the first paragraph in the Help text on the app (click at top right on the app).
+1. Make sure that you've installed the app by following the instructions under [Install](#install).
+2. Pick a wallet address that you own (it can be a new address that LP Ranger will generate for you later, if you want it to) and that you will use exclusively for LP Ranger activity (manual interactions with the dApps of supported DEX Pools, such as the 9mm Liquidity Manager, are okay as well).
+   - This kind of wallet segregation is a security best-practice. Separately but as well, this will ensure that LP Ranger's Lifetime Net Profit and Lifetime Impermanent Loss/Gain (IL/G) numbers are correct.
+3. Ensure that you either plan to use a brand new wallet address that LP Ranger will create for you if you so choose, or that you have either the Seed Phrase or Private Key of an existing wallet address if you plan to use an existing one.
+4. On the wallet address that you will be using for LP Ranger, if you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one or more at <https://dex.9mm.pro/liquidity>, making sure to use V3.
+5. Visit <http://localhost:5555> in your web browser.
+6. Now, continue on by proceeding with Step #2 under the "Getting Started & How to Use" section of the "LP Ranger Help and User Manual" (pull it up by clicking on the "? Help" button at top right on the app).
 
 ### Help and User Manual
 
