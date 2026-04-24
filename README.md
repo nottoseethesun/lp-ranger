@@ -1,4 +1,4 @@
-# LP Ranger - Supports 9mm v3 on PulseChain (Ethereum w/o the Bug-eating)
+# LP Ranger - Ride the Wild West of Your LP Ranges
 
 [![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
 [![Tests (Node 20/22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
@@ -8,7 +8,7 @@
 LP Ranger keeps your coins concentrated around the current price point in on-blockchain liquidity pools, maximizing your earnings from fees.
 
 LP Ranger is an auto-rebalancing concentrated liquidity manager, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
-(Uniswap v3 fork) on [PulseChain](https://pulsechain.com). Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool.
+(Uniswap v3 fork) on [PulseChain](https://pulsechain.com) (Ethereum w/o the Bug-eating). Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool.
 
 Looks back up to five years on your wallet to show you how you're doing with each liquidity pool.
 
@@ -70,10 +70,10 @@ and the responsive layout &mdash; see the
   - Known working light-weight computer: Raspberry Pi 5 with Heat Sink and Fan
   - Machine must be kept secure: Up-to-date with updates, free of malware, and physically secure.
 - Node.js 22+
-  - Linux (including for arm64 versions of Raspberry Pi), Mac:
+  - For Linux (including for arm64 versions of Raspberry Pi), Mac, install:
     1. <https://brew.sh/>
     2. <https://formulae.brew.sh/formula/node#default>
-  - Windows:
+  - If you can't find a Linux or Mac machine to use, then for Windows, install:
     1. <https://chocolatey.org/install>
     2. <https://community.chocolatey.org/packages/nodejs-lts>
 - Web browser
