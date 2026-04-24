@@ -1439,9 +1439,18 @@ header{
   animation:flash2 1.5s infinite;
 }
 
+.range-status-banner.residual{
+  background:rgb(255 184 0 / 7%);
+  border:1px solid rgb(255 184 0 / 30%);
+  color:var(--warn);
+  animation:flash3 1.5s infinite;
+}
+
 @keyframes flash{0%,100%{border-color:rgb(255 59 92 / 20%);}50%{border-color:rgb(255 59 92 / 80%);}}
 
 @keyframes flash2{0%,100%{border-color:rgb(196 113 237 / 20%);}50%{border-color:rgb(196 113 237 / 80%);}}
+
+@keyframes flash3{0%,100%{border-color:rgb(255 184 0 / 20%);}50%{border-color:rgb(255 184 0 / 80%);}}
 
 .range-visual{
   position:relative;

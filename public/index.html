@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777066706946">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777066706946">
+<link rel="stylesheet" href="style.css?v=1777071455985">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777071455985">
 </head>
 <body>
 
@@ -438,6 +438,7 @@
       <p class="9mm-pos-mgr-text-muted"><span id="rebalanceRangeHint">5% on either side of the current price</span> <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" role="img" aria-label="Offset info">i</span><span class="9mm-pos-mgr-info-popover 9mm-pos-mgr-info-popover-above">Set the Position Offset in the Range &amp; Execution panel, or click &ldquo;No Offset&rdquo; there to set it to 50/50.</span></span></p>
     </div>
     <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Note: Rebalancing can take some time as it involves on-chain transactions. Use your wallet software and/or check this app&rsquo;s logs for details.</p>
+    <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Tip: If you rebalanced within the last 10 minutes and residuals are your only reason for rebalancing, you can skip this dialog &mdash; the bot automatically sweeps leftover wallet tokens 10 minutes after each rebalance when they exceed 5% of the position&rsquo;s value. See &ldquo;Automatic Residual Cleanup&rdquo; in the User Manual.</p>
     <div class="9mm-pos-mgr-btn-row">
       <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="rebalanceRangeCancelBtn">Cancel</button>
       <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="rebalanceRangeConfirmBtn">Rebalance</button>
@@ -472,7 +473,7 @@
     </div>
   </div>
   <div class="header-right">
-    <a class="pos-browser-btn" href="/help.html" target="_blank" rel="noopener" title="Help" style="text-decoration: none;">? Help</a>
+    <a class="pos-browser-btn" href="/help-and-user-manual.html" target="_blank" rel="noopener" title="Help and User Manual" style="text-decoration: none;">? Help</a>
     <div class="9mm-pos-mgr-settings-wrap">
       <button type="button" class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="18" height="18" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
       <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
@@ -1269,6 +1270,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777066706946"></script>
+<script src="dist/bundle.js?v=1777071455985"></script>
 </body>
 </html>

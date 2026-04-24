@@ -519,6 +519,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
       ...(pnlSnapshot ? { pnlSnapshot } : {}),
     });
   }
+  return pnlSnapshot;
 }
 
 module.exports = {

@@ -28,26 +28,34 @@ function _rangeRoundedHtml(rr) {
 
 /**
  * Build the "Residual Above Threshold" HTML section.  Short sentences
- * so the user can skim.  Explains why the residual is left over and
- * that they can manually rebalance later to reduce it.
+ * so the user can skim.  The primary figure is the total wallet residual
+ * USD for this pool (the same number the Lifetime panel shows), so the
+ * dialog and the Lifetime panel never disagree.  The corrective-swap
+ * loop's last-iteration uncorrected imbalance is still reported as
+ * supporting technical detail.
  */
 function _residualWarningHtml(rw) {
+  const walletResidual = Number(rw.walletResidualUsd || 0).toFixed(2);
   const imb = Number(rw.imbalanceUsd || 0).toFixed(2);
   const thr = Number(rw.thresholdUsd || 0).toFixed(2);
   return (
     "<p>A small amount of tokens was left over after this rebalance.</p>" +
-    "<p>Residual value: <strong>$" +
-    imb +
-    "</strong>. Our dust threshold is <strong>$" +
-    thr +
+    "<p>Residual value in wallet for this pool: <strong>$" +
+    walletResidual +
     "</strong>.</p>" +
     '<p class="9mm-pos-mgr-text-muted">' +
-    "This happens when the corrective swap also moves the pool price. " +
+    "The corrective-swap loop couldn\u2019t fully balance the leftover tokens \u2014 " +
+    "its final uncorrected imbalance was $" +
+    imb +
+    " (above the $" +
+    thr +
+    " dust threshold). " +
     "We retried up to " +
     rw.iterations +
     " times and gave up to avoid endless looping. " +
     "Your tokens are safe in your wallet. " +
-    "You can click <strong>Rebalance</strong> later to try again and reduce the residual." +
+    "The bot sweeps residuals automatically 10 minutes after each rebalance when they exceed 5% of the position\u2019s value, " +
+    "or you can click <strong>Rebalance</strong> to try again sooner." +
     "</p>"
   );
 }

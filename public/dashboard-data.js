@@ -433,6 +433,7 @@ function _syncManagedAndGlobals(data) {
   if (data.withinThreshold !== undefined)
     botConfig.withinThreshold = data.withinThreshold;
   botConfig.oorSince = data.oorSince || null;
+  botConfig.residualCleanupInProgress = !!data.residualCleanupInProgress;
   botConfig.pmName = data.positionManagerName || botConfig.pmName || "";
   botConfig.chainName = data.chainDisplayName || botConfig.chainName || "";
   if (data.defaultSlippagePct > 0)

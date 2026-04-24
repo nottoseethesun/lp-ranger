@@ -449,9 +449,14 @@ function _activePosSummary(p) {
 }
 
 function _notifyRebalance(deps, throttle, position, events) {
+  /*- `lastRebalanceAt` is a ms-since-epoch number (matches what
+   *  `bot-cycle-residual._updateCleanupState` writes and what callers
+   *  compare against `Date.now()`).  Previously this wrote an ISO
+   *  string via `Object.assign` which stomped the numeric value and
+   *  produced NaN arithmetic in the residual-cleanup cooldown gate. */
   deps.updateBotState({
     rebalanceCount: (deps._rebalanceCount || 0) + 1,
-    lastRebalanceAt: new Date().toISOString(),
+    lastRebalanceAt: Date.now(),
     throttleState: throttle.getState(),
     rebalanceEvents: events ? [...events] : undefined,
     activePosition: _activePosSummary(position),
@@ -496,8 +501,17 @@ function _pushRebalanceEvent(events, result) {
       (result.txHashes && result.txHashes[result.txHashes.length - 1]) || "",
     blockNumber: 0,
     swapSources: result.swapSources || "(no swap)",
+    /*- Trigger is set in bot-cycle._executeAndRecord before rebalance
+     *  runs; falls back to "out-of-range" for safety.  Historical
+     *  chain-scanned events won't have a trigger field — consumers
+     *  treat that as unknown/legacy. */
+    trigger: result.trigger || "out-of-range",
   });
-  console.log("[route-trace] event pushed ss=%s", result.swapSources);
+  console.log(
+    "[route-trace] event pushed ss=%s trigger=%s",
+    result.swapSources,
+    result.trigger,
+  );
 }
 
 function _applyRebalanceResult(deps, result) {

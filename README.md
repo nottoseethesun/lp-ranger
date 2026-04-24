@@ -165,7 +165,7 @@ rm -rf lp-ranger*
 
 ### Help and User Manual
 
-**[View the full Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help.html)**
+**[View the full Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html)**
 
 ---
 

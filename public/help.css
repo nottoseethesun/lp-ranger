@@ -1,6 +1,6 @@
 /**
  * @file public/help.css
- * @description Styles for the Help and User Manual page (help.html).
+ * @description Styles for the Help and User Manual page (help-and-user-manual.html).
  */
 
 body {
@@ -66,6 +66,14 @@ ol {
 
 a {
   color: var(--accent);
+}
+
+/*
+ * Accent used in the Automatic Residual Cleanup section to call
+ * out the yellow "cleanup in progress" banner color.
+ */
+.help-residual-accent {
+  color: #d4a017;
 }
 
 a:hover {

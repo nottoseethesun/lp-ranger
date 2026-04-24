@@ -200,6 +200,16 @@ function _renderManagedOor(banner, can) {
 function _renderRangeBanner(can) {
   const banner = g("rangeBanner");
   if (!banner || !_checkBannerVisibility(banner)) return;
+  /*- Residual-cleanup rebalance in flight overrides both in-range and
+   *  OOR messaging. Yellow flashing bar mirrors the red OOR bar's
+   *  attention level without conflating the two states. */
+  if (botConfig.residualCleanupInProgress) {
+    banner.className = "range-status-banner residual";
+    g("rangeIcon").textContent = "\u26A1";
+    g("rangeLabel").textContent =
+      "Rebalancing to Reduce Residual Wallet Coin Amount";
+    return;
+  }
   const inR =
     botConfig.price >= botConfig.lower && botConfig.price <= botConfig.upper;
   if (inR) {

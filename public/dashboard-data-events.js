@@ -22,6 +22,20 @@ import {
 const _lastRebAt = new Map();
 const _txCancelSeen = new Set();
 
+/**
+ * Human-readable label for a rebalance trigger.
+ *   "out-of-range"     → "Out of Range"
+ *   "manual"           → "Manual"
+ *   "residual-cleanup" → "Residual Cleanup"
+ * Historical / chain-scanned events have no trigger field → "" (omit).
+ */
+function _triggerLabel(trigger) {
+  if (trigger === "manual") return "Manual";
+  if (trigger === "residual-cleanup") return "Residual Cleanup";
+  if (trigger === "out-of-range") return "Out of Range";
+  return "";
+}
+
 /** Clear event-log trackers (called from `resetPollingState`). */
 export function resetEventLogTrackers() {
   _lastRebAt.clear();
@@ -51,14 +65,15 @@ export function logAllPositionEvents(data) {
           : ev.timestamp
             ? new Date(ev.timestamp * 1000)
             : undefined;
-        act(
-          ACT_ICONS.gear,
-          "fee",
-          "Rebalance",
-          "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + ctx,
-          when,
-          ev.txHash,
-        );
+        const trigger = _triggerLabel(ev.trigger);
+        const detail =
+          "NFT #" +
+          ev.oldTokenId +
+          " \u2192 #" +
+          ev.newTokenId +
+          (trigger ? " (" + trigger + ")" : "") +
+          ctx;
+        act(ACT_ICONS.gear, "fee", "Rebalance", detail, when, ev.txHash);
       }
       scanPositions({ silent: true }).catch(() => {});
     }

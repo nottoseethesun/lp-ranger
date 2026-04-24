@@ -42,6 +42,17 @@ const {
   checkZeroLiquidity: _checkZeroLiquidity,
   DRAINED_RETIRE_MS,
 } = require("./bot-cycle-drain");
+const {
+  checkResidualCleanup: _checkResidualCleanup,
+  classifyTrigger: _classifyTrigger,
+  triggerReason: _triggerReason,
+  updateCleanupState: _updateCleanupState,
+  computeWalletResidualUsd: _computeWalletResidualUsd,
+} = require("./bot-cycle-residual");
+const {
+  _activateSwapBackoff,
+  _checkSwapBackoff,
+} = require("./bot-cycle-backoff");
 
 /** Build a position descriptor for Telegram notifications. */
 function _notifyPos(position) {
@@ -52,50 +63,13 @@ function _notifyPos(position) {
   };
 }
 
-/**
- * Activate exponential swap-backoff after a priceVolatile result.
- * Starts at 1 min, doubles each failure, caps at 20 min per wait.
- * After REBALANCE_RETRY_SWAP_LIMIT attempts, pauses with alert.
- */
-function _activateSwapBackoff(state, emit) {
-  const limit = config.REBALANCE_RETRY_SWAP_LIMIT;
-  const attempts = (state.swapBackoffAttempts || 0) + 1;
-  state.swapBackoffAttempts = attempts;
-  state.rebalanceInProgress = false;
-  if (attempts >= limit) {
-    state.rebalancePaused = true;
-    state.rebalanceError =
-      "Price moved during rebalance " +
-      attempts +
-      " times in a row. Market too volatile to rebalance safely. Tokens are safe in the wallet. Use manual Rebalance when ready.";
-    state.swapBackoffMs = 0;
-    state.swapBackoffUntil = 0;
-    console.error("[bot] Max swap retries (%d) — pausing", attempts);
-    if (emit)
-      emit({ rebalancePaused: true, rebalanceError: state.rebalanceError });
-    return;
-  }
-  const prev = state.swapBackoffMs || 0;
-  const next = prev ? Math.min(prev * 2, _MAX_SWAP_BACKOFF_MS) : 60_000;
-  state.swapBackoffMs = next;
-  state.swapBackoffUntil = Date.now() + next;
-  console.warn(
-    "[bot] Price volatile (attempt %d/%d) — backoff %ds",
-    attempts,
-    limit,
-    next / 1000,
-  );
-}
-
 /** Acquire lock, log reason, and prepare state for rebalance. */
 async function _prepareRebalance(deps) {
   const { position } = deps;
-  const reason = deps._botState?.forceRebalance
-    ? "Manual rebalance requested"
-    : "Position out of range";
+  const trigger = _classifyTrigger(deps._botState);
   console.log(
     "[bot] %s — rebalancing… %s NFT #%s",
-    reason,
+    _triggerReason(trigger),
     emojiId(position.tokenId),
     position.tokenId,
   );
@@ -110,7 +84,7 @@ async function _prepareRebalance(deps) {
   const state = deps._botState || {};
   state.rebalanceInProgress = true;
   state.forceRebalance = false;
-  return { release, state };
+  return { release, state, trigger };
 }
 
 /** Handle all post-rebalance bookkeeping on success. */
@@ -118,6 +92,7 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
   state.swapBackoffMs = 0;
   state.swapBackoffUntil = 0;
   state.swapBackoffAttempts = 0;
+  _updateCleanupState(state, result.trigger, deps.updateBotState);
   throttle.recordRebalance();
   if (deps._recordPoolRebalance && deps._poolKey) {
     const pk = deps._poolKey(pos.token0, pos.token1, pos.fee);
@@ -145,6 +120,18 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
     /* prices unavailable */
   }
   _recordResidual(deps, result);
+  /*- Enrich the residualWarning payload with the total tracked wallet
+   *  residual USD (the same number the Lifetime panel shows) so the
+   *  post-rebalance dialog can display it as the primary "Residual value"
+   *  figure.  `imbalanceUsd` (the corrective-swap loop's last uncorrected
+   *  swap amount) is kept on the payload as supporting technical detail. */
+  if (result.residualWarning)
+    result.residualWarning.walletResidualUsd = await _computeWalletResidualUsd(
+      deps,
+      result,
+      pos.token0,
+      pos.token1,
+    );
   appendLog(result);
   console.log(
     "[bot] Rebalance OK — new tokenId: #%s %s",
@@ -163,7 +150,7 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
 
 async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle } = deps;
-  const { release, state } = await _prepareRebalance(deps);
+  const { release, state, trigger } = await _prepareRebalance(deps);
   try {
     const crw = state.customRangeWidthPct;
     const offset = deps._getConfig?.("offsetToken0Pct") ?? 50;
@@ -178,12 +165,15 @@ async function _executeAndRecord(deps, ethersLib) {
       ...(crw ? { customRangeWidthPct: crw } : {}),
       offsetToken0Pct: offset,
     });
+    // Stamp the trigger onto the result so downstream (logs, events,
+    // Activity Log) can render the correct cause.
+    result.trigger = trigger;
     // Price moved too fast — tokens are removed+swapped but not minted.
     // Activate exponential backoff so the next poll cycle waits before
     // retrying.  Tokens sit safely in the wallet until the next attempt.
     if (result.priceVolatile) {
       _activateSwapBackoff(state, deps.updateBotState);
-      return { rebalanced: false, priceVolatile: true };
+      return { rebalanced: false, priceVolatile: true, trigger };
     }
     if (result.success) {
       if (crw) delete state.customRangeWidthPct;
@@ -216,6 +206,14 @@ async function _executeAndRecord(deps, ethersLib) {
       }
     }
     state.rebalanceInProgress = false;
+    /*- Clear the yellow "residual cleanup" banner on failure too; a failed
+     *  cleanup should not leave the UI stuck in that state.  residualCleanupUsed
+     *  is NOT set here — failures don't consume the cleanup opportunity. */
+    if (!result.success && state.residualCleanupInProgress) {
+      state.residualCleanupInProgress = false;
+      if (deps.updateBotState)
+        deps.updateBotState({ residualCleanupInProgress: false });
+    }
     return {
       rebalanced: result.success,
       error: result.error,
@@ -225,6 +223,7 @@ async function _executeAndRecord(deps, ethersLib) {
       txHashes: result.txHashes,
       blockNumber: result.blockNumber,
       swapSources: result.swapSources,
+      trigger,
     };
   } finally {
     if (release) {
@@ -346,28 +345,6 @@ function _humanizeError(msg) {
   return msg;
 }
 
-/**
- * Max swap-backoff wait (20 minutes).  When a rebalance fails because the
- * pool price moved between swap and mint (priceVolatile), the bot waits
- * before retrying.  Starts at 1 min, doubles each failure, caps at 20 min.
- * Cleared to zero on successful rebalance.
- */
-const _MAX_SWAP_BACKOFF_MS = 20 * 60_000;
-
-/**
- * Check if the swap-backoff timer is active (price was too volatile on
- * the last rebalance attempt).  Returns an early result if still waiting,
- * or null to proceed.
- */
-function _checkSwapBackoff(deps, forced) {
-  const bs = deps._botState || {};
-  if (forced || !bs.swapBackoffUntil || Date.now() >= bs.swapBackoffUntil)
-    return null;
-  const sec = Math.ceil((bs.swapBackoffUntil - Date.now()) / 1000);
-  console.log("[bot] Swap backoff active — waiting %ds before retry", sec);
-  return { rebalanced: false, swapBackoff: true };
-}
-
 /** Check throttle, daily cap, dry-run, and gas before executing.  Returns early result or null. */
 function _checkRebalanceGates(deps, poolState, forced) {
   const { throttle, dryRun } = deps;
@@ -445,6 +422,54 @@ async function _refreshPosition(position, ethersLib, provider) {
  * @param {object} poolState  Current pool state.
  * @param {object} ethersLib  ethers module.
  */
+/**
+ * Run the range-check → gate → gas-check → execute path after the
+ * poll-cycle's pnl + cleanup-detection steps have finished.  Extracted
+ * to keep `pollCycle` under the complexity cap.
+ */
+async function _runRangeAndExec(deps, ethersLib, poolState, emit, compounded) {
+  const rangeCheck = _checkRangeAndThreshold(deps, poolState, emit);
+  if (rangeCheck) {
+    const autoCompounded = await _checkCompound(
+      deps,
+      poolState,
+      ethersLib,
+      _refreshPosition,
+    );
+    if (compounded || autoCompounded) rangeCheck.compounded = true;
+    return rangeCheck;
+  }
+  /*- Residual-cleanup rebalances use `forceRebalance` to pass the range
+   *  check (so they can run when in range) but must still respect all
+   *  throttle / pause / daily-cap / dry-run gates per user spec.  Treat
+   *  a cleanup-in-progress rebalance as NOT user-forced for gate purposes. */
+  const cleanup = !!deps._botState?.residualCleanupInProgress;
+  const forced = !!deps._botState?.forceRebalance && !cleanup;
+  if (config.VERBOSE)
+    console.log(
+      "[bot] pollCycle: OOR on #%s, forced=%s, cleanup=%s, tick=%d range=[%d,%d]",
+      deps.position.tokenId,
+      forced,
+      cleanup,
+      poolState.tick,
+      deps.position.tickLower,
+      deps.position.tickUpper,
+    );
+  const gate = _checkRebalanceGates(deps, poolState, forced);
+  if (gate) {
+    if (compounded) gate.compounded = true;
+    return gate;
+  }
+  if (await _isGasTooHigh(deps.provider, deps.position, poolState)) {
+    const r = { rebalanced: false, gasDeferred: true };
+    if (compounded) r.compounded = true;
+    return r;
+  }
+  const execResult = await _executeAndRecord(deps, ethersLib);
+  if (compounded) execResult.compounded = true;
+  return execResult;
+}
+
 /** Single poll iteration: check range, threshold, throttle, then rebalance if needed. */
 async function pollCycle(deps) {
   const { provider, position, throttle } = deps;
@@ -460,17 +485,15 @@ async function pollCycle(deps) {
       fee: position.fee,
     });
   } catch (err) {
-    console.error("[bot] Pool state error:", err.message);
     /*- pollError (not error) — a pool-state RPC failure is a polling
      *  hiccup, not a failed rebalance attempt.  Surfacing it as `error`
-     *  would set firstFailureAt in bot-loop and later trigger a
-     *  spurious "Position Recovered" modal on the next successful
-     *  poll, even for positions that can never go out of range (e.g.
-     *  full-range). */
+     *  would set firstFailureAt in bot-loop and later trigger a spurious
+     *  "Position Recovered" modal on the next successful poll. */
+    console.error("[bot] Pool state error:", err.message);
     return { rebalanced: false, pollError: err.message };
   }
   await _refreshPosition(position, ethersLib, provider);
-  await _updatePnlAndStats(deps, poolState, ethersLib);
+  const snap = await _updatePnlAndStats(deps, poolState, ethersLib);
   const zeroLiqResult = _checkZeroLiquidity(deps);
   if (zeroLiqResult) return zeroLiqResult;
   const compounded = await _handleForceCompound(
@@ -481,42 +504,13 @@ async function pollCycle(deps) {
     provider,
     _refreshPosition,
   );
+  /*- Residual-cleanup check runs AFTER the pnl update (so `snap` has
+   *  fresh residual/currentValue numbers) but BEFORE the range check, so
+   *  the cleanup can fire even when the position is in range. */
+  _checkResidualCleanup(deps, snap);
   if (deps._botState?.forceRebalance)
     console.log("[bot] Force rebalance requested");
-  const rangeCheck = _checkRangeAndThreshold(deps, poolState, emit);
-  if (rangeCheck) {
-    const autoCompounded = await _checkCompound(
-      deps,
-      poolState,
-      ethersLib,
-      _refreshPosition,
-    );
-    if (compounded || autoCompounded) rangeCheck.compounded = true;
-    return rangeCheck;
-  }
-  const forced = !!deps._botState?.forceRebalance;
-  if (config.VERBOSE)
-    console.log(
-      "[bot] pollCycle: OOR on #%s, forced=%s, tick=%d range=[%d,%d]",
-      position.tokenId,
-      forced,
-      poolState.tick,
-      position.tickLower,
-      position.tickUpper,
-    );
-  const gate = _checkRebalanceGates(deps, poolState, forced);
-  if (gate) {
-    if (compounded) gate.compounded = true;
-    return gate;
-  }
-  if (await _isGasTooHigh(provider, position, poolState)) {
-    const r = { rebalanced: false, gasDeferred: true };
-    if (compounded) r.compounded = true;
-    return r;
-  }
-  const execResult = await _executeAndRecord(deps, ethersLib);
-  if (compounded) execResult.compounded = true;
-  return execResult;
+  return _runRangeAndExec(deps, ethersLib, poolState, emit, compounded);
 }
 
 /**

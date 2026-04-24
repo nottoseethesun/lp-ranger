@@ -1573,7 +1573,7 @@ why.
 A few paths do bypass ESLint. Generated and third-party output is
 skipped: `node_modules/`, `coverage/`, `public/dist/`, and
 `*.min.js`. The two hand-authored HTML files — `public/index.html`
-(the dashboard) and `public/help.html` (the user manual) — are also
+(the dashboard) and `public/help-and-user-manual.html` (the user manual) — are also
 outside ESLint's scope, but that's because they're markup, not
 JavaScript. They aren't left unchecked. Both are linted by
 `html-validate` as part of `npm run lint`.

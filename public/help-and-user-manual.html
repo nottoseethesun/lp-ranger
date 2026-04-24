@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/9mm-pos-mgr.css">
   <link rel="stylesheet" href="/fonts.css">
-  <link rel="stylesheet" href="/help.css?v=7">
+  <link rel="stylesheet" href="/help.css?v=8">
 </head>
 <body>
   <h1>LP Ranger Help and User Manual</h1>
@@ -19,6 +19,7 @@
       <li><a href="#how-it-works">Getting Started &amp; How to Use</a></li>
       <li><a href="#bookmarking-positions">Bookmarking Positions</a></li>
       <li><a href="#fund-tracking">Fund Tracking</a></li>
+      <li><a href="#residual-cleanup">Automatic Residual Cleanup</a></li>
       <li><a href="#range-width">Range Width</a></li>
       <li><a href="#volatility-doubling">Volatility Doubling</a></li>
       <li><a href="#gas-cost-protection">Gas Cost Protection</a></li>
@@ -55,6 +56,21 @@
 
   <h2 id="fund-tracking">Fund Tracking</h2>
   <p>When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
+
+  <h2 id="residual-cleanup">Automatic Residual Cleanup</h2>
+  <p>After every successful rebalance, LP Ranger waits <strong>10 minutes</strong> and then checks whether the wallet still holds a meaningful residual share of the position&rsquo;s tokens. If the residual is still more than <strong>5%</strong> of the combined LP + residual value for that pool, the bot fires one additional rebalance to sweep the leftover tokens into the position. This is called an <em>automatic residual cleanup</em>.</p>
+  <p><strong>When it triggers.</strong> A cleanup arms itself only when every one of the following is true:</p>
+  <ul>
+    <li>At least 10 minutes have elapsed since the last rebalance.</li>
+    <li>The residual wallet share exceeds 5% of (LP + residual) for the pool.</li>
+    <li>No rebalance is currently in progress, paused, or already requested by you.</li>
+    <li>A cleanup has not already been consumed since the last normal rebalance (see &ldquo;Back-to-back protection&rdquo; below).</li>
+  </ul>
+  <p><strong>Back-to-back protection.</strong> A cleanup may fire at most once per normal rebalance. If the cleanup itself does not reduce the residual below 5% &mdash; for example, because liquidity at the edge of the range is too thin &mdash; the bot does <em>not</em> keep trying. The cleanup opportunity is reset only when the <em>next</em> out-of-range or manual rebalance succeeds. This prevents the bot from oscillating on pools where a small residual is structurally unavoidable.</p>
+  <p><strong>All the usual gates still apply.</strong> A cleanup still respects the throttle (minimum interval, volatility doubling), the daily rebalance cap, the swap-backoff timer, the paused state, and dry-run mode. The cleanup is simply a reason to <em>ask</em> for a rebalance &mdash; every safety rule downstream continues to govern whether and when it actually runs.</p>
+  <p><strong>What you&rsquo;ll see.</strong> While a cleanup rebalance is in flight, the range banner at the top of the position card turns <span class="help-residual-accent"><strong>yellow</strong></span> and flashes, reading &ldquo;Rebalancing to Reduce Residual Wallet Coin Amount&rdquo;. The resulting entry in the Activity Log is tagged &ldquo;(Residual Cleanup)&rdquo; so you can distinguish it from an out-of-range or manual rebalance at a glance. There is no separate Telegram alert &mdash; cleanup rebalances use the same &ldquo;Rebalance Succeeded / Failed&rdquo; channels as any other rebalance.</p>
+  <p><strong>If you don&rsquo;t want to wait.</strong> You can always click <strong>Rebalance Now</strong> to sweep residuals immediately. In the Rebalance dialog, widen the range by at least one percent and click OK; the leftover tokens will be folded into the fresh position.</p>
+  <p><strong>Tuning.</strong> The 10-minute delay and 5% threshold live in <code>app-config/static-tunables/residual-cleanup.json</code> (fields <code>delayMs</code> and <code>thresholdPct</code>). These are intentionally not exposed in the Bot Configuration UI &mdash; they are cross-cutting defaults that apply to every managed position.</p>
 
   <h2 id="range-width">Range Width</h2>
   <p>The <strong>New Range Width %</strong> is initially set based on the first liquidity position detected on the wallet. To adjust it, manually create a new LP position with your desired range on 9mm Pro, then reload the app in your browser and select the new position. The bot will adopt its range width going forward.</p>

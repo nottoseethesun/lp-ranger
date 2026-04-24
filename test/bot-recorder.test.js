@@ -306,7 +306,11 @@ describe("_notifyRebalance", () => {
     };
     _notifyRebalance(deps, throttle, position, [{ id: 1 }]);
     assert.strictEqual(patch.rebalanceCount, 6);
-    assert.ok(patch.lastRebalanceAt);
+    /*- Must be a numeric ms-since-epoch (not an ISO string) so the
+     *  residual-cleanup cooldown math (`Date.now() - lastRebalanceAt`)
+     *  doesn't produce NaN.  Regression guard for the string-stomp bug. */
+    assert.strictEqual(typeof patch.lastRebalanceAt, "number");
+    assert.ok(patch.lastRebalanceAt > 0);
     assert.deepStrictEqual(patch.throttleState, { dailyCount: 2 });
     assert.strictEqual(patch.activePosition.tokenId, "42");
     assert.strictEqual(patch.activePositionId, "42");

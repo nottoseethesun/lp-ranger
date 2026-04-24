@@ -3,8 +3,8 @@
 # Deploy the Help and User Manual to GitHub Pages.
 #
 # Assembles the site from docs/ (images, architecture docs) plus public/
-# (help.html, CSS, fonts) so there are no duplicate files in the repo.
-# The help.html CSS paths are rewritten from absolute (/style.css) to
+# (help-and-user-manual.html, CSS, fonts) so there are no duplicate files in the repo.
+# The help-and-user-manual.html CSS paths are rewritten from absolute (/style.css) to
 # relative (style.css) since GitHub Pages serves under /lp-ranger/.
 
 name: Deploy GitHub Pages
@@ -13,7 +13,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "public/help.html"
+      - "public/help-and-user-manual.html"
       - "public/help.css"
       - "public/disclosure.html"
       - "public/screenshot-gallery.html"
@@ -51,7 +51,7 @@ jobs:
               -e 's|href="/9mm-pos-mgr.css"|href="9mm-pos-mgr.css"|' \
               -e 's|href="/fonts.css"|href="fonts.css"|' \
               -e 's|href="/help.css?v=[0-9]*"|href="help.css"|' \
-              public/help.html > _site/help.html
+              public/help-and-user-manual.html > _site/help-and-user-manual.html
 
           sed -e 's|href="/style.css"|href="style.css"|' \
               -e 's|href="/9mm-pos-mgr.css"|href="9mm-pos-mgr.css"|' \
