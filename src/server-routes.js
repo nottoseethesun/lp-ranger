@@ -23,7 +23,6 @@ const { createTelegramHandlers } = require("./server-telegram");
 const {
   getPositionConfig,
   saveConfig,
-  managedKeys,
   compositeKey,
   parseCompositeKey,
   readConfigValue,
@@ -31,7 +30,7 @@ const {
   POSITION_KEYS,
 } = require("./bot-config-v2");
 // position-detector used via server-scan.js
-const { startBotLoop } = require("./bot-loop");
+const { createAutoStartManagedPositions } = require("./server-auto-start");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
   computeLifetimeDetails: _defaultComputeLifetimeDetails,
@@ -409,95 +408,20 @@ function createRouteHandlers(deps) {
   }
 
   /**
-   * Start bot loops for all managed positions
-   * that have status 'running' in config.
+   * Start bot loops for all managed positions with status 'running'.
+   * Delegated to `./server-auto-start` so this file stays under max-lines.
    */
-  async function _autoStartManagedPositions() {
-    const keys = managedKeys(diskConfig);
-    const cnt = keys.length;
-    const stMs =
-      cnt > 1 ? Math.floor((config.CHECK_INTERVAL_SEC * 1000) / cnt) : 0;
-    const eth = require("ethers");
-    const prov = new eth.JsonRpcProvider(config.RPC_URL);
-    const pmC = new eth.Contract(
-      config.POSITION_MANAGER,
-      ["function ownerOf(uint256)" + " view returns (address)"],
-      prov,
-    );
-    const wAddr = walletManager.getAddress();
-    let i = 0;
-    for (const key of [...keys]) {
-      const pc = getPositionConfig(diskConfig, key);
-      if (i > 0 && stMs > 0) {
-        console.log("[server] Stagger: %dms before %d/%d", stMs, i + 1, cnt);
-        await new Promise((r) => setTimeout(r, stMs));
-      }
-      const tokenId = key.split("-").pop();
-      if (wAddr) {
-        try {
-          const own = await pmC.ownerOf(tokenId);
-          if (own.toLowerCase() !== wAddr.toLowerCase()) {
-            console.warn(
-              "[server] NFT #%s not owned" + " — removing from managed",
-              tokenId,
-            );
-            const { removeManagedPosition } = require("./bot-config-v2");
-            removeManagedPosition(diskConfig, key);
-            saveConfig(diskConfig);
-            i++;
-            continue;
-          }
-        } catch (_e) {
-          console.warn(
-            "[server] ownerOf #%s failed: %s" +
-              " — skipping (will retry next start)",
-            tokenId,
-            _e.message,
-          );
-          i++;
-          continue;
-        }
-      }
-      const perPositionBotState = createPerPositionBotState(
-        diskConfig.global,
-        pc,
-      );
-      attachMultiPosDeps(perPositionBotState, positionMgr);
-      getAllPositionBotStates().set(key, perPositionBotState);
-      try {
-        const kRef = { current: key };
-        await positionMgr.startPosition(key, {
-          tokenId,
-          startLoop: () =>
-            startBotLoop({
-              privateKey: privateKeyRef.current,
-              dryRun: config.DRY_RUN,
-              eagerScan: false,
-              updateBotState: (patch) =>
-                updatePositionState(kRef, patch, diskConfig, positionMgr),
-              botState: perPositionBotState,
-              positionId: tokenId,
-              getConfig: (k) => readConfigValue(diskConfig, kRef.current, k),
-              getPositionCount: () => positionMgr.runningCount(),
-            }),
-          savedConfig: pc,
-        });
-      } catch (err) {
-        console.warn(
-          "[server] Failed to auto-start %s: %s" +
-            " — will retry when key is available",
-          key,
-          err.message,
-        );
-      }
-      i++;
-    }
-    console.log(
-      "[server] Auto-started %d of %d positions",
-      positionMgr.runningCount(),
-      keys.length,
-    );
-  }
+  const _autoStartManagedPositions = createAutoStartManagedPositions({
+    diskConfig,
+    positionMgr,
+    privateKeyRef,
+    walletManager,
+    getAllPositionBotStates,
+    createPerPositionBotState,
+    attachMultiPosDeps,
+    updatePositionState,
+    readConfigValue,
+  });
 
   /** Encrypt and save a third-party API key. */
   async function _handleApiKeySave(req, res) {

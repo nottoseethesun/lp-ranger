@@ -445,4 +445,8 @@ describe("position-manager", () => {
       assert.strictEqual(mgr.getPoolDailyCount(pk), 3);
     });
   });
+
+  /*- getSharedSigner() tests live in
+   *  test/position-manager-shared-signer.test.js (kept separate so
+   *  this file stays under the 500-line ESLint limit). */
 });

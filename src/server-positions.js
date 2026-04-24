@@ -13,6 +13,7 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const config = require("./config");
 const { setCachedEpochs } = require("./epoch-cache");
 const { startBotLoop } = require("./bot-loop");
@@ -311,12 +312,23 @@ function createPositionRoutes(deps) {
 
     const t0 = Date.now();
     const keyRef = { current: key };
+    /*- Fetch (or reuse) the app-wide shared signer before starting the
+     *  bot loop.  Every managed position must use the SAME NonceManager
+     *  — see positionMgr.getSharedSigner for the rationale. */
+    const shared = await positionMgr.getSharedSigner({
+      privateKey: pk,
+      ethersLib: ethers,
+      dryRun: config.DRY_RUN,
+    });
     try {
       await positionMgr.startPosition(key, {
         tokenId: String(body.tokenId),
         startLoop: () =>
           startBotLoop({
             privateKey: pk,
+            provider: shared.provider,
+            signer: shared.signer,
+            address: shared.address,
             dryRun: config.DRY_RUN,
             eagerScan: false,
             updateBotState: (patch) =>
