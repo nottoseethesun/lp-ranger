@@ -14,9 +14,11 @@ const {
   _isTimeoutExpired,
   _isBeyondThreshold,
   _checkRangeAndThreshold,
+  _checkZeroLiquidity,
   _reloadFromConfig,
   _checkRebalanceGates,
   _activateSwapBackoff,
+  DRAINED_RETIRE_MS,
 } = require("../src/bot-cycle");
 
 // ── _humanizeError ──────────────────────────────────────────────────
@@ -315,5 +317,85 @@ describe("_activateSwapBackoff", () => {
     _activateSwapBackoff(state, null);
     assert.strictEqual(state.rebalancePaused, undefined);
     assert.strictEqual(state.swapBackoffAttempts, 1);
+  });
+});
+
+// ── _checkZeroLiquidity (drained-position retirement) ──────────────
+
+describe("_checkZeroLiquidity drained retirement", () => {
+  function depsWith(state, liquidity) {
+    return {
+      position: { tokenId: "123", liquidity, token0: "0xA", token1: "0xB" },
+      _botState: state,
+    };
+  }
+
+  it("arms drainedSince on first zero-liquidity poll", () => {
+    const state = {};
+    const t0 = Date.now();
+    const r = _checkZeroLiquidity(depsWith(state, "0"));
+    assert.deepStrictEqual(r, { rebalanced: false });
+    assert.ok(state.drainedSince >= t0);
+    assert.ok(!r.retired);
+  });
+
+  it("does NOT retire before the retirement window elapses", () => {
+    const state = { drainedSince: Date.now() - 60_000 };
+    const r = _checkZeroLiquidity(depsWith(state, "0"));
+    assert.deepStrictEqual(r, { rebalanced: false });
+  });
+
+  it("signals retired once elapsed >= DRAINED_RETIRE_MS", () => {
+    const state = { drainedSince: Date.now() - DRAINED_RETIRE_MS - 1000 };
+    const r = _checkZeroLiquidity(depsWith(state, "0"));
+    assert.strictEqual(r.retired, true);
+    assert.strictEqual(r.rebalanced, false);
+    assert.ok(r.drainedForMs >= DRAINED_RETIRE_MS);
+  });
+
+  it("does NOT arm the timer while a rebalance is in flight", () => {
+    const state = { rebalanceInProgress: true };
+    const r = _checkZeroLiquidity(depsWith(state, "0"));
+    assert.deepStrictEqual(r, { rebalanced: false });
+    assert.strictEqual(state.drainedSince, undefined);
+  });
+
+  it("does NOT retire when rebalanceInProgress even if drainedSince is stale", () => {
+    /*- rebalanceInProgress takes precedence — we never retire a
+     *  position whose old NFT is briefly at 0 liquidity mid-rebalance. */
+    const state = {
+      rebalanceInProgress: true,
+      drainedSince: Date.now() - DRAINED_RETIRE_MS - 10_000,
+    };
+    const r = _checkZeroLiquidity(depsWith(state, "0"));
+    assert.deepStrictEqual(r, { rebalanced: false });
+  });
+
+  it("clears drainedSince when position regains liquidity", () => {
+    const state = { drainedSince: Date.now() - 1000 };
+    const r = _checkZeroLiquidity(depsWith(state, "12345"));
+    assert.strictEqual(r, null);
+    assert.strictEqual(state.drainedSince, null);
+  });
+
+  it("does not arm the timer when forceRebalance is set", () => {
+    const state = { forceRebalance: true };
+    const r = _checkZeroLiquidity(depsWith(state, "0"));
+    /*- forceRebalance skips the zero-liq early exit entirely so the
+     *  rebalance pipeline can run on a drained NFT.  Retirement
+     *  timer must not arm either. */
+    assert.strictEqual(r, null);
+    assert.strictEqual(state.drainedSince, undefined);
+  });
+
+  it("skips retirement when midway recovery is pending", () => {
+    const state = { rebalanceFailedMidway: true };
+    const r = _checkZeroLiquidity(depsWith(state, "0"));
+    assert.strictEqual(r, null);
+    assert.strictEqual(state.drainedSince, undefined);
+  });
+
+  it("DRAINED_RETIRE_MS is 30 minutes", () => {
+    assert.strictEqual(DRAINED_RETIRE_MS, 30 * 60_000);
   });
 });

@@ -18,6 +18,7 @@ const {
   managedKeys,
 } = require("./bot-config-v2");
 const { startBotLoop } = require("./bot-loop");
+const { createOnRetire } = require("./server-positions");
 
 /**
  * Factory that returns `_autoStartManagedPositions`.
@@ -119,6 +120,11 @@ function createAutoStartManagedPositions(deps) {
             positionId: tokenId,
             getConfig: (k) => readConfigValue(diskConfig, kRef.current, k),
             getPositionCount: () => positionMgr.runningCount(),
+            onRetire: createOnRetire({
+              keyRef: kRef,
+              diskConfig,
+              positionMgr,
+            }),
           }),
         savedConfig: pc,
       });

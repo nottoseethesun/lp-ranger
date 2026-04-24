@@ -216,6 +216,11 @@ async function _tryInitPnlTracker(
  * @param {object}   opts.botState         Shared bot state object for runtime params.
  * @param {object}   [opts.ethersLib]      Injected ethers (for testing).
  * @param {string}   [opts.positionId]     NFT token ID to manage (overrides config).
+ * @param {Function} [opts.onRetire]       Called with (tokenId) when the bot loop
+ *   auto-retires a drained position.  Caller flips diskConfig status to
+ *   'stopped' and removes the entry from the position manager.  The bot
+ *   loop has already stopped its own timer + set running=false by the
+ *   time this fires.
  * @returns {Promise<{ stop: Function }>}  Handle with stop() method.
  */
 async function startBotLoop(opts) {
@@ -425,6 +430,34 @@ async function startBotLoop(opts) {
     }
   }
 
+  /*- Stop the loop, fire the optional server-side retirement callback,
+   *  and mark the bot state accordingly. Called from `poll` when
+   *  pollCycle reports that a drained position has exceeded the
+   *  retirement window.  The NFT is not burned — this is a pure
+   *  software state flip; the user can re-manage it from the
+   *  dashboard at any time. */
+  async function _handleRetire(drainedForMs) {
+    console.log(
+      "[bot] Retiring drained position #%s (no tx in flight)",
+      position.tokenId,
+    );
+    _stopped = true;
+    clearTimeout(timer);
+    updateBotState({
+      running: false,
+      retired: true,
+      retiredAt: new Date().toISOString(),
+      drainedForMs: drainedForMs || null,
+    });
+    if (opts.onRetire) {
+      try {
+        await opts.onRetire(position.tokenId);
+      } catch (err) {
+        console.warn("[bot] onRetire callback error: %s", err.message);
+      }
+    }
+  }
+
   const poll = async () => {
     if (polling) return;
     polling = true;
@@ -435,6 +468,7 @@ async function startBotLoop(opts) {
      * this cycle — triggers a fast follow-up poll so the dashboard KPIs
      * refresh immediately instead of waiting CHECK_INTERVAL_SEC. */
     let specialActionCompleted = false;
+    let retireRequest = null;
     try {
       const result = await pollCycle({
         signer,
@@ -461,6 +495,7 @@ async function startBotLoop(opts) {
       });
       if (result.rebalanced || result.cancelled || result.compounded)
         specialActionCompleted = true;
+      if (result.retired) retireRequest = result;
       _processPollResult(result);
     } catch (err) {
       if (!firstFailureAt) firstFailureAt = Date.now();
@@ -473,6 +508,10 @@ async function startBotLoop(opts) {
       });
     } finally {
       polling = false;
+    }
+    if (retireRequest) {
+      await _handleRetire(retireRequest.drainedForMs);
+      return;
     }
     _checkGas();
     // Honor queued position switch (requested while rebalance was in progress)

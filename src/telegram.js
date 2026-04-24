@@ -34,6 +34,7 @@ const EVENT_DEFAULTS = {
   lowGasBalance: true,
   veryLowGas: true,
   shutdown: true,
+  positionRetired: true,
 };
 
 /** Human-readable labels for each event type. */
@@ -47,6 +48,7 @@ const EVENT_LABELS = {
   lowGasBalance: "Low Gas Balance",
   veryLowGas: "Very Low Gas",
   shutdown: "Server and Bot Shutdown/Exit",
+  positionRetired: "Drained Position Auto-Retired",
 };
 
 /** Currently enabled events (mutated in place by setEnabledEvents). */

@@ -38,6 +38,7 @@ const {
   createPerPositionBotState,
   attachMultiPosDeps,
   updatePositionState,
+  createOnRetire,
 } = require("./src/server-positions");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { askPassword: _askPassword } = require("./src/ask-password");
@@ -135,6 +136,7 @@ async function main() {
             botState: posBotState,
             positionId: tokenId,
             getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
+            onRetire: createOnRetire({ keyRef, diskConfig, positionMgr }),
           }),
         savedConfig: posConfig,
       });

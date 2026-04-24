@@ -220,6 +220,49 @@ function getAllPositionBotStates() {
 }
 
 /**
+ * Build an `onRetire` callback for a bot loop managing a single
+ * position.  The bot loop calls this after it has already stopped its
+ * own timer on detection of a drained-for-too-long NFT; we just need to
+ * flip the on-disk status to 'stopped', clear auto-compound so it
+ * doesn't resume on next manage, drop the in-memory bot state, and
+ * mark the position manager entry as stopped.  NFT is never burned.
+ *
+ * @param {object} deps
+ * @param {{ current: string }} deps.keyRef  Live composite key (mutates after rebalance).
+ * @param {object} deps.diskConfig           V2 disk config.
+ * @param {object} deps.positionMgr          Position manager instance.
+ * @returns {Function}  Async `(tokenId) => void` suitable for `opts.onRetire`.
+ */
+function createOnRetire(deps) {
+  const { keyRef, diskConfig, positionMgr } = deps;
+  return async function _onRetire(tokenId) {
+    const k = keyRef.current;
+    console.log(
+      "[pos-state] Auto-retiring drained position %s (tokenId=%s)",
+      k,
+      tokenId,
+    );
+    removeManagedPosition(diskConfig, k);
+    const posRef = diskConfig.positions[k];
+    if (posRef) posRef.autoCompoundEnabled = false;
+    saveConfig(diskConfig);
+    _positionBotStates.delete(k);
+    /*- The bot-loop's stop() is already idempotent and its timer is
+     *  cleared — calling positionMgr.removePosition here deletes the
+     *  in-memory entry and safely no-ops the handle.stop() call. */
+    try {
+      await positionMgr.removePosition(k);
+    } catch (err) {
+      console.warn(
+        "[pos-state] removePosition failed during retire for %s: %s",
+        k,
+        err.message,
+      );
+    }
+  };
+}
+
+/**
  * Create route handlers for multi-position management.
  * @param {object} deps
  * @param {object} deps.diskConfig     V2 disk config.
@@ -337,6 +380,7 @@ function createPositionRoutes(deps) {
             positionId: String(body.tokenId),
             getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
             getPositionCount: () => positionMgr.runningCount(),
+            onRetire: createOnRetire({ keyRef, diskConfig, positionMgr }),
           }),
         savedConfig: posConfig,
       });
@@ -517,5 +561,6 @@ module.exports = {
   buildStatusPositions,
   updatePositionState,
   getAllPositionBotStates,
+  createOnRetire,
   createPositionRoutes,
 };
