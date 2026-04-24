@@ -353,20 +353,16 @@ export function _updateBotStatus(d) {
   if (ll && d.updatedAt) ll.textContent = fmtDateTime(d.updatedAt);
 }
 
-function _normalizedPoolKey(pos) {
-  if (!pos?.token0 || !pos?.token1 || !pos?.fee) return null;
-  const a = pos.token0.toLowerCase(),
-    b = pos.token1.toLowerCase();
-  return (a < b ? a + "-" + b : b + "-" + a) + "-" + pos.fee;
-}
-
 /** Update the daily rebalance count KPI and lifetime count. */
 export function _updateThrottleKpis(d) {
   const ts = d.throttleState,
     today = g("kpiToday");
   if (today) {
     const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
-    const pk = _normalizedPoolKey(posStore.getActive());
+    // Server attaches a canonical `poolKey` to each managed position
+    // (chain-contract-wallet-token0-token1-fee). Use it directly — no
+    // client-side reconstruction, so the lookup always matches.
+    const pk = d.poolKey;
     const cnt =
       pk && d._poolDailyCounts
         ? d._poolDailyCounts[pk] || 0

@@ -509,15 +509,13 @@ async function startBotLoop(opts) {
   if (opts.eagerScan !== false) {
     await botState._triggerScan();
   } else {
-    // Cached epochs show immediately but a background scan still runs.
-    // Don't claim "synced" until the scan finishes — avoids a flash
-    // of "Done Syncing" → "Syncing…" when the scan resets the flag.
-    const hasEpochs = pnlTracker.epochCount() > 0;
-    if (hasEpochs) {
-      botState._triggerScan();
-    } else {
-      updateBotState({ rebalanceScanComplete: true });
-    }
+    /*- Always fire a background event scan on startup so newly-started
+     *  positions pick up on-chain rebalance events that aren't yet in
+     *  the local cache (e.g. a rebalance that happened on a different
+     *  machine). _scanHistory sets rebalanceScanComplete=false at start
+     *  and _scanAndReconstruct flips it to true on completion, so the
+     *  Sync badge shows "Syncing…" during the scan and "Synced" after. */
+    botState._triggerScan();
     _scheduleNext();
   }
   return {

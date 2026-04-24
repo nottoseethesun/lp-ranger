@@ -410,9 +410,99 @@ function createPositionRoutes(deps) {
   };
 }
 
+/**
+ * Attach a canonical `poolKey` string to each managed-position entry in
+ * the status response, so the dashboard can look up per-pool daily
+ * counts in `global.poolDailyCounts` without rebuilding the key format
+ * on the client. Single source of truth: `positionMgr.poolKey()`.
+ *
+ * Entries without `activePosition` (e.g. unmanaged positions) are left
+ * untouched — they have no per-pool counter to correlate.
+ *
+ * @param {Record<string, object>} positions   Positions map from status.
+ * @param {object} positionMgr                 Position manager with poolKey().
+ * @param {object} cfg                         Config object with CHAIN_NAME + POSITION_MANAGER.
+ */
+function attachPoolKeys(positions, positionMgr, cfg) {
+  for (const entry of Object.values(positions)) {
+    const ap = entry.activePosition;
+    const ok =
+      entry.walletAddress &&
+      ap &&
+      ap.token0 &&
+      ap.token1 &&
+      ap.fee !== null &&
+      ap.fee !== undefined;
+    if (!ok) continue;
+    entry.poolKey = positionMgr.poolKey(
+      cfg.CHAIN_NAME,
+      cfg.POSITION_MANAGER,
+      entry.walletAddress,
+      ap.token0,
+      ap.token1,
+      ap.fee,
+    );
+  }
+}
+
+/**
+ * Settings keys that flow through to the dashboard for *unmanaged*
+ * positions (so the user sees persisted settings for positions the bot
+ * isn't actively managing, e.g. closed-view or paused positions).
+ */
+const _UNMANAGED_SETTINGS_KEYS = [
+  "rebalanceOutOfRangeThresholdPercent",
+  "rebalanceTimeoutMin",
+  "slippagePct",
+  "checkIntervalSec",
+  "minRebalanceIntervalMin",
+  "maxRebalancesPerDay",
+  "gasStrategy",
+  "priceOverride0",
+  "priceOverride1",
+  "priceOverrideForce",
+  "autoCompoundEnabled",
+  "autoCompoundThresholdUsd",
+  "totalCompoundedUsd",
+  "lastCompoundAt",
+  "offsetToken0Pct",
+];
+
+/**
+ * Build the `positions` map for the GET /api/status response: merges
+ * per-position bot state, disk config, and sensible defaults; attaches a
+ * canonical poolKey to every managed entry. Unmanaged positions (in
+ * disk config but not currently running) get a lightweight subset of
+ * their persisted settings so the dashboard UI still has context.
+ *
+ * @param {object} diskConfig   Parsed bot-config (has `.positions` map).
+ * @param {object} posDefaults  Base defaults applied to every entry.
+ * @param {object} positionMgr  Position manager (exposes poolKey()).
+ * @param {object} cfg          Config object with CHAIN_NAME + POSITION_MANAGER.
+ * @returns {Record<string, object>}
+ */
+function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg) {
+  const positions = {};
+  for (const [key, state] of getAllPositionBotStates()) {
+    const posConfig = diskConfig.positions[key] || {};
+    positions[key] = { ...posDefaults, ...state, ...posConfig };
+  }
+  for (const [key, posConfig] of Object.entries(diskConfig.positions)) {
+    if (positions[key]) continue;
+    const s = { ...posDefaults };
+    for (const k of _UNMANAGED_SETTINGS_KEYS)
+      if (posConfig[k] !== undefined) s[k] = posConfig[k];
+    positions[key] = s;
+  }
+  attachPoolKeys(positions, positionMgr, cfg);
+  return positions;
+}
+
 module.exports = {
   createPerPositionBotState,
   attachMultiPosDeps,
+  attachPoolKeys,
+  buildStatusPositions,
   updatePositionState,
   getAllPositionBotStates,
   createPositionRoutes,

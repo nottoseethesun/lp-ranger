@@ -560,14 +560,40 @@ async function _processRawEvents(
     );
   }
 
-  const merged = mergeAndIndex(cachedEvents, pairTransfers(transfers));
   const ZERO = "0x0000000000000000000000000000000000000000";
-  const firstMint = transfers
-    .filter((t) => t.direction === "in" && t.from === ZERO)
-    .sort((a, b) => a.timestamp - b.timestamp)[0];
-  const firstMintTimestamp = firstMint
-    ? firstMint.timestamp
-    : cachedEvents.firstMintTimestamp || null;
+  const newMints = transfers.filter(
+    (t) => t.direction === "in" && t.from === ZERO,
+  );
+  const newOuts = transfers.filter((t) => t.direction === "out");
+  const paired = pairTransfers(transfers);
+  /*- Diagnostic: surface when a new mint landed but produced no pair
+   *  (e.g. a single drain+mint rebalance whose prior mint lives only
+   *  in cachedEvents, so Pass 2's mints[i-1] context is missing). */
+  console.log(
+    "[event-scanner] new transfers in window: mints=%d outs=%d → paired=%d",
+    newMints.length,
+    newOuts.length,
+    paired.length,
+  );
+  if (newMints.length > 0 && paired.length === 0) {
+    console.log(
+      "[event-scanner] WARN: %d new mint(s) produced 0 rebalance pairs; tokenIds=%s",
+      newMints.length,
+      newMints.map((m) => m.tokenId).join(","),
+    );
+  }
+  const merged = mergeAndIndex(cachedEvents, paired);
+  const firstMint = newMints.sort((a, b) => a.timestamp - b.timestamp)[0];
+  /*- Preserve the earliest-ever first-mint across incremental scans:
+   *  pick the lesser of (this scan's earliest new mint, the cached
+   *  firstMintTimestamp). Without this, each incremental scan that
+   *  sees any new mint overwrites the cached value with a later one
+   *  and "first mint" creeps toward the chain tip. */
+  const cachedFirst = cachedEvents.firstMintTimestamp || null;
+  const candidates = [firstMint?.timestamp || null, cachedFirst].filter(
+    (t) => t,
+  );
+  const firstMintTimestamp = candidates.length ? Math.min(...candidates) : null;
   if (firstMintTimestamp) merged.firstMintTimestamp = firstMintTimestamp;
   return { merged, firstMintTimestamp };
 }

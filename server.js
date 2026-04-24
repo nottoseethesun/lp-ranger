@@ -311,6 +311,7 @@ const {
   getAllPositionBotStates,
   createPerPositionBotState,
   attachMultiPosDeps,
+  buildStatusPositions,
   updatePositionState,
   createPositionRoutes,
 } = require("./src/server-positions");
@@ -353,7 +354,6 @@ const _routes = {
       ts: Date.now(),
     }),
   "GET /api/status": async (_, res) => {
-    const positions = {};
     const posDefaults = {
       rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
       rebalanceTimeoutMin: config.REBALANCE_TIMEOUT_MIN,
@@ -363,41 +363,12 @@ const _routes = {
       maxRebalancesPerDay: config.MAX_REBALANCES_PER_DAY,
       gasStrategy: "auto",
     };
-    for (const [key, state] of getAllPositionBotStates()) {
-      const posConfig = _diskConfig.positions[key] || {};
-      positions[key] = {
-        ...posDefaults,
-        ...state,
-        ...posConfig,
-      };
-    }
-    // Include lightweight config for unmanaged
-    // positions so the dashboard gets settings
-    const _SETTINGS_KEYS = [
-      "rebalanceOutOfRangeThresholdPercent",
-      "rebalanceTimeoutMin",
-      "slippagePct",
-      "checkIntervalSec",
-      "minRebalanceIntervalMin",
-      "maxRebalancesPerDay",
-      "gasStrategy",
-      "priceOverride0",
-      "priceOverride1",
-      "priceOverrideForce",
-      "autoCompoundEnabled",
-      "autoCompoundThresholdUsd",
-      "totalCompoundedUsd",
-      "lastCompoundAt",
-      "offsetToken0Pct",
-    ];
-    for (const [key, posConfig] of Object.entries(_diskConfig.positions)) {
-      if (!positions[key]) {
-        const s = { ...posDefaults };
-        for (const k of _SETTINGS_KEYS)
-          if (posConfig[k] !== undefined) s[k] = posConfig[k];
-        positions[key] = s;
-      }
-    }
+    const positions = buildStatusPositions(
+      _diskConfig,
+      posDefaults,
+      _positionMgr,
+      config,
+    );
     const gasStatus = await buildGasStatusPayload({
       positionCount: _positionMgr.runningCount(),
       toUsd: actualGasCostUsd,
