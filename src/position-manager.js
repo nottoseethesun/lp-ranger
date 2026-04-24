@@ -22,6 +22,8 @@
 const { Mutex } = require("async-mutex");
 const { nextMidnight } = require("./throttle");
 const { emojiId } = require("./logger");
+const config = require("./config");
+const { createProviderWithFallback } = require("./bot-provider");
 
 /**
  * @typedef {Object} ManagedPosition
@@ -49,6 +51,51 @@ function createPositionManager(opts) {
 
   /** Per-pool scan locks — different pools scan in parallel, same pool serializes. */
   const _poolScanLocks = new Map();
+
+  /*- Shared wallet singleton — app-wide, one chain + one wallet at a
+   *  time.  All managed positions sign through the SAME NonceManager so
+   *  per-position counters cannot drift against each other (the root
+   *  cause of the 2026-04-24 "nonce too low" storm on #159064 after
+   *  #159065's rebalance bumped the chain nonce ~16 positions ahead of
+   *  #159064's stale per-position NonceManager counter).  The
+   *  rebalance-lock serialises TX submission, so a shared NonceManager
+   *  is race-free.  First call wins; subsequent calls return the cached
+   *  {provider, signer, address}. */
+  let _sharedPromise = null;
+  async function getSharedSigner(signerOpts) {
+    if (_sharedPromise) return _sharedPromise;
+    _sharedPromise = (async () => {
+      const { privateKey, ethersLib, dryRun } = signerOpts || {};
+      const provider = await createProviderWithFallback(
+        config.RPC_URL,
+        config.RPC_URL_FALLBACK,
+        ethersLib,
+      );
+      const base =
+        dryRun && !privateKey
+          ? ethersLib.Wallet.createRandom().connect(provider)
+          : new ethersLib.Wallet(privateKey, provider);
+      const signer = new ethersLib.NonceManager(base);
+      const address = await signer.getAddress();
+      console.log(
+        "[pos-mgr] Shared signer initialised for %s (dryRun=%s)",
+        address,
+        !!dryRun,
+      );
+      return { provider, signer, address };
+    })();
+    try {
+      return await _sharedPromise;
+    } catch (err) {
+      _sharedPromise = null;
+      throw err;
+    }
+  }
+
+  /** Clear the shared signer cache (tests / wallet-change). */
+  function _resetSharedSigner() {
+    _sharedPromise = null;
+  }
 
   /**
    * Per-pool daily rebalance counters.
@@ -309,6 +356,8 @@ function createPositionManager(opts) {
     getRebalanceLock,
     getScanLock,
     getPoolScanLock,
+    getSharedSigner,
+    _resetSharedSigner,
   };
 }
 

@@ -51,6 +51,11 @@ function makePositionMgr(overrides = {}) {
     poolKey: () => "pool",
     canRebalancePool: () => true,
     recordPoolRebalance: () => {},
+    getSharedSigner: async () => ({
+      provider: {},
+      signer: { getAddress: async () => "0xAA" },
+      address: "0xAA",
+    }),
     ...overrides,
   };
 }

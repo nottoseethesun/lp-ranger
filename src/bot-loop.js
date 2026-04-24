@@ -227,22 +227,36 @@ async function startBotLoop(opts) {
     console.log(
       "\n  ┌──────────────────────────────────────────────┐\n  │  DRY RUN MODE — no transactions will be sent │\n  └──────────────────────────────────────────────┘\n",
     );
-  const provider = await createProviderWithFallback(
-    config.RPC_URL,
-    config.RPC_URL_FALLBACK,
-    ethersLib,
-  );
-  // IMPORTANT: Always wrap the wallet in NonceManager so that concurrent
-  // sendTransaction calls (e.g. Promise.all on two approve TXs) get
-  // sequential nonces from a local counter instead of racing to the RPC.
-  // Never bypass this — do not call getNonce() or getTransactionCount()
-  // to manually manage nonces.  Let NonceManager handle it.
-  const _baseWallet =
-    dryRun && !privateKey
-      ? ethersLib.Wallet.createRandom().connect(provider)
-      : new ethersLib.Wallet(privateKey, provider);
-  const signer = new ethersLib.NonceManager(_baseWallet);
-  const address = await signer.getAddress();
+  /*- Shared {provider, signer, address} wins when the caller passes one
+   *  in.  Production callers (server-positions, bot.js) fetch the
+   *  singleton from positionMgr.getSharedSigner so every managed
+   *  position signs through the SAME NonceManager — drifted per-position
+   *  nonce counters were the root cause of the 2026-04-24 "nonce too
+   *  low" storm.  Tests that don't need shared-signer semantics fall
+   *  through to the inline branch below. */
+  let provider, signer, address;
+  if (opts.provider && opts.signer) {
+    provider = opts.provider;
+    signer = opts.signer;
+    address = opts.address || (await signer.getAddress());
+  } else {
+    provider = await createProviderWithFallback(
+      config.RPC_URL,
+      config.RPC_URL_FALLBACK,
+      ethersLib,
+    );
+    /*- IMPORTANT: wrap the wallet in NonceManager so concurrent
+     *  sendTransaction calls (e.g. Promise.all on two approve TXs) get
+     *  sequential nonces from a local counter instead of racing the
+     *  RPC.  Never bypass this — do not call getNonce() or
+     *  getTransactionCount() to manually manage nonces. */
+    const _baseWallet =
+      dryRun && !privateKey
+        ? ethersLib.Wallet.createRandom().connect(provider)
+        : new ethersLib.Wallet(privateKey, provider);
+    signer = new ethersLib.NonceManager(_baseWallet);
+    address = await signer.getAddress();
+  }
   if (dryRun && !privateKey)
     console.log(`[bot] DRY RUN — using random address: ${address}`);
   console.log(`[bot] Wallet: ${address}`);

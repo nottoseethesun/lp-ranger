@@ -70,6 +70,14 @@ async function main() {
     dailyMax:
       diskConfig.global.maxRebalancesPerDay || config.MAX_REBALANCES_PER_DAY,
   });
+  /*- App-wide shared signer: every bot-loop below must sign through the
+   *  same NonceManager so per-position counters cannot drift. */
+  const ethers = require("ethers");
+  const shared = await positionMgr.getSharedSigner({
+    privateKey,
+    ethersLib: ethers,
+    dryRun,
+  });
 
   // If no managed positions in config, fall back to POSITION_ID env var (single-position start)
   if (managedKeys(diskConfig).length === 0 && (config.POSITION_ID || !dryRun)) {
@@ -79,6 +87,9 @@ async function main() {
     const botState = createPerPositionBotState(diskConfig.global, {});
     const handle = await startBotLoop({
       privateKey,
+      provider: shared.provider,
+      signer: shared.signer,
+      address: shared.address,
       dryRun,
       updateBotState: (patch) => {
         Object.assign(botState, patch);
@@ -115,6 +126,9 @@ async function main() {
         startLoop: () =>
           startBotLoop({
             privateKey,
+            provider: shared.provider,
+            signer: shared.signer,
+            address: shared.address,
             dryRun,
             updateBotState: (patch) =>
               updatePositionState(keyRef, patch, diskConfig, positionMgr),
