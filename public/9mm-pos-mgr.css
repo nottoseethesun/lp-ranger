@@ -2443,10 +2443,12 @@
  * Visible only when the warning is populated; the JS toggles `hidden`.
  */
 .\39 mm-pos-mgr-settings-warning {
-  /*- Do not set `display` here — it would override the user-agent
-   *  `[hidden] { display: none }` rule and leave an empty yellow bar
-   *  visible on page load before the JS has populated any text.
-   *  Div is block by default, which is what we want when shown. */
+  /*
+   * Do not set `display` here — it would override the user-agent
+   * `[hidden] { display: none }` rule and leave an empty yellow bar
+   * visible on page load before the JS has populated any text.
+   * Div is block by default, which is what we want when shown.
+   */
   margin: 8px 0 12px;
   padding: 10px 14px;
   font-size: 14px;
