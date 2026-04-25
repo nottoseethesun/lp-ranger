@@ -415,11 +415,6 @@ async function _swapViaRouter(signer, ethersLib, params) {
   return swapViaRouter(signer, ethersLib, params, _balanceDiff);
 }
 
-/** True when aggregator exhausted all retry attempts (reverts + timeouts). */
-function _isAggregatorExhausted(err) {
-  return err?.message?.startsWith("Aggregator swap failed after");
-}
-
 /**
  * Execute a swap in N equal chunks to reduce per-swap impact.
  * Each chunk runs sequentially (prior chunks move the price).
@@ -428,6 +423,16 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   const total = params.amountIn;
   const chunk = total / BigInt(n);
   const remainder = total - chunk * BigInt(n);
+  /*- Bail loudly when the per-chunk amount would fall below the swap
+   *  threshold.  Without this, the loop silently skips every chunk and
+   *  returns amountOut=0n as if the swap succeeded — the caller then
+   *  proceeds to mint with stale balances.  Throwing lets the outer
+   *  catch fall through to the V3 router instead. */
+  if (chunk < _MIN_SWAP_THRESHOLD)
+    throw new Error(
+      `Cannot chunk: amountIn=${total} split into ${n} would yield ` +
+        `chunks below MIN_SWAP_THRESHOLD=${_MIN_SWAP_THRESHOLD}`,
+    );
   let amountOut = 0n,
     gasCostWei = 0n,
     txHash = null;
@@ -458,9 +463,19 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
 
 /**
  * Swap tokens if needed for rebalancing.
- * Tries 9mm DEX Aggregator first (lowest slippage),
- * falls back to V3 SwapRouter on failure.
- * Both paths try chunking (3 equal parts) on slippage error.
+ *
+ * Fallback chain:
+ *   1. Aggregator at full amount.
+ *   2. If (and only if) the aggregator slippage-aborted, retry as 3
+ *      smaller chunks via the aggregator.  Chunking is fundamentally an
+ *      impact-reduction tool — smaller amounts move the multi-hop route
+ *      less, so chunking can plausibly clear the slippage gate that the
+ *      full-size attempt failed.  Other aggregator failures (TX revert,
+ *      timeout, no-liquidity, HTTP error) are NOT retried in chunks:
+ *      a broken route at full size is broken at 1/3 size too, and
+ *      chunking would just burn three nonces before falling through.
+ *   3. V3 SwapRouter against the position's own pool.
+ *
  * @param {object} signer      ethers Signer.
  * @param {object} ethersLib   ethers library.
  * @param {object} params      Swap parameters.
@@ -483,13 +498,10 @@ async function swapIfNeeded(signer, ethersLib, params) {
       _attemptLabel: "9mm Aggregator (full)",
     });
   } catch (err) {
-    // Aggregator exhausted all retries at full amount — try 3 smaller
-    // chunks via the aggregator before giving up on it entirely.
-    // Smaller amounts = lower impact on multi-hop routes.
-    if (_isAggregatorExhausted(err)) {
+    if (err?.isSwapImpactAbort) {
       console.warn(
-        "[rebalance] Aggregator failed at full amount" +
-          " — retrying in 3 chunks via aggregator",
+        "[rebalance] Aggregator slippage abort at full amount" +
+          " — retrying in 3 chunks via aggregator (lower per-swap impact)",
       );
       try {
         return await _swapInChunks(
@@ -508,7 +520,8 @@ async function swapIfNeeded(signer, ethersLib, params) {
       }
     } else {
       console.warn(
-        "[rebalance] Aggregator failed: %s" + " — falling back to V3 router",
+        "[rebalance] Aggregator failed (non-impact): %s" +
+          " — falling back to V3 router (chunking would not help)",
         err.message,
       );
     }
