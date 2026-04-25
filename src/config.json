@@ -1,0 +1,30 @@
+{
+  "_comment": "Tracked, pure-data app configuration. Settings exposed in the dashboard UI (OOR threshold, slippage, intervals, etc.) live in app-config/static-tunables/bot-config-defaults.json instead, with per-position runtime overrides in app-config/.bot-config.json.",
+  "server": {
+    "port": 5555,
+    "host": "127.0.0.1"
+  },
+  "defaults": {
+    "chain": "pulsechain"
+  },
+  "tx": {
+    "speedupSec": 120,
+    "cancelSec": 1200,
+    "retrySwapLimit": 8
+  },
+  "scan": {
+    "timeoutMs": 7200000
+  },
+  "compound": {
+    "minFeeUsd": 1,
+    "defaultThresholdUsd": 5
+  },
+  "log": {
+    "file": "./app-config/rebalance_log.json"
+  },
+  "aggregator": {
+    "_comment": "AGGREGATOR_API_KEY is a public 0x-api-key embedded in 9mm's product (required for valid Aggregator calldata) — not a user-owned credential. It lives here, not in api-keys.json, because encrypting it would force every operator to re-enter it, which is not their job. Override per-deployment via AGGREGATOR_URL / AGGREGATOR_API_KEY env vars if needed.",
+    "url": "https://api.9mm.pro",
+    "apiKey": "f9275849-2a1d-406b-b2a2-a6be1ac127dc"
+  }
+}
