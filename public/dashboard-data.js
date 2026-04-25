@@ -146,11 +146,22 @@ const _CONFIG_INPUT_MAP = {
 
 /* Per-position defaults applied when the key is missing from server data,
  * so the input resets on switch instead of bleeding through the prior
- * position's value.  Omit keys that always come back from the bot state.
- * `approvalMultiple` is populated from `/api/bot-config-defaults` on init
- * so the built-in fallback (20) can be overridden by an operator edit to
- * `app-config/static-tunables/bot-config-defaults.json`. */
-const _CONFIG_INPUT_DEFAULTS = { offsetToken0Pct: 50, approvalMultiple: 20 };
+ * position's value.  These values match the built-in `_FALLBACK` in
+ * src/bot-config-defaults.js — they are overwritten at init by
+ * `setConfigInputDefault()` once the `/api/bot-config-defaults` fetch
+ * resolves, so an operator edit to
+ * `app-config/static-tunables/bot-config-defaults.json` takes effect
+ * even before any per-position config is saved. */
+const _CONFIG_INPUT_DEFAULTS = {
+  approvalMultiple: 20,
+  rebalanceOutOfRangeThresholdPercent: 5,
+  rebalanceTimeoutMin: 180,
+  slippagePct: 0.5,
+  checkIntervalSec: 60,
+  minRebalanceIntervalMin: 10,
+  maxRebalancesPerDay: 20,
+  offsetToken0Pct: 50,
+};
 
 /** Update a default value for a config input (called from init once the
  *  server tunables have been fetched). */

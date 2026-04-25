@@ -101,6 +101,83 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     assert.equal(out.approvalMultiple, 30);
     assert.equal(out._comment, undefined);
   });
+
+  it("returns all built-in user-setting defaults when file is missing", () => {
+    fs.unlinkSync(_FILE);
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaults();
+    assert.equal(out.rebalanceOutOfRangeThresholdPercent, 5);
+    assert.equal(out.rebalanceTimeoutMin, 180);
+    assert.equal(out.slippagePct, 0.5);
+    assert.equal(out.checkIntervalSec, 60);
+    assert.equal(out.minRebalanceIntervalMin, 10);
+    assert.equal(out.maxRebalancesPerDay, 20);
+    assert.equal(out.offsetToken0Pct, 50);
+  });
+
+  it("returns operator-edited values when within range", () => {
+    fs.writeFileSync(
+      _FILE,
+      JSON.stringify({
+        rebalanceOutOfRangeThresholdPercent: 7,
+        rebalanceTimeoutMin: 0,
+        slippagePct: 1.2,
+        checkIntervalSec: 120,
+        minRebalanceIntervalMin: 30,
+        maxRebalancesPerDay: 50,
+        offsetToken0Pct: 60,
+      }),
+    );
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaults();
+    assert.equal(out.rebalanceOutOfRangeThresholdPercent, 7);
+    assert.equal(out.rebalanceTimeoutMin, 0);
+    assert.equal(out.slippagePct, 1.2);
+    assert.equal(out.checkIntervalSec, 120);
+    assert.equal(out.minRebalanceIntervalMin, 30);
+    assert.equal(out.maxRebalancesPerDay, 50);
+    assert.equal(out.offsetToken0Pct, 60);
+  });
+
+  it("rejects out-of-range values and falls back per-key", () => {
+    fs.writeFileSync(
+      _FILE,
+      JSON.stringify({
+        rebalanceOutOfRangeThresholdPercent: 0, // below min
+        rebalanceTimeoutMin: -10, // negative
+        slippagePct: 99, // above max
+        checkIntervalSec: 1, // below min
+        minRebalanceIntervalMin: 9999, // above max
+        maxRebalancesPerDay: 0, // below min
+        offsetToken0Pct: 200, // above max
+      }),
+    );
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaults();
+    assert.equal(out.rebalanceOutOfRangeThresholdPercent, 5);
+    assert.equal(out.rebalanceTimeoutMin, 180);
+    assert.equal(out.slippagePct, 0.5);
+    assert.equal(out.checkIntervalSec, 60);
+    assert.equal(out.minRebalanceIntervalMin, 10);
+    assert.equal(out.maxRebalancesPerDay, 20);
+    assert.equal(out.offsetToken0Pct, 50);
+  });
+
+  it("ignores non-numeric values and keeps built-in defaults", () => {
+    fs.writeFileSync(
+      _FILE,
+      JSON.stringify({
+        slippagePct: "half",
+        checkIntervalSec: null,
+        offsetToken0Pct: true,
+      }),
+    );
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaults();
+    assert.equal(out.slippagePct, 0.5);
+    assert.equal(out.checkIntervalSec, 60);
+    assert.equal(out.offsetToken0Pct, 50);
+  });
 });
 
 describe("bot-config-defaults.handleBotConfigDefaults", () => {

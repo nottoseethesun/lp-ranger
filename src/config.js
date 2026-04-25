@@ -2,115 +2,54 @@
  * @file src/config.js
  * @module config
  * @description
- * Single source of truth for all runtime configuration in the 9mm v3
- * position manager.  Reads values from environment variables (populated by
- * a `.env` file via `dotenv`) and applies defaults for every optional setting.
+ * Single import point for all runtime configuration in LP Ranger. Composes
+ * three sources:
  *
- * All other modules should import config values from here rather than reading
- * `process.env` directly.  This keeps configuration centralised, documented,
- * and easy to override in tests by mutating the exported object.
+ *   1. `src/config.json`                              — tracked, pure data
+ *      (server port/host, TX timeouts, aggregator URL/key, scan/compound/log
+ *      defaults). Override per-deployment via env vars where documented.
+ *   2. `src/runtime-flags.js`                         — env/argv-derived
+ *      (PRIVATE_KEY, DRY_RUN, VERBOSE, CHAIN, CHAIN_NAME, TX_TYPE, parser
+ *      helpers).
+ *   3. `app-config/static-tunables/chains.json`       — per-chain RPC URLs
+ *      and contract addresses.
  *
- * Configuration keys
- * ──────────────────
- * SERVER
- *   PORT                   HTTP port for the dashboard server.   Default: 5555
- *   HOST                   Bind address.                         Default: '127.0.0.1'
+ * Per-position user-tunable settings (OOR threshold, slippage, intervals,
+ * rebalance cap, OOR timeout) are still read from env vars here for the
+ * moment; they will move to `app-config/static-tunables/bot-config-defaults.json`
+ * in a follow-up commit. Until then, the env vars remain the source of
+ * truth for first-time defaults.
  *
- * BOT
- *   PRIVATE_KEY            Wallet private key (or import via dashboard / CLI).
- *   RPC_URL                PulseChain RPC endpoint (default: g4mm4.io).
- *   RPC_URL_FALLBACK       Fallback RPC (default: rpc.pulsechain.com).
- *   POSITION_ID            NFT token ID (optional — auto-detected otherwise).
- *   ERC20_POSITION_ADDRESS ERC-20 position token contract (optional).
- *   REBALANCE_OOR_THRESHOLD_PCT  % price must move beyond boundary before rebalance. Default: 5
- *   SLIPPAGE_PCT           Max slippage tolerance.               Default: 0.75
- *   CHECK_INTERVAL_SEC     How often the bot polls on-chain.     Default: 60
- *   MIN_REBALANCE_INTERVAL_MIN  Min minutes between rebalances.  Default: 10
- *   MAX_REBALANCES_PER_DAY      Daily rebalance cap.             Default: 20
- *   LOG_FILE               Path for the JSON rebalance log.      Default: './app-config/rebalance_log.json'
- *
- * CONTRACTS (9mm Pro V3 on PulseChain — verify on scan.9mm.pro)
- *   POSITION_MANAGER       NonfungiblePositionManager address.
- *   FACTORY                V3 factory address.
- *   SWAP_ROUTER            V3 SwapRouter address.
- *
- *
- * @example
- * const { PORT, HOST, RPC_URL } = require('./src/config');
- * console.log(`Serving on http://${HOST}:${PORT}`);
+ * Existing callers keep importing `./config` and see the same exported
+ * shape they always have. New code that only needs runtime flags can
+ * `require('./runtime-flags')` directly.
  */
 
 "use strict";
 
-// Load .env file if present (silently skip in production where env vars are
-// injected by the platform).
-try {
-  require("dotenv").config();
-} catch (_) {
-  // dotenv not installed or .env absent — rely on process.env as-is
-}
+const APP_CONFIG = require("./config.json");
+const runtimeFlags = require("./runtime-flags");
 
-// ── Per-blockchain config ────────────────────────────────────────────────────
-
-/**
- * Per-blockchain settings loaded from `app-config/static-tunables/chains.json`.
- * This is a tracked, user-editable static-tunable file (never rewritten at
- * runtime). See the `app-config/` section of server.js for the full layout
- * and rules for where future config files should live.
- */
-const CHAINS = require("../app-config/static-tunables/chains.json");
-
-/** Active chain name. Set CHAIN_NAME=pulsechain-testnet for testnet. */
-const CHAIN_NAME = (process.env.CHAIN_NAME || "pulsechain").toLowerCase();
-
-/** Active chain config (aggregator tunables, chainId, etc.). */
-const CHAIN = CHAINS[CHAIN_NAME] || CHAINS.pulsechain;
-
-/** Map human-readable names to EIP-2718 transaction envelope type numbers. */
-const TX_ENVELOPE_TYPES = { legacy: 0, eip1559: 2 };
-
-/** Resolved EIP-2718 envelope type number for the active chain. */
-const TX_TYPE = TX_ENVELOPE_TYPES[CHAIN.transactionEnvelopeType] ?? 0;
-
-/**
- * Parse a positive integer from a string, returning `fallback` on failure.
- * @param {string|undefined} value
- * @param {number}           fallback
- * @returns {number}
- */
-function parsePositiveInt(value, fallback) {
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-/**
- * Parse a positive float from a string, returning `fallback` on failure.
- * @param {string|undefined} value
- * @param {number}           fallback
- * @returns {number}
- */
-function parsePositiveFloat(value, fallback) {
-  const n = parseFloat(value);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
+const {
+  parsePositiveInt,
+  parsePositiveFloat,
+  CHAIN,
+  CHAIN_NAME,
+  TX_TYPE,
+  PRIVATE_KEY,
+  DRY_RUN,
+  VERBOSE,
+} = runtimeFlags;
 
 // ── Server ─────────────────────────────────────────────────────────────────────
 
 /** HTTP port the dashboard server listens on. */
-const PORT = parsePositiveInt(process.env.PORT, 5555);
+const PORT = parsePositiveInt(process.env.PORT, APP_CONFIG.server.port);
 
 /** Network interface the server binds to. '127.0.0.1' = localhost only. */
-const HOST = process.env.HOST || "127.0.0.1";
+const HOST = process.env.HOST || APP_CONFIG.server.host;
 
 // ── Bot / wallet ───────────────────────────────────────────────────────────────
-
-/** Raw hex private key for the signing wallet (alternative to .wallet.json). */
-const PRIVATE_KEY = process.env.PRIVATE_KEY || null;
-
-/** Dry-run mode — read-only, no transactions. Set to '1' or 'true' to enable. */
-const DRY_RUN = ["1", "true", "yes"].includes(
-  (process.env.DRY_RUN || "").toLowerCase(),
-);
 
 /** Primary JSON-RPC endpoint (chain-aware default from chains.json). */
 const RPC_URL =
@@ -142,7 +81,7 @@ const REBALANCE_TIMEOUT_MIN = (() => {
   return Number.isFinite(n) && n >= 0 ? n : 180;
 })();
 
-/** Default slippage tolerance (percent). Fallback when user input is invalid. */
+/** Default slippage tolerance (percent). Hard fallback when user input is invalid. */
 const DEFAULT_SLIPPAGE_PCT = 0.75;
 
 /** Maximum slippage tolerance for rebalance transactions (percent). */
@@ -151,11 +90,17 @@ const SLIPPAGE_PCT = parsePositiveFloat(
   DEFAULT_SLIPPAGE_PCT,
 );
 
-/** Seconds before a pending TX is speed-up-replaced with higher gas. Default: 120 (2 min). */
-const TX_SPEEDUP_SEC = parsePositiveInt(process.env.TX_SPEEDUP_SEC, 120);
+/** Seconds before a pending TX is speed-up-replaced with higher gas. */
+const TX_SPEEDUP_SEC = parsePositiveInt(
+  process.env.TX_SPEEDUP_SEC,
+  APP_CONFIG.tx.speedupSec,
+);
 
-/** Seconds before a stuck TX is cancelled with a 0-PLS self-transfer. Default: 1200 (20 min). */
-const TX_CANCEL_SEC = parsePositiveInt(process.env.TX_CANCEL_SEC, 1200);
+/** Seconds before a stuck TX is cancelled with a 0-PLS self-transfer. */
+const TX_CANCEL_SEC = parsePositiveInt(
+  process.env.TX_CANCEL_SEC,
+  APP_CONFIG.tx.cancelSec,
+);
 
 /** How often the bot checks the on-chain position, in seconds. */
 const CHECK_INTERVAL_SEC = parsePositiveInt(process.env.CHECK_INTERVAL_SEC, 60);
@@ -173,61 +118,53 @@ const MAX_REBALANCES_PER_DAY = parsePositiveInt(
 );
 
 /**
- * Maximum consecutive swap-backoff retries before pausing.
- * When a swap's price impact moves the tick outside the computed range,
- * the bot backs off with exponential delay (1→2→4→…→20 min).
- * After this many failures the bot pauses and alerts the user.
+ * Maximum consecutive swap-backoff retries before pausing. When a swap's
+ * price impact moves the tick outside the computed range, the bot backs
+ * off with exponential delay (1 → 2 → 4 → … → 20 min). After this many
+ * failures the bot pauses and alerts the user.
  */
 const REBALANCE_RETRY_SWAP_LIMIT = parsePositiveInt(
   process.env.REBALANCE_RETRY_SWAP_LIMIT,
-  8,
+  APP_CONFIG.tx.retrySwapLimit,
 );
 
 /** File path for the JSON rebalance event log. */
-const LOG_FILE = process.env.LOG_FILE || "./app-config/rebalance_log.json";
+const LOG_FILE = process.env.LOG_FILE || APP_CONFIG.log.file;
 
 // ── Contracts ──────────────────────────────────────────────────────────────────
 
-/**
- * NonfungiblePositionManager contract address (9mm Pro V3 on PulseChain).
- * Source: https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json
- */
+/** NonfungiblePositionManager contract address (chain-aware default). */
 const POSITION_MANAGER =
   process.env.POSITION_MANAGER ||
   CHAIN.contracts?.positionManager?.address ||
   "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 
-/**
- * V3 factory contract address (chain-aware default from chains.json).
- * Source: https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json
- */
+/** V3 factory contract address (chain-aware default). */
 const FACTORY =
   process.env.FACTORY ||
   CHAIN.contracts?.factory ||
   "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68";
 
-/**
- * V3 SwapRouter contract address (chain-aware default from chains.json).
- * Used for token swaps during rebalancing.
- */
+/** V3 SwapRouter contract address (chain-aware default). */
 const SWAP_ROUTER =
   process.env.SWAP_ROUTER ||
   CHAIN.contracts?.swapRouter ||
   "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA";
 
 /** 9mm DEX Aggregator API URL (primary swap path — lowest slippage). */
-const AGGREGATOR_URL = process.env.AGGREGATOR_URL || "https://api.9mm.pro";
+const AGGREGATOR_URL = process.env.AGGREGATOR_URL || APP_CONFIG.aggregator.url;
 
 /** 0x-api-key for the 9mm DEX Aggregator (required for valid calldata). */
 const AGGREGATOR_API_KEY =
-  process.env.AGGREGATOR_API_KEY || "f9275849-2a1d-406b-b2a2-a6be1ac127dc";
+  process.env.AGGREGATOR_API_KEY || APP_CONFIG.aggregator.apiKey;
 
 // ── Validation helper ─────────────────────────────────────────────────────────
 
 /**
- * Assert that all required config values are present for live-bot operation.
- * Throws a descriptive error listing every missing value so the user can fix
- * them all at once rather than discovering them one by one.
+ * Assert that all required config values are present for live-bot
+ * operation. Throws a descriptive error listing every missing value so
+ * the user can fix them all at once rather than discovering them one by
+ * one.
  *
  * @throws {Error} If any required field is absent.
  */
@@ -249,12 +186,6 @@ function assertLiveModeReady() {
     );
   }
 }
-
-/** Verbose logging (--verbose or -v on command line, or VERBOSE=1 env). */
-const VERBOSE =
-  process.env.VERBOSE === "1" ||
-  process.argv.includes("--verbose") ||
-  process.argv.includes("-v");
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 
@@ -295,11 +226,11 @@ module.exports = {
   TX_TYPE,
 
   // Compound
-  COMPOUND_MIN_FEE_USD: 1,
-  COMPOUND_DEFAULT_THRESHOLD_USD: 5,
+  COMPOUND_MIN_FEE_USD: APP_CONFIG.compound.minFeeUsd,
+  COMPOUND_DEFAULT_THRESHOLD_USD: APP_CONFIG.compound.defaultThresholdUsd,
 
   // Scan
-  SCAN_TIMEOUT_MS: 7_200_000, // 2 hours — server requestTimeout + client fetch abort
+  SCAN_TIMEOUT_MS: APP_CONFIG.scan.timeoutMs,
 
   // Helpers
   assertLiveModeReady,

@@ -42,7 +42,7 @@ describe("gas-monitor — constants (from tunables JSON)", () => {
   it("send gas matches shipped tunables default (21000)", () => {
     assert.strictEqual(SEND_GAS, 21_000n);
   });
-  it("loaded values match app-config/static-tunables/low-gas-thresholds.json", () => {
+  it("loaded values match the lowGasThresholds group in bot-config-defaults.json", () => {
     const fs = require("node:fs");
     const path = require("node:path");
     const p = path.join(
@@ -50,12 +50,13 @@ describe("gas-monitor — constants (from tunables JSON)", () => {
       "..",
       "app-config",
       "static-tunables",
-      "low-gas-thresholds.json",
+      "bot-config-defaults.json",
     );
     const json = JSON.parse(fs.readFileSync(p, "utf8"));
-    assert.strictEqual(json.worstCaseGasFactor, WORST_CASE_GAS_FACTOR);
-    assert.strictEqual(json.safetyMultiplier, SAFETY_MULTIPLIER);
-    assert.strictEqual(BigInt(json.standardSendGas), SEND_GAS);
+    const group = json.lowGasThresholds;
+    assert.strictEqual(group.worstCaseGasFactor, WORST_CASE_GAS_FACTOR);
+    assert.strictEqual(group.safetyMultiplier, SAFETY_MULTIPLIER);
+    assert.strictEqual(BigInt(group.standardSendGas), SEND_GAS);
   });
 });
 

@@ -483,6 +483,45 @@
           "200": { "description": "Shutdown initiated" }
         }
       }
+    },
+    "/api/ui-defaults": {
+      "get": {
+        "tags": ["UI"],
+        "summary": "Dashboard UI defaults",
+        "description": "Returns the contents of app-config/static-tunables/ui-defaults.json (e.g. soundsEnabled). Used by the dashboard at init for fresh-profile defaults.",
+        "responses": {
+          "200": {
+            "description": "UI defaults JSON",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/api/nft-providers": {
+      "get": {
+        "tags": ["UI"],
+        "summary": "NFT position-manager provider labels",
+        "description": "Returns the contents of app-config/static-tunables/nft-providers.json — short labels for known NFT position-manager contract addresses.",
+        "responses": {
+          "200": {
+            "description": "NFT provider label map",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/api/bot-config-defaults": {
+      "get": {
+        "tags": ["UI"],
+        "summary": "Bot Settings defaults",
+        "description": "Returns the contents of app-config/static-tunables/bot-config-defaults.json — single source of truth for default values of every Bot Settings input plus server-internal nested groups (lowGasThresholds, residualCleanup). Per-user overrides live in app-config/.bot-config.json.",
+        "responses": {
+          "200": {
+            "description": "Bot config defaults JSON",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
     }
   }
 }

@@ -31,6 +31,7 @@ sequence.
   - [Wallet Management](#wallet-management)
   - [Housekeeping](#housekeeping)
 - [The app-config Directory](#the-app-config-directory)
+- [Bot Config Defaults](#bot-config-defaults)
 - [Security](#security)
   - [What's at Stake](#whats-at-stake)
   - [Summary of Primary Controls](#summary-of-primary-controls)
@@ -573,6 +574,7 @@ lp-ranger/
 └── app-config/
     ├── static-tunables/      ← tracked in git, user-editable
     │   ├── chains.json       ← per-blockchain tunables (RPC, contracts, gas)
+    │   ├── bot-config-defaults.json  ← Bot Settings defaults + nested groups
     │   └── dust-threshold.json  ← universal dust threshold (gold-pegged)
     ├── api-keys.example.json ← tracked format template (documentation)
     ├── .bot-config.json      ← runtime (gitignored) — managed positions
@@ -596,6 +598,10 @@ regenerate it.
   multipliers, aggregator cancel timeout, wait window, retry count. Read
   once at module load by `src/config.js`. Users edit this file directly for
   chain-specific tweaks.
+- **`static-tunables/bot-config-defaults.json`** — Tracked. Default values
+  for every user-editable Bot Settings input plus two server-internal nested
+  groups (`lowGasThresholds`, `residualCleanup`). See
+  [Bot Config Defaults](#bot-config-defaults) for the full key inventory.
 - **`static-tunables/dust-threshold.json`** — Tracked. Universal dust
   threshold (in abstract units of an inflation-resistant reference asset)
   plus the list of tokens used to fetch the live USD/unit price. Read once
@@ -692,6 +698,49 @@ Tests that need to write config without touching the live files either
 pass an explicit `dir` argument to `loadConfig(dir)` / `saveConfig(cfg, dir)`
 (`bot-config-v2`), or set the `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH`
 environment variables to a temp path before require-ing the module.
+
+---
+
+## Bot Config Defaults
+
+[`app-config/static-tunables/bot-config-defaults.json`](../app-config/static-tunables/bot-config-defaults.json)
+holds the default values for every Bot Settings input the dashboard
+exposes, plus two server-internal nested groups. The dashboard fetches
+it at init via `GET /api/bot-config-defaults`; the server falls back to
+it when `getConfig` is asked for a value the user has not overridden.
+Per-user overrides live in `app-config/.bot-config.json`.
+
+**User-editable (top-level keys, exposed in the Bot Settings panel):**
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `approvalMultiple` | `20` | ERC-20 approval multiplier for swap allowances |
+| `rebalanceOutOfRangeThresholdPercent` | `5` | % move past the position boundary before a rebalance triggers |
+| `rebalanceTimeoutMin` | `180` | Minutes continuously OOR before forcing a rebalance (`0` = disabled) |
+| `slippagePct` | `0.5` | Per-swap slippage tolerance applied to the quoted output |
+| `checkIntervalSec` | `60` | On-chain poll cadence |
+| `minRebalanceIntervalMin` | `10` | Minimum gap between back-to-back rebalances on the same pool |
+| `maxRebalancesPerDay` | `20` | Wallet-level daily rebalance cap (UTC reset) |
+| `offsetToken0Pct` | `50` | Position offset bias toward token0 (50 = balanced) |
+
+**`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /
+"Gas Critical" badge in [`src/gas-monitor.js`](../src/gas-monitor.js).
+Not exposed in the UI.
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `worstCaseGasFactor` | `91` | Worst-case rebalance gas in units of a 21k native send |
+| `safetyMultiplier` | `3` | Headroom factor over the worst case |
+| `standardSendGas` | `21000` | EVM constant for a no-calldata native transfer |
+
+**`residualCleanup`** — drives the post-rebalance residual-sweep loop in
+[`src/bot-cycle-residual.js`](../src/bot-cycle-residual.js). Not exposed
+in the UI.
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `delayMs` | `600000` | Wait (ms) after a rebalance before checking residual share |
+| `thresholdPct` | `5` | Residual share of the pool batch (%) that triggers a sweep |
 
 ---
 

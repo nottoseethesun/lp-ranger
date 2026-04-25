@@ -1,5 +1,0 @@
-{
-  "_comment": "Automatic residual-cleanup rebalance tunables. After every successful normal or manual rebalance, if the wallet residual share of the pool batch (residual / (LP + residual)) still exceeds thresholdPct past delayMs, the bot fires exactly one cleanup rebalance to sweep residuals back into the position. The cleanup respects ALL other rebalance rules (throttle, daily cap, doubling, swap-backoff, pause). Back-to-back cleanups are prevented by a per-position flag that only clears on the next normal rebalance. Not exposed in Bot Settings — operator-tunable via this file only.",
-  "delayMs": 600000,
-  "thresholdPct": 5
-}

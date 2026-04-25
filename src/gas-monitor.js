@@ -12,8 +12,9 @@
  *   recommended = SEND_GAS × WORST_CASE_GAS_FACTOR × SAFETY × positionCount
  *
  * All three numeric inputs — `worstCaseGasFactor`, `safetyMultiplier`,
- * `standardSendGas` — are loaded at module init from
- * `app-config/static-tunables/low-gas-thresholds.json` so operators can
+ * `standardSendGas` — are loaded at module init from the
+ * `lowGasThresholds` group in
+ * `app-config/static-tunables/bot-config-defaults.json` so operators can
  * retune without editing code.  The defaults match the shipped JSON and
  * are also used as a fallback when the file is missing/malformed, so
  * the guard never silently disables itself.
@@ -44,66 +45,19 @@
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
 const { notify, isConfigured } = require("./telegram");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
-/** Defaults applied when the tunables JSON is missing or malformed.
- *  These are also the values shipped in the JSON so the guard stays
- *  active with reasonable thresholds even if the file is deleted. */
-const _DEFAULTS = Object.freeze({
-  worstCaseGasFactor: 91,
-  safetyMultiplier: 3,
-  standardSendGas: 21000,
-});
-
-/** On-disk source of truth for low-gas tunables. */
-const _TUNABLES_PATH = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "low-gas-thresholds.json",
+/*- Load the lowGasThresholds group at module init.  Per-key fallback to
+ *  the shipped defaults is performed inside readBotConfigDefaults so the
+ *  guard stays active even if the file is missing or partially edited. */
+const _TUNABLES = readBotConfigDefaults().lowGasThresholds;
+console.log(
+  "[gas-monitor] Tunables loaded: worstCaseGasFactor=%d safetyMultiplier=%d standardSendGas=%d",
+  _TUNABLES.worstCaseGasFactor,
+  _TUNABLES.safetyMultiplier,
+  _TUNABLES.standardSendGas,
 );
-
-/*- Load worstCaseGasFactor / safetyMultiplier / standardSendGas from the
- *  tunables JSON at module init. Any missing or malformed field falls
- *  back to the matching entry in _DEFAULTS — partial customisation is
- *  allowed. */
-function _loadTunables() {
-  const out = { ..._DEFAULTS };
-  try {
-    const raw = fs.readFileSync(_TUNABLES_PATH, "utf8");
-    const json = JSON.parse(raw);
-    for (const k of Object.keys(_DEFAULTS)) {
-      const v = Number(json?.[k]);
-      if (Number.isFinite(v) && v > 0) out[k] = v;
-      else if (json?.[k] !== undefined)
-        console.warn(
-          "[gas-monitor] %s: invalid %s=%s — using default %s",
-          _TUNABLES_PATH,
-          k,
-          json[k],
-          _DEFAULTS[k],
-        );
-    }
-    console.log(
-      "[gas-monitor] Tunables loaded: worstCaseGasFactor=%d safetyMultiplier=%d standardSendGas=%d",
-      out.worstCaseGasFactor,
-      out.safetyMultiplier,
-      out.standardSendGas,
-    );
-  } catch (err) {
-    console.warn(
-      "[gas-monitor] Could not load %s: %s — using defaults",
-      _TUNABLES_PATH,
-      err.message ?? err,
-    );
-  }
-  return out;
-}
-
-const _TUNABLES = _loadTunables();
 
 /** Worst-case rebalance gas / standard send gas. See tunables JSON. */
 const WORST_CASE_GAS_FACTOR = _TUNABLES.worstCaseGasFactor;

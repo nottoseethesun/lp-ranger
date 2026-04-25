@@ -242,6 +242,19 @@ describe("server", () => {
     assert.ok(res.status === 403 || res.status === 404);
   });
 
+  it("GET with percent-encoded path traversal returns 403 or 404", async () => {
+    const res = await req({
+      port: TEST_PORT,
+      path: "/%2E%2E%2F%2E%2E%2Fetc%2Fpasswd",
+    });
+    assert.ok(res.status === 403 || res.status === 404);
+  });
+
+  it("GET with malformed percent-encoding returns 400", async () => {
+    const res = await req({ port: TEST_PORT, path: "/%E0%A4%A" });
+    assert.strictEqual(res.status, 400);
+  });
+
   // ── CORS ──────────────────────────────────────────────────────────────────
 
   it("responses include localhost-locked CORS header", async () => {

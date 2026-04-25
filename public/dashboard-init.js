@@ -76,6 +76,7 @@ import {
   restoreSoundsToggle,
   bindSoundsToggle,
   bindAboutEasterEgg,
+  bindTitleTune,
 } from "./dashboard-sounds.js";
 import {
   bindPrivacySubform,
@@ -184,6 +185,7 @@ bindAllEvents();
 bindParamHelpButtons();
 bindSoundsToggle();
 bindAboutEasterEgg();
+bindTitleTune();
 bindPrivacySubform();
 restorePrivacyMode();
 restoreSoundsToggle();
@@ -210,19 +212,39 @@ function _afterDisclaimer() {
   // the next user-driven render.
   loadNftProviders().then(() => updatePosStripUI());
 
-  /*- Fetch Bot Config tunable defaults (approvalMultiple, …) so the
-   *  input placeholders reflect any operator override in
-   *  app-config/static-tunables/bot-config-defaults.json rather than
-   *  the hard-coded HTML `value=` fallback.  Silent on failure —
-   *  the hard-coded defaults remain. */
+  /*- Fetch Bot Config tunable defaults so each input shows the value
+   *  declared in app-config/static-tunables/bot-config-defaults.json
+   *  instead of relying on a hard-coded `value=` attribute in
+   *  index.html.  Server is the single source for first-visit defaults;
+   *  per-position overrides arrive later via _syncConfigFromServer().
+   *  Silent on failure — inputs simply stay empty until poll data
+   *  arrives. */
+  const _DEFAULT_INPUT_MAP = {
+    approvalMultiple: "inApprovalMultiple",
+    rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
+    rebalanceTimeoutMin: "inOorTimeout",
+    slippagePct: "inSlip",
+    checkIntervalSec: "inInterval",
+    minRebalanceIntervalMin: "inMinInterval",
+    maxRebalancesPerDay: "inMaxReb",
+    offsetToken0Pct: "inOffsetToken0",
+  };
   fetch("/api/bot-config-defaults")
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (!d) return;
-      if (typeof d.approvalMultiple === "number") {
-        setConfigInputDefault("approvalMultiple", d.approvalMultiple);
-        const el = g("inApprovalMultiple");
-        if (el && !el.dataset.userDirty) el.value = d.approvalMultiple;
+      for (const [key, elId] of Object.entries(_DEFAULT_INPUT_MAP)) {
+        const v = d[key];
+        if (typeof v !== "number") continue;
+        setConfigInputDefault(key, v);
+        const el = g(elId);
+        if (el && !el.dataset.userDirty) el.value = v;
+      }
+      /*- Keep the complement offset input in sync with the offsetToken0
+       *  default so the row reads correctly on first paint. */
+      if (typeof d.offsetToken0Pct === "number") {
+        const el1 = g("inOffsetToken1");
+        if (el1 && !el1.dataset.userDirty) el1.value = 100 - d.offsetToken0Pct;
       }
     })
     .catch(() => {});

@@ -1,5 +1,22 @@
 {
-  "_comment": "Default values for user-editable Bot Config settings. The dashboard reads these at init via GET /api/bot-config-defaults and uses them as the initial input value when .bot-config.json has no explicit override. The server also falls back to these when `getConfig` is asked for a value the user hasn't set. Add new user-setting defaults here rather than creating a new file per setting.",
-  "_migration": "Existing one-setting-per-file tunables in this directory (e.g. ui-defaults.json, nft-providers.json) should migrate into this consolidated file over time — one setting per JSON is not our preferred pattern. Separately, most Bot Config inputs still carry their initial default as a hard-coded `value=\"…\"` attribute in public/index.html (OOR threshold, slippage, check interval, min rebalance interval, max rebalances/day, OOR timeout, offset, etc.); those should also migrate here so operators can retune defaults without a rebuild. When migrating a key: (1) add it here, (2) update src/bot-config-defaults.js to parse + clamp it, (3) for a tunable being consolidated, delete the old JSON + loader + route entry in src/static-tunables-routes.js; for an HTML default, drop the `value=` attribute and let the /api/bot-config-defaults fetch populate the input, (4) keep the same key name so operator edits survive the move.",
-  "approvalMultiple": 20
+  "_comment": "Default values for user-editable Bot Config settings AND server-internal operator-tunable defaults. The dashboard reads the top-level keys at init via GET /api/bot-config-defaults and uses them as the initial input value when .bot-config.json has no explicit override. The server also falls back to these when `getConfig` is asked for a value the user hasn't set. Top-level keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so the same string flows from this file → dashboard input → .bot-config.json → bot reader. Nested groups (lowGasThresholds, residualCleanup) are server-internal: not exposed in the Bot Settings UI, consumed directly by src/gas-monitor.js and src/bot-cycle-residual.js. ui-defaults.json, dust-threshold.json and nft-providers.json stay standalone (different concern + data shape).",
+  "approvalMultiple": 20,
+  "rebalanceOutOfRangeThresholdPercent": 5,
+  "rebalanceTimeoutMin": 180,
+  "slippagePct": 0.5,
+  "checkIntervalSec": 60,
+  "minRebalanceIntervalMin": 10,
+  "maxRebalancesPerDay": 20,
+  "offsetToken0Pct": 50,
+  "lowGasThresholds": {
+    "_comment": "Wallet low-gas detection tunables. Used by src/gas-monitor.js to compute two tiers for the Mission Control 'Gas Running Low' / 'Gas Critical' badge and matching Telegram alerts. Formula (chain-agnostic — gas opcodes are identical across EVMs): floor_gas_units = standardSendGas × worstCaseGasFactor (one worst-case rebalance); recommended_gas_units = floor_gas_units × safetyMultiplier × managedPositionCount. Native-token threshold = gas_units × live gasPrice. Tiers: 'ok' at balance ≥ recommended; 'low' at floor ≤ balance < recommended (amber static); 'critical' at balance < floor (blinking — next rebalance will likely fail with out-of-gas). worstCaseGasFactor=91 was derived from observed PulseChain rebalance_log.json + live logs (NFT #158965→158967) covering a rebalance that fired all 3 corrective-swap iterations: remove(~209k) + primary approve(~46k) + primary swap(~243k) + 3×corrective(approve+swap ~290k each = ~870k) + mint approves(~76k) + mint(~464k) ≈ 1,911,000 gas / 21,000 send ≈ 91. safetyMultiplier=3 is the user-specified headroom factor. standardSendGas=21000 is the EVM constant for a native-token transfer with no calldata. If the JSON is missing or malformed, gas-monitor falls back to these same defaults so the guard never silently disables.",
+    "worstCaseGasFactor": 91,
+    "safetyMultiplier": 3,
+    "standardSendGas": 21000
+  },
+  "residualCleanup": {
+    "_comment": "Automatic residual-cleanup rebalance tunables. After every successful normal or manual rebalance, if the wallet residual share of the pool batch (residual / (LP + residual)) still exceeds thresholdPct past delayMs, the bot fires exactly one cleanup rebalance to sweep residuals back into the position. The cleanup respects ALL other rebalance rules (throttle, daily cap, doubling, swap-backoff, pause). Back-to-back cleanups are prevented by a per-position flag that only clears on the next normal rebalance. Not exposed in Bot Settings — operator-tunable via this file only.",
+    "delayMs": 600000,
+    "thresholdPct": 5
+  }
 }

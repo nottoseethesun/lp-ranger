@@ -44,6 +44,10 @@ export const SOUND_COMPOUND_SUCCESS =
 export const SOUND_ABOUT_EASTER_EGG =
   "/media/TheTexasRangers-by-Harry-McClintock.mp3";
 
+/** Path to the LP Ranger Tune played when the user clicks "LP" or "Ranger" in the header title. */
+export const SOUND_LP_RANGER_TUNE =
+  "/media/Ride%20Your%20LP%20Ranges%20with%20the%20Trusty%20LP%20Ranger.mp3";
+
 /**
  * Whether the master Sounds toggle is enabled.
  * When no setting has been stored in localStorage, returns the cached
@@ -182,4 +186,19 @@ export function bindAboutEasterEgg() {
     btn.addEventListener("click", () =>
       playSoundAlways(SOUND_ABOUT_EASTER_EGG),
     );
+}
+
+/**
+ * Bind the header title "LP" / "Ranger" tune triggers.  Plays the
+ * full LP Ranger Tune via `playSoundAlways` — explicitly bypasses the
+ * master toggle because the click is an opt-in user action.  Native
+ * <button> elements give Enter/Space activation for keyboard users
+ * for free.
+ */
+export function bindTitleTune() {
+  const play = () => playSoundAlways(SOUND_LP_RANGER_TUNE);
+  ["titleTuneLP", "titleTuneRanger"].forEach((id) => {
+    const el = g(id);
+    if (el) el.addEventListener("click", play);
+  });
 }

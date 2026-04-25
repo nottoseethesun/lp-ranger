@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777086327969">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777086327969">
+<link rel="stylesheet" href="style.css?v=1777094873723">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777094873723">
 </head>
 <body>
 
@@ -452,7 +452,7 @@
 
 <header>
   <div class="logo">
-    <div class="logo-text"><h1>LP <span class="9mm-pos-mgr-ranger-star-wrap" title="The Lone Star of LP Ranger"><img src="lp-ranger-star.png" alt="The Lone Star of LP Ranger" class="9mm-pos-mgr-ranger-star"></span> Ranger</h1><p>Auto-Rebalancer for v3</p></div>
+    <div class="logo-text"><h1><button type="button" class="9mm-pos-mgr-title-tune" id="titleTuneLP" title="Play the LP Ranger Tune">LP</button> <span class="9mm-pos-mgr-ranger-star-wrap" title="The Lone Star of LP Ranger"><img src="lp-ranger-star.png" alt="The Lone Star of LP Ranger" class="9mm-pos-mgr-ranger-star"></span> <button type="button" class="9mm-pos-mgr-title-tune" id="titleTuneRanger" title="Play the LP Ranger Tune">Ranger</button></h1><p>Auto-Rebalancer for v3</p></div>
     <span class="9mm-pos-mgr-logo-on">for</span>
     <div class="9mm-pos-mgr-logo-buy">
       <a class="logo-icon" href="https://9mm.pro/" target="_blank" rel="noopener noreferrer" title="Visit 9mm Pro"><img src="9mm-pro-logo-transparent.png" alt="9mm Pro" class="9mm-pos-mgr-header-logo"></a>
@@ -880,7 +880,7 @@
       <div class="prow">
         <span class="plbl">Min Time Between Rebalances <span class="9mm-pos-mgr-il-info-btn" data-param-help="inMinInterval" title="Learn about min interval">i</span></span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inMinInterval" value="10" min="1" max="1440" step="1" aria-label="Min time between rebalances in minutes">
+          <input type="number" class="pinput w55" id="inMinInterval" min="1" max="1440" step="1" aria-label="Min time between rebalances in minutes">
           <span class="punit">min</span>
           <button type="button" class="save-range-btn" id="saveMinIntervalBtn" title="Save min rebalance interval">Save</button>
         </div>
@@ -888,7 +888,7 @@
       <div class="prow">
         <span class="plbl">Max Rebalances / Day <span class="9mm-pos-mgr-il-info-btn" data-param-help="inMaxReb" title="Learn about daily cap">i</span></span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inMaxReb" value="20" min="1" max="200" step="1" aria-label="Max rebalances per day">
+          <input type="number" class="pinput w55" id="inMaxReb" min="1" max="200" step="1" aria-label="Max rebalances per day">
           <span class="punit">/day</span>
           <button type="button" class="save-range-btn" id="saveMaxRebBtn" title="Save max rebalances per day">Save</button>
         </div>
@@ -919,7 +919,7 @@
       <div class="prow">
         <span class="plbl">OOR Threshold Before Rebalance Is Triggered (±%) <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOorThreshold" title="Learn about OOR threshold">i</span></span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inOorThreshold" value="5" min="1" max="100" step="1" aria-label="OOR threshold percent">
+          <input type="number" class="pinput w55" id="inOorThreshold" min="1" max="100" step="1" aria-label="OOR threshold percent">
           <span class="punit">%</span>
           <button type="button" class="save-range-btn" title="Save OOR threshold">Save</button>
         </div>
@@ -927,7 +927,7 @@
       <div class="prow">
         <span class="plbl">OOR Rebalance Time Threshold (minutes out of range, 0 = disabled) <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOorTimeout" title="Learn about OOR timeout">i</span></span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inOorTimeout" value="180" min="0" max="1440" step="10" aria-label="OOR rebalance time threshold in minutes">
+          <input type="number" class="pinput w55" id="inOorTimeout" min="0" max="1440" step="10" aria-label="OOR rebalance time threshold in minutes">
           <span class="punit">min</span>
           <button type="button" class="save-range-btn save-oor-timeout-btn" id="saveOorTimeoutBtn" title="Save OOR timeout">Save</button>
         </div>
@@ -935,7 +935,7 @@
       <div class="prow">
         <span class="plbl">Slippage Tolerance <span class="9mm-pos-mgr-il-info-btn" data-param-help="inSlip" title="Learn about slippage">i</span></span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inSlip" value="0.5" min="0.1" max="5" step="0.1" aria-label="Slippage tolerance percent">
+          <input type="number" class="pinput w55" id="inSlip" min="0.1" max="5" step="0.1" aria-label="Slippage tolerance percent">
           <span class="punit">%</span>
           <button type="button" class="save-range-btn" id="saveSlipBtn" title="Save slippage tolerance">Save</button>
         </div>
@@ -943,7 +943,7 @@
       <div class="prow">
         <span class="plbl">Check Interval <span class="9mm-pos-mgr-il-info-btn" data-param-help="inInterval" title="Learn about check interval">i</span></span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inInterval" value="60" min="10" max="3600" step="10" aria-label="Check interval in seconds">
+          <input type="number" class="pinput w55" id="inInterval" min="10" max="3600" step="10" aria-label="Check interval in seconds">
           <span class="punit">sec</span>
           <button type="button" class="save-range-btn" id="saveIntervalBtn" title="Save check interval">Save</button>
         </div>
@@ -961,13 +961,13 @@
             <span id="offsetT0Name">Token 0</span>
             <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT0" data-copy-addr="" title="Copy contract address">&#x274F;</span>
           </span>
-          <input type="number" class="pinput w55" id="inOffsetToken0" value="50" min="0" max="100" step="1" aria-label="Token 0 offset percent">
+          <input type="number" class="pinput w55" id="inOffsetToken0" min="0" max="100" step="1" aria-label="Token 0 offset percent">
           <span class="punit">%</span>
           <span class="plbl 9mm-pos-mgr-ml-sm">
             <span id="offsetT1Name">Token 1</span>
             <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT1" data-copy-addr="" title="Copy contract address">&#x274F;</span>
           </span>
-          <input type="number" class="pinput w55" id="inOffsetToken1" value="50" min="0" max="100" step="1" aria-label="Token 1 offset percent">
+          <input type="number" class="pinput w55" id="inOffsetToken1" min="0" max="100" step="1" aria-label="Token 1 offset percent">
           <span class="punit">%</span>
         </div>
         <div class="9mm-pos-mgr-input-row">
@@ -984,7 +984,7 @@
             Some extensions still attach an autofill icon anyway — the attrs
             remain so that well-behaved managers suppress it.
           -->
-          <input type="number" class="pinput w55" id="inApprovalMultiple" value="20" min="1" max="1000000" step="1" aria-label="Approval multiple" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
+          <input type="number" class="pinput w55" id="inApprovalMultiple" min="1" max="1000000" step="1" aria-label="Approval multiple" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
           <span class="punit">x</span>
           <button type="button" class="save-range-btn" id="saveApprovalMultipleBtn" title="Save approval multiple">Save</button>
         </div>
@@ -1285,6 +1285,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777086327969"></script>
+<script src="dist/bundle.js?v=1777094873723"></script>
 </body>
 </html>

@@ -25,52 +25,18 @@
 
 "use strict";
 
-const path = require("path");
-const fs = require("fs");
 const { ERC20_ABI } = require("./rebalancer-pools");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
-/** Last-resort defaults if the JSON config is missing or malformed. */
+/** Last-resort defaults exported for tests; the live values come from the
+ *  `residualCleanup` group in bot-config-defaults.json. */
 const _DEFAULT_DELAY_MS = 10 * 60_000;
 const _DEFAULT_THRESHOLD_PCT = 5;
 
-/** On-disk source of truth for the residual-cleanup tunables. */
-const _JSON_PATH = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "residual-cleanup.json",
-);
-
-/** Load the tunables from disk; fall back to defaults if missing/invalid. */
-function _loadTunables() {
-  try {
-    const raw = fs.readFileSync(_JSON_PATH, "utf8");
-    const json = JSON.parse(raw);
-    const delayMs = Number(json?.delayMs);
-    const thresholdPct = Number(json?.thresholdPct);
-    return {
-      delayMs:
-        Number.isFinite(delayMs) && delayMs > 0 ? delayMs : _DEFAULT_DELAY_MS,
-      thresholdPct:
-        Number.isFinite(thresholdPct) && thresholdPct > 0
-          ? thresholdPct
-          : _DEFAULT_THRESHOLD_PCT,
-    };
-  } catch (err) {
-    console.warn(
-      "[residual-cleanup] Could not load %s: %s — using defaults",
-      _JSON_PATH,
-      err.message ?? err,
-    );
-    return {
-      delayMs: _DEFAULT_DELAY_MS,
-      thresholdPct: _DEFAULT_THRESHOLD_PCT,
-    };
-  }
-}
-
-const TUNABLES = _loadTunables();
+/*- Load the residualCleanup group at module init.  Per-key fallback to
+ *  the shipped defaults is performed inside readBotConfigDefaults so a
+ *  partially-edited JSON still yields a fully-populated TUNABLES object. */
+const TUNABLES = readBotConfigDefaults().residualCleanup;
 
 /**
  * Evaluate every state gate and return a classified reason.  Callers
