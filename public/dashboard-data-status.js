@@ -354,18 +354,33 @@ export function _updateBotStatus(d) {
   if (ll && d.updatedAt) ll.textContent = fmtDateTime(d.updatedAt);
 }
 
+/*-
+ * Server is the source of truth for the throttle counters. Sync them
+ * back into the client `throttle` object so the badge in
+ * dashboard-throttle.js renders correctly without depending on HTML
+ * input defaults. Without this, an empty inMaxReb input at init
+ * leaves throttle.dailyMax = 0, and `0 >= 0` paints a false CAPPED
+ * badge.
+ */
+function _syncClientThrottle(ts, cnt) {
+  if (!ts) return;
+  throttle.dailyCount = cnt;
+  if (typeof ts.dailyMax === "number") throttle.dailyMax = ts.dailyMax;
+  if (typeof ts.doublingActive === "boolean")
+    throttle.doublingActive = ts.doublingActive;
+  if (typeof ts.doublingCount === "number")
+    throttle.doublingCount = ts.doublingCount;
+  if (typeof ts.currentWaitMs === "number")
+    throttle.currentWaitMs = ts.currentWaitMs;
+  if (typeof ts.lastRebTime === "number") throttle.lastRebTime = ts.lastRebTime;
+  if (typeof ts.minIntervalMs === "number")
+    throttle.minIntervalMs = ts.minIntervalMs;
+}
+
 /** Update the daily rebalance count KPI and lifetime count. */
 export function _updateThrottleKpis(d) {
   const ts = d.throttleState,
     today = g("kpiToday");
-  /*-
-   * Server is the source of truth for the throttle counters. Sync them
-   * back into the client `throttle` object so the badge in
-   * dashboard-throttle.js renders correctly without depending on HTML
-   * input defaults. Without this, an empty inMaxReb input at init
-   * leaves throttle.dailyMax = 0, and `0 >= 0` paints a false CAPPED
-   * badge.
-   */
   // Server attaches a canonical `poolKey` to each managed position
   // (chain-contract-wallet-token0-token1-fee). Use it directly — no
   // client-side reconstruction, so the lookup always matches.
@@ -376,20 +391,7 @@ export function _updateThrottleKpis(d) {
       : ts
         ? ts.dailyCount
         : 0;
-  if (ts) {
-    if (typeof ts.dailyMax === "number") throttle.dailyMax = ts.dailyMax;
-    throttle.dailyCount = cnt;
-    if (typeof ts.doublingActive === "boolean")
-      throttle.doublingActive = ts.doublingActive;
-    if (typeof ts.doublingCount === "number")
-      throttle.doublingCount = ts.doublingCount;
-    if (typeof ts.currentWaitMs === "number")
-      throttle.currentWaitMs = ts.currentWaitMs;
-    if (typeof ts.lastRebTime === "number")
-      throttle.lastRebTime = ts.lastRebTime;
-    if (typeof ts.minIntervalMs === "number")
-      throttle.minIntervalMs = ts.minIntervalMs;
-  }
+  _syncClientThrottle(ts, cnt);
   if (today) {
     const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
     if (!max) {
