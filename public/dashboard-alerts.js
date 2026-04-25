@@ -128,7 +128,8 @@ function _showCompoundErrModal(key, st) {
     _posContextHtmlForState(key, st) +
       "<p>" +
       message +
-      '</p><p class="9mm-pos-mgr-text-muted">The bot will retry on the next auto-compound cycle. Tokens and fees remain in the position.</p>',
+      '</p><p class="9mm-pos-mgr-text-muted">The bot will retry on the next auto-compound cycle. Tokens and fees remain in the position.</p>' +
+      '<p class="9mm-pos-mgr-text-muted">Note: It is unlikely but possible that the Compound failed because the position went out of range during the Compound operation. If that is the case, either the next rebalance or the next check-interval will compound the fees \u2014 no need to worry.</p>',
   );
   _compoundErrShown.add(key);
 }

@@ -151,6 +151,11 @@ async function executeCompound(deps, poolState, ethersLib, trigger) {
         token1Symbol: getTokenSymbol(position.token1),
       },
       error: err.message,
+      message:
+        "Note: It is unlikely but possible that the Compound failed because " +
+        "the position went out of range during the Compound operation. If " +
+        "that is the case, either the next rebalance or the next " +
+        "check-interval will compound the fees \u2014 no need to worry.",
     });
   } finally {
     emit({ compoundInProgress: false });
