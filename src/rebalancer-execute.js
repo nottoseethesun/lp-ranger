@@ -73,6 +73,13 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     gasCostWei: result.gasCostWei || 0n,
     extra0: is0to1 ? 0n : result.amountOut,
     extra1: is0to1 ? result.amountOut : 0n,
+    /*- Forward swapSources from the swap path (aggregator stamps it in
+     *  rebalancer-aggregator.js, V3 router fallback stamps it in
+     *  rebalancer-router.js).  _buildRebalanceResult reads
+     *  `swapped.swapSources` to populate the rebalance-event
+     *  ROUTED VIA column; without this, every aggregator-routed
+     *  rebalance gets logged as "(no swap)". */
+    ...(result.swapSources ? { swapSources: result.swapSources } : {}),
   };
 }
 

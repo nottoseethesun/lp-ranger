@@ -264,6 +264,51 @@ export function updateThrottleUI() {
   _renderRangeBanner(can);
 }
 
+/*-
+ * Show or hide the yellow inline warning that explains why the
+ * OOR-timeout setting becomes meaningless when Min Time Between
+ * Rebalances >= OOR Rebalance Time Threshold. Called only from
+ * saveMinInterval / saveOorTimeout — not on every render — so the
+ * banner appears as feedback to the user's own action.
+ *
+ * Rationale: every rebalance attempt (including the timeout-driven
+ * one) must clear the min-interval gate. If min >= timeout, the
+ * timeout fires but the gate blocks it until min elapses, so the
+ * timeout value never actually determines when the rebalance runs.
+ */
+function _validateIntervalVsTimeout() {
+  const warn = g("intervalVsTimeoutWarn");
+  if (!warn) return;
+  const minVal = parseInt(g("inMinInterval")?.value, 10);
+  const tmoVal = parseInt(g("inOorTimeout")?.value, 10);
+  if (
+    !Number.isFinite(minVal) ||
+    !Number.isFinite(tmoVal) ||
+    tmoVal === 0 ||
+    minVal < tmoVal
+  ) {
+    warn.hidden = true;
+    warn.textContent = "";
+    return;
+  }
+  warn.hidden = false;
+  warn.textContent =
+    "Heads up: Min Time Between Rebalances (" +
+    minVal +
+    " min) is not less than OOR Rebalance Time Threshold (" +
+    tmoVal +
+    " min). OOR Rebalance Time Threshold is the timer that fires when " +
+    "the price sits between the established price range and the red " +
+    "bars on the position diagram (the buffer set by OOR Threshold " +
+    "Before Rebalance Is Triggered). It won't take effect, because " +
+    "Min Time Between Rebalances blocks every rebalance. Set Min Time " +
+    "Between Rebalances below OOR Rebalance Time Threshold. " +
+    "Note: when the price moves past the red bars on the position " +
+    "diagram (OOR Threshold Before Rebalance Is Triggered), that " +
+    "still triggers an immediate rebalance, as soon as Min Time " +
+    "Between Rebalances has elapsed since the previous rebalance.";
+}
+
 /** Save the OOR timeout setting and persist to backend. */
 export function saveOorTimeout() {
   const el = g("inOorTimeout");
@@ -287,6 +332,7 @@ export function saveOorTimeout() {
   }).catch(function () {
     /* dashboard-only mode */
   });
+  _validateIntervalVsTimeout();
 }
 
 /** Save just the OOR threshold, update the preview, and persist to backend. */
@@ -357,6 +403,7 @@ export function saveMinInterval() {
     "minRebalanceIntervalMin",
     (v) => parseInt(v, 10) || 10,
   );
+  _validateIntervalVsTimeout();
 }
 /** Save max rebalances per day. */
 export function saveMaxReb() {
