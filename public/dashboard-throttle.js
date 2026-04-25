@@ -297,10 +297,16 @@ function _validateIntervalVsTimeout() {
     minVal +
     " min) is not less than OOR Rebalance Time Threshold (" +
     tmoVal +
-    " min). The threshold won't take effect — the min-interval gate " +
-    "blocks every rebalance, including the timeout-driven one. Set " +
-    "Min Time Between Rebalances below the OOR threshold for the " +
-    "threshold to be meaningful.";
+    " min). OOR Rebalance Time Threshold is the timer that fires when " +
+    "the price sits between the established price range and the red " +
+    "bars on the position diagram (the buffer set by OOR Threshold " +
+    "Before Rebalance Is Triggered). It won't take effect, because " +
+    "Min Time Between Rebalances blocks every rebalance. Set Min Time " +
+    "Between Rebalances below OOR Rebalance Time Threshold. " +
+    "Note: when the price moves past the red bars on the position " +
+    "diagram (OOR Threshold Before Rebalance Is Triggered), that " +
+    "still triggers an immediate rebalance, as soon as Min Time " +
+    "Between Rebalances has elapsed since the previous rebalance.";
 }
 
 /** Save the OOR timeout setting and persist to backend. */
