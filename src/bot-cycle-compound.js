@@ -122,6 +122,7 @@ async function executeCompound(deps, poolState, ethersLib, trigger) {
       price0: deps._lastPrice0 || 0,
       price1: deps._lastPrice1 || 0,
       trigger,
+      approvalMultiple: deps._getConfig?.("approvalMultiple") ?? 20,
     });
 
     if (result.compounded) {

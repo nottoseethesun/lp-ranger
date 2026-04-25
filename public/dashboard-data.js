@@ -141,12 +141,22 @@ const _CONFIG_INPUT_MAP = {
   rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
   autoCompoundThresholdUsd: "autoCompoundThreshold",
   offsetToken0Pct: "inOffsetToken0",
+  approvalMultiple: "inApprovalMultiple",
 };
 
 /* Per-position defaults applied when the key is missing from server data,
  * so the input resets on switch instead of bleeding through the prior
- * position's value.  Omit keys that always come back from the bot state. */
-const _CONFIG_INPUT_DEFAULTS = { offsetToken0Pct: 50 };
+ * position's value.  Omit keys that always come back from the bot state.
+ * `approvalMultiple` is populated from `/api/bot-config-defaults` on init
+ * so the built-in fallback (20) can be overridden by an operator edit to
+ * `app-config/static-tunables/bot-config-defaults.json`. */
+const _CONFIG_INPUT_DEFAULTS = { offsetToken0Pct: 50, approvalMultiple: 20 };
+
+/** Update a default value for a config input (called from init once the
+ *  server tunables have been fetched). */
+export function setConfigInputDefault(key, val) {
+  if (val !== undefined && val !== null) _CONFIG_INPUT_DEFAULTS[key] = val;
+}
 
 /** Populate config form inputs from a position's server data. */
 function _populateConfigInputs(d) {

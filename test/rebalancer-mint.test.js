@@ -306,6 +306,89 @@ describe("_ensureAllowance skip path", () => {
       "approve should not be called when allowance is sufficient",
     );
   });
+
+  it("approves requiredAmount × approvalMultiple when under-approved", async () => {
+    const captured = { t0: null, t1: null };
+    const d = defaultDispatch();
+    d[ADDR.token0] = {
+      ...d[ADDR.token0],
+      allowance: async () => 0n,
+      approve: async (_spender, amount) => {
+        captured.t0 = amount;
+        return makeTx("0xa0");
+      },
+    };
+    d[ADDR.token1] = {
+      ...d[ADDR.token1],
+      allowance: async () => 0n,
+      approve: async (_spender, amount) => {
+        captured.t1 = amount;
+        return makeTx("0xa1");
+      },
+    };
+    d[ADDR.pm] = { ...d[ADDR.pm], mint: async () => makeMintTx("0xm") };
+    await mintPosition(
+      mockSigner(),
+      buildMockEthersLib({ contractDispatch: d }),
+      {
+        positionManagerAddress: ADDR.pm,
+        token0: ADDR.token0,
+        token1: ADDR.token1,
+        fee: 3000,
+        tickLower: -600,
+        tickUpper: 600,
+        amount0Desired: 1000n,
+        amount1Desired: 500n,
+        slippagePct: 0.5,
+        recipient: ADDR.signer,
+        deadline: 9999999999n,
+        approvalMultiple: 20,
+      },
+    );
+    assert.strictEqual(captured.t0, 20000n); // 1000 × 20
+    assert.strictEqual(captured.t1, 10000n); // 500 × 20
+  });
+
+  it("approves exactly requiredAmount when approvalMultiple omitted (default 1x)", async () => {
+    const captured = { t0: null, t1: null };
+    const d = defaultDispatch();
+    d[ADDR.token0] = {
+      ...d[ADDR.token0],
+      allowance: async () => 0n,
+      approve: async (_spender, amount) => {
+        captured.t0 = amount;
+        return makeTx("0xa0");
+      },
+    };
+    d[ADDR.token1] = {
+      ...d[ADDR.token1],
+      allowance: async () => 0n,
+      approve: async (_spender, amount) => {
+        captured.t1 = amount;
+        return makeTx("0xa1");
+      },
+    };
+    d[ADDR.pm] = { ...d[ADDR.pm], mint: async () => makeMintTx("0xm") };
+    await mintPosition(
+      mockSigner(),
+      buildMockEthersLib({ contractDispatch: d }),
+      {
+        positionManagerAddress: ADDR.pm,
+        token0: ADDR.token0,
+        token1: ADDR.token1,
+        fee: 3000,
+        tickLower: -600,
+        tickUpper: 600,
+        amount0Desired: 1000n,
+        amount1Desired: 500n,
+        slippagePct: 0.5,
+        recipient: ADDR.signer,
+        deadline: 9999999999n,
+      },
+    );
+    assert.strictEqual(captured.t0, 1000n);
+    assert.strictEqual(captured.t1, 500n);
+  });
 });
 
 // ── V3 fee tier 100 + executeRebalance ────────────────────────────────────────

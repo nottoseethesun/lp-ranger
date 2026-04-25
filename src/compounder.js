@@ -172,12 +172,14 @@ async function addLiquidity(signer, ethersLib, opts) {
     opts.recipient,
     opts.positionManagerAddress,
     opts.amount0,
+    opts.approvalMultiple,
   );
   const appGas1 = await _ensureAllowance(
     t1,
     opts.recipient,
     opts.positionManagerAddress,
     opts.amount1,
+    opts.approvalMultiple,
   );
 
   const dl = _deadline();

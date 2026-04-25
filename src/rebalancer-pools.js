@@ -402,22 +402,44 @@ async function _waitOrSpeedUp(tx, signer, label) {
 
 /**
  * Ensure an ERC-20 allowance is at least `requiredAmount` for `spender`.
- * If the current allowance is insufficient an unlimited approval is sent.
+ *
+ * When the current allowance is insufficient, approves
+ * `requiredAmount × multiple`.  A multiple > 1 lets subsequent rebalances
+ * and compounds skip the approve TX entirely — the short-circuit on
+ * line 1 of this function returns 0n when the cached allowance already
+ * covers the next swap.  Default `multiple` is 1n (back-compat: approve
+ * exactly the amount needed).
  *
  * @param {import('ethers').Contract} tokenContract ERC-20 contract instance.
  * @param {string} owner   Owner address.
  * @param {string} spender Spender address.
  * @param {bigint} requiredAmount Minimum required allowance.
+ * @param {bigint} [multiple=1n]  Approve this factor × `requiredAmount`.
  * @returns {Promise<bigint>} Gas cost in wei (0n if no approval needed).
  */
-async function _ensureAllowance(tokenContract, owner, spender, requiredAmount) {
+async function _ensureAllowance(
+  tokenContract,
+  owner,
+  spender,
+  requiredAmount,
+  multiple = 1n,
+) {
   const current = await tokenContract.allowance(owner, spender);
   if (current >= requiredAmount) return 0n;
-  // Approve only the exact amount needed (not unlimited) to limit exposure
-  // if the spender contract is compromised.
+  let m;
+  if (typeof multiple === "bigint") m = multiple > 0n ? multiple : 1n;
+  else if (typeof multiple === "number" && multiple > 0)
+    m = BigInt(Math.floor(multiple));
+  else m = 1n;
+  const approveAmount = requiredAmount * m;
+  if (m > 1n)
+    console.log(
+      "[rebalance] Step 7a: approve pre-sizing %sx (future rebalances/compounds will skip the approve TX while the cached allowance covers them)",
+      String(m),
+    );
   const tx = await _retrySend(
     () =>
-      tokenContract.approve(spender, requiredAmount, { type: config.TX_TYPE }),
+      tokenContract.approve(spender, approveAmount, { type: config.TX_TYPE }),
     "approve",
     { signer: tokenContract.runner },
   );

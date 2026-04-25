@@ -56,6 +56,7 @@ import {
   pollNow,
   injectDataDeps,
   refreshDepositLabel,
+  setConfigInputDefault,
 } from "./dashboard-data.js";
 import {
   fetchUnmanagedDetails,
@@ -209,6 +210,23 @@ function _afterDisclaimer() {
   // the strip so a late-arriving map still shows up without waiting for
   // the next user-driven render.
   loadNftProviders().then(() => updatePosStripUI());
+
+  /*- Fetch Bot Config tunable defaults (approvalMultiple, …) so the
+   *  input placeholders reflect any operator override in
+   *  app-config/static-tunables/bot-config-defaults.json rather than
+   *  the hard-coded HTML `value=` fallback.  Silent on failure —
+   *  the hard-coded defaults remain. */
+  fetch("/api/bot-config-defaults")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (!d) return;
+      if (typeof d.approvalMultiple === "number") {
+        setConfigInputDefault("approvalMultiple", d.approvalMultiple);
+        const el = g("inApprovalMultiple");
+        if (el && !el.dataset.userDirty) el.value = d.approvalMultiple;
+      }
+    })
+    .catch(() => {});
 
   // Restore positions from localStorage (persisted across page reloads)
   _loadPosStore();

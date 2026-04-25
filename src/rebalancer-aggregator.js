@@ -371,6 +371,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     recipient,
     symbolIn,
     symbolOut,
+    approvalMultiple,
   } = params;
   const symIn = symbolIn || tokenIn.slice(0, 10);
   const symOut = symbolOut || tokenOut.slice(0, 10);
@@ -405,6 +406,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     signerAddr,
     quote.allowanceTarget,
     amountIn,
+    approvalMultiple,
   );
   const fresh = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
   if (fresh.allowanceTarget !== quote.allowanceTarget)
@@ -413,6 +415,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
       signerAddr,
       fresh.allowanceTarget,
       amountIn,
+      approvalMultiple,
     );
   const provider = signer.provider || signer;
   return balanceDiff(ethersLib, tokenOut, recipient, provider, async () => {

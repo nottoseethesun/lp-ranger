@@ -237,6 +237,7 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
     slippagePct,
     symbol0,
     symbol1,
+    approvalMultiple,
   } = ctx;
   console.log(
     "[rebalance] Step 6d iter %d: firing corrective swap: %s %s -> %s",
@@ -259,6 +260,7 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
     recipient: signerAddress,
     symbolIn: is0to1 ? symbol0 : symbol1,
     symbolOut: is0to1 ? symbol1 : symbol0,
+    approvalMultiple,
   });
   console.log(
     "[rebalance] Step 6d iter %d: corrective swap done, txHash=%s out=%s",

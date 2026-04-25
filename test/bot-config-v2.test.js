@@ -300,6 +300,17 @@ describe("bot-config-v2", () => {
         "Global and position keys must not overlap",
       );
     });
+
+    it("approvalMultiple is a GLOBAL_KEY (one setting, all positions)", () => {
+      assert.ok(
+        GLOBAL_KEYS.includes("approvalMultiple"),
+        "approvalMultiple should live in GLOBAL_KEYS so it applies wallet-wide",
+      );
+      assert.ok(
+        !POSITION_KEYS.includes("approvalMultiple"),
+        "approvalMultiple must not also be in POSITION_KEYS",
+      );
+    });
   });
 
   describe("readConfigValue", () => {

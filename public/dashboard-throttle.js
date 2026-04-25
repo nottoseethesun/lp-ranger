@@ -435,6 +435,16 @@ export function saveOffset() {
   _saveSingleConfig("inOffsetToken0", "offsetToken0Pct", () => val);
 }
 
+/** Save the Approval Multiple (global). */
+export function saveApprovalMultiple() {
+  const el = g("inApprovalMultiple");
+  let val = parseInt(el?.value, 10);
+  if (!Number.isFinite(val) || val < 1) val = 1;
+  if (val > 1_000_000) val = 1_000_000;
+  if (el) el.value = val;
+  _saveSingleConfig("inApprovalMultiple", "approvalMultiple", () => val);
+}
+
 /** Reset offset to 50/50 and save. */
 export function resetOffset() {
   const el0 = g("inOffsetToken0");

@@ -55,6 +55,7 @@ async function mintPosition(
     amount1Desired,
     recipient,
     deadline,
+    approvalMultiple,
   },
 ) {
   const { Contract } = ethersLib;
@@ -78,12 +79,14 @@ async function mintPosition(
     signerAddress,
     positionManagerAddress,
     amount0Desired,
+    approvalMultiple,
   );
   const appGas1 = await _ensureAllowance(
     token1Contract,
     signerAddress,
     positionManagerAddress,
     amount1Desired,
+    approvalMultiple,
   );
 
   const pm = new Contract(positionManagerAddress, PM_ABI, signer);
@@ -230,6 +233,7 @@ async function executeRebalance(signer, ethersLib, opts) {
     slippagePct,
     customRangeWidthPct,
     offsetToken0Pct,
+    approvalMultiple,
   } = opts;
   const offset = offsetToken0Pct ?? 50;
   if (!position.tokenId || !position.fee || position.fee <= 0) {
@@ -346,6 +350,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       signerAddress,
       symbol0: opts.symbol0,
       symbol1: opts.symbol1,
+      approvalMultiple,
     });
     if (swapped.txHash) txHashes.push(swapped.txHash);
     console.log(
@@ -392,6 +397,7 @@ async function executeRebalance(signer, ethersLib, opts) {
         slippagePct,
         symbol0: opts.symbol0,
         symbol1: opts.symbol1,
+        approvalMultiple,
       },
       txHashes,
     );
@@ -416,6 +422,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       amount0Desired: mintBal0,
       amount1Desired: mintBal1,
       recipient: signerAddress,
+      approvalMultiple,
     });
     txHashes.push(mintResult.txHash);
     return _buildRebalanceResult(

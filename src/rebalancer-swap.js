@@ -445,6 +445,7 @@ async function _swapViaRouter(signer, ethersLib, params) {
     isToken0To1,
     recipient,
     deadline,
+    approvalMultiple,
   } = params;
   const { Contract } = ethersLib;
   const signerAddr = await signer.getAddress();
@@ -453,6 +454,7 @@ async function _swapViaRouter(signer, ethersLib, params) {
     signerAddr,
     swapRouterAddress,
     amountIn,
+    approvalMultiple,
   );
   const router = new Contract(swapRouterAddress, SWAP_ROUTER_ABI, signer);
   const dl = deadline || _deadline();
@@ -561,13 +563,6 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
 }
 
 /**
- * Try a swap function full, then in 3 chunks on slippage error.
- */
-async function _swapWithChunking(swapFn, signer, ethersLib, params) {
-  return swapFn(signer, ethersLib, params);
-}
-
-/**
  * Swap tokens if needed for rebalancing.
  * Tries 9mm DEX Aggregator first (lowest slippage),
  * falls back to V3 SwapRouter on failure.
@@ -581,12 +576,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
   if (params.amountIn < _MIN_SWAP_THRESHOLD)
     return { amountOut: 0n, txHash: null, gasCostWei: 0n };
   try {
-    return await _swapWithChunking(
-      _swapViaAggregator,
-      signer,
-      ethersLib,
-      params,
-    );
+    return await _swapViaAggregator(signer, ethersLib, params);
   } catch (err) {
     // Aggregator exhausted all retries at full amount — try 3 smaller
     // chunks via the aggregator before giving up on it entirely.
@@ -617,7 +607,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
         err.message,
       );
     }
-    return await _swapWithChunking(_swapViaRouter, signer, ethersLib, params);
+    return await _swapViaRouter(signer, ethersLib, params);
   }
 }
 

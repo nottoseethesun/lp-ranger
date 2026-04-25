@@ -65,6 +65,7 @@ import {
   saveGasStrategy,
   saveOffset,
   resetOffset,
+  saveApprovalMultiple,
   updateOffsetComplement,
   openRebalanceRangeModal,
   closeRebalanceRangeModal,
@@ -446,7 +447,8 @@ export function bindAllEvents() {
       ":not(#savePMBtn)" +
       ":not(#saveFactoryBtn)" +
       ":not(#saveOffsetBtn)" +
-      ":not(#resetOffsetBtn)",
+      ":not(#resetOffsetBtn)" +
+      ":not(#saveApprovalMultipleBtn)",
     "click",
     saveOorThreshold,
   );
@@ -459,6 +461,7 @@ export function bindAllEvents() {
   _click("saveIntervalBtn", saveCheckInterval);
   _click("saveOffsetBtn", saveOffset);
   _click("resetOffsetBtn", resetOffset);
+  _click("saveApprovalMultipleBtn", saveApprovalMultiple);
 
   /* ── Offset linked inputs ── */
   _change("inOffsetToken0", () => updateOffsetComplement("inOffsetToken0"));

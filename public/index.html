@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777071455985">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777071455985">
+<link rel="stylesheet" href="style.css?v=1777075432134">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777075432134">
 </head>
 <body>
 
@@ -974,6 +974,20 @@
           <button type="button" class="save-range-btn" id="saveOffsetBtn" title="Save rebalance offset">Save</button>
         </div>
       </div>
+      <div class="prow">
+        <span class="plbl">Approval Multiple <span class="9mm-pos-mgr-il-info-btn" data-param-help="inApprovalMultiple" title="Learn about approval multiple">i</span></span>
+        <div class="9mm-pos-mgr-input-row">
+          <!--
+            data-*-ignore attrs are a best-effort hint to password managers
+            (1Password / LastPass / Bitwarden / Dashlane) to skip this field.
+            Some extensions still attach an autofill icon anyway — the attrs
+            remain so that well-behaved managers suppress it.
+          -->
+          <input type="number" class="pinput w55" id="inApprovalMultiple" value="20" min="1" max="1000000" step="1" aria-label="Approval multiple" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
+          <span class="punit">x</span>
+          <button type="button" class="save-range-btn" id="saveApprovalMultipleBtn" title="Save approval multiple">Save</button>
+        </div>
+      </div>
     </div>
 
     <!-- Contracts & Network -->
@@ -1270,6 +1284,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777071455985"></script>
+<script src="dist/bundle.js?v=1777075432134"></script>
 </body>
 </html>

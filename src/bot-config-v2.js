@@ -33,7 +33,13 @@ const APP_CONFIG_DIR = path.join(process.cwd(), "app-config");
 const CONFIG_FILE = ".bot-config.json";
 
 /** Keys that belong in the global section. */
-const GLOBAL_KEYS = ["triggerType", "positionManager", "factory", "rpcUrl"];
+const GLOBAL_KEYS = [
+  "triggerType",
+  "positionManager",
+  "factory",
+  "rpcUrl",
+  "approvalMultiple",
+];
 
 /** Keys that belong in a per-position (per-pool) section. */
 const POSITION_KEYS = [

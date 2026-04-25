@@ -47,6 +47,7 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     signerAddress,
     symbol0,
     symbol1,
+    approvalMultiple,
   } = ctx;
   if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD)
     return { txHash: null, extra0: 0n, extra1: 0n, gasCostWei: 0n };
@@ -65,6 +66,7 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     recipient: signerAddress,
     symbolIn: is0to1 ? symbol0 : symbol1,
     symbolOut: is0to1 ? symbol1 : symbol0,
+    approvalMultiple,
   });
   return {
     txHash: result.txHash,

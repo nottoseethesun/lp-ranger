@@ -14,6 +14,7 @@
 
 const { handleUiDefaults } = require("./ui-defaults");
 const { handleNftProviders } = require("./nft-providers");
+const { handleBotConfigDefaults } = require("./bot-config-defaults");
 
 /**
  * Build the `{ "METHOD /path": handler }` route map for all static-
@@ -28,6 +29,8 @@ function staticTunablesRoutes(jsonResponse) {
       handleUiDefaults(req, res, jsonResponse),
     "GET /api/nft-providers": (req, res) =>
       handleNftProviders(req, res, jsonResponse),
+    "GET /api/bot-config-defaults": (req, res) =>
+      handleBotConfigDefaults(req, res, jsonResponse),
   };
 }
 

@@ -268,6 +268,54 @@ export const PARAM_HELP = {
     ],
   },
 
+  // ── Approval Multiple ───────────────────────────────────────────────────
+
+  inApprovalMultiple: {
+    title: "Approval Multiple",
+    sections: [
+      {
+        heading: "What it does",
+        body:
+          "When the bot needs to approve a token for a swap, mint, or " +
+          "compound, it approves <strong>this multiple &times; the " +
+          "required amount</strong> instead of just the exact amount. " +
+          "Because on-chain allowances persist across transactions, " +
+          "subsequent rebalances and compounds can skip the " +
+          "<code>approve()</code> transaction entirely until the cached " +
+          "allowance is exhausted.",
+      },
+      {
+        heading: "Why it matters",
+        body:
+          "Each skipped <code>approve()</code> saves the gas cost of that " +
+          "transaction and &mdash; more importantly &mdash; cuts one full " +
+          "on-chain round trip out of the rebalance or compound flow, " +
+          "which makes each cycle noticeably <strong>faster</strong>. " +
+          "For frequent rebalancers and auto-compounders, this compounds " +
+          "(pun intended) into meaningful savings over time.",
+      },
+      {
+        heading: "Recommended values",
+        body:
+          "<strong>20</strong> (default) is a reasonable balance: " +
+          "large enough to cover many future operations, small enough to " +
+          "cap exposure in the unlikely event the router or position " +
+          "manager contract is ever compromised. Set to <strong>1</strong> " +
+          "to disable pre-sizing (approve exactly what&rsquo;s needed " +
+          "each time). Higher values further reduce <code>approve()</code> " +
+          "frequency at the cost of a larger outstanding allowance.",
+      },
+      {
+        heading: "Safety note",
+        body:
+          "The allowance applies only to the specific spender contract " +
+          "(the V3 Router, the 9mm Aggregator, or the Position Manager) " +
+          "and only to the exact token being approved. You can revoke any " +
+          "approval at any time from a wallet tool such as Revoke.cash.",
+      },
+    ],
+  },
+
   // ── Timing & Throttle ──────────────────────────────────────────────────
 
   inMinInterval: {
