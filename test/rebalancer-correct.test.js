@@ -355,3 +355,92 @@ describe("_mergeSwapSources", () => {
     );
   });
 });
+
+/*- Regression: _swapAndAdjust used to reconstruct the result object
+ *  with only txHash/gasCostWei/extra0/extra1 — dropping swapSources.
+ *  Downstream _buildRebalanceResult then saw `swapped.swapSources ===
+ *  undefined` and the rebalance event was logged as "(no swap)" even
+ *  when the aggregator route had been used. */
+describe("_swapAndAdjust — swapSources propagation", () => {
+  const EXEC_PATH = require.resolve("../src/rebalancer-execute");
+
+  function withSwapStub(swapResult, fn) {
+    require.cache[SWAP_PATH] = {
+      id: SWAP_PATH,
+      filename: SWAP_PATH,
+      loaded: true,
+      exports: {
+        computeDesiredAmounts: () => ({}),
+        swapIfNeeded: async () => swapResult,
+      },
+    };
+    delete require.cache[EXEC_PATH];
+    try {
+      return fn();
+    } finally {
+      delete require.cache[SWAP_PATH];
+      delete require.cache[EXEC_PATH];
+    }
+  }
+
+  const ctx = (dir) => ({
+    desired: { needsSwap: true, swapAmount: 1_000_000n, swapDirection: dir },
+    position: { token0: "0xT0", token1: "0xT1", fee: 3000 },
+    poolState: { price: 1, decimals0: 18, decimals1: 18 },
+    swapRouterAddress: "0xROUTER",
+    slippagePct: 0.5,
+    signerAddress: "0xSIGNER",
+    symbol0: "T0",
+    symbol1: "T1",
+    approvalMultiple: 20,
+  });
+
+  it("forwards aggregator swapSources to the caller", async () => {
+    await withSwapStub(
+      {
+        amountOut: 500n,
+        txHash: "0xabc",
+        gasCostWei: 100n,
+        swapSources: "9mm Aggregator",
+      },
+      async () => {
+        const { _swapAndAdjust } = require("../src/rebalancer-execute");
+        const out = await _swapAndAdjust({}, {}, ctx("token0to1"));
+        assert.strictEqual(out.swapSources, "9mm Aggregator");
+        assert.strictEqual(out.extra1, 500n);
+        assert.strictEqual(out.extra0, 0n);
+      },
+    );
+  });
+
+  it("forwards V3 router fallback swapSources", async () => {
+    await withSwapStub(
+      {
+        amountOut: 200n,
+        txHash: "0xdef",
+        gasCostWei: 50n,
+        swapSources: "9mm V3 Router",
+      },
+      async () => {
+        const { _swapAndAdjust } = require("../src/rebalancer-execute");
+        const out = await _swapAndAdjust({}, {}, ctx("token1to0"));
+        assert.strictEqual(out.swapSources, "9mm V3 Router");
+        assert.strictEqual(out.extra0, 200n);
+      },
+    );
+  });
+
+  it("omits swapSources when the swap path did not stamp any", async () => {
+    await withSwapStub(
+      { amountOut: 100n, txHash: null, gasCostWei: 0n },
+      async () => {
+        const { _swapAndAdjust } = require("../src/rebalancer-execute");
+        const out = await _swapAndAdjust({}, {}, ctx("token0to1"));
+        assert.ok(
+          !("swapSources" in out),
+          "should not add an undefined swapSources key",
+        );
+      },
+    );
+  });
+});
