@@ -12,17 +12,17 @@ Options:
   --help, -h      Show this help message and exit.
 
 Environment:
-  All configuration is via .env file. See .env.example for the
-  full list of keys. Key settings:
+  Runtime flags and secrets are configured via the .env file.
+  Bot tunables (slippage, poll interval, OOR threshold, daily cap, …)
+  live in the dashboard's Bot Settings panel — not the .env file.
 
   PORT              Dashboard port (default: 5555)
   PRIVATE_KEY       Wallet private key (or import via dashboard / CLI)
+  WALLET_PASSWORD   Auto-unlock encrypted wallet at startup (optional)
   DRY_RUN           Read-only mode, no transactions (default: false)
   RPC_URL           PulseChain RPC endpoint
-  SLIPPAGE_PCT      Swap slippage tolerance (default: 0.5)
-  CHECK_INTERVAL_SEC  Poll frequency in seconds (default: 60)
 
-  See server.js file header or .env.example for the complete list.`;
+  See .env.example for the complete list of runtime flags.`;
 
 const MODES = {
   server: `
