@@ -54,8 +54,7 @@ let _clearPositionDisplay = null;
 let _resetPollingState = null;
 let _clearHistory = null;
 let _getPendingRouteWallet = null;
-let _resetLastFetchedId = null;
-let _fetchUnmanagedDetails = null;
+let _flushPendingUnmanagedFetch = null;
 
 /**
  * Inject position-module references. Called once from
@@ -75,9 +74,8 @@ export function injectWalletDeps(deps) {
   if (deps.clearHistory) _clearHistory = deps.clearHistory;
   if (deps.getPendingRouteWallet)
     _getPendingRouteWallet = deps.getPendingRouteWallet;
-  if (deps.resetLastFetchedId) _resetLastFetchedId = deps.resetLastFetchedId;
-  if (deps.fetchUnmanagedDetails)
-    _fetchUnmanagedDetails = deps.fetchUnmanagedDetails;
+  if (deps.flushPendingUnmanagedFetch)
+    _flushPendingUnmanagedFetch = deps.flushPendingUnmanagedFetch;
 }
 
 // ── Wallet state ──────────────────────────────────────────
@@ -566,13 +564,12 @@ export async function checkWalletLocked() {
       );
       _walletUnlocked = true;
       _validateMoralisAfterUnlock();
-      // Retry the active position's unmanaged details fetch, which may have
-      // early-returned with "wallet-locked" before this async check resolved.
-      const active = _posStore?.getActive?.();
-      if (active && _resetLastFetchedId && _fetchUnmanagedDetails) {
-        _resetLastFetchedId();
-        _fetchUnmanagedDetails(active);
-      }
+      /*- Drain the pending unmanaged-details fetch recorded by the
+       *  activation path while the wallet was still locked.  This is
+       *  position-correct (the exact pos that was being viewed), unlike
+       *  posStore.getActive() which can be null on cold loads or stale
+       *  if route resolution hasn't fired yet. */
+      if (_flushPendingUnmanagedFetch) _flushPendingUnmanagedFetch();
     } else {
       unlockLog.logInfo("no wallet loaded on server — nothing to do");
     }
@@ -625,13 +622,10 @@ export async function submitUnlock(e) {
       );
       // Validate Moralis key after unlock — notify if corrupted
       _validateMoralisAfterUnlock();
-      // Now that API keys are decrypted, fetch position details
-      // (deferred from initial selection — prices need Moralis key).
-      const active = _posStore?.getActive?.();
-      if (active && _resetLastFetchedId && _fetchUnmanagedDetails) {
-        _resetLastFetchedId();
-        _fetchUnmanagedDetails(active);
-      }
+      /*- Now that API keys are decrypted, drain the pending unmanaged
+       *  fetch (deferred from initial activation — prices need the
+       *  Moralis key).  See flushPendingUnmanagedFetch JSDoc. */
+      if (_flushPendingUnmanagedFetch) _flushPendingUnmanagedFetch();
     } else if (errEl) {
       errEl.textContent = d.error || "Wrong password";
       errEl.classList.remove("hidden");

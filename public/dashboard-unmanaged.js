@@ -59,9 +59,37 @@ function _detailBody(pos) {
 let _lastFetchedId = null,
   _fetchGen = 0;
 
+/*- Position recorded when fetchUnmanagedDetails was called before the
+ *  wallet was unlocked.  flushPendingUnmanagedFetch() drains it on
+ *  unlock so the one-shot fetch fires for the position the user is
+ *  actually looking at — not whatever posStore.getActive() happens to
+ *  return at unlock time (which is racy on cold loads). */
+let _pendingPos = null;
+
 /** Reset the dedup guard so the next fetchUnmanagedDetails call will re-fetch. */
 export function resetLastFetchedId() {
   _lastFetchedId = null;
+}
+
+/**
+ * Fire any pending unmanaged-details fetch that was deferred because the
+ * wallet was still locked when the activation path tried to fetch.  Called
+ * from the wallet unlock paths (auto-unlock, manual submit, import).  No-op
+ * when nothing is pending.
+ */
+export function flushPendingUnmanagedFetch() {
+  const pos = _pendingPos;
+  _pendingPos = null;
+  if (!pos) return;
+  /*- Reset the dedup guard so a same-tokenId fetch from earlier (e.g. a
+   *  stale completed request) doesn't entry-skip this one. */
+  _lastFetchedId = null;
+  console.log(
+    "%c[lp-ranger] [unmanaged] FLUSH-PENDING #%s",
+    "color:#0f0;background:#031;padding:1px 4px;border-radius:2px",
+    pos?.tokenId,
+  );
+  fetchUnmanagedDetails(pos);
 }
 
 /**
@@ -219,6 +247,13 @@ export async function fetchUnmanagedDetails(pos) {
       _tid,
       _skip,
     );
+    /*- When skipped because the wallet hasn't unlocked yet, record the
+     *  position so flushPendingUnmanagedFetch() can fire the fetch as
+     *  soon as unlock completes.  Requires the structural fields (the
+     *  "missing-fields" skip can't be recovered by retry). */
+    if (_skip === "wallet-locked" && pos?.tokenId && pos?.token0) {
+      _pendingPos = pos;
+    }
     return;
   }
   const tid = String(pos.tokenId);

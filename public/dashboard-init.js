@@ -31,7 +31,6 @@ import {
   updatePosStripUI,
   _loadPosStore,
   _applyLocalPositionData,
-  isPositionManaged,
   restoreManagedPositions,
   injectPositionDeps,
   scanPositions,
@@ -61,6 +60,7 @@ import {
 import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
+  flushPendingUnmanagedFetch,
 } from "./dashboard-unmanaged.js";
 import { injectPriceOverrideDeps } from "./dashboard-price-override.js";
 import { initTelegram } from "./dashboard-telegram.js";
@@ -153,8 +153,7 @@ injectWalletDeps({
   resetPollingState,
   clearHistory,
   getPendingRouteWallet,
-  resetLastFetchedId,
-  fetchUnmanagedDetails,
+  flushPendingUnmanagedFetch,
 });
 injectPositionDeps({
   positionRangeVisual,
@@ -255,7 +254,17 @@ function _afterDisclaimer() {
       botConfig.tL = active.tickLower || 0;
       botConfig.tU = active.tickUpper || 0;
       _applyLocalPositionData(active);
-      if (!isPositionManaged(active.tokenId)) fetchUnmanagedDetails(active);
+      /*- Prime the pending unmanaged-fetch slot for the active position.
+       *  The wallet is always still locked at init time, so the call
+       *  itself entry-skips with "wallet-locked" and records pos as
+       *  pending.  flushPendingUnmanagedFetch() (called from the unlock
+       *  paths) drains it once the wallet is ready.  We do NOT gate on
+       *  isPositionManaged here — the localStorage managed-tokenIds Set
+       *  may be stale across sessions (e.g. server auto-retired the
+       *  position while the page was closed), and a one-shot fetch for
+       *  a position that turns out to be managed is a harmless no-op
+       *  that the dedup guard prevents from re-firing. */
+      fetchUnmanagedDetails(active);
     }
     refreshCurDepositDisplay();
   })();
