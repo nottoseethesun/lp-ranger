@@ -372,6 +372,8 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     symbolIn,
     symbolOut,
     approvalMultiple,
+    _attempts,
+    _attemptLabel,
   } = params;
   const symIn = symbolIn || tokenIn.slice(0, 10);
   const symOut = symbolOut || tokenOut.slice(0, 10);
@@ -399,7 +401,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     sources,
     rawPools,
   );
-  _checkSwapImpact(impact, slip);
+  _checkSwapImpact(impact, slip, _attempts, _attemptLabel || "9mm Aggregator");
   const tokenC = new ethersLib.Contract(tokenIn, ERC20_ABI, signer);
   let aggApprovalGas = await _ensureAllowance(
     tokenC,

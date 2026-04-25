@@ -188,6 +188,126 @@ describe("Failure: swapIfNeeded", () => {
     );
   });
 
+  it("synthesizes lowest-impact error across aggregator + V3 router slippage aborts", async () => {
+    /*- Aggregator quote reports 6% impact, V3 router fallback computes
+     *  30% impact — both abort against a 0.5% slippage setting.  The
+     *  surfaced error must point at the aggregator's 6% (lowest) so the
+     *  user gets a sensible "raise slippage to 6.5%" suggestion instead
+     *  of being misled by the V3 router's high-impact fallback number. */
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        estimatedPriceImpact: "6",
+        buyAmount: "1",
+        guaranteedPrice: "1",
+        sources: [{ name: "NineMM_V3", proportion: "1" }],
+      }),
+    });
+    try {
+      const d = defaultDispatch();
+      // V3 router quotedOut = 1400 → impact = (2000-1400)/2000 = 30%
+      d[ADDR.router] = {
+        exactInputSingle: Object.assign(async () => makeTx("0xs"), {
+          staticCall: async () => 1400n,
+        }),
+      };
+      let caught = null;
+      try {
+        await swapIfNeeded(
+          mockSigner(),
+          buildMockEthersLib({ contractDispatch: d }),
+          swArgs(),
+        );
+      } catch (e) {
+        caught = e;
+      }
+      assert.ok(caught, "swapIfNeeded should have thrown");
+      assert.match(caught.message, /lowest observed price impact/);
+      assert.match(caught.message, /6\.0%/);
+      assert.match(caught.message, /9mm Aggregator \(full\)/);
+      assert.match(caught.message, /Increase to at least 6\.5%/);
+      assert.ok(
+        !/30/.test(caught.message),
+        "must not surface the V3 router's 30% impact",
+      );
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("does not synthesize when only one attempt was recorded", async () => {
+    /*- Aggregator fails with a non-slippage error (HTTP 500).  V3 router
+     *  then slippage-aborts.  Only V3 router recorded an impact, so the
+     *  synthesized "lowest" error would be identical to the original —
+     *  pass the original V3 router error through unchanged. */
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    });
+    try {
+      const d = defaultDispatch();
+      d[ADDR.router] = {
+        exactInputSingle: Object.assign(async () => makeTx("0xs"), {
+          staticCall: async () => 1400n,
+        }),
+      };
+      await assert.rejects(
+        () =>
+          swapIfNeeded(
+            mockSigner(),
+            buildMockEthersLib({ contractDispatch: d }),
+            swArgs(),
+          ),
+        (err) =>
+          /price impact 30\.0% exceeds slippage/.test(err.message) &&
+          !/lowest observed/.test(err.message),
+      );
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("does not synthesize when final error is non-slippage (RPC revert)", async () => {
+    /*- Aggregator records a 6% impact attempt and slippage-aborts.  V3
+     *  router throws a non-slippage error (revert in staticCall).  The
+     *  user should see the actual cause — not a misleading
+     *  "raise slippage" message that wouldn't help. */
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        estimatedPriceImpact: "6",
+        buyAmount: "1",
+        sources: [],
+      }),
+    });
+    try {
+      const d = defaultDispatch();
+      const revert = async () => {
+        throw new Error("ROUTER_REVERT");
+      };
+      d[ADDR.router] = {
+        exactInputSingle: Object.assign(revert, { staticCall: revert }),
+      };
+      await assert.rejects(
+        () =>
+          swapIfNeeded(
+            mockSigner(),
+            buildMockEthersLib({ contractDispatch: d }),
+            swArgs(),
+          ),
+        (err) =>
+          /ROUTER_REVERT/.test(err.message) &&
+          !/lowest observed/.test(err.message),
+      );
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
   it("returns 0n when balance decreases after swap (fee-on-transfer)", async () => {
     let swapped = false;
     const d = defaultDispatch();
