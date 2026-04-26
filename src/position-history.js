@@ -15,6 +15,10 @@ const path = require("path");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
+const {
+  getPoolCreationBlockCached,
+  resolvePoolAddressForToken,
+} = require("./pool-creation-block");
 
 /** In-memory cache for ERC-20 decimals keyed by lowercase address. */
 const _decimalsCache = new Map();
@@ -140,7 +144,25 @@ async function _supplementMintFromChain(result, tokenId) {
     /* Search recent blocks only — NFTs are minted within
        the last ~5 years max (~15.8M blocks on PulseChain). */
     const latest = await prov.getBlockNumber();
-    const from = Math.max(0, latest - 15_800_000);
+    const fiveYearFloor = Math.max(0, latest - 15_800_000);
+    /*- Tighten the lower bound to the pool's creation block when we can
+        determine it; the pool can't have minted NFTs before it existed. */
+    const poolAddress = await resolvePoolAddressForToken({
+      provider: prov,
+      ethersLib: ethers,
+      positionManagerAddress: config.POSITION_MANAGER,
+      factoryAddress: config.FACTORY,
+      tokenId,
+    });
+    const poolCreationBlock = poolAddress
+      ? await getPoolCreationBlockCached({
+          provider: prov,
+          ethersLib: ethers,
+          factoryAddress: config.FACTORY,
+          poolAddress,
+        })
+      : 0;
+    const from = Math.max(fiveYearFloor, poolCreationBlock);
     const logs = await prov.getLogs({
       address: config.POSITION_MANAGER,
       fromBlock: from,

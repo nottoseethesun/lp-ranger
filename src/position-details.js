@@ -16,9 +16,7 @@ const {
   getCachedEpochs,
   setCachedEpochs,
   getCachedLifetimeHodl,
-  setCachedLifetimeHodl,
   getCachedFreshDeposits,
-  setCachedFreshDeposits,
 } = require("./epoch-cache");
 const { scanPoolHistory } = require("./pool-scanner");
 const {
@@ -225,46 +223,17 @@ async function _computeLifetimeIL(
   poolAddress,
 ) {
   const poolCacheKey = _poolCacheKey(position);
-  const cached = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
-  let hodl = cached;
+  let hodl = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
   if (!hodl) {
     try {
-      const { scanNftEvents } = require("./compounder");
-      const { computeLifetimeHodl } = require("./lifetime-hodl");
-      const ids = new Set([String(body.tokenId)]);
-      for (const ev of events || []) {
-        if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
-        if (ev.newTokenId) ids.add(String(ev.newTokenId));
-      }
-      const allNftEvents = new Map();
-      for (const tid of ids) {
-        allNftEvents.set(tid, await scanNftEvents(tid));
-      }
-      const ethers = require("ethers");
-      const prov = new ethers.JsonRpcProvider(config.RPC_URL);
-      const cachedFresh = poolCacheKey
-        ? getCachedFreshDeposits(poolCacheKey)
-        : null;
-      hodl = await computeLifetimeHodl(allNftEvents, {
-        rebalanceEvents: events,
+      const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
+      hodl = await scanLifetimeHodl(
         position,
-        provider: prov,
-        ethersLib: ethers,
-        walletAddress: body.walletAddress,
-        excludeFromAddrs: [config.POSITION_MANAGER, poolAddress],
-        cachedFreshDeposits: cachedFresh,
-      });
-      if (poolCacheKey) {
-        setCachedLifetimeHodl(poolCacheKey, hodl);
-        if (hodl.lastBlock > (cachedFresh?.lastBlock || 0)) {
-          setCachedFreshDeposits(poolCacheKey, {
-            raw0: hodl.raw0,
-            raw1: hodl.raw1,
-            lastBlock: hodl.lastBlock,
-            deposits: hodl.deposits,
-          });
-        }
-      }
+        events,
+        body,
+        poolAddress,
+        poolCacheKey,
+      );
     } catch (err) {
       console.warn("[details] Lifetime HODL error:", err.message);
       return null;

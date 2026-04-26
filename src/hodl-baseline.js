@@ -13,6 +13,7 @@ const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { getPoolState } = require("./rebalancer");
+const { getPoolCreationBlockCached } = require("./pool-creation-block");
 
 /**
  * Compute token amounts for a V3 position at a given tick.
@@ -130,15 +131,29 @@ async function _readMintedAmounts(
   return { hodlAmount0: 0, hodlAmount1: 0, mintGasWei: "0" };
 }
 
-/** Find the NFT mint Transfer(from=0x0) event and its block timestamp. */
-async function _findMintEvent(provider, ethersLib, iface, tokenId) {
+/**
+ * Find the NFT mint Transfer(from=0x0) event and its block timestamp.
+ * @param {object} provider     ethers.js provider.
+ * @param {object} ethersLib    ethers library.
+ * @param {object} iface        PM Interface.
+ * @param {string|number} tokenId
+ * @param {number} [fromBlock=0]  Lower bound for the log scan (use the pool
+ *   creation block to avoid replaying chain history back to genesis).
+ */
+async function _findMintEvent(
+  provider,
+  ethersLib,
+  iface,
+  tokenId,
+  fromBlock = 0,
+) {
   const tokenIdHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const zeroAddr = ethersLib.zeroPadValue
     ? ethersLib.zeroPadValue("0x" + "0".repeat(40), 32)
     : "0x" + "0".repeat(64);
   const logs = await provider.getLogs({
     address: config.POSITION_MANAGER,
-    fromBlock: 0,
+    fromBlock,
     toBlock: "latest",
     topics: [iface.getEvent("Transfer").topicHash, zeroAddr, null, tokenIdHex],
   });
@@ -246,12 +261,19 @@ async function initHodlBaseline(
       position.fee,
     );
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return;
+    const poolCreationBlock = await getPoolCreationBlockCached({
+      provider,
+      ethersLib,
+      factoryAddress: config.FACTORY,
+      poolAddress,
+    });
     const iface = new ethersLib.Interface(PM_ABI);
     const { mintTimestamp, mintLog } = await _findMintEvent(
       provider,
       ethersLib,
       iface,
       position.tokenId,
+      poolCreationBlock,
     );
     if (!mintTimestamp) return;
     if (needsMintTs) {
@@ -316,12 +338,19 @@ async function getPositionBaseline(provider, ethersLib, position) {
       position.fee,
     );
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return null;
+    const poolCreationBlock = await getPoolCreationBlockCached({
+      provider,
+      ethersLib,
+      factoryAddress: config.FACTORY,
+      poolAddress,
+    });
     const iface = new ethersLib.Interface(PM_ABI);
     const { mintTimestamp, mintLog } = await _findMintEvent(
       provider,
       ethersLib,
       iface,
       position.tokenId,
+      poolCreationBlock,
     );
     if (!mintTimestamp || !mintLog) return null;
     const { hodlAmount0, hodlAmount1, mintGasWei } = await _readMintedAmounts(
