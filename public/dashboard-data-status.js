@@ -377,10 +377,71 @@ function _syncClientThrottle(ts, cnt) {
     throttle.minIntervalMs = ts.minIntervalMs;
 }
 
+/*-
+ * "Today's Rebalances" X / Y and its sub-line are rebalance-control
+ * status — meaningless for Unmanaged positions. Render "N/A" with the
+ * standard tooltip rather than letting client defaults paint a stale
+ * 0 / 0 or "0 Lifetime". See project_unmanaged_na_principle in
+ * memory.
+ */
+const _NA_TOOLTIP_THROTTLE = "Only for Managed Positions";
+
+function _renderThrottleKpisNa() {
+  const today = g("kpiToday");
+  if (today) {
+    today.textContent = "N/A";
+    today.style.color = "";
+    today.title = _NA_TOOLTIP_THROTTLE;
+  }
+  const sub = g("kpiTodaySub");
+  if (sub) {
+    sub.replaceChildren(document.createTextNode("N/A"));
+    sub.title = _NA_TOOLTIP_THROTTLE;
+  }
+}
+
+/** Color for the daily-count KPI based on usage ratio. */
+function _todayColor(r) {
+  if (r >= 0.9) return "#ff3b5c";
+  if (r >= 0.66) return "#ff6b35";
+  if (r >= 0.5) return "#ffb800";
+  return "#e0eaf4";
+}
+
+/** Paint the "Today's Rebalances" X / Y KPI for a managed position. */
+function _renderTodayKpi(today, cnt, max) {
+  if (!today) return;
+  today.title = "";
+  if (!max) {
+    today.textContent = "\u2014";
+    today.style.color = "";
+    return;
+  }
+  today.textContent = cnt + " / " + max;
+  today.style.color = _todayColor(cnt / max);
+}
+
+/** Paint the sub-line under the daily-count KPI. */
+function _renderTodaySub(d, ts) {
+  const sub = g("kpiTodaySub");
+  if (!sub) return;
+  sub.title = "";
+  const lt = d.rebalanceEvents ? d.rebalanceEvents.length : 0;
+  sub.replaceChildren(
+    document.createTextNode(lt + " Lifetime"),
+    document.createElement("br"),
+    document.createTextNode(fmtReset(ts?.dailyResetAt)),
+  );
+}
+
 /** Update the daily rebalance count KPI and lifetime count. */
 export function _updateThrottleKpis(d) {
-  const ts = d.throttleState,
-    today = g("kpiToday");
+  const a = posStore.getActive();
+  if (a && !isPositionManaged(a.tokenId)) {
+    _renderThrottleKpisNa();
+    return;
+  }
+  const ts = d.throttleState;
   // Server attaches a canonical `poolKey` to each managed position
   // (chain-contract-wallet-token0-token1-fee). Use it directly — no
   // client-side reconstruction, so the lookup always matches.
@@ -392,33 +453,9 @@ export function _updateThrottleKpis(d) {
         ? ts.dailyCount
         : 0;
   _syncClientThrottle(ts, cnt);
-  if (today) {
-    const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
-    if (!max) {
-      today.textContent = "\u2014";
-      today.style.color = "";
-    } else {
-      const r = cnt / max;
-      today.textContent = cnt + " / " + max;
-      today.style.color =
-        r >= 0.9
-          ? "#ff3b5c"
-          : r >= 0.66
-            ? "#ff6b35"
-            : r >= 0.5
-              ? "#ffb800"
-              : "#e0eaf4";
-    }
-  }
-  const sub = g("kpiTodaySub");
-  if (sub) {
-    const lt = d.rebalanceEvents ? d.rebalanceEvents.length : 0;
-    sub.replaceChildren(
-      document.createTextNode(lt + " Lifetime"),
-      document.createElement("br"),
-      document.createTextNode(fmtReset(ts?.dailyResetAt)),
-    );
-  }
+  const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
+  _renderTodayKpi(g("kpiToday"), cnt, max);
+  _renderTodaySub(d, ts);
 }
 
 /** Sync the auto-compound toggle, badge, and threshold from server status data. */
