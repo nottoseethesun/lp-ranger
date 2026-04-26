@@ -11,6 +11,7 @@
  */
 
 import { g } from "./dashboard-helpers.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
 
 /** IDs of the six breakdown rows — exported so reset paths can clear them. */
 export const LT_BD_IDS = [
@@ -30,8 +31,11 @@ function _writeRow(el, val, signed) {
     el.classList.add("neu");
     return;
   }
-  const prefix = signed < 0 ? "\u2212" : "";
-  el.textContent = prefix + "$usd " + Math.abs(val).toFixed(2);
+  /*- _fmtUsd already prefixes a "-" for negative numbers; for "subtracted"
+   *  rows we pass a positive value with signed<0, so flip the sign before
+   *  formatting to get the same minus prefix via the formatter. */
+  const formatted = _fmtUsd(signed < 0 ? -Math.abs(val) : Math.abs(val));
+  el.textContent = signed < 0 ? formatted.replace("-", "\u2212") : formatted;
   el.classList.remove("pos", "neg", "neu");
   if (signed > 0) el.classList.add("pos");
   else if (signed < 0) el.classList.add("neg");

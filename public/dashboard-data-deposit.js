@@ -5,6 +5,7 @@
  */
 import { g, compositeKey, csrfHeaders } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
+import { _fmtUsd } from "./dashboard-data-kpi.js";
 
 let _refetchUnmanaged = null;
 let _lastStatusRef = null;
@@ -138,7 +139,7 @@ export function refreshDepositLabel() {
   const s = loadInitialDeposit(),
     d = g("lifetimeDepositDisplay"),
     l = g("initialDepositLabel");
-  if (d) d.textContent = s > 0 ? "$usd " + s.toFixed(2) : "\u2014";
+  if (d) d.textContent = s > 0 ? _fmtUsd(s) : "\u2014";
   if (l) l.textContent = "Edit Total Lifetime Deposit for This Pool";
 }
 export function loadCurDeposit() {
@@ -148,7 +149,7 @@ export function refreshCurDepositDisplay(fallback, usedFallback) {
   const userVal = loadCurDeposit();
   const v = userVal || fallback || 0,
     d = g("curDepositDisplay");
-  if (d) d.textContent = v > 0 ? "$usd " + v.toFixed(2) : "\u2014";
+  if (d) d.textContent = v > 0 ? _fmtUsd(v) : "\u2014";
   const popover = g("curDepositPriceInfoText");
   if (popover && v > 0) {
     if (userVal > 0)

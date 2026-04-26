@@ -328,8 +328,7 @@ function _afterDisclaimer() {
     if (rgEl) rgEl.textContent = _fmtUsd(rg);
     const dep = loadInitialDeposit();
     const depDisp = g("lifetimeDepositDisplay");
-    if (depDisp)
-      depDisp.textContent = dep > 0 ? "$usd " + dep.toFixed(2) : "\u2014";
+    if (depDisp) depDisp.textContent = dep > 0 ? _fmtUsd(dep) : "\u2014";
     const depLabel = g("initialDepositLabel");
     if (depLabel)
       depLabel.textContent =

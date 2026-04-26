@@ -54,7 +54,8 @@
     "dotenv": "^16.0.0",
     "ethers": "^6.7.1",
     "jsbi": "^4.3.0",
-    "navigo": "^8.11.1"
+    "navigo": "^8.11.1",
+    "numbro": "^2.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -14,6 +14,7 @@
  *    value at most recent rebalance.  Always available but not the
  *    original deposit.
  */
+import { _fmtUsd as _fmtUsdImpl } from "./dashboard-fmt-usd.js";
 import { g, fmtDateTime, fmtDuration } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 import { updateNetBreakdown as _updateNetBreakdown } from "./dashboard-data-kpi-breakdown.js";
@@ -67,11 +68,9 @@ export function getCurBreakdown() {
   return _curBreakdown;
 }
 
-export function _fmtUsd(val) {
-  if (val === null || val === undefined || isNaN(val)) return "\u2014";
-  const abs = Math.abs(val).toFixed(2);
-  return abs === "0.00" ? "$usd 0.00" : "$usd " + (val < 0 ? "-" : "") + abs;
-}
+/*- Re-exported from dashboard-fmt-usd.js so existing importers of this
+ *  module's `_fmtUsd` keep working. */
+export const _fmtUsd = _fmtUsdImpl;
 export function _isDisplayZero(val) {
   return Math.abs(val).toFixed(2) === "0.00";
 }
@@ -334,7 +333,7 @@ export function _resolveKpiTotals(d) {
 export function _setDepositDisplay(dep, totalLifetimeDep, usedFallback) {
   const v = totalLifetimeDep > 0 ? totalLifetimeDep : dep;
   const dd = g("lifetimeDepositDisplay");
-  if (dd) dd.textContent = v > 0 ? "$usd " + v.toFixed(2) : "\u2014";
+  if (dd) dd.textContent = v > 0 ? _fmtUsd(v) : "\u2014";
   const dl = g("initialDepositLabel");
   if (dl) dl.textContent = "Edit Total Lifetime Deposit for This Pool";
   const popover = g("ltDepositPriceInfoText");
