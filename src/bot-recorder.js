@@ -19,6 +19,13 @@ const { clearLpPositionCache } = require("./lp-position-cache");
 const _epochCache = require("./epoch-cache");
 const { buildUpdatePatch } = require("./bot-recorder-patch");
 const {
+  resolvePoolCreationBlockForPosition,
+} = require("./pool-creation-block");
+const {
+  collectTokenIds: _collectTokenIds,
+  fetchAllNftEvents: _fetchAllNftEvents,
+} = require("./bot-recorder-scan-helpers");
+const {
   toFloat: _toFloat,
   fetchTokenPrices: _fetchTokenPrices,
   estimateGasCostUsd: _estimateGasCostUsd,
@@ -327,31 +334,6 @@ async function _classifyAllCompounds(
   }
 }
 
-/** Collect all unique tokenIds from rebalance chain + current position. */
-function _collectTokenIds(position, rebalanceEvents) {
-  const ids = new Set([String(position.tokenId)]);
-  for (const ev of rebalanceEvents || []) {
-    if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
-    if (ev.newTokenId) ids.add(String(ev.newTokenId));
-  }
-  return ids;
-}
-
-/** Fetch NFT events for all tokenIds, track max block for incremental scan. */
-async function _fetchAllNftEvents(ids, fromBlock) {
-  const { scanNftEvents } = require("./compounder");
-  const allNftEvents = new Map();
-  let maxBlock = fromBlock;
-  for (const tid of ids) {
-    const ev = await scanNftEvents(tid, { fromBlock });
-    allNftEvents.set(tid, ev);
-    for (const e of [...ev.ilEvents, ...ev.collectEvents, ...ev.dlEvents]) {
-      if (e.blockNumber > maxBlock) maxBlock = e.blockNumber;
-    }
-  }
-  return { allNftEvents, maxBlock };
-}
-
 /**
  * Unified lifetime pool scan: fetch NFT events once per tokenId, then run
  * both compound classification and lifetime HODL accumulation.
@@ -376,7 +358,18 @@ async function _scanLifetimePoolData(
   if (hasCompounds && cachedHodl) return;
   try {
     const { computeLifetimeHodl } = require("./lifetime-hodl");
-    const fromBlock = epochKey ? _epochCache.getLastNftScanBlock(epochKey) : 0;
+    const cachedFromBlock = epochKey
+      ? _epochCache.getLastNftScanBlock(epochKey)
+      : 0;
+    /*- First-run lower bound: pool creation block.  Avoids replaying every
+        chain block back to genesis when the epoch cache has nothing yet. */
+    const fromBlock =
+      cachedFromBlock > 0
+        ? cachedFromBlock
+        : await resolvePoolCreationBlockForPosition({
+            factoryAddress: config.FACTORY,
+            position,
+          });
     const prices = await _fetchTokenPrices(
       position.token0,
       position.token1,

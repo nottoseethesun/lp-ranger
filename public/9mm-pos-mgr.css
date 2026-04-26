@@ -4,6 +4,16 @@
  * All custom classes are prefixed with `9mm-pos-mgr-` to avoid collisions.
  */
 
+/* ── Tooltip cursor convention ───────────────────────────────────────────── */
+
+/*  Any non-interactive element (div/span) with a non-empty `title` attribute
+    shows the help cursor on hover. Interactive elements (button, a, input,
+    select, textarea) keep their own cursor — only the inert ones flip.    */
+div[title]:not([title=""]):hover,
+span[title]:not([title=""]):hover {
+  cursor: help;
+}
+
 /* ── Privacy Toggle ──────────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-settings-item.\39 mm-pos-mgr-privacy-setting {

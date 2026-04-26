@@ -889,6 +889,34 @@ export const PARAM_HELP = {
     ],
   },
 
+  // ── Activity Log ───────────────────────────────────────────────────────
+
+  activityLog: {
+    title: "Activity Log",
+    sections: [
+      {
+        heading: "Detail availability",
+        body:
+          "Detailed Activity Log info is only available for " +
+          "<strong>Managed</strong> positions.",
+      },
+    ],
+  },
+
+  // ── Routed Via (Rebalance Events table) ────────────────────────────────
+
+  routedVia: {
+    title: "Routed Via",
+    sections: [
+      {
+        heading: "Detail availability",
+        body:
+          "Only available for rebalances done by this installation of " +
+          "the app.",
+      },
+    ],
+  },
+
   // ── Swap Routing ───────────────────────────────────────────────────────
 
   swapRouting: {

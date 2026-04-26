@@ -104,13 +104,48 @@ export function onParamChange() {
   updateThrottleUI();
 }
 
+/*-
+ * Rebalance-control status (badge, countdowns, daily X/Y) is only
+ * meaningful for Managed positions — Unmanaged positions have no bot
+ * loop, no throttle counter, no scheduling. We surface that with an
+ * "N/A" render plus a machine tooltip ("Only for Managed Positions"),
+ * rather than letting client-side defaults paint a misleading state
+ * (e.g. dailyMax=0 paints a false CAPPED).
+ */
+const _NA_TOOLTIP = "Only for Managed Positions";
+
+/** Active position exists and is Unmanaged. */
+function _isUnmanagedActive() {
+  const a = posStore.getActive();
+  return !!(a && !isPositionManaged(a.tokenId));
+}
+
+/** Render an "N/A" placeholder with the standard tooltip. */
+function _renderNa(el, className) {
+  if (!el) return;
+  el.textContent = "N/A";
+  if (className !== undefined) el.className = className;
+  el.title = _NA_TOOLTIP;
+}
+
+/** Clear the N/A tooltip (used when re-rendering live values). */
+function _clearNa(el) {
+  if (el) el.title = "";
+}
+
 /**
  * Render the throttle badge (OK / NEAR LIMIT / LIMIT HIT / DOUBLING).
+ * Unmanaged positions render "N/A" — see `_isUnmanagedActive`.
  * @param {number} pct  Daily usage percentage.
  */
 function _renderThrottleBadge(pct) {
   const badge = g("throttleBadge");
   if (!badge) return;
+  if (_isUnmanagedActive()) {
+    _renderNa(badge, "live-badge");
+    return;
+  }
+  _clearNa(badge);
   const check = canRebalance();
   if (throttle.dailyCount >= throttle.dailyMax) {
     badge.textContent = "CAPPED";
@@ -230,11 +265,16 @@ function _renderRangeBanner(can) {
 
 /** Update the rebalance interval KPI. */
 function _renderCountdownKpi(can) {
+  const cd = g("kpiCountdown");
+  if (_isUnmanagedActive()) {
+    _renderNa(cd, "kpi-value neu");
+    return;
+  }
+  _clearNa(cd);
   const minIntervalEl = g("inMinInterval");
   const minIntervalMin = minIntervalEl
     ? parseInt(minIntervalEl.value, 10) || 10
     : 10;
-  const cd = g("kpiCountdown");
   if (can.allowed) {
     if (cd) {
       cd.textContent = minIntervalMin + " min";

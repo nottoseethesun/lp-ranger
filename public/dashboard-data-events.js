@@ -17,9 +17,11 @@ import {
   checkCompoundSound,
   primeSoundTrackers,
 } from "./dashboard-sounds.js";
+import { formatCompoundEntry } from "./dashboard-compound-log.js";
 
 /** Per-key "last seen" trackers — prevent duplicate log entries. */
 const _lastRebAt = new Map();
+const _lastCompAt = new Map();
 const _txCancelSeen = new Set();
 
 /**
@@ -39,7 +41,30 @@ function _triggerLabel(trigger) {
 /** Clear event-log trackers (called from `resetPollingState`). */
 export function resetEventLogTrackers() {
   _lastRebAt.clear();
+  _lastCompAt.clear();
   _txCancelSeen.clear();
+}
+
+/**
+ * Log a compound execution to the Activity Log when `lastCompoundAt`
+ * advances.  Formatting is delegated to `formatCompoundEntry` so the
+ * pure decision/format logic stays unit-testable.
+ * @param {string} key   Composite position key.
+ * @param {object} st    Per-position state slice.
+ * @param {string} ctx   Position-context suffix from `_logCtx`.
+ */
+function _logCompound(key, st, ctx) {
+  const entry = formatCompoundEntry(st, ctx, _lastCompAt.get(key));
+  if (!entry) return;
+  _lastCompAt.set(key, st.lastCompoundAt);
+  act(
+    ACT_ICONS.gear,
+    entry.type,
+    entry.title,
+    entry.detail,
+    entry.when,
+    entry.txHash,
+  );
 }
 
 /**
@@ -78,6 +103,7 @@ export function logAllPositionEvents(data) {
       scanPositions({ silent: true }).catch(() => {});
     }
     checkCompoundSound(key, st.lastCompoundAt);
+    _logCompound(key, st, ctx);
     const tc = st.txCancelled;
     if (tc && !_txCancelSeen.has(key + tc.at)) {
       _txCancelSeen.add(key + tc.at);
