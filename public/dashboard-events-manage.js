@@ -166,6 +166,10 @@ export function _openPoolDetailsModal() {
   elFrag("pdToken0", _tokenCellFrag(active.token0Symbol, active.token0));
   elFrag("pdToken1", _tokenCellFrag(active.token1Symbol, active.token1));
   el("pdFee", fee);
+  el(
+    "pdTickSpacing",
+    active.tickSpacing ? String(active.tickSpacing) : "\u2014",
+  );
   elFrag("pdPool", _addrWithCopyFrag(active.poolAddress));
   const providerLabel = getProviderLabel(active.contractAddress);
   elFrag(

@@ -377,6 +377,7 @@ async function computeQuickDetails(
     decimals0: ps.decimals0,
     decimals1: ps.decimals1,
     poolAddress: ps.poolAddress,
+    tickSpacing: ps.tickSpacing,
   };
   return {
     ok: true,

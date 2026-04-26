@@ -295,6 +295,7 @@ export function _updatePriceMarker(d) {
   botConfig.price = d.poolState.price;
   const _ap = posStore.getActive();
   if (d.poolState.poolAddress && _ap) _ap.poolAddress = d.poolState.poolAddress;
+  if (d.poolState.tickSpacing && _ap) _ap.tickSpacing = d.poolState.tickSpacing;
   const pml = g("pmlabel");
   if (pml) {
     pml.textContent = fmtNum(d.poolState.price) + " " + _activeToken1Symbol();

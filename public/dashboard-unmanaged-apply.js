@@ -288,6 +288,7 @@ export function _apply(d, pos) {
   // Range chart + price marker
   botConfig.price = d.poolState.price;
   pos.poolAddress = d.poolState.poolAddress || null;
+  if (d.poolState.tickSpacing) pos.tickSpacing = d.poolState.tickSpacing;
   botConfig.lower = d.lowerPrice;
   botConfig.upper = d.upperPrice;
   botConfig.tL = pos.tickLower;

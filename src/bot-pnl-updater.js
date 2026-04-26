@@ -514,6 +514,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         decimals0: poolState.decimals0,
         decimals1: poolState.decimals1,
         poolAddress: poolState.poolAddress,
+        tickSpacing: poolState.tickSpacing,
       },
       positionStats: posStats,
       ...(pnlSnapshot ? { pnlSnapshot } : {}),
