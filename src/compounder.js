@@ -355,6 +355,9 @@ function _filterRebalances(candidates, dlEvents) {
 async function _fetchCompoundGas(prov, compoundEvents) {
   let totalGasWei = 0n;
   const compounds = [];
+  /*- Cache block timestamps so we don't re-fetch the same block when
+      multiple events sit in it (rare but possible for batched txs). */
+  const blockTsCache = new Map();
   for (const e of compoundEvents) {
     let gasWei = 0n;
     if (e.txHash) {
@@ -368,12 +371,27 @@ async function _fetchCompoundGas(prov, compoundEvents) {
         /* receipt fetch failed — gas stays 0 */
       }
     }
+    let ts = null;
+    if (e.blockNumber !== null && e.blockNumber !== undefined) {
+      try {
+        if (!blockTsCache.has(e.blockNumber)) {
+          const blk = await prov.getBlock(e.blockNumber);
+          blockTsCache.set(e.blockNumber, blk?.timestamp ?? null);
+        }
+        ts = blockTsCache.get(e.blockNumber);
+      } catch {
+        /* block fetch failed — ts stays null */
+      }
+    }
     totalGasWei += gasWei;
     compounds.push({
       amount0Deposited: String(e.amount0),
       amount1Deposited: String(e.amount1),
       blockNumber: e.blockNumber,
       txHash: e.txHash || null,
+      /*- ISO string to match the live-compound shape written by
+          executeCompound (timestamp: new Date().toISOString()). */
+      timestamp: ts ? new Date(ts * 1000).toISOString() : null,
       gasCostWei: String(gasWei),
     });
   }
@@ -515,4 +533,5 @@ module.exports = {
   classifyCompounds,
   _filterRebalances,
   _parseLogs,
+  _fetchCompoundGas,
 };

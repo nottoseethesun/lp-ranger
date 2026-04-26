@@ -19,6 +19,7 @@ import {
   checkHodlBaselineDialog,
 } from "./dashboard-data.js";
 import { _setPctSpan, _setAprSpan } from "./dashboard-data-kpi.js";
+import { toMintTsSeconds } from "./dashboard-date-utils.js";
 import { updateNetBreakdown } from "./dashboard-data-kpi-breakdown.js";
 import {
   setLastPrices,
@@ -238,10 +239,14 @@ export function _applyCurrentKpis(d) {
 
 /** Position age + mint date. */
 function _applyPosDuration(d) {
-  if (!d.mintTimestamp) return;
+  /*- Tolerate both Unix-seconds (canonical) and ISO-string (legacy)
+      mintTimestamp shapes via toMintTsSeconds.  See
+      dashboard-date-utils.js for shape history. */
+  const ts = toMintTsSeconds(d.mintTimestamp);
+  if (!ts) return;
   const dur = g("kpiPosDuration");
   if (!dur) return;
-  const ms = Date.now() - d.mintTimestamp * 1000;
+  const ms = Date.now() - ts * 1000;
   const dd = Math.floor(ms / 86400000),
     hh = Math.floor((ms % 86400000) / 3600000),
     mm = Math.floor((ms % 3600000) / 60000);
@@ -253,7 +258,7 @@ function _applyPosDuration(d) {
     "h " +
     mm +
     "m \u00B7 Minted: " +
-    fmtDateTime(new Date(d.mintTimestamp * 1000));
+    fmtDateTime(new Date(ts * 1000));
 }
 
 /** IL debug data for "i" buttons. */

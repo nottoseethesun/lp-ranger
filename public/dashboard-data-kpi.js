@@ -25,6 +25,7 @@ import {
   refreshCurDepositDisplay,
 } from "./dashboard-data-deposit.js";
 import { setLeadingText } from "./dashboard-kpi-dom.js";
+import { pickEarliestDate, toMintTsSeconds } from "./dashboard-date-utils.js";
 
 let _poolFirstDate = null;
 export function setPoolFirstDate(d) {
@@ -197,24 +198,28 @@ export function _updateCurIL(d, deposit) {
 export function _updatePosDuration(d) {
   const el = g("kpiPosDuration");
   if (!el) return;
-  const mt =
-    d.positionMintTimestamp ||
-    d.hodlBaseline?.mintDate ||
-    d.hodlBaseline?.mintTimestamp;
-  if (!mt) {
+  /*- Try numeric/ISO mint timestamps first via toMintTsSeconds; fall back
+      to the YYYY-MM-DD mintDate for older positions that have no exact
+      mint timestamp.  Both Unix-seconds and ISO-string shapes appear in
+      live .bot-config.json files (see dashboard-date-utils.js). */
+  const mtRaw = d.positionMintTimestamp || d.hodlBaseline?.mintTimestamp;
+  let ms;
+  let label;
+  const ts = toMintTsSeconds(mtRaw);
+  if (ts) {
+    ms = Date.now() - ts * 1000;
+    label = ts * 1000;
+  } else if (d.hodlBaseline?.mintDate) {
+    ms =
+      Date.now() - new Date(d.hodlBaseline.mintDate + "T00:00:00Z").getTime();
+    label = d.hodlBaseline.mintDate;
+  } else {
     el.textContent = "\u2014";
     return;
   }
-  const ms =
-    typeof mt === "number"
-      ? Date.now() - mt * 1000
-      : Date.now() -
-        (mt.includes("T")
-          ? new Date(mt).getTime()
-          : new Date(mt + "T00:00:00Z").getTime());
   el.textContent =
     ms > 0
-      ? "Active: " + fmtDuration(ms) + " \u00B7 Minted: " + fmtDateTime(mt)
+      ? "Active: " + fmtDuration(ms) + " \u00B7 Minted: " + fmtDateTime(label)
       : "";
 }
 export function _applySnapshotKpis(d, deposit, curRealized) {
@@ -420,11 +425,18 @@ export function _setProfitKpi(id, fees, gas, ilg, compounded) {
     (_isDisplayZero(p) ? "neu" : p > 0 ? "pos" : "neg");
 }
 export function _ltStartDate(d) {
-  return (
-    d.pnlSnapshot?.firstEpochDateUtc ||
-    d.hodlBaseline?.mintDate ||
-    _poolFirstDate
-  );
+  /*- Pick the EARLIEST available start date, not the first non-null.
+      `firstEpochDateUtc` is when the bot first observed the position, which
+      can be much later than the actual mint (e.g. user adopts a long-lived
+      NFT into management).  `hodlBaseline.mintDate` reflects the on-chain
+      mint timestamp and is older when present.  `_poolFirstDate` is the
+      first mint in the rebalance chain.  Min-of-available gives the true
+      "alive since" date for the Day Count and APR denominators. */
+  return pickEarliestDate([
+    d.pnlSnapshot?.firstEpochDateUtc,
+    d.hodlBaseline?.mintDate,
+    _poolFirstDate,
+  ]);
 }
 export function _updateIL(d, ltDeposit) {
   const il = d.pnlSnapshot

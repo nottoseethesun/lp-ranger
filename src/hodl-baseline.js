@@ -156,9 +156,12 @@ async function _findMintEvent(provider, ethersLib, iface, tokenId) {
 
 /** Patch an existing baseline with missing mint timestamp. */
 function _patchMintTimestamp(botState, updateBotState, mintTimestamp) {
+  /*- Canonical storage shape is Unix seconds (number).  ISO strings were
+      written here historically and remain in older .bot-config.json files;
+      consumers normalize on read.  Don't reintroduce ISO writes. */
   const iso = new Date(mintTimestamp * 1000).toISOString();
   botState.hodlBaseline.mintDate = iso.slice(0, 10);
-  botState.hodlBaseline.mintTimestamp = iso;
+  botState.hodlBaseline.mintTimestamp = mintTimestamp;
   updateBotState({ hodlBaseline: botState.hodlBaseline });
   console.log(`[bot] Patched mint timestamp on existing baseline: ${iso}`);
 }
@@ -191,7 +194,10 @@ function _publishBaseline(d, botState, updateBotState) {
     hodlAmount0: d.hodlAmount0,
     hodlAmount1: d.hodlAmount1,
     mintDate: d.mintDate,
-    mintTimestamp: d.mintIso,
+    /*- Unix seconds (number) — the canonical shape.  See
+        public/dashboard-date-utils.js#toMintTsSeconds for read-side
+        normalization that still tolerates legacy ISO strings. */
+    mintTimestamp: d.mintTimestamp,
     mintGasWei: d.mintGasWei || "0",
   };
   botState.hodlBaseline = baseline;
@@ -270,8 +276,7 @@ async function initHodlBaseline(
         blockNumber: mintLog.blockNumber,
       },
     );
-    const mintIso = new Date(mintTimestamp * 1000).toISOString();
-    const mintDate = mintIso.slice(0, 10);
+    const mintDate = new Date(mintTimestamp * 1000).toISOString().slice(0, 10);
     _publishBaseline(
       {
         hodlAmount0,
@@ -279,7 +284,7 @@ async function initHodlBaseline(
         price0,
         price1,
         mintDate,
-        mintIso,
+        mintTimestamp,
         mintGasWei,
       },
       botState,

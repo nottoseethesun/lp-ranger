@@ -120,10 +120,10 @@ describe("initHodlBaseline", () => {
 
     assert.strictEqual(updateBotState.mock.callCount(), 1);
     assert.strictEqual(botState.hodlBaseline.mintDate, "2023-11-14");
-    assert.strictEqual(
-      botState.hodlBaseline.mintTimestamp,
-      "2023-11-14T22:13:20.000Z",
-    );
+    /*- Canonical mintTimestamp is now Unix seconds (number).  Older
+        .bot-config.json files may still hold an ISO string; consumers
+        normalize via dashboard-date-utils.js#toMintTsSeconds. */
+    assert.strictEqual(botState.hodlBaseline.mintTimestamp, 1700000000);
   });
 
   it("skips when pool address is zero address", async () => {

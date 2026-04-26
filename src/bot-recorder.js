@@ -311,8 +311,11 @@ async function _classifyAllCompounds(
   );
   if (allCompounds.length > 0) {
     const history = allCompounds.map((c) => ({
-      timestamp: null,
-      txHash: null,
+      /*- Block timestamp + tx hash come from _fetchCompoundGas in
+          src/compounder.js.  Both can still be null if the receipt or
+          block fetch failed — consumers must tolerate null. */
+      timestamp: c.timestamp || null,
+      txHash: c.txHash || null,
       tokenId: c.tokenId,
       amount0Deposited: c.amount0Deposited,
       amount1Deposited: c.amount1Deposited,
@@ -472,9 +475,13 @@ function _updateHodlBaseline(botState, result, mintNow) {
     a1 = _toFloat(result.amount1Minted, d1),
     p0 = result.token0UsdPrice || 0,
     p1 = result.token1UsdPrice || 0;
+  /*- mintNow is an ISO string (used elsewhere as a position-mint label).
+      Canonical hodlBaseline.mintTimestamp is Unix seconds, so convert
+      here.  See public/dashboard-date-utils.js#toMintTsSeconds. */
+  const mintTs = Math.floor(new Date(mintNow).getTime() / 1000);
   botState.hodlBaseline = {
     mintDate: mintNow.slice(0, 10),
-    mintTimestamp: mintNow,
+    mintTimestamp: mintTs,
     entryValue: a0 * p0 + a1 * p1,
     hodlAmount0: a0,
     hodlAmount1: a1,

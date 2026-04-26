@@ -187,9 +187,12 @@ describe("_updateHodlBaseline", () => {
     _updateHodlBaseline(botState, result, "2026-03-15T12:00:00Z");
     assert.ok(botState.hodlBaseline);
     assert.strictEqual(botState.hodlBaseline.mintDate, "2026-03-15");
+    /*- Canonical mintTimestamp shape is Unix seconds (number).  ISO
+        strings persisted in older .bot-config.json files are tolerated
+        on read via dashboard-date-utils.js#toMintTsSeconds. */
     assert.strictEqual(
       botState.hodlBaseline.mintTimestamp,
-      "2026-03-15T12:00:00Z",
+      Math.floor(Date.UTC(2026, 2, 15, 12, 0, 0) / 1000),
     );
     assert.strictEqual(botState.hodlBaseline.hodlAmount0, 1);
     assert.strictEqual(botState.hodlBaseline.hodlAmount1, 2);
