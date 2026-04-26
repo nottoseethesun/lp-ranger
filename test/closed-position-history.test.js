@@ -11,19 +11,18 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const Module = require("module");
-const config = require("../src/config");
-const { getPositionHistory } = require("../src/position-history");
 
 const TMP = path.join(process.cwd(), "tmp");
 const LOG_PATH = path.join(TMP, "test-rebalance-log.json");
 
 /**
  * Offline ethers stub used by the whole describe block. position-history.js
- * calls `require("ethers")` at RUNTIME inside `_supplementMintFromChain` and
- * `_resolvePoolAddress`, so we keep `Module.prototype.require` patched for
- * the entire test run (installed in before(), restored in after()). Without
- * this, those helpers instantiate a real JsonRpcProvider and each test waits
- * ~60s for RPC timeouts — blowing past the CI budget.
+ * (and its helpers) require `ethers` at module load AND construct a cached
+ * `new ethers.Interface(PM_ABI)` at module load. We must install the
+ * `Module.prototype.require` patch BEFORE loading position-history so that
+ * top-of-file binding resolves to the stub rather than real ethers (otherwise
+ * the helpers instantiate a real JsonRpcProvider and each test waits ~60s
+ * for RPC timeouts — blowing past the CI budget).
  */
 const _origRequire = Module.prototype.require;
 const _ethersStub = {
@@ -51,9 +50,22 @@ const _ethersStub = {
     getEvent() {
       return { topicHash: "0x" + "0".repeat(64) };
     }
+    parseLog() {
+      return null;
+    }
   },
   ZeroAddress: "0x0000000000000000000000000000000000000000",
 };
+
+/*- Install BEFORE loading position-history so module-load-time `require` and
+    `new ethers.Interface(PM_ABI)` see the stub. Restored in after(). */
+Module.prototype.require = function (id) {
+  if (id === "ethers") return _ethersStub;
+  return _origRequire.apply(this, arguments);
+};
+
+const config = require("../src/config");
+const { getPositionHistory } = require("../src/position-history");
 
 /**
  * Stub fetch so `_supplementHistoricalPrices` inside `getPositionHistory`
@@ -92,13 +104,6 @@ describe("getPositionHistory", () => {
     config.LOG_FILE = "tmp/test-rebalance-log.json";
     origFetch = globalThis.fetch;
     globalThis.fetch = _installOfflineFetchStub();
-    // Install ethers stub for the duration of the describe block — restored
-    // in after(). Patches Module.prototype.require so runtime ethers calls
-    // inside position-history.js return the stub.
-    Module.prototype.require = function (id) {
-      if (id === "ethers") return _ethersStub;
-      return _origRequire.apply(this, arguments);
-    };
 
     const testEntries = [
       {

@@ -18,6 +18,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const ethers = require("ethers");
+const config = require("./config");
 const { findPoolCreationBlock } = require("./event-scanner");
 
 /** Disk-cache file path (overridable via env for tests). */
@@ -191,8 +193,6 @@ async function resolvePoolCreationBlockForPosition(opts) {
   )
     return 0;
   try {
-    const ethers = require("ethers");
-    const config = require("./config");
     const provider = new ethers.JsonRpcProvider(config.RPC_URL);
     const factoryAbi = [
       "function getPool(address,address,uint24) view returns (address)",

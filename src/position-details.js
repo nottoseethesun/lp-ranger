@@ -7,9 +7,14 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const config = require("./config");
 const { getPoolState } = require("./rebalancer");
-const { positionValueUsd, fetchTokenPrices } = require("./bot-pnl-updater");
+const {
+  positionValueUsd,
+  fetchTokenPrices,
+  _totalLifetimeDeposit,
+} = require("./bot-pnl-updater");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { createPnlTracker } = require("./pnl-tracker");
 const {
@@ -25,12 +30,24 @@ const {
   saveConfig,
 } = require("./bot-config-v2");
 const {
+  computeQuickDetails,
   _currentPnl,
   _applyPriceOverrides,
   _walletResiduals,
 } = require("./position-details-quick");
+const { detectCompoundsOnChain } = require("./compounder");
+const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
+const { computeHodlIL } = require("./il-calculator");
+const { fetchHistoricalPriceGecko } = require("./price-fetcher");
+const {
+  getBlockTimestamp,
+  flushBlockTimeCache,
+} = require("./block-time-cache");
 
-/** Detect compounds across all NFTs in the rebalance chain and cache result. */
+/**
+ * Detect compounds across all NFTs in the rebalance chain and cache result.
+ * `_detect` is injectable for tests; defaults to the production scanner.
+ */
 async function _scanCompounds(
   position,
   events,
@@ -40,9 +57,9 @@ async function _scanCompounds(
   diskConfig,
   posKey,
   dir,
+  _detect = detectCompoundsOnChain,
 ) {
   try {
-    const { detectCompoundsOnChain } = require("./compounder");
     const ids = new Set([String(position.tokenId)]);
     for (const e of events) {
       if (e.oldTokenId) ids.add(String(e.oldTokenId));
@@ -61,7 +78,7 @@ async function _scanCompounds(
     };
     let total = 0;
     for (const tid of ids)
-      total += (await detectCompoundsOnChain(tid, opts)).totalCompoundedUsd;
+      total += (await _detect(tid, opts)).totalCompoundedUsd;
     if (total > 0) {
       getPositionConfig(diskConfig, posKey).totalCompoundedUsd = total;
       saveConfig(diskConfig, dir);
@@ -226,7 +243,6 @@ async function _computeLifetimeIL(
   let hodl = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
   if (!hodl) {
     try {
-      const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
       hodl = await scanLifetimeHodl(
         position,
         events,
@@ -240,7 +256,6 @@ async function _computeLifetimeIL(
     }
   }
   if (!hodl || (hodl.amount0 <= 0 && hodl.amount1 <= 0)) return null;
-  const { computeHodlIL } = require("./il-calculator");
   const il = computeHodlIL({
     lpValue,
     hodlAmount0: hodl.amount0,
@@ -280,14 +295,6 @@ async function _computeDepositUsd(position, ps) {
   const poolCK = _poolCacheKey(position);
   const deps = (poolCK ? getCachedFreshDeposits(poolCK) : null)?.deposits;
   if (!deps?.length) return { total: 0, usedFallback: false };
-  const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
-  const { fetchHistoricalPriceGecko } = require("./price-fetcher");
-  const {
-    getBlockTimestamp,
-    flushBlockTimeCache,
-  } = require("./block-time-cache");
-  const config = require("./config");
-  const ethers = require("ethers");
   const provider = new ethers.JsonRpcProvider(config.RPC_URL);
   const poolAddr = ps.poolAddress || "";
   const result = await _totalLifetimeDeposit(
@@ -477,7 +484,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
 }
 
 module.exports = {
-  computeQuickDetails: require("./position-details-quick").computeQuickDetails,
+  computeQuickDetails,
   computeLifetimeDetails,
   _scanCompounds,
   _extractSnap,

@@ -7,9 +7,16 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const config = require("./config");
 const { getPoolState } = require("./rebalancer");
 const _epochCache = require("./epoch-cache");
+const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
+const { fetchHistoricalPriceGecko: _fhp } = require("./price-fetcher");
+const {
+  getBlockTimestamp,
+  flushBlockTimeCache,
+} = require("./block-time-cache");
 
 /** Compute lifetime HODL amounts and persist fresh deposit cache. */
 async function computeAndCacheHodl(
@@ -21,7 +28,6 @@ async function computeAndCacheHodl(
   walletAddress,
   epochKey,
 ) {
-  const ethers = require("ethers");
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   const cachedFresh = epochKey
     ? _epochCache.getCachedFreshDeposits(epochKey)
@@ -131,13 +137,6 @@ async function computeDepositUsd(
 ) {
   const deposits = botState.lifetimeHodlAmounts?.deposits;
   if (!deposits?.length) return;
-  const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
-  const { fetchHistoricalPriceGecko: _fhp } = require("./price-fetcher");
-  const {
-    getBlockTimestamp,
-    flushBlockTimeCache,
-  } = require("./block-time-cache");
-  const ethers = require("ethers");
   const provider = new ethers.JsonRpcProvider(config.RPC_URL);
   const poolAddr = await _ensureHodlPoolAddress(
     botState,

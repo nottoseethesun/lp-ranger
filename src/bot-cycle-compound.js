@@ -10,6 +10,7 @@ const config = require("./config");
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { notify } = require("./telegram");
 const { getTokenSymbol } = require("./server-scan");
+const { executeCompound: runCompound } = require("./compounder");
 
 /**
  * Check if compound conditions are met and execute if so.
@@ -108,7 +109,6 @@ async function executeCompound(deps, poolState, ethersLib, trigger) {
     botSt.forceCompound = false;
     emit({ compoundInProgress: true });
 
-    const { executeCompound: runCompound } = require("./compounder");
     const result = await runCompound(signer, ethersLib, {
       positionManagerAddress: config.POSITION_MANAGER,
       tokenId: position.tokenId,

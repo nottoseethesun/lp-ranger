@@ -10,6 +10,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const ethers = require("ethers");
 const config = require("./config");
 const { cancelPoolScan } = require("./pool-scanner");
 
@@ -72,8 +73,7 @@ async function resolveTokenSymbol(prov, addr) {
   if (!addr) return "?";
   const fb = addr.slice(0, 6) + "\u2026" + addr.slice(-4);
   try {
-    const eth = require("ethers");
-    const c = new eth.Contract(
+    const c = new ethers.Contract(
       addr,
       [
         "function symbol() view returns (string)",
@@ -309,7 +309,6 @@ function createScanHandlers(deps) {
     const body = await readJsonBody(req);
     const rpcUrl = body.rpcUrl || config.RPC_URL;
     const pmAddr = body.positionManagerAddress || config.POSITION_MANAGER;
-    const ethers = require("ethers");
     const prov = new ethers.JsonRpcProvider(rpcUrl);
     const force = body.force === true;
     const currentBlock = await prov.getBlockNumber();
@@ -384,7 +383,6 @@ function createScanHandlers(deps) {
         liquidities: {},
       });
 
-    const ethers = require("ethers");
     const prov = new ethers.JsonRpcProvider(config.RPC_URL);
     const pmAddr = config.POSITION_MANAGER;
     const tokenIds = cached.positions.map((p) => p.tokenId);

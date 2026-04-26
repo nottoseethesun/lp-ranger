@@ -12,6 +12,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const ethers = require("ethers");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
@@ -23,6 +24,12 @@ const {
   findLastEventOnChain,
   resolveScanFromBlock,
 } = require("./position-history-scan-helpers");
+
+/*- Cached at module load: parsing PM logs is stateless, so a single Interface
+    instance can serve every call.  Built from whichever ethers binding is in
+    scope when this file is first required (tests patch Module.prototype.require
+    to inject a stub before loading). */
+const _IFACE = new ethers.Interface(PM_ABI);
 
 /** In-memory cache for ERC-20 decimals keyed by lowercase address. */
 const _decimalsCache = new Map();
@@ -144,9 +151,7 @@ async function _supplementMintFromChain(result, tokenId) {
     return;
   }
   try {
-    const ethers = require("ethers");
     const prov = new ethers.JsonRpcProvider(config.RPC_URL);
-    const iface = new ethers.Interface(PM_ABI);
     /* Search recent blocks only — NFTs are minted within
        the last ~5 years max (~15.8M blocks on PulseChain). */
     const latest = await prov.getBlockNumber();
@@ -174,7 +179,7 @@ async function _supplementMintFromChain(result, tokenId) {
       fromBlock: from,
       toBlock: "latest",
       topics: [
-        iface.getEvent("Transfer").topicHash,
+        _IFACE.getEvent("Transfer").topicHash,
         "0x" + "0".repeat(64),
         null,
         "0x" + BigInt(tokenId).toString(16).padStart(64, "0"),
@@ -215,7 +220,6 @@ async function _getDecimals(tokenAddr, provider) {
   const key = tokenAddr.toLowerCase();
   if (_decimalsCache.has(key)) return _decimalsCache.get(key);
   try {
-    const ethers = require("ethers");
     const tok = new ethers.Contract(
       tokenAddr,
       ["function decimals() view returns (uint8)"],
@@ -238,7 +242,6 @@ async function _getDecimals(tokenAddr, provider) {
  */
 async function _getPositionTokens(tokenId, provider) {
   try {
-    const ethers = require("ethers");
     const pm = new ethers.Contract(config.POSITION_MANAGER, PM_ABI, provider);
     const pos = await pm.positions(tokenId);
     return { token0: pos.token0, token1: pos.token1 };
@@ -261,8 +264,6 @@ async function _getPositionTokens(tokenId, provider) {
  */
 async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
   try {
-    const ethers = require("ethers");
-    const iface = new ethers.Interface(PM_ABI);
     const receipt = await provider.getTransactionReceipt(txHash);
     if (!receipt) return null;
     const gasWei =
@@ -273,7 +274,7 @@ async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
       if (log.address.toLowerCase() !== config.POSITION_MANAGER.toLowerCase())
         continue;
       try {
-        const parsed = iface.parseLog({
+        const parsed = _IFACE.parseLog({
           topics: log.topics,
           data: log.data,
         });
@@ -370,7 +371,6 @@ async function _supplementAmountsFromChain(result, tokenId) {
   const needExit = !result.exitValueUsd && result.token0UsdPriceAtClose;
   if (!needEntry && !needExit) return;
 
-  const ethers = require("ethers");
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   const tokens = await _getPositionTokens(tokenId, prov);
   if (!tokens) return;
@@ -459,7 +459,6 @@ async function _supplementGasFromChain(result, mintGasWei, prov) {
  * @returns {Promise<string|null>}
  */
 async function _resolvePoolAddress(activePosition, tokenId) {
-  const ethers = require("ethers");
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   let pos = activePosition;
   if (!pos || !pos.token0 || !pos.token1 || !pos.fee) {

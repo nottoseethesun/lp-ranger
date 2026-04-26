@@ -11,11 +11,13 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const config = require("./config");
 const {
   getPositionConfig,
   saveConfig,
   managedKeys,
+  removeManagedPosition,
 } = require("./bot-config-v2");
 const { startBotLoop } = require("./bot-loop");
 const { createOnRetire } = require("./server-positions");
@@ -77,7 +79,6 @@ function createAutoStartManagedPositions(deps) {
           "[server] NFT #%s not owned — removing from managed",
           tokenId,
         );
-        const { removeManagedPosition } = require("./bot-config-v2");
         removeManagedPosition(diskConfig, key);
         saveConfig(diskConfig);
         return false;
@@ -143,15 +144,14 @@ function createAutoStartManagedPositions(deps) {
     const cnt = keys.length;
     const stMs =
       cnt > 1 ? Math.floor((config.CHECK_INTERVAL_SEC * 1000) / cnt) : 0;
-    const eth = require("ethers");
-    const prov = new eth.JsonRpcProvider(config.RPC_URL);
-    const pmC = new eth.Contract(
+    const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+    const pmC = new ethers.Contract(
       config.POSITION_MANAGER,
       ["function ownerOf(uint256) view returns (address)"],
       prov,
     );
     const wAddr = walletManager.getAddress();
-    const shared = await _initSharedSigner(eth);
+    const shared = await _initSharedSigner(ethers);
     let i = 0;
     for (const key of [...keys]) {
       const pc = getPositionConfig(diskConfig, key);

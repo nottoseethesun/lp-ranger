@@ -107,8 +107,11 @@
 const { installColorLogger, emojiId } = require("./src/logger");
 installColorLogger();
 
+const cliHelp = require("./src/cli-help");
+const installServerErrorGuard = require("./src/server-error-guard");
+
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  require("./src/cli-help")("server");
+  cliHelp("server");
   process.exit(0);
 }
 
@@ -695,7 +698,7 @@ const { notifyShutdown: _notifyShutdown } = require("./src/server-shutdown");
 // When required as a module (e.g. in tests), the
 // caller controls lifecycle.
 if (require.main === module) {
-  require("./src/server-error-guard")();
+  installServerErrorGuard();
   start()
     .then(() => _routeHandlers._tryResolveKey())
     .then(() => {

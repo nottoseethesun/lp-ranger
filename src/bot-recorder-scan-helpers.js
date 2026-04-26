@@ -8,6 +8,8 @@
 
 "use strict";
 
+const { scanNftEvents } = require("./compounder");
+
 /**
  * Collect all unique tokenIds from the rebalance chain plus the current
  * position.  Returned as a Set of stringified ids.
@@ -33,7 +35,6 @@ function collectTokenIds(position, rebalanceEvents) {
  * @returns {Promise<{allNftEvents: Map<string, object>, maxBlock: number}>}
  */
 async function fetchAllNftEvents(ids, fromBlock) {
-  const { scanNftEvents } = require("./compounder");
   const allNftEvents = new Map();
   let maxBlock = fromBlock;
   for (const tid of ids) {

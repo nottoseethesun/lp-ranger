@@ -25,6 +25,7 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const { ERC20_ABI } = require("./rebalancer-pools");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 
@@ -262,7 +263,7 @@ async function computeWalletResidualUsd(deps, result, token0, token1) {
   try {
     const tracker = deps._residualTracker;
     if (!tracker || !result?.poolAddress) return 0;
-    const ethersLib = deps._ethersLib || require("ethers");
+    const ethersLib = deps._ethersLib || ethers;
     const signerAddr = await deps.signer.getAddress();
     const t0 = new ethersLib.Contract(token0, ERC20_ABI, deps.provider);
     const t1 = new ethersLib.Contract(token1, ERC20_ABI, deps.provider);

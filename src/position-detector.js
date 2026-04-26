@@ -21,8 +21,8 @@
  *
  * 4. If all probes return nothing, `{ type: 'unknown' }` is returned.
  *
- * In a browser environment ethers is expected on `window.ethers`.
- * In a Node.js test environment it is `require`d.
+ * `ethers` is required at top-of-file; tests can inject a stub via
+ * `global.ethers` (see `_resolveEthers`).
  *
  * @example
  * const positions = await enumerateNftPositions(provider, {
@@ -32,7 +32,6 @@
  * // NftPosition[] — may contain 0–300 entries
  */
 
-/* global ethers */
 "use strict";
 
 /** Maximum NFT positions to scan per wallet (matches position-store MAX). */
@@ -81,6 +80,7 @@ const MAX_NFT_SCAN = 300;
 
 // ── ABI fragments ─────────────────────────────────────────────────────────────
 
+const ethers = require("ethers");
 const { PM_ABI: NFT_ENUM_ABI } = require("./pm-abi");
 
 const ERC20_PROBE_ABI = [
@@ -94,16 +94,12 @@ const ERC20_PROBE_ABI = [
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /**
- * Resolve the `ethers` library from browser global or Node.js require.
- * @returns {object|null}
+ * Resolve the active `ethers` library — defers to `global.ethers` when set
+ * (test stub-injection seam), otherwise the module-level top-of-file require.
+ * @returns {object}
  */
 function _resolveEthers() {
-  if (typeof ethers !== "undefined") return ethers;
-  try {
-    return require("ethers");
-  } catch (_) {
-    return null;
-  }
+  return global.ethers || ethers;
 }
 
 /**
@@ -256,10 +252,8 @@ async function _probeErc20(
  * @returns {Promise<NftPosition[]>}
  */
 async function enumerateNftPositions(provider, input, opts) {
+  if (!input.positionManagerAddress || !input.walletAddress) return [];
   const ethersLib = _resolveEthers();
-  if (!ethersLib || !input.positionManagerAddress || !input.walletAddress)
-    return [];
-
   try {
     const contract = new ethersLib.Contract(
       input.positionManagerAddress,
@@ -287,15 +281,6 @@ async function enumerateNftPositions(provider, input, opts) {
  */
 async function detectPositionType(provider, input, opts) {
   const ethersLib = _resolveEthers();
-  if (!ethersLib) {
-    return {
-      type: "unknown",
-      nftPositions: null,
-      erc20Positions: null,
-      error: "ethers.js not available",
-    };
-  }
-
   // 1 — Single-ID probe (explicit tokenId supplied)
   if (input.tokenId && input.positionManagerAddress) {
     const contract = new ethersLib.Contract(
@@ -380,7 +365,6 @@ async function refreshLpPositionLiquidity(
   tokenIds,
 ) {
   const ethersLib = _resolveEthers();
-  if (!ethersLib) return new Map();
   const contract = new ethersLib.Contract(
     positionManagerAddress,
     NFT_ENUM_ABI,

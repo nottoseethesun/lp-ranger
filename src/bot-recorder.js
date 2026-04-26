@@ -31,6 +31,9 @@ const {
   estimateGasCostUsd: _estimateGasCostUsd,
   actualGasCostUsd: _actualGasCostUsd,
 } = require("./bot-pnl-updater");
+const { classifyCompounds } = require("./compounder");
+const { computeLifetimeHodl } = require("./lifetime-hodl");
+const { computeAndCacheHodl, computeDepositUsd } = require("./bot-hodl-scan");
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -283,8 +286,7 @@ async function _scanAndReconstruct(
 async function _applyCompoundGas(totalGasWei, pnlTracker) {
   if (!totalGasWei || totalGasWei === 0n) return;
   if (!pnlTracker || pnlTracker.epochCount() === 0) return;
-  const { actualGasCostUsd } = require("./bot-pnl-updater");
-  const gasUsd = await actualGasCostUsd(totalGasWei);
+  const gasUsd = await _actualGasCostUsd(totalGasWei);
   const gasNative = Number(totalGasWei) / 1e18;
   if (gasUsd > 0) pnlTracker.addGas(gasUsd, gasNative);
 }
@@ -297,7 +299,6 @@ async function _classifyAllCompounds(
   updateState,
   pnlTracker,
 ) {
-  const { classifyCompounds } = require("./compounder");
   const allCompounds = [];
   let totalUsd = 0;
   let totalCompoundGasWei = 0n;
@@ -357,7 +358,6 @@ async function _scanLifetimePoolData(
   const hasCompounds = gc?.length > 0;
   if (hasCompounds && cachedHodl) return;
   try {
-    const { computeLifetimeHodl } = require("./lifetime-hodl");
     const cachedFromBlock = epochKey
       ? _epochCache.getLastNftScanBlock(epochKey)
       : 0;
@@ -394,7 +394,6 @@ async function _scanLifetimePoolData(
         pnlTracker,
       );
     if (!cachedHodl) {
-      const { computeAndCacheHodl } = require("./bot-hodl-scan");
       const hodl = await computeAndCacheHodl(
         computeLifetimeHodl,
         allNftEvents,
@@ -409,7 +408,6 @@ async function _scanLifetimePoolData(
     } else {
       botState.lifetimeHodlAmounts = cachedHodl;
     }
-    const { computeDepositUsd } = require("./bot-hodl-scan");
     await computeDepositUsd(botState, updateState, position, opts, epochKey);
     if (epochKey && maxBlock > fromBlock)
       _epochCache.setLastNftScanBlock(epochKey, maxBlock);

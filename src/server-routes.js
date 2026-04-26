@@ -7,6 +7,7 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const config = require("./config");
 const {
   saveEncryptedKey,
@@ -30,6 +31,7 @@ const {
   POSITION_KEYS,
 } = require("./bot-config-v2");
 // position-detector used via server-scan.js
+const { createScanHandlers } = require("./server-scan");
 const { createAutoStartManagedPositions } = require("./server-auto-start");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
@@ -190,7 +192,7 @@ function createRouteHandlers(deps) {
   // Scan handlers delegated to server-scan.js
   let _globalScanStatus = "idle";
   let _globalScanProgress = null;
-  const scanHandlers = require("./server-scan").createScanHandlers({
+  const scanHandlers = createScanHandlers({
     walletManager,
     jsonResponse,
     readJsonBody,
@@ -228,8 +230,7 @@ function createRouteHandlers(deps) {
       emojiId(String(body.tokenId)),
     );
     try {
-      const eth = require("ethers");
-      const prov = new eth.JsonRpcProvider(config.RPC_URL);
+      const prov = new ethers.JsonRpcProvider(config.RPC_URL);
       body.walletAddress =
         body.walletAddress || walletManager.getAddress() || "";
       body.contractAddress = body.contractAddress || config.POSITION_MANAGER;
@@ -238,7 +239,7 @@ function createRouteHandlers(deps) {
         200,
         await computeQuickDetails(
           prov,
-          eth,
+          ethers,
           body,
           diskConfig,
           privateKeyRef.current,
@@ -303,12 +304,16 @@ function createRouteHandlers(deps) {
           break;
         }
       }
-      const eth = require("ethers");
-      const prov = new eth.JsonRpcProvider(config.RPC_URL);
+      const prov = new ethers.JsonRpcProvider(config.RPC_URL);
       body.walletAddress =
         body.walletAddress || walletManager.getAddress() || "";
       body.contractAddress = body.contractAddress || config.POSITION_MANAGER;
-      const result = await computeLifetimeDetails(prov, eth, body, diskConfig);
+      const result = await computeLifetimeDetails(
+        prov,
+        ethers,
+        body,
+        diskConfig,
+      );
       await _recomputeGasUsd(result);
       // Mark scan complete in the position's server state so the poll
       // cycle reports it — same path as managed positions.  This is the

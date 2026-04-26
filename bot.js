@@ -19,11 +19,14 @@
 const { installColorLogger } = require("./src/logger");
 installColorLogger();
 
+const cliHelp = require("./src/cli-help");
+
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  require("./src/cli-help")("bot");
+  cliHelp("bot");
   process.exit(0);
 }
 
+const ethers = require("ethers");
 const config = require("./src/config");
 const { resolvePrivateKey, startBotLoop } = require("./src/bot-loop");
 const { createRebalanceLock } = require("./src/rebalance-lock");
@@ -73,7 +76,6 @@ async function main() {
   });
   /*- App-wide shared signer: every bot-loop below must sign through the
    *  same NonceManager so per-position counters cannot drift. */
-  const ethers = require("ethers");
   const shared = await positionMgr.getSharedSigner({
     privateKey,
     ethersLib: ethers,

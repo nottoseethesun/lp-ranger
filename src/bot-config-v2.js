@@ -27,6 +27,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { getAddress } = require("ethers");
 
 /** Default directory that holds the runtime bot config file. */
 const APP_CONFIG_DIR = path.join(process.cwd(), "app-config");
@@ -75,7 +76,6 @@ const POSITION_KEYS = [
  * @returns {string}
  */
 function compositeKey(blockchain, wallet, contract, tokenId) {
-  const { getAddress } = require("ethers");
   const w = wallet && wallet.startsWith("0x") ? getAddress(wallet) : wallet;
   const c =
     contract && contract.startsWith("0x") ? getAddress(contract) : contract;

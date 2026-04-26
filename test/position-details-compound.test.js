@@ -5,40 +5,17 @@
 
 "use strict";
 
-const { describe, it, before, after } = require("node:test");
+const { describe, it } = require("node:test");
 const assert = require("assert");
-const Module = require("module");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { _scanCompounds } = require("../src/position-details");
 
 describe("_scanCompounds", () => {
-  let _scanCompounds;
-  let _mockResult = { totalCompoundedUsd: 0 };
-  const _origRequire = Module.prototype.require;
   const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-shared-"));
 
-  before(() => {
-    // Intercept require("./compounder") to return a mock
-    Module.prototype.require = function (id) {
-      if (id === "./compounder") {
-        return {
-          detectCompoundsOnChain: async () => _mockResult,
-        };
-      }
-      return _origRequire.apply(this, arguments);
-    };
-    // Clear cached module so it picks up our mock
-    delete require.cache[require.resolve("../src/position-details")];
-    ({ _scanCompounds } = require("../src/position-details"));
-  });
-
-  after(() => {
-    Module.prototype.require = _origRequire;
-  });
-
   it("returns 0 when no compounds detected", async () => {
-    _mockResult = { totalCompoundedUsd: 0 };
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test-"));
     const cfg = { global: {}, positions: {} };
     const result = await _scanCompounds(
@@ -50,13 +27,13 @@ describe("_scanCompounds", () => {
       cfg,
       "test-key",
       dir,
+      async () => ({ totalCompoundedUsd: 0 }),
     );
     assert.strictEqual(result, 0);
     fs.rmSync(dir, { recursive: true });
   });
 
   it("returns total and updates in-memory config when compounds found", async () => {
-    _mockResult = { totalCompoundedUsd: 5.5 };
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test2-"));
     const cfg = { global: {}, positions: {} };
     const result = await _scanCompounds(
@@ -68,6 +45,7 @@ describe("_scanCompounds", () => {
       cfg,
       "test-key",
       dir,
+      async () => ({ totalCompoundedUsd: 5.5 }),
     );
     assert.ok(result > 0, "should return compound total");
     // Mock returns 5.5 per NFT, 2 NFTs scanned (199, 200) = 11
@@ -77,17 +55,6 @@ describe("_scanCompounds", () => {
 
   it("collects NFT IDs from events and position", async () => {
     const scannedIds = [];
-    Module.prototype.require = function (id) {
-      if (id === "./compounder") {
-        return {
-          detectCompoundsOnChain: async (tid) => {
-            scannedIds.push(tid);
-            return { totalCompoundedUsd: 0 };
-          },
-        };
-      }
-      return _origRequire.apply(this, arguments);
-    };
     const cfg = { global: {}, positions: {} };
     await _scanCompounds(
       { tokenId: "300", token0: "0xA", token1: "0xB", fee: 3000 },
@@ -101,6 +68,10 @@ describe("_scanCompounds", () => {
       cfg,
       "test-key",
       _tmpDir,
+      async (tid) => {
+        scannedIds.push(tid);
+        return { totalCompoundedUsd: 0 };
+      },
     );
     // Should scan all unique IDs: 298, 299, 300
     assert.ok(scannedIds.includes("298"));
@@ -109,16 +80,6 @@ describe("_scanCompounds", () => {
   });
 
   it("returns 0 on error", async () => {
-    Module.prototype.require = function (id) {
-      if (id === "./compounder") {
-        return {
-          detectCompoundsOnChain: async () => {
-            throw new Error("RPC fail");
-          },
-        };
-      }
-      return _origRequire.apply(this, arguments);
-    };
     const cfg = { global: {}, positions: {} };
     const result = await _scanCompounds(
       { tokenId: "400", token0: "0xA", token1: "0xB", fee: 3000 },
@@ -129,6 +90,9 @@ describe("_scanCompounds", () => {
       cfg,
       "test-key",
       _tmpDir,
+      async () => {
+        throw new Error("RPC fail");
+      },
     );
     assert.strictEqual(result, 0);
   });

@@ -15,6 +15,7 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const {
@@ -24,6 +25,12 @@ const {
 
 /** ~5 years of PulseChain blocks (10s block time). */
 const FIVE_YEAR_BLOCKS = 15_800_000;
+
+/*- Cached at module load: parsing PM logs is stateless, so a single Interface
+    instance can serve every call.  Built from whichever ethers binding is in
+    scope when this file is first required (tests patch Module.prototype.require
+    to inject a stub before loading). */
+const _IFACE = new ethers.Interface(PM_ABI);
 
 /**
  * Search on-chain for the last occurrence of an event for a tokenId.
@@ -41,21 +48,19 @@ async function findLastEventOnChain(
   fromBlock = 0,
 ) {
   try {
-    const ethers = require("ethers");
-    const iface = new ethers.Interface(PM_ABI);
     const tid = BigInt(tokenId);
     const logs = await provider.getLogs({
       address: config.POSITION_MANAGER,
       fromBlock,
       toBlock: "latest",
       topics: [
-        iface.getEvent(eventName).topicHash,
+        _IFACE.getEvent(eventName).topicHash,
         "0x" + tid.toString(16).padStart(64, "0"),
       ],
     });
     if (!logs.length) return null;
     const last = logs[logs.length - 1];
-    const parsed = iface.parseLog({
+    const parsed = _IFACE.parseLog({
       topics: last.topics,
       data: last.data,
     });

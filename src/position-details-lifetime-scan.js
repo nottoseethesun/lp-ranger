@@ -10,6 +10,7 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const config = require("./config");
 const {
   setCachedLifetimeHodl,
@@ -17,6 +18,8 @@ const {
   getCachedFreshDeposits,
 } = require("./epoch-cache");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
+const { scanNftEvents } = require("./compounder");
+const { computeLifetimeHodl } = require("./lifetime-hodl");
 
 /** Resolve the NFT-scan lower bound; 0 when the pool address is unknown. */
 async function _resolveScanFromBlock(prov, ethers, poolAddress) {
@@ -63,14 +66,11 @@ async function scanLifetimeHodl(
   poolAddress,
   poolCacheKey,
 ) {
-  const { scanNftEvents } = require("./compounder");
-  const { computeLifetimeHodl } = require("./lifetime-hodl");
   const ids = new Set([String(body.tokenId)]);
   for (const ev of events || []) {
     if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
     if (ev.newTokenId) ids.add(String(ev.newTokenId));
   }
-  const ethers = require("ethers");
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   /*- Bound NFT-event scans to the pool's creation block on first run.
       Same pool for every NFT in the chain, so resolve once. */

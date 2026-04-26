@@ -16,15 +16,13 @@
 
 "use strict";
 
-// Load .env if present; silently skip in production where env vars are
-// injected by the platform.
-try {
-  require("dotenv").config();
-} catch (_) {
-  // dotenv not installed or .env absent — rely on process.env as-is
-}
-
+const dotenv = require("dotenv");
 const CHAINS = require("../app-config/static-tunables/chains.json");
+
+/*- Load .env if present; dotenv.config() returns `{ error }` (without
+    throwing) when no file exists, so production environments where env
+    vars are injected by the platform fall back to process.env as-is. */
+dotenv.config();
 
 /**
  * Parse a positive integer from a string, returning `fallback` on failure.

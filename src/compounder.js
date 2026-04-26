@@ -14,6 +14,7 @@
 
 "use strict";
 
+const ethers = require("ethers");
 const { emojiId } = require("./logger");
 
 const config = require("./config");
@@ -42,6 +43,10 @@ const {
   _waitOrSpeedUp,
   _ensureAllowance,
 } = require("./rebalancer-pools");
+
+/*- Cached at module load: parsing PM logs is stateless, so a single Interface
+    instance can serve every call in scanNftEvents/classifyCompounds. */
+const _IFACE = new ethers.Interface(PM_ABI);
 
 /**
  * Collect unclaimed fees from a position to the wallet.
@@ -406,8 +411,6 @@ async function _fetchCompoundGas(prov, compoundEvents) {
  * @returns {Promise<{ilEvents: object[], collectEvents: object[], dlEvents: object[], ilLogsCount: number}>}
  */
 async function scanNftEvents(tokenId, scanOpts = {}) {
-  const ethers = require("ethers");
-  const iface = new ethers.Interface(PM_ABI);
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const addr = config.POSITION_MANAGER;
@@ -418,7 +421,7 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
         address: addr,
         fromBlock: from,
         toBlock: "latest",
-        topics: [iface.getEvent("IncreaseLiquidity").topicHash, tidHex],
+        topics: [_IFACE.getEvent("IncreaseLiquidity").topicHash, tidHex],
       })
       .catch(() => []),
     prov
@@ -426,7 +429,7 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
         address: addr,
         fromBlock: from,
         toBlock: "latest",
-        topics: [iface.getEvent("Collect").topicHash, tidHex],
+        topics: [_IFACE.getEvent("Collect").topicHash, tidHex],
       })
       .catch(() => []),
     prov
@@ -434,14 +437,14 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
         address: addr,
         fromBlock: from,
         toBlock: "latest",
-        topics: [iface.getEvent("DecreaseLiquidity").topicHash, tidHex],
+        topics: [_IFACE.getEvent("DecreaseLiquidity").topicHash, tidHex],
       })
       .catch(() => []),
   ]);
   return {
-    ilEvents: _parseLogs(iface, ilLogs),
-    collectEvents: _parseLogs(iface, colLogs),
-    dlEvents: _parseLogs(iface, dlLogs),
+    ilEvents: _parseLogs(_IFACE, ilLogs),
+    collectEvents: _parseLogs(_IFACE, colLogs),
+    dlEvents: _parseLogs(_IFACE, dlLogs),
     ilLogsCount: ilLogs.length,
   };
 }
@@ -455,7 +458,6 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
  * @returns {Promise<{compounds: object[], totalCompoundedUsd: number, totalGasWei: string}>}
  */
 async function classifyCompounds(nftEvents, opts = {}) {
-  const ethers = require("ethers");
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   const { ilEvents, collectEvents, dlEvents, ilLogsCount } = nftEvents;
   const candidateILs = ilEvents.slice(1); // skip first = mint

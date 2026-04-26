@@ -20,6 +20,7 @@ const js = require("@eslint/js");
 const globals = require("globals");
 const prettierConfig = require("eslint-config-prettier");
 const securityPlugin = require("eslint-plugin-security");
+const nPlugin = require("eslint-plugin-n");
 
 /** Shared quality rules applied to all linted files. */
 const SHARED_RULES = {
@@ -128,6 +129,7 @@ module.exports = [
         },
       },
       security: securityPlugin,
+      n: nPlugin,
     },
     languageOptions: {
       ecmaVersion: 2022,
@@ -156,6 +158,9 @@ module.exports = [
         },
       ],
       "9mm/no-interpolated-innerhtml": "error",
+      // Forbid lazy `require()` inside functions / blocks. Top-of-file
+      // `require()` only — see project_esm_migration memory for rationale.
+      "n/global-require": "error",
       // Security rules registered off — enforced by security lint only.
       // Registered here so per-line disable directives are recognized.
       "9mm/no-secret-logging": "off",

@@ -29,6 +29,7 @@
 
 const APP_CONFIG = require("./config.json");
 const runtimeFlags = require("./runtime-flags");
+const walletManager = require("./wallet-manager");
 
 const {
   parsePositiveInt,
@@ -169,7 +170,6 @@ const AGGREGATOR_API_KEY =
  * @throws {Error} If any required field is absent.
  */
 function assertLiveModeReady() {
-  const walletManager = require("./wallet-manager");
   const missing = [];
   if (!PRIVATE_KEY && !walletManager.hasWallet()) {
     missing.push(
