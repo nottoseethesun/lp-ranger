@@ -694,6 +694,48 @@ export const PARAM_HELP = {
     ],
   },
 
+  // ── Fees Compounded (Lifetime) ─────────────────────────────────────────
+
+  ltCompounded: {
+    title: "Fees Compounded (Subtracted)",
+    subtitle: "Trading fees that were re-deposited as liquidity",
+    sections: [
+      {
+        heading: "What it includes",
+        body:
+          "<strong>Both</strong> kinds of fee re-deposits across this " +
+          "pool&rsquo;s lifetime:<br>" +
+          "&bull; <strong>Standalone compounds</strong> &mdash; auto- and " +
+          "manual-compound transactions that collected fees and " +
+          "re-deposited them via increaseLiquidity (no new NFT, no swap, " +
+          "no range change).<br>" +
+          "&bull; <strong>Rebalance-time compounds</strong> &mdash; when a " +
+          "position is drained for a rebalance, the collect call extracts " +
+          "(drained principal + accumulated fees) together. The fees " +
+          "portion is then re-deposited into the new NFT as part of the " +
+          "mint.",
+      },
+      {
+        heading: "How it&rsquo;s calculated",
+        body:
+          "Lifetime fees compounded = total Collect amounts &minus; total " +
+          "Decrease-Liquidity (drain) principal across every NFT in the " +
+          "rebalance chain. The difference is exactly the fees that were " +
+          "re-invested, regardless of whether the re-deposit happened via " +
+          "a standalone compound or as part of a rebalance.",
+      },
+      {
+        heading: "Why it&rsquo;s subtracted",
+        body:
+          "Compounded fees are already reflected in the Current Value of " +
+          "your position (they were re-deposited as liquidity). Subtracting " +
+          "them from Net P&amp;L avoids double-counting: once in " +
+          "&ldquo;Lifetime Fees&rdquo; and again in the price-change of " +
+          "the position whose value now includes those compounded fees.",
+      },
+    ],
+  },
+
   // ── P&L Inputs ─────────────────────────────────────────────────────────
 
   curDepositInput: {
