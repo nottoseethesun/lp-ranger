@@ -127,6 +127,31 @@ describe("formatCompoundEntry", () => {
     assert.equal(entry.when, undefined);
   });
 
+  it("prefers event.tokenId over position.tokenId (rebalance chain)", () => {
+    /*-
+     *  Regression: historical compound rows in the Activity Log used
+     *  the active position's tokenId, so a compound that occurred on a
+     *  now-drained NFT showed up labeled with the current NFT id.  The
+     *  formatter now prefers ev.tokenId when present so each row
+     *  reflects the NFT the compound actually executed on.
+     */
+    const st = {
+      lastCompoundAt: "2026-04-26T10:00:00.000Z",
+      compoundHistory: [
+        {
+          timestamp: "2026-04-26T10:00:00.000Z",
+          usdValue: 1.23,
+          trigger: "auto",
+          txHash: "0xrebal",
+          tokenId: 158126,
+        },
+      ],
+      position: { tokenId: 159124 },
+    };
+    const entry = formatCompoundEntry(st, "", null);
+    assert.match(entry.detail, /^NFT #158126/);
+  });
+
   it("emits the entry the first time lastCompoundAt is seen (prevSeen=null)", () => {
     const st = {
       lastCompoundAt: "2026-04-26T10:00:00.000Z",

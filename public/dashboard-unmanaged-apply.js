@@ -133,17 +133,18 @@ export function _applyLifetime(d) {
   );
   const ltDep = g("lifetimeDepositDisplay");
   if (ltDep && d.entryValue > 0) ltDep.textContent = _fmtUsd(d.entryValue);
-  if (d.ltFees !== undefined) {
+  if (d.ltPriceChange !== undefined) {
     /*- Server returns `residualValueUsd` (capped to wallet balance) in
      *  the quick-details payload; use it directly so unmanaged lifetime
-     *  breakdown matches the managed flow. */
+     *  breakdown matches the managed flow.  New shape: Fees Compounded
+     *  retains its row + dedicated info dialog; "Lifetime Fees" was
+     *  dropped (per-epoch tracker sum was imprecise). */
     updateNetBreakdown(
-      d.ltFees || 0,
       d.ltPriceChange || 0,
       0,
-      d.ltCompounded || 0,
       d.ltGas || 0,
       d.residualValueUsd || 0,
+      d.ltCompounded || 0,
     );
   }
   _applyLifetimeDates(d);

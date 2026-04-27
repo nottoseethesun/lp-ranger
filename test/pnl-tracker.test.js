@@ -141,7 +141,14 @@ describe("createPnlTracker — P&L math", () => {
     assert.ok(snap.cumulativePnl > 5, "cumulative should include live fees");
   });
 
-  it("totalFees accumulates across epochs", () => {
+  /*- `snap.totalFees` and `snap.netReturn` were dropped from pnl-tracker:
+   *  the per-epoch fee sum missed fees folded into rebalances (HEX/eHEX
+   *  was off by $100+).  Lifetime fee earnings now derive from
+   *  `totalCompoundedUsd` (Σ(Collect)−Σ(DL) on-chain) plus
+   *  `currentFeesUsd` (live unclaimed reading) — both written by
+   *  bot-pnl-updater.overridePnlWithRealValues onto the snapshot.  The
+   *  per-epoch e.fees/e.feePnl fields stay (used by daily P&L). */
+  it("per-epoch fees accumulate (e.fees stays even though totalFees was dropped)", () => {
     const tracker = createPnlTracker({ initialDeposit: 1000 });
 
     tracker.openEpoch({
@@ -162,28 +169,22 @@ describe("createPnlTracker — P&L math", () => {
     tracker.updateLiveEpoch({ currentPrice: 1, feesAccrued: 7 });
 
     const snap = tracker.snapshot(1);
+    const sumPer =
+      snap.closedEpochs.reduce((s, e) => s + e.fees, 0) +
+      (snap.liveEpoch?.fees ?? 0);
     assert.ok(
-      Math.abs(snap.totalFees - 12) < 0.01,
-      `expected totalFees ≈ 12, got ${snap.totalFees}`,
+      Math.abs(sumPer - 12) < 0.01,
+      `expected per-epoch fee sum ≈ 12, got ${sumPer}`,
     );
-  });
-
-  it("netReturn = totalFees − totalIL − totalGas", () => {
-    const tracker = createPnlTracker({ initialDeposit: 1000 });
-    tracker.openEpoch({
-      entryValue: 1000,
-      entryPrice: 1,
-      lowerPrice: 0.8,
-      upperPrice: 1.2,
-    });
-    tracker.updateLiveEpoch({ currentPrice: 1, feesAccrued: 20 });
-    tracker.closeEpoch({ exitValue: 1000, gasCost: 2 });
-
-    const snap = tracker.snapshot(1);
-    assert.ok(
-      Math.abs(
-        snap.netReturn - (snap.totalFees - snap.totalIL - snap.totalGas),
-      ) < 0.001,
+    assert.strictEqual(
+      snap.totalFees,
+      undefined,
+      "totalFees should no longer be on the snapshot",
+    );
+    assert.strictEqual(
+      snap.netReturn,
+      undefined,
+      "netReturn is written by bot-pnl-updater, not the tracker",
     );
   });
 
@@ -260,7 +261,7 @@ describe("createPnlTracker — epoch colours", () => {
 // ── P&L breakdown: price-change vs fees ──────────────────────────────────
 
 describe("createPnlTracker — P&L breakdown", () => {
-  it("snapshot includes priceChangePnl and feePnl", () => {
+  it("snapshot includes priceChangePnl (feePnl was dropped)", () => {
     const tracker = createPnlTracker({ initialDeposit: 1000 });
     tracker.openEpoch({
       entryValue: 1000,
@@ -273,7 +274,7 @@ describe("createPnlTracker — P&L breakdown", () => {
 
     const snap = tracker.snapshot();
     assert.ok("priceChangePnl" in snap, "should have priceChangePnl");
-    assert.ok("feePnl" in snap, "should have feePnl");
+    assert.ok(!("feePnl" in snap), "feePnl removed (use per-epoch e.feePnl)");
   });
 
   it("priceChangePnl reflects value change excluding fees", () => {
@@ -294,7 +295,7 @@ describe("createPnlTracker — P&L breakdown", () => {
     assert.strictEqual(ep.feePnl, 20);
   });
 
-  it("feePnl equals totalFees in snapshot", () => {
+  it("per-epoch e.feePnl is preserved on closed epochs", () => {
     const tracker = createPnlTracker({ initialDeposit: 1000 });
     tracker.openEpoch({
       entryValue: 1000,
@@ -306,8 +307,7 @@ describe("createPnlTracker — P&L breakdown", () => {
     tracker.closeEpoch({ exitValue: 1025, gasCost: 0 });
 
     const snap = tracker.snapshot();
-    assert.strictEqual(snap.feePnl, snap.totalFees);
-    assert.strictEqual(snap.feePnl, 25);
+    assert.strictEqual(snap.closedEpochs[0].feePnl, 25);
   });
 
   it("live epoch tracks priceChangePnl on update", () => {
@@ -353,7 +353,9 @@ describe("createPnlTracker — P&L breakdown", () => {
 
     const snap = tracker.snapshot();
     assert.strictEqual(snap.priceChangePnl, 10 + -25);
-    assert.strictEqual(snap.feePnl, 15); // 10 + 5
+    /*- feePnl/totalFees were dropped — sum per-epoch fees instead. */
+    const sumFees = snap.closedEpochs.reduce((s, e) => s + e.fees, 0);
+    assert.strictEqual(sumFees, 15); // 10 + 5
   });
 
   it("records historical token prices on epoch", () => {

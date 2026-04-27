@@ -283,6 +283,16 @@ async function executeCompound(signer, ethersLib, opts) {
   const usdValue =
     (Number(deposited.amount0Deposited) / 10 ** d0) * (opts.price0 || 0) +
     (Number(deposited.amount1Deposited) / 10 ** d1) * (opts.price1 || 0);
+  /*-
+   *  USD value of the full Collect — typically larger than usdValue
+   *  because increaseLiquidity requires tokens in the current tick's
+   *  exact ratio, so one side usually has leftover that stays in the
+   *  wallet as residual (tracked by residual-tracker.js).  Surfaced so
+   *  the compound log can show users both numbers.
+   */
+  const collectedUsd =
+    (Number(collected.amount0) / 10 ** d0) * (opts.price0 || 0) +
+    (Number(collected.amount1) / 10 ** d1) * (opts.price1 || 0);
 
   const totalGasWei = collected.gasCostWei + deposited.gasCostWei;
 
@@ -295,6 +305,7 @@ async function executeCompound(signer, ethersLib, opts) {
     amount1Deposited: String(deposited.amount1Deposited),
     liquidity: String(deposited.liquidity),
     usdValue,
+    collectedUsd,
     price0: opts.price0,
     price1: opts.price1,
     gasCostWei: String(totalGasWei),

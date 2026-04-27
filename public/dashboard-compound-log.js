@@ -31,7 +31,14 @@ export function formatCompoundEntry(st, ctx, prevSeen) {
   const when = ev.timestamp ? new Date(ev.timestamp) : undefined;
   const trigger = ev.trigger === "manual" ? "Manual" : "Auto";
   const usd = Number.isFinite(ev.usdValue) ? ev.usdValue : 0;
-  const tokenId = st.position?.tokenId ?? "?";
+  /*-
+   *  Prefer the event's own tokenId so historical compounds — including
+   *  those that occurred on a now-drained NFT earlier in the rebalance
+   *  chain — show the correct NFT label.  Falling back to the active
+   *  position would render every historical row with the current
+   *  tokenId, even when the row's compound happened on a different NFT.
+   */
+  const tokenId = ev.tokenId ?? st.position?.tokenId ?? "?";
   const detail =
     "NFT #" +
     tokenId +

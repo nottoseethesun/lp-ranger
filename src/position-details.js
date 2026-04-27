@@ -155,12 +155,18 @@ async function _getLifetimeSnapshot(
 
 /** Extract lifetime data from a tracker snapshot (or fall back to current-epoch data). */
 function _extractSnap(snap, cur, feesUsd) {
-  const ltFees = snap ? snap.totalFees + feesUsd : feesUsd;
+  /*- Lifetime fee earnings model: lifetimeCompounded + currentFees.  The
+   *  caller resolves `lifetimeCompounded` separately via the on-chain
+   *  scan (see _resolveCompounded); here we just expose `currentFees`
+   *  (= feesUsd, the live unclaimed reading) and let _lifetimePnl fold
+   *  in compounded later.  The old `snap.totalFees` per-epoch sum is
+   *  gone — it missed fees folded into rebalances. */
+  const currentFees = feesUsd;
   const ltGas = snap ? snap.totalGas : 0;
   const ltPc = snap ? snap.priceChangePnl : cur.priceGainLoss;
   const il = snap?.lifetimeIL ?? snap?.totalIL ?? cur.il;
   return {
-    ltFees,
+    currentFees,
     ltGas,
     ltPc,
     il,
@@ -170,20 +176,33 @@ function _extractSnap(snap, cur, feesUsd) {
 }
 
 /** Compute lifetime P&L from tracker snapshot. */
-function _lifetimePnl(tracker, ps, entryValue, cur, feesUsd, currentValue) {
+function _lifetimePnl(
+  tracker,
+  ps,
+  entryValue,
+  cur,
+  feesUsd,
+  currentValue,
+  ltCompounded,
+) {
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
   const s = _extractSnap(snap, cur, feesUsd);
   // Price change = current position value − initial deposit.
   // NOT the epoch-chain cumulative (which leaks value through residuals).
   const ltPc = entryValue > 0 ? currentValue - entryValue : s.ltPc || 0;
+  const comp = ltCompounded || 0;
+  /*- Fee earnings = currentFees + lifetimeCompounded.  Both are real
+   *  earnings; compounded is already swept back into liquidity, current
+   *  is unclaimed and will be compounded next. */
+  const feeEarnings = s.currentFees + comp;
   return {
-    ltNetPnl: entryValue > 0 ? ltPc + s.ltFees - s.ltGas : null,
-    ltFees: s.ltFees,
+    ltNetPnl: entryValue > 0 ? ltPc + feeEarnings - s.ltGas : null,
+    ltCurrentFees: s.currentFees,
     ltGas: s.ltGas,
     ltPriceChange: ltPc,
     ltProfit:
       s.il !== null && s.il !== undefined
-        ? s.ltFees - s.ltGas + s.il
+        ? feeEarnings - s.ltGas + s.il
         : cur.profit,
     firstEpochDate: s.firstEpochDate,
     rebalanceCount: s.rebalanceCount,
@@ -337,6 +356,16 @@ async function _enrichSnap(
   snap.totalCompoundedUsd = ltComp;
   snap.currentCompoundedUsd = 0;
   snap.initialDeposit = entry;
+  /*- Mirror bot-pnl-updater._applyResiduals: the unmanaged path computes
+   *  residuals via _walletResiduals → _currentPnl, but they were never
+   *  copied to the snap.  Without these the Lifetime panel's "Wallet
+   *  Residual (Pool)" row reads $0 even when wallet balances are
+   *  non-zero. */
+  snap.residualValueUsd = cur.residualValueUsd || 0;
+  snap.residualUsd0 = cur.residualUsd0 || 0;
+  snap.residualUsd1 = cur.residualUsd1 || 0;
+  snap.residualAmount0 = cur.residualAmount0 || 0;
+  snap.residualAmount1 = cur.residualAmount1 || 0;
   const depResult = await _computeDepositUsd(pos, ps);
   snap.totalLifetimeDeposit = depResult.total;
   snap.depositUsedFallback = depResult.usedFallback;
@@ -415,7 +444,28 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ps.poolAddress,
   );
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
-  const lt = _lifetimePnl(tracker, ps, entryValue, cur, feesUsd, cur.value);
+  /*- Resolve lifetime compounded BEFORE _lifetimePnl so the new fee-
+   *  earnings model (currentFees + lifetimeCompounded) has both inputs
+   *  on hand.  No extra cost — _resolveCompounded reads from cached
+   *  posConfig first and only scans events when missing. */
+  const ltCompounded = await _resolveCompounded(
+    position,
+    events,
+    body,
+    ps,
+    { price0, price1 },
+    diskConfig,
+    posKey,
+  );
+  const lt = _lifetimePnl(
+    tracker,
+    ps,
+    entryValue,
+    cur,
+    feesUsd,
+    cur.value,
+    ltCompounded,
+  );
   console.log(
     "[details] lifetime tokenId=%s epochs=%d baseline=%s cur.il=%s lt.il=%s",
     body.tokenId,
@@ -429,15 +479,6 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     "[details] Lifetime P&L for #%s done (%dms)",
     body.tokenId,
     Date.now() - _ltT0,
-  );
-  const ltCompounded = await _resolveCompounded(
-    position,
-    events,
-    body,
-    ps,
-    { price0, price1 },
-    diskConfig,
-    posKey,
   );
   // Compute lifetime HODL from chain events (same as managed path)
   const _posWithMeta = {
@@ -469,6 +510,11 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     price0,
     price1,
   );
+  /*- The managed bot path sets `currentFeesUsd` via
+   *  bot-pnl-updater.overridePnlWithRealValues; the unmanaged details
+   *  path needs the same field so _syncLifetimeState and the dashboard
+   *  Lifetime panel see live unclaimed fees (not undefined). */
+  if (snap) snap.currentFeesUsd = feesUsd;
   return {
     totalGasNative: snap?.totalGasNative || 0,
     ok: true,

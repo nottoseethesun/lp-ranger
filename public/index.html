@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777305124315">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777305124315">
+<link rel="stylesheet" href="style.css?v=1777320703274">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777320703274">
 </head>
 <body>
 
@@ -740,8 +740,7 @@
     <div class="kpi-label 9mm-pos-mgr-panel-title">Lifetime</div>
     <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="ltNetPnlInfo" title="Show P&amp;L breakdown details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div>
     <div class="9mm-pos-mgr-pnl-breakdown" id="kpiNetBreakdown">
-      <div class="9mm-pos-mgr-pnl-row"><span>Lifetime Fees</span><span id="ltBdFees" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
-      <div class="9mm-pos-mgr-pnl-row"><span>Fees Compounded (subtracted) <span class="9mm-pos-mgr-il-info-btn" data-param-help="ltCompounded" title="Learn how Fees Compounded is calculated">i</span></span><span id="ltBdCompounded" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
+      <div class="9mm-pos-mgr-pnl-row"><span>Fees Compounded <span class="9mm-pos-mgr-il-info-btn" data-param-help="ltCompounded" title="Learn about Fees Compounded">i</span></span><span id="ltBdCompounded" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
       <div class="9mm-pos-mgr-pnl-row"><span>Gas</span><span id="ltBdGas" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
       <div class="9mm-pos-mgr-pnl-row"><span>Price Change</span><span id="ltBdPriceChange" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
       <div class="9mm-pos-mgr-pnl-row"><span>Wallet Residual (Pool) <span class="9mm-pos-mgr-il-info-btn" data-param-help="ltResidual" title="Learn about wallet residuals">i</span></span><span id="ltBdResidual" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
@@ -751,7 +750,7 @@
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Profit</div>
     <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="ltProfit"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" data-param-help="ltProfit" title="Show Profit breakdown details">i</span></span></div>
-    <div class="kpi-sub">Lifetime Fees &minus; Fees Compounded &minus; Gas +/&minus; IL/G</div>
+    <div class="kpi-sub">Current Fees + Fees Compounded &minus; Gas +/&minus; IL/G</div>
     <hr class="9mm-pos-mgr-kpi-divider">
     <div class="kpi-label">Impermanent Loss/Gain</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="netIL"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="ltILInfo" title="Click to show IL/G calculation details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="netILPct"></span><span class="9mm-pos-mgr-kpi-pct" id="netILApr"></span></div><div class="kpi-sub">Lifetime LP Value vs Holding Tokens</div>
     <div class="realized-gains-row" id="initialDepositRow">
@@ -1184,11 +1183,34 @@
   </table>
 </template>
 
+<template id="tplPnlBreakdownTableLt">
+  <table class="9mm-pos-mgr-pnl-breakdown-table">
+    <tbody>
+      <tr><td>Current Fees (unclaimed)</td><td data-tpl="currentFees"></td></tr>
+      <tr><td>Fees Compounded</td><td data-tpl="compounded"></td></tr>
+      <tr><td>Gas Costs</td><td data-tpl="gas"></td></tr>
+      <tr><td>Price Change</td><td data-tpl="priceChange"></td></tr>
+      <tr><td>Wallet Residual (Pool)</td><td data-tpl="residual"></td></tr>
+      <tr><td>Realized Gains</td><td data-tpl="realized"></td></tr>
+      <tr class="9mm-pos-mgr-pnl-breakdown-total"><td><strong>Net P&amp;L</strong></td><td><strong data-tpl="total"></strong></td></tr>
+    </tbody>
+  </table>
+</template>
+
 <template id="tplPnlBreakdownExplanation">
   <h4 class="9mm-pos-mgr-help-heading">Price Change</h4>
   <p><strong>Price Change</strong> = Current Value (<span data-tpl="currentValue"></span>) &minus; <span data-tpl="depositLabel"></span> (<span data-tpl="deposit"></span>) = <span data-tpl="priceChange"></span>. This captures both token price appreciation and impermanent loss together. If the tokens in your pool changed in price since you deposited, this figure reflects that net effect on your position&rsquo;s value.</p>
   <h4 class="9mm-pos-mgr-help-heading">Profit</h4>
   <p><strong>Profit</strong> is a separate metric shown below: <span data-tpl="feesLabel"></span> &minus; Fees Compounded &minus; Gas +/&minus; IL/G. It excludes Price Change but includes Impermanent Loss/Gain explicitly, showing how the position performed as a fee-earning instrument independent of token price movements.</p>
+</template>
+
+<template id="tplPnlBreakdownExplanationLt">
+  <h4 class="9mm-pos-mgr-help-heading">Price Change</h4>
+  <p><strong>Price Change</strong> = Current Value (<span data-tpl="currentValue"></span>) &minus; <span data-tpl="depositLabel"></span> (<span data-tpl="deposit"></span>) = <span data-tpl="priceChange"></span>. This captures both token price appreciation and impermanent loss together.</p>
+  <h4 class="9mm-pos-mgr-help-heading">Fees</h4>
+  <p><strong>Fees Compounded</strong> (<span data-tpl="compounded"></span>) is shown above &mdash; click its <strong>i</strong> button for details. <strong>Current Fees</strong> (currently-unclaimed) is intentionally omitted from the Lifetime breakdown for simplicity; see the Current panel for that figure. Both are added to the Net total.</p>
+  <h4 class="9mm-pos-mgr-help-heading">Profit</h4>
+  <p><strong>Profit</strong> is a separate metric shown below: Current Fees + Fees Compounded &minus; Gas +/&minus; IL/G.</p>
 </template>
 
 <template id="tplPnlBreakdownDaysNote">
@@ -1288,6 +1310,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777305124315"></script>
+<script src="dist/bundle.js?v=1777320703274"></script>
 </body>
 </html>

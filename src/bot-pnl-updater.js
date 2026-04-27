@@ -188,15 +188,6 @@ function _currentEpochCompounded(snap, deps) {
   return sum;
 }
 
-function _computeLifetimeFees(snap, deps, feesUsd) {
-  const cf = snap.totalFees - (snap.liveEpoch?.fees ?? 0);
-  // Compounded fees are both collected AND re-deposited. For live compounds,
-  // _collectedFeesUsd already includes them. For historical compounds detected
-  // on-chain, only totalCompoundedUsd is set. Use the larger of the two.
-  const compounded = deps._botState?.totalCompoundedUsd || 0;
-  const collected = Math.max(deps._collectedFeesUsd || 0, compounded);
-  return Math.max(collected, cf) + feesUsd;
-}
 /** Compute HODL IL for a given pair of token amounts. */
 function _ilFor(realValue, a0, a1, price0, price1) {
   return a0 > 0 || a1 > 0
@@ -277,10 +268,15 @@ async function overridePnlWithRealValues(
 ) {
   const realValue = positionValueUsd(position, poolState, price0, price1);
   const rUsd = residuals?.usd || 0;
-  const lifetimeFees = _computeLifetimeFees(snap, deps, feesUsd);
   _applyResiduals(snap, residuals, rUsd);
   snap.currentValue = realValue;
-  snap.totalFees = lifetimeFees;
+  /*- New lifetime-fee model: expose `currentFeesUsd` (live unclaimed)
+   *  and `totalCompoundedUsd` (historical Σ(Collect)−Σ(DL) scan) as
+   *  the two fee fields.  Old `snap.totalFees` per-epoch sum is gone
+   *  — it missed fees folded into rebalances (HEX/eHEX was off by
+   *  $100+, ~1/3 of correct value).  Consumers add the two fields
+   *  for the lifetime fee-earnings figure. */
+  snap.currentFeesUsd = feesUsd;
   const entryVal = snap.liveEpoch
     ? snap.liveEpoch.entryValue
     : snap.initialDeposit;
@@ -306,10 +302,13 @@ async function overridePnlWithRealValues(
   }
   // currentValue is LP-only; residuals tracked separately
   snap.priceChangePnl = snap.currentValue - entryVal;
-  snap.cumulativePnl =
-    snap.priceChangePnl + lifetimeFees - snap.totalGas - compounded;
-  snap.netReturn =
-    lifetimeFees - snap.totalGas + snap.priceChangePnl - compounded;
+  /*- cumulativePnl / netReturn (lifetime totals): fold fee earnings as
+   *  compounded + currentFees (additive — both are real earnings,
+   *  compounded is already swept back into liquidity).  No subtraction
+   *  term for compounded: it's part of the fee figure, not a discount. */
+  const feeEarnings = compounded + feesUsd;
+  snap.cumulativePnl = snap.priceChangePnl + feeEarnings - snap.totalGas;
+  snap.netReturn = feeEarnings - snap.totalGas + snap.priceChangePnl;
   _computeIL(snap, deps, realValue, price0, price1);
   if (deps._botState?.totalLifetimeDepositUsd > 0) {
     snap.totalLifetimeDeposit = deps._botState.totalLifetimeDepositUsd;

@@ -417,8 +417,10 @@ describe("compounder", () => {
         0,
       );
       assert.equal(snap.totalCompoundedUsd, 3);
-      // netReturn should subtract compounded
+      /*- netReturn = (compounded + currentFees) - gas + priceChange.
+       *  Compounded is folded into fee earnings, not subtracted. */
       assert.ok(snap.netReturn !== undefined);
+      assert.equal(snap.currentFeesUsd, 5);
     });
   });
 

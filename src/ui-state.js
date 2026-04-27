@@ -215,9 +215,15 @@ function setEl(id, text, className) {
  * @param {number} daysRunning
  */
 function applyKpis(snap, throttleState, canReb, daysRunning) {
+  /*- Lifetime fee earnings = currentFeesUsd + totalCompoundedUsd.  Old
+   *  `snap.totalFees` per-epoch sum is gone (missed fees folded into
+   *  rebalances). */
+  const feeEarnings =
+    (snap.currentFeesUsd ?? snap.liveEpoch?.fees ?? 0) +
+    (snap.totalCompoundedUsd ?? 0);
   const pct =
     daysRunning > 0
-      ? (snap.totalFees / snap.initialDeposit) * (365 / daysRunning) * 100
+      ? (feeEarnings / snap.initialDeposit) * (365 / daysRunning) * 100
       : 0;
 
   setEl(
@@ -231,7 +237,12 @@ function applyKpis(snap, throttleState, canReb, daysRunning) {
   );
   setEl("kpiValue", formatUsd(snap.currentValue));
   setEl("kpiDeposit", `deposited: ${formatUsd(snap.initialDeposit)}`);
-  setEl("kpiFees", `+${formatUsd(snap.totalFees)}`);
+  /*- "Fees Earned" KPI shows currently-unclaimed only — that's the
+   *  Current panel value; the Lifetime side adds compounded separately. */
+  setEl(
+    "kpiFees",
+    `+${formatUsd(snap.currentFeesUsd ?? snap.liveEpoch?.fees ?? 0)}`,
+  );
   setEl("kpiApr", `APR: ${pct.toFixed(1)}%`);
   setEl("kpiIL", `-${formatUsd(snap.totalIL)}`);
   setEl(
@@ -255,11 +266,11 @@ function applyKpis(snap, throttleState, canReb, daysRunning) {
     `kpi-value ${canReb.allowed ? "pos" : throttleState.doublingActive ? "dbl" : "wrn"}`,
   );
 
-  setEl(
-    "kpiNet",
-    formatPnl(snap.netReturn),
-    `kpi-value ${signClass(snap.netReturn)}`,
-  );
+  /*- netReturn is computed by bot-pnl-updater.overridePnlWithRealValues
+   *  and writes onto snap; fall back to cumulativePnl if a caller passes
+   *  a raw pnl-tracker snapshot that hasn't been enriched yet. */
+  const netVal = snap.netReturn ?? snap.cumulativePnl;
+  setEl("kpiNet", formatPnl(netVal), `kpi-value ${signClass(netVal)}`);
 }
 
 /**

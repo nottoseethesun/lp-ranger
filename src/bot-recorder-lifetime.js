@@ -68,13 +68,19 @@ async function _classifyAllCompounds(
   const standaloneUsd = allCompounds.reduce((s, c) => s + _eventUsd(c), 0);
   const rebalanceUsd = Math.max(0, totalUsd - standaloneUsd);
   console.log(
-    "[bot] Lifetime compound scan: %d NFTs | standalone (auto/manual): %d events $%s | rebalance-driven re-deposits: $%s | combined: $%s",
+    "[bot] Lifetime compound scan: %d NFTs across rebalance chain",
     ids.size,
+  );
+  console.log(
+    "[bot]   standalone (auto/manual): %d events totaling $%s",
     allCompounds.length,
     standaloneUsd.toFixed(2),
-    rebalanceUsd.toFixed(2),
-    totalUsd.toFixed(2),
   );
+  console.log(
+    "[bot]   rebalance-driven re-deposits: $%s",
+    rebalanceUsd.toFixed(2),
+  );
+  console.log("[bot]   combined lifetime compounded: $%s", totalUsd.toFixed(2));
   /*-
    *  Persist totalCompoundedUsd whenever it's > 0 even if there are no
    *  standalone compound events — a position that only ever rebalanced
