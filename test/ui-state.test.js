@@ -256,10 +256,13 @@ describe("positionTypeMeta", () => {
 describe("DOM functions (no-DOM smoke tests)", () => {
   const SNAP = {
     cumulativePnl: 100,
-    totalFees: 50,
+    /*- New lifetime-fee model: currentFeesUsd (live unclaimed) +
+     *  totalCompoundedUsd (historical scan).  The dropped `totalFees`
+     *  per-epoch sum was missing fees folded into rebalances. */
+    currentFeesUsd: 5,
+    totalCompoundedUsd: 45,
     totalIL: 5,
     totalGas: 3,
-    netReturn: 42,
     currentValue: 2100,
     initialDeposit: 2000,
     closedEpochs: [{}],

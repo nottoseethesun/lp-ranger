@@ -37,7 +37,7 @@
  *                     token0UsdPrice: 0.00042, token1UsdPrice: 1.0 });
  * tracker.updateLiveEpoch({ currentPrice: 0.00044, feesAccrued: 0.12 });
  * const snap = tracker.snapshot();
- * console.log(snap.priceChangePnl, snap.feePnl);
+ * console.log(snap.priceChangePnl, snap.liveEpoch?.fees);
  */
 
 "use strict";
@@ -102,11 +102,8 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number}     liveEpochPnl       P&L of the current open epoch (0 if none).
  * @property {number}     cumulativePnl      Sum of all closed + live epoch P&L.
  * @property {number}     priceChangePnl     Total P&L from token price changes (across all epochs).
- * @property {number}     feePnl             Total P&L from trading fees earned (across all epochs).
- * @property {number}     totalFees          Fees across all epochs (alias for feePnl).
  * @property {number}     totalIL            IL across all epochs.
  * @property {number}     totalGas           Gas across all epochs.
- * @property {number}     netReturn          totalFees − totalIL − totalGas.
  * @property {number}     initialDeposit     Original deposit value.
  * @property {number}     currentValue       Live current position value.
  * @property {DailyPnl[]} dailyPnl           Per-day P&L breakdown (up to 31 days).
@@ -269,8 +266,6 @@ function createPnlTracker(opts = {}) {
     const closedPnl = closedEpochs.reduce((s, e) => s + e.epochPnl, 0);
     const livePnl = currentPrice !== null ? _computeLivePnl(currentPrice) : 0;
 
-    const totalFees =
-      closedEpochs.reduce((s, e) => s + e.fees, 0) + (liveEpoch?.fees ?? 0);
     const totalIL =
       closedEpochs.reduce((s, e) => s + e.il, 0) + (liveEpoch?.il ?? 0);
     const totalGas =
@@ -279,14 +274,20 @@ function createPnlTracker(opts = {}) {
       closedEpochs.reduce((s, e) => s + (e.gasNative ?? 0), 0) +
       (liveEpoch?.gasNative ?? 0);
 
-    // ── P&L breakdown: price-change vs fees ──────────────────────────────────
+    // ── P&L breakdown: price-change ──────────────────────────────────────────
+    /*- Per-epoch fees are still summed by daily P&L and by the per-epoch
+     *  e.fees / e.feePnl fields.  But there's no aggregate `totalFees`
+     *  on the snapshot anymore: it was the bot-uptime per-epoch sum and
+     *  missed fees folded into rebalances.  Lifetime fee earnings now
+     *  come from `totalCompoundedUsd` (Σ(Collect)−Σ(DL) on-chain) plus
+     *  `currentFeesUsd` (live unclaimed reading) — both written by
+     *  bot-pnl-updater.overridePnlWithRealValues. */
     const closedPriceChange = closedEpochs.reduce(
       (s, e) => s + (e.priceChangePnl ?? 0),
       0,
     );
     const livePriceChange = liveEpoch?.priceChangePnl ?? 0;
     const priceChangePnl = closedPriceChange + livePriceChange;
-    const feePnl = totalFees;
 
     // ── Per-day P&L (up to 31 days) ──────────────────────────────────────────
     const dailyPnl = _buildDailyPnl(closedEpochs, liveEpoch, fromDate);
@@ -309,12 +310,9 @@ function createPnlTracker(opts = {}) {
       liveEpochPnl: livePnl,
       cumulativePnl: closedPnl + livePnl,
       priceChangePnl,
-      feePnl,
-      totalFees,
       totalIL,
       totalGas,
       totalGasNative,
-      netReturn: totalFees - totalIL - totalGas,
       initialDeposit,
       dailyPnl,
       firstEpochDateUtc,

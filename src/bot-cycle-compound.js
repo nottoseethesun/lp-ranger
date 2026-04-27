@@ -81,9 +81,32 @@ async function recordCompound(deps, result) {
     emit({ pnlEpochs: tracker.serialize() });
   }
   if (deps._addCollectedFees) deps._addCollectedFees(result.usdValue);
+  /*-
+   *  Show both numbers so users can see the residual: collected = full
+   *  Collect output; reinvested = what fit the current tick ratio and
+   *  was actually re-deposited.  The remainder stays in the wallet as
+   *  residual (tracked by residual-tracker.js) and is NOT counted as
+   *  compounded.  "lifetime" is the cumulative totalCompoundedUsd
+   *  across all NFTs in this rebalance chain (per-pool, not per-NFT).
+   */
+  const collectedUsd = result.collectedUsd ?? result.usdValue;
+  const residualUsd = Math.max(0, collectedUsd - result.usdValue);
+  const trig = result.trigger === "manual" ? "manual" : "auto";
+  console.log("[bot] Compound source: standalone %s Compound op", trig);
   console.log(
-    "[bot] Compound complete: $%s reinvested, gas $%s (total: $%s)",
+    "[bot]   Method: collect fees + increaseLiquidity on the same NFT",
+  );
+  console.log(
+    "[bot]   Reinvested portion is added to lifetime compounded total",
+  );
+  console.log(
+    "[bot] Compound complete: collected $%s reinvested $%s residual $%s",
+    collectedUsd.toFixed(2),
     result.usdValue.toFixed(2),
+    residualUsd.toFixed(2),
+  );
+  console.log(
+    "[bot]   gas $%s | lifetime compounded $%s",
     gasCostUsd.toFixed(4),
     total.toFixed(2),
   );

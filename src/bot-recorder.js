@@ -19,11 +19,7 @@ const { clearLpPositionCache } = require("./lp-position-cache");
 const _epochCache = require("./epoch-cache");
 const { buildUpdatePatch } = require("./bot-recorder-patch");
 const {
-  resolvePoolCreationBlockForPosition,
-} = require("./pool-creation-block");
-const {
   collectTokenIds: _collectTokenIds,
-  fetchAllNftEvents: _fetchAllNftEvents,
 } = require("./bot-recorder-scan-helpers");
 const {
   toFloat: _toFloat,
@@ -31,9 +27,7 @@ const {
   estimateGasCostUsd: _estimateGasCostUsd,
   actualGasCostUsd: _actualGasCostUsd,
 } = require("./bot-pnl-updater");
-const { classifyCompounds } = require("./compounder");
-const { computeLifetimeHodl } = require("./lifetime-hodl");
-const { computeAndCacheHodl, computeDepositUsd } = require("./bot-hodl-scan");
+const { _scanLifetimePoolData } = require("./bot-recorder-lifetime");
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -76,6 +70,31 @@ function appendLog(result) {
   fs.writeFileSync(logPath, JSON.stringify(entries, _bigIntReplacer, 2));
 }
 
+/**
+ * After an epoch close, credit unclaimed fees that were re-deposited via
+ * the rebalance flow (drain → swap → mint).  These were already in the
+ * NFT and would otherwise be invisible to `totalCompoundedUsd` (only
+ * standalone compounds bump it via bot-cycle-compound).  See the Lifetime
+ * "Fees Compounded" info dialog for the user-facing explanation.
+ */
+function _bumpRebalanceFees(deps) {
+  if (!deps._addCollectedFees || !deps._lastUnclaimedFeesUsd) return;
+  const rebalanceFeesUsd = deps._lastUnclaimedFeesUsd;
+  deps._addCollectedFees(rebalanceFeesUsd);
+  const gc = deps._getConfig;
+  const prevCompounded =
+    (gc && gc("totalCompoundedUsd")) || deps._botState?.totalCompoundedUsd || 0;
+  const newCompounded = prevCompounded + rebalanceFeesUsd;
+  if (deps.updateBotState)
+    deps.updateBotState({ totalCompoundedUsd: newCompounded });
+  console.log(
+    "[bot] Rebalance compound: $%s fees re-deposited (lifetime $%s)",
+    rebalanceFeesUsd.toFixed(2),
+    newCompounded.toFixed(2),
+  );
+  deps._lastUnclaimedFeesUsd = 0;
+}
+
 /** Close the current P&L epoch after a rebalance and open a new one. */
 async function _closePnlEpoch(deps, result) {
   const tracker = deps._pnlTracker;
@@ -112,10 +131,7 @@ async function _closePnlEpoch(deps, result) {
     });
     if (deps.updateBotState)
       deps.updateBotState({ pnlEpochs: tracker.serialize() });
-    if (deps._addCollectedFees && deps._lastUnclaimedFeesUsd) {
-      deps._addCollectedFees(deps._lastUnclaimedFeesUsd);
-      deps._lastUnclaimedFeesUsd = 0;
-    }
+    _bumpRebalanceFees(deps);
     const entryVal =
       result.entryValueUsd ||
       _toFloat(result.amount0Minted, rd0) * price0 +
@@ -282,140 +298,6 @@ async function _scanAndReconstruct(
   });
 }
 
-/** Add historical compound gas to the P&L tracker if available. */
-async function _applyCompoundGas(totalGasWei, pnlTracker) {
-  if (!totalGasWei || totalGasWei === 0n) return;
-  if (!pnlTracker || pnlTracker.epochCount() === 0) return;
-  const gasUsd = await _actualGasCostUsd(totalGasWei);
-  const gasNative = Number(totalGasWei) / 1e18;
-  if (gasUsd > 0) pnlTracker.addGas(gasUsd, gasNative);
-}
-
-/** Classify compounds across all NFTs and persist results. */
-async function _classifyAllCompounds(
-  ids,
-  allNftEvents,
-  opts,
-  updateState,
-  pnlTracker,
-) {
-  const allCompounds = [];
-  let totalUsd = 0;
-  let totalCompoundGasWei = 0n;
-  for (const tid of ids) {
-    const r = await classifyCompounds(allNftEvents.get(tid), {
-      ...opts,
-      tokenId: tid,
-    });
-    for (const c of r.compounds) allCompounds.push({ ...c, tokenId: tid });
-    totalUsd += r.totalCompoundedUsd;
-    totalCompoundGasWei += BigInt(r.totalGasWei || "0");
-  }
-  console.log(
-    "[bot] Lifetime compound scan: %d NFTs, %d compounds, $%s",
-    ids.size,
-    allCompounds.length,
-    totalUsd.toFixed(2),
-  );
-  if (allCompounds.length > 0) {
-    const history = allCompounds.map((c) => ({
-      /*- Block timestamp + tx hash come from _fetchCompoundGas in
-          src/compounder.js.  Both can still be null if the receipt or
-          block fetch failed — consumers must tolerate null. */
-      timestamp: c.timestamp || null,
-      txHash: c.txHash || null,
-      tokenId: c.tokenId,
-      amount0Deposited: c.amount0Deposited,
-      amount1Deposited: c.amount1Deposited,
-      usdValue: totalUsd / allCompounds.length,
-      trigger: "historical",
-    }));
-    updateState({ compoundHistory: history, totalCompoundedUsd: totalUsd });
-    await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
-  }
-}
-
-/**
- * Unified lifetime pool scan: fetch NFT events once per tokenId, then run
- * both compound classification and lifetime HODL accumulation.
- * Incremental: reads lastNftScanBlock from epoch cache, scans only new blocks.
- */
-async function _scanLifetimePoolData(
-  position,
-  botState,
-  updateState,
-  rebalanceEvents,
-  walletAddress,
-  pnlTracker,
-  epochKey,
-) {
-  const cachedHodl = epochKey
-    ? _epochCache.getCachedLifetimeHodl(epochKey)
-    : null;
-  const gc = botState._getConfig
-    ? botState._getConfig("compoundHistory")
-    : undefined;
-  const hasCompounds = gc?.length > 0;
-  if (hasCompounds && cachedHodl) return;
-  try {
-    const cachedFromBlock = epochKey
-      ? _epochCache.getLastNftScanBlock(epochKey)
-      : 0;
-    /*- First-run lower bound: pool creation block.  Avoids replaying every
-        chain block back to genesis when the epoch cache has nothing yet. */
-    const fromBlock =
-      cachedFromBlock > 0
-        ? cachedFromBlock
-        : await resolvePoolCreationBlockForPosition({
-            factoryAddress: config.FACTORY,
-            position,
-          });
-    const prices = await _fetchTokenPrices(
-      position.token0,
-      position.token1,
-    ).catch(() => ({ price0: 0, price1: 0 }));
-    const opts = {
-      decimals0: position.decimals0,
-      decimals1: position.decimals1,
-      price0: prices.price0,
-      price1: prices.price1,
-      token0Symbol: position.token0Symbol || "Token0",
-      token1Symbol: position.token1Symbol || "Token1",
-      wallet: walletAddress,
-    };
-    const ids = _collectTokenIds(position, rebalanceEvents);
-    const { allNftEvents, maxBlock } = await _fetchAllNftEvents(ids, fromBlock);
-    if (!hasCompounds)
-      await _classifyAllCompounds(
-        ids,
-        allNftEvents,
-        opts,
-        updateState,
-        pnlTracker,
-      );
-    if (!cachedHodl) {
-      const hodl = await computeAndCacheHodl(
-        computeLifetimeHodl,
-        allNftEvents,
-        rebalanceEvents,
-        position,
-        opts,
-        walletAddress,
-        epochKey,
-      );
-      botState.lifetimeHodlAmounts = hodl;
-      updateState({ lifetimeHodlAmounts: hodl });
-    } else {
-      botState.lifetimeHodlAmounts = cachedHodl;
-    }
-    await computeDepositUsd(botState, updateState, position, opts, epochKey);
-    if (epochKey && maxBlock > fromBlock)
-      _epochCache.setLastNftScanBlock(epochKey, maxBlock);
-  } catch (err) {
-    console.warn("[bot] Lifetime pool scan failed:", err.message);
-  }
-}
-
 /** Record residual delta and persist. */
 function _recordResidual(deps, result) {
   if (!deps._residualTracker || !result.poolAddress) return;
@@ -570,5 +452,4 @@ module.exports = {
   _applyRebalanceResult,
   _collectTokenIds,
   _pushRebalanceEvent,
-  _applyCompoundGas,
 };

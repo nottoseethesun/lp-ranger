@@ -36,9 +36,13 @@ export function getPoolFirstDate() {
   return _poolFirstDate;
 }
 
-/** Cached P&L breakdowns for the info dialogs. */
+/** Cached P&L breakdowns for the info dialogs.
+ *  `currentFees` is the live unclaimed-fee figure (snap.currentFeesUsd);
+ *  `compounded` is the historical lifetime-compounded total.  Both are
+ *  surfaced additively in the new Net P&L math (no more "Lifetime Fees"
+ *  row that mixed the two with the imprecise per-epoch tracker total). */
 const _ltBreakdown = {
-  fees: 0,
+  currentFees: 0,
   compounded: 0,
   gas: 0,
   priceChange: 0,
@@ -301,8 +305,14 @@ export function _priceChangePnl(d, deposit) {
 export function _resolveKpiTotals(d) {
   const ltRealized = loadRealizedGains(),
     curRealized = loadCurRealized();
-  const ltFees = d.pnlSnapshot ? d.pnlSnapshot.totalFees || 0 : 0;
+  /*- New lifetime-fee model: `lifetimeCompounded + currentFees`.  The old
+   *  `snap.totalFees` was the per-epoch tracker sum which only saw
+   *  bot-uptime fees and missed fees folded into rebalances — for
+   *  HEX/eHEX it was off by $100+, only ~1/3 of the on-chain figure.
+   *  The historical Σ(Collect)−Σ(DL) scan + currently-unclaimed reading
+   *  gives us the precise total. */
   const curFees = d.pnlSnapshot?.liveEpoch?.fees || 0;
+  const ltCurrentFees = d.pnlSnapshot?.currentFeesUsd ?? curFees;
   const curDep = _resolveCurDeposit(d);
   const ltDep = _resolveLifetimeDeposit(d);
   const curPc = _priceChangePnl(d, curDep),
@@ -320,11 +330,16 @@ export function _resolveKpiTotals(d) {
   const ltResidual = d.pnlSnapshot?.residualValueUsd || 0;
   return {
     curTotal: curPc + curFees + curRealized - curCompounded,
-    ltTotal: ltPc + ltFees + ltRealized - compounded - ltGas + ltResidual,
+    /*- Lifetime total folds in fee earnings additively: compounded fees
+     *  (already realized, swept back into liquidity) plus currently
+     *  unclaimed fees (will be compounded next).  No subtraction term
+     *  for compounded — it IS the fee earnings figure. */
+    ltTotal:
+      ltPc + compounded + ltCurrentFees + ltRealized - ltGas + ltResidual,
     curDep,
     ltDep,
     curRealized,
-    ltFees,
+    ltCurrentFees,
     ltRealized,
     ltPriceChange: ltPc,
     ltResidual,
@@ -363,7 +378,7 @@ export function _updateLifetimeKpis(d) {
     d,
     t.ltTotal,
     t.ltDep,
-    t.ltFees,
+    t.ltCurrentFees,
     t.ltPriceChange,
     t.ltRealized,
     t.ltResidual,
@@ -389,7 +404,7 @@ export function _updateKpis(d) {
       d,
       t.ltTotal,
       t.ltDep,
-      t.ltFees,
+      t.ltCurrentFees,
       t.ltPriceChange,
       t.ltRealized,
       t.ltResidual,
@@ -460,7 +475,7 @@ export function _updateNetReturn(
   d,
   total,
   ltDeposit,
-  ltFees,
+  ltCurrentFees,
   ltPriceChange,
   ltRealized,
   ltResidual,
@@ -487,19 +502,12 @@ export function _updateNetReturn(
     const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
     const ltGas2 = d.pnlSnapshot?.totalGas || 0;
     const resid = ltResidual || 0;
-    _updateNetBreakdown(
-      ltFees,
-      ltPriceChange,
-      ltRealized,
-      ltCompounded,
-      ltGas2,
-      resid,
-    );
+    _updateNetBreakdown(ltPriceChange, ltRealized, ltGas2, resid, ltCompounded);
     _setLtCurrentValue(d);
     // currentValue is LP-only; residuals are tracked separately.
     const cv = d.pnlSnapshot.currentValue || 0;
     Object.assign(_ltBreakdown, {
-      fees: ltFees,
+      currentFees: ltCurrentFees,
       compounded: ltCompounded,
       gas: ltGas2,
       priceChange: ltPriceChange,
@@ -512,7 +520,17 @@ export function _updateNetReturn(
   }
   const il = _updateIL(d, ltDeposit);
   const ltComp = d.pnlSnapshot?.totalCompoundedUsd || 0;
-  _setProfitKpi("ltProfit", ltFees, d.pnlSnapshot?.totalGas || 0, il, ltComp);
+  /*- Profit = Current Fees + Fees Compounded − Gas +/− IL/G.  Pass the
+   *  fee earnings (currentFees + compounded) as the additive term and
+   *  zero for "compounded subtraction" — _setProfitKpi's signature
+   *  predates this model and still has a subtraction slot. */
+  _setProfitKpi(
+    "ltProfit",
+    ltCurrentFees + ltComp,
+    d.pnlSnapshot?.totalGas || 0,
+    il,
+    0,
+  );
 }
 function _setLtCurrentValue(d) {
   const el = g("ltCurrentValue");

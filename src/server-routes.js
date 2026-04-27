@@ -273,9 +273,9 @@ function createRouteHandlers(deps) {
     if (!states.has(pk)) states.set(pk, s);
     const _sn = s.pnlSnapshot;
     console.log(
-      "[server] _syncLifetimeState %s: fees=%s gas=%s comp=%s entry=%s bl=%s",
+      "[server] _syncLifetimeState %s: curFees=%s gas=%s comp=%s entry=%s bl=%s",
       pk.split("-").pop(),
-      _sn?.totalFees,
+      _sn?.currentFeesUsd,
       _sn?.totalGas,
       _sn?.totalCompoundedUsd,
       s.entryValue || "none",

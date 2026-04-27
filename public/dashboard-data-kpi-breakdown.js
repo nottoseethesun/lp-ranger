@@ -1,21 +1,24 @@
 /**
  * @file dashboard-data-kpi-breakdown.js
- * @description Populates the six pre-declared rows in the Lifetime Net
- *   P&L breakdown table (kpiNetBreakdown): Lifetime Fees, Fees
- *   Compounded, Gas, Price Change, Wallet Residual, Realized Gains.
+ * @description Populates the pre-declared rows in the Lifetime Net P&L
+ *   breakdown table (kpiNetBreakdown): Fees Compounded, Gas, Price
+ *   Change, Wallet Residual, Realized Gains.
  *
- *   The rows are authored statically in index.html with stable IDs —
- *   this module only writes textContent per the KISS + no-HTML-in-JS
- *   rules.  Extracted from dashboard-data-kpi.js to keep that file
- *   under the 500-line ESLint limit.
+ *   The old aggregate "Lifetime Fees" row was removed (per-epoch tracker
+ *   sum was imprecise — missed fees folded into rebalances).  Current
+ *   Fees is intentionally not surfaced as its own Lifetime row for
+ *   simplicity; the Current panel exposes that figure.  Fees Compounded
+ *   keeps its row + dedicated info dialog because it's a major lifetime
+ *   component.  Rows are authored statically in index.html with stable
+ *   IDs — this module only writes textContent per the KISS +
+ *   no-HTML-in-JS rules.
  */
 
 import { g } from "./dashboard-helpers.js";
 import { _fmtUsd } from "./dashboard-fmt-usd.js";
 
-/** IDs of the six breakdown rows — exported so reset paths can clear them. */
+/** IDs of the breakdown rows — exported so reset paths can clear them. */
 export const LT_BD_IDS = [
-  "ltBdFees",
   "ltBdCompounded",
   "ltBdGas",
   "ltBdPriceChange",
@@ -50,9 +53,9 @@ function _setRow(id, val) {
 }
 
 /**
- * Write a row whose value is always subtracted from the total (compounded
- * fees, gas).  Raw value is stored positive but is shown with a leading
- * minus sign and red colour so the breakdown reads as a true summation.
+ * Write a row whose value is always subtracted from the total (gas).
+ * Raw value is stored positive but is shown with a leading minus sign
+ * and red colour so the breakdown reads as a true summation.
  */
 function _setSubtracted(id, val) {
   const el = g(id);
@@ -66,24 +69,21 @@ function _setSubtracted(id, val) {
 }
 
 /**
- * Populate the six breakdown rows.
- * @param {number} fees        Lifetime fees earned (USD).
+ * Populate the breakdown rows.
  * @param {number} priceChange Lifetime price change (currentValue − deposit).
  * @param {number} realized    User-entered realized gains (USD).
- * @param {number} compounded  Lifetime compounded fees (USD, subtracted).
  * @param {number} gas         Lifetime gas spent (USD, subtracted).
  * @param {number} residual    Wallet residual (pool tokens held, USD).
+ * @param {number} compounded  Lifetime fees compounded back into liquidity (USD).
  */
 export function updateNetBreakdown(
-  fees,
   priceChange,
   realized,
-  compounded,
   gas,
   residual,
+  compounded,
 ) {
-  _setRow("ltBdFees", fees);
-  _setSubtracted("ltBdCompounded", compounded);
+  _setRow("ltBdCompounded", compounded);
   _setSubtracted("ltBdGas", gas);
   _setRow("ltBdPriceChange", priceChange);
   _setRow("ltBdResidual", residual);

@@ -152,6 +152,80 @@ describe("_closePnlEpoch", () => {
     assert.strictEqual(deps._lastUnclaimedFeesUsd, 0);
   });
 
+  it("bumps totalCompoundedUsd by rebalance-time fees", async () => {
+    _mockGasCost = 0;
+    _mockPrices = { price0: 1, price1: 1 };
+    const tracker = createPnlTracker({ initialDeposit: 100 });
+    tracker.openEpoch({
+      entryValue: 100,
+      entryPrice: 1,
+      lowerPrice: 0.5,
+      upperPrice: 1.5,
+    });
+    const patches = [];
+    const deps = {
+      _pnlTracker: tracker,
+      position: { token0: "0xA", token1: "0xB" },
+      _addCollectedFees: () => {},
+      _lastUnclaimedFeesUsd: 4.25,
+      _botState: { totalCompoundedUsd: 10 },
+      updateBotState: (p) => patches.push(p),
+    };
+    const result = {
+      token0UsdPrice: 1,
+      token1UsdPrice: 1,
+      exitValueUsd: 100,
+      amount0Minted: 0n,
+      amount1Minted: 0n,
+      currentPrice: 1,
+      newTickLower: -100,
+      newTickUpper: 100,
+    };
+    await _closePnlEpoch(deps, result);
+    const compPatch = patches.find((p) => "totalCompoundedUsd" in p);
+    assert.ok(compPatch, "should emit a totalCompoundedUsd patch");
+    assert.strictEqual(compPatch.totalCompoundedUsd, 14.25);
+    assert.strictEqual(deps._lastUnclaimedFeesUsd, 0);
+  });
+
+  it("does not bump totalCompoundedUsd when no unclaimed fees", async () => {
+    _mockGasCost = 0;
+    _mockPrices = { price0: 1, price1: 1 };
+    const tracker = createPnlTracker({ initialDeposit: 100 });
+    tracker.openEpoch({
+      entryValue: 100,
+      entryPrice: 1,
+      lowerPrice: 0.5,
+      upperPrice: 1.5,
+    });
+    const patches = [];
+    const deps = {
+      _pnlTracker: tracker,
+      position: { token0: "0xA", token1: "0xB" },
+      _addCollectedFees: () => {},
+      _lastUnclaimedFeesUsd: 0,
+      _botState: { totalCompoundedUsd: 10 },
+      updateBotState: (p) => patches.push(p),
+    };
+    const result = {
+      token0UsdPrice: 1,
+      token1UsdPrice: 1,
+      exitValueUsd: 100,
+      amount0Minted: 0n,
+      amount1Minted: 0n,
+      currentPrice: 1,
+      newTickLower: -100,
+      newTickUpper: 100,
+    };
+    await _closePnlEpoch(deps, result);
+    const compPatch = patches.find((p) => "totalCompoundedUsd" in p);
+    assert.strictEqual(
+      compPatch,
+      undefined,
+      "should not emit a totalCompoundedUsd patch",
+    );
+  });
+
   it("handles error gracefully", async () => {
     _mockPrices = { price0: 1, price1: 1 };
     const tracker = createPnlTracker({ initialDeposit: 100 });

@@ -675,21 +675,84 @@ export const PARAM_HELP = {
       {
         heading: "Formula",
         body:
-          "Profit = Lifetime Fees &minus; Fees Compounded &minus; Gas " +
+          "Profit = Current Fees + Fees Compounded &minus; Gas " +
           "+/&minus; Impermanent Loss/Gain (IL/G).<br><br>" +
-          "Lifetime Fees includes fees earned across all NFT positions in " +
-          "the rebalance chain. Fees Compounded are subtracted to avoid " +
-          "double-counting (they are already in the Current Value). Gas " +
-          "covers all rebalance and compound transaction costs.",
+          "<strong>Current Fees</strong> are the trading fees that have " +
+          "accrued in the active position but have not yet been " +
+          "compounded. <strong>Fees Compounded</strong> are fees that " +
+          "have already been swept back into liquidity (via standalone " +
+          "compound actions or rebalance-time re-deposits). Adding the " +
+          "two gives total fee earnings across this pool&rsquo;s rebalance " +
+          "chain. <strong>Gas</strong> covers all rebalance and compound " +
+          "transaction costs.",
       },
       {
         heading: "How it differs from Net P&L",
         body:
           "<strong>Lifetime Net P&amp;L</strong> adds Price Change " +
-          "(Current Value &minus; Total Lifetime Deposit) and Realized " +
-          "Gains. Profit excludes both, showing how the pool performed " +
-          "purely as a fee-generating instrument. Click the (i) next to " +
-          "the Net P&amp;L figure above for the full breakdown.",
+          "(Current Value &minus; Total Lifetime Deposit), Wallet " +
+          "Residual, and Realized Gains. Profit excludes those, showing " +
+          "how the pool performed purely as a fee-generating instrument. " +
+          "Click the (i) next to the Net P&amp;L figure above for the " +
+          "full breakdown.",
+      },
+    ],
+  },
+
+  // ── Fees Compounded (Lifetime) ─────────────────────────────────────────
+
+  ltCompounded: {
+    title: "Fees Compounded",
+    subtitle: "Trading fees that were re-deposited as liquidity",
+    sections: [
+      {
+        heading: "What it includes",
+        body:
+          "<strong>Both</strong> kinds of fee re-deposits across this " +
+          "pool&rsquo;s lifetime:<br>" +
+          "&bull; <strong>Standalone compounds</strong> &mdash; auto- and " +
+          "manual-compound actions that collect fees and re-deposit them " +
+          "into the same NFT (no new NFT, no swap, no range change).<br>" +
+          "&bull; <strong>Rebalance-time compounds</strong> &mdash; when " +
+          "a position is drained for a rebalance, the collect call " +
+          "extracts both the drained principal and the accumulated " +
+          "fees. The fees portion is then re-deposited into the new NFT " +
+          "as part of the mint.",
+      },
+      {
+        heading: "How it\u2019s calculated",
+        body:
+          "<strong>Rebalance-time compounds:</strong> across every NFT " +
+          "in the rebalance chain, we sum what was drawn out by collect " +
+          "calls and subtract what was originally drained as principal. " +
+          "What remains is the fees portion, which was re-deposited " +
+          "into the new NFT during the rebalance mint.<br><br>" +
+          "<strong>Standalone compounds:</strong> for each manual or " +
+          "auto compound action, the value re-deposited as liquidity is " +
+          "added to the lifetime total. Both kinds are included in the " +
+          "single number shown.",
+      },
+      {
+        heading: "How it\u2019s used in Net P&L",
+        body:
+          "Fees Compounded is added (along with Current Fees) to give " +
+          "total lifetime fee earnings.  No subtraction is needed: " +
+          "compounded fees represent real earnings already swept back " +
+          "into liquidity, while Current Fees are still unclaimed and " +
+          "will be compounded next.  Price Change is computed against " +
+          "Total Lifetime Deposit, so the rise in Current Value from " +
+          "compounded fees doesn&rsquo;t double-count.",
+      },
+      {
+        heading: "Why this figure may slightly overstate",
+        body:
+          "Some coins counted here may not currently be back in the " +
+          "position&rsquo;s liquidity. When the bot adds liquidity, it " +
+          "can only deposit tokens in the exact ratio the current tick " +
+          "range demands &mdash; any leftover stays in the wallet as " +
+          "residual. A sudden price move mid-rebalance can also leave " +
+          "coins behind. These residuals typically get re-deposited on " +
+          "a subsequent rebalance.",
       },
     ],
   },
@@ -787,10 +850,10 @@ export const PARAM_HELP = {
           "figure; a lower value inflates it." +
           "<br><br>" +
           "For the full breakdown of how Price Change combines with " +
-          "Lifetime Fees, Gas, Fees Compounded, and Realized Gains to produce " +
-          "the Net P&amp;L figure, click the (i) button next to the " +
-          "<strong>Net Profit and Loss Return</strong> value at the top " +
-          "of this Lifetime panel.",
+          "Current Fees, Fees Compounded, Gas, and Realized Gains to " +
+          "produce the Net P&amp;L figure, click the (i) button next to " +
+          "the <strong>Net Profit and Loss Return</strong> value at the " +
+          "top of this Lifetime panel.",
       },
     ],
   },
@@ -861,10 +924,23 @@ export const PARAM_HELP = {
         heading: "What it is",
         body:
           "When the bot rebalances, it removes liquidity and mints a new " +
-          "position. Tiny amounts of the pool&rsquo;s two tokens are often " +
-          "left in the wallet afterward &mdash; swap slippage, rounding, " +
-          "or an uneven split at the new range. LP Ranger tracks these " +
-          "per-pool as your <strong>wallet residual</strong>.",
+          "position. Small amounts of the pool&rsquo;s two tokens are " +
+          "typically left in the wallet afterward. Two unavoidable " +
+          "sources:<br>" +
+          "&bull; <strong>Tick spacing.</strong> V3 positions can only " +
+          "use tick boundaries that are multiples of the fee tier&rsquo;s " +
+          "tick spacing, so the new range almost never lines up with the " +
+          "exact ratio the wallet holds. The Position Manager mints with " +
+          "the largest aligned amount of each token it can, and any " +
+          "remainder stays in the wallet.<br>" +
+          "&bull; <strong>Price movement while the mint is being " +
+          "requested.</strong> The required token ratio is computed " +
+          "against the pool&rsquo;s tick at quote time. Between then and " +
+          "when the mint TX confirms, the tick can shift &mdash; so the " +
+          "ratio the Position Manager actually accepts differs from what " +
+          "we offered, leaving the surplus token in the wallet.<br>" +
+          "LP Ranger tracks these per-pool as your <strong>wallet " +
+          "residual</strong>.",
       },
       {
         heading: "Why it appears in Lifetime P&L",

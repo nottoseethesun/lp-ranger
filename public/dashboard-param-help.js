@@ -79,17 +79,27 @@ export function bindParamHelpButtons() {
  * @param {string} feesLabel     Label for the fees row.
  * @param {string} [extraHtml]   Additional HTML appended after the explanation.
  */
-function _buildPnlTable(b, feesLabel) {
+function _buildPnlTable(b, feesLabel, isLifetime) {
   const f = (v) => _fmtUsd(v);
-  const frag = cloneTpl("tplPnlBreakdownTable");
+  const frag = cloneTpl(
+    isLifetime ? "tplPnlBreakdownTableLt" : "tplPnlBreakdownTable",
+  );
   if (!frag) return null;
   const set = (key, val) => {
     const el = frag.querySelector(`[data-tpl="${key}"]`);
     if (el) el.textContent = val;
   };
-  set("feesLabel", feesLabel);
-  set("fees", f(b.fees));
-  set("compounded", "\u2212" + f(b.compounded));
+  if (isLifetime) {
+    /*- Lifetime: Current Fees + Fees Compounded both additive (no minus
+     *  prefix) — they are the fee earnings figure.  Old "Lifetime Fees"
+     *  row was the imprecise per-epoch tracker total and is removed. */
+    set("currentFees", f(b.currentFees || 0));
+    set("compounded", f(b.compounded));
+  } else {
+    set("feesLabel", feesLabel);
+    set("fees", f(b.fees));
+    set("compounded", "\u2212" + f(b.compounded));
+  }
   set("gas", "\u2212" + f(b.gas));
   set("priceChange", f(b.priceChange));
   set("residual", f(b.residual || 0));
@@ -98,9 +108,11 @@ function _buildPnlTable(b, feesLabel) {
   return frag;
 }
 
-function _buildPnlExplanation(b, depositLabel, feesLabel) {
+function _buildPnlExplanation(b, depositLabel, feesLabel, isLifetime) {
   const f = (v) => _fmtUsd(v);
-  const frag = cloneTpl("tplPnlBreakdownExplanation");
+  const frag = cloneTpl(
+    isLifetime ? "tplPnlBreakdownExplanationLt" : "tplPnlBreakdownExplanation",
+  );
   if (!frag) return null;
   const set = (key, val) => {
     for (const el of frag.querySelectorAll(`[data-tpl="${key}"]`))
@@ -110,11 +122,17 @@ function _buildPnlExplanation(b, depositLabel, feesLabel) {
   set("depositLabel", depositLabel);
   set("deposit", f(b.deposit));
   set("priceChange", f(b.priceChange));
-  set("feesLabel", feesLabel);
+  if (isLifetime) {
+    set("currentFees", f(b.currentFees || 0));
+    set("compounded", f(b.compounded));
+  } else {
+    set("feesLabel", feesLabel);
+  }
   return frag;
 }
 
 function _showPnlDialog(title, b, depositLabel, feesLabel, extraFrag) {
+  const isLifetime = title.startsWith("Lifetime");
   const existing = document.getElementById(_MODAL_ID);
   if (existing) existing.remove();
   const overlay = document.createElement("div");
@@ -124,9 +142,14 @@ function _showPnlDialog(title, b, depositLabel, feesLabel, extraFrag) {
   if (!frag) return;
   frag.querySelector('[data-tpl="title"]').textContent = title;
   const bodyEl = frag.querySelector('[data-tpl="body"]');
-  const table = _buildPnlTable(b, feesLabel);
+  const table = _buildPnlTable(b, feesLabel, isLifetime);
   if (table) bodyEl.appendChild(table);
-  const explanation = _buildPnlExplanation(b, depositLabel, feesLabel);
+  const explanation = _buildPnlExplanation(
+    b,
+    depositLabel,
+    feesLabel,
+    isLifetime,
+  );
   if (explanation) bodyEl.appendChild(explanation);
   if (extraFrag) bodyEl.appendChild(extraFrag);
   overlay.appendChild(frag);
@@ -136,11 +159,14 @@ function _showPnlDialog(title, b, depositLabel, feesLabel, extraFrag) {
 /** Show the Lifetime Net P&L breakdown info dialog. */
 export function showNetPnlBreakdown() {
   const daysNote = cloneTpl("tplPnlBreakdownDaysNote");
+  /*- feesLabel is unused on the Lifetime template (which has its own
+   *  "Current Fees" + "Fees Compounded" rows); pass an empty string
+   *  rather than the now-removed "Lifetime Fees" label. */
   _showPnlDialog(
     "Lifetime Net P\u0026L Breakdown",
     getLtBreakdown(),
     "Total Lifetime Deposit",
-    "Lifetime Fees",
+    "",
     daysNote,
   );
 }

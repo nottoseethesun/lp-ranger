@@ -112,7 +112,6 @@ describe("_extractSnap", () => {
 
   it("extracts from a full snapshot", () => {
     const snap = {
-      totalFees: 20,
       totalGas: 3,
       priceChangePnl: 15,
       lifetimeIL: -8,
@@ -120,7 +119,8 @@ describe("_extractSnap", () => {
       closedEpochs: [{ id: 1 }, { id: 2 }],
     };
     const r = _extractSnap(snap, cur, 5);
-    assert.strictEqual(r.ltFees, 25); // totalFees + feesUsd
+    // currentFees = feesUsd (live unclaimed); compounded is folded in by caller
+    assert.strictEqual(r.currentFees, 5);
     assert.strictEqual(r.ltGas, 3);
     assert.strictEqual(r.ltPc, 15);
     assert.strictEqual(r.il, -8);
@@ -130,7 +130,7 @@ describe("_extractSnap", () => {
 
   it("falls back to cur values when snap is null", () => {
     const r = _extractSnap(null, cur, 7);
-    assert.strictEqual(r.ltFees, 7);
+    assert.strictEqual(r.currentFees, 7);
     assert.strictEqual(r.ltGas, 0);
     assert.strictEqual(r.ltPc, 10);
     assert.strictEqual(r.il, -5);
@@ -140,7 +140,6 @@ describe("_extractSnap", () => {
 
   it("uses totalIL when lifetimeIL is missing", () => {
     const snap = {
-      totalFees: 10,
       totalGas: 1,
       priceChangePnl: 5,
       totalIL: -3,
@@ -152,7 +151,6 @@ describe("_extractSnap", () => {
 
   it("uses cur.il when snap has no IL fields", () => {
     const snap = {
-      totalFees: 0,
       totalGas: 0,
       priceChangePnl: 0,
       closedEpochs: [],
@@ -211,7 +209,6 @@ describe("_lifetimePnl", () => {
 
   it("computes lifetime P&L from tracker snapshot", () => {
     const snap = {
-      totalFees: 10,
       totalGas: 2,
       priceChangePnl: 15,
       lifetimeIL: -5,
@@ -221,16 +218,17 @@ describe("_lifetimePnl", () => {
     const tracker = mockTracker(1, snap);
     const cur = { priceGainLoss: 20, il: -3, profit: 7 };
     const ps = { price: 0.001 };
-    // entryValue=100, currentValue=120
-    const r = _lifetimePnl(tracker, ps, 100, cur, 5, 120);
+    // entryValue=100, currentValue=120, feesUsd=5, ltCompounded=10
+    const r = _lifetimePnl(tracker, ps, 100, cur, 5, 120, 10);
     // ltPc = currentValue - entryValue = 120 - 100 = 20
     assert.strictEqual(r.ltPriceChange, 20);
-    // ltFees = snap.totalFees + feesUsd = 10 + 5 = 15
-    assert.strictEqual(r.ltFees, 15);
+    // ltCurrentFees = feesUsd = 5
+    assert.strictEqual(r.ltCurrentFees, 5);
     assert.strictEqual(r.ltGas, 2);
-    // ltNetPnl = ltPc + ltFees - ltGas = 20 + 15 - 2 = 33
+    // feeEarnings = currentFees + compounded = 5 + 10 = 15
+    // ltNetPnl = ltPc + feeEarnings - ltGas = 20 + 15 - 2 = 33
     assert.strictEqual(r.ltNetPnl, 33);
-    // il from snap = -5, ltProfit = ltFees - ltGas + il = 15 - 2 + (-5) = 8
+    // il from snap = -5, ltProfit = feeEarnings - ltGas + il = 15 - 2 - 5 = 8
     assert.strictEqual(r.ltProfit, 8);
     assert.strictEqual(r.firstEpochDate, "2026-01-15");
     assert.strictEqual(r.rebalanceCount, 1);
@@ -238,7 +236,6 @@ describe("_lifetimePnl", () => {
 
   it("returns null ltNetPnl when entryValue is 0", () => {
     const snap = {
-      totalFees: 5,
       totalGas: 1,
       priceChangePnl: 10,
       totalIL: -2,
@@ -246,7 +243,7 @@ describe("_lifetimePnl", () => {
     };
     const tracker = mockTracker(1, snap);
     const cur = { priceGainLoss: null, il: null, profit: null };
-    const r = _lifetimePnl(tracker, { price: 1 }, 0, cur, 3, 100);
+    const r = _lifetimePnl(tracker, { price: 1 }, 0, cur, 3, 100, 0);
     assert.strictEqual(r.ltNetPnl, null);
     // ltPc falls back to s.ltPc when entryValue is 0
     assert.strictEqual(r.ltPriceChange, 10);
@@ -254,14 +251,13 @@ describe("_lifetimePnl", () => {
 
   it("uses cur.profit when no IL available", () => {
     const snap = {
-      totalFees: 5,
       totalGas: 0,
       priceChangePnl: 0,
       closedEpochs: [],
     };
     const tracker = mockTracker(1, snap);
     const cur = { priceGainLoss: 0, il: null, profit: 42 };
-    const r = _lifetimePnl(tracker, { price: 1 }, 100, cur, 0, 100);
+    const r = _lifetimePnl(tracker, { price: 1 }, 100, cur, 0, 100, 0);
     // il is null/undefined → ltProfit = cur.profit
     assert.strictEqual(r.ltProfit, 42);
   });
@@ -269,11 +265,29 @@ describe("_lifetimePnl", () => {
   it("handles zero-epoch tracker gracefully", () => {
     const tracker = mockTracker(0, null);
     const cur = { priceGainLoss: 5, il: -1, profit: 4 };
-    const r = _lifetimePnl(tracker, { price: 1 }, 100, cur, 2, 110);
+    const r = _lifetimePnl(tracker, { price: 1 }, 100, cur, 2, 110, 0);
     assert.strictEqual(r.ltPriceChange, 10); // 110 - 100
-    assert.strictEqual(r.ltFees, 2);
+    assert.strictEqual(r.ltCurrentFees, 2);
     assert.strictEqual(r.ltGas, 0);
-    // il from cur = -1 → ltProfit = 2 - 0 + (-1) = 1
+    // feeEarnings = 2 + 0 = 2; il from cur = -1 → ltProfit = 2 - 0 - 1 = 1
     assert.strictEqual(r.ltProfit, 1);
+  });
+
+  it("folds lifetime compounded into fee earnings", () => {
+    const snap = {
+      totalGas: 0,
+      priceChangePnl: 0,
+      lifetimeIL: 0,
+      closedEpochs: [],
+    };
+    const tracker = mockTracker(1, snap);
+    const cur = { priceGainLoss: 0, il: 0, profit: 0 };
+    // currentFees=3, compounded=20 → feeEarnings=23
+    const r = _lifetimePnl(tracker, { price: 1 }, 100, cur, 3, 100, 20);
+    assert.strictEqual(r.ltCurrentFees, 3);
+    // ltNetPnl = 0 + 23 - 0 = 23
+    assert.strictEqual(r.ltNetPnl, 23);
+    // ltProfit = 23 - 0 + 0 = 23
+    assert.strictEqual(r.ltProfit, 23);
   });
 });

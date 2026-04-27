@@ -458,9 +458,11 @@ describe("bot-pnl-updater compound override", () => {
       0,
     );
     assert.equal(snap.totalCompoundedUsd, 15);
-    // netReturn = fees - gas + priceChange - compounded
+    // netReturn = (compounded + currentFees) - gas + priceChange
     assert.ok(typeof snap.netReturn === "number");
     assert.ok(typeof snap.cumulativePnl === "number");
+    // Live unclaimed fees exposed for the new fee-earnings model
+    assert.equal(snap.currentFeesUsd, 20);
   });
 
   it("zero compounded does not affect netReturn", () => {
@@ -485,11 +487,17 @@ describe("bot-pnl-updater compound override", () => {
   });
 });
 
-describe("_computeLifetimeFees includes historical compounds", () => {
-  it("counts compounded fees when _collectedFeesUsd is 0", () => {
+describe("override exposes lifetime fee-earnings inputs", () => {
+  /*- Replaces the old `_computeLifetimeFees` test.  The new lifetime-fee
+   *  model splits fee earnings into two snapshot fields:
+   *    snap.currentFeesUsd    — live unclaimed fees
+   *    snap.totalCompoundedUsd — historical Σ(Collect)−Σ(DL) scan
+   *  Consumers (Lifetime panel, position-details) sum the two for the
+   *  total fee-earnings figure.  The old per-epoch `snap.totalFees`
+   *  was dropped because it missed fees folded into rebalances. */
+  it("exposes currentFeesUsd and totalCompoundedUsd separately", () => {
     const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
     const snap = {
-      totalFees: 0,
       totalGas: 0,
       liveEpoch: { entryValue: 100, fees: 1 },
       closedEpochs: [],
@@ -501,10 +509,13 @@ describe("_computeLifetimeFees includes historical compounds", () => {
     const pos = { liquidity: 1000n, tickLower: -600, tickUpper: 600 };
     const pool = { tick: 0, decimals0: 18, decimals1: 18 };
     overridePnlWithRealValues(snap, deps, pos, pool, 1, 1, 1, 0);
-    // totalFees should include compounded: max(0, 50) + 1 = 51
+    assert.equal(snap.currentFeesUsd, 1);
+    assert.equal(snap.totalCompoundedUsd, 50);
+    // Lifetime fee earnings = 50 + 1 = 51 (consumer-side sum)
+    const feeEarnings = snap.totalCompoundedUsd + snap.currentFeesUsd;
     assert.ok(
-      snap.totalFees >= 50,
-      "lifetime fees must include compounded ($" + snap.totalFees + ")",
+      feeEarnings >= 50,
+      "lifetime fee earnings must include compounded ($" + feeEarnings + ")",
     );
   });
 });

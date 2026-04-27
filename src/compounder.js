@@ -283,6 +283,16 @@ async function executeCompound(signer, ethersLib, opts) {
   const usdValue =
     (Number(deposited.amount0Deposited) / 10 ** d0) * (opts.price0 || 0) +
     (Number(deposited.amount1Deposited) / 10 ** d1) * (opts.price1 || 0);
+  /*-
+   *  USD value of the full Collect — typically larger than usdValue
+   *  because increaseLiquidity requires tokens in the current tick's
+   *  exact ratio, so one side usually has leftover that stays in the
+   *  wallet as residual (tracked by residual-tracker.js).  Surfaced so
+   *  the compound log can show users both numbers.
+   */
+  const collectedUsd =
+    (Number(collected.amount0) / 10 ** d0) * (opts.price0 || 0) +
+    (Number(collected.amount1) / 10 ** d1) * (opts.price1 || 0);
 
   const totalGasWei = collected.gasCostWei + deposited.gasCostWei;
 
@@ -295,6 +305,7 @@ async function executeCompound(signer, ethersLib, opts) {
     amount1Deposited: String(deposited.amount1Deposited),
     liquidity: String(deposited.liquidity),
     usdValue,
+    collectedUsd,
     price0: opts.price0,
     price1: opts.price1,
     gasCostWei: String(totalGasWei),
@@ -457,62 +468,104 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
  * @param {object} opts  { decimals0, decimals1, price0, price1, token0Symbol, token1Symbol, wallet, tokenId }
  * @returns {Promise<{compounds: object[], totalCompoundedUsd: number, totalGasWei: string}>}
  */
+/** Sum amounts across an event list, optionally filtering by liquidity > 0. */
+function _sumAmounts(events, requireLiquidity) {
+  let s0 = 0n,
+    s1 = 0n;
+  for (const e of events) {
+    if (requireLiquidity && !((e.liquidity ?? 0n) > 0n)) continue;
+    s0 += e.amount0 ?? 0n;
+    s1 += e.amount1 ?? 0n;
+  }
+  return { s0, s1 };
+}
+
+/** Compute lifetime fees = total Collect − total drained principal (clamped ≥ 0). */
+function _lifetimeFees(collectEvents, dlEvents) {
+  const c = _sumAmounts(collectEvents, false);
+  const d = _sumAmounts(dlEvents, true);
+  return {
+    fees0: c.s0 > d.s0 ? c.s0 - d.s0 : 0n,
+    fees1: c.s1 > d.s1 ? c.s1 - d.s1 : 0n,
+  };
+}
+
+/** Log compound classification summary for a single NFT. */
+function _logCompoundSummary(opts, parts) {
+  const {
+    compounds,
+    fees0,
+    fees1,
+    totalCompoundedUsd,
+    ilLogsCount,
+    collectCount,
+    drainCount,
+  } = parts;
+  const s0 = opts.token0Symbol || "Token0";
+  const s1 = opts.token1Symbol || "Token1";
+  const chain = config.CHAIN_NAME || "PulseChain";
+  const nft = "#" + (opts.tokenId || "?") + " " + emojiId(opts.tokenId);
+  console.log(
+    "[compound] %s %s %s %s/%s: %d IncreaseLiquidity (%d standalone), %d Collect, %d drain",
+    chain,
+    _abbr(opts.wallet),
+    nft,
+    s0,
+    s1,
+    ilLogsCount,
+    compounds.length,
+    collectCount,
+    drainCount,
+  );
+  console.log(
+    "[compound]   fees collected (standalone + rebalance): %s=%s %s=%s → $%s",
+    s0,
+    String(fees0),
+    s1,
+    String(fees1),
+    totalCompoundedUsd.toFixed(2),
+  );
+}
+
 async function classifyCompounds(nftEvents, opts = {}) {
   const prov = new ethers.JsonRpcProvider(config.RPC_URL);
   const { ilEvents, collectEvents, dlEvents, ilLogsCount } = nftEvents;
   const candidateILs = ilEvents.slice(1); // skip first = mint
+  /*-
+   *  compoundEvents (filtered) feeds the per-event compound history that
+   *  shows in the Activity Log — exclude rebalance-window ILs because
+   *  rebalances have their own dedicated rebalance entries.  The total
+   *  compounded USD is computed separately below from Collect/DL deltas
+   *  so it correctly captures BOTH standalone compounds AND fees that
+   *  were re-deposited as part of a rebalance drain → mint cycle.
+   */
   const compoundEvents = _filterRebalances(candidateILs, dlEvents);
-  let totalCollected0 = 0n,
-    totalCollected1 = 0n;
-  for (const e of collectEvents) {
-    totalCollected0 += e.amount0 ?? 0n;
-    totalCollected1 += e.amount1 ?? 0n;
-  }
-  let sum0 = 0n,
-    sum1 = 0n;
-  for (const e of compoundEvents) {
-    sum0 += e.amount0;
-    sum1 += e.amount1;
-  }
-  const cap0 = sum0 > totalCollected0 ? totalCollected0 : sum0;
-  const cap1 = sum1 > totalCollected1 ? totalCollected1 : sum1;
+  /*-
+   *  Each Collect after a drain extracts (drainedPrincipal + accumulatedFees).
+   *  Standalone-compound Collects extract only fees (no paired DL).  So
+   *  totalFees = totalCollected − totalDrainedPrincipal across the whole
+   *  NFT lifetime, regardless of how the fees were re-deposited.
+   */
+  const { fees0, fees1 } = _lifetimeFees(collectEvents, dlEvents);
   const d0 = opts.decimals0 ?? 8,
     d1 = opts.decimals1 ?? 8;
   const totalCompoundedUsd =
-    (Number(cap0) / 10 ** d0) * (opts.price0 || 0) +
-    (Number(cap1) / 10 ** d1) * (opts.price1 || 0);
+    (Number(fees0) / 10 ** d0) * (opts.price0 || 0) +
+    (Number(fees1) / 10 ** d1) * (opts.price1 || 0);
   const { compounds, totalGasWei } = await _fetchCompoundGas(
     prov,
     compoundEvents,
   );
-  const s0 = opts.token0Symbol || "Token0";
-  const s1 = opts.token1Symbol || "Token1";
-  if (compounds.length > 0) {
-    const chain = config.CHAIN_NAME || "PulseChain";
-    const nft = "#" + (opts.tokenId || "?") + " " + emojiId(opts.tokenId);
-    console.log(
-      "[compound] %s %s %s %s/%s: %d IncreaseLiquidity (%d compounds), %d Collect",
-      chain,
-      _abbr(opts.wallet),
-      nft,
-      s0,
-      s1,
+  if (compounds.length > 0 || fees0 > 0n || fees1 > 0n) {
+    _logCompoundSummary(opts, {
+      compounds,
+      fees0,
+      fees1,
+      totalCompoundedUsd,
       ilLogsCount,
-      compounds.length,
-      collectEvents.length,
-    );
-    console.log(
-      "[compound]   compounded: %s=%s %s=%s (capped: %s=%s %s=%s) → $%s",
-      s0,
-      String(sum0),
-      s1,
-      String(sum1),
-      s0,
-      String(cap0),
-      s1,
-      String(cap1),
-      totalCompoundedUsd.toFixed(2),
-    );
+      collectCount: collectEvents.length,
+      drainCount: dlEvents.filter((e) => (e.liquidity ?? 0n) > 0n).length,
+    });
   }
   return { compounds, totalCompoundedUsd, totalGasWei: String(totalGasWei) };
 }
