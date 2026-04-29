@@ -67,7 +67,7 @@ and the responsive layout &mdash; see the
 ## Prerequisites
 
 - Machine: Any common computer; specifically, a 64-bit Intel, Apple, or ARM machine.
-  - Known working light-weight computer: Raspberry Pi 5 with Heat Sink and Fan
+  - Known working light-weight computer: Raspberry Pi 5 (5 GB RAM recommended) with Heat Sink and Fan
   - Machine must be kept secure: Up-to-date with updates, free of malware, and physically secure.
 - Node.js 22+
   - For Linux (including for arm64 versions of Raspberry Pi), Mac, install:
