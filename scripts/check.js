@@ -156,6 +156,20 @@ fs.writeFileSync(
   markdownlintRun.stdout + markdownlintRun.stderr,
 );
 
+// ── Lint (JSON) — Prettier --check ────────────────────────────────────────
+// Prettier has no JSON reporter, so capture stdout/stderr to a text file
+// and surface the exit code through the aggregator. .prettierignore at the
+// repo root excludes package-lock.json plus runtime/generated state.
+const prettierJsonRun = run(bin("prettier"), [
+  "--check",
+  "--log-level=warn",
+  "**/*.json",
+]);
+fs.writeFileSync(
+  path.join(TXT_DIR, "prettier-json.txt"),
+  prettierJsonRun.stdout + prettierJsonRun.stderr,
+);
+
 // ── Security: npm audit ───────────────────────────────────────────────────
 // Keep --audit-level=high so moderate pre-existing advisories don't fail
 // the check, but store the full report for review.
@@ -246,6 +260,7 @@ const exitCodes = {
   stylelint: stylelintRun.status,
   htmlValidate: htmlValidateRun.status,
   markdownlint: markdownlintRun.status,
+  prettierJson: prettierJsonRun.status,
   auditDeps: npmAuditRun.status,
   securityLint: securityLintRun.status,
   secretlint: secretlintRun.status,

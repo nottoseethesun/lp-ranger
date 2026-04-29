@@ -197,6 +197,12 @@ function _lintSection(data) {
       warnings: 0,
       rules: null,
     }),
+    _lintRow("Prettier (JSON)", {
+      files: null,
+      errors: data.prettierJson ? data.prettierJson.dirty : 0,
+      warnings: 0,
+      rules: null,
+    }),
   ];
   content.push({
     table: { headerRows: 1, widths: [120, 50, 50, 50, 60], body: lintRows },
@@ -226,17 +232,14 @@ function _lintSection(data) {
 
 function _lintRow(name, d) {
   // `rules` is null for tools without a --print-config dump (html-validate,
-  // markdownlint). Render those as an em dash so the column stays aligned
-  // instead of leaking "undefined".
+  // markdownlint). `files` is null for tools that don't expose a per-glob
+  // file count (Prettier --check). Render those as an em dash so the
+  // column stays aligned instead of leaking "undefined" or "null".
   const rulesText =
     d.rules === null || d.rules === undefined ? "—" : String(d.rules);
-  return [
-    name,
-    String(d.files),
-    rulesText,
-    String(d.errors),
-    String(d.warnings),
-  ];
+  const filesText =
+    d.files === null || d.files === undefined ? "—" : String(d.files);
+  return [name, filesText, rulesText, String(d.errors), String(d.warnings)];
 }
 
 function _testsSection(data) {

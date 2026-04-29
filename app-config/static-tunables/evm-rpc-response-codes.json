@@ -21,7 +21,11 @@
   },
   "terminalNonceUnused": {
     "description": "Node rejected the TX before it was admitted to the executable pending pool. The nonce was never consumed on-chain so the NonceManager must be reset. Do NOT retry in place — the cause is typically persistent (saturation, bad params, insufficient funds).",
-    "ethersCodes": ["INSUFFICIENT_FUNDS", "UNPREDICTABLE_GAS_LIMIT", "CALL_EXCEPTION"],
+    "ethersCodes": [
+      "INSUFFICIENT_FUNDS",
+      "UNPREDICTABLE_GAS_LIMIT",
+      "CALL_EXCEPTION"
+    ],
     "messageSubstrings": [
       "queued sub-pool is full",
       "pending sub-pool is full",

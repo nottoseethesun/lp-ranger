@@ -165,6 +165,47 @@ not a violation line
   });
 });
 
+describe("check-report-parse: parsePrettierJsonText", () => {
+  it("counts per-file [warn] lines and ignores the summary line", () => {
+    const txt = [
+      "Checking formatting...",
+      "[warn] .mcp.json",
+      "[warn] docs/openapi.json",
+      "[warn] Code style issues found in 2 files. Run Prettier with --write to fix.",
+    ].join("\n");
+    const r = P.parsePrettierJsonText(txt);
+    assert.equal(r.dirty, 2);
+    assert.equal(r.firstLines.length, 2);
+    assert.ok(r.firstLines[0].includes(".mcp.json"));
+  });
+
+  it("returns 0 dirty for clean output", () => {
+    const txt = [
+      "Checking formatting...",
+      "All matched files use Prettier code style!",
+    ].join("\n");
+    const r = P.parsePrettierJsonText(txt);
+    assert.equal(r.dirty, 0);
+    assert.deepEqual(r.firstLines, []);
+  });
+
+  it("handles empty input", () => {
+    assert.deepEqual(P.parsePrettierJsonText(""), {
+      dirty: 0,
+      firstLines: [],
+    });
+  });
+
+  it("caps firstLines at 5", () => {
+    const lines = ["Checking formatting..."];
+    for (let i = 0; i < 8; i++) lines.push(`[warn] file${i}.json`);
+    lines.push("[warn] Code style issues found in 8 files.");
+    const r = P.parsePrettierJsonText(lines.join("\n"));
+    assert.equal(r.dirty, 8);
+    assert.equal(r.firstLines.length, 5);
+  });
+});
+
 describe("check-report-parse: parseNpmAudit", () => {
   it("sums severity counts", () => {
     const json = {

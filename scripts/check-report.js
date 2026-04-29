@@ -103,6 +103,9 @@ function loadResults() {
   const markdownlint = P.parseMarkdownlintText(
     _readTextReport("markdownlint.txt"),
   );
+  const prettierJson = P.parsePrettierJsonText(
+    _readTextReport("prettier-json.txt"),
+  );
   const npmAudit = P.parseNpmAudit(_readJson("npm-audit.json"));
   const securityLintRaw = _readJson("security-lint.json");
   const securityLint = P.parseEslint(securityLintRaw);
@@ -153,6 +156,13 @@ function loadResults() {
       ok: exitCodes.markdownlint === 0,
       detail: `${markdownlint.errors} violations, ${_rulesFrag(markdownlint.rules)}`,
     },
+    prettierJson: {
+      ok: exitCodes.prettierJson === 0,
+      detail:
+        prettierJson.dirty === 0
+          ? `0 violations, formatting clean`
+          : `${prettierJson.dirty} files need formatting — run \`npm run lint:fix\``,
+    },
     tests: {
       ok: exitCodes.tests === 0,
       detail:
@@ -186,6 +196,7 @@ function loadResults() {
     { name: "stylelint (CSS)", ...checks.stylelint },
     { name: "html-validate", ...checks.htmlValidate },
     { name: "markdownlint", ...checks.markdownlint },
+    { name: "Prettier (JSON)", ...checks.prettierJson },
     { name: "Tests", ...checks.tests },
     { name: "Coverage", ...checks.coverage },
     { name: "npm audit", ...checks.npmAudit },
@@ -207,6 +218,7 @@ function loadResults() {
     stylelint,
     htmlValidate,
     markdownlint,
+    prettierJson,
     npmAudit,
     securityLint,
     secretlint,

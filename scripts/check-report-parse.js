@@ -106,6 +106,28 @@ function parseMarkdownlintText(txt) {
   };
 }
 
+/*-
+ * Parse Prettier --check stdout/stderr captured from `prettier --check
+ * '**\/*.json'`. Prettier prints one `[warn] <path>` line per file that
+ * needs formatting plus a summary "[warn] Code style issues found in N
+ * files" line. Counts the per-file lines (excluding the summary) so a
+ * clean run reports 0 dirty files.
+ *
+ * @param {string} txt  Captured stdout+stderr (may be empty when clean).
+ * @returns {{ dirty: number, firstLines: string[] }}
+ */
+function parsePrettierJsonText(txt) {
+  if (!txt) return { dirty: 0, firstLines: [] };
+  const lines = txt.split("\n").filter(Boolean);
+  const fileWarnings = lines.filter(
+    (l) => l.startsWith("[warn] ") && !/^\[warn\] Code style issues/.test(l),
+  );
+  return {
+    dirty: fileWarnings.length,
+    firstLines: fileWarnings.slice(0, 5),
+  };
+}
+
 /**
  * Count the active rules in a resolved-config dump from either
  * `eslint --print-config` or `stylelint --print-config`. Both tools emit
@@ -252,6 +274,7 @@ module.exports = {
   parseStylelint,
   parseHtmlValidate,
   parseMarkdownlintText,
+  parsePrettierJsonText,
   parseNpmAudit,
   parseSecretlint,
   parseTapTests,

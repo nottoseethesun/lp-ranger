@@ -11,8 +11,14 @@
   "tags": [
     { "name": "Status", "description": "Server and position status" },
     { "name": "Config", "description": "Runtime configuration" },
-    { "name": "Wallet", "description": "Wallet import, unlock, and management" },
-    { "name": "Positions", "description": "Position scanning, management, and details" },
+    {
+      "name": "Wallet",
+      "description": "Wallet import, unlock, and management"
+    },
+    {
+      "name": "Positions",
+      "description": "Position scanning, management, and details"
+    },
     { "name": "Rebalance", "description": "Manual rebalance triggers" },
     { "name": "Compound", "description": "Fee compounding" },
     { "name": "System", "description": "Health check and shutdown" }
@@ -33,7 +39,10 @@
                   "properties": {
                     "ok": { "type": "boolean", "example": true },
                     "port": { "type": "integer", "example": 5555 },
-                    "ts": { "type": "integer", "description": "Unix timestamp in ms" }
+                    "ts": {
+                      "type": "integer",
+                      "description": "Unix timestamp in ms"
+                    }
                   }
                 }
               }
@@ -62,7 +71,10 @@
                         "port": { "type": "integer" },
                         "rpcUrl": { "type": "string" },
                         "positionManager": { "type": "string" },
-                        "managedPositions": { "type": "array", "items": { "type": "object" } }
+                        "managedPositions": {
+                          "type": "array",
+                          "items": { "type": "object" }
+                        }
                       }
                     },
                     "positions": {
@@ -90,7 +102,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "positionKey": { "type": "string", "description": "Composite key (blockchain-wallet-contract-tokenId). Required for position-specific keys." },
+                  "positionKey": {
+                    "type": "string",
+                    "description": "Composite key (blockchain-wallet-contract-tokenId). Required for position-specific keys."
+                  },
                   "rebalanceOutOfRangeThresholdPercent": { "type": "number" },
                   "rebalanceTimeoutMin": { "type": "integer" },
                   "slippagePct": { "type": "number" },
@@ -111,7 +126,9 @@
         },
         "responses": {
           "200": { "description": "Config saved" },
-          "400": { "description": "Missing or invalid positionKey for position-specific keys" }
+          "400": {
+            "description": "Missing or invalid positionKey for position-specific keys"
+          }
         }
       }
     },
@@ -177,9 +194,18 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "seed": { "type": "string", "description": "BIP-39 mnemonic seed phrase" },
-                  "privateKey": { "type": "string", "description": "Hex private key (alternative to seed)" },
-                  "password": { "type": "string", "description": "Encryption password for disk storage" }
+                  "seed": {
+                    "type": "string",
+                    "description": "BIP-39 mnemonic seed phrase"
+                  },
+                  "privateKey": {
+                    "type": "string",
+                    "description": "Hex private key (alternative to seed)"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "Encryption password for disk storage"
+                  }
                 }
               }
             }
@@ -235,7 +261,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "walletAddress": { "type": "string", "description": "Optional override wallet address" }
+                  "walletAddress": {
+                    "type": "string",
+                    "description": "Optional override wallet address"
+                  }
                 }
               }
             }
@@ -277,7 +306,10 @@
                         "properties": {
                           "key": { "type": "string" },
                           "tokenId": { "type": "string" },
-                          "status": { "type": "string", "enum": ["running", "stopped"] }
+                          "status": {
+                            "type": "string",
+                            "enum": ["running", "stopped"]
+                          }
                         }
                       }
                     }
@@ -302,7 +334,10 @@
                 "type": "object",
                 "required": ["tokenId"],
                 "properties": {
-                  "tokenId": { "type": "string", "description": "NFT token ID to manage" }
+                  "tokenId": {
+                    "type": "string",
+                    "description": "NFT token ID to manage"
+                  }
                 }
               }
             }
@@ -326,7 +361,10 @@
                 "type": "object",
                 "required": ["key"],
                 "properties": {
-                  "key": { "type": "string", "description": "Composite key (blockchain-wallet-contract-tokenId)" }
+                  "key": {
+                    "type": "string",
+                    "description": "Composite key (blockchain-wallet-contract-tokenId)"
+                  }
                 }
               }
             }
@@ -366,7 +404,9 @@
           }
         },
         "responses": {
-          "200": { "description": "Position details with pool state, value, and P&L" },
+          "200": {
+            "description": "Position details with pool state, value, and P&L"
+          },
           "400": { "description": "Missing required fields" }
         }
       }
@@ -397,7 +437,9 @@
           }
         },
         "responses": {
-          "200": { "description": "Lifetime P&L with daily breakdown, gas costs, and rebalance events" },
+          "200": {
+            "description": "Lifetime P&L with daily breakdown, gas costs, and rebalance events"
+          },
           "400": { "description": "Missing required fields" }
         }
       }
@@ -434,8 +476,14 @@
                 "type": "object",
                 "required": ["positionKey"],
                 "properties": {
-                  "positionKey": { "type": "string", "description": "Composite key" },
-                  "customRangeWidthPct": { "type": "number", "description": "Optional custom range width %" }
+                  "positionKey": {
+                    "type": "string",
+                    "description": "Composite key"
+                  },
+                  "customRangeWidthPct": {
+                    "type": "number",
+                    "description": "Optional custom range width %"
+                  }
                 }
               }
             }
@@ -461,7 +509,10 @@
                 "type": "object",
                 "required": ["positionKey"],
                 "properties": {
-                  "positionKey": { "type": "string", "description": "Composite key" }
+                  "positionKey": {
+                    "type": "string",
+                    "description": "Composite key"
+                  }
                 }
               }
             }
@@ -492,7 +543,9 @@
         "responses": {
           "200": {
             "description": "UI defaults JSON",
-            "content": { "application/json": { "schema": { "type": "object" } } }
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
           }
         }
       }
@@ -505,7 +558,9 @@
         "responses": {
           "200": {
             "description": "NFT provider label map",
-            "content": { "application/json": { "schema": { "type": "object" } } }
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
           }
         }
       }
@@ -518,7 +573,9 @@
         "responses": {
           "200": {
             "description": "Bot config defaults JSON",
-            "content": { "application/json": { "schema": { "type": "object" } } }
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
           }
         }
       }
