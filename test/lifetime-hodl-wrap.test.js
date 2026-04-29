@@ -2,12 +2,12 @@
  * @file test/lifetime-hodl-wrap.test.js
  * @description Tests for native-token wrap detection inside the lifetime HODL
  * fresh-deposit classifier.  EVM LPs only accept the wrapped form of the
- * native token (PLS→wPLS, ETH→wETH).  When a user wraps inside a swap or
- * rebalance multicall, the wPLS arrival looks identical to an LP return; the
- * heuristic implemented in `_sumNonSwapInbound` recognises a wrap by matching
- * `tx.value` (native sent by wallet) to a wrapped-token Transfer-IN of equal
- * amount in the same TX.  Tests live in their own file to keep the main
- * `lifetime-hodl.test.js` under the 500-line limit.
+ * native token (PLS→wPLS, ETH→wETH).  A wrap may not emit a Transfer event
+ * at all (PulseChain WPLS emits only `Deposit(dst, wad)` on `deposit()`),
+ * and even when it does the wPLS arrival looks identical to an LP return.
+ * The classifier scans `Deposit(wallet, wad)` events on the wrapped-native
+ * contract and credits the exact `wad` to the wrapped side.  Tests live in
+ * their own file to keep `lifetime-hodl.test.js` under the 500-line limit.
  */
 
 "use strict";
@@ -16,8 +16,10 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { computeLifetimeHodl } = require("../src/lifetime-hodl");
 
-const TOPIC0 =
+const TRANSFER_TOPIC0 =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const DEPOSIT_TOPIC0 =
+  "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c";
 
 function _topicsMatch(lt, ft) {
   if (!ft) return true;
@@ -26,7 +28,6 @@ function _topicsMatch(lt, ft) {
 
 function mockProvider(opts = {}) {
   const logs = opts.logs || [];
-  const txs = opts.txs || {};
   return {
     getLogs(filter) {
       return Promise.resolve(
@@ -39,9 +40,6 @@ function mockProvider(opts = {}) {
         ),
       );
     },
-    getTransaction(hash) {
-      return Promise.resolve(txs[hash] || null);
-    },
   };
 }
 
@@ -50,8 +48,10 @@ function mockEthers() {
     zeroPadValue(addr, _len) {
       return "0x" + addr.toLowerCase().replace("0x", "").padStart(64, "0");
     },
-    id(_s) {
-      return TOPIC0;
+    id(sig) {
+      return sig === "Deposit(address,uint256)"
+        ? DEPOSIT_TOPIC0
+        : TRANSFER_TOPIC0;
     },
   };
 }
@@ -109,24 +109,25 @@ function hexAmount(amt) {
   return "0x" + BigInt(amt).toString(16).padStart(64, "0");
 }
 
-describe("lifetime-hodl native-wrap detection", () => {
-  it("credits tx.value when it matches a wrapped-token IN amount in the same TX", async () => {
+function depositLog(wpls, wallet, amount, txHash, block = 205) {
+  const wPad = "0x" + wallet.toLowerCase().replace("0x", "").padStart(64, "0");
+  return {
+    address: wpls,
+    topics: [DEPOSIT_TOPIC0, wPad],
+    data: hexAmount(amount),
+    blockNumber: block,
+    transactionHash: txHash,
+  };
+}
+
+describe("lifetime-hodl native-wrap detection (Deposit event)", () => {
+  it("credits a wrap-only TX (no Transfer event, only Deposit)", async () => {
+    /*- The defining PulseChain WPLS case: `deposit()` emits Deposit but
+        NOT Transfer-from-zero.  The TX has zero token1 Transfer events.
+        The Deposit-event scan must still credit `wad` to the wrapped side. */
     const e = mockEthers();
-    const wPad = e.zeroPadValue(W, 32);
-    const wpls = e.zeroPadValue("0xWplsContract", 32);
-    /*- Wallet wraps 400 raw PLS → exactly 400 raw wPLS in tx 0xwrap1.
-        tx.from === wallet, tx.value === wrapped IN amount → wrap detected,
-        400 credited as fresh wrapped-side capital. */
-    const wrapIn = {
-      address: T1,
-      topics: [TOPIC0, wpls, wPad],
-      data: hexAmount(400_00000000),
-      blockNumber: 205,
-      transactionHash: "0xwrap1",
-    };
     const prov = mockProvider({
-      logs: [wrapIn],
-      txs: { "0xwrap1": { from: W, value: 400_00000000n } },
+      logs: [depositLog(T1, W, 400_00000000, "0xwraponly")],
     });
     const { events, rebalanceEvents } = twoNftFixture(
       1000_00000000,
@@ -146,31 +147,34 @@ describe("lifetime-hodl native-wrap detection", () => {
     assert.strictEqual(r.amount1, 2400);
   });
 
-  it("credits a wrap inside a TX that would otherwise classify as a swap", async () => {
+  it("credits a wrap inside a swap-shaped TX (Deposit + Transfer present)", async () => {
+    /*- Wrap bundled with a swap: token0 OUT to router, token1 IN from
+        router (looks like a swap), AND a Deposit event credits the wrap
+        amount.  The Deposit short-circuits the standard classifier so the
+        wrap amount is credited (and not double-counted with the Transfer-IN). */
     const e = mockEthers();
     const wPad = e.zeroPadValue(W, 32);
     const rPad = e.zeroPadValue("0xRouter", 32);
-    /*- Realistic shape: wallet sends token0 out (looks like swap) AND
-        receives wrapped token1 with amount === tx.value.  Without wrap
-        detection the TX is skipped as a swap; with detection the wrap
-        amount is credited to fresh wrapped-side capital. */
     const swapOut = {
       address: T0,
-      topics: [TOPIC0, wPad, rPad],
+      topics: [TRANSFER_TOPIC0, wPad, rPad],
       data: hexAmount(100_00000000),
       blockNumber: 205,
       transactionHash: "0xwrapinswap",
     };
-    const wrapIn = {
+    const wrapInTransfer = {
       address: T1,
-      topics: [TOPIC0, rPad, wPad],
+      topics: [TRANSFER_TOPIC0, rPad, wPad],
       data: hexAmount(250_00000000),
       blockNumber: 205,
       transactionHash: "0xwrapinswap",
     };
     const prov = mockProvider({
-      logs: [swapOut, wrapIn],
-      txs: { "0xwrapinswap": { from: W, value: 250_00000000n } },
+      logs: [
+        swapOut,
+        wrapInTransfer,
+        depositLog(T1, W, 250_00000000, "0xwrapinswap"),
+      ],
     });
     const { events, rebalanceEvents } = twoNftFixture(
       1000_00000000,
@@ -191,29 +195,28 @@ describe("lifetime-hodl native-wrap detection", () => {
   });
 
   it("wrap branch is disabled when wrappedNativeAddress is not provided", async () => {
+    /*- Same swap-shaped TX, but no wrappedNativeAddress.  The Deposit-event
+        scan never runs; the standard classifier sees a swap pattern (one
+        out, other in) and skips the TX → nothing credited on the wrapped side. */
     const e = mockEthers();
     const wPad = e.zeroPadValue(W, 32);
     const rPad = e.zeroPadValue("0xRouter", 32);
-    /*- Same swap-shaped TX as the prior test, but without wrappedNativeAddress.
-        The wrap branch never runs, the TX is classified as a swap, and the
-        wPLS-IN is NOT credited. */
     const swapOut = {
       address: T0,
-      topics: [TOPIC0, wPad, rPad],
+      topics: [TRANSFER_TOPIC0, wPad, rPad],
       data: hexAmount(100_00000000),
       blockNumber: 205,
-      transactionHash: "0xwrapinswap2",
+      transactionHash: "0xnoaddr",
     };
-    const wrapIn = {
+    const swapIn = {
       address: T1,
-      topics: [TOPIC0, rPad, wPad],
+      topics: [TRANSFER_TOPIC0, rPad, wPad],
       data: hexAmount(250_00000000),
       blockNumber: 205,
-      transactionHash: "0xwrapinswap2",
+      transactionHash: "0xnoaddr",
     };
     const prov = mockProvider({
-      logs: [swapOut, wrapIn],
-      txs: { "0xwrapinswap2": { from: W, value: 250_00000000n } },
+      logs: [swapOut, swapIn, depositLog(T1, W, 250_00000000, "0xnoaddr")],
     });
     const { events, rebalanceEvents } = twoNftFixture(
       1000_00000000,
@@ -232,23 +235,47 @@ describe("lifetime-hodl native-wrap detection", () => {
     assert.strictEqual(r.amount1, 2000);
   });
 
-  it("does not fire when tx.from is not the wallet", async () => {
+  it("does NOT fire when the Deposit event credits a different address", async () => {
+    /*- Deposit event topic1 ≠ wallet (e.g. a relayer wraps for itself).
+        getLogs filter restricts topic1 to wallet, so the scan returns
+        empty and the wrap branch never fires. */
     const e = mockEthers();
-    const wPad = e.zeroPadValue(W, 32);
-    const wpls = e.zeroPadValue("0xWplsContract", 32);
-    /*- Wrapped-token IN amount === tx.value, but the TX was signed by a
-        different EOA (relayer / refund / etc.).  The wallet did not spend
-        native PLS, so this should NOT be credited as a wrap. */
-    const wrapIn = {
+    const otherPad = e.zeroPadValue("0xOther", 32);
+    const wrapForOther = {
       address: T1,
-      topics: [TOPIC0, wpls, wPad],
+      topics: [DEPOSIT_TOPIC0, otherPad],
       data: hexAmount(400_00000000),
       blockNumber: 205,
       transactionHash: "0xrelayed",
     };
+    const prov = mockProvider({ logs: [wrapForOther] });
+    const { events, rebalanceEvents } = twoNftFixture(
+      1000_00000000,
+      2000_00000000,
+      1000_00000000,
+      2000_00000000,
+    );
+    const r = await computeLifetimeHodl(events, {
+      rebalanceEvents,
+      position: { ...pos8, token0: T0, token1: T1 },
+      provider: prov,
+      ethersLib: e,
+      walletAddress: W,
+      wrappedNativeAddress: T1,
+    });
+    assert.strictEqual(r.amount0, 1000);
+    assert.strictEqual(r.amount1, 2000);
+  });
+
+  it("sums multiple Deposit events in the same TX", async () => {
+    /*- A multicall could wrap twice inside one TX (rare but legal).  The
+        scan map sums the wads under one txHash key. */
+    const e = mockEthers();
     const prov = mockProvider({
-      logs: [wrapIn],
-      txs: { "0xrelayed": { from: "0xRelayer", value: 400_00000000n } },
+      logs: [
+        depositLog(T1, W, 100_00000000, "0xtwowrap"),
+        depositLog(T1, W, 300_00000000, "0xtwowrap"),
+      ],
     });
     const { events, rebalanceEvents } = twoNftFixture(
       1000_00000000,
@@ -264,35 +291,22 @@ describe("lifetime-hodl native-wrap detection", () => {
       walletAddress: W,
       wrappedNativeAddress: T1,
     });
-    /*- Wrap not credited; the standard non-swap inbound path still credits
-        the 400 token1-IN as a regular deposit. */
     assert.strictEqual(r.amount0, 1000);
     assert.strictEqual(r.amount1, 2400);
   });
 
-  it("credits a gasless wrap up to 1% short on the wrapped side", async () => {
+  it("credits wrap on token0 side when token0 is the wrapped native", async () => {
+    /*- wrappedTokenIdx = 0 path: pool's token0 is the wrapped native.  The
+        Deposit `wad` must land on sum0, not sum1. */
     const e = mockEthers();
-    const wPad = e.zeroPadValue(W, 32);
-    const wpls = e.zeroPadValue("0xWplsContract", 32);
-    /*- Wallet sends 400 native PLS, receives 396 wPLS — gas drawn from the
-        wrapped side (1% short).  Within tolerance ⇒ wrap detected, the
-        actual wrapped amount (396) is credited (gas delta is not capital). */
-    const wrapIn = {
-      address: T1,
-      topics: [TOPIC0, wpls, wPad],
-      data: hexAmount(396_00000000),
-      blockNumber: 205,
-      transactionHash: "0xgasless1",
-    };
     const prov = mockProvider({
-      logs: [wrapIn],
-      txs: { "0xgasless1": { from: W, value: 400_00000000n } },
+      logs: [depositLog(T0, W, 500_00000000, "0xwrap0")],
     });
     const { events, rebalanceEvents } = twoNftFixture(
       1000_00000000,
       2000_00000000,
-      1000_00000000,
-      2396_00000000,
+      1500_00000000,
+      2000_00000000,
     );
     const r = await computeLifetimeHodl(events, {
       rebalanceEvents,
@@ -300,79 +314,34 @@ describe("lifetime-hodl native-wrap detection", () => {
       provider: prov,
       ethersLib: e,
       walletAddress: W,
-      wrappedNativeAddress: T1,
+      wrappedNativeAddress: T0,
     });
-    assert.strictEqual(r.amount0, 1000);
-    assert.strictEqual(r.amount1, 2396);
-  });
-
-  it("does NOT credit a wrap that's more than 1% short on the wrapped side", async () => {
-    const e = mockEthers();
-    const wPad = e.zeroPadValue(W, 32);
-    const rPad = e.zeroPadValue("0xRouter", 32);
-    /*- Wallet sends 400 native PLS, receives only 380 wPLS (5% short) in a
-        swap-shaped TX.  Outside tolerance ⇒ wrap NOT detected, and the
-        swap-pattern branch skips the TX.  No fresh wrapped credited. */
-    const swapOut = {
-      address: T0,
-      topics: [TOPIC0, wPad, rPad],
-      data: hexAmount(50_00000000),
-      blockNumber: 205,
-      transactionHash: "0xtoolossy",
-    };
-    const wrapIn = {
-      address: T1,
-      topics: [TOPIC0, rPad, wPad],
-      data: hexAmount(380_00000000),
-      blockNumber: 205,
-      transactionHash: "0xtoolossy",
-    };
-    const prov = mockProvider({
-      logs: [swapOut, wrapIn],
-      txs: { "0xtoolossy": { from: W, value: 400_00000000n } },
-    });
-    const { events, rebalanceEvents } = twoNftFixture(
-      1000_00000000,
-      2000_00000000,
-      950_00000000,
-      2380_00000000,
-    );
-    const r = await computeLifetimeHodl(events, {
-      rebalanceEvents,
-      position: { ...pos8, token0: T0, token1: T1 },
-      provider: prov,
-      ethersLib: e,
-      walletAddress: W,
-      wrappedNativeAddress: T1,
-    });
-    assert.strictEqual(r.amount0, 1000);
+    assert.strictEqual(r.amount0, 1500);
     assert.strictEqual(r.amount1, 2000);
   });
 
-  it("does NOT credit a wrap when wrapped received exceeds native sent", async () => {
+  it("does not double-count when Deposit and Transfer-IN both appear", async () => {
+    /*- Mainnet WETH9 emits both Transfer(0x0,dst,wad) and Deposit(dst,wad).
+        We must credit only the Deposit `wad`, not the Deposit + the Transfer
+        treated as a normal deposit.  Otherwise the wrap would be counted twice. */
     const e = mockEthers();
     const wPad = e.zeroPadValue(W, 32);
-    const wpls = e.zeroPadValue("0xWplsContract", 32);
-    /*- Wallet sends 400 native PLS but receives 410 wPLS — implausible for a
-        true wrap (wraps are at most 1:1).  This is more likely an LP return
-        plus a small wrap, or some other artifact.  Heuristic must NOT fire
-        here, lest it credit non-wrap inflows. */
-    const xferIn = {
+    const zeroPad = e.zeroPadValue("0x0", 32);
+    const xferFromZero = {
       address: T1,
-      topics: [TOPIC0, wpls, wPad],
-      data: hexAmount(410_00000000),
+      topics: [TRANSFER_TOPIC0, zeroPad, wPad],
+      data: hexAmount(400_00000000),
       blockNumber: 205,
-      transactionHash: "0xover",
+      transactionHash: "0xboth",
     };
     const prov = mockProvider({
-      logs: [xferIn],
-      txs: { "0xover": { from: W, value: 400_00000000n } },
+      logs: [xferFromZero, depositLog(T1, W, 400_00000000, "0xboth")],
     });
     const { events, rebalanceEvents } = twoNftFixture(
       1000_00000000,
       2000_00000000,
       1000_00000000,
-      2410_00000000,
+      2400_00000000,
     );
     const r = await computeLifetimeHodl(events, {
       rebalanceEvents,
@@ -382,97 +351,9 @@ describe("lifetime-hodl native-wrap detection", () => {
       walletAddress: W,
       wrappedNativeAddress: T1,
     });
-    /*- Wrap branch declines (410 > 400).  Standard non-swap inbound path
-        still credits the 410 transfer as a regular deposit. */
+    /*- 400 credited from the Deposit event, NOT 400+400.  The Transfer-IN
+        for this TX is short-circuited (we `continue` after the wrap branch). */
     assert.strictEqual(r.amount0, 1000);
-    assert.strictEqual(r.amount1, 2410);
-  });
-
-  it("picks the largest wrapped-IN within tolerance when multiple match", async () => {
-    const e = mockEthers();
-    const wPad = e.zeroPadValue(W, 32);
-    const wpls = e.zeroPadValue("0xWplsContract", 32);
-    const rPad = e.zeroPadValue("0xRouter", 32);
-    /*- Two wrapped-IN events in one TX: 397 (likely wrap) and 100 (likely
-        an LP-return / fee refund).  tx.value = 400.  Both pass the upper
-        bound (≤ 400) but only 397 passes the lower bound (≥ 396).  The
-        heuristic credits 397 (the wrap), not 100. */
-    const wrapIn = {
-      address: T1,
-      topics: [TOPIC0, wpls, wPad],
-      data: hexAmount(397_00000000),
-      blockNumber: 205,
-      transactionHash: "0xtwoin",
-    };
-    const otherIn = {
-      address: T1,
-      topics: [TOPIC0, rPad, wPad],
-      data: hexAmount(100_00000000),
-      blockNumber: 205,
-      transactionHash: "0xtwoin",
-    };
-    const prov = mockProvider({
-      logs: [wrapIn, otherIn],
-      txs: { "0xtwoin": { from: W, value: 400_00000000n } },
-    });
-    const { events, rebalanceEvents } = twoNftFixture(
-      1000_00000000,
-      2000_00000000,
-      1000_00000000,
-      2397_00000000,
-    );
-    const r = await computeLifetimeHodl(events, {
-      rebalanceEvents,
-      position: { ...pos8, token0: T0, token1: T1 },
-      provider: prov,
-      ethersLib: e,
-      walletAddress: W,
-      wrappedNativeAddress: T1,
-    });
-    assert.strictEqual(r.amount0, 1000);
-    assert.strictEqual(r.amount1, 2397);
-  });
-
-  it("does not fire when tx.value is zero", async () => {
-    const e = mockEthers();
-    const wPad = e.zeroPadValue(W, 32);
-    const rPad = e.zeroPadValue("0xRouter", 32);
-    /*- Swap-shaped TX from wallet, tx.value === 0n: heuristic must NOT
-        misclassify a plain swap as a wrap.  Result: TX is skipped as a
-        swap and nothing is credited. */
-    const swapOut = {
-      address: T0,
-      topics: [TOPIC0, wPad, rPad],
-      data: hexAmount(100_00000000),
-      blockNumber: 205,
-      transactionHash: "0xplainswap",
-    };
-    const swapIn = {
-      address: T1,
-      topics: [TOPIC0, rPad, wPad],
-      data: hexAmount(250_00000000),
-      blockNumber: 205,
-      transactionHash: "0xplainswap",
-    };
-    const prov = mockProvider({
-      logs: [swapOut, swapIn],
-      txs: { "0xplainswap": { from: W, value: 0n } },
-    });
-    const { events, rebalanceEvents } = twoNftFixture(
-      1000_00000000,
-      2000_00000000,
-      900_00000000,
-      2250_00000000,
-    );
-    const r = await computeLifetimeHodl(events, {
-      rebalanceEvents,
-      position: { ...pos8, token0: T0, token1: T1 },
-      provider: prov,
-      ethersLib: e,
-      walletAddress: W,
-      wrappedNativeAddress: T1,
-    });
-    assert.strictEqual(r.amount0, 1000);
-    assert.strictEqual(r.amount1, 2000);
+    assert.strictEqual(r.amount1, 2400);
   });
 });
