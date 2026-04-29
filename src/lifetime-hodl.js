@@ -137,8 +137,73 @@ function _isDeposit(group) {
   return true;
 }
 
-/** Group Transfer events by txHash, then sum genuine deposit inbound amounts. */
-function _sumNonSwapInbound(xfers0, xfers1) {
+/*- Native-wrap detection via the WETH9 `Deposit(dst, wad)` event.
+
+    Scope: the wrap-detection branch only ever applies to one address per
+    chain — the chain's native gas token's wrapped ERC-20 form (PLS↔wPLS,
+    ETH↔wETH, BNB↔wBNB, …).  LPs cannot hold the native form, so the wrapped
+    version is the only one that ever enters a position.  The wrapped-native
+    address is configured per chain in `app-config/static-tunables/chains.json`
+    under `nativeWrappedToken` (PulseChain: WPLS = 0xA107…0F9a27).  The branch
+    is skipped entirely when neither pool token matches that address; all
+    other ERC-20 deposits go through the standard classifier unchanged.
+
+    Why Deposit events, not Transfer events: a wrap is otherwise invisible to
+    the standard ERC-20 deposit classifier — when the wrap is bundled inside
+    a swap or rebalance multicall, the wPLS arrival at the wallet looks
+    identical to an LP return.  Canonical mainnet WETH9 emits both
+    `Transfer(0x0, dst, wad)` AND `Deposit(dst, wad)` on `deposit()`, but
+    PulseChain's WPLS contract emits ONLY the `Deposit` event — there is no
+    Transfer-from-zero mint event to match against.  The `Deposit` event is
+    the universal signal: it gives the exact wrapped amount (`wad`), so no
+    tolerance fudge is needed for "gasless" wraps where gas is netted from
+    the wrapped side.
+
+    Note: PulseChain typically runs ~1–2 years behind Ethereum's mainnet
+    contract versions as part of its low-cost / high-reliability emphasis,
+    so its WPLS implementation differs subtly from the latest WETH9 — keep
+    that in mind when porting heuristics that assume canonical-mainnet
+    contract behavior (e.g. event emission patterns on `deposit()`). */
+
+/** Scan the wrapped-native contract for Deposit(wallet, wad) events.
+ *  Returns Map<txHash, totalWad> — multiple deposits in the same TX sum.
+ *  @param {object} provider     ethers provider with getLogs().
+ *  @param {object} ethersLib    ethers (for id() + zeroPadValue()).
+ *  @param {string} wrappedAddr  Wrapped-native ERC-20 address.
+ *  @param {string} wallet       Wallet receiving the wraps.
+ *  @param {number} fromBlock
+ *  @param {number} toBlock
+ *  @returns {Promise<Map<string, bigint>>}
+ */
+async function _scanWrapDeposits(
+  provider,
+  ethersLib,
+  wrappedAddr,
+  wallet,
+  fromBlock,
+  toBlock,
+) {
+  if (fromBlock > toBlock) return new Map();
+  const padded = ethersLib.zeroPadValue(wallet, 32);
+  const topic0 = ethersLib.id("Deposit(address,uint256)");
+  const logs = await provider
+    .getLogs({
+      address: wrappedAddr,
+      fromBlock,
+      toBlock,
+      topics: [topic0, padded],
+    })
+    .catch(() => []);
+  const m = new Map();
+  for (const log of logs) {
+    const wad = BigInt(log.data);
+    m.set(log.transactionHash, (m.get(log.transactionHash) || 0n) + wad);
+  }
+  return m;
+}
+
+/** Group Transfer events by txHash, returning Map<txHash, { t0:[], t1:[] }>. */
+function _groupByTx(xfers0, xfers1) {
   const byTx = new Map();
   for (const t of xfers0) {
     if (!byTx.has(t.txHash)) byTx.set(t.txHash, { t0: [], t1: [] });
@@ -148,29 +213,73 @@ function _sumNonSwapInbound(xfers0, xfers1) {
     if (!byTx.has(t.txHash)) byTx.set(t.txHash, { t0: [], t1: [] });
     byTx.get(t.txHash).t1.push(t);
   }
+  return byTx;
+}
+
+/** Sum inbound transfers in a TX group; collect from-address tags for logging. */
+function _sumGroupInbound(group) {
+  let tx0 = 0n,
+    tx1 = 0n;
+  const fromAddrs = [];
+  for (const t of group.t0)
+    if (t.dir === "in") {
+      tx0 += t.amount;
+      if (t.from) fromAddrs.push(t.from.slice(24));
+    }
+  for (const t of group.t1)
+    if (t.dir === "in") {
+      tx1 += t.amount;
+      if (t.from) fromAddrs.push(t.from.slice(24));
+    }
+  return { tx0, tx1, fromAddrs };
+}
+
+/*- Group Transfer events by txHash, then sum genuine deposit inbound amounts.
+    @param {object[]} xfers0  token0 Transfer records
+    @param {object[]} xfers1  token1 Transfer records
+    @param {object}   [wrap]  Optional wrap-detection context.
+    @param {0|1}      [wrap.wrappedTokenIdx]  0 if token0 is the wrapped native, 1 if token1.
+    @param {Map<string,bigint>} [wrap.wrapDeposits]  txHash → wrapped wad from Deposit-event scan.
+    Returns { sum0, sum1 } in raw BigInt token units. */
+function _sumNonSwapInbound(xfers0, xfers1, wrap) {
+  const byTx = _groupByTx(xfers0, xfers1);
+  const wrapDeposits = wrap?.wrapDeposits || new Map();
+  /*- Iterate the union of TX hashes seen via Transfer events AND Deposit
+      events.  A wrap-only TX (PulseChain WPLS emits no Transfer on deposit)
+      is invisible to byTx, so we must walk wrapDeposits keys explicitly. */
+  const allTx = new Set([...byTx.keys(), ...wrapDeposits.keys()]);
   let sum0 = 0n,
     sum1 = 0n,
-    skipped = 0;
-  for (const [txHash, group] of byTx) {
+    skipped = 0,
+    wraps = 0;
+  for (const txHash of allTx) {
+    const wad = wrapDeposits.get(txHash) || 0n;
+    if (
+      wad > 0n &&
+      (wrap.wrappedTokenIdx === 0 || wrap.wrappedTokenIdx === 1)
+    ) {
+      /*- Crediting the Deposit `wad` short-circuits any further classification
+          for this TX.  This is correct even when the TX also has Transfer
+          events on the wrapped token (e.g. a wrap+swap multicall): we never
+          want to double-count by adding both the Deposit and the Transfer-IN. */
+      if (wrap.wrappedTokenIdx === 0) sum0 += wad;
+      else sum1 += wad;
+      wraps++;
+      console.log(
+        "[hodl]   WRAP TX %s: wrapped[%d]=%s",
+        txHash.slice(0, 10),
+        wrap.wrappedTokenIdx,
+        String(wad),
+      );
+      continue;
+    }
+    const group = byTx.get(txHash);
+    if (!group) continue; // wrap-only TX already handled
     if (!_isDeposit(group)) {
       skipped++;
       continue;
     }
-    let tx0 = 0n,
-      tx1 = 0n;
-    const fromAddrs = [];
-    for (const t of group.t0) {
-      if (t.dir === "in") {
-        tx0 += t.amount;
-        if (t.from) fromAddrs.push(t.from.slice(24));
-      }
-    }
-    for (const t of group.t1) {
-      if (t.dir === "in") {
-        tx1 += t.amount;
-        if (t.from) fromAddrs.push(t.from.slice(24));
-      }
-    }
+    const { tx0, tx1, fromAddrs } = _sumGroupInbound(group);
     if (tx0 > 0n || tx1 > 0n)
       console.log(
         "[hodl]   deposit TX %s: t0=%s t1=%s from=[%s]",
@@ -182,12 +291,13 @@ function _sumNonSwapInbound(xfers0, xfers1) {
     sum0 += tx0;
     sum1 += tx1;
   }
-  if (byTx.size > 0)
+  if (allTx.size > 0)
     console.log(
-      "[hodl]   window: %d TXs, %d skipped (swap/drain), %d deposit",
-      byTx.size,
+      "[hodl]   window: %d TXs, %d skipped (swap/drain), %d wrap, %d deposit",
+      allTx.size,
       skipped,
-      byTx.size - skipped,
+      wraps,
+      allTx.size - skipped - wraps,
     );
   return { sum0, sum1 };
 }
@@ -202,9 +312,15 @@ function _sumNonSwapInbound(xfers0, xfers1) {
  * 3. Exclude transfers FROM known LP infrastructure contracts — cheap
  *    optimisation that eliminates noise from collect/drain/refund/swap
  *    operations routed through the Position Manager or pool contract.
- * 4. Sum remaining inbound transfers = genuine fresh deposits
+ * 4. Native-wrap detection: TXs that emit `Deposit(wallet, wad)` on the
+ *    wrapped-native contract are credited as fresh wrapped-token deposits
+ *    (`wad` raw units), even when no Transfer event appears for them and
+ *    even when other Transfer-event heuristics would otherwise skip the TX.
+ * 5. Sum remaining inbound transfers = genuine fresh deposits
  *
- * @param {string[]} [excludeFromAddrs]  Addresses to filter out (PM, pool).
+ * @param {string[]} [excludeFromAddrs]      Addresses to filter out (PM, pool).
+ * @param {string}   [wrappedNativeAddress]  EIP-55 address of the wrapped native
+ *                                           token; enables wrap-detection branch.
  * @returns {Promise<{ f0: bigint, f1: bigint }>}
  */
 async function _freshDeposits(
@@ -216,6 +332,7 @@ async function _freshDeposits(
   prevMintBlock,
   nextMintBlock,
   excludeFromAddrs,
+  wrappedNativeAddress,
 ) {
   const scanFrom = prevMintBlock + 1;
   const [xfers0, xfers1] = await Promise.all([
@@ -259,7 +376,33 @@ async function _freshDeposits(
       kept0.length,
       kept1.length,
     );
-  const { sum0, sum1 } = _sumNonSwapInbound(kept0, kept1);
+  /*- Determine which pool token (if any) is the wrapped native — enables
+      wrap-detection inside `_sumNonSwapInbound`. */
+  const wn = (wrappedNativeAddress || "").toLowerCase();
+  let wrappedTokenIdx = null;
+  if (wn) {
+    if (token0 && token0.toLowerCase() === wn) wrappedTokenIdx = 0;
+    else if (token1 && token1.toLowerCase() === wn) wrappedTokenIdx = 1;
+  }
+  let wrap = null;
+  if (wrappedTokenIdx !== null) {
+    const wrapDeposits = await _scanWrapDeposits(
+      provider,
+      ethersLib,
+      wrappedNativeAddress,
+      wallet,
+      scanFrom,
+      nextMintBlock,
+    );
+    if (wrapDeposits.size > 0)
+      console.log(
+        "[hodl]   wrap-deposit scan: %d Deposit events on %s",
+        wrapDeposits.size,
+        wrappedNativeAddress,
+      );
+    wrap = { wrappedTokenIdx, wrapDeposits };
+  }
+  const { sum0, sum1 } = _sumNonSwapInbound(kept0, kept1, wrap);
   return { f0: sum0, f1: sum1 };
 }
 
@@ -280,6 +423,9 @@ async function _freshDeposits(
  * @param {object}   [opts.provider]   ethers provider (required for Transfer scan)
  * @param {object}   [opts.ethersLib]  ethers library (required for Transfer scan)
  * @param {string[]} [opts.excludeFromAddrs]  Addresses to exclude (PM, pool contract)
+ * @param {string}   [opts.wrappedNativeAddress]  Wrapped-native ERC-20 address
+ *                                                (e.g. WPLS).  Enables Deposit-event
+ *                                                scan for native→wrapped wraps.
  * @param {object}   [opts.cachedFreshDeposits]  { raw0: string, raw1: string, lastBlock: number }
  * @returns {Promise<{ amount0: number, amount1: number, raw0: string, raw1: string, lastBlock: number }>}
  */
@@ -299,6 +445,7 @@ async function _rebalanceFresh(opts, allNftEvents, ordered, i, mintIl) {
     prevMint.blockNumber,
     mintIl.blockNumber,
     opts.excludeFromAddrs,
+    opts.wrappedNativeAddress,
   );
 }
 

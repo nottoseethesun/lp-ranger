@@ -49,6 +49,7 @@ async function computeAndCacheHodl(
     ethersLib: ethers,
     walletAddress,
     excludeFromAddrs: [config.POSITION_MANAGER, ps.poolAddress],
+    wrappedNativeAddress: config.CHAIN.nativeWrappedToken,
     cachedFreshDeposits: cachedFresh,
   });
   // Attach pool address BEFORE caching so deposit USD computation can read it
