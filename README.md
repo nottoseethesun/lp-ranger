@@ -31,6 +31,7 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 - [Configuration & Development](#configuration--development)
 - [License](#license)
 - [Road Map](#road-map)
+- [Donations](#donations)
 - [Contributing](#contributing)
 
 ---
@@ -252,6 +253,18 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Multi-Chain Support](docs/roadmap/major-features/project_major_features.md#multi-chain-support) | Add 9mm on Ethereum first, then the other blockchains that 9mm supports. |
 | [LP Optimization Engine](docs/roadmap/major-features/project_major_features.md#lp-optimization-engine) | Integrate with an external service recommending optimal range width, rebalance timing, and fee tier from historical pool data and volatility analysis. |
 | [X1 (Solana-Fork) Port](docs/roadmap/major-features/project_x1_transfer_plan.md) | Port LP Ranger to X1, a highly-modified Solana fork that keeps the unmodified SVM. Layered transfer plan and 5 blocker questions captured. |
+
+---
+
+## Donations
+
+If LP Ranger makes liquidity providing easier or more efficient for you and you'd like to support its continued development, donations are welcome at:
+
+`0x52Cf7B0c566B3Bae5d42038dc357dbC9Ab4207D5`
+
+Same address on any EVM-compatible chain. I actively monitor **PulseChain** and **Ethereum**; donations on other EVM chains (BSC, Polygon, Arbitrum, Base, etc.) are accepted and appreciated, but please be aware I check them infrequently.
+
+Thank you for the support — it directly funds development time on LP Ranger.
 
 ---
 

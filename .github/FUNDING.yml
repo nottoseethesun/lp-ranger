@@ -1,0 +1,9 @@
+# GitHub Sponsors / funding configuration for LP Ranger.
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+#
+# The "custom" field accepts up to 4 arbitrary URLs. We point donors to the
+# Donations section of the README, which lists the EVM wallet address and
+# explains chain-monitoring expectations.
+
+custom:
+  - "https://github.com/nottoseethesun/lp-ranger#donations"
