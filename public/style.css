@@ -383,19 +383,27 @@ body::before{
 .pos-search-filter-row{
   display:flex;
   align-items:center;
+  flex-wrap:wrap;
   gap:12px;
   margin-bottom:12px;
 }
 
+/*  flex-basis 240px lets the input fill the line at wide widths but
+    forces the Scan Wallet button onto its own row once the input
+    would otherwise be squeezed below ~240px.                       */
 .pos-search-input-wrap{
   position:relative;
-  flex:1;
+  flex:1 1 240px;
   min-width:0;
 }
 
+/*  flex-wrap lets each toggle drop to its own row at narrow widths
+    instead of getting truncated. .9mm-pos-mgr-justify-end (applied
+    inline) keeps them right-aligned when they all fit on one line.  */
 .pos-search-row{
   display:flex;
   align-items:center;
+  flex-wrap:wrap;
   gap:12px;
   margin-bottom:18px;
 }
