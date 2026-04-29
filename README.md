@@ -230,6 +230,9 @@ Have no expectation that these items will be done. They are presented for the pu
 
 ### Nice to Have's
 
+These are **polish and refinement ideas**, not bugs. The app works correctly today; each item below describes a small UX or developer-experience improvement that has been considered but deliberately deferred. None of them block normal use, and funds are never at risk from any item on this list.
+
+
 | Item | Description |
 | ---- | ----------- |
 | [Avoid Edge-Case, Temporary Lag in Rebalance Data](docs/roadmap/nice-to-haves/project_rebalance_data_lag.md) | Incremental scanner sometimes misses pairing a new rebalance to its cached predecessor; self-heals next cycle but causes brief lag. |
