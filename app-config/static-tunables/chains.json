@@ -25,6 +25,29 @@
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
       "maxAttempts": 4
+    },
+    "chartProviders": {
+      "dexscreener": {
+        "name": "DexScreener",
+        "scheme": "https",
+        "domain": "dexscreener.com",
+        "blockchain": "pulsechain",
+        "pathSegments": ["{blockchain}", "{poolId}"]
+      },
+      "geckoterminal": {
+        "name": "GeckoTerminal",
+        "scheme": "https",
+        "domain": "www.geckoterminal.com",
+        "blockchain": "pulsechain",
+        "pathSegments": ["{blockchain}", "pools", "{poolId}"]
+      },
+      "dextools": {
+        "name": "DexTools",
+        "scheme": "https",
+        "domain": "www.dextools.io",
+        "blockchain": "pulse",
+        "pathSegments": ["app", "{blockchain}", "pair-explorer", "{poolId}"]
+      }
     }
   },
   "pulsechain-testnet": {
@@ -53,6 +76,29 @@
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
       "maxAttempts": 4
+    },
+    "chartProviders": {
+      "dexscreener": {
+        "name": "DexScreener",
+        "scheme": "https",
+        "domain": "dexscreener.com",
+        "blockchain": "pulsechain",
+        "pathSegments": ["{blockchain}", "{poolId}"]
+      },
+      "geckoterminal": {
+        "name": "GeckoTerminal",
+        "scheme": "https",
+        "domain": "www.geckoterminal.com",
+        "blockchain": "pulsechain",
+        "pathSegments": ["{blockchain}", "pools", "{poolId}"]
+      },
+      "dextools": {
+        "name": "DexTools",
+        "scheme": "https",
+        "domain": "www.dextools.io",
+        "blockchain": "pulse",
+        "pathSegments": ["app", "{blockchain}", "pair-explorer", "{poolId}"]
+      }
     }
   }
 }

@@ -13,6 +13,7 @@ import {
 } from "./dashboard-helpers.js";
 import { copyText } from "./dashboard-wallet.js";
 import { getProviderLabel } from "./dashboard-nft-providers.js";
+import { paintChartLinks } from "./dashboard-chart-providers.js";
 import { resetHistoryFlag } from "./dashboard-data.js";
 import { clearHistory } from "./dashboard-history.js";
 import {
@@ -178,6 +179,7 @@ export function _openPoolDetailsModal() {
       ? _tokenCellFrag(providerLabel, active.contractAddress)
       : _addrWithCopyFrag(active.contractAddress),
   );
+  paintChartLinks(active.poolAddress);
   m.classList.remove("hidden");
 }
 

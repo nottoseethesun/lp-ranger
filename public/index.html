@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777437568721">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777437568721">
+<link rel="stylesheet" href="style.css?v=1777442035300">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777442035300">
 </head>
 <body>
 
@@ -622,22 +622,32 @@
 <div id="poolDetailsModal" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-logo"><div><h2>Pool Details</h2></div></div>
-    <dl class="9mm-pos-mgr-pool-details-list">
-      <dt>Position Type</dt>
-      <dd class="9mm-pos-mgr-pool-detail-val" id="pdType">—</dd>
-      <dt>Fee Tier</dt>
-      <dd class="9mm-pos-mgr-pool-detail-val" id="pdFee">—</dd>
-      <dt>Tick Spacing</dt>
-      <dd class="9mm-pos-mgr-pool-detail-val" id="pdTickSpacing">—</dd>
-      <dt>Pool Hash I.D.</dt>
-      <dd class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdPool">—</dd>
-      <dt>Token 0</dt>
-      <dd class="9mm-pos-mgr-pool-detail-val" id="pdToken0">—</dd>
-      <dt>Token 1</dt>
-      <dd class="9mm-pos-mgr-pool-detail-val" id="pdToken1">—</dd>
-      <dt>NFT Contract</dt>
-      <dd class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdContract">—</dd>
-    </dl>
+    <div class="9mm-pos-mgr-pool-details-row">
+      <dl class="9mm-pos-mgr-pool-details-list">
+        <dt>Position Type</dt>
+        <dd class="9mm-pos-mgr-pool-detail-val" id="pdType">—</dd>
+        <dt>Fee Tier</dt>
+        <dd class="9mm-pos-mgr-pool-detail-val" id="pdFee">—</dd>
+        <dt>Tick Spacing</dt>
+        <dd class="9mm-pos-mgr-pool-detail-val" id="pdTickSpacing">—</dd>
+        <dt>Pool Hash I.D.</dt>
+        <dd class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdPool">—</dd>
+        <dt>Token 0</dt>
+        <dd class="9mm-pos-mgr-pool-detail-val" id="pdToken0">—</dd>
+        <dt>Token 1</dt>
+        <dd class="9mm-pos-mgr-pool-detail-val" id="pdToken1">—</dd>
+        <dt>NFT Contract</dt>
+        <dd class="9mm-pos-mgr-pool-detail-val 9mm-pos-mgr-monospace" id="pdContract">—</dd>
+      </dl>
+      <aside class="9mm-pos-mgr-pool-details-charts" aria-label="Chart Links">
+        <h3 class="9mm-pos-mgr-pool-details-charts-title">Chart Links</h3>
+        <ul class="9mm-pos-mgr-pool-details-charts-list">
+          <li><a id="pdChart_dexscreener" href="#" target="_blank" rel="noopener noreferrer">DexScreener</a></li>
+          <li><a id="pdChart_geckoterminal" href="#" target="_blank" rel="noopener noreferrer">GeckoTerminal</a></li>
+          <li><a id="pdChart_dextools" href="#" target="_blank" rel="noopener noreferrer">DexTools</a></li>
+        </ul>
+      </aside>
+    </div>
     <div class="9mm-pos-mgr-modal-btn-row"><button type="button" class="pos-scan-btn" id="poolDetailsCloseBtn">OK</button></div>
   </div>
 </div>
@@ -1310,6 +1320,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777437568721"></script>
+<script src="dist/bundle.js?v=1777442035300"></script>
 </body>
 </html>

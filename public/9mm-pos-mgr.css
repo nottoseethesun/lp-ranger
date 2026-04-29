@@ -1728,6 +1728,65 @@ span[title]:not([title=""]):hover {
   font-size: 48px;
 }
 
+/* ── Pool Details: row layout (details list + Chart Links aside) ───────── */
+
+.\39 mm-pos-mgr-pool-details-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 36px;
+}
+
+.\39 mm-pos-mgr-pool-details-row .\39 mm-pos-mgr-pool-details-list {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.\39 mm-pos-mgr-pool-details-charts {
+  flex: 0 0 auto;
+  text-align: right;
+  margin-left: auto;
+}
+
+/* Visually align the Chart Links heading with "Position Type" — the
+   first <dt> in the details list. The <dt> uses the same 20px size and
+   muted colour, so we mirror it here and zero out the default <h3>
+   margins so both headings sit on the same baseline. */
+.\39 mm-pos-mgr-pool-details-charts-title {
+  display: block;
+  margin: 0 0 9px;
+  font-size: 20px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: inherit;
+}
+
+.\39 mm-pos-mgr-pool-details-charts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.\39 mm-pos-mgr-pool-details-charts-list li {
+  margin-bottom: 9px;
+}
+
+.\39 mm-pos-mgr-pool-details-charts-list li:last-child {
+  margin-bottom: 0;
+}
+
+.\39 mm-pos-mgr-pool-details-charts-list a {
+  font-size: 20px;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.\39 mm-pos-mgr-pool-details-charts-list a[aria-disabled="true"] {
+  color: var(--muted);
+  text-decoration: none;
+  pointer-events: none;
+}
+
 /* ── Full-Range Labels ──────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-fullrange-labels {

@@ -67,6 +67,7 @@ import { initTelegram } from "./dashboard-telegram.js";
 import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadNftProviders } from "./dashboard-nft-providers.js";
+import { loadChartProviders } from "./dashboard-chart-providers.js";
 import {
   bindAllEvents,
   restorePrivacyMode,
@@ -219,6 +220,12 @@ function _afterDisclaimer() {
   // the strip so a late-arriving map still shows up without waiting for
   // the next user-driven render.
   loadNftProviders().then(() => updatePosStripUI());
+
+  /*- Fetch the per-chain Chart Links list (DexScreener / GeckoTerminal /
+   *  DexTools) so the Pool Details modal can render hrefs without any
+   *  hard-coded chain slug. Silent on failure — the section simply
+   *  renders empty links rather than blocking the modal. */
+  loadChartProviders();
 
   /*- Fetch Bot Config tunable defaults so each input shows the value
    *  declared in app-config/static-tunables/bot-config-defaults.json
