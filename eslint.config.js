@@ -91,6 +91,7 @@ module.exports = [
       "src/**/*.js",
       "test/**/*.js",
       "scripts/**/*.js",
+      "util/**/*.js",
       "server.js",
       "bot.js",
       "public/dashboard-*.js",
@@ -115,10 +116,12 @@ module.exports = [
     files: [
       "src/**/*.js",
       "scripts/**/*.js",
+      "util/**/*.js",
       "server.js",
       "bot.js",
       "eslint-rules/**/*.js",
     ],
+    ignores: ["util/**/test/**/*.js"],
     plugins: {
       "9mm": {
         rules: {
@@ -202,7 +205,7 @@ module.exports = [
 
   // ── 5. Test files — relax a few rules that don't apply in tests ──────────
   {
-    files: ["test/**/*.js"],
+    files: ["test/**/*.js", "util/**/test/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "commonjs",

@@ -30,6 +30,7 @@ sequence.
   - [Lint and Test](#lint-and-test)
   - [Wallet Management](#wallet-management)
   - [Housekeeping](#housekeeping)
+  - [Diagnostic Utilities](#diagnostic-utilities)
 - [The app-config Directory](#the-app-config-directory)
 - [Bot Config Defaults](#bot-config-defaults)
 - [Security](#security)
@@ -524,6 +525,9 @@ blockchain wallet scans on next start to rebuild caches.
 - `npm run test:coverage` — Test coverage report (Node 20+,
   `--experimental-test-coverage`)
 - `npm run test:watch` — Re-run tests on file changes
+- `npm run test:util` — Tests for the diagnostic tools in
+  `util/diagnostic/test/`. Out of CI and pre-commit; see
+  [Diagnostic Utilities](#diagnostic-utilities).
 - `npm run check` — Combined lint + test + 80% coverage gate + security
   audits (matches CI)
 
@@ -559,6 +563,35 @@ blockchain wallet scans on next start to rebuild caches.
   `wipe-settings`.
 - `npm run view-report` — Open `test/report-artifacts/report.pdf` via
   `xdg-open` (Linux dev box).
+
+### Diagnostic Utilities
+
+`util/diagnostic/` holds read-only Node.js tools for investigating
+on-chain state and bot data. Unlike `scripts/` (standard ops like `clean`
+and `nuke`), these are non-standard, ad-hoc utilities that an end user
+can run when something looks wrong. All four tools take CLI args, never
+mutate state, and write only to stdout (redirect to `tmp/` for logs).
+
+- `inspect-pool.js` — Pretty-prints `app-config/.bot-config.json` and
+  `tmp/pnl-epochs-cache.json` for a position or pool fragment: status,
+  hodlBaseline, residuals, lifetimeHodlAmounts, fresh deposits.
+- `show-rebalance-chain.js` — Walks position-manager `Transfer` events
+  for a wallet over N years, listing every NFT mint/burn/move.
+- `reconcile-hodl.js` — Sums on-chain `IncreaseLiquidity` /
+  `DecreaseLiquidity` / `Collect` across an NFT chain and compares to
+  the cached HODL baseline.
+- `wallet-token-flow.js` — Lists ERC-20 `Transfer` events for one or
+  more tokens within a UTC date window, with net-flow summary.
+
+These tools are linted by `npm run lint`, `npm run audit:security`, and
+`npm run audit:secrets` (same bar as `src/`) because they ship with the
+project. Their tests live separately in `util/diagnostic/test/` and run
+via `npm run test:util` — they are intentionally **out of CI and
+pre-commit** so the diagnostic surface can evolve without dragging
+release gates. Pure helpers shared across tools live in
+`util/diagnostic/_helpers.js`; each tool's CLI `main()` is gated behind
+`require.main === module` so requiring it from a test does not start
+an RPC scan.
 
 ---
 
