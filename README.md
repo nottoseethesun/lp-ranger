@@ -226,10 +226,30 @@ full text.
 
 ## Road Map
 
-Planned features for future releases:
+Have no expectation that these items will be done. They are presented for the purpose of future focus.
 
-- **Multi-chain support** — add support for 9mm on Ethereum, and after that, the other blockchains that 9mm supports.
-- **LP Optimization Engine** — integrate with an external optimization service that recommends optimal range width, rebalance timing, and fee tier based on historical pool data and volatility analysis.
+### Nice to Have's
+
+| Item | Description |
+| ---- | ----------- |
+| [Avoid Edge-Case, Temporary Lag in Rebalance Data](docs/roadmap/nice-to-haves/project_rebalance_data_lag.md) | Incremental scanner sometimes misses pairing a new rebalance to its cached predecessor; self-heals next cycle but causes brief lag. |
+| [Show Swap Route Even If Only Blockchain Data Available](docs/roadmap/nice-to-haves/project_route_via_chain_scan_gap.md) | Chain-scanned rebalance events have no swap-source field, so "Routed Via" shows em-dash on fresh installs; recover from on-chain receipts. |
+| [Suppress False Out-of-Range on Unmanaged View Until Synced](docs/roadmap/nice-to-haves/project_suppress_oor_until_synced.md) | Unmanaged view briefly shows a position as out-of-range before range bar and price finish loading; gate the indicator on full sync. |
+| [Corrective-Swap Oscillation Guard](docs/roadmap/nice-to-haves/project_corrective_swap_oscillation.md) | Corrective-swap loop can overshoot then exhaust 3 iterations on volatile paths, leaving small residuals above the dust threshold. |
+| [Mint Speed-Up Recompute](docs/roadmap/nice-to-haves/project_mint_speedup_recompute.md) | On a stuck mint speedup, recompute amounts/min from a fresh pool snapshot so a delayed mint doesn't revert on stale slippage. |
+| [Historical Compound Log Backfill](docs/roadmap/nice-to-haves/project_historical_compound_log.md) | Compounds that pre-date the running session don't appear in the Activity Log; backfill from per-TX reads on sync-complete. |
+| [Dashboard State Cleanup](docs/roadmap/nice-to-haves/project_dashboard_state_cleanup.md) | Sweep dashboard module-level caches that mirror poll data and may leak across position/pool switches; same pattern as the `_poolFirstDate` fix. |
+| [ESM Migration](docs/roadmap/nice-to-haves/project_esm_migration.md) | Migrate the codebase from CommonJS `require` / `module.exports` to ESM `import` / `export`. Dedicated branch, big-bang change. |
+| [Log-to-File](docs/roadmap/nice-to-haves/project_log_to_file.md) | Optional CLI flag and Settings toggle to tee server output to `app-config/lp-ranger.log` with size rotation, for hardware with limited scrollback. |
+| [RPC Auto-Failover](docs/roadmap/nice-to-haves/project_rpc_fallback_on_saturation.md) | Mid-session RPC rotation when a primary endpoint returns repeated terminal errors within a short window. |
+
+### Possible Major New Features
+
+| Item | Description |
+| ---- | ----------- |
+| [Multi-Chain Support](docs/roadmap/major-features/project_major_features.md#multi-chain-support) | Add 9mm on Ethereum first, then the other blockchains that 9mm supports. |
+| [LP Optimization Engine](docs/roadmap/major-features/project_major_features.md#lp-optimization-engine) | Integrate with an external service recommending optimal range width, rebalance timing, and fee tier from historical pool data and volatility analysis. |
+| [X1 (Solana-Fork) Port](docs/roadmap/major-features/project_x1_transfer_plan.md) | Port LP Ranger to X1, a highly-modified Solana fork that keeps the unmodified SVM. Layered transfer plan and 5 blocker questions captured. |
 
 ---
 
