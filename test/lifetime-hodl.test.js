@@ -42,6 +42,7 @@ function _topicsMatch(lt, ft) {
 function mockProvider(opts = {}) {
   const balances = opts.balances || {};
   const logs = opts.logs || [];
+  const txs = opts.txs || {};
   return {
     getLogs(filter) {
       return Promise.resolve(
@@ -53,6 +54,9 @@ function mockProvider(opts = {}) {
             _topicsMatch(l.topics, filter.topics),
         ),
       );
+    },
+    getTransaction(hash) {
+      return Promise.resolve(txs[hash] || null);
     },
     _balances: balances,
   };

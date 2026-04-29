@@ -137,8 +137,59 @@ function _isDeposit(group) {
   return true;
 }
 
-/** Group Transfer events by txHash, then sum genuine deposit inbound amounts. */
-function _sumNonSwapInbound(xfers0, xfers1) {
+/*- Tolerance allowance (in basis points) for wrap detection.  Some "gasless"
+    wraps deduct the relayer/gas fee from the wrapped-token side of the wrap,
+    so the wallet receives slightly less wrapped than it sent native.  We
+    accept any wrapped-IN amount in the half-open band
+        [tx.value × (1 - _WRAP_TOLERANCE_BPS/10000), tx.value]
+    as a wrap.  Per-token-count (raw BigInt) comparison; safe across decimals
+    because native and wrapped always share the same decimal scale.  Generic
+    across EVM chains: the wrapped-native ERC-20 address is configured per
+    chain in `app-config/static-tunables/chains.json` under
+    `nativeWrappedToken` (PulseChain: WPLS = 0xA107…0F9a27). */
+const _WRAP_TOLERANCE_BPS = 100n;
+
+/*- Detect a native-token wrap inside a TX.
+    EVM LPs can only hold the wrapped form of the native token (PLS→wPLS,
+    ETH→wETH, …).  A wrap is invisible to the standard ERC-20 deposit
+    classifier when the wrap step is bundled inside a swap or rebalance
+    multicall — the wPLS arrival at the wallet looks identical to an LP
+    return.  But the on-chain TX itself reveals it: the wallet sends native
+    PLS as `tx.value`, and the same TX returns approximately the same amount
+    of wPLS to the wallet via a Transfer event.  Allows the wrapped amount
+    to be up to `_WRAP_TOLERANCE_BPS` basis points (1%) less than `tx.value`
+    to accommodate gasless wraps that deduct the gas fee from the wrapped
+    side.  The wrapped amount must NEVER exceed `tx.value` (a normal wrap is
+    at most 1:1).  When multiple wrapped-IN transfers fall within tolerance,
+    the largest is selected (most likely the wrap; smaller amounts are more
+    likely fee refunds or LP returns).  Returns the matched wrapped amount
+    (positive BigInt) on match, `0n` otherwise.  We credit the actual
+    wrapped amount received, not `tx.value`, because the wrapped amount is
+    what entered the LP — the gas-fee delta is not capital.
+
+    @param {object} tx                      Result of provider.getTransaction.
+    @param {object[]} wrappedInTransfers    Transfers of the wrapped token to wallet
+                                            in this TX (filtered to dir==="in").
+    @param {string} walletAddress           Lowercase wallet to match against tx.from.
+    @returns {bigint}                       Matched wrapped amount, or 0n. */
+function _detectNativeWrap(tx, wrappedInTransfers, walletAddress) {
+  if (!tx || tx.value === undefined || tx.value === null) return 0n;
+  const value = BigInt(tx.value);
+  if (value <= 0n) return 0n;
+  if (!tx.from || tx.from.toLowerCase() !== walletAddress.toLowerCase())
+    return 0n;
+  const minAmount = (value * (10000n - _WRAP_TOLERANCE_BPS)) / 10000n;
+  let best = 0n;
+  for (const t of wrappedInTransfers) {
+    if (t.amount > value) continue;
+    if (t.amount < minAmount) continue;
+    if (t.amount > best) best = t.amount;
+  }
+  return best;
+}
+
+/** Group Transfer events by txHash, returning Map<txHash, { t0:[], t1:[] }>. */
+function _groupByTx(xfers0, xfers1) {
   const byTx = new Map();
   for (const t of xfers0) {
     if (!byTx.has(t.txHash)) byTx.set(t.txHash, { t0: [], t1: [] });
@@ -148,29 +199,81 @@ function _sumNonSwapInbound(xfers0, xfers1) {
     if (!byTx.has(t.txHash)) byTx.set(t.txHash, { t0: [], t1: [] });
     byTx.get(t.txHash).t1.push(t);
   }
+  return byTx;
+}
+
+/** Sum inbound transfers in a TX group; collect from-address tags for logging. */
+function _sumGroupInbound(group) {
+  let tx0 = 0n,
+    tx1 = 0n;
+  const fromAddrs = [];
+  for (const t of group.t0)
+    if (t.dir === "in") {
+      tx0 += t.amount;
+      if (t.from) fromAddrs.push(t.from.slice(24));
+    }
+  for (const t of group.t1)
+    if (t.dir === "in") {
+      tx1 += t.amount;
+      if (t.from) fromAddrs.push(t.from.slice(24));
+    }
+  return { tx0, tx1, fromAddrs };
+}
+
+/*- Group Transfer events by txHash, then sum genuine deposit inbound amounts.
+    @param {object[]} xfers0  token0 Transfer records
+    @param {object[]} xfers1  token1 Transfer records
+    @param {object}   [wrap]  Optional wrap-detection context.
+    @param {object}   [wrap.provider]      ethers provider exposing getTransaction.
+    @param {string}   [wrap.walletAddress] EOA whose tx.from we trust as wallet-initiated.
+    @param {0|1|null} [wrap.wrappedTokenIdx] 0 if token0 is the wrapped native, 1 if token1.
+    Returns { sum0, sum1 } in raw BigInt token units. */
+async function _sumNonSwapInbound(xfers0, xfers1, wrap) {
+  const byTx = _groupByTx(xfers0, xfers1);
   let sum0 = 0n,
     sum1 = 0n,
-    skipped = 0;
+    skipped = 0,
+    wraps = 0;
   for (const [txHash, group] of byTx) {
+    /*- Wrap-detection: a wallet-initiated TX with positive native value where
+        the wrapped-token IN amount exactly matches `tx.value` is a native→wrapped
+        wrap (PLS→wPLS / ETH→wETH).  Credit tx.value to the wrapped side and skip
+        the standard swap/drain classification, which would mis-label this TX. */
+    if (
+      wrap &&
+      wrap.provider &&
+      wrap.walletAddress &&
+      (wrap.wrappedTokenIdx === 0 || wrap.wrappedTokenIdx === 1)
+    ) {
+      const wrappedIns = (
+        wrap.wrappedTokenIdx === 0 ? group.t0 : group.t1
+      ).filter((t) => t.dir === "in");
+      let tx;
+      try {
+        tx = await wrap.provider.getTransaction(txHash);
+      } catch {
+        tx = null;
+      }
+      const wrapAmount = _detectNativeWrap(tx, wrappedIns, wrap.walletAddress);
+      if (wrapAmount > 0n) {
+        if (wrap.wrappedTokenIdx === 0) sum0 += wrapAmount;
+        else sum1 += wrapAmount;
+        wraps++;
+        console.log(
+          "[hodl]   WRAP TX %s: native=%s wrapped[%d]=%s",
+          txHash.slice(0, 10),
+          String(BigInt(tx.value)),
+          wrap.wrappedTokenIdx,
+          String(wrapAmount),
+        );
+        continue;
+      }
+    }
     if (!_isDeposit(group)) {
       skipped++;
       continue;
     }
-    let tx0 = 0n,
-      tx1 = 0n;
-    const fromAddrs = [];
-    for (const t of group.t0) {
-      if (t.dir === "in") {
-        tx0 += t.amount;
-        if (t.from) fromAddrs.push(t.from.slice(24));
-      }
-    }
-    for (const t of group.t1) {
-      if (t.dir === "in") {
-        tx1 += t.amount;
-        if (t.from) fromAddrs.push(t.from.slice(24));
-      }
-    }
+    const { tx0, tx1, fromAddrs } = _sumGroupInbound(group);
     if (tx0 > 0n || tx1 > 0n)
       console.log(
         "[hodl]   deposit TX %s: t0=%s t1=%s from=[%s]",
@@ -184,10 +287,11 @@ function _sumNonSwapInbound(xfers0, xfers1) {
   }
   if (byTx.size > 0)
     console.log(
-      "[hodl]   window: %d TXs, %d skipped (swap/drain), %d deposit",
+      "[hodl]   window: %d TXs, %d skipped (swap/drain), %d wrap, %d deposit",
       byTx.size,
       skipped,
-      byTx.size - skipped,
+      wraps,
+      byTx.size - skipped - wraps,
     );
   return { sum0, sum1 };
 }
@@ -202,9 +306,15 @@ function _sumNonSwapInbound(xfers0, xfers1) {
  * 3. Exclude transfers FROM known LP infrastructure contracts — cheap
  *    optimisation that eliminates noise from collect/drain/refund/swap
  *    operations routed through the Position Manager or pool contract.
- * 4. Sum remaining inbound transfers = genuine fresh deposits
+ * 4. Native-wrap detection: wallet-initiated TXs where `tx.value` (native
+ *    PLS/ETH) exactly matches a wrapped-token IN amount in the same TX
+ *    are credited as fresh wrapped-token deposits, even when other
+ *    Transfer-event heuristics would skip the TX.
+ * 5. Sum remaining inbound transfers = genuine fresh deposits
  *
- * @param {string[]} [excludeFromAddrs]  Addresses to filter out (PM, pool).
+ * @param {string[]} [excludeFromAddrs]      Addresses to filter out (PM, pool).
+ * @param {string}   [wrappedNativeAddress]  EIP-55 address of the wrapped native
+ *                                           token; enables wrap-detection branch.
  * @returns {Promise<{ f0: bigint, f1: bigint }>}
  */
 async function _freshDeposits(
@@ -216,6 +326,7 @@ async function _freshDeposits(
   prevMintBlock,
   nextMintBlock,
   excludeFromAddrs,
+  wrappedNativeAddress,
 ) {
   const scanFrom = prevMintBlock + 1;
   const [xfers0, xfers1] = await Promise.all([
@@ -259,7 +370,19 @@ async function _freshDeposits(
       kept0.length,
       kept1.length,
     );
-  const { sum0, sum1 } = _sumNonSwapInbound(kept0, kept1);
+  /*- Determine which pool token (if any) is the wrapped native — enables
+      wrap-detection inside `_sumNonSwapInbound`. */
+  const wn = (wrappedNativeAddress || "").toLowerCase();
+  let wrappedTokenIdx = null;
+  if (wn) {
+    if (token0 && token0.toLowerCase() === wn) wrappedTokenIdx = 0;
+    else if (token1 && token1.toLowerCase() === wn) wrappedTokenIdx = 1;
+  }
+  const wrap =
+    wrappedTokenIdx === null
+      ? null
+      : { provider, walletAddress: wallet, wrappedTokenIdx };
+  const { sum0, sum1 } = await _sumNonSwapInbound(kept0, kept1, wrap);
   return { f0: sum0, f1: sum1 };
 }
 
@@ -280,6 +403,9 @@ async function _freshDeposits(
  * @param {object}   [opts.provider]   ethers provider (required for Transfer scan)
  * @param {object}   [opts.ethersLib]  ethers library (required for Transfer scan)
  * @param {string[]} [opts.excludeFromAddrs]  Addresses to exclude (PM, pool contract)
+ * @param {string}   [opts.wrappedNativeAddress]  Wrapped-native ERC-20 address
+ *                                                (e.g. WPLS).  Enables native→wrapped
+ *                                                wrap detection in the Transfer scan.
  * @param {object}   [opts.cachedFreshDeposits]  { raw0: string, raw1: string, lastBlock: number }
  * @returns {Promise<{ amount0: number, amount1: number, raw0: string, raw1: string, lastBlock: number }>}
  */
@@ -299,6 +425,7 @@ async function _rebalanceFresh(opts, allNftEvents, ordered, i, mintIl) {
     prevMint.blockNumber,
     mintIl.blockNumber,
     opts.excludeFromAddrs,
+    opts.wrappedNativeAddress,
   );
 }
 

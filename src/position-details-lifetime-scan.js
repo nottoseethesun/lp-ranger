@@ -89,6 +89,7 @@ async function scanLifetimeHodl(
     ethersLib: ethers,
     walletAddress: body.walletAddress,
     excludeFromAddrs: [config.POSITION_MANAGER, poolAddress],
+    wrappedNativeAddress: config.CHAIN.nativeWrappedToken,
     cachedFreshDeposits: cachedFresh,
   });
   _persistLifetimeHodlCache(poolCacheKey, hodl, cachedFresh);
