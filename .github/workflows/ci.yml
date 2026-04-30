@@ -35,13 +35,12 @@ run-name: CI on ${{ github.head_ref || github.ref_name }}
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   workflow_dispatch:
 
 jobs:
-
   check:
     name: Check (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
@@ -51,7 +50,7 @@ jobs:
       fail-fast: false
       matrix:
         # Node 22 = current LTS, Node 24 = latest stable.
-        node-version: ['22', '24']
+        node-version: ["22", "24"]
 
     steps:
       - name: Checkout repository
@@ -61,7 +60,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci

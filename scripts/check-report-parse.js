@@ -107,11 +107,13 @@ function parseMarkdownlintText(txt) {
 }
 
 /*-
- * Parse Prettier --check stdout/stderr captured from `prettier --check
- * '**\/*.json'`. Prettier prints one `[warn] <path>` line per file that
- * needs formatting plus a summary "[warn] Code style issues found in N
- * files" line. Counts the per-file lines (excluding the summary) so a
- * clean run reports 0 dirty files.
+ * Parse Prettier --check stdout/stderr. Prettier prints one
+ * `[warn] <path>` line per file that needs formatting plus a summary
+ * "[warn] Code style issues found in N files" line. Counts the per-file
+ * lines (excluding the summary) so a clean run reports 0 dirty files.
+ *
+ * Used for both the JSON and YAML Prettier passes — output format is
+ * identical regardless of which file extension was scanned.
  *
  * @param {string} txt  Captured stdout+stderr (may be empty when clean).
  * @returns {{ dirty: number, firstLines: string[] }}
@@ -125,6 +127,29 @@ function parsePrettierJsonText(txt) {
   return {
     dirty: fileWarnings.length,
     firstLines: fileWarnings.slice(0, 5),
+  };
+}
+
+/*-
+ * Parse actionlint stdout/stderr. actionlint emits one diagnostic per
+ * issue in a "<file>:<line>:<col>: <message> [<rule>]" format, plus
+ * sometimes context lines starting with "  |" or arrows. A clean run
+ * produces no output at all. Counts only the diagnostic header lines
+ * (those matching the file:line:col: pattern) so context lines don't
+ * inflate the violation count.
+ *
+ * @param {string} txt  Captured stdout+stderr (may be empty when clean).
+ * @returns {{ errors: number, firstLines: string[] }}
+ */
+function parseActionlintText(txt) {
+  if (!txt) return { errors: 0, firstLines: [] };
+  const lines = txt.split("\n").filter(Boolean);
+  // Diagnostic header lines look like:
+  //   .github/workflows/ci.yml:42:9: <message> [<rule>]
+  const diagnostics = lines.filter((l) => /^[^:]+:\d+:\d+:\s/.test(l));
+  return {
+    errors: diagnostics.length,
+    firstLines: diagnostics.slice(0, 5),
   };
 }
 
@@ -275,6 +300,7 @@ module.exports = {
   parseHtmlValidate,
   parseMarkdownlintText,
   parsePrettierJsonText,
+  parseActionlintText,
   parseNpmAudit,
   parseSecretlint,
   parseTapTests,

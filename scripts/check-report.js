@@ -106,6 +106,10 @@ function loadResults() {
   const prettierJson = P.parsePrettierJsonText(
     _readTextReport("prettier-json.txt"),
   );
+  const prettierYaml = P.parsePrettierJsonText(
+    _readTextReport("prettier-yaml.txt"),
+  );
+  const actionlint = P.parseActionlintText(_readTextReport("actionlint.txt"));
   const npmAudit = P.parseNpmAudit(_readJson("npm-audit.json"));
   const securityLintRaw = _readJson("security-lint.json");
   const securityLint = P.parseEslint(securityLintRaw);
@@ -163,6 +167,20 @@ function loadResults() {
           ? `0 violations, formatting clean`
           : `${prettierJson.dirty} files need formatting — run \`npm run lint:fix\``,
     },
+    prettierYaml: {
+      ok: exitCodes.prettierYaml === 0,
+      detail:
+        prettierYaml.dirty === 0
+          ? `0 violations, formatting clean`
+          : `${prettierYaml.dirty} files need formatting — run \`npm run lint:fix\``,
+    },
+    actionlint: {
+      ok: exitCodes.actionlint === 0,
+      detail:
+        actionlint.errors === 0
+          ? `0 violations, workflows clean`
+          : `${actionlint.errors} workflow issues`,
+    },
     tests: {
       ok: exitCodes.tests === 0,
       detail:
@@ -197,6 +215,8 @@ function loadResults() {
     { name: "html-validate", ...checks.htmlValidate },
     { name: "markdownlint", ...checks.markdownlint },
     { name: "Prettier (JSON)", ...checks.prettierJson },
+    { name: "Prettier (YAML)", ...checks.prettierYaml },
+    { name: "actionlint", ...checks.actionlint },
     { name: "Tests", ...checks.tests },
     { name: "Coverage", ...checks.coverage },
     { name: "npm audit", ...checks.npmAudit },
@@ -219,6 +239,8 @@ function loadResults() {
     htmlValidate,
     markdownlint,
     prettierJson,
+    prettierYaml,
+    actionlint,
     npmAudit,
     securityLint,
     secretlint,

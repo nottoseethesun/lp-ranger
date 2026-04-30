@@ -206,6 +206,45 @@ describe("check-report-parse: parsePrettierJsonText", () => {
   });
 });
 
+describe("check-report-parse: parseActionlintText", () => {
+  it("counts diagnostic header lines (file:line:col: message)", () => {
+    const txt = [
+      ".github/workflows/ci.yml:42:9: shellcheck reported issue [shellcheck]",
+      "  |",
+      "  | run: echo $undefined",
+      ".github/workflows/release.yml:7:3: invalid value [syntax-check]",
+    ].join("\n");
+    const r = P.parseActionlintText(txt);
+    assert.equal(r.errors, 2);
+    assert.equal(r.firstLines.length, 2);
+    assert.ok(r.firstLines[0].includes("ci.yml"));
+  });
+
+  it("returns 0 errors for clean (empty) output", () => {
+    assert.deepEqual(P.parseActionlintText(""), { errors: 0, firstLines: [] });
+  });
+
+  it("ignores context lines that don't match diagnostic format", () => {
+    const txt = [
+      "  | this is just context",
+      "  ^",
+      "Some other unrelated line",
+    ].join("\n");
+    const r = P.parseActionlintText(txt);
+    assert.equal(r.errors, 0);
+  });
+
+  it("caps firstLines at 5", () => {
+    const lines = [];
+    for (let i = 0; i < 8; i++) {
+      lines.push(`.github/workflows/x.yml:${i}:1: issue [rule]`);
+    }
+    const r = P.parseActionlintText(lines.join("\n"));
+    assert.equal(r.errors, 8);
+    assert.equal(r.firstLines.length, 5);
+  });
+});
+
 describe("check-report-parse: parseNpmAudit", () => {
   it("sums severity counts", () => {
     const json = {

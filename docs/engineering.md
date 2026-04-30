@@ -82,6 +82,7 @@ sequence.
     - [Graceful Shutdown](#graceful-shutdown)
   - [Code Review Controls](#code-review-controls)
     - [Build and Infrastructure Scripts](#build-and-infrastructure-scripts)
+    - [GitHub Actions Workflows](#github-actions-workflows)
   - [Test-Time State Protection](#test-time-state-protection)
 - [Check Report Artifacts](#check-report-artifacts)
 - [API Documentation](#api-documentation)
@@ -1790,6 +1791,48 @@ This means a compromised or careless infrastructure script cannot
 silently bypass the same quality and security gates that protect
 the application code — there is no "scripts are just tooling"
 carve-out.
+
+#### GitHub Actions Workflows
+
+The `.github/workflows/*.yml` files that drive CI are themselves
+held to two `npm run check` gates: Prettier `--check` for shape and
+formatting, and `actionlint` for workflow correctness. The
+`actionlint` binary is installed as a devDependency
+(`github-actionlint`, an npm wrapper that downloads the official
+`rhysd/actionlint` Go binary at install time) so that every check
+run on every developer machine and in CI uses the same pinned
+version. There are no rule-selection knobs — actionlint runs its
+full default rule set on every workflow file, and any new finding
+fails `npm run check`.
+
+The security-relevant checks actionlint performs are:
+
+- **Script-injection detection** — flags `${{ ... }}` expressions
+  containing untrusted inputs (e.g. `github.event.issue.title`,
+  `github.head_ref`, PR body, branch names) interpolated directly
+  into a `run:` block. This is the standard GitHub Actions
+  command-injection vector: an attacker who controls a PR title
+  could inject shell metacharacters that execute on the runner with
+  whatever permissions the workflow has. actionlint forces the
+  workflow to route untrusted input through an environment variable
+  instead, where shell quoting is the runner's job, not the YAML
+  templater's.
+- **Hardcoded credentials** — flags plaintext secrets in
+  `services:` and `container:` configurations (database passwords,
+  registry credentials), pushing them through `${{ secrets.* }}`
+  instead.
+- **Permissions and `GITHUB_TOKEN` scope sanity** — surfaces
+  workflows that grant broader token permissions than the steps
+  appear to need.
+
+Beyond security, actionlint also catches the everyday workflow
+bugs that would otherwise only surface as a red CI run: unknown
+context fields, invalid `runs-on:` labels, broken `needs:`
+references, malformed cron expressions, deprecated action versions,
+and YAML syntax that GitHub will silently accept but never execute
+correctly. Catching these in `npm run check` instead of in CI keeps
+the feedback loop local and prevents a broken-workflow commit from
+reaching `main`.
 
 ### Test-Time State Protection
 

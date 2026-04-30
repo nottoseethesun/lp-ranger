@@ -170,6 +170,30 @@ fs.writeFileSync(
   prettierJsonRun.stdout + prettierJsonRun.stderr,
 );
 
+// ── Lint (YAML) — Prettier --check ────────────────────────────────────────
+// Same approach as the JSON glob: enforce parse + canonical formatting on
+// every tracked .yml / .yaml file. .prettierignore exclusions apply.
+const prettierYamlRun = run(bin("prettier"), [
+  "--check",
+  "--log-level=warn",
+  "**/*.{yml,yaml}",
+]);
+fs.writeFileSync(
+  path.join(TXT_DIR, "prettier-yaml.txt"),
+  prettierYamlRun.stdout + prettierYamlRun.stderr,
+);
+
+// ── Lint (GitHub Actions) — actionlint ────────────────────────────────────
+// Catches workflow-specific bugs Prettier never will: bad `uses:` versions,
+// invalid runs-on, expression syntax errors, deprecated actions, shell
+// quoting issues in `run:` blocks. Binary downloaded by github-actionlint
+// at install time. Clean output = silent; errors print to stdout.
+const actionlintRun = run(bin("github-actionlint"), [...listWorkflowFiles()]);
+fs.writeFileSync(
+  path.join(TXT_DIR, "actionlint.txt"),
+  actionlintRun.stdout + actionlintRun.stderr,
+);
+
 // ── Security: npm audit ───────────────────────────────────────────────────
 // Keep --audit-level=high so moderate pre-existing advisories don't fail
 // the check, but store the full report for review.
@@ -261,6 +285,8 @@ const exitCodes = {
   htmlValidate: htmlValidateRun.status,
   markdownlint: markdownlintRun.status,
   prettierJson: prettierJsonRun.status,
+  prettierYaml: prettierYamlRun.status,
+  actionlint: actionlintRun.status,
   auditDeps: npmAuditRun.status,
   securityLint: securityLintRun.status,
   secretlint: secretlintRun.status,
@@ -294,6 +320,16 @@ function listPublicHtmlFiles() {
     .readdirSync("public")
     .filter((f) => f.endsWith(".html"))
     .map((f) => path.join("public", f));
+}
+
+/** List .github/workflows/*.yml paths for actionlint. */
+function listWorkflowFiles() {
+  const dir = path.join(".github", "workflows");
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+    .map((f) => path.join(dir, f));
 }
 
 /** List test/*.test.js paths for node --test. */

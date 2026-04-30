@@ -203,6 +203,18 @@ function _lintSection(data) {
       warnings: 0,
       rules: null,
     }),
+    _lintRow("Prettier (YAML)", {
+      files: null,
+      errors: data.prettierYaml ? data.prettierYaml.dirty : 0,
+      warnings: 0,
+      rules: null,
+    }),
+    _lintRow("actionlint", {
+      files: null,
+      errors: data.actionlint ? data.actionlint.errors : 0,
+      warnings: 0,
+      rules: null,
+    }),
   ];
   content.push({
     table: { headerRows: 1, widths: [120, 50, 50, 50, 60], body: lintRows },
