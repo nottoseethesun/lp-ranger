@@ -70,6 +70,7 @@ sequence.
     - [TX Recovery Pipeline](#tx-recovery-pipeline)
     - [RPC Failover](#rpc-failover)
     - [Slippage Guards](#slippage-guards)
+    - [Swap Gates (Dust + Gas)](#swap-gates-dust--gas)
     - [Atomic Multicall](#atomic-multicall)
     - [BigInt Precision](#bigint-precision)
   - [Supply Chain & Dependencies](#supply-chain--dependencies)
@@ -1464,6 +1465,41 @@ the quoted price impact exceeds the user's slippage setting, the swap
 aborts and the bot pauses until the user resolves the condition. This
 prevents low-liquidity pools or aggressive aggregator routes from
 silently draining the position on a single TX.
+
+#### Swap Gates (Dust + Gas)
+
+Every swap call site (initial rebalance swap, post-swap corrective loop,
+and the new ratio-correcting compound swap) routes through a single
+helper, `shouldSkipSwap()` in [`src/swap-gates.js`](../src/swap-gates.js).
+Two gates run in a fixed order:
+
+1. **Dust gate (first).** Skip when the swap value (in USD) is below the
+   gold-pegged dust threshold. The dust gate runs first because a failure
+   there is cheaper and more reliable to detect than the gas-gate, and a
+   dust-skip short-circuits the more expensive gas estimate. Running dust
+   first also minimises the latency between the gas-price read and the
+   actual swap broadcast: when dust skips the swap entirely, no gas read
+   happens at all, and when dust passes, the gas read is the very next
+   step — so any drift in the gas-price between the read and the swap
+   submission is kept as small as possible.
+2. **Gas gate.** Skip when estimated gas cost exceeds **1%** of the swap
+   value. The threshold is exposed as a module-level
+   `MAX_SWAP_GAS_RATIO = 0.01` so every consumer references the same
+   constant. Comparison is strict `>`, so a ratio of exactly 1% still
+   passes.
+
+When either gate trips, the caller proceeds without swapping. For
+rebalance, that means minting with the unswapped balances and letting
+the corrective loop or the post-rebalance residual sweep handle any
+leftover. For compound, that means depositing only the side that fits
+the current tick ratio and tracking the rest as a wallet residual to be
+folded back in on the next rebalance.
+
+The gas estimate uses `provider.getFeeData()` × a configurable swap-gas
+units estimate (`config.CHAIN.aggregator.estimatedSwapGasUnits`,
+default 500_000). When `getFeeData()` throws or returns nothing usable,
+`estimateSwapGasUsd()` returns 0 — the gas gate degrades to a no-op
+rather than blocking swaps on a flaky RPC.
 
 #### Atomic Multicall
 

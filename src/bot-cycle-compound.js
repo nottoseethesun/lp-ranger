@@ -112,9 +112,37 @@ async function recordCompound(deps, result) {
   );
 }
 
+/** Build the opts object passed to compounder.executeCompound. */
+async function _buildCompoundOpts(deps, poolState, trigger) {
+  const { signer, position } = deps;
+  return {
+    positionManagerAddress: config.POSITION_MANAGER,
+    tokenId: position.tokenId,
+    token0: position.token0,
+    token1: position.token1,
+    fee: position.fee,
+    token0Symbol: position.token0Symbol || "Token0",
+    token1Symbol: position.token1Symbol || "Token1",
+    recipient: await signer.getAddress(),
+    decimals0: poolState.decimals0,
+    decimals1: poolState.decimals1,
+    price0: deps._lastPrice0 || 0,
+    price1: deps._lastPrice1 || 0,
+    trigger,
+    approvalMultiple: deps._getConfig?.("approvalMultiple") ?? 20,
+    /*- Enable the ratio-correcting swap between collect and
+     *  addLiquidity (see compounder-swap.js swapForCompound). */
+    poolState,
+    tickLower: position.tickLower,
+    tickUpper: position.tickUpper,
+    swapRouterAddress: config.SWAP_ROUTER,
+    slippagePct: deps._getConfig?.("slippagePct") ?? config.SLIPPAGE_PCT,
+  };
+}
+
 /**
- * Execute a compound: collect fees → increaseLiquidity.
- * Acquires the rebalance lock for nonce safety.
+ * Execute a compound: collect fees → optional ratio-correcting swap →
+ * increaseLiquidity.  Acquires the rebalance lock for nonce safety.
  */
 async function executeCompound(deps, poolState, ethersLib, trigger) {
   const { signer, position } = deps;
@@ -132,21 +160,8 @@ async function executeCompound(deps, poolState, ethersLib, trigger) {
     botSt.forceCompound = false;
     emit({ compoundInProgress: true });
 
-    const result = await runCompound(signer, ethersLib, {
-      positionManagerAddress: config.POSITION_MANAGER,
-      tokenId: position.tokenId,
-      token0: position.token0,
-      token1: position.token1,
-      token0Symbol: position.token0Symbol || "Token0",
-      token1Symbol: position.token1Symbol || "Token1",
-      recipient: await signer.getAddress(),
-      decimals0: poolState.decimals0,
-      decimals1: poolState.decimals1,
-      price0: deps._lastPrice0 || 0,
-      price1: deps._lastPrice1 || 0,
-      trigger,
-      approvalMultiple: deps._getConfig?.("approvalMultiple") ?? 20,
-    });
+    const compoundOpts = await _buildCompoundOpts(deps, poolState, trigger);
+    const result = await runCompound(signer, ethersLib, compoundOpts);
 
     if (result.compounded) {
       await recordCompound(deps, result);

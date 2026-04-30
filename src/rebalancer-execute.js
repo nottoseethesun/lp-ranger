@@ -10,6 +10,8 @@
 
 const pools = require("./rebalancer-pools");
 const { swapIfNeeded } = require("./rebalancer-swap");
+const { fetchTokenPriceUsd } = require("./price-fetcher");
+const { estimateSwapGasUsd, shouldSkipSwap } = require("./swap-gates");
 
 const {
   ERC20_ABI,
@@ -36,6 +38,40 @@ async function _walletBalances(ethersLib, provider, token0, token1, owner) {
   return { amount0: bal0, amount1: bal1, txHash: null };
 }
 
+/**
+ * Apply the dust + gas swap-gates to the initial Rebalance swap.
+ * Dust runs first (cheaper / more reliable to detect than gas).  When
+ * either gate trips we skip the swap and proceed straight to mint —
+ * the corrective-swap loop (Step 6d) will mop up any imbalance later
+ * if it's worth doing.  Returns null when the gate passes.
+ */
+async function _gateInitialSwap(signer, p, ps, desired, is0to1) {
+  const provider = signer.provider || signer;
+  const tokenInAddr = is0to1 ? p.token0 : p.token1;
+  const decIn = is0to1 ? ps.decimals0 : ps.decimals1;
+  const priceInUsd = await fetchTokenPriceUsd(tokenInAddr);
+  const swapUsd = (Number(desired.swapAmount) / 10 ** decIn) * priceInUsd;
+  const gasUsd = await estimateSwapGasUsd(provider);
+  const gate = await shouldSkipSwap({ swapUsd, gasUsd });
+  console.log(
+    "[rebalance] Step 6 gate: swap=$%s gas=$%s ratio=%s — %s",
+    swapUsd.toFixed(4),
+    gasUsd.toFixed(4),
+    gate.gasRatio.toFixed(4),
+    gate.skip ? `SKIP (${gate.reason})` : "PROCEED",
+  );
+  if (gate.skip) {
+    return {
+      txHash: null,
+      extra0: 0n,
+      extra1: 0n,
+      gasCostWei: 0n,
+      gateSkipped: gate.reason,
+    };
+  }
+  return null;
+}
+
 /** Perform swap if needed and return adjusted amounts + gas. */
 async function _swapAndAdjust(signer, ethersLib, ctx) {
   const {
@@ -52,6 +88,8 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
   if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD)
     return { txHash: null, extra0: 0n, extra1: 0n, gasCostWei: 0n };
   const is0to1 = desired.swapDirection === "token0to1";
+  const gated = await _gateInitialSwap(signer, p, ps, desired, is0to1);
+  if (gated) return gated;
   const result = await swapIfNeeded(signer, ethersLib, {
     swapRouterAddress,
     fee: p.fee,

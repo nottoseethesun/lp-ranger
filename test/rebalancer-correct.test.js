@@ -363,6 +363,7 @@ describe("_mergeSwapSources", () => {
  *  when the aggregator route had been used. */
 describe("_swapAndAdjust — swapSources propagation", () => {
   const EXEC_PATH = require.resolve("../src/rebalancer-execute");
+  const GATES_PATH = require.resolve("../src/swap-gates");
 
   function withSwapStub(swapResult, fn) {
     require.cache[SWAP_PATH] = {
@@ -374,11 +375,37 @@ describe("_swapAndAdjust — swapSources propagation", () => {
         swapIfNeeded: async () => swapResult,
       },
     };
+    /*- Stub the swap-gates so the initial-swap dust/gas gate always
+     *  passes — this regression suite is about swapSources plumbing,
+     *  not gate behavior (which has its own dedicated test file). */
+    require.cache[GATES_PATH] = {
+      id: GATES_PATH,
+      filename: GATES_PATH,
+      loaded: true,
+      exports: {
+        MAX_SWAP_GAS_RATIO: 0.01,
+        estimateSwapGasUsd: async () => 0,
+        shouldSkipSwap: async () => ({
+          skip: false,
+          reason: null,
+          gasRatio: 0,
+          thresholdUsd: 1,
+        }),
+      },
+    };
+    require.cache[PRICE_PATH] = {
+      id: PRICE_PATH,
+      filename: PRICE_PATH,
+      loaded: true,
+      exports: { fetchTokenPriceUsd: async () => 1 },
+    };
     delete require.cache[EXEC_PATH];
     try {
       return fn();
     } finally {
       delete require.cache[SWAP_PATH];
+      delete require.cache[GATES_PATH];
+      delete require.cache[PRICE_PATH];
       delete require.cache[EXEC_PATH];
     }
   }
