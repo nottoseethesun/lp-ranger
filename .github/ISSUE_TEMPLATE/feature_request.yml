@@ -1,0 +1,67 @@
+name: ✨ Feature Request
+description: Suggest a new feature or improvement for LP Ranger.
+title: "[Feature]: "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. The clearer the use case, the
+        easier it is to evaluate fit against the existing
+        [Road Map](https://github.com/nottoseethesun/lp-ranger#road-map).
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have searched [existing issues](https://github.com/nottoseethesun/lp-ranger/issues?q=is%3Aissue) and this hasn't been requested.
+          required: true
+        - label: I have read the [Road Map](https://github.com/nottoseethesun/lp-ranger#road-map) and this isn't already planned.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user pain point or limitation. "It would be nice" is weaker than "I currently have to do X manually every Y."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you want LP Ranger to behave? UI changes, new config options, new commands, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you've thought about, or workarounds you currently use.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope estimate (your guess)
+      description: Rough sense of how big this is. Don't worry about being wrong.
+      options:
+        - Small — config option or minor UI tweak
+        - Medium — new dashboard panel or bot behavior
+        - Large — new chain support, optimization engine, etc.
+        - I genuinely don't know
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Mockups, links to similar features in other tools, related issues, etc.
+    validations:
+      required: false

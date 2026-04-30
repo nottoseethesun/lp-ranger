@@ -1,0 +1,150 @@
+name: 🐛 Bug Report
+description: Report a reproducible bug in LP Ranger (rebalancing, P&L, dashboard, key store, etc.).
+title: "[Bug]: "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Clear, reproducible
+        reports get fixed faster. Please fill out every required field.
+
+        Note: GitHub issues are public. If your report involves sensitive
+        details you'd rather not disclose publicly, consider whether a
+        public issue is the right venue before submitting.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm before submitting.
+      options:
+        - label: I have searched [existing issues](https://github.com/nottoseethesun/lp-ranger/issues?q=is%3Aissue) and this is not a duplicate.
+          required: true
+        - label: I have read the [Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html) and this is not covered there.
+          required: true
+
+  - type: dropdown
+    id: security-relevance
+    attributes:
+      label: Security relevance
+      description: Does this bug have any security dimension (e.g. could affect key handling, transaction integrity, P&L correctness in a way that misleads users)?
+      options:
+        - None — purely functional or cosmetic
+        - Possible — not sure, but worth flagging
+        - Likely — I believe this has security implications
+        - Unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: security-explanation
+    attributes:
+      label: Security relevance — explanation
+      description: If you selected anything other than "None" above, briefly explain your reasoning. Leave blank if "None".
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: LP Ranger version
+      description: From `package.json` or the release tag you installed (e.g. `0.6.5`).
+      placeholder: "0.6.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: Install type
+      options:
+        - Production release tarball (recommended path)
+        - Development clone (git)
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: Output of `node --version`.
+      placeholder: "v22.11.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux (x86_64)
+        - Linux (arm64 / Raspberry Pi)
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: chain
+    attributes:
+      label: Chain
+      description: Which chain were you operating on?
+      options:
+        - PulseChain mainnet
+        - PulseChain testnet
+        - Other / multiple
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug. Include any error messages from the dashboard or terminal.
+      placeholder: When I clicked "Manual Rebalance" on pool X, the bot threw...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps. Include pool addresses, position IDs, or config values where relevant. Do not include private keys, seed phrases, or `.env` contents.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste relevant terminal output or browser console errors. Redact any
+        private keys, seed phrases, RPC URLs containing API keys, or other
+        secrets before pasting.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Anything else that might help — screenshots, related issues, recent changes to your setup, etc.
+    validations:
+      required: false

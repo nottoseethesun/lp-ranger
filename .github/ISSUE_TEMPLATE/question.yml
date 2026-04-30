@@ -1,0 +1,79 @@
+name: ❓ Question / Help
+description: Ask a usage question that isn't covered by the manual.
+title: "[Question]: "
+labels: ["question"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please consider posting in [Discussions](https://github.com/nottoseethesun/lp-ranger/discussions) instead.**
+
+        Discussions is the preferred venue for usage questions, ideas, and
+        general help — it keeps conversation searchable and out of the bug
+        tracker. Other users can also chime in with answers.
+
+        Open an issue here only if:
+
+        - You believe the question reveals a documentation gap that should
+          be tracked and fixed, or
+        - You've already tried Discussions and didn't get a workable answer.
+
+        Otherwise, please head over to
+        [Discussions → Q&A](https://github.com/nottoseethesun/lp-ranger/discussions/categories/q-a).
+
+        ---
+
+        Before opening either a Discussion or an issue, please check the
+        [Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html)
+        and the [README](https://github.com/nottoseethesun/lp-ranger#readme).
+        Most common questions are answered there.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have read the Help and User Manual and the README.
+          required: true
+        - label: I have searched [Discussions](https://github.com/nottoseethesun/lp-ranger/discussions) and [existing issues](https://github.com/nottoseethesun/lp-ranger/issues?q=is%3Aissue) for similar questions.
+          required: true
+        - label: I have considered posting in Discussions instead and have a reason to open this as an issue.
+          required: true
+        - label: This is a question, not a bug report or feature request.
+          required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: Be specific. "How do I X?" is better than "I don't understand the dashboard."
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-issue
+    attributes:
+      label: Why an issue and not a Discussion?
+      description: >-
+        Briefly explain why this belongs in the issue tracker rather than
+        Discussions (e.g., "this seems like a documentation gap" or "I posted
+        in Discussions and didn't get a clear answer — link: ...").
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: What you've tried
+      description: What have you already attempted? What did you find in the docs that was close but not quite right?
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: LP Ranger version
+      placeholder: "0.6.5"
+    validations:
+      required: false

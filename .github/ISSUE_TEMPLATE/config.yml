@@ -1,0 +1,13 @@
+# Issue template chooser configuration.
+# Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
+
+# Force users to pick one of our structured templates rather than opening
+# blank issues. Keeps the Issues tab signal-to-noise high.
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📖 Read the Help and User Manual
+    url: https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html
+    about: |
+      Most usage questions are answered in the manual. Please check there
+      before opening a question issue.
