@@ -114,6 +114,32 @@ async function _classifyAllCompounds(
 }
 
 /**
+ * Resolve whether disk already has authoritative compound data and whether
+ * a cached lifetime-hodl exists for this epoch.  Extracted to keep
+ * `_scanLifetimePoolData` under the cyclomatic-complexity cap.
+ *
+ * Disk is treated as source-of-truth for the lifetime compound total.
+ * Either `compoundHistory` or `totalCompoundedUsd` is sufficient: the
+ * bot's own scans populate both fields, but the unmanaged-view detail
+ * scan (`position-details._scanCompounds`) persists only
+ * `totalCompoundedUsd`.  Without this, a fresh `Manage Position` on a
+ * previously-viewed position would re-run `_classifyAllCompounds` from
+ * a stale `lastNftScanBlock`, get a partial sum, and stomp the correct
+ * disk value.  Live compounds that fire while managed update the total
+ * incrementally via `_recordCompound`, so no rescan is ever needed.
+ */
+function _resolveDiskState(botState, epochKey) {
+  const cachedHodl = epochKey
+    ? _epochCache.getCachedLifetimeHodl(epochKey)
+    : null;
+  const get = botState._getConfig;
+  const gc = get ? get("compoundHistory") : undefined;
+  const diskTotal = get ? get("totalCompoundedUsd") : undefined;
+  const hasCompoundData = gc?.length > 0 || (diskTotal || 0) > 0;
+  return { cachedHodl, hasCompoundData };
+}
+
+/**
  * Unified lifetime pool scan: fetch NFT events once per tokenId, then run
  * both compound classification and lifetime HODL accumulation.
  * Incremental: reads lastNftScanBlock from epoch cache, scans only new blocks.
@@ -127,14 +153,8 @@ async function _scanLifetimePoolData(
   pnlTracker,
   epochKey,
 ) {
-  const cachedHodl = epochKey
-    ? _epochCache.getCachedLifetimeHodl(epochKey)
-    : null;
-  const gc = botState._getConfig
-    ? botState._getConfig("compoundHistory")
-    : undefined;
-  const hasCompounds = gc?.length > 0;
-  if (hasCompounds && cachedHodl) return;
+  const { cachedHodl, hasCompoundData } = _resolveDiskState(botState, epochKey);
+  if (hasCompoundData && cachedHodl) return;
   try {
     const cachedFromBlock = epochKey
       ? _epochCache.getLastNftScanBlock(epochKey)
@@ -165,7 +185,7 @@ async function _scanLifetimePoolData(
     };
     const ids = _collectTokenIds(position, rebalanceEvents);
     const { allNftEvents, maxBlock } = await _fetchAllNftEvents(ids, fromBlock);
-    if (!hasCompounds)
+    if (!hasCompoundData)
       await _classifyAllCompounds(
         ids,
         allNftEvents,
