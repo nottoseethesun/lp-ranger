@@ -439,13 +439,17 @@ export const PARAM_HELP = {
         body:
           "When enabled, the bot automatically collects unclaimed trading " +
           "fees and re-deposits them as additional liquidity on the same " +
-          "NFT position. No new NFT is minted, no swap is performed, and " +
-          "the range does not change. Note that because no swap is " +
-          "performed as part of an LP Ranger Compound operation, only the " +
-          "coins that will fit into the liquidity position as it currently " +
-          "rests are actually compounded into it. If you want all coins " +
-          "compounded, simply perform a manual Rebalance or wait for an " +
-          "automatic one to run.",
+          "NFT position. No new NFT is minted and the range does not " +
+          "change. Before the deposit, LP Ranger runs a small " +
+          "ratio-correcting swap so the collected fees match the ratio the " +
+          "position currently expects &mdash; this means almost all of the " +
+          "fees end up compounded into the position, with little to no " +
+          "wallet residual left over. The swap is gated: it is skipped " +
+          "when the swap value is too small to be worth doing (dust gate) " +
+          "or when gas would exceed 1% of the swap value (gas gate). When " +
+          "the swap is skipped, only the side that fits the current ratio " +
+          "is compounded and the rest is left as a residual that will be " +
+          "folded back in on the next rebalance.",
       },
       {
         heading: "When to enable",
@@ -460,9 +464,24 @@ export const PARAM_HELP = {
         body:
           "The bot checks for unclaimed fees on every poll cycle (when in " +
           "range). If fees exceed the <strong>Auto-Compound Threshold" +
-          "</strong>, it executes a collect + increaseLiquidity transaction. " +
-          "Compounded amounts are tracked and subtracted from Net P&amp;L " +
-          "to avoid double-counting.",
+          "</strong>, it executes collect &rarr; ratio-correcting swap " +
+          "(when the gates pass) &rarr; increaseLiquidity. Compounded " +
+          "amounts are tracked and subtracted from Net P&amp;L to avoid " +
+          "double-counting.",
+      },
+      {
+        heading: "Compound vs. Rebalance &mdash; wallet residuals",
+        body:
+          "When a compound's ratio-correcting swap fires, the deposit " +
+          "uses the post-swap wallet balance directly. In practice this " +
+          "only sweeps in the tiny amounts that arise from rounding " +
+          "precision and from the small difference between the swap " +
+          "amount the bot projected and the slightly different amount " +
+          "the swap actually returned &mdash; not your accumulated " +
+          "wallet residuals from prior rebalances. Those larger residuals " +
+          "are still cleared by the next <strong>rebalance</strong>, " +
+          "which always sweeps in every wallet residual for the pool " +
+          "when it mints the new position.",
       },
     ],
   },

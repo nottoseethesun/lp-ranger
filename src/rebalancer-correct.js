@@ -35,7 +35,8 @@ const {
 } = require("./rebalancer-pools");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
-const { isDust, getDustThresholdUsd } = require("./dust");
+const { getDustThresholdUsd } = require("./dust");
+const { estimateSwapGasUsd, shouldSkipSwap } = require("./swap-gates");
 
 /** Hard cap on corrective-swap iterations per rebalance. */
 const _MAX_ITERATIONS = 3;
@@ -133,17 +134,33 @@ async function _runIteration(signer, ethersLib, ctx, acc, i) {
     );
     return i === 0 ? _noopResult("no-swap-needed") : _convergedResult(acc, i);
   }
-  const { swapUsd, thresholdUsd } = await _imbalanceUsd(desired, ps, ctx, i);
+  const { swapUsd, thresholdUsd, gasUsd } = await _imbalanceUsd(
+    desired,
+    ps,
+    ctx,
+    i,
+  );
   acc.lastImbalanceUsd = swapUsd;
   acc.lastThresholdUsd = thresholdUsd;
-  if (await isDust(swapUsd)) {
+  const gate = await shouldSkipSwap({ swapUsd, gasUsd });
+  if (gate.skip) {
+    const why =
+      gate.reason === "dust"
+        ? "below dust threshold"
+        : "gas/value ratio too high";
     console.log(
-      "[rebalance] Step 6d iter %d/%d: below dust threshold — stop",
+      "[rebalance] Step 6d iter %d/%d: %s — stop (swap=$%s gas=$%s ratio=%s)",
       i + 1,
       _MAX_ITERATIONS,
+      why,
+      swapUsd.toFixed(4),
+      gasUsd.toFixed(4),
+      gate.gasRatio.toFixed(4),
     );
     return i === 0
-      ? _noopResult("below-dust-threshold")
+      ? _noopResult(
+          gate.reason === "dust" ? "below-dust-threshold" : "gas-unfavorable",
+        )
       : _convergedResult(acc, i);
   }
   const iter = await _fireCorrectiveSwap(
@@ -204,8 +221,11 @@ function _computeDesired(ps, newRange, bal0, bal1) {
 }
 
 /**
- * Compute USD value of the proposed corrective swap and log dust context.
- * @returns {Promise<{swapUsd: number, thresholdUsd: number}>}
+ * Compute USD value of the proposed corrective swap, the dust threshold
+ * for context, and the estimated gas cost in USD (used by the gas-gate
+ * in `shouldSkipSwap`).
+ *
+ * @returns {Promise<{swapUsd: number, thresholdUsd: number, gasUsd: number}>}
  */
 async function _imbalanceUsd(desired, ps, ctx, i) {
   const is0to1 = desired.swapDirection === "token0to1";
@@ -215,16 +235,18 @@ async function _imbalanceUsd(desired, ps, ctx, i) {
   const swapUsd = (Number(desired.swapAmount) / 10 ** decIn) * priceInUsd;
   const { thresholdUsd, usdPerUnit, units, usedFallback } =
     await getDustThresholdUsd();
+  const gasUsd = await estimateSwapGasUsd(ctx.provider);
   console.log(
-    "[rebalance] Step 6d iter %d: imbalance=$%s threshold=$%s (%s units × $%s/unit%s)",
+    "[rebalance] Step 6d iter %d: imbalance=$%s threshold=$%s gas=$%s (%s units × $%s/unit%s)",
     i + 1,
     swapUsd.toFixed(4),
     thresholdUsd.toFixed(4),
+    gasUsd.toFixed(4),
     units.toFixed(8),
     usdPerUnit.toFixed(2),
     usedFallback ? " [FALLBACK — unit price fetch failed]" : "",
   );
-  return { swapUsd, thresholdUsd };
+  return { swapUsd, thresholdUsd, gasUsd };
 }
 
 /** Execute one corrective swap and return iteration deltas. */

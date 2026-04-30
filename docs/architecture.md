@@ -174,6 +174,18 @@ executes as a single synchronous sequence under the rebalance lock:
 5. **swapIfNeeded** — convert the excess token into the deficient one. The
    primary path uses the 9mm DEX Aggregator (multi-hop routing across all
    PulseChain DEXes for lowest slippage), with the V3 SwapRouter as fallback.
+   Two **swap-gates** (in `src/swap-gates.js`) run before every swap call
+   site:
+   - **Dust gate** (first) — skips the swap when the swap value is below the
+     gold-pegged dust threshold. Cheaper and more reliable to evaluate than
+     the gas gate, so it short-circuits.
+   - **Gas gate** — skips when estimated gas cost exceeds **1%** of the swap
+     value (`MAX_SWAP_GAS_RATIO`). Prevents pathological gas-eats-the-swap
+     cases on volatile or low-liquidity routes.
+
+   When either gate trips, the rebalance proceeds straight to mint with the
+   unswapped balances; any leftover is mopped up later by the corrective
+   loop or the residual-cleanup rebalance.
 6. **mintPosition** — mint a new NFT at the re-centered tick range with the
    swapped balances.
 
@@ -181,6 +193,33 @@ Every transaction in this pipeline is wrapped in a 4-phase recovery system
 (`_waitOrSpeedUp`): wait for confirmation, speed-up with 1.5x gas, wait
 again, then auto-cancel with a 0-value self-transfer if still stuck. This
 ensures nonces are never permanently blocked.
+
+---
+
+## The Compound Pipeline
+
+Compounds are simpler than rebalances — same NFT, same range, just sweep
+unclaimed fees back into liquidity. The flow:
+
+1. **collect** — pull unclaimed fees from the position into the wallet.
+2. **swapForCompound** (`src/compounder-swap.js`) — optional
+   ratio-correcting swap so the collected fees match the ratio the
+   position currently expects. Without this step, the Position Manager
+   would only accept the side that fits and leave the rest as residual.
+   Reuses the same `computeDesiredAmounts` math and `swapIfNeeded` path
+   as the rebalance pipeline, gated by the same dust-then-gas gates.
+3. **increaseLiquidity** — re-deposit the (now ratio-balanced) tokens into
+   the same NFT.
+
+When the swap-gates skip the swap (dust-sized imbalance or gas-unfavorable),
+the compound deposits only the side that fits the ratio and leaves the
+rest as a tracked residual for the next rebalance to fold back in.
+
+When the swap does fire, the deposit uses the post-swap wallet balance
+directly. Any pre-existing wallet residual for the pool is incidentally
+swept back into the position alongside the freshly-collected fees — that
+is fine; `residual-tracker` caps its reported residual to actual
+`balanceOf`, so accounting self-corrects on the next read.
 
 ---
 

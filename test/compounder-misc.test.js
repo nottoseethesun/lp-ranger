@@ -29,17 +29,6 @@ describe("compounder", () => {
       const netPnl = priceChange + fees + realized - compounded - gas;
       assert.equal(netPnl, 1.5);
     });
-
-    it("compound capping: can't compound more than collected", () => {
-      const collected0 = 100n;
-      const collected1 = 200n;
-      const compounded0 = 150n; // more than collected
-      const compounded1 = 50n;
-      const cap0 = compounded0 > collected0 ? collected0 : compounded0;
-      const cap1 = compounded1 > collected1 ? collected1 : compounded1;
-      assert.equal(cap0, 100n); // capped to collected
-      assert.equal(cap1, 50n); // not capped
-    });
   });
 
   describe("atomic config write", () => {

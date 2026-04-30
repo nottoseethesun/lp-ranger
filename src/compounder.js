@@ -19,6 +19,7 @@ const { emojiId } = require("./logger");
 
 const config = require("./config");
 const sendTx = require("./send-transaction");
+const { swapForCompound } = require("./compounder-swap");
 
 /** Abbreviated address: 0x4e44…61A */
 function _abbr(addr) {
@@ -226,7 +227,64 @@ async function addLiquidity(signer, ethersLib, opts) {
 }
 
 /**
- * Execute a full compound: collect fees → re-deposit as liquidity.
+ * Read the current wallet balance of a token.
+ * Helper for the post-swap re-read so addLiquidity uses fresh balances.
+ */
+async function _readBalance(signer, ethersLib, tokenAddr, owner) {
+  const provider = signer.provider ?? signer;
+  const c = new ethersLib.Contract(tokenAddr, ERC20_ABI, provider);
+  return c.balanceOf(owner);
+}
+
+/*-
+ * Resolve the amounts to feed `addLiquidity` after the optional
+ * ratio-correcting swap.  When the swap fired, re-read wallet balances
+ * so the deposit reflects the post-swap split — that is exactly what
+ * the swap was sized to produce in the position-manager's required
+ * ratio, so we hand it through unmodified.  When no swap fired, the
+ * raw collected amounts are used.
+ *
+ * Any pre-existing wallet residual for this pool gets incidentally
+ * swept back into the position by this path; that's fine — it's better
+ * than leaving it stranded, and `residual-tracker` already caps its
+ * reported residual to actual `balanceOf`, so accounting self-corrects.
+ */
+async function _resolveDepositAmounts(
+  signer,
+  ethersLib,
+  opts,
+  collected,
+  swap,
+) {
+  if (!swap.swapped) {
+    return {
+      depositAmount0: collected.amount0,
+      depositAmount1: collected.amount1,
+    };
+  }
+  const [bal0, bal1] = await Promise.all([
+    _readBalance(signer, ethersLib, opts.token0, opts.recipient),
+    _readBalance(signer, ethersLib, opts.token1, opts.recipient),
+  ]);
+  console.log(
+    "[compound] %s post-swap deposit amounts: a0=%s a1=%s",
+    _ctx(opts),
+    String(bal0),
+    String(bal1),
+  );
+  return { depositAmount0: bal0, depositAmount1: bal1 };
+}
+
+/**
+ * Execute a full compound: collect fees → optional ratio-correcting
+ * swap (dust-gate then gas-gate) → re-deposit as liquidity.
+ *
+ * The intermediate swap minimizes wallet residual: without it, the
+ * Position Manager only accepts the side of the collected fees that
+ * fits the current tick ratio, leaving the rest in the wallet.  Both
+ * swap-gates must pass for the swap to fire — see
+ * `src/swap-gates.js` for the gate semantics.
+ *
  * @param {import('ethers').Signer} signer
  * @param {object} ethersLib
  * @param {object} opts
@@ -234,12 +292,18 @@ async function addLiquidity(signer, ethersLib, opts) {
  * @param {string} opts.tokenId
  * @param {string} opts.token0
  * @param {string} opts.token1
+ * @param {number} opts.fee
  * @param {string} opts.recipient
  * @param {number} opts.decimals0
  * @param {number} opts.decimals1
  * @param {number} opts.price0    Current token0 USD price
  * @param {number} opts.price1    Current token1 USD price
  * @param {string} opts.trigger   "manual" or "auto"
+ * @param {object} [opts.poolState]   { price, tick, decimals0, decimals1 } — enables ratio-swap
+ * @param {number} [opts.tickLower]   Position tick lower — enables ratio-swap
+ * @param {number} [opts.tickUpper]   Position tick upper — enables ratio-swap
+ * @param {string} [opts.swapRouterAddress]
+ * @param {number} [opts.slippagePct]
  * @returns {Promise<object>}     Compound result with amounts, USD values, TX hashes
  */
 async function executeCompound(signer, ethersLib, opts) {
@@ -256,10 +320,28 @@ async function executeCompound(signer, ethersLib, opts) {
     };
   }
 
+  /*- Optional ratio-correcting swap.  Fires only when a swap is
+   *  actually needed AND both swap-gates pass (dust first, gas
+   *  second).  See src/swap-gates.js. */
+  const swap = await swapForCompound(
+    signer,
+    ethersLib,
+    opts,
+    collected.amount0,
+    collected.amount1,
+  );
+  const { depositAmount0, depositAmount1 } = await _resolveDepositAmounts(
+    signer,
+    ethersLib,
+    opts,
+    collected,
+    swap,
+  );
+
   const deposited = await addLiquidity(signer, ethersLib, {
     ...opts,
-    amount0: collected.amount0,
-    amount1: collected.amount1,
+    amount0: depositAmount0,
+    amount1: depositAmount1,
   });
 
   const d0 = opts.decimals0 ?? 8;
@@ -278,13 +360,16 @@ async function executeCompound(signer, ethersLib, opts) {
     (Number(collected.amount0) / 10 ** d0) * (opts.price0 || 0) +
     (Number(collected.amount1) / 10 ** d1) * (opts.price1 || 0);
 
-  const totalGasWei = collected.gasCostWei + deposited.gasCostWei;
+  const totalGasWei =
+    collected.gasCostWei + (swap.gasCostWei || 0n) + deposited.gasCostWei;
 
   return {
     compounded: true,
     trigger: opts.trigger || "manual",
     collectTxHash: collected.txHash,
     depositTxHash: deposited.txHash,
+    swapTxHash: swap.txHash,
+    swapGateReason: swap.gateReason,
     amount0Deposited: String(deposited.amount0Deposited),
     amount1Deposited: String(deposited.amount1Deposited),
     liquidity: String(deposited.liquidity),
