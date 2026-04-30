@@ -8,43 +8,14 @@
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
 const ethers = require("ethers");
 const config = require("./config");
 const { cancelPoolScan } = require("./pool-scanner");
-
-const _SYM_CACHE_PATH = path.join(
-  process.cwd(),
-  "tmp",
-  "token-symbol-cache.json",
-);
-let _symCache = null;
-function _loadSymCache() {
-  if (_symCache) return;
-  try {
-    _symCache = JSON.parse(fs.readFileSync(_SYM_CACHE_PATH, "utf8"));
-  } catch {
-    _symCache = {};
-  }
-}
-function _saveSymCache() {
-  try {
-    fs.mkdirSync(path.dirname(_SYM_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(
-      _SYM_CACHE_PATH,
-      JSON.stringify(_symCache, null, 2),
-      "utf8",
-    );
-  } catch {
-    /* best-effort */
-  }
-}
-/** Get a cached token symbol by address. */
-function getTokenSymbol(addr) {
-  _loadSymCache();
-  return _symCache[(addr || "").toLowerCase()] || null;
-}
+const {
+  getTokenSymbol,
+  setTokenSymbol,
+  flushSymbolCache,
+} = require("./token-symbol-cache");
 const {
   detectPositionType,
   refreshLpPositionLiquidity,
@@ -97,16 +68,15 @@ async function resolveTokenSymbol(prov, addr) {
  * @returns {Promise<Object<string,string>>}
  */
 async function resolveSymbolMap(prov, addrSet) {
-  _loadSymCache();
   const symMap = {};
   await Promise.all(
     [...addrSet].map(async (a) => {
       const sym = await resolveTokenSymbol(prov, a);
       symMap[a] = sym;
-      _symCache[a.toLowerCase()] = sym;
+      setTokenSymbol(a, sym);
     }),
   );
-  _saveSymCache();
+  flushSymbolCache();
   return symMap;
 }
 

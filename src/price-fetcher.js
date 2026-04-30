@@ -39,6 +39,10 @@ const {
   getGeckoPoolOrientation,
   flushGeckoPoolCache,
 } = require("./gecko-pool-cache");
+const {
+  tryPriceSources,
+  formatToken: _formatToken,
+} = require("./price-source-cascade");
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -148,26 +152,8 @@ async function _fetchGeckoTerminalCurrent(
 
 // ── price source chain ──────────────────────────────────────────────────────
 
-/**
- * Try a list of price sources in priority order, returning the first
- * non-zero result.  Each source is { name, fn } where fn is an async
- * function returning a USD price (0 = unavailable).  Errors are caught
- * and logged so callers never receive a rejected promise.
- *
- * @param {{ name: string, fn: () => Promise<number> }[]} sources
- * @returns {Promise<number>} USD price (0 if all sources fail).
- */
-async function tryPriceSources(sources) {
-  for (const { name, fn } of sources) {
-    try {
-      const price = await fn();
-      if (price > 0) return price;
-    } catch (err) {
-      console.warn(`[price-fetcher] ${name} error:`, err.message ?? err);
-    }
-  }
-  return 0;
-}
+// `tryPriceSources` and `_formatToken` live in `price-source-cascade.js`
+// (extracted to keep this file under the 500-line cap).
 
 // ── main entry point ─────────────────────────────────────────────────────────
 
@@ -200,14 +186,17 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
   const cached = _cache.get(key);
   if (cached && Date.now() - cached.ts < _CACHE_TTL_MS) return cached.price;
 
-  const price = await tryPriceSources([
-    { name: "Moralis", fn: () => _fetchMoralisCurrent(tokenAddress, chain) },
-    {
-      name: "GeckoTerminal",
-      fn: () => _fetchGeckoTerminalCurrent(tokenAddress, chain),
-    },
-    { name: "DexScreener", fn: () => _fetchDexScreener(tokenAddress, chain) },
-  ]);
+  const price = await tryPriceSources(
+    [
+      { name: "Moralis", fn: () => _fetchMoralisCurrent(tokenAddress, chain) },
+      {
+        name: "GeckoTerminal",
+        fn: () => _fetchGeckoTerminalCurrent(tokenAddress, chain),
+      },
+      { name: "DexScreener", fn: () => _fetchDexScreener(tokenAddress, chain) },
+    ],
+    { token: tokenAddress, chain },
+  );
   if (price > 0) _cache.set(key, { price, ts: Date.now() });
   return price;
 }
@@ -399,12 +388,18 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
   if (price0 === 0 && t0) {
     price0 = await _fetchMoralisHistorical(t0, blockNumber, network);
     if (price0 > 0)
-      console.log("[price-fetcher] Moralis historical fallback for token0");
+      console.log(
+        "[price-fetcher] Moralis historical fallback for token0=%s",
+        _formatToken(t0),
+      );
   }
   if (price1 === 0 && t1) {
     price1 = await _fetchMoralisHistorical(t1, blockNumber, network);
     if (price1 > 0)
-      console.log("[price-fetcher] Moralis historical fallback for token1");
+      console.log(
+        "[price-fetcher] Moralis historical fallback for token1=%s",
+        _formatToken(t1),
+      );
   }
   return { price0, price1 };
 }
@@ -556,7 +551,12 @@ async function _fetchMoralisCurrent(tokenAddress, chain = "pulsechain") {
     const price = Number(json?.usdPrice ?? 0);
     return Number.isFinite(price) && price > 0 ? price : 0;
   } catch (err) {
-    console.warn("[price-fetcher] Moralis current error:", err.message ?? err);
+    console.warn(
+      "[price-fetcher] Moralis current error token=%s chain=%s — %s",
+      _formatToken(tokenAddress),
+      chain,
+      err.message ?? err,
+    );
     return 0;
   }
 }
@@ -594,7 +594,7 @@ async function _fetchMoralisHistorical(
     if (Number.isFinite(price) && price > 0) {
       console.log(
         "[price-fetcher] Moralis historical hit token=%s block=%s price=$%s",
-        tokenAddress,
+        _formatToken(tokenAddress),
         blockNumber,
         price.toFixed(6),
       );
@@ -603,7 +603,9 @@ async function _fetchMoralisHistorical(
     return 0;
   } catch (err) {
     console.warn(
-      "[price-fetcher] Moralis historical error:",
+      "[price-fetcher] Moralis historical error token=%s block=%s — %s",
+      _formatToken(tokenAddress),
+      blockNumber,
       err.message ?? err,
     );
     return 0;
@@ -675,16 +677,19 @@ async function fetchDustUnitPriceUsd() {
     return _dustUnitPriceCache.price;
   const tokens = _loadDustPriceSources();
   for (const tok of tokens) {
-    const price = await tryPriceSources([
-      {
-        name: `Moralis(${tok.symbol}/${tok.chain})`,
-        fn: () => _fetchMoralisCurrent(tok.address, tok.chain),
-      },
-      {
-        name: `DexScreener(${tok.symbol}/${tok.dexScreenerChain})`,
-        fn: () => _fetchDexScreener(tok.address, tok.dexScreenerChain),
-      },
-    ]);
+    const price = await tryPriceSources(
+      [
+        {
+          name: "Moralis",
+          fn: () => _fetchMoralisCurrent(tok.address, tok.chain),
+        },
+        {
+          name: "DexScreener",
+          fn: () => _fetchDexScreener(tok.address, tok.dexScreenerChain),
+        },
+      ],
+      { token: tok.address, symbol: tok.symbol, chain: tok.chain },
+    );
     if (price > 0) {
       console.log(
         "[dust-unit-price] %s = $%s / unit (cached %d min)",

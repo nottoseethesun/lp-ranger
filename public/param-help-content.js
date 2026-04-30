@@ -440,7 +440,12 @@ export const PARAM_HELP = {
           "When enabled, the bot automatically collects unclaimed trading " +
           "fees and re-deposits them as additional liquidity on the same " +
           "NFT position. No new NFT is minted, no swap is performed, and " +
-          "the range does not change.",
+          "the range does not change. Note that because no swap is " +
+          "performed as part of an LP Ranger Compound operation, only the " +
+          "coins that will fit into the liquidity position as it currently " +
+          "rests are actually compounded into it. If you want all coins " +
+          "compounded, simply perform a manual Rebalance or wait for an " +
+          "automatic one to run.",
       },
       {
         heading: "When to enable",

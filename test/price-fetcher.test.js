@@ -538,3 +538,79 @@ describe("GeckoTerminal fetchHistoricalPriceGecko", () => {
     assert.strictEqual(price1, 0);
   });
 });
+
+// ── Cascade logging ─────────────────────────────────────────────────────────
+
+describe("Cascade logging", () => {
+  let _origLog, _origWarn, captured;
+  const { format } = require("node:util");
+
+  function startCapture() {
+    captured = [];
+    _origLog = console.log;
+    _origWarn = console.warn;
+    console.log = (...a) => captured.push(format(...a));
+    console.warn = (...a) => captured.push(format(...a));
+  }
+  function stopCapture() {
+    console.log = _origLog;
+    console.warn = _origWarn;
+  }
+
+  it("logs the source that succeeded and the abbreviated address", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      // Moralis branch is gated by API key (none in tests) → returns 0.
+      // First real call is GeckoTerminal: return a valid price.
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            attributes: {
+              token_prices: { [TOKEN.toLowerCase()]: "0.42" },
+            },
+          },
+        }),
+      };
+    };
+
+    startCapture();
+    try {
+      const price = await fetchTokenPriceUsd(TOKEN);
+      assert.strictEqual(price, 0.42);
+    } finally {
+      stopCapture();
+    }
+    // At least one log line should reference the abbreviated token address.
+    const flat = captured.join("\n");
+    const short = `${TOKEN.slice(0, 6)}\u2026${TOKEN.slice(-4)}`;
+    assert.ok(
+      flat.includes(short),
+      `expected log to contain abbreviated address ${short}\n${flat}`,
+    );
+    assert.ok(
+      flat.includes("GeckoTerminal ok") || flat.includes("DexScreener ok"),
+      `expected an "ok" success line\n${flat}`,
+    );
+    assert.ok(calls >= 1, "should have hit at least one source");
+  });
+
+  it("logs miss for each failed source and final 'All sources failed'", async () => {
+    globalThis.fetch = async () => {
+      throw new Error("network down");
+    };
+    startCapture();
+    try {
+      const price = await fetchTokenPriceUsd(TOKEN);
+      assert.strictEqual(price, 0);
+    } finally {
+      stopCapture();
+    }
+    const flat = captured.join("\n");
+    assert.ok(
+      flat.includes("All sources failed"),
+      `expected final failure summary\n${flat}`,
+    );
+  });
+});
