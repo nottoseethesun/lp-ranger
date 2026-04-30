@@ -9,6 +9,7 @@
 "use strict";
 
 const pools = require("./rebalancer-pools");
+const sendTx = require("./send-transaction");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const {
   _swapAndAdjust,
@@ -29,9 +30,7 @@ const {
   _MIN_SWAP_THRESHOLD,
   V3_FEE_TIERS,
   _deadline,
-  _waitOrSpeedUp,
   _ensureAllowance,
-  _retrySend,
   getPoolState,
   removeLiquidity,
   logSwapNeeded,
@@ -99,40 +98,32 @@ async function mintPosition(
     String(amount0Desired),
     String(amount1Desired),
   );
-  const tx = await _retrySend(
-    () =>
-      pm.mint(
-        {
-          token0,
-          token1,
-          fee,
-          tickLower,
-          tickUpper,
-          amount0Desired,
-          amount1Desired,
-          amount0Min: 0n,
-          amount1Min: 0n,
-          recipient,
-          deadline: dl,
-        },
-        {
-          type: config.TX_TYPE,
-          gasLimit:
-            config.CHAIN.contracts?.positionManager?.mintGasLimit || 600000,
-        },
-      ),
-    "[rebalance] mint",
-    { signer },
+  /*- Mint is the most gas-heavy V3 path (NFT creation + ratio math).
+      Routed through send-transaction.js so RPC failover applies and the
+      chain-config mintGasLimit acts as a hard floor under the
+      gasLimitMultiplier × estimate result. */
+  const _mintFloor = BigInt(
+    config.CHAIN.contracts?.positionManager?.mintGasLimit || 600000,
   );
-  console.log(
-    "[rebalance] Step 7b: TX submitted, hash= %s nonce=%d type=%s gasLimit=%s gasPrice=%s",
-    tx.hash,
-    tx.nonce,
-    String(tx.type),
-    String(tx.gasLimit),
-    String(tx.gasPrice ?? "—"),
-  );
-  const receipt = await _waitOrSpeedUp(tx, signer, "mint");
+  const { receipt } = await sendTx.sendTransaction({
+    populate: () =>
+      pm.mint.populateTransaction({
+        token0,
+        token1,
+        fee,
+        tickLower,
+        tickUpper,
+        amount0Desired,
+        amount1Desired,
+        amount0Min: 0n,
+        amount1Min: 0n,
+        recipient,
+        deadline: dl,
+      }),
+    signer,
+    floor: _mintFloor,
+    label: "[rebalance] mint",
+  });
   console.log(
     "[rebalance] Step 7c: mint confirmed, block=%s gasUsed=%s",
     receipt.blockNumber,

@@ -66,33 +66,54 @@ function _patchFeeData(provider) {
 }
 
 /**
+ * Construct a single JsonRpcProvider for `url` and apply the feeData patch.
+ *
+ * Pure factory — does NOT perform a reachability check.  Used by callers
+ * that need ALL configured providers built up-front (e.g. send-transaction.js
+ * which holds primary + fallback for mid-session failover, and must be
+ * able to reach for the fallback even if the primary was down at boot).
+ * @param {string} url           RPC endpoint URL.
+ * @param {object} [ethersLib]   Injected ethers library (for testing).
+ * @returns {import('ethers').JsonRpcProvider}
+ */
+function buildProvider(url, ethersLib) {
+  const lib = ethersLib || ethers;
+  const provider = new lib.JsonRpcProvider(url);
+  _patchFeeData(provider);
+  return provider;
+}
+
+/**
  * Creates a JsonRpcProvider, trying the primary URL first and falling back
  * to the secondary if the primary is unreachable.  The returned provider's
  * `getFeeData()` is patched to guarantee non-zero gas pricing on PulseChain.
+ *
+ * Used by callers that want a single working provider at boot for reads
+ * (bot-loop polling, position-manager).  Mid-session RPC failover for TX
+ * submission is handled separately by `send-transaction.js`, which keeps
+ * BOTH providers via `buildProvider()` regardless of boot-time reachability.
+ *
  * @param {string} primaryUrl    Primary RPC endpoint.
  * @param {string} fallbackUrl   Fallback RPC endpoint.
  * @param {object} [ethersLib]   Injected ethers library (for testing).
  * @returns {Promise<import('ethers').JsonRpcProvider>}
  */
 async function createProviderWithFallback(primaryUrl, fallbackUrl, ethersLib) {
-  const lib = ethersLib || ethers;
   try {
-    const provider = new lib.JsonRpcProvider(primaryUrl);
+    const provider = buildProvider(primaryUrl, ethersLib);
     await provider.getBlockNumber();
     console.log(`[bot] RPC:    ${primaryUrl}`);
-    _patchFeeData(provider);
     return provider;
   } catch (err) {
     console.warn(
       `[bot] Primary RPC unreachable (${primaryUrl}): ${err.message}`,
     );
     console.log(`[bot] Falling back to ${fallbackUrl}`);
-    const provider = new lib.JsonRpcProvider(fallbackUrl);
+    const provider = buildProvider(fallbackUrl, ethersLib);
     await provider.getBlockNumber();
     console.log(`[bot] RPC:    ${fallbackUrl} (fallback)`);
-    _patchFeeData(provider);
     return provider;
   }
 }
 
-module.exports = { _patchFeeData, createProviderWithFallback };
+module.exports = { _patchFeeData, buildProvider, createProviderWithFallback };

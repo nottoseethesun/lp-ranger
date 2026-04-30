@@ -68,6 +68,7 @@ sequence.
   - [On-Chain / Transaction Security](#on-chain--transaction-security)
     - [Nonce Serialization](#nonce-serialization)
     - [TX Recovery Pipeline](#tx-recovery-pipeline)
+    - [RPC Failover](#rpc-failover)
     - [Slippage Guards](#slippage-guards)
     - [Atomic Multicall](#atomic-multicall)
     - [BigInt Precision](#bigint-precision)
@@ -1441,6 +1442,19 @@ four-phase pipeline: **wait → speed-up (1.5× gas) → wait → auto-cancel
 within `TX_CANCEL_SEC` (default 20 min) instead of blocking the wallet
 indefinitely. Every phase logs its state so post-mortem analysis of a
 stuck TX is deterministic.
+
+#### RPC Failover
+
+All TX-sending paths route through
+[`src/send-transaction.js`](../src/send-transaction.js), which holds
+both the primary and fallback providers built at boot. On `estimateGas`
+failure against the primary, the module retries against the fallback;
+on success it engages a sticky one-hour failover window so subsequent
+broadcasts, receipts, and nonce lookups also flow through the fallback.
+The window self-heals — `getCurrentRPC()` reverts to primary once the
+timer expires. Broadcast failover requires the signer to be a
+`FailoverNonceManager` that lazily rebinds on RPC change. No-op when
+the configured primary and fallback URLs are identical.
 
 #### Slippage Guards
 

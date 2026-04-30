@@ -133,7 +133,7 @@ async function _getGasPrice(provider) {
 /** Compute buffered gas limit from quote using chain config multiplier. */
 function _gasLimit(quote) {
   const raw = Number(quote.gas || quote.estimatedGas || 300000);
-  return BigInt(Math.ceil(raw * (_agg.gasLimitMultiplier || 2)));
+  return BigInt(Math.ceil(raw * (config.CHAIN.gasLimitMultiplier || 2)));
 }
 
 /**

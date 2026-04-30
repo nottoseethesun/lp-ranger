@@ -18,6 +18,7 @@ const ethers = require("ethers");
 const { emojiId } = require("./logger");
 
 const config = require("./config");
+const sendTx = require("./send-transaction");
 
 /** Abbreviated address: 0x4e44…61A */
 function _abbr(addr) {
@@ -40,9 +41,7 @@ const {
   ERC20_ABI,
   _MAX_UINT128,
   _deadline,
-  _waitOrSpeedUp,
   _ensureAllowance,
-  _retrySend,
 } = require("./rebalancer-pools");
 
 /*- Cached at module load: parsing PM logs is stateless, so a single Interface
@@ -81,35 +80,21 @@ async function collectFees(signer, ethersLib, opts) {
     String(bal1Before),
   );
 
-  // collect() on the NonfungiblePositionManager internally calls
-  // pool.burn(0) to update fee accounting before collecting.
-  const tx = await _retrySend(
-    () =>
-      pm.collect(
-        {
-          tokenId: opts.tokenId,
-          recipient: opts.recipient,
-          amount0Max: _MAX_UINT128,
-          amount1Max: _MAX_UINT128,
-        },
-        { type: config.TX_TYPE },
-      ),
-    "[compound] " + cx + " collect",
-    { signer },
-  );
-  console.log(
-    "[compound] %s collectFees: TX submitted, hash= %s nonce=%d",
-    cx,
-    tx.hash,
-    tx.nonce,
-  );
-  const receipt = await _waitOrSpeedUp(tx, signer, "compound-collect");
-  console.log(
-    "[compound] %s collectFees: confirmed, gasUsed=%s block=%s",
-    cx,
-    String(receipt.gasUsed),
-    receipt.blockNumber,
-  );
+  /*- collect() on the NonfungiblePositionManager internally calls
+      pool.burn(0) to update fee accounting before collecting.  Routed
+      through send-transaction.js so estimateGas, broadcast, and the
+      speed-up/cancel pipeline all benefit from RPC failover. */
+  const { receipt } = await sendTx.sendTransaction({
+    populate: () =>
+      pm.collect.populateTransaction({
+        tokenId: opts.tokenId,
+        recipient: opts.recipient,
+        amount0Max: _MAX_UINT128,
+        amount1Max: _MAX_UINT128,
+      }),
+    signer,
+    label: "[compound] " + cx + " collect",
+  });
 
   const [bal0After, bal1After] = await Promise.all([
     t0.balanceOf(opts.recipient),
@@ -195,35 +180,23 @@ async function addLiquidity(signer, ethersLib, opts) {
 
   const dl = _deadline();
   const cx = _ctx(opts);
-  const tx = await _retrySend(
-    () =>
-      pm.increaseLiquidity(
-        {
-          tokenId: opts.tokenId,
-          amount0Desired: opts.amount0,
-          amount1Desired: opts.amount1,
-          amount0Min: 0n,
-          amount1Min: 0n,
-          deadline: dl,
-        },
-        { type: config.TX_TYPE },
-      ),
-    "[compound] " + cx + " addLiquidity",
-    { signer },
-  );
-  console.log(
-    "[compound] %s addLiquidity: TX submitted, hash= %s nonce=%d",
-    cx,
-    tx.hash,
-    tx.nonce,
-  );
-  const receipt = await _waitOrSpeedUp(tx, signer, "compound-addLiq");
-  console.log(
-    "[compound] %s addLiquidity: confirmed, gasUsed=%s block=%s",
-    cx,
-    String(receipt.gasUsed),
-    receipt.blockNumber,
-  );
+  /*- increaseLiquidity is the gas-heavy callback path that triggered
+      the original out-of-gas failure (TX 0x8F65…) — routing through
+      send-transaction.js applies the chain-config gasLimitMultiplier
+      and the default 300k floor. */
+  const { receipt } = await sendTx.sendTransaction({
+    populate: () =>
+      pm.increaseLiquidity.populateTransaction({
+        tokenId: opts.tokenId,
+        amount0Desired: opts.amount0,
+        amount1Desired: opts.amount1,
+        amount0Min: 0n,
+        amount1Min: 0n,
+        deadline: dl,
+      }),
+    signer,
+    label: "[compound] " + cx + " addLiquidity",
+  });
 
   const { liquidity, amount0Deposited, amount1Deposited } =
     _parseIncreaseLiquidity(pm, receipt);

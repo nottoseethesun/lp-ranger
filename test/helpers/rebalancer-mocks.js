@@ -4,6 +4,14 @@
  *
  * Provides addresses, helpers, mock signer/dispatch/ethersLib builders
  * used by both rebalancer.test.js and rebalancer-mint.test.js.
+ *
+ * sendTransaction integration: every TX-issuing dispatch method is
+ * auto-wrapped with `.populateTransaction(args)` returning a populated
+ * TX shape `{to, data: {__mock_method, __mock_args}, gasLimit: 200000n}`.
+ * `mockSigner.sendTransaction(populated)` reads the encoded method name
+ * and dispatches to the original mock function so test fixtures don't
+ * need to know whether production code calls the contract method
+ * directly or routes through `src/send-transaction.js`.
  */
 
 const ADDR = {
@@ -21,6 +29,13 @@ const ONE_ETH = 1_000_000_000_000_000_000n;
 
 const INC_TOPIC =
   "0x3067048beee31b25b2f1681f88dac838c8bba36af25bfb2b7cf7473a5847e35f";
+
+/*- Module-level registry of the most-recently-built dispatch table.
+    `mockSigner.sendTransaction` reads it to route populated TXs to the
+    matching contract-method mock.  Tests build one ethersLib at a time,
+    so a single global slot is sufficient.  Reset by calling
+    `buildMockEthersLib` again. */
+let _activeDispatch = null;
 
 function makeTx(hash) {
   return { wait: async () => ({ hash, logs: [] }) };
@@ -54,8 +69,47 @@ function makeMintTx(
 function mockSigner(address) {
   return {
     getAddress: async () => address ?? ADDR.signer,
-    provider: { mockProvider: true },
+    provider: {
+      mockProvider: true,
+      getFeeData: async () => ({
+        gasPrice: 1000n,
+        maxFeePerGas: 2000n,
+        maxPriorityFeePerGas: 100n,
+      }),
+    },
+    sendTransaction: async (populated) => {
+      const data = populated && populated.data;
+      const method = data && data.__mock_method;
+      const args = data ? data.__mock_args : undefined;
+      const methods = _activeDispatch && _activeDispatch[populated.to];
+      if (!methods) {
+        throw new Error(
+          `mockSigner.sendTransaction: no dispatch for ${populated.to}`,
+        );
+      }
+      const fn = methods[method];
+      if (typeof fn !== "function") {
+        throw new Error(
+          `mockSigner.sendTransaction: no method "${method}" on ${populated.to}`,
+        );
+      }
+      return await fn(...(Array.isArray(args) ? args : [args]));
+    },
   };
+}
+
+/** Attach `.populateTransaction(args)` to a dispatch fn so production
+ *  code that calls `contract.method.populateTransaction(args)` works.
+ *  Idempotent — won't double-wrap. */
+function _attachPopulate(addr, name, fn) {
+  if (typeof fn !== "function") return fn;
+  if (fn.populateTransaction) return fn;
+  fn.populateTransaction = (...args) => ({
+    to: addr,
+    data: { __mock_method: name, __mock_args: args },
+    gasLimit: 200_000n,
+  });
+  return fn;
 }
 
 /**
@@ -117,15 +171,51 @@ function defaultDispatch() {
   };
 }
 
+/*- Imported lazily to avoid a require cycle if send-tx-mock ever pulls
+    in this file.  The initSendTx call is a no-op for tests that don't
+    use the unified send-transaction flow. */
+function _ensureSendTxInit() {
+  const { initSendTx } = require("./send-tx-mock");
+  initSendTx();
+}
+
 function buildMockEthersLib(overrides = {}) {
+  _ensureSendTxInit();
   const contractDispatch = overrides.contractDispatch ?? defaultDispatch();
+  /*- Auto-wrap every dispatch method with .populateTransaction so the
+      send-transaction.js flow can populate, sign, and broadcast through
+      mockSigner.sendTransaction without bypassing the production code
+      path. */
+  for (const [addr, methods] of Object.entries(contractDispatch)) {
+    for (const [name, fn] of Object.entries(methods)) {
+      _attachPopulate(addr, name, fn);
+    }
+  }
+  _activeDispatch = contractDispatch;
+
+  /*- Per-address shared `_pending` queue for the
+      encodeFunctionData → multicall flow.  Multicall is registered into
+      `_activeDispatch[addr]` after the first Contract instance constructs
+      it, and subsequent Contract instances inherit that same multicall
+      via the `this[name] = fn` loop.  Sharing `_pending` per-address
+      ensures `interface.encodeFunctionData` writes to the queue that the
+      registered multicall reads from, regardless of which instance was
+      first.  Without this, encodeFunctionData would write to a fresh
+      per-instance array while multicall reads from the original
+      instance's array, yielding undefined entries. */
+  const _pendingByAddr = {};
+
   function MockContract(addr, _abi, _signer) {
     const self = this;
     const methods = contractDispatch[addr];
     if (!methods) throw new Error(`No mock for address: ${addr}`);
+    /*- Mirror ethers v6 Contract: the third arg is stored as `.runner`,
+        which production code (e.g. rebalancer-pools._ensureAllowance) reads
+        to get the signer for sendTransaction. */
+    this.runner = _signer;
     for (const [name, fn] of Object.entries(methods)) this[name] = fn;
-    // Mock interface.encodeFunctionData + multicall for atomic decrease+collect
-    const _pending = [];
+    if (!_pendingByAddr[addr]) _pendingByAddr[addr] = [];
+    const _pending = _pendingByAddr[addr];
     this.interface = {
       encodeFunctionData: (name, args) => {
         const idx = _pending.length;
@@ -142,6 +232,16 @@ function buildMockEthersLib(overrides = {}) {
         }
         return makeTx("0xmulticall");
       };
+      this.multicall.populateTransaction = (calls) => ({
+        to: addr,
+        data: { __mock_method: "multicall", __mock_args: [calls] },
+        gasLimit: 200_000n,
+      });
+      /*- Register multicall in the active dispatch under this contract
+          address so mockSigner.sendTransaction can route to it. */
+      if (_activeDispatch[addr]) {
+        _activeDispatch[addr].multicall = this.multicall;
+      }
     }
   }
   return {

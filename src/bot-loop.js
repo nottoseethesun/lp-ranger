@@ -32,6 +32,8 @@ const { initHodlBaseline } = require("./hodl-baseline");
 const { appendToPoolCache } = require("./pool-scanner");
 const { createResidualTracker } = require("./residual-tracker");
 const { createProviderWithFallback } = require("./bot-provider");
+const sendTx = require("./send-transaction");
+const { createFailoverSigner } = require("./nonce-manager-wrapper");
 const {
   appendLog,
   _scanAndReconstruct,
@@ -245,6 +247,12 @@ async function startBotLoop(opts) {
     signer = opts.signer;
     address = opts.address || (await signer.getAddress());
   } else {
+    /*- Bring up the send-transaction module's primary + fallback
+        providers from chain config before constructing the signer.
+        FailoverNonceManager consults sendTx.getCurrentRPC() lazily on
+        every call, so the inner ethers.NonceManager rebinds when the
+        active RPC flips. */
+    sendTx.init(config.CHAIN.rpc, ethersLib);
     provider = await createProviderWithFallback(
       config.RPC_URL,
       config.RPC_URL_FALLBACK,
@@ -259,7 +267,7 @@ async function startBotLoop(opts) {
       dryRun && !privateKey
         ? ethersLib.Wallet.createRandom().connect(provider)
         : new ethersLib.Wallet(privateKey, provider);
-    signer = new ethersLib.NonceManager(_baseWallet);
+    signer = createFailoverSigner(_baseWallet, { ethersLib });
     address = await signer.getAddress();
   }
   if (dryRun && !privateKey)

@@ -8,15 +8,13 @@
 
 "use strict";
 
-const config = require("./config");
+const sendTx = require("./send-transaction");
 const {
   ERC20_ABI,
   SWAP_ROUTER_ABI,
   _checkSwapImpact,
   _deadline,
-  _waitOrSpeedUp,
   _ensureAllowance,
-  _retrySend,
 } = require("./rebalancer-pools");
 
 /**
@@ -112,23 +110,11 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
   swapParams.amountOutMinimum = (quotedOut * BigInt(10000 - slipBps)) / 10000n;
   const provider = signer.provider || signer;
   return balanceDiff(ethersLib, tokenOut, recipient, provider, async () => {
-    const tx = await _retrySend(
-      () =>
-        router.exactInputSingle(swapParams, {
-          type: config.TX_TYPE,
-        }),
-      "[rebalance] swap (V3 router)",
-      { signer },
-    );
-    console.log(
-      "[rebalance] Step 6: swap (V3 router): TX submitted, hash= %s nonce=%d" +
-        " type=%s gasPrice=%s",
-      tx.hash,
-      tx.nonce,
-      String(tx.type),
-      String(tx.gasPrice ?? tx.maxFeePerGas ?? "—"),
-    );
-    const receipt = await _waitOrSpeedUp(tx, signer, "swap");
+    const { receipt } = await sendTx.sendTransaction({
+      populate: () => router.exactInputSingle.populateTransaction(swapParams),
+      signer,
+      label: "[rebalance] swap (V3 router)",
+    });
     console.log(
       "[rebalance] swap (V3 router): confirmed gasUsed=%s",
       String(receipt.gasUsed),

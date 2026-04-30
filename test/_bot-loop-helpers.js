@@ -8,6 +8,11 @@
 
 const { pollCycle } = require("../src/bot-loop");
 const config = require("../src/config");
+const { initSendTx } = require("./helpers/send-tx-mock");
+
+/*- Module-level slot for `mockSigner.sendTransaction` to look up the
+    matching contract-method mock by populated TX target address. */
+let _activeDispatch = null;
 
 const ADDR = {
   factory: config.FACTORY,
@@ -104,12 +109,34 @@ function buildPollDeps(opts = {}) {
     },
   };
 
-  function MockContract(addr, _abi) {
+  /*- Auto-wrap every dispatch method with .populateTransaction so the
+      send-transaction.js flow can populate, sign, and broadcast through
+      mockSigner.sendTransaction without bypassing the production code
+      path. */
+  for (const [addr, methods] of Object.entries(dispatch)) {
+    for (const [name, fn] of Object.entries(methods)) {
+      if (typeof fn !== "function" || fn.populateTransaction) continue;
+      fn.populateTransaction = (...args) => ({
+        to: addr,
+        data: { __mock_method: name, __mock_args: args },
+        gasLimit: 200_000n,
+      });
+    }
+  }
+  _activeDispatch = dispatch;
+  initSendTx();
+
+  const _pendingByAddr = {};
+
+  function MockContract(addr, _abi, _signer) {
     const self = this;
     const methods = dispatch[addr];
     if (!methods) throw new Error(`No mock for ${addr}`);
+    /*- Mirror ethers v6 Contract: third arg stored as `.runner`. */
+    this.runner = _signer;
     for (const [name, fn] of Object.entries(methods)) this[name] = fn;
-    const _pending = [];
+    if (!_pendingByAddr[addr]) _pendingByAddr[addr] = [];
+    const _pending = _pendingByAddr[addr];
     this.interface = {
       encodeFunctionData: (name, args) => {
         const idx = _pending.length;
@@ -126,12 +153,45 @@ function buildPollDeps(opts = {}) {
         }
         return makeTx("0xmulticall");
       };
+      this.multicall.populateTransaction = (calls) => ({
+        to: addr,
+        data: { __mock_method: "multicall", __mock_args: [calls] },
+        gasLimit: 200_000n,
+      });
+      if (_activeDispatch[addr]) {
+        _activeDispatch[addr].multicall = this.multicall;
+      }
     }
   }
   const ethersLib = { Contract: MockContract, ZeroAddress: ZERO_ADDRESS };
   const signer = {
     getAddress: async () => ADDR.signer,
-    provider: { mockProvider: true },
+    provider: {
+      mockProvider: true,
+      getFeeData: async () => ({
+        gasPrice: 1000n,
+        maxFeePerGas: 2000n,
+        maxPriorityFeePerGas: 100n,
+      }),
+    },
+    sendTransaction: async (populated) => {
+      const data = populated && populated.data;
+      const method = data && data.__mock_method;
+      const args = data ? data.__mock_args : undefined;
+      const methods = _activeDispatch && _activeDispatch[populated.to];
+      if (!methods) {
+        throw new Error(
+          `mockSigner.sendTransaction: no dispatch for ${populated.to}`,
+        );
+      }
+      const fn = methods[method];
+      if (typeof fn !== "function") {
+        throw new Error(
+          `mockSigner.sendTransaction: no method "${method}" on ${populated.to}`,
+        );
+      }
+      return await fn(...(Array.isArray(args) ? args : [args]));
+    },
   };
   const position = {
     tokenId: 1n,

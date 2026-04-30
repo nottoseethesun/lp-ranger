@@ -246,7 +246,6 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Dashboard State Cleanup](docs/roadmap/nice-to-haves/project_dashboard_state_cleanup.md) | Sweep dashboard module-level caches that mirror poll data and may leak across position/pool switches; same pattern as the `_poolFirstDate` fix. |
 | [ESM Migration](docs/roadmap/nice-to-haves/project_esm_migration.md) | Migrate the codebase from CommonJS `require` / `module.exports` to ESM `import` / `export`. Dedicated branch, big-bang change. |
 | [Log-to-File](docs/roadmap/nice-to-haves/project_log_to_file.md) | Optional CLI flag and Settings toggle to tee server output to `app-config/lp-ranger.log` with size rotation, for hardware with limited scrollback. |
-| [RPC Auto-Failover](docs/roadmap/nice-to-haves/project_rpc_fallback_on_saturation.md) | Mid-session RPC rotation when a primary endpoint returns repeated terminal errors within a short window. |
 
 ### Possible Major New Features
 

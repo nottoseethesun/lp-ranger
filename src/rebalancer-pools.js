@@ -10,6 +10,7 @@ const rangeMath = require("./range-math");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const { _retrySend } = require("./tx-retry");
+const sendTx = require("./send-transaction");
 
 // ── ABI fragments ────────────────────────────────────────────────────────────
 
@@ -341,26 +342,15 @@ async function _ensureAllowance(
       "[rebalance] Step 7a: approve pre-sizing %sx (future rebalances/compounds will skip the approve TX while the cached allowance covers them)",
       String(m),
     );
-  const tx = await _retrySend(
-    () =>
-      tokenContract.approve(spender, approveAmount, { type: config.TX_TYPE }),
-    "[rebalance] approve",
-    { signer: tokenContract.runner },
-  );
-  console.log(
-    "[rebalance] Step 7a: approve: TX submitted, hash= %s nonce=%d" +
-      " type=%s gasPrice=%s",
-    tx.hash,
-    tx.nonce,
-    String(tx.type),
-    String(tx.gasPrice ?? tx.maxFeePerGas ?? "—"),
-  );
-  const rcpt = await _waitOrSpeedUp(tx, tokenContract.runner, "approve");
-  console.log(
-    "[rebalance] approve: confirmed, gasUsed=%s gasPrice=%s",
-    String(rcpt.gasUsed),
-    String(rcpt.gasPrice ?? rcpt.effectiveGasPrice),
-  );
+  /*- ERC-20 approve routed through send-transaction.js so RPC failover
+      and the chain-config gasLimitMultiplier apply.  Floor pinned to the
+      standard 21k * multiplier baseline; estimate dominates in practice. */
+  const { receipt: rcpt } = await sendTx.sendTransaction({
+    populate: () =>
+      tokenContract.approve.populateTransaction(spender, approveAmount),
+    signer: tokenContract.runner,
+    label: "[rebalance] approve",
+  });
   return _receiptGas(rcpt);
 }
 
@@ -480,25 +470,21 @@ async function removeLiquidity(
       amount1Max: _MAX_UINT128,
     },
   ]);
-  const tx = await _retrySend(
-    () => pm.multicall([decreaseData, collectData], { type: config.TX_TYPE }),
-    "[rebalance] removeLiq",
-    { signer },
+  /*- Atomic decrease+collect multicall routed through send-transaction.js
+      so RPC failover and the chain-config gasLimitMultiplier apply.  The
+      multicall path is gas-heavy (two PM operations bundled) — floor
+      pinned to the position-manager mint floor as a safe upper bound;
+      the multiplier × estimateGas almost always wins. */
+  const _multicallFloor = BigInt(
+    config.CHAIN.contracts?.positionManager?.mintGasLimit || 600000,
   );
-  console.log(
-    "[rebalance] Step 3a: removeLiq: TX submitted, hash= %s nonce=%d" +
-      " type=%s — waiting for confirmation…",
-    tx.hash,
-    tx.nonce,
-    String(tx.type),
-  );
-  const receipt = await _waitOrSpeedUp(tx, signer, "removeLiq");
-  console.log(
-    "[rebalance] removeLiq: confirmed, gasUsed=%s gasPrice=%s block=%s",
-    String(receipt.gasUsed),
-    String(receipt.gasPrice ?? receipt.effectiveGasPrice),
-    receipt.blockNumber,
-  );
+  const { receipt } = await sendTx.sendTransaction({
+    populate: () =>
+      pm.multicall.populateTransaction([decreaseData, collectData]),
+    signer,
+    floor: _multicallFloor,
+    label: "[rebalance] removeLiq",
+  });
 
   // Determine collected amounts via balance diff (robust across all ABIs)
   let amount0 = 0n,

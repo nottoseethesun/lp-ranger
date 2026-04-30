@@ -24,6 +24,8 @@ const { nextMidnight } = require("./throttle");
 const { emojiId } = require("./logger");
 const config = require("./config");
 const { createProviderWithFallback } = require("./bot-provider");
+const sendTx = require("./send-transaction");
+const { createFailoverSigner } = require("./nonce-manager-wrapper");
 
 /**
  * @typedef {Object} ManagedPosition
@@ -66,6 +68,12 @@ function createPositionManager(opts) {
     if (_sharedPromise) return _sharedPromise;
     _sharedPromise = (async () => {
       const { privateKey, ethersLib, dryRun } = signerOpts || {};
+      /*- Initialise the send-transaction module's primary + fallback
+          providers from chain config.  Idempotent in spirit, but
+          send-tx doesn't expose a "re-init" — first wallet wins for
+          the lifetime of the process, which matches the singleton
+          shared-signer contract. */
+      sendTx.init(config.CHAIN.rpc, ethersLib);
       const provider = await createProviderWithFallback(
         config.RPC_URL,
         config.RPC_URL_FALLBACK,
@@ -75,7 +83,10 @@ function createPositionManager(opts) {
         dryRun && !privateKey
           ? ethersLib.Wallet.createRandom().connect(provider)
           : new ethersLib.Wallet(privateKey, provider);
-      const signer = new ethersLib.NonceManager(base);
+      /*- FailoverNonceManager rebinds its inner ethers.NonceManager when
+          the active RPC flips, so the same shared signer transparently
+          follows the failover window without callers needing to know. */
+      const signer = createFailoverSigner(base, { ethersLib });
       const address = await signer.getAddress();
       console.log(
         "[pos-mgr] Shared signer initialised for %s (dryRun=%s)",

@@ -5,6 +5,8 @@
     "nativeWrappedToken": "0xA1077a294dDE1B09bB078844df40758a5D0f9a27",
     "transactionEnvelopeType": "legacy",
     "gasPriceMultiplier": 7,
+    "gasLimitMultiplier": 2,
+    "speedUpGasBump": 1.5,
     "rpc": {
       "primary": "https://rpc-pulsechain.g4mm4.io",
       "fallback": "https://rpc.pulsechain.com"
@@ -21,7 +23,6 @@
     },
     "aggregator": {
       "gasPriceMultiplier": 1.5,
-      "gasLimitMultiplier": 2,
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
       "maxAttempts": 4
@@ -56,6 +57,8 @@
     "nativeWrappedToken": "",
     "transactionEnvelopeType": "legacy",
     "gasPriceMultiplier": 7,
+    "gasLimitMultiplier": 2,
+    "speedUpGasBump": 1.5,
     "rpc": {
       "primary": "https://rpc.v4.testnet.pulsechain.com",
       "fallback": "https://rpc.v4.testnet.pulsechain.com"
@@ -72,7 +75,6 @@
     },
     "aggregator": {
       "gasPriceMultiplier": 1.5,
-      "gasLimitMultiplier": 2,
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
       "maxAttempts": 4
