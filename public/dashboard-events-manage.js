@@ -248,65 +248,159 @@ export async function _reloadCurrentPosition() {
 
 // ── Manage toggle ───────────────────────────────────
 
+/*- Single-flight guard: prevents (a) double-click race firing two POSTs,
+ *  and (b) the 3-second status poll's updateManageBadge() from
+ *  overwriting the in-flight "Managing\u2026" / "Stopping\u2026" button text
+ *  before the request resolves.  Tracked client-side per page (server
+ *  has its own `_starting` Set guard for nonce safety). */
+let _manageInFlight = false;
+
+/**
+ * Format a brief position specification for user-facing failure messages.
+ * Returns e.g. "NFT #159289 (HEX/WPLS \u00B7 0.25%)" — falls back to
+ * partial fields when symbols/fee aren't yet resolved on `active`.
+ *
+ * @param {object} active  Active position from posStore.
+ * @returns {string}       Formatted spec, or "" when no tokenId is known.
+ */
+function _formatPositionSpec(active) {
+  if (!active || !active.tokenId) return "";
+  const t0 = active.token0Symbol;
+  const t1 = active.token1Symbol;
+  const fee = active.fee ? (active.fee / 10000).toFixed(2) + "%" : null;
+  const tokens = t0 && t1 ? `${t0}/${t1}` : null;
+  const meta = [tokens, fee].filter(Boolean).join(" \u00B7 ");
+  return meta ? `NFT #${active.tokenId} (${meta})` : `NFT #${active.tokenId}`;
+}
+
+/**
+ * Surface a manage failure to the user without leaving the button stuck.
+ * Restores the button text and shows an actionable alert that names the
+ * specific position and tells the user how to retry.
+ *
+ * When the server reason indicates an RPC-side failure, the retry hint
+ * also tells the user the bot has already engaged sticky failover — so
+ * the next click hits the backup RPC immediately instead of repeating
+ * the same dead-RPC walk.  See `src/bot-loop-detect.js`.
+ *
+ * @param {string} verb    Human verb for the message ("manage"/"unmanage").
+ * @param {string} reason  Short reason from server or thrown error.
+ * @param {object} [active] Active position (for the spec line).
+ */
+function _handleManageFailure(verb, reason, active) {
+  console.warn("[lp-ranger] [manage] %s failed: %s", verb, reason);
+  // Restore the button immediately. updateManageBadge will
+  // re-paint correct text on the next status poll (3s).
+  const btn = g("manageToggleBtn");
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = verb === "manage" ? "Manage" : "Stop Managing";
+  }
+  const spec = _formatPositionSpec(active);
+  const action = verb === "manage" ? "start managing" : "stop managing";
+  const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
+  /*- The bot-loop-detect retry chain engages sticky RPC failover on
+   *  every miss, so by the time the server returns "No V3 NFT position
+   *  found" the next attempt is already routed through the backup. */
+  const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
+    reason || "",
+  );
+  const retryHint = looksLikeRpcFailure
+    ? `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`
+    : `\n\nClick "${buttonLabel}" again to retry.`;
+  /*- alert() is intentional here — the manage flow is a deliberate user
+   *  action and silent failure is what got us into the stuck-UI state
+   *  this branch is fixing. */
+  alert(`Couldn't ${action}${spec ? " " + spec : ""}:\n${reason}${retryHint}`);
+}
+
+/** Send the DELETE request to stop managing `active`. */
+async function _sendUnmanage(active) {
+  const key = `pulsechain-${active.walletAddress}-${active.contractAddress}-${active.tokenId}`;
+  // Suppress poll-driven auto-compound sync so it doesn't race back on
+  suppressAutoCompoundSync(5000);
+  const res = await fetch("/api/position/manage", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    body: JSON.stringify({ key }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    _handleManageFailure(
+      "unmanage",
+      body.error || `HTTP ${res.status}`,
+      active,
+    );
+    return false;
+  }
+  // Turn off auto-compound UI
+  const acCb = g("autoCompoundToggle");
+  if (acCb) acCb.checked = false;
+  const acBadge = g("autoCompoundBadge");
+  if (acBadge) acBadge.textContent = "OFF";
+  // Position is now unmanaged — trigger unmanaged detail fetch
+  // so the sync badge resolves and KPIs stay populated.
+  resetLastFetchedId();
+  fetchUnmanagedDetails(active);
+  return true;
+}
+
+/** Send the POST request to start managing `active`. */
+async function _sendManage(active) {
+  playSound(SOUND_MANAGE_START);
+  const res = await fetch("/api/position/manage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    body: JSON.stringify({
+      tokenId: active.tokenId,
+      contract: active.contractAddress,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    _handleManageFailure("manage", body.error || `HTTP ${res.status}`, active);
+    return false;
+  }
+  console.log("[lp-ranger] [manage] started managing #%s", active.tokenId);
+  return true;
+}
+
 /** Toggle manage / pause for the active NFT position. */
-export function _toggleManagePosition() {
+export async function _toggleManagePosition() {
+  if (_manageInFlight) {
+    console.log("[lp-ranger] [manage] click ignored — request in-flight");
+    return;
+  }
   const active = _posStoreRef?.getActive?.();
   if (!active?.tokenId || active.positionType !== "nft") return;
   const badge = g("manageBadge");
+  const btn = g("manageToggleBtn");
   const isManaged = badge?.classList.contains("managed");
   /* Clear stale history so the next poll
      renders data for the correct position. */
   clearHistory();
   resetHistoryFlag();
 
-  if (isManaged) {
-    // Build composite key and stop managing
-    const w = _posStoreRef.getActive()?.walletAddress;
-    const c = active.contractAddress;
-    const key = `pulsechain-${w}-${c}-` + `${active.tokenId}`;
-    // Suppress poll-driven auto-compound sync so it doesn't race back on
-    suppressAutoCompoundSync(5000);
-    fetch("/api/position/manage", {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        ...csrfHeaders(),
-      },
-      body: JSON.stringify({ key }),
-    })
-      .then(() => {
-        // Turn off auto-compound UI
-        const acCb = g("autoCompoundToggle");
-        if (acCb) acCb.checked = false;
-        const acBadge = g("autoCompoundBadge");
-        if (acBadge) acBadge.textContent = "OFF";
-        // Position is now unmanaged — trigger unmanaged detail fetch
-        // so the sync badge resolves and KPIs stay populated.
-        resetLastFetchedId();
-        fetchUnmanagedDetails(active);
-      })
-      .catch(() => {});
-  } else {
-    playSound(SOUND_MANAGE_START);
-    fetch("/api/position/manage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...csrfHeaders(),
-      },
-      body: JSON.stringify({
-        tokenId: active.tokenId,
-        contract: active.contractAddress,
-      }),
-    })
-      .then(() => {
-        const btn = g("manageToggleBtn");
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = "Managing\u2026";
-        }
-      })
-      .catch(() => {});
+  _manageInFlight = true;
+  // Disable + re-label the button synchronously so a fast second click
+  // can't fire a second request before the in-flight flag is set.
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = isManaged ? "Stopping\u2026" : "Managing\u2026";
+  }
+
+  try {
+    if (isManaged) await _sendUnmanage(active);
+    else await _sendManage(active);
+  } catch (err) {
+    /*- Network error (fetch reject) — distinct from HTTP 4xx/5xx above. */
+    _handleManageFailure(
+      isManaged ? "unmanage" : "manage",
+      err.message,
+      active,
+    );
+  } finally {
+    _manageInFlight = false;
   }
 }
 
@@ -342,6 +436,10 @@ export function updateManageBadge(
   } else {
     badge.textContent = "Not Actively Managed";
   }
+  /*- Don't clobber the in-flight "Managing\u2026" / "Stopping\u2026"
+   *  text that the click handler just set — the next poll after the
+   *  request resolves will repaint correctly. */
+  if (_manageInFlight) return;
   if (rebalanceInProgress) {
     btn.textContent = "Rebalancing\u2026";
   } else {

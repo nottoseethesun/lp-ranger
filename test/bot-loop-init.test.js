@@ -31,12 +31,14 @@ describe("bot-loop _initPnlTracker", () => {
       return _origRequire.apply(this, arguments);
     };
     delete require.cache[require.resolve("../src/bot-loop")];
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
     ({ _initPnlTracker } = require("../src/bot-loop"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
     delete require.cache[require.resolve("../src/bot-loop")];
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
   });
 
   it("creates tracker and opens epoch when no cache", () => {
@@ -174,12 +176,14 @@ describe("bot-loop _tryInitPnlTracker", () => {
       return _origRequire2.apply(this, arguments);
     };
     delete require.cache[require.resolve("../src/bot-loop")];
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
     ({ _tryInitPnlTracker } = require("../src/bot-loop"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire2;
     delete require.cache[require.resolve("../src/bot-loop")];
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
   });
 
   it("returns null when prices are 0", async () => {
@@ -264,6 +268,7 @@ describe("bot-loop _tryInitPnlTracker", () => {
       return _origRequire2.apply(this, arguments);
     };
     delete require.cache[require.resolve("../src/bot-loop")];
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
     const { _tryInitPnlTracker: fn } = require("../src/bot-loop");
     const result = await fn(
       {},
@@ -287,38 +292,139 @@ describe("bot-loop _detectPosition", () => {
   let _detectPosition;
   const _origRequire = Module.prototype.require;
   let _mockPositions = [];
+  let _detectCallCount = 0;
+  let _mockType = "nft";
 
   before(() => {
     Module.prototype.require = function (id) {
       if (id === "./position-detector") {
         return {
-          detectPositionType: async () => ({
-            type: "nft",
-            nftPositions: _mockPositions,
-          }),
+          detectPositionType: async () => {
+            _detectCallCount++;
+            return {
+              type: _mockType,
+              nftPositions: _mockType === "nft" ? _mockPositions : null,
+            };
+          },
           refreshLpPositionLiquidity: async () => new Map(),
         };
       }
       return _origRequire.apply(this, arguments);
     };
     delete require.cache[require.resolve("../src/bot-loop")];
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
     ({ _detectPosition } = require("../src/bot-loop"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
     delete require.cache[require.resolve("../src/bot-loop")];
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
   });
 
   it("throws when no NFT positions found", async () => {
     _mockPositions = [];
+    _mockType = "nft";
     await assert.rejects(
       () => _detectPosition({}, "0xWallet"),
       /No V3 NFT position found/,
     );
   });
 
+  it("retries on transient detector miss before throwing", async () => {
+    // Simulates RPC saturation: detector returns 'unknown' (instead of
+    // 'nft') for the first two attempts, then recovers. Without retry,
+    // a single transient blip during Manage surfaced to users as the
+    // cryptic "No V3 NFT position found" error.  See PR fix-no-nft-found-error.
+    _mockType = "unknown";
+    _detectCallCount = 0;
+    _mockPositions = [{ tokenId: "42", fee: 3000, liquidity: 100n }];
+    // Flip back to 'nft' after the second call so attempt #3 succeeds.
+    const _orig = Module.prototype.require;
+    let calls = 0;
+    Module.prototype.require = function (id) {
+      if (id === "./position-detector") {
+        return {
+          detectPositionType: async () => {
+            calls++;
+            if (calls < 3) return { type: "unknown", nftPositions: null };
+            return { type: "nft", nftPositions: _mockPositions };
+          },
+          refreshLpPositionLiquidity: async () => new Map(),
+        };
+      }
+      return _orig.apply(this, arguments);
+    };
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
+    const { _detectPosition: dp } = require("../src/bot-loop-detect");
+    const p = await dp({}, "0xW", "42");
+    assert.strictEqual(String(p.tokenId), "42");
+    assert.strictEqual(calls, 3, "should retry until success");
+    Module.prototype.require = _orig;
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
+  });
+
+  it("engages RPC failover between attempts and gives up after 4 tries", async () => {
+    // All attempts return 'unknown'.  Verifies (a) exactly 4 calls
+    // (the new cap), (b) onRpcFailure is invoked 3 times — once
+    // between each pair of consecutive attempts, never after the
+    // final attempt, and (c) the per-attempt getProvider is consulted
+    // so failover-routed reads are wired.
+    const _orig = Module.prototype.require;
+    let calls = 0;
+    const providerSeen = [];
+    Module.prototype.require = function (id) {
+      if (id === "./position-detector") {
+        return {
+          detectPositionType: async (prov) => {
+            calls++;
+            providerSeen.push(prov);
+            return { type: "unknown", nftPositions: null };
+          },
+          refreshLpPositionLiquidity: async () => new Map(),
+        };
+      }
+      return _orig.apply(this, arguments);
+    };
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
+    const { _detectPosition: dp } = require("../src/bot-loop-detect");
+    let failoverCalls = 0;
+    const provPrimary = { _label: "primary" };
+    const provFallback = { _label: "fallback" };
+    let onFallback = false;
+    await assert.rejects(
+      () =>
+        dp({}, "0xW", "42", {
+          getProvider: () => (onFallback ? provFallback : provPrimary),
+          onRpcFailure: () => {
+            failoverCalls++;
+            onFallback = true;
+          },
+        }),
+      /No V3 NFT position found after 4 attempts/,
+    );
+    assert.strictEqual(calls, 4, "should attempt exactly 4 times");
+    assert.strictEqual(
+      failoverCalls,
+      3,
+      "failover should fire between attempts (3× for 4 attempts), not after the last",
+    );
+    assert.strictEqual(
+      providerSeen[0],
+      provPrimary,
+      "first attempt on primary",
+    );
+    assert.strictEqual(
+      providerSeen[1],
+      provFallback,
+      "subsequent attempts use the failed-over provider",
+    );
+    Module.prototype.require = _orig;
+    delete require.cache[require.resolve("../src/bot-loop-detect")];
+  });
+
   it("throws when no valid fee tiers found", async () => {
+    _mockType = "nft";
     _mockPositions = [{ tokenId: "1", fee: 0, liquidity: 100n }];
     await assert.rejects(
       () => _detectPosition({}, "0xWallet"),
@@ -327,6 +433,7 @@ describe("bot-loop _detectPosition", () => {
   });
 
   it("selects the position with matching targetId", async () => {
+    _mockType = "nft";
     _mockPositions = [
       { tokenId: "10", fee: 3000, liquidity: 100n },
       { tokenId: "20", fee: 3000, liquidity: 200n },
@@ -336,6 +443,7 @@ describe("bot-loop _detectPosition", () => {
   });
 
   it("falls back to first valid when targetId not found", async () => {
+    _mockType = "nft";
     _mockPositions = [
       { tokenId: "10", fee: 3000, liquidity: 100n },
       { tokenId: "20", fee: 3000, liquidity: 200n },
@@ -345,6 +453,7 @@ describe("bot-loop _detectPosition", () => {
   });
 
   it("picks highest liquidity when no targetId", async () => {
+    _mockType = "nft";
     _mockPositions = [
       { tokenId: "10", fee: 3000, liquidity: 100n },
       { tokenId: "20", fee: 3000, liquidity: 500n },
@@ -355,6 +464,7 @@ describe("bot-loop _detectPosition", () => {
   });
 
   it("picks highest tokenId when all liquidity is 0", async () => {
+    _mockType = "nft";
     _mockPositions = [
       { tokenId: "10", fee: 3000, liquidity: 0n },
       { tokenId: "30", fee: 3000, liquidity: 0n },

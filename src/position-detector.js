@@ -128,6 +128,16 @@ function _shapeNftPosition(tokenId, p) {
 
 /**
  * Probe a single NFT token ID via the position manager.
+ *
+ * Returns `null` for two distinct reasons:
+ *   - The position genuinely does not exist (revert / "Invalid token ID")
+ *   - The on-chain `positions()` call failed (RPC error)
+ *
+ * Both cases log diagnostically.  Without these logs the upstream
+ * "No V3 NFT position found" error message is indistinguishable
+ * from a transient RPC failure (which was the actual cause of the
+ * #159289 manage failure that motivated this logging).
+ *
  * @param {object}  contract   ethers Contract instance.
  * @param {string}  tokenId
  * @returns {Promise<NftPosition|null>}
@@ -136,7 +146,15 @@ async function _probeSingleNft(contract, tokenId) {
   try {
     const p = await contract.positions(BigInt(tokenId));
     return _shapeNftPosition(tokenId, p);
-  } catch (_) {
+  } catch (err) {
+    /*- Don't throw — caller (enumerate or single-id fast-path) treats
+     *  null as "not found here, try the next strategy". But DO log so
+     *  RPC failures don't masquerade as "position doesn't exist". */
+    console.warn(
+      "[pos-detect] positions(#%s) failed: %s (treated as missing)",
+      tokenId,
+      err.message,
+    );
     return null;
   }
 }
@@ -154,7 +172,12 @@ async function _enumerateOwnerNfts(contract, walletAddress, opts) {
   let rawBalance;
   try {
     rawBalance = await contract.balanceOf(walletAddress);
-  } catch (_) {
+  } catch (err) {
+    console.warn(
+      "[pos-detect] balanceOf(%s) failed: %s — returning empty list",
+      walletAddress,
+      err.message,
+    );
     return [];
   }
 
@@ -171,9 +194,15 @@ async function _enumerateOwnerNfts(contract, walletAddress, opts) {
     const end = Math.min(start + BATCH, scanCount);
     const idBatch = await Promise.all(
       Array.from({ length: end - start }, (_, i) =>
-        contract
-          .tokenOfOwnerByIndex(walletAddress, start + i)
-          .catch(() => null),
+        contract.tokenOfOwnerByIndex(walletAddress, start + i).catch((err) => {
+          console.warn(
+            "[pos-detect] tokenOfOwnerByIndex(%s, %d) failed: %s",
+            walletAddress,
+            start + i,
+            err.message,
+          );
+          return null;
+        }),
       ),
     );
 
@@ -219,22 +248,37 @@ async function _probeErc20(
 
     const pos = { contractAddress, balance };
 
-    const opt = async (fn) => {
+    /*- Token/tick fields are best-effort metadata; many ERC-20 LP
+     *  tokens don't expose them.  Only the balanceOf result above is
+     *  load-bearing — we still want a position object back. */
+    const opt = async (label, fn) => {
       try {
         return await fn();
-      } catch (_) {
+      } catch (err) {
+        console.warn(
+          "[pos-detect] ERC-20 probe %s() at %s failed: %s",
+          label,
+          contractAddress,
+          err.message,
+        );
         return null;
       }
     };
-    pos.token0 = await opt(() => contract.token0());
-    pos.token1 = await opt(() => contract.token1());
-    const tl = await opt(() => contract.tickLower());
-    const tu = await opt(() => contract.tickUpper());
+    pos.token0 = await opt("token0", () => contract.token0());
+    pos.token1 = await opt("token1", () => contract.token1());
+    const tl = await opt("tickLower", () => contract.tickLower());
+    const tu = await opt("tickUpper", () => contract.tickUpper());
     if (tl !== null && tl !== undefined) pos.tickLower = Number(tl);
     if (tu !== null && tu !== undefined) pos.tickUpper = Number(tu);
 
     return pos;
-  } catch (_) {
+  } catch (err) {
+    console.warn(
+      "[pos-detect] ERC-20 probe at %s for %s failed: %s",
+      contractAddress,
+      walletAddress,
+      err.message,
+    );
     return null;
   }
 }
@@ -261,7 +305,13 @@ async function enumerateNftPositions(provider, input, opts) {
       provider,
     );
     return await _enumerateOwnerNfts(contract, input.walletAddress, opts);
-  } catch (_) {
+  } catch (err) {
+    console.warn(
+      "[pos-detect] enumerateNftPositions(%s @ %s) failed: %s — returning empty list",
+      input.walletAddress,
+      input.positionManagerAddress,
+      err.message,
+    );
     return [];
   }
 }
@@ -375,7 +425,16 @@ async function refreshLpPositionLiquidity(
   for (let i = 0; i < tokenIds.length; i += BATCH) {
     const batch = tokenIds.slice(i, i + BATCH);
     const positions = await Promise.all(
-      batch.map((id) => contract.positions(BigInt(id)).catch(() => null)),
+      batch.map((id) =>
+        contract.positions(BigInt(id)).catch((err) => {
+          console.warn(
+            "[pos-detect] refresh positions(#%s) failed: %s (treated as drained)",
+            id,
+            err.message,
+          );
+          return null;
+        }),
+      ),
     );
     for (let j = 0; j < batch.length; j++) {
       const p = positions[j];

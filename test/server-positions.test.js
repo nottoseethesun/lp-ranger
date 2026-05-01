@@ -401,6 +401,70 @@ describe("createPositionRoutes", () => {
       getAllPositionBotStates().delete(startedKey);
     });
 
+    it("rolls back disk config when startPosition throws", async () => {
+      // Regression: prior behavior wrote `status=running` BEFORE the
+      // bot loop validated the position.  An RPC failure during
+      // detect left a phantom managed entry on disk that the dashboard
+      // showed as "Being Actively Managed" forever.  See
+      // PR fix-no-nft-found-error.
+      const dc = makeDiskConfig();
+      const deps = makeRouteDeps({
+        diskConfig: dc,
+        readJsonBody: async () => ({ tokenId: "999" }),
+        positionMgr: makePositionMgr({
+          get: () => null,
+          startPosition: async () => {
+            throw new Error("No V3 NFT position found");
+          },
+        }),
+      });
+      const routes = createPositionRoutes(deps);
+      const res = makeRes();
+      await routes["POST /api/position/manage"]({}, res);
+      assert.strictEqual(res._status, 500);
+      assert.ok(res._body.error.includes("No V3 NFT position found"));
+      // No phantom entry on disk.
+      const keys = Object.keys(dc.positions);
+      assert.deepStrictEqual(
+        keys.filter((k) => dc.positions[k].status === "running"),
+        [],
+        "should not leave status=running on a failed start",
+      );
+      // No phantom in-memory state either.
+      const inMem = [...getAllPositionBotStates().keys()].filter((k) =>
+        k.endsWith("-999"),
+      );
+      assert.deepStrictEqual(inMem, []);
+    });
+
+    it("preserves prior status=stopped when retry fails", async () => {
+      // Failed retry should not promote a previously-stopped position
+      // to running on disk.
+      const cfg = require("../src/config");
+      const stoppedKey = `pulsechain-${WALLET}-${cfg.POSITION_MANAGER}-77`;
+      const dc = makeDiskConfig({
+        positions: { [stoppedKey]: { status: "stopped", residuals: { x: 1 } } },
+      });
+      const deps = makeRouteDeps({
+        diskConfig: dc,
+        readJsonBody: async () => ({ tokenId: "77" }),
+        walletManager: { getAddress: () => WALLET },
+        positionMgr: makePositionMgr({
+          get: () => null,
+          startPosition: async () => {
+            throw new Error("rpc down");
+          },
+        }),
+      });
+      const routes = createPositionRoutes(deps);
+      const res = makeRes();
+      await routes["POST /api/position/manage"]({}, res);
+      assert.strictEqual(res._status, 500);
+      assert.strictEqual(dc.positions[stoppedKey].status, "stopped");
+      // Existing config (residuals) survived
+      assert.deepStrictEqual(dc.positions[stoppedKey].residuals, { x: 1 });
+    });
+
     it("returns alreadyRunning for duplicate position", async () => {
       const deps = makeRouteDeps({
         readJsonBody: async () => ({ tokenId: "42" }),

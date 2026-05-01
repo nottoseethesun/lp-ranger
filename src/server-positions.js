@@ -322,11 +322,12 @@ function createPositionRoutes(deps) {
       key,
     );
 
-    // If already running or currently starting, skip duplicate
+    // If already running or currently starting, skip duplicate.
+    // Note: only checks IN-MEMORY state. A stale `status=running` on disk
+    // with no live bot loop is treated as not-running, so the user can
+    // retry Manage to actually start it.
     const existing = positionMgr.get(key);
     if ((existing && existing.status === "running") || _starting.has(key)) {
-      addManagedPosition(diskConfig, key);
-      saveConfig(diskConfig);
       console.log(
         "[pos-route] Position #%s already running or starting — skipping",
         body.tokenId,
@@ -341,14 +342,18 @@ function createPositionRoutes(deps) {
     }
     _starting.add(key);
 
-    addManagedPosition(diskConfig, key);
+    /*- Build the per-position config in memory only.  We DO NOT
+     *  saveConfig() until startBotLoop succeeds: a failure here used to
+     *  leave a phantom `status=running` entry on disk which made the
+     *  dashboard show "Being Actively Managed" for a position that
+     *  never actually started.  See PR fix-no-nft-found-error. */
     const posConfig = getPositionConfig(diskConfig, key);
-    // Default auto-compound ON for active positions, OFF for closed
+    const _hadExistingConfig = Object.keys(posConfig).length > 0;
+    const _prevStatus = posConfig.status;
     if (posConfig.autoCompoundEnabled === undefined) {
       const liq = body.liquidity;
       posConfig.autoCompoundEnabled = !liq || BigInt(liq) > 0n;
     }
-    saveConfig(diskConfig);
     const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, positionMgr);
     _positionBotStates.set(key, posBotState);
@@ -392,6 +397,15 @@ function createPositionRoutes(deps) {
         err.message,
         err.stack,
       );
+      /*- Roll back in-memory state so a retry starts cleanly and so the
+       *  status endpoint doesn't show a phantom managed entry. */
+      _positionBotStates.delete(key);
+      if (!_hadExistingConfig) {
+        delete diskConfig.positions[key];
+      } else {
+        // Preserve prior status (e.g. `stopped`) — never auto-promote to running
+        posConfig.status = _prevStatus;
+      }
       jsonResponse(res, 500, {
         ok: false,
         error: "Failed to start position: " + err.message,
@@ -400,6 +414,9 @@ function createPositionRoutes(deps) {
     } finally {
       _starting.delete(key);
     }
+    /*- Bot loop is up; only NOW persist `status=running`. */
+    addManagedPosition(diskConfig, key);
+    saveConfig(diskConfig);
     console.log(
       "[pos-route] Position #%s started in %dms (total managed: %d)",
       body.tokenId,
