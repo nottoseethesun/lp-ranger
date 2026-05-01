@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777606364784">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777606364784">
+<link rel="stylesheet" href="style.css?v=1777609873624">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777609873624">
 </head>
 <body>
 
@@ -476,7 +476,7 @@
   <div class="header-right">
     <a class="pos-browser-btn" href="/help-and-user-manual.html" target="_blank" rel="noopener" title="Help and User Manual" style="text-decoration: none;">? Help</a>
     <div class="9mm-pos-mgr-settings-wrap">
-      <button type="button" class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="18" height="18" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
+      <button type="button" class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="27" height="27" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
       <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
         <button type="button" class="9mm-pos-mgr-settings-item" id="donateBtn">Donate</button>
         <button type="button" class="9mm-pos-mgr-settings-item" id="disclosuresBtn">Disclosure</button>
@@ -510,6 +510,13 @@
           </div>
         </div>
         <button type="button" class="9mm-pos-mgr-settings-item" id="telegramSettingsBtn">Telegram Notifications</button>
+        <div class="9mm-pos-mgr-settings-item 9mm-pos-mgr-settings-key-row">
+          <label for="inGasFeePct">Gas Fee % <span class="9mm-pos-mgr-il-info-btn" data-param-help="gasFeePct" title="Learn about the Gas Fee % setting">i</span></label>
+          <div class="9mm-pos-mgr-settings-key-wrap">
+            <input type="number" id="inGasFeePct" class="9mm-pos-mgr-settings-key-input" min="0.1" max="15" step="0.1" autocomplete="off" data-1p-ignore data-lpignore="true">
+            <button type="button" class="9mm-pos-mgr-settings-key-save" id="saveGasFeePctBtn">Save</button>
+          </div>
+        </div>
         <label class="9mm-pos-mgr-settings-item 9mm-pos-mgr-privacy-setting" title="Toggle UI sound effects">
           <input type="checkbox" id="soundsSwitch">
           <span>Sounds</span>
@@ -850,7 +857,7 @@
 <!-- Row 2: Bot Configuration -->
 <div class="row c1">
   <div class="card 9mm-pos-mgr-scrollable-card">
-    <div class="card-title">Bot Configuration</div>
+    <div class="card-title"><span>Bot Configuration <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" role="img" aria-label="Bot Configuration scope">i</span><span class="9mm-pos-mgr-info-popover">These settings apply to the current liquidity pool only.</span></span></span></div>
 
     <div class="active-trigger-row 9mm-pos-mgr-trigger-grid">
       <div class="cfg-title" style="margin-bottom:9px">Auto-Rebalance Settings</div>
@@ -1320,6 +1327,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777606364784"></script>
+<script src="dist/bundle.js?v=1777609873624"></script>
 </body>
 </html>

@@ -900,6 +900,10 @@ span[title]:not([title=""]):hover {
   white-space: normal;
   width: 330px;
   text-align: left;
+  /* Always normal case — popover/tooltip text must not inherit from
+     uppercase parents like .card-title (text-transform:uppercase). */
+  text-transform: none;
+  letter-spacing: normal;
   box-shadow: 0 6px 18px rgb(0 0 0 / 40%);
   pointer-events: none;
 }

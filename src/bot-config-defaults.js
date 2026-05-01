@@ -40,6 +40,7 @@ const _FILE = path.join(
  *  operator tunables not exposed via the dashboard. */
 const _FALLBACK = Object.freeze({
   approvalMultiple: 20,
+  gasFeePct: 1,
   rebalanceOutOfRangeThresholdPercent: 5,
   rebalanceTimeoutMin: 180,
   slippagePct: 0.5,
@@ -124,6 +125,9 @@ function _normalizeResidualCleanup(v) {
 /** Mapping of JSON key → normalizer producing the cleaned value or null. */
 const _NORMALIZERS = {
   approvalMultiple: _normalizeApprovalMultiple,
+  /*- Mirror src/swap-gates.js GAS_FEE_PCT_MIN/MAX so the defaults route
+   *  exposes the same band the gate enforces. */
+  gasFeePct: (v) => _clampFloat(v, 0.1, 15),
   rebalanceOutOfRangeThresholdPercent: (v) => _clampInt(v, 1, 100),
   rebalanceTimeoutMin: (v) => _clampNonNegInt(v, 1440),
   slippagePct: (v) => _clampFloat(v, 0.1, 5),

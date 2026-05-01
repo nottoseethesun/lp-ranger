@@ -137,6 +137,7 @@ async function _buildCompoundOpts(deps, poolState, trigger) {
     tickUpper: position.tickUpper,
     swapRouterAddress: config.SWAP_ROUTER,
     slippagePct: deps._getConfig?.("slippagePct") ?? config.SLIPPAGE_PCT,
+    gasFeePct: deps._getConfig?.("gasFeePct"),
   };
 }
 

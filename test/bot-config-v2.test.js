@@ -311,6 +311,17 @@ describe("bot-config-v2", () => {
         "approvalMultiple must not also be in POSITION_KEYS",
       );
     });
+
+    it("gasFeePct is a GLOBAL_KEY (one swap-gate ceiling, all positions)", () => {
+      assert.ok(
+        GLOBAL_KEYS.includes("gasFeePct"),
+        "gasFeePct should live in GLOBAL_KEYS so the swap-gate ceiling is shared",
+      );
+      assert.ok(
+        !POSITION_KEYS.includes("gasFeePct"),
+        "gasFeePct must not also be in POSITION_KEYS",
+      );
+    });
   });
 
   describe("readConfigValue", () => {

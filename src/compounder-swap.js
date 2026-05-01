@@ -22,7 +22,11 @@
 
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
-const { estimateSwapGasUsd, shouldSkipSwap } = require("./swap-gates");
+const {
+  estimateSwapGasUsd,
+  shouldSkipSwap,
+  gasFeePctToRatio,
+} = require("./swap-gates");
 
 /** Abbreviated address: 0x4e44…61A */
 function _abbr(addr) {
@@ -65,13 +69,15 @@ async function _evalGates(signer, opts, desired) {
   const swapUsd = (Number(desired.swapAmount) / 10 ** decIn) * priceInUsd;
   const provider = signer.provider ?? signer;
   const gasUsd = await estimateSwapGasUsd(provider);
-  const gate = await shouldSkipSwap({ swapUsd, gasUsd });
+  const maxRatio = gasFeePctToRatio(opts.gasFeePct);
+  const gate = await shouldSkipSwap({ swapUsd, gasUsd, maxRatio });
   console.log(
-    "[compound] %s ratio-swap gate: swap=$%s gas=$%s ratio=%s — %s",
+    "[compound] %s ratio-swap gate: swap=$%s gas=$%s ratio=%s max=%s%% — %s",
     _ctx(opts),
     swapUsd.toFixed(4),
     gasUsd.toFixed(4),
     gate.gasRatio.toFixed(4),
+    (gate.maxRatio * 100).toFixed(2),
     gate.skip ? `SKIP (${gate.reason})` : "PROCEED",
   );
   return { gate, is0to1, ps };

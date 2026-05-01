@@ -40,6 +40,14 @@ const GLOBAL_KEYS = [
   "factory",
   "rpcUrl",
   "approvalMultiple",
+  /*-
+   *  Maximum gas cost as a percentage of swap value before the gas gate
+   *  trips (see `src/swap-gates.js`).  Single global knob shared by all
+   *  three swap call sites: initial Rebalance, corrective Rebalance,
+   *  Compound.  Stored as a percent (e.g. `1` = 1%); UI bounds 0.1–15.
+   *  Default in `app-config/static-tunables/bot-config-defaults.json`.
+   */
+  "gasFeePct",
 ];
 
 /** Keys that belong in a per-position (per-pool) section. */

@@ -243,6 +243,7 @@ function _afterDisclaimer() {
     minRebalanceIntervalMin: "inMinInterval",
     maxRebalancesPerDay: "inMaxReb",
     offsetToken0Pct: "inOffsetToken0",
+    gasFeePct: "inGasFeePct",
   };
   fetch("/api/bot-config-defaults")
     .then((r) => (r.ok ? r.json() : null))

@@ -78,6 +78,7 @@ import {
   toggleAutoCompound,
   saveCompoundThreshold,
 } from "./dashboard-compound.js";
+import { saveGasFeePct } from "./dashboard-gas-fee-settings.js";
 import {
   toggleInitialDeposit,
   saveInitialDeposit,
@@ -420,6 +421,7 @@ export function bindAllEvents() {
   _click("wsAddrCopy", () => copyElText("wsAddr", "wsAddrCopy"));
   _click("wsTokenCopy", () => copyElText("wsToken", "wsTokenCopy"));
   _click("moralisKeySaveBtn", _saveMoralisKey);
+  _click("saveGasFeePctBtn", saveGasFeePct);
 
   /* ── Wallet strip ─────────────────────── */
   _click("wsRevealBtn", openRevealModal);

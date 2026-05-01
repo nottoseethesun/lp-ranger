@@ -225,6 +225,7 @@ async function executeRebalance(signer, ethersLib, opts) {
     customRangeWidthPct,
     offsetToken0Pct,
     approvalMultiple,
+    gasFeePct,
   } = opts;
   const offset = offsetToken0Pct ?? 50;
   if (!position.tokenId || !position.fee || position.fee <= 0) {
@@ -342,6 +343,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       symbol0: opts.symbol0,
       symbol1: opts.symbol1,
       approvalMultiple,
+      gasFeePct,
     });
     if (swapped.txHash) txHashes.push(swapped.txHash);
     console.log(
@@ -389,6 +391,7 @@ async function executeRebalance(signer, ethersLib, opts) {
         symbol0: opts.symbol0,
         symbol1: opts.symbol1,
         approvalMultiple,
+        gasFeePct,
       },
       txHashes,
     );

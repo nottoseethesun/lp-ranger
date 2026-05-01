@@ -521,6 +521,89 @@ export const PARAM_HELP = {
     ],
   },
 
+  // ── Gas Fee % (global, Settings popover) ───────────────────────────────
+
+  gasFeePct: {
+    title: "Gas Fee % (Swap Gate Ceiling)",
+    subtitle:
+      "How much gas LP Ranger will spend, as a fraction of swap value, " +
+      "before it skips the swap",
+    sections: [
+      {
+        heading: "What it does",
+        body:
+          "Before LP Ranger sends any swap &mdash; whether for a rebalance, " +
+          "a corrective swap mid-rebalance, or a compound &mdash; it " +
+          "estimates how much that swap will cost in gas. If gas would " +
+          "exceed this percentage of the swap&rsquo;s USD value, the swap " +
+          "is skipped (&ldquo;gas-unfavorable&rdquo;). " +
+          "<strong>Default: 1%.</strong> Bounds: 0.1% to 15%. This is " +
+          "<strong>one global setting</strong> shared by every position.",
+      },
+      {
+        heading: "Gas % versus minimum swap value",
+        body:
+          "A lower percentage forces a <strong>larger</strong> minimum " +
+          "swap value before LP Ranger will execute. Concretely:<br><br>" +
+          "&bull; If the swap costs <strong>$1 in gas</strong> and the " +
+          "ceiling is <strong>1%</strong>, the swap value must be at " +
+          "least <strong>$100</strong> for the swap to proceed.<br>" +
+          "&bull; At <strong>0.1%</strong> (the floor), the same $1 gas " +
+          "swap needs <strong>$1,000</strong> of value.<br>" +
+          "&bull; At <strong>10%</strong>, only <strong>$10</strong> of " +
+          "value is needed &mdash; but you accept that gas will eat 10% " +
+          "of the swap.<br><br>" +
+          "Raise this value when fees are unusually lucrative and you " +
+          "would rather take an immediate hit on gas to keep compounding " +
+          "and rebalancing aggressively. Lower it when you want LP Ranger " +
+          "to be stricter about preserving value on small operations.",
+      },
+      {
+        heading: "Why Compound usually has to swap",
+        body:
+          "When LP Ranger compounds, it collects unclaimed fees and " +
+          "re-deposits them as liquidity into the same NFT. The Position " +
+          "Manager will only accept the two tokens in the exact ratio that " +
+          "the position&rsquo;s tick range currently demands &mdash; and " +
+          "the collected fees almost never arrive in that ratio. So a " +
+          "small <strong>ratio-correcting swap</strong> normally fires " +
+          "between the collect and the deposit, converting some of the " +
+          "surplus side into the deficient side. This is the swap that " +
+          "the Gas Fee % gate evaluates for compounds.",
+      },
+      {
+        heading: "Compound still proceeds when the swap is gated out",
+        body:
+          "If the gas gate (or the dust gate) skips the ratio-correcting " +
+          "swap, the compound is <strong>not</strong> abandoned. LP " +
+          "Ranger falls back to depositing only the side of the collected " +
+          "fees that already fits the current tick ratio. The other side " +
+          "is left in the wallet as a residual and gets folded back in " +
+          "on the next rebalance. So you still get partial compounding " +
+          "even when the swap is gated out.",
+      },
+      {
+        heading: "Effect on wallet residual sweeps",
+        body:
+          "Rebalances also trigger a corrective swap when the residual + " +
+          "drained tokens don&rsquo;t match the new range&rsquo;s ratio. " +
+          "The same Gas Fee % ceiling applies. A very tight ceiling can " +
+          "leave wallet residuals uncorrected for longer, since the " +
+          "corrective swap may be skipped on smaller residual values.",
+      },
+      {
+        heading: "Safety bounds",
+        body:
+          "Values below 0.1% would block almost every swap on chains with " +
+          "non-trivial gas; values above 15% are well past the point where " +
+          "gas eats the trade. The server clamps the value to " +
+          "<strong>[0.1, 15]</strong> on every read, so a stale page or a " +
+          "corrupt config file can&rsquo;t disable the gate or block all " +
+          "swaps.",
+      },
+    ],
+  },
+
   // ── Contracts & Network ────────────────────────────────────────────────
 
   moralisKey: {
