@@ -57,8 +57,8 @@ const COLORS = {
   "[gas-monitor]": "\x1b[38;2;255;255;0;48;2;139;0;0m", // yellow on dull red
   "[moralis]": "\x1b[38;2;232;228;201m", // Dirty White (#E8E4C9)
   "[telegram]": "\x1b[38;2;232;228;201m", // Dirty White (#E8E4C9)
-  // Antique White (#FAEBD7) on Metallic Gold (#D4AF37)
-  "[dust-unit-price]": "\x1b[38;2;250;235;215;48;2;212;175;55m",
+  // Classic Burgundy (#800020) on Metallic Gold (#D4AF37)
+  "[dust-unit-price]": "\x1b[38;2;128;0;32;48;2;212;175;55m",
   // Black (#000000) on Dollar Bill Green (#85BB65)
   "[deposit]": "\x1b[38;2;0;0;0;48;2;133;187;101m",
 };
