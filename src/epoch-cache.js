@@ -72,7 +72,10 @@ function getCachedEpochs(keyOpts) {
   if (entry.closedEpochs && entry.closedEpochs.closedEpochs)
     return entry.closedEpochs; // full tracker state wrapped
   if (Array.isArray(entry.closedEpochs))
-    return { closedEpochs: entry.closedEpochs, liveEpoch: null };
+    return {
+      closedEpochs: entry.closedEpochs,
+      liveEpoch: entry.liveEpoch || null,
+    };
   return null;
 }
 

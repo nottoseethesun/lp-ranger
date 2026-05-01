@@ -50,6 +50,34 @@ describe("epoch-cache", () => {
     assert.strictEqual(got.closedEpochs[0].entryValue, 100);
   });
 
+  it("REGRESSION: round-trips liveEpoch when closedEpochs is a plain array", () => {
+    /*- Earlier impl returned `liveEpoch: null` whenever
+     *  `entry.closedEpochs` was a plain array (the standard format),
+     *  silently dropping the sibling `entry.liveEpoch` written by
+     *  setCachedEpochs.  pnl-tracker.restore then skipped live-epoch
+     *  restoration, and bot-pnl-updater auto-opened a fresh epoch with
+     *  `now` as openTime — making every historical compound fall
+     *  outside the live window and rendering Current Fees Compounded
+     *  as `—`.  This test pins the round-trip. */
+    const key = {
+      contract: `0xLIVE${U}`,
+      wallet: "0xBB",
+      token0: "0xCC",
+      token1: "0xDD",
+      fee: 500,
+    };
+    const liveEpoch = { entryValue: 1646.62, openTime: 1777593493902 };
+    setCachedEpochs(key, {
+      closedEpochs: [{ id: 1 }, { id: 2 }],
+      liveEpoch,
+    });
+    const got = getCachedEpochs(key);
+    assert.ok(got, "must hydrate cached entry");
+    assert.ok(got.liveEpoch, "liveEpoch must round-trip, not be dropped");
+    assert.strictEqual(got.liveEpoch.entryValue, 1646.62);
+    assert.strictEqual(got.liveEpoch.openTime, 1777593493902);
+  });
+
   it("prepends existing epochs when incoming has fewer", () => {
     const key = {
       contract: `0xPP${U}`,

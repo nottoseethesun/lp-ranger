@@ -47,6 +47,7 @@ const {
   _reloadFromConfig,
   _humanizeError,
 } = require("./bot-cycle");
+const { wireBotStateGetConfig } = require("./bot-state-init");
 
 /** Initialize or restore the P&L tracker with epoch data. */
 function _initPnlTracker(
@@ -227,7 +228,7 @@ async function _tryInitPnlTracker(
  */
 async function startBotLoop(opts) {
   const { privateKey, updateBotState, botState } = opts;
-  const gc = opts.getConfig || (() => undefined);
+  const gc = wireBotStateGetConfig(botState, opts);
   const dryRun = opts.dryRun ?? config.DRY_RUN,
     ethersLib = opts.ethersLib || ethers;
   if (dryRun)

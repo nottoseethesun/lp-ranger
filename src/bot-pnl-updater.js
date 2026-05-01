@@ -179,8 +179,9 @@ async function walletResiduals(
 /** Sum compound USD values that fall within the live epoch's timeframe. */
 function _currentEpochCompounded(snap, deps) {
   const history = deps._botState?.compoundHistory;
-  if (!history || !history.length || !snap.liveEpoch) return 0;
-  const epochStart = snap.liveEpoch.openTime || 0;
+  const liveEpoch = snap.liveEpoch;
+  if (!history || !history.length || !liveEpoch) return 0;
+  const epochStart = liveEpoch.openTime || 0;
   let sum = 0;
   for (const c of history) {
     if (new Date(c.timestamp).getTime() >= epochStart) sum += c.usdValue || 0;

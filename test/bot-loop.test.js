@@ -12,6 +12,7 @@ const {
   createProviderWithFallback,
   resolvePrivateKey,
 } = require("../src/bot-loop");
+const { wireBotStateGetConfig } = require("../src/bot-state-init");
 const { CHAIN } = require("../src/config");
 const { ADDR, _poll } = require("./_bot-loop-helpers");
 
@@ -348,5 +349,44 @@ describe("bot-loop: forceRebalance", () => {
       false,
       "flag should clear after attempt",
     );
+  });
+});
+
+// ── wireBotStateGetConfig — disk-config reader plumbing ─────────────────────
+
+/*-
+ *  The `_scanLifetimePoolData` disk-as-source-of-truth gate reads
+ *  `botState._getConfig("totalCompoundedUsd")` to decide whether to skip
+ *  `_classifyAllCompounds` (a partial NFT scan from a stale
+ *  `lastNftScanBlock` would otherwise stomp the correct disk value).
+ *
+ *  That gate only works if `startBotLoop` has wired `_getConfig` onto
+ *  `botState` before any path that reaches `_scanLifetimePoolData`.
+ *  These tests pin down the wiring contract so a future refactor can't
+ *  silently regress the gate by dropping the assignment — the existing
+ *  bot-recorder-lifetime tests mock `_getConfig` directly and so cannot
+ *  catch a missing wire-up.
+ */
+describe("bot-loop: wireBotStateGetConfig", () => {
+  it("attaches opts.getConfig as botState._getConfig", () => {
+    const botState = {};
+    const fakeGetConfig = (k) => ({ totalCompoundedUsd: 148.38 })[k];
+    const ret = wireBotStateGetConfig(botState, { getConfig: fakeGetConfig });
+    assert.strictEqual(botState._getConfig, fakeGetConfig);
+    assert.strictEqual(ret, fakeGetConfig);
+    assert.strictEqual(botState._getConfig("totalCompoundedUsd"), 148.38);
+  });
+
+  it("falls back to a no-op reader when opts.getConfig is missing", () => {
+    const botState = {};
+    wireBotStateGetConfig(botState, {});
+    assert.strictEqual(typeof botState._getConfig, "function");
+    assert.strictEqual(botState._getConfig("anything"), undefined);
+  });
+
+  it("overwrites a previously-wired reader (idempotent re-init)", () => {
+    const botState = { _getConfig: () => "stale" };
+    wireBotStateGetConfig(botState, { getConfig: () => "fresh" });
+    assert.strictEqual(botState._getConfig("k"), "fresh");
   });
 });

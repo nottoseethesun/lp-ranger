@@ -114,19 +114,36 @@ async function _classifyAllCompounds(
 }
 
 /**
- * Resolve whether disk already has authoritative compound data and whether
- * a cached lifetime-hodl exists for this epoch.  Extracted to keep
- * `_scanLifetimePoolData` under the cyclomatic-complexity cap.
+ * Resolve which lifetime aggregates already have authoritative values on
+ * disk and whether a cached lifetime-hodl exists for this epoch.
+ * Extracted to keep `_scanLifetimePoolData` under the cyclomatic-complexity
+ * cap.
  *
- * Disk is treated as source-of-truth for the lifetime compound total.
- * Either `compoundHistory` or `totalCompoundedUsd` is sufficient: the
- * bot's own scans populate both fields, but the unmanaged-view detail
- * scan (`position-details._scanCompounds`) persists only
- * `totalCompoundedUsd`.  Without this, a fresh `Manage Position` on a
- * previously-viewed position would re-run `_classifyAllCompounds` from
- * a stale `lastNftScanBlock`, get a partial sum, and stomp the correct
- * disk value.  Live compounds that fire while managed update the total
- * incrementally via `_recordCompound`, so no rescan is ever needed.
+ * Disk is treated as source-of-truth for two independent lifetime totals,
+ * each guarded against stomp by a stale-`lastNftScanBlock` partial scan:
+ *
+ *   1. **Compound total** (`hasCompoundData`).  Either `compoundHistory`
+ *      or `totalCompoundedUsd` is sufficient: the bot's own scans
+ *      populate both, but the unmanaged-view detail scan
+ *      (`position-details._scanCompounds`) persists only
+ *      `totalCompoundedUsd`.  Without this guard, a fresh
+ *      `Manage Position` on a previously-viewed position would re-run
+ *      `_classifyAllCompounds` from a stale `lastNftScanBlock`, get a
+ *      partial sum, and stomp the correct disk value.  Live compounds
+ *      that fire while managed update the total incrementally via
+ *      `_recordCompound`, so no rescan is ever needed.
+ *
+ *   2. **Lifetime deposit** (`hasDepositData`).  A non-zero
+ *      `totalLifetimeDepositUsd` on disk means a previous run already
+ *      summed every `IncreaseLiquidity` event across the rebalance
+ *      chain into a USD total.  An incremental rescan from a stale
+ *      `lastNftScanBlock` only sees a subset of those events, summing
+ *      to a smaller (wrong) total — which `computeDepositUsd` would
+ *      then write back, overwriting the correct value.  When this flag
+ *      is true we leave the disk total alone and let the dashboard
+ *      keep rendering it.  New deposits while managed flow through the
+ *      live mint/rebalance path and update the total incrementally,
+ *      so no rescan is ever needed.
  */
 function _resolveDiskState(botState, epochKey) {
   const cachedHodl = epochKey
@@ -135,8 +152,10 @@ function _resolveDiskState(botState, epochKey) {
   const get = botState._getConfig;
   const gc = get ? get("compoundHistory") : undefined;
   const diskTotal = get ? get("totalCompoundedUsd") : undefined;
+  const diskDeposit = get ? get("totalLifetimeDepositUsd") : undefined;
   const hasCompoundData = gc?.length > 0 || (diskTotal || 0) > 0;
-  return { cachedHodl, hasCompoundData };
+  const hasDepositData = (diskDeposit || 0) > 0;
+  return { cachedHodl, hasCompoundData, hasDepositData };
 }
 
 /**
@@ -153,8 +172,11 @@ async function _scanLifetimePoolData(
   pnlTracker,
   epochKey,
 ) {
-  const { cachedHodl, hasCompoundData } = _resolveDiskState(botState, epochKey);
-  if (hasCompoundData && cachedHodl) return;
+  const { cachedHodl, hasCompoundData, hasDepositData } = _resolveDiskState(
+    botState,
+    epochKey,
+  );
+  if (hasCompoundData && cachedHodl && hasDepositData) return;
   try {
     const cachedFromBlock = epochKey
       ? _epochCache.getLastNftScanBlock(epochKey)
@@ -208,7 +230,14 @@ async function _scanLifetimePoolData(
     } else {
       botState.lifetimeHodlAmounts = cachedHodl;
     }
-    await computeDepositUsd(botState, updateState, position, opts, epochKey);
+    /*-
+     *  Skip the deposit recompute when disk already has a non-zero total
+     *  (see `_resolveDiskState` JSDoc, item 2).  An incremental scan from
+     *  a stale `lastNftScanBlock` would otherwise overwrite the correct
+     *  total with a partial sum.
+     */
+    if (!hasDepositData)
+      await computeDepositUsd(botState, updateState, position, opts, epochKey);
     if (epochKey && maxBlock > fromBlock)
       _epochCache.setLastNftScanBlock(epochKey, maxBlock);
   } catch (err) {
