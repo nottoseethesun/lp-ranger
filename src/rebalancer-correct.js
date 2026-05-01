@@ -36,7 +36,11 @@ const {
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { getDustThresholdUsd } = require("./dust");
-const { estimateSwapGasUsd, shouldSkipSwap } = require("./swap-gates");
+const {
+  estimateSwapGasUsd,
+  shouldSkipSwap,
+  gasFeePctToRatio,
+} = require("./swap-gates");
 
 /** Hard cap on corrective-swap iterations per rebalance. */
 const _MAX_ITERATIONS = 3;
@@ -142,20 +146,22 @@ async function _runIteration(signer, ethersLib, ctx, acc, i) {
   );
   acc.lastImbalanceUsd = swapUsd;
   acc.lastThresholdUsd = thresholdUsd;
-  const gate = await shouldSkipSwap({ swapUsd, gasUsd });
+  const maxRatio = gasFeePctToRatio(ctx.gasFeePct);
+  const gate = await shouldSkipSwap({ swapUsd, gasUsd, maxRatio });
   if (gate.skip) {
     const why =
       gate.reason === "dust"
         ? "below dust threshold"
         : "gas/value ratio too high";
     console.log(
-      "[rebalance] Step 6d iter %d/%d: %s — stop (swap=$%s gas=$%s ratio=%s)",
+      "[rebalance] Step 6d iter %d/%d: %s — stop (swap=$%s gas=$%s ratio=%s max=%s%%)",
       i + 1,
       _MAX_ITERATIONS,
       why,
       swapUsd.toFixed(4),
       gasUsd.toFixed(4),
       gate.gasRatio.toFixed(4),
+      (gate.maxRatio * 100).toFixed(2),
     );
     return i === 0
       ? _noopResult(

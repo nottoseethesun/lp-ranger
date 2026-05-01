@@ -385,11 +385,13 @@ describe("_swapAndAdjust — swapSources propagation", () => {
       exports: {
         MAX_SWAP_GAS_RATIO: 0.01,
         estimateSwapGasUsd: async () => 0,
+        gasFeePctToRatio: () => 0.01,
         shouldSkipSwap: async () => ({
           skip: false,
           reason: null,
           gasRatio: 0,
           thresholdUsd: 1,
+          maxRatio: 0.01,
         }),
       },
     };

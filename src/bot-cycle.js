@@ -165,6 +165,7 @@ function _buildRebalanceOpts(deps, state) {
     ...(crw ? { customRangeWidthPct: crw } : {}),
     offsetToken0Pct: deps._getConfig?.("offsetToken0Pct") ?? 50,
     approvalMultiple: deps._getConfig?.("approvalMultiple") ?? 20,
+    gasFeePct: deps._getConfig?.("gasFeePct"),
   };
 }
 

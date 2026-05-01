@@ -29,16 +29,51 @@ const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 
 /**
- * Skip a swap when estimated gas cost exceeds this fraction of the
- * total value being swapped.  Single source of truth — exported so
- * tests and operators can grep for it without diving into function
- * bodies.
- *
+ * Default fraction used when no per-call override is supplied.
  * 0.01 = 1%.  Tuned conservatively: a swap that costs more than 1%
  * of its value in gas is almost always net-negative once slippage
  * and price impact are stacked on top.
+ *
+ * The active value is now operator-tunable via the global
+ * `gasFeePct` Bot Setting (percent input, 0.1–15).  Each swap call
+ * site reads `_getConfig("gasFeePct")` from the per-position bot
+ * state, divides by 100, and passes the resulting ratio to
+ * `shouldSkipSwap` as `maxRatio`.  This constant remains the
+ * fallback when no value is supplied — keep it in sync with the
+ * default in `app-config/static-tunables/bot-config-defaults.json`.
  */
 const MAX_SWAP_GAS_RATIO = 0.01;
+
+/**
+ * UI bounds for the operator-tunable `gasFeePct` Bot Setting.  Mirror
+ * the input `min`/`max` attrs in `public/index.html` so server-side
+ * clamping matches what the dashboard exposes.  Below 0.1% would
+ * effectively block all swaps on chains with non-trivial gas; above
+ * 15% is well past the point where gas eats the trade.
+ */
+const GAS_FEE_PCT_MIN = 0.1;
+const GAS_FEE_PCT_MAX = 15;
+const GAS_FEE_PCT_DEFAULT = 1;
+
+/**
+ * Convert the operator's `gasFeePct` (a percent) into the ratio used
+ * by `shouldSkipSwap`'s gas gate.  Clamps to `[GAS_FEE_PCT_MIN,
+ * GAS_FEE_PCT_MAX]` so a corrupt config or wild manual edit can't
+ * disable the gate or block all swaps.  Falls back to the default
+ * when the input isn't a positive number.
+ *
+ * @param {number|string|undefined} pct
+ * @returns {number}  Ratio in `(0, 0.15]`.
+ */
+function gasFeePctToRatio(pct) {
+  const n = typeof pct === "string" ? parseFloat(pct) : pct;
+  const v =
+    typeof n === "number" && Number.isFinite(n) && n > 0
+      ? n
+      : GAS_FEE_PCT_DEFAULT;
+  const clamped = Math.min(GAS_FEE_PCT_MAX, Math.max(GAS_FEE_PCT_MIN, v));
+  return clamped / 100;
+}
 
 /**
  * "High estimate" of gas units consumed by a typical aggregator swap.
@@ -85,33 +120,61 @@ async function estimateSwapGasUsd(provider) {
  * triggering reason; passes return `{skip:false}` with the computed
  * `gasRatio` so callers can log it.
  *
- * @param {{swapUsd: number, gasUsd: number}} args
+ * `maxRatio` is the per-call override of the gas-gate ceiling, derived
+ * by the caller from the operator's `gasFeePct` Bot Setting (percent ÷
+ * 100).  Pass `undefined` to fall back to the conservative
+ * `MAX_SWAP_GAS_RATIO` default — used by tests that don't care about
+ * the operator override path.
+ *
+ * @param {{swapUsd: number, gasUsd: number, maxRatio?: number}} args
  * @returns {Promise<{
  *   skip: boolean,
  *   reason: 'dust'|'gas-unfavorable'|null,
  *   thresholdUsd: number,
  *   gasRatio: number,
+ *   maxRatio: number,
  * }>}
  */
-async function shouldSkipSwap({ swapUsd, gasUsd }) {
+async function shouldSkipSwap({ swapUsd, gasUsd, maxRatio }) {
+  const ceiling =
+    typeof maxRatio === "number" && maxRatio > 0
+      ? maxRatio
+      : MAX_SWAP_GAS_RATIO;
   const { thresholdUsd } = await getDustThresholdUsd();
   if (await isDust(swapUsd)) {
-    return { skip: true, reason: "dust", thresholdUsd, gasRatio: 0 };
+    return {
+      skip: true,
+      reason: "dust",
+      thresholdUsd,
+      gasRatio: 0,
+      maxRatio: ceiling,
+    };
   }
   const ratio = swapUsd > 0 ? gasUsd / swapUsd : Infinity;
-  if (gasUsd > 0 && ratio > MAX_SWAP_GAS_RATIO) {
+  if (gasUsd > 0 && ratio > ceiling) {
     return {
       skip: true,
       reason: "gas-unfavorable",
       thresholdUsd,
       gasRatio: ratio,
+      maxRatio: ceiling,
     };
   }
-  return { skip: false, reason: null, thresholdUsd, gasRatio: ratio };
+  return {
+    skip: false,
+    reason: null,
+    thresholdUsd,
+    gasRatio: ratio,
+    maxRatio: ceiling,
+  };
 }
 
 module.exports = {
   MAX_SWAP_GAS_RATIO,
+  GAS_FEE_PCT_MIN,
+  GAS_FEE_PCT_MAX,
+  GAS_FEE_PCT_DEFAULT,
+  gasFeePctToRatio,
   estimateSwapGasUsd,
   shouldSkipSwap,
   _DEFAULT_SWAP_GAS_UNITS,

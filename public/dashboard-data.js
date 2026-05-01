@@ -142,6 +142,15 @@ const _CONFIG_INPUT_MAP = {
   approvalMultiple: "inApprovalMultiple",
 };
 
+/* Map of GLOBAL server config key → form input id.  These keys live in
+ * `_diskConfig.global` (spread into `/api/status` response), so they
+ * sync regardless of which position is active.  Synced exactly once
+ * per page load (`_globalSynced`) — subsequent in-page edits are
+ * preserved by the dirty-input gate. */
+const _GLOBAL_CONFIG_INPUT_MAP = {
+  gasFeePct: "inGasFeePct",
+};
+
 /* Per-position defaults applied when the key is missing from server data,
  * so the input resets on switch instead of bleeding through the prior
  * position's value.  These values match the built-in `_FALLBACK` in
@@ -182,6 +191,25 @@ function _populateConfigInputs(d) {
   if (offEl0 && offEl1) {
     offEl1.value = 100 - (parseInt(offEl0.value, 10) || 50);
   }
+}
+
+let _globalSynced = false;
+
+/** Populate global-key inputs (e.g. Settings popover Gas Fee %) from
+ *  /api/status global block.  Runs once per page load, only after a
+ *  real value lands (skips the initial poll where global may be empty). */
+function _syncGlobalConfig(d) {
+  if (_globalSynced) return;
+  let any = false;
+  for (const [key, elId] of Object.entries(_GLOBAL_CONFIG_INPUT_MAP)) {
+    const val = d[key];
+    if (val === undefined || val === null) continue;
+    any = true;
+    if (isInputDirty(elId)) continue;
+    const el = g(elId);
+    if (el) el.value = val;
+  }
+  if (any) _globalSynced = true;
 }
 
 function _syncConfigFromServer(d) {
@@ -362,6 +390,7 @@ function _updateRebalanceButtons(d) {
 export function resetHistoryFlag() {
   _historyPopulated = false;
   _configSynced = false;
+  _globalSynced = false;
 }
 export function resetPollingState() {
   _lastStatus = null;
@@ -495,6 +524,7 @@ function updateDashboardFromStatus(data) {
     (!wallet.address || wallet.address.toLowerCase() !== sw.toLowerCase())
   )
     return;
+  _syncGlobalConfig(data);
   _syncConfigFromServer(data);
   _syncAutoCompound(data);
   _syncRebCache(data);

@@ -1,6 +1,7 @@
 {
   "_comment": "Default values for user-editable Bot Config settings AND server-internal operator-tunable defaults. The dashboard reads the top-level keys at init via GET /api/bot-config-defaults and uses them as the initial input value when .bot-config.json has no explicit override. The server also falls back to these when `getConfig` is asked for a value the user hasn't set. Top-level keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so the same string flows from this file → dashboard input → .bot-config.json → bot reader. Nested groups (lowGasThresholds, residualCleanup) are server-internal: not exposed in the Bot Settings UI, consumed directly by src/gas-monitor.js and src/bot-cycle-residual.js. ui-defaults.json, dust-threshold.json and nft-providers.json stay standalone (different concern + data shape).",
   "approvalMultiple": 20,
+  "gasFeePct": 1,
   "rebalanceOutOfRangeThresholdPercent": 5,
   "rebalanceTimeoutMin": 180,
   "slippagePct": 0.5,
