@@ -16,6 +16,16 @@ import { _apply, _applyLifetime } from "./dashboard-unmanaged-apply.js";
 import { enterClosedPosView } from "./dashboard-closed-pos.js";
 import { isWalletUnlocked } from "./dashboard-wallet.js";
 import { LT_BD_IDS } from "./dashboard-data-kpi-breakdown.js";
+import { posStore } from "./dashboard-positions-store.js";
+
+/*- Compare a queued/in-flight fetch's tokenId against the currently-
+ *  active posStore entry.  Used to drop stale results that would paint
+ *  one position's $$ on top of another position's labels (the
+ *  "tokenId correct, pool name stale" mixed-state render bug). */
+function _activeMatches(tokenId) {
+  const a = posStore.getActive();
+  return !!a && String(a.tokenId) === String(tokenId);
+}
 
 const _ALL_KPIS = [
   "kpiValue",
@@ -81,6 +91,21 @@ export function flushPendingUnmanagedFetch() {
   const pos = _pendingPos;
   _pendingPos = null;
   if (!pos) return;
+  /*- Drop the pending if the active position changed since this was
+   *  queued (e.g. URL routing activated a different NFT after the
+   *  initial bestAutoSelect).  Firing the stale fetch would write the
+   *  old position's $$ into the new position's already-painted view —
+   *  the "tokenId correct, pool name stale" mixed-state bug. */
+  if (!_activeMatches(pos.tokenId)) {
+    const a = posStore.getActive();
+    console.log(
+      "%c[lp-ranger] [unmanaged] FLUSH-DROP stale-pending #%s active=#%s",
+      "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+      pos?.tokenId,
+      a?.tokenId,
+    );
+    return;
+  }
   /*- Reset the dedup guard so a same-tokenId fetch from earlier (e.g. a
    *  stale completed request) doesn't entry-skip this one. */
   _lastFetchedId = null;
@@ -134,6 +159,17 @@ async function _phase1(pos, body) {
         "[lp-ranger] [unmanaged] phase1 FAIL #%s details error: %s (%dms)",
         pos?.tokenId,
         d.error,
+        Date.now() - _t0,
+      );
+      return false;
+    }
+    if (!_activeMatches(pos.tokenId)) {
+      const a = posStore.getActive();
+      console.log(
+        "%c[lp-ranger] [unmanaged] phase1 DROP-STALE #%s active=#%s (%dms) — active changed during fetch",
+        "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+        pos?.tokenId,
+        a?.tokenId,
         Date.now() - _t0,
       );
       return false;
@@ -210,7 +246,10 @@ async function _phase2(body, gen) {
     clearTimeout(timer);
     if (gen === _fetchGen) {
       const d2 = await r2.json();
-      if (d2.ok) _applyLifetime(d2);
+      /*- Same active-position guard as phase1: if the user navigated to a
+       *  different NFT during the lifetime fetch, drop the result rather
+       *  than overwrite the new view's KPIs with this position's data. */
+      if (d2.ok && _activeMatches(body?.tokenId)) _applyLifetime(d2);
     }
   } catch (e) {
     if (e.name === "AbortError") {

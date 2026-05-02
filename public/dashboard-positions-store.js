@@ -19,6 +19,11 @@ import {
   emojiId,
 } from "./dashboard-helpers.js";
 import { setProviderLabelFor } from "./dashboard-nft-providers.js";
+import {
+  logStripRender,
+  logLocalRender,
+  logDedupRefresh,
+} from "./dashboard-positions-store-log.js";
 
 // ── Constants ────────────────────────────────────
 
@@ -43,6 +48,35 @@ function _persistPosStore() {
   } catch {
     /* private mode or quota exceeded */
   }
+}
+
+/*-
+ * Refresh an existing posStore entry with fresh values from a re-scan.
+ * Extracted from posStore.add() so that method stays under the 17-
+ * complexity cap.  Pool-identity fields (token0/token1/fee/ticks +
+ * symbols) are refreshed alongside symbols/liquidity so a re-scan can
+ * self-heal stale entries — fixes the "tokenId correct, pool name
+ * stale" mixed-state render bug after a rebalance-follow migration.
+ */
+function _refreshDuplicateEntry(existing, entry) {
+  /*- logDedupRefresh self-gates: silent when nothing pool-identity-
+   *  relevant differs.  See dashboard-positions-store-log.js. */
+  logDedupRefresh(existing, entry);
+  if (entry.token0Symbol) existing.token0Symbol = entry.token0Symbol;
+  if (entry.token1Symbol) existing.token1Symbol = entry.token1Symbol;
+  if (entry.liquidity !== undefined) existing.liquidity = entry.liquidity;
+  if (entry.contractAddress) existing.contractAddress = entry.contractAddress;
+  if (entry.poolTick !== undefined && entry.poolTick !== null)
+    existing.poolTick = entry.poolTick;
+  if (entry.scanInRange !== undefined && entry.scanInRange !== null)
+    existing.scanInRange = entry.scanInRange;
+  if (entry.token0) existing.token0 = entry.token0;
+  if (entry.token1) existing.token1 = entry.token1;
+  if (entry.fee !== undefined && entry.fee !== null) existing.fee = entry.fee;
+  if (entry.tickLower !== undefined && entry.tickLower !== null)
+    existing.tickLower = entry.tickLower;
+  if (entry.tickUpper !== undefined && entry.tickUpper !== null)
+    existing.tickUpper = entry.tickUpper;
 }
 
 /** Load posStore from localStorage, deduplicating. */
@@ -181,16 +215,7 @@ export const posStore = {
           : e.contractAddress === entry.contractAddress),
     );
     if (dup !== -1) {
-      const existing = this.entries[dup];
-      if (entry.token0Symbol) existing.token0Symbol = entry.token0Symbol;
-      if (entry.token1Symbol) existing.token1Symbol = entry.token1Symbol;
-      if (entry.liquidity !== undefined) existing.liquidity = entry.liquidity;
-      if (entry.contractAddress)
-        existing.contractAddress = entry.contractAddress;
-      if (entry.poolTick !== undefined && entry.poolTick !== null)
-        existing.poolTick = entry.poolTick;
-      if (entry.scanInRange !== undefined && entry.scanInRange !== null)
-        existing.scanInRange = entry.scanInRange;
+      _refreshDuplicateEntry(this.entries[dup], entry);
       _persistPosStore();
       return {
         ok: false,
@@ -273,7 +298,7 @@ export const posStore = {
     );
     if (dup) {
       console.warn(
-        "[lp-ranger] [pos] rebalance follow REFUSED: #%s → #%s (duplicate tokenId in store)",
+        "[lp-ranger] [pos] rebalance follow REFUSED: viewed-#%s would migrate to #%s but another posStore entry already holds that tokenId for the same wallet — render will MIX viewed-entry symbols with managed-entry $$$",
         old,
         nid,
       );
@@ -449,6 +474,7 @@ export function formatPosLabel(e) {
 
 /** Populate wallet-strip fields for active pos. */
 function _updateActiveStripDetails(active) {
+  logStripRender(active);
   const t0 = _tokenName(
     active.token0Symbol,
     active.token0,
@@ -549,6 +575,7 @@ export function _applyPositionConfig(active) {
  * @param {object} pos  posStore entry.
  */
 export function _applyLocalPositionData(pos) {
+  logLocalRender(pos);
   _setText("sTL", pos.tickLower ?? "\u2014");
   _setText("sTU", pos.tickUpper ?? "\u2014");
   const t0Sym = _tokenName(pos.token0Symbol, pos.token0) || "\u2014";

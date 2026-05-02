@@ -8,6 +8,7 @@ import {
   updateManagedPositions,
   isPositionManaged,
 } from "./dashboard-positions.js";
+import { syncActivePosition } from "./dashboard-active-sync.js";
 import {
   updateHistoryFromStatus,
   updateHistorySyncLabels,
@@ -404,23 +405,6 @@ export function resetPollingState() {
   const dl = g("initialDepositLabel");
   if (dl) dl.textContent = "Edit Initial Deposit";
 }
-function _syncActivePosition(d) {
-  if (!d.activePosition) return;
-  const active = posStore.getActive();
-  if (!active || active.positionType !== "nft") return;
-  const ap = d.activePosition;
-  if (ap.liquidity !== undefined) active.liquidity = String(ap.liquidity);
-  if (ap.tickLower !== undefined) {
-    active.tickLower = ap.tickLower;
-    active.tickUpper = ap.tickUpper;
-  }
-  if (ap.token0) {
-    active.token0 = ap.token0;
-    active.token1 = ap.token1;
-    active.fee = ap.fee;
-  }
-  if (ap.tokenId) active.tokenId = String(ap.tokenId);
-}
 function _populateHistoryOnce(data) {
   if (_historyPopulated || !data.rebalanceEvents?.length) return;
   if (data.running && data.rebalanceScanComplete !== true) return;
@@ -496,7 +480,7 @@ const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";
 const _LO = "color:#0f0;background:#012;padding:1px 4px;border-radius:2px";
 function _applyManagedUpdates(data, managed) {
   if (!managed) return;
-  _syncActivePosition(data);
+  syncActivePosition(data);
   _updatePositionTicks(data);
   _updateComposition(data);
   checkHodlBaselineDialog(data);

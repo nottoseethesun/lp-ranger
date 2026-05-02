@@ -328,6 +328,14 @@ function _activePosSummary(p) {
     tickLower: p.tickLower,
     tickUpper: p.tickUpper,
     liquidity: String(p.liquidity || 0),
+    /*- Symbols are included so the dashboard can keep its posStore
+     *  entry's `token0Symbol` / `token1Symbol` in sync after a
+     *  rebalance-follow migration.  Without these, the entry's
+     *  addresses/fee can drift to a new pool while the stale Maximus-
+     *  era symbols persist forever in localStorage, producing the
+     *  "tokenId correct, pool name wrong" mixed-state render bug. */
+    token0Symbol: p.token0Symbol,
+    token1Symbol: p.token1Symbol,
   };
 }
 

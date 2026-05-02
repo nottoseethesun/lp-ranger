@@ -178,6 +178,33 @@ export function clearDirtyInputs() {
 // ── V2 status flattening ────────────────────────────────────────────────────
 
 /*-
+ * Last-logged direct-hit state per viewed-key.  flattenV2Status() runs
+ * every poll (~3s); steady-state direct-hit=true would spam the console
+ * forever.  We only log on transitions (first sight of a key, or
+ * direct-hit flipping) and on the rebalance-follow path (which is
+ * already an interesting event).
+ */
+const _lastFlattenHit = new Map();
+
+/*-
+ * Emit the flatten log only when the direct-hit state changes (or on
+ * first sight of a viewed-key).  Steady state stays silent.
+ */
+function _logFlattenOnTransition(myKey, hit, active) {
+  if (!myKey) return;
+  if (_lastFlattenHit.get(myKey) === hit) return;
+  console.log(
+    "[lp-ranger] [flatten] viewed-key=%s direct-hit=%s active-tokenId=%s active-symbols=%s/%s",
+    myKey,
+    hit,
+    active?.tokenId || "(none)",
+    active?.token0Symbol || "?",
+    active?.token1Symbol || "?",
+  );
+  _lastFlattenHit.set(myKey, hit);
+}
+
+/*-
  * Rebalance-follow: when the active entry's composite key is missing
  * from `positions` (e.g. after a rebalance mint), look for a managed
  * bucket whose `rebalanceEvents` contains a `{oldTokenId: active,
@@ -194,10 +221,23 @@ function _findRebalanceTargetPosData(active, positions) {
       (e) => String(e.oldTokenId) === tid && String(e.newTokenId) === newTid,
     );
     if (hit) {
+      console.log(
+        "[lp-ranger] [flatten] rebalance-follow MATCH: viewed #%s → managed #%s (key=%s, ap.symbols=%s/%s)",
+        tid,
+        newTid,
+        k,
+        pd?.activePosition?.token0Symbol || "?",
+        pd?.activePosition?.token1Symbol || "?",
+      );
       if (newTid !== tid) posStore.updateActiveTokenId(newTid);
       return pd;
     }
   }
+  console.log(
+    "[lp-ranger] [flatten] rebalance-follow NO-MATCH for viewed #%s (scanned %d managed buckets)",
+    tid,
+    Object.keys(positions).length,
+  );
   return null;
 }
 
@@ -219,6 +259,7 @@ export function flattenV2Status(v2) {
       )
     : null;
   let posData = myKey ? positions[myKey] : null;
+  _logFlattenOnTransition(myKey, !!posData, active);
   if (!posData) {
     posData = _findRebalanceTargetPosData(active, positions);
   }
