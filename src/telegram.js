@@ -35,6 +35,11 @@ const EVENT_DEFAULTS = {
   veryLowGas: true,
   shutdown: true,
   positionRetired: true,
+  /*- Balanced-band notifier (src/balanced-notifier.js).  Default OFF —
+   *  enabling it bypasses the idle-driven price-lookup pause for these
+   *  positions, so price-source quota is consumed even when the
+   *  dashboard is closed. */
+  positionBalanced: false,
 };
 
 /** Human-readable labels for each event type. */
@@ -49,6 +54,12 @@ const EVENT_LABELS = {
   veryLowGas: "Very Low Gas",
   shutdown: "Server and Bot Shutdown/Exit",
   positionRetired: "Drained Position Auto-Retired",
+  /*- Static string that must track BALANCED_THRESHOLD in
+   *  src/balanced-notifier.js.  The dashboard checkbox label reads the
+   *  live percent from /api/telegram/config; this server-side label is
+   *  only used as the Telegram message header and is updated by hand
+   *  whenever the threshold changes. */
+  positionBalanced: "Position Balanced (\u00b12.5% of 50/50)",
 };
 
 /** Currently enabled events (mutated in place by setEnabledEvents). */
@@ -154,14 +165,21 @@ function _posLabel(position) {
  * @param {string} [details.message]   Human-readable detail text.
  * @param {string} [details.txHash]    Transaction hash (if applicable).
  * @param {string} [details.error]     Error message (for failure events).
+ * @param {boolean} [details.suppressPositionLabel]  When true, omit the
+ *   auto-generated `Position: #<id> (sym0/sym1)` line.  Used by callers
+ *   whose `message` body already places the position identifier in a
+ *   different layout slot (e.g. balanced-notifier puts it after Fee
+ *   Tier).  Defaults to false to keep all existing callers unchanged.
  * @returns {Promise<boolean>} True if sent, false if skipped or failed.
  */
 async function notify(eventType, details = {}) {
   if (!isConfigured()) return false;
   if (!_enabledEvents[eventType]) return false;
   const label = EVENT_LABELS[eventType] || eventType;
-  const pos = _posLabel(details.position);
-  const lines = [`*LP Ranger on ${_hostname}*: ${label}`, `Position: ${pos}`];
+  const lines = [`*LP Ranger on ${_hostname}*: ${label}`];
+  if (!details.suppressPositionLabel) {
+    lines.push(`Position: ${_posLabel(details.position)}`);
+  }
   if (details.message) lines.push(details.message);
   if (details.txHash) lines.push(`TX: \`${details.txHash}\``);
   if (details.error) lines.push(`Error: ${details.error}`);

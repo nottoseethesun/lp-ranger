@@ -338,6 +338,7 @@ const {
 } = require("./src/server-positions");
 
 const { createRouteHandlers } = require("./src/server-routes");
+const { readNftProviders } = require("./src/nft-providers");
 const { askPassword: _askPassword } = require("./src/ask-password");
 
 const _routeHandlers = createRouteHandlers({
@@ -408,8 +409,16 @@ const _routes = {
         host: config.HOST,
         rpcUrl: config.RPC_URL,
         positionManager: config.POSITION_MANAGER,
+        /*- Single source of truth for the NFT-issuer label is
+         *  app-config/static-tunables/nft-providers.json (address-keyed
+         *  map, also served by GET /api/nft-providers for the dashboard
+         *  NFT panel and read by src/balanced-notifier.js for the
+         *  Telegram header). Look it up here so the legacy `pmName`
+         *  consumers (Activity log, alerts, baseline) stay in sync
+         *  without holding a duplicate copy of the string. */
         positionManagerName:
-          config.CHAIN.contracts?.positionManager?.name || "",
+          readNftProviders()[(config.POSITION_MANAGER || "").toLowerCase()] ||
+          "",
         chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
         defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
         compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,

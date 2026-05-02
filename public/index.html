@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777684620051">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777684620051">
+<link rel="stylesheet" href="style.css?v=1777697250457">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777697250457">
 </head>
 <body>
 
@@ -1112,6 +1112,10 @@
       <label><input type="checkbox" id="tgEvt_lowGasBalance" checked> Low Gas Balance</label>
       <label><input type="checkbox" id="tgEvt_veryLowGas" checked> Very Low Gas</label>
       <label><input type="checkbox" id="tgEvt_shutdown" checked> Server and Bot Shutdown/Exit</label>
+      <label><input type="checkbox" id="tgEvt_positionBalanced"> Position Balanced (&plusmn;<span id="tgBalancedThresholdPct">2.5</span>% of 50/50)</label>
+      <div class="9mm-pos-mgr-text-muted-sm 9mm-pos-mgr-mt-xs" id="tgBalancedNote">
+        &#9888; Please Note: Turning the &quot;Position Balanced&quot; notification on places a significant load on $USD Price Oracles, so if you are using a paid API (e.g. you have a Moralis key), ensure that you will not be charged overage. This feature will check the $USD prices for each token type in each pair once every <span id="tgBalancedCadence">10 minutes</span>.
+      </div>
     </fieldset>
     <div class="9mm-pos-mgr-mt-sm" id="tgStatus"></div>
     <div class="9mm-pos-mgr-modal-btn-row">
@@ -1327,6 +1331,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777684620051"></script>
+<script src="dist/bundle.js?v=1777697250457"></script>
 </body>
 </html>

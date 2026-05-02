@@ -15,6 +15,27 @@ const rangeMath = require("./range-math");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { computeHodlIL } = require("./il-calculator");
 const { PM_ABI } = require("./pm-abi");
+const { maybeNotifyBalanced } = require("./balanced-notifier");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+
+/*- Resolve the balanced-notifier fetch-window multiplier.  Order of
+ *  precedence: explicit override in the merged cfg → user-editable
+ *  defaults file → built-in fallback (10).  Defaults file is re-read
+ *  on each call so operators editing `bot-config-defaults.json` live
+ *  take effect on the next poll without a restart. */
+function _resolveBalancedMultiplier(deps) {
+  const gc = deps._getConfig;
+  const explicit = gc && gc("pricePauseExceptionPollWindowMultiple");
+  if (typeof explicit === "number" && explicit >= 1) return explicit;
+  try {
+    const d = readBotConfigDefaults();
+    if (typeof d.pricePauseExceptionPollWindowMultiple === "number")
+      return d.pricePauseExceptionPollWindowMultiple;
+  } catch {
+    /* fall through to built-in */
+  }
+  return 10;
+}
 
 const _ERC20_BAL_ABI = ["function balanceOf(address) view returns (uint256)"];
 const _MAX_UINT128 = 2n ** 128n - 1n;
@@ -519,6 +540,26 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
       positionStats: posStats,
       ...(pnlSnapshot ? { pnlSnapshot } : {}),
     });
+  }
+  /*- Balanced-band Telegram notifier (opt-in via the "Position Balanced"
+   *  Telegram event).  No-op when the toggle is off, so no price-source
+   *  load.  When on, the notifier throttles its own fresh-price probe
+   *  via `pricePauseExceptionPollWindowMultiple` (default 10 → every
+   *  10× the bot poll interval).  Errors are swallowed so a notifier
+   *  bug can never break the poll cycle. */
+  if (deps._botState) {
+    try {
+      await maybeNotifyBalanced({
+        position,
+        poolState,
+        botState: deps._botState,
+        snap: pnlSnapshot,
+        checkIntervalSec: config.CHECK_INTERVAL_SEC,
+        multiplier: _resolveBalancedMultiplier(deps),
+      });
+    } catch (err) {
+      console.warn("[balanced-notifier] hook error: %s", err.message || err);
+    }
   }
   return pnlSnapshot;
 }

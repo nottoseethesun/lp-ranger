@@ -65,6 +65,18 @@ const GLOBAL_KEYS = [
    *  load guards the integer-multiple invariant.
    */
   "dustUnitPriceCacheMultiplier",
+  /*-
+   *  Balanced-band Telegram notifier (`src/balanced-notifier.js`):
+   *  multiplier on `CHECK_INTERVAL_SEC` for the cadence at which the
+   *  notifier fetches fresh USD prices to evaluate the ±5% balanced
+   *  condition.  Default `10` → fetch every 10× poll interval (10 min
+   *  at the default 60 s poll).  Only consulted when the
+   *  `positionBalanced` Telegram event is enabled — otherwise zero
+   *  load.  See `app-config/static-tunables/bot-config-defaults.json`
+   *  `_pricePauseExceptionPollWindowMultiple_comment` for operator
+   *  guidance.
+   */
+  "pricePauseExceptionPollWindowMultiple",
 ];
 
 /** Keys that belong in a per-position (per-pool) section. */

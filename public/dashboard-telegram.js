@@ -28,7 +28,45 @@ const _EVENT_IDS = [
   "lowGasBalance",
   "veryLowGas",
   "shutdown",
+  "positionBalanced",
 ];
+
+/*- Format a millisecond duration into the most human-readable unit:
+ *  seconds under a minute, minutes under an hour, otherwise hours with
+ *  one decimal.  Used by _refreshBalancedCadence so the warning text
+ *  next to the "Position Balanced" checkbox always reflects the actual
+ *  fetch cadence (CHECK_INTERVAL_SEC × pricePauseExceptionPollWindowMultiple). */
+function _fmtCadence(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "10 minutes";
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec} seconds`;
+  const min = sec / 60;
+  if (min < 60)
+    return Number.isInteger(min)
+      ? `${min} minute${min === 1 ? "" : "s"}`
+      : `${min.toFixed(1)} minutes`;
+  const hr = min / 60;
+  return `${hr.toFixed(1)} hours`;
+}
+
+/*- Pull the base poll interval and the multiplier from the server, then
+ *  paint the cadence span in the modal.  Silent on failure — the static
+ *  HTML default ("10 minutes") stays visible. */
+async function _refreshBalancedCadence() {
+  const span = g("tgBalancedCadence");
+  if (!span) return;
+  try {
+    const r = await fetch("/api/bot-config-defaults");
+    if (!r.ok) return;
+    const d = await r.json();
+    const sec = Number(d.checkIntervalSec);
+    const mult = Number(d.pricePauseExceptionPollWindowMultiple);
+    if (!(sec > 0) || !(mult > 0)) return;
+    span.textContent = _fmtCadence(sec * mult * 1000);
+  } catch {
+    /* keep static default */
+  }
+}
 
 /** Track whether the wallet modal was open when we launched. */
 let _walletWasOpen = false;
@@ -67,33 +105,47 @@ export async function openTelegramModal() {
     _setStatus("Values will be saved after wallet setup completes.");
   }
   _updateTestBtn(false);
+  _refreshBalancedCadence();
   try {
     const res = await fetch("/api/telegram/config");
     const data = await res.json();
-    if (data.enabledEvents) {
-      for (const id of _EVENT_IDS) {
-        const el = g("tgEvt_" + id);
-        if (el) el.checked = !!data.enabledEvents[id];
-      }
-    }
-    const tokenEl = g("tgBotToken");
-    const chatEl = g("tgChatId");
-    if (tokenEl)
-      tokenEl.placeholder = data.hasToken
-        ? "(saved)"
-        : "123456789:ABCdefGhI...";
-    if (chatEl) chatEl.placeholder = data.hasChatId ? "(saved)" : "123456789";
-    _updateTestBtn(data.configured);
-    if (_walletWasOpen) {
-      /*- Re-opened during wallet setup: keep the deferred-save
-       *  notice; Save is still hidden and the stash/flush path
-       *  will run on Close / confirmWallet. */
-      _setStatus("Values will be saved after wallet setup completes.");
-    } else if (_pendingConfig) {
-      _setStatus("Previous save did not complete — Save again to retry.", true);
-    }
+    _applyConfigToModal(data);
   } catch {
     _setStatus("Could not load config");
+  }
+}
+
+/*- Paint the modal from the /api/telegram/config response: event
+ *  checkboxes, the dynamic balanced-band threshold percent, and the
+ *  token/chatId placeholders.  Extracted from openTelegramModal to
+ *  keep that function under the complexity ceiling. */
+function _applyConfigToModal(data) {
+  if (data.enabledEvents) {
+    for (const id of _EVENT_IDS) {
+      const el = g("tgEvt_" + id);
+      if (el) el.checked = !!data.enabledEvents[id];
+    }
+  }
+  /*- Sync the balanced-band threshold (code-only constant in
+   *  src/balanced-notifier.js) into the checkbox label so the
+   *  shown percent always matches the live BALANCED_THRESHOLD. */
+  const pctEl = g("tgBalancedThresholdPct");
+  if (pctEl && Number.isFinite(Number(data.balancedThresholdPct))) {
+    pctEl.textContent = String(Number(data.balancedThresholdPct));
+  }
+  const tokenEl = g("tgBotToken");
+  const chatEl = g("tgChatId");
+  if (tokenEl)
+    tokenEl.placeholder = data.hasToken ? "(saved)" : "123456789:ABCdefGhI...";
+  if (chatEl) chatEl.placeholder = data.hasChatId ? "(saved)" : "123456789";
+  _updateTestBtn(data.configured);
+  if (_walletWasOpen) {
+    /*- Re-opened during wallet setup: keep the deferred-save
+     *  notice; Save is still hidden and the stash/flush path
+     *  will run on Close / confirmWallet. */
+    _setStatus("Values will be saved after wallet setup completes.");
+  } else if (_pendingConfig) {
+    _setStatus("Previous save did not complete — Save again to retry.", true);
   }
 }
 

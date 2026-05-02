@@ -58,6 +58,15 @@ const _FALLBACK = Object.freeze({
    *  Must be a positive integer >= 1; the integer-multiple invariant is
    *  asserted at price-fetcher module-load time. */
   dustUnitPriceCacheMultiplier: 30,
+  /*- Balanced-band Telegram notifier: how many poll cycles between fresh-
+   *  price fetches that bypass the idle-driven price-lookup pause.  The
+   *  notifier fetches token prices on cadence
+   *  `CHECK_INTERVAL_SEC × pricePauseExceptionPollWindowMultiple` so the
+   *  bot can detect ±5% USD-balanced positions even when the dashboard is
+   *  closed.  Default 10 (10× poll → 10 min at the default 60 s poll).
+   *  Higher = lighter price-source load, slower band-crossing detection.
+   *  Positive integer >= 1. */
+  pricePauseExceptionPollWindowMultiple: 10,
   lowGasThresholds: Object.freeze({
     worstCaseGasFactor: 91,
     safetyMultiplier: 3,
@@ -145,6 +154,10 @@ const _NORMALIZERS = {
    *  derived `dust = price * multiplier` stays a clean integer multiple.
    *  Cap at 1000 to keep the dust cache horizon sane (1000 * 24 h max). */
   dustUnitPriceCacheMultiplier: (v) => _clampInt(v, 1, 1000),
+  /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
+   *  10000 so an absurd value still produces a finite cadence (10 000 ×
+   *  60 s ≈ 7 days between checks). */
+  pricePauseExceptionPollWindowMultiple: (v) => _clampInt(v, 1, 10000),
   rebalanceOutOfRangeThresholdPercent: (v) => _clampInt(v, 1, 100),
   rebalanceTimeoutMin: (v) => _clampNonNegInt(v, 1440),
   slippagePct: (v) => _clampFloat(v, 0.1, 5),

@@ -48,6 +48,13 @@ function createPerPositionBotState(_globalCfg, saved) {
     rebalancePaused: false,
     rebalanceScanComplete: false,
     rebalanceScanProgress: 0,
+    /*- Balanced-band Telegram notifier transient state (process-lifetime
+     *  only; not persisted to .bot-config.json).  Owned by
+     *  src/balanced-notifier.js — see CLAUDE.md "Balanced-Band Telegram
+     *  Notification". */
+    _lastInBand: false,
+    _lastBalancedNotifyTs: 0,
+    _lastBalancedPriceFetchTs: 0,
   };
   if (saved) {
     if (saved.hodlBaseline) state.hodlBaseline = saved.hodlBaseline;

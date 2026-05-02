@@ -23,6 +23,7 @@ sequence.
 - [Environment Variables](#environment-variables)
 - [USD Pricing](#usd-pricing)
 - [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
+- [Balanced-Band Telegram Notification](#balanced-band-telegram-notification)
 - [Dust Threshold](#dust-threshold)
 - [Lifetime History Lookback](#lifetime-history-lookback)
 - [Client-Side URL Routing](#client-side-url-routing)
@@ -367,6 +368,53 @@ curl -X POST http://127.0.0.1:5555/api/pause-price-lookups \
 When paused with an empty cache, `fetchTokenPriceUsd` returns `0` rather
 than blocking — downstream consumers (gas-too-high gate, P&L snapshot)
 already tolerate that.
+
+---
+
+## Balanced-Band Telegram Notification
+
+Optional Telegram alert that fires when a managed position drifts into
+the **±2.5% USD-balanced band** (`token0_value / total ∈ [0.475, 0.525]`).
+Useful as a "good time to manually rebalance" signal on positions where
+50/50 composition is preferred. Edge-triggered — one notification per
+FALSE→TRUE crossing, with a 30-min cooldown so a position oscillating
+across the band edge cannot spam the channel.
+
+**Enable it.** Settings → Telegram → check **Position Balanced (±2.5% of
+50/50)**. Default OFF. The checkbox shows a warning + the dynamically-
+computed price-fetch cadence.
+
+**Cost.** When enabled, the notifier bypasses the
+[Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause) so it
+can detect band crossings even with the dashboard closed. This consumes
+price-source quota continuously — operators using paid APIs (e.g.
+Moralis) should ensure their plan tolerates the load.
+
+**Configuration** (in `app-config/.bot-config.json` `global` section,
+falling back to `bot-config-defaults.json`):
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `pricePauseExceptionPollWindowMultiple` | `10` | Multiplier on `CHECK_INTERVAL_SEC`. Effective fetch cadence = `CHECK_INTERVAL_SEC × multiplier` seconds. Default 10 → 10 min at the default 60 s poll. Higher = lighter load, slower band detection. Positive integer ≥ 1. |
+
+The threshold (±2.5%) and cooldown (30 min) are code-only constants in
+`src/balanced-notifier.js` (`BALANCED_THRESHOLD`, `BALANCED_COOLDOWN_MS`)
+— change in code if needed.
+
+**Notification payload.** Header lines list the blockchain
+(`CHAIN.displayName`), the user-friendly NFT-issuer name resolved by
+looking up the configured position-manager address in
+`app-config/static-tunables/nft-providers.json` (e.g. `"9mm v3"`) — the
+same single source of truth the dashboard NFT panel reads via
+`GET /api/nft-providers`. Then the two token symbols (truncated to 12
+chars each, second line indented 4 spaces) and the fee tier. The
+`nft-providers` map is keyed by NFT-contract address so future v3+v4
+coexistence on the same chain resolves the correct name per position
+without restructuring. Range info, ticks, current price and the ratio
+split are intentionally omitted — the alert is about the value-balance
+state, not the range. Body shows both token holdings with USD values
+(using human token names, not T0/T1), total value, plus unclaimed fees
+and lifetime P&L when the P&L snapshot is available.
 
 ---
 

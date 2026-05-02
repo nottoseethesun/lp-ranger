@@ -15,7 +15,6 @@
     "contracts": {
       "positionManager": {
         "address": "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2",
-        "name": "9mm Pro V3",
         "mintGasLimit": 600000
       },
       "factory": "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68",
@@ -67,7 +66,6 @@
     "contracts": {
       "positionManager": {
         "address": "",
-        "name": "",
         "mintGasLimit": 600000
       },
       "factory": "",

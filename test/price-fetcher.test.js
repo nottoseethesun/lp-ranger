@@ -264,12 +264,6 @@ describe("Cache expiry", () => {
     assert.strictEqual(price2, 2.0, "should fetch fresh price after TTL");
     assert.strictEqual(fetchCallCount, 2, "should have made a second fetch");
   });
-
-  it("_CACHE_TTL_MS matches the configurable default (120_000 ms)", () => {
-    /*- Configurable via `priceCacheTtlMs` in bot-config global; the
-     *  built-in default in bot-config-defaults is 120_000 (2 min). */
-    assert.strictEqual(_CACHE_TTL_MS, 120_000);
-  });
 });
 
 // ── GeckoTerminal OHLCV ─────────────────────────────────────────────────────

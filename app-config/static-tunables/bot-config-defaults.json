@@ -5,6 +5,8 @@
   "_priceCacheTtl_comment": "Price-source cache TTL in milliseconds (in-memory cache inside src/price-fetcher.js, gated by the idle-driven pause). Default 120_000 (2 min) — long enough to absorb the 60 s poll cadence but short enough that a real price move shows up promptly when something's looking. The dust-unit-price cache TTL is computed at module-load as priceCacheTtlMs * dustUnitPriceCacheMultiplier, so the integer-multiple constraint is structural (a runtime assertion guards against future hand-edits).",
   "priceCacheTtlMs": 120000,
   "dustUnitPriceCacheMultiplier": 30,
+  "_pricePauseExceptionPollWindowMultiple_comment": "Balanced-band Telegram notifier: number of bot poll cycles between fresh-price fetches that bypass the idle-driven price-lookup pause. Effective cadence = checkIntervalSec × pricePauseExceptionPollWindowMultiple seconds. Default 10 (10× poll = 10 min at the default 60 s poll). Higher = lighter price-source load, slower band-crossing detection. Positive integer >= 1. Only consulted when the 'positionBalanced' Telegram event is enabled.",
+  "pricePauseExceptionPollWindowMultiple": 10,
   "rebalanceOutOfRangeThresholdPercent": 5,
   "rebalanceTimeoutMin": 180,
   "slippagePct": 0.5,
