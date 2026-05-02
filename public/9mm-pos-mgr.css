@@ -572,6 +572,37 @@ span[title]:not([title=""]):hover {
   line-height: 1.6;
 }
 
+/* -
+ * Lifetime panel: when the active position is unmanaged, we keep the
+ * panel's natural dimensions (so the page layout never reflows on
+ * Manage/Stop) by hiding the inner content with `visibility:hidden`
+ * and overlaying a centered "Click Manage" message via absolute
+ * positioning inside the wrapper.  Toggled by `applyLifetimeUnmanagedUI`
+ * in dashboard-manage-badge.js.
+ */
+.\39 mm-pos-mgr-lt-content-wrap {
+  position: relative;
+}
+
+.\39 mm-pos-mgr-lt-hidden {
+  visibility: hidden;
+}
+
+.\39 mm-pos-mgr-lt-unmanaged-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  font-family: Urbanist, sans-serif;
+  font-size: 20px;
+  color: var(--muted);
+  line-height: 1.4;
+  z-index: 1;
+}
+
 .\39 mm-pos-mgr-pnl-row {
   display: flex;
   justify-content: space-between;
@@ -1700,6 +1731,15 @@ span[title]:not([title=""]):hover {
   font-size: 20px;
   color: var(--text);
   overflow-wrap: anywhere;
+}
+
+/* ── Pool Details: blockchain subtitle (under modal h2) ───────────── */
+.\39 mm-pos-mgr-pool-details-blockchain {
+  margin: 0 0 21px;
+  font-size: 20px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-align: center;
 }
 
 .\39 mm-pos-mgr-pool-details-list {

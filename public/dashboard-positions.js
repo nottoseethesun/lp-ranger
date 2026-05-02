@@ -40,7 +40,6 @@ import {
   isPositionManaged,
   isPositionClosed,
   formatPosLabel,
-  refreshManageBadge,
   restoreManagedPositions,
   bestAutoSelectIdx,
   setSyncRouteToState,
@@ -74,6 +73,7 @@ import {
   posChangePage,
   getPosBrowserSelected,
 } from "./dashboard-positions-browser.js";
+import { refreshManageBadge } from "./dashboard-manage-badge.js";
 export {
   openPosBrowser,
   closePosBrowser,

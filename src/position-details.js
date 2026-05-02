@@ -43,6 +43,7 @@ const {
   getBlockTimestamp,
   flushBlockTimeCache,
 } = require("./block-time-cache");
+const { applyInitialResidualFromCache } = require("./bot-pnl-initial-residual");
 
 /**
  * Detect compounds across all NFTs in the rebalance chain and cache result.
@@ -366,6 +367,21 @@ async function _enrichSnap(
   snap.residualUsd1 = cur.residualUsd1 || 0;
   snap.residualAmount0 = cur.residualAmount0 || 0;
   snap.residualAmount1 = cur.residualAmount1 || 0;
+  /*- Genesis residual: read from the shared liquidity-pair-details cache
+   *  if a managed scan has already populated it. Unmanaged details runs
+   *  don't populate the cache themselves (no historical scan path here),
+   *  so this is best-effort: present when the same (chain/factory/wallet/
+   *  token0/token1/fee) scope has been seen before, zero otherwise. */
+  if (pos.walletAddress) {
+    applyInitialResidualFromCache(snap, {
+      blockchain: config.CHAIN_NAME,
+      factory: config.POSITION_MANAGER,
+      wallet: pos.walletAddress,
+      token0: pos.token0,
+      token1: pos.token1,
+      fee: pos.fee,
+    });
+  }
   const depResult = await _computeDepositUsd(pos, ps);
   snap.totalLifetimeDeposit = depResult.total;
   snap.depositUsedFallback = depResult.usedFallback;

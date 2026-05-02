@@ -241,6 +241,24 @@ async function clearPoolCache(position, wallet) {
  * @param {string} wallet    Wallet address.
  * @param {object} result    Rebalance result from executeRebalance.
  */
+/** Build the cache event entry for a freshly-completed rebalance. */
+function _buildEventEntry(result) {
+  const ts = Math.floor(Date.now() / 1000);
+  const txHash = Array.isArray(result.txHashes)
+    ? result.txHashes[result.txHashes.length - 1]
+    : "";
+  return {
+    index: 0,
+    timestamp: ts,
+    dateStr: new Date(ts * 1000).toISOString(),
+    oldTokenId: String(result.oldTokenId || "?"),
+    newTokenId: String(result.newTokenId || "?"),
+    txHash: txHash || "",
+    blockNumber: result.blockNumber || 0,
+    swapSources: result.swapSources || "(no swap)",
+  };
+}
+
 async function appendToPoolCache(position, wallet, result) {
   const cache = createCacheStore({
     filePath: eventCachePath(
@@ -260,20 +278,7 @@ async function appendToPoolCache(position, wallet, result) {
   );
   const existing = await cache.get(cacheKey);
   const events = existing?.events || [];
-  const ts = Math.floor(Date.now() / 1000);
-  const txHash = Array.isArray(result.txHashes)
-    ? result.txHashes[result.txHashes.length - 1]
-    : "";
-  events.push({
-    index: 0,
-    timestamp: ts,
-    dateStr: new Date(ts * 1000).toISOString(),
-    oldTokenId: String(result.oldTokenId || "?"),
-    newTokenId: String(result.newTokenId || "?"),
-    txHash: txHash || "",
-    blockNumber: result.blockNumber || 0,
-    swapSources: result.swapSources || "(no swap)",
-  });
+  events.push(_buildEventEntry(result));
   console.log(
     "[route-trace] pool-scanner persisted newTokenId=%s swapSources=%s",
     String(result.newTokenId || "?"),
@@ -288,6 +293,7 @@ async function appendToPoolCache(position, wallet, result) {
     events,
     lastBlock,
     firstMintTimestamp: existing?.firstMintTimestamp || null,
+    firstMintBlockNumber: existing?.firstMintBlockNumber || null,
   });
   _log(
     "Appended rebalance event to cache for" +

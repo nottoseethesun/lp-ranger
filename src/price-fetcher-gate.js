@@ -81,7 +81,7 @@ function pausePriceLookups(reason) {
   if (!_priceLookupsPaused) {
     _priceLookupsPaused = true;
     console.log(
-      "[price-fetcher] paused (%s) — no fetches will hit the cascade",
+      "[price-fetcher] paused (%s) — non-essential price fetching is now paused",
       reason || "unspecified",
     );
   }

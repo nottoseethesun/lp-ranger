@@ -714,16 +714,29 @@ pool-address-keyed disk caches under `tmp/`.
 - `clean-pool-cache.js` — Wipe every cached entry for one pool. Default
   behaviour is **scorched-earth**: removes pool-creation-blocks,
   gecko-pool, every matching event-cache file (one per wallet that has
-  positions in the pool), and matching P&L-epoch entries. Token0,
-  token1, and fee are resolved via RPC (`pool.token0/1/fee()`).
-  Caches that aren't pool-scoped (historical-price by token+block,
-  nft-mint-date by tokenId, block-time by chain+block) are untouched.
+  positions in the pool), matching P&L-epoch entries, and matching
+  `liquidity-pair-details-cache.json` scope keys (the post-first-mint
+  initial-residual snapshots). Token0, token1, and fee are resolved via RPC
+  (`pool.token0/1/fee()`). Caches that aren't pool-scoped
+  (historical-price by token+block, nft-mint-date by tokenId, block-time
+  by chain+block) are untouched.
 
-  Pass `--preserve-pool-history` to skip event-cache and P&L-epochs
-  surfaces — the lookup caches alone are cleared, no RPC needed. Use
-  this when you want to verify a cold pool-creation-block resolver
-  lookup without forcing a full event re-scan or losing accumulated
-  P&L history.
+  **`--chain` and `--nft-factory` are required** so the 5-dimensional
+  pool scope (blockchain + nft-factory + token0 + token1 + fee) is
+  matched exactly across every surface; wallet is the only intentionally
+  wildcarded dimension. Find both in the in-app **Pool Details** dialog:
+  blockchain is the subtitle beneath the title; nft-factory is the
+  "NFT Contract" row. `--chain` accepts either the abbreviated key
+  (e.g. `pulsechain`) or the full display name (e.g. `PulseChain`),
+  case-insensitive. The set of valid chains comes from
+  `app-config/static-tunables/chains.json`.
+
+  Pass `--preserve-pool-history` to skip event-cache, P&L-epochs, and
+  liquidity-pair-details surfaces — the lookup caches alone are cleared,
+  no RPC needed. Use this when you want to verify a cold
+  pool-creation-block resolver lookup without forcing a full event
+  re-scan or losing accumulated P&L history. `--chain` and
+  `--nft-factory` are still required in this mode for consistency.
 
   Run with `--help` for the full reference (every option, every
   combination, exit codes).
@@ -732,10 +745,17 @@ pool-address-keyed disk caches under `tmp/`.
 
   ```bash
   # Full wipe (default — every pool-scoped surface, requires RPC):
-  node util/cache/clean-pool-cache.js 0xE8FdBb02cdfbDb43807E33190Ebcea809316f2B9
+  node util/cache/clean-pool-cache.js \
+       0xE8FdBb02cdfbDb43807E33190Ebcea809316f2B9 \
+       --chain pulsechain \
+       --nft-factory 0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2
 
   # Lookup caches only (no RPC; preserves event cache + P&L epochs):
-  node util/cache/clean-pool-cache.js 0xE8FdBb02cdfbDb43807E33190Ebcea809316f2B9 --preserve-pool-history
+  node util/cache/clean-pool-cache.js \
+       0xE8FdBb02cdfbDb43807E33190Ebcea809316f2B9 \
+       --chain pulsechain \
+       --nft-factory 0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2 \
+       --preserve-pool-history
 
   # Full reference:
   node util/cache/clean-pool-cache.js --help

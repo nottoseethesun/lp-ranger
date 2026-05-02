@@ -103,6 +103,10 @@ function _buildPnlTable(b, feesLabel, isLifetime) {
   set("gas", "\u2212" + f(b.gas));
   set("priceChange", f(b.priceChange));
   set("residual", f(b.residual || 0));
+  /*- Initial Wallet Residual is always subtracted from Net P&L (with
+   *  the unicode minus prefix to match other subtracted rows like Gas
+   *  and the dashboard-data-kpi-breakdown _setSubtracted formatting). */
+  set("initialResidual", "\u2212" + f(b.initialResidual || 0));
   set("realized", f(b.realized));
   set("total", f(b.total));
   return frag;

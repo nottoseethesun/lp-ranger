@@ -470,7 +470,7 @@ export const PARAM_HELP = {
           "double-counting.",
       },
       {
-        heading: "Compound vs. Rebalance &mdash; wallet residuals",
+        heading: "Compound vs. Rebalance — wallet residuals",
         body:
           "When a compound's ratio-correcting swap fires, the deposit " +
           "uses the post-swap wallet balance directly. In practice this " +
@@ -1068,6 +1068,82 @@ export const PARAM_HELP = {
           "of the pool&rsquo;s tokens out, that portion won&rsquo;t be " +
           "double-counted here &mdash; use <strong>Edit Realized Gains</strong> " +
           "to record sales.",
+      },
+      {
+        heading: "Related",
+        body:
+          "See also <strong>Initial Wallet Residual (Pool)</strong> &mdash; the " +
+          "subtraction that removes the post-first-mint baseline from " +
+          "Lifetime Net P&amp;L so the unavoidable leftover from the " +
+          "initial LP creation doesn&rsquo;t inflate profit.",
+      },
+    ],
+  },
+
+  // ── Initial Wallet Residual ────────────────────────────────────────────
+
+  ltInitialResidual: {
+    title: "Initial Wallet Residual (Pool)",
+    subtitle:
+      "What the wallet was left holding right after the very first LP " +
+      "mint for this pool — the baseline that subsequent residuals are " +
+      "measured against",
+    sections: [
+      {
+        heading: "What it is",
+        body:
+          "The wallet&rsquo;s balances of <strong>token0</strong> and " +
+          "<strong>token1</strong> at the <em>end</em> of the block " +
+          "containing the very first <code>IncreaseLiquidity</code> event " +
+          "for this (blockchain, NFT factory, wallet, token pair, fee " +
+          "tier) scope &mdash; i.e. what was sitting in the wallet " +
+          "immediately after the initial LP mint consumed its inputs, but " +
+          "before any other LP action (rebalance, compound, second " +
+          "deposit) for this pool.<br><br>" +
+          "Valued in USD using historical prices at that same first-mint " +
+          "block (frozen &mdash; see &ldquo;Frozen valuation&rdquo; below).",
+      },
+      {
+        heading: "Why it’s subtracted from Lifetime P&L",
+        body:
+          "The live <strong>Wallet Residual (Pool)</strong> figure reads " +
+          "the wallet&rsquo;s current balances and counts every coin sitting " +
+          "there as LP-adjacent value. The leftover from the initial mint " +
+          "(tick-spacing remainder, plus anything the wallet happened to " +
+          "be holding that the mint didn&rsquo;t touch) is part of that " +
+          "starting line, not LP-derived earnings. Subtracting the " +
+          "post-first-mint snapshot isolates the residual contributed by " +
+          "subsequent rebalances and compounds, which is what should " +
+          "actually count toward Lifetime Net P&amp;L.",
+      },
+      {
+        heading: "Frozen valuation",
+        body:
+          "Both the token amounts <em>and</em> the USD prices are captured " +
+          "once at the first-mint block and never change. If we revalued " +
+          "the post-first-mint balances at current prices, the subtracted " +
+          "dollar amount would shift with the market and erase any " +
+          "price-appreciation credit on those very tokens. Freezing the " +
+          "valuation means: the baseline coins still earn you the benefit " +
+          "of any subsequent price moves, but the bot doesn&rsquo;t claim " +
+          "credit for them as LP-derived gains.",
+      },
+      {
+        heading: "When it’s zero",
+        body:
+          "If the wallet held no token0 or token1 immediately after the " +
+          "first mint (i.e. the mint consumed essentially everything and " +
+          "the wallet had no unrelated leftover of these tokens), this " +
+          "subtraction is $0 and the line just shows as such. The same " +
+          "applies before the first historical scan has completed for a " +
+          "managed position, or for unmanaged positions where the cache " +
+          "hasn&rsquo;t been populated yet.",
+      },
+      {
+        heading: "Related",
+        body:
+          "See also <strong>Wallet Residual (Pool)</strong> &mdash; the " +
+          "live, current-price figure that this subtraction adjusts.",
       },
     ],
   },

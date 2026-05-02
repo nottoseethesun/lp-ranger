@@ -150,8 +150,46 @@ function createCacheStore(opts) {
 }
 
 /**
+ * Build the canonical "liquidity-pair scope" key string used as the suffix of
+ * `event-cache-*.json` filenames and as the top-level key of
+ * `liquidity-pair-details-cache.json`.
+ *
+ * Format: `{chain:5}-{factory:6hex}-{wallet:6hex}-{t0:8hex}-{t1:8hex}-{fee}`
+ * where all hex segments are lower-case and skip the `0x` prefix.  The same
+ * string identifies an asset configuration (chain + NFT factory + wallet +
+ * token pair + fee tier) regardless of which specific pool address holds it
+ * at any given time — the load-bearing property for Lifetime P&L reporting
+ * across pool-instance redeployments.
+ *
+ * @param {object} args
+ * @param {string} args.blockchain   Internal chain name (e.g. 'pulsechain').
+ * @param {string} args.factory      NFT factory / position manager address.
+ * @param {string} args.wallet       Owner wallet address.
+ * @param {string} args.token0       Pool token0 address.
+ * @param {string} args.token1       Pool token1 address.
+ * @param {number|string} args.fee   Pool fee tier.
+ * @returns {string} Dash-joined scope key.
+ */
+function liquidityPairScopeKey({
+  blockchain,
+  factory,
+  wallet,
+  token0,
+  token1,
+  fee,
+}) {
+  const bc = (blockchain || "pulsechain").slice(0, 5);
+  const pm = (factory || "").slice(2, 8).toLowerCase();
+  const w = (wallet || "").slice(2, 8).toLowerCase();
+  const t0 = (token0 || "").slice(2, 10).toLowerCase();
+  const t1 = (token1 || "").slice(2, 10).toLowerCase();
+  return `${bc}-${pm}-${w}-${t0}-${t1}-${fee}`;
+}
+
+/**
  * Build a deterministic cache file path for event scanning, keyed by
- * blockchain + contract + pool identity.
+ * blockchain + contract + pool identity.  Filename suffix matches
+ * {@link liquidityPairScopeKey}.
  *
  * @param {{ token0: string, token1: string, fee: number|string }} position
  * @param {string} [blockchain]  Default: 'pulsechain'.
@@ -159,16 +197,15 @@ function createCacheStore(opts) {
  * @returns {string} Absolute path under tmp/
  */
 function eventCachePath(position, blockchain, contract, wallet) {
-  const bc = (blockchain || "pulsechain").slice(0, 5);
-  const pm = (contract || "").slice(2, 8).toLowerCase();
-  const w = (wallet || "").slice(2, 8).toLowerCase();
-  const t0 = position.token0.slice(2, 10).toLowerCase();
-  const t1 = position.token1.slice(2, 10).toLowerCase();
-  return path.join(
-    process.cwd(),
-    "tmp",
-    `event-cache-${bc}-${pm}-${w}-${t0}-${t1}-${position.fee}.json`,
-  );
+  const scope = liquidityPairScopeKey({
+    blockchain,
+    factory: contract,
+    wallet,
+    token0: position.token0,
+    token1: position.token1,
+    fee: position.fee,
+  });
+  return path.join(process.cwd(), "tmp", `event-cache-${scope}.json`);
 }
 
-module.exports = { createCacheStore, eventCachePath };
+module.exports = { createCacheStore, eventCachePath, liquidityPairScopeKey };
