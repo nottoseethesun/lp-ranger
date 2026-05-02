@@ -10,11 +10,13 @@
  * `cache-store.js`.
  *
  * The first cached field is `initialResidualData`: the wallet's balances of
- * token0/token1 (and their USD prices) at the block immediately preceding
- * the very first `IncreaseLiquidity` event for that scope.  This "genesis"
- * residual is what the wallet held before any LP activity began, and so
- * must be subtracted out of the live `walletResiduals()` figure to avoid
- * inflating Lifetime Net P&L with pre-existing balances.
+ * token0/token1 (and their USD prices) at the block of the very first
+ * `IncreaseLiquidity` event for that scope, read at end-of-block state so
+ * the value reflects what was left over **after** the first mint consumed
+ * its inputs.  This is the baseline residual produced by the initial LP
+ * creation itself; subtracting it from the live `walletResiduals()` figure
+ * isolates residuals attributable to subsequent rebalances and compounds
+ * (which are the ones that should count toward Lifetime Net P&L).
  *
  * Cache file: `tmp/liquidity-pair-details-cache.json` (gitignored).  Wiped
  * by the standard cache-cleanup utilities — this is a pure performance
@@ -45,11 +47,11 @@ const _ERC20_BALANCE_ABI = [
 
 /**
  * @typedef {Object} InitialResidualData
- * @property {string} date          - ISO timestamp of the genesis block.
+ * @property {string} date          - ISO timestamp of the first-mint block.
  * @property {number} token0Amount  - Human-readable float (decimals applied).
  * @property {number} token1Amount  - Human-readable float (decimals applied).
- * @property {number} token0Price   - USD price at genesis block.
- * @property {number} token1Price   - USD price at genesis block.
+ * @property {number} token0Price   - USD price at the first-mint block.
+ * @property {number} token1Price   - USD price at the first-mint block.
  */
 
 /** @type {Record<string, { initialResidualData?: InitialResidualData }>|null} */
@@ -96,8 +98,8 @@ function loadInitialResidualData(scopeKey) {
 }
 
 /**
- * Resolve the wallet's pre-LP "genesis" residual for one token at the block
- * immediately preceding the first IncreaseLiquidity.
+ * Resolve the wallet's post-first-mint residual for one token at the block
+ * containing the first IncreaseLiquidity (end-of-block state).
  *
  * @param {Object}  args
  * @param {string}  args.tokenAddress
@@ -126,30 +128,38 @@ async function _readHistoricalBalance({
   return Number(ethersLib.formatUnits(raw, decimals));
 }
 
-/** Validate required args; return false if any are missing/invalid. */
+/** Validate required args; log + return false if any are missing/invalid. */
 function _hasRequiredArgs(args) {
-  const {
-    chain,
-    factory,
-    wallet,
-    token0,
-    token1,
-    fee,
-    firstMintBlock,
-    firstMintTimestamp,
-    poolAddress,
-    provider,
-    ethersLib,
-  } = args;
-  if (!chain || !factory || !wallet || !token0 || !token1) return false;
-  if (fee === undefined || fee === null) return false;
-  if (!firstMintBlock || !firstMintTimestamp || !poolAddress) return false;
-  if (!provider || !ethersLib) return false;
+  const required = [
+    "chain",
+    "factory",
+    "wallet",
+    "token0",
+    "token1",
+    "fee",
+    "firstMintBlock",
+    "firstMintTimestamp",
+    "poolAddress",
+    "provider",
+    "ethersLib",
+  ];
+  const missing = required.filter((k) => {
+    const v = args[k];
+    if (k === "fee") return v === undefined || v === null;
+    return !v;
+  });
+  if (missing.length > 0) {
+    console.warn(
+      "[liquidity-pair-details] initial-residual skipped — missing args: %s",
+      missing.join(", "),
+    );
+    return false;
+  }
   return true;
 }
 
-/** Resolve genesis-block balances for both tokens, or null on failure. */
-async function _fetchGenesisBalances({
+/** Resolve post-first-mint balances for both tokens, or null on failure. */
+async function _fetchInitialBalances({
   token0,
   token1,
   wallet,
@@ -187,8 +197,8 @@ async function _fetchGenesisBalances({
   }
 }
 
-/** Resolve genesis-block USD prices; degrades to zeros on failure. */
-async function _fetchGenesisPrices({
+/** Resolve first-mint-block USD prices; degrades to zeros on failure. */
+async function _fetchInitialPrices({
   poolAddress,
   firstMintTimestamp,
   firstMintBlock,
@@ -224,8 +234,10 @@ async function _fetchGenesisPrices({
 
 /**
  * Return the cached `initialResidualData` for a scope; if missing, fetch the
- * wallet's token0/token1 balances at `firstMintBlock - 1`, fetch their USD
- * prices at the same block via GeckoTerminal, persist, and return.
+ * wallet's token0/token1 balances at `firstMintBlock` (end-of-block — i.e.
+ * what the wallet held immediately after the first IncreaseLiquidity TX
+ * consumed its inputs), fetch their USD prices at the same block via
+ * GeckoTerminal, persist, and return.
  *
  * Idempotent: a populated cache entry is returned untouched.
  *
@@ -244,6 +256,15 @@ async function _fetchGenesisPrices({
  * @returns {Promise<InitialResidualData|null>}
  */
 async function ensureInitialResidualData(args) {
+  console.log(
+    "[liquidity-pair-details] ensureInitialResidualData called (chain=%s wallet=%s token0=%s token1=%s fee=%s firstMintBlock=%s)",
+    args.chain,
+    args.wallet,
+    args.token0,
+    args.token1,
+    args.fee,
+    args.firstMintBlock,
+  );
   if (!_hasRequiredArgs(args)) return null;
   const {
     chain,
@@ -269,10 +290,21 @@ async function ensureInitialResidualData(args) {
   });
 
   const cached = loadInitialResidualData(scopeKey);
-  if (cached) return cached;
+  if (cached) {
+    console.log(
+      "[liquidity-pair-details] %s initial residual already cached — reusing",
+      scopeKey,
+    );
+    return cached;
+  }
+  const blockTag = Number(firstMintBlock);
+  console.log(
+    "[liquidity-pair-details] %s no cached initial residual — fetching at first-mint block %d (post-mint state)",
+    scopeKey,
+    blockTag,
+  );
 
-  const blockTag = Number(firstMintBlock) - 1;
-  const balances = await _fetchGenesisBalances({
+  const balances = await _fetchInitialBalances({
     token0,
     token1,
     wallet,
@@ -282,7 +314,7 @@ async function ensureInitialResidualData(args) {
     scopeKey,
   });
   if (!balances) return null;
-  const prices = await _fetchGenesisPrices({
+  const prices = await _fetchInitialPrices({
     poolAddress,
     firstMintTimestamp,
     firstMintBlock,
@@ -306,7 +338,7 @@ async function ensureInitialResidualData(args) {
   _persist();
 
   console.log(
-    "[liquidity-pair-details] %s genesis residual recorded (t0=%s @$%s, t1=%s @$%s)",
+    "[liquidity-pair-details] %s initial residual recorded (t0=%s @$%s, t1=%s @$%s)",
     scopeKey,
     data.token0Amount,
     data.token0Price,

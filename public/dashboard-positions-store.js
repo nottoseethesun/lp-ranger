@@ -640,34 +640,6 @@ export function _applyLocalPositionData(pos) {
   }
 }
 
-// ── Manage badge ─────────────────────────────────
-
-/** Refresh the manage badge for a position. */
-export function refreshManageBadge(active) {
-  if (!active) return;
-  const badge = g("manageBadge"),
-    btn = g("manageToggleBtn");
-  if (!badge || !btn) return;
-  const closed = isPositionClosed(active);
-  const m = !closed && _managedTokenIds.has(String(active.tokenId));
-  badge.classList.toggle("managed", m);
-  if (closed) {
-    badge.textContent = "Position Closed";
-  } else if (m) {
-    const dot = document.createElement("span");
-    dot.className = "9mm-pos-mgr-manage-dot";
-    badge.replaceChildren(
-      dot,
-      document.createTextNode("Being Actively Managed"),
-    );
-  } else {
-    badge.textContent = "Not Actively Managed";
-  }
-  btn.textContent = m ? "Stop Managing" : "Manage";
-  btn.disabled = closed;
-  btn.title = closed ? "Cannot manage a closed position (liquidity = 0)" : "";
-}
-
 // ── Position row rendering ───────────────────────
 
 /** Check if a position is in range. */

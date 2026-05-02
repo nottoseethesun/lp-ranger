@@ -2,13 +2,15 @@
  * @file src/bot-pnl-initial-residual.js
  * @module bot-pnl-initial-residual
  * @description
- * Surface the cached genesis-residual snapshot (the wallet's pre-LP balances
- * of token0/token1 captured at firstMintBlock-1) onto the P&L snap, valued at
- * FROZEN genesis prices.  The dashboard subtracts this from Lifetime Net P&L
- * as its own line item so that pre-existing wallet balances do not inflate
- * profit.  Frozen valuation is critical: if we used current prices, the
- * subtracted dollar amount would move with the market and erase
- * price-appreciation credit on those very tokens.
+ * Surface the cached initial-residual snapshot (the wallet's token0/token1
+ * balances captured at the END of `firstMintBlock` — i.e. what was left over
+ * after the very first IncreaseLiquidity TX consumed its inputs) onto the
+ * P&L snap, valued at FROZEN first-mint-block prices.  The dashboard
+ * subtracts this from Lifetime Net P&L as its own line item so that the
+ * unavoidable leftover from the initial mint does not inflate profit.
+ * Frozen valuation is critical: if we used current prices, the subtracted
+ * dollar amount would move with the market and erase price-appreciation
+ * credit on those very tokens.
  *
  * Extracted from bot-pnl-updater.js to keep that file under the 500-line cap.
  */
@@ -20,7 +22,7 @@ const { liquidityPairScopeKey } = require("./cache-store");
 
 /**
  * Best-effort: read the shared liquidity-pair-details cache for the given
- * scope and write the genesis-residual fields onto `snap`. Used by the
+ * scope and write the initial-residual fields onto `snap`. Used by the
  * unmanaged one-shot detail path, which has no historical scan but can
  * surface data populated by a previous managed run for the same scope.
  *

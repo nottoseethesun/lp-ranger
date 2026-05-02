@@ -10,6 +10,7 @@ import {
   toggleSettingsPopover,
   csrfHeaders,
   copyWithFeedback,
+  botConfig,
 } from "./dashboard-helpers.js";
 import { copyText } from "./dashboard-wallet.js";
 import { getProviderLabel } from "./dashboard-nft-providers.js";
@@ -26,6 +27,7 @@ import {
   applyPrivacyState,
   forceBothSubOptionsOn,
 } from "./dashboard-privacy-subform.js";
+import { applyLifetimeUnmanagedUI } from "./dashboard-lifetime-panel.js";
 
 // ── Privacy ─────────────────────────────────────────
 
@@ -163,6 +165,7 @@ export function _openPoolDetailsModal() {
     const e = g(id);
     if (e) e.replaceChildren(frag);
   };
+  el("pdBlockchain", botConfig.chainName || "—");
   el("pdType", active.positionType === "nft" ? "NFT (ERC-721)" : "ERC-20");
   elFrag("pdToken0", _tokenCellFrag(active.token0Symbol, active.token0));
   elFrag("pdToken1", _tokenCellFrag(active.token1Symbol, active.token1));
@@ -436,6 +439,7 @@ export function updateManageBadge(
   } else {
     badge.textContent = "Not Actively Managed";
   }
+  applyLifetimeUnmanagedUI(isManaged);
   /*- Don't clobber the in-flight "Managing\u2026" / "Stopping\u2026"
    *  text that the click handler just set — the next poll after the
    *  request resolves will repaint correctly. */

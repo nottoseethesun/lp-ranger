@@ -540,7 +540,7 @@ async function _processRawEvents(
  * Without this, each incremental scan that sees any new mint would overwrite
  * the cached value with a later one and "first mint" would creep toward the
  * chain tip. The block number travels with whichever timestamp wins so
- * genesis-residual lookups have block-level granularity.
+ * initial-residual lookups have block-level granularity.
  */
 function _resolveFirstMint(cachedEvents, newMints) {
   const firstMint = newMints.sort((a, b) => a.timestamp - b.timestamp)[0];
@@ -676,7 +676,14 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
   );
 
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
-  if (rawEvents.length === 0 && cachedEvents.length === 0) return [];
+  if (rawEvents.length === 0 && cachedEvents.length === 0) {
+    /*- Even when both new-scan and cache hold zero rebalance events, the
+     *  cache may still carry firstMintTimestamp/firstMintBlockNumber from
+     *  an earlier scan that found the original mint but no pairs. Returning
+     *  `cachedEvents` (an empty array with those props attached by
+     *  loadCache) preserves the initial-residual lookup path. */
+    return cachedEvents;
+  }
   if (rawEvents.length === 0) {
     await _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock);
     return cachedEvents;

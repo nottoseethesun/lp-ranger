@@ -201,7 +201,7 @@ describe("liquidity-pair-details cache", () => {
     assert.equal(r3, null);
   });
 
-  it("reads balances at firstMintBlock - 1 (the block BEFORE first mint)", async () => {
+  it("reads balances at firstMintBlock end-of-block (post-mint state)", async () => {
     let observedBlockTag = null;
     const ethersLib = {
       Contract: class {
@@ -220,7 +220,7 @@ describe("liquidity-pair-details cache", () => {
     await ensureInitialResidualData(
       _baseArgs({ ethersLib, firstMintBlock: 9999 }),
     );
-    assert.equal(observedBlockTag, 9998);
+    assert.equal(observedBlockTag, 9999);
   });
 
   it("still persists with zero prices when historical price fetch throws", async () => {

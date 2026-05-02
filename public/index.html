@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1777704447184">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777704447184">
+<link rel="stylesheet" href="style.css?v=1777753611032">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1777753611032">
 </head>
 <body>
 
@@ -629,6 +629,7 @@
 <div id="poolDetailsModal" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-logo"><div><h2>Pool Details</h2></div></div>
+    <div class="9mm-pos-mgr-pool-details-blockchain" id="pdBlockchain">—</div>
     <div class="9mm-pos-mgr-pool-details-row">
       <dl class="9mm-pos-mgr-pool-details-list">
         <dt>Position Type</dt>
@@ -755,7 +756,11 @@
   <!-- ── Lifetime ── -->
   <div class="kpi-card neu kpi-card-wide">
     <div class="kpi-label 9mm-pos-mgr-panel-title">Lifetime</div>
-    <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div><div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="ltNetPnlInfo" title="Show P&amp;L breakdown details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div>
+    <div class="kpi-label" id="ltPnlLabel">Net Profit and Loss Return</div>
+    <div class="9mm-pos-mgr-lt-content-wrap">
+    <div class="9mm-pos-mgr-lt-unmanaged-msg" id="ltUnmanagedPlaceholder" hidden>Click &ldquo;Manage&rdquo; to get reporting of Lifetime values.</div>
+    <div id="ltContent">
+    <div class="kpi-value neu 9mm-pos-mgr-kpi-pct-row" id="kpiNet"><span class="9mm-pos-mgr-kpi-val-wrap">—<span class="9mm-pos-mgr-il-info-btn 9mm-pos-mgr-kpi-info" id="ltNetPnlInfo" title="Show P&amp;L breakdown details">i</span></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetPct"></span><span class="9mm-pos-mgr-kpi-pct" id="kpiNetApr"></span></div>
     <div class="9mm-pos-mgr-pnl-breakdown" id="kpiNetBreakdown">
       <div class="9mm-pos-mgr-pnl-row"><span>Fees Compounded <span class="9mm-pos-mgr-il-info-btn" data-param-help="ltCompounded" title="Learn about Fees Compounded">i</span></span><span id="ltBdCompounded" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
       <div class="9mm-pos-mgr-pnl-row"><span>Gas</span><span id="ltBdGas" class="9mm-pos-mgr-pnl-value">&mdash;</span></div>
@@ -793,6 +798,8 @@
     <div class="9mm-pos-mgr-sync-row" id="syncRow">
       <span class="9mm-pos-mgr-text-muted-sm">Lifetime figures cover up to 5 years back.</span>
     </div>
+    </div><!-- /#ltContent -->
+    </div><!-- /.9mm-pos-mgr-lt-content-wrap -->
   </div>
 </div>
 
@@ -1334,6 +1341,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1777704447184"></script>
+<script src="dist/bundle.js?v=1777753611032"></script>
 </body>
 </html>

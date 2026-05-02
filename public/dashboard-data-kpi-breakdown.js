@@ -70,14 +70,32 @@ function _setSubtracted(id, val) {
 }
 
 /**
+ * Neutral row: positive value, white (`neu`) colour, no sign prefix.
+ * Used for values that ARE subtracted in the math but whose negative
+ * red display would imply a confusing "negative wallet balance" — e.g.
+ * Initial Wallet Residual (Pool), which is just what the wallet held
+ * after the first mint and is subtracted only to avoid double-counting.
+ */
+function _setNeutral(id, val) {
+  const el = g(id);
+  if (!el) return;
+  if (val === undefined || val === null) {
+    _writeRow(el, null, 0);
+    return;
+  }
+  _writeRow(el, Math.abs(val || 0), 0);
+}
+
+/**
  * Populate the breakdown rows.
  * @param {number} priceChange     Lifetime price change (currentValue − deposit).
  * @param {number} realized        User-entered realized gains (USD).
  * @param {number} gas             Lifetime gas spent (USD, subtracted).
  * @param {number} residual        Wallet residual (pool tokens held, USD).
  * @param {number} compounded      Lifetime fees compounded back into liquidity (USD).
- * @param {number} initialResidual Pre-LP wallet balance valued at frozen
- *                                 genesis prices (USD, subtracted).
+ * @param {number} initialResidual Wallet balance at end of `firstMintBlock`
+ *                                 (post-first-mint state) valued at frozen
+ *                                 first-mint prices (USD, subtracted).
  */
 export function updateNetBreakdown(
   priceChange,
@@ -91,6 +109,6 @@ export function updateNetBreakdown(
   _setSubtracted("ltBdGas", gas);
   _setRow("ltBdPriceChange", priceChange);
   _setRow("ltBdResidual", residual);
-  _setSubtracted("ltBdInitialResidual", initialResidual);
+  _setNeutral("ltBdInitialResidual", initialResidual);
   _setRow("ltBdRealized", realized);
 }

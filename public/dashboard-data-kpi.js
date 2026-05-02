@@ -320,12 +320,12 @@ export function _resolveKpiTotals(d) {
    *  Adding it here closes that visual gap without double-counting —
    *  Price Change is LP-only by design (see _priceChangePnl). */
   const ltResidual = d.pnlSnapshot?.residualValueUsd || 0;
-  /*- Initial Wallet Residual (Pool): the wallet's pre-LP balances of the
-   *  pool's two tokens, valued at FROZEN genesis prices (the prices that
-   *  prevailed at the block immediately before the first IncreaseLiquidity).
-   *  Subtracted from Lifetime Net P&L so that pre-existing wallet balances
-   *  do not inflate profit. Frozen valuation preserves credit for any
-   *  subsequent appreciation of those original tokens. */
+  /*- Initial Wallet Residual (Pool): the wallet's token0/token1 balances at
+   *  the END of `firstMintBlock` — what was left over after the very first
+   *  IncreaseLiquidity TX consumed its inputs — valued at FROZEN first-mint
+   *  prices. Subtracted from Lifetime Net P&L so the unavoidable leftover
+   *  from the initial mint does not inflate profit. Frozen valuation
+   *  preserves credit for any subsequent appreciation of those tokens. */
   const ltInitialResidual = d.pnlSnapshot?.initialResidualUsd || 0;
   return {
     curTotal: curPc + curFees + curRealized - curCompounded,
