@@ -377,6 +377,7 @@ All use abbreviated prefixes (first 5-6 chars) to keep filenames manageable.
 - `no-unused-vars` — `vars: 'all'` for src/test, `vars: 'local'` for dashboard
 - `no-restricted-syntax` — disallows `window.*` assignments
 - `9mm/no-separate-contract-calls` — custom rule requiring atomic EVM method pairs (e.g. `decreaseLiquidity` + `collect`) to use `multicall`, not separate awaits. Configurable via `pairs` option. Source: `eslint-rules/no-separate-contract-calls.js`
+- `n/no-missing-import` (dashboard ES modules) and `n/no-missing-require` (Node CommonJS) — fail lint when an `import`/`require` path can't be resolved. Closes the gap where a renamed dashboard module's stale import passed lint+tests+CI green and only blew up at esbuild time. Wiring is guarded by `test/eslint-config-import-resolution.test.js`.
 - `--max-warnings 0` treats warnings as errors
 - No `eslint-disable` directives
 
