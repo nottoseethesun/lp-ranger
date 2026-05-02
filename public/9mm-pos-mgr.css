@@ -603,7 +603,7 @@ span[title]:not([title=""]):hover {
   z-index: 1;
 }
 
-/*-
+/*
  * Author rule must beat the UA `[hidden] { display: none }` because the
  * placeholder's `display: flex` above has equal specificity (0,0,1,0)
  * and author wins on a tie — leaving the placeholder visible on top of
