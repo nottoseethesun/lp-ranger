@@ -46,10 +46,7 @@ const _PAIRING_WINDOW_SEC = 300;
 const _CHUNK_DELAY_MS = 250;
 
 const { PM_ABI } = require("./pm-abi");
-
-const POOL_CREATED_ABI = [
-  "event PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing, address pool)",
-];
+const { getPoolCreationBlockCached } = require("./pool-creation-block");
 
 /**
  * @typedef {object} RebalanceEvent
@@ -174,70 +171,6 @@ function pairTransfers(transfers) {
 }
 
 /**
- * Find the block number at which a V3 pool was created by querying the
- * Factory's PoolCreated event.  This lets the scanner skip all blocks before
- * the pool existed, potentially saving thousands of RPC queries.
- *
- * @param {object} provider   - ethers.js provider.
- * @param {object} ethersLib  - ethers library (for Contract).
- * @param {object} opts
- * @param {string} opts.factoryAddress - V3 Factory contract address.
- * @param {string} opts.poolAddress    - The pool address to search for.
- * @param {number} opts.fromBlock      - Earliest block to search from.
- * @param {number} opts.toBlock        - Latest block to search to.
- * @param {number} [opts.chunkSize=50000] - Block range per query (wider since
- *                                          PoolCreated events are rare).
- * @returns {Promise<number|null>} Block number of pool creation, or null.
- */
-async function findPoolCreationBlock(provider, ethersLib, opts) {
-  const {
-    factoryAddress,
-    poolAddress,
-    fromBlock,
-    toBlock,
-    chunkSize = 50_000,
-    onProgress,
-    signal,
-  } = opts;
-  if (!factoryAddress || !poolAddress) return null;
-  try {
-    const factory = new ethersLib.Contract(
-      factoryAddress,
-      POOL_CREATED_ABI,
-      provider,
-    );
-    const poolLower = poolAddress.toLowerCase();
-    const totalChunks = Math.ceil((toBlock - fromBlock + 1) / chunkSize);
-    let chunkIdx = 0;
-    for (let start = fromBlock; start <= toBlock; start += chunkSize) {
-      _throwIfAborted(signal, "findPoolCreationBlock");
-      const end = Math.min(start + chunkSize - 1, toBlock);
-      if (onProgress) onProgress(chunkIdx, totalChunks);
-      try {
-        const events = await factory.queryFilter(
-          factory.filters.PoolCreated(),
-          start,
-          end,
-        );
-        for (const ev of events) {
-          const createdPool = ev.args[4] || ev.args.pool;
-          if (createdPool && createdPool.toLowerCase() === poolLower)
-            return ev.blockNumber;
-        }
-      } catch (e) {
-        if (e && e.name === "AbortError") throw e;
-        /* skip failed chunks */
-      }
-      chunkIdx++;
-    }
-  } catch (e) {
-    if (e && e.name === "AbortError") throw e;
-    /* factory query failed — fall back to full scan */
-  }
-  return null;
-}
-
-/**
  * Deduplicate raw events by txHash + logIndex.
  * @param {object[]} rawEvents
  * @returns {object[]}
@@ -350,18 +283,28 @@ function mergeAndIndex(cachedEvents, newEvents) {
  */
 /**
  * Resolve the starting block for a scan, applying pool-age optimisation.
+ *
+ * Routes through `getPoolCreationBlockCached` so the (expensive) Factory
+ * `PoolCreated` lookup is paid at most once per pool process-wide and
+ * persisted to disk for subsequent restarts.  Without this, every
+ * wallet-scoped LP scan re-scanned the Factory from scratch — a 5-year
+ * lookback is ~150 50k-chunk Factory queries before the wallet scan
+ * itself even starts.  `getPoolCreationBlockCached` returns `0` when
+ * the lookup fails, which behaves identically to the unbounded path
+ * (the existing `creationBlock > fromBlock` guard rejects the zero).
+ *
  * @param {object} provider
  * @param {object} ethersLib
- * @param {number} currentBlock
  * @param {number} fromBlock
  * @param {string|null} factoryAddress
  * @param {string|null} poolAddress
+ * @param {function} [onProgress]
+ * @param {AbortSignal} [signal]
  * @returns {Promise<number>}
  */
 async function resolveFromBlock(
   provider,
   ethersLib,
-  currentBlock,
   fromBlock,
   factoryAddress,
   poolAddress,
@@ -369,17 +312,15 @@ async function resolveFromBlock(
   signal,
 ) {
   if (!factoryAddress || !poolAddress) return fromBlock;
-  const creationBlock = await findPoolCreationBlock(provider, ethersLib, {
+  const creationBlock = await getPoolCreationBlockCached({
+    provider,
+    ethersLib,
     factoryAddress,
     poolAddress,
-    fromBlock,
-    toBlock: currentBlock,
     onProgress,
     signal,
   });
-  return creationBlock !== null && creationBlock > fromBlock
-    ? creationBlock
-    : fromBlock;
+  return creationBlock > fromBlock ? creationBlock : fromBlock;
 }
 
 /**
@@ -616,7 +557,6 @@ async function _resolveCache(
   cache,
   cacheKey,
   baseFrom,
-  currentBlock,
   factoryAddress,
   poolAddress,
   onProgress,
@@ -627,7 +567,6 @@ async function _resolveCache(
   const from = await resolveFromBlock(
     provider,
     ethersLib,
-    currentBlock,
     baseFrom,
     factoryAddress,
     poolAddress,
@@ -676,7 +615,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     cache,
     cacheKey,
     baseFrom,
-    currentBlock,
     factoryAddress,
     poolAddress,
     opts.onPoolCreationProgress,
@@ -736,7 +674,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 
 module.exports = {
   scanRebalanceHistory,
-  findPoolCreationBlock,
   buildCacheKey: _buildCacheKey,
   _BLOCKS_PER_YEAR,
   _DEFAULT_CHUNK_SIZE,

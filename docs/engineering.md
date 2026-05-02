@@ -32,7 +32,9 @@ sequence.
   - [Lint and Test](#lint-and-test)
   - [Wallet Management](#wallet-management)
   - [Housekeeping](#housekeeping)
-  - [Diagnostic Utilities](#diagnostic-utilities)
+  - [Utilities](#utilities)
+    - [Diagnostic Utilities](#diagnostic-utilities)
+    - [Cache Utilities](#cache-utilities)
 - [The app-config Directory](#the-app-config-directory)
 - [Bot Config Defaults](#bot-config-defaults)
 - [Security](#security)
@@ -671,13 +673,20 @@ blockchain wallet scans on next start to rebuild caches.
 - `npm run view-report` — Open `test/report-artifacts/report.pdf` via
   `xdg-open` (Linux dev box).
 
-### Diagnostic Utilities
+### Utilities
+
+`util/` holds non-standard, ad-hoc Node.js tools, organized by purpose.
+Sibling to `scripts/` (standard ops like `clean` and `nuke`). Every
+subdirectory ships with the project, is linted by `npm run lint`, and
+is intentionally **out of CI and pre-commit** so the surface can evolve
+without dragging release gates.
+
+#### Diagnostic Utilities
 
 `util/diagnostic/` holds read-only Node.js tools for investigating
-on-chain state and bot data. Unlike `scripts/` (standard ops like `clean`
-and `nuke`), these are non-standard, ad-hoc utilities that an end user
-can run when something looks wrong. All four tools take CLI args, never
-mutate state, and write only to stdout (redirect to `tmp/` for logs).
+on-chain state and bot data. End users run these when something looks
+wrong. All four tools take CLI args, never mutate state, and write only
+to stdout (redirect to `tmp/` for logs).
 
 - `inspect-pool.js` — Pretty-prints `app-config/.bot-config.json` and
   `tmp/pnl-epochs-cache.json` for a position or pool fragment: status,
@@ -690,15 +699,47 @@ mutate state, and write only to stdout (redirect to `tmp/` for logs).
 - `wallet-token-flow.js` — Lists ERC-20 `Transfer` events for one or
   more tokens within a UTC date window, with net-flow summary.
 
-These tools are linted by `npm run lint`, `npm run audit:security`, and
-`npm run audit:secrets` (same bar as `src/`) because they ship with the
-project. Their tests live separately in `util/diagnostic/test/` and run
-via `npm run test:util` — they are intentionally **out of CI and
-pre-commit** so the diagnostic surface can evolve without dragging
-release gates. Pure helpers shared across tools live in
+Audited under `npm run audit:security` and `npm run audit:secrets` —
+same bar as `src/`. Tests live in `util/diagnostic/test/` and run via
+`npm run test:util`. Pure helpers shared across tools live in
 `util/diagnostic/_helpers.js`; each tool's CLI `main()` is gated behind
 `require.main === module` so requiring it from a test does not start
 an RPC scan.
+
+#### Cache Utilities
+
+`util/cache/` holds small Node.js scripts that operate on the
+pool-address-keyed disk caches under `tmp/`.
+
+- `clean-pool-cache.js` — Wipe every cached entry for one pool. Default
+  behaviour is **scorched-earth**: removes pool-creation-blocks,
+  gecko-pool, every matching event-cache file (one per wallet that has
+  positions in the pool), and matching P&L-epoch entries. Token0,
+  token1, and fee are resolved via RPC (`pool.token0/1/fee()`).
+  Caches that aren't pool-scoped (historical-price by token+block,
+  nft-mint-date by tokenId, block-time by chain+block) are untouched.
+
+  Pass `--preserve-pool-history` to skip event-cache and P&L-epochs
+  surfaces — the lookup caches alone are cleared, no RPC needed. Use
+  this when you want to verify a cold pool-creation-block resolver
+  lookup without forcing a full event re-scan or losing accumulated
+  P&L history.
+
+  Run with `--help` for the full reference (every option, every
+  combination, exit codes).
+
+  Examples:
+
+  ```bash
+  # Full wipe (default — every pool-scoped surface, requires RPC):
+  node util/cache/clean-pool-cache.js 0xE8FdBb02cdfbDb43807E33190Ebcea809316f2B9
+
+  # Lookup caches only (no RPC; preserves event cache + P&L epochs):
+  node util/cache/clean-pool-cache.js 0xE8FdBb02cdfbDb43807E33190Ebcea809316f2B9 --preserve-pool-history
+
+  # Full reference:
+  node util/cache/clean-pool-cache.js --help
+  ```
 
 ---
 

@@ -20,7 +20,7 @@ const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
 const config = require("./config");
-const { findPoolCreationBlock } = require("./event-scanner");
+const { findPoolCreationBlock } = require("./pool-creation-finder");
 
 /** Disk-cache file path (overridable via env for tests). */
 const _CACHE_PATH =
@@ -81,10 +81,19 @@ function _saveDisk() {
  * @param {object} opts.ethersLib       ethers library (for Contract)
  * @param {string} opts.factoryAddress  V3 Factory address
  * @param {string} opts.poolAddress     Pool address
+ * @param {function} [opts.onProgress]  Cold-cache progress: (idx, total) => void
+ * @param {AbortSignal} [opts.signal]   Cold-cache cancellation
  * @returns {Promise<number>}  block number (>=0); 0 means "unknown / use genesis"
  */
 async function getPoolCreationBlockCached(opts) {
-  const { provider, ethersLib, factoryAddress, poolAddress } = opts || {};
+  const {
+    provider,
+    ethersLib,
+    factoryAddress,
+    poolAddress,
+    onProgress,
+    signal,
+  } = opts || {};
   if (!provider || !ethersLib || !factoryAddress || !poolAddress) return 0;
   _loadDisk();
   const k = _key(factoryAddress, poolAddress);
@@ -99,6 +108,8 @@ async function getPoolCreationBlockCached(opts) {
         poolAddress,
         fromBlock: 0,
         toBlock: currentBlock,
+        onProgress,
+        signal,
       });
       const value = Number.isFinite(block) && block >= 0 ? block : 0;
       _memCache.set(k, value);
@@ -112,6 +123,7 @@ async function getPoolCreationBlockCached(opts) {
       );
       return value;
     } catch (err) {
+      if (err && err.name === "AbortError") throw err;
       console.warn(
         "[pool-creation-block] lookup failed for " +
           poolAddress +

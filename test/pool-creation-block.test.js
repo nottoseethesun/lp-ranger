@@ -156,6 +156,29 @@ describe("pool-creation-block", () => {
     assert.equal(calls, 1);
   });
 
+  it("re-throws AbortError so cancellation propagates to the caller", async () => {
+    /*- Regression: an earlier version of the cached wrapper swallowed
+        AbortError in its generic catch block and returned 0, hiding the
+        cancel from event-scanner's downstream abort checks. */
+    const provider = {
+      getBlockNumber: async () => {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        throw err;
+      },
+    };
+    await assert.rejects(
+      () =>
+        mod.getPoolCreationBlockCached({
+          provider,
+          ethersLib: {},
+          factoryAddress: FACTORY,
+          poolAddress: POOL,
+        }),
+      (err) => err.name === "AbortError",
+    );
+  });
+
   it("returns 0 (and caches it) when the pool is not found", async () => {
     const provider = {
       getBlockNumber: async () => 500,

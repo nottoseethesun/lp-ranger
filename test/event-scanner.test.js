@@ -5,17 +5,29 @@
  * @description Unit tests for the event-scanner module.
  */
 
-const { describe, it } = require("node:test");
+const path = require("path");
+const os = require("os");
+
+/*- Scope the pool-creation-block disk cache to this test run so the
+    integration test below ("pool-age optimisation skips blocks before
+    creation") starts from a clean cache and isn't affected by parallel
+    test runs.  Must be set before requiring the module under test. */
+process.env.POOL_CREATION_BLOCK_CACHE_PATH = path.join(
+  os.tmpdir(),
+  "pool-creation-blocks-cache-es-test-" + process.pid + ".json",
+);
+
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const {
   scanRebalanceHistory,
-  findPoolCreationBlock,
   buildCacheKey,
   _BLOCKS_PER_YEAR,
   _DEFAULT_CHUNK_SIZE,
   _PAIRING_WINDOW_SEC,
   _CHUNK_DELAY_MS,
 } = require("../src/event-scanner");
+const poolCreationBlock = require("../src/pool-creation-block");
 
 const WALLET = "0xABCDEF0000000000000000000000000000000001";
 const POS_MGR = "0x1234560000000000000000000000000000000099";
@@ -379,88 +391,15 @@ it("filters consecutive mints by pool when pool filter provided", async () => {
   assert.strictEqual(r[0].newTokenId, "12");
 });
 
-// ── findPoolCreationBlock ────────────────────────────────────────────────────
+// ── scanRebalanceHistory pool-age optimisation ───────────────────────────────
 
-describe("findPoolCreationBlock", () => {
-  const FACTORY = "0xFACT000000000000000000000000000000000001";
-  const POOL = "0xP00L000000000000000000000000000000000002";
-  const poolOpts = (extra = {}) => ({
-    factoryAddress: FACTORY,
-    poolAddress: POOL,
-    fromBlock: 0,
-    toBlock: 10_000,
-    ...extra,
-  });
+describe("scanRebalanceHistory pool-age optimisation", () => {
+  /*- Reset the disk-cached pool-creation resolver between cases so the
+      cached lower bound from one test never leaks into another. */
+  beforeEach(() => poolCreationBlock._resetForTests());
+  afterEach(() => poolCreationBlock._resetForTests());
 
-  function mkFactoryEthers(events) {
-    return {
-      Contract: class {
-        constructor() {
-          this.filters = { PoolCreated: () => ({ topics: [] }) };
-          this.queryFilter = async () => events;
-        }
-      },
-    };
-  }
-
-  it("returns block when pool found", async () => {
-    const r = await findPoolCreationBlock(
-      mkProvider(10_000),
-      mkFactoryEthers([
-        { args: [null, null, null, null, POOL], blockNumber: 5000 },
-      ]),
-      poolOpts(),
-    );
-    assert.strictEqual(r, 5000);
-  });
-
-  it("returns null when not found", async () => {
-    const r = await findPoolCreationBlock(
-      mkProvider(10_000),
-      mkFactoryEthers([]),
-      poolOpts(),
-    );
-    assert.strictEqual(r, null);
-  });
-
-  it("returns null when addresses missing", async () => {
-    const e = { Contract: class {} };
-    assert.strictEqual(
-      await findPoolCreationBlock(
-        mkProvider(),
-        e,
-        poolOpts({ factoryAddress: null }),
-      ),
-      null,
-    );
-    assert.strictEqual(
-      await findPoolCreationBlock(
-        mkProvider(),
-        e,
-        poolOpts({ poolAddress: null }),
-      ),
-      null,
-    );
-  });
-
-  it("handles RPC errors gracefully", async () => {
-    const ethers = {
-      Contract: class {
-        constructor() {
-          this.filters = { PoolCreated: () => ({ topics: [] }) };
-          this.queryFilter = async () => {
-            throw new Error("RPC");
-          };
-        }
-      },
-    };
-    assert.strictEqual(
-      await findPoolCreationBlock(mkProvider(), ethers, poolOpts()),
-      null,
-    );
-  });
-
-  it("pool-age optimisation skips blocks before creation", async () => {
+  it("skips blocks before pool creation", async () => {
     const ranges = [];
     const creationBlock = 3000;
     const ethers = {
