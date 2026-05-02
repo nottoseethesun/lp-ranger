@@ -320,6 +320,13 @@ export function _resolveKpiTotals(d) {
    *  Adding it here closes that visual gap without double-counting —
    *  Price Change is LP-only by design (see _priceChangePnl). */
   const ltResidual = d.pnlSnapshot?.residualValueUsd || 0;
+  /*- Initial Wallet Residual (Pool): the wallet's pre-LP balances of the
+   *  pool's two tokens, valued at FROZEN genesis prices (the prices that
+   *  prevailed at the block immediately before the first IncreaseLiquidity).
+   *  Subtracted from Lifetime Net P&L so that pre-existing wallet balances
+   *  do not inflate profit. Frozen valuation preserves credit for any
+   *  subsequent appreciation of those original tokens. */
+  const ltInitialResidual = d.pnlSnapshot?.initialResidualUsd || 0;
   return {
     curTotal: curPc + curFees + curRealized - curCompounded,
     /*- Lifetime total folds in fee earnings additively: compounded fees
@@ -327,7 +334,13 @@ export function _resolveKpiTotals(d) {
      *  unclaimed fees (will be compounded next).  No subtraction term
      *  for compounded — it IS the fee earnings figure. */
     ltTotal:
-      ltPc + compounded + ltCurrentFees + ltRealized - ltGas + ltResidual,
+      ltPc +
+      compounded +
+      ltCurrentFees +
+      ltRealized -
+      ltGas +
+      ltResidual -
+      ltInitialResidual,
     curDep,
     ltDep,
     curRealized,
@@ -335,6 +348,7 @@ export function _resolveKpiTotals(d) {
     ltRealized,
     ltPriceChange: ltPc,
     ltResidual,
+    ltInitialResidual,
   };
 }
 export function _setDepositDisplay(dep, totalLifetimeDep, usedFallback) {
@@ -374,6 +388,7 @@ export function _updateLifetimeKpis(d) {
     t.ltPriceChange,
     t.ltRealized,
     t.ltResidual,
+    t.ltInitialResidual,
   );
   _setDepositDisplay(
     t.ltDep,
@@ -400,6 +415,7 @@ export function _updateKpis(d) {
       t.ltPriceChange,
       t.ltRealized,
       t.ltResidual,
+      t.ltInitialResidual,
     );
     _setDepositDisplay(
       t.ltDep,
@@ -457,6 +473,7 @@ export function _updateNetReturn(
   ltPriceChange,
   ltRealized,
   ltResidual,
+  ltInitialResidual,
 ) {
   const net = g("kpiNet");
   if (d.pnlSnapshot) {
@@ -480,7 +497,15 @@ export function _updateNetReturn(
     const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
     const ltGas2 = d.pnlSnapshot?.totalGas || 0;
     const resid = ltResidual || 0;
-    _updateNetBreakdown(ltPriceChange, ltRealized, ltGas2, resid, ltCompounded);
+    const initResid = ltInitialResidual || 0;
+    _updateNetBreakdown(
+      ltPriceChange,
+      ltRealized,
+      ltGas2,
+      resid,
+      ltCompounded,
+      initResid,
+    );
     _setLtCurrentValue(d);
     // currentValue is LP-only; residuals are tracked separately.
     const cv = d.pnlSnapshot.currentValue || 0;
@@ -490,6 +515,7 @@ export function _updateNetReturn(
       gas: ltGas2,
       priceChange: ltPriceChange,
       residual: resid,
+      initialResidual: initResid,
       realized: ltRealized,
       total,
       currentValue: cv,

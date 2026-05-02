@@ -35,6 +35,7 @@ const {
   actualGasCostUsd: _actualGasCostUsd,
 } = require("./bot-pnl-updater");
 const { _scanLifetimePoolData } = require("./bot-recorder-lifetime");
+const { ensureInitialResidualData } = require("./liquidity-pair-details");
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -156,6 +157,36 @@ async function _closePnlEpoch(deps, result) {
   }
 }
 
+/**
+ * Resolve genesis-residual snapshot for the wallet/pool scope and attach to
+ * the state patch. Best-effort: failures are warned and swallowed so the
+ * scan completes regardless.
+ */
+async function _attachGenesisResidual(stPatch, ctx) {
+  const { address, position, found, poolState, provider, ethersLib } = ctx;
+  try {
+    const initialResidualData = await ensureInitialResidualData({
+      chain: config.CHAIN_NAME,
+      factory: config.POSITION_MANAGER,
+      wallet: address,
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee,
+      firstMintBlock: found.firstMintBlockNumber,
+      firstMintTimestamp: found.firstMintTimestamp,
+      poolAddress: poolState.poolAddress,
+      provider,
+      ethersLib,
+    });
+    if (initialResidualData) stPatch.initialResidualData = initialResidualData;
+  } catch (err) {
+    console.warn(
+      "[bot] Genesis residual lookup failed: %s",
+      err.message ?? err,
+    );
+  }
+}
+
 /** Resolve pool address and scan on-chain rebalance history (fire-and-forget). */
 async function _scanHistory(
   provider,
@@ -241,6 +272,14 @@ async function _scanHistory(
     }
     if (poolFirstMintDate) stPatch.poolFirstMintDate = poolFirstMintDate;
     if (throttle) stPatch.throttleState = throttle.getState();
+    await _attachGenesisResidual(stPatch, {
+      address,
+      position,
+      found,
+      poolState,
+      provider,
+      ethersLib,
+    });
     updateState(stPatch);
   } catch (err) {
     console.warn("[bot] Event scan error:", err.message);

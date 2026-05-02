@@ -714,10 +714,12 @@ pool-address-keyed disk caches under `tmp/`.
 - `clean-pool-cache.js` — Wipe every cached entry for one pool. Default
   behaviour is **scorched-earth**: removes pool-creation-blocks,
   gecko-pool, every matching event-cache file (one per wallet that has
-  positions in the pool), and matching P&L-epoch entries. Token0,
-  token1, and fee are resolved via RPC (`pool.token0/1/fee()`).
-  Caches that aren't pool-scoped (historical-price by token+block,
-  nft-mint-date by tokenId, block-time by chain+block) are untouched.
+  positions in the pool), matching P&L-epoch entries, and matching
+  `liquidity-pair-details-cache.json` scope keys (the genesis-residual
+  snapshots). Token0, token1, and fee are resolved via RPC
+  (`pool.token0/1/fee()`). Caches that aren't pool-scoped
+  (historical-price by token+block, nft-mint-date by tokenId, block-time
+  by chain+block) are untouched.
 
   Pass `--preserve-pool-history` to skip event-cache and P&L-epochs
   surfaces — the lookup caches alone are cleared, no RPC needed. Use

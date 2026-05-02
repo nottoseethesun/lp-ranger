@@ -23,6 +23,7 @@ export const LT_BD_IDS = [
   "ltBdGas",
   "ltBdPriceChange",
   "ltBdResidual",
+  "ltBdInitialResidual",
   "ltBdRealized",
 ];
 
@@ -70,11 +71,13 @@ function _setSubtracted(id, val) {
 
 /**
  * Populate the breakdown rows.
- * @param {number} priceChange Lifetime price change (currentValue − deposit).
- * @param {number} realized    User-entered realized gains (USD).
- * @param {number} gas         Lifetime gas spent (USD, subtracted).
- * @param {number} residual    Wallet residual (pool tokens held, USD).
- * @param {number} compounded  Lifetime fees compounded back into liquidity (USD).
+ * @param {number} priceChange     Lifetime price change (currentValue − deposit).
+ * @param {number} realized        User-entered realized gains (USD).
+ * @param {number} gas             Lifetime gas spent (USD, subtracted).
+ * @param {number} residual        Wallet residual (pool tokens held, USD).
+ * @param {number} compounded      Lifetime fees compounded back into liquidity (USD).
+ * @param {number} initialResidual Pre-LP wallet balance valued at frozen
+ *                                 genesis prices (USD, subtracted).
  */
 export function updateNetBreakdown(
   priceChange,
@@ -82,10 +85,12 @@ export function updateNetBreakdown(
   gas,
   residual,
   compounded,
+  initialResidual,
 ) {
   _setRow("ltBdCompounded", compounded);
   _setSubtracted("ltBdGas", gas);
   _setRow("ltBdPriceChange", priceChange);
   _setRow("ltBdResidual", residual);
+  _setSubtracted("ltBdInitialResidual", initialResidual);
   _setRow("ltBdRealized", realized);
 }

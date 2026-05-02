@@ -133,20 +133,7 @@ export function _applyLifetime(d) {
   );
   const ltDep = g("lifetimeDepositDisplay");
   if (ltDep && d.entryValue > 0) ltDep.textContent = _fmtUsd(d.entryValue);
-  if (d.ltPriceChange !== undefined) {
-    /*- Server returns `residualValueUsd` (capped to wallet balance) in
-     *  the quick-details payload; use it directly so unmanaged lifetime
-     *  breakdown matches the managed flow.  New shape: Fees Compounded
-     *  retains its row + dedicated info dialog; "Lifetime Fees" was
-     *  dropped (per-epoch tracker sum was imprecise). */
-    updateNetBreakdown(
-      d.ltPriceChange || 0,
-      0,
-      d.ltGas || 0,
-      d.residualValueUsd || 0,
-      d.ltCompounded || 0,
-    );
-  }
+  if (d.ltPriceChange !== undefined) _applyLifetimeBreakdown(d);
   _applyLifetimeDates(d);
   if (d.dailyPnl) renderDailyPnl(d.dailyPnl);
   if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
@@ -156,6 +143,22 @@ export function _applyLifetime(d) {
       pnlSnapshot: d.pnlSnapshot,
       positionStats: _balanceStats(d.amounts),
     });
+}
+
+/*- Server returns `residualValueUsd` (capped to wallet balance) in
+ *  the quick-details payload; use it directly so unmanaged lifetime
+ *  breakdown matches the managed flow.  New shape: Fees Compounded
+ *  retains its row + dedicated info dialog; "Lifetime Fees" was
+ *  dropped (per-epoch tracker sum was imprecise). */
+function _applyLifetimeBreakdown(d) {
+  updateNetBreakdown(
+    d.ltPriceChange || 0,
+    0,
+    d.ltGas || 0,
+    d.residualValueUsd || 0,
+    d.ltCompounded || 0,
+    d.pnlSnapshot?.initialResidualUsd || 0,
+  );
 }
 
 /** Apply balances, pool share, and tick to the position stats panel. */

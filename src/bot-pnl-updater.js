@@ -19,6 +19,7 @@ const {
   maybeNotifyBalanced,
 } = require("./telegram-notifications/balanced-notifier");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { applyInitialResidual } = require("./bot-pnl-initial-residual");
 
 /*- Resolve the balanced-notifier fetch-window multiplier.  Order of
  *  precedence: explicit override in the merged cfg → user-editable
@@ -293,6 +294,7 @@ async function overridePnlWithRealValues(
   const realValue = positionValueUsd(position, poolState, price0, price1);
   const rUsd = residuals?.usd || 0;
   _applyResiduals(snap, residuals, rUsd);
+  applyInitialResidual(snap, deps);
   snap.currentValue = realValue;
   /*- New lifetime-fee model: expose `currentFeesUsd` (live unclaimed)
    *  and `totalCompoundedUsd` (historical Σ(Collect)−Σ(DL) scan) as

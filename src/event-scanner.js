@@ -337,6 +337,8 @@ async function loadCache(cache, cacheKey, fromBlock) {
     const evts = cached.events;
     if (cached.firstMintTimestamp)
       evts.firstMintTimestamp = cached.firstMintTimestamp;
+    if (cached.firstMintBlockNumber)
+      evts.firstMintBlockNumber = cached.firstMintBlockNumber;
     return { cachedEvents: evts, scanFrom: cached.lastBlock + 1 };
   }
   return { cachedEvents: [], scanFrom: fromBlock };
@@ -524,19 +526,41 @@ async function _processRawEvents(
     );
   }
   const merged = mergeAndIndex(cachedEvents, paired);
-  const firstMint = newMints.sort((a, b) => a.timestamp - b.timestamp)[0];
-  /*- Preserve the earliest-ever first-mint across incremental scans:
-   *  pick the lesser of (this scan's earliest new mint, the cached
-   *  firstMintTimestamp). Without this, each incremental scan that
-   *  sees any new mint overwrites the cached value with a later one
-   *  and "first mint" creeps toward the chain tip. */
-  const cachedFirst = cachedEvents.firstMintTimestamp || null;
-  const candidates = [firstMint?.timestamp || null, cachedFirst].filter(
-    (t) => t,
+  const { firstMintTimestamp, firstMintBlockNumber } = _resolveFirstMint(
+    cachedEvents,
+    newMints,
   );
-  const firstMintTimestamp = candidates.length ? Math.min(...candidates) : null;
   if (firstMintTimestamp) merged.firstMintTimestamp = firstMintTimestamp;
-  return { merged, firstMintTimestamp };
+  if (firstMintBlockNumber) merged.firstMintBlockNumber = firstMintBlockNumber;
+  return { merged, firstMintTimestamp, firstMintBlockNumber };
+}
+
+/**
+ * Pick the earliest-ever first-mint across this scan and any cached value.
+ * Without this, each incremental scan that sees any new mint would overwrite
+ * the cached value with a later one and "first mint" would creep toward the
+ * chain tip. The block number travels with whichever timestamp wins so
+ * genesis-residual lookups have block-level granularity.
+ */
+function _resolveFirstMint(cachedEvents, newMints) {
+  const firstMint = newMints.sort((a, b) => a.timestamp - b.timestamp)[0];
+  const cachedFirstTs = cachedEvents.firstMintTimestamp || null;
+  const cachedFirstBlock = cachedEvents.firstMintBlockNumber || null;
+  const newFirstTs = firstMint?.timestamp || null;
+  const newFirstBlock = firstMint?.blockNumber || null;
+  if (newFirstTs && (!cachedFirstTs || newFirstTs < cachedFirstTs)) {
+    return {
+      firstMintTimestamp: newFirstTs,
+      firstMintBlockNumber: newFirstBlock,
+    };
+  }
+  if (cachedFirstTs) {
+    return {
+      firstMintTimestamp: cachedFirstTs,
+      firstMintBlockNumber: cachedFirstBlock,
+    };
+  }
+  return { firstMintTimestamp: null, firstMintBlockNumber: null };
 }
 
 /** Build a human-readable label for scan progress logs. */
@@ -579,6 +603,17 @@ async function _resolveCache(
 /** True when the cache already covers all blocks — no new scan needed. */
 function _cacheCovers(scanFrom, currentBlock, cached) {
   return scanFrom > currentBlock && cached.length > 0;
+}
+
+/** Re-persist cached events with updated lastBlock when the new scan returns 0 events. */
+async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
+  if (!cache) return;
+  await cache.set(cacheKey, {
+    events: cachedEvents,
+    lastBlock: currentBlock,
+    firstMintTimestamp: cachedEvents.firstMintTimestamp || null,
+    firstMintBlockNumber: cachedEvents.firstMintBlockNumber || null,
+  });
 }
 
 async function scanRebalanceHistory(provider, ethersLib, opts) {
@@ -643,31 +678,27 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
   console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
   if (rawEvents.length === 0 && cachedEvents.length === 0) return [];
   if (rawEvents.length === 0) {
-    const fmts = cachedEvents.firstMintTimestamp || null;
-    if (cache)
-      await cache.set(cacheKey, {
-        events: cachedEvents,
-        lastBlock: currentBlock,
-        firstMintTimestamp: fmts,
-      });
+    await _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock);
     return cachedEvents;
   }
 
-  const { merged, firstMintTimestamp } = await _processRawEvents(
-    provider,
-    ethersLib,
-    rawEvents,
-    walletAddress,
-    positionManagerAddress,
-    cachedEvents,
-    { poolToken0, poolToken1, poolFee },
-  );
+  const { merged, firstMintTimestamp, firstMintBlockNumber } =
+    await _processRawEvents(
+      provider,
+      ethersLib,
+      rawEvents,
+      walletAddress,
+      positionManagerAddress,
+      cachedEvents,
+      { poolToken0, poolToken1, poolFee },
+    );
 
   if (cache)
     await cache.set(cacheKey, {
       events: merged,
       lastBlock: currentBlock,
       firstMintTimestamp,
+      firstMintBlockNumber,
     });
   return merged;
 }

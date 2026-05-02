@@ -26,6 +26,10 @@ const POOL_CREATION_CACHE = path.join(
 );
 const GECKO_POOL_CACHE = path.join(TMP_DIR, "gecko-pool-cache.json");
 const PNL_EPOCHS_CACHE = path.join(TMP_DIR, "pnl-epochs-cache.json");
+const LIQUIDITY_PAIR_DETAILS_CACHE = path.join(
+  TMP_DIR,
+  "liquidity-pair-details-cache.json",
+);
 
 const HELP_TEXT = `
 clean-pool-cache.js — wipe every cached entry for one pool
@@ -72,6 +76,13 @@ DEFAULT BEHAVIOUR (no options)
          every (factory, wallet) combination — so accumulated P&L
          history for this pool is dropped.
 
+    5. tmp/liquidity-pair-details-cache.json
+         Removes every top-level key whose suffix matches the same
+         {chain:5}-{factory:6hex}-{wallet:6hex}-{token0:8hex}-{token1:8hex}-{fee}
+         scope used by event-cache filenames. Drops the cached
+         "Initial Wallet Residual (Pool)" snapshot so the next scan
+         re-resolves wallet balances + historical prices at genesis.
+
   Caches that are NOT touched (intentional — not pool-scoped):
     - tmp/historical-price-cache.json   keyed by token + block
     - tmp/nft-mint-date-cache.json      keyed by tokenId
@@ -79,12 +90,13 @@ DEFAULT BEHAVIOUR (no options)
 
 OPTION COMBINATIONS
   (none)
-        Full scorched-earth wipe (surfaces 1-4 above).
+        Full scorched-earth wipe (surfaces 1-5 above).
 
   --preserve-pool-history
-        Wipe only surfaces 1 and 2.  Surfaces 3 and 4 are left intact.
-        Use case: cold-test the pool-creation-block resolver without
-        forcing a full event re-scan or discarding P&L history.
+        Wipe only surfaces 1 and 2.  Surfaces 3, 4, and 5 are left
+        intact.  Use case: cold-test the pool-creation-block resolver
+        without forcing a full event re-scan or discarding P&L history
+        or genesis-residual snapshots.
 
   --help (or -h, with or without a pool address)
         Print this help and exit 0.
@@ -256,6 +268,7 @@ async function main() {
 
   let evCount = 0;
   let epochCount = 0;
+  let pairDetailsCount = 0;
 
   if (!args.preserve) {
     /* 3 + 4: need (token0, token1, fee) — fetch from chain */
@@ -310,6 +323,30 @@ async function main() {
       : null;
     reportFile("pnl-epochs-cache.json", epochRemoved);
     epochCount = epochRemoved ? epochRemoved.length : 0;
+
+    /*- 5. liquidity-pair-details-cache.json
+     *  Top-level keys are the byte-identical liquidity-pair scope key
+     *  built from (chain, factory, wallet, token0, token1, fee). The
+     *  CLI doesn't know which wallet or factory was used, so we match
+     *  by suffix: every key whose tail matches the abbreviated
+     *  -{token0:8hex}-{token1:8hex}-{fee} fragment for this pool. */
+    const pairDetails = loadCacheOrNull(LIQUIDITY_PAIR_DETAILS_CACHE);
+    if (pairDetails) {
+      // Build the suffix the same way liquidityPairScopeKey does:
+      // -{token0:8hex}-{token1:8hex}-{fee}, lowercased, no 0x prefix.
+      const t0 = tokens.token0.slice(2, 10).toLowerCase();
+      const t1 = tokens.token1.slice(2, 10).toLowerCase();
+      const suffix = `-${t0}-${t1}-${tokens.fee}`;
+      const pairRemoved = purgeMatchingKeys(
+        LIQUIDITY_PAIR_DETAILS_CACHE,
+        pairDetails,
+        (k) => k.toLowerCase().endsWith(suffix),
+      );
+      reportFile("liquidity-pair-details-cache.json", pairRemoved);
+      pairDetailsCount = pairRemoved.length;
+    } else {
+      reportFile("liquidity-pair-details-cache.json", null);
+    }
   }
 
   console.log("");
@@ -317,9 +354,10 @@ async function main() {
     (pcbRemoved ? pcbRemoved.length : 0) +
     (gpcRemoved ? gpcRemoved.length : 0) +
     evCount +
-    epochCount;
+    epochCount +
+    pairDetailsCount;
   console.log(
-    `Done. Removed ${total} entry(ies)/file(s) total across ${args.preserve ? 2 : 4} surface(s).`,
+    `Done. Removed ${total} entry(ies)/file(s) total across ${args.preserve ? 2 : 5} surface(s).`,
   );
 }
 

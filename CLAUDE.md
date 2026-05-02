@@ -339,6 +339,7 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 - **Event cache:** `event-cache-{blockchain}-{contract}-{wallet}-{token0}-{token1}-{fee}.json`
 - **LP position cache:** `lp-position-cache-{blockchain}-{contract}-{wallet}.json`
 - **Epoch cache:** keyed by `blockchain.contract.wallet.token0.token1.fee` within a single JSON file
+- **Liquidity-pair details cache:** `liquidity-pair-details-cache.json` — single file keyed by `{blockchain}-{factory}-{wallet}-{token0}-{token1}-{fee}` (byte-identical suffix to the event-cache filename, built by the shared `liquidityPairScopeKey()` helper in `src/cache-store.js`). Stores `initialResidualData` per scope: the wallet's pre-LP token0/token1 balances + USD prices captured at `firstMintBlock - 1`, used to subtract pre-existing balances out of Lifetime Net P&L.
 
 All use abbreviated prefixes (first 5-6 chars) to keep filenames manageable.
 
