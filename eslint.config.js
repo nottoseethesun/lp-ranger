@@ -164,6 +164,10 @@ module.exports = [
       // Forbid lazy `require()` inside functions / blocks. Top-of-file
       // `require()` only — see project_esm_migration memory for rationale.
       "n/global-require": "error",
+      // Catch typos / stale paths in `require()` calls — closes the gap
+      // where a require(./does-not-exist) only fails when the file is
+      // actually loaded by a test or at runtime.
+      "n/no-missing-require": "error",
       // Security rules registered off — enforced by security lint only.
       // Registered here so per-line disable directives are recognized.
       "9mm/no-secret-logging": "off",
@@ -183,6 +187,7 @@ module.exports = [
           "no-interpolated-innerhtml": require("./eslint-rules/no-interpolated-innerhtml"),
         },
       },
+      n: nPlugin,
     },
     languageOptions: {
       ecmaVersion: 2022,
@@ -200,6 +205,12 @@ module.exports = [
       ],
       "9mm/no-fetch-without-csrf": "error",
       "9mm/no-interpolated-innerhtml": "error",
+      // Catch typos / stale paths in dashboard `import` statements.
+      // This is the rule that would have caught PR #116 — a renamed
+      // dashboard module whose caller's import wasn't updated.
+      // npm packages (ethers, navigo) are bundled by esbuild from
+      // node_modules; the resolver finds them naturally.
+      "n/no-missing-import": "error",
     },
   },
 
