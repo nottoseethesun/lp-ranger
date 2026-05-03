@@ -278,6 +278,7 @@ async function _enrichSnap(
   ltResult,
   ltComp,
   curComp,
+  curGasUsd,
   entry,
   bl,
   pos,
@@ -291,6 +292,7 @@ async function _enrichSnap(
   snap.lifetimeIL = ltIl ?? cur.il ?? snap.totalIL;
   snap.totalCompoundedUsd = ltComp;
   snap.currentCompoundedUsd = curComp || 0;
+  snap.currentGasUsd = curGasUsd || 0;
   snap.initialDeposit = entry;
   /*- Mirror bot-pnl-updater._applyResiduals: the unmanaged path computes
    *  residuals via _walletResiduals → _currentPnl, but they were never
@@ -402,16 +404,19 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
    *  earnings model (currentFees + lifetimeCompounded) has both inputs
    *  on hand.  No extra cost — _resolveCompounded reads from cached
    *  posConfig first and only scans events when missing. */
-  const { total: ltCompounded, current: curCompounded } =
-    await _resolveCompounded(
-      position,
-      events,
-      body,
-      ps,
-      { price0, price1 },
-      diskConfig,
-      posKey,
-    );
+  const {
+    total: ltCompounded,
+    current: curCompounded,
+    currentGasUsd: curGasUsd,
+  } = await _resolveCompounded(
+    position,
+    events,
+    body,
+    ps,
+    { price0, price1 },
+    diskConfig,
+    posKey,
+  );
   const lt = _lifetimePnl(
     tracker,
     ps,
@@ -459,6 +464,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ltResult,
     ltCompounded,
     curCompounded,
+    curGasUsd,
     entryValue,
     baseline,
     _posWithMeta,

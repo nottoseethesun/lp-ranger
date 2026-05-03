@@ -3,8 +3,8 @@
  * @description Compound-detection helpers for the unmanaged-position
  *   details flow. Extracted from position-details.js to keep that file
  *   under the 500-line cap. Provides:
- *   - _scanCompounds: full chain scan returning { total, current }
- *   - _detectCurrentNftCompounded: cheap one-NFT scan for current value
+ *   - _scanCompounds: full chain scan returning { total, current, currentGasUsd }
+ *   - _detectCurrentNftCompounded: cheap one-NFT scan for current values
  *   - _resolveCompounded: cache-first wrapper used by computeLifetimeDetails
  */
 
@@ -13,6 +13,23 @@
 const config = require("./config");
 const { getPositionConfig, saveConfig } = require("./bot-config-v2");
 const { detectCompoundsOnChain } = require("./compounder");
+const { actualGasCostUsd } = require("./bot-pnl-updater");
+
+/*- Convert a chain-scan result for a single NFT into Current-panel
+ *  values: standalone-compound USD (sum of per-event usdValue) and
+ *  total NFT gas USD (mint TX + standalone compound TXs, valued at
+ *  current native-token price). Both metrics match what the managed
+ *  liveEpoch surfaces while the bot is running. */
+async function _currentValuesFromScan(r) {
+  const compoundUsd = (r.compounds || []).reduce(
+    (s, c) => s + (c.usdValue || 0),
+    0,
+  );
+  const gasUsd = r.totalNftGasWei
+    ? await actualGasCostUsd(BigInt(r.totalNftGasWei))
+    : 0;
+  return { compoundUsd, gasUsd };
+}
 
 /**
  * Detect compounds across all NFTs in the rebalance chain and cache result.
@@ -53,32 +70,36 @@ async function _scanCompounds(
      *  (Lifetime panel "Fees Compounded"). current = sum of standalone
      *  compound deposit values for the current NFT only (Current panel
      *  "Fees Compounded") — matches bot-recorder-lifetime's compound-
-     *  History/usdValue model so managed and unmanaged agree. */
+     *  History/usdValue model so managed and unmanaged agree.
+     *  currentGasUsd = mint + standalone compound gas for the current
+     *  NFT, valued at current native price. */
     let total = 0;
     let current = 0;
+    let currentGasUsd = 0;
     const curId = String(position.tokenId);
     for (const tid of ids) {
       const r = await _detect(tid, opts);
       total += r.totalCompoundedUsd;
-      if (tid === curId)
-        current = (r.compounds || []).reduce(
-          (s, c) => s + (c.usdValue || 0),
-          0,
-        );
+      if (tid === curId) {
+        const cv = await _currentValuesFromScan(r);
+        current = cv.compoundUsd;
+        currentGasUsd = cv.gasUsd;
+      }
     }
     if (total > 0) {
       getPositionConfig(diskConfig, posKey).totalCompoundedUsd = total;
       saveConfig(diskConfig, dir);
     }
-    return { total, current };
+    return { total, current, currentGasUsd };
   } catch (e) {
     console.warn("[position details] compound detection failed:", e.message);
-    return { total: 0, current: 0 };
+    return { total: 0, current: 0, currentGasUsd: 0 };
   }
 }
 
-/** Detect compounded USD for the current NFT only (one cheap RPC scan). */
-async function _detectCurrentNftCompounded(
+/*- Detect Current-panel values for the current NFT only (one cheap
+ *  scan): standalone compound USD and total NFT gas USD. */
+async function _detectCurrentNftValues(
   position,
   body,
   ps,
@@ -98,22 +119,23 @@ async function _detectCurrentNftCompounded(
       decimals1: ps.decimals1,
     };
     const r = await _detect(String(position.tokenId), opts);
-    return (r.compounds || []).reduce((s, c) => s + (c.usdValue || 0), 0);
+    return await _currentValuesFromScan(r);
   } catch (e) {
     console.warn(
-      "[position details] current-NFT compound detection failed:",
+      "[position details] current-NFT values detection failed:",
       e.message,
     );
-    return 0;
+    return { compoundUsd: 0, gasUsd: 0 };
   }
 }
 
 /*- Resolve compounded USD from disk cache or chain scan.  Returns
- *  `{ total, current }`: total is the lifetime compounded across the
- *  rebalance chain (used by the Lifetime panel); current is the
- *  current NFT's own compounded fees (used by the Current panel's
- *  "Fees Compounded" row, which would otherwise read $0 / dash on
- *  unmanaged positions even when the value is material). */
+ *  `{ total, current, currentGasUsd }`: total is the lifetime compounded
+ *  across the rebalance chain (Lifetime panel); current is the current
+ *  NFT's standalone-compound USD; currentGasUsd is the current NFT's
+ *  total gas (mint + standalone compounds). The Current panel reads
+ *  the latter two — they would otherwise render as dash on unmanaged
+ *  positions even when the values are material. */
 async function _resolveCompounded(
   position,
   events,
@@ -126,22 +148,21 @@ async function _resolveCompounded(
   const posConfig = diskConfig.positions[posKey] || {};
   if (posConfig.totalCompoundedUsd) {
     /*- Cache hit on the lifetime total — still need a one-NFT scan
-     *  for the current value (not cached on disk; per-tokenId scan is
-     *  cheap, ~1 RPC call vs the full chain scan for the cold path). */
-    const current = await _detectCurrentNftCompounded(
-      position,
-      body,
-      ps,
-      prices,
-    );
-    return { total: posConfig.totalCompoundedUsd, current };
+     *  for the current values (not cached on disk; per-tokenId scan
+     *  is cheap, ~1 RPC call vs the full chain scan for the cold path). */
+    const cv = await _detectCurrentNftValues(position, body, ps, prices);
+    return {
+      total: posConfig.totalCompoundedUsd,
+      current: cv.compoundUsd,
+      currentGasUsd: cv.gasUsd,
+    };
   }
-  if (events.length === 0) return { total: 0, current: 0 };
+  if (events.length === 0) return { total: 0, current: 0, currentGasUsd: 0 };
   return _scanCompounds(position, events, body, ps, prices, diskConfig, posKey);
 }
 
 module.exports = {
   _scanCompounds,
-  _detectCurrentNftCompounded,
+  _detectCurrentNftValues,
   _resolveCompounded,
 };

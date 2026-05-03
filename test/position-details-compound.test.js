@@ -29,7 +29,7 @@ describe("_scanCompounds", () => {
       dir,
       async () => ({ totalCompoundedUsd: 0, compounds: [] }),
     );
-    assert.deepStrictEqual(result, { total: 0, current: 0 });
+    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
     fs.rmSync(dir, { recursive: true });
   });
 
@@ -129,6 +129,6 @@ describe("_scanCompounds", () => {
         throw new Error("RPC fail");
       },
     );
-    assert.deepStrictEqual(result, { total: 0, current: 0 });
+    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
   });
 });

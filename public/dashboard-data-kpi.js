@@ -405,17 +405,15 @@ function _renderPnlGas(curGas) {
 
 /*- Unmanaged: phase 1 (_applyCurrentKpis) populates value/fees/price
  *  but doesn't touch Fees Compounded or Gas — those come from the
- *  per-NFT chain scan / live epoch in phase 2 and would otherwise
- *  render as dash. Layer them in from the snapshot once phase 2 has
- *  run. Gas is read from the cached live epoch (whatever the bot last
- *  wrote during a prior Manage cycle); 0 → dash, which is correct
- *  when no bot has ever managed this position. */
+ *  per-NFT chain scan in phase 2 and would otherwise render as dash.
+ *  Both currentCompoundedUsd and currentGasUsd are computed by the
+ *  unmanaged scan from chain (mint TX + standalone compound TXs at
+ *  current native price), independent of any prior Manage cycle. */
 function _applyUnmanagedSnapshotOverlay(d) {
   if (!d.pnlSnapshot) return;
   const curComp = d.pnlSnapshot.currentCompoundedUsd || 0;
   setKpiValue("pnlCompounded", curComp > 0 ? curComp : null);
-  const ep = d.pnlSnapshot.liveEpoch;
-  _renderPnlGas(ep ? ep.gas || 0 : 0);
+  _renderPnlGas(d.pnlSnapshot.currentGasUsd || 0);
 }
 
 export function _updateKpis(d) {
