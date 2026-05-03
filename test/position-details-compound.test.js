@@ -1,6 +1,6 @@
 /**
  * @file test/position-details-compound.test.js
- * @description Tests for _scanCompounds in position-details.js.
+ * @description Tests for _scanCompounds in position-details-compound.js.
  */
 
 "use strict";
@@ -10,7 +10,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { _scanCompounds } = require("../src/position-details");
+const { _scanCompounds } = require("../src/position-details-compound");
 
 describe("_scanCompounds", () => {
   const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-shared-"));

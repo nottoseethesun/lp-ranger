@@ -31,10 +31,7 @@ const {
   _applyPriceOverrides,
   _walletResiduals,
 } = require("./position-details-quick");
-const {
-  _scanCompounds,
-  _resolveCompounded,
-} = require("./position-details-compound");
+const { _resolveCompounded } = require("./position-details-compound");
 const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
 const { computeHodlIL } = require("./il-calculator");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
@@ -491,7 +488,6 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
 module.exports = {
   computeQuickDetails,
   computeLifetimeDetails,
-  _scanCompounds,
   _extractSnap,
   _lifetimePnl,
   _resolveEntryValueCached,
