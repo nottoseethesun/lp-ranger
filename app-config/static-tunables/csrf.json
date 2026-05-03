@@ -1,5 +1,5 @@
 {
-  "_comment": "CSRF token lifetime + dashboard refresh cadence. The server mints tokens valid for tokenTtlMs and sends both the token and refreshIntervalMs to the dashboard on GET /api/csrf-token. The dashboard sets a setInterval(refreshCsrfToken, refreshIntervalMs) so auto-fired POSTs (background pool-history scans, silent position refreshes, etc.) never hit a 403 on long-running servers (e.g. Raspberry Pi 5 during a multi-hour phase-2 event scan). refreshIntervalMs MUST be < tokenTtlMs; keep at least 10 minutes of margin to survive clock skew and a slow token fetch. Change either value here and restart the server; no client code change needed.",
+  "_comment": "CSRF token lifetime + dashboard refresh cadence. The server mints tokens valid for tokenTtlMs and sends both the token and refreshIntervalMs to the dashboard on GET /api/csrf-token. The dashboard sets a setInterval(refreshCsrfToken, refreshIntervalMs) so auto-fired POSTs (background pool-history scans, silent position refreshes, etc.) never hit a 403 on long-running servers (e.g. Raspberry Pi 5 during a multi-hour phase-2 event scan). refreshIntervalMs MUST be < tokenTtlMs; default 5 min vs 60 min TTL leaves ~11 missed firings of slack against tab discards, silent network failures, and main-thread stalls. Change either value here and restart the server; no client code change needed.",
   "tokenTtlMs": 3600000,
-  "refreshIntervalMs": 3000000
+  "refreshIntervalMs": 300000
 }

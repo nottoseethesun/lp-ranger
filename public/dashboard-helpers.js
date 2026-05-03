@@ -567,28 +567,42 @@ export function fmtDuration(ms) {
 
 let _csrfToken = null;
 /*- Server-driven refresh cadence from app-config/static-tunables/csrf.json
-    (delivered alongside every token). Default 50 min, leaving 10 min margin
-    against the 60 min server-side TTL; survives a slow token fetch and
-    guarantees a valid token for auto-fired background POSTs (e.g. silent
-    pool-history scans) on long-running servers like Raspberry Pi 5. */
-let _csrfRefreshIntervalMs = 50 * 60 * 1000;
+    (delivered alongside every token). Default 5 min, giving ~11 missed
+    firings of slack against the 60 min server-side TTL — survives Chrome
+    tab discards, silent network failures, and main-thread stalls during
+    long pool scans on hardware like Raspberry Pi 5. */
+let _csrfRefreshIntervalMs = 5 * 60 * 1000;
 
 /**
  * Fetch a fresh CSRF token from the server. Called on init and
- * on a repeating timer set up in dashboard-init.js.
+ * on a repeating timer set up in dashboard-init.js. Logs success
+ * and failure so a missed refresh leaves a visible signal in the
+ * browser console (silent failures previously masked stale-token bugs).
  * @returns {Promise<void>}
  */
 export async function refreshCsrfToken() {
   try {
     const res = await fetch("/api/csrf-token");
-    if (res.ok) {
-      const data = await res.json();
-      _csrfToken = data.token;
-      if (typeof data.refreshIntervalMs === "number")
-        _csrfRefreshIntervalMs = data.refreshIntervalMs;
+    if (!res.ok) {
+      console.warn(
+        "[csrf] refresh failed: HTTP %d — token may expire before next attempt",
+        res.status,
+      );
+      return;
     }
-  } catch {
-    /* network error — keep existing token */
+    const data = await res.json();
+    _csrfToken = data.token;
+    if (typeof data.refreshIntervalMs === "number")
+      _csrfRefreshIntervalMs = data.refreshIntervalMs;
+    console.log(
+      "[csrf] token refreshed (next in %dm)",
+      Math.round(_csrfRefreshIntervalMs / 60000),
+    );
+  } catch (err) {
+    console.warn(
+      "[csrf] refresh failed: %s — token may expire before next attempt",
+      err.message,
+    );
   }
 }
 

@@ -26,7 +26,7 @@ const _tokens = new Tokens();
 /** Built-in fallback when the tunable file is missing or malformed. */
 const _FALLBACK = Object.freeze({
   tokenTtlMs: 60 * 60 * 1000,
-  refreshIntervalMs: 50 * 60 * 1000,
+  refreshIntervalMs: 5 * 60 * 1000,
 });
 
 const _TUNABLE_FILE = path.join(
@@ -130,6 +130,7 @@ function handleCsrf(req, res, jsonResponse) {
   if (method !== "GET" && method !== "OPTIONS") {
     const check = verifyToken(req.headers["x-csrf-token"]);
     if (!check.valid) {
+      console.warn("[csrf] 403 %s %s — %s", method, url, check.reason);
       jsonResponse(res, 403, { ok: false, error: check.reason });
       return true;
     }
