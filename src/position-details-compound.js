@@ -4,7 +4,7 @@
  *   details flow. Extracted from position-details.js to keep that file
  *   under the 500-line cap. Provides:
  *   - _scanCompounds: full chain scan returning { total, current, currentGasUsd }
- *   - _detectCurrentNftCompounded: cheap one-NFT scan for current values
+ *   - _detectCurrentNftValues: cheap one-NFT scan returning { compoundUsd, gasUsd }
  *   - _resolveCompounded: cache-first wrapper used by computeLifetimeDetails
  */
 
