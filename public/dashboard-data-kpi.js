@@ -226,7 +226,19 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   setKpiValue("pnlFees", curFees);
   const curCompounded = d.pnlSnapshot.currentCompoundedUsd || 0;
   setKpiValue("pnlCompounded", curCompounded > 0 ? curCompounded : null);
-  const curGas = ep ? ep.gas || 0 : 0;
+  /*-
+   *  Prefer the per-NFT chain-scanned `currentGasUsd` (mint + standalone
+   *  compound gas for the current NFT) over the per-epoch tracker sum so
+   *  Managed and Unmanaged Current panels report the same Gas figure.
+   *  Falls back to liveEpoch.gas when the per-NFT cache hasn't been
+   *  populated yet (first poll after a fresh start).
+   */
+  const curGas =
+    d.pnlSnapshot.currentGasUsd !== undefined
+      ? d.pnlSnapshot.currentGasUsd || 0
+      : ep
+        ? ep.gas || 0
+        : 0;
   _renderPnlGas(curGas);
   const curPc = deposit > 0 ? cv - deposit : 0;
   setKpiValue("pnlPrice", curPc);
@@ -246,7 +258,7 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   _setProfitKpi(
     "curProfit",
     curFees,
-    ep ? ep.gas || 0 : 0,
+    curGas,
     d.pnlSnapshot.totalIL,
     curCompounded,
   );

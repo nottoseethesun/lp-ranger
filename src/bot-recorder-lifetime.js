@@ -44,6 +44,13 @@ async function _classifyAllCompounds(
   const allCompounds = [];
   let totalUsd = 0;
   let totalCompoundGasWei = 0n;
+  /*-
+   *  Per-NFT total gas wei (mint + standalone compounds), keyed by tokenId.
+   *  Drives the Managed Current-panel "Gas" row so it matches the Unmanaged
+   *  on-chain scan for the same NFT.  Lifetime panel is untouched —
+   *  `_applyCompoundGas` still feeds the tracker for the lifetime sum.
+   */
+  const nftGasWeiByTokenId = {};
   for (const tid of ids) {
     const r = await classifyCompounds(allNftEvents.get(tid), {
       ...opts,
@@ -52,6 +59,7 @@ async function _classifyAllCompounds(
     for (const c of r.compounds) allCompounds.push({ ...c, tokenId: tid });
     totalUsd += r.totalCompoundedUsd;
     totalCompoundGasWei += BigInt(r.totalGasWei || "0");
+    nftGasWeiByTokenId[String(tid)] = String(r.totalNftGasWei || "0");
   }
   const d0 = opts.decimals0 ?? 8,
     d1 = opts.decimals1 ?? 8;
@@ -108,8 +116,21 @@ async function _classifyAllCompounds(
       usdValue: _eventUsd(c),
       trigger: "historical",
     }));
-    updateState({ compoundHistory: history, totalCompoundedUsd: totalUsd });
+    updateState({
+      compoundHistory: history,
+      totalCompoundedUsd: totalUsd,
+      nftGasWeiByTokenId,
+    });
     await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
+  } else {
+    /*-
+     *  No standalone compounds, but the per-NFT mint-gas figures we just
+     *  scanned still drive the Current-panel "Gas" row.  Persist them
+     *  even when totalUsd is zero so a never-compounded NFT still shows
+     *  the matching Unmanaged gas figure.
+     */
+    if (Object.keys(nftGasWeiByTokenId).length > 0)
+      updateState({ nftGasWeiByTokenId });
   }
 }
 

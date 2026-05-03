@@ -200,19 +200,6 @@ async function walletResiduals(
   }
 }
 
-/** Sum compound USD values that fall within the live epoch's timeframe. */
-function _currentEpochCompounded(snap, deps) {
-  const history = deps._botState?.compoundHistory;
-  const liveEpoch = snap.liveEpoch;
-  if (!history || !history.length || !liveEpoch) return 0;
-  const epochStart = liveEpoch.openTime || 0;
-  let sum = 0;
-  for (const c of history) {
-    if (new Date(c.timestamp).getTime() >= epochStart) sum += c.usdValue || 0;
-  }
-  return sum;
-}
-
 /** Compute HODL IL for a given pair of token amounts. */
 function _ilFor(realValue, a0, a1, price0, price1) {
   return a0 > 0 || a1 > 0
@@ -308,7 +295,17 @@ async function overridePnlWithRealValues(
     : snap.initialDeposit;
   const compounded = deps._botState?.totalCompoundedUsd || 0;
   snap.totalCompoundedUsd = compounded;
-  snap.currentCompoundedUsd = _currentEpochCompounded(snap, deps);
+  /*-
+   *  snap.currentCompoundedUsd and snap.currentGasUsd are populated by
+   *  the bot-loop-injected `applyCurrentNftFigures` hook (see deps wiring
+   *  in bot-loop.js, implementation in bot-pnl-current-nft.js).  Kept out
+   *  of bot-pnl-updater so the heavy compounder/ethers require chain only
+   *  loads when the actual bot cycle runs, not when test mocks
+   *  (bot-hodl-scan) require this module with a partial ethers stub.
+   *  Default to 0 so consumers reading the snapshot before the hook runs
+   *  see a stable shape rather than `undefined`.
+   */
+  snap.currentCompoundedUsd = 0;
   // Recompute all gas in current USD: gasNative × current native token price
   if (snap.totalGasNative > 0) {
     try {
@@ -506,6 +503,27 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         feesUsd,
         residuals,
       );
+      /*-
+       *  Per-NFT Current panel figures (currentGasUsd, override of
+       *  currentCompoundedUsd from cache).  Injected via deps so the
+       *  compounder/ethers require chain only loads when bot-cycle wires
+       *  it up — keeps bot-hodl-scan tests' partial ethers stub working.
+       */
+      if (deps._applyCurrentNftFigures) {
+        try {
+          await deps._applyCurrentNftFigures(
+            pnlSnapshot,
+            deps,
+            position,
+            poolState,
+          );
+        } catch (err) {
+          console.warn(
+            "[bot] applyCurrentNftFigures hook error: %s",
+            err.message || err,
+          );
+        }
+      }
     } catch (err) {
       console.warn("[bot] P&L update error:", err.message);
     }

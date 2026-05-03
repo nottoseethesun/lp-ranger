@@ -40,6 +40,7 @@ const {
   _reloadFromConfig,
   _humanizeError,
 } = require("./bot-cycle");
+const { applyCurrentNftFigures } = require("./bot-pnl-current-nft");
 const { wireBotStateGetConfig } = require("./bot-state-init");
 const {
   _detectPosition,
@@ -360,6 +361,7 @@ async function startBotLoop(opts) {
         _poolKey: botState._poolKey || null,
         _recordPoolRebalance: botState._recordPoolRebalance || null,
         _canRebalancePool: botState._canRebalancePool || null,
+        _applyCurrentNftFigures: applyCurrentNftFigures,
       });
       if (result.rebalanced || result.cancelled || result.compounded)
         specialActionCompleted = true;

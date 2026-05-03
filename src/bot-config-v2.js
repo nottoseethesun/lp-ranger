@@ -99,6 +99,24 @@ const POSITION_KEYS = [
   "autoCompoundThresholdUsd",
   "compoundHistory",
   "totalCompoundedUsd",
+  /*-
+   *  Per-NFT total gas wei (mint TX gas + standalone compound TX gas) keyed
+   *  by tokenId.  Populated by the lifetime scan and the on-demand per-NFT
+   *  backfill in `bot-pnl-updater._currentNftGasUsd`.  Drives the Current
+   *  panel's "Gas" row so Managed and Unmanaged report the same figure for
+   *  the same NFT.  Lifetime panel still uses the per-epoch tracker sum;
+   *  this field is Current-panel only.
+   */
+  "nftGasWeiByTokenId",
+  /*-
+   *  Per-NFT standalone-compound USD (sum of per-event usdValue) keyed by
+   *  tokenId.  Populated by the same backfill scan that fills
+   *  nftGasWeiByTokenId.  Drives the Managed Current panel's "Fees
+   *  Compounded" row when compoundHistory lacks entries for this NFT
+   *  (e.g. the unmanaged scan ran first and the bot's lifetime scan was
+   *  gated off by `hasCompoundData`).  Current-panel only.
+   */
+  "nftCompoundedUsdByTokenId",
   "lastCompoundAt",
   "offsetToken0Pct",
   /*-

@@ -60,9 +60,16 @@ async function recordCompound(deps, result) {
   const gasWei = BigInt(result.gasCostWei || 0);
   const gasCostUsd = gasWei > 0n ? await _actualGasCostUsd(gasWei) : 0;
   const history = _gc("compoundHistory") || [];
+  /*-
+   *  tokenId is required so the Managed Current panel can filter
+   *  compoundHistory to the current NFT (matching the Unmanaged scan).
+   *  Without it, `bot-pnl-updater._currentNftCompounded` would skip live
+   *  entries and the row would underreport.
+   */
   history.push({
     timestamp: result.timestamp,
     txHash: result.depositTxHash,
+    tokenId: deps.position?.tokenId ? String(deps.position.tokenId) : undefined,
     amount0Deposited: result.amount0Deposited,
     amount1Deposited: result.amount1Deposited,
     usdValue: result.usdValue,
@@ -72,9 +79,23 @@ async function recordCompound(deps, result) {
     trigger: result.trigger,
   });
   const total = (_gc("totalCompoundedUsd") || 0) + result.usdValue;
+  /*-
+   *  Invalidate the per-NFT Current-panel caches for this tokenId so the
+   *  next poll re-scans and picks up the new compound's gas + USD.  Cheap
+   *  (one per-NFT scan), runs at most once per compound.
+   */
+  const nftGasMap = { ...(_gc("nftGasWeiByTokenId") || {}) };
+  const nftCompMap = { ...(_gc("nftCompoundedUsdByTokenId") || {}) };
+  if (deps.position?.tokenId) {
+    const tid = String(deps.position.tokenId);
+    delete nftGasMap[tid];
+    delete nftCompMap[tid];
+  }
   emit({
     compoundHistory: history,
     totalCompoundedUsd: total,
+    nftGasWeiByTokenId: nftGasMap,
+    nftCompoundedUsdByTokenId: nftCompMap,
     lastCompoundAt: result.timestamp,
   });
   /* Add compound gas to the P&L tracker so it shows in the Gas KPI */

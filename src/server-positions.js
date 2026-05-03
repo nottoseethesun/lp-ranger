@@ -63,6 +63,10 @@ function createPerPositionBotState(_globalCfg, saved) {
     if (saved.totalCompoundedUsd)
       state.totalCompoundedUsd = saved.totalCompoundedUsd;
     if (saved.compoundHistory) state.compoundHistory = saved.compoundHistory;
+    if (saved.nftGasWeiByTokenId)
+      state.nftGasWeiByTokenId = saved.nftGasWeiByTokenId;
+    if (saved.nftCompoundedUsdByTokenId)
+      state.nftCompoundedUsdByTokenId = saved.nftCompoundedUsdByTokenId;
     if (saved.lastCompoundAt) state.lastCompoundAt = saved.lastCompoundAt;
   }
   return state;
@@ -98,6 +102,8 @@ function _persistPositionConfig(patch, diskConfig, key, dir) {
     "collectedFeesUsd",
     "compoundHistory",
     "totalCompoundedUsd",
+    "nftGasWeiByTokenId",
+    "nftCompoundedUsdByTokenId",
     "lastCompoundAt",
   ];
   const changed = _PERSIST.filter((k) => patch[k] !== undefined);

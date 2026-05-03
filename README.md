@@ -247,6 +247,7 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [ESM Migration](docs/roadmap/nice-to-haves/project_esm_migration.md) | Migrate the codebase from CommonJS `require` / `module.exports` to ESM `import` / `export`. Dedicated branch, big-bang change. |
 | [Log-to-File](docs/roadmap/nice-to-haves/project_log_to_file.md) | Optional CLI flag and Settings toggle to tee server output to `app-config/lp-ranger.log` with size rotation, for hardware with limited scrollback. |
 | [Dashboard Cycle Cleanup](docs/roadmap/nice-to-haves/project_dashboard_cycle_cleanup.md) | Untangle the 31 circular imports in `public/dashboard-*.js` (surfaced by `npm run show-dependency-cycles`), then wire `madge --circular` into `npm run check` to block future cycles. Not a major issue — the esbuild bundle dedupes any duplication at build time and nothing breaks at runtime; this is a structural cleanup that would allow a cycle gate to be installed in CI. |
+| [Current-Panel Historical Prices for Gas + Fees Compounded](docs/roadmap/nice-to-haves/project_current_panel_historical_prices.md) | Value the Current panel's Gas and Fees Compounded rows at per-TX historical prices instead of today's prices (applies to both Managed and Unmanaged). A small improvement — the Lifetime panel already exists for comprehensive at-a-glance accounting, so the Current panel snapshot using current prices is acceptable. |
 
 ### Possible Major New Features
 
