@@ -18,12 +18,22 @@ const {
 
 // ── Mock fs ─────────────────────────────────────────────────────────────────
 
+/*- Mirror real fs's ENOENT shape (code === "ENOENT") so callers that
+ *  branch on `err.code` see the same behaviour they would in production.
+ *  Without `code`, `clearLpPositionCache`'s "warn on non-ENOENT" guard
+ *  would fire spurious warnings under the mock. */
+function _enoent() {
+  const e = new Error("ENOENT");
+  e.code = "ENOENT";
+  return e;
+}
+
 function createMockFs() {
   const files = {};
   return {
     files,
     readFileSync(p) {
-      if (files[p] === undefined) throw new Error("ENOENT");
+      if (files[p] === undefined) throw _enoent();
       return files[p];
     },
     writeFileSync(p, data) {
@@ -31,7 +41,7 @@ function createMockFs() {
     },
     mkdirSync() {},
     unlinkSync(p) {
-      if (files[p] === undefined) throw new Error("ENOENT");
+      if (files[p] === undefined) throw _enoent();
       delete files[p];
     },
   };
@@ -111,6 +121,35 @@ describe("lp-position-cache — clear", () => {
     assert.doesNotThrow(() =>
       clearLpPositionCache(WALLET, { fsModule: mockFs }),
     );
+  });
+
+  it("warns when unlinkSync fails for a non-ENOENT reason (permissions, etc.)", () => {
+    /*- Operator-visibility regression guard: a permission/disk-full
+     *  failure must not masquerade as a successful clear.  ENOENT
+     *  stays silent (normal first-rebalance / already-cleared path);
+     *  any other error surfaces a `[lp-cache] Failed to clear cache`
+     *  warning so the operator can see why a stale cache might
+     *  outlive a rebalance. */
+    const mockFs = createMockFs();
+    mockFs.unlinkSync = () => {
+      const e = new Error("EACCES: permission denied");
+      e.code = "EACCES";
+      throw e;
+    };
+    const origWarn = console.warn;
+    const warns = [];
+    console.warn = (...args) => warns.push(args.join(" "));
+    try {
+      assert.doesNotThrow(() =>
+        clearLpPositionCache(WALLET, { fsModule: mockFs }),
+      );
+      assert.ok(
+        warns.some((s) => s.includes("Failed to clear cache")),
+        "expected a [lp-cache] Failed to clear cache warning",
+      );
+    } finally {
+      console.warn = origWarn;
+    }
   });
 });
 

@@ -476,6 +476,16 @@ async function _fetchAndApplyScan() {
   if (data.cached) _backgroundRefresh();
   return { data, added, nftCount };
 }
+/**
+ * @returns {Promise<{ok: boolean, added?: number, nftCount?: number, error?: string}>}
+ *   `ok:true` means the scan reached the server, returned a valid
+ *   response, and `_addScannedPositions` ran.  `ok:false` covers any
+ *   failure path \u2014 used by `dashboard-data-events.js` to decide
+ *   whether to advance the rebalance tracker so a transient failure
+ *   (network, CSRF, RPC) is retried on the next 3 s poll instead of
+ *   being silently swallowed (the `lp-browser stale after idle
+ *   rebalance` bug observed in burn-in).
+ */
 export async function scanPositions(opts) {
   const silent = opts?.silent || false;
   if (!wallet.address) {
@@ -486,7 +496,7 @@ export async function scanPositions(opts) {
         "No Wallet Loaded",
         "Import a wallet first to scan for positions",
       );
-    return;
+    return { ok: false, error: "no wallet" };
   }
   const btn = g("posScanBtn");
   if (btn && !silent) {
@@ -506,9 +516,11 @@ export async function scanPositions(opts) {
       if (nftCount === 0) _showNoPositionsDialog();
       if (!opts || opts.navigate !== false) await _syncAfterManualScan();
     }
+    return { ok: true, added, nftCount };
   } catch (e) {
     console.error("[lp-ranger] Position scan failed:", e.message);
     if (!silent) act(ACT_ICONS.warn, "alert", "Scan Failed", e.message);
+    return { ok: false, error: e.message };
   } finally {
     if (btn && !silent) {
       btn.disabled = false;
