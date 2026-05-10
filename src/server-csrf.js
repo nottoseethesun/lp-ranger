@@ -72,6 +72,25 @@ const _issued = new Map();
 const _MAX_ISSUED = 500;
 
 /**
+ * Ring buffer of recent 403 rejections, keyed by `<METHOD> <url>` →
+ * timestamp.  Used to detect a successful silent retry after the
+ * dashboard's `fetchWithCsrf` refreshes its token: when a verify call
+ * succeeds for a `(method, url)` that 403'd within
+ * `_RETRY_LOG_WINDOW_MS`, we log a complementary
+ * `[csrf] retry succeeded` line so the operator can confirm from logs
+ * that the recovery worked (mirrors the existing
+ * `[csrf] 403 ... — Expired/Unknown CSRF token` warning).
+ *
+ * Bounded — we keep at most one entry per `(method, url)` and prune on
+ * insert + on successful match — so growth is O(distinct mutating
+ * paths) regardless of session length.
+ *
+ * @type {Map<string, number>}
+ */
+const _recent403 = new Map();
+const _RETRY_LOG_WINDOW_MS = 30_000;
+
+/**
  * Create a new CSRF token and record its issue time.
  * @returns {{ token: string, expiresAt: number, refreshIntervalMs: number }}
  */
@@ -114,8 +133,28 @@ function _pruneExpired(now, tokenTtlMs) {
 }
 
 /**
+ * Drop entries older than the retry-log window.  Called from both the
+ * 403-record path (so the buffer can't keep stale matches around) and
+ * the success path (so a long-quiet path doesn't permanently mask a
+ * future retry).
+ * @param {number} now
+ */
+function _prune403Buffer(now) {
+  for (const [k, ts] of _recent403) {
+    if (now - ts > _RETRY_LOG_WINDOW_MS) _recent403.delete(k);
+  }
+}
+
+/**
  * Handle CSRF for a request: serve token on GET /api/csrf-token, verify on
  * mutating methods.  Returns `true` when the response has been sent.
+ *
+ * Logs `[csrf] retry succeeded for <METHOD> <url>` when a successful
+ * verify lands on a `(method, url)` that recently 403'd — gives the
+ * operator a clear signal that the silent token-refresh-and-retry in
+ * `fetchWithCsrf` recovered, mirroring the existing
+ * `[csrf] 403 ... — Expired/Unknown CSRF token` warning.
+ *
  * @param {http.IncomingMessage} req
  * @param {http.ServerResponse}  res
  * @param {(res, status, body) => void} jsonResponse
@@ -129,10 +168,21 @@ function handleCsrf(req, res, jsonResponse) {
   }
   if (method !== "GET" && method !== "OPTIONS") {
     const check = verifyToken(req.headers["x-csrf-token"]);
+    const key = method + " " + url;
+    const now = Date.now();
     if (!check.valid) {
       console.warn("[csrf] 403 %s %s — %s", method, url, check.reason);
+      _prune403Buffer(now);
+      _recent403.set(key, now);
       jsonResponse(res, 403, { ok: false, error: check.reason });
       return true;
+    }
+    const recent = _recent403.get(key);
+    if (recent !== undefined && now - recent <= _RETRY_LOG_WINDOW_MS) {
+      console.log("[csrf] retry succeeded for %s %s", method, url);
+      _recent403.delete(key);
+    } else if (recent !== undefined) {
+      _recent403.delete(key);
     }
   }
   return false;

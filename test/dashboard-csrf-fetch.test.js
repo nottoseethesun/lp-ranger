@@ -40,6 +40,11 @@ async function _fetch(url, init) {
   return _fetchImpl(url, init, _fetchCalls.length);
 }
 
+const _CSRF_RETRY_REASONS = new Set([
+  "Expired CSRF token",
+  "Unknown CSRF token",
+]);
+
 async function fetchWithCsrf(url, init = {}) {
   const initWithToken = {
     ...init,
@@ -53,7 +58,7 @@ async function fetchWithCsrf(url, init = {}) {
   } catch {
     return res;
   }
-  if (!body || body.error !== "Expired CSRF token") return res;
+  if (!body || !_CSRF_RETRY_REASONS.has(body.error)) return res;
   await refreshCsrfToken();
   const retryInit = {
     ...init,
@@ -126,6 +131,28 @@ describe("fetchWithCsrf", () => {
       _fetchCalls[1].init.headers["x-csrf-token"],
       "fresh-token-1",
       "retry must use the freshly refreshed token, not the stale one",
+    );
+  });
+
+  it("refreshes and retries once on 403 with Unknown CSRF token", async () => {
+    /*- "Unknown CSRF token" means the server pruned an aged-out token
+     *  from its in-memory `_issued` map (see src/server-csrf.js
+     *  `_pruneExpired`).  Same root cause as Expired (token past TTL),
+     *  so the silent recovery is identical: refresh + retry.  Without
+     *  this case in the retry set, every "Unknown" 403 used to drop
+     *  the request silently — a real loss observed in burn-in logs. */
+    _fetchImpl = async (_url, _init, callIdx) => {
+      if (callIdx === 1)
+        return makeRes(403, { ok: false, error: "Unknown CSRF token" });
+      return makeRes(200, { ok: true });
+    };
+    const r = await fetchWithCsrf("/api/foo", { method: "POST" });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(_fetchCalls.length, 2);
+    assert.strictEqual(_refreshCount, 1);
+    assert.strictEqual(
+      _fetchCalls[1].init.headers["x-csrf-token"],
+      "fresh-token-1",
     );
   });
 

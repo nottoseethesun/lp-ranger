@@ -373,6 +373,33 @@ already tolerate that.
 
 ---
 
+## Idle-Suppressed Polling Sounds
+
+The dashboard's master **Sounds** toggle (Settings popover) plays a jingle
+on every detected rebalance / compound success, driven by the 3-second
+status poll. While the user is logged out of the desktop or otherwise
+idle, those events still accrue on the server side and surface on the
+next poll after activity returns — without a gate, returning to a long-
+untouched tab triggers a backlog of jingles in quick succession (observed
+during burn-in).
+
+`public/dashboard-sounds.js` `playSound()` reads `isBrowserPaused()` from
+`public/dashboard-idle.js` and skips playback while the browser-side
+idle flag is `true`. `playSoundAlways()` (About Easter Egg, LP/Ranger
+title tune) is intentionally unaffected — those fire on explicit user
+clicks, and any click is itself an activity event that flips
+`_browserHasPaused` to `false` synchronously before the click handler
+runs.
+
+The browser idle flag is independent of the move-scope bypass
+(`withFreshPricesAllowed`). That bypass lives entirely server-side in
+`src/price-fetcher-gate.js` and never touches the browser, so an auto-
+rebalance or compound that runs while the user is away leaves the
+browser still paused and the gate suppresses the corresponding sound
+until the user returns.
+
+---
+
 ## Balanced-Band Telegram Notification
 
 Optional Telegram alert that fires when a managed position drifts into
@@ -1172,6 +1199,35 @@ To change either value, edit `csrf.json` and restart the server.
 `readCsrfTunable()` is called on every `createToken()` and `verifyToken()`
 so the values are always current on the server side; the client picks
 up the new `refreshIntervalMs` on its next scheduled refresh.
+
+**Silent retry on aged-out tokens.** Even with the dedicated refresh
+timer, Chrome can throttle a hidden tab's `setInterval` hard enough that
+the held token ages past TTL before the next scheduled refresh fires.
+`fetchWithCsrf` in `public/dashboard-helpers.js` covers that case: when
+a `403` body identifies the token as either `"Expired CSRF token"` or
+`"Unknown CSRF token"`, the wrapper refreshes the token and retries the
+original request once.
+
+The two reasons share a root cause:
+
+| Server reason | Meaning |
+| --- | --- |
+| `Expired CSRF token` | Token still in `_issued`, but past `tokenTtlMs`. |
+| `Unknown CSRF token` | Token cryptographically valid (issued by this server) but no longer in `_issued` — i.e. expired *and* already pruned by `_pruneExpired` (which runs only when `_issued.size >= 500` and only deletes tokens already past TTL). |
+
+Treating both as retryable closes the gap that previously dropped the
+"Unknown" path silently — observed in burn-in logs as
+`[csrf] 403 POST /api/positions/scan — Unknown CSRF token` with no
+matching recovery line.
+
+**Retry observability.** Server-side, `handleCsrf` keeps a small ring
+buffer of the most recent 403 per `(method, url)` (windowed at 30 s).
+When the next successful verify lands on a `(method, url)` in that
+buffer, it logs `[csrf] retry succeeded for <METHOD> <url>` —
+mirroring the existing
+`[csrf] 403 <METHOD> <url> — <reason>` warning so the operator can
+confirm from the log that the silent recovery worked. The buffer entry
+is cleared on match; a second valid verify is silent.
 
 **Lint enforcement:** The custom ESLint rule
 [`9mm/no-fetch-without-csrf`](../eslint-rules/no-fetch-without-csrf.js)

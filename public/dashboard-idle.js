@@ -131,7 +131,20 @@ export function startBrowserIdleTracker() {
   console.log("[dashboard] idle tracker started");
 }
 
-/** Test/debug: current browser-side pause flag. */
-export function _isBrowserPaused() {
+/**
+ * Current browser-side pause flag.  Read by other dashboard modules that
+ * need to suppress idle-time work — e.g. `dashboard-sounds.js` skips
+ * polling-driven event sounds while the dashboard is idle so a user
+ * returning to a long-untouched tab is not greeted with a backlog of
+ * rebalance/compound jingles.
+ *
+ * Item 4 of the four pause sources (move-scope `withFreshPricesAllowed`)
+ * lives entirely server-side in `src/price-fetcher-gate.js` — it never
+ * touches this flag, so an auto-rebalance/compound that fires while the
+ * user is away leaves the browser still believing itself paused.
+ *
+ * @returns {boolean}
+ */
+export function isBrowserPaused() {
   return _browserHasPaused;
 }

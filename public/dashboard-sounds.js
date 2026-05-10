@@ -16,6 +16,7 @@
 "use strict";
 
 import { g } from "./dashboard-helpers.js";
+import { isBrowserPaused } from "./dashboard-idle.js";
 
 /** localStorage key for the master Sounds toggle. Value: "0" or "1". */
 const _LS_KEY = "9mm_sounds_enabled";
@@ -64,13 +65,26 @@ export function isSoundsEnabled() {
 }
 
 /**
- * Play a sound file, gated on the master Sounds toggle.
+ * Play a sound file, gated on the master Sounds toggle AND on browser
+ * idle state.  Idle-gating prevents a backlog of rebalance/compound
+ * jingles from greeting a user who returns to a long-untouched tab —
+ * the polling-driven trackers in this module call `playSound` whenever
+ * the per-position `lastRebalanceAt` / `lastCompoundAt` timestamps tick
+ * forward, including events that fired hours ago while the dashboard
+ * was paused.  Activity events unpause synchronously in
+ * `dashboard-idle.js` (focus/click/key/touch/wheel/pointer), so a
+ * click-driven `playSound` reaches this gate after the flag has flipped
+ * back to `false`.  See docs/architecture.md "Idle-Driven Price-Lookup
+ * Pause" for the full state machine.
+ *
  * Failures (autoplay policy, missing file, decoding errors) are swallowed
  * so the calling UI flow is never disrupted.
+ *
  * @param {string} path  URL path relative to the site root.
  */
 export function playSound(path) {
   if (!isSoundsEnabled()) return;
+  if (isBrowserPaused()) return;
   playSoundAlways(path);
 }
 

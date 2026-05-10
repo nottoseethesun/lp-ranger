@@ -628,11 +628,21 @@ export function csrfRefreshIntervalMs() {
 
 /*-
  *  fetch wrapper that auto-attaches the CSRF token and, on a 403 whose
- *  body identifies an expired token, fetches a fresh token once and
+ *  body identifies an aged-out token, fetches a fresh token once and
  *  retries the original request.  Centralises the recovery so every
  *  dashboard POST/DELETE survives the throttled-background-timer case
  *  where Chrome's setInterval coalescing on a hidden tab let the held
  *  token age past the 60-min server TTL (see `app-config/static-tunables/csrf.json`).
+ *
+ *  Two server-side reason strings are treated as the same root cause:
+ *    - "Expired CSRF token"  — token still in `_issued` map, past TTL.
+ *    - "Unknown CSRF token"  — token cryptographically valid but no
+ *                              longer in `_issued` (server pruned it).
+ *  Pruning only ever drops already-expired tokens (see `_pruneExpired`
+ *  in `src/server-csrf.js`), so "Unknown" is "Expired AND forgotten" —
+ *  the recovery is identical: refresh + retry once.  Treating both the
+ *  same closes the gap that left `Unknown` requests dropped silently
+ *  (observed in burn-in logs).
  *
  *  GET-only callers can keep using plain `fetch` — the CSRF guard in
  *  `src/server-csrf.js` only runs for non-GET methods.
@@ -641,6 +651,11 @@ export function csrfRefreshIntervalMs() {
  *  unrelated 403s (e.g. a future authz check).  Reason strings come from
  *  `verifyToken` in `src/server-csrf.js`.
  */
+const _CSRF_RETRY_REASONS = new Set([
+  "Expired CSRF token",
+  "Unknown CSRF token",
+]);
+
 export async function fetchWithCsrf(url, init = {}) {
   const initWithToken = {
     ...init,
@@ -658,8 +673,11 @@ export async function fetchWithCsrf(url, init = {}) {
   } catch {
     return res;
   }
-  if (!body || body.error !== "Expired CSRF token") return res;
-  console.log("[csrf] 403 expired-token — refreshing and retrying once");
+  if (!body || !_CSRF_RETRY_REASONS.has(body.error)) return res;
+  console.log(
+    "[csrf] 403 %s — refreshing and retrying once",
+    body.error.toLowerCase().replace(/ csrf token$/, "-token"),
+  );
   await refreshCsrfToken();
   const retryInit = {
     ...init,
