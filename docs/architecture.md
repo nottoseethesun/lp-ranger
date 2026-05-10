@@ -392,6 +392,16 @@ Two configurable global keys live in `app-config/.bot-config.json`:
 `priceCacheTtlMs × multiplier`, with a runtime assertion guarding the
 integer-multiple invariant.
 
+The browser-side flag (`isBrowserPaused()` in `public/dashboard-idle.js`)
+is also the gate for `playSound()` in `public/dashboard-sounds.js`:
+polling-driven rebalance and compound jingles are suppressed while the
+dashboard is idle, so a user returning to a long-untouched tab is not
+greeted with a backlog of event sounds. `playSoundAlways()` (Easter Egg,
+title tune) is unaffected. The move-scope bypass
+(`withFreshPricesAllowed`) is irrelevant here — it never touches the
+browser flag — so an auto-rebalance/compound that runs while the user is
+away leaves the browser paused and its corresponding sound suppressed.
+
 ---
 
 ## Security Model
