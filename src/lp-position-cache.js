@@ -99,6 +99,17 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
 /**
  * Delete the LP position cache for a wallet.  Called after rebalance
  * mints a new NFT (tokenId list changed, balance didn't).
+ *
+ * Logs on success so operators can confirm post-rebalance invalidation
+ * happened — without this signal the only way to verify the cache was
+ * cleared was inferential (no `[lp-cache] Cache hit` on the next
+ * `/api/positions/scan`).  Helps diagnose the
+ * `LP-browser stale until manual scan` failure mode that surfaced
+ * during burn-in.  ENOENT (cache file didn't exist — first rebalance
+ * for this wallet, or already cleared) stays silent; other errors are
+ * surfaced so a permission/disk-full issue can't masquerade as a
+ * successful clear.
+ *
  * @param {string} walletAddress
  * @param {object} [opts]
  * @param {object} [opts.fsModule]  Injected fs for testing.
@@ -109,8 +120,24 @@ function clearLpPositionCache(walletAddress, opts) {
     _fs.unlinkSync(
       lpPositionCachePath(walletAddress, opts?.blockchain, opts?.contract),
     );
-  } catch {
-    /* file may not exist */
+    console.log(
+      _C +
+        "[lp-cache] Cache cleared for wallet " +
+        walletAddress.slice(0, 8) +
+        "… (post-rebalance)" +
+        _R,
+    );
+  } catch (err) {
+    if (err && err.code !== "ENOENT") {
+      console.warn(
+        _C +
+          "[lp-cache] Failed to clear cache for wallet " +
+          walletAddress.slice(0, 8) +
+          "…: " +
+          err.message +
+          _R,
+      );
+    }
   }
 }
 
