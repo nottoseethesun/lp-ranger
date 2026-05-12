@@ -35,6 +35,13 @@ let _browserHasPaused = false;
 let _lastActivityTs = 0;
 let _lastActivityType = "activity";
 
+/*- Wake timestamp consulted by `isStaleForUiPurposes`.  Advances inside
+ *  `_onActivity` ONLY when an activity event lands after a gap longer
+ *  than `PAUSE_AFTER_NO_INPUT_MS` — i.e., the UI is transitioning back
+ *  to awake after a long-idle / suspend window.  Monotonically advances
+ *  and is never cleared; do not introduce a clearing path. */
+let _uiLastWokeUpAtMS = Date.now();
+
 /**
  * Activity event set.  Covers every gesture surface that real human use
  * produces — mouse, keyboard, scroll, touch, pointer.  `focus` is
@@ -109,6 +116,17 @@ function _onActivity(ev) {
   if (ev && ev.type) _lastActivityType = ev.type;
   const now = Date.now();
   if (now - _lastActivityTs < ACTIVITY_THROTTLE_MS) return;
+  /*- Wake-from-idle detection: any activity event arriving after a gap
+   *  longer than the no-input threshold means the UI was effectively
+   *  asleep — covers BOTH the normal browser-pause path (where
+   *  `_sendUnpause` is about to run below) AND the system-suspend /
+   *  tab-discard path where the no-input timer self-cancelled as stale
+   *  and `_sendUnpause` never fired.  `focus` is the first entry in
+   *  `ACTIVITY_EVENTS`, so on tab re-focus this runs synchronously
+   *  before any pending poll response can be processed. */
+  if (now - _lastActivityTs > PAUSE_AFTER_NO_INPUT_MS) {
+    _uiLastWokeUpAtMS = now;
+  }
   _lastActivityTs = now;
   _armNoInputTimer();
   if (_browserHasPaused) _sendUnpause(_lastActivityType);
@@ -147,4 +165,22 @@ export function startBrowserIdleTracker() {
  */
 export function isBrowserPaused() {
   return _browserHasPaused;
+}
+
+/**
+ * Return `true` if `eventMs` predates the UI's most recent wake-up.
+ * Used by `public/dashboard-sounds.js` to suppress polling-driven sound
+ * effects for events that fired while the dashboard tab was idle or
+ * suspended — the `isBrowserPaused` gate alone does not catch the
+ * system-suspend case (JS frozen, polling stopped, seen-maps stale)
+ * because on resume the seen-maps see "new" timestamps and the gate
+ * has already been cleared by the wake activity event.
+ *
+ * Pure function.  Reads `_uiLastWokeUpAtMS`, never mutates it.
+ *
+ * @param {number} eventMs  Wall-clock ms (Date.now() comparable).
+ * @returns {boolean}
+ */
+export function isStaleForUiPurposes(eventMs) {
+  return eventMs < _uiLastWokeUpAtMS;
 }

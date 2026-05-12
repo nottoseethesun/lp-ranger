@@ -16,7 +16,7 @@
 "use strict";
 
 import { g } from "./dashboard-helpers.js";
-import { isBrowserPaused } from "./dashboard-idle.js";
+import { isBrowserPaused, isStaleForUiPurposes } from "./dashboard-idle.js";
 
 /** localStorage key for the master Sounds toggle. Value: "0" or "1". */
 const _LS_KEY = "9mm_sounds_enabled";
@@ -163,18 +163,40 @@ const _rebSeen = new Map();
 const _compoundSeen = new Map();
 let _trackersPrimed = false;
 
+/*- Normalize a `lastRebalanceAt` / `lastCompoundAt` value into ms since
+ *  epoch.  The bot writes the former as numeric ms (`src/bot-recorder.js`
+ *  line 398 + `src/bot-cycle-residual.js` line 232, both via
+ *  `Date.now()`), and the latter as an ISO string (`src/bot-cycle-compound.js`
+ *  line 99 reads `result.timestamp` which `src/compounder.js` builds
+ *  via `new Date().toISOString()`).  Returns `null` for unparseable
+ *  input so the staleness gate fails open. */
+function _toMs(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const ms = Date.parse(v);
+    if (Number.isFinite(ms)) return ms;
+  }
+  return null;
+}
+
 /** Fire rebalance-success sound if the value changed (post-priming). */
 export function checkRebalanceSound(key, lastRebalanceAt) {
   if (!lastRebalanceAt || lastRebalanceAt === _rebSeen.get(key)) return;
   _rebSeen.set(key, lastRebalanceAt);
-  if (_trackersPrimed) playSound(SOUND_REBALANCE_SUCCESS);
+  if (!_trackersPrimed) return;
+  const eventMs = _toMs(lastRebalanceAt);
+  if (eventMs !== null && isStaleForUiPurposes(eventMs)) return;
+  playSound(SOUND_REBALANCE_SUCCESS);
 }
 
 /** Fire compound-success sound if the value changed (post-priming). */
 export function checkCompoundSound(key, lastCompoundAt) {
   if (!lastCompoundAt || lastCompoundAt === _compoundSeen.get(key)) return;
   _compoundSeen.set(key, lastCompoundAt);
-  if (_trackersPrimed) playSound(SOUND_COMPOUND_SUCCESS);
+  if (!_trackersPrimed) return;
+  const eventMs = _toMs(lastCompoundAt);
+  if (eventMs !== null && isStaleForUiPurposes(eventMs)) return;
+  playSound(SOUND_COMPOUND_SUCCESS);
 }
 
 /** Mark trackers primed (call after first poll-response processing). */

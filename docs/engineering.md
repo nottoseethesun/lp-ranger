@@ -398,6 +398,16 @@ rebalance or compound that runs while the user is away leaves the
 browser still paused and the gate suppresses the corresponding sound
 until the user returns.
 
+`isBrowserPaused` alone does not catch system-suspend or tab-discard:
+when JS execution freezes the 3 s polling stops, the seen-maps stay
+stale, and on wake the next poll fires sounds for every event the bot
+recorded during sleep. `public/dashboard-idle.js` `_uiLastWokeUpAtMS`
+advances inside `_onActivity` when an activity event (`focus` arriving
+first) lands after a gap exceeding `PAUSE_AFTER_NO_INPUT_MS` (15 min);
+the exported `isStaleForUiPurposes(eventMs)` consulted by
+`checkRebalanceSound` and `checkCompoundSound` then filters any event
+whose server timestamp predates that wake moment.
+
 ---
 
 ## Balanced-Band Telegram Notification
