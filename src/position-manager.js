@@ -23,7 +23,6 @@ const { Mutex } = require("async-mutex");
 const { nextMidnight } = require("./throttle");
 const { emojiId } = require("./logger");
 const config = require("./config");
-const { createProviderWithFallback } = require("./bot-provider");
 const sendTx = require("./send-transaction");
 const { createFailoverSigner } = require("./nonce-manager-wrapper");
 
@@ -69,16 +68,13 @@ function createPositionManager(opts) {
     _sharedPromise = (async () => {
       const { privateKey, ethersLib, dryRun } = signerOpts || {};
       /*- Initialise the send-transaction module's primary + fallback
-          providers from chain config.  Idempotent in spirit, but
-          send-tx doesn't expose a "re-init" — first wallet wins for
-          the lifetime of the process, which matches the singleton
-          shared-signer contract. */
+          providers from chain config.  init() is idempotent: a
+          subsequent call from bot-loop or server.js with the same
+          URLs is a no-op.  ensureReachable() probes the primary and
+          engages failoverToNextRPC() if it's down at boot. */
       sendTx.init(config.CHAIN.rpc, ethersLib);
-      const provider = await createProviderWithFallback(
-        config.RPC_URL,
-        config.RPC_URL_FALLBACK,
-        ethersLib,
-      );
+      await sendTx.ensureReachable();
+      const provider = sendTx.getManagedReadProvider();
       const base =
         dryRun && !privateKey
           ? ethersLib.Wallet.createRandom().connect(provider)

@@ -14,6 +14,7 @@ const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
 const config = require("./config");
+const sendTx = require("./send-transaction");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const {
@@ -151,7 +152,7 @@ async function _supplementMintFromChain(result, tokenId) {
     return;
   }
   try {
-    const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+    const prov = sendTx.getManagedReadProvider();
     /* Search recent blocks only — NFTs are minted within
        the last ~5 years max (~15.8M blocks on PulseChain). */
     const latest = await prov.getBlockNumber();
@@ -371,7 +372,7 @@ async function _supplementAmountsFromChain(result, tokenId) {
   const needExit = !result.exitValueUsd && result.token0UsdPriceAtClose;
   if (!needEntry && !needExit) return;
 
-  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const prov = sendTx.getManagedReadProvider();
   const tokens = await _getPositionTokens(tokenId, prov);
   if (!tokens) return;
   const [dec0, dec1] = await Promise.all([
@@ -459,7 +460,7 @@ async function _supplementGasFromChain(result, mintGasWei, prov) {
  * @returns {Promise<string|null>}
  */
 async function _resolvePoolAddress(activePosition, tokenId) {
-  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const prov = sendTx.getManagedReadProvider();
   let pos = activePosition;
   if (!pos || !pos.token0 || !pos.token1 || !pos.fee) {
     pos = await _getPositionTokens(tokenId, prov);

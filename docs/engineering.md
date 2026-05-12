@@ -1709,6 +1709,12 @@ timer expires. Broadcast failover requires the signer to be a
 `FailoverNonceManager` that lazily rebinds on RPC change. No-op when
 the configured primary and fallback URLs are identical.
 
+Reads use the same window. `getManagedReadProvider()` returns a Proxy
+that delegates each call to `getCurrentRPC()` and retries failover-
+eligible errors (`SERVER_ERROR`, `TIMEOUT`, `NETWORK_ERROR`, 5xx) via
+`failoverToNextRPC()`. Boot reachability is `ensureReachable()`. One
+sticky failover state covers both sides.
+
 #### Slippage Guards
 
 Swap `amountOutMinimum` is derived from a `staticCall` quote

@@ -12,6 +12,7 @@
 
 const ethers = require("ethers");
 const config = require("./config");
+const sendTx = require("./send-transaction");
 const {
   setCachedLifetimeHodl,
   setCachedFreshDeposits,
@@ -71,7 +72,7 @@ async function scanLifetimeHodl(
     if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
     if (ev.newTokenId) ids.add(String(ev.newTokenId));
   }
-  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const prov = sendTx.getManagedReadProvider();
   /*- Bound NFT-event scans to the pool's creation block on first run.
       Same pool for every NFT in the chain, so resolve once. */
   const fromBlock = await _resolveScanFromBlock(prov, ethers, poolAddress);

@@ -2,103 +2,17 @@
 
 /**
  * @file test/bot.test.js
- * @description Tests for bot.js — RPC fallback, pollCycle, appendLog.
+ * @description Tests for bot.js — pollCycle, appendLog, CLI help.
+ * Boot-time RPC fallback semantics are covered in
+ * test/send-transaction-read-failover.test.js (the read-side failover
+ * was unified with send-transaction.js).
  */
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { createProviderWithFallback, pollCycle } = require("../src/bot-loop");
+const { pollCycle } = require("../src/bot-loop");
 const { ADDR, buildPollDeps } = require("./_bot-loop-helpers");
 const showHelp = require("../src/cli-help");
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Build a mock ethers library whose JsonRpcProvider controls getBlockNumber. */
-function mockEthersLib({ primaryFails = false, fallbackFails = false } = {}) {
-  const calls = [];
-  function JsonRpcProvider(url) {
-    calls.push(url);
-    this.url = url;
-    this.getBlockNumber = async () => {
-      if (primaryFails && url === "https://primary.rpc") {
-        throw new Error("primary unreachable");
-      }
-      if (fallbackFails && url === "https://fallback.rpc") {
-        throw new Error("fallback unreachable");
-      }
-      return 12345;
-    };
-  }
-  return { JsonRpcProvider, calls };
-}
-
-// ── RPC fallback ─────────────────────────────────────────────────────────────
-
-describe("createProviderWithFallback", () => {
-  it("uses primary when it is reachable", async () => {
-    const lib = mockEthersLib();
-    const provider = await createProviderWithFallback(
-      "https://primary.rpc",
-      "https://fallback.rpc",
-      lib,
-    );
-    assert.strictEqual(provider.url, "https://primary.rpc");
-    assert.deepStrictEqual(lib.calls, ["https://primary.rpc"]);
-  });
-
-  it("falls back when primary is unreachable", async () => {
-    const lib = mockEthersLib({ primaryFails: true });
-    const provider = await createProviderWithFallback(
-      "https://primary.rpc",
-      "https://fallback.rpc",
-      lib,
-    );
-    assert.strictEqual(provider.url, "https://fallback.rpc");
-    assert.deepStrictEqual(lib.calls, [
-      "https://primary.rpc",
-      "https://fallback.rpc",
-    ]);
-  });
-
-  it("throws when both primary and fallback are unreachable", async () => {
-    const lib = mockEthersLib({ primaryFails: true, fallbackFails: true });
-    await assert.rejects(
-      () =>
-        createProviderWithFallback(
-          "https://primary.rpc",
-          "https://fallback.rpc",
-          lib,
-        ),
-      { message: "fallback unreachable" },
-    );
-    assert.deepStrictEqual(lib.calls, [
-      "https://primary.rpc",
-      "https://fallback.rpc",
-    ]);
-  });
-
-  it("does not try fallback when primary succeeds", async () => {
-    const lib = mockEthersLib({ fallbackFails: true });
-    const provider = await createProviderWithFallback(
-      "https://primary.rpc",
-      "https://fallback.rpc",
-      lib,
-    );
-    assert.strictEqual(provider.url, "https://primary.rpc");
-    assert.strictEqual(lib.calls.length, 1);
-  });
-
-  it("returned provider has working getBlockNumber", async () => {
-    const lib = mockEthersLib({ primaryFails: true });
-    const provider = await createProviderWithFallback(
-      "https://primary.rpc",
-      "https://fallback.rpc",
-      lib,
-    );
-    const block = await provider.getBlockNumber();
-    assert.strictEqual(block, 12345);
-  });
-});
 
 // ── pollCycle — OOR detection ────────────────────────────────────────────────
 

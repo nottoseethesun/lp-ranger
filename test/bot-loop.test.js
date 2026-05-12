@@ -1,76 +1,37 @@
 /**
  * @file test/bot-loop.test.js
  * @description Tests for src/bot-loop.js — resolvePrivateKey, startBotLoop,
- * pollCycle, appendLog, createProviderWithFallback, forceRebalance.
+ * pollCycle, appendLog, forceRebalance.  RPC boot-fallback semantics
+ * and feeData-patch coverage now live in test/send-transaction.test.js
+ * and against `buildProvider` directly (this PR unified read-side RPC
+ * failover with the send-transaction.js module).
  */
 
 "use strict";
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
-const {
-  createProviderWithFallback,
-  resolvePrivateKey,
-} = require("../src/bot-loop");
+const { resolvePrivateKey } = require("../src/bot-loop");
 const { wireBotStateGetConfig } = require("../src/bot-state-init");
 const { CHAIN } = require("../src/config");
 const { ADDR, _poll } = require("./_bot-loop-helpers");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function mockEthersLib({ primaryFails = false, fallbackFails = false } = {}) {
+function mockEthersLib() {
   const calls = [];
   function JsonRpcProvider(url) {
     calls.push(url);
     this.url = url;
-    this.getBlockNumber = async () => {
-      if (primaryFails && url === "https://primary.rpc") {
-        throw new Error("primary unreachable");
-      }
-      if (fallbackFails && url === "https://fallback.rpc") {
-        throw new Error("fallback unreachable");
-      }
-      return 12345;
-    };
+    this.getBlockNumber = async () => 12345;
   }
   return { JsonRpcProvider, calls };
 }
 
-// ── RPC fallback (via bot-loop directly) ─────────────────────────────────────
+// ── Gas price patch (PulseChain getFeeData fix) via buildProvider ────────────
 
-describe("bot-loop: createProviderWithFallback", () => {
-  const PRI = "https://primary.rpc",
-    FALL = "https://fallback.rpc";
-  it("uses primary when it is reachable", async () => {
-    const p = await createProviderWithFallback(PRI, FALL, mockEthersLib());
-    assert.strictEqual(p.url, PRI);
-  });
-  it("falls back when primary is unreachable", async () => {
-    const p = await createProviderWithFallback(
-      PRI,
-      FALL,
-      mockEthersLib({ primaryFails: true }),
-    );
-    assert.strictEqual(p.url, FALL);
-  });
-  it("throws when both are unreachable", async () => {
-    await assert.rejects(
-      () =>
-        createProviderWithFallback(
-          PRI,
-          FALL,
-          mockEthersLib({ primaryFails: true, fallbackFails: true }),
-        ),
-      { message: "fallback unreachable" },
-    );
-  });
-});
-
-// ── Gas price patch (PulseChain getFeeData fix) ──────────────────────────────
-
-describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
-  const PRI = "https://primary.rpc",
-    FALL = "https://fallback.rpc";
+describe("bot-provider: _patchFeeData via buildProvider", () => {
+  const PRI = "https://primary.rpc";
 
   /** Helper: create a mock ethers lib with getFeeData on the provider. */
   function _feeLib(getFeeData, send) {
@@ -84,9 +45,12 @@ describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
     return lib;
   }
   it("returns original feeData when gasPrice > 0", async () => {
-    const p = await createProviderWithFallback(
+    /*- Fresh require so the per-process log throttle starts at 0 and
+     *  doesn't suppress the feeData log line in unrelated tests above. */
+    delete require.cache[require.resolve("../src/bot-provider")];
+    const { buildProvider } = require("../src/bot-provider");
+    const p = buildProvider(
       PRI,
-      FALL,
       _feeLib(async () => ({
         gasPrice: 5000n,
         maxFeePerGas: null,
@@ -98,9 +62,9 @@ describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
     assert.strictEqual((await p.getFeeData()).gasPrice, expected);
   });
   it("falls back to maxFeePerGas when gasPrice is 0", async () => {
-    const p = await createProviderWithFallback(
+    const { buildProvider } = require("../src/bot-provider");
+    const p = buildProvider(
       PRI,
-      FALL,
       _feeLib(async () => ({
         gasPrice: 0n,
         maxFeePerGas: 8000n,
@@ -109,14 +73,14 @@ describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
     );
     const m = CHAIN.gasPriceMultiplier || 1;
     const expected = (8000n * BigInt(Math.round(m * 1000))) / 1000n;
-    // Patch returns only gasPrice (type 0) using maxFeePerGas as base
+    /*- Patch returns only gasPrice (type 0) using maxFeePerGas as base */
     assert.strictEqual((await p.getFeeData()).gasPrice, expected);
     assert.strictEqual((await p.getFeeData()).maxFeePerGas, null);
   });
   it("falls back to eth_gasPrice when feeData returns all zeros", async () => {
-    const p = await createProviderWithFallback(
+    const { buildProvider } = require("../src/bot-provider");
+    const p = buildProvider(
       PRI,
-      FALL,
       _feeLib(
         async () => ({
           gasPrice: 0n,
@@ -132,9 +96,9 @@ describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
     assert.strictEqual((await p.getFeeData()).gasPrice, 10_000_000_000n);
   });
   it("returns original zero feeData when eth_gasPrice also returns 0", async () => {
-    const p = await createProviderWithFallback(
+    const { buildProvider } = require("../src/bot-provider");
+    const p = buildProvider(
       PRI,
-      FALL,
       _feeLib(
         async () => ({
           gasPrice: 0n,
@@ -147,7 +111,8 @@ describe("bot-loop: _patchFeeData via createProviderWithFallback", () => {
     assert.strictEqual((await p.getFeeData()).gasPrice, 0n);
   });
   it("skips patching when provider has no getFeeData", async () => {
-    const p = await createProviderWithFallback(PRI, FALL, mockEthersLib());
+    const { buildProvider } = require("../src/bot-provider");
+    const p = buildProvider(PRI, mockEthersLib());
     assert.strictEqual(p.getFeeData, undefined);
   });
 

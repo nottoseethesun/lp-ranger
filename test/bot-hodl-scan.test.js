@@ -69,6 +69,14 @@ function _installMocks() {
       };
     }
     if (id === "ethers") return _ETHERS_STUB;
+    /*- bot-hodl-scan now sources its provider via
+     *  sendTx.getManagedReadProvider().  Return a stub for sendTx so
+     *  the test doesn't need to drive a full send-transaction init. */
+    if (id === "./send-transaction") {
+      return {
+        getManagedReadProvider: () => new _ETHERS_STUB.JsonRpcProvider(),
+      };
+    }
     return _origRequire.apply(this, arguments);
   };
   delete require.cache[require.resolve("../src/bot-hodl-scan")];

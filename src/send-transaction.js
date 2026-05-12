@@ -64,7 +64,10 @@ let _fallbackUrl = null;
 let _useFallbackUntilMs = 0;
 
 /**
- * Register the chain's RPC providers.  Call once at boot.
+ * Register the chain's RPC providers.  Idempotent: safe to call from
+ * multiple boot paths (server.js, bot-loop.js, position-manager.js).  A
+ * second call with the SAME URLs is a no-op; a second call with DIFFERENT
+ * URLs throws — the process can only have one active RPC pair at a time.
  *
  * Both providers are constructed eagerly via `bot-provider.buildProvider`
  * (which applies the feeData patch) regardless of boot-time reachability —
@@ -81,11 +84,144 @@ function init(rpcConfig, ethersLib) {
       "[send-tx] init: rpcConfig must have { primary, fallback } URL strings",
     );
   }
+  if (_primaryProvider) {
+    if (
+      _primaryUrl === rpcConfig.primary &&
+      _fallbackUrl === rpcConfig.fallback
+    ) {
+      /*- Already initialised with matching URLs.  Keep the existing
+       *  providers AND the sticky-failover window so a re-init mid-
+       *  outage doesn't accidentally revert to a known-broken primary. */
+      return;
+    }
+    throw new Error(
+      "[send-tx] init: already initialised with different URLs " +
+        `(was ${_primaryUrl} / ${_fallbackUrl}, ` +
+        `now ${rpcConfig.primary} / ${rpcConfig.fallback})`,
+    );
+  }
   _primaryUrl = rpcConfig.primary;
   _fallbackUrl = rpcConfig.fallback;
   _primaryProvider = buildProvider(rpcConfig.primary, ethersLib || ethers);
   _fallbackProvider = buildProvider(rpcConfig.fallback, ethersLib || ethers);
   _useFallbackUntilMs = 0;
+}
+
+/*- Error codes / response statuses that indicate the active RPC is the
+ *  problem (rather than the request).  Match the shapes ethers v6
+ *  surfaces for upstream/CDN failures we observed in production logs
+ *  (Cloudflare 502 / 522, network timeouts, server-side errors). */
+const _READ_FAILOVER_CODES = new Set([
+  "SERVER_ERROR",
+  "TIMEOUT",
+  "NETWORK_ERROR",
+]);
+
+function _isReadFailoverable(err) {
+  if (!err) return false;
+  if (err.code && _READ_FAILOVER_CODES.has(err.code)) return true;
+  const status = err.info && err.info.responseStatus;
+  if (status && /^5\d\d/.test(String(status))) return true;
+  return false;
+}
+
+/**
+ * Boot-time reachability probe for the primary RPC.  Calls
+ * `primary.getBlockNumber()`; if it throws, engages `failoverToNextRPC()`
+ * and verifies that `fallback.getBlockNumber()` succeeds.  Replaces the
+ * boot check that previously lived in `bot-provider.createProviderWithFallback`,
+ * but now reports the result through the shared `getCurrentRPC` state so
+ * subsequent reads (via `getManagedReadProvider`) and writes go to the
+ * same RPC.
+ *
+ * Idempotent: a second call when the sticky-failover window is active
+ * simply re-probes the primary and lets `failoverToNextRPC()` extend
+ * the window if the primary is still down.
+ *
+ * Throws if `init()` hasn't run yet, or if BOTH primary AND fallback
+ * are unreachable.
+ *
+ * @returns {Promise<void>}
+ */
+async function ensureReachable() {
+  if (!_primaryProvider) {
+    throw new Error(
+      "[send-tx] ensureReachable: not initialised — call init() at boot first",
+    );
+  }
+  try {
+    await _primaryProvider.getBlockNumber();
+    console.log(`[bot] RPC:    ${_primaryUrl}`);
+    return;
+  } catch (err) {
+    if (_primaryUrl === _fallbackUrl) {
+      /*- Single-RPC chain config — no fallback to try.  Let the error
+       *  surface so the caller can decide whether to abort boot. */
+      throw err;
+    }
+    console.warn(
+      `[bot] Primary RPC unreachable (${_primaryUrl}): ${err.message}`,
+    );
+    console.log(`[bot] Falling back to ${_fallbackUrl}`);
+    failoverToNextRPC();
+    await _fallbackProvider.getBlockNumber();
+    console.log(`[bot] RPC:    ${_fallbackUrl} (fallback)`);
+  }
+}
+
+/**
+ * Return a `Proxy` that quacks like an ethers JsonRpcProvider but
+ * resolves the underlying provider via `getCurrentRPC()` on every
+ * property access — including method calls and the Contract internals
+ * that go through `provider.call` / `provider.send`.  On a failover-
+ * eligible async rejection, calls `failoverToNextRPC()` and retries
+ * the same call once against the new active RPC.  This is the single
+ * entry point for ALL read-side provider access in the app, so a
+ * sustained primary outage produces exactly one read-failure log line
+ * per call site and then everything follows the fallback for the
+ * sticky window.
+ *
+ * Contracts constructed with the returned proxy automatically follow
+ * failover, because ethers' Contract delegates every RPC call through
+ * `provider.call` / `provider.send`, which the proxy intercepts.
+ *
+ * Throws if `init()` hasn't run yet.
+ *
+ * @returns {import('ethers').JsonRpcProvider}
+ */
+function getManagedReadProvider() {
+  /*- Return the Proxy unconditionally — `getCurrentRPC()` will throw
+   *  when the proxy is ACTUALLY USED if init() hasn't run yet.  This
+   *  defers the failure to the point of use, which lets tests that
+   *  obtain the proxy but never call into it (e.g. compounder unit
+   *  tests that exercise the classifier with zero compound events)
+   *  succeed without a full send-transaction init. */
+  return new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        const current = getCurrentRPC();
+        const val = current[prop];
+        if (typeof val !== "function") return val;
+        return function (...args) {
+          const result = val.apply(current, args);
+          /*- Sync return (rare for providers) — pass through. */
+          if (!result || typeof result.then !== "function") return result;
+          /*- Async — wrap with failover-on-error retry.  Only retry on
+           *  shapes that indicate the RPC itself is the problem, not
+           *  the request. */
+          return Promise.resolve(result).catch(async (err) => {
+            if (!_isReadFailoverable(err)) throw err;
+            if (_primaryUrl === _fallbackUrl) throw err;
+            failoverToNextRPC();
+            const next = getCurrentRPC();
+            if (next === current) throw err;
+            return await next[prop].apply(next, args);
+          });
+        };
+      },
+    },
+  );
 }
 
 /**
@@ -584,9 +720,12 @@ module.exports = {
   sendTransaction,
   getCurrentRPC,
   failoverToNextRPC,
+  ensureReachable,
+  getManagedReadProvider,
   /*- Internal helpers exposed for tests in test/send-transaction.test.js. */
   _resolveGasLimit,
   _estimateWithFailover,
   _waitOrSpeedUp,
+  _isReadFailoverable,
   _resetForTests,
 };

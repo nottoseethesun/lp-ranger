@@ -61,6 +61,14 @@ const _ethersStub = {
     `new ethers.Interface(PM_ABI)` see the stub. Restored in after(). */
 Module.prototype.require = function (id) {
   if (id === "ethers") return _ethersStub;
+  /*- position-history now sources its read provider via
+   *  sendTx.getManagedReadProvider(); return a stub so the test
+   *  doesn't need a full send-transaction init. */
+  if (id === "./send-transaction") {
+    return {
+      getManagedReadProvider: () => new _ethersStub.JsonRpcProvider(),
+    };
+  }
   return _origRequire.apply(this, arguments);
 };
 

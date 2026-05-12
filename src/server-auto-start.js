@@ -13,6 +13,7 @@
 
 const ethers = require("ethers");
 const config = require("./config");
+const sendTx = require("./send-transaction");
 const {
   getPositionConfig,
   saveConfig,
@@ -144,7 +145,7 @@ function createAutoStartManagedPositions(deps) {
     const cnt = keys.length;
     const stMs =
       cnt > 1 ? Math.floor((config.CHECK_INTERVAL_SEC * 1000) / cnt) : 0;
-    const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+    const prov = sendTx.getManagedReadProvider();
     const pmC = new ethers.Contract(
       config.POSITION_MANAGER,
       ["function ownerOf(uint256) view returns (address)"],
