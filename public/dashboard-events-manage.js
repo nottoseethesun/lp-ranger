@@ -138,14 +138,18 @@ function _addrWithCopyFrag(addr) {
   return frag;
 }
 
-/** Build a symbol + (optional) address-with-copy fragment. */
+/** Build a symbol + (optional) address-with-copy fragment.
+ *  Address text and copy icon are bound together in a flex row so the
+ *  icon never wraps to its own left-aligned line when the address
+ *  consumes most of the cell's width. */
 function _tokenCellFrag(sym, addr) {
   const frag = document.createDocumentFragment();
   frag.appendChild(document.createTextNode(sym || "?"));
   if (addr) {
-    frag.appendChild(document.createElement("br"));
-    frag.appendChild(document.createTextNode("\u00A0\u00A0\u00A0\u00A0"));
-    frag.appendChild(_addrWithCopyFrag(addr));
+    const line = document.createElement("div");
+    line.className = "9mm-pos-mgr-pool-detail-addr-line";
+    line.appendChild(_addrWithCopyFrag(addr));
+    frag.appendChild(line);
   }
   return frag;
 }

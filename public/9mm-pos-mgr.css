@@ -1752,24 +1752,43 @@ span[title]:not([title=""]):hover {
   text-align: center;
 }
 
-.\39 mm-pos-mgr-pool-details-list {
-  margin: 0 0 21px;
+.\39 mm-pos-mgr-pool-details-block {
+  padding: 14px 18px;
+  margin-bottom: 9px;
 }
 
-.\39 mm-pos-mgr-pool-details-list dt {
-  display: block;
+.\39 mm-pos-mgr-pool-details-block:last-of-type {
+  margin-bottom: 0;
+}
+
+.\39 mm-pos-mgr-pool-details-block-striped {
+  background: var(--bg3);
+}
+
+.\39 mm-pos-mgr-pool-details-subhead,
+.\39 mm-pos-mgr-pool-details-label {
   font-size: 20px;
   color: var(--muted);
   letter-spacing: 1px;
   text-transform: uppercase;
-  margin-bottom: 9px;
 }
 
-.\39 mm-pos-mgr-pool-details-list dd {
-  margin: 0 0 21px;
+.\39 mm-pos-mgr-pool-details-subhead {
+  margin: 0 0 12px;
+  font-weight: inherit;
 }
 
-.\39 mm-pos-mgr-pool-details-list dd:last-of-type {
+.\39 mm-pos-mgr-pool-details-label {
+  display: block;
+  margin: 0 0 9px;
+}
+
+.\39 mm-pos-mgr-pool-details-pair {
+  padding-left: 18px;
+  margin-bottom: 14px;
+}
+
+.\39 mm-pos-mgr-pool-details-pair:last-child {
   margin-bottom: 0;
 }
 
@@ -1779,19 +1798,29 @@ span[title]:not([title=""]):hover {
   font-size: 20px;
 }
 
-.\39 mm-pos-mgr-pool-details-list .\39 mm-pos-mgr-copy-icon {
+.\39 mm-pos-mgr-pool-details-block .\39 mm-pos-mgr-copy-icon {
   font-size: 48px;
 }
 
-/* ── Pool Details: row layout (details list + Chart Links aside) ───────── */
+.\39 mm-pos-mgr-pool-detail-addr-line {
+  display: flex;
+  align-items: center;
+  margin-left: 4ch;
+  font-family: "Space Mono", monospace;
+  font-size: 20px;
+  word-break: break-all;
+}
+
+/* ── Pool Details: top row (Pool Characteristics block + Chart Links aside) ─── */
 
 .\39 mm-pos-mgr-pool-details-row {
   display: flex;
   align-items: flex-start;
   gap: 36px;
+  margin-bottom: 9px;
 }
 
-.\39 mm-pos-mgr-pool-details-row .\39 mm-pos-mgr-pool-details-list {
+.\39 mm-pos-mgr-pool-details-row .\39 mm-pos-mgr-pool-details-block {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -1802,10 +1831,9 @@ span[title]:not([title=""]):hover {
   margin-left: auto;
 }
 
-/* Visually align the Chart Links heading with "Position Type" — the
-   first <dt> in the details list. The <dt> uses the same 20px size and
-   muted colour, so we mirror it here and zero out the default <h3>
-   margins so both headings sit on the same baseline. */
+/* Mirror the .9mm-pos-mgr-pool-details-subhead styling so the
+   Chart Links heading sits on the same visual baseline as the
+   "Pool Characteristics" heading in the adjacent block. */
 .\39 mm-pos-mgr-pool-details-charts-title {
   display: block;
   margin: 0 0 9px;
