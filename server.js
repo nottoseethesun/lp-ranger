@@ -164,8 +164,13 @@ migrateAppConfig();
 // before any route handler can run.  Server-side reads (server-scan,
 // server-routes, position-details, etc.) consult sendTx.getManagedReadProvider()
 // to follow the same active-RPC selection as TX submission, so a sustained
-// primary outage fails over uniformly across reads and writes.
-sendTx.init(config.CHAIN.rpc);
+// primary outage fails over uniformly across reads and writes.  Uses the
+// env-var-aware RPC_URL / RPC_URL_FALLBACK so operators can override the
+// chain-default URLs via .env.
+sendTx.init({
+  primary: config.RPC_URL,
+  fallback: config.RPC_URL_FALLBACK,
+});
 
 // ── Position manager (module-level) ─────────────────
 

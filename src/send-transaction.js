@@ -75,7 +75,9 @@ let _useFallbackUntilMs = 0;
  * usable at the moment the primary fails, possibly hours after boot.
  *
  * @param {{primary: string, fallback: string}} rpcConfig
- *   Raw `chain.rpc` JSON from app-config/static-tunables/chains.json.
+ *   Primary + fallback RPC URLs.  Callers typically pass the env-var-aware
+ *   `{ primary: config.RPC_URL, fallback: config.RPC_URL_FALLBACK }` so an
+ *   operator's `.env` override is honoured for both reads and writes.
  * @param {object} [ethersLib]  Injected ethers library (for testing).
  */
 function init(rpcConfig, ethersLib) {
@@ -185,7 +187,12 @@ async function ensureReachable() {
  * failover, because ethers' Contract delegates every RPC call through
  * `provider.call` / `provider.send`, which the proxy intercepts.
  *
- * Throws if `init()` hasn't run yet.
+ * Does NOT itself throw before `init()` — the proxy is returned
+ * unconditionally and the init-required check fires on first property
+ * access (via `getCurrentRPC()`).  This defers the failure to the point
+ * of use so callers that obtain the proxy without exercising it (a
+ * common pattern in unit tests that stub the consumer) don't need a
+ * full init.
  *
  * @returns {import('ethers').JsonRpcProvider}
  */

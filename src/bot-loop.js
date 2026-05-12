@@ -98,7 +98,10 @@ async function startBotLoop(opts) {
         engages failoverToNextRPC() if it's already down at boot, so
         the read-side managed provider and the TX side both follow
         the same active-RPC selection. */
-    sendTx.init(config.CHAIN.rpc, ethersLib);
+    sendTx.init(
+      { primary: config.RPC_URL, fallback: config.RPC_URL_FALLBACK },
+      ethersLib,
+    );
     await sendTx.ensureReachable();
     provider = sendTx.getManagedReadProvider();
     /*- IMPORTANT: wrap the wallet in NonceManager so concurrent

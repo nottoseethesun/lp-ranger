@@ -72,7 +72,8 @@ Chain-neutral; lift directly:
 - **Multicall atomicity**: EVM `multicall` → native SVM single-TX
   bundling. Watch 1232-byte limit (use ALTs + v0 TXs for complex
   rebalances).
-- **RPC fallback**: EVM `createProviderWithFallback` +
+- **RPC fallback**: EVM unified failover in `send-transaction.js`
+  (`init` + `ensureReachable` + `getManagedReadProvider`) +
   `getFeeData` patch → Solana RPC fallback with
   `getRecentPrioritizationFees` + compute-budget injection. Public
   RPCs are far more rate-limited than EVM public RPCs —

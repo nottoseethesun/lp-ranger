@@ -72,7 +72,10 @@ function createPositionManager(opts) {
           subsequent call from bot-loop or server.js with the same
           URLs is a no-op.  ensureReachable() probes the primary and
           engages failoverToNextRPC() if it's down at boot. */
-      sendTx.init(config.CHAIN.rpc, ethersLib);
+      sendTx.init(
+        { primary: config.RPC_URL, fallback: config.RPC_URL_FALLBACK },
+        ethersLib,
+      );
       await sendTx.ensureReachable();
       const provider = sendTx.getManagedReadProvider();
       const base =
