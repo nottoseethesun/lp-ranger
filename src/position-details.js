@@ -7,8 +7,8 @@
 
 "use strict";
 
-const ethers = require("ethers");
 const config = require("./config");
+const sendTx = require("./send-transaction");
 const { getPoolState } = require("./rebalancer");
 const {
   positionValueUsd,
@@ -249,7 +249,7 @@ async function _computeDepositUsd(position, ps) {
   const poolCK = _poolCacheKey(position);
   const deps = (poolCK ? getCachedFreshDeposits(poolCK) : null)?.deposits;
   if (!deps?.length) return { total: 0, usedFallback: false };
-  const provider = new ethers.JsonRpcProvider(config.RPC_URL);
+  const provider = sendTx.getManagedReadProvider();
   const poolAddr = ps.poolAddress || "";
   const result = await _totalLifetimeDeposit(
     deps,

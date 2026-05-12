@@ -145,6 +145,7 @@ const { staticTunablesRoutes } = require("./src/static-tunables-routes");
 const { createPauseInfra } = require("./src/server-pause");
 const _unlockLog = require("./src/server-unlock-log");
 const { logVersionBanner } = require("./src/build-info");
+const sendTx = require("./src/send-transaction");
 
 /*-
  * First log: version/commit banner for support triage. Logged before
@@ -157,6 +158,19 @@ logVersionBanner("[server]");
 // Idempotent: a no-op after the first successful run. See
 // src/migrate-app-config.js and the app-config/ section of this file.
 migrateAppConfig();
+
+// ── RPC provider singleton ─────────────────────────────
+// Initialise the send-transaction module's primary + fallback providers
+// before any route handler can run.  Server-side reads (server-scan,
+// server-routes, position-details, etc.) consult sendTx.getManagedReadProvider()
+// to follow the same active-RPC selection as TX submission, so a sustained
+// primary outage fails over uniformly across reads and writes.  Uses the
+// env-var-aware RPC_URL / RPC_URL_FALLBACK so operators can override the
+// chain-default URLs via .env.
+sendTx.init({
+  primary: config.RPC_URL,
+  fallback: config.RPC_URL_FALLBACK,
+});
 
 // ── Position manager (module-level) ─────────────────
 

@@ -83,37 +83,4 @@ function buildProvider(url, ethersLib) {
   return provider;
 }
 
-/**
- * Creates a JsonRpcProvider, trying the primary URL first and falling back
- * to the secondary if the primary is unreachable.  The returned provider's
- * `getFeeData()` is patched to guarantee non-zero gas pricing on PulseChain.
- *
- * Used by callers that want a single working provider at boot for reads
- * (bot-loop polling, position-manager).  Mid-session RPC failover for TX
- * submission is handled separately by `send-transaction.js`, which keeps
- * BOTH providers via `buildProvider()` regardless of boot-time reachability.
- *
- * @param {string} primaryUrl    Primary RPC endpoint.
- * @param {string} fallbackUrl   Fallback RPC endpoint.
- * @param {object} [ethersLib]   Injected ethers library (for testing).
- * @returns {Promise<import('ethers').JsonRpcProvider>}
- */
-async function createProviderWithFallback(primaryUrl, fallbackUrl, ethersLib) {
-  try {
-    const provider = buildProvider(primaryUrl, ethersLib);
-    await provider.getBlockNumber();
-    console.log(`[bot] RPC:    ${primaryUrl}`);
-    return provider;
-  } catch (err) {
-    console.warn(
-      `[bot] Primary RPC unreachable (${primaryUrl}): ${err.message}`,
-    );
-    console.log(`[bot] Falling back to ${fallbackUrl}`);
-    const provider = buildProvider(fallbackUrl, ethersLib);
-    await provider.getBlockNumber();
-    console.log(`[bot] RPC:    ${fallbackUrl} (fallback)`);
-    return provider;
-  }
-}
-
-module.exports = { _patchFeeData, buildProvider, createProviderWithFallback };
+module.exports = { _patchFeeData, buildProvider };

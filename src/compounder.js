@@ -491,7 +491,7 @@ async function _fetchCompoundGas(prov, compoundEvents) {
  * @returns {Promise<{ilEvents: object[], collectEvents: object[], dlEvents: object[], ilLogsCount: number}>}
  */
 async function scanNftEvents(tokenId, scanOpts = {}) {
-  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const prov = sendTx.getManagedReadProvider();
   const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const addr = config.POSITION_MANAGER;
   const from = scanOpts.fromBlock ?? 0;
@@ -616,7 +616,7 @@ async function _fetchMintGasWei(prov, mintTxHash) {
 }
 
 async function classifyCompounds(nftEvents, opts = {}) {
-  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const prov = sendTx.getManagedReadProvider();
   const { ilEvents, collectEvents, dlEvents, ilLogsCount } = nftEvents;
   const candidateILs = ilEvents.slice(1); // skip first = mint
   /*-

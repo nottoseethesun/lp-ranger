@@ -10,7 +10,10 @@
  *   - `startBotLoop(opts)` — create provider/signer, detect position, start polling
  *   - `pollCycle(deps)` — single poll iteration
  *   - `appendLog(result)` — write rebalance result to disk log
- *   - `createProviderWithFallback(primary, fallback, ethersLib)` — RPC with fallback
+ *
+ * RPC providers are owned by `src/send-transaction.js` — call
+ * `sendTx.init` + `sendTx.ensureReachable` at boot and use
+ * `sendTx.getManagedReadProvider()` for all read access.
  */
 
 "use strict";
@@ -24,7 +27,6 @@ const {
 const { initHodlBaseline } = require("./hodl-baseline");
 const { appendToPoolCache } = require("./pool-scanner");
 const { createResidualTracker } = require("./residual-tracker");
-const { createProviderWithFallback } = require("./bot-provider");
 const sendTx = require("./send-transaction");
 const { createFailoverSigner } = require("./nonce-manager-wrapper");
 const {
@@ -92,13 +94,16 @@ async function startBotLoop(opts) {
         providers from chain config before constructing the signer.
         FailoverNonceManager consults sendTx.getCurrentRPC() lazily on
         every call, so the inner ethers.NonceManager rebinds when the
-        active RPC flips. */
-    sendTx.init(config.CHAIN.rpc, ethersLib);
-    provider = await createProviderWithFallback(
-      config.RPC_URL,
-      config.RPC_URL_FALLBACK,
+        active RPC flips.  ensureReachable() probes the primary and
+        engages failoverToNextRPC() if it's already down at boot, so
+        the read-side managed provider and the TX side both follow
+        the same active-RPC selection. */
+    sendTx.init(
+      { primary: config.RPC_URL, fallback: config.RPC_URL_FALLBACK },
       ethersLib,
     );
+    await sendTx.ensureReachable();
+    provider = sendTx.getManagedReadProvider();
     /*- IMPORTANT: wrap the wallet in NonceManager so concurrent
      *  sendTransaction calls (e.g. Promise.all on two approve TXs) get
      *  sequential nonces from a local counter instead of racing the
@@ -114,30 +119,14 @@ async function startBotLoop(opts) {
   if (dryRun && !privateKey)
     console.log(`[bot] DRY RUN — using random address: ${address}`);
   console.log(`[bot] Wallet: ${address}`);
-  /*- Route the position probe through send-transaction so a primary-RPC
-   *  outage flips us to the fallback for both this detection AND every
-   *  subsequent send.  `sendTx` may not be initialized in test paths
-   *  that inject a custom provider/signer, so wrap both helpers in
-   *  try/catch and fall back to the static provider. */
-  const _safeGetProvider = () => {
-    try {
-      return sendTx.getCurrentRPC();
-    } catch (_) {
-      return provider;
-    }
-  };
-  const _safeFailover = () => {
-    try {
-      sendTx.failoverToNextRPC();
-    } catch (_) {
-      /*- sendTx not initialized — nothing to fail over. */
-    }
-  };
+  /*- `provider` is the managed-read provider when we built the wallet
+   *  ourselves above; for test paths it's whatever was injected.  Either
+   *  way it handles its own failover, so the per-attempt callbacks
+   *  are no longer needed at this call site. */
   const position = await _detectPosition(
     provider,
     address,
     opts.positionId || config.POSITION_ID || undefined,
-    { getProvider: _safeGetProvider, onRpcFailure: _safeFailover },
   );
   console.log(
     `[bot] Managing NFT #${position.tokenId} ${emojiId(position.tokenId)} (${position.token0}/${position.token1} fee=${position.fee})`,
@@ -469,7 +458,6 @@ async function startBotLoop(opts) {
 module.exports = {
   pollCycle,
   appendLog,
-  createProviderWithFallback,
   resolvePrivateKey,
   startBotLoop,
   _overridePnlWithRealValues,

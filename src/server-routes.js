@@ -9,6 +9,7 @@
 
 const ethers = require("ethers");
 const config = require("./config");
+const sendTx = require("./send-transaction");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
@@ -232,7 +233,7 @@ function createRouteHandlers(deps) {
       emojiId(String(body.tokenId)),
     );
     try {
-      const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+      const prov = sendTx.getManagedReadProvider();
       body.walletAddress =
         body.walletAddress || walletManager.getAddress() || "";
       body.contractAddress = body.contractAddress || config.POSITION_MANAGER;
@@ -307,7 +308,7 @@ function createRouteHandlers(deps) {
           break;
         }
       }
-      const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+      const prov = sendTx.getManagedReadProvider();
       body.walletAddress =
         body.walletAddress || walletManager.getAddress() || "";
       body.contractAddress = body.contractAddress || config.POSITION_MANAGER;

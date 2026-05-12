@@ -9,6 +9,7 @@
 
 const ethers = require("ethers");
 const config = require("./config");
+const sendTx = require("./send-transaction");
 const { getPoolState } = require("./rebalancer");
 const _epochCache = require("./epoch-cache");
 const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
@@ -28,7 +29,7 @@ async function computeAndCacheHodl(
   walletAddress,
   epochKey,
 ) {
-  const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+  const prov = sendTx.getManagedReadProvider();
   const cachedFresh = epochKey
     ? _epochCache.getCachedFreshDeposits(epochKey)
     : null;
@@ -138,7 +139,7 @@ async function computeDepositUsd(
 ) {
   const deposits = botState.lifetimeHodlAmounts?.deposits;
   if (!deposits?.length) return;
-  const provider = new ethers.JsonRpcProvider(config.RPC_URL);
+  const provider = sendTx.getManagedReadProvider();
   const poolAddr = await _ensureHodlPoolAddress(
     botState,
     position,

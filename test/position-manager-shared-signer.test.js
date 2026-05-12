@@ -8,10 +8,18 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { createPositionManager } = require("../src/position-manager");
 const { createRebalanceLock } = require("../src/rebalance-lock");
+const sendTx = require("../src/send-transaction");
+
+/*- Reset send-transaction state between cases.  position-manager now
+ *  initialises sendTx with the test's ethersLib stub; without a reset,
+ *  the second case would inherit the first case's providers because
+ *  init() is idempotent (matching URLs ⇒ no-op). */
+beforeEach(() => sendTx._resetForTests());
+afterEach(() => sendTx._resetForTests());
 
 /** Build a position-manager with sensible defaults. */
 function makeMgr(overrides) {
@@ -167,10 +175,17 @@ describe("position-manager getSharedSigner()", () => {
       privateKey: "0xabc",
       ethersLib: lib,
     });
+    /*- Position-manager rebuilds its Wallet + NonceManager on retry
+     *  (its _sharedPromise is cleared on failure).  The underlying
+     *  send-transaction providers are owned by sendTx.init() and are
+     *  shared across retries — init() is idempotent for matching URLs
+     *  so a second attempt with the same chain config is a no-op.
+     *  What matters here is that the failure did NOT poison the
+     *  manager's cache: the retry succeeds. */
     assert.strictEqual(shared.address, "0xAA");
     assert.ok(
-      providerCalls >= 3,
-      "first failure used 2 providers, second call builds a new one",
+      providerCalls >= 2,
+      "init builds primary + fallback providers exactly once for the lifetime",
     );
   });
 });

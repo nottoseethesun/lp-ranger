@@ -10,6 +10,7 @@
 
 const ethers = require("ethers");
 const config = require("./config");
+const sendTx = require("./send-transaction");
 const { cancelPoolScan } = require("./pool-scanner");
 const {
   getTokenSymbol,
@@ -277,9 +278,8 @@ function createScanHandlers(deps) {
 
   async function _doScan(req, wSt) {
     const body = await readJsonBody(req);
-    const rpcUrl = body.rpcUrl || config.RPC_URL;
     const pmAddr = body.positionManagerAddress || config.POSITION_MANAGER;
-    const prov = new ethers.JsonRpcProvider(rpcUrl);
+    const prov = sendTx.getManagedReadProvider();
     const force = body.force === true;
     const currentBlock = await prov.getBlockNumber();
 
@@ -353,7 +353,7 @@ function createScanHandlers(deps) {
         liquidities: {},
       });
 
-    const prov = new ethers.JsonRpcProvider(config.RPC_URL);
+    const prov = sendTx.getManagedReadProvider();
     const pmAddr = config.POSITION_MANAGER;
     const tokenIds = cached.positions.map((p) => p.tokenId);
 

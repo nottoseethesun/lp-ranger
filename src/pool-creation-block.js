@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
-const config = require("./config");
+const sendTx = require("./send-transaction");
 const { findPoolCreationBlock } = require("./pool-creation-finder");
 
 /** Disk-cache file path (overridable via env for tests). */
@@ -186,9 +186,10 @@ async function resolvePoolAddressForToken(opts) {
 
 /**
  * Resolve the pool's creation block from a `position` shape (token0/token1/fee).
- * Spins up its own provider via `config.RPC_URL` so callers without a provider
- * handle in scope (e.g. bot-recorder's lifetime scan) can still tighten their
- * lower bound.  Returns 0 on any failure — preserves prior behaviour.
+ * Uses `sendTx.getManagedReadProvider()` so callers without a provider handle
+ * in scope (e.g. bot-recorder's lifetime scan) can still tighten their lower
+ * bound and benefit from the unified RPC failover.  Returns 0 on any failure
+ * — preserves prior behaviour.
  *
  * @param {object} opts
  * @param {string} opts.factoryAddress  V3 Factory address
@@ -205,7 +206,7 @@ async function resolvePoolCreationBlockForPosition(opts) {
   )
     return 0;
   try {
-    const provider = new ethers.JsonRpcProvider(config.RPC_URL);
+    const provider = sendTx.getManagedReadProvider();
     const factoryAbi = [
       "function getPool(address,address,uint24) view returns (address)",
     ];
