@@ -5,17 +5,27 @@
  *   for line-count compliance.
  */
 
-import { g, cloneTpl } from "./dashboard-helpers.js";
+import {
+  g,
+  cloneTpl,
+  act,
+  ACT_ICONS,
+  fetchWithCsrf,
+} from "./dashboard-helpers.js";
 import {
   posStore,
   PAGE_SIZE,
   isPositionManaged,
   isPositionClosed,
   checkInRange,
+  formatPosLabel,
+  updatePosStripUI,
   _getManagedTokenIds,
   _tokenName,
 } from "./dashboard-positions-store.js";
 import { matchesPosFilter } from "./positions-filter.js";
+import { refreshManageBadge } from "./dashboard-manage-badge.js";
+import { resetLastFetchedId } from "./dashboard-unmanaged.js";
 
 let posBrowserPage = 0;
 let posBrowserSelected = -1;
@@ -134,6 +144,84 @@ export function posChangePage(dir) {
 /** Get the currently selected browser index. */
 export function getPosBrowserSelected() {
   return posBrowserSelected;
+}
+
+/**
+ * Remove the highlighted position from the browser store.  If the
+ * position is currently managed on the server, fire DELETE
+ * /api/position/manage first so the bot loop is actually stopped
+ * before we drop the entry from the local store.  Without that, the
+ * LP Browser Remove only mutated localStorage — the server kept
+ * rebalancing, the disk config still said status=running, and the
+ * position auto-restarted on server reboot.  The DELETE handler
+ * stops the bot loop, flips status to 'stopped', and deletes the
+ * per-position bot state (see server-positions.js handleRemove).
+ */
+export async function removeSelectedPos() {
+  const sel = posBrowserSelected;
+  if (sel < 0) return;
+  const entry = posStore.entries[sel];
+  if (!entry) return;
+  if (isPositionManaged(entry.tokenId)) {
+    const key =
+      "pulsechain-" +
+      entry.walletAddress +
+      "-" +
+      entry.contractAddress +
+      "-" +
+      entry.tokenId;
+    try {
+      const res = await fetchWithCsrf("/api/position/manage", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        act(
+          ACT_ICONS.cross,
+          "alert",
+          "Unmanage Failed",
+          (b.error || "HTTP " + res.status) + " — position not removed",
+        );
+        return;
+      }
+    } catch (err) {
+      act(
+        ACT_ICONS.cross,
+        "alert",
+        "Unmanage Failed",
+        err.message + " — position not removed",
+      );
+      return;
+    }
+  }
+  /*- Reset the unmanaged-details dedup guard so a re-scan + re-select
+   *  of the same tokenId will actually fetch fresh data.  Without this,
+   *  fetchUnmanagedDetails short-circuits on the lastFetchedId-match
+   *  guard, /api/position/lifetime is never called, the server never
+   *  sets rebalanceScanComplete=true for the unmanaged view, and the
+   *  Sync badge stays stuck on "Syncing…" forever — which keeps the
+   *  Manage button disabled via _updateSyncBadge. */
+  resetLastFetchedId();
+  posStore.remove(sel);
+  updatePosStripUI();
+  /*- Refresh the Manage button + badge so they don't keep displaying
+   *  the removed position's last state (most visibly: "Rebalancing…").
+   *  The 3-second status poll skips updateManageBadge when posStore has
+   *  no active, so without this nudge the stale text stays put until
+   *  the user picks another position or reloads the page.  Other
+   *  per-position UI (KPI panel, Mission Control) is left alone — the
+   *  poll handles it on next tick, and a full clear would require URL
+   *  routing changes that are out of scope for this fix. */
+  refreshManageBadge(posStore.getActive());
+  act(
+    ACT_ICONS.cross,
+    "alert",
+    "Position Removed",
+    formatPosLabel(entry) + " removed from store",
+  );
+  renderPosBrowser();
 }
 
 // ── Row rendering (moved from dashboard-positions-store.js) ──────────────────

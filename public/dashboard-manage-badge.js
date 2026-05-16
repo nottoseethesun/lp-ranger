@@ -41,12 +41,30 @@ export function applyLifetimeUnmanagedUI(isManaged) {
   placeholder.hidden = isManaged;
 }
 
-/** Refresh the manage badge for a position. */
+/** Refresh the manage badge for a position. Passing a null/undefined
+ *  active resets the button + badge to the default "no managed position"
+ *  state, used after the LP Browser Remove drops the last entry — the
+ *  3-second status poll skips updateManageBadge when posStore.getActive()
+ *  is null, so without this reset the button stays stuck on whatever
+ *  the previous poll wrote (most visibly: "Rebalancing…"). */
 export function refreshManageBadge(active) {
-  if (!active) return;
   const badge = g("manageBadge"),
-    btn = g("manageToggleBtn");
+    btn = g("manageToggleBtn"),
+    pdBtn = g("poolDetailsBtn");
   if (!badge || !btn) return;
+  if (!active) {
+    badge.classList.remove("managed");
+    badge.textContent = "Not Actively Managed";
+    btn.textContent = "Manage";
+    btn.disabled = true;
+    btn.title = "Select a position first";
+    if (pdBtn) {
+      pdBtn.disabled = true;
+      pdBtn.title = "Select a position first";
+    }
+    applyLifetimeUnmanagedUI(false);
+    return;
+  }
   const closed = isPositionClosed(active);
   const m = !closed && isPositionManaged(active.tokenId);
   badge.classList.toggle("managed", m);
@@ -65,5 +83,9 @@ export function refreshManageBadge(active) {
   btn.textContent = m ? "Stop Managing" : "Manage";
   btn.disabled = closed;
   btn.title = closed ? "Cannot manage a closed position (liquidity = 0)" : "";
+  if (pdBtn) {
+    pdBtn.disabled = false;
+    pdBtn.title = "View pool and contract details";
+  }
   applyLifetimeUnmanagedUI(m);
 }

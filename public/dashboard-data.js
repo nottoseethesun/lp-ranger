@@ -384,8 +384,20 @@ function _updateRebalanceButtons(d) {
   const on = !!d.rebalanceInProgress;
   const btn = g("manageToggleBtn"),
     rb = g("rebalanceWithRangeBtn");
-  _setBtn(btn, on || !_scanWasComplete, on ? _REB_HELP : "");
-  _setBtn(rb, on, on ? _REB_HELP : _REB_MANUAL);
+  /*- When posStore has no active (e.g. just after the LP Browser
+   *  Remove drops the only entry), both buttons must stay disabled.
+   *  The previous logic ignored posStore and re-enabled them on the
+   *  next 3s poll, undoing the disable that refreshManageBadge set
+   *  during Remove — visible to the user as a Manage button that
+   *  briefly looks disabled and then loses both its visual state
+   *  and its "Select a position first" tooltip. */
+  if (!posStore.getActive()) {
+    _setBtn(btn, true, "Select a position first");
+    _setBtn(rb, true, "Select a position first");
+  } else {
+    _setBtn(btn, on || !_scanWasComplete, on ? _REB_HELP : "");
+    _setBtn(rb, on, on ? _REB_HELP : _REB_MANUAL);
+  }
   updateMissionStatusBadge(d);
   updateGasStatusBadge(d);
   _updateCompoundButton(d, on);

@@ -51,10 +51,10 @@ import {
   scanPositions,
   posChangePage,
   activateSelectedPos,
-  removeSelectedPos,
   posRowClick,
   posRowSelect,
 } from "./dashboard-positions.js";
+import { removeSelectedPos } from "./dashboard-positions-browser.js";
 import {
   onParamChange,
   saveOorThreshold,
