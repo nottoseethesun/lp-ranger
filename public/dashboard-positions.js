@@ -235,23 +235,6 @@ export function activateSelectedPos() {
   closePosBrowser();
 }
 
-/** Remove the highlighted position from store. */
-export function removeSelectedPos() {
-  const sel = getPosBrowserSelected();
-  if (sel < 0) return;
-  const entry = posStore.entries[sel];
-  if (!entry) return;
-  posStore.remove(sel);
-  updatePosStripUI();
-  act(
-    ACT_ICONS.cross,
-    "alert",
-    "Position Removed",
-    formatPosLabel(entry) + " removed from store",
-  );
-  renderPosBrowser();
-}
-
 // ── Routing ──────────────────────────────────────
 
 /**
