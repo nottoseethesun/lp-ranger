@@ -317,6 +317,12 @@ async function startBotLoop(opts) {
   }
 
   const poll = async () => {
+    /*- Defensive halt check: if stop() ran while a previously scheduled
+     *  poll was queued (or after a tail-call _scheduleNext lost the race
+     *  against stop's clearTimeout), drop this invocation.  Without this,
+     *  a position removed from the LP Browser could still fire one more
+     *  poll — including the 60-min gas-defer retry. */
+    if (_stopped) return;
     if (polling) return;
     polling = true;
     _reloadFromConfig(gc, throttle, (ms) => {
@@ -389,6 +395,12 @@ async function startBotLoop(opts) {
       updateBotState({ running: false });
       return;
     }
+    /*- If stop() ran while this poll was in flight, do not reschedule.
+     *  Otherwise the tail _scheduleNext call below would overwrite the
+     *  clearTimeout that stop() performed, and the loop would resurrect
+     *  itself for one more cycle (most visibly: another 60-min gas-defer
+     *  retry after the user clicked Remove). */
+    if (_stopped) return;
     /* After a completed special action, poll again in ~2s so the dashboard
      * KPI numbers refresh promptly instead of waiting CHECK_INTERVAL_SEC.
      * Works for both user-triggered and auto-triggered actions. */
