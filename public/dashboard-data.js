@@ -289,12 +289,15 @@ function _updateSyncBadge(d) {
   badge.title = tip || "";
   badge.style.background = "";
   badge.classList.toggle("done", c);
+  /*- LP Browser stays enabled even during sync: it only opens a modal
+   *  over posStore.entries (localStorage-backed, zero on-chain calls),
+   *  and "Select" flows through _activateCore which is the canonical
+   *  safe switch path.  Critically, this lets the user open the browser
+   *  and Remove a position that is stuck retrying a force-rebalance the
+   *  gas guard keeps deferring — the only graceful halt path for that
+   *  scenario short of a server restart. */
   const t = !c ? 'Wait until Syncing badge reads "Synced".' : "";
-  for (const id of [
-    "manageToggleBtn",
-    "posBrowserBtn",
-    "rebalanceWithRangeBtn",
-  ]) {
+  for (const id of ["manageToggleBtn", "rebalanceWithRangeBtn"]) {
     const b = g(id);
     if (b) {
       b.disabled = !c;
