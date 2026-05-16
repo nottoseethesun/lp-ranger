@@ -257,10 +257,6 @@ export function bindAllEvents() {
       b.addEventListener("click", () => copyText(b.dataset.copyId)),
     );
   _bindCopyBtn("genAddr");
-  _bindCopyBtn("genMnemonic");
-  _bindCopyBtn("genKey");
-  _bindCopyBtn("revealKey");
-  _bindCopyBtn("revealMnemonic");
 
   _input("seedInput", validateSeed);
   _input("seedPath", validateSeed);
