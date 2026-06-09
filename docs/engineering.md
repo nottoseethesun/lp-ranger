@@ -95,6 +95,7 @@ sequence.
 - [`server.js`](#serverjs)
 - [Dead Code Detection](#dead-code-detection)
 - [Debugging](#debugging)
+  - [Node Debugger (Inspector)](#node-debugger-inspector)
 - [Dependency Management](#dependency-management)
   - [Philosophy](#philosophy)
   - [The Main Branch (Caret Ranges + Committed Lockfile)](#the-main-branch-caret-ranges--committed-lockfile)
@@ -2457,6 +2458,46 @@ High-frequency per-poll-cycle logs (`[poll]`, `[update]`, `[skip]`,
 `[deposit]`) use `console.debug` and are hidden by default in Chrome
 DevTools. To see them, open DevTools → Console → click the log-level
 dropdown (defaults to "Default levels") and enable "Verbose".
+
+### Node Debugger (Inspector)
+
+For step-through debugging of `server.js` (dashboard + bot) or `bot.js`
+(headless), use the `debug` / `debug-bot` npm scripts. Both launch the
+Node inspector bound to `127.0.0.1:9229` &mdash; local-only by design.
+
+| Script | Command | Use when |
+| ------ | ------- | -------- |
+| `npm run debug` | `node --inspect server.js` | Debugging the full dashboard + auto-started bot |
+| `npm run debug-bot` | `node --inspect bot.js` | Debugging the headless bot only |
+
+Both use `--inspect` (not `--inspect-brk`) so the process **starts
+running immediately** and you attach whenever. `--inspect-brk` would
+freeze the bot loop until a debugger connects, which is the wrong
+default on a Production box.
+
+#### Attaching from Chrome / Chromium DevTools
+
+1. Open `chrome://inspect` in a Chrome or Chromium tab on the **same
+   machine** running LP Ranger.
+2. Under **Remote Target**, click **inspect** next to the Node target.
+   DevTools opens with full Sources / Console / Profiler / Memory access.
+3. If the target doesn't appear, click **Configure...** and confirm
+   `localhost:9229` is in the discovery list.
+
+#### Production debugging (Pi 5 over RealVNC)
+
+Production runs with SSH disabled for security &mdash; all remote
+access is via RealVNC. Debugging happens entirely inside the Pi's
+RealVNC desktop session, with no port tunneling involved.
+
+1. In the Pi terminal: stop the running LP Ranger, then `npm run debug`.
+2. In the Pi's local Chromium: `chrome://inspect` → **inspect** under
+   Remote Target.
+
+The default `127.0.0.1` binding keeps the inspector unreachable from
+the LAN. **Never** change the bind to `--inspect=0.0.0.0:...` &mdash;
+that would let anyone on the network execute arbitrary code inside the
+bot process, including signing transactions with the loaded wallet.
 
 ---
 
