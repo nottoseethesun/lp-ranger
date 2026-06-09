@@ -18,6 +18,7 @@ const {
   getBlockTimestamp,
   flushBlockTimeCache,
 } = require("./block-time-cache");
+const { emojiId } = require("./logger");
 
 /** Compute lifetime HODL amounts and persist fresh deposit cache. */
 async function computeAndCacheHodl(
@@ -68,11 +69,17 @@ async function computeAndCacheHodl(
         deposits: hodl.deposits,
       });
   }
+  const tokenIdStr = String(position.tokenId || "");
   console.log(
-    "[bot] Lifetime HODL: amount0=%s amount1=%s pool=%s",
+    "[bot] %s/%s NFT #%s %s: Lifetime HODL: amount0=%s amount1=%s pool=%s deposits=%d",
+    position.token0Symbol || "Token0",
+    position.token1Symbol || "Token1",
+    tokenIdStr,
+    emojiId(tokenIdStr),
     hodl.amount0.toFixed(6),
     hodl.amount1.toFixed(6),
     ps.poolAddress || "unknown",
+    hodl.deposits?.length || 0,
   );
   return hodl;
 }
@@ -114,15 +121,24 @@ async function _ensureHodlPoolAddress(
     botState.lifetimeHodlAmounts.poolAddress = ps.poolAddress;
     if (epochKey)
       _epochCache.setCachedLifetimeHodl(epochKey, botState.lifetimeHodlAmounts);
+    const tokenIdStr = String(position.tokenId || "");
     console.log(
-      "[bot] Backfilled lifetimeHodlAmounts.poolAddress for %s → %s",
-      epochKey || "(no key)",
+      "[bot] %s/%s NFT #%s %s: Backfilled lifetimeHodlAmounts.poolAddress → %s",
+      position.token0Symbol || "Token0",
+      position.token1Symbol || "Token1",
+      tokenIdStr,
+      emojiId(tokenIdStr),
       ps.poolAddress,
     );
     return ps.poolAddress;
   } catch (err) {
+    const tokenIdStr = String(position.tokenId || "");
     console.warn(
-      "[bot] Could not resolve pool address for lifetime deposit USD: %s",
+      "[bot] %s/%s NFT #%s %s: Could not resolve pool address for lifetime deposit USD: %s",
+      position.token0Symbol || "Token0",
+      position.token1Symbol || "Token1",
+      tokenIdStr,
+      emojiId(tokenIdStr),
       err.message,
     );
     return "";

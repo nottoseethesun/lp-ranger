@@ -327,3 +327,158 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
     assert.equal(_depositCalled, false);
   });
 });
+
+// ── Rescan flag + scan-error state tracking ─────────────────────────
+
+describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
+  let _scanLifetimePoolData;
+  let _shouldThrow = false;
+
+  function _installMocksThrowingHodl() {
+    Module.prototype.require = function (id) {
+      if (id === "./epoch-cache") {
+        return {
+          getCachedLifetimeHodl: () => _cachedHodl,
+          getLastNftScanBlock: () => 0,
+          setLastNftScanBlock: () => {},
+        };
+      }
+      if (id === "./bot-pnl-updater") {
+        return {
+          fetchTokenPrices: async () => ({ price0: 1, price1: 1 }),
+          actualGasCostUsd: async () => 0,
+        };
+      }
+      if (id === "./compounder") {
+        return {
+          classifyCompounds: async () => ({
+            compounds: [],
+            totalCompoundedUsd: 0,
+            totalGasWei: "0",
+          }),
+        };
+      }
+      if (id === "./lifetime-hodl") {
+        return { computeLifetimeHodl: async () => ({}) };
+      }
+      if (id === "./bot-hodl-scan") {
+        return {
+          computeAndCacheHodl: async () => {
+            if (_shouldThrow) throw new Error("simulated Moralis quota error");
+            return {};
+          },
+          computeDepositUsd: async () => {},
+        };
+      }
+      if (id === "./pool-creation-block") {
+        return { resolvePoolCreationBlockForPosition: async () => 0 };
+      }
+      if (id === "./bot-recorder-scan-helpers") {
+        return {
+          collectTokenIds: () => new Set([1]),
+          fetchAllNftEvents: async () => ({
+            allNftEvents: new Map([[1, []]]),
+            maxBlock: 0,
+          }),
+        };
+      }
+      return _origRequire.apply(this, arguments);
+    };
+    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
+  }
+
+  beforeEach(() => {
+    _shouldThrow = false;
+    _cachedHodl = null;
+    _installMocksThrowingHodl();
+    ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
+  });
+
+  afterEach(_restoreMocks);
+
+  it("clears _needsFullRescan + _lifetimeScanError on successful scan", async () => {
+    const patches = [];
+    const botState = _makeBotState({});
+    botState._needsFullRescan = true;
+    botState._lifetimeScanError = "prior failure";
+    botState._lifetimeScanErrorAt = 12345;
+    await _scanLifetimePoolData(
+      _makePosition(),
+      botState,
+      (p) => patches.push(p),
+      [],
+      "0xW",
+      null,
+      "epoch-key",
+    );
+    assert.equal(botState._needsFullRescan, false);
+    assert.equal(botState._lifetimeScanError, null);
+    assert.equal(botState._lifetimeScanErrorAt, null);
+    /*- The cleared state must also propagate to the per-position state
+     *  map via updateState() so /api/status reflects the recovery. */
+    const cleared = patches.find((p) => p._lifetimeScanError === null);
+    assert.ok(cleared, "updateState must be called with cleared error fields");
+  });
+
+  it("records _lifetimeScanError and timestamp when a scan step throws", async () => {
+    _shouldThrow = true;
+    const patches = [];
+    const botState = _makeBotState({});
+    await _scanLifetimePoolData(
+      _makePosition(),
+      botState,
+      (p) => patches.push(p),
+      [],
+      "0xW",
+      null,
+      "epoch-key",
+    );
+    assert.equal(botState._lifetimeScanError, "simulated Moralis quota error");
+    assert.ok(
+      Number.isFinite(botState._lifetimeScanErrorAt),
+      "_lifetimeScanErrorAt should be a numeric timestamp",
+    );
+    const recorded = patches.find(
+      (p) => p._lifetimeScanError === "simulated Moralis quota error",
+    );
+    assert.ok(recorded, "updateState must propagate the error to state map");
+  });
+
+  it("honors _needsFullRescan by bypassing the disk-fully-populated early-return", async () => {
+    _cachedHodl = { poolAddress: "0xPOOL" };
+    const botState = _makeBotState({
+      totalCompoundedUsd: 148.38,
+      totalLifetimeDepositUsd: 1704.15,
+    });
+    botState._needsFullRescan = true;
+    let depositCalled = false;
+    /*- Re-mock just the deposit path so we can detect it ran. */
+    const origRequire2 = Module.prototype.require;
+    Module.prototype.require = function (id) {
+      if (id === "./bot-hodl-scan") {
+        return {
+          computeAndCacheHodl: async () => ({}),
+          computeDepositUsd: async () => {
+            depositCalled = true;
+          },
+        };
+      }
+      return origRequire2.apply(this, arguments);
+    };
+    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
+    ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
+    await _scanLifetimePoolData(
+      _makePosition(),
+      botState,
+      () => {},
+      [],
+      "0xW",
+      null,
+      "epoch-key",
+    );
+    /*- With the flag set, computeDepositUsd must run even though
+     *  totalLifetimeDepositUsd > 0 on disk — the flag is the override
+     *  that lets a post-rebalance scan re-classify the chain. */
+    assert.equal(depositCalled, true);
+  });
+});

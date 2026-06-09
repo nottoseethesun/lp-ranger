@@ -23,7 +23,6 @@ const { getPoolState } = require("./rebalancer");
 const { scanPoolHistory } = require("./pool-scanner");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
-const _epochCache = require("./epoch-cache");
 const { buildUpdatePatch } = require("./bot-recorder-patch");
 const {
   collectTokenIds: _collectTokenIds,
@@ -36,6 +35,7 @@ const {
 } = require("./bot-pnl-updater");
 const { _scanLifetimePoolData } = require("./bot-recorder-lifetime");
 const { ensureInitialResidualData } = require("./liquidity-pair-details");
+const { emojiId } = require("./logger");
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -471,20 +471,25 @@ function _applyRebalanceResult(deps, result) {
     deps._botState.oorSince = null;
     // Reset mint gas flag so the new position's mint gas gets applied
     deps._botState._mintGasApplied = false;
-    /*- Clear cached HODL so re-scan picks up the new rebalance boundary.
-     *  `lastNftScanBlock` MUST be reset too — otherwise the next scan uses
-     *  the pre-rebalance max block as `fromBlock` and filters out every
-     *  historical IncreaseLiquidity event, caching an empty hodl/deposits
-     *  result and leaving `totalLifetimeDepositUsd` at 0.
+    /*- Flag the next lifetime scan to re-classify from scratch (new NFT in
+     *  the rebalance chain).  Do NOT clear in-memory or on-disk lifetime
+     *  totals here — if the subsequent scan fails (Moralis quota, RPC
+     *  hiccup, etc.) the bot would be stuck with null forever and the
+     *  dashboard's Lifetime panel would silently fall back to a wrong
+     *  value.  Old data with `_needsFullRescan=true` is strictly better
+     *  than null until the new scan succeeds and overwrites it.
      */
-    deps._botState.lifetimeHodlAmounts = null;
-    deps._botState.totalLifetimeDepositUsd = 0;
-    deps._botState.depositUsedFallback = false;
-    if (deps._pnlTracker?._epochKey) {
-      _epochCache.setCachedLifetimeHodl(deps._pnlTracker._epochKey, null);
-      _epochCache.setCachedFreshDeposits(deps._pnlTracker._epochKey, null);
-      _epochCache.setLastNftScanBlock(deps._pnlTracker._epochKey, 0);
-    }
+    deps._botState._needsFullRescan = true;
+    const t0Sym = position.token0Symbol || "Token0";
+    const t1Sym = position.token1Symbol || "Token1";
+    const tokenIdStr = String(position.tokenId || "");
+    console.log(
+      "[bot] %s/%s NFT #%s %s: Rebalance complete, queuing lifetime re-scan",
+      t0Sym,
+      t1Sym,
+      tokenIdStr,
+      emojiId(tokenIdStr),
+    );
     _updateHodlBaseline(deps._botState, result, mintNow);
   }
   console.log(

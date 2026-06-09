@@ -15,6 +15,7 @@
  *    original deposit.
  */
 import { _fmtUsd as _fmtUsdImpl } from "./dashboard-fmt-usd.js";
+import { _renderLifetimePending } from "./dashboard-lifetime-pending.js";
 import { g, fmtDateTime, fmtDuration } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 import { updateNetBreakdown as _updateNetBreakdown } from "./dashboard-data-kpi-breakdown.js";
@@ -270,15 +271,36 @@ export function _botDetectedDeposit(d) {
       ? d.hodlBaseline.entryValue
       : d.pnlSnapshot?.initialDeposit || 0;
 }
-/** Resolve lifetime deposit: user → scan total → first epoch → baseline. */
+/**
+ * Resolve lifetime deposit: user override → scan total → null.
+ *
+ * Returns null when the bot has not yet produced a valid scan total
+ * (totalLifetimeDeposit missing or zero) AND no user override is set.
+ * The renderer then surfaces "Pending Re-scan…" instead of falling back
+ * to closedEpochs[0].entryValue or hodlBaseline.entryValue — both of
+ * which only capture a single deposit (the first one), so they
+ * systematically under-report Total Lifetime Deposit for positions
+ * with multiple fresh deposits and silently inflate Lifetime P&L.
+ *
+ * The bot's 30-min auto-rescan in bot-loop.js handles recovery: when
+ * this returns null, the bot retries the scan until it succeeds and
+ * snap.totalLifetimeDeposit becomes a positive number.
+ */
 export function _resolveLifetimeDeposit(d) {
   const user = loadInitialDeposit();
   if (user > 0) return user; // manual override
-  return (
-    d.pnlSnapshot?.totalLifetimeDeposit || // scan total
-    d.pnlSnapshot?.closedEpochs?.[0]?.entryValue || // first epoch
-    _botDetectedDeposit(d)
-  ); // current baseline
+  const scanTotal = d.pnlSnapshot?.totalLifetimeDeposit;
+  return scanTotal > 0 ? scanTotal : null;
+}
+
+/**
+ * True when the lifetime panel is waiting for a successful re-scan
+ * (no user override, no scan-total).  Used by the renderer to display
+ * "Pending Re-scan…" for Total Lifetime Deposit and "—" for the
+ * dependent lifetime fields whose math relies on the deposit.
+ */
+export function _isLifetimeDepositPending(d) {
+  return _resolveLifetimeDeposit(d) === null;
 }
 export function _resolveCurDeposit(d) {
   const saved = loadCurDeposit();
@@ -382,6 +404,10 @@ export function _updateLifetimeKpis(d) {
     (d.running && !d.rebalanceScanComplete)
   )
     return;
+  if (_isLifetimeDepositPending(d)) {
+    _renderLifetimePending();
+    return;
+  }
   const t = _resolveKpiTotals(d);
   _updateNetReturn(
     d,

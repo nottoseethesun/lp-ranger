@@ -447,11 +447,36 @@ async function startBotLoop(opts) {
     botState._triggerScan();
     _scheduleNext();
   }
+  /*- Lifetime-deposit recovery loop: every 30 min, if the scan-total is
+   *  still missing (e.g. because the startup scan failed silently while
+   *  Moralis quota was exhausted, or a post-rebalance scan errored out),
+   *  re-trigger the scan.  The `_scanRunning` guard inside `_triggerScan`
+   *  prevents overlap with any scan already in flight.  See
+   *  bot-recorder-lifetime.js for the `_lifetimeScanError` flag and
+   *  bot-recorder.js for the `_needsFullRescan` trigger this complements. */
+  const LIFETIME_RESCAN_CHECK_MS = 30 * 60 * 1000;
+  const lifetimeRescanTimer = setInterval(() => {
+    if (_stopped) return;
+    if (botState._scanRunning) return;
+    const total = botState.totalLifetimeDepositUsd || 0;
+    if (total > 0) return;
+    const tokenIdStr = String(position.tokenId || "");
+    console.log(
+      "[bot] %s/%s NFT #%s %s: Lifetime deposit missing (lastError=%s), auto-rescanning",
+      position.token0Symbol || "Token0",
+      position.token1Symbol || "Token1",
+      tokenIdStr,
+      emojiId(tokenIdStr),
+      botState._lifetimeScanError || "none",
+    );
+    botState._triggerScan?.();
+  }, LIFETIME_RESCAN_CHECK_MS);
   return {
     stop() {
       if (_stopped) return Promise.resolve();
       _stopped = true;
       clearTimeout(timer);
+      clearInterval(lifetimeRescanTimer);
       updateBotState({ running: false });
       console.log("[bot] Bot loop stopped");
       if (!polling) return Promise.resolve();

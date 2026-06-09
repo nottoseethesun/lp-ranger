@@ -15,6 +15,7 @@ const { fetchTokenPrices: _fetchTokenPrices } = require("./bot-pnl-updater");
 const { classifyCompounds } = require("./compounder");
 const { computeLifetimeHodl } = require("./lifetime-hodl");
 const { computeAndCacheHodl, computeDepositUsd } = require("./bot-hodl-scan");
+const { emojiId } = require("./logger");
 const {
   resolvePoolCreationBlockForPosition,
 } = require("./pool-creation-block");
@@ -184,6 +185,69 @@ function _resolveDiskState(botState, epochKey) {
  * both compound classification and lifetime HODL accumulation.
  * Incremental: reads lastNftScanBlock from epoch cache, scans only new blocks.
  */
+/** Build a logging-context bundle (symbols + tokenId + emoji) for the scan. */
+function _scanLogCtx(position) {
+  const tokenIdStr = String(position.tokenId || "");
+  return {
+    t0Sym: position.token0Symbol || "Token0",
+    t1Sym: position.token1Symbol || "Token1",
+    tokenIdStr,
+    tokenEmoji: emojiId(tokenIdStr),
+  };
+}
+
+/** Persist scan-success state on the bot and through the update channel. */
+function _recordScanSuccess(botState, updateState, ctx) {
+  if (botState) {
+    botState._needsFullRescan = false;
+    botState._lifetimeScanError = null;
+    botState._lifetimeScanErrorAt = null;
+    updateState({
+      _needsFullRescan: false,
+      _lifetimeScanError: null,
+      _lifetimeScanErrorAt: null,
+    });
+  }
+  console.log(
+    "[bot] %s/%s NFT #%s %s: Lifetime scan complete",
+    ctx.t0Sym,
+    ctx.t1Sym,
+    ctx.tokenIdStr,
+    ctx.tokenEmoji,
+  );
+}
+
+/** Resolve the starting block for the event scan, honoring the rescan flag. */
+async function _resolveScanFromBlock(epochKey, fullRescan, position) {
+  const cachedFromBlock =
+    epochKey && !fullRescan ? _epochCache.getLastNftScanBlock(epochKey) : 0;
+  if (cachedFromBlock > 0) return cachedFromBlock;
+  return resolvePoolCreationBlockForPosition({
+    factoryAddress: config.FACTORY,
+    position,
+  });
+}
+
+/** Persist scan-failure state so the 30-min auto-rescan can see the gap. */
+function _recordScanFailure(botState, updateState, err, ctx) {
+  if (botState) {
+    botState._lifetimeScanError = err.message;
+    botState._lifetimeScanErrorAt = Date.now();
+    updateState({
+      _lifetimeScanError: err.message,
+      _lifetimeScanErrorAt: botState._lifetimeScanErrorAt,
+    });
+  }
+  console.warn(
+    "[bot] %s/%s NFT #%s %s: Lifetime pool scan failed: %s",
+    ctx.t0Sym,
+    ctx.t1Sym,
+    ctx.tokenIdStr,
+    ctx.tokenEmoji,
+    err.message,
+  );
+}
+
 async function _scanLifetimePoolData(
   position,
   botState,
@@ -193,26 +257,34 @@ async function _scanLifetimePoolData(
   pnlTracker,
   epochKey,
 ) {
+  const ctx = _scanLogCtx(position);
+  const fullRescan = !!botState?._needsFullRescan;
   const { cachedHodl, hasCompoundData, hasDepositData } = _resolveDiskState(
     botState,
     epochKey,
   );
-  if (hasCompoundData && cachedHodl && hasDepositData) return;
+  /*- The rebalance path sets `_needsFullRescan` to force re-classification
+   *  of every IncreaseLiquidity event in the (now-extended) chain. Bypass
+   *  the early-return so we don't skip the scan just because the prior
+   *  totals are still cached. */
+  if (!fullRescan && hasCompoundData && cachedHodl && hasDepositData) return;
+  console.log(
+    "[bot] %s/%s NFT #%s %s: Starting lifetime scan (fullRescan=%s)",
+    ctx.t0Sym,
+    ctx.t1Sym,
+    ctx.tokenIdStr,
+    ctx.tokenEmoji,
+    fullRescan,
+  );
   try {
-    const cachedFromBlock = epochKey
-      ? _epochCache.getLastNftScanBlock(epochKey)
-      : 0;
-    /*-
-     *  First-run lower bound: pool creation block.  Avoids replaying every
-     *  chain block back to genesis when the epoch cache has nothing yet.
-     */
-    const fromBlock =
-      cachedFromBlock > 0
-        ? cachedFromBlock
-        : await resolvePoolCreationBlockForPosition({
-            factoryAddress: config.FACTORY,
-            position,
-          });
+    /*- When `_needsFullRescan` is set we treat the cache as untrusted and
+     *  start the event scan from the pool creation block. Otherwise we
+     *  resume incrementally from the last scanned block. */
+    const fromBlock = await _resolveScanFromBlock(
+      epochKey,
+      fullRescan,
+      position,
+    );
     const prices = await _fetchTokenPrices(
       position.token0,
       position.token1,
@@ -257,12 +329,13 @@ async function _scanLifetimePoolData(
      *  a stale `lastNftScanBlock` would otherwise overwrite the correct
      *  total with a partial sum.
      */
-    if (!hasDepositData)
+    if (!hasDepositData || fullRescan)
       await computeDepositUsd(botState, updateState, position, opts, epochKey);
     if (epochKey && maxBlock > fromBlock)
       _epochCache.setLastNftScanBlock(epochKey, maxBlock);
+    _recordScanSuccess(botState, updateState, ctx);
   } catch (err) {
-    console.warn("[bot] Lifetime pool scan failed:", err.message);
+    _recordScanFailure(botState, updateState, err, ctx);
   }
 }
 
