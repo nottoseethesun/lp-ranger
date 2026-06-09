@@ -641,6 +641,26 @@ export const PARAM_HELP = {
           "to the Moralis API itself.",
       },
       {
+        heading: "Avoiding overage charges",
+        body:
+          "<strong>&#9888; Strongly recommended:</strong> after creating " +
+          "your Moralis account, open your Moralis account settings and " +
+          "<strong>disable overage / pay-as-you-go billing</strong>. " +
+          "Most paid API providers &mdash; Moralis included &mdash; " +
+          "enable overage charges by default, which means a usage spike " +
+          "that exceeds the quota on your current tier (free, or one of " +
+          "the various paid levels) can result in unexpected bills. " +
+          "Disabling overage caps your account at your current tier: " +
+          "requests beyond the quota are refused rather than billed. " +
+          "LP Ranger " +
+          "tolerates a quota-exhausted Moralis key (it falls back to " +
+          "GeckoTerminal automatically), so capping the account costs you " +
+          "nothing in functionality. <strong>This same recommendation " +
+          "applies to any other optional third-party API key you add to " +
+          "LP Ranger</strong> &mdash; check each provider&rsquo;s billing " +
+          "settings and turn overage off wherever it is offered.",
+      },
+      {
         heading: "Alternatives",
         body:
           "If you prefer not to use Moralis, the app works without it. " +
