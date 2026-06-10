@@ -33,6 +33,7 @@ const {
 } = require("./position-details-quick");
 const { _resolveCompounded } = require("./position-details-compound");
 const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
+const { resolvePositionSymbols } = require("./resolve-position-symbols");
 const { computeHodlIL } = require("./il-calculator");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const {
@@ -347,6 +348,11 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     tickUpper: body.tickUpper,
     liquidity: body.liquidity,
   };
+  /*- Populate position.token0Symbol / token1Symbol so the compound
+   *  classification log (_logCompoundSummary) and any other downstream
+   *  log site can render real names instead of "Token0"/"Token1".
+   *  Same shared helper bot-loop-detect.js uses. */
+  await resolvePositionSymbols(provider, position);
   const _ltT0 = Date.now();
   console.log(
     "[position details] Computing lifetime P&L for #%s\u2026",

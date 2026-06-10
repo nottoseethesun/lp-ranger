@@ -270,16 +270,28 @@ export function _botDetectedDeposit(d) {
       ? d.hodlBaseline.entryValue
       : d.pnlSnapshot?.initialDeposit || 0;
 }
-/** Resolve lifetime deposit: user → scan total → first epoch → baseline. */
+/**
+ * Resolve lifetime deposit: user override → scan total → null.
+ *
+ * Returns null when the bot has not yet produced a valid scan total
+ * (totalLifetimeDeposit missing or zero) AND no user override is set.
+ * The renderer then surfaces "Pending Re-scan…" instead of falling back
+ * to closedEpochs[0].entryValue or hodlBaseline.entryValue — both of
+ * which only capture a single deposit (the first one), so they
+ * systematically under-report Total Lifetime Deposit for positions
+ * with multiple fresh deposits and silently inflate Lifetime P&L.
+ *
+ * The bot's 30-min auto-rescan in bot-loop.js handles recovery: when
+ * this returns null, the bot retries the scan until it succeeds and
+ * snap.totalLifetimeDeposit becomes a positive number.
+ */
 export function _resolveLifetimeDeposit(d) {
   const user = loadInitialDeposit();
   if (user > 0) return user; // manual override
-  return (
-    d.pnlSnapshot?.totalLifetimeDeposit || // scan total
-    d.pnlSnapshot?.closedEpochs?.[0]?.entryValue || // first epoch
-    _botDetectedDeposit(d)
-  ); // current baseline
+  const scanTotal = d.pnlSnapshot?.totalLifetimeDeposit;
+  return scanTotal > 0 ? scanTotal : null;
 }
+
 export function _resolveCurDeposit(d) {
   const saved = loadCurDeposit();
   if (saved > 0) return saved;
@@ -376,10 +388,16 @@ export function _setDepositDisplay(dep, totalLifetimeDep, usedFallback) {
   }
 }
 export function _updateLifetimeKpis(d) {
+  /*- Gate lifetime rendering on BOTH scan flags.  The existing Syncing
+   *  badge + top-panel blur (driven by `_syncStatus` in dashboard-data.js)
+   *  is the single source of truth for "data not ready"; bailing out
+   *  here keeps half-rendered values from landing on screen.  Server
+   *  sets `lifetimeScanComplete = true` only when the bot's lifetime
+   *  scan succeeds AND produces a positive `totalLifetimeDepositUsd`. */
   if (
     !posStore.getActive() ||
     !d.pnlSnapshot ||
-    (d.running && !d.rebalanceScanComplete)
+    (d.running && (!d.rebalanceScanComplete || !d.lifetimeScanComplete))
   )
     return;
   const t = _resolveKpiTotals(d);

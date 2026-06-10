@@ -13,6 +13,8 @@
     "build-and-start": "npm run build && node server.js",
     "dev": "npm run build && node --watch server.js",
     "bot": "node bot.js",
+    "debug": "node --inspect server.js",
+    "debug-bot": "node --inspect bot.js",
     "stop": "node scripts/stop.js",
     "reset-wallet": "node scripts/reset-wallet.js",
     "clean:reports": "rm -rf test/report-artifacts",

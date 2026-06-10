@@ -52,12 +52,20 @@ async function _backfill(deps, position, poolState) {
   const empty = { gasWei: "0", compoundedUsd: 0 };
   if (!deps?.signer) return empty;
   try {
+    const walletAddr = await deps.signer.getAddress();
     const opts = {
       positionManagerAddress: config.POSITION_MANAGER,
       token0: position.token0,
       token1: position.token1,
       fee: position.fee,
-      walletAddress: await deps.signer.getAddress(),
+      walletAddress: walletAddr,
+      /*- Compounder's _logCompoundSummary reads opts.wallet (not
+       *  walletAddress) and opts.tokenNSymbol; mirror both fields so
+       *  the log line shows the actual wallet abbreviation + token
+       *  symbols instead of "?" and "Token0/Token1". */
+      wallet: walletAddr,
+      token0Symbol: position.token0Symbol,
+      token1Symbol: position.token1Symbol,
       price0: deps._lastPrice0 || 0,
       price1: deps._lastPrice1 || 0,
       decimals0: poolState.decimals0,

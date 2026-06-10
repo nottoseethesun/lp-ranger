@@ -23,6 +23,7 @@ const { getCachedEpochs, getCachedLifetimeHodl } = require("./epoch-cache");
 const { createPnlTracker } = require("./pnl-tracker");
 const rangeMath = require("./range-math");
 const { getPoolState } = require("./rebalancer");
+const { resolvePositionSymbols } = require("./resolve-position-symbols");
 const {
   positionValueUsd: _positionValueUsd,
   fetchTokenPrices: _fetchTokenPrices,
@@ -152,14 +153,19 @@ async function _detectPosition(provider, address, targetId, opts) {
       .map((p) => `#${p.tokenId}(liq=${String(p.liquidity).slice(0, 8)})`)
       .join(", "),
   );
-  if (targetId) return _selectTargeted(valid, targetId);
-  const picked = _pickBestNft(valid);
-  console.log(
-    "[bot] _detectPosition: picked #%s (active=%d, total=%d)",
-    picked.tokenId,
-    valid.filter((p) => BigInt(p.liquidity || 0n) > 0n).length,
-    valid.length,
-  );
+  let picked;
+  if (targetId) {
+    picked = _selectTargeted(valid, targetId);
+  } else {
+    picked = _pickBestNft(valid);
+    console.log(
+      "[bot] _detectPosition: picked #%s (active=%d, total=%d)",
+      picked.tokenId,
+      valid.filter((p) => BigInt(p.liquidity || 0n) > 0n).length,
+      valid.length,
+    );
+  }
+  await resolvePositionSymbols(provider, picked);
   return picked;
 }
 
