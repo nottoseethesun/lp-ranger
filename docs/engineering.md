@@ -34,6 +34,7 @@ sequence.
   - [Housekeeping](#housekeeping)
   - [Utilities](#utilities)
     - [Diagnostic Utilities](#diagnostic-utilities)
+      - [Scenario-Reproduction Scripts](#scenario-reproduction-scripts)
     - [Cache Utilities](#cache-utilities)
 - [The app-config Directory](#the-app-config-directory)
 - [Bot Config Defaults](#bot-config-defaults)
@@ -760,6 +761,26 @@ same bar as `src/`. Tests live in `util/diagnostic/test/` and run via
 `util/diagnostic/_helpers.js`; each tool's CLI `main()` is gated behind
 `require.main === module` so requiring it from a test does not start
 an RPC scan.
+
+##### Scenario-Reproduction Scripts
+
+Companion shell scripts (also under `util/diagnostic/`) that
+**deliberately mutate local state** so a previously-observed bug can
+be triggered on demand. Distinct from the read-only Node tools above:
+each script backs the original up to a timestamped sibling first and
+prints the exact restore command.
+
+- `inject-stuck-lifetime-state.sh` — Mutates every pool entry in
+  `tmp/pnl-epochs-cache.json` to match Prod's 2026-06-09 stuck shape:
+  `freshDeposits: null`, `lifetimeHodlAmounts: null`,
+  `lastNftScanBlock: 0`. Then `npm start` triggers the same lifetime-
+  scan recovery path the fix in `src/bot-recorder-lifetime.js` and
+  `src/bot-loop.js` exercises (see
+  [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
+  for the surrounding price-lookup gating). Used to verify the
+  `lifetimeScanComplete` flag + Syncing-badge UX behave correctly
+  when the cache is in the stuck shape; otherwise the bug only
+  reproduces on the live Prod box.
 
 #### Cache Utilities
 
