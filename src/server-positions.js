@@ -48,6 +48,12 @@ function createPerPositionBotState(_globalCfg, saved) {
     rebalancePaused: false,
     rebalanceScanComplete: false,
     rebalanceScanProgress: 0,
+    /*- Lifetime-deposit scan readiness.  Flips to true only when the
+     *  bot's lifetime scan completes successfully AND produces a
+     *  positive `totalLifetimeDepositUsd`.  Drives the Syncing badge
+     *  + top-panel blur via `_syncStatus` in dashboard-data.js so the
+     *  Lifetime panel never renders with a stale/zero deposit. */
+    lifetimeScanComplete: false,
     /*- Balanced-band Telegram notifier transient state (process-lifetime
      *  only; not persisted to .bot-config.json).  Owned by
      *  src/telegram-notifications/balanced-notifier.js — see CLAUDE.md "Balanced-Band Telegram

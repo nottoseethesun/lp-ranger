@@ -545,6 +545,26 @@ describe("_applyRebalanceResult — post-rebalance scan trigger", () => {
     _applyRebalanceResult(deps, result);
     assert.strictEqual(deps._botState._needsFullRescan, true);
   });
+
+  it("flips lifetimeScanComplete to false on rebalance and propagates via updateBotState", () => {
+    /*- The rebalance extended the chain so the prior scan's totals are
+     *  stale.  Server's `_syncStatus` reads lifetimeScanComplete on the
+     *  per-position state map (via /api/status), so the rebalance path
+     *  must both mutate botState in-memory AND call updateBotState so
+     *  the dashboard's Syncing badge re-engages immediately. */
+    const key = uniqKey("E");
+    const patches = [];
+    const deps = makeDeps(key);
+    deps._botState.lifetimeScanComplete = true;
+    deps.updateBotState = (p) => patches.push(p);
+    _applyRebalanceResult(deps, result);
+    assert.strictEqual(deps._botState.lifetimeScanComplete, false);
+    const flipped = patches.find((p) => p.lifetimeScanComplete === false);
+    assert.ok(
+      flipped,
+      "updateBotState must be called with lifetimeScanComplete: false",
+    );
+  });
 });
 
 // ── appendLog ───────────────────────────────────────────────────────

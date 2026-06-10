@@ -82,7 +82,17 @@ export function refreshManageBadge(active) {
   }
   btn.textContent = m ? "Stop Managing" : "Manage";
   btn.disabled = closed;
-  btn.title = closed ? "Cannot manage a closed position (liquidity = 0)" : "";
+  /*- Steady-state tooltip per state.  `_updateRebalanceButtons` in
+   *  dashboard-data.js overrides this when a rebalance is in flight OR
+   *  while syncing (per the canonical wording the user specified); in
+   *  the synced, no-rebalance-running case the text below stands.  See
+   *  feedback-help-cursor-on-title: non-empty title also enables the
+   *  project's help-cursor convention. */
+  btn.title = closed
+    ? "Cannot manage a closed position (liquidity = 0)"
+    : m
+      ? "Remove this position from active management by LP Ranger."
+      : "Bring this position under active management by LP Ranger.";
   if (pdBtn) {
     pdBtn.disabled = false;
     pdBtn.title = "View pool and contract details";

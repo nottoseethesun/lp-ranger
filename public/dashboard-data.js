@@ -15,6 +15,7 @@ import {
 } from "./dashboard-history.js";
 import { wallet } from "./dashboard-wallet.js";
 import { reapplyPrivacyBlur, updateManageBadge } from "./dashboard-events.js";
+import { refreshManageBadge } from "./dashboard-manage-badge.js";
 import {
   isViewingClosedPos,
   refetchClosedPosHistory,
@@ -273,7 +274,14 @@ function _syncStatus(d) {
     const tip = p?.total > 0 ? p.done + "/" + p.total + " positions" : "";
     return { complete: false, label: "Syncing\u2026", tip };
   }
-  if (!d.rebalanceScanComplete)
+  /*- `lifetimeScanComplete` gates only when the active position is
+   *  managed.  Unmanaged positions don't render a Lifetime panel (the
+   *  placeholder takes its place), so the flag is structurally
+   *  irrelevant on their state \u2014 checking it would leave their badge
+   *  stuck on "Syncing\u2026" forever.  See server-routes._syncLifetimeState
+   *  for the matching server-side decision. */
+  const managed = isPositionManaged(active.tokenId);
+  if (!d.rebalanceScanComplete || (managed && !d.lifetimeScanComplete))
     return { complete: false, label: "Syncing\u2026" };
   return { complete: true, label: "Synced" };
 }
@@ -283,7 +291,7 @@ function _updateSyncBadge(d) {
   const { complete: c, label, tip } = _syncStatus(d);
   if (c !== badge.classList.contains("done"))
     console.log(
-      `[lp-ranger] [sync-badge] ${c ? "Synced" : "Syncing"} active=#${posStore.getActive()?.tokenId} rsc=${d.rebalanceScanComplete} pscan=${d._positionScan?.status}`,
+      `[lp-ranger] [sync-badge] ${c ? "Synced" : "Syncing"} active=#${posStore.getActive()?.tokenId} rsc=${d.rebalanceScanComplete} lsc=${d.lifetimeScanComplete} pscan=${d._positionScan?.status}`,
     );
   badge.textContent = label || "Syncing\u2026";
   badge.title = tip || "";
@@ -375,6 +383,8 @@ const _REB_HELP =
   "LP Ranger is currently submitting transactions to rebalance this LP Position.";
 const _REB_MANUAL =
   "Manually force a rebalance. Automatic rebalancing stays in effect.";
+const _MANAGE_SYNCING_HELP =
+  'This button will be clickable once the "Syncing…" badge above is finished.';
 function _setBtn(el, disabled, title) {
   if (!el) return;
   el.disabled = disabled;
@@ -394,8 +404,23 @@ function _updateRebalanceButtons(d) {
   if (!posStore.getActive()) {
     _setBtn(btn, true, "Select a position first");
     _setBtn(rb, true, "Select a position first");
+  } else if (on) {
+    /*- Rebalance in flight: both buttons disabled with the same hint. */
+    _setBtn(btn, true, _REB_HELP);
+    _setBtn(rb, true, _REB_HELP);
+  } else if (!_scanWasComplete) {
+    /*- Per-position scan still running (either rebalance-event scan or
+     *  lifetime scan).  Manage button is disabled with the canonical
+     *  syncing hint; manual-rebalance button keeps its usual hint
+     *  unchanged so users can still trigger a rebalance once the bot
+     *  state is otherwise ready. */
+    _setBtn(btn, true, _MANAGE_SYNCING_HELP);
+    _setBtn(rb, on, on ? _REB_HELP : _REB_MANUAL);
   } else {
-    _setBtn(btn, on || !_scanWasComplete, on ? _REB_HELP : "");
+    /*- Synced, no rebalance in flight.  Defer to refreshManageBadge so
+     *  the steady-state Manage / Stop Managing tooltip text (set there)
+     *  isn't clobbered each poll. */
+    refreshManageBadge(posStore.getActive());
     _setBtn(rb, on, on ? _REB_HELP : _REB_MANUAL);
   }
   updateMissionStatusBadge(d);

@@ -274,6 +274,12 @@ function createRouteHandlers(deps) {
     const bl = diskConfig.positions[pk]?.hodlBaseline;
     if (bl) s.hodlBaseline = bl;
     if (!states.has(pk)) states.set(pk, s);
+    /*- Note: `lifetimeScanComplete` is intentionally NOT set here.
+     *  Unmanaged positions don't render a Lifetime panel (the placeholder
+     *  "Click Manage to get reporting of Lifetime values." takes its
+     *  place), so the flag is structurally irrelevant on their state.
+     *  The dashboard's `_syncStatus` gates on the flag only when the
+     *  active position is managed. */
     const _sn = s.pnlSnapshot;
     console.log(
       "[server] _syncLifetimeState %s: curFees=%s gas=%s comp=%s residual=%s entry=%s bl=%s",

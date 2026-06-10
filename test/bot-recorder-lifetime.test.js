@@ -402,6 +402,9 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
     botState._needsFullRescan = true;
     botState._lifetimeScanError = "prior failure";
     botState._lifetimeScanErrorAt = 12345;
+    /*- Total > 0 means the success path flips lifetimeScanComplete to
+     *  true; the next test covers the total=0 case. */
+    botState.totalLifetimeDepositUsd = 1713.93;
     await _scanLifetimePoolData(
       _makePosition(),
       botState,
@@ -414,10 +417,38 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
     assert.equal(botState._needsFullRescan, false);
     assert.equal(botState._lifetimeScanError, null);
     assert.equal(botState._lifetimeScanErrorAt, null);
+    assert.equal(botState.lifetimeScanComplete, true);
     /*- The cleared state must also propagate to the per-position state
      *  map via updateState() so /api/status reflects the recovery. */
     const cleared = patches.find((p) => p._lifetimeScanError === null);
     assert.ok(cleared, "updateState must be called with cleared error fields");
+    const ready = patches.find((p) => p.lifetimeScanComplete === true);
+    assert.ok(ready, "updateState must propagate lifetimeScanComplete: true");
+  });
+
+  it("keeps lifetimeScanComplete=false when scan succeeds with zero total", async () => {
+    /*- A successful scan that produces no positive total (price-fetch
+     *  silent failure, empty rebalance chain, etc.) is not a useful
+     *  completion.  The flag must stay false so the Syncing badge stays
+     *  engaged and the 30-min auto-rescan keeps retrying. */
+    const patches = [];
+    const botState = _makeBotState({});
+    botState.totalLifetimeDepositUsd = 0;
+    await _scanLifetimePoolData(
+      _makePosition(),
+      botState,
+      (p) => patches.push(p),
+      [],
+      "0xW",
+      null,
+      "epoch-key",
+    );
+    assert.equal(botState.lifetimeScanComplete, false);
+    const notReady = patches.find((p) => p.lifetimeScanComplete === false);
+    assert.ok(
+      notReady,
+      "updateState must propagate lifetimeScanComplete: false",
+    );
   });
 
   it("records _lifetimeScanError and timestamp when a scan step throws", async () => {
@@ -438,10 +469,19 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       Number.isFinite(botState._lifetimeScanErrorAt),
       "_lifetimeScanErrorAt should be a numeric timestamp",
     );
+    /*- Failure path must also push lifetimeScanComplete back to false
+     *  defensively (e.g. when a prior scan flipped it true and a
+     *  subsequent post-rebalance re-scan failed). */
+    assert.equal(botState.lifetimeScanComplete, false);
     const recorded = patches.find(
       (p) => p._lifetimeScanError === "simulated Moralis quota error",
     );
     assert.ok(recorded, "updateState must propagate the error to state map");
+    const notReady = patches.find((p) => p.lifetimeScanComplete === false);
+    assert.ok(
+      notReady,
+      "updateState must propagate lifetimeScanComplete: false on failure",
+    );
   });
 
   it("honors _needsFullRescan by bypassing the disk-fully-populated early-return", async () => {

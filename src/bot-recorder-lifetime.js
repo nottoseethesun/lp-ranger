@@ -198,29 +198,55 @@ function _scanLogCtx(position) {
 
 /** Persist scan-success state on the bot and through the update channel. */
 function _recordScanSuccess(botState, updateState, ctx) {
+  /*- Readiness gate (per the lifetimeScanComplete invariant): only
+   *  flip the flag to true when the scan produced a positive total.
+   *  A successful scan that yields totalLifetimeDepositUsd <= 0
+   *  (price-fetch failures masked as success, etc.) is not a useful
+   *  completion — leave the flag false so the Syncing badge stays
+   *  engaged and the 30-min auto-rescan keeps retrying. */
+  const total = botState?.totalLifetimeDepositUsd || 0;
+  const ready = total > 0;
   if (botState) {
     botState._needsFullRescan = false;
     botState._lifetimeScanError = null;
     botState._lifetimeScanErrorAt = null;
+    botState.lifetimeScanComplete = ready;
     updateState({
       _needsFullRescan: false,
       _lifetimeScanError: null,
       _lifetimeScanErrorAt: null,
+      lifetimeScanComplete: ready,
     });
   }
   console.log(
-    "[bot] %s/%s NFT #%s %s: Lifetime scan complete",
+    "[bot] %s/%s NFT #%s %s: Lifetime scan complete (ready=%s, total=$%s)",
     ctx.t0Sym,
     ctx.t1Sym,
     ctx.tokenIdStr,
     ctx.tokenEmoji,
+    ready,
+    total.toFixed(2),
   );
 }
 
 /** Resolve the starting block for the event scan, honoring the rescan flag. */
-async function _resolveScanFromBlock(epochKey, fullRescan, position) {
-  const cachedFromBlock =
-    epochKey && !fullRescan ? _epochCache.getLastNftScanBlock(epochKey) : 0;
+async function _resolveScanFromBlock(
+  epochKey,
+  fullRescan,
+  position,
+  cachedHodlPresent,
+) {
+  /*- The lastNftScanBlock is only trustworthy when there's a cached
+   *  lifetimeHodl that it corresponds to.  If freshDeposits /
+   *  lifetimeHodlAmounts got nulled (manual cache mutation, or a future
+   *  invariant bug) but lastNftScanBlock is still high, an incremental
+   *  scan from that block would find nothing and quietly produce an
+   *  empty result.  Treat the cache as untrusted when cachedHodl is
+   *  absent so we start from the pool creation block. */
+  const useCached = !!epochKey && !fullRescan && cachedHodlPresent;
+  const cachedFromBlock = useCached
+    ? _epochCache.getLastNftScanBlock(epochKey)
+    : 0;
   if (cachedFromBlock > 0) return cachedFromBlock;
   return resolvePoolCreationBlockForPosition({
     factoryAddress: config.FACTORY,
@@ -228,14 +254,22 @@ async function _resolveScanFromBlock(epochKey, fullRescan, position) {
   });
 }
 
-/** Persist scan-failure state so the 30-min auto-rescan can see the gap. */
+/*- Persist scan-failure state so the 30-min auto-rescan can see the gap.
+ *  Also keeps `lifetimeScanComplete` at false so the Syncing badge stays
+ *  engaged until a future scan succeeds. */
 function _recordScanFailure(botState, updateState, err, ctx) {
   if (botState) {
     botState._lifetimeScanError = err.message;
     botState._lifetimeScanErrorAt = Date.now();
+    /*- Defensive: if a prior scan flipped the flag to true and a
+     *  subsequent re-scan (post-rebalance) just failed, push it back
+     *  to false so the Syncing badge re-engages.  No-op if already
+     *  false from the initial state. */
+    botState.lifetimeScanComplete = false;
     updateState({
       _lifetimeScanError: err.message,
       _lifetimeScanErrorAt: botState._lifetimeScanErrorAt,
+      lifetimeScanComplete: false,
     });
   }
   console.warn(
@@ -284,6 +318,7 @@ async function _scanLifetimePoolData(
       epochKey,
       fullRescan,
       position,
+      !!cachedHodl,
     );
     const prices = await _fetchTokenPrices(
       position.token0,
@@ -297,6 +332,10 @@ async function _scanLifetimePoolData(
       token0Symbol: position.token0Symbol || "Token0",
       token1Symbol: position.token1Symbol || "Token1",
       wallet: walletAddress,
+      /*- NFT factory for the full-context log format (see
+       *  feedback-log-full-context).  Without this, _logCompoundSummary
+       *  would render the factory slot empty. */
+      positionManagerAddress: config.POSITION_MANAGER,
     };
     const ids = _collectTokenIds(position, rebalanceEvents);
     const { allNftEvents, maxBlock } = await _fetchAllNftEvents(ids, fromBlock);

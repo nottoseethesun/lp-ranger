@@ -574,10 +574,16 @@ function _logCompoundSummary(opts, parts) {
   const s1 = opts.token1Symbol || "Token1";
   const chain = config.CHAIN_NAME || "PulseChain";
   const nft = "#" + (opts.tokenId || "?") + " " + emojiId(opts.tokenId);
+  /*- Full context per feedback-log-full-context: chain + wallet + NFT
+   *  factory + tokenId + emoji + both token symbols.  Callers must pass
+   *  `opts.positionManagerAddress` (the NFT factory); `config.POSITION_MANAGER`
+   *  is the fallback when a caller forgets so we never render `?`. */
+  const factory = _abbr(opts.positionManagerAddress || config.POSITION_MANAGER);
   console.log(
-    "[compound] %s %s %s %s/%s: %d IncreaseLiquidity (%d standalone), %d Collect, %d drain",
+    "[compound] %s %s %s %s %s/%s: %d IncreaseLiquidity (%d standalone), %d Collect, %d drain",
     chain,
     _abbr(opts.wallet),
+    factory,
     nft,
     s0,
     s1,

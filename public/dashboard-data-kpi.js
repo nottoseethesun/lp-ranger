@@ -15,7 +15,6 @@
  *    original deposit.
  */
 import { _fmtUsd as _fmtUsdImpl } from "./dashboard-fmt-usd.js";
-import { _renderLifetimePending } from "./dashboard-lifetime-pending.js";
 import { g, fmtDateTime, fmtDuration } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 import { updateNetBreakdown as _updateNetBreakdown } from "./dashboard-data-kpi-breakdown.js";
@@ -293,15 +292,6 @@ export function _resolveLifetimeDeposit(d) {
   return scanTotal > 0 ? scanTotal : null;
 }
 
-/**
- * True when the lifetime panel is waiting for a successful re-scan
- * (no user override, no scan-total).  Used by the renderer to display
- * "Pending Re-scan…" for Total Lifetime Deposit and "—" for the
- * dependent lifetime fields whose math relies on the deposit.
- */
-export function _isLifetimeDepositPending(d) {
-  return _resolveLifetimeDeposit(d) === null;
-}
 export function _resolveCurDeposit(d) {
   const saved = loadCurDeposit();
   if (saved > 0) return saved;
@@ -398,16 +388,18 @@ export function _setDepositDisplay(dep, totalLifetimeDep, usedFallback) {
   }
 }
 export function _updateLifetimeKpis(d) {
+  /*- Gate lifetime rendering on BOTH scan flags.  The existing Syncing
+   *  badge + top-panel blur (driven by `_syncStatus` in dashboard-data.js)
+   *  is the single source of truth for "data not ready"; bailing out
+   *  here keeps half-rendered values from landing on screen.  Server
+   *  sets `lifetimeScanComplete = true` only when the bot's lifetime
+   *  scan succeeds AND produces a positive `totalLifetimeDepositUsd`. */
   if (
     !posStore.getActive() ||
     !d.pnlSnapshot ||
-    (d.running && !d.rebalanceScanComplete)
+    (d.running && (!d.rebalanceScanComplete || !d.lifetimeScanComplete))
   )
     return;
-  if (_isLifetimeDepositPending(d)) {
-    _renderLifetimePending();
-    return;
-  }
   const t = _resolveKpiTotals(d);
   _updateNetReturn(
     d,

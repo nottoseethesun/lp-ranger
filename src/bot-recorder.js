@@ -210,6 +210,7 @@ async function _scanHistory(
   try {
     updateState({
       rebalanceScanComplete: false,
+      lifetimeScanComplete: false,
       rebalanceScanProgress: 0,
     });
     const poolState = await getPoolState(provider, ethersLib, {
@@ -480,6 +481,12 @@ function _applyRebalanceResult(deps, result) {
      *  than null until the new scan succeeds and overwrites it.
      */
     deps._botState._needsFullRescan = true;
+    /*- A rebalance just extended the chain, so the prior lifetime
+     *  scan no longer reflects current chain state.  Flip the
+     *  readiness flag back to false until the queued re-scan finishes;
+     *  the Syncing badge + blur kick in until then. */
+    deps._botState.lifetimeScanComplete = false;
+    deps.updateBotState?.({ lifetimeScanComplete: false });
     const t0Sym = position.token0Symbol || "Token0";
     const t1Sym = position.token1Symbol || "Token1";
     const tokenIdStr = String(position.tokenId || "");
