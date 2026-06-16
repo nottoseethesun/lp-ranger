@@ -9,6 +9,7 @@
     "copy-fonts": "node scripts/copy-fonts.js",
     "postinstall": "node scripts/copy-fonts.js",
     "prepare": "husky",
+    "prestart": "node scripts/check-build-artifacts.js",
     "start": "node server.js",
     "build-and-start": "npm run build && node server.js",
     "dev": "npm run build && node --watch server.js",
