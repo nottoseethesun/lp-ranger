@@ -37,7 +37,7 @@
  *                     token0UsdPrice: 0.00042, token1UsdPrice: 1.0 });
  * tracker.updateLiveEpoch({ currentPrice: 0.00044, feesAccrued: 0.12 });
  * const snap = tracker.snapshot();
- * console.log(snap.priceChangePnl, snap.liveEpoch?.fees);
+ * log.info(snap.priceChangePnl, snap.liveEpoch?.fees);
  */
 
 "use strict";

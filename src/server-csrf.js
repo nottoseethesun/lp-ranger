@@ -17,6 +17,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 const Tokens = require("csrf");
@@ -53,7 +54,7 @@ function readCsrfTunable() {
       out.refreshIntervalMs = p.refreshIntervalMs;
     return out;
   } catch (err) {
-    console.warn("[csrf] Falling back to built-in defaults: %s", err.message);
+    log.warn("[csrf] Falling back to built-in defaults: %s", err.message);
     return { ..._FALLBACK };
   }
 }
@@ -171,7 +172,7 @@ function handleCsrf(req, res, jsonResponse) {
     const key = method + " " + url;
     const now = Date.now();
     if (!check.valid) {
-      console.warn("[csrf] 403 %s %s — %s", method, url, check.reason);
+      log.warn("[csrf] 403 %s %s — %s", method, url, check.reason);
       _prune403Buffer(now);
       _recent403.set(key, now);
       jsonResponse(res, 403, { ok: false, error: check.reason });
@@ -179,7 +180,7 @@ function handleCsrf(req, res, jsonResponse) {
     }
     const recent = _recent403.get(key);
     if (recent !== undefined && now - recent <= _RETRY_LOG_WINDOW_MS) {
-      console.log("[csrf] retry succeeded for %s %s", method, url);
+      log.info("[csrf] retry succeeded for %s %s", method, url);
       _recent403.delete(key);
     } else if (recent !== undefined) {
       _recent403.delete(key);

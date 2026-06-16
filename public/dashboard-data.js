@@ -2,6 +2,7 @@
  * @file dashboard-data.js
  * @description Polls /api/status, updates live UI elements. Re-exports.
  */
+import { log } from "./dashboard-log.js";
 import { g, botConfig, act, ACT_ICONS } from "./dashboard-helpers.js";
 import {
   posStore,
@@ -290,7 +291,7 @@ function _updateSyncBadge(d) {
   if (!badge) return;
   const { complete: c, label, tip } = _syncStatus(d);
   if (c !== badge.classList.contains("done"))
-    console.log(
+    log.info(
       `[lp-ranger] [sync-badge] ${c ? "Synced" : "Syncing"} active=#${posStore.getActive()?.tokenId} rsc=${d.rebalanceScanComplete} lsc=${d.lifetimeScanComplete} pscan=${d._positionScan?.status}`,
     );
   badge.textContent = label || "Syncing\u2026";
@@ -529,7 +530,7 @@ function _applyManagedUpdates(data, managed) {
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
   const _tid = posStore.getActive()?.tokenId;
-  console.debug(
+  log.debug(
     "%c[lp-ranger] [poll] #%s hasPosData=%s stats=%s pool=%s",
     _LC,
     _tid,
@@ -563,10 +564,10 @@ function updateDashboardFromStatus(data) {
   const _a2 = posStore.getActive();
   const _managed = _a2 && isPositionManaged(_a2.tokenId);
   if (!_managed && !data._hasPositionData) {
-    console.debug("%c[lp-ranger] [skip] #%s no data yet", _LW, _a2?.tokenId);
+    log.debug("%c[lp-ranger] [skip] #%s no data yet", _LW, _a2?.tokenId);
     return;
   }
-  console.debug(
+  log.debug(
     "%c[lp-ranger] [update] #%s managed=%s comp=%s",
     _LO,
     _a2?.tokenId,

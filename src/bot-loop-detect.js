@@ -17,6 +17,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const { detectPositionType } = require("./position-detector");
 const { getCachedEpochs, getCachedLifetimeHodl } = require("./epoch-cache");
@@ -101,7 +102,7 @@ async function _detectWithRetry(address, targetId, getProvider, onRpcFailure) {
        *  (5.25 s total wait + call time).  Engage RPC failover before
        *  sleeping so the wait isn't wasted re-trying the same dead RPC. */
       const wait = _DETECT_BACKOFF_MS * Math.pow(2, attempt - 1);
-      console.warn(
+      log.warn(
         "[bot] _detectPosition: attempt %d/%d returned %s (target=%s) — engaging RPC failover + retrying in %dms",
         attempt,
         _DETECT_RETRIES,
@@ -119,7 +120,7 @@ async function _detectWithRetry(address, targetId, getProvider, onRpcFailure) {
 /** Apply the targetId filter and log the choice. */
 function _selectTargeted(valid, targetId) {
   const m = valid.find((p) => String(p.tokenId) === String(targetId));
-  console.log(
+  log.info(
     "[bot] _detectPosition: targetId match=%s",
     m ? `#${m.tokenId}` : "MISS\u2192fallback",
   );
@@ -145,7 +146,7 @@ async function _detectPosition(provider, address, targetId, opts) {
   const valid = detection.nftPositions.filter((p) => p.fee && p.fee > 0);
   if (!valid.length)
     throw new Error("No positions with a valid V3 fee tier found.");
-  console.log(
+  log.info(
     "[bot] _detectPosition: targetId=%s, found %d valid NFTs: %s",
     targetId || "none",
     valid.length,
@@ -158,7 +159,7 @@ async function _detectPosition(provider, address, targetId, opts) {
     picked = _selectTargeted(valid, targetId);
   } else {
     picked = _pickBestNft(valid);
-    console.log(
+    log.info(
       "[bot] _detectPosition: picked #%s (active=%d, total=%d)",
       picked.tokenId,
       valid.filter((p) => BigInt(p.liquidity || 0n) > 0n).length,
@@ -195,7 +196,7 @@ function _initPnlTracker(
   const cached = _epochKey ? getCachedEpochs(_epochKey) : null;
   if (cached) {
     tracker.restore(cached);
-    console.log(
+    log.info(
       "[bot] Restored P&L epochs from cache (%d closed)",
       cached.closedEpochs?.length,
     );
@@ -211,7 +212,7 @@ function _initPnlTracker(
   }
   const cachedHodl = _epochKey ? getCachedLifetimeHodl(_epochKey) : null;
   if (cachedHodl) botState.lifetimeHodlAmounts = cachedHodl;
-  console.log(
+  log.info(
     `[bot] P&L tracker initialized (T0=$${price0.toFixed(6)}, T1=$${price1.toFixed(6)})`,
   );
   return { tracker, epochKey: _epochKey };
@@ -266,9 +267,9 @@ async function _tryInitPnlTracker(
       t._epochKey = ek;
       return t;
     }
-    console.warn("[bot] Could not fetch token prices — P&L tracking disabled");
+    log.warn("[bot] Could not fetch token prices — P&L tracking disabled");
   } catch (err) {
-    console.warn("[bot] P&L tracker init error:", err.message);
+    log.warn("[bot] P&L tracker init error:", err.message);
   }
   return null;
 }

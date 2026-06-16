@@ -9,6 +9,7 @@
  * modules are loaded.
  */
 
+import { log } from "./dashboard-log.js";
 import {
   g,
   act,
@@ -325,7 +326,7 @@ export function bindAllEvents() {
       const idx = parseInt(row.dataset.posIdx, 10);
       const now = Date.now();
       const isDbl = idx === _lastIdx && now - _lastTs < DBLCLICK_MS;
-      console.log(
+      log.info(
         "[posList] click idx=%d isDbl=%s (lastIdx=%d, dt=%dms)",
         idx,
         isDbl,
@@ -336,7 +337,7 @@ export function bindAllEvents() {
         _lastIdx = -1;
         _lastTs = 0;
         posRowSelect(idx);
-        console.log("[posList] activating idx=%d", idx);
+        log.info("[posList] activating idx=%d", idx);
         activateSelectedPos();
         return;
       }

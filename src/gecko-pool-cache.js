@@ -20,6 +20,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 const { geckoRateLimit } = require("./gecko-rate-limit");
@@ -89,7 +90,7 @@ async function _fetchBaseAddr(network, poolAddress) {
       attempt < _POOL_INFO_429_DELAYS_MS.length
     ) {
       const delay = _POOL_INFO_429_DELAYS_MS[attempt];
-      console.warn(
+      log.warn(
         "[gecko-pool-cache] %s 429 — retry %d/%d in %ds",
         poolAddress,
         attempt + 1,
@@ -101,7 +102,7 @@ async function _fetchBaseAddr(network, poolAddress) {
       attempt++;
     }
     if (!res.ok) {
-      console.warn(
+      log.warn(
         "[gecko-pool-cache] %s status=%d (final after %d retries)",
         poolAddress,
         res.status,
@@ -111,7 +112,7 @@ async function _fetchBaseAddr(network, poolAddress) {
     }
     return res.baseAddr;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[gecko-pool-cache] %s fetch failed: %s",
       poolAddress,
       err.message ?? err,
@@ -127,7 +128,7 @@ function _resolveOrientation(baseAddr, token0, token1, poolAddress) {
   const t1 = token1.toLowerCase();
   if (baseAddr === t0) return "normal";
   if (baseAddr === t1) return "flipped";
-  console.warn(
+  log.warn(
     "[gecko-pool-cache] %s base=%s does not match token0=%s or token1=%s",
     poolAddress,
     baseAddr,
@@ -166,7 +167,7 @@ async function getGeckoPoolOrientation(network, poolAddress, token0, token1) {
   if (!orientation) return null;
   _cache[k] = orientation;
   _dirty = true;
-  console.log(
+  log.info(
     "[gecko-pool-cache] %s → %s (base=%s)",
     poolAddress,
     orientation,
@@ -183,7 +184,7 @@ function flushGeckoPoolCache() {
     fs.writeFileSync(_CACHE_PATH, JSON.stringify(_cache, null, 2), "utf8");
     _dirty = false;
   } catch (err) {
-    console.warn("[gecko-pool-cache] Could not write cache:", err.message);
+    log.warn("[gecko-pool-cache] Could not write cache:", err.message);
   }
 }
 

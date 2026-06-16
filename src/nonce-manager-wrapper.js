@@ -43,6 +43,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const { classifyRpcError } = require("./rpc-error-classifier");
@@ -211,7 +212,7 @@ class FailoverNonceManager {
       sendTx.failoverToNextRPC();
       const after = sendTx.getCurrentRPC();
       if (before === after) throw err;
-      console.warn(
+      log.warn(
         "[failover-nm] sendTransaction transient error on %s — retrying on %s. Inner: %s",
         _providerUrl(before),
         _providerUrl(after),

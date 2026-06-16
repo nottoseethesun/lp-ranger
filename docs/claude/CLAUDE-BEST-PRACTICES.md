@@ -1,5 +1,11 @@
 # Best Practices
 
+## Core Essentials
+
+Highest-priority rules. Violations here are deal-breakers — review every PR for them first.
+
+- **NEVER modify standard JS globals.** Do not reassign or wrap `console.log` / `console.warn` / `console.error` / `console.debug` / `console.info`, `Array.prototype.*`, `Date`, `Math`, `fetch`, `window.*`, or any other built-in. This includes "install" / "patch" helpers that wrap a global at startup. Why: (1) **clashes with other libraries** — any third-party module that also wraps the same global either double-wraps or shadows the other's wrapping, and in tests mocking libraries that replace `console.*` will collide; (2) **security** — patched globals make it impossible for a reviewer to trust that `console.log(secret)` only writes to stdout. When you need cross-cutting behaviour (timestamps, structured fields, redaction, color), build a thin **opt-in wrapper module** (e.g. `src/log.js` exporting `log.info`/`warn`/`error`); callers `require()` it explicitly. The pre-existing `installColorLogger()` in `src/logger.js` is grandfathered — do not extend the pattern further, and migrate it to an opt-in wrapper at the next reasonable opportunity.
+
 ## Code Quality
 
 - **No band-aid fixes** — fix the root cause, not the symptom. If a display shows wrong data, fix the data source, not the display layer. When fixing a bug, always search for the same pattern elsewhere in the codebase before considering it done — a single symptom fix should trigger an audit for the same class of bug.

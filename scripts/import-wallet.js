@@ -20,6 +20,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const readline = require("readline");
 const { Wallet } = require("ethers");
 const { migrateAppConfig } = require("../src/migrate-app-config");
@@ -74,13 +75,8 @@ function readStdin() {
 (async function main() {
   if (walletManager.hasWallet()) {
     const status = walletManager.getStatus();
-    console.error(
-      "A wallet is already imported (address: %s).",
-      status.address,
-    );
-    console.error(
-      "Run `npm run reset-wallet` first if you want to replace it.",
-    );
+    log.error("A wallet is already imported (address: %s).", status.address);
+    log.error("Run `npm run reset-wallet` first if you want to replace it.");
     process.exit(1);
   }
 
@@ -90,14 +86,14 @@ function readStdin() {
   if (process.stdin.isTTY) {
     // Interactive — prompt for everything.
     const rl = createRl();
-    console.error("Import a wallet into LP Ranger (encrypted at rest).\n");
+    log.error("Import a wallet into LP Ranger (encrypted at rest).\n");
     privateKey = await ask(rl, "Private key (0x-prefixed hex): ");
     password = await ask(rl, "Encryption password: ");
     const confirm = await ask(rl, "Confirm password: ");
     rl.close();
     // eslint-disable-next-line security/detect-possible-timing-attacks -- Safe: comparing two user-entered strings for confirmation, not verifying a secret
     if (password !== confirm) {
-      console.error("Passwords do not match.");
+      log.error("Passwords do not match.");
       process.exit(1);
     }
   } else {
@@ -105,7 +101,7 @@ function readStdin() {
     privateKey = await readStdin();
     password = passwordFromFlag;
     if (!password) {
-      console.error(
+      log.error(
         "When piping the private key via stdin, " +
           "provide --password <password> on the command line.",
       );
@@ -114,7 +110,7 @@ function readStdin() {
   }
 
   if (!privateKey) {
-    console.error("No private key provided.");
+    log.error("No private key provided.");
     process.exit(1);
   }
 
@@ -125,7 +121,7 @@ function readStdin() {
 
   // Validate — must be a valid 32-byte hex key.
   if (!/^0x[0-9a-f]{64}$/i.test(privateKey)) {
-    console.error(
+    log.error(
       "Invalid private key format. Expected 64 hex characters (with or without 0x prefix).",
     );
     process.exit(1);
@@ -137,7 +133,7 @@ function readStdin() {
     const wallet = new Wallet(privateKey);
     address = wallet.address;
   } catch (err) {
-    console.error("Failed to derive address from private key: %s", err.message);
+    log.error("Failed to derive address from private key: %s", err.message);
     process.exit(1);
   }
 
@@ -150,12 +146,12 @@ function readStdin() {
     password,
   });
 
-  console.log("✔ Wallet imported: %s", address);
-  console.log("  Encrypted at: app-config/.wallet.json");
-  console.log("");
-  console.log("To use with unattended startup, add to .env:");
-  console.log('  WALLET_PASSWORD="%s"', password.replace(/"/g, '\\"'));
-  console.log("");
-  console.log("Or leave WALLET_PASSWORD unset and enter the password in the");
-  console.log("dashboard unlock dialog on each restart (recommended).");
+  log.info("✔ Wallet imported: %s", address);
+  log.info("  Encrypted at: app-config/.wallet.json");
+  log.info("");
+  log.info("To use with unattended startup, add to .env:");
+  log.info('  WALLET_PASSWORD="%s"', password.replace(/"/g, '\\"'));
+  log.info("");
+  log.info("Or leave WALLET_PASSWORD unset and enter the password in the");
+  log.info("dashboard unlock dialog on each restart (recommended).");
 })();

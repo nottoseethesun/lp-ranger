@@ -15,6 +15,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -48,7 +49,7 @@ function readNftProviders() {
     }
     return out;
   } catch (err) {
-    console.warn("[nft-providers] Falling back to empty map: %s", err.message);
+    log.warn("[nft-providers] Falling back to empty map: %s", err.message);
     return {};
   }
 }

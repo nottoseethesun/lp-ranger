@@ -14,6 +14,7 @@ const {
   readCsrfTunable,
   handleCsrf,
 } = require("../src/server-csrf");
+const { _setSinkForTests } = require("../src/log");
 
 describe("CSRF token module", () => {
   it("createToken returns a token, future expiry, and refreshIntervalMs", () => {
@@ -69,24 +70,25 @@ describe("handleCsrf — silent-retry observability", () => {
 
   let _logs;
   let _warns;
-  let _origLog;
-  let _origWarn;
+  let _origLog; // _setSinkForTests restore fn
 
-  /*- Capture console output as ALREADY-FORMATTED strings — `console.log`
-   *  printf-style format args (`%s`, `%d`, …) need util.format() to
-   *  resolve before substring/regex matching, otherwise the captured
-   *  array stores the raw format string with placeholders intact. */
+  /*- Capture log output via the `src/log.js` sink injector — strips the
+   *  injected `[YYYY-MM-DD HH:MM:SS] ` prefix so substring assertions
+   *  like `.includes("[csrf] 403")` match the original tag+message
+   *  contiguously.  Routed through the log module's sink instead of
+   *  patching `console.log` / `console.warn` so the global `console` is
+   *  never modified (see [[feedback-no-global-monkey-patch]]). */
+  const _TS = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] /g;
   function _captureConsole() {
     _logs = [];
     _warns = [];
-    _origLog = console.log;
-    _origWarn = console.warn;
-    console.log = (...args) => _logs.push(util.format(...args));
-    console.warn = (...args) => _warns.push(util.format(...args));
+    _origLog = _setSinkForTests({
+      log: (...args) => _logs.push(util.format(...args).replace(_TS, "")),
+      warn: (...args) => _warns.push(util.format(...args).replace(_TS, "")),
+    });
   }
   function _restoreConsole() {
-    console.log = _origLog;
-    console.warn = _origWarn;
+    _origLog();
   }
 
   function _makeReq(method, url, token) {

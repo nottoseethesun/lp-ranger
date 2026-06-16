@@ -15,6 +15,8 @@
     "bot": "node bot.js",
     "debug": "node --inspect server.js",
     "debug-bot": "node --inspect bot.js",
+    "debug-attach": "node scripts/debug-attach.js",
+    "debug-attach-bot": "node scripts/debug-attach-bot.js",
     "stop": "node scripts/stop.js",
     "reset-wallet": "node scripts/reset-wallet.js",
     "clean:reports": "rm -rf test/report-artifacts",

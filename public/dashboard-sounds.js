@@ -15,6 +15,7 @@
 
 "use strict";
 
+import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
 import { isBrowserPaused, isStaleForUiPurposes } from "./dashboard-idle.js";
 
@@ -98,10 +99,10 @@ export function playSoundAlways(path) {
     const audio = new Audio(path);
     const p = audio.play();
     if (p && typeof p.catch === "function") {
-      p.catch((err) => console.warn("[sounds] play failed:", path, err));
+      p.catch((err) => log.warn("[sounds] play failed:", path, err));
     }
   } catch (err) {
-    console.warn("[sounds] instantiation failed:", path, err);
+    log.warn("[sounds] instantiation failed:", path, err);
   }
 }
 
@@ -113,7 +114,7 @@ export function _toggleSounds() {
   const on = g("soundsSwitch")?.checked;
   try {
     localStorage.setItem(_LS_KEY, on ? "1" : "0");
-    console.log("[sounds] master toggle:", on ? "on" : "off");
+    log.info("[sounds] master toggle:", on ? "on" : "off");
   } catch {
     /* localStorage unavailable; keep in-memory behavior */
   }

@@ -6,6 +6,7 @@
  * Depends on: dashboard-helpers.js (g).
  */
 
+import { log } from "./dashboard-log.js";
 import { g, fetchWithCsrf } from "./dashboard-helpers.js";
 
 /** POST JSON and return parsed response. */
@@ -182,7 +183,7 @@ function _stashCurrentFormForDeferredSave() {
   if (token) body.botToken = token;
   if (chatId) body.chatId = chatId;
   _pendingConfig = body;
-  console.log(
+  log.info(
     "[lp-ranger] [telegram] Credentials stashed for deferred save after wallet setup.",
   );
 }
@@ -260,7 +261,7 @@ async function _save() {
      *  flushPendingTelegramConfig() will submit it with the wallet
      *  password once confirmWallet() runs. */
     if (res.error === "Password required") {
-      console.log(
+      log.info(
         "[lp-ranger] [telegram] Save deferred — server has no session password yet; " +
           "will be submitted after wallet setup confirms.",
       );
@@ -292,18 +293,18 @@ export async function flushPendingTelegramConfig(password) {
     const res = await _post("/api/telegram/config", body);
     if (res && res.ok) {
       _pendingConfig = null;
-      console.log(
+      log.info(
         "[lp-ranger] [telegram] Deferred credentials saved after wallet setup.",
       );
       return;
     }
-    console.warn(
+    log.warn(
       "[lp-ranger] [telegram] Deferred save REJECTED by server — credentials NOT saved:",
       res?.error || "(no error message)",
       "Re-open Telegram Setup to retry.",
     );
   } catch (err) {
-    console.warn(
+    log.warn(
       "[lp-ranger] [telegram] Deferred save FAILED — credentials NOT saved:",
       err.message,
       "Re-open Telegram Setup to retry.",

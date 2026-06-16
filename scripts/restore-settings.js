@@ -7,6 +7,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
 
@@ -16,8 +17,8 @@ process.chdir(ROOT);
 const BACKUP_DIR = path.join("tmp", ".settings-backup");
 
 if (!fs.existsSync(BACKUP_DIR) || !fs.statSync(BACKUP_DIR).isDirectory()) {
-  console.error("ERROR: No backup found at %s", BACKUP_DIR);
-  console.error("Nothing to restore.");
+  log.error("ERROR: No backup found at %s", BACKUP_DIR);
+  log.error("Nothing to restore.");
   process.exit(1);
 }
 
@@ -44,11 +45,11 @@ for (const src of walkFiles(BACKUP_DIR)) {
   const rel = path.relative(BACKUP_DIR, src);
   fs.mkdirSync(path.dirname(rel) || ".", { recursive: true });
   fs.renameSync(src, rel);
-  console.log("  restored: %s", rel);
+  log.info("  restored: %s", rel);
   restored++;
 }
 
 fs.rmSync(BACKUP_DIR, { recursive: true, force: true });
 
-console.log("");
-console.log("Restored %d file(s). Backup directory cleaned up.", restored);
+log.info("");
+log.info("Restored %d file(s). Backup directory cleaned up.", restored);

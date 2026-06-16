@@ -10,6 +10,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
 
@@ -19,8 +20,8 @@ process.chdir(ROOT);
 const BACKUP_DIR = path.join("tmp", ".settings-backup");
 
 if (fs.existsSync(BACKUP_DIR)) {
-  console.error("ERROR: Backup already exists at %s", BACKUP_DIR);
-  console.error(
+  log.error("ERROR: Backup already exists at %s", BACKUP_DIR);
+  log.error(
     "Run 'npm run restore-settings' first, or delete %s manually.",
     BACKUP_DIR,
   );
@@ -51,7 +52,7 @@ function backupOne(src) {
   const dst = path.join(BACKUP_DIR, src);
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.renameSync(src, dst);
-  console.log("  backed up: %s", src);
+  log.info("  backed up: %s", src);
   backed++;
 }
 
@@ -85,17 +86,13 @@ if (backed === 0) {
   } catch {
     /* best-effort — directory may have been partially created */
   }
-  console.log("Nothing to back up — already clean.");
+  log.info("Nothing to back up — already clean.");
 } else {
-  console.log("");
-  console.log("Wiped %d file(s). Settings saved to %s/", backed, BACKUP_DIR);
-  console.log("Run 'npm run restore-settings' to put them back.");
-  console.log("");
-  console.log("NOTE: Browser localStorage is not affected by this script.");
-  console.log(
-    "To complete the fresh-install simulation, open the dashboard and",
-  );
-  console.log(
-    'click the Settings gear icon → "Clear Local Storage & Cookies".',
-  );
+  log.info("");
+  log.info("Wiped %d file(s). Settings saved to %s/", backed, BACKUP_DIR);
+  log.info("Run 'npm run restore-settings' to put them back.");
+  log.info("");
+  log.info("NOTE: Browser localStorage is not affected by this script.");
+  log.info("To complete the fresh-install simulation, open the dashboard and");
+  log.info('click the Settings gear icon → "Clear Local Storage & Cookies".');
 }

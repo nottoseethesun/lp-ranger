@@ -17,6 +17,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 
 /**
@@ -45,7 +46,7 @@ function _activateSwapBackoff(state, emit) {
       " times in a row. Market too volatile to rebalance safely. Tokens are safe in the wallet. Use manual Rebalance when ready.";
     state.swapBackoffMs = 0;
     state.swapBackoffUntil = 0;
-    console.error("[bot] Max swap retries (%d) — pausing", attempts);
+    log.error("[bot] Max swap retries (%d) — pausing", attempts);
     if (emit)
       emit({ rebalancePaused: true, rebalanceError: state.rebalanceError });
     return;
@@ -54,7 +55,7 @@ function _activateSwapBackoff(state, emit) {
   const next = prev ? Math.min(prev * 2, _MAX_SWAP_BACKOFF_MS) : 60_000;
   state.swapBackoffMs = next;
   state.swapBackoffUntil = Date.now() + next;
-  console.warn(
+  log.warn(
     "[bot] Price volatile (attempt %d/%d) — backoff %ds",
     attempts,
     limit,
@@ -72,7 +73,7 @@ function _checkSwapBackoff(deps, forced) {
   if (forced || !bs.swapBackoffUntil || Date.now() >= bs.swapBackoffUntil)
     return null;
   const sec = Math.ceil((bs.swapBackoffUntil - Date.now()) / 1000);
-  console.log("[bot] Swap backoff active — waiting %ds before retry", sec);
+  log.info("[bot] Swap backoff active — waiting %ds before retry", sec);
   return { rebalanced: false, swapBackoff: true };
 }
 

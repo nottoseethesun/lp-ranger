@@ -6,6 +6,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const {
   maxLiquidityForAmounts,
   TickMath,
@@ -162,7 +163,7 @@ function _inRangeFallbackSwap(
     rf1 = Number(ref.amount1) / 10 ** decimals1;
   if (rf0 <= 0 || rf1 <= 0) return null;
   const R = rf0 / rf1;
-  console.log(
+  log.info(
     "[rebalance] computeDesired: in-range fallback ratio=%s",
     R.toFixed(6),
   );
@@ -223,7 +224,7 @@ function _sdkSwap(
   const nf1 = Number(needed.amount1) / 10 ** decimals1;
   const excess0 = amount0 - needed.amount0,
     excess1 = amount1 - needed.amount1;
-  console.log(
+  log.info(
     "[rebalance] computeDesired (SDK): need0=%s need1=%s excess0=%s excess1=%s",
     String(needed.amount0),
     String(needed.amount1),
@@ -297,7 +298,7 @@ function computeDesiredAmounts(available, range, tokens) {
   const { decimals0, decimals1 } = tokens;
   const f0 = Number(amount0) / 10 ** decimals0,
     f1 = Number(amount1) / 10 ** decimals1;
-  console.log(
+  log.info(
     "[rebalance] computeDesired: price=%s f0=%s f1=%s",
     currentPrice,
     f0.toFixed(6),
@@ -442,7 +443,7 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   for (let i = 0; i < n; i++) {
     const amt = i === n - 1 ? chunk + remainder : chunk;
     if (amt < _MIN_SWAP_THRESHOLD) continue;
-    console.log("[rebalance] chunk %d/%d: %s", i + 1, n, String(amt));
+    log.info("[rebalance] chunk %d/%d: %s", i + 1, n, String(amt));
     const r = await swapFn(signer, ethersLib, {
       ...params,
       amountIn: amt,
@@ -499,7 +500,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
     });
   } catch (err) {
     if (err?.isSwapImpactAbort) {
-      console.warn(
+      log.warn(
         "[rebalance] Aggregator slippage abort at full amount" +
           " — retrying in 3 chunks via aggregator (lower per-swap impact)",
       );
@@ -512,14 +513,14 @@ async function swapIfNeeded(signer, ethersLib, params) {
           3,
         );
       } catch (chunkErr) {
-        console.warn(
+        log.warn(
           "[rebalance] Aggregator chunks also failed: %s" +
             " — falling back to V3 router",
           chunkErr.message,
         );
       }
     } else {
-      console.warn(
+      log.warn(
         "[rebalance] Aggregator failed (non-impact): %s" +
           " — falling back to V3 router (chunking would not help)",
         err.message,

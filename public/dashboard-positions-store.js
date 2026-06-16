@@ -12,6 +12,7 @@
  * Depends on: dashboard-helpers.js.
  */
 
+import { log } from "./dashboard-log.js";
 import {
   g,
   botConfig,
@@ -106,7 +107,7 @@ export function _loadPosStore() {
       if (idx < 0 || idx >= deduped.length) idx = bestAutoSelectIdx();
       else if (isPositionClosed(deduped[idx])) idx = bestAutoSelectIdx();
       posStore.activeIdx = idx;
-      console.log(
+      log.info(
         "%c[lp-ranger] [posStore] loaded %d positions from localStorage, activeIdx=%d",
         "color:#cf8",
         deduped.length,
@@ -297,7 +298,7 @@ export const posStore = {
         String(e.tokenId) === nid,
     );
     if (dup) {
-      console.warn(
+      log.warn(
         "[lp-ranger] [pos] rebalance follow REFUSED: viewed-#%s would migrate to #%s but another posStore entry already holds that tokenId for the same wallet — render will MIX viewed-entry symbols with managed-entry $$$",
         old,
         nid,
@@ -311,7 +312,7 @@ export const posStore = {
     } catch {
       /* */
     }
-    console.log("[lp-ranger] [pos] rebalance follow: #%s → #%s", old, newId);
+    log.info("[lp-ranger] [pos] rebalance follow: #%s → #%s", old, newId);
     /*-
      * Rebalance minted a fresh live NFT. If we were pinned in
      * closed-pos view (e.g. user rebalanced a drained position to
@@ -397,7 +398,7 @@ function _setNftBarPair(elId, t0Full, t1Full) {
 /** Check if a position is closed (liquidity=0). */
 export function isPositionClosed(pos) {
   if (pos.liquidity === undefined || pos.liquidity === null) {
-    console.warn(
+    log.warn(
       "%c[lp-ranger] [posStore] NFT #%s %s has no liquidity data",
       "color:#cf8",
       pos.tokenId,
@@ -440,7 +441,7 @@ export function bestAutoSelectIdx() {
   const pe = pick >= 0 ? posStore.entries[pick] : null;
   const tier =
     best.managed >= 0 ? "managed" : best.open >= 0 ? "open" : "closed";
-  console.log(
+  log.info(
     "%c[lp-ranger] [posStore] bestAutoSelect: total=%d managed=%d open=%d closed=%d noLiq=%d → #%s %s (idx=%d, liq=%s, tier=%s)",
     "color:#cf8",
     posStore.entries.length,

@@ -16,6 +16,8 @@
 
 "use strict";
 
-console.log(
+const { log } = require("./log");
+
+log.info(
   "\x1b[38;2;211;211;211;48;2;25;25;25m[lp-ranger bot] \uD83D\uDE80 Started. \uD83D\uDE80\x1b[0m",
 );

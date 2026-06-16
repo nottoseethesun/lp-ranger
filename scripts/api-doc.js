@@ -13,6 +13,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -81,5 +82,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`LP Ranger API Reference: http://localhost:${PORT}`);
+  log.info(`LP Ranger API Reference: http://localhost:${PORT}`);
 });

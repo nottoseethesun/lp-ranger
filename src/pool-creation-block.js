@@ -16,6 +16,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
@@ -114,7 +115,7 @@ async function getPoolCreationBlockCached(opts) {
       const value = Number.isFinite(block) && block >= 0 ? block : 0;
       _memCache.set(k, value);
       _saveDisk();
-      console.log(
+      log.info(
         "[pool-creation-block] " +
           poolAddress +
           " -> block " +
@@ -124,7 +125,7 @@ async function getPoolCreationBlockCached(opts) {
       return value;
     } catch (err) {
       if (err && err.name === "AbortError") throw err;
-      console.warn(
+      log.warn(
         "[pool-creation-block] lookup failed for " +
           poolAddress +
           ": " +

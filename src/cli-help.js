@@ -5,6 +5,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const COMMON = `
 Options:
   --verbose, -v   Show detailed per-cycle logs (fee details,
@@ -58,5 +59,5 @@ ${COMMON}`,
 };
 
 module.exports = function showHelp(mode) {
-  console.log(MODES[mode] || MODES.server);
+  log.info(MODES[mode] || MODES.server);
 };

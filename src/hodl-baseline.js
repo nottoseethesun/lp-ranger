@@ -9,6 +9,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
@@ -158,12 +159,12 @@ async function _findMintEvent(
     topics: [iface.getEvent("Transfer").topicHash, zeroAddr, null, tokenIdHex],
   });
   if (!logs.length) {
-    console.log("[bot] No mint logs found for tokenId", tokenId);
+    log.info("[bot] No mint logs found for tokenId", tokenId);
     return {};
   }
   const block = await provider.getBlock(logs[0].blockNumber);
   if (!block) {
-    console.log("[bot] Block not found for mint log");
+    log.info("[bot] Block not found for mint log");
     return {};
   }
   return { mintTimestamp: block.timestamp, mintLog: logs[0] };
@@ -178,7 +179,7 @@ function _patchMintTimestamp(botState, updateBotState, mintTimestamp) {
   botState.hodlBaseline.mintDate = iso.slice(0, 10);
   botState.hodlBaseline.mintTimestamp = mintTimestamp;
   updateBotState({ hodlBaseline: botState.hodlBaseline });
-  console.log(`[bot] Patched mint timestamp on existing baseline: ${iso}`);
+  log.info(`[bot] Patched mint timestamp on existing baseline: ${iso}`);
 }
 
 /**
@@ -199,7 +200,7 @@ function _publishBaseline(d, botState, updateBotState) {
       ? d.hodlAmount0 * d.price0 + d.hodlAmount1 * d.price1
       : 0;
   if (entryValue <= 0 && (d.hodlAmount0 > 0 || d.hodlAmount1 > 0))
-    console.warn(
+    log.warn(
       "[bot] GeckoTerminal prices unavailable — entry value auto-detection deferred",
     );
   const baseline = {
@@ -222,7 +223,7 @@ function _publishBaseline(d, botState, updateBotState) {
     hodlBaselineFallback:
       entryValue <= 0 && (d.hodlAmount0 > 0 || d.hodlAmount1 > 0),
   });
-  console.log(
+  log.info(
     `[bot] HODL baseline set: $${entryValue.toFixed(2)} on ${d.mintDate} (amounts: ${d.hodlAmount0.toFixed(4)} / ${d.hodlAmount1.toFixed(4)})`,
   );
 }
@@ -313,7 +314,7 @@ async function initHodlBaseline(
       updateBotState,
     );
   } catch (err) {
-    console.warn("[bot] HODL baseline init error:", err.message);
+    log.warn("[bot] HODL baseline init error:", err.message);
   }
 }
 

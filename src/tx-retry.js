@@ -13,6 +13,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const {
   classifyRpcError,
   innerErrorMessage,
@@ -62,7 +63,7 @@ function _nonceSuffix(err) {
  * @param {*}      err
  */
 function _logTerminalError(label, bucket, err) {
-  console.error(
+  log.error(
     "%s: terminal RPC error (%s)%s — %s",
     label,
     bucket,
@@ -114,7 +115,7 @@ function _handleConsumed(ctx) {
   // "nonce too low" means the original mined → success was already
   // achieved.  Do NOT reset the NonceManager here.
   if (sameNonce && _isNonceTooLow(err)) {
-    console.log(
+    log.info(
       "%s: same-nonce replacement got 'nonce too low'%s —" +
         " original TX likely mined; not recovering. Inner: %s",
       label,
@@ -126,7 +127,7 @@ function _handleConsumed(ctx) {
   if (!recoveryUsed && _isNonceTooLow(err)) {
     const n = _rejectedNonce(err);
     const nStr = n !== undefined ? " (rejected nonce=" + n + ")" : "";
-    console.warn(
+    log.warn(
       "%s: nonce too low%s — the local NonceManager singleton instance" +
         " drifted behind the blockchain. Resetting NonceManager and" +
         " retrying once. Inner: %s",
@@ -222,7 +223,7 @@ async function _retrySend(fn, label, opts = {}) {
         throw err;
       }
       const delay = baseMs * (attempt + 1);
-      console.warn(
+      log.warn(
         "%s: transient RPC error%s — retrying in %ds (%d/%d): %s",
         label,
         _nonceSuffix(err),

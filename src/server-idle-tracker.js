@@ -16,6 +16,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 /**
  * @typedef {Object} IdleTrackerOpts
  * @property {number}   thresholdMs       Idle window in ms.
@@ -68,7 +69,7 @@ function createIdleTracker({
     try {
       onIdle();
     } catch (err) {
-      console.warn("[idle-tracker] onIdle threw: %s", err.message ?? err);
+      log.warn("[idle-tracker] onIdle threw: %s", err.message ?? err);
     }
   }
 

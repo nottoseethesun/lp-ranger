@@ -12,6 +12,7 @@
 "use strict";
 
 const config = require("./config");
+const { log } = require("./log");
 const {
   ERC20_ABI,
   _checkSwapImpact,
@@ -64,7 +65,7 @@ async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
     "&slippagePercentage=" +
     slip +
     "&includedSources=";
-  console.log("[aggregator] GET %s", url);
+  log.info("[aggregator] GET %s", url);
   const res = await fetch(url, {
     headers: {
       Accept: "application/json",
@@ -99,7 +100,7 @@ async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
   }
   const json = await res.json();
   if (config.VERBOSE) {
-    console.log("[aggregator] Response: %s", JSON.stringify(json));
+    log.info("[aggregator] Response: %s", JSON.stringify(json));
   } else {
     const brief = {
       ...json,
@@ -114,7 +115,7 @@ async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
             '"Elided B.l.o.b. - run in --verbose mode to see"';
         return b;
       });
-    console.log("[aggregator] Response: %s", JSON.stringify(brief));
+    log.info("[aggregator] Response: %s", JSON.stringify(brief));
   }
   return json;
 }
@@ -160,7 +161,7 @@ async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
   // Bypass NonceManager — cancel TX must reuse the stuck nonce.
   const base = _baseSigner(signer);
   const addr = await base.getAddress();
-  console.log(
+  log.info(
     "[aggregator] cancel nonce=%d: gasPrice=%s gasLimit=21000 (type 0)",
     nonce,
     String(cancelGp),
@@ -181,7 +182,7 @@ async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
     "[aggregator] cancel nonce=" + nonce,
     { signer: base, retryingTxWithSameNonce: true },
   );
-  console.log(
+  log.info(
     "[aggregator] cancel: TX submitted, hash= %s nonce=%d gasPrice=%s",
     c.hash,
     c.nonce,
@@ -213,7 +214,7 @@ async function _handleSwapError(
   sentGasPrice,
 ) {
   if (err.message === "_AGG_TIMEOUT") {
-    console.warn(
+    log.warn(
       "[rebalance] swap (aggregator): %s -> %s not confirmed" +
         " in %ds — cancelling nonce %d (%sx gas)",
       fromSym,
@@ -231,14 +232,14 @@ async function _handleSwapError(
     );
     // Re-sync NonceManager after cancel so its counter matches chain state.
     if (typeof signer.reset === "function") signer.reset();
-    console.log(
+    log.info(
       "[rebalance] swap (aggregator): nonce %d cancelled" +
         " (or original confirmed)",
       nonce,
     );
     return cancelGas;
   }
-  console.warn(
+  log.warn(
     "[rebalance] swap (aggregator): %s -> %s reverted" +
       " on-chain (gasUsed=%s) — re-quoting",
     fromSym,
@@ -270,11 +271,15 @@ async function _sendWithRetry(
   amountIn,
   symIn,
   symOut,
+  cx,
 ) {
   const waitMs = _agg.waitMs;
   const maxAttempts = _agg.maxAttempts;
   const fromSym = symIn || tokenIn.slice(0, 10);
   const toSym = symOut || tokenOut.slice(0, 10);
+  /*- Fallback to a synthetic prefix when the caller didn't thread the
+   *  6-field context — keeps tests and ad-hoc callers readable. */
+  const ctx = cx || `${fromSym}/${toSym}`;
 
   let cancelGasTotal = 0n;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -292,9 +297,10 @@ async function _sendWithRetry(
       gasPrice: useGp,
       type: config.TX_TYPE,
     };
-    console.log(
-      "[rebalance] swap (aggregator attempt %d/%d):" +
+    log.info(
+      "[rebalance] %s: swap (aggregator attempt %d/%d)" +
         " %s -> %s data=%d bytes gasLimit=%s gasPrice=%s (type 0)",
+      ctx,
       attempt,
       maxAttempts,
       fromSym,
@@ -309,9 +315,10 @@ async function _sendWithRetry(
       "[aggregator] swap " + fromSym + "->" + toSym,
       { signer },
     );
-    console.log(
-      "[aggregator] Step 6: swap: TX submitted, %s -> %s hash= %s nonce=%d type=%s" +
+    log.info(
+      "[aggregator] %s: Step 6 swap TX submitted, %s -> %s hash= %s nonce=%d type=%s" +
         " gasPrice=%s maxFee=%s maxPrio=%s",
+      ctx,
       fromSym,
       toSym,
       tx.hash,
@@ -329,9 +336,10 @@ async function _sendWithRetry(
         ),
       ]);
       const costPls = (Number(_gasCost(r)) / 1e18).toFixed(4);
-      console.log(
-        "[rebalance] swap (aggregator): confirmed %s -> %s" +
+      log.info(
+        "[rebalance] %s: swap (aggregator) confirmed %s -> %s" +
           " gasUsed=%s cost=%s PLS",
+        ctx,
         fromSym,
         toSym,
         String(r.gasUsed),
@@ -353,8 +361,9 @@ async function _sendWithRetry(
       );
       if (attempt < maxAttempts) {
         quote = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
-        console.log(
-          "[rebalance] swap (aggregator): re-quoted" + " %s -> %s buy=%s",
+        log.info(
+          "[rebalance] %s: swap (aggregator) re-quoted %s -> %s buy=%s",
+          ctx,
           fromSym,
           toSym,
           quote.buyAmount,
@@ -387,9 +396,15 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     approvalMultiple,
     _attempts,
     _attemptLabel,
+    logCtx: ctx,
   } = params;
   const symIn = symbolIn || tokenIn.slice(0, 10);
   const symOut = symbolOut || tokenOut.slice(0, 10);
+  /*- 6-field log context prefix per feedback-log-full-context.  Built
+   *  in rebalancer-execute.js _swapAndAdjust and threaded through
+   *  swapIfNeeded params.  Fallback to a synthetic prefix keeps tests
+   *  that don't thread logCtx readable rather than printing "undefined". */
+  const cx = ctx || `${symIn}/${symOut}`;
   const signerAddr = await signer.getAddress();
   const quote = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
   const impact = parseFloat(quote.estimatedPriceImpact) || 0;
@@ -403,9 +418,10 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
       .filter((s) => s.proportion !== "0")
       .map((s) => s.name)
       .join(", ") || "unknown";
-  console.log(
-    "[rebalance] swap (aggregator): %s -> %s" +
+  log.info(
+    "[rebalance] %s: swap (aggregator) %s -> %s" +
       " quote buy=%s guaranteed=%s impact=%s%% sources=%s pools=%s",
+    cx,
     symIn,
     symOut,
     quote.buyAmount,
@@ -444,13 +460,11 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
       amountIn,
       symIn,
       symOut,
+      cx,
     );
     result.gasCostWei = (result.gasCostWei || 0n) + (aggApprovalGas || 0n);
     result.swapSources = sources;
-    console.log(
-      "[route-trace] aggregator swap sources=%s",
-      sources || "(empty)",
-    );
+    log.info("[route-trace] aggregator swap sources=%s", sources || "(empty)");
     return result;
   });
 }

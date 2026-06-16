@@ -45,6 +45,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { notify, isConfigured } = require("./telegram-notifications/telegram");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 
@@ -52,7 +53,7 @@ const { readBotConfigDefaults } = require("./bot-config-defaults");
  *  the shipped defaults is performed inside readBotConfigDefaults so the
  *  guard stays active even if the file is missing or partially edited. */
 const _TUNABLES = readBotConfigDefaults().lowGasThresholds;
-console.log(
+log.info(
   "[gas-monitor] Tunables loaded: worstCaseGasFactor=%d safetyMultiplier=%d standardSendGas=%d",
   _TUNABLES.worstCaseGasFactor,
   _TUNABLES.safetyMultiplier,
@@ -159,7 +160,7 @@ async function getGasStatus({ provider, address, positionCount }) {
       positionCount,
     });
   } catch (err) {
-    console.warn("[gas-monitor] getGasStatus failed: %s", err.message);
+    log.warn("[gas-monitor] getGasStatus failed: %s", err.message);
     return null;
   }
 }
@@ -197,7 +198,7 @@ async function checkGasBalance(opts) {
     if (alertState.lowAlerted || alertState.criticalAlerted) {
       alertState.lowAlerted = false;
       alertState.criticalAlerted = false;
-      console.log(
+      log.info(
         "[gas-monitor] Gas balance recovered above recommended threshold (%s native)",
         _formatNative(status.recommendedWei),
       );
@@ -210,7 +211,7 @@ async function checkGasBalance(opts) {
   if (status.level === "critical") {
     if (alertState.criticalAlerted) return;
     alertState.criticalAlerted = true;
-    console.warn(
+    log.warn(
       "[gas-monitor] Gas CRITICAL: balance=%s recommended=%s floor=%s positions=%d",
       balEth,
       recEth,
@@ -226,7 +227,7 @@ async function checkGasBalance(opts) {
   /*- status.level === 'low' */
   if (alertState.lowAlerted) return;
   alertState.lowAlerted = true;
-  console.warn(
+  log.warn(
     "[gas-monitor] Gas LOW: balance=%s recommended=%s floor=%s positions=%d",
     balEth,
     recEth,
@@ -243,7 +244,7 @@ async function checkGasBalance(opts) {
  *  Telegram isn't configured so operators can spot silent drops. */
 function _fireGasAlert(eventType, { position, message }) {
   if (!isConfigured())
-    console.warn(
+    log.warn(
       "[gas-monitor] Would have sent '%s' Telegram alert, but Telegram is not configured — skipping.",
       eventType,
     );

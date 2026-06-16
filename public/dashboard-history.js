@@ -7,6 +7,7 @@
  * Depends on: dashboard-helpers.js (g, fmtDateTime).
  */
 
+import { log } from "./dashboard-log.js";
 import { g, tzCode, cloneTpl } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 
@@ -255,7 +256,7 @@ function _setRebPagBtns(page, totalPages) {
       but Next is disabled. If page+1 == 1 and totalPages > 1, Next must
       be enabled; any mismatch means state diverged somewhere upstream. */
   if (page + 1 === 1 && totalPages > 1 && nextDis) {
-    console.warn(
+    log.warn(
       "[lp-ranger] [reb-pag] stuck-Next detected: page=%d totalPages=%d",
       page,
       totalPages,
@@ -291,7 +292,7 @@ export function renderRebalanceEvents(events) {
   const preClamp = _rebEventsPage;
   _rebEventsPage = Math.min(Math.max(0, _rebEventsPage), totalPages - 1);
   if (preClamp !== _rebEventsPage) {
-    console.log(
+    log.info(
       "[lp-ranger] [reb-pag] render clamped page %d \u2192 %d (totalPages=%d, events=%d)",
       preClamp,
       _rebEventsPage,
@@ -330,7 +331,7 @@ export function renderRebalanceEvents(events) {
 export function rebChangePage(dir) {
   const before = _rebEventsPage;
   _rebEventsPage += dir;
-  console.log(
+  log.info(
     "[lp-ranger] [reb-pag] change dir=%d: %d \u2192 %d (lastEvents=%d)",
     dir,
     before,
@@ -340,7 +341,7 @@ export function rebChangePage(dir) {
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }
 export function rebFirstPage() {
-  console.log(
+  log.info(
     "[lp-ranger] [reb-pag] first: %d \u2192 0 (lastEvents=%d)",
     _rebEventsPage,
     Array.isArray(_lastEvents) ? _lastEvents.length : -1,
@@ -349,7 +350,7 @@ export function rebFirstPage() {
   if (_lastEvents) renderRebalanceEvents(_lastEvents);
 }
 export function rebLastPage() {
-  console.log(
+  log.info(
     "[lp-ranger] [reb-pag] last: %d \u2192 9999 (lastEvents=%d)",
     _rebEventsPage,
     Array.isArray(_lastEvents) ? _lastEvents.length : -1,

@@ -1,5 +1,6 @@
 "use strict";
 
+const { log } = require("./log");
 /**
  * @file pool-creation-finder.js
  * @module poolCreationFinder
@@ -27,7 +28,7 @@ const POOL_CREATED_ABI = [
  */
 function _throwIfAborted(signal, where) {
   if (signal && signal.aborted) {
-    console.log("[event-scanner] %s aborted via AbortSignal", where);
+    log.info("[event-scanner] %s aborted via AbortSignal", where);
     const err = new Error("Scan aborted");
     err.name = "AbortError";
     throw err;

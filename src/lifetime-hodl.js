@@ -15,6 +15,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { _filterRebalances } = require("./compounder");
 
 /**
@@ -265,7 +266,7 @@ function _sumNonSwapInbound(xfers0, xfers1, wrap) {
       if (wrap.wrappedTokenIdx === 0) sum0 += wad;
       else sum1 += wad;
       wraps++;
-      console.log(
+      log.info(
         "[hodl]   WRAP TX %s: wrapped[%d]=%s",
         txHash.slice(0, 10),
         wrap.wrappedTokenIdx,
@@ -281,7 +282,7 @@ function _sumNonSwapInbound(xfers0, xfers1, wrap) {
     }
     const { tx0, tx1, fromAddrs } = _sumGroupInbound(group);
     if (tx0 > 0n || tx1 > 0n)
-      console.log(
+      log.info(
         "[hodl]   deposit TX %s: t0=%s t1=%s from=[%s]",
         txHash.slice(0, 10),
         String(tx0),
@@ -292,7 +293,7 @@ function _sumNonSwapInbound(xfers0, xfers1, wrap) {
     sum1 += tx1;
   }
   if (allTx.size > 0)
-    console.log(
+    log.info(
       "[hodl]   window: %d TXs, %d skipped (swap/drain), %d wrap, %d deposit",
       allTx.size,
       skipped,
@@ -356,7 +357,7 @@ async function _freshDeposits(
   // Drop inbound transfers from LP infrastructure (PM + pool)
   const validAddrs = (excludeFromAddrs || []).filter(Boolean);
   if (validAddrs.length < 2)
-    console.warn(
+    log.warn(
       "[hodl]   WARN: only %d exclude addrs (need PM + pool)",
       validAddrs.length,
     );
@@ -367,7 +368,7 @@ async function _freshDeposits(
   const kept0 = xfers0.filter(keep),
     kept1 = xfers1.filter(keep);
   if (xfers0.length > 0 || xfers1.length > 0)
-    console.log(
+    log.info(
       "[hodl]   scan %d→%d: raw t0=%d t1=%d, after exclude t0=%d t1=%d",
       scanFrom,
       nextMintBlock,
@@ -395,7 +396,7 @@ async function _freshDeposits(
       nextMintBlock,
     );
     if (wrapDeposits.size > 0)
-      console.log(
+      log.info(
         "[hodl]   wrap-deposit scan: %d Deposit events on %s",
         wrapDeposits.size,
         wrappedNativeAddress,
@@ -460,13 +461,13 @@ function _addDeposit(ctx, raw0, raw1, block) {
 async function _processNft(i, tid, allNftEvents, ordered, opts, ctx) {
   const events = allNftEvents.get(tid);
   if (!events || events.ilEvents.length === 0) {
-    console.log("[hodl] #%s (idx=%d): no IL events, skip", tid, i);
+    log.info("[hodl] #%s (idx=%d): no IL events, skip", tid, i);
     return;
   }
   const { ilEvents, collectEvents, dlEvents } = events;
   const mintIl = ilEvents[0];
   if (i === 0) {
-    console.log(
+    log.info(
       "[hodl] #%s FIRST: mint0=%s mint1=%s",
       tid,
       String(mintIl.amount0),
@@ -484,7 +485,7 @@ async function _processNft(i, tid, allNftEvents, ordered, opts, ctx) {
       mintIl,
     );
     if (f0 > 0n || f1 > 0n)
-      console.log("[hodl] #%s FRESH: f0=%s f1=%s", tid, String(f0), String(f1));
+      log.info("[hodl] #%s FRESH: f0=%s f1=%s", tid, String(f0), String(f1));
     ctx.fresh0 += f0;
     ctx.fresh1 += f1;
     _addDeposit(ctx, f0, f1, mintIl.blockNumber);
@@ -496,7 +497,7 @@ async function _processNft(i, tid, allNftEvents, ordered, opts, ctx) {
     dlEvents,
   );
   if (ext0 > 0n || ext1 > 0n) {
-    console.log(
+    log.info(
       "[hodl] #%s external: ext0=%s ext1=%s",
       tid,
       String(ext0),

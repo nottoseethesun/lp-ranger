@@ -15,6 +15,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -63,7 +64,7 @@ function _migrateBlockKeys() {
     migrated++;
   }
   if (migrated > 0) {
-    console.log("[price-cache] Migrated %d block-scoped keys", migrated);
+    log.info("[price-cache] Migrated %d block-scoped keys", migrated);
     _dirty = true;
   }
 }
@@ -134,7 +135,7 @@ function flushPriceCache() {
     fs.writeFileSync(_CACHE_PATH, JSON.stringify(_cache, null, 2), "utf8");
     _dirty = false;
   } catch (err) {
-    console.warn("[price-cache] Could not write cache:", err.message);
+    log.warn("[price-cache] Could not write cache:", err.message);
   }
 }
 

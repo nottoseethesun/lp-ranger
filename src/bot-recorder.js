@@ -9,6 +9,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 // Loading any bot module signals the bot subsystem is active — bot-banner
 // prints on first require (cached, so exactly once per process). Server.js
 // pulls in bot-recorder unconditionally for managed + unmanaged data work,
@@ -95,7 +96,7 @@ function _bumpRebalanceFees(deps) {
   const newCompounded = prevCompounded + rebalanceFeesUsd;
   if (deps.updateBotState)
     deps.updateBotState({ totalCompoundedUsd: newCompounded });
-  console.log(
+  log.info(
     "[bot] Rebalance compound: $%s fees re-deposited (lifetime $%s)",
     rebalanceFeesUsd.toFixed(2),
     newCompounded.toFixed(2),
@@ -153,7 +154,7 @@ async function _closePnlEpoch(deps, result) {
       token1UsdPrice: price1,
     });
   } catch (err) {
-    console.warn("[bot] P&L epoch close error:", err.message);
+    log.warn("[bot] P&L epoch close error:", err.message);
   }
 }
 
@@ -167,7 +168,7 @@ async function _closePnlEpoch(deps, result) {
  */
 async function _attachInitialResidual(stPatch, ctx) {
   const { address, position, found, poolState, provider, ethersLib } = ctx;
-  console.log(
+  log.info(
     "[bot] Attaching initial residual (firstMintBlock=%s firstMintTimestamp=%s poolAddress=%s)",
     found.firstMintBlockNumber,
     found.firstMintTimestamp,
@@ -189,10 +190,7 @@ async function _attachInitialResidual(stPatch, ctx) {
     });
     if (initialResidualData) stPatch.initialResidualData = initialResidualData;
   } catch (err) {
-    console.warn(
-      "[bot] Initial residual lookup failed: %s",
-      err.message ?? err,
-    );
+    log.warn("[bot] Initial residual lookup failed: %s", err.message ?? err);
   }
 }
 
@@ -219,7 +217,7 @@ async function _scanHistory(
       token1: position.token1,
       fee: position.fee,
     });
-    console.log(
+    log.info(
       "[bot] Scanning rebalance history for %s (pool %s)",
       address,
       poolState.poolAddress,
@@ -246,7 +244,7 @@ async function _scanHistory(
      * event appendToPoolCache just wrote to the disk cache. */
     events.length = 0;
     events.push(...found);
-    console.log("[bot] Found %d historical rebalance events", found.length);
+    log.info("[bot] Found %d historical rebalance events", found.length);
     if (throttle && found.length > 0) {
       const cutoff = Math.floor(
         (throttle.getState().dailyResetAt - 86_400_000) / 1000,
@@ -265,13 +263,9 @@ async function _scanHistory(
     const mintDate = mintTs ? mintTs.slice(0, 10) : undefined,
       poolFirstMintDate = _d(found.firstMintTimestamp);
     if (mintDate)
-      console.log(
-        "[bot] Position #%s minted on %s",
-        position.tokenId,
-        mintDate,
-      );
+      log.info("[bot] Position #%s minted on %s", position.tokenId, mintDate);
     if (poolFirstMintDate)
-      console.log("[bot] Pool first LP minted on %s", poolFirstMintDate);
+      log.info("[bot] Pool first LP minted on %s", poolFirstMintDate);
     const stPatch = {
       rebalanceEvents: [...events],
       rebalanceScanProgress: 100,
@@ -292,7 +286,7 @@ async function _scanHistory(
     });
     updateState(stPatch);
   } catch (err) {
-    console.warn("[bot] Event scan error:", err.message);
+    log.warn("[bot] Event scan error:", err.message);
     updateState({ rebalanceScanComplete: true });
   }
 }
@@ -322,7 +316,7 @@ async function _scanAndReconstruct(
     async (scannedEvents) => {
       const evts = scannedEvents || events;
       if (!evts.length) return;
-      console.log("[bot] Reconstructing epochs (%d events)\u2026", evts.length);
+      log.info("[bot] Reconstructing epochs (%d events)\u2026", evts.length);
       const fb = await _fetchTokenPrices(
         position.token0,
         position.token1,
@@ -333,9 +327,7 @@ async function _scanAndReconstruct(
         botState,
         updateBotState: updateState,
         fallbackPrices: fb,
-      }).catch((e) =>
-        console.warn("[pnl] Epoch reconstruction error:", e.message),
-      );
+      }).catch((e) => log.warn("[pnl] Epoch reconstruction error:", e.message));
     },
   );
   await _scanLifetimePoolData(
@@ -347,7 +339,7 @@ async function _scanAndReconstruct(
     pnlTracker,
     epochKey,
   );
-  console.log("[bot] Scan + epoch reconstruction complete");
+  log.info("[bot] Scan + epoch reconstruction complete");
   updateState({
     rebalanceScanComplete: true,
     rebalanceScanProgress: 100,
@@ -451,7 +443,7 @@ function _pushRebalanceEvent(events, result) {
      *  treat that as unknown/legacy. */
     trigger: result.trigger || "out-of-range",
   });
-  console.log(
+  log.info(
     "[route-trace] event pushed ss=%s trigger=%s",
     result.swapSources,
     result.trigger,
@@ -490,7 +482,7 @@ function _applyRebalanceResult(deps, result) {
     const t0Sym = position.token0Symbol || "Token0";
     const t1Sym = position.token1Symbol || "Token1";
     const tokenIdStr = String(position.tokenId || "");
-    console.log(
+    log.info(
       "[bot] %s/%s NFT #%s %s: Rebalance complete, queuing lifetime re-scan",
       t0Sym,
       t1Sym,
@@ -499,7 +491,7 @@ function _applyRebalanceResult(deps, result) {
     );
     _updateHodlBaseline(deps._botState, result, mintNow);
   }
-  console.log(
+  log.info(
     "[bot] Post-rebalance: position.tokenId=%s",
     String(position.tokenId),
   );

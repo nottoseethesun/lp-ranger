@@ -34,6 +34,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 /** Maximum NFT positions to scan per wallet (matches position-store MAX). */
 const MAX_NFT_SCAN = 300;
 
@@ -150,7 +151,7 @@ async function _probeSingleNft(contract, tokenId) {
     /*- Don't throw — caller (enumerate or single-id fast-path) treats
      *  null as "not found here, try the next strategy". But DO log so
      *  RPC failures don't masquerade as "position doesn't exist". */
-    console.warn(
+    log.warn(
       "[pos-detect] positions(#%s) failed: %s (treated as missing)",
       tokenId,
       err.message,
@@ -173,7 +174,7 @@ async function _enumerateOwnerNfts(contract, walletAddress, opts) {
   try {
     rawBalance = await contract.balanceOf(walletAddress);
   } catch (err) {
-    console.warn(
+    log.warn(
       "[pos-detect] balanceOf(%s) failed: %s — returning empty list",
       walletAddress,
       err.message,
@@ -195,7 +196,7 @@ async function _enumerateOwnerNfts(contract, walletAddress, opts) {
     const idBatch = await Promise.all(
       Array.from({ length: end - start }, (_, i) =>
         contract.tokenOfOwnerByIndex(walletAddress, start + i).catch((err) => {
-          console.warn(
+          log.warn(
             "[pos-detect] tokenOfOwnerByIndex(%s, %d) failed: %s",
             walletAddress,
             start + i,
@@ -255,7 +256,7 @@ async function _probeErc20(
       try {
         return await fn();
       } catch (err) {
-        console.warn(
+        log.warn(
           "[pos-detect] ERC-20 probe %s() at %s failed: %s",
           label,
           contractAddress,
@@ -273,7 +274,7 @@ async function _probeErc20(
 
     return pos;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[pos-detect] ERC-20 probe at %s for %s failed: %s",
       contractAddress,
       walletAddress,
@@ -306,7 +307,7 @@ async function enumerateNftPositions(provider, input, opts) {
     );
     return await _enumerateOwnerNfts(contract, input.walletAddress, opts);
   } catch (err) {
-    console.warn(
+    log.warn(
       "[pos-detect] enumerateNftPositions(%s @ %s) failed: %s — returning empty list",
       input.walletAddress,
       input.positionManagerAddress,
@@ -427,7 +428,7 @@ async function refreshLpPositionLiquidity(
     const positions = await Promise.all(
       batch.map((id) =>
         contract.positions(BigInt(id)).catch((err) => {
-          console.warn(
+          log.warn(
             "[pos-detect] refresh positions(#%s) failed: %s (treated as drained)",
             id,
             err.message,

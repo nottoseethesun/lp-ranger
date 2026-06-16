@@ -14,6 +14,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -90,9 +91,7 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
       "utf8",
     );
   } catch (err) {
-    console.warn(
-      _C + "[lp-cache] Failed to persist cache: " + err.message + _R,
-    );
+    log.warn(_C + "[lp-cache] Failed to persist cache: " + err.message + _R);
   }
 }
 
@@ -120,7 +119,7 @@ function clearLpPositionCache(walletAddress, opts) {
     _fs.unlinkSync(
       lpPositionCachePath(walletAddress, opts?.blockchain, opts?.contract),
     );
-    console.log(
+    log.info(
       _C +
         "[lp-cache] Cache cleared for wallet " +
         walletAddress.slice(0, 8) +
@@ -129,7 +128,7 @@ function clearLpPositionCache(walletAddress, opts) {
     );
   } catch (err) {
     if (err && err.code !== "ENOENT") {
-      console.warn(
+      log.warn(
         _C +
           "[lp-cache] Failed to clear cache for wallet " +
           walletAddress.slice(0, 8) +

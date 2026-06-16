@@ -22,6 +22,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
@@ -254,11 +255,11 @@ function renderTerminal(data) {
     ? `${_GREEN}✔ PASS${_RESET}`
     : `${_RED}✘ FAIL${_RESET}`;
   const rule = "━".repeat(60);
-  console.log();
-  console.log(rule);
-  console.log(`  ${status}`);
-  console.log(rule);
-  console.log();
+  log.info();
+  log.info(rule);
+  log.info(`  ${status}`);
+  log.info(rule);
+  log.info();
 
   const table = new Table({
     head: ["Check", "Result", "Detail"],
@@ -270,44 +271,40 @@ function renderTerminal(data) {
     const sym = row.ok ? `${_GREEN}✔ pass${_RESET}` : `${_RED}✘ fail${_RESET}`;
     table.push([row.name, sym, `${_DIM}${row.detail}${_RESET}`]);
   }
-  console.log(table.toString());
+  log.info(table.toString());
 
   if (data.eslintTiming.length) {
-    console.log();
-    console.log(`${_CYAN}Slowest ESLint rules:${_RESET}`);
+    log.info();
+    log.info(`${_CYAN}Slowest ESLint rules:${_RESET}`);
     for (const t of data.eslintTiming) {
-      console.log(
+      log.info(
         `  ${t.rule.padEnd(40)} ${t.ms.toFixed(1).padStart(7)} ms   ${t.pct.toFixed(1)}%`,
       );
     }
   }
 
   if (data.tests.slowest.length) {
-    console.log();
-    console.log(`${_CYAN}Slowest tests:${_RESET}`);
+    log.info();
+    log.info(`${_CYAN}Slowest tests:${_RESET}`);
     for (const t of data.tests.slowest) {
       const name = t.name.length > 50 ? t.name.slice(0, 47) + "..." : t.name;
-      console.log(
-        `  ${name.padEnd(50)} ${t.duration.toFixed(1).padStart(8)} ms`,
-      );
+      log.info(`  ${name.padEnd(50)} ${t.duration.toFixed(1).padStart(8)} ms`);
     }
   }
 
   if (data.tests.failures.length) {
-    console.log();
-    console.log(`${_RED}Failures:${_RESET}`);
+    log.info();
+    log.info(`${_RED}Failures:${_RESET}`);
     for (const f of data.tests.failures) {
-      console.log(`  ${_RED}✘${_RESET} ${f.name}`);
+      log.info(`  ${_RED}✘${_RESET} ${f.name}`);
     }
   }
 
-  console.log();
-  console.log(`${_DIM}Reports: ${REPORT_DIR}/${_RESET}`);
-  console.log(
-    `${_DIM}  text-reports/  raw-data/  report.pdf  tests.tap${_RESET}`,
-  );
-  console.log(`${_DIM}  View PDF:  npm run view-report${_RESET}`);
-  console.log();
+  log.info();
+  log.info(`${_DIM}Reports: ${REPORT_DIR}/${_RESET}`);
+  log.info(`${_DIM}  text-reports/  raw-data/  report.pdf  tests.tap${_RESET}`);
+  log.info(`${_DIM}  View PDF:  npm run view-report${_RESET}`);
+  log.info();
 }
 
 function writeSummaryTxt(data) {
@@ -385,7 +382,7 @@ function writeSummaryMd(data) {
 
 async function main() {
   if (!fs.existsSync(RAW_DIR)) {
-    console.error(
+    log.error(
       `[check-report] ${RAW_DIR} not found — run \`npm run check\` first.`,
     );
     process.exit(1);
@@ -398,7 +395,7 @@ async function main() {
   try {
     await renderPdf(data, path.join(REPORT_DIR, "report.pdf"));
   } catch (err) {
-    console.error(`[check-report] PDF render failed: ${err.message}`);
+    log.error(`[check-report] PDF render failed: ${err.message}`);
     // Don't fail the whole run just because the PDF couldn't be written —
     // the txt summaries and terminal output are already on disk.
   }

@@ -35,6 +35,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -80,7 +81,7 @@ function migrateAppConfig(cwd) {
 
     if (!srcExists) continue; // fresh install or already migrated
     if (destExists) {
-      console.warn(
+      log.warn(
         "[migrate] REFUSING %s — both root and app-config/ exist; " +
           "leaving root file in place for manual inspection",
         f,
@@ -89,7 +90,7 @@ function migrateAppConfig(cwd) {
       continue;
     }
     fs.renameSync(src, dest);
-    console.log("[migrate] moved %s → app-config/%s", f, f);
+    log.info("[migrate] moved %s → app-config/%s", f, f);
     moved++;
   }
 

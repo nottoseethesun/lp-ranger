@@ -104,11 +104,12 @@
 
 "use strict";
 
+const { log } = require("./src/log");
 // Very first statement of the app — printed before any require so it
 // always lands at the top of the log.  Black on light gray (inverse of
 // bot.js), rocket emoji before and after "Started."  ANSI: 30=black fg,
 // 47=lt-gray bg, 0=reset.
-console.log(
+log.info(
   "\x1b[30;47m[lp-ranger server] \uD83D\uDE80 Started. \uD83D\uDE80\x1b[0m",
 );
 
@@ -185,7 +186,7 @@ const _positionMgr = createPositionManager({
  *  restart-count rebalances against the intended cap). */
 const _seeded = _positionMgr.seedPoolDailyCounts(botRecorder.readLog());
 if (_seeded > 0)
-  console.log("[server] Seeded %d pool rebalance(s) for today's cap", _seeded);
+  log.info("[server] Seeded %d pool rebalance(s) for today's cap", _seeded);
 
 // ── MIME type map ────────────────────────────────────
 
@@ -208,12 +209,12 @@ const _diskConfig = loadConfig();
 
 const _managedAtStartup = managedKeys(_diskConfig);
 if (_managedAtStartup.length > 0)
-  console.log(
+  log.info(
     "[server] Loaded bot config (%d managed positions)",
     _managedAtStartup.length,
   );
 for (const [k, v] of Object.entries(_diskConfig.positions || {}))
-  console.log(
+  log.info(
     "[server] Config position %s: status=%s keys=%s",
     k.slice(-10),
     v.status || "MISSING",
@@ -480,7 +481,7 @@ const _routes = {
       ).privateKey;
       _unlockLog.logUnlockSuccess(req);
       const _pw = body.password;
-      const _w = (t) => (e) => console.warn("[server] %s: %s", t, e.message);
+      const _w = (t) => (e) => log.warn("[server] %s: %s", t, e.message);
       _routeHandlers._decryptApiKeys(_pw).catch(_w("API key decrypt failed"));
       _routeHandlers
         ._autoStartManagedPositions()
@@ -492,7 +493,7 @@ const _routes = {
     }
   },
   "DELETE /api/wallet": (_, res) => {
-    console.warn(
+    log.warn(
       "[server] DELETE /api/wallet received" + " — clearing wallet file",
     );
     walletManager.clearWallet();
@@ -532,7 +533,7 @@ const _routes = {
       return;
     }
     const tokenId = body.positionKey.split("-").pop();
-    console.log(
+    log.info(
       "[server] Manual rebalance for %s %s" + " (customRange=%s)",
       body.positionKey,
       emojiId(tokenId),
@@ -572,7 +573,7 @@ const _routes = {
       return;
     }
     const tokenId = body.positionKey.split("-").pop();
-    console.log(
+    log.info(
       "[server] Manual compound for %s %s",
       body.positionKey,
       emojiId(tokenId),
@@ -713,18 +714,18 @@ function start(portOverride) {
     server.listen(port, host, () => {
       const loopback = host === "0.0.0.0" || host === "127.0.0.1";
       const addr = `http://${loopback ? "localhost" : host}:${port}`;
-      console.log("[server] Blockchain:" + "  PulseChain (chainId 369)");
-      console.log(`[server] NFT Factory:` + ` ${config.POSITION_MANAGER}`);
-      console.log(
+      log.info("[server] Blockchain:" + "  PulseChain (chainId 369)");
+      log.info(`[server] NFT Factory:` + ` ${config.POSITION_MANAGER}`);
+      log.info(
         "[server] Wallet:     " +
           ` ${walletManager.getAddress() || "(not loaded)"}`,
       );
-      console.log(`[server] Dashboard:   ${addr}`);
-      console.log(`[server] API:         ${addr}/api/status`);
-      console.log(
+      log.info(`[server] Dashboard:   ${addr}`);
+      log.info(`[server] API:         ${addr}/api/status`);
+      log.info(
         "[server] Port:       " + ` ${port}  (change with PORT= in .env)`,
       );
-      console.log(`[server] Health:      ${addr}/health`);
+      log.info(`[server] Health:      ${addr}/health`);
       resolve(server);
     });
   });
@@ -756,7 +757,7 @@ if (require.main === module) {
     .then(() => _routeHandlers._tryResolveKey())
     .then(() => {
       const shutdown = () => {
-        console.log("\n[server] Shutting down\u2026");
+        log.info("\n[server] Shutting down\u2026");
         _notifyShutdown();
         _pauseInfra.stop();
         _positionMgr.stopAll().catch(() => {});
@@ -767,7 +768,7 @@ if (require.main === module) {
       process.on("SIGTERM", shutdown);
     })
     .catch((err) => {
-      console.error("[server] Failed to start:", err.message);
+      log.error("[server] Failed to start:", err.message);
       process.exit(1);
     });
 }

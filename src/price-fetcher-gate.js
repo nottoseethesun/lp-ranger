@@ -24,6 +24,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 const { loadConfig } = require("./bot-config-v2");
 
@@ -88,7 +89,7 @@ const {
 function pausePriceLookups(reason) {
   if (!_priceLookupsPaused) {
     _priceLookupsPaused = true;
-    console.log(
+    log.info(
       "[price-fetcher] paused (%s) — non-essential price fetching is now paused",
       reason || "unspecified",
     );
@@ -104,7 +105,7 @@ function pausePriceLookups(reason) {
 function unpausePriceLookups(reason) {
   if (_priceLookupsPaused) {
     _priceLookupsPaused = false;
-    console.log(
+    log.info(
       "[price-fetcher] unpaused (%s) — fetches resumed",
       reason || "unspecified",
     );

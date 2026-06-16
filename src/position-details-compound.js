@@ -10,6 +10,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const { getPositionConfig, saveConfig } = require("./bot-config-v2");
 const { detectCompoundsOnChain } = require("./compounder");
@@ -94,7 +95,7 @@ async function _scanCompounds(
     }
     return { total, current, currentGasUsd };
   } catch (e) {
-    console.warn("[position details] compound detection failed:", e.message);
+    log.warn("[position details] compound detection failed:", e.message);
     return { total: 0, current: 0, currentGasUsd: 0 };
   }
 }
@@ -125,7 +126,7 @@ async function _detectCurrentNftValues(
     const r = await _detect(String(position.tokenId), opts);
     return await _currentValuesFromScan(r);
   } catch (e) {
-    console.warn(
+    log.warn(
       "[position details] current-NFT values detection failed:",
       e.message,
     );

@@ -34,6 +34,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const { buildProvider } = require("./bot-provider");
@@ -153,7 +154,7 @@ async function ensureReachable() {
   }
   try {
     await _primaryProvider.getBlockNumber();
-    console.log(`[bot] RPC:    ${_primaryUrl}`);
+    log.info(`[bot] RPC:    ${_primaryUrl}`);
     return;
   } catch (err) {
     if (_primaryUrl === _fallbackUrl) {
@@ -161,13 +162,11 @@ async function ensureReachable() {
        *  surface so the caller can decide whether to abort boot. */
       throw err;
     }
-    console.warn(
-      `[bot] Primary RPC unreachable (${_primaryUrl}): ${err.message}`,
-    );
-    console.log(`[bot] Falling back to ${_fallbackUrl}`);
+    log.warn(`[bot] Primary RPC unreachable (${_primaryUrl}): ${err.message}`);
+    log.info(`[bot] Falling back to ${_fallbackUrl}`);
     failoverToNextRPC();
     await _fallbackProvider.getBlockNumber();
-    console.log(`[bot] RPC:    ${_fallbackUrl} (fallback)`);
+    log.info(`[bot] RPC:    ${_fallbackUrl} (fallback)`);
   }
 }
 
@@ -275,7 +274,7 @@ function failoverToNextRPC() {
   const wasActive = Date.now() < _useFallbackUntilMs;
   _useFallbackUntilMs = Date.now() + FAILOVER_DURATION_MS;
   if (!wasActive) {
-    console.warn(
+    log.warn(
       "[send-tx] RPC failover engaged: %s → %s (sticky for %d min)",
       _primaryUrl,
       _fallbackUrl,
@@ -337,7 +336,7 @@ async function _estimateWithFailover(populated, label) {
   } catch (curErr) {
     const onPrimary = cur === _primaryProvider;
     if (!onPrimary || _primaryUrl === _fallbackUrl) throw curErr;
-    console.warn(
+    log.warn(
       "[send-tx] %s: estimateGas on primary failed — trying fallback. Inner: %s",
       label,
       curErr.shortMessage || curErr.message,
@@ -347,7 +346,7 @@ async function _estimateWithFailover(populated, label) {
       failoverToNextRPC();
       return gas;
     } catch (fbErr) {
-      console.warn(
+      log.warn(
         "[send-tx] %s: estimateGas on fallback also failed — using floor. Inner: %s",
         label,
         fbErr.shortMessage || fbErr.message,
@@ -378,7 +377,7 @@ async function _resolveGasLimit(populated, floor, label) {
     const estimate = await _estimateWithFailover(populated, label);
     const buffered = (estimate * BigInt(Math.round(mult * 1000))) / 1000n;
     const final = buffered > floor ? buffered : floor;
-    console.log(
+    log.info(
       "[send-tx] %s: estimate=%s × %sx → %s (floor %s)",
       label,
       String(estimate),
@@ -388,7 +387,7 @@ async function _resolveGasLimit(populated, floor, label) {
     );
     return final;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[send-tx] %s: estimateGas failed on both RPCs — using floor %s. Inner: %s",
       label,
       String(floor),
@@ -404,10 +403,7 @@ async function _resolveGasLimit(populated, floor, label) {
 function _tolerantWait(tx, label) {
   return tx.wait().catch((e) => {
     if (e.code === "TRANSACTION_REPLACED" && e.receipt) {
-      console.log(
-        "[send-tx] %s: TX replaced, using replacement receipt",
-        label,
-      );
+      log.info("[send-tx] %s: TX replaced, using replacement receipt", label);
       return e.receipt;
     }
     throw e;
@@ -443,7 +439,7 @@ async function _submitSpeedUp(tx, signer, label) {
   const bumped = BigInt(
     Math.ceil(Number(curGas > origGas ? curGas : origGas) * bump),
   );
-  console.log(
+  log.info(
     "[send-tx] %s: speedup origGas=%s curGas=%s bumped=%s nonce=%d",
     label,
     String(origGas),
@@ -466,7 +462,7 @@ async function _submitSpeedUp(tx, signer, label) {
       "[send-tx] " + label + " speedup nonce=" + tx.nonce,
       { signer, retryingTxWithSameNonce: true },
     );
-    console.log(
+    log.info(
       "[send-tx] %s: replacement TX submitted, hash=%s nonce=%d",
       label,
       replacement.hash,
@@ -474,7 +470,7 @@ async function _submitSpeedUp(tx, signer, label) {
     );
     return replacement;
   } catch (sendErr) {
-    console.error(
+    log.error(
       "[send-tx] %s: speed-up send failed (nonce=%d): %s — waiting for original",
       label,
       tx.nonce,
@@ -498,7 +494,7 @@ async function _cancelStuckNonce(
   totalMin,
 ) {
   const provider = signer.provider || signer;
-  console.error(
+  log.error(
     "[send-tx] %s: TX STILL STUCK after %d min — cancelling nonce %d with 0-PLS self-transfer",
     label,
     totalMin,
@@ -523,7 +519,7 @@ async function _cancelStuckNonce(
     "[send-tx] " + label + " cancel nonce=" + tx.nonce,
     { signer: base, retryingTxWithSameNonce: true },
   );
-  console.log(
+  log.info(
     "[send-tx] %s: cancel TX submitted, hash=%s nonce=%d gasPrice=%s",
     label,
     cancelTx.hash,
@@ -531,7 +527,7 @@ async function _cancelStuckNonce(
     String(cancelGas),
   );
   const cancelReceipt = await cancelTx.wait();
-  console.log(
+  log.info(
     "[send-tx] %s: cancel TX confirmed in block %d — nonce %d is now free",
     label,
     cancelReceipt.blockNumber,
@@ -578,7 +574,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
   }
 
   /*- Phase 2: submit the speed-up replacement. */
-  console.warn(
+  log.warn(
     "[send-tx] %s: TX %s not confirmed after %ds — speeding up",
     label,
     tx.hash,
@@ -621,7 +617,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
     return null;
   } catch (cancelErr) {
     if (cancelErr.cancelled) throw cancelErr;
-    console.error(
+    log.error(
       "[send-tx] %s: cancel TX failed: %s — nonce %d may still be stuck",
       label,
       cancelErr.message,
@@ -692,7 +688,7 @@ async function sendTransaction(opts) {
     "[send-tx] " + label,
     { signer: opts.signer },
   );
-  console.log(
+  log.info(
     "[send-tx] %s: TX submitted, hash=%s nonce=%d gasLimit=%s gasPrice=%s",
     label,
     tx.hash,
@@ -702,7 +698,7 @@ async function sendTransaction(opts) {
   );
 
   const receipt = await _waitOrSpeedUp(tx, opts.signer, label);
-  console.log(
+  log.info(
     "[send-tx] %s: confirmed, gasUsed=%s gasPrice=%s block=%s",
     label,
     String(receipt.gasUsed),

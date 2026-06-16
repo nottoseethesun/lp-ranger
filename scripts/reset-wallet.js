@@ -17,6 +17,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
 
@@ -27,9 +28,9 @@ const ENV_FILE = path.join(ROOT, ".env");
 // ── 1. Delete the encrypted wallet file ───────────────────────────────────
 if (fs.existsSync(WALLET_FILE)) {
   fs.unlinkSync(WALLET_FILE);
-  console.log("✔ Deleted app-config/.wallet.json");
+  log.info("✔ Deleted app-config/.wallet.json");
 } else {
-  console.log("• app-config/.wallet.json already absent");
+  log.info("• app-config/.wallet.json already absent");
 }
 
 // ── 2. Scrub WALLET_PASSWORD from .env ────────────────────────────────────
@@ -50,15 +51,15 @@ if (fs.existsSync(ENV_FILE)) {
       /* best-effort; rename proceeds regardless */
     }
     fs.renameSync(tmpFile, ENV_FILE);
-    console.log("✔ Removed WALLET_PASSWORD from .env");
+    log.info("✔ Removed WALLET_PASSWORD from .env");
   } else {
-    console.log("• WALLET_PASSWORD not present in .env");
+    log.info("• WALLET_PASSWORD not present in .env");
   }
 } else {
-  console.log("• .env not present");
+  log.info("• .env not present");
 }
 
-console.log("");
-console.log(
+log.info("");
+log.info(
   "Re-import your wallet via the dashboard unlock dialog on next start.",
 );

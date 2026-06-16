@@ -6,10 +6,12 @@
  * Used by both `server.js` (unified mode) and `bot.js` (headless mode).
  *
  * Exports:
- *   - `resolvePrivateKey(opts)` — resolve a private key from env, key-file, or wallet-manager
  *   - `startBotLoop(opts)` — create provider/signer, detect position, start polling
  *   - `pollCycle(deps)` — single poll iteration
  *   - `appendLog(result)` — write rebalance result to disk log
+ *
+ * The private-key resolver lives in `./bot-private-key`; callers
+ * (bot.js, tests) import it directly from there.
  *
  * RPC providers are owned by `src/send-transaction.js` — call
  * `sendTx.init` + `sendTx.ensureReachable` at boot and use
@@ -17,6 +19,7 @@
  */
 
 "use strict";
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const { createThrottle } = require("./throttle");
@@ -36,12 +39,7 @@ const {
 } = require("./bot-recorder");
 const { notify: _notify } = require("./telegram-notifications/telegram");
 const { checkGasBalance } = require("./gas-monitor");
-const {
-  pollCycle,
-  resolvePrivateKey,
-  _reloadFromConfig,
-  _humanizeError,
-} = require("./bot-cycle");
+const { pollCycle, _reloadFromConfig, _humanizeError } = require("./bot-cycle");
 const { applyCurrentNftFigures } = require("./bot-pnl-current-nft");
 const { wireBotStateGetConfig } = require("./bot-state-init");
 const {
@@ -74,7 +72,7 @@ async function startBotLoop(opts) {
   const dryRun = opts.dryRun ?? config.DRY_RUN,
     ethersLib = opts.ethersLib || ethers;
   if (dryRun)
-    console.log(
+    log.info(
       "\n  ┌──────────────────────────────────────────────┐\n  │  DRY RUN MODE — no transactions will be sent │\n  └──────────────────────────────────────────────┘\n",
     );
   /*- Shared {provider, signer, address} wins when the caller passes one
@@ -117,8 +115,8 @@ async function startBotLoop(opts) {
     address = await signer.getAddress();
   }
   if (dryRun && !privateKey)
-    console.log(`[bot] DRY RUN — using random address: ${address}`);
-  console.log(`[bot] Wallet: ${address}`);
+    log.info(`[bot] DRY RUN — using random address: ${address}`);
+  log.info(`[bot] Wallet: ${address}`);
   /*- `provider` is the managed-read provider when we built the wallet
    *  ourselves above; for test paths it's whatever was injected.  Either
    *  way it handles its own failover, so the per-attempt callbacks
@@ -128,7 +126,7 @@ async function startBotLoop(opts) {
     address,
     opts.positionId || config.POSITION_ID || undefined,
   );
-  console.log(
+  log.info(
     `[bot] Managing NFT #${position.tokenId} ${emojiId(position.tokenId)} (${position.token0}/${position.token1} fee=${position.fee})`,
   );
 
@@ -150,7 +148,7 @@ async function startBotLoop(opts) {
     botState,
     updateBotState,
   ).catch((err) =>
-    console.warn("[bot] HODL baseline background error:", err.message),
+    log.warn("[bot] HODL baseline background error:", err.message),
   );
   const throttle = createThrottle({
     minIntervalMs: config.MIN_REBALANCE_INTERVAL_MIN * 60_000,
@@ -187,7 +185,7 @@ async function startBotLoop(opts) {
     const isMidway = BigInt(position.liquidity || 0) === 0n;
     if (isMidway) midwayRetryCount++;
     const midwayExhausted = isMidway && midwayRetryCount >= 4;
-    console.error(
+    log.error(
       "[bot] Rebalance failed: %s (%dm of failures%s)",
       errMsg,
       Math.round((Date.now() - firstFailureAt) / 60_000),
@@ -207,7 +205,7 @@ async function startBotLoop(opts) {
 
   function _handleRecovery() {
     const oorMin = Math.round((Date.now() - firstFailureAt) / 60_000);
-    console.log(
+    log.info(
       `[bot] Price returned to range after ~${oorMin}m of failures — clearing`,
     );
     firstFailureAt = null;
@@ -267,9 +265,7 @@ async function startBotLoop(opts) {
       _handleRebalanceSuccess(result);
     } else if (result.gasDeferred) {
       currentIntervalMs = GAS_DEFER_MS;
-      console.log(
-        `[bot] Next retry in ${GAS_DEFER_MS / 60_000}m (gas deferral)`,
-      );
+      log.info(`[bot] Next retry in ${GAS_DEFER_MS / 60_000}m (gas deferral)`);
     } else if (result.error) {
       _handleError(result);
     } else if (result.pollError) {
@@ -295,7 +291,7 @@ async function startBotLoop(opts) {
    *  software state flip; the user can re-manage it from the
    *  dashboard at any time. */
   async function _handleRetire(drainedForMs) {
-    console.log(
+    log.info(
       "[bot] Retiring drained position #%s (no tx in flight)",
       position.tokenId,
     );
@@ -311,7 +307,7 @@ async function startBotLoop(opts) {
       try {
         await opts.onRetire(position.tokenId);
       } catch (err) {
-        console.warn("[bot] onRetire callback error: %s", err.message);
+        log.warn("[bot] onRetire callback error: %s", err.message);
       }
     }
   }
@@ -337,6 +333,7 @@ async function startBotLoop(opts) {
       const result = await pollCycle({
         signer,
         provider,
+        address,
         position,
         throttle,
         dryRun,
@@ -364,7 +361,7 @@ async function startBotLoop(opts) {
       _processPollResult(result);
     } catch (err) {
       if (!firstFailureAt) firstFailureAt = Date.now();
-      console.error(
+      log.error(
         `[bot] Poll error: ${err.message} (${Math.round((Date.now() - firstFailureAt) / 60_000)}m of failures)`,
       );
       _notify("otherError", {
@@ -386,10 +383,7 @@ async function startBotLoop(opts) {
     _checkGas();
     // Honor queued position switch (requested while rebalance was in progress)
     if (botState.pendingSwitch) {
-      console.log(
-        "[bot] Honoring queued switch to #%s",
-        botState.pendingSwitch,
-      );
+      log.info("[bot] Honoring queued switch to #%s", botState.pendingSwitch);
       _stopped = true;
       clearTimeout(timer);
       updateBotState({ running: false });
@@ -408,7 +402,7 @@ async function startBotLoop(opts) {
   };
 
   await poll(); // First poll — gives the dashboard current position data
-  console.log(`[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`);
+  log.info(`[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`);
 
   // Lazy scan: expose _triggerScan for on-demand invocation
   botState._triggerScan = async () => {
@@ -490,7 +484,7 @@ async function startBotLoop(opts) {
         " lifetimeScanComplete=" +
         !!botState.lifetimeScanComplete
       : "deposit-total=$0";
-    console.log(
+    log.info(
       "[bot] %s/%s NFT #%s %s: Auto-rescanning lifetime (%s, lastError=%s)",
       position.token0Symbol || "Token0",
       position.token1Symbol || "Token1",
@@ -508,7 +502,7 @@ async function startBotLoop(opts) {
       clearTimeout(timer);
       clearInterval(lifetimeRescanTimer);
       updateBotState({ running: false });
-      console.log("[bot] Bot loop stopped");
+      log.info("[bot] Bot loop stopped");
       if (!polling) return Promise.resolve();
       return new Promise((resolve) => {
         const check = setInterval(() => {
@@ -525,7 +519,6 @@ async function startBotLoop(opts) {
 module.exports = {
   pollCycle,
   appendLog,
-  resolvePrivateKey,
   startBotLoop,
   _overridePnlWithRealValues,
   _initPnlTracker,

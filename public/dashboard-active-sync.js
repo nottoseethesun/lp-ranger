@@ -12,6 +12,7 @@
  */
 "use strict";
 
+import { log } from "./dashboard-log.js";
 import { posStore, updatePosStripUI } from "./dashboard-positions.js";
 
 /**
@@ -30,7 +31,7 @@ function _snap(o) {
 }
 
 function _logSync(before, ap, active, poolIdentityChanged) {
-  console.log(
+  log.info(
     "[lp-ranger] [active-sync] viewed=#%s ap=#%s poolIdentityChanged=%s before(%s/%s fee=%s) → after(%s/%s fee=%s) tokenId %s→%s%s",
     before.tokenId,
     ap.tokenId,

@@ -7,6 +7,7 @@
  * This is the single entry-point module loaded by index.html.
  */
 
+import { log } from "./dashboard-log.js";
 import {
   g,
   act,
@@ -109,7 +110,7 @@ import {
 /*- Very first statement of the browser app — light gray text on black,
  *  rocket emoji before and after "Started."  Mirrors the server-side
  *  banner in server.js / bot.js. */
-console.log(
+log.info(
   "%c[lp-ranger app] \uD83D\uDE80 Started. \uD83D\uDE80",
   "color: lightgray; background: black; padding: 2px 4px;",
 );
@@ -134,14 +135,14 @@ const _displayVersion =
     ? BUILD_PACKAGE_VERSION
     : null);
 if (_displayVersion === null) {
-  console.log(
+  log.info(
     "[lp-ranger] LP Ranger commit=%s commitDate=%s tag=%s",
     BUILD_COMMIT,
     BUILD_COMMIT_DATE,
     BUILD_RELEASE_TAG || "(none)",
   );
 } else {
-  console.log(
+  log.info(
     "[lp-ranger] LP Ranger version=%s commit=%s commitDate=%s tag=%s",
     _displayVersion,
     BUILD_COMMIT,
@@ -408,7 +409,7 @@ function _afterDisclaimer() {
   if (performance && performance.memory) {
     const _logHeap = () => {
       const m = performance.memory;
-      console.log(
+      log.info(
         "[lp-ranger] [js heap] %s MB used / %s MB allocated",
         (m.usedJSHeapSize / 1048576).toFixed(1),
         (m.totalJSHeapSize / 1048576).toFixed(1),

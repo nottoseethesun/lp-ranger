@@ -21,6 +21,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 /** @type {number[]} Timestamps (ms) of recent GeckoTerminal API calls. */
 const _callTimes = [];
 
@@ -59,14 +60,14 @@ async function geckoRateLimit() {
   // Honor any server-imposed cool-down from a previous 429 signal.
   if (_penaltyUntilMs > now) {
     const waitMs = _penaltyUntilMs - now;
-    console.log(
+    log.info(
       `[gecko-rate-limit] 429 cool-down: waiting ${Math.ceil(waitMs / 1000)}s`,
     );
     await new Promise((r) => setTimeout(r, waitMs));
   }
   if (_callTimes.length >= _MAX_CALLS) {
     const waitMs = _callTimes[0] + _WINDOW_MS - now + 200;
-    console.log(
+    log.info(
       `[gecko-rate-limit] waiting ${Math.ceil(waitMs / 1000)}s (window full: ${_callTimes.length}/${_MAX_CALLS})`,
     );
     await new Promise((r) => setTimeout(r, waitMs));

@@ -14,6 +14,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -65,7 +66,7 @@ async function getBlockTimestamp(provider, blockchain, blockNumber) {
     }
     return ts;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[block-time-cache] getBlock(%d) failed: %s",
       blockNumber,
       err.message ?? err,
@@ -82,7 +83,7 @@ function flushBlockTimeCache() {
     fs.writeFileSync(_CACHE_PATH, JSON.stringify(_cache, null, 2), "utf8");
     _dirty = false;
   } catch (err) {
-    console.warn("[block-time-cache] Could not write cache:", err.message);
+    log.warn("[block-time-cache] Could not write cache:", err.message);
   }
 }
 

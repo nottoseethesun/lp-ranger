@@ -16,6 +16,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { formatToken } = require("./price-source-cascade");
 const config = require("./config");
 
@@ -40,7 +41,7 @@ function getInflight(key, tokenAddress) {
   const pending = _inflight.get(key);
   if (!pending) return null;
   if (config.VERBOSE) {
-    console.log(
+    log.info(
       "[price-fetcher] in-flight dedup %s — awaiting concurrent fetch",
       tokenAddress ? formatToken(tokenAddress) : key,
     );
@@ -74,7 +75,7 @@ function _inflightSize() {
 
 /* ── verbose cache-state loggers ─────────────────────────────────────
  *  These keep `price-fetcher.js` under its 500-line cap by collapsing
- *  the 5-line `if (VERBOSE) console.log(...)` blocks at each early-
+ *  the 5-line `if (VERBOSE) log.info(...)` blocks at each early-
  *  return path into one-liners.  All are no-ops unless VERBOSE is set,
  *  so the steady-state log only shows real fetches. */
 
@@ -82,7 +83,7 @@ function _inflightSize() {
 function logCacheHit(tokenAddress, cached) {
   if (!config.VERBOSE) return;
   const ageS = Math.round((Date.now() - cached.ts) / 1000);
-  console.log(
+  log.info(
     "[price-fetcher] cache hit %s →$%s age=%ds",
     formatToken(tokenAddress),
     cached.price,
@@ -94,7 +95,7 @@ function logCacheHit(tokenAddress, cached) {
 function logPausedCached(tokenAddress, cached) {
   if (!config.VERBOSE) return;
   const tail = cached ? ` →$${cached.price}` : " (cold cache → 0)";
-  console.log(
+  log.info(
     "[price-fetcher] paused — returning cached %s%s",
     formatToken(tokenAddress),
     tail,
@@ -105,18 +106,14 @@ function logPausedCached(tokenAddress, cached) {
 function logDustCacheHit(cached) {
   if (!config.VERBOSE) return;
   const ageMin = Math.round((Date.now() - cached.ts) / 60000);
-  console.log(
-    "[dust-unit-price] cache hit $%s age=%dmin",
-    cached.price,
-    ageMin,
-  );
+  log.info("[dust-unit-price] cache hit $%s age=%dmin", cached.price, ageMin);
 }
 
 /** Dust-unit-price paused-and-returning-cached. */
 function logDustPausedCached(cached) {
   if (!config.VERBOSE) return;
   const tail = cached ? `$${cached.price}` : "(cold cache → 0)";
-  console.log("[dust-unit-price] paused — returning cached %s", tail);
+  log.info("[dust-unit-price] paused — returning cached %s", tail);
 }
 
 module.exports = {

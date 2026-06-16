@@ -6,6 +6,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { notify } = require("./telegram-notifications/telegram");
@@ -41,7 +42,7 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
     if (Date.now() - new Date(lastAt).getTime() < interval) return false;
   }
 
-  console.log(
+  log.info(
     "[bot] Compound triggered (forced=%s fees=$%s threshold=$%s)",
     forced,
     feesUsd.toFixed(2),
@@ -117,20 +118,16 @@ async function recordCompound(deps, result) {
   const collectedUsd = result.collectedUsd ?? result.usdValue;
   const residualUsd = Math.max(0, collectedUsd - result.usdValue);
   const trig = result.trigger === "manual" ? "manual" : "auto";
-  console.log("[bot] Compound source: standalone %s Compound op", trig);
-  console.log(
-    "[bot]   Method: collect fees + increaseLiquidity on the same NFT",
-  );
-  console.log(
-    "[bot]   Reinvested portion is added to lifetime compounded total",
-  );
-  console.log(
+  log.info("[bot] Compound source: standalone %s Compound op", trig);
+  log.info("[bot]   Method: collect fees + increaseLiquidity on the same NFT");
+  log.info("[bot]   Reinvested portion is added to lifetime compounded total");
+  log.info(
     "[bot] Compound complete: collected $%s reinvested $%s residual $%s",
     collectedUsd.toFixed(2),
     result.usdValue.toFixed(2),
     residualUsd.toFixed(2),
   );
-  console.log(
+  log.info(
     "[bot]   gas $%s | lifetime compounded $%s",
     gasCostUsd.toFixed(4),
     total.toFixed(2),
@@ -193,7 +190,7 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
   const lock = deps._rebalanceLock;
   const release = lock ? await lock.acquire() : null;
   if (lock)
-    console.log(
+    log.info(
       "[bot] Compound lock acquired for #%s (pending: %d)",
       position.tokenId,
       lock.pending(),
@@ -222,10 +219,10 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
         message: `Compounded $${(result.usdValue || 0).toFixed(2)} in fees`,
       });
     } else {
-      console.log("[bot] Compound skipped: %s", result.reason);
+      log.info("[bot] Compound skipped: %s", result.reason);
     }
   } catch (err) {
-    console.error("[bot] Compound failed:", err.message);
+    log.error("[bot] Compound failed:", err.message);
     emit({ compoundError: err.message });
     notify("compoundFail", {
       position: {
@@ -247,7 +244,7 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
     emit({ compoundInProgress: false });
     if (release) release();
     if (lock)
-      console.log("[bot] Compound lock released for #%s", position.tokenId);
+      log.info("[bot] Compound lock released for #%s", position.tokenId);
   }
 }
 
@@ -265,7 +262,7 @@ async function handleForceCompound(
 ) {
   if (!deps._botState?.forceCompound) return false;
   const feesUsd = deps._lastUnclaimedFeesUsd || 0;
-  console.log(
+  log.info(
     "[bot] Manual compound requested — compounding… NFT #%s (fees $%s)",
     position.tokenId,
     feesUsd.toFixed(2),

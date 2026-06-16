@@ -20,6 +20,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const {
@@ -71,7 +72,7 @@ async function _evalGates(signer, opts, desired) {
   const gasUsd = await estimateSwapGasUsd(provider);
   const maxRatio = gasFeePctToRatio(opts.gasFeePct);
   const gate = await shouldSkipSwap({ swapUsd, gasUsd, maxRatio });
-  console.log(
+  log.info(
     "[compound] %s ratio-swap gate: swap=$%s gas=$%s ratio=%s max=%s%% — %s",
     _ctx(opts),
     swapUsd.toFixed(4),
@@ -122,7 +123,7 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
  */
 async function swapForCompound(signer, ethersLib, opts, amount0, amount1) {
   if (!_hasRatioInputs(opts)) {
-    console.log(
+    log.info(
       "[compound] %s ratio-swap skipped: poolState/tickRange not provided",
       _ctx(opts),
     );
@@ -140,7 +141,7 @@ async function swapForCompound(signer, ethersLib, opts, amount0, amount1) {
     { decimals0: opts.decimals0, decimals1: opts.decimals1 },
   );
   if (!desired.needsSwap) {
-    console.log(
+    log.info(
       "[compound] %s ratio-swap skipped: collected amounts already match tick ratio",
       _ctx(opts),
     );

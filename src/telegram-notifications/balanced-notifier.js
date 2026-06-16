@@ -26,6 +26,7 @@
 
 "use strict";
 
+const { log } = require("../log");
 const { fetchTokenPriceUsd } = require("../price-fetcher");
 const { withFreshPricesAllowed, isPaused } = require("../price-fetcher-gate");
 const { notify, getEnabledEvents } = require("./telegram");
@@ -261,17 +262,14 @@ async function _fetchFreshPricesForPair(position) {
       ]);
     });
     if (pausedBefore) {
-      console.log(
+      log.info(
         "[balanced-notifier] fresh-price probe bypassed pause for #%s",
         position.tokenId,
       );
     }
     return [price0, price1];
   } catch (err) {
-    console.warn(
-      "[balanced-notifier] price fetch failed: %s",
-      err.message || err,
-    );
+    log.warn("[balanced-notifier] price fetch failed: %s", err.message || err);
     return null;
   }
 }
@@ -320,7 +318,7 @@ async function maybeNotifyBalanced(args) {
   botState._lastInBand = result.nextLastInBand;
   botState._lastBalancedNotifyTs = result.nextLastNotifyTs;
   if (!result.message) return false;
-  console.log(
+  log.info(
     "[balanced-notifier] dispatching balanced notification for #%s",
     position.tokenId,
   );

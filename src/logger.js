@@ -38,6 +38,32 @@ function emojiId(str) {
   );
 }
 
+/** Abbreviated address: `0x4e44…61A`. Returns `?` for missing input. */
+function abbrAddr(addr) {
+  if (!addr || addr.length < 10) return addr || "?";
+  return addr.slice(0, 6) + "…" + addr.slice(-3);
+}
+
+/*- Build the canonical 6-field log context string used by compound,
+ *  rebalance, and swap entry-point loggers.  Keeps a single source of
+ *  truth so every entry-point line is self-describing (chain, wallet,
+ *  factory, tokenId+emoji, both token symbols) and disambiguates between
+ *  positions when several are running concurrently.  See the
+ *  `feedback-log-full-context` memory for the rule and rationale. */
+function logCtx(opts) {
+  const chain = opts.chain || "?";
+  const wallet = abbrAddr(opts.wallet);
+  const factory = abbrAddr(opts.factory);
+  const tokenId =
+    opts.tokenId === null || opts.tokenId === undefined
+      ? "?"
+      : String(opts.tokenId);
+  const emoji = emojiId(tokenId);
+  const s0 = opts.symbol0 || opts.token0Symbol || "Token0";
+  const s1 = opts.symbol1 || opts.token1Symbol || "Token1";
+  return `${chain} ${wallet} ${factory} #${tokenId} ${emoji} ${s0}/${s1}`;
+}
+
 const COLORS = {
   "[server]": "\x1b[38;2;0;191;255m", // azure blue
   "[bot]": "\x1b[38;2;200;160;255m", // light purple
@@ -112,4 +138,4 @@ function installColorLogger() {
   console.error = (...args) => origErr(..._colorize(args));
 }
 
-module.exports = { installColorLogger, emojiId };
+module.exports = { installColorLogger, emojiId, abbrAddr, logCtx };

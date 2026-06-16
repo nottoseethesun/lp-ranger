@@ -11,7 +11,7 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
-const { resolvePrivateKey } = require("../src/bot-loop");
+const { resolvePrivateKey } = require("../src/bot-private-key");
 const { wireBotStateGetConfig } = require("../src/bot-state-init");
 const { CHAIN } = require("../src/config");
 const { ADDR, _poll } = require("./_bot-loop-helpers");

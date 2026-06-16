@@ -46,6 +46,7 @@
  * Depends on: navigo (npm), dashboard-helpers.js (act).
  */
 
+import { log } from "./dashboard-log.js";
 import Navigo from "navigo";
 import { act, ACT_ICONS } from "./dashboard-helpers.js";
 import { _posLabel } from "./dashboard-data.js";
@@ -298,7 +299,7 @@ export function updateRouteForWallet(address) {
  */
 export function syncRouteToState(active) {
   const curPath = _currentPath();
-  console.log(
+  log.info(
     "%c[lp-ranger] [dash] syncRouteToState: active=#%s contract=%s router=%s wallet=%s cur=%s",
     "color:#c8f",
     active?.tokenId,
@@ -322,7 +323,7 @@ export function syncRouteToState(active) {
   if (!target) return;
   if (curPath.toLowerCase() === target.toLowerCase()) return;
 
-  console.log(
+  log.info(
     "%c[lp-ranger] [dash] syncRouteToState: navigating to %s",
     "color:#c8f",
     target,

@@ -19,6 +19,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { Mutex } = require("async-mutex");
 const { nextMidnight } = require("./throttle");
 const { emojiId } = require("./logger");
@@ -87,7 +88,7 @@ function createPositionManager(opts) {
           follows the failover window without callers needing to know. */
       const signer = createFailoverSigner(base, { ethersLib });
       const address = await signer.getAddress();
-      console.log(
+      log.info(
         "[pos-mgr] Shared signer initialised for %s (dryRun=%s)",
         address,
         !!dryRun,
@@ -228,14 +229,14 @@ function createPositionManager(opts) {
     const { tokenId, startLoop } = posOpts;
 
     if (_positions.has(key) && _positions.get(key).status === "running") {
-      console.log("[pos-mgr] Position %s already running", key);
+      log.info("[pos-mgr] Position %s already running", key);
       return;
     }
 
     const handle = await startLoop();
 
     _positions.set(key, { key, tokenId, status: "running", handle });
-    console.log(
+    log.info(
       "[pos-mgr] Started managing position %s (tokenId=%s %s)",
       key,
       tokenId,
@@ -253,7 +254,7 @@ function createPositionManager(opts) {
     if (!entry) return;
     if (entry.handle) await entry.handle.stop();
     _positions.delete(key);
-    console.log("[pos-mgr] Removed position %s", key);
+    log.info("[pos-mgr] Removed position %s", key);
   }
 
   /**
@@ -270,7 +271,7 @@ function createPositionManager(opts) {
       entry.handle = null;
       entry.status = "stopped";
     }
-    console.log("[pos-mgr] All positions stopped");
+    log.info("[pos-mgr] All positions stopped");
   }
 
   /**
@@ -287,7 +288,7 @@ function createPositionManager(opts) {
     entry.key = newKey;
     entry.tokenId = newTokenId;
     _positions.set(newKey, entry);
-    console.log(
+    log.info(
       "[pos-mgr] Migrated key %s → %s %s",
       oldKey,
       newKey,

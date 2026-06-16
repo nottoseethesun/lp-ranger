@@ -12,6 +12,7 @@
 
 "use strict";
 
+const { log } = require("../log");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
@@ -35,10 +36,10 @@ const _SEND_SCRIPT = path.join(
 function notifyShutdown() {
   if (!telegram.isConfigured()) return;
   if (!telegram.getEnabledEvents().shutdown) {
-    console.log("[server] Shutdown Telegram notification disabled — skipping");
+    log.info("[server] Shutdown Telegram notification disabled — skipping");
     return;
   }
-  console.log("[server] Sending shutdown notification via Telegram");
+  log.info("[server] Sending shutdown notification via Telegram");
   const host = os.hostname();
   const msg =
     `*LP Ranger on ${host}*: The Server (includes the Bot) is shutting ` +

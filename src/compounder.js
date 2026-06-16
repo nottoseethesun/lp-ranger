@@ -15,27 +15,25 @@
 "use strict";
 
 const ethers = require("ethers");
-const { emojiId } = require("./logger");
+const { logCtx } = require("./logger");
+const { log } = require("./log");
 
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { swapForCompound } = require("./compounder-swap");
 
-/** Abbreviated address: 0x4e44…61A */
-function _abbr(addr) {
-  if (!addr || addr.length < 10) return addr || "?";
-  return addr.slice(0, 6) + "\u2026" + addr.slice(-3);
-}
-
-/** Build a standard log context prefix for compound operations. */
+/*- Thin wrapper around shared `logCtx` in `src/logger.js` so the 6-field
+ *  compound/rebalance/swap entry-point format stays in lockstep across
+ *  modules.  Handles the local `recipient` -> `wallet` field rename. */
 function _ctx(opts) {
-  const chain = config.CHAIN_NAME || "PulseChain";
-  const wallet = _abbr(opts.recipient);
-  const factory = _abbr(opts.positionManagerAddress);
-  const nft = "#" + opts.tokenId + " " + emojiId(opts.tokenId);
-  const s0 = opts.token0Symbol || "Token0";
-  const s1 = opts.token1Symbol || "Token1";
-  return chain + " " + wallet + " " + factory + " " + nft + " " + s0 + "/" + s1;
+  return logCtx({
+    chain: config.CHAIN_NAME || "PulseChain",
+    wallet: opts.recipient,
+    factory: opts.positionManagerAddress,
+    tokenId: opts.tokenId,
+    symbol0: opts.token0Symbol,
+    symbol1: opts.token1Symbol,
+  });
 }
 const {
   PM_ABI,
@@ -74,7 +72,7 @@ async function collectFees(signer, ethersLib, opts) {
     t1.balanceOf(opts.recipient),
   ]);
   const cx = _ctx(opts);
-  console.log(
+  log.info(
     "[compound] %s collectFees: walletBefore0=%s walletBefore1=%s",
     cx,
     String(bal0Before),
@@ -105,7 +103,7 @@ async function collectFees(signer, ethersLib, opts) {
   const amount1 = bal1After - bal1Before;
   const s0 = opts.token0Symbol || "Token0";
   const s1 = opts.token1Symbol || "Token1";
-  console.log(
+  log.info(
     "[compound] %s collectFees: %s=%s %s=%s",
     cx,
     s0,
@@ -203,7 +201,7 @@ async function addLiquidity(signer, ethersLib, opts) {
     _parseIncreaseLiquidity(pm, receipt);
   const s0 = opts.token0Symbol || "Token0";
   const s1 = opts.token1Symbol || "Token1";
-  console.log(
+  log.info(
     "[compound] %s addLiquidity: liquidity=%s %s=%s %s=%s",
     cx,
     String(liquidity),
@@ -266,7 +264,7 @@ async function _resolveDepositAmounts(
     _readBalance(signer, ethersLib, opts.token0, opts.recipient),
     _readBalance(signer, ethersLib, opts.token1, opts.recipient),
   ]);
-  console.log(
+  log.info(
     "[compound] %s post-swap deposit amounts: a0=%s a1=%s",
     _ctx(opts),
     String(bal0),
@@ -309,7 +307,7 @@ async function _resolveDepositAmounts(
 async function executeCompound(signer, ethersLib, opts) {
   const collected = await collectFees(signer, ethersLib, opts);
   if (collected.amount0 === 0n && collected.amount1 === 0n) {
-    console.log(
+    log.info(
       "[compound] %s No fees to compound — skipping addLiquidity",
       _ctx(opts),
     );
@@ -572,27 +570,27 @@ function _logCompoundSummary(opts, parts) {
   } = parts;
   const s0 = opts.token0Symbol || "Token0";
   const s1 = opts.token1Symbol || "Token1";
-  const chain = config.CHAIN_NAME || "PulseChain";
-  const nft = "#" + (opts.tokenId || "?") + " " + emojiId(opts.tokenId);
   /*- Full context per feedback-log-full-context: chain + wallet + NFT
    *  factory + tokenId + emoji + both token symbols.  Callers must pass
    *  `opts.positionManagerAddress` (the NFT factory); `config.POSITION_MANAGER`
    *  is the fallback when a caller forgets so we never render `?`. */
-  const factory = _abbr(opts.positionManagerAddress || config.POSITION_MANAGER);
-  console.log(
-    "[compound] %s %s %s %s %s/%s: %d IncreaseLiquidity (%d standalone), %d Collect, %d drain",
-    chain,
-    _abbr(opts.wallet),
-    factory,
-    nft,
-    s0,
-    s1,
+  const cx = logCtx({
+    chain: config.CHAIN_NAME || "PulseChain",
+    wallet: opts.wallet,
+    factory: opts.positionManagerAddress || config.POSITION_MANAGER,
+    tokenId: opts.tokenId,
+    symbol0: s0,
+    symbol1: s1,
+  });
+  log.info(
+    "[compound] %s: %d IncreaseLiquidity (%d standalone), %d Collect, %d drain",
+    cx,
     ilLogsCount,
     compounds.length,
     collectCount,
     drainCount,
   );
-  console.log(
+  log.info(
     "[compound]   fees collected (standalone + rebalance): %s=%s %s=%s → $%s",
     s0,
     String(fees0),

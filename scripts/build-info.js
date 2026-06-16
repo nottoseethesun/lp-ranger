@@ -14,6 +14,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -75,7 +76,7 @@ fs.writeFileSync(
   ) + "\n",
 );
 
-console.log(
+log.info(
   "[npm run build process][build-info] version=%s commit=%s date=%s tag=%s",
   packageVersion,
   commit,

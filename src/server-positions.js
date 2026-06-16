@@ -13,6 +13,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const { setCachedEpochs } = require("./epoch-cache");
@@ -120,7 +121,7 @@ function _persistPositionConfig(patch, diskConfig, key, dir) {
   for (const k of changed) pos[k] = patch[k];
   /* Guard: if we're saving for a managed position, ensure status survives */
   if (!pos.status) {
-    console.warn(
+    log.warn(
       "[pos-state] status missing for %s (was %s) — restoring to running. " +
         "Patch keys: %s",
       key,
@@ -129,7 +130,7 @@ function _persistPositionConfig(patch, diskConfig, key, dir) {
     );
     pos.status = "running";
   }
-  console.log(
+  log.info(
     "[pos-state] Persist %s for %s (status=%s)",
     changed.join(", ") || "activePositionId",
     key,
@@ -165,7 +166,7 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr, dir) {
       parsed.contract,
       String(patch.activePositionId),
     );
-    console.log(
+    log.info(
       "[pos-state] Key migration: %s → %s (new tokenId=%s)",
       key,
       newKey,
@@ -256,7 +257,7 @@ function createOnRetire(deps) {
   const { keyRef, diskConfig, positionMgr } = deps;
   return async function _onRetire(tokenId) {
     const k = keyRef.current;
-    console.log(
+    log.info(
       "[pos-state] Auto-retiring drained position %s (tokenId=%s)",
       k,
       tokenId,
@@ -272,7 +273,7 @@ function createOnRetire(deps) {
     try {
       await positionMgr.removePosition(k);
     } catch (err) {
-      console.warn(
+      log.warn(
         "[pos-state] removePosition failed during retire for %s: %s",
         k,
         err.message,
@@ -335,7 +336,7 @@ function createPositionRoutes(deps) {
       contract,
       String(body.tokenId),
     );
-    console.log(
+    log.info(
       "[pos-route] POST /api/position/manage tokenId=%s key=%s",
       body.tokenId,
       key,
@@ -347,7 +348,7 @@ function createPositionRoutes(deps) {
     // retry Manage to actually start it.
     const existing = positionMgr.get(key);
     if ((existing && existing.status === "running") || _starting.has(key)) {
-      console.log(
+      log.info(
         "[pos-route] Position #%s already running or starting — skipping",
         body.tokenId,
       );
@@ -409,7 +410,7 @@ function createPositionRoutes(deps) {
         savedConfig: posConfig,
       });
     } catch (err) {
-      console.error(
+      log.error(
         "[pos-route] Failed to start position #%s (key=%s): %s\n%s",
         body.tokenId,
         key,
@@ -436,7 +437,7 @@ function createPositionRoutes(deps) {
     /*- Bot loop is up; only NOW persist `status=running`. */
     addManagedPosition(diskConfig, key);
     saveConfig(diskConfig);
-    console.log(
+    log.info(
       "[pos-route] Position #%s started in %dms (total managed: %d)",
       body.tokenId,
       Date.now() - t0,
@@ -456,11 +457,11 @@ function createPositionRoutes(deps) {
       jsonResponse(res, 400, { ok: false, error: "Missing key" });
       return;
     }
-    console.log("[pos-route] DELETE /api/position/manage key=%s", body.key);
+    log.info("[pos-route] DELETE /api/position/manage key=%s", body.key);
     try {
       await positionMgr.removePosition(body.key);
     } catch (err) {
-      console.error(
+      log.error(
         "[pos-route] Failed to remove position %s: %s\n%s",
         body.key,
         err.message,
@@ -473,7 +474,7 @@ function createPositionRoutes(deps) {
     if (posRef) posRef.autoCompoundEnabled = false;
     saveConfig(diskConfig);
     _positionBotStates.delete(body.key);
-    console.log(
+    log.info(
       "[pos-route] Position removed (remaining: %d)",
       positionMgr.count(),
     );

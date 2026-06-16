@@ -10,6 +10,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
@@ -198,7 +199,7 @@ async function _supplementMintFromChain(result, tokenId) {
       blockNumber: logs[0].blockNumber,
     });
     _saveMintCache();
-    console.log(
+    log.info(
       "[history] Mint date from chain for #" +
         tokenId +
         " (block " +
@@ -207,7 +208,7 @@ async function _supplementMintFromChain(result, tokenId) {
         result.mintDate,
     );
   } catch (err) {
-    console.warn("[history] On-chain mint lookup failed:", err.message);
+    log.warn("[history] On-chain mint lookup failed:", err.message);
   }
 }
 
@@ -247,7 +248,7 @@ async function _getPositionTokens(tokenId, provider) {
     const pos = await pm.positions(tokenId);
     return { token0: pos.token0, token1: pos.token1 };
   } catch (err) {
-    console.warn(
+    log.warn(
       "[history] positions() lookup failed for #" + tokenId + ":",
       err.message,
     );
@@ -292,7 +293,7 @@ async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
     }
     return { amount0: null, amount1: null, gasWei };
   } catch (err) {
-    console.warn(
+    log.warn(
       "[history] Receipt parse failed for " + eventName + " in " + txHash + ":",
       err.message,
     );
@@ -357,7 +358,7 @@ async function _supplementEntryFromChain(result, tokenId, dec0, dec1, prov) {
       result.token0UsdPriceAtOpen,
       result.token1UsdPriceAtOpen,
     );
-    console.log(
+    log.info(
       "[history] Entry value from chain for #%s: $%s",
       tokenId,
       result.entryValueUsd.toFixed(2),
@@ -404,7 +405,7 @@ async function _supplementAmountsFromChain(result, tokenId) {
         result.token0UsdPriceAtClose,
         result.token1UsdPriceAtClose,
       );
-      console.log(
+      log.info(
         "[history] Exit value from chain for #" +
           tokenId +
           ": $" +
@@ -428,7 +429,7 @@ async function _supplementAmountsFromChain(result, tokenId) {
             result.token0UsdPriceAtClose,
             result.token1UsdPriceAtClose,
           );
-          console.log(
+          log.info(
             "[history] Fees from chain for #" +
               tokenId +
               ": $" +
@@ -574,7 +575,7 @@ async function getPositionHistory(tokenId, opts = {}) {
   if (!result.mintDate) {
     const _t1 = Date.now();
     await _supplementMintFromChain(result, tokenId);
-    console.log(
+    log.info(
       "[history] _supplementMintFromChain #%s: %dms",
       tokenId,
       Date.now() - _t1,
@@ -582,7 +583,7 @@ async function getPositionHistory(tokenId, opts = {}) {
   }
   const _t2 = Date.now();
   await _supplementHistoricalPrices(result, opts.activePosition);
-  console.log(
+  log.info(
     "[history] _supplementHistoricalPrices #%s: %dms",
     tokenId,
     Date.now() - _t2,
@@ -601,7 +602,7 @@ async function getPositionHistory(tokenId, opts = {}) {
   }
   const _t3 = Date.now();
   await _supplementAmountsFromChain(result, tokenId);
-  console.log(
+  log.info(
     "[history] _supplementAmountsFromChain #%s: %dms",
     tokenId,
     Date.now() - _t3,

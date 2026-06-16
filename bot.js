@@ -16,6 +16,7 @@
 
 "use strict";
 
+const { log } = require("./src/log");
 // Very first statement of the bot process — bot-banner prints on require
 // (side effect, cached so it fires exactly once per process). Required first
 // so the banner lands at the top of the log before any other module loads.
@@ -47,7 +48,8 @@ if (!_startUnpaused) pausePriceLookups("headless startup");
 
 const ethers = require("ethers");
 const config = require("./src/config");
-const { resolvePrivateKey, startBotLoop } = require("./src/bot-loop");
+const { startBotLoop } = require("./src/bot-loop");
+const { resolvePrivateKey } = require("./src/bot-private-key");
 const { createRebalanceLock } = require("./src/rebalance-lock");
 const { createPositionManager } = require("./src/position-manager");
 const {
@@ -79,7 +81,7 @@ async function main() {
     askPassword: _askPassword,
   });
   if (!privateKey && !dryRun) {
-    console.error(
+    log.error(
       "[bot] No private key available. Set PRIVATE_KEY in .env, or import" +
         " a wallet via `node scripts/import-wallet.js` (or the dashboard).",
     );
@@ -103,7 +105,7 @@ async function main() {
 
   // If no managed positions in config, fall back to POSITION_ID env var (single-position start)
   if (managedKeys(diskConfig).length === 0 && (config.POSITION_ID || !dryRun)) {
-    console.log(
+    log.info(
       "[bot] No managed positions in config — starting single-position mode",
     );
     const botState = createPerPositionBotState(diskConfig.global, {});
@@ -163,11 +165,11 @@ async function main() {
       });
       started++;
     } catch (err) {
-      console.error("[bot] Failed to start position %s: %s", key, err.message);
+      log.error("[bot] Failed to start position %s: %s", key, err.message);
     }
     i++;
   }
-  console.log("[bot] Started %d of %d managed positions", started, keys.length);
+  log.info("[bot] Started %d of %d managed positions", started, keys.length);
 
   _awaitShutdown(() => positionMgr.stopAll());
 }
@@ -175,7 +177,7 @@ async function main() {
 /** Register SIGINT/SIGTERM handlers for graceful shutdown. */
 function _awaitShutdown(stopFn) {
   const shutdown = () => {
-    console.log("\n[bot] Shutting down…");
+    log.info("\n[bot] Shutting down…");
     Promise.resolve(stopFn())
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
@@ -187,7 +189,7 @@ function _awaitShutdown(stopFn) {
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error("[bot] Fatal:", err.message);
+    log.error("[bot] Fatal:", err.message);
     process.exit(1);
   });
 }
