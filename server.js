@@ -113,8 +113,7 @@ log.info(
   "\x1b[30;47m[lp-ranger server] \uD83D\uDE80 Started. \uD83D\uDE80\x1b[0m",
 );
 
-const { installColorLogger, emojiId } = require("./src/logger");
-installColorLogger();
+const { emojiId } = require("./src/logger");
 
 const cliHelp = require("./src/cli-help");
 const installServerErrorGuard = require("./src/server-error-guard");

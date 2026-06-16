@@ -11,8 +11,16 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const { _setSinkForTests } = require("../src/log");
 
 const BAKED_PATH = path.join(__dirname, "..", "src", "build-info.json");
+
+/*- Strip ANSI CSI escapes for assertions — `logVersionBanner` routes
+ *  through `log.info` which now applies tag-prefix coloring on top of
+ *  the timestamp.  ESC byte built via `fromCharCode(0x1b)` so the regex
+ *  source itself stays free of control characters (no-control-regex). */
+const _ANSI = new RegExp(String.fromCharCode(0x1b) + "\\[[0-9;]*m", "g");
+const _stripAnsi = (s) => (typeof s === "string" ? s.replace(_ANSI, "") : s);
 
 function _withBaked(payload, fn) {
   /*- Preserve any existing sidecar (dev clones that ran npm run build
@@ -147,21 +155,24 @@ describe("src/build-info.js", () => {
         },
         ({ logVersionBanner }) => {
           const captured = [];
-          const origLog = console.log;
-          console.log = (...args) => captured.push(args);
+          const restore = _setSinkForTests({
+            log: (...args) => captured.push(args),
+          });
           try {
             logVersionBanner("[server]");
           } finally {
-            console.log = origLog;
+            restore();
           }
-          const joined = captured[0].join(" ");
+          const fmt = _stripAnsi(captured[0][0]);
+          const joined = [fmt, ...captured[0].slice(1)].join(" ");
           assert.ok(joined.includes("version=%s"));
           assert.ok(captured[0].includes("0.4.8"));
           assert.ok(captured[0].includes("b686ad7"));
-          /*- Prefix is baked into args[0] (not passed as a %s substitution)
-           *  so the logger.js color-matcher can detect "[server]" via
-           *  args[0].startsWith(tag) and apply the standard color. */
-          assert.ok(captured[0][0].startsWith("[server] "));
+          /*- Prefix sits at args[0] (the colorize step in src/log.js
+           *  needs to detect "[server]" via startsWith to apply the
+           *  standard color).  After stripping ANSI + the timestamp
+           *  prefix, args[0] starts with "[server] ". */
+          assert.ok(fmt.startsWith("[server] "));
         },
       );
     });
@@ -176,14 +187,15 @@ describe("src/build-info.js", () => {
         },
         ({ logVersionBanner }) => {
           const captured = [];
-          const origLog = console.log;
-          console.log = (...args) => captured.push(args);
+          const restore = _setSinkForTests({
+            log: (...args) => captured.push(args),
+          });
           try {
             logVersionBanner("[server]");
           } finally {
-            console.log = origLog;
+            restore();
           }
-          const fmt = captured[0][0];
+          const fmt = _stripAnsi(captured[0][0]);
           assert.ok(!fmt.includes("version="));
           assert.ok(fmt.includes("commit="));
         },
