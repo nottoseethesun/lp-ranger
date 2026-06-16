@@ -30,10 +30,10 @@ const { loadConfig } = require("./bot-config-v2");
 let _priceLookupsPaused = false;
 let _allowOverrideCount = 0;
 
-/*- Read the configurable TTL pair once at module-load time.  No live
+/*- Read the configurable TTLs once at module-load time.  No live
  *  reload — operators must restart to apply changes (matches how every
  *  other global key is consumed).  Falls back to bot-config-defaults
- *  when the key is missing or the disk file is unreadable. */
+ *  when a key is missing or the disk file is unreadable. */
 function _loadTtlsAtInit() {
   const defaults = readBotConfigDefaults();
   let cfg;
@@ -64,10 +64,18 @@ function _loadTtlsAtInit() {
         ")",
     );
   }
-  return { priceTtl, dustTtl };
+  const moveTtl =
+    typeof cfg.moveCacheTtlMs === "number" && cfg.moveCacheTtlMs > 0
+      ? cfg.moveCacheTtlMs
+      : defaults.moveCacheTtlMs;
+  return { priceTtl, dustTtl, moveTtl };
 }
 
-const { priceTtl: _PRICE_TTL_MS, dustTtl: _DUST_TTL_MS } = _loadTtlsAtInit();
+const {
+  priceTtl: _PRICE_TTL_MS,
+  dustTtl: _DUST_TTL_MS,
+  moveTtl: _MOVE_TTL_MS,
+} = _loadTtlsAtInit();
 
 /**
  * Idempotent — log only on transition.  The optional `reason` is a
@@ -115,9 +123,12 @@ function inMove() {
 
 /**
  * Run `asyncFn` with the move-scope override engaged: the gate treats
- * the pause flag as `false` AND bypasses cache-TTL freshness checks for
- * the duration of the call.  Counter is decremented in `finally` so a
- * thrown error still restores the prior state.
+ * the pause flag as `false` AND shortens the cache-TTL freshness window
+ * to `moveCacheTtlMs` (default 4_000 ms) for the duration of the call,
+ * so consecutive same-token fetches in the rebalance pipeline collapse
+ * onto a single cached value instead of producing a 4-6× burst against
+ * the price source.  Counter is decremented in `finally` so a thrown
+ * error still restores the prior state.
  *
  * @template T
  * @param {() => Promise<T>} asyncFn
@@ -148,6 +159,11 @@ function getDustUnitPriceCacheTtlMs() {
   return _DUST_TTL_MS;
 }
 
+/** Configured in-move cache TTL (ms). */
+function getMoveCacheTtlMs() {
+  return _MOVE_TTL_MS;
+}
+
 module.exports = {
   pausePriceLookups,
   unpausePriceLookups,
@@ -156,5 +172,6 @@ module.exports = {
   withFreshPricesAllowed,
   getPriceCacheTtlMs,
   getDustUnitPriceCacheTtlMs,
+  getMoveCacheTtlMs,
   _resetPauseStateForTests,
 };

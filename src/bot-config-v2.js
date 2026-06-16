@@ -66,6 +66,16 @@ const GLOBAL_KEYS = [
    */
   "dustUnitPriceCacheMultiplier",
   /*-
+   *  Cache TTL while inside a `withFreshPricesAllowed` scope
+   *  (rebalance/compound).  Default `4000` ms (4 s).  Replaces the
+   *  earlier "bypass cache + dedup entirely in-move" behaviour that
+   *  caused the rapid-fire burst when multiple rebalance stages each
+   *  called `fetchTokenPriceUsd` for the same token within a few
+   *  seconds (4-6 source hits per token per move).  See
+   *  `src/price-fetcher-gate.js#inMove`.
+   */
+  "moveCacheTtlMs",
+  /*-
    *  Balanced-band Telegram notifier (`src/telegram-notifications/balanced-notifier.js`):
    *  multiplier on `CHECK_INTERVAL_SEC` for the cadence at which the
    *  notifier fetches fresh USD prices to evaluate the ±5% balanced
