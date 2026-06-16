@@ -25,10 +25,18 @@ const {
   log,
   _withTimestamp,
   _utcTimestamp,
+  _colorize,
   _setSinkForTests,
 } = require("../src/log");
 
 const TS = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/;
+
+/*- Strip ANSI CSI escape sequences from a string for assertion purposes.
+ *  Built via `String.fromCharCode(0x1b)` instead of a literal `\x1b` in
+ *  the regex source to keep ESLint's `no-control-regex` happy. */
+const _ESC = String.fromCharCode(0x1b);
+const _ANSI = new RegExp(_ESC + "\\[[0-9;]*m", "g");
+const stripAnsi = (s) => (typeof s === "string" ? s.replace(_ANSI, "") : s);
 
 test("_withTimestamp inserts after first bracketed prefix", () => {
   const out = _withTimestamp("[bot] OOR but within 5% threshold");
@@ -144,12 +152,34 @@ test("log.info / warn / error route to matching console methods with timestamp",
     restore();
   }
   assert.equal(calls.length, 3);
+  /*- Strip ANSI from the asserted text because `log.*` now applies
+   *  tag-prefix coloring on top of the timestamp injection.  The
+   *  separate `_colorize` test below covers the color bytes
+   *  themselves. */
   assert.equal(calls[0][0], "log");
-  assert.match(calls[0][1], /^\[bot\] \[.*\] hello$/);
+  assert.match(stripAnsi(calls[0][1]), /^\[bot\] \[.*\] hello$/);
   assert.equal(calls[1][0], "warn");
-  assert.match(calls[1][1], /^\[server\] \[.*\] heads up$/);
+  assert.match(stripAnsi(calls[1][1]), /^\[server\] \[.*\] heads up$/);
   assert.equal(calls[2][0], "error");
-  assert.match(calls[2][1], /^\[bot\] \[.*\] boom$/);
+  assert.match(stripAnsi(calls[2][1]), /^\[bot\] \[.*\] boom$/);
+});
+
+test("log.info wraps known tag prefixes with ANSI color codes", () => {
+  const calls = [];
+  const restore = _setSinkForTests({ log: (...a) => calls.push(a) });
+  try {
+    log.info("[bot] colored line");
+  } finally {
+    restore();
+  }
+  /*- `[bot]` is registered in `_COLORS` with the light-purple SGR
+   *  sequence `\x1b[38;2;200;160;255m`.  Assert via `startsWith` so
+   *  we don't have to embed the escape byte in a regex. */
+  assert.ok(
+    calls[0][0].startsWith(_ESC + "[38;2;200;160;255m["),
+    `expected color-wrapped output, got: ${JSON.stringify(calls[0][0])}`,
+  );
+  assert.ok(calls[0][0].endsWith(_ESC + "[0m"));
 });
 
 test("log.info forwards extra printf args untouched", () => {
@@ -162,7 +192,19 @@ test("log.info forwards extra printf args untouched", () => {
   }
   assert.equal(calls.length, 1);
   assert.equal(calls[0].length, 3);
-  assert.match(calls[0][0], /^\[bot\] \[.*\] count=%d name=%s$/);
+  assert.match(stripAnsi(calls[0][0]), /^\[bot\] \[.*\] count=%d name=%s$/);
   assert.equal(calls[0][1], 5);
   assert.equal(calls[0][2], "alice");
+});
+
+test("_colorize wraps known tags + leaves unknown tags untouched", () => {
+  /*- `[bot]` is a registered tag → wrapped.  `[noisy]` is not →
+   *  untouched (third-party / unrecognized prefixes pass through). */
+  const wrapped = _colorize("[bot] hello");
+  assert.ok(wrapped.startsWith(_ESC + "["));
+  assert.ok(wrapped.endsWith(_ESC + "[0m"));
+  assert.equal(stripAnsi(wrapped), "[bot] hello");
+
+  const passthrough = _colorize("[noisy] hello");
+  assert.equal(passthrough, "[noisy] hello");
 });

@@ -22,9 +22,6 @@ const { log } = require("./src/log");
 // so the banner lands at the top of the log before any other module loads.
 require("./src/bot-banner");
 
-const { installColorLogger } = require("./src/logger");
-installColorLogger();
-
 const cliHelp = require("./src/cli-help");
 const { pausePriceLookups } = require("./src/price-fetcher");
 
