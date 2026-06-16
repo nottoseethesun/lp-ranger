@@ -133,17 +133,19 @@ describe("in-flight dedup", () => {
     assert.ok(sawA && sawB, "both token addresses must appear in cascade URLs");
   });
 
-  it("bypasses dedup inside withFreshPricesAllowed", async () => {
-    /*- Move scope guarantees freshest prices.  Two concurrent calls
-     *  inside the same scope must each consult the cascade — they must
-     *  NOT share an in-flight promise.  Otherwise a corrective swap
-     *  might reuse the pre-swap price.
+  it("dedupes concurrent calls inside withFreshPricesAllowed", async () => {
+    /*- Move scope no longer bypasses dedup — the rebalance/compound
+     *  pipeline used to call the same source 4-6× per token within
+     *  seconds (gas gate, slippage estimate, pre- and post-move PnL
+     *  snapshots).  Now the in-flight dedup collapses concurrent
+     *  same-token fetches onto one cascade run regardless of scope.
+     *  The short in-move freshness TTL (moveCacheTtlMs, default 4 s)
+     *  guarantees the cache value can't be more than that stale.
      *
      *  Baseline: a single non-move call resolves with one cascade run,
      *  which (in the test env, no Moralis key) makes exactly one HTTP
      *  call (GeckoTerminal).  Two concurrent in-move calls must
-     *  therefore produce strictly more calls than a single dedup'd
-     *  baseline. */
+     *  produce the SAME baseline count — they share the same promise. */
     const calls = _stubFetch(() => 1);
     await fetchTokenPriceUsd(TOKEN);
     const baseline = calls.length;
@@ -153,10 +155,33 @@ describe("in-flight dedup", () => {
       await Promise.all([fetchTokenPriceUsd(TOKEN), fetchTokenPriceUsd(TOKEN)]);
     });
     const inMoveCalls = calls.length - baseline;
-    assert.ok(
-      inMoveCalls >= baseline * 2,
-      `inMove must skip dedup; expected ≥${baseline * 2} calls, got ${inMoveCalls}`,
+    assert.equal(
+      inMoveCalls,
+      baseline,
+      `inMove must dedupe; expected ${baseline} calls, got ${inMoveCalls}`,
     );
+  });
+
+  it("serves cached value to in-move calls within the move TTL window", async () => {
+    /*- First call in a move populates the cache; a subsequent call in
+     *  the same move within moveCacheTtlMs must hit the cache, not
+     *  the cascade.  The default 4 s window covers a typical rebalance
+     *  burst (gas gate → slippage → PnL snapshots) which fires within
+     *  ~5 s of move start. */
+    const calls = _stubFetch(() => 1);
+    _cache.clear();
+    _resetInflightForTests();
+    await withFreshPricesAllowed(async () => {
+      await fetchTokenPriceUsd(TOKEN);
+      const afterFirst = calls.length;
+      await fetchTokenPriceUsd(TOKEN);
+      const afterSecond = calls.length;
+      assert.equal(
+        afterSecond,
+        afterFirst,
+        "second in-move call must hit cache (no new HTTP call)",
+      );
+    });
   });
 
   it("sequential calls after settlement run a fresh cascade (no stale dedup)", async () => {

@@ -51,6 +51,7 @@ const {
   withFreshPricesAllowed,
   getPriceCacheTtlMs,
   getDustUnitPriceCacheTtlMs,
+  getMoveCacheTtlMs,
   _resetPauseStateForTests,
 } = require("./price-fetcher-gate");
 const {
@@ -68,6 +69,11 @@ const {
  *  `priceCacheTtlMs` in `app-config/.bot-config.json` global section.
  *  Read once at module-load time — restart to apply changes. */
 const _CACHE_TTL_MS = getPriceCacheTtlMs();
+/*- In-move TTL: the rebalance/compound pipeline reuses a same-token
+ *  cache hit for this long inside a `withFreshPricesAllowed` scope.
+ *  Replaces the original "bypass cache + dedup entirely in-move" pattern
+ *  that produced a 4-6× burst per token per move. */
+const _MOVE_TTL_MS = getMoveCacheTtlMs();
 
 /**
  * In-memory price cache.
@@ -211,22 +217,25 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
     logPausedCached(tokenAddress, cached);
     return cached ? cached.price : 0;
   }
-  /*- Normal cache-TTL path runs only outside a move; move scope bypasses
-   *  freshness so post-quote prices reflect on-chain reality. */
-  if (!inMove() && cached && Date.now() - cached.ts < _CACHE_TTL_MS) {
+  /*- Freshness window: 120 s outside a move (steady-state polling) vs
+   *  4 s inside a move (rebalance/compound pipeline).  The shorter
+   *  in-move TTL collapses the rapid-fire burst that the same pipeline
+   *  triggers when multiple stages each call fetchTokenPriceUsd for the
+   *  same token within seconds, while still re-fetching often enough
+   *  that a move-relevant on-chain price change shows up promptly. */
+  const ttl = inMove() ? _MOVE_TTL_MS : _CACHE_TTL_MS;
+  if (cached && Date.now() - cached.ts < ttl) {
     logCacheHit(tokenAddress, cached);
     return cached.price;
   }
 
   /*- In-flight dedup: if another caller already kicked off a fetch for
    *  the same key, await its promise instead of starting a parallel
-   *  cascade.  Skipped inside `withFreshPricesAllowed` so move scopes
-   *  always see the freshest possible price.  See
-   *  src/price-fetcher-dedup.js. */
-  if (!inMove()) {
-    const pending = getInflight(key, tokenAddress);
-    if (pending) return pending;
-  }
+   *  cascade.  Active in every scope — move scopes still get the
+   *  freshest *post-move-start* price within the in-move TTL window
+   *  above.  See src/price-fetcher-dedup.js. */
+  const pending = getInflight(key, tokenAddress);
+  if (pending) return pending;
 
   const fetchPromise = tryPriceSources(
     [
@@ -243,7 +252,7 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
     return price;
   });
 
-  return inMove() ? fetchPromise : trackInflight(key, fetchPromise);
+  return trackInflight(key, fetchPromise);
 }
 
 // ── GeckoTerminal (historical prices) ────────────────────────────────────────
@@ -724,11 +733,10 @@ async function fetchDustUnitPriceUsd() {
     logDustPausedCached(_dustUnitPriceCache);
     return _dustUnitPriceCache ? _dustUnitPriceCache.price : 0;
   }
-  if (
-    !inMove() &&
-    _dustUnitPriceCache &&
-    Date.now() - _dustUnitPriceCache.ts < _DUST_UNIT_PRICE_TTL_MS
-  ) {
+  /*- Mirrors fetchTokenPriceUsd: dust-unit-price TTL outside a move,
+   *  the shorter in-move TTL inside one. */
+  const ttl = inMove() ? _MOVE_TTL_MS : _DUST_UNIT_PRICE_TTL_MS;
+  if (_dustUnitPriceCache && Date.now() - _dustUnitPriceCache.ts < ttl) {
     logDustCacheHit(_dustUnitPriceCache);
     return _dustUnitPriceCache.price;
   }

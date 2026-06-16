@@ -126,14 +126,11 @@ describe("withFreshPricesAllowed", () => {
     assert.ok(fetchCalls > 0, "cascade must run inside withFreshPricesAllowed");
   });
 
-  it("bypasses cache TTL — returns fresh price on every call inside the scope", async () => {
-    /*- Seed cache with stale value.  Outside the scope, paused = stale.
-     *  Inside the scope, even a fresh cache entry is bypassed and the
-     *  cascade runs. */
-    _cache.set("pulsechain:" + TOKEN.toLowerCase(), {
-      price: 0.1,
-      ts: Date.now(),
-    });
+  it("applies the short move TTL — hits cache within the window, refetches past it", async () => {
+    /*- In-move TTL replaces the original "bypass cache entirely" pattern.
+     *  Within the configured moveCacheTtlMs (default 4_000 ms) a
+     *  same-scope call hits the cache; past it the cascade runs again. */
+    const key = "pulsechain:" + TOKEN.toLowerCase();
     let serverPrice = 9.99;
     globalThis.fetch = async () => ({
       ok: true,
@@ -145,11 +142,21 @@ describe("withFreshPricesAllowed", () => {
         },
       }),
     });
+    /*- Seed a cache entry that's BEYOND the in-move TTL but well within
+     *  the steady-state TTL.  In-move must still re-fetch. */
+    _cache.set(key, { price: 0.1, ts: Date.now() - 10_000 });
     const p = await withFreshPricesAllowed(() => fetchTokenPriceUsd(TOKEN));
-    assert.strictEqual(p, 9.99, "in-move call must hit the cascade");
+    assert.strictEqual(p, 9.99, "stale-beyond-move-TTL must refetch");
+    /*- Now the cache holds the fresh 9.99 value with ts=now.  A second
+     *  in-move call within the move TTL must hit that cache, NOT the
+     *  cascade — even though `serverPrice` has changed. */
     serverPrice = 4.44;
     const p2 = await withFreshPricesAllowed(() => fetchTokenPriceUsd(TOKEN));
-    assert.strictEqual(p2, 4.44, "second in-move call also bypasses TTL");
+    assert.strictEqual(
+      p2,
+      9.99,
+      "second in-move call within move TTL must hit cache, not cascade",
+    );
   });
 
   it("restores prior pause state after success", async () => {

@@ -58,6 +58,14 @@ const _FALLBACK = Object.freeze({
    *  Must be a positive integer >= 1; the integer-multiple invariant is
    *  asserted at price-fetcher module-load time. */
   dustUnitPriceCacheMultiplier: 30,
+  /*- Price-source cache TTL while inside a `withFreshPricesAllowed`
+   *  scope (rebalance/compound).  Default 4_000 ms (4 s) — short enough
+   *  that any move-relevant price change shows up, long enough to
+   *  collapse the rapid-fire burst caused by multiple rebalance-pipeline
+   *  stages (gas gate, slippage estimate, PnL snapshot, etc.) each
+   *  calling `fetchTokenPriceUsd` for the same token within seconds.
+   *  See `src/price-fetcher.js` and `src/price-fetcher-gate.js#inMove`. */
+  moveCacheTtlMs: 4_000,
   /*- Balanced-band Telegram notifier: how many poll cycles between fresh-
    *  price fetches that bypass the idle-driven price-lookup pause.  The
    *  notifier fetches token prices on cadence
@@ -154,6 +162,10 @@ const _NORMALIZERS = {
    *  derived `dust = price * multiplier` stays a clean integer multiple.
    *  Cap at 1000 to keep the dust cache horizon sane (1000 * 24 h max). */
   dustUnitPriceCacheMultiplier: (v) => _clampInt(v, 1, 1000),
+  /*- Move-scope cache TTL: at least 1 s (sub-second freshness has no
+   *  benefit; a single price fetch already takes ~100-500 ms), capped at
+   *  60 s (longer would defeat the "fresh during move" intent). */
+  moveCacheTtlMs: (v) => _clampInt(v, 1_000, 60_000),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */
