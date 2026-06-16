@@ -29,6 +29,26 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
+const CWD_NAME = path.basename(ROOT);
+
+/*- Best-effort version detection — read package.json directly so we can
+ *  print version-aware shell commands even though all four build
+ *  artifacts (including build-info.json) are missing.  Falls back to
+ *  the literal `<version>` placeholder if pkg.json is unreadable. */
+function _detectVersion() {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
+    );
+    /*- Release tarballs carry `0.0.0-dev` in pkg.json; the real version
+     *  lives in the (missing) build-info.json baked at release time.
+     *  When pkg.json says `0.0.0-dev` we have no signal, so fall back. */
+    if (pkg.version && pkg.version !== "0.0.0-dev") return pkg.version;
+  } catch {
+    /* fall through */
+  }
+  return "<version>";
+}
 
 /*- The four artifacts that `npm run build` writes and that the server
  *  / dashboard depend on at runtime.  Listed with a one-line "what it
@@ -56,6 +76,12 @@ const missing = REQUIRED.filter((f) => !fs.existsSync(path.join(ROOT, f.rel)));
 
 if (missing.length === 0) process.exit(0);
 
+const version = _detectVersion();
+const releaseBase =
+  "https://github.com/nottoseethesun/lp-ranger/releases/download/" + version;
+const releasePage =
+  "https://github.com/nottoseethesun/lp-ranger/releases/tag/" + version;
+
 /*- Write directly to process.stderr instead of going through console
  *  / log so this guard works even if the log module / its imports
  *  are themselves missing (defence in depth: the guard fires first). */
@@ -73,13 +99,27 @@ const lines = [
   "     from the release page instead of the release ASSET.  The",
   "     auto-link is `git archive` output which strips every",
   "     gitignored path (including all four files above).",
-  "     Fix: re-download the file named",
-  "     `lp-ranger-<version>.tar.gz` from the Assets section of",
-  "     https://github.com/nottoseethesun/lp-ranger/releases — NOT",
-  "     the `Source code` link.",
+  "",
+  "     Back out and re-install with the correct asset:",
+  "",
+  "       cd ..",
+  `       rm -rf ${CWD_NAME}`,
+  `       curl -LO ${releaseBase}/lp-ranger-${version}.tar.gz`,
+  `       curl -LO ${releaseBase}/lp-ranger-${version}.tar.gz.sha256`,
+  `       sha256sum -c lp-ranger-${version}.tar.gz.sha256   # MUST say OK`,
+  `       tar xzf lp-ranger-${version}.tar.gz`,
+  `       cd lp-ranger-${version}`,
+  "       npm ci",
+  "       npm start",
+  "",
+  `     Asset list for this release: ${releasePage}`,
+  "     Download the file literally named",
+  `     \`lp-ranger-${version}.tar.gz\` from the Assets section — NOT`,
+  "     the `Source code` link below it.",
   "",
   "  2. You cloned the repo via `git clone` and skipped the build.",
-  "     Fix: run `npm run build` before `npm start`.",
+  "     Fix: run `npm run build` (still inside this directory),",
+  "     then `npm start`.",
   "",
 ];
 process.stderr.write(lines.join("\n") + "\n");

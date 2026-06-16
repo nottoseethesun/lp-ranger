@@ -128,3 +128,38 @@ test("error message points the operator at the release-asset fix", () => {
     cleanup(root);
   }
 });
+
+test("error message gives copy-pasteable shell commands to back out and re-install", () => {
+  const root = setupSandbox([]);
+  try {
+    const r = runGuard(root);
+    assert.equal(r.status, 1);
+    /*- The user explicitly asked for `cd ..`, `rm -rf ...`, and
+     *  curl-download-verify-extract-install steps — those are the
+     *  shell verbs that turn the error message into an actionable
+     *  recipe instead of vague prose. */
+    assert.match(r.stderr, /cd \.\./);
+    assert.match(r.stderr, /rm -rf/);
+    assert.match(r.stderr, /curl -LO /);
+    assert.match(r.stderr, /sha256sum -c/);
+    assert.match(r.stderr, /tar xzf/);
+    assert.match(r.stderr, /npm ci/);
+    assert.match(r.stderr, /npm start/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("uses the sandbox's directory name in the `rm -rf` step", () => {
+  /*- The script reads its own ROOT as `scripts/..` and prints the
+   *  basename in the back-out command.  Pick a distinctive name so the
+   *  assertion can't be satisfied by an unrelated word. */
+  const root = setupSandbox([]);
+  const cwdName = require("node:path").basename(root);
+  try {
+    const r = runGuard(root);
+    assert.match(r.stderr, new RegExp("rm -rf " + cwdName));
+  } finally {
+    cleanup(root);
+  }
+});
