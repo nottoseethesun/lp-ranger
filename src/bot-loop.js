@@ -447,26 +447,56 @@ async function startBotLoop(opts) {
     botState._triggerScan();
     _scheduleNext();
   }
-  /*- Lifetime-deposit recovery loop: every 30 min, if the scan-total is
-   *  still missing (e.g. because the startup scan failed silently while
-   *  Moralis quota was exhausted, or a post-rebalance scan errored out),
-   *  re-trigger the scan.  The `_scanRunning` guard inside `_triggerScan`
-   *  prevents overlap with any scan already in flight.  See
-   *  bot-recorder-lifetime.js for the `_lifetimeScanError` flag and
-   *  bot-recorder.js for the `_needsFullRescan` trigger this complements. */
+  /*- Lifetime-deposit recovery loop: every 30 min, re-trigger the scan
+   *  if recovery is needed.  Three independent conditions, ANY of which
+   *  warrants a rescan:
+   *
+   *    1. `totalLifetimeDepositUsd <= 0` — the scan-total is missing
+   *       entirely (e.g. because the startup scan failed silently while
+   *       Moralis quota was exhausted, or no scan has ever succeeded).
+   *
+   *    2. `_needsFullRescan === true` — a rebalance fired and set the
+   *       "re-classify the chain" flag, but the follow-up `_triggerScan`
+   *       (bot-cycle.js:160) ran into a silent failure in
+   *       `_scanLifetimePoolData` and the flag is still set.  Without
+   *       this gate condition the loop would early-return because the
+   *       PRIOR scan's `totalLifetimeDepositUsd` is still positive
+   *       (PR #134 changed the rebalance path to preserve in-memory
+   *       totals instead of zeroing them — the previous auto-rescan
+   *       gate that only checked `total > 0` no longer matches).
+   *
+   *    3. `lifetimeScanComplete === false` — covers the same window as
+   *       (2) but from the dashboard-readiness flag's perspective.
+   *       Belt-and-suspenders against any future failure path that
+   *       lowers the readiness flag without setting `_needsFullRescan`.
+   *
+   *  The `_scanRunning` guard inside `_triggerScan` prevents overlap
+   *  with any scan already in flight.  See bot-recorder-lifetime.js for
+   *  the `_lifetimeScanError` flag and bot-recorder.js for the
+   *  `_needsFullRescan` setter this complements. */
   const LIFETIME_RESCAN_CHECK_MS = 30 * 60 * 1000;
   const lifetimeRescanTimer = setInterval(() => {
     if (_stopped) return;
     if (botState._scanRunning) return;
     const total = botState.totalLifetimeDepositUsd || 0;
-    if (total > 0) return;
+    const needsRescan =
+      botState._needsFullRescan === true ||
+      botState.lifetimeScanComplete === false;
+    if (total > 0 && !needsRescan) return;
     const tokenIdStr = String(position.tokenId || "");
+    const reason = needsRescan
+      ? "needsFullRescan=" +
+        !!botState._needsFullRescan +
+        " lifetimeScanComplete=" +
+        !!botState.lifetimeScanComplete
+      : "deposit-total=$0";
     console.log(
-      "[bot] %s/%s NFT #%s %s: Lifetime deposit missing (lastError=%s), auto-rescanning",
+      "[bot] %s/%s NFT #%s %s: Auto-rescanning lifetime (%s, lastError=%s)",
       position.token0Symbol || "Token0",
       position.token1Symbol || "Token1",
       tokenIdStr,
       emojiId(tokenIdStr),
+      reason,
       botState._lifetimeScanError || "none",
     );
     botState._triggerScan?.();
