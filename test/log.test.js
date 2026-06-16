@@ -21,7 +21,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { log, _withTimestamp, _utcTimestamp } = require("../src/log");
+const {
+  log,
+  _withTimestamp,
+  _utcTimestamp,
+  _setSinkForTests,
+} = require("../src/log");
 
 const TS = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/;
 
@@ -119,22 +124,24 @@ test("require('../src/log') does NOT modify console globals", () => {
   assert.equal(console.error, origErr, "console.error was modified");
 });
 
+/*- Use the sink injector to capture output without touching `console`
+ *  itself — see [[feedback-no-global-monkey-patch]].  The sink replaces
+ *  the underlying `console.*` delegate that `log.info` / `warn` /
+ *  `error` route through, so we assert on captured calls without
+ *  re-assigning any built-in. */
 test("log.info / warn / error route to matching console methods with timestamp", () => {
   const calls = [];
-  const origLog = console.log;
-  const origWarn = console.warn;
-  const origErr = console.error;
-  console.log = (...a) => calls.push(["log", ...a]);
-  console.warn = (...a) => calls.push(["warn", ...a]);
-  console.error = (...a) => calls.push(["error", ...a]);
+  const restore = _setSinkForTests({
+    log: (...a) => calls.push(["log", ...a]),
+    warn: (...a) => calls.push(["warn", ...a]),
+    error: (...a) => calls.push(["error", ...a]),
+  });
   try {
     log.info("[bot] hello");
     log.warn("[server] heads up");
     log.error("[bot] boom");
   } finally {
-    console.log = origLog;
-    console.warn = origWarn;
-    console.error = origErr;
+    restore();
   }
   assert.equal(calls.length, 3);
   assert.equal(calls[0][0], "log");
@@ -147,12 +154,11 @@ test("log.info / warn / error route to matching console methods with timestamp",
 
 test("log.info forwards extra printf args untouched", () => {
   const calls = [];
-  const origLog = console.log;
-  console.log = (...a) => calls.push(a);
+  const restore = _setSinkForTests({ log: (...a) => calls.push(a) });
   try {
     log.info("[bot] count=%d name=%s", 5, "alice");
   } finally {
-    console.log = origLog;
+    restore();
   }
   assert.equal(calls.length, 1);
   assert.equal(calls[0].length, 3);
