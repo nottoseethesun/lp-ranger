@@ -8,6 +8,7 @@
  * Root module — no imports from other dashboard files.
  */
 
+import { log } from "./dashboard-log.js";
 /**
  * Get a DOM element by its ID.
  * @param {string} id  The element's id attribute.
@@ -437,7 +438,7 @@ import { DISCLOSURE_HTML, DISCLOSURE_VERSION } from "./disclosure-content.js";
 function _populateDisclosure() {
   const body = g("disclaimerBody");
   if (body && !body.innerHTML.trim()) body.innerHTML = DISCLOSURE_HTML;
-  console.log("[lp-ranger] Disclosure version: %s", DISCLOSURE_VERSION);
+  log.info("[lp-ranger] Disclosure version: %s", DISCLOSURE_VERSION);
 }
 
 /**
@@ -585,7 +586,7 @@ export async function refreshCsrfToken() {
   try {
     const res = await fetch("/api/csrf-token");
     if (!res.ok) {
-      console.warn(
+      log.warn(
         "[csrf] refresh failed: HTTP %d — token may expire before next attempt",
         res.status,
       );
@@ -595,12 +596,12 @@ export async function refreshCsrfToken() {
     _csrfToken = data.token;
     if (typeof data.refreshIntervalMs === "number")
       _csrfRefreshIntervalMs = data.refreshIntervalMs;
-    console.log(
+    log.info(
       "[csrf] token refreshed (next in %dm)",
       Math.round(_csrfRefreshIntervalMs / 60000),
     );
   } catch (err) {
-    console.warn(
+    log.warn(
       "[csrf] refresh failed: %s — token may expire before next attempt",
       err.message,
     );
@@ -674,7 +675,7 @@ export async function fetchWithCsrf(url, init = {}) {
     return res;
   }
   if (!body || !_CSRF_RETRY_REASONS.has(body.error)) return res;
-  console.log(
+  log.info(
     "[csrf] 403 %s — refreshing and retrying once",
     body.error.toLowerCase().replace(/ csrf token$/, "-token"),
   );

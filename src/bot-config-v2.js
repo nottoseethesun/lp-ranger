@@ -25,6 +25,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 const { getAddress } = require("ethers");
@@ -208,10 +209,7 @@ function loadConfig(dir) {
   try {
     const text = fs.readFileSync(filePath, "utf8");
     if (!text || text.trim().length === 0) {
-      console.warn(
-        "[config] loadConfig: file exists but is EMPTY — %s",
-        filePath,
-      );
+      log.warn("[config] loadConfig: file exists but is EMPTY — %s", filePath);
       return _empty();
     }
     const raw = JSON.parse(text);
@@ -219,7 +217,7 @@ function loadConfig(dir) {
     const managed = Object.values(raw.positions || {}).filter(
       (p) => p.status === "running",
     ).length;
-    console.log(
+    log.info(
       "[config] loadConfig: %d positions (%d running) from %s (%d bytes)",
       posCount,
       managed,
@@ -239,7 +237,7 @@ function loadConfig(dir) {
       positions: raw.positions || {},
     };
   } catch (err) {
-    console.log(
+    log.info(
       "[config] loadConfig: no file or parse error — starting empty (%s)",
       err.message,
     );
@@ -280,15 +278,12 @@ function _guardRunningPositions(cfg, disk) {
     ([k]) => !cfg.positions[k] || cfg.positions[k].status === undefined,
   );
   if (unexplained.length === 0) return false;
-  console.warn(
+  log.warn(
     "[config] saveConfig: REFUSING — %d running positions would vanish:",
     unexplained.length,
   );
-  for (const [k] of unexplained) console.warn("[config]   LOST: %s", k);
-  console.warn(
-    "[config]   caller=%s",
-    new Error().stack?.split("\n")[3]?.trim(),
-  );
+  for (const [k] of unexplained) log.warn("[config]   LOST: %s", k);
+  log.warn("[config]   caller=%s", new Error().stack?.split("\n")[3]?.trim());
   return true;
 }
 
@@ -303,7 +298,7 @@ function saveConfig(cfg, dir) {
   const disk = _readDiskConfig(filePath);
   // Refuse to overwrite a non-empty config with an empty one
   if (posKeys.length === 0 && disk.count > 0 && !dir) {
-    console.warn(
+    log.warn(
       "[config] saveConfig: REFUSING to overwrite %d positions with empty config",
       disk.count,
     );
@@ -315,14 +310,14 @@ function saveConfig(cfg, dir) {
   // ── Diagnostic logging ─────────────────────────────────────────────────
   const caller = new Error().stack?.split("\n")[2]?.trim() || "";
   if (posKeys.length < disk.count)
-    console.warn(
+    log.warn(
       "[config] saveConfig: position count DECREASED %d → %d caller=%s",
       disk.count,
       posKeys.length,
       caller,
     );
   else
-    console.log(
+    log.info(
       "[config] saveConfig: %d positions (%d running) caller=%s",
       posKeys.length,
       running,
@@ -330,7 +325,7 @@ function saveConfig(cfg, dir) {
     );
   for (const k of posKeys) {
     const v = cfg.positions[k];
-    console.log(
+    log.info(
       "[config]   %s status=%s keys=%s",
       k,
       v.status || "—",
@@ -346,7 +341,7 @@ function saveConfig(cfg, dir) {
     fs.writeFileSync(tmpPath, JSON.stringify(cfg, null, 2), "utf8");
     fs.renameSync(tmpPath, filePath);
   } catch (err) {
-    console.warn("[config] Could not save bot config:", err.message);
+    log.warn("[config] Could not save bot config:", err.message);
     try {
       fs.unlinkSync(tmpPath);
     } catch {
@@ -390,7 +385,7 @@ function addManagedPosition(cfg, positionKey) {
   const pos = getPositionConfig(cfg, positionKey);
   const prev = pos.status;
   pos.status = "running";
-  console.log(
+  log.info(
     "[config] addManagedPosition %s (was %s → running)",
     positionKey.slice(-10),
     prev || "undefined",
@@ -404,7 +399,7 @@ function addManagedPosition(cfg, positionKey) {
  */
 function removeManagedPosition(cfg, positionKey) {
   if (cfg.positions[positionKey]) {
-    console.log(
+    log.info(
       "[config] removeManagedPosition %s (was %s → stopped)",
       positionKey.slice(-10),
       cfg.positions[positionKey].status || "undefined",

@@ -28,6 +28,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const {
   ERC20_ABI,
   getPoolState,
@@ -81,7 +82,7 @@ const _MAX_ITERATIONS = 3;
  * }>}
  */
 async function correctivelyRebalanceIfNeeded(signer, ethersLib, ctx) {
-  console.log(
+  log.info(
     "[rebalance] Step 6d: corrective-swap check (up to %d iterations)",
     _MAX_ITERATIONS,
   );
@@ -131,7 +132,7 @@ async function _runIteration(signer, ethersLib, ctx, acc, i) {
   const { bal0, bal1 } = await _readBalances(ethersLib, ctx, ps, i);
   const desired = _computeDesired(ps, ctx.newRange, bal0, bal1);
   if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD) {
-    console.log(
+    log.info(
       "[rebalance] Step 6d iter %d/%d: balances match new tick — stop",
       i + 1,
       _MAX_ITERATIONS,
@@ -153,7 +154,7 @@ async function _runIteration(signer, ethersLib, ctx, acc, i) {
       gate.reason === "dust"
         ? "below dust threshold"
         : "gas/value ratio too high";
-    console.log(
+    log.info(
       "[rebalance] Step 6d iter %d/%d: %s — stop (swap=$%s gas=$%s ratio=%s max=%s%%)",
       i + 1,
       _MAX_ITERATIONS,
@@ -201,7 +202,7 @@ async function _readBalances(ethersLib, ctx, ps, i) {
     t0c.balanceOf(ctx.signerAddress),
     t1c.balanceOf(ctx.signerAddress),
   ]);
-  console.log(
+  log.info(
     "[rebalance] Step 6d iter %d: postSwapTick=%d price=%s bal0=%s bal1=%s",
     i + 1,
     ps.tick,
@@ -242,7 +243,7 @@ async function _imbalanceUsd(desired, ps, ctx, i) {
   const { thresholdUsd, usdPerUnit, units, usedFallback } =
     await getDustThresholdUsd();
   const gasUsd = await estimateSwapGasUsd(ctx.provider);
-  console.log(
+  log.info(
     "[rebalance] Step 6d iter %d: imbalance=$%s threshold=$%s gas=$%s (%s units × $%s/unit%s)",
     i + 1,
     swapUsd.toFixed(4),
@@ -267,7 +268,7 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
     symbol1,
     approvalMultiple,
   } = ctx;
-  console.log(
+  log.info(
     "[rebalance] Step 6d iter %d: firing corrective swap: %s %s -> %s",
     i + 1,
     String(desired.swapAmount),
@@ -290,7 +291,7 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
     symbolOut: is0to1 ? symbol1 : symbol0,
     approvalMultiple,
   });
-  console.log(
+  log.info(
     "[rebalance] Step 6d iter %d: corrective swap done, txHash=%s out=%s",
     i + 1,
     result.txHash,
@@ -325,7 +326,7 @@ function _convergedResult(acc, i) {
 
 /** Terminal result: cap exhausted, residual still above threshold. */
 function _capExhaustedResult(acc) {
-  console.warn(
+  log.warn(
     "[rebalance] Step 6d: %d iterations exhausted, residual=$%s > threshold=$%s",
     _MAX_ITERATIONS,
     acc.lastImbalanceUsd.toFixed(4),

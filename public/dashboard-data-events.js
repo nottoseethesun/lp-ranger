@@ -9,6 +9,7 @@
 
 "use strict";
 
+import { log } from "./dashboard-log.js";
 import { act, ACT_ICONS } from "./dashboard-helpers.js";
 import { _logCtx } from "./dashboard-data-status.js";
 import { scanPositions } from "./dashboard-positions.js";
@@ -114,11 +115,7 @@ function _handleRebalance(key, st, ctx) {
   const at = st.lastRebalanceAt;
   const evts = st.rebalanceEvents || [];
   const ev = evts.length ? evts[evts.length - 1] : null;
-  console.log(
-    "[lp-ranger] [rebalance-scan] triggering for %s (at=%s)",
-    key,
-    at,
-  );
+  log.info("[lp-ranger] [rebalance-scan] triggering for %s (at=%s)", key, at);
   scanPositions({ silent: true }).then((r) => {
     if (!r?.ok) {
       /*- Non-CSRF causes (RPC blip, server 500, scan-busy contention)
@@ -126,7 +123,7 @@ function _handleRebalance(key, st, ctx) {
        *  the underlying message — we add a complementary line so the
        *  operator can see the rebalance-driven retry loop without
        *  having to correlate it with the generic scan log. */
-      console.warn(
+      log.warn(
         "[lp-ranger] [rebalance-scan] retry pending for %s — %s (will re-fire on next /api/status poll)",
         key,
         r?.error || "scanPositions returned no result",

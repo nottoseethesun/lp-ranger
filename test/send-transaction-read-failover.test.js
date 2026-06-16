@@ -23,6 +23,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
+const logModule = require("../src/log");
 
 /*- Per-test ethers mock factory.  Lets callers stub getBlockNumber
     per-URL (success / throw with a given error shape).  Mirrors the
@@ -54,18 +55,26 @@ function makeLib(behaviours = {}) {
   };
 }
 
+/*- Capture log output via the `src/log.js` sink injector so the global
+ *  `console` is never patched (see [[feedback-no-global-monkey-patch]]).
+ *  Strip the `[YYYY-MM-DD HH:MM:SS] ` timestamp prefix from each
+ *  captured first arg so substring assertions like `.includes("[bot]
+ *  RPC:")` keep matching the original tag+message contiguously. */
+const _TS = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] /g;
+function _stripTs(args) {
+  if (typeof args[0] === "string") {
+    const stripped = args[0].replace(_TS, "");
+    return [stripped, ...args.slice(1)];
+  }
+  return args;
+}
 function muteConsole() {
   const out = { warn: [], log: [] };
-  const orig = { warn: console.warn, log: console.log };
-  console.warn = (...a) => out.warn.push(a);
-  console.log = (...a) => out.log.push(a);
-  return {
-    out,
-    restore: () => {
-      console.warn = orig.warn;
-      console.log = orig.log;
-    },
-  };
+  const restore = logModule._setSinkForTests({
+    warn: (...a) => out.warn.push(_stripTs(a)),
+    log: (...a) => out.log.push(_stripTs(a)),
+  });
+  return { out, restore };
 }
 
 const PRI = "http://primary.test";

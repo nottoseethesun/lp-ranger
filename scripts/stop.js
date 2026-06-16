@@ -9,7 +9,8 @@
 
 "use strict";
 
-const { execSync } = require("child_process");
+const { log } = require("../src/log");
+const { findListenerPids, psCmd } = require("./_find-process");
 
 const PORT = Number(process.env.PORT || 5555);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -52,39 +53,6 @@ async function tryGracefulShutdown() {
   return !!res && res.ok;
 }
 
-/**
- * List PIDs listening on the given TCP port via `lsof`. Returns an empty
- * list if `lsof` is missing or nothing is listening.
- */
-function findListenerPids(port) {
-  try {
-    const out = execSync(`lsof -ti :${port} -sTCP:LISTEN`, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return out
-      ? out
-          .split("\n")
-          .filter(Boolean)
-          .map((s) => Number(s))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Get the command line for a PID via `ps`. */
-function psCmd(pid) {
-  try {
-    return execSync(`ps -p ${pid} -o cmd=`, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return "";
-  }
-}
-
 /** Send a signal to a PID, swallow errors. */
 function signalPid(pid, signal) {
   try {
@@ -96,21 +64,21 @@ function signalPid(pid, signal) {
 }
 
 (async function main() {
-  console.log("Stopping 9mm Position Manager on port %d...", PORT);
+  log.info("Stopping 9mm Position Manager on port %d...", PORT);
 
   if (await tryGracefulShutdown()) {
-    console.log("✔ Graceful shutdown succeeded");
+    log.info("✔ Graceful shutdown succeeded");
     return;
   }
 
-  console.log(
+  log.info(
     "Graceful shutdown failed — looking for process on port %d...",
     PORT,
   );
 
   const pids = findListenerPids(PORT);
   if (pids.length === 0) {
-    console.log("No process found listening on port %d", PORT);
+    log.info("No process found listening on port %d", PORT);
     return;
   }
 
@@ -118,7 +86,7 @@ function signalPid(pid, signal) {
     const cmd = psCmd(pid);
     if (/node/.test(cmd)) {
       if (signalPid(pid, "SIGTERM")) {
-        console.log("✔ Killed PID %d (%s)", pid, cmd);
+        log.info("✔ Killed PID %d (%s)", pid, cmd);
       }
     }
   }
@@ -127,9 +95,9 @@ function signalPid(pid, signal) {
   await sleep(1000);
   const remaining = findListenerPids(PORT);
   if (remaining.length > 0) {
-    console.log("⚠ Process still running — sending SIGKILL");
+    log.info("⚠ Process still running — sending SIGKILL");
     for (const pid of remaining) signalPid(pid, "SIGKILL");
   }
 
-  console.log("✔ Stopped");
+  log.info("✔ Stopped");
 })();

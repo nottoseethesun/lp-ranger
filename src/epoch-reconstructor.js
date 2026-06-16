@@ -19,6 +19,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { getPositionHistory } = require("./position-history");
 const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
@@ -155,14 +156,14 @@ async function _fetchEpochsFromChain(
       const epoch = _buildClosedEpoch(h, closedEpochs.length);
       if (epoch) {
         closedEpochs.push(epoch);
-        console.log(
+        log.info(
           `[pnl] Epoch #${closedEpochs.length}: NFT #${tokenId} — fees $${epoch.fees.toFixed(2)}`,
         );
       } else {
-        console.log(`[pnl] NFT #${tokenId}: skipped (incomplete data)`);
+        log.info(`[pnl] NFT #${tokenId}: skipped (incomplete data)`);
       }
     } catch (err) {
-      console.warn(
+      log.warn(
         `[pnl] Could not reconstruct epoch for NFT #${tokenId}:`,
         err.message,
       );
@@ -219,7 +220,7 @@ async function reconstructEpochs({
     const cached = getCachedEpochs(cacheKey);
     const cachedEpochs = cached?.closedEpochs || [];
     if (cachedEpochs.length > 0) {
-      console.log(`[pnl] Restored ${cachedEpochs.length} epoch(s) from cache`);
+      log.info(`[pnl] Restored ${cachedEpochs.length} epoch(s) from cache`);
       _mergeAndPersist(
         pnlTracker,
         cachedEpochs,
@@ -231,7 +232,7 @@ async function reconstructEpochs({
     }
   }
 
-  console.log(
+  log.info(
     `[pnl] Reconstructing ${closedIds.length} historical epoch(s) from chain…`,
   );
   const _progress = updateBotState
@@ -256,7 +257,7 @@ async function reconstructEpochs({
     updateBotState,
     cacheKey,
   );
-  console.log(`[pnl] Reconstructed ${closedEpochs.length} historical epoch(s)`);
+  log.info(`[pnl] Reconstructed ${closedEpochs.length} historical epoch(s)`);
   return closedEpochs.length;
 }
 

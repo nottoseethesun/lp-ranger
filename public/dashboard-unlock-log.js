@@ -13,6 +13,7 @@
  * cleanly in DevTools.
  */
 
+import { log } from "./dashboard-log.js";
 const NS = "[lp-ranger] [unlock]";
 
 /** Safely read the id/tagName of a DOM element, or "n/a". */
@@ -63,7 +64,7 @@ function _docFocus() {
 export function logSubmitEntry(e, modal, pw) {
   const ev = _eventInfo(e);
   const foc = _docFocus();
-  console.log(
+  log.info(
     "%s submitUnlock ENTRY: event=%s isTrusted=%s target=%s modalHidden=%s pwField=%s pwValue.length=%d docHasFocus=%s activeEl=%s",
     NS,
     ev.type,
@@ -79,7 +80,7 @@ export function logSubmitEntry(e, modal, pw) {
 
 /** Log the outbound POST /api/wallet/unlock request. */
 export function logSubmitPost(pw) {
-  console.log(
+  log.info(
     "%s POSTing /api/wallet/unlock (pwLen=%d)",
     NS,
     _len(pw && pw.value),
@@ -88,7 +89,7 @@ export function logSubmitPost(pw) {
 
 /** Log the server's response to POST /api/wallet/unlock. */
 export function logSubmitResponse(d) {
-  console.log(
+  log.info(
     "%s /api/wallet/unlock response: ok=%s error=%s",
     NS,
     d && d.ok,
@@ -98,13 +99,13 @@ export function logSubmitResponse(d) {
 
 /** Log a guard-failure or network error within submitUnlock. */
 export function logSubmitAbort(reason) {
-  console.warn("%s submitUnlock aborted: %s", NS, reason);
+  log.warn("%s submitUnlock aborted: %s", NS, reason);
 }
 
 /** Log the status response consumed by `checkWalletLocked`. */
 export function logStatus(label, s) {
   const addr = s && s.address ? s.address.slice(0, 10) + "\u2026" : "(none)";
-  console.log(
+  log.info(
     "%s %s status: locked=%s loaded=%s address=%s source=%s",
     NS,
     label,
@@ -117,7 +118,7 @@ export function logStatus(label, s) {
 
 /** Log the locked-branch decision in `checkWalletLocked`. */
 export function logLockedBranch(modal, pw) {
-  console.log(
+  log.info(
     "%s locked path: modal=%s modalHidden=%s pwField=%s pwFieldValue.length=%d",
     NS,
     !!modal,
@@ -129,15 +130,10 @@ export function logLockedBranch(modal, pw) {
 
 /** Log a simple free-form diagnostic line, namespaced. */
 export function logInfo(msg) {
-  console.log("%s %s", NS, msg);
+  log.info("%s %s", NS, msg);
 }
 
 /** Log a warning with a message + optional Error. */
 export function logWarn(msg, err) {
-  console.warn(
-    "%s %s%s",
-    NS,
-    msg,
-    err && err.message ? ": " + err.message : "",
-  );
+  log.warn("%s %s%s", NS, msg, err && err.message ? ": " + err.message : "");
 }

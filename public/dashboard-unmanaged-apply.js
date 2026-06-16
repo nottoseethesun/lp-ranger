@@ -5,6 +5,7 @@
  *   These functions populate the dashboard panels from API response data.
  */
 
+import { log } from "./dashboard-log.js";
 import {
   g,
   botConfig,
@@ -126,7 +127,7 @@ export function _applyLifetime(d) {
   setKpiValue("ltProfit", _adjCompounded(d.ltProfit, d.profit, comp));
   if (d.il !== null && d.il !== undefined) setKpiValue("netIL", d.il);
   _applyLifetimePctSpans(d, ltNet);
-  console.log(
+  log.info(
     "%c[lp-ranger] [unmanaged] lifetime entryValue=%s",
     "color:#fa0",
     d.entryValue,
@@ -220,7 +221,7 @@ export function _applyCurrentKpis(d) {
   if (ltVal) setKpiValue("ltCurrentValue", d.value);
   setKpiValue("pnlFees", d.feesUsd);
   setKpiValue("pnlPrice", d.priceGainLoss);
-  console.log(
+  log.info(
     "%c[lp-ranger] [unmanaged] phase1 entryValue=%s baseline=%s",
     "color:#fa0",
     d.entryValue,
@@ -313,7 +314,7 @@ export function _apply(d, pos) {
     badge.className =
       "9mm-pos-mgr-pos-status " + (closed ? "closed" : "active");
   }
-  console.log(
+  log.info(
     "%c[lp-ranger] [unmanaged] prices: p0=%s p1=%s fetched0=%s fetched1=%s",
     "color:#fa0",
     d.price0,

@@ -18,6 +18,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { detectCompoundsOnChain } = require("./compounder");
@@ -92,7 +93,7 @@ async function _backfill(deps, position, poolState) {
       });
     return { gasWei, compoundedUsd };
   } catch (e) {
-    console.warn(
+    log.warn(
       "[pnl-current-nft] per-NFT backfill failed for tokenId %s: %s",
       tid,
       e.message,

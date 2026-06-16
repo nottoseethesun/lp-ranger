@@ -8,6 +8,9 @@
 
 "use strict";
 
+const { log } = require("./log");
+const config = require("./config");
+const { logCtx } = require("./logger");
 const pools = require("./rebalancer-pools");
 const { swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
@@ -58,7 +61,7 @@ async function _gateInitialSwap(signer, p, ps, desired, is0to1, gasFeePct) {
   const gasUsd = await estimateSwapGasUsd(provider);
   const maxRatio = gasFeePctToRatio(gasFeePct);
   const gate = await shouldSkipSwap({ swapUsd, gasUsd, maxRatio });
-  console.log(
+  log.info(
     "[rebalance] Step 6 gate: swap=$%s gas=$%s ratio=%s max=%s%% — %s",
     swapUsd.toFixed(4),
     gasUsd.toFixed(4),
@@ -119,6 +122,18 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     symbolIn: is0to1 ? symbol0 : symbol1,
     symbolOut: is0to1 ? symbol1 : symbol0,
     approvalMultiple,
+    /*- 6-field log context per feedback-log-full-context.  Built here
+     *  once and threaded down to every swap entry-point logger so a
+     *  single line is self-describing under concurrent multi-position
+     *  operation. */
+    logCtx: logCtx({
+      chain: config.CHAIN_NAME,
+      wallet: signerAddress,
+      factory: config.POSITION_MANAGER,
+      tokenId: p.tokenId,
+      symbol0,
+      symbol1,
+    }),
   });
   return {
     txHash: result.txHash,
@@ -137,7 +152,7 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
 
 /** Verify wallet owns the NFT. Throws on failure. */
 async function _verifyOwnership(ethersLib, provider, pmAddr, tokenId, signer) {
-  console.log("[rebalance] Step 2: ownerOf NFT #%s…", tokenId);
+  log.info("[rebalance] Step 2: ownerOf NFT #%s…", tokenId);
   const c = new ethersLib.Contract(
     pmAddr,
     ["function ownerOf(uint256 tokenId) view returns (address)"],
@@ -156,26 +171,26 @@ async function _verifyOwnership(ethersLib, provider, pmAddr, tokenId, signer) {
     throw new Error(
       `Wallet ${signer} does not own NFT #${tokenId} (owner: ${owner})`,
     );
-  console.log("[rebalance] Step 2 done: owner=%s signer=%s", owner, signer);
+  log.info("[rebalance] Step 2 done: owner=%s signer=%s", owner, signer);
 }
 
 /** Remove liquidity or use wallet balances if already drained. */
 async function _removeLiquidityStep(signer, ethersLib, provider, opts) {
   const { positionManagerAddress, position, signerAddress } = opts;
-  console.log("[rebalance] Step 3: reading on-chain liquidity…");
+  log.info("[rebalance] Step 3: reading on-chain liquidity…");
   const pmRead = new ethersLib.Contract(
     positionManagerAddress,
     PM_ABI,
     provider,
   );
   const onChainLiquidity = (await pmRead.positions(position.tokenId)).liquidity;
-  console.log(
+  log.info(
     "[rebalance] Step 3 done: onChainLiquidity=%s",
     String(onChainLiquidity),
   );
   let removed;
   if (onChainLiquidity > 0n) {
-    console.log("[rebalance] Step 3a: removeLiquidity…");
+    log.info("[rebalance] Step 3a: removeLiquidity…");
     removed = await removeLiquidity(signer, ethersLib, {
       positionManagerAddress,
       tokenId: position.tokenId,
@@ -185,7 +200,7 @@ async function _removeLiquidityStep(signer, ethersLib, provider, opts) {
       token1: position.token1,
     });
   } else {
-    console.log("[rebalance] Step 3a: 0 liquidity — using wallet balances");
+    log.info("[rebalance] Step 3a: 0 liquidity — using wallet balances");
     removed = await _walletBalances(
       ethersLib,
       provider,
@@ -194,7 +209,7 @@ async function _removeLiquidityStep(signer, ethersLib, provider, opts) {
       signerAddress,
     );
   }
-  console.log(
+  log.info(
     "[rebalance] Step 3a done: amount0=%s amount1=%s",
     String(removed.amount0),
     String(removed.amount1),
@@ -254,7 +269,7 @@ async function _adjustRangeAfterSwap(
     newRange.upperTick = (Math.floor(ps.tick / spacing) + 1) * spacing;
     newRange.lowerTick = newRange.upperTick - width;
   }
-  console.log(
+  log.info(
     "[rebalance] Step 6b: swap moved tick %d → %d, shifted range to [%d, %d]",
     poolState.tick,
     ps.tick,
@@ -266,7 +281,7 @@ async function _adjustRangeAfterSwap(
 /** Compute new tick range: custom width or preserve existing spread. */
 function _computeRange(ps, pos, crw, offset) {
   const opts = { offsetToken0Pct: offset ?? 50 };
-  console.log(
+  log.info(
     "[offset-trace] _computeRange mode=%s offsetToken0Pct=%d tokenId=%s",
     crw ? "custom-width" : "preserve-range",
     opts.offsetToken0Pct,
@@ -411,7 +426,7 @@ async function _preMintTickCheck(
   });
   if (ps.tick >= newRange.lowerTick && ps.tick < newRange.upperTick)
     return null;
-  console.warn(
+  log.warn(
     "[rebalance] Step 6c: tick %d still outside [%d, %d] after adjustment — price too volatile",
     ps.tick,
     newRange.lowerTick,

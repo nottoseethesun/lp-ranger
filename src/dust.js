@@ -28,6 +28,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const path = require("path");
 const fs = require("fs");
 
@@ -55,14 +56,14 @@ function _loadThresholdUnits() {
     const json = JSON.parse(raw);
     const val = Number(json?.thresholdUnits);
     if (Number.isFinite(val) && val > 0) return val;
-    console.warn(
+    log.warn(
       "[dust] %s missing/invalid thresholdUnits — using default %s",
       _DUST_JSON_PATH,
       _DEFAULT_UNITS,
     );
     return _DEFAULT_UNITS;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[dust] Could not load %s: %s — using default %s",
       _DUST_JSON_PATH,
       err.message ?? err,

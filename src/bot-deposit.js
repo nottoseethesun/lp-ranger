@@ -7,6 +7,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 
 /** Fall back to current prices when historical sources return 0. */
@@ -19,7 +20,7 @@ async function _currentPriceFallback(p0, p1, opts, idx, block) {
   if (price1 <= 0) price1 = await fetchTokenPriceUsd(opts.token1);
   const used = price0 > 0 || price1 > 0;
   if (used)
-    console.log("[deposit] #%d block=%d current-price fallback", idx, block);
+    log.info("[deposit] #%d block=%d current-price fallback", idx, block);
   return { price0, price1, fallback: used };
 }
 
@@ -46,7 +47,7 @@ async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
   for (let i = 0; i < deposits.length; i++) {
     const dep = deposits[i];
     if (dep.usd > 0) {
-      console.log(
+      log.info(
         "[deposit] #%d block=%d cached=$%s%s",
         i + 1,
         dep.block,
@@ -71,7 +72,7 @@ async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
     dep.usd = a0 * price0 + a1 * price1;
     dep.fallback = fallback;
     if (fallback) usedFallback = true;
-    console.log(
+    log.info(
       "[deposit] #%d block=%d a0=%s a1=%s p0=%s p1=%s → $%s",
       i + 1,
       dep.block,
@@ -83,7 +84,7 @@ async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
     );
     total += dep.usd;
   }
-  console.log(
+  log.info(
     "[deposit] Total lifetime deposit: $%s (%d entries%s)",
     total.toFixed(2),
     deposits.length,

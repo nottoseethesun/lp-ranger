@@ -10,6 +10,7 @@
  *   Example: `0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2 → "9mm v3"`.
  */
 
+import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
 
 /** In-memory cache populated once at init. Keys are lowercase addresses. */
@@ -31,12 +32,9 @@ export async function loadNftProviders() {
       if (typeof v === "string" && v.trim()) out[k.toLowerCase()] = v.trim();
     }
     _providerMap = out;
-    console.log(
-      "[nft-providers] loaded %d mapping(s)",
-      Object.keys(out).length,
-    );
+    log.info("[nft-providers] loaded %d mapping(s)", Object.keys(out).length);
   } catch (err) {
-    console.warn("[nft-providers] fetch failed:", err && err.message);
+    log.warn("[nft-providers] fetch failed:", err && err.message);
   }
 }
 

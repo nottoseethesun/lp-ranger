@@ -2488,13 +2488,75 @@ Node inspector bound to `127.0.0.1:9229` &mdash; local-only by design.
 
 | Script | Command | Use when |
 | ------ | ------- | -------- |
-| `npm run debug` | `node --inspect server.js` | Debugging the full dashboard + auto-started bot |
-| `npm run debug-bot` | `node --inspect bot.js` | Debugging the headless bot only |
+| `npm run debug` | `node --inspect server.js` | Start a fresh dashboard + auto-started bot with the inspector pre-attached |
+| `npm run debug-bot` | `node --inspect bot.js` | Start a fresh headless bot with the inspector pre-attached |
+| `npm run debug-attach` | `node scripts/debug-attach.js` | Attach the inspector to an **already-running** dashboard server (no restart) |
+| `npm run debug-attach-bot` | `node scripts/debug-attach-bot.js` | Attach the inspector to an **already-running** headless bot (no restart) |
 
-Both use `--inspect` (not `--inspect-brk`) so the process **starts
-running immediately** and you attach whenever. `--inspect-brk` would
-freeze the bot loop until a debugger connects, which is the wrong
-default on a Production box.
+`debug` / `debug-bot` use `--inspect` (not `--inspect-brk`) so the
+process **starts running immediately** and you attach whenever.
+`--inspect-brk` would freeze the bot loop until a debugger connects,
+which is the wrong default on a Production box.
+
+`debug-attach` / `debug-attach-bot` are the recovery / burn-in path:
+they locate the running process (by listening port for the server, by
+`pgrep` for the headless bot) and send `SIGUSR1`. Node treats that
+signal as a request to start the V8 inspector on `127.0.0.1:9229`
+&mdash; no restart, so a stuck-syncing state or in-flight rebalance is
+preserved for inspection. Override the lookup with
+`LP_RANGER_PID=<pid> npm run debug-attach` when multiple node
+processes are running.
+
+Both attach scripts share the heavy lifting via
+`scripts/_debug-attach.js` (PID resolution, signal dispatch, connect
+instructions); the leading underscore marks it as an internal helper.
+
+#### Server vs bot: when each `debug-attach*` script applies
+
+LP Ranger has two run modes that determine whether the bot is its own
+OS process:
+
+| Run mode | What's running | Which attach script applies |
+| -------- | -------------- | --------------------------- |
+| `npm start` | One Node process &mdash; `server.js` serves the dashboard AND auto-starts the bot **in the same V8 isolate** | `npm run debug-attach` (only). The single `server.js` target in `chrome://inspect` already exposes every bot module &mdash; set a breakpoint in `src/bot-loop.js`, `src/bot-cycle.js`, etc. on that target and it hits as the in-process bot polls. `debug-attach-bot` will correctly report "no node bot.js process via pgrep" because there is no separate bot process. |
+| `npm run bot` | One Node process &mdash; `bot.js`, headless, no dashboard | `npm run debug-attach-bot` (only). |
+| `npm start` AND `npm run bot` simultaneously (rare &mdash; two terminals) | Two Node processes that would both try to bind inspector port `9229` &mdash; the second one's inspector start fails silently and stays invisible in `chrome://inspect` | Start one of them with `INSPECTOR_PORT=9230` baked in (`INSPECTOR_PORT=9230 node --inspect-port=9230 bot.js`) so the two inspectors don't collide; then attach each on its own port. |
+
+#### Connecting from `chrome://inspect`
+
+1. Run `npm run debug-attach` (server) or `npm run debug-attach-bot`
+   (headless bot). The terminal prints the PID it signalled and the
+   default WS endpoint `ws://127.0.0.1:9229`.
+2. Open `chrome://inspect` in a local Chrome / Chromium tab.
+3. Under **Remote Target**, the Node process should appear within a
+   second or two. Click the blue **inspect** link below it. A
+   dedicated DevTools window opens connected to the process.
+4. **Sources** tab &rarr; navigate the project tree (`src/`,
+   `public/`, etc.) and set breakpoints. They hit on the next code
+   path that runs (e.g. the next poll cycle for bot code).
+
+Stale entries in the **Target discovery settings** dialog (e.g. a
+`localhost:9222` left over from a prior session) are harmless &mdash;
+no live inspector is bound to them and they will show no targets
+underneath. Remove them with the X next to each entry or ignore them.
+
+#### Log timestamp prefix
+
+The `src/log.js` module exports an opt-in `log` object with `info` /
+`warn` / `error` methods that prepend a UTC timestamp to every line
+&mdash; `log.info("[bot] OOR but within 5% threshold")` emits
+`[bot] [2026-06-16 20:32:02] OOR but within 5% threshold`. When the
+first argument doesn't start with a `[tag]` prefix, the timestamp is
+prepended bare. The browser-side dashboard ships an ES-module mirror
+at `public/dashboard-log.js`.
+
+The wrapper is **opt-in** &mdash; modules that want timestamped output
+`require("./log")` and call `log.info(...)` instead of
+`console.log(...)`. The global `console` object is **never modified**
+(monkey-patching standard JS globals risks clashing with other
+libraries and is a security concern). Existing `console.log` call
+sites continue to work unchanged; migrate them to `log.info` as you
+touch surrounding code.
 
 #### Attaching from Chrome / Chromium DevTools
 

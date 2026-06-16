@@ -22,6 +22,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -198,7 +199,7 @@ function readBotConfigDefaults() {
     }
     return out;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[bot-config-defaults] Falling back to built-in defaults: %s",
       err.message,
     );

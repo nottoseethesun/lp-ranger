@@ -28,6 +28,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -272,7 +273,7 @@ try {
   );
 } catch (err) {
   testsExit = 1;
-  console.error("[check] Test runner failed:", err.message);
+  log.error("[check] Test runner failed:", err.message);
 } finally {
   restoreProdFiles(backupDir);
   fs.rmSync(backupDir, { recursive: true, force: true });

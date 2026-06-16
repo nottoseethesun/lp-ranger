@@ -7,6 +7,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
@@ -70,7 +71,7 @@ async function computeAndCacheHodl(
       });
   }
   const tokenIdStr = String(position.tokenId || "");
-  console.log(
+  log.info(
     "[bot] %s/%s NFT #%s %s: Lifetime HODL: amount0=%s amount1=%s pool=%s deposits=%d",
     position.token0Symbol || "Token0",
     position.token1Symbol || "Token1",
@@ -122,7 +123,7 @@ async function _ensureHodlPoolAddress(
     if (epochKey)
       _epochCache.setCachedLifetimeHodl(epochKey, botState.lifetimeHodlAmounts);
     const tokenIdStr = String(position.tokenId || "");
-    console.log(
+    log.info(
       "[bot] %s/%s NFT #%s %s: Backfilled lifetimeHodlAmounts.poolAddress → %s",
       position.token0Symbol || "Token0",
       position.token1Symbol || "Token1",
@@ -133,7 +134,7 @@ async function _ensureHodlPoolAddress(
     return ps.poolAddress;
   } catch (err) {
     const tokenIdStr = String(position.tokenId || "");
-    console.warn(
+    log.warn(
       "[bot] %s/%s NFT #%s %s: Could not resolve pool address for lifetime deposit USD: %s",
       position.token0Symbol || "Token0",
       position.token1Symbol || "Token1",

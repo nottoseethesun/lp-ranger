@@ -15,6 +15,7 @@
  * evaluation time.
  */
 
+import { log } from "./dashboard-log.js";
 import {
   g,
   act,
@@ -172,7 +173,7 @@ function _updateRoute(active, updateRoute, syncRoute) {
 function _activateCore(idx, opts) {
   const { updateRoute = true, syncRoute = false } = opts || {};
   const _entryTid = posStore.entries?.[idx]?.tokenId;
-  console.log(
+  log.info(
     "%c[lp-ranger] [activate] idx=%d tokenId=%s managed=%s",
     "color:#0ff;background:#013;padding:1px 4px;border-radius:2px",
     idx,
@@ -257,14 +258,14 @@ function _fetchUnmanagedIfNeeded(active) {
   const hasTok0 = !!active.token0;
   const hasCb = !!_fetchUnmanagedDetails;
   if (!isMgd && hasTok0 && hasCb) {
-    console.log(
+    log.info(
       "%c[lp-ranger] [fetch-unmgd-if] #%s → calling fetchUnmanagedDetails",
       "color:#0f0;background:#031;padding:1px 4px;border-radius:2px",
       active.tokenId,
     );
     _fetchUnmanagedDetails(active);
   } else {
-    console.log(
+    log.info(
       "%c[lp-ranger] [fetch-unmgd-if] #%s SKIPPED managed=%s hasToken0=%s hasCallback=%s",
       "color:#fa0;background:#310;padding:1px 4px;border-radius:2px",
       active.tokenId,
@@ -421,7 +422,7 @@ async function _fetchAndApplyScan() {
   if (!data.ok) throw new Error(data.error);
   const added = _addScannedPositions(data);
   const nftCount = (data.nftPositions || []).length;
-  console.log(
+  log.info(
     "%c[lp-ranger] [scan] %d NFTs returned, %d added, posStore: count=%d activeIdx=%d",
     "color:#0cf",
     nftCount,
@@ -433,7 +434,7 @@ async function _fetchAndApplyScan() {
     const bestIdx = bestAutoSelectIdx();
     posStore.select(bestIdx >= 0 ? bestIdx : 0);
     const first = posStore.getActive();
-    console.log(
+    log.info(
       "%c[lp-ranger] [scan] auto-selected #%s %s (idx=%d)",
       "color:#0cf",
       first?.tokenId,
@@ -447,7 +448,7 @@ async function _fetchAndApplyScan() {
     }
   } else if (posStore.activeIdx >= 0) {
     const cur = posStore.getActive();
-    console.log(
+    log.info(
       "%c[lp-ranger] [scan] already selected #%s %s (idx=%d) — skipping",
       "color:#0cf",
       cur?.tokenId,
@@ -501,7 +502,7 @@ export async function scanPositions(opts) {
     }
     return { ok: true, added, nftCount };
   } catch (e) {
-    console.error("[lp-ranger] Position scan failed:", e.message);
+    log.error("[lp-ranger] Position scan failed:", e.message);
     if (!silent) act(ACT_ICONS.warn, "alert", "Scan Failed", e.message);
     return { ok: false, error: e.message };
   } finally {
@@ -580,9 +581,6 @@ async function _backgroundRefresh() {
     }
     renderPosBrowser();
   } catch (e) {
-    console.warn(
-      "[lp-ranger] [dashboard] Background refresh failed:",
-      e.message,
-    );
+    log.warn("[lp-ranger] [dashboard] Background refresh failed:", e.message);
   }
 }

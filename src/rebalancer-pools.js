@@ -6,6 +6,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const rangeMath = require("./range-math");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
@@ -133,7 +134,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
   const _tolerantWait = (t) =>
     t.wait().catch((e) => {
       if (e.code === "TRANSACTION_REPLACED" && e.receipt) {
-        console.log(
+        log.info(
           "[rebalance] %s: TX replaced, using replacement receipt",
           label,
         );
@@ -160,7 +161,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
   }
 
   // Phase 2: speed-up with higher gas
-  console.warn(
+  log.warn(
     "[rebalance] %s: TX %s not confirmed after %ds — speeding up",
     label,
     tx.hash,
@@ -173,7 +174,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
   const bumped = BigInt(
     Math.ceil(Number(curGas > origGas ? curGas : origGas) * _SPEEDUP_GAS_BUMP),
   );
-  console.log(
+  log.info(
     "[rebalance] %s: speedup origGas=%s curGas=%s bumped=%s nonce=%d",
     label,
     String(origGas),
@@ -201,14 +202,14 @@ async function _waitOrSpeedUp(tx, signer, label) {
       "[rebalance] " + label + " speedup nonce=" + tx.nonce,
       { signer, retryingTxWithSameNonce: true },
     );
-    console.log(
+    log.info(
       "[rebalance] %s: replacement TX submitted, hash= %s nonce=%d",
       label,
       replacement.hash,
       replacement.nonce,
     );
   } catch (sendErr) {
-    console.error(
+    log.error(
       "[rebalance] %s: speed-up send failed (nonce=%d): %s — waiting for original",
       label,
       tx.nonce,
@@ -234,7 +235,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
 
   // Phase 4: cancel with 0-value self-transfer at the stuck nonce
   const totalMin = Math.round((Date.now() - startTime) / 60_000);
-  console.error(
+  log.error(
     "[rebalance] %s: TX STILL STUCK after %d min — cancelling nonce %d with 0-PLS self-transfer",
     label,
     totalMin,
@@ -263,7 +264,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
       "[rebalance] " + label + " cancel nonce=" + tx.nonce,
       { signer: base, retryingTxWithSameNonce: true },
     );
-    console.log(
+    log.info(
       "[rebalance] %s: cancel TX submitted, hash= %s nonce=%d gasPrice=%s",
       label,
       cancelTx.hash,
@@ -271,7 +272,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
       String(cancelGas),
     );
     const cancelReceipt = await cancelTx.wait();
-    console.log(
+    log.info(
       "[rebalance] %s: cancel TX confirmed in block %d — nonce %d is now free",
       label,
       cancelReceipt.blockNumber,
@@ -292,7 +293,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
     throw cancelErr;
   } catch (cancelErr) {
     if (cancelErr.cancelled) throw cancelErr;
-    console.error(
+    log.error(
       "[rebalance] %s: cancel TX failed: %s — nonce %d may still be stuck",
       label,
       cancelErr.message,
@@ -338,7 +339,7 @@ async function _ensureAllowance(
   else m = 1n;
   const approveAmount = requiredAmount * m;
   if (m > 1n)
-    console.log(
+    log.info(
       "[rebalance] Step 7a: approve pre-sizing %sx (future rebalances/compounds will skip the approve TX while the cached allowance covers them)",
       String(m),
     );
@@ -448,7 +449,7 @@ async function removeLiquidity(
       t0.balanceOf(recipient),
       t1.balanceOf(recipient),
     ]);
-    console.log(
+    log.info(
       "[rebalance] removeLiq: walletBefore0=%s walletBefore1=%s",
       String(bal0Before),
       String(bal1Before),
@@ -496,7 +497,7 @@ async function removeLiquidity(
       t0.balanceOf(recipient),
       t1.balanceOf(recipient),
     ]);
-    console.log(
+    log.info(
       "[rebalance] removeLiq: walletAfter0=%s walletAfter1=%s",
       String(bal0After),
       String(bal1After),
@@ -526,7 +527,7 @@ function logSwapNeeded(desired, pos, ps, sym0, sym1) {
   const to = is0
     ? sym1 || pos.token1.slice(0, 8)
     : sym0 || pos.token0.slice(0, 8);
-  console.log(
+  log.info(
     "[rebalance] Swap needed: %s %s -> %s (%s raw)",
     (Number(desired.swapAmount) / 10 ** d).toFixed(4),
     from,

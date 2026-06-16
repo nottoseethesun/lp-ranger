@@ -8,6 +8,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const sendTx = require("./send-transaction");
 const {
   ERC20_ABI,
@@ -93,7 +94,7 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     spotExpected > 0
       ? Math.max(0, ((spotExpected - Number(quotedOut)) / spotExpected) * 100)
       : 0;
-  console.log(
+  log.info(
     "[rebalance] swap (V3 router): quote=%s spot=%s impact=%s%% slip=%s%%",
     String(quotedOut),
     spotExpected.toFixed(0),
@@ -115,11 +116,11 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
       signer,
       label: "[rebalance] swap (V3 router)",
     });
-    console.log(
+    log.info(
       "[rebalance] swap (V3 router): confirmed gasUsed=%s",
       String(receipt.gasUsed),
     );
-    console.log(
+    log.info(
       "[route-trace] V3-router fallback swapSources=%s",
       V3_ROUTER_LABEL,
     );

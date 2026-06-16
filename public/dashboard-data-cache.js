@@ -4,6 +4,7 @@
  *   management. Extracted from dashboard-data.js for line-count compliance.
  */
 
+import { log } from "./dashboard-log.js";
 import { compositeKey } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
 
@@ -193,7 +194,7 @@ const _lastFlattenHit = new Map();
 function _logFlattenOnTransition(myKey, hit, active) {
   if (!myKey) return;
   if (_lastFlattenHit.get(myKey) === hit) return;
-  console.log(
+  log.info(
     "[lp-ranger] [flatten] viewed-key=%s direct-hit=%s active-tokenId=%s active-symbols=%s/%s",
     myKey,
     hit,
@@ -221,7 +222,7 @@ function _findRebalanceTargetPosData(active, positions) {
       (e) => String(e.oldTokenId) === tid && String(e.newTokenId) === newTid,
     );
     if (hit) {
-      console.log(
+      log.info(
         "[lp-ranger] [flatten] rebalance-follow MATCH: viewed #%s → managed #%s (key=%s, ap.symbols=%s/%s)",
         tid,
         newTid,
@@ -233,7 +234,7 @@ function _findRebalanceTargetPosData(active, positions) {
       return pd;
     }
   }
-  console.log(
+  log.info(
     "[lp-ranger] [flatten] rebalance-follow NO-MATCH for viewed #%s (scanned %d managed buckets)",
     tid,
     Object.keys(positions).length,

@@ -7,6 +7,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const rangeMath = require("./range-math");
 const { getPoolState } = require("./rebalancer");
@@ -135,7 +136,7 @@ async function _readFees(
     const usd =
       (Number(f.tokensOwed0) / 10 ** decimals0) * price0 +
       (Number(f.tokensOwed1) / 10 ** decimals1) * price1;
-    console.log(
+    log.info(
       "[position details] fees for #%s: owed0=%s owed1=%s usd=%s",
       tokenId,
       String(f.tokensOwed0),
@@ -144,7 +145,7 @@ async function _readFees(
     );
     return usd;
   } catch (e) {
-    console.warn(
+    log.warn(
       "[position details] fee read failed for #%s: %s",
       tokenId,
       e.message,
@@ -228,7 +229,7 @@ async function _fetchPoolData(provider, ethersLib, body, privateKey) {
     ps.decimals0,
     ps.decimals1,
   );
-  console.log(
+  log.info(
     "[position details] tokenId=%s liq=%s tick=%d tL=%d tU=%d amt0=%s amt1=%s p0=%s p1=%s",
     body.tokenId,
     body.liquidity,
@@ -286,7 +287,7 @@ async function _resolveEntryValue(
   );
   const deposit = diskConfig.positions[posKey]?.initialDepositUsd || 0;
   const entryValue = deposit > 0 ? deposit : baseline?.entryValue || 0;
-  console.log(
+  log.info(
     "[position details] entryValue for %s: deposit=%s baseline.entry=%s → %s",
     posKey,
     deposit,

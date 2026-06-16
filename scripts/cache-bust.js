@@ -6,6 +6,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const p = "public/index.html";
 const v = Date.now();
@@ -16,7 +17,7 @@ h = h.replace(/style\.css(\?v=[^"']*)?"/, "style.css?v=" + v + '"');
 // eslint-disable-next-line security/detect-unsafe-regex -- Safe: input is local index.html, not user-supplied
 h = h.replace(/9mm-pos-mgr\.css(\?v=[^"']*)?"/, "9mm-pos-mgr.css?v=" + v + '"');
 fs.writeFileSync(p, h);
-console.log(
+log.info(
   "[npm run build process][cache-bust] bundle.js, style.css, 9mm-pos-mgr.css → v=%d\n",
   v,
 );

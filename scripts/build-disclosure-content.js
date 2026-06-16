@@ -18,6 +18,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
 
@@ -76,7 +77,7 @@ function main() {
   const version = parseVersion(content);
   const out = renderModule(version, content);
   fs.writeFileSync(OUT, out);
-  console.log(
+  log.info(
     `[npm run build process][build-disclosure-content] wrote ${path.relative(process.cwd(), OUT)} (version ${version}, ${content.length} chars)`,
   );
 }

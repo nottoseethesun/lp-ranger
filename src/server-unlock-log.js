@@ -17,12 +17,13 @@
 
 "use strict";
 
+const { log } = require("./log");
 const NS = "[unlock]";
 
 /** Summarize inbound request headers for the unlock trace log. */
 function logUnlockRequest(req) {
   const h = req.headers || {};
-  console.log(
+  log.info(
     "%s POST /api/wallet/unlock — remote=%s origin=%s referer=%s ua=%s sec-fetch-site=%s sec-fetch-mode=%s sec-fetch-dest=%s content-type=%s has-csrf=%s",
     NS,
     req.socket ? req.socket.remoteAddress : "(no-socket)",
@@ -39,12 +40,12 @@ function logUnlockRequest(req) {
 
 /** Log the 400 rejection path (missing password in body). */
 function logUnlockMissing() {
-  console.warn("%s POST /api/wallet/unlock rejected — missing password", NS);
+  log.warn("%s POST /api/wallet/unlock rejected — missing password", NS);
 }
 
 /** Log that a password was provided before attempting to reveal. */
 function logUnlockAttempt(pwLen) {
-  console.log(
+  log.info(
     "%s POST /api/wallet/unlock — password provided (len=%d), attempting reveal",
     NS,
     pwLen,
@@ -54,7 +55,7 @@ function logUnlockAttempt(pwLen) {
 /** Log a successful reveal, echoing origin + ua to fingerprint caller. */
 function logUnlockSuccess(req) {
   const h = req.headers || {};
-  console.log(
+  log.info(
     "%s [server] Wallet unlocked via dashboard (caller origin=%s ua=%s)",
     NS,
     h.origin || "(none)",
@@ -64,7 +65,7 @@ function logUnlockSuccess(req) {
 
 /** Log the 401 path (reveal failed / wrong password). */
 function logUnlockFail(err) {
-  console.warn(
+  log.warn(
     "%s POST /api/wallet/unlock — reveal failed: %s",
     NS,
     err && err.message,

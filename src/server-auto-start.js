@@ -11,6 +11,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
@@ -61,7 +62,7 @@ function createAutoStartManagedPositions(deps) {
         dryRun: config.DRY_RUN,
       });
     } catch (err) {
-      console.warn(
+      log.warn(
         "[server] Shared signer init failed: %s —" +
           " positions will start without injected signer",
         err.message,
@@ -76,17 +77,14 @@ function createAutoStartManagedPositions(deps) {
     try {
       const own = await pmC.ownerOf(tokenId);
       if (own.toLowerCase() !== wAddr.toLowerCase()) {
-        console.warn(
-          "[server] NFT #%s not owned — removing from managed",
-          tokenId,
-        );
+        log.warn("[server] NFT #%s not owned — removing from managed", tokenId);
         removeManagedPosition(diskConfig, key);
         saveConfig(diskConfig);
         return false;
       }
       return true;
     } catch (_e) {
-      console.warn(
+      log.warn(
         "[server] ownerOf #%s failed: %s — skipping (will retry next start)",
         tokenId,
         _e.message,
@@ -131,7 +129,7 @@ function createAutoStartManagedPositions(deps) {
         savedConfig: pc,
       });
     } catch (err) {
-      console.warn(
+      log.warn(
         "[server] Failed to auto-start %s: %s" +
           " — will retry when key is available",
         key,
@@ -157,7 +155,7 @@ function createAutoStartManagedPositions(deps) {
     for (const key of [...keys]) {
       const pc = getPositionConfig(diskConfig, key);
       if (i > 0 && stMs > 0) {
-        console.log("[server] Stagger: %dms before %d/%d", stMs, i + 1, cnt);
+        log.info("[server] Stagger: %dms before %d/%d", stMs, i + 1, cnt);
         await new Promise((r) => setTimeout(r, stMs));
       }
       const tokenId = key.split("-").pop();
@@ -169,7 +167,7 @@ function createAutoStartManagedPositions(deps) {
       await _startOne(key, pc, shared);
       i++;
     }
-    console.log(
+    log.info(
       "[server] Auto-started %d of %d positions",
       positionMgr.runningCount(),
       keys.length,

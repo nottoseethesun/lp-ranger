@@ -11,6 +11,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
 
@@ -40,4 +41,4 @@ for (const rel of FONTS) {
   fs.copyFileSync(src, dst);
 }
 
-console.log("Fonts copied to %s", DEST);
+log.info("Fonts copied to %s", DEST);

@@ -24,6 +24,7 @@
  * without unpausing.
  */
 
+import { log } from "./dashboard-log.js";
 import { fetchWithCsrf } from "./dashboard-helpers.js";
 
 const PAUSE_AFTER_NO_INPUT_MS = 15 * 60_000;
@@ -76,13 +77,13 @@ function _sendPause(reason) {
   if (_browserHasPaused) return;
   _post("/api/pause-price-lookups", reason);
   _browserHasPaused = true;
-  console.log("[dashboard] paused price lookups:", reason);
+  log.info("[dashboard] paused price lookups:", reason);
 }
 
 function _sendUnpause(reason) {
   _post("/api/unpause-price-lookups", reason);
   _browserHasPaused = false;
-  console.log("[dashboard] unpaused price lookups:", reason);
+  log.info("[dashboard] unpaused price lookups:", reason);
 }
 
 /**
@@ -146,7 +147,7 @@ export function startBrowserIdleTracker() {
   /*- Arm the no-input timer immediately so a tab opened-then-ignored
    *  eventually pauses without requiring a single gesture first. */
   _armNoInputTimer();
-  console.log("[dashboard] idle tracker started");
+  log.info("[dashboard] idle tracker started");
 }
 
 /**

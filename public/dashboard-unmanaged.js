@@ -6,6 +6,7 @@
  *   and populates the dashboard KPIs using shared rendering functions.
  */
 
+import { log } from "./dashboard-log.js";
 import { g, botConfig, fetchWithCsrf, cloneTpl } from "./dashboard-helpers.js";
 import { resetKpis, pollNow } from "./dashboard-data.js";
 import {
@@ -98,7 +99,7 @@ export function flushPendingUnmanagedFetch() {
    *  the "tokenId correct, pool name stale" mixed-state bug. */
   if (!_activeMatches(pos.tokenId)) {
     const a = posStore.getActive();
-    console.log(
+    log.info(
       "%c[lp-ranger] [unmanaged] FLUSH-DROP stale-pending #%s active=#%s",
       "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
       pos?.tokenId,
@@ -109,7 +110,7 @@ export function flushPendingUnmanagedFetch() {
   /*- Reset the dedup guard so a same-tokenId fetch from earlier (e.g. a
    *  stale completed request) doesn't entry-skip this one. */
   _lastFetchedId = null;
-  console.log(
+  log.info(
     "%c[lp-ranger] [unmanaged] FLUSH-PENDING #%s",
     "color:#0f0;background:#031;padding:1px 4px;border-radius:2px",
     pos?.tokenId,
@@ -141,7 +142,7 @@ function _isResponseDrained(d) {
  */
 async function _phase1(pos, body) {
   const _t0 = Date.now();
-  console.log(
+  log.info(
     "%c[lp-ranger] [unmanaged] phase1 START #%s liquidity=%s",
     "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
     pos?.tokenId,
@@ -155,7 +156,7 @@ async function _phase1(pos, body) {
     });
     const d = await r.json();
     if (!d.ok) {
-      console.warn(
+      log.warn(
         "[lp-ranger] [unmanaged] phase1 FAIL #%s details error: %s (%dms)",
         pos?.tokenId,
         d.error,
@@ -165,7 +166,7 @@ async function _phase1(pos, body) {
     }
     if (!_activeMatches(pos.tokenId)) {
       const a = posStore.getActive();
-      console.log(
+      log.info(
         "%c[lp-ranger] [unmanaged] phase1 DROP-STALE #%s active=#%s (%dms) — active changed during fetch",
         "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
         pos?.tokenId,
@@ -175,7 +176,7 @@ async function _phase1(pos, body) {
       return false;
     }
     if (_isResponseDrained(d)) {
-      console.log(
+      log.info(
         "%c[lp-ranger] [unmanaged] phase1 DRAINED #%s → closed view (%dms)",
         "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
         pos?.tokenId,
@@ -187,7 +188,7 @@ async function _phase1(pos, body) {
     }
     _apply(d, pos);
     body.feesUsd = d.feesUsd;
-    console.log(
+    log.info(
       "%c[lp-ranger] [unmanaged] phase1 DONE #%s value=%s feesUsd=%s (%dms)",
       "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
       pos?.tokenId,
@@ -196,7 +197,7 @@ async function _phase1(pos, body) {
       Date.now() - _t0,
     );
   } catch (e) {
-    console.warn(
+    log.warn(
       "[lp-ranger] [unmanaged] phase1 EXCEPTION #%s %s (%dms)",
       pos?.tokenId,
       e.message,
@@ -253,13 +254,13 @@ async function _phase2(body, gen) {
     }
   } catch (e) {
     if (e.name === "AbortError") {
-      console.warn(
+      log.warn(
         "[lp-ranger] [unmanaged] phase 2 timed out after %ds",
         timeoutMs / 1000,
       );
       if (gen === _fetchGen) _showScanTimeoutDialog();
     } else {
-      console.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
+      log.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
     }
   }
   // Always clear Syncing badge — even on timeout or gen mismatch
@@ -280,7 +281,7 @@ export async function fetchUnmanagedDetails(pos) {
   const _tid = pos?.tokenId;
   const _skip = _entryGuardReason(pos);
   if (_skip) {
-    console.log(
+    log.info(
       "%c[lp-ranger] [unmanaged] ENTRY-SKIP #%s %s",
       "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
       _tid,
@@ -298,7 +299,7 @@ export async function fetchUnmanagedDetails(pos) {
   const tid = String(pos.tokenId);
   _lastFetchedId = tid;
   const gen = ++_fetchGen;
-  console.log(
+  log.info(
     "%c[lp-ranger] [unmanaged] ENTRY #%s gen=%d → starting phase1+phase2",
     "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
     _tid,

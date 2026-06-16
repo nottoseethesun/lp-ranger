@@ -11,27 +11,25 @@
 
 "use strict";
 
+const { log } = require("./log");
 const _RPC_CODES = new Set(["TIMEOUT", "NETWORK_ERROR", "SERVER_ERROR"]);
 
 /** Install global uncaughtException + unhandledRejection handlers. */
 module.exports = function installErrorGuard() {
   process.on("uncaughtException", (err) => {
     if (_RPC_CODES.has(err.code)) {
-      console.warn("[server] Transient RPC error (non-fatal): %s", err.code);
+      log.warn("[server] Transient RPC error (non-fatal): %s", err.code);
       return;
     }
-    console.error("[server] Uncaught exception:", err);
+    log.error("[server] Uncaught exception:", err);
     process.exit(1);
   });
   process.on("unhandledRejection", (err) => {
     if (err && _RPC_CODES.has(err.code)) {
-      console.warn(
-        "[server] Transient RPC rejection (non-fatal): %s",
-        err.code,
-      );
+      log.warn("[server] Transient RPC rejection (non-fatal): %s", err.code);
       return;
     }
-    console.error("[server] Unhandled rejection:", err);
+    log.error("[server] Unhandled rejection:", err);
     process.exit(1);
   });
 };

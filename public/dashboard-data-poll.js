@@ -6,6 +6,7 @@
  *   is pegged by a phase-2 event scan on a low-powered host.
  */
 
+import { log } from "./dashboard-log.js";
 import { flattenV2Status } from "./dashboard-data-cache.js";
 import { _setStatusPill } from "./dashboard-data-status.js";
 
@@ -38,7 +39,7 @@ async function _pollStatus() {
     _skippedPollCount++;
     /* Log once per 20 consecutive skips to avoid console spam. */
     if (_skippedPollCount % 20 === 1) {
-      console.debug(
+      log.debug(
         "[lp-ranger] [poll] skipping tick — previous /api/status still in flight (skipped=%d)",
         _skippedPollCount,
       );

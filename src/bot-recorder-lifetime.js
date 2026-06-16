@@ -9,6 +9,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const _epochCache = require("./epoch-cache");
 const { fetchTokenPrices: _fetchTokenPrices } = require("./bot-pnl-updater");
@@ -76,20 +77,20 @@ async function _classifyAllCompounds(
     (Number(c.amount1Deposited) / 10 ** d1) * p1;
   const standaloneUsd = allCompounds.reduce((s, c) => s + _eventUsd(c), 0);
   const rebalanceUsd = Math.max(0, totalUsd - standaloneUsd);
-  console.log(
+  log.info(
     "[bot] Lifetime compound scan: %d NFTs across rebalance chain",
     ids.size,
   );
-  console.log(
+  log.info(
     "[bot]   standalone (auto/manual): %d events totaling $%s",
     allCompounds.length,
     standaloneUsd.toFixed(2),
   );
-  console.log(
+  log.info(
     "[bot]   rebalance-driven re-deposits: $%s",
     rebalanceUsd.toFixed(2),
   );
-  console.log("[bot]   combined lifetime compounded: $%s", totalUsd.toFixed(2));
+  log.info("[bot]   combined lifetime compounded: $%s", totalUsd.toFixed(2));
   /*-
    *  Persist totalCompoundedUsd whenever it's > 0 even if there are no
    *  standalone compound events — a position that only ever rebalanced
@@ -218,7 +219,7 @@ function _recordScanSuccess(botState, updateState, ctx) {
       lifetimeScanComplete: ready,
     });
   }
-  console.log(
+  log.info(
     "[bot] %s/%s NFT #%s %s: Lifetime scan complete (ready=%s, total=$%s)",
     ctx.t0Sym,
     ctx.t1Sym,
@@ -272,7 +273,7 @@ function _recordScanFailure(botState, updateState, err, ctx) {
       lifetimeScanComplete: false,
     });
   }
-  console.warn(
+  log.warn(
     "[bot] %s/%s NFT #%s %s: Lifetime pool scan failed: %s",
     ctx.t0Sym,
     ctx.t1Sym,
@@ -302,7 +303,7 @@ async function _scanLifetimePoolData(
    *  the early-return so we don't skip the scan just because the prior
    *  totals are still cached. */
   if (!fullRescan && hasCompoundData && cachedHodl && hasDepositData) return;
-  console.log(
+  log.info(
     "[bot] %s/%s NFT #%s %s: Starting lifetime scan (fullRescan=%s)",
     ctx.t0Sym,
     ctx.t1Sym,

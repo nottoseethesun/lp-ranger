@@ -22,11 +22,12 @@
  * @example
  * const { fetchTokenPriceUsd } = require('./price-fetcher');
  * const price = await fetchTokenPriceUsd('0xA1077a...', { chain: 'pulsechain' });
- * console.log(`Token price: $${price}`);
+ * log.info(`Token price: $${price}`);
  */
 
 "use strict";
 
+const { log } = require("./log");
 const {
   getHistoricalPrice,
   setHistoricalPrice,
@@ -319,7 +320,7 @@ async function _fetchOhlcvOnce(url, timeframe) {
     const close = Number(candles[0][4]);
     return { status: 200, close: Number.isFinite(close) ? close : 0 };
   } catch (err) {
-    console.warn(
+    log.warn(
       "[price-fetcher] GeckoTerminal OHLCV error (%s): %s",
       timeframe,
       err.message ?? err,
@@ -355,7 +356,7 @@ async function _fetchGeckoOhlcvAtTimeframe(
   for (let i = 0; res.status === 429 && i < _ohlcv429DelaysMs.length; i++) {
     const delay = _ohlcv429DelaysMs[i];
     noteGecko429(delay);
-    console.warn(
+    log.warn(
       "[price-fetcher] GeckoTerminal OHLCV %s pool=%s 429 — retry %d/%d in %dms",
       timeframe,
       poolAddress,
@@ -367,7 +368,7 @@ async function _fetchGeckoOhlcvAtTimeframe(
     res = await _fetchOhlcvOnce(url, timeframe);
   }
   if (res.status !== 200 && res.status !== 0) {
-    console.warn(
+    log.warn(
       "[price-fetcher] GeckoTerminal OHLCV %s pool=%s status=%d (treating as empty)",
       timeframe,
       poolAddress,
@@ -410,7 +411,7 @@ async function _fetchGeckoTerminalOhlcv(
     );
     attempts.push(`${tf}=${price}`);
     if (price > 0) {
-      console.log(
+      log.info(
         "[price-fetcher] GeckoTerminal OHLCV %s pool=%s ts=%d → $%s via %s",
         token,
         poolAddress,
@@ -421,7 +422,7 @@ async function _fetchGeckoTerminalOhlcv(
       return price;
     }
   }
-  console.warn(
+  log.warn(
     "[price-fetcher] GeckoTerminal OHLCV %s pool=%s ts=%d → ALL EMPTY (%s)",
     token,
     poolAddress,
@@ -442,7 +443,7 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
   if (price0 === 0 && t0) {
     price0 = await _fetchMoralisHistorical(t0, blockNumber, network);
     if (price0 > 0)
-      console.log(
+      log.info(
         "[price-fetcher] Moralis historical fallback for token0=%s",
         _formatToken(t0),
       );
@@ -450,7 +451,7 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
   if (price1 === 0 && t1) {
     price1 = await _fetchMoralisHistorical(t1, blockNumber, network);
     if (price1 > 0)
-      console.log(
+      log.info(
         "[price-fetcher] Moralis historical fallback for token1=%s",
         _formatToken(t1),
       );
@@ -605,7 +606,7 @@ async function _fetchMoralisCurrent(tokenAddress, chain = "pulsechain") {
     const price = Number(json?.usdPrice ?? 0);
     return Number.isFinite(price) && price > 0 ? price : 0;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[price-fetcher] Moralis current error token=%s chain=%s — %s",
       _formatToken(tokenAddress),
       chain,
@@ -646,7 +647,7 @@ async function _fetchMoralisHistorical(
     const json = await res.json();
     const price = Number(json?.usdPrice ?? 0);
     if (Number.isFinite(price) && price > 0) {
-      console.log(
+      log.info(
         "[price-fetcher] Moralis historical hit token=%s block=%s price=$%s",
         _formatToken(tokenAddress),
         blockNumber,
@@ -656,7 +657,7 @@ async function _fetchMoralisHistorical(
     }
     return 0;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[price-fetcher] Moralis historical error token=%s block=%s — %s",
       _formatToken(tokenAddress),
       blockNumber,
@@ -703,7 +704,7 @@ function _loadDustPriceSources() {
       (t) => t && t.address && t.chain && t.dexScreenerChain,
     );
   } catch (err) {
-    console.warn(
+    log.warn(
       "[price-fetcher] Could not load %s: %s",
       _DUST_THRESHOLD_JSON,
       err.message ?? err,
@@ -756,7 +757,7 @@ async function fetchDustUnitPriceUsd() {
       { token: tok.address, symbol: tok.symbol, chain: tok.chain },
     );
     if (price > 0) {
-      console.log(
+      log.info(
         "[dust-unit-price] %s = $%s / unit (cached %d min)",
         tok.symbol,
         price.toFixed(2),
@@ -766,7 +767,7 @@ async function fetchDustUnitPriceUsd() {
       return price;
     }
   }
-  console.warn("[dust-unit-price] All sources failed — returning 0");
+  log.warn("[dust-unit-price] All sources failed — returning 0");
   return 0;
 }
 

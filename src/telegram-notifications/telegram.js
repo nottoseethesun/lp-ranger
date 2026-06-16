@@ -14,6 +14,7 @@
 
 "use strict";
 
+const { log } = require("../log");
 const os = require("os");
 const config = require("../config");
 const { readNftProviders } = require("../nft-providers");
@@ -141,13 +142,13 @@ async function _send(text) {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.warn("[telegram] Send failed: %d %s", res.status, body);
+      log.warn("[telegram] Send failed: %d %s", res.status, body);
       return false;
     }
-    console.log("[telegram] Notification sent: %s", text.split("\n")[0]);
+    log.info("[telegram] Notification sent: %s", text.split("\n")[0]);
     return true;
   } catch (err) {
-    console.warn("[telegram] Send error: %s", err.message);
+    log.warn("[telegram] Send error: %s", err.message);
     return false;
   }
 }

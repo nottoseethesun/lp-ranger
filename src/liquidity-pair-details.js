@@ -28,6 +28,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 const { liquidityPairScopeKey } = require("./cache-store");
@@ -77,10 +78,7 @@ function _persist() {
     fs.writeFileSync(tmp, JSON.stringify(_cache, null, 2) + "\n", "utf8");
     fs.renameSync(tmp, _CACHE_PATH);
   } catch (err) {
-    console.warn(
-      "[liquidity-pair-details] Could not persist cache:",
-      err.message,
-    );
+    log.warn("[liquidity-pair-details] Could not persist cache:", err.message);
   }
 }
 
@@ -149,7 +147,7 @@ function _hasRequiredArgs(args) {
     return !v;
   });
   if (missing.length > 0) {
-    console.warn(
+    log.warn(
       "[liquidity-pair-details] initial-residual skipped — missing args: %s",
       missing.join(", "),
     );
@@ -187,7 +185,7 @@ async function _fetchInitialBalances({
     ]);
     return { token0Amount: t0, token1Amount: t1 };
   } catch (err) {
-    console.warn(
+    log.warn(
       "[liquidity-pair-details] historical balanceOf failed for scope %s at block %d: %s",
       scopeKey,
       blockTag,
@@ -223,7 +221,7 @@ async function _fetchInitialPrices({
       token1Price: Number(price1) || 0,
     };
   } catch (err) {
-    console.warn(
+    log.warn(
       "[liquidity-pair-details] historical price fetch failed for scope %s: %s",
       scopeKey,
       err.message ?? err,
@@ -256,7 +254,7 @@ async function _fetchInitialPrices({
  * @returns {Promise<InitialResidualData|null>}
  */
 async function ensureInitialResidualData(args) {
-  console.log(
+  log.info(
     "[liquidity-pair-details] ensureInitialResidualData called (chain=%s wallet=%s token0=%s token1=%s fee=%s firstMintBlock=%s)",
     args.chain,
     args.wallet,
@@ -291,14 +289,14 @@ async function ensureInitialResidualData(args) {
 
   const cached = loadInitialResidualData(scopeKey);
   if (cached) {
-    console.log(
+    log.info(
       "[liquidity-pair-details] %s initial residual already cached — reusing",
       scopeKey,
     );
     return cached;
   }
   const blockTag = Number(firstMintBlock);
-  console.log(
+  log.info(
     "[liquidity-pair-details] %s no cached initial residual — fetching at first-mint block %d (post-mint state)",
     scopeKey,
     blockTag,
@@ -337,7 +335,7 @@ async function ensureInitialResidualData(args) {
   _cache[scopeKey].initialResidualData = data;
   _persist();
 
-  console.log(
+  log.info(
     "[liquidity-pair-details] %s initial residual recorded (t0=%s @$%s, t1=%s @$%s)",
     scopeKey,
     data.token0Amount,

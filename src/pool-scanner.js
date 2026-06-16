@@ -13,6 +13,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { Mutex } = require("async-mutex");
 const config = require("./config");
 const { scanRebalanceHistory, buildCacheKey } = require("./event-scanner");
@@ -21,7 +22,7 @@ const { createCacheStore, eventCachePath } = require("./cache-store");
 const _C = "\x1b[30;48;5;123m";
 const _R = "\x1b[0m";
 function _log(msg, ...a) {
-  console.log(_C + "[pool-scan] " + msg + _R, ...a);
+  log.info(_C + "[pool-scan] " + msg + _R, ...a);
 }
 
 /** Event cache TTL — 1 year; cache is explicitly cleared on rebalance. */
@@ -279,7 +280,7 @@ async function appendToPoolCache(position, wallet, result) {
   const existing = await cache.get(cacheKey);
   const events = existing?.events || [];
   events.push(_buildEventEntry(result));
-  console.log(
+  log.info(
     "[route-trace] pool-scanner persisted newTokenId=%s swapSources=%s",
     String(result.newTokenId || "?"),
     result.swapSources || "(null)",

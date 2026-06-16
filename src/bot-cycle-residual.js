@@ -25,6 +25,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const { ERC20_ABI } = require("./rebalancer-pools");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
@@ -89,13 +90,13 @@ function _logGateTransition(state, decision, sharePct) {
   if (_lastLoggedReason.get(state) === key) return;
   _lastLoggedReason.set(state, key);
   if (decision.allowed) {
-    console.log(
+    log.info(
       "[residual-cleanup] gates open; residual share=%s (threshold=%s%%)",
       share,
       TUNABLES.thresholdPct,
     );
   } else {
-    console.log(
+    log.info(
       "[residual-cleanup] not arming: %s%s (residual share=%s, threshold=%s%%)",
       decision.reason,
       decision.detail ? ` (${decision.detail})` : "",
@@ -123,7 +124,7 @@ function _residualShare(snap) {
 function _armCleanup(deps, sharePct, residual, lpValue) {
   const state = deps._botState;
   const batch = lpValue + residual;
-  console.log(
+  log.info(
     "[residual-cleanup] arming cleanup: residual=$%s (%s%% of $%s batch), minutes since last rebalance=%d, threshold=%s%%",
     residual.toFixed(2),
     sharePct.toFixed(2),
@@ -281,7 +282,7 @@ async function computeWalletResidualUsd(deps, result, token0, token1) {
       result.decimals1 ?? 18,
     );
   } catch (err) {
-    console.warn(
+    log.warn(
       "[residual-warning] Could not compute wallet residual USD: %s",
       err.message ?? err,
     );

@@ -5,6 +5,7 @@
  * Split from dashboard-events.js for maintainability.
  */
 
+import { log } from "./dashboard-log.js";
 import {
   g,
   toggleSettingsPopover,
@@ -222,7 +223,7 @@ export async function _reloadCurrentPosition() {
     const wallet = active.walletAddress;
     const contract = active.contractAddress;
     const key = `pulsechain-${wallet}-${contract}-${active.tokenId}`;
-    console.log(
+    log.info(
       "[lp-ranger] [reload] user requested reload for #%s",
       active.tokenId,
     );
@@ -242,7 +243,7 @@ export async function _reloadCurrentPosition() {
       /*- Network error here is non-fatal. The client-side reset below
        *  will still make the next fetch start fresh; the server-side
        *  scan (if stuck) will naturally clean up on its own timeout. */
-      console.warn("[lp-ranger] [reload] scan-cancel failed:", err.message);
+      log.warn("[lp-ranger] [reload] scan-cancel failed:", err.message);
     }
     resetHistoryFlag();
     clearHistory();
@@ -295,7 +296,7 @@ function _formatPositionSpec(active) {
  * @param {object} [active] Active position (for the spec line).
  */
 function _handleManageFailure(verb, reason, active) {
-  console.warn("[lp-ranger] [manage] %s failed: %s", verb, reason);
+  log.warn("[lp-ranger] [manage] %s failed: %s", verb, reason);
   // Restore the button immediately. updateManageBadge will
   // re-paint correct text on the next status poll (3s).
   const btn = g("manageToggleBtn");
@@ -368,14 +369,14 @@ async function _sendManage(active) {
     _handleManageFailure("manage", body.error || `HTTP ${res.status}`, active);
     return false;
   }
-  console.log("[lp-ranger] [manage] started managing #%s", active.tokenId);
+  log.info("[lp-ranger] [manage] started managing #%s", active.tokenId);
   return true;
 }
 
 /** Toggle manage / pause for the active NFT position. */
 export async function _toggleManagePosition() {
   if (_manageInFlight) {
-    console.log("[lp-ranger] [manage] click ignored — request in-flight");
+    log.info("[lp-ranger] [manage] click ignored — request in-flight");
     return;
   }
   const active = _posStoreRef?.getActive?.();

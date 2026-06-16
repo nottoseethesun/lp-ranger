@@ -23,6 +23,7 @@
 
 "use strict";
 
+import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
 
 /** localStorage keys. Values: "0" / "1" for booleans; decimal string for threshold. */
@@ -178,7 +179,7 @@ export function forceBothSubOptionsOn() {
   if (bw) bw.checked = true;
   const bu = g("privacyBlurUsdSwitch");
   if (bu) bu.checked = true;
-  console.log("[lp-ranger] [privacy] master on → both sub-options forced on");
+  log.info("[lp-ranger] [privacy] master on → both sub-options forced on");
 }
 
 /*- When both sub-category checkboxes are off there's nothing left for
@@ -196,7 +197,7 @@ function _autoDisableMasterIfEmpty() {
   }
   const sw = g("privacySwitch");
   if (sw) sw.checked = false;
-  console.log("[lp-ranger] [privacy] master auto-off (both sub-options off)");
+  log.info("[lp-ranger] [privacy] master auto-off (both sub-options off)");
 }
 
 /*- Change handler for the wallet-address checkbox. */
@@ -204,10 +205,7 @@ function _onBlurWalletChange() {
   const on = g("privacyBlurWalletSwitch")?.checked ? "1" : "0";
   try {
     localStorage.setItem(_LS_BLUR_WALLET, on);
-    console.log(
-      "[lp-ranger] [privacy] blur wallet:",
-      on === "1" ? "on" : "off",
-    );
+    log.info("[lp-ranger] [privacy] blur wallet:", on === "1" ? "on" : "off");
   } catch {
     /* */
   }
@@ -220,7 +218,7 @@ function _onBlurUsdChange() {
   const on = g("privacyBlurUsdSwitch")?.checked ? "1" : "0";
   try {
     localStorage.setItem(_LS_BLUR_USD, on);
-    console.log("[lp-ranger] [privacy] blur usd:", on === "1" ? "on" : "off");
+    log.info("[lp-ranger] [privacy] blur usd:", on === "1" ? "on" : "off");
   } catch {
     /* */
   }
@@ -258,7 +256,7 @@ function _onThresholdChange() {
   }
   try {
     localStorage.setItem(_LS_USD_THRESHOLD, String(parsed));
-    console.log("[lp-ranger] [privacy] usd threshold:", parsed);
+    log.info("[lp-ranger] [privacy] usd threshold:", parsed);
   } catch {
     /* */
   }

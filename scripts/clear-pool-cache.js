@@ -23,6 +23,7 @@
 
 "use strict";
 
+const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
 
@@ -72,69 +73,69 @@ function fmtValue(v) {
 function main() {
   const tokens = process.argv.slice(2);
   if (tokens.length === 0) {
-    console.error(
+    log.error(
       "usage: node scripts/clear-pool-cache.js 0xTOKEN0 [0xTOKEN1 ...]",
     );
     process.exit(1);
   }
 
-  console.log("=== CLEAR POOL CACHE ===");
-  console.log("Tokens:");
-  for (const t of tokens) console.log("  " + t);
-  console.log("");
+  log.info("=== CLEAR POOL CACHE ===");
+  log.info("Tokens:");
+  for (const t of tokens) log.info("  " + t);
+  log.info("");
 
   // 1) Historical price cache
   const priceCache = loadJson(PRICE_CACHE_PATH);
   const priceHits = findMatchingKeys(priceCache, tokens);
-  console.log(
+  log.info(
     `[historical-price-cache] ${priceHits.length} matching entries (of ${Object.keys(priceCache).length} total):`,
   );
   for (const k of priceHits) {
-    console.log("  BEFORE " + k + " = " + fmtValue(priceCache[k]));
+    log.info("  BEFORE " + k + " = " + fmtValue(priceCache[k]));
   }
   for (const k of priceHits) delete priceCache[k];
   saveJson(PRICE_CACHE_PATH, priceCache);
   // Verify by reloading
   const reloadedPrice = loadJson(PRICE_CACHE_PATH);
   const remainingPrice = findMatchingKeys(reloadedPrice, tokens);
-  console.log(
+  log.info(
     `[historical-price-cache] AFTER: ${remainingPrice.length} matching entries remain`,
   );
   if (remainingPrice.length > 0) {
-    console.error("  ERROR: entries still present:");
-    for (const k of remainingPrice) console.error("    " + k);
+    log.error("  ERROR: entries still present:");
+    for (const k of remainingPrice) log.error("    " + k);
     process.exitCode = 2;
   }
-  console.log("");
+  log.info("");
 
   // 2) Gecko pool cache
   const poolCache = loadJson(GECKO_POOL_CACHE_PATH);
   const poolHits = findMatchingKeys(poolCache, tokens);
-  console.log(
+  log.info(
     `[gecko-pool-cache] ${poolHits.length} matching entries (of ${Object.keys(poolCache).length} total):`,
   );
   for (const k of poolHits) {
-    console.log("  BEFORE " + k + " = " + poolCache[k]);
+    log.info("  BEFORE " + k + " = " + poolCache[k]);
   }
   for (const k of poolHits) delete poolCache[k];
   saveJson(GECKO_POOL_CACHE_PATH, poolCache);
   const reloadedPool = loadJson(GECKO_POOL_CACHE_PATH);
   const remainingPool = findMatchingKeys(reloadedPool, tokens);
-  console.log(
+  log.info(
     `[gecko-pool-cache] AFTER: ${remainingPool.length} matching entries remain`,
   );
   if (remainingPool.length > 0) {
-    console.error("  ERROR: entries still present:");
-    for (const k of remainingPool) console.error("    " + k);
+    log.error("  ERROR: entries still present:");
+    for (const k of remainingPool) log.error("    " + k);
     process.exitCode = 2;
   }
-  console.log("");
+  log.info("");
 
-  console.log("=== DONE ===");
-  console.log(
+  log.info("=== DONE ===");
+  log.info(
     `Removed ${priceHits.length} price entries and ${poolHits.length} pool-info entries`,
   );
-  console.log(
+  log.info(
     "Restart the app to refetch historical prices with the new orientation.",
   );
 }

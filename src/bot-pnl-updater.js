@@ -10,6 +10,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const rangeMath = require("./range-math");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
@@ -87,7 +88,7 @@ async function readUnclaimedFees(provider, ethersLib, tokenId, signer) {
       });
       return { tokensOwed0: r.amount0, tokensOwed1: r.amount1 };
     } catch (e) {
-      console.warn(
+      log.warn(
         "[bot] collect.staticCall failed for #%s: %s",
         String(tokenId),
         e.message,
@@ -357,7 +358,7 @@ async function _applyMintGas(deps, pnlTracker) {
   if (usd > 0) {
     pnlTracker.addGas(usd, native);
     if (deps._botState) deps._botState._mintGasApplied = true;
-    console.log("[bot] Applied initial mint gas: $%s", usd.toFixed(4));
+    log.info("[bot] Applied initial mint gas: $%s", usd.toFixed(4));
   }
 }
 
@@ -394,7 +395,7 @@ async function _fetchWithOverrides(position, deps) {
     ov1 = gc("priceOverride1");
   const force = gc("priceOverrideForce");
   if (ov0 > 0 && (force || price0 <= 0)) {
-    console.log(
+    log.info(
       "[pnl] using priceOverride0=%s (fetched=%s force=%s)",
       ov0,
       price0,
@@ -403,7 +404,7 @@ async function _fetchWithOverrides(position, deps) {
     price0 = ov0;
   }
   if (ov1 > 0 && (force || price1 <= 0)) {
-    console.log(
+    log.info(
       "[pnl] using priceOverride1=%s (fetched=%s force=%s)",
       ov1,
       price1,
@@ -446,7 +447,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
             token0UsdPrice: price0,
             token1UsdPrice: price1,
           });
-          console.log(
+          log.info(
             "[bot] Auto-opened missing live epoch (entryValue=$%s)",
             ev.toFixed(2),
           );
@@ -462,7 +463,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         toFloat(fees.tokensOwed0, poolState.decimals0) * price0 +
         toFloat(fees.tokensOwed1, poolState.decimals1) * price1;
       if (config.VERBOSE)
-        console.log(
+        log.info(
           "[bot] fees: owed0=%s owed1=%s dec0=%d dec1=%d p0=%s p1=%s usd=%s",
           String(fees.tokensOwed0),
           String(fees.tokensOwed1),
@@ -518,14 +519,14 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
             poolState,
           );
         } catch (err) {
-          console.warn(
+          log.warn(
             "[bot] applyCurrentNftFigures hook error: %s",
             err.message || err,
           );
         }
       }
     } catch (err) {
-      console.warn("[bot] P&L update error:", err.message);
+      log.warn("[bot] P&L update error:", err.message);
     }
   }
   if (updateBotState) {
@@ -580,7 +581,7 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         multiplier: _resolveBalancedMultiplier(deps),
       });
     } catch (err) {
-      console.warn("[balanced-notifier] hook error: %s", err.message || err);
+      log.warn("[balanced-notifier] hook error: %s", err.message || err);
     }
   }
   return pnlSnapshot;

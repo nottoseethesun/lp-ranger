@@ -8,6 +8,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const pools = require("./rebalancer-pools");
 const sendTx = require("./send-transaction");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
@@ -61,7 +62,7 @@ async function mintPosition(
   const signerAddress = await signer.getAddress();
   const token0Contract = new Contract(token0, ERC20_ABI, signer);
   const token1Contract = new Contract(token1, ERC20_ABI, signer);
-  console.log(
+  log.info(
     "[rebalance] Step 7a: ensureAllowance — a0=%s a1=%s",
     String(amount0Desired),
     String(amount1Desired),
@@ -90,7 +91,7 @@ async function mintPosition(
 
   const pm = new Contract(positionManagerAddress, PM_ABI, signer);
   const dl = deadline ?? _deadline();
-  console.log(
+  log.info(
     "[rebalance] Step 7b: mint — fee=%d tL=%d tU=%d a0d=%s a1d=%s",
     fee,
     tickLower,
@@ -124,7 +125,7 @@ async function mintPosition(
     floor: _mintFloor,
     label: "[rebalance] mint",
   });
-  console.log(
+  log.info(
     "[rebalance] Step 7c: mint confirmed, block=%s gasUsed=%s",
     receipt.blockNumber,
     String(receipt.gasUsed),
@@ -136,7 +137,7 @@ async function mintPosition(
     amount1Desired,
   );
 
-  console.log(
+  log.info(
     "[rebalance] Mint: desired0=%s desired1=%s actual0=%s actual1=%s liq=%s",
     String(amount0Desired),
     String(amount1Desired),
@@ -239,14 +240,14 @@ async function executeRebalance(signer, ethersLib, opts) {
       provider = signer.provider || signer;
 
     // 1. Get current pool state
-    console.log("[rebalance] Step 1: getPoolState…");
+    log.info("[rebalance] Step 1: getPoolState…");
     const poolState = await getPoolState(provider, ethersLib, {
       factoryAddress,
       token0: position.token0,
       token1: position.token1,
       fee: position.fee,
     });
-    console.log(
+    log.info(
       "[rebalance] Step 1 done: tick=%d price=%s",
       poolState.tick,
       poolState.price,
@@ -277,7 +278,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       offset,
     );
     if (offset !== 50) {
-      console.log(
+      log.info(
         "[rebalance] Step 4: offset=%d%% token0 / %d%% token1, ticks=[%d,%d]",
         offset,
         100 - offset,
@@ -290,7 +291,7 @@ async function executeRebalance(signer, ethersLib, opts) {
         ((newRange.upperPrice - newRange.lowerPrice) / poolState.price) *
         100
       ).toFixed(2);
-      console.log(
+      log.info(
         "[rebalance] Step 4: requested=%s%% effective=%s%% ticks=[%d,%d]",
         customRangeWidthPct,
         ePct,
@@ -298,7 +299,7 @@ async function executeRebalance(signer, ethersLib, opts) {
         newRange.upperTick,
       );
       if (Math.abs(Number(ePct) - customRangeWidthPct) > 0.01)
-        console.warn(
+        log.warn(
           "[rebalance] Step 4: tick spacing for fee=%d rounded %s%% → %s%%",
           position.fee,
           String(customRangeWidthPct),
@@ -313,7 +314,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       t0c.balanceOf(signerAddress),
       t1c.balanceOf(signerAddress),
     ]);
-    console.log(
+    log.info(
       "[rebalance] Step 5: walletBal0=%s walletBal1=%s",
       String(walBal0),
       String(walBal1),
@@ -332,7 +333,7 @@ async function executeRebalance(signer, ethersLib, opts) {
     );
     if (desired.needsSwap)
       logSwapNeeded(desired, position, poolState, opts.symbol0, opts.symbol1);
-    console.log("[rebalance] Step 6: swap…");
+    log.info("[rebalance] Step 6: swap…");
     const swapped = await _swapAndAdjust(signer, ethersLib, {
       desired,
       position,
@@ -346,7 +347,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       gasFeePct,
     });
     if (swapped.txHash) txHashes.push(swapped.txHash);
-    console.log(
+    log.info(
       "[rebalance] Step 6 done: extra0=%s extra1=%s",
       String(swapped.extra0),
       String(swapped.extra1),
@@ -401,7 +402,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       t0c.balanceOf(signerAddress),
       t1c.balanceOf(signerAddress),
     ]);
-    console.log(
+    log.info(
       "[rebalance] Step 7: mintBal0=%s mintBal1=%s",
       String(mintBal0),
       String(mintBal1),

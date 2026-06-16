@@ -8,6 +8,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
@@ -32,7 +33,7 @@ const { PM_ABI } = require("./pm-abi");
 const _C = "\x1b[38;5;118;48;5;94m";
 const _R = "\x1b[0m";
 function _log(msg, ...a) {
-  console.log(_C + "[lp-cache] " + msg + _R, ...a);
+  log.info(_C + "[lp-cache] " + msg + _R, ...a);
 }
 
 /**
@@ -407,7 +408,7 @@ function createScanHandlers(deps) {
         flagReset = true;
       }
     }
-    console.log(
+    log.info(
       "[server] scan-cancel pool=%s/%s fee=%s aborted=%s flagReset=%s",
       token0.slice(0, 8),
       token1.slice(0, 8),

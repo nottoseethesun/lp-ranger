@@ -5,6 +5,7 @@
  * back to en-US when the browser's preferred language has no numbro
  * locale. Currency text is always literal "$usd".
  */
+import { log } from "./dashboard-log.js";
 import numbro from "numbro";
 import allLanguages from "numbro/dist/languages.min.js";
 
@@ -24,7 +25,7 @@ for (const _k of Object.keys(allLanguages || {})) {
   for (const t of tries) {
     if (allLanguages && allLanguages[t]) {
       numbro.setLanguage(t);
-      console.log(
+      log.info(
         "[numbro] formatting locale: %s (browser preference: %s)",
         t,
         browserLang,
@@ -32,7 +33,7 @@ for (const _k of Object.keys(allLanguages || {})) {
       return;
     }
   }
-  console.log(
+  log.info(
     "[numbro] no matching locale; defaulting to en-US (browser: %s)",
     browserLang,
   );

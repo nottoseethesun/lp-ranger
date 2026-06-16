@@ -21,6 +21,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -80,7 +81,7 @@ function createCacheStore(opts) {
       fsModule.mkdirSync(dir, { recursive: true });
       fsModule.writeFileSync(filePath, JSON.stringify(obj, null, 2), "utf8");
     } catch (err) {
-      console.warn("[cache-store] Failed to persist cache:", err.message);
+      log.warn("[cache-store] Failed to persist cache:", err.message);
     }
   }
 

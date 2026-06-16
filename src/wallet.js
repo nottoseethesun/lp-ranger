@@ -25,7 +25,7 @@
  * import * as ethers from 'ethers';
  *
  * const w = generateWallet(ethers);
- * console.log(w.address, w.mnemonic);
+ * log.info(w.address, w.mnemonic);
  */
 
 "use strict";

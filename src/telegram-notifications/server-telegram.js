@@ -15,6 +15,7 @@
 
 "use strict";
 
+const { log } = require("../log");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
@@ -63,7 +64,7 @@ function createTelegramHandlers(opts) {
           });
         await saveEncryptedKey("telegramBotToken", body.botToken, pw);
         telegram.setBotToken(body.botToken);
-        console.log("[telegram] Bot token saved");
+        log.info("[telegram] Bot token saved");
       }
 
       // Save chat ID (encrypted)
@@ -75,7 +76,7 @@ function createTelegramHandlers(opts) {
           });
         await saveEncryptedKey("telegramChatId", body.chatId, pw);
         telegram.setChatId(body.chatId);
-        console.log("[telegram] Chat ID saved");
+        log.info("[telegram] Chat ID saved");
       }
 
       // Save event preferences to bot-config global section
@@ -84,12 +85,12 @@ function createTelegramHandlers(opts) {
         diskConfig.global.telegramEvents = body.enabledEvents;
         saveConfig(diskConfig);
         telegram.setEnabledEvents(body.enabledEvents);
-        console.log("[telegram] Event preferences saved");
+        log.info("[telegram] Event preferences saved");
       }
 
       jsonResponse(res, 200, { ok: true });
     } catch (err) {
-      console.error("[telegram] Save failed:", err.message);
+      log.error("[telegram] Save failed:", err.message);
       jsonResponse(res, 500, { ok: false, error: err.message });
     }
   }
@@ -136,7 +137,7 @@ function createTelegramHandlers(opts) {
     const hasToken = hasEncryptedKey("telegramBotToken");
     const hasChatId = hasEncryptedKey("telegramChatId");
     if (!hasToken && !hasChatId) {
-      console.log(
+      log.info(
         "[telegram] No encrypted Telegram keys on disk — notifications disabled until configured in Settings.",
       );
       return;
@@ -147,15 +148,15 @@ function createTelegramHandlers(opts) {
         const val = await loadEncryptedKey(svc, password);
         if (svc === "telegramBotToken") telegram.setBotToken(val);
         else telegram.setChatId(val);
-        console.log("[telegram] Decrypted %s", svc);
+        log.info("[telegram] Decrypted %s", svc);
       } catch (err) {
-        console.warn("[telegram] Failed to decrypt %s: %s", svc, err.message);
+        log.warn("[telegram] Failed to decrypt %s: %s", svc, err.message);
       }
     }
     // Restore event preferences from config
     const events = diskConfig.global?.telegramEvents;
     if (events) telegram.setEnabledEvents(events);
-    console.log(
+    log.info(
       "[telegram] Post-unlock state: configured=%s (token=%s, chatId=%s)",
       telegram.isConfigured(),
       hasToken ? "on-disk" : "missing",

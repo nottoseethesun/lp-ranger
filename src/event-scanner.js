@@ -1,5 +1,6 @@
 "use strict";
 
+const { log } = require("./log");
 /**
  * @file event-scanner.js
  * @module eventScanner
@@ -29,7 +30,7 @@ const _BLOCKS_PER_YEAR = Math.round((365.25 * 24 * 3600) / 10); // 3_155_760
  */
 function _throwIfAborted(signal, where) {
   if (signal && signal.aborted) {
-    console.log("[event-scanner] %s aborted via AbortSignal", where);
+    log.info("[event-scanner] %s aborted via AbortSignal", where);
     const err = new Error("Scan aborted");
     err.name = "AbortError";
     throw err;
@@ -78,7 +79,7 @@ async function queryChunk(contract, walletAddress, fromBlock, toBlock) {
     ]);
     results.push(...eventsIn, ...eventsOut);
   } catch (err) {
-    console.warn(
+    log.warn(
       `[event-scanner] chunk ${fromBlock}–${toBlock} failed: ${err.message}`,
     );
   }
@@ -373,7 +374,7 @@ async function scanChunks(
     rawEvents.push(...(await queryChunk(contract, walletAddress, start, end)));
     done++;
     if (done % 50 === 0 || done === totalChunks) {
-      console.log(
+      log.info(
         "[event-scanner] %s: %d/%d chunks scanned (%d events)",
         label,
         done,
@@ -438,7 +439,7 @@ async function _filterByPool(
   );
   const target = `${poolToken0.toLowerCase()}-${poolToken1.toLowerCase()}-${poolFee}`;
   const filtered = transfers.filter((t) => poolMap.get(t.tokenId) === target);
-  console.log(
+  log.info(
     `[event-scanner] Pool filter: ${transfers.length} transfers → ${filtered.length} same-pool`,
   );
   return filtered;
@@ -512,14 +513,14 @@ async function _processRawEvents(
   /*- Diagnostic: surface when a new mint landed but produced no pair
    *  (e.g. a single drain+mint rebalance whose prior mint lives only
    *  in cachedEvents, so Pass 2's mints[i-1] context is missing). */
-  console.log(
+  log.info(
     "[event-scanner] new transfers in window: mints=%d outs=%d → paired=%d",
     newMints.length,
     newOuts.length,
     paired.length,
   );
   if (newMints.length > 0 && paired.length === 0) {
-    console.log(
+    log.info(
       "[event-scanner] WARN: %d new mint(s) produced 0 rebalance pairs; tokenIds=%s",
       newMints.length,
       newMints.map((m) => m.tokenId).join(","),
@@ -675,7 +676,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     signal,
   );
 
-  console.log(`[event-scanner] Raw events found: ${rawEvents.length}`);
+  log.info(`[event-scanner] Raw events found: ${rawEvents.length}`);
   if (rawEvents.length === 0 && cachedEvents.length === 0) {
     /*- Even when both new-scan and cache hold zero rebalance events, the
      *  cache may still carry firstMintTimestamp/firstMintBlockNumber from

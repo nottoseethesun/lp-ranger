@@ -15,6 +15,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
@@ -70,7 +71,7 @@ async function findLastEventOnChain(
       blockNumber: last.blockNumber,
     };
   } catch (err) {
-    console.warn(
+    log.warn(
       "[history] On-chain " +
         eventName +
         " lookup failed for #" +

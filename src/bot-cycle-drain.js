@@ -13,6 +13,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { getTokenSymbol } = require("./server-scan");
 const { notify } = require("./telegram-notifications/telegram");
 
@@ -66,14 +67,14 @@ function checkZeroLiquidity(deps) {
     if (!state.rebalanceInProgress) {
       if (!state.drainedSince) state.drainedSince = now;
       const elapsedMs = now - state.drainedSince;
-      console.log(
+      log.info(
         "[bot] Position closed (0 liquidity) — drained for %ds (retires at %ds)",
         Math.round(elapsedMs / 1000),
         Math.round(DRAINED_RETIRE_MS / 1000),
       );
       if (elapsedMs >= DRAINED_RETIRE_MS) {
         const mins = Math.round(elapsedMs / 60_000);
-        console.log(
+        log.info(
           "[bot] Auto-retiring drained position #%s after ~%dm",
           position.tokenId,
           mins,
@@ -88,14 +89,14 @@ function checkZeroLiquidity(deps) {
         return { rebalanced: false, retired: true, drainedForMs: elapsedMs };
       }
     } else {
-      console.log(
+      log.info(
         "[bot] Position closed (0 liquidity) — rebalance in progress, retirement timer paused",
       );
     }
     return { rebalanced: false };
   }
   if (midwayFail) {
-    console.log(
+    log.info(
       "[bot] Mid-rebalance recovery: 0 liquidity, retrying mint from wallet balances",
     );
   }

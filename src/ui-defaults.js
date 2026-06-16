@@ -15,6 +15,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -72,7 +73,7 @@ function readUiDefaults() {
     if (t !== null) out.privacyUsdAmountThreshold = t;
     return out;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[ui-defaults] Falling back to built-in defaults: %s",
       err.message,
     );

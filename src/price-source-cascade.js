@@ -17,6 +17,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { getTokenSymbol } = require("./token-symbol-cache");
 
 /**
@@ -58,7 +59,7 @@ async function _runOneSource(src, target, fallbackNote) {
     const price = await fn();
     if (price > 0) {
       if (target) {
-        console.log(
+        log.info(
           "[price-fetcher] %s ok%s →$%s%s",
           name,
           target,
@@ -69,7 +70,7 @@ async function _runOneSource(src, target, fallbackNote) {
       return price;
     }
     if (target) {
-      console.warn(
+      log.warn(
         "[price-fetcher] %s miss%s — no data%s",
         name,
         target,
@@ -78,7 +79,7 @@ async function _runOneSource(src, target, fallbackNote) {
     }
     return 0;
   } catch (err) {
-    console.warn(
+    log.warn(
       "[price-fetcher] %s error%s — %s%s",
       name,
       target,
@@ -105,7 +106,7 @@ async function tryPriceSources(sources, ctx = {}) {
     if (price > 0) return price;
   }
   if (target) {
-    console.warn("[price-fetcher] All sources failed%s", target);
+    log.warn("[price-fetcher] All sources failed%s", target);
   }
   return 0;
 }

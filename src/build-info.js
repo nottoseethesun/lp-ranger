@@ -16,6 +16,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -105,14 +106,14 @@ function logVersionBanner(prefix) {
   const bi = getBuildInfo();
   const display = _displayVersion(bi);
   if (display === null) {
-    console.log(
+    log.info(
       prefix + " LP Ranger commit=%s commitDate=%s tag=%s",
       bi.commit,
       bi.commitDate,
       bi.tag || "(none)",
     );
   } else {
-    console.log(
+    log.info(
       prefix + " LP Ranger version=%s commit=%s commitDate=%s tag=%s",
       display,
       bi.commit,

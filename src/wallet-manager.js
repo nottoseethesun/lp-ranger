@@ -28,6 +28,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -85,7 +86,7 @@ function _saveToDisk() {
   // Ensure parent dir exists (e.g. app-config/ on first run).
   fs.mkdirSync(path.dirname(_WALLET_FILE), { recursive: true });
   fs.writeFileSync(_WALLET_FILE, JSON.stringify(data, null, 2), "utf8");
-  console.log(
+  log.info(
     "[wallet] Saved app-config/.wallet.json (%d bytes, exists=%s)",
     JSON.stringify(data).length,
     fs.existsSync(_WALLET_FILE),
@@ -94,7 +95,7 @@ function _saveToDisk() {
 
 /** Remove app-config/.wallet.json from disk. */
 function _removeFromDisk() {
-  console.warn(
+  log.warn(
     "[wallet] Deleting app-config/.wallet.json — stack:",
     new Error().stack,
   );

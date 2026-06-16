@@ -7,6 +7,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
@@ -122,13 +123,13 @@ function createRouteHandlers(deps) {
       const statusBefore = posRef.status;
       Object.assign(posRef, pPatch);
       if (statusBefore && !posRef.status)
-        console.warn(
+        log.warn(
           "[api/config] status WIPED for %s! pPatch keys: %s",
           body.positionKey.slice(-10),
           Object.keys(pPatch).join(", "),
         );
       if (pPatch.offsetToken0Pct !== undefined)
-        console.log(
+        log.info(
           "[offset-trace] POST /api/config key=%s offsetToken0Pct=%d",
           body.positionKey.slice(-10),
           pPatch.offsetToken0Pct,
@@ -150,7 +151,7 @@ function createRouteHandlers(deps) {
 
   async function _handleWalletImport(req, res) {
     const body = await readJsonBody(req);
-    console.log(
+    log.info(
       "[server] Wallet import for %s (running: %d)",
       body.address?.slice(0, 10),
       positionMgr.runningCount(),
@@ -171,11 +172,11 @@ function createRouteHandlers(deps) {
       privateKeyRef.current = (
         await walletManager.revealWallet(body.password)
       ).privateKey;
-      console.log("[bot] Loading key from imported wallet");
+      log.info("[bot] Loading key from imported wallet");
       _decryptApiKeys(body.password).catch(() => {});
       await _autoStartManagedPositions();
     } catch (err) {
-      console.warn("[server] Key resolution after import:", err.message);
+      log.warn("[server] Key resolution after import:", err.message);
     }
   }
 
@@ -215,7 +216,7 @@ function createRouteHandlers(deps) {
       ok: true,
       message: "Shutting down\u2026",
     });
-    console.log("[server] Shutdown requested via API");
+    log.info("[server] Shutdown requested via API");
     await positionMgr.stopAll();
     srv.close(() => process.exit(0));
   }
@@ -227,7 +228,7 @@ function createRouteHandlers(deps) {
         ok: false,
         error: "Missing tokenId, token0, token1, or fee",
       });
-    console.log(
+    log.info(
       "[server] Position selected: NFT #%s %s",
       body.tokenId,
       emojiId(String(body.tokenId)),
@@ -249,7 +250,7 @@ function createRouteHandlers(deps) {
         ),
       );
     } catch (err) {
-      console.error("[server] Position details error:", err.message);
+      log.error("[server] Position details error:", err.message);
       jsonResponse(res, 500, {
         ok: false,
         error: err.message,
@@ -281,7 +282,7 @@ function createRouteHandlers(deps) {
      *  The dashboard's `_syncStatus` gates on the flag only when the
      *  active position is managed. */
     const _sn = s.pnlSnapshot;
-    console.log(
+    log.info(
       "[server] _syncLifetimeState %s: curFees=%s gas=%s comp=%s residual=%s entry=%s bl=%s",
       pk.split("-").pop(),
       _sn?.currentFeesUsd,
@@ -337,7 +338,7 @@ function createRouteHandlers(deps) {
       _syncLifetimeState(pk, result);
       jsonResponse(res, 200, result);
     } catch (err) {
-      console.error("[server] Lifetime details error:", err.message);
+      log.error("[server] Lifetime details error:", err.message);
       jsonResponse(res, 500, {
         ok: false,
         error: err.message,
@@ -353,7 +354,7 @@ function createRouteHandlers(deps) {
    */
   async function _tryResolveKey() {
     if (_starting) {
-      console.log("[server] Start already in progress" + " — skipping");
+      log.info("[server] Start already in progress" + " — skipping");
       return;
     }
     _starting = true;
@@ -380,7 +381,7 @@ function createRouteHandlers(deps) {
           const via = process.env.WALLET_PASSWORD
             ? "WALLET_PASSWORD"
             : "terminal";
-          console.log("[server] Wallet unlocked via %s", via);
+          log.info("[server] Wallet unlocked via %s", via);
         }
       }
 
@@ -388,23 +389,23 @@ function createRouteHandlers(deps) {
         if (askPassword) {
           // --headless: CLI is the only path — don't suggest the dashboard.
           if (walletManager.hasWallet())
-            console.error(
+            log.error(
               "[server] Wallet locked — password not" +
                 " provided. Set WALLET_PASSWORD in .env" +
                 " or re-run with --headless to be prompted.",
             );
           else
-            console.error(
+            log.error(
               "[server] No wallet imported. Run" +
                 " `node scripts/import-wallet.js` first.",
             );
           process.exit(1);
         }
         if (walletManager.hasWallet())
-          console.log(
+          log.info(
             "[server] Wallet locked — unlock" + " via dashboard to start bot.",
           );
-        else console.log("[server] No wallet key" + " — dashboard-only mode.");
+        else log.info("[server] No wallet key" + " — dashboard-only mode.");
         return;
       }
       privateKeyRef.current = pk;
@@ -412,7 +413,7 @@ function createRouteHandlers(deps) {
         _sessionPassword = password;
         _decryptApiKeys(password).catch(() => {});
       } else {
-        console.log(
+        log.info(
           "[server] Wallet key loaded without password — encrypted Telegram/Moralis keys (if any) will NOT be decrypted this session. Unlock via dashboard to enable notifications.",
         );
       }
@@ -450,14 +451,14 @@ function createRouteHandlers(deps) {
     try {
       await saveEncryptedKey(body.service, body.key, pw);
       setApiKey(body.service, body.key);
-      console.log("[server] API key saved for %s — validating…", body.service);
+      log.info("[server] API key saved for %s — validating…", body.service);
       if (body.service === "moralis") {
         const status = await pingMoralis();
-        console.log("[server] Moralis key post-save status: %s", status);
+        log.info("[server] Moralis key post-save status: %s", status);
       }
       jsonResponse(res, 200, { ok: true });
     } catch (err) {
-      console.error("[server] API key save error:", err.message);
+      log.error("[server] API key save error:", err.message);
       jsonResponse(res, 500, { ok: false, error: err.message });
     }
   }
@@ -484,9 +485,9 @@ function createRouteHandlers(deps) {
       try {
         const key = await loadEncryptedKey(svc, password);
         setApiKey(svc, key);
-        console.log("[server] Decrypted API key: %s", svc);
+        log.info("[server] Decrypted API key: %s", svc);
       } catch (err) {
-        console.warn("[server] Failed to decrypt %s key: %s", svc, err.message);
+        log.warn("[server] Failed to decrypt %s key: %s", svc, err.message);
       }
     }
     // Validate Moralis key after decryption

@@ -7,6 +7,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { getPoolState } = require("./rebalancer");
@@ -67,7 +68,7 @@ async function _getLifetimeSnapshot(
   const cached = poolCacheKey ? getCachedEpochs(poolCacheKey) : null;
   const tracker = createPnlTracker({ initialDeposit: deposit || 0 });
   if (cached) tracker.restore(cached);
-  console.log(
+  log.info(
     "[position details] epoch cache: key=%s cached=%d restored=%d t0=%s",
     !!poolCacheKey,
     cached?.closedEpochs?.length || 0,
@@ -206,7 +207,7 @@ async function _computeLifetimeIL(
         poolCacheKey,
       );
     } catch (err) {
-      console.warn("[position details] Lifetime HODL error:", err.message);
+      log.warn("[position details] Lifetime HODL error:", err.message);
       return null;
     }
   }
@@ -354,7 +355,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
    *  Same shared helper bot-loop-detect.js uses. */
   await resolvePositionSymbols(provider, position);
   const _ltT0 = Date.now();
-  console.log(
+  log.info(
     "[position details] Computing lifetime P&L for #%s\u2026",
     body.tokenId,
   );
@@ -432,7 +433,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     cur.value,
     ltCompounded,
   );
-  console.log(
+  log.info(
     "[position details] lifetime tokenId=%s epochs=%d baseline=%s cur.il=%s lt.il=%s",
     body.tokenId,
     tracker.epochCount(),
@@ -441,7 +442,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     lt.il,
   );
   const dailyPnl = _buildDailyFallback(snap, entryValue, cur.value, body);
-  console.log(
+  log.info(
     "[position details] Lifetime P&L for #%s done (%dms)",
     body.tokenId,
     Date.now() - _ltT0,

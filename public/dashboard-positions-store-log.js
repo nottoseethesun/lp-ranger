@@ -11,12 +11,13 @@
  */
 "use strict";
 
+import { log } from "./dashboard-log.js";
 /**
  * Log an entry being passed to `_updateActiveStripDetails` (Pool/Fee
  * at the top of the page + active-pos label).
  */
 export function logStripRender(active) {
-  console.log(
+  log.info(
     "[lp-ranger] [strip-render] tokenId=#%s symbols=%s/%s fee=%s addrs=%s/%s",
     active.tokenId,
     active.token0Symbol || "?",
@@ -32,7 +33,7 @@ export function logStripRender(active) {
  * Stats labels + holdings + token-composition labels).
  */
 export function logLocalRender(pos) {
-  console.log(
+  log.info(
     "[lp-ranger] [local-render] tokenId=#%s symbols=%s/%s fee=%s addrs=%s/%s — paints Position Stats labels + wsPool",
     pos.tokenId,
     pos.token0Symbol || "?",
@@ -75,7 +76,7 @@ export function logDedupRefresh(existing, entry) {
   if (!_diffsPoolIdentity(existing, entry)) return;
   const newFee =
     entry.fee !== undefined && entry.fee !== null ? entry.fee : "(unchanged)";
-  console.log(
+  log.info(
     "[lp-ranger] [posStore] dedup-refresh #%s: %s/%s → %s/%s (fee %s → %s)",
     existing.tokenId,
     existing.token0Symbol || "?",

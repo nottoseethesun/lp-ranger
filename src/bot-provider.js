@@ -7,6 +7,7 @@
  */
 
 "use strict";
+const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 
@@ -32,7 +33,7 @@ function _patchFeeData(provider) {
     const now = Date.now();
     if (config.VERBOSE || now - _lastFeeDataLogAt >= _FEE_LOG_INTERVAL_MS) {
       _lastFeeDataLogAt = now;
-      console.log(
+      log.info(
         "[bot] feeData: gasPrice=%s maxFee=%s maxPriority=%s",
         String(fd.gasPrice),
         String(fd.maxFeePerGas),
@@ -49,17 +50,17 @@ function _patchFeeData(provider) {
       const scaled = (gp * BigInt(Math.round(_mult * 1000))) / 1000n;
       return new ethers.FeeData(scaled, null, null);
     }
-    console.warn(
+    log.warn(
       "[bot] getFeeData returned zero/null — falling back to eth_gasPrice RPC",
     );
     try {
       const gp = BigInt(await provider.send("eth_gasPrice", []));
       if (gp > 0n) {
-        console.log("[bot] eth_gasPrice fallback: %s", String(gp));
+        log.info("[bot] eth_gasPrice fallback: %s", String(gp));
         return new ethers.FeeData(gp, null, null);
       }
     } catch (e) {
-      console.warn("[bot] eth_gasPrice fallback failed:", e.message);
+      log.warn("[bot] eth_gasPrice fallback failed:", e.message);
     }
     return fd;
   };

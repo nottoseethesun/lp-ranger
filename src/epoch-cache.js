@@ -12,6 +12,7 @@
 
 "use strict";
 
+const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 
@@ -32,7 +33,7 @@ function _writeCache(data) {
     fs.mkdirSync(path.dirname(_CACHE_PATH), { recursive: true });
     fs.writeFileSync(_CACHE_PATH, JSON.stringify(data, null, 2), "utf8");
   } catch (err) {
-    console.warn("[epoch-cache] Could not write cache:", err.message);
+    log.warn("[epoch-cache] Could not write cache:", err.message);
   }
 }
 

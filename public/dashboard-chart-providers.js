@@ -13,6 +13,7 @@
  *   each chart site normalises the path segment.
  */
 
+import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
 
 /** In-memory cache populated once at init. */
@@ -40,9 +41,9 @@ export async function loadChartProviders() {
         typeof p.urlTemplate === "string" &&
         p.urlTemplate.includes("{poolId}"),
     );
-    console.log("[chart-providers] loaded %d provider(s)", _providers.length);
+    log.info("[chart-providers] loaded %d provider(s)", _providers.length);
   } catch (err) {
-    console.warn("[chart-providers] fetch failed:", err && err.message);
+    log.warn("[chart-providers] fetch failed:", err && err.message);
   }
 }
 
