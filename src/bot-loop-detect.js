@@ -24,6 +24,10 @@ const { getCachedEpochs, getCachedLifetimeHodl } = require("./epoch-cache");
 const { createPnlTracker } = require("./pnl-tracker");
 const rangeMath = require("./range-math");
 const { getPoolState } = require("./rebalancer");
+const {
+  PoolStateInvalidError,
+  PoolStateUnavailableError,
+} = require("./pool-state-validate");
 const { resolvePositionSymbols } = require("./resolve-position-symbols");
 const {
   positionValueUsd: _positionValueUsd,
@@ -269,6 +273,18 @@ async function _tryInitPnlTracker(
     }
     log.warn("[bot] Could not fetch token prices — P&L tracking disabled");
   } catch (err) {
+    /*- The pool-state errors are user-actionable (manage fails, dialog
+     *  shown).  Re-throw so they propagate up to `handleManage`'s catch
+     *  in `server-positions.js`.  Other errors (price-fetch failures,
+     *  generic RPC hiccups) keep the historical swallow-and-return-null
+     *  behaviour so the bot can run with PnL tracking disabled rather
+     *  than refusing to manage. */
+    if (
+      err instanceof PoolStateInvalidError ||
+      err instanceof PoolStateUnavailableError
+    ) {
+      throw err;
+    }
     log.warn("[bot] P&L tracker init error:", err.message);
   }
   return null;
