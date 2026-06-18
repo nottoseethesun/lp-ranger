@@ -16,6 +16,12 @@ const {
   V3_FEE_TIERS,
 } = require("../src/rebalancer");
 const {
+  _setRetryDelayForTests,
+  PoolStateUnavailableError,
+} = require("../src/rebalancer-pools");
+
+_setRetryDelayForTests(0); // shorten retry waits in failure-path tests
+const {
   ADDR,
   ZERO_ADDRESS,
   Q96,
@@ -59,10 +65,17 @@ describe("getPoolState", () => {
   it("throws when pool is ZeroAddress", async () => {
     const d = defaultDispatch();
     d[ADDR.factory] = { getPool: async () => ZERO_ADDRESS };
+    /*- The retry orchestrator wraps the per-attempt
+     *  `PoolStateInvalidError(poolAddress)` in a
+     *  `PoolStateUnavailableError` after exhausting both RPCs.  Match
+     *  on the wrap-type + assert the underlying poolAddress reason is
+     *  preserved in the message chain. */
     await assert.rejects(
       () =>
         getPoolState({}, buildMockEthersLib({ contractDispatch: d }), poolArgs),
-      { message: /Pool not found/ },
+      (err) =>
+        err instanceof PoolStateUnavailableError &&
+        /poolAddress/.test(err.message),
     );
   });
   it("returns correct tick from slot0", async () => {

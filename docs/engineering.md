@@ -2459,6 +2459,84 @@ surface is covered by the Swagger spec (see
 
 ---
 
+## `getPoolState` Validation + RPC Retry
+
+`getPoolState` in `src/rebalancer-pools.js` is the single entry point
+for reading pool / token state from on-chain contracts (slot0, decimals,
+tickSpacing, derived price). Because the value it returns flows into
+every downstream P&L, IL, rebalance, and lifetime-deposit calculation,
+a silent bad return from a flaky RPC call can poison every consumer
+with `NaN` and never recover &mdash; the original `0.8.0` Prod incident
+where one position's `decimals0` came back `undefined` and produced a
+`$NaN` lifetime-deposit total that stuck the "Syncing&hellip;" badge in
+a forever-rescan loop.
+
+### Validation
+
+Every successful RPC return is validated field-by-field before being
+handed back. Each predicate covers **not-null + correct datatype +
+value range**. Validation logic lives in `src/pool-state-validate.js`
+(error classes + predicates) so `rebalancer-pools.js` stays under the
+500-line cap. Predicates:
+
+- `poolAddress` &mdash; non-null 40-hex string AND not `ZeroAddress`
+- `tickSpacing` &mdash; finite positive integer
+- `tick` &mdash; any integer (signed int24)
+- `decimals0` / `decimals1` &mdash; integer in `[0, 77]` (ERC-20 spec
+  cap)
+- `sqrtPriceX96` &mdash; coerces cleanly to BigInt `> 0n`
+- `price` &mdash; finite number `> 0`
+
+First failure throws `PoolStateInvalidError(field, value, rpcUrl)` so
+the eventual user-facing modal can name exactly which field was bad
+and which RPC produced it.
+
+### Retry
+
+`getPoolState` iterates `[config.RPC_URL, config.RPC_URL_FALLBACK]`,
+constructing a fresh `JsonRpcProvider` for each attempt. Each RPC is
+tried up to 2 times with a 3-second wait between retries. Any failure
+(invalid response, RPC error, network timeout) counts as an attempt
+failure. After exhausting every configured RPC, throws
+`PoolStateUnavailableError(attempts, lastError)` wrapping the most
+recent cause.
+
+The orchestrator bypasses `sendTx`'s managed-provider proxy on
+purpose: targeting a specific RPC URL per attempt would otherwise
+require mutating `sendTx`'s sticky 1-hour failover state, which would
+affect every other concurrent read. Worst-case latency for an
+exhaustion is `2 URLs × 2 attempts + 3 waits = ~10 s` &mdash;
+acceptable for a one-shot setup operation like position-manage.
+
+### User-facing failure path
+
+When `_tryInitPnlTracker` (`src/bot-loop-detect.js`) sees a Pool*Error
+from `getPoolState`, it **re-throws** (the catch otherwise swallows
+everything and returns null). The throw propagates to `handleManage`
+in `src/server-positions.js`, which:
+
+1. Discriminates the error type and returns **`HTTP 503`** with body
+   `{ ok: false, error: "pool-info-unavailable", message: err.message, tokenId }`.
+2. Runs the existing cleanup (drops the in-memory bot state, restores
+   prior disk-config status, clears the `_starting` Set guard), so a
+   subsequent Manage click starts from a clean slate.
+
+The dashboard's `_handleManageFailure` in
+`public/dashboard-events-manage.js` recognizes the
+`pool-info-unavailable` code and renders the warning modal via the
+existing `_createModal` template, injecting the raw `err.message` into
+a 250&times;100 scrollable code block (`.9mm-pos-mgr-err-scroll`) via
+`textContent` (not `innerHTML`) so any markup in the error message is
+neutralized.
+
+### Retry behaviour on subsequent Manage clicks
+
+`getPoolState` is **never cached** (see the function's own JSDoc).
+Each Manage click triggers a fresh full retry chain &mdash; if the
+underlying RPC issue was transient and has cleared, the next click
+succeeds; if the issue persists, the same modal appears. No app
+restart is needed.
+
 ## Dead Code Detection
 
 - `npm run knip` — [Knip](https://knip.dev) — finds unused exports, files,

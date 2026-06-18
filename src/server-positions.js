@@ -19,6 +19,10 @@ const config = require("./config");
 const { setCachedEpochs } = require("./epoch-cache");
 const { startBotLoop } = require("./bot-loop");
 const {
+  PoolStateInvalidError,
+  PoolStateUnavailableError,
+} = require("./pool-state-validate");
+const {
   compositeKey,
   parseCompositeKey,
   saveConfig,
@@ -426,10 +430,27 @@ function createPositionRoutes(deps) {
         // Preserve prior status (e.g. `stopped`) — never auto-promote to running
         posConfig.status = _prevStatus;
       }
-      jsonResponse(res, 500, {
-        ok: false,
-        error: "Failed to start position: " + err.message,
-      });
+      /*- Pool-state errors are user-actionable — surface them as 503 +
+       *  a structured `pool-info-unavailable` code that the dashboard's
+       *  `_handleManageFailure` recognizes and shows in a warning
+       *  modal (with the raw `message` rendered in a scrollable code
+       *  block).  Other errors keep the generic 500 path. */
+      const isPoolStateErr =
+        err instanceof PoolStateInvalidError ||
+        err instanceof PoolStateUnavailableError;
+      if (isPoolStateErr) {
+        jsonResponse(res, 503, {
+          ok: false,
+          error: "pool-info-unavailable",
+          message: err.message,
+          tokenId: body.tokenId,
+        });
+      } else {
+        jsonResponse(res, 500, {
+          ok: false,
+          error: "Failed to start position: " + err.message,
+        });
+      }
       return;
     } finally {
       _starting.delete(key);

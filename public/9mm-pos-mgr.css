@@ -227,6 +227,37 @@ span[title]:not([title=""]):hover {
   color: var(--muted);
 }
 
+/*
+ * Scrollable monospaced error box used by the "Pool info unavailable"
+ * modal in dashboard-events-manage.js.  Both axes scroll; size capped
+ * at 250 x 100 px per design spec so a long stack-trace doesn't push
+ * the rest of the modal off-screen.  Content is injected via
+ * textContent (not innerHTML) at the JS layer, so this class is
+ * purely presentational.
+ */
+.\39 mm-pos-mgr-err-scroll {
+  max-width: 250px;
+  max-height: 100px;
+  overflow: auto;
+  white-space: pre;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 8px;
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+/*
+ * Warning-modal accent border.  Applied alongside the modal's standard
+ * shell class so warnings read as warnings without overriding the base
+ * layout.  Uses the existing Amber Yellow (--warn) palette colour.
+ */
+.\39 mm-pos-mgr-warning-modal {
+  border: 2px solid var(--warn);
+}
+
 .\39 mm-pos-mgr-text-primary {
   color: var(--text);
 }

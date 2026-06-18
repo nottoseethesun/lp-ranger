@@ -22,7 +22,10 @@ import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
 } from "./dashboard-unmanaged.js";
-import { suppressAutoCompoundSync } from "./dashboard-data-status.js";
+import {
+  suppressAutoCompoundSync,
+  _createModal,
+} from "./dashboard-data-status.js";
 import { playSound, SOUND_MANAGE_START } from "./dashboard-sounds.js";
 import {
   applyPrivacyState,
@@ -292,17 +295,33 @@ function _formatPositionSpec(active) {
  * the same dead-RPC walk.  See `src/bot-loop-detect.js`.
  *
  * @param {string} verb    Human verb for the message ("manage"/"unmanage").
- * @param {string} reason  Short reason from server or thrown error.
+ * @param {object|string} payload  Server error body `{ error, message }`
+ *   (preferred) OR a bare reason string (legacy callers / network
+ *   errors that never reached the JSON parse).
  * @param {object} [active] Active position (for the spec line).
  */
-function _handleManageFailure(verb, reason, active) {
-  log.warn("[lp-ranger] [manage] %s failed: %s", verb, reason);
+function _handleManageFailure(verb, payload, active) {
+  /*- Normalize the payload: accept legacy bare strings (network errors,
+   *  HTTP-status-only fallbacks) and the new structured body emitted
+   *  by `handleManage` (`{ error, message, tokenId }`). */
+  const isObj = payload && typeof payload === "object";
+  const code = isObj ? payload.error : payload;
+  const message = isObj ? payload.message : payload;
+  log.warn("[lp-ranger] [manage] %s failed: %s", verb, code || message);
   // Restore the button immediately. updateManageBadge will
   // re-paint correct text on the next status poll (3s).
   const btn = g("manageToggleBtn");
   if (btn) {
     btn.disabled = false;
     btn.textContent = verb === "manage" ? "Manage" : "Stop Managing";
+  }
+  /*- `pool-info-unavailable` (503 from handleManage when getPoolState
+   *  validation + retry was exhausted) is shown in a dedicated warning
+   *  modal so the raw error message can be displayed in a scrollable
+   *  code block.  Other failures keep the alert() path. */
+  if (code === "pool-info-unavailable") {
+    _showPoolInfoUnavailableModal(message, active);
+    return;
   }
   const spec = _formatPositionSpec(active);
   const action = verb === "manage" ? "start managing" : "stop managing";
@@ -311,7 +330,7 @@ function _handleManageFailure(verb, reason, active) {
    *  every miss, so by the time the server returns "No V3 NFT position
    *  found" the next attempt is already routed through the backup. */
   const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
-    reason || "",
+    code || "",
   );
   const retryHint = looksLikeRpcFailure
     ? `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`
@@ -319,7 +338,37 @@ function _handleManageFailure(verb, reason, active) {
   /*- alert() is intentional here — the manage flow is a deliberate user
    *  action and silent failure is what got us into the stuck-UI state
    *  this branch is fixing. */
-  alert(`Couldn't ${action}${spec ? " " + spec : ""}:\n${reason}${retryHint}`);
+  alert(`Couldn't ${action}${spec ? " " + spec : ""}:\n${code}${retryHint}`);
+}
+
+/*- Build + show the "Pool info unavailable" warning modal.  The raw
+ *  server-side `err.message` is injected via `textContent` (NOT
+ *  innerHTML) so a misbehaving RPC that returned markup-laden text
+ *  cannot inject HTML into the page.  Modal body is otherwise a
+ *  static string template — safe to pass to `_createModal`'s
+ *  innerHTML-based body slot. */
+function _showPoolInfoUnavailableModal(rawMessage, active) {
+  const spec = _formatPositionSpec(active);
+  const specHtml = spec
+    ? '<p class="9mm-pos-mgr-text-muted">Position: ' + spec + "</p>"
+    : "";
+  const bodyHtml =
+    "<p>Bringing this position under management failed.</p>" +
+    specHtml +
+    '<div class="9mm-pos-mgr-err-scroll" data-pool-info-err></div>' +
+    '<p class="9mm-pos-mgr-text-muted">' +
+    "See the LP Ranger console log in your Terminal for additional info, " +
+    'then click "Manage" again to retry &mdash; each attempt issues fresh ' +
+    "RPC calls with no cached state." +
+    "</p>";
+  _createModal(
+    "9mm-pos-mgr-pool-info-unavailable-modal",
+    "9mm-pos-mgr-warning-modal",
+    "Pool info unavailable — cannot manage position",
+    bodyHtml,
+  );
+  const slot = document.querySelector("[data-pool-info-err]");
+  if (slot) slot.textContent = rawMessage || "(no detail returned)";
 }
 
 /** Send the DELETE request to stop managing `active`. */
@@ -336,7 +385,7 @@ async function _sendUnmanage(active) {
     const body = await res.json().catch(() => ({}));
     _handleManageFailure(
       "unmanage",
-      body.error || `HTTP ${res.status}`,
+      body.error ? body : `HTTP ${res.status}`,
       active,
     );
     return false;
@@ -366,7 +415,11 @@ async function _sendManage(active) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    _handleManageFailure("manage", body.error || `HTTP ${res.status}`, active);
+    _handleManageFailure(
+      "manage",
+      body.error ? body : `HTTP ${res.status}`,
+      active,
+    );
     return false;
   }
   log.info("[lp-ranger] [manage] started managing #%s", active.tokenId);

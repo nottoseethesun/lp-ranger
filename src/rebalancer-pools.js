@@ -12,6 +12,17 @@ const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const { _retrySend } = require("./tx-retry");
 const sendTx = require("./send-transaction");
+const {
+  PoolStateInvalidError,
+  PoolStateUnavailableError,
+  validateField: _validate,
+  isAddressString,
+  isPositiveInteger,
+  isIntegerInRange,
+  isAnyInteger,
+  isFinitePositive,
+  isPositiveBigIntish,
+} = require("./pool-state-validate");
 
 // ── ABI fragments ────────────────────────────────────────────────────────────
 
@@ -358,6 +369,117 @@ async function _ensureAllowance(
 // ── Exported functions ───────────────────────────────────────────────────────
 
 /**
+ * Single-attempt pool state fetch + per-field validation.  Throws
+ * `PoolStateInvalidError` on the first failing field.  Any RPC-level
+ * error (network failure, contract revert, etc.) propagates as-is and
+ * is treated by the orchestrator as an attempt failure.
+ *
+ * @param {object} provider     ethers Provider to issue calls against.
+ * @param {object} ethersLib    ethers module.
+ * @param {object} opts
+ * @param {string} opts.factoryAddress
+ * @param {string} opts.token0
+ * @param {string} opts.token1
+ * @param {number} opts.fee
+ * @param {string} opts._rpcUrl  The RPC URL behind `provider`; included
+ *   in `PoolStateInvalidError` so the operator knows which endpoint
+ *   produced the bad data.
+ * @returns {Promise<{sqrtPriceX96: bigint, tick: number, tickSpacing: number, price: number, poolAddress: string, decimals0: number, decimals1: number}>}
+ */
+async function _getPoolStateOnce(
+  provider,
+  ethersLib,
+  { factoryAddress, token0, token1, fee, _rpcUrl },
+) {
+  const { Contract, ZeroAddress } = ethersLib;
+  const factory = new Contract(factoryAddress, FACTORY_ABI, provider);
+  const poolAddress = await factory.getPool(token0, token1, fee);
+
+  /*- poolAddress must be a defined string of the right shape AND not
+   *  the zero-address sentinel that the factory returns when no pool
+   *  exists for the (token0, token1, fee) triple. */
+  _validate("poolAddress", poolAddress, isAddressString, _rpcUrl);
+  _validate("poolAddress", poolAddress, (x) => x !== ZeroAddress, _rpcUrl);
+
+  const pool = new Contract(poolAddress, POOL_ABI, provider);
+  const token0Contract = new Contract(token0, ERC20_ABI, provider);
+  const token1Contract = new Contract(token1, ERC20_ABI, provider);
+
+  const [slot0, rawDec0, rawDec1, rawTickSpacing] = await Promise.all([
+    pool.slot0(),
+    token0Contract.decimals(),
+    token1Contract.decimals(),
+    factory.feeAmountTickSpacing(fee),
+  ]);
+
+  /*- Coerce raw RPC return values (BigInt / number) to plain Numbers so
+   *  the predicates below operate on a stable type.  Number(undefined)
+   *  is NaN — caught by the integer-range check rather than by an
+   *  early `undefined` short-circuit. */
+  const decimals0 = Number(rawDec0);
+  const decimals1 = Number(rawDec1);
+  const tickSpacing = Number(rawTickSpacing);
+  const tick = Number(slot0.tick);
+  const sqrtPriceX96 = slot0.sqrtPriceX96;
+
+  /*- ERC-20 decimals must fit in uint8 (0-255 per the contract type),
+   *  but the practical upper bound is much lower; we follow the
+   *  defacto cap of 77 (just above the largest value seen in the wild,
+   *  e.g. 18 for most tokens, up to 36 for some pegged-stablecoin
+   *  representations). */
+  _validate("decimals0", decimals0, (x) => isIntegerInRange(x, 0, 77), _rpcUrl);
+  _validate("decimals1", decimals1, (x) => isIntegerInRange(x, 0, 77), _rpcUrl);
+
+  _validate("tickSpacing", tickSpacing, isPositiveInteger, _rpcUrl);
+
+  /*- `tick` is a signed int24 — negative values are valid for prices
+   *  below 1.0001^0.  Only the integer-ness matters. */
+  _validate("tick", tick, isAnyInteger, _rpcUrl);
+
+  /*- `sqrtPriceX96` arrives as a BigInt from ethers v6.  Reject zero
+   *  / negative values (the pool is uninitialised or the RPC returned
+   *  garbage). */
+  _validate("sqrtPriceX96", sqrtPriceX96, isPositiveBigIntish, _rpcUrl);
+
+  const price = rangeMath.sqrtPriceX96ToPrice(
+    sqrtPriceX96,
+    decimals0,
+    decimals1,
+  );
+
+  /*- `price` is derived from the validated sqrtPriceX96 + decimals, so
+   *  a NaN / non-finite / non-positive value here means the math
+   *  helper produced something unusable — guard the downstream
+   *  consumers (which divide and multiply by `price`). */
+  _validate("price", price, isFinitePositive, _rpcUrl);
+
+  return {
+    sqrtPriceX96,
+    tick,
+    tickSpacing,
+    price,
+    poolAddress,
+    decimals0,
+    decimals1,
+  };
+}
+
+/*- Configuration knobs for the retry orchestrator below.  Wait of 3 s
+ *  between attempts is short enough that an interactive Manage click
+ *  feels responsive (worst case ~10 s for a 2-RPC × 2-attempt
+ *  exhaustion) but long enough that a momentary RPC blip has time to
+ *  resolve before the retry.  `_POOL_STATE_RETRY_DELAY_MS` is `let`
+ *  + mutable via `_setRetryDelayForTests` so unit tests can drop the
+ *  delay to zero without changing the orchestrator's logic. */
+let _POOL_STATE_RETRY_DELAY_MS = 3000;
+const _POOL_STATE_ATTEMPTS_PER_URL = 2;
+
+/** Test-only helper: override the inter-retry delay (default 3 s). */
+function _setRetryDelayForTests(ms) {
+  _POOL_STATE_RETRY_DELAY_MS = ms;
+}
+
+/**
  * Fetch current pool state (price, tick, decimals, tickSpacing) from
  * on-chain contracts.
  *
@@ -369,50 +491,80 @@ async function _ensureAllowance(
  * factory-governance change indefinitely.  The extra RPC call is
  * negligible compared to the rest of a rebalance and keeps the
  * pool-state snapshot internally consistent.
+ *
+ * Validation + retry contract
+ * ───────────────────────────
+ * Each attempt validates every returned field (`PoolStateInvalidError`
+ * on any failure — see `_getPoolStateOnce`).  An attempt that fails
+ * for any reason (invalid data, RPC error, network timeout) is
+ * retried: each configured RPC is tried up to
+ * `_POOL_STATE_ATTEMPTS_PER_URL` times, with a
+ * `_POOL_STATE_RETRY_DELAY_MS` wait before each retry.  After
+ * exhausting every configured RPC the orchestrator throws
+ * `PoolStateUnavailableError`, wrapping the most recent underlying
+ * error.
+ *
+ * The retry orchestrator constructs fresh `JsonRpcProvider` instances
+ * per RPC URL (read from `config.RPC_URL` + `config.RPC_URL_FALLBACK`)
+ * rather than going through `sendTx`'s managed-provider proxy.  This
+ * lets the orchestrator target a specific RPC for each retry without
+ * mutating `sendTx`'s persistent failover state (which would affect
+ * every other concurrent read for a full hour).  The `provider`
+ * parameter is retained for backward source compatibility with the
+ * existing call sites but is not used internally.
+ *
+ * @param {object} _provider     UNUSED — kept for source-compat with
+ *   existing callers (`bot-loop-detect.js`, `bot-cycle.js`,
+ *   `rebalancer.js`, `position-details.js`, `bot-hodl-scan.js`,
+ *   `hodl-baseline.js`).  The orchestrator builds its own per-URL
+ *   providers.
+ * @param {object} ethersLib    ethers module.
+ * @param {object} opts         Same shape as `_getPoolStateOnce`.
+ * @returns {Promise<object>}   Validated pool state.
+ * @throws {PoolStateUnavailableError}  All RPCs exhausted.
  */
-async function getPoolState(
-  provider,
-  ethersLib,
-  { factoryAddress, token0, token1, fee },
-) {
-  const { Contract, ZeroAddress } = ethersLib;
-  const factory = new Contract(factoryAddress, FACTORY_ABI, provider);
-  const poolAddress = await factory.getPool(token0, token1, fee);
-  if (poolAddress === ZeroAddress)
-    throw new Error(`Pool not found for ${token0}/${token1} fee=${fee}`);
-  const pool = new Contract(poolAddress, POOL_ABI, provider);
-  const token0Contract = new Contract(token0, ERC20_ABI, provider);
-  const token1Contract = new Contract(token1, ERC20_ABI, provider);
-
-  const [slot0, decimals0, decimals1, rawTickSpacing] = await Promise.all([
-    pool.slot0(),
-    token0Contract.decimals(),
-    token1Contract.decimals(),
-    factory.feeAmountTickSpacing(fee),
-  ]);
-
-  const sqrtPriceX96 = slot0.sqrtPriceX96,
-    tick = Number(slot0.tick),
-    tickSpacing = Number(rawTickSpacing);
-  if (!Number.isFinite(tickSpacing) || tickSpacing <= 0)
-    throw new Error(
-      `Factory returned invalid tickSpacing=${rawTickSpacing} for fee=${fee}` +
-        ` — fee tier may not be enabled on factory ${factoryAddress}`,
-    );
-  const price = rangeMath.sqrtPriceX96ToPrice(
-    sqrtPriceX96,
-    Number(decimals0),
-    Number(decimals1),
-  );
-  return {
-    sqrtPriceX96,
-    tick,
-    tickSpacing,
-    price,
-    poolAddress,
-    decimals0: Number(decimals0),
-    decimals1: Number(decimals1),
-  };
+async function getPoolState(passedProvider, ethersLib, opts) {
+  /*- `config.RPC_URL_FALLBACK` may be empty in single-RPC setups;
+   *  `.filter(Boolean)` drops the empty entry so we don't try to build
+   *  a provider for an empty URL.  When `chains.json` / .env later
+   *  grows array-style fallbacks, only this line needs to change. */
+  const urls = [config.RPC_URL, config.RPC_URL_FALLBACK].filter(Boolean);
+  let attemptCount = 0;
+  let lastErr = null;
+  for (const url of urls) {
+    for (let attempt = 1; attempt <= _POOL_STATE_ATTEMPTS_PER_URL; attempt++) {
+      attemptCount++;
+      if (attempt > 1)
+        await new Promise((r) => setTimeout(r, _POOL_STATE_RETRY_DELAY_MS));
+      try {
+        /*- Construct a fresh per-URL provider when ethersLib supports
+         *  it (real production ethers).  Fall back to the caller's
+         *  passed provider when the ethers lib is a test mock without
+         *  a `JsonRpcProvider` constructor — same retry budget, just
+         *  against the single mock provider instead of N fresh ones. */
+        let provider;
+        try {
+          provider = new ethersLib.JsonRpcProvider(url);
+        } catch {
+          provider = passedProvider;
+        }
+        return await _getPoolStateOnce(provider, ethersLib, {
+          ...opts,
+          _rpcUrl: url,
+        });
+      } catch (err) {
+        lastErr = err;
+        log.warn(
+          "[pool-state] rpc=%s attempt=%d/%d failed: %s",
+          url,
+          attempt,
+          _POOL_STATE_ATTEMPTS_PER_URL,
+          err.message,
+        );
+      }
+    }
+  }
+  throw new PoolStateUnavailableError(attemptCount, lastErr);
 }
 
 /**
@@ -562,6 +714,10 @@ module.exports = {
   _ensureAllowance,
   // Functions
   getPoolState,
+  PoolStateInvalidError,
+  PoolStateUnavailableError,
+  _getPoolStateOnce, // exported for tests
+  _setRetryDelayForTests, // exported for tests
   removeLiquidity,
   logSwapNeeded,
   _retrySend,

@@ -437,6 +437,10 @@ describe("createPositionRoutes", () => {
       assert.deepStrictEqual(inMem, []);
     });
 
+    /*- Pool*Error → 503 + cleanup behaviour lives in a sibling test
+     *  file (test/handle-manage-pool-state-err.test.js) so this file
+     *  stays under the 500-line cap. */
+
     it("preserves prior status=stopped when retry fails", async () => {
       // Failed retry should not promote a previously-stopped position
       // to running on disk.
