@@ -59,7 +59,7 @@
     "async-mutex": "^0.5.0",
     "csrf": "^3.1.0",
     "dotenv": "^16.0.0",
-    "ethers": "^6.7.1",
+    "ethers": "^6.17.0",
     "jsbi": "^4.3.0",
     "navigo": "^8.11.1",
     "numbro": "^2.5.0"
@@ -97,8 +97,7 @@
       "hardhat-watcher": {
         "hardhat": "npm:empty-npm-package@1.0.0"
       }
-    },
-    "ws": "^8.21.0"
+    }
   },
   "lint-staged": {
     "*.js": "prettier --write"
