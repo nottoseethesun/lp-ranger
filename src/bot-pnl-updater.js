@@ -201,8 +201,14 @@ async function walletResiduals(
   }
 }
 
-/** Compute HODL IL for a given pair of token amounts. */
-function _ilFor(realValue, a0, a1, price0, price1) {
+/** Compute HODL IL for a given pair of token amounts.
+ *  `residualValueUsd` (current pool-scoped wallet residual) is credited
+ *  to the LP-side of the comparison — see computeHodlIL's JSDoc for
+ *  why, and the original verbatim issue from the user: "Wallet
+ *  Residual is not included in overall profit-loss - an oversight
+ *  from our earlier work that is not visible with the bigger tokens
+ *  since those swaps are always easy to do." */
+function _ilFor(realValue, a0, a1, price0, price1, residualValueUsd) {
   return a0 > 0 || a1 > 0
     ? computeHodlIL({
         lpValue: realValue,
@@ -210,6 +216,7 @@ function _ilFor(realValue, a0, a1, price0, price1) {
         hodlAmount1: a1,
         currentPrice0: price0,
         currentPrice1: price1,
+        residualValueUsd: residualValueUsd || 0,
       })
     : undefined;
 }
@@ -245,13 +252,25 @@ function _computeIL(snap, deps, realValue, price0, price1) {
   const bl = deps._botState?.hodlBaseline;
   const curA0 = bl?.hodlAmount0 || 0,
     curA1 = bl?.hodlAmount1 || 0;
-  // Both IL values use LP-only value; residuals are tracked separately
-  // and will roll into lifetime deposit on the next rebalance.
-  snap.totalIL = _ilFor(realValue, curA0, curA1, price0, price1);
+  /*- Credit the current pool-scoped wallet residual to the LP-side of
+   *  the HODL comparison.  Simple "a vs b" comparison per the user's
+   *  mandate: a = (LP value + wallet residual), b = HODL value at
+   *  current prices.  We do NOT subtract the initial-mint residual
+   *  here even though the LP may have absorbed some of it into its
+   *  current value — the user explicitly chose the simple credit over
+   *  full LP-accounting symmetry, so the dashboard shows a number that
+   *  matches "the coins the LP still has, valued today, vs the coins
+   *  you put in, valued today."  Accepted edge case: a freshly minted
+   *  LP that has not yet rebalanced will show +$X of IL/G equal to its
+   *  initial-mint leftover residual until the first rebalance folds
+   *  that leftover into the position. */
+  const rUsd = snap.residualValueUsd || 0;
+  snap.totalIL = _ilFor(realValue, curA0, curA1, price0, price1, rUsd);
   const { a0, a1 } = _lifetimeAmounts(deps, snap);
-  snap.lifetimeIL = _ilFor(realValue, a0, a1, price0, price1);
+  snap.lifetimeIL = _ilFor(realValue, a0, a1, price0, price1, rUsd);
   snap.ilInputs = {
     lpValue: realValue,
+    residualValueUsd: rUsd,
     price0,
     price1,
     cur: { hodlAmount0: curA0, hodlAmount1: curA1 },

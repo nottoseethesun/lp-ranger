@@ -185,7 +185,9 @@ function _buildDailyFallback(snap, entryValue, value, body) {
   ];
 }
 
-/** Compute lifetime IL using accumulated HODL amounts across rebalance chain. */
+/** Compute lifetime IL using accumulated HODL amounts across rebalance chain.
+ *  `residualValueUsd` is the pool-scoped wallet residual to credit to the
+ *  LP-side of the comparison — see computeHodlIL's JSDoc for the rationale. */
 async function _computeLifetimeIL(
   position,
   events,
@@ -194,6 +196,7 @@ async function _computeLifetimeIL(
   price0,
   price1,
   poolAddress,
+  residualValueUsd,
 ) {
   const poolCacheKey = _poolCacheKey(position);
   let hodl = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
@@ -218,6 +221,7 @@ async function _computeLifetimeIL(
     hodlAmount1: hodl.amount1,
     currentPrice0: price0,
     currentPrice1: price1,
+    residualValueUsd: residualValueUsd || 0,
   });
   return { il, hodlAmount0: hodl.amount0, hodlAmount1: hodl.amount1 };
 }
@@ -462,6 +466,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     price0,
     price1,
     ps.poolAddress,
+    cur.residualValueUsd,
   );
   const ltIl = ltResult?.il ?? null;
   await _enrichSnap(
