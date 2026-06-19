@@ -9,8 +9,16 @@
  * avoids bloating `dashboard-wallet.js` past its 500-line cap or
  * pushing `submitUnlock` over the complexity limit.
  *
- * All logs are namespaced `[lp-ranger] [unlock]` so they filter
- * cleanly in DevTools.
+ * All logs are namespaced `[lp-ranger] [unlock]`.  The namespace is
+ * inlined into every format string via a template literal so that
+ * `dashboard-log.js`'s `_withTimestamp` sees a literal `[` at the
+ * start and can route the timestamp injection correctly.  An earlier
+ * version passed NS as a `%s` substitution argument, which produced
+ * `[<timestamp>] [lp-ranger] [unlock] ...` (timestamp first — wrong)
+ * because the `%s` placeholder defeated tag detection.  See
+ * [[feedback-no-classlist-for-state]]'s sibling principle: keep the
+ * data the logger needs to make routing decisions in the format
+ * string itself, not behind a substitution.
  */
 
 import { log } from "./dashboard-log.js";
@@ -65,8 +73,7 @@ export function logSubmitEntry(e, modal, pw) {
   const ev = _eventInfo(e);
   const foc = _docFocus();
   log.info(
-    "%s submitUnlock ENTRY: event=%s isTrusted=%s target=%s modalHidden=%s pwField=%s pwValue.length=%d docHasFocus=%s activeEl=%s",
-    NS,
+    `${NS} submitUnlock ENTRY: event=%s isTrusted=%s target=%s modalHidden=%s pwField=%s pwValue.length=%d docHasFocus=%s activeEl=%s`,
     ev.type,
     ev.isTrusted,
     ev.target,
@@ -80,18 +87,13 @@ export function logSubmitEntry(e, modal, pw) {
 
 /** Log the outbound POST /api/wallet/unlock request. */
 export function logSubmitPost(pw) {
-  log.info(
-    "%s POSTing /api/wallet/unlock (pwLen=%d)",
-    NS,
-    _len(pw && pw.value),
-  );
+  log.info(`${NS} POSTing /api/wallet/unlock (pwLen=%d)`, _len(pw && pw.value));
 }
 
 /** Log the server's response to POST /api/wallet/unlock. */
 export function logSubmitResponse(d) {
   log.info(
-    "%s /api/wallet/unlock response: ok=%s error=%s",
-    NS,
+    `${NS} /api/wallet/unlock response: ok=%s error=%s`,
     d && d.ok,
     (d && d.error) || "(none)",
   );
@@ -99,15 +101,14 @@ export function logSubmitResponse(d) {
 
 /** Log a guard-failure or network error within submitUnlock. */
 export function logSubmitAbort(reason) {
-  log.warn("%s submitUnlock aborted: %s", NS, reason);
+  log.warn(`${NS} submitUnlock aborted: %s`, reason);
 }
 
 /** Log the status response consumed by `checkWalletLocked`. */
 export function logStatus(label, s) {
-  const addr = s && s.address ? s.address.slice(0, 10) + "\u2026" : "(none)";
+  const addr = s && s.address ? s.address.slice(0, 10) + "…" : "(none)";
   log.info(
-    "%s %s status: locked=%s loaded=%s address=%s source=%s",
-    NS,
+    `${NS} %s status: locked=%s loaded=%s address=%s source=%s`,
     label,
     s && s.locked,
     s && s.loaded,
@@ -119,8 +120,7 @@ export function logStatus(label, s) {
 /** Log the locked-branch decision in `checkWalletLocked`. */
 export function logLockedBranch(modal, pw) {
   log.info(
-    "%s locked path: modal=%s modalHidden=%s pwField=%s pwFieldValue.length=%d",
-    NS,
+    `${NS} locked path: modal=%s modalHidden=%s pwField=%s pwFieldValue.length=%d`,
     !!modal,
     _hidden(modal),
     !!pw,
@@ -130,10 +130,10 @@ export function logLockedBranch(modal, pw) {
 
 /** Log a simple free-form diagnostic line, namespaced. */
 export function logInfo(msg) {
-  log.info("%s %s", NS, msg);
+  log.info(`${NS} ${msg}`);
 }
 
 /** Log a warning with a message + optional Error. */
 export function logWarn(msg, err) {
-  log.warn("%s %s%s", NS, msg, err && err.message ? ": " + err.message : "");
+  log.warn(`${NS} ${msg}${err && err.message ? ": " + err.message : ""}`);
 }
