@@ -74,7 +74,7 @@ import {
   posChangePage,
   getPosBrowserSelected,
 } from "./dashboard-positions-browser.js";
-import { refreshManageBadge } from "./dashboard-manage-badge.js";
+import { paintManageUI } from "./dashboard-manage-ui.js";
 export {
   openPosBrowser,
   closePosBrowser,
@@ -193,6 +193,13 @@ function _activateCore(idx, opts) {
   if (_refreshDepositLabel) _refreshDepositLabel();
   _applyPositionConfig(active);
   if (_positionRangeVisual) _positionRangeVisual();
+  /*- Repaint the Manage button + badge + Lifetime panel for the new
+   *  active position.  paintManageUI() is the single owner — it reads
+   *  posStore.getActive() + getLastStatus() + DOM, so we don't need
+   *  to thread state through here.  Runs BEFORE the closed-position
+   *  early-return below so closed switches also repaint (the historic
+   *  bug). */
+  paintManageUI();
   if (isPositionClosed(active) && _enterClosedPosView) {
     _enterClosedPosView(active);
     _updateRoute(active, updateRoute, syncRoute);
@@ -204,7 +211,6 @@ function _activateCore(idx, opts) {
   } catch {
     /* */
   }
-  refreshManageBadge(active);
   _fetchUnmanagedIfNeeded(active);
   if (_pollNow) _pollNow();
   return active;

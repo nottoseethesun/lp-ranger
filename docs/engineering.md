@@ -134,14 +134,32 @@ for consensus or validator rotation).
 
 ## Command-Line Flags
 
-- `--verbose`, `-v` — Enable verbose logging. Shows per-cycle fee details and
-  out-of-range poll diagnostics that are hidden by default. Can also be set
-  via `VERBOSE=1` in `.env` or environment.
-- `--help`, `-h` — Show all command-line options and exit.
-- `bot.js --start-with-price-lookups-unpaused` — Bot-only. Skip the default
-  start-paused state for headless mode (see
-  [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)). Use
-  this when you want continuous P&L cache warming on a headless box.
+All flags are passed through the `npm` script for the relevant entry point.
+npm forwards everything after the `--` separator to the underlying Node
+process unchanged, so `npm start -- --verbose` is identical to running
+`node server.js --verbose` directly. Use the npm form in scripts, CI, and
+documentation — the raw `node` form is an implementation detail.
+
+| Flag | npm Invocation | Description |
+| --- | --- | --- |
+| `--verbose`, `-v` | `npm start -- --verbose` | Verbose logging: per-cycle fee details and out-of-range poll diagnostics that are hidden by default. Can also be set via `VERBOSE=1` in `.env` or environment. |
+| `--log-file [PATH]` | `npm start -- --log-file` | Tee every byte written to `process.stdout` and `process.stderr` to a file (ANSI color escapes stripped so the on-disk log is grep-friendly). `PATH` is optional — when omitted, the path falls through to `app-config/static-tunables/logging.json` and finally to the built-in default `app-config/lp-ranger.log`. With a path: `npm start -- --log-file path/to/run.log`. The file is opened in append mode (multiple runs accumulate); rotate or truncate externally if it grows unbounded. Operators who want the tee always-on can set `"enabled": true` in `logging.json` and run `npm start` with no flag. Implemented by [`src/log-file.js`](../src/log-file.js); wired into both `server.js` and `bot.js` via [`src/boot-log-file.js`](../src/boot-log-file.js). |
+| `--help`, `-h` | `npm start -- --help` | Show all command-line options and exit. |
+| `--start-with-price-lookups-unpaused` | `npm run bot -- --start-with-price-lookups-unpaused` | **Bot-only** (`npm run bot`). Skip the default start-paused state for headless mode (see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)). Use this when you want continuous P&L cache warming on a headless box. |
+
+All flags above work with the alternate entry points too:
+`npm run build-and-start -- <flags>`, `npm run dev -- <flags>`, and
+`npm run bot -- <flags>` (for flags supported by the bot). The `--`
+separator is required for every `npm run …` invocation as well — it is
+NOT a `npm start`-only quirk. For example, to build the dashboard
+bundle and then start the app with log-to-file enabled, use:
+
+```sh
+npm run build-and-start -- --log-file
+```
+
+Without the `--`, npm consumes the flag itself and forwards nothing to
+the script — the tee will silently not engage.
 
 ---
 
@@ -716,6 +734,14 @@ blockchain wallet scans on next start to rebuild caches.
 
 ### Housekeeping
 
+- `npm run clean:log` — Delete the log-to-file output at
+  `app-config/lp-ranger.log` (the file produced when the app is started
+  with `--log-file` or with `enabled: true` in
+  `app-config/static-tunables/logging.json`). No-op when the file is
+  absent. Use this to free disk space, to start a clean capture before
+  a diagnostic session, or to scrub a log before sharing.  The log is
+  NOT automatically rotated — long-lived production tails should run
+  this on a cron or external logrotate setup.
 - `npm run nuke` — Delete `node_modules` + `package-lock.json` for a clean
   reinstall. Run `npm install` afterwards.
 - `npm run wipe-settings` — Back up all user settings/state (`.env`, every
@@ -2536,6 +2562,80 @@ Each Manage click triggers a fresh full retry chain &mdash; if the
 underlying RPC issue was transient and has cleared, the next click
 succeeds; if the issue persists, the same modal appears. No app
 restart is needed.
+
+## Closed-position Re-open Flow
+
+When a position auto-retires (drained for ≥ 30 min, see
+`src/bot-cycle-drain.js`), its `cfg.positions[key].status` flips to
+`stopped`, the bot loop stops, and the NFT is left intact (not
+burned). To bring such a position back to life, the user clicks
+**Manage** on its row in the dashboard. For closed positions, the
+Manage button drives a guided three-step flow instead of starting the
+bot loop directly:
+
+1. **Wallet-token dust check.** Dashboard POSTs
+   `/api/position/can-reopen` with the pair's two token addresses.
+   Server reads on-chain `balanceOf` + token decimals + Moralis price
+   for each, compares each to `getDustThresholdUsd()` from
+   `src/dust.js`, and returns `{ canReopen, balances, dustThresholdUsd }`.
+   `canReopen` is true when at least one of the two tokens is above
+   the dust threshold.
+
+   Reads are wrapped in a retry orchestrator that mirrors the
+   `getPoolState` contract (PR #137): both tokens must read cleanly
+   in a single attempt &mdash; partial failure (one token reads, the
+   other throws) counts as a complete attempt failure to avoid mixing
+   verified + unverified balances in the response. Each configured
+   RPC is tried up to 2 times with a 3 s wait between retries; on
+   exhaustion the handler throws `WalletReadUnavailableError`,
+   mapped to HTTP 503 + `{ error: "wallet-read-unavailable",
+   message }`. The dashboard recognizes the code and shows a
+   dedicated "try again in 10+ minutes" modal with the raw error in
+   the scrollable code box. The `fetchTokenPriceUsd` call is part
+   of the all-or-nothing read &mdash; silently zeroing a missing price
+   would risk a confidently-wrong `isDust: true` verdict.
+2. **Intro modal.** If `canReopen`, dashboard shows a modal explaining
+   that re-open requires a rebalance to seed liquidity from the
+   wallet. Buttons: **OK** (the standard modal close &mdash; user can
+   edit settings and re-click Manage) and **Re-open Position**
+   (proceed).
+3. **Range modal + atomic re-open.** "Re-open Position" opens the
+   existing `rebalanceRangeModal` (the same one the Rebalance button
+   uses for healthy positions); the modal derives "re-open context"
+   purely from position state (closed + not actively managed) rather
+   than from any flag passed in &mdash; impossible to get out of sync.
+   The Confirm button POSTs `/api/position/manage` (NOT
+   `/api/rebalance` &mdash; that route requires a running bot loop)
+   with `{ tokenId, contract, forceRebalance: true, customRangeWidthPct }`.
+   `liquidity` is deliberately omitted: `handleManage`'s
+   autoCompound-default branch keys off `body.liquidity === "0"` and
+   would persist `autoCompoundEnabled: false`, wrong for an
+   actively-managed re-open.
+   `handleManage` stamps `forceRebalance` + `customRangeWidthPct` on
+   the fresh `posBotState` BEFORE starting the bot loop (via
+   `_stampReopenFlags`), so the bot's first `pollCycle` sees the flag
+   and `bot-cycle-drain.js`'s drain guard lets the rebalance pipeline
+   run on the drained NFT in lieu of arming a new 30-min retire
+   timer.
+   If the position is ALREADY running (e.g. the user comes back to
+   Manage after a prior re-open's swap aborted on slippage),
+   `handleManage`'s "already running &mdash; skipping" short-circuit
+   instead routes through `_stampReopenFlagsOnLive`, which stamps the
+   flag onto the live posBotState AND clears
+   `rebalancePaused` / `rebalanceFailedMidway` / `rebalanceError` so
+   the next poll runs a fresh rebalance. Liquidity flips from 0 to
+   positive; position is alive again.
+
+When `!canReopen`, the dashboard shows a single-button modal listing
+the current per-token wallet balances + the dust threshold so the
+user knows exactly what they need to fund. No state change.
+
+UI state for closed positions is also inverted from the prior
+catch-22: **Rebalance is disabled** (cannot rebalance a drained NFT
+directly &mdash; there's no liquidity to remove), **Manage is enabled**
+and routes through the flow above. See `public/dashboard-data.js`
+`_updateRebalanceButtons` and `public/dashboard-manage-badge.js` for
+the button-state logic.
 
 ## Dead Code Detection
 

@@ -57,7 +57,10 @@ import {
   injectDataDeps,
   refreshDepositLabel,
   setConfigInputDefault,
+  getLastStatus,
+  isSyncComplete,
 } from "./dashboard-data.js";
+import { injectManageUIDeps, paintManageUI } from "./dashboard-manage-ui.js";
 import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
@@ -183,6 +186,11 @@ injectPositionDeps({
 });
 injectThrottleDeps({ positionRangeVisual });
 injectPosStoreForEvents(posStore);
+/*- Wire the Manage-UI single owner with read access to posStore and
+ *  the latest /api/status payload.  Done once at init; subsequent
+ *  paintManageUI() calls (from poll, activation, click, wallet
+ *  transitions, etc.) gather their own inputs through these refs. */
+injectManageUIDeps({ posStore, getLastStatus, isSyncComplete });
 const _refetch = (pos) => {
   resetLastFetchedId();
   fetchUnmanagedDetails(pos);
@@ -341,6 +349,16 @@ function _afterDisclaimer() {
   })();
 
   act(ACT_ICONS.play, "start", "Dashboard Ready", "Import a wallet to begin");
+
+  /*- First paint of the Manage button + badge + Lifetime panel.
+   *  Runs once at boot so the user sees the correct state from frame
+   *  one — "Select a position first" if no posStore entries,
+   *  "Loading position state…" if active but /api/status hasn't
+   *  landed yet, or "Unlock wallet to manage positions" if the
+   *  wallet is locked.  Subsequent triggers (poll, activation,
+   *  wallet-unlock) continue to call paintManageUI() through the
+   *  same single owner. */
+  paintManageUI();
 
   // Check if the server already has a wallet loaded (e.g. from a previous page load)
   checkServerWalletStatus();

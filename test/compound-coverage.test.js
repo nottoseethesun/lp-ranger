@@ -355,9 +355,11 @@ describe("server-positions compound state", () => {
     const path = require("path");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-persist-"));
     const { updatePositionState } = require("../src/server-positions");
-    const { getPositionConfig } = require("../src/bot-config-v2");
+    const { getOrCreatePositionConfig } = require("../src/bot-config-v2");
     const cfg = { global: {}, positions: {} };
-    getPositionConfig(cfg, "test");
+    /*- Use the explicit lazy-create form for fixture setup; the non-
+     *  lazy `getPositionConfig` returns null and won't create a slot. */
+    getOrCreatePositionConfig(cfg, "test");
     cfg.positions.test.status = "running";
 
     updatePositionState(

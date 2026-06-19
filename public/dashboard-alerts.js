@@ -92,8 +92,14 @@ function _pausedCopy(message) {
     volatile:
       "Tokens are safe in the wallet. Use the manual Rebalance button when the market calms down.",
   };
+  /*- "Aborted" rather than "Paused": the bot does NOT auto-retry from
+   *  the `rebalancePaused` state — every case here requires user
+   *  action (bump Slippage / send gas / wait for volatility to clear).
+   *  Per the project's prose discipline ([[feedback_paused_vs_aborted]]).
+   *  Future cleanup [[project_split_rebalance_paused_flag]] will rename
+   *  the underlying flag to match. */
   return {
-    title: t ? "Rebalance Paused" : "Rebalance Failed",
+    title: t ? "Rebalance Aborted" : "Rebalance Failed",
     footer: footers[t] || "The bot will keep retrying. Check logs.",
   };
 }
@@ -154,9 +160,22 @@ function _dismissModalById(id) {
 
 function _clearStale(allStates) {
   for (const key of Array.from(_errShown)) {
-    if (!allStates[key]?.rebalancePaused) {
+    const st = allStates[key];
+    const isPaused = !!st?.rebalancePaused;
+    if (isPaused) continue;
+    /*- Position is no longer paused: clear the dedup so a FUTURE
+     *  failure (e.g. user retries via Manage and second attempt also
+     *  aborts on slippage) can fire a fresh modal.  Without this the
+     *  second attempt's `!_errShown.has(key)` guard would block the
+     *  alert and the user would never see the second failure. */
+    _errShown.delete(key);
+    /*- Auto-dismiss the DOM modal ONLY when the position is still
+     *  actively managed AND recovered (running + paused cleared via
+     *  slippage change / success).  Don't dismiss after retire
+     *  (status=stopped) — the user hasn't read the error yet; let
+     *  them click OK when ready. */
+    if (st && st.status === "running") {
       _dismissModalById(_modalIdForKey("rebalanceErrorModal", key));
-      _errShown.delete(key);
     }
   }
   for (const key of Array.from(_recShown)) {

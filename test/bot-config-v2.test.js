@@ -16,6 +16,7 @@ const {
   loadConfig,
   saveConfig,
   getPositionConfig,
+  getOrCreatePositionConfig,
   addManagedPosition,
   removeManagedPosition,
   migratePositionKey,
@@ -78,9 +79,12 @@ describe("bot-config-v2", () => {
 
     it("loads an existing config", () => {
       const dir = tmpDir();
+      /*- `slippagePct` on the position makes this a legitimately-
+       *  running entry (not the bare {status:"running"} phantom signature
+       *  that loadConfig's purge pass removes). */
       const saved = {
         global: { slippagePct: 1.0 },
-        positions: { "key-1": { status: "running" } },
+        positions: { "key-1": { status: "running", slippagePct: 0.5 } },
       };
       fs.writeFileSync(
         path.join(dir, ".bot-config.json"),
@@ -105,7 +109,7 @@ describe("bot-config-v2", () => {
         JSON.stringify({
           global: {},
           managedPositions: ["k1"],
-          positions: { k1: { status: "running" } },
+          positions: { k1: { status: "running", slippagePct: 0.5 } },
         }),
       );
       const loaded = loadConfig(dir);
@@ -155,11 +159,11 @@ describe("bot-config-v2", () => {
   // ── Position management ─────────────────────────────────────────────────
 
   describe("getPositionConfig()", () => {
-    it("creates entry if missing", () => {
+    it("returns null when slot is missing (no lazy create)", () => {
       const cfg = { global: {}, positions: {} };
       const pos = getPositionConfig(cfg, "key-1");
-      assert.deepEqual(pos, {});
-      assert.ok(cfg.positions["key-1"]);
+      assert.equal(pos, null);
+      assert.equal(cfg.positions["key-1"], undefined, "did not create slot");
     });
 
     it("returns existing entry", () => {
@@ -169,6 +173,25 @@ describe("bot-config-v2", () => {
       };
       const pos = getPositionConfig(cfg, "key-1");
       assert.equal(pos.status, "paused");
+    });
+  });
+
+  describe("getOrCreatePositionConfig()", () => {
+    it("creates entry if missing", () => {
+      const cfg = { global: {}, positions: {} };
+      const pos = getOrCreatePositionConfig(cfg, "key-1");
+      assert.deepEqual(pos, {});
+      assert.ok(cfg.positions["key-1"]);
+    });
+
+    it("returns existing entry without overwriting", () => {
+      const cfg = {
+        global: {},
+        positions: { "key-1": { status: "running", slippagePct: 1.2 } },
+      };
+      const pos = getOrCreatePositionConfig(cfg, "key-1");
+      assert.equal(pos.status, "running");
+      assert.equal(pos.slippagePct, 1.2);
     });
   });
 
@@ -363,6 +386,103 @@ describe("bot-config-v2", () => {
       fs.writeFileSync(path.join(dir, ".bot-config.json"), "", "utf8");
       const cfg = loadConfig(dir);
       assert.deepEqual(cfg, { global: {}, positions: {} });
+      fs.rmSync(dir, { recursive: true });
+    });
+  });
+
+  describe("loadConfig phantom purge", () => {
+    it("removes status=running entries that have ONLY the status field", () => {
+      const dir = tmpDir();
+      const onDisk = {
+        global: {},
+        positions: {
+          "pulsechain-0xWALLET-0xCONTRACT-100": { status: "running" }, // phantom
+          "pulsechain-0xWALLET-0xCONTRACT-200": {
+            status: "running",
+            slippagePct: 1,
+            hodlBaseline: { entryValue: 100 },
+          }, // legitimate
+          "pulsechain-0xWALLET-0xCONTRACT-300": { status: "stopped" }, // stopped, untouched
+          "pulsechain-0xWALLET-0xCONTRACT-400": {
+            status: "stopped",
+            hodlBaseline: { entryValue: 50 },
+          }, // stopped + data, untouched
+        },
+      };
+      fs.writeFileSync(
+        path.join(dir, ".bot-config.json"),
+        JSON.stringify(onDisk),
+        "utf8",
+      );
+      const cfg = loadConfig(dir);
+      assert.equal(
+        cfg.positions["pulsechain-0xWALLET-0xCONTRACT-100"],
+        undefined,
+        "phantom purged",
+      );
+      assert.ok(
+        cfg.positions["pulsechain-0xWALLET-0xCONTRACT-200"],
+        "legitimate running entry kept",
+      );
+      assert.equal(
+        cfg.positions["pulsechain-0xWALLET-0xCONTRACT-300"].status,
+        "stopped",
+        "stopped entry untouched",
+      );
+      assert.ok(
+        cfg.positions["pulsechain-0xWALLET-0xCONTRACT-400"].hodlBaseline,
+        "stopped + data untouched",
+      );
+      fs.rmSync(dir, { recursive: true });
+    });
+
+    it("does not touch a stopped entry with only the status field", () => {
+      /*- Conservative signature: status=running is required for purge.
+       *  An entry like { status: "stopped" } is a legitimate post-retire
+       *  state and must survive the purge. */
+      const dir = tmpDir();
+      fs.writeFileSync(
+        path.join(dir, ".bot-config.json"),
+        JSON.stringify({
+          global: {},
+          positions: {
+            "pulsechain-0xWALLET-0xCONTRACT-100": { status: "stopped" },
+          },
+        }),
+        "utf8",
+      );
+      const cfg = loadConfig(dir);
+      assert.equal(
+        cfg.positions["pulsechain-0xWALLET-0xCONTRACT-100"].status,
+        "stopped",
+      );
+      fs.rmSync(dir, { recursive: true });
+    });
+
+    it("does not touch running entries that have any extra field", () => {
+      const dir = tmpDir();
+      fs.writeFileSync(
+        path.join(dir, ".bot-config.json"),
+        JSON.stringify({
+          global: {},
+          positions: {
+            "pulsechain-0xWALLET-0xCONTRACT-100": {
+              status: "running",
+              autoCompoundEnabled: true,
+            },
+          },
+        }),
+        "utf8",
+      );
+      const cfg = loadConfig(dir);
+      assert.equal(
+        cfg.positions["pulsechain-0xWALLET-0xCONTRACT-100"].status,
+        "running",
+      );
+      assert.equal(
+        cfg.positions["pulsechain-0xWALLET-0xCONTRACT-100"].autoCompoundEnabled,
+        true,
+      );
       fs.rmSync(dir, { recursive: true });
     });
   });

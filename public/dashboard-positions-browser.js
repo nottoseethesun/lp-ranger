@@ -24,7 +24,7 @@ import {
   _tokenName,
 } from "./dashboard-positions-store.js";
 import { matchesPosFilter } from "./positions-filter.js";
-import { refreshManageBadge } from "./dashboard-manage-badge.js";
+import { paintManageUI } from "./dashboard-manage-ui.js";
 import { resetLastFetchedId } from "./dashboard-unmanaged.js";
 
 let posBrowserPage = 0;
@@ -214,7 +214,7 @@ export async function removeSelectedPos() {
    *  per-position UI (KPI panel, Mission Control) is left alone — the
    *  poll handles it on next tick, and a full clear would require URL
    *  routing changes that are out of scope for this fix. */
-  refreshManageBadge(posStore.getActive());
+  paintManageUI();
   act(
     ACT_ICONS.cross,
     "alert",
@@ -226,10 +226,20 @@ export async function removeSelectedPos() {
 
 // ── Row rendering (moved from dashboard-positions-store.js) ──────────────────
 
-/** Determine status CSS class and label. */
-function _posRowStatus(e, isManaged, inRange) {
+/*- Determine status CSS class, label, and the display-aware `managed`
+ *  flag for a row.  The "raw" server-side managed-set membership is
+ *  computed here from `_getManagedTokenIds()` rather than passed in,
+ *  so callers can't accidentally use the raw flag (which leaks for
+ *  CLOSED positions whose bot loop is still running from a re-open
+ *  attempt \u2014 see `_stampReopenFlagsOnLive` in `src/server-positions.js`).
+ *  Closed positions always render as `managed: false` regardless of
+ *  raw state, matching the user's mental model: "if liquidity is 0,
+ *  nothing is being managed in any meaningful sense." */
+function _posRowStatus(e, inRange) {
   if (isPositionClosed(e))
     return { cls: "closed", label: "CLOSED", managed: false };
+  const isManaged =
+    e.positionType === "nft" && _getManagedTokenIds().has(String(e.tokenId));
   if (inRange === null)
     return { cls: "closed", label: "\u2014", managed: isManaged };
   return inRange
@@ -279,8 +289,8 @@ function _rowDisplay(e) {
 }
 
 /** Populate the idx cell (index number + optional managed dot). */
-function _fillIdxCell(cell, idxNum, mgd, managed) {
-  cell.classList.toggle("active-idx", mgd);
+function _fillIdxCell(cell, idxNum, managed) {
+  cell.classList.toggle("active-idx", managed);
   cell.replaceChildren();
   cell.appendChild(document.createTextNode(String(idxNum)));
   if (managed) {
@@ -298,11 +308,9 @@ export function renderPosRow(e, selectedIdx) {
   const root = frag.querySelector('[data-tpl="root"]');
   const inR = checkInRange(e);
   const hl = e.index === selectedIdx;
-  const mgd =
-    e.positionType === "nft" && _getManagedTokenIds().has(String(e.tokenId));
-  const { cls, label, managed } = _posRowStatus(e, mgd, inR);
+  const { cls, label, managed } = _posRowStatus(e, inR);
   const { pair, feePct, idStr, ws } = _rowDisplay(e);
-  const star = mgd ? " \u2605" : "";
+  const star = managed ? " \u2605" : "";
   const tL = e.tickLower || 0,
     tU = e.tickUpper || 0;
 
@@ -310,12 +318,7 @@ export function renderPosRow(e, selectedIdx) {
   root.classList.toggle("selected", hl);
   root.setAttribute("data-pos-idx", String(e.index));
 
-  _fillIdxCell(
-    root.querySelector('[data-tpl="idx"]'),
-    e.index + 1,
-    mgd,
-    managed,
-  );
+  _fillIdxCell(root.querySelector('[data-tpl="idx"]'), e.index + 1, managed);
 
   const chip = root.querySelector('[data-tpl="chip"]');
   chip.classList.add(e.positionType);

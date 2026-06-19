@@ -232,16 +232,57 @@ function loadConfig(dir) {
         /* best-effort */
       }
     }
-    return {
+    const cfg = {
       global: raw.global || {},
       positions: raw.positions || {},
     };
+    _purgePhantomEntries(cfg);
+    return cfg;
   } catch (err) {
     log.info(
       "[config] loadConfig: no file or parse error — starting empty (%s)",
       err.message,
     );
     return _empty();
+  }
+}
+
+/**
+ * Remove phantom managed-position stubs left on disk by prior runs.
+ *
+ * Phantom signature: `status === "running"` AND the entry has EXACTLY
+ * one key (`"status"`).  Legitimate entries always carry additional
+ * fields (`hodlBaseline`, `autoCompoundEnabled`, settings overrides,
+ * etc.) — by the time a position is started, `_persistPositionConfig`
+ * has at minimum written `nftGasWeiByTokenId` or similar.
+ *
+ * Phantoms are produced by the bug fixed in this PR: a stale composite
+ * key written by `handleManage` after a key migration during force-
+ * rebalance.  This purge heals any existing `.bot-config.json` that
+ * carries a phantom from before the fix shipped.
+ *
+ * Conservative — never touches an entry with any field besides status
+ * (no false positives possible for a legitimately-running position).
+ *
+ * @param {object} cfg  Mutated in place.
+ */
+function _purgePhantomEntries(cfg) {
+  if (!cfg || !cfg.positions) return;
+  const removed = [];
+  for (const [key, pos] of Object.entries(cfg.positions)) {
+    if (!pos || pos.status !== "running") continue;
+    const fields = Object.keys(pos);
+    if (fields.length === 1 && fields[0] === "status") {
+      delete cfg.positions[key];
+      removed.push(key);
+    }
+  }
+  if (removed.length > 0) {
+    log.warn(
+      "[config] Purged %d phantom managed-position stub(s) (status=running, no other fields): %s",
+      removed.length,
+      removed.join(", "),
+    );
   }
 }
 
@@ -363,12 +404,38 @@ function managedKeys(cfg) {
 }
 
 /**
- * Get or create a position's config section.
+ * Look up a position's config section WITHOUT creating it.  Returns the
+ * mutable reference when present, or `null` when the slot is absent.
+ *
+ * Use this for all read/update sites.  Lazy-create was the source of
+ * the phantom-key bug: a stale composite key passed in after a key
+ * migration would auto-create an empty slot under the now-dead old
+ * tokenId, leaving a `{ status: "running" }`-only stub that the
+ * dashboard's `isPositionManaged` then treated as a live managed
+ * position forever.  Callers that legitimately need to create a fresh
+ * slot (handleManage's first-time creation, addManagedPosition's
+ * status flip) use `getOrCreatePositionConfig` explicitly.
+ *
+ * @param {object} cfg          Config object.
+ * @param {string} positionKey  Composite key.
+ * @returns {object|null}       Mutable reference, or null if missing.
+ */
+function getPositionConfig(cfg, positionKey) {
+  return cfg.positions[positionKey] || null;
+}
+
+/**
+ * Look up a position's config section, creating an empty slot if
+ * absent.  Sole legitimate callers are `addManagedPosition` (which
+ * flips `status="running"` immediately after) and `handleManage`'s
+ * first-time fresh-position creation path.  ANY other caller should
+ * use the non-lazy `getPositionConfig` to avoid resurrecting phantoms.
+ *
  * @param {object} cfg          Config object.
  * @param {string} positionKey  Composite key.
  * @returns {object}            Mutable reference to position config.
  */
-function getPositionConfig(cfg, positionKey) {
+function getOrCreatePositionConfig(cfg, positionKey) {
   if (!cfg.positions[positionKey]) {
     cfg.positions[positionKey] = {};
   }
@@ -382,7 +449,7 @@ function getPositionConfig(cfg, positionKey) {
  * @param {string} [status]     Initial status (default: 'running').
  */
 function addManagedPosition(cfg, positionKey) {
-  const pos = getPositionConfig(cfg, positionKey);
+  const pos = getOrCreatePositionConfig(cfg, positionKey);
   const prev = pos.status;
   pos.status = "running";
   log.info(
@@ -445,6 +512,7 @@ module.exports = {
   loadConfig,
   saveConfig,
   getPositionConfig,
+  getOrCreatePositionConfig,
   readConfigValue,
   addManagedPosition,
   removeManagedPosition,

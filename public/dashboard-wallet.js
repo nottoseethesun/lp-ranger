@@ -21,6 +21,7 @@ import { saveMoralisApiKey } from "./dashboard-events.js";
 import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
 import * as unlockLog from "./dashboard-unlock-log.js";
+import { paintManageUI } from "./dashboard-manage-ui.js";
 
 // ── Re-export the import module ───────────────────────────
 
@@ -609,11 +610,11 @@ export async function submitUnlock(e) {
         b.disabled = true;
         b.title = "Wallet is already unlocked";
       }
-      const mg = g("manageToggleBtn");
-      if (mg) {
-        mg.disabled = false;
-        mg.title = "";
-      }
+      /*- Manage button is repainted by the single owner
+       *  (paintManageUI in dashboard-manage-ui.js) — its compute reads
+       *  isWalletUnlocked() and was set to true above by the unlock
+       *  flow. */
+      paintManageUI();
       act(
         ACT_ICONS.play,
         "wallet",
@@ -665,9 +666,8 @@ export function dismissToViewOnly() {
     b.disabled = false;
     b.title = "Unlock wallet to manage positions";
   }
-  const mg = g("manageToggleBtn");
-  if (mg) {
-    mg.disabled = true;
-    mg.title = "Unlock wallet to manage positions";
-  }
+  /*- Manage button repainted via the single owner — paintManageUI's
+   *  compute sees isWalletUnlocked()=false (view-only mode keeps the
+   *  flag false) and renders the locked-state tooltip. */
+  paintManageUI();
 }

@@ -124,6 +124,27 @@ const MAX_REBALANCES_PER_DAY = parsePositiveInt(
  * off with exponential delay (1 → 2 → 4 → … → 20 min). After this many
  * failures the bot pauses and alerts the user.
  */
+/**
+ * Dashboard's /api/status poll interval (ms).  Hardcoded in
+ * `public/dashboard-data-poll.js` — exported here as the
+ * single source of truth so server-side timing logic that depends on
+ * "the dashboard has had a chance to poll N times" stays in sync if
+ * the interval ever changes.  Update both sites together; a unit test
+ * could enforce the match.
+ */
+const DASHBOARD_POLL_INTERVAL_MS = 3000;
+
+/**
+ * Minimum elapsed wall-clock time after a server-side state change
+ * before we can assume the dashboard has POLLED at least once and
+ * captured it.  Set to 2.5× the poll interval to comfortably cover
+ * 2-3 polls even with jitter / a poll just having fired before the
+ * change.  Used by `bot-loop.js`'s re-open-failure path to delay the
+ * auto-retire so the dashboard reliably sees `rebalancePaused=true`
+ * and fires its alert modal before the state is deleted on retire.
+ */
+const GUARANTEED_DASHBOARD_HAS_POLLED_MS = DASHBOARD_POLL_INTERVAL_MS * 2.5;
+
 const REBALANCE_RETRY_SWAP_LIMIT = parsePositiveInt(
   process.env.REBALANCE_RETRY_SWAP_LIMIT,
   APP_CONFIG.tx.retrySwapLimit,
@@ -211,6 +232,8 @@ module.exports = {
   MIN_REBALANCE_INTERVAL_MIN,
   MAX_REBALANCES_PER_DAY,
   REBALANCE_RETRY_SWAP_LIMIT,
+  DASHBOARD_POLL_INTERVAL_MS,
+  GUARANTEED_DASHBOARD_HAS_POLLED_MS,
   LOG_FILE,
 
   // Contracts

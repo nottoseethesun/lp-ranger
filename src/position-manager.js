@@ -253,8 +253,14 @@ function createPositionManager(opts) {
     const entry = _positions.get(key);
     if (!entry) return;
     if (entry.handle) await entry.handle.stop();
-    _positions.delete(key);
-    log.info("[pos-mgr] Removed position %s", key);
+    /*- During `handle.stop()` an in-flight poll may complete and run a
+     *  rebalance whose `updatePositionState` invokes `migrateKey`,
+     *  rewriting entry.key in place and reseating the entry under the
+     *  new key in `_positions`.  Delete by `entry.key` (the live key)
+     *  rather than the original `key` argument so the in-memory map
+     *  is correctly cleaned regardless of migration timing. */
+    _positions.delete(entry.key);
+    log.info("[pos-mgr] Removed position %s", entry.key);
   }
 
   /**

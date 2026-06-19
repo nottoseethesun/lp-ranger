@@ -191,6 +191,84 @@ async function startBotLoop(opts) {
       Math.round((Date.now() - firstFailureAt) / 60_000),
       isMidway ? `, mid-rebalance retry ${midwayRetryCount}/4` : "",
     );
+    /*- Re-open-attempt path: when the rebalance started with a drained
+     *  NFT (user clicked Manage on an auto-retired closed position,
+     *  bot-cycle.js's `_executeAndRecord` sets the
+     *  `_rebalanceStartedDrained` flag), any failure means we should
+     *  IMMEDIATELY put the position back where it was — closed +
+     *  auto-retired + not managed — rather than leave it stuck in a
+     *  30-min drain-timer limbo while the user wonders why nothing
+     *  is happening.  Signal an immediate retire on the next poll;
+     *  drain.js consumes `_retireImmediately` and fires the existing
+     *  retire path (onRetire → status=stopped → bot loop stops →
+     *  state deleted → dashboard reflects closed/not-managed).  No
+     *  midwayFail / paused — those states would block the retire
+     *  path or stay sticky in the UI. */
+    if (botState._rebalanceStartedDrained) {
+      log.info(
+        "[bot] Re-open attempt for #%s failed — retiring in %ds (dashboard-poll window for alert)",
+        position.tokenId,
+        Math.round(config.GUARANTEED_DASHBOARD_HAS_POLLED_MS / 1000),
+      );
+      /*- Set `rebalancePaused: true` so the dashboard's per-position
+       *  alert modal fires (`dashboard-alerts.js` `_showErrModal`
+       *  gates on `rebalancePaused`).  Without this the user never
+       *  sees what failed. */
+      updateBotState({
+        rebalanceError: errMsg,
+        rebalancePaused: true,
+        rebalanceFailedMidway: false,
+      });
+      log.info(
+        "[bot] _handleError: rebalancePaused=true set for #%s, scheduling retire in %dms",
+        position.tokenId,
+        config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
+      );
+      /*- Delay the actual retire by `config.GUARANTEED_DASHBOARD_HAS_POLLED_MS` so the
+       *  dashboard (3 s poll) reliably catches the paused state and
+       *  fires the alert modal across multiple polls.  Without this
+       *  delay the bot's startup-scan-triggered retire can fire
+       *  within 2 s of the failure, narrower than one poll cycle, and
+       *  the alert is missed on the second / N-th attempt where the
+       *  scan cache is warm and the bot starts faster.  Direct call
+       *  to `_handleRetire` rather than waiting for drain.js's
+       *  `_retireImmediately` poll path so retire fires exactly when
+       *  the delay elapses, regardless of bot-poll interval.  Bails
+       *  if the user took action during the wait (slippage change
+       *  clears rebalancePaused; Manage click sets forceRebalance).  */
+      setTimeout(() => {
+        if (_stopped) {
+          log.info(
+            "[bot] Re-open retire timer: #%s already stopped — skip",
+            position.tokenId,
+          );
+          return;
+        }
+        if (!botState.rebalancePaused) {
+          log.info(
+            "[bot] Re-open retire timer: #%s no longer paused (slippage cleared?) — skip",
+            position.tokenId,
+          );
+          return;
+        }
+        if (botState.forceRebalance) {
+          log.info(
+            "[bot] Re-open retire timer: #%s forceRebalance set (user retried) — skip",
+            position.tokenId,
+          );
+          return;
+        }
+        log.info(
+          "[bot] Re-open retire delay elapsed (%dms) — auto-retiring #%s",
+          config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
+          position.tokenId,
+        );
+        _handleRetire(0).catch((err) =>
+          log.warn("[bot] Re-open retire error: %s", err.message),
+        );
+      }, config.GUARANTEED_DASHBOARD_HAS_POLLED_MS);
+      return;
+    }
     const isSwapAbort = /swap aborted/i.test(errMsg);
     const paused = isSwapAbort || midwayExhausted;
     const displayErr = midwayExhausted
@@ -278,8 +356,25 @@ async function startBotLoop(opts) {
     } else if (
       firstFailureAt &&
       !result.paused &&
-      !botState.rebalanceFailedMidway
+      !result.retired &&
+      !botState.rebalanceFailedMidway &&
+      !botState.rebalancePaused
     ) {
+      /*- `!result.retired` guard: when the retire path fires, the
+       *  result has `retired: true` but no error / rebalanced fields,
+       *  which would otherwise fall through here and log a misleading
+       *  "Price returned to range" message right before the retire.
+       *
+       *  `!botState.rebalancePaused` guard: pollCycle's
+       *  `_isAbortedDrained` short-circuit returns `{rebalanced:
+       *  false}` with no `paused` flag on the result (the gate-based
+       *  paused flag is only set when `_checkRebalanceGates` returns
+       *  early — bypassed here).  Without this check, the recovery
+       *  branch fires for a paused-and-aborted position on the very
+       *  next poll, clearing the `rebalancePaused` flag — which then
+       *  defeats `setTimeout`'s `if (!botState.rebalancePaused)
+       *  return` guard, skipping the scheduled retire and leaving the
+       *  position stuck "running" with no retire and no progress. */
       _handleRecovery();
     }
   }
@@ -297,10 +392,21 @@ async function startBotLoop(opts) {
     );
     _stopped = true;
     clearTimeout(timer);
+    /*- `lastRetiredAt` is a numeric epoch (ms) consumed by the
+     *  dashboard's Manage-button compute (`public/dashboard-manage-ui.js`)
+     *  for its post-retire debounce window — the button stays disabled
+     *  for ~7.5s after retire so the alert modal has time to render before
+     *  the button re-enables.  Separate from the human-readable
+     *  `retiredAt` ISO string because the dashboard's compute is pure
+     *  Date.now() arithmetic and `new Date(iso).getTime()` adds parse
+     *  cost on every poll/render.  Transient signal: NOT persisted to
+     *  disk (drops to undefined on server restart, which is harmless —
+     *  the dashboard simply skips the debounce branch). */
     updateBotState({
       running: false,
       retired: true,
       retiredAt: new Date().toISOString(),
+      lastRetiredAt: Date.now(),
       drainedForMs: drainedForMs || null,
     });
     if (opts.onRetire) {

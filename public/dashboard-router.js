@@ -48,8 +48,33 @@
 
 import { log } from "./dashboard-log.js";
 import Navigo from "navigo";
+import { ethers } from "./ethers-adapter.js";
 import { act, ACT_ICONS } from "./dashboard-helpers.js";
 import { _posLabel } from "./dashboard-data.js";
+
+/*- Browsers canonicalize URL paths to lowercase before sending, so the
+ *  `:wallet` / `:contract` route segments always arrive lowercase even
+ *  if the link was minted with EIP-55 mixed case.  Server-side keys
+ *  (composite key for /api/status, .bot-config.json) are built from
+ *  on-chain reads that ALWAYS return EIP-55 checksum form, so a
+ *  lowercase URL segment used as-is silently misses every server-side
+ *  lookup.  Normalize on entry through `ethers.getAddress` (EIP-55
+ *  checksum), and surface a clear log line on invalid input rather
+ *  than propagating garbage downstream.  See
+ *  [[feedback_eip55_checksum_url_segments]]. */
+function _toChecksum(addr) {
+  if (!addr) return addr;
+  try {
+    return ethers.getAddress(addr);
+  } catch (err) {
+    log.warn(
+      "[lp-ranger] [router] invalid EVM address in URL segment: %s (%s)",
+      addr,
+      err.message,
+    );
+    return addr;
+  }
+}
 
 /** Blockchain name used as the first URL segment. */
 const CHAIN = "pulsechain";
@@ -119,6 +144,11 @@ export function initRouter() {
  */
 function _handlePositionRoute(walletAddr, contract, tokenId) {
   if (!_posStore || !_wallet) return;
+  /*- Checksum URL segments on entry — see header comment on _toChecksum
+   *  for why this is critical (every downstream composite-key lookup
+   *  matches server-side keys built from on-chain checksummed reads). */
+  walletAddr = _toChecksum(walletAddr);
+  contract = _toChecksum(contract);
   // Stale deep-link URL after clean start — clear it so syncRouteToState
   // can later set the correct position (its guard refuses to overwrite 4-segment paths).
   if (!_wallet.address && _posStore.count() === 0) {
@@ -145,6 +175,7 @@ function _handlePositionRoute(walletAddr, contract, tokenId) {
  * @param {string} walletAddr  Wallet address from URL.
  */
 function _handleWalletRoute(walletAddr) {
+  walletAddr = _toChecksum(walletAddr);
   if (!_wallet) return;
 
   if (

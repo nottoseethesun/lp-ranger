@@ -126,11 +126,14 @@ describe("atomic config write", () => {
   it("strips legacy version and managedPositions fields", () => {
     const { saveConfig, loadConfig } = require("../src/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "strip-test-"));
+    /*- `slippagePct` makes this a legitimately-running entry (not the
+     *  bare {status:"running"} phantom signature that the load-time
+     *  purge removes). */
     const cfg = {
       version: 1,
       managedPositions: ["old"],
       global: {},
-      positions: { k: { status: "running" } },
+      positions: { k: { status: "running", slippagePct: 0.5 } },
     };
     saveConfig(cfg, dir);
     const loaded = loadConfig(dir);
@@ -428,9 +431,13 @@ describe("_persistPositionConfig status guard", () => {
     const path = require("path");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cycle-guard-"));
     const { updatePositionState } = require("../src/server-positions");
-    const { getPositionConfig } = require("../src/bot-config-v2");
+    const { getOrCreatePositionConfig } = require("../src/bot-config-v2");
     const cfg = { global: {}, positions: {} };
-    getPositionConfig(cfg, "test-guard");
+    /*- Seed the entry via the explicit lazy-create form (the non-lazy
+     *  `getPositionConfig` returns null and won't create one).  Simulates
+     *  a managed position whose status field has been somehow wiped from
+     *  disk — _persistPositionConfig's status guard then restores it. */
+    getOrCreatePositionConfig(cfg, "test-guard");
     const keyRef = { current: "test-guard" };
     const pm = { migrateKey: () => {} };
     updatePositionState(

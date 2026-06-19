@@ -8,6 +8,7 @@ import {
   posStore,
   updateManagedPositions,
   isPositionManaged,
+  isPositionClosed,
 } from "./dashboard-positions.js";
 import { syncActivePosition } from "./dashboard-active-sync.js";
 import {
@@ -15,8 +16,9 @@ import {
   updateHistorySyncLabels,
 } from "./dashboard-history.js";
 import { wallet } from "./dashboard-wallet.js";
-import { reapplyPrivacyBlur, updateManageBadge } from "./dashboard-events.js";
-import { refreshManageBadge } from "./dashboard-manage-badge.js";
+import { reapplyPrivacyBlur } from "./dashboard-events.js";
+import { updateManageBadge } from "./dashboard-events-manage.js";
+import { paintManageUI } from "./dashboard-manage-ui.js";
 import {
   isViewingClosedPos,
   refetchClosedPosHistory,
@@ -108,8 +110,25 @@ export {
 let _lastStatus = null,
   _historyPopulated = false,
   _configSynced = false;
+/*- Single source of truth for "is the dashboard's view of the active
+ *  position fully synced?".  Set by `_updateSyncBadge` from the same
+ *  `_syncStatus(d)` compute that drives the badge text/class — so
+ *  render and logic share one value, never re-read the DOM to
+ *  recover state.  See [[feedback-no-classlist-for-state]] for the
+ *  rationale.  null = not yet computed (no poll has landed). */
+let _lastSyncComplete = null;
 export function getLastStatus() {
   return _lastStatus;
+}
+/**
+ * Whether the dashboard's view of the currently-active position is
+ * fully synced (i.e. the sync badge would read "Synced").  Use this
+ * everywhere you would otherwise be tempted to read
+ * `syncBadge.classList.contains("done")`.  Returns null until the
+ * first poll lands.
+ */
+export function isSyncComplete() {
+  return _lastSyncComplete;
 }
 import {
   markInputDirty,
@@ -242,8 +261,14 @@ export function applySyncBlur(force) {
   if (force && badge) {
     badge.textContent = "Syncing\u2026";
     badge.classList.remove("done");
+    /*- Mirror the badge reset into the state variable so any reader
+     *  (computeManageUI, click guards, this very function on a re-
+     *  entrant call) sees the same answer.  Per
+     *  [[feedback-no-classlist-for-state]] the state variable is the
+     *  source of truth; the badge class is a projection. */
+    _lastSyncComplete = false;
   }
-  const synced = badge?.classList.contains("done");
+  const synced = _lastSyncComplete === true;
   const cls = "9mm-pos-mgr-syncing-blur";
   for (const id of ["kpiGrid", "rangeRow", "historyRow"])
     g(id)?.classList.toggle(cls, !synced);
@@ -290,10 +315,16 @@ function _updateSyncBadge(d) {
   const badge = g("syncBadge");
   if (!badge) return;
   const { complete: c, label, tip } = _syncStatus(d);
-  if (c !== badge.classList.contains("done"))
+  /*- Compare against the previous JS-state value, not the rendered
+   *  badge class \u2014 per [[feedback-no-classlist-for-state]] the DOM is
+   *  a one-way projection and must never feed back into logic.  Also
+   *  serves as the transition-log gate so we log only when the value
+   *  actually changes. */
+  if (c !== _lastSyncComplete)
     log.info(
       `[lp-ranger] [sync-badge] ${c ? "Synced" : "Syncing"} active=#${posStore.getActive()?.tokenId} rsc=${d.rebalanceScanComplete} lsc=${d.lifetimeScanComplete} pscan=${d._positionScan?.status}`,
     );
+  _lastSyncComplete = c;
   badge.textContent = label || "Syncing\u2026";
   badge.title = tip || "";
   badge.style.background = "";
@@ -304,14 +335,19 @@ function _updateSyncBadge(d) {
    *  safe switch path.  Critically, this lets the user open the browser
    *  and Remove a position that is stuck retrying a force-rebalance the
    *  gas guard keeps deferring — the only graceful halt path for that
-   *  scenario short of a server restart. */
+   *  scenario short of a server restart.
+   *
+   *  Manage button's sync gate moved to dashboard-manage-ui.js's
+   *  computeManageUI() — paintManageUI() runs every poll and reads
+   *  syncBadge.done as one of its inputs, so this loop no longer needs
+   *  to write #manageToggleBtn directly.  Rebalance button (custom
+   *  range) is still handled here because its decision tree is
+   *  simpler and lives nowhere else. */
   const t = !c ? 'Wait until Syncing badge reads "Synced".' : "";
-  for (const id of ["manageToggleBtn", "rebalanceWithRangeBtn"]) {
-    const b = g(id);
-    if (b) {
-      b.disabled = !c;
-      b.title = t;
-    }
+  const rb = g("rebalanceWithRangeBtn");
+  if (rb) {
+    rb.disabled = !c;
+    rb.title = t;
   }
   if (c && !_scanWasComplete && isViewingClosedPos()) refetchClosedPosHistory();
   _scanWasComplete = c;
@@ -384,8 +420,6 @@ const _REB_HELP =
   "LP Ranger is currently submitting transactions to rebalance this LP Position.";
 const _REB_MANUAL =
   "Manually force a rebalance. Automatic rebalancing stays in effect.";
-const _MANAGE_SYNCING_HELP =
-  'This button will be clickable once the "Syncing…" badge above is finished.';
 function _setBtn(el, disabled, title) {
   if (!el) return;
   el.disabled = disabled;
@@ -393,36 +427,24 @@ function _setBtn(el, disabled, title) {
 }
 function _updateRebalanceButtons(d) {
   const on = !!d.rebalanceInProgress;
-  const btn = g("manageToggleBtn"),
-    rb = g("rebalanceWithRangeBtn");
-  /*- When posStore has no active (e.g. just after the LP Browser
-   *  Remove drops the only entry), both buttons must stay disabled.
-   *  The previous logic ignored posStore and re-enabled them on the
-   *  next 3s poll, undoing the disable that refreshManageBadge set
-   *  during Remove — visible to the user as a Manage button that
-   *  briefly looks disabled and then loses both its visual state
-   *  and its "Select a position first" tooltip. */
-  if (!posStore.getActive()) {
-    _setBtn(btn, true, "Select a position first");
+  const rb = g("rebalanceWithRangeBtn");
+  /*- Rebalance-with-range button decision tree.  Manage button is
+   *  no longer touched here — it's owned entirely by paintManageUI()
+   *  in dashboard-manage-ui.js (called once per poll from
+   *  updateDashboardFromStatus).  Each branch below sets ONLY rb. */
+  const active = posStore.getActive();
+  if (!active) {
     _setBtn(rb, true, "Select a position first");
+  } else if (isPositionClosed(active)) {
+    _setBtn(
+      rb,
+      true,
+      'Cannot Rebalance a closed position — click "Manage" to re-open.',
+    );
   } else if (on) {
-    /*- Rebalance in flight: both buttons disabled with the same hint. */
-    _setBtn(btn, true, _REB_HELP);
     _setBtn(rb, true, _REB_HELP);
-  } else if (!_scanWasComplete) {
-    /*- Per-position scan still running (either rebalance-event scan or
-     *  lifetime scan).  Manage button is disabled with the canonical
-     *  syncing hint; manual-rebalance button keeps its usual hint
-     *  unchanged so users can still trigger a rebalance once the bot
-     *  state is otherwise ready. */
-    _setBtn(btn, true, _MANAGE_SYNCING_HELP);
-    _setBtn(rb, on, on ? _REB_HELP : _REB_MANUAL);
   } else {
-    /*- Synced, no rebalance in flight.  Defer to refreshManageBadge so
-     *  the steady-state Manage / Stop Managing tooltip text (set there)
-     *  isn't clobbered each poll. */
-    refreshManageBadge(posStore.getActive());
-    _setBtn(rb, on, on ? _REB_HELP : _REB_MANUAL);
+    _setBtn(rb, false, _REB_MANUAL);
   }
   updateMissionStatusBadge(d);
   updateGasStatusBadge(d);
@@ -529,6 +551,13 @@ function _applyManagedUpdates(data, managed) {
 
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
+  /*- Single Manage-UI paint per poll.  Runs BEFORE any branch that
+   *  may early-return (e.g. cross-wallet skip below), so the button
+   *  always reflects current server state every 3 s regardless of
+   *  whether the rest of the dashboard updates this cycle.  Reads
+   *  state via injected getLastStatus + posStore from
+   *  dashboard-manage-ui.js — no need to thread `data` through. */
+  paintManageUI();
   const _tid = posStore.getActive()?.tokenId;
   log.debug(
     "%c[lp-ranger] [poll] #%s hasPosData=%s stats=%s pool=%s",

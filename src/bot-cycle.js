@@ -40,6 +40,7 @@ const {
 } = require("./bot-cycle-compound");
 const {
   checkZeroLiquidity: _checkZeroLiquidity,
+  isAbortedDrained: _isAbortedDrained,
   DRAINED_RETIRE_MS,
 } = require("./bot-cycle-drain");
 const {
@@ -200,6 +201,16 @@ async function _executeAndRecord(deps, ethersLib) {
   const { release, state, trigger } = await _prepareRebalance(deps);
   try {
     const crw = state.customRangeWidthPct;
+    /*- Re-open detection: if the position is at zero liquidity when the
+     *  rebalance starts, this attempt is a re-open of a previously
+     *  retired position (user clicked Manage on a closed NFT, OR
+     *  manual force-rebalance on a drained position).  Any rebalance
+     *  failure should revert the position immediately to the
+     *  closed/auto-retired state rather than leaving it in a 30-min
+     *  drain-timer limbo (the user's directive: "put it back where it
+     *  was when the Manage button was clicked in the first place").
+     *  Flag is consumed in bot-loop.js's `_handleError`. */
+    state._rebalanceStartedDrained = BigInt(position.liquidity || 0) === 0n;
     const result = await executeRebalance(
       signer,
       ethersLib,
@@ -528,6 +539,13 @@ async function pollCycle(deps) {
   const ethersLib = deps._ethersLib || ethers;
   const emit = deps.updateBotState || (() => {});
   throttle.tick();
+  /*- Aborted-and-drained short-circuit: skip all RPC/Moralis work for
+   *  positions waiting on user-event-driven resolution (Slippage
+   *  change / Manage re-click) OR clock-driven retire (30 min).
+   *  Drain timer still advances via checkZeroLiquidity. */
+  if (_isAbortedDrained(deps)) {
+    return _checkZeroLiquidity(deps) || { rebalanced: false };
+  }
   let poolState;
   try {
     poolState = await getPoolState(provider, ethersLib, {

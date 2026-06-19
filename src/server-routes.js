@@ -34,6 +34,7 @@ const {
   GLOBAL_KEYS,
   POSITION_KEYS,
 } = require("./bot-config-v2");
+const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
 const { createAutoStartManagedPositions } = require("./server-auto-start");
@@ -107,6 +108,23 @@ function createRouteHandlers(deps) {
       if (body[k] !== undefined) pPatch[k] = body[k];
     Object.assign(diskConfig.global, gPatch);
     const hasPosKeys = Object.keys(pPatch).length > 0;
+    /*- Slippage-paused clear runs FIRST so that even if disk persistence
+     *  bails out (404 below), an in-flight paused bot loop still gets
+     *  unblocked by the user's slippage bump.  Operates on bot states
+     *  (in-memory), not disk — orthogonal to the disk persist below. */
+    if (pPatch.slippagePct !== undefined) {
+      for (const [, s] of getAllPositionBotStates())
+        if (s.rebalancePaused) {
+          s.rebalancePaused = false;
+          s.rebalanceError = null;
+          /*- Also clear `_retireImmediately` if set by bot-loop.js's
+           *  re-open-failure path.  Without this, changing Slippage on
+           *  a stuck-aborted re-open would unblock the gates but the
+           *  next poll would still hit drain.js's _retireImmediately
+           *  branch and retire instead of retrying. */
+          s._retireImmediately = false;
+        }
+    }
     if (hasPosKeys) {
       const parsed = parseCompositeKey(body.positionKey);
       if (!parsed) {
@@ -119,30 +137,47 @@ function createRouteHandlers(deps) {
         });
         return;
       }
-      const posRef = getPositionConfig(diskConfig, body.positionKey);
+      /*- Resolve to the LIVE composite key.  The user's POST carries
+       *  body.positionKey captured from a recent dashboard poll; a
+       *  parallel rebalance may have migrated the key out from under
+       *  it.  resolveLiveKey returns the post-migration key when the
+       *  bot state's rebalanceEvents show a chain from the original
+       *  tokenId, else the original key (for stopped positions, disk
+       *  is source of truth and can't migrate). */
+      const liveKey = resolveLiveKey(positionMgr, body.positionKey, (k) =>
+        getAllPositionBotStates().get(k),
+      );
+      /*- Non-lazy getPositionConfig: returns null when slot absent.
+       *  Prior lazy-create wrote the user's patch into a phantom slot
+       *  under the dead old key while the migrated entry never got
+       *  the update — silent loss of user setting + phantom row. */
+      const posRef = getPositionConfig(diskConfig, liveKey);
+      if (!posRef) {
+        jsonResponse(res, 404, {
+          ok: false,
+          error: "position-not-found",
+          message:
+            "Position not found on disk. It may have been stopped, " +
+            "removed, or the tokenId migrated. Refresh the dashboard.",
+        });
+        return;
+      }
       const statusBefore = posRef.status;
       Object.assign(posRef, pPatch);
       if (statusBefore && !posRef.status)
         log.warn(
           "[api/config] status WIPED for %s! pPatch keys: %s",
-          body.positionKey.slice(-10),
+          liveKey.slice(-10),
           Object.keys(pPatch).join(", "),
         );
       if (pPatch.offsetToken0Pct !== undefined)
         log.info(
           "[offset-trace] POST /api/config key=%s offsetToken0Pct=%d",
-          body.positionKey.slice(-10),
+          liveKey.slice(-10),
           pPatch.offsetToken0Pct,
         );
     }
     saveConfig(diskConfig);
-    if (pPatch.slippagePct !== undefined) {
-      for (const [, s] of getAllPositionBotStates())
-        if (s.rebalancePaused) {
-          s.rebalancePaused = false;
-          s.rebalanceError = null;
-        }
-    }
     jsonResponse(res, 200, {
       ok: true,
       applied: { ...gPatch, ...pPatch },
@@ -201,6 +236,7 @@ function createRouteHandlers(deps) {
     jsonResponse,
     readJsonBody,
     getAllPositionBotStates,
+    positionMgr,
     getGlobalScanStatus: () => ({
       status: _globalScanStatus,
       progress: _globalScanProgress,
@@ -335,7 +371,17 @@ function createRouteHandlers(deps) {
         body.contractAddress,
         body.tokenId,
       );
-      _syncLifetimeState(pk, result);
+      /*- Resolve to the LIVE composite key.  computeLifetimeDetails
+       *  awaits multi-second on-chain event scans; during that window
+       *  a parallel rebalance can migrate the key, leaving the stale
+       *  `pk` pointing at a dead tokenId.  _syncLifetimeState would
+       *  then create or update a phantom bot-state entry under that
+       *  stale key (because `if (!states.has(pk)) states.set(pk, s)`
+       *  inside it creates the entry on first access). */
+      const livePk = resolveLiveKey(positionMgr, pk, (k) =>
+        getAllPositionBotStates().get(k),
+      );
+      _syncLifetimeState(livePk, result);
       jsonResponse(res, 200, result);
     } catch (err) {
       log.error("[server] Lifetime details error:", err.message);

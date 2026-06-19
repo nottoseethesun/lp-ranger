@@ -10,16 +10,26 @@ import {
   compositeKey,
   fetchWithCsrf,
 } from "./dashboard-helpers.js";
-import { posStore, isPositionManaged } from "./dashboard-positions.js";
+import {
+  posStore,
+  isPositionManaged,
+  isPositionClosed,
+} from "./dashboard-positions.js";
 import {
   _createModal,
   _posContextHtml,
   _posLabel,
   setOptimisticSpecialAction,
   getLastStatus,
+  isSyncComplete,
 } from "./dashboard-data.js";
 import { findActiveAction } from "./dashboard-mission-badge.js";
 import { showQueuedActionModal } from "./dashboard-compound.js";
+import {
+  paintManageUI,
+  setManageInFlight,
+  manageKey,
+} from "./dashboard-manage-ui.js";
 
 /** @private */
 function _updateRangeHint() {
@@ -43,12 +53,30 @@ function _updateRangeHint() {
   }
 }
 
-/** Open the Rebalance with Updated Range modal. */
+/**
+ * Open the Rebalance with Updated Range modal.
+ *
+ * Re-open context (drained position routed here by the closed-position
+ * Manage flow) is DERIVED from position state — no flag arg, no DOM
+ * attribute — so the modal cannot get out of sync with the position
+ * it's targeting.  A closed position bypasses the "must be managed
+ * first" / "wait for syncing" gates because (a) it WAS auto-retired
+ * so it isn't managed, and (b) the bot loop isn't polling so the sync
+ * badge isn't meaningful for it; the only way to reach this modal for
+ * a closed position is via `runReopenFlow` in
+ * `dashboard-reopen-flow.js`, which already did the dust check and
+ * confirmation dialog.
+ */
 export function openRebalanceRangeModal() {
   const a = posStore.getActive();
+  const closed = a && isPositionClosed(a);
   const managed = a && isPositionManaged(a.tokenId);
-  const synced = g("syncBadge")?.classList.contains("done");
-  if (!managed || !synced) {
+  /*- Read sync completeness from app state — never from
+   *  syncBadge.classList — per [[feedback-no-classlist-for-state]].
+   *  `isSyncComplete()` returns null|true|false (the underlying source
+   *  of truth that `_updateSyncBadge` also uses to set the class). */
+  const synced = isSyncComplete() === true;
+  if (!closed && (!managed || !synced)) {
     _createModal(
       null,
       "9mm-pos-mgr-modal-caution",
@@ -80,24 +108,56 @@ export function updateRebalanceRangeHint() {
   _updateRangeHint();
 }
 
+/*- Read the rebalance range-width input, clamp to a sane range, and
+ *  fall back to the project default of 10% if the value is missing,
+ *  non-finite, zero, negative, or above the 200% input max.  The HTML
+ *  input has `min="0.1" max="200"` but those gates only fire on form
+ *  submit — a hand-typed `-5` or `abc` would otherwise reach the
+ *  server, and the server's `_stampReopenFlags` silently drops
+ *  `<= 0` widths, leaving the bot loop to use its default while the
+ *  user thinks their override applied. */
+function _readValidRangeWidth() {
+  const input = g("rebalanceRangeInput");
+  const parsed = parseFloat(input?.value);
+  if (!Number.isFinite(parsed)) return 10;
+  if (parsed <= 0) return 10;
+  if (parsed > 200) return 10;
+  return parsed;
+}
+
 /** Confirm and trigger a rebalance with the custom range width. */
 export async function confirmRebalanceRange() {
-  const input = g("rebalanceRangeInput");
-  const total = parseFloat(input?.value) || 10;
+  const total = _readValidRangeWidth();
   closeRebalanceRangeModal();
-  /* Disable buttons immediately so the user sees feedback before the fetch. */
+  /*- Disable BOTH buttons synchronously so the user sees feedback the
+   *  instant Confirm is clicked.  The manage-button disable is
+   *  critical for closed-position re-open: this handler is reached
+   *  AFTER _runClosedPositionFlow's `finally` block ran (and cleared
+   *  the in-flight flag), so when the user confirms the range modal,
+   *  the manage button has just been re-painted as ENABLED (closed +
+   *  stopped from stale /api/status).  Without this synchronous
+   *  disable, the manage button stays enabled for the entire 4-minute
+   *  rebalance window because paintManageUI() returns null while
+   *  manageInFlight is set, preserving the prior (enabled) state.
+   *  The setManageInFlight call below seals the disable in across
+   *  polls; this synchronous write seeds the correct state for the
+   *  null-spec path to preserve. */
   const _help =
     "LP Ranger is currently submitting transactions" +
     " to the blockchain to rebalance this LP Position.";
+  const _activeForFlag = posStore.getActive();
   const _btn = g("manageToggleBtn");
-  const _rebBtn = g("rebalanceWithRangeBtn");
   if (_btn) {
     _btn.disabled = true;
     _btn.title = _help;
   }
+  const _rebBtn = g("rebalanceWithRangeBtn");
   if (_rebBtn) {
     _rebBtn.disabled = true;
     _rebBtn.title = _help;
+  }
+  if (_activeForFlag) {
+    setManageInFlight(manageKey(_activeForFlag), true);
   }
   try {
     const active = posStore.getActive();
@@ -119,10 +179,40 @@ export async function confirmRebalanceRange() {
       active.tokenId,
     );
     const inFlight = findActiveAction(getLastStatus()?._allPositionStates);
-    const res = await fetchWithCsrf("/api/rebalance", {
+    /*- Re-open path is derived purely from position state: a closed,
+     *  not-actively-managed NFT can only have reached this confirm
+     *  via `runReopenFlow` (the Rebalance button is disabled for
+     *  closed positions; only the closed-position Manage flow leads
+     *  here).  Route to `/api/position/manage` with `forceRebalance`
+     *  instead of `/api/rebalance` (which rejects for retired
+     *  positions because the bot loop isn't running yet).  The
+     *  manage endpoint atomically starts the bot loop AND stamps the
+     *  rebalance flags so the first poll runs the rebalance pipeline
+     *  on the drained NFT. */
+    const reopenContext =
+      isPositionClosed(active) && !isPositionManaged(active.tokenId);
+    const url = reopenContext ? "/api/position/manage" : "/api/rebalance";
+    /*- Re-open payload deliberately omits `liquidity`: handleManage's
+     *  autoCompound-default branch keys off `body.liquidity === "0"`
+     *  and would persist `autoCompoundEnabled: false`.  For a
+     *  retired position the disk config already has the field set
+     *  from `createOnRetire`, so omitting `liquidity` here is a
+     *  no-op for that path; for a cross-machine fresh install
+     *  pointed at the same NFT (no prior config), omitting `liquidity`
+     *  preserves the default `autoCompoundEnabled: true`, which is
+     *  the correct behaviour for an actively-managed re-open. */
+    const reqBody = reopenContext
+      ? {
+          tokenId: active.tokenId,
+          contract: active.contractAddress,
+          forceRebalance: true,
+          customRangeWidthPct: total,
+        }
+      : { positionKey, customRangeWidthPct: total };
+    const res = await fetchWithCsrf(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positionKey, customRangeWidthPct: total }),
+      body: JSON.stringify(reqBody),
     });
     const data = await res.json();
     if (!data.ok) {
@@ -163,6 +253,15 @@ export async function confirmRebalanceRange() {
       "Server unreachable" + (_p ? "\n" + _p : ""),
     );
     return;
+  } finally {
+    /*- Always clear the manage in-flight flag so the next poll's
+     *  paintManageUI() can transition the button to the steady-state
+     *  "Rebalance in progress" disabled view (server-derived) instead
+     *  of being stuck on this click's transient optimistic state. */
+    if (_activeForFlag) {
+      setManageInFlight(manageKey(_activeForFlag), false);
+      paintManageUI();
+    }
   }
   const _pl = _posLabel();
   act(

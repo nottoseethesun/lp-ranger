@@ -304,6 +304,27 @@ async function appendToPoolCache(position, wallet, result) {
     position.fee,
     events.length,
   );
+  /*- Invalidate the in-memory `_recentScans` entry for this pool+wallet
+   *  so any queued `scanPoolHistory()` call that was waiting on the
+   *  per-pool lock from a scan-in-progress doesn't short-circuit to the
+   *  stale cached events at line 141.  Repro: rebalance fires
+   *  appendToPoolCache; a scan started before the rebalance is still
+   *  running (holding the lock for many seconds); a new scan queued
+   *  AFTER the rebalance acquires the lock when the old one releases,
+   *  finds the still-fresh-by-TTL `_recentScans` entry, and returns
+   *  the events list from BEFORE the rebalance \u2014 missing the new
+   *  oldTokenId/newTokenId pair.  Symptom: dashboard's Rebalance Events
+   *  table and `_resolveManagedTid` auto-follow miss the just-completed
+   *  rebalance until the next 60s TTL expiry forces a real rescan.
+   *  Mirrors the same recentKey-delete pattern used in cancelPoolScan. */
+  const tag =
+    position.token0.slice(0, 8) +
+    "\u2026/" +
+    position.token1.slice(0, 8) +
+    "\u2026 fee=" +
+    position.fee;
+  const recentKey = tag + ":" + (wallet || "").slice(0, 8);
+  _recentScans.delete(recentKey);
 }
 
 module.exports = {
@@ -312,4 +333,11 @@ module.exports = {
   cancelPoolScan,
   clearPoolCache,
   appendToPoolCache,
+  /*- Test-only window onto the module-private `_recentScans` Map so the
+   *  regression test for appendToPoolCache's cache-invalidation
+   *  behaviour can seed and inspect entries without going through a
+   *  full mocked scanPoolHistory run.  Mirrors the test-only-export
+   *  pattern used by `_withTimestamp` / `_setSinkForTests` in
+   *  `src/log.js`. */
+  _recentScansForTests: _recentScans,
 };

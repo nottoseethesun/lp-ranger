@@ -10,6 +10,14 @@ const COMMON = `
 Options:
   --verbose, -v   Show detailed per-cycle logs (fee details,
                   OOR poll diagnostics). Also: VERBOSE=1 in .env.
+  --log-file [PATH]
+                  Tee all console output to a file (ANSI escapes
+                  stripped).  PATH is optional — defaults to
+                  app-config/lp-ranger.log (or the path set in
+                  app-config/static-tunables/logging.json).  File is
+                  opened in append mode; rotate externally if it
+                  grows.  Operators can enable persistently by
+                  setting "enabled": true in the JSON.
   --help, -h      Show this help message and exit.
 
 Environment:

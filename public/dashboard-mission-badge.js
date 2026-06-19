@@ -186,16 +186,40 @@ function _paintExtras(entries) {
   }
 }
 
-/*- If the server has confirmed our optimistic action (same kind on
- * the position the click was made on), retire the latch so future
- * signal comparisons use the authoritative server timestamp. */
-function _maybeClearLatch(serverList) {
+/*- Clear the optimistic latch when EITHER:
+ *  (a) the server has confirmed our optimistic action (same kind on
+ *      the position the click was made on), OR
+ *  (b) the latched position is no longer in `allStates` at all —
+ *      meaning the server retired it (e.g., the immediate-retire path
+ *      after a failed re-open).  Without (b) the badge would linger
+ *      for the full _OPT_TIMEOUT_MS (90 s) on every aborted re-open,
+ *      since the bot's abort + retire can complete inside one
+ *      bot-poll window without the dashboard ever observing
+ *      `rebalanceInProgress=true`. */
+function _maybeClearLatch(serverList, allStates) {
   if (!_optKind) return;
   const clickedTokenId = _optInfo?.tokenId;
   const confirmed = serverList.some(
     (a) => a.tokenId === clickedTokenId && a.kind === _optKind,
   );
-  if (!confirmed) return;
+  /*- After retire, the disk config still has the position as
+   *  `status=stopped` so `allStates[key]` is non-undefined — checking
+   *  for absence misses the retire case.  Instead detect "no longer
+   *  actively managed": the matched entry exists but has status !==
+   *  "running" (and no in-progress flags).  Also clear if the entry
+   *  was never seen at all (defensive). */
+  const stateEntry = allStates
+    ? Object.entries(allStates).find(
+        ([key]) => key.split("-").pop() === String(clickedTokenId),
+      )
+    : null;
+  const st = stateEntry ? stateEntry[1] : null;
+  const positionGone =
+    !st ||
+    (st.status !== "running" &&
+      !st.rebalanceInProgress &&
+      !st.compoundInProgress);
+  if (!confirmed && !positionGone) return;
   _optKind = null;
   _optAt = 0;
   _optInfo = null;
@@ -237,7 +261,7 @@ export function updateMissionStatusBadge(d) {
     _lastServerSig = sig;
     _lastServerAt = Date.now();
   }
-  _maybeClearLatch(serverList);
+  _maybeClearLatch(serverList, d?._allPositionStates);
   const list = _buildList(serverList);
   _paintPrimary(list[0] || null);
   _paintExtras(list.slice(1));

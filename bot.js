@@ -16,6 +16,12 @@
 
 "use strict";
 
+/*- Boot wiring for the --log-file CLI flag + logging.json static
+ *  tunable.  MUST run before any log output so the file captures the
+ *  startup banner.  No-op when neither source opts in.  See
+ *  src/boot-log-file.js + src/log-file.js. */
+require("./src/boot-log-file").bootLogFile();
+
 const { log } = require("./src/log");
 // Very first statement of the bot process — bot-banner prints on require
 // (side effect, cached so it fires exactly once per process). Required first

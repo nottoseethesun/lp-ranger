@@ -60,7 +60,21 @@ function checkZeroLiquidity(deps) {
   const { position } = deps;
   const state = deps._botState || {};
   const drained = BigInt(position.liquidity || 0) === 0n;
-  const midwayFail = !!state.rebalanceFailedMidway;
+  /*- Re-open-failure retire is handled DIRECTLY by bot-loop.js's
+   *  `_handleError` via `setTimeout(_handleRetire, GUARANTEED_DASHBOARD_HAS_POLLED_MS)`.
+   *  No drain.js branch for `_retireImmediately` — an earlier defense-in-
+   *  depth flag was fired by drain.js BEFORE the setTimeout could elapse
+   *  (drain.js runs from the scan-completion pollCycle, within ~2 s of
+   *  the failure), preempting the dashboard-poll window.  Removed.  */
+  /*- `rebalanceFailedMidway` flags a "needs mint retry from wallet"
+   *  state.  When the bot is also `rebalancePaused` (slippage abort —
+   *  the rebalance has been ABORTED, not "paused" per the user-facing
+   *  taxonomy; see [[feedback_paused_vs_aborted]]), no automatic retry
+   *  will fire (the gate in `_checkRebalanceGates` blocks at paused).
+   *  Treat aborted-drained as equivalent to pristine-drained for drain-
+   *  timer purposes so the 30-min auto-retire safety net still fires;
+   *  user must adjust Slippage or click Manage to retry before then. */
+  const midwayFail = !!state.rebalanceFailedMidway && !state.rebalancePaused;
   const now = Date.now();
   if (!drained && state.drainedSince) state.drainedSince = null;
   if (drained && !state.forceRebalance && !midwayFail) {
@@ -103,7 +117,31 @@ function checkZeroLiquidity(deps) {
   return null;
 }
 
+/**
+ * True when the position is in the "aborted-and-drained" terminal
+ * state: a prior rebalance failed (e.g., slippage), leaving wallet
+ * tokens + 0 NFT liquidity, and `rebalancePaused` is set so the gate
+ * in `_checkRebalanceGates` will block any retry until the user
+ * adjusts Slippage or clicks Manage.  Used by `pollCycle` to skip
+ * pool-state / pnl / Moralis work for the duration of this state —
+ * none of those resolution paths require fresh data.
+ *
+ * @param {object} deps  pollCycle deps (uses `position`, `_botState`).
+ * @returns {boolean}
+ */
+function isAbortedDrained(deps) {
+  const drained = BigInt(deps.position.liquidity || 0) === 0n;
+  if (!drained || deps._botState?.forceRebalance) return false;
+  /*- User-aborted (paused awaiting user action).  Short-circuit
+   *  pollCycle: no pool-state read, no pnl computation, no Moralis
+   *  fetches — just advance the drain timer via checkZeroLiquidity.
+   *  Re-open failures retire via bot-loop.js's setTimeout, not via
+   *  drain.js, so no extra flag needed here. */
+  return !!deps._botState?.rebalancePaused;
+}
+
 module.exports = {
   checkZeroLiquidity,
+  isAbortedDrained,
   DRAINED_RETIRE_MS,
 };

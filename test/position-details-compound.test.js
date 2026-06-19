@@ -35,7 +35,15 @@ describe("_scanCompounds", () => {
 
   it("returns total and updates in-memory config when compounds found", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test2-"));
-    const cfg = { global: {}, positions: {} };
+    /*- Pre-seed the position slot — _scanCompounds no longer lazy-
+     *  creates on the write path; the write is skipped when the slot
+     *  is absent (so we don't resurrect phantoms for unmanaged
+     *  positions).  This test mimics a MANAGED position where the
+     *  slot already exists. */
+    const cfg = {
+      global: {},
+      positions: { "test-key": { status: "running" } },
+    };
     const result = await _scanCompounds(
       { tokenId: "200", token0: "0xA", token1: "0xB", fee: 3000 },
       [{ oldTokenId: "199", newTokenId: "200" }],
