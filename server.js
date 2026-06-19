@@ -359,6 +359,7 @@ const {
 
 const { createRouteHandlers } = require("./src/server-routes");
 const { readNftProviders } = require("./src/nft-providers");
+const { createApiStatusHandler } = require("./src/handle-api-status");
 const { askPassword: _askPassword } = require("./src/ask-password");
 
 const _routeHandlers = createRouteHandlers({
@@ -401,82 +402,19 @@ const _routes = {
       port: config.PORT,
       ts: Date.now(),
     }),
-  "GET /api/status": async (_, res) => {
-    const posDefaults = {
-      rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
-      rebalanceTimeoutMin: config.REBALANCE_TIMEOUT_MIN,
-      slippagePct: config.SLIPPAGE_PCT,
-      checkIntervalSec: config.CHECK_INTERVAL_SEC,
-      minRebalanceIntervalMin: config.MIN_REBALANCE_INTERVAL_MIN,
-      maxRebalancesPerDay: config.MAX_REBALANCES_PER_DAY,
-      gasStrategy: "auto",
-    };
-    const positions = buildStatusPositions(
-      _diskConfig,
-      posDefaults,
-      _positionMgr,
-      config,
-    );
-    const gasStatus = await buildGasStatusPayload({
-      positionCount: _positionMgr.runningCount(),
-      toUsd: actualGasCostUsd,
-    });
-    jsonResponse(res, 200, {
-      global: {
-        walletAddress: walletManager.getAddress(),
-        positionScan: _routeHandlers.getPositionScanStatus(),
-        port: config.PORT,
-        host: config.HOST,
-        rpcUrl: config.RPC_URL,
-        positionManager: config.POSITION_MANAGER,
-        /*- Single source of truth for the NFT-issuer label is
-         *  app-config/static-tunables/nft-providers.json (address-keyed
-         *  map, also served by GET /api/nft-providers for the dashboard
-         *  NFT panel and read by src/telegram-notifications/balanced-notifier.js for the
-         *  Telegram header). Look it up here so the legacy `pmName`
-         *  consumers (Activity log, alerts, baseline) stay in sync
-         *  without holding a duplicate copy of the string. */
-        positionManagerName:
-          readNftProviders()[(config.POSITION_MANAGER || "").toLowerCase()] ||
-          "",
-        chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
-        defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
-        compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
-        compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
-        factory: config.FACTORY,
-        scanTimeoutMs: config.SCAN_TIMEOUT_MS,
-        /*- Dashboard poll cadence + retire-debounce window are config
-         *  values so the dashboard reads them from /api/status instead
-         *  of duplicating the literal.  GUARANTEED_DASHBOARD_HAS_POLLED_MS
-         *  is derived from DASHBOARD_POLL_INTERVAL_MS * 2.5 in
-         *  src/config.js — single source of truth.  Dashboard's post-
-         *  retire Manage-button debounce reads guaranteedDashboardHasPolledMs
-         *  to gate the disable window. */
-        dashboardPollIntervalMs: config.DASHBOARD_POLL_INTERVAL_MS,
-        guaranteedDashboardHasPolledMs:
-          config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
-        ...posDefaults,
-        ..._diskConfig.global,
-        managedPositions: (() => {
-          const r = _positionMgr.getAll();
-          const rk = new Set(r.map((p) => p.key));
-          return [
-            ...r,
-            ...managedKeys(_diskConfig)
-              .filter((k) => !rk.has(k))
-              .map((k) => ({
-                key: k,
-                tokenId: k.split("-").pop(),
-                status: _diskConfig.positions[k]?.status || "running",
-              })),
-          ];
-        })(),
-        poolDailyCounts: _positionMgr.getPoolDailyCounts(),
-        gasStatus,
-      },
-      positions,
-    });
-  },
+  "GET /api/status": createApiStatusHandler({
+    config,
+    diskConfig: _diskConfig,
+    positionMgr: _positionMgr,
+    walletManager,
+    routeHandlers: _routeHandlers,
+    buildStatusPositions,
+    buildGasStatusPayload,
+    actualGasCostUsd,
+    readNftProviders,
+    managedKeys,
+    jsonResponse,
+  }),
   "GET /api/wallet/status": (_, res) =>
     jsonResponse(res, 200, {
       ...walletManager.getStatus(),
