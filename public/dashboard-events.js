@@ -117,13 +117,15 @@ import {
   bindDelegatedEvents,
 } from "./dashboard-events-manage.js";
 
-/* Re-export manage module so existing
-   importers don't need changes. */
+/*- Re-export only the symbols dashboard-events.js's external callers
+ *  use that don't have a more specific owner.  `updateManageBadge` is
+ *  imported directly from dashboard-events-manage.js by its sole caller
+ *  (dashboard-data.js) — no barrel needed; closes a latent
+ *  feedback_no_reexports violation. */
 export {
   reapplyPrivacyBlur,
   restorePrivacyMode,
   injectPosStoreForEvents,
-  updateManageBadge,
 } from "./dashboard-events-manage.js";
 
 /** @param {string} id  @param {Function} fn */

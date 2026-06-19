@@ -14,9 +14,11 @@ import {
   botConfig,
 } from "./dashboard-helpers.js";
 import { copyText } from "./dashboard-wallet.js";
+import { isPositionClosed } from "./dashboard-positions-store.js";
+import { runReopenFlow } from "./dashboard-reopen-flow.js";
 import { getProviderLabel } from "./dashboard-nft-providers.js";
 import { paintChartLinks } from "./dashboard-chart-providers.js";
-import { resetHistoryFlag } from "./dashboard-data.js";
+import { resetHistoryFlag, isSyncComplete } from "./dashboard-data.js";
 import { clearHistory } from "./dashboard-history.js";
 import {
   fetchUnmanagedDetails,
@@ -31,7 +33,11 @@ import {
   applyPrivacyState,
   forceBothSubOptionsOn,
 } from "./dashboard-privacy-subform.js";
-import { applyLifetimeUnmanagedUI } from "./dashboard-manage-badge.js";
+import {
+  paintManageUI,
+  setManageInFlight,
+  manageKey,
+} from "./dashboard-manage-ui.js";
 
 // ── Privacy ─────────────────────────────────────────
 
@@ -259,12 +265,14 @@ export async function _reloadCurrentPosition() {
 
 // ── Manage toggle ───────────────────────────────────
 
-/*- Single-flight guard: prevents (a) double-click race firing two POSTs,
- *  and (b) the 3-second status poll's updateManageBadge() from
- *  overwriting the in-flight "Managing\u2026" / "Stopping\u2026" button text
- *  before the request resolves.  Tracked client-side per page (server
- *  has its own `_starting` Set guard for nonce safety). */
-let _manageInFlight = false;
+/*- Single-flight is now per-position via `setManageInFlight(key, on)`
+ *  in dashboard-manage-ui.js.  Click handlers stamp the key on entry
+ *  and clear it in finally.  paintManageUI() consults the Map and
+ *  returns null when the flag is set so the optimistic "Managing\u2026" /
+ *  "Stopping\u2026" text survives across poll cycles.  Keying by
+ *  walletAddress-contractAddress-tokenId prevents the prior page-scoped
+ *  boolean's bug where switching positions mid-click mis-painted the
+ *  destination position's button.  See dashboard-manage-ui.js. */
 
 /**
  * Format a brief position specification for user-facing failure messages.
@@ -301,44 +309,47 @@ function _formatPositionSpec(active) {
  * @param {object} [active] Active position (for the spec line).
  */
 function _handleManageFailure(verb, payload, active) {
-  /*- Normalize the payload: accept legacy bare strings (network errors,
-   *  HTTP-status-only fallbacks) and the new structured body emitted
-   *  by `handleManage` (`{ error, message, tokenId }`). */
-  const isObj = payload && typeof payload === "object";
-  const code = isObj ? payload.error : payload;
-  const message = isObj ? payload.message : payload;
-  log.warn("[lp-ranger] [manage] %s failed: %s", verb, code || message);
-  // Restore the button immediately. updateManageBadge will
-  // re-paint correct text on the next status poll (3s).
-  const btn = g("manageToggleBtn");
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = verb === "manage" ? "Manage" : "Stop Managing";
+  /*- Wrap the whole body in try/finally so the in-flight clear + paint
+   *  ALWAYS fire \u2014 audit found that a misbehaving modal helper could
+   *  leave the button stuck disabled if it threw before reaching the
+   *  restore.  All other writes go through paintManageUI() instead of
+   *  touching the DOM directly, so the single-owner invariant holds. */
+  try {
+    /*- Normalize the payload: accept legacy bare strings (network
+     *  errors, HTTP-status-only fallbacks) and the new structured body
+     *  emitted by `handleManage` (`{ error, message, tokenId }`). */
+    const isObj = payload && typeof payload === "object";
+    const code = isObj ? payload.error : payload;
+    const message = isObj ? payload.message : payload;
+    log.warn("[lp-ranger] [manage] %s failed: %s", verb, code || message);
+    /*- `pool-info-unavailable` (503 from handleManage when getPoolState
+     *  validation + retry was exhausted) is shown in a dedicated warning
+     *  modal so the raw error message can be displayed in a scrollable
+     *  code block.  Other failures keep the alert() path. */
+    if (code === "pool-info-unavailable") {
+      _showPoolInfoUnavailableModal(message, active);
+      return;
+    }
+    const spec = _formatPositionSpec(active);
+    const action = verb === "manage" ? "start managing" : "stop managing";
+    const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
+    /*- The bot-loop-detect retry chain engages sticky RPC failover on
+     *  every miss, so by the time the server returns "No V3 NFT position
+     *  found" the next attempt is already routed through the backup. */
+    const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
+      code || "",
+    );
+    const retryHint = looksLikeRpcFailure
+      ? `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`
+      : `\n\nClick "${buttonLabel}" again to retry.`;
+    /*- alert() is intentional here — the manage flow is a deliberate
+     *  user action and silent failure is what got us into the stuck-UI
+     *  state this branch is fixing. */
+    alert(`Couldn't ${action}${spec ? " " + spec : ""}:\n${code}${retryHint}`);
+  } finally {
+    setManageInFlight(manageKey(active), false);
+    paintManageUI();
   }
-  /*- `pool-info-unavailable` (503 from handleManage when getPoolState
-   *  validation + retry was exhausted) is shown in a dedicated warning
-   *  modal so the raw error message can be displayed in a scrollable
-   *  code block.  Other failures keep the alert() path. */
-  if (code === "pool-info-unavailable") {
-    _showPoolInfoUnavailableModal(message, active);
-    return;
-  }
-  const spec = _formatPositionSpec(active);
-  const action = verb === "manage" ? "start managing" : "stop managing";
-  const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
-  /*- The bot-loop-detect retry chain engages sticky RPC failover on
-   *  every miss, so by the time the server returns "No V3 NFT position
-   *  found" the next attempt is already routed through the backup. */
-  const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
-    code || "",
-  );
-  const retryHint = looksLikeRpcFailure
-    ? `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`
-    : `\n\nClick "${buttonLabel}" again to retry.`;
-  /*- alert() is intentional here — the manage flow is a deliberate user
-   *  action and silent failure is what got us into the stuck-UI state
-   *  this branch is fixing. */
-  alert(`Couldn't ${action}${spec ? " " + spec : ""}:\n${code}${retryHint}`);
 }
 
 /*- Build + show the "Pool info unavailable" warning modal.  The raw
@@ -426,25 +437,94 @@ async function _sendManage(active) {
   return true;
 }
 
-/** Toggle manage / pause for the active NFT position. */
-export async function _toggleManagePosition() {
-  if (_manageInFlight) {
-    log.info("[lp-ranger] [manage] click ignored — request in-flight");
+/*- Run the closed-position re-open dialog flow.  Per-position
+ *  setManageInFlight(key, true) prevents a duplicate POST while the
+ *  modal-based confirmation is open AND the bot loop spins up.
+ *
+ *  Synchronous optimistic disable mirrors the open-position click
+ *  handler: paintManageUI() returns null while the in-flight flag is
+ *  set (so the next poll cannot re-enable the button mid-flight), but
+ *  on its own that leaves the button showing whatever state it had
+ *  before the click — visibly still ENABLED until the request
+ *  resolves.  The synchronous btn.disabled+title write below gives the
+ *  user immediate feedback and blocks a fast second click that would
+ *  otherwise queue another can-reopen POST + duplicate modal.
+ *  Deliberately does NOT mutate the button TEXT — the modal that
+ *  follows is the primary indicator; a "Checking…" label would just
+ *  flicker into the next poll's rebalance-in-progress state. */
+async function _runClosedPositionFlow(active) {
+  /*- Sync-state race guard.  Defense-in-depth: the button should
+   *  already be disabled when sync is incomplete (computeManageUI's
+   *  syncComplete branch), but a click can still queue if the user
+   *  catches the tail of an activation paint before the first poll
+   *  lands.  Read the value from app state (single source of truth),
+   *  NEVER from `syncBadge.classList` — see
+   *  [[feedback-no-classlist-for-state]]. */
+  const synced = isSyncComplete() === true;
+  if (!synced) {
+    log.info(
+      "[lp-ranger] [reopen] Manage click ignored for #%s: app still syncing",
+      active.tokenId,
+    );
     return;
   }
+  const key = manageKey(active);
+  /*- Synchronous optimistic disable BEFORE setManageInFlight so the
+   *  button stops accepting clicks the instant this handler runs.
+   *  paintManageUI() will skip (manageInFlight=true → null spec), so
+   *  this disable persists until the finally-block clears the flag and
+   *  re-paints from server state. */
+  const btn = g("manageToggleBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.title = "Checking position for re-open…";
+  }
+  setManageInFlight(key, true);
+  try {
+    await runReopenFlow(active, {
+      formatPositionSpec: _formatPositionSpec,
+      handleManageFailure: _handleManageFailure,
+    });
+  } finally {
+    setManageInFlight(key, false);
+    paintManageUI();
+  }
+}
+
+/** Toggle manage / pause for the active NFT position.  Single-flight
+ *  is now per-position via setManageInFlight(); the synchronous
+ *  optimistic disable below also blocks a within-tick second click
+ *  on the same button. */
+export async function _toggleManagePosition() {
   const active = _posStoreRef?.getActive?.();
   if (!active?.tokenId || active.positionType !== "nft") return;
   const badge = g("manageBadge");
   const btn = g("manageToggleBtn");
   const isManaged = badge?.classList.contains("managed");
+  const key = manageKey(active);
+  /*- Closed-position re-open path: any drained NFT (liquidity=0)
+   *  routes through `_runClosedPositionFlow` regardless of whether
+   *  the SERVER currently has it in the managed set (it may, if a
+   *  prior re-open started the bot loop but the rebalance aborted).
+   *  The re-open flow always sends `forceRebalance: true`, and
+   *  `handleManage` honors that on already-running positions via
+   *  `_stampReopenFlagsOnLive`, so this is the correct path for
+   *  both "fresh auto-retired" and "running-but-aborted" closed
+   *  positions.  Without this branch the user would fall through
+   *  to `_sendManage`, which silently no-ops on already-running. */
+  if (isPositionClosed(active)) {
+    await _runClosedPositionFlow(active);
+    return;
+  }
   /* Clear stale history so the next poll
      renders data for the correct position. */
   clearHistory();
   resetHistoryFlag();
 
-  _manageInFlight = true;
-  // Disable + re-label the button synchronously so a fast second click
-  // can't fire a second request before the in-flight flag is set.
+  setManageInFlight(key, true);
+  /*- Optimistic disable + label.  paintManageUI() observes the
+   *  in-flight flag and returns null (skip apply), so this transient
+   *  text survives across poll cycles until the click resolves. */
   if (btn) {
     btn.disabled = true;
     btn.textContent = isManaged ? "Stopping\u2026" : "Managing\u2026";
@@ -461,52 +541,22 @@ export async function _toggleManagePosition() {
       active,
     );
   } finally {
-    _manageInFlight = false;
+    setManageInFlight(key, false);
+    paintManageUI();
   }
 }
 
 /**
- * Update the manage badge based on managed
- * positions from status poll.
- * @param {Array} managedList  Managed positions.
- * @param {string} activeTokenId  Active ID.
+ * Per-poll badge + button update.  Kept as an exported function so the
+ * existing caller in dashboard-data.js doesn't need a rename, but the
+ * body now delegates to the single owner in dashboard-manage-ui.js —
+ * all previous in-line state checks (closed gate, managed gate, in-
+ * flight gate, rebalance-in-flight gate) are folded into the pure
+ * compute function there.  Arguments are ignored; paintManageUI()
+ * reads its own inputs from posStore + getLastStatus + DOM.
  */
-export function updateManageBadge(
-  managedList,
-  activeTokenId,
-  rebalanceInProgress,
-) {
-  const badge = g("manageBadge");
-  if (!badge) return;
-  const btn = g("manageToggleBtn");
-  if (!btn) return;
-  const isManaged =
-    Array.isArray(managedList) &&
-    managedList.some(
-      (p) =>
-        String(p.tokenId) === String(activeTokenId) && p.status === "running",
-    );
-  badge.classList.toggle("managed", isManaged);
-  if (isManaged) {
-    const dot = document.createElement("span");
-    dot.className = "9mm-pos-mgr-manage-dot";
-    badge.replaceChildren(
-      dot,
-      document.createTextNode("Being Actively Managed"),
-    );
-  } else {
-    badge.textContent = "Not Actively Managed";
-  }
-  applyLifetimeUnmanagedUI(isManaged);
-  /*- Don't clobber the in-flight "Managing\u2026" / "Stopping\u2026"
-   *  text that the click handler just set — the next poll after the
-   *  request resolves will repaint correctly. */
-  if (_manageInFlight) return;
-  if (rebalanceInProgress) {
-    btn.textContent = "Rebalancing\u2026";
-  } else {
-    btn.textContent = isManaged ? "Stop Managing" : "Manage";
-  }
+export function updateManageBadge() {
+  paintManageUI();
 }
 
 // ── Delegated events + Escape ───────────────────

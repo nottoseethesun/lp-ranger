@@ -90,8 +90,15 @@ async function _scanCompounds(
       }
     }
     if (total > 0) {
-      getPositionConfig(diskConfig, posKey).totalCompoundedUsd = total;
-      saveConfig(diskConfig, dir);
+      /*- Skip the disk write when there's no existing slot for this
+       *  position — only managed positions own disk state.  Prior
+       *  lazy-create produced phantom stubs for unmanaged positions
+       *  whose details endpoint was invoked from the dashboard. */
+      const pos = getPositionConfig(diskConfig, posKey);
+      if (pos) {
+        pos.totalCompoundedUsd = total;
+        saveConfig(diskConfig, dir);
+      }
     }
     return { total, current, currentGasUsd };
   } catch (e) {

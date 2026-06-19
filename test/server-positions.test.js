@@ -202,7 +202,13 @@ describe("updatePositionState", () => {
   it("persists hodlBaseline to disk config", () => {
     const key = "pulsechain-0xW-0xC-501";
     const keyRef = { current: key };
-    const diskConfig = makeDiskConfig();
+    /*- Pre-seed an existing entry — _persistPositionConfig now refuses
+     *  to lazy-create a slot under a missing key (would resurrect the
+     *  phantom).  In production this entry exists because handleManage
+     *  created it before starting the bot loop. */
+    const diskConfig = makeDiskConfig({
+      positions: { [key]: { status: "running" } },
+    });
     const mgr = makePositionMgr();
     getAllPositionBotStates().delete(key);
 
@@ -224,7 +230,10 @@ describe("updatePositionState", () => {
   it("persists collectedFeesUsd to disk config", () => {
     const key = "pulsechain-0xW-0xC-502";
     const keyRef = { current: key };
-    const diskConfig = makeDiskConfig();
+    /*- Pre-seed an existing entry; see note above. */
+    const diskConfig = makeDiskConfig({
+      positions: { [key]: { status: "running" } },
+    });
     const mgr = makePositionMgr();
     getAllPositionBotStates().delete(key);
 
@@ -482,6 +491,12 @@ describe("createPositionRoutes", () => {
       assert.strictEqual(res._status, 200);
       assert.strictEqual(res._body.alreadyRunning, true);
     });
+
+    // ── Stale-key race regression tests ────────────────────────────────
+
+    /*- Stale-key race regression tests live in a dedicated file
+     *  (`test/server-positions-stale-key-races.test.js`) — keeps this
+     *  file under the 500-line cap. */
   });
 
   // ── handleRemove ────────────────────────────────────────────────────────
@@ -518,6 +533,10 @@ describe("createPositionRoutes", () => {
       assert.strictEqual(removedKey, "rm-key");
       assert.ok(!getAllPositionBotStates().has("rm-key"));
     });
+
+    /*- handleRemove's migration-during-stop test lives in
+     *  `test/server-positions-stale-key-races.test.js` to keep this
+     *  file under the 500-line cap. */
   });
 
   // ── handleManagedList ───────────────────────────────────────────────────

@@ -153,7 +153,17 @@ function createAutoStartManagedPositions(deps) {
     const shared = await _initSharedSigner(ethers);
     let i = 0;
     for (const key of [...keys]) {
+      /*- Non-lazy lookup.  `keys` came from `managedKeys(diskConfig)`
+       *  which iterates `cfg.positions` directly, so a slot is
+       *  guaranteed to exist for every key here — but defend against a
+       *  concurrent delete (e.g. a purge during boot) by skipping
+       *  cleanly rather than auto-creating a phantom. */
       const pc = getPositionConfig(diskConfig, key);
+      if (!pc) {
+        log.warn("[server] auto-start: slot vanished for %s, skipping", key);
+        i++;
+        continue;
+      }
       if (i > 0 && stMs > 0) {
         log.info("[server] Stagger: %dms before %d/%d", stMs, i + 1, cnt);
         await new Promise((r) => setTimeout(r, stMs));

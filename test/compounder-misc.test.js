@@ -147,10 +147,10 @@ describe("compounder", () => {
       _p = require("path");
     const _dir = _fs.mkdtempSync(_p.join(_os.tmpdir(), "comp-persist-"));
     it("persists compound fields to in-memory config", () => {
-      const { getPositionConfig } = require("../src/bot-config-v2");
+      const { getOrCreatePositionConfig } = require("../src/bot-config-v2");
       const { updatePositionState } = require("../src/server-positions");
       const cfg = { global: {}, positions: {} };
-      getPositionConfig(cfg, "test-key");
+      getOrCreatePositionConfig(cfg, "test-key");
       cfg.positions["test-key"].status = "running";
       const keyRef = { current: "test-key" };
       const pm = { migrateKey: () => {} };

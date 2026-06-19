@@ -111,9 +111,15 @@ async function _resolveBaseline(
     return saved;
   const bl = await getPositionBaseline(provider, ethersLib, position);
   if (bl) {
+    /*- Persist the baseline ONLY if a disk slot already exists for this
+     *  position (i.e. it is managed).  Prior lazy-create produced phantom
+     *  stubs whenever the details endpoint was invoked for an unmanaged
+     *  position from the dashboard browser. */
     const pos = getPositionConfig(diskConfig, posKey);
-    pos.hodlBaseline = bl;
-    saveConfig(diskConfig);
+    if (pos) {
+      pos.hodlBaseline = bl;
+      saveConfig(diskConfig);
+    }
   }
   return bl;
 }

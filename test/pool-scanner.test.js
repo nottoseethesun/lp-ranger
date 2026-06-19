@@ -115,6 +115,146 @@ describe("module exports", () => {
   });
 });
 
+describe("appendToPoolCache — recent-scan invalidation (auto-follow fix)", () => {
+  /*- Regression test for the pool-scanner cache invalidation bug.
+   *
+   *  Before this fix, appendToPoolCache wrote to disk but left the
+   *  60-second `_recentScans` in-memory cache populated.  If a scan
+   *  queued behind a long-held lock acquired the lock AFTER a
+   *  rebalance had completed and called appendToPoolCache, it would
+   *  short-circuit to the stale `_recentScans` events at line 141 of
+   *  pool-scanner.js — returning the events list from BEFORE the
+   *  rebalance, missing the new oldTokenId/newTokenId pair.
+   *
+   *  Symptom: dashboard's Rebalance Events table and the
+   *  `_resolveManagedTid` auto-follow miss the just-completed
+   *  rebalance until the 60s TTL expires.  Workaround the user found:
+   *  close + reopen the tab.
+   *
+   *  This test seeds the `_recentScans` map directly via the
+   *  test-only export, runs appendToPoolCache, and asserts the
+   *  matching entry is removed (so the next scanPoolHistory call
+   *  does not take the cache short-circuit). */
+
+  const pos = {
+    token0: "0x3819F64f282bf135d62168C1e513280dAF905e06",
+    token1: "0xAbF66325f5d5e44A3E1cDB1A2a3119Ec1D1cf850",
+    fee: 10000,
+  };
+  const wallet = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
+  let cachePath;
+
+  before(() => {
+    fs.mkdirSync(TMP, { recursive: true });
+    const { eventCachePath } = require("../src/cache-store");
+    cachePath = eventCachePath(
+      pos,
+      "pulsechain",
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2",
+      wallet,
+    );
+    try {
+      fs.unlinkSync(cachePath);
+    } catch {
+      /* */
+    }
+  });
+
+  after(() => {
+    try {
+      fs.unlinkSync(cachePath);
+    } catch {
+      /* */
+    }
+  });
+
+  function _recentKey(p, w) {
+    const tag =
+      p.token0.slice(0, 8) + "…/" + p.token1.slice(0, 8) + "… fee=" + p.fee;
+    return tag + ":" + (w || "").slice(0, 8);
+  }
+
+  it("removes the in-memory recent-scan entry for the pool+wallet", async () => {
+    const {
+      appendToPoolCache,
+      _recentScansForTests,
+    } = require("../src/pool-scanner");
+    const key = _recentKey(pos, wallet);
+
+    /*- Seed the in-memory cache as if a scan had just completed and
+     *  stamped its events into `_recentScans`. */
+    const staleEvents = [
+      {
+        index: 1,
+        oldTokenId: "159175",
+        newTokenId: "161616",
+        timestamp: 1700000000,
+      },
+    ];
+    _recentScansForTests.set(key, { events: staleEvents, at: Date.now() });
+    assert.ok(_recentScansForTests.has(key), "seed precondition holds");
+
+    await appendToPoolCache(pos, wallet, {
+      oldTokenId: "161616",
+      newTokenId: "161623",
+      txHashes: ["0xdeadbeef"],
+      blockNumber: 7000,
+    });
+
+    assert.equal(
+      _recentScansForTests.has(key),
+      false,
+      "appendToPoolCache must drop the stale _recentScans entry " +
+        "so the next scanPoolHistory call does not short-circuit",
+    );
+  });
+
+  it("does not touch unrelated pool+wallet entries", async () => {
+    const {
+      appendToPoolCache,
+      _recentScansForTests,
+    } = require("../src/pool-scanner");
+    const otherPos = {
+      token0: "0x9999999999999999999999999999999999999999",
+      token1: "0x8888888888888888888888888888888888888888",
+      fee: 500,
+    };
+    const otherKey = _recentKey(otherPos, wallet);
+    _recentScansForTests.set(otherKey, { events: [], at: Date.now() });
+
+    await appendToPoolCache(pos, wallet, {
+      oldTokenId: "100",
+      newTokenId: "101",
+      txHashes: ["0xbeef"],
+      blockNumber: 7001,
+    });
+
+    assert.ok(
+      _recentScansForTests.has(otherKey),
+      "unrelated pool entry must survive",
+    );
+    _recentScansForTests.delete(otherKey);
+  });
+
+  it("is safe when no recent-scan entry exists (no-op delete)", async () => {
+    const {
+      appendToPoolCache,
+      _recentScansForTests,
+    } = require("../src/pool-scanner");
+    const key = _recentKey(pos, wallet);
+    _recentScansForTests.delete(key);
+
+    await assert.doesNotReject(
+      appendToPoolCache(pos, wallet, {
+        oldTokenId: "300",
+        newTokenId: "301",
+        txHashes: ["0xfeed"],
+        blockNumber: 7002,
+      }),
+    );
+  });
+});
+
 describe("cancelPoolScan", () => {
   const tok0 = "0x1111111111111111111111111111111111111111";
   const tok1 = "0x2222222222222222222222222222222222222222";

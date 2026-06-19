@@ -48,16 +48,28 @@ function _checkSwapImpact(impactPct, slip, attempts, label) {
  * route only saw 6%.  This helper picks the smallest impactPct from the
  * attempts log and produces a single, accurate "raise slippage to X%" message.
  *
+ * Only attempts that FAILED the slippage gate (`impactPct > slip`) are
+ * considered — earlier attempts that PASSED the gate (e.g., a chunk that
+ * successfully executed at 3.2% under a 3.75% slippage) are not the
+ * blocker and would produce a nonsensical "3.2% exceeds slippage 3.75%"
+ * message.  If every attempt passed the gate, returns null and the
+ * orchestrator falls back to the underlying error from whatever
+ * downstream step actually failed.
+ *
  * @param {Array<{label:string,impactPct:number}>} attempts  All recorded
  *   attempts (may include ones that passed the gate but failed downstream).
  * @param {number} slip  User's slippage setting (percent).
- * @returns {Error|null} Synthesized error, or null if no finite-impact entry.
+ * @returns {Error|null} Synthesized error, or null if no attempt failed
+ *   the slippage gate (so this helper isn't responsible for explaining
+ *   the failure).
  */
 function _bestAttemptError(attempts, slip) {
   if (!Array.isArray(attempts) || attempts.length === 0) return null;
-  const finite = attempts.filter((a) => isFinite(a.impactPct));
-  if (finite.length === 0) return null;
-  const best = finite.reduce((m, a) => (a.impactPct < m.impactPct ? a : m));
+  const gateFailed = attempts.filter(
+    (a) => isFinite(a.impactPct) && a.impactPct > slip,
+  );
+  if (gateFailed.length === 0) return null;
+  const best = gateFailed.reduce((m, a) => (a.impactPct < m.impactPct ? a : m));
   const s = Math.ceil(best.impactPct * 10) / 10 + 0.5;
   const err = new Error(
     `Swap aborted: lowest observed price impact ${best.impactPct.toFixed(1)}% via ${best.label} (${attempts.length} attempts tried) exceeds slippage ${slip}%. Increase to at least ${s.toFixed(1)}% and manually rebalance.`,

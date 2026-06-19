@@ -117,7 +117,29 @@ describe("server", () => {
 
   // ── /api/config ───────────────────────────────────────────────────────────
 
-  it("POST /api/config updates allowed fields", async () => {
+  it("POST /api/config updates global allowed fields", async () => {
+    /*- Use a GLOBAL key so no per-position slot is required.  Position-
+     *  keyed updates that target a missing slot now return 404 (instead
+     *  of silently lazy-creating a phantom).  See `_handleApiConfig`. */
+    const res = await req({
+      port: TEST_PORT,
+      method: "POST",
+      path: "/api/config",
+      body: { gasFeePct: 1.5 },
+      headers: { "x-csrf-token": await csrfToken() },
+    });
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.applied.gasFeePct, 1.5);
+  });
+
+  it("POST /api/config returns 404 when positionKey has no disk slot", async () => {
+    /*- New contract under the no-phantom fix: position-keyed config
+     *  updates require an EXISTING disk slot.  The dashboard only
+     *  exposes positionKeys whose slots exist (from /api/status's
+     *  managedPositions), so in practice this 404 cannot fire from
+     *  the UI.  Test asserts the safety net behavior. */
     const pk = "pulsechain-0xAb5-0xCd9-42";
     const res = await req({
       port: TEST_PORT,
@@ -126,10 +148,9 @@ describe("server", () => {
       body: { slippagePct: 1.0, positionKey: pk },
       headers: { "x-csrf-token": await csrfToken() },
     });
-    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.status, 404);
     const body = JSON.parse(res.body);
-    assert.strictEqual(body.ok, true);
-    assert.strictEqual(body.applied.slippagePct, 1.0);
+    assert.strictEqual(body.error, "position-not-found");
   });
 
   it("POST /api/config rejects position keys without positionKey", async () => {
@@ -145,15 +166,15 @@ describe("server", () => {
     assert.ok(body.error.includes("positionKey"));
   });
 
-  it("POST /api/config ignores unknown fields", async () => {
-    const pk = "pulsechain-0xAb5-0xCd9-42";
+  it("POST /api/config ignores unknown fields (global-only patch)", async () => {
+    /*- Updated to use a global key path so we don't 404 on a missing
+     *  position slot; verifies the unknown-field filter still works. */
     const res = await req({
       port: TEST_PORT,
       method: "POST",
       path: "/api/config",
       body: {
-        slippagePct: 0.5,
-        positionKey: pk,
+        gasFeePct: 1.2,
         PRIVATE_KEY: "hacked",
         PORT: 9999,
       },

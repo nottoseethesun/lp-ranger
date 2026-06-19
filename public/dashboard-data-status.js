@@ -335,7 +335,16 @@ function _setIdlePill(d) {
 export function _updateBotStatus(d) {
   showPerPositionAlerts(d);
   if (d.rebalancePaused) {
-    _setStatusPill("status-pill danger", "dot red", "RETRYING");
+    /*- The `rebalancePaused` flag (set by bot-loop.js's `_handleError`
+     *  on swap-abort / midway-exhaustion) represents an ABORTED state,
+     *  not a pause-with-intent-to-resume.  The bot does NOT auto-retry
+     *  — the user must change Slippage in Mission Control, click
+     *  Manage to retry, or wait for the 30-min auto-retire.  Label the
+     *  pill accordingly per [[feedback_paused_vs_aborted]].  Flag
+     *  rename to `rebalanceAborted` is filed as
+     *  [[project_split_rebalance_paused_flag]] for a future cleanup
+     *  PR; for now the prose layer carries the discipline. */
+    _setStatusPill("status-pill danger", "dot red", "ABORTED");
   } else if (d.halted) {
     _setStatusPill("status-pill danger", "dot red", "HALTED");
   } else if (d.running) {

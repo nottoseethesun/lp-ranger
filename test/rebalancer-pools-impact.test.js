@@ -138,6 +138,43 @@ describe("_bestAttemptError", () => {
     assert.match(err.message, /2\.0%/);
     assert.match(err.message, /good/);
   });
+
+  it("excludes attempts that PASSED the slippage gate (succeeded)", () => {
+    /*- Real-world repro: user bumped slippage to 3.75%.  Aggregator
+     *  full quote = 7.6% (failed gate), then chunked: chunk 1 quoted
+     *  3.2% (passed gate, executed), chunk 2 quoted 4.0% (failed
+     *  gate), V3 router fallback = 65% (failed gate).  The synthesized
+     *  message must NOT report "3.2% exceeds slippage 3.75%" — chunk 1
+     *  was a success, not the blocker. */
+    const err = _bestAttemptError(
+      [
+        { label: "agg-full", impactPct: 7.6 },
+        { label: "chunk 1/3", impactPct: 3.2 }, // PASSED, executed
+        { label: "chunk 2/3", impactPct: 4.0 }, // failed gate
+        { label: "V3 router", impactPct: 65 },
+      ],
+      3.75,
+    );
+    assert.match(err.message, /4\.0%/, "uses lowest FAILED impact");
+    assert.match(err.message, /chunk 2\/3/);
+    assert.ok(!/3\.2%/.test(err.message), "must not surface succeeded chunk");
+    /*- 4.0% rounded up to 4.0 + 0.5 = 4.5%, which is > current 3.75%. */
+    assert.match(err.message, /Increase to at least 4\.5%/);
+  });
+
+  it("returns null when every attempt PASSED the slippage gate", () => {
+    /*- Defensive: if no impact-based abort happened (all quotes were
+     *  under slippage), the orchestrator should not surface a synthetic
+     *  slippage error — let the real downstream error propagate. */
+    const err = _bestAttemptError(
+      [
+        { label: "agg", impactPct: 1.0 },
+        { label: "chunk 1/3", impactPct: 0.5 },
+      ],
+      3.75,
+    );
+    assert.equal(err, null);
+  });
 });
 
 describe("_deadline", () => {

@@ -22,11 +22,13 @@ const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
 } = require("./pool-state-validate");
+const { createCanReopenHandler } = require("./server-can-reopen");
 const {
   compositeKey,
   parseCompositeKey,
   saveConfig,
   getPositionConfig,
+  getOrCreatePositionConfig,
   readConfigValue,
   addManagedPosition,
   removeManagedPosition,
@@ -120,7 +122,22 @@ function _persistPositionConfig(patch, diskConfig, key, dir) {
   const changed = _PERSIST.filter((k) => patch[k] !== undefined);
   const needsSave = !!patch.activePositionId || changed.length > 0;
   if (!needsSave) return;
+  /*- Non-lazy lookup: a slot SHOULD exist by now (handleManage created
+   *  it before starting the bot loop).  If it's missing, refuse to
+   *  create — the previous lazy-create produced phantom entries under
+   *  stale keys whenever a patch was persisted for a position whose
+   *  key had since migrated.  Warn loudly so the caller can investigate
+   *  rather than silently re-creating the phantom. */
   const pos = getPositionConfig(diskConfig, key);
+  if (!pos) {
+    log.warn(
+      "[pos-state] skipping persist for %s — slot missing on disk " +
+        "(likely migrated away). Patch keys: %s",
+      key,
+      Object.keys(patch).join(", "),
+    );
+    return;
+  }
   const hadStatus = pos.status;
   for (const k of changed) pos[k] = patch[k];
   /* Guard: if we're saving for a managed position, ensure status survives */
@@ -300,6 +317,57 @@ function createOnRetire(deps) {
 /** Keys currently in the process of starting (guards against concurrent requests). */
 const _starting = new Set();
 
+/*- Closed-position re-open path: when the dashboard calls Manage on a
+ *  drained (liquidity=0) position, it sends `forceRebalance: true`
+ *  plus a `customRangeWidthPct` from the rebalance modal.  Stamp both
+ *  on the freshly-built posBotState BEFORE startPosition so the bot
+ *  loop's first poll sees the flag set; `bot-cycle-drain.js`'s
+ *  `if (drained && !state.forceRebalance && !midwayFail)` guard then
+ *  returns null and the rebalance pipeline runs on the drained NFT,
+ *  minting fresh liquidity and bringing the position back to life in
+ *  one user-driven cycle.  No-op for healthy positions (body.flag
+ *  unset). */
+function _stampReopenFlags(posBotState, body) {
+  if (body.forceRebalance !== true) return;
+  posBotState.forceRebalance = true;
+  if (
+    typeof body.customRangeWidthPct === "number" &&
+    body.customRangeWidthPct > 0
+  ) {
+    posBotState.customRangeWidthPct = body.customRangeWidthPct;
+  }
+}
+
+/*- Already-running re-open path: when the user comes back to Manage
+ *  after a swap-abort aborted the first re-open attempt, the
+ *  `existing.status === "running"` guard in `handleManage` would
+ *  silently no-op the request.  This helper grabs the live posBotState
+ *  from the per-position map and stamps `forceRebalance` /
+ *  `customRangeWidthPct` (via `_stampReopenFlags`) AND clears the
+ *  aborted/midway flags (`rebalancePaused`, `rebalanceFailedMidway`,
+ *  `rebalanceError`) so the next poll runs a fresh rebalance.
+ *  Returns true if the live state was found and stamped, false
+ *  otherwise (the caller logs accordingly). */
+function _stampReopenFlagsOnLive(key, body) {
+  if (body.forceRebalance !== true) return false;
+  const live = _positionBotStates.get(key);
+  if (!live) return false;
+  _stampReopenFlags(live, body);
+  live.rebalancePaused = false;
+  live.rebalanceFailedMidway = false;
+  live.rebalanceError = null;
+  /*- Critical: also clear `_retireImmediately`.  bot-loop.js's
+   *  `_handleError` sets it after a re-open failure to trigger an
+   *  immediate retire on the next bot poll.  If the user clicks
+   *  Manage to retry within the ~60 s window before that poll fires,
+   *  this code path (handleManage's already-running short-circuit)
+   *  must clear the flag — otherwise drain.js's `_retireImmediately`
+   *  branch fires retire BEFORE the forceRebalance can take effect,
+   *  and the user's retry click is silently lost. */
+  live._retireImmediately = false;
+  return true;
+}
+
 function createPositionRoutes(deps) {
   const {
     diskConfig,
@@ -352,15 +420,27 @@ function createPositionRoutes(deps) {
     // retry Manage to actually start it.
     const existing = positionMgr.get(key);
     if ((existing && existing.status === "running") || _starting.has(key)) {
+      /*- Already-running short-circuit.  If the request carries
+       *  `forceRebalance: true` (re-open retry path), stamp the flag
+       *  onto the live posBotState + clear the aborted/midway state
+       *  (rebalancePaused + rebalanceFailedMidway + rebalanceError) —
+       *  the user has come back via Manage to retry after fixing
+       *  slippage.  Without this, the second click is silently
+       *  dropped and the re-open never retries.  Returns
+       *  `reopenStamped: true` so the client can confirm the retry
+       *  was wired through. */
+      const stamped = _stampReopenFlagsOnLive(key, body);
       log.info(
-        "[pos-route] Position #%s already running or starting — skipping",
+        "[pos-route] Position #%s already running or starting — skipping%s",
         body.tokenId,
+        stamped ? " (stamped reopen flags onto live state)" : "",
       );
       jsonResponse(res, 200, {
         ok: true,
         key,
         tokenId: String(body.tokenId),
         alreadyRunning: true,
+        reopenStamped: stamped,
       });
       return;
     }
@@ -370,8 +450,13 @@ function createPositionRoutes(deps) {
      *  saveConfig() until startBotLoop succeeds: a failure here used to
      *  leave a phantom `status=running` entry on disk which made the
      *  dashboard show "Being Actively Managed" for a position that
-     *  never actually started.  See PR fix-no-nft-found-error. */
-    const posConfig = getPositionConfig(diskConfig, key);
+     *  never actually started.  See PR fix-no-nft-found-error.
+     *
+     *  Uses the lazy-create variant: this is the legitimate first-time
+     *  creation site for a fresh managed position.  Disk persist is
+     *  deferred to addManagedPosition + saveConfig after the bot loop
+     *  starts successfully. */
+    const posConfig = getOrCreatePositionConfig(diskConfig, key);
     const _hadExistingConfig = Object.keys(posConfig).length > 0;
     const _prevStatus = posConfig.status;
     if (posConfig.autoCompoundEnabled === undefined) {
@@ -380,6 +465,7 @@ function createPositionRoutes(deps) {
     }
     const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, positionMgr);
+    _stampReopenFlags(posBotState, body);
     _positionBotStates.set(key, posBotState);
 
     const t0 = Date.now();
@@ -455,8 +541,23 @@ function createPositionRoutes(deps) {
     } finally {
       _starting.delete(key);
     }
-    /*- Bot loop is up; only NOW persist `status=running`. */
-    addManagedPosition(diskConfig, key);
+    /*- Bot loop is up; only NOW persist `status=running`.
+     *
+     *  Reads `keyRef.current`, NOT the captured local `key`.  When the
+     *  bot's first poll runs a force-rebalance (re-open flow), the mint
+     *  of a new NFT triggers `updatePositionState` to call
+     *  `migrateConfigKey` + `positionMgr.migrateKey` + mutate
+     *  `keyRef.current = newKey`.  By the time control returns here,
+     *  the disk slot lives under the NEW key.  Calling
+     *  `addManagedPosition(diskConfig, key)` with the STALE local
+     *  would lazy-create an empty `{ status: "running" }`-only stub
+     *  under the dead old key — the phantom that made the dashboard
+     *  stuck on "Syncing…" for the closed view of the old NFT.
+     *
+     *  This is symmetric with `_onRetire` (which already reads
+     *  `keyRef.current` at line 264) and the rest of the closures
+     *  threaded into `startPosition`. */
+    addManagedPosition(diskConfig, keyRef.current);
     saveConfig(diskConfig);
     log.info(
       "[pos-route] Position #%s started in %dms (total managed: %d)",
@@ -479,6 +580,14 @@ function createPositionRoutes(deps) {
       return;
     }
     log.info("[pos-route] DELETE /api/position/manage key=%s", body.key);
+    /*- Capture entry reference BEFORE the await.  `positionMgr.migrateKey`
+     *  mutates the entry object in place (entry.key = newKey) but
+     *  preserves the object identity, so reading entry.key after the
+     *  await gives the post-migration key if a rebalance migrated the
+     *  position during the in-flight poll that handle.stop() awaited.
+     *  Without this capture, the downstream cleanup uses the stale
+     *  body.key and leaves a phantom under the migrated key. */
+    const entry = positionMgr.get(body.key) || null;
     try {
       await positionMgr.removePosition(body.key);
     } catch (err) {
@@ -489,18 +598,25 @@ function createPositionRoutes(deps) {
         err.stack,
       );
     }
-    removeManagedPosition(diskConfig, body.key);
+    const liveKey = entry?.key || body.key;
+    removeManagedPosition(diskConfig, liveKey);
     // Clear auto-compound so it doesn't re-enable on next manage
-    const posRef = diskConfig.positions[body.key];
+    const posRef = getPositionConfig(diskConfig, liveKey);
     if (posRef) posRef.autoCompoundEnabled = false;
     saveConfig(diskConfig);
-    _positionBotStates.delete(body.key);
+    _positionBotStates.delete(liveKey);
     log.info(
       "[pos-route] Position removed (remaining: %d)",
       positionMgr.count(),
     );
     jsonResponse(res, 200, { ok: true, key: body.key, status: "stopped" });
   }
+
+  const handleCanReopen = createCanReopenHandler({
+    walletManager,
+    jsonResponse,
+    readJsonBody,
+  });
 
   function handleManagedList(_req, res) {
     const all = positionMgr.getAll();
@@ -520,6 +636,7 @@ function createPositionRoutes(deps) {
   return {
     "POST /api/position/manage": handleManage,
     "DELETE /api/position/manage": handleRemove,
+    "POST /api/position/can-reopen": handleCanReopen,
     "GET /api/positions/managed": handleManagedList,
   };
 }
@@ -559,57 +676,27 @@ function attachPoolKeys(positions, positionMgr, cfg) {
   }
 }
 
-/**
- * Settings keys that flow through to the dashboard for *unmanaged*
- * positions (so the user sees persisted settings for positions the bot
- * isn't actively managing, e.g. closed-view or paused positions).
- */
-const _UNMANAGED_SETTINGS_KEYS = [
-  "rebalanceOutOfRangeThresholdPercent",
-  "rebalanceTimeoutMin",
-  "slippagePct",
-  "checkIntervalSec",
-  "minRebalanceIntervalMin",
-  "maxRebalancesPerDay",
-  "gasStrategy",
-  "priceOverride0",
-  "priceOverride1",
-  "priceOverrideForce",
-  "autoCompoundEnabled",
-  "autoCompoundThresholdUsd",
-  "totalCompoundedUsd",
-  "lastCompoundAt",
-  "offsetToken0Pct",
-];
+/*- buildStatusPositions + _UNMANAGED_SETTINGS_KEYS live in their own
+ *  module so this file stays under the 500-line cap.  Thin wrapper
+ *  here injects the in-memory `_positionBotStates` map and the local
+ *  `attachPoolKeys` so the helper itself stays pure (no module-level
+ *  state of its own).  Re-exported via module.exports below so the
+ *  existing import surface in server.js + tests is unchanged. */
+const {
+  buildStatusPositions: _buildStatusPositionsHelper,
+} = require("./build-status-positions");
 
-/**
- * Build the `positions` map for the GET /api/status response: merges
- * per-position bot state, disk config, and sensible defaults; attaches a
- * canonical poolKey to every managed entry. Unmanaged positions (in
- * disk config but not currently running) get a lightweight subset of
- * their persisted settings so the dashboard UI still has context.
- *
- * @param {object} diskConfig   Parsed bot-config (has `.positions` map).
- * @param {object} posDefaults  Base defaults applied to every entry.
- * @param {object} positionMgr  Position manager (exposes poolKey()).
- * @param {object} cfg          Config object with CHAIN_NAME + POSITION_MANAGER.
- * @returns {Record<string, object>}
- */
 function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg) {
-  const positions = {};
-  for (const [key, state] of getAllPositionBotStates()) {
-    const posConfig = diskConfig.positions[key] || {};
-    positions[key] = { ...posDefaults, ...state, ...posConfig };
-  }
-  for (const [key, posConfig] of Object.entries(diskConfig.positions)) {
-    if (positions[key]) continue;
-    const s = { ...posDefaults };
-    for (const k of _UNMANAGED_SETTINGS_KEYS)
-      if (posConfig[k] !== undefined) s[k] = posConfig[k];
-    positions[key] = s;
-  }
-  attachPoolKeys(positions, positionMgr, cfg);
-  return positions;
+  return _buildStatusPositionsHelper(
+    diskConfig,
+    posDefaults,
+    positionMgr,
+    cfg,
+    {
+      getStates: getAllPositionBotStates,
+      attachPoolKeys,
+    },
+  );
 }
 
 module.exports = {

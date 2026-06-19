@@ -258,6 +258,40 @@ span[title]:not([title=""]):hover {
   border: 2px solid var(--warn);
 }
 
+/*
+ * Action-row container inside a modal body for the closed-position
+ * re-open intro dialog.  The base modal template only ships an OK
+ * close button at the footer; this row sits inside the body so we
+ * can add a custom "Re-open Position" button without forking the
+ * template.  Right-aligned to match the project's button conventions.
+ */
+.\39 mm-pos-mgr-modal-action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/*
+ * Wallet-balance list used by the "insufficient wallet tokens" modal.
+ * Each <li> shows "<symbol>: <amount> ($usd)" injected via textContent.
+ * Monospaced for column alignment.
+ */
+.\39 mm-pos-mgr-reopen-balances {
+  list-style: none;
+  padding: 8px;
+  margin: 8px 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.\39 mm-pos-mgr-reopen-balances li {
+  padding: 2px 0;
+}
+
 .\39 mm-pos-mgr-text-primary {
   color: var(--text);
 }
@@ -608,8 +642,9 @@ span[title]:not([title=""]):hover {
  * panel's natural dimensions (so the page layout never reflows on
  * Manage/Stop) by hiding the inner content with `visibility:hidden`
  * and overlaying a centered "Click Manage" message via absolute
- * positioning inside the wrapper.  Toggled by `applyLifetimeUnmanagedUI`
- * in dashboard-manage-badge.js.
+ * positioning inside the wrapper.  Toggled by `applyManageUI` in
+ * dashboard-manage-ui.js (which writes the `9mm-pos-mgr-lt-hidden`
+ * class onto #ltContent and toggles `hidden` on #ltUnmanagedPlaceholder).
  */
 .\39 mm-pos-mgr-lt-content-wrap {
   position: relative;

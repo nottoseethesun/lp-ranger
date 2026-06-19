@@ -104,6 +104,12 @@
 
 "use strict";
 
+/*- Boot wiring for the --log-file CLI flag + logging.json static
+ *  tunable.  MUST run before any log output so the file captures the
+ *  startup banner.  No-op when neither source opts in.  See
+ *  src/boot-log-file.js + src/log-file.js. */
+require("./src/boot-log-file").bootLogFile();
+
 const { log } = require("./src/log");
 // Very first statement of the app — printed before any require so it
 // always lands at the top of the log.  Black on light gray (inverse of
@@ -439,6 +445,16 @@ const _routes = {
         compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
         factory: config.FACTORY,
         scanTimeoutMs: config.SCAN_TIMEOUT_MS,
+        /*- Dashboard poll cadence + retire-debounce window are config
+         *  values so the dashboard reads them from /api/status instead
+         *  of duplicating the literal.  GUARANTEED_DASHBOARD_HAS_POLLED_MS
+         *  is derived from DASHBOARD_POLL_INTERVAL_MS * 2.5 in
+         *  src/config.js — single source of truth.  Dashboard's post-
+         *  retire Manage-button debounce reads guaranteedDashboardHasPolledMs
+         *  to gate the disable window. */
+        dashboardPollIntervalMs: config.DASHBOARD_POLL_INTERVAL_MS,
+        guaranteedDashboardHasPolledMs:
+          config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
         ...posDefaults,
         ..._diskConfig.global,
         managedPositions: (() => {

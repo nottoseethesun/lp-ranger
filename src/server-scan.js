@@ -29,6 +29,7 @@ const {
   hasPositionActivitySince,
 } = require("./lp-position-cache");
 const { PM_ABI } = require("./pm-abi");
+const { resolveLiveKey } = require("./server-key-resolver");
 
 const _C = "\x1b[38;5;118;48;5;94m";
 const _R = "\x1b[0m";
@@ -155,6 +156,7 @@ function createScanHandlers(deps) {
     readJsonBody,
     setGlobalScanStatus,
     getAllPositionBotStates,
+    positionMgr,
   } = deps;
 
   let _scanRunning = false;
@@ -402,7 +404,17 @@ function createScanHandlers(deps) {
     const aborted = cancelPoolScan(token0, token1, fee, w);
     let flagReset = false;
     if (positionKey && getAllPositionBotStates) {
-      const s = getAllPositionBotStates().get(positionKey);
+      /*- Resolve to the live key: the body.positionKey was captured by
+       *  the dashboard from a recent poll and may be stale by the time
+       *  this request arrives (e.g. a parallel rebalance migrated the
+       *  key).  Without this, getAllPositionBotStates().get(stale)
+       *  returns undefined, flagReset stays false, and the user's
+       *  "Reload Current Position" silently fails to clear
+       *  rebalanceScanComplete — leaving the Syncing badge stuck. */
+      const liveKey = resolveLiveKey(positionMgr, positionKey, (k) =>
+        getAllPositionBotStates().get(k),
+      );
+      const s = getAllPositionBotStates().get(liveKey);
       if (s) {
         s.rebalanceScanComplete = false;
         flagReset = true;
