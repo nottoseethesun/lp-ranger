@@ -11,8 +11,13 @@
  * fetch, a prefetch, a same-site navigation, etc.), Content-Type,
  * and whether the custom CSRF header was present.
  *
- * All logs are namespaced `[unlock]` so they can be grep'd out of
- * the stream-of-consciousness server log easily.
+ * All logs are namespaced `[unlock]`.  The namespace is inlined into
+ * every format string via a template literal so that `src/log.js`'s
+ * `_withTimestamp` sees a literal `[unlock]` at the start and injects
+ * the timestamp AFTER it: `[unlock] [<timestamp>] POST ...`.  An
+ * earlier version passed NS as a `%s` substitution argument, which
+ * produced `[<timestamp>] [unlock] POST ...` (timestamp first —
+ * wrong) because the `%s` placeholder defeated tag detection.
  */
 
 "use strict";
@@ -24,8 +29,7 @@ const NS = "[unlock]";
 function logUnlockRequest(req) {
   const h = req.headers || {};
   log.info(
-    "%s POST /api/wallet/unlock — remote=%s origin=%s referer=%s ua=%s sec-fetch-site=%s sec-fetch-mode=%s sec-fetch-dest=%s content-type=%s has-csrf=%s",
-    NS,
+    `${NS} POST /api/wallet/unlock — remote=%s origin=%s referer=%s ua=%s sec-fetch-site=%s sec-fetch-mode=%s sec-fetch-dest=%s content-type=%s has-csrf=%s`,
     req.socket ? req.socket.remoteAddress : "(no-socket)",
     h.origin || "(none)",
     h.referer || "(none)",
@@ -40,14 +44,13 @@ function logUnlockRequest(req) {
 
 /** Log the 400 rejection path (missing password in body). */
 function logUnlockMissing() {
-  log.warn("%s POST /api/wallet/unlock rejected — missing password", NS);
+  log.warn(`${NS} POST /api/wallet/unlock rejected — missing password`);
 }
 
 /** Log that a password was provided before attempting to reveal. */
 function logUnlockAttempt(pwLen) {
   log.info(
-    "%s POST /api/wallet/unlock — password provided (len=%d), attempting reveal",
-    NS,
+    `${NS} POST /api/wallet/unlock — password provided (len=%d), attempting reveal`,
     pwLen,
   );
 }
@@ -56,8 +59,7 @@ function logUnlockAttempt(pwLen) {
 function logUnlockSuccess(req) {
   const h = req.headers || {};
   log.info(
-    "%s [server] Wallet unlocked via dashboard (caller origin=%s ua=%s)",
-    NS,
+    `${NS} [server] Wallet unlocked via dashboard (caller origin=%s ua=%s)`,
     h.origin || "(none)",
     (h["user-agent"] || "(none)").slice(0, 60),
   );
@@ -66,8 +68,7 @@ function logUnlockSuccess(req) {
 /** Log the 401 path (reveal failed / wrong password). */
 function logUnlockFail(err) {
   log.warn(
-    "%s POST /api/wallet/unlock — reveal failed: %s",
-    NS,
+    `${NS} POST /api/wallet/unlock — reveal failed: %s`,
     err && err.message,
   );
 }
