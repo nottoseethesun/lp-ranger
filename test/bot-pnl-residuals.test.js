@@ -1,14 +1,17 @@
 /**
  * @file test/bot-pnl-residuals.test.js
- * @description Regression tests for wallet-residual handling in
- * `overridePnlWithRealValues`. Residuals (tokens left in the wallet after
- * a mint or rebalance) must NOT be folded into `lifetimeIL`, `totalIL`, or
- * `currentValue`. They are surfaced separately via `residualValueUsd` and
- * roll into the lifetime deposit on the next rebalance.
+ * @description Behaviour test for wallet-residual handling in
+ * `overridePnlWithRealValues`.  Per the user-reported "Wallet Residual
+ * is not included in overall profit-loss" omission, residuals ARE now
+ * credited to the LP-side of the HODL IL comparison (gross credit:
+ * `IL = (lpValue + residualValueUsd) − hodlValue`).
  *
- * Before the fix, a fresh LP with ~$63 of 9mm-dApp-residual tokens produced
- * a bogus +$63 Lifetime IL/G because `lifetimeIL` computed
- * `(realValue + residualUsd) − hodlValue`.
+ * Accepted edge case per the user's "simple a vs b" mandate: a freshly
+ * minted LP that has not yet rebalanced will show +$X of IL/G equal to
+ * its initial-mint leftover residual until the first rebalance folds
+ * that leftover into the position.  We do not subtract the initial-
+ * mint residual to avoid that ghost — the user explicitly chose the
+ * simple credit over full LP-accounting symmetry.
  */
 
 "use strict";
@@ -28,11 +31,11 @@ afterEach(() => {
   globalThis.fetch = _originalFetch;
 });
 
-describe("bot-pnl-updater: residuals do not affect IL or currentValue", () => {
+describe("bot-pnl-updater: residuals credit the LP-side of IL", () => {
   const pos = { liquidity: 1000n, tickLower: -600, tickUpper: 600 };
   const pool = { tick: 0, decimals0: 18, decimals1: 18 };
 
-  it("lifetimeIL, totalIL and currentValue ignore residualValueUsd", async () => {
+  it("lifetimeIL and totalIL increase by residualValueUsd; currentValue stays LP-only", async () => {
     const baseline = {
       entryValue: 500,
       hodlAmount0: 25,
@@ -60,22 +63,54 @@ describe("bot-pnl-updater: residuals do not affect IL or currentValue", () => {
     assert.strictEqual(
       snap1.residualValueUsd,
       63.41,
-      "residuals should be surfaced separately",
+      "residuals must still be surfaced separately on the snap",
     );
-    assert.strictEqual(
-      snap1.lifetimeIL,
-      snap0.lifetimeIL,
-      "lifetimeIL must not change when residuals are present",
+    /*- IL goes UP by exactly the residual USD value — the LP-side now
+     *  carries credit for the coins it has given back to the wallet. */
+    assert.ok(
+      Math.abs(snap1.lifetimeIL - snap0.lifetimeIL - 63.41) < 1e-6,
+      `lifetimeIL must rise by residualValueUsd ($63.41); ` +
+        `snap0=${snap0.lifetimeIL} snap1=${snap1.lifetimeIL}`,
     );
-    assert.strictEqual(
-      snap1.totalIL,
-      snap0.totalIL,
-      "totalIL must not change when residuals are present",
+    assert.ok(
+      Math.abs(snap1.totalIL - snap0.totalIL - 63.41) < 1e-6,
+      `totalIL must rise by residualValueUsd ($63.41); ` +
+        `snap0=${snap0.totalIL} snap1=${snap1.totalIL}`,
     );
+    /*- currentValue stays LP-only — the residual is its own line item
+     *  on the dashboard's Lifetime panel; we don't fold it into
+     *  currentValue (only into IL). */
     assert.strictEqual(
       snap1.currentValue,
       snap0.currentValue,
       "currentValue must be LP-only (no residuals folded in)",
+    );
+  });
+
+  it("residualValueUsd is exposed on snap.ilInputs for the IL/G modal", async () => {
+    const baseline = {
+      entryValue: 500,
+      hodlAmount0: 25,
+      hodlAmount1: 125,
+    };
+    const deps = { _botState: { hodlBaseline: baseline } };
+    const snap = {
+      liveEpoch: { entryValue: 500 },
+      closedEpochs: [{ hodlAmount0: 25, hodlAmount1: 125 }],
+      initialDeposit: 500,
+      totalGas: 0,
+    };
+    await overridePnlWithRealValues(snap, deps, pos, pool, 10, 2, 0, {
+      usd: 9.85,
+      usd0: 5,
+      usd1: 4.85,
+      amount0: 0.5,
+      amount1: 2.425,
+    });
+    assert.strictEqual(
+      snap.ilInputs?.residualValueUsd,
+      9.85,
+      "ilInputs must expose residualValueUsd for the dashboard modal",
     );
   });
 });

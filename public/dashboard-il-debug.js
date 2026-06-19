@@ -115,6 +115,35 @@ function _buildNowVsHodl(now0, now1, base0, base1, t0sym, t1sym, baseLabel) {
  * @param {string} t1sym       Token1 symbol.
  * @returns {string} HTML string.
  */
+/*- One-line explanatory blurb shown directly below the heading.  Per
+ *  the user-approved wording, covers only the Lifetime IL/G case; the
+ *  Current Position IL/G section keeps the heading-only layout. */
+const _LIFETIME_IL_BLURB =
+  "Lifetime Impermanent Gain/Loss tells you how much you've gained or " +
+  "lost by putting your coins in this Liquidity Position, as compared " +
+  'to just holding them ("hodl") instead.';
+
+/** Reveal + populate the blurb slot when rendering the Lifetime section.
+ *  Extracted from `_buildSection` to keep its complexity under the cap. */
+function _applyLifetimeBlurb(frag) {
+  const blurbEl = frag.querySelector('[data-tpl="blurb"]');
+  if (!blurbEl) return;
+  blurbEl.textContent = _LIFETIME_IL_BLURB;
+  blurbEl.hidden = false;
+}
+
+/** Compute the derived display values for a single IL section.
+ *  Pulled out of `_buildSection` to keep its complexity under the 17
+ *  cap after the residual + isLifetime params were added. */
+function _ilSectionVals(inputs, lpValue, price0, price1, residualValueUsd) {
+  const a0 = inputs?.hodlAmount0,
+    a1 = inputs?.hodlAmount1;
+  const hasData = a0 > 0 || a1 > 0;
+  const hodlValue = hasData ? a0 * price0 + a1 * price1 : 0;
+  const rUsd = Number(residualValueUsd) || 0;
+  return { a0, a1, hasData, hodlValue, rUsd, lpPlusResidual: lpValue + rUsd };
+}
+
 function _buildSection(
   label,
   inputs,
@@ -124,12 +153,11 @@ function _buildSection(
   ilResult,
   t0sym,
   t1sym,
+  residualValueUsd,
+  isLifetime,
 ) {
-  const a0 = inputs?.hodlAmount0,
-    a1 = inputs?.hodlAmount1;
-  const hasData = a0 > 0 || a1 > 0;
+  const v = _ilSectionVals(inputs, lpValue, price0, price1, residualValueUsd);
   const d = "\u2014";
-  const hodlValue = hasData ? a0 * price0 + a1 * price1 : 0;
   const frag = cloneTpl("tplIlDebugSection");
   if (!frag) return null;
   const set = (key, val) => {
@@ -137,19 +165,22 @@ function _buildSection(
     if (el) el.textContent = val;
   };
   set("heading", label);
+  if (isLifetime) _applyLifetimeBlurb(frag);
   set("lpValue", _usd(lpValue));
+  set("residualValue", _usd(v.rUsd));
+  set("lpPlusResidual", _usd(v.lpPlusResidual));
   set("lblA0", "HODL " + t0sym + " deposited");
-  set("a0", hasData ? _fmt(a0) : d);
+  set("a0", v.hasData ? _fmt(v.a0) : d);
   set("lblA1", "HODL " + t1sym + " deposited");
-  set("a1", hasData ? _fmt(a1) : d);
+  set("a1", v.hasData ? _fmt(v.a1) : d);
   set("lblP0", "Current " + t0sym + " price");
-  set("p0", hasData ? _usd(price0) : d);
+  set("p0", v.hasData ? _usd(price0) : d);
   set("lblP1", "Current " + t1sym + " price");
-  set("p1", hasData ? _usd(price1) : d);
-  set("hodlValue", hasData ? _usd(hodlValue) : d);
+  set("p1", v.hasData ? _usd(price1) : d);
+  set("hodlValue", v.hasData ? _usd(v.hodlValue) : d);
   const ilCell = frag.querySelector('[data-tpl="ilResult"]');
   if (ilCell) {
-    ilCell.textContent = hasData
+    ilCell.textContent = v.hasData
       ? (ilResult > 0 ? "+" : "") + _usdPrecise(ilResult)
       : d;
     if (ilResult > 0) ilCell.className = "kpi-value pos";
@@ -243,11 +274,13 @@ function _buildPopoverFrag(o) {
     o.ilResult,
     o.t0sym,
     o.t1sym,
+    o.inputs.residualValueUsd,
+    !o.isCur,
   );
   const sectionSlot = frag.querySelector('[data-tpl="sectionSlot"]');
   if (sectionSlot && sectionFrag) sectionSlot.replaceWith(sectionFrag);
   frag.querySelector('[data-tpl="formula"]').textContent =
-    "IL = LP Value \u2212 (" +
+    "IL = (LP Value + Wallet Residual) \u2212 (" +
     o.t0sym +
     " deposited \u00D7 " +
     o.t0sym +

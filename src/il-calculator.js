@@ -69,9 +69,25 @@ function estimateLiveValue(entryValue, priceRatio, ilFactor = 0.38) {
  * historical USD prices needed.
  *
  *   hodlValue = hodlAmount0 × currentPrice0 + hodlAmount1 × currentPrice1
- *   IL = lpValue − hodlValue
+ *   IL = (lpValue + residualValueUsd) − hodlValue
  *
  * Negative = loss vs holding, positive = gain vs holding.
+ *
+ * `residualValueUsd` is the current pool-scoped wallet residual in USD
+ * (the "Wallet Residual (Pool)" figure surfaced in the dashboard's
+ * Lifetime panel) — coins the LP gave back to the wallet during prior
+ * rebalances and is about to fold back in on the next one.  Crediting
+ * it to the LP-side closes the omission where the LP didn't get credit
+ * for coins it has or has gained — visible on low-liquidity pairs whose
+ * rebalance swaps leave material residuals, invisible on high-liquidity
+ * pairs whose swaps absorb everything cleanly.
+ *
+ * Per the user's "simple a vs b" mandate, the initial-mint residual is
+ * NOT subtracted here.  Accepted edge case: a freshly minted LP that
+ * has not yet rebalanced will show +$X of IL/G equal to its initial-
+ * mint leftover residual until the first rebalance folds that leftover
+ * into the position.  The dashboard surfaces the initial residual as a
+ * separate Lifetime panel line item so users can see it.
  *
  * @param {object} opts
  * @param {number} opts.lpValue        Current LP position value (USD).
@@ -79,6 +95,7 @@ function estimateLiveValue(entryValue, priceRatio, ilFactor = 0.38) {
  * @param {number} opts.hodlAmount1    Token1 amount originally deposited (human-readable).
  * @param {number} opts.currentPrice0  Token0 USD price now.
  * @param {number} opts.currentPrice1  Token1 USD price now.
+ * @param {number} [opts.residualValueUsd=0]  Current pool-scoped wallet residual (USD).
  * @returns {number|null} IL in USD, or null if amounts are unavailable.
  */
 function computeHodlIL({
@@ -87,6 +104,7 @@ function computeHodlIL({
   hodlAmount1,
   currentPrice0,
   currentPrice1,
+  residualValueUsd = 0,
 }) {
   if (
     hodlAmount0 === null ||
@@ -97,7 +115,7 @@ function computeHodlIL({
     return null;
   if (currentPrice0 <= 0 && currentPrice1 <= 0) return null;
   const hodlValue = hodlAmount0 * currentPrice0 + hodlAmount1 * currentPrice1;
-  return lpValue - hodlValue;
+  return lpValue + (residualValueUsd || 0) - hodlValue;
 }
 
 module.exports = { calcIlMultiplier, estimateLiveValue, computeHodlIL };

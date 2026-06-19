@@ -172,6 +172,9 @@ function _currentPnl(
 ) {
   const rUsd = residuals?.usd || 0;
   const pgl = entryValue > 0 ? value - entryValue : null;
+  /*- Credit the current pool-scoped wallet residual to the LP-side of
+   *  the HODL comparison.  See computeHodlIL JSDoc for the full
+   *  rationale; same fix as in bot-pnl-updater._computeIL. */
   const il = baseline
     ? computeHodlIL({
         lpValue: value,
@@ -179,6 +182,7 @@ function _currentPnl(
         hodlAmount1: baseline.hodlAmount1,
         currentPrice0: price0,
         currentPrice1: price1,
+        residualValueUsd: rUsd,
       })
     : null;
   return {

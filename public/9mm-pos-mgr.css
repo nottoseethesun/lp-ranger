@@ -1078,8 +1078,15 @@ span[title]:not([title=""]):hover {
 .\39 mm-pos-mgr-il-heading {
   font-weight: 700;
   font-size: 21px;
-  margin-bottom: 18px;
+  margin-bottom: 8px;
   color: var(--accent);
+}
+
+.\39 mm-pos-mgr-il-blurb {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-muted, #9aa5b1);
 }
 
 .\39 mm-pos-mgr-il-popover-p {

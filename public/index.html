@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1781905858050">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1781905858050">
+<link rel="stylesheet" href="style.css?v=1781909019964">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1781909019964">
 </head>
 <body>
 
@@ -1179,15 +1179,18 @@
 <template id="tplIlDebugSection">
   <div class="9mm-pos-mgr-il-section">
     <div class="9mm-pos-mgr-il-heading" data-tpl="heading"></div>
+    <p class="9mm-pos-mgr-il-blurb" data-tpl="blurb" hidden></p>
     <table class="9mm-pos-mgr-il-table">
       <tbody>
         <tr><td>LP Value (on-chain)</td><td data-tpl="lpValue"></td></tr>
+        <tr><td>Wallet Residual (Pool)</td><td data-tpl="residualValue"></td></tr>
+        <tr><td>LP Value + Residual</td><td data-tpl="lpPlusResidual"></td></tr>
         <tr><td data-tpl="lblA0"></td><td data-tpl="a0"></td></tr>
         <tr><td data-tpl="lblA1"></td><td data-tpl="a1"></td></tr>
         <tr><td data-tpl="lblP0"></td><td data-tpl="p0"></td></tr>
         <tr><td data-tpl="lblP1"></td><td data-tpl="p1"></td></tr>
         <tr class="9mm-pos-mgr-il-sep"><td>HODL value</td><td data-tpl="hodlValue"></td></tr>
-        <tr class="9mm-pos-mgr-il-result"><td>IL/G (LP &minus; HODL)</td><td data-tpl="ilResult"></td></tr>
+        <tr class="9mm-pos-mgr-il-result"><td>IL/G ((LP + Residual) &minus; HODL)</td><td data-tpl="ilResult"></td></tr>
       </tbody>
     </table>
   </div>
@@ -1360,6 +1363,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1781905858050"></script>
+<script src="dist/bundle.js?v=1781909019964"></script>
 </body>
 </html>
