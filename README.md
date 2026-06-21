@@ -25,6 +25,7 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 - [Screenshot](#screenshot)
 - [Prerequisites](#prerequisites)
 - [Install](#install)
+- [Update](#update)
 - [Uninstall](#uninstall)
 - [Usage](#usage)
   - [Help and User Manual](#help-and-user-manual)
@@ -85,6 +86,8 @@ and the responsive layout &mdash; see the
 
 ## Install
 
+> **Already running an older version of LP Ranger?** Skip this section and follow the [Update](#update) section instead &mdash; the update workflow preserves your wallet, managed positions, and any custom overrides while replacing only the shipped code and shipped defaults.
+
 First meet the [Prerequisites](#prerequisites), above.
 
 ### Production
@@ -124,6 +127,87 @@ cd lp-ranger
 npm install                      # allows version ranges for dev flexibility
 cp .env.example .env             # edit with your values
 npm run dev                      # build + watch mode
+```
+
+---
+
+## Update
+
+If you're installing LP Ranger for the very first time, follow the [Install](#install) section instead &mdash; this section is for upgrading an existing install to a newer release.
+
+The release tarball includes only the shipped code and the shipped defaults (under `app-config/app-defaults-for-user-configurable/`). It explicitly excludes every file that holds your personal state &mdash; `.env`, `app-config/.bot-config.json`, `app-config/.bot-config.backup.json`, `app-config/.wallet.json`, `app-config/api-keys.json`, and `app-config/rebalance_log.json` &mdash; and your custom operator overrides under `app-config/user-configurable/` are gitignored at build time, so they are not in the tarball either. The upgrade workflow uses a plain `tar xvzf` to extract the new release into its own versioned directory next to the old one, then carries your personal state forward with a no-clobber copy.
+
+> For background on the layered shipped-defaults / per-install user-overrides design &mdash; what goes in `app-config/user-configurable/`, how the merge works, and the rules for where new config files belong &mdash; see [The app-config Directory](docs/engineering.md#the-app-config-directory) in the engineering reference.
+
+**Step One** &mdash; Stop the running bot:
+
+```bash
+cd lp-ranger-[current-version-number]
+# Press Ctrl+C in the terminal where the server is running, or from another
+# terminal run:
+npm run stop
+```
+
+**Step Two** &mdash; From the parent directory, download the new tarball plus its SHA-256 sidecar. Replace `[new-version]` with the actual release tag from [GitHub Releases](../../releases):
+
+```bash
+cd ..
+curl -LO https://github.com/nottoseethesun/lp-ranger/releases/download/[new-version]/lp-ranger-[new-version].tar.gz
+curl -LO https://github.com/nottoseethesun/lp-ranger/releases/download/[new-version]/lp-ranger-[new-version].tar.gz.sha256
+```
+
+**Step Three** &mdash; Verify the download against the checksum:
+
+```bash
+sha256sum -c lp-ranger-[new-version].tar.gz.sha256
+```
+
+You should see `lp-ranger-[new-version].tar.gz: OK`. If you see `FAILED`, do not proceed &mdash; the download may be corrupt or tampered with. Delete both files and re-download.
+
+**Step Four** &mdash; Extract the new tarball with the same plain `tar xvzf` you used at install time. This creates a fresh `lp-ranger-[new-version]/` directory next to your existing install &mdash; nothing in the existing install is touched yet:
+
+```bash
+tar xvzf lp-ranger-[new-version].tar.gz
+rm lp-ranger-[new-version].tar.gz lp-ranger-[new-version].tar.gz.sha256
+```
+
+**Step Five** &mdash; Carry your personal state forward from the old install into the new one. The `-rn` flag means "recursive, no clobber" &mdash; files that already exist in the new install (the shipped code and shipped defaults) are skipped, so only your personal files migrate:
+
+```bash
+cp -rn lp-ranger-[current-version-number]/. lp-ranger-[new-version]/
+```
+
+What this carries forward:
+
+- `.env`
+- `app-config/.bot-config.json`, `.bot-config.backup.json`, `.wallet.json`, `api-keys.json`, `rebalance_log.json`
+- `app-config/user-configurable/*` (your operator overrides; the new install only ships an empty `.gitkeep` placeholder there)
+- `tmp/*` (your performance caches; safe to skip if you want a fresh sync)
+- `node_modules/` (also copied, then replaced in the next step)
+
+What this does NOT touch in the new install: the shipped code (`src/`, `public/`, `scripts/`, `docs/`, etc.) and the shipped defaults under `app-config/app-defaults-for-user-configurable/`.
+
+**Step Six** &mdash; Refresh dependencies. The new release may pin different versions, so the carried-over `node_modules` must be replaced from the new `package-lock.json`:
+
+```bash
+cd lp-ranger-[new-version]
+rm -rf node_modules
+npm ci
+```
+
+**Step Seven** &mdash; Start the bot:
+
+```bash
+npm start
+```
+
+The dashboard remains at <http://localhost:5555>. Your wallet unlocks from the encrypted `.wallet.json` as usual, your managed positions resume polling, and any custom overrides in `app-config/user-configurable/` continue to apply.
+
+**Step Eight** &mdash; Once you've verified the new install is working correctly, remove the old version's directory to reclaim disk space:
+
+```bash
+cd ..
+rm -rf lp-ranger-[current-version-number]
 ```
 
 ---
