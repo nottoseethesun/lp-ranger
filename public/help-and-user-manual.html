@@ -21,7 +21,7 @@
       <li><a href="#bookmarking-positions">Bookmarking Positions</a></li>
       <li><a href="#fund-tracking">Fund Tracking</a></li>
       <li><a href="#residual-cleanup">Automatic Residual Cleanup</a></li>
-      <li><a href="#range-width">Range Width</a></li>
+      <li><a href="#range-width">Range Width and Range Offset</a></li>
       <li><a href="#volatility-doubling">Volatility Doubling</a></li>
       <li><a href="#gas-cost-protection">Gas Cost Protection</a></li>
       <li><a href="#closed-positions">Closed Positions</a></li>
@@ -95,8 +95,8 @@
   <p><strong>If you don&rsquo;t want to wait.</strong> You can always click <strong>Rebalance Now</strong> to sweep residuals immediately. In the Rebalance dialog, widen the range by at least one percent and click OK; the leftover tokens will be folded into the fresh position.</p>
   <p><strong>Tuning.</strong> The 10-minute delay and 5% threshold ship in <code>app-config/app-defaults-for-user-configurable/bot-config-defaults.json</code> under the <code>residualCleanup</code> group (fields <code>delayMs</code> and <code>thresholdPct</code>). They are intentionally not exposed in the Bot Configuration UI &mdash; they are cross-cutting defaults that apply to every managed position. To override, copy the file <code>app-config/app-defaults-for-user-configurable/bot-config-defaults.json</code> to <code>app-config/user-configurable/bot-config-defaults.json</code>, and edit your copy to set just the <code>residualCleanup</code> keys you want to change (you do not need to copy the rest &mdash; the runtime deep-merges your copy on top of the shipped defaults, so any key you omit keeps its shipped value). Your copy in <code>user-configurable/</code> survives tarball upgrades; the original in <code>app-defaults-for-user-configurable/</code> must stay untouched.</p>
 
-  <h2 id="range-width">Range Width</h2>
-  <p>The <strong>New Range Width %</strong> is initially set based on the first liquidity position detected on the wallet. To adjust it, manually create a new LP position with your desired range on 9mm Pro, then reload the app in your browser and select the new position. The bot will adopt its range width going forward.</p>
+  <h2 id="range-width">Range Width and Range Offset</h2>
+  <p>The <strong>New Range Width %</strong> is initially set based on the first liquidity position detected on the wallet. To adjust it, first you&rsquo;ll confirm/update your offset setting, and then, you will rebalance with a different range. For the offset, review the <strong>Position Offset</strong> field under <strong>Bot Configuration</strong> on the app: Almost always, you will want the default, 50/50 (equivalent to No Offset), but if you don&rsquo;t, then go ahead and change it as desired and click <strong>Save</strong>. Next, click the <strong>Rebalance Now</strong> button in the center-middle of the app, and set your desired position width. For new LP Positions, for example one created on the 9mm web app, note that the bot will simply adopt the existing range width going forward, but will apply no offset unless you specify it in the settings as described here.</p>
 
   <h2 id="volatility-doubling">Volatility Doubling</h2>
   <p>If <strong>3 rebalances</strong> occur within <strong>4&times; the minimum interval</strong> (e.g. 40 minutes when the minimum is 10 min), the bot enters <em>doubling mode</em>. Each subsequent rebalance must wait twice as long as the previous one: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This prevents rapid-fire rebalancing during high volatility. Doubling mode clears automatically if no rebalance is needed for 4&times; the current wait, or at the daily midnight UTC reset.</p>
