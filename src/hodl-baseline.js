@@ -173,7 +173,7 @@ async function _findMintEvent(
 /** Patch an existing baseline with missing mint timestamp. */
 function _patchMintTimestamp(botState, updateBotState, mintTimestamp) {
   /*- Canonical storage shape is Unix seconds (number).  ISO strings were
-      written here historically and remain in older .bot-config.json files;
+      written here historically and remain in older bot-config.json files;
       consumers normalize on read.  Don't reintroduce ISO writes. */
   const iso = new Date(mintTimestamp * 1000).toISOString();
   botState.hodlBaseline.mintDate = iso.slice(0, 10);

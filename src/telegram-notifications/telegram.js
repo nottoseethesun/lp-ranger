@@ -6,7 +6,7 @@
  * configurable position events (rebalance, compound, OOR timeout, errors).
  *
  * Bot token and chat ID are stored encrypted via api-key-store.  Event
- * preferences live in `.bot-config.json` global section.
+ * preferences live in `bot-config.json` global section.
  *
  * Setup: create a bot via @BotFather, paste the token + your chat ID
  * (from @userinfobot) into the dashboard dialog.

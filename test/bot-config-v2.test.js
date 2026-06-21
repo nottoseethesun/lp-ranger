@@ -87,7 +87,7 @@ describe("bot-config-v2", () => {
         positions: { "key-1": { status: "running", slippagePct: 0.5 } },
       };
       fs.writeFileSync(
-        path.join(dir, ".bot-config.json"),
+        path.join(dir, "bot-config.json"),
         JSON.stringify(saved),
       );
       const loaded = loadConfig(dir);
@@ -97,7 +97,7 @@ describe("bot-config-v2", () => {
 
     it("returns empty structure for malformed config", () => {
       const dir = tmpDir();
-      fs.writeFileSync(path.join(dir, ".bot-config.json"), "not json!");
+      fs.writeFileSync(path.join(dir, "bot-config.json"), "not json!");
       const loaded = loadConfig(dir);
       assert.deepEqual(loaded.positions, {});
     });
@@ -105,7 +105,7 @@ describe("bot-config-v2", () => {
     it("ignores obsolete managedPositions array", () => {
       const dir = tmpDir();
       fs.writeFileSync(
-        path.join(dir, ".bot-config.json"),
+        path.join(dir, "bot-config.json"),
         JSON.stringify({
           global: {},
           managedPositions: ["k1"],
@@ -128,7 +128,7 @@ describe("bot-config-v2", () => {
       saveConfig(cfg, dir);
 
       const raw = JSON.parse(
-        fs.readFileSync(path.join(dir, ".bot-config.json"), "utf8"),
+        fs.readFileSync(path.join(dir, "bot-config.json"), "utf8"),
       );
       assert.equal(raw.global.slippagePct, 0.7);
       assert.equal(
@@ -149,7 +149,7 @@ describe("bot-config-v2", () => {
       saveConfig(cfg, dir);
 
       const raw = JSON.parse(
-        fs.readFileSync(path.join(dir, ".bot-config.json"), "utf8"),
+        fs.readFileSync(path.join(dir, "bot-config.json"), "utf8"),
       );
       assert.equal(raw.version, undefined);
       assert.equal(raw.managedPositions, undefined);
@@ -383,7 +383,7 @@ describe("bot-config-v2", () => {
   describe("loadConfig edge cases", () => {
     it("returns empty config for an empty file", () => {
       const dir = tmpDir();
-      fs.writeFileSync(path.join(dir, ".bot-config.json"), "", "utf8");
+      fs.writeFileSync(path.join(dir, "bot-config.json"), "", "utf8");
       const cfg = loadConfig(dir);
       assert.deepEqual(cfg, { global: {}, positions: {} });
       fs.rmSync(dir, { recursive: true });
@@ -410,7 +410,7 @@ describe("bot-config-v2", () => {
         },
       };
       fs.writeFileSync(
-        path.join(dir, ".bot-config.json"),
+        path.join(dir, "bot-config.json"),
         JSON.stringify(onDisk),
         "utf8",
       );
@@ -442,7 +442,7 @@ describe("bot-config-v2", () => {
        *  state and must survive the purge. */
       const dir = tmpDir();
       fs.writeFileSync(
-        path.join(dir, ".bot-config.json"),
+        path.join(dir, "bot-config.json"),
         JSON.stringify({
           global: {},
           positions: {
@@ -462,7 +462,7 @@ describe("bot-config-v2", () => {
     it("does not touch running entries that have any extra field", () => {
       const dir = tmpDir();
       fs.writeFileSync(
-        path.join(dir, ".bot-config.json"),
+        path.join(dir, "bot-config.json"),
         JSON.stringify({
           global: {},
           positions: {

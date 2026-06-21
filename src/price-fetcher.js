@@ -67,7 +67,7 @@ const {
 // ── constants ────────────────────────────────────────────────────────────────
 
 /** @type {number} Cache time-to-live in milliseconds.  Configurable via
- *  `priceCacheTtlMs` in `app-config/.bot-config.json` global section.
+ *  `priceCacheTtlMs` in `app-config/user-configurable/bot-config.json` global section.
  *  Read once at module-load time — restart to apply changes. */
 const _CACHE_TTL_MS = getPriceCacheTtlMs();
 /*- In-move TTL: the rebalance/compound pipeline reuses a same-token

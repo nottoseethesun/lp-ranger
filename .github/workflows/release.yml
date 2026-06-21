@@ -78,11 +78,9 @@ jobs:
             --exclude='./node_modules' \
             --exclude='./tmp' \
             --exclude='./.github' \
-            --exclude='./app-config/.bot-config.json' \
-            --exclude='./app-config/.bot-config.backup.json' \
-            --exclude='./app-config/.wallet.json' \
-            --exclude='./app-config/api-keys.json' \
-            --exclude='./app-config/rebalance_log.json' \
+            --exclude='./app-config/user-configurable/*.json' \
+            --exclude='./app-data/*.json' \
+            --exclude='./logs' \
             --transform "s|^\./|lp-ranger-${VERSION}/|" \
             .
           # Sidecar checksum file consumable by `sha256sum -c`.

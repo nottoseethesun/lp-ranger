@@ -4,7 +4,7 @@
  * @description
  * Resolve the bot's signing private key from one of three sources:
  *   1. `PRIVATE_KEY` env var (32-byte hex, validated).
- *   2. Encrypted wallet on disk (`app-config/.wallet.json`) decrypted
+ *   2. Encrypted wallet on disk (`app-config/user-configurable/wallet.json`) decrypted
  *      with `WALLET_PASSWORD` env var or an interactive prompt.
  *   3. Returns `null` when neither source is available — caller decides
  *      whether that's a fatal error (live bot) or expected (dashboard-only).

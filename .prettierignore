@@ -21,11 +21,11 @@ test/report-artifacts/
 # Runtime state files written by the running app (encrypted wallet,
 # bot-config, rebalance log, API keys). Gitignored, machine-generated,
 # user-secret-bearing, and shape-volatile — must not be normalized.
-# The tracked format template is `app-config/api-keys.example.json`,
+# The tracked format template is
+# `app-config/app-defaults-for-user-configurable/api-keys.example.json`,
 # which IS linted (it's not in this ignore list).
-app-config/.bot-config.json
-app-config/.bot-config.backup.json
-app-config/.bot-config.v1.json
-app-config/.wallet.json
-app-config/api-keys.json
-app-config/rebalance_log.json
+app-config/user-configurable/bot-config.json
+app-config/user-configurable/bot-config.backup.json
+app-config/user-configurable/wallet.json
+app-config/user-configurable/api-keys.json
+app-data/rebalance_log.json

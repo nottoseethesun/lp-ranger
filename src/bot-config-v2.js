@@ -2,7 +2,8 @@
  * @file src/bot-config-v2.js
  * @module bot-config-v2
  * @description
- * Load and save `app-config/.bot-config.json` for multi-position management.
+ * Load and save `app-config/user-configurable/bot-config.json` for
+ * multi-position management.
  *
  * Structure:
  *   { global: { slippagePct, checkIntervalSec, … },
@@ -17,10 +18,11 @@
  * Focus is entirely client-side (determined by the URL
  * in each browser tab).
  *
- * Storage location: `app-config/.bot-config.json` (gitignored). See the
- * `app-config/` section of server.js for the full layout. Tests pass a
- * `dir` override to `loadConfig(dir)` / `saveConfig(cfg, dir)` and write
- * directly to `${dir}/.bot-config.json`, bypassing the app-config/ prefix.
+ * Storage location: `app-config/user-configurable/bot-config.json`
+ * (gitignored). See the `app-config/` section of server.js for the full
+ * layout. Tests pass a `dir` override to `loadConfig(dir)` /
+ * `saveConfig(cfg, dir)` and write directly to `${dir}/bot-config.json`,
+ * bypassing the app-config/user-configurable/ prefix.
  */
 
 "use strict";
@@ -31,8 +33,12 @@ const path = require("path");
 const { getAddress } = require("ethers");
 
 /** Default directory that holds the runtime bot config file. */
-const APP_CONFIG_DIR = path.join(process.cwd(), "app-config");
-const CONFIG_FILE = ".bot-config.json";
+const APP_CONFIG_DIR = path.join(
+  process.cwd(),
+  "app-config",
+  "user-configurable",
+);
+const CONFIG_FILE = "bot-config.json";
 
 /** Keys that belong in the global section. */
 const GLOBAL_KEYS = [
@@ -185,9 +191,10 @@ function parseCompositeKey(key) {
 /**
  * Resolve the config file path.
  * Production calls `loadConfig()` / `saveConfig(cfg)` with no `dir` — the
- * file resolves to `<cwd>/app-config/.bot-config.json`. Tests pass an
- * explicit `dir = tmpDir()` and get `${dir}/.bot-config.json`.
- * @param {string} [dir]  Directory override (default: `app-config/`).
+ * file resolves to `<cwd>/app-config/user-configurable/bot-config.json`.
+ * Tests pass an explicit `dir = tmpDir()` and get `${dir}/bot-config.json`.
+ * @param {string} [dir]  Directory override (default:
+ *                        `app-config/user-configurable/`).
  * @returns {string}
  */
 function _configPath(dir) {
@@ -258,7 +265,7 @@ function loadConfig(dir) {
  *
  * Phantoms are produced by the bug fixed in this PR: a stale composite
  * key written by `handleManage` after a key migration during force-
- * rebalance.  This purge heals any existing `.bot-config.json` that
+ * rebalance.  This purge heals any existing `bot-config.json` that
  * carries a phantom from before the fix shipped.
  *
  * Conservative — never touches an entry with any field besides status
@@ -374,7 +381,7 @@ function saveConfig(cfg, dir) {
     );
   }
   // ── Atomic write ───────────────────────────────────────────────────────
-  // Ensure the parent directory exists (e.g. app-config/ on first run
+  // Ensure the parent directory exists (e.g. app-config/user-configurable/ on first run
   // after a fresh install, or a test tmp dir that hasn't been populated).
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmpPath = filePath + ".tmp";

@@ -143,7 +143,7 @@ documentation — the raw `node` form is an implementation detail.
 | Flag | npm Invocation | Description |
 | --- | --- | --- |
 | `--verbose`, `-v` | `npm start -- --verbose` | Verbose logging: per-cycle fee details and out-of-range poll diagnostics that are hidden by default. Can also be set via `VERBOSE=1` in `.env` or environment. |
-| `--log-file [PATH]` | `npm start -- --log-file` | Tee every byte written to `process.stdout` and `process.stderr` to a file (ANSI color escapes stripped so the on-disk log is grep-friendly). `PATH` is optional — when omitted, the path falls through to `app-config/app-defaults-for-user-configurable/logging.json` and finally to the built-in default `app-config/lp-ranger.log`. With a path: `npm start -- --log-file path/to/run.log`. The file is opened in append mode (multiple runs accumulate); rotate or truncate externally if it grows unbounded. Operators who want the tee always-on can set `"enabled": true` in `logging.json` and run `npm start` with no flag. Implemented by [`src/log-file.js`](../src/log-file.js); wired into both `server.js` and `bot.js` via [`src/boot-log-file.js`](../src/boot-log-file.js). |
+| `--log-file [PATH]` | `npm start -- --log-file` | Tee every byte written to `process.stdout` and `process.stderr` to a file (ANSI color escapes stripped so the on-disk log is grep-friendly). `PATH` is optional — when omitted, the path falls through to `app-config/app-defaults-for-user-configurable/logging.json` and finally to the built-in default `logs/lp-ranger.log`. With a path: `npm start -- --log-file path/to/run.log`. The file is opened in append mode (multiple runs accumulate); rotate or truncate externally if it grows unbounded. Operators who want the tee always-on can set `"enabled": true` in `logging.json` and run `npm start` with no flag. Implemented by [`src/log-file.js`](../src/log-file.js); wired into both `server.js` and `bot.js` via [`src/boot-log-file.js`](../src/boot-log-file.js). |
 | `--help`, `-h` | `npm start -- --help` | Show all command-line options and exit. |
 | `--start-with-price-lookups-unpaused` | `npm run bot -- --start-with-price-lookups-unpaused` | **Bot-only** (`npm run bot`). Skip the default start-paused state for headless mode (see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)). Use this when you want continuous P&L cache warming on a headless box. |
 
@@ -169,8 +169,8 @@ the script — the tee will silently not engage.
 [`.env.example`](../.env.example) to `.env` and edit the values you need.
 Every variable below is read by [`src/config.js`](../src/config.js) at
 startup. Nothing in this section belongs in
-`app-config/app-defaults-for-user-configurable/chains.json`, `app-config/.bot-config.json`, or
-`app-config/api-keys.json` — for those files, see the
+`app-config/app-defaults-for-user-configurable/chains.json`, `app-config/user-configurable/bot-config.json`, or
+`app-config/user-configurable/api-keys.json` — for those files, see the
 [The `app-config` Directory](#the-app-config-directory) section below.
 
 ### Server (`.env`)
@@ -221,7 +221,7 @@ each layer live in the [Security](#security) section below.
 - `CHECK_INTERVAL_SEC` — Poll interval (default: `300`)
 - `MIN_REBALANCE_INTERVAL_MIN` — Min wait between rebalances (default: `10`)
 - `MAX_REBALANCES_PER_DAY` — Hard daily cap (default: `20`)
-- `LOG_FILE` — JSON log path (default: `./app-config/rebalance_log.json`)
+- `LOG_FILE` — JSON log path (default: `./app-data/rebalance_log.json`)
 
 ### Contract Address Overrides (`.env`)
 
@@ -244,12 +244,12 @@ Canonical deployment addresses:
   `app-config/app-defaults-for-user-configurable/chains.json`. Tracked in git, user-editable.
 - **Managed positions and per-position settings** (HODL baselines,
   thresholds, slippage overrides, auto-compound config) →
-  `app-config/.bot-config.json`. Runtime-managed, gitignored. Written by
+  `app-config/user-configurable/bot-config.json`. Runtime-managed, gitignored. Written by
   the dashboard and bot loops — not hand-edited.
-- **Encrypted wallet** → `app-config/.wallet.json`. Managed via the
+- **Encrypted wallet** → `app-config/user-configurable/wallet.json`. Managed via the
   dashboard import flow.
 - **Encrypted third-party API keys** (Moralis, etc.) →
-  `app-config/api-keys.json`. Managed via the dashboard Settings dialog.
+  `app-config/user-configurable/api-keys.json`. Managed via the dashboard Settings dialog.
 
 See the [The `app-config` Directory](#the-app-config-directory) section
 below for the full inventory and the rules for where future config files
@@ -270,7 +270,7 @@ non-zero result:
 
 1. **Moralis** (primary) — **the API key is free** (sign up at
    <https://moralis.io>); paste it into the dashboard Settings dialog and
-   it's encrypted at rest in `app-config/api-keys.json`. Most reliable for
+   it's encrypted at rest in `app-config/user-configurable/api-keys.json`. Most reliable for
    meme tokens that the free aggregators drop.
 
    **Free-tier quota caveat:** the free Moralis plan has a daily compute
@@ -368,7 +368,7 @@ is never gated.
 this prevents the 3-second `/api/status` polling loop from fighting the
 browser-issued pause.
 
-**Configuration** (in `app-config/.bot-config.json` `global` section):
+**Configuration** (in `app-config/user-configurable/bot-config.json` `global` section):
 
 | Key | Default | Notes |
 | --- | --- | --- |
@@ -449,7 +449,7 @@ can detect band crossings even with the dashboard closed. This consumes
 price-source quota continuously — operators using paid APIs (e.g.
 Moralis) should ensure their plan tolerates the load.
 
-**Configuration** (in `app-config/.bot-config.json` `global` section,
+**Configuration** (in `app-config/user-configurable/bot-config.json` `global` section,
 falling back to `bot-config-defaults.json`):
 
 | Key | Default | Notes |
@@ -719,13 +719,14 @@ blockchain wallet scans on next start to rebuild caches.
 
 ### Wallet Management
 
-- `npm run reset-wallet` — Delete `app-config/.wallet.json` + clear
+- `npm run reset-wallet` — Delete `app-config/user-configurable/wallet.json` + clear
   `WALLET_PASSWORD` from `.env`. Forces a fresh wallet import via the
   dashboard on next start.
-- `npm run clean` — `reset-wallet` + delete every runtime file in
-  `app-config/` (`.bot-config.json`, `.bot-config.backup.json`,
-  `api-keys.json`, `rebalance_log.json`) plus all `tmp/` caches and the
-  entire `test/report-artifacts/` directory. Full state reset.
+- `npm run clean` — `reset-wallet` + delete every runtime file under
+  `app-config/user-configurable/` (`bot-config.json`,
+  `bot-config.backup.json`, `api-keys.json`) and `app-data/`
+  (`rebalance_log.json`) plus all `tmp/` caches and the entire
+  `test/report-artifacts/` directory. Full state reset.
   **Note:** browser localStorage is NOT cleared by this command — use the
   Settings gear icon → "Clear Local Storage & Cookies" in the dashboard,
   or open DevTools → Application → Local Storage → Clear All.
@@ -738,7 +739,7 @@ blockchain wallet scans on next start to rebuild caches.
 ### Housekeeping
 
 - `npm run clean:log` — Delete the log-to-file output at
-  `app-config/lp-ranger.log` (the file produced when the app is started
+  `logs/lp-ranger.log` (the file produced when the app is started
   with `--log-file` or with `enabled: true` in
   `app-config/app-defaults-for-user-configurable/logging.json`). No-op when the file is
   absent. Use this to free disk space, to start a clean capture before
@@ -773,7 +774,7 @@ on-chain state and bot data. End users run these when something looks
 wrong. All four tools take CLI args, never mutate state, and write only
 to stdout (redirect to `tmp/` for logs).
 
-- `inspect-pool.js` — Pretty-prints `app-config/.bot-config.json` and
+- `inspect-pool.js` — Pretty-prints `app-config/user-configurable/bot-config.json` and
   `tmp/pnl-epochs-cache.json` for a position or pool fragment: status,
   hodlBaseline, residuals, lifetimeHodlAmounts, fresh deposits.
 - `show-rebalance-chain.js` — Walks position-manager `Transfer` events
@@ -881,28 +882,30 @@ state lives in ONE dedicated directory at the project root:
 
 ```text
 lp-ranger/
-└── app-config/
-    ├── app-defaults-for-user-configurable/  ← tracked, shipped defaults
-    │   ├── README.md         ← do-not-edit warning + override instructions
-    │   ├── chains.json       ← per-blockchain tunables (RPC, contracts, gas)
-    │   ├── bot-config-defaults.json  ← Bot Settings defaults + nested groups
-    │   ├── csrf.json         ← CSRF token TTL + refresh cadence
-    │   ├── dust-threshold.json  ← universal dust threshold (gold-pegged)
-    │   ├── evm-rpc-response-codes.json  ← RPC error-classifier substrings
-    │   ├── logging.json      ← log-to-file always-on toggle + path
-    │   ├── nft-providers.json  ← short labels for NFT issuer contracts
-    │   └── ui-defaults.json  ← dashboard first-visit defaults
-    ├── user-configurable/    ← dir tracked (via .gitkeep), CONTENTS gitignored
-    │   └── .gitkeep          ← survives tarball upgrade — operators drop
-    │                            same-named override files here; the runtime
-    │                            deep-merges them on top of the shipped
-    │                            defaults above (user wins)
-    ├── api-keys.example.json ← tracked format template (documentation)
-    ├── .bot-config.json      ← runtime (gitignored) — managed positions
-    ├── .bot-config.backup.json  ← runtime (gitignored) — auto snapshot
-    ├── .bot-config.v1.json   ← legacy format, kept for rollback
-    ├── .wallet.json          ← runtime (gitignored) — encrypted wallet
-    ├── api-keys.json         ← runtime (gitignored) — encrypted API keys
+├── app-config/
+│   ├── app-defaults-for-user-configurable/  ← tracked, shipped defaults
+│   │   ├── README.md         ← do-not-edit warning + override instructions
+│   │   ├── chains.json       ← per-blockchain tunables (RPC, contracts, gas)
+│   │   ├── bot-config-defaults.json  ← Bot Settings defaults + nested groups
+│   │   ├── csrf.json         ← CSRF token TTL + refresh cadence
+│   │   ├── dust-threshold.json  ← universal dust threshold (gold-pegged)
+│   │   ├── evm-rpc-response-codes.json  ← RPC error-classifier substrings
+│   │   ├── logging.json      ← log-to-file always-on toggle + path
+│   │   ├── nft-providers.json  ← short labels for NFT issuer contracts
+│   │   ├── ui-defaults.json  ← dashboard first-visit defaults
+│   │   └── api-keys.example.json ← tracked format template (documentation)
+│   └── user-configurable/    ← dir tracked (via README.md), CONTENTS gitignored
+│       ├── README.md         ← survives tarball upgrade — operators drop
+│       │                        same-named override files here; the runtime
+│       │                        deep-merges them on top of the shipped
+│       │                        defaults above (user wins)
+│       ├── bot-config.json   ← runtime (gitignored) — managed positions
+│       ├── bot-config.backup.json  ← runtime (gitignored) — auto snapshot (config-stomp safety net)
+│       ├── wallet.json       ← runtime (gitignored) — encrypted wallet
+│       └── api-keys.json     ← runtime (gitignored) — encrypted API keys
+│                                (Moralis, Telegram bot token + chat ID)
+└── app-data/                 ← per-install runtime data
+    ├── README.md             ← tracked
     └── rebalance_log.json    ← runtime (gitignored) — historical P&L events
 ```
 
@@ -939,45 +942,51 @@ regenerate it.
   `app-config/user-configurable/dust-threshold.json` and edit the
   copy. Do NOT edit the file in `app-defaults-for-user-configurable/`
   — tarball upgrades overwrite it.
-- **`api-keys.example.json`** — Tracked. Format template showing the
-  structure of the encrypted `api-keys.json`. NOT a tunable, NOT a runtime
-  file — pure documentation. Lives at `app-config/` top level because it
-  directly documents its gitignored sibling.
-- **`.bot-config.json`** — Runtime, gitignored. Managed position lifecycle
-  (`status: running/stopped`), per-position settings (HODL baseline,
-  residuals, thresholds, slippage, auto-compound config, compound history,
-  initial deposit overrides), global bot settings. Read/written by
-  `src/bot-config-v2.js` via `loadConfig()` / `saveConfig()`. Atomic write
-  (tmp + rename); every write is logged with the caller's stack for
-  config-stomp debugging.
-- **`.bot-config.backup.json`** — Runtime, gitignored. Automatic snapshot
-  created by bot-config-v2 on every successful load. Safety net for the
-  ongoing config-stomp investigation — if `.bot-config.json` is ever
-  accidentally truncated, copy this file back over it:
+- **`app-defaults-for-user-configurable/api-keys.example.json`** —
+  Tracked. Format template showing the structure of the encrypted
+  `api-keys.json`. NOT a tunable, NOT a runtime file — pure
+  documentation. Lives in the shipped-defaults directory because it
+  ships with the app and documents the runtime sibling under
+  `user-configurable/`.
+- **`user-configurable/bot-config.json`** — Runtime, gitignored.
+  Managed position lifecycle (`status: running/stopped`), per-position
+  settings (HODL baseline, residuals, thresholds, slippage,
+  auto-compound config, compound history, initial deposit overrides),
+  global bot settings. Read/written by `src/bot-config-v2.js` via
+  `loadConfig()` / `saveConfig()`. Atomic write (tmp + rename); every
+  write is logged with the caller's stack for config-stomp debugging.
+- **`user-configurable/bot-config.backup.json`** — Runtime, gitignored.
+  Automatic snapshot created by bot-config-v2 on every successful load.
+  Safety net for the ongoing config-stomp investigation — if
+  `bot-config.json` is ever accidentally truncated, copy this file back
+  over it:
 
   ```sh
-  cp app-config/.bot-config.backup.json app-config/.bot-config.json
+  cp app-config/user-configurable/bot-config.backup.json app-config/user-configurable/bot-config.json
   ```
 
-  The save guard also logs `[config] REFUSING` when it detects that running
-  positions would vanish; if you see that warning, use the backup.
-- **`.bot-config.v1.json`** — Legacy format from before the v1→v2 migration.
-  Kept on disk for rollback history; not read by the current code.
-- **`.wallet.json`** — Runtime, gitignored. Encrypted wallet state
-  (AES-256-GCM with PBKDF2-SHA512 key derivation from the user's password).
-  Holds address, source (generated/seed/key), encrypted private key and
-  mnemonic. Plaintext secrets are NEVER written to disk. Read/written by
-  `src/wallet-manager.js`. Tests override the path via the
-  `WALLET_FILE_PATH` environment variable.
-- **`api-keys.json`** — Runtime, gitignored. Encrypted storage for
-  third-party API keys (e.g. Moralis), using the same wallet password and
-  encryption scheme as `.wallet.json`. Read/written by `src/api-key-store.js`.
-  Tests override the path via the `API_KEYS_FILE_PATH` environment variable.
-- **`rebalance_log.json`** — Runtime, gitignored. JSON array of every
-  rebalance event ever: timestamps, fees collected, gas cost, exit/entry USD
-  values, token balances. Appended to by `src/bot-recorder.js`. Read by
-  `src/position-history.js` for closed-position P&L display. Configurable
-  via the `LOG_FILE` environment variable.
+  The save guard also logs `[config] REFUSING` when it detects that
+  running positions would vanish; if you see that warning, use the
+  backup.
+- **`user-configurable/wallet.json`** — Runtime, gitignored. Encrypted
+  wallet state (AES-256-GCM with PBKDF2-SHA512 key derivation from the
+  user's password). Holds address, source (generated/seed/key),
+  encrypted private key and mnemonic. Plaintext secrets are NEVER
+  written to disk. Read/written by `src/wallet-manager.js`. Tests
+  override the path via the `WALLET_FILE_PATH` environment variable.
+- **`user-configurable/api-keys.json`** — Runtime, gitignored.
+  Encrypted storage for third-party API keys (Moralis, Telegram bot
+  token + chat ID), using the same wallet password and encryption
+  scheme as `wallet.json`. Read/written by `src/api-key-store.js`.
+  Tests override the path via the `API_KEYS_FILE_PATH` environment
+  variable.
+- **`app-data/rebalance_log.json`** — Runtime, gitignored. JSON array
+  of every rebalance event ever: timestamps, fees collected, gas cost,
+  exit/entry USD values, token balances. Appended to by
+  `src/bot-recorder.js`. Read by `src/position-history.js` for
+  closed-position P&L display. Configurable via the `LOG_FILE`
+  environment variable. Lives outside `app-config/` because it's
+  per-install runtime DATA, not config.
 
 ### Rules for Where Future Config Files Should Live
 
@@ -1027,15 +1036,15 @@ where a file could be lost to an interrupted move.
 
 ### Test-Time Protection in scripts/check.js
 
-`scripts/check.js` (which `npm run check` invokes) backs up every top-level
-file in `app-config/` before running tests, wipes them, runs the full test
-suite, then restores the originals via an `EXIT` trap. This prevents
-test-created fixtures from ever clobbering live user state. The
-`app-defaults-for-user-configurable/` subdir and the
-`api-keys.example.json` template are explicitly excluded from the
-backup/wipe — they're tracked repo files. The sibling
-`user-configurable/` subdir IS backed up (it holds per-install
-operator overrides; same upgrade-safety semantics as `.env`).
+`scripts/check.js` (which `npm run check` invokes) backs up every file
+under the two operator-state directories — `app-config/user-configurable/`
+and `app-data/` — before running tests, wipes them (preserving each
+dir's tracked `README.md`), runs the full test suite, then restores the
+originals via an `EXIT` trap. This prevents test-created fixtures from
+ever clobbering live user state. The shipped-defaults directory
+(`app-config/app-defaults-for-user-configurable/`, which holds the
+tracked `api-keys.example.json` format template alongside the tunable
+JSON defaults) is not touched at all — it's tracked repo content.
 
 Tests that need to write config without touching the live files either
 pass an explicit `dir` argument to `loadConfig(dir)` / `saveConfig(cfg, dir)`
@@ -1051,7 +1060,7 @@ holds the default values for every Bot Settings input the dashboard
 exposes, plus two server-internal nested groups. The dashboard fetches
 it at init via `GET /api/bot-config-defaults`; the server falls back to
 it when `getConfig` is asked for a value the user has not overridden.
-Per-user overrides live in `app-config/.bot-config.json`.
+Per-user overrides live in `app-config/user-configurable/bot-config.json`.
 
 **User-editable (top-level keys, exposed in the Bot Settings panel):**
 
@@ -1369,9 +1378,9 @@ provides their wallet password through one of three methods
 
 Whichever method is used, the same thing happens: the server
 decrypts the operator's **private signing key** (stored encrypted
-in `app-config/.wallet.json` on the server — not in the browser)
+in `app-config/user-configurable/wallet.json` on the server — not in the browser)
 and decrypts every **third-party API key** previously saved
-(Moralis, Telegram, etc., in `app-config/api-keys.json`). One
+(Moralis, Telegram, etc., in `app-config/user-configurable/api-keys.json`). One
 password, entered once, brings every secret online for the session.
 The password is held only in server memory and discarded when the
 process exits.
@@ -1383,7 +1392,7 @@ keys), both backed by the cryptographic primitives in
 [`src/key-store.js`](../src/key-store.js). All use the same scheme:
 
 1. **Your password is not stored inside the encrypted files.** The
-   encrypted `.wallet.json` and `api-keys.json` files contain
+   encrypted `wallet.json` and `api-keys.json` files contain
    ciphertext, salts, and IVs — but not the password itself.
    Instead, your password is run through a slow, deliberate process
    called **key derivation** — specifically, PBKDF2 (Password-Based
@@ -1423,7 +1432,7 @@ subsequent API-key save/reveal operations during the same session
 don't re-prompt. The cache is discarded when the process exits.
 
 **Two ways to import the wallet — same password either way:** The
-encrypted `.wallet.json` file can be created through either of two
+encrypted `wallet.json` file can be created through either of two
 workflows, depending on how you run LP Ranger:
 
 - **Through the dashboard** (browser UI) — paste a seed phrase or
@@ -1431,7 +1440,7 @@ workflows, depending on how you run LP Ranger:
   saves it.
 - **From the command line** (headless, no browser) — run
   `node scripts/import-wallet.js`, which prompts for a private key
-  and a password, then creates the same encrypted `.wallet.json`.
+  and a password, then creates the same encrypted `wallet.json`.
 
 Both workflows produce the same file and use the same password.
 There is no separate "CLI password" or "dashboard password."
@@ -1468,13 +1477,13 @@ dashboard-only mode — there is no browser to fall back to.
   rotated.
 - When rotating a password, run `npm run reset-wallet` rather than
   editing `.env` by hand — the script scrubs the `WALLET_PASSWORD=`
-  line and deletes `app-config/.wallet.json` in one step, so the
+  line and deletes `app-config/user-configurable/wallet.json` in one step, so the
   next restart forces a fresh import.
 
 **How `reset-wallet` works:** `scripts/reset-wallet.js` (invoked via
 `npm run reset-wallet`) performs two idempotent actions:
 
-1. Delete `app-config/.wallet.json`.
+1. Delete `app-config/user-configurable/wallet.json`.
 2. Remove every line matching `^WALLET_PASSWORD=` from `.env` by
    reading the file, filtering out the matching lines, writing to a
    `.tmp` sibling, and atomically renaming. File permissions are
@@ -1487,11 +1496,11 @@ state. `npm run clean` and `npm run dev-clean` both invoke
 line.
 
 Each service gets its own entry (`{service}Encrypted`) in
-`app-config/api-keys.json` with an independently generated salt and
+`app-config/user-configurable/api-keys.json` with an independently generated salt and
 IV, so identical passwords still derive distinct per-entry keys and a
 leaked ciphertext for one service reveals nothing about another.
 
-`app-config/.wallet.json` and `app-config/api-keys.json` are the only
+`app-config/user-configurable/wallet.json` and `app-config/user-configurable/api-keys.json` are the only
 on-disk homes for these secrets; both are gitignored and protected by
 the `app-config/*` glob in `.gitignore`. `test/key-store.test.js`,
 `test/key-migration.test.js`, and `test/wallet-manager.test.js` cover
@@ -1527,10 +1536,12 @@ and runs under `npm run audit:security`.
 #### Gitignore Enforcement
 
 `test/gitignore.test.js` asserts that `.gitignore` covers `.env`,
-`.env.*`, `*.keyfile.json`, and the `app-config/*` glob while
-explicitly un-ignoring `.env.example`, `app-defaults-for-user-configurable/`, and
-`api-keys.example.json`. If a contributor deletes one of those ignore
-lines, the test fails before the unsafe change can merge.
+`.env.*`, `*.keyfile.json`, the `app-config/*` glob, and the
+`app-data/*` glob, while explicitly un-ignoring `.env.example`,
+`app-defaults-for-user-configurable/`, `user-configurable/` (plus its
+tracked `README.md`), and `app-data/README.md`. If a contributor
+deletes one of those ignore lines, the test fails before the unsafe
+change can merge.
 
 ### Cryptographic Primitives
 
@@ -2233,7 +2244,7 @@ reaching `main`.
 runs the test suite against vanilla state, and restores the originals
 via an `EXIT` trap. This prevents a test that creates a stub config or
 keyfile from ever clobbering live user state, and it means a test that
-believed it had written to `app-config/.wallet.json` was actually
+believed it had written to `app-config/user-configurable/wallet.json` was actually
 writing to a scratch copy. Tests that need explicit paths instead use
 the `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH` environment variables or
 pass a `dir` argument to `loadConfig` / `saveConfig` directly.
@@ -2473,10 +2484,10 @@ What happens when the process starts, in order:
    (async mutex) and a single `positionManager` are instantiated and
    shared by every route handler and bot loop in the process.
 6. **On-disk bot config is loaded.** `loadConfig()` reads
-   `app-config/.bot-config.json`. Every managed position's composite
+   `app-config/user-configurable/bot-config.json`. Every managed position's composite
    key and `status` is logged so config-stomp incidents are visible in
-   the console at boot. A successful load also writes
-   `.bot-config.backup.json` as a safety net.
+   the console at boot. A successful load also writes the sibling
+   `app-config/user-configurable/bot-config.backup.json` as a safety net.
 7. **The HTTP server is created.** `http.createServer(handleRequest)`
    builds the server object; `requestTimeout` is raised to
    `config.SCAN_TIMEOUT_MS` so lifetime P&L scans (which can take
@@ -2488,7 +2499,7 @@ What happens when the process starts, in order:
       dashboard URL, `/api/status` URL, port, and `/health` URL.
    2. `_tryResolveKey()` tries to obtain the wallet private key —
       either from `PRIVATE_KEY` in `.env`, from a
-      `WALLET_PASSWORD`-decrypted `app-config/.wallet.json`, or from
+      `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or from
       an interactive prompt.
       - On success: `_autoStartManagedPositions()` spins up one bot
         loop per position whose v2 config has `status: 'running'`.

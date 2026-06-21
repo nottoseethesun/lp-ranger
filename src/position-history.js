@@ -42,7 +42,7 @@ function _readRebalanceLog() {
     const raw = fs.readFileSync(
       path.join(
         process.cwd(),
-        config.LOG_FILE || "app-config/rebalance_log.json",
+        config.LOG_FILE || "app-data/rebalance_log.json",
       ),
       "utf8",
     );

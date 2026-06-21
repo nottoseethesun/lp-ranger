@@ -36,21 +36,21 @@ const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 
-/** Path to the per-install operator overrides directory.  Its files
- *  are gitignored, but the directory itself ships with a tracked
- *  .gitkeep (which the backup pass explicitly preserves so it doesn't
- *  vanish across the wipe).  Declared at module top so the
- *  backup/wipe/restore functions called from the top-level script
- *  body (lines below) can reference it without hitting the
- *  temporal-dead-zone. */
+/** Per-install operator-state directories.  Files in each are
+ *  gitignored, but each directory ships with a tracked README.md
+ *  (which the backup pass explicitly preserves so it doesn't vanish
+ *  across the wipe).  Declared at module top so the backup/wipe/
+ *  restore functions called from the top-level script body (lines
+ *  below) can reference them without hitting the temporal-dead-zone. */
 const _USER_CFG_DIR = path.join("app-config", "user-configurable");
+const _APP_DATA_DIR = "app-data";
+const _OPERATOR_STATE_DIRS = [_USER_CFG_DIR, _APP_DATA_DIR];
 
 /*- File-name predicates used by the backup/wipe/restore helpers.
  *  Hoisted up here so the top-level script body (restoreProdFiles is
  *  called from the EXIT trap, which fires anywhere below) can
  *  reference them without hitting the temporal-dead-zone. */
-const _IS_API_KEYS_EXAMPLE = (n) => n === "api-keys.example.json";
-const _IS_GITKEEP = (n) => n === ".gitkeep";
+const _IS_README = (n) => n === "README.md";
 const _IS_JSON = (n) => n.endsWith(".json");
 process.chdir(ROOT);
 
@@ -358,33 +358,20 @@ function listTestFiles() {
     .map((f) => path.join("test", f));
 }
 
-/** Copy top-level runtime files in app-config/ + every operator
- *  override in app-config/user-configurable/ (except .gitkeep) +
- *  tmp/*.json to `backup`.  The user-configurable contents are
- *  protected on the same "operator state" footing as `.env`: tests
- *  must not silently destroy them. */
+/** Copy every operator-state file in app-config/user-configurable/
+ *  and app-data/ (except each dir's tracked README.md) plus tmp/*.json
+ *  to `backup`.  Operator-state contents are protected on the same
+ *  footing as `.env`: tests must not silently destroy them. */
 function backupProdFiles(backup) {
-  fs.mkdirSync(path.join(backup, "app-config"), { recursive: true });
-  if (fs.existsSync("app-config")) {
-    for (const entry of fs.readdirSync("app-config", { withFileTypes: true })) {
+  for (const dir of _OPERATOR_STATE_DIRS) {
+    fs.mkdirSync(path.join(backup, dir), { recursive: true });
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isFile()) continue;
-      if (entry.name === "api-keys.example.json") continue;
+      if (_IS_README(entry.name)) continue;
       fs.copyFileSync(
-        path.join("app-config", entry.name),
-        path.join(backup, "app-config", entry.name),
-      );
-    }
-  }
-  fs.mkdirSync(path.join(backup, _USER_CFG_DIR), { recursive: true });
-  if (fs.existsSync(_USER_CFG_DIR)) {
-    for (const entry of fs.readdirSync(_USER_CFG_DIR, {
-      withFileTypes: true,
-    })) {
-      if (!entry.isFile()) continue;
-      if (entry.name === ".gitkeep") continue;
-      fs.copyFileSync(
-        path.join(_USER_CFG_DIR, entry.name),
-        path.join(backup, _USER_CFG_DIR, entry.name),
+        path.join(dir, entry.name),
+        path.join(backup, dir, entry.name),
       );
     }
   }
@@ -400,25 +387,12 @@ function backupProdFiles(backup) {
   }
 }
 
-/** Delete runtime app-config files (top-level + user-configurable/
- *  contents, except .gitkeep) and tmp/*.json so tests see vanilla
- *  state. */
+/** Delete operator-state files (app-config/user-configurable/ +
+ *  app-data/ contents, except each dir's README.md) and tmp/*.json so
+ *  tests see vanilla state. */
 function wipeRuntimeFiles() {
-  if (fs.existsSync("app-config")) {
-    for (const entry of fs.readdirSync("app-config", { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      if (entry.name === "api-keys.example.json") continue;
-      fs.unlinkSync(path.join("app-config", entry.name));
-    }
-  }
-  if (fs.existsSync(_USER_CFG_DIR)) {
-    for (const entry of fs.readdirSync(_USER_CFG_DIR, {
-      withFileTypes: true,
-    })) {
-      if (!entry.isFile()) continue;
-      if (entry.name === ".gitkeep") continue;
-      fs.unlinkSync(path.join(_USER_CFG_DIR, entry.name));
-    }
+  for (const dir of _OPERATOR_STATE_DIRS) {
+    _wipeDir(dir, _IS_README);
   }
   if (fs.existsSync("tmp")) {
     for (const entry of fs.readdirSync("tmp", { withFileTypes: true })) {
@@ -454,14 +428,14 @@ function _restoreDir(srcDir, dstDir, accept) {
   }
 }
 
-/** Restore app-config (top-level + user-configurable) and tmp/*.json
- *  from `backup`. */
+/** Restore operator-state directories (app-config/user-configurable/
+ *  and app-data/) plus tmp/*.json from `backup`. */
 function restoreProdFiles(backup) {
   // Wipe any test-created runtime files, then copy originals back.
-  _wipeDir("app-config", _IS_API_KEYS_EXAMPLE);
-  _wipeDir(_USER_CFG_DIR, _IS_GITKEEP);
-  _restoreDir(path.join(backup, "app-config"), "app-config");
-  _restoreDir(path.join(backup, _USER_CFG_DIR), _USER_CFG_DIR);
+  for (const dir of _OPERATOR_STATE_DIRS) {
+    _wipeDir(dir, _IS_README);
+    _restoreDir(path.join(backup, dir), dir);
+  }
   _wipeDir("tmp", (n) => !_IS_JSON(n));
   _restoreDir(path.join(backup, "tmp"), "tmp");
 }

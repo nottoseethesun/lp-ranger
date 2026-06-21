@@ -8,7 +8,7 @@
  * are *defaults* for user-editable Bot Config settings: the UI uses
  * them as the initial input value when the user hasn't saved an
  * override yet, and the server falls back to them when `getConfig` is
- * asked for a key that isn't present in `.bot-config.json`.
+ * asked for a key that isn't present in `bot-config.json`.
  *
  * Keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so
  * the same string flows end-to-end (defaults file → dashboard input →

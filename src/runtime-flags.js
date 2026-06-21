@@ -63,7 +63,8 @@ const TX_ENVELOPE_TYPES = { legacy: 0, eip1559: 2 };
 /** Resolved EIP-2718 envelope type number for the active chain. */
 const TX_TYPE = TX_ENVELOPE_TYPES[CHAIN.transactionEnvelopeType] ?? 0;
 
-/** Raw hex private key for the signing wallet (alternative to .wallet.json). */
+/** Raw hex private key for the signing wallet (alternative to the encrypted
+ *  app-config/user-configurable/wallet.json). */
 const PRIVATE_KEY = process.env.PRIVATE_KEY || null;
 
 /** Dry-run mode — read-only, no transactions. Set DRY_RUN=1 / true / yes to enable. */

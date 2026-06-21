@@ -25,13 +25,15 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 - [Screenshot](#screenshot)
 - [Prerequisites](#prerequisites)
 - [Install](#install)
+- [Optional: Verify Download](#optional-verify-download)
 - [Update](#update)
 - [Uninstall](#uninstall)
 - [Usage](#usage)
   - [Help and User Manual](#help-and-user-manual)
+- [Configure](#configure)
 - [Lint & Test](#lint--test)
 - [Private Key Security](#private-key-security)
-- [Configuration & Development](#configuration--development)
+- [Development](#development)
 - [License](#license)
 - [Road Map](#road-map)
 - [Donations](#donations)
@@ -97,6 +99,8 @@ This is the install step for anyone who isn't doing dev work on LP Ranger. That'
 First, download the latest official release ".tar.gz" file from
 [GitHub Releases](../../releases).
 
+*Optional but recommended:* [Verify the download](#optional-verify-download) before extracting.
+
 Second, on the commandline in your Terminal, do:
 
 ```bash
@@ -131,11 +135,37 @@ npm run dev                      # build + watch mode
 
 ---
 
+## Optional: Verify Download
+
+Catches a corrupt download or a tampered tarball before you trust the code on your machine.
+
+After downloading both the `.tar.gz` and its `.sha256` sidecar into the same directory, run **one** of the following from that directory. Replace `[version]` with the actual release tag.
+
+**Linux / macOS:**
+
+```bash
+sha256sum -c lp-ranger-[version].tar.gz.sha256
+```
+
+You should see `lp-ranger-[version].tar.gz: OK`. Any other output (especially `FAILED`) means do not proceed &mdash; delete both files and re-download.
+
+**Windows (PowerShell):**
+
+```powershell
+$expected = (Get-Content lp-ranger-[version].tar.gz.sha256).Split(' ')[0]
+$actual = (Get-FileHash lp-ranger-[version].tar.gz -Algorithm SHA256).Hash.ToLower()
+if ($expected -eq $actual) { "OK" } else { "FAILED" }
+```
+
+You should see `OK`. If it prints `FAILED`, do not proceed &mdash; delete both files and re-download.
+
+---
+
 ## Update
 
 If you're installing LP Ranger for the very first time, follow the [Install](#install) section instead &mdash; this section is for upgrading an existing install to a newer release.
 
-The release tarball includes only the shipped code and the shipped defaults (under `app-config/app-defaults-for-user-configurable/`). It explicitly excludes every file that holds your personal state &mdash; `.env`, `app-config/.bot-config.json`, `app-config/.bot-config.backup.json`, `app-config/.wallet.json`, `app-config/api-keys.json`, and `app-config/rebalance_log.json` &mdash; and your custom operator overrides under `app-config/user-configurable/` are gitignored at build time, so they are not in the tarball either. The upgrade workflow uses a plain `tar xvzf` to extract the new release into its own versioned directory next to the old one, then carries your personal state forward with a no-clobber copy.
+The release tarball includes only the shipped code and the shipped defaults (under `app-config/app-defaults-for-user-configurable/`). It explicitly excludes every file that holds your personal state &mdash; `.env` plus everything under `app-config/user-configurable/` and `app-data/` &mdash; so those files are never in the tarball. The upgrade workflow uses a plain `tar xvzf` to extract the new release into its own versioned directory next to the old one, then carries your personal state forward with a no-clobber copy.
 
 > For background on the layered shipped-defaults / per-install user-overrides design &mdash; what goes in `app-config/user-configurable/`, how the merge works, and the rules for where new config files belong &mdash; see [The app-config Directory](docs/engineering.md#the-app-config-directory) in the engineering reference.
 
@@ -156,13 +186,7 @@ curl -LO https://github.com/nottoseethesun/lp-ranger/releases/download/[new-vers
 curl -LO https://github.com/nottoseethesun/lp-ranger/releases/download/[new-version]/lp-ranger-[new-version].tar.gz.sha256
 ```
 
-**Step Three** &mdash; Verify the download against the checksum:
-
-```bash
-sha256sum -c lp-ranger-[new-version].tar.gz.sha256
-```
-
-You should see `lp-ranger-[new-version].tar.gz: OK`. If you see `FAILED`, do not proceed &mdash; the download may be corrupt or tampered with. Delete both files and re-download.
+**Step Three** &mdash; Verify the download against the checksum. See [Optional: Verify Download](#optional-verify-download) for the commands (Linux/macOS and Windows PowerShell).
 
 **Step Four** &mdash; Extract the new tarball with the same plain `tar xvzf` you used at install time. This creates a fresh `lp-ranger-[new-version]/` directory next to your existing install &mdash; nothing in the existing install is touched yet:
 
@@ -177,11 +201,13 @@ rm lp-ranger-[new-version].tar.gz lp-ranger-[new-version].tar.gz.sha256
 cp -rn lp-ranger-[current-version-number]/. lp-ranger-[new-version]/
 ```
 
+> **Windows users:** `cp -rn` is a Unix command and does not ship with Windows. Run this step from a [Git Bash](https://git-scm.com/downloads/win) terminal &mdash; Git Bash provides a real Unix `cp`. (Most Windows developers already have it installed alongside Git.)
+
 What this carries forward:
 
 - `.env`
-- `app-config/.bot-config.json`, `.bot-config.backup.json`, `.wallet.json`, `api-keys.json`, `rebalance_log.json`
-- `app-config/user-configurable/*` (your operator overrides; the new install only ships an empty `.gitkeep` placeholder there)
+- `app-config/user-configurable/*` (your wallet, bot config, encrypted API keys, and any operator overrides; the new install ships only a tracked `README.md` there)
+- `app-data/*` (your rebalance log; the new install ships only a tracked `README.md` there)
 - `tmp/*` (your performance caches; safe to skip if you want a fresh sync)
 - `node_modules/` (also copied, then replaced in the next step)
 
@@ -201,7 +227,7 @@ npm ci
 npm start
 ```
 
-The dashboard remains at <http://localhost:5555>. Your wallet unlocks from the encrypted `.wallet.json` as usual, your managed positions resume polling, and any custom overrides in `app-config/user-configurable/` continue to apply.
+The dashboard remains at <http://localhost:5555>. Your wallet unlocks from the encrypted `app-config/user-configurable/wallet.json` as usual, your managed positions resume polling, and any custom overrides in `app-config/user-configurable/` continue to apply.
 
 **Step Eight** &mdash; Once you've verified the new install is working correctly, remove the old version's directory to reclaim disk space:
 
@@ -256,6 +282,16 @@ rm -rf lp-ranger*
 
 ---
 
+## Configure
+
+No special configuration is needed beyond what the app's user interface already guides you through. Read on only if you want to override one of the shipped operator-tunable defaults for your install.
+
+Shipped defaults live under [`app-config/app-defaults-for-user-configurable/`](app-config/app-defaults-for-user-configurable/) (do not edit; tarball upgrades overwrite). To override, copy the file into [`app-config/user-configurable/`](app-config/user-configurable/) and edit your copy there. The app deep-merges your overrides on top of the shipped defaults, with your values winning. Files under `user-configurable/` are gitignored and survive upgrades.
+
+For the full layout and rules for where new config files belong, see [The app-config Directory](docs/engineering.md#the-app-config-directory) in the engineering reference.
+
+---
+
 ## Lint & Test
 
 Important: Avoid halting the `npm run check` process.  Otherwise, you may need to run `npm run clean` and start from scratch with all the local blockchain data cache(s).
@@ -288,19 +324,16 @@ See `src/key-store.js` for details and `.env.example` for the template.
 
 ---
 
-## Configuration & Development
+## Development
 
 For an overview of LP Ranger's architecture — how the bot and dashboard
 interact, the rebalance pipeline, P&L tracking, and security model — see
 **[`docs/architecture.md`](docs/architecture.md)**.
 
-**For all details** — environment variables, contract addresses, pricing API
-setup, development tools, the `app-config/` layout, and the check-report
-pipeline — see **[`docs/engineering.md`](docs/engineering.md)**.  That is the
-authoritative engineering reference for this project.
-
-See also: [`.env.example`](.env.example) for a ready-to-copy configuration
-template.
+**For engineering details** — development tools, the check-report pipeline,
+and the rest of the internals — see
+**[`docs/engineering.md`](docs/engineering.md)**.  That is the authoritative
+engineering reference for this project.
 
 ---
 
@@ -329,7 +362,7 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Historical Compound Log Backfill](docs/roadmap/nice-to-haves/project_historical_compound_log.md) | Compounds that pre-date the running session don't appear in the Activity Log; backfill from per-TX reads on sync-complete. |
 | [Dashboard State Cleanup](docs/roadmap/nice-to-haves/project_dashboard_state_cleanup.md) | Sweep dashboard module-level caches that mirror poll data and may leak across position/pool switches; same pattern as the `_poolFirstDate` fix. |
 | [ESM Migration](docs/roadmap/nice-to-haves/project_esm_migration.md) | Migrate the codebase from CommonJS `require` / `module.exports` to ESM `import` / `export`. Dedicated branch, big-bang change. |
-| [Log-to-File](docs/roadmap/nice-to-haves/project_log_to_file.md) | Optional CLI flag and Settings toggle to tee server output to `app-config/lp-ranger.log` with size rotation, for hardware with limited scrollback. |
+| [Log-to-File](docs/roadmap/nice-to-haves/project_log_to_file.md) | Optional CLI flag and Settings toggle to tee server output to `logs/lp-ranger.log` with size rotation, for hardware with limited scrollback. |
 | [Dashboard Cycle Cleanup](docs/roadmap/nice-to-haves/project_dashboard_cycle_cleanup.md) | Untangle the 31 circular imports in `public/dashboard-*.js` (surfaced by `npm run show-dependency-cycles`), then wire `madge --circular` into `npm run check` to block future cycles. Not a major issue — the esbuild bundle dedupes any duplication at build time and nothing breaks at runtime; this is a structural cleanup that would allow a cycle gate to be installed in CI. |
 | [Current-Panel Historical Prices for Gas + Fees Compounded](docs/roadmap/nice-to-haves/project_current_panel_historical_prices.md) | Value the Current panel's Gas and Fees Compounded rows at per-TX historical prices instead of today's prices (applies to both Managed and Unmanaged). A small improvement — the Lifetime panel already exists for comprehensive at-a-glance accounting, so the Current panel snapshot using current prices is acceptable. |
 | [`startBotLoop` Lifecycle Test Scaffolding](docs/roadmap/nice-to-haves/project_bot_loop_test_scaffolding.md) | Build a test fixture for `startBotLoop`'s poll/stop lifecycle so behaviors like the stop-race fix in PR #130 can be regression-tested. Today only the extracted helpers (`pollCycle`, `resolvePrivateKey`, etc.) are covered. |

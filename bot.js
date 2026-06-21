@@ -7,7 +7,7 @@
  *
  * Modes
  * ─────
- *   node bot.js           Headless bot (requires PRIVATE_KEY or .wallet.json)
+ *   node bot.js           Headless bot (requires PRIVATE_KEY or app-config/user-configurable/wallet.json)
  *   DRY_RUN=1 node bot.js Read-only mode — connects, detects, polls, but
  *                          never signs or sends transactions.
  *

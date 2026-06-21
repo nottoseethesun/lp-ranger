@@ -9,7 +9,7 @@
  * after several rebalances or a failed rebalance TX.
  *
  * Algorithm:
- *   1. Read the position's composite key from `app-config/.bot-config.json`.
+ *   1. Read the position's composite key from `app-config/user-configurable/bot-config.json`.
  *   2. Call positions(tokenId) on the position manager to read the
  *      pool identity (token0, token1, fee).
  *   3. Walk Transfer events on the position manager (5-year lookback)
@@ -91,7 +91,12 @@ const config = require("../../src/config");
 const { PM_ABI } = require("../../src/pm-abi");
 const { sleep, addrTopic } = require("./_helpers");
 
-const CONFIG_PATH = path.join(process.cwd(), "app-config", ".bot-config.json");
+const CONFIG_PATH = path.join(
+  process.cwd(),
+  "app-config",
+  "user-configurable",
+  "bot-config.json",
+);
 
 /** Block time on PulseChain ≈ 10 s. */
 const BLOCK_TIME_SEC = 10;

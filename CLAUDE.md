@@ -46,7 +46,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 ├── scripts/copy-fonts.js         # Copies self-hosted WOFF2 fonts from node_modules to public/fonts/
 ├── scripts/stop.js               # Graceful shutdown helper (POST /api/shutdown)
 ├── scripts/reset-wallet.js       # Delete wallet file + scrub WALLET_PASSWORD from .env
-├── scripts/import-wallet.js      # CLI wallet import (creates .wallet.json without browser)
+├── scripts/import-wallet.js      # CLI wallet import (creates app-config/user-configurable/wallet.json without browser)
 ├── scripts/api-doc.js            # Scalar API reference server (npm run api-doc → :5556)
 ├── scripts/wipe-settings.js      # Back up user settings to tmp/.settings-backup/ (fresh-install sim)
 ├── scripts/restore-settings.js   # Restore settings backed up by wipe-settings.js
@@ -61,15 +61,17 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   │   ├── evm-rpc-response-codes.json  # Error-classifier substring lists
 │   │   ├── logging.json          #     Log-to-file always-on toggle + path
 │   │   ├── nft-providers.json    #     Short labels for NFT issuer contracts
-│   │   └── ui-defaults.json      #     Dashboard first-visit defaults (sounds, privacy)
-│   ├── user-configurable/        #   Tracked dir, gitignored CONTENTS. Drop same-named JSON files
-│   │   └── .gitkeep              #     here to override shipped defaults; survives tarball upgrade.
-│   ├── api-keys.example.json     #   Tracked format template for the encrypted api-keys.json
-│   ├── .bot-config.json          #   Gitignored. Managed positions, HODL baselines, per-position settings
-│   ├── .bot-config.backup.json   #   Gitignored. Automatic snapshot created on every load
-│   ├── .wallet.json              #   Gitignored. AES-256-GCM encrypted wallet state
-│   ├── api-keys.json             #   Gitignored. AES-256-GCM encrypted third-party API keys (Moralis, etc.)
-│   └── rebalance_log.json        #   Gitignored. JSON array of historical rebalance events
+│   │   ├── ui-defaults.json      #     Dashboard first-visit defaults (sounds, privacy)
+│   │   └── api-keys.example.json #     Tracked format template for the encrypted api-keys.json
+│   └── user-configurable/        # Tracked dir, gitignored CONTENTS. Operator-specific runtime state.
+│       ├── README.md             #   Tracked. Points operators at the override workflow.
+│       ├── bot-config.json       #   Gitignored. Managed positions, HODL baselines, per-position settings
+│       ├── bot-config.backup.json#   Gitignored. Automatic snapshot created on every load (config-stomp safety net)
+│       ├── wallet.json           #   Gitignored. AES-256-GCM encrypted wallet state
+│       └── api-keys.json         #   Gitignored. AES-256-GCM encrypted third-party API keys (Moralis, Telegram, etc.)
+├── app-data/                     # Per-install runtime data (gitignored CONTENTS, tarball-excluded).
+│   ├── README.md                 #   Tracked. Points operators at where runtime data lives.
+│   └── rebalance_log.json        #   Gitignored. JSON array of historical rebalance events.
 ├── eslint-rules/
 │   └── no-separate-contract-calls.js  # Custom rule: require multicall for atomic EVM method pairs
 ├── public/
@@ -110,7 +112,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── bot-pnl-updater.js        # P&L snapshot computation (extracted from bot-loop for line-count)
 │   ├── bot-recorder.js           # Logging, epoch closing, history scanning, rebalance recording, HODL baseline
 │   ├── bot-provider.js           # RPC provider with automatic fallback and fee data patching
-│   ├── bot-config-v2.js          # V2 config: load/save app-config/.bot-config.json (global + per-position)
+│   ├── bot-config-v2.js          # V2 config: load/save app-config/user-configurable/bot-config.json (global + per-position)
 │   ├── migrate-app-config.js     # One-time migration of legacy root config files into app-config/
 │   ├── config.js                 # SINGLE SOURCE OF TRUTH for all config — reads .env
 │   ├── cli-help.js               # Print --help text for server.js or bot.js
@@ -184,7 +186,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
     ├── key-migration.test.js        # Composite key migration on rebalance → new tokenId
     ├── rebalance-lock.test.js       # Async mutex: FIFO ordering, pending count, serialization
     ├── residual-tracker.test.js      # Per-pool residual tracking, capping, serialization
-    ├── gitignore.test.js             # Ensures .gitignore covers sensitive files (.wallet.json, .env, etc.)
+    ├── gitignore.test.js             # Ensures .gitignore covers sensitive files (wallet.json, .env, etc.)
     ├── wallet-manager.test.js        # Wallet import/clear + encrypted disk persistence
     ├── token-symbols.test.js         # Guards against contract addresses leaking into display names
     ├── closed-position-history.test.js # Closed position data fetch + rendering
@@ -251,7 +253,7 @@ npm test               # node --test test/*.test.js
 npm run test:coverage  # with --experimental-test-coverage (Node 20+)
 npm run test:watch     # watch mode
 npm run check          # Combined lint (JS+CSS) + test + coverage check
-npm run reset-wallet   # Delete app-config/.wallet.json + clear WALLET_PASSWORD from .env
+npm run reset-wallet   # Delete app-config/user-configurable/wallet.json + clear WALLET_PASSWORD from .env
 npm run clean          # reset-wallet + delete bot config, epoch cache, rebalance log, event cache
                        # NOTE: also clear browser localStorage via Settings gear → "Clear Local Storage & Cookies"
 npm run nuke           # Delete node_modules + package-lock.json for a clean reinstall
@@ -288,7 +290,7 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **OOR threshold:** The `REBALANCE_OOR_THRESHOLD_PCT` setting (default 5) controls how far the price must move **beyond** the position boundary before triggering a rebalance. A value of 5 means the price must move 5% past tickLower or tickUpper. A value of 0 triggers immediately on any OOR. The dashboard shows an amber "WITHIN THRESHOLD" banner when OOR but within the threshold zone.
 
-**OOR timeout:** `REBALANCE_TIMEOUT_MIN` (default 180, i.e. 3 hours) triggers a rebalance after the position has been continuously OOR for the configured duration, even if the price hasn't crossed the OOR threshold bars. The bot tracks `oorSince` (timestamp of first OOR detection). When the timeout expires, the rebalance falls through to the existing throttle + execution path — no special bypass. `oorSince` is cleared when the price returns to range or after a successful rebalance. Set to 0 to disable. The dashboard shows a countdown ("Timeout: MM:SS") in the "WITHIN THRESHOLD" banner. The setting has its own Save button and is persisted to `.bot-config.json`.
+**OOR timeout:** `REBALANCE_TIMEOUT_MIN` (default 180, i.e. 3 hours) triggers a rebalance after the position has been continuously OOR for the configured duration, even if the price hasn't crossed the OOR threshold bars. The bot tracks `oorSince` (timestamp of first OOR detection). When the timeout expires, the rebalance falls through to the existing throttle + execution path — no special bypass. `oorSince` is cleared when the price returns to range or after a successful rebalance. Set to 0 to disable. The dashboard shows a countdown ("Timeout: MM:SS") in the "WITHIN THRESHOLD" banner. The setting has its own Save button and is persisted to `bot-config.json`.
 
 **USD pricing:** DexScreener (primary, no key). 60s in-memory cache. See `src/price-fetcher.js`. Historical prices fetched from GeckoTerminal OHLCV API (free, no key, 30 calls/min). USD values (token prices, exit/entry amounts) are recorded in `rebalance_log.json` at rebalance time to avoid needing historical price lookups.
 
@@ -302,9 +304,9 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **Throttling:** Per-position throttle (independent doubling mode per pool), but **wallet-level daily cap** (default 5, shared across all positions). A volatile pool's doubling doesn't slow a stable pool.
 
-**Compounding:** `src/compounder.js` collects unclaimed fees via `pm.collect()` then re-deposits them as liquidity via `pm.increaseLiquidity()` on the same NFT — no swap, no range change, no new NFT. Mission Control panel in the dashboard provides manual "Compound Now" (disabled when fees < `COMPOUND_MIN_FEE_USD`, default $1) and auto-compound (toggle + USD threshold, default $5). Auto-compound checks every poll cycle when in-range, throttled to `max(5 × CHECK_INTERVAL_SEC, 300s)` between executions. Compound amounts are tracked in `totalCompoundedUsd` (per-position in `.bot-config.json`). Lifetime fee earnings = `currentFeesUsd` (live unclaimed) + `totalCompoundedUsd` (already swept back into liquidity) — both are additive; no subtraction term, since the old per-epoch `totalFees` aggregate (which double-counted) was dropped. Historical compounds are detected by scanning `IncreaseLiquidity` events for all NFTs in the rebalance chain (first event = mint deposit, subsequent = compounds), capped by total `Collect` amounts. Config write uses atomic temp-file + rename to prevent empty-file corruption from shutdown races.
+**Compounding:** `src/compounder.js` collects unclaimed fees via `pm.collect()` then re-deposits them as liquidity via `pm.increaseLiquidity()` on the same NFT — no swap, no range change, no new NFT. Mission Control panel in the dashboard provides manual "Compound Now" (disabled when fees < `COMPOUND_MIN_FEE_USD`, default $1) and auto-compound (toggle + USD threshold, default $5). Auto-compound checks every poll cycle when in-range, throttled to `max(5 × CHECK_INTERVAL_SEC, 300s)` between executions. Compound amounts are tracked in `totalCompoundedUsd` (per-position in `bot-config.json`). Lifetime fee earnings = `currentFeesUsd` (live unclaimed) + `totalCompoundedUsd` (already swept back into liquidity) — both are additive; no subtraction term, since the old per-epoch `totalFees` aggregate (which double-counted) was dropped. Historical compounds are detected by scanning `IncreaseLiquidity` events for all NFTs in the rebalance chain (first event = mint deposit, subsequent = compounds), capped by total `Collect` amounts. Config write uses atomic temp-file + rename to prevent empty-file corruption from shutdown races.
 
-**Atomic config write:** `saveConfig` writes to `app-config/.bot-config.json.tmp` first, then atomically renames to `app-config/.bot-config.json`. Prevents empty-file corruption if the process exits mid-write (SIGINT race during shutdown).
+**Atomic config write:** `saveConfig` writes to `app-config/user-configurable/bot-config.json.tmp` first, then atomically renames to `app-config/user-configurable/bot-config.json`. Prevents empty-file corruption if the process exits mid-write (SIGINT race during shutdown).
 
 **App-managed config layout:** All runtime state files and static tunables live under `app-config/`. See the `app-config/` section of `server.js`'s file-header JSDoc for the full layout, file inventory, migration behavior, and the rules for where future config files should go.
 
@@ -318,7 +320,7 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **Event scanner rate limiting:** 250ms delay between RPC chunk queries (`_CHUNK_DELAY_MS`) to avoid overwhelming the endpoint. With 10,000-block chunks, a 5-year scan (~15.8M blocks) takes ~1,580 chunks. Pool-age optimisation reduces this for younger pools.
 
-**Bot config persistence (v2):** `.bot-config.json` has two sections: `global` (gas strategy, trigger type) and `positions` (per-composite-key config: status, threshold, timeout, slippage, HODL baseline, residuals). The `positions` object is the **single source of truth** — managed positions are derived via `managedKeys(cfg)` which returns keys where `status === 'running'`. No separate `managedPositions` array (eliminated to prevent sync bugs). P&L epochs are stored separately in the epoch cache (see below), not in bot-config. `POST /api/config` **requires** a fully-qualified `positionKey` (validated by `parseCompositeKey`) when sending position-specific keys (`POSITION_KEYS`) — requests without it are rejected with 400. Global-only keys (`GLOBAL_KEYS`) do not require `positionKey`. Managed by `src/bot-config-v2.js`.
+**Bot config persistence (v2):** `bot-config.json` has two sections: `global` (gas strategy, trigger type) and `positions` (per-composite-key config: status, threshold, timeout, slippage, HODL baseline, residuals). The `positions` object is the **single source of truth** — managed positions are derived via `managedKeys(cfg)` which returns keys where `status === 'running'`. No separate `managedPositions` array (eliminated to prevent sync bugs). P&L epochs are stored separately in the epoch cache (see below), not in bot-config. `POST /api/config` **requires** a fully-qualified `positionKey` (validated by `parseCompositeKey`) when sending position-specific keys (`POSITION_KEYS`) — requests without it are rejected with 400. Global-only keys (`GLOBAL_KEYS`) do not require `positionKey`. Managed by `src/bot-config-v2.js`.
 
 **Pool-age optimisation:** Event scanner checks the V3 Factory's `PoolCreated` event to find when the pool was deployed, then skips all blocks before that. Can save thousands of RPC queries for pools younger than 5 years.
 
@@ -326,7 +328,7 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **Date/time display:** All user-visible timestamps show **both UTC and local time** with timezone code, e.g. `2026-03-15 14:30 UTC (3/15/2026 10:30 AM CDT)`. Centralized via `fmtDateTime()` in `dashboard-helpers.js`. Relative times ("5s ago") are timezone-neutral with full timestamp in tooltip.
 
-**Wallet persistence:** Encrypted wallet state (AES-256-GCM, PBKDF2-SHA512) is persisted to `.wallet.json` on disk, surviving server restarts. Plaintext private keys are never written to disk. File is gitignored. `DELETE /api/wallet` removes the file. Position store persists to localStorage in the browser.
+**Wallet persistence:** Encrypted wallet state (AES-256-GCM, PBKDF2-SHA512) is persisted to `app-config/user-configurable/wallet.json` on disk, surviving server restarts. Plaintext private keys are never written to disk. File is gitignored. `DELETE /api/wallet` removes the file. Position store persists to localStorage in the browser.
 
 **Dashboard modular JS:** 17 ES module source files in `public/`, bundled by esbuild into `public/dist/bundle.js` (IIFE format). Entry point: `dashboard-init.js`. `ethers` is bundled from npm — no CDN dependencies. Fonts self-hosted via `@fontsource` packages.
 
@@ -336,11 +338,11 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **History tables:** Per-day P&L (8 per page, up to 31 days) and Rebalance Events (8 per page, 5-year lookback with copy-to-clipboard TX hash icons) rendered by `dashboard-history.js` from `/api/status` data. Both tables have Prev/Next pagination pinned to the card bottom. Historical rebalance events also populate the Activity Log once the event scanner completes (gated by `rebalanceScanComplete` to avoid stale localStorage cache).
 
-**Lifetime P&L:** User-entered "Initial deposit" (USD) is persisted to both localStorage and server `.bot-config.json`. Lifetime P&L = currentValue + fees + realized − initialDeposit. If no user-entered value, falls back to bot-detected entry value. "Realized gains" is also user-entered for coins sold out of the LP.
+**Lifetime P&L:** User-entered "Initial deposit" (USD) is persisted to both localStorage and server `bot-config.json`. Lifetime P&L = currentValue + fees + realized − initialDeposit. If no user-entered value, falls back to bot-detected entry value. "Realized gains" is also user-entered for coins sold out of the LP.
 
-**Impermanent loss/gain:** All IL/G math is consolidated in `src/il-calculator.js` — single source of truth, no duplication. Three exported functions: `calcIlMultiplier(priceRatio)` (v2 formula), `estimateLiveValue(entryValue, priceRatio)` (v3 estimate), and `computeHodlIL({ lpValue, hodlAmount0, hodlAmount1, currentPrice0, currentPrice1, residualValueUsd })` (HODL comparison using actual deposited token amounts). The HODL comparison uses **only current prices** for valuation — the original deposited token amounts (from the `IncreaseLiquidity` event on the mint TX) determine the HODL portfolio. No historical USD prices are needed for IL. `IL = (LP_value + currentResidualValueUsd) − (amount0_deposited × currentPrice0 + amount1_deposited × currentPrice1)`. The pool-scoped wallet residual (coins the LP gave back to the wallet during prior rebalances and is about to fold back in on the next one) is credited to the LP-side — without this, IL/G overstates losses on low-liquidity pairs whose rebalance swaps leave material residuals (invisible on high-liquidity pairs whose swaps absorb everything cleanly). Per the user's "simple a vs b" mandate, the initial-mint residual is NOT subtracted from the credit; accepted edge case is that a freshly minted LP whose only residual IS the initial mint leftover will show +$X of IL/G until the first rebalance folds that leftover into the position. The dashboard surfaces the initial residual as a separate Lifetime panel line item. Negative = loss vs holding. Two separate IL values: `snap.totalIL` (current position, from `hodl-baseline.js`) and `snap.lifetimeIL` (from first epoch's deposited amounts). HODL baseline stores actual deposited amounts (`hodlAmount0`, `hodlAmount1`) plus historical prices only for initial deposit auto-detection. Persisted to `.bot-config.json` via `hodlBaseline` key.
+**Impermanent loss/gain:** All IL/G math is consolidated in `src/il-calculator.js` — single source of truth, no duplication. Three exported functions: `calcIlMultiplier(priceRatio)` (v2 formula), `estimateLiveValue(entryValue, priceRatio)` (v3 estimate), and `computeHodlIL({ lpValue, hodlAmount0, hodlAmount1, currentPrice0, currentPrice1, residualValueUsd })` (HODL comparison using actual deposited token amounts). The HODL comparison uses **only current prices** for valuation — the original deposited token amounts (from the `IncreaseLiquidity` event on the mint TX) determine the HODL portfolio. No historical USD prices are needed for IL. `IL = (LP_value + currentResidualValueUsd) − (amount0_deposited × currentPrice0 + amount1_deposited × currentPrice1)`. The pool-scoped wallet residual (coins the LP gave back to the wallet during prior rebalances and is about to fold back in on the next one) is credited to the LP-side — without this, IL/G overstates losses on low-liquidity pairs whose rebalance swaps leave material residuals (invisible on high-liquidity pairs whose swaps absorb everything cleanly). Per the user's "simple a vs b" mandate, the initial-mint residual is NOT subtracted from the credit; accepted edge case is that a freshly minted LP whose only residual IS the initial mint leftover will show +$X of IL/G until the first rebalance folds that leftover into the position. The dashboard surfaces the initial residual as a separate Lifetime panel line item. Negative = loss vs holding. Two separate IL values: `snap.totalIL` (current position, from `hodl-baseline.js`) and `snap.lifetimeIL` (from first epoch's deposited amounts). HODL baseline stores actual deposited amounts (`hodlAmount0`, `hodlAmount1`) plus historical prices only for initial deposit auto-detection. Persisted to `bot-config.json` via `hodlBaseline` key.
 
-**Wallet residual tracking:** `src/residual-tracker.js` tracks per-pool token residuals (collected − minted deltas across rebalances). Residuals are capped to actual wallet `balanceOf` when computing USD value, so sold/transferred tokens aren't over-counted. Users account for sold tokens via "Edit Realized Gains". Persisted to `.bot-config.json` via `residuals` key.
+**Wallet residual tracking:** `src/residual-tracker.js` tracks per-pool token residuals (collected − minted deltas across rebalances). Residuals are capped to actual wallet `balanceOf` when computing USD value, so sold/transferred tokens aren't over-counted. Users account for sold tokens via "Edit Realized Gains". Persisted to `bot-config.json` via `residuals` key.
 
 **Throttle/doubling:** 3 rebalances within 4× minInterval activates doubling mode (10m → 20m → 40m → 80m…). Clears after 4× currentWait quiet period or midnight UTC reset. All timing resets are UTC-based.
 

@@ -18,7 +18,7 @@
  *   A deliberate CLI step is the feature here, not the friction.
  *
  * What it does (in order):
- *   1. Loads `app-config/.bot-config.json` and resolves the position by
+ *   1. Loads `app-config/user-configurable/bot-config.json` and resolves the position by
  *      tokenId (or by full composite key components if disambiguation
  *      is needed).
  *   2. Loads `tmp/pnl-epochs-cache.json` and finds the pool epoch key
@@ -78,7 +78,9 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
-const CONFIG_PATH = path.resolve("app-config/.bot-config.json");
+const CONFIG_PATH = path.resolve(
+  "app-config/user-configurable/bot-config.json",
+);
 const EPOCH_CACHE_PATH = path.resolve("tmp/pnl-epochs-cache.json");
 
 /** Parse a `--flag value` style CLI args object from process.argv. */

@@ -18,7 +18,7 @@
  *   4. (default)                  → disabled, no-op
  *
  * The default path when neither CLI nor config supplies one is
- * `app-config/lp-ranger.log`.  Called from server.js and bot.js as the
+ * `logs/lp-ranger.log`.  Called from server.js and bot.js as the
  * very first executable statement after `"use strict"`.
  */
 
@@ -30,7 +30,7 @@ const { loadMergedDefaults } = require("./load-merged-defaults");
 /*- Default path when neither --log-file nor logging.json supplies one.
  *  Relative to process.cwd() — src/log-file.js resolves it via
  *  path.resolve. */
-const _DEFAULT_PATH = "app-config/lp-ranger.log";
+const _DEFAULT_PATH = "logs/lp-ranger.log";
 
 /*- Parse argv for the --log-file flag.  Returns {present, pathArg}.
  *  pathArg is the immediately following arg when it doesn't itself

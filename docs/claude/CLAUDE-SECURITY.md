@@ -30,7 +30,7 @@ This tool manages a wallet that signs on-chain transactions. A leaked
 private key means total loss of funds. Keys flow through:
 
 - `PRIVATE_KEY` env var (plaintext — simplest, least secure)
-- `app-config/.wallet.json` (AES-256-GCM encrypted on disk, gitignored — imported via dashboard or `node scripts/import-wallet.js`)
+- `app-config/user-configurable/wallet.json` (AES-256-GCM encrypted on disk, gitignored — imported via dashboard or `node scripts/import-wallet.js`)
 - In-memory only during signing (never written to disk in plaintext)
 
 **secretlint** catches hardcoded keys before they reach the repo.
@@ -189,14 +189,14 @@ at **600,000 iterations** (OWASP 2023 guidance for SHA-512).
 `src/api-key-store.js` (third-party API keys) reuses
 `src/key-store.js`'s encryption helpers at the same 600,000
 iterations. Plaintext keys exist only in memory during signing. The
-encrypted `app-config/.wallet.json` and `app-config/api-keys.json`
-files are both gitignored.
+encrypted `app-config/user-configurable/wallet.json` and
+`app-config/user-configurable/api-keys.json` files are both gitignored.
 
 ### Wallet password persistence
 
 The wallet password — the passphrase the operator chose during
 import (via the dashboard UI or `node scripts/import-wallet.js`) —
-decrypts both `.wallet.json` and every service entry in
+decrypts both `wallet.json` and every service entry in
 `api-keys.json`. One password, every secret.
 
 Three modes, in order of security recommendation:
@@ -219,7 +219,7 @@ process exits.
 (invoked via `npm run reset-wallet`) performs two idempotent
 actions:
 
-1. Delete `app-config/.wallet.json`.
+1. Delete `app-config/user-configurable/wallet.json`.
 2. Remove every line matching `^WALLET_PASSWORD=` from `.env`
    by reading the file, filtering out the matching lines, writing
    to a `.tmp` sibling, and atomically renaming. File permissions

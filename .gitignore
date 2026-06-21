@@ -8,21 +8,32 @@
 .env.*
 !.env.example
 
-# App-managed runtime config + state lives in app-config/.
-# Ignore everything in the top level of that directory EXCEPT:
-#   - app-defaults-for-user-configurable/ (tracked, shipped defaults — see
-#     the README in that directory)
-#   - user-configurable/ (tracked dir, but its CONTENTS are gitignored so
-#     a user's local overrides survive tarball upgrades)
-#   - api-keys.example.json format template (tracked, legacy — being
-#     migrated into the user-configurable pattern)
+# Per-install operator config + state lives under app-config/.  The
+# only two things tracked directly under app-config/ are the two
+# subdirectories:
+#   - app-defaults-for-user-configurable/  shipped defaults (tracked)
+#   - user-configurable/                   operator overrides; CONTENTS
+#                                          gitignored so operator data
+#                                          survives tarball upgrades.
+#                                          README.md is the one tracked
+#                                          file inside.
 # See the `app-config/` section of server.js for the full layout.
 app-config/*
 !app-config/app-defaults-for-user-configurable/
 !app-config/user-configurable/
 app-config/user-configurable/*
-!app-config/user-configurable/.gitkeep
-!app-config/api-keys.example.json
+!app-config/user-configurable/README.md
+
+# Per-install runtime data lives under app-data/.  Everything in here
+# is gitignored except the tracked README.md so the directory ships in
+# the release tarball.
+app-data/*
+!app-data/README.md
+
+# Diagnostic log output (write-only; the app never reads it back).
+# Auto-created by src/log-file.js on first --log-file invocation.
+# Already covered by the standard `logs` rule in the Node.js section
+# below — this comment exists to flag the convention for this project.
 
 # Encrypted private key files (legacy root drops — always gitignore-safe)
 *.keyfile.json
