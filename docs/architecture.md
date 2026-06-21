@@ -108,7 +108,7 @@ network isolation.
 ### Bot → Dashboard
 
 Each managed position runs its own independent `startBotLoop()` instance.
-Every poll cycle (default 60 seconds), the bot reads the pool's current state
+Every poll cycle (default 300 seconds), the bot reads the pool's current state
 from the blockchain, computes P&L, and writes the results to an in-memory
 state map via an `updateBotState` callback. When the dashboard polls
 `GET /api/status`, the server reads this map and returns the full state for
@@ -134,7 +134,7 @@ The bot persists its state to two locations:
 
 1. **`app-config/` directory** — all app-managed config and state. The single
    source of truth for every non-cache file the app reads or writes. Contains
-   tracked tunables (`static-tunables/chains.json`), a runtime config file
+   tracked tunables (`app-defaults-for-user-configurable/chains.json`), a runtime config file
    (`.bot-config.json`, per-position settings, HODL baselines, compound
    history), an automatic backup snapshot (`.bot-config.backup.json`), an
    encrypted wallet (`.wallet.json`, AES-256-GCM with PBKDF2-SHA512, 600,000

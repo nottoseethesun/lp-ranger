@@ -1,13 +1,15 @@
 /**
- * @file src/static-tunables-routes.js
- * @module staticTunablesRoutes
+ * @file src/user-configurable-routes.js
+ * @module userConfigurableRoutes
  * @description
- * Bundles the HTTP route handlers that serve JSON payloads from
- * `app-config/static-tunables/` so each individual tunable module
- * (ui-defaults, nft-providers, etc.) does not need its own dedicated
- * require + route-table entry in `server.js`.  Keeps the server
- * route table compact while preserving the per-module isolation of
- * read/parse logic and fallbacks.
+ * Bundles the HTTP route handlers that serve JSON payloads from the
+ * layered defaults+user-override loader (shipped defaults in
+ * `app-config/app-defaults-for-user-configurable/` merged with the
+ * matching files under `app-config/user-configurable/`) so each
+ * individual tunable module (ui-defaults, nft-providers, etc.) does
+ * not need its own dedicated require + route-table entry in
+ * `server.js`.  Keeps the server route table compact while preserving
+ * the per-module isolation of read/parse logic and fallbacks.
  */
 
 "use strict";
@@ -18,13 +20,13 @@ const { handleBotConfigDefaults } = require("./bot-config-defaults");
 const { handleChartProviders } = require("./chart-providers");
 
 /**
- * Build the `{ "METHOD /path": handler }` route map for all static-
- * tunables endpoints.  Each handler is already wrapped with the
- * caller-supplied `jsonResponse` helper.
+ * Build the `{ "METHOD /path": handler }` route map for all
+ * user-configurable endpoints.  Each handler is already wrapped with
+ * the caller-supplied `jsonResponse` helper.
  * @param {Function} jsonResponse  `(res, status, body) => void`
  * @returns {Record<string, (req: import('http').IncomingMessage, res: import('http').ServerResponse) => void>}
  */
-function staticTunablesRoutes(jsonResponse) {
+function userConfigurableRoutes(jsonResponse) {
   return {
     "GET /api/ui-defaults": (req, res) =>
       handleUiDefaults(req, res, jsonResponse),
@@ -37,4 +39,4 @@ function staticTunablesRoutes(jsonResponse) {
   };
 }
 
-module.exports = { staticTunablesRoutes };
+module.exports = { userConfigurableRoutes };

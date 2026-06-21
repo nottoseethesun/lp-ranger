@@ -11,7 +11,7 @@
  * explanation): everything the app reads or writes for its own state
  * lives under `app-config/`. Pure performance caches stay in `tmp/`.
  * Static tunables (the tracked `chains.json`, etc.) live in
- * `app-config/static-tunables/`.
+ * `app-config/app-defaults-for-user-configurable/`.
  *
  * This module's `migrateAppConfig()` function is idempotent and safe:
  *

@@ -18,7 +18,7 @@ const _FILE = path.join(
   __dirname,
   "..",
   "app-config",
-  "static-tunables",
+  "app-defaults-for-user-configurable",
   "nft-providers.json",
 );
 

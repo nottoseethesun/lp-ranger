@@ -147,7 +147,7 @@ const { loadConfig, managedKeys } = require("./src/bot-config-v2");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
-const { staticTunablesRoutes } = require("./src/static-tunables-routes");
+const { userConfigurableRoutes } = require("./src/user-configurable-routes");
 const { createPauseInfra } = require("./src/server-pause");
 const _unlockLog = require("./src/server-unlock-log");
 const { logVersionBanner } = require("./src/build-info");
@@ -455,7 +455,7 @@ const _routes = {
   "POST /api/config": _routeHandlers._handleApiConfig,
   "POST /api/api-keys": _routeHandlers._handleApiKeySave,
   "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,
-  ...staticTunablesRoutes(jsonResponse),
+  ...userConfigurableRoutes(jsonResponse),
   "POST /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramConfig,
   "GET /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramStatus,
   "POST /api/telegram/test": _routeHandlers._tgHandlers.handleTelegramTest,

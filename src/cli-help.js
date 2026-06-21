@@ -14,7 +14,7 @@ Options:
                   Tee all console output to a file (ANSI escapes
                   stripped).  PATH is optional — defaults to
                   app-config/lp-ranger.log (or the path set in
-                  app-config/static-tunables/logging.json).  File is
+                  app-config/app-defaults-for-user-configurable/logging.json).  File is
                   opened in append mode; rotate externally if it
                   grows.  Operators can enable persistently by
                   setting "enabled": true in the JSON.

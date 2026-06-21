@@ -214,9 +214,12 @@ restorePrivacySubform();
 
 initDisclaimer().then(async () => {
   await refreshCsrfToken();
-  /*- Schedule periodic CSRF refresh. Interval comes from the server
-      (app-config/static-tunables/csrf.json) so operators can tune
-      without a client rebuild. Fires regardless of poll-loop health —
+  /*- Schedule periodic CSRF refresh. Interval comes from the server,
+      backed by the layered defaults+user-override loader (shipped
+      default at app-config/app-defaults-for-user-configurable/csrf.json;
+      operators override by copying that file to
+      app-config/user-configurable/csrf.json and editing the copy).
+      Tunable without a client rebuild. Fires regardless of poll-loop health —
       auto-fired background POSTs on long-running servers (e.g. Pi 5
       during a multi-hour phase-2 scan) always have a fresh token. */
   setInterval(refreshCsrfToken, csrfRefreshIntervalMs());
@@ -254,7 +257,7 @@ function _afterDisclaimer() {
   loadChartProviders();
 
   /*- Fetch Bot Config tunable defaults so each input shows the value
-   *  declared in app-config/static-tunables/bot-config-defaults.json
+   *  declared in app-config/app-defaults-for-user-configurable/bot-config-defaults.json
    *  instead of relying on a hard-coded `value=` attribute in
    *  index.html.  Server is the single source for first-visit defaults;
    *  per-position overrides arrive later via _syncConfigFromServer().
@@ -303,11 +306,20 @@ function _afterDisclaimer() {
   (function restoreActivePosition() {
     const active = posStore.getActive();
     const saved = loadPositionOorThreshold(active);
-    botConfig.oorThreshold = saved;
-    const el = g("inOorThreshold");
-    if (el) el.value = saved;
-    const disp = g("activeOorThreshold");
-    if (disp) disp.textContent = saved;
+    /*- If no per-position value is stored, leave botConfig.oorThreshold
+     *  and the input/display blank until either (a) the user enters a
+     *  value or (b) the server's /api/bot-config-defaults AJAX populates
+     *  _CONFIG_INPUT_DEFAULTS, after which _syncConfigFromServer +
+     *  _populateConfigInputs fills the input from the shipped JSON
+     *  default.  No literal fallback per
+     *  feedback_one_literal_per_shipped_default. */
+    if (saved !== undefined) {
+      botConfig.oorThreshold = saved;
+      const el = g("inOorThreshold");
+      if (el) el.value = saved;
+      const disp = g("activeOorThreshold");
+      if (disp) disp.textContent = saved;
+    }
     // Server is source of truth for config — _syncConfigFromServer() in
     // dashboard-data.js will populate UI inputs from the server on first poll.
 

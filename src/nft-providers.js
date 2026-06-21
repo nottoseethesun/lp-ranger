@@ -2,31 +2,25 @@
  * @file src/nft-providers.js
  * @module nftProviders
  * @description
- * Reads `app-config/static-tunables/nft-providers.json` and exposes the
- * labels to the dashboard via `GET /api/nft-providers`. The mapping lets
- * the NFT panel display a short "liquidity-pool provider" label (e.g.
+ * Reads `nft-providers.json` (via the layered defaults+user-override
+ * loader — see `src/load-merged-defaults.js`) and exposes the labels
+ * to the dashboard via `GET /api/nft-providers`. The mapping lets the
+ * NFT panel display a short "liquidity-pool provider" label (e.g.
  * "9mm v3") next to Fee Tier, keyed by the NFT position-manager
  * contract address.
  *
- * The file is re-read on every request so operators can edit it live
- * without a server restart. Read or parse failures fall back to an
- * empty map so the endpoint never 500s.
+ * The file is re-read on every request so operators can edit
+ * `app-config/user-configurable/nft-providers.json` live without a
+ * server restart.  Read or parse failures fall back to an empty map so
+ * the endpoint never 500s.
  */
 
 "use strict";
 
 const { log } = require("./log");
-const fs = require("fs");
-const path = require("path");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 
-/** Full path to the on-disk tunable. */
-const _FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "nft-providers.json",
-);
+const _FILENAME = "nft-providers.json";
 
 /**
  * Read and parse the NFT-providers JSON, stripping the `_comment` key
@@ -37,11 +31,9 @@ const _FILE = path.join(
  */
 function readNftProviders() {
   try {
-    const raw = fs.readFileSync(_FILE, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = loadMergedDefaults(_FILENAME);
     const out = {};
     for (const [k, v] of Object.entries(parsed)) {
-      if (k === "_comment") continue;
       if (typeof v !== "string") continue;
       const label = v.trim();
       if (!label) continue;

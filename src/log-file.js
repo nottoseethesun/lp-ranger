@@ -11,7 +11,7 @@
  * Trigger sources (see server.js / bot.js boot):
  *   1. CLI flag `--log-file [optional path]` (path optional — falls
  *      through to the static-tunable default when omitted).
- *   2. `app-config/static-tunables/logging.json` with `enabled: true`
+ *   2. `app-config/app-defaults-for-user-configurable/logging.json` with `enabled: true`
  *      (operators set this once for a long-lived production tail).
  *
  * Why wrap process.stdout/stderr instead of the `log.*` helpers?

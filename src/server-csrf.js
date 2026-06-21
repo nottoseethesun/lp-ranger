@@ -4,11 +4,12 @@
  * CSRF token generation and verification for the LP Ranger HTTP server.
  * Uses the `csrf` package (pillarjs) for cryptographically secure tokens.
  *
- * Tokens expire after `tokenTtlMs` (loaded from
- * `app-config/static-tunables/csrf.json`, default 1 hour). The server
- * generates a secret at startup and creates tokens on demand via
- * `GET /api/csrf-token`. Mutating requests (POST, DELETE) must include
- * a valid, non-expired token in the `x-csrf-token` header.
+ * Tokens expire after `tokenTtlMs` (loaded from `csrf.json` via the
+ * layered defaults+user-override loader; operators override at
+ * `app-config/user-configurable/csrf.json`, default 1 hour). The
+ * server generates a secret at startup and creates tokens on demand
+ * via `GET /api/csrf-token`. Mutating requests (POST, DELETE) must
+ * include a valid, non-expired token in the `x-csrf-token` header.
  *
  * The token response also carries `refreshIntervalMs`, telling the
  * dashboard how often to proactively refresh its token so auto-fired
@@ -18,25 +19,21 @@
 "use strict";
 
 const { log } = require("./log");
-const fs = require("fs");
-const path = require("path");
 const Tokens = require("csrf");
+const {
+  loadMergedDefaults,
+  loadShippedDefaults,
+} = require("./load-merged-defaults");
 
 const _tokens = new Tokens();
 
-/** Built-in fallback when the tunable file is missing or malformed. */
-const _FALLBACK = Object.freeze({
-  tokenTtlMs: 60 * 60 * 1000,
-  refreshIntervalMs: 5 * 60 * 1000,
-});
+const _FILENAME = "csrf.json";
 
-const _TUNABLE_FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "csrf.json",
-);
+/*- Single-source baseline: read the shipped JSON once at module init.
+ *  Throws on missing/malformed file (install error, fail loudly).
+ *  Used as the per-key fallback when an operator's live override fails
+ *  validation.  See feedback_one_literal_per_shipped_default. */
+const _FALLBACK = Object.freeze(loadShippedDefaults(_FILENAME));
 
 /**
  * Read and parse `csrf.json`. On any error returns the built-in
@@ -45,8 +42,7 @@ const _TUNABLE_FILE = path.join(
  */
 function readCsrfTunable() {
   try {
-    const raw = fs.readFileSync(_TUNABLE_FILE, "utf8");
-    const p = JSON.parse(raw);
+    const p = loadMergedDefaults(_FILENAME);
     const out = { ..._FALLBACK };
     if (typeof p.tokenTtlMs === "number" && p.tokenTtlMs > 0)
       out.tokenTtlMs = p.tokenTtlMs;

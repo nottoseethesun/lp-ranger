@@ -16,6 +16,12 @@ const {
   withFreshPricesAllowed,
   invalidatePriceCacheFor,
 } = require("./price-fetcher");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Shipped default for the approvalMultiple per-position config
+ *  fallback below.  Per feedback_one_literal_per_shipped_default, the
+ *  literal lives only in bot-config-defaults.json. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 
 /**
  * Check if compound conditions are met and execute if so.
@@ -34,11 +40,16 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
   if (!forced && feesUsd < threshold) return false;
   if (!forced && feesUsd < config.COMPOUND_MIN_FEE_USD) return false;
 
-  // Auto-compound throttle: max(5 × checkInterval, 300s)
+  // Auto-compound throttle: max(5 × checkInterval, 300 s floor).
+  // config.CHECK_INTERVAL_SEC is sourced from the shipped JSON via
+  // src/config.js — guaranteed defined, no defensive fallback needed.
+  // The 300 s floor is a hardcoded throttle minimum (not a shipped
+  // config default that's tunable); it sets a lower bound on how
+  // often auto-compound can fire regardless of how aggressive the
+  // operator sets checkIntervalSec.
   const lastAt = _gc("lastCompoundAt");
   if (!forced && lastAt) {
-    const interval =
-      Math.max((config.CHECK_INTERVAL_SEC || 60) * 5, 300) * 1000;
+    const interval = Math.max(config.CHECK_INTERVAL_SEC * 5, 300) * 1000;
     if (Date.now() - new Date(lastAt).getTime() < interval) return false;
   }
 
@@ -151,7 +162,8 @@ async function _buildCompoundOpts(deps, poolState, trigger) {
     price0: deps._lastPrice0 || 0,
     price1: deps._lastPrice1 || 0,
     trigger,
-    approvalMultiple: deps._getConfig?.("approvalMultiple") ?? 20,
+    approvalMultiple:
+      deps._getConfig?.("approvalMultiple") ?? _DEFAULTS.approvalMultiple,
     /*- Enable the ratio-correcting swap between collect and
      *  addLiquidity (see compounder-swap.js swapForCompound). */
     poolState,

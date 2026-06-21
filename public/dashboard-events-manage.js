@@ -72,7 +72,7 @@ export function reapplyPrivacyBlur() {
  * localStorage entry is absent (first visit or after "Clear Local
  * Storage"), falls back to the operator-configured default from
  * `GET /api/ui-defaults` (backed by
- * `app-config/static-tunables/ui-defaults.json`). Fetch failures
+ * `app-config/app-defaults-for-user-configurable/ui-defaults.json`). Fetch failures
  * degrade to "off" so a brand-new browser without server reachability
  * still renders sensitive data (caller explicitly chose to view).
  * @returns {Promise<void>}

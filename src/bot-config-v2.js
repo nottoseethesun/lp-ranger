@@ -46,7 +46,7 @@ const GLOBAL_KEYS = [
    *  trips (see `src/swap-gates.js`).  Single global knob shared by all
    *  three swap call sites: initial Rebalance, corrective Rebalance,
    *  Compound.  Stored as a percent (e.g. `1` = 1%); UI bounds 0.1–15.
-   *  Default in `app-config/static-tunables/bot-config-defaults.json`.
+   *  Default in `app-config/app-defaults-for-user-configurable/bot-config-defaults.json`.
    */
   "gasFeePct",
   /*-
@@ -80,10 +80,10 @@ const GLOBAL_KEYS = [
    *  Balanced-band Telegram notifier (`src/telegram-notifications/balanced-notifier.js`):
    *  multiplier on `CHECK_INTERVAL_SEC` for the cadence at which the
    *  notifier fetches fresh USD prices to evaluate the ±5% balanced
-   *  condition.  Default `10` → fetch every 10× poll interval (10 min
-   *  at the default 60 s poll).  Only consulted when the
+   *  condition.  Default `10` → fetch every 10× poll interval (50 min
+   *  at the default 300 s poll).  Only consulted when the
    *  `positionBalanced` Telegram event is enabled — otherwise zero
-   *  load.  See `app-config/static-tunables/bot-config-defaults.json`
+   *  load.  See `app-config/app-defaults-for-user-configurable/bot-config-defaults.json`
    *  `_pricePauseExceptionPollWindowMultiple_comment` for operator
    *  guidance.
    */

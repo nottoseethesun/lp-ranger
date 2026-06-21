@@ -10,6 +10,7 @@
 const ethers = require("ethers");
 const config = require("./config");
 const rangeMath = require("./range-math");
+const { buildRebalanceOpts } = require("./bot-cycle-opts");
 // key-store is retained for api-key-store.js; no longer used here directly.
 const { emojiId, logCtx } = require("./logger");
 const { log } = require("./log");
@@ -175,27 +176,6 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
   if (deps._botState?._triggerScan) deps._botState._triggerScan();
 }
 
-/*- Build the opts bag for `executeRebalance`.  Extracted out of
- *  `_executeAndRecord` so each per-key `deps._getConfig?.(...)` access
- *  doesn't bump that function past the complexity cap. */
-function _buildRebalanceOpts(deps, state) {
-  const { position } = deps;
-  const crw = state.customRangeWidthPct;
-  return {
-    position,
-    factoryAddress: config.FACTORY,
-    positionManagerAddress: config.POSITION_MANAGER,
-    swapRouterAddress: config.SWAP_ROUTER,
-    slippagePct: deps._getConfig?.("slippagePct") ?? config.SLIPPAGE_PCT,
-    symbol0: getTokenSymbol(position.token0),
-    symbol1: getTokenSymbol(position.token1),
-    ...(crw ? { customRangeWidthPct: crw } : {}),
-    offsetToken0Pct: deps._getConfig?.("offsetToken0Pct") ?? 50,
-    approvalMultiple: deps._getConfig?.("approvalMultiple") ?? 20,
-    gasFeePct: deps._getConfig?.("gasFeePct"),
-  };
-}
-
 async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle } = deps;
   const { release, state, trigger } = await _prepareRebalance(deps);
@@ -214,7 +194,7 @@ async function _executeAndRecord(deps, ethersLib) {
     const result = await executeRebalance(
       signer,
       ethersLib,
-      _buildRebalanceOpts(deps, state),
+      buildRebalanceOpts(deps, state),
     );
     // Stamp the trigger onto the result so downstream (logs, events,
     // Activity Log) can render the correct cause.

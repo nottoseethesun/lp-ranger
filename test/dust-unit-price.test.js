@@ -1,7 +1,7 @@
 /**
  * @file test/dust-unit-price.test.js
  * @description Tests for fetchDustUnitPriceUsd — alpha + fallback price
- *   sources listed in app-config/static-tunables/dust-threshold.json.
+ *   sources listed in app-config/app-defaults-for-user-configurable/dust-threshold.json.
  */
 
 "use strict";

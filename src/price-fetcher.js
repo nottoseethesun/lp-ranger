@@ -669,8 +669,7 @@ async function _fetchMoralisHistorical(
 
 // ── Dust-unit price (inflation-resistant reference asset) ──────────────────
 
-const path = require("path");
-const fs = require("fs");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 
 /** Long TTL — reference-asset prices (e.g. gold) move slowly.  Derived
  *  from `priceCacheTtlMs * dustUnitPriceCacheMultiplier` (defaults
@@ -679,17 +678,13 @@ const _DUST_UNIT_PRICE_TTL_MS = getDustUnitPriceCacheTtlMs();
 let _dustUnitPriceCache = null; // { price, ts }
 
 /**
- * Path to the dust-threshold config, which carries both the threshold
- * value and the list of price-source tokens used to derive the live
- * USD-per-unit value.  See app-config/static-tunables/dust-threshold.json.
+ * Filename of the dust-threshold config, which carries both the
+ * threshold value and the list of price-source tokens used to derive
+ * the live USD-per-unit value.  Loaded via the layered defaults+user-
+ * override loader (see `src/load-merged-defaults.js`); operators
+ * override at `app-config/user-configurable/dust-threshold.json`.
  */
-const _DUST_THRESHOLD_JSON = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "dust-threshold.json",
-);
+const _DUST_THRESHOLD_FILENAME = "dust-threshold.json";
 
 /**
  * Load and validate the price-source token list from disk.  Returns [] on
@@ -697,8 +692,7 @@ const _DUST_THRESHOLD_JSON = path.join(
  */
 function _loadDustPriceSources() {
   try {
-    const raw = fs.readFileSync(_DUST_THRESHOLD_JSON, "utf8");
-    const json = JSON.parse(raw);
+    const json = loadMergedDefaults(_DUST_THRESHOLD_FILENAME);
     if (!Array.isArray(json?.priceSourceTokens)) return [];
     return json.priceSourceTokens.filter(
       (t) => t && t.address && t.chain && t.dexScreenerChain,
@@ -706,7 +700,7 @@ function _loadDustPriceSources() {
   } catch (err) {
     log.warn(
       "[price-fetcher] Could not load %s: %s",
-      _DUST_THRESHOLD_JSON,
+      _DUST_THRESHOLD_FILENAME,
       err.message ?? err,
     );
     return [];

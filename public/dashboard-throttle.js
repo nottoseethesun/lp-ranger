@@ -353,7 +353,11 @@ function _validateIntervalVsTimeout() {
 export function saveOorTimeout() {
   const el = g("inOorTimeout");
   const val = parseInt(el?.value, 10);
-  const timeoutMin = Number.isFinite(val) && val >= 0 ? val : 180;
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  reject invalid input instead of silently substituting a literal.
+   *  User must re-enter a valid value to save. */
+  if (!Number.isFinite(val) || val < 0) return;
+  const timeoutMin = val;
   if (el) el.value = timeoutMin;
   markInputDirty("inOorTimeout");
   const active = posStore.getActive();
@@ -377,10 +381,12 @@ export function saveOorTimeout() {
 
 /** Save just the OOR threshold, update the preview, and persist to backend. */
 export function saveOorThreshold() {
-  botConfig.oorThreshold = Math.min(
-    100,
-    Math.max(1, parseFloat(g("inOorThreshold")?.value) || 5),
-  );
+  const raw = parseFloat(g("inOorThreshold")?.value);
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  reject invalid input instead of silently substituting a literal.
+   *  User must re-enter a valid value (1..100) to save. */
+  if (!Number.isFinite(raw)) return;
+  botConfig.oorThreshold = Math.min(100, Math.max(1, raw));
   const inp = g("inOorThreshold");
   if (inp) inp.value = botConfig.oorThreshold;
   markInputDirty("inOorThreshold");
@@ -438,32 +444,39 @@ function _saveSingleConfig(inputId, key, parse) {
 
 /** Save min rebalance interval. */
 export function saveMinInterval() {
-  _saveSingleConfig(
-    "inMinInterval",
-    "minRebalanceIntervalMin",
-    (v) => parseInt(v, 10) || 10,
-  );
+  const n = parseInt(g("inMinInterval")?.value, 10);
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  reject invalid input rather than silently using a literal default. */
+  if (!Number.isFinite(n) || n < 1) return;
+  _saveSingleConfig("inMinInterval", "minRebalanceIntervalMin", () => n);
   _validateIntervalVsTimeout();
 }
 /** Save max rebalances per day. */
 export function saveMaxReb() {
-  const val = parseInt(g("inMaxReb")?.value, 10) || throttle.dailyMax;
-  _saveSingleConfig("inMaxReb", "maxRebalancesPerDay", () => val);
+  const n = parseInt(g("inMaxReb")?.value, 10);
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  reject invalid input rather than silently using `throttle.dailyMax`.
+   *  The user must enter a valid positive integer to save. */
+  if (!Number.isFinite(n) || n < 1) return;
+  _saveSingleConfig("inMaxReb", "maxRebalancesPerDay", () => n);
   const el = g("kpiToday");
   if (el) {
     const cur = parseInt(el.textContent, 10) || 0;
-    el.textContent = cur + " / " + val;
+    el.textContent = cur + " / " + n;
   }
 }
-/** Save slippage tolerance. */
+/*- Slippage input validator.  Returns the parsed value when valid;
+ *  returns undefined when invalid so the caller can skip the save.
+ *  No literal fallback per feedback_one_literal_per_shipped_default. */
 function _validSlip(v) {
-  const n = parseFloat(v),
-    d = botConfig.defaultSlip || 0.5;
-  if (!Number.isFinite(n) || n < 0 || n > 99) return d;
+  const n = parseFloat(v);
+  if (!Number.isFinite(n) || n < 0 || n > 99) return undefined;
   return n;
 }
 export function saveSlippage() {
   const val = _validSlip(g("inSlip")?.value);
+  /*- Invalid input → skip save. */
+  if (val === undefined) return;
   const el = g("inSlip");
   if (el) el.value = val;
   if (val === 0)
@@ -489,11 +502,13 @@ export function saveSlippage() {
 }
 /** Save check interval. */
 export function saveCheckInterval() {
-  _saveSingleConfig(
-    "inInterval",
-    "checkIntervalSec",
-    (v) => parseInt(v, 10) || 60,
-  );
+  const n = parseInt(g("inInterval")?.value, 10);
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  reject invalid input rather than silently substituting a literal
+   *  (the previous `|| 60` was a stale fallback — the shipped JSON
+   *  default is now 300, not 60). */
+  if (!Number.isFinite(n) || n < 1) return;
+  _saveSingleConfig("inInterval", "checkIntervalSec", () => n);
 }
 /** Save gas strategy. */
 export function saveGasStrategy() {
@@ -515,7 +530,11 @@ export function updateOffsetComplement(sourceId) {
 /** Save the current offset value. */
 export function saveOffset() {
   const el = g("inOffsetToken0");
-  const val = Math.max(0, Math.min(100, parseInt(el?.value, 10) || 50));
+  const n = parseInt(el?.value, 10);
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  reject invalid input rather than silently substituting a literal. */
+  if (!Number.isFinite(n)) return;
+  const val = Math.max(0, Math.min(100, n));
   if (el) el.value = val;
   const other = g("inOffsetToken1");
   if (other) other.value = 100 - val;

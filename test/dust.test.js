@@ -48,7 +48,7 @@ describe("dust.DUST_THRESHOLD_UNITS (universal constant)", () => {
     assert.ok(DUST_THRESHOLD_UNITS > 0);
   });
 
-  it("matches the value in app-config/static-tunables/dust-threshold.json", () => {
+  it("matches the value in app-config/app-defaults-for-user-configurable/dust-threshold.json", () => {
     // Bypass stubs to read the actual on-disk value.
     delete require.cache[_priceFetcherStubPath];
     _clearDustCache();
@@ -60,7 +60,7 @@ describe("dust.DUST_THRESHOLD_UNITS (universal constant)", () => {
           __dirname,
           "..",
           "app-config",
-          "static-tunables",
+          "app-defaults-for-user-configurable",
           "dust-threshold.json",
         ),
         "utf8",

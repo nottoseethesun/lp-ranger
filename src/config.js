@@ -2,34 +2,41 @@
  * @file src/config.js
  * @module config
  * @description
- * Single import point for all runtime configuration in LP Ranger. Composes
- * three sources:
+ * Single import point for all runtime configuration in LP Ranger.
+ * Every default value comes from a shipped JSON file under
+ * `app-config/app-defaults-for-user-configurable/`, deep-merged with
+ * any matching operator override under `app-config/user-configurable/`
+ * via `loadMergedDefaults()`.  Env vars and runtime flags layer ON
+ * TOP of that.  Per feedback_one_literal_per_shipped_default — every
+ * shipped default has exactly one literal in the entire codebase, and
+ * that literal lives in the JSON file.
  *
- *   1. `src/config.json`                              — tracked, pure data
- *      (server port/host, TX timeouts, aggregator URL/key, scan/compound/log
- *      defaults). Override per-deployment via env vars where documented.
- *   2. `src/runtime-flags.js`                         — env/argv-derived
- *      (PRIVATE_KEY, DRY_RUN, VERBOSE, CHAIN, CHAIN_NAME, TX_TYPE, parser
- *      helpers).
- *   3. `app-config/static-tunables/chains.json`       — per-chain RPC URLs
- *      and contract addresses.
+ * Composes three sources:
  *
- * Per-position user-tunable settings (OOR threshold, slippage, intervals,
- * rebalance cap, OOR timeout) are still read from env vars here for the
- * moment; they will move to `app-config/static-tunables/bot-config-defaults.json`
- * in a follow-up commit. Until then, the env vars remain the source of
- * truth for first-time defaults.
+ *   1. `app-runtime.json`         — server port/host, TX timeouts,
+ *      aggregator URL/key, scan/compound/log defaults.  Operator can
+ *      override individual keys via
+ *      `app-config/user-configurable/app-runtime.json` (gitignored,
+ *      tarball-upgrade safe).  Env vars override that.
+ *   2. `bot-config-defaults.json` — shipped defaults for every
+ *      operator-tunable Bot Setting (OOR threshold, slippage,
+ *      intervals, daily cap, OOR timeout, etc.).  Sourced once at
+ *      module init for the env-var fallback expressions below.
+ *   3. `src/runtime-flags.js`     — env/argv-derived (PRIVATE_KEY,
+ *      DRY_RUN, VERBOSE, CHAIN, CHAIN_NAME, TX_TYPE, parser helpers).
+ *      `chains.json` is loaded inside runtime-flags via the same
+ *      layered loader.
  *
- * Existing callers keep importing `./config` and see the same exported
- * shape they always have. New code that only needs runtime flags can
- * `require('./runtime-flags')` directly.
+ * Existing callers keep importing `./config` and see the same
+ * exported shape they always have.  New code that only needs runtime
+ * flags can `require('./runtime-flags')` directly.
  */
 
 "use strict";
 
-const APP_CONFIG = require("./config.json");
 const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 
 const {
   parsePositiveInt,
@@ -41,6 +48,19 @@ const {
   DRY_RUN,
   VERBOSE,
 } = runtimeFlags;
+
+/*- Shipped app-runtime defaults, merged with any operator override at
+ *  `app-config/user-configurable/app-runtime.json`.  Loaded once at
+ *  module init; used below as the env-var-fallback expression in every
+ *  consumer so no numeric/string default is literally written in this
+ *  file. */
+const APP_CONFIG = loadMergedDefaults("app-runtime.json");
+
+/*- Single-source baseline for every Bot-Setting default value: read
+ *  the merged JSON once at module init.  Used below as the
+ *  env-var-fallback expression in every `parsePositiveInt/Float` call
+ *  site so no numeric default is ever literally written in this file. */
+const _BOT_DEFAULTS = loadMergedDefaults("bot-config-defaults.json");
 
 // ── Server ─────────────────────────────────────────────────────────────────────
 
@@ -73,17 +93,17 @@ const ERC20_POSITION_ADDRESS = process.env.ERC20_POSITION_ADDRESS || null;
 /** % the price must move beyond the position boundary before triggering a rebalance. */
 const REBALANCE_OOR_THRESHOLD_PCT = parsePositiveFloat(
   process.env.REBALANCE_OOR_THRESHOLD_PCT,
-  5,
+  _BOT_DEFAULTS.rebalanceOutOfRangeThresholdPercent,
 );
 
-/** Minutes of continuous OOR before auto-rebalance (0 = disabled). Default: 180 (3 hours). */
+/** Minutes of continuous OOR before auto-rebalance (0 = disabled). */
 const REBALANCE_TIMEOUT_MIN = (() => {
   const n = parseInt(process.env.REBALANCE_TIMEOUT_MIN, 10);
-  return Number.isFinite(n) && n >= 0 ? n : 180;
+  return Number.isFinite(n) && n >= 0 ? n : _BOT_DEFAULTS.rebalanceTimeoutMin;
 })();
 
 /** Default slippage tolerance (percent). Hard fallback when user input is invalid. */
-const DEFAULT_SLIPPAGE_PCT = 0.75;
+const DEFAULT_SLIPPAGE_PCT = _BOT_DEFAULTS.slippagePct;
 
 /** Maximum slippage tolerance for rebalance transactions (percent). */
 const SLIPPAGE_PCT = parsePositiveFloat(
@@ -104,18 +124,21 @@ const TX_CANCEL_SEC = parsePositiveInt(
 );
 
 /** How often the bot checks the on-chain position, in seconds. */
-const CHECK_INTERVAL_SEC = parsePositiveInt(process.env.CHECK_INTERVAL_SEC, 60);
+const CHECK_INTERVAL_SEC = parsePositiveInt(
+  process.env.CHECK_INTERVAL_SEC,
+  _BOT_DEFAULTS.checkIntervalSec,
+);
 
 /** Minimum time that must elapse between two rebalances, in minutes. */
 const MIN_REBALANCE_INTERVAL_MIN = parsePositiveInt(
   process.env.MIN_REBALANCE_INTERVAL_MIN,
-  10,
+  _BOT_DEFAULTS.minRebalanceIntervalMin,
 );
 
 /** Maximum rebalances per liquidity pool within a single 24-hour window. */
 const MAX_REBALANCES_PER_DAY = parsePositiveInt(
   process.env.MAX_REBALANCES_PER_DAY,
-  5,
+  _BOT_DEFAULTS.maxRebalancesPerDay,
 );
 
 /**

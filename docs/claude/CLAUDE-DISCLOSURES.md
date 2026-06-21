@@ -97,7 +97,7 @@ editing the text in a way that no longer matches the code.
 | ------------------ | ----------------------- |
 | Creator / Offeror / Operator roles | No source — factual/legal framing only |
 | Warranty disclaimer | [`server.js`](../../server.js) file-header disclaimer, [`public/index.html`](../../public/index.html) disclosure modal |
-| Venue Relationships — No Affiliation | [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js), [`src/rebalancer-swap.js`](../../src/rebalancer-swap.js), [`src/rebalancer-pools.js`](../../src/rebalancer-pools.js), [`app-config/static-tunables/chains.json`](../../app-config/static-tunables/chains.json) |
+| Venue Relationships — No Affiliation | [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js), [`src/rebalancer-swap.js`](../../src/rebalancer-swap.js), [`src/rebalancer-pools.js`](../../src/rebalancer-pools.js), [`app-config/app-defaults-for-user-configurable/chains.json`](../../app-config/app-defaults-for-user-configurable/chains.json) |
 | Data Storage (server-side) | [`src/bot-config-v2.js`](../../src/bot-config-v2.js), [`src/wallet-manager.js`](../../src/wallet-manager.js), [`src/api-key-store.js`](../../src/api-key-store.js), [`src/bot-recorder.js`](../../src/bot-recorder.js) |
 | Data Storage (client-side) | `public/dashboard-*.js` — any `localStorage.setItem` call |
 | External APIs contacted | [`src/price-fetcher.js`](../../src/price-fetcher.js), [`src/gecko-pool-cache.js`](../../src/gecko-pool-cache.js), [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js), [`src/bot-provider.js`](../../src/bot-provider.js) |

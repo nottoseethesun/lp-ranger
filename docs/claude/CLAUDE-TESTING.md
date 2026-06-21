@@ -25,7 +25,7 @@ npm run check           # Combined lint (JS+CSS) + test + coverage check (≥80%
 - `app-config/api-keys.json` — encrypted third-party API keys (e.g. Moralis)
 - `app-config/rebalance_log.json` — transaction history
 
-The `app-config/static-tunables/` subdir and `app-config/api-keys.example.json` are tracked repo files and are explicitly excluded from backup/delete.
+The `app-config/app-defaults-for-user-configurable/` subdir and `app-config/api-keys.example.json` are tracked repo files and are explicitly excluded from backup/delete. The matching `app-config/user-configurable/` subdir is tracked (via `.gitkeep`) but its contents are gitignored — operators drop layered overrides there, and those overrides ARE protected by the backup pass (same upgrade-safety semantics as `.env`).
 
 **`tmp/` directory (all JSON files):**
 
@@ -52,7 +52,7 @@ When adding a new disk-backed cache or config file:
 
 1. If it's a pure performance cache → put it in `tmp/` as `*.json`. Automatically protected by the `tmp/*.json` glob.
 2. If it's runtime state (managed by the app, may include user secrets) → put it in `app-config/` (top level). Automatically protected by the `find app-config -maxdepth 1 -type f` scan.
-3. If it's a tracked static tunable → put it in `app-config/static-tunables/`. Excluded from the protection scan (it's committed to git).
+3. If it's a tracked shipped default → put it in `app-config/app-defaults-for-user-configurable/`. Excluded from the protection scan (it's committed to git). Operators override at the matching `app-config/user-configurable/<same-name>.json` (gitignored, protected by the backup pass).
 4. Document new files in this file under "Protected files".
 
 ### Vanilla state
@@ -66,4 +66,4 @@ Tests that need config files should either:
 - Use a temp directory via `fs.mkdtempSync()` and pass the `dir` parameter to `loadConfig(dir)` / `saveConfig(cfg, dir)`
 - Or use the production path knowing that `check.js` will restore the original after tests complete
 
-Default/vanilla config values come from `.env.example` and `app-config/static-tunables/chains.json` in the repository.
+Default/vanilla config values come from `.env.example` and the shipped JSON files under `app-config/app-defaults-for-user-configurable/` in the repository.

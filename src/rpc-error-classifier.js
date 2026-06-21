@@ -21,11 +21,12 @@
  *                               as terminal-nonce-consumed (the safe
  *                               default — don't retry, don't reset).
  *
- * Classification data lives in
- * `app-config/static-tunables/evm-rpc-response-codes.json` so operators
- * can tune the substring lists without touching code.  EVM is the
- * generic format — the same error shapes appear across all EVM-compatible
- * chains (PulseChain, Ethereum, Arbitrum, etc.).
+ * Classification data lives in `evm-rpc-response-codes.json` (read via
+ * the layered defaults+user-override loader) so operators can tune
+ * the substring lists at `app-config/user-configurable/evm-rpc-
+ * response-codes.json` without touching code or shipped defaults.
+ * EVM is the generic format — the same error shapes appear across all
+ * EVM-compatible chains (PulseChain, Ethereum, Arbitrum, etc.).
  *
  * JSON-RPC code -32000 alone is a go-ethereum catch-all and is NOT used
  * for classification — the inner node message substring is the reliable
@@ -34,16 +35,9 @@
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 
-const _JSON_PATH = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "evm-rpc-response-codes.json",
-);
+const _FILENAME = "evm-rpc-response-codes.json";
 
 /**
  * @typedef {object} ErrorBucket
@@ -54,7 +48,7 @@ const _JSON_PATH = path.join(
 
 /** @returns {{transient: ErrorBucket, terminalNonceUnused: ErrorBucket, terminalNonceConsumed: ErrorBucket}} */
 function _loadBuckets() {
-  const raw = JSON.parse(fs.readFileSync(_JSON_PATH, "utf8"));
+  const raw = loadMergedDefaults(_FILENAME);
   return {
     transient: raw.transient,
     terminalNonceUnused: raw.terminalNonceUnused,

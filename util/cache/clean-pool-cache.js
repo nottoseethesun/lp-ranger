@@ -41,7 +41,7 @@ const LIQUIDITY_PAIR_DETAILS_CACHE = path.join(
 const CHAINS_JSON = path.join(
   process.cwd(),
   "app-config",
-  "static-tunables",
+  "app-defaults-for-user-configurable",
   "chains.json",
 );
 

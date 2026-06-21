@@ -36,8 +36,15 @@ function _updateRangeHint() {
   const input = g("rebalanceRangeInput");
   const hint = g("rebalanceRangeHint");
   if (!input || !hint) return;
-  const total = parseFloat(input.value) || 10;
-  const offset = parseInt(g("inOffsetToken0")?.value, 10) || 50;
+  const total = parseFloat(input.value);
+  const offset = parseInt(g("inOffsetToken0")?.value, 10);
+  /*- No literal fallbacks per feedback_one_literal_per_shipped_default:
+   *  skip the hint when either input is empty.  The hint repaints once
+   *  the user enters a value or AJAX populates the offset input. */
+  if (!Number.isFinite(total) || !Number.isFinite(offset)) {
+    hint.textContent = "";
+    return;
+  }
   if (offset === 50) {
     const half = (total / 2).toFixed(3).replace(/\.?0+$/, "");
     hint.textContent = `${half}% on either side of the current price`;

@@ -40,7 +40,7 @@ function _patchFeeData(provider) {
         String(fd.maxPriorityFeePerGas),
       );
     }
-    // Chain-specific gas price multiplier from app-config/static-tunables/chains.json.
+    // Chain-specific gas price multiplier from app-config/app-defaults-for-user-configurable/chains.json.
     // Return ONLY gasPrice (no maxFeePerGas/maxPriorityFeePerGas) so
     // ethers.js sends legacy type 0 TXs. PulseChain validators don't
     // reliably include EIP-1559 type 2 TXs — they sit pending forever.

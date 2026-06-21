@@ -2,7 +2,7 @@
  * @file dashboard-chart-providers.js
  * @description Fetches the per-chain Chart Links list from
  *   `GET /api/chart-providers` (backed by `src/chart-providers.js` +
- *   `app-config/static-tunables/chains.json`) and exposes a small
+ *   `app-config/app-defaults-for-user-configurable/chains.json`) and exposes a small
  *   helper that resolves a pool address into clickable URLs for each
  *   provider. The blockchain slug is already substituted server-side
  *   so the client never hard-codes any chain identifier.

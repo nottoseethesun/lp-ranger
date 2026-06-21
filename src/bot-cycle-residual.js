@@ -78,7 +78,7 @@ const _lastLoggedReason = new WeakMap();
 
 /**
  * Log the current gate reason only when it changes from the last
- * logged value for this state object.  Keeps the 60s poll loop quiet
+ * logged value for this state object.  Keeps the poll loop quiet
  * during long cooldowns while still surfacing every transition.
  */
 function _logGateTransition(state, decision, sharePct) {

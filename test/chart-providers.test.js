@@ -83,7 +83,7 @@ describe("chart-providers.readChartProviders — happy path", () => {
 
 describe("chart-providers._buildProvidersList — malformed entries", () => {
   /*- Pure-helper tests that exercise edge cases without mutating
-      app-config/static-tunables/chains.json on disk. The previous
+      app-config/app-defaults-for-user-configurable/chains.json on disk. The previous
       file-mutation approach raced other test files that also read
       chains.json (via `require("./runtime-flags")`), causing flaky
       failures when node --test ran files in parallel. */

@@ -10,11 +10,18 @@
 
 # App-managed runtime config + state lives in app-config/.
 # Ignore everything in the top level of that directory EXCEPT:
-#   - the static-tunables/ subdir (tracked, user-editable tunables)
-#   - the api-keys.example.json format template (tracked)
+#   - app-defaults-for-user-configurable/ (tracked, shipped defaults — see
+#     the README in that directory)
+#   - user-configurable/ (tracked dir, but its CONTENTS are gitignored so
+#     a user's local overrides survive tarball upgrades)
+#   - api-keys.example.json format template (tracked, legacy — being
+#     migrated into the user-configurable pattern)
 # See the `app-config/` section of server.js for the full layout.
 app-config/*
-!app-config/static-tunables/
+!app-config/app-defaults-for-user-configurable/
+!app-config/user-configurable/
+app-config/user-configurable/*
+!app-config/user-configurable/.gitkeep
 !app-config/api-keys.example.json
 
 # Encrypted private key files (legacy root drops — always gitignore-safe)

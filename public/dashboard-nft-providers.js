@@ -2,7 +2,7 @@
  * @file dashboard-nft-providers.js
  * @description Fetches the NFT position-manager provider-label map from
  *   `GET /api/nft-providers` (backed by
- *   `app-config/static-tunables/nft-providers.json`) and exposes a
+ *   `app-config/app-defaults-for-user-configurable/nft-providers.json`) and exposes a
  *   setter that paints the label + leading dot separator next to the
  *   Fee Tier line.  Missing mappings hide the label entirely so the
  *   Fee Tier row stays clean.

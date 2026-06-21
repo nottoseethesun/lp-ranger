@@ -15,7 +15,7 @@
  *   • Each control persists to its own localStorage key.
  *   • When a key is absent, the value comes from the cached server
  *     default fetched via `GET /api/ui-defaults` (backed by
- *     `app-config/static-tunables/ui-defaults.json`).
+ *     `app-config/app-defaults-for-user-configurable/ui-defaults.json`).
  *
  * This module only owns the sub-form state. Wiring the settings into the
  * actual blur-application path lives in `dashboard-events-manage.js`.

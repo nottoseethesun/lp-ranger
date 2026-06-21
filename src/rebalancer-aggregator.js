@@ -6,13 +6,19 @@
  *   swap path; V3 router in rebalancer-swap.js is the fallback.
  *
  *   Chain-specific tunables (cancel gas multiplier, wait timeout,
- *   max attempts) are loaded from app-config/static-tunables/chains.json via config.CHAIN.
+ *   max attempts) are loaded from app-config/app-defaults-for-user-configurable/chains.json via config.CHAIN.
  */
 
 "use strict";
 
 const config = require("./config");
 const { log } = require("./log");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Shipped default for slippagePct.  Per
+ *  feedback_one_literal_per_shipped_default, the literal lives only in
+ *  bot-config-defaults.json. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 const {
   ERC20_ABI,
   _checkSwapImpact,
@@ -20,7 +26,7 @@ const {
   _retrySend,
 } = require("./rebalancer-pools");
 
-/** Chain-specific aggregator tunables from app-config/static-tunables/chains.json. */
+/** Chain-specific aggregator tunables from app-config/app-defaults-for-user-configurable/chains.json. */
 const _agg = config.CHAIN.aggregator;
 
 /**
@@ -50,7 +56,7 @@ const AGGREGATOR_LABEL = "9mm Aggregator";
  * @returns {Promise<object>} Quote response.
  */
 async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
-  const slip = (slippagePct ?? 0.5) / 100;
+  const slip = (slippagePct ?? _DEFAULTS.slippagePct) / 100;
   // No takerAddress — the 9mm web UI omits it, and including it
   // causes the API to generate different calldata that reverts on-chain.
   const url =
@@ -131,10 +137,22 @@ async function _getGasPrice(provider) {
   return fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
 }
 
-/** Compute buffered gas limit from quote using chain config multiplier. */
+/** Compute buffered gas limit from quote using chain config multiplier.
+ *  Per feedback_one_literal_per_shipped_default: gasLimitMultiplier
+ *  lives in chains.json; throw loudly if a chain forgot to set it.
+ *  The `300000` floor is when the aggregator quote omits gas entirely
+ *  (extremely rare) — a defensive emergency value, not a shipped Bot
+ *  Setting. */
 function _gasLimit(quote) {
+  const mult = config.CHAIN.gasLimitMultiplier;
+  if (typeof mult !== "number" || mult <= 0) {
+    throw new Error(
+      "[aggregator] chains.json gasLimitMultiplier missing/invalid for " +
+        `${config.CHAIN?.displayName ?? "?"} — must be a positive number`,
+    );
+  }
   const raw = Number(quote.gas || quote.estimatedGas || 300000);
-  return BigInt(Math.ceil(raw * (config.CHAIN.gasLimitMultiplier || 2)));
+  return BigInt(Math.ceil(raw * mult));
 }
 
 /**
@@ -259,7 +277,7 @@ async function _handleSwapError(
  *    consumed — just re-quote and submit at the next nonce.
  *
  * Chain-specific tunables (waitMs, cancelGasMultiplier, maxAttempts)
- * come from app-config/static-tunables/chains.json.
+ * come from app-config/app-defaults-for-user-configurable/chains.json.
  */
 async function _sendWithRetry(
   signer,
@@ -408,7 +426,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
   const signerAddr = await signer.getAddress();
   const quote = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
   const impact = parseFloat(quote.estimatedPriceImpact) || 0;
-  const slip = slippagePct ?? 0.5;
+  const slip = slippagePct ?? _DEFAULTS.slippagePct;
   /*- Display label is the AGGREGATOR_LABEL constant defined at the top
    *  of this module.  The raw per-pool list is still logged below for
    *  diagnostics but never surfaced to the UI. */

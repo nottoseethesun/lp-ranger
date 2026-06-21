@@ -161,7 +161,7 @@ function _truncSym(s, max = _SYM_TRUNC_HEADER) {
 }
 
 /** Resolve the user-facing NFT-issuer name from
- *  `app-config/static-tunables/nft-providers.json` (address-keyed).  The
+ *  `app-config/app-defaults-for-user-configurable/nft-providers.json` (address-keyed).  The
  *  same map the dashboard NFT panel reads via `GET /api/nft-providers`.
  *  Returns `undefined` when no match — callers omit the provider line. */
 function _resolveProviderName() {

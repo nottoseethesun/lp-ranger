@@ -80,6 +80,19 @@ for (const entry of fs.readdirSync(".")) {
   }
 }
 
+// User-configurable overrides — everything in app-config/user-configurable/
+// EXCEPT .gitkeep (which is tracked-in-repo and shouldn't move).  This is
+// the canonical place operators drop layered overrides; preserving them
+// across the wipe/restore cycle mirrors the tarball-upgrade story.
+const _USER_CFG_DIR = path.join("app-config", "user-configurable");
+if (fs.existsSync(_USER_CFG_DIR)) {
+  for (const entry of fs.readdirSync(_USER_CFG_DIR)) {
+    if (entry === ".gitkeep") continue;
+    const p = path.join(_USER_CFG_DIR, entry);
+    if (fs.statSync(p).isFile()) backupOne(p);
+  }
+}
+
 if (backed === 0) {
   try {
     fs.rmdirSync(BACKUP_DIR);

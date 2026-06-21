@@ -13,75 +13,42 @@
  *
  * `DUST_THRESHOLD_UNITS` is exported as a **universal constant** — the
  * single source of truth for "how small is dust" across the whole app.
- * Its value, and the price-source tokens used to derive the live USD/unit
- * price, are loaded once at module init from
- * `app-config/static-tunables/dust-threshold.json` so operators can tune
- * both without editing code.  The module falls back to `_DEFAULT_UNITS`
- * (1/4800) if the JSON is missing or malformed, so the guard never
- * silently disables itself.
+ * Its value, the absolute USD floor, and the price-source tokens used
+ * to derive the live USD/unit price all come from `dust-threshold.json`
+ * via the layered defaults+user-override loader (see
+ * `src/load-merged-defaults.js`).  Operators override at
+ * `app-config/user-configurable/dust-threshold.json` without editing
+ * code or touching shipped defaults.  Per
+ * feedback_one_literal_per_shipped_default, no default values are
+ * duplicated in code — every literal lives in the JSON.
  *
  * USD/unit price is fetched via
- * `src/price-fetcher.js#fetchDustUnitPriceUsd`.  If all sources fail, we
- * fall back to `_FALLBACK_THRESHOLD_USD` so the guard still fires instead
- * of silently disabling itself.
+ * `src/price-fetcher.js#fetchDustUnitPriceUsd`.  If all sources fail,
+ * we fall back to the JSON's `fallbackThresholdUsd` so the guard still
+ * fires instead of silently disabling itself.
  */
 
 "use strict";
 
-const { log } = require("./log");
-const path = require("path");
-const fs = require("fs");
-
 const { fetchDustUnitPriceUsd } = require("./price-fetcher");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+const _FILENAME = "dust-threshold.json";
+
+/*- Single-source baseline: read the shipped JSON once at module init.
+ *  Throws on missing/malformed file (install error, fail loudly).  All
+ *  default values live in the JSON — no literal duplicates in code. */
+const _SHIPPED = Object.freeze(loadShippedDefaults(_FILENAME));
+
+/** Universal dust size in units of the reference asset.  Single source
+ *  of truth across the app for "how small is too small to act on".
+ *  Consumers should read it via this export (or call
+ *  `getDustThresholdUsd()` / `isDust()`) rather than re-reading the
+ *  JSON or hardcoding a number elsewhere. */
+const DUST_THRESHOLD_UNITS = _SHIPPED.thresholdUnits;
 
 /** Absolute USD floor used only when the USD/unit fetch returns 0. */
-const _FALLBACK_THRESHOLD_USD = 1.0;
-
-/** Last-resort units value if the JSON config is missing or malformed. */
-const _DEFAULT_UNITS = 1 / 4800;
-
-/** On-disk source of truth for the dust-threshold config. */
-const _DUST_JSON_PATH = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "dust-threshold.json",
-);
-
-/** Load the threshold units from disk; fall back to the default. */
-function _loadThresholdUnits() {
-  try {
-    const raw = fs.readFileSync(_DUST_JSON_PATH, "utf8");
-    const json = JSON.parse(raw);
-    const val = Number(json?.thresholdUnits);
-    if (Number.isFinite(val) && val > 0) return val;
-    log.warn(
-      "[dust] %s missing/invalid thresholdUnits — using default %s",
-      _DUST_JSON_PATH,
-      _DEFAULT_UNITS,
-    );
-    return _DEFAULT_UNITS;
-  } catch (err) {
-    log.warn(
-      "[dust] Could not load %s: %s — using default %s",
-      _DUST_JSON_PATH,
-      err.message ?? err,
-      _DEFAULT_UNITS,
-    );
-    return _DEFAULT_UNITS;
-  }
-}
-
-/**
- * Universal "dust" size, in units of the reference asset.
- *
- * Single source of truth across the app for "how small is too small to
- * act on".  Consumers should read it via this export (or call
- * `getDustThresholdUsd()` / `isDust()` which use it internally) rather
- * than re-reading the JSON or hardcoding a number elsewhere.
- */
-const DUST_THRESHOLD_UNITS = _loadThresholdUnits();
+const _FALLBACK_THRESHOLD_USD = _SHIPPED.fallbackThresholdUsd;
 
 /**
  * Current dust threshold in USD.
@@ -117,5 +84,4 @@ module.exports = {
   isDust,
   getDustThresholdUsd,
   _FALLBACK_THRESHOLD_USD,
-  _DEFAULT_UNITS,
 };

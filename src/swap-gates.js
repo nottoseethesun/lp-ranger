@@ -27,33 +27,42 @@
 const { isDust, getDustThresholdUsd } = require("./dust");
 const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Single-source: the shipped default for `gasFeePct` and its
+ *  validation bounds (gasFeePctMin / gasFeePctMax) all live in
+ *  bot-config-defaults.json.  We read them once at module init.  Per
+ *  feedback_one_literal_per_shipped_default, no numeric default or
+ *  bound is written as a literal in this file. */
+const _BOT_DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+
+const GAS_FEE_PCT_DEFAULT = _BOT_DEFAULTS.gasFeePct;
 
 /**
  * Default fraction used when no per-call override is supplied.
- * 0.01 = 1%.  Tuned conservatively: a swap that costs more than 1%
- * of its value in gas is almost always net-negative once slippage
- * and price impact are stacked on top.
+ * Sourced from the shipped `gasFeePct` value divided by 100.  Tuned
+ * conservatively: a swap that costs more than this share of its value
+ * in gas is almost always net-negative once slippage and price impact
+ * are stacked on top.
  *
- * The active value is now operator-tunable via the global
- * `gasFeePct` Bot Setting (percent input, 0.1–15).  Each swap call
- * site reads `_getConfig("gasFeePct")` from the per-position bot
- * state, divides by 100, and passes the resulting ratio to
- * `shouldSkipSwap` as `maxRatio`.  This constant remains the
- * fallback when no value is supplied — keep it in sync with the
- * default in `app-config/static-tunables/bot-config-defaults.json`.
+ * The active value is operator-tunable via the global `gasFeePct` Bot
+ * Setting.  Each swap call site reads `_getConfig("gasFeePct")` from
+ * the per-position bot state, divides by 100, and passes the
+ * resulting ratio to `shouldSkipSwap` as `maxRatio`.  This constant
+ * remains the fallback when no value is supplied.
  */
-const MAX_SWAP_GAS_RATIO = 0.01;
+const MAX_SWAP_GAS_RATIO = GAS_FEE_PCT_DEFAULT / 100;
 
 /**
  * UI bounds for the operator-tunable `gasFeePct` Bot Setting.  Mirror
  * the input `min`/`max` attrs in `public/index.html` so server-side
- * clamping matches what the dashboard exposes.  Below 0.1% would
- * effectively block all swaps on chains with non-trivial gas; above
- * 15% is well past the point where gas eats the trade.
+ * clamping matches what the dashboard exposes.  Sourced from the
+ * shipped JSON so the bounds live in one place — see also
+ * `src/bot-config-defaults.js` `_NORMALIZERS.gasFeePct` which reads
+ * the same `gasFeePctMin` / `gasFeePctMax` values.
  */
-const GAS_FEE_PCT_MIN = 0.1;
-const GAS_FEE_PCT_MAX = 15;
-const GAS_FEE_PCT_DEFAULT = 1;
+const GAS_FEE_PCT_MIN = _BOT_DEFAULTS.gasFeePctMin;
+const GAS_FEE_PCT_MAX = _BOT_DEFAULTS.gasFeePctMax;
 
 /**
  * Convert the operator's `gasFeePct` (a percent) into the ratio used
@@ -79,15 +88,19 @@ function gasFeePctToRatio(pct) {
  * "High estimate" of gas units consumed by a typical aggregator swap.
  * Mirrors the buffered `quote.gas` figure the aggregator reports for
  * a first swap attempt — used to pre-compute the gas-gate ratio
- * before we commit to a quote.  Pulled from chain config when
- * available so different chains can tune.
+ * before we commit to a quote.  Per-chain value (lives under the
+ * chain's `aggregator.estimatedSwapGasUnits` key in chains.json) so
+ * different chains can tune.  Per
+ * feedback_one_literal_per_shipped_default, no code-side literal
+ * fallback — chains.json must populate this key for every chain.
  */
-const _DEFAULT_SWAP_GAS_UNITS = 500_000n;
-
 function _swapGasUnits() {
   const fromCfg = config.CHAIN?.aggregator?.estimatedSwapGasUnits;
   if (typeof fromCfg === "number" && fromCfg > 0) return BigInt(fromCfg);
-  return _DEFAULT_SWAP_GAS_UNITS;
+  throw new Error(
+    "[swap-gates] aggregator.estimatedSwapGasUnits missing or invalid for chain " +
+      `${config.CHAIN?.displayName ?? "?"} — must be a positive number in chains.json`,
+  );
 }
 
 /**
@@ -177,5 +190,4 @@ module.exports = {
   gasFeePctToRatio,
   estimateSwapGasUsd,
   shouldSkipSwap,
-  _DEFAULT_SWAP_GAS_UNITS,
 };

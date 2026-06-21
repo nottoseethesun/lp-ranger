@@ -143,7 +143,7 @@ documentation — the raw `node` form is an implementation detail.
 | Flag | npm Invocation | Description |
 | --- | --- | --- |
 | `--verbose`, `-v` | `npm start -- --verbose` | Verbose logging: per-cycle fee details and out-of-range poll diagnostics that are hidden by default. Can also be set via `VERBOSE=1` in `.env` or environment. |
-| `--log-file [PATH]` | `npm start -- --log-file` | Tee every byte written to `process.stdout` and `process.stderr` to a file (ANSI color escapes stripped so the on-disk log is grep-friendly). `PATH` is optional — when omitted, the path falls through to `app-config/static-tunables/logging.json` and finally to the built-in default `app-config/lp-ranger.log`. With a path: `npm start -- --log-file path/to/run.log`. The file is opened in append mode (multiple runs accumulate); rotate or truncate externally if it grows unbounded. Operators who want the tee always-on can set `"enabled": true` in `logging.json` and run `npm start` with no flag. Implemented by [`src/log-file.js`](../src/log-file.js); wired into both `server.js` and `bot.js` via [`src/boot-log-file.js`](../src/boot-log-file.js). |
+| `--log-file [PATH]` | `npm start -- --log-file` | Tee every byte written to `process.stdout` and `process.stderr` to a file (ANSI color escapes stripped so the on-disk log is grep-friendly). `PATH` is optional — when omitted, the path falls through to `app-config/app-defaults-for-user-configurable/logging.json` and finally to the built-in default `app-config/lp-ranger.log`. With a path: `npm start -- --log-file path/to/run.log`. The file is opened in append mode (multiple runs accumulate); rotate or truncate externally if it grows unbounded. Operators who want the tee always-on can set `"enabled": true` in `logging.json` and run `npm start` with no flag. Implemented by [`src/log-file.js`](../src/log-file.js); wired into both `server.js` and `bot.js` via [`src/boot-log-file.js`](../src/boot-log-file.js). |
 | `--help`, `-h` | `npm start -- --help` | Show all command-line options and exit. |
 | `--start-with-price-lookups-unpaused` | `npm run bot -- --start-with-price-lookups-unpaused` | **Bot-only** (`npm run bot`). Skip the default start-paused state for headless mode (see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)). Use this when you want continuous P&L cache warming on a headless box. |
 
@@ -169,7 +169,7 @@ the script — the tee will silently not engage.
 [`.env.example`](../.env.example) to `.env` and edit the values you need.
 Every variable below is read by [`src/config.js`](../src/config.js) at
 startup. Nothing in this section belongs in
-`app-config/static-tunables/chains.json`, `app-config/.bot-config.json`, or
+`app-config/app-defaults-for-user-configurable/chains.json`, `app-config/.bot-config.json`, or
 `app-config/api-keys.json` — for those files, see the
 [The `app-config` Directory](#the-app-config-directory) section below.
 
@@ -192,7 +192,7 @@ each layer live in the [Security](#security) section below.
 
 - `CHAIN_NAME` — Blockchain to connect to (default: `pulsechain`). Set to
   `pulsechain-testnet` for PulseChain Testnet v4. `CHAIN_NAME` selects which
-  entry the bot loads out of `app-config/static-tunables/chains.json`; the
+  entry the bot loads out of `app-config/app-defaults-for-user-configurable/chains.json`; the
   per-chain RPC endpoints, contract addresses, and gas multipliers
   themselves live in that file, not in `.env`.
 
@@ -218,7 +218,7 @@ each layer live in the [Security](#security) section below.
   (default: `120`)
 - `TX_CANCEL_SEC` — Seconds before a stuck TX is cancelled via 0-PLS
   self-transfer (default: `1200` = 20 min)
-- `CHECK_INTERVAL_SEC` — Poll interval (default: `60`)
+- `CHECK_INTERVAL_SEC` — Poll interval (default: `300`)
 - `MIN_REBALANCE_INTERVAL_MIN` — Min wait between rebalances (default: `10`)
 - `MAX_REBALANCES_PER_DAY` — Hard daily cap (default: `20`)
 - `LOG_FILE` — JSON log path (default: `./app-config/rebalance_log.json`)
@@ -226,7 +226,7 @@ each layer live in the [Security](#security) section below.
 ### Contract Address Overrides (`.env`)
 
 These variables override the per-chain defaults from
-`app-config/static-tunables/chains.json`. In normal operation you should
+`app-config/app-defaults-for-user-configurable/chains.json`. In normal operation you should
 never need to set them — only edit them if you're pointing the bot at a
 custom deployment of the 9mm Pro V3 contracts.
 
@@ -241,7 +241,7 @@ Canonical deployment addresses:
 
 - **Per-chain static tunables** (RPC endpoints, contract addresses, gas
   multipliers, aggregator timeouts) →
-  `app-config/static-tunables/chains.json`. Tracked in git, user-editable.
+  `app-config/app-defaults-for-user-configurable/chains.json`. Tracked in git, user-editable.
 - **Managed positions and per-position settings** (HODL baselines,
   thresholds, slippage overrides, auto-compound config) →
   `app-config/.bot-config.json`. Runtime-managed, gitignored. Written by
@@ -454,7 +454,7 @@ falling back to `bot-config-defaults.json`):
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `pricePauseExceptionPollWindowMultiple` | `10` | Multiplier on `CHECK_INTERVAL_SEC`. Effective fetch cadence = `CHECK_INTERVAL_SEC × multiplier` seconds. Default 10 → 10 min at the default 60 s poll. Higher = lighter load, slower band detection. Positive integer ≥ 1. |
+| `pricePauseExceptionPollWindowMultiple` | `10` | Multiplier on `CHECK_INTERVAL_SEC`. Effective fetch cadence = `CHECK_INTERVAL_SEC × multiplier` seconds. Default 10 → 50 min at the default 300 s poll. Higher = lighter load, slower band detection. Positive integer ≥ 1. |
 
 The threshold (±2.5%) and cooldown (30 min) are code-only constants in
 `src/balanced-notifier.js` (`BALANCED_THRESHOLD`, `BALANCED_COOLDOWN_MS`)
@@ -463,7 +463,7 @@ The threshold (±2.5%) and cooldown (30 min) are code-only constants in
 **Notification payload.** Header lines list the blockchain
 (`CHAIN.displayName`), the user-friendly NFT-issuer name resolved by
 looking up the configured position-manager address in
-`app-config/static-tunables/nft-providers.json` (e.g. `"9mm v3"`) — the
+`app-config/app-defaults-for-user-configurable/nft-providers.json` (e.g. `"9mm v3"`) — the
 same single source of truth the dashboard NFT panel reads via
 `GET /api/nft-providers`. Then the two token symbols (truncated to 12
 chars each, second line indented 4 spaces) and the fee tier. The
@@ -504,12 +504,15 @@ the threshold's *purchasing power* roughly constant instead, without any
 manual re-tuning.
 
 Default: `thresholdUnits = 1/4800 ≈ $0.70` at a gold price near $3,400/oz.
-The value lives in
-[`app-config/static-tunables/dust-threshold.json`](../app-config/static-tunables/dust-threshold.json)
-so operators can tune it without editing code. The same JSON lists the
-price-source tokens — to switch reference assets (silver, a basket, etc.),
-swap the tokens and pick a `thresholdUnits` consistent with the new asset's
-price scale.
+The shipped value lives in
+[`app-config/app-defaults-for-user-configurable/dust-threshold.json`](../app-config/app-defaults-for-user-configurable/dust-threshold.json)
+so operators can tune it without editing code. **To customize:**
+copy that file to `app-config/user-configurable/dust-threshold.json`
+and edit the copy. The same JSON lists the price-source tokens — to
+switch reference assets (silver, a basket, etc.), swap the tokens in
+the copy and pick a `thresholdUnits` consistent with the new asset's
+price scale. Do NOT edit the file in
+`app-defaults-for-user-configurable/` — tarball upgrades overwrite it.
 
 ### Live USD/unit Resolution
 
@@ -737,7 +740,7 @@ blockchain wallet scans on next start to rebuild caches.
 - `npm run clean:log` — Delete the log-to-file output at
   `app-config/lp-ranger.log` (the file produced when the app is started
   with `--log-file` or with `enabled: true` in
-  `app-config/static-tunables/logging.json`). No-op when the file is
+  `app-config/app-defaults-for-user-configurable/logging.json`). No-op when the file is
   absent. Use this to free disk space, to start a clean capture before
   a diagnostic session, or to scrub a log before sharing.  The log is
   NOT automatically rotated — long-lived production tails should run
@@ -835,7 +838,7 @@ pool-address-keyed disk caches under `tmp/`.
   "NFT Contract" row. `--chain` accepts either the abbreviated key
   (e.g. `pulsechain`) or the full display name (e.g. `PulseChain`),
   case-insensitive. The set of valid chains comes from
-  `app-config/static-tunables/chains.json`.
+  `app-config/app-defaults-for-user-configurable/chains.json`.
 
   Pass `--preserve-pool-history` to skip event-cache, P&L-epochs,
   liquidity-pair-details, and lp-position-cache surfaces — the lookup
@@ -879,10 +882,21 @@ state lives in ONE dedicated directory at the project root:
 ```text
 lp-ranger/
 └── app-config/
-    ├── static-tunables/      ← tracked in git, user-editable
+    ├── app-defaults-for-user-configurable/  ← tracked, shipped defaults
+    │   ├── README.md         ← do-not-edit warning + override instructions
     │   ├── chains.json       ← per-blockchain tunables (RPC, contracts, gas)
     │   ├── bot-config-defaults.json  ← Bot Settings defaults + nested groups
-    │   └── dust-threshold.json  ← universal dust threshold (gold-pegged)
+    │   ├── csrf.json         ← CSRF token TTL + refresh cadence
+    │   ├── dust-threshold.json  ← universal dust threshold (gold-pegged)
+    │   ├── evm-rpc-response-codes.json  ← RPC error-classifier substrings
+    │   ├── logging.json      ← log-to-file always-on toggle + path
+    │   ├── nft-providers.json  ← short labels for NFT issuer contracts
+    │   └── ui-defaults.json  ← dashboard first-visit defaults
+    ├── user-configurable/    ← dir tracked (via .gitkeep), CONTENTS gitignored
+    │   └── .gitkeep          ← survives tarball upgrade — operators drop
+    │                            same-named override files here; the runtime
+    │                            deep-merges them on top of the shipped
+    │                            defaults above (user wins)
     ├── api-keys.example.json ← tracked format template (documentation)
     ├── .bot-config.json      ← runtime (gitignored) — managed positions
     ├── .bot-config.backup.json  ← runtime (gitignored) — auto snapshot
@@ -900,21 +914,31 @@ regenerate it.
 
 ### File Inventory
 
-- **`static-tunables/chains.json`** — Tracked. Per-blockchain config: RPC
-  endpoints, contract addresses (PositionManager, Factory, SwapRouter), gas
-  multipliers, aggregator cancel timeout, wait window, retry count. Read
-  once at module load by `src/config.js`. Users edit this file directly for
-  chain-specific tweaks.
-- **`static-tunables/bot-config-defaults.json`** — Tracked. Default values
+- **`app-defaults-for-user-configurable/chains.json`** — Tracked
+  shipped default. Per-blockchain config: RPC endpoints, contract
+  addresses (PositionManager, Factory, SwapRouter), gas multipliers,
+  aggregator cancel timeout, wait window, retry count. Read once at
+  module load by `src/config.js` via the layered defaults+user-
+  override loader. **To customize:** copy this file to
+  `app-config/user-configurable/chains.json` and edit the copy
+  (deep-merge — you only need to ship the keys you want to override).
+  Do NOT edit the file in `app-defaults-for-user-configurable/` —
+  tarball upgrades overwrite it.
+- **`app-defaults-for-user-configurable/bot-config-defaults.json`** — Tracked. Default values
   for every user-editable Bot Settings input plus two server-internal nested
   groups (`lowGasThresholds`, `residualCleanup`). See
   [Bot Config Defaults](#bot-config-defaults) for the full key inventory.
-- **`static-tunables/dust-threshold.json`** — Tracked. Universal dust
-  threshold (in abstract units of an inflation-resistant reference asset)
-  plus the list of tokens used to fetch the live USD/unit price. Read once
-  at module load by `src/dust.js`. See [Dust Threshold](#dust-threshold) for
-  the strategy and rationale. Users edit this file directly to tune the
-  threshold or switch reference assets.
+- **`app-defaults-for-user-configurable/dust-threshold.json`** —
+  Tracked shipped default. Universal dust threshold (in abstract
+  units of an inflation-resistant reference asset) plus the list of
+  tokens used to fetch the live USD/unit price. Read once at module
+  load by `src/dust.js` via the layered defaults+user-override
+  loader. See [Dust Threshold](#dust-threshold) for the strategy and
+  rationale. **To customize** (tune the threshold or switch reference
+  assets): copy this file to
+  `app-config/user-configurable/dust-threshold.json` and edit the
+  copy. Do NOT edit the file in `app-defaults-for-user-configurable/`
+  — tarball upgrades overwrite it.
 - **`api-keys.example.json`** — Tracked. Format template showing the
   structure of the encrypted `api-keys.json`. NOT a tunable, NOT a runtime
   file — pure documentation. Lives at `app-config/` top level because it
@@ -957,22 +981,31 @@ regenerate it.
 
 ### Rules for Where Future Config Files Should Live
 
-1. **Pure static tunable** (tracked, user-editable, NEVER rewritten by the
-   app at runtime) → `app-config/static-tunables/<name>.json`
+1. **Shipped default for an operator-tunable value** (tracked, never
+   rewritten by the app at runtime) →
+   `app-config/app-defaults-for-user-configurable/<name>.json`.  Read
+   via `src/load-merged-defaults.js#loadMergedDefaults("<name>.json")`
+   so per-install operator overrides at
+   `app-config/user-configurable/<same-name>.json` are automatically
+   layered on top (deep-merged; operator values win).  This is the
+   ONLY way for new operator-tunable values to ship — direct edits to
+   the file in `app-defaults-for-user-configurable/` are clobbered on
+   every tarball upgrade.
 2. **Runtime state** (written by the app, not meant for the user to
-   hand-edit) → `app-config/<name>.json` (add to `.gitignore` via the
-   `app-config/*` glob)
-3. **Mixed static + dynamic** (has tracked defaults that the app also
-   overwrites during normal operation) → `app-config/<name>.json` (NOT
-   `static-tunables/`). The `static-tunables/` subdir is reserved for files
-   that are read-only at runtime — if the app can rewrite the file, it
-   doesn't belong there.
+   hand-edit) → `app-config/<name>.json` (covered by the
+   `app-config/*` gitignore glob).
+3. **Mixed static + dynamic** (the app also overwrites during normal
+   operation) → `app-config/<name>.json` (NOT
+   `app-defaults-for-user-configurable/`).  The shipped-defaults dir
+   is reserved for files that are read-only at runtime — if the app
+   can rewrite the file, it doesn't belong there.
 4. **Format template** documenting a runtime file →
-   `app-config/<name>.example.json` (tracked; add an explicit un-ignore
-   rule to `.gitignore`).
-5. **Pure performance cache** (can be deleted with no loss of data; rebuilt
-   on demand from the blockchain or an API) → `tmp/<name>.json`. DO NOT
-   put caches in `app-config/`.
+   `app-config/<name>.example.json` (tracked; add an explicit
+   un-ignore rule to `.gitignore`).  Pre-dates the user-configurable
+   pattern; new tunables should use rule 1 instead.
+5. **Pure performance cache** (can be deleted with no loss of data;
+   rebuilt on demand from the blockchain or an API) →
+   `tmp/<name>.json`.  DO NOT put caches in `app-config/`.
 
 ### One-Time Migration from the Legacy Layout
 
@@ -998,8 +1031,11 @@ where a file could be lost to an interrupted move.
 file in `app-config/` before running tests, wipes them, runs the full test
 suite, then restores the originals via an `EXIT` trap. This prevents
 test-created fixtures from ever clobbering live user state. The
-`static-tunables/` subdir and the `api-keys.example.json` template are
-explicitly excluded from the backup/wipe — they're tracked repo files.
+`app-defaults-for-user-configurable/` subdir and the
+`api-keys.example.json` template are explicitly excluded from the
+backup/wipe — they're tracked repo files. The sibling
+`user-configurable/` subdir IS backed up (it holds per-install
+operator overrides; same upgrade-safety semantics as `.env`).
 
 Tests that need to write config without touching the live files either
 pass an explicit `dir` argument to `loadConfig(dir)` / `saveConfig(cfg, dir)`
@@ -1010,7 +1046,7 @@ environment variables to a temp path before require-ing the module.
 
 ## Bot Config Defaults
 
-[`app-config/static-tunables/bot-config-defaults.json`](../app-config/static-tunables/bot-config-defaults.json)
+[`app-config/app-defaults-for-user-configurable/bot-config-defaults.json`](../app-config/app-defaults-for-user-configurable/bot-config-defaults.json)
 holds the default values for every Bot Settings input the dashboard
 exposes, plus two server-internal nested groups. The dashboard fetches
 it at init via `GET /api/bot-config-defaults`; the server falls back to
@@ -1025,7 +1061,7 @@ Per-user overrides live in `app-config/.bot-config.json`.
 | `rebalanceOutOfRangeThresholdPercent` | `5` | % move past the position boundary before a rebalance triggers |
 | `rebalanceTimeoutMin` | `180` | Minutes continuously OOR before forcing a rebalance (`0` = disabled) |
 | `slippagePct` | `0.5` | Per-swap slippage tolerance applied to the quoted output |
-| `checkIntervalSec` | `60` | On-chain poll cadence |
+| `checkIntervalSec` | `300` | On-chain poll cadence |
 | `minRebalanceIntervalMin` | `10` | Minimum gap between back-to-back rebalances on the same pool |
 | `maxRebalancesPerDay` | `20` | Wallet-level daily rebalance cap (UTC reset) |
 | `offsetToken0Pct` | `50` | Position offset bias toward token0 (50 = balanced) |
@@ -1231,7 +1267,7 @@ non-expired token in an `x-csrf-token` header. Tokens are pruned from
 an in-memory issued-set when the set exceeds 500 entries.
 
 **Lifetime and refresh cadence are tunables.**
-[`app-config/static-tunables/csrf.json`](../app-config/static-tunables/csrf.json)
+[`app-config/app-defaults-for-user-configurable/csrf.json`](../app-config/app-defaults-for-user-configurable/csrf.json)
 defines two values:
 
 | Field | Default | Meaning |
@@ -1492,7 +1528,7 @@ and runs under `npm run audit:security`.
 
 `test/gitignore.test.js` asserts that `.gitignore` covers `.env`,
 `.env.*`, `*.keyfile.json`, and the `app-config/*` glob while
-explicitly un-ignoring `.env.example`, `static-tunables/`, and
+explicitly un-ignoring `.env.example`, `app-defaults-for-user-configurable/`, and
 `api-keys.example.json`. If a contributor deletes one of those ignore
 lines, the test fails before the unsafe change can merge.
 
@@ -2425,7 +2461,7 @@ What happens when the process starts, in order:
    own modules: `config` (env-var parsing), `walletManager`,
    `position-history`, `rebalance-lock`, `position-manager`,
    `bot-config-v2`, `migrate-app-config`. Requiring `src/config.js`
-   also loads `app-config/static-tunables/chains.json` for the current
+   also loads `app-config/app-defaults-for-user-configurable/chains.json` for the current
    `CHAIN_NAME`.
 4. **Legacy config migration runs once.** `migrateAppConfig()` moves
    any surviving legacy root-level config files (`.bot-config.json`,

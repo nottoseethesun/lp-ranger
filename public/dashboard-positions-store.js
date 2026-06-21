@@ -559,11 +559,17 @@ export function _applyPositionConfig(active) {
   botConfig.tL = active.tickLower || 0;
   botConfig.tU = active.tickUpper || 0;
   const savedOor = loadPositionOorThreshold(active);
-  botConfig.oorThreshold = savedOor;
-  const oorInput = g("inOorThreshold");
-  if (oorInput) oorInput.value = savedOor;
-  const oorDisplay = g("activeOorThreshold");
-  if (oorDisplay) oorDisplay.textContent = savedOor;
+  /*- If no per-position OOR value is stored, leave botConfig.oorThreshold
+   *  and the input/display unchanged — _syncConfigFromServer() will
+   *  populate them on the next poll from the shipped JSON default.
+   *  No literal fallback per feedback_one_literal_per_shipped_default. */
+  if (savedOor !== undefined) {
+    botConfig.oorThreshold = savedOor;
+    const oorInput = g("inOorThreshold");
+    if (oorInput) oorInput.value = savedOor;
+    const oorDisplay = g("activeOorThreshold");
+    if (oorDisplay) oorDisplay.textContent = savedOor;
+  }
   // Server is source of truth — _syncConfigFromServer() will populate
   // UI inputs from server config on the next poll cycle.
   return savedOor;

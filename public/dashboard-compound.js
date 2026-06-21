@@ -156,13 +156,26 @@ export function toggleAutoCompound() {
 /**
  * Save the auto-compound threshold with validation.
  * Rejects values below the minimum fee threshold.
- * @param {number} minFee  Minimum fee from server config (default 1).
+ * @param {number} minFee  Minimum fee from server config (sourced from
+ *   shipped JSON via botConfig.compoundMinFee — caller MUST pass a
+ *   defined value; the wiring in dashboard-events.js gates the call
+ *   on `botConfig.compoundMinFee !== undefined`).
  */
 export function saveCompoundThreshold(minFee) {
   const el = g("autoCompoundThreshold");
   if (!el) return;
   const val = parseFloat(el.value);
-  const min = minFee || 1;
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  the caller guarantees `minFee` is defined.  A bad `minFee` here
+   *  means the wiring is broken — fail loudly rather than silently
+   *  substituting a literal. */
+  if (!Number.isFinite(minFee) || minFee <= 0) {
+    throw new Error(
+      "[compound] saveCompoundThreshold called with non-numeric minFee: " +
+        String(minFee),
+    );
+  }
+  const min = minFee;
   if (!Number.isFinite(val) || val < min) {
     el.value = min;
     _createModal(

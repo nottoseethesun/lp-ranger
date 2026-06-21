@@ -16,7 +16,7 @@ const TMP = path.join(process.cwd(), "tmp", "boot-log-file-test");
 const CFG_PATH = path.join(
   process.cwd(),
   "app-config",
-  "static-tunables",
+  "app-defaults-for-user-configurable",
   "logging.json",
 );
 let _origCfg = null;

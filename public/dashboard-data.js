@@ -173,29 +173,34 @@ const _GLOBAL_CONFIG_INPUT_MAP = {
   gasFeePct: "inGasFeePct",
 };
 
-/* Per-position defaults applied when the key is missing from server data,
- * so the input resets on switch instead of bleeding through the prior
- * position's value.  These values match the built-in `_FALLBACK` in
- * src/bot-config-defaults.js — they are overwritten at init by
+/* Per-position defaults applied when the key is missing from server
+ * data, so the input resets on switch instead of bleeding through the
+ * prior position's value.  Starts empty — populated at init by
  * `setConfigInputDefault()` once the `/api/bot-config-defaults` fetch
- * resolves, so an operator edit to
- * `app-config/static-tunables/bot-config-defaults.json` takes effect
- * even before any per-position config is saved. */
-const _CONFIG_INPUT_DEFAULTS = {
-  approvalMultiple: 20,
-  rebalanceOutOfRangeThresholdPercent: 5,
-  rebalanceTimeoutMin: 180,
-  slippagePct: 0.5,
-  checkIntervalSec: 60,
-  minRebalanceIntervalMin: 10,
-  maxRebalancesPerDay: 20,
-  offsetToken0Pct: 50,
-};
+ * resolves (the server reads the shipped JSON merged with any
+ * operator override).  No literal defaults live here: per
+ * feedback_one_literal_per_shipped_default, every shipped default
+ * value lives in
+ * `app-config/app-defaults-for-user-configurable/bot-config-defaults.json`
+ * and nowhere else in code.  Until the AJAX call resolves, missing
+ * keys leave their input untouched (existing behaviour: inputs that
+ * have neither a per-position value nor a default skip rendering). */
+const _CONFIG_INPUT_DEFAULTS = {};
 
 /** Update a default value for a config input (called from init once the
  *  server tunables have been fetched). */
 export function setConfigInputDefault(key, val) {
   if (val !== undefined && val !== null) _CONFIG_INPUT_DEFAULTS[key] = val;
+}
+
+/** Read a single Bot-Setting default sourced from the shipped JSON
+ *  via `/api/bot-config-defaults` (populated by `setConfigInputDefault`).
+ *  Returns `undefined` if the AJAX fetch hasn't resolved yet OR the
+ *  key isn't a known default.  Consumers MUST handle the undefined
+ *  case — no literal fallback is allowed per
+ *  feedback_one_literal_per_shipped_default. */
+export function getInputDefault(key) {
+  return _CONFIG_INPUT_DEFAULTS[key];
 }
 
 /** Populate config form inputs from a position's server data. */
@@ -207,11 +212,17 @@ function _populateConfigInputs(d) {
       if (el) el.value = val;
     }
   }
-  // Keep the complement offset input in sync
+  /*- Keep the complement offset input in sync.  Skip when the
+   *  primary input is empty (pre-AJAX init or after Clear Local
+   *  Storage) — no literal fallback per
+   *  feedback_one_literal_per_shipped_default; the next poll cycle
+   *  re-populates once `_CONFIG_INPUT_DEFAULTS.offsetToken0Pct`
+   *  arrives. */
   const offEl0 = g("inOffsetToken0");
   const offEl1 = g("inOffsetToken1");
   if (offEl0 && offEl1) {
-    offEl1.value = 100 - (parseInt(offEl0.value, 10) || 50);
+    const n = parseInt(offEl0.value, 10);
+    if (Number.isFinite(n)) offEl1.value = 100 - n;
   }
 }
 
@@ -511,6 +522,24 @@ function _resolveManagedTid(a, mp, states) {
   }
   return tid;
 }
+/*- Mirror the OOR threshold into botConfig so range-visual + display
+ *  code can read a single source.  Prefer the per-position server
+ *  value when present (data.rebalanceOutOfRangeThresholdPercent);
+ *  otherwise fall back to the shipped default populated by the
+ *  /api/bot-config-defaults AJAX into _CONFIG_INPUT_DEFAULTS.  No
+ *  literal fallback per feedback_one_literal_per_shipped_default —
+ *  remains undefined until either source resolves. */
+function _syncOorThreshold(data) {
+  const perPos = data.rebalanceOutOfRangeThresholdPercent;
+  if (typeof perPos === "number" && perPos > 0) {
+    botConfig.oorThreshold = perPos;
+    return;
+  }
+  if (botConfig.oorThreshold !== undefined) return;
+  const def = _CONFIG_INPUT_DEFAULTS.rebalanceOutOfRangeThresholdPercent;
+  if (typeof def === "number" && def > 0) botConfig.oorThreshold = def;
+}
+
 function _syncManagedAndGlobals(data) {
   if (data._managedPositions) {
     updateManagedPositions(data._managedPositions, data._allPositionStates);
@@ -537,6 +566,7 @@ function _syncManagedAndGlobals(data) {
   if (data.compoundDefaultThresholdUsd > 0)
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
   if (data.scanTimeoutMs > 0) botConfig.scanTimeoutMs = data.scanTimeoutMs;
+  _syncOorThreshold(data);
 }
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";

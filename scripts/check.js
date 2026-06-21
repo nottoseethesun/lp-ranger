@@ -35,6 +35,23 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
+
+/** Path to the per-install operator overrides directory.  Its files
+ *  are gitignored, but the directory itself ships with a tracked
+ *  .gitkeep (which the backup pass explicitly preserves so it doesn't
+ *  vanish across the wipe).  Declared at module top so the
+ *  backup/wipe/restore functions called from the top-level script
+ *  body (lines below) can reference it without hitting the
+ *  temporal-dead-zone. */
+const _USER_CFG_DIR = path.join("app-config", "user-configurable");
+
+/*- File-name predicates used by the backup/wipe/restore helpers.
+ *  Hoisted up here so the top-level script body (restoreProdFiles is
+ *  called from the EXIT trap, which fires anywhere below) can
+ *  reference them without hitting the temporal-dead-zone. */
+const _IS_API_KEYS_EXAMPLE = (n) => n === "api-keys.example.json";
+const _IS_GITKEEP = (n) => n === ".gitkeep";
+const _IS_JSON = (n) => n.endsWith(".json");
 process.chdir(ROOT);
 
 const REPORT_DIR = "test/report-artifacts";
@@ -341,7 +358,11 @@ function listTestFiles() {
     .map((f) => path.join("test", f));
 }
 
-/** Copy top-level runtime files in app-config/ and tmp/*.json to `backup`. */
+/** Copy top-level runtime files in app-config/ + every operator
+ *  override in app-config/user-configurable/ (except .gitkeep) +
+ *  tmp/*.json to `backup`.  The user-configurable contents are
+ *  protected on the same "operator state" footing as `.env`: tests
+ *  must not silently destroy them. */
 function backupProdFiles(backup) {
   fs.mkdirSync(path.join(backup, "app-config"), { recursive: true });
   if (fs.existsSync("app-config")) {
@@ -351,6 +372,19 @@ function backupProdFiles(backup) {
       fs.copyFileSync(
         path.join("app-config", entry.name),
         path.join(backup, "app-config", entry.name),
+      );
+    }
+  }
+  fs.mkdirSync(path.join(backup, _USER_CFG_DIR), { recursive: true });
+  if (fs.existsSync(_USER_CFG_DIR)) {
+    for (const entry of fs.readdirSync(_USER_CFG_DIR, {
+      withFileTypes: true,
+    })) {
+      if (!entry.isFile()) continue;
+      if (entry.name === ".gitkeep") continue;
+      fs.copyFileSync(
+        path.join(_USER_CFG_DIR, entry.name),
+        path.join(backup, _USER_CFG_DIR, entry.name),
       );
     }
   }
@@ -366,13 +400,24 @@ function backupProdFiles(backup) {
   }
 }
 
-/** Delete runtime app-config files and tmp/*.json so tests see vanilla state. */
+/** Delete runtime app-config files (top-level + user-configurable/
+ *  contents, except .gitkeep) and tmp/*.json so tests see vanilla
+ *  state. */
 function wipeRuntimeFiles() {
   if (fs.existsSync("app-config")) {
     for (const entry of fs.readdirSync("app-config", { withFileTypes: true })) {
       if (!entry.isFile()) continue;
       if (entry.name === "api-keys.example.json") continue;
       fs.unlinkSync(path.join("app-config", entry.name));
+    }
+  }
+  if (fs.existsSync(_USER_CFG_DIR)) {
+    for (const entry of fs.readdirSync(_USER_CFG_DIR, {
+      withFileTypes: true,
+    })) {
+      if (!entry.isFile()) continue;
+      if (entry.name === ".gitkeep") continue;
+      fs.unlinkSync(path.join(_USER_CFG_DIR, entry.name));
     }
   }
   if (fs.existsSync("tmp")) {
@@ -383,43 +428,40 @@ function wipeRuntimeFiles() {
   }
 }
 
-/** Restore app-config and tmp/*.json from `backup`. */
+/*- Delete files in `dir` matching `keep` predicate (entries where
+ *  `keep(name)` returns true are skipped).  No-op if dir missing. */
+function _wipeDir(dir, keep) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (keep && keep(entry.name)) continue;
+    fs.unlinkSync(path.join(dir, entry.name));
+  }
+}
+
+/*- Copy every file from `srcDir` to `dstDir` (creating dstDir).  Skip
+ *  non-files; skip entries failing `accept(name)` when supplied. */
+function _restoreDir(srcDir, dstDir, accept) {
+  if (!fs.existsSync(srcDir)) return;
+  fs.mkdirSync(dstDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (accept && !accept(entry.name)) continue;
+    fs.copyFileSync(
+      path.join(srcDir, entry.name),
+      path.join(dstDir, entry.name),
+    );
+  }
+}
+
+/** Restore app-config (top-level + user-configurable) and tmp/*.json
+ *  from `backup`. */
 function restoreProdFiles(backup) {
   // Wipe any test-created runtime files, then copy originals back.
-  if (fs.existsSync("app-config")) {
-    for (const entry of fs.readdirSync("app-config", { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      if (entry.name === "api-keys.example.json") continue;
-      fs.unlinkSync(path.join("app-config", entry.name));
-    }
-  }
-  const backupAppConfig = path.join(backup, "app-config");
-  if (fs.existsSync(backupAppConfig)) {
-    for (const entry of fs.readdirSync(backupAppConfig, {
-      withFileTypes: true,
-    })) {
-      if (!entry.isFile()) continue;
-      fs.copyFileSync(
-        path.join(backupAppConfig, entry.name),
-        path.join("app-config", entry.name),
-      );
-    }
-  }
-  if (fs.existsSync("tmp")) {
-    for (const entry of fs.readdirSync("tmp", { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-      fs.unlinkSync(path.join("tmp", entry.name));
-    }
-  }
-  const backupTmp = path.join(backup, "tmp");
-  if (fs.existsSync(backupTmp)) {
-    for (const entry of fs.readdirSync(backupTmp, { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      fs.mkdirSync("tmp", { recursive: true });
-      fs.copyFileSync(
-        path.join(backupTmp, entry.name),
-        path.join("tmp", entry.name),
-      );
-    }
-  }
+  _wipeDir("app-config", _IS_API_KEYS_EXAMPLE);
+  _wipeDir(_USER_CFG_DIR, _IS_GITKEEP);
+  _restoreDir(path.join(backup, "app-config"), "app-config");
+  _restoreDir(path.join(backup, _USER_CFG_DIR), _USER_CFG_DIR);
+  _wipeDir("tmp", (n) => !_IS_JSON(n));
+  _restoreDir(path.join(backup, "tmp"), "tmp");
 }

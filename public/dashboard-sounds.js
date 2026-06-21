@@ -5,7 +5,7 @@
  * (Settings popover) controls whether UI-action sounds play.  State is
  * persisted in localStorage under the `9mm_sounds_enabled` key; when that
  * key is absent, the default comes from `GET /api/ui-defaults` (backed by
- * `app-config/static-tunables/ui-defaults.json`).
+ * `app-config/app-defaults-for-user-configurable/ui-defaults.json`).
  *
  * Each sound lives under `public/media/` and is played as a one-shot
  * `Audio` element.  Use `playSound(path)` for toggle-gated playback and
@@ -124,7 +124,7 @@ export function _toggleSounds() {
  * Restore the Sounds checkbox state on page load. Fetches the server
  * default from `/api/ui-defaults` first so that a fresh browser (no
  * localStorage entry yet) reflects the operator-configured default
- * from `app-config/static-tunables/ui-defaults.json`. Fetch failures
+ * from `app-config/app-defaults-for-user-configurable/ui-defaults.json`. Fetch failures
  * are swallowed — the built-in default (true) remains in effect.
  * @returns {Promise<void>}
  */

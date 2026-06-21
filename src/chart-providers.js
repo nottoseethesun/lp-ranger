@@ -6,9 +6,10 @@
  * of the Pool Details modal. All provider data — display name, host,
  * the per-chain blockchain slug (e.g. "pulse" for DexTools but
  * "pulsechain" for DexScreener / GeckoTerminal), and the URL path
- * segments — lives in `app-config/static-tunables/chains.json` under
- * each chain's `chartProviders` key. Nothing chain-specific is hard
- * coded in JS.
+ * segments — lives in `chains.json` (loaded via the layered defaults+
+ * user-override loader; operators override at
+ * `app-config/user-configurable/chains.json`) under each chain's
+ * `chartProviders` key. Nothing chain-specific is hard coded in JS.
  *
  * Each provider entry has shape:
  *   {
@@ -27,8 +28,10 @@
 
 "use strict";
 
-const CHAINS = require("../app-config/static-tunables/chains.json");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 const { CHAIN_NAME } = require("./runtime-flags");
+
+const CHAINS = loadMergedDefaults("chains.json");
 
 /**
  * Build a URL template by joining the scheme, domain and path

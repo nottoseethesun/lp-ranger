@@ -1,5 +1,5 @@
 {
-  "_comment": "Tracked, pure-data app configuration. Settings exposed in the dashboard UI (OOR threshold, slippage, intervals, etc.) live in app-config/static-tunables/bot-config-defaults.json instead, with per-position runtime overrides in app-config/.bot-config.json.",
+  "_comment": "Tracked, pure-data app configuration. Settings exposed in the dashboard UI (OOR threshold, slippage, intervals, etc.) live in app-config/app-defaults-for-user-configurable/bot-config-defaults.json instead, with per-install operator overrides in app-config/user-configurable/bot-config-defaults.json and per-position runtime overrides in app-config/.bot-config.json.",
   "server": {
     "port": 5555,
     "host": "127.0.0.1"

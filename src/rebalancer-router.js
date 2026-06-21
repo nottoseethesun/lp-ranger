@@ -10,6 +10,12 @@
 
 const { log } = require("./log");
 const sendTx = require("./send-transaction");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Single-source default: per feedback_one_literal_per_shipped_default,
+ *  the shipped slippage default lives only in bot-config-defaults.json.
+ *  Read once at module init for the `slippagePct` fallback. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 const {
   ERC20_ABI,
   SWAP_ROUTER_ABI,
@@ -86,7 +92,7 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     throw new Error("Swap quote failed: " + e.message, { cause: e });
   }
   if (quotedOut === 0n) throw new Error("Swap aborted: no pool liquidity.");
-  const slip = slippagePct ?? 0.5;
+  const slip = slippagePct ?? _DEFAULTS.slippagePct;
   const spotRate = isToken0To1 ? currentPrice : 1 / currentPrice;
   const spotExpected =
     (Number(amountIn) / 10 ** decimalsIn) * spotRate * 10 ** decimalsOut;
