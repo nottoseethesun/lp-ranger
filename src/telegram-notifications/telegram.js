@@ -25,8 +25,10 @@ const _hostname = os.hostname();
 
 /** Compact symbol-truncation width for the header pair lines (sym0 / sym1).
  *  The Holdings section in `balanced-notifier.js` uses its own wider
- *  budget because each symbol gets its own line there. */
-const _SYM_TRUNC_HEADER = 12;
+ *  budget because each symbol gets its own line there.  Widened from
+ *  12 to 22 on 2026-06-21 — at 12, "Wrapped Pulse" (13 chars) was
+ *  losing the final "e" in production Telegram messages. */
+const _SYM_TRUNC_HEADER = 22;
 
 /** In-memory Telegram config (populated from encrypted store on unlock). */
 let _botToken = null;
