@@ -178,9 +178,7 @@
   <p><strong>To retrieve and install an update:</strong></p>
   <ol>
     <li>Click <strong>Get the update</strong> in the About dialog, then download the release&rsquo;s <code>.tar.gz</code> asset from the GitHub page that opens.</li>
-    <li>Stop your running LP Ranger: in the Terminal where it is running, press <kbd>Ctrl</kbd>+<kbd>C</kbd>, or run <code>npm run stop</code> from the project directory.</li>
-    <li>Extract the new release alongside your existing install (it unpacks into a version-stamped directory such as <code>lp-ranger-X.Y.Z/</code>), then <code>cd</code> into it and run <code>npm ci</code> followed by <code>npm start</code>. Always use <code>npm ci</code> for production releases so the pinned dependency versions are installed exactly.</li>
-    <li>Your wallet, managed positions, and settings live in <code>app-config/</code>, and any custom server/bot configuration you set up lives in the optional <code>.env</code> file at the project root. Neither is replaced by extracting a new release alongside the old one. If you want to preserve them, copy <code>app-config/</code> (and <code>.env</code>, if it exists) from your old install into the new one before first start.</li>
+    <li>Follow the <strong>Update</strong> instructions in the project README: <a href="https://github.com/nottoseethesun/lp-ranger#update" target="_blank" rel="noopener">https://github.com/nottoseethesun/lp-ranger#update</a></li>
   </ol>
   <p>If the About dialog does not show an update notice but you believe one is available, confirm you have network access to <code>api.github.com</code> and reload the app.</p>
 
