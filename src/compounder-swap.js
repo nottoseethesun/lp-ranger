@@ -23,6 +23,12 @@
 const { log } = require("./log");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Single-source default: per feedback_one_literal_per_shipped_default,
+ *  the shipped slippage default lives only in bot-config-defaults.json.
+ *  Read once at module init for the opts fallback in `_fireSwap`. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 const {
   estimateSwapGasUsd,
   shouldSkipSwap,
@@ -92,7 +98,7 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
     amountIn: desired.swapAmount,
     tokenIn: is0to1 ? opts.token0 : opts.token1,
     tokenOut: is0to1 ? opts.token1 : opts.token0,
-    slippagePct: opts.slippagePct ?? 0.5,
+    slippagePct: opts.slippagePct ?? _DEFAULTS.slippagePct,
     currentPrice: ps.price,
     decimalsIn: is0to1 ? opts.decimals0 : opts.decimals1,
     decimalsOut: is0to1 ? opts.decimals1 : opts.decimals0,

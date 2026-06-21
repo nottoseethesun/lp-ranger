@@ -9,7 +9,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-// Point wallet-manager at a temp file so tests never touch the real .wallet.json
+// Point wallet-manager at a temp file so tests never touch the real wallet.json
 const WALLET_FILE = path.join(process.cwd(), "tmp", ".wallet-test.json");
 process.env.WALLET_FILE_PATH = WALLET_FILE;
 
@@ -130,11 +130,11 @@ describe("wallet-manager", () => {
 
   // ── Persistence tests ──────────────────────────────────────────────────
 
-  it("importWallet writes .wallet.json to disk", async () => {
+  it("importWallet writes wallet.json to disk", async () => {
     await importWallet(SAMPLE);
     assert.ok(
       fs.existsSync(WALLET_FILE),
-      ".wallet.json should exist after import",
+      "wallet.json should exist after import",
     );
     const raw = JSON.parse(fs.readFileSync(WALLET_FILE, "utf8"));
     assert.strictEqual(raw.address, SAMPLE.address);
@@ -144,21 +144,21 @@ describe("wallet-manager", () => {
     const fileContents = fs.readFileSync(WALLET_FILE, "utf8");
     assert.ok(
       !fileContents.includes(SAMPLE.privateKey.slice(2)),
-      "plaintext private key must not appear in .wallet.json",
+      "plaintext private key must not appear in wallet.json",
     );
   });
 
-  it("clearWallet removes .wallet.json from disk", async () => {
+  it("clearWallet removes wallet.json from disk", async () => {
     await importWallet(SAMPLE);
     assert.ok(fs.existsSync(WALLET_FILE));
     clearWallet();
     assert.ok(
       !fs.existsSync(WALLET_FILE),
-      ".wallet.json should be deleted after clear",
+      "wallet.json should be deleted after clear",
     );
   });
 
-  it("clearWallet does not throw if .wallet.json does not exist", () => {
+  it("clearWallet does not throw if wallet.json does not exist", () => {
     assert.doesNotThrow(() => clearWallet());
   });
 });

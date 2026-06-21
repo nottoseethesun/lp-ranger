@@ -23,6 +23,14 @@
 "use strict";
 
 const { nearestUsableTick: _sdkNearestUsableTick } = require("@uniswap/v3-sdk");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Single-source default: per feedback_one_literal_per_shipped_default,
+ *  the shipped `offsetToken0Pct` value lives only in
+ *  bot-config-defaults.json.  Read once at module init for the
+ *  symmetric-default fallback when callers don't pass an explicit
+ *  `offsetToken0Pct` in opts. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 
 /** 2^96 — the fixed-point denominator used by Uniswap v3. */
 const Q96 = BigInt("0x1000000000000000000000000");
@@ -158,7 +166,7 @@ function computeNewRange(
   decimals1,
   opts,
 ) {
-  const offset = opts?.offsetToken0Pct ?? 50;
+  const offset = opts?.offsetToken0Pct ?? _DEFAULTS.offsetToken0Pct;
   const fullWidth = (widthPct * 2) / 100; // total range as a fraction
   // Distribute the range above/below current price according to offset.
   // offset=50 → symmetric (same as the original factor = widthPct/100).
@@ -363,7 +371,7 @@ function preserveRange(
   opts,
 ) {
   const spread = tickUpper - tickLower;
-  const offset = opts?.offsetToken0Pct ?? 50;
+  const offset = opts?.offsetToken0Pct ?? _DEFAULTS.offsetToken0Pct;
   // Distribute the spread above/below the current tick according to offset.
   // offset=50 → half above, half below (original centering behaviour).
   const belowTicks = Math.round((spread * (100 - offset)) / 100);

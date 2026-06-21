@@ -8,7 +8,7 @@ nice-to-haves list — these are not incremental polish.
 Add 9mm on Ethereum first, then the other blockchains 9mm supports.
 
 The current architecture already abstracts much of the chain-specific
-configuration (per-chain tunables in `app-config/static-tunables/chains.json`,
+configuration (per-chain tunables in `app-config/app-defaults-for-user-configurable/chains.json`,
 chain-scoped disk caches, blockchain-prefixed composite keys).
 Multi-chain rollout extends those abstractions: per-chain RPC
 endpoints, per-chain contract addresses, per-chain price-source

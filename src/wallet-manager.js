@@ -5,7 +5,7 @@
  * Server-side wallet state for the 9mm v3 Position Manager dashboard.
  * Stores the wallet's private key and optional mnemonic encrypted using
  * AES-256-GCM with a user-supplied session password.  The encrypted state
- * is persisted to `.wallet.json` so it survives server restarts.  The
+ * is persisted to `wallet.json` so it survives server restarts.  The
  * plaintext key is never held in server memory except during the brief
  * encrypt/decrypt window, and never appears in the persisted file.
  *
@@ -45,11 +45,11 @@ const _CIPHER = "aes-256-gcm";
 // ── Persistence ─────────────────────────────────────────────────────────────
 
 // Tests set WALLET_FILE_PATH to a temp file so they don't destroy the real wallet.
-// Production default is app-config/.wallet.json — see the app-config/ section
-// of server.js for the full layout.
+// Production default is app-config/user-configurable/wallet.json — see the
+// app-config/ section of server.js for the full layout.
 const _WALLET_FILE =
   process.env.WALLET_FILE_PATH ||
-  path.join(process.cwd(), "app-config", ".wallet.json");
+  path.join(process.cwd(), "app-config", "user-configurable", "wallet.json");
 
 // ── In-memory state ─────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ function _deriveKey(password, salt) {
   });
 }
 
-/** Persist current _state to app-config/.wallet.json (encrypted — no plaintext secrets). */
+/** Persist current _state to app-config/user-configurable/wallet.json (encrypted — no plaintext secrets). */
 function _saveToDisk() {
   const data = {
     address: _state.address,
@@ -87,16 +87,16 @@ function _saveToDisk() {
   fs.mkdirSync(path.dirname(_WALLET_FILE), { recursive: true });
   fs.writeFileSync(_WALLET_FILE, JSON.stringify(data, null, 2), "utf8");
   log.info(
-    "[wallet] Saved app-config/.wallet.json (%d bytes, exists=%s)",
+    "[wallet] Saved app-config/user-configurable/wallet.json (%d bytes, exists=%s)",
     JSON.stringify(data).length,
     fs.existsSync(_WALLET_FILE),
   );
 }
 
-/** Remove app-config/.wallet.json from disk. */
+/** Remove app-config/user-configurable/wallet.json from disk. */
 function _removeFromDisk() {
   log.warn(
-    "[wallet] Deleting app-config/.wallet.json — stack:",
+    "[wallet] Deleting app-config/user-configurable/wallet.json — stack:",
     new Error().stack,
   );
   try {
@@ -106,7 +106,7 @@ function _removeFromDisk() {
   }
 }
 
-/** Load _state from .wallet.json if it exists. */
+/** Load _state from wallet.json if it exists. */
 function _loadFromDisk() {
   try {
     if (!fs.existsSync(_WALLET_FILE)) return;

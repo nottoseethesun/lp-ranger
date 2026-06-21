@@ -62,7 +62,7 @@ function createPerPositionBotState(_globalCfg, saved) {
      *  Lifetime panel never renders with a stale/zero deposit. */
     lifetimeScanComplete: false,
     /*- Balanced-band Telegram notifier transient state (process-lifetime
-     *  only; not persisted to .bot-config.json).  Owned by
+     *  only; not persisted to bot-config.json).  Owned by
      *  src/telegram-notifications/balanced-notifier.js — see CLAUDE.md "Balanced-Band Telegram
      *  Notification". */
     _lastInBand: false,

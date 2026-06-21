@@ -26,8 +26,8 @@ REQUIRED OPTIONS
         (e.g. "pulsechain", "pulsechain-testnet") or the full
         human-readable display name (e.g. "PulseChain", "PulseChain
         Testnet v4").  Match is case-insensitive.  The set of valid
-        values is whatever lives in app-config/static-tunables/
-        chains.json on this checkout.
+        values is whatever lives in app-config/
+        app-defaults-for-user-configurable/chains.json on this checkout.
 
         How to find it: open the in-app "Pool Details" dialog
         (gear-icon area on the dashboard).  The blockchain name is

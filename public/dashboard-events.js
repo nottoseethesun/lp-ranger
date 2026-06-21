@@ -546,9 +546,15 @@ export function bindAllEvents() {
   _input("rebalanceRangeInput", updateRebalanceRangeHint);
   _click("compoundNowBtn", compoundNow);
   _change("autoCompoundToggle", toggleAutoCompound);
-  _click("saveCompoundThresholdBtn", () =>
-    saveCompoundThreshold(botConfig.compoundMinFee || 1),
-  );
+  _click("saveCompoundThresholdBtn", () => {
+    /*- No literal fallback per feedback_one_literal_per_shipped_default:
+     *  shipped default lives only in app-runtime.json (COMPOUND_MIN_FEE_USD
+     *  → botConfig.compoundMinFee).  Skip the save when the AJAX-
+     *  populated value is undefined; the button is disabled in that
+     *  state anyway (see dashboard-data-status._updateCompoundButton). */
+    if (botConfig.compoundMinFee === undefined) return;
+    saveCompoundThreshold(botConfig.compoundMinFee);
+  });
 
   /* ── Table pagination ─────────────────── */
   _click("rebFirstBtn", rebFirstPage);

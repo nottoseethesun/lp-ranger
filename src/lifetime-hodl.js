@@ -144,7 +144,7 @@ function _isDeposit(group) {
     chain — the chain's native gas token's wrapped ERC-20 form (PLS↔wPLS,
     ETH↔wETH, BNB↔wBNB, …).  LPs cannot hold the native form, so the wrapped
     version is the only one that ever enters a position.  The wrapped-native
-    address is configured per chain in `app-config/static-tunables/chains.json`
+    address is configured per chain in `app-config/app-defaults-for-user-configurable/chains.json`
     under `nativeWrappedToken` (PulseChain: WPLS = 0xA107…0F9a27).  The branch
     is skipped entirely when neither pool token matches that address; all
     other ERC-20 deposits go through the standard classifier unchanged.

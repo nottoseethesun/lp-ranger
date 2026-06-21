@@ -1,5 +1,5 @@
 {
   "_comment": "Log-to-file: when enabled, mirror every line written to process.stdout/process.stderr (including all log.info/warn/error output and any raw console.* calls) into the file at 'path'. ANSI color escape sequences are stripped from the file so it's grep-friendly; the terminal still shows colors. Path is relative to the project root unless absolute. The CLI flag '--log-file [path]' overrides 'enabled=true' and (when a path is supplied) 'path'. The file is opened in append mode so multiple runs accumulate; rotate or truncate it externally if it grows unbounded. Default disabled — opt in via the CLI flag for one-off diagnostic sessions, or set enabled=true here for a long-lived production tail. See docs/engineering.md 'Log-to-file' and the FAQ Troubleshooting entry for usage.",
   "enabled": false,
-  "path": "app-config/lp-ranger.log"
+  "path": "logs/lp-ranger.log"
 }

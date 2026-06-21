@@ -116,7 +116,7 @@ describe("atomic config write", () => {
   it("loadConfig returns empty on corrupt JSON", () => {
     const { loadConfig } = require("../src/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "corrupt-test-"));
-    fs.writeFileSync(path.join(dir, ".bot-config.json"), "not json", "utf8");
+    fs.writeFileSync(path.join(dir, "bot-config.json"), "not json", "utf8");
     const loaded = loadConfig(dir);
     assert.deepEqual(loaded.global, {});
     assert.deepEqual(loaded.positions, {});

@@ -159,13 +159,16 @@ export const PARAM_HELP = {
       {
         heading: "Recommended values",
         body:
-          "<strong>60 seconds</strong> (the default) balances responsiveness " +
-          "with RPC sustainability. Each poll cycle makes several RPC calls " +
-          "per managed position (pool state, balances, fee data), and these " +
-          "add up when managing multiple positions over weeks of continuous " +
-          "operation.<br><br>" +
-          "<strong>120&ndash;300 seconds</strong> for stable pools or when " +
-          "minimizing RPC usage matters.",
+          "<strong>300 seconds</strong> (the default). For most use-cases, " +
+          "where capturing trading volume must be balanced against the " +
+          "crystallization of impermanent loss that rebalancing can cause, " +
+          "300 seconds keeps API calls down. For pools where trading volume " +
+          "is extreme, much shorter intervals such as <strong>60 seconds" +
+          "</strong> may be needed to capture most every bit of the action." +
+          "<br><br>" +
+          "Each poll cycle makes several RPC calls per managed position " +
+          "(pool state, balances, fee data), and these add up when managing " +
+          "multiple positions over weeks of continuous operation.",
       },
       {
         heading: "Extreme values",

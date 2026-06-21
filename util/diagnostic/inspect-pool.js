@@ -10,7 +10,7 @@
  * truth via `reconcile-hodl.js`.
  *
  * What it reads (both files; missing tmp/ is tolerated):
- *   - app-config/.bot-config.json        — per-position cached state
+ *   - app-config/user-configurable/bot-config.json  — per-position cached state
  *   - tmp/pnl-epochs-cache.json          — per-pool epoch state
  *
  * What it prints:
@@ -70,7 +70,12 @@
 const fs = require("fs");
 const path = require("path");
 
-const CONFIG_PATH = path.join(process.cwd(), "app-config", ".bot-config.json");
+const CONFIG_PATH = path.join(
+  process.cwd(),
+  "app-config",
+  "user-configurable",
+  "bot-config.json",
+);
 
 const EPOCH_CACHE_PATH = path.join(
   process.cwd(),
@@ -83,7 +88,7 @@ function loadConfigOrExit() {
   if (!fs.existsSync(CONFIG_PATH)) {
     console.error(`No config file at ${CONFIG_PATH}`);
     console.error(
-      "Run the app at least once to create app-config/.bot-config.json.",
+      "Run the app at least once to create app-config/user-configurable/bot-config.json.",
     );
     process.exit(1);
   }
@@ -247,7 +252,7 @@ function main() {
     for (const k of keys) printPosition(k, filtered[k]);
   }
 
-  /*- Epoch cache lives separately from .bot-config.json (in tmp/) and is
+  /*- Epoch cache lives separately from bot-config.json (in tmp/) and is
       keyed by pool identity, not tokenId.  Several positions in the same
       pool share one entry.  We surface it here because lifetimeHodlAmounts
       is the on-chain ground truth for IL math — drift between this and

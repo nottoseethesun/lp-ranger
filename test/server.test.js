@@ -118,9 +118,6 @@ describe("server", () => {
   // ── /api/config ───────────────────────────────────────────────────────────
 
   it("POST /api/config updates global allowed fields", async () => {
-    /*- Use a GLOBAL key so no per-position slot is required.  Position-
-     *  keyed updates that target a missing slot now return 404 (instead
-     *  of silently lazy-creating a phantom).  See `_handleApiConfig`. */
     const res = await req({
       port: TEST_PORT,
       method: "POST",
@@ -134,12 +131,13 @@ describe("server", () => {
     assert.strictEqual(body.applied.gasFeePct, 1.5);
   });
 
-  it("POST /api/config returns 404 when positionKey has no disk slot", async () => {
-    /*- New contract under the no-phantom fix: position-keyed config
-     *  updates require an EXISTING disk slot.  The dashboard only
-     *  exposes positionKeys whose slots exist (from /api/status's
-     *  managedPositions), so in practice this 404 cannot fire from
-     *  the UI.  Test asserts the safety net behavior. */
+  it("POST /api/config lazy-creates the disk slot when positionKey has none (Save-before-Manage)", async () => {
+    /*- The dashboard exposes inputs (OOR threshold, slippage, …) on
+     *  every position regardless of managed state.  When the user
+     *  edits + Saves for a not-yet-managed position, the server
+     *  lazy-creates the per-position slot with the patch.  A later
+     *  POST /api/position/manage flips `status: "running"` on the
+     *  existing slot and preserves the values. */
     const pk = "pulsechain-0xAb5-0xCd9-42";
     const res = await req({
       port: TEST_PORT,
@@ -148,9 +146,10 @@ describe("server", () => {
       body: { slippagePct: 1.0, positionKey: pk },
       headers: { "x-csrf-token": await csrfToken() },
     });
-    assert.strictEqual(res.status, 404);
+    assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
-    assert.strictEqual(body.error, "position-not-found");
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.applied.slippagePct, 1.0);
   });
 
   it("POST /api/config rejects position keys without positionKey", async () => {

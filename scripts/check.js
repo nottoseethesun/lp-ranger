@@ -35,6 +35,23 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
+
+/** Per-install operator-state directories.  Files in each are
+ *  gitignored, but each directory ships with a tracked README.md
+ *  (which the backup pass explicitly preserves so it doesn't vanish
+ *  across the wipe).  Declared at module top so the backup/wipe/
+ *  restore functions called from the top-level script body (lines
+ *  below) can reference them without hitting the temporal-dead-zone. */
+const _USER_CFG_DIR = path.join("app-config", "user-configurable");
+const _APP_DATA_DIR = "app-data";
+const _OPERATOR_STATE_DIRS = [_USER_CFG_DIR, _APP_DATA_DIR];
+
+/*- File-name predicates used by the backup/wipe/restore helpers.
+ *  Hoisted up here so the top-level script body (restoreProdFiles is
+ *  called from the EXIT trap, which fires anywhere below) can
+ *  reference them without hitting the temporal-dead-zone. */
+const _IS_README = (n) => n === "README.md";
+const _IS_JSON = (n) => n.endsWith(".json");
 process.chdir(ROOT);
 
 const REPORT_DIR = "test/report-artifacts";
@@ -341,16 +358,20 @@ function listTestFiles() {
     .map((f) => path.join("test", f));
 }
 
-/** Copy top-level runtime files in app-config/ and tmp/*.json to `backup`. */
+/** Copy every operator-state file in app-config/user-configurable/
+ *  and app-data/ (except each dir's tracked README.md) plus tmp/*.json
+ *  to `backup`.  Operator-state contents are protected on the same
+ *  footing as `.env`: tests must not silently destroy them. */
 function backupProdFiles(backup) {
-  fs.mkdirSync(path.join(backup, "app-config"), { recursive: true });
-  if (fs.existsSync("app-config")) {
-    for (const entry of fs.readdirSync("app-config", { withFileTypes: true })) {
+  for (const dir of _OPERATOR_STATE_DIRS) {
+    fs.mkdirSync(path.join(backup, dir), { recursive: true });
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isFile()) continue;
-      if (entry.name === "api-keys.example.json") continue;
+      if (_IS_README(entry.name)) continue;
       fs.copyFileSync(
-        path.join("app-config", entry.name),
-        path.join(backup, "app-config", entry.name),
+        path.join(dir, entry.name),
+        path.join(backup, dir, entry.name),
       );
     }
   }
@@ -366,14 +387,12 @@ function backupProdFiles(backup) {
   }
 }
 
-/** Delete runtime app-config files and tmp/*.json so tests see vanilla state. */
+/** Delete operator-state files (app-config/user-configurable/ +
+ *  app-data/ contents, except each dir's README.md) and tmp/*.json so
+ *  tests see vanilla state. */
 function wipeRuntimeFiles() {
-  if (fs.existsSync("app-config")) {
-    for (const entry of fs.readdirSync("app-config", { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      if (entry.name === "api-keys.example.json") continue;
-      fs.unlinkSync(path.join("app-config", entry.name));
-    }
+  for (const dir of _OPERATOR_STATE_DIRS) {
+    _wipeDir(dir, _IS_README);
   }
   if (fs.existsSync("tmp")) {
     for (const entry of fs.readdirSync("tmp", { withFileTypes: true })) {
@@ -383,43 +402,40 @@ function wipeRuntimeFiles() {
   }
 }
 
-/** Restore app-config and tmp/*.json from `backup`. */
+/*- Delete files in `dir` matching `keep` predicate (entries where
+ *  `keep(name)` returns true are skipped).  No-op if dir missing. */
+function _wipeDir(dir, keep) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (keep && keep(entry.name)) continue;
+    fs.unlinkSync(path.join(dir, entry.name));
+  }
+}
+
+/*- Copy every file from `srcDir` to `dstDir` (creating dstDir).  Skip
+ *  non-files; skip entries failing `accept(name)` when supplied. */
+function _restoreDir(srcDir, dstDir, accept) {
+  if (!fs.existsSync(srcDir)) return;
+  fs.mkdirSync(dstDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (accept && !accept(entry.name)) continue;
+    fs.copyFileSync(
+      path.join(srcDir, entry.name),
+      path.join(dstDir, entry.name),
+    );
+  }
+}
+
+/** Restore operator-state directories (app-config/user-configurable/
+ *  and app-data/) plus tmp/*.json from `backup`. */
 function restoreProdFiles(backup) {
   // Wipe any test-created runtime files, then copy originals back.
-  if (fs.existsSync("app-config")) {
-    for (const entry of fs.readdirSync("app-config", { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      if (entry.name === "api-keys.example.json") continue;
-      fs.unlinkSync(path.join("app-config", entry.name));
-    }
+  for (const dir of _OPERATOR_STATE_DIRS) {
+    _wipeDir(dir, _IS_README);
+    _restoreDir(path.join(backup, dir), dir);
   }
-  const backupAppConfig = path.join(backup, "app-config");
-  if (fs.existsSync(backupAppConfig)) {
-    for (const entry of fs.readdirSync(backupAppConfig, {
-      withFileTypes: true,
-    })) {
-      if (!entry.isFile()) continue;
-      fs.copyFileSync(
-        path.join(backupAppConfig, entry.name),
-        path.join("app-config", entry.name),
-      );
-    }
-  }
-  if (fs.existsSync("tmp")) {
-    for (const entry of fs.readdirSync("tmp", { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-      fs.unlinkSync(path.join("tmp", entry.name));
-    }
-  }
-  const backupTmp = path.join(backup, "tmp");
-  if (fs.existsSync(backupTmp)) {
-    for (const entry of fs.readdirSync(backupTmp, { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      fs.mkdirSync("tmp", { recursive: true });
-      fs.copyFileSync(
-        path.join(backupTmp, entry.name),
-        path.join("tmp", entry.name),
-      );
-    }
-  }
+  _wipeDir("tmp", (n) => !_IS_JSON(n));
+  _restoreDir(path.join(backup, "tmp"), "tmp");
 }

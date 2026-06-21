@@ -280,11 +280,15 @@ async function _adjustRangeAfterSwap(
 
 /** Compute new tick range: custom width or preserve existing spread. */
 function _computeRange(ps, pos, crw, offset) {
-  const opts = { offsetToken0Pct: offset ?? 50 };
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  when `offset` is undefined here, range-math's own
+   *  `_DEFAULTS.offsetToken0Pct` (sourced from bot-config-defaults.json)
+   *  takes over inside the called helpers. */
+  const opts = offset !== undefined ? { offsetToken0Pct: offset } : {};
   log.info(
-    "[offset-trace] _computeRange mode=%s offsetToken0Pct=%d tokenId=%s",
+    "[offset-trace] _computeRange mode=%s offsetToken0Pct=%s tokenId=%s",
     crw ? "custom-width" : "preserve-range",
-    opts.offsetToken0Pct,
+    opts.offsetToken0Pct ?? "(shipped-default)",
     String(pos.tokenId),
   );
   return crw

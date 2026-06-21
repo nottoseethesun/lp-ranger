@@ -2,90 +2,45 @@
  * @file src/bot-config-defaults.js
  * @module botConfigDefaults
  * @description
- * Reads `app-config/static-tunables/bot-config-defaults.json` and exposes
- * the values to the dashboard via `GET /api/bot-config-defaults`.  These
- * are *defaults* for user-editable Bot Config settings: the UI uses them
- * as the initial input value when the user hasn't saved an override yet,
- * and the server falls back to them when `getConfig` is asked for a key
- * that isn't present in `.bot-config.json`.
+ * Reads `bot-config-defaults.json` (via the layered defaults+user-
+ * override loader — see `src/load-merged-defaults.js`) and exposes the
+ * values to the dashboard via `GET /api/bot-config-defaults`.  These
+ * are *defaults* for user-editable Bot Config settings: the UI uses
+ * them as the initial input value when the user hasn't saved an
+ * override yet, and the server falls back to them when `getConfig` is
+ * asked for a key that isn't present in `bot-config.json`.
  *
- * Keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so the
- * same string flows end-to-end (defaults file → dashboard input → saved
- * config → bot reader).
+ * Keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so
+ * the same string flows end-to-end (defaults file → dashboard input →
+ * saved config → bot reader).
  *
- * New user-setting defaults should be added here (and wired through the
- * normal config save path) rather than each getting its own dedicated
- * tunable file.  The file is re-read on every request so operators can
- * edit it live without a server restart.  Read or parse failures fall
- * back to the built-in defaults below so the endpoint never 500s.
+ * New user-setting defaults should be added here (and wired through
+ * the normal config save path) rather than each getting its own
+ * dedicated tunable file.  The file is re-read on every request so
+ * operators can edit
+ * `app-config/user-configurable/bot-config-defaults.json` live without
+ * a server restart.  Read or parse failures fall back to the built-in
+ * defaults below so the endpoint never 500s.
  */
 
 "use strict";
 
 const { log } = require("./log");
-const fs = require("fs");
-const path = require("path");
+const {
+  loadMergedDefaults,
+  loadShippedDefaults,
+} = require("./load-merged-defaults");
 
-/** Full path to the on-disk tunable. */
-const _FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "bot-config-defaults.json",
-);
+const _FILENAME = "bot-config-defaults.json";
 
-/** Built-in fallback values.  Must match bot-config-defaults.json shape.
- *  Top-level keys are user-editable (surfaced in the Bot Settings UI);
- *  nested groups (lowGasThresholds, residualCleanup) are server-internal
- *  operator tunables not exposed via the dashboard. */
-const _FALLBACK = Object.freeze({
-  approvalMultiple: 20,
-  gasFeePct: 1,
-  rebalanceOutOfRangeThresholdPercent: 5,
-  rebalanceTimeoutMin: 180,
-  slippagePct: 0.5,
-  checkIntervalSec: 60,
-  minRebalanceIntervalMin: 10,
-  maxRebalancesPerDay: 20,
-  offsetToken0Pct: 50,
-  /*- Idle-driven price-lookup pause (src/price-fetcher.js).  TTL for the
-   *  in-memory token-price cache.  Default 120_000 ms (2 min).  See
-   *  docs/architecture.md "Idle-Driven Price-Lookup Pause". */
-  priceCacheTtlMs: 120_000,
-  /*- Multiplier applied to priceCacheTtlMs to derive the dust-unit-price
-   *  cache TTL (`dust = price * multiplier`).  Default 30 (yields the
-   *  original 1-h dust cache when paired with the 120_000 ms price TTL).
-   *  Must be a positive integer >= 1; the integer-multiple invariant is
-   *  asserted at price-fetcher module-load time. */
-  dustUnitPriceCacheMultiplier: 30,
-  /*- Price-source cache TTL while inside a `withFreshPricesAllowed`
-   *  scope (rebalance/compound).  Default 4_000 ms (4 s) — short enough
-   *  that any move-relevant price change shows up, long enough to
-   *  collapse the rapid-fire burst caused by multiple rebalance-pipeline
-   *  stages (gas gate, slippage estimate, PnL snapshot, etc.) each
-   *  calling `fetchTokenPriceUsd` for the same token within seconds.
-   *  See `src/price-fetcher.js` and `src/price-fetcher-gate.js#inMove`. */
-  moveCacheTtlMs: 4_000,
-  /*- Balanced-band Telegram notifier: how many poll cycles between fresh-
-   *  price fetches that bypass the idle-driven price-lookup pause.  The
-   *  notifier fetches token prices on cadence
-   *  `CHECK_INTERVAL_SEC × pricePauseExceptionPollWindowMultiple` so the
-   *  bot can detect ±5% USD-balanced positions even when the dashboard is
-   *  closed.  Default 10 (10× poll → 10 min at the default 60 s poll).
-   *  Higher = lighter price-source load, slower band-crossing detection.
-   *  Positive integer >= 1. */
-  pricePauseExceptionPollWindowMultiple: 10,
-  lowGasThresholds: Object.freeze({
-    worstCaseGasFactor: 91,
-    safetyMultiplier: 3,
-    standardSendGas: 21000,
-  }),
-  residualCleanup: Object.freeze({
-    delayMs: 600_000,
-    thresholdPct: 5,
-  }),
-});
+/*- Single-source baseline: read the shipped JSON once at module init.
+ *  Throws on missing/malformed file (install error, fail loudly).  Used
+ *  as the per-key fallback when an operator's live user-configurable
+ *  override contains an out-of-range value (the runtime then falls
+ *  back to the last-known-good shipped value rather than propagating
+ *  the bad override).  See feedback_one_literal_per_shipped_default —
+ *  every default value lives in the JSON, nowhere else in code. */
+const _FALLBACK = Object.freeze(loadShippedDefaults(_FILENAME));
 
 /*- Clamp `approvalMultiple` to a sensible integer.  Too small loses the
  *  speedup; too large wastes nothing but looks alarming in explorers. */
@@ -153,9 +108,12 @@ function _normalizeResidualCleanup(v) {
 /** Mapping of JSON key → normalizer producing the cleaned value or null. */
 const _NORMALIZERS = {
   approvalMultiple: _normalizeApprovalMultiple,
-  /*- Mirror src/swap-gates.js GAS_FEE_PCT_MIN/MAX so the defaults route
-   *  exposes the same band the gate enforces. */
-  gasFeePct: (v) => _clampFloat(v, 0.1, 15),
+  /*- gasFeePct bounds come from the shipped JSON itself (gasFeePctMin /
+   *  gasFeePctMax) so the literal pair lives in one place per
+   *  feedback_one_literal_per_shipped_default.  src/swap-gates.js reads
+   *  the same values for its UI clamping. */
+  gasFeePct: (v) =>
+    _clampFloat(v, _FALLBACK.gasFeePctMin, _FALLBACK.gasFeePctMax),
   /*- Price-source cache TTL: 1 s minimum (no point caching shorter than
    *  the poll cadence); 24 h ceiling (longer would hide real moves). */
   priceCacheTtlMs: (v) => _clampInt(v, 1_000, 24 * 60 * 60_000),
@@ -190,8 +148,7 @@ const _NORMALIZERS = {
  */
 function readBotConfigDefaults() {
   try {
-    const raw = fs.readFileSync(_FILE, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = loadMergedDefaults(_FILENAME);
     const out = { ..._FALLBACK };
     for (const [key, normalize] of Object.entries(_NORMALIZERS)) {
       const v = normalize(parsed[key]);

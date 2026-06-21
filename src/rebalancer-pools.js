@@ -70,10 +70,13 @@ const _MIN_SWAP_THRESHOLD = 1000n;
 /** Valid V3 fee tiers (basis-point units). */
 const V3_FEE_TIERS = [100, 500, 2500, 3000, 10000, 20000];
 
-/** Timeout (ms) before a pending TX is speed-up-replaced with higher gas. */
-const _SPEEDUP_TIMEOUT_MS = (config.TX_SPEEDUP_SEC || 120) * 1000;
-/** Timeout (ms) before a stuck TX is cancelled with a 0-value self-transfer. Default: 20 min. */
-const _CANCEL_TIMEOUT_MS = (config.TX_CANCEL_SEC || 1200) * 1000;
+/*- Timeout (ms) before a pending TX is speed-up-replaced with higher
+ *  gas.  No literal fallback per feedback_one_literal_per_shipped_default:
+ *  config.TX_SPEEDUP_SEC is sourced from app-runtime.json via
+ *  parsePositiveInt, so it is always a positive number at this point. */
+const _SPEEDUP_TIMEOUT_MS = config.TX_SPEEDUP_SEC * 1000;
+/** Timeout (ms) before a stuck TX is cancelled with a 0-value self-transfer. */
+const _CANCEL_TIMEOUT_MS = config.TX_CANCEL_SEC * 1000;
 
 /** Gas price multiplier for speed-up replacement TXs. */
 const _SPEEDUP_GAS_BUMP = 1.5;
@@ -574,6 +577,22 @@ async function getPoolState(passedProvider, ethersLib, opts) {
  * parsing logs, which can fail if the ABI event signature doesn't match
  * the on-chain contract exactly).
  */
+/*- Read chains.json's contracts.positionManager.mintGasLimit for the
+ *  active chain and throw if missing/invalid.  No literal fallback per
+ *  feedback_one_literal_per_shipped_default — chains.json is the sole
+ *  source of truth.  Shared between `removeLiquidity` (multicall
+ *  decrease+collect floor) and `rebalancer.js#mintPosition`. */
+function _resolveMintGasFloor() {
+  const v = config.CHAIN.contracts?.positionManager?.mintGasLimit;
+  if (typeof v !== "number" || v <= 0) {
+    throw new Error(
+      "[rebalancer-pools] contracts.positionManager.mintGasLimit missing/invalid for " +
+        `${config.CHAIN?.displayName ?? "?"} — must be a positive number in chains.json`,
+    );
+  }
+  return BigInt(v);
+}
+
 async function removeLiquidity(
   signer,
   ethersLib,
@@ -628,9 +647,7 @@ async function removeLiquidity(
       multicall path is gas-heavy (two PM operations bundled) — floor
       pinned to the position-manager mint floor as a safe upper bound;
       the multiplier × estimateGas almost always wins. */
-  const _multicallFloor = BigInt(
-    config.CHAIN.contracts?.positionManager?.mintGasLimit || 600000,
-  );
+  const _multicallFloor = _resolveMintGasFloor();
   const { receipt } = await sendTx.sendTransaction({
     populate: () =>
       pm.multicall.populateTransaction([decreaseData, collectData]),
@@ -712,6 +729,7 @@ module.exports = {
   _deadline,
   _waitOrSpeedUp,
   _ensureAllowance,
+  _resolveMintGasFloor,
   // Functions
   getPoolState,
   PoolStateInvalidError,

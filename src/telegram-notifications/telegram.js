@@ -6,7 +6,7 @@
  * configurable position events (rebalance, compound, OOR timeout, errors).
  *
  * Bot token and chat ID are stored encrypted via api-key-store.  Event
- * preferences live in `.bot-config.json` global section.
+ * preferences live in `bot-config.json` global section.
  *
  * Setup: create a bot via @BotFather, paste the token + your chat ID
  * (from @userinfobot) into the dashboard dialog.
@@ -25,8 +25,10 @@ const _hostname = os.hostname();
 
 /** Compact symbol-truncation width for the header pair lines (sym0 / sym1).
  *  The Holdings section in `balanced-notifier.js` uses its own wider
- *  budget because each symbol gets its own line there. */
-const _SYM_TRUNC_HEADER = 12;
+ *  budget because each symbol gets its own line there.  Widened from
+ *  12 to 22 on 2026-06-21 — at 12, "Wrapped Pulse" (13 chars) was
+ *  losing the final "e" in production Telegram messages. */
+const _SYM_TRUNC_HEADER = 22;
 
 /** In-memory Telegram config (populated from encrypted store on unlock). */
 let _botToken = null;
@@ -161,7 +163,7 @@ function _truncSym(s, max = _SYM_TRUNC_HEADER) {
 }
 
 /** Resolve the user-facing NFT-issuer name from
- *  `app-config/static-tunables/nft-providers.json` (address-keyed).  The
+ *  `app-config/app-defaults-for-user-configurable/nft-providers.json` (address-keyed).  The
  *  same map the dashboard NFT panel reads via `GET /api/nft-providers`.
  *  Returns `undefined` when no match — callers omit the provider line. */
 function _resolveProviderName() {

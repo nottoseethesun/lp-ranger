@@ -49,7 +49,7 @@ describe("gas-monitor — constants (from tunables JSON)", () => {
       __dirname,
       "..",
       "app-config",
-      "static-tunables",
+      "app-defaults-for-user-configurable",
       "bot-config-defaults.json",
     );
     const json = JSON.parse(fs.readFileSync(p, "utf8"));

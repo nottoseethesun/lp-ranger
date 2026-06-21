@@ -17,15 +17,15 @@ npm run check           # Combined lint (JS+CSS) + test + coverage check (≥80%
 
 ### Protected files
 
-**`app-config/` directory (top-level runtime files only):**
+**Operator runtime state (gitignored, protected by backup pass):**
 
-- `app-config/.bot-config.json` — managed position status, HODL baselines, compound history
-- `app-config/.bot-config.backup.json` — automatic snapshot
-- `app-config/.wallet.json` — encrypted wallet key
-- `app-config/api-keys.json` — encrypted third-party API keys (e.g. Moralis)
-- `app-config/rebalance_log.json` — transaction history
+- `app-config/user-configurable/bot-config.json` — managed position status, HODL baselines, compound history
+- `app-config/user-configurable/bot-config.backup.json` — automatic snapshot
+- `app-config/user-configurable/wallet.json` — encrypted wallet key
+- `app-config/user-configurable/api-keys.json` — encrypted third-party API keys (Moralis, Telegram, etc.)
+- `app-data/rebalance_log.json` — historical rebalance event log
 
-The `app-config/static-tunables/` subdir and `app-config/api-keys.example.json` are tracked repo files and are explicitly excluded from backup/delete.
+The `app-config/app-defaults-for-user-configurable/` subdir (including the tracked `api-keys.example.json` format template) is shipped repo content and is excluded from backup/delete. Each operator-state directory (`app-config/user-configurable/` and `app-data/`) is tracked via its own `README.md`; the gitignored contents are protected by the backup pass on the same "operator state" footing as `.env`.
 
 **`tmp/` directory (all JSON files):**
 
@@ -40,7 +40,7 @@ The `app-config/static-tunables/` subdir and `app-config/api-keys.example.json` 
 
 ### How it works
 
-1. Before tests: `backupProdFiles()` copies every runtime file under `app-config/` (except the tracked `api-keys.example.json`) and every `tmp/*.json` to a `mkdtempSync` directory, then `wipeRuntimeFiles()` deletes the originals so tests start from vanilla state
+1. Before tests: `backupProdFiles()` copies every file under the two operator-state dirs (`app-config/user-configurable/` and `app-data/`, each preserving its tracked `README.md`) plus every `tmp/*.json` to a `mkdtempSync` directory, then `wipeRuntimeFiles()` deletes the originals so tests start from vanilla state
 2. Tests run (may create, modify, or delete any of these files)
 3. After tests (try/finally in `check.js`): `restoreProdFiles()` deletes any test-created files and copies the backed-up originals back into place
 
@@ -52,7 +52,7 @@ When adding a new disk-backed cache or config file:
 
 1. If it's a pure performance cache → put it in `tmp/` as `*.json`. Automatically protected by the `tmp/*.json` glob.
 2. If it's runtime state (managed by the app, may include user secrets) → put it in `app-config/` (top level). Automatically protected by the `find app-config -maxdepth 1 -type f` scan.
-3. If it's a tracked static tunable → put it in `app-config/static-tunables/`. Excluded from the protection scan (it's committed to git).
+3. If it's a tracked shipped default → put it in `app-config/app-defaults-for-user-configurable/`. Excluded from the protection scan (it's committed to git). Operators override at the matching `app-config/user-configurable/<same-name>.json` (gitignored, protected by the backup pass).
 4. Document new files in this file under "Protected files".
 
 ### Vanilla state
@@ -66,4 +66,4 @@ Tests that need config files should either:
 - Use a temp directory via `fs.mkdtempSync()` and pass the `dir` parameter to `loadConfig(dir)` / `saveConfig(cfg, dir)`
 - Or use the production path knowing that `check.js` will restore the original after tests complete
 
-Default/vanilla config values come from `.env.example` and `app-config/static-tunables/chains.json` in the repository.
+Default/vanilla config values come from `.env.example` and the shipped JSON files under `app-config/app-defaults-for-user-configurable/` in the repository.

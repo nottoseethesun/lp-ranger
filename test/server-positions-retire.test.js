@@ -43,7 +43,7 @@ function makeMgr(calls) {
   };
 }
 
-/*- saveConfig writes to <cwd>/app-config/.bot-config.json by default.
+/*- saveConfig writes to <cwd>/app-config/user-configurable/bot-config.json by default.
  *  To keep the test hermetic we change cwd to a tmp dir for the
  *  duration of the test and restore it after. */
 function withTmpCwd(fn) {

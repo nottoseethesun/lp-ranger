@@ -558,8 +558,11 @@ async function _cancelStuckNonce(
  *   4. cancel the stuck nonce with a 0-PLS self-transfer.
  */
 async function _waitOrSpeedUp(tx, signer, label) {
-  const speedupMs = (config.TX_SPEEDUP_SEC || 120) * 1000;
-  const cancelMs = (config.TX_CANCEL_SEC || 1200) * 1000;
+  /*- No literal fallbacks per feedback_one_literal_per_shipped_default:
+   *  config.TX_SPEEDUP_SEC and TX_CANCEL_SEC are sourced from
+   *  app-runtime.json via parsePositiveInt; always positive numbers. */
+  const speedupMs = config.TX_SPEEDUP_SEC * 1000;
+  const cancelMs = config.TX_CANCEL_SEC * 1000;
   const startTime = Date.now();
 
   /*- Phase 1: wait for confirmation, or fall through to speed-up. */

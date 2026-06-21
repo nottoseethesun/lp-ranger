@@ -302,10 +302,17 @@ export function compositeKey(blockchain, wallet, contract, tokenId) {
 /**
  * Shared configuration and live-position state for the dashboard.
  * Updated by the bot config panel and position selection.
+ *
+ * `oorThreshold` starts as `undefined` and is populated from the
+ * shipped JSON (via `/api/bot-config-defaults`) once the AJAX fetch
+ * resolves and `setConfigInputDefault('rebalanceOutOfRangeThresholdPercent',
+ * ...)` lands.  No literal default lives here per
+ * feedback_one_literal_per_shipped_default; consumers MUST handle
+ * the undefined case (gracefully skip rendering until data arrives).
  * Price/range fields are placeholders until live on-chain data is wired.
  */
 export const botConfig = {
-  oorThreshold: 5,
+  oorThreshold: undefined,
   price: 0,
   lower: 0,
   upper: 0,
@@ -410,22 +417,28 @@ export function savePositionOorThreshold(pos, oorPct) {
 
 /**
  * Load the OOR threshold % for a position from localStorage.
- * Returns the default (5) if no value is stored or the value is invalid.
- * @param {object} pos            Position entry.
- * @param {number} [fallback=5]  Default OOR threshold.
- * @returns {number}
+ *
+ * Returns `undefined` when no per-position value is stored (or the
+ * stored value is invalid), so the caller can fall back to the shipped
+ * default sourced from the AJAX-populated
+ * `_CONFIG_INPUT_DEFAULTS.rebalanceOutOfRangeThresholdPercent` (via
+ * `getInputDefault()` in dashboard-data.js).  No literal fallback per
+ * feedback_one_literal_per_shipped_default — the shipped default lives
+ * only in `bot-config-defaults.json` and nowhere else in code.
+ *
+ * @param {object} pos  Position entry.
+ * @returns {number|undefined}
  */
-export function loadPositionOorThreshold(pos, fallback) {
-  const def = fallback !== undefined ? fallback : 5;
+export function loadPositionOorThreshold(pos) {
   const key = posStorageKey(pos);
-  if (!key) return def;
+  if (!key) return undefined;
   try {
     const raw = localStorage.getItem(key);
-    if (raw === null) return def;
+    if (raw === null) return undefined;
     const n = parseFloat(raw);
-    return Number.isFinite(n) && n > 0 ? n : def;
+    return Number.isFinite(n) && n > 0 ? n : undefined;
   } catch (_) {
-    return def;
+    return undefined;
   }
 }
 
@@ -567,7 +580,7 @@ export function fmtDuration(ms) {
 // ── CSRF token management ───────────────────────────────────────────────────
 
 let _csrfToken = null;
-/*- Server-driven refresh cadence from app-config/static-tunables/csrf.json
+/*- Server-driven refresh cadence from app-config/app-defaults-for-user-configurable/csrf.json
     (delivered alongside every token). Default 5 min, giving ~11 missed
     firings of slack against the 60 min server-side TTL — survives Chrome
     tab discards, silent network failures, and main-thread stalls during
@@ -633,7 +646,7 @@ export function csrfRefreshIntervalMs() {
  *  retries the original request.  Centralises the recovery so every
  *  dashboard POST/DELETE survives the throttled-background-timer case
  *  where Chrome's setInterval coalescing on a hidden tab let the held
- *  token age past the 60-min server TTL (see `app-config/static-tunables/csrf.json`).
+ *  token age past the 60-min server TTL (see `app-config/app-defaults-for-user-configurable/csrf.json`).
  *
  *  Two server-side reason strings are treated as the same root cause:
  *    - "Expired CSRF token"  — token still in `_issued` map, past TTL.

@@ -30,17 +30,10 @@ if (fs.existsSync(BACKUP_DIR)) {
 
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
-/** Fixed list of files to back up and remove. */
-const FILES = [
-  ".env",
-  "app-config/.wallet.json",
-  "app-config/.bot-config.json",
-  "app-config/.bot-config.backup.json",
-  "app-config/.bot-config.v1.json",
-  "app-config/api-keys.json",
-  "app-config/rebalance_log.json",
-  "tmp/pnl-epochs-cache.json",
-];
+/** Fixed list of single-file backups (.env at root + tmp/ epoch cache).
+ *  Files under app-config/user-configurable/ and app-data/ are handled
+ *  via the directory loops near the end of this script. */
+const FILES = [".env", "tmp/pnl-epochs-cache.json"];
 
 let backed = 0;
 
@@ -77,6 +70,24 @@ for (const entry of fs.readdirSync(".")) {
     (entry.endsWith(".keyfile.json") && fs.statSync(entry).isFile())
   ) {
     backupOne(entry);
+  }
+}
+
+// User-configurable overrides and runtime state — everything under
+// app-config/user-configurable/ and app-data/ EXCEPT each dir's
+// tracked README.md.  These are the canonical homes for operator
+// state, and preserving them across the wipe/restore cycle mirrors the
+// tarball-upgrade story.
+const _OPERATOR_STATE_DIRS = [
+  path.join("app-config", "user-configurable"),
+  "app-data",
+];
+for (const dir of _OPERATOR_STATE_DIRS) {
+  if (!fs.existsSync(dir)) continue;
+  for (const entry of fs.readdirSync(dir)) {
+    if (entry === "README.md") continue;
+    const p = path.join(dir, entry);
+    if (fs.statSync(p).isFile()) backupOne(p);
   }
 }
 

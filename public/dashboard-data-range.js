@@ -90,7 +90,13 @@ export function positionRangeVisual() {
     _rv.style.overflow = "";
     _rv.style.marginBottom = "";
   }
-  const threshPct = (botConfig.oorThreshold || 5) / 100;
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  the shipped default for `rebalanceOutOfRangeThresholdPercent` lives
+   *  only in bot-config-defaults.json.  If the AJAX-populated value
+   *  hasn't arrived yet, skip the threshold-preview lines — the rest
+   *  of the bar still renders. */
+  if (botConfig.oorThreshold === undefined) return;
+  const threshPct = botConfig.oorThreshold / 100;
   const rangeSpan = hi - lo;
   const previewLo = lo - rangeSpan * threshPct;
   const previewHi = hi + rangeSpan * threshPct;

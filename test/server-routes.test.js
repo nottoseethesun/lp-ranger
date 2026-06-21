@@ -93,6 +93,39 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._body.applied.slippagePct, 2.0);
     });
 
+    it("lazy-creates the position slot when absent (Save-before-Manage)", async () => {
+      // No pre-existing positions entry — the user is editing settings
+      // on an unmanaged position before clicking Manage.
+      const pk = "pulsechain-0x1-0x2-200";
+      const deps = makeDeps({
+        readJsonBody: async () => ({
+          positionKey: pk,
+          slippagePct: 0.5,
+          rebalanceOutOfRangeThresholdPercent: 3,
+        }),
+      });
+      assert.strictEqual(deps.diskConfig.positions[pk], undefined);
+      const h = createRouteHandlers(deps);
+      const res = makeRes();
+      await h._handleApiConfig({}, res);
+      assert.strictEqual(res._status, 200);
+      assert.strictEqual(res._body.applied.slippagePct, 0.5);
+      assert.strictEqual(
+        res._body.applied.rebalanceOutOfRangeThresholdPercent,
+        3,
+      );
+      // Slot now exists with the user's values, no status flipped yet.
+      const slot = deps.diskConfig.positions[pk];
+      assert.ok(slot, "position slot should have been lazy-created");
+      assert.strictEqual(slot.slippagePct, 0.5);
+      assert.strictEqual(slot.rebalanceOutOfRangeThresholdPercent, 3);
+      assert.strictEqual(
+        slot.status,
+        undefined,
+        "Save alone must NOT flip status to running — that is Manage's job",
+      );
+    });
+
     it("rejects position keys without positionKey", async () => {
       const deps = makeDeps({
         readJsonBody: async () => ({ slippagePct: 3.0 }),

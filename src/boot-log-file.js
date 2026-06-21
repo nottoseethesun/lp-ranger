@@ -3,12 +3,13 @@
  * @module boot-log-file
  * @description
  * Boot wiring for the log-to-file feature.  Inspects process.argv for
- * the `--log-file [path]` CLI flag and reads
- * `app-config/static-tunables/logging.json` for the operator-level
- * `{enabled, path}` defaults.  When either source opts in, requires
- * `./log-file` and enables teeing before any other module produces
- * output — so the file captures the version banner and every startup
- * line, not just runtime logs.
+ * the `--log-file [path]` CLI flag and reads `logging.json` (via the
+ * layered defaults+user-override loader) for the operator-level
+ * `{enabled, path}` defaults — operators override at
+ * `app-config/user-configurable/logging.json`.  When either source
+ * opts in, requires `./log-file` and enables teeing before any other
+ * module produces output — so the file captures the version banner
+ * and every startup line, not just runtime logs.
  *
  * Precedence:
  *   1. `--log-file <path>`     → enable, use <path>
@@ -17,20 +18,19 @@
  *   4. (default)                  → disabled, no-op
  *
  * The default path when neither CLI nor config supplies one is
- * `app-config/lp-ranger.log`.  Called from server.js and bot.js as the
+ * `logs/lp-ranger.log`.  Called from server.js and bot.js as the
  * very first executable statement after `"use strict"`.
  */
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
 const { enableLogFile } = require("./log-file");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 
 /*- Default path when neither --log-file nor logging.json supplies one.
  *  Relative to process.cwd() — src/log-file.js resolves it via
  *  path.resolve. */
-const _DEFAULT_PATH = "app-config/lp-ranger.log";
+const _DEFAULT_PATH = "logs/lp-ranger.log";
 
 /*- Parse argv for the --log-file flag.  Returns {present, pathArg}.
  *  pathArg is the immediately following arg when it doesn't itself
@@ -50,20 +50,12 @@ function _parseCliFlag(argv) {
   return { present, pathArg };
 }
 
-/*- Read logging.json from the project root and extract {enabled, path}.
+/*- Read logging.json via the layered loader and extract {enabled, path}.
  *  Returns defaults silently when the file is missing or malformed so
  *  the boot path never crashes on a fresh install. */
 function _readLoggingConfig() {
-  const cfgPath = path.join(
-    __dirname,
-    "..",
-    "app-config",
-    "static-tunables",
-    "logging.json",
-  );
   try {
-    const raw = fs.readFileSync(cfgPath, "utf8");
-    const obj = JSON.parse(raw);
+    const obj = loadMergedDefaults("logging.json");
     if (!obj || typeof obj !== "object") return { enabled: false, path: null };
     const enabled = obj.enabled === true;
     const p = typeof obj.path === "string" && obj.path ? obj.path : null;

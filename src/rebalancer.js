@@ -10,7 +10,14 @@
 
 const { log } = require("./log");
 const pools = require("./rebalancer-pools");
+const { _resolveMintGasFloor } = require("./rebalancer-pools");
 const sendTx = require("./send-transaction");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Shipped default for offsetToken0Pct.  Per
+ *  feedback_one_literal_per_shipped_default, the literal lives only in
+ *  bot-config-defaults.json. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const {
   _swapAndAdjust,
@@ -103,9 +110,7 @@ async function mintPosition(
       Routed through send-transaction.js so RPC failover applies and the
       chain-config mintGasLimit acts as a hard floor under the
       gasLimitMultiplier × estimate result. */
-  const _mintFloor = BigInt(
-    config.CHAIN.contracts?.positionManager?.mintGasLimit || 600000,
-  );
+  const _mintFloor = _resolveMintGasFloor();
   const { receipt } = await sendTx.sendTransaction({
     populate: () =>
       pm.mint.populateTransaction({
@@ -228,7 +233,7 @@ async function executeRebalance(signer, ethersLib, opts) {
     approvalMultiple,
     gasFeePct,
   } = opts;
-  const offset = offsetToken0Pct ?? 50;
+  const offset = offsetToken0Pct ?? _DEFAULTS.offsetToken0Pct;
   if (!position.tokenId || !position.fee || position.fee <= 0) {
     throw new Error(
       "Only V3 NFT positions are supported. V2 positions use a different contract and cannot be rebalanced by this tool.",

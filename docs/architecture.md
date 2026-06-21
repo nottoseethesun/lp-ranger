@@ -108,7 +108,7 @@ network isolation.
 ### Bot → Dashboard
 
 Each managed position runs its own independent `startBotLoop()` instance.
-Every poll cycle (default 60 seconds), the bot reads the pool's current state
+Every poll cycle (default 300 seconds), the bot reads the pool's current state
 from the blockchain, computes P&L, and writes the results to an in-memory
 state map via an `updateBotState` callback. When the dashboard polls
 `GET /api/status`, the server reads this map and returns the full state for
@@ -132,18 +132,18 @@ server updates the per-position config on disk.
 
 The bot persists its state to two locations:
 
-1. **`app-config/` directory** — all app-managed config and state. The single
-   source of truth for every non-cache file the app reads or writes. Contains
-   tracked tunables (`static-tunables/chains.json`), a runtime config file
-   (`.bot-config.json`, per-position settings, HODL baselines, compound
-   history), an automatic backup snapshot (`.bot-config.backup.json`), an
-   encrypted wallet (`.wallet.json`, AES-256-GCM with PBKDF2-SHA512, 600,000
-   iterations), encrypted third-party API keys (`api-keys.json`), and the
-   historical rebalance event log (`rebalance_log.json`). All runtime files
-   are gitignored; tracked files are whitelisted via `!` rules. See the
-   `app-config/` section of `server.js`'s file-header JSDoc for the full
-   layout, inventory, and placement rules.
-2. **`tmp/` directory** — JSON file caches for expensive blockchain queries
+1. **`app-config/` directory** — all app-managed config. Two subdirs
+   only: `app-defaults-for-user-configurable/` (tracked shipped
+   defaults including `chains.json`) and `user-configurable/` (operator
+   runtime files: the bot config `bot-config.json` with per-position
+   settings / HODL baselines / compound history, the auto snapshot
+   `bot-config.backup.json`, the encrypted wallet `wallet.json` —
+   AES-256-GCM with PBKDF2-SHA512 600,000 iterations — and the
+   encrypted third-party API keys `api-keys.json`).
+2. **`app-data/` directory** — per-install runtime data. Contains the
+   historical rebalance event log (`rebalance_log.json`). Separate
+   from `app-config/` because it's per-install data, not config.
+3. **`tmp/` directory** — JSON file caches for expensive blockchain queries
    (event scan results, P&L epoch history, historical prices, block times,
    LP position lists, pool orientation). Pure performance optimization —
    deleting these forces a rebuild from the blockchain on next startup.
@@ -386,7 +386,7 @@ part of the price-source cascade. When paused with an empty cache,
 gate, P&L snapshot) already tolerate `0` and degrade to no-op rather
 than block moves.
 
-Two configurable global keys live in `app-config/.bot-config.json`:
+Two configurable global keys live in `app-config/user-configurable/bot-config.json`:
 `priceCacheTtlMs` (default 120 000) and `dustUnitPriceCacheMultiplier`
 (default 30). The dust-unit-price TTL is computed at module init as
 `priceCacheTtlMs × multiplier`, with a runtime assertion guarding the

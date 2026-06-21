@@ -3,7 +3,7 @@
  * @description Reset the dashboard-imported wallet.
  *
  * Two actions, both idempotent:
- *   1. Delete app-config/.wallet.json (encrypted wallet state).
+ *   1. Delete app-config/user-configurable/wallet.json (encrypted wallet state).
  *   2. Scrub any WALLET_PASSWORD=... line from .env so the next restart
  *      re-prompts via the dashboard unlock dialog rather than auto-
  *      unlocking from a stale plaintext password.
@@ -22,15 +22,20 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const WALLET_FILE = path.join(ROOT, "app-config", ".wallet.json");
+const WALLET_FILE = path.join(
+  ROOT,
+  "app-config",
+  "user-configurable",
+  "wallet.json",
+);
 const ENV_FILE = path.join(ROOT, ".env");
 
 // ── 1. Delete the encrypted wallet file ───────────────────────────────────
 if (fs.existsSync(WALLET_FILE)) {
   fs.unlinkSync(WALLET_FILE);
-  log.info("✔ Deleted app-config/.wallet.json");
+  log.info("✔ Deleted app-config/user-configurable/wallet.json");
 } else {
-  log.info("• app-config/.wallet.json already absent");
+  log.info("• app-config/user-configurable/wallet.json already absent");
 }
 
 // ── 2. Scrub WALLET_PASSWORD from .env ────────────────────────────────────

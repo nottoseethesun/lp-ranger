@@ -1,6 +1,7 @@
 /**
  * @file test/migrate-app-config.test.js
- * @description Tests for the one-time app-config migration helper.
+ * @description Tests for the one-time root → app-config/user-configurable
+ * (and app-data) migration helper.
  */
 
 "use strict";
@@ -13,7 +14,8 @@ const os = require("os");
 
 const {
   migrateAppConfig,
-  _MIGRATION_FILES,
+  _MIGRATIONS,
+  _DROP,
 } = require("../src/migrate-app-config");
 
 /** Create a fresh isolated temp dir per test. */
@@ -41,145 +43,185 @@ describe("migrateAppConfig", () => {
     rmrf(tmp);
   });
 
-  it("fresh install: creates app-config/ and moves nothing", () => {
+  it("fresh install: no legacy files anywhere → no-op", () => {
     const result = migrateAppConfig(tmp);
     assert.equal(result.moved, 0);
     assert.equal(result.skipped, 0);
-    assert.ok(
-      fs.existsSync(path.join(tmp, "app-config")),
-      "app-config dir should exist",
-    );
+    assert.equal(result.dropped, 0);
   });
 
-  it("upgrade: moves every legacy root file into app-config/", () => {
-    // Seed legacy files at root with unique content so we can verify identity.
+  it("upgrade: moves every legacy root file into its new home", () => {
+    // Seed legacy root files with unique content so we can verify identity.
     const contents = {};
-    for (const f of _MIGRATION_FILES) {
-      const payload = `content of ${f}`;
-      contents[f] = payload;
-      fs.writeFileSync(path.join(tmp, f), payload);
+    for (const m of _MIGRATIONS) {
+      contents[m.src] = `content of ${m.src}`;
+      fs.writeFileSync(path.join(tmp, m.src), contents[m.src]);
     }
 
     const result = migrateAppConfig(tmp);
-    assert.equal(result.moved, _MIGRATION_FILES.length);
+    assert.equal(result.moved, _MIGRATIONS.length);
     assert.equal(result.skipped, 0);
+    assert.equal(result.dropped, 0);
 
-    for (const f of _MIGRATION_FILES) {
+    for (const m of _MIGRATIONS) {
       // Source gone
+      assert.equal(
+        fs.existsSync(path.join(tmp, m.src)),
+        false,
+        `root ${m.src} should have been moved away`,
+      );
+      // Dest present with original content
+      const destPath = path.join(tmp, m.dest);
+      assert.ok(fs.existsSync(destPath), `${m.dest} should exist`);
+      assert.equal(
+        fs.readFileSync(destPath, "utf8"),
+        contents[m.src],
+        `${m.src} content should be preserved at ${m.dest}`,
+      );
+    }
+  });
+
+  it("upgrade: drops every legacy file in the _DROP list", () => {
+    for (const f of _DROP) {
+      fs.writeFileSync(path.join(tmp, f), `content of ${f}`);
+    }
+
+    const result = migrateAppConfig(tmp);
+    assert.equal(result.moved, 0);
+    assert.equal(result.skipped, 0);
+    assert.equal(result.dropped, _DROP.length);
+
+    for (const f of _DROP) {
       assert.equal(
         fs.existsSync(path.join(tmp, f)),
         false,
-        `root ${f} should have been moved away`,
-      );
-      // Dest present with original content
-      const destPath = path.join(tmp, "app-config", f);
-      assert.ok(fs.existsSync(destPath), `${f} should exist in app-config/`);
-      assert.equal(
-        fs.readFileSync(destPath, "utf8"),
-        contents[f],
-        `${f} content should be preserved`,
+        `dropped ${f} should be gone`,
       );
     }
   });
 
   it("idempotent: second call is a no-op after successful migration", () => {
     fs.writeFileSync(path.join(tmp, ".bot-config.json"), "first");
+    fs.writeFileSync(path.join(tmp, ".bot-config.backup.json"), "snap");
     const first = migrateAppConfig(tmp);
     assert.equal(first.moved, 1);
+    assert.equal(first.dropped, 1);
 
-    // Second call — nothing at root, destination already populated
+    // Second call — nothing at root, destinations already populated
     const second = migrateAppConfig(tmp);
     assert.equal(second.moved, 0);
     assert.equal(second.skipped, 0);
+    assert.equal(second.dropped, 0);
 
-    // Content preserved
-    assert.equal(
-      fs.readFileSync(path.join(tmp, "app-config", ".bot-config.json"), "utf8"),
-      "first",
-    );
+    // Migrated content preserved
+    const m = _MIGRATIONS.find((x) => x.src === ".bot-config.json");
+    assert.equal(fs.readFileSync(path.join(tmp, m.dest), "utf8"), "first");
   });
 
   it("conflict: refuses to move when destination also exists", () => {
-    // Both root and destination exist — migration must NOT overwrite
-    fs.mkdirSync(path.join(tmp, "app-config"), { recursive: true });
-    fs.writeFileSync(path.join(tmp, ".bot-config.json"), "from-root");
-    fs.writeFileSync(
-      path.join(tmp, "app-config", ".bot-config.json"),
-      "from-dest",
-    );
+    const m = _MIGRATIONS.find((x) => x.src === ".bot-config.json");
+    fs.mkdirSync(path.join(tmp, path.dirname(m.dest)), { recursive: true });
+    fs.writeFileSync(path.join(tmp, m.src), "from-root");
+    fs.writeFileSync(path.join(tmp, m.dest), "from-dest");
 
     const result = migrateAppConfig(tmp);
     assert.equal(result.moved, 0);
     assert.equal(result.skipped, 1);
+    assert.equal(result.dropped, 0);
 
     // Both files still exist untouched
     assert.equal(
-      fs.readFileSync(path.join(tmp, ".bot-config.json"), "utf8"),
+      fs.readFileSync(path.join(tmp, m.src), "utf8"),
       "from-root",
       "root file should not have been touched",
     );
     assert.equal(
-      fs.readFileSync(path.join(tmp, "app-config", ".bot-config.json"), "utf8"),
+      fs.readFileSync(path.join(tmp, m.dest), "utf8"),
       "from-dest",
       "destination file should not have been overwritten",
     );
   });
 
   it("partial upgrade: moves non-conflicting files and skips conflicts", () => {
-    fs.mkdirSync(path.join(tmp, "app-config"), { recursive: true });
-    // Conflict on one file only
-    fs.writeFileSync(path.join(tmp, ".bot-config.json"), "root1");
-    fs.writeFileSync(path.join(tmp, "app-config", ".bot-config.json"), "dest1");
+    const conflict = _MIGRATIONS.find((x) => x.src === ".bot-config.json");
+    const clean = _MIGRATIONS.find((x) => x.src === ".wallet.json");
+    fs.mkdirSync(path.join(tmp, path.dirname(conflict.dest)), {
+      recursive: true,
+    });
+    // Conflict on one file
+    fs.writeFileSync(path.join(tmp, conflict.src), "root1");
+    fs.writeFileSync(path.join(tmp, conflict.dest), "dest1");
     // Clean migration for another
-    fs.writeFileSync(path.join(tmp, ".wallet.json"), "wallet-payload");
+    fs.writeFileSync(path.join(tmp, clean.src), "wallet-payload");
 
     const result = migrateAppConfig(tmp);
     assert.equal(result.moved, 1, "wallet should have moved");
-    assert.equal(
-      result.skipped,
-      1,
-      ".bot-config.json should have been skipped",
-    );
+    assert.equal(result.skipped, 1, "bot-config should have been skipped");
 
     // Wallet moved
     assert.equal(
-      fs.existsSync(path.join(tmp, ".wallet.json")),
+      fs.existsSync(path.join(tmp, clean.src)),
       false,
-      "root .wallet.json should be gone",
+      `root ${clean.src} should be gone`,
     );
     assert.equal(
-      fs.readFileSync(path.join(tmp, "app-config", ".wallet.json"), "utf8"),
+      fs.readFileSync(path.join(tmp, clean.dest), "utf8"),
       "wallet-payload",
     );
 
     // Conflict untouched on both sides
     assert.equal(
-      fs.readFileSync(path.join(tmp, ".bot-config.json"), "utf8"),
+      fs.readFileSync(path.join(tmp, conflict.src), "utf8"),
       "root1",
     );
     assert.equal(
-      fs.readFileSync(path.join(tmp, "app-config", ".bot-config.json"), "utf8"),
+      fs.readFileSync(path.join(tmp, conflict.dest), "utf8"),
       "dest1",
     );
   });
 
-  it("creates app-config/ even when nothing needs migrating", () => {
-    // No files exist anywhere
-    const result = migrateAppConfig(tmp);
-    assert.equal(result.moved, 0);
-    assert.equal(result.skipped, 0);
-    const stat = fs.statSync(path.join(tmp, "app-config"));
-    assert.ok(stat.isDirectory(), "app-config should be a directory");
+  it("creates destination parent dirs on the fly", () => {
+    // app-data/ does not exist yet
+    const reb = _MIGRATIONS.find((x) => x.src === "rebalance_log.json");
+    fs.writeFileSync(path.join(tmp, reb.src), "events");
+    assert.equal(fs.existsSync(path.join(tmp, "app-data")), false);
+
+    migrateAppConfig(tmp);
+
+    assert.equal(
+      fs.readFileSync(path.join(tmp, reb.dest), "utf8"),
+      "events",
+      "log should land at app-data/rebalance_log.json",
+    );
   });
 
-  it("_MIGRATION_FILES exports all expected legacy names", () => {
-    assert.deepEqual(_MIGRATION_FILES.sort(), [
-      ".bot-config.backup.json",
+  it("_MIGRATIONS covers the four expected legacy names", () => {
+    const sources = _MIGRATIONS.map((m) => m.src).sort();
+    assert.deepEqual(sources, [
       ".bot-config.json",
-      ".bot-config.v1.json",
       ".wallet.json",
       "api-keys.json",
       "rebalance_log.json",
+    ]);
+  });
+
+  it("_MIGRATIONS destinations only live under app-config/user-configurable/ or app-data/", () => {
+    for (const m of _MIGRATIONS) {
+      const ok =
+        m.dest.startsWith(
+          path.join("app-config", "user-configurable") + path.sep,
+        ) || m.dest.startsWith("app-data" + path.sep);
+      assert.ok(
+        ok,
+        `${m.src} → ${m.dest} must land under app-config/user-configurable/ or app-data/`,
+      );
+    }
+  });
+
+  it("_DROP lists the two legacy files with no destination", () => {
+    assert.deepEqual(_DROP.sort(), [
+      ".bot-config.backup.json",
+      ".bot-config.v1.json",
     ]);
   });
 });

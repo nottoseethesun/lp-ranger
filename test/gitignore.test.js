@@ -36,27 +36,54 @@ describe(".gitignore safety", () => {
     );
   });
 
-  it("ignores runtime files inside app-config/ (glob)", () => {
-    // app-config/.wallet.json, .bot-config.json, api-keys.json, etc. are
-    // all covered by this glob. The matching un-ignore rules below keep
-    // static-tunables/ and api-keys.example.json tracked.
+  it("ignores everything at the top level of app-config/ (glob)", () => {
+    // Only the two whitelisted subdirectories (app-defaults-for-user-
+    // configurable/ and user-configurable/) are tracked under
+    // app-config/.  This glob covers any stray legacy runtime file
+    // that drops back at the top level (e.g. from an older release).
     assert.ok(
       lines.includes("app-config/*"),
-      "app-config/* should be in .gitignore to cover runtime state files",
+      "app-config/* should be in .gitignore to cover stray runtime files",
     );
   });
 
-  it("un-ignores app-config/static-tunables/ (tracked tunables)", () => {
+  it("un-ignores app-config/app-defaults-for-user-configurable/ (shipped defaults)", () => {
     assert.ok(
-      lines.includes("!app-config/static-tunables/"),
-      "app-config/static-tunables/ should be whitelisted (tracked tunables)",
+      lines.includes("!app-config/app-defaults-for-user-configurable/"),
+      "shipped-defaults directory should be whitelisted",
     );
   });
 
-  it("un-ignores app-config/api-keys.example.json (tracked template)", () => {
+  it("keeps app-config/user-configurable/ dir tracked but its CONTENTS ignored (so operator runtime files survive tarball upgrade)", () => {
     assert.ok(
-      lines.includes("!app-config/api-keys.example.json"),
-      "app-config/api-keys.example.json should be whitelisted (tracked template)",
+      lines.includes("!app-config/user-configurable/"),
+      "user-configurable/ dir itself should be whitelisted",
+    );
+    assert.ok(
+      lines.includes("app-config/user-configurable/*"),
+      "contents under user-configurable/ should be re-ignored",
+    );
+    assert.ok(
+      lines.includes("!app-config/user-configurable/README.md"),
+      "README.md should be whitelisted so the dir is tracked and operators see the override instructions",
+    );
+  });
+
+  it("keeps app-data/ dir tracked but its CONTENTS ignored (so per-install runtime data survives tarball upgrade)", () => {
+    assert.ok(
+      lines.includes("app-data/*"),
+      "contents under app-data/ should be ignored",
+    );
+    assert.ok(
+      lines.includes("!app-data/README.md"),
+      "app-data/README.md should be whitelisted so the dir ships in the release tarball",
+    );
+  });
+
+  it("ignores logs/ entirely (write-only diagnostic output, auto-created on --log-file)", () => {
+    assert.ok(
+      lines.some((l) => l === "logs/" || l === "logs"),
+      "logs/ should be in .gitignore (the app never reads it back; tarball-excluded; auto-mkdir on first write)",
     );
   });
 

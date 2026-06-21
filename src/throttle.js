@@ -23,6 +23,14 @@
 
 "use strict";
 
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Single-source defaults: per feedback_one_literal_per_shipped_default,
+ *  the shipped daily-rebalance cap lives only in bot-config-defaults.json
+ *  (`maxRebalancesPerDay`).  Read it once at module init for the opts
+ *  fallback in `createThrottle`. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+
 /**
  * @typedef {Object} ThrottleOptions
  * @property {number} [minIntervalMs=600000]  Minimum ms between rebalances (default 10 min).
@@ -83,13 +91,20 @@ function createThrottle(opts = {}) {
   /** @type {ThrottleState} */
   const state = {
     minIntervalMs: opts.minIntervalMs ?? 600_000,
-    dailyMax: opts.dailyMax ?? 5,
+    dailyMax: opts.dailyMax ?? _DEFAULTS.maxRebalancesPerDay,
     dailyCount: 0,
     lastRebTime: 0,
     rebTimestamps: [],
     doublingActive: false,
     doublingCount: 0,
     currentWaitMs: opts.minIntervalMs ?? 600_000,
+    /*- `600_000` (= 10 min) is a structural default for the throttle's
+     *  initial wait, NOT a shipped Bot Setting (the per-position
+     *  minRebalanceIntervalMin lives in bot-config-defaults.json and
+     *  always flows in via `opts.minIntervalMs`).  The bare numeric
+     *  here is the hardcoded floor when nothing arrives — keeps tests
+     *  that exercise `createThrottle({})` working without plumbing
+     *  the shipped default through every test fixture. */
     dailyResetAt: nextMidnight(nowFn),
   };
 

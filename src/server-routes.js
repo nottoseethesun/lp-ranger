@@ -26,7 +26,7 @@ const {
   createTelegramHandlers,
 } = require("./telegram-notifications/server-telegram");
 const {
-  getPositionConfig,
+  getOrCreatePositionConfig,
   saveConfig,
   compositeKey,
   parseCompositeKey,
@@ -147,21 +147,18 @@ function createRouteHandlers(deps) {
       const liveKey = resolveLiveKey(positionMgr, body.positionKey, (k) =>
         getAllPositionBotStates().get(k),
       );
-      /*- Non-lazy getPositionConfig: returns null when slot absent.
-       *  Prior lazy-create wrote the user's patch into a phantom slot
-       *  under the dead old key while the migrated entry never got
-       *  the update — silent loss of user setting + phantom row. */
-      const posRef = getPositionConfig(diskConfig, liveKey);
-      if (!posRef) {
-        jsonResponse(res, 404, {
-          ok: false,
-          error: "position-not-found",
-          message:
-            "Position not found on disk. It may have been stopped, " +
-            "removed, or the tokenId migrated. Refresh the dashboard.",
-        });
-        return;
-      }
+      /*- Lazy-create the slot so per-position settings can be saved
+       *  for a position that has not yet been Manage'd.  The user's
+       *  workflow: select an unmanaged position, edit OOR threshold /
+       *  slippage / etc., Save, THEN click Manage — the live
+       *  `addManagedPosition` only flips `status` to "running" and
+       *  preserves every other field, so the user's pre-Manage edits
+       *  carry through into the running bot's config.  The earlier
+       *  phantom-slot risk (POST to a dead old key after rebalance
+       *  migrated to a new key) is mitigated by `resolveLiveKey`
+       *  above, which returns the post-migration key when a
+       *  migration chain exists. */
+      const posRef = getOrCreatePositionConfig(diskConfig, liveKey);
       const statusBefore = posRef.status;
       Object.assign(posRef, pPatch);
       if (statusBefore && !posRef.status)

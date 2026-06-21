@@ -6,7 +6,7 @@
  * project-wide 500-line limit.
  *
  * Regression history: historical compoundHistory entries used to land in
- * `.bot-config.json` with `timestamp: null, txHash: null`, which made
+ * `bot-config.json` with `timestamp: null, txHash: null`, which made
  * any planned UI rendering pointless.  `_fetchCompoundGas` is now the
  * single source for both fields — the historical writer in
  * `bot-recorder.js#_classifyAllCompounds` plumbs them through unchanged.

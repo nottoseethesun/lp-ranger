@@ -75,7 +75,7 @@ function createApiStatusHandler(deps) {
         rpcUrl: config.RPC_URL,
         positionManager: config.POSITION_MANAGER,
         /*- Single source of truth for the NFT-issuer label is
-         *  app-config/static-tunables/nft-providers.json (address-keyed
+         *  app-config/app-defaults-for-user-configurable/nft-providers.json (address-keyed
          *  map, also served by GET /api/nft-providers for the dashboard
          *  NFT panel and read by src/telegram-notifications/balanced-notifier.js
          *  for the Telegram header). Look it up here so the legacy

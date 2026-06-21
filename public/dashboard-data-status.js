@@ -492,8 +492,13 @@ export function _syncAutoCompound(d) {
   }
   const th = g("autoCompoundThreshold");
   if (th && document.activeElement !== th) {
-    th.value =
-      d.autoCompoundThresholdUsd || botConfig.compoundDefaultThreshold || 5;
+    /*- No literal fallback per feedback_one_literal_per_shipped_default:
+     *  the shipped default lives only in app-runtime.json (via the
+     *  COMPOUND_DEFAULT_THRESHOLD_USD export, populated into botConfig
+     *  by dashboard-data.js).  Skip the assignment until AJAX
+     *  populates botConfig.compoundDefaultThreshold. */
+    const v = d.autoCompoundThresholdUsd ?? botConfig.compoundDefaultThreshold;
+    if (v !== undefined) th.value = v;
   }
 }
 
@@ -501,7 +506,16 @@ export function _syncAutoCompound(d) {
 export function _updateCompoundButton(d, rebInProgress) {
   const cb = g("compoundNowBtn");
   if (!cb) return;
-  const minFee = botConfig.compoundMinFee || 1;
+  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+   *  shipped default lives only in app-runtime.json (COMPOUND_MIN_FEE_USD
+   *  → botConfig.compoundMinFee).  When the AJAX-populated value is
+   *  undefined, skip the threshold check entirely so the button stays
+   *  in its default disabled state until data arrives. */
+  if (botConfig.compoundMinFee === undefined) {
+    cb.disabled = true;
+    return;
+  }
+  const minFee = botConfig.compoundMinFee;
   // Read fees from snapshot or from the displayed KPI (covers unmanaged positions)
   let feesUsd = d.pnlSnapshot?.liveEpoch?.fees || 0;
   if (!feesUsd) {

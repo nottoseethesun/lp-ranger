@@ -186,7 +186,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Import wallet",
-        "description": "Import a wallet via seed phrase or private key. Encrypts and persists to app-config/.wallet.json.",
+        "description": "Import a wallet via seed phrase or private key. Encrypts and persists to app-config/user-configurable/wallet.json.",
         "requestBody": {
           "required": true,
           "content": {
@@ -539,7 +539,7 @@
       "get": {
         "tags": ["UI"],
         "summary": "Dashboard UI defaults",
-        "description": "Returns the contents of app-config/static-tunables/ui-defaults.json (e.g. soundsEnabled). Used by the dashboard at init for fresh-profile defaults.",
+        "description": "Returns the contents of app-config/app-defaults-for-user-configurable/ui-defaults.json (e.g. soundsEnabled). Used by the dashboard at init for fresh-profile defaults.",
         "responses": {
           "200": {
             "description": "UI defaults JSON",
@@ -554,7 +554,7 @@
       "get": {
         "tags": ["UI"],
         "summary": "NFT position-manager provider labels",
-        "description": "Returns the contents of app-config/static-tunables/nft-providers.json — short labels for known NFT position-manager contract addresses.",
+        "description": "Returns the contents of app-config/app-defaults-for-user-configurable/nft-providers.json — short labels for known NFT position-manager contract addresses.",
         "responses": {
           "200": {
             "description": "NFT provider label map",
@@ -569,7 +569,7 @@
       "get": {
         "tags": ["UI"],
         "summary": "Bot Settings defaults",
-        "description": "Returns the contents of app-config/static-tunables/bot-config-defaults.json — single source of truth for default values of every Bot Settings input plus server-internal nested groups (lowGasThresholds, residualCleanup). Per-user overrides live in app-config/.bot-config.json.",
+        "description": "Returns the contents of app-config/app-defaults-for-user-configurable/bot-config-defaults.json — single source of truth for default values of every Bot Settings input plus server-internal nested groups (lowGasThresholds, residualCleanup). Per-user overrides live in app-config/user-configurable/bot-config.json.",
         "responses": {
           "200": {
             "description": "Bot config defaults JSON",

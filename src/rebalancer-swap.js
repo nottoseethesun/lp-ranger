@@ -7,6 +7,13 @@
 "use strict";
 
 const { log } = require("./log");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+
+/*- Single-source default: per feedback_one_literal_per_shipped_default,
+ *  the shipped slippage default lives only in bot-config-defaults.json.
+ *  Read once at module init for the `params.slippagePct` fallback in
+ *  `swapIfNeeded`. */
+const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 const {
   maxLiquidityForAmounts,
   TickMath,
@@ -492,7 +499,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
    *  fallback pool can be misleadingly large. */
   const attempts = [];
   const wrapped = { ...params, _attempts: attempts };
-  const slip = params.slippagePct ?? 0.5;
+  const slip = params.slippagePct ?? _DEFAULTS.slippagePct;
   try {
     return await _swapViaAggregator(signer, ethersLib, {
       ...wrapped,

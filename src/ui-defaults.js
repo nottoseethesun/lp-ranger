@@ -2,40 +2,36 @@
  * @file src/ui-defaults.js
  * @module uiDefaults
  * @description
- * Reads `app-config/static-tunables/ui-defaults.json` and exposes the values
- * to the dashboard via `GET /api/ui-defaults`. These are *defaults* only —
- * they apply when the corresponding localStorage key is absent in the
- * browser (first visit or after "Clear Local Storage & Cookies"). Toggles
- * in the Settings popover persist locally and always override.
+ * Reads `ui-defaults.json` (via the layered defaults+user-override
+ * loader — see `src/load-merged-defaults.js`) and exposes the values
+ * to the dashboard via `GET /api/ui-defaults`. These are *defaults*
+ * only — they apply when the corresponding localStorage key is absent
+ * in the browser (first visit or after "Clear Local Storage &
+ * Cookies"). Toggles in the Settings popover persist locally and
+ * always override.
  *
- * The file is re-read on every request so operators can edit it live
- * without a server restart. Read or parse failures fall back to the
- * built-in defaults below so the endpoint never 500s.
+ * The file is re-read on every request so operators can edit
+ * `app-config/user-configurable/ui-defaults.json` live without a
+ * server restart.  Read or parse failures fall back to the built-in
+ * defaults below so the endpoint never 500s.
  */
 
 "use strict";
 
 const { log } = require("./log");
-const fs = require("fs");
-const path = require("path");
+const {
+  loadMergedDefaults,
+  loadShippedDefaults,
+} = require("./load-merged-defaults");
 
-/** Full path to the on-disk tunable. */
-const _FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "static-tunables",
-  "ui-defaults.json",
-);
+const _FILENAME = "ui-defaults.json";
 
-/** Built-in fallback values. Must match ui-defaults.json shape. */
-const _FALLBACK = Object.freeze({
-  soundsEnabled: true,
-  privacyModeEnabled: false,
-  privacyBlurWalletAddresses: true,
-  privacyBlurUsdAmounts: true,
-  privacyUsdAmountThreshold: 99,
-});
+/*- Single-source baseline: read the shipped JSON once at module init.
+ *  Throws on missing/malformed file (install error, fail loudly).
+ *  Used as the per-key fallback when an operator's live override fails
+ *  validation.  See feedback_one_literal_per_shipped_default — every
+ *  default value lives in the JSON, nowhere else in code. */
+const _FALLBACK = Object.freeze(loadShippedDefaults(_FILENAME));
 
 /*-
  * Clamp the USD-threshold tunable to the 5-digit numeric input range
@@ -58,8 +54,7 @@ function _normalizeUsdThreshold(v) {
  */
 function readUiDefaults() {
   try {
-    const raw = fs.readFileSync(_FILE, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = loadMergedDefaults(_FILENAME);
     const out = { ..._FALLBACK };
     if (typeof parsed.soundsEnabled === "boolean")
       out.soundsEnabled = parsed.soundsEnabled;

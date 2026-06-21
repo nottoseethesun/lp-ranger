@@ -13,8 +13,8 @@ Options:
   --log-file [PATH]
                   Tee all console output to a file (ANSI escapes
                   stripped).  PATH is optional — defaults to
-                  app-config/lp-ranger.log (or the path set in
-                  app-config/static-tunables/logging.json).  File is
+                  logs/lp-ranger.log (or the path set in
+                  app-config/app-defaults-for-user-configurable/logging.json).  File is
                   opened in append mode; rotate externally if it
                   grows.  Operators can enable persistently by
                   setting "enabled": true in the JSON.
@@ -53,7 +53,7 @@ Usage:
   node bot.js [options]
   npm run bot
 
-  Requires PRIVATE_KEY in .env, or an imported wallet (.wallet.json).
+  Requires PRIVATE_KEY in .env, or an imported wallet (app-config/user-configurable/wallet.json).
 
 Bot-only options:
   --start-with-price-lookups-unpaused

@@ -14,7 +14,7 @@
  * All three numeric inputs — `worstCaseGasFactor`, `safetyMultiplier`,
  * `standardSendGas` — are loaded at module init from the
  * `lowGasThresholds` group in
- * `app-config/static-tunables/bot-config-defaults.json` so operators can
+ * `app-config/app-defaults-for-user-configurable/bot-config-defaults.json` so operators can
  * retune without editing code.  The defaults match the shipped JSON and
  * are also used as a fallback when the file is missing/malformed, so
  * the guard never silently disables itself.

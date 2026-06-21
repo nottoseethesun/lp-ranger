@@ -3,10 +3,13 @@
  * @module runtime-flags
  * @description
  * Runtime, environment-derived flags and helpers for LP Ranger. Anything
- * sourced from `process.env`, `process.argv`, or computed by selecting a
- * row out of `app-config/static-tunables/chains.json` lives here. Pure
- * tracked data (ports, timeouts, aggregator URL, etc.) lives in
- * `src/config.json` instead.
+ * sourced from `process.env`, `process.argv`, or computed by selecting
+ * a row out of `chains.json` (loaded via the layered defaults+user-
+ * override loader; operators override at
+ * `app-config/user-configurable/chains.json`) lives here. Pure tracked
+ * data (ports, timeouts, aggregator URL, etc.) lives in
+ * `app-config/app-defaults-for-user-configurable/app-runtime.json`
+ * (loaded by `src/config.js` via the same layered loader).
  *
  * `src/config.js` re-exports everything here so existing callers keep
  * working — new code can import directly from this module when it only
@@ -17,7 +20,9 @@
 "use strict";
 
 const dotenv = require("dotenv");
-const CHAINS = require("../app-config/static-tunables/chains.json");
+const { loadMergedDefaults } = require("./load-merged-defaults");
+
+const CHAINS = loadMergedDefaults("chains.json");
 
 /*- Load .env if present; dotenv.config() returns `{ error }` (without
     throwing) when no file exists, so production environments where env
@@ -58,7 +63,8 @@ const TX_ENVELOPE_TYPES = { legacy: 0, eip1559: 2 };
 /** Resolved EIP-2718 envelope type number for the active chain. */
 const TX_TYPE = TX_ENVELOPE_TYPES[CHAIN.transactionEnvelopeType] ?? 0;
 
-/** Raw hex private key for the signing wallet (alternative to .wallet.json). */
+/** Raw hex private key for the signing wallet (alternative to the encrypted
+ *  app-config/user-configurable/wallet.json). */
 const PRIVATE_KEY = process.env.PRIVATE_KEY || null;
 
 /** Dry-run mode — read-only, no transactions. Set DRY_RUN=1 / true / yes to enable. */

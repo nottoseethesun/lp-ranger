@@ -121,7 +121,7 @@ describe("initHodlBaseline", () => {
     assert.strictEqual(updateBotState.mock.callCount(), 1);
     assert.strictEqual(botState.hodlBaseline.mintDate, "2023-11-14");
     /*- Canonical mintTimestamp is now Unix seconds (number).  Older
-        .bot-config.json files may still hold an ISO string; consumers
+        bot-config.json files may still hold an ISO string; consumers
         normalize via dashboard-date-utils.js#toMintTsSeconds. */
     assert.strictEqual(botState.hodlBaseline.mintTimestamp, 1700000000);
   });

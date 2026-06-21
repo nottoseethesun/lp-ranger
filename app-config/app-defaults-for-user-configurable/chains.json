@@ -24,7 +24,8 @@
       "gasPriceMultiplier": 1.5,
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
-      "maxAttempts": 4
+      "maxAttempts": 4,
+      "estimatedSwapGasUnits": 500000
     },
     "chartProviders": {
       "dexscreener": {
@@ -75,7 +76,8 @@
       "gasPriceMultiplier": 1.5,
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
-      "maxAttempts": 4
+      "maxAttempts": 4,
+      "estimatedSwapGasUnits": 500000
     },
     "chartProviders": {
       "dexscreener": {

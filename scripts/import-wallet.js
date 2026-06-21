@@ -2,7 +2,7 @@
  * @file scripts/import-wallet.js
  * @description Import a wallet from the command line — no browser needed.
  *
- * Creates `app-config/.wallet.json` (the same encrypted file the
+ * Creates `app-config/user-configurable/wallet.json` (the same encrypted file the
  * dashboard import flow produces) so headless deployments can use the
  * `WALLET_PASSWORD` env-var pathway without ever opening the dashboard.
  *
@@ -14,7 +14,7 @@
  *     → reads private key from stdin, password from flag (scripted use)
  *
  * The result is identical to importing via the dashboard UI: an
- * AES-256-GCM encrypted `.wallet.json` that `WALLET_PASSWORD` can
+ * AES-256-GCM encrypted `wallet.json` that `WALLET_PASSWORD` can
  * unlock at startup.
  */
 
@@ -25,7 +25,10 @@ const readline = require("readline");
 const { Wallet } = require("ethers");
 const { migrateAppConfig } = require("../src/migrate-app-config");
 
-// Ensure app-config/ exists before walletManager tries to write.
+// Run the legacy root → app-config/user-configurable/ migration in case
+// the operator still has files at the old project-root layout.  Also
+// ensures the destination directory chain exists before walletManager
+// tries to write the new wallet file.
 migrateAppConfig();
 
 const walletManager = require("../src/wallet-manager");
@@ -137,7 +140,7 @@ function readStdin() {
     process.exit(1);
   }
 
-  // Import — creates app-config/.wallet.json encrypted with AES-256-GCM.
+  // Import — creates app-config/user-configurable/wallet.json encrypted with AES-256-GCM.
   await walletManager.importWallet({
     address,
     privateKey,
@@ -147,7 +150,7 @@ function readStdin() {
   });
 
   log.info("✔ Wallet imported: %s", address);
-  log.info("  Encrypted at: app-config/.wallet.json");
+  log.info("  Encrypted at: app-config/user-configurable/wallet.json");
   log.info("");
   log.info("To use with unattended startup, add to .env:");
   log.info('  WALLET_PASSWORD="%s"', password.replace(/"/g, '\\"'));
