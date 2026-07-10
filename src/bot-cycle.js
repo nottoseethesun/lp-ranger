@@ -560,11 +560,8 @@ async function pollCycle(deps) {
    *  activePosition so the dashboard's /api/status view refreshes.  Without
    *  this, the "Open Positions" badge and LP Position Browser stayed stale
    *  after a mid-rebalance drain until the user manually switched positions. */
-  if (
-    _liquidityChanged(prevLiquidity, position.liquidity) &&
-    deps.updateBotState
-  ) {
-    deps.updateBotState({ activePosition: _activePosSummary(position) });
+  if (_liquidityChanged(prevLiquidity, position.liquidity)) {
+    emit({ activePosition: _activePosSummary(position) });
   }
   const snap = await _updatePnlAndStats(deps, poolState, ethersLib);
   const zeroLiqResult = _checkZeroLiquidity(deps);
