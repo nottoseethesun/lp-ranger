@@ -437,4 +437,18 @@ describe("_liquidityChanged", () => {
     assert.strictEqual(_liquidityChanged(undefined, "0"), false);
     assert.strictEqual(_liquidityChanged("0", undefined), false);
   });
+
+  it("compares BigInt against post-refresh String (first-poll type transition)", () => {
+    /*- Detected position has liquidity as BigInt (from _detectPosition);
+     *  _refreshPosition rewrites to String on first poll.  Same numeric
+     *  value across the transition must NOT trigger a spurious emit. */
+    assert.strictEqual(_liquidityChanged(12345n, "12345"), false);
+    assert.strictEqual(_liquidityChanged(0n, "0"), false);
+    assert.strictEqual(_liquidityChanged(12345n, "0"), true);
+  });
+
+  it("normalises number 0 and string '0' to the same reading", () => {
+    assert.strictEqual(_liquidityChanged(0, "0"), false);
+    assert.strictEqual(_liquidityChanged("0", 0), false);
+  });
 });

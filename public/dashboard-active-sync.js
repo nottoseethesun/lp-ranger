@@ -13,6 +13,7 @@
 "use strict";
 
 import { log } from "./dashboard-log.js";
+import { emojiId } from "./dashboard-helpers.js";
 import {
   posStore,
   updatePosStripUI,
@@ -101,7 +102,7 @@ export function syncActivePosition(d) {
   if (!active || active.positionType !== "nft") return;
   const ap = d.activePosition;
   const before = _snap(active);
-  const wasClosed = String(active.liquidity || "") === "0";
+  const wasClosed = String(active.liquidity ?? "") === "0";
   _applyLiqAndTicks(active, ap);
   const poolFieldsChanged = _applyPoolFields(active, ap);
   const symbolsChanged = _applySymbols(active, ap);
@@ -113,8 +114,17 @@ export function syncActivePosition(d) {
    *  reflect a fresh drain (or a re-mint back into liquidity) on the very
    *  next poll — without this the badge stayed stuck at the pre-drain
    *  count until the user switched positions manually. */
-  const nowClosed = String(active.liquidity || "") === "0";
+  const nowClosed = String(active.liquidity ?? "") === "0";
   const closedFlipped = wasClosed !== nowClosed;
+  if (closedFlipped) {
+    log.info(
+      "[lp-ranger] [active-sync] #%s %s closed-flip %s→%s — refreshing badge + browser",
+      active.tokenId,
+      emojiId(active.tokenId),
+      wasClosed ? "closed" : "open",
+      nowClosed ? "closed" : "open",
+    );
+  }
   if (poolIdentityChanged || closedFlipped) updatePosStripUI();
   if (closedFlipped) renderPosBrowser();
 }

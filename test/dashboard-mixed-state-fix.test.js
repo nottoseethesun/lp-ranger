@@ -208,13 +208,13 @@ function syncActivePosition(active, ap) {
   if (!ap) return { stripRendered, browserRendered };
   if (!active || active.positionType !== "nft")
     return { stripRendered, browserRendered };
-  const wasClosed = String(active.liquidity || "") === "0";
+  const wasClosed = String(active.liquidity ?? "") === "0";
   _applyLiqAndTicks(active, ap);
   const poolFieldsChanged = _applyPoolFields(active, ap);
   const symbolsChanged = _applySymbols(active, ap);
   const poolIdentityChanged = poolFieldsChanged || symbolsChanged;
   if (ap.tokenId) active.tokenId = String(ap.tokenId);
-  const nowClosed = String(active.liquidity || "") === "0";
+  const nowClosed = String(active.liquidity ?? "") === "0";
   const closedFlipped = wasClosed !== nowClosed;
   if (poolIdentityChanged || closedFlipped) stripRendered = true;
   if (closedFlipped) browserRendered = true;
