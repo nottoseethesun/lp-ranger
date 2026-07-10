@@ -17,7 +17,8 @@ import { _apply, _applyLifetime } from "./dashboard-unmanaged-apply.js";
 import { enterClosedPosView } from "./dashboard-closed-pos.js";
 import { isWalletUnlocked } from "./dashboard-wallet.js";
 import { LT_BD_IDS } from "./dashboard-data-kpi-breakdown.js";
-import { posStore } from "./dashboard-positions-store.js";
+import { posStore, updatePosStripUI } from "./dashboard-positions-store.js";
+import { renderPosBrowser } from "./dashboard-positions-browser.js";
 
 /*- Compare a queued/in-flight fetch's tokenId against the currently-
  *  active posStore entry.  Used to drop stale results that would paint
@@ -184,6 +185,14 @@ async function _phase1(pos, body) {
       );
       pos.liquidity = "0";
       enterClosedPosView(pos);
+      /*- Same closed-state flip refresh as syncActivePosition + the
+       *  _backgroundRefresh loop in dashboard-positions.js: an
+       *  externally-drained unmanaged NFT that the user just navigated
+       *  to must trim the header "N Open Positions" count and repaint
+       *  the LP Position Browser row style on this fetch, not on the
+       *  next unrelated poll. */
+      updatePosStripUI();
+      renderPosBrowser();
       return true;
     }
     _apply(d, pos);

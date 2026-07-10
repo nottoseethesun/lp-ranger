@@ -497,3 +497,61 @@ describe("dashboard-unmanaged stale-target guards", () => {
     assert.strictEqual(activeMatches({ tokenId: "159250" }, "159322"), false);
   });
 });
+
+// ── Mirror of dashboard-unmanaged.js phase1 DRAINED refresh ────────────────
+
+/*-
+ * Mirror of the phase1 DRAINED branch in
+ * `public/dashboard-unmanaged.js`.  Production imports enterClosedPosView
+ * / updatePosStripUI / renderPosBrowser from other modules that pull DOM
+ * + localStorage in.  Here we pass all three as callbacks so the mirror
+ * can assert on invocation counts.
+ *
+ * Behavior contract: on a DRAINED phase1 response, the pos entry's
+ * liquidity is set to "0" AND all three side effects fire in order
+ * (enterClosedPosView → updatePosStripUI → renderPosBrowser).  Without
+ * updatePosStripUI + renderPosBrowser the header "N Open Positions"
+ * badge and the LP Position Browser list stay stale on an externally-
+ * drained unmanaged NFT the user just navigated to.
+ */
+function handlePhase1Drained(pos, callbacks) {
+  const order = [];
+  pos.liquidity = "0";
+  callbacks.enterClosedPosView(pos);
+  order.push("enterClosedPosView");
+  callbacks.updatePosStripUI();
+  order.push("updatePosStripUI");
+  callbacks.renderPosBrowser();
+  order.push("renderPosBrowser");
+  return order;
+}
+
+describe("phase1 DRAINED refresh (dashboard-unmanaged)", () => {
+  it("sets pos.liquidity to '0' before invoking side effects", () => {
+    let seenLiquidity = null;
+    const pos = { tokenId: "42", liquidity: "12345" };
+    handlePhase1Drained(pos, {
+      enterClosedPosView: (p) => {
+        seenLiquidity = p.liquidity;
+      },
+      updatePosStripUI: () => {},
+      renderPosBrowser: () => {},
+    });
+    assert.strictEqual(pos.liquidity, "0");
+    assert.strictEqual(seenLiquidity, "0");
+  });
+
+  it("invokes enterClosedPosView, updatePosStripUI, and renderPosBrowser in order", () => {
+    const pos = { tokenId: "42", liquidity: "12345" };
+    const order = handlePhase1Drained(pos, {
+      enterClosedPosView: () => {},
+      updatePosStripUI: () => {},
+      renderPosBrowser: () => {},
+    });
+    assert.deepStrictEqual(order, [
+      "enterClosedPosView",
+      "updatePosStripUI",
+      "renderPosBrowser",
+    ]);
+  });
+});
