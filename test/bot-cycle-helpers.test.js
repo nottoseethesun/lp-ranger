@@ -18,6 +18,7 @@ const {
   _reloadFromConfig,
   _checkRebalanceGates,
   _activateSwapBackoff,
+  _liquidityChanged,
   DRAINED_RETIRE_MS,
 } = require("../src/bot-cycle");
 
@@ -397,5 +398,43 @@ describe("_checkZeroLiquidity drained retirement", () => {
 
   it("DRAINED_RETIRE_MS is 30 minutes", () => {
     assert.strictEqual(DRAINED_RETIRE_MS, 30 * 60_000);
+  });
+});
+
+// ── _liquidityChanged ────────────────────────────────────────────────
+
+describe("_liquidityChanged", () => {
+  /*- Guards the pollCycle activePosition re-emit that fixes the "Open
+   *  Positions badge stale on drain" bug.  Must treat null/undefined/
+   *  missing values as "0" so a first-poll snapshot of an uninitialized
+   *  position doesn't spuriously trigger the emit. */
+  it("true when liquidity drops to zero (drain)", () => {
+    assert.strictEqual(_liquidityChanged("12345", "0"), true);
+  });
+
+  it("true when liquidity re-mints from zero", () => {
+    assert.strictEqual(_liquidityChanged("0", "9876"), true);
+  });
+
+  it("true when a non-zero liquidity changes value (compound)", () => {
+    assert.strictEqual(_liquidityChanged("1000", "1500"), true);
+  });
+
+  it("false when liquidity is unchanged (steady state)", () => {
+    assert.strictEqual(_liquidityChanged("12345", "12345"), false);
+  });
+
+  it("false when both readings are zero (stays drained)", () => {
+    assert.strictEqual(_liquidityChanged("0", "0"), false);
+  });
+
+  it("treats null as zero (missing prev on first poll)", () => {
+    assert.strictEqual(_liquidityChanged(null, "0"), false);
+    assert.strictEqual(_liquidityChanged(null, "1000"), true);
+  });
+
+  it("treats undefined as zero", () => {
+    assert.strictEqual(_liquidityChanged(undefined, "0"), false);
+    assert.strictEqual(_liquidityChanged("0", undefined), false);
   });
 });

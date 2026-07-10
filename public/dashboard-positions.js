@@ -586,6 +586,10 @@ async function _backgroundRefresh() {
       if (tick !== undefined) p.poolTick = tick;
     }
     renderPosBrowser();
+    /*- Refresh the "N Open Positions" badge — background refresh may have
+     *  flipped a position between open and closed (liquidity=0), which the
+     *  browser render alone won't reflect in the header strip. */
+    updatePosStripUI();
   } catch (e) {
     log.warn("[lp-ranger] [dashboard] Background refresh failed:", e.message);
   }
