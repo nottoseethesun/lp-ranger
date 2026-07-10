@@ -580,10 +580,14 @@ async function _backgroundRefresh() {
     for (let i = 0; i < posStore.count(); i++) {
       const p = posStore.entries[i];
       if (!p) continue;
+      /*- Explicit `!== undefined && !== null` per the "Type Checks" rule
+       *  in CLAUDE-BEST-PRACTICES.md — a bare `!== undefined` would let a
+       *  server-sent null through and corrupt downstream isPositionClosed
+       *  comparisons via `String(null)` = `"null"`. */
       const liq = d.liquidities[String(p.tokenId)];
-      if (liq !== undefined) p.liquidity = liq;
+      if (liq !== undefined && liq !== null) p.liquidity = liq;
       const tick = d.poolTicks[p.token0 + "-" + p.token1 + "-" + p.fee];
-      if (tick !== undefined) p.poolTick = tick;
+      if (tick !== undefined && tick !== null) p.poolTick = tick;
     }
     renderPosBrowser();
     /*- Refresh the "N Open Positions" badge — background refresh may have

@@ -53,10 +53,15 @@ function _logSync(before, ap, active, poolIdentityChanged) {
   );
 }
 
-/** Copy liquidity + tick fields from an activePosition payload. */
+/** Copy liquidity + tick fields from an activePosition payload.
+ *  Both guards use the explicit `!== undefined && !== null` form per the
+ *  "Type Checks" rule in CLAUDE-BEST-PRACTICES.md — a bare `!== undefined`
+ *  would let `null` through and land the string `"null"` in
+ *  `active.liquidity`, silently corrupting the `isPositionClosed` check. */
 function _applyLiqAndTicks(active, ap) {
-  if (ap.liquidity !== undefined) active.liquidity = String(ap.liquidity);
-  if (ap.tickLower !== undefined) {
+  if (ap.liquidity !== undefined && ap.liquidity !== null)
+    active.liquidity = String(ap.liquidity);
+  if (ap.tickLower !== undefined && ap.tickLower !== null) {
     active.tickLower = ap.tickLower;
     active.tickUpper = ap.tickUpper;
   }

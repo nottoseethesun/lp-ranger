@@ -405,9 +405,11 @@ describe("_checkZeroLiquidity drained retirement", () => {
 
 describe("_liquidityChanged", () => {
   /*- Guards the pollCycle activePosition re-emit that fixes the "Open
-   *  Positions badge stale on drain" bug.  Must treat null/undefined/
-   *  missing values as "0" so a first-poll snapshot of an uninitialized
-   *  position doesn't spuriously trigger the emit. */
+   *  Positions badge stale on drain" bug.  `null`/`undefined` normalise
+   *  to "0" via explicit `!== undefined && !== null` checks (not the
+   *  `x || 0` type-conversion trick, per the "Type Checks" rule in
+   *  CLAUDE-BEST-PRACTICES.md) so a first-poll snapshot of an
+   *  uninitialised position doesn't spuriously trigger the emit. */
   it("true when liquidity drops to zero (drain)", () => {
     assert.strictEqual(_liquidityChanged("12345", "0"), true);
   });

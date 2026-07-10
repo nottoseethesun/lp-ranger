@@ -448,14 +448,19 @@ async function _refreshPosition(position, ethersLib, provider) {
 }
 
 /*-
- * True when two liquidity readings differ, treating `null`/`undefined`/
- * missing values as `"0"`.  Used to gate the pollCycle `activePosition`
- * re-emit so a chain-observed drain (or re-mint) propagates to the
- * dashboard on the next `/api/status` poll — see the fix for the "Open
- * Positions badge stale on failed rebalance" bug.
+ * True when two liquidity readings differ.  `null`/`undefined` normalise
+ * to `"0"` explicitly (not via the `x || 0` type-conversion trick, per the
+ * "Type Checks" rule in CLAUDE-BEST-PRACTICES.md) so a first-poll snapshot
+ * of an uninitialised position doesn't spuriously trigger the emit.  Used
+ * to gate the pollCycle `activePosition` re-emit so a chain-observed drain
+ * (or re-mint) propagates to the dashboard on the next `/api/status` poll
+ * — see the fix for the "Open Positions badge stale on failed rebalance"
+ * bug.
  */
 function _liquidityChanged(prev, cur) {
-  return String(prev || 0) !== String(cur || 0);
+  const p = prev !== undefined && prev !== null ? String(prev) : "0";
+  const c = cur !== undefined && cur !== null ? String(cur) : "0";
+  return p !== c;
 }
 
 /**

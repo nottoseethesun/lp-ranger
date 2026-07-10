@@ -162,8 +162,9 @@ describe("posStore.add dedup branch refreshes pool-identity fields", () => {
 
 /** Mirror of production `_applyLiqAndTicks`. */
 function _applyLiqAndTicks(active, ap) {
-  if (ap.liquidity !== undefined) active.liquidity = String(ap.liquidity);
-  if (ap.tickLower !== undefined) {
+  if (ap.liquidity !== undefined && ap.liquidity !== null)
+    active.liquidity = String(ap.liquidity);
+  if (ap.tickLower !== undefined && ap.tickLower !== null) {
     active.tickLower = ap.tickLower;
     active.tickUpper = ap.tickUpper;
   }
