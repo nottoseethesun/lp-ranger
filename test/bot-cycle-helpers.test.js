@@ -18,6 +18,7 @@ const {
   _reloadFromConfig,
   _checkRebalanceGates,
   _activateSwapBackoff,
+  _liquidityChanged,
   DRAINED_RETIRE_MS,
 } = require("../src/bot-cycle");
 
@@ -397,5 +398,59 @@ describe("_checkZeroLiquidity drained retirement", () => {
 
   it("DRAINED_RETIRE_MS is 30 minutes", () => {
     assert.strictEqual(DRAINED_RETIRE_MS, 30 * 60_000);
+  });
+});
+
+// ── _liquidityChanged ────────────────────────────────────────────────
+
+describe("_liquidityChanged", () => {
+  /*- Guards the pollCycle activePosition re-emit that fixes the "Open
+   *  Positions badge stale on drain" bug.  `null`/`undefined` normalise
+   *  to "0" via explicit `!== undefined && !== null` checks (not the
+   *  `x || 0` type-conversion trick, per the "Type Checks" rule in
+   *  CLAUDE-BEST-PRACTICES.md) so a first-poll snapshot of an
+   *  uninitialised position doesn't spuriously trigger the emit. */
+  it("true when liquidity drops to zero (drain)", () => {
+    assert.strictEqual(_liquidityChanged("12345", "0"), true);
+  });
+
+  it("true when liquidity re-mints from zero", () => {
+    assert.strictEqual(_liquidityChanged("0", "9876"), true);
+  });
+
+  it("true when a non-zero liquidity changes value (compound)", () => {
+    assert.strictEqual(_liquidityChanged("1000", "1500"), true);
+  });
+
+  it("false when liquidity is unchanged (steady state)", () => {
+    assert.strictEqual(_liquidityChanged("12345", "12345"), false);
+  });
+
+  it("false when both readings are zero (stays drained)", () => {
+    assert.strictEqual(_liquidityChanged("0", "0"), false);
+  });
+
+  it("treats null as zero (missing prev on first poll)", () => {
+    assert.strictEqual(_liquidityChanged(null, "0"), false);
+    assert.strictEqual(_liquidityChanged(null, "1000"), true);
+  });
+
+  it("treats undefined as zero", () => {
+    assert.strictEqual(_liquidityChanged(undefined, "0"), false);
+    assert.strictEqual(_liquidityChanged("0", undefined), false);
+  });
+
+  it("compares BigInt against post-refresh String (first-poll type transition)", () => {
+    /*- Detected position has liquidity as BigInt (from _detectPosition);
+     *  _refreshPosition rewrites to String on first poll.  Same numeric
+     *  value across the transition must NOT trigger a spurious emit. */
+    assert.strictEqual(_liquidityChanged(12345n, "12345"), false);
+    assert.strictEqual(_liquidityChanged(0n, "0"), false);
+    assert.strictEqual(_liquidityChanged(12345n, "0"), true);
+  });
+
+  it("normalises number 0 and string '0' to the same reading", () => {
+    assert.strictEqual(_liquidityChanged(0, "0"), false);
+    assert.strictEqual(_liquidityChanged("0", 0), false);
   });
 });

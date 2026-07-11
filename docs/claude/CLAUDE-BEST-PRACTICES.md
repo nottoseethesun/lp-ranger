@@ -14,6 +14,37 @@ Highest-priority rules. Violations here are deal-breakers — review every PR fo
 - **Read all comments before touching code** — file-header JSDoc, function comments, and inline comments document design decisions and data sources (e.g. GeckoTerminal for historical prices, HODL baseline from IncreaseLiquidity events). Understand them before making any changes.
 - **Show dashes (---) for missing data, not $0.00** — when a value hasn't been computed yet (e.g. IL before HODL baseline resolves), display --- instead of a false zero.
 
+## Type Checks
+
+**For type checks, never rely on JavaScript's built-in type conversions.** Write the check explicitly.
+
+Do NOT use these "sloppy" idioms as a stand-in for a real type check:
+
+- `if (x)` — treats `0`, `""`, `false`, `null`, `undefined`, `NaN`, `0n` all as absent. Fine for "is this string non-empty?"; wrong for "is this value present?"
+- `if (x != null)` — blocked by the project's `eqeqeq: ["error", "always"]` lint rule.
+- `if (x !== undefined)` **alone** — silently lets `null` through. Then `String(null) === "null"` (the string) corrupts downstream comparisons like `isPositionClosed`.
+- `x || defaultValue` — treats every falsy value as absent, hiding legitimate `0` / `0n` / `""` / `false`. Only use `||` when you actually want falsy-fallback semantics; for "null/undefined only", use `??`.
+- `Number(x)` / `String(x)` on a value of ambiguous type without first checking what `x` is. `String(null)` is `"null"`, `Number("")` is `0` — neither is what a caller usually means.
+
+DO use explicit checks:
+
+```js
+// "value present" (neither undefined nor null):
+if (x !== undefined && x !== null) { ... }
+
+// "value is a string":
+if (typeof x === "string") { ... }
+
+// "value is a canonical zero" (matches `isPositionClosed` semantics):
+if (x !== undefined && x !== null && String(x) === "0") { ... }
+
+// "coalesce ONLY null/undefined to a default" (`??` is an explicit
+// null/undefined check — different from `||`):
+const v = x ?? defaultValue;
+```
+
+Ten-plus explicit `!== undefined && !== null` guards already exist across the codebase (`dashboard-history.js:203`, `position-detector.js:272-273`, `dashboard-data.js:193`, etc.) — this section codifies that as the standard.
+
 ## Formatting & Line Limits
 
 - **NEVER compact code to fix line count** — compacting undoes Prettier formatting and destroys readability. When a file exceeds the 500-line `max-lines` lint rule, the ONLY acceptable solution is to split the file into a new module. Never merge lines, collapse structures, remove whitespace, or otherwise condense code to fit within the limit.

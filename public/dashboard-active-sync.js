@@ -13,7 +13,12 @@
 "use strict";
 
 import { log } from "./dashboard-log.js";
-import { posStore, updatePosStripUI } from "./dashboard-positions.js";
+import { emojiId } from "./dashboard-helpers.js";
+import {
+  posStore,
+  updatePosStripUI,
+  renderPosBrowser,
+} from "./dashboard-positions.js";
 
 /**
  * Mutate the posStore active entry from `data.activePosition`.  Calls
@@ -48,6 +53,48 @@ function _logSync(before, ap, active, poolIdentityChanged) {
   );
 }
 
+/** Copy liquidity + tick fields from an activePosition payload.
+ *  Both guards use the explicit `!== undefined && !== null` form per the
+ *  "Type Checks" rule in CLAUDE-BEST-PRACTICES.md — a bare `!== undefined`
+ *  would let `null` through and land the string `"null"` in
+ *  `active.liquidity`, silently corrupting the `isPositionClosed` check. */
+function _applyLiqAndTicks(active, ap) {
+  if (ap.liquidity !== undefined && ap.liquidity !== null)
+    active.liquidity = String(ap.liquidity);
+  if (ap.tickLower !== undefined && ap.tickLower !== null) {
+    active.tickLower = ap.tickLower;
+    active.tickUpper = ap.tickUpper;
+  }
+}
+
+/** Copy pool-identity fields (token0/token1/fee).  Returns true when
+ *  any of them changed. */
+function _applyPoolFields(active, ap) {
+  if (!ap.token0) return false;
+  const changed =
+    active.token0 !== ap.token0 ||
+    active.token1 !== ap.token1 ||
+    active.fee !== ap.fee;
+  active.token0 = ap.token0;
+  active.token1 = ap.token1;
+  active.fee = ap.fee;
+  return changed;
+}
+
+/** Copy token symbols.  Returns true when either symbol changed. */
+function _applySymbols(active, ap) {
+  let changed = false;
+  if (ap.token0Symbol && active.token0Symbol !== ap.token0Symbol) {
+    active.token0Symbol = ap.token0Symbol;
+    changed = true;
+  }
+  if (ap.token1Symbol && active.token1Symbol !== ap.token1Symbol) {
+    active.token1Symbol = ap.token1Symbol;
+    changed = true;
+  }
+  return changed;
+}
+
 /*-
  * syncActivePosition runs on every poll (~3s).  In steady state the
  * skip-paths and the no-change render-pass would log forever.  Skip
@@ -60,35 +107,31 @@ export function syncActivePosition(d) {
   if (!active || active.positionType !== "nft") return;
   const ap = d.activePosition;
   const before = _snap(active);
-  if (ap.liquidity !== undefined) active.liquidity = String(ap.liquidity);
-  if (ap.tickLower !== undefined) {
-    active.tickLower = ap.tickLower;
-    active.tickUpper = ap.tickUpper;
-  }
-  let poolIdentityChanged = false;
-  if (ap.token0) {
-    if (
-      active.token0 !== ap.token0 ||
-      active.token1 !== ap.token1 ||
-      active.fee !== ap.fee
-    ) {
-      poolIdentityChanged = true;
-    }
-    active.token0 = ap.token0;
-    active.token1 = ap.token1;
-    active.fee = ap.fee;
-  }
-  if (ap.token0Symbol && active.token0Symbol !== ap.token0Symbol) {
-    active.token0Symbol = ap.token0Symbol;
-    poolIdentityChanged = true;
-  }
-  if (ap.token1Symbol && active.token1Symbol !== ap.token1Symbol) {
-    active.token1Symbol = ap.token1Symbol;
-    poolIdentityChanged = true;
-  }
+  const wasClosed = String(active.liquidity ?? "") === "0";
+  _applyLiqAndTicks(active, ap);
+  const poolFieldsChanged = _applyPoolFields(active, ap);
+  const symbolsChanged = _applySymbols(active, ap);
+  const poolIdentityChanged = poolFieldsChanged || symbolsChanged;
   _maybeLogSync(before, ap, active, poolIdentityChanged);
   if (ap.tokenId) active.tokenId = String(ap.tokenId);
-  if (poolIdentityChanged) updatePosStripUI();
+  /*- Closed-state flip triggers strip + Position Browser re-render so the
+   *  "Open Positions" badge count and the browser row's Closed styling
+   *  reflect a fresh drain (or a re-mint back into liquidity) on the very
+   *  next poll — without this the badge stayed stuck at the pre-drain
+   *  count until the user switched positions manually. */
+  const nowClosed = String(active.liquidity ?? "") === "0";
+  const closedFlipped = wasClosed !== nowClosed;
+  if (closedFlipped) {
+    log.info(
+      "[lp-ranger] [active-sync] #%s %s closed-flip %s→%s — refreshing badge + browser",
+      active.tokenId,
+      emojiId(active.tokenId),
+      wasClosed ? "closed" : "open",
+      nowClosed ? "closed" : "open",
+    );
+  }
+  if (poolIdentityChanged || closedFlipped) updatePosStripUI();
+  if (closedFlipped) renderPosBrowser();
 }
 
 /*-

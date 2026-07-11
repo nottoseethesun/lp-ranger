@@ -33,6 +33,7 @@ const {
   _closePnlEpoch,
   _recordResidual,
   _applyRebalanceResult,
+  _activePosSummary,
 } = require("./bot-recorder");
 const { PM_ABI } = require("./pm-abi");
 const {
@@ -446,6 +447,22 @@ async function _refreshPosition(position, ethersLib, provider) {
   }
 }
 
+/*-
+ * True when two liquidity readings differ.  `null`/`undefined` normalise
+ * to `"0"` explicitly (not via the `x || 0` type-conversion trick, per the
+ * "Type Checks" rule in CLAUDE-BEST-PRACTICES.md) so a first-poll snapshot
+ * of an uninitialised position doesn't spuriously trigger the emit.  Used
+ * to gate the pollCycle `activePosition` re-emit so a chain-observed drain
+ * (or re-mint) propagates to the dashboard on the next `/api/status` poll
+ * — see the fix for the "Open Positions badge stale on failed rebalance"
+ * bug.
+ */
+function _liquidityChanged(prev, cur) {
+  const p = prev !== undefined && prev !== null ? String(prev) : "0";
+  const c = cur !== undefined && cur !== null ? String(cur) : "0";
+  return p !== c;
+}
+
 /**
  * Check whether a compound should be triggered (manual or auto).
  * Runs after P&L update so unclaimed fees are fresh.
@@ -542,7 +559,15 @@ async function pollCycle(deps) {
     log.error("[bot] Pool state error:", err.message);
     return { rebalanced: false, pollError: err.message };
   }
+  const prevLiquidity = position.liquidity;
   await _refreshPosition(position, ethersLib, provider);
+  /*- On liquidity change (drain, external mint, rebalance-follow), re-emit
+   *  activePosition so the dashboard's /api/status view refreshes.  Without
+   *  this, the "Open Positions" badge and LP Position Browser stayed stale
+   *  after a mid-rebalance drain until the user manually switched positions. */
+  if (_liquidityChanged(prevLiquidity, position.liquidity)) {
+    emit({ activePosition: _activePosSummary(position) });
+  }
   const snap = await _updatePnlAndStats(deps, poolState, ethersLib);
   const zeroLiqResult = _checkZeroLiquidity(deps);
   if (zeroLiqResult) return zeroLiqResult;
@@ -585,6 +610,7 @@ module.exports = {
   _humanizeError,
   _checkRebalanceGates,
   _activateSwapBackoff,
+  _liquidityChanged,
   pollCycle,
   _reloadFromConfig,
   DRAINED_RETIRE_MS,

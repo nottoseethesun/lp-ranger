@@ -160,47 +160,66 @@ describe("posStore.add dedup branch refreshes pool-identity fields", () => {
 
 // ── Mirror of _syncActivePosition from dashboard-data.js ───────────────
 
-/**
- * Mirror of `_syncActivePosition` after the fix.  Returns
- * { stripRendered: boolean } so tests can assert on the re-render
- * trigger.  In production `updatePosStripUI()` is called instead.
- */
-function syncActivePosition(active, ap) {
-  let stripRendered = false;
-  const fakeRender = () => {
-    stripRendered = true;
-  };
-  if (!ap) return { stripRendered };
-  if (!active || active.positionType !== "nft") return { stripRendered };
-  if (ap.liquidity !== undefined) active.liquidity = String(ap.liquidity);
-  if (ap.tickLower !== undefined) {
+/** Mirror of production `_applyLiqAndTicks`. */
+function _applyLiqAndTicks(active, ap) {
+  if (ap.liquidity !== undefined && ap.liquidity !== null)
+    active.liquidity = String(ap.liquidity);
+  if (ap.tickLower !== undefined && ap.tickLower !== null) {
     active.tickLower = ap.tickLower;
     active.tickUpper = ap.tickUpper;
   }
-  let poolIdentityChanged = false;
-  if (ap.token0) {
-    if (
-      active.token0 !== ap.token0 ||
-      active.token1 !== ap.token1 ||
-      active.fee !== ap.fee
-    ) {
-      poolIdentityChanged = true;
-    }
-    active.token0 = ap.token0;
-    active.token1 = ap.token1;
-    active.fee = ap.fee;
-  }
+}
+
+/** Mirror of production `_applyPoolFields`. */
+function _applyPoolFields(active, ap) {
+  if (!ap.token0) return false;
+  const changed =
+    active.token0 !== ap.token0 ||
+    active.token1 !== ap.token1 ||
+    active.fee !== ap.fee;
+  active.token0 = ap.token0;
+  active.token1 = ap.token1;
+  active.fee = ap.fee;
+  return changed;
+}
+
+/** Mirror of production `_applySymbols`. */
+function _applySymbols(active, ap) {
+  let changed = false;
   if (ap.token0Symbol && active.token0Symbol !== ap.token0Symbol) {
     active.token0Symbol = ap.token0Symbol;
-    poolIdentityChanged = true;
+    changed = true;
   }
   if (ap.token1Symbol && active.token1Symbol !== ap.token1Symbol) {
     active.token1Symbol = ap.token1Symbol;
-    poolIdentityChanged = true;
+    changed = true;
   }
+  return changed;
+}
+
+/**
+ * Mirror of `_syncActivePosition` after the fix.  Returns
+ * { stripRendered, browserRendered } so tests can assert on the re-render
+ * triggers.  In production `updatePosStripUI()` + `renderPosBrowser()` are
+ * called instead.
+ */
+function syncActivePosition(active, ap) {
+  let stripRendered = false;
+  let browserRendered = false;
+  if (!ap) return { stripRendered, browserRendered };
+  if (!active || active.positionType !== "nft")
+    return { stripRendered, browserRendered };
+  const wasClosed = String(active.liquidity ?? "") === "0";
+  _applyLiqAndTicks(active, ap);
+  const poolFieldsChanged = _applyPoolFields(active, ap);
+  const symbolsChanged = _applySymbols(active, ap);
+  const poolIdentityChanged = poolFieldsChanged || symbolsChanged;
   if (ap.tokenId) active.tokenId = String(ap.tokenId);
-  if (poolIdentityChanged) fakeRender();
-  return { stripRendered };
+  const nowClosed = String(active.liquidity ?? "") === "0";
+  const closedFlipped = wasClosed !== nowClosed;
+  if (poolIdentityChanged || closedFlipped) stripRendered = true;
+  if (closedFlipped) browserRendered = true;
+  return { stripRendered, browserRendered };
 }
 
 describe("_syncActivePosition", () => {
@@ -307,6 +326,102 @@ describe("_syncActivePosition", () => {
     assert.strictEqual(r.stripRendered, false);
     assert.strictEqual(active.token0Symbol, "X");
   });
+
+  it("triggers strip AND browser re-render on open → drained transition", () => {
+    /*- Repro of the "Open Positions badge stale on drain" bug: a
+     *  managed position whose rebalance failed mid-way now reads
+     *  liquidity=0 from the server.  Badge and LP Position Browser
+     *  must both refresh so the count drops and the row renders as
+     *  Closed on the same poll. */
+    const active = {
+      positionType: "nft",
+      tokenId: "161597",
+      token0: "0xA",
+      token1: "0xB",
+      fee: 10000,
+      liquidity: "9876543210",
+    };
+    const r = syncActivePosition(active, {
+      tokenId: "161597",
+      token0: "0xA",
+      token1: "0xB",
+      fee: 10000,
+      liquidity: "0",
+    });
+    assert.strictEqual(r.stripRendered, true);
+    assert.strictEqual(r.browserRendered, true);
+    assert.strictEqual(active.liquidity, "0");
+  });
+
+  it("triggers strip AND browser re-render on drained → open transition", () => {
+    /*- Re-mint after auto-retire recovery: the same NFT flips back to
+     *  live liquidity when the user re-manages a drained position. */
+    const active = {
+      positionType: "nft",
+      tokenId: "161597",
+      token0: "0xA",
+      token1: "0xB",
+      fee: 10000,
+      liquidity: "0",
+    };
+    const r = syncActivePosition(active, {
+      tokenId: "161597",
+      token0: "0xA",
+      token1: "0xB",
+      fee: 10000,
+      liquidity: "12345678",
+    });
+    assert.strictEqual(r.stripRendered, true);
+    assert.strictEqual(r.browserRendered, true);
+  });
+
+  it("does NOT trigger browser re-render on non-zero liquidity growth (compound)", () => {
+    /*- Compounds grow liquidity every few polls but the open/closed
+     *  state does not flip.  Thrashing the browser list on every
+     *  compound would churn the DOM for no user-visible change. */
+    const active = {
+      positionType: "nft",
+      tokenId: "1",
+      token0: "0xA",
+      token1: "0xB",
+      fee: 3000,
+      liquidity: "1000",
+    };
+    const r = syncActivePosition(active, {
+      tokenId: "1",
+      token0: "0xA",
+      token1: "0xB",
+      fee: 3000,
+      liquidity: "1500",
+    });
+    assert.strictEqual(r.stripRendered, false);
+    assert.strictEqual(r.browserRendered, false);
+    assert.strictEqual(active.liquidity, "1500");
+  });
+
+  it("pool-identity change alone does not trigger browser re-render", () => {
+    /*- Rebalance-follow rewrites token0/token1/fee/symbols; the strip
+     *  needs a re-render for the fresh pool label, but the Position
+     *  Browser list rows are keyed by tokenId and their open/closed
+     *  status has not changed. */
+    const active = {
+      positionType: "nft",
+      tokenId: "1",
+      token0: "0xA",
+      token1: "0xB",
+      fee: 3000,
+      liquidity: "1000",
+    };
+    const r = syncActivePosition(active, {
+      tokenId: "1",
+      token0: "0xC",
+      token1: "0xD",
+      fee: 10000,
+      liquidity: "1000",
+    });
+    assert.strictEqual(r.stripRendered, true);
+    assert.strictEqual(r.browserRendered, false);
+  });
 });
 
 // ── Mirror of dashboard-unmanaged.js stale-target guards ────────────────
@@ -381,5 +496,63 @@ describe("dashboard-unmanaged stale-target guards", () => {
     assert.strictEqual(activeMatches({ tokenId: 159250 }, "159250"), true);
     assert.strictEqual(activeMatches(null, "159250"), false);
     assert.strictEqual(activeMatches({ tokenId: "159250" }, "159322"), false);
+  });
+});
+
+// ── Mirror of dashboard-unmanaged.js phase1 DRAINED refresh ────────────────
+
+/*-
+ * Mirror of the phase1 DRAINED branch in
+ * `public/dashboard-unmanaged.js`.  Production imports enterClosedPosView
+ * / updatePosStripUI / renderPosBrowser from other modules that pull DOM
+ * + localStorage in.  Here we pass all three as callbacks so the mirror
+ * can assert on invocation counts.
+ *
+ * Behavior contract: on a DRAINED phase1 response, the pos entry's
+ * liquidity is set to "0" AND all three side effects fire in order
+ * (enterClosedPosView → updatePosStripUI → renderPosBrowser).  Without
+ * updatePosStripUI + renderPosBrowser the header "N Open Positions"
+ * badge and the LP Position Browser list stay stale on an externally-
+ * drained unmanaged NFT the user just navigated to.
+ */
+function handlePhase1Drained(pos, callbacks) {
+  const order = [];
+  pos.liquidity = "0";
+  callbacks.enterClosedPosView(pos);
+  order.push("enterClosedPosView");
+  callbacks.updatePosStripUI();
+  order.push("updatePosStripUI");
+  callbacks.renderPosBrowser();
+  order.push("renderPosBrowser");
+  return order;
+}
+
+describe("phase1 DRAINED refresh (dashboard-unmanaged)", () => {
+  it("sets pos.liquidity to '0' before invoking side effects", () => {
+    let seenLiquidity = null;
+    const pos = { tokenId: "42", liquidity: "12345" };
+    handlePhase1Drained(pos, {
+      enterClosedPosView: (p) => {
+        seenLiquidity = p.liquidity;
+      },
+      updatePosStripUI: () => {},
+      renderPosBrowser: () => {},
+    });
+    assert.strictEqual(pos.liquidity, "0");
+    assert.strictEqual(seenLiquidity, "0");
+  });
+
+  it("invokes enterClosedPosView, updatePosStripUI, and renderPosBrowser in order", () => {
+    const pos = { tokenId: "42", liquidity: "12345" };
+    const order = handlePhase1Drained(pos, {
+      enterClosedPosView: () => {},
+      updatePosStripUI: () => {},
+      renderPosBrowser: () => {},
+    });
+    assert.deepStrictEqual(order, [
+      "enterClosedPosView",
+      "updatePosStripUI",
+      "renderPosBrowser",
+    ]);
   });
 });
