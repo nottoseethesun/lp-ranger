@@ -9,6 +9,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { emojiId } = require("./logger");
 const pools = require("./rebalancer-pools");
 const { _resolveMintGasFloor } = require("./rebalancer-pools");
 const sendTx = require("./send-transaction");
@@ -296,9 +297,15 @@ async function executeRebalance(signer, ethersLib, opts) {
         ((newRange.upperPrice - newRange.lowerPrice) / poolState.price) *
         100
       ).toFixed(2);
+      /*- Names the config-override source explicitly so the log trail
+       *  distinguishes "user pinned a range width via Bot Settings" from
+       *  the fallback preserveRange() path.  Per feedback_add_good_logs
+       *  and feedback_log_nft_id_emoji. */
       log.info(
-        "[rebalance] Step 4: requested=%s%% effective=%s%% ticks=[%d,%d]",
+        "[rebalance] Step 4: Range width: using saved override = %s%% for #%s %s (effective=%s%% after tick-spacing) ticks=[%d,%d]",
         customRangeWidthPct,
+        position.tokenId,
+        emojiId(String(position.tokenId)),
         ePct,
         newRange.lowerTick,
         newRange.upperTick,
@@ -310,6 +317,17 @@ async function executeRebalance(signer, ethersLib, opts) {
           String(customRangeWidthPct),
           ePct,
         );
+    } else {
+      /*- Fallback path: no persistent per-position override in Bot
+       *  Settings — `rangeMath.preserveRange()` preserves the on-chain
+       *  tick spread and re-centers on current price. */
+      log.info(
+        "[rebalance] Step 4: Range width: preserving tick spread (no config override) for #%s %s ticks=[%d,%d]",
+        position.tokenId,
+        emojiId(String(position.tokenId)),
+        newRange.lowerTick,
+        newRange.upperTick,
+      );
     }
 
     // 5. Read full wallet balances (includes residuals from prior rebalances)

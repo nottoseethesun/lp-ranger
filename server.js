@@ -486,18 +486,20 @@ const _routes = {
       return;
     }
     const tokenId = body.positionKey.split("-").pop();
+    /*- The client no longer sends `customRangeWidthPct` in the body.
+     *  Range-width override is persistent per-position config
+     *  (`rebalanceRangeWidthPct` POSITION_KEY) read by the bot loop via
+     *  `deps._getConfig` in src/bot-cycle-opts.js.  Client sets it via
+     *  the Range Width row in Bot Settings → POST /api/config. */
     log.info(
-      "[server] Manual rebalance for %s %s" + " (customRange=%s)",
+      "[server] Manual rebalance for %s %s",
       body.positionKey,
       emojiId(tokenId),
-      body.customRangeWidthPct || "default",
     );
     state.forceRebalance = true;
     state.rebalanceInProgress = true;
     state.rebalancePaused = false;
     state.rebalanceError = null;
-    if (body.customRangeWidthPct > 0)
-      state.customRangeWidthPct = Number(body.customRangeWidthPct);
     jsonResponse(res, 200, {
       ok: true,
       message: "Rebalance requested",

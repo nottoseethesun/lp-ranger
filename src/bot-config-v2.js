@@ -100,6 +100,21 @@ const GLOBAL_KEYS = [
 const POSITION_KEYS = [
   "rebalanceOutOfRangeThresholdPercent",
   "rebalanceTimeoutMin",
+  /*-
+   * Persistent per-position override for the rebalance range width, in
+   * percent of current price.  When set, every subsequent rebalance
+   * (manual OR automatic) uses this width via `_computeRange()` in
+   * src/rebalancer.js.  When unset, the bot falls back to
+   * `rangeMath.preserveRange()` (existing default — preserves the
+   * on-chain tick spread).  No shipped default literal per
+   * feedback_one_literal_per_shipped_default; empty === use fallback.
+   * Set from the "Range Width" input in the Range & Execution
+   * subsection of Bot Settings (see public/dashboard-throttle.js
+   * `saveRangeWidth`).  Cleared by POSTing `null` — the null-sweep in
+   * src/server-routes.js POST /api/config handler deletes the key from
+   * disk so bot-config.json stays clean.
+   */
+  "rebalanceRangeWidthPct",
   "slippagePct",
   "checkIntervalSec",
   "minRebalanceIntervalMin",

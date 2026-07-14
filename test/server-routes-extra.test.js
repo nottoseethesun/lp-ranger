@@ -113,6 +113,71 @@ describe("_handleApiConfig — status field handling", () => {
   });
 });
 
+// ── _handleApiConfig — null-sweep (clear-key semantic) ──────────────
+
+describe("_handleApiConfig — null-sweep for POSITION_KEYS", () => {
+  it("deletes the key from disk when the client POSTs null", async () => {
+    /*- The No Override button on the Bot Settings Range Width row
+     *  POSTs `{ rebalanceRangeWidthPct: null, positionKey }` to clear
+     *  the override.  Without the null-sweep, Object.assign would
+     *  stamp a literal `null` on disk — functionally works (falsy
+     *  check in bot-cycle-opts.js omits the key) but leaves ugly
+     *  entries in bot-config.json.  Regression coverage for the sweep
+     *  added by the "Migrate Rebalance UI" plan. */
+    const pk = "pulsechain-0xA-0xB-42";
+    const deps = makeDeps({
+      readJsonBody: async () => ({
+        positionKey: pk,
+        rebalanceRangeWidthPct: null,
+      }),
+    });
+    /*- Pre-populate the position slot with a saved override so we can
+     *  observe the delete. */
+    deps.diskConfig.positions[pk] = {
+      status: "running",
+      rebalanceRangeWidthPct: 12.5,
+    };
+    const h = createRouteHandlers(deps);
+    const res = makeRes();
+    await h._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 200);
+    /*- Explicit "key absent" assertion per CLAUDE-BEST-PRACTICES
+     *  §"Type Checks" — hasOwnProperty is the strictest check we can
+     *  use (undefined would also match a still-present `undefined`
+     *  value, which is not what we want to permit). */
+    assert.strictEqual(
+      Object.prototype.hasOwnProperty.call(
+        deps.diskConfig.positions[pk],
+        "rebalanceRangeWidthPct",
+      ),
+      false,
+      "null-sweep should have deleted the key from disk, not stamped a null",
+    );
+    /*- Sibling fields (status) must remain untouched. */
+    assert.strictEqual(deps.diskConfig.positions[pk].status, "running");
+  });
+
+  it("preserves numeric values (null-sweep only triggers on null)", async () => {
+    /*- Sanity: a normal Save with a real number persists as expected. */
+    const pk = "pulsechain-0xA-0xB-42";
+    const deps = makeDeps({
+      readJsonBody: async () => ({
+        positionKey: pk,
+        rebalanceRangeWidthPct: 5.5,
+      }),
+    });
+    deps.diskConfig.positions[pk] = { status: "running" };
+    const h = createRouteHandlers(deps);
+    const res = makeRes();
+    await h._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 200);
+    assert.strictEqual(
+      deps.diskConfig.positions[pk].rebalanceRangeWidthPct,
+      5.5,
+    );
+  });
+});
+
 // ── _handlePositionLifetime — triggers scan for matching position ───
 
 describe("_handlePositionLifetime — trigger scan", () => {
