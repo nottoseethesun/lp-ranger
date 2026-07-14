@@ -69,11 +69,15 @@ import {
   resetOffset,
   saveApprovalMultiple,
   updateOffsetComplement,
-  openRebalanceRangeModal,
   closeRebalanceRangeModal,
   updateRebalanceRangeHint,
   confirmRebalanceRange,
 } from "./dashboard-throttle.js";
+import {
+  openRebalanceConfirm,
+  closeRebalanceConfirm,
+  confirmRebalance,
+} from "./dashboard-rebalance-confirm.js";
 import {
   compoundNow,
   toggleAutoCompound,
@@ -539,7 +543,14 @@ export function bindAllEvents() {
   _click("throttleInfoOk", closeTI);
 
   /* ── Mission Control ──────────────────── */
-  _click("rebalanceWithRangeBtn", openRebalanceRangeModal);
+  _click("rebalanceWithRangeBtn", openRebalanceConfirm);
+  _click("ilWarnCancelBtn", closeRebalanceConfirm);
+  _click("ilWarnConfirmBtn", confirmRebalance);
+  /*- Legacy Rebalance-with-Updated-Range modal wirings are retained
+   *  in the same commit that adds the new IL confirmation modal so
+   *  the old modal doesn't render inert markup before its DOM is
+   *  removed.  Both sets are deleted together in the "delete legacy
+   *  modal" commit. */
   _click("rebalanceRangeClose", closeRebalanceRangeModal);
   _click("rebalanceRangeCancelBtn", closeRebalanceRangeModal);
   _click("rebalanceRangeConfirmBtn", confirmRebalanceRange);
@@ -579,6 +590,7 @@ export function bindAllEvents() {
     revealModal: closeRevealModal,
     clearWallet: closeClearWalletModal,
     rebalanceRange: closeRebalanceRangeModal,
+    rebalanceIlWarning: closeRebalanceConfirm,
     throttleInfo: closeTI,
     ilDebug: dismissILDebug,
     donate: () => _hide("donateOverlay"),

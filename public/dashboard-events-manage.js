@@ -632,6 +632,10 @@ export function bindDelegatedEvents(closers) {
         close: closers.rebalanceRange,
       },
       {
+        id: "rebalanceIlWarningModal",
+        close: closers.rebalanceIlWarning,
+      },
+      {
         id: "throttleInfoModal",
         close: closers.throttleInfo,
       },

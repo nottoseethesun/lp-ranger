@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1783713261919">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1783713261919">
+<link rel="stylesheet" href="style.css?v=1784067703680">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784067703680">
 </head>
 <body>
 
@@ -450,6 +450,28 @@
   </div>
 </div>
 
+<!-- ═══ MILD-IL CONFIRMATION MODAL (manual Rebalance action) ═══ -->
+<div class="modal-overlay hidden" id="rebalanceIlWarningModal">
+  <div class="modal 9mm-pos-mgr-modal-sm 9mm-pos-mgr-warning-modal">
+    <div class="modal-logo">
+      <div class="modal-logo-icon">⚠</div>
+      <div><h2>Rebalance Now</h2><p>Frequent rebalancing can crystallize IL</p></div>
+    </div>
+    <div class="9mm-pos-mgr-confirm-body">
+      <div id="rebalanceIlWarningCtx"></div>
+      <p>Each rebalance incurs gas and slippage that can crystallize impermanent loss over time. The bot&rsquo;s automatic rebalances already respect your <strong>OOR Threshold</strong>, <strong>OOR Timeout</strong>, and <strong>Min Time Between Rebalances</strong> settings.</p>
+      <p class="9mm-pos-mgr-text-muted">Range width: <span id="ilRangeWidthPreview">&mdash;</span></p>
+      <div class="9mm-pos-mgr-confirm-footer">
+        If you rebalanced within the last 10 minutes, the bot may already sweep residuals automatically. Consider reviewing your throttle settings if you find yourself here often.
+      </div>
+    </div>
+    <div class="9mm-pos-mgr-btn-row">
+      <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="ilWarnCancelBtn">Cancel</button>
+      <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="ilWarnConfirmBtn">Rebalance Anyway</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ DASHBOARD ═══ -->
 <div class="app">
 
@@ -737,7 +759,7 @@
         <span class="9mm-pos-mgr-gas-status 9mm-pos-mgr-gas-hidden" id="gasStatusBadge" title=""><span class="9mm-pos-mgr-gas-status-line1" id="gasStatusText">Gas Running Low</span><span class="9mm-pos-mgr-gas-status-line2" id="gasStatusDetail"></span></span>
       </div>
       <div class="9mm-pos-mgr-mission-bottom">
-        <button type="button" class="9mm-pos-mgr-mission-btn" id="rebalanceWithRangeBtn" disabled title="Manually force a rebalance. Automatic rebalancing stays in effect.">Rebalance Now</button>
+        <button type="button" class="9mm-pos-mgr-mission-btn" id="rebalanceWithRangeBtn" disabled title="Manually force a rebalance now — a confirmation dialog will appear first. Automatic rebalancing stays in effect. Range width comes from Bot Settings.">Rebalance Now</button>
         <hr class="9mm-pos-mgr-mission-divider">
         <button type="button" class="9mm-pos-mgr-mission-btn" id="compoundNowBtn" disabled title="Enabled when Fees available are > $usd 1">Compound Now</button>
         <div class="9mm-pos-mgr-mission-compound-block">
@@ -1363,6 +1385,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1783713261919"></script>
+<script src="dist/bundle.js?v=1784067703680"></script>
 </body>
 </html>
