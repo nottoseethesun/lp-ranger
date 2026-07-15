@@ -2254,6 +2254,14 @@ span[title]:not([title=""]):hover {
   display: flex;
   flex-direction: column;
   height: 100%;
+
+  /* Override .kpi-card's --panel-opacity fill for this instance only:
+     if the outer card AND the inner mission-control both tinted at
+     --panel-opacity, the two layers would compound (1 - t²) and the sky
+     would vanish behind Mission Control.  Transparent outer + tinted
+     inner = a single translucent layer at --panel-opacity, so clouds
+     show through the way they do behind every other panel. */
+  background: transparent;
 }
 
 .\39 mm-pos-mgr-mission-control {
@@ -2261,7 +2269,13 @@ span[title]:not([title=""]):hover {
   flex-direction: column;
   gap: 6px;
   min-height: 620px;
-  background: #260700;
+
+  /* Same #260700 dark-red-brown as before, now tinted at --panel-opacity
+     so the sky + drifting clouds show through Mission Control's
+     interior the same 15 % they show through every other panel.  The
+     leather-crest <img> child is unaffected — <img> opacity is not
+     driven by container background. */
+  background: rgb(38 7 0 / var(--panel-opacity));
   border-radius: 15px;
   padding: 21px 30px 6px;
   margin: 0 0 6px;
@@ -2384,7 +2398,7 @@ span[title]:not([title=""]):hover {
 }
 
 .\39 mm-pos-mgr-mission-status.active {
-  background: #ff8f42;
+  background: rgb(255 143 66 / var(--panel-opacity));
   color: #260700;
   border-color: #ff8f42;
 }
@@ -2773,16 +2787,47 @@ span[title]:not([title=""]):hover {
    ── Tuning knobs ─────────────────────────────────────────────────
    Cloud opacity     → `opacity` value (currently 0.18) — a very faint
                        signature so the sky base still dominates.
-   Cloud speed       → `animation-duration` (currently 900s / 15 min per
-                       full traversal); larger = slower.
+   Cloud speed       → `animation-duration` on the three modifier
+                       classes.  BOTTOM is anchored as the "max cloud
+                       speed" (currently 900s / 15 min per traversal);
+                       MIDDLE runs 20 % slower (1080s); TOP runs 20 %
+                       slower than middle (1296s).  Larger duration =
+                       slower cloud.  Adjust each independently; the
+                       relationship is a convention, not enforced by
+                       the CSS.
    Vertical spacing  → `top` percentages on the three modifier classes
                        (currently 8%, 40%, 70% for even distribution).
-   Phase offsets     → `animation-delay` on the middle/bottom modifiers
-                       (currently -300s and -600s of the 900s cycle,
-                       i.e. 1/3 and 2/3 through).
+   Phase offsets     → `animation-delay` on the middle/top modifiers
+                       so the three don't all start at the same
+                       screen X.  Values are approximate ⅓- and ⅔-
+                       through-cycle offsets of the bottom cloud's
+                       duration; since the middle/top cycles are
+                       longer, the effective phase drifts over time
+                       (which is a feature — three different-speed
+                       clouds should NOT stay in lockstep).
    Cloud size        → `width`/`height` on the base class (currently
-                       900×600).  The PNG files themselves are 900×600. */
+                       900×600).  The PNG files themselves are 900×600.
+   Cloud depth       → per-cloud `opacity` values on the three modifier
+                       classes.  BOTTOM (foreground) is the densest at
+                       0.55; MIDDLE at 0.38; TOP (background) is the
+                       faintest at 0.22.  This atmospheric-perspective
+                       gradient gives the three-cloud stack a 3D feel:
+                       nearer clouds read as solid, farther clouds
+                       fade into the sky.  Adjust each independently
+                       to tune the depth effect. */
 .\39 mm-pos-mgr-cloud {
+  /* - Anchor: bottom cloud's duration = MAX cloud speed.  Middle is
+      slowed by --cloud-slow-factor, top by that same factor again.
+      Change these two variables, all three cloud speeds re-derive. */
+  --cloud-max-speed: 900s;
+  --cloud-slow-factor: 1.2;
+  --cloud-middle-speed: calc(var(--cloud-max-speed) * var(--cloud-slow-factor));
+  --cloud-top-speed:
+    calc(
+      var(--cloud-max-speed) * var(--cloud-slow-factor) *
+        var(--cloud-slow-factor)
+    );
+
   position: fixed;
   left: 0;
   width: 900px;
@@ -2791,25 +2836,41 @@ span[title]:not([title=""]):hover {
   pointer-events: none;
   background-repeat: no-repeat;
   background-size: contain;
-  opacity: 0.35;
-  animation: cloudDrift 900s linear infinite;
+  animation-name: cloudDrift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png");
+  background-image: url("background-cloud_top.png?v=1784158230459");
+  animation-duration: var(--cloud-top-speed);
+
+  /* - ⅔-through the bottom's cycle; phase drifts over time because
+      top's cycle is longer — feature, not bug. */
+  animation-delay: calc(-2 * var(--cloud-max-speed) / 3);
+
+  /* - Farthest from viewer — faintest for atmospheric perspective. */
+  opacity: 0.22;
 }
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png");
-  animation-delay: -300s;
+  background-image: url("background-cloud_middle.png?v=1784158230459");
+  animation-duration: var(--cloud-middle-speed);
+  animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
+
+  /* - Middle layer — moderate opacity. */
+  opacity: 0.38;
 }
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png");
-  animation-delay: -600s;
+  background-image: url("background-cloud_bottom.png?v=1784158230459");
+  animation-duration: var(--cloud-max-speed);
+
+  /* - Nearest to viewer — densest for atmospheric perspective. */
+  opacity: 0.55;
 }
 
 /* Wrap-around drift.  `translateX(calc(-100% + 1px))` puts the cloud
@@ -2824,14 +2885,18 @@ span[title]:not([title=""]):hover {
 }
 
 /* ── Panel translucency ────────────────────────────────────────────
-   All cards except Mission Control get 15 % more translucent so the
-   sky + drifting clouds show through faintly.  Mission Control keeps
-   its solid background — it holds the action buttons and the leather
-   crest, so it should read as a decisive foreground panel. */
-.kpi-card:not(.\39 mm-pos-mgr-mission-panel) {
-  background: rgb(15 25 36 / 85%);
+   Every top-level card gets its background alpha driven by the shared
+   --panel-opacity token defined in style.css (which is derived from
+   --panel-translucency).  Change --panel-translucency in one place to
+   retune every card at once; the sky + drifting clouds show through
+   proportionally.  Mission Control's leather crest sits on top as its
+   own 100 % opaque bitmap, so the panel translucency doesn't reduce
+   its readability. */
+.kpi-card,
+.card {
+  background: rgb(15 25 36 / var(--panel-opacity));
 }
 
 .wallet-strip {
-  background: rgb(20 27 36 / 85%);
+  background: rgb(20 27 36 / var(--panel-opacity));
 }

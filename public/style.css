@@ -11,6 +11,13 @@
   --text:#e0eaf4;
   --muted:#8aa0b0;
   --card:#0f1924;
+
+  /* Panel translucency — how much of the sky + drifting clouds shows
+     through every card / subpanel / form-control background.  Change
+     this one value to retune the whole app; the paired --panel-opacity
+     is what the rgb(... / …) alpha slots consume. */
+  --panel-translucency:15%;
+  --panel-opacity:calc(100% - var(--panel-translucency));
 }
 
 *{
@@ -1667,7 +1674,13 @@ header{
 
 /* ── BOT CONFIG ── */
 .cfg-block{
-  background:var(--bg3);
+  /* Fully transparent on purpose.  These subpanels live inside a
+     .kpi-card which is already tinted at --panel-opacity; if the
+     subpanel ALSO used --panel-opacity the two translucent layers
+     would compound (1 - t² instead of 1 - t) and the sky would
+     disappear from every inner region of Bot Configuration.  Border
+     + padding still provide the visual "panel" boundary. */
+  background:transparent;
   border:1px solid var(--border);
   border-radius:15px;
   padding:20px;
@@ -1783,7 +1796,9 @@ header{
 .plbl{color:var(--muted);}
 
 .pinput{
-  background:var(--bg);
+  /* 15 % translucent so the sky base carries through form fields
+     the same way it does through panel backgrounds. */
+  background:rgb(8 12 16 / var(--panel-opacity));
   border:1px solid var(--border);
   border-radius:9px;
   color:var(--text);
