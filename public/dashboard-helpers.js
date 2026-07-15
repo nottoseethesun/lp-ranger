@@ -103,15 +103,20 @@ export const ACT_ICONS = {
   gear: `<svg ${_S}><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z"/><circle cx="8" cy="8" r="2"/></svg>`,
   warn: `<svg ${_S}><path d="M8 1L1 15h14z"/><path d="M8 6v4M8 12v1"/></svg>`,
   swap: `<svg ${_S}><path d="M2 5h12M10 2l4 3-4 3"/><path d="M14 11H2M6 8l-4 3 4 3"/></svg>`,
-  /*- Acorn: Compound activity entries.  Same outline / fill:none /
-   *  currentColor / 1.3-stroke convention as the other icons; original
-   *  filled+coloured artwork adapted to fit.  Three paths: short stem,
-   *  wide-oval cap, egg-shaped nut. */
-  acorn: `<svg ${_S}><path d="M8 2v2.5"/><path d="M3.5 6.5Q3.5 4 8 4Q12.5 4 12.5 6.5Q12.5 7.5 8 7.5Q3.5 7.5 3.5 6.5Z"/><path d="M4 7.5Q4 14 8 14Q12 14 12 7.5Z"/></svg>`,
-  /*- Lasso: Rebalance activity entries.  Right-side open loop plus a
-   *  tail rope curving down-left, evoking a thrown lasso.  Same
-   *  convention as the other icons. */
-  lasso: `<svg ${_S}><ellipse cx="10" cy="6" rx="3.5" ry="3"/><path d="M8 8Q4 10 2 14"/></svg>`,
+  /*- Acorn: Compound activity entries.  User-provided art (dark-green
+   *  rounded-rect background + white acorn + stem).  Rendered at 18×18
+   *  like every other icon; internal 64×64 viewBox preserved so the
+   *  supplied coordinate math (Q-curve caps + ellipse nut) still lines
+   *  up.  Colours are hard-coded on purpose — this is decorative art,
+   *  not a currentColor-tinted geometric glyph. */
+  acorn: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" ry="8" fill="#0F3D2E"/><ellipse cx="32" cy="39" rx="12" ry="15" fill="#FFFFFF"/><path d="M20 26 Q20 19 32 17 Q44 19 44 26 Q44 29 32 29 Q20 29 20 26" fill="#FFFFFF"/><path d="M23.5 23 Q32 21.2 40.5 23" fill="none" stroke="#0F3D2E" stroke-width="1.4" stroke-linecap="round"/><path d="M24.5 26 Q32 24.7 39.5 26" fill="none" stroke="#0F3D2E" stroke-width="1.4" stroke-linecap="round"/><path d="M32 17 Q33.5 11 32 7" fill="none" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round"/></svg>`,
+  /*- Lasso: Rebalance activity entries.  User-provided art matching
+   *  the acorn's dark-green rounded-rect background + white foreground
+   *  strokes.  Rendered at 18×18 with an internal 64×64 viewBox so the
+   *  supplied Q-curve coil + loop coordinates render unchanged.
+   *  Colours are hard-coded — this is decorative art, not a
+   *  currentColor-tinted geometric glyph. */
+  lasso: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" ry="8" fill="#0F3D2E"/><path d="M18 25 Q12 32 18 40 Q25 46 32 40" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 40 Q42 35 48 25 Q45 15 35 20 Q28 28 32 40" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 30 Q15 35 20 40" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/></svg>`,
 };
 /** Maximum entries in the Activity Log. */
 const ACT_LOG_MAX = 500;
