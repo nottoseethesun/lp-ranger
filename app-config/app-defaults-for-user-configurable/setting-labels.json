@@ -1,0 +1,30 @@
+{
+  "_comment": "Human-readable labels for internal config keys, used by the Activity Log 'Setting Saved' formatter (public/dashboard-setting-labels.js). Keyed directly to the internal config key — never by position — so a new setting only needs an entry here to get a friendly log line. Message shape: '<label> is now <value><unit>'. Missing entries fall back to the raw '<key> = <value>' form so a forgotten label doesn't break the log line.",
+  "rebalanceRangeWidthPct": {
+    "label": "Range Width for Rebalancing",
+    "unit": "%"
+  },
+  "rebalanceOutOfRangeThresholdPercent": {
+    "label": "OOR Threshold",
+    "unit": "%"
+  },
+  "rebalanceTimeoutMin": { "label": "OOR Timeout", "unit": " min" },
+  "slippagePct": { "label": "Slippage", "unit": "%" },
+  "checkIntervalSec": { "label": "Check Interval", "unit": " sec" },
+  "minRebalanceIntervalMin": {
+    "label": "Min Time Between Rebalances",
+    "unit": " min"
+  },
+  "maxRebalancesPerDay": { "label": "Max Rebalances per Day", "unit": "" },
+  "gasStrategy": { "label": "Gas Strategy", "unit": "" },
+  "offsetToken0Pct": {
+    "label": "Position Offset (Token 0 share)",
+    "unit": "%"
+  },
+  "approvalMultiple": { "label": "Approval Multiple", "unit": "×" },
+  "autoCompoundThresholdUsd": {
+    "label": "Auto-Compound Threshold",
+    "unit": " USD"
+  },
+  "gasFeePct": { "label": "Max Gas Fee", "unit": "%" }
+}

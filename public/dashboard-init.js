@@ -73,6 +73,7 @@ import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadNftProviders } from "./dashboard-nft-providers.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
+import { loadSettingLabels } from "./dashboard-setting-labels.js";
 import {
   bindAllEvents,
   restorePrivacyMode,
@@ -255,6 +256,10 @@ function _afterDisclaimer() {
    *  hard-coded chain slug. Silent on failure — the section simply
    *  renders empty links rather than blocking the modal. */
   loadChartProviders();
+  /*- Fetch human-readable label map for Activity Log 'Setting Saved'
+   *  formatter.  Silent on failure — the client falls back to raw
+   *  '<key> = <value>' form when the label map is empty. */
+  loadSettingLabels();
 
   /*- Fetch Bot Config tunable defaults so each input shows the value
    *  declared in app-config/app-defaults-for-user-configurable/bot-config-defaults.json

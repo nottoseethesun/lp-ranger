@@ -75,6 +75,7 @@
  *   GET  /api/ui-defaults           → Dashboard default preferences (sounds, etc.)
  *   GET  /api/nft-providers         → Short labels for NFT position-manager contracts
  *   GET  /api/bot-config-defaults   → Bot Settings defaults (single source of truth)
+ *   GET  /api/setting-labels        → Human-readable labels for config keys (Activity Log formatter)
  *
  *   Actions
  *   POST /api/rebalance             → Force-rebalance a position (positionKey)

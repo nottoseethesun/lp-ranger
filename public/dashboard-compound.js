@@ -20,6 +20,7 @@ import {
 } from "./dashboard-data.js";
 import { findActiveAction } from "./dashboard-mission-badge.js";
 import { truncName } from "./dashboard-helpers.js";
+import { formatSettingChange } from "./dashboard-setting-labels.js";
 
 /**
  * Show a small modal telling the user their action is queued behind
@@ -203,6 +204,7 @@ export function saveCompoundThreshold(minFee) {
     ACT_ICONS.gear,
     "start",
     "Setting Saved",
-    "autoCompoundThresholdUsd = " + val + (pl ? "\n" + pl : ""),
+    formatSettingChange("autoCompoundThresholdUsd", val) +
+      (pl ? "\n" + pl : ""),
   );
 }

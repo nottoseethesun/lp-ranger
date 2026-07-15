@@ -31,6 +31,10 @@ import {
   getInputDefault,
 } from "./dashboard-data.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
+import {
+  formatSettingChange,
+  labelForKey,
+} from "./dashboard-setting-labels.js";
 
 // Late-bound import to avoid circular dep issues at evaluation time.
 // Populated by dashboard-init.js after all modules load.
@@ -439,7 +443,7 @@ function _saveSingleConfig(inputId, key, parse) {
     ACT_ICONS.gear,
     "start",
     "Setting Saved",
-    key + " = " + val + (pl ? "\n" + pl : ""),
+    formatSettingChange(key, val) + (pl ? "\n" + pl : ""),
   );
 }
 
@@ -603,7 +607,8 @@ export function resetRangeWidth() {
     ACT_ICONS.gear,
     "start",
     "Setting Saved",
-    "rebalanceRangeWidthPct cleared — preserving current tick spread" +
+    labelForKey("rebalanceRangeWidthPct") +
+      " cleared — preserving current tick spread" +
       (pl ? "\n" + pl : ""),
   );
 }

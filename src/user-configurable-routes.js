@@ -18,6 +18,7 @@ const { handleUiDefaults } = require("./ui-defaults");
 const { handleNftProviders } = require("./nft-providers");
 const { handleBotConfigDefaults } = require("./bot-config-defaults");
 const { handleChartProviders } = require("./chart-providers");
+const { handleSettingLabels } = require("./setting-labels");
 
 /**
  * Build the `{ "METHOD /path": handler }` route map for all
@@ -36,6 +37,8 @@ function userConfigurableRoutes(jsonResponse) {
       handleBotConfigDefaults(req, res, jsonResponse),
     "GET /api/chart-providers": (req, res) =>
       handleChartProviders(req, res, jsonResponse),
+    "GET /api/setting-labels": (req, res) =>
+      handleSettingLabels(req, res, jsonResponse),
   };
 }
 
