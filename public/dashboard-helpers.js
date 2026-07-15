@@ -115,7 +115,7 @@ export const ACT_ICONS = {
    *  the left with a second coil layer for detail, plus a main loop
    *  on the right.  Rendered at 40×40 with a 64×64 viewBox so the
    *  supplied Q-curve coordinates render unchanged. */
-  lasso: `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" ry="8" fill="#0F3D2E"/><path d="M16 26 Q10 33 17 40 Q26 46 34 39" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 30 Q13 35 19 41" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round"/><path d="M34 39 Q44 34 50 24 Q46 14 36 19 Q29 27 34 39" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  lasso: `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" ry="8" fill="#0F3D2E"/><path d="M16 26 Q10 33 17 40 Q26 46 34 39" fill="none" stroke="#FFFFFF" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 30 Q13 35 19 41" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/><path d="M34 39 Q44 34 50 24 Q46 14 36 19 Q29 27 34 39" fill="none" stroke="#FFFFFF" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 /** Maximum entries in the Activity Log. */
 const ACT_LOG_MAX = 500;
