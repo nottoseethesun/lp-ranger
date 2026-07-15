@@ -127,7 +127,6 @@ function rangeWidthPreviewText(status, active) {
   const preserved = computePreservedWidthPct(
     active?.tickLower,
     active?.tickUpper,
-    status?.poolState?.price,
   );
   return preserved
     ? "preserving current tick spread (~" + preserved + "%)"
@@ -149,7 +148,6 @@ describe("_rangeWidthPreviewText", () => {
     const text = rangeWidthPreviewText(
       {
         rebalanceRangeWidthPct: 15,
-        poolState: { price: 1 },
       },
       { tickLower: -100, tickUpper: 100 },
     );
@@ -157,14 +155,11 @@ describe("_rangeWidthPreviewText", () => {
   });
 
   it("falls back to preserveRange preview when override is unset", () => {
-    const text = rangeWidthPreviewText(
-      { poolState: { price: 1 } },
-      { tickLower: -500, tickUpper: 500 },
-    );
+    const text = rangeWidthPreviewText({}, { tickLower: -500, tickUpper: 500 });
     assert.match(text, /^preserving current tick spread \(~\d+\.\d{2}%\)$/);
   });
 
-  it("shows generic preserveRange text when ticks or price are missing", () => {
+  it("shows generic preserveRange text when ticks are missing", () => {
     const text = rangeWidthPreviewText({}, {});
     assert.equal(text, "preserving current tick spread");
   });
@@ -175,7 +170,7 @@ describe("_rangeWidthPreviewText", () => {
      *  _getConfig returns 0, so the preview should reflect that by
      *  falling through to the preserveRange path. */
     const text = rangeWidthPreviewText(
-      { rebalanceRangeWidthPct: 0, poolState: { price: 1 } },
+      { rebalanceRangeWidthPct: 0 },
       { tickLower: -100, tickUpper: 100 },
     );
     /*- With `Number.isFinite(0)` being true and the explicit
