@@ -81,7 +81,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── 9mm-pos-mgr.css           # Semantic utility classes, all prefixed `9mm-pos-mgr-`
 │   ├── fonts.css                 # Self-hosted @font-face declarations (Space Mono + Urbanist)
 │   ├── fonts/                    # WOFF2 font files (gitignored, copied from node_modules)
-│   ├── icons/                    # Activity-Log SVG icons — one file per icon, validated by scripts/lint-svg.js. See docs/engineering.md § "SVG Assets"
+│   ├── icons/                    # All dashboard SVG icons — act-*.svg loaded via <img>, ui-*.svg via fetch+inject. Validated by scripts/lint-svg.js. See docs/engineering.md § "SVG Assets"
 │   ├── dist/bundle.js            # esbuild output (gitignored, built from dashboard-init.js)
 │   ├── ethers-adapter.js         # ES module adapter: re-exports ethers from npm
 │   ├── dashboard-helpers.js      # Shared utilities: g(), act(), fmtMs(), fmtDateTime(), fmtCountdown(), nextMidnight(), botConfig
@@ -107,6 +107,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── dashboard-price-override.js # Manual token price override for positions where auto-detection fails
 │   ├── dashboard-closed-pos.js   # Closed-position history view: fetches and displays P&L for drained NFTs
 │   ├── dashboard-sounds.js       # UI sound effects with master toggle (Settings) + localStorage persistence
+│   ├── dashboard-ui-icons.js     # Loader for `data-svg` placeholder → inline-injected `ui-*.svg` from public/icons/
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: startBotLoop, provider/signer setup, epoch cache restore
