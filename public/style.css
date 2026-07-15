@@ -32,7 +32,21 @@ body{
    horizon, softened with blur(6px) so the radial edges read as clouds
    rather than circles.  Slow (5-min) drift animation keeps the sky feeling
    alive without being distracting.  No image assets, no HTML changes,
-   pointer-events:none preserved so the layer never intercepts clicks. */
+   pointer-events:none preserved so the layer never intercepts clicks.
+
+   ── Tuning knobs ──────────────────────────────────────────────────────
+   More/less visible clouds  → alpha values in each `radial-gradient`
+                                (currently 7%–10%).
+   Softer/sharper wisp edges → `filter: blur(6px)`; larger = softer.
+   Brighter/dimmer dusk band → the two alpha stops in the final
+                                `linear-gradient` (currently 16% & 8%).
+   Taller/shorter dusk band  → the `40%` stop; smaller = shorter band.
+   Faster/slower drift       → the `300s` duration in `animation`.
+   Cloud position            → the `at X% Y%` coords in each
+                                `radial-gradient`.  Same X/Y also appears
+                                in the `driftClouds` keyframes' `to`
+                                offsets if you want to change the direction
+                                each wisp drifts. */
 body::before{
   content:'';
   position:fixed;
