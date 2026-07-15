@@ -29,12 +29,27 @@ const _SRC = path.join(_ROOT, "public", "index.html");
 const _DIST_DIR = path.join(_ROOT, "public", "dist");
 const _OUT = path.join(_DIST_DIR, "index.html");
 
+/*- Pre-compiled regex table for the fixed set of placeholder attrs
+ *  this script touches.  Static literals per attribute so the
+ *  security-lint no-runtime-RegExp-construction rule stays green,
+ *  and adding a new attr surfaces here as a table entry rather
+ *  than a string-concat lurking inside a call site. */
+const _ATTR_MATCHERS = {
+  "data-svg": /\bdata-svg="([^"]+)"/,
+  "data-w": /\bdata-w="([^"]+)"/,
+  "data-h": /\bdata-h="([^"]+)"/,
+};
+const _ATTR_STRIPPERS = {
+  "data-svg": /\s+data-svg="[^"]*"/g,
+  "data-w": /\s+data-w="[^"]*"/g,
+  "data-h": /\s+data-h="[^"]*"/g,
+};
+
 /*- Extract a specific attribute's value from a raw HTML attrs blob.
  *  Returns null when the attribute isn't present.  Assumes double-
  *  quoted values (matches how index.html is authored). */
 function _attr(attrs, name) {
-  const re = new RegExp("\\b" + name + '="([^"]+)"');
-  const m = attrs.match(re);
+  const m = attrs.match(_ATTR_MATCHERS[name]);
   return m ? m[1] : null;
 }
 
@@ -42,9 +57,7 @@ function _attr(attrs, name) {
  *  from an attrs blob.  Leaves the surrounding attrs intact. */
 function _stripAttrs(attrs, names) {
   let out = attrs;
-  for (const n of names) {
-    out = out.replace(new RegExp("\\s+" + n + '="[^"]*"', "g"), "");
-  }
+  for (const n of names) out = out.replace(_ATTR_STRIPPERS[n], "");
   return out;
 }
 
