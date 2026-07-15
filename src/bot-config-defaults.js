@@ -131,6 +131,14 @@ const _NORMALIZERS = {
   pricePauseExceptionPollWindowMultiple: (v) => _clampInt(v, 1, 10000),
   rebalanceOutOfRangeThresholdPercent: (v) => _clampInt(v, 1, 100),
   rebalanceTimeoutMin: (v) => _clampNonNegInt(v, 1440),
+  /*- Range width bounds match the "Range Width" input attrs in
+   *  public/index.html (min=0.1 max=200) and dashboard-throttle.js
+   *  `saveRangeWidth` rejection guard.  Value is exposed via
+   *  /api/bot-config-defaults so the "Default" button in Bot Settings
+   *  can inject it into the input; the bot itself does NOT fall back
+   *  to this value at rebalance time (undefined config still means
+   *  preserveRange()). */
+  rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 200),
   slippagePct: (v) => _clampFloat(v, 0.1, 5),
   checkIntervalSec: (v) => _clampInt(v, 10, 3600),
   minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),

@@ -274,6 +274,14 @@ function _afterDisclaimer() {
     offsetToken0Pct: "inOffsetToken0",
     gasFeePct: "inGasFeePct",
   };
+  /*- Store-only defaults: shipped values that must be reachable via
+   *  `getInputDefault(key)` (e.g. the "Default" button on the Range
+   *  Width row reads its value from here) but must NOT auto-populate
+   *  their input on init.  For Range Width, the input is populated
+   *  per-poll by `syncRangeWidth` from saved-override or preserveRange
+   *  formula; injecting the shipped default here would flash 15 for
+   *  ~50 ms until the first poll's syncRangeWidth overwrote it.  */
+  const _STORE_ONLY_DEFAULT_KEYS = ["rebalanceRangeWidthPct"];
   fetch("/api/bot-config-defaults")
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
@@ -284,6 +292,10 @@ function _afterDisclaimer() {
         setConfigInputDefault(key, v);
         const el = g(elId);
         if (el && !el.dataset.userDirty) el.value = v;
+      }
+      for (const key of _STORE_ONLY_DEFAULT_KEYS) {
+        const v = d[key];
+        if (typeof v === "number") setConfigInputDefault(key, v);
       }
       /*- Keep the complement offset input in sync with the offsetToken0
        *  default so the row reads correctly on first paint. */

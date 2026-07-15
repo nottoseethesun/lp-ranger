@@ -69,6 +69,7 @@ import {
   resetOffset,
   saveRangeWidth,
   resetRangeWidth,
+  setDefaultRangeWidth,
   saveApprovalMultiple,
   updateOffsetComplement,
 } from "./dashboard-throttle.js";
@@ -485,6 +486,7 @@ export function bindAllEvents() {
       ":not(#resetOffsetBtn)" +
       ":not(#saveRangeWidthBtn)" +
       ":not(#resetRangeWidthBtn)" +
+      ":not(#defaultRangeWidthBtn)" +
       ":not(#saveApprovalMultipleBtn)",
     "click",
     saveOorThreshold,
@@ -500,6 +502,7 @@ export function bindAllEvents() {
   _click("resetOffsetBtn", resetOffset);
   _click("saveRangeWidthBtn", saveRangeWidth);
   _click("resetRangeWidthBtn", resetRangeWidth);
+  _click("defaultRangeWidthBtn", setDefaultRangeWidth);
   /*- Mark the Range Width input dirty on every keystroke so the
    *  per-poll `syncRangeWidth` (dashboard-data-range-width.js) can't
    *  clobber mid-typing when a saved override already exists.

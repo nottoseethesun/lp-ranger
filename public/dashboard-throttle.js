@@ -28,6 +28,7 @@ import {
   _posLabel,
   _posContextHtml,
   markInputDirty,
+  getInputDefault,
 } from "./dashboard-data.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
 
@@ -605,6 +606,24 @@ export function resetRangeWidth() {
     "rebalanceRangeWidthPct cleared — preserving current tick spread" +
       (pl ? "\n" + pl : ""),
   );
+}
+
+/**
+ * Populate the Range Width input with the shipped default sourced from
+ * `bot-config-defaults.json` (loaded once at init via
+ * `/api/bot-config-defaults` and cached in `_CONFIG_INPUT_DEFAULTS`).
+ * Marks the input dirty so the next poll's `syncRangeWidth` won't
+ * clobber the injected value; the user still has to click Save to
+ * persist.  No-op when the default hasn't loaded yet (init AJAX
+ * hasn't resolved) or the input is missing.
+ */
+export function setDefaultRangeWidth() {
+  const def = getInputDefault("rebalanceRangeWidthPct");
+  if (!Number.isFinite(def)) return;
+  const el = g("inRangeWidth");
+  if (!el) return;
+  el.value = String(def);
+  markInputDirty("inRangeWidth");
 }
 
 /** Update OOR threshold + timeout display from status. */
