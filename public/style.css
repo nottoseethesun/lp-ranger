@@ -27,14 +27,33 @@ body{
   overflow-x:hidden;
 }
 
+/* Western night-sky background — replaces the former grid-line overlay.
+   Four muted radial-gradient cloud wisps + a low-alpha dusk band at the
+   horizon, softened with blur(6px) so the radial edges read as clouds
+   rather than circles.  Slow (5-min) drift animation keeps the sky feeling
+   alive without being distracting.  No image assets, no HTML changes,
+   pointer-events:none preserved so the layer never intercepts clicks. */
 body::before{
   content:'';
   position:fixed;
   inset:0;
-  background-image:linear-gradient(rgb(0 229 255 / 2.5%) 1px,transparent 1px),linear-gradient(90deg,rgb(0 229 255 / 2.5%) 1px,transparent 1px);
-  background-size:60px 60px;
-  pointer-events:none;
   z-index:0;
+  pointer-events:none;
+  background-image:
+    radial-gradient(60% 18% at 15% 22%, rgb(120 130 150 / 10%), rgb(120 130 150 / 0%) 70%),
+    radial-gradient(50% 14% at 55% 12%, rgb(110 120 145 / 8%), rgb(110 120 145 / 0%) 70%),
+    radial-gradient(70% 20% at 82% 30%, rgb(130 140 160 / 9%), rgb(130 140 160 / 0%) 70%),
+    radial-gradient(45% 16% at 35% 45%, rgb(115 110 140 / 7%), rgb(115 110 140 / 0%) 70%),
+    linear-gradient(to top, rgb(120 60 40 / 16%) 0%, rgb(70 40 60 / 8%) 14%, rgb(8 12 16 / 0%) 40%);
+  background-repeat:no-repeat;
+  filter:blur(6px);
+  opacity:0.9;
+  animation:driftClouds 300s linear infinite alternate;
+}
+
+@keyframes driftClouds{
+  from{background-position:0 0,0 0,0 0,0 0,center bottom;}
+  to{background-position:40px -10px,-30px 15px,-50px 8px,25px -12px,center bottom;}
 }
 
 .app{
