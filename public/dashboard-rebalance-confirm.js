@@ -43,25 +43,29 @@ import {
   manageKey,
 } from "./dashboard-manage-ui.js";
 
-/*- Formula for the on-chain tick spread expressed as % of current
- *  price.  Matches src/rebalancer.js:294-298 exactly so the preview
- *  the user sees in the IL modal is what the bot will actually log
- *  as the "effective" width if it takes the preserveRange fallback
- *  path.  Returns a formatted percentage string or null when inputs
- *  are missing/invalid. */
-function _computePreservedWidthPct(tickLower, tickUpper, currentPrice) {
+/*- "preserveRange width" as % — the width the rebalancer would
+ *  produce for a re-centered position with the same tick spread.
+ *  Simplified form of `src/rebalancer.js:294-298`: for a position
+ *  centered on `currentTick` with span `S = tickUpper - tickLower`,
+ *  the effective width simplifies to
+ *  `(1.0001^(S/2) - 1.0001^(-S/2)) * 100` — no `currentPrice`
+ *  dependency, so this preview computes for every position (including
+ *  closed / unmanaged, where poolState may not be available).
+ *  Returns a two-decimal string or null when ticks are missing. */
+function _computePreservedWidthPct(tickLower, tickUpper) {
   if (
     tickLower === undefined ||
     tickLower === null ||
     tickUpper === undefined ||
     tickUpper === null ||
-    !Number.isFinite(currentPrice) ||
-    !(currentPrice > 0)
+    !Number.isFinite(tickLower) ||
+    !Number.isFinite(tickUpper)
   )
     return null;
-  const lowerP = Math.pow(1.0001, tickLower);
-  const upperP = Math.pow(1.0001, tickUpper);
-  return (((upperP - lowerP) / currentPrice) * 100).toFixed(2);
+  const half = (tickUpper - tickLower) / 2;
+  const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
+  if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
+  return widthPct.toFixed(2);
 }
 
 /*- Compose the "Range width: X% (from saved override)" /
@@ -79,7 +83,6 @@ function _rangeWidthPreviewText(status, active) {
   const preserved = _computePreservedWidthPct(
     active?.tickLower,
     active?.tickUpper,
-    status?.poolState?.price,
   );
   return preserved
     ? "preserving current tick spread (~" + preserved + "%)"

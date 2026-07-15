@@ -500,6 +500,13 @@ export function bindAllEvents() {
   _click("resetOffsetBtn", resetOffset);
   _click("saveRangeWidthBtn", saveRangeWidth);
   _click("resetRangeWidthBtn", resetRangeWidth);
+  /*- Mark the Range Width input dirty on every keystroke so the
+   *  per-poll `syncRangeWidth` (dashboard-data-range-width.js) can't
+   *  clobber mid-typing when a saved override already exists.
+   *  Dirty is cleared at end of poll (`clearDirtyInputs`); by the
+   *  time Save fires and the next poll returns the persisted value,
+   *  the saved-value overwrite is idempotent (matches typed value). */
+  _input("inRangeWidth", () => markInputDirty("inRangeWidth"));
   _click("saveApprovalMultipleBtn", saveApprovalMultiple);
 
   /* ── Offset linked inputs ── */

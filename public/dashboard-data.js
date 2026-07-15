@@ -254,14 +254,6 @@ function _syncConfigFromServer(d) {
   if (!posKey || _configSynced === posKey) return;
   _configSynced = posKey;
   _populateConfigInputs(d);
-  /*- Range Width is a one-shot-per-position-switch write like the
-   *  other Bot Settings inputs (via `_populateConfigInputs`), NOT a
-   *  per-poll write.  Per-poll would overwrite mid-typing (the
-   *  `isInputDirty` gate is only tripped by Save clicks, not by
-   *  keystrokes) and would also drift the pre-populated value as the
-   *  pool price moves — both are surprising for the user.  See
-   *  `dashboard-data-range-width.js` for the write logic. */
-  syncRangeWidth(d);
   _syncAutoCompound(d);
   const dpk = _poolKey("9mm_deposit_pool_");
   if (dpk && d.initialDepositUsd > 0 && !loadInitialDeposit())
@@ -576,6 +568,12 @@ function _syncManagedAndGlobals(data) {
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
   if (data.scanTimeoutMs > 0) botConfig.scanTimeoutMs = data.scanTimeoutMs;
   _syncOorThreshold(data);
+  /*- Per-poll so it retries on the "Manage on unmanaged position"
+   *  flow — the fallback needs `data.poolState.price` which isn't in
+   *  the first post-Manage poll (bot hasn't run getPoolState yet).
+   *  syncRangeWidth self-throttles via `_lastKnownPosKey` — full
+   *  cadence rationale in that file's header. */
+  syncRangeWidth(data);
 }
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";

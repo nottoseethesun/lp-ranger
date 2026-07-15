@@ -14,6 +14,7 @@ import { log } from "./dashboard-log.js";
 import { fetchWithCsrf } from "./dashboard-helpers.js";
 import { _createModal } from "./dashboard-data-status.js";
 import { _postRebalance } from "./dashboard-rebalance-confirm.js";
+import { populateRangeWidthFromActive } from "./dashboard-data-range-width.js";
 
 /**
  * Run the closed-position re-open flow.
@@ -200,6 +201,11 @@ function _showReopenIntroModal(active, formatPositionSpec) {
      *  read by the bot loop via `deps._getConfig` in
      *  `src/bot-cycle-opts.js`; empty ⇒ `preserveRange()` fallback. */
     if (overlay) overlay.remove();
+    /*- Populate the Range Width input from the closed NFT's ticks
+     *  (still on-chain, still in posStore) BEFORE the manage POST,
+     *  so the field is filled the instant re-open commits — same
+     *  as the open-position Manage flow. */
+    populateRangeWidthFromActive();
     await _postRebalance(
       "/api/position/manage",
       {

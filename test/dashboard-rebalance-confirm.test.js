@@ -30,78 +30,89 @@ const assert = require("node:assert/strict");
 // ── Mirror #1: _computePreservedWidthPct ──────────────────────────────
 
 /*- Mirror of the production helper in
- *  public/dashboard-rebalance-confirm.js.  Same formula as
- *  src/rebalancer.js:294-298:
- *    ((upperPrice - lowerPrice) / currentPrice) * 100
+ *  public/dashboard-rebalance-confirm.js.  Simplified form of
+ *  src/rebalancer.js:294-298 — for a re-centered position with span
+ *  S = tickUpper - tickLower, the effective width is
+ *  `(1.0001^(S/2) - 1.0001^(-S/2)) * 100` — no currentPrice needed.
  *  Presence checks use explicit `!== undefined && !== null` per
  *  CLAUDE-BEST-PRACTICES §"Type Checks". */
-function computePreservedWidthPct(tickLower, tickUpper, currentPrice) {
+function computePreservedWidthPct(tickLower, tickUpper) {
   if (
     tickLower === undefined ||
     tickLower === null ||
     tickUpper === undefined ||
     tickUpper === null ||
-    !Number.isFinite(currentPrice) ||
-    !(currentPrice > 0)
+    !Number.isFinite(tickLower) ||
+    !Number.isFinite(tickUpper)
   )
     return null;
-  const lowerP = Math.pow(1.0001, tickLower);
-  const upperP = Math.pow(1.0001, tickUpper);
-  return (((upperP - lowerP) / currentPrice) * 100).toFixed(2);
+  const half = (tickUpper - tickLower) / 2;
+  const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
+  if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
+  return widthPct.toFixed(2);
 }
 
 describe("_computePreservedWidthPct", () => {
   it("returns null for missing tickLower", () => {
-    assert.strictEqual(computePreservedWidthPct(undefined, 100, 1), null);
-    assert.strictEqual(computePreservedWidthPct(null, 100, 1), null);
+    assert.strictEqual(computePreservedWidthPct(undefined, 100), null);
+    assert.strictEqual(computePreservedWidthPct(null, 100), null);
   });
 
   it("returns null for missing tickUpper", () => {
-    assert.strictEqual(computePreservedWidthPct(-100, undefined, 1), null);
-    assert.strictEqual(computePreservedWidthPct(-100, null, 1), null);
+    assert.strictEqual(computePreservedWidthPct(-100, undefined), null);
+    assert.strictEqual(computePreservedWidthPct(-100, null), null);
   });
 
-  it("returns null for non-numeric or non-positive price", () => {
-    assert.strictEqual(computePreservedWidthPct(-100, 100, undefined), null);
-    assert.strictEqual(computePreservedWidthPct(-100, 100, null), null);
-    assert.strictEqual(computePreservedWidthPct(-100, 100, 0), null);
-    assert.strictEqual(computePreservedWidthPct(-100, 100, -1), null);
-    assert.strictEqual(computePreservedWidthPct(-100, 100, "1"), null);
+  it("returns null for non-finite ticks (NaN / Infinity)", () => {
+    /*- Guards against BigInt / string coercion producing NaN, or a
+     *  malformed payload with Infinity. */
+    assert.strictEqual(computePreservedWidthPct(NaN, 100), null);
+    assert.strictEqual(computePreservedWidthPct(-100, NaN), null);
+    assert.strictEqual(computePreservedWidthPct(Infinity, 100), null);
+    assert.strictEqual(computePreservedWidthPct(-100, Infinity), null);
+    assert.strictEqual(computePreservedWidthPct(-Infinity, 100), null);
   });
 
-  it("returns null for non-finite price (NaN / Infinity)", () => {
-    /*- Regression guard: an earlier version used
-     *  `typeof currentPrice !== "number"` alone, which accepted
-     *  Infinity (typeof Infinity === "number").  Downstream math
-     *  produced 0 from (finite - finite) / Infinity, and the preview
-     *  displayed "~0.00%".  `Number.isFinite` rejects both. */
-    assert.strictEqual(computePreservedWidthPct(-100, 100, NaN), null);
-    assert.strictEqual(computePreservedWidthPct(-100, 100, Infinity), null);
-    assert.strictEqual(computePreservedWidthPct(-100, 100, -Infinity), null);
+  it("returns null when tickUpper <= tickLower (widthPct not positive)", () => {
+    /*- Defensive: an invalid range shouldn't render a bogus preview. */
+    assert.strictEqual(computePreservedWidthPct(100, 100), null);
+    assert.strictEqual(computePreservedWidthPct(500, -500), null);
   });
 
   it("accepts 0 tickLower (legit tick value, not falsy sentinel)", () => {
     /*- Regression guard against `!tickLower` truthy-checks that would
      *  incorrectly treat tick=0 as missing. */
-    const result = computePreservedWidthPct(0, 100, 1);
+    const result = computePreservedWidthPct(0, 100);
     assert.notEqual(result, null);
     assert.equal(typeof result, "string");
   });
 
   it("accepts 0 tickUpper", () => {
-    const result = computePreservedWidthPct(-100, 0, 1);
+    const result = computePreservedWidthPct(-100, 0);
     assert.notEqual(result, null);
   });
 
-  it("computes a symmetric ±5% width around 1.0 (approx tickLower=-500, tickUpper=500)", () => {
+  it("computes ~10% width for tick span of 1000 (S/2 = 500)", () => {
     /*- 1.0001^500 ≈ 1.0513, 1.0001^-500 ≈ 0.9512.
-     *  (1.0513 - 0.9512) / 1.0 * 100 ≈ 10.01% */
-    const result = parseFloat(computePreservedWidthPct(-500, 500, 1));
+     *  diff * 100 ≈ 10.01% */
+    const result = parseFloat(computePreservedWidthPct(-500, 500));
     assert.ok(result > 9.5 && result < 10.5, `expected ~10, got ${result}`);
   });
 
+  it("gives the same width regardless of currentTick (offset-invariant)", () => {
+    /*- The simplified formula proves the width is a pure function of
+     *  the tick SPAN — moving the same span up or down produces the
+     *  same width.  Regression guard: an earlier version that
+     *  depended on currentPrice would give different results here. */
+    const centered = computePreservedWidthPct(-500, 500);
+    const shiftedUp = computePreservedWidthPct(1000, 2000);
+    const shiftedDown = computePreservedWidthPct(-2000, -1000);
+    assert.equal(centered, shiftedUp);
+    assert.equal(centered, shiftedDown);
+  });
+
   it("returns a two-decimal fixed string", () => {
-    const result = computePreservedWidthPct(-100, 100, 1);
+    const result = computePreservedWidthPct(-100, 100);
     assert.match(result, /^\d+\.\d{2}$/);
   });
 });
