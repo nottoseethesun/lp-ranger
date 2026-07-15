@@ -560,6 +560,53 @@ export function resetOffset() {
   saveOffset();
 }
 
+/**
+ * Save the "Range Width" input as a persistent per-position override.
+ * Rejects invalid input per feedback_one_literal_per_shipped_default —
+ * no silent clamp-to-default; the user must enter a valid number in
+ * (0.1, 200] to save.  Empty input, NaN, out-of-range → skip the save
+ * (the No Override button below is the explicit way to clear).
+ */
+export function saveRangeWidth() {
+  const raw = parseFloat(g("inRangeWidth")?.value);
+  if (!Number.isFinite(raw) || raw < 0.1 || raw > 200) return;
+  _saveSingleConfig("inRangeWidth", "rebalanceRangeWidthPct", () => raw);
+}
+
+/**
+ * Clear the persistent Range Width override.  Empties the input AND
+ * POSTs `null` so the null-sweep in POST /api/config deletes the key
+ * from disk (leaving the bot on the existing `preserveRange()` fallback
+ * for the next rebalance).  Mirrors the resetOffset pattern.
+ */
+export function resetRangeWidth() {
+  const el = g("inRangeWidth");
+  if (el) el.value = "";
+  markInputDirty("inRangeWidth");
+  const active = posStore.getActive();
+  const positionKey = active
+    ? compositeKey(
+        "pulsechain",
+        active.walletAddress,
+        active.contractAddress,
+        active.tokenId,
+      )
+    : undefined;
+  fetchWithCsrf("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rebalanceRangeWidthPct: null, positionKey }),
+  }).catch(() => {});
+  const pl = _posLabel();
+  act(
+    ACT_ICONS.gear,
+    "start",
+    "Setting Saved",
+    "rebalanceRangeWidthPct cleared — preserving current tick spread" +
+      (pl ? "\n" + pl : ""),
+  );
+}
+
 export {
   openRebalanceRangeModal,
   closeRebalanceRangeModal,

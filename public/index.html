@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784067703680">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784067703680">
+<link rel="stylesheet" href="style.css?v=1784094595471">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784094595471">
 </head>
 <body>
 
@@ -984,6 +984,36 @@
     <div class="cfg-block">
       <div class="cfg-title">Range &amp; Execution</div>
       <div class="prow">
+        <span class="plbl">Range Width <span class="9mm-pos-mgr-il-info-btn" data-param-help="inRangeWidth" title="Learn about range width">i</span></span>
+        <div class="9mm-pos-mgr-input-row">
+          <input type="number" class="pinput w55" id="inRangeWidth" min="0.1" max="200" step="0.1" aria-label="Range width percent">
+          <span class="punit">%</span>
+          <button type="button" class="save-range-btn" id="resetRangeWidthBtn" title="Clear the override; the bot preserves the current tick spread on the next rebalance">No Override</button>
+          <button type="button" class="save-range-btn" id="saveRangeWidthBtn" title="Save range width override; applies on every subsequent rebalance">Save</button>
+        </div>
+      </div>
+      <div class="prow 9mm-pos-mgr-offset-row">
+        <span class="plbl">Position Offset <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOffsetToken0" title="Learn about position offset">i</span></span>
+        <div class="9mm-pos-mgr-offset-inputs">
+          <span class="plbl">
+            <span id="offsetT0Name">Token 0</span>
+            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT0" data-copy-addr="" title="Copy contract address">&#x274F;</span>
+          </span>
+          <input type="number" class="pinput w55" id="inOffsetToken0" min="0" max="100" step="1" aria-label="Token 0 offset percent">
+          <span class="punit">%</span>
+          <span class="plbl 9mm-pos-mgr-ml-sm">
+            <span id="offsetT1Name">Token 1</span>
+            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT1" data-copy-addr="" title="Copy contract address">&#x274F;</span>
+          </span>
+          <input type="number" class="pinput w55" id="inOffsetToken1" min="0" max="100" step="1" aria-label="Token 1 offset percent">
+          <span class="punit">%</span>
+        </div>
+        <div class="9mm-pos-mgr-input-row">
+          <button type="button" class="save-range-btn" id="resetOffsetBtn" title="Reset to 50/50">No Offset</button>
+          <button type="button" class="save-range-btn" id="saveOffsetBtn" title="Save rebalance offset">Save</button>
+        </div>
+      </div>
+      <div class="prow">
         <span class="plbl">OOR Threshold Before Rebalance Is Triggered (±%) <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOorThreshold" title="Learn about OOR threshold">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inOorThreshold" min="1" max="100" step="1" aria-label="OOR threshold percent">
@@ -1021,27 +1051,6 @@
         <select class="pinput w100 9mm-pos-mgr-text-left" id="inGas" aria-label="Gas strategy">
           <option value="auto">Auto</option><option value="fast">Fast</option><option value="slow">Economy</option>
         </select>
-      </div>
-      <div class="prow 9mm-pos-mgr-offset-row">
-        <span class="plbl">Position Offset <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOffsetToken0" title="Learn about position offset">i</span></span>
-        <div class="9mm-pos-mgr-offset-inputs">
-          <span class="plbl">
-            <span id="offsetT0Name">Token 0</span>
-            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT0" data-copy-addr="" title="Copy contract address">&#x274F;</span>
-          </span>
-          <input type="number" class="pinput w55" id="inOffsetToken0" min="0" max="100" step="1" aria-label="Token 0 offset percent">
-          <span class="punit">%</span>
-          <span class="plbl 9mm-pos-mgr-ml-sm">
-            <span id="offsetT1Name">Token 1</span>
-            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT1" data-copy-addr="" title="Copy contract address">&#x274F;</span>
-          </span>
-          <input type="number" class="pinput w55" id="inOffsetToken1" min="0" max="100" step="1" aria-label="Token 1 offset percent">
-          <span class="punit">%</span>
-        </div>
-        <div class="9mm-pos-mgr-input-row">
-          <button type="button" class="save-range-btn" id="resetOffsetBtn" title="Reset to 50/50">No Offset</button>
-          <button type="button" class="save-range-btn" id="saveOffsetBtn" title="Save rebalance offset">Save</button>
-        </div>
       </div>
       <div class="prow">
         <span class="plbl">Approval Multiple <span class="9mm-pos-mgr-il-info-btn" data-param-help="inApprovalMultiple" title="Learn about approval multiple">i</span></span>
@@ -1385,6 +1394,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784067703680"></script>
+<script src="dist/bundle.js?v=1784094595471"></script>
 </body>
 </html>

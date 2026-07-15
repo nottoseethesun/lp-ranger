@@ -11,6 +11,7 @@ import {
   isPositionClosed,
 } from "./dashboard-positions.js";
 import { syncActivePosition } from "./dashboard-active-sync.js";
+import { syncRangeWidth } from "./dashboard-data-range-width.js";
 import {
   updateHistoryFromStatus,
   updateHistorySyncLabels,
@@ -567,6 +568,7 @@ function _syncManagedAndGlobals(data) {
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
   if (data.scanTimeoutMs > 0) botConfig.scanTimeoutMs = data.scanTimeoutMs;
   _syncOorThreshold(data);
+  syncRangeWidth(data);
 }
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";
