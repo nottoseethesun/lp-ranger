@@ -628,10 +628,6 @@ export function bindDelegatedEvents(closers) {
         close: closers.clearWallet,
       },
       {
-        id: "rebalanceRangeModal",
-        close: closers.rebalanceRange,
-      },
-      {
         id: "rebalanceIlWarningModal",
         close: closers.rebalanceIlWarning,
       },

@@ -607,13 +607,6 @@ export function resetRangeWidth() {
   );
 }
 
-export {
-  openRebalanceRangeModal,
-  closeRebalanceRangeModal,
-  updateRebalanceRangeHint,
-  confirmRebalanceRange,
-} from "./dashboard-throttle-rebalance.js";
-
 /** Update OOR threshold + timeout display from status. */
 export function updateTriggerDisplay(d) {
   const th = g("activeOorThreshold");

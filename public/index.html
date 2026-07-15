@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784094707262">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784094707262">
+<link rel="stylesheet" href="style.css?v=1784094838826">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784094838826">
 </head>
 <body>
 
@@ -418,34 +418,6 @@
     </div>
     <div class="9mm-pos-mgr-btn-row">
       <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="noPositionsOk">OK</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay hidden" id="rebalanceRangeModal">
-  <div class="modal 9mm-pos-mgr-modal-sm">
-    <div class="modal-logo">
-      <div class="modal-logo-icon">↔</div>
-      <div><h2>Rebalance with Updated Range</h2></div>
-      <button type="button" class="modal-btn secondary 9mm-pos-mgr-modal-close-btn" id="rebalanceRangeClose">✕ Close</button>
-    </div>
-    <div class="9mm-pos-mgr-confirm-body">
-      <div id="rebalanceRangeCtx"></div>
-      <p>Create a new LP position centered on the current price with a custom range width.</p>
-      <div class="prow">
-        <span class="plbl">Total Range Width</span>
-        <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="rebalanceRangeInput" value="10" min="0.1" max="200" step="0.1" aria-label="Total range width percent">
-          <span class="punit">%</span>
-        </div>
-      </div>
-      <p class="9mm-pos-mgr-text-muted"><span id="rebalanceRangeHint">5% on either side of the current price</span> <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" role="img" aria-label="Offset info">i</span><span class="9mm-pos-mgr-info-popover 9mm-pos-mgr-info-popover-above">Set the Position Offset in the Range &amp; Execution panel, or click &ldquo;No Offset&rdquo; there to set it to 50/50.</span></span></p>
-    </div>
-    <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Note: Rebalancing can take some time as it involves on-chain transactions. Use your wallet software and/or check this app&rsquo;s logs for details.</p>
-    <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Tip: If you rebalanced within the last 10 minutes and residuals are your only reason for rebalancing, you can skip this dialog &mdash; the bot automatically sweeps leftover wallet tokens 10 minutes after each rebalance when they exceed 5% of the position&rsquo;s value. See &ldquo;Automatic Residual Cleanup&rdquo; in the User Manual.</p>
-    <div class="9mm-pos-mgr-btn-row">
-      <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="rebalanceRangeCancelBtn">Cancel</button>
-      <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="rebalanceRangeConfirmBtn">Rebalance</button>
     </div>
   </div>
 </div>
@@ -1394,6 +1366,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784094707262"></script>
+<script src="dist/bundle.js?v=1784094838826"></script>
 </body>
 </html>

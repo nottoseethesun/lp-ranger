@@ -47,7 +47,7 @@ export function showQueuedActionModal(requested, inFlight) {
 
 /**
  * Request a manual compound via the server API.
- * Same pattern as confirmRebalanceRange in dashboard-throttle-rebalance.js.
+ * Same pattern as `_postRebalance` in dashboard-rebalance-confirm.js.
  */
 export async function compoundNow() {
   const a = posStore.getActive();
