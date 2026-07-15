@@ -448,24 +448,35 @@ span[title]:not([title=""]):hover {
 }
 
 /*
- * Warning-modal header spacing.  Header no longer carries a warning
- * icon (this is not a warning dialog — it's a dialog that contains
- * a warning as one component); the icon moved inline into the lede
- * paragraph.  The tagline paragraph stays amber-highlighted so the
- * header still previews the warning content.
+ * Warning-modal header layout.  The .modal-logo becomes a vertical
+ * stack: h2 on top, then the warning row (big icon + tagline) below.
+ * The big icon anchors at top-left of the warning row so it visually
+ * sits by the warning text (tagline), not the neutral title.
  */
 .\39 mm-pos-mgr-warning-modal .modal-logo {
+  display: block;
   margin-bottom: 16px;
+}
+
+.\39 mm-pos-mgr-warning-modal .modal-logo-icon {
+  color: #ffc107;
+  margin-top: 0;
 }
 
 .\39 mm-pos-mgr-warning-modal .modal-logo p {
   color: #ffc107;
 }
 
+.\39 mm-pos-mgr-modal-warning-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 8px;
+}
+
 /*
  * Inline warning icon that sits at the start of the body lede
- * paragraph.  Amber #FFC107 to visually anchor the warning content
- * without dressing the whole dialog as a warning dialog.
+ * paragraph.  Amber #FFC107 to visually anchor the warning content.
  */
 .\39 mm-pos-mgr-warn-icon-inline {
   color: #ffc107;
@@ -474,12 +485,17 @@ span[title]:not([title=""]):hover {
 }
 
 /*
- * Extra top spacing above the warning-modal lede paragraph — one
- * line of whitespace so the body doesn't crowd the header block
- * once the header's own margin-bottom was halved.
+ * Body paragraphs inside a confirm modal need explicit vertical
+ * spacing because the global `* { margin: 0 }` reset zeroed the
+ * browser default.  1em top/bottom is the browser default we're
+ * restoring; 1.5 line-height improves multi-line legibility.
  */
+.\39 mm-pos-mgr-confirm-body p {
+  margin: 1em 0;
+  line-height: 1.5;
+}
+
 .\39 mm-pos-mgr-il-warn-lede {
-  margin-top: 1em;
   color: #ffc107;
 }
 
