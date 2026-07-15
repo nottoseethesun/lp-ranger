@@ -123,6 +123,28 @@ const _ICON_SIZE_PX = {
 };
 const _ICON_DEFAULT_SIZE_PX = 40;
 
+/*- Human-readable label per icon URL.  Applied as both `alt=` (screen
+ *  readers) and `title=` (browser-native hover tooltip) so a mouse
+ *  user and an assistive-tech user both learn what the shape means.
+ *  Missing entry → empty alt (icon renders as decorative). */
+const _ICON_ALT = {
+  "icons/act-grid.svg": "Grid Icon (4 squares) — Position Browser",
+  "icons/act-target.svg": "Bullseye Icon — Target",
+  "icons/act-cross.svg": "X Icon — Close or Cancel",
+  "icons/act-scan.svg": "Magnifying-Glass Icon — Scan",
+  "icons/act-link.svg": "Square-with-Plus Icon — Deep Link",
+  "icons/act-play.svg":
+    "Triangle Icon Pointing Right To Indicate a Ready-to-Go State",
+  "icons/act-lock.svg": "Padlock Icon — Locked",
+  "icons/act-diamond.svg": "Diamond Icon for Finished-Loading",
+  "icons/act-clear.svg": "Square Icon — Cleared",
+  "icons/act-gear.svg": "Icon of a Settings Gear",
+  "icons/act-warn.svg": "Warning-Triangle Icon — Alert",
+  "icons/act-swap.svg": "Bidirectional-Arrows Icon — Swap",
+  "icons/act-acorn.svg": "Icon of an Acorn",
+  "icons/act-lasso.svg": "Icon of a Lasso",
+};
+
 /**
  * Populate an icon container.  An `icon` starting with `icons/` is
  * rendered as an `<img>` referencing a standalone SVG file (the
@@ -141,7 +163,9 @@ function _setActIcon(el, icon) {
     const size = _ICON_SIZE_PX[icon] || _ICON_DEFAULT_SIZE_PX;
     img.width = size;
     img.height = size;
-    img.alt = "";
+    const label = _ICON_ALT[icon] || "";
+    img.alt = label;
+    if (label) img.title = label;
     el.appendChild(img);
     return;
   }
