@@ -2521,12 +2521,6 @@ span[title]:not([title=""]):hover {
   flex: 1;
 }
 
-.\39 mm-pos-mgr-mission-divider {
-  display: block;
-  width: 100%;
-  margin: 27px 0;
-}
-
 .\39 mm-pos-mgr-mission-badge {
   display: inline-flex;
   align-items: center;
