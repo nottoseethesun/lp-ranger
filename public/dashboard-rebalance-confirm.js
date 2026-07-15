@@ -55,7 +55,7 @@ function _computePreservedWidthPct(tickLower, tickUpper, currentPrice) {
     tickLower === null ||
     tickUpper === undefined ||
     tickUpper === null ||
-    typeof currentPrice !== "number" ||
+    !Number.isFinite(currentPrice) ||
     !(currentPrice > 0)
   )
     return null;

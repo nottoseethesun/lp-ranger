@@ -41,7 +41,7 @@ function computePreservedWidthPct(tickLower, tickUpper, currentPrice) {
     tickLower === null ||
     tickUpper === undefined ||
     tickUpper === null ||
-    typeof currentPrice !== "number" ||
+    !Number.isFinite(currentPrice) ||
     !(currentPrice > 0)
   )
     return null;
@@ -67,6 +67,17 @@ describe("_computePreservedWidthPct", () => {
     assert.strictEqual(computePreservedWidthPct(-100, 100, 0), null);
     assert.strictEqual(computePreservedWidthPct(-100, 100, -1), null);
     assert.strictEqual(computePreservedWidthPct(-100, 100, "1"), null);
+  });
+
+  it("returns null for non-finite price (NaN / Infinity)", () => {
+    /*- Regression guard: an earlier version used
+     *  `typeof currentPrice !== "number"` alone, which accepted
+     *  Infinity (typeof Infinity === "number").  Downstream math
+     *  produced 0 from (finite - finite) / Infinity, and the preview
+     *  displayed "~0.00%".  `Number.isFinite` rejects both. */
+    assert.strictEqual(computePreservedWidthPct(-100, 100, NaN), null);
+    assert.strictEqual(computePreservedWidthPct(-100, 100, Infinity), null);
+    assert.strictEqual(computePreservedWidthPct(-100, 100, -Infinity), null);
   });
 
   it("accepts 0 tickLower (legit tick value, not falsy sentinel)", () => {

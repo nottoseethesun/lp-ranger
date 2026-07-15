@@ -1,11 +1,16 @@
 /**
  * @file dashboard-data-range-width.js
  * @description Populate the Bot Settings "Range Width" input from
- * server data on every poll.  Split out of `dashboard-data.js` to keep
- * that file under the 500-line cap.
+ * server data.  Split out of `dashboard-data.js` to keep that file
+ * under the 500-line cap.
  *
- * Consumers: `_syncManagedAndGlobals` in `dashboard-data.js` calls
- * `syncRangeWidth(data)` once per poll (next to `_syncOorThreshold`).
+ * Consumers: `_syncConfigFromServer` in `dashboard-data.js` calls
+ * `syncRangeWidth(data)` **once per position switch** (next to
+ * `_populateConfigInputs`), matching the write cadence of every other
+ * Bot Settings input.  A per-poll cadence would (a) overwrite the
+ * user's mid-typing (`isInputDirty` is only set by Save clicks, not
+ * by keystrokes) and (b) drift the pre-populated preserveRange value
+ * as the pool price moves — both surprising.
  *
  * Related:
  *  - `saveRangeWidth` / `resetRangeWidth` in `dashboard-throttle.js`
@@ -23,7 +28,7 @@ import { isInputDirty } from "./dashboard-data-cache.js";
 
 /**
  * Populate the "Range Width" input from `data.rebalanceRangeWidthPct`
- * on every poll.  Precedence:
+ * on a position switch.  Precedence:
  *   (a) `data.rebalanceRangeWidthPct` (persistent saved override) →
  *       display verbatim.
  *   (b) No override saved → compute the `preserveRange()` equivalent
@@ -32,12 +37,14 @@ import { isInputDirty } from "./dashboard-data-cache.js";
  *       `src/rebalancer.js:294-298`, so the number in the input
  *       matches what a subsequent no-override rebalance will actually
  *       apply.
- *   (c) Insufficient inputs (no ticks / no price) → leave the input
- *       alone (previous value or empty).
+ *   (c) Insufficient inputs (no ticks / no price / non-finite) →
+ *       leave the input alone (previous value or empty).
  *
  * Skipped when the input is dirty so mid-edit typing isn't clobbered.
  * All presence checks use explicit `!== undefined && !== null` per
- * CLAUDE-BEST-PRACTICES §"Type Checks".
+ * CLAUDE-BEST-PRACTICES §"Type Checks"; `Number.isFinite` also rejects
+ * `Infinity` / `NaN` (which would produce a "0.00%" display via
+ * `(finite - finite) / Infinity = 0` if we only checked `> 0`).
  *
  * @param {object} data  Flattened poll payload (from `flattenV2Status`).
  */
@@ -59,7 +66,7 @@ export function syncRangeWidth(data) {
     tL === null ||
     tU === undefined ||
     tU === null ||
-    typeof p !== "number" ||
+    !Number.isFinite(p) ||
     !(p > 0)
   )
     return;
