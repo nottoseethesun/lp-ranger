@@ -509,6 +509,11 @@ const _routes = {
     state.rebalanceInProgress = true;
     state.rebalancePaused = false;
     state.rebalanceError = null;
+    /*- Wake the poll loop so the flag gets picked up on the next
+     *  tick instead of waiting for the timer-driven poll (up to
+     *  CHECK_INTERVAL_SEC ≈ 5 min at default).  See bot-loop.js
+     *  `botState._kickPoll` for the shape. */
+    state._kickPoll?.();
     jsonResponse(res, 200, {
       ok: true,
       message: "Rebalance requested",
@@ -543,6 +548,9 @@ const _routes = {
       emojiId(tokenId),
     );
     state.forceCompound = true;
+    /*- Same reasoning as POST /api/rebalance — kick the poll so the
+     *  manual Compound Now doesn't wait for the next scheduled poll. */
+    state._kickPoll?.();
     jsonResponse(res, 200, {
       ok: true,
       message: "Compound requested",
