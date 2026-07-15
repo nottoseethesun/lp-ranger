@@ -94,9 +94,7 @@ export function _posContextHtml() {
     ? " \u00B7 " + fee
     : "";
   frag.querySelector('[data-tpl="chain"]').textContent = c;
-  frag.querySelector('[data-tpl="wallet"]').textContent = _short(
-    a.walletAddress,
-  );
+  frag.querySelector('[data-tpl="wallet"]').textContent = a.walletAddress || "";
   const wrap = document.createElement("div");
   wrap.appendChild(frag);
   return wrap.innerHTML;
