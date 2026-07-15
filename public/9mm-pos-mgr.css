@@ -447,6 +447,29 @@ span[title]:not([title=""]):hover {
   margin-top: -12px;
 }
 
+/*
+ * Warning-modal overrides.  Layout: top-align the icon with the
+ * header text block instead of vertically centering (per user
+ * request), and halve the bottom whitespace so the body content
+ * sits closer to the header.  Colour: UI-Convention Amber #FFC107
+ * (Material Design / Bootstrap "warning") for the icon and the
+ * tagline paragraph.  Ordered AFTER the .9mm-pos-mgr-modal-sm rule
+ * so its icon overrides win by source order on equal specificity.
+ */
+.\39 mm-pos-mgr-warning-modal .modal-logo {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.\39 mm-pos-mgr-warning-modal .modal-logo-icon {
+  color: #ffc107;
+  margin-top: 0;
+}
+
+.\39 mm-pos-mgr-warning-modal .modal-logo p {
+  color: #ffc107;
+}
+
 .\39 mm-pos-mgr-modal-note {
   margin-top: 18px;
   font-size: 17px;
