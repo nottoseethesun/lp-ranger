@@ -142,39 +142,23 @@ function makePopulateFromActive() {
 // ── End-to-end flow tests ─────────────────────────────────────────────
 
 describe("syncRangeWidth — flow (a) bring position under management", () => {
-  it("retries across polls until poolState arrives, then populates once", () => {
-    /*- After Manage, the first poll may not yet have data.poolState
-     *  (bot hasn't run getPoolState yet).  syncRangeWidth must retry
-     *  on subsequent polls until poolState arrives, then populate. */
+  it("populates from ticks on the first poll after Manage (poolState no longer required)", () => {
+    /*- After Manage, the first poll delivers `data.activePosition`
+     *  with the tick range.  The offset-aware `preserveRange`
+     *  formula is a pure function of (spread, offset) — no
+     *  `poolState.price` dependency — so the input populates on
+     *  poll 1 without waiting for the bot cycle to complete
+     *  getPoolState.  Regression guard against re-introducing a
+     *  currentPrice dependency (which would delay populate by one
+     *  bot-poll interval). */
     const sync = makeSyncRangeWidth();
     const el = makeInput("");
     const posKey = "42";
 
-    // Poll 1 after Manage: activePosition present, poolState missing
+    // Poll 1 after Manage: activePosition present with ticks
     sync(el, {
       data: {
         activePosition: { tickLower: -500, tickUpper: 500 },
-      },
-      posKey,
-      isDirty: false,
-    });
-    assert.equal(el.value, "", "no poolState → don't populate");
-
-    // Poll 2: still no poolState
-    sync(el, {
-      data: {
-        activePosition: { tickLower: -500, tickUpper: 500 },
-      },
-      posKey,
-      isDirty: false,
-    });
-    assert.equal(el.value, "", "still no poolState → still empty");
-
-    // Poll 3: poolState finally arrives
-    sync(el, {
-      data: {
-        activePosition: { tickLower: -500, tickUpper: 500 },
-        poolState: { price: 1 },
       },
       posKey,
       isDirty: false,
@@ -182,15 +166,14 @@ describe("syncRangeWidth — flow (a) bring position under management", () => {
     assert.match(
       el.value,
       /^\d+\.\d{2}$/,
-      "poolState arrived → populates with preserveRange fallback",
+      "poll 1 populates from ticks alone (no poolState needed)",
     );
 
-    // Poll 4: input has value now → skip
+    // Poll 2: input has value now → skip (same position, non-empty)
     const populatedValue = el.value;
     sync(el, {
       data: {
         activePosition: { tickLower: -500, tickUpper: 500 },
-        poolState: { price: 1.05 },
       },
       posKey,
       isDirty: false,
