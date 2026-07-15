@@ -95,6 +95,7 @@ sequence.
 - [API Documentation](#api-documentation)
 - [`server.js`](#serverjs)
 - [Dead Code Detection](#dead-code-detection)
+- [SVG Assets](#svg-assets)
 - [Debugging](#debugging)
   - [Node Debugger (Inspector)](#node-debugger-inspector)
 - [Dependency Management](#dependency-management)
@@ -2689,6 +2690,66 @@ the button-state logic.
 - `npm run knip` — [Knip](https://knip.dev) — finds unused exports, files,
   and dependencies. Note: the 8 `public/dashboard-*.js` files are false
   positives because knip cannot trace HTML `<script>` tags.
+
+---
+
+## SVG Assets
+
+**Rule:** every Activity-Log icon lives as a standalone `.svg` file under
+`public/icons/`. The dashboard references them by relative URL through the
+`ACT_ICONS` registry in `public/dashboard-helpers.js` and renders each via
+an `<img src="…">` element, never by inlining the SVG markup.
+
+**Why files, not inline JS strings.** An icon that appears N times in the
+Activity Log used to be N cloned copies of the same `<svg>` in the DOM,
+which meant every `id=""` inside the SVG (for example the `<defs><path id="rope">`
+inside the lasso icon) collided across copies. Modern browsers tolerate
+duplicate IDs but the invariant is fragile — the `<use href="#rope">`
+lookup falls back to `document.getElementById`, so one edit that
+accidentally changes the shape of only some copies would silently render
+the wrong path. Loading each icon as an `<img>` isolates it in its own
+document context, so IDs are per-file and can never collide.
+
+**Rule:** no `currentColor` on Activity-Log icons. Since `<img>`-loaded
+SVGs don't inherit the parent's `color`, every stroke and fill in
+`public/icons/*.svg` uses an explicit hex value. The two colour icons
+(`act-acorn.svg`, `act-lasso.svg`) always had explicit colours; the
+outline icons hard-code `stroke="#e0eaf4"` (the resolved value of `--text`
+on the dark chip background). If we ever need theme-adaptive icons for
+this log we would switch back to inline injection via `fetch()` +
+`innerHTML`, not `<use>` — this is called out here so a future PR
+doesn't casually re-introduce `currentColor` and expect it to work.
+
+**Not extracted:** the six inline `<svg>` blocks in `public/index.html`
+(settings-gear button, position-browser grid, wallet strip, reveal-key
+buttons, etc.). They use `currentColor` for hover/focus styling that
+cascades from the parent `<button>` and each appears exactly once in the
+DOM, so the ID-collision motivation for extraction doesn't apply. If they
+grow into repeated instances or gain internal IDs, revisit.
+
+**Adding a new icon.**
+
+1. Create `public/icons/act-<name>.svg`.
+   - Root `<svg>` must have `xmlns="http://www.w3.org/2000/svg"` and a
+     `viewBox`.
+   - Use explicit colours; no `currentColor`.
+   - No duplicate `id=` attributes inside the file.
+2. Add `<name>: "icons/act-<name>.svg",` to the `ACT_ICONS` object in
+   `public/dashboard-helpers.js`.
+3. Reference it from a call site: `act(ACT_ICONS.<name>, …)`.
+4. Run `npm run check`.
+
+**Validation** — enforced at lint time by `scripts/lint-svg.js`
+(invoked from `npm run lint`). Fails on: malformed XML, missing root
+`<svg>`, missing `xmlns` / `viewBox`, or any duplicate id inside a file.
+A separate smoke test (`test/act-icons-files.test.js`) fails if the
+`ACT_ICONS` registry gets out of sync with the files on disk (missing
+file for an entry, or orphan file with no entry). Both run under
+`npm run check`.
+
+`scripts/lint-svg.js` uses `@xmldom/xmldom` (devDependency) so
+validation runs in pure Node with no assumption that `xmllint` is
+installed on the CI machine.
 
 ---
 
