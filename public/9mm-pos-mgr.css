@@ -480,6 +480,7 @@ span[title]:not([title=""]):hover {
  */
 .\39 mm-pos-mgr-il-warn-lede {
   margin-top: 1em;
+  color: #ffc107;
 }
 
 .\39 mm-pos-mgr-modal-note {
