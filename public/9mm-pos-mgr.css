@@ -2206,6 +2206,26 @@ span[title]:not([title=""]):hover {
   outline: none;
 }
 
+/*
+ * Per-letter leather-brown shades for "LP Ranger" — each letter is
+ * wrapped in a <span> with one of these classes to give natural
+ * variation like the tooled-leather crest.  All shades taken from
+ * the mid-to-light range of the crest image (leather-1..5, roughly
+ * Sepia → Umber → Chestnut → Tobacco → Caramel).  The hover /
+ * focus-visible rule below re-inherits from the title-tune button
+ * so the cyan hover treatment still works over the coloured spans.
+ */
+.\39 mm-pos-mgr-leather-1 { color: #7a4a2a; } /* Sepia */
+.\39 mm-pos-mgr-leather-2 { color: #8e5a32; } /* Umber */
+.\39 mm-pos-mgr-leather-3 { color: #a16a3e; } /* Chestnut */
+.\39 mm-pos-mgr-leather-4 { color: #b4794a; } /* Tobacco */
+.\39 mm-pos-mgr-leather-5 { color: #c88c5a; } /* Caramel */
+
+.\39 mm-pos-mgr-title-tune:hover span,
+.\39 mm-pos-mgr-title-tune:focus-visible span {
+  color: inherit;
+}
+
 .\39 mm-pos-mgr-hover-only {
   cursor: help;
 }
