@@ -5,16 +5,19 @@
  * `public/icons/`.  Fails the process (exit code 1) on any of:
  *   1. Malformed XML  — anything the DOMParser flags as an error.
  *   2. Missing root `<svg>` element.
- *   3. Missing or non-canonical `viewBox` on the root.
+ *   3. Missing `viewBox` on the root.
  *   4. Missing `xmlns` on the root.
- *   5. Duplicate `id=` attributes within a single file  (they would
- *      collide across DOM copies when the icon renders multiple
- *      times if the icon were ever inlined instead of loaded via
- *      `<img>`).
- * Wired into `npm run lint` via `npm run lint:svg` so a bad icon
- * blocks the pre-commit / CI pipeline.  See
- * docs/engineering.md § "SVG Assets" for the policy this enforces.
- * Runs zero HTTP requests and reads at most O(number of icons) files.
+ *   5. ANY `id=` attribute anywhere in the file.  LP Ranger icons
+ *      forbid ids outright — both rendering shapes (`<img>` for
+ *      act-*, inline injection for ui-*) work fine without them,
+ *      and forbidding ids removes a latent class of bugs where a
+ *      `<use>` reference silently picks the wrong element when the
+ *      icon is cloned.  Repeat inlined `<path>` elements instead of
+ *      `<defs>` + `<use>`.
+ * Wired into `npm run lint` so a bad icon blocks the pre-commit /
+ * CI pipeline.  See docs/engineering.md § "SVG Assets" for the
+ * policy this enforces.  Runs zero HTTP requests and reads at most
+ * O(number of icons) files.
  */
 
 "use strict";
@@ -33,9 +36,14 @@ function _fail(file, msg) {
   _errCount += 1;
 }
 
-/*- Collect ids inside the parsed doc; a set-vs-list length delta
- *  means at least one id repeated. */
-function _findDuplicateIds(doc) {
+/*- Collect every id= attribute in the parsed doc.  LP Ranger's icon
+ *  policy forbids ids outright — the two rendering shapes (`<img>`
+ *  for act-*, inline injection for ui-*) both work fine without
+ *  them, and forbidding them removes a whole class of latent bugs
+ *  (id-based `<use>` refs that silently pick the wrong element when
+ *  the icon is ever cloned).  Anything that would have needed
+ *  defs+use should just inline the path multiple times instead. */
+function _findAnyIds(doc) {
   const ids = [];
   function walk(node) {
     if (node.nodeType === 1 && node.getAttribute) {
@@ -45,13 +53,7 @@ function _findDuplicateIds(doc) {
     for (let c = node.firstChild; c; c = c.nextSibling) walk(c);
   }
   walk(doc);
-  const seen = new Set();
-  const dupes = [];
-  for (const id of ids) {
-    if (seen.has(id)) dupes.push(id);
-    else seen.add(id);
-  }
-  return [...new Set(dupes)];
+  return ids;
 }
 
 function _validate(file) {
@@ -79,9 +81,14 @@ function _validate(file) {
   if (!root.getAttribute("viewBox")) {
     _fail(file, "root <svg> missing viewBox attribute");
   }
-  const dupes = _findDuplicateIds(doc);
-  if (dupes.length) {
-    _fail(file, "duplicate id(s) inside file: " + dupes.join(", "));
+  const ids = _findAnyIds(doc);
+  if (ids.length) {
+    _fail(
+      file,
+      "SVG icons must not carry id= attributes (found: " +
+        [...new Set(ids)].join(", ") +
+        "); inline repeated shapes instead of using <defs>+<use>",
+    );
   }
 }
 

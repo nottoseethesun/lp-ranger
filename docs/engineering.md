@@ -2737,15 +2737,15 @@ the parent's `color` — `stroke="currentColor"` (or, for `ui-wallet.svg`,
 cascade only works if the SVG is inline in the same DOM as its parent
 — `<img>` isolates it.
 
-**Id safety for inline injection.** Inline injection re-introduces the
-duplicate-id risk that `<img>` avoids, but every current `ui-*.svg`
-file is single-instance in the DOM AND has no internal ids/defs.
-Both preconditions are enforced by `scripts/lint-svg.js` (rejects any
-duplicate ids inside a file) and the smoke test (rejects unreferenced
-files). If a UI icon ever needs to render N times, either
-
-1. give the file no internal ids, or
-2. switch its category to `act-*` and render via `<img>`.
+**No ids anywhere.** LP Ranger icons forbid `id=` attributes outright,
+enforced by `scripts/lint-svg.js`. Both rendering shapes (`<img>` for
+act-*, inline injection for ui-*) work without ids, and forbidding
+them removes an entire class of latent bugs where a `<use>` reference
+silently picks the wrong element when the icon is cloned. Anything
+that would have needed `<defs>` + `<use>` (e.g. drawing the same path
+three times with different strokes for a layered rope effect) should
+just inline the path three times instead. See `act-lasso.svg` for the
+reference implementation.
 
 **Placeholder shape.** A placeholder in HTML looks like
 
@@ -2766,7 +2766,8 @@ reveal-key button and 24 in the wallet-unlock modal).
      `viewBox`.
    - `act-*` files: no `currentColor` — hard-code every colour.
    - `ui-*` files: `currentColor` and `var(--…)` both work.
-   - No duplicate `id=` attributes inside the file.
+   - No `id=` attributes anywhere in the file.  Repeat shapes
+     inline if you'd otherwise reach for `<defs>` + `<use>`.
 2. Register it:
    - `act-*` → add `<name>: "icons/act-<name>.svg",` to the
      `ACT_ICONS` object in `public/dashboard-helpers.js`, then call
@@ -2779,7 +2780,8 @@ reveal-key button and 24 in the wallet-unlock modal).
 
 Enforced at lint time by `scripts/lint-svg.js` (invoked from
 `npm run lint`). Fails on: malformed XML, missing root `<svg>`,
-missing `xmlns` / `viewBox`, or any duplicate id inside a single file.
+missing `xmlns` / `viewBox`, or any `id=` attribute anywhere in a
+file.
 
 A separate smoke test (`test/icons-files.test.js`) fails if:
 
