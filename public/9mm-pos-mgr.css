@@ -2761,3 +2761,77 @@ span[title]:not([title=""]):hover {
   border-radius: 4px;
   color: var(--warn);
 }
+
+/* ── Sky Clouds ─────────────────────────────────────────────────────
+   Three cloud PNGs positioned as decoration behind the app, drifting
+   left-to-right at an almost-unnoticeable speed.  The wrap-around
+   pattern: when a cloud's LEFT edge crosses the right side of the
+   viewport, the animation loop restarts it at the far left with just
+   1 px of the cloud's right edge visible.  All three clouds share the
+   same speed but start at different phases via negative animation-delay
+   so they don't move in lockstep.
+   ── Tuning knobs ─────────────────────────────────────────────────
+   Cloud opacity     → `opacity` value (currently 0.18) — a very faint
+                       signature so the sky base still dominates.
+   Cloud speed       → `animation-duration` (currently 900s / 15 min per
+                       full traversal); larger = slower.
+   Vertical spacing  → `top` percentages on the three modifier classes
+                       (currently 8%, 40%, 70% for even distribution).
+   Phase offsets     → `animation-delay` on the middle/bottom modifiers
+                       (currently -300s and -600s of the 900s cycle,
+                       i.e. 1/3 and 2/3 through).
+   Cloud size        → `width`/`height` on the base class (currently
+                       900×600).  The PNG files themselves are 900×600. */
+.\39 mm-pos-mgr-cloud {
+  position: fixed;
+  left: 0;
+  width: 900px;
+  height: 600px;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.18;
+  animation: cloudDrift 900s linear infinite;
+}
+
+.\39 mm-pos-mgr-cloud-top {
+  top: 8%;
+  background-image: url("background-cloud_top.png");
+}
+
+.\39 mm-pos-mgr-cloud-middle {
+  top: 40%;
+  background-image: url("background-cloud_middle.png");
+  animation-delay: -300s;
+}
+
+.\39 mm-pos-mgr-cloud-bottom {
+  top: 70%;
+  background-image: url("background-cloud_bottom.png");
+  animation-delay: -600s;
+}
+
+/* Wrap-around drift.  `translateX(calc(-100% + 1px))` puts the cloud
+   fully off-screen left with 1 px of its right edge peeking in.
+   `translateX(100vw)` puts the cloud's LEFT edge at the viewport's
+   right edge — fully off-screen right.  Linear + infinite means the
+   moment the end frame reaches, it snaps back to the start frame,
+   giving the "reappears on the left with 1 px showing" behaviour. */
+@keyframes cloudDrift {
+  from { transform: translateX(calc(-100% + 1px)); }
+  to { transform: translateX(100vw); }
+}
+
+/* ── Panel translucency ────────────────────────────────────────────
+   All cards except Mission Control get 15 % more translucent so the
+   sky + drifting clouds show through faintly.  Mission Control keeps
+   its solid background — it holds the action buttons and the leather
+   crest, so it should read as a decisive foreground panel. */
+.kpi-card:not(.\39 mm-pos-mgr-mission-panel) {
+  background: rgb(15 25 36 / 85%);
+}
+
+.wallet-strip {
+  background: rgb(20 27 36 / 85%);
+}
