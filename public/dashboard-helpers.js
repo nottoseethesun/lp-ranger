@@ -114,6 +114,15 @@ export const ACT_ICONS = {
 /** Maximum entries in the Activity Log. */
 const ACT_LOG_MAX = 500;
 
+/*- Per-icon render-size override.  Default is 40 (fits the 54×54
+ *  `.aico` chip with ~7 px padding on each side); an entry here
+ *  scales that specific icon larger or smaller without touching the
+ *  SVG file or the rest of the icons. */
+const _ICON_SIZE_PX = {
+  "icons/act-acorn.svg": 50,
+};
+const _ICON_DEFAULT_SIZE_PX = 40;
+
 /**
  * Populate an icon container.  An `icon` starting with `icons/` is
  * rendered as an `<img>` referencing a standalone SVG file (the
@@ -129,8 +138,9 @@ function _setActIcon(el, icon) {
   if (icon.startsWith("icons/")) {
     const img = document.createElement("img");
     img.src = icon;
-    img.width = 40;
-    img.height = 40;
+    const size = _ICON_SIZE_PX[icon] || _ICON_DEFAULT_SIZE_PX;
+    img.width = size;
+    img.height = size;
     img.alt = "";
     el.appendChild(img);
     return;
