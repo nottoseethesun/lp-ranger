@@ -76,20 +76,20 @@ function _computePreservedWidthPct(tickLower, tickUpper, offset) {
   return widthPct.toFixed(2);
 }
 
-/*- Compose the "Range width: X% (from saved override)" /
- *  "preserving current tick spread (~Y%)" line for the modal body.
- *  Pulls from getLastStatus() — the same source the Bot Settings
- *  row's `_syncRangeWidth` reads on every poll, so the preview
- *  matches what a subsequent rebalance will actually apply.  A
- *  pre-populated but unsaved input value does NOT influence this —
- *  only the saved config value or the preserveRange fallback.
- *  Offset is read from the same status payload (falls back to 50
- *  centered if unset) so the preview accounts for non-centered
- *  Position Offset configurations. */
+/*- Compact "X%" range-width value for the modal's position-context
+ *  data-list line.  Pulls from getLastStatus() — the same source the
+ *  Bot Settings row's `_syncRangeWidth` reads on every poll, so the
+ *  preview matches what a subsequent rebalance will actually apply.
+ *  A pre-populated but unsaved input value does NOT influence this —
+ *  only the saved config value or the preserveRange fallback.  Offset
+ *  is read from the same status payload (falls back to 50 centered
+ *  if unset) so the value accounts for non-centered Position Offset
+ *  configurations.  Returns an em-dash when neither source yields a
+ *  finite value. */
 function _rangeWidthPreviewText(status, active) {
   const saved = status?.rebalanceRangeWidthPct;
   if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
-    return String(saved) + "% (from saved override)";
+    return String(saved) + "%";
   }
   const rawOffset = status?.offsetToken0Pct;
   const offset =
@@ -105,21 +105,28 @@ function _rangeWidthPreviewText(status, active) {
     active?.tickUpper,
     offset,
   );
-  return preserved
-    ? "preserving current tick spread (~" + preserved + "%)"
-    : "preserving current tick spread";
+  return preserved ? preserved + "%" : "—";
 }
 
-/** Open the mild-IL confirmation modal for a manual rebalance. */
+/** Open the mild-IL confirmation modal for a manual rebalance.  The
+ *  Range Width line is appended to the position-context paragraph as
+ *  a fourth data-list row (below "chain · wallet") so all identifying
+ *  data lives in one block; textContent (not innerHTML) is used for
+ *  the width value so the assembled string can't inject markup. */
 export function openRebalanceConfirm() {
   const modal = g("rebalanceIlWarningModal");
   if (!modal) return;
   const active = posStore.getActive();
   const ctx = g("rebalanceIlWarningCtx");
-  if (ctx) ctx.innerHTML = active ? _posContextHtml() : "";
-  const preview = g("ilRangeWidthPreview");
-  if (preview)
-    preview.textContent = _rangeWidthPreviewText(getLastStatus(), active);
+  if (ctx) {
+    ctx.innerHTML = active ? _posContextHtml() : "";
+    const p = ctx.querySelector("p");
+    if (p) {
+      const width = _rangeWidthPreviewText(getLastStatus(), active);
+      p.appendChild(document.createElement("br"));
+      p.appendChild(document.createTextNode("Range Width: " + width));
+    }
+  }
   modal.classList.remove("hidden");
 }
 

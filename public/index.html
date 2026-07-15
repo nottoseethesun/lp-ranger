@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784134331191">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784134331191">
+<link rel="stylesheet" href="style.css?v=1784134981052">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784134981052">
 </head>
 <body>
 
@@ -426,16 +426,15 @@
 <div class="modal-overlay hidden" id="rebalanceIlWarningModal">
   <div class="modal 9mm-pos-mgr-modal-sm 9mm-pos-mgr-warning-modal">
     <div class="modal-logo">
-      <div class="modal-logo-icon">⚠</div>
       <div><h2>Rebalance Now</h2><p>Frequent rebalancing can crystallize Impermanent Loss</p></div>
     </div>
     <div class="9mm-pos-mgr-confirm-body">
       <div id="rebalanceIlWarningCtx"></div>
-      <p class="9mm-pos-mgr-il-warn-lede">Each rebalance incurs slippage that can crystallize impermanent loss over time. Also the cost of the gas can be non-trivial in times of high blockchain usage. Carefully consider if you need to rebalance now or if, instead, price is likely to return to range before too long.</p>
+      <p class="9mm-pos-mgr-il-warn-lede"><span class="9mm-pos-mgr-warn-icon-inline" aria-hidden="true">⚠</span> Each rebalance incurs slippage that can crystallize impermanent loss over time. Also the cost of the gas can be non-trivial in times of high blockchain usage. Carefully consider if you need to rebalance now or if, instead, price is likely to return to range before too long.</p>
+      <p>The bot will rebalance this position to the range width, with any offset (if any), using the respective values set in the &ldquo;Range &amp; Execution&rdquo; segment of the &ldquo;Bot Configuration&rdquo; section on this app.</p>
       <p>The bot&rsquo;s automatic rebalances already respect your <strong>OOR Threshold</strong>, <strong>OOR Timeout</strong>, and <strong>Min Time Between Rebalances</strong> settings.</p>
-      <p class="9mm-pos-mgr-text-muted">Range width: <span id="ilRangeWidthPreview">&mdash;</span></p>
       <div class="9mm-pos-mgr-confirm-footer">
-        If you rebalanced within the last 10 minutes, the bot may already sweep residuals automatically. Consider reviewing your throttle settings if you find yourself here often.
+        If you rebalanced within the last 10 minutes, the bot may already sweep residuals automatically. Consider reviewing your rebalance throttle settings in the &ldquo;Rebalance Timing &amp; Throttle&rdquo; segment of the &ldquo;Bot Configuration&rdquo; section on this app if you find yourself here often.
       </div>
     </div>
     <div class="9mm-pos-mgr-btn-row">
@@ -1367,6 +1366,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784134331191"></script>
+<script src="dist/bundle.js?v=1784134981052"></script>
 </body>
 </html>

@@ -183,7 +183,7 @@ describe("_computePreservedWidthPct — non-centered offsets", () => {
 function rangeWidthPreviewText(status, active) {
   const saved = status?.rebalanceRangeWidthPct;
   if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
-    return String(saved) + "% (from saved override)";
+    return String(saved) + "%";
   }
   const rawOffset = status?.offsetToken0Pct;
   const offset =
@@ -199,44 +199,40 @@ function rangeWidthPreviewText(status, active) {
     active?.tickUpper,
     offset,
   );
-  return preserved
-    ? "preserving current tick spread (~" + preserved + "%)"
-    : "preserving current tick spread";
+  return preserved ? preserved + "%" : "—";
 }
 
 describe("_rangeWidthPreviewText", () => {
-  it("shows the saved override verbatim when present", () => {
+  it("shows the saved override as a bare percent when present", () => {
     const text = rangeWidthPreviewText(
       { rebalanceRangeWidthPct: 7.5 },
       { tickLower: -100, tickUpper: 100 },
     );
-    assert.equal(text, "7.5% (from saved override)");
+    assert.equal(text, "7.5%");
   });
 
   it("prefers the saved override over the preserveRange fallback", () => {
-    /*- Even when ticks+price are available (would produce a
-     *  preserveRange preview), the saved override wins. */
+    /*- Even when ticks are available (would produce a preserveRange
+     *  preview), the saved override wins. */
     const text = rangeWidthPreviewText(
-      {
-        rebalanceRangeWidthPct: 15,
-      },
+      { rebalanceRangeWidthPct: 15 },
       { tickLower: -100, tickUpper: 100 },
     );
-    assert.match(text, /^15% \(from saved override\)$/);
+    assert.equal(text, "15%");
   });
 
-  it("falls back to preserveRange preview when override is unset", () => {
+  it("falls back to preserveRange percent when override is unset", () => {
     const text = rangeWidthPreviewText({}, { tickLower: -500, tickUpper: 500 });
-    assert.match(text, /^preserving current tick spread \(~\d+\.\d{2}%\)$/);
+    assert.match(text, /^\d+\.\d{2}%$/);
   });
 
-  it("shows generic preserveRange text when ticks are missing", () => {
+  it("renders an em-dash when ticks are missing", () => {
     const text = rangeWidthPreviewText({}, {});
-    assert.equal(text, "preserving current tick spread");
+    assert.equal(text, "—");
   });
 
-  it("preview text differs for centered vs non-centered offset (same ticks)", () => {
-    /*- Regression guard: verifies the preview line reads
+  it("preview value differs for centered vs non-centered offset (same ticks)", () => {
+    /*- Regression guard: verifies the preview reads
      *  `status.offsetToken0Pct` and passes it through to the width
      *  formula.  An earlier centered-only implementation would
      *  produce the same preview text for both offsets. */
@@ -264,16 +260,16 @@ describe("_rangeWidthPreviewText", () => {
     );
     /*- With `Number.isFinite(0)` being true and the explicit
      *  `!== undefined && !== null` check passing, `0` DOES get
-     *  formatted as "0% (from saved override)".  This is intentional:
-     *  the mirror surfaces exactly what the user has in config; the
-     *  server-side seam separately decides to omit the override.
-     *  Documented here so a future refactor doesn't "fix" this. */
-    assert.equal(text, "0% (from saved override)");
+     *  formatted as "0%".  This is intentional: the mirror surfaces
+     *  exactly what the user has in config; the server-side seam
+     *  separately decides to omit the override.  Documented here so
+     *  a future refactor doesn't "fix" this. */
+    assert.equal(text, "0%");
   });
 
-  it("null status and null active render generic fallback", () => {
+  it("null status and null active render em-dash fallback", () => {
     const text = rangeWidthPreviewText(null, null);
-    assert.equal(text, "preserving current tick spread");
+    assert.equal(text, "—");
   });
 });
 
