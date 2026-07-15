@@ -2522,8 +2522,8 @@ span[title]:not([title=""]):hover {
 }
 
 .\39 mm-pos-mgr-mission-divider {
-  border: none;
-  border-top: 1px solid #cc3000;
+  display: block;
+  width: 100%;
   margin: 27px 0;
 }
 
