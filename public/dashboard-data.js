@@ -490,7 +490,7 @@ function _populateHistoryOnce(data) {
   );
   for (const ev of _s) {
     act(
-      ACT_ICONS.gear,
+      ACT_ICONS.lasso,
       "fee",
       "Rebalance",
       "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + ctx,

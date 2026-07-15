@@ -111,13 +111,13 @@ export const ACT_ICONS = {
    *  (Q-curve cap + ellipse nut) still lines up.  Dark-green cap
    *  texture strokes stay legible because they're drawn on top of the
    *  white cap, not the transparent canvas. */
-  acorn: `<svg xmlns="http://www.w3.org/2000/svg" width="27" height="27" viewBox="0 0 64 64"><ellipse cx="32" cy="39" rx="12" ry="15" fill="#FFFFFF"/><path d="M20 26 Q20 19 32 17 Q44 19 44 26 Q44 29 32 29 Q20 29 20 26" fill="#FFFFFF"/><path d="M23.5 23 Q32 21.2 40.5 23" fill="none" stroke="#0F3D2E" stroke-width="1.4" stroke-linecap="round"/><path d="M24.5 26 Q32 24.7 39.5 26" fill="none" stroke="#0F3D2E" stroke-width="1.4" stroke-linecap="round"/><path d="M32 17 Q33.5 11 32 7" fill="none" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round"/></svg>`,
+  acorn: `<svg xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 64 64"><ellipse cx="32" cy="39" rx="12" ry="15" fill="#FFFFFF"/><path d="M20 26 Q20 19 32 17 Q44 19 44 26 Q44 29 32 29 Q20 29 20 26" fill="#FFFFFF"/><path d="M23.5 23 Q32 21.2 40.5 23" fill="none" stroke="#0F3D2E" stroke-width="1.4" stroke-linecap="round"/><path d="M24.5 26 Q32 24.7 39.5 26" fill="none" stroke="#0F3D2E" stroke-width="1.4" stroke-linecap="round"/><path d="M32 17 Q33.5 11 32 7" fill="none" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round"/></svg>`,
   /*- Lasso: Rebalance activity entries.  User-provided art (white
    *  rope strokes) on transparent background so the .aico container's
    *  tinted chip shows through.  Rendered at 27×27 with an internal
    *  64×64 viewBox so the supplied Q-curve coil + loop coordinates
    *  render unchanged. */
-  lasso: `<svg xmlns="http://www.w3.org/2000/svg" width="27" height="27" viewBox="0 0 64 64"><path d="M18 25 Q12 32 18 40 Q25 46 32 40" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 40 Q42 35 48 25 Q45 15 35 20 Q28 28 32 40" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 30 Q15 35 20 40" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/></svg>`,
+  lasso: `<svg xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 64 64"><path d="M18 25 Q12 32 18 40 Q25 46 32 40" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 40 Q42 35 48 25 Q45 15 35 20 Q28 28 32 40" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 30 Q15 35 20 40" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/></svg>`,
 };
 /** Maximum entries in the Activity Log. */
 const ACT_LOG_MAX = 500;
