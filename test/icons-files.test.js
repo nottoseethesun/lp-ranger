@@ -13,9 +13,9 @@
  *     `public/dashboard-helpers.js` (loaded via `<img>` per
  *     docs/engineering.md § "SVG Assets").
  *   * Header / wallet-strip / modal icons — `data-svg="…"`
- *     placeholder attributes in `public/index.html` (loaded via
- *     fetch + DOMParser inline injection by
- *     `public/dashboard-ui-icons.js`).
+ *     placeholder attributes in `public/index.html` (inlined at
+ *     build time by `scripts/inline-svgs.js` into
+ *     `public/dist/index.html`).
  */
 
 "use strict";

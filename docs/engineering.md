@@ -2724,22 +2724,44 @@ these files — the log renders them via `<img>` and it won't cascade.
 
 ### Category 2 — UI icons (`ui-*.svg`)
 
-Prefix: `ui-`. Loaded via **`fetch()` + DOMParser inline injection**
-into `data-svg="…"` placeholder elements in `public/index.html`.
-Injector lives in `public/dashboard-ui-icons.js`; `loadAllUiIcons()`
-is called once from `dashboard-init.js` at page load.
+Prefix: `ui-`. Inlined into `public/index.html` **at build time** by
+`scripts/inline-svgs.js`, which runs as the last step of `npm run build`
+after esbuild + `cache-bust.js`. Source `public/index.html` carries
+`data-svg="…" data-w=".." data-h=".."` placeholder attributes; the
+build script reads each referenced file, sizes the root `<svg>` per
+the data-attrs, and writes the composed HTML to
+`public/dist/index.html`. The server prefers `public/dist/index.html`
+at `/` when it exists (see the top of the static-file handler in
+`server.js`) and falls back to `public/index.html` when it doesn't —
+so a skipped build degrades gracefully (page still boots, placeholders
+just render as empty elements).
 
-**Why inline injection (not `<img>`).** These icons live inside
-buttons and the wallet strip where their stroke needs to cascade from
-the parent's `color` — `stroke="currentColor"` (or, for `ui-wallet.svg`,
-`stroke="var(--accent)"`) resolves against the enclosing `.9mm-pos-mgr-icon-btn`,
-`.pos-browser-btn`, `.ws-reveal-btn`, or `.modal-logo-icon` styles. That
-cascade only works if the SVG is inline in the same DOM as its parent
-— `<img>` isolates it.
+**Why inline (not `<img>`).** These icons live inside buttons and the
+wallet strip where their stroke needs to cascade from the parent's
+`color` — `stroke="currentColor"` (or, for `ui-wallet.svg`,
+`stroke="var(--accent)"`) resolves against the enclosing
+`.9mm-pos-mgr-icon-btn`, `.pos-browser-btn`, `.ws-reveal-btn`, or
+`.modal-logo-icon` styles. That cascade only works if the SVG is
+inline in the same DOM as its parent — `<img>` would isolate it.
+
+**Why build-time (not runtime `fetch()` + DOMParser).** Runtime
+injection would work, but adds an async load, a silent failure mode
+(placeholder stays empty on parse error), and XML-parsing complexity
+on the client. Build-time substitution has none of those failure modes
+— what ships is what you see.
+
+**Prefer files over inlining wherever the cascade requirement doesn't
+force our hand.** Inlining defeats browser caching (the SVG bytes ride
+along inside the no-cache HTML on every page load), while `<img
+src="…">` icons served from `public/icons/` get the
+`immutable, max-age=31536000` treatment and download exactly once per
+user forever. The `act-*` category exists because that's the majority
+of the app's icons — small, cacheable, isolated. `ui-*` is the
+exception, not the pattern.
 
 **No ids anywhere.** LP Ranger icons forbid `id=` attributes outright,
 enforced by `scripts/lint-svg.js`. Both rendering shapes (`<img>` for
-act-*, inline injection for ui-*) work without ids, and forbidding
+act-*, build-time inline for ui-*) work without ids, and forbidding
 them removes an entire class of latent bugs where a `<use>` reference
 silently picks the wrong element when the icon is cloned. Anything
 that would have needed `<defs>` + `<use>` (e.g. drawing the same path
@@ -2747,16 +2769,19 @@ three times with different strokes for a layered rope effect) should
 just inline the path three times instead. See `act-lasso.svg` for the
 reference implementation.
 
-**Placeholder shape.** A placeholder in HTML looks like
+**Placeholder shape.** A placeholder in HTML source looks like
 
 ```html
 <span data-svg="icons/ui-gear.svg" data-w="27" data-h="27"></span>
 ```
 
-`data-w` / `data-h` are optional; the injector applies them as
-`width` / `height` on the injected `<svg>` so the same file renders
-at multiple sizes across the app (e.g. `ui-lock.svg` at 14 in the
-reveal-key button and 24 in the wallet-unlock modal).
+The wrapping element (span / div / button — any tag that has
+`data-svg`) keeps its `class` / `id` / other attributes; only the
+`data-svg` / `data-w` / `data-h` attrs are stripped during inline.
+`data-w` / `data-h` are optional; the inliner emits `width` / `height`
+on the injected `<svg>` so the same file renders at multiple sizes
+across the app (e.g. `ui-lock.svg` at 14 in the reveal-key button and
+24 in the wallet-unlock modal).
 
 ### Adding a new icon
 

@@ -250,10 +250,18 @@ function serveStatic(urlPath, res) {
     res.end("400 Bad Request");
     return true;
   }
-  const relative =
-    clean === "/"
-      ? "index.html"
-      : clean.replace(/^\/public\//, "").replace(/^\//, "");
+  /*- Prefer the build-inlined `public/dist/index.html` at the root
+   *  path (see scripts/inline-svgs.js) when it exists, so shipped
+   *  pages get inline SVG icons instead of empty placeholders.  Falls
+   *  back to `public/index.html` when the build hasn't run yet — the
+   *  page still boots, only the ui-* icons render as empty spans. */
+  let relative;
+  if (clean === "/") {
+    const distIndex = path.resolve(__dirname, "public", "dist", "index.html");
+    relative = fs.existsSync(distIndex) ? "dist/index.html" : "index.html";
+  } else {
+    relative = clean.replace(/^\/public\//, "").replace(/^\//, "");
+  }
   const filePath = path.resolve(__dirname, "public", relative);
 
   // Security: reject paths that escape public dir

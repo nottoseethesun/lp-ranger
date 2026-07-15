@@ -44,7 +44,8 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 ├── bot.js                        # Headless bot wrapper (no dashboard UI)
 ├── scripts/check.js              # Combined lint + test + coverage check
 ├── scripts/copy-fonts.js         # Copies self-hosted WOFF2 fonts from node_modules to public/fonts/
-├── scripts/lint-svg.js           # Strict XML + no-duplicate-id validator for public/icons/*.svg (see docs/engineering.md § SVG Assets)
+├── scripts/lint-svg.js           # Strict XML + no-id-attributes validator for public/icons/*.svg (see docs/engineering.md § SVG Assets)
+├── scripts/inline-svgs.js        # Build-time inliner: composes public/dist/index.html by replacing `data-svg=…` placeholders with `ui-*.svg` contents
 ├── scripts/stop.js               # Graceful shutdown helper (POST /api/shutdown)
 ├── scripts/reset-wallet.js       # Delete wallet file + scrub WALLET_PASSWORD from .env
 ├── scripts/import-wallet.js      # CLI wallet import (creates app-config/user-configurable/wallet.json without browser)
@@ -107,7 +108,6 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── dashboard-price-override.js # Manual token price override for positions where auto-detection fails
 │   ├── dashboard-closed-pos.js   # Closed-position history view: fetches and displays P&L for drained NFTs
 │   ├── dashboard-sounds.js       # UI sound effects with master toggle (Settings) + localStorage persistence
-│   ├── dashboard-ui-icons.js     # Loader for `data-svg` placeholder → inline-injected `ui-*.svg` from public/icons/
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: startBotLoop, provider/signer setup, epoch cache restore

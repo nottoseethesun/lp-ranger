@@ -74,7 +74,6 @@ import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadNftProviders } from "./dashboard-nft-providers.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
 import { loadSettingLabels } from "./dashboard-setting-labels.js";
-import { loadAllUiIcons } from "./dashboard-ui-icons.js";
 import {
   bindAllEvents,
   restorePrivacyMode,
@@ -261,10 +260,6 @@ function _afterDisclaimer() {
    *  formatter.  Silent on failure — the client falls back to raw
    *  '<key> = <value>' form when the label map is empty. */
   loadSettingLabels();
-  /*- Inline-inject every `data-svg="…"` placeholder — the header
-   *  gear / grid / lock / wallet icons.  Silent on failure; the
-   *  placeholder simply stays empty rather than throwing. */
-  loadAllUiIcons();
 
   /*- Fetch Bot Config tunable defaults so each input shows the value
    *  declared in app-config/app-defaults-for-user-configurable/bot-config-defaults.json
