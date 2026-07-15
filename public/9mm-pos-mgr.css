@@ -2252,6 +2252,18 @@ span[title]:not([title=""]):hover {
   margin-top: auto;
 }
 
+/*
+ * Decorative crest between the Special Action badge and the Rebalance
+ * Now button.  Centered horizontally in the Mission Control panel;
+ * scales down on narrow layouts so it never forces horizontal scroll.
+ */
+.\39 mm-pos-mgr-mission-crest {
+  display: block;
+  margin: 12px auto;
+  max-width: 100%;
+  height: auto;
+}
+
 .\39 mm-pos-mgr-mission-top-gap {
   height: 21px;
 }
