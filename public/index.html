@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784134219636">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784134219636">
+<link rel="stylesheet" href="style.css?v=1784134331191">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784134331191">
 </head>
 <body>
 
@@ -431,7 +431,8 @@
     </div>
     <div class="9mm-pos-mgr-confirm-body">
       <div id="rebalanceIlWarningCtx"></div>
-      <p>Each rebalance incurs gas and slippage that can crystallize impermanent loss over time. The bot&rsquo;s automatic rebalances already respect your <strong>OOR Threshold</strong>, <strong>OOR Timeout</strong>, and <strong>Min Time Between Rebalances</strong> settings.</p>
+      <p class="9mm-pos-mgr-il-warn-lede">Each rebalance incurs slippage that can crystallize impermanent loss over time. Also the cost of the gas can be non-trivial in times of high blockchain usage. Carefully consider if you need to rebalance now or if, instead, price is likely to return to range before too long.</p>
+      <p>The bot&rsquo;s automatic rebalances already respect your <strong>OOR Threshold</strong>, <strong>OOR Timeout</strong>, and <strong>Min Time Between Rebalances</strong> settings.</p>
       <p class="9mm-pos-mgr-text-muted">Range width: <span id="ilRangeWidthPreview">&mdash;</span></p>
       <div class="9mm-pos-mgr-confirm-footer">
         If you rebalanced within the last 10 minutes, the bot may already sweep residuals automatically. Consider reviewing your throttle settings if you find yourself here often.
@@ -1366,6 +1367,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784134219636"></script>
+<script src="dist/bundle.js?v=1784134331191"></script>
 </body>
 </html>

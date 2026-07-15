@@ -470,6 +470,15 @@ span[title]:not([title=""]):hover {
   color: #ffc107;
 }
 
+/*
+ * Extra top spacing above the warning-modal lede paragraph — one
+ * line of whitespace so the body doesn't crowd the header block
+ * once the header's own margin-bottom was halved.
+ */
+.\39 mm-pos-mgr-il-warn-lede {
+  margin-top: 1em;
+}
+
 .\39 mm-pos-mgr-modal-note {
   margin-top: 18px;
   font-size: 17px;
