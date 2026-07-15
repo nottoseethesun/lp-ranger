@@ -102,7 +102,7 @@ export async function compoundNow() {
   }
   const pl = _posLabel();
   act(
-    ACT_ICONS.gear,
+    ACT_ICONS.acorn,
     "start",
     "Compound Requested",
     "Collecting fees and re-depositing as liquidity" + (pl ? "\n" + pl : ""),

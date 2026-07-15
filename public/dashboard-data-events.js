@@ -59,7 +59,7 @@ function _logCompound(key, st, ctx) {
   if (!entry) return;
   _lastCompAt.set(key, st.lastCompoundAt);
   act(
-    ACT_ICONS.gear,
+    ACT_ICONS.acorn,
     entry.type,
     entry.title,
     entry.detail,
@@ -134,7 +134,7 @@ function _handleRebalance(key, st, ctx) {
     _lastRebAt.set(key, at);
     if (!ev) return;
     const { when, detail } = _buildRebalanceLogEntry(ev, ctx);
-    act(ACT_ICONS.gear, "fee", "Rebalance", detail, when, ev.txHash);
+    act(ACT_ICONS.lasso, "fee", "Rebalance", detail, when, ev.txHash);
   });
 }
 

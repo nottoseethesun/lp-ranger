@@ -190,7 +190,7 @@ function _handleRebalanceOk(active, inFlight, url, triggerActLabel) {
     _tid,
     _tid ? emojiId(String(_tid)) : "",
   );
-  act(ACT_ICONS.swap, "start", triggerActLabel, _pl || "");
+  act(ACT_ICONS.lasso, "start", triggerActLabel, _pl || "");
 }
 
 /*- Shared POST helper for the two rebalance-triggering call sites:
