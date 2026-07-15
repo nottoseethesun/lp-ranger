@@ -2270,12 +2270,13 @@ span[title]:not([title=""]):hover {
   gap: 6px;
   min-height: 620px;
 
-  /* Same #260700 dark-red-brown as before, now tinted at --panel-opacity
-     so the sky + drifting clouds show through Mission Control's
-     interior the same 15 % they show through every other panel.  The
-     leather-crest <img> child is unaffected — <img> opacity is not
-     driven by container background. */
-  background: rgb(38 7 0 / var(--panel-opacity));
+  /* Same #260700 dark-red-brown as before, now tinted at
+     --mission-opacity — Mission Control has its own translucency knob
+     (heavier bleed-through than the neutral panels) so the sky +
+     clouds read through the saturated brown.  The leather-crest <img>
+     child is unaffected — <img> opacity is not driven by container
+     background. */
+  background: rgb(38 7 0 / var(--mission-opacity));
   border-radius: 15px;
   padding: 21px 30px 6px;
   margin: 0 0 6px;
@@ -2843,7 +2844,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784158230459");
+  background-image: url("background-cloud_top.png?v=1784158624630");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -2856,7 +2857,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784158230459");
+  background-image: url("background-cloud_middle.png?v=1784158624630");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -2866,7 +2867,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784158230459");
+  background-image: url("background-cloud_bottom.png?v=1784158624630");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

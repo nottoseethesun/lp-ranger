@@ -18,6 +18,15 @@
      is what the rgb(... / …) alpha slots consume. */
   --panel-translucency:15%;
   --panel-opacity:calc(100% - var(--panel-translucency));
+
+  /* Mission Control gets its own translucency knob — its distinctive
+     dark-red-brown tint (rgb(38 7 0)) is far more saturated than the
+     neutral panels, so it needs more sky bleed-through to read as
+     translucent rather than as a heavy chunk of foreground.  Kept as
+     a separate token so tuning Mission Control doesn't disturb every
+     other card. */
+  --mission-translucency:30%;
+  --mission-opacity:calc(100% - var(--mission-translucency));
 }
 
 *{
