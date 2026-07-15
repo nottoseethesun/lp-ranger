@@ -117,10 +117,21 @@ const TX_SPEEDUP_SEC = parsePositiveInt(
   APP_CONFIG.tx.speedupSec,
 );
 
-/** Seconds before a stuck TX is cancelled with a 0-PLS self-transfer. */
+/*- On-chain contract deadline (seconds) stamped into removeLiquidity /
+ *  swap / mint calldata.  Sourced from app-runtime.json — see the
+ *  `tx._comment` block there for the full explanation. */
+const DEADLINE_SEC = parsePositiveInt(
+  process.env.DEADLINE_SEC,
+  APP_CONFIG.tx.deadlineSec,
+);
+
+/*- Seconds before a stuck TX is cancelled with a 0-PLS self-transfer.
+ *  DERIVED from `deadlineSec × cancelToDeadlineMultiple` (both in
+ *  app-runtime.json) so the two values can't drift.  The environment
+ *  override still wins if operators need to force a specific value. */
 const TX_CANCEL_SEC = parsePositiveInt(
   process.env.TX_CANCEL_SEC,
-  APP_CONFIG.tx.cancelSec,
+  DEADLINE_SEC * APP_CONFIG.tx.cancelToDeadlineMultiple,
 );
 
 /** How often the bot checks the on-chain position, in seconds. */
@@ -250,6 +261,7 @@ module.exports = {
   DEFAULT_SLIPPAGE_PCT,
   SLIPPAGE_PCT,
   TX_SPEEDUP_SEC,
+  DEADLINE_SEC,
   TX_CANCEL_SEC,
   CHECK_INTERVAL_SEC,
   MIN_REBALANCE_INTERVAL_MIN,

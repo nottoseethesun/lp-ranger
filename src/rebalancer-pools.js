@@ -61,20 +61,15 @@ const {
 /** Maximum uint128 value used for the collect() call. */
 const _MAX_UINT128 = 2n ** 128n - 1n;
 
-/*- Default transaction deadline offset in seconds.  Stamped as
+/*- On-chain transaction deadline offset in seconds.  Stamped as
  *  `deadline = now + _DEADLINE_SECONDS` on every removeLiquidity /
- *  swap / mint calldata.  Must comfortably exceed `TX_CANCEL_SEC`
- *  (default 1200 = 20 min) so a slow-to-mine TX doesn't hit the
- *  contract's `require(block.timestamp <= deadline)` before the
- *  bot has even given up and cancelled the nonce.  900 (15 min) is
- *  the compromise: 5 min more than Uniswap's own default of 600
- *  (github.com/Uniswap/interface apps/web/src/constants/misc.ts),
- *  large enough that the 2026-07-15 incident where the removeLiq
- *  TX took 10:21 to mine on PulseChain would have succeeded, and
- *  still 5 min short of the 20-min cancel timeout so a stuck TX
- *  gets recognized as stuck (and cancelled by the bot) BEFORE its
- *  own contract-side deadline expires. */
-const _DEADLINE_SECONDS = 900;
+ *  swap / mint calldata.  Source of truth is `tx.deadlineSec` in
+ *  app-config/app-defaults-for-user-configurable/app-runtime.json —
+ *  the `_comment` block on the `tx` group there explains the
+ *  full deadline/cancel timing relationship.  Re-exported so
+ *  tests and rebalancer.js can pin against it without knowing
+ *  where the literal lives. */
+const _DEADLINE_SECONDS = config.DEADLINE_SEC;
 
 /** Minimum swap amount — skip swap if amountIn is below this threshold. */
 const _MIN_SWAP_THRESHOLD = 1000n;
