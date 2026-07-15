@@ -2796,7 +2796,7 @@ span[title]:not([title=""]):hover {
 }
 
 .\39 mm-pos-mgr-cloud-top {
-  top: 8%;
+  top: 10px;
   background-image: url("background-cloud_top.png");
 }
 
