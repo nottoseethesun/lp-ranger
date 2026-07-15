@@ -999,7 +999,6 @@ header{
   gap:15px;
   margin-bottom:6px;
   padding-bottom:9px;
-  border-bottom:1px solid var(--border);
 }
 
 .logo{
