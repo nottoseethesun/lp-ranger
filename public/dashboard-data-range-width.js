@@ -60,20 +60,60 @@ import { posStore } from "./dashboard-positions-store.js";
 let _lastKnownPosKey = null;
 
 /** Compute the "preserveRange width" as a percentage — the width the
- *  rebalancer would produce for a re-centered position with the same
- *  tick spread.  Simplified form of `src/rebalancer.js:294-298`: for a
- *  position centered on `currentTick` with span `S = tickUpper - tickLower`,
- *  `(1.0001^(S/2) - 1.0001^(-S/2))` — INDEPENDENT of currentPrice.
- *  This lets us populate the field for every scanned position (managed,
- *  unmanaged, or closed) — no `poolState` dependency, no
- *  ever-empty/unset state per the user's mandate.
- *
- *  Reads ticks from `data.activePosition` first (managed positions,
- *  from the server's `_activePosSummary`), falls back to
- *  `posStore.getActive()` (unmanaged/closed positions, populated by
- *  the scan endpoint).  Returns a two-decimal string or null when
- *  ticks aren't available anywhere. */
-function _computeFallbackWidthPct(data) {
+ *  rebalancer would produce for a position with the given tick spread
+ *  and Position Offset.  Matches `src/range-math.js:preserveRange()`
+ *  + `src/rebalancer.js:294-298`:
+ *      belowTicks = spread * (100 - offset) / 100
+ *      aboveTicks = spread * offset / 100
+ *      widthPct   = (1.0001^aboveTicks - 1.0001^(-belowTicks)) * 100
+ *  For offset=50 (centered) this simplifies to the symmetric form;
+ *  for other offsets the exponents differ (asymmetric range).
+ *  INDEPENDENT of `currentPrice` / `currentTick` — pure function of
+ *  (spread, offset).  Returns a two-decimal string or null when
+ *  inputs are missing / non-finite / produce a non-positive width. */
+function _computeWidthWithOffset(spread, offset) {
+  if (!Number.isFinite(spread) || !(spread > 0)) return null;
+  if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  const aboveTicks = (spread * offset) / 100;
+  const belowTicks = (spread * (100 - offset)) / 100;
+  const widthPct =
+    (Math.pow(1.0001, aboveTicks) - Math.pow(1.0001, -belowTicks)) * 100;
+  if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
+  return widthPct.toFixed(2);
+}
+
+/** Resolve the Position Offset (%) to use for the range-width
+ *  computation.  Precedence:
+ *   (a) `data.offsetToken0Pct` — server payload (saved value if the
+ *       user has configured it, OR shipped default flowed through).
+ *   (b) `#inOffsetToken0` input value — the AJAX-populated shipped
+ *       default that hasn't reached us via `data` yet (edge case on
+ *       cold load).
+ *   (c) `50` — the centered fallback used by both `preserveRange()`
+ *       (via `_DEFAULTS`) and every offset-aware path in the bot.
+ *  Never returns undefined — always a number in `[0, 100]`. */
+function _resolveOffsetPct(data) {
+  const fromData = data?.offsetToken0Pct;
+  if (
+    fromData !== undefined &&
+    fromData !== null &&
+    Number.isFinite(fromData) &&
+    fromData >= 0 &&
+    fromData <= 100
+  )
+    return fromData;
+  const raw = g("inOffsetToken0")?.value;
+  const fromInput = raw !== undefined && raw !== "" ? parseFloat(raw) : NaN;
+  if (Number.isFinite(fromInput) && fromInput >= 0 && fromInput <= 100)
+    return fromInput;
+  return 50;
+}
+
+/** Resolve the tick spread from data / posStore.  Prefers
+ *  `data.activePosition` (managed positions) then falls back to
+ *  `posStore` (unmanaged/closed positions).  Returns a positive
+ *  spread or null. */
+function _resolveSpread(data) {
   const ap = data.activePosition;
   const active = posStore.getActive();
   const tL = ap?.tickLower ?? active?.tickLower;
@@ -81,10 +121,20 @@ function _computeFallbackWidthPct(data) {
   if (tL === undefined || tL === null || tU === undefined || tU === null)
     return null;
   if (!Number.isFinite(tL) || !Number.isFinite(tU)) return null;
-  const half = (tU - tL) / 2;
-  const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
-  if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
-  return widthPct.toFixed(2);
+  const spread = tU - tL;
+  if (!Number.isFinite(spread) || !(spread > 0)) return null;
+  return spread;
+}
+
+/** Compute the "preserveRange width" from the current position's
+ *  tick spread + resolved Position Offset.  This lets us populate
+ *  the field for every scanned position (managed, unmanaged, or
+ *  closed) — no `poolState` dependency, no ever-empty/unset state
+ *  per the user's mandate.  Returns a two-decimal string or null. */
+function _computeFallbackWidthPct(data) {
+  const spread = _resolveSpread(data);
+  if (spread === null) return null;
+  return _computeWidthWithOffset(spread, _resolveOffsetPct(data));
 }
 
 /** Handle the "saved override present" branch: write to input on
@@ -181,9 +231,13 @@ export function populateRangeWidthFromActive() {
   if (tL === undefined || tL === null || tU === undefined || tU === null)
     return;
   if (!Number.isFinite(tL) || !Number.isFinite(tU)) return;
-  const half = (tU - tL) / 2;
-  const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
-  if (!Number.isFinite(widthPct) || !(widthPct > 0)) return;
-  el.value = widthPct.toFixed(2);
+  const spread = tU - tL;
+  if (!Number.isFinite(spread) || !(spread > 0)) return;
+  /*- Click-time populate — read offset from the input (which by this
+   *  point is either the saved value or the AJAX-populated shipped
+   *  default).  Falls back to 50 if the input is empty. */
+  const widthPct = _computeWidthWithOffset(spread, _resolveOffsetPct({}));
+  if (widthPct === null) return;
+  el.value = widthPct;
   _lastKnownPosKey = active.tokenId;
 }

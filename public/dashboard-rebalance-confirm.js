@@ -44,15 +44,18 @@ import {
 } from "./dashboard-manage-ui.js";
 
 /*- "preserveRange width" as % — the width the rebalancer would
- *  produce for a re-centered position with the same tick spread.
- *  Simplified form of `src/rebalancer.js:294-298`: for a position
- *  centered on `currentTick` with span `S = tickUpper - tickLower`,
- *  the effective width simplifies to
- *  `(1.0001^(S/2) - 1.0001^(-S/2)) * 100` — no `currentPrice`
- *  dependency, so this preview computes for every position (including
- *  closed / unmanaged, where poolState may not be available).
- *  Returns a two-decimal string or null when ticks are missing. */
-function _computePreservedWidthPct(tickLower, tickUpper) {
+ *  produce for a position with the given tick spread + Position
+ *  Offset.  Matches `src/range-math.js:preserveRange()` +
+ *  `src/rebalancer.js:294-298`:
+ *      belowTicks = spread * (100 - offset) / 100
+ *      aboveTicks = spread * offset / 100
+ *      widthPct   = (1.0001^aboveTicks - 1.0001^(-belowTicks)) * 100
+ *  For offset=50 (centered) this simplifies to the symmetric form;
+ *  for other offsets the exponents differ (asymmetric range).
+ *  INDEPENDENT of `currentPrice` — pure function of (spread, offset).
+ *  Returns a two-decimal string or null when inputs are missing /
+ *  non-finite. */
+function _computePreservedWidthPct(tickLower, tickUpper, offset) {
   if (
     tickLower === undefined ||
     tickLower === null ||
@@ -62,8 +65,13 @@ function _computePreservedWidthPct(tickLower, tickUpper) {
     !Number.isFinite(tickUpper)
   )
     return null;
-  const half = (tickUpper - tickLower) / 2;
-  const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
+  const spread = tickUpper - tickLower;
+  if (!Number.isFinite(spread) || !(spread > 0)) return null;
+  if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  const aboveTicks = (spread * offset) / 100;
+  const belowTicks = (spread * (100 - offset)) / 100;
+  const widthPct =
+    (Math.pow(1.0001, aboveTicks) - Math.pow(1.0001, -belowTicks)) * 100;
   if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
   return widthPct.toFixed(2);
 }
@@ -71,18 +79,31 @@ function _computePreservedWidthPct(tickLower, tickUpper) {
 /*- Compose the "Range width: X% (from saved override)" /
  *  "preserving current tick spread (~Y%)" line for the modal body.
  *  Pulls from getLastStatus() — the same source the Bot Settings
- *  row's _syncRangeWidth reads on every poll, so the preview matches
- *  what a subsequent rebalance will actually apply.  A pre-populated
- *  but unsaved input value does NOT influence this — only the
- *  saved config value or the preserveRange fallback. */
+ *  row's `_syncRangeWidth` reads on every poll, so the preview
+ *  matches what a subsequent rebalance will actually apply.  A
+ *  pre-populated but unsaved input value does NOT influence this —
+ *  only the saved config value or the preserveRange fallback.
+ *  Offset is read from the same status payload (falls back to 50
+ *  centered if unset) so the preview accounts for non-centered
+ *  Position Offset configurations. */
 function _rangeWidthPreviewText(status, active) {
   const saved = status?.rebalanceRangeWidthPct;
   if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
     return String(saved) + "% (from saved override)";
   }
+  const rawOffset = status?.offsetToken0Pct;
+  const offset =
+    rawOffset !== undefined &&
+    rawOffset !== null &&
+    Number.isFinite(rawOffset) &&
+    rawOffset >= 0 &&
+    rawOffset <= 100
+      ? rawOffset
+      : 50;
   const preserved = _computePreservedWidthPct(
     active?.tickLower,
     active?.tickUpper,
+    offset,
   );
   return preserved
     ? "preserving current tick spread (~" + preserved + "%)"

@@ -29,9 +29,37 @@ function makeInput(initialValue = "") {
   return { value: initialValue };
 }
 
-/*- Mirror of the production `_computeFallbackWidthPct` — pure
- *  function of tick data, no currentPrice dependency. */
-function computeFallbackWidthPct(data) {
+/*- Shared width-from-(spread, offset) formula used by all three
+ *  mirror helpers below.  Matches
+ *  `src/range-math.js:preserveRange()` split. */
+function widthWithOffset(spread, offset) {
+  if (!Number.isFinite(spread) || !(spread > 0)) return null;
+  if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  const aboveTicks = (spread * offset) / 100;
+  const belowTicks = (spread * (100 - offset)) / 100;
+  const widthPct =
+    (Math.pow(1.0001, aboveTicks) - Math.pow(1.0001, -belowTicks)) * 100;
+  if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
+  return widthPct.toFixed(2);
+}
+
+/*- Resolve offset from `data` / `ctx` — falls back to 50 (centered)
+ *  when missing / invalid. */
+function resolveOffset(raw) {
+  if (
+    raw !== undefined &&
+    raw !== null &&
+    Number.isFinite(raw) &&
+    raw >= 0 &&
+    raw <= 100
+  )
+    return raw;
+  return 50;
+}
+
+/*- Extract a positive tick spread from `data.activePosition`.  Null
+ *  if ticks are missing / non-finite / non-positive spread. */
+function resolveSpread(data) {
   const ap = data.activePosition;
   const tL = ap?.tickLower;
   const tU = ap?.tickUpper;
@@ -44,10 +72,16 @@ function computeFallbackWidthPct(data) {
     !Number.isFinite(tU)
   )
     return null;
-  const half = (tU - tL) / 2;
-  const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
-  if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
-  return widthPct.toFixed(2);
+  const spread = tU - tL;
+  return Number.isFinite(spread) && spread > 0 ? spread : null;
+}
+
+/*- Mirror of the production `_computeFallbackWidthPct` — pure
+ *  function of (spread, offset). */
+function computeFallbackWidthPct(data) {
+  const spread = resolveSpread(data);
+  if (spread === null) return null;
+  return widthWithOffset(spread, resolveOffset(data?.offsetToken0Pct));
 }
 
 /*- Mirror of the production `syncRangeWidth`.  Takes injected
@@ -83,23 +117,25 @@ function makeSyncRangeWidth() {
 /*- Mirror of `populateRangeWidthFromActive` — the synchronous
  *  click-time populate called from the Manage-click paths so the
  *  input is filled the instant the user commits to bringing a
- *  position under management (no wait on the 3-second poll). */
+ *  position under management (no wait on the 3-second poll).
+ *  Reads the Position Offset from `ctx.offset` (production reads it
+ *  from the `#inOffsetToken0` input value; falls back to centered
+ *  50 if missing/invalid). */
 function makePopulateFromActive() {
   return function populate(el, ctx) {
-    const { active, isDirty } = ctx;
+    const { active, isDirty, offset } = ctx;
     if (!el) return;
     if (isDirty) return;
     if (el.value !== "") return;
     if (!active) return;
-    const tL = active.tickLower;
-    const tU = active.tickUpper;
-    if (tL === undefined || tL === null || tU === undefined || tU === null)
-      return;
-    if (!Number.isFinite(tL) || !Number.isFinite(tU)) return;
-    const half = (tU - tL) / 2;
-    const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
-    if (!Number.isFinite(widthPct) || !(widthPct > 0)) return;
-    el.value = widthPct.toFixed(2);
+    /*- Reuse the shared spread + width helpers so the mirror keeps
+     *  the same guard set as `computeFallbackWidthPct` without
+     *  duplicating the presence/finite/positive branches. */
+    const spread = resolveSpread({ activePosition: active });
+    if (spread === null) return;
+    const widthPct = widthWithOffset(spread, resolveOffset(offset));
+    if (widthPct === null) return;
+    el.value = widthPct;
   };
 }
 
@@ -397,6 +433,40 @@ describe("populateRangeWidthFromActive — Manage click sync-populate", () => {
       isDirty: false,
     });
     assert.equal(el.value, "");
+  });
+
+  it("computes different widths for centered vs non-centered offset", () => {
+    /*- Regression guard against the earlier centered-only formula.
+     *  With the same tick spread but different Position Offset
+     *  values, the computed width should differ (aboveTicks and
+     *  belowTicks have different exponents in the asymmetric case). */
+    const populate = makePopulateFromActive();
+    const active = { tickLower: -500, tickUpper: 500, tokenId: "42" };
+    const el1 = makeInput("");
+    populate(el1, { active, isDirty: false, offset: 50 });
+    const el2 = makeInput("");
+    populate(el2, { active, isDirty: false, offset: 30 });
+    assert.notEqual(
+      el1.value,
+      el2.value,
+      "offset 50 vs 30 must produce different widths for the same spread",
+    );
+  });
+
+  it("defaults to centered (offset=50) when offset is missing or invalid", () => {
+    const populate = makePopulateFromActive();
+    const active = { tickLower: -500, tickUpper: 500, tokenId: "42" };
+    const el1 = makeInput("");
+    populate(el1, { active, isDirty: false }); // offset undefined
+    const el2 = makeInput("");
+    populate(el2, { active, isDirty: false, offset: 50 });
+    assert.equal(el1.value, el2.value);
+    const el3 = makeInput("");
+    populate(el3, { active, isDirty: false, offset: NaN });
+    assert.equal(el1.value, el3.value);
+    const el4 = makeInput("");
+    populate(el4, { active, isDirty: false, offset: 101 });
+    assert.equal(el1.value, el4.value);
   });
 });
 

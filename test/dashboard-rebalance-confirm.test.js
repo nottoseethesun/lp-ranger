@@ -30,13 +30,15 @@ const assert = require("node:assert/strict");
 // ── Mirror #1: _computePreservedWidthPct ──────────────────────────────
 
 /*- Mirror of the production helper in
- *  public/dashboard-rebalance-confirm.js.  Simplified form of
- *  src/rebalancer.js:294-298 — for a re-centered position with span
- *  S = tickUpper - tickLower, the effective width is
- *  `(1.0001^(S/2) - 1.0001^(-S/2)) * 100` — no currentPrice needed.
+ *  public/dashboard-rebalance-confirm.js.  Matches
+ *  src/range-math.js:preserveRange() split — for a position with tick
+ *  spread S and offset%, the width is
+ *  `(1.0001^(S*offset/100) - 1.0001^(-S*(100-offset)/100)) * 100`.
+ *  For offset=50 (centered) simplifies to the symmetric form; for
+ *  other offsets the exponents differ.
  *  Presence checks use explicit `!== undefined && !== null` per
  *  CLAUDE-BEST-PRACTICES §"Type Checks". */
-function computePreservedWidthPct(tickLower, tickUpper) {
+function computePreservedWidthPct(tickLower, tickUpper, offset) {
   if (
     tickLower === undefined ||
     tickLower === null ||
@@ -46,74 +48,133 @@ function computePreservedWidthPct(tickLower, tickUpper) {
     !Number.isFinite(tickUpper)
   )
     return null;
-  const half = (tickUpper - tickLower) / 2;
-  const widthPct = (Math.pow(1.0001, half) - Math.pow(1.0001, -half)) * 100;
+  const spread = tickUpper - tickLower;
+  if (!Number.isFinite(spread) || !(spread > 0)) return null;
+  if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  const aboveTicks = (spread * offset) / 100;
+  const belowTicks = (spread * (100 - offset)) / 100;
+  const widthPct =
+    (Math.pow(1.0001, aboveTicks) - Math.pow(1.0001, -belowTicks)) * 100;
   if (!Number.isFinite(widthPct) || !(widthPct > 0)) return null;
   return widthPct.toFixed(2);
 }
 
-describe("_computePreservedWidthPct", () => {
+describe("_computePreservedWidthPct — centered (offset=50)", () => {
   it("returns null for missing tickLower", () => {
-    assert.strictEqual(computePreservedWidthPct(undefined, 100), null);
-    assert.strictEqual(computePreservedWidthPct(null, 100), null);
+    assert.strictEqual(computePreservedWidthPct(undefined, 100, 50), null);
+    assert.strictEqual(computePreservedWidthPct(null, 100, 50), null);
   });
 
   it("returns null for missing tickUpper", () => {
-    assert.strictEqual(computePreservedWidthPct(-100, undefined), null);
-    assert.strictEqual(computePreservedWidthPct(-100, null), null);
+    assert.strictEqual(computePreservedWidthPct(-100, undefined, 50), null);
+    assert.strictEqual(computePreservedWidthPct(-100, null, 50), null);
   });
 
   it("returns null for non-finite ticks (NaN / Infinity)", () => {
     /*- Guards against BigInt / string coercion producing NaN, or a
      *  malformed payload with Infinity. */
-    assert.strictEqual(computePreservedWidthPct(NaN, 100), null);
-    assert.strictEqual(computePreservedWidthPct(-100, NaN), null);
-    assert.strictEqual(computePreservedWidthPct(Infinity, 100), null);
-    assert.strictEqual(computePreservedWidthPct(-100, Infinity), null);
-    assert.strictEqual(computePreservedWidthPct(-Infinity, 100), null);
+    assert.strictEqual(computePreservedWidthPct(NaN, 100, 50), null);
+    assert.strictEqual(computePreservedWidthPct(-100, NaN, 50), null);
+    assert.strictEqual(computePreservedWidthPct(Infinity, 100, 50), null);
+    assert.strictEqual(computePreservedWidthPct(-100, Infinity, 50), null);
+    assert.strictEqual(computePreservedWidthPct(-Infinity, 100, 50), null);
   });
 
   it("returns null when tickUpper <= tickLower (widthPct not positive)", () => {
     /*- Defensive: an invalid range shouldn't render a bogus preview. */
-    assert.strictEqual(computePreservedWidthPct(100, 100), null);
-    assert.strictEqual(computePreservedWidthPct(500, -500), null);
+    assert.strictEqual(computePreservedWidthPct(100, 100, 50), null);
+    assert.strictEqual(computePreservedWidthPct(500, -500, 50), null);
+  });
+
+  it("returns null for invalid offset (< 0, > 100, or non-finite)", () => {
+    assert.strictEqual(computePreservedWidthPct(-500, 500, -1), null);
+    assert.strictEqual(computePreservedWidthPct(-500, 500, 101), null);
+    assert.strictEqual(computePreservedWidthPct(-500, 500, NaN), null);
+    assert.strictEqual(computePreservedWidthPct(-500, 500, Infinity), null);
   });
 
   it("accepts 0 tickLower (legit tick value, not falsy sentinel)", () => {
     /*- Regression guard against `!tickLower` truthy-checks that would
      *  incorrectly treat tick=0 as missing. */
-    const result = computePreservedWidthPct(0, 100);
+    const result = computePreservedWidthPct(0, 100, 50);
     assert.notEqual(result, null);
     assert.equal(typeof result, "string");
   });
 
   it("accepts 0 tickUpper", () => {
-    const result = computePreservedWidthPct(-100, 0);
+    const result = computePreservedWidthPct(-100, 0, 50);
     assert.notEqual(result, null);
   });
 
-  it("computes ~10% width for tick span of 1000 (S/2 = 500)", () => {
+  it("computes ~10% width for tick span of 1000 at centered offset", () => {
     /*- 1.0001^500 ≈ 1.0513, 1.0001^-500 ≈ 0.9512.
      *  diff * 100 ≈ 10.01% */
-    const result = parseFloat(computePreservedWidthPct(-500, 500));
+    const result = parseFloat(computePreservedWidthPct(-500, 500, 50));
     assert.ok(result > 9.5 && result < 10.5, `expected ~10, got ${result}`);
   });
 
-  it("gives the same width regardless of currentTick (offset-invariant)", () => {
-    /*- The simplified formula proves the width is a pure function of
-     *  the tick SPAN — moving the same span up or down produces the
-     *  same width.  Regression guard: an earlier version that
-     *  depended on currentPrice would give different results here. */
-    const centered = computePreservedWidthPct(-500, 500);
-    const shiftedUp = computePreservedWidthPct(1000, 2000);
-    const shiftedDown = computePreservedWidthPct(-2000, -1000);
+  it("gives the same width regardless of tick placement (spread-invariant)", () => {
+    /*- The formula depends only on (spread, offset), not on the
+     *  absolute tick values.  Regression guard: an earlier version
+     *  that depended on currentPrice would give different results. */
+    const centered = computePreservedWidthPct(-500, 500, 50);
+    const shiftedUp = computePreservedWidthPct(1000, 2000, 50);
+    const shiftedDown = computePreservedWidthPct(-2000, -1000, 50);
     assert.equal(centered, shiftedUp);
     assert.equal(centered, shiftedDown);
   });
 
   it("returns a two-decimal fixed string", () => {
-    const result = computePreservedWidthPct(-100, 100);
+    const result = computePreservedWidthPct(-100, 100, 50);
     assert.match(result, /^\d+\.\d{2}$/);
+  });
+});
+
+describe("_computePreservedWidthPct — non-centered offsets", () => {
+  const SPREAD_1000 = { tL: -500, tU: 500 };
+
+  it("offset=100 puts the entire spread above current tick", () => {
+    /*- aboveTicks = 1000, belowTicks = 0.  Width =
+     *  (1.0001^1000 - 1) * 100 ≈ (1.1052 - 1) * 100 ≈ 10.52%. */
+    const result = parseFloat(
+      computePreservedWidthPct(SPREAD_1000.tL, SPREAD_1000.tU, 100),
+    );
+    assert.ok(result > 10.4 && result < 10.6, `expected ~10.52, got ${result}`);
+  });
+
+  it("offset=0 puts the entire spread below current tick", () => {
+    /*- aboveTicks = 0, belowTicks = 1000.  Width =
+     *  (1 - 1.0001^-1000) * 100 ≈ (1 - 0.9048) * 100 ≈ 9.52%. */
+    const result = parseFloat(
+      computePreservedWidthPct(SPREAD_1000.tL, SPREAD_1000.tU, 0),
+    );
+    assert.ok(result > 9.4 && result < 9.6, `expected ~9.52, got ${result}`);
+  });
+
+  it("offset=100 vs offset=0 give different (asymmetric) widths for the same spread", () => {
+    /*- Verifies the formula actually splits by offset — a bug that
+     *  ignored offset would give the same result for both. */
+    const allAbove = computePreservedWidthPct(-500, 500, 100);
+    const allBelow = computePreservedWidthPct(-500, 500, 0);
+    assert.notEqual(allAbove, allBelow);
+  });
+
+  it("offset=30 differs from centered (offset=50) for the same spread", () => {
+    /*- Regression guard against the earlier centered-only formula. */
+    const centered = computePreservedWidthPct(-500, 500, 50);
+    const skewed = computePreservedWidthPct(-500, 500, 30);
+    assert.notEqual(centered, skewed);
+  });
+
+  it("offset=50 is the same regardless of `spread` split (aboveTicks == belowTicks)", () => {
+    /*- Sanity: at offset=50, aboveTicks and belowTicks are equal,
+     *  so the formula reduces to the symmetric centered case. */
+    const symmetric = computePreservedWidthPct(-500, 500, 50);
+    /*- Same spread of 1000 in different positions — still centered.
+     *  Compare to an equal-spread asymmetric offset just to confirm
+     *  the split logic is offset-driven, not tick-driven. */
+    const asymmetric = computePreservedWidthPct(-500, 500, 60);
+    assert.notEqual(symmetric, asymmetric);
   });
 });
 
@@ -124,9 +185,19 @@ function rangeWidthPreviewText(status, active) {
   if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
     return String(saved) + "% (from saved override)";
   }
+  const rawOffset = status?.offsetToken0Pct;
+  const offset =
+    rawOffset !== undefined &&
+    rawOffset !== null &&
+    Number.isFinite(rawOffset) &&
+    rawOffset >= 0 &&
+    rawOffset <= 100
+      ? rawOffset
+      : 50;
   const preserved = computePreservedWidthPct(
     active?.tickLower,
     active?.tickUpper,
+    offset,
   );
   return preserved
     ? "preserving current tick spread (~" + preserved + "%)"
@@ -162,6 +233,24 @@ describe("_rangeWidthPreviewText", () => {
   it("shows generic preserveRange text when ticks are missing", () => {
     const text = rangeWidthPreviewText({}, {});
     assert.equal(text, "preserving current tick spread");
+  });
+
+  it("preview text differs for centered vs non-centered offset (same ticks)", () => {
+    /*- Regression guard: verifies the preview line reads
+     *  `status.offsetToken0Pct` and passes it through to the width
+     *  formula.  An earlier centered-only implementation would
+     *  produce the same preview text for both offsets. */
+    const active = { tickLower: -500, tickUpper: 500 };
+    const centered = rangeWidthPreviewText({ offsetToken0Pct: 50 }, active);
+    const skewed = rangeWidthPreviewText({ offsetToken0Pct: 30 }, active);
+    assert.notEqual(centered, skewed);
+  });
+
+  it("defaults to centered (offset=50) when status.offsetToken0Pct is missing", () => {
+    const active = { tickLower: -500, tickUpper: 500 };
+    const implicit = rangeWidthPreviewText({}, active);
+    const explicit = rangeWidthPreviewText({ offsetToken0Pct: 50 }, active);
+    assert.equal(implicit, explicit);
   });
 
   it("treats saved override of 0 as absent (matches truthy-omit in bot-cycle-opts.js)", () => {
