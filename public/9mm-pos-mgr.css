@@ -2791,7 +2791,7 @@ span[title]:not([title=""]):hover {
   pointer-events: none;
   background-repeat: no-repeat;
   background-size: contain;
-  opacity: 0.18;
+  opacity: 0.35;
   animation: cloudDrift 900s linear infinite;
 }
 
