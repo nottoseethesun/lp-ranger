@@ -66,16 +66,18 @@ function _num(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 
-/*- Truncate a token symbol to at most 6 characters, appending an
- *  ellipsis when trimmed.  Matches the row-identity spec in the task
- *  description ("token pair truncated to six characters each with an
- *  ellipsis").  Explicit null/undefined check rather than `s || "?"`
- *  so an empty-string symbol renders as "" (not "?"), reserving "?"
- *  for genuinely-missing values. */
-function _truncSym(s) {
+/*- Truncate a string to at most `max` characters, appending an
+ *  ellipsis when trimmed.  Used for the row-identity cell:
+ *    - token symbols: max 6  ("token pair truncated to six characters each with an ellipsis")
+ *    - LP provider display name: max 6
+ *    - blockchain display name: max 18
+ *  Explicit null/undefined check rather than `s || "?"` so an empty-
+ *  string input renders as "" (not "?"), reserving "?" for genuinely-
+ *  missing values. */
+function _trunc(s, max) {
   if (s === null || s === undefined) return "?";
   if (typeof s !== "string") return "?";
-  return s.length > 6 ? s.slice(0, 6) + "…" : s;
+  return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
 /*- Fee in basis-points-times-100 (e.g. 2500 for 0.25%) → display
@@ -156,7 +158,8 @@ function _computeRow(key, posState, globalCtx) {
     "?";
   return {
     key,
-    blockchain: globalCtx.chainName ?? "pulsechain",
+    blockchainDisplayName: globalCtx.chainDisplayName ?? "PulseChain",
+    blockchainId: globalCtx.chainId ?? "pulsechain",
     symbol0: ap.token0Symbol,
     symbol1: ap.token1Symbol,
     feePct: _feePct(ap.fee),
@@ -177,7 +180,13 @@ function _computeRows(data) {
     walletAddress: data.walletAddress,
     factory: data.factory,
     positionManager: data.positionManager,
-    chainName: data.chainName,
+    /*- Two distinct fields: the display name goes into the row's
+     *  identity cell for user-facing text, the id goes into the deep-
+     *  link URL slug.  Never derive one from the other with
+     *  toLowerCase() — that conflates the ID-vs-displayName concepts
+     *  we're intentionally keeping separate everywhere else. */
+    chainDisplayName: data.chainDisplayName,
+    chainId: data.chainId,
   };
   const rows = [];
   for (const key of Object.keys(positions)) {
@@ -217,13 +226,15 @@ function _lcSlot(v) {
   return typeof v === "string" ? v.toLowerCase() : "";
 }
 
-/*- Deep-link URL for the row's position.  Uses lowercase addresses
- *  to match the URLs the router emits everywhere else in the app —
- *  the router canonicalises on read. */
+/*- Deep-link URL for the row's position.  Uses the canonical chain
+ *  id (KEY of chains.json) as the URL slug — NOT the display name.
+ *  Wallet and contract addresses are lower-cased to match the URLs
+ *  the router emits everywhere else in the app (the router
+ *  canonicalises on read). */
 function _positionHref(row) {
   const chain =
-    typeof row.blockchain === "string" && row.blockchain.length > 0
-      ? row.blockchain.toLowerCase()
+    typeof row.blockchainId === "string" && row.blockchainId.length > 0
+      ? row.blockchainId
       : "pulsechain";
   const wallet = _lcSlot(row.walletAddress);
   const contract = _lcSlot(row.contractAddress);
@@ -240,12 +251,16 @@ function _renderIdentityCell(row) {
   wrap.className = "9mm-pos-mgr-all-positions-identity";
   const pair = document.createElement("div");
   pair.className = "9mm-pos-mgr-all-positions-pair";
-  pair.textContent = `${_truncSym(row.symbol0)} / ${_truncSym(row.symbol1)}`;
+  pair.textContent = `${_trunc(row.symbol0, 6)} / ${_trunc(row.symbol1, 6)}`;
   const meta = document.createElement("div");
   meta.className = "9mm-pos-mgr-all-positions-meta";
-  meta.textContent = `${row.feePct} · ${row.lpProviderName} · ${row.blockchain}`;
+  meta.textContent = `${row.feePct} · ${_trunc(row.lpProviderName, 6)}`;
+  const chain = document.createElement("div");
+  chain.className = "9mm-pos-mgr-all-positions-meta";
+  chain.textContent = _trunc(row.blockchainDisplayName, 18);
   wrap.appendChild(pair);
   wrap.appendChild(meta);
+  wrap.appendChild(chain);
   return wrap;
 }
 
@@ -283,7 +298,7 @@ function _renderTable(data) {
     const a = document.createElement("a");
     a.className = "9mm-pos-mgr-all-positions-goto";
     a.href = _positionHref(row);
-    a.textContent = "Go to position";
+    a.textContent = "Position";
     a.title = `Navigate to NFT #${row.tokenId}`;
     gotoTd.appendChild(a);
     tr.appendChild(gotoTd);

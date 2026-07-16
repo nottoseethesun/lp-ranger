@@ -88,6 +88,12 @@ function createApiStatusHandler(deps) {
           getLpProviderDisplayName(config.FACTORY, config.POSITION_MANAGER) ||
           "",
         chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
+        /*- Canonical chain id (KEY of chains.json, e.g. "pulsechain").
+         *  Distinct from chainDisplayName ("PulseChain") — clients use
+         *  the id for URL slugs, lookups, and comparisons; the display
+         *  name is user-facing text only (locale-dependent).  See
+         *  feedback in lp-providers about ID-vs-displayName. */
+        chainId: config.CHAIN_NAME,
         defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
         compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
         compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,

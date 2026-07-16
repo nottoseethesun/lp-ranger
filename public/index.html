@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784182586395">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784182586395">
+<link rel="stylesheet" href="style.css?v=1784244848187">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784244848187">
 </head>
 <body>
 
@@ -462,7 +462,7 @@
             <th>Position</th>
             <th class="9mm-pos-mgr-sortable" data-sort-col="ltNetPnl" title="Click to sort by Lifetime P&amp;L">Lifetime P&amp;L <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltNetPnl"></span></th>
             <th class="9mm-pos-mgr-sortable" data-sort-col="ltProfit" title="Click to sort by Profit">Profit <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltProfit"></span></th>
-            <th class="9mm-pos-mgr-sortable" data-sort-col="ltIL" title="Click to sort by Impermanent Loss/Gain">Impermanent Loss/Gain <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltIL"></span></th>
+            <th class="9mm-pos-mgr-sortable" data-sort-col="ltIL" title="Click to sort by Impermanent Loss/Gain">Impermanent<br>Loss/Gain <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltIL"></span></th>
             <th></th>
           </tr>
         </thead>
@@ -493,7 +493,7 @@
   </div>
   <div class="header-middle">
     <button type="button" class="pos-browser-btn" id="posBrowserBtn"><span data-svg="icons/ui-grid.svg" data-w="14" data-h="14"></span> <span id="headerPosLabel">0 Positions</span></button>
-    <button type="button" class="pos-browser-btn 9mm-pos-mgr-disabled-hoverable" id="allPositionsStatsBtn" disabled title="Waiting for managed positions to finish loading (rebalance history + lifetime deposit scans).">All Positions Stats</button>
+    <button type="button" class="9mm-pos-mgr-header-tool-btn 9mm-pos-mgr-disabled-hoverable" id="allPositionsStatsBtn" disabled title="Waiting for managed positions to finish loading (rebalance history + lifetime deposit scans).">All Positions Stats</button>
     <!-- Pre-render default; kept in sync with AGGREGATOR_LABEL in
          public/dashboard-routing-labels.js and src/rebalancer-aggregator.js.
          Overwritten on first /api/status poll by _updateSwapSourcesBadge(). -->
@@ -1402,6 +1402,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784182586395"></script>
+<script src="dist/bundle.js?v=1784244848187"></script>
 </body>
 </html>
