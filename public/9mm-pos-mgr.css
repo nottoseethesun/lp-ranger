@@ -16,6 +16,162 @@
   cursor: help;
 }
 
+/* ── All Positions Stats modal ─────────────────────────────────── */
+
+.\39 mm-pos-mgr-all-positions-modal {
+  /* Give the table room to breathe on wide screens without letting
+   * the modal become the whole viewport on the desktop.  Overflow is
+   * handled inside .table-wrap so the modal itself doesn't scroll. */
+  max-width: 1000px;
+  width: min(95vw, 1000px);
+  max-height: 90vh;
+  padding: 22px 26px 20px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.\39 mm-pos-mgr-modal-close-x {
+  position: absolute;
+  top: 12px;
+  right: 15px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.\39 mm-pos-mgr-modal-close-x:hover {
+  background: rgb(255 255 255 / 8%);
+  color: var(--text);
+}
+
+.\39 mm-pos-mgr-all-positions-subtitle {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 4px 0 0;
+}
+
+.\39 mm-pos-mgr-all-positions-table-wrap {
+  margin-top: 18px;
+  overflow-x: auto;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.\39 mm-pos-mgr-all-positions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  min-width: 720px;
+}
+
+.\39 mm-pos-mgr-all-positions-table thead th {
+  color: var(--muted);
+  font-family: Urbanist, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  background: var(--card);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.\39 mm-pos-mgr-all-positions-table tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.\39 mm-pos-mgr-all-positions-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.\39 mm-pos-mgr-all-positions-table .\39 mm-pos-mgr-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.\39 mm-pos-mgr-all-positions-table .\39 mm-pos-mgr-sortable:hover {
+  color: var(--accent);
+}
+
+.\39 mm-pos-mgr-sort-marker {
+  display: inline-block;
+  min-width: 12px;
+  color: var(--accent);
+  font-size: 11px;
+  margin-left: 2px;
+}
+
+.\39 mm-pos-mgr-all-positions-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.\39 mm-pos-mgr-all-positions-pair {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.\39 mm-pos-mgr-all-positions-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Numeric column: right-aligned, tabular numerals so digits stack. */
+.\39 mm-pos-mgr-all-positions-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.\39 mm-pos-mgr-all-positions-num.\39 mm-pos-mgr-pos {
+  color: var(--accent3);
+}
+
+.\39 mm-pos-mgr-all-positions-num.\39 mm-pos-mgr-neg {
+  color: var(--danger);
+}
+
+.\39 mm-pos-mgr-all-positions-goto {
+  display: inline-block;
+  padding: 6px 12px;
+  background: rgb(0 229 255 / 8%);
+  border: 1px solid rgb(0 229 255 / 25%);
+  border-radius: 6px;
+  color: var(--accent);
+  font-family: "Space Mono", monospace;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.\39 mm-pos-mgr-all-positions-goto:hover {
+  background: rgb(0 229 255 / 18%);
+}
+
+.\39 mm-pos-mgr-all-positions-empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 30px 0 15px;
+  font-style: italic;
+}
+
 /* ── Tooltip cursor convention ───────────────────────────────────────────── */
 
 /*  Any non-interactive element (div/span) with a non-empty `title` attribute
@@ -2857,7 +3013,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784180490473");
+  background-image: url("background-cloud_top.png?v=1784182586395");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -2870,7 +3026,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784180490473");
+  background-image: url("background-cloud_middle.png?v=1784182586395");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -2880,7 +3036,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784180490473");
+  background-image: url("background-cloud_bottom.png?v=1784182586395");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

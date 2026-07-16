@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784180490473">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784180490473">
+<link rel="stylesheet" href="style.css?v=1784182586395">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784182586395">
 </head>
 <body>
 
@@ -444,6 +444,31 @@
     <div class="9mm-pos-mgr-btn-row">
       <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="ilWarnCancelBtn">Cancel</button>
       <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="ilWarnConfirmBtn">Rebalance Anyway</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="allPositionsStatsModal">
+  <div class="modal 9mm-pos-mgr-all-positions-modal">
+    <button type="button" class="9mm-pos-mgr-modal-close-x" id="allPositionsStatsCloseBtn" title="Close" aria-label="Close">×</button>
+    <div class="modal-logo">
+      <h2>All Positions Stats</h2>
+      <p class="9mm-pos-mgr-all-positions-subtitle">All currently-open positions being managed by LP Ranger.</p>
+    </div>
+    <div class="9mm-pos-mgr-all-positions-table-wrap">
+      <table class="9mm-pos-mgr-all-positions-table" id="allPositionsStatsTable">
+        <thead>
+          <tr>
+            <th>Position</th>
+            <th class="9mm-pos-mgr-sortable" data-sort-col="ltNetPnl" title="Click to sort by Lifetime P&amp;L">Lifetime P&amp;L <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltNetPnl"></span></th>
+            <th class="9mm-pos-mgr-sortable" data-sort-col="ltProfit" title="Click to sort by Profit">Profit <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltProfit"></span></th>
+            <th class="9mm-pos-mgr-sortable" data-sort-col="ltIL" title="Click to sort by Impermanent Loss/Gain">Impermanent Loss/Gain <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltIL"></span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="allPositionsStatsTableBody"></tbody>
+      </table>
+      <p class="9mm-pos-mgr-all-positions-empty" id="allPositionsStatsEmpty" hidden>No currently-open managed positions.</p>
     </div>
   </div>
 </div>
@@ -1377,6 +1402,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784180490473"></script>
+<script src="dist/bundle.js?v=1784182586395"></script>
 </body>
 </html>

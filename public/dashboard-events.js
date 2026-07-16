@@ -84,7 +84,10 @@ import {
   saveCompoundThreshold,
 } from "./dashboard-compound.js";
 import { saveGasFeePct } from "./dashboard-gas-fee-settings.js";
-import { openAllPositionsStatsModal } from "./dashboard-all-positions-stats.js";
+import {
+  closeAllPositionsStatsModal,
+  wireAllPositionsStatsEvents,
+} from "./dashboard-all-positions-stats.js";
 import {
   toggleInitialDeposit,
   saveInitialDeposit,
@@ -313,7 +316,7 @@ export function bindAllEvents() {
     if (c) c.classList.add("hidden");
   });
   _click("posScanBtn", scanPositions);
-  _click("allPositionsStatsBtn", openAllPositionsStatsModal);
+  wireAllPositionsStatsEvents();
   _click("posPrevBtn", () => posChangePage(-1));
   _click("posNextBtn", () => posChangePage(1));
   _click("posSelectBtn", activateSelectedPos);
@@ -600,5 +603,6 @@ export function bindAllEvents() {
     ilDebug: dismissILDebug,
     donate: () => _hide("donateOverlay"),
     about: () => _hide("aboutOverlay"),
+    allPositionsStats: closeAllPositionsStatsModal,
   });
 }

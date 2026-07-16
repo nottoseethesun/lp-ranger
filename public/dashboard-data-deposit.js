@@ -25,25 +25,60 @@ export function _wireDepositKpis(getLast, updKpis) {
 
 // ── Shared helpers ────────────────────────────────
 
-export function _posKey(prefix) {
-  const a = posStore.getActive();
-  return a ? prefix + (a.tokenId || "unknown") : null;
+/**
+ * Pure per-position localStorage key builder.  Takes tokenId
+ * explicitly so callers iterating positions other than
+ * posStore.getActive() (e.g. the All Positions Stats modal) can
+ * reuse the same key layout.
+ */
+export function _posKeyFrom(prefix, tokenId) {
+  return tokenId ? prefix + tokenId : null;
 }
-export function _poolKey(prefix) {
-  const a = posStore.getActive();
-  if (!a?.token0 || !a?.token1 || !a?.walletAddress) return null;
+
+/**
+ * Pure per-pool localStorage key builder.  Takes every identity
+ * field explicitly so callers iterating positions other than
+ * posStore.getActive() can reuse the same key layout.  All addresses
+ * are lower-cased to preserve backwards compatibility with existing
+ * localStorage entries written by the single-arg helpers below.
+ */
+export function _poolKeyFrom(
+  prefix,
+  walletAddress,
+  contractAddress,
+  token0,
+  token1,
+  fee,
+) {
+  if (!walletAddress || !token0 || !token1) return null;
   return (
     prefix +
     "pulsechain_" +
-    a.walletAddress.toLowerCase() +
+    walletAddress.toLowerCase() +
     "_" +
-    (a.contractAddress || "").toLowerCase() +
+    (contractAddress || "").toLowerCase() +
     "_" +
-    a.token0.toLowerCase() +
+    token0.toLowerCase() +
     "_" +
-    a.token1.toLowerCase() +
+    token1.toLowerCase() +
     "_" +
-    (a.fee || 0)
+    (fee || 0)
+  );
+}
+
+export function _posKey(prefix) {
+  const a = posStore.getActive();
+  return _posKeyFrom(prefix, a?.tokenId);
+}
+export function _poolKey(prefix) {
+  const a = posStore.getActive();
+  return _poolKeyFrom(
+    prefix,
+    a?.walletAddress,
+    a?.contractAddress,
+    a?.token0,
+    a?.token1,
+    a?.fee,
   );
 }
 export function _loadNum(key, allowZero) {
@@ -213,6 +248,50 @@ export function saveInitialDeposit() {
         if (ls && _updateKpisRef) _updateKpisRef(ls);
       }
     },
+    false,
+  );
+}
+
+// ── Parameterized loaders for iterating positions other than the active one ──
+
+/**
+ * Load per-pool realized gains for an arbitrary position (not
+ * necessarily the active one).  Matches loadRealizedGains() but
+ * accepts the pool identity explicitly.
+ * @param {{walletAddress:string, contractAddress:string, token0:string, token1:string, fee:number}} ctx
+ * @returns {number}
+ */
+export function loadRealizedGainsForPool(ctx) {
+  return _loadNum(
+    _poolKeyFrom(
+      "9mm_realized_pool_",
+      ctx?.walletAddress,
+      ctx?.contractAddress,
+      ctx?.token0,
+      ctx?.token1,
+      ctx?.fee,
+    ),
+    true,
+  );
+}
+
+/**
+ * Load per-pool initial deposit override for an arbitrary position.
+ * Matches loadInitialDeposit() but accepts the pool identity
+ * explicitly.
+ * @param {{walletAddress:string, contractAddress:string, token0:string, token1:string, fee:number}} ctx
+ * @returns {number}
+ */
+export function loadInitialDepositForPool(ctx) {
+  return _loadNum(
+    _poolKeyFrom(
+      "9mm_deposit_pool_",
+      ctx?.walletAddress,
+      ctx?.contractAddress,
+      ctx?.token0,
+      ctx?.token1,
+      ctx?.fee,
+    ),
     false,
   );
 }
