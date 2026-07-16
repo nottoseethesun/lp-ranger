@@ -19,14 +19,14 @@
   --panel-translucency:15%;
   --panel-opacity:calc(100% - var(--panel-translucency));
 
-  /* Mission Control gets its own translucency knob — its distinctive
-     dark-red-brown tint (rgb(38 7 0)) is far more saturated than the
-     neutral panels, so it needs more sky bleed-through to read as
-     translucent rather than as a heavy chunk of foreground.  Kept as
-     a separate token so tuning Mission Control doesn't disturb every
-     other card. */
-  --mission-translucency:30%;
-  --mission-opacity:calc(100% - var(--mission-translucency));
+  /* Secondary background translucency — nested surfaces that sit
+     inside a .card / .kpi-card and would otherwise compound with the
+     parent panel's --panel-opacity to visual opacity.  Powers Mission
+     Control's inner brown fill, the Position Stats sub-cards inside
+     Price Range Monitor, and the Activity Log rows.  Same token, so
+     tuning it retunes all three at once. */
+  --second-background-translucency:60%;
+  --second-background-opacity:calc(100% - var(--second-background-translucency));
 }
 
 *{
@@ -1624,7 +1624,11 @@ header{
 
 .stat-item{
   padding:12px;
-  background:var(--bg3);
+
+  /* --bg3 (#141b24 = rgb(20 27 36)) tinted at --second-background-opacity
+     so sky + drifting clouds show through the Position Stats cells
+     inside Price Range Monitor. */
+  background:rgb(20 27 36 / var(--second-background-opacity));
   border-radius:11px;
   border:1px solid var(--border);
 }
@@ -2123,7 +2127,10 @@ header{
   align-items:flex-start;
   gap:14px;
   padding:14px 15px;
-  background:var(--bg3);
+
+  /* --bg3 (#141b24 = rgb(20 27 36)) tinted at --second-background-opacity
+     so sky + drifting clouds show through Activity Log rows. */
+  background:rgb(20 27 36 / var(--second-background-opacity));
   border-radius:11px;
   border:1px solid var(--border);
   font-size:17px;
