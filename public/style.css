@@ -767,7 +767,8 @@ body::before{
 .save-range-btn:hover{background:rgb(0 229 255 / 15%);}
 
 
-.pos-browser-btn{
+.pos-browser-btn,
+.\39 mm-pos-mgr-header-tool-btn{
   height:53px;
   padding:0 15px;
   background:rgb(0 229 255 / 7%);
@@ -783,13 +784,15 @@ body::before{
   gap:9px;
 }
 
-.pos-browser-btn:disabled{
+.pos-browser-btn:disabled,
+.\39 mm-pos-mgr-header-tool-btn:disabled{
   opacity:0.4;
   cursor:default;
   pointer-events:none;
 }
 
-.pos-browser-btn:hover:not(:disabled){
+.pos-browser-btn:hover:not(:disabled),
+.\39 mm-pos-mgr-header-tool-btn:hover:not(:disabled){
   background:rgb(0 229 255 / 15%);
 }
 

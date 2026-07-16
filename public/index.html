@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784159938948">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784159938948">
+<link rel="stylesheet" href="style.css?v=1784244848187">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784244848187">
 </head>
 <body>
 
@@ -448,6 +448,31 @@
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="allPositionsStatsModal">
+  <div class="modal 9mm-pos-mgr-all-positions-modal">
+    <button type="button" class="9mm-pos-mgr-modal-close-x" id="allPositionsStatsCloseBtn" title="Close" aria-label="Close">×</button>
+    <div class="modal-logo">
+      <h2>All Positions Stats</h2>
+      <p class="9mm-pos-mgr-all-positions-subtitle">All currently-open positions being managed by LP Ranger.</p>
+    </div>
+    <div class="9mm-pos-mgr-all-positions-table-wrap">
+      <table class="9mm-pos-mgr-all-positions-table" id="allPositionsStatsTable">
+        <thead>
+          <tr>
+            <th>Position</th>
+            <th class="9mm-pos-mgr-sortable" data-sort-col="ltNetPnl" title="Click to sort by Lifetime P&amp;L">Lifetime P&amp;L <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltNetPnl"></span></th>
+            <th class="9mm-pos-mgr-sortable" data-sort-col="ltProfit" title="Click to sort by Profit">Profit <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltProfit"></span></th>
+            <th class="9mm-pos-mgr-sortable" data-sort-col="ltIL" title="Click to sort by Impermanent Loss/Gain">Impermanent<br>Loss/Gain <span class="9mm-pos-mgr-sort-marker" data-marker-for="ltIL"></span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="allPositionsStatsTableBody"></tbody>
+      </table>
+      <p class="9mm-pos-mgr-all-positions-empty" id="allPositionsStatsEmpty" hidden>No currently-open managed positions.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ SKY CLOUDS (background, decorative) ═══ -->
 <div class="9mm-pos-mgr-cloud 9mm-pos-mgr-cloud-top" aria-hidden="true"></div>
 <div class="9mm-pos-mgr-cloud 9mm-pos-mgr-cloud-middle" aria-hidden="true"></div>
@@ -468,6 +493,7 @@
   </div>
   <div class="header-middle">
     <button type="button" class="pos-browser-btn" id="posBrowserBtn"><span data-svg="icons/ui-grid.svg" data-w="14" data-h="14"></span> <span id="headerPosLabel">0 Positions</span></button>
+    <button type="button" class="9mm-pos-mgr-header-tool-btn 9mm-pos-mgr-disabled-hoverable" id="allPositionsStatsBtn" disabled title="Waiting for managed positions to finish loading (rebalance history + lifetime deposit scans).">All Positions Stats</button>
     <!-- Pre-render default; kept in sync with AGGREGATOR_LABEL in
          public/dashboard-routing-labels.js and src/rebalancer-aggregator.js.
          Overwritten on first /api/status poll by _updateSwapSourcesBadge(). -->
@@ -1376,6 +1402,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784159938948"></script>
+<script src="dist/bundle.js?v=1784244848187"></script>
 </body>
 </html>

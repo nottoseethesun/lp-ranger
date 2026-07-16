@@ -25,25 +25,74 @@ export function _wireDepositKpis(getLast, updKpis) {
 
 // ── Shared helpers ────────────────────────────────
 
-export function _posKey(prefix) {
-  const a = posStore.getActive();
-  return a ? prefix + (a.tokenId || "unknown") : null;
+/**
+ * Pure per-position localStorage key builder.  Takes tokenId
+ * explicitly so callers iterating positions other than
+ * posStore.getActive() (e.g. the All Positions Stats modal) can
+ * reuse the same key layout.  Enforces string tokenId so a numeric
+ * or coerced value never produces a slightly-different localStorage
+ * key from the string-typed path.
+ */
+export function _posKeyFrom(prefix, tokenId) {
+  if (typeof tokenId !== "string" || tokenId.length === 0) return null;
+  return prefix + tokenId;
 }
-export function _poolKey(prefix) {
-  const a = posStore.getActive();
-  if (!a?.token0 || !a?.token1 || !a?.walletAddress) return null;
+
+/**
+ * Pure per-pool localStorage key builder.  Takes every identity
+ * field explicitly so callers iterating positions other than
+ * posStore.getActive() can reuse the same key layout.  Requires
+ * every identity slot to be a string (or a number for `fee`, since
+ * that's how the bot-state exposes it) — no implicit coercion, so a
+ * malformed input returns null rather than silently producing a
+ * partial-match key.  All addresses are lower-cased to preserve
+ * backwards compatibility with existing localStorage entries written
+ * by the single-arg helpers below.
+ */
+export function _poolKeyFrom(
+  prefix,
+  walletAddress,
+  contractAddress,
+  token0,
+  token1,
+  fee,
+) {
+  if (typeof walletAddress !== "string" || walletAddress.length === 0)
+    return null;
+  if (typeof token0 !== "string" || token0.length === 0) return null;
+  if (typeof token1 !== "string" || token1.length === 0) return null;
+  const contract =
+    typeof contractAddress === "string" ? contractAddress.toLowerCase() : "";
+  const feePart =
+    typeof fee === "number" && Number.isFinite(fee) ? fee.toString() : "0";
   return (
     prefix +
     "pulsechain_" +
-    a.walletAddress.toLowerCase() +
+    walletAddress.toLowerCase() +
     "_" +
-    (a.contractAddress || "").toLowerCase() +
+    contract +
     "_" +
-    a.token0.toLowerCase() +
+    token0.toLowerCase() +
     "_" +
-    a.token1.toLowerCase() +
+    token1.toLowerCase() +
     "_" +
-    (a.fee || 0)
+    feePart
+  );
+}
+
+export function _posKey(prefix) {
+  const a = posStore.getActive();
+  return _posKeyFrom(prefix, a?.tokenId);
+}
+export function _poolKey(prefix) {
+  const a = posStore.getActive();
+  return _poolKeyFrom(
+    prefix,
+    a?.walletAddress,
+    a?.contractAddress,
+    a?.token0,
+    a?.token1,
+    a?.fee,
   );
 }
 export function _loadNum(key, allowZero) {
@@ -213,6 +262,50 @@ export function saveInitialDeposit() {
         if (ls && _updateKpisRef) _updateKpisRef(ls);
       }
     },
+    false,
+  );
+}
+
+// ── Parameterized loaders for iterating positions other than the active one ──
+
+/**
+ * Load per-pool realized gains for an arbitrary position (not
+ * necessarily the active one).  Matches loadRealizedGains() but
+ * accepts the pool identity explicitly.
+ * @param {{walletAddress:string, contractAddress:string, token0:string, token1:string, fee:number}} ctx
+ * @returns {number}
+ */
+export function loadRealizedGainsForPool(ctx) {
+  return _loadNum(
+    _poolKeyFrom(
+      "9mm_realized_pool_",
+      ctx?.walletAddress,
+      ctx?.contractAddress,
+      ctx?.token0,
+      ctx?.token1,
+      ctx?.fee,
+    ),
+    true,
+  );
+}
+
+/**
+ * Load per-pool initial deposit override for an arbitrary position.
+ * Matches loadInitialDeposit() but accepts the pool identity
+ * explicitly.
+ * @param {{walletAddress:string, contractAddress:string, token0:string, token1:string, fee:number}} ctx
+ * @returns {number}
+ */
+export function loadInitialDepositForPool(ctx) {
+  return _loadNum(
+    _poolKeyFrom(
+      "9mm_deposit_pool_",
+      ctx?.walletAddress,
+      ctx?.contractAddress,
+      ctx?.token0,
+      ctx?.token1,
+      ctx?.fee,
+    ),
     false,
   );
 }

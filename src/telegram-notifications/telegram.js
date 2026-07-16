@@ -17,7 +17,7 @@
 const { log } = require("../log");
 const os = require("os");
 const config = require("../config");
-const { readNftProviders } = require("../nft-providers");
+const { getLpProviderDisplayName } = require("../lp-providers");
 const { getTokenSymbol } = require("../token-symbol-cache");
 
 /** Machine hostname, included in all notifications. */
@@ -162,15 +162,13 @@ function _truncSym(s, max = _SYM_TRUNC_HEADER) {
   return v.length > max ? v.slice(0, max) : v;
 }
 
-/** Resolve the user-facing NFT-issuer name from
- *  `app-config/app-defaults-for-user-configurable/nft-providers.json` (address-keyed).  The
- *  same map the dashboard NFT panel reads via `GET /api/nft-providers`.
- *  Returns `undefined` when no match — callers omit the provider line. */
+/** Resolve the user-facing LP-provider name from
+ *  `app-config/app-defaults-for-user-configurable/lp-providers.json`
+ *  (composite factory+positionManager-keyed).  Same lookup the
+ *  dashboard NFT panel reads via `GET /api/lp-providers`.  Returns
+ *  `undefined` when no match — callers omit the provider line. */
 function _resolveProviderName() {
-  const map = readNftProviders();
-  const addr = config.POSITION_MANAGER;
-  if (!addr) return undefined;
-  return map[addr.toLowerCase()];
+  return getLpProviderDisplayName(config.FACTORY, config.POSITION_MANAGER);
 }
 
 /** Resolve `[sym0, sym1]` for a position via the standard fallback chain:

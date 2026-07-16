@@ -26,7 +26,7 @@
  * @param {Function} deps.buildStatusPositions   Per-position map builder.
  * @param {Function} deps.buildGasStatusPayload  Async gas-status payload builder.
  * @param {Function} deps.actualGasCostUsd       Converter passed to gas-status.
- * @param {Function} deps.readNftProviders       NFT-provider label map reader.
+ * @param {Function} deps.getLpProviderDisplayName  LP-provider label lookup by (factory, PM).
  * @param {Function} deps.managedKeys            Disk-config → running-keys helper.
  * @param {Function} deps.jsonResponse           HTTP JSON responder.
  * @returns {(req, res) => Promise<void>}  The bound route handler.
@@ -41,7 +41,7 @@ function createApiStatusHandler(deps) {
     buildStatusPositions,
     buildGasStatusPayload,
     actualGasCostUsd,
-    readNftProviders,
+    getLpProviderDisplayName,
     managedKeys,
     jsonResponse,
   } = deps;
@@ -74,17 +74,26 @@ function createApiStatusHandler(deps) {
         host: config.HOST,
         rpcUrl: config.RPC_URL,
         positionManager: config.POSITION_MANAGER,
-        /*- Single source of truth for the NFT-issuer label is
-         *  app-config/app-defaults-for-user-configurable/nft-providers.json (address-keyed
-         *  map, also served by GET /api/nft-providers for the dashboard
-         *  NFT panel and read by src/telegram-notifications/balanced-notifier.js
-         *  for the Telegram header). Look it up here so the legacy
-         *  `pmName` consumers (Activity log, alerts, baseline) stay in
-         *  sync without holding a duplicate copy of the string. */
+        /*- Single source of truth for the LP-provider label is
+         *  app-config/app-defaults-for-user-configurable/lp-providers.json
+         *  (composite factory+positionManager-keyed map, also served
+         *  by GET /api/lp-providers for the dashboard NFT panel and
+         *  read by src/telegram-notifications/telegram.js for the
+         *  Telegram header). Look it up here so the legacy `pmName`
+         *  consumers (Activity log, alerts, baseline) stay in sync
+         *  without holding a duplicate copy of the string.  Field
+         *  name stays `positionManagerName` to avoid rippling the
+         *  rename through every consumer in this refactor. */
         positionManagerName:
-          readNftProviders()[(config.POSITION_MANAGER || "").toLowerCase()] ||
+          getLpProviderDisplayName(config.FACTORY, config.POSITION_MANAGER) ||
           "",
         chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
+        /*- Canonical chain id (KEY of chains.json, e.g. "pulsechain").
+         *  Distinct from chainDisplayName ("PulseChain") — clients use
+         *  the id for URL slugs, lookups, and comparisons; the display
+         *  name is user-facing text only (locale-dependent).  See
+         *  feedback in lp-providers about ID-vs-displayName. */
+        chainId: config.CHAIN_NAME,
         defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
         compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
         compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,

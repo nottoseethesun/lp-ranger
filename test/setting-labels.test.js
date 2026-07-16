@@ -5,7 +5,7 @@
  * JSON on disk), missing-file fallback, malformed-JSON fallback,
  * `_comment` stripping, non-object-value rejection, empty-label
  * rejection, and the always-200 route contract.  Mirrors the shape
- * of `test/nft-providers.test.js` so future tunable-label files can
+ * of `test/lp-providers.test.js` so future tunable-label files can
  * reuse the same pattern.
  */
 

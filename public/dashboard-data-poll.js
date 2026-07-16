@@ -9,6 +9,8 @@
 import { log } from "./dashboard-log.js";
 import { flattenV2Status } from "./dashboard-data-cache.js";
 import { _setStatusPill } from "./dashboard-data-status.js";
+import { setFactoryContext } from "./dashboard-lp-providers.js";
+import { updateAllPositionsStatsBtn } from "./dashboard-all-positions-stats.js";
 
 let _onStatus = null;
 let _dataTimerId = null;
@@ -56,7 +58,10 @@ async function _pollStatus() {
     }
     _pollFailCount = 0;
     const data = flattenV2Status(await res.json());
-    if (_onStatus) _onStatus(data);
+    if (typeof data.factory === "string" && data.factory.length > 0)
+      setFactoryContext(data.factory);
+    updateAllPositionsStatsBtn(data);
+    if (_onStatus !== null) _onStatus(data);
   } catch (_) {
     _onPollFail();
   } finally {

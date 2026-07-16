@@ -1,4 +1,0 @@
-{
-  "_comment": "Short display labels for NFT position-manager contracts, keyed by contract address. Shown next to Fee Tier in the header NFT panel so users can tell at a glance which liquidity-pool provider a position belongs to. Keys are lower-cased at lookup time, so either checksum or lowercase works. Keep each label short (~8 chars) — it sits on the Fee Tier line.",
-  "0xcc05bf158202b4f461ede8843d76dcd7bbad07f2": "9mm v3"
-}

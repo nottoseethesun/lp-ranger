@@ -71,7 +71,7 @@ import { initTelegram } from "./dashboard-telegram.js";
 import { startBrowserIdleTracker } from "./dashboard-idle.js";
 import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
-import { loadNftProviders } from "./dashboard-nft-providers.js";
+import { loadLpProviders } from "./dashboard-lp-providers.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
 import { loadSettingLabels } from "./dashboard-setting-labels.js";
 import {
@@ -245,11 +245,13 @@ initDisclaimer().then(async () => {
 
 /** All dashboard init runs after the disclaimer is accepted. */
 function _afterDisclaimer() {
-  // Fetch NFT-provider label map so the Fee Tier row can render the
+  // Fetch LP-provider label map so the Fee Tier row can render the
   // short provider label (e.g. "9mm v3").  When it resolves we re-paint
   // the strip so a late-arriving map still shows up without waiting for
-  // the next user-driven render.
-  loadNftProviders().then(() => updatePosStripUI());
+  // the next user-driven render.  Note: the composite lookup also needs
+  // the pool-factory address, which arrives via the first /api/status
+  // poll — dashboard-data.js calls setFactoryContext at that point.
+  loadLpProviders().then(() => updatePosStripUI());
 
   /*- Fetch the per-chain Chart Links list (DexScreener / GeckoTerminal /
    *  DexTools) so the Pool Details modal can render hrefs without any

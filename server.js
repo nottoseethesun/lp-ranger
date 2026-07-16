@@ -73,7 +73,7 @@
  *
  *   UI
  *   GET  /api/ui-defaults           → Dashboard default preferences (sounds, etc.)
- *   GET  /api/nft-providers         → Short labels for NFT position-manager contracts
+ *   GET  /api/lp-providers          → LP-provider metadata keyed by <factory>_<positionManager>
  *   GET  /api/bot-config-defaults   → Bot Settings defaults (single source of truth)
  *   GET  /api/setting-labels        → Human-readable labels for config keys (Activity Log formatter)
  *
@@ -367,7 +367,7 @@ const {
 } = require("./src/server-positions");
 
 const { createRouteHandlers } = require("./src/server-routes");
-const { readNftProviders } = require("./src/nft-providers");
+const { getLpProviderDisplayName } = require("./src/lp-providers");
 const { createApiStatusHandler } = require("./src/handle-api-status");
 const { askPassword: _askPassword } = require("./src/ask-password");
 
@@ -420,7 +420,7 @@ const _routes = {
     buildStatusPositions,
     buildGasStatusPayload,
     actualGasCostUsd,
-    readNftProviders,
+    getLpProviderDisplayName,
     managedKeys,
     jsonResponse,
   }),

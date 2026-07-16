@@ -19,7 +19,7 @@ import {
   loadPositionOorThreshold,
   emojiId,
 } from "./dashboard-helpers.js";
-import { setProviderLabelFor } from "./dashboard-nft-providers.js";
+import { setProviderLabelFor } from "./dashboard-lp-providers.js";
 import {
   logStripRender,
   logLocalRender,
