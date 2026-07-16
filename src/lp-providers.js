@@ -79,15 +79,15 @@ function readLpProviders() {
     const out = {};
     for (const [k, v] of Object.entries(parsed)) {
       if (k === "_comment") continue;
-      if (!v || typeof v !== "object") continue;
+      if (v === null || v === undefined || typeof v !== "object") continue;
       if (typeof v.displayName !== "string") continue;
       const displayName = v.displayName.trim();
-      if (!displayName) continue;
+      if (displayName.length === 0) continue;
       const chains = Array.isArray(
         v.supportedBlockchainsByLpRangerAndLpProvider,
       )
         ? v.supportedBlockchainsByLpRangerAndLpProvider.filter(
-            (c) => typeof c === "string" && c.trim(),
+            (c) => typeof c === "string" && c.trim().length > 0,
           )
         : [];
       out[k] = {
@@ -98,7 +98,8 @@ function readLpProviders() {
     }
     return out;
   } catch (err) {
-    log.warn("[lp-providers] Falling back to empty map: %s", err.message);
+    const msg = err instanceof Error ? err.message : "unknown error";
+    log.warn("[lp-providers] Falling back to empty map: %s", msg);
     return {};
   }
 }
@@ -129,11 +130,16 @@ const _loggedMissingProviders = new Set();
  * @returns {{displayName:string, supportedBlockchainsByLpRangerAndLpProvider:string[]} | undefined}
  */
 function getLpProvider(factory, positionManager) {
-  if (!factory || !positionManager) return undefined;
+  if (typeof factory !== "string" || factory.length === 0) return undefined;
+  if (typeof positionManager !== "string" || positionManager.length === 0)
+    return undefined;
   const key = _compositeKey(factory, positionManager);
-  if (!key) return undefined;
+  if (key === null) return undefined;
   const entry = readLpProviders()[key];
-  if (!entry && !_loggedMissingProviders.has(key)) {
+  if (
+    (entry === null || entry === undefined) &&
+    !_loggedMissingProviders.has(key)
+  ) {
     _loggedMissingProviders.add(key);
     log.warn(
       "[lp-providers] no entry for factory+positionManager pair %s — position will render without a provider label",
@@ -180,8 +186,8 @@ const _loggedUnsupportedChains = new Set();
  */
 function isChainSupported(factory, positionManager, chainId) {
   const entry = getLpProvider(factory, positionManager);
-  if (!entry) return false;
-  if (!chainId || typeof chainId !== "string") return false;
+  if (entry === null || entry === undefined) return false;
+  if (typeof chainId !== "string" || chainId.length === 0) return false;
   const supported = entry.supportedBlockchainsByLpRangerAndLpProvider;
   if (supported.includes(chainId)) return true;
   const canonicalKey = _compositeKey(factory, positionManager);

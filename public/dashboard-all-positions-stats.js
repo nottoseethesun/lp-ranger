@@ -25,6 +25,12 @@
  *   instead of only to the active position.  Per-pool localStorage
  *   entries (Realized Gains, Initial Deposit override) are looked up
  *   through the parameterized loaders in dashboard-data-deposit.js.
+ *
+ *   Type discipline: every presence test uses explicit
+ *   `x === null || x === undefined` rather than `!x` or `x || default`
+ *   so 0 / "" / false never coerce into the fallback path.  Numeric
+ *   defaulting uses `??` (nullish coalescing), not `||`, for the same
+ *   reason.
  */
 
 import { log } from "./dashboard-log.js";
@@ -51,27 +57,40 @@ let _isOpen = false;
 let _sortCol = "ltNetPnl";
 let _sortDir = "desc";
 
+/*- Return a finite number or the fallback.  Explicit type + finiteness
+ *  check instead of `x || default`, which would coerce 0 / NaN / ""
+ *  into the fallback path — legitimate 0 values (e.g. no fees earned
+ *  yet) would otherwise get quietly promoted to the default and skew
+ *  the totals. */
+function _num(v, fallback) {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
 /*- Truncate a token symbol to at most 6 characters, appending an
  *  ellipsis when trimmed.  Matches the row-identity spec in the task
  *  description ("token pair truncated to six characters each with an
- *  ellipsis"). */
+ *  ellipsis").  Explicit null/undefined check rather than `s || "?"`
+ *  so an empty-string symbol renders as "" (not "?"), reserving "?"
+ *  for genuinely-missing values. */
 function _truncSym(s) {
-  const v = s || "?";
-  return v.length > 6 ? v.slice(0, 6) + "…" : v;
+  if (s === null || s === undefined) return "?";
+  if (typeof s !== "string") return "?";
+  return s.length > 6 ? s.slice(0, 6) + "…" : s;
 }
 
 /*- Fee in basis-points-times-100 (e.g. 2500 for 0.25%) → display
- *  string like "0.25%".  Uses parseFloat + toFixed so 100 → "0.01%"
- *  and 10000 → "1%" both round-trip cleanly. */
+ *  string like "0.25%".  Returns "0.00%" for anything non-numeric
+ *  instead of silently coercing via Number(). */
 function _feePct(fee) {
-  const n = Number(fee) || 0;
-  return (n / 10000).toFixed(2) + "%";
+  if (typeof fee !== "number" || !Number.isFinite(fee)) return "0.00%";
+  return (fee / 10000).toFixed(2) + "%";
 }
 
 /*- Format a signed USD amount with 2 decimals and thousands sep.
- *  Returns "—" for null/undefined so we don't render "$NaN". */
+ *  Returns "—" for null/undefined/non-finite so we don't render "$NaN". */
 function _fmtUsd(n) {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  if (n === null || n === undefined) return "—";
+  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
   return `${sign}$${abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -81,16 +100,18 @@ function _fmtUsd(n) {
  *  from a pnlSnapshot + realized-gains override + lifetime deposit.
  *  Mirror of the formulas the Lifetime panel uses in
  *  dashboard-data-kpi._resolveKpiTotals — applied per row here
- *  instead of only to the active position. */
+ *  instead of only to the active position.  All `?? 0` defaults use
+ *  nullish coalescing so a legitimate 0 (e.g. no fees yet) stays 0
+ *  instead of coercing through `||`. */
 function _computeNumerics(snap, ltRealized, ltDep) {
-  const currentValue = snap.currentValue || 0;
+  const currentValue = _num(snap.currentValue, 0);
   const ltPc = ltDep > 0 ? currentValue - ltDep : 0;
-  const compounded = snap.totalCompoundedUsd || 0;
-  const ltCurrentFees = snap.currentFeesUsd || 0;
-  const ltGas = snap.totalGas || 0;
-  const ltResidual = snap.residualValueUsd || 0;
-  const ltInitialResidual = snap.initialResidualUsd || 0;
-  const il = snap.lifetimeIL ?? snap.totalIL ?? 0;
+  const compounded = _num(snap.totalCompoundedUsd, 0);
+  const ltCurrentFees = _num(snap.currentFeesUsd, 0);
+  const ltGas = _num(snap.totalGas, 0);
+  const ltResidual = _num(snap.residualValueUsd, 0);
+  const ltInitialResidual = _num(snap.initialResidualUsd, 0);
+  const il = _num(snap.lifetimeIL ?? snap.totalIL, 0);
   const ltNetPnl =
     ltPc +
     compounded +
@@ -110,10 +131,13 @@ function _computeNumerics(snap, ltRealized, ltDep) {
  *  case, but the check keeps the render function honest under
  *  eventual-consistency polling). */
 function _computeRow(key, posState, globalCtx) {
-  const ap = posState?.activePosition;
-  const snap = posState?.pnlSnapshot;
-  if (!ap || !snap) return null;
-  if (parseFloat(ap.liquidity || 0) <= 0) return null;
+  const ap = posState.activePosition;
+  const snap = posState.pnlSnapshot;
+  if (ap === null || ap === undefined) return null;
+  if (snap === null || snap === undefined) return null;
+  if (typeof ap.liquidity !== "string") return null;
+  const liq = parseFloat(ap.liquidity);
+  if (!Number.isFinite(liq) || liq <= 0) return null;
   const poolCtx = {
     walletAddress: globalCtx.walletAddress,
     contractAddress: globalCtx.positionManager,
@@ -124,15 +148,15 @@ function _computeRow(key, posState, globalCtx) {
   const ltRealized = loadRealizedGainsForPool(poolCtx);
   const ltDepOverride = loadInitialDepositForPool(poolCtx);
   const ltDep =
-    ltDepOverride > 0 ? ltDepOverride : snap.totalLifetimeDeposit || 0;
+    ltDepOverride > 0 ? ltDepOverride : _num(snap.totalLifetimeDeposit, 0);
   const nums = _computeNumerics(snap, ltRealized, ltDep);
   const lpName =
-    getProviderDisplayName(globalCtx.factory, globalCtx.positionManager) ||
-    getProviderLabel(globalCtx.positionManager) ||
+    getProviderDisplayName(globalCtx.factory, globalCtx.positionManager) ??
+    getProviderLabel(globalCtx.positionManager) ??
     "?";
   return {
     key,
-    blockchain: globalCtx.chainName || "pulsechain",
+    blockchain: globalCtx.chainName ?? "pulsechain",
     symbol0: ap.token0Symbol,
     symbol1: ap.token1Symbol,
     feePct: _feePct(ap.fee),
@@ -147,8 +171,8 @@ function _computeRow(key, posState, globalCtx) {
 /*- Build the row array from a flattened poll payload.  Filters +
  *  computes per-position numerics; the caller sorts + renders. */
 function _computeRows(data) {
-  if (!data) return [];
-  const positions = data._allPositionStates || {};
+  if (data === null || data === undefined) return [];
+  const positions = data._allPositionStates ?? {};
   const globalCtx = {
     walletAddress: data.walletAddress,
     factory: data.factory,
@@ -158,9 +182,10 @@ function _computeRows(data) {
   const rows = [];
   for (const key of Object.keys(positions)) {
     const p = positions[key];
-    if (!p || p.status !== "running") continue;
+    if (p === null || p === undefined) continue;
+    if (p.status !== "running") continue;
     const row = _computeRow(key, p, globalCtx);
-    if (row) rows.push(row);
+    if (row !== null) rows.push(row);
   }
   return rows;
 }
@@ -183,13 +208,25 @@ function _sortRows(rows, col, dir) {
   });
 }
 
+/*- Return a lower-cased string for a URL slot, or an empty string
+ *  when the value isn't a string.  Explicit type check so a non-
+ *  string doesn't reach .toLowerCase() (would throw) and doesn't
+ *  coerce via `|| ""` (would strip legitimate 0-length input from a
+ *  future different code path). */
+function _lcSlot(v) {
+  return typeof v === "string" ? v.toLowerCase() : "";
+}
+
 /*- Deep-link URL for the row's position.  Uses lowercase addresses
  *  to match the URLs the router emits everywhere else in the app —
  *  the router canonicalises on read. */
 function _positionHref(row) {
-  const chain = (row.blockchain || "pulsechain").toLowerCase();
-  const wallet = (row.walletAddress || "").toLowerCase();
-  const contract = (row.contractAddress || "").toLowerCase();
+  const chain =
+    typeof row.blockchain === "string" && row.blockchain.length > 0
+      ? row.blockchain.toLowerCase()
+      : "pulsechain";
+  const wallet = _lcSlot(row.walletAddress);
+  const contract = _lcSlot(row.contractAddress);
   return `/${chain}/${wallet}/${contract}/${row.tokenId}`;
 }
 
@@ -231,7 +268,7 @@ function _renderNumCell(value) {
 function _renderTable(data) {
   const tbody = g("allPositionsStatsTableBody");
   const empty = g("allPositionsStatsEmpty");
-  if (!tbody) return;
+  if (tbody === null) return;
   const rows = _sortRows(_computeRows(data), _sortCol, _sortDir);
   tbody.replaceChildren();
   for (const row of rows) {
@@ -252,7 +289,7 @@ function _renderTable(data) {
     tr.appendChild(gotoTd);
     tbody.appendChild(tr);
   }
-  if (empty) empty.hidden = rows.length > 0;
+  if (empty !== null) empty.hidden = rows.length > 0;
   _updateSortMarkers();
 }
 
@@ -287,6 +324,30 @@ function _onBackdropClick(e) {
   if (e.target === overlay) closeAllPositionsStatsModal();
 }
 
+/*- Pure decision from a poll payload: how many running positions
+ *  are there, and how many are scan-complete + pnlSnapshot-ready?
+ *  Extracted so the mirror-test can drive it directly without the
+ *  DOM-write side effect. */
+function _countReadiness(data) {
+  const positions = data?._allPositionStates ?? {};
+  let total = 0;
+  let ready = 0;
+  for (const key of Object.keys(positions)) {
+    const p = positions[key];
+    if (p === null || p === undefined) continue;
+    if (p.status !== "running") continue;
+    total += 1;
+    if (
+      p.rebalanceScanComplete === true &&
+      p.lifetimeScanComplete === true &&
+      p.pnlSnapshot !== null &&
+      p.pnlSnapshot !== undefined
+    )
+      ready += 1;
+  }
+  return { total, ready };
+}
+
 /**
  * Compute readiness across every RUNNING managed position and update
  * the "All Positions Stats" header button's disabled state + title.
@@ -296,21 +357,8 @@ function _onBackdropClick(e) {
  */
 export function updateAllPositionsStatsBtn(data) {
   const btn = g("allPositionsStatsBtn");
-  if (btn) {
-    const positions = data?._allPositionStates || {};
-    let total = 0;
-    let ready = 0;
-    for (const key of Object.keys(positions)) {
-      const p = positions[key];
-      if (!p || p.status !== "running") continue;
-      total += 1;
-      if (
-        p.rebalanceScanComplete === true &&
-        p.lifetimeScanComplete === true &&
-        p.pnlSnapshot
-      )
-        ready += 1;
-    }
+  if (btn !== null) {
+    const { total, ready } = _countReadiness(data);
     let disabled;
     let title;
     if (total === 0) {
@@ -340,7 +388,7 @@ export function updateAllPositionsStatsBtn(data) {
 /** Open the modal, render current rows, wire per-open listeners. */
 export function openAllPositionsStatsModal() {
   const overlay = g("allPositionsStatsModal");
-  if (!overlay) return;
+  if (overlay === null) return;
   _isOpen = true;
   overlay.classList.remove("hidden");
   _renderTable(getLastStatus());
@@ -351,7 +399,7 @@ export function openAllPositionsStatsModal() {
 /** Hide the modal, tear down per-open listeners. */
 export function closeAllPositionsStatsModal() {
   const overlay = g("allPositionsStatsModal");
-  if (!overlay) return;
+  if (overlay === null) return;
   _isOpen = false;
   overlay.classList.add("hidden");
   overlay.removeEventListener("click", _onBackdropClick);
@@ -364,16 +412,19 @@ export function closeAllPositionsStatsModal() {
  *  internals — it just calls this one function. */
 export function wireAllPositionsStatsEvents() {
   const openBtn = g("allPositionsStatsBtn");
-  if (openBtn) openBtn.addEventListener("click", openAllPositionsStatsModal);
+  if (openBtn !== null)
+    openBtn.addEventListener("click", openAllPositionsStatsModal);
   const table = g("allPositionsStatsTable");
-  if (table) {
+  if (table !== null) {
     table.addEventListener("click", (e) => {
       const th = e.target.closest("[data-sort-col]");
-      if (!th) return;
+      if (th === null) return;
       const col = th.getAttribute("data-sort-col");
-      if (col) _onSortHeaderClick(col);
+      if (col === null || col.length === 0) return;
+      _onSortHeaderClick(col);
     });
   }
   const closeBtn = g("allPositionsStatsCloseBtn");
-  if (closeBtn) closeBtn.addEventListener("click", closeAllPositionsStatsModal);
+  if (closeBtn !== null)
+    closeBtn.addEventListener("click", closeAllPositionsStatsModal);
 }

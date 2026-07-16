@@ -75,13 +75,17 @@ export async function loadLpProviders() {
     const res = await fetch("/api/lp-providers");
     if (!res.ok) return;
     const data = await res.json();
-    _providerMap = data && typeof data === "object" ? data : {};
+    _providerMap =
+      data !== null && data !== undefined && typeof data === "object"
+        ? data
+        : {};
     log.info(
       "[lp-providers] loaded %d mapping(s)",
       Object.keys(_providerMap).length,
     );
   } catch (err) {
-    log.warn("[lp-providers] fetch failed:", err && err.message);
+    const msg = err instanceof Error ? err.message : "unknown error";
+    log.warn("[lp-providers] fetch failed:", msg);
   }
 }
 
@@ -92,7 +96,7 @@ export async function loadLpProviders() {
  * @param {string|null|undefined} factory
  */
 export function setFactoryContext(factory) {
-  if (typeof factory === "string" && factory) _factory = factory;
+  if (typeof factory === "string" && factory.length > 0) _factory = factory;
 }
 
 /**
@@ -105,11 +109,20 @@ export function setFactoryContext(factory) {
  * @returns {{displayName:string, supportedBlockchainsByLpRangerAndLpProvider:string[]} | undefined}
  */
 export function getProvider(factory, positionManager) {
-  if (!factory || !positionManager) return undefined;
+  if (
+    typeof factory !== "string" ||
+    factory.length === 0 ||
+    typeof positionManager !== "string" ||
+    positionManager.length === 0
+  )
+    return undefined;
   const key = _compositeKey(factory, positionManager);
-  if (!key) return undefined;
+  if (key === null) return undefined;
   const entry = _providerMap[key];
-  if (!entry && !_loggedMissingProviders.has(key)) {
+  if (
+    (entry === null || entry === undefined) &&
+    !_loggedMissingProviders.has(key)
+  ) {
     _loggedMissingProviders.add(key);
     log.warn(
       "[lp-providers] no entry for factory+positionManager pair %s — position will render without a provider label",
@@ -143,9 +156,13 @@ export function getProviderDisplayName(factory, positionManager) {
  */
 export function isChainSupported(factory, positionManager, chainId) {
   const entry = getProvider(factory, positionManager);
-  if (!entry) return false;
-  if (!chainId || typeof chainId !== "string") return false;
-  const supported = entry.supportedBlockchainsByLpRangerAndLpProvider || [];
+  if (entry === null || entry === undefined) return false;
+  if (typeof chainId !== "string" || chainId.length === 0) return false;
+  const supported = Array.isArray(
+    entry.supportedBlockchainsByLpRangerAndLpProvider,
+  )
+    ? entry.supportedBlockchainsByLpRangerAndLpProvider
+    : [];
   if (supported.includes(chainId)) return true;
   const canonicalKey = _compositeKey(factory, positionManager);
   const dedupKey = `${canonicalKey}::${chainId}`;
@@ -171,7 +188,7 @@ export function isChainSupported(factory, positionManager, chainId) {
  * @returns {string | undefined}
  */
 export function getProviderLabel(positionManager) {
-  if (!_factory) return undefined;
+  if (_factory === null) return undefined;
   return getProviderDisplayName(_factory, positionManager);
 }
 
@@ -186,9 +203,9 @@ export function getProviderLabel(positionManager) {
 export function setProviderLabelFor(positionManager) {
   const wrap = g("wsProviderWrap");
   const label = g("wsProvider");
-  if (!wrap || !label) return;
+  if (wrap === null || label === null) return;
   const text = getProviderLabel(positionManager);
-  if (text) {
+  if (typeof text === "string" && text.length > 0) {
     label.textContent = text;
     wrap.classList.remove("9mm-pos-mgr-hidden");
   } else {

@@ -58,9 +58,10 @@ async function _pollStatus() {
     }
     _pollFailCount = 0;
     const data = flattenV2Status(await res.json());
-    if (data.factory) setFactoryContext(data.factory);
+    if (typeof data.factory === "string" && data.factory.length > 0)
+      setFactoryContext(data.factory);
     updateAllPositionsStatsBtn(data);
-    if (_onStatus) _onStatus(data);
+    if (_onStatus !== null) _onStatus(data);
   } catch (_) {
     _onPollFail();
   } finally {

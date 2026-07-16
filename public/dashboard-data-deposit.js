@@ -29,18 +29,25 @@ export function _wireDepositKpis(getLast, updKpis) {
  * Pure per-position localStorage key builder.  Takes tokenId
  * explicitly so callers iterating positions other than
  * posStore.getActive() (e.g. the All Positions Stats modal) can
- * reuse the same key layout.
+ * reuse the same key layout.  Enforces string tokenId so a numeric
+ * or coerced value never produces a slightly-different localStorage
+ * key from the string-typed path.
  */
 export function _posKeyFrom(prefix, tokenId) {
-  return tokenId ? prefix + tokenId : null;
+  if (typeof tokenId !== "string" || tokenId.length === 0) return null;
+  return prefix + tokenId;
 }
 
 /**
  * Pure per-pool localStorage key builder.  Takes every identity
  * field explicitly so callers iterating positions other than
- * posStore.getActive() can reuse the same key layout.  All addresses
- * are lower-cased to preserve backwards compatibility with existing
- * localStorage entries written by the single-arg helpers below.
+ * posStore.getActive() can reuse the same key layout.  Requires
+ * every identity slot to be a string (or a number for `fee`, since
+ * that's how the bot-state exposes it) — no implicit coercion, so a
+ * malformed input returns null rather than silently producing a
+ * partial-match key.  All addresses are lower-cased to preserve
+ * backwards compatibility with existing localStorage entries written
+ * by the single-arg helpers below.
  */
 export function _poolKeyFrom(
   prefix,
@@ -50,19 +57,26 @@ export function _poolKeyFrom(
   token1,
   fee,
 ) {
-  if (!walletAddress || !token0 || !token1) return null;
+  if (typeof walletAddress !== "string" || walletAddress.length === 0)
+    return null;
+  if (typeof token0 !== "string" || token0.length === 0) return null;
+  if (typeof token1 !== "string" || token1.length === 0) return null;
+  const contract =
+    typeof contractAddress === "string" ? contractAddress.toLowerCase() : "";
+  const feePart =
+    typeof fee === "number" && Number.isFinite(fee) ? fee.toString() : "0";
   return (
     prefix +
     "pulsechain_" +
     walletAddress.toLowerCase() +
     "_" +
-    (contractAddress || "").toLowerCase() +
+    contract +
     "_" +
     token0.toLowerCase() +
     "_" +
     token1.toLowerCase() +
     "_" +
-    (fee || 0)
+    feePart
   );
 }
 

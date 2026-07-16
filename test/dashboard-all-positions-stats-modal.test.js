@@ -21,15 +21,19 @@ const assert = require("node:assert");
 
 // ── Mirrored copies ────────────────────────────────────────────
 
+function _num(v, fallback) {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
 function _computeNumerics(snap, ltRealized, ltDep) {
-  const currentValue = snap.currentValue || 0;
+  const currentValue = _num(snap.currentValue, 0);
   const ltPc = ltDep > 0 ? currentValue - ltDep : 0;
-  const compounded = snap.totalCompoundedUsd || 0;
-  const ltCurrentFees = snap.currentFeesUsd || 0;
-  const ltGas = snap.totalGas || 0;
-  const ltResidual = snap.residualValueUsd || 0;
-  const ltInitialResidual = snap.initialResidualUsd || 0;
-  const il = snap.lifetimeIL ?? snap.totalIL ?? 0;
+  const compounded = _num(snap.totalCompoundedUsd, 0);
+  const ltCurrentFees = _num(snap.currentFeesUsd, 0);
+  const ltGas = _num(snap.totalGas, 0);
+  const ltResidual = _num(snap.residualValueUsd, 0);
+  const ltInitialResidual = _num(snap.initialResidualUsd, 0);
+  const il = _num(snap.lifetimeIL ?? snap.totalIL, 0);
   const ltNetPnl =
     ltPc +
     compounded +

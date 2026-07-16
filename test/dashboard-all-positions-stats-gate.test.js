@@ -28,17 +28,19 @@ const assert = require("node:assert");
  * @returns {{disabled: boolean, title: string}}
  */
 function computeButtonState(data) {
-  const positions = data?._allPositionStates || {};
+  const positions = data?._allPositionStates ?? {};
   let total = 0;
   let ready = 0;
   for (const key of Object.keys(positions)) {
     const p = positions[key];
-    if (!p || p.status !== "running") continue;
+    if (p === null || p === undefined) continue;
+    if (p.status !== "running") continue;
     total += 1;
     if (
       p.rebalanceScanComplete === true &&
       p.lifetimeScanComplete === true &&
-      p.pnlSnapshot
+      p.pnlSnapshot !== null &&
+      p.pnlSnapshot !== undefined
     )
       ready += 1;
   }
