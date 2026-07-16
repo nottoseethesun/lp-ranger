@@ -1,0 +1,7 @@
+{
+  "_comment": "Metadata for LP position providers, keyed by <poolFactoryAddress>_<positionManagerAddress> in EIP-55 checksum casing (e.g. \"0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68_0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2\"). Composite so a single wallet can hold LPs from multiple v3-fork DEXes without ambiguity. Each entry: `{ displayName: <short label ~8 chars>, supportedBlockchainsByLpRangerAndLpProvider: [<canonical chain id — the KEY of chains.json entries, e.g. \"pulsechain\">...] }`. Use chain IDs, NOT displayNames — displayNames can vary by locale, IDs are stable lookup keys. Same factory+PM hash may be deployed on multiple chains (v3-fork clones); this list restricts a match to the chains we've verified for that deployment. Lookups checksum incoming addresses via ethers.getAddress before composing the key — callers can pass any casing. Shown throughout the dashboard wherever an LP position is identified (Fee Tier line, All Positions Stats table).",
+  "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68_0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2": {
+    "displayName": "9mm v3",
+    "supportedBlockchainsByLpRangerAndLpProvider": ["pulsechain"]
+  }
+}

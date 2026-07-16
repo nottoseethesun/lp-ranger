@@ -16,6 +16,7 @@
 
 const { handleUiDefaults } = require("./ui-defaults");
 const { handleNftProviders } = require("./nft-providers");
+const { handleLpProviders } = require("./lp-providers");
 const { handleBotConfigDefaults } = require("./bot-config-defaults");
 const { handleChartProviders } = require("./chart-providers");
 const { handleSettingLabels } = require("./setting-labels");
@@ -33,6 +34,8 @@ function userConfigurableRoutes(jsonResponse) {
       handleUiDefaults(req, res, jsonResponse),
     "GET /api/nft-providers": (req, res) =>
       handleNftProviders(req, res, jsonResponse),
+    "GET /api/lp-providers": (req, res) =>
+      handleLpProviders(req, res, jsonResponse),
     "GET /api/bot-config-defaults": (req, res) =>
       handleBotConfigDefaults(req, res, jsonResponse),
     "GET /api/chart-providers": (req, res) =>
