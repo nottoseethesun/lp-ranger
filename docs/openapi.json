@@ -550,14 +550,14 @@
         }
       }
     },
-    "/api/nft-providers": {
+    "/api/lp-providers": {
       "get": {
         "tags": ["UI"],
-        "summary": "NFT position-manager provider labels",
-        "description": "Returns the contents of app-config/app-defaults-for-user-configurable/nft-providers.json — short labels for known NFT position-manager contract addresses.",
+        "summary": "LP-provider metadata",
+        "description": "Returns the contents of app-config/app-defaults-for-user-configurable/lp-providers.json — LP-provider metadata keyed by <poolFactoryAddress>_<positionManagerAddress> in EIP-55 checksum casing. Each entry is an object { displayName: string, supportedBlockchainsByLpRangerAndLpProvider: string[] } where supportedBlockchainsByLpRangerAndLpProvider is a list of canonical chain IDs (KEYs of chains.json, e.g. \"pulsechain\") that we've verified for that deployment.",
         "responses": {
           "200": {
-            "description": "NFT provider label map",
+            "description": "LP-provider metadata map",
             "content": {
               "application/json": { "schema": { "type": "object" } }
             }

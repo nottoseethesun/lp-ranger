@@ -462,15 +462,20 @@ The threshold (±2.5%) and cooldown (30 min) are code-only constants in
 — change in code if needed.
 
 **Notification payload.** Header lines list the blockchain
-(`CHAIN.displayName`), the user-friendly NFT-issuer name resolved by
-looking up the configured position-manager address in
-`app-config/app-defaults-for-user-configurable/nft-providers.json` (e.g. `"9mm v3"`) — the
-same single source of truth the dashboard NFT panel reads via
-`GET /api/nft-providers`. Then the two token symbols (truncated to 12
-chars each, second line indented 4 spaces) and the fee tier. The
-`nft-providers` map is keyed by NFT-contract address so future v3+v4
-coexistence on the same chain resolves the correct name per position
-without restructuring. Range info, ticks, current price and the ratio
+(`CHAIN.displayName`), the user-friendly LP-provider name resolved by
+looking up the configured (pool-factory + position-manager) pair in
+`app-config/app-defaults-for-user-configurable/lp-providers.json` (e.g.
+`"9mm v3"`) — the same single source of truth the dashboard NFT panel
+reads via `GET /api/lp-providers`. Then the two token symbols
+(truncated to 12 chars each, second line indented 4 spaces) and the
+fee tier. The `lp-providers` map is keyed by
+`<poolFactoryAddress>_<positionManagerAddress>` in EIP-55 checksum
+casing so future v3+v4 coexistence on the same chain — and the same
+factory+PM hash deployed on multiple chains via v3-fork clones —
+resolve the correct name per position without restructuring.  Each
+entry also carries a `supportedBlockchainsByLpRangerAndLpProvider`
+array of canonical chain IDs (KEY of chains.json, e.g. `"pulsechain"`)
+so the app can gate the label to the deployments we've verified. Range info, ticks, current price and the ratio
 split are intentionally omitted — the alert is about the value-balance
 state, not the range. Body shows both token holdings with USD values
 (using human token names, not T0/T1), total value, plus unclaimed fees
@@ -892,7 +897,7 @@ lp-ranger/
 │   │   ├── dust-threshold.json  ← universal dust threshold (gold-pegged)
 │   │   ├── evm-rpc-response-codes.json  ← RPC error-classifier substrings
 │   │   ├── logging.json      ← log-to-file always-on toggle + path
-│   │   ├── nft-providers.json  ← short labels for NFT issuer contracts
+│   │   ├── lp-providers.json   ← LP-provider metadata keyed by <factory>_<positionManager>
 │   │   ├── ui-defaults.json  ← dashboard first-visit defaults
 │   │   └── api-keys.example.json ← tracked format template (documentation)
 │   └── user-configurable/    ← dir tracked (via README.md), CONTENTS gitignored
