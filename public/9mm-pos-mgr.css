@@ -4,6 +4,18 @@
  * All custom classes are prefixed with `9mm-pos-mgr-` to avoid collisions.
  */
 
+/* Layer this modifier on top of any base disabled-button style to
+ * keep hover events (and thus the title-attribute tooltip) working
+ * while the button is disabled — otherwise pointer-events: none on
+ * the base class swallows hover and the user gets no feedback about
+ * WHY the button is disabled.  Matches project convention "any inert
+ * element with a title shows cursor: help" (feedback_help_cursor_on_title).
+ */
+.\39 mm-pos-mgr-disabled-hoverable:disabled {
+  pointer-events: auto;
+  cursor: help;
+}
+
 /* ── Tooltip cursor convention ───────────────────────────────────────────── */
 
 /*  Any non-interactive element (div/span) with a non-empty `title` attribute
@@ -1800,7 +1812,8 @@ span[title]:not([title=""]):hover {
 }
 
 /* LP-provider label + its leading dot separator, shown to the right
-   of Fee Tier when the NFT contract is keyed in nft-providers.json. */
+   of Fee Tier when the (factory, positionManager) pair is keyed in
+   lp-providers.json. */
 .\39 mm-pos-mgr-nft-provider-wrap {
   display: inline-flex;
   align-items: center;
@@ -2844,7 +2857,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784159938948");
+  background-image: url("background-cloud_top.png?v=1784180490473");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -2857,7 +2870,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784159938948");
+  background-image: url("background-cloud_middle.png?v=1784180490473");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -2867,7 +2880,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784159938948");
+  background-image: url("background-cloud_bottom.png?v=1784180490473");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
