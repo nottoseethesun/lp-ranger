@@ -87,45 +87,89 @@ export function emojiId(str) {
  * @param {string} title  Short heading text.
  * @param {string} detail Longer description text.
  */
-const _S =
-  'xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"';
-/** Inline SVG icons for the activity log — pixel-perfect centering. */
+/**
+ * Activity-log icon references.  Each value is a relative URL to the
+ * standalone SVG file under `public/icons/`.  Every icon must have a
+ * matching file (see test/act-icons-files.test.js) and the whole
+ * directory is XML-well-formedness-validated via `npm run lint:svg`
+ * (see docs/engineering.md § "SVG Assets" for the full policy).
+ * @see docs/engineering.md#svg-assets
+ */
 export const ACT_ICONS = {
-  grid: `<svg ${_S}><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>`,
-  target: `<svg ${_S}><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></svg>`,
-  cross: `<svg ${_S}><path d="M4 4l8 8M12 4l-8 8"/></svg>`,
-  scan: `<svg ${_S}><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>`,
-  link: `<svg ${_S}><rect x="1" y="1" width="14" height="14" rx="2"/><path d="M5 8h6M8 5v6"/></svg>`,
-  play: `<svg ${_S}><path d="M5 3l8 5-8 5z"/></svg>`,
-  lock: `<svg ${_S}><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>`,
-  diamond: `<svg ${_S}><path d="M8 2l6 6-6 6-6-6z"/></svg>`,
-  clear: `<svg ${_S}><rect x="2" y="2" width="12" height="12" rx="2"/></svg>`,
-  gear: `<svg ${_S}><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z"/><circle cx="8" cy="8" r="2"/></svg>`,
-  warn: `<svg ${_S}><path d="M8 1L1 15h14z"/><path d="M8 6v4M8 12v1"/></svg>`,
-  swap: `<svg ${_S}><path d="M2 5h12M10 2l4 3-4 3"/><path d="M14 11H2M6 8l-4 3 4 3"/></svg>`,
+  grid: "icons/act-grid.svg",
+  target: "icons/act-target.svg",
+  cross: "icons/act-cross.svg",
+  scan: "icons/act-scan.svg",
+  link: "icons/act-link.svg",
+  play: "icons/act-play.svg",
+  lock: "icons/act-lock.svg",
+  diamond: "icons/act-diamond.svg",
+  clear: "icons/act-clear.svg",
+  gear: "icons/act-gear.svg",
+  warn: "icons/act-warn.svg",
+  swap: "icons/act-swap.svg",
+  acorn: "icons/act-acorn.svg",
+  lasso: "icons/act-lasso.svg",
 };
 /** Maximum entries in the Activity Log. */
 const ACT_LOG_MAX = 500;
-const _ICON_NODE_CACHE = new Map();
+
+/*- Per-icon render-size override.  Default is 40 (fits the 54×54
+ *  `.aico` chip with ~7 px padding on each side); an entry here
+ *  scales that specific icon larger or smaller without touching the
+ *  SVG file or the rest of the icons. */
+const _ICON_SIZE_PX = {
+  "icons/act-acorn.svg": 50,
+};
+const _ICON_DEFAULT_SIZE_PX = 40;
+
+/*- Human-readable label per icon URL.  Applied as both `alt=` (screen
+ *  readers) and `title=` (browser-native hover tooltip) so a mouse
+ *  user and an assistive-tech user both learn what the shape means.
+ *  Missing entry → empty alt (icon renders as decorative). */
+const _ICON_ALT = {
+  "icons/act-grid.svg": "Grid Icon (4 squares) — Position Browser",
+  "icons/act-target.svg": "Bullseye Icon — Target",
+  "icons/act-cross.svg": "X Icon — Close or Cancel",
+  "icons/act-scan.svg": "Magnifying-Glass Icon — Scan",
+  "icons/act-link.svg": "Square-with-Plus Icon — Deep Link",
+  "icons/act-play.svg":
+    "Triangle Icon Pointing Right To Indicate a Ready-to-Go State",
+  "icons/act-lock.svg": "Padlock Icon — Locked",
+  "icons/act-diamond.svg": "Diamond Icon for Finished-Loading",
+  "icons/act-clear.svg": "Square Icon — Cleared",
+  "icons/act-gear.svg": "Icon of a Settings Gear",
+  "icons/act-warn.svg": "Warning-Triangle Icon — Alert",
+  "icons/act-swap.svg": "Bidirectional-Arrows Icon — Swap",
+  "icons/act-acorn.svg": "Icon of an Acorn",
+  "icons/act-lasso.svg": "Icon of a Lasso",
+};
 
 /**
- * Populate an icon container. If `icon` looks like markup (starts with "<"),
- * parse it once via DOMParser and append a clone; otherwise treat it as text.
- * Keeps the activity log free of JS-side innerHTML.
+ * Populate an icon container.  An `icon` starting with `icons/` is
+ * rendered as an `<img>` referencing a standalone SVG file (the
+ * canonical shape — see docs/engineering.md § "SVG Assets"); anything
+ * else falls through to `textContent` so callers can still pass plain
+ * emoji/text.  `<img>` isolates each rendered icon in its own document
+ * context, so the id/defs collisions that inline `<svg>` copies would
+ * cause when the same icon renders across dozens of log entries never
+ * arise.
  */
 function _setActIcon(el, icon) {
   if (!icon) return;
-  if (icon.charAt(0) !== "<") {
-    el.textContent = icon;
+  if (icon.startsWith("icons/")) {
+    const img = document.createElement("img");
+    img.src = icon;
+    const size = _ICON_SIZE_PX[icon] || _ICON_DEFAULT_SIZE_PX;
+    img.width = size;
+    img.height = size;
+    const label = _ICON_ALT[icon] || "";
+    img.alt = label;
+    if (label) img.title = label;
+    el.appendChild(img);
     return;
   }
-  let cached = _ICON_NODE_CACHE.get(icon);
-  if (!cached) {
-    const doc = new DOMParser().parseFromString(icon, "image/svg+xml");
-    cached = doc.documentElement;
-    _ICON_NODE_CACHE.set(icon, cached);
-  }
-  el.appendChild(cached.cloneNode(true));
+  el.textContent = icon;
 }
 
 /** Append a short TX hash + copy icon to the main detail element. */

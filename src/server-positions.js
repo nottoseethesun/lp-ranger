@@ -318,34 +318,37 @@ function createOnRetire(deps) {
 const _starting = new Set();
 
 /*- Closed-position re-open path: when the dashboard calls Manage on a
- *  drained (liquidity=0) position, it sends `forceRebalance: true`
- *  plus a `customRangeWidthPct` from the rebalance modal.  Stamp both
- *  on the freshly-built posBotState BEFORE startPosition so the bot
- *  loop's first poll sees the flag set; `bot-cycle-drain.js`'s
+ *  drained (liquidity=0) position, it sends `forceRebalance: true`.
+ *  Stamp the flag on the freshly-built posBotState BEFORE startPosition
+ *  so the bot loop's first poll sees the flag set; `bot-cycle-drain.js`'s
  *  `if (drained && !state.forceRebalance && !midwayFail)` guard then
  *  returns null and the rebalance pipeline runs on the drained NFT,
  *  minting fresh liquidity and bringing the position back to life in
  *  one user-driven cycle.  No-op for healthy positions (body.flag
- *  unset). */
+ *  unset).
+ *
+ *  Range width for the re-open: read from persistent config
+ *  (`rebalanceRangeWidthPct` POSITION_KEY) by the bot loop via
+ *  `deps._getConfig` in src/bot-cycle-opts.js.  Falls back to
+ *  `rangeMath.preserveRange()` when not set.  No longer read from the
+ *  request body — the range-width modal has been migrated into Bot
+ *  Settings; see the plan at
+ *  `/home/christophermbalz/.claude/plans/encapsulated-coalescing-octopus.md`. */
 function _stampReopenFlags(posBotState, body) {
   if (body.forceRebalance !== true) return;
   posBotState.forceRebalance = true;
-  if (
-    typeof body.customRangeWidthPct === "number" &&
-    body.customRangeWidthPct > 0
-  ) {
-    posBotState.customRangeWidthPct = body.customRangeWidthPct;
-  }
 }
 
 /*- Already-running re-open path: when the user comes back to Manage
  *  after a swap-abort aborted the first re-open attempt, the
  *  `existing.status === "running"` guard in `handleManage` would
  *  silently no-op the request.  This helper grabs the live posBotState
- *  from the per-position map and stamps `forceRebalance` /
- *  `customRangeWidthPct` (via `_stampReopenFlags`) AND clears the
- *  aborted/midway flags (`rebalancePaused`, `rebalanceFailedMidway`,
- *  `rebalanceError`) so the next poll runs a fresh rebalance.
+ *  from the per-position map and stamps `forceRebalance` (via
+ *  `_stampReopenFlags`) AND clears the aborted/midway flags
+ *  (`rebalancePaused`, `rebalanceFailedMidway`, `rebalanceError`) so
+ *  the next poll runs a fresh rebalance.  Range width comes from
+ *  persistent config (`rebalanceRangeWidthPct` POSITION_KEY) — not
+ *  from the request body — since the "Migrate Rebalance UI" plan.
  *  Returns true if the live state was found and stamped, false
  *  otherwise (the caller logs accordingly). */
 function _stampReopenFlagsOnLive(key, body) {

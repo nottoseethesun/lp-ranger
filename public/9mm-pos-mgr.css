@@ -447,6 +447,58 @@ span[title]:not([title=""]):hover {
   margin-top: -12px;
 }
 
+/*
+ * Warning-modal header layout.  The .modal-logo becomes a vertical
+ * stack: h2 on top, then the warning row (big icon + tagline) below.
+ * The big icon anchors at top-left of the warning row so it visually
+ * sits by the warning text (tagline), not the neutral title.
+ */
+.\39 mm-pos-mgr-warning-modal .modal-logo {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.\39 mm-pos-mgr-warning-modal .modal-logo-icon {
+  color: #ffc107;
+  margin-top: 0;
+}
+
+.\39 mm-pos-mgr-warning-modal .modal-logo p {
+  color: #ffc107;
+}
+
+.\39 mm-pos-mgr-modal-warning-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+/*
+ * Inline warning icon that sits at the start of the body lede
+ * paragraph.  Amber #FFC107 to visually anchor the warning content.
+ */
+.\39 mm-pos-mgr-warn-icon-inline {
+  color: #ffc107;
+  font-weight: 800;
+  margin-right: 4px;
+}
+
+/*
+ * Body paragraphs inside a confirm modal need explicit vertical
+ * spacing because the global `* { margin: 0 }` reset zeroed the
+ * browser default.  1em top/bottom is the browser default we're
+ * restoring; 1.5 line-height improves multi-line legibility.
+ */
+.\39 mm-pos-mgr-confirm-body p {
+  margin: 1em 0;
+  line-height: 1.5;
+}
+
+.\39 mm-pos-mgr-il-warn-lede {
+  color: #ffc107;
+}
+
 .\39 mm-pos-mgr-modal-note {
   margin-top: 18px;
   font-size: 17px;
@@ -2154,6 +2206,26 @@ span[title]:not([title=""]):hover {
   outline: none;
 }
 
+/*
+ * Per-letter leather-brown shades for "LP Ranger" — each letter is
+ * wrapped in a <span> with one of these classes to give natural
+ * variation like the tooled-leather crest.  All shades taken from
+ * the mid-to-light range of the crest image (leather-1..5, roughly
+ * Sepia → Umber → Chestnut → Tobacco → Caramel).  The hover /
+ * focus-visible rule below re-inherits from the title-tune button
+ * so the cyan hover treatment still works over the coloured spans.
+ */
+.\39 mm-pos-mgr-leather-1 { color: #7a4a2a; } /* Sepia */
+.\39 mm-pos-mgr-leather-2 { color: #8e5a32; } /* Umber */
+.\39 mm-pos-mgr-leather-3 { color: #a16a3e; } /* Chestnut */
+.\39 mm-pos-mgr-leather-4 { color: #b4794a; } /* Tobacco */
+.\39 mm-pos-mgr-leather-5 { color: #c88c5a; } /* Caramel */
+
+.\39 mm-pos-mgr-title-tune:hover span,
+.\39 mm-pos-mgr-title-tune:focus-visible span {
+  color: inherit;
+}
+
 .\39 mm-pos-mgr-hover-only {
   cursor: help;
 }
@@ -2182,6 +2254,14 @@ span[title]:not([title=""]):hover {
   display: flex;
   flex-direction: column;
   height: 100%;
+
+  /* Override .kpi-card's --panel-opacity fill for this instance only:
+     if the outer card AND the inner mission-control both tinted at
+     --panel-opacity, the two layers would compound (1 - t²) and the sky
+     would vanish behind Mission Control.  Transparent outer + tinted
+     inner = a single translucent layer at --panel-opacity, so clouds
+     show through the way they do behind every other panel. */
+  background: transparent;
 }
 
 .\39 mm-pos-mgr-mission-control {
@@ -2189,7 +2269,14 @@ span[title]:not([title=""]):hover {
   flex-direction: column;
   gap: 6px;
   min-height: 620px;
-  background: #260700;
+
+  /* Same #260700 dark-red-brown as before, now tinted at
+     --second-background-opacity — the shared "nested surface" token
+     used by Mission Control's brown fill, the Position Stats sub-cards
+     inside Price Range Monitor, and the Activity Log rows.  The
+     leather-crest <img> child is unaffected — <img> opacity is not
+     driven by container background. */
+  background: rgb(38 7 0 / var(--second-background-opacity));
   border-radius: 15px;
   padding: 21px 30px 6px;
   margin: 0 0 6px;
@@ -2198,6 +2285,18 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-mission-bottom {
   margin-top: auto;
+}
+
+/*
+ * Decorative crest between the Special Action badge and the Rebalance
+ * Now button.  Centered horizontally in the Mission Control panel;
+ * scales down on narrow layouts so it never forces horizontal scroll.
+ */
+.\39 mm-pos-mgr-mission-crest {
+  display: block;
+  margin: 12px auto;
+  max-width: 66.67%;
+  height: auto;
 }
 
 .\39 mm-pos-mgr-mission-top-gap {
@@ -2300,7 +2399,7 @@ span[title]:not([title=""]):hover {
 }
 
 .\39 mm-pos-mgr-mission-status.active {
-  background: #ff8f42;
+  background: rgb(255 143 66 / var(--panel-opacity));
   color: #260700;
   border-color: #ff8f42;
 }
@@ -2455,12 +2554,6 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-mission-spacer {
   flex: 1;
-}
-
-.\39 mm-pos-mgr-mission-divider {
-  border: none;
-  border-top: 1px solid #cc3000;
-  margin: 27px 0;
 }
 
 .\39 mm-pos-mgr-mission-badge {
@@ -2682,4 +2775,129 @@ span[title]:not([title=""]):hover {
   border: 1px solid rgb(255 184 0 / 30%);
   border-radius: 4px;
   color: var(--warn);
+}
+
+/* ── Sky Clouds ─────────────────────────────────────────────────────
+   Three cloud PNGs positioned as decoration behind the app, drifting
+   left-to-right at an almost-unnoticeable speed.  The wrap-around
+   pattern: when a cloud's LEFT edge crosses the right side of the
+   viewport, the animation loop restarts it at the far left with just
+   1 px of the cloud's right edge visible.  All three clouds share the
+   same speed but start at different phases via negative animation-delay
+   so they don't move in lockstep.
+   ── Tuning knobs ─────────────────────────────────────────────────
+   Cloud opacity     → `opacity` value (currently 0.18) — a very faint
+                       signature so the sky base still dominates.
+   Cloud speed       → `animation-duration` on the three modifier
+                       classes.  BOTTOM is anchored as the "max cloud
+                       speed" (currently 900s / 15 min per traversal);
+                       MIDDLE runs 20 % slower (1080s); TOP runs 20 %
+                       slower than middle (1296s).  Larger duration =
+                       slower cloud.  Adjust each independently; the
+                       relationship is a convention, not enforced by
+                       the CSS.
+   Vertical spacing  → `top` percentages on the three modifier classes
+                       (currently 8%, 40%, 70% for even distribution).
+   Phase offsets     → `animation-delay` on the middle/top modifiers
+                       so the three don't all start at the same
+                       screen X.  Values are approximate ⅓- and ⅔-
+                       through-cycle offsets of the bottom cloud's
+                       duration; since the middle/top cycles are
+                       longer, the effective phase drifts over time
+                       (which is a feature — three different-speed
+                       clouds should NOT stay in lockstep).
+   Cloud size        → `width`/`height` on the base class (currently
+                       900×600).  The PNG files themselves are 900×600.
+   Cloud depth       → per-cloud `opacity` values on the three modifier
+                       classes.  BOTTOM (foreground) is the densest at
+                       0.55; MIDDLE at 0.38; TOP (background) is the
+                       faintest at 0.22.  This atmospheric-perspective
+                       gradient gives the three-cloud stack a 3D feel:
+                       nearer clouds read as solid, farther clouds
+                       fade into the sky.  Adjust each independently
+                       to tune the depth effect. */
+.\39 mm-pos-mgr-cloud {
+  /* - Anchor: bottom cloud's duration = MAX cloud speed.  Middle is
+      slowed by --cloud-slow-factor, top by that same factor again.
+      Change these two variables, all three cloud speeds re-derive. */
+  --cloud-max-speed: 1800s;
+  --cloud-slow-factor: 1.2;
+  --cloud-middle-speed: calc(var(--cloud-max-speed) * var(--cloud-slow-factor));
+  --cloud-top-speed:
+    calc(
+      var(--cloud-max-speed) * var(--cloud-slow-factor) *
+        var(--cloud-slow-factor)
+    );
+
+  position: fixed;
+  left: 0;
+  width: 900px;
+  height: 600px;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: contain;
+  animation-name: cloudDrift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.\39 mm-pos-mgr-cloud-top {
+  top: 10px;
+  background-image: url("background-cloud_top.png?v=1784159938948");
+  animation-duration: var(--cloud-top-speed);
+
+  /* - ⅔-through the bottom's cycle; phase drifts over time because
+      top's cycle is longer — feature, not bug. */
+  animation-delay: calc(-2 * var(--cloud-max-speed) / 3);
+
+  /* - Farthest from viewer — faintest for atmospheric perspective. */
+  opacity: 0.22;
+}
+
+.\39 mm-pos-mgr-cloud-middle {
+  top: 40%;
+  background-image: url("background-cloud_middle.png?v=1784159938948");
+  animation-duration: var(--cloud-middle-speed);
+  animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
+
+  /* - Middle layer — moderate opacity. */
+  opacity: 0.38;
+}
+
+.\39 mm-pos-mgr-cloud-bottom {
+  top: 70%;
+  background-image: url("background-cloud_bottom.png?v=1784159938948");
+  animation-duration: var(--cloud-max-speed);
+
+  /* - Nearest to viewer — densest for atmospheric perspective. */
+  opacity: 0.55;
+}
+
+/* Wrap-around drift.  `translateX(calc(-100% + 1px))` puts the cloud
+   fully off-screen left with 1 px of its right edge peeking in.
+   `translateX(100vw)` puts the cloud's LEFT edge at the viewport's
+   right edge — fully off-screen right.  Linear + infinite means the
+   moment the end frame reaches, it snaps back to the start frame,
+   giving the "reappears on the left with 1 px showing" behaviour. */
+@keyframes cloudDrift {
+  from { transform: translateX(calc(-100% + 1px)); }
+  to { transform: translateX(100vw); }
+}
+
+/* ── Panel translucency ────────────────────────────────────────────
+   Every top-level card gets its background alpha driven by the shared
+   --panel-opacity token defined in style.css (which is derived from
+   --panel-translucency).  Change --panel-translucency in one place to
+   retune every card at once; the sky + drifting clouds show through
+   proportionally.  Mission Control's leather crest sits on top as its
+   own 100 % opaque bitmap, so the panel translucency doesn't reduce
+   its readability. */
+.kpi-card,
+.card {
+  background: rgb(15 25 36 / var(--panel-opacity));
+}
+
+.wallet-strip {
+  background: rgb(20 27 36 / var(--panel-opacity));
 }

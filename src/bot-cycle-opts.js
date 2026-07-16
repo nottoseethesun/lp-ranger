@@ -24,12 +24,20 @@ const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
  * Build the opts bag for `executeRebalance`.
  *
  * @param {object} deps   Bot loop deps (position, signer, _getConfig, etc.)
- * @param {object} state  Per-position bot state (customRangeWidthPct, …)
+ * @param {object} _state Per-position bot state — no longer read here for
+ *   the range-width override (was `state.customRangeWidthPct` on the
+ *   one-shot code path; is now the persistent per-position config key
+ *   `rebalanceRangeWidthPct` read via `deps._getConfig`).  Kept in the
+ *   signature so callers don't need updating.
  * @returns {object} Options ready to pass to `executeRebalance`.
  */
-function buildRebalanceOpts(deps, state) {
+function buildRebalanceOpts(deps, _state) {
   const { position } = deps;
-  const crw = state.customRangeWidthPct;
+  /*- Persistent per-position override; empty ⇒ rebalancer falls back to
+   *  `rangeMath.preserveRange()` (its existing default).  Truthy check
+   *  correctly omits the key for `undefined`, `null`, or `0` — all of
+   *  which mean "no override". */
+  const crw = deps._getConfig?.("rebalanceRangeWidthPct");
   return {
     position,
     factoryAddress: config.FACTORY,

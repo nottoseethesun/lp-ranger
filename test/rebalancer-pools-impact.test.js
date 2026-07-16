@@ -11,6 +11,7 @@ const {
   _checkSwapImpact,
   _bestAttemptError,
   _deadline,
+  _DEADLINE_SECONDS,
 } = require("../src/rebalancer-pools");
 
 describe("_checkSwapImpact", () => {
@@ -178,12 +179,24 @@ describe("_bestAttemptError", () => {
 });
 
 describe("_deadline", () => {
-  it("returns a bigint in the future", () => {
+  it("returns a bigint in the future, offset by _DEADLINE_SECONDS", () => {
     const dl = _deadline();
     const now = BigInt(Math.floor(Date.now() / 1000));
     assert.ok(typeof dl === "bigint");
     assert.ok(dl > now, "deadline should be in the future");
-    assert.ok(dl - now <= 600n, "default offset should be ≤ 600s");
+    /*- Assert against the exported constant so a future tweak to
+     *  the deadline value (see the block-comment on _DEADLINE_SECONDS
+     *  in src/rebalancer-pools.js) doesn't require touching the
+     *  test. */
+    const expected = BigInt(_DEADLINE_SECONDS);
+    assert.ok(
+      dl - now <= expected + 1n,
+      "default offset should be _DEADLINE_SECONDS",
+    );
+    assert.ok(
+      dl - now >= expected - 1n,
+      "default offset should be _DEADLINE_SECONDS",
+    );
   });
 
   it("accepts a custom offset", () => {

@@ -13,6 +13,8 @@
 import { log } from "./dashboard-log.js";
 import { fetchWithCsrf } from "./dashboard-helpers.js";
 import { _createModal } from "./dashboard-data-status.js";
+import { _postRebalance } from "./dashboard-rebalance-confirm.js";
+import { populateRangeWidthFromActive } from "./dashboard-data-range-width.js";
 
 /**
  * Run the closed-position re-open flow.
@@ -27,12 +29,12 @@ import { _createModal } from "./dashboard-data-status.js";
  */
 export async function runReopenFlow(active, opts) {
   const { formatPositionSpec, handleManageFailure } = opts;
-  /*- Lazy-import the rebalance-modal opener to avoid a circular
-   *  dependency: dashboard-throttle-rebalance.js imports from the
-   *  events module (which calls into here), so eager-importing it
-   *  here would form a cycle. */
-  const { openRebalanceRangeModal } =
-    await import("./dashboard-throttle-rebalance.js");
+  /*- The legacy lazy-import of `openRebalanceRangeModal` used to
+   *  break a circular dependency between the reopen flow and the old
+   *  Rebalance-with-Updated-Range modal.  That modal is deleted in a
+   *  follow-up commit; the intro modal now POSTs
+   *  `/api/position/manage` directly via the shared `_postRebalance`
+   *  helper in `dashboard-rebalance-confirm.js`.  No cycle remains. */
 
   let res;
   try {
@@ -74,7 +76,7 @@ export async function runReopenFlow(active, opts) {
     _showInsufficientTokensModal(body, active, formatPositionSpec);
     return;
   }
-  _showReopenIntroModal(active, formatPositionSpec, openRebalanceRangeModal);
+  _showReopenIntroModal(active, formatPositionSpec);
 }
 
 /*- Render the "wallet read unavailable" modal when the server
@@ -160,23 +162,26 @@ function _injectBalanceRow(overlay, slot, bal) {
  *  settings, then re-click Manage).  We append a "Re-open Position"
  *  button in an action row inside the body for the proceed action.
  *
+ *  Range width for the re-open is read by the bot loop from the
+ *  persistent `rebalanceRangeWidthPct` POSITION_KEY (set via the
+ *  Range Width row in Bot Settings) — no width in the request body,
+ *  no modal step in between.  Users who want a custom width configure
+ *  it in Bot Settings first, then click Manage.  Otherwise the bot
+ *  falls back to `rangeMath.preserveRange()` (existing default).
+ *
  *  IMPORTANT: scope every querySelector to the freshly-created
  *  overlay (by id) — a bare document-level lookup would bind to a
  *  stale duplicate if any prior modal with the same id is still in
  *  the DOM, leaving the new button inert. */
 const REOPEN_INTRO_MODAL_ID = "9mm-pos-mgr-reopen-intro-modal";
-function _showReopenIntroModal(
-  active,
-  formatPositionSpec,
-  openRebalanceRangeModal,
-) {
+function _showReopenIntroModal(active, formatPositionSpec) {
   const spec = formatPositionSpec(active);
   const html =
     "<p>Re-opening this position requires a rebalance to seed liquidity from your wallet.</p>" +
     (spec
       ? '<p class="9mm-pos-mgr-text-muted">Position: ' + spec + "</p>"
       : "") +
-    '<p class="9mm-pos-mgr-text-muted">Review your rebalance settings below (range width, slippage) and edit them if needed — click OK to back out, edit, then click Manage again.  When ready, click <strong>Re-open Position</strong> to proceed.</p>' +
+    '<p class="9mm-pos-mgr-text-muted">Each rebalance incurs gas and slippage that can crystallize impermanent loss over time. If you want a specific range width, set it in <strong>Bot Settings</strong> first; otherwise the bot preserves the current tick spread on re-open.</p>' +
     '<div class="9mm-pos-mgr-modal-action-row">' +
     '<button type="button" class="modal-btn primary" data-action="reopen-confirm">Re-open Position</button>' +
     "</div>";
@@ -189,11 +194,27 @@ function _showReopenIntroModal(
   const overlay = document.getElementById(REOPEN_INTRO_MODAL_ID);
   const btn = overlay?.querySelector('[data-action="reopen-confirm"]');
   if (!btn) return;
-  btn.addEventListener("click", () => {
-    /*- Close the intro modal, then hand off to the existing rebalance
-     *  modal.  Its Confirm path derives reopen context from position
-     *  state and POSTs `/api/position/manage` with the re-open flags. */
+  btn.addEventListener("click", async () => {
+    /*- Close the intro modal, then POST /api/position/manage directly.
+     *  No `customRangeWidthPct` in body — range width comes from
+     *  persistent config (POSITION_KEY `rebalanceRangeWidthPct`),
+     *  read by the bot loop via `deps._getConfig` in
+     *  `src/bot-cycle-opts.js`; empty ⇒ `preserveRange()` fallback. */
     if (overlay) overlay.remove();
-    openRebalanceRangeModal();
+    /*- Populate the Range Width input from the closed NFT's ticks
+     *  (still on-chain, still in posStore) BEFORE the manage POST,
+     *  so the field is filled the instant re-open commits — same
+     *  as the open-position Manage flow. */
+    populateRangeWidthFromActive();
+    await _postRebalance(
+      "/api/position/manage",
+      {
+        tokenId: active.tokenId,
+        contract: active.contractAddress,
+        forceRebalance: true,
+      },
+      active,
+      "Re-open Position",
+    );
   });
 }

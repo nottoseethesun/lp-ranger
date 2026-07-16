@@ -24,6 +24,7 @@ import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
 } from "./dashboard-unmanaged.js";
+import { populateRangeWidthFromActive } from "./dashboard-data-range-width.js";
 import {
   suppressAutoCompoundSync,
   _createModal,
@@ -531,8 +532,20 @@ export async function _toggleManagePosition() {
   }
 
   try {
-    if (isManaged) await _sendUnmanage(active);
-    else await _sendManage(active);
+    if (isManaged) {
+      await _sendUnmanage(active);
+    } else {
+      /*- Populate the Range Width input SYNCHRONOUSLY from the
+       *  active position's on-chain tick spread BEFORE the Manage
+       *  POST fires, so the Bot Settings field is filled the instant
+       *  the user commits to bringing the position under management
+       *  — no wait on the next 3-second poll, no ever-empty state.
+       *  No-op when the input is dirty, non-empty, or when ticks are
+       *  missing (in which case `syncRangeWidth`'s per-poll retry
+       *  covers it). */
+      populateRangeWidthFromActive();
+      await _sendManage(active);
+    }
   } catch (err) {
     /*- Network error (fetch reject) — distinct from HTTP 4xx/5xx above. */
     _handleManageFailure(
@@ -628,8 +641,8 @@ export function bindDelegatedEvents(closers) {
         close: closers.clearWallet,
       },
       {
-        id: "rebalanceRangeModal",
-        close: closers.rebalanceRange,
+        id: "rebalanceIlWarningModal",
+        close: closers.rebalanceIlWarning,
       },
       {
         id: "throttleInfoModal",

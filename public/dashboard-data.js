@@ -11,6 +11,7 @@ import {
   isPositionClosed,
 } from "./dashboard-positions.js";
 import { syncActivePosition } from "./dashboard-active-sync.js";
+import { syncRangeWidth } from "./dashboard-data-range-width.js";
 import {
   updateHistoryFromStatus,
   updateHistorySyncLabels,
@@ -489,7 +490,7 @@ function _populateHistoryOnce(data) {
   );
   for (const ev of _s) {
     act(
-      ACT_ICONS.gear,
+      ACT_ICONS.lasso,
       "fee",
       "Rebalance",
       "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + ctx,
@@ -567,6 +568,12 @@ function _syncManagedAndGlobals(data) {
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
   if (data.scanTimeoutMs > 0) botConfig.scanTimeoutMs = data.scanTimeoutMs;
   _syncOorThreshold(data);
+  /*- Per-poll so it retries on the "Manage on unmanaged position"
+   *  flow — the fallback needs `data.poolState.price` which isn't in
+   *  the first post-Manage poll (bot hasn't run getPoolState yet).
+   *  syncRangeWidth self-throttles via `_lastKnownPosKey` — full
+   *  cadence rationale in that file's header. */
+  syncRangeWidth(data);
 }
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";

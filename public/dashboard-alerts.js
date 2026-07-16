@@ -59,7 +59,7 @@ export function _posContextHtmlForState(key, st) {
     ? " \u00B7 " + fee
     : "";
   frag.querySelector('[data-tpl="chain"]').textContent = c;
-  frag.querySelector('[data-tpl="wallet"]').textContent = _short(wallet);
+  frag.querySelector('[data-tpl="wallet"]').textContent = wallet || "";
   const wrap = document.createElement("div");
   wrap.appendChild(frag);
   return wrap.innerHTML;

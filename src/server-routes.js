@@ -161,6 +161,20 @@ function createRouteHandlers(deps) {
       const posRef = getOrCreatePositionConfig(diskConfig, liveKey);
       const statusBefore = posRef.status;
       Object.assign(posRef, pPatch);
+      /*- Null-sweep: a POSITION_KEY sent as `null` means "clear this
+       *  setting" (used by the No Override button on the Bot Settings
+       *  Range Width row).  Without this, `Object.assign` above stamps
+       *  a literal `null` on disk — functionally works because
+       *  downstream `readConfigValue` returns `null` and the truthy
+       *  check in src/bot-cycle-opts.js omits the key, but it leaves
+       *  ugly `null` entries in bot-config.json.  Explicit `=== null`
+       *  check per CLAUDE-BEST-PRACTICES §"Type Checks" — deletes only
+       *  when the client explicitly sent `null`, not when the key was
+       *  absent (in which case `pPatch[k]` is `undefined`, not `null`,
+       *  and the filter at line 108 already skipped it). */
+      for (const k of Object.keys(pPatch)) {
+        if (pPatch[k] === null) delete posRef[k];
+      }
       if (statusBefore && !posRef.status)
         log.warn(
           "[api/config] status WIPED for %s! pPatch keys: %s",

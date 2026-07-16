@@ -154,6 +154,34 @@ describe("bot-config-v2", () => {
       assert.equal(raw.version, undefined);
       assert.equal(raw.managedPositions, undefined);
     });
+
+    it("round-trips rebalanceRangeWidthPct per position", () => {
+      /*- Persistent per-position range-width override.  Load-then-save
+       *  must preserve the exact numeric value the user typed into
+       *  Bot Settings → Range Width.  Regression coverage for the
+       *  POSITION_KEY added in the "Migrate Rebalance UI" plan. */
+      const dir = tmpDir();
+      const key = "pulsechain-0xW-0xC-42";
+      const cfg = {
+        global: {},
+        positions: {
+          [key]: { status: "running", rebalanceRangeWidthPct: 7.5 },
+        },
+      };
+      saveConfig(cfg, dir);
+      const reloaded = loadConfig(dir);
+      assert.equal(reloaded.positions[key].rebalanceRangeWidthPct, 7.5);
+      /*- Explicit null-check idiom per CLAUDE-BEST-PRACTICES §"Type
+       *  Checks": a client that clears the override sends `null` and the
+       *  null-sweep in src/server-routes.js POST /api/config deletes the
+       *  key from disk.  This test proves the round-trip preserves the
+       *  set case; the delete-on-null case is exercised end-to-end in
+       *  the server-routes tests. */
+      assert.ok(
+        reloaded.positions[key].rebalanceRangeWidthPct !== undefined &&
+          reloaded.positions[key].rebalanceRangeWidthPct !== null,
+      );
+    });
   });
 
   // ── Position management ─────────────────────────────────────────────────
@@ -354,6 +382,20 @@ describe("bot-config-v2", () => {
       assert.ok(GLOBAL_KEYS.includes("dustUnitPriceCacheMultiplier"));
       assert.ok(!POSITION_KEYS.includes("priceCacheTtlMs"));
       assert.ok(!POSITION_KEYS.includes("dustUnitPriceCacheMultiplier"));
+    });
+
+    it("rebalanceRangeWidthPct is a POSITION_KEY (per-pool persistent override)", () => {
+      /*- Each pool has its own rebalance range width preference (tight
+       *  for stable pairs, wide for volatile), so this must live per
+       *  position — not global. */
+      assert.ok(
+        POSITION_KEYS.includes("rebalanceRangeWidthPct"),
+        "rebalanceRangeWidthPct should live in POSITION_KEYS so each pool can set its own override",
+      );
+      assert.ok(
+        !GLOBAL_KEYS.includes("rebalanceRangeWidthPct"),
+        "rebalanceRangeWidthPct must not also be in GLOBAL_KEYS",
+      );
     });
   });
 

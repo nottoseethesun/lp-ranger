@@ -44,6 +44,8 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 ├── bot.js                        # Headless bot wrapper (no dashboard UI)
 ├── scripts/check.js              # Combined lint + test + coverage check
 ├── scripts/copy-fonts.js         # Copies self-hosted WOFF2 fonts from node_modules to public/fonts/
+├── scripts/lint-svg.js           # Strict XML + no-id-attributes validator for public/icons/*.svg (see docs/engineering.md § SVG Assets)
+├── scripts/inline-svgs.js        # Build-time inliner: composes public/dist/index.html by replacing `data-svg=…` placeholders with `ui-*.svg` contents
 ├── scripts/stop.js               # Graceful shutdown helper (POST /api/shutdown)
 ├── scripts/reset-wallet.js       # Delete wallet file + scrub WALLET_PASSWORD from .env
 ├── scripts/import-wallet.js      # CLI wallet import (creates app-config/user-configurable/wallet.json without browser)
@@ -80,6 +82,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── 9mm-pos-mgr.css           # Semantic utility classes, all prefixed `9mm-pos-mgr-`
 │   ├── fonts.css                 # Self-hosted @font-face declarations (Space Mono + Urbanist)
 │   ├── fonts/                    # WOFF2 font files (gitignored, copied from node_modules)
+│   ├── icons/                    # All dashboard SVG icons — act-*.svg loaded via <img>, ui-*.svg via fetch+inject. Validated by scripts/lint-svg.js. See docs/engineering.md § "SVG Assets"
 │   ├── dist/bundle.js            # esbuild output (gitignored, built from dashboard-init.js)
 │   ├── ethers-adapter.js         # ES module adapter: re-exports ethers from npm
 │   ├── dashboard-helpers.js      # Shared utilities: g(), act(), fmtMs(), fmtDateTime(), fmtCountdown(), nextMidnight(), botConfig

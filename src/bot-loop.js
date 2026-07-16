@@ -173,11 +173,42 @@ async function startBotLoop(opts) {
     _stopped = false;
   const GAS_DEFER_MS = 3600_000;
   let currentIntervalMs = config.CHECK_INTERVAL_SEC * 1000,
-    timer = null;
+    timer = null,
+    /*- Set by `botState._kickPoll()` when a poll is in-flight; the
+     *  in-flight poll's tail `_scheduleNext(…)` reads and clears it,
+     *  so the NEXT poll fires immediately instead of waiting a full
+     *  CHECK_INTERVAL_SEC.  Used by the manual Rebalance / Compound
+     *  API handlers (server.js) so the user's click actually
+     *  translates to on-chain action within seconds, not up to
+     *  ~5 minutes of "waiting for the next scheduled poll". */
+    pendingKick = false;
   function _scheduleNext(ms) {
     clearTimeout(timer);
-    timer = setTimeout(poll, ms ?? currentIntervalMs);
+    const delay = pendingKick ? 0 : (ms ?? currentIntervalMs);
+    pendingKick = false;
+    timer = setTimeout(poll, delay);
   }
+
+  /*- Wake up the poll loop immediately.  Called by the manual
+   *  Rebalance / Compound endpoints (server.js) right after they set
+   *  `state.forceRebalance = true` / `state.forceCompound = true` so
+   *  the flag actually gets picked up on the next tick instead of
+   *  waiting for the timer-driven poll.  Two cases:
+   *    - Poll idle: cancel the pending timer and fire poll(0).
+   *    - Poll in-flight: leave the current run alone (its decision
+   *      was already made from a stale snapshot of the flags), but
+   *      set `pendingKick` so the tail `_scheduleNext(…)` fires the
+   *      NEXT poll at 0 ms.  The just-set flag WILL be seen by that
+   *      next poll. */
+  botState._kickPoll = () => {
+    if (_stopped) return;
+    if (polling) {
+      pendingKick = true;
+      return;
+    }
+    clearTimeout(timer);
+    timer = setTimeout(poll, 0);
+  };
 
   function _handleError(result) {
     if (!firstFailureAt) firstFailureAt = Date.now();

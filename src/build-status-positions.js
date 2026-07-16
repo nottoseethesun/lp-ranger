@@ -29,6 +29,7 @@
 const _UNMANAGED_SETTINGS_KEYS = [
   "rebalanceOutOfRangeThresholdPercent",
   "rebalanceTimeoutMin",
+  "rebalanceRangeWidthPct",
   "slippagePct",
   "checkIntervalSec",
   "minRebalanceIntervalMin",

@@ -10,6 +10,53 @@
 export const PARAM_HELP = {
   // ── Range & Execution ───────────────────────────────────────────────────
 
+  inRangeWidth: {
+    title: "Range Width (%)",
+    subtitle: "Per-position rebalance range width override",
+    sections: [
+      {
+        heading: "What it does",
+        body:
+          "Sets the total width of the LP position range as a percentage " +
+          "of the current price, applied to every rebalance (manual OR " +
+          "automatic) for this position. Combined with <strong>Position " +
+          "Offset</strong> to determine the lower and upper price bounds. " +
+          "At the default 50/50 offset, a value of 10 means the position " +
+          "spans 5% below and 5% above the current price at each rebalance.",
+      },
+      {
+        heading: "How the default works",
+        body:
+          "When empty (no override saved), the bot preserves the current " +
+          "on-chain tick spread on rebalance &mdash; the position stays the " +
+          "same width it was when originally minted. The input in this row " +
+          "pre-populates with that current-tick-spread equivalent so you " +
+          "can see what width the bot would use if you leave it alone. " +
+          "Click <strong>No Override</strong> to clear a previously-saved " +
+          "override and return to that adaptive behavior.",
+      },
+      {
+        heading: "Choosing a value",
+        body:
+          "<strong>Stable pairs</strong>: 1&ndash;5%. Tighter ranges " +
+          "concentrate liquidity and earn more fees when price is stable.<br>" +
+          "<strong>Volatile pairs</strong>: 10&ndash;30% or more. Wider " +
+          "ranges reduce how often rebalancing is triggered by normal " +
+          "price swings.",
+      },
+      {
+        heading: "IL trade-off",
+        body:
+          "Every rebalance incurs gas and slippage that can crystallize " +
+          "impermanent loss over time. A wider range rebalances less " +
+          "often and captures fewer fees per dollar of liquidity; a " +
+          "narrower range concentrates fees but incurs more rebalance " +
+          "costs. This setting persists per-position (per pool) so you " +
+          "can tune each pair independently.",
+      },
+    ],
+  },
+
   inOorThreshold: {
     title: "OOR Threshold (%)",
     subtitle: "Out of Range Threshold",

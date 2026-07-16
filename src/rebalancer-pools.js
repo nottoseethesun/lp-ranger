@@ -61,8 +61,15 @@ const {
 /** Maximum uint128 value used for the collect() call. */
 const _MAX_UINT128 = 2n ** 128n - 1n;
 
-/** Default transaction deadline offset in seconds. */
-const _DEADLINE_SECONDS = 300;
+/*- On-chain transaction deadline offset in seconds.  Stamped as
+ *  `deadline = now + _DEADLINE_SECONDS` on every removeLiquidity /
+ *  swap / mint calldata.  Source of truth is `tx.deadlineSec` in
+ *  app-config/app-defaults-for-user-configurable/app-runtime.json —
+ *  the `_comment` block on the `tx` group there explains the
+ *  full deadline/cancel timing relationship.  Re-exported so
+ *  tests and rebalancer.js can pin against it without knowing
+ *  where the literal lives. */
+const _DEADLINE_SECONDS = config.DEADLINE_SEC;
 
 /** Minimum swap amount — skip swap if amountIn is below this threshold. */
 const _MIN_SWAP_THRESHOLD = 1000n;

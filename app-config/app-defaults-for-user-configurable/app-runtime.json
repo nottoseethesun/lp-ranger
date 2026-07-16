@@ -8,8 +8,10 @@
     "chain": "pulsechain"
   },
   "tx": {
+    "_comment": "TX recovery pipeline timing, cross-chain. speedupSec: after this many seconds of the original TX not confirming, submit a same-nonce replacement with 1.5x gas (Phase 2 of _waitOrSpeedUp). deadlineSec: on-chain contract deadline (`require(block.timestamp <= deadline)`) stamped into removeLiquidity / swap / mint calldata. cancelToDeadlineMultiple: the bot's per-TX give-up timer (TX_CANCEL_SEC in code) is derived as deadlineSec × cancelToDeadlineMultiple — how much total time to wait before sending a 0-PLS self-transfer cancel at the stuck nonce. Rule of thumb: set the multiple ≥ 4 so a slow-chain retry cycle can complete before the bot gives up on the nonce. See src/config.js for the derivation and src/rebalancer-pools.js for the deadline enforcement.",
     "speedupSec": 120,
-    "cancelSec": 1200,
+    "deadlineSec": 900,
+    "cancelToDeadlineMultiple": 4,
     "retrySwapLimit": 8
   },
   "scan": {

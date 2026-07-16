@@ -67,13 +67,17 @@ import {
   saveGasStrategy,
   saveOffset,
   resetOffset,
+  saveRangeWidth,
+  resetRangeWidth,
+  setDefaultRangeWidth,
   saveApprovalMultiple,
   updateOffsetComplement,
-  openRebalanceRangeModal,
-  closeRebalanceRangeModal,
-  updateRebalanceRangeHint,
-  confirmRebalanceRange,
 } from "./dashboard-throttle.js";
+import {
+  openRebalanceConfirm,
+  closeRebalanceConfirm,
+  confirmRebalance,
+} from "./dashboard-rebalance-confirm.js";
 import {
   compoundNow,
   toggleAutoCompound,
@@ -480,6 +484,9 @@ export function bindAllEvents() {
       ":not(#saveFactoryBtn)" +
       ":not(#saveOffsetBtn)" +
       ":not(#resetOffsetBtn)" +
+      ":not(#saveRangeWidthBtn)" +
+      ":not(#resetRangeWidthBtn)" +
+      ":not(#defaultRangeWidthBtn)" +
       ":not(#saveApprovalMultipleBtn)",
     "click",
     saveOorThreshold,
@@ -493,6 +500,16 @@ export function bindAllEvents() {
   _click("saveIntervalBtn", saveCheckInterval);
   _click("saveOffsetBtn", saveOffset);
   _click("resetOffsetBtn", resetOffset);
+  _click("saveRangeWidthBtn", saveRangeWidth);
+  _click("resetRangeWidthBtn", resetRangeWidth);
+  _click("defaultRangeWidthBtn", setDefaultRangeWidth);
+  /*- Mark the Range Width input dirty on every keystroke so the
+   *  per-poll `syncRangeWidth` (dashboard-data-range-width.js) can't
+   *  clobber mid-typing when a saved override already exists.
+   *  Dirty is cleared at end of poll (`clearDirtyInputs`); by the
+   *  time Save fires and the next poll returns the persisted value,
+   *  the saved-value overwrite is idempotent (matches typed value). */
+  _input("inRangeWidth", () => markInputDirty("inRangeWidth"));
   _click("saveApprovalMultipleBtn", saveApprovalMultiple);
 
   /* ── Offset linked inputs ── */
@@ -539,11 +556,9 @@ export function bindAllEvents() {
   _click("throttleInfoOk", closeTI);
 
   /* ── Mission Control ──────────────────── */
-  _click("rebalanceWithRangeBtn", openRebalanceRangeModal);
-  _click("rebalanceRangeClose", closeRebalanceRangeModal);
-  _click("rebalanceRangeCancelBtn", closeRebalanceRangeModal);
-  _click("rebalanceRangeConfirmBtn", confirmRebalanceRange);
-  _input("rebalanceRangeInput", updateRebalanceRangeHint);
+  _click("rebalanceWithRangeBtn", openRebalanceConfirm);
+  _click("ilWarnCancelBtn", closeRebalanceConfirm);
+  _click("ilWarnConfirmBtn", confirmRebalance);
   _click("compoundNowBtn", compoundNow);
   _change("autoCompoundToggle", toggleAutoCompound);
   _click("saveCompoundThresholdBtn", () => {
@@ -578,7 +593,7 @@ export function bindAllEvents() {
     posBrowser: closePosBrowser,
     revealModal: closeRevealModal,
     clearWallet: closeClearWalletModal,
-    rebalanceRange: closeRebalanceRangeModal,
+    rebalanceIlWarning: closeRebalanceConfirm,
     throttleInfo: closeTI,
     ilDebug: dismissILDebug,
     donate: () => _hide("donateOverlay"),

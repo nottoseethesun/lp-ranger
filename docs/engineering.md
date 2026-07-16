@@ -95,6 +95,7 @@ sequence.
 - [API Documentation](#api-documentation)
 - [`server.js`](#serverjs)
 - [Dead Code Detection](#dead-code-detection)
+- [SVG Assets](#svg-assets)
 - [Debugging](#debugging)
   - [Node Debugger (Inspector)](#node-debugger-inspector)
 - [Dependency Management](#dependency-management)
@@ -2689,6 +2690,135 @@ the button-state logic.
 - `npm run knip` — [Knip](https://knip.dev) — finds unused exports, files,
   and dependencies. Note: the 8 `public/dashboard-*.js` files are false
   positives because knip cannot trace HTML `<script>` tags.
+
+---
+
+## SVG Assets
+
+**Rule:** every SVG icon in the dashboard lives as a standalone `.svg`
+file under `public/icons/`. No inline `<svg>` markup in HTML or JS.
+Two categories exist because two different rendering shapes are needed;
+the file-per-icon convention and the shared validation pipeline are
+identical for both.
+
+### Category 1 — Activity-Log icons (`act-*.svg`)
+
+Prefix: `act-`. Loaded via **`<img src="icons/act-<name>.svg">`**.
+Registered as URL strings in the `ACT_ICONS` map in
+`public/dashboard-helpers.js`.
+
+**Why `<img>`.** An icon that renders in dozens of log entries used to
+be dozens of cloned copies of the same inline `<svg>` in the DOM, so
+every `id=""` inside the SVG (for example the `<defs><path id="rope">`
+inside `act-lasso.svg`) collided across copies. `<img>` renders each
+instance in its own isolated document context, so ids are per-file and
+can never collide.
+
+**No `currentColor`.** `<img>`-loaded SVGs don't inherit the parent
+page's `color`, so every stroke and fill in `act-*.svg` uses an
+explicit hex value. Outline icons hard-code `stroke="#e0eaf4"` (the
+resolved value of `--text` on the dark chip background); the two
+colour icons (`act-acorn.svg`, `act-lasso.svg`) hard-code their
+whites and dark green. Don't casually re-introduce `currentColor` on
+these files — the log renders them via `<img>` and it won't cascade.
+
+### Category 2 — UI icons (`ui-*.svg`)
+
+Prefix: `ui-`. Inlined into `public/index.html` **at build time** by
+`scripts/inline-svgs.js`, which runs as the last step of `npm run build`
+after esbuild + `cache-bust.js`. Source `public/index.html` carries
+`data-svg="…" data-w=".." data-h=".."` placeholder attributes; the
+build script reads each referenced file, sizes the root `<svg>` per
+the data-attrs, and writes the composed HTML to
+`public/dist/index.html`. The server prefers `public/dist/index.html`
+at `/` when it exists (see the top of the static-file handler in
+`server.js`) and falls back to `public/index.html` when it doesn't —
+so a skipped build degrades gracefully (page still boots, placeholders
+just render as empty elements).
+
+**Why inline (not `<img>`).** These icons live inside buttons and the
+wallet strip where their stroke needs to cascade from the parent's
+`color` — `stroke="currentColor"` (or, for `ui-wallet.svg`,
+`stroke="var(--accent)"`) resolves against the enclosing
+`.9mm-pos-mgr-icon-btn`, `.pos-browser-btn`, `.ws-reveal-btn`, or
+`.modal-logo-icon` styles. That cascade only works if the SVG is
+inline in the same DOM as its parent — `<img>` would isolate it.
+
+**Why build-time (not runtime `fetch()` + DOMParser).** Runtime
+injection would work, but adds an async load, a silent failure mode
+(placeholder stays empty on parse error), and XML-parsing complexity
+on the client. Build-time substitution has none of those failure modes
+— what ships is what you see.
+
+**Prefer files over inlining wherever the cascade requirement doesn't
+force our hand.** Inlining defeats browser caching (the SVG bytes ride
+along inside the no-cache HTML on every page load), while `<img
+src="…">` icons served from `public/icons/` get the
+`immutable, max-age=31536000` treatment and download exactly once per
+user forever. The `act-*` category exists because that's the majority
+of the app's icons — small, cacheable, isolated. `ui-*` is the
+exception, not the pattern.
+
+**No ids anywhere.** LP Ranger icons forbid `id=` attributes outright,
+enforced by `scripts/lint-svg.js`. Both rendering shapes (`<img>` for
+act-*, build-time inline for ui-*) work without ids, and forbidding
+them removes an entire class of latent bugs where a `<use>` reference
+silently picks the wrong element when the icon is cloned. Anything
+that would have needed `<defs>` + `<use>` (e.g. drawing the same path
+three times with different strokes for a layered rope effect) should
+just inline the path three times instead. See `act-lasso.svg` for the
+reference implementation.
+
+**Placeholder shape.** A placeholder in HTML source looks like
+
+```html
+<span data-svg="icons/ui-gear.svg" data-w="27" data-h="27"></span>
+```
+
+The wrapping element (span / div / button — any tag that has
+`data-svg`) keeps its `class` / `id` / other attributes; only the
+`data-svg` / `data-w` / `data-h` attrs are stripped during inline.
+`data-w` / `data-h` are optional; the inliner emits `width` / `height`
+on the injected `<svg>` so the same file renders at multiple sizes
+across the app (e.g. `ui-lock.svg` at 14 in the reveal-key button and
+24 in the wallet-unlock modal).
+
+### Adding a new icon
+
+1. Create `public/icons/<prefix>-<name>.svg` (`act-` for log entries,
+   `ui-` for HTML-embedded icons).
+   - Root `<svg>` MUST have `xmlns="http://www.w3.org/2000/svg"` and a
+     `viewBox`.
+   - `act-*` files: no `currentColor` — hard-code every colour.
+   - `ui-*` files: `currentColor` and `var(--…)` both work.
+   - No `id=` attributes anywhere in the file.  Repeat shapes
+     inline if you'd otherwise reach for `<defs>` + `<use>`.
+2. Register it:
+   - `act-*` → add `<name>: "icons/act-<name>.svg",` to the
+     `ACT_ICONS` object in `public/dashboard-helpers.js`, then call
+     `act(ACT_ICONS.<name>, …)` from a call site.
+   - `ui-*` → put a `<span data-svg="icons/ui-<name>.svg" data-w=".." data-h="..">…</span>`
+     placeholder into `public/index.html`.
+3. Run `npm run check`.
+
+### Validation
+
+Enforced at lint time by `scripts/lint-svg.js` (invoked from
+`npm run lint`). Fails on: malformed XML, missing root `<svg>`,
+missing `xmlns` / `viewBox`, or any `id=` attribute anywhere in a
+file.
+
+A separate smoke test (`test/icons-files.test.js`) fails if:
+
+- an `ACT_ICONS` entry has no matching file on disk,
+- a `data-svg="icons/…"` placeholder in `index.html` has no matching
+  file on disk, or
+- a file under `public/icons/` isn't referenced from either registry.
+
+Both checks run under `npm run check`.
+
+`scripts/lint-svg.js` uses `@xmldom/xmldom` (devDependency) so
+validation runs in pure Node — CI doesn't need `xmllint` installed.
 
 ---
 

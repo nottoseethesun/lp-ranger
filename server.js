@@ -75,6 +75,7 @@
  *   GET  /api/ui-defaults           → Dashboard default preferences (sounds, etc.)
  *   GET  /api/nft-providers         → Short labels for NFT position-manager contracts
  *   GET  /api/bot-config-defaults   → Bot Settings defaults (single source of truth)
+ *   GET  /api/setting-labels        → Human-readable labels for config keys (Activity Log formatter)
  *
  *   Actions
  *   POST /api/rebalance             → Force-rebalance a position (positionKey)
@@ -249,10 +250,18 @@ function serveStatic(urlPath, res) {
     res.end("400 Bad Request");
     return true;
   }
-  const relative =
-    clean === "/"
-      ? "index.html"
-      : clean.replace(/^\/public\//, "").replace(/^\//, "");
+  /*- Prefer the build-inlined `public/dist/index.html` at the root
+   *  path (see scripts/inline-svgs.js) when it exists, so shipped
+   *  pages get inline SVG icons instead of empty placeholders.  Falls
+   *  back to `public/index.html` when the build hasn't run yet — the
+   *  page still boots, only the ui-* icons render as empty spans. */
+  let relative;
+  if (clean === "/") {
+    const distIndex = path.resolve(__dirname, "public", "dist", "index.html");
+    relative = fs.existsSync(distIndex) ? "dist/index.html" : "index.html";
+  } else {
+    relative = clean.replace(/^\/public\//, "").replace(/^\//, "");
+  }
   const filePath = path.resolve(__dirname, "public", relative);
 
   // Security: reject paths that escape public dir
@@ -486,18 +495,25 @@ const _routes = {
       return;
     }
     const tokenId = body.positionKey.split("-").pop();
+    /*- The client no longer sends `customRangeWidthPct` in the body.
+     *  Range-width override is persistent per-position config
+     *  (`rebalanceRangeWidthPct` POSITION_KEY) read by the bot loop via
+     *  `deps._getConfig` in src/bot-cycle-opts.js.  Client sets it via
+     *  the Range Width row in Bot Settings → POST /api/config. */
     log.info(
-      "[server] Manual rebalance for %s %s" + " (customRange=%s)",
+      "[server] Manual rebalance for %s %s",
       body.positionKey,
       emojiId(tokenId),
-      body.customRangeWidthPct || "default",
     );
     state.forceRebalance = true;
     state.rebalanceInProgress = true;
     state.rebalancePaused = false;
     state.rebalanceError = null;
-    if (body.customRangeWidthPct > 0)
-      state.customRangeWidthPct = Number(body.customRangeWidthPct);
+    /*- Wake the poll loop so the flag gets picked up on the next
+     *  tick instead of waiting for the timer-driven poll (up to
+     *  CHECK_INTERVAL_SEC ≈ 5 min at default).  See bot-loop.js
+     *  `botState._kickPoll` for the shape. */
+    state._kickPoll?.();
     jsonResponse(res, 200, {
       ok: true,
       message: "Rebalance requested",
@@ -532,6 +548,9 @@ const _routes = {
       emojiId(tokenId),
     );
     state.forceCompound = true;
+    /*- Same reasoning as POST /api/rebalance — kick the poll so the
+     *  manual Compound Now doesn't wait for the next scheduled poll. */
+    state._kickPoll?.();
     jsonResponse(res, 200, {
       ok: true,
       message: "Compound requested",

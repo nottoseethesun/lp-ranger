@@ -305,14 +305,21 @@ function _makeRouteDeps(overrides = {}) {
 }
 
 describe("handleManage re-open flag propagation", () => {
-  it("stamps forceRebalance + customRangeWidthPct on posBotState BEFORE startPosition fires", async () => {
+  it("stamps forceRebalance on posBotState BEFORE startPosition fires (re-open path)", async () => {
     /*- When the dashboard re-opens a closed position via Manage, it
-     *  POSTs `{ forceRebalance: true, customRangeWidthPct: N }`
-     *  alongside `tokenId`.  Server must apply both fields to the
-     *  freshly-built posBotState BEFORE `startPosition` runs the bot
-     *  loop's first poll — otherwise `bot-cycle-drain.js`'s drain
-     *  guard would re-arm the 30-min retire timer instead of letting
-     *  the rebalance pipeline run on the drained NFT. */
+     *  POSTs `{ forceRebalance: true }` alongside `tokenId`.  Server
+     *  must apply the flag to the freshly-built posBotState BEFORE
+     *  `startPosition` runs the bot loop's first poll — otherwise
+     *  `bot-cycle-drain.js`'s drain guard would re-arm the 30-min
+     *  retire timer instead of letting the rebalance pipeline run on
+     *  the drained NFT.
+     *
+     *  As of the "Migrate Rebalance UI dialog into Bot Settings" plan,
+     *  the range-width override is a persistent per-position config
+     *  key (`rebalanceRangeWidthPct` POSITION_KEY) — no longer sent in
+     *  the request body and no longer stamped on state.  Even if a
+     *  stale caller sends `customRangeWidthPct` in the body, this
+     *  test asserts state stays clean of it. */
     let stateAtStartPosition = null;
     const dc = _makeDiskConfig();
     const deps = _makeRouteDeps({
@@ -320,6 +327,8 @@ describe("handleManage re-open flag propagation", () => {
       readJsonBody: async () => ({
         tokenId: "158970",
         forceRebalance: true,
+        /*- Stale field a legacy client might still send; MUST NOT
+         *  leak onto state. */
         customRangeWidthPct: 7.5,
       }),
       positionMgr: _makePositionMgr({
@@ -343,8 +352,8 @@ describe("handleManage re-open flag propagation", () => {
     );
     assert.strictEqual(
       stateAtStartPosition.customRangeWidthPct,
-      7.5,
-      "customRangeWidthPct must be on posBotState at startPosition call time",
+      undefined,
+      "customRangeWidthPct must NOT leak from body onto state — read from config now",
     );
 
     const key = Object.keys(dc.positions).find((k) => k.endsWith("-158970"));
@@ -421,6 +430,10 @@ describe("handleManage re-open flag propagation", () => {
       readJsonBody: async () => ({
         tokenId: "99999",
         forceRebalance: true,
+        /*- Stale legacy field: must not leak onto state.  Range width
+         *  comes from the persistent `rebalanceRangeWidthPct`
+         *  POSITION_KEY, read by `bot-cycle-opts.js` via
+         *  `deps._getConfig`. */
         customRangeWidthPct: 12,
       }),
       positionMgr: _makePositionMgr({
@@ -450,7 +463,11 @@ describe("handleManage re-open flag propagation", () => {
       "must NOT start a second bot loop",
     );
     assert.strictEqual(liveState.forceRebalance, true);
-    assert.strictEqual(liveState.customRangeWidthPct, 12);
+    assert.strictEqual(
+      liveState.customRangeWidthPct,
+      undefined,
+      "customRangeWidthPct must NOT leak from body onto live state",
+    );
     assert.strictEqual(liveState.rebalancePaused, false);
     assert.strictEqual(liveState.rebalanceFailedMidway, false);
     assert.strictEqual(liveState.rebalanceError, null);

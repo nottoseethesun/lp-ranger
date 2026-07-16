@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1783713261919">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1783713261919">
+<link rel="stylesheet" href="style.css?v=1784159938948">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784159938948">
 </head>
 <body>
 
@@ -285,7 +285,7 @@
 <div class="modal-overlay hidden" id="revealModal">
   <div class="modal 9mm-pos-mgr-modal-md">
     <div class="modal-logo">
-      <div class="modal-logo-icon"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg></div>
+      <div class="modal-logo-icon" data-svg="icons/ui-lock.svg" data-w="24" data-h="24"></div>
       <div><h2>Reveal Wallet Key</h2><p>Enter your session password to view secrets</p></div>
       <button type="button" class="modal-btn secondary 9mm-pos-mgr-modal-close-btn">✕ Close</button>
     </div>
@@ -422,40 +422,43 @@
   </div>
 </div>
 
-<div class="modal-overlay hidden" id="rebalanceRangeModal">
-  <div class="modal 9mm-pos-mgr-modal-sm">
+<!-- ═══ MILD-IL CONFIRMATION MODAL (manual Rebalance action) ═══ -->
+<div class="modal-overlay hidden" id="rebalanceIlWarningModal">
+  <div class="modal 9mm-pos-mgr-modal-sm 9mm-pos-mgr-warning-modal">
     <div class="modal-logo">
-      <div class="modal-logo-icon">↔</div>
-      <div><h2>Rebalance with Updated Range</h2></div>
-      <button type="button" class="modal-btn secondary 9mm-pos-mgr-modal-close-btn" id="rebalanceRangeClose">✕ Close</button>
+      <h2>Rebalance Now</h2>
+      <div class="9mm-pos-mgr-modal-warning-row">
+        <div class="modal-logo-icon">⚠</div>
+        <p>Frequent rebalancing can crystallize Impermanent Loss</p>
+      </div>
     </div>
     <div class="9mm-pos-mgr-confirm-body">
-      <div id="rebalanceRangeCtx"></div>
-      <p>Create a new LP position centered on the current price with a custom range width.</p>
-      <div class="prow">
-        <span class="plbl">Total Range Width</span>
-        <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="rebalanceRangeInput" value="10" min="0.1" max="200" step="0.1" aria-label="Total range width percent">
-          <span class="punit">%</span>
-        </div>
+      <div id="rebalanceIlWarningCtx"></div>
+      <p class="9mm-pos-mgr-il-warn-lede"><span class="9mm-pos-mgr-warn-icon-inline" aria-hidden="true">⚠</span> Each rebalance incurs slippage that can crystallize impermanent loss over time. Also the cost of the gas can be non-trivial in times of high blockchain usage. Carefully consider if you need to rebalance now or if, instead, price is likely to return to range before too long.</p>
+      <p>The bot will rebalance this position to the range width, with any offset (if any), using the respective values set in the &ldquo;Range &amp; Execution&rdquo; segment of the &ldquo;Bot Configuration&rdquo; section on this app.</p>
+      <p>The bot&rsquo;s automatic rebalances already respect your OOR Threshold, OOR Timeout, and Min Time Between Rebalances settings.</p>
+      <div class="9mm-pos-mgr-confirm-footer">
+        If you rebalanced within the last 10 minutes, the bot may already sweep residuals automatically. Consider reviewing your rebalance throttle settings in the &ldquo;Rebalance Timing &amp; Throttle&rdquo; segment of the &ldquo;Bot Configuration&rdquo; section on this app if you find yourself here often.
       </div>
-      <p class="9mm-pos-mgr-text-muted"><span id="rebalanceRangeHint">5% on either side of the current price</span> <span class="9mm-pos-mgr-info-wrap"><span class="9mm-pos-mgr-info-dot" role="img" aria-label="Offset info">i</span><span class="9mm-pos-mgr-info-popover 9mm-pos-mgr-info-popover-above">Set the Position Offset in the Range &amp; Execution panel, or click &ldquo;No Offset&rdquo; there to set it to 50/50.</span></span></p>
     </div>
-    <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Note: Rebalancing can take some time as it involves on-chain transactions. Use your wallet software and/or check this app&rsquo;s logs for details.</p>
-    <p class="9mm-pos-mgr-text-muted 9mm-pos-mgr-modal-note">Tip: If you rebalanced within the last 10 minutes and residuals are your only reason for rebalancing, you can skip this dialog &mdash; the bot automatically sweeps leftover wallet tokens 10 minutes after each rebalance when they exceed 5% of the position&rsquo;s value. See &ldquo;Automatic Residual Cleanup&rdquo; in the User Manual.</p>
     <div class="9mm-pos-mgr-btn-row">
-      <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="rebalanceRangeCancelBtn">Cancel</button>
-      <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="rebalanceRangeConfirmBtn">Rebalance</button>
+      <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="ilWarnCancelBtn">Cancel</button>
+      <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="ilWarnConfirmBtn">Rebalance Anyway</button>
     </div>
   </div>
 </div>
+
+<!-- ═══ SKY CLOUDS (background, decorative) ═══ -->
+<div class="9mm-pos-mgr-cloud 9mm-pos-mgr-cloud-top" aria-hidden="true"></div>
+<div class="9mm-pos-mgr-cloud 9mm-pos-mgr-cloud-middle" aria-hidden="true"></div>
+<div class="9mm-pos-mgr-cloud 9mm-pos-mgr-cloud-bottom" aria-hidden="true"></div>
 
 <!-- ═══ DASHBOARD ═══ -->
 <div class="app">
 
 <header>
   <div class="logo">
-    <div class="logo-text"><h1><button type="button" class="9mm-pos-mgr-title-tune" id="titleTuneLP" title="Play the LP Ranger Tune,&#10;&quot;Ride Your LP Ranges with the Trusty LP Ranger&quot;">LP</button> <span class="9mm-pos-mgr-ranger-star-wrap" title="The Lone Star of LP Ranger"><img src="lp-ranger-star.png" alt="The Lone Star of LP Ranger" class="9mm-pos-mgr-ranger-star"></span> <button type="button" class="9mm-pos-mgr-title-tune" id="titleTuneRanger" title="Play the LP Ranger Tune,&#10;&quot;Ride Your LP Ranges with the Trusty LP Ranger&quot;">Ranger</button></h1><p>Auto-Rebalancer for v3</p></div>
+    <div class="logo-text"><h1><button type="button" class="9mm-pos-mgr-title-tune" id="titleTuneLP" title="Play the LP Ranger Tune,&#10;&quot;Ride Your LP Ranges with the Trusty LP Ranger&quot;"><span class="9mm-pos-mgr-leather-3">L</span><span class="9mm-pos-mgr-leather-1">P</span></button> <span class="9mm-pos-mgr-ranger-star-wrap" title="The Lone Star of LP Ranger"><img src="lp-ranger-star.png" alt="The Lone Star of LP Ranger" class="9mm-pos-mgr-ranger-star"></span> <button type="button" class="9mm-pos-mgr-title-tune" id="titleTuneRanger" title="Play the LP Ranger Tune,&#10;&quot;Ride Your LP Ranges with the Trusty LP Ranger&quot;"><span class="9mm-pos-mgr-leather-4">R</span><span class="9mm-pos-mgr-leather-2">a</span><span class="9mm-pos-mgr-leather-5">n</span><span class="9mm-pos-mgr-leather-3">g</span><span class="9mm-pos-mgr-leather-1">e</span><span class="9mm-pos-mgr-leather-4">r</span></button></h1><p>Auto-Rebalancer for v3</p></div>
     <span class="9mm-pos-mgr-logo-on">for</span>
     <div class="9mm-pos-mgr-logo-buy">
       <a class="logo-icon" href="https://9mm.pro/" target="_blank" rel="noopener noreferrer" title="Visit 9mm Pro"><img src="9mm-pro-logo-transparent.png" alt="9mm Pro" class="9mm-pos-mgr-header-logo"></a>
@@ -464,7 +467,7 @@
     <a class="pchain-link" href="https://pulsechain.com/" target="_blank" rel="noopener noreferrer" title="Visit PulseChain"><img src="pulsechain-logo-transparent.png" alt="PulseChain" class="9mm-pos-mgr-header-logo 9mm-pos-mgr-pchain-logo"></a>
   </div>
   <div class="header-middle">
-    <button type="button" class="pos-browser-btn" id="posBrowserBtn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg> <span id="headerPosLabel">0 Positions</span></button>
+    <button type="button" class="pos-browser-btn" id="posBrowserBtn"><span data-svg="icons/ui-grid.svg" data-w="14" data-h="14"></span> <span id="headerPosLabel">0 Positions</span></button>
     <!-- Pre-render default; kept in sync with AGGREGATOR_LABEL in
          public/dashboard-routing-labels.js and src/rebalancer-aggregator.js.
          Overwritten on first /api/status poll by _updateSwapSourcesBadge(). -->
@@ -479,7 +482,7 @@
   <div class="header-right">
     <a class="pos-browser-btn" href="/help-and-user-manual.html" target="_blank" rel="noopener" title="Help and User Manual" style="text-decoration: none;">? Help</a>
     <div class="9mm-pos-mgr-settings-wrap">
-      <button type="button" class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings"><svg width="27" height="27" viewBox="-1 -1 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5.5h3l.4 1.8.9.4 1.6-.9 2.1 2.1-.9 1.6.4.9 1.8.4v3l-1.8.4-.4.9.9 1.6-2.1 2.1-1.6-.9-.9.4-.4 1.8h-3l-.4-1.8-.9-.4-1.6.9L1.5 12.6l.9-1.6-.4-.9L.2 9.7v-3l1.8-.4.4-.9-.9-1.6L3.6 1.7l1.6.9.9-.4z" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
+      <button type="button" class="pos-browser-btn 9mm-pos-mgr-icon-btn" id="settingsBtn" title="Settings" data-svg="icons/ui-gear.svg" data-w="27" data-h="27"></button>
       <div class="9mm-pos-mgr-settings-popover" id="settingsPopover">
         <button type="button" class="9mm-pos-mgr-settings-item" id="donateBtn">Donate</button>
         <button type="button" class="9mm-pos-mgr-settings-item" id="disclosuresBtn">Disclosure</button>
@@ -592,12 +595,12 @@
     </div>
   </div>
   <div class="wallet-strip">
-    <svg class="9mm-pos-mgr-wallet-icon" width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.5"><rect x="1" y="3" width="14" height="11" rx="2"/><path d="M1 6h14"/><circle cx="12" cy="10" r="1.5"/></svg>
+    <span class="9mm-pos-mgr-wallet-icon" data-svg="icons/ui-wallet.svg" data-w="19" data-h="19"></span>
     <span class="9mm-pos-mgr-text-muted">Current Wallet Address:</span>
     <span class="ws-addr" id="wsAddr">No wallet loaded</span>
     <span class="9mm-pos-mgr-copy-icon 9mm-pos-mgr-initially-hidden" id="wsAddrCopy" title="Copy wallet address" data-copy-addr="">&#x274F;</span>
     <span class="ws-badge none" id="wsBadge">NOT SET</span>
-    <button type="button" class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg> View Key</button>
+    <button type="button" class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsRevealBtn" title="View private key / seed phrase"><span data-svg="icons/ui-lock.svg" data-w="14" data-h="14"></span> View Key</button>
     <button type="button" class="ws-reveal-btn 9mm-pos-mgr-initially-hidden" id="wsClearBtn" title="Clear wallet from server and browser">✕ Clear</button>
     <button type="button" class="9mm-pos-mgr-btn-sm" id="unlockWalletBtn" disabled title="Wallet is already unlocked" style="margin-left:auto">Unlock Wallet</button>
     <button type="button" class="hwbtn"><span id="headerWalletLabel">Set Wallet</span></button>
@@ -608,7 +611,7 @@
 <div id="walletUnlockModal" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-logo">
-      <div class="modal-logo-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M12 3a4 4 0 0 1 4 4v4H8V7a4 4 0 0 1 4-4z" stroke-dasharray="4 2"/></svg></div>
+      <div class="modal-logo-icon" data-svg="icons/ui-lock-encrypted.svg" data-w="24" data-h="24"></div>
       <div><h2>Unlock Wallet</h2></div>
     </div>
     <div class="9mm-pos-mgr-confirm-body">
@@ -736,9 +739,9 @@
         <span class="9mm-pos-mgr-mission-status" id="missionStatusBadge"><span class="9mm-pos-mgr-mission-status-line1"><span class="9mm-pos-mgr-mission-status-dot"></span><span class="9mm-pos-mgr-mission-status-text" id="missionStatusText">Special Action: None</span></span><span class="9mm-pos-mgr-mission-status-line2" id="missionStatusPos"></span><span class="9mm-pos-mgr-mission-status-line3" id="missionStatusTokens"></span><span class="9mm-pos-mgr-mission-status-extras" id="missionStatusExtras"></span></span>
         <span class="9mm-pos-mgr-gas-status 9mm-pos-mgr-gas-hidden" id="gasStatusBadge" title=""><span class="9mm-pos-mgr-gas-status-line1" id="gasStatusText">Gas Running Low</span><span class="9mm-pos-mgr-gas-status-line2" id="gasStatusDetail"></span></span>
       </div>
+      <img src="mission-control-crest.webp" alt="Western-style Tooled Leather" title="Western-style Tooled Leather" class="9mm-pos-mgr-mission-crest">
       <div class="9mm-pos-mgr-mission-bottom">
-        <button type="button" class="9mm-pos-mgr-mission-btn" id="rebalanceWithRangeBtn" disabled title="Manually force a rebalance. Automatic rebalancing stays in effect.">Rebalance Now</button>
-        <hr class="9mm-pos-mgr-mission-divider">
+        <button type="button" class="9mm-pos-mgr-mission-btn" id="rebalanceWithRangeBtn" disabled title="Manually force a rebalance now — a confirmation dialog will appear first. Automatic rebalancing stays in effect. Range width comes from Bot Settings.">Rebalance Now</button>
         <button type="button" class="9mm-pos-mgr-mission-btn" id="compoundNowBtn" disabled title="Enabled when Fees available are > $usd 1">Compound Now</button>
         <div class="9mm-pos-mgr-mission-compound-block">
           <div class="9mm-pos-mgr-mission-grid">
@@ -962,6 +965,37 @@
     <div class="cfg-block">
       <div class="cfg-title">Range &amp; Execution</div>
       <div class="prow">
+        <span class="plbl">Range Width <span class="9mm-pos-mgr-il-info-btn" data-param-help="inRangeWidth" title="Learn about range width">i</span></span>
+        <div class="9mm-pos-mgr-input-row">
+          <input type="number" class="pinput w55" id="inRangeWidth" min="0.1" max="200" step="0.1" aria-label="Range width percent">
+          <span class="punit">%</span>
+          <button type="button" class="save-range-btn" id="defaultRangeWidthBtn" title="Set this to the default range width">Default</button>
+          <button type="button" class="save-range-btn" id="resetRangeWidthBtn" title="Clear the override; the bot preserves the current tick spread on the next rebalance">No Override</button>
+          <button type="button" class="save-range-btn" id="saveRangeWidthBtn" title="Save range width override; applies on every subsequent rebalance">Save</button>
+        </div>
+      </div>
+      <div class="prow 9mm-pos-mgr-offset-row">
+        <span class="plbl">Position Offset <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOffsetToken0" title="Learn about position offset">i</span></span>
+        <div class="9mm-pos-mgr-offset-inputs">
+          <span class="plbl">
+            <span id="offsetT0Name">Token 0</span>
+            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT0" data-copy-addr="" title="Copy contract address">&#x274F;</span>
+          </span>
+          <input type="number" class="pinput w55" id="inOffsetToken0" min="0" max="100" step="1" aria-label="Token 0 offset percent">
+          <span class="punit">%</span>
+          <span class="plbl 9mm-pos-mgr-ml-sm">
+            <span id="offsetT1Name">Token 1</span>
+            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT1" data-copy-addr="" title="Copy contract address">&#x274F;</span>
+          </span>
+          <input type="number" class="pinput w55" id="inOffsetToken1" min="0" max="100" step="1" aria-label="Token 1 offset percent">
+          <span class="punit">%</span>
+        </div>
+        <div class="9mm-pos-mgr-input-row">
+          <button type="button" class="save-range-btn" id="resetOffsetBtn" title="Reset to 50/50">No Offset</button>
+          <button type="button" class="save-range-btn" id="saveOffsetBtn" title="Save rebalance offset">Save</button>
+        </div>
+      </div>
+      <div class="prow">
         <span class="plbl">OOR Threshold Before Rebalance Is Triggered (±%) <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOorThreshold" title="Learn about OOR threshold">i</span></span>
         <div class="9mm-pos-mgr-input-row">
           <input type="number" class="pinput w55" id="inOorThreshold" min="1" max="100" step="1" aria-label="OOR threshold percent">
@@ -999,27 +1033,6 @@
         <select class="pinput w100 9mm-pos-mgr-text-left" id="inGas" aria-label="Gas strategy">
           <option value="auto">Auto</option><option value="fast">Fast</option><option value="slow">Economy</option>
         </select>
-      </div>
-      <div class="prow 9mm-pos-mgr-offset-row">
-        <span class="plbl">Position Offset <span class="9mm-pos-mgr-il-info-btn" data-param-help="inOffsetToken0" title="Learn about position offset">i</span></span>
-        <div class="9mm-pos-mgr-offset-inputs">
-          <span class="plbl">
-            <span id="offsetT0Name">Token 0</span>
-            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT0" data-copy-addr="" title="Copy contract address">&#x274F;</span>
-          </span>
-          <input type="number" class="pinput w55" id="inOffsetToken0" min="0" max="100" step="1" aria-label="Token 0 offset percent">
-          <span class="punit">%</span>
-          <span class="plbl 9mm-pos-mgr-ml-sm">
-            <span id="offsetT1Name">Token 1</span>
-            <span class="9mm-pos-mgr-token-copy-btn" id="copyOffsetT1" data-copy-addr="" title="Copy contract address">&#x274F;</span>
-          </span>
-          <input type="number" class="pinput w55" id="inOffsetToken1" min="0" max="100" step="1" aria-label="Token 1 offset percent">
-          <span class="punit">%</span>
-        </div>
-        <div class="9mm-pos-mgr-input-row">
-          <button type="button" class="save-range-btn" id="resetOffsetBtn" title="Reset to 50/50">No Offset</button>
-          <button type="button" class="save-range-btn" id="saveOffsetBtn" title="Save rebalance offset">Save</button>
-        </div>
       </div>
       <div class="prow">
         <span class="plbl">Approval Multiple <span class="9mm-pos-mgr-il-info-btn" data-param-help="inApprovalMultiple" title="Learn about approval multiple">i</span></span>
@@ -1363,6 +1376,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1783713261919"></script>
+<script src="dist/bundle.js?v=1784159938948"></script>
 </body>
 </html>

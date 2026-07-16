@@ -181,7 +181,6 @@ async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle } = deps;
   const { release, state, trigger } = await _prepareRebalance(deps);
   try {
-    const crw = state.customRangeWidthPct;
     /*- Re-open detection: if the position is at zero liquidity when the
      *  rebalance starts, this attempt is a re-open of a previously
      *  retired position (user clicked Manage on a closed NFT, OR
@@ -208,7 +207,6 @@ async function _executeAndRecord(deps, ethersLib) {
       return { rebalanced: false, priceVolatile: true, trigger };
     }
     if (result.success) {
-      if (crw) delete state.customRangeWidthPct;
       await _handleRebalanceSuccess(deps, result, state, throttle, position);
     } else {
       log.error("[bot] Rebalance failed:", result.error);

@@ -11,6 +11,22 @@
   --text:#e0eaf4;
   --muted:#8aa0b0;
   --card:#0f1924;
+
+  /* Panel translucency — how much of the sky + drifting clouds shows
+     through every card / subpanel / form-control background.  Change
+     this one value to retune the whole app; the paired --panel-opacity
+     is what the rgb(... / …) alpha slots consume. */
+  --panel-translucency:15%;
+  --panel-opacity:calc(100% - var(--panel-translucency));
+
+  /* Secondary background translucency — nested surfaces that sit
+     inside a .card / .kpi-card and would otherwise compound with the
+     parent panel's --panel-opacity to visual opacity.  Powers Mission
+     Control's inner brown fill, the Position Stats sub-cards inside
+     Price Range Monitor, and the Activity Log rows.  Same token, so
+     tuning it retunes all three at once. */
+  --second-background-translucency:60%;
+  --second-background-opacity:calc(100% - var(--second-background-translucency));
 }
 
 *{
@@ -27,14 +43,47 @@ body{
   overflow-x:hidden;
 }
 
+/* Western night-sky background — replaces the former grid-line overlay.
+   Four muted radial-gradient cloud wisps + a low-alpha dusk band at the
+   horizon, softened with blur(6px) so the radial edges read as clouds
+   rather than circles.  Slow (5-min) drift animation keeps the sky feeling
+   alive without being distracting.  No image assets, no HTML changes,
+   pointer-events:none preserved so the layer never intercepts clicks.
+
+   ── Tuning knobs ──────────────────────────────────────────────────────
+   More/less visible clouds  → alpha values in each `radial-gradient`
+                                (currently 7%–10%).
+   Softer/sharper wisp edges → `filter: blur(6px)`; larger = softer.
+   Brighter/dimmer dusk band → the two alpha stops in the final
+                                `linear-gradient` (currently 16% & 8%).
+   Taller/shorter dusk band  → the `40%` stop; smaller = shorter band.
+   Faster/slower drift       → the `300s` duration in `animation`.
+   Cloud position            → the `at X% Y%` coords in each
+                                `radial-gradient`.  Same X/Y also appears
+                                in the `driftClouds` keyframes' `to`
+                                offsets if you want to change the direction
+                                each wisp drifts. */
 body::before{
   content:'';
   position:fixed;
   inset:0;
-  background-image:linear-gradient(rgb(0 229 255 / 2.5%) 1px,transparent 1px),linear-gradient(90deg,rgb(0 229 255 / 2.5%) 1px,transparent 1px);
-  background-size:60px 60px;
-  pointer-events:none;
   z-index:0;
+  pointer-events:none;
+  background-image:
+    radial-gradient(60% 18% at 15% 22%, rgb(120 130 150 / 10%), rgb(120 130 150 / 0%) 70%),
+    radial-gradient(50% 14% at 55% 12%, rgb(110 120 145 / 8%), rgb(110 120 145 / 0%) 70%),
+    radial-gradient(70% 20% at 82% 30%, rgb(130 140 160 / 9%), rgb(130 140 160 / 0%) 70%),
+    radial-gradient(45% 16% at 35% 45%, rgb(115 110 140 / 7%), rgb(115 110 140 / 0%) 70%),
+    linear-gradient(to top, rgb(120 60 40 / 16%) 0%, rgb(70 40 60 / 8%) 14%, rgb(8 12 16 / 0%) 40%);
+  background-repeat:no-repeat;
+  filter:blur(6px);
+  opacity:0.9;
+  animation:driftClouds 300s linear infinite alternate;
+}
+
+@keyframes driftClouds{
+  from{background-position:0 0,0 0,0 0,0 0,center bottom;}
+  to{background-position:40px -10px,-30px 15px,-50px 8px,25px -12px,center bottom;}
 }
 
 .app{
@@ -999,7 +1048,6 @@ header{
   gap:15px;
   margin-bottom:6px;
   padding-bottom:9px;
-  border-bottom:1px solid var(--border);
 }
 
 .logo{
@@ -1576,7 +1624,11 @@ header{
 
 .stat-item{
   padding:12px;
-  background:var(--bg3);
+
+  /* --bg3 (#141b24 = rgb(20 27 36)) tinted at --second-background-opacity
+     so sky + drifting clouds show through the Position Stats cells
+     inside Price Range Monitor. */
+  background:rgb(20 27 36 / var(--second-background-opacity));
   border-radius:11px;
   border:1px solid var(--border);
 }
@@ -1635,7 +1687,13 @@ header{
 
 /* ── BOT CONFIG ── */
 .cfg-block{
-  background:var(--bg3);
+  /* Fully transparent on purpose.  These subpanels live inside a
+     .kpi-card which is already tinted at --panel-opacity; if the
+     subpanel ALSO used --panel-opacity the two translucent layers
+     would compound (1 - t² instead of 1 - t) and the sky would
+     disappear from every inner region of Bot Configuration.  Border
+     + padding still provide the visual "panel" boundary. */
+  background:transparent;
   border:1px solid var(--border);
   border-radius:15px;
   padding:20px;
@@ -1751,7 +1809,9 @@ header{
 .plbl{color:var(--muted);}
 
 .pinput{
-  background:var(--bg);
+  /* 15 % translucent so the sky base carries through form fields
+     the same way it does through panel backgrounds. */
+  background:rgb(8 12 16 / var(--panel-opacity));
   border:1px solid var(--border);
   border-radius:9px;
   color:var(--text);
@@ -2067,7 +2127,10 @@ header{
   align-items:flex-start;
   gap:14px;
   padding:14px 15px;
-  background:var(--bg3);
+
+  /* --bg3 (#141b24 = rgb(20 27 36)) tinted at --second-background-opacity
+     so sky + drifting clouds show through Activity Log rows. */
+  background:rgb(20 27 36 / var(--second-background-opacity));
   border-radius:11px;
   border:1px solid var(--border);
   font-size:17px;

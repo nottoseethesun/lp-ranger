@@ -20,6 +20,7 @@ import {
 } from "./dashboard-data.js";
 import { findActiveAction } from "./dashboard-mission-badge.js";
 import { truncName } from "./dashboard-helpers.js";
+import { formatSettingChange } from "./dashboard-setting-labels.js";
 
 /**
  * Show a small modal telling the user their action is queued behind
@@ -47,7 +48,7 @@ export function showQueuedActionModal(requested, inFlight) {
 
 /**
  * Request a manual compound via the server API.
- * Same pattern as confirmRebalanceRange in dashboard-throttle-rebalance.js.
+ * Same pattern as `_postRebalance` in dashboard-rebalance-confirm.js.
  */
 export async function compoundNow() {
   const a = posStore.getActive();
@@ -102,7 +103,7 @@ export async function compoundNow() {
   }
   const pl = _posLabel();
   act(
-    ACT_ICONS.gear,
+    ACT_ICONS.acorn,
     "start",
     "Compound Requested",
     "Collecting fees and re-depositing as liquidity" + (pl ? "\n" + pl : ""),
@@ -203,6 +204,7 @@ export function saveCompoundThreshold(minFee) {
     ACT_ICONS.gear,
     "start",
     "Setting Saved",
-    "autoCompoundThresholdUsd = " + val + (pl ? "\n" + pl : ""),
+    formatSettingChange("autoCompoundThresholdUsd", val) +
+      (pl ? "\n" + pl : ""),
   );
 }
