@@ -96,7 +96,7 @@
   <p>For deeper trade-offs on when to compound vs. rebalance, and on how the Threshold interacts with gas cost, click the &ldquo;i&rdquo; info icons next to Auto-compound and Threshold.</p>
 
   <h2 id="fund-tracking">Fund Tracking</h2>
-  <p>When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
+  <p>When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate. Click the &ldquo;i&rdquo; info icon next to Realized Gains for the exact rules on how the field interacts with wallet residuals.</p>
 
   <h2 id="residual-cleanup">Automatic Residual Cleanup</h2>
   <p>After every successful rebalance, LP Ranger waits <strong>10 minutes</strong> and then checks whether the wallet still holds a meaningful residual share of the position&rsquo;s tokens. If the residual is still more than <strong>5%</strong> of the combined LP + residual value for that pool, the bot fires one additional rebalance to sweep the leftover tokens into the position. This is called an <em>automatic residual cleanup</em>.</p>
