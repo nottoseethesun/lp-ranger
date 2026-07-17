@@ -1,17 +1,17 @@
 /**
- * @file dashboard-history-backfill.js
- * @description One-shot cold-load backfill of historical events into the
- *   Activity Log.  Two entrypoints, one per event type, both share the
- *   same shape: fire once per position-view, sorted ascending, gated on
- *   the server-side scan-complete flag when the position is running.
+ * @file dashboard-populate-history.js
+ * @description Populates the Activity Log with historical events on cold
+ *   load.  Two entrypoints, one per event type, both share the same
+ *   shape: fire once per position-view, sorted ascending, gated on the
+ *   server-side scan-complete flag when the position is running.
  *
  *   `populateRebalanceHistoryOnce`  — iterates `data.rebalanceEvents[]`.
  *   `populateCompoundHistoryOnce`   — iterates `data.compoundHistory[]`.
  *
  *   Position switch / wallet switch / hard-reset flows call
- *   `resetHistoryBackfillFlags()` (wired via `resetHistoryFlag()` in
- *   `dashboard-data.js`) so each newly-viewed position gets one fresh
- *   backfill on its own cold load.
+ *   `resetPopulateHistoryFlags()` (wired via `resetHistoryFlag()` in
+ *   `dashboard-data.js`) so each newly-viewed position gets a fresh
+ *   populate pass on its own cold load.
  *
  *   Extracted from `dashboard-data.js` for line-count compliance.
  */
@@ -23,13 +23,13 @@ let _rebalanceHistoryPopulated = false;
 let _compoundHistoryPopulated = false;
 
 /** Reset both latches — called on position-switch and wallet-switch. */
-export function resetHistoryBackfillFlags() {
+export function resetPopulateHistoryFlags() {
   _rebalanceHistoryPopulated = false;
   _compoundHistoryPopulated = false;
 }
 
 /**
- * Backfill historical rebalance rows into the Activity Log.
+ * Populate historical rebalance rows into the Activity Log.
  * One-shot per viewed position (latch = `_rebalanceHistoryPopulated`).
  *
  * @param {object} data      Flattened `/api/status` response for the
@@ -59,7 +59,7 @@ export function populateRebalanceHistoryOnce(data, posLabel) {
 }
 
 /**
- * Backfill historical compound rows into the Activity Log.
+ * Populate historical compound rows into the Activity Log.
  * One-shot per viewed position (latch = `_compoundHistoryPopulated`).
  * Mirrors `populateRebalanceHistoryOnce` line-for-line.
  *

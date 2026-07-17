@@ -8,8 +8,9 @@
  *   `formatCompoundEntry`         — live-runtime path, called by
  *                                   `dashboard-data-events.js#_logCompound`
  *                                   when `st.lastCompoundAt` advances.
- *   `formatCompoundHistoryEntry`  — cold-load backfill path, called by
- *                                   `dashboard-data.js#_populateCompoundHistoryOnce`
+ *   `formatCompoundHistoryEntry`  — cold-load history-populate path,
+ *                                   called by
+ *                                   `dashboard-populate-history.js#populateCompoundHistoryOnce`
  *                                   once per entry in `data.compoundHistory`.
  */
 
@@ -92,7 +93,7 @@ export function formatCompoundEntry(st, ctx, prevSeen) {
 }
 
 /**
- * Format a single historical compound event for the cold-load backfill.
+ * Format a single historical compound event for the cold-load history-populate pass.
  * Mirrors the shape of `_populateHistoryOnce`'s per-event loop in
  * `dashboard-data.js`.
  *

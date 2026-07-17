@@ -70,8 +70,8 @@ import {
 import {
   populateRebalanceHistoryOnce,
   populateCompoundHistoryOnce,
-  resetHistoryBackfillFlags,
-} from "./dashboard-history-backfill.js";
+  resetPopulateHistoryFlags,
+} from "./dashboard-populate-history.js";
 import {
   _createModal,
   _posLabel,
@@ -468,7 +468,7 @@ function _updateRebalanceButtons(d) {
 }
 
 export function resetHistoryFlag() {
-  resetHistoryBackfillFlags();
+  resetPopulateHistoryFlags();
   _configSynced = false;
   _globalSynced = false;
 }
