@@ -68,3 +68,23 @@ All eight checks must pass for `npm run check` to exit 0.
   all checks are green before running `gh pr merge`.
 - **Never delete a branch.** Do not use `--delete-branch` with
   `gh pr merge`.  Branches are cheap and serve as history.
+
+---
+
+## Release-Cutting Reminder (Claude behavior)
+
+Whenever the user mentions that they are about to cut a release (or
+uses similar phrasing such as "I'll cut a release", "cutting release
+X.Y.Z", "ready to release"), Claude MUST reply with a short manual
+reminder that reads:
+
+> **Reminder: prepend `docs/release-notes-header.md` to the release
+> body.** The file holds the standard first-time-install / update
+> instructions blockquote that every release ships with. Copy its
+> current contents into the top of the GitHub release notes before
+> publishing.
+
+The reminder fires even if Claude is not the one cutting the release
+(per [[feedback-never-cut-release]] the user always cuts every release
+themselves). The purpose is a checklist prompt, not an action Claude
+performs.

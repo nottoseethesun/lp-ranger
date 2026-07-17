@@ -62,7 +62,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   │   ├── dust-threshold.json   #     Inflation-resistant dust threshold + price-source tokens
 │   │   ├── evm-rpc-response-codes.json  # Error-classifier substring lists
 │   │   ├── logging.json          #     Log-to-file always-on toggle + path
-│   │   ├── nft-providers.json    #     Short labels for NFT issuer contracts
+│   │   ├── lp-providers.json    #     LP-provider metadata keyed by <poolFactory>_<positionManager>
 │   │   ├── ui-defaults.json      #     Dashboard first-visit defaults (sounds, privacy)
 │   │   └── api-keys.example.json #     Tracked format template for the encrypted api-keys.json
 │   └── user-configurable/        # Tracked dir, gitignored CONTENTS. Operator-specific runtime state.
@@ -92,7 +92,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── dashboard-positions-store.js # In-browser position store with localStorage persistence, rendering
 │   ├── dashboard-unmanaged.js    # One-shot detail fetch for unmanaged LP positions
 │   ├── dashboard-throttle.js     # Trigger config, throttle state/UI
-│   ├── dashboard-throttle-rebalance.js # Rebalance with Updated Range modal
+│   ├── dashboard-rebalance-confirm.js # Manual-rebalance IL confirmation modal (replaces the deleted Rebalance-with-Range modal)
 │   ├── dashboard-compound.js     # Compound button handlers, auto-compound toggle, threshold save
 │   ├── dashboard-data.js         # Polls /api/status, updates position stats, bot status, resetHistoryFlag
 │   ├── dashboard-data-events.js  # Per-position event log scanner: fires Activity entries + success sounds
@@ -108,6 +108,8 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── dashboard-price-override.js # Manual token price override for positions where auto-detection fails
 │   ├── dashboard-closed-pos.js   # Closed-position history view: fetches and displays P&L for drained NFTs
 │   ├── dashboard-sounds.js       # UI sound effects with master toggle (Settings) + localStorage persistence
+│   ├── dashboard-lp-providers.js # Client mirror of src/lp-providers.js: fetched map + sticky factory context + composite lookup
+│   ├── dashboard-all-positions-stats.js # "All Positions Stats" header button + sortable-table modal (Lifetime P&L / Profit / IL/G)
 │   └── dashboard-init.js         # Bootstrap: populate wallets, start router, data polling, intervals
 ├── src/
 │   ├── bot-loop.js               # Shared bot logic: startBotLoop, provider/signer setup, epoch cache restore
@@ -151,6 +153,7 @@ Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCL
 │   ├── key-store.js              # AES-256-GCM encrypted private key storage (PBKDF2-SHA512)
 │   ├── residual-tracker.js       # Per-pool wallet residual tracking (tokens left after rebalance)
 │   ├── wallet-manager.js         # Wallet import/clear + encrypted disk persistence
+│   ├── lp-providers.js           # LP-provider composite-key lookup (poolFactory + positionManager → displayName + supportedChains); replaces the deleted src/nft-providers.js
 │   └── position-history.js       # Historical data lookup for closed NFT positions (rebalance log, events, prices)
 └── test/
     ├── bot-loop.test.js

@@ -298,17 +298,25 @@ export const PARAM_HELP = {
           "<strong>50%</strong> (default, symmetric) is correct for most " +
           "users. Adjust only if you have a directional view on the " +
           "token pair &mdash; for example, if you believe Token0 will " +
-          "appreciate, you might set 60&ndash;70% to hold more of it.",
+          "appreciate, you might set 60&ndash;70% to hold more of it at " +
+          "the start, because as it appreciates, your liquidity position " +
+          "will have less of the appreciating token and more of the " +
+          "depreciating token. This way, your position stays in-range " +
+          "longer, which is the desired approach (unless you are doing " +
+          "single-sided liquidity: See below).",
       },
       {
-        heading: "Extreme values",
+        heading: "Single-Sided Liquidity Position",
         body:
           "<strong>0%</strong> &mdash; all Token1, position is entirely " +
           "below current price (single-sided).<br>" +
           "<strong>100%</strong> &mdash; all Token0, position is entirely " +
-          "above current price (single-sided).<br>" +
-          "Single-sided positions earn no fees while price is on the other " +
-          "side.",
+          "above current price (single-sided)." +
+          "<p>Single-sided positions earn no fees while price is on the " +
+          "other side. Single-sided liquidity positions can be a way to " +
+          "sell your coins without incurring sell fees. However, the " +
+          "price must move all the way through your single-sided " +
+          "position for you to sell all your coins.</p>",
       },
       {
         heading: "Related parameters",
