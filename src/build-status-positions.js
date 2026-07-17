@@ -94,6 +94,18 @@ function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg, deps) {
       s.status = "stopped";
       s.rebalanceScanComplete = true;
       s.lifetimeScanComplete = true;
+    } else if (posConfig.status === "running") {
+      /*- Mid-startup case: disk says this position is under management,
+       *  but its bot loop hasn't booted yet (behind the startup
+       *  stagger — one bot-loop start per CHECK_INTERVAL_SEC/N seconds
+       *  in `src/server-auto-start.js`).  Echo `status: "running"` so
+       *  the dashboard's readiness gate ("N of M managed positions
+       *  loaded" on the All Positions Stats button) counts this slot
+       *  in its denominator instead of treating it as invisible.
+       *  Deliberately do NOT set scan-complete flags — they stay
+       *  false-ish so the gate still reports the position as "not
+       *  ready" until the real bot state lands via loop 1. */
+      s.status = "running";
     }
     positions[key] = s;
   }

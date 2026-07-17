@@ -122,6 +122,13 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
       undefined,
       "must NOT publish true for running positions",
     );
+    assert.strictEqual(
+      out[k].status,
+      "running",
+      "must echo status='running' so the dashboard's All Positions Stats " +
+        "readiness gate counts this slot in its denominator — otherwise the " +
+        "button prematurely enables at (N-1)/(N-1) instead of N/N",
+    );
   });
 
   it("loop-1 (live bot state) wins over loop-2 — running entries keep their real flags", () => {
