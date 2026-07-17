@@ -44,6 +44,7 @@ import {
   loadInitialDepositForPool,
   loadRealizedGainsForPool,
 } from "./dashboard-data-deposit.js";
+import { ltStartDate } from "./dashboard-date-utils.js";
 
 /*- Track last-applied {disabled, title} so we don't touch the DOM on
  *  every 3-second poll when nothing has changed.  Prevents needless
@@ -52,10 +53,15 @@ let _lastButtonState = { disabled: null, title: null };
 
 /*- Modal open flag + sort state.  Sort defaults to Lifetime P&L DESC
  *  per the design.  Clicking the current column toggles direction;
- *  clicking a different column jumps to DESC on that column. */
+ *  clicking a different column jumps to DESC on that column.
+ *  `_showPerDay` toggles the per-day normalization: when true, every
+ *  numeric column is divided by the number of days the position has
+ *  been alive (same "Lifetime" span the KPI panel uses).  Off by
+ *  default; not persisted across sessions per user preference. */
 let _isOpen = false;
 let _sortCol = "ltNetPnl";
 let _sortDir = "desc";
+let _showPerDay = false;
 
 /*- Return a finite number or the fallback.  Explicit type + finiteness
  *  check instead of `x || default`, which would coerce 0 / NaN / ""
@@ -96,6 +102,35 @@ function _fmtUsd(n) {
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
   return `${sign}$${abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/*- Days between the position's Lifetime start (per `ltStartDate` —
+ *  same source the Lifetime panel uses) and `now`.  Returns null
+ *  when no start date is available OR when the span is not a
+ *  positive number of days (guards against div-by-zero and negative
+ *  denominators from a future-dated start).  Injectable `now` so
+ *  tests can drive it deterministically without freezing Date. */
+export function daysAliveFor(posState, now) {
+  const startDate = ltStartDate(posState);
+  if (typeof startDate !== "string" || startDate.length < 10) return null;
+  const startMs = Date.parse(startDate + "T00:00:00Z");
+  if (!Number.isFinite(startMs)) return null;
+  const days = (now - startMs) / 86400000;
+  return Number.isFinite(days) && days > 0 ? days : null;
+}
+
+/*- Divide a numerics bundle (`{ ltNetPnl, ltProfit, ltIL }`) by
+ *  `days` when per-day mode is on AND we have a positive span.
+ *  Falls back to the raw bundle otherwise so the toggle-off path is
+ *  a strict pass-through.  Pure — no module state read. */
+export function applyPerDay(nums, showPerDay, days) {
+  if (!showPerDay) return nums;
+  if (days === null || days === undefined || days <= 0) return nums;
+  return {
+    ltNetPnl: nums.ltNetPnl / days,
+    ltProfit: nums.ltProfit / days,
+    ltIL: nums.ltIL / days,
+  };
 }
 
 /*- Compute the three sortable numerics (ltNetPnl, ltProfit, ltIL)
@@ -151,7 +186,9 @@ function _computeRow(key, posState, globalCtx) {
   const ltDepOverride = loadInitialDepositForPool(poolCtx);
   const ltDep =
     ltDepOverride > 0 ? ltDepOverride : _num(snap.totalLifetimeDeposit, 0);
-  const nums = _computeNumerics(snap, ltRealized, ltDep);
+  const rawNums = _computeNumerics(snap, ltRealized, ltDep);
+  const days = daysAliveFor(posState, Date.now());
+  const nums = applyPerDay(rawNums, _showPerDay, days);
   const lpName =
     getProviderDisplayName(globalCtx.factory, globalCtx.positionManager) ??
     getProviderLabel(globalCtx.positionManager) ??
@@ -442,4 +479,11 @@ export function wireAllPositionsStatsEvents() {
   const closeBtn = g("allPositionsStatsCloseBtn");
   if (closeBtn !== null)
     closeBtn.addEventListener("click", closeAllPositionsStatsModal);
+  const perDayToggle = g("allPositionsStatsPerDayToggle");
+  if (perDayToggle !== null)
+    perDayToggle.addEventListener("change", (e) => {
+      _showPerDay = e.target.checked === true;
+      log.info("[all-positions-stats] Show Per-Day = %s", _showPerDay);
+      _renderTable(getLastStatus());
+    });
 }

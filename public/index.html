@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784244848187">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784244848187">
+<link rel="stylesheet" href="style.css?v=1784275439820">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784275439820">
 </head>
 <body>
 
@@ -452,8 +452,15 @@
   <div class="modal 9mm-pos-mgr-all-positions-modal">
     <button type="button" class="9mm-pos-mgr-modal-close-x" id="allPositionsStatsCloseBtn" title="Close" aria-label="Close">×</button>
     <div class="modal-logo">
-      <h2>All Positions Stats</h2>
-      <p class="9mm-pos-mgr-all-positions-subtitle">All currently-open positions being managed by LP Ranger.</p>
+      <div class="9mm-pos-mgr-all-positions-header-text">
+        <h2>All Positions Stats</h2>
+        <p class="9mm-pos-mgr-all-positions-subtitle">All currently-open positions being managed by LP Ranger.</p>
+      </div>
+      <label class="9mm-pos-mgr-browser-toggle" title="Divide each numeric column by the number of days the position has been alive, so you can compare pools of different ages without one having had more time to earn fees.">
+        <input type="checkbox" id="allPositionsStatsPerDayToggle">
+        <span>Show Per-Day</span>
+        <span class="9mm-pos-mgr-toggle-track"></span>
+      </label>
     </div>
     <div class="9mm-pos-mgr-all-positions-table-wrap">
       <table class="9mm-pos-mgr-all-positions-table" id="allPositionsStatsTable">
@@ -1402,6 +1409,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784244848187"></script>
+<script src="dist/bundle.js?v=1784275439820"></script>
 </body>
 </html>
