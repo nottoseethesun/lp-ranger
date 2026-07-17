@@ -20,6 +20,7 @@
       <li><a href="#faq">FAQ</a></li>
       <li><a href="#bookmarking-positions">Bookmarking Positions</a></li>
       <li><a href="#all-positions-stats">All Positions Stats</a></li>
+      <li><a href="#mission-control">Mission Control</a></li>
       <li><a href="#fund-tracking">Fund Tracking</a></li>
       <li><a href="#residual-cleanup">Automatic Residual Cleanup</a></li>
       <li><a href="#range-width">Range Width and Range Offset</a></li>
@@ -83,6 +84,16 @@
   <p>The <strong>All Positions Stats</strong> button in the header (right of the Open Positions button) opens a sortable table across every currently-open managed position on your wallet. Columns: identity (blockchain, token pair, fee tier, LP provider), <strong>Lifetime P&amp;L</strong>, <strong>Profit</strong>, <strong>Impermanent Loss/Gain</strong>, and a per-row <strong>Position</strong> link that takes you to that position&rsquo;s dashboard tab.</p>
   <p>Click any of the three numeric column headers to sort. First click sorts descending; a second click toggles ascending. The default sort is Lifetime P&amp;L descending. Rows re-render on the same 3-second poll as the rest of the dashboard, so numbers stay live while the modal is open.</p>
   <p>The button stays disabled until every currently-running managed position has finished its rebalance-history and lifetime-deposit scans. Hover the disabled button for a tooltip showing how many positions are still loading. For the meaning of each numeric column, click the &ldquo;i&rdquo; info icon on the Lifetime panel of any managed position; the same formulas power the modal.</p>
+
+  <h2 id="mission-control">Mission Control</h2>
+  <p>Mission Control is the center card on the dashboard. It houses the manual action buttons and the auto-compound controls for the currently-viewed managed position.</p>
+  <ul>
+    <li><strong>Special Action badge</strong> at the top of the panel shows what the bot is currently doing on this position: idle (&ldquo;Special Action: None&rdquo;), rebalancing, compounding, or a residual cleanup in progress. If multiple actions overlap (rare), each stacks inside the badge.</li>
+    <li><strong>Rebalance Now</strong> triggers a manual rebalance. Clicking it opens a short impermanent-loss confirmation dialog before firing. The rebalance uses the Range Width and Position Offset saved in <strong>Bot Configuration &rarr; Range &amp; Execution</strong> for this position; there is no per-rebalance width prompt.</li>
+    <li><strong>Compound Now</strong> collects any unclaimed fees and redeposits them into the current position. The button enables only when unclaimed fees are worth more than the <strong>Compound Min Fee</strong> gate (defaults to $1, tunable in <code>.env</code>). No new NFT is minted; the same NFT gains liquidity.</li>
+    <li><strong>Auto-compound</strong> toggle: when on, the bot compounds automatically once unclaimed fees cross the Threshold you set below the toggle. The Threshold input takes a USD value; anything above it triggers a compound on the next in-range poll cycle. Both persist per position.</li>
+  </ul>
+  <p>For deeper trade-offs on when to compound vs. rebalance, and on how the Threshold interacts with gas cost, click the &ldquo;i&rdquo; info icons next to Auto-compound and Threshold.</p>
 
   <h2 id="fund-tracking">Fund Tracking</h2>
   <p>When a position is rebalanced, all collected tokens (principal + earned fees) are recycled into the new position. Any remainder that doesn't fit the new range stays in your wallet and is automatically counted toward your P&amp;L at current market prices, capped to your actual wallet balance. If you withdraw or sell tokens yourself, use <strong>Edit Realized Gains</strong> to account for them so your P&amp;L stays accurate.</p>
