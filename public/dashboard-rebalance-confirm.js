@@ -27,6 +27,7 @@ import {
   compositeKey,
   fetchWithCsrf,
   emojiId,
+  isFullRangeSpread,
 } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
 import {
@@ -68,6 +69,11 @@ function _computePreservedWidthPct(tickLower, tickUpper, offset) {
   const spread = tickUpper - tickLower;
   if (!Number.isFinite(spread) || !(spread > 0)) return null;
   if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  /*- Full-range positions overflow the widthPct formula (see
+   *  dashboard-data-range-width.js for the numeric detail).  Same
+   *  100.00 convention keeps the modal preview and the Bot Settings
+   *  row in sync. */
+  if (isFullRangeSpread(spread)) return "100.00";
   const aboveTicks = (spread * offset) / 100;
   const belowTicks = (spread * (100 - offset)) / 100;
   const widthPct =

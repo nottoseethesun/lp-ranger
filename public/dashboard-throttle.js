@@ -569,12 +569,14 @@ export function resetOffset() {
  * Save the "Range Width" input as a persistent per-position override.
  * Rejects invalid input per feedback_one_literal_per_shipped_default —
  * no silent clamp-to-default; the user must enter a valid number in
- * (0.1, 200] to save.  Empty input, NaN, out-of-range → skip the save
- * (the No Override button below is the explicit way to clear).
+ * [0.1, 100] to save.  100 is the full-range sentinel — the rebalancer
+ * mints at MIN_TICK/MAX_TICK (see `rangeMath.fullRange()`).  Empty
+ * input, NaN, out-of-range → skip the save (the No Override button
+ * below is the explicit way to clear).
  */
 export function saveRangeWidth() {
   const raw = parseFloat(g("inRangeWidth")?.value);
-  if (!Number.isFinite(raw) || raw < 0.1 || raw > 200) return;
+  if (!Number.isFinite(raw) || raw < 0.1 || raw > 100) return;
   _saveSingleConfig("inRangeWidth", "rebalanceRangeWidthPct", () => raw);
 }
 
