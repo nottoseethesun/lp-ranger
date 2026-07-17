@@ -18,6 +18,7 @@
  */
 
 import { cloneTpl } from "./dashboard-helpers.js";
+import { reapplyPrivacyBlur } from "./dashboard-events.js";
 
 /** @type {object|null} Latest snapshot data from the polling loop. */
 let _lastData = null;
@@ -254,6 +255,12 @@ export function showILDebug(panel) {
     if (e.target === el) dismissILDebug();
   });
   document.body.appendChild(el);
+  /*- Re-run the privacy sweep so the newly-added `data-privacy` cells
+   *  (see tplIlDebugSection + tplIlDebugNowVsHodl in index.html) get
+   *  blurred immediately.  Without this the user sees plain figures
+   *  for up to one poll cycle (~3 s) before the periodic reapply from
+   *  dashboard-data.js catches them. */
+  reapplyPrivacyBlur();
 }
 
 /**
