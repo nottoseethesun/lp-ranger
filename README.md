@@ -74,6 +74,7 @@ and the responsive layout &mdash; see the
 
 ## Prerequisites
 
+- Skills: Only very basic Terminal (a.k.a. "shell") skills, learnable in a few minutes.
 - Machine: Any common computer; specifically, a 64-bit Intel, Apple, or ARM machine.
   - Known working light-weight computer: Raspberry Pi 5 with Heat Sink and Fan (5GB RAM, and Ethernet cable Internet connection instead of Wi-Fi).
   - Machine must be kept secure: Up-to-date with updates, free of malware, and physically secure.
