@@ -18,6 +18,28 @@
  */
 
 import { cloneTpl } from "./dashboard-helpers.js";
+import { reapplyPrivacyBlur } from "./dashboard-events.js";
+
+/*- Build a label DOM containing a token symbol wrapped in the shared
+ *  ellipsize utility span (see `.9mm-pos-mgr-ellipsize` in
+ *  9mm-pos-mgr.css — defaults to `max-width: 11ch`).  Sets the
+ *  target `<td>`'s contents to `[before][<span>tok</span>][after]`.
+ *  Passing an empty string for `before` or `after` omits the
+ *  corresponding text node.
+ *  Using DOM building (not innerHTML) per feedback_no_new_html_in_js.
+ *  Using a utility CSS class (not a per-usage class or JS ellipsize
+ *  function) per user feedback 2026-07-17. */
+function _setTokLabel(frag, key, before, tok, after) {
+  const el = frag.querySelector(`[data-tpl="${key}"]`);
+  if (!el) return;
+  el.replaceChildren();
+  if (before !== "") el.appendChild(document.createTextNode(before));
+  const span = document.createElement("span");
+  span.className = "9mm-pos-mgr-ellipsize";
+  span.textContent = tok;
+  el.appendChild(span);
+  if (after !== "") el.appendChild(document.createTextNode(after));
+}
 
 /** @type {object|null} Latest snapshot data from the polling loop. */
 let _lastData = null;
@@ -88,17 +110,17 @@ function _buildNowVsHodl(now0, now1, base0, base1, t0sym, t1sym, baseLabel) {
     if (el) el.textContent = val;
   };
   set("heading", "Coin Count: Now vs " + baseLabel);
-  set("lblNow0", "Now " + t0sym);
+  _setTokLabel(frag, "lblNow0", "Now ", t0sym, "");
   set("now0", _fmt(now0));
-  set("lblBase0", baseLabel + " " + t0sym);
+  _setTokLabel(frag, "lblBase0", baseLabel + " ", t0sym, "");
   set("base0", _fmt(base0));
-  set("lblRatio0", t0sym + " Now / " + baseLabel);
+  _setTokLabel(frag, "lblRatio0", "", t0sym, " Now / " + baseLabel);
   set("ratio0", _pct(now0, base0));
-  set("lblNow1", "Now " + t1sym);
+  _setTokLabel(frag, "lblNow1", "Now ", t1sym, "");
   set("now1", _fmt(now1));
-  set("lblBase1", baseLabel + " " + t1sym);
+  _setTokLabel(frag, "lblBase1", baseLabel + " ", t1sym, "");
   set("base1", _fmt(base1));
-  set("lblRatio1", t1sym + " Now / " + baseLabel);
+  _setTokLabel(frag, "lblRatio1", "", t1sym, " Now / " + baseLabel);
   set("ratio1", _pct(now1, base1));
   return frag;
 }
@@ -169,13 +191,13 @@ function _buildSection(
   set("lpValue", _usd(lpValue));
   set("residualValue", _usd(v.rUsd));
   set("lpPlusResidual", _usd(v.lpPlusResidual));
-  set("lblA0", "HODL " + t0sym + " deposited");
+  _setTokLabel(frag, "lblA0", "HODL ", t0sym, " deposited");
   set("a0", v.hasData ? _fmt(v.a0) : d);
-  set("lblA1", "HODL " + t1sym + " deposited");
+  _setTokLabel(frag, "lblA1", "HODL ", t1sym, " deposited");
   set("a1", v.hasData ? _fmt(v.a1) : d);
-  set("lblP0", "Current " + t0sym + " price");
+  _setTokLabel(frag, "lblP0", "Current ", t0sym, " price");
   set("p0", v.hasData ? _usd(price0) : d);
-  set("lblP1", "Current " + t1sym + " price");
+  _setTokLabel(frag, "lblP1", "Current ", t1sym, " price");
   set("p1", v.hasData ? _usd(price1) : d);
   set("hodlValue", v.hasData ? _usd(v.hodlValue) : d);
   const ilCell = frag.querySelector('[data-tpl="ilResult"]');
@@ -254,6 +276,12 @@ export function showILDebug(panel) {
     if (e.target === el) dismissILDebug();
   });
   document.body.appendChild(el);
+  /*- Re-run the privacy sweep so the newly-added `data-privacy` cells
+   *  (see tplIlDebugSection + tplIlDebugNowVsHodl in index.html) get
+   *  blurred immediately.  Without this the user sees plain figures
+   *  for up to one poll cycle (~3 s) before the periodic reapply from
+   *  dashboard-data.js catches them. */
+  reapplyPrivacyBlur();
 }
 
 /**

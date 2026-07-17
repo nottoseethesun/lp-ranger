@@ -197,3 +197,107 @@ test("sortRows: NaN bubbles to the bottom", () => {
 test("sortRows: handles empty array", () => {
   assert.deepEqual(_sortRows([], "ltNetPnl", "desc"), []);
 });
+
+// ── Per-Day toggle helpers ────────────────────────────────────
+
+/*- Mirrored copy of `daysAliveFor` from
+ *  public/dashboard-all-positions-stats.js.  Same picker as
+ *  `ltStartDate` in dashboard-date-utils.js so the Lifetime panel and
+ *  this modal always report the same day count. */
+function daysAliveFor(posState, now) {
+  const candidates = [
+    posState?.pnlSnapshot?.firstEpochDateUtc,
+    posState?.hodlBaseline?.mintDate,
+    posState?.poolFirstMintDate,
+  ];
+  let startDate = null;
+  for (const c of candidates) {
+    if (typeof c !== "string" || c.length < 10) continue;
+    const truncated = c.slice(0, 10);
+    if (startDate === null || truncated < startDate) startDate = truncated;
+  }
+  if (startDate === null) return null;
+  const startMs = Date.parse(startDate + "T00:00:00Z");
+  if (!Number.isFinite(startMs)) return null;
+  const days = (now - startMs) / 86400000;
+  return Number.isFinite(days) && days > 0 ? days : null;
+}
+
+function applyPerDay(nums, showPerDay, days) {
+  if (!showPerDay) return nums;
+  if (days === null || days === undefined || days <= 0) return nums;
+  return {
+    ltNetPnl: nums.ltNetPnl / days,
+    ltProfit: nums.ltProfit / days,
+    ltIL: nums.ltIL / days,
+  };
+}
+
+test("daysAliveFor: uses earliest of the three candidate dates", () => {
+  const posState = {
+    pnlSnapshot: { firstEpochDateUtc: "2026-06-01" },
+    hodlBaseline: { mintDate: "2026-05-15" },
+    poolFirstMintDate: "2026-07-01",
+  };
+  const now = Date.parse("2026-07-15T00:00:00Z");
+  // Earliest is 2026-05-15 → 61 days to 2026-07-15
+  assert.equal(daysAliveFor(posState, now), 61);
+});
+
+test("daysAliveFor: returns null when no date is available", () => {
+  assert.equal(daysAliveFor({}, Date.parse("2026-07-15T00:00:00Z")), null);
+  assert.equal(
+    daysAliveFor(
+      { pnlSnapshot: { firstEpochDateUtc: null } },
+      Date.parse("2026-07-15T00:00:00Z"),
+    ),
+    null,
+  );
+});
+
+test("daysAliveFor: returns null when the span is <= 0", () => {
+  const posState = { poolFirstMintDate: "2026-07-15" };
+  // Same day as start — span is 0
+  const now = Date.parse("2026-07-15T00:00:00Z");
+  assert.equal(daysAliveFor(posState, now), null);
+});
+
+test("daysAliveFor: accepts an ISO timestamp prefix", () => {
+  const posState = {
+    pnlSnapshot: { firstEpochDateUtc: "2026-07-01T12:34:56.789Z" },
+  };
+  const now = Date.parse("2026-07-11T00:00:00Z");
+  // Truncated to "2026-07-01" → 10 days
+  assert.equal(daysAliveFor(posState, now), 10);
+});
+
+test("applyPerDay: returns raw nums when toggle is off", () => {
+  const nums = { ltNetPnl: 100, ltProfit: 50, ltIL: -10 };
+  assert.deepEqual(applyPerDay(nums, false, 10), nums);
+});
+
+test("applyPerDay: divides every field when toggle is on with positive days", () => {
+  const nums = { ltNetPnl: 100, ltProfit: 50, ltIL: -10 };
+  assert.deepEqual(applyPerDay(nums, true, 10), {
+    ltNetPnl: 10,
+    ltProfit: 5,
+    ltIL: -1,
+  });
+});
+
+test("applyPerDay: falls through to raw nums when days is null / undefined / 0 / negative", () => {
+  const nums = { ltNetPnl: 100, ltProfit: 50, ltIL: -10 };
+  assert.deepEqual(applyPerDay(nums, true, null), nums);
+  assert.deepEqual(applyPerDay(nums, true, undefined), nums);
+  assert.deepEqual(applyPerDay(nums, true, 0), nums);
+  assert.deepEqual(applyPerDay(nums, true, -5), nums);
+});
+
+test("applyPerDay: preserves sign polarity for the sort-marker paint", () => {
+  const nums = { ltNetPnl: -20, ltProfit: 0, ltIL: 10 };
+  const perDay = applyPerDay(nums, true, 4);
+  // -20 / 4 = -5 (still negative), 0 stays 0, 10 / 4 = 2.5 (still positive)
+  assert.ok(perDay.ltNetPnl < 0);
+  assert.equal(perDay.ltProfit, 0);
+  assert.ok(perDay.ltIL > 0);
+});

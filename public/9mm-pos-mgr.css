@@ -32,15 +32,30 @@
   flex-direction: column;
 }
 
-/* Standard heading layout for this modal: title on its own line,
- * subtitle below.  Overrides the default `.modal-logo` flex-row
- * layout (which puts h2 and p side-by-side, wasting horizontal
- * space on narrow viewports). */
+/* Modal-logo layout: text block (h2 + subtitle) on the left, the
+ * Show-Per-Day toggle hugged against the right edge via
+ * `margin-left: auto` on the toggle itself.  Chose margin-auto over
+ * `justify-content: space-between` so the toggle stays right-aligned
+ * even after wrapping to a new line on narrow viewports (per-line
+ * `justify-content` would put a single-item wrapped line at the
+ * LEFT edge). */
 .\39 mm-pos-mgr-all-positions-modal .modal-logo {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
   margin-bottom: 14px;
+}
+
+.\39 mm-pos-mgr-all-positions-modal .modal-logo > .\39 mm-pos-mgr-browser-toggle {
+  margin-left: auto;
+}
+
+.\39 mm-pos-mgr-all-positions-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .\39 mm-pos-mgr-modal-close-x {
@@ -2016,6 +2031,19 @@ span[title]:not([title=""]):hover {
   vertical-align: bottom;
 }
 
+/* Generic inline-ellipsize utility.  Wrap any inline text run
+ * (typically a token symbol) in a `<span class="9mm-pos-mgr-ellipsize">`
+ * to bound it to `--ellipsize-max` (default 11ch, override with an
+ * inline `style="--ellipsize-max:22ch"` or a scoped selector). */
+.\39 mm-pos-mgr-ellipsize {
+  display: inline-block;
+  max-width: var(--ellipsize-max, 11ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .\39 mm-pos-mgr-nft-bar .\39 mm-pos-mgr-nft-row:first-child {
   margin-top: -8px;
 }
@@ -3061,7 +3089,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784244848187");
+  background-image: url("background-cloud_top.png?v=1784277574493");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3074,7 +3102,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784244848187");
+  background-image: url("background-cloud_middle.png?v=1784277574493");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3084,7 +3112,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784244848187");
+  background-image: url("background-cloud_bottom.png?v=1784277574493");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
