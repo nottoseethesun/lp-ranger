@@ -2652,32 +2652,36 @@ bot loop directly:
    wallet. Buttons: **OK** (the standard modal close &mdash; user can
    edit settings and re-click Manage) and **Re-open Position**
    (proceed).
-3. **Range modal + atomic re-open.** "Re-open Position" opens the
-   existing `rebalanceRangeModal` (the same one the Rebalance button
-   uses for healthy positions); the modal derives "re-open context"
-   purely from position state (closed + not actively managed) rather
-   than from any flag passed in &mdash; impossible to get out of sync.
-   The Confirm button POSTs `/api/position/manage` (NOT
-   `/api/rebalance` &mdash; that route requires a running bot loop)
-   with `{ tokenId, contract, forceRebalance: true, customRangeWidthPct }`.
-   `liquidity` is deliberately omitted: `handleManage`'s
-   autoCompound-default branch keys off `body.liquidity === "0"` and
-   would persist `autoCompoundEnabled: false`, wrong for an
-   actively-managed re-open.
-   `handleManage` stamps `forceRebalance` + `customRangeWidthPct` on
-   the fresh `posBotState` BEFORE starting the bot loop (via
+3. **Atomic re-open.** The intro modal's **Re-open Position** button
+   POSTs directly to `/api/position/manage` (NOT `/api/rebalance`,
+   which requires a running bot loop) with
+   `{ tokenId, contract, forceRebalance: true }`. Range width is not
+   in the body: the bot reads `rebalanceRangeWidthPct` from the
+   position's saved config (Bot Settings > Range & Execution); if
+   nothing is saved, the rebalancer preserves the on-chain tick
+   spread via `preserveRange()`. `liquidity` is deliberately omitted:
+   `handleManage`'s autoCompound-default branch keys off
+   `body.liquidity === "0"` and would persist
+   `autoCompoundEnabled: false`, wrong for an actively-managed
+   re-open. `handleManage` stamps `forceRebalance` on the fresh
+   `posBotState` BEFORE starting the bot loop (via
    `_stampReopenFlags`), so the bot's first `pollCycle` sees the flag
    and `bot-cycle-drain.js`'s drain guard lets the rebalance pipeline
    run on the drained NFT in lieu of arming a new 30-min retire
    timer.
    If the position is ALREADY running (e.g. the user comes back to
    Manage after a prior re-open's swap aborted on slippage),
-   `handleManage`'s "already running &mdash; skipping" short-circuit
-   instead routes through `_stampReopenFlagsOnLive`, which stamps the
-   flag onto the live posBotState AND clears
+   `handleManage`'s "already running, skipping" short-circuit instead
+   routes through `_stampReopenFlagsOnLive`, which stamps the flag
+   onto the live posBotState AND clears
    `rebalancePaused` / `rebalanceFailedMidway` / `rebalanceError` so
    the next poll runs a fresh rebalance. Liquidity flips from 0 to
    positive; position is alive again.
+
+   The old three-step flow that opened a separate "Rebalance with
+   Range" modal to collect a per-rebalance width is gone; range width
+   is now a persistent Bot Settings field. See PR #146 for the
+   migration.
 
 When `!canReopen`, the dashboard shows a single-button modal listing
 the current per-token wallet balances + the dust threshold so the

@@ -50,9 +50,11 @@ export const PARAM_HELP = {
           "Every rebalance incurs gas and slippage that can crystallize " +
           "impermanent loss over time. A wider range rebalances less " +
           "often and captures fewer fees per dollar of liquidity; a " +
-          "narrower range concentrates fees but incurs more rebalance " +
-          "costs. This setting persists per-position (per pool) so you " +
-          "can tune each pair independently.",
+          "narrower range concentrates liquidity to earn fees at a " +
+          "higher rate (while the price is still within the range " +
+          "width) but incurs more rebalance costs. This setting " +
+          "persists per-position (per pool) so you can tune each pair " +
+          "independently.",
       },
     ],
   },
