@@ -7,7 +7,7 @@
 
 LP Ranger keeps your coins concentrated around the current price point in on-blockchain liquidity pools, maximizing your earnings from fees.
 
-LP Ranger is an on-chain, auto-rebalancing concentrated liquidity manager for crypto, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
+LP Ranger is an on-chain, self-hosted, auto-rebalancing concentrated liquidity manager for crypto, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
 (Uniswap v3 fork) on [PulseChain](https://pulsechain.com) (Ethereum w/o the Bug-eating). Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool. Provides a unified global view of all your positions' performance in a sortable table.
 
 With LP Ranger, you hold your own coins on your own wallet, at a wallet address on the blockchain: It is a completely self-custodial solution. You also run the software code (that makes up the LP Ranger application) yourself on your own machine: It is a completely self-hosted solution. Only basic computer skills, including just the very basic Terminal skills, are needed. The code is completely open-source and as such is free for you to completely inspect, use and modify ([License](#license)).
