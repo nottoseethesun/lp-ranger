@@ -33,18 +33,22 @@
 }
 
 /* Modal-logo layout: text block (h2 + subtitle) on the left, the
- * Show-Per-Day toggle right-aligned in the whitespace to the right
- * of the subtitle.  Text block stacks vertically inside its own
- * wrapper so the h2/p relationship is preserved; the toggle sits
- * centered against that block.  On very narrow viewports the toggle
- * wraps below the text block (flex-wrap). */
+ * Show-Per-Day toggle hugged against the right edge via
+ * `margin-left: auto` on the toggle itself.  Chose margin-auto over
+ * `justify-content: space-between` so the toggle stays right-aligned
+ * even after wrapping to a new line on narrow viewports (per-line
+ * `justify-content` would put a single-item wrapped line at the
+ * LEFT edge). */
 .\39 mm-pos-mgr-all-positions-modal .modal-logo {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+}
+
+.\39 mm-pos-mgr-all-positions-modal .modal-logo > .\39 mm-pos-mgr-browser-toggle {
+  margin-left: auto;
 }
 
 .\39 mm-pos-mgr-all-positions-header-text {
@@ -3072,7 +3076,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784275439820");
+  background-image: url("background-cloud_top.png?v=1784276057147");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3085,7 +3089,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784275439820");
+  background-image: url("background-cloud_middle.png?v=1784276057147");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3095,7 +3099,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784275439820");
+  background-image: url("background-cloud_bottom.png?v=1784276057147");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
