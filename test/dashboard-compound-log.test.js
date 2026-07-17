@@ -169,3 +169,127 @@ describe("formatCompoundEntry", () => {
     assert.ok(formatCompoundEntry(st, "", undefined));
   });
 });
+
+describe("formatCompoundHistoryEntry", () => {
+  let formatCompoundHistoryEntry;
+
+  before(async () => {
+    const mod = await import("../public/dashboard-compound-log.js");
+    formatCompoundHistoryEntry = mod.formatCompoundHistoryEntry;
+  });
+
+  it("returns null for missing event", () => {
+    assert.equal(formatCompoundHistoryEntry(null, "", 1), null);
+    assert.equal(formatCompoundHistoryEntry(undefined, "", 1), null);
+  });
+
+  it("labels historical trigger as Historical", () => {
+    const ev = {
+      timestamp: "2026-04-04T21:15:15.000Z",
+      usdValue: 2.29,
+      trigger: "historical",
+      txHash: "0xhist",
+      tokenId: 158220,
+    };
+    const entry = formatCompoundHistoryEntry(ev, "", null);
+    assert.equal(entry.title, "Compound");
+    assert.equal(entry.type, "fee");
+    assert.equal(entry.txHash, "0xhist");
+    assert.match(entry.detail, /^NFT #158220/);
+    assert.match(entry.detail, /\$2\.29 reinvested \(Historical\)/);
+    assert.equal(entry.when.toISOString(), "2026-04-04T21:15:15.000Z");
+  });
+
+  it("labels auto trigger as Auto and manual as Manual", () => {
+    const evAuto = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: 1,
+      trigger: "auto",
+      tokenId: 1,
+    };
+    const evManual = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: 1,
+      trigger: "manual",
+      tokenId: 1,
+    };
+    assert.match(
+      formatCompoundHistoryEntry(evAuto, "", null).detail,
+      /\(Auto\)/,
+    );
+    assert.match(
+      formatCompoundHistoryEntry(evManual, "", null).detail,
+      /\(Manual\)/,
+    );
+  });
+
+  it("defaults unknown trigger to Auto", () => {
+    const ev = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: 1,
+      trigger: "bogus",
+      tokenId: 1,
+    };
+    assert.match(formatCompoundHistoryEntry(ev, "", null).detail, /\(Auto\)/);
+  });
+
+  it("uses fallbackTokenId when the event lacks tokenId", () => {
+    const ev = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: 1,
+      trigger: "historical",
+    };
+    const entry = formatCompoundHistoryEntry(ev, "", 99);
+    assert.match(entry.detail, /^NFT #99/);
+  });
+
+  it("prefers ev.tokenId over fallbackTokenId", () => {
+    const ev = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: 1,
+      trigger: "historical",
+      tokenId: 158220,
+    };
+    const entry = formatCompoundHistoryEntry(ev, "", 99);
+    assert.match(entry.detail, /^NFT #158220/);
+  });
+
+  it("falls back to '?' when both event and fallback tokenIds are absent", () => {
+    const ev = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: 1,
+      trigger: "historical",
+    };
+    const entry = formatCompoundHistoryEntry(ev, "", null);
+    assert.match(entry.detail, /^NFT #\?/);
+  });
+
+  it("returns $0.00 for non-finite usdValue", () => {
+    const ev = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: NaN,
+      trigger: "historical",
+      tokenId: 1,
+    };
+    const entry = formatCompoundHistoryEntry(ev, "", null);
+    assert.match(entry.detail, /\$0\.00 reinvested/);
+  });
+
+  it("returns undefined when for missing timestamp/txHash", () => {
+    const ev = { usdValue: 1, trigger: "historical", tokenId: 1 };
+    const entry = formatCompoundHistoryEntry(ev, "", null);
+    assert.equal(entry.when, undefined);
+    assert.equal(entry.txHash, undefined);
+  });
+
+  it("appends the position-context suffix", () => {
+    const ev = {
+      timestamp: "2026-04-26T10:00:00.000Z",
+      usdValue: 1,
+      trigger: "historical",
+      tokenId: 1,
+    };
+    const entry = formatCompoundHistoryEntry(ev, "\nHEX/HEX", null);
+    assert.ok(entry.detail.endsWith("\nHEX/HEX"));
+  });
+});
