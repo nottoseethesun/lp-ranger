@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784275439820">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784275439820">
+<link rel="stylesheet" href="style.css?v=1784279334780">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784279334780">
 </head>
 <body>
 
@@ -1324,11 +1324,11 @@
 <template id="tplDailyPnlRow">
   <tr>
     <td data-tpl="date"></td>
-    <td data-tpl="fees"></td>
-    <td data-tpl="gas"></td>
-    <td class="9mm-pos-mgr-text-right" data-tpl="ilg"></td>
-    <td class="9mm-pos-mgr-text-right" data-tpl="profit"></td>
-    <td class="9mm-pos-mgr-text-right" data-tpl="net"></td>
+    <td data-tpl="fees" data-privacy="usd-raw"></td>
+    <td data-tpl="gas" data-privacy="usd-raw"></td>
+    <td class="9mm-pos-mgr-text-right" data-tpl="ilg" data-privacy="usd-raw"></td>
+    <td class="9mm-pos-mgr-text-right" data-tpl="profit" data-privacy="usd-raw"></td>
+    <td class="9mm-pos-mgr-text-right" data-tpl="net" data-privacy="usd-raw"></td>
     <td class="9mm-pos-mgr-text-right" data-tpl="residual" data-privacy="usd-raw"></td>
   </tr>
 </template>
@@ -1409,6 +1409,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784275439820"></script>
+<script src="dist/bundle.js?v=1784279334780"></script>
 </body>
 </html>
