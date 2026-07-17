@@ -3,7 +3,7 @@
  * @description Polls /api/status, updates live UI elements. Re-exports.
  */
 import { log } from "./dashboard-log.js";
-import { g, botConfig, act, ACT_ICONS } from "./dashboard-helpers.js";
+import { g, botConfig } from "./dashboard-helpers.js";
 import {
   posStore,
   updateManagedPositions,
@@ -68,6 +68,11 @@ import {
   resetEventLogTrackers,
 } from "./dashboard-data-events.js";
 import {
+  populateRebalanceHistoryOnce,
+  populateCompoundHistoryOnce,
+  resetHistoryBackfillFlags,
+} from "./dashboard-history-backfill.js";
+import {
   _createModal,
   _posLabel,
   _posContextHtml,
@@ -109,7 +114,6 @@ export {
   _titled,
 };
 let _lastStatus = null,
-  _historyPopulated = false,
   _configSynced = false;
 /*- Single source of truth for "is the dashboard's view of the active
  *  position fully synced?".  Set by `_updateSyncBadge` from the same
@@ -464,7 +468,7 @@ function _updateRebalanceButtons(d) {
 }
 
 export function resetHistoryFlag() {
-  _historyPopulated = false;
+  resetHistoryBackfillFlags();
   _configSynced = false;
   _globalSynced = false;
 }
@@ -479,25 +483,6 @@ export function resetPollingState() {
   if (dd) dd.textContent = "\u2014";
   const dl = g("initialDepositLabel");
   if (dl) dl.textContent = "Edit Initial Deposit";
-}
-function _populateHistoryOnce(data) {
-  if (_historyPopulated || !data.rebalanceEvents?.length) return;
-  if (data.running && data.rebalanceScanComplete !== true) return;
-  _historyPopulated = true;
-  const ctx = _posLabel() ? "\n" + _posLabel() : "";
-  const _s = [...data.rebalanceEvents].sort(
-    (a, b) => a.timestamp - b.timestamp,
-  );
-  for (const ev of _s) {
-    act(
-      ACT_ICONS.lasso,
-      "fee",
-      "Rebalance",
-      "NFT #" + ev.oldTokenId + " \u2192 #" + ev.newTokenId + ctx,
-      ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000),
-      ev.txHash,
-    );
-  }
 }
 function _resolveManagedTid(a, mp, states) {
   const tid = String(a.tokenId);
@@ -623,7 +608,9 @@ function updateDashboardFromStatus(data) {
   _updateSwapSourcesBadge(data);
   _updateRebalanceButtons(data);
   updateHistorySyncLabels(data);
-  _populateHistoryOnce(data);
+  const _pl = _posLabel();
+  populateRebalanceHistoryOnce(data, _pl);
+  populateCompoundHistoryOnce(data, _pl, posStore.getActive()?.tokenId);
   updateHistoryFromStatus(data);
   _updatePriceMarker(data);
   if (isViewingClosedPos()) return;
