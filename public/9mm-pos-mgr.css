@@ -2031,6 +2031,19 @@ span[title]:not([title=""]):hover {
   vertical-align: bottom;
 }
 
+/* Generic inline-ellipsize utility.  Wrap any inline text run
+ * (typically a token symbol) in a `<span class="9mm-pos-mgr-ellipsize">`
+ * to bound it to `--ellipsize-max` (default 11ch, override with an
+ * inline `style="--ellipsize-max:22ch"` or a scoped selector). */
+.\39 mm-pos-mgr-ellipsize {
+  display: inline-block;
+  max-width: var(--ellipsize-max, 11ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .\39 mm-pos-mgr-nft-bar .\39 mm-pos-mgr-nft-row:first-child {
   margin-top: -8px;
 }
@@ -3076,7 +3089,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784276057147");
+  background-image: url("background-cloud_top.png?v=1784277574493");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3089,7 +3102,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784276057147");
+  background-image: url("background-cloud_middle.png?v=1784277574493");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3099,7 +3112,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784276057147");
+  background-image: url("background-cloud_bottom.png?v=1784277574493");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
