@@ -63,10 +63,17 @@ function bin(name) {
   return path.join(ROOT, "node_modules", ".bin", name);
 }
 
-/** Run a command synchronously, return { status, stdout, stderr }. */
+/** Run a command synchronously, return { status, stdout, stderr }.
+ *  maxBuffer defaults to 128 MiB — the Node 22 default is 1 MiB and the
+ *  test suite's TAP + coverage output has grown past that (~1.05 MiB
+ *  on 2026-07-17), which manifested as a spurious SIGTERM + ENOBUFS on
+ *  Node 22 CI while Node 24 (with its larger default) still fit.  Node
+ *  the default is not "bleeding-edge" — it's just that Node 24 raised
+ *  the default and Node 22 didn't.  Callers can still override. */
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, {
     encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
     ...opts,
     stdio: opts.stdio || ["ignore", "pipe", "pipe"],
   });
