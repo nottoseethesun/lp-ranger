@@ -131,16 +131,25 @@ const _NORMALIZERS = {
   pricePauseExceptionPollWindowMultiple: (v) => _clampInt(v, 1, 10000),
   rebalanceOutOfRangeThresholdPercent: (v) => _clampInt(v, 1, 100),
   rebalanceTimeoutMin: (v) => _clampNonNegInt(v, 1440),
-  /*- Range width bounds match the "Range Width" input attrs in
-   *  public/index.html (min=0.1 max=100) and dashboard-throttle.js
-   *  `saveRangeWidth` rejection guard.  100 is the full-range sentinel
-   *  (`rangeMath.fullRange()` mints at MIN_TICK/MAX_TICK); anything
-   *  below is a normal concentrated widthPct.  Value is exposed via
-   *  /api/bot-config-defaults so the "Default" button in Bot Settings
-   *  can inject it into the input; the bot itself does NOT fall back
-   *  to this value at rebalance time (undefined config still means
-   *  preserveRange()). */
-  rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 100),
+  /*- Price Range Extension bounds.  Lower bound 0.1 matches the input
+   *  min in public/index.html and dashboard-throttle.js `saveRangeWidth`.
+   *  Upper bound 200 is the mathematical ceiling: `computeNewRange`
+   *  interprets `W` as ±W/2% around current price, so W=200 = ±100%
+   *  (lower bound would be zero — clamped to EPSILON by computeNewRange).
+   *  Anything above 200 rounds to the same degenerate range.  Full-range
+   *  behavior is now a separate boolean (`fullRangeRebalanceEnabled`,
+   *  driven by the Full-Range checkbox), no longer a sentinel at 100.
+   *  Value is exposed via /api/bot-config-defaults so the "Default"
+   *  button in Bot Settings can inject it into the input; the bot itself
+   *  does NOT fall back to this value at rebalance time (undefined
+   *  config still means preserveRange()). */
+  rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 200),
+  /*- Full-Range rebalance toggle: when true, every rebalance mints at
+   *  `MIN_TICK` / `MAX_TICK` regardless of the Price Range Extension
+   *  value.  Replaces the old `rebalanceRangeWidthPct === 100` full-
+   *  range sentinel with an explicit boolean tied to the dashboard's
+   *  Full-Range checkbox. */
+  fullRangeRebalanceEnabled: (v) => (typeof v === "boolean" ? v : false),
   slippagePct: (v) => _clampFloat(v, 0.1, 5),
   checkIntervalSec: (v) => _clampInt(v, 10, 3600),
   minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),

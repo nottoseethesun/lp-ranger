@@ -392,6 +392,28 @@ span[title]:not([title=""]):hover {
   row-gap: 9px;
 }
 
+.\39 mm-pos-mgr-fullrange-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 18px;
+  color: rgb(180 200 220);
+}
+
+.\39 mm-pos-mgr-fullrange-label input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.\39 mm-pos-mgr-range-pct-info {
+  cursor: help;
+  margin: 0 6px;
+}
+
 .\39 mm-pos-mgr-ml-sm {
   margin-left: 9px;
 }
@@ -3089,7 +3111,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784356867355");
+  background-image: url("background-cloud_top.png?v=1784412713133");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3102,7 +3124,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784356867355");
+  background-image: url("background-cloud_middle.png?v=1784412713133");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3112,7 +3134,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784356867355");
+  background-image: url("background-cloud_bottom.png?v=1784412713133");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

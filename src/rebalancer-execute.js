@@ -278,25 +278,34 @@ async function _adjustRangeAfterSwap(
   );
 }
 
-/** Compute new tick range: full-range sentinel, custom width, or preserve
- *  existing spread.  `crw === 100` is the full-range sentinel — see
- *  `rangeMath.fullRange()` JSDoc and the dashboard input's `max="100"`
- *  cap that guarantees no legitimate ±50% override can collide. */
-function _computeRange(ps, pos, crw, offset) {
+/** Compute new tick range.  Precedence:
+ *    1. `fullRange === true` → `rangeMath.fullRange()` (mints at
+ *       MIN_TICK / MAX_TICK).  Driven by the dashboard's "Full-Range"
+ *       checkbox — replaces the old `crw === 100` sentinel.
+ *    2. `crw` truthy → `rangeMath.computeNewRange(crw/2, ...)` — the
+ *       user-specified Price Range Extension (% of current price).
+ *    3. Otherwise → `rangeMath.preserveRange(...)` — keep the position's
+ *       existing tick spread and re-centre it on the current tick.  This
+ *       is what the app documents as "preserve the current Range Width."
+ */
+function _computeRange(ps, pos, crw, offset, fullRange) {
   /*- No literal fallback per feedback_one_literal_per_shipped_default:
    *  when `offset` is undefined here, range-math's own
    *  `_DEFAULTS.offsetToken0Pct` (sourced from bot-config-defaults.json)
    *  takes over inside the called helpers. */
   const opts = offset !== undefined ? { offsetToken0Pct: offset } : {};
-  const mode =
-    crw === 100 ? "full-range" : crw ? "custom-width" : "preserve-range";
+  const mode = fullRange
+    ? "full-range"
+    : crw
+      ? "custom-width"
+      : "preserve-range";
   log.info(
     "[offset-trace] _computeRange mode=%s offsetToken0Pct=%s tokenId=%s",
     mode,
     opts.offsetToken0Pct ?? "(shipped-default)",
     String(pos.tokenId),
   );
-  if (crw === 100) {
+  if (fullRange) {
     return rangeMath.fullRange(ps.tickSpacing, ps.decimals0, ps.decimals1);
   }
   return crw

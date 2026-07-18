@@ -24,7 +24,6 @@ import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
 } from "./dashboard-unmanaged.js";
-import { populateRangeWidthFromActive } from "./dashboard-data-range-width.js";
 import {
   suppressAutoCompoundSync,
   _createModal,
@@ -535,15 +534,12 @@ export async function _toggleManagePosition() {
     if (isManaged) {
       await _sendUnmanage(active);
     } else {
-      /*- Populate the Range Width input SYNCHRONOUSLY from the
-       *  active position's on-chain tick spread BEFORE the Manage
-       *  POST fires, so the Bot Settings field is filled the instant
-       *  the user commits to bringing the position under management
-       *  — no wait on the next 3-second poll, no ever-empty state.
-       *  No-op when the input is dirty, non-empty, or when ticks are
-       *  missing (in which case `syncRangeWidth`'s per-poll retry
-       *  covers it). */
-      populateRangeWidthFromActive();
+      /*- Manage: fire the POST.  The Price Range Extension input
+       *  stays empty until the user explicitly types a value (empty
+       *  means "preserve current Range Width" via preserveRange()).
+       *  The Full-Range checkbox is populated by `syncFullRangeCheckbox`
+       *  on the next poll, reflecting on-chain reality for full-range
+       *  positions even without a saved config flag. */
       await _sendManage(active);
     }
   } catch (err) {

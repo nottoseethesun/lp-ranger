@@ -385,9 +385,9 @@ describe("bot-config-v2", () => {
     });
 
     it("rebalanceRangeWidthPct is a POSITION_KEY (per-pool persistent override)", () => {
-      /*- Each pool has its own rebalance range width preference (tight
-       *  for stable pairs, wide for volatile), so this must live per
-       *  position — not global. */
+      /*- Each pool has its own Price Range Extension preference
+       *  (tight for stable pairs, wide for volatile), so this must
+       *  live per position — not global. */
       assert.ok(
         POSITION_KEYS.includes("rebalanceRangeWidthPct"),
         "rebalanceRangeWidthPct should live in POSITION_KEYS so each pool can set its own override",
@@ -395,6 +395,22 @@ describe("bot-config-v2", () => {
       assert.ok(
         !GLOBAL_KEYS.includes("rebalanceRangeWidthPct"),
         "rebalanceRangeWidthPct must not also be in GLOBAL_KEYS",
+      );
+    });
+
+    it("fullRangeRebalanceEnabled is a POSITION_KEY (per-pool Full-Range toggle)", () => {
+      /*- The "Full-Range" checkbox next to the Price Range Extension
+       *  input is per-position (each pool can independently opt into
+       *  full-range rebalances).  Replaces the old
+       *  `rebalanceRangeWidthPct === 100` sentinel with an explicit
+       *  boolean field. */
+      assert.ok(
+        POSITION_KEYS.includes("fullRangeRebalanceEnabled"),
+        "fullRangeRebalanceEnabled should live in POSITION_KEYS so each pool can set its own Full-Range flag",
+      );
+      assert.ok(
+        !GLOBAL_KEYS.includes("fullRangeRebalanceEnabled"),
+        "fullRangeRebalanceEnabled must not also be in GLOBAL_KEYS",
       );
     });
   });

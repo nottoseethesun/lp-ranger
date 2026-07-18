@@ -109,3 +109,66 @@ describe("buildRebalanceOpts — rebalanceRangeWidthPct source", () => {
     assert.equal(opts.position, deps.position);
   });
 });
+
+describe("buildRebalanceOpts — fullRangeRebalanceEnabled source", () => {
+  it("includes fullRangeRebalanceEnabled=true when config says true", () => {
+    /*- Full-Range checkbox is checked; the rebalancer will mint at
+     *  MIN_TICK/MAX_TICK via rangeMath.fullRange() regardless of any
+     *  saved Price Range Extension. */
+    const deps = makeDeps((k) =>
+      k === "fullRangeRebalanceEnabled" ? true : undefined,
+    );
+    const opts = buildRebalanceOpts(deps, {});
+    assert.strictEqual(opts.fullRangeRebalanceEnabled, true);
+  });
+
+  it("omits fullRangeRebalanceEnabled when config is false", () => {
+    /*- Explicit false → do not thread through opts at all (rebalancer
+     *  reads absence as false).  Keeps the log line and destructure
+     *  simple. */
+    const deps = makeDeps((k) =>
+      k === "fullRangeRebalanceEnabled" ? false : undefined,
+    );
+    const opts = buildRebalanceOpts(deps, {});
+    assert.ok(!("fullRangeRebalanceEnabled" in opts));
+  });
+
+  it("omits fullRangeRebalanceEnabled when config is undefined", () => {
+    /*- Unset (never touched by user) → same as false. */
+    const deps = makeDeps(() => undefined);
+    const opts = buildRebalanceOpts(deps, {});
+    assert.ok(!("fullRangeRebalanceEnabled" in opts));
+  });
+
+  it("only accepts strict boolean true (regression guard on truthy coercion)", () => {
+    /*- Non-boolean truthy values like "true" or 1 must NOT enable
+     *  full-range — safety measure so a stray string in bot-config.json
+     *  can't accidentally force full-range rebalances. */
+    const strings = ["true", "yes", "1"];
+    for (const s of strings) {
+      const deps = makeDeps((k) =>
+        k === "fullRangeRebalanceEnabled" ? s : undefined,
+      );
+      const opts = buildRebalanceOpts(deps, {});
+      assert.ok(
+        !("fullRangeRebalanceEnabled" in opts),
+        `truthy non-boolean "${s}" must not enable full-range`,
+      );
+    }
+  });
+
+  it("full-range and Price Range Extension can be set simultaneously (both flow through)", () => {
+    /*- The rebalancer's precedence logic (fullRange wins over crw)
+     *  lives in _computeRange, not here.  buildRebalanceOpts's job is
+     *  just to plumb both through — leave the arbitration to the
+     *  rebalancer. */
+    const deps = makeDeps((k) => {
+      if (k === "fullRangeRebalanceEnabled") return true;
+      if (k === "rebalanceRangeWidthPct") return 25;
+      return undefined;
+    });
+    const opts = buildRebalanceOpts(deps, {});
+    assert.strictEqual(opts.fullRangeRebalanceEnabled, true);
+    assert.strictEqual(opts.customRangeWidthPct, 25);
+  });
+});

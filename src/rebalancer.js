@@ -230,6 +230,7 @@ async function executeRebalance(signer, ethersLib, opts) {
     swapRouterAddress,
     slippagePct,
     customRangeWidthPct,
+    fullRangeRebalanceEnabled,
     offsetToken0Pct,
     approvalMultiple,
     gasFeePct,
@@ -282,6 +283,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       position,
       customRangeWidthPct,
       offset,
+      fullRangeRebalanceEnabled === true,
     );
     if (offset !== 50) {
       log.info(

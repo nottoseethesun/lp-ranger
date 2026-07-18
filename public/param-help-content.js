@@ -11,38 +11,83 @@ export const PARAM_HELP = {
   // ── Range & Execution ───────────────────────────────────────────────────
 
   inRangeWidth: {
-    title: "Range Width (%)",
-    subtitle: "Per-position rebalance range width override",
+    title: "Price Range Extension (%)",
+    subtitle: "Per-position rebalance price extension override",
     sections: [
       {
         heading: "What it does",
         body:
-          "Sets the total width of the LP position range as a percentage " +
-          "of the current price, applied to every rebalance (manual OR " +
-          "automatic) for this position. Combined with <strong>Position " +
-          "Offset</strong> to determine the lower and upper price bounds. " +
-          "At the default 50/50 offset, a value of 10 means the position " +
-          "spans 5% below and 5% above the current price at each rebalance.",
+          "Sets how far the LP position's price range extends from the " +
+          "current price at every rebalance (manual OR automatic). " +
+          "Together with <strong>Position Offset</strong> this determines " +
+          "the lower and upper price bounds. At the default 50/50 offset, " +
+          "a value of <strong>50</strong> means the position spans 25% " +
+          "below current price and 25% above current price at each " +
+          "rebalance (so 0.75&times; to 1.25&times; current price). A " +
+          "value of <strong>10</strong> spans &plusmn;5% around current " +
+          "price (0.95&times; to 1.05&times;).",
       },
       {
-        heading: "How the default works",
+        heading:
+          "&ldquo;Range Width&rdquo; vs &ldquo;Price Range Extension&rdquo;",
         body:
-          "When empty (no override saved), the bot preserves the current " +
-          "on-chain tick spread on rebalance &mdash; the position stays the " +
-          "same width it was when originally minted. The input in this row " +
-          "pre-populates with that current-tick-spread equivalent so you " +
-          "can see what width the bot would use if you leave it alone. " +
-          "Click <strong>No Override</strong> to clear a previously-saved " +
-          "override and return to that adaptive behavior.",
+          "These are two different concepts. <strong>Price Range " +
+          "Extension</strong> (this field) measures how far the position " +
+          "reaches from current price. <strong>Range Width</strong> is a " +
+          "related-but-different LP concept &mdash; the percentage of the " +
+          "pool&rsquo;s populated liquidity range that a position covers. " +
+          "Range Width is on the road map as a future alternative to " +
+          "Price Range Extension; today only Price Range Extension is " +
+          "implemented. Other LP creators (e.g. 9mm&rsquo;s own UI) may " +
+          "label their width slider in yet a third way, so a &ldquo;50% " +
+          "position&rdquo; you set up on 9mm may not read as &ldquo;50" +
+          "&rdquo; here.",
+      },
+      {
+        heading: "When empty (unset)",
+        body:
+          "Leaving this field empty tells the bot to <strong>preserve the " +
+          "existing Range Width</strong> at every rebalance &mdash; the " +
+          "position&rsquo;s on-chain tick spread is carried across the " +
+          "rebalance and re-centered on the current price, subject only " +
+          "to standard liquidity-pool tick rounding (which may drift the " +
+          "spread by up to one tick-spacing per rebalance). The input " +
+          "stays empty until you type an explicit value.",
+      },
+      {
+        heading: "Full-Range checkbox",
+        body:
+          "Check the <strong>Full-Range</strong> box to the right of this " +
+          "field to force every rebalance to mint a full-range position " +
+          "(from the pool&rsquo;s MIN_TICK to MAX_TICK &mdash; effectively " +
+          "&ldquo;price zero to infinity&rdquo;). When Full-Range is " +
+          "checked, the Price Range Extension value is ignored and this " +
+          "field is disabled. If the currently-active position is already " +
+          "full-range on-chain, this box shows as checked automatically " +
+          "(reflecting on-chain reality) even without an explicit save.",
+      },
+      {
+        heading: "Buttons on the edit row",
+        body:
+          "<strong>Default</strong>: fills the input with the shipped " +
+          "default value from bot-config-defaults.json &mdash; you still " +
+          "have to click <strong>Save</strong> to persist it.<br>" +
+          "<strong>No Override</strong>: clears any saved override " +
+          "&mdash; the input goes empty and the config field is set to " +
+          "null. Rebalances then use the &ldquo;preserve existing Range " +
+          "Width&rdquo; behavior described above.<br>" +
+          "<strong>Save</strong>: writes the value in the input to the " +
+          "per-position config; applies on the next rebalance.",
       },
       {
         heading: "Choosing a value",
         body:
-          "<strong>Stable pairs</strong>: 1&ndash;5%. Tighter ranges " +
-          "concentrate liquidity and earn more fees when price is stable.<br>" +
-          "<strong>Volatile pairs</strong>: 10&ndash;30% or more. Wider " +
-          "ranges reduce how often rebalancing is triggered by normal " +
-          "price swings.",
+          "<strong>Stable pairs</strong>: 2&ndash;10 (that is, &plusmn;1&ndash;" +
+          "5% around current). Tighter ranges concentrate liquidity and " +
+          "earn more fees when price is stable.<br>" +
+          "<strong>Volatile pairs</strong>: 20&ndash;60 (&plusmn;10&ndash;30% " +
+          "around current) or more. Wider ranges reduce how often " +
+          "rebalancing is triggered by normal price swings.",
       },
       {
         heading: "IL trade-off",
@@ -51,10 +96,54 @@ export const PARAM_HELP = {
           "impermanent loss over time. A wider range rebalances less " +
           "often and captures fewer fees per dollar of liquidity; a " +
           "narrower range concentrates liquidity to earn fees at a " +
-          "higher rate (while the price is still within the range " +
-          "width) but incurs more rebalance costs. This setting " +
-          "persists per-position (per pool) so you can tune each pair " +
-          "independently.",
+          "higher rate (while price is still within range) but incurs " +
+          "more rebalance costs. This setting persists per-position " +
+          "(per pool) so you can tune each pair independently.",
+      },
+    ],
+  },
+
+  rangePctLeeway: {
+    title: "Price Range Extension (visual)",
+    subtitle:
+      "The &ldquo;% below / above price&rdquo; numbers on the range bar",
+    sections: [
+      {
+        heading: "What these show",
+        body:
+          "The two numbers just under the range bar report how far the " +
+          "current pool price sits inside your position, expressed as a " +
+          "percentage of current price:<br>" +
+          "<strong>&minus;X% below price</strong>: the lower price bound " +
+          "is X% below the current price. If price drops that far, the " +
+          "position goes out of range on the bottom.<br>" +
+          "<strong>+Y% above price</strong>: the upper price bound is Y% " +
+          "above the current price. If price rises that far, the position " +
+          "goes out of range on the top.",
+      },
+      {
+        heading: "Why they&rsquo;re usually asymmetric",
+        body:
+          "Uniswap v3 stores position bounds in <em>ticks</em>, where each " +
+          "tick is a fixed 0.01% multiplicative step in price. A position " +
+          "that is tick-symmetric (equal tick distance above and below " +
+          "current) is <em>not</em> price-symmetric, because a fixed number " +
+          "of upward tick steps produces a bigger percentage move than the " +
+          "same number of downward steps. So even a &ldquo;centered&rdquo; " +
+          "position typically shows &minus;X% below and +Y% above with Y &gt; X.",
+      },
+      {
+        heading:
+          "Relation to the Bot Settings &ldquo;Price Range Extension&rdquo; input",
+        body:
+          "This is the same concept as the <strong>Price Range Extension" +
+          "</strong> input in Bot Settings, just presented as two numbers " +
+          "(below-and-above) instead of a single total. Roughly, the sum " +
+          "of the two numbers here approximates the Price Range Extension " +
+          "% for a centered position &mdash; but they&rsquo;re computed " +
+          "from the actual on-chain ticks against the current price, so " +
+          "they reflect reality (including tick-rounding drift) rather " +
+          "than whatever you last saved.",
       },
     ],
   },

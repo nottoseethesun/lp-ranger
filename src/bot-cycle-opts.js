@@ -38,6 +38,8 @@ function buildRebalanceOpts(deps, _state) {
    *  correctly omits the key for `undefined`, `null`, or `0` — all of
    *  which mean "no override". */
   const crw = deps._getConfig?.("rebalanceRangeWidthPct");
+  const fullRangeRebalanceEnabled =
+    deps._getConfig?.("fullRangeRebalanceEnabled") === true;
   return {
     position,
     factoryAddress: config.FACTORY,
@@ -47,6 +49,7 @@ function buildRebalanceOpts(deps, _state) {
     symbol0: getTokenSymbol(position.token0),
     symbol1: getTokenSymbol(position.token1),
     ...(crw ? { customRangeWidthPct: crw } : {}),
+    ...(fullRangeRebalanceEnabled ? { fullRangeRebalanceEnabled: true } : {}),
     offsetToken0Pct:
       deps._getConfig?.("offsetToken0Pct") ?? _DEFAULTS.offsetToken0Pct,
     approvalMultiple:

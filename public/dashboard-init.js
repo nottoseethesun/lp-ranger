@@ -285,12 +285,13 @@ function _afterDisclaimer() {
     gasFeePct: "inGasFeePct",
   };
   /*- Store-only defaults: shipped values that must be reachable via
-   *  `getInputDefault(key)` (e.g. the "Default" button on the Range
-   *  Width row reads its value from here) but must NOT auto-populate
-   *  their input on init.  For Range Width, the input is populated
-   *  per-poll by `syncRangeWidth` from saved-override or preserveRange
-   *  formula; injecting the shipped default here would flash 15 for
-   *  ~50 ms until the first poll's syncRangeWidth overwrote it.  */
+   *  `getInputDefault(key)` (e.g. the "Default" button on the Price
+   *  Range Extension row reads its value from here) but must NOT
+   *  auto-populate their input on init.  For Price Range Extension,
+   *  the input either shows a saved-override or stays empty (empty
+   *  ⇒ preserve current Range Width on rebalance).  Auto-injecting
+   *  the shipped default at init would look like a saved value the
+   *  user never made. */
   const _STORE_ONLY_DEFAULT_KEYS = ["rebalanceRangeWidthPct"];
   fetch("/api/bot-config-defaults")
     .then((r) => (r.ok ? r.json() : null))

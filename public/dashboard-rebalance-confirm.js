@@ -93,6 +93,14 @@ function _computePreservedWidthPct(tickLower, tickUpper, offset) {
  *  configurations.  Returns an em-dash when neither source yields a
  *  finite value. */
 function _rangeWidthPreviewText(status, active) {
+  /*- Full-Range checkbox wins over any saved Price Range Extension —
+   *  the rebalance will mint at MIN_TICK / MAX_TICK via
+   *  rangeMath.fullRange().  Show "Full-Range" rather than a numeric
+   *  percentage so the user isn't surprised by an astronomically wide
+   *  mint. */
+  if (status?.fullRangeRebalanceEnabled === true) {
+    return "Full-Range";
+  }
   const saved = status?.rebalanceRangeWidthPct;
   if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
     return String(saved) + "%";
@@ -130,7 +138,7 @@ export function openRebalanceConfirm() {
     if (p) {
       const width = _rangeWidthPreviewText(getLastStatus(), active);
       p.appendChild(document.createElement("br"));
-      p.appendChild(document.createTextNode("Range Width: " + width));
+      p.appendChild(document.createTextNode("Price Range Extension: " + width));
     }
   }
   modal.classList.remove("hidden");
