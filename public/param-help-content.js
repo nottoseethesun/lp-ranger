@@ -279,6 +279,89 @@ export const PARAM_HELP = {
     ],
   },
 
+  inSlipToken0: {
+    title: "Slippage Tolerance, Token 0 (%)",
+    subtitle: "Per-position slippage for the Token 0 side of swaps",
+    sections: [
+      {
+        heading: "What it does",
+        body:
+          "Sets the slippage tolerance used for swaps whose " +
+          "DESTINATION is Token 0 (i.e., swaps that CONVERT Token 1 " +
+          "into Token 0). This is one of the two slippage settings for " +
+          "the position; the other is Slippage Tolerance, Token 1. " +
+          "Each side of the pair carries its own value so that " +
+          "asymmetric-liquidity pairs work correctly. Example: on a " +
+          "$texan/$wPls pair, $texan is thin and needs a high slippage " +
+          "to complete swaps, but that same high slippage on the $wPls " +
+          "side would open the $wPls swap up to MEV front-running for " +
+          "no gain. Set each side independently.",
+      },
+      {
+        heading: "The destination-token rule",
+        body:
+          "Slippage is applied by the destination token of the swap, " +
+          "not the source. A swap that CONVERTS Token 1 INTO Token 0 " +
+          "uses this field. A swap that CONVERTS Token 0 INTO Token 1 " +
+          "uses the Slippage (Token 1) field instead. The destination " +
+          "side is where MEV can extract value from the swap, so that " +
+          "is where the slippage budget lives.",
+      },
+      {
+        heading: "Default value",
+        body:
+          "The input starts populated with the shipped default (0.75%). " +
+          "That is the value the bot uses if you never change it. " +
+          "Change the input and click Save to persist a different value " +
+          "for this position.",
+      },
+      {
+        heading: "Allowed range and warnings",
+        body:
+          "The full allowed range is <strong>0.1% to 20%</strong>. " +
+          "Above 5% the app shows a confirm dialog on Save. Above 10% " +
+          "the app shows a stricter dialog that requires you to type " +
+          '"Confirm" to proceed. Values outside 0.1% to 20% are ' +
+          "rejected outright. On asymmetric pairs, the deep side " +
+          "typically wants 0.1% to 1% and the thin side may need " +
+          "5% or more.",
+      },
+    ],
+  },
+
+  inSlipToken1: {
+    title: "Slippage Tolerance, Token 1 (%)",
+    subtitle: "Per-position slippage for the Token 1 side of swaps",
+    sections: [
+      {
+        heading: "What it does",
+        body:
+          "Sets the slippage tolerance used for swaps whose " +
+          "DESTINATION is Token 1 (i.e., swaps that CONVERT Token 0 " +
+          "into Token 1). This is one of the two slippage settings for " +
+          "the position; the other is Slippage Tolerance, Token 0. See " +
+          "that tooltip for the full explanation and the $texan/$wPls " +
+          "example -- the two fields are peers.",
+      },
+      {
+        heading: "The destination-token rule",
+        body:
+          "Slippage is applied by the destination token of the swap, " +
+          "not the source. A swap that CONVERTS Token 0 INTO Token 1 " +
+          "uses this field. A swap that CONVERTS Token 1 INTO Token 0 " +
+          "uses the Slippage (Token 0) field instead.",
+      },
+      {
+        heading: "Default value",
+        body:
+          "The input starts populated with the shipped default (0.75%). " +
+          "That is the value the bot uses if you never change it. " +
+          "Change the input and click Save to persist a different value " +
+          "for this position.",
+      },
+    ],
+  },
+
   inInterval: {
     title: "Check Interval (seconds)",
     sections: [

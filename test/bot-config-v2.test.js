@@ -398,6 +398,28 @@ describe("bot-config-v2", () => {
       );
     });
 
+    it("slippagePctToken0 and slippagePctToken1 are POSITION_KEYs (per-pool per-token overrides)", () => {
+      /*- Per-token slippage overrides ship as per-position fields so
+       *  each pool can independently opt into the asymmetric-liquidity
+       *  behavior for its own pair. */
+      assert.ok(
+        POSITION_KEYS.includes("slippagePctToken0"),
+        "slippagePctToken0 should live in POSITION_KEYS",
+      );
+      assert.ok(
+        POSITION_KEYS.includes("slippagePctToken1"),
+        "slippagePctToken1 should live in POSITION_KEYS",
+      );
+      assert.ok(
+        !GLOBAL_KEYS.includes("slippagePctToken0"),
+        "slippagePctToken0 must not also be in GLOBAL_KEYS",
+      );
+      assert.ok(
+        !GLOBAL_KEYS.includes("slippagePctToken1"),
+        "slippagePctToken1 must not also be in GLOBAL_KEYS",
+      );
+    });
+
     it("fullRangeRebalanceEnabled is a POSITION_KEY (per-pool Full-Range toggle)", () => {
       /*- The "Full-Range" checkbox next to the Price Range Extension
        *  input is per-position (each pool can independently opt into

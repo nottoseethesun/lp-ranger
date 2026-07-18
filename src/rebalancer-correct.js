@@ -35,6 +35,7 @@ const {
   _MIN_SWAP_THRESHOLD,
 } = require("./rebalancer-pools");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
+const { resolveSlippagePct } = require("./slippage-resolver");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { getDustThresholdUsd } = require("./dust");
 const {
@@ -263,11 +264,13 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
     position,
     signerAddress,
     swapRouterAddress,
-    slippagePct,
     symbol0,
     symbol1,
     approvalMultiple,
   } = ctx;
+  /*- Destination-token slippage (per-token opt-in) or legacy single
+   *  slippagePct — see src/slippage-resolver.js. */
+  const slippagePct = resolveSlippagePct(ctx, is0to1);
   log.info(
     "[rebalance] Step 6d iter %d: firing corrective swap: %s %s -> %s",
     i + 1,

@@ -604,6 +604,9 @@ export function _applyLocalPositionData(pos) {
   // Offset row labels
   _setText("offsetT0Name", t0Sym);
   _setText("offsetT1Name", t1Sym);
+  // Per-token Slippage row labels
+  _setText("slipT0Name", t0Sym);
+  _setText("slipT1Name", t1Sym);
   const _t = (id, t) => {
     const e = g(id);
     if (e) e.title = t;

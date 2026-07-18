@@ -60,7 +60,6 @@ import {
   saveOorTimeout,
   saveMinInterval,
   saveMaxReb,
-  saveSlippage,
   saveCheckInterval,
   saveGasStrategy,
   saveOffset,
@@ -69,6 +68,7 @@ import {
   updateOffsetComplement,
 } from "./dashboard-throttle.js";
 import { wirePriceRangeExtensionEvents } from "./dashboard-price-range-extension.js";
+import { wirePerTokenSlippageEvents } from "./dashboard-per-token-slippage.js";
 import {
   openRebalanceConfirm,
   closeRebalanceConfirm,
@@ -512,11 +512,11 @@ export function bindAllEvents() {
   _click("saveFactoryBtn", () => _saveGlobalConfig("inFactory", "factory"));
   _click("saveMinIntervalBtn", saveMinInterval);
   _click("saveMaxRebBtn", saveMaxReb);
-  _click("saveSlipBtn", saveSlippage);
   _click("saveIntervalBtn", saveCheckInterval);
   _click("saveOffsetBtn", saveOffset);
   _click("resetOffsetBtn", resetOffset);
   wirePriceRangeExtensionEvents(_click, _input, _change);
+  wirePerTokenSlippageEvents(_click, _input);
   _click("saveApprovalMultipleBtn", saveApprovalMultiple);
 
   /* ── Offset linked inputs ── */
@@ -541,7 +541,8 @@ export function bindAllEvents() {
   for (const id of [
     "inOorThreshold",
     "inOorTimeout",
-    "inSlip",
+    "inSlipToken0",
+    "inSlipToken1",
     "inInterval",
     "inMinInterval",
     "inMaxReb",

@@ -23,12 +23,7 @@ import {
   fetchWithCsrf,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import {
-  _createModal,
-  _posLabel,
-  _posContextHtml,
-  markInputDirty,
-} from "./dashboard-data.js";
+import { _posLabel, markInputDirty } from "./dashboard-data.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
 
@@ -466,41 +461,15 @@ export function saveMaxReb() {
     el.textContent = cur + " / " + n;
   }
 }
-/*- Slippage input validator.  Returns the parsed value when valid;
- *  returns undefined when invalid so the caller can skip the save.
- *  No literal fallback per feedback_one_literal_per_shipped_default. */
-function _validSlip(v) {
-  const n = parseFloat(v);
-  if (!Number.isFinite(n) || n < 0 || n > 99) return undefined;
-  return n;
-}
-export function saveSlippage() {
-  const val = _validSlip(g("inSlip")?.value);
-  /*- Invalid input → skip save. */
-  if (val === undefined) return;
-  const el = g("inSlip");
-  if (el) el.value = val;
-  if (val === 0)
-    _createModal(
-      null,
-      "9mm-pos-mgr-modal-caution",
-      "Slippage Set to 0%",
-      _posContextHtml() +
-        "<p>Trades will fail with zero slippage unless pool conditions are perfectly stable.</p>" +
-        '<p class="9mm-pos-mgr-text-muted">Set a small value like 0.3\u20131% for normal operation.</p>',
-    );
-  else if (val > 20)
-    _createModal(
-      null,
-      "9mm-pos-mgr-modal-caution",
-      "Slippage Very High",
-      _posContextHtml() +
-        "<p>Slippage of " +
-        val +
-        "% may result in significant loss of funds.</p>",
-    );
-  _saveSingleConfig("inSlip", "slippagePct", () => val);
-}
+/*- `saveSlippage` (and its `_validSlip` validator) was removed when
+ *  the single "Slippage Tolerance" input was replaced by two
+ *  per-token inputs (slippagePctToken0 / slippagePctToken1) driven
+ *  by dashboard-per-token-slippage.js.  The per-position
+ *  `slippagePct` field remains valid in bot-config.json so existing
+ *  saved values load without error; the swap layer's
+ *  `resolveSlippagePct` uses per-token values (or the shipped
+ *  default when unset) — the legacy value is dormant. */
+
 /** Save check interval. */
 export function saveCheckInterval() {
   const n = parseInt(g("inInterval")?.value, 10);

@@ -24,6 +24,7 @@
       <li><a href="#fund-tracking">Fund Tracking</a></li>
       <li><a href="#residual-cleanup">Automatic Residual Cleanup</a></li>
       <li><a href="#range-width">Price Range Extension, Range Width, and Position Offset</a></li>
+      <li><a href="#per-token-slippage">Per-Token Slippage</a></li>
       <li><a href="#volatility-doubling">Volatility Doubling</a></li>
       <li><a href="#gas-cost-protection">Gas Cost Protection</a></li>
       <li><a href="#closed-positions">Closed Positions</a></li>
@@ -146,6 +147,16 @@
   <p>The Position Offset controls how the Price Range Extension is split above versus below current price. At the default 50/50 (No Offset), the range is centered on current. At 40/60 or other skewed values, more of the range sits on one side, giving you a more asymmetric token composition on rebalance.</p>
 
   <p>For the full trade-off explanation (fee capture vs. impermanent loss, out-of-range behaviour, etc.), click the &ldquo;i&rdquo; info icon next to each field in the app.</p>
+
+  <h2 id="per-token-slippage">Slippage Tolerance (per-token)</h2>
+  <p>Slippage tolerance is set independently for each token in the pair. This handles <strong>asymmetric-liquidity pairs</strong> cleanly: one side may be thinly traded and need a high slippage to complete swaps, while the other side is deep and needs a low value to avoid opening its swaps up to MEV front-running. A single slippage value could not do both jobs at once; per-token slippage does.</p>
+  <p>Both inputs live in <strong>Bot Configuration &rarr; Range &amp; Execution</strong>, labelled <em>Slippage (&lt;token 0 name&gt;)</em> and <em>Slippage (&lt;token 1 name&gt;)</em>. Token names update automatically to match the active pool.</p>
+  <h3>Default value</h3>
+  <p>Both inputs start populated with the shipped default (<strong>0.75%</strong>). That is the value the bot uses on that side until you change it. Type a different value in either input and click <strong>Save</strong> to persist it for this position. On upgrade from a version that only had one Slippage Tolerance input, the previously saved value is not migrated &mdash; both per-token inputs start at the shipped default. You can re-tune them as needed.</p>
+  <h3>Which side applies to which swap</h3>
+  <p>The bot uses the <strong>destination-token</strong> rule: a swap that CONVERTS Token 0 INTO Token 1 uses the <em>Slippage (Token 1)</em> value, and a swap that CONVERTS Token 1 INTO Token 0 uses the <em>Slippage (Token 0)</em> value. The destination side is where MEV can extract value from the swap, so that&rsquo;s where the slippage budget lives.</p>
+  <h3>Allowed range and warnings</h3>
+  <p>The full allowed range per side is <strong>0.1% to 20%</strong>. When you Save a value above 5%, the app opens a confirm dialog before writing it. When you Save a value at 10% or higher, the app opens a stricter dialog that requires you to type <em>Confirm</em> (case-sensitive) into a text box before it proceeds. Values outside 0.1% to 20% are rejected and the app shows a warning stating the valid range. On asymmetric pairs, the deep side typically wants 0.1% to 1% and the thin side may need 5% or more.</p>
 
   <h2 id="volatility-doubling">Volatility Doubling</h2>
   <p>If <strong>3 rebalances</strong> occur within <strong>4&times; the minimum interval</strong> (e.g. 40 minutes when the minimum is 10 min), the bot enters <em>doubling mode</em>. Each subsequent rebalance must wait twice as long as the previous one: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This prevents rapid-fire rebalancing during high volatility. Doubling mode clears automatically if no rebalance is needed for 4&times; the current wait, or at the daily midnight UTC reset.</p>
