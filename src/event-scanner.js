@@ -48,6 +48,7 @@ const _CHUNK_DELAY_MS = 250;
 
 const { PM_ABI } = require("./pm-abi");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
+const { resolveFirstMintWithForeign } = require("./event-scanner-mint-lookup");
 
 /**
  * @typedef {object} RebalanceEvent
@@ -335,6 +336,29 @@ async function loadCache(cache, cacheKey, fromBlock) {
   if (!cache) return { cachedEvents: [], scanFrom: fromBlock };
   const cached = await cache.get(cacheKey);
   if (cached && cached.events && cached.lastBlock) {
+    /*- Schema migration: caches written before mintSchemaVersion 2
+     *  (introduced with the "oldest-NFT true-mint" enhancement on the
+     *  `enhanced-lifetime-days-detection` branch) can carry a
+     *  `firstMintTimestamp` that reflects only the earliest DIRECT mint
+     *  and misses any foreign-minted NFT that arrived by Transfer from
+     *  another wallet.  A pool whose oldest resident NFT was minted
+     *  elsewhere would end up with `poolFirstMintDate` set to the
+     *  latest rebalance's arrival, and Lifetime Days would collapse
+     *  (e.g. showing "1.23 days" for a year-old position — reported by
+     *  user 2026-07-18).  Rather than trust the stale first-mint
+     *  fields on an old-schema cache, drop the whole entry and force a
+     *  full re-scan from `fromBlock`.  New caches are re-stamped with
+     *  `mintSchemaVersion: 2` on write so subsequent runs remain
+     *  incremental. */
+    if (cached.mintSchemaVersion !== 2) {
+      log.info(
+        "[event-scanner] mintSchemaVersion migration: dropping old-schema cache (%s events, firstMintTs=%s) — forcing full re-scan from block %d",
+        cached.events?.length ?? 0,
+        cached.firstMintTimestamp ?? "null",
+        fromBlock,
+      );
+      return { cachedEvents: [], scanFrom: fromBlock };
+    }
     const evts = cached.events;
     if (cached.firstMintTimestamp)
       evts.firstMintTimestamp = cached.firstMintTimestamp;
@@ -491,7 +515,8 @@ async function _processRawEvents(
   );
   let transfers = buildTransferDescriptors(unique, walletAddress, tsMap);
 
-  const { poolToken0, poolToken1, poolFee } = poolFilter;
+  const { poolToken0, poolToken1, poolFee, factoryAddress, poolAddress } =
+    poolFilter;
   if (poolToken0 && poolToken1 && poolFee !== null && poolFee !== undefined) {
     transfers = await _filterByPool(
       provider,
@@ -527,41 +552,18 @@ async function _processRawEvents(
     );
   }
   const merged = mergeAndIndex(cachedEvents, paired);
-  const { firstMintTimestamp, firstMintBlockNumber } = _resolveFirstMint(
-    cachedEvents,
-    newMints,
-  );
+  const { firstMintTimestamp, firstMintBlockNumber } =
+    await resolveFirstMintWithForeign(
+      provider,
+      ethersLib,
+      positionManagerAddress,
+      cachedEvents,
+      transfers,
+      { factoryAddress, poolAddress },
+    );
   if (firstMintTimestamp) merged.firstMintTimestamp = firstMintTimestamp;
   if (firstMintBlockNumber) merged.firstMintBlockNumber = firstMintBlockNumber;
   return { merged, firstMintTimestamp, firstMintBlockNumber };
-}
-
-/**
- * Pick the earliest-ever first-mint across this scan and any cached value.
- * Without this, each incremental scan that sees any new mint would overwrite
- * the cached value with a later one and "first mint" would creep toward the
- * chain tip. The block number travels with whichever timestamp wins so
- * initial-residual lookups have block-level granularity.
- */
-function _resolveFirstMint(cachedEvents, newMints) {
-  const firstMint = newMints.sort((a, b) => a.timestamp - b.timestamp)[0];
-  const cachedFirstTs = cachedEvents.firstMintTimestamp || null;
-  const cachedFirstBlock = cachedEvents.firstMintBlockNumber || null;
-  const newFirstTs = firstMint?.timestamp || null;
-  const newFirstBlock = firstMint?.blockNumber || null;
-  if (newFirstTs && (!cachedFirstTs || newFirstTs < cachedFirstTs)) {
-    return {
-      firstMintTimestamp: newFirstTs,
-      firstMintBlockNumber: newFirstBlock,
-    };
-  }
-  if (cachedFirstTs) {
-    return {
-      firstMintTimestamp: cachedFirstTs,
-      firstMintBlockNumber: cachedFirstBlock,
-    };
-  }
-  return { firstMintTimestamp: null, firstMintBlockNumber: null };
 }
 
 /** Build a human-readable label for scan progress logs. */
@@ -614,6 +616,7 @@ async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
     lastBlock: currentBlock,
     firstMintTimestamp: cachedEvents.firstMintTimestamp || null,
     firstMintBlockNumber: cachedEvents.firstMintBlockNumber || null,
+    mintSchemaVersion: 2,
   });
 }
 
@@ -698,7 +701,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
       walletAddress,
       positionManagerAddress,
       cachedEvents,
-      { poolToken0, poolToken1, poolFee },
+      { poolToken0, poolToken1, poolFee, factoryAddress, poolAddress },
     );
 
   if (cache)
@@ -707,6 +710,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
       lastBlock: currentBlock,
       firstMintTimestamp,
       firstMintBlockNumber,
+      mintSchemaVersion: 2,
     });
   return merged;
 }

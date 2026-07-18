@@ -30,7 +30,10 @@
       <li><a href="#telegram-notifications">Telegram Notifications</a></li>
       <li><a href="#troubleshooting">Troubleshooting</a></li>
       <li><a href="#details">Details</a>
-        <ul><li><a href="#edit-deposit">Edit Initial / Lifetime Deposit</a></li></ul>
+        <ul>
+          <li><a href="#edit-deposit">Edit Initial / Lifetime Deposit</a></li>
+          <li><a href="#edit-lifetime-days">Edit Total Lifetime Days</a></li>
+        </ul>
       </li>
       <li><a href="#checking-for-updates">Checking for Updates</a></li>
       <li><a href="#supported-pool-managers">Supported Liquidity Pool Managers</a></li>
@@ -192,6 +195,17 @@
     <li>To revert to auto-detection, clear the input field (leave it empty) and click Save. This removes your manual override, and the app will use the auto-detected value on the next refresh.</li>
   </ul>
   <p>A small info icon next to the deposit value tells you which source is being used: &ldquo;Manually entered&rdquo;, &ldquo;Valued using Historical Price&rdquo;, or &ldquo;Valued using Current Price&rdquo; (when historical prices were unavailable and the current price was used as a fallback).</p>
+
+  <h3 id="edit-lifetime-days">Edit Total Lifetime Days</h3>
+  <p>The Lifetime panel shows how many days the pool has been active for you, and that number drives every APR figure in the panel. Click <strong>Edit Total Lifetime Days</strong> to enter a value manually.</p>
+  <p><strong>How it works:</strong></p>
+  <ul>
+    <li><strong>Your manual entry wins outright.</strong> If you save a value, it overrides every auto-detected date. Type the number of days you want to see right now; tomorrow the display will read one higher, the day after that one higher again, and so on &mdash; you never need to re-edit as time passes.</li>
+    <li>To revert to auto-detection, clear the input (leave it empty) or save <code>0</code>. The app will fall back to the auto-detected start date on the next refresh.</li>
+    <li><strong>Auto-detection</strong> picks the mint date of the oldest NFT (for the current liquidity pool) on the current wallet.</li>
+    <li>If that NFT was originally minted on a <em>different</em> wallet and later transferred here, the app uses that NFT&rsquo;s <em>true</em> mint block (one extra RPC lookup) instead of the arrival date, so time spent on the previous wallet still counts toward Lifetime Days. Only the single oldest NFT gets that lookup &mdash; the app does not spider into other wallets&rsquo; histories.</li>
+    <li>Edit manually whenever auto-detection is off &mdash; for example, if the NFT was minted more than 5 years ago (outside the on-chain scan window) or spent time on multiple prior wallets that the app does not spider.</li>
+  </ul>
 
   <h2 id="checking-for-updates">Checking for Updates</h2>
   <p>LP Ranger checks GitHub for newer releases every time you open the <strong>About</strong> dialog. Click the <strong>Settings</strong> gear icon at top right in the app, then click <strong>About</strong>.</p>

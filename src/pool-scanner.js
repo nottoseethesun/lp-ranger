@@ -295,6 +295,10 @@ async function appendToPoolCache(position, wallet, result) {
     lastBlock,
     firstMintTimestamp: existing?.firstMintTimestamp || null,
     firstMintBlockNumber: existing?.firstMintBlockNumber || null,
+    /*- Preserve the schema marker so `event-scanner.loadCache` doesn't
+     *  drop this entry on the next scan.  See the migration block in
+     *  `src/event-scanner.js:loadCache`. */
+    mintSchemaVersion: 2,
   });
   _log(
     "Appended rebalance event to cache for" +

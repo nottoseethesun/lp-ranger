@@ -1,7 +1,7 @@
 /**
  * @file dashboard-data-deposit.js
- * @description Deposit, realized gains, and shared
- * localStorage helpers. Split from dashboard-data.js.
+ * @description Deposit, realized gains, lifetime-days override, and
+ * shared localStorage helpers. Split from dashboard-data.js.
  */
 import { log } from "./dashboard-log.js";
 import { g, compositeKey, fetchWithCsrf } from "./dashboard-helpers.js";
@@ -132,6 +132,24 @@ export function _saveInput(key, inputId, wrapId, afterSave, allowZero) {
   if (wrap) wrap.classList.remove("open");
   if (afterSave) afterSave(amount);
 }
+/*- Shared reset helper — clears the localStorage override and closes
+ *  the inline edit dialog.  Used by the "Return to Automatic Detection"
+ *  button on every inline-edit dialog whose value is stored in
+ *  localStorage (realized gains, per-position deposit, per-position
+ *  realized gains).  Auto-detection resumes on the next KPI update
+ *  because the load path returns 0 when localStorage lacks the key. */
+export function _resetInput(key, wrapId, afterReset) {
+  if (key) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* private mode */
+    }
+  }
+  const wrap = g(wrapId);
+  if (wrap) wrap.classList.remove("open");
+  if (afterReset) afterReset();
+}
 
 // ── Realized gains ────────────────────────────────
 
@@ -158,6 +176,13 @@ export function saveRealizedGains() {
     true,
   );
 }
+/** Clear the lifetime Realized Gains override for this pool. */
+export function resetRealizedGains() {
+  _resetInput(_poolKey("9mm_realized_pool_"), "realizedGainsInputWrap", () => {
+    const ls = _lastStatusRef?.();
+    if (ls && _updateKpisRef) _updateKpisRef(ls);
+  });
+}
 
 // ── Per-position realized gains ───────────────────
 
@@ -178,6 +203,13 @@ export function saveCurRealized() {
     },
     true,
   );
+}
+/** Clear the per-position Realized Gains override for this tokenId. */
+export function resetCurRealized() {
+  _resetInput(_posKey("9mm_realized_pos_"), "curRealizedInputWrap", () => {
+    const ls = _lastStatusRef?.();
+    if (ls && _updateKpisRef) _updateKpisRef(ls);
+  });
 }
 
 // ── Initial deposit ───────────────────────────────
@@ -223,12 +255,58 @@ export function saveCurDeposit() {
     false,
   );
 }
+/** Clear the per-position Initial Deposit override for this tokenId.
+ *  The load path returns 0 when the key is absent, so the KPI
+ *  refresher's fallback (historical-price auto-detection) takes over. */
+export function resetCurDeposit() {
+  _resetInput(_posKey("9mm_deposit_pos_"), "curDepositInputWrap", () =>
+    refreshCurDepositDisplay(),
+  );
+}
 export function toggleInitialDeposit() {
   _toggleWrap(
     "initialDepositInputWrap",
     "initialDepositInput",
     loadInitialDeposit,
   );
+}
+/** Clear the Lifetime Deposit override and revert to auto-detection.
+ *  Wired to the "Return to Automatic Detection" button on the inline
+ *  edit dialog. */
+export function resetInitialDeposit() {
+  const key = _poolKey("9mm_deposit_pool_");
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* private mode */
+  }
+  const wrap = g("initialDepositInputWrap");
+  if (wrap) wrap.classList.remove("open");
+  const active = posStore.getActive();
+  const pk = active
+    ? compositeKey(
+        "pulsechain",
+        active.walletAddress,
+        active.contractAddress,
+        active.tokenId,
+      )
+    : undefined;
+  if (pk) {
+    log.info("[lp-ranger] [deposit] reset override pk=%s", pk);
+    fetchWithCsrf("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initialDepositUsd: 0, positionKey: pk }),
+    }).catch(() => {});
+  }
+  refreshDepositLabel();
+  if (active && !isPositionManaged(active.tokenId) && _refetchUnmanaged)
+    _refetchUnmanaged(active);
+  else {
+    const ls = _lastStatusRef?.();
+    if (ls && _updateKpisRef) _updateKpisRef(ls);
+  }
 }
 export function saveInitialDeposit() {
   _saveInput(
@@ -264,6 +342,176 @@ export function saveInitialDeposit() {
     },
     false,
   );
+}
+
+// ── Lifetime Days override ────────────────────────
+
+/*- Per-pool localStorage prefix for the Lifetime Days override.  The
+ *  stored value is a YYYY-MM-DD "start date" (UTC); the input takes
+ *  days, and on save we convert `today - days` → date.  Storing a
+ *  date rather than a number lets the day count auto-increment
+ *  overnight — the user's "N days" reading stays fresh without
+ *  re-editing.  Empty / missing → auto-detected `ltStartDate()`
+ *  candidates take over. */
+const _LT_DAYS_START_PREFIX = "9mm_lt_start_pool_";
+
+/** Return today's date (UTC) as YYYY-MM-DD.  Extracted so tests can
+ *  drive it deterministically without freezing `Date`. */
+function _todayUtc(now) {
+  const d = new Date(now ?? Date.now());
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Subtract `days` from `now` (ms) and return the resulting YYYY-MM-DD
+ *  in UTC.  Non-finite / negative input returns today's date. */
+export function daysAgoDateUtc(days, now) {
+  const nowMs = now ?? Date.now();
+  const n = Number.isFinite(days) && days > 0 ? days : 0;
+  return _todayUtc(nowMs - n * 86400000);
+}
+
+/** Load the per-pool Lifetime Days override (start date, YYYY-MM-DD).
+ *  Returns null when no override is set — callers fall through to
+ *  `ltStartDate()`'s auto-detected candidates. */
+export function loadLifetimeStartDateOverride() {
+  const key = _poolKey(_LT_DAYS_START_PREFIX);
+  if (!key) return null;
+  try {
+    const v = localStorage.getItem(key);
+    return typeof v === "string" && v.length >= 10 ? v.slice(0, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Compute the current display value (days number) for the Lifetime
+ *  Days input from the stored start date.  Returns 0 when no override
+ *  is set OR when the stored date is unparseable / in the future. */
+export function loadLifetimeDaysDisplay() {
+  const startDate = loadLifetimeStartDateOverride();
+  if (!startDate) return 0;
+  const startMs = Date.parse(startDate + "T00:00:00Z");
+  if (!Number.isFinite(startMs)) return 0;
+  const days = (Date.now() - startMs) / 86400000;
+  return Number.isFinite(days) && days > 0 ? Math.round(days) : 0;
+}
+
+/** Toggle the Lifetime Days edit input row — mirrors `toggleInitialDeposit`. */
+export function toggleLifetimeDays() {
+  _toggleWrap("lifetimeDaysInputWrap", "lifetimeDaysInput", () => {
+    const d = loadLifetimeDaysDisplay();
+    return d > 0 ? d : "";
+  });
+}
+
+/** Save the Lifetime Days input as a per-pool override.  Converts the
+ *  user-entered days to `today − days` (YYYY-MM-DD UTC), writes to
+ *  localStorage, and POSTs to `/api/config` under
+ *  `lifetimeStartDateOverrideUtc` so the server payload's `ltStartDate`
+ *  picks it up on the next poll.  Empty input / 0 clears the override
+ *  (POST `null`, delete localStorage). */
+export function saveLifetimeDays() {
+  const inp = g("lifetimeDaysInput");
+  const key = _poolKey(_LT_DAYS_START_PREFIX);
+  if (!inp || !key) return;
+  const raw = parseFloat(inp.value);
+  const days = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  const startDate = days > 0 ? daysAgoDateUtc(days) : null;
+  try {
+    if (startDate) localStorage.setItem(key, startDate);
+    else localStorage.removeItem(key);
+  } catch {
+    /* private mode */
+  }
+  const wrap = g("lifetimeDaysInputWrap");
+  if (wrap) wrap.classList.remove("open");
+  const active = posStore.getActive();
+  const pk = active
+    ? compositeKey(
+        "pulsechain",
+        active.walletAddress,
+        active.contractAddress,
+        active.tokenId,
+      )
+    : undefined;
+  if (!pk) return;
+  log.info(
+    "[lp-ranger] [lt-days] save days=%s startDate=%s pk=%s",
+    days,
+    startDate,
+    pk,
+  );
+  fetchWithCsrf("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      lifetimeStartDateOverrideUtc: startDate,
+      positionKey: pk,
+    }),
+  }).catch(() => {});
+  refreshLifetimeDaysLabel();
+  if (active && !isPositionManaged(active.tokenId) && _refetchUnmanaged)
+    _refetchUnmanaged(active);
+  else {
+    const ls = _lastStatusRef?.();
+    if (ls && _updateKpisRef) _updateKpisRef(ls);
+  }
+}
+
+/** Update the Lifetime Days edit label so it reflects the current
+ *  override state.  Mirrors `refreshDepositLabel`. */
+export function refreshLifetimeDaysLabel() {
+  const d = loadLifetimeDaysDisplay();
+  const l = g("lifetimeDaysLabel");
+  if (l)
+    l.textContent =
+      d > 0 ? `Total Lifetime Days: ${d}` : "Edit Total Lifetime Days";
+}
+
+/** Clear the Lifetime Days override and revert to auto-detection.
+ *  Wired to the "Return to Automatic Detection" button on the
+ *  inline edit dialog.  Behaviourally identical to saving an empty
+ *  value, but named explicitly for user clarity. */
+export function resetLifetimeDays() {
+  const key = _poolKey(_LT_DAYS_START_PREFIX);
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* private mode */
+  }
+  const wrap = g("lifetimeDaysInputWrap");
+  if (wrap) wrap.classList.remove("open");
+  const active = posStore.getActive();
+  const pk = active
+    ? compositeKey(
+        "pulsechain",
+        active.walletAddress,
+        active.contractAddress,
+        active.tokenId,
+      )
+    : undefined;
+  if (pk) {
+    log.info("[lp-ranger] [lt-days] reset override pk=%s", pk);
+    fetchWithCsrf("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lifetimeStartDateOverrideUtc: null,
+        positionKey: pk,
+      }),
+    }).catch(() => {});
+  }
+  refreshLifetimeDaysLabel();
+  if (active && !isPositionManaged(active.tokenId) && _refetchUnmanaged)
+    _refetchUnmanaged(active);
+  else {
+    const ls = _lastStatusRef?.();
+    if (ls && _updateKpisRef) _updateKpisRef(ls);
+  }
 }
 
 // ── Parameterized loaders for iterating positions other than the active one ──

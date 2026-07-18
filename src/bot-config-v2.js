@@ -162,6 +162,19 @@ const POSITION_KEYS = [
    */
   "totalLifetimeDepositUsd",
   "depositUsedFallback",
+  /*-
+   *  User override for the "alive since" start date used by Lifetime
+   *  Day Count and APR denominators.  Stored as an ISO YYYY-MM-DD (UTC)
+   *  so it's timezone-neutral and human-readable in `bot-config.json`.
+   *  When set, `ltStartDate()` in `dashboard-date-utils.js` uses it
+   *  ahead of every auto-detected candidate (firstEpochDateUtc,
+   *  hodlBaseline.mintDate, poolFirstMintDate).  Cleared by POSTing
+   *  `null` — the null-sweep in server-routes.js POST /api/config
+   *  handler deletes the key from disk so bot-config.json stays clean.
+   *  The dashboard input accepts a number of days; the save handler
+   *  computes `today - days` and stores the result as this string.
+   */
+  "lifetimeStartDateOverrideUtc",
 ];
 
 /**

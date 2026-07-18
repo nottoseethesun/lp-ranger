@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784331652503">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784331652503">
+<link rel="stylesheet" href="style.css?v=1784356867355">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784356867355">
 </head>
 <body>
 
@@ -749,6 +749,8 @@
         <span class="9mm-pos-mgr-text-muted">$usd</span>
         <input type="number" class="realized-gains-input" id="curDepositInput" step="0.01" min="0" placeholder="0.00" aria-label="Initial deposit for this LP in USD">
         <button type="button" class="realized-gains-save" id="curDepositSaveBtn">Save</button>
+        <button type="button" class="realized-gains-save" id="curDepositResetBtn" title="Clear the manual value and revert to auto-detection">Return to Automatic Detection</button>
+        <button type="button" class="realized-gains-cancel" id="curDepositCancelBtn">Cancel</button>
       </div>
     </div>
     <div class="realized-gains-row" id="curRealizedRow">
@@ -758,6 +760,8 @@
         <span class="9mm-pos-mgr-text-muted">$usd</span>
         <input type="number" class="realized-gains-input" id="curRealizedInput" step="0.01" min="0" placeholder="0.00" aria-label="Realized gains for this LP in USD">
         <button type="button" class="realized-gains-save" id="curRealizedSaveBtn">Save</button>
+        <button type="button" class="realized-gains-save" id="curRealizedResetBtn" title="Clear the manual value">Return to Automatic Detection</button>
+        <button type="button" class="realized-gains-cancel" id="curRealizedCancelBtn">Cancel</button>
       </div>
     </div>
   </div>
@@ -838,7 +842,20 @@
       <div class="realized-gains-input-wrap" id="initialDepositInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
         <input type="number" class="realized-gains-input" id="initialDepositInput" step="0.01" min="0" placeholder="0.00" aria-label="Total lifetime deposit in USD">
-        <button type="button" class="realized-gains-save">Save</button>
+        <button type="button" class="realized-gains-save" id="initialDepositSaveBtn">Save</button>
+        <button type="button" class="realized-gains-save" id="initialDepositResetBtn" title="Clear the manual value and revert to auto-detection">Return to Automatic Detection</button>
+        <button type="button" class="realized-gains-cancel" id="initialDepositCancelBtn">Cancel</button>
+      </div>
+    </div>
+    <div class="realized-gains-row" id="lifetimeDaysRow">
+      <span class="realized-gains-label" id="lifetimeDaysLabel" title="Click to set the total lifetime days for this liquidity pool">Edit Total Lifetime Days</span> <span class="9mm-pos-mgr-il-info-btn" data-param-help="lifetimeDaysInput" title="Learn about lifetime days">i</span>
+      <div class="9mm-pos-mgr-realized-hint" id="lifetimeDaysNote">Number of days this liquidity pool has been active for you, including time on prior wallets if the oldest NFT for the pool was transferred in.<br>No need to enter this manually unless the auto-detected figure is incorrect.</div>
+      <div class="realized-gains-input-wrap" id="lifetimeDaysInputWrap">
+        <input type="number" class="realized-gains-input 9mm-pos-mgr-lt-days-input" id="lifetimeDaysInput" step="1" min="0" placeholder="0" aria-label="Total lifetime days">
+        <span class="9mm-pos-mgr-text-muted">days</span>
+        <button type="button" class="realized-gains-save" id="lifetimeDaysSaveBtn">Save</button>
+        <button type="button" class="realized-gains-save" id="lifetimeDaysResetBtn" title="Clear the override and revert to auto-detection">Return to Automatic Detection</button>
+        <button type="button" class="realized-gains-cancel" id="lifetimeDaysCancelBtn">Cancel</button>
       </div>
     </div>
     <div class="realized-gains-row" id="realizedGainsRow">
@@ -847,7 +864,9 @@
       <div class="realized-gains-input-wrap" id="realizedGainsInputWrap">
         <span class="9mm-pos-mgr-text-muted">$usd</span>
         <input type="number" class="realized-gains-input" id="realizedGainsInput" step="0.01" min="0" placeholder="0.00" aria-label="Lifetime realized gains in USD">
-        <button type="button" class="realized-gains-save">Save</button>
+        <button type="button" class="realized-gains-save" id="realizedGainsSaveBtn">Save</button>
+        <button type="button" class="realized-gains-save" id="realizedGainsResetBtn" title="Clear the manual value">Return to Automatic Detection</button>
+        <button type="button" class="realized-gains-cancel" id="realizedGainsCancelBtn">Cancel</button>
       </div>
     </div>
     <div class="9mm-pos-mgr-sync-row" id="syncRow">
@@ -1409,6 +1428,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784331652503"></script>
+<script src="dist/bundle.js?v=1784356867355"></script>
 </body>
 </html>

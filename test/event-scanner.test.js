@@ -265,6 +265,12 @@ describe("scanRebalanceHistory", () => {
         },
       ],
       lastBlock: 4000,
+      /*- Stamp the current mint-schema version so `loadCache` treats
+       *  this fixture as an already-migrated entry.  Without the marker
+       *  the entry would be dropped and the incremental-scan assertion
+       *  below would fail — the migration IS the entry point for the
+       *  test's setup, not the code under test. */
+      mintSchemaVersion: 2,
     });
     const r = await scanRebalanceHistory(
       mkProvider(5000, BASE_TS),
@@ -290,6 +296,9 @@ describe("scanRebalanceHistory", () => {
         },
       ],
       lastBlock: 4000,
+      /*- Same schema-marker note as the sibling "uses cache to skip
+       *  scanned blocks" test above. */
+      mintSchemaVersion: 2,
     });
     const r = await scanRebalanceHistory(
       mkProvider(4000, BASE_TS),
@@ -298,6 +307,58 @@ describe("scanRebalanceHistory", () => {
     );
     assert.strictEqual(r.length, 1);
     assert.strictEqual(r[0].txHash, "0xaaa");
+  });
+
+  it("drops the cache and forces a full re-scan when mintSchemaVersion is missing (migration)", async () => {
+    /*- Regression guard for the "cache stayed with pre-Part-B mint
+     *  detection" bug reported 2026-07-18 that showed a year-old NFT
+     *  as 1.23 days.  `loadCache` must drop entries without
+     *  `mintSchemaVersion: 2` so the fresh scan runs
+     *  `resolveFirstMintWithForeign` on the full transfer history. */
+    const ranges = [];
+    const ethers = {
+      Contract: class {
+        constructor() {
+          this.filters = {
+            Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }),
+          };
+          this.queryFilter = async (_f, from) => {
+            ranges.push(from);
+            return [];
+          };
+        }
+      },
+    };
+    const cache = mkCache();
+    const key = `rebalance:${WALLET.toLowerCase()}:${POS_MGR.toLowerCase()}`;
+    /*- Old-schema entry — no `mintSchemaVersion` marker. */
+    cache._store.set(key, {
+      events: [
+        {
+          index: 1,
+          timestamp: BASE_TS + 100,
+          oldTokenId: "1",
+          newTokenId: "2",
+          txHash: "0x111",
+          blockNumber: 100,
+        },
+      ],
+      lastBlock: 4000,
+    });
+    await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      ethers,
+      scanOpts({ cache }),
+    );
+    /*- If the migration works, `scanFrom` falls back to the
+     *  `fromBlock` passed into `loadCache` — NOT `cached.lastBlock+1`.
+     *  That means the range starts well before 4001; the earlier
+     *  test's "incremental scan starts at 4001" assertion is the
+     *  contrast we're guarding against. */
+    assert.ok(
+      ranges.length > 0 && ranges[0] < 4001,
+      `expected full re-scan (range < 4001), got ${ranges[0]}`,
+    );
   });
 
   it("pairs consecutive mints when old NFT is not burned", async () => {
