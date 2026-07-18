@@ -56,6 +56,8 @@ import {
   pollNow,
   injectDataDeps,
   refreshDepositLabel,
+  refreshLifetimeDaysLabel,
+  loadLifetimeStartDateOverride,
   setConfigInputDefault,
   getLastStatus,
   isSyncComplete,
@@ -180,6 +182,7 @@ injectPositionDeps({
   isViewingClosedPos,
   fetchUnmanagedDetails,
   refreshDepositLabel,
+  refreshLifetimeDaysLabel,
   clearHistory,
   resetHistoryFlag,
   pollNow,
@@ -434,6 +437,30 @@ function _afterDisclaimer() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ initialDepositUsd: dep, positionKey: pk }),
       }).catch(() => {});
+    }
+    // Restore Lifetime Days override label + re-sync to server
+    refreshLifetimeDaysLabel();
+    const ltStart = loadLifetimeStartDateOverride();
+    if (ltStart) {
+      const a = posStore.getActive(),
+        pk = a
+          ? compositeKey(
+              "pulsechain",
+              a.walletAddress,
+              a.contractAddress,
+              a.tokenId,
+            )
+          : undefined;
+      if (pk) {
+        fetchWithCsrf("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lifetimeStartDateOverrideUtc: ltStart,
+            positionKey: pk,
+          }),
+        }).catch(() => {});
+      }
     }
   })();
 

@@ -753,6 +753,27 @@ body::before{
 }
 .realized-gains-save:hover{background:rgb(0 229 255 / 15%);}
 
+.realized-gains-cancel{
+  padding:5px 12px;
+  background:transparent;
+  border:1px solid var(--border);
+  border-radius:8px;
+  color:var(--muted);
+  font-family:'Space Mono',monospace;
+  font-size:18px;
+  cursor:pointer;
+}
+
+.realized-gains-cancel:hover{
+  background:rgb(255 255 255 / 5%);
+  color:var(--text);
+}
+
+/* Right-align the days number so it sits next to its "days" units
+   label (which follows the input in the DOM), giving the natural
+   "50 days" reading. */
+.\39 mm-pos-mgr-lt-days-input{text-align:right;}
+
 .save-range-btn{
   padding:5px 12px;
   background:rgb(0 229 255 / 7%);

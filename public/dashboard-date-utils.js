@@ -61,9 +61,14 @@ export function toMintTsSeconds(v) {
 
 /**
  * Resolve the "alive since" start date for Lifetime Day Count and APR
- * denominators. Picks the earliest available among three per-position
- * sources carried in every `/api/status` poll payload:
+ * denominators.  Respects a user override first, then picks the earliest
+ * available among three auto-detected per-position sources carried in
+ * every `/api/status` poll payload:
  *
+ *   0. `lifetimeStartDateOverrideUtc` — user override entered via the
+ *      "Edit Total Lifetime Days" input.  Wins outright when set; the
+ *      dashboard input stores the value as `today − days` on save so
+ *      the day count naturally rolls forward the next calendar day.
  *   1. `pnlSnapshot.firstEpochDateUtc` — bot's earliest tracked epoch.
  *      May be much fresher than the on-chain mint when the bot adopts a
  *      long-lived NFT.
@@ -71,7 +76,7 @@ export function toMintTsSeconds(v) {
  *   3. `poolFirstMintDate` — earliest mint by this wallet into this pool
  *      (set by the event scanner; persisted in per-position bot state).
  *
- * All three are per-position fields on the poll payload — there is no
+ * All four are per-position fields on the poll payload — there is no
  * module-level cache. This is deliberate: a previous implementation cached
  * `poolFirstMintDate` at module scope and never cleared it between pool
  * switches, so the first pool's start date stuck across every subsequent
@@ -81,6 +86,10 @@ export function toMintTsSeconds(v) {
  * @returns {string|null}  YYYY-MM-DD start date, or null when none available.
  */
 export function ltStartDate(d) {
+  const override = d?.lifetimeStartDateOverrideUtc;
+  if (typeof override === "string" && override.length >= 10) {
+    return override.slice(0, 10);
+  }
   return pickEarliestDate([
     d?.pnlSnapshot?.firstEpochDateUtc,
     d?.hodlBaseline?.mintDate,

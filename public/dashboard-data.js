@@ -43,6 +43,11 @@ import {
   saveCurDeposit,
   _poolKey,
   loadCurDeposit,
+  toggleLifetimeDays,
+  saveLifetimeDays,
+  refreshLifetimeDaysLabel,
+  loadLifetimeStartDateOverride,
+  loadLifetimeDaysDisplay,
 } from "./dashboard-data-deposit.js";
 import {
   _fmtUsd,
@@ -102,6 +107,11 @@ export {
   saveCurDeposit,
   toggleInitialDeposit,
   saveInitialDeposit,
+  toggleLifetimeDays,
+  saveLifetimeDays,
+  refreshLifetimeDaysLabel,
+  loadLifetimeStartDateOverride,
+  loadLifetimeDaysDisplay,
   _fmtUsd,
   setKpiValue,
   resetKpis,

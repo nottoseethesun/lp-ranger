@@ -12,11 +12,9 @@
 import { log } from "./dashboard-log.js";
 import {
   g,
-  act,
   botConfig,
   toggleSettingsPopover,
   clearLocalStorageAndCookies,
-  checkMoralisKeyStatus,
   fetchWithCsrf,
   showDisclosure,
   copyElText,
@@ -97,7 +95,19 @@ import {
   saveCurDeposit,
   toggleCurRealized,
   saveCurRealized,
+  toggleLifetimeDays,
+  saveLifetimeDays,
 } from "./dashboard-data.js";
+/*- Direct import from the owning module per feedback-no-reexports —
+ *  the reset handlers have no other consumer, so re-exporting them
+ *  through dashboard-data.js would only pad that file's line count. */
+import {
+  resetLifetimeDays,
+  resetInitialDeposit,
+  resetRealizedGains,
+  resetCurRealized,
+  resetCurDeposit,
+} from "./dashboard-data-deposit.js";
 import {
   openPriceOverrideDialog,
   savePriceOverrideDialog,
@@ -185,67 +195,40 @@ function _saveGlobalConfig(inputId, configKey) {
   }).catch(() => {});
 }
 
-/**
- * Save a Moralis API key (encrypted with the cached session password).
- * @param {string} key   - The API key value.
- * @param {string} [pw]  - Wallet password (optional; server uses cached).
- * @param {HTMLInputElement} [inp] - Input to clear on success.
- * @returns {Promise<boolean>} true if saved successfully.
- */
-export async function saveMoralisApiKey(key, pw, inp) {
-  const body = { service: "moralis", key };
-  if (pw) body.password = pw;
-  try {
-    const res = await fetchWithCsrf("/api/api-keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const d = await res.json();
-    if (d.ok) {
-      if (inp) inp.value = "";
-      act(
-        "\u{1F511}",
-        "info",
-        "API Key Saved",
-        "Moralis key encrypted & saved",
-      );
-      return true;
-    }
-    act("\u274C", "error", "Save Failed", d.error || "Unknown error");
-  } catch (err) {
-    act("\u274C", "error", "Save Failed", err.message);
-  }
-  return false;
-}
-
-/** Settings menu handler: saves using the cached session password. */
-async function _saveMoralisKey() {
-  const inp = g("moralisKeyInput");
-  if (!inp || !inp.value.trim()) return;
-  const saved = await saveMoralisApiKey(inp.value.trim(), null, inp);
-  if (!saved) return;
-  const status = await checkMoralisKeyStatus();
-  if (status === "valid") {
-    act("\u2705", "info", "Moralis Key Valid", "API key verified — working");
-  } else if (status === "quota") {
-    act(
-      "\u26A0\uFE0F",
-      "warning",
-      "Moralis Quota Exhausted",
-      "Key is valid but daily free-plan quota used up — resets tomorrow",
-    );
-  } else if (status === "invalid") {
-    act(
-      "\u26A0\uFE0F",
-      "warning",
-      "Moralis Key Invalid",
-      "Saved but Moralis rejected the key — check it",
-    );
-  }
-}
+import {
+  saveMoralisApiKey,
+  saveMoralisKeyFromSettings as _saveMoralisKey,
+} from "./dashboard-moralis-key.js";
+export { saveMoralisApiKey };
 
 import { checkForUpdate as _checkForUpdate } from "./dashboard-update-check.js";
+
+/*- Table-driven wiring for the "Return to Automatic Detection" reset
+ *  buttons and their paired Cancel buttons across every inline-edit
+ *  dialog.  Extracted from `bindAllEvents` to keep that function's
+ *  cyclomatic complexity under the 17-cap.  Cancel just removes the
+ *  `open` class from the wrap; it never touches the stored value (see
+ *  feedback-inline-edit-dialog-button-set). */
+function _wireResetAndCancelButtons() {
+  /*- Each row is a `[prefix, resetFn]` pair.  The three element IDs
+   *  are derived by convention: `${prefix}InputWrap`, `${prefix}ResetBtn`,
+   *  `${prefix}CancelBtn` — every inline-edit dialog follows the same
+   *  naming, keeping this table maintenance-free as new ones are added. */
+  const rows = [
+    ["lifetimeDays", resetLifetimeDays],
+    ["initialDeposit", resetInitialDeposit],
+    ["realizedGains", resetRealizedGains],
+    ["curDeposit", resetCurDeposit],
+    ["curRealized", resetCurRealized],
+  ];
+  for (const [prefix, resetFn] of rows) {
+    _click(`${prefix}ResetBtn`, resetFn);
+    _click(`${prefix}CancelBtn`, () => {
+      const wrap = g(`${prefix}InputWrap`);
+      if (wrap) wrap.classList.remove("open");
+    });
+  }
+}
 
 const _CLOSE = '[class~="9mm-pos-mgr-modal-close-btn"]';
 
@@ -442,14 +425,44 @@ export function bindAllEvents() {
   if (priv) priv.addEventListener("change", _togglePrivacy);
 
   /* ── KPI / P&L section ────────────────── */
-  _click("initialDepositLabel", toggleInitialDeposit);
-  _change("initialDepositInput", saveInitialDeposit);
-  const ds = document.querySelector("#initialDepositRow .realized-gains-save");
-  if (ds) ds.addEventListener("click", saveInitialDeposit);
-  _click("realizedGainsLabel", toggleRealizedInput);
-  _change("realizedGainsInput", saveRealizedGains);
-  const rs = document.querySelector("#realizedGainsRow .realized-gains-save");
-  if (rs) rs.addEventListener("click", saveRealizedGains);
+  /*- Table-driven binding for the three "inline edit" rows
+   *  (initialDeposit / lifetimeDays / realizedGains).  Each row has a
+   *  label that toggles the input open, a number input whose `change`
+   *  event triggers save, and a `.realized-gains-save` button. */
+  const _editRows = [
+    [
+      "initialDepositRow",
+      "initialDepositLabel",
+      "initialDepositInput",
+      toggleInitialDeposit,
+      saveInitialDeposit,
+    ],
+    [
+      "lifetimeDaysRow",
+      "lifetimeDaysLabel",
+      "lifetimeDaysInput",
+      toggleLifetimeDays,
+      saveLifetimeDays,
+    ],
+    [
+      "realizedGainsRow",
+      "realizedGainsLabel",
+      "realizedGainsInput",
+      toggleRealizedInput,
+      saveRealizedGains,
+    ],
+  ];
+  for (const [rowId, labelId, inputId, toggleFn, saveFn] of _editRows) {
+    _click(labelId, toggleFn);
+    _change(inputId, saveFn);
+    const btn = document.querySelector("#" + rowId + " .realized-gains-save");
+    if (btn) btn.addEventListener("click", saveFn);
+  }
+  /*- Cancel + Return-to-Automatic buttons on the Lifetime Days and
+   *  Lifetime Deposit rows.  Cancel is purely a visual-collapse
+   *  affordance (does NOT clear the override).  Return-to-Automatic
+   *  clears the override outright and reverts to auto-detection. */
+  _wireResetAndCancelButtons();
   _click("curDepositLabel", toggleCurDeposit);
   _change("curDepositInput", saveCurDeposit);
   _click("curDepositSaveBtn", saveCurDeposit);

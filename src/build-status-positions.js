@@ -43,6 +43,7 @@ const _UNMANAGED_SETTINGS_KEYS = [
   "totalCompoundedUsd",
   "lastCompoundAt",
   "offsetToken0Pct",
+  "lifetimeStartDateOverrideUtc",
 ];
 
 /**

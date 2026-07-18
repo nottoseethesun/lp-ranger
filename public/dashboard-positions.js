@@ -93,6 +93,7 @@ let _enterClosedPosView = null;
 let _exitClosedPosView = null;
 let _isViewingClosedPos = null;
 let _refreshDepositLabel = null;
+let _refreshLifetimeDaysLabel = null;
 let _fetchUnmanagedDetails = null;
 let _clearHistory = null;
 let _resetHistoryFlag = null;
@@ -119,6 +120,8 @@ export function injectPositionDeps(deps) {
   }
   if (deps.isViewingClosedPos) _isViewingClosedPos = deps.isViewingClosedPos;
   if (deps.refreshDepositLabel) _refreshDepositLabel = deps.refreshDepositLabel;
+  if (deps.refreshLifetimeDaysLabel)
+    _refreshLifetimeDaysLabel = deps.refreshLifetimeDaysLabel;
   if (deps.clearHistory) _clearHistory = deps.clearHistory;
   if (deps.resetHistoryFlag) _resetHistoryFlag = deps.resetHistoryFlag;
   if (deps.pollNow) _pollNow = deps.pollNow;
@@ -191,6 +194,7 @@ function _activateCore(idx, opts) {
   if (!active) return null;
   _applyLocalPositionData(active);
   if (_refreshDepositLabel) _refreshDepositLabel();
+  if (_refreshLifetimeDaysLabel) _refreshLifetimeDaysLabel();
   _applyPositionConfig(active);
   if (_positionRangeVisual) _positionRangeVisual();
   /*- Repaint the Manage button + badge + Lifetime panel for the new

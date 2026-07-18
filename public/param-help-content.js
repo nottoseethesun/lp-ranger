@@ -961,9 +961,18 @@ export const PARAM_HELP = {
         heading: "When to edit",
         body:
           "The bot auto-detects this from on-chain data using historical " +
-          "token prices. Edit manually only if the auto-detected value " +
+          "token prices.  Edit manually only if the auto-detected value " +
           "is clearly wrong (e.g. for meme tokens with unreliable price " +
-          "feeds). To revert to auto-detection, save the field as 0.",
+          "feeds).",
+      },
+      {
+        heading: "Buttons on the edit dialog",
+        body:
+          "<strong>Save</strong> stores the amount you typed as the " +
+          "manual override.  <strong>Return to Automatic Detection</strong> " +
+          "clears the override and lets the bot's historical-price " +
+          "auto-detection take over again.  <strong>Cancel</strong> just " +
+          "closes the dialog without changing anything.",
       },
       {
         heading: "How it affects P&L",
@@ -1004,6 +1013,16 @@ export const PARAM_HELP = {
           "&minus; Total Deposit. You must also update the " +
           "<strong>Lifetime Realized Gains</strong> separately.",
       },
+      {
+        heading: "Buttons on the edit dialog",
+        body:
+          "<strong>Save</strong> stores the amount you typed.  " +
+          "<strong>Return to Automatic Detection</strong> clears the " +
+          "value back to $0 (there is no on-chain auto-detection for " +
+          "realized gains, so the default state is zero).  " +
+          "<strong>Cancel</strong> just closes the dialog without " +
+          "changing anything.",
+      },
     ],
   },
 
@@ -1022,9 +1041,17 @@ export const PARAM_HELP = {
         heading: "When to edit",
         body:
           "The bot auto-detects this by scanning all IncreaseLiquidity " +
-          "events and valuing them at historical prices. Edit manually " +
-          "only if auto-detection is inaccurate. Save as 0 to revert " +
-          "to auto-detection.",
+          "events and valuing them at historical prices.  Edit manually " +
+          "only if auto-detection is inaccurate.",
+      },
+      {
+        heading: "Buttons on the edit dialog",
+        body:
+          "<strong>Save</strong> stores the amount you typed as the " +
+          "manual override.  <strong>Return to Automatic Detection</strong> " +
+          "clears the override and lets the bot's auto-detected deposit " +
+          "take over again.  <strong>Cancel</strong> just closes the " +
+          "dialog without changing anything.",
       },
       {
         heading: "How it affects P&L",
@@ -1041,6 +1068,51 @@ export const PARAM_HELP = {
           "produce the Net P&amp;L figure, click the (i) button next to " +
           "the <strong>Net Profit and Loss Return</strong> value at the " +
           "top of this Lifetime panel.",
+      },
+    ],
+  },
+
+  lifetimeDaysInput: {
+    title: "Total Lifetime Days",
+    sections: [
+      {
+        heading: "What it is",
+        body:
+          "The number of days this liquidity pool has been active for " +
+          "you.  Drives the &ldquo;Days&rdquo; readout next to the Net " +
+          "Profit &amp; Loss Return figure and the APR denominators " +
+          "throughout the Lifetime panel.",
+      },
+      {
+        heading: "How it's determined",
+        body:
+          "<strong>If you enter a value here, it wins outright.</strong> " +
+          "Otherwise the bot auto-detects the start date by picking the " +
+          "mint date of the oldest NFT (for the current liquidity pool) " +
+          "on the current wallet.  If that NFT was originally minted on " +
+          "a different wallet and later transferred here, the bot uses " +
+          "its <em>true</em> mint block rather than the arrival date, " +
+          "so time spent on the previous wallet still counts.",
+      },
+      {
+        heading: "When to edit",
+        body:
+          "Edit manually whenever auto-detection is off &mdash; for " +
+          "example, if the NFT was minted more than 5 years ago (outside " +
+          "the scan window) or spent time on multiple prior wallets. " +
+          "Type the number of days you want to see right now; tomorrow " +
+          "the display will read one higher, the day after that one " +
+          "higher again, and so on &mdash; you never need to re-edit as " +
+          "time passes.",
+      },
+      {
+        heading: "Buttons on the edit dialog",
+        body:
+          "<strong>Save</strong> stores the days you typed as the manual " +
+          "override.  <strong>Return to Automatic Detection</strong> " +
+          "clears the override and lets the auto-detected start date take " +
+          "over again.  <strong>Cancel</strong> just closes the dialog " +
+          "without changing anything.",
       },
     ],
   },
@@ -1068,6 +1140,16 @@ export const PARAM_HELP = {
           "Added to Lifetime Net P&amp;L. Without this entry, sold " +
           "tokens appear as &ldquo;missing&rdquo; value, understating " +
           "your true returns.",
+      },
+      {
+        heading: "Buttons on the edit dialog",
+        body:
+          "<strong>Save</strong> stores the amount you typed.  " +
+          "<strong>Return to Automatic Detection</strong> clears the " +
+          "value back to $0 (there is no on-chain auto-detection for " +
+          "realized gains, so the default state is zero).  " +
+          "<strong>Cancel</strong> just closes the dialog without " +
+          "changing anything.",
       },
     ],
   },
