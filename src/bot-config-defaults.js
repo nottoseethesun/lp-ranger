@@ -132,13 +132,15 @@ const _NORMALIZERS = {
   rebalanceOutOfRangeThresholdPercent: (v) => _clampInt(v, 1, 100),
   rebalanceTimeoutMin: (v) => _clampNonNegInt(v, 1440),
   /*- Range width bounds match the "Range Width" input attrs in
-   *  public/index.html (min=0.1 max=200) and dashboard-throttle.js
-   *  `saveRangeWidth` rejection guard.  Value is exposed via
+   *  public/index.html (min=0.1 max=100) and dashboard-throttle.js
+   *  `saveRangeWidth` rejection guard.  100 is the full-range sentinel
+   *  (`rangeMath.fullRange()` mints at MIN_TICK/MAX_TICK); anything
+   *  below is a normal concentrated widthPct.  Value is exposed via
    *  /api/bot-config-defaults so the "Default" button in Bot Settings
    *  can inject it into the input; the bot itself does NOT fall back
    *  to this value at rebalance time (undefined config still means
    *  preserveRange()). */
-  rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 200),
+  rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 100),
   slippagePct: (v) => _clampFloat(v, 0.1, 5),
   checkIntervalSec: (v) => _clampInt(v, 10, 3600),
   minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),

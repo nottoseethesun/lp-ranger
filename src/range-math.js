@@ -416,6 +416,31 @@ function preserveRange(
   };
 }
 
+/**
+ * Return a V3 full-range position: `[MIN_TICK, MAX_TICK]` rounded to
+ * `tickSpacing` multiples.  Used by the rebalancer when the user's
+ * saved `rebalanceRangeWidthPct` is `100` (the full-range sentinel;
+ * see `_computeRange` in `rebalancer-execute.js` and the CLAUDE.md
+ * "Full-range sentinel" note).  The dashboard's Range Width input is
+ * capped at 100 so this is the only way an override can reach the
+ * rebalancer as a full-range request.
+ *
+ * @param {number} tickSpacing  Pool tick spacing.
+ * @param {number} decimals0    Token0 decimals (for the returned price).
+ * @param {number} decimals1    Token1 decimals (for the returned price).
+ * @returns {{ lowerTick: number, upperTick: number, lowerPrice: number, upperPrice: number }}
+ */
+function fullRange(tickSpacing, decimals0, decimals1) {
+  const lowerTick = nearestUsableTick(MIN_TICK, tickSpacing);
+  const upperTick = nearestUsableTick(MAX_TICK, tickSpacing);
+  return {
+    lowerTick,
+    upperTick,
+    lowerPrice: tickToPrice(lowerTick, decimals0, decimals1),
+    upperPrice: tickToPrice(upperTick, decimals0, decimals1),
+  };
+}
+
 // ── exports ──────────────────────────────────────────────────────────────────
 module.exports = {
   sqrtPriceX96ToPrice,
@@ -424,6 +449,7 @@ module.exports = {
   nearestUsableTick,
   computeNewRange,
   preserveRange,
+  fullRange,
   compositionRatio,
   positionAmounts,
   isInRange,

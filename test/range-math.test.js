@@ -515,4 +515,52 @@ describe("priceToTick edge cases", () => {
     assert.throws(() => priceToTick(-1, 18, 18), /must be > 0/);
   });
 });
+
+// ── fullRange ──────────────────────────────────────────────────────────
+
+describe("fullRange", () => {
+  const { fullRange } = require("../src/range-math");
+
+  it("returns MIN_TICK/MAX_TICK-aligned bounds for tickSpacing=200 (fee=10000)", () => {
+    /*- nearestUsableTick clamps MIN_TICK/MAX_TICK to the nearest
+     *  tickSpacing multiple within [-887272, 887272].  For sp=200:
+     *  ⌊-887272/200⌋×200 = -887200; ⌈887272/200⌉×200 clamps down to
+     *  887200.  Any wider would exceed int24. */
+    const r = fullRange(200, 18, 18);
+    assert.strictEqual(r.lowerTick, -887200);
+    assert.strictEqual(r.upperTick, 887200);
+  });
+
+  it("returns MIN_TICK/MAX_TICK-aligned bounds for tickSpacing=60 (fee=3000)", () => {
+    const r = fullRange(60, 18, 18);
+    assert.strictEqual(r.lowerTick, -887220);
+    assert.strictEqual(r.upperTick, 887220);
+  });
+
+  it("returns MIN_TICK/MAX_TICK-aligned bounds for tickSpacing=1 (fee=100)", () => {
+    const r = fullRange(1, 18, 18);
+    assert.strictEqual(r.lowerTick, MIN_TICK);
+    assert.strictEqual(r.upperTick, MAX_TICK);
+  });
+
+  it("returns finite lowerPrice/upperPrice consistent with the tick bounds", () => {
+    const r = fullRange(200, 18, 18);
+    assert.ok(Number.isFinite(r.lowerPrice));
+    assert.ok(Number.isFinite(r.upperPrice));
+    assert.ok(r.lowerPrice > 0);
+    assert.ok(r.upperPrice > r.lowerPrice);
+    /*- 1.0001^887200 ≈ 3.37e38; 1.0001^-887200 ≈ 2.97e-39. */
+    assert.ok(r.upperPrice > 1e30);
+    assert.ok(r.lowerPrice < 1e-30);
+  });
+
+  it("does NOT depend on currentPrice or tickLower/tickUpper of an existing position", () => {
+    /*- The full-range sentinel is a pure function of (tickSpacing,
+     *  decimals) — no pool state needed.  Regression guard against a
+     *  future refactor threading unnecessary state through. */
+    const r1 = fullRange(200, 18, 18);
+    const r2 = fullRange(200, 18, 18);
+    assert.deepStrictEqual(r1, r2);
+  });
+});
 // Offset tests are in test/range-math-offset.test.js

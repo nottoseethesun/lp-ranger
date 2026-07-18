@@ -47,7 +47,7 @@
 
 "use strict";
 
-import { g } from "./dashboard-helpers.js";
+import { g, isFullRangeSpread } from "./dashboard-helpers.js";
 import { isInputDirty } from "./dashboard-data-cache.js";
 import { posStore } from "./dashboard-positions-store.js";
 
@@ -74,6 +74,12 @@ let _lastKnownPosKey = null;
 function _computeWidthWithOffset(spread, offset) {
   if (!Number.isFinite(spread) || !(spread > 0)) return null;
   if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  /*- Full-range positions produce astronomical widthPct values
+   *  (Math.pow(1.0001, ~887200) ≈ 3.4e38 → widthPct ≈ 6.65e32) that
+   *  render as truncated scientific notation in the input.  Full-range
+   *  positions never go out of range so the value is purely cosmetic;
+   *  show 100 as the convention. */
+  if (isFullRangeSpread(spread)) return "100.00";
   const aboveTicks = (spread * offset) / 100;
   const belowTicks = (spread * (100 - offset)) / 100;
   const widthPct =

@@ -38,6 +38,14 @@ const assert = require("node:assert/strict");
  *  other offsets the exponents differ.
  *  Presence checks use explicit `!== undefined && !== null` per
  *  CLAUDE-BEST-PRACTICES §"Type Checks". */
+/*- Mirror of dashboard-helpers.js:isFullRangeSpread.  Threshold sits
+ *  below the smallest fee-tier full-range spread (1,774,400 for
+ *  tickSpacing=200) with room for future fee tiers. */
+const FULL_RANGE_TICK_SPREAD_THRESHOLD = 1_700_000;
+function isFullRangeSpread(spread) {
+  return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
+}
+
 function computePreservedWidthPct(tickLower, tickUpper, offset) {
   if (
     tickLower === undefined ||
@@ -51,6 +59,7 @@ function computePreservedWidthPct(tickLower, tickUpper, offset) {
   const spread = tickUpper - tickLower;
   if (!Number.isFinite(spread) || !(spread > 0)) return null;
   if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  if (isFullRangeSpread(spread)) return "100.00";
   const aboveTicks = (spread * offset) / 100;
   const belowTicks = (spread * (100 - offset)) / 100;
   const widthPct =
@@ -127,6 +136,33 @@ describe("_computePreservedWidthPct — centered (offset=50)", () => {
   it("returns a two-decimal fixed string", () => {
     const result = computePreservedWidthPct(-100, 100, 50);
     assert.match(result, /^\d+\.\d{2}$/);
+  });
+
+  it("returns '100.00' for a full-range V3 position (tickSpacing=200)", () => {
+    /*- MIN_TICK/MAX_TICK for fee=10000 (tickSpacing=200): [-887200,
+     *  887200], spread=1,774,400.  Without the short-circuit,
+     *  Math.pow(1.0001, 887200) * 100 ≈ 3.37e40 — displays as
+     *  truncated scientific notation in the input. */
+    assert.strictEqual(computePreservedWidthPct(-887200, 887200, 50), "100.00");
+  });
+
+  it("returns '100.00' for a full-range V3 position (tickSpacing=60)", () => {
+    /*- Fee=3000, tickSpacing=60: [-887220, 887220], spread=1,774,440. */
+    assert.strictEqual(computePreservedWidthPct(-887220, 887220, 50), "100.00");
+  });
+
+  it("returns '100.00' for full range regardless of offset (never rebalances)", () => {
+    assert.strictEqual(computePreservedWidthPct(-887200, 887200, 30), "100.00");
+    assert.strictEqual(computePreservedWidthPct(-887200, 887200, 70), "100.00");
+  });
+
+  it("does NOT short-circuit a very wide but non-full-range spread", () => {
+    /*- spread=1,000,000 is much wider than typical but still not
+     *  full-range (well below the 1,700,000 threshold).  The
+     *  computed widthPct is astronomical but the formula runs. */
+    const wide = computePreservedWidthPct(-500_000, 500_000, 50);
+    assert.notEqual(wide, "100.00");
+    assert.notEqual(wide, null);
   });
 });
 

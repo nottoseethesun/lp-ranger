@@ -410,6 +410,21 @@ export function isFullRange(lo, hi) {
   return lo < 1e-30 || hi > 1e30;
 }
 
+/*- V3 min/max tick is [-887272, 887272], so the full-range tick spread
+ *  is ~1,774,544 (nearest-usable-tick rounding by fee tier drops it to
+ *  ~1,774,400 at worst — fee=10000, tickSpacing=200).  A threshold of
+ *  1,700,000 comfortably admits every full-range position without
+ *  false-flagging genuinely wide-but-not-full positions.  Used by the
+ *  Range Width display to short-circuit the widthPct formula, which
+ *  otherwise returns astronomical values (~6.65e32) that overflow the
+ *  input's visible width and confuse the user. */
+const FULL_RANGE_TICK_SPREAD_THRESHOLD = 1_700_000;
+
+/** Detect a full-range V3 position from its tick spread. */
+export function isFullRangeSpread(spread) {
+  return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
+}
+
 /**
  * Return the Unix timestamp (ms) of the next local midnight.
  * Used by the throttle module for daily counter resets.

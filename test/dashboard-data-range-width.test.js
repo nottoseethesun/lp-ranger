@@ -29,12 +29,22 @@ function makeInput(initialValue = "") {
   return { value: initialValue };
 }
 
+/*- Mirror of dashboard-helpers.js:isFullRangeSpread.  A full-range V3
+ *  position's tick spread is ~1,774,400+ across all fee tiers (see
+ *  the helper's comment); the 1.7M threshold safely admits every
+ *  full-range spread without false-flagging genuinely wide ranges. */
+const FULL_RANGE_TICK_SPREAD_THRESHOLD = 1_700_000;
+function isFullRangeSpread(spread) {
+  return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
+}
+
 /*- Shared width-from-(spread, offset) formula used by all three
  *  mirror helpers below.  Matches
  *  `src/range-math.js:preserveRange()` split. */
 function widthWithOffset(spread, offset) {
   if (!Number.isFinite(spread) || !(spread > 0)) return null;
   if (!Number.isFinite(offset) || offset < 0 || offset > 100) return null;
+  if (isFullRangeSpread(spread)) return "100.00";
   const aboveTicks = (spread * offset) / 100;
   const belowTicks = (spread * (100 - offset)) / 100;
   const widthPct =
@@ -304,6 +314,55 @@ describe("syncRangeWidth — flow (c),(d) closed-position reopen (tokenId migrat
       "15",
       "new tokenId with same saved value writes idempotently",
     );
+  });
+});
+
+describe("syncRangeWidth — full-range positions", () => {
+  it("populates '100' for a full-range V3 position (fee=10000, tickSpacing=200)", () => {
+    /*- Without the short-circuit, spread=1,774,400 →
+     *  Math.pow(1.0001, 887200) * 100 ≈ 3.37e40, which the input
+     *  displays as truncated scientific notation ("3.376…").
+     *  Show the 100 convention instead — full-range never rebalances
+     *  so the exact display value is cosmetic. */
+    const sync = makeSyncRangeWidth();
+    const el = makeInput("");
+    sync(el, {
+      data: {
+        activePosition: { tickLower: -887200, tickUpper: 887200 },
+      },
+      posKey: "full-range",
+      isDirty: false,
+    });
+    assert.equal(el.value, "100.00");
+  });
+
+  it("populates '100' for a full-range V3 position (fee=3000, tickSpacing=60)", () => {
+    const sync = makeSyncRangeWidth();
+    const el = makeInput("");
+    sync(el, {
+      data: {
+        activePosition: { tickLower: -887220, tickUpper: 887220 },
+      },
+      posKey: "full-range-3k",
+      isDirty: false,
+    });
+    assert.equal(el.value, "100.00");
+  });
+
+  it("still uses the exact formula for wide-but-not-full-range positions", () => {
+    /*- Regression guard: the 1.7M threshold must not swallow
+     *  genuinely wide (but not full) positions. */
+    const sync = makeSyncRangeWidth();
+    const el = makeInput("");
+    sync(el, {
+      data: {
+        activePosition: { tickLower: -500_000, tickUpper: 500_000 },
+      },
+      posKey: "very-wide",
+      isDirty: false,
+    });
+    assert.notEqual(el.value, "100.00");
+    assert.notEqual(el.value, "");
   });
 });
 
