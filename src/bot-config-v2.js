@@ -115,6 +115,17 @@ const POSITION_KEYS = [
    * disk so bot-config.json stays clean.
    */
   "rebalanceRangeWidthPct",
+  /*-
+   * Persistent per-position toggle for full-range rebalances.  When
+   * `true`, every subsequent rebalance mints at MIN_TICK / MAX_TICK
+   * via `rangeMath.fullRange()`, ignoring any saved
+   * `rebalanceRangeWidthPct`.  When `false` (or unset), the normal
+   * precedence applies: custom Price Range Extension if set, else
+   * `preserveRange()`.  Driven by the "Full-Range" checkbox next to
+   * the Price Range Extension input in Bot Settings — replaces the
+   * old `rebalanceRangeWidthPct === 100` full-range sentinel.
+   */
+  "fullRangeRebalanceEnabled",
   "slippagePct",
   "checkIntervalSec",
   "minRebalanceIntervalMin",

@@ -1,8 +1,12 @@
 {
   "_comment": "Human-readable labels for internal config keys, used by the Activity Log 'Setting Saved' formatter (public/dashboard-setting-labels.js). Keyed directly to the internal config key — never by position — so a new setting only needs an entry here to get a friendly log line. Message shape: '<label> is now <value><unit>'. Missing entries fall back to the raw '<key> = <value>' form so a forgotten label doesn't break the log line.",
   "rebalanceRangeWidthPct": {
-    "label": "Range Width for Rebalancing",
+    "label": "Price Range Extension for Rebalancing",
     "unit": "%"
+  },
+  "fullRangeRebalanceEnabled": {
+    "label": "Full-Range Rebalance",
+    "unit": ""
   },
   "rebalanceOutOfRangeThresholdPercent": {
     "label": "OOR Threshold",

@@ -28,13 +28,9 @@ import {
   _posLabel,
   _posContextHtml,
   markInputDirty,
-  getInputDefault,
 } from "./dashboard-data.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
-import {
-  formatSettingChange,
-  labelForKey,
-} from "./dashboard-setting-labels.js";
+import { formatSettingChange } from "./dashboard-setting-labels.js";
 
 // Late-bound import to avoid circular dep issues at evaluation time.
 // Populated by dashboard-init.js after all modules load.
@@ -421,7 +417,7 @@ export function saveOorThreshold() {
 }
 
 /** Save a single config key from an input element. */
-function _saveSingleConfig(inputId, key, parse) {
+export function _saveSingleConfig(inputId, key, parse) {
   markInputDirty(inputId);
   const val = parse(g(inputId)?.value);
   const active = posStore.getActive();
@@ -565,73 +561,11 @@ export function resetOffset() {
   saveOffset();
 }
 
-/**
- * Save the "Range Width" input as a persistent per-position override.
- * Rejects invalid input per feedback_one_literal_per_shipped_default —
- * no silent clamp-to-default; the user must enter a valid number in
- * [0.1, 100] to save.  100 is the full-range sentinel — the rebalancer
- * mints at MIN_TICK/MAX_TICK (see `rangeMath.fullRange()`).  Empty
- * input, NaN, out-of-range → skip the save (the No Override button
- * below is the explicit way to clear).
- */
-export function saveRangeWidth() {
-  const raw = parseFloat(g("inRangeWidth")?.value);
-  if (!Number.isFinite(raw) || raw < 0.1 || raw > 100) return;
-  _saveSingleConfig("inRangeWidth", "rebalanceRangeWidthPct", () => raw);
-}
-
-/**
- * Clear the persistent Range Width override.  Empties the input AND
- * POSTs `null` so the null-sweep in POST /api/config deletes the key
- * from disk (leaving the bot on the existing `preserveRange()` fallback
- * for the next rebalance).  Mirrors the resetOffset pattern.
- */
-export function resetRangeWidth() {
-  const el = g("inRangeWidth");
-  if (el) el.value = "";
-  markInputDirty("inRangeWidth");
-  const active = posStore.getActive();
-  const positionKey = active
-    ? compositeKey(
-        "pulsechain",
-        active.walletAddress,
-        active.contractAddress,
-        active.tokenId,
-      )
-    : undefined;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rebalanceRangeWidthPct: null, positionKey }),
-  }).catch(() => {});
-  const pl = _posLabel();
-  act(
-    ACT_ICONS.gear,
-    "start",
-    "Setting Saved",
-    labelForKey("rebalanceRangeWidthPct") +
-      " cleared — preserving current tick spread" +
-      (pl ? "\n" + pl : ""),
-  );
-}
-
-/**
- * Populate the Range Width input with the shipped default sourced from
- * `bot-config-defaults.json` (loaded once at init via
- * `/api/bot-config-defaults` and cached in `_CONFIG_INPUT_DEFAULTS`).
- * Marks the input dirty so the next poll's `syncRangeWidth` won't
- * clobber the injected value; the user still has to click Save to
- * persist.  No-op when the default hasn't loaded yet (init AJAX
- * hasn't resolved) or the input is missing.
- */
-export function setDefaultRangeWidth() {
-  const def = getInputDefault("rebalanceRangeWidthPct");
-  if (!Number.isFinite(def)) return;
-  const el = g("inRangeWidth");
-  if (!el) return;
-  el.value = String(def);
-  markInputDirty("inRangeWidth");
-}
+/*- The Price Range Extension config handlers (`saveRangeWidth`,
+ *  `resetRangeWidth`, `setDefaultRangeWidth`, `saveFullRangeToggle`)
+ *  live in `dashboard-price-range-extension.js` — extracted from this
+ *  file when the Full-Range checkbox handler was added and this file
+ *  passed the 500-line cap. */
 
 /** Update OOR threshold + timeout display from status. */
 export function updateTriggerDisplay(d) {

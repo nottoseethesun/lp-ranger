@@ -217,6 +217,8 @@ describe("_computePreservedWidthPct — non-centered offsets", () => {
 // ── Mirror #2: _rangeWidthPreviewText ─────────────────────────────────
 
 function rangeWidthPreviewText(status, active) {
+  /*- Full-Range checkbox wins over any saved value. */
+  if (status?.fullRangeRebalanceEnabled === true) return "Full-Range";
   const saved = status?.rebalanceRangeWidthPct;
   if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
     return String(saved) + "%";
@@ -306,6 +308,34 @@ describe("_rangeWidthPreviewText", () => {
   it("null status and null active render em-dash fallback", () => {
     const text = rangeWidthPreviewText(null, null);
     assert.equal(text, "—");
+  });
+
+  it("shows 'Full-Range' when fullRangeRebalanceEnabled=true (overrides saved widthPct)", () => {
+    /*- The Full-Range checkbox wins over any saved Price Range
+     *  Extension.  Preview must communicate that the rebalance will
+     *  mint at MIN_TICK / MAX_TICK, not "15%". */
+    const text = rangeWidthPreviewText(
+      { fullRangeRebalanceEnabled: true, rebalanceRangeWidthPct: 15 },
+      { tickLower: -500, tickUpper: 500 },
+    );
+    assert.equal(text, "Full-Range");
+  });
+
+  it("shows 'Full-Range' when fullRangeRebalanceEnabled=true with no saved widthPct", () => {
+    const text = rangeWidthPreviewText(
+      { fullRangeRebalanceEnabled: true },
+      { tickLower: -500, tickUpper: 500 },
+    );
+    assert.equal(text, "Full-Range");
+  });
+
+  it("ignores non-boolean truthy fullRangeRebalanceEnabled values", () => {
+    /*- Regression guard: only strict `=== true` counts. */
+    const text = rangeWidthPreviewText(
+      { fullRangeRebalanceEnabled: "true", rebalanceRangeWidthPct: 15 },
+      { tickLower: -500, tickUpper: 500 },
+    );
+    assert.equal(text, "15%");
   });
 });
 

@@ -65,12 +65,10 @@ import {
   saveGasStrategy,
   saveOffset,
   resetOffset,
-  saveRangeWidth,
-  resetRangeWidth,
-  setDefaultRangeWidth,
   saveApprovalMultiple,
   updateOffsetComplement,
 } from "./dashboard-throttle.js";
+import { wirePriceRangeExtensionEvents } from "./dashboard-price-range-extension.js";
 import {
   openRebalanceConfirm,
   closeRebalanceConfirm,
@@ -518,16 +516,7 @@ export function bindAllEvents() {
   _click("saveIntervalBtn", saveCheckInterval);
   _click("saveOffsetBtn", saveOffset);
   _click("resetOffsetBtn", resetOffset);
-  _click("saveRangeWidthBtn", saveRangeWidth);
-  _click("resetRangeWidthBtn", resetRangeWidth);
-  _click("defaultRangeWidthBtn", setDefaultRangeWidth);
-  /*- Mark the Range Width input dirty on every keystroke so the
-   *  per-poll `syncRangeWidth` (dashboard-data-range-width.js) can't
-   *  clobber mid-typing when a saved override already exists.
-   *  Dirty is cleared at end of poll (`clearDirtyInputs`); by the
-   *  time Save fires and the next poll returns the persisted value,
-   *  the saved-value overwrite is idempotent (matches typed value). */
-  _input("inRangeWidth", () => markInputDirty("inRangeWidth"));
+  wirePriceRangeExtensionEvents(_click, _input, _change);
   _click("saveApprovalMultipleBtn", saveApprovalMultiple);
 
   /* ── Offset linked inputs ── */
