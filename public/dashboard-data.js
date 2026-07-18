@@ -11,10 +11,7 @@ import {
   isPositionClosed,
 } from "./dashboard-positions.js";
 import { syncActivePosition } from "./dashboard-active-sync.js";
-import {
-  syncRangeWidth,
-  syncFullRangeCheckbox,
-} from "./dashboard-data-range-width.js";
+import { syncBotSettingsConfigInputs } from "./dashboard-bot-settings-sync.js";
 import {
   updateHistoryFromStatus,
   updateHistorySyncLabels,
@@ -567,11 +564,11 @@ function _syncManagedAndGlobals(data) {
   if (data.scanTimeoutMs > 0) botConfig.scanTimeoutMs = data.scanTimeoutMs;
   _syncOorThreshold(data);
   /*- Per-poll so it retries on the "Manage on unmanaged position"
-   *  flow.  Both self-throttle internally against dirty inputs and
-   *  the last-seen posKey — cadence rationale in
+   *  flow.  Each sync inside `syncBotSettingsConfigInputs`
+   *  self-throttles internally against dirty inputs and the
+   *  last-seen posKey — cadence rationale in
    *  `dashboard-data-range-width.js`'s file header. */
-  syncRangeWidth(data);
-  syncFullRangeCheckbox(data);
+  syncBotSettingsConfigInputs(data);
 }
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";

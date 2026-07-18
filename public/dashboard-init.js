@@ -277,13 +277,16 @@ function _afterDisclaimer() {
     approvalMultiple: "inApprovalMultiple",
     rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
     rebalanceTimeoutMin: "inOorTimeout",
-    slippagePct: "inSlip",
     checkIntervalSec: "inInterval",
     minRebalanceIntervalMin: "inMinInterval",
     maxRebalancesPerDay: "inMaxReb",
     offsetToken0Pct: "inOffsetToken0",
     gasFeePct: "inGasFeePct",
   };
+  /*- Per-token slippage inputs (inSlipToken0 / inSlipToken1) both
+   *  seed from the same `slippagePct` shipped default (0.75) — see
+   *  `syncPerTokenSlippage` in dashboard-per-token-slippage.js.  Not
+   *  in the main map because both point to the SAME config key. */
   /*- Store-only defaults: shipped values that must be reachable via
    *  `getInputDefault(key)` (e.g. the "Default" button on the Price
    *  Range Extension row reads its value from here) but must NOT

@@ -127,6 +127,18 @@ const POSITION_KEYS = [
    */
   "fullRangeRebalanceEnabled",
   "slippagePct",
+  /*-
+   *  Per-token slippage overrides for asymmetric-liquidity pairs.
+   *  When either is set, the swap layer picks slippage by DESTINATION
+   *  token: a token0 → token1 swap uses `slippagePctToken1`, a token1
+   *  → token0 swap uses `slippagePctToken0`.  Unset destination-side
+   *  under per-token opt-in → shipped `slippagePct` default (currently
+   *  0.75).  Purely additive; a position with neither field set
+   *  continues to use its saved `slippagePct` for both sides — no
+   *  migration on upgrade.
+   */
+  "slippagePctToken0",
+  "slippagePctToken1",
   "checkIntervalSec",
   "minRebalanceIntervalMin",
   "maxRebalancesPerDay",

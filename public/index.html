@@ -7,8 +7,8 @@
 <title>LP Ranger for 9mm</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="style.css?v=1784413146340">
-<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784413146340">
+<link rel="stylesheet" href="style.css?v=1784418080611">
+<link rel="stylesheet" href="9mm-pos-mgr.css?v=1784418080611">
 </head>
 <body>
 
@@ -444,6 +444,78 @@
     <div class="9mm-pos-mgr-btn-row">
       <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="ilWarnCancelBtn">Cancel</button>
       <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="ilWarnConfirmBtn">Rebalance Anyway</button>
+    </div>
+  </div>
+</div>
+
+<!-- Slippage validation modals — see public/dashboard-per-token-slippage.js. -->
+<div class="modal-overlay hidden" id="slippageOutOfRangeModal">
+  <div class="modal 9mm-pos-mgr-modal-sm 9mm-pos-mgr-warning-modal">
+    <div class="modal-logo">
+      <h2>Slippage Out of Range</h2>
+      <div class="9mm-pos-mgr-modal-warning-row">
+        <div class="modal-logo-icon">&#x26A0;</div>
+        <p>The value <span id="slipOorValue"></span>% is outside the allowed range.</p>
+      </div>
+    </div>
+    <div class="9mm-pos-mgr-confirm-body">
+      <p>Slippage must be between <strong>0.1%</strong> and <strong>20%</strong>. Please enter a value in that range and click Save again.</p>
+    </div>
+    <div class="9mm-pos-mgr-btn-row">
+      <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="slipOorOkBtn">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="slippageAbove5ConfirmModal">
+  <div class="modal 9mm-pos-mgr-modal-sm 9mm-pos-mgr-warning-modal">
+    <div class="modal-logo">
+      <h2>Confirm Elevated Slippage</h2>
+      <div class="9mm-pos-mgr-modal-warning-row">
+        <div class="modal-logo-icon">&#x26A0;</div>
+        <p>You are setting slippage to <span id="slipAbove5Value"></span>%, which is above the typical range.</p>
+      </div>
+    </div>
+    <div class="9mm-pos-mgr-confirm-body">
+      <p>Typical slippage for most pairs is <strong>0.1% to 5%</strong>. Values above 5% may result in meaningful value loss to price impact and MEV. If your pair is genuinely thin, this may still be the right value.</p>
+      <p>Click <strong>Confirm</strong> to save this value or <strong>Cancel</strong> to revert.</p>
+    </div>
+    <div class="9mm-pos-mgr-btn-row">
+      <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="slipAbove5CancelBtn">Cancel</button>
+      <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="slipAbove5ConfirmBtn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="slippageAbove10TypeConfirmModal">
+  <div class="modal 9mm-pos-mgr-modal-sm 9mm-pos-mgr-warning-modal">
+    <div class="modal-logo">
+      <h2>Confirm Extreme Slippage</h2>
+      <div class="9mm-pos-mgr-modal-warning-row">
+        <div class="modal-logo-icon">&#x26A0;</div>
+        <p>You are setting slippage to <span id="slipAbove10Value"></span>%, which is <strong>extreme</strong>.</p>
+      </div>
+    </div>
+    <div class="9mm-pos-mgr-confirm-body">
+      <p>Swaps at slippage levels of <strong>10% or above</strong> are highly vulnerable to MEV extraction — a portion of your swap can be captured by a searcher rather than reaching the pool. This is generally only appropriate for extremely thin tokens where no lower value clears at all.</p>
+      <p>To proceed, type <strong>Confirm</strong> (case-sensitive) in the box below.</p>
+      <input type="text"
+             id="slipAbove10ConfirmInput"
+             class="modal-input"
+             autocomplete="off"
+             autocorrect="off"
+             autocapitalize="off"
+             spellcheck="false"
+             data-form-type="other"
+             data-lpignore="true"
+             data-1p-ignore="true"
+             name="slippage-confirm-ephemeral-do-not-fill"
+             placeholder="Type Confirm to proceed"
+             aria-label="Type Confirm to proceed">
+    </div>
+    <div class="9mm-pos-mgr-btn-row">
+      <button type="button" class="modal-btn secondary 9mm-pos-mgr-flex-fill" id="slipAbove10CancelBtn">Cancel</button>
+      <button type="button" class="modal-btn primary 9mm-pos-mgr-flex-fill" id="slipAbove10ConfirmBtn" disabled>Confirm</button>
     </div>
   </div>
 </div>
@@ -1067,11 +1139,25 @@
         </div>
       </div>
       <div class="prow">
-        <span class="plbl">Slippage Tolerance <span class="9mm-pos-mgr-il-info-btn" data-param-help="inSlip" title="Learn about slippage">i</span></span>
+        <span class="plbl">
+          Slippage (<span id="slipT0Name">Token 0</span>)
+          <span class="9mm-pos-mgr-il-info-btn" data-param-help="inSlipToken0" title="Learn about per-token slippage">i</span>
+        </span>
         <div class="9mm-pos-mgr-input-row">
-          <input type="number" class="pinput w55" id="inSlip" min="0.1" max="5" step="0.1" aria-label="Slippage tolerance percent">
+          <input type="number" class="pinput w55" id="inSlipToken0" min="0.1" max="20" step="0.1" aria-label="Per-token slippage for token 0">
           <span class="punit">%</span>
-          <button type="button" class="save-range-btn" id="saveSlipBtn" title="Save slippage tolerance">Save</button>
+          <button type="button" class="save-range-btn" id="saveSlipToken0Btn" title="Save per-token slippage for token 0">Save</button>
+        </div>
+      </div>
+      <div class="prow">
+        <span class="plbl">
+          Slippage (<span id="slipT1Name">Token 1</span>)
+          <span class="9mm-pos-mgr-il-info-btn" data-param-help="inSlipToken1" title="Learn about per-token slippage">i</span>
+        </span>
+        <div class="9mm-pos-mgr-input-row">
+          <input type="number" class="pinput w55" id="inSlipToken1" min="0.1" max="20" step="0.1" aria-label="Per-token slippage for token 1">
+          <span class="punit">%</span>
+          <button type="button" class="save-range-btn" id="saveSlipToken1Btn" title="Save per-token slippage for token 1">Save</button>
         </div>
       </div>
       <div class="prow">
@@ -1430,6 +1516,6 @@
 </template>
 
 <!-- Dashboard bundle (built by esbuild from dashboard-init.js) -->
-<script src="dist/bundle.js?v=1784413146340"></script>
+<script src="dist/bundle.js?v=1784418080611"></script>
 </body>
 </html>

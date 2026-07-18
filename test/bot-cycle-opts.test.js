@@ -110,6 +110,66 @@ describe("buildRebalanceOpts — rebalanceRangeWidthPct source", () => {
   });
 });
 
+describe("buildRebalanceOpts — per-token slippage source", () => {
+  it("threads slippagePctToken0 through when set on the position", () => {
+    const deps = makeDeps((k) =>
+      k === "slippagePctToken0" ? 1.25 : undefined,
+    );
+    const opts = buildRebalanceOpts(deps, {});
+    assert.strictEqual(opts.slippagePctToken0, 1.25);
+  });
+
+  it("threads slippagePctToken1 through when set on the position", () => {
+    const deps = makeDeps((k) => (k === "slippagePctToken1" ? 3.5 : undefined));
+    const opts = buildRebalanceOpts(deps, {});
+    assert.strictEqual(opts.slippagePctToken1, 3.5);
+  });
+
+  it("threads both when both are set", () => {
+    const deps = makeDeps((k) => {
+      if (k === "slippagePctToken0") return 2;
+      if (k === "slippagePctToken1") return 0.5;
+      return undefined;
+    });
+    const opts = buildRebalanceOpts(deps, {});
+    assert.strictEqual(opts.slippagePctToken0, 2);
+    assert.strictEqual(opts.slippagePctToken1, 0.5);
+  });
+
+  it("omits both when unset (legacy single-slippage path)", () => {
+    /*- Regression guard: when neither per-token field is set, the opts
+     *  MUST NOT carry either key.  The presence of either key is what
+     *  the resolver uses to detect opt-in.  A stray `undefined` value
+     *  wouldn't switch the mode (isFinite check) but would still make
+     *  the opts uglier. */
+    const deps = makeDeps(() => undefined);
+    const opts = buildRebalanceOpts(deps, {});
+    assert.ok(!("slippagePctToken0" in opts));
+    assert.ok(!("slippagePctToken1" in opts));
+  });
+
+  it("omits per-token fields when null (No Override was clicked)", () => {
+    const deps = makeDeps(() => null);
+    const opts = buildRebalanceOpts(deps, {});
+    assert.ok(!("slippagePctToken0" in opts));
+    assert.ok(!("slippagePctToken1" in opts));
+  });
+
+  it("legacy slippagePct still flows through untouched", () => {
+    /*- Whether or not per-token overrides are set, opts.slippagePct
+     *  should carry the config value.  The slippage-resolver picks
+     *  between them at swap time. */
+    const deps = makeDeps((k) => {
+      if (k === "slippagePct") return 2.5;
+      if (k === "slippagePctToken0") return 1;
+      return undefined;
+    });
+    const opts = buildRebalanceOpts(deps, {});
+    assert.strictEqual(opts.slippagePct, 2.5);
+    assert.strictEqual(opts.slippagePctToken0, 1);
+  });
+});
+
 describe("buildRebalanceOpts — fullRangeRebalanceEnabled source", () => {
   it("includes fullRangeRebalanceEnabled=true when config says true", () => {
     /*- Full-Range checkbox is checked; the rebalancer will mint at

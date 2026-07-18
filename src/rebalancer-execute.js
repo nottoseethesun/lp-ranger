@@ -13,6 +13,7 @@ const config = require("./config");
 const { logCtx } = require("./logger");
 const pools = require("./rebalancer-pools");
 const { swapIfNeeded } = require("./rebalancer-swap");
+const { resolveSlippagePct } = require("./slippage-resolver");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const {
   estimateSwapGasUsd,
@@ -88,7 +89,6 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     position: p,
     poolState: ps,
     swapRouterAddress,
-    slippagePct,
     signerAddress,
     symbol0,
     symbol1,
@@ -107,13 +107,18 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     gasFeePct,
   );
   if (gated) return gated;
+  /*- Destination-token slippage — when per-token overrides are set
+   *  on the position, this picks slippagePctToken<destination>; when
+   *  they aren't, it returns the legacy single slippagePct.  See
+   *  src/slippage-resolver.js for the full precedence. */
+  const effectiveSlippage = resolveSlippagePct(ctx, is0to1);
   const result = await swapIfNeeded(signer, ethersLib, {
     swapRouterAddress,
     fee: p.fee,
     amountIn: desired.swapAmount,
     tokenIn: is0to1 ? p.token0 : p.token1,
     tokenOut: is0to1 ? p.token1 : p.token0,
-    slippagePct,
+    slippagePct: effectiveSlippage,
     currentPrice: ps.price,
     decimalsIn: is0to1 ? ps.decimals0 : ps.decimals1,
     decimalsOut: is0to1 ? ps.decimals1 : ps.decimals0,

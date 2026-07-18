@@ -151,6 +151,14 @@ const _NORMALIZERS = {
    *  Full-Range checkbox. */
   fullRangeRebalanceEnabled: (v) => (typeof v === "boolean" ? v : false),
   slippagePct: (v) => _clampFloat(v, 0.1, 5),
+  /*- Per-token slippage overrides.  0.1% floor and 20% ceiling — the
+   *  ceiling is high enough to cover extreme asymmetric-liquidity
+   *  pairs where the thin side needs a rare 10–20%, while still
+   *  rejecting garbage input like "100" typed in error.  Client-side
+   *  UX warns at >5% and requires typed confirmation at >=10% (see
+   *  public/dashboard-per-token-slippage.js). */
+  slippagePctToken0: (v) => _clampFloat(v, 0.1, 20),
+  slippagePctToken1: (v) => _clampFloat(v, 0.1, 20),
   checkIntervalSec: (v) => _clampInt(v, 10, 3600),
   minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),
   maxRebalancesPerDay: (v) => _clampInt(v, 1, 200),
