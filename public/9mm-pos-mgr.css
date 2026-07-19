@@ -108,7 +108,7 @@
 /* Totals table sits in normal flow above the scrollable wrapper.
  * `margin-top` replaces the wrapper's old top spacing (removed
  * above); `margin-bottom` gives the one-blank-line gap below. */
-#allPositionsStatsTotalsTable {
+.\39 mm-pos-mgr-all-positions-totals-table {
   margin-top: 18px;
   margin-bottom: 24px;
 }
@@ -151,7 +151,6 @@
  * user cue is colour, not a dot. */
 .\39 mm-pos-mgr-all-positions-mode-option input[type="radio"] {
   appearance: none;
-  -webkit-appearance: none;
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -170,8 +169,8 @@
 /* Right-align every column of the totals table EXCEPT the first
  * ("Total:") label column.  Scoped to the totals table only so the
  * sortable table's left-aligned numeric cells stay unchanged. */
-#allPositionsStatsTotalsTable th:not(:first-child),
-#allPositionsStatsTotalsTable td:not(:first-child) {
+.\39 mm-pos-mgr-all-positions-totals-table th:not(:first-child),
+.\39 mm-pos-mgr-all-positions-totals-table td:not(:first-child) {
   text-align: right;
 }
 
@@ -1178,6 +1177,7 @@ span[title]:not([title=""]):hover {
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -3293,7 +3293,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784494000392");
+  background-image: url("background-cloud_top.png?v=1784495441297");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3306,7 +3306,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784494000392");
+  background-image: url("background-cloud_middle.png?v=1784495441297");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3316,7 +3316,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784494000392");
+  background-image: url("background-cloud_bottom.png?v=1784495441297");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
@@ -3333,6 +3333,7 @@ span[title]:not([title=""]):hover {
   from {
     transform: translateX(calc(-100% + 1px));
   }
+
   to {
     transform: translateX(100vw);
   }
