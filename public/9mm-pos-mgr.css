@@ -3063,11 +3063,15 @@ span[title]:not([title=""]):hover {
   border-color: var(--accent3);
 }
 
-.\39
-  mm-pos-mgr-compound-toggle
+/* Six-digit `\000039` escape (not `\39 `) so Prettier's line-wrap
+ * cannot break the escape's trailing-whitespace terminator.  See
+ * ../../../bug-reports-on-dependencies/prettier-css-hex-escape-linewrap/
+ * for the underlying Prettier 3.9.5 bug.  Keep this form on every
+ * ident whose class name starts with a digit AND appears inside a
+ * selector that would exceed `printWidth`. */
+.\000039mm-pos-mgr-compound-toggle
   input:checked
-  ~ .\39
-  mm-pos-mgr-compound-track::after {
+  ~ .\000039mm-pos-mgr-compound-track::after {
   transform: translateX(27px);
   background: var(--accent3);
   box-shadow: 0 0 6px var(--accent3);
@@ -3293,7 +3297,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784495441297");
+  background-image: url("background-cloud_top.png?v=1784498555821");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3306,7 +3310,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784495441297");
+  background-image: url("background-cloud_middle.png?v=1784498555821");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3316,7 +3320,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784495441297");
+  background-image: url("background-cloud_bottom.png?v=1784498555821");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
