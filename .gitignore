@@ -31,8 +31,13 @@ app-data/*
 !app-data/README.md
 
 # Diagnostic log output (write-only; the app never reads it back).
-# Auto-created by src/log-file.js on first --log-file invocation.
-# Already covered by the standard `logs` rule in the Node.js section
+# Two files live under logs/ on a live install:
+#   - logs/lp-ranger.log  Diagnostic tail (auto-created by src/log-file.js
+#                         on --log-file invocation or logging.json opt-in).
+#   - logs/error.log      Catastrophic-failure record (auto-created by
+#                         src/error-log.js when a silent catch fires —
+#                         currently only bot-recorder-lifetime._recordScanFailure).
+# Both are covered by the standard `*.log` rule in the Node.js section
 # below — this comment exists to flag the convention for this project.
 
 # Encrypted private key files (legacy root drops — always gitignore-safe)

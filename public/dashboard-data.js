@@ -19,6 +19,7 @@ import {
 import { wallet } from "./dashboard-wallet.js";
 import { reapplyPrivacyBlur } from "./dashboard-events.js";
 import { updateManageBadge } from "./dashboard-events-manage.js";
+import { paintReloadPositionButton } from "./dashboard-reload-flow.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
 import {
   isViewingClosedPos,
@@ -590,6 +591,13 @@ function updateDashboardFromStatus(data) {
    *  state via injected getLastStatus + posStore from
    *  dashboard-manage-ui.js — no need to thread `data` through. */
   paintManageUI();
+  /*- Reload Current Position: reflect the active position's live
+   *  rebalance/compound-in-progress flags so the button in Settings
+   *  disables with a tooltip while either operation is running.  Same
+   *  poll frequency as the Manage button — the two surfaces should
+   *  always agree.  Cheap DOM read + write, safe even when the
+   *  Settings popover is hidden. */
+  paintReloadPositionButton();
   const _tid = posStore.getActive()?.tokenId;
   log.debug(
     "%c[lp-ranger] [poll] #%s hasPosData=%s stats=%s pool=%s",

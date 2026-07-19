@@ -1686,6 +1686,72 @@ span[title]:not([title=""]):hover {
   background: rgb(255 184 0 / 25%);
 }
 
+/* Catastrophic-failure modal (Bright Salmon Red on dark) — reserved for
+   the "Reload Current Position" escape hatch surfaced by
+   `_catastrophicScanError`; see docs/engineering.md § Error Log. */
+.\39 mm-pos-mgr-modal-danger {
+  border-color: var(--danger);
+}
+
+.\39 mm-pos-mgr-modal-danger h3 {
+  color: var(--danger);
+}
+
+.\39 mm-pos-mgr-modal-danger .\39 mm-pos-mgr-modal-close {
+  background: rgb(255 59 92 / 15%);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.\39 mm-pos-mgr-modal-danger .\39 mm-pos-mgr-modal-close:hover {
+  background: rgb(255 59 92 / 25%);
+}
+
+/* Blocking overlay for Reload Current Position — mirrors modal-overlay
+   layout but is deliberately NOT named "modal-overlay" so the global
+   Escape-key handler in dashboard-events-manage.js
+   (`[class*="pos-mgr-modal-overlay"]`) cannot dismiss it.  See
+   `_showReloadBlockingModal` in dashboard-events-manage.js. */
+.\39 mm-pos-mgr-blocking-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 82%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 30px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  cursor: wait;
+}
+
+.\39 mm-pos-mgr-reload-modal {
+  max-width: min(640px, 92vw);
+}
+
+.\39 mm-pos-mgr-reload-spinner {
+  margin-top: 24px;
+  padding: 12px 0;
+  font-family: 'Space Mono', monospace;
+  font-size: 15px;
+  color: var(--danger);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  animation: 9mm-pos-mgr-reload-spinner-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes 9mm-pos-mgr-reload-spinner-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
 .\39 mm-pos-mgr-scan-help {
   display: inline-block;
   width: 24px;
@@ -3130,7 +3196,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784418080611");
+  background-image: url("background-cloud_top.png?v=1784449271626");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3143,7 +3209,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784418080611");
+  background-image: url("background-cloud_middle.png?v=1784449271626");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3153,7 +3219,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784418080611");
+  background-image: url("background-cloud_bottom.png?v=1784449271626");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

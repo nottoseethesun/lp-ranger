@@ -39,6 +39,10 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
   if (!forced && !autoEnabled) return false;
   if (!forced && feesUsd < threshold) return false;
   if (!forced && feesUsd < config.COMPOUND_MIN_FEE_USD) return false;
+  /*- Reload / initial-scan window: skip auto-compound while a scan is
+   *  running so the compound doesn't race the state reconstruction.
+   *  Manual (`forced === true`) compounds still bypass. */
+  if (!forced && botSt._scanRunning) return false;
 
   // Auto-compound throttle: max(5 × checkInterval, 300 s floor).
   // config.CHECK_INTERVAL_SEC is sourced from the shipped JSON via

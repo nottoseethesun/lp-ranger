@@ -222,6 +222,27 @@ describe("_checkRebalanceGates", () => {
     assert.strictEqual(r, null);
   });
 
+  it("returns scanRunning when _scanRunning is true", () => {
+    /*- Reload / initial-scan gate: while `_triggerScan` is running,
+     *  the position's on-chain-derived state is being rebuilt.  An
+     *  auto-rebalance fired mid-scan would race the reconstruction
+     *  and re-corrupt the very numbers the reload is trying to fix. */
+    const deps = makeDeps({ _botState: { _scanRunning: true } });
+    const r = _checkRebalanceGates(deps, {}, false);
+    assert.ok(r);
+    assert.strictEqual(r.rebalanced, false);
+    assert.strictEqual(r.scanRunning, true);
+  });
+
+  it("ignores scanRunning when forced (manual rebalance during scan)", () => {
+    /*- Manual (user-clicked) rebalance still bypasses the scan gate.
+     *  If the user explicitly clicks Rebalance while a scan is
+     *  running, that's their call. */
+    const deps = makeDeps({ _botState: { _scanRunning: true } });
+    const r = _checkRebalanceGates(deps, {}, true);
+    assert.strictEqual(r, null);
+  });
+
   it("returns swap backoff when active", () => {
     const deps = makeDeps({
       _botState: { swapBackoffUntil: Date.now() + 60_000 },

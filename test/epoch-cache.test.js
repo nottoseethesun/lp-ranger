@@ -203,4 +203,57 @@ describe("epoch-cache", () => {
     assert.strictEqual(got.closedEpochs.length, 2);
     assert.strictEqual(got.closedEpochs[1].id, 2);
   });
+
+  it("clearCacheEntry deletes every field cached under a pool's key", () => {
+    /*- Reload Current Position depends on this: closedEpochs,
+     *  liveEpoch, lifetimeHodlAmounts, freshDeposits, and
+     *  lastNftScanBlock all must go so the fresh scan starts from
+     *  pool creation with no stale merge. */
+    const {
+      clearCacheEntry,
+      setCachedLifetimeHodl,
+      getCachedLifetimeHodl,
+      setLastNftScanBlock,
+      getLastNftScanBlock,
+      setCachedFreshDeposits,
+      getCachedFreshDeposits,
+    } = require("../src/epoch-cache");
+    const key = {
+      contract: `0xCLR${U}`,
+      wallet: "0xCLRWALLET",
+      token0: "0xC0",
+      token1: "0xC1",
+      fee: 500,
+    };
+    setCachedEpochs(key, {
+      closedEpochs: [{ id: 1 }],
+      liveEpoch: { entryValue: 100 },
+    });
+    setCachedLifetimeHodl(key, { amount0: 1, amount1: 2 });
+    setLastNftScanBlock(key, 12_345_678);
+    setCachedFreshDeposits(key, { raw0: "1", raw1: "2", lastBlock: 42 });
+    /*- Sanity: everything present before clear. */
+    assert.ok(getCachedEpochs(key));
+    assert.ok(getCachedLifetimeHodl(key));
+    assert.strictEqual(getLastNftScanBlock(key), 12_345_678);
+    assert.ok(getCachedFreshDeposits(key));
+    clearCacheEntry(key);
+    /*- Every field gone after clear. */
+    assert.strictEqual(getCachedEpochs(key), null);
+    assert.strictEqual(getCachedLifetimeHodl(key), null);
+    assert.strictEqual(getLastNftScanBlock(key), 0);
+    assert.strictEqual(getCachedFreshDeposits(key), null);
+  });
+
+  it("clearCacheEntry is a no-op when the key is not present", () => {
+    const { clearCacheEntry } = require("../src/epoch-cache");
+    /*- Must not throw. */
+    clearCacheEntry({
+      contract: `0xNONE${U}`,
+      wallet: "0xW",
+      token0: "0xN0",
+      token1: "0xN1",
+      fee: 500,
+    });
+  });
 });

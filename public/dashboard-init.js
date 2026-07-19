@@ -81,6 +81,7 @@ import {
   restorePrivacyMode,
   injectPosStoreForEvents,
 } from "./dashboard-events.js";
+import { injectPosStoreForReload } from "./dashboard-reload-flow.js";
 import {
   restoreSoundsToggle,
   bindSoundsToggle,
@@ -190,6 +191,7 @@ injectPositionDeps({
 });
 injectThrottleDeps({ positionRangeVisual });
 injectPosStoreForEvents(posStore);
+injectPosStoreForReload(posStore);
 /*- Wire the Manage-UI single owner with read access to posStore and
  *  the latest /api/status payload.  Done once at init; subsequent
  *  paintManageUI() calls (from poll, activation, click, wallet

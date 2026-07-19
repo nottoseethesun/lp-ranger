@@ -191,6 +191,22 @@ function setCachedFreshDeposits(keyOpts, data) {
   _writeCache(cache);
 }
 
+/**
+ * Delete every field cached under a pool's key (closedEpochs,
+ * liveEpoch, lifetimeHodlAmounts, lastNftScanBlock, freshDeposits).
+ * Used by the "Reload Current Position" endpoint to reset a position's
+ * on-chain-derived state so the next scan starts from pool creation
+ * with no stale data merged in.  No-op when the key is not present.
+ * @param {object} keyOpts  Options for _cacheKey.
+ */
+function clearCacheEntry(keyOpts) {
+  const cache = _readCache();
+  const key = _cacheKey(keyOpts);
+  if (!cache[key]) return;
+  delete cache[key];
+  _writeCache(cache);
+}
+
 /** Override cache file path (test isolation only). */
 function _setCachePath(p) {
   _CACHE_PATH = p;
@@ -205,5 +221,6 @@ module.exports = {
   setLastNftScanBlock,
   getCachedFreshDeposits,
   setCachedFreshDeposits,
+  clearCacheEntry,
   _setCachePath,
 };

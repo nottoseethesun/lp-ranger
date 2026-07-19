@@ -17,6 +17,7 @@ const { classifyCompounds } = require("./compounder");
 const { computeLifetimeHodl } = require("./lifetime-hodl");
 const { computeAndCacheHodl, computeDepositUsd } = require("./bot-hodl-scan");
 const { emojiId } = require("./logger");
+const { writeErrorLog, getErrorLogPath } = require("./error-log");
 const {
   resolvePoolCreationBlockForPosition,
 } = require("./pool-creation-block");
@@ -211,11 +212,13 @@ function _recordScanSuccess(botState, updateState, ctx) {
     botState._needsFullRescan = false;
     botState._lifetimeScanError = null;
     botState._lifetimeScanErrorAt = null;
+    botState._catastrophicScanError = null;
     botState.lifetimeScanComplete = ready;
     updateState({
       _needsFullRescan: false,
       _lifetimeScanError: null,
       _lifetimeScanErrorAt: null,
+      _catastrophicScanError: null,
       lifetimeScanComplete: ready,
     });
   }
@@ -257,20 +260,59 @@ async function _resolveScanFromBlock(
 
 /*- Persist scan-failure state so the 30-min auto-rescan can see the gap.
  *  Also keeps `lifetimeScanComplete` at false so the Syncing badge stays
- *  engaged until a future scan succeeds. */
+ *  engaged until a future scan succeeds.
+ *
+ *  Catastrophic-failure record: this catch is where the "silent lifetime
+ *  scan abort" bug hid on Prod (July 2026, PulseX/WPLS position stuck at
+ *  $11.63 Fees Compounded instead of $255.50).  Every entry to this
+ *  function now:
+ *    (a) appends a stacktrace record to logs/error.log via
+ *        writeErrorLog(), so a fresh install two weeks later can still
+ *        show the operator exactly what went wrong; and
+ *    (b) stamps `_catastrophicScanError` on the bot state so the
+ *        dashboard can paint a red alert directing the user to
+ *        Settings -> Reload Current Position.
+ *  Reserved for THIS surface — do not add writeErrorLog() calls to
+ *  routine catches. */
 function _recordScanFailure(botState, updateState, err, ctx) {
+  const errAt = Date.now();
+  /*- Defensive `.message` read: the catch upstream is a bare
+   *  `catch (err)` (no type filter), so `err` could technically be a
+   *  primitive or a plain object without `.message`.  Fall back to
+   *  `String(err)` before the value ships to the dashboard as
+   *  user-facing text — an "undefined" render is worse than the raw
+   *  string form of whatever was thrown. */
+  const errMsg =
+    err && typeof err.message === "string" && err.message
+      ? err.message
+      : String(err || "unknown error");
+  const contextLine =
+    "[bot-recorder-lifetime] Lifetime pool scan failed: " +
+    (ctx.t0Sym || "?") +
+    "/" +
+    (ctx.t1Sym || "?") +
+    " NFT #" +
+    (ctx.tokenIdStr || "?");
+  writeErrorLog(err, contextLine);
   if (botState) {
-    botState._lifetimeScanError = err.message;
-    botState._lifetimeScanErrorAt = Date.now();
+    botState._lifetimeScanError = errMsg;
+    botState._lifetimeScanErrorAt = errAt;
     /*- Defensive: if a prior scan flipped the flag to true and a
      *  subsequent re-scan (post-rebalance) just failed, push it back
      *  to false so the Syncing badge re-engages.  No-op if already
      *  false from the initial state. */
     botState.lifetimeScanComplete = false;
+    botState._catastrophicScanError = {
+      message: errMsg,
+      at: errAt,
+      tokenId: ctx.tokenIdStr || null,
+      logPath: getErrorLogPath(),
+    };
     updateState({
-      _lifetimeScanError: err.message,
-      _lifetimeScanErrorAt: botState._lifetimeScanErrorAt,
+      _lifetimeScanError: errMsg,
+      _lifetimeScanErrorAt: errAt,
       lifetimeScanComplete: false,
+      _catastrophicScanError: botState._catastrophicScanError,
     });
   }
   log.warn(
@@ -279,8 +321,9 @@ function _recordScanFailure(botState, updateState, err, ctx) {
     ctx.t1Sym,
     ctx.tokenIdStr,
     ctx.tokenEmoji,
-    err.message,
+    errMsg,
   );
+  log.warn("[bot] Catastrophic scan failure recorded to %s", getErrorLogPath());
 }
 
 async function _scanLifetimePoolData(
@@ -383,4 +426,6 @@ module.exports = {
   _applyCompoundGas,
   _classifyAllCompounds,
   _scanLifetimePoolData,
+  _recordScanFailure, // exported for tests
+  _recordScanSuccess, // exported for tests
 };

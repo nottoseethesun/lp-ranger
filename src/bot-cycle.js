@@ -375,12 +375,33 @@ function _humanizeError(msg) {
   return msg;
 }
 
+/*- Bot-state gates checked before any throttle/pool/gas logic.  Every
+ *  early-return here means the bot state itself vetoes the rebalance,
+ *  so the throttle counters must NOT tick.  Extracted to keep
+ *  `_checkRebalanceGates` under the cyclomatic-complexity cap. */
+function _checkStateGates(deps, forced) {
+  const st = deps._botState;
+  if (!forced && st?.rebalancePaused)
+    return { rebalanced: false, paused: true };
+  /*- Reload / initial-scan window: while `_triggerScan` is running the
+   *  position's on-chain-derived state (compound history, HODL
+   *  baseline, epochs) is being rebuilt from scratch.  An auto-rebalance
+   *  fired mid-scan would race the reconstruction and re-corrupt the
+   *  very numbers the reload is trying to fix.  Uses `_scanRunning` (an
+   *  existing bot-loop flag) rather than a bespoke "reloading" flag.
+   *  Manual (`forced === true`) rebalances still bypass — user is on
+   *  their own if they click Rebalance mid-scan. */
+  if (!forced && st?._scanRunning)
+    return { rebalanced: false, scanRunning: true };
+  return null;
+}
+
 /** Check throttle, daily cap, dry-run, and gas before executing.  Returns early result or null. */
 function _checkRebalanceGates(deps, poolState, forced) {
   const { throttle, dryRun } = deps;
   const emit = deps.updateBotState || (() => {});
-  if (!forced && deps._botState?.rebalancePaused)
-    return { rebalanced: false, paused: true };
+  const stateGate = _checkStateGates(deps, forced);
+  if (stateGate) return stateGate;
   const backoff = _checkSwapBackoff(deps, forced);
   if (backoff) return backoff;
   const can = !forced && throttle.canRebalance();

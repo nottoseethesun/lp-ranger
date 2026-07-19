@@ -37,6 +37,7 @@ const {
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
+const { createReloadPositionHandler } = require("./server-reload-position");
 const { createAutoStartManagedPositions } = require("./server-auto-start");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
@@ -256,6 +257,15 @@ function createRouteHandlers(deps) {
       _globalScanStatus = s;
       _globalScanProgress = p || null;
     },
+  });
+
+  const _handlePositionReload = createReloadPositionHandler({
+    jsonResponse,
+    readJsonBody,
+    getAllPositionBotStates,
+    positionMgr,
+    walletManager,
+    diskConfig,
   });
 
   async function _handleShutdown(_req, res, srv) {
@@ -566,6 +576,7 @@ function createRouteHandlers(deps) {
     _handlePositionDetails,
     _handlePositionLifetime,
     _handlePositionScanCancel: scanHandlers._handlePositionScanCancel,
+    _handlePositionReload,
     _tryResolveKey,
     _autoStartManagedPositions,
     _handleApiKeySave,

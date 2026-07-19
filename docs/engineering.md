@@ -2694,6 +2694,209 @@ and routes through the flow above. See `public/dashboard-data.js`
 `_updateRebalanceButtons` and `public/dashboard-manage-badge.js` for
 the button-state logic.
 
+## Error Log & Reload Current Position
+
+Together these are the escape hatch for the single class of failure
+where a silent `catch` on the server side leaves persisted state
+subtly wrong &mdash; the initial pool-wide lifetime scan aborting
+before anything hits disk. That's the failure mode that produced the
+July 2026 Prod discrepancy where `Fees Compounded` for a PulseX/WPLS
+position showed $11.63 instead of the correct ~$255.50: the disk
+config's `totalCompoundedUsd` had been populated entirely by a single
+runtime auto-compound event because `_classifyAllCompounds` never
+persisted anything.
+
+### logs/error.log
+
+**Owner:** `src/error-log.js` &mdash; `writeErrorLog(err, context)`.
+
+**Location:** `logs/error.log` relative to the process CWD, same
+directory as the diagnostic `lp-ranger.log` produced by
+`src/log-file.js`. Auto-created on first append; gitignored via the
+project-wide `*.log` rule.
+
+**Entry format:**
+
+```text
+<four blank lines>
+[YYYY-MM-DDTHH:MM:SS.sssZ] <context line>
+<err.stack>
+```
+
+The four-line gap is deliberate. The file is meant to be scanned by a
+human weeks or months later; a huge blank margin makes a new incident
+unmissable when the file is opened for the first time in a while.
+
+**Scope: catastrophic failures only.** The one current caller is
+`_recordScanFailure` in `src/bot-recorder-lifetime.js`. Do NOT add
+`writeErrorLog()` calls to routine `catch` blocks, retry handlers, or
+expected transient errors. Every added surface dilutes the "unread
+error.log &rArr; nothing catastrophic has happened" invariant that
+makes the file useful.
+
+`writeErrorLog` never throws &mdash; a filesystem failure while
+trying to record another failure returns `false` and the caller
+proceeds; a broken log path must not cascade into another catastrophic
+error.
+
+### `_catastrophicScanError` bot-state flag
+
+Set by `_recordScanFailure` on the position's bot state alongside the
+`writeErrorLog` call:
+
+```js
+botState._catastrophicScanError = { message, at, tokenId, logPath };
+```
+
+Cleared by `_recordScanSuccess` on the next successful lifetime scan
+&mdash; that's what dismisses the dashboard's red modal once the
+Reload Current Position flow completes.
+
+Flows through `/api/status` &rarr; per-position state &rarr;
+`public/dashboard-alerts.js` `_showCatastrophicModal`, which paints a
+red modal (`.9mm-pos-mgr-modal-danger`) directing the user to Settings
+&rarr; Reload Current Position. Dedup is per-position-key; a dismiss
+keeps the modal down until the server clears the flag, at which point
+it can fire again on a fresh failure.
+
+### `POST /api/position/reload`
+
+**Owner:** `src/server-reload-position.js` &mdash;
+`createReloadPositionHandler(deps)`. Wired into
+`server-routes.js` and registered as
+`"POST /api/position/reload"` in `server.js`.
+
+**Body:** `{ positionKey }`. CSRF-gated like every other write route.
+
+**In-progress guard:** If the target position has `_scanRunning`,
+`rebalanceInProgress`, or `compoundInProgress` set on its bot state,
+the handler returns `409 Conflict` with `{ error, message }`
+describing which operation is running. The three error codes are:
+
+- `scan-in-progress` &mdash; a full lifetime scan is already running.
+  Starting a second one is not queued because `_triggerScan` gates on
+  `_scanRunning` and would no-op silently, leaving the reload's state
+  clears in place while the pre-existing scan writes stale results
+  back to disk. User waits for the current scan to finish (up to
+  four hours) and clicks Reload again.
+- `rebalance-in-progress` / `compound-in-progress` &mdash; the position
+  is mid-TX. Reload would race the transaction and either corrupt the
+  state reconstruction or step on the tracker mid-write.
+
+Every 409 falls through to the same yellow retry modal on the client
+(`_showReloadBusyModal` in `dashboard-events-manage.js`), so all
+"busy" outcomes look identical to the operator. The dashboard's
+Reload button is also disabled by `paintReloadPositionButton`
+whenever `rebalanceInProgress` or `compoundInProgress` is truthy on
+the currently-viewed position; the button is NOT tied to
+`_scanRunning` because a normal startup or post-rebalance scan
+should not permanently disable the escape hatch.
+
+**Steps on success:**
+
+1. Cancel any in-flight event scan for the pool
+   (`cancelPoolScan(token0, token1, fee, wallet)`).
+2. Delete the following on-chain-derived keys from the position's
+   disk config, then save via `saveConfig`:
+   `compoundHistory`, `totalCompoundedUsd`, `collectedFeesUsd`,
+   `nftCompoundedUsdByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
+   `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`. The
+   canonical list is `_ON_CHAIN_DERIVED_KEYS` in
+   `server-reload-position.js` (exported for tests).
+3. Clear the pool's entry in the epoch cache
+   (`_epochCache.clearCacheEntry(keyOpts)`) so the fresh scan starts
+   from pool creation block instead of the stale `lastNftScanBlock`.
+4. Clear the pool's event cache file (`clearPoolCache(position, wallet)`).
+5. Reset the same fields on the live bot state and set
+   `_needsFullRescan = true`, `_catastrophicScanError = null`,
+   `lifetimeScanComplete = false`, `rebalanceScanComplete = false`,
+   `totalLifetimeDepositUsd = 0`. See `_resetBotState` in
+   `server-reload-position.js`.
+6. `setTimeout(() => state._triggerScan(), 500)` &mdash; the 500 ms
+   pause gives the just-cancelled scan a moment to unwind its
+   finally-block and clear `_scanRunning`. Fire-and-forget, so the
+   HTTP response can return immediately.
+7. Respond `200 { ok: true, message: "Reload started", liveKey }`.
+
+**Not called by any bot code path.** Reserved for the user's escape
+hatch.
+
+### Rebalance / compound suppression during the reload window
+
+While a scan is running (`_scanRunning === true`), the bot must not
+rebalance or auto-compound the same position &mdash; that would race
+the state reconstruction and re-corrupt the numbers the reload is
+trying to fix. Instead of a bespoke `reloadInProgress` flag, the
+suppression rides on the existing `_scanRunning` flag that
+`_triggerScan` already sets:
+
+- **Auto-rebalance:** `_checkRebalanceGates` in `src/bot-cycle.js`
+  returns `{ rebalanced: false, scanRunning: true }` when
+  `!forced && _botState._scanRunning`. Manual (`forced === true`)
+  rebalances still bypass so a user who clicks Rebalance during a
+  scan is not silently ignored.
+- **Auto-compound:** `checkCompound` in `src/bot-cycle-compound.js`
+  early-returns `false` when `!forced && botSt._scanRunning`. Manual
+  compound (`forceCompound === true`) still runs.
+
+The invariant applies to every scan &mdash; not just reloads &mdash;
+so a startup scan, a rebalance-triggered rescan, and a Reload
+Current Position scan all get the same protection.
+
+### Dashboard flow (`public/dashboard-events-manage.js`)
+
+`_reloadCurrentPosition`:
+
+1. Read the active position from `_posStoreRef.getActive()`. Bail if
+   nothing is active.
+2. Defense-in-depth guard: read `rebalanceInProgress` /
+   `compoundInProgress` from the last poll and short-circuit with an
+   `alert()` if either is set (matches the server's 409 rejection).
+3. Show the blocking modal (`_showReloadBlockingModal`). Uses class
+   `9mm-pos-mgr-blocking-overlay` (deliberately NOT `modal-overlay`)
+   so the global Escape-key handler cannot dismiss it; the whole
+   point is that the UI stays locked until the page reloads.
+4. `POST /api/position/reload` with the composite key. On a non-OK
+   response, remove the overlay, re-enable the button, and
+   `alert()` the server's user-facing message (`body.message` when
+   present, falling back to `body.error` or HTTP status).
+5. Reset client-side caches (`resetHistoryFlag`, `clearHistory`,
+   `resetLastFetchedId`) so the eventual page reload lands on a
+   clean surface.
+6. Poll `/api/status` at 3 s intervals via `_waitForReloadCompletion`
+   until one of:
+   - `lifetimeScanComplete === true` on the target position &rarr;
+     `outcome = "complete"`.
+   - `rebalanceInProgress` or `compoundInProgress` becomes truthy on
+     the target position &rarr; `outcome = "raced"`. This is the
+     ~500 ms race between the reload endpoint returning 200 and
+     `_triggerScan` setting `_scanRunning=true`; a poll cycle that
+     lands in that window can start an auto-rebalance / auto-compound
+     before the gate engages. The reload dismisses the blocking
+     overlay and shows a yellow caution modal
+     (`_showReloadRaceModal`) telling the user to wait for the
+     operation to finish and click Reload again. No page reload &mdash;
+     the server left the position untouched (the racing operation
+     owns its own writes) and a refresh would show the same state.
+   - A brand-new `_catastrophicScanError` with `at > startedAt` on
+     the target position &rarr; `outcome = "failed-again"`. Falls
+     through to the page reload so the user sees the fresh red modal.
+   - Four hours elapse &rarr; `outcome = "timeout"`. Falls through
+     anyway; the fresh page shows the Syncing badge and the 30 min
+     recovery loop takes over from there.
+7. `window.location.reload()` for every outcome EXCEPT `raced`
+   (which dismisses to the retry modal and leaves the tab alone).
+
+`paintReloadPositionButton()`:
+
+- Runs every poll from `dashboard-data.js`.
+- Disables `#reloadPositionBtn` with a per-condition tooltip when the
+  active position has `rebalanceInProgress` or `compoundInProgress`
+  set on its bot state. Enables + restores the default tooltip
+  otherwise.
+- Same source flags as the Mission Control status badge, so the two
+  surfaces always agree.
+
 ## Dead Code Detection
 
 - `npm run knip` — [Knip](https://knip.dev) — finds unused exports, files,

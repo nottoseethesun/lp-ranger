@@ -20,6 +20,12 @@ import { showPostRebalanceWarnings } from "./dashboard-post-rebalance-modal.js";
 const _errShown = new Set();
 const _recShown = new Set();
 const _compoundErrShown = new Set();
+/*- Catastrophic scan failure (server-side lifetime scan aborted before
+ *  anything persisted).  Dedup so the modal shows once per FALSE→TRUE
+ *  entry — dismiss stays dismissed until the server clears the flag on
+ *  a successful rescan.  See src/bot-recorder-lifetime.js
+ *  `_recordScanFailure` for the source. */
+const _catastrophicShown = new Set();
 
 function _short(a) {
   return a ? a.slice(0, 6) + "\u2026" + a.slice(-4) : "";
@@ -140,6 +146,42 @@ function _showCompoundErrModal(key, st) {
   _compoundErrShown.add(key);
 }
 
+function _showCatastrophicModal(key, st) {
+  const id = _modalIdForKey("catastrophicScanErrorModal", key);
+  if (document.getElementById(id)) return;
+  const info = st._catastrophicScanError || {};
+  const logPath = info.logPath || "logs/error.log";
+  const message = info.message || "(no message)";
+  /*- Slot ids are derived from the modal id so they are unique across
+   *  every catastrophic modal that may coexist (one per position).
+   *  Using ids (not data attributes) lets `document.getElementById`
+   *  return the exact target unambiguously — no cross-modal clashes,
+   *  no "first match wins" surprises.  Server-supplied `message` and
+   *  `logPath` are still written via `textContent` (not innerHTML) so
+   *  a markup-laden Error.message cannot inject HTML. */
+  const msgSlotId = id + "-msg";
+  const logSlotId = id + "-log";
+  _createModal(
+    id,
+    "9mm-pos-mgr-modal-danger",
+    "Catastrophic scan failure",
+    _posContextHtmlForState(key, st) +
+      "<p>The initial pool-wide scan for this position aborted before any data was persisted. Your Lifetime figures for this position are almost certainly wrong until the scan is re-run from scratch.</p>" +
+      '<p class="9mm-pos-mgr-text-muted">Underlying error: <code id="' +
+      msgSlotId +
+      '"></code></p>' +
+      '<p class="9mm-pos-mgr-text-muted">Full stacktrace written to <code id="' +
+      logSlotId +
+      '"></code> on the machine running LP Ranger.</p>' +
+      "<p><strong>Dismiss this dialog, then open Settings &rarr; Reload Current Position to fix.</strong></p>",
+  );
+  const msgSlot = document.getElementById(msgSlotId);
+  if (msgSlot) msgSlot.textContent = message;
+  const logSlot = document.getElementById(logSlotId);
+  if (logSlot) logSlot.textContent = logPath;
+  _catastrophicShown.add(key);
+}
+
 function _showRecModal(key, st, minutes) {
   _createModal(
     null,
@@ -187,6 +229,12 @@ function _clearStale(allStates) {
       _compoundErrShown.delete(key);
     }
   }
+  for (const key of Array.from(_catastrophicShown)) {
+    if (!allStates[key]?._catastrophicScanError) {
+      _dismissModalById(_modalIdForKey("catastrophicScanErrorModal", key));
+      _catastrophicShown.delete(key);
+    }
+  }
 }
 
 /**
@@ -208,6 +256,9 @@ export function showPerPositionAlerts(d) {
     if (st.compoundError && !_compoundErrShown.has(key)) {
       _showCompoundErrModal(key, st);
     }
+    if (st._catastrophicScanError && !_catastrophicShown.has(key)) {
+      _showCatastrophicModal(key, st);
+    }
   }
   showPostRebalanceWarnings(all, _createModal, _posContextHtmlForState);
 }
@@ -217,4 +268,5 @@ export function _resetAlertsState() {
   _errShown.clear();
   _recShown.clear();
   _compoundErrShown.clear();
+  _catastrophicShown.clear();
 }

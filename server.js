@@ -69,6 +69,7 @@
  *   POST /api/position/details      → Quick details: pool state, value, fees (Phase 1)
  *   POST /api/position/lifetime     → Lifetime P&L: event scan + epochs (Phase 2, slow)
  *   POST /api/position/scan-cancel  → Abort in-flight scan and reset sync flag (user escape hatch)
+ *   POST /api/position/reload       → Wipe on-chain-derived state + re-scan from scratch (catastrophic-failure escape hatch)
  *   GET  /api/position/:tokenId/history → Closed position historical P&L
  *
  *   UI
@@ -559,6 +560,7 @@ const _routes = {
   "POST /api/position/details": _routeHandlers._handlePositionDetails,
   "POST /api/position/lifetime": _routeHandlers._handlePositionLifetime,
   "POST /api/position/scan-cancel": _routeHandlers._handlePositionScanCancel,
+  "POST /api/position/reload": _routeHandlers._handlePositionReload,
   "POST /api/shutdown": (req, res) =>
     _routeHandlers._handleShutdown(req, res, server),
 

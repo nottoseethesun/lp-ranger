@@ -50,6 +50,34 @@ describe("pollCycle compound gates", () => {
     assert.equal(r.inRange, true);
   });
 
+  it("does not trigger auto-compound when _scanRunning is true", async () => {
+    /*- Reload / initial-scan gate for auto-compound: while
+     *  `_triggerScan` is running, the position's on-chain-derived
+     *  state is being rebuilt.  An auto-compound fired mid-scan
+     *  would race the reconstruction.  Manual (forced) compound
+     *  still bypasses this gate. */
+    const { r } = await _poll(500, {
+      botState: {
+        rebalanceOutOfRangeThresholdPercent: 0,
+        _scanRunning: true,
+      },
+      getConfig: (k) =>
+        ({
+          autoCompoundEnabled: true,
+          autoCompoundThresholdUsd: 1,
+          slippagePct: 0.5,
+          rebalanceOutOfRangeThresholdPercent: 0,
+        })[k],
+      setupDeps: (deps) => {
+        deps._lastUnclaimedFeesUsd = 100;
+      },
+    });
+    assert.equal(r.rebalanced, false);
+    assert.equal(r.inRange, true);
+    /*- If the gate had fired, r.compounded would be truthy. */
+    assert.notEqual(r.compounded, true);
+  });
+
   it("does not trigger compound when throttle interval not elapsed", async () => {
     const { r } = await _poll(500, {
       botState: {

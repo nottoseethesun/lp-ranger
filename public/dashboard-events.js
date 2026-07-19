@@ -129,9 +129,9 @@ import {
   _bindCopyBtn,
   _openPoolDetailsModal,
   _toggleManagePosition,
-  _reloadCurrentPosition,
   bindDelegatedEvents,
 } from "./dashboard-events-manage.js";
+import { _reloadCurrentPosition } from "./dashboard-reload-flow.js";
 
 /*- Re-export only the symbols dashboard-events.js's external callers
  *  use that don't have a more specific owner.  `updateManageBadge` is
