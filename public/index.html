@@ -528,12 +528,34 @@
         <h2>All Positions Stats</h2>
         <p class="9mm-pos-mgr-all-positions-subtitle">All currently-open positions being managed by LP Ranger.</p>
       </div>
-      <label class="9mm-pos-mgr-browser-toggle" title="Divide each numeric column by the number of days the position has been alive, so you can compare pools of different ages without one having had more time to earn fees.">
-        <input type="checkbox" id="allPositionsStatsPerDayToggle">
-        <span>Show Per-Day</span>
-        <span class="9mm-pos-mgr-toggle-track"></span>
-      </label>
+      <div class="9mm-pos-mgr-all-positions-mode">
+        <span class="9mm-pos-mgr-all-positions-mode-label">Show:</span>
+        <label class="9mm-pos-mgr-all-positions-mode-option" title="Each position's cumulative lifetime value.">
+          <input type="radio" name="allPositionsStatsMode" value="total" checked>
+          <span>Total All-Time</span>
+        </label>
+        <label class="9mm-pos-mgr-all-positions-mode-option" title="Value &divide; that position's days-alive.">
+          <input type="radio" name="allPositionsStatsMode" value="per-day">
+          <span>Per-Day</span>
+        </label>
+        <label class="9mm-pos-mgr-all-positions-mode-option" title="Value &times; (days-alive &divide; oldest position's days-alive).">
+          <input type="radio" name="allPositionsStatsMode" value="weighted">
+          <span>Per-Day Weighted Average</span>
+        </label>
+      </div>
     </div>
+    <table class="9mm-pos-mgr-all-positions-table" id="allPositionsStatsTotalsTable">
+      <thead>
+        <tr>
+          <th>Total:</th>
+          <th>Lifetime P&amp;L</th>
+          <th>Profit</th>
+          <th>Impermanent<br>Loss/Gain</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="allPositionsStatsTotalsBody"></tbody>
+    </table>
     <div class="9mm-pos-mgr-all-positions-table-wrap">
       <table class="9mm-pos-mgr-all-positions-table" id="allPositionsStatsTable">
         <thead>

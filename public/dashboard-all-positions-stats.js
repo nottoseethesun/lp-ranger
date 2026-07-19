@@ -45,6 +45,7 @@ import {
   loadRealizedGainsForPool,
 } from "./dashboard-data-deposit.js";
 import { ltStartDate } from "./dashboard-date-utils.js";
+import { reapplyPrivacyBlur } from "./dashboard-events-manage.js";
 
 /*- Track last-applied {disabled, title} so we don't touch the DOM on
  *  every 3-second poll when nothing has changed.  Prevents needless
@@ -61,7 +62,13 @@ let _lastButtonState = { disabled: null, title: null };
 let _isOpen = false;
 let _sortCol = "ltNetPnl";
 let _sortDir = "desc";
-let _showPerDay = false;
+/*- Display mode: "total" (raw lifetime figures, default), "per-day"
+ *  (value / that position's days-alive), or "weighted" (value ×
+ *  (days-alive / oldest position's days-alive) — dampens young
+ *  outliers so a short-lived position with a small positive figure
+ *  can't dominate the totals row).  Controlled by the "Show:" radio
+ *  group in the modal header; not persisted across sessions. */
+let _showMode = "total";
 
 /*- Return a finite number or the fallback.  Explicit type + finiteness
  *  check instead of `x || default`, which would coerce 0 / NaN / ""
@@ -133,6 +140,25 @@ export function applyPerDay(nums, showPerDay, days) {
   };
 }
 
+/*- Apply the "Per-Day Weighted Average" transformation.  Each field
+ *  is multiplied by `days / maxDays` — for the oldest position this
+ *  is 1.0 (full weight), for younger positions it's fractional.
+ *  Dampens young positions' influence so a short-lived outlier
+ *  cannot punch above its lifetime weight in the totals row.  Falls
+ *  through to the raw bundle if either duration is missing or non-
+ *  positive, same defensive convention as `applyPerDay`.  Pure — no
+ *  module state read. */
+export function applyWeighted(nums, days, maxDays) {
+  if (days === null || days === undefined || days <= 0) return nums;
+  if (maxDays === null || maxDays === undefined || maxDays <= 0) return nums;
+  const w = days / maxDays;
+  return {
+    ltNetPnl: nums.ltNetPnl * w,
+    ltProfit: nums.ltProfit * w,
+    ltIL: nums.ltIL * w,
+  };
+}
+
 /*- Compute the three sortable numerics (ltNetPnl, ltProfit, ltIL)
  *  from a pnlSnapshot + realized-gains override + lifetime deposit.
  *  Mirror of the formulas the Lifetime panel uses in
@@ -166,8 +192,10 @@ function _computeNumerics(snap, ltRealized, ltDep) {
  *  (liq === 0) or when the bot state hasn't produced a pnlSnapshot
  *  yet (gate should have prevented the modal from opening in that
  *  case, but the check keeps the render function honest under
- *  eventual-consistency polling). */
-function _computeRow(key, posState, globalCtx) {
+ *  eventual-consistency polling).  `mode` selects the display
+ *  transformation ("total" / "per-day" / "weighted"); `maxDays` is
+ *  used only in weighted mode. */
+function _computeRow(key, posState, globalCtx, mode, maxDays) {
   const ap = posState.activePosition;
   const snap = posState.pnlSnapshot;
   if (ap === null || ap === undefined) return null;
@@ -188,7 +216,16 @@ function _computeRow(key, posState, globalCtx) {
     ltDepOverride > 0 ? ltDepOverride : _num(snap.totalLifetimeDeposit, 0);
   const rawNums = _computeNumerics(snap, ltRealized, ltDep);
   const days = daysAliveFor(posState, Date.now());
-  const nums = applyPerDay(rawNums, _showPerDay, days);
+  let nums;
+  if (mode === "per-day") nums = applyPerDay(rawNums, true, days);
+  else if (mode === "weighted") nums = applyWeighted(rawNums, days, maxDays);
+  else nums = rawNums;
+  /*- Stash the raw (untransformed) All-Time values on the row so
+   *  `_renderTotals` can compute the Per-Day total as `sum(All-Time)
+   *  / oldest-position's days-alive` without having to re-derive the
+   *  raw values.  User-visible values (spread via `...nums` below)
+   *  are still the mode-transformed ones. */
+  const rawNumsStash = rawNums;
   const lpName =
     getProviderDisplayName(globalCtx.factory, globalCtx.positionManager) ??
     getProviderLabel(globalCtx.positionManager) ??
@@ -205,11 +242,40 @@ function _computeRow(key, posState, globalCtx) {
     contractAddress: globalCtx.positionManager,
     tokenId: ap.tokenId,
     ...nums,
+    _rawNums: rawNumsStash,
   };
 }
 
+/*- Scan every eligible position once to find the oldest one's
+ *  days-alive.  Used by the "Per-Day Weighted Average" mode so each
+ *  row's weight is scaled against the oldest position (weight = 1.0)
+ *  in the current set.  Uses the same filter rules as `_computeRows`
+ *  so the two functions always agree on which positions count. */
+export function maxDaysAlive(data, now) {
+  if (data === null || data === undefined) return 0;
+  const positions = data._allPositionStates ?? {};
+  let max = 0;
+  for (const key of Object.keys(positions)) {
+    const p = positions[key];
+    if (p === null || p === undefined) continue;
+    if (p.status !== "running") continue;
+    const ap = p.activePosition;
+    if (ap === null || ap === undefined) continue;
+    if (p.pnlSnapshot === null || p.pnlSnapshot === undefined) continue;
+    if (typeof ap.liquidity !== "string") continue;
+    const liq = parseFloat(ap.liquidity);
+    if (!Number.isFinite(liq) || liq <= 0) continue;
+    const d = daysAliveFor(p, now);
+    if (typeof d === "number" && d > max) max = d;
+  }
+  return max;
+}
+
 /*- Build the row array from a flattened poll payload.  Filters +
- *  computes per-position numerics; the caller sorts + renders. */
+ *  computes per-position numerics; the caller sorts + renders.
+ *  Reads the current display mode from `_showMode` and precomputes
+ *  the portfolio's oldest days-alive so weighted mode has a stable
+ *  denominator for every row in the same pass. */
 function _computeRows(data) {
   if (data === null || data === undefined) return [];
   const positions = data._allPositionStates ?? {};
@@ -225,12 +291,14 @@ function _computeRows(data) {
     chainDisplayName: data.chainDisplayName,
     chainId: data.chainId,
   };
+  const now = Date.now();
+  const maxDays = _showMode === "weighted" ? maxDaysAlive(data, now) : 0;
   const rows = [];
   for (const key of Object.keys(positions)) {
     const p = positions[key];
     if (p === null || p === undefined) continue;
     if (p.status !== "running") continue;
-    const row = _computeRow(key, p, globalCtx);
+    const row = _computeRow(key, p, globalCtx, _showMode, maxDays);
     if (row !== null) rows.push(row);
   }
   return rows;
@@ -302,10 +370,16 @@ function _renderIdentityCell(row) {
 }
 
 /*- Numeric cell with sign colouring (pos/neg classes drive var(--accent3)
- *  vs var(--danger)).  Zero neither colour — reads as neutral. */
+ *  vs var(--danger)).  Zero neither colour — reads as neutral.  Tagged
+ *  with `data-privacy="usd"` so the shared Privacy Mode → Hide $USD
+ *  Values Above Threshold path in `dashboard-privacy-subform.js`
+ *  picks the cell up on its next apply.  The threshold scan reads the
+ *  cell's textContent and blurs only when the parsed $ amount exceeds
+ *  the user's configured threshold. */
 function _renderNumCell(value) {
   const td = document.createElement("td");
   td.className = "9mm-pos-mgr-all-positions-num";
+  td.dataset.privacy = "usd";
   if (typeof value === "number" && Number.isFinite(value)) {
     if (value > 0) td.classList.add("9mm-pos-mgr-pos");
     else if (value < 0) td.classList.add("9mm-pos-mgr-neg");
@@ -314,14 +388,87 @@ function _renderNumCell(value) {
   return td;
 }
 
+/*- Render the single-row totals table above the sortable table.
+ *  Total All-Time and Weighted modes: sum each column across the
+ *  transformed row values.  Per-Day mode: divide `sum(All-Time)` by
+ *  the oldest position's days-alive — much more intuitive than
+ *  summing the per-row per-day rates (which lets a young outlier
+ *  dominate).  Falls back to the row-sum path when `maxDays` isn't
+ *  positive (no eligible position has a known start date).  Uses
+ *  `_renderNumCell` and thus `_fmtUsd` so rounding + green/red
+ *  class rules match the main table exactly. */
+function _renderTotals(rows, maxDays) {
+  const tbody = g("allPositionsStatsTotalsBody");
+  if (tbody === null) return;
+  let sumNetPnl = 0;
+  let sumProfit = 0;
+  let sumIL = 0;
+  if (_showMode === "per-day" && typeof maxDays === "number" && maxDays > 0) {
+    for (const r of rows) {
+      sumNetPnl += r._rawNums.ltNetPnl;
+      sumProfit += r._rawNums.ltProfit;
+      sumIL += r._rawNums.ltIL;
+    }
+    sumNetPnl /= maxDays;
+    sumProfit /= maxDays;
+    sumIL /= maxDays;
+  } else {
+    for (const r of rows) {
+      sumNetPnl += r.ltNetPnl;
+      sumProfit += r.ltProfit;
+      sumIL += r.ltIL;
+    }
+  }
+  tbody.replaceChildren();
+  const tr = document.createElement("tr");
+  const labelTd = document.createElement("td");
+  tr.appendChild(labelTd);
+  tr.appendChild(_renderNumCell(sumNetPnl));
+  tr.appendChild(_renderNumCell(sumProfit));
+  tr.appendChild(_renderNumCell(sumIL));
+  const gotoTd = document.createElement("td");
+  tr.appendChild(gotoTd);
+  tbody.appendChild(tr);
+}
+
+/*- Refresh the tooltips on the "Per-Day" and "Per-Day Weighted
+ *  Average" radios so each shows the current oldest-position
+ *  days-alive number in parentheses after "days-alive" — matching
+ *  the format across both modes.  Called from `_renderTable` so
+ *  the numbers stay in lockstep with the row set.  `Math.round`
+ *  keeps the tooltip integer; "?" renders when no eligible
+ *  position has a known start date. */
+function _updateModeTooltips(maxDays) {
+  const n =
+    typeof maxDays === "number" && maxDays > 0
+      ? Math.round(maxDays).toString()
+      : "?";
+  const perDay = document
+    .querySelector("input[name='allPositionsStatsMode'][value='per-day']")
+    ?.closest("label");
+  if (perDay !== null && perDay !== undefined) {
+    perDay.title = `Value ÷ that position's days-alive (${n}).`;
+  }
+  const weighted = document
+    .querySelector("input[name='allPositionsStatsMode'][value='weighted']")
+    ?.closest("label");
+  if (weighted !== null && weighted !== undefined) {
+    weighted.title = `Value × (days-alive ÷ oldest position's days-alive (${n})).`;
+  }
+}
+
 /*- Full table render: update sort markers in the header + swap the
  *  tbody rows.  Empty-state placeholder shows when there are zero
- *  currently-open managed positions. */
+ *  currently-open managed positions.  Totals row updates in lockstep
+ *  from the same row set so the two tables never disagree. */
 function _renderTable(data) {
   const tbody = g("allPositionsStatsTableBody");
   const empty = g("allPositionsStatsEmpty");
   if (tbody === null) return;
+  const maxDays = maxDaysAlive(data, Date.now());
+  _updateModeTooltips(maxDays);
   const rows = _sortRows(_computeRows(data), _sortCol, _sortDir);
+  _renderTotals(rows, maxDays);
   tbody.replaceChildren();
   for (const row of rows) {
     const tr = document.createElement("tr");
@@ -343,6 +490,11 @@ function _renderTable(data) {
   }
   if (empty !== null) empty.hidden = rows.length > 0;
   _updateSortMarkers();
+  /*- Re-run the privacy blur sweep so the freshly-rendered USD cells
+   *  in both the totals row and the sortable body get blurred on the
+   *  same tick they're written, instead of waiting for the next
+   *  status poll to reapply blur globally. */
+  reapplyPrivacyBlur();
 }
 
 /*- Sort-marker paint: ▼/▲ on the active column, blank on inactive
@@ -479,11 +631,16 @@ export function wireAllPositionsStatsEvents() {
   const closeBtn = g("allPositionsStatsCloseBtn");
   if (closeBtn !== null)
     closeBtn.addEventListener("click", closeAllPositionsStatsModal);
-  const perDayToggle = g("allPositionsStatsPerDayToggle");
-  if (perDayToggle !== null)
-    perDayToggle.addEventListener("change", (e) => {
-      _showPerDay = e.target.checked === true;
-      log.info("[all-positions-stats] Show Per-Day = %s", _showPerDay);
-      _renderTable(getLastStatus());
+  const modeRadios = document.querySelectorAll(
+    "input[name='allPositionsStatsMode']",
+  );
+  for (const r of modeRadios) {
+    r.addEventListener("change", (e) => {
+      if (e.target.checked === true) {
+        _showMode = e.target.value;
+        log.info("[all-positions-stats] Show = %s", _showMode);
+        _renderTable(getLastStatus());
+      }
     });
+  }
 }
