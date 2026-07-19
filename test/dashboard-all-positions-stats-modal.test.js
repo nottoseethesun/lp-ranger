@@ -233,6 +233,17 @@ function applyPerDay(nums, showPerDay, days) {
   };
 }
 
+function applyWeighted(nums, days, maxDays) {
+  if (days === null || days === undefined || days <= 0) return nums;
+  if (maxDays === null || maxDays === undefined || maxDays <= 0) return nums;
+  const w = days / maxDays;
+  return {
+    ltNetPnl: nums.ltNetPnl * w,
+    ltProfit: nums.ltProfit * w,
+    ltIL: nums.ltIL * w,
+  };
+}
+
 test("daysAliveFor: uses earliest of the three candidate dates", () => {
   const posState = {
     pnlSnapshot: { firstEpochDateUtc: "2026-06-01" },
@@ -300,4 +311,44 @@ test("applyPerDay: preserves sign polarity for the sort-marker paint", () => {
   assert.ok(perDay.ltNetPnl < 0);
   assert.equal(perDay.ltProfit, 0);
   assert.ok(perDay.ltIL > 0);
+});
+
+test("applyWeighted: leaves oldest position at full weight (days == maxDays)", () => {
+  const nums = { ltNetPnl: 100, ltProfit: 50, ltIL: -10 };
+  assert.deepEqual(applyWeighted(nums, 100, 100), nums);
+});
+
+test("applyWeighted: scales younger position by days / maxDays", () => {
+  const nums = { ltNetPnl: 100, ltProfit: 50, ltIL: -10 };
+  // Position is a quarter the age of the oldest → weight = 0.25.
+  assert.deepEqual(applyWeighted(nums, 25, 100), {
+    ltNetPnl: 25,
+    ltProfit: 12.5,
+    ltIL: -2.5,
+  });
+});
+
+test("applyWeighted: falls through to raw nums when days is null / undefined / 0 / negative", () => {
+  const nums = { ltNetPnl: 100, ltProfit: 50, ltIL: -10 };
+  assert.deepEqual(applyWeighted(nums, null, 100), nums);
+  assert.deepEqual(applyWeighted(nums, undefined, 100), nums);
+  assert.deepEqual(applyWeighted(nums, 0, 100), nums);
+  assert.deepEqual(applyWeighted(nums, -5, 100), nums);
+});
+
+test("applyWeighted: falls through to raw nums when maxDays is null / undefined / 0 / negative", () => {
+  const nums = { ltNetPnl: 100, ltProfit: 50, ltIL: -10 };
+  assert.deepEqual(applyWeighted(nums, 50, null), nums);
+  assert.deepEqual(applyWeighted(nums, 50, undefined), nums);
+  assert.deepEqual(applyWeighted(nums, 50, 0), nums);
+  assert.deepEqual(applyWeighted(nums, 50, -5), nums);
+});
+
+test("applyWeighted: preserves sign polarity", () => {
+  const nums = { ltNetPnl: -20, ltProfit: 0, ltIL: 10 };
+  const w = applyWeighted(nums, 25, 100);
+  // -20 × 0.25 = -5 (negative), 0 × 0.25 = 0, 10 × 0.25 = 2.5 (positive)
+  assert.ok(w.ltNetPnl < 0);
+  assert.equal(w.ltProfit, 0);
+  assert.ok(w.ltIL > 0);
 });

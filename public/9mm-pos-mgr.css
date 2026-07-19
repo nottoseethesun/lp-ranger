@@ -47,7 +47,11 @@
   margin-bottom: 14px;
 }
 
-.\39 mm-pos-mgr-all-positions-modal .modal-logo > .\39 mm-pos-mgr-browser-toggle {
+.\39
+  mm-pos-mgr-all-positions-modal
+  .modal-logo
+  > .\39
+  mm-pos-mgr-browser-toggle {
   margin-left: auto;
 }
 
@@ -85,7 +89,6 @@
 }
 
 .\39 mm-pos-mgr-all-positions-table-wrap {
-  margin-top: 18px;
   overflow-x: auto;
   overflow-y: auto;
   flex: 1 1 auto;
@@ -100,6 +103,75 @@
   /* No min-width — table shrinks to fit the modal width.  Below the
    * comfortable minimum the wrapper's overflow-x: auto kicks in and
    * gives a horizontal scrollbar on narrow phones. */
+}
+
+/* Totals table sits in normal flow above the scrollable wrapper.
+ * `margin-top` replaces the wrapper's old top spacing (removed
+ * above); `margin-bottom` gives the one-blank-line gap below. */
+.\39 mm-pos-mgr-all-positions-totals-table {
+  margin-top: 18px;
+  margin-bottom: 24px;
+}
+
+/* "Show:" radio group in the modal header — replaces the earlier
+ * single-checkbox toggle.  Horizontal row so the three radios sit
+ * side-by-side; wraps on narrow screens.  `margin-left: auto` shoves
+ * the whole group (title + radios) to the right edge of the flex
+ * modal-logo container.  Each `<label>` carries the tooltip on
+ * hover explaining that option's math. */
+.\39 mm-pos-mgr-all-positions-mode {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+/* "Show:" title and the option labels share font-size / weight /
+ * color so nothing about "Show" reads as visually different from
+ * the radios.  Size is ~20% up from the earlier 13px base. */
+.\39 mm-pos-mgr-all-positions-mode-label,
+.\39 mm-pos-mgr-all-positions-mode-option {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.\39 mm-pos-mgr-all-positions-mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* Custom radio: solid grey circle when unchecked (matches the
+ * muted-text convention used elsewhere in the app), solid
+ * active-green when checked.  `appearance: none` strips the OS's
+ * default radio rendering so both states are pure background-color;
+ * user cue is colour, not a dot. */
+.\39 mm-pos-mgr-all-positions-mode-option input[type="radio"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: none;
+  cursor: pointer;
+  margin: 0;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.\39 mm-pos-mgr-all-positions-mode-option input[type="radio"]:checked {
+  background: var(--accent3);
+}
+
+/* Right-align every column of the totals table EXCEPT the first
+ * ("Total:") label column.  Scoped to the totals table only so the
+ * sortable table's left-aligned numeric cells stay unchanged. */
+.\39 mm-pos-mgr-all-positions-totals-table th:not(:first-child),
+.\39 mm-pos-mgr-all-positions-totals-table td:not(:first-child) {
+  text-align: right;
 }
 
 .\39 mm-pos-mgr-all-positions-table thead th {
@@ -231,7 +303,9 @@ span[title]:not([title=""]):hover {
   line-height: 1;
 }
 
-.\39 mm-pos-mgr-privacy-setting input { display: none; }
+.\39 mm-pos-mgr-privacy-setting input {
+  display: none;
+}
 
 .\39 mm-pos-mgr-privacy-icon {
   font-size: 21px;
@@ -264,7 +338,9 @@ span[title]:not([title=""]):hover {
   background: var(--muted);
   top: 3px;
   left: 3px;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
 .\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track,
@@ -273,8 +349,16 @@ span[title]:not([title=""]):hover {
   border-color: var(--accent3);
 }
 
-.\39 mm-pos-mgr-privacy-setting input:checked ~ .\39 mm-pos-mgr-toggle-track::after,
-.\39 mm-pos-mgr-browser-toggle input:checked ~ .\39 mm-pos-mgr-toggle-track::after {
+.\39
+  mm-pos-mgr-privacy-setting
+  input:checked
+  ~ .\39
+  mm-pos-mgr-toggle-track::after,
+.\39
+  mm-pos-mgr-browser-toggle
+  input:checked
+  ~ .\39
+  mm-pos-mgr-toggle-track::after {
   transform: translateX(27px);
   background: var(--accent3);
   box-shadow: 0 0 6px var(--accent3);
@@ -354,7 +438,6 @@ span[title]:not([title=""]):hover {
   flex-direction: column;
   align-items: center;
 }
-
 
 /* ── Display & Visibility ─────────────────────────────────────────────────── */
 
@@ -546,8 +629,6 @@ span[title]:not([title=""]):hover {
 .\39 mm-pos-mgr-text-accent {
   color: var(--accent);
 }
-
-
 
 .\39 mm-pos-mgr-text-accent3 {
   color: var(--accent3);
@@ -1047,7 +1128,6 @@ span[title]:not([title=""]):hover {
   font-size: 18px;
 }
 
-
 /* ── KPI Divider ───────────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-kpi-divider {
@@ -1093,8 +1173,14 @@ span[title]:not([title=""]):hover {
 }
 
 @keyframes sync-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .\39 mm-pos-mgr-sources-badge {
@@ -1583,7 +1669,7 @@ span[title]:not([title=""]):hover {
   border-radius: 8px;
   color: var(--danger);
   cursor: pointer;
-  font-family: 'Space Mono', monospace;
+  font-family: "Space Mono", monospace;
   font-size: 17px;
 }
 
@@ -1650,7 +1736,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-pnl-breakdown-table td:last-child {
   text-align: right;
-  font-family: 'Space Mono', monospace;
+  font-family: "Space Mono", monospace;
 }
 
 .\39 mm-pos-mgr-pnl-breakdown-total td {
@@ -1733,7 +1819,7 @@ span[title]:not([title=""]):hover {
 .\39 mm-pos-mgr-reload-spinner {
   margin-top: 24px;
   padding: 12px 0;
-  font-family: 'Space Mono', monospace;
+  font-family: "Space Mono", monospace;
   font-size: 15px;
   color: var(--danger);
   letter-spacing: 2px;
@@ -2010,7 +2096,6 @@ span[title]:not([title=""]):hover {
 
 /* ── Closed-Position History Banner ────────────────────────────────────── */
 
-
 .\39 mm-pos-mgr-btn-small {
   padding: 6px 18px;
   font-size: 17px;
@@ -2020,7 +2105,7 @@ span[title]:not([title=""]):hover {
   color: #ffc107;
   cursor: pointer;
   white-space: nowrap;
-  font-family: 'Space Mono', monospace;
+  font-family: "Space Mono", monospace;
 }
 
 .\39 mm-pos-mgr-btn-small:hover {
@@ -2084,8 +2169,6 @@ span[title]:not([title=""]):hover {
   margin-right: 9px;
   animation: blink 2s infinite;
 }
-
-
 
 .\39 mm-pos-mgr-nft-bar {
   font-size: 21px;
@@ -2399,7 +2482,9 @@ span[title]:not([title=""]):hover {
   white-space: nowrap;
 }
 
-.\39 mm-pos-mgr-browser-toggle input { display: none; }
+.\39 mm-pos-mgr-browser-toggle input {
+  display: none;
+}
 
 /* ── Managed Position Dot (pulsing green) ───────────────────────────────── */
 
@@ -2496,7 +2581,6 @@ span[title]:not([title=""]):hover {
   }
 }
 
-
 .\39 mm-pos-mgr-ranger-star-wrap {
   display: inline-block;
   width: 50px;
@@ -2542,11 +2626,21 @@ span[title]:not([title=""]):hover {
  * focus-visible rule below re-inherits from the title-tune button
  * so the cyan hover treatment still works over the coloured spans.
  */
-.\39 mm-pos-mgr-leather-1 { color: #7a4a2a; } /* Sepia */
-.\39 mm-pos-mgr-leather-2 { color: #8e5a32; } /* Umber */
-.\39 mm-pos-mgr-leather-3 { color: #a16a3e; } /* Chestnut */
-.\39 mm-pos-mgr-leather-4 { color: #b4794a; } /* Tobacco */
-.\39 mm-pos-mgr-leather-5 { color: #c88c5a; } /* Caramel */
+.\39 mm-pos-mgr-leather-1 {
+  color: #7a4a2a;
+} /* Sepia */
+.\39 mm-pos-mgr-leather-2 {
+  color: #8e5a32;
+} /* Umber */
+.\39 mm-pos-mgr-leather-3 {
+  color: #a16a3e;
+} /* Chestnut */
+.\39 mm-pos-mgr-leather-4 {
+  color: #b4794a;
+} /* Tobacco */
+.\39 mm-pos-mgr-leather-5 {
+  color: #c88c5a;
+} /* Caramel */
 
 .\39 mm-pos-mgr-title-tune:hover span,
 .\39 mm-pos-mgr-title-tune:focus-visible span {
@@ -2633,7 +2727,6 @@ span[title]:not([title=""]):hover {
 .\39 mm-pos-mgr-mission-top-gap {
   height: 21px;
 }
-
 
 .\39 mm-pos-mgr-mission-title {
   color: #ff8f42;
@@ -2960,7 +3053,9 @@ span[title]:not([title=""]):hover {
   background: #cc3000;
   top: 3px;
   left: 3px;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
 .\39 mm-pos-mgr-compound-toggle input:checked ~ .\39 mm-pos-mgr-compound-track {
@@ -2968,7 +3063,11 @@ span[title]:not([title=""]):hover {
   border-color: var(--accent3);
 }
 
-.\39 mm-pos-mgr-compound-toggle input:checked ~ .\39 mm-pos-mgr-compound-track::after {
+.\39
+  mm-pos-mgr-compound-toggle
+  input:checked
+  ~ .\39
+  mm-pos-mgr-compound-track::after {
   transform: translateX(27px);
   background: var(--accent3);
   box-shadow: 0 0 6px var(--accent3);
@@ -3175,11 +3274,9 @@ span[title]:not([title=""]):hover {
   --cloud-max-speed: 2700s;
   --cloud-slow-factor: 1.2;
   --cloud-middle-speed: calc(var(--cloud-max-speed) * var(--cloud-slow-factor));
-  --cloud-top-speed:
-    calc(
-      var(--cloud-max-speed) * var(--cloud-slow-factor) *
-        var(--cloud-slow-factor)
-    );
+  --cloud-top-speed: calc(
+    var(--cloud-max-speed) * var(--cloud-slow-factor) * var(--cloud-slow-factor)
+  );
 
   position: fixed;
   left: 0;
@@ -3196,7 +3293,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1784449271626");
+  background-image: url("background-cloud_top.png?v=1784495441297");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3209,7 +3306,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1784449271626");
+  background-image: url("background-cloud_middle.png?v=1784495441297");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3219,7 +3316,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1784449271626");
+  background-image: url("background-cloud_bottom.png?v=1784495441297");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
@@ -3233,8 +3330,13 @@ span[title]:not([title=""]):hover {
    moment the end frame reaches, it snaps back to the start frame,
    giving the "reappears on the left with 1 px showing" behaviour. */
 @keyframes cloudDrift {
-  from { transform: translateX(calc(-100% + 1px)); }
-  to { transform: translateX(100vw); }
+  from {
+    transform: translateX(calc(-100% + 1px));
+  }
+
+  to {
+    transform: translateX(100vw);
+  }
 }
 
 /* ── Panel translucency ────────────────────────────────────────────
