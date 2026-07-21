@@ -86,7 +86,7 @@
     "knip": "^5.86.0",
     "lint-staged": "^16.4.0",
     "madge": "^8.0.0",
-    "markdownlint-cli2": "^0.22.0",
+    "markdownlint-cli2": "^0.23.1",
     "pdfmake": "^0.3.7",
     "prettier": "^3.8.1",
     "secretlint": "^11.4.1",
