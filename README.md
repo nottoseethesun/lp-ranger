@@ -2,6 +2,7 @@
 
 [![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
 [![Tests (Node 20/22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
+[![Security Audit](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/security-audit.yml?branch=main&label=security)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/security-audit.yml)
 
 ## Overview
 
