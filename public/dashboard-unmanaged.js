@@ -24,7 +24,7 @@ import { renderPosBrowser } from "./dashboard-positions-browser.js";
  *  active posStore entry.  Used to drop stale results that would paint
  *  one position's $$ on top of another position's labels (the
  *  "tokenId correct, pool name stale" mixed-state render bug). */
-function _activeMatches(tokenId) {
+export function _activeMatches(tokenId) {
   const a = posStore.getActive();
   return !!a && String(a.tokenId) === String(tokenId);
 }
