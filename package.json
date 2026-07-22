@@ -80,9 +80,11 @@
     "eslint-plugin-no-secrets": "^2.3.3",
     "eslint-plugin-security": "^4.0.0",
     "github-actionlint": "^1.7.12",
+    "global-jsdom": "^29.0.0",
     "globals": "^17.4.0",
     "html-validate": "^10.11.3",
     "husky": "^9.1.7",
+    "jsdom": "^29.1.1",
     "knip": "^5.86.0",
     "lint-staged": "^16.4.0",
     "madge": "^8.0.0",
@@ -100,7 +102,10 @@
         "hardhat": "npm:empty-npm-package@1.0.0"
       }
     },
-    "adm-zip": "^0.6.0"
+    "adm-zip": "^0.6.0",
+    "@exodus/bytes": {
+      "@noble/hashes": "^1.8.0"
+    }
   },
   "lint-staged": {
     "*.js": "prettier --write"

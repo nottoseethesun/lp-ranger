@@ -3,11 +3,10 @@
 /**
  * @file test/dashboard-fmt-usd.test.js
  * @description Tests for `public/dashboard-fmt-usd.js` — the USD
- *   formatter used by the Current and Lifetime panels.  Imported
- *   directly via Node's ESM machinery (same pattern as
- *   `dashboard-log.test.js`) — the module has no DOM dependencies
- *   and its `typeof navigator !== "undefined"` guard falls back to
- *   en-US when run under Node.
+ *   formatter used by the Current and Lifetime panels.  Uses jsdom
+ *   (via `global-jsdom/register`) so `navigator.language` and other
+ *   browser globals the module inspects at load time are populated
+ *   with realistic defaults, then imports the module directly.
  *
  *   Pins the currency-text literal (`$usd`), the em-dash null token,
  *   the < $0.005 zero-body suppression (no leading minus for zero),
@@ -15,17 +14,18 @@
  *   silently misprice the primary user-facing panels.
  */
 
-const { describe, it } = require("node:test");
+require("global-jsdom/register");
+
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 
 let _fmtUsd;
 
-describe("_fmtUsd()", () => {
-  it("(setup) imports the browser module directly", async () => {
-    ({ _fmtUsd } = await import("../public/dashboard-fmt-usd.js"));
-    assert.strictEqual(typeof _fmtUsd, "function");
-  });
+before(async () => {
+  ({ _fmtUsd } = await import("../public/dashboard-fmt-usd.js"));
+});
 
+describe("_fmtUsd()", () => {
   it("returns em-dash for null", () => {
     assert.strictEqual(_fmtUsd(null), "—");
   });
@@ -72,7 +72,7 @@ describe("_fmtUsd()", () => {
   it("rounds to 2 decimals (numbric.format mantissa: 2)", () => {
     // numbro's format with mantissa: 2 uses "round half away from zero"
     // in en-US by default; assert both a round-up and round-down case.
-    assert.strictEqual(_fmtUsd(1.235), "$usd 1.24"); // half-up
-    assert.strictEqual(_fmtUsd(1.234), "$usd 1.23"); // round-down
+    assert.strictEqual(_fmtUsd(1.235), "$usd 1.24");
+    assert.strictEqual(_fmtUsd(1.234), "$usd 1.23");
   });
 });

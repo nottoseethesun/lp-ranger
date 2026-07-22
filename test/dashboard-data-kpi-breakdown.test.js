@@ -6,9 +6,8 @@
  *   `public/dashboard-data-kpi-breakdown.js`.  The module writes the
  *   six Lifetime Net P&L breakdown rows (Fees Compounded, Gas, Price
  *   Change, Wallet Residual, Initial Residual, Realized Gains) with
- *   sign-appropriate colour coding.  A minimal `document.getElementById`
- *   stub is installed so the module can be imported directly via ESM
- *   without pulling in jsdom.
+ *   sign-appropriate colour coding.  Uses jsdom to provide real
+ *   `document` + real DOM elements — no hand-rolled stubs.
  *
  *   Pins the row-write dispatch: colour classes (`pos` / `neg` / `neu`),
  *   the em-dash null token, the true minus-sign on subtracted rows
@@ -17,11 +16,12 @@
  *   coverage.
  */
 
+require("global-jsdom/register");
+
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-let updateNetBreakdown;
-let LT_BD_IDS;
+let mod;
 
 /** Row IDs written by `updateNetBreakdown`. */
 const ROW_IDS = [
@@ -33,38 +33,24 @@ const ROW_IDS = [
   "ltBdRealized",
 ];
 
-let _els;
-
-function _makeFakeElement() {
-  const classes = new Set();
-  return {
-    textContent: "",
-    classList: {
-      add: (...names) => names.forEach((n) => classes.add(n)),
-      remove: (...names) => names.forEach((n) => classes.delete(n)),
-      contains: (n) => classes.has(n),
-      _snapshot: () => Array.from(classes),
-    },
-  };
-}
-
 before(async () => {
-  // Install the minimum-viable document stub BEFORE importing the module.
-  globalThis.document = {
-    getElementById: (id) => _els[id] || null,
-  };
-  ({ updateNetBreakdown, LT_BD_IDS } =
-    await import("../public/dashboard-data-kpi-breakdown.js"));
+  mod = await import("../public/dashboard-data-kpi-breakdown.js");
 });
 
 beforeEach(() => {
-  _els = {};
-  for (const id of ROW_IDS) _els[id] = _makeFakeElement();
+  // Rebuild the six breakdown rows in the DOM before every test — the
+  // module reads them by ID via document.getElementById.
+  document.body.innerHTML = ROW_IDS.map(
+    (id) => `<span id="${id}"></span>`,
+  ).join("");
 });
 
 describe("LT_BD_IDS", () => {
   it("enumerates every breakdown row id (aligned with reset paths)", () => {
-    assert.deepStrictEqual(LT_BD_IDS.slice().sort(), ROW_IDS.slice().sort());
+    assert.deepStrictEqual(
+      mod.LT_BD_IDS.slice().sort(),
+      ROW_IDS.slice().sort(),
+    );
   });
 });
 
@@ -73,31 +59,44 @@ describe("updateNetBreakdown()", () => {
   //                              compounded, initialResidual)
 
   it("positive values render in the 'pos' colour class", () => {
-    updateNetBreakdown(50, 10, 3, 25, 40, 5);
-    // Compounded / Price Change / Residual / Realized are 'normal' rows.
-    assert.strictEqual(_els.ltBdCompounded.classList.contains("pos"), true);
-    assert.strictEqual(_els.ltBdPriceChange.classList.contains("pos"), true);
-    assert.strictEqual(_els.ltBdResidual.classList.contains("pos"), true);
-    assert.strictEqual(_els.ltBdRealized.classList.contains("pos"), true);
+    mod.updateNetBreakdown(50, 10, 3, 25, 40, 5);
+    for (const id of [
+      "ltBdCompounded",
+      "ltBdPriceChange",
+      "ltBdResidual",
+      "ltBdRealized",
+    ]) {
+      assert.ok(
+        document.getElementById(id).classList.contains("pos"),
+        `${id} should have 'pos' class`,
+      );
+    }
   });
 
   it("negative values render in the 'neg' colour class", () => {
     // priceChange=-50, realized=-10, gas=5 (positive → subtracted → neg),
     // residual=-25, compounded=-30, initialResidual=0.
-    updateNetBreakdown(-50, -10, 5, -25, -30, 0);
-    assert.strictEqual(_els.ltBdCompounded.classList.contains("neg"), true);
-    assert.strictEqual(_els.ltBdPriceChange.classList.contains("neg"), true);
-    assert.strictEqual(_els.ltBdResidual.classList.contains("neg"), true);
-    assert.strictEqual(_els.ltBdRealized.classList.contains("neg"), true);
+    mod.updateNetBreakdown(-50, -10, 5, -25, -30, 0);
+    for (const id of [
+      "ltBdCompounded",
+      "ltBdPriceChange",
+      "ltBdResidual",
+      "ltBdRealized",
+    ]) {
+      assert.ok(
+        document.getElementById(id).classList.contains("neg"),
+        `${id} should have 'neg' class`,
+      );
+    }
   });
 
   it("Gas is always rendered as subtracted (red) with a true minus sign (U+2212)", () => {
-    updateNetBreakdown(0, 0, 15, 0, 0, 0);
-    // Gas class is 'neg' (subtracted, positive-input → shown as $usd −15).
-    assert.strictEqual(_els.ltBdGas.classList.contains("neg"), true);
-    // Minus goes BETWEEN "$usd " and the numeric body (the raw hyphen
-    // from _fmtUsd is swapped in-place for U+2212 MINUS SIGN).
-    assert.strictEqual(_els.ltBdGas.textContent, "$usd −15.00");
+    mod.updateNetBreakdown(0, 0, 15, 0, 0, 0);
+    const el = document.getElementById("ltBdGas");
+    assert.ok(el.classList.contains("neg"));
+    // Minus goes BETWEEN "$usd " and the numeric body (raw hyphen from
+    // _fmtUsd is swapped in-place for U+2212 MINUS SIGN).
+    assert.strictEqual(el.textContent, "$usd −15.00");
   });
 
   it(
@@ -105,37 +104,36 @@ describe("updateNetBreakdown()", () => {
       "'neu' class — avoids implying a 'negative wallet balance'",
     () => {
       // initialResidual is the 6th param.
-      updateNetBreakdown(0, 0, 0, 0, 0, 40);
-      assert.strictEqual(
-        _els.ltBdInitialResidual.classList.contains("neu"),
-        true,
-      );
-      assert.strictEqual(_els.ltBdInitialResidual.textContent, "$usd 40.00");
+      mod.updateNetBreakdown(0, 0, 0, 0, 0, 40);
+      const el = document.getElementById("ltBdInitialResidual");
+      assert.ok(el.classList.contains("neu"));
+      assert.strictEqual(el.textContent, "$usd 40.00");
     },
   );
 
   it("null / undefined values render as em-dash with 'neu' class", () => {
-    updateNetBreakdown(null, null, null, null, null, null);
+    mod.updateNetBreakdown(null, null, null, null, null, null);
     for (const id of ROW_IDS) {
-      assert.strictEqual(_els[id].textContent, "—", `${id} textContent`);
-      assert.strictEqual(
-        _els[id].classList.contains("neu"),
-        true,
-        `${id} class`,
-      );
+      const el = document.getElementById(id);
+      assert.strictEqual(el.textContent, "—", `${id} textContent`);
+      assert.ok(el.classList.contains("neu"), `${id} should have 'neu' class`);
     }
   });
 
   it("gas=null renders em-dash (subtracted-row null path)", () => {
-    updateNetBreakdown(10, 5, null, 20, 30, 5);
-    assert.strictEqual(_els.ltBdGas.textContent, "—");
-    assert.strictEqual(_els.ltBdGas.classList.contains("neu"), true);
+    mod.updateNetBreakdown(10, 5, null, 20, 30, 5);
+    const el = document.getElementById("ltBdGas");
+    assert.strictEqual(el.textContent, "—");
+    assert.ok(el.classList.contains("neu"));
   });
 
   it("skips gracefully when a row element is missing (defensive)", () => {
-    delete _els.ltBdCompounded;
+    document.getElementById("ltBdCompounded").remove();
     // priceChange=50 → ltBdPriceChange textContent = "$usd 50.00".
-    assert.doesNotThrow(() => updateNetBreakdown(50, 5, 3, 25, 40, 5));
-    assert.strictEqual(_els.ltBdPriceChange.textContent, "$usd 50.00");
+    assert.doesNotThrow(() => mod.updateNetBreakdown(50, 5, 3, 25, 40, 5));
+    assert.strictEqual(
+      document.getElementById("ltBdPriceChange").textContent,
+      "$usd 50.00",
+    );
   });
 });

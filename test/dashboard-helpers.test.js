@@ -3,20 +3,21 @@
 /**
  * @file test/dashboard-helpers.test.js
  * @description Tests for the pure helpers in `public/dashboard-helpers.js`.
- *   Direct ESM import (same pattern as `dashboard-log.test.js`) — the
- *   pure branch of the module has no DOM dependencies and only imports
- *   `./dashboard-log.js`, which is Node-safe.
+ *   Uses jsdom (via `global-jsdom/register`) to populate browser globals,
+ *   then imports the module directly and asserts against its real exports.
  *
  *   Scope: pins the pure, load-bearing helpers.  DOM-touching exports
  *   (`g`, `cloneTpl`, `act`, `copyWithFeedback`, `copyElText`) and
  *   timezone-dependent formatters (`fmtDateTime`, `fmtReset`, `tzCode`)
- *   are intentionally out of scope — the former belong to a jsdom-
- *   flavored suite, the latter would need timezone mocking to assert
- *   exact strings without becoming environment-sensitive.
+ *   are intentionally out of scope — the former belong to a fuller
+ *   DOM-driving suite, the latter would need timezone mocking to
+ *   assert exact strings without becoming environment-sensitive.
  *
  *   Covered exports: emojiId, fmtMs, fmtCountdown, compositeKey,
  *   truncName, fmtNum, isFullRange, isFullRangeSpread, nextMidnight.
  */
+
+require("global-jsdom/register");
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
@@ -32,7 +33,6 @@ before(async () => {
 describe("emojiId()", () => {
   it("returns a 3-emoji fingerprint (not a byte-count of 3 — surrogate pairs)", () => {
     const out = helpers.emojiId("157149");
-    // Each emoji is a single "character" in Array.from splitting.
     assert.strictEqual(Array.from(out).length, 3);
   });
 
@@ -42,8 +42,6 @@ describe("emojiId()", () => {
   });
 
   it("produces DIFFERENT fingerprints for different inputs (probabilistic sanity)", () => {
-    // With a 16-emoji alphabet and 3 slots, collision space is 16^3 = 4096.
-    // A handful of common inputs should not collide.
     const ids = new Set(
       ["157149", "160123", "999999", "0xABCD", "pool-A"].map(helpers.emojiId),
     );
@@ -90,7 +88,6 @@ describe("fmtCountdown()", () => {
   });
 
   it("supports > 59 minutes (no hours segment — MM saturates upward)", () => {
-    // 90 min → "90:00" — verifies MM is not clamped to 59.
     assert.strictEqual(helpers.fmtCountdown(90 * 60_000), "90:00");
   });
 });
@@ -169,7 +166,6 @@ describe("fmtNum()", () => {
   });
 
   it("formats sub-unit values with 6 significant figures (toPrecision(6))", () => {
-    // 0.123456789 → toPrecision(6) → "0.123457"
     assert.strictEqual(helpers.fmtNum(0.123456789), "0.123457");
   });
 });
