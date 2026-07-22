@@ -102,7 +102,10 @@
         "hardhat": "npm:empty-npm-package@1.0.0"
       }
     },
-    "adm-zip": "^0.6.0"
+    "adm-zip": "^0.6.0",
+    "@exodus/bytes": {
+      "@noble/hashes": "^1.8.0"
+    }
   },
   "lint-staged": {
     "*.js": "prettier --write"
