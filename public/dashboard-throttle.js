@@ -291,6 +291,15 @@ function _renderCountdownKpi(can) {
   }
 }
 
+/*- Render the "Doubling Trigger Window" label to `4 × minIntervalMs`.
+ *  Kept in sync with `src/throttle.js`'s `window4 = 4 * state.minIntervalMs`
+ *  — if that multiplier ever changes there, change it here too. */
+function _renderDoublingWindowLabel() {
+  const el = g("dblWindowLabel");
+  if (!el) return;
+  el.textContent = (4 * throttle.minIntervalMs) / 60000 + " min";
+}
+
 /** Refresh all throttle-related UI elements (badge, countdown, banner). */
 export function updateThrottleUI() {
   const can = canRebalance();
@@ -298,6 +307,7 @@ export function updateThrottleUI() {
   _renderThrottleBadge(pct);
   _renderCountdownKpi(can);
   _renderRangeBanner(can);
+  _renderDoublingWindowLabel();
 }
 
 /*-
