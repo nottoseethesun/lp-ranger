@@ -1,316 +1,255 @@
-/**
- * @file test/dashboard-data-range-width.test.js
- * @description Mirror tests for `syncRangeWidth` and
- * `syncFullRangeCheckbox` in `public/dashboard-data-range-width.js`.
- * The dashboard module pulls DOM + a browser-only ES-module import
- * graph that node:test can't load, so we mirror the functions here in
- * plain CommonJS with lightweight DOM/posStore stubs and cover the
- * end-to-end flows at the logic level.  Same pattern as
- * `test/dashboard-mixed-state-fix.test.js`.
- *
- * Behavior under test (post the "Range Width" → "Price Range
- * Extension" rename + no-fallback-when-unset rework):
- *
- *   syncRangeWidth:
- *     - saved override present → populate input (rounded to 2 decimals)
- *     - no saved override → input stays empty; no computed fallback
- *     - position switch → clear input if no saved override
- *     - mid-typing (isDirty) → skip
- *
- *   syncFullRangeCheckbox:
- *     - `data.fullRangeRebalanceEnabled === true` → checkbox checked
- *     - `data.fullRangeRebalanceEnabled === false` → checkbox unchecked
- *     - unset/null → checkbox reflects on-chain reality (full-range spread)
- *     - checked → Price Range Extension input is disabled
- */
-
 "use strict";
 
-const { describe, it } = require("node:test");
+/**
+ * @file test/dashboard-data-range-width.test.js
+ * @description Tests the pure decisions extracted from
+ *   `syncRangeWidth` and `syncFullRangeCheckbox` in
+ *   `public/dashboard-data-range-width.js`:
+ *
+ *     - `computeRangeWidthDecision(data, ctx)`
+ *     - `computeFullRangeChecked(data, activeFromStore)`
+ *     - `isActivePositionFullRange(activeFromPayload, activeFromStore)`
+ *
+ *   Extraction (over the previous inline-in-syncRangeWidth logic)
+ *   removes the mirror-drift risk that the previous test file inherited:
+ *   the tests now target the real exports so any behavioural change to
+ *   the sync path is caught immediately.
+ *
+ *   Contract:
+ *     syncRangeWidth:
+ *       - saved override present → populate input (rounded to 2 decimals)
+ *       - no saved override → input stays empty; no computed fallback
+ *       - position switch → clear input if no saved override
+ *       - mid-typing (isDirty) → skip
+ *     syncFullRangeCheckbox:
+ *       - `data.fullRangeRebalanceEnabled === true` → checkbox checked
+ *       - `data.fullRangeRebalanceEnabled === false` → checkbox unchecked
+ *       - unset/null → checkbox reflects on-chain reality (full-range spread)
+ */
+
+require("global-jsdom/register");
+
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 
-// ── Test doubles ──────────────────────────────────────────────────────
+let mod;
 
-/** Minimal DOM double for a single input element. */
-function makeInput(initialValue = "") {
-  return { value: initialValue, disabled: false };
-}
+before(async () => {
+  mod = await import("../public/dashboard-data-range-width.js");
+});
 
-/** Minimal DOM double for a checkbox element. */
-function makeCheckbox(initialChecked = false) {
-  return { checked: initialChecked };
-}
+// ── computeRangeWidthDecision ─────────────────────────────────────────
 
-/*- Mirror of dashboard-helpers.js:isFullRangeSpread. */
-const FULL_RANGE_TICK_SPREAD_THRESHOLD = 1_700_000;
-function isFullRangeSpread(spread) {
-  return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
-}
+describe("computeRangeWidthDecision()", () => {
+  it("saved override → write on new position (rounded to 2 decimals)", () => {
+    const r = mod.computeRangeWidthDecision(
+      { rebalanceRangeWidthPct: 8 },
+      {
+        posKey: "100",
+        lastKnownPosKey: null,
+        currentValue: "",
+        isDirty: false,
+      },
+    );
+    assert.strictEqual(r.shouldWrite, true);
+    assert.strictEqual(r.newValue, "8.00");
+    assert.strictEqual(r.newLastKnownPosKey, "100");
+  });
 
-/*- Mirror of the production `syncRangeWidth` — takes injected
- *  dependencies (`el`, `posKeyRef`, `isDirty`, `state`) instead of
- *  importing DOM/posStore/isInputDirty. */
-function makeSyncRangeWidth() {
-  let _lastKnownPosKey = null;
-  return function syncRangeWidth(data, ctx) {
-    const { el, isDirty, posKey } = ctx;
-    if (!el) return;
-    if (isDirty) return;
-    if (!posKey) return;
-    const isNewPosition = _lastKnownPosKey !== posKey;
-    const saved = data.rebalanceRangeWidthPct;
-    if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
-      if (isNewPosition || el.value === "") el.value = saved.toFixed(2);
-      _lastKnownPosKey = posKey;
-      return;
+  it("saved override → write on same-position when input is empty", () => {
+    const r = mod.computeRangeWidthDecision(
+      { rebalanceRangeWidthPct: 12.5 },
+      {
+        posKey: "100",
+        lastKnownPosKey: "100",
+        currentValue: "",
+        isDirty: false,
+      },
+    );
+    assert.strictEqual(r.shouldWrite, true);
+    assert.strictEqual(r.newValue, "12.50");
+  });
+
+  it("saved override → skip on same-position when input has value (mid-typing preservation)", () => {
+    const r = mod.computeRangeWidthDecision(
+      { rebalanceRangeWidthPct: 8 },
+      {
+        posKey: "100",
+        lastKnownPosKey: "100",
+        currentValue: "5",
+        isDirty: false,
+      },
+    );
+    assert.strictEqual(r.shouldWrite, false);
+    assert.strictEqual(r.newLastKnownPosKey, "100");
+  });
+
+  it("no saved override → clear on new position", () => {
+    const r = mod.computeRangeWidthDecision(
+      {},
+      {
+        posKey: "100",
+        lastKnownPosKey: null,
+        currentValue: "5",
+        isDirty: false,
+      },
+    );
+    assert.strictEqual(r.shouldWrite, true);
+    assert.strictEqual(r.newValue, "");
+    assert.strictEqual(r.newLastKnownPosKey, "100");
+  });
+
+  it("no saved override → skip on same position", () => {
+    const r = mod.computeRangeWidthDecision(
+      {},
+      {
+        posKey: "100",
+        lastKnownPosKey: "100",
+        currentValue: "",
+        isDirty: false,
+      },
+    );
+    assert.strictEqual(r.shouldWrite, false);
+    assert.strictEqual(r.newLastKnownPosKey, "100");
+  });
+
+  it("isDirty → skip everything (mid-typing guard)", () => {
+    const r = mod.computeRangeWidthDecision(
+      { rebalanceRangeWidthPct: 99 },
+      {
+        posKey: "100",
+        lastKnownPosKey: null,
+        currentValue: "5",
+        isDirty: true,
+      },
+    );
+    assert.strictEqual(r.shouldWrite, false);
+    assert.strictEqual(r.newLastKnownPosKey, undefined);
+  });
+
+  it("no posKey → skip everything (guard before pos change detection)", () => {
+    const r = mod.computeRangeWidthDecision(
+      { rebalanceRangeWidthPct: 8 },
+      { posKey: null, lastKnownPosKey: null, currentValue: "", isDirty: false },
+    );
+    assert.strictEqual(r.shouldWrite, false);
+    assert.strictEqual(r.newLastKnownPosKey, undefined);
+  });
+
+  it("rejects non-finite saved values (Infinity, NaN) as if unset", () => {
+    for (const bad of [NaN, Infinity, -Infinity, null, undefined]) {
+      const r = mod.computeRangeWidthDecision(
+        { rebalanceRangeWidthPct: bad },
+        {
+          posKey: "100",
+          lastKnownPosKey: "100",
+          currentValue: "",
+          isDirty: false,
+        },
+      );
+      assert.strictEqual(
+        r.shouldWrite,
+        false,
+        `bad value ${bad} should not trigger a write when same-pos + empty`,
+      );
     }
-    if (isNewPosition) el.value = "";
-    _lastKnownPosKey = posKey;
-  };
-}
-
-/*- Mirror of the production `_isActivePositionFullRange`. */
-function isActivePositionFullRange(data) {
-  const ap = data.activePosition;
-  const active = data._active;
-  const tL = ap?.tickLower ?? active?.tickLower;
-  const tU = ap?.tickUpper ?? active?.tickUpper;
-  if (tL === undefined || tL === null || tU === undefined || tU === null)
-    return false;
-  if (!Number.isFinite(tL) || !Number.isFinite(tU)) return false;
-  return isFullRangeSpread(tU - tL);
-}
-
-/*- Mirror of the production `syncFullRangeCheckbox`. */
-function syncFullRangeCheckbox(data, ctx) {
-  const { chk, input } = ctx;
-  if (!chk) return;
-  const saved = data.fullRangeRebalanceEnabled;
-  let checked;
-  if (typeof saved === "boolean") {
-    checked = saved;
-  } else {
-    checked = isActivePositionFullRange(data);
-  }
-  chk.checked = checked;
-  if (input) input.disabled = checked;
-}
-
-// ── syncRangeWidth: saved override present ────────────────────────────
-
-describe("syncRangeWidth — saved override present", () => {
-  it("populates input with rebalanceRangeWidthPct on position switch", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync(
-      { rebalanceRangeWidthPct: 25 },
-      { el, isDirty: false, posKey: "TOKEN_A" },
-    );
-    assert.strictEqual(el.value, "25.00");
-  });
-
-  it("rounds saved override to 2 decimals", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync(
-      { rebalanceRangeWidthPct: 25.6789 },
-      { el, isDirty: false, posKey: "TOKEN_A" },
-    );
-    assert.strictEqual(el.value, "25.68");
-  });
-
-  it("does not clobber user's typed value when input already populated", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    /*- First call: fresh position, populate. */
-    sync(
-      { rebalanceRangeWidthPct: 25 },
-      { el, isDirty: false, posKey: "TOKEN_A" },
-    );
-    /*- Simulate user typing over the value. */
-    el.value = "42";
-    /*- Second poll on same position, input non-empty → skip. */
-    sync(
-      { rebalanceRangeWidthPct: 25 },
-      { el, isDirty: false, posKey: "TOKEN_A" },
-    );
-    assert.strictEqual(el.value, "42");
-  });
-
-  it("respects the dirty flag mid-typing", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync(
-      { rebalanceRangeWidthPct: 25 },
-      { el, isDirty: true, posKey: "TOKEN_A" },
-    );
-    assert.strictEqual(el.value, "");
-  });
-
-  it("re-populates on position switch when input was empty", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync(
-      { rebalanceRangeWidthPct: 25 },
-      { el, isDirty: false, posKey: "TOKEN_A" },
-    );
-    el.value = "";
-    sync(
-      { rebalanceRangeWidthPct: 50 },
-      { el, isDirty: false, posKey: "TOKEN_B" },
-    );
-    assert.strictEqual(el.value, "50.00");
   });
 });
 
-// ── syncRangeWidth: no saved override → empty input ───────────────────
+// ── computeFullRangeChecked ───────────────────────────────────────────
 
-describe("syncRangeWidth — no saved override", () => {
-  it("leaves input empty when rebalanceRangeWidthPct is null", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync(
-      { rebalanceRangeWidthPct: null },
-      { el, isDirty: false, posKey: "TOKEN_A" },
+describe("computeFullRangeChecked()", () => {
+  it("data.fullRangeRebalanceEnabled === true → checked (ignores on-chain reality)", () => {
+    assert.strictEqual(
+      mod.computeFullRangeChecked({ fullRangeRebalanceEnabled: true }, null),
+      true,
     );
-    assert.strictEqual(el.value, "");
   });
 
-  it("leaves input empty when rebalanceRangeWidthPct is undefined", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync({}, { el, isDirty: false, posKey: "TOKEN_A" });
-    assert.strictEqual(el.value, "");
-  });
-
-  it("does NOT compute a fallback from position ticks (regression guard)", () => {
-    /*- Prior behavior computed a widthPct from the position's tick
-     *  spread + offset; that was misleading — it looked like a saved
-     *  value.  This test guards against it coming back. */
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync(
-      {
-        activePosition: {
-          tickLower: -2500,
-          tickUpper: 2500,
+  it("data.fullRangeRebalanceEnabled === false → unchecked", () => {
+    assert.strictEqual(
+      mod.computeFullRangeChecked(
+        {
+          fullRangeRebalanceEnabled: false,
+          activePosition: { tickLower: -887200, tickUpper: 887200 },
         },
-        offsetToken0Pct: 50,
-      },
-      { el, isDirty: false, posKey: "TOKEN_A" },
+        null,
+      ),
+      false,
     );
-    assert.strictEqual(el.value, "");
   });
 
-  it("clears input on position switch when new position has no saved value", () => {
-    const sync = makeSyncRangeWidth();
-    const el = makeInput("");
-    sync(
-      { rebalanceRangeWidthPct: 25 },
-      { el, isDirty: false, posKey: "TOKEN_A" },
+  it("unset → reflects on-chain reality (full-range spread from payload)", () => {
+    assert.strictEqual(
+      mod.computeFullRangeChecked(
+        {
+          activePosition: { tickLower: -887200, tickUpper: 887200 },
+        },
+        null,
+      ),
+      true,
     );
-    assert.strictEqual(el.value, "25.00");
-    sync({}, { el, isDirty: false, posKey: "TOKEN_B" });
-    assert.strictEqual(el.value, "");
+  });
+
+  it("unset + narrow-range → unchecked", () => {
+    assert.strictEqual(
+      mod.computeFullRangeChecked(
+        {
+          activePosition: { tickLower: -100, tickUpper: 100 },
+        },
+        null,
+      ),
+      false,
+    );
+  });
+
+  it("payload ticks missing → falls back to posStore active-entry ticks", () => {
+    assert.strictEqual(
+      mod.computeFullRangeChecked(
+        { activePosition: {} },
+        { tickLower: -887200, tickUpper: 887200 },
+      ),
+      true,
+    );
   });
 });
 
-// ── syncFullRangeCheckbox: explicit saved flag ────────────────────────
+// ── isActivePositionFullRange ─────────────────────────────────────────
 
-describe("syncFullRangeCheckbox — explicit saved flag", () => {
-  it("checks the box when fullRangeRebalanceEnabled === true", () => {
-    const chk = makeCheckbox(false);
-    const input = makeInput("");
-    syncFullRangeCheckbox({ fullRangeRebalanceEnabled: true }, { chk, input });
-    assert.strictEqual(chk.checked, true);
-    assert.strictEqual(input.disabled, true);
-  });
-
-  it("unchecks the box when fullRangeRebalanceEnabled === false", () => {
-    const chk = makeCheckbox(true);
-    const input = makeInput("");
-    syncFullRangeCheckbox({ fullRangeRebalanceEnabled: false }, { chk, input });
-    assert.strictEqual(chk.checked, false);
-    assert.strictEqual(input.disabled, false);
-  });
-
-  it("explicit false wins over full-range on-chain state", () => {
-    /*- A user who's explicitly opted OUT of full-range rebalancing
-     *  should stay opted out even if their current NFT happens to be
-     *  full-range on-chain. */
-    const chk = makeCheckbox(false);
-    const input = makeInput("");
-    syncFullRangeCheckbox(
-      {
-        fullRangeRebalanceEnabled: false,
-        activePosition: {
-          tickLower: -887272,
-          tickUpper: 887272,
-        },
-      },
-      { chk, input },
+describe("isActivePositionFullRange()", () => {
+  it("is true for the canonical V3 full-range ticks (±887272)", () => {
+    assert.strictEqual(
+      mod.isActivePositionFullRange(
+        { tickLower: -887200, tickUpper: 887200 },
+        null,
+      ),
+      true,
     );
-    assert.strictEqual(chk.checked, false);
-    assert.strictEqual(input.disabled, false);
   });
-});
 
-// ── syncFullRangeCheckbox: unset → reflect on-chain reality ───────────
+  it("is false when ticks are undefined / null", () => {
+    assert.strictEqual(mod.isActivePositionFullRange({}, {}), false);
+    assert.strictEqual(mod.isActivePositionFullRange(null, null), false);
+  });
 
-describe("syncFullRangeCheckbox — unset saved flag", () => {
-  it("checks the box when the current position is full-range on-chain", () => {
-    const chk = makeCheckbox(false);
-    const input = makeInput("");
-    syncFullRangeCheckbox(
-      {
-        activePosition: {
-          tickLower: -887272,
-          tickUpper: 887272,
-        },
-      },
-      { chk, input },
+  it("is false when ticks are not finite", () => {
+    assert.strictEqual(
+      mod.isActivePositionFullRange(
+        { tickLower: NaN, tickUpper: 887200 },
+        null,
+      ),
+      false,
     );
-    assert.strictEqual(chk.checked, true);
-    assert.strictEqual(input.disabled, true);
   });
 
-  it("unchecks the box when the current position is NOT full-range", () => {
-    const chk = makeCheckbox(true);
-    const input = makeInput("");
-    syncFullRangeCheckbox(
-      {
-        activePosition: {
-          tickLower: -2500,
-          tickUpper: 2500,
-        },
-      },
-      { chk, input },
+  it("prefers payload ticks over posStore ticks", () => {
+    // Payload says narrow, store says wide → uses payload → false.
+    assert.strictEqual(
+      mod.isActivePositionFullRange(
+        { tickLower: -100, tickUpper: 100 },
+        { tickLower: -887200, tickUpper: 887200 },
+      ),
+      false,
     );
-    assert.strictEqual(chk.checked, false);
-    assert.strictEqual(input.disabled, false);
-  });
-
-  it("falls back to posStore when data.activePosition is missing", () => {
-    const chk = makeCheckbox(false);
-    const input = makeInput("");
-    syncFullRangeCheckbox(
-      {
-        _active: {
-          tickLower: -887272,
-          tickUpper: 887272,
-        },
-      },
-      { chk, input },
-    );
-    assert.strictEqual(chk.checked, true);
-    assert.strictEqual(input.disabled, true);
-  });
-
-  it("stays unchecked when no ticks are available", () => {
-    const chk = makeCheckbox(false);
-    const input = makeInput("");
-    syncFullRangeCheckbox({}, { chk, input });
-    assert.strictEqual(chk.checked, false);
-    assert.strictEqual(input.disabled, false);
   });
 });
