@@ -58,7 +58,7 @@ function _logSync(before, ap, active, poolIdentityChanged) {
  *  "Type Checks" rule in CLAUDE-BEST-PRACTICES.md — a bare `!== undefined`
  *  would let `null` through and land the string `"null"` in
  *  `active.liquidity`, silently corrupting the `isPositionClosed` check. */
-function _applyLiqAndTicks(active, ap) {
+export function _applyLiqAndTicks(active, ap) {
   if (ap.liquidity !== undefined && ap.liquidity !== null)
     active.liquidity = String(ap.liquidity);
   if (ap.tickLower !== undefined && ap.tickLower !== null) {
@@ -69,7 +69,7 @@ function _applyLiqAndTicks(active, ap) {
 
 /** Copy pool-identity fields (token0/token1/fee).  Returns true when
  *  any of them changed. */
-function _applyPoolFields(active, ap) {
+export function _applyPoolFields(active, ap) {
   if (!ap.token0) return false;
   const changed =
     active.token0 !== ap.token0 ||
@@ -82,7 +82,7 @@ function _applyPoolFields(active, ap) {
 }
 
 /** Copy token symbols.  Returns true when either symbol changed. */
-function _applySymbols(active, ap) {
+export function _applySymbols(active, ap) {
   let changed = false;
   if (ap.token0Symbol && active.token0Symbol !== ap.token0Symbol) {
     active.token0Symbol = ap.token0Symbol;

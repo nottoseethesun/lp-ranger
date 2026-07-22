@@ -59,7 +59,7 @@ function _persistPosStore() {
  * self-heal stale entries — fixes the "tokenId correct, pool name
  * stale" mixed-state render bug after a rebalance-follow migration.
  */
-function _refreshDuplicateEntry(existing, entry) {
+export function _refreshDuplicateEntry(existing, entry) {
   /*- logDedupRefresh self-gates: silent when nothing pool-identity-
    *  relevant differs.  See dashboard-positions-store-log.js. */
   logDedupRefresh(existing, entry);

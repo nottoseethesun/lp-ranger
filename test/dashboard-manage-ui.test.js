@@ -3,207 +3,29 @@
 /**
  * @file test/dashboard-manage-ui.test.js
  * @description Unit tests for the pure `computeManageUI` decision tree
- * that owns the dashboard's Manage button + badge + Lifetime panel +
- * Pool-details button rendering.
- *
- * The production function lives in `public/dashboard-manage-ui.js`
- * (browser ES module).  The dashboard's other ES modules pull in DOM
- * globals at import time, so node:test cannot import the browser
- * module directly — mirror the function here, same pattern as
- * `test/dashboard-mixed-state-fix.test.js`.  Keep the two copies in
- * sync if the decision tree changes.
- *
- * @see public/dashboard-manage-ui.js
+ *   that owns the dashboard's Manage button + badge + Lifetime panel +
+ *   Pool-details button rendering.  Drives the real
+ *   `computeManageUI` export from `public/dashboard-manage-ui.js`
+ *   under jsdom — no mirror.  `MANAGE_SYNCING_HELP` is imported from
+ *   the same module so tests match the exact string the UI paints.
  */
 
-const { test } = require("node:test");
+require("global-jsdom/register");
+
+const { test, before } = require("node:test");
 const assert = require("node:assert");
 const { GUARANTEED_DASHBOARD_HAS_POLLED_MS } = require("../src/config");
 
-// ── Mirrored copy of public/dashboard-manage-ui.js's pure compute ───
+let computeManageUI;
+let MANAGE_SYNCING_HELP;
 
-const MANAGE_SYNCING_HELP =
-  'This button will be clickable once the "Syncing…" badge above is finished.';
-/*- Production code reads this from /api/status's
- *  guaranteedDashboardHasPolledMs (server flows it from
- *  src/config.js).  Tests import the canonical config value so the
- *  literal 7500 lives in exactly one place. */
+before(async () => {
+  const mod = await import("../public/dashboard-manage-ui.js");
+  computeManageUI = mod.computeManageUI;
+  MANAGE_SYNCING_HELP = mod.MANAGE_SYNCING_HELP;
+});
+
 const RETIRE_DEBOUNCE_MS = GUARANTEED_DASHBOARD_HAS_POLLED_MS;
-
-const _MANAGE_REOPEN_HELP =
-  "Re-open this closed position (requires a rebalance to seed liquidity from your wallet).";
-const _MANAGE_STOP_HELP =
-  "Remove this position from active management by LP Ranger.";
-const _MANAGE_START_HELP =
-  "Bring this position under active management by LP Ranger.";
-const _MANAGE_REBALANCING_HELP =
-  "Re-open in progress — bot is submitting the rebalance. Wait for completion.";
-const _MANAGE_RECOVERY_HELP =
-  "Re-open recovering — bot is retrying mint from wallet balances. Wait for completion.";
-const _MANAGE_PAUSED_HELP =
-  "Re-open just failed — the bot will auto-retire shortly. Watch for the alert above.";
-const _MANAGE_DEBOUNCE_HELP =
-  "Re-open just retired — wait a moment so the alert above can render.";
-const _MANAGE_LOCKED_HELP = "Unlock wallet to manage positions";
-const _MANAGE_ERC20_HELP = "Only NFT (V3) positions can be managed";
-const _MANAGE_LOADING_HELP = "Loading position state…";
-const _MANAGE_REBALANCE_OPEN_HELP =
-  "Rebalance in progress — wait for completion before clicking again.";
-const _NO_ACTIVE_HELP = "Select a position first";
-const _PD_VIEW_HELP = "View pool and contract details";
-
-function _deriveBadgeText(isClosed, isRunning) {
-  if (isClosed) return "Position Closed";
-  if (isRunning) return "Being Actively Managed";
-  return "Not Actively Managed";
-}
-
-function _computeClosedSynced(posState, nowMs, retireDebounceMs) {
-  let disabled = false;
-  let title = _MANAGE_REOPEN_HELP;
-  if (posState.rebalanceInProgress || posState.forceRebalance) {
-    disabled = true;
-    title = _MANAGE_REBALANCING_HELP;
-  } else if (posState.rebalanceFailedMidway) {
-    disabled = true;
-    title = _MANAGE_RECOVERY_HELP;
-  } else if (posState.rebalancePaused) {
-    disabled = true;
-    title = _MANAGE_PAUSED_HELP;
-  } else if (
-    posState.lastRetiredAt &&
-    retireDebounceMs &&
-    nowMs - posState.lastRetiredAt < retireDebounceMs
-  ) {
-    disabled = true;
-    title = _MANAGE_DEBOUNCE_HELP;
-  }
-  return {
-    buttonText: "Manage",
-    buttonDisabled: disabled,
-    buttonTitle: title,
-    badgeText: "Position Closed",
-    badgeManaged: false,
-    lifetimeVisible: false,
-    pdBtnDisabled: false,
-    pdBtnTitle: _PD_VIEW_HELP,
-  };
-}
-
-function _computeOpenSynced(posState, isRunning, currentText) {
-  if (posState.rebalanceInProgress) {
-    return {
-      buttonText: currentText,
-      buttonDisabled: true,
-      buttonTitle: _MANAGE_REBALANCE_OPEN_HELP,
-      badgeText: _deriveBadgeText(false, isRunning),
-      badgeManaged: isRunning,
-      lifetimeVisible: isRunning,
-      pdBtnDisabled: false,
-      pdBtnTitle: _PD_VIEW_HELP,
-    };
-  }
-  if (isRunning) {
-    return {
-      buttonText: "Stop Managing",
-      buttonDisabled: false,
-      buttonTitle: _MANAGE_STOP_HELP,
-      badgeText: "Being Actively Managed",
-      badgeManaged: true,
-      lifetimeVisible: true,
-      pdBtnDisabled: false,
-      pdBtnTitle: _PD_VIEW_HELP,
-    };
-  }
-  return {
-    buttonText: "Manage",
-    buttonDisabled: false,
-    buttonTitle: _MANAGE_START_HELP,
-    badgeText: "Not Actively Managed",
-    badgeManaged: false,
-    lifetimeVisible: false,
-    pdBtnDisabled: false,
-    pdBtnTitle: _PD_VIEW_HELP,
-  };
-}
-
-function computeManageUI(inputs) {
-  const {
-    hasActive,
-    isClosed,
-    isNft,
-    posState,
-    syncComplete,
-    walletUnlocked,
-    manageInFlight,
-    nowMs,
-    retireDebounceMs,
-  } = inputs;
-
-  if (!hasActive) {
-    return {
-      buttonText: "Manage",
-      buttonDisabled: true,
-      buttonTitle: _NO_ACTIVE_HELP,
-      badgeText: "Not Actively Managed",
-      badgeManaged: false,
-      lifetimeVisible: false,
-      pdBtnDisabled: true,
-      pdBtnTitle: _NO_ACTIVE_HELP,
-    };
-  }
-  if (manageInFlight) return null;
-  if (!posState) {
-    return {
-      buttonText: "Manage",
-      buttonDisabled: true,
-      buttonTitle: _MANAGE_LOADING_HELP,
-      badgeText: isClosed ? "Position Closed" : "Not Actively Managed",
-      badgeManaged: false,
-      lifetimeVisible: false,
-      pdBtnDisabled: false,
-      pdBtnTitle: _PD_VIEW_HELP,
-    };
-  }
-
-  const isRunning = posState.status === "running" && !isClosed;
-  const badgeText = _deriveBadgeText(isClosed, isRunning);
-  const _currentText = isRunning ? "Stop Managing" : "Manage";
-  const _common = {
-    badgeText,
-    badgeManaged: isRunning,
-    lifetimeVisible: isRunning,
-    pdBtnDisabled: false,
-    pdBtnTitle: _PD_VIEW_HELP,
-  };
-
-  if (!walletUnlocked) {
-    return {
-      buttonText: isClosed ? "Manage" : _currentText,
-      buttonDisabled: true,
-      buttonTitle: _MANAGE_LOCKED_HELP,
-      ..._common,
-    };
-  }
-  if (!isNft) {
-    return {
-      buttonText: "Manage",
-      buttonDisabled: true,
-      buttonTitle: _MANAGE_ERC20_HELP,
-      ..._common,
-    };
-  }
-  if (!syncComplete) {
-    return {
-      buttonText: isClosed ? "Manage" : _currentText,
-      buttonDisabled: true,
-      buttonTitle: MANAGE_SYNCING_HELP,
-      ..._common,
-    };
-  }
-  if (isClosed) return _computeClosedSynced(posState, nowMs, retireDebounceMs);
-  return _computeOpenSynced(posState, isRunning, _currentText);
-}
 
 // ── Test fixtures ────────────────────────────────────────────────────
 
