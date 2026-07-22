@@ -1,113 +1,131 @@
-/**
- * @file test/dashboard-setting-labels.test.js
- * @description Mirror tests for the pure formatter logic in
- * `public/dashboard-setting-labels.js` (`formatSettingChange`,
- * `labelForKey`).  The dashboard file uses ES-module `import` /
- * `fetch` / `console.warn`, so we re-express the same pure formatter
- * as a local plain function and assert the shape.  Confirms that
- * missing entries fall back to the raw `<key> = <value>` form and
- * that the "is now" wrapper concatenates label + value + unit
- * verbatim (no localisation, no rounding).
- */
-
 "use strict";
 
-const { describe, it } = require("node:test");
+/**
+ * @file test/dashboard-setting-labels.test.js
+ * @description Tests for `formatSettingChange` and `labelForKey` in
+ *   `public/dashboard-setting-labels.js`.  Uses jsdom (via
+ *   `global-jsdom/register`) to populate `document` + `fetch`, then
+ *   imports the real browser module.  The module's private `_LABELS`
+ *   map is (re-)populated per test by stubbing `fetch("/api/setting-labels")`
+ *   and awaiting `loadSettingLabels()`.
+ *
+ *   Pins: the friendly `<label> is now <value><unit>` form on registered
+ *   keys, the raw `<key> = <value>` fallback on missing / empty-label
+ *   entries, and `labelForKey`'s parallel fallback contract.
+ */
+
+require("global-jsdom/register");
+
+const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-/*- Mirror of public/dashboard-setting-labels.js formatters, minus
- *  the fetch bootstrap.  Kept in lockstep with the dashboard file
- *  so a shape change on either side surfaces here. */
-function makeFormatter(labels) {
-  const format = (key, value) => {
-    const entry = labels[key];
-    if (!entry || !entry.label) return key + " = " + value;
-    return entry.label + " is now " + value + entry.unit;
+let mod;
+
+/*- Populate the module's private `_LABELS` by stubbing fetch to return
+ *  the given map, then awaiting `loadSettingLabels()`. */
+async function _installLabels(labels) {
+  globalThis.fetch = async (url) => {
+    if (url === "/api/setting-labels") {
+      return { ok: true, json: async () => labels };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
   };
-  const labelOf = (key) => {
-    const entry = labels[key];
-    return (entry && entry.label) || key;
-  };
-  return { format, labelOf };
+  await mod.loadSettingLabels();
 }
 
-describe("dashboard-setting-labels.formatSettingChange", () => {
-  it("returns '<label> is now <value><unit>' when the key is registered", () => {
-    const { format } = makeFormatter({
+before(async () => {
+  mod = await import("../public/dashboard-setting-labels.js");
+});
+
+beforeEach(async () => {
+  // Reset to empty map before each test — subsequent tests set up their
+  // own fixtures via `_installLabels`.
+  await _installLabels({});
+});
+
+describe("formatSettingChange()", () => {
+  it("returns '<label> is now <value><unit>' when the key is registered", async () => {
+    await _installLabels({
       rebalanceRangeWidthPct: {
         label: "Range Width for Rebalancing",
         unit: "%",
       },
     });
     assert.equal(
-      format("rebalanceRangeWidthPct", 8),
+      mod.formatSettingChange("rebalanceRangeWidthPct", 8),
       "Range Width for Rebalancing is now 8%",
     );
   });
 
-  it("appends unit verbatim (including leading space when the label needs it)", () => {
-    const { format } = makeFormatter({
+  it("appends unit verbatim (including leading space when the label needs it)", async () => {
+    await _installLabels({
       minRebalanceIntervalMin: {
         label: "Min Time Between Rebalances",
         unit: " min",
       },
     });
     assert.equal(
-      format("minRebalanceIntervalMin", 15),
+      mod.formatSettingChange("minRebalanceIntervalMin", 15),
       "Min Time Between Rebalances is now 15 min",
     );
   });
 
-  it("handles an empty-unit entry", () => {
-    const { format } = makeFormatter({
+  it("handles an empty-unit entry", async () => {
+    await _installLabels({
       gasStrategy: { label: "Gas Strategy", unit: "" },
     });
-    assert.equal(format("gasStrategy", "auto"), "Gas Strategy is now auto");
+    assert.equal(
+      mod.formatSettingChange("gasStrategy", "auto"),
+      "Gas Strategy is now auto",
+    );
   });
 
   it("falls back to raw '<key> = <value>' when the key is missing", () => {
-    const { format } = makeFormatter({});
-    assert.equal(format("mysteryKey", 42), "mysteryKey = 42");
+    // beforeEach already installed an empty map.
+    assert.equal(mod.formatSettingChange("mysteryKey", 42), "mysteryKey = 42");
   });
 
-  it("falls back when the entry exists but the label is empty", () => {
-    const { format } = makeFormatter({
+  it("falls back when the entry exists but the label is empty", async () => {
+    await _installLabels({
       x: { label: "", unit: "%" },
     });
-    assert.equal(format("x", 1), "x = 1");
+    assert.equal(mod.formatSettingChange("x", 1), "x = 1");
   });
 
-  it("does not stringify or round numeric values — passes them through as-is", () => {
-    const { format } = makeFormatter({
+  it("does not stringify or round numeric values — passes them through as-is", async () => {
+    await _installLabels({
       slippagePct: { label: "Slippage", unit: "%" },
     });
-    assert.equal(format("slippagePct", 0.75), "Slippage is now 0.75%");
+    assert.equal(
+      mod.formatSettingChange("slippagePct", 0.75),
+      "Slippage is now 0.75%",
+    );
   });
 });
 
-describe("dashboard-setting-labels.labelForKey", () => {
-  it("returns the registered label", () => {
-    const { labelOf } = makeFormatter({
+describe("labelForKey()", () => {
+  it("returns the registered label", async () => {
+    await _installLabels({
       rebalanceRangeWidthPct: {
         label: "Range Width for Rebalancing",
         unit: "%",
       },
     });
     assert.equal(
-      labelOf("rebalanceRangeWidthPct"),
+      mod.labelForKey("rebalanceRangeWidthPct"),
       "Range Width for Rebalancing",
     );
   });
 
   it("falls back to the raw key when the entry is missing", () => {
-    const { labelOf } = makeFormatter({});
-    assert.equal(labelOf("unknownKey"), "unknownKey");
+    // beforeEach already installed an empty map.
+    assert.equal(mod.labelForKey("unknownKey"), "unknownKey");
   });
 
-  it("falls back to the raw key when the label is empty", () => {
-    const { labelOf } = makeFormatter({
+  it("falls back to the raw key when the label is empty", async () => {
+    await _installLabels({
       x: { label: "", unit: "%" },
     });
-    assert.equal(labelOf("x"), "x");
+    assert.equal(mod.labelForKey("x"), "x");
   });
 });

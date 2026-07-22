@@ -2,182 +2,147 @@
 
 /**
  * @file test/dashboard-all-positions-stats-gate.test.js
- * @description Unit tests for the pure readiness-gate decision the
- *   "All Positions Stats" header button uses.  The production function
- *   lives in `public/dashboard-all-positions-stats.js` (browser ES
- *   module — same DOM-import constraint as other dashboard modules
- *   we mirror-test).  Kept in sync with production; if the gating
- *   contract changes, update both.
+ * @description Tests the readiness-gate decision the "All Positions
+ *   Stats" header button uses.  The pure decision was extracted from
+ *   `updateAllPositionsStatsBtn` into `computeAllPositionsStatsGate`
+ *   in `public/dashboard-all-positions-stats.js` so it can be tested
+ *   without driving the DOM cache path (whose module-singleton
+ *   `_lastButtonState` cache would leak state between tests).  jsdom
+ *   is still required — the module imports `dashboard-helpers.js`
+ *   which touches browser globals at load time.
  *
- *   Gate contract (per `updateAllPositionsStatsBtn`):
- *     - zero running managed positions ⇒ disabled + "No managed positions" tooltip
- *     - some running not scan-complete   ⇒ disabled + "Waiting for X of Y…" tooltip
- *     - every running position ready     ⇒ enabled + "View ranked stats…" tooltip
- *
- * @see public/dashboard-all-positions-stats.js
+ *   Gate contract:
+ *     - zero running managed positions ⇒ disabled + "No managed positions"
+ *     - some running not scan-complete   ⇒ disabled + "Waiting for X of Y…"
+ *     - every running position ready     ⇒ enabled + "View ranked stats…"
  */
 
-const { test } = require("node:test");
-const assert = require("node:assert");
+require("global-jsdom/register");
 
-// ── Mirrored copy of the pure decision from dashboard-all-positions-stats.js ──
+const { describe, it, before } = require("node:test");
+const assert = require("node:assert/strict");
 
-/**
- * Compute {disabled, title} from a flattened /api/status payload.
- * @param {object} data
- * @returns {{disabled: boolean, title: string}}
- */
-function computeButtonState(data) {
-  const positions = data?._allPositionStates ?? {};
-  let total = 0;
-  let ready = 0;
-  for (const key of Object.keys(positions)) {
-    const p = positions[key];
-    if (p === null || p === undefined) continue;
-    if (p.status !== "running") continue;
-    total += 1;
-    if (
-      p.rebalanceScanComplete === true &&
-      p.lifetimeScanComplete === true &&
-      p.pnlSnapshot !== null &&
-      p.pnlSnapshot !== undefined
-    )
-      ready += 1;
-  }
-  if (total === 0) {
-    return {
-      disabled: true,
-      title: "No managed positions — click Manage on a position to add one.",
-    };
-  }
-  if (ready < total) {
-    const missing = total - ready;
-    const plural = total === 1 ? "" : "s";
-    return {
-      disabled: true,
-      title: `Waiting for ${missing} of ${total} managed position${plural} to finish loading (rebalance history + lifetime deposit scans).`,
-    };
-  }
-  return {
-    disabled: false,
-    title: "View ranked stats across all open managed positions.",
-  };
-}
+let compute;
 
-// ── Test cases ────────────────────────────────────────────────
-
-test("disabled + 'No managed positions' when nothing is running", () => {
-  const r = computeButtonState({ _allPositionStates: {} });
-  assert.equal(r.disabled, true);
-  assert.match(r.title, /No managed positions/);
+before(async () => {
+  ({ computeAllPositionsStatsGate: compute } =
+    await import("../public/dashboard-all-positions-stats.js"));
 });
 
-test("disabled when a stopped position is present but no running ones", () => {
-  const r = computeButtonState({
-    _allPositionStates: {
-      "k-stopped": { status: "stopped" },
-    },
+describe("computeAllPositionsStatsGate()", () => {
+  it("disabled + 'No managed positions' when nothing is running", () => {
+    const r = compute({ _allPositionStates: {} });
+    assert.strictEqual(r.disabled, true);
+    assert.match(r.title, /No managed positions/);
   });
-  assert.equal(r.disabled, true);
-  assert.match(r.title, /No managed positions/);
-});
 
-test("disabled + 'Waiting for X of Y…' when one running position hasn't scanned yet", () => {
-  const r = computeButtonState({
-    _allPositionStates: {
-      "k-loading": { status: "running" }, // no scan flags set
-    },
+  it("disabled when a stopped position is present but no running ones", () => {
+    const r = compute({
+      _allPositionStates: {
+        "k-stopped": { status: "stopped" },
+      },
+    });
+    assert.strictEqual(r.disabled, true);
+    assert.match(r.title, /No managed positions/);
   });
-  assert.equal(r.disabled, true);
-  assert.match(r.title, /Waiting for 1 of 1 managed position\b/);
-});
 
-test("disabled with 'X of Y' when some running are ready and others aren't", () => {
-  const r = computeButtonState({
-    _allPositionStates: {
-      "k-ready": {
-        status: "running",
-        rebalanceScanComplete: true,
-        lifetimeScanComplete: true,
-        pnlSnapshot: { any: 1 },
+  it("disabled + 'Waiting for X of Y…' when one running position hasn't scanned yet", () => {
+    const r = compute({
+      _allPositionStates: {
+        "k-loading": { status: "running" }, // no scan flags set
       },
-      "k-loading": { status: "running" },
-      "k-drained-loading": {
-        status: "running",
-        rebalanceScanComplete: true,
-        // lifetimeScanComplete still missing
-        pnlSnapshot: { any: 1 },
-      },
-    },
+    });
+    assert.strictEqual(r.disabled, true);
+    assert.match(r.title, /Waiting for 1 of 1 managed position\b/);
   });
-  assert.equal(r.disabled, true);
-  assert.match(r.title, /Waiting for 2 of 3 managed positions/);
-});
 
-test("enabled when every running position is scan-complete AND has pnlSnapshot", () => {
-  const r = computeButtonState({
-    _allPositionStates: {
-      "k-a": {
-        status: "running",
-        rebalanceScanComplete: true,
-        lifetimeScanComplete: true,
-        pnlSnapshot: { any: 1 },
+  it("disabled with 'X of Y' when some running are ready and others aren't", () => {
+    const r = compute({
+      _allPositionStates: {
+        "k-ready": {
+          status: "running",
+          rebalanceScanComplete: true,
+          lifetimeScanComplete: true,
+          pnlSnapshot: { any: 1 },
+        },
+        "k-loading": { status: "running" },
+        "k-drained-loading": {
+          status: "running",
+          rebalanceScanComplete: true,
+          // lifetimeScanComplete still missing
+          pnlSnapshot: { any: 1 },
+        },
       },
-      "k-b": {
-        status: "running",
-        rebalanceScanComplete: true,
-        lifetimeScanComplete: true,
-        pnlSnapshot: { any: 2 },
-      },
-    },
+    });
+    assert.strictEqual(r.disabled, true);
+    assert.match(r.title, /Waiting for 2 of 3 managed positions/);
   });
-  assert.equal(r.disabled, false);
-  assert.match(r.title, /View ranked stats/);
-});
 
-test("running w/ scans complete but missing pnlSnapshot counts as not-ready", () => {
-  const r = computeButtonState({
-    _allPositionStates: {
-      "k-no-snap": {
-        status: "running",
-        rebalanceScanComplete: true,
-        lifetimeScanComplete: true,
-        // pnlSnapshot missing
+  it("enabled when every running position is scan-complete AND has pnlSnapshot", () => {
+    const r = compute({
+      _allPositionStates: {
+        "k-a": {
+          status: "running",
+          rebalanceScanComplete: true,
+          lifetimeScanComplete: true,
+          pnlSnapshot: { any: 1 },
+        },
+        "k-b": {
+          status: "running",
+          rebalanceScanComplete: true,
+          lifetimeScanComplete: true,
+          pnlSnapshot: { any: 2 },
+        },
       },
-    },
+    });
+    assert.strictEqual(r.disabled, false);
+    assert.match(r.title, /View ranked stats/);
   });
-  assert.equal(r.disabled, true);
-  assert.match(r.title, /Waiting for 1 of 1 managed position\b/);
-});
 
-test("stopped positions are excluded from the total", () => {
-  const r = computeButtonState({
-    _allPositionStates: {
-      "k-running-ready": {
-        status: "running",
-        rebalanceScanComplete: true,
-        lifetimeScanComplete: true,
-        pnlSnapshot: { any: 1 },
+  it("running w/ scans complete but missing pnlSnapshot counts as not-ready", () => {
+    const r = compute({
+      _allPositionStates: {
+        "k-no-snap": {
+          status: "running",
+          rebalanceScanComplete: true,
+          lifetimeScanComplete: true,
+          // pnlSnapshot missing
+        },
       },
-      "k-stopped": {
-        status: "stopped",
-        rebalanceScanComplete: false, // shouldn't matter
-        lifetimeScanComplete: false,
-      },
-    },
+    });
+    assert.strictEqual(r.disabled, true);
+    assert.match(r.title, /Waiting for 1 of 1 managed position\b/);
   });
-  assert.equal(r.disabled, false);
-  assert.match(r.title, /View ranked stats/);
-});
 
-test("handles missing _allPositionStates gracefully", () => {
-  const r = computeButtonState({});
-  assert.equal(r.disabled, true);
-  assert.match(r.title, /No managed positions/);
-});
+  it("stopped positions are excluded from the total", () => {
+    const r = compute({
+      _allPositionStates: {
+        "k-running-ready": {
+          status: "running",
+          rebalanceScanComplete: true,
+          lifetimeScanComplete: true,
+          pnlSnapshot: { any: 1 },
+        },
+        "k-stopped": {
+          status: "stopped",
+          rebalanceScanComplete: false,
+          lifetimeScanComplete: false,
+        },
+      },
+    });
+    assert.strictEqual(r.disabled, false);
+    assert.match(r.title, /View ranked stats/);
+  });
 
-test("handles null data gracefully", () => {
-  const r = computeButtonState(null);
-  assert.equal(r.disabled, true);
-  assert.match(r.title, /No managed positions/);
+  it("handles missing _allPositionStates gracefully", () => {
+    const r = compute({});
+    assert.strictEqual(r.disabled, true);
+    assert.match(r.title, /No managed positions/);
+  });
+
+  it("handles null data gracefully", () => {
+    const r = compute(null);
+    assert.strictEqual(r.disabled, true);
+    assert.match(r.title, /No managed positions/);
+  });
 });
