@@ -155,10 +155,22 @@ import {
 } from "./dashboard-data-cache.js";
 export { markInputDirty };
 
-_wireDepositKpis(
-  () => _lastStatus,
-  (s) => _updateKpis(s),
-);
+/**
+ * Wire the deposit-module's live-status callbacks.  Extracted from a
+ * top-level side effect because that top-level call tripped an ESM
+ * temporal-dead-zone error when tests import `dashboard-data-deposit`
+ * directly (its `let _lastStatusRef` had not initialized yet because
+ * the circular graph was mid-evaluation).  Callers must invoke this
+ * once at bootstrap — see `dashboard-init.js`.  Runtime behaviour
+ * under the bundler is unchanged.
+ */
+export function initDataDepositWiring() {
+  _wireDepositKpis(
+    () => _lastStatus,
+    (s) => _updateKpis(s),
+  );
+}
+
 function _syncRebCache(d) {
   const e = d.rebalanceEvents;
   if (!e || !e.length) {

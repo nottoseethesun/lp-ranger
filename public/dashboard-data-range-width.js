@@ -55,18 +55,78 @@ import { posStore } from "./dashboard-positions-store.js";
  *  local so it survives across polls but is reset on page reload. */
 let _lastKnownPosKey = null;
 
-/** Determine if the currently-active position (managed or unmanaged) is
- *  full-range on-chain — used by `syncFullRangeCheckbox` when the user
- *  has NOT saved an explicit `fullRangeRebalanceEnabled` flag. */
-function _isActivePositionFullRange(data) {
-  const ap = data.activePosition;
-  const active = posStore.getActive();
-  const tL = ap?.tickLower ?? active?.tickLower;
-  const tU = ap?.tickUpper ?? active?.tickUpper;
+/**
+ * Compute whether an activePosition + posStore-active pair is
+ * on-chain full-range.  Pure decision extracted from
+ * `_isActivePositionFullRange` so tests can drive it without setting
+ * up posStore state.
+ * @param {{tickLower?:number, tickUpper?:number}|null|undefined} activeFromPayload
+ * @param {{tickLower?:number, tickUpper?:number}|null|undefined} activeFromStore
+ * @returns {boolean}
+ */
+export function isActivePositionFullRange(activeFromPayload, activeFromStore) {
+  const tL = activeFromPayload?.tickLower ?? activeFromStore?.tickLower;
+  const tU = activeFromPayload?.tickUpper ?? activeFromStore?.tickUpper;
   if (tL === undefined || tL === null || tU === undefined || tU === null)
     return false;
   if (!Number.isFinite(tL) || !Number.isFinite(tU)) return false;
   return isFullRangeSpread(tU - tL);
+}
+
+/**
+ * Pure decision for `syncRangeWidth`.  Given the payload and the
+ * relevant DOM/state fragments, returns what the sync path should do:
+ *   - `shouldWrite`: whether to write to the input.
+ *   - `newValue`: the value to write (only meaningful when `shouldWrite`).
+ *   - `newLastKnownPosKey`: the value to update the module cache to
+ *     (present only when the decision advances past the guard checks).
+ *
+ * Extracted so tests can drive the decision without a live posStore or
+ * dirty-flag cache.
+ *
+ * @param {object} data  Flattened poll payload.
+ * @param {{posKey:string|null|undefined, lastKnownPosKey:string|null,
+ *          currentValue:string, isDirty:boolean}} ctx
+ * @returns {{shouldWrite:boolean, newValue?:string, newLastKnownPosKey?:string}}
+ */
+export function computeRangeWidthDecision(data, ctx) {
+  if (ctx.isDirty) return { shouldWrite: false };
+  if (!ctx.posKey) return { shouldWrite: false };
+  const isNewPosition = ctx.lastKnownPosKey !== ctx.posKey;
+  const saved = data.rebalanceRangeWidthPct;
+  if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
+    if (isNewPosition || ctx.currentValue === "") {
+      return {
+        shouldWrite: true,
+        newValue: saved.toFixed(2),
+        newLastKnownPosKey: ctx.posKey,
+      };
+    }
+    return { shouldWrite: false, newLastKnownPosKey: ctx.posKey };
+  }
+  if (isNewPosition) {
+    return {
+      shouldWrite: true,
+      newValue: "",
+      newLastKnownPosKey: ctx.posKey,
+    };
+  }
+  return { shouldWrite: false, newLastKnownPosKey: ctx.posKey };
+}
+
+/**
+ * Pure decision for `syncFullRangeCheckbox`.  Given the payload and
+ * the current active-position info, returns whether the checkbox
+ * should end up checked.  Extracted so tests can drive the decision
+ * without a live posStore.
+ * @param {object} data  Flattened poll payload.
+ * @param {{tickLower?:number, tickUpper?:number}|null|undefined} activeFromStore
+ * @returns {boolean}
+ */
+export function computeFullRangeChecked(data, activeFromStore) {
+  const saved = data.fullRangeRebalanceEnabled;
+  if (typeof saved === "boolean") return saved;
+  return isActivePositionFullRange(data.activePosition, activeFromStore);
 }
 
 /**
@@ -81,20 +141,16 @@ function _isActivePositionFullRange(data) {
 export function syncRangeWidth(data) {
   const el = g("inRangeWidth");
   if (!el) return;
-  if (isInputDirty("inRangeWidth")) return;
-  const posKey = posStore.getActive()?.tokenId;
-  if (!posKey) return;
-  const isNewPosition = _lastKnownPosKey !== posKey;
-  const saved = data.rebalanceRangeWidthPct;
-  if (saved !== undefined && saved !== null && Number.isFinite(saved)) {
-    if (isNewPosition || el.value === "") el.value = saved.toFixed(2);
-    _lastKnownPosKey = posKey;
-    return;
+  const decision = computeRangeWidthDecision(data, {
+    posKey: posStore.getActive()?.tokenId,
+    lastKnownPosKey: _lastKnownPosKey,
+    currentValue: el.value,
+    isDirty: isInputDirty("inRangeWidth"),
+  });
+  if (decision.shouldWrite) el.value = decision.newValue;
+  if (decision.newLastKnownPosKey !== undefined) {
+    _lastKnownPosKey = decision.newLastKnownPosKey;
   }
-  /*- No saved override — input stays empty.  On position switch, clear
-   *  any lingering value from the prior position. */
-  if (isNewPosition) el.value = "";
-  _lastKnownPosKey = posKey;
 }
 
 /**
@@ -112,13 +168,7 @@ export function syncFullRangeCheckbox(data) {
   const chk = g("chkFullRange");
   if (!chk) return;
   const input = g("inRangeWidth");
-  const saved = data.fullRangeRebalanceEnabled;
-  let checked;
-  if (typeof saved === "boolean") {
-    checked = saved;
-  } else {
-    checked = _isActivePositionFullRange(data);
-  }
+  const checked = computeFullRangeChecked(data, posStore.getActive());
   chk.checked = checked;
   if (input) input.disabled = checked;
 }

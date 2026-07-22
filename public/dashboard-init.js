@@ -61,6 +61,7 @@ import {
   setConfigInputDefault,
   getLastStatus,
   isSyncComplete,
+  initDataDepositWiring,
 } from "./dashboard-data.js";
 import { injectManageUIDeps, paintManageUI } from "./dashboard-manage-ui.js";
 import {
@@ -471,6 +472,13 @@ function _afterDisclaimer() {
   })();
 
   // ── Start intervals ─────────────────────────────────────────────────────────
+
+  /*- Wire the deposit module's live-status callbacks before polling
+   *  starts.  Previously a top-level side effect in dashboard-data.js,
+   *  which tripped an ESM temporal-dead-zone error under direct-ESM
+   *  tests of dashboard-data-deposit.  Runtime behaviour unchanged
+   *  under the esbuild bundle. */
+  initDataDepositWiring();
 
   onParamChange();
   setInterval(updateThrottleUI, 1000);
