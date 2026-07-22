@@ -3,65 +3,57 @@
 /**
  * @file test/dashboard-mission-badge.test.js
  * @description Tests for `findActiveActions` and `findActiveAction` in
- *   `public/dashboard-mission-badge.js`.  Mirrored in CJS because the
- *   module imports `dashboard-positions.js` which transitively pulls
- *   in wallet, data, kpi, and manage-ui — a heavy graph to import
- *   under Node just to test two pure-ish dispatch helpers.
+ *   `public/dashboard-mission-badge.js`.  Uses jsdom + direct import of
+ *   the real browser module.
+ *
+ *   `dashboard-mission-badge` imports `posStore` from
+ *   `dashboard-positions.js`, which has a heavy transitive graph.  We
+ *   test-drive the module's state through the ONLY external surface it
+ *   uses in these functions: `posStore.entries`.  Rather than importing
+ *   the transitive `dashboard-positions` module directly (which pulls
+ *   wallet, data, kpi, manage-ui at load time), we import
+ *   `dashboard-positions-store` — the actual owner of `posStore.entries`
+ *   — and mutate its live array before each test.
  *
  *   Scope: state-map scan + kind derivation + symbol lookup via
  *   posStore.  Optimistic-latch, DOM-paint, and clear-latch paths are
- *   out of scope for this suite (they touch DOM + timers).
+ *   out of scope for this suite (they touch modal DOM + timers).
  */
 
-const { describe, it, beforeEach } = require("node:test");
+require("global-jsdom/register");
+
+const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-// ── In-test replica ────────────────────────────────────────────────────────
+let mod;
+let store;
 
-let _posStoreEntries;
-
-const posStore = {
-  get entries() {
-    return _posStoreEntries;
-  },
-};
-
-function findActiveActions(allStates) {
-  if (!allStates) return [];
-  const out = [];
-  for (const [key, s] of Object.entries(allStates)) {
-    const kind = s.rebalanceInProgress
-      ? "rebalance"
-      : s.compoundInProgress
-        ? "compound"
-        : null;
-    if (!kind) continue;
-    const tokenId = key.split("-").pop();
-    const ap = s.activePosition || {};
-    const entry = posStore.entries.find((e) => e.tokenId === tokenId);
-    out.push({
-      kind,
-      tokenId,
-      fee: ap.fee ?? entry?.fee,
-      token0Symbol: entry?.token0Symbol,
-      token1Symbol: entry?.token1Symbol,
-    });
-  }
-  return out;
-}
-
-function findActiveAction(allStates) {
-  const all = findActiveActions(allStates);
-  return all[0] || null;
-}
-
-// ── Fixtures ───────────────────────────────────────────────────────────────
+before(async () => {
+  // Import the underlying posStore first, then mission-badge so its
+  // `posStore` binding resolves via the shared module instance.
+  store = await import("../public/dashboard-positions-store.js");
+  mod = await import("../public/dashboard-mission-badge.js");
+});
 
 beforeEach(() => {
-  _posStoreEntries = [
-    { tokenId: "157149", fee: 500, token0Symbol: "PLS", token1Symbol: "wETH" },
-    { tokenId: "160123", fee: 3000, token0Symbol: "HEX", token1Symbol: "USDC" },
-  ];
+  // Reset posStore.entries to a known baseline.  posStore is a
+  // singleton in the module graph — every test starts from a fresh
+  // two-position store.
+  store.posStore.entries.length = 0;
+  store.posStore.entries.push(
+    {
+      tokenId: "157149",
+      fee: 500,
+      token0Symbol: "PLS",
+      token1Symbol: "wETH",
+    },
+    {
+      tokenId: "160123",
+      fee: 3000,
+      token0Symbol: "HEX",
+      token1Symbol: "USDC",
+    },
+  );
 });
 
 function _stateFor(tokenId, patch) {
@@ -80,19 +72,19 @@ function _stateFor(tokenId, patch) {
 
 describe("findActiveActions()", () => {
   it("returns [] for null / undefined / empty state maps", () => {
-    assert.deepStrictEqual(findActiveActions(null), []);
-    assert.deepStrictEqual(findActiveActions(undefined), []);
-    assert.deepStrictEqual(findActiveActions({}), []);
+    assert.deepStrictEqual(mod.findActiveActions(null), []);
+    assert.deepStrictEqual(mod.findActiveActions(undefined), []);
+    assert.deepStrictEqual(mod.findActiveActions({}), []);
   });
 
   it("skips positions with no action in progress", () => {
     const states = _stateFor("157149", { status: "running" });
-    assert.deepStrictEqual(findActiveActions(states), []);
+    assert.deepStrictEqual(mod.findActiveActions(states), []);
   });
 
   it("returns a 'rebalance' entry when rebalanceInProgress is true", () => {
     const states = _stateFor("157149", { rebalanceInProgress: true });
-    const out = findActiveActions(states);
+    const out = mod.findActiveActions(states);
     assert.strictEqual(out.length, 1);
     assert.deepStrictEqual(out[0], {
       kind: "rebalance",
@@ -105,7 +97,7 @@ describe("findActiveActions()", () => {
 
   it("returns a 'compound' entry when compoundInProgress is true", () => {
     const states = _stateFor("160123", { compoundInProgress: true });
-    const out = findActiveActions(states);
+    const out = mod.findActiveActions(states);
     assert.strictEqual(out.length, 1);
     assert.deepStrictEqual(out[0], {
       kind: "compound",
@@ -124,7 +116,7 @@ describe("findActiveActions()", () => {
         rebalanceInProgress: true,
         compoundInProgress: true,
       });
-      const out = findActiveActions(states);
+      const out = mod.findActiveActions(states);
       assert.strictEqual(out[0].kind, "rebalance");
     },
   );
@@ -134,7 +126,7 @@ describe("findActiveActions()", () => {
       rebalanceInProgress: true,
       activePosition: { fee: 10000 },
     });
-    const out = findActiveActions(states);
+    const out = mod.findActiveActions(states);
     assert.strictEqual(out[0].fee, 10000);
   });
 
@@ -143,16 +135,16 @@ describe("findActiveActions()", () => {
       ..._stateFor("157149", { rebalanceInProgress: true }),
       ..._stateFor("160123", { compoundInProgress: true }),
     };
-    const out = findActiveActions(states);
+    const out = mod.findActiveActions(states);
     assert.strictEqual(out.length, 2);
     assert.strictEqual(out[0].kind, "rebalance");
     assert.strictEqual(out[1].kind, "compound");
   });
 
   it("still returns an entry when posStore has no matching tokenId (undefined symbols)", () => {
-    _posStoreEntries = [];
+    store.posStore.entries.length = 0;
     const states = _stateFor("999999", { rebalanceInProgress: true });
-    const out = findActiveActions(states);
+    const out = mod.findActiveActions(states);
     assert.strictEqual(out.length, 1);
     assert.strictEqual(out[0].token0Symbol, undefined);
     assert.strictEqual(out[0].token1Symbol, undefined);
@@ -163,12 +155,12 @@ describe("findActiveActions()", () => {
 
 describe("findActiveAction()", () => {
   it("returns null when no positions have actions", () => {
-    assert.strictEqual(findActiveAction({}), null);
+    assert.strictEqual(mod.findActiveAction({}), null);
   });
 
   it("returns the first entry when at least one action is active", () => {
     const states = _stateFor("157149", { rebalanceInProgress: true });
-    const out = findActiveAction(states);
+    const out = mod.findActiveAction(states);
     assert.strictEqual(out?.tokenId, "157149");
     assert.strictEqual(out?.kind, "rebalance");
   });

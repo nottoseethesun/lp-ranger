@@ -283,6 +283,16 @@ try {
     [
       "--test",
       "--experimental-test-coverage",
+      /*- Browser-side files (public/dashboard-*.js) are covered by their
+       *  own test suites that jsdom-drive them.  They are excluded from
+       *  the aggregate coverage figure to preserve the existing 80% floor
+       *  for src/ (Node-side) code.  Adding them without a dashboard-
+       *  focused coverage floor would dilute the src/ signal — a bad
+       *  regression on src/ would go unnoticed if the aggregate stayed
+       *  above 80% thanks to well-covered dashboard files.  When dashboard
+       *  coverage is measured separately (see project nice-to-haves), we
+       *  can drop this exclude. */
+      "--test-coverage-exclude=public/**",
       "--test-reporter=tap",
       ...listTestFiles(),
     ],

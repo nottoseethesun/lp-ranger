@@ -222,6 +222,13 @@ module.exports = [
       sourceType: "commonjs",
       globals: {
         ...globals.node,
+        /*- Browser tests use jsdom (via `global-jsdom/register`) to
+         *  populate `document`, `window`, `HTMLElement`, etc. as real
+         *  globals so `public/dashboard-*.js` can be imported and
+         *  driven directly.  Registering the browser globals here
+         *  means individual tests do not need a per-file
+         *  `eslint-env browser` pragma. */
+        ...globals.browser,
         ethers: "readonly",
         module: "writable",
         require: "readonly",
