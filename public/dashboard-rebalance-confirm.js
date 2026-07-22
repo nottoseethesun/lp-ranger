@@ -56,7 +56,7 @@ import {
  *  INDEPENDENT of `currentPrice` — pure function of (spread, offset).
  *  Returns a two-decimal string or null when inputs are missing /
  *  non-finite. */
-function _computePreservedWidthPct(tickLower, tickUpper, offset) {
+export function _computePreservedWidthPct(tickLower, tickUpper, offset) {
   if (
     tickLower === undefined ||
     tickLower === null ||
@@ -92,7 +92,7 @@ function _computePreservedWidthPct(tickLower, tickUpper, offset) {
  *  if unset) so the value accounts for non-centered Position Offset
  *  configurations.  Returns an em-dash when neither source yields a
  *  finite value. */
-function _rangeWidthPreviewText(status, active) {
+export function _rangeWidthPreviewText(status, active) {
   /*- Full-Range checkbox wins over any saved Price Range Extension —
    *  the rebalance will mint at MIN_TICK / MAX_TICK via
    *  rangeMath.fullRange().  Show "Full-Range" rather than a numeric
