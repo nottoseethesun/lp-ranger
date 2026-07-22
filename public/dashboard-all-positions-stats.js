@@ -166,7 +166,7 @@ export function applyWeighted(nums, days, maxDays) {
  *  instead of only to the active position.  All `?? 0` defaults use
  *  nullish coalescing so a legitimate 0 (e.g. no fees yet) stays 0
  *  instead of coercing through `||`. */
-function _computeNumerics(snap, ltRealized, ltDep) {
+export function _computeNumerics(snap, ltRealized, ltDep) {
   const currentValue = _num(snap.currentValue, 0);
   const ltPc = ltDep > 0 ? currentValue - ltDep : 0;
   const compounded = _num(snap.totalCompoundedUsd, 0);
@@ -307,7 +307,7 @@ function _computeRows(data) {
 /*- Pure sort by the given column + direction.  Nulls / undefineds
  *  bubble to the bottom regardless of direction so the "not yet
  *  computed" rows never headline a ranking. */
-function _sortRows(rows, col, dir) {
+export function _sortRows(rows, col, dir) {
   const sign = dir === "desc" ? -1 : 1;
   return [...rows].sort((a, b) => {
     const av = a[col];
