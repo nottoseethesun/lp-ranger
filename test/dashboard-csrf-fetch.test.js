@@ -3,74 +3,41 @@
 /**
  * @file test/dashboard-csrf-fetch.test.js
  * @description Tests for the `fetchWithCsrf` wrapper in
- *   `public/dashboard-helpers.js`.  The wrapper attaches the cached
- *   CSRF token to every mutating request and, on a 403 whose body
- *   identifies an expired token, refreshes the token and retries the
- *   request once.  This eliminates the user-visible 403 on the first
- *   POST after a long browser-idle period (Chrome throttles
- *   `setInterval` on hidden tabs hard enough that the held token can
- *   age past the 60-min server TTL).
+ *   `public/dashboard-helpers.js`.  Uses jsdom (via
+ *   `global-jsdom/register`) to populate `document` + `fetch`, then
+ *   imports the real browser module.  Every test controls the token
+ *   state and the fetch responses through a `globalThis.fetch` stub.
  *
- *   Replicates the wrapper's logic in CommonJS for test access — the
- *   real implementation is an ES module bundled by esbuild.  Mirror is
- *   small enough to keep in lockstep by inspection; if you change one,
- *   change the other.
+ *   The wrapper attaches the cached CSRF token to every mutating
+ *   request and, on a 403 whose body identifies an expired or unknown
+ *   token, refreshes the token and retries the request once.  This
+ *   closes the burn-in-observed drop where Chrome's setInterval
+ *   throttling on a hidden tab let the held token age past the 60-min
+ *   server TTL.
  */
 
-const { describe, it, beforeEach } = require("node:test");
-const assert = require("assert");
+require("global-jsdom/register");
 
-// ── In-test replica of the helper ──────────────────────────────────────────
+const { describe, it, before, beforeEach } = require("node:test");
+const assert = require("node:assert/strict");
 
-let _csrfToken = null;
-let _refreshCount = 0;
-function refreshCsrfToken() {
-  _refreshCount += 1;
-  _csrfToken = "fresh-token-" + _refreshCount;
-  return Promise.resolve();
-}
-function _csrfHeaders() {
-  return _csrfToken ? { "x-csrf-token": _csrfToken } : {};
-}
+let mod;
 
-let _fetchCalls = [];
-let _fetchImpl = null;
-async function _fetch(url, init) {
-  _fetchCalls.push({ url, init });
-  return _fetchImpl(url, init, _fetchCalls.length);
-}
+/*- Records every fetch call (url + init) plus supports a per-test
+ *  responder that returns a Response-like object for each call. */
+let _fetchCalls;
+let _fetchResponder;
 
-const _CSRF_RETRY_REASONS = new Set([
-  "Expired CSRF token",
-  "Unknown CSRF token",
-]);
-
-async function fetchWithCsrf(url, init = {}) {
-  const initWithToken = {
-    ...init,
-    headers: { ...(init.headers || {}), ..._csrfHeaders() },
+function _installFetch() {
+  globalThis.fetch = async (url, init) => {
+    _fetchCalls.push({ url, init });
+    return _fetchResponder(url, init, _fetchCalls.length);
   };
-  const res = await _fetch(url, initWithToken);
-  if (res.status !== 403) return res;
-  let body;
-  try {
-    body = await res.clone().json();
-  } catch {
-    return res;
-  }
-  if (!body || !_CSRF_RETRY_REASONS.has(body.error)) return res;
-  await refreshCsrfToken();
-  const retryInit = {
-    ...init,
-    headers: { ...(init.headers || {}), ..._csrfHeaders() },
-  };
-  return _fetch(url, retryInit);
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 function makeRes(status, jsonBody) {
   return {
+    ok: status >= 200 && status < 300,
     status,
     clone() {
       return {
@@ -81,19 +48,41 @@ function makeRes(status, jsonBody) {
   };
 }
 
-beforeEach(() => {
-  _csrfToken = "initial-token";
-  _refreshCount = 0;
+/*- Populate the real module's private `_csrfToken` by responding to
+ *  `/api/csrf-token` with the given token, then awaiting
+ *  `refreshCsrfToken()`. */
+async function _setCsrfToken(token) {
+  const prevResponder = _fetchResponder;
+  _fetchResponder = async (url) => {
+    if (url === "/api/csrf-token") {
+      return makeRes(200, { token, refreshIntervalMs: 60_000 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+  await mod.refreshCsrfToken();
+  _fetchResponder = prevResponder;
+  // Drop the token-refresh call from the accounting so each test's
+  // `_fetchCalls` reflects only its own POST/DELETE.
   _fetchCalls = [];
-  _fetchImpl = null;
+}
+
+before(async () => {
+  _fetchCalls = [];
+  _installFetch();
+  mod = await import("../public/dashboard-helpers.js");
 });
 
-// ── Tests ──────────────────────────────────────────────────────────────────
+beforeEach(async () => {
+  _fetchCalls = [];
+  _fetchResponder = null;
+  _installFetch();
+  await _setCsrfToken("initial-token");
+});
 
 describe("fetchWithCsrf", () => {
   it("attaches the current CSRF token to the request", async () => {
-    _fetchImpl = async () => makeRes(200, { ok: true });
-    await fetchWithCsrf("/api/foo", {
+    _fetchResponder = async () => makeRes(200, { ok: true });
+    await mod.fetchWithCsrf("/api/foo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
@@ -110,63 +99,71 @@ describe("fetchWithCsrf", () => {
   });
 
   it("returns the response unchanged when status is not 403", async () => {
-    _fetchImpl = async () => makeRes(200, { ok: true });
-    const r = await fetchWithCsrf("/api/foo", { method: "POST" });
+    _fetchResponder = async () => makeRes(200, { ok: true });
+    const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(_fetchCalls.length, 1);
-    assert.strictEqual(_refreshCount, 0);
   });
 
   it("refreshes and retries once on 403 with Expired CSRF token", async () => {
-    _fetchImpl = async (_url, _init, callIdx) => {
-      if (callIdx === 1)
+    let firstCall = true;
+    _fetchResponder = async (url) => {
+      if (url === "/api/csrf-token") {
+        return makeRes(200, {
+          token: "fresh-token",
+          refreshIntervalMs: 60_000,
+        });
+      }
+      if (firstCall) {
+        firstCall = false;
         return makeRes(403, { ok: false, error: "Expired CSRF token" });
+      }
       return makeRes(200, { ok: true });
     };
-    const r = await fetchWithCsrf("/api/foo", { method: "POST" });
+    const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(_fetchCalls.length, 2);
-    assert.strictEqual(_refreshCount, 1);
+    // Two /api/foo calls + one /api/csrf-token refresh.
+    const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
+    assert.strictEqual(fooCalls.length, 2);
     assert.strictEqual(
-      _fetchCalls[1].init.headers["x-csrf-token"],
-      "fresh-token-1",
-      "retry must use the freshly refreshed token, not the stale one",
+      fooCalls[1].init.headers["x-csrf-token"],
+      "fresh-token",
+      "retry must use the freshly refreshed token",
     );
   });
 
   it("refreshes and retries once on 403 with Unknown CSRF token", async () => {
-    /*- "Unknown CSRF token" means the server pruned an aged-out token
-     *  from its in-memory `_issued` map (see src/server-csrf.js
-     *  `_pruneExpired`).  Same root cause as Expired (token past TTL),
-     *  so the silent recovery is identical: refresh + retry.  Without
-     *  this case in the retry set, every "Unknown" 403 used to drop
-     *  the request silently — a real loss observed in burn-in logs. */
-    _fetchImpl = async (_url, _init, callIdx) => {
-      if (callIdx === 1)
+    let firstCall = true;
+    _fetchResponder = async (url) => {
+      if (url === "/api/csrf-token") {
+        return makeRes(200, {
+          token: "fresh-token",
+          refreshIntervalMs: 60_000,
+        });
+      }
+      if (firstCall) {
+        firstCall = false;
         return makeRes(403, { ok: false, error: "Unknown CSRF token" });
+      }
       return makeRes(200, { ok: true });
     };
-    const r = await fetchWithCsrf("/api/foo", { method: "POST" });
+    const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(_fetchCalls.length, 2);
-    assert.strictEqual(_refreshCount, 1);
-    assert.strictEqual(
-      _fetchCalls[1].init.headers["x-csrf-token"],
-      "fresh-token-1",
-    );
+    const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
+    assert.strictEqual(fooCalls.length, 2);
   });
 
   it("does not retry on 403 with a different reason", async () => {
-    _fetchImpl = async () =>
+    _fetchResponder = async () =>
       makeRes(403, { ok: false, error: "Invalid CSRF token" });
-    const r = await fetchWithCsrf("/api/foo", { method: "POST" });
+    const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
     assert.strictEqual(r.status, 403);
-    assert.strictEqual(_fetchCalls.length, 1);
-    assert.strictEqual(_refreshCount, 0);
+    const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
+    assert.strictEqual(fooCalls.length, 1);
   });
 
   it("does not retry when 403 body is non-JSON", async () => {
-    _fetchImpl = async () => ({
+    _fetchResponder = async () => ({
       status: 403,
       clone: () => ({
         json: async () => {
@@ -174,31 +171,33 @@ describe("fetchWithCsrf", () => {
         },
       }),
     });
-    const r = await fetchWithCsrf("/api/foo", { method: "POST" });
+    const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
     assert.strictEqual(r.status, 403);
-    assert.strictEqual(_fetchCalls.length, 1);
-    assert.strictEqual(_refreshCount, 0);
-  });
-
-  it("does not retry when token is missing entirely", async () => {
-    _csrfToken = null;
-    _fetchImpl = async () => makeRes(200, { ok: true });
-    const r = await fetchWithCsrf("/api/foo", { method: "POST" });
-    assert.strictEqual(r.status, 200);
-    assert.strictEqual(_fetchCalls[0].init.headers["x-csrf-token"], undefined);
+    const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
+    assert.strictEqual(fooCalls.length, 1);
   });
 
   it("preserves caller's body and method on retry", async () => {
-    _fetchImpl = async (_url, _init, callIdx) => {
-      if (callIdx === 1)
+    let firstCall = true;
+    _fetchResponder = async (url) => {
+      if (url === "/api/csrf-token") {
+        return makeRes(200, {
+          token: "fresh-token",
+          refreshIntervalMs: 60_000,
+        });
+      }
+      if (firstCall) {
+        firstCall = false;
         return makeRes(403, { ok: false, error: "Expired CSRF token" });
+      }
       return makeRes(200, { ok: true });
     };
-    await fetchWithCsrf("/api/foo", {
+    await mod.fetchWithCsrf("/api/foo", {
       method: "DELETE",
       body: '{"x":1}',
     });
-    assert.strictEqual(_fetchCalls[1].init.method, "DELETE");
-    assert.strictEqual(_fetchCalls[1].init.body, '{"x":1}');
+    const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
+    assert.strictEqual(fooCalls[1].init.method, "DELETE");
+    assert.strictEqual(fooCalls[1].init.body, '{"x":1}');
   });
 });

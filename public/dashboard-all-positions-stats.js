@@ -553,6 +553,36 @@ function _countReadiness(data) {
 }
 
 /**
+ * Compute the readiness-gate decision for the "All Positions Stats"
+ * header button — pure function of the flattened /api/status payload.
+ * Extracted from `updateAllPositionsStatsBtn` so the gate contract is
+ * directly testable without driving the DOM cache path.
+ * @param {object} data  Flattened poll payload (from flattenV2Status).
+ * @returns {{disabled: boolean, title: string}}
+ */
+export function computeAllPositionsStatsGate(data) {
+  const { total, ready } = _countReadiness(data);
+  if (total === 0) {
+    return {
+      disabled: true,
+      title: "No managed positions — click Manage on a position to add one.",
+    };
+  }
+  if (ready < total) {
+    const missing = total - ready;
+    const plural = total === 1 ? "" : "s";
+    return {
+      disabled: true,
+      title: `Waiting for ${missing} of ${total} managed position${plural} to finish loading (rebalance history + lifetime deposit scans).`,
+    };
+  }
+  return {
+    disabled: false,
+    title: "View ranked stats across all open managed positions.",
+  };
+}
+
+/**
  * Compute readiness across every RUNNING managed position and update
  * the "All Positions Stats" header button's disabled state + title.
  * Also re-renders the modal table if it's currently open.  Called
@@ -562,21 +592,7 @@ function _countReadiness(data) {
 export function updateAllPositionsStatsBtn(data) {
   const btn = g("allPositionsStatsBtn");
   if (btn !== null) {
-    const { total, ready } = _countReadiness(data);
-    let disabled;
-    let title;
-    if (total === 0) {
-      disabled = true;
-      title = "No managed positions — click Manage on a position to add one.";
-    } else if (ready < total) {
-      disabled = true;
-      const missing = total - ready;
-      const plural = total === 1 ? "" : "s";
-      title = `Waiting for ${missing} of ${total} managed position${plural} to finish loading (rebalance history + lifetime deposit scans).`;
-    } else {
-      disabled = false;
-      title = "View ranked stats across all open managed positions.";
-    }
+    const { disabled, title } = computeAllPositionsStatsGate(data);
     if (
       _lastButtonState.disabled !== disabled ||
       _lastButtonState.title !== title
