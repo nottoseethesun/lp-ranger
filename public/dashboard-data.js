@@ -60,7 +60,10 @@ import {
   positionRangeVisual,
   updateRangePctLabels,
 } from "./dashboard-data-kpi.js";
-import { updateTriggerDisplay } from "./dashboard-throttle.js";
+import {
+  updateTriggerDisplay,
+  applySavedMinInterval,
+} from "./dashboard-throttle.js";
 import { resetSoundTrackers } from "./dashboard-sounds.js";
 import {
   setOptimisticSpecialAction,
@@ -240,6 +243,17 @@ function _populateConfigInputs(d) {
       if (el) el.value = val;
     }
   }
+  /*- Seed the client throttle from the SAVED per-position value so the
+   *  Doubling Trigger Window label is correct even when no bot loop is
+   *  running (dashboard-only mode → no throttleState in the payload at
+   *  all) and during the window before a freshly-started bot's first
+   *  poll emits a snapshot.  Runs once per position via the
+   *  `_configSynced` latch in _syncConfigFromServer; a running bot's
+   *  per-poll throttleState sync carries the same saved value, so the
+   *  two writers agree. */
+  applySavedMinInterval(
+    d.minRebalanceIntervalMin ?? _CONFIG_INPUT_DEFAULTS.minRebalanceIntervalMin,
+  );
   /*- Keep the complement offset input in sync.  Skip when the
    *  primary input is empty (pre-AJAX init or after Clear Local
    *  Storage) — no literal fallback per

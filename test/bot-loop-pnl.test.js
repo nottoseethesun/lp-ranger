@@ -1,6 +1,6 @@
 /**
  * @file test/bot-loop-pnl.test.js
- * @description Tests for src/bot-loop.js — IL/PnL override, throttleState,
+ * @description Tests for src/bot-loop.js — IL/PnL override,
  * gas deferral, pnlSnapshot, positionStats, closed position guard,
  * lifetime P&L, and OOR timeout suites.
  */
@@ -185,39 +185,6 @@ describe("bot-loop: _overridePnlWithRealValues (IL computation)", () => {
       undefined,
       "lifetimeIL not set without amounts",
     );
-  });
-});
-
-// ── throttleState ───────────────────────────────────────────────────────────
-
-describe("bot-loop: throttleState in updateBotState", () => {
-  it("emits throttleState after a successful rebalance", async () => {
-    const { stateUpdates } = await _poll(700, {
-      collectStates: true,
-      setupDeps: (d) => {
-        d.throttle.getState = () => ({ dailyCount: 3, dailyMax: 20 });
-      },
-    });
-    const ts = stateUpdates.find((u) => u.throttleState)?.throttleState;
-    assert.ok(ts, "throttleState should be emitted after rebalance");
-    assert.strictEqual(ts.dailyCount, 3);
-  });
-  it("emits throttleState when throttle rejects", async () => {
-    const { stateUpdates } = await _poll(700, {
-      botState: { rebalanceOutOfRangeThresholdPercent: 0 },
-      collectStates: true,
-      setupDeps: (d) => {
-        d.throttle.canRebalance = () => ({
-          allowed: false,
-          msUntilAllowed: 60000,
-          reason: "daily_max",
-        });
-        d.throttle.getState = () => ({ dailyCount: 20, dailyMax: 20 });
-      },
-    });
-    const ts = stateUpdates.find((u) => u.throttleState)?.throttleState;
-    assert.ok(ts, "throttleState should be emitted on throttle rejection");
-    assert.strictEqual(ts.dailyCount, 20);
   });
 });
 

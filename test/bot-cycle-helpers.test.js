@@ -1,8 +1,9 @@
 /**
  * @file test/bot-cycle-helpers.test.js
  * @description Unit tests for pure helper functions in bot-cycle.js:
- *   _humanizeError, _isTimeoutExpired, _isBeyondThreshold,
- *   _checkRangeAndThreshold, _reloadFromConfig, and _checkRebalanceGates.
+ *   _humanizeError, _checkRangeAndThreshold, and _checkRebalanceGates
+ *   (src/bot-cycle.js), plus _isTimeoutExpired, _isBeyondThreshold,
+ *   and _reloadFromConfig (src/bot-cycle-triggers.js).
  */
 
 "use strict";
@@ -11,16 +12,18 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   _humanizeError,
-  _isTimeoutExpired,
-  _isBeyondThreshold,
   _checkRangeAndThreshold,
   _checkZeroLiquidity,
-  _reloadFromConfig,
   _checkRebalanceGates,
   _activateSwapBackoff,
   _liquidityChanged,
   DRAINED_RETIRE_MS,
 } = require("../src/bot-cycle");
+const {
+  _isTimeoutExpired,
+  _isBeyondThreshold,
+  _reloadFromConfig,
+} = require("../src/bot-cycle-triggers");
 
 // ── _humanizeError ──────────────────────────────────────────────────
 

@@ -15,9 +15,45 @@ import {
   getCurBreakdown,
   _fmtUsd,
 } from "./dashboard-data-kpi.js";
-import { cloneTpl } from "./dashboard-helpers.js";
+import { cloneTpl, truncName } from "./dashboard-helpers.js";
+import { posStore } from "./dashboard-positions-store.js";
 
 const _MODAL_ID = "9mm-param-help-modal";
+
+/** Longest token-symbol length rendered in dynamic help examples. */
+const _TOKEN_NAME_MAX_CHARS = 16;
+
+/*- Token symbols come from on-chain contract metadata, so they are
+ *  untrusted input.  Section bodies render via innerHTML (editorial
+ *  rich text), so any substituted symbol must be HTML-escaped. */
+function _escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+/**
+ * Substitute the `{{token0}}` / `{{token1}}` placeholders in a help
+ * section body with concrete token names.  Names are HTML-escaped and
+ * truncated to 16 characters.  Empty/missing names fall back to the
+ * literal "Token 0" / "Token 1" so the sentence still reads.
+ * @param {string} body  Section body (may contain placeholders).
+ * @param {string|null|undefined} token0Symbol
+ * @param {string|null|undefined} token1Symbol
+ * @returns {string}
+ */
+export function _substituteTokenNames(body, token0Symbol, token1Symbol) {
+  const t0 = token0Symbol
+    ? _escapeHtml(truncName(token0Symbol, _TOKEN_NAME_MAX_CHARS))
+    : "Token 0";
+  const t1 = token1Symbol
+    ? _escapeHtml(truncName(token1Symbol, _TOKEN_NAME_MAX_CHARS))
+    : "Token 1";
+  return body.replaceAll("{{token0}}", t0).replaceAll("{{token1}}", t1);
+}
 
 /**
  * Show the educational help modal for a parameter.
@@ -43,6 +79,7 @@ export function showParamHelp(key) {
   } else {
     subEl.remove();
   }
+  const active = posStore.getActive();
   const bodyEl = frag.querySelector('[data-tpl="body"]');
   for (const s of entry.sections) {
     const sec = cloneTpl("tplParamHelpSection");
@@ -51,8 +88,15 @@ export function showParamHelp(key) {
     /*- PARAM_HELP bodies contain rich text (<strong>, <br>, &mdash;)
      *  authored in param-help-content.js. That content file is the
      *  intentional home for this markup — the HTML-in-JS rule targets
-     *  layout markup mixed into logic files, not editorial content. */
-    sec.querySelector('[data-tpl="body"]').innerHTML = s.body;
+     *  layout markup mixed into logic files, not editorial content.
+     *  Dynamic token names are substituted (escaped + truncated) so
+     *  e.g. the per-token slippage dialogs read "when Wrapped Pulse
+     *  is traded for PulseX" for the active position. */
+    sec.querySelector('[data-tpl="body"]').innerHTML = _substituteTokenNames(
+      s.body,
+      active?.token0Symbol,
+      active?.token1Symbol,
+    );
     bodyEl.appendChild(sec);
   }
   overlay.appendChild(frag);

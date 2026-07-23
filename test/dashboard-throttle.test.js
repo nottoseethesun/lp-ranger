@@ -200,19 +200,21 @@ describe("throttleBadge (updateThrottleUI dispatch)", () => {
   });
 });
 
-// ── Tests: onParamChange — the load-bearing sync path ──────────────────────
+// ── Tests: onParamChange / saveMinInterval — the save-gated sync path ──────
 
-describe("onParamChange() — DOM inputs → throttle state → label", () => {
+describe("onParamChange() — typing must NOT move the saved-value displays", () => {
   it(
-    "updating #inMinInterval to 15 propagates to throttle.minIntervalMs " +
-      "AND updates #dblWindowLabel to '60 min' (this would have caught e22536c)",
+    "typing 15 into #inMinInterval WITHOUT clicking Save leaves " +
+      "throttle.minIntervalMs and #dblWindowLabel unchanged " +
+      "(the user-reported contract: label updates only on Save)",
     () => {
       document.getElementById("inMinInterval").value = "15";
       mod.onParamChange();
-      assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
+      assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
+      mod.updateThrottleUI();
       assert.strictEqual(
         document.getElementById("dblWindowLabel").textContent,
-        "60 min",
+        "40 min",
       );
     },
   );
@@ -222,26 +224,151 @@ describe("onParamChange() — DOM inputs → throttle state → label", () => {
     mod.onParamChange();
     assert.strictEqual(mod.throttle.dailyMax, 12);
   });
+});
+
+describe("applySavedMinInterval() — per-position seed from saved config", () => {
+  it(
+    "seeds throttle.minIntervalMs + the label from the saved value — " +
+      "the dashboard-only-mode fix (no bot loop → no throttleState in " +
+      "the payload; saved config is the only source)",
+    () => {
+      mod.applySavedMinInterval(20);
+      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+      assert.strictEqual(
+        document.getElementById("dblWindowLabel").textContent,
+        "80 min",
+      );
+      assert.strictEqual(mod.throttle.currentWaitMs, 20 * 60 * 1000);
+    },
+  );
+
+  it("does not clobber currentWaitMs while doubling is active", () => {
+    mod.throttle.doublingActive = true;
+    mod.throttle.currentWaitMs = 80 * 60 * 1000;
+    mod.applySavedMinInterval(20);
+    assert.strictEqual(mod.throttle.currentWaitMs, 80 * 60 * 1000);
+  });
+
+  it("ignores invalid input (undefined / NaN / zero / negative)", () => {
+    for (const bad of [undefined, NaN, 0, -5]) {
+      mod.applySavedMinInterval(bad);
+      assert.strictEqual(
+        mod.throttle.minIntervalMs,
+        10 * 60 * 1000,
+        `input ${bad} must not change minIntervalMs`,
+      );
+    }
+  });
+
+  it("accepts a string-typed saved value (hand-edited config)", () => {
+    mod.applySavedMinInterval("20");
+    assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+  });
+
+  it("countdown KPI renders the SAVED value, not the raw input (audit fix)", () => {
+    document.getElementById("inMinInterval").value = "60"; // unsaved typing
+    mod.applySavedMinInterval(20);
+    assert.strictEqual(
+      document.getElementById("kpiCountdown").textContent,
+      "20 min",
+      "allowed-branch KPI must derive from throttle.minIntervalMs",
+    );
+  });
+});
+
+describe("applyPolledMinInterval() — one-shot post-Save poll skip", () => {
+  it(
+    "the full user-reported sequence: Save 20 → first sweep carries the " +
+      "bot's stale pre-save 10 and is SKIPPED (no revert) → second sweep " +
+      "with fresh 20 applies normally",
+    () => {
+      // Save 20 (stamps the skip marker).
+      document.getElementById("inMinInterval").value = "20";
+      mod.saveMinInterval();
+      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+      const lbl = document.getElementById("dblWindowLabel");
+      assert.strictEqual(lbl.dataset.skipNextPoll, "1");
+
+      // Sweep N: stale snapshot (10 min) — must be skipped, marker consumed.
+      mod.applyPolledMinInterval(10 * 60 * 1000);
+      assert.strictEqual(
+        mod.throttle.minIntervalMs,
+        20 * 60 * 1000,
+        "stale post-Save sweep must not revert the optimistic value",
+      );
+      assert.strictEqual(lbl.dataset.skipNextPoll, undefined);
+
+      // Sweep N+1: fresh snapshot (20 min) — applies normally.
+      mod.applyPolledMinInterval(20 * 60 * 1000);
+      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+    },
+  );
+
+  it("without the marker, a polled value applies immediately", () => {
+    mod.applyPolledMinInterval(15 * 60 * 1000);
+    assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
+  });
+
+  it("non-numeric polled values are ignored", () => {
+    mod.applyPolledMinInterval(undefined);
+    mod.applyPolledMinInterval(null);
+    assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
+  });
+
+  it("missing #dblWindowLabel element → polled value still applies (defensive)", () => {
+    document.getElementById("dblWindowLabel").remove();
+    mod.applyPolledMinInterval(25 * 60 * 1000);
+    assert.strictEqual(mod.throttle.minIntervalMs, 25 * 60 * 1000);
+  });
+});
+
+describe("saveMinInterval() — Save click applies the value + label", () => {
+  it(
+    "saving 15 propagates to throttle.minIntervalMs AND updates " +
+      "#dblWindowLabel to '60 min' on the click itself (this would " +
+      "have caught e22536c)",
+    () => {
+      document.getElementById("inMinInterval").value = "15";
+      mod.saveMinInterval();
+      assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
+      assert.strictEqual(
+        document.getElementById("dblWindowLabel").textContent,
+        "60 min",
+      );
+    },
+  );
+
+  it("rejects invalid input (empty / NaN / zero) — nothing changes", () => {
+    for (const bad of ["", "abc", "0", "-3"]) {
+      document.getElementById("inMinInterval").value = bad;
+      mod.saveMinInterval();
+      assert.strictEqual(
+        mod.throttle.minIntervalMs,
+        10 * 60 * 1000,
+        `input ${JSON.stringify(bad)} must not change minIntervalMs`,
+      );
+    }
+  });
 
   it(
-    "when doubling is INACTIVE, currentWaitMs tracks minIntervalMs — " +
-      "so a mid-session Min Interval change reflects immediately",
+    "when doubling is INACTIVE, currentWaitMs tracks the saved " +
+      "minIntervalMs — the change reflects on the Save click",
     () => {
       document.getElementById("inMinInterval").value = "20";
       mod.throttle.doublingActive = false;
-      mod.onParamChange();
+      mod.saveMinInterval();
       assert.strictEqual(mod.throttle.currentWaitMs, 20 * 60 * 1000);
     },
   );
 
   it(
     "when doubling is ACTIVE, currentWaitMs is NOT clobbered by " +
-      "minIntervalMs — the already-doubled wait persists",
+      "the saved minIntervalMs — the already-doubled wait persists",
     () => {
       document.getElementById("inMinInterval").value = "20";
       mod.throttle.doublingActive = true;
       mod.throttle.currentWaitMs = 80 * 60 * 1000;
-      mod.onParamChange();
+      mod.saveMinInterval();
       assert.strictEqual(mod.throttle.currentWaitMs, 80 * 60 * 1000);
       assert.strictEqual(
         document.getElementById("dblWindowLabel").textContent,

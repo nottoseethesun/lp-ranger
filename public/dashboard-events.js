@@ -469,7 +469,6 @@ export function bindAllEvents() {
   _click("curRealizedSaveBtn", saveCurRealized);
 
   /* ── Bot configuration ────────────────── */
-  _input("inMinInterval", onParamChange);
   _input("inMaxReb", onParamChange);
   const rpcToggle = g("rpcToggle");
   const rpcList = g("rpcList");

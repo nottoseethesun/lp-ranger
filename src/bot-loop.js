@@ -40,7 +40,8 @@ const {
 } = require("./bot-recorder");
 const { notify: _notify } = require("./telegram-notifications/telegram");
 const { checkGasBalance } = require("./gas-monitor");
-const { pollCycle, _reloadFromConfig, _humanizeError } = require("./bot-cycle");
+const { pollCycle, _humanizeError } = require("./bot-cycle");
+const { _reloadFromConfig } = require("./bot-cycle-triggers");
 const { applyCurrentNftFigures } = require("./bot-pnl-current-nft");
 const { wireBotStateGetConfig } = require("./bot-state-init");
 const {

@@ -14,7 +14,7 @@ import {
   cloneTpl,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import { throttle } from "./dashboard-throttle.js";
+import { throttle, applyPolledMinInterval } from "./dashboard-throttle.js";
 import {
   _activeToken1Symbol,
   updateRangePctLabels,
@@ -370,7 +370,7 @@ export function _updateBotStatus(d) {
  * leaves throttle.dailyMax = 0, and `0 >= 0` paints a false CAPPED
  * badge.
  */
-function _syncClientThrottle(ts, cnt) {
+function _syncClientThrottle(ts, cnt, savedMinIntervalMin) {
   if (!ts) return;
   throttle.dailyCount = cnt;
   if (typeof ts.dailyMax === "number") throttle.dailyMax = ts.dailyMax;
@@ -381,8 +381,19 @@ function _syncClientThrottle(ts, cnt) {
   if (typeof ts.currentWaitMs === "number")
     throttle.currentWaitMs = ts.currentWaitMs;
   if (typeof ts.lastRebTime === "number") throttle.lastRebTime = ts.lastRebTime;
-  if (typeof ts.minIntervalMs === "number")
-    throttle.minIntervalMs = ts.minIntervalMs;
+  /*- The SAVED per-position config value in the same payload is fresh
+   *  the moment the Save round-trip lands, whereas `ts.minIntervalMs`
+   *  is the bot's last pollCycle snapshot — stale for up to
+   *  CHECK_INTERVAL_SEC after a Save (POST /api/config neither kicks
+   *  the bot poll nor reconfigures the live throttle).  Prefer the
+   *  config value; fall back to the snapshot when config is absent.
+   *  `applyPolledMinInterval` additionally honors the one-shot
+   *  `data-skip-next-poll` marker, which covers the race where a sweep
+   *  reads the payload before the Save POST has been persisted. */
+  const savedMs = Number(savedMinIntervalMin) * 60 * 1000;
+  applyPolledMinInterval(
+    Number.isFinite(savedMs) && savedMs >= 60_000 ? savedMs : ts.minIntervalMs,
+  );
 }
 
 /*-
@@ -464,7 +475,7 @@ export function _updateThrottleKpis(d) {
       : ts
         ? ts.dailyCount
         : 0;
-  _syncClientThrottle(ts, cnt);
+  _syncClientThrottle(ts, cnt, d.minRebalanceIntervalMin);
   const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
   _renderTodayKpi(g("kpiToday"), cnt, max);
   _renderTodaySub(d, ts);

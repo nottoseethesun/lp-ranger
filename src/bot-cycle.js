@@ -2,15 +2,19 @@
  * @file src/bot-cycle.js
  * @module bot-cycle
  * @description
- * Poll cycle, execution, gates, config reload, and private key resolution.
- * Extracted from bot-loop.js.
+ * Poll cycle, execution, gates, and private key resolution.  Extracted
+ * from bot-loop.js.  (Config reload + the OOR trigger predicates live
+ * in src/bot-cycle-triggers.js.)
  */
 
 "use strict";
 const ethers = require("ethers");
 const config = require("./config");
-const rangeMath = require("./range-math");
 const { buildRebalanceOpts } = require("./bot-cycle-opts");
+const {
+  _isTimeoutExpired,
+  _isBeyondThreshold,
+} = require("./bot-cycle-triggers");
 // key-store is retained for api-key-store.js; no longer used here directly.
 const { emojiId, logCtx } = require("./logger");
 const { log } = require("./log");
@@ -272,38 +276,6 @@ async function _recordCancelGas(result, deps) {
   if (gasUsd > 0) deps._pnlTracker.addGas(gasUsd, gasNative);
 }
 
-/** Check whether the OOR timeout has expired (position continuously OOR). */
-function _isTimeoutExpired(bs, gc) {
-  const t = gc?.("rebalanceTimeoutMin") ?? config.REBALANCE_TIMEOUT_MIN;
-  return t > 0 && bs.oorSince && Date.now() - bs.oorSince >= t * 60_000;
-}
-
-/** Check whether the price has moved beyond the OOR threshold. */
-function _isBeyondThreshold(poolState, position, gc) {
-  const threshPct =
-    (gc?.("rebalanceOutOfRangeThresholdPercent") ??
-      config.REBALANCE_OOR_THRESHOLD_PCT ??
-      5) / 100;
-  if (threshPct <= 0) return true;
-  const lp = rangeMath.tickToPrice(
-      position.tickLower,
-      poolState.decimals0,
-      poolState.decimals1,
-    ),
-    up = rangeMath.tickToPrice(
-      position.tickUpper,
-      poolState.decimals0,
-      poolState.decimals1,
-    );
-  if (
-    poolState.price < lp - (up - lp) * threshPct ||
-    poolState.price > up + (up - lp) * threshPct
-  )
-    return true;
-  log.info(`[bot] OOR but within ${threshPct * 100}% threshold`);
-  return false;
-}
-
 /** Check if estimated gas cost exceeds 0.5% of position value. */
 async function _isGasTooHigh(provider, position, poolState) {
   try {
@@ -399,7 +371,6 @@ function _checkStateGates(deps, forced) {
 /** Check throttle, daily cap, dry-run, and gas before executing.  Returns early result or null. */
 function _checkRebalanceGates(deps, poolState, forced) {
   const { throttle, dryRun } = deps;
-  const emit = deps.updateBotState || (() => {});
   const stateGate = _checkStateGates(deps, forced);
   if (stateGate) return stateGate;
   const backoff = _checkSwapBackoff(deps, forced);
@@ -409,7 +380,8 @@ function _checkRebalanceGates(deps, poolState, forced) {
     log.info(
       `[bot] OOR but throttled (${can.reason}), wait ${Math.ceil(can.msUntilAllowed / 1000)}s`,
     );
-    emit({ throttleState: throttle.getState() });
+    /*- No throttleState emit here: the unconditional top-of-pollCycle
+     *  emit already published this cycle's snapshot. */
     return { rebalanced: false };
   }
   if (!forced && deps._canRebalancePool && deps._poolKey) {
@@ -555,6 +527,18 @@ async function pollCycle(deps) {
   const ethersLib = deps._ethersLib || ethers;
   const emit = deps.updateBotState || (() => {});
   throttle.tick();
+  /*- Fresh throttle snapshot every poll.  Previously `throttleState`
+   *  was emitted only at bot startup (BEFORE the first
+   *  `_reloadFromConfig` applied the saved per-position
+   *  minRebalanceIntervalMin), after a successful rebalance, and after
+   *  a history scan — so a quiet position served a stale snapshot
+   *  carrying the global default interval, and the dashboard's
+   *  Doubling Trigger Window label read 4× the wrong value after a
+   *  page refresh (user-reported).  bot-loop runs `_reloadFromConfig`
+   *  immediately before pollCycle, so this snapshot reflects the saved
+   *  config; emitting after `tick()` also surfaces doubling-expiry
+   *  without waiting for the next rebalance. */
+  emit({ throttleState: throttle.getState() });
   /*- Aborted-and-drained short-circuit: skip all RPC/Moralis work for
    *  positions waiting on user-event-driven resolution (Slippage
    *  change / Manage re-click) OR clock-driven retire (30 min).
@@ -607,22 +591,8 @@ async function pollCycle(deps) {
   return _runRangeAndExec(deps, ethersLib, poolState, emit, compounded);
 }
 
-/** Reload config values from disk on each poll cycle. */
-function _reloadFromConfig(gc, throttle, setIntervalMs) {
-  const ci = gc("checkIntervalSec");
-  if (ci) setIntervalMs(ci * 1000);
-  throttle.configure({
-    minIntervalMs:
-      (gc("minRebalanceIntervalMin") || config.MIN_REBALANCE_INTERVAL_MIN) *
-      60_000,
-    dailyMax: gc("maxRebalancesPerDay") || config.MAX_REBALANCES_PER_DAY,
-  });
-}
-
 module.exports = {
   _executeAndRecord,
-  _isTimeoutExpired,
-  _isBeyondThreshold,
   _isGasTooHigh,
   _checkRangeAndThreshold,
   _checkZeroLiquidity,
@@ -631,6 +601,5 @@ module.exports = {
   _activateSwapBackoff,
   _liquidityChanged,
   pollCycle,
-  _reloadFromConfig,
   DRAINED_RETIRE_MS,
 };

@@ -90,13 +90,21 @@ export function canRebalance() {
   return { allowed: true, msUntilAllowed: 0, reason: "ok" };
 }
 
-/** Re-read UI inputs and update throttle parameters. */
+/**
+ * Re-read UI inputs and update throttle parameters.
+ *
+ * Deliberately does NOT read `#inMinInterval`: `throttle.minIntervalMs`
+ * feeds derived displays (the Doubling Trigger Window label, the
+ * countdown KPI), which must reflect the SAVED value — not unsaved
+ * typing.  It is written only by `saveMinInterval()` (Save click) and
+ * by the `/api/status` poll sync in dashboard-data-status.js (server's
+ * saved value).  Before this gate, each keystroke moved the label and
+ * the next poll snapped it back — a flicker the user read as the
+ * setting having changed without a Save.
+ */
 export function onParamChange() {
-  const minEl = g("inMinInterval"),
-    maxEl = g("inMaxReb");
-  throttle.minIntervalMs = (parseInt(minEl?.value) || 10) * 60 * 1000;
+  const maxEl = g("inMaxReb");
   throttle.dailyMax = parseInt(maxEl?.value) || throttle.dailyMax;
-  if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
   updateThrottleUI();
 }
 
@@ -267,10 +275,12 @@ function _renderCountdownKpi(can) {
     return;
   }
   _clearNa(cd);
-  const minIntervalEl = g("inMinInterval");
-  const minIntervalMin = minIntervalEl
-    ? parseInt(minIntervalEl.value, 10) || 10
-    : 10;
+  /*- Save-gated: render from `throttle.minIntervalMs` (the saved
+   *  value) — NOT the raw input, which may hold unsaved typing.
+   *  Keeps this KPI consistent with the Doubling Trigger Window
+   *  label (audit finding: the two adjacent displays disagreed
+   *  while typing). */
+  const minIntervalMin = Math.round(throttle.minIntervalMs / 60000);
   if (can.allowed) {
     if (cd) {
       cd.textContent = minIntervalMin + " min";
@@ -448,12 +458,69 @@ export function _saveSingleConfig(inputId, key, parse) {
   );
 }
 
-/** Save min rebalance interval. */
+/**
+ * Apply a SAVED Min Time Between Rebalances value (minutes) to the
+ * client throttle so the derived displays (Doubling Trigger Window
+ * label, countdown KPI) reflect it.  Two callers:
+ *   - `saveMinInterval()` — optimistic apply on the Save click;
+ *   - `_populateConfigInputs()` in dashboard-data.js — per-position
+ *     seed from the saved config in the /api/status payload.  This
+ *     covers dashboard-only mode (bots not running → no
+ *     `throttleState` in the payload at all) and the window before a
+ *     freshly-started bot's first poll emits a snapshot.
+ * Invalid input is ignored (no literal fallback per
+ * feedback_one_literal_per_shipped_default).
+ * @param {number} minutes  Saved Min Time Between Rebalances.
+ */
+export function applySavedMinInterval(minutes) {
+  /*- Coerce before validating: hand-edited bot-config.json can carry
+   *  string-typed numbers, and the status payload spreads config
+   *  values verbatim. */
+  const n = Number(minutes);
+  if (!Number.isFinite(n) || n < 1) return;
+  throttle.minIntervalMs = n * 60 * 1000;
+  if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
+  updateThrottleUI();
+}
+
+/**
+ * Apply a polled `throttleState.minIntervalMs` to the client throttle,
+ * honoring the one-shot `data-skip-next-poll` marker on
+ * `#dblWindowLabel`.  `saveMinInterval` sets that marker because the
+ * bot only refreshes its emitted `throttleState` snapshot on its own
+ * poll cycle (`POST /api/config` does not kick the bot poll) — so the
+ * first dashboard sweep after a Save still carries the PRE-save value
+ * and would clobber the optimistic apply, showing a one-sweep revert.
+ * The poll consumes the marker (removes it) and skips that single
+ * update; subsequent sweeps apply normally.
+ * @param {number} minIntervalMs  From the polled `throttleState`.
+ */
+export function applyPolledMinInterval(minIntervalMs) {
+  if (typeof minIntervalMs !== "number") return;
+  const lbl = g("dblWindowLabel");
+  if (lbl && lbl.dataset.skipNextPoll !== undefined) {
+    delete lbl.dataset.skipNextPoll;
+    return;
+  }
+  throttle.minIntervalMs = minIntervalMs;
+}
+
+/** Save Min Time Between Rebalances: validate, apply optimistically,
+ *  stamp the one-shot poll-skip marker, persist to the server. */
 export function saveMinInterval() {
   const n = parseInt(g("inMinInterval")?.value, 10);
   /*- No literal fallback per feedback_one_literal_per_shipped_default:
    *  reject invalid input rather than silently using a literal default. */
   if (!Number.isFinite(n) || n < 1) return;
+  /*- Optimistic client apply on Save: the Doubling Trigger Window label
+   *  and countdown KPI derive from `throttle.minIntervalMs`, which is
+   *  save-gated (see `onParamChange`).  Applying here makes the label
+   *  reflect the new value on the Save click itself instead of waiting
+   *  up to one poll cycle for the server round-trip. */
+  applySavedMinInterval(n);
+  /*- One-shot poll-skip marker — see `applyPolledMinInterval`. */
+  const lbl = g("dblWindowLabel");
+  if (lbl) lbl.dataset.skipNextPoll = "1";
   _saveSingleConfig("inMinInterval", "minRebalanceIntervalMin", () => n);
   _validateIntervalVsTimeout();
 }

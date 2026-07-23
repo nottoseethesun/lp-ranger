@@ -4,6 +4,12 @@
  * Each entry maps an input element key to a structured help object rendered
  * by dashboard-param-help.js.  Content is separated from rendering for
  * editorial review and SEC compliance.
+ *
+ * Dynamic token names: section bodies may contain the placeholders
+ * `{{token0}}` / `{{token1}}`.  At render time dashboard-param-help.js
+ * substitutes them with the active position's token symbols
+ * (HTML-escaped, truncated to 16 characters), falling back to the
+ * literal "Token 0" / "Token 1" when no position is active.
  */
 
 /** @type {Record<string, {title: string, sections: {heading: string, body: string}[]}>} */
@@ -26,6 +32,18 @@ export const PARAM_HELP = {
           "rebalance (so 0.75x to 1.25x current price). A value of " +
           "<strong>10</strong> spans +/-5% around current price " +
           "(0.95x to 1.05x).",
+      },
+      {
+        heading: "Which rebalances it applies to",
+        body:
+          "<strong>Every rebalance that mints a new position, " +
+          "regardless of trigger</strong>: automatic out-of-range, " +
+          "OOR-timeout, automatic residual-cleanup follow-ons, manual " +
+          "<strong>Rebalance Now</strong> clicks, and closed-position " +
+          "re-opens. It is not a gate &mdash; it never blocks or delays " +
+          "a rebalance; it only shapes the price range of the minted " +
+          "position. The <strong>Full-Range</strong> checkbox, when on, " +
+          "overrides this value.",
       },
       {
         heading: "Range Width vs Price Range Extension",
@@ -151,10 +169,32 @@ export const PARAM_HELP = {
       {
         heading: "What it does",
         body:
-          "Controls how far the current price must move <strong>beyond</strong> " +
-          "your position&rsquo;s upper or lower tick boundary before a " +
-          "rebalance is triggered. A value of 10 means the price must be " +
-          "at least 10% past the boundary &mdash; not just outside the range.",
+          "Sets how far the current price must move <strong>beyond</strong> " +
+          "your position&rsquo;s upper or lower <strong>price " +
+          "boundary</strong> before the price-distance condition alone " +
+          "triggers a rebalance. The distance is measured as a " +
+          "percentage of the <strong>position&rsquo;s price-range " +
+          "width</strong> (upper bound &minus; lower bound), not of the " +
+          "current price. Example: with a value of 10 and a range " +
+          "spanning $1.00&ndash;$1.20 (width $0.20), the trigger points " +
+          "are $0.98 and $1.22 &mdash; 10% of the width past each " +
+          "bound. This is one of <strong>two</strong> triggers: even " +
+          "while the price sits inside the threshold zone, the " +
+          "<strong>OOR Rebalance Time Threshold</strong> (if set) " +
+          "triggers on its own after enough continuous out-of-range " +
+          "time. A rebalance fires when <em>either</em> condition is " +
+          "met.",
+      },
+      {
+        heading: "Which rebalances it applies to",
+        body:
+          "Only the <strong>automatic out-of-range trigger</strong> " +
+          "consults this threshold. Residual-cleanup and manual " +
+          "<strong>Rebalance Now</strong> rebalances ignore it entirely " +
+          "&mdash; they can run even while the price is inside the " +
+          "range. The <strong>OOR Rebalance Time Threshold</strong>, if " +
+          "set, fires after continuous out-of-range time even when this " +
+          "threshold has not been crossed.",
       },
       {
         heading: "Recommended values",
@@ -170,9 +210,14 @@ export const PARAM_HELP = {
           "<strong>0%</strong> &mdash; rebalances the instant price exits the range. " +
           "This can cause excessive gas spending and slippage during " +
           "volatility.<br>" +
-          "<strong>100%</strong> &mdash; price must double past the boundary. " +
-          "Effectively disables threshold-based rebalancing; only the OOR " +
-          "Timeout (if set) would trigger.",
+          "<strong>100%</strong> &mdash; price must travel a full " +
+          "range-width past the boundary (e.g. for a $1.00&ndash;$1.20 " +
+          "range, down to $0.80 or up to $1.40). Note that for a narrow " +
+          "position, one full range-width is still a small, routine " +
+          "price move &mdash; the trigger stays live. Only for very " +
+          "wide ranges does 100% become practically unreachable, " +
+          "leaving the OOR Rebalance Time Threshold (if set) as the " +
+          "sole trigger.",
       },
       {
         heading: "Related parameters",
@@ -199,6 +244,20 @@ export const PARAM_HELP = {
           "price returns to range.",
       },
       {
+        heading: "Which rebalances it applies to",
+        body:
+          "This is a second trigger for <strong>automatic</strong> " +
+          "rebalances only. Residual-cleanup and manual " +
+          "<strong>Rebalance Now</strong> rebalances do not consult it. " +
+          "The countdown starts at the first out-of-range poll and " +
+          "resets when the price returns to range or when any rebalance " +
+          "succeeds. A timeout-triggered rebalance still has to pass " +
+          "the <strong>Min Time Between Rebalances</strong> cooldown, " +
+          "<strong>Doubling Mode</strong>, and the <strong>Max " +
+          "Rebalances / Day</strong> cap &mdash; the timeout is a " +
+          "trigger, not a bypass.",
+      },
+      {
         heading: "Recommended values",
         body:
           "<strong>60&ndash;180 minutes</strong> for most pools. Shorter " +
@@ -219,9 +278,10 @@ export const PARAM_HELP = {
         heading: "Related parameters",
         body:
           "Complements <strong>OOR Threshold</strong>. Together they form " +
-          "a dual-trigger: &ldquo;rebalance if price moves X% past the " +
-          "boundary, OR if it stays out for Y minutes, whichever comes " +
-          "first.&rdquo;",
+          "a dual-trigger: &ldquo;rebalance if price moves X% of the " +
+          "range width past the boundary, OR if it stays out of range " +
+          "for Y minutes, whichever comes first.&rdquo; Either condition " +
+          "alone is sufficient &mdash; neither needs the other.",
       },
     ],
   },
@@ -288,7 +348,8 @@ export const PARAM_HELP = {
         body:
           "Sets the slippage tolerance used for swaps whose " +
           "DESTINATION is Token 0 (i.e., swaps that CONVERT Token 1 " +
-          "into Token 0). This is one of the two slippage settings for " +
+          "into Token 0). For example, when {{token1}} is traded for " +
+          "{{token0}}. This is one of the two slippage settings for " +
           "the position; the other is Slippage Tolerance, Token 1. " +
           "Each side of the pair carries its own value so that " +
           "asymmetric-liquidity pairs work correctly. Example: on a " +
@@ -338,7 +399,8 @@ export const PARAM_HELP = {
         body:
           "Sets the slippage tolerance used for swaps whose " +
           "DESTINATION is Token 1 (i.e., swaps that CONVERT Token 0 " +
-          "into Token 1). This is one of the two slippage settings for " +
+          "into Token 1). For example, when {{token0}} is traded for " +
+          "{{token1}}. This is one of the two slippage settings for " +
           "the position; the other is Slippage Tolerance, Token 0. See " +
           "that tooltip for the full explanation and the $texan/$wPls " +
           "example -- the two fields are peers.",
@@ -557,6 +619,20 @@ export const PARAM_HELP = {
           "periods, which would waste gas and incur unnecessary slippage.",
       },
       {
+        heading: "Which rebalances it applies to",
+        body:
+          "The cooldown blocks every <strong>automatic</strong> " +
+          "rebalance: out-of-range, OOR-timeout, and residual-cleanup " +
+          "follow-ons. Manual <strong>Rebalance Now</strong> clicks are " +
+          "never blocked by it. However, <strong>every successful " +
+          "rebalance of any kind &mdash; manual and residual cleanup " +
+          "included &mdash; restarts the cooldown clock</strong>, so a " +
+          "manual rebalance delays the next automatic one by this " +
+          "interval. Every successful rebalance also counts toward the " +
+          "Doubling Mode trigger (three rebalances within 4&times; this " +
+          "interval).",
+      },
+      {
         heading: "Recommended values",
         body:
           "<strong>10&ndash;30 minutes</strong> for most pools. Volatile " +
@@ -588,9 +664,29 @@ export const PARAM_HELP = {
       {
         heading: "What it does",
         body:
-          "A daily safety cap on how many rebalances the bot will execute " +
-          "for this position. Once the cap is reached, no more rebalances " +
-          "occur until midnight UTC, even if the position goes out of range.",
+          "A daily safety cap on rebalances for this pool. Once the cap " +
+          "is reached, the bot stops automatic rebalancing of this pool " +
+          "&mdash; even if the position goes out of range &mdash; until " +
+          "the counter resets at midnight UTC.",
+      },
+      {
+        heading: "What counts toward the cap",
+        body:
+          "<strong>Every successful rebalance counts, no matter what " +
+          "triggered it</strong>: automatic out-of-range rebalances, " +
+          "out-of-range <em>timeout</em> rebalances, automatic " +
+          "<strong>residual cleanup</strong> follow-on rebalances, and " +
+          "manual <strong>Rebalance Now</strong> clicks. Compounding is " +
+          "a separate operation and never counts.",
+      },
+      {
+        heading: "Manual clicks are never blocked — but still count",
+        body:
+          "The cap never blocks a manual <strong>Rebalance Now</strong> " +
+          "click &mdash; you stay in control even on a capped day. Each " +
+          "click still adds one to the day&rsquo;s count, so automatic " +
+          "rebalances (including residual cleanups) remain blocked until " +
+          "the midnight UTC reset.",
       },
       {
         heading: "Recommended values",
@@ -609,11 +705,13 @@ export const PARAM_HELP = {
           "cap. Only the min interval and doubling mode would throttle.",
       },
       {
-        heading: "Related parameters",
+        heading: "Scope and reset",
         body:
-          "This is a <strong>wallet-level</strong> daily cap, shared " +
-          "across all positions. A busy pool hitting the cap stops " +
-          "rebalances for all positions until midnight UTC reset.",
+          "The cap applies <strong>per pool</strong> &mdash; each " +
+          "pool&rsquo;s daily count is independent, so one busy pool " +
+          "hitting its cap does not stop rebalances on your other pools. " +
+          "Counts survive an app restart (they are rebuilt from on-chain " +
+          "history) and reset at midnight UTC.",
       },
     ],
   },
@@ -628,7 +726,23 @@ export const PARAM_HELP = {
           "3 or more rebalances occur within this window, " +
           "<strong>Doubling Mode</strong> activates &mdash; the cooldown " +
           "between rebalances doubles after each one: 10m &rarr; 20m " +
-          "&rarr; 40m &rarr; 80m, and so on.",
+          "&rarr; 40m &rarr; 80m, and so on. The value shown reflects " +
+          "the <strong>saved</strong> Min Time Between Rebalances &mdash; " +
+          "it updates when you click that setting&rsquo;s " +
+          "<strong>Save</strong> button, not while you type.",
+      },
+      {
+        heading: "Which rebalances count, and which are gated",
+        body:
+          "<strong>All successful rebalances count toward the " +
+          "three in-window triggers</strong> &mdash; automatic out-of-range, " +
+          "OOR-timeout, residual cleanups, and manual <strong>Rebalance " +
+          "Now</strong> clicks alike. Once Doubling Mode is active, the " +
+          "doubled wait blocks only the <strong>automatic</strong> " +
+          "rebalances (including residual cleanups); manual clicks are " +
+          "never blocked. But every successful rebalance while Doubling " +
+          "Mode is active &mdash; manual included &mdash; " +
+          "<strong>doubles the wait again</strong>.",
       },
       {
         heading: "Why it exists",
