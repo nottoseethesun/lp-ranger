@@ -243,6 +243,49 @@ function _clearStale(allStates) {
  * `posStore.getActive()`.
  * @param {object} d  Flattened status payload from /api/status.
  */
+/**
+ * Pure dispatch decision for the four core per-position alerts.  Given
+ * the flattened states map and a snapshot of the dedup Sets, returns
+ * the list of alerts that should fire this poll — the caller performs
+ * the modal creation and Set mutation.  Extracted so tests can drive
+ * dispatch without cloneTpl / DOM / `_createModal` side effects.
+ *
+ * @param {Record<string, object>} allStates
+ * @param {{
+ *   recShown: Set<string>,
+ *   errShown: Set<string>,
+ *   compoundErrShown: Set<string>,
+ *   catastrophicShown: Set<string>,
+ * }} dedup  Read-only for dispatch — caller updates on fire.
+ * @returns {Array<{kind:string, key:string, message?:string}>}
+ */
+export function _computeCoreAlertDispatch(allStates, dedup) {
+  const fired = [];
+  for (const [key, st] of Object.entries(allStates)) {
+    if (
+      st.oorRecoveredMin > 0 &&
+      !st.rebalancePaused &&
+      !dedup.recShown.has(key)
+    ) {
+      fired.push({ kind: "recovery", key });
+    }
+    if (st.rebalancePaused && !dedup.errShown.has(key)) {
+      fired.push({ kind: "error", key, message: st.rebalanceError });
+    }
+    if (st.compoundError && !dedup.compoundErrShown.has(key)) {
+      fired.push({
+        kind: "compoundError",
+        key,
+        message: st.compoundError,
+      });
+    }
+    if (st._catastrophicScanError && !dedup.catastrophicShown.has(key)) {
+      fired.push({ kind: "catastrophic", key });
+    }
+  }
+  return fired;
+}
+
 export function showPerPositionAlerts(d) {
   const all = d?._allPositionStates || {};
   _clearStale(all);

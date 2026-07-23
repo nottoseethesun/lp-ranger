@@ -23,6 +23,7 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const { createThrottle } = require("./throttle");
+const { createBotPollScheduler } = require("./bot-loop-scheduler");
 const { emojiId } = require("./logger");
 const {
   overridePnlWithRealValues: _overridePnlWithRealValues,
@@ -172,43 +173,21 @@ async function startBotLoop(opts) {
     polling = false,
     _stopped = false;
   const GAS_DEFER_MS = 3600_000;
-  let currentIntervalMs = config.CHECK_INTERVAL_SEC * 1000,
-    timer = null,
-    /*- Set by `botState._kickPoll()` when a poll is in-flight; the
-     *  in-flight poll's tail `_scheduleNext(…)` reads and clears it,
-     *  so the NEXT poll fires immediately instead of waiting a full
-     *  CHECK_INTERVAL_SEC.  Used by the manual Rebalance / Compound
-     *  API handlers (server.js) so the user's click actually
-     *  translates to on-chain action within seconds, not up to
-     *  ~5 minutes of "waiting for the next scheduled poll". */
-    pendingKick = false;
+  let currentIntervalMs = config.CHECK_INTERVAL_SEC * 1000;
+  /*- Poll scheduler + kickPoll wake-up.  Extracted to
+   *  src/bot-loop-scheduler.js so the ~15-line closure can be tested
+   *  directly.  `setPolling` / `setStopped` mirror the outer state
+   *  transitions (`polling` / `_stopped` above). */
+  const _scheduler = createBotPollScheduler({
+    defaultIntervalMs: currentIntervalMs,
+    setTimeoutFn: setTimeout,
+    clearTimeoutFn: clearTimeout,
+    poll: () => poll(),
+  });
   function _scheduleNext(ms) {
-    clearTimeout(timer);
-    const delay = pendingKick ? 0 : (ms ?? currentIntervalMs);
-    pendingKick = false;
-    timer = setTimeout(poll, delay);
+    _scheduler.scheduleNext(ms);
   }
-
-  /*- Wake up the poll loop immediately.  Called by the manual
-   *  Rebalance / Compound endpoints (server.js) right after they set
-   *  `state.forceRebalance = true` / `state.forceCompound = true` so
-   *  the flag actually gets picked up on the next tick instead of
-   *  waiting for the timer-driven poll.  Two cases:
-   *    - Poll idle: cancel the pending timer and fire poll(0).
-   *    - Poll in-flight: leave the current run alone (its decision
-   *      was already made from a stale snapshot of the flags), but
-   *      set `pendingKick` so the tail `_scheduleNext(…)` fires the
-   *      NEXT poll at 0 ms.  The just-set flag WILL be seen by that
-   *      next poll. */
-  botState._kickPoll = () => {
-    if (_stopped) return;
-    if (polling) {
-      pendingKick = true;
-      return;
-    }
-    clearTimeout(timer);
-    timer = setTimeout(poll, 0);
-  };
+  botState._kickPoll = () => _scheduler.kickPoll();
 
   function _handleError(result) {
     if (!firstFailureAt) firstFailureAt = Date.now();
@@ -422,7 +401,7 @@ async function startBotLoop(opts) {
       position.tokenId,
     );
     _stopped = true;
-    clearTimeout(timer);
+    _scheduler.stop();
     /*- `lastRetiredAt` is a numeric epoch (ms) consumed by the
      *  dashboard's Manage-button compute (`public/dashboard-manage-ui.js`)
      *  for its post-retire debounce window — the button stays disabled
@@ -458,6 +437,7 @@ async function startBotLoop(opts) {
     if (_stopped) return;
     if (polling) return;
     polling = true;
+    _scheduler.setPolling(true);
     _reloadFromConfig(gc, throttle, (ms) => {
       currentIntervalMs = ms;
     });
@@ -512,6 +492,7 @@ async function startBotLoop(opts) {
       });
     } finally {
       polling = false;
+      _scheduler.setPolling(false);
     }
     if (retireRequest) {
       await _handleRetire(retireRequest.drainedForMs);
@@ -522,7 +503,7 @@ async function startBotLoop(opts) {
     if (botState.pendingSwitch) {
       log.info("[bot] Honoring queued switch to #%s", botState.pendingSwitch);
       _stopped = true;
-      clearTimeout(timer);
+      _scheduler.stop();
       updateBotState({ running: false });
       return;
     }
@@ -546,7 +527,7 @@ async function startBotLoop(opts) {
     if (botState._scanRunning) return;
     botState._scanRunning = true;
     try {
-      clearTimeout(timer);
+      _scheduler.cancel();
       await _scanAndReconstruct(
         provider,
         ethersLib,
@@ -636,7 +617,7 @@ async function startBotLoop(opts) {
     stop() {
       if (_stopped) return Promise.resolve();
       _stopped = true;
-      clearTimeout(timer);
+      _scheduler.stop();
       clearInterval(lifetimeRescanTimer);
       updateBotState({ running: false });
       log.info("[bot] Bot loop stopped");
