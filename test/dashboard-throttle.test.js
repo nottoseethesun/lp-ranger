@@ -261,6 +261,52 @@ describe("applySavedMinInterval() — per-position seed from saved config", () =
   });
 });
 
+describe("applyPolledMinInterval() — one-shot post-Save poll skip", () => {
+  it(
+    "the full user-reported sequence: Save 20 → first sweep carries the " +
+      "bot's stale pre-save 10 and is SKIPPED (no revert) → second sweep " +
+      "with fresh 20 applies normally",
+    () => {
+      // Save 20 (stamps the skip marker).
+      document.getElementById("inMinInterval").value = "20";
+      mod.saveMinInterval();
+      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+      const lbl = document.getElementById("dblWindowLabel");
+      assert.strictEqual(lbl.dataset.skipNextPoll, "1");
+
+      // Sweep N: stale snapshot (10 min) — must be skipped, marker consumed.
+      mod.applyPolledMinInterval(10 * 60 * 1000);
+      assert.strictEqual(
+        mod.throttle.minIntervalMs,
+        20 * 60 * 1000,
+        "stale post-Save sweep must not revert the optimistic value",
+      );
+      assert.strictEqual(lbl.dataset.skipNextPoll, undefined);
+
+      // Sweep N+1: fresh snapshot (20 min) — applies normally.
+      mod.applyPolledMinInterval(20 * 60 * 1000);
+      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+    },
+  );
+
+  it("without the marker, a polled value applies immediately", () => {
+    mod.applyPolledMinInterval(15 * 60 * 1000);
+    assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
+  });
+
+  it("non-numeric polled values are ignored", () => {
+    mod.applyPolledMinInterval(undefined);
+    mod.applyPolledMinInterval(null);
+    assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
+  });
+
+  it("missing #dblWindowLabel element → polled value still applies (defensive)", () => {
+    document.getElementById("dblWindowLabel").remove();
+    mod.applyPolledMinInterval(25 * 60 * 1000);
+    assert.strictEqual(mod.throttle.minIntervalMs, 25 * 60 * 1000);
+  });
+});
+
 describe("saveMinInterval() — Save click applies the value + label", () => {
   it(
     "saving 15 propagates to throttle.minIntervalMs AND updates " +

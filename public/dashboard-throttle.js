@@ -478,6 +478,28 @@ export function applySavedMinInterval(minutes) {
   updateThrottleUI();
 }
 
+/**
+ * Apply a polled `throttleState.minIntervalMs` to the client throttle,
+ * honoring the one-shot `data-skip-next-poll` marker on
+ * `#dblWindowLabel`.  `saveMinInterval` sets that marker because the
+ * bot only refreshes its emitted `throttleState` snapshot on its own
+ * poll cycle (`POST /api/config` does not kick the bot poll) — so the
+ * first dashboard sweep after a Save still carries the PRE-save value
+ * and would clobber the optimistic apply, showing a one-sweep revert.
+ * The poll consumes the marker (removes it) and skips that single
+ * update; subsequent sweeps apply normally.
+ * @param {number} minIntervalMs  From the polled `throttleState`.
+ */
+export function applyPolledMinInterval(minIntervalMs) {
+  if (typeof minIntervalMs !== "number") return;
+  const lbl = g("dblWindowLabel");
+  if (lbl && lbl.dataset.skipNextPoll !== undefined) {
+    delete lbl.dataset.skipNextPoll;
+    return;
+  }
+  throttle.minIntervalMs = minIntervalMs;
+}
+
 export function saveMinInterval() {
   const n = parseInt(g("inMinInterval")?.value, 10);
   /*- No literal fallback per feedback_one_literal_per_shipped_default:
@@ -489,6 +511,9 @@ export function saveMinInterval() {
    *  reflect the new value on the Save click itself instead of waiting
    *  up to one poll cycle for the server round-trip. */
   applySavedMinInterval(n);
+  /*- One-shot poll-skip marker — see `applyPolledMinInterval`. */
+  const lbl = g("dblWindowLabel");
+  if (lbl) lbl.dataset.skipNextPoll = "1";
   _saveSingleConfig("inMinInterval", "minRebalanceIntervalMin", () => n);
   _validateIntervalVsTimeout();
 }

@@ -14,7 +14,7 @@ import {
   cloneTpl,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import { throttle } from "./dashboard-throttle.js";
+import { throttle, applyPolledMinInterval } from "./dashboard-throttle.js";
 import {
   _activeToken1Symbol,
   updateRangePctLabels,
@@ -381,8 +381,11 @@ function _syncClientThrottle(ts, cnt) {
   if (typeof ts.currentWaitMs === "number")
     throttle.currentWaitMs = ts.currentWaitMs;
   if (typeof ts.lastRebTime === "number") throttle.lastRebTime = ts.lastRebTime;
-  if (typeof ts.minIntervalMs === "number")
-    throttle.minIntervalMs = ts.minIntervalMs;
+  /*- Save-aware: honors the one-shot `data-skip-next-poll` marker set
+   *  by `saveMinInterval` so the first post-Save sweep (which still
+   *  carries the bot's pre-save snapshot) can't revert the optimistic
+   *  value.  See `applyPolledMinInterval` in dashboard-throttle.js. */
+  applyPolledMinInterval(ts.minIntervalMs);
 }
 
 /*-
