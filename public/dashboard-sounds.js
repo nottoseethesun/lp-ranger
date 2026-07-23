@@ -83,10 +83,28 @@ export function isSoundsEnabled() {
  *
  * @param {string} path  URL path relative to the site root.
  */
+/**
+ * Pure gate decision for `playSound`.  Returns true when the sound
+ * should actually reach `playSoundAlways`.  Ordering matters — the
+ * master Sounds toggle is checked BEFORE the idle-paused gate so a
+ * disabled toggle short-circuits and the idle check is only consulted
+ * when it matters.  Extracted so tests can drive the gate directly
+ * without needing to control cross-module singleton state
+ * (`_browserHasPaused` in `dashboard-idle.js` etc.).
+ * @param {boolean} soundsEnabled  Master Sounds toggle (via `isSoundsEnabled`).
+ * @param {boolean} browserPaused  Idle flag (via `isBrowserPaused`).
+ * @returns {boolean}
+ */
+export function _playSoundGate(soundsEnabled, browserPaused) {
+  if (!soundsEnabled) return false;
+  if (browserPaused) return false;
+  return true;
+}
+
 export function playSound(path) {
-  if (!isSoundsEnabled()) return;
-  if (isBrowserPaused()) return;
-  playSoundAlways(path);
+  if (_playSoundGate(isSoundsEnabled(), isBrowserPaused())) {
+    playSoundAlways(path);
+  }
 }
 
 /**
