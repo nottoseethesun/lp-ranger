@@ -189,7 +189,7 @@ let _trackersPrimed = false;
  *  line 99 reads `result.timestamp` which `src/compounder.js` builds
  *  via `new Date().toISOString()`).  Returns `null` for unparseable
  *  input so the staleness gate fails open. */
-function _toMs(v) {
+export function _toMs(v) {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
     const ms = Date.parse(v);
@@ -198,24 +198,55 @@ function _toMs(v) {
   return null;
 }
 
+/**
+ * Pure gate for polling-driven event sounds (rebalance / compound).
+ * Combines the "changed since last seen" check, the "trackers primed"
+ * gate, and the wake-staleness filter into a single decision so tests
+ * can pin the boundary semantics without needing to mutate the
+ * per-key seen-Maps.  Callers still own the seen-Map update.
+ * @param {string|null|undefined} eventAt   Server-side event timestamp.
+ * @param {string|null|undefined} seenAt    Previously-seen value for this key.
+ * @param {boolean} trackersPrimed          First-poll-primed flag.
+ * @param {boolean} isStale                 `isStaleForUiPurposes(eventMs)`.
+ * @returns {boolean}                       true → caller should invoke playSound.
+ */
+export function _shouldFireEventSound(
+  eventAt,
+  seenAt,
+  trackersPrimed,
+  isStale,
+) {
+  if (!eventAt) return false;
+  if (eventAt === seenAt) return false;
+  if (!trackersPrimed) return false;
+  if (isStale) return false;
+  return true;
+}
+
 /** Fire rebalance-success sound if the value changed (post-priming). */
 export function checkRebalanceSound(key, lastRebalanceAt) {
-  if (!lastRebalanceAt || lastRebalanceAt === _rebSeen.get(key)) return;
+  const seenAt = _rebSeen.get(key);
+  if (!lastRebalanceAt || lastRebalanceAt === seenAt) return;
   _rebSeen.set(key, lastRebalanceAt);
-  if (!_trackersPrimed) return;
   const eventMs = _toMs(lastRebalanceAt);
-  if (eventMs !== null && isStaleForUiPurposes(eventMs)) return;
-  playSound(SOUND_REBALANCE_SUCCESS);
+  const isStale = eventMs !== null && isStaleForUiPurposes(eventMs);
+  if (
+    _shouldFireEventSound(lastRebalanceAt, seenAt, _trackersPrimed, isStale)
+  ) {
+    playSound(SOUND_REBALANCE_SUCCESS);
+  }
 }
 
 /** Fire compound-success sound if the value changed (post-priming). */
 export function checkCompoundSound(key, lastCompoundAt) {
-  if (!lastCompoundAt || lastCompoundAt === _compoundSeen.get(key)) return;
+  const seenAt = _compoundSeen.get(key);
+  if (!lastCompoundAt || lastCompoundAt === seenAt) return;
   _compoundSeen.set(key, lastCompoundAt);
-  if (!_trackersPrimed) return;
   const eventMs = _toMs(lastCompoundAt);
-  if (eventMs !== null && isStaleForUiPurposes(eventMs)) return;
-  playSound(SOUND_COMPOUND_SUCCESS);
+  const isStale = eventMs !== null && isStaleForUiPurposes(eventMs);
+  if (_shouldFireEventSound(lastCompoundAt, seenAt, _trackersPrimed, isStale)) {
+    playSound(SOUND_COMPOUND_SUCCESS);
+  }
 }
 
 /** Mark trackers primed (call after first poll-response processing). */

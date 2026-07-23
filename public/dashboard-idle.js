@@ -127,6 +127,21 @@ function _armNoInputTimer() {
  *
  * @param {Event} ev  DOM event from any of `ACTIVITY_EVENTS`.
  */
+/**
+ * Pure decision: is this activity event a wake-from-idle transition?
+ * A gap since the last observed activity longer than the no-input
+ * threshold means the UI was effectively asleep (browser-pause OR
+ * system-suspend / tab-discard).  Extracted so tests can pin the
+ * boundary semantics (strictly-greater-than) without needing to
+ * drive Date.now or the throttle timing.
+ * @param {number} now             Current wall-clock ms.
+ * @param {number} lastActivityTs  Previous last-activity ms.
+ * @returns {boolean}
+ */
+export function _shouldAdvanceWakeStamp(now, lastActivityTs) {
+  return now - lastActivityTs > PAUSE_AFTER_NO_INPUT_MS;
+}
+
 function _onActivity(ev) {
   if (ev && ev.type) _lastActivityType = ev.type;
   const now = Date.now();
@@ -139,7 +154,7 @@ function _onActivity(ev) {
    *  and `_sendUnpause` never fired.  `focus` is the first entry in
    *  `ACTIVITY_EVENTS`, so on tab re-focus this runs synchronously
    *  before any pending poll response can be processed. */
-  if (now - _lastActivityTs > PAUSE_AFTER_NO_INPUT_MS) {
+  if (_shouldAdvanceWakeStamp(now, _lastActivityTs)) {
     _uiLastWokeUpAtMS = now;
   }
   _lastActivityTs = now;
