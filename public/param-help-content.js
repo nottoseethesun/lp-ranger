@@ -588,9 +588,29 @@ export const PARAM_HELP = {
       {
         heading: "What it does",
         body:
-          "A daily safety cap on how many rebalances the bot will execute " +
-          "for this position. Once the cap is reached, no more rebalances " +
-          "occur until midnight UTC, even if the position goes out of range.",
+          "A daily safety cap on rebalances for this pool. Once the cap " +
+          "is reached, the bot stops automatic rebalancing of this pool " +
+          "&mdash; even if the position goes out of range &mdash; until " +
+          "the counter resets at midnight UTC.",
+      },
+      {
+        heading: "What counts toward the cap",
+        body:
+          "<strong>Every successful rebalance counts, no matter what " +
+          "triggered it</strong>: automatic out-of-range rebalances, " +
+          "out-of-range <em>timeout</em> rebalances, automatic " +
+          "<strong>residual cleanup</strong> follow-on rebalances, and " +
+          "manual <strong>Rebalance Now</strong> clicks. Compounding is " +
+          "a separate operation and never counts.",
+      },
+      {
+        heading: "Manual clicks are never blocked — but still count",
+        body:
+          "The cap never blocks a manual <strong>Rebalance Now</strong> " +
+          "click &mdash; you stay in control even on a capped day. Each " +
+          "click still adds one to the day&rsquo;s count, so automatic " +
+          "rebalances (including residual cleanups) remain blocked until " +
+          "the midnight UTC reset.",
       },
       {
         heading: "Recommended values",
@@ -609,11 +629,13 @@ export const PARAM_HELP = {
           "cap. Only the min interval and doubling mode would throttle.",
       },
       {
-        heading: "Related parameters",
+        heading: "Scope and reset",
         body:
-          "This is a <strong>wallet-level</strong> daily cap, shared " +
-          "across all positions. A busy pool hitting the cap stops " +
-          "rebalances for all positions until midnight UTC reset.",
+          "The cap applies <strong>per pool</strong> &mdash; each " +
+          "pool&rsquo;s daily count is independent, so one busy pool " +
+          "hitting its cap does not stop rebalances on your other pools. " +
+          "Counts survive an app restart (they are rebuilt from on-chain " +
+          "history) and reset at midnight UTC.",
       },
     ],
   },
