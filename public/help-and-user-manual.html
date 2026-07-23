@@ -174,7 +174,7 @@
   <p>Once a pool reaches its cap, the throttle badge shows <strong>CAPPED</strong> and no <em>automatic</em> rebalance runs for that pool until the counter resets at midnight UTC (or you raise the setting). Two clarifications that matter in practice:</p>
   <ul>
     <li><strong>Manual clicks are never blocked &mdash; but they still count.</strong> You can always click <strong>Rebalance Now</strong>, even while CAPPED; you stay in control of your own position. Each click adds one to the day&rsquo;s count, though, so automatic rebalances (including residual cleanups) remain blocked until the midnight UTC reset.</li>
-    <li><strong>The cap is per pool, not global.</strong> Each pool&rsquo;s daily count is independent, so a volatile pool hitting its cap does not stop rebalances on your other pools. Counts survive an app restart &mdash; they are rebuilt from on-chain history.</li>
+    <li><strong>The cap is per pool, not global.</strong> Each pool&rsquo;s daily count is independent, so a volatile pool hitting its cap does not stop rebalances on your other pools. Counts survive an app restart &mdash; they are re-seeded from the local rebalance log (<code>app-data/rebalance_log.json</code>).</li>
   </ul>
 
   <h2 id="setting-applicability">Which Rebalances Each Setting Applies To</h2>

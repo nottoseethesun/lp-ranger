@@ -2,8 +2,9 @@
  * @file src/bot-cycle.js
  * @module bot-cycle
  * @description
- * Poll cycle, execution, gates, config reload, and private key resolution.
- * Extracted from bot-loop.js.
+ * Poll cycle, execution, gates, and private key resolution.  Extracted
+ * from bot-loop.js.  (Config reload + the OOR trigger predicates live
+ * in src/bot-cycle-triggers.js.)
  */
 
 "use strict";
@@ -370,7 +371,6 @@ function _checkStateGates(deps, forced) {
 /** Check throttle, daily cap, dry-run, and gas before executing.  Returns early result or null. */
 function _checkRebalanceGates(deps, poolState, forced) {
   const { throttle, dryRun } = deps;
-  const emit = deps.updateBotState || (() => {});
   const stateGate = _checkStateGates(deps, forced);
   if (stateGate) return stateGate;
   const backoff = _checkSwapBackoff(deps, forced);
@@ -380,7 +380,8 @@ function _checkRebalanceGates(deps, poolState, forced) {
     log.info(
       `[bot] OOR but throttled (${can.reason}), wait ${Math.ceil(can.msUntilAllowed / 1000)}s`,
     );
-    emit({ throttleState: throttle.getState() });
+    /*- No throttleState emit here: the unconditional top-of-pollCycle
+     *  emit already published this cycle's snapshot. */
     return { rebalanced: false };
   }
   if (!forced && deps._canRebalancePool && deps._poolKey) {

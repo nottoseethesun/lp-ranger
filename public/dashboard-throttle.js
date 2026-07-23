@@ -275,10 +275,12 @@ function _renderCountdownKpi(can) {
     return;
   }
   _clearNa(cd);
-  const minIntervalEl = g("inMinInterval");
-  const minIntervalMin = minIntervalEl
-    ? parseInt(minIntervalEl.value, 10) || 10
-    : 10;
+  /*- Save-gated: render from `throttle.minIntervalMs` (the saved
+   *  value) — NOT the raw input, which may hold unsaved typing.
+   *  Keeps this KPI consistent with the Doubling Trigger Window
+   *  label (audit finding: the two adjacent displays disagreed
+   *  while typing). */
+  const minIntervalMin = Math.round(throttle.minIntervalMs / 60000);
   if (can.allowed) {
     if (cd) {
       cd.textContent = minIntervalMin + " min";
@@ -456,7 +458,6 @@ export function _saveSingleConfig(inputId, key, parse) {
   );
 }
 
-/** Save min rebalance interval. */
 /**
  * Apply a SAVED Min Time Between Rebalances value (minutes) to the
  * client throttle so the derived displays (Doubling Trigger Window
@@ -472,8 +473,12 @@ export function _saveSingleConfig(inputId, key, parse) {
  * @param {number} minutes  Saved Min Time Between Rebalances.
  */
 export function applySavedMinInterval(minutes) {
-  if (!Number.isFinite(minutes) || minutes < 1) return;
-  throttle.minIntervalMs = minutes * 60 * 1000;
+  /*- Coerce before validating: hand-edited bot-config.json can carry
+   *  string-typed numbers, and the status payload spreads config
+   *  values verbatim. */
+  const n = Number(minutes);
+  if (!Number.isFinite(n) || n < 1) return;
+  throttle.minIntervalMs = n * 60 * 1000;
   if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
   updateThrottleUI();
 }
@@ -500,6 +505,8 @@ export function applyPolledMinInterval(minIntervalMs) {
   throttle.minIntervalMs = minIntervalMs;
 }
 
+/** Save Min Time Between Rebalances: validate, apply optimistically,
+ *  stamp the one-shot poll-skip marker, persist to the server. */
 export function saveMinInterval() {
   const n = parseInt(g("inMinInterval")?.value, 10);
   /*- No literal fallback per feedback_one_literal_per_shipped_default:

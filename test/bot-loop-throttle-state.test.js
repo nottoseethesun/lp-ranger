@@ -5,8 +5,11 @@
  * test/bot-loop-pnl.test.js when that file hit the 500-line cap.
  *
  * Emission contract: a fresh `throttleState` snapshot is emitted on
- * EVERY poll cycle (top of pollCycle, after `throttle.tick()`), plus
- * on the historical sites (post-rebalance, throttle-rejection).  The
+ * EVERY poll cycle (top of pollCycle, after `throttle.tick()`) and
+ * after a successful rebalance.  (The former throttle-rejection-site
+ * emit was removed as redundant — the top-of-poll emit already
+ * published the snapshot; the rejection-path test below now passes
+ * via that emit.)  The
  * every-poll emit is the fix for the stale-snapshot bug where a quiet
  * position served the startup snapshot (global default interval)
  * forever and the dashboard's Doubling Trigger Window label read 4x

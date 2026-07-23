@@ -259,6 +259,21 @@ describe("applySavedMinInterval() — per-position seed from saved config", () =
       );
     }
   });
+
+  it("accepts a string-typed saved value (hand-edited config)", () => {
+    mod.applySavedMinInterval("20");
+    assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+  });
+
+  it("countdown KPI renders the SAVED value, not the raw input (audit fix)", () => {
+    document.getElementById("inMinInterval").value = "60"; // unsaved typing
+    mod.applySavedMinInterval(20);
+    assert.strictEqual(
+      document.getElementById("kpiCountdown").textContent,
+      "20 min",
+      "allowed-branch KPI must derive from throttle.minIntervalMs",
+    );
+  });
 });
 
 describe("applyPolledMinInterval() — one-shot post-Save poll skip", () => {

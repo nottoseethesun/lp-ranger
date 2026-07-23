@@ -1078,7 +1078,7 @@ Per-user overrides live in `app-config/user-configurable/bot-config.json`.
 | `slippagePct` | `0.5` | Per-swap slippage tolerance applied to the quoted output |
 | `checkIntervalSec` | `300` | On-chain poll cadence |
 | `minRebalanceIntervalMin` | `10` | Minimum gap between back-to-back rebalances on the same pool |
-| `maxRebalancesPerDay` | `20` | Wallet-level daily rebalance cap (UTC reset) |
+| `maxRebalancesPerDay` | `20` | Per-pool daily rebalance cap (UTC reset; every successful rebalance counts) |
 | `offsetToken0Pct` | `50` | Position offset bias toward token0 (50 = balanced) |
 
 **`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /

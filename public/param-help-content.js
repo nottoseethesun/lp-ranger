@@ -4,6 +4,12 @@
  * Each entry maps an input element key to a structured help object rendered
  * by dashboard-param-help.js.  Content is separated from rendering for
  * editorial review and SEC compliance.
+ *
+ * Dynamic token names: section bodies may contain the placeholders
+ * `{{token0}}` / `{{token1}}`.  At render time dashboard-param-help.js
+ * substitutes them with the active position's token symbols
+ * (HTML-escaped, truncated to 16 characters), falling back to the
+ * literal "Token 0" / "Token 1" when no position is active.
  */
 
 /** @type {Record<string, {title: string, sections: {heading: string, body: string}[]}>} */
@@ -206,9 +212,12 @@ export const PARAM_HELP = {
           "volatility.<br>" +
           "<strong>100%</strong> &mdash; price must travel a full " +
           "range-width past the boundary (e.g. for a $1.00&ndash;$1.20 " +
-          "range, down to $0.80 or up to $1.40). Effectively disables " +
-          "threshold-based rebalancing on most pools; only the OOR " +
-          "Rebalance Time Threshold (if set) would trigger.",
+          "range, down to $0.80 or up to $1.40). Note that for a narrow " +
+          "position, one full range-width is still a small, routine " +
+          "price move &mdash; the trigger stays live. Only for very " +
+          "wide ranges does 100% become practically unreachable, " +
+          "leaving the OOR Rebalance Time Threshold (if set) as the " +
+          "sole trigger.",
       },
       {
         heading: "Related parameters",
@@ -339,7 +348,8 @@ export const PARAM_HELP = {
         body:
           "Sets the slippage tolerance used for swaps whose " +
           "DESTINATION is Token 0 (i.e., swaps that CONVERT Token 1 " +
-          "into Token 0). This is one of the two slippage settings for " +
+          "into Token 0). For example, when {{token1}} is traded for " +
+          "{{token0}}. This is one of the two slippage settings for " +
           "the position; the other is Slippage Tolerance, Token 1. " +
           "Each side of the pair carries its own value so that " +
           "asymmetric-liquidity pairs work correctly. Example: on a " +
@@ -389,7 +399,8 @@ export const PARAM_HELP = {
         body:
           "Sets the slippage tolerance used for swaps whose " +
           "DESTINATION is Token 1 (i.e., swaps that CONVERT Token 0 " +
-          "into Token 1). This is one of the two slippage settings for " +
+          "into Token 1). For example, when {{token0}} is traded for " +
+          "{{token1}}. This is one of the two slippage settings for " +
           "the position; the other is Slippage Tolerance, Token 0. See " +
           "that tooltip for the full explanation and the $texan/$wPls " +
           "example -- the two fields are peers.",
