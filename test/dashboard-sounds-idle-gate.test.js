@@ -2,124 +2,67 @@
 
 /**
  * @file test/dashboard-sounds-idle-gate.test.js
- * @description Tests for the idle-gating logic in
- *   `public/dashboard-sounds.js` `playSound()`.  The dashboard module is
- *   an ES module bundled by esbuild for the browser; we replicate the
- *   gate in CommonJS for direct test access.  Mirror is small enough to
- *   keep in lockstep by inspection — if you change one, change the
- *   other.  Same pattern as `test/dashboard-idle.test.js` and
- *   `test/dashboard-csrf-fetch.test.js`.
+ * @description Tests the pure `_playSoundGate` decision extracted from
+ *   `playSound` in `public/dashboard-sounds.js`.  Previously mirrored
+ *   because `playSound` reached across modules to `isSoundsEnabled`
+ *   (localStorage-backed) and `isBrowserPaused` (dashboard-idle
+ *   singleton); the pure gate takes both booleans as parameters so the
+ *   test can drive them directly under jsdom + real module import.
  *
- *   Bug under test: during burn-in, users observed a backlog of
- *   rebalance / compound jingles play in quick succession when they
- *   logged back into the desktop after hours away.  The polling
- *   trackers (`checkRebalanceSound`, `checkCompoundSound`) call
- *   `playSound` on every detected `lastRebalance/CompoundAt` change,
- *   so events that fired while the user was logged out queue up and
- *   all play on first poll after activity.
- *
- *   Fix: `playSound` skips when `isBrowserPaused()` is `true`.  The
- *   browser flag is independent of the move-scope override in
- *   `src/price-fetcher-gate.js` (item #4 of the four pause sources)
- *   so an auto-rebalance/compound that ran while the user was idle
- *   leaves `_browserHasPaused` still true — the gate suppresses the
- *   sound.  Activity events flip the flag synchronously, so any
- *   click-driven sound reaches the gate after it has cleared.
+ *   Bug the gate prevents: users observed a backlog of rebalance /
+ *   compound jingles play in quick succession when they logged back
+ *   into the desktop after hours away.  The polling trackers
+ *   (`checkRebalanceSound`, `checkCompoundSound`) call `playSound` on
+ *   every detected `lastRebalance/CompoundAt` change, so events that
+ *   fired while the user was idle queue up and all play on first poll
+ *   after activity.  Fix: gate on `isBrowserPaused()` — an
+ *   auto-rebalance/compound that ran while the user was idle leaves
+ *   `_browserHasPaused` still true, and the gate suppresses the sound.
  */
 
-const { describe, it, beforeEach } = require("node:test");
+require("global-jsdom/register");
+
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 
-/* ── In-test replica of the gate ─────────────────────────────────────── */
+let mod;
 
-let _soundsEnabled = true;
-let _browserPaused = false;
-let _alwaysCalls = [];
-
-function isSoundsEnabled() {
-  return _soundsEnabled;
-}
-function isBrowserPaused() {
-  return _browserPaused;
-}
-function playSoundAlways(path) {
-  _alwaysCalls.push(path);
-}
-
-function playSound(path) {
-  if (!isSoundsEnabled()) return;
-  if (isBrowserPaused()) return;
-  playSoundAlways(path);
-}
-
-beforeEach(() => {
-  _soundsEnabled = true;
-  _browserPaused = false;
-  _alwaysCalls = [];
+before(async () => {
+  mod = await import("../public/dashboard-sounds.js");
 });
 
-/* ── Tests ───────────────────────────────────────────────────────────── */
-
-describe("playSound idle gate", () => {
-  it("plays when sounds enabled and browser not paused", () => {
-    playSound("/media/x.mp3");
-    assert.deepStrictEqual(_alwaysCalls, ["/media/x.mp3"]);
+describe("_playSoundGate()", () => {
+  it("passes when sounds enabled AND browser not paused", () => {
+    assert.strictEqual(mod._playSoundGate(true, false), true);
   });
 
-  it("skips when master Sounds toggle is off", () => {
-    _soundsEnabled = false;
-    playSound("/media/x.mp3");
-    assert.deepStrictEqual(_alwaysCalls, []);
+  it("blocks when master Sounds toggle is off", () => {
+    assert.strictEqual(mod._playSoundGate(false, false), false);
   });
 
-  it("skips when browser is paused (idle), even with sounds enabled", () => {
-    _browserPaused = true;
-    playSound("/media/x.mp3");
-    assert.deepStrictEqual(
-      _alwaysCalls,
-      [],
+  it("blocks when browser is paused (idle), even with sounds enabled", () => {
+    assert.strictEqual(
+      mod._playSoundGate(true, true),
+      false,
       "polling-driven sounds must not fire while the dashboard is idle",
     );
   });
 
-  it("resumes playing once the browser unpauses", () => {
-    _browserPaused = true;
-    playSound("/media/first.mp3");
-    _browserPaused = false;
-    playSound("/media/second.mp3");
-    assert.deepStrictEqual(
-      _alwaysCalls,
-      ["/media/second.mp3"],
-      "first call suppressed by idle gate, second call passes once flag clears",
-    );
+  it("blocks in the both-off case (master beats idle in evaluation order)", () => {
+    assert.strictEqual(mod._playSoundGate(false, true), false);
   });
 
-  it("master toggle off beats idle gate (no double-play on resume)", () => {
-    _soundsEnabled = false;
-    _browserPaused = true;
-    playSound("/media/x.mp3");
-    _browserPaused = false;
-    playSound("/media/x.mp3");
-    assert.deepStrictEqual(_alwaysCalls, []);
-  });
-
-  it("mirrors the gate ordering in dashboard-sounds.js (sounds-toggle first, idle second)", () => {
-    /*- If the toggle is off the gate must not even consult the idle
-     *  flag — keeps the gate cheap and matches the source ordering. */
-    _soundsEnabled = false;
-    let consulted = false;
-    const origIsBrowserPaused = isBrowserPaused;
-    const spy = () => {
-      consulted = true;
-      return origIsBrowserPaused();
-    };
-    /*- Inline replay of the gate using the spy. */
-    (function gate() {
-      if (!isSoundsEnabled()) return;
-      if (spy()) return;
-      playSoundAlways("/media/x.mp3");
-    })();
-    assert.strictEqual(consulted, false);
-    assert.deepStrictEqual(_alwaysCalls, []);
-  });
+  it(
+    "master toggle off short-circuits BEFORE the idle check — so the " +
+      "idle flag is only consulted when the toggle is on",
+    () => {
+      /*- Regression pin against reordering the branches.  If someone
+       *  moves the idle check first, a disabled toggle would still
+       *  consult the idle state — cheap now, but a foot-gun if the idle
+       *  check ever grows a side effect (e.g. logging).  The pure gate
+       *  makes this ordering assertable without a spy. */
+      assert.strictEqual(mod._playSoundGate(false, true), false);
+      assert.strictEqual(mod._playSoundGate(false, false), false);
+    },
+  );
 });

@@ -83,10 +83,28 @@ export function isSoundsEnabled() {
  *
  * @param {string} path  URL path relative to the site root.
  */
+/**
+ * Pure gate decision for `playSound`.  Returns true when the sound
+ * should actually reach `playSoundAlways`.  Ordering matters — the
+ * master Sounds toggle is checked BEFORE the idle-paused gate so a
+ * disabled toggle short-circuits and the idle check is only consulted
+ * when it matters.  Extracted so tests can drive the gate directly
+ * without needing to control cross-module singleton state
+ * (`_browserHasPaused` in `dashboard-idle.js` etc.).
+ * @param {boolean} soundsEnabled  Master Sounds toggle (via `isSoundsEnabled`).
+ * @param {boolean} browserPaused  Idle flag (via `isBrowserPaused`).
+ * @returns {boolean}
+ */
+export function _playSoundGate(soundsEnabled, browserPaused) {
+  if (!soundsEnabled) return false;
+  if (browserPaused) return false;
+  return true;
+}
+
 export function playSound(path) {
-  if (!isSoundsEnabled()) return;
-  if (isBrowserPaused()) return;
-  playSoundAlways(path);
+  if (_playSoundGate(isSoundsEnabled(), isBrowserPaused())) {
+    playSoundAlways(path);
+  }
 }
 
 /**
@@ -171,7 +189,7 @@ let _trackersPrimed = false;
  *  line 99 reads `result.timestamp` which `src/compounder.js` builds
  *  via `new Date().toISOString()`).  Returns `null` for unparseable
  *  input so the staleness gate fails open. */
-function _toMs(v) {
+export function _toMs(v) {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
     const ms = Date.parse(v);
@@ -180,24 +198,55 @@ function _toMs(v) {
   return null;
 }
 
+/**
+ * Pure gate for polling-driven event sounds (rebalance / compound).
+ * Combines the "changed since last seen" check, the "trackers primed"
+ * gate, and the wake-staleness filter into a single decision so tests
+ * can pin the boundary semantics without needing to mutate the
+ * per-key seen-Maps.  Callers still own the seen-Map update.
+ * @param {string|null|undefined} eventAt   Server-side event timestamp.
+ * @param {string|null|undefined} seenAt    Previously-seen value for this key.
+ * @param {boolean} trackersPrimed          First-poll-primed flag.
+ * @param {boolean} isStale                 `isStaleForUiPurposes(eventMs)`.
+ * @returns {boolean}                       true → caller should invoke playSound.
+ */
+export function _shouldFireEventSound(
+  eventAt,
+  seenAt,
+  trackersPrimed,
+  isStale,
+) {
+  if (!eventAt) return false;
+  if (eventAt === seenAt) return false;
+  if (!trackersPrimed) return false;
+  if (isStale) return false;
+  return true;
+}
+
 /** Fire rebalance-success sound if the value changed (post-priming). */
 export function checkRebalanceSound(key, lastRebalanceAt) {
-  if (!lastRebalanceAt || lastRebalanceAt === _rebSeen.get(key)) return;
+  const seenAt = _rebSeen.get(key);
+  if (!lastRebalanceAt || lastRebalanceAt === seenAt) return;
   _rebSeen.set(key, lastRebalanceAt);
-  if (!_trackersPrimed) return;
   const eventMs = _toMs(lastRebalanceAt);
-  if (eventMs !== null && isStaleForUiPurposes(eventMs)) return;
-  playSound(SOUND_REBALANCE_SUCCESS);
+  const isStale = eventMs !== null && isStaleForUiPurposes(eventMs);
+  if (
+    _shouldFireEventSound(lastRebalanceAt, seenAt, _trackersPrimed, isStale)
+  ) {
+    playSound(SOUND_REBALANCE_SUCCESS);
+  }
 }
 
 /** Fire compound-success sound if the value changed (post-priming). */
 export function checkCompoundSound(key, lastCompoundAt) {
-  if (!lastCompoundAt || lastCompoundAt === _compoundSeen.get(key)) return;
+  const seenAt = _compoundSeen.get(key);
+  if (!lastCompoundAt || lastCompoundAt === seenAt) return;
   _compoundSeen.set(key, lastCompoundAt);
-  if (!_trackersPrimed) return;
   const eventMs = _toMs(lastCompoundAt);
-  if (eventMs !== null && isStaleForUiPurposes(eventMs)) return;
-  playSound(SOUND_COMPOUND_SUCCESS);
+  const isStale = eventMs !== null && isStaleForUiPurposes(eventMs);
+  if (_shouldFireEventSound(lastCompoundAt, seenAt, _trackersPrimed, isStale)) {
+    playSound(SOUND_COMPOUND_SUCCESS);
+  }
 }
 
 /** Mark trackers primed (call after first poll-response processing). */

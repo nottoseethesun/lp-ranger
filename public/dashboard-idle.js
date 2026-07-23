@@ -92,14 +92,28 @@ function _sendUnpause(reason) {
  * hidden tab is detected against THIS arming, not whatever module-level
  * value a subsequent re-arm has overwritten.
  */
+/**
+ * Pure staleness check for the no-input timer callback.  A callback
+ * counts as stale when `nowMs - armedAt` overruns the intended timer
+ * duration by more than the 2-second grace margin — the Chrome
+ * task-queue race after a long-throttled tab.  Extracted so tests
+ * can drive the guard directly without needing to reproduce Chrome's
+ * timer scheduling under Node.
+ * @param {number} armedAt  Timestamp captured at arming (Date.now()).
+ * @param {number} nowMs    Timestamp at callback firing (Date.now()).
+ * @returns {boolean}       true → callback should bail (stale delivery).
+ */
+export function _isStaleFire(armedAt, nowMs) {
+  return nowMs - armedAt > PAUSE_AFTER_NO_INPUT_MS + STALE_MARGIN_MS;
+}
+
 function _armNoInputTimer() {
   if (_noInputTimer) clearTimeout(_noInputTimer);
   _noInputTimer = null;
   const armedAt = Date.now();
   _noInputTimer = setTimeout(() => {
     _noInputTimer = null;
-    if (Date.now() - armedAt > PAUSE_AFTER_NO_INPUT_MS + STALE_MARGIN_MS)
-      return;
+    if (_isStaleFire(armedAt, Date.now())) return;
     _sendPause("no-input 15m");
   }, PAUSE_AFTER_NO_INPUT_MS);
 }
@@ -113,6 +127,21 @@ function _armNoInputTimer() {
  *
  * @param {Event} ev  DOM event from any of `ACTIVITY_EVENTS`.
  */
+/**
+ * Pure decision: is this activity event a wake-from-idle transition?
+ * A gap since the last observed activity longer than the no-input
+ * threshold means the UI was effectively asleep (browser-pause OR
+ * system-suspend / tab-discard).  Extracted so tests can pin the
+ * boundary semantics (strictly-greater-than) without needing to
+ * drive Date.now or the throttle timing.
+ * @param {number} now             Current wall-clock ms.
+ * @param {number} lastActivityTs  Previous last-activity ms.
+ * @returns {boolean}
+ */
+export function _shouldAdvanceWakeStamp(now, lastActivityTs) {
+  return now - lastActivityTs > PAUSE_AFTER_NO_INPUT_MS;
+}
+
 function _onActivity(ev) {
   if (ev && ev.type) _lastActivityType = ev.type;
   const now = Date.now();
@@ -125,7 +154,7 @@ function _onActivity(ev) {
    *  and `_sendUnpause` never fired.  `focus` is the first entry in
    *  `ACTIVITY_EVENTS`, so on tab re-focus this runs synchronously
    *  before any pending poll response can be processed. */
-  if (now - _lastActivityTs > PAUSE_AFTER_NO_INPUT_MS) {
+  if (_shouldAdvanceWakeStamp(now, _lastActivityTs)) {
     _uiLastWokeUpAtMS = now;
   }
   _lastActivityTs = now;
