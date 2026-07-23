@@ -90,13 +90,21 @@ export function canRebalance() {
   return { allowed: true, msUntilAllowed: 0, reason: "ok" };
 }
 
-/** Re-read UI inputs and update throttle parameters. */
+/**
+ * Re-read UI inputs and update throttle parameters.
+ *
+ * Deliberately does NOT read `#inMinInterval`: `throttle.minIntervalMs`
+ * feeds derived displays (the Doubling Trigger Window label, the
+ * countdown KPI), which must reflect the SAVED value — not unsaved
+ * typing.  It is written only by `saveMinInterval()` (Save click) and
+ * by the `/api/status` poll sync in dashboard-data-status.js (server's
+ * saved value).  Before this gate, each keystroke moved the label and
+ * the next poll snapped it back — a flicker the user read as the
+ * setting having changed without a Save.
+ */
 export function onParamChange() {
-  const minEl = g("inMinInterval"),
-    maxEl = g("inMaxReb");
-  throttle.minIntervalMs = (parseInt(minEl?.value) || 10) * 60 * 1000;
+  const maxEl = g("inMaxReb");
   throttle.dailyMax = parseInt(maxEl?.value) || throttle.dailyMax;
-  if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
   updateThrottleUI();
 }
 
@@ -454,6 +462,14 @@ export function saveMinInterval() {
   /*- No literal fallback per feedback_one_literal_per_shipped_default:
    *  reject invalid input rather than silently using a literal default. */
   if (!Number.isFinite(n) || n < 1) return;
+  /*- Optimistic client apply on Save: the Doubling Trigger Window label
+   *  and countdown KPI derive from `throttle.minIntervalMs`, which is
+   *  save-gated (see `onParamChange`).  Setting it here makes the label
+   *  reflect the new value on the Save click itself instead of waiting
+   *  up to one poll cycle for the server round-trip. */
+  throttle.minIntervalMs = n * 60 * 1000;
+  if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
+  updateThrottleUI();
   _saveSingleConfig("inMinInterval", "minRebalanceIntervalMin", () => n);
   _validateIntervalVsTimeout();
 }

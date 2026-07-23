@@ -163,10 +163,21 @@ export const PARAM_HELP = {
       {
         heading: "What it does",
         body:
-          "Controls how far the current price must move <strong>beyond</strong> " +
-          "your position&rsquo;s upper or lower tick boundary before a " +
-          "rebalance is triggered. A value of 10 means the price must be " +
-          "at least 10% past the boundary &mdash; not just outside the range.",
+          "Sets how far the current price must move <strong>beyond</strong> " +
+          "your position&rsquo;s upper or lower <strong>price " +
+          "boundary</strong> before the price-distance condition alone " +
+          "triggers a rebalance. The distance is measured as a " +
+          "percentage of the <strong>position&rsquo;s price-range " +
+          "width</strong> (upper bound &minus; lower bound), not of the " +
+          "current price. Example: with a value of 10 and a range " +
+          "spanning $1.00&ndash;$1.20 (width $0.20), the trigger points " +
+          "are $0.98 and $1.22 &mdash; 10% of the width past each " +
+          "bound. This is one of <strong>two</strong> triggers: even " +
+          "while the price sits inside the threshold zone, the " +
+          "<strong>OOR Rebalance Time Threshold</strong> (if set) " +
+          "triggers on its own after enough continuous out-of-range " +
+          "time. A rebalance fires when <em>either</em> condition is " +
+          "met.",
       },
       {
         heading: "Which rebalances it applies to",
@@ -193,9 +204,11 @@ export const PARAM_HELP = {
           "<strong>0%</strong> &mdash; rebalances the instant price exits the range. " +
           "This can cause excessive gas spending and slippage during " +
           "volatility.<br>" +
-          "<strong>100%</strong> &mdash; price must double past the boundary. " +
-          "Effectively disables threshold-based rebalancing; only the OOR " +
-          "Timeout (if set) would trigger.",
+          "<strong>100%</strong> &mdash; price must travel a full " +
+          "range-width past the boundary (e.g. for a $1.00&ndash;$1.20 " +
+          "range, down to $0.80 or up to $1.40). Effectively disables " +
+          "threshold-based rebalancing on most pools; only the OOR " +
+          "Rebalance Time Threshold (if set) would trigger.",
       },
       {
         heading: "Related parameters",
@@ -256,9 +269,10 @@ export const PARAM_HELP = {
         heading: "Related parameters",
         body:
           "Complements <strong>OOR Threshold</strong>. Together they form " +
-          "a dual-trigger: &ldquo;rebalance if price moves X% past the " +
-          "boundary, OR if it stays out for Y minutes, whichever comes " +
-          "first.&rdquo;",
+          "a dual-trigger: &ldquo;rebalance if price moves X% of the " +
+          "range width past the boundary, OR if it stays out of range " +
+          "for Y minutes, whichever comes first.&rdquo; Either condition " +
+          "alone is sufficient &mdash; neither needs the other.",
       },
     ],
   },
@@ -701,7 +715,10 @@ export const PARAM_HELP = {
           "3 or more rebalances occur within this window, " +
           "<strong>Doubling Mode</strong> activates &mdash; the cooldown " +
           "between rebalances doubles after each one: 10m &rarr; 20m " +
-          "&rarr; 40m &rarr; 80m, and so on.",
+          "&rarr; 40m &rarr; 80m, and so on. The value shown reflects " +
+          "the <strong>saved</strong> Min Time Between Rebalances &mdash; " +
+          "it updates when you click that setting&rsquo;s " +
+          "<strong>Save</strong> button, not while you type.",
       },
       {
         heading: "Which rebalances count, and which are gated",
