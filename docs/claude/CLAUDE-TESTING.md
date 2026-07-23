@@ -1,5 +1,20 @@
 # Testing
 
+## No Mirroring
+
+**Never copy-paste a SUT function into its test file.** A "mirror" or "in-test replica" — the pattern of re-expressing a browser/server function locally in the test to sidestep an import obstacle — is banned. Mirrors silently drift from the real code, so a green test says nothing about whether the SUT still works.
+
+Smell: docstrings that say `Mirror of …`, `In-test replica`, or "mirror is small enough to keep in lockstep by inspection." If you're tempted to write those, stop.
+
+**Correct pattern** — when a function is module-private and needs testing, **extract it as an exported pure decision** and drive the export directly:
+
+- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `public/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../public/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`.
+- **Server tests** (`src/*.js`): direct `require("../src/<module>.js")`. No import obstacle — mirrors have no excuse.
+
+When the private helper's logic is entangled with I/O (DOM writes, network, module-singleton state), extract only the **pure decision** (accepts state as parameters, returns the intended action) and leave the I/O in the wrapper. See PRs #167–#172 for the extract-then-test pattern applied across ~30 dashboard helpers.
+
+Runtime code changes done for testability must be behaviour-neutral under the bundled build — the wrapper still calls the same code path, it just routes the decision through an exported function.
+
 ## Test Runner
 
 Node built-in `node:test` runner + ganache (in-memory EVM for blockchain mocks). Run with:

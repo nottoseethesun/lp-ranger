@@ -125,3 +125,25 @@ export function _resetPostRebalanceModalState() {
   _rrShown.clear();
   _rwShownAt.clear();
 }
+
+/**
+ * Pure dispatch decision for the post-rebalance rangeRounded /
+ * residualWarning alerts.  Given the flattened states map and a
+ * snapshot of the dedup state, returns which alerts should fire this
+ * poll — caller performs modal creation and dedup mutation.
+ *
+ * @param {Record<string, object>} allStates
+ * @param {{ rrShown: Set<string>, rwShownAt: Map<string, number|null> }} dedup
+ * @returns {Array<{kind:string, key:string, rrNew:boolean, rwNew:boolean}>}
+ */
+export function _computePostRebalanceDispatch(allStates, dedup) {
+  const fired = [];
+  for (const [key, st] of Object.entries(allStates || {})) {
+    const rrNew = !!(st.rangeRounded && !dedup.rrShown.has(key));
+    const rwAt = st.residualWarning?.at || null;
+    const rwNew = !!(st.residualWarning && rwAt !== dedup.rwShownAt.get(key));
+    if (!rrNew && !rwNew) continue;
+    fired.push({ kind: "postRebalance", key, rrNew, rwNew });
+  }
+  return fired;
+}

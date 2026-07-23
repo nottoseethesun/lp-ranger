@@ -328,27 +328,16 @@ export function applySyncBlur(force) {
  */
 function _syncStatus(d) {
   const active = posStore.getActive();
-  if (!active) return { complete: true, label: "" };
-  if (wallet.address && posStore.count() === 0)
-    return { complete: false, label: "" };
-  if (!isPositionManaged(active.tokenId) && isViewingClosedPos())
-    return { complete: true, label: "Synced" };
-  const ps = d._positionScan;
-  if (ps && ps.status === "scanning") {
-    const p = ps.progress;
-    const tip = p?.total > 0 ? p.done + "/" + p.total + " positions" : "";
-    return { complete: false, label: "Syncing\u2026", tip };
-  }
-  /*- `lifetimeScanComplete` gates only when the active position is
-   *  managed.  Unmanaged positions don't render a Lifetime panel (the
-   *  placeholder takes its place), so the flag is structurally
-   *  irrelevant on their state \u2014 checking it would leave their badge
-   *  stuck on "Syncing\u2026" forever.  See server-routes._syncLifetimeState
-   *  for the matching server-side decision. */
-  const managed = isPositionManaged(active.tokenId);
-  if (!d.rebalanceScanComplete || (managed && !d.lifetimeScanComplete))
-    return { complete: false, label: "Syncing\u2026" };
-  return { complete: true, label: "Synced" };
+  return _computeSyncStatus({
+    active,
+    walletAddress: wallet.address,
+    positionCount: posStore.count(),
+    positionManaged: active ? isPositionManaged(active.tokenId) : false,
+    viewingClosed: isViewingClosedPos(),
+    positionScan: d._positionScan,
+    rebalanceScanComplete: d.rebalanceScanComplete,
+    lifetimeScanComplete: d.lifetimeScanComplete,
+  });
 }
 function _updateSyncBadge(d) {
   const badge = g("syncBadge");
@@ -508,28 +497,12 @@ export function resetPollingState() {
   if (dl) dl.textContent = "Edit Initial Deposit";
 }
 function _resolveManagedTid(a, mp, states) {
-  const tid = String(a.tokenId);
-  if (mp.some((p) => String(p.tokenId) === tid)) return tid;
-  /*-
-   * Rebalance-follow.  Migrate only when a rebalance event links the
-   * active tokenId (drained) to a currently-managed new tokenId.  The
-   * event is the single source of truth — no same-pool heuristic and
-   * no multi-hop walk (the view converges 1-hop per poll).  This is
-   * also robust when two managed positions share a pool.
-   */
-  for (const p of mp) {
-    const events = states[p.key]?.rebalanceEvents || [];
-    const hit = events.some(
-      (e) =>
-        String(e.oldTokenId) === tid &&
-        String(e.newTokenId) === String(p.tokenId),
-    );
-    if (hit) {
-      posStore.updateActiveTokenId(p.tokenId);
-      return p.tokenId;
-    }
+  const { migrateTo } = _computeRebalanceFollow(a, mp, states);
+  if (migrateTo !== null) {
+    posStore.updateActiveTokenId(migrateTo);
+    return migrateTo;
   }
-  return tid;
+  return String(a.tokenId);
 }
 /*- Mirror the OOR threshold into botConfig so range-visual + display
  *  code can read a single source.  Prefer the per-position server
@@ -664,6 +637,11 @@ function updateDashboardFromStatus(data) {
   reapplyPrivacyBlur();
   clearDirtyInputs();
 }
+import {
+  _computeSyncStatus,
+  _computeRebalanceFollow,
+} from "./dashboard-sync-decisions.js";
+export { _computeSyncStatus, _computeRebalanceFollow };
 import {
   initDataPoll,
   pollNow,
