@@ -40,6 +40,7 @@ describe("bot-cycle compound gates", () => {
       throttle: {
         tick: () => {},
         canRebalance: () => ({ allowed: true, msUntilAllowed: 0 }),
+        getState: () => ({}),
         _state: {},
       },
       _ethersLib: {
@@ -163,6 +164,7 @@ describe("bot-cycle _checkCompound trigger path", () => {
       throttle: {
         tick: () => {},
         canRebalance: () => ({ allowed: true }),
+        getState: () => ({}),
         _state: {},
       },
       _ethersLib: {

@@ -11,16 +11,18 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   _humanizeError,
-  _isTimeoutExpired,
-  _isBeyondThreshold,
   _checkRangeAndThreshold,
   _checkZeroLiquidity,
-  _reloadFromConfig,
   _checkRebalanceGates,
   _activateSwapBackoff,
   _liquidityChanged,
   DRAINED_RETIRE_MS,
 } = require("../src/bot-cycle");
+const {
+  _isTimeoutExpired,
+  _isBeyondThreshold,
+  _reloadFromConfig,
+} = require("../src/bot-cycle-triggers");
 
 // ── _humanizeError ──────────────────────────────────────────────────
 
