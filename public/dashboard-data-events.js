@@ -110,8 +110,42 @@ function _buildRebalanceLogEntry(ev, ctx) {
  * @param {object} st   Per-position state slice.
  * @param {string} ctx  Position-context suffix from `_logCtx`.
  */
+/**
+ * Pure pre-scan gate: has a new rebalance timestamp arrived that we
+ * haven't yet handled?  Extracted from `_handleRebalance` so tests can
+ * pin the "advance-tracker-AFTER-success, retry-on-failure" contract
+ * without a mocked scanPositions.
+ * @param {string|null|undefined} lastRebalanceAt  From the position state.
+ * @param {string|null|undefined} trackedAt        From the module tracker.
+ * @returns {boolean}  true → proceed to scan.
+ */
+export function _shouldTriggerRebalanceScan(lastRebalanceAt, trackedAt) {
+  return !!lastRebalanceAt && lastRebalanceAt !== trackedAt;
+}
+
+/**
+ * Pure post-scan decision: given the scan result plus the tracker
+ * state, what should the follow-up do?  A `commit:false` outcome means
+ * the tracker stays unset so the next poll re-fires the scan (the
+ * user-reported retry-on-transient-failure path); `log:false` means
+ * the Activity-log entry is skipped (no event yet in the payload, or
+ * a concurrent handler already committed).
+ * @param {{ok?:boolean}|null|undefined} scanResult
+ * @param {string} at
+ * @param {string|null|undefined} trackedAt
+ * @param {object|null} ev  Latest rebalance event (or null).
+ * @returns {{commit:boolean, log:boolean}}
+ */
+export function _shouldCommitRebalanceScan(scanResult, at, trackedAt, ev) {
+  if (!scanResult?.ok) return { commit: false, log: false };
+  if (trackedAt === at) return { commit: false, log: false };
+  if (!ev) return { commit: true, log: false };
+  return { commit: true, log: true };
+}
+
 function _handleRebalance(key, st, ctx) {
-  if (!st.lastRebalanceAt || st.lastRebalanceAt === _lastRebAt.get(key)) return;
+  if (!_shouldTriggerRebalanceScan(st.lastRebalanceAt, _lastRebAt.get(key)))
+    return;
   const at = st.lastRebalanceAt;
   const evts = st.rebalanceEvents || [];
   const ev = evts.length ? evts[evts.length - 1] : null;
@@ -128,11 +162,16 @@ function _handleRebalance(key, st, ctx) {
         key,
         r?.error || "scanPositions returned no result",
       );
-      return;
     }
-    if (_lastRebAt.get(key) === at) return;
+    const { commit, log: shouldLog } = _shouldCommitRebalanceScan(
+      r,
+      at,
+      _lastRebAt.get(key),
+      ev,
+    );
+    if (!commit) return;
     _lastRebAt.set(key, at);
-    if (!ev) return;
+    if (!shouldLog) return;
     const { when, detail } = _buildRebalanceLogEntry(ev, ctx);
     act(ACT_ICONS.lasso, "fee", "Rebalance", detail, when, ev.txHash);
   });
