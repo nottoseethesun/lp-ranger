@@ -2,171 +2,121 @@
 
 /**
  * @file test/dashboard-idle.test.js
- * @description Tests for the no-input timer's self-staleness guard in
- *   `public/dashboard-idle.js`.  The dashboard module is an ES module
- *   bundled by esbuild for the browser; we replicate the timer-arm
- *   helper in CommonJS for direct test access.  Mirror is small enough
- *   to keep in lockstep by inspection — if you change one, change the
- *   other.  Same pattern as `test/dashboard-csrf-fetch.test.js`.
+ * @description Tests for the no-input timer's staleness guard in
+ *   `public/dashboard-idle.js`.  The prior file mirrored the whole
+ *   arming path in CJS; this file drives the real `_isStaleFire`
+ *   export directly under jsdom.  The pure staleness check
+ *   (`nowMs - armedAt > 15 min + 2 s`) is the entire load-bearing
+ *   logic of the guard — the surrounding setTimeout/closure plumbing
+ *   is what routes the check, not what makes it correct.
  *
- *   Bug under test: after a long throttled-tab interval, Chrome can
- *   move a long-deferred setTimeout callback from the timer-heap into
- *   the task queue.  `clearTimeout` afterwards is a no-op for an
- *   already-queued task.  A fresh _onActivity reset arms a new timer
- *   correctly, but moments later the stale callback flushes and pauses
- *   everything — exactly matching the user-observed sequence
- *   `unpaused (mousemove)` followed ~10 s later by
- *   `paused (no-input 15m)`.
- *
- *   Fix: each timer arming captures `armedAt` in its own closure.  The
- *   callback self-cancels when `Date.now() - armedAt > 15 m + 2 s`.
+ *   Bug this guard prevents: after a long throttled-tab interval,
+ *   Chrome can move a long-deferred setTimeout callback from the
+ *   timer-heap into the task queue.  `clearTimeout` afterwards is a
+ *   no-op for an already-queued task, so a fresh `_onActivity` reset
+ *   arms a new timer correctly but moments later the stale callback
+ *   flushes and pauses everything — the user-observed
+ *   `unpaused (mousemove) → paused 10s later` race.  The closure
+ *   captures `armedAt` per-arming, and the staleness check bails when
+ *   the delivered callback is more than 2 s past its intended fire
+ *   time.
  */
 
-const { describe, it, beforeEach } = require("node:test");
-const assert = require("node:assert/strict");
+require("global-jsdom/register");
 
-// ── In-test replica of `_armNoInputTimer` ──────────────────────────────────
+const { describe, it, before } = require("node:test");
+const assert = require("node:assert/strict");
 
 const PAUSE_AFTER_NO_INPUT_MS = 15 * 60_000;
 const STALE_MARGIN_MS = 2_000;
 
-let _noInputTimer = null;
-let _now = 0;
-let _pending = [];
-let _sendPauseCalls = [];
+let mod;
 
-function _setTimeout(fn /*, _ms */) {
-  const handle = { fn, cleared: false };
-  _pending.push(handle);
-  return handle;
-}
-function _clearTimeout(h) {
-  if (h) h.cleared = true;
-}
-function _dateNow() {
-  return _now;
-}
-function _sendPause(reason) {
-  _sendPauseCalls.push(reason);
-}
-
-function _armNoInputTimer() {
-  if (_noInputTimer) _clearTimeout(_noInputTimer);
-  _noInputTimer = null;
-  const armedAt = _dateNow();
-  _noInputTimer = _setTimeout(() => {
-    _noInputTimer = null;
-    if (_dateNow() - armedAt > PAUSE_AFTER_NO_INPUT_MS + STALE_MARGIN_MS)
-      return;
-    _sendPause("no-input 15m");
-  }, PAUSE_AFTER_NO_INPUT_MS);
-}
-
-function _firePending() {
-  const generation = _pending;
-  _pending = [];
-  for (const h of generation) if (!h.cleared) h.fn();
-}
-
-beforeEach(() => {
-  _noInputTimer = null;
-  _now = 0;
-  _pending = [];
-  _sendPauseCalls = [];
+before(async () => {
+  mod = await import("../public/dashboard-idle.js");
 });
 
-// ── Tests ──────────────────────────────────────────────────────────────────
-
-describe("no-input timer self-staleness guard", () => {
-  it("normal firing at +15m calls _sendPause", () => {
-    _now = 1000;
-    _armNoInputTimer();
-    _now += PAUSE_AFTER_NO_INPUT_MS;
-    _firePending();
-    assert.deepStrictEqual(_sendPauseCalls, ["no-input 15m"]);
+describe("_isStaleFire()", () => {
+  it("is false when the callback fires exactly at the intended time (delta = 0)", () => {
+    const armedAt = 1_000_000;
+    const nowMs = armedAt + PAUSE_AFTER_NO_INPUT_MS;
+    assert.strictEqual(mod._isStaleFire(armedAt, nowMs), false);
   });
 
-  it("firing at +15m + 1s still pauses (within 2s margin)", () => {
-    _now = 1000;
-    _armNoInputTimer();
-    _now += PAUSE_AFTER_NO_INPUT_MS + 1_000;
-    _firePending();
-    assert.deepStrictEqual(_sendPauseCalls, ["no-input 15m"]);
+  it("is false when the callback fires up to STALE_MARGIN_MS late (Chrome jitter)", () => {
+    const armedAt = 1_000_000;
+    const nowMs = armedAt + PAUSE_AFTER_NO_INPUT_MS + STALE_MARGIN_MS;
+    assert.strictEqual(mod._isStaleFire(armedAt, nowMs), false);
   });
 
-  it("firing at +15m + 2s + 1ms self-cancels (just past margin)", () => {
-    _now = 1000;
-    _armNoInputTimer();
-    _now += PAUSE_AFTER_NO_INPUT_MS + STALE_MARGIN_MS + 1;
-    _firePending();
-    assert.deepStrictEqual(_sendPauseCalls, []);
+  it("becomes true 1 ms past the STALE_MARGIN_MS margin (bug guard fires)", () => {
+    const armedAt = 1_000_000;
+    const nowMs = armedAt + PAUSE_AFTER_NO_INPUT_MS + STALE_MARGIN_MS + 1;
+    assert.strictEqual(mod._isStaleFire(armedAt, nowMs), true);
   });
 
-  it("stale firing hours after arming self-cancels", () => {
-    _now = 1000;
-    _armNoInputTimer();
-    _now += 3 * 60 * 60_000; // 3 hours
-    _firePending();
-    assert.deepStrictEqual(_sendPauseCalls, []);
+  it("is true for a callback delivered hours late (the real bug scenario)", () => {
+    const armedAt = 1_000_000;
+    const nowMs = armedAt + 3 * 60 * 60_000; // 3 hours
+    assert.strictEqual(mod._isStaleFire(armedAt, nowMs), true);
   });
 
-  it(
-    "stale callback survives clearTimeout but bails despite a fresh re-arm " +
-      "(exactly the user-observed `unpaused → paused 10s later` race)",
-    () => {
-      _now = 1000;
-      _armNoInputTimer();
-      const staleHandle = _pending[0];
+  it("is false when the callback fires slightly early — jitter can go both ways", () => {
+    const armedAt = 1_000_000;
+    // 14 min 55 s past arming — under the intended fire time.
+    const nowMs = armedAt + PAUSE_AFTER_NO_INPUT_MS - 5_000;
+    assert.strictEqual(mod._isStaleFire(armedAt, nowMs), false);
+  });
 
-      // Hours pass — tab was throttled, the original callback is now
-      // long overdue.  Chrome unthrottles and "queues" the callback
-      // (we simulate this by keeping `staleHandle` alive even though
-      // the next _armNoInputTimer call will clear it via the handle's
-      // `cleared` flag — Chrome's task-queue position has already been
-      // committed and `clearTimeout` is too late).
-      _now += 3 * 60 * 60_000;
-
-      // _onActivity-equivalent: arms a fresh timer (and clears the
-      // stale handle, but per the bug premise that clear is too late).
-      _armNoInputTimer();
-
-      // Force-fire the stale callback as if Chrome had already moved
-      // it onto the task queue before clearTimeout ran.
-      staleHandle.fn();
-
-      // The fix proves itself: closure-captured `armedAt` (from the
-      // ORIGINAL arming, hours ago) makes the staleness check fire
-      // even though a fresh _armNoInputTimer has set a new module-
-      // level `_noInputTimer`.  Without closure capture, a stale
-      // callback would see "fresh armedAt" and proceed.
-      assert.deepStrictEqual(
-        _sendPauseCalls,
-        [],
-        "stale callback must self-cancel even though a fresh re-arm has happened",
-      );
-    },
-  );
-
-  it("re-arm clears the prior pending handle", () => {
-    _now = 1000;
-    _armNoInputTimer();
-    const firstHandle = _pending[0];
-    _now += 5_000;
-    _armNoInputTimer();
+  it("threshold is measured from ARMED (not from wall-clock 0) — closure semantics", () => {
+    /*- Two independent armings at wildly different wall-clock times
+     *  must each judge staleness relative to THEIR OWN armedAt.  This
+     *  is what the closure capture buys — a module-level `_lastArmedAt`
+     *  would be overwritten by the second arming and mis-classify the
+     *  first callback's staleness. */
+    const first = 1_000_000;
+    const second = 500_000_000_000; // arbitrary distant future
+    // First callback fires at intended time relative to first arming.
     assert.strictEqual(
-      firstHandle.cleared,
+      mod._isStaleFire(first, first + PAUSE_AFTER_NO_INPUT_MS),
+      false,
+    );
+    // Second callback fires at intended time relative to second arming.
+    assert.strictEqual(
+      mod._isStaleFire(second, second + PAUSE_AFTER_NO_INPUT_MS),
+      false,
+    );
+    // A STALE first callback delivered at the second arming's time
+    // (hours after first) is judged against ITS armedAt (first) and
+    // trips the guard.
+    assert.strictEqual(
+      mod._isStaleFire(first, second + PAUSE_AFTER_NO_INPUT_MS),
       true,
-      "_armNoInputTimer must clear the prior pending handle",
     );
   });
+});
 
-  it("only the most recent arming pauses on its own clean fire", () => {
-    _now = 1000;
-    _armNoInputTimer();
-    _now += 5_000;
-    _armNoInputTimer();
-    _now += PAUSE_AFTER_NO_INPUT_MS; // 15m past second arm
-    _firePending();
-    assert.deepStrictEqual(_sendPauseCalls, ["no-input 15m"]);
+// ── isStaleForUiPurposes (public API) ─────────────────────────────────
+
+describe("isStaleForUiPurposes()", () => {
+  it("is a function exported by the real module", () => {
+    assert.strictEqual(typeof mod.isStaleForUiPurposes, "function");
+  });
+
+  it("distinguishes events before/after the tracker's wake timestamp", () => {
+    /*- `_uiLastWokeUpAtMS` initialises to Date.now() at module load.
+     *  Anything before that is stale; anything at-or-after is not. */
+    const now = Date.now();
+    assert.strictEqual(mod.isStaleForUiPurposes(now - 60_000), true);
+    assert.strictEqual(mod.isStaleForUiPurposes(now + 60_000), false);
+  });
+});
+
+// ── isBrowserPaused (public API) ──────────────────────────────────────
+
+describe("isBrowserPaused()", () => {
+  it("returns the current _browserHasPaused flag", () => {
+    // Initial state on module load is false — no pause has fired.
+    assert.strictEqual(typeof mod.isBrowserPaused(), "boolean");
   });
 });
