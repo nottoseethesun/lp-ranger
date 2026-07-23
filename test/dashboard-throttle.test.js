@@ -226,6 +226,41 @@ describe("onParamChange() — typing must NOT move the saved-value displays", ()
   });
 });
 
+describe("applySavedMinInterval() — per-position seed from saved config", () => {
+  it(
+    "seeds throttle.minIntervalMs + the label from the saved value — " +
+      "the dashboard-only-mode fix (no bot loop → no throttleState in " +
+      "the payload; saved config is the only source)",
+    () => {
+      mod.applySavedMinInterval(20);
+      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
+      assert.strictEqual(
+        document.getElementById("dblWindowLabel").textContent,
+        "80 min",
+      );
+      assert.strictEqual(mod.throttle.currentWaitMs, 20 * 60 * 1000);
+    },
+  );
+
+  it("does not clobber currentWaitMs while doubling is active", () => {
+    mod.throttle.doublingActive = true;
+    mod.throttle.currentWaitMs = 80 * 60 * 1000;
+    mod.applySavedMinInterval(20);
+    assert.strictEqual(mod.throttle.currentWaitMs, 80 * 60 * 1000);
+  });
+
+  it("ignores invalid input (undefined / NaN / zero / negative)", () => {
+    for (const bad of [undefined, NaN, 0, -5]) {
+      mod.applySavedMinInterval(bad);
+      assert.strictEqual(
+        mod.throttle.minIntervalMs,
+        10 * 60 * 1000,
+        `input ${bad} must not change minIntervalMs`,
+      );
+    }
+  });
+});
+
 describe("saveMinInterval() — Save click applies the value + label", () => {
   it(
     "saving 15 propagates to throttle.minIntervalMs AND updates " +

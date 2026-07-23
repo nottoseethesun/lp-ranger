@@ -457,6 +457,27 @@ export function _saveSingleConfig(inputId, key, parse) {
 }
 
 /** Save min rebalance interval. */
+/**
+ * Apply a SAVED Min Time Between Rebalances value (minutes) to the
+ * client throttle so the derived displays (Doubling Trigger Window
+ * label, countdown KPI) reflect it.  Two callers:
+ *   - `saveMinInterval()` — optimistic apply on the Save click;
+ *   - `_populateConfigInputs()` in dashboard-data.js — per-position
+ *     seed from the saved config in the /api/status payload.  This
+ *     covers dashboard-only mode (bots not running → no
+ *     `throttleState` in the payload at all) and the window before a
+ *     freshly-started bot's first poll emits a snapshot.
+ * Invalid input is ignored (no literal fallback per
+ * feedback_one_literal_per_shipped_default).
+ * @param {number} minutes  Saved Min Time Between Rebalances.
+ */
+export function applySavedMinInterval(minutes) {
+  if (!Number.isFinite(minutes) || minutes < 1) return;
+  throttle.minIntervalMs = minutes * 60 * 1000;
+  if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
+  updateThrottleUI();
+}
+
 export function saveMinInterval() {
   const n = parseInt(g("inMinInterval")?.value, 10);
   /*- No literal fallback per feedback_one_literal_per_shipped_default:
@@ -464,12 +485,10 @@ export function saveMinInterval() {
   if (!Number.isFinite(n) || n < 1) return;
   /*- Optimistic client apply on Save: the Doubling Trigger Window label
    *  and countdown KPI derive from `throttle.minIntervalMs`, which is
-   *  save-gated (see `onParamChange`).  Setting it here makes the label
+   *  save-gated (see `onParamChange`).  Applying here makes the label
    *  reflect the new value on the Save click itself instead of waiting
    *  up to one poll cycle for the server round-trip. */
-  throttle.minIntervalMs = n * 60 * 1000;
-  if (!throttle.doublingActive) throttle.currentWaitMs = throttle.minIntervalMs;
-  updateThrottleUI();
+  applySavedMinInterval(n);
   _saveSingleConfig("inMinInterval", "minRebalanceIntervalMin", () => n);
   _validateIntervalVsTimeout();
 }
