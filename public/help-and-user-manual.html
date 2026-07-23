@@ -27,6 +27,7 @@
       <li><a href="#per-token-slippage">Per-Token Slippage</a></li>
       <li><a href="#volatility-doubling">Volatility Doubling</a></li>
       <li><a href="#daily-cap">Max Rebalances / Day (the Daily Cap)</a></li>
+      <li><a href="#setting-applicability">Which Rebalances Each Setting Applies To</a></li>
       <li><a href="#gas-cost-protection">Gas Cost Protection</a></li>
       <li><a href="#closed-positions">Closed Positions</a></li>
       <li><a href="#telegram-notifications">Telegram Notifications</a></li>
@@ -126,7 +127,7 @@
   <p><strong>Tuning.</strong> The 10-minute delay and 5% threshold ship in <code>app-config/app-defaults-for-user-configurable/bot-config-defaults.json</code> under the <code>residualCleanup</code> group (fields <code>delayMs</code> and <code>thresholdPct</code>). They are intentionally not exposed in the Bot Configuration UI &mdash; they are cross-cutting defaults that apply to every managed position. To override, copy the file <code>app-config/app-defaults-for-user-configurable/bot-config-defaults.json</code> to <code>app-config/user-configurable/bot-config-defaults.json</code>, and edit your copy to set just the <code>residualCleanup</code> keys you want to change (you do not need to copy the rest &mdash; the runtime deep-merges your copy on top of the shipped defaults, so any key you omit keeps its shipped value). Your copy in <code>user-configurable/</code> survives tarball upgrades; the original in <code>app-defaults-for-user-configurable/</code> must stay untouched.</p>
 
   <h2 id="range-width">Price Range Extension, Range Width, and Position Offset</h2>
-  <p>These live in <strong>Bot Configuration</strong> under <strong>Range &amp; Execution</strong>, persist per position, and take effect on the next rebalance (manual or automatic). No forced rebalance is needed to change any of them.</p>
+  <p>These live in <strong>Bot Configuration</strong> under <strong>Range &amp; Execution</strong>, persist per position, and take effect on the next rebalance <strong>of any kind</strong> &mdash; automatic out-of-range, OOR-timeout, automatic residual cleanup, manual Rebalance Now, and closed-position re-opens all mint their new range from these settings (see <a href="#setting-applicability">Which Rebalances Each Setting Applies To</a>). None of them is a gate &mdash; they never block or delay a rebalance; they only shape the minted range. No forced rebalance is needed to change any of them.</p>
 
   <h3>Price Range Extension vs Range Width &mdash; two different concepts</h3>
   <p>LP Ranger distinguishes two related but different concepts for &ldquo;how wide is the position&rdquo;. Only the first is implemented today; the second is a future feature on the road map.</p>
@@ -166,6 +167,7 @@
 
   <h2 id="volatility-doubling">Volatility Doubling</h2>
   <p>If <strong>3 rebalances</strong> occur within <strong>4&times; the minimum interval</strong> (e.g. 40 minutes when the minimum is 10 min), the bot enters <em>doubling mode</em>. Each subsequent rebalance must wait twice as long as the previous one: 10m &rarr; 20m &rarr; 40m &rarr; 80m, and so on. This prevents rapid-fire rebalancing during high volatility. Doubling mode clears automatically if no rebalance is needed for 4&times; the current wait, or at the daily midnight UTC reset.</p>
+  <p><strong>All successful rebalances count toward the three in-window triggers</strong> &mdash; automatic out-of-range, OOR-timeout, residual cleanups, and manual Rebalance Now clicks alike. Once doubling mode is active, the doubled wait blocks only the <em>automatic</em> rebalances; manual clicks are never blocked, but each successful rebalance while doubling is active &mdash; manual included &mdash; doubles the wait again. See <a href="#setting-applicability">Which Rebalances Each Setting Applies To</a>.</p>
 
   <h2 id="daily-cap">Max Rebalances / Day (the Daily Cap)</h2>
   <p><strong>Max Rebalances / Day</strong> (in Bot Configuration) is a per-pool daily safety cap. <strong>Every successful rebalance counts toward it, no matter what triggered it</strong>: automatic out-of-range rebalances, out-of-range <em>timeout</em> rebalances, automatic <a href="#residual-cleanup">residual cleanup</a> follow-on rebalances, and manual <strong>Rebalance Now</strong> clicks. Compounding is a separate operation and never counts.</p>
@@ -173,6 +175,17 @@
   <ul>
     <li><strong>Manual clicks are never blocked &mdash; but they still count.</strong> You can always click <strong>Rebalance Now</strong>, even while CAPPED; you stay in control of your own position. Each click adds one to the day&rsquo;s count, though, so automatic rebalances (including residual cleanups) remain blocked until the midnight UTC reset.</li>
     <li><strong>The cap is per pool, not global.</strong> Each pool&rsquo;s daily count is independent, so a volatile pool hitting its cap does not stop rebalances on your other pools. Counts survive an app restart &mdash; they are rebuilt from on-chain history.</li>
+  </ul>
+
+  <h2 id="setting-applicability">Which Rebalances Each Setting Applies To</h2>
+  <p>Rebalances come from four triggers: <strong>automatic out-of-range</strong> (price crossed the OOR threshold), <strong>OOR-timeout</strong> (price stayed out of range past the time threshold), <strong>automatic residual cleanup</strong> (follow-on sweep of wallet leftovers), and <strong>manual</strong> (you clicked Rebalance Now, including a closed-position re-open). Here is exactly which rebalances each Rebalance Timing, Throttle, and Range setting governs &mdash; and which it does not:</p>
+  <ul>
+    <li><strong>Min Time Between Rebalances</strong> &mdash; blocks all three <em>automatic</em> triggers (out-of-range, OOR-timeout, residual cleanup) until the cooldown elapses. Never blocks a manual click. However, <strong>every successful rebalance of any kind &mdash; manual and cleanup included &mdash; restarts the cooldown clock</strong>, so a manual rebalance delays the next automatic one by this interval.</li>
+    <li><strong>Max Rebalances / Day</strong> &mdash; blocks all three automatic triggers once the pool&rsquo;s daily count reaches the cap; never blocks a manual click; <strong>every successful rebalance of any kind counts toward it</strong>. See <a href="#daily-cap">Max Rebalances / Day (the Daily Cap)</a> for the full rules.</li>
+    <li><strong>Doubling Trigger Window</strong> (calculated: 4&times; Min Time Between Rebalances) &mdash; <strong>all successful rebalances count toward the three in-window triggers</strong>, manual and cleanup included. Once Doubling Mode is active, the doubled wait blocks only the automatic triggers; manual clicks are never blocked &mdash; but each successful rebalance while doubling is active, manual included, <strong>doubles the wait again</strong>.</li>
+    <li><strong>Price Range Extension</strong> &mdash; not a gate: it never blocks or delays anything. It shapes the price range of the minted position on <strong>every rebalance regardless of trigger</strong> &mdash; automatic out-of-range, OOR-timeout, residual cleanup, manual, and closed-position re-opens. The Full-Range checkbox, when on, overrides it.</li>
+    <li><strong>OOR Threshold Before Rebalance Is Triggered (&plusmn;%)</strong> &mdash; consulted <em>only</em> by the automatic out-of-range trigger. Residual-cleanup and manual rebalances ignore it entirely (they can run even while the price is inside the range). The OOR-timeout trigger fires despite it.</li>
+    <li><strong>OOR Rebalance Time Threshold</strong> &mdash; a second trigger for automatic rebalances only; residual-cleanup and manual rebalances do not consult it. The countdown starts at the first out-of-range poll and resets when the price returns to range or when any rebalance succeeds. A timeout-triggered rebalance still has to pass the Min Time Between Rebalances cooldown, Doubling Mode, and the daily cap &mdash; the timeout is a trigger, not a bypass.</li>
   </ul>
 
   <h2 id="gas-cost-protection">Gas Cost Protection</h2>

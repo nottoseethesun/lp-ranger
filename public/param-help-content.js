@@ -28,6 +28,18 @@ export const PARAM_HELP = {
           "(0.95x to 1.05x).",
       },
       {
+        heading: "Which rebalances it applies to",
+        body:
+          "<strong>Every rebalance that mints a new position, " +
+          "regardless of trigger</strong>: automatic out-of-range, " +
+          "OOR-timeout, automatic residual-cleanup follow-ons, manual " +
+          "<strong>Rebalance Now</strong> clicks, and closed-position " +
+          "re-opens. It is not a gate &mdash; it never blocks or delays " +
+          "a rebalance; it only shapes the price range of the minted " +
+          "position. The <strong>Full-Range</strong> checkbox, when on, " +
+          "overrides this value.",
+      },
+      {
         heading: "Range Width vs Price Range Extension",
         body:
           "These are two different concepts. <strong>Price Range " +
@@ -157,6 +169,17 @@ export const PARAM_HELP = {
           "at least 10% past the boundary &mdash; not just outside the range.",
       },
       {
+        heading: "Which rebalances it applies to",
+        body:
+          "Only the <strong>automatic out-of-range trigger</strong> " +
+          "consults this threshold. Residual-cleanup and manual " +
+          "<strong>Rebalance Now</strong> rebalances ignore it entirely " +
+          "&mdash; they can run even while the price is inside the " +
+          "range. The <strong>OOR Rebalance Time Threshold</strong>, if " +
+          "set, fires after continuous out-of-range time even when this " +
+          "threshold has not been crossed.",
+      },
+      {
         heading: "Recommended values",
         body:
           "<strong>Stable pairs</strong> (e.g. stablecoin/stablecoin): 1&ndash;5%. " +
@@ -197,6 +220,20 @@ export const PARAM_HELP = {
           "out of range for this many minutes, even if the OOR Threshold " +
           "hasn&rsquo;t been crossed. The countdown resets whenever the " +
           "price returns to range.",
+      },
+      {
+        heading: "Which rebalances it applies to",
+        body:
+          "This is a second trigger for <strong>automatic</strong> " +
+          "rebalances only. Residual-cleanup and manual " +
+          "<strong>Rebalance Now</strong> rebalances do not consult it. " +
+          "The countdown starts at the first out-of-range poll and " +
+          "resets when the price returns to range or when any rebalance " +
+          "succeeds. A timeout-triggered rebalance still has to pass " +
+          "the <strong>Min Time Between Rebalances</strong> cooldown, " +
+          "<strong>Doubling Mode</strong>, and the <strong>Max " +
+          "Rebalances / Day</strong> cap &mdash; the timeout is a " +
+          "trigger, not a bypass.",
       },
       {
         heading: "Recommended values",
@@ -557,6 +594,20 @@ export const PARAM_HELP = {
           "periods, which would waste gas and incur unnecessary slippage.",
       },
       {
+        heading: "Which rebalances it applies to",
+        body:
+          "The cooldown blocks every <strong>automatic</strong> " +
+          "rebalance: out-of-range, OOR-timeout, and residual-cleanup " +
+          "follow-ons. Manual <strong>Rebalance Now</strong> clicks are " +
+          "never blocked by it. However, <strong>every successful " +
+          "rebalance of any kind &mdash; manual and residual cleanup " +
+          "included &mdash; restarts the cooldown clock</strong>, so a " +
+          "manual rebalance delays the next automatic one by this " +
+          "interval. Every successful rebalance also counts toward the " +
+          "Doubling Mode trigger (three rebalances within 4&times; this " +
+          "interval).",
+      },
+      {
         heading: "Recommended values",
         body:
           "<strong>10&ndash;30 minutes</strong> for most pools. Volatile " +
@@ -651,6 +702,19 @@ export const PARAM_HELP = {
           "<strong>Doubling Mode</strong> activates &mdash; the cooldown " +
           "between rebalances doubles after each one: 10m &rarr; 20m " +
           "&rarr; 40m &rarr; 80m, and so on.",
+      },
+      {
+        heading: "Which rebalances count, and which are gated",
+        body:
+          "<strong>All successful rebalances count toward the " +
+          "three in-window triggers</strong> &mdash; automatic out-of-range, " +
+          "OOR-timeout, residual cleanups, and manual <strong>Rebalance " +
+          "Now</strong> clicks alike. Once Doubling Mode is active, the " +
+          "doubled wait blocks only the <strong>automatic</strong> " +
+          "rebalances (including residual cleanups); manual clicks are " +
+          "never blocked. But every successful rebalance while Doubling " +
+          "Mode is active &mdash; manual included &mdash; " +
+          "<strong>doubles the wait again</strong>.",
       },
       {
         heading: "Why it exists",
