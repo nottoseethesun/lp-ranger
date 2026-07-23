@@ -2008,56 +2008,6 @@ header{
   color:var(--muted);
 }
 
-/* Doubling mode status panel */
-.dbl-panel{
-  padding:15px 18px;
-  background:rgb(196 113 237 / 6%);
-  border:1px solid rgb(196 113 237 / 20%);
-  border-radius:12px;
-  margin-top:12px;
-}
-.dbl-panel.hidden{display:none;}
-
-.dbl-title{
-  font-size:20px;
-  font-weight:700;
-  color:#c471ed;
-  margin-bottom:9px;
-  display:flex;
-  align-items:center;
-  gap:9px;
-}
-
-.dbl-row{
-  display:flex;
-  justify-content:space-between;
-  font-size:20px;
-  margin-bottom:5px;
-}
-.dbl-key{color:var(--muted);}
-
-.dbl-val{
-  color:#c471ed;
-  font-weight:700;
-}
-
-.countdown{
-  font-family:Urbanist,sans-serif;
-  font-size:27px;
-  font-weight:700;
-  color:#c471ed;
-  text-align:center;
-  margin:12px 0 6px;
-  letter-spacing:3px;
-}
-.countdown.ok{color:var(--accent3);}
-
-.countdown-label{
-  font-size:18px;
-  color:var(--muted);
-  text-align:center;
-}
-
 .apply-btn{
   width:100%;
   margin-top:15px;
