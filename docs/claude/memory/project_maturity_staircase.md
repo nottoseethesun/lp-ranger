@@ -14,6 +14,14 @@ files (originals in `archive/`); search this one.
 
 ## The staircase
 
+- **Candidate for 1.0 — 2026-09-03.** After 0.9.2 shipped to Production:
+  *"I think that perhaps, this app is done. If it stands up for burn-in
+  and some more months of use, it will be ready to be Version 1.0."* No
+  further features are wanted; the remaining work is burn-in. Treat any
+  proposal that adds surface area as needing a strong case, and prefer
+  leaving working code alone. See [[project_0092_burn_in_watch]].
+
+
 - **MVP — 2026-04-09.** User began running the app in production with real LP
   positions on PulseChain.
 - **Soft-launch ready — 2026-04-24.** Declared after Pi 5 resource validation:

@@ -52,3 +52,11 @@ on-chain rebalance count, deposit amounts present, cache keys
 well-formed. Worth a `util/diagnostic/` script so it is a command
 rather than a lucky idea. See [[feedback_signal_substitution]] and
 [[project_util_diagnostic_directory]].
+
+---
+
+**SUPERSEDED — archived 2026-09-03.** 0.9.2 shipped and is on
+Production; see [[project_0092_burn_in_watch]]. The three watch items here
+were resolved or overtaken: ILG still has no live rejection (carried
+forward), In/Out was found to be wrong and fixed in #198, and the Reload
+path was fixed in #196 so it re-derives instead of restoring.
