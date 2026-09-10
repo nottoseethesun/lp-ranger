@@ -33,6 +33,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Nice-to-have lists in user-facing docs need a "not bugs" note
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Describe operator-facing behavior, not implementation constants
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — User uses them interchangeably; don't ask which
+- [one thing at a time](feedback_one_thing_at_a_time.md) — Answer only what was asked, about only the thing named; yes/no means yes/no
 - [prose style](feedback_prose_style.md) — Short sentences, concise, spell out small numbers, no gwei
 - [release notes style](feedback_release_notes_style.md) — Overview naming an honorable Old West gunslinger + one-line summary; state consequences and payoffs, not just changes
 - [revert means code](feedback_revert_means_code.md) — "Revert the changes" = repo edits only, never the in-flight plan
@@ -101,7 +102,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Always "Raspberry Pi 5 with Heat Sink and Fan"
 - [PR #125 burn-in watch](project_pr125_burn_in_watch.md) — LP-browser rescan after a failed scan, in prod burn-in
 - [0.8.17 burn-in watch](project_0817_burn_in_watch.md) — Aggregator now really routes via 9mm; swap pricing on Prod changes with this release
-- [0.9.1 burn-in watch](project_0091_burn_in_watch.md) — ILG never yet refused a live position; existing installs need one Reload for complete P&L
+- [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — 0.9.2 on Prod; user says the app may be done, 1.0 after burn-in
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — Two audit workflows; the daily one audits the release tag, not main
 - [maturity staircase](project_maturity_staircase.md) — MVP → soft-launch → approaching battle-tested; stability outranks features
@@ -112,6 +113,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [CSRF does not gate the bot](project_csrf_does_not_gate_bot.md) — CSRF guards browser POSTs only; the bot is a direct in-process caller
 - [event cache scoping rationale](project_event_cache_scoping_rationale.md) — Why caches key on chain+factory+wallet+tokens+fee, not pool address
 - [fresh deposit detection](project_fresh_deposit_detection.md) — Transfer scan with swap/drain/contract filters for lifetime HODL
+- [P&L accounting model](project_pnl_accounting_model.md) — Settled definitions: IL/G is divergence only, fees counted once in Profit
 - [lifetime metrics distinction](project_lifetime_metrics_distinction.md) — Lifetime Net P&L vs Lifetime IL/G — different formulas, different roles
 - [Moralis setup flow](project_moralis_setup_flow.md) — Moralis key can be entered during wallet setup, not just Settings
 - [price source priority](project_price_source_priority.md) — Moralis → GeckoTerminal → DexScreener, current and historical
