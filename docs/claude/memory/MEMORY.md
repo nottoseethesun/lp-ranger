@@ -102,7 +102,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Always "Raspberry Pi 5 with Heat Sink and Fan"
 - [PR #125 burn-in watch](project_pr125_burn_in_watch.md) — LP-browser rescan after a failed scan, in prod burn-in
 - [0.8.17 burn-in watch](project_0817_burn_in_watch.md) — Aggregator now really routes via 9mm; swap pricing on Prod changes with this release
-- [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — 0.9.2 on Prod; user says the app may be done, 1.0 after burn-in
+- [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — 0.9.2 + hotfix 0.9.2.1 on Prod; user says the app may be done, 1.0 after burn-in
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — Two audit workflows; the daily one audits the release tag, not main
 - [maturity staircase](project_maturity_staircase.md) — MVP → soft-launch → approaching battle-tested; stability outranks features
