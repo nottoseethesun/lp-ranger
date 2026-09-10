@@ -20,7 +20,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile then node_modules, `npm i`. Run it first; never analyse the dep graph
 - [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap in wipe/restore-settings; no check inside agents
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the actual linter to find where a rule fires; don't guess
-- [tag format, no v](project_tag_format_no_v.md) — Strict semver, no `v` prefix; latest via `--sort=-v:refname`
+- [tag format, no v](project_tag_format_no_v.md) — Strict semver, no `v` prefix; latest tag needs `--sort=-v:refname` **plus** `grep -v '^v'`
 
 ## How to work with the user
 - [bug only if current stack breaks](feedback_bug_only_if_current_stack_breaks.md) — Not a "bug" if it only fails under a hypothetical alternative stack
