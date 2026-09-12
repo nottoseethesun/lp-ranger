@@ -29,7 +29,7 @@
       "estimatedSwapGasUnits": 500000
     },
     "dexPairDetailPageUrl": {
-      "blockchain": "pulse"
+      "blockchain": "pulsechain"
     },
     "chartProviders": {
       "dexscreener": {

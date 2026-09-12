@@ -53,7 +53,7 @@ describe("dex-detail-page-url-generator — happy path", () => {
   it("composes the documented 9mm URL, leaving {poolId} for the client", () => {
     assert.strictEqual(
       buildDexDetailPageUrlTemplate(entry(), "pulsechain"),
-      "https://dex.9mm.pro/info/v3/pulse/pairs/{poolId}",
+      "https://dex.9mm.pro/info/v3/pulsechain/pairs/{poolId}",
     );
   });
 
@@ -62,7 +62,7 @@ describe("dex-detail-page-url-generator — happy path", () => {
     const pool = "0x82db51c694578a28da6545975bbda61e4c12b8e4";
     assert.strictEqual(
       tpl.replace("{poolId}", pool),
-      `https://dex.9mm.pro/info/v3/pulse/pairs/${pool}`,
+      `https://dex.9mm.pro/info/v3/pulsechain/pairs/${pool}`,
     );
   });
 
@@ -71,7 +71,10 @@ describe("dex-detail-page-url-generator — happy path", () => {
       entry({ swapProtocolVersion: "v4" }),
       "pulsechain",
     );
-    assert.strictEqual(tpl, "https://dex.9mm.pro/info/v4/pulse/pairs/{poolId}");
+    assert.strictEqual(
+      tpl,
+      "https://dex.9mm.pro/info/v4/pulsechain/pairs/{poolId}",
+    );
   });
 
   it("takes the domain from the entry, not from a hard-coded host", () => {
@@ -87,7 +90,7 @@ describe("dex-detail-page-url-generator — happy path", () => {
     delete e.swapProtocolVersion;
     assert.strictEqual(
       buildDexDetailPageUrlTemplate(e, "pulsechain"),
-      "https://dex.9mm.pro/pairs/pulse/{poolId}",
+      "https://dex.9mm.pro/pairs/pulsechain/{poolId}",
     );
   });
 });
@@ -196,7 +199,7 @@ describe("lp-providers payload enrichment", () => {
     assert.strictEqual(out[KEY].dexDetailPageName, "Dex Detail Page");
     assert.strictEqual(
       out[KEY].dexDetailPageUrlTemplate,
-      "https://dex.9mm.pro/info/v3/pulse/pairs/{poolId}",
+      "https://dex.9mm.pro/info/v3/pulsechain/pairs/{poolId}",
     );
   });
 
@@ -238,7 +241,7 @@ describe("shipped config wires end to end", () => {
     assert.ok(hit, "no shipped provider yielded a dex detail page URL");
     assert.strictEqual(
       hit.dexDetailPageUrlTemplate,
-      "https://dex.9mm.pro/info/v3/pulse/pairs/{poolId}",
+      "https://dex.9mm.pro/info/v3/pulsechain/pairs/{poolId}",
     );
     assert.strictEqual(hit.dexDetailPageName, "Dex Detail Page");
   });

@@ -4,7 +4,7 @@
  * @description
  * Builds the "Dex Detail Page" deep link shown above Chart Links in the
  * Pool Details dialog — e.g.
- * `https://dex.9mm.pro/info/v3/pulse/pairs/0x82db…`.
+ * `https://dex.9mm.pro/info/v3/pulsechain/pairs/0x82db…`.
  *
  * Nothing in that URL is hard coded here. Every part is resolved from
  * config, and each part comes from whichever file actually owns it:
@@ -14,7 +14,7 @@
  * | scheme + FQDN       | `dex.9mm.pro` | `lp-providers.json` → entry → `dexDetailPage`             |
  * | literal segments    | `info`, `pairs` | `dexDetailPage.pathSegments`                           |
  * | `{swapProtocolVersion}` | `v3` | the SAME lp-providers entry's `swapProtocolVersion`         |
- * | `{blockchain}`      | `pulse`  | active chain's `dexPairDetailPageUrl.blockchain` in chains.json |
+ * | `{blockchain}`      | `pulsechain` | active chain's `dexPairDetailPageUrl.blockchain` in chains.json |
  * | `{poolId}`          | `0x82db…`| left in the template; substituted client-side                 |
  *
  * Why the split: the domain and protocol version are properties of the
@@ -22,9 +22,10 @@
  * protocol), so they key off `<poolFactory>_<positionManager>` — the
  * composite key `lp-providers.json` already uses, which is where the
  * NFT position-manager contract id lives. The blockchain slug is a
- * property of the **chain**, and is per-URL-type: 9mm's pair page uses
- * `pulse` where DexScreener uses `pulsechain`, so it cannot be shared
- * with `chartProviders` even though today's values coincide.
+ * property of the **chain**, and is per-URL-type: DexTools uses
+ * `pulse` where this pair page and DexScreener both use `pulsechain`,
+ * so it cannot be shared with `chartProviders` even though some of
+ * today's values coincide.
  *
  * The template shape and the `{poolId}`-left-for-the-client contract
  * deliberately mirror `src/chart-providers.js`, so the dashboard

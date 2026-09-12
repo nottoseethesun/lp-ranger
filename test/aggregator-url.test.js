@@ -79,12 +79,13 @@ describe("aggregator slug config", () => {
   });
 
   it("keeps the slug distinct from the chart-provider slugs", () => {
-    /*- Same chain, three different vendor slugs — 9mm's aggregator uses
-     *  "pulsechain" while DexTools uses "pulse". They must stay
-     *  independently configurable even where values coincide. */
+    /*- Same chain, three independently-configured vendor slugs. Two
+     *  now coincide on "pulsechain" and DexTools still says "pulse" —
+     *  which is exactly why they stay separate keys: coinciding values
+     *  are a coincidence, not a shared setting. */
     const chain = CHAINS.pulsechain;
     assert.strictEqual(chain.aggregator.blockchain, "pulsechain");
     assert.strictEqual(chain.chartProviders.dextools.blockchain, "pulse");
-    assert.strictEqual(chain.dexPairDetailPageUrl.blockchain, "pulse");
+    assert.strictEqual(chain.dexPairDetailPageUrl.blockchain, "pulsechain");
   });
 });
