@@ -515,9 +515,9 @@ function _setRetryDelayForTests(ms) {
  * `PoolStateUnavailableError`, wrapping the most recent underlying
  * error.
  *
- * The retry orchestrator constructs fresh `JsonRpcProvider` instances
- * per RPC URL (read from `config.RPC_URL` + `config.RPC_URL_FALLBACK`)
- * rather than going through `sendTx`'s managed-provider proxy.  This
+ * The retry orchestrator builds a fresh provider per RPC URL (the whole
+ * ordered list, `config.RPC_URLS`) rather than going through `sendTx`'s
+ * managed-provider proxy.  This
  * lets the orchestrator target a specific RPC for each retry without
  * mutating `sendTx`'s persistent failover state (which would affect
  * every other concurrent read for a full hour).  The `provider`

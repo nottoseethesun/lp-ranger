@@ -21,15 +21,26 @@ import { g } from "./dashboard-helpers.js";
 /** Cached first endpoint, used as the input's placeholder. */
 let _primaryUrl = "";
 
+/** The in-flight (or settled) load, so callers can wait for it. */
+let _ready = null;
+
 /**
- * The server's preferred endpoint, or "" before the fetch resolves.
+ * The server's preferred endpoint, waiting for the list if it is still
+ * loading.
  *
- * Exported so other modules can stop hardcoding a default URL of their
- * own — there should be exactly one literal for this value, and it
- * lives in chains.json.
- * @returns {string}
+ * Exists because the synchronous getter has a window where it answers
+ * "" — between page load and the endpoint list arriving. A caller that
+ * built an ethers provider from that "" got one whose calls all throw,
+ * and the nearest catch turned that into "this wallet has no on-chain
+ * activity", i.e. an existing wallet reported as brand new. Waiting
+ * removes the window; the only way to still get "" is the endpoint
+ * request itself failing, which callers must handle as "unknown"
+ * rather than as an answer.
+ * @returns {Promise<string>}
  */
-export function getPrimaryRpcUrl() {
+export async function rpcUrlReady() {
+  if (_ready === null) initRpcEndpoints();
+  await _ready;
   return _primaryUrl;
 }
 
@@ -61,17 +72,30 @@ function _buildRow(ep) {
  * @returns {Promise<void>}
  */
 export async function initRpcEndpoints() {
-  const list = g("rpcList");
-  if (!list) return;
+  if (_ready !== null) return _ready;
+  _ready = _loadEndpoints();
+  return _ready;
+}
+
+/**
+ * Fetch the endpoint list and render the preset menu.
+ * @returns {Promise<void>}
+ */
+async function _loadEndpoints() {
   try {
     const res = await fetch("/api/rpc-endpoints");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { endpoints } = await res.json();
     if (!Array.isArray(endpoints) || endpoints.length === 0) return;
 
-    list.replaceChildren(...endpoints.map(_buildRow));
-
+    /*- Record the URL BEFORE touching the DOM.  `rpcUrlReady()` callers
+     *  build providers from this; a missing menu element must not cost
+     *  them the endpoint, so the data lands first and the menu is
+     *  decoration on top of it. */
     _primaryUrl = endpoints[0].url;
+
+    const list = g("rpcList");
+    if (list) list.replaceChildren(...endpoints.map(_buildRow));
     const input = g("inRpc");
     /*- Placeholder only, never the value: an empty input means "use the
      *  configured default", and pre-filling it would make the operator's

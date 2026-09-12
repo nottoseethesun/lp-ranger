@@ -9,12 +9,18 @@ metadata:
 
 **Status: DEFERRED.** Per user 2026-06-18: "It seems that there might be a lot of opportunity to consolidate the re-try code for reading token balances and other items in the app. But I don't want to do a big refactor for a long time." Holding the refactor until the user signals readiness.
 
+> **Updated 2026-09-12.** Both orchestrators now walk `config.RPC_URLS`
+> rather than a hand-built primary/fallback pair, and both build their
+> providers through `buildProvider`, so their requests are paced by
+> `src/rpc-request-manager.js` like every other. The duplication below is
+> unchanged — only the URL source and provider construction moved.
+
 ## What's duplicated
 
 The same retry orchestrator shape now exists in two places (and likely more):
 
-- **`src/rebalancer-pools.js` `getPoolState`** (PR #137 / commit `b920a5d`). Iterates `[config.RPC_URL, config.RPC_URL_FALLBACK]`, each tried up to `_POOL_STATE_ATTEMPTS_PER_URL` (2) times with `_POOL_STATE_RETRY_DELAY_MS` (3 s) wait between. Builds fresh `JsonRpcProvider` per attempt; falls back to the caller-supplied provider when the ethersLib lacks the constructor (test-mock case). On exhaustion throws `PoolStateUnavailableError(attempts, cause)`. Test-only delay override via `_setRetryDelayForTests`.
-- **`src/server-can-reopen.js` `_readBothBalancesWithRetry`** (closed-position-reopen PR / branch `closed-position-reopen-via-manage`). Identical shape: same urls list, same attempts-per-url, same delay default, same fresh-provider-or-fallback construction, same test setter, throws `WalletReadUnavailableError(attempts, cause)`.
+- **`src/rebalancer-pools.js` `getPoolState`** (PR #137 / commit `b920a5d`). Iterates `config.RPC_URLS` (the ordered endpoint list), each tried up to `_POOL_STATE_ATTEMPTS_PER_URL` (2) times with `_POOL_STATE_RETRY_DELAY_MS` (3 s) wait between. Builds a fresh provider per attempt via `buildProvider` (so the requests are paced by the global request manager); falls back to the caller-supplied provider when the ethersLib lacks the constructor (test-mock case). On exhaustion throws `PoolStateUnavailableError(attempts, cause)`. Test-only delay override via `_setRetryDelayForTests`.
+- **`src/server-can-reopen.js` `_readBothBalancesWithRetry`** (closed-position-reopen PR / branch `closed-position-reopen-via-manage`). Identical shape: same `config.RPC_URLS` list, same attempts-per-url, same delay default, same `buildProvider`-or-fallback construction, same test setter, throws `WalletReadUnavailableError(attempts, cause)`.
 
 The two functions differ only in (a) what they call inside the inner `try` and (b) the error class they throw on exhaustion.
 
@@ -24,7 +30,7 @@ Likely shape of the future shared helper (`src/rpc-retry.js`?):
 
 ```js
 async function withRpcRetry({ ethersLib, providerFactory, fn, ErrorClass, attemptsPerUrl = 2, delayMs = 3000 }) {
-  const urls = [config.RPC_URL, config.RPC_URL_FALLBACK].filter(Boolean);
+  const urls = config.RPC_URLS;
   let attemptCount = 0, lastErr = null;
   for (const url of urls) {
     for (let attempt = 1; attempt <= attemptsPerUrl; attempt++) {

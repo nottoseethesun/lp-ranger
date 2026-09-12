@@ -317,16 +317,40 @@ export function _updatePriceMarker(d) {
 
 function _setIdlePill(d) {
   const mp = d._managedPositions || [];
-  if (mp.some((p) => p.status === "running"))
-    return _setStatusPill("status-pill active", "dot green", "MANAGING");
-  _setStatusPill(
-    "status-pill warning",
-    "dot yellow",
-    "IDLE",
-    mp.length === 0
-      ? "No positions are being managed. After syncing, select a position and click Manage."
-      : "",
-  );
+  const running = mp.filter((p) => p.status === "running");
+  if (running.length === 0) {
+    _setStatusPill(
+      "status-pill warning",
+      "dot yellow",
+      "IDLE",
+      mp.length === 0
+        ? "No positions are being managed. After syncing, select a position and click Manage."
+        : "",
+    );
+    return;
+  }
+
+  /*- This runs only when the position on screen is NOT itself running —
+   *  the caller has already handled RUNNING, ABORTED and HALTED, which
+   *  are all about the viewed position.
+   *
+   *  So a bare "MANAGING" here was about a DIFFERENT position, while
+   *  sitting directly above a card reading "NOT ACTIVELY MANAGED". Two
+   *  subjects, one label, no way for a reader to tell them apart. Name
+   *  the subject instead: the pill still reports the whole bot's state,
+   *  it just says whose. */
+  const activeTid = posStore.getActive()?.tokenId;
+  const others = running.filter((p) => String(p.tokenId) !== String(activeTid));
+  if (activeTid !== undefined && others.length === running.length) {
+    const n = others.length;
+    return _setStatusPill(
+      "status-pill active",
+      "dot green",
+      `MANAGING ${n} OTHER${n === 1 ? "" : "S"}`,
+      "The bot is managing other positions. The position shown here is not one of them.",
+    );
+  }
+  _setStatusPill("status-pill active", "dot green", "MANAGING");
 }
 
 /** Update the bot status pill, alerts, price marker, and last-check labels. */

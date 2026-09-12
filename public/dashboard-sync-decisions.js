@@ -35,9 +35,31 @@ export function _computeSyncStatus(inputs) {
     rebalanceScanComplete,
     lifetimeScanComplete,
   } = inputs;
-  if (!active) return { complete: true, label: "" };
-  if (walletAddress && positionCount === 0)
-    return { complete: false, label: "" };
+  /*- Order matters, and it was wrong.  The `!active` check used to come
+   *  first and return complete:true, which paints the badge with the
+   *  `done` class — green, no pulse — while its empty label fell back
+   *  to the text "Syncing…".  The badge then said one thing and looked
+   *  like another for the whole of startup, and this branch, written
+   *  for exactly that case, was unreachable.
+   *
+   *  A wallet with no positions yet is still loading them: that is
+   *  genuinely syncing, so say so and look it. */
+  if (walletAddress && positionCount === 0) {
+    /*- Zero positions means one of two very different things, and the
+     *  scan status is what separates them.  "idle" or "scanning" means
+     *  we do not know yet — still loading.  "ready" means the scan ran
+     *  and this wallet genuinely holds no LP positions, which is an
+     *  answer; pulsing at the operator forever would be a lie in the
+     *  other direction. */
+    const scanFinished = positionScan?.status === "ready";
+    return scanFinished
+      ? { complete: true, label: "Synced" }
+      : { complete: false, label: "Syncing…" };
+  }
+  /*- No wallet and nothing selected: there is nothing to sync, so the
+   *  badge is honestly done.  Labelled explicitly — an empty label here
+   *  is what allowed the text and the style to disagree. */
+  if (!active) return { complete: true, label: "Synced" };
   if (!positionManaged && viewingClosed)
     return { complete: true, label: "Synced" };
   if (positionScan && positionScan.status === "scanning") {
