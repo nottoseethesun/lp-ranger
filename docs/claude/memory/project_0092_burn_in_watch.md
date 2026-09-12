@@ -1,6 +1,6 @@
 ---
 name: project_0092_burn_in_watch
-description: "Release 0.9.2 (2026-09-03) is on Production. The user considers the app feature-complete; if it holds through burn-in and some months of use it becomes 1.0. Watch the corrected P&L figures on positions other than the HEX pool."
+description: "Releases 0.9.2 (2026-09-03) and hotfix 0.9.2.1 (2026-09-10) are on Production. The user considers the app feature-complete; if it holds through burn-in and some months of use it becomes 1.0. Watch the corrected P&L figures on positions other than the HEX pool."
 metadata:
   node_type: memory
   type: project
@@ -9,6 +9,17 @@ metadata:
 Release **0.9.2** cut and deployed to Production 2026-09-03.
 <https://github.com/nottoseethesun/lp-ranger/releases/tag/0.9.2>
 PRs #196–#199.
+
+Hotfix **0.9.2.1** ("Cole Younger - 2") followed 2026-09-10, PR #200 —
+a dependency-only release clearing a high advisory
+(GHSA-7w5x-hrqm-74c2).  No behavior change, so it needs none of the
+Reload Current Position work 0.9.2 did.  Cutting it was what turned the
+daily "Security Audit (Latest Release)" green, since that workflow
+audits the release tag rather than main — see
+[[project_security_audit_two_tier]].
+
+That tag is four segments, which semver does not permit; it is a
+one-off, not a new convention.  Details in [[project_tag_format_no_v]].
 
 **The user's read: the app may be done.** *"I think that perhaps, this
 app is done. If it stands up for burn-in and some more months of use, it

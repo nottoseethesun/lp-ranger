@@ -90,3 +90,28 @@ is worth asking; the dependency archaeology is not.
 
 **On overrides:** do not review them as part of an advisory fix. If the
 regeneration clears the advisory, the overrides are not the subject.
+
+## `markdownlint-cli2` is a repeat exact-pinner (2026-09-10)
+
+Twice now an advisory has traced to `markdownlint-cli2` exact-pinning a
+transitive dep, so regeneration cannot clear it:
+
+- `js-yaml` — the existing scoped override.
+- `smol-toml` — GHSA-7w5x-hrqm-74c2, high, 2026-09-10.  `0.23.2`, the
+  latest published version, declares `"smol-toml": "1.7.0"`.  No caret,
+  no range.  npm's suggested fix was a major DOWNGRADE to `0.21.0`.
+
+**Still run the regeneration first** — it is cheap and it is right most
+of the time; this parent is the exception, not the rule.  But when the
+advisory survives it and the culprit is `markdownlint-cli2`, go straight
+to a scoped override beside the one already there.  Do not re-derive the
+decision, and do not accept the downgrade.
+
+Confirm the pin with `npm view markdownlint-cli2@<ver> dependencies.<dep>`
+before overriding — one command, and it is what distinguishes "exact pin"
+from "stale lockfile".
+
+**Then actually run the tool.** An override forces a version the parent
+never tested against, so `npm audit` going quiet is not sufficient
+evidence.  Run `./node_modules/.bin/markdownlint-cli2 <some files>` and
+see it exit 0.  (Never `npx` — see [[feedback_no_npx]].)

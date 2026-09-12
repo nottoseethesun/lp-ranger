@@ -10,9 +10,18 @@ metadata:
 Git tags for this project use **strict semver**: `MAJOR.MINOR.PATCH`
 with **no `v` prefix**.
 
-Recent tags: `0.8.7`, `0.8.8`, `0.8.9`, `0.8.10`.  Very old tags
-(`v0.2.0`, `v0.2.2`) did carry the `v` and are the exception, not the
+Recent tags: `0.9.1`, `0.9.2`.  Very old tags (`v0.2.0`, `v0.2.2`,
+both March 2026) did carry the `v` and are the exception, not the
 pattern.
+
+`0.9.2.1` (2026-09-10) is a **second** exception: a four-segment hotfix
+tag.  Semver does not permit it — the spec's version core is exactly
+`MAJOR.MINOR.PATCH`, so a strict parser rejects the whole string rather
+than reading the fourth segment as a sub-patch.  Nothing in this repo
+bites on it (workflows pass `tag_name` around as an opaque string, and
+`package.json` ships the `0.0.0-dev` placeholder, not the tag), but do
+not treat it as a precedent.  The semver spellings for that release
+were `0.9.3` or `0.9.3-hotfix.1`.
 
 **Why:** Per the semver spec, the `v` is explicitly not part of the
 version.  User was direct about this: "strict semver explicitly says
@@ -39,6 +48,19 @@ COMMIT date — which orders by when the code was written, not when it was
 released. `0.8.14` pointed at an older commit than `0.8.13` did and sank
 below it.
 
-**How to apply:** get the baseline with `git tag --sort=-v:refname | head -1`,
+**How to apply:** get the baseline with
+
+```bash
+git tag --sort=-v:refname | grep -v '^v' | head -1
+```
+
 then scope notes with `git log <baseline>..main`. Sanity-check by
 confirming the previous release's headline features are NOT in the range.
+
+**The `grep -v '^v'` is required, not optional.** `-v:refname` sorts the
+two legacy `v`-prefixed tags above every numeric tag, so the bare
+`head -1` returns `v0.2.2` — a March 2026 tag — as "newest". Confirmed
+2026-09-10, when the documented one-liner reported `v0.2.2` while the
+real latest was `0.9.2.1`. This is the same failure the section was
+written to prevent: a wrong baseline silently produces release notes
+that re-announce already-shipped work.
