@@ -15,6 +15,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [never pattern-kill](feedback_never_pattern_kill.md) — pkill/pgrep -f matches your own shell and kills the caller; kill by port
 - [no flaky push](feedback_no_flaky_push.md) — Fix flaky tests before they reach CI
 - [no npx](feedback_no_npx.md) — NEVER npx — check package.json scripts first
+- [Edit tool, not python](feedback_edit_tool_not_python.md) — Patch files with Edit/Write; never a python3 heredoc or sed
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — One lint command; file lists live only in scripts/lint-targets.js
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile then node_modules, `npm i`. Run it first; never analyse the dep graph
