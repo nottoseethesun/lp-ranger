@@ -25,6 +25,7 @@ const os = require("os");
 const path = require("path");
 
 const { readGlobalSetting } = require("../src/bot-config-v2");
+const { composeRpcUrls } = require("../src/rpc-url-list");
 
 /** Write a bot-config.json into a throwaway directory. */
 function withConfigDir(contents) {
@@ -82,64 +83,85 @@ describe("readGlobalSetting", () => {
   }
 });
 
-describe("RPC_URLS composition", () => {
-  /*- config.js reads the saved value once at module load, so these
-   *  exercise the same composition rule against a fresh require with a
-   *  stubbed reader rather than mutating the operator's real file. */
-  function composeWith({ saved, envOverrides = [], shipped }) {
-    const out = [];
-    const push = (url) => {
-      if (typeof url === "string" && url.length > 0 && !out.includes(url)) {
-        out.push(url);
-      }
-    };
-    if (saved) push(saved);
-    const len = Math.max(shipped.length, envOverrides.length);
-    for (let i = 0; i < len; i++) push(envOverrides[i] || shipped[i]);
-    return out;
-  }
-
+describe("composeRpcUrls", () => {
+  /*- Drives the real exported function.  This block used to re-implement
+   *  the composition rule locally, which is a mirror: it would have gone
+   *  on passing after the real rule changed. */
   const SHIPPED = ["https://a.test", "https://b.test", "https://c.test"];
 
   it("puts the saved endpoint first", () => {
-    const urls = composeWith({ saved: "https://mine.test", shipped: SHIPPED });
+    const urls = composeRpcUrls({
+      saved: "https://mine.test",
+      chainUrls: SHIPPED,
+    });
     assert.strictEqual(urls[0], "https://mine.test");
   });
 
   it("keeps the shipped endpoints behind it as failover", () => {
     /*- The point of prepending rather than replacing: choosing your own
      *  node must not quietly cost you redundancy. */
-    const urls = composeWith({ saved: "https://mine.test", shipped: SHIPPED });
+    const urls = composeRpcUrls({
+      saved: "https://mine.test",
+      chainUrls: SHIPPED,
+    });
     assert.deepStrictEqual(urls, ["https://mine.test", ...SHIPPED]);
   });
 
   it("is a no-op when the saved value is already the shipped primary", () => {
-    const urls = composeWith({ saved: SHIPPED[0], shipped: SHIPPED });
+    const urls = composeRpcUrls({ saved: SHIPPED[0], chainUrls: SHIPPED });
     assert.deepStrictEqual(urls, SHIPPED, "must not list the same URL twice");
   });
 
-  it("promotes a saved endpoint that is already further down the list", () => {
-    const urls = composeWith({ saved: SHIPPED[2], shipped: SHIPPED });
+  it("promotes a saved endpoint already further down the list", () => {
+    const urls = composeRpcUrls({ saved: SHIPPED[2], chainUrls: SHIPPED });
     assert.deepStrictEqual(urls, [SHIPPED[2], SHIPPED[0], SHIPPED[1]]);
     assert.strictEqual(new Set(urls).size, urls.length, "no duplicates");
   });
 
   it("falls back to the shipped list when nothing is saved", () => {
-    assert.deepStrictEqual(composeWith({ shipped: SHIPPED }), SHIPPED);
+    assert.deepStrictEqual(composeRpcUrls({ chainUrls: SHIPPED }), SHIPPED);
+  });
+
+  it("ignores a blank or whitespace-only saved value", () => {
+    assert.deepStrictEqual(
+      composeRpcUrls({ saved: "   ", chainUrls: SHIPPED }),
+      SHIPPED,
+    );
+  });
+
+  it("trims a saved value", () => {
+    const urls = composeRpcUrls({
+      saved: "  https://mine.test  ",
+      chainUrls: SHIPPED,
+    });
+    assert.strictEqual(urls[0], "https://mine.test");
   });
 
   it("layers a saved value above env overrides", () => {
-    const urls = composeWith({
+    const urls = composeRpcUrls({
       saved: "https://mine.test",
       envOverrides: ["https://env.test"],
-      shipped: SHIPPED,
+      chainUrls: SHIPPED,
     });
     assert.strictEqual(urls[0], "https://mine.test");
-    assert.strictEqual(
-      urls[1],
-      "https://env.test",
-      "env still overrides slot 0",
-    );
+    assert.strictEqual(urls[1], "https://env.test", "env overrides slot 0");
+  });
+
+  it("lets a blank env entry fall through to the shipped endpoint", () => {
+    const urls = composeRpcUrls({
+      envOverrides: ["", "https://env-two.test"],
+      chainUrls: SHIPPED,
+    });
+    assert.deepStrictEqual(urls, [
+      SHIPPED[0],
+      "https://env-two.test",
+      SHIPPED[2],
+    ]);
+  });
+
+  it("returns an empty list when there is nothing to compose", () => {
+    assert.deepStrictEqual(composeRpcUrls(), []);
+    assert.deepStrictEqual(composeRpcUrls({}), []);
   });
 });
 

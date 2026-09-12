@@ -237,13 +237,9 @@ async function resolvePoolTokens(pool, ethersLib = ethers, cfg = config) {
     return { token0: t0, token1: t1, fee: Number(fee) };
   };
   /*- Walk the ordered endpoint list rather than a hand-rolled
-   *  primary/fallback pair, so a third endpoint is reachable here too.
-   *  Falls back to the single-URL pair when a caller injects a cfg stub
-   *  that predates RPC_URLS. */
-  const urls =
-    Array.isArray(cfg.RPC_URLS) && cfg.RPC_URLS.length > 0
-      ? cfg.RPC_URLS
-      : [cfg.RPC_URL, cfg.RPC_URL_FALLBACK].filter(Boolean);
+   *  primary/fallback pair, so every configured endpoint is reachable
+   *  here too. */
+  const urls = cfg.RPC_URLS;
   let lastErr = null;
   for (const url of urls) {
     try {

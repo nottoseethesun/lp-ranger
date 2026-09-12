@@ -283,7 +283,7 @@ function fakeEthers(behaviour) {
   };
 }
 
-const CFG = { RPC_URL: "http://primary", RPC_URL_FALLBACK: "http://fallback" };
+const CFG = { RPC_URLS: ["http://primary", "http://fallback"] };
 
 test("resolvePoolTokens — reads token0, token1 and a numeric fee", async () => {
   const eth = fakeEthers((_url, m) =>
@@ -308,7 +308,7 @@ test("resolvePoolTokens — rethrows when no fallback is configured", async () =
     throw new Error("primary down");
   });
   await assert.rejects(
-    () => cpc.resolvePoolTokens(POOL, eth, { RPC_URL: "http://primary" }),
+    () => cpc.resolvePoolTokens(POOL, eth, { RPC_URLS: ["http://primary"] }),
     /primary down/,
   );
 });

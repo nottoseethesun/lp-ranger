@@ -199,7 +199,17 @@ async function _runWindow(opts, win, label) {
  */
 async function scanChunked(opts) {
   const label = opts.label || "scan";
-  const chunkSize = opts.chunkSize || _DEFAULT_CHUNK_SIZE;
+  /*- Explicit validity check rather than `||` or `??`.  `||` would
+   *  silently swallow a deliberate 0; `??` would pass it through, and
+   *  chunkRanges floors at 1, turning a typo into one-block windows and
+   *  millions of requests.  Anything that is not a positive finite
+   *  number is not a chunk size. */
+  const chunkSize =
+    typeof opts.chunkSize === "number" &&
+    Number.isFinite(opts.chunkSize) &&
+    opts.chunkSize > 0
+      ? opts.chunkSize
+      : _DEFAULT_CHUNK_SIZE;
   const toBlock = await resolveToBlock(opts.provider, opts.toBlock);
   const windows = chunkRanges(
     opts.fromBlock,

@@ -9,6 +9,7 @@
 const { log } = require("./log");
 const rangeMath = require("./range-math");
 const config = require("./config");
+const { buildProvider } = require("./bot-provider");
 const { PM_ABI } = require("./pm-abi");
 const { _retrySend } = require("./tx-retry");
 const sendTx = require("./send-transaction");
@@ -558,7 +559,11 @@ async function getPoolState(passedProvider, ethersLib, opts) {
          *  against the single mock provider instead of N fresh ones. */
         let provider;
         try {
-          provider = new ethersLib.JsonRpcProvider(url);
+          /*- Built through buildProvider, not `new JsonRpcProvider`, so
+           *  these requests queue behind the global request manager
+           *  like every other.  A raw provider here would be an unpaced
+           *  path, and one is enough to breach the published rate. */
+          provider = buildProvider(url, ethersLib);
         } catch {
           provider = passedProvider;
         }

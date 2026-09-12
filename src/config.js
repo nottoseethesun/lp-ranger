@@ -38,6 +38,7 @@ const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const botConfigV2 = require("./bot-config-v2");
+const { composeRpcUrls } = require("./rpc-url-list");
 
 const {
   parsePositiveInt,
@@ -109,35 +110,18 @@ const _SAVED_RPC_URL = (() => {
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 })();
 
-/*- Merge saved override, env overrides and the shipped list, then drop
- *  blanks and duplicates.  Deduplication matters: the testnet chain
- *  ships a single endpoint, and failing over from an endpoint to itself
- *  is a wasted round-trip that also makes "have I run out of
- *  endpoints?" harder to answer honestly.  It also means saving the
- *  shipped primary in Bot Settings is a no-op rather than listing it
- *  twice. */
-const RPC_URLS = (() => {
-  const out = [];
-  const push = (url) => {
-    if (typeof url === "string" && url.length > 0 && !out.includes(url)) {
-      out.push(url);
-    }
-  };
-  if (_SAVED_RPC_URL) push(_SAVED_RPC_URL);
-  const len = Math.max(_CHAIN_RPC_URLS.length, _RPC_ENV_OVERRIDES.length);
-  for (let i = 0; i < len; i++) {
-    push(_RPC_ENV_OVERRIDES[i] || _CHAIN_RPC_URLS[i]);
-  }
-  return out;
-})();
+/*- The composition rule itself lives in src/rpc-url-list.js as a pure
+ *  function, so it can be driven directly by tests.  Resolving it here
+ *  from live files and environment would otherwise leave the rule
+ *  testable only by re-implementing it in a test, which is a mirror. */
+const RPC_URLS = composeRpcUrls({
+  saved: _SAVED_RPC_URL,
+  envOverrides: _RPC_ENV_OVERRIDES,
+  chainUrls: _CHAIN_RPC_URLS,
+});
 
 /** Primary JSON-RPC endpoint — first entry of `RPC_URLS`. */
 const RPC_URL = RPC_URLS[0] || "";
-
-/*- Second endpoint.  Retained as a named export because a number of
- *  call sites still think in terms of a pair; they fall back to the
- *  primary when the chain ships only one endpoint. */
-const RPC_URL_FALLBACK = RPC_URLS[1] || RPC_URL;
 
 /** NFT token ID for single-position NFT mode (optional). */
 const POSITION_ID = process.env.POSITION_ID || null;
@@ -339,7 +323,6 @@ module.exports = {
   PRIVATE_KEY,
   DRY_RUN,
   RPC_URL,
-  RPC_URL_FALLBACK,
   RPC_URLS,
   POSITION_ID,
   ERC20_POSITION_ADDRESS,

@@ -18,6 +18,7 @@
 const ethers = require("ethers");
 const { log } = require("./log");
 const config = require("./config");
+const { buildProvider } = require("./bot-provider");
 const { ERC20_ABI } = require("./rebalancer-pools");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { getDustThresholdUsd } = require("./dust");
@@ -126,7 +127,9 @@ async function _readBothBalancesWithRetry({
       try {
         let provider;
         try {
-          provider = new ethers.JsonRpcProvider(url);
+          /*- buildProvider, so these reads queue behind the global
+           *  request manager rather than forming an unpaced path. */
+          provider = buildProvider(url, ethers);
         } catch {
           provider = providerFactory();
         }

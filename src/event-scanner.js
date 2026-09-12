@@ -56,21 +56,22 @@ const { resolveFirstMintWithForeign } = require("./event-scanner-mint-lookup");
  * @returns {Promise<object[]>} Raw ethers event objects.
  */
 async function queryChunk(contract, walletAddress, fromBlock, toBlock) {
-  const results = [];
-  try {
-    const filterIn = contract.filters.Transfer(null, walletAddress);
-    const filterOut = contract.filters.Transfer(walletAddress, null);
-    const [eventsIn, eventsOut] = await Promise.all([
-      contract.queryFilter(filterIn, fromBlock, toBlock),
-      contract.queryFilter(filterOut, fromBlock, toBlock),
-    ]);
-    results.push(...eventsIn, ...eventsOut);
-  } catch (err) {
-    log.warn(
-      `[event-scanner] chunk ${fromBlock}–${toBlock} failed: ${err.message}`,
-    );
-  }
-  return results;
+  /*- Errors are NOT caught here.  They used to be — logged and turned
+   *  into an empty chunk — which meant the shared chunker never saw
+   *  them, so a block-range-cap rejection could not be recognised and
+   *  reported as one.  The scan simply came back short.
+   *
+   *  `scanChunks` calls this through `scanChunked` with
+   *  `bestEffort: true`, which keeps the long-standing behaviour of
+   *  logging a failed window and carrying on, while still letting a cap
+   *  rejection surface as the error that names the setting to change. */
+  const filterIn = contract.filters.Transfer(null, walletAddress);
+  const filterOut = contract.filters.Transfer(walletAddress, null);
+  const [eventsIn, eventsOut] = await Promise.all([
+    contract.queryFilter(filterIn, fromBlock, toBlock),
+    contract.queryFilter(filterOut, fromBlock, toBlock),
+  ]);
+  return [...eventsIn, ...eventsOut];
 }
 
 /**
