@@ -22,6 +22,9 @@ const { log } = require("./log");
 const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { detectCompoundsOnChain } = require("./compounder");
+const ethers = require("ethers");
+const sendTx = require("./send-transaction");
+const { getPoolCreationBlockCached } = require("./pool-creation-block");
 
 /*-
  *  Convert wei (string-safe) to USD at the current native-token price.
@@ -72,7 +75,19 @@ async function _backfill(deps, position, poolState) {
       decimals0: poolState.decimals0,
       decimals1: poolState.decimals1,
     };
-    const r = await detectCompoundsOnChain(tid, opts);
+    /*- Bound the scan to the pool's own creation block.  Without it the
+     *  lookup walks the chain from genesis, which on a cache miss (a
+     *  fresh NFT after a rebalance) means thousands of paced requests
+     *  monopolising the global queue while every other position waits. */
+    const fromBlock = poolState.poolAddress
+      ? await getPoolCreationBlockCached({
+          provider: deps.provider || sendTx.getManagedReadProvider(),
+          ethersLib: ethers,
+          factoryAddress: config.FACTORY,
+          poolAddress: poolState.poolAddress,
+        })
+      : 0;
+    const r = await detectCompoundsOnChain(tid, { ...opts, fromBlock });
     const gasWei = String(r.totalNftGasWei || "0");
     const compoundedUsd = (r.compounds || []).reduce(
       (s, c) => s + (c.usdValue || 0),

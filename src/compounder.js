@@ -705,7 +705,22 @@ async function classifyCompounds(nftEvents, opts = {}) {
  * Fetches events via scanNftEvents, then classifies via classifyCompounds.
  */
 async function detectCompoundsOnChain(tokenId, opts = {}) {
-  const nftEvents = await scanNftEvents(tokenId);
+  /*- Pass the caller's lower bound through.  This used to call
+   *  scanNftEvents with no options at all, so every lookup started at
+   *  block 0 — the whole chain, three event types, for one NFT.
+   *
+   *  That was survivable while the queries were unchunked: three wide
+   *  calls, one round-trip each (and rejected outright by an endpoint
+   *  that caps ranges, which is how it came back empty). Chunked and
+   *  paced, the same range is thousands of requests that would hold the
+   *  global queue for the better part of an hour and stall every other
+   *  position's polling behind it.
+   *
+   *  See feedback_no_genesis_chain_scans: every log scan needs a tight
+   *  lower bound. Callers that know the pool pass its creation block. */
+  const nftEvents = await scanNftEvents(tokenId, {
+    fromBlock: opts.fromBlock,
+  });
   return classifyCompounds(nftEvents, { ...opts, tokenId });
 }
 

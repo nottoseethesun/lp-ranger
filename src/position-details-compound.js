@@ -15,6 +15,36 @@ const config = require("./config");
 const { getPositionConfig, saveConfig } = require("./bot-config-v2");
 const { detectCompoundsOnChain } = require("./compounder");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
+const ethers = require("ethers");
+const sendTx = require("./send-transaction");
+const { getPoolCreationBlockCached } = require("./pool-creation-block");
+
+/**
+ * Lower bound for an NFT event scan: the pool's own creation block.
+ *
+ * Without one, every scan here starts at genesis — and these paths
+ * loop over the whole rebalance chain, so that is one full-chain scan
+ * per NFT. Chunked and paced, that would hold the global request
+ * queue for hours. An NFT cannot have events before its pool existed,
+ * so the creation block is both correct and tight.
+ * @param {string|null|undefined} poolAddress
+ * @returns {Promise<number>}  Creation block, or 0 when unknown.
+ */
+async function _scanFloor(poolAddress) {
+  if (!poolAddress) return 0;
+  try {
+    return await getPoolCreationBlockCached({
+      provider: sendTx.getManagedReadProvider(),
+      ethersLib: ethers,
+      factoryAddress: config.FACTORY,
+      poolAddress,
+    });
+  } catch {
+    /*- Unknown creation block falls back to 0.  Slow but correct is
+     *  better than skipping the scan. */
+    return 0;
+  }
+}
 
 /*- Convert a chain-scan result for a single NFT into Current-panel
  *  values: standalone-compound USD (sum of per-event usdValue) and
@@ -68,6 +98,7 @@ async function _scanCompounds(
       price1: prices.price1,
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
+      fromBlock: await _scanFloor(ps.poolAddress),
     };
     /*- total = lifetime collected fees across the rebalance chain
      *  (Lifetime panel "Fees Compounded"). current = sum of standalone
@@ -129,6 +160,7 @@ async function _detectCurrentNftValues(
       price1: prices.price1,
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
+      fromBlock: await _scanFloor(ps.poolAddress),
     };
     const r = await _detect(String(position.tokenId), opts);
     return await _currentValuesFromScan(r);
