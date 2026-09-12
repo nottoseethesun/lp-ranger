@@ -83,7 +83,41 @@ const HOST = process.env.HOST || APP_CONFIG.server.host;
  *  replaces the first entry, RPC_URL_FALLBACK the second,
  *  RPC_URL_FALLBACK_2 the third.  An operator who sets only RPC_URL
  *  keeps the shipped endpoints behind it. */
-const _CHAIN_RPC_URLS = Array.isArray(CHAIN.rpc?.urls) ? CHAIN.rpc.urls : [];
+/*- Endpoints from chains.json, newest shape first.
+ *
+ *  `rpc.urls` is the current shape.  `rpc.primary` / `rpc.fallback` is
+ *  the shape that shipped before this release, and it has to keep
+ *  working: the shipped defaults no longer carry those keys, so if they
+ *  are present at all they came from an operator's own override under
+ *  `app-config/user-configurable/chains.json` — a file the update
+ *  procedure deliberately preserves.
+ *
+ *  Without this, upgrading would leave that file intact and silently
+ *  stop reading it, sending an operator who had pointed LP Ranger at
+ *  their own node back onto the public endpoints. That is a privacy
+ *  regression as much as a config one, and it would show no error.
+ *
+ *  Legacy entries go FIRST, for the same reason the saved Bot Settings
+ *  value does: they are an explicit choice, and the shipped endpoints
+ *  remain behind them as failover. */
+const _CHAIN_RPC = CHAIN.rpc || {};
+const _LEGACY_RPC_URLS = [_CHAIN_RPC.primary, _CHAIN_RPC.fallback].filter(
+  (u) => typeof u === "string" && u.length > 0,
+);
+const _CHAIN_RPC_URLS = [
+  ..._LEGACY_RPC_URLS,
+  ...(Array.isArray(_CHAIN_RPC.urls) ? _CHAIN_RPC.urls : []),
+];
+
+if (_LEGACY_RPC_URLS.length > 0) {
+  /*- Say so once at startup.  Their setting still works, but it is on a
+   *  deprecated key, and silence is how an operator ends up unaware
+   *  that the file they are maintaining has a newer shape. */
+  console.warn(
+    "[config] chains.json override uses the old rpc.primary/rpc.fallback keys. " +
+      "They still work and are tried first. Move them to rpc.urls: [...] when convenient.",
+  );
+}
 const _RPC_ENV_OVERRIDES = [
   process.env.RPC_URL,
   process.env.RPC_URL_FALLBACK,
