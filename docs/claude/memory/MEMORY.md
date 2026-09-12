@@ -18,7 +18,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — One lint command; file lists live only in scripts/lint-targets.js
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile then node_modules, `npm i`. Run it first; never analyse the dep graph
-- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap in wipe/restore-settings; no check inside agents
+- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap in wipe/restore-settings; no check inside agents or against a running server
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the actual linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver, no `v` prefix; latest tag needs `--sort=-v:refname` **plus** `grep -v '^v'`
 
