@@ -171,6 +171,11 @@ async function _runWindow(opts, win, label) {
       win.to,
       err.message,
     );
+    /*- Tell the caller WHICH window was skipped.  Best-effort means the
+     *  result is incomplete, and a caller that persists a "scanned up
+     *  to here" marker needs to know where the hole starts — otherwise
+     *  it records ground it never covered and never comes back for it. */
+    if (opts.onWindowError) opts.onWindowError(err, win.from, win.to);
     return null;
   }
 }
@@ -195,6 +200,10 @@ async function _runWindow(opts, win, label) {
  * @param {string} [opts.label]      Short label for log lines.
  * @param {boolean} [opts.bestEffort] Continue past a failed window
  *   instead of throwing.  Default `false`.
+ * @param {Function} [opts.onWindowError] `(err, from, to)` for each
+ *   window skipped under `bestEffort`.  Callers that persist scan
+ *   progress must use this to avoid recording a range they did not
+ *   actually read.
  * @returns {Promise<Array>}  Concatenated array results, in visit order.
  */
 async function scanChunked(opts) {

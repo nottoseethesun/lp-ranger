@@ -385,7 +385,14 @@ async function scanChunks(
    *  `bestEffort` preserves this scanner's long-standing behaviour of
    *  logging a failed window and carrying on; `queryChunk` already
    *  swallows per-window errors itself. */
-  return await scanChunked({
+  /*- Track where the first hole starts.  bestEffort keeps a flaky
+   *  endpoint from failing a whole five-year scan, but the result is
+   *  then incomplete, and the caller persists a "scanned through block
+   *  N" marker.  Recording N as the head when a window was skipped
+   *  means the gap is never revisited — the events in it stay missing
+   *  until someone runs Reload Position by hand. */
+  let firstGapFrom = null;
+  const events = await scanChunked({
     fromBlock: scanFrom,
     toBlock: currentBlock,
     chunkSize,
@@ -394,7 +401,14 @@ async function scanChunks(
     bestEffort: true,
     label,
     query: (from, to) => queryChunk(contract, walletAddress, from, to),
+    onWindowError: (_err, from) => {
+      if (firstGapFrom === null || from < firstGapFrom) firstGapFrom = from;
+    },
   });
+  /*- Attached rather than returned as a pair so the many existing
+   *  callers that treat this as an array keep working. */
+  events.firstGapFrom = firstGapFrom;
+  return events;
 }
 
 /**
@@ -591,6 +605,25 @@ function _cacheCovers(scanFrom, currentBlock, cached) {
   return scanFrom > currentBlock && cached.length > 0;
 }
 
+/**
+ * How far the scan can honestly claim to have read.
+ *
+ * Normally the head. When a window was skipped (best-effort), the block
+ * before that window — everything after it may be missing, so resuming
+ * from there is the only way the gap ever gets filled.
+ * @param {Array & {firstGapFrom?: number|null}} rawEvents  Scan result.
+ * @param {number} scanFrom      Where this scan started.
+ * @param {number} currentBlock  Chain head at scan time.
+ * @returns {number}
+ */
+function _resolveLastBlock(rawEvents, scanFrom, currentBlock) {
+  const gap = rawEvents && rawEvents.firstGapFrom;
+  if (typeof gap !== "number") return currentBlock;
+  /*- Never move the marker backwards past where this scan began: the
+   *  blocks before scanFrom were covered by an earlier scan. */
+  return Math.max(scanFrom - 1, gap - 1);
+}
+
 /** Re-persist cached events with updated lastBlock when the new scan returns 0 events. */
 async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
   if (!cache) return;
@@ -670,7 +703,15 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     return cachedEvents;
   }
   if (rawEvents.length === 0) {
-    await _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock);
+    /*- Same rule as the main persist below: a scan that found nothing
+     *  because its windows were skipped has not covered the range, and
+     *  must not record that it did. */
+    await _persistCachedOnly(
+      cache,
+      cacheKey,
+      cachedEvents,
+      _resolveLastBlock(rawEvents, scanFrom, currentBlock),
+    );
     return cachedEvents;
   }
 
@@ -688,7 +729,11 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
   if (cache)
     await cache.set(cacheKey, {
       events: merged,
-      lastBlock: currentBlock,
+      /*- Only claim what was actually read.  If a window was skipped,
+       *  stop the marker one block short of the hole so the next scan
+       *  resumes there and fills it, instead of leaving the operator to
+       *  discover missing events and run Reload Position by hand. */
+      lastBlock: _resolveLastBlock(rawEvents, scanFrom, currentBlock),
       firstMintTimestamp,
       firstMintBlockNumber,
       mintSchemaVersion: 2,
@@ -701,4 +746,5 @@ module.exports = {
   buildCacheKey: _buildCacheKey,
   _BLOCKS_PER_YEAR,
   _PAIRING_WINDOW_SEC,
+  _resolveLastBlock,
 };

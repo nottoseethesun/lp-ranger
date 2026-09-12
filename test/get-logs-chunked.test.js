@@ -229,6 +229,39 @@ describe("scanChunked — failure behaviour", () => {
     );
   });
 
+  it("reports which window it skipped", async () => {
+    /*- Callers that persist a "scanned through here" marker need the
+     *  location of the hole.  Without it they record ground they never
+     *  read, and nothing ever goes back for it. */
+    const skipped = [];
+    await scanChunked({
+      fromBlock: 0,
+      toBlock: 29,
+      chunkSize: 10,
+      bestEffort: true,
+      query: async (from) => {
+        if (from === 10) throw new Error("flaky");
+        return [from];
+      },
+      onWindowError: (err, from, to) =>
+        skipped.push({ from, to, m: err.message }),
+    });
+    assert.deepStrictEqual(skipped, [{ from: 10, to: 19, m: "flaky" }]);
+  });
+
+  it("does not report skipped windows when none are skipped", async () => {
+    let called = 0;
+    await scanChunked({
+      fromBlock: 0,
+      toBlock: 29,
+      chunkSize: 10,
+      bestEffort: true,
+      query: async () => [],
+      onWindowError: () => called++,
+    });
+    assert.strictEqual(called, 0);
+  });
+
   it("continues past a failed window only when bestEffort is explicit", async () => {
     const out = await scanChunked({
       fromBlock: 0,
