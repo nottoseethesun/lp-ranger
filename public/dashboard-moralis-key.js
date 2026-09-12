@@ -55,7 +55,20 @@ export async function saveMoralisApiKey(key, pw, inp) {
 /** Settings menu handler: saves using the cached session password. */
 export async function saveMoralisKeyFromSettings() {
   const inp = g("moralisKeyInput");
-  if (!inp || !inp.value.trim()) return;
+  if (!inp) return;
+  if (!inp.value.trim()) {
+    /*- Silence here reads as a broken button: the operator clicks Save
+     *  and nothing whatsoever happens.  Say why.  The Use Moralis Key
+     *  switch saves itself the moment it is flipped, so there is
+     *  genuinely nothing for Save to do with an empty field. */
+    act(
+      "\u2139\uFE0F",
+      "info",
+      "Nothing to Save",
+      "Paste a key first. The Use Moralis Key switch saves on its own.",
+    );
+    return;
+  }
   const saved = await saveMoralisApiKey(inp.value.trim(), null, inp);
   if (!saved) return;
   /*- A key now exists, so the Use-Moralis toggle stops being disabled.

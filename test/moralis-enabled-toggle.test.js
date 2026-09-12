@@ -213,6 +213,20 @@ describe("the dialog control itself", () => {
     );
   });
 
+  it("keeps the switch usable when the key is present but switched off", async () => {
+    /*- The status endpoint reports "disabled" without pinging Moralis.
+     *  The switch must stay enabled on that, or an operator who turned
+     *  it off could never turn it back on. */
+    renderDialog();
+    stubStatus("disabled");
+    await mod.refreshMoralisToggle();
+    assert.strictEqual(
+      document.getElementById("moralisEnabledToggle").disabled,
+      false,
+      "a switched-off key is still a key",
+    );
+  });
+
   it("survives the dialog not being in the DOM", async () => {
     document.body.innerHTML = "";
     stubStatus("valid");
