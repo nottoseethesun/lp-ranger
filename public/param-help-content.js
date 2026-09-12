@@ -1134,9 +1134,12 @@ export const PARAM_HELP = {
       {
         heading: "What it does",
         body:
-          "The blockchain RPC endpoint the bot uses to read on-chain data " +
-          "and submit transactions. This is your connection to the " +
-          "PulseChain network.",
+          "The blockchain RPC endpoint LP Ranger uses to read on-chain " +
+          "data and submit transactions. This is your connection to the " +
+          "PulseChain network. What you enter here is tried first, and " +
+          "the endpoints LP Ranger ships with stay behind it as " +
+          "automatic backups \u2014 so using your own node does not cost " +
+          "you failover.",
       },
       {
         heading: "Recommended values",

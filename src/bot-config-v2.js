@@ -576,6 +576,32 @@ function migratePositionKey(cfg, oldKey, newKey) {
 }
 
 /**
+ * Read a single value from the `global` section, quietly.
+ *
+ * Deliberately NOT `loadConfig`: this runs during module initialisation
+ * of `src/config.js`, before logging is meaningful and on every import
+ * including every test, so it must not log, must not warn, and must not
+ * throw.  Any problem reading the file means "not set".
+ * @param {string} key    Global setting name.
+ * @param {string} [dir]  Directory override (default: app-config dir).
+ * @returns {*}  The value, or undefined when unset or unreadable.
+ */
+function readGlobalSetting(key, dir) {
+  try {
+    const text = fs.readFileSync(_configPath(dir), "utf8");
+    if (!text || text.trim().length === 0) return undefined;
+    const raw = JSON.parse(text);
+    const v = raw && raw.global ? raw.global[key] : undefined;
+    return v === null ? undefined : v;
+  } catch {
+    /*- Absent, empty or malformed config is a normal first-run state,
+     *  not an error worth surfacing.  Callers treat undefined as "the
+     *  operator has not set this", which is exactly right. */
+    return undefined;
+  }
+}
+
+/**
  * Read a config value for a position, falling back to global.
  * Single lookup path — no copies, no sync.
  * @param {object} cfg           Config object (source of truth).
@@ -598,6 +624,7 @@ module.exports = {
   getPositionConfig,
   getOrCreatePositionConfig,
   readConfigValue,
+  readGlobalSetting,
   addManagedPosition,
   removeManagedPosition,
   migratePositionKey,
