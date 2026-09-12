@@ -278,6 +278,44 @@ describe("the dialog control itself", () => {
     assert.deepStrictEqual(bodies, []);
   });
 
+  it("reports done when Save succeeds, so the dialog can close", async () => {
+    /*- Click Save, you are done.  The click handler closes on a true
+     *  return; reporting it rather than closing here keeps this module
+     *  from importing the dialog module that imports it. */
+    renderDialog();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<input id="moralisKeyInput" value="">',
+    );
+    stubStatus("valid");
+    await mod.refreshMoralisToggle();
+    global.fetch = async () => ({
+      ok: true,
+      json: async () => ({ ok: true, moralis: "valid" }),
+    });
+    assert.strictEqual(await mod.saveMoralisKeyFromSettings(), true);
+  });
+
+  it("reports NOT done when the key save fails, so the dialog stays open", async () => {
+    /*- A failed save must leave the operator the key they just pasted,
+     *  and somewhere to correct it. */
+    renderDialog();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<input id="moralisKeyInput" value="some-key">',
+    );
+    stubStatus("valid");
+    await mod.refreshMoralisToggle();
+    global.fetch = async (url) => ({
+      ok: true,
+      json: async () =>
+        String(url).includes("/api/api-keys")
+          ? { ok: false, error: "rejected" }
+          : { ok: true, moralis: "valid" },
+    });
+    assert.strictEqual(await mod.saveMoralisKeyFromSettings(), false);
+  });
+
   it("survives the dialog not being in the DOM", async () => {
     document.body.innerHTML = "";
     stubStatus("valid");

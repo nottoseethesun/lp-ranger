@@ -203,7 +203,10 @@ import {
 export { saveMoralisApiKey };
 
 import { checkForUpdate as _checkForUpdate } from "./dashboard-update-check.js";
-import { bindSettingsDialogEvents } from "./dashboard-settings-dialogs.js";
+import {
+  bindSettingsDialogEvents,
+  closeMoralisKeyModal,
+} from "./dashboard-settings-dialogs.js";
 
 /*- Table-driven wiring for the "Return to Automatic Detection" reset
  *  buttons and their paired Cancel buttons across every inline-edit
@@ -416,7 +419,16 @@ export function bindAllEvents() {
   _click("aboutClose", () => _hide("aboutOverlay"));
   _click("wsAddrCopy", () => copyElText("wsAddr", "wsAddrCopy"));
   _click("wsTokenCopy", () => copyElText("wsToken", "wsTokenCopy"));
-  _click("moralisKeySaveBtn", _saveMoralisKey);
+  /*- Save closes the dialog: clicking it means you are done.  Only on
+   *  success — a failed save leaves the dialog open so the key that was
+   *  just pasted is still there to correct and retry.
+   *
+   *  Closed from here rather than inside the save function so that
+   *  dashboard-moralis-key does not import the dialog module that
+   *  already imports it. */
+  _click("moralisKeySaveBtn", async () => {
+    if (await _saveMoralisKey()) closeMoralisKeyModal();
+  });
   _click("saveGasFeePctBtn", saveGasFeePct);
 
   /*- The three dialogs claimed out of the Settings menu wire their own

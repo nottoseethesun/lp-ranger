@@ -52,10 +52,19 @@ export async function saveMoralisApiKey(key, pw, inp) {
   return false;
 }
 
-/** Settings menu handler: saves using the cached session password. */
+/**
+ * Settings menu handler: saves using the cached session password.
+ *
+ * Returns whether the dialog is finished with, so the click handler can
+ * close it.  Reported rather than closed here to keep this module from
+ * importing the dialog module that already imports it.
+ * @returns {Promise<boolean>}  True when Save completed — close the
+ *   dialog.  False when it failed and the operator needs the dialog
+ *   still open to correct something.
+ */
 export async function saveMoralisKeyFromSettings() {
   const inp = g("moralisKeyInput");
-  if (!inp) return;
+  if (!inp) return false;
   const key = inp.value.trim();
 
   /*- The switch is persisted here, by Save, and nowhere else.  It
@@ -69,11 +78,13 @@ export async function saveMoralisKeyFromSettings() {
      *  operator came in to change the switch.  Silence would read as a
      *  broken button, so say what did happen. */
     if (switchSaved) await refreshMoralisToggle();
-    return;
+    return true;
   }
 
   const saved = await saveMoralisApiKey(key, null, inp);
-  if (!saved) return;
+  /*- Save failed: leave the dialog open so the operator still has the
+   *  key they pasted and can try again. */
+  if (!saved) return false;
   /*- A key now exists, so the Use-Moralis toggle stops being disabled.
    *  Refresh it here or the operator has to reopen the dialog to find
    *  the control they just earned. */
@@ -96,6 +107,10 @@ export async function saveMoralisKeyFromSettings() {
       "Saved but Moralis rejected the key — check it",
     );
   }
+  /*- The key was stored.  An invalid or quota-exhausted verdict is
+   *  information, not a failed save, and the toast carries it — so the
+   *  dialog is done either way. */
+  return true;
 }
 
 /**
