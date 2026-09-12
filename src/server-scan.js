@@ -181,6 +181,18 @@ function createScanHandlers(deps) {
     try {
       const result = await _scanPromise;
       jsonResponse(res, 200, result);
+    } catch (err) {
+      /*- The scan died partway.  `setGlobalScanStatus("ready")` only
+       *  runs on the success paths, so without this the status stays
+       *  "scanning" for the life of the process — and "scanning" means
+       *  "still coming" to every reader.  The dashboard believes it,
+       *  pulses its Syncing badge forever and keeps the KPI, range and
+       *  history panels blurred and click-through-disabled.
+       *
+       *  Say it stopped.  Rethrow so the route still reports the
+       *  failure — this records the outcome, it does not swallow it. */
+      setGlobalScanStatus("error");
+      throw err;
     } finally {
       _scanRunning = false;
       _scanPromise = null;

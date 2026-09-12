@@ -51,7 +51,12 @@ export function _computeSyncStatus(inputs) {
      *  and this wallet genuinely holds no LP positions, which is an
      *  answer; pulsing at the operator forever would be a lie in the
      *  other direction. */
-    const scanFinished = positionScan?.status === "ready";
+    /*- "ready" and "error" are both terminal: the scan is not coming
+     *  back with more.  Only "idle" (never started) and "scanning" mean
+     *  wait.  Treating an errored scan as pending would leave the badge
+     *  pulsing and the panels blurred with nothing left to arrive. */
+    const st = positionScan?.status;
+    const scanFinished = st === "ready" || st === "error";
     return scanFinished
       ? { complete: true, label: "Synced" }
       : { complete: false, label: "Syncing…" };
