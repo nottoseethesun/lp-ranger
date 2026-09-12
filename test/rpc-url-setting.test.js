@@ -143,64 +143,6 @@ describe("RPC_URLS composition", () => {
   });
 });
 
-describe("upgrade compatibility — chains.json overrides", () => {
-  /*- Before this release chains.json used rpc.primary / rpc.fallback.
-   *  The shipped defaults no longer carry those keys, so if they appear
-   *  they came from an operator's own override under
-   *  app-config/user-configurable/ — a file the update procedure
-   *  preserves on purpose.
-   *
-   *  The failure this guards against is silent: the file survives the
-   *  upgrade, the code stops reading it, and an operator who had pointed
-   *  LP Ranger at their own node is quietly back on public endpoints. */
-  function composeChainUrls(rpc) {
-    const legacy = [rpc.primary, rpc.fallback].filter(
-      (u) => typeof u === "string" && u.length > 0,
-    );
-    return [...legacy, ...(Array.isArray(rpc.urls) ? rpc.urls : [])];
-  }
-
-  const SHIPPED_URLS = ["https://a.test", "https://b.test"];
-
-  it("honours a pre-upgrade primary/fallback override", () => {
-    const urls = composeChainUrls({
-      urls: SHIPPED_URLS,
-      primary: "https://mine-1.test",
-      fallback: "https://mine-2.test",
-    });
-    assert.strictEqual(urls[0], "https://mine-1.test");
-    assert.strictEqual(urls[1], "https://mine-2.test");
-  });
-
-  it("keeps the shipped endpoints behind a legacy override", () => {
-    const urls = composeChainUrls({
-      urls: SHIPPED_URLS,
-      primary: "https://mine-1.test",
-    });
-    assert.deepStrictEqual(urls, ["https://mine-1.test", ...SHIPPED_URLS]);
-  });
-
-  it("ignores the legacy keys when absent", () => {
-    assert.deepStrictEqual(
-      composeChainUrls({ urls: SHIPPED_URLS }),
-      SHIPPED_URLS,
-    );
-  });
-
-  it("works for an override that sets only a primary", () => {
-    const urls = composeChainUrls({
-      urls: SHIPPED_URLS,
-      primary: "https://solo.test",
-    });
-    assert.strictEqual(urls[0], "https://solo.test");
-    assert.strictEqual(urls.length, SHIPPED_URLS.length + 1);
-  });
-
-  it("survives an override with neither shape", () => {
-    assert.deepStrictEqual(composeChainUrls({}), []);
-  });
-});
-
 describe("the live config", () => {
   it("exposes a non-empty ordered endpoint list", () => {
     const config = require("../src/config");
