@@ -105,6 +105,98 @@ describe("rpc-request-manager — pacing", () => {
   });
 });
 
+describe("rpc-request-manager — errors belong to the consumer", () => {
+  /*- The manager queues and releases. It must not inspect, wrap,
+   *  classify or absorb what happens after release. Retry lives in
+   *  send-transaction.js, classification in rpc-error-classifier.js,
+   *  and range-cap detection in get-logs-chunked.js — each needs the
+   *  original error object to do its job, so anything the manager did
+   *  to an error would break one of them silently. */
+  const { buildProvider } = require("../src/bot-provider");
+
+  /** A provider whose `send` fails for one method and succeeds otherwise. */
+  function stubProvider(sentinel) {
+    class Stub {
+      constructor(url) {
+        this._url = url;
+      }
+      async send(method) {
+        if (method === "boom") throw sentinel;
+        return method;
+      }
+    }
+    return buildProvider("http://errors.test", { JsonRpcProvider: Stub });
+  }
+
+  function capError() {
+    return Object.assign(new Error("could not coalesce error"), {
+      code: "UNKNOWN_ERROR",
+      error: {
+        code: -32602,
+        message: "eth_getLogs is limited to a 10000 block range",
+      },
+    });
+  }
+
+  it("hands the caller the identical error object", async () => {
+    /*- Identity, not just an equal message: get-logs-chunked reads the
+     *  nested err.error.code to recognise a range-cap rejection, and a
+     *  re-wrapped error would lose it. */
+    const sentinel = capError();
+    const provider = stubProvider(sentinel);
+    mgr._resetForTests();
+    await assert.rejects(
+      () => provider.send("boom", []),
+      (err) => {
+        assert.strictEqual(err, sentinel, "must be the same object");
+        assert.strictEqual(err.error.code, -32602, "nested code intact");
+        return true;
+      },
+    );
+  });
+
+  it("does not stall the queue when a request fails", async () => {
+    /*- A failure releases its slot like any other. If it did not, one
+     *  bad request would wedge every later one behind it. */
+    const provider = stubProvider(capError());
+    mgr._resetForTests();
+    await assert.rejects(() => provider.send("boom", []));
+    assert.strictEqual(mgr.queueLength(), 0);
+    assert.strictEqual(
+      await provider.send("eth_blockNumber", []),
+      "eth_blockNumber",
+    );
+  });
+
+  it("gives each concurrent caller its own outcome, still paced", async () => {
+    const sentinel = capError();
+    const provider = stubProvider(sentinel);
+    mgr._resetForTests();
+    const t0 = Date.now();
+    const results = await Promise.allSettled([
+      provider.send("boom", []),
+      provider.send("a", []),
+      provider.send("boom", []),
+      provider.send("b", []),
+    ]);
+    assert.deepStrictEqual(
+      results.map((r) => r.status),
+      ["rejected", "fulfilled", "rejected", "fulfilled"],
+    );
+    assert.ok(
+      results
+        .filter((r) => r.status === "rejected")
+        .every((r) => r.reason === sentinel),
+      "each rejection carries the original error",
+    );
+    assert.ok(
+      Date.now() - t0 >= 3 * INTERVAL - SLACK_MS,
+      "failures still occupy a slot; pacing must hold",
+    );
+    assert.strictEqual(mgr.queueLength(), 0);
+  });
+});
+
 describe("rpc-request-manager — provider wiring", () => {
   it("paces every JSON-RPC method, not a chosen few", async () => {
     /*- The manager is deliberately content-agnostic: it must not be
