@@ -8,7 +8,7 @@
 
 ## Overview
 
-LP Ranger keeps your coins concentrated around the current price point in on-blockchain liquidity pools, maximizing your earnings from fees.
+LP Ranger keeps your coins concentrated around the current price point in on-blockchain liquidity pools, maximizing your earnings from fees, and shows you your key performance indicators such as Impermanent Loss/Gain and Profit.
 
 LP Ranger is an on-chain, self-hosted, auto-rebalancing concentrated liquidity manager for crypto, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
 (Uniswap v3 fork) on [PulseChain](https://pulsechain.com) (Ethereum w/o the Bug-eating). Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool. Provides a unified global view of all your positions' performance in a sortable table.
@@ -21,7 +21,7 @@ Looks back up to five years on your wallet to show you how you're doing with eac
 
 ***Ride Your LP Ranges with the Trusty LP Ranger!***
 
-**V3 positions only** — V2 positions are not supported.
+**V3 positions only** — V2 and V4 positions are not supported.
 
 ## Table of Contents
 
@@ -82,6 +82,7 @@ and the responsive layout &mdash; see the
 - Skills: Only very basic Terminal (a.k.a. "shell") skills, learnable in a few minutes.
 - Machine: Any common computer; specifically, a 64-bit Intel, Apple, or ARM machine.
   - Known working light-weight computer: Raspberry Pi 5 with Heat Sink and Fan (5GB RAM, and Ethernet cable Internet connection instead of Wi-Fi).
+    - If using a lightweight machine such as a Raspberry Pi 5, avoid all unnecessary software, including any unnecessary browser extensions. You can install browser extensions if you need them, but simply disable them in the Web browser so that they don't soak up memory and CPU when you don't need to use them.
   - Machine must be kept secure: Up-to-date with updates, free of malware, and physically secure.
 - Node.js 22+
   - For Linux (including for arm64 versions of Raspberry Pi), Mac, install:
