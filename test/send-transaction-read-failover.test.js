@@ -86,16 +86,16 @@ describe("send-transaction: init idempotency", () => {
 
   it("re-init with the SAME URLs is a no-op (providers preserved)", () => {
     const lib = makeLib();
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     const provFirst = sendTx.getCurrentRPC();
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     const provSecond = sendTx.getCurrentRPC();
     assert.strictEqual(provFirst, provSecond);
   });
 
   it("re-init with the SAME URLs preserves an active failover window", () => {
     const lib = makeLib();
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     const m = muteConsole();
     try {
       sendTx.failoverToNextRPC();
@@ -106,18 +106,14 @@ describe("send-transaction: init idempotency", () => {
     /*- Re-init must NOT wipe the sticky failover state, otherwise a
         second boot path (server.js running after bot-loop.js) would
         silently revert us to a known-broken primary. */
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     assert.equal(sendTx.getCurrentRPC()._url, FALL);
   });
 
   it("re-init with DIFFERENT URLs throws", () => {
-    sendTx.init({ primary: PRI, fallback: FALL }, makeLib());
+    sendTx.init({ urls: [PRI, FALL] }, makeLib());
     assert.throws(
-      () =>
-        sendTx.init(
-          { primary: "http://other.test", fallback: FALL },
-          makeLib(),
-        ),
+      () => sendTx.init({ urls: ["http://other.test", FALL] }, makeLib()),
       /different URLs/,
     );
   });
@@ -132,7 +128,7 @@ describe("send-transaction: ensureReachable", () => {
   });
 
   it("returns silently when primary is reachable (no failover)", async () => {
-    sendTx.init({ primary: PRI, fallback: FALL }, makeLib());
+    sendTx.init({ urls: [PRI, FALL] }, makeLib());
     const m = muteConsole();
     try {
       await sendTx.ensureReachable();
@@ -150,7 +146,7 @@ describe("send-transaction: ensureReachable", () => {
 
   it("engages failover when primary throws and fallback works", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -175,7 +171,7 @@ describe("send-transaction: ensureReachable", () => {
 
   it("propagates the primary error when fallback ALSO fails", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -202,7 +198,7 @@ describe("send-transaction: ensureReachable", () => {
 
   it("propagates the primary error when primary === fallback URL", async () => {
     sendTx.init(
-      { primary: PRI, fallback: PRI },
+      { urls: [PRI] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -236,7 +232,7 @@ describe("send-transaction: getManagedReadProvider", () => {
 
   it("routes method calls through the currently-active RPC", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: { getBlockNumber: async () => 100 },
         [FALL]: { getBlockNumber: async () => 200 },
@@ -254,7 +250,7 @@ describe("send-transaction: getManagedReadProvider", () => {
   });
 
   it("returns non-function properties straight from the active provider", () => {
-    sendTx.init({ primary: PRI, fallback: FALL }, makeLib());
+    sendTx.init({ urls: [PRI, FALL] }, makeLib());
     const managed = sendTx.getManagedReadProvider();
     assert.equal(managed._url, PRI);
   });
@@ -262,7 +258,7 @@ describe("send-transaction: getManagedReadProvider", () => {
   it("engages failover on SERVER_ERROR and retries against the fallback", async () => {
     let primaryCalls = 0;
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -292,7 +288,7 @@ describe("send-transaction: getManagedReadProvider", () => {
 
   it("does NOT failover on non-failover-eligible errors", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -313,7 +309,7 @@ describe("send-transaction: getManagedReadProvider", () => {
   it("does NOT retry when primary === fallback URL (no point)", async () => {
     let calls = 0;
     sendTx.init(
-      { primary: PRI, fallback: PRI },
+      { urls: [PRI] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {

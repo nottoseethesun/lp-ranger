@@ -1,6 +1,7 @@
 "use strict";
 
-const { log } = require("./log");
+const { scanChunked } = require("./get-logs-chunked");
+
 /**
  * @file pool-creation-finder.js
  * @module poolCreationFinder
@@ -19,21 +20,6 @@ const { log } = require("./log");
 const POOL_CREATED_ABI = [
   "event PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing, address pool)",
 ];
-
-/**
- * Throw if an AbortSignal is aborted.  Mirrors the helper in event-scanner.js
- * so this module stays standalone.
- * @param {AbortSignal} [signal]
- * @param {string} where  Short label for the log message.
- */
-function _throwIfAborted(signal, where) {
-  if (signal && signal.aborted) {
-    log.info("[event-scanner] %s aborted via AbortSignal", where);
-    const err = new Error("Scan aborted");
-    err.name = "AbortError";
-    throw err;
-  }
-}
 
 /**
  * Find the block number at which a V3 pool was created by querying the
@@ -59,7 +45,7 @@ async function findPoolCreationBlock(provider, ethersLib, opts) {
     poolAddress,
     fromBlock,
     toBlock,
-    chunkSize = 50_000,
+    chunkSize,
     onProgress,
     signal,
   } = opts;
@@ -71,29 +57,40 @@ async function findPoolCreationBlock(provider, ethersLib, opts) {
       provider,
     );
     const poolLower = poolAddress.toLowerCase();
-    const totalChunks = Math.ceil((toBlock - fromBlock + 1) / chunkSize);
-    let chunkIdx = 0;
-    for (let start = fromBlock; start <= toBlock; start += chunkSize) {
-      _throwIfAborted(signal, "findPoolCreationBlock");
-      const end = Math.min(start + chunkSize - 1, toBlock);
-      if (onProgress) onProgress(chunkIdx, totalChunks);
-      try {
-        const events = await factory.queryFilter(
-          factory.filters.PoolCreated(),
-          start,
-          end,
-        );
+    let found = null;
+    /*- Scanned newest-first.  Callers pass `fromBlock: 0`, so an
+     *  oldest-first walk grinds through the entire chain before
+     *  reaching a pool created last week — and every pool LP Ranger
+     *  manages was, by definition, created before now and usually
+     *  recently.  Reversing turns the common case into a handful of
+     *  windows while leaving the worst case (a genuinely ancient pool)
+     *  exactly as it was.
+     *
+     *  Best-effort: a window that fails is skipped rather than failing
+     *  the lookup, preserving the previous behaviour of falling back to
+     *  a full scan when the factory query does not cooperate. */
+    await scanChunked({
+      fromBlock,
+      toBlock,
+      chunkSize,
+      direction: "desc",
+      signal,
+      onProgress,
+      bestEffort: true,
+      label: "pool-creation",
+      query: (f, t) => factory.queryFilter(factory.filters.PoolCreated(), f, t),
+      onChunk: (events) => {
         for (const ev of events) {
           const createdPool = ev.args[4] || ev.args.pool;
-          if (createdPool && createdPool.toLowerCase() === poolLower)
-            return ev.blockNumber;
+          if (createdPool && createdPool.toLowerCase() === poolLower) {
+            found = ev.blockNumber;
+            return true;
+          }
         }
-      } catch (e) {
-        if (e && e.name === "AbortError") throw e;
-        /* skip failed chunks */
-      }
-      chunkIdx++;
-    }
+        return false;
+      },
+    });
+    if (found !== null) return found;
   } catch (e) {
     if (e && e.name === "AbortError") throw e;
     /* factory query failed — fall back to full scan */

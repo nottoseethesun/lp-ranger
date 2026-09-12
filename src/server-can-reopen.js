@@ -116,7 +116,7 @@ async function _readBothBalancesWithRetry({
   readBalance,
   providerFactory,
 }) {
-  const urls = [config.RPC_URL, config.RPC_URL_FALLBACK].filter(Boolean);
+  const urls = config.RPC_URLS;
   let attemptCount = 0;
   let lastErr = null;
   for (const url of urls) {

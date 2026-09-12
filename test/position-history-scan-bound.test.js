@@ -102,15 +102,21 @@ describe("position-history scan bound", () => {
     } = require("../src/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     await scanCollectAndDrain("12345", provider, 5_000_000);
-    /*- Collect + DecreaseLiquidity, both bounded. */
-    assert.strictEqual(getLogsCalls.length, 2);
-    for (const call of getLogsCalls) {
-      assert.strictEqual(
-        call.fromBlock,
-        5_000_000,
-        "fromBlock must be the value passed in, not 0",
-      );
-    }
+    /*- Collect + DecreaseLiquidity, both bounded.  The scan is chunked,
+     *  so this is many calls rather than two; what matters — and what
+     *  this test has always been about — is that NOTHING is queried
+     *  below the bound we passed in.  Asserting the floor states that
+     *  directly, where a call count only ever implied it. */
+    assert.ok(getLogsCalls.length > 0, "expected at least one query");
+    const lowest = Math.min(...getLogsCalls.map((c) => c.fromBlock));
+    assert.strictEqual(
+      lowest,
+      5_000_000,
+      "no window may start below the fromBlock passed in",
+    );
+    /*- Both event types still queried, once each per window. */
+    const topics = new Set(getLogsCalls.map((c) => c.topics[0]));
+    assert.strictEqual(topics.size, 2, "Collect and DecreaseLiquidity");
   });
 
   it("scanCollectAndDrain defaults fromBlock to 0 (back-compat)", async () => {
@@ -128,7 +134,8 @@ describe("position-history scan bound", () => {
     } = require("../src/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     await scanCollectAndDrain("12345", provider);
-    assert.strictEqual(getLogsCalls[0].fromBlock, 0);
+    const lowest = Math.min(...getLogsCalls.map((c) => c.fromBlock));
+    assert.strictEqual(lowest, 0);
   });
 
   it("resolveScanFromBlock returns max(latest - 5y, 0) when pool unknown", async () => {

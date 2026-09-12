@@ -72,17 +72,47 @@ const HOST = process.env.HOST || APP_CONFIG.server.host;
 
 // ── Bot / wallet ───────────────────────────────────────────────────────────────
 
-/** Primary JSON-RPC endpoint (chain-aware default from chains.json). */
-const RPC_URL =
-  process.env.RPC_URL ||
-  CHAIN.rpc?.primary ||
-  "https://rpc-pulsechain.g4mm4.io";
+/*- Ordered RPC endpoints for the active chain.  chains.json owns the
+ *  URLs — there are deliberately no literals here, per
+ *  feedback_one_literal_per_shipped_default: an env-var fallback
+ *  literal is a second source of truth that drifts silently when the
+ *  shipped list changes.
+ *
+ *  Env overrides are positional and stay backward compatible: RPC_URL
+ *  replaces the first entry, RPC_URL_FALLBACK the second,
+ *  RPC_URL_FALLBACK_2 the third.  An operator who sets only RPC_URL
+ *  keeps the shipped endpoints behind it. */
+const _CHAIN_RPC_URLS = Array.isArray(CHAIN.rpc?.urls) ? CHAIN.rpc.urls : [];
+const _RPC_ENV_OVERRIDES = [
+  process.env.RPC_URL,
+  process.env.RPC_URL_FALLBACK,
+  process.env.RPC_URL_FALLBACK_2,
+];
 
-/** Fallback RPC endpoint — used automatically if the primary is unreachable. */
-const RPC_URL_FALLBACK =
-  process.env.RPC_URL_FALLBACK ||
-  CHAIN.rpc?.fallback ||
-  "https://rpc.pulsechain.com";
+/*- Merge overrides over the shipped list, then drop blanks and
+ *  duplicates.  Deduplication matters: the testnet chain ships a single
+ *  endpoint, and failing over from an endpoint to itself is a wasted
+ *  round-trip that also makes "have I run out of endpoints?" harder to
+ *  answer honestly. */
+const RPC_URLS = (() => {
+  const len = Math.max(_CHAIN_RPC_URLS.length, _RPC_ENV_OVERRIDES.length);
+  const out = [];
+  for (let i = 0; i < len; i++) {
+    const url = _RPC_ENV_OVERRIDES[i] || _CHAIN_RPC_URLS[i];
+    if (typeof url === "string" && url.length > 0 && !out.includes(url)) {
+      out.push(url);
+    }
+  }
+  return out;
+})();
+
+/** Primary JSON-RPC endpoint — first entry of `RPC_URLS`. */
+const RPC_URL = RPC_URLS[0] || "";
+
+/*- Second endpoint.  Retained as a named export because a number of
+ *  call sites still think in terms of a pair; they fall back to the
+ *  primary when the chain ships only one endpoint. */
+const RPC_URL_FALLBACK = RPC_URLS[1] || RPC_URL;
 
 /** NFT token ID for single-position NFT mode (optional). */
 const POSITION_ID = process.env.POSITION_ID || null;
@@ -285,6 +315,7 @@ module.exports = {
   DRY_RUN,
   RPC_URL,
   RPC_URL_FALLBACK,
+  RPC_URLS,
   POSITION_ID,
   ERC20_POSITION_ADDRESS,
   REBALANCE_OOR_THRESHOLD_PCT,

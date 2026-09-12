@@ -61,13 +61,20 @@ function dlLog(liquidity, amount0, amount1, blockNumber) {
  * makes that event's query fail, which is what separates "no fees" from
  * "we could not read the history".
  */
-function buildProvider({ collect = [], dl = [] }) {
+function buildProvider({ collect = [], dl = [], head = 1000 }) {
   return {
     async getLogs(opts) {
       const topic = opts.topics[0];
       const set = topic === _COLLECT_TOPIC ? collect : dl;
       if (set === "throw") throw new Error("rpc unavailable");
       return set;
+    },
+    /*- The scan is chunked, so a "latest" upper bound is resolved to a
+     *  number first.  A small head keeps these fixtures to a single
+     *  window, which is what lets the call-count assertions below stay
+     *  meaningful rather than becoming chunk arithmetic. */
+    async getBlockNumber() {
+      return head;
     },
   };
 }
@@ -140,6 +147,9 @@ describe("scanCollectAndDrain — reading it off the chain", () => {
           ? [collectLog(10n, 0n, 900)]
           : [];
       },
+      async getBlockNumber() {
+        return 1000;
+      },
     };
     await scanCollectAndDrain("164418", prov, 1);
     assert.equal(topics.length, 2, "exactly two queries");
@@ -155,10 +165,16 @@ describe("scanCollectAndDrain — reading it off the chain", () => {
           ? [collectLog(1n, 0n, 900)]
           : [];
       },
+      async getBlockNumber() {
+        return 13000;
+      },
     };
     await scanCollectAndDrain("164418", prov, 12345);
-    /*- Both queries, never block 0 — see feedback on genesis scans. */
-    assert.deepEqual(seen, [12345, 12345]);
+    /*- Both queries, never block 0 — see feedback on genesis scans.
+     *  The floor is what matters: no window may begin below the bound
+     *  the caller gave, however many windows the range is split into. */
+    assert.ok(seen.length > 0, "expected queries");
+    assert.equal(Math.min(...seen), 12345);
   });
 
   it("returns the Collect events so the exit value can reuse them", async () => {

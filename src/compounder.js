@@ -21,6 +21,7 @@ const { log } = require("./log");
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { swapForCompound } = require("./compounder-swap");
+const { scanChunked } = require("./get-logs-chunked");
 
 /*- Thin wrapper around shared `logCtx` in `src/logger.js` so the 6-field
  *  compound/rebalance/swap entry-point format stays in lockstep across
@@ -493,31 +494,32 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
   const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const addr = config.POSITION_MANAGER;
   const from = scanOpts.fromBlock ?? 0;
+  /*- Chunked, and resolved to a concrete head once per event type
+   *  rather than per window, so all three cover the same range.
+   *
+   *  The range is wide: `detectCompoundsOnChain` calls this with no
+   *  `fromBlock` at all, i.e. genesis to head.  These three queries
+   *  used to `.catch(() => [])` with no log, so a range-cap rejection
+   *  reported "no compounds ever" and the compounded-fee total silently
+   *  reset to zero.  Errors now propagate. */
+  const scanEvent = (name) =>
+    scanChunked({
+      provider: prov,
+      fromBlock: from,
+      toBlock: "latest",
+      label: `compounder ${name} #${tokenId}`,
+      query: (f, t) =>
+        prov.getLogs({
+          address: addr,
+          fromBlock: f,
+          toBlock: t,
+          topics: [_IFACE.getEvent(name).topicHash, tidHex],
+        }),
+    });
   const [ilLogs, colLogs, dlLogs] = await Promise.all([
-    prov
-      .getLogs({
-        address: addr,
-        fromBlock: from,
-        toBlock: "latest",
-        topics: [_IFACE.getEvent("IncreaseLiquidity").topicHash, tidHex],
-      })
-      .catch(() => []),
-    prov
-      .getLogs({
-        address: addr,
-        fromBlock: from,
-        toBlock: "latest",
-        topics: [_IFACE.getEvent("Collect").topicHash, tidHex],
-      })
-      .catch(() => []),
-    prov
-      .getLogs({
-        address: addr,
-        fromBlock: from,
-        toBlock: "latest",
-        topics: [_IFACE.getEvent("DecreaseLiquidity").topicHash, tidHex],
-      })
-      .catch(() => []),
+    scanEvent("IncreaseLiquidity"),
+    scanEvent("Collect"),
+    scanEvent("DecreaseLiquidity"),
   ]);
   return {
     ilEvents: _parseLogs(_IFACE, ilLogs),

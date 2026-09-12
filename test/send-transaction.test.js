@@ -77,10 +77,7 @@ function initWithEstimates(behaviours) {
       }
     },
   };
-  sendTx.init(
-    { primary: "http://primary.test", fallback: "http://fallback.test" },
-    lib,
-  );
+  sendTx.init({ urls: ["http://primary.test", "http://fallback.test"] }, lib);
 }
 
 /*- Quiet helper: capture console.warn/error/log so failover banners and
@@ -116,7 +113,7 @@ describe("send-transaction: init / getCurrentRPC", () => {
 
   it("init builds both providers and returns primary by default", () => {
     sendTx.init(
-      { primary: "http://primary.test", fallback: "http://fallback.test" },
+      { urls: ["http://primary.test", "http://fallback.test"] },
       mockEthersLib(),
     );
     const cur = sendTx.getCurrentRPC();
@@ -124,11 +121,8 @@ describe("send-transaction: init / getCurrentRPC", () => {
   });
 
   it("init rejects malformed rpcConfig", () => {
-    assert.throws(() => sendTx.init({}, mockEthersLib()), /primary, fallback/);
-    assert.throws(
-      () => sendTx.init({ primary: "x" }, mockEthersLib()),
-      /primary, fallback/,
-    );
+    assert.throws(() => sendTx.init({}, mockEthersLib()), /urls/);
+    assert.throws(() => sendTx.init({ urls: [] }, mockEthersLib()), /urls/);
   });
 });
 
@@ -142,7 +136,7 @@ describe("send-transaction: failoverToNextRPC", () => {
 
   it("switches to fallback after failover and self-heals when window expires", () => {
     sendTx.init(
-      { primary: "http://primary.test", fallback: "http://fallback.test" },
+      { urls: ["http://primary.test", "http://fallback.test"] },
       mockEthersLib(),
     );
 
@@ -166,7 +160,7 @@ describe("send-transaction: failoverToNextRPC", () => {
 
   it("repeated failoverToNextRPC inside window refreshes the timer silently", () => {
     sendTx.init(
-      { primary: "http://primary.test", fallback: "http://fallback.test" },
+      { urls: ["http://primary.test", "http://fallback.test"] },
       mockEthersLib(),
     );
     /*- Capture console.warn so we can assert exactly ONE failover banner
@@ -188,10 +182,7 @@ describe("send-transaction: failoverToNextRPC", () => {
   });
 
   it("is a no-op when primary === fallback URL (single-RPC chain config)", () => {
-    sendTx.init(
-      { primary: "http://only.test", fallback: "http://only.test" },
-      mockEthersLib(),
-    );
+    sendTx.init({ urls: ["http://only.test"] }, mockEthersLib());
     /*- Should NOT log a banner — there's nothing to fail over to. */
     const warns = [];
     const origWarn = console.warn;
@@ -333,7 +324,7 @@ describe("send-transaction: _estimateWithFailover", () => {
     /*- Same-URL config: a single estimateGas call against the only RPC. */
     let calls = 0;
     sendTx.init(
-      { primary: "http://only.test", fallback: "http://only.test" },
+      { urls: ["http://only.test"] },
       {
         JsonRpcProvider: class {
           constructor(url) {

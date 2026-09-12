@@ -22,6 +22,7 @@ sequence.
 - [Command-Line Flags](#command-line-flags)
 - [Environment Variables](#environment-variables)
   - [Configuration Precedence](#configuration-precedence)
+- [RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking)
 - [USD Pricing](#usd-pricing)
 - [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
 - [Idle-Suppressed Polling Sounds](#idle-suppressed-polling-sounds)
@@ -275,8 +276,17 @@ each layer live in the [Security](#security) section below.
 
 ### Bot Behaviour (`.env`)
 
-- `RPC_URL` — JSON-RPC endpoint (default: `https://rpc-pulsechain.g4mm4.io`)
-- `RPC_URL_FALLBACK` — Fallback RPC (default: `https://rpc.pulsechain.com`)
+- `RPC_URL` — first JSON-RPC endpoint (default:
+  `https://rpc-pulsechain.g4mm4.io`)
+- `RPC_URL_FALLBACK` — second endpoint (default: `https://rpc.pulsechain.com`)
+- `RPC_URL_FALLBACK_2` — third endpoint (default: `https://rpc.pulsechain.box`;
+  free tier, 50 requests per 10 seconds per IP)
+
+The shipped list lives in `chains.json` under `rpc.urls`; the three variables
+override it positionally, so setting only `RPC_URL` leaves the endpoints behind
+it intact. See
+[RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking).
+
 - `REBALANCE_OOR_THRESHOLD_PCT` — % beyond boundary to trigger rebalance
   (default: `10`)
 - `REBALANCE_TIMEOUT_MIN` — Minutes of continuous OOR before auto-rebalance
@@ -324,6 +334,75 @@ below for the full inventory and the rules for where future config files
 should go.
 
 ---
+
+## RPC Request Pacing and Log Chunking
+
+Two settings govern how LP Ranger talks to an RPC endpoint. Both live in
+`app-config/app-defaults-for-user-configurable/bot-config-defaults.json`, both
+are deliberately **absent from the dashboard**, and they only make sense as a
+pair: the chunk size decides how many requests a scan produces, the interval
+decides how fast they leave.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `getLogsChunkSize` | `7500` | Maximum block span per `eth_getLogs` call |
+| `globalRPCRequestRateIntervalMS` | `250` | Minimum gap between *any* two requests |
+
+They are not exposed in the GUI because they should never need changing in
+normal operation, and they are not in `GLOBAL_KEYS`, so they never reach
+`POST /api/config` or the OpenAPI schema. Override them by editing the file
+under `app-config/user-configurable/` and restarting.
+
+### Why chunking exists
+
+RPC endpoints cap how wide a single log query may be. `rpc-pulsechain.g4mm4.io`
+rejects anything over 10,000 blocks with JSON-RPC `-32602`, "eth_getLogs is
+limited to a 10000 block range". A five-year history scan asks for ~15.8M
+blocks, so without splitting, the query simply fails.
+
+`src/get-logs-chunked.js` is the only place that arithmetic lives. Callers hand
+it a range and a query function; it walks the range in capped windows. The
+default of 7,500 is 75% of the strictest cap observed, and the margin is
+deliberate: endpoint operators leave some limits unpublished on purpose, so an
+observed ceiling is not a promise.
+
+**Failures propagate.** A chunk that fails fails the scan, unless a call site
+explicitly opts into `bestEffort`. Several scans used to swallow query errors
+and return an empty array, which reads as "this wallet has no deposits" rather
+than "we could not read" — the two lead to opposite conclusions, and that
+confusion is what kept a real outage invisible. When an endpoint does reject a
+range, the error names the span, the cap and this setting, instead of the raw
+multi-line ethers dump that used to reach the Activity Log.
+
+### Why pacing is global
+
+Rate limits are published per IP, not per endpoint object or per scan. This
+process may hold three providers and run a history scan while the bot polls, all
+from one address. `src/rpc-request-manager.js` is therefore a single FIFO queue
+for the whole process: every request enqueues and is released one at a time on a
+fixed schedule.
+
+It is **agnostic to request content** — it never inspects the method, the params
+or the caller. That is the design, not an omission: a uniform release schedule is
+the only thing that actually guarantees a rate, and every exception (a fast path
+for reads, a priority lane for transactions) is a hole the rate escapes through.
+If something needs to go sooner, the answer is a shorter interval.
+
+It is wired in by `buildProvider` (`src/bot-provider.js`), which wraps ethers'
+`send()` — the single funnel all JSON-RPC traffic passes through, reads and
+writes alike. Anything added later is paced automatically, with nothing to
+remember at the call site.
+
+A per-chunk delay preceded this and could not do the job: a chunk fires two to
+four queries in parallel, so a delay between chunks never bounded the request
+rate it appeared to bound.
+
+### Cost
+
+Serializing removes parallelism, so scan time is roughly *requests x interval*.
+A full five-year scan is ~2,100 chunks / ~4,200 requests, about 18 minutes at the
+defaults. Raising `getLogsChunkSize` (up to the 10,000 cap) is the single lever
+if that is too slow; lowering it is the fix if an endpoint rejects a query.
 
 ## USD Pricing
 

@@ -19,6 +19,7 @@
 const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
+const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const {
   getPoolCreationBlockCached,
@@ -50,14 +51,27 @@ const _IFACE = new ethers.Interface(PM_ABI);
 async function _scanEventLogs(eventName, tokenId, provider, fromBlock) {
   try {
     const tid = BigInt(tokenId);
-    const logs = await provider.getLogs({
-      address: config.POSITION_MANAGER,
+    /*- Chunked.  The surrounding try/catch is what preserves this
+     *  function's null-vs-[] contract: a chunk failure propagates out of
+     *  scanChunked, lands in the catch below, and returns null ("we do
+     *  not know").  Best-effort chunking would return a short array
+     *  here and be read as "the event never fired", which is the one
+     *  outcome this function exists to avoid. */
+    const logs = await scanChunked({
+      provider,
       fromBlock,
       toBlock: "latest",
-      topics: [
-        _IFACE.getEvent(eventName).topicHash,
-        "0x" + tid.toString(16).padStart(64, "0"),
-      ],
+      label: `history ${eventName} #${tokenId}`,
+      query: (f, t) =>
+        provider.getLogs({
+          address: config.POSITION_MANAGER,
+          fromBlock: f,
+          toBlock: t,
+          topics: [
+            _IFACE.getEvent(eventName).topicHash,
+            "0x" + tid.toString(16).padStart(64, "0"),
+          ],
+        }),
     });
     const out = [];
     for (const l of logs) {

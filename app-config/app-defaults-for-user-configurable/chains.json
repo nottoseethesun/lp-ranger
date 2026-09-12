@@ -7,9 +7,13 @@
     "gasPriceMultiplier": 7,
     "gasLimitMultiplier": 2,
     "speedUpGasBump": 1.5,
+    "_rpc_comment": "Ordered RPC endpoints. Index 0 is the primary; failover walks the list in order and sticks to whichever answers. Note the layered-defaults loader REPLACES arrays wholesale rather than merging them, so a user override of this array must list every endpoint it wants, not just additions. rpc.pulsechain.box is a free tier limited to 50 requests per 10 seconds per IP; src/rpc-request-manager.js paces the whole process well inside that.",
     "rpc": {
-      "primary": "https://rpc-pulsechain.g4mm4.io",
-      "fallback": "https://rpc.pulsechain.com"
+      "urls": [
+        "https://rpc-pulsechain.g4mm4.io",
+        "https://rpc.pulsechain.com",
+        "https://rpc.pulsechain.box"
+      ]
     },
     "blockExplorer": "https://scan.pulsechain.com",
     "contracts": {
@@ -64,8 +68,7 @@
     "gasLimitMultiplier": 2,
     "speedUpGasBump": 1.5,
     "rpc": {
-      "primary": "https://rpc.v4.testnet.pulsechain.com",
-      "fallback": "https://rpc.v4.testnet.pulsechain.com"
+      "urls": ["https://rpc.v4.testnet.pulsechain.com"]
     },
     "blockExplorer": "https://scan.v4.testnet.pulsechain.com",
     "contracts": {

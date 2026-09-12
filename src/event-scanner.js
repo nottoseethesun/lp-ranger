@@ -19,33 +19,19 @@ const { log } = require("./log");
 /** PulseChain ~10 s block time → blocks per year. */
 const _BLOCKS_PER_YEAR = Math.round((365.25 * 24 * 3600) / 10); // 3_155_760
 
-/**
- * Throw if an AbortSignal is aborted.  Used at chunk-loop checkpoints so the
- * scanner cooperatively bails out when a caller (e.g. cancelPoolScan via the
- * /api/position/scan-cancel endpoint) signals cancellation.  The 250 ms
- * inter-chunk delay is a natural place to poll — worst-case latency to
- * actually stop scanning is one chunk's RPC round-trip.
- * @param {AbortSignal} [signal]
- * @param {string} where  Short label for the log message.
- */
-function _throwIfAborted(signal, where) {
-  if (signal && signal.aborted) {
-    log.info("[event-scanner] %s aborted via AbortSignal", where);
-    const err = new Error("Scan aborted");
-    err.name = "AbortError";
-    throw err;
-  }
-}
-
-/** Default chunk size for getLogs queries. */
-const _DEFAULT_CHUNK_SIZE = 10000;
+/*- Default chunk size comes from the shared chunker, which reads the
+ *  single shipped literal (`getLogsChunkSize`).  Not redeclared here —
+ *  one literal, one owner. */
 
 /** Maximum seconds between paired Transfer-out and Transfer-in. */
 const _PAIRING_WINDOW_SEC = 300;
 
-/** Milliseconds to wait between RPC chunk queries (rate limiting). */
-const _CHUNK_DELAY_MS = 250;
+/*- The old per-chunk delay is gone.  Rate limiting is global now and
+ *  lives in src/rpc-request-manager.js, which paces individual
+ *  requests; a per-chunk delay could not, because each chunk issues two
+ *  queries in parallel. */
 
+const { scanChunked, _DEFAULT_CHUNK_SIZE } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const { resolveFirstMintWithForeign } = require("./event-scanner-mint-lookup");
@@ -386,32 +372,28 @@ async function scanChunks(
   chunkSize,
   onProgress,
   label,
-  delayMs,
   signal,
 ) {
-  const rawEvents = [];
-  const totalChunks = Math.ceil((currentBlock - scanFrom + 1) / chunkSize);
-  let done = 0;
-  for (let start = scanFrom; start <= currentBlock; start += chunkSize) {
-    _throwIfAborted(signal, "scanChunks");
-    const end = Math.min(start + chunkSize - 1, currentBlock);
-    rawEvents.push(...(await queryChunk(contract, walletAddress, start, end)));
-    done++;
-    if (done % 50 === 0 || done === totalChunks) {
-      log.info(
-        "[event-scanner] %s: %d/%d chunks scanned (%d events)",
-        label,
-        done,
-        totalChunks,
-        rawEvents.length,
-      );
-    }
-    if (onProgress) onProgress(done, totalChunks);
-    if (done < totalChunks) {
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-  }
-  return rawEvents;
+  /*- Thin wrapper over the shared chunker so one windowing loop exists
+   *  in the codebase.  Pacing is no longer this function's business: it
+   *  is global (src/rpc-request-manager.js), which is the only level at
+   *  which it can be correct — each window here issues TWO queries in
+   *  parallel, so a per-window delay never bounded the request rate it
+   *  appeared to bound.
+   *
+   *  `bestEffort` preserves this scanner's long-standing behaviour of
+   *  logging a failed window and carrying on; `queryChunk` already
+   *  swallows per-window errors itself. */
+  return await scanChunked({
+    fromBlock: scanFrom,
+    toBlock: currentBlock,
+    chunkSize,
+    onProgress,
+    signal,
+    bestEffort: true,
+    label,
+    query: (from, to) => queryChunk(contract, walletAddress, from, to),
+  });
 }
 
 /**
@@ -633,7 +615,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     poolToken1 = null,
     poolFee = null,
   } = opts;
-  const chunkDelayMs = opts.chunkDelayMs ?? _CHUNK_DELAY_MS;
 
   const currentBlock = await provider.getBlockNumber();
   const cacheKey = _buildCacheKey(
@@ -675,7 +656,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     chunkSize,
     opts.onProgress,
     _scanLabel(walletAddress, poolToken0, poolToken1, poolFee),
-    chunkDelayMs,
     signal,
   );
 
@@ -719,7 +699,5 @@ module.exports = {
   scanRebalanceHistory,
   buildCacheKey: _buildCacheKey,
   _BLOCKS_PER_YEAR,
-  _DEFAULT_CHUNK_SIZE,
   _PAIRING_WINDOW_SEC,
-  _CHUNK_DELAY_MS,
 };

@@ -76,6 +76,7 @@ import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadLpProviders } from "./dashboard-lp-providers.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
+import { initRpcEndpoints } from "./dashboard-rpc-endpoints.js";
 import { loadSettingLabels } from "./dashboard-setting-labels.js";
 import {
   bindAllEvents,
@@ -398,6 +399,11 @@ function _afterDisclaimer() {
   })();
 
   // ── Activity log ─────────────────────────────────────────────────────────────
+
+  /*- Preset menu + placeholder, from the endpoints the server actually
+   *  uses.  Fired before the localStorage restore below so the operator's
+   *  own saved value still wins over the placeholder. */
+  initRpcEndpoints();
 
   // Restore RPC URL from localStorage
   (function restoreRpcUrl() {

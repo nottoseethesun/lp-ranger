@@ -58,11 +58,19 @@ const _DEFAULT_FLOOR = 300_000n;
 /** Cancel TX is a 0-value self-transfer — exactly 21000 base gas. */
 const _CANCEL_GAS_LIMIT = 21000n;
 
-let _primaryProvider = null;
-let _fallbackProvider = null;
-let _primaryUrl = null;
-let _fallbackUrl = null;
-let _useFallbackUntilMs = 0;
+/*- The ordered RPC list and where in it we currently are.
+ *
+ *  This was a primary/fallback pair.  It is a list because chains.json
+ *  now ships an ordered set (see `rpc.urls`), and "the fallback" is no
+ *  longer a single thing: failover walks forward through the list.
+ *
+ *  `_stickyUntilMs` is the deadline for the current non-zero position.
+ *  Once it passes, `getCurrentRPC` snaps back to index 0 — the same
+ *  self-healing behaviour the pair had, generalised. */
+let _providers = [];
+let _urls = [];
+let _activeIdx = 0;
+let _stickyUntilMs = 0;
 
 /**
  * Register the chain's RPC providers.  Idempotent: safe to call from
@@ -75,39 +83,48 @@ let _useFallbackUntilMs = 0;
  * the whole point of mid-session failover is that the fallback must be
  * usable at the moment the primary fails, possibly hours after boot.
  *
- * @param {{primary: string, fallback: string}} rpcConfig
- *   Primary + fallback RPC URLs.  Callers typically pass the env-var-aware
- *   `{ primary: config.RPC_URL, fallback: config.RPC_URL_FALLBACK }` so an
- *   operator's `.env` override is honoured for both reads and writes.
+ * @param {{urls: string[]}} rpcConfig
+ *   Ordered RPC URLs, most-preferred first.  Callers pass the
+ *   env-var-aware `{ urls: config.RPC_URLS }` so an operator's `.env`
+ *   override is honoured for both reads and writes.
  * @param {object} [ethersLib]  Injected ethers library (for testing).
  */
 function init(rpcConfig, ethersLib) {
-  if (!rpcConfig || !rpcConfig.primary || !rpcConfig.fallback) {
+  const urls = rpcConfig && rpcConfig.urls;
+  if (!Array.isArray(urls) || urls.length === 0 || !urls.every(Boolean)) {
     throw new Error(
-      "[send-tx] init: rpcConfig must have { primary, fallback } URL strings",
+      "[send-tx] init: rpcConfig must have { urls: [...] } — a non-empty ordered array of URL strings",
     );
   }
-  if (_primaryProvider) {
-    if (
-      _primaryUrl === rpcConfig.primary &&
-      _fallbackUrl === rpcConfig.fallback
-    ) {
+  if (_providers.length > 0) {
+    if (_urls.length === urls.length && _urls.every((u, i) => u === urls[i])) {
       /*- Already initialised with matching URLs.  Keep the existing
-       *  providers AND the sticky-failover window so a re-init mid-
-       *  outage doesn't accidentally revert to a known-broken primary. */
+       *  providers AND the sticky window so a re-init mid-outage
+       *  doesn't accidentally revert to a known-broken endpoint. */
       return;
     }
     throw new Error(
       "[send-tx] init: already initialised with different URLs " +
-        `(was ${_primaryUrl} / ${_fallbackUrl}, ` +
-        `now ${rpcConfig.primary} / ${rpcConfig.fallback})`,
+        `(was ${_urls.join(", ")}, now ${urls.join(", ")})`,
     );
   }
-  _primaryUrl = rpcConfig.primary;
-  _fallbackUrl = rpcConfig.fallback;
-  _primaryProvider = buildProvider(rpcConfig.primary, ethersLib || ethers);
-  _fallbackProvider = buildProvider(rpcConfig.fallback, ethersLib || ethers);
-  _useFallbackUntilMs = 0;
+  _urls = [...urls];
+  _providers = _urls.map((u) => buildProvider(u, ethersLib || ethers));
+  _activeIdx = 0;
+  _stickyUntilMs = 0;
+}
+
+/**
+ * How many endpoints are actually available to move between.
+ *
+ * Replaces the `_primaryUrl === _fallbackUrl` check that used to appear
+ * at five separate call sites.  A chain configured with one endpoint
+ * (the testnet ships exactly that) cannot fail over, and every caller
+ * needs to know it without re-deriving the rule.
+ * @returns {number}
+ */
+function _endpointCount() {
+  return _urls.length;
 }
 
 /*- Error codes / response statuses that indicate the active RPC is the
@@ -147,27 +164,37 @@ function _isReadFailoverable(err) {
  * @returns {Promise<void>}
  */
 async function ensureReachable() {
-  if (!_primaryProvider) {
+  if (_providers.length === 0) {
     throw new Error(
       "[send-tx] ensureReachable: not initialised — call init() at boot first",
     );
   }
-  try {
-    await _primaryProvider.getBlockNumber();
-    log.info(`[bot] RPC:    ${_primaryUrl}`);
-    return;
-  } catch (err) {
-    if (_primaryUrl === _fallbackUrl) {
-      /*- Single-RPC chain config — no fallback to try.  Let the error
-       *  surface so the caller can decide whether to abort boot. */
-      throw err;
+  /*- Try each endpoint in order until one answers.  The error that
+   *  surfaces when none does is the LAST one, which is the most useful:
+   *  it names the endpoint we gave up on rather than the one we started
+   *  with. */
+  let lastErr = null;
+  for (let i = 0; i < _providers.length; i++) {
+    try {
+      await _providers[i].getBlockNumber();
+      if (i > 0) {
+        /*- Engage the sticky window so reads and writes both start on
+         *  the endpoint we just proved reachable, rather than retrying
+         *  the dead one on the first real call. */
+        _engageFailoverTo(i, 0);
+        log.info(`[bot] RPC:    ${_urls[i]} (fallback)`);
+      } else {
+        log.info(`[bot] RPC:    ${_urls[i]}`);
+      }
+      return;
+    } catch (err) {
+      lastErr = err;
+      const more = i < _providers.length - 1;
+      log.warn(`[bot] RPC unreachable (${_urls[i]}): ${err.message}`);
+      if (more) log.info(`[bot] Falling back to ${_urls[i + 1]}`);
     }
-    log.warn(`[bot] Primary RPC unreachable (${_primaryUrl}): ${err.message}`);
-    log.info(`[bot] Falling back to ${_fallbackUrl}`);
-    failoverToNextRPC();
-    await _fallbackProvider.getBlockNumber();
-    log.info(`[bot] RPC:    ${_fallbackUrl} (fallback)`);
   }
+  throw lastErr;
 }
 
 /**
@@ -218,10 +245,13 @@ function getManagedReadProvider() {
            *  the request. */
           return Promise.resolve(result).catch(async (err) => {
             if (!_isReadFailoverable(err)) throw err;
-            if (_primaryUrl === _fallbackUrl) throw err;
-            failoverToNextRPC();
+            /*- `failoverToNextRPC` reports whether it actually moved.
+             *  The old code inferred that from `next === current`, which
+             *  only worked while there were exactly two endpoints —
+             *  with three, "the provider changed" and "alternates
+             *  remain" are different questions. */
+            if (!failoverToNextRPC()) throw err;
             const next = getCurrentRPC();
-            if (next === current) throw err;
             return await next[prop].apply(next, args);
           });
         };
@@ -239,13 +269,16 @@ function getManagedReadProvider() {
  * @returns {import('ethers').JsonRpcProvider}
  */
 function getCurrentRPC() {
-  if (!_primaryProvider) {
+  if (_providers.length === 0) {
     throw new Error(
       "[send-tx] getCurrentRPC: not initialized — call init() at boot first",
     );
   }
-  if (Date.now() < _useFallbackUntilMs) return _fallbackProvider;
-  return _primaryProvider;
+  /*- Snap back to the preferred endpoint once the sticky window lapses.
+   *  Done here, on read, rather than on a timer: there is no background
+   *  work to cancel and no way for the reset to be missed. */
+  if (_activeIdx !== 0 && Date.now() >= _stickyUntilMs) _activeIdx = 0;
+  return _providers[_activeIdx];
 }
 
 /**
@@ -260,27 +293,57 @@ function getCurrentRPC() {
  * current PulseChain testnet config).
  */
 function failoverToNextRPC() {
-  if (!_primaryProvider) {
+  if (_providers.length === 0) {
     throw new Error(
       "[send-tx] failoverToNextRPC: not initialized — call init() at boot first",
     );
   }
-  if (_primaryUrl === _fallbackUrl) {
-    /*- Same-URL config (e.g. current testnet entry).  Failing over would
-        achieve nothing; silently no-op so callers don't need to know
-        whether their chain has two distinct RPCs. */
-    return;
-  }
-  const wasActive = Date.now() < _useFallbackUntilMs;
-  _useFallbackUntilMs = Date.now() + FAILOVER_DURATION_MS;
-  if (!wasActive) {
+  /*- Single-endpoint chain (the testnet ships one).  Nothing to move
+   *  to; no-op so callers need not know how many endpoints exist. */
+  if (_endpointCount() < 2) return false;
+
+  /*- Read through getCurrentRPC first so an expired sticky window has
+   *  already snapped us back to index 0.  Without this, a failover
+   *  arriving after a long quiet period would advance from a stale
+   *  index and skip endpoints. */
+  getCurrentRPC();
+  const from = _activeIdx;
+  if (from >= _providers.length - 1) {
+    /*- Already on the last endpoint: the list is exhausted.  Reporting
+     *  this honestly is what lets callers stop retrying — with only two
+     *  endpoints they could infer it from "the provider didn't change",
+     *  but with three that inference is wrong. */
     log.warn(
-      "[send-tx] RPC failover engaged: %s → %s (sticky for %d min)",
-      _primaryUrl,
-      _fallbackUrl,
-      Math.round(FAILOVER_DURATION_MS / 60_000),
+      "[send-tx] RPC failover exhausted: no endpoint after %s",
+      _urls[from],
     );
+    return false;
   }
+
+  _engageFailoverTo(from + 1, from);
+  return true;
+}
+
+/**
+ * Commit to endpoint `idx` and start the sticky window.
+ *
+ * Separate from `failoverToNextRPC` because the write path must be able
+ * to PROVE an endpoint works before moving to it: `_estimateWithFailover`
+ * probes candidates and commits only on success, so that a total outage
+ * leaves the bot on its preferred endpoint rather than pinned to the
+ * last one it happened to try.
+ * @param {number} idx   Index to become active.
+ * @param {number} from  Index we are leaving (for the log line).
+ */
+function _engageFailoverTo(idx, from) {
+  _activeIdx = idx;
+  _stickyUntilMs = Date.now() + FAILOVER_DURATION_MS;
+  log.warn(
+    "[send-tx] RPC failover engaged: %s → %s (sticky for %d min)",
+    _urls[from],
+    _urls[idx],
+    Math.round(FAILOVER_DURATION_MS / 60_000),
+  );
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -334,25 +397,44 @@ async function _estimateWithFailover(populated, label) {
   try {
     return await cur.estimateGas(populated);
   } catch (curErr) {
-    const onPrimary = cur === _primaryProvider;
-    if (!onPrimary || _primaryUrl === _fallbackUrl) throw curErr;
-    log.warn(
-      "[send-tx] %s: estimateGas on primary failed — trying fallback. Inner: %s",
-      label,
-      curErr.shortMessage || curErr.message,
-    );
-    try {
-      const gas = await _fallbackProvider.estimateGas(populated);
-      failoverToNextRPC();
-      return gas;
-    } catch (fbErr) {
+    /*- Walk forward through the remaining endpoints rather than taking
+     *  a single hop.  This used to be one-way primary → fallback, which
+     *  was the whole story when the list was a pair; with an ordered
+     *  list, stopping after one hop would leave the last endpoint
+     *  unreachable on the write path for no reason.
+     *
+     *  Candidates are PROBED, not committed to: the sticky window moves
+     *  only once an endpoint has actually answered.  Committing first
+     *  would mean a total outage ends with the bot pinned for an hour
+     *  to whichever endpoint it happened to try last — strictly worse
+     *  than staying on its preferred one and retrying there. */
+    const startIdx = _activeIdx;
+    for (let i = startIdx + 1; i < _providers.length; i++) {
       log.warn(
-        "[send-tx] %s: estimateGas on fallback also failed — using floor. Inner: %s",
+        "[send-tx] %s: estimateGas on %s failed — trying %s. Inner: %s",
         label,
-        fbErr.shortMessage || fbErr.message,
+        _urls[startIdx],
+        _urls[i],
+        curErr.shortMessage || curErr.message,
       );
-      throw curErr;
+      try {
+        const gas = await _providers[i].estimateGas(populated);
+        _engageFailoverTo(i, startIdx);
+        return gas;
+      } catch (nextErr) {
+        log.warn(
+          "[send-tx] %s: estimateGas on %s also failed. Inner: %s",
+          label,
+          _urls[i],
+          nextErr.shortMessage || nextErr.message,
+        );
+      }
     }
+    /*- Every endpoint refused, and nothing was committed — we are still
+     *  on the endpoint we started from.  Throw the FIRST error: it came
+     *  from the endpoint the caller was actually using, and is the one
+     *  whose revert data (if any) describes the transaction. */
+    throw curErr;
   }
 }
 
@@ -714,11 +796,10 @@ async function sendTransaction(opts) {
 /*- Test-only reset.  No production caller — exists so unit tests can
     re-init with different rpcConfig shapes without leaking module state. */
 function _resetForTests() {
-  _primaryProvider = null;
-  _fallbackProvider = null;
-  _primaryUrl = null;
-  _fallbackUrl = null;
-  _useFallbackUntilMs = 0;
+  _providers = [];
+  _urls = [];
+  _activeIdx = 0;
+  _stickyUntilMs = 0;
 }
 
 module.exports = {

@@ -23,10 +23,10 @@ const {
   scanRebalanceHistory,
   buildCacheKey,
   _BLOCKS_PER_YEAR,
-  _DEFAULT_CHUNK_SIZE,
   _PAIRING_WINDOW_SEC,
-  _CHUNK_DELAY_MS,
 } = require("../src/event-scanner");
+const { _DEFAULT_CHUNK_SIZE } = require("../src/get-logs-chunked");
+const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 const poolCreationBlock = require("../src/pool-creation-block");
 
 const WALLET = "0xABCDEF0000000000000000000000000000000001";
@@ -81,8 +81,10 @@ const scanOpts = (extra = {}) => ({
   positionManagerAddress: POS_MGR,
   walletAddress: WALLET,
   maxYears: 1,
+  /*- Wide windows keep these fixtures to a handful of RPC calls.  This
+   *  is a test-only override: shipped scans use getLogsChunkSize, which
+   *  is sized to clear real endpoint caps. */
   chunkSize: 50_000,
-  chunkDelayMs: 0,
   ...extra,
 });
 
@@ -97,11 +99,19 @@ describe("Constants", () => {
   it("_BLOCKS_PER_YEAR ≈ 3,155,760", () => {
     assert.ok(Math.abs(_BLOCKS_PER_YEAR - 3_155_760) < 10);
   });
-  it("_DEFAULT_CHUNK_SIZE is 10000", () =>
-    assert.strictEqual(_DEFAULT_CHUNK_SIZE, 10000));
   it("_PAIRING_WINDOW_SEC is 300", () =>
     assert.strictEqual(_PAIRING_WINDOW_SEC, 300));
-  it("_CHUNK_DELAY_MS is 250", () => assert.strictEqual(_CHUNK_DELAY_MS, 250));
+  /*- Asserts the WIRING, not the number.  The chunk size has exactly
+   *  one literal — getLogsChunkSize in the shipped defaults — so a test
+   *  repeating that figure would be a second copy to drift.  What is
+   *  worth guarding is that the scanner actually reads it. */
+  it("chunk size comes from the shipped getLogsChunkSize", () =>
+    assert.strictEqual(_DEFAULT_CHUNK_SIZE, SHIPPED_DEFAULTS.getLogsChunkSize));
+  it("chunk size clears the strictest endpoint cap we have observed", () =>
+    assert.ok(
+      _DEFAULT_CHUNK_SIZE <= 10000,
+      `chunk size ${_DEFAULT_CHUNK_SIZE} would be rejected by an endpoint capping at 10000`,
+    ));
 });
 
 describe("buildCacheKey", () => {

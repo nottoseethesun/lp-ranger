@@ -11,6 +11,7 @@
 
 const { log } = require("./log");
 const config = require("./config");
+const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { getPoolState } = require("./rebalancer");
@@ -152,11 +153,25 @@ async function _findMintEvent(
   const zeroAddr = ethersLib.zeroPadValue
     ? ethersLib.zeroPadValue("0x" + "0".repeat(40), 32)
     : "0x" + "0".repeat(64);
-  const logs = await provider.getLogs({
-    address: config.POSITION_MANAGER,
+  /*- Chunked: `fromBlock` is the pool's creation block, so the span is
+   *  the pool's entire lifetime. */
+  const logs = await scanChunked({
+    provider,
     fromBlock,
     toBlock: "latest",
-    topics: [iface.getEvent("Transfer").topicHash, zeroAddr, null, tokenIdHex],
+    label: `hodl-baseline mint #${tokenId}`,
+    query: (from, to) =>
+      provider.getLogs({
+        address: config.POSITION_MANAGER,
+        fromBlock: from,
+        toBlock: to,
+        topics: [
+          iface.getEvent("Transfer").topicHash,
+          zeroAddr,
+          null,
+          tokenIdHex,
+        ],
+      }),
   });
   if (!logs.length) {
     log.info("[bot] No mint logs found for tokenId", tokenId);

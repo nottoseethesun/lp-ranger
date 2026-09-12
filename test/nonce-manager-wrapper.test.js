@@ -125,10 +125,7 @@ function muteConsole() {
 
 function initSendTx(lib, urls) {
   sendTx.init(
-    urls || {
-      primary: "http://primary.test",
-      fallback: "http://fallback.test",
-    },
+    urls || { urls: ["http://primary.test", "http://fallback.test"] },
     lib,
   );
 }
@@ -291,10 +288,7 @@ describe("nonce-manager-wrapper: sendTransaction with failover", () => {
       throw e;
     };
     const lib = mockEthersLib(sendImpl);
-    initSendTx(lib, {
-      primary: "http://only.test",
-      fallback: "http://only.test",
-    });
+    initSendTx(lib, { urls: ["http://only.test"] });
     const signer = new FailoverNonceManager(makeWallet(sendImpl), {
       ethersLib: lib,
     });

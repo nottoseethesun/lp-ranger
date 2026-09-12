@@ -1141,17 +1141,19 @@ export const PARAM_HELP = {
       {
         heading: "Recommended values",
         body:
-          "The default (<strong>rpc-pulsechain.g4mm4.io</strong>) is a " +
-          "reliable public endpoint. The dropdown offers alternatives. " +
-          "If you run your own PulseChain node, enter its URL here for " +
-          "maximum privacy and reliability.",
+          "Leave it blank to use the endpoints LP Ranger ships with. The " +
+          "dropdown lists them in the order the bot tries them. If you " +
+          "run your own PulseChain node, enter its URL here for maximum " +
+          "privacy and reliability.",
       },
       {
         heading: "When to change",
         body:
           "Change if you experience RPC timeouts, slow responses, or " +
-          "want to use a private node. The bot automatically falls back " +
-          "to the official PulseChain RPC if the primary fails. " +
+          "want to use a private node. LP Ranger ships with several " +
+          "endpoints and moves down the list automatically when one " +
+          "stops responding, sticking with the replacement for an hour " +
+          "before trying the preferred one again. " +
           "<strong>Restart the app for the change to take effect</strong> " +
           "(the running bot holds the provider it was started with).",
       },

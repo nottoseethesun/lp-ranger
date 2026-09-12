@@ -53,6 +53,7 @@ function _loadBuckets() {
     transient: raw.transient,
     terminalNonceUnused: raw.terminalNonceUnused,
     terminalNonceConsumed: raw.terminalNonceConsumed,
+    blockRangeCap: raw.blockRangeCap,
   };
 }
 
@@ -149,8 +150,53 @@ function getBuckets() {
   return _BUCKETS;
 }
 
+/**
+ * Does this error mean "your getLogs block range was too wide"?
+ *
+ * Deliberately NOT part of `classifyRpcError`'s three-bucket result:
+ * those buckets answer "retry, or abort and what about the nonce?",
+ * and none of the three fits.  A range-cap rejection is not transient
+ * (the same request fails identically every time) and has no nonce
+ * implication at all — it is a malformed request, and the fix is a
+ * smaller chunk size rather than a retry or a different endpoint.
+ *
+ * Detection is by message substring because ethers hides the real code:
+ * a JSON-RPC error arrives over HTTP 200, so `err.code` is the generic
+ * `UNKNOWN_ERROR` and the `-32602` sits nested under `err.error.code`.
+ * `innerErrorMessage` already walks down to the node's own text.
+ * @param {*} err
+ * @returns {boolean}
+ */
+function isBlockRangeCapError(err) {
+  if (!err) return false;
+  const bucket = _BUCKETS.blockRangeCap;
+  if (!bucket || !Array.isArray(bucket.messageSubstrings)) return false;
+  const msg = innerErrorMessage(err).toLowerCase();
+  if (msg.length === 0) return false;
+  return bucket.messageSubstrings.some((sub) => msg.includes(sub));
+}
+
+/**
+ * Pull the block-count limit out of a range-cap message, when the
+ * endpoint states one (e.g. "limited to a 10000 block range" → 10000).
+ *
+ * Best-effort: endpoints word these differently and some name no number
+ * at all, so callers must handle null rather than assume a figure.
+ * @param {*} err
+ * @returns {number|null}
+ */
+function extractBlockRangeCap(err) {
+  const msg = innerErrorMessage(err);
+  const m = msg.match(/(\d[\d_,]{2,})/);
+  if (!m) return null;
+  const n = Number(m[1].replace(/[_,]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 module.exports = {
   classifyRpcError,
   innerErrorMessage,
+  isBlockRangeCapError,
+  extractBlockRangeCap,
   getBuckets,
 };

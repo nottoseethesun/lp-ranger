@@ -534,11 +534,15 @@ function _setRetryDelayForTests(ms) {
  * @throws {PoolStateUnavailableError}  All RPCs exhausted.
  */
 async function getPoolState(passedProvider, ethersLib, opts) {
-  /*- `config.RPC_URL_FALLBACK` may be empty in single-RPC setups;
-   *  `.filter(Boolean)` drops the empty entry so we don't try to build
-   *  a provider for an empty URL.  When `chains.json` / .env later
-   *  grows array-style fallbacks, only this line needs to change. */
-  const urls = [config.RPC_URL, config.RPC_URL_FALLBACK].filter(Boolean);
+  /*- The full ordered endpoint list.  This used to be a hand-built
+   *  primary/fallback pair with a comment predicting that array-style
+   *  fallbacks would one day make it a one-line change — this is that
+   *  change.  `config.RPC_URLS` is already deduplicated and blank-free.
+   *
+   *  Deliberately still bypasses `sendTx`: retrying here must not
+   *  mutate the global sticky failover window (see the note above
+   *  `_POOL_STATE_ATTEMPTS_PER_URL`). */
+  const urls = config.RPC_URLS;
   let attemptCount = 0;
   let lastErr = null;
   for (const url of urls) {

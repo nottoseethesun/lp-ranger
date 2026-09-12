@@ -15,6 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
 const config = require("./config");
+const { scanChunked } = require("./get-logs-chunked");
 const sendTx = require("./send-transaction");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
@@ -177,16 +178,25 @@ async function _supplementMintFromChain(result, tokenId) {
         })
       : 0;
     const from = Math.max(fiveYearFloor, poolCreationBlock);
-    const logs = await prov.getLogs({
-      address: config.POSITION_MANAGER,
+    /*- Chunked: `from` is the five-year floor or the pool's creation
+     *  block, whichever is later — still millions of blocks. */
+    const logs = await scanChunked({
+      provider: prov,
       fromBlock: from,
       toBlock: "latest",
-      topics: [
-        _IFACE.getEvent("Transfer").topicHash,
-        "0x" + "0".repeat(64),
-        null,
-        "0x" + BigInt(tokenId).toString(16).padStart(64, "0"),
-      ],
+      label: `history mint #${tokenId}`,
+      query: (f, t) =>
+        prov.getLogs({
+          address: config.POSITION_MANAGER,
+          fromBlock: f,
+          toBlock: t,
+          topics: [
+            _IFACE.getEvent("Transfer").topicHash,
+            "0x" + "0".repeat(64),
+            null,
+            "0x" + BigInt(tokenId).toString(16).padStart(64, "0"),
+          ],
+        }),
     });
     if (!logs.length) return;
     const block = await prov.getBlock(logs[0].blockNumber);

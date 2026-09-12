@@ -52,7 +52,7 @@ function mockEthersLib(overrides = {}) {
 /**
  * Build a minimal mock provider.
  * @param {object} overrides - Optional overrides.
- * @returns {object} Mock provider with getLogs, getBlock.
+ * @returns {object} Mock provider with getLogs, getBlock, getBlockNumber.
  */
 function mockProvider(overrides = {}) {
   return {
@@ -60,6 +60,9 @@ function mockProvider(overrides = {}) {
       "logs" in overrides ? overrides.logs : [{ blockNumber: 100 }],
     getBlock: async () =>
       "block" in overrides ? overrides.block : { timestamp: 1700000000 },
+    /*- The mint lookup is chunked, and the chunker resolves a "latest"
+     *  toBlock to a concrete number before it can window the range. */
+    getBlockNumber: async () => ("head" in overrides ? overrides.head : 100),
   };
 }
 
@@ -215,6 +218,7 @@ describe("initHodlBaseline", () => {
       getLogs: async () => {
         throw new Error("RPC down");
       },
+      getBlockNumber: async () => 100,
     };
 
     // Should not throw
@@ -248,6 +252,9 @@ describe("mintGasWei in baseline", () => {
     const provider = {
       getLogs: async () => [{ blockNumber: 100, transactionHash: "0xMintTx" }],
       getBlock: async () => ({ timestamp: 1700000000 }),
+      /*- Needed since the mint lookup is chunked: the chunker resolves
+       *  toBlock "latest" to a number before windowing. */
+      getBlockNumber: async () => 100,
       getTransactionReceipt: async () => ({
         gasUsed: 500_000n,
         gasPrice: 30_000_000_000n,
@@ -324,6 +331,9 @@ describe("mintGasWei in baseline", () => {
     const provider = {
       getLogs: async () => [{ blockNumber: 100, transactionHash: "0xMintTx" }],
       getBlock: async () => ({ timestamp: 1700000000 }),
+      /*- Needed since the mint lookup is chunked: the chunker resolves
+       *  toBlock "latest" to a number before windowing. */
+      getBlockNumber: async () => 100,
       getTransactionReceipt: async () => null,
     };
 

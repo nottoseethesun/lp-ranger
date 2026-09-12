@@ -1,4 +1,5 @@
 "use strict";
+const { scanChunked } = require("./get-logs-chunked");
 
 /**
  * @file src/event-scanner-mint-lookup.js
@@ -176,7 +177,24 @@ async function findOriginalMintOnChain(
   let events;
   try {
     const filter = contract.filters.Transfer(ZERO, null, tokenId);
-    events = await contract.queryFilter(filter, fromBlock, "latest");
+    /*- Chunked, and stops at the first window that yields anything.
+     *  `fromBlock` falls back to 0 when the pool context is unavailable,
+     *  so without an early exit this would walk the whole chain past
+     *  the mint it already found.  An NFT is minted once, so the first
+     *  hit is the answer.
+     *
+     *  The module JSDoc argued a lower bound was unnecessary because
+     *  tokenId is an indexed topic and the query is therefore cheap.
+     *  That reasoning does not survive a hard range cap: endpoints
+     *  reject on span, however selective the topics. */
+    events = await scanChunked({
+      provider,
+      fromBlock,
+      toBlock: "latest",
+      label: `mint-lookup #${tokenId}`,
+      query: (f, t) => contract.queryFilter(filter, f, t),
+      onChunk: (found) => found.length > 0,
+    });
   } catch (err) {
     log.warn(
       "[event-scanner] mint-lookup queryFilter failed for tokenId=%s: %s",

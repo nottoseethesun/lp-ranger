@@ -17,6 +17,7 @@
  */
 
 import { g, act, ACT_ICONS, fetchWithCsrf } from "./dashboard-helpers.js";
+import { getPrimaryRpcUrl } from "./dashboard-rpc-endpoints.js";
 import { saveMoralisApiKey } from "./dashboard-events.js";
 import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
@@ -165,12 +166,18 @@ export function getUpdateRouteForWallet() {
 // ── RPC URL ───────────────────────────────────────────────
 
 /**
- * Get the RPC URL from the config input or use the
- * PulseChain default.
+ * Get the RPC URL the operator typed, or the server's configured
+ * primary when the field is blank.
+ *
+ * No hardcoded URL here.  This used to fall back to a literal copy of
+ * the primary endpoint, which is a second source of truth that goes
+ * stale the moment chains.json changes — the shipped list is the only
+ * place that value should exist.
+ * @returns {string}
  */
 export function getRpcUrl() {
   const el = g("inRpc");
-  return (el && el.value.trim()) || "https://rpc-pulsechain.g4mm4.io";
+  return (el && el.value.trim()) || getPrimaryRpcUrl();
 }
 
 // ── Tab switcher ──────────────────────────────────────────

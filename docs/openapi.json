@@ -1028,6 +1028,25 @@
         }
       }
     },
+    "/api/rpc-endpoints": {
+      "get": {
+        "summary": "RPC endpoints in failover order",
+        "tags": ["Config"],
+        "description": "Serves the active chain's RPC endpoints, most-preferred first, so the dashboard's RPC URL preset menu is built from configuration rather than hardcoded in markup. The list is the same one failover walks, so the menu cannot advertise an endpoint the bot would not use. Always 200; an empty list means no endpoints are configured and the combo stays free-text.",
+        "responses": {
+          "200": {
+            "description": "Ordered endpoint list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/api-keys": {
       "post": {
         "summary": "Save a third-party API key",

@@ -10,6 +10,7 @@
 const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
+const rpcRequestManager = require("./rpc-request-manager");
 
 /*- Throttle for the per-call feeData log line.  Every call logs in
     --verbose mode; otherwise log at most once per hour so the terminal
@@ -67,12 +68,36 @@ function _patchFeeData(provider) {
 }
 
 /**
- * Construct a single JsonRpcProvider for `url` and apply the feeData patch.
+ * Route every JSON-RPC call this provider makes through the global
+ * request manager.
+ *
+ * `send()` is the single funnel ethers puts all traffic through — reads,
+ * writes, `eth_call`, `getBlockNumber`, transaction submission — so one
+ * wrapper here paces the lot.  Patching at this level rather than at
+ * each call site is what makes the guarantee hold: a new scan or a new
+ * helper added later is paced automatically, with nothing to remember.
+ *
+ * Every provider shares the one queue, so pacing is a property of the
+ * process, not of any single endpoint.
+ * @param {import('ethers').JsonRpcProvider} provider
+ */
+function _patchRequestPacing(provider) {
+  if (typeof provider.send !== "function") return;
+  const _orig = provider.send.bind(provider);
+  provider.send = async function (method, params) {
+    await rpcRequestManager.acquire();
+    return _orig(method, params);
+  };
+}
+
+/**
+ * Construct a single JsonRpcProvider for `url`, pace its requests, and
+ * apply the feeData patch.
  *
  * Pure factory — does NOT perform a reachability check.  Used by callers
  * that need ALL configured providers built up-front (e.g. send-transaction.js
- * which holds primary + fallback for mid-session failover, and must be
- * able to reach for the fallback even if the primary was down at boot).
+ * which holds the whole ordered RPC list for mid-session failover, and must
+ * be able to reach for a later one even if the first was down at boot).
  * @param {string} url           RPC endpoint URL.
  * @param {object} [ethersLib]   Injected ethers library (for testing).
  * @returns {import('ethers').JsonRpcProvider}
@@ -80,8 +105,9 @@ function _patchFeeData(provider) {
 function buildProvider(url, ethersLib) {
   const lib = ethersLib || ethers;
   const provider = new lib.JsonRpcProvider(url);
+  _patchRequestPacing(provider);
   _patchFeeData(provider);
   return provider;
 }
 
-module.exports = { _patchFeeData, buildProvider };
+module.exports = { _patchFeeData, _patchRequestPacing, buildProvider };
