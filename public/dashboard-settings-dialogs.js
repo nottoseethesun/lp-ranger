@@ -18,6 +18,7 @@
 
 import { g, clearLocalStorageAndCookies } from "./dashboard-helpers.js";
 import { confirmViaDialog } from "./dashboard-confirm-dialog.js";
+import { refreshMoralisToggle } from "./dashboard-moralis-key.js";
 
 /*- Dialog overlay ids, in the order they appear in the Settings menu. */
 const _PRIVACY = "privacyModal";
@@ -72,6 +73,9 @@ export function closePrivacyModal() {
 /** Open the Moralis API Key dialog. @returns {void} */
 export function openMoralisKeyModal() {
   _open(_MORALIS);
+  /*- Populate on open rather than at page load: the control depends on
+   *  whether a key exists, which can change while the dashboard is up. */
+  refreshMoralisToggle();
 }
 
 /** Close the Moralis API Key dialog. @returns {void} */

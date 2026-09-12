@@ -139,6 +139,10 @@ const _NORMALIZERS = {
    *  benefit; a single price fetch already takes ~100-500 ms), capped at
    *  60 s (longer would defeat the "fresh during move" intent). */
   moveCacheTtlMs: (v) => _clampInt(v, 1_000, 60_000),
+  /*- Moralis on/off.  Anything that is not an explicit false means on,
+   *  so a malformed override cannot silently disable a price source the
+   *  operator is paying for. */
+  moralisEnabled: (v) => (typeof v === "boolean" ? v : true),
   /*- Max block span per eth_getLogs call.  Floor of 100 — anything
    *  smaller turns a routine scan into tens of thousands of requests
    *  for no benefit.  Ceiling of 10 000 is the strictest endpoint cap

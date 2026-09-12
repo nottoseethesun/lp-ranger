@@ -16,7 +16,7 @@ const {
   loadEncryptedKey,
   hasEncryptedKey,
 } = require("./api-key-store");
-const { setApiKey } = require("./api-key-holder");
+const { setApiKey, setServiceEnabled } = require("./api-key-holder");
 const {
   pingMoralis,
   validateMoralisKey,
@@ -109,6 +109,13 @@ function createRouteHandlers(deps) {
     for (const k of POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
     Object.assign(diskConfig.global, gPatch);
+    /*- Push the Moralis toggle into the in-memory holder immediately.
+     *  Persisting alone would leave the running process still calling a
+     *  service the operator just switched off, until the next restart —
+     *  and "it did nothing" is exactly the complaint the RPC URL field
+     *  earned by behaving that way. */
+    if (gPatch.moralisEnabled !== undefined)
+      setServiceEnabled("moralis", gPatch.moralisEnabled !== false);
     const hasPosKeys = Object.keys(pPatch).length > 0;
     /*- Slippage-paused clear runs FIRST so that even if disk persistence
      *  bails out (404 below), an in-flight paused bot loop still gets
@@ -570,6 +577,10 @@ function createRouteHandlers(deps) {
         log.warn("[server] Failed to decrypt %s key: %s", svc, err.message);
       }
     }
+    /*- Honour the saved toggle as soon as the key is in memory, so an
+     *  operator who turned Moralis off does not get one round of calls
+     *  on the next unlock before the setting is noticed. */
+    setServiceEnabled("moralis", diskConfig.global?.moralisEnabled !== false);
     // Validate Moralis key after decryption
     validateMoralisKey();
   }

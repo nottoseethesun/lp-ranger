@@ -407,6 +407,10 @@
                   "pricePauseExceptionPollWindowMultiple": {
                     "type": "integer",
                     "description": "GLOBAL. Poll cycles between the balanced-band notifier fresh-price probes."
+                  },
+                  "moralisEnabled": {
+                    "type": "boolean",
+                    "description": "GLOBAL. Whether the stored Moralis API key is used for price lookups. Independent of whether a key exists: false stops the calls without discarding the key. Default true."
                   }
                 }
               }

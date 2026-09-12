@@ -1381,6 +1381,30 @@ span[title]:not([title=""]):hover {
   margin: 12px 0;
 }
 
+/* Right-hand column of a modal header: the Close button with the
+   Moralis on/off toggle stacked directly beneath it, both flush right. */
+.\39 mm-pos-mgr-modal-header-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+/* Label + switch on one line; nowrap so the label never breaks under
+   the narrow column the stack gives it. */
+.\39 mm-pos-mgr-moralis-use-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+}
+
+/* Dimmed when there is no key to use.  Opacity only — the input's own
+   disabled attribute is what actually blocks interaction. */
+.\39 mm-pos-mgr-moralis-use-row.disabled {
+  opacity: 0.45;
+}
+
 .\39 mm-pos-mgr-toggle-row {
   display: flex;
   align-items: flex-start;
@@ -3912,7 +3936,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1789253904847");
+  background-image: url("background-cloud_top.png?v=1789254698348");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3925,7 +3949,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1789253904847");
+  background-image: url("background-cloud_middle.png?v=1789254698348");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3935,7 +3959,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1789253904847");
+  background-image: url("background-cloud_bottom.png?v=1789254698348");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

@@ -34,7 +34,24 @@ const {
   flushPriceCache,
   toUtcDayKey,
 } = require("./price-cache");
-const { getApiKey } = require("./api-key-holder");
+const { getApiKey, isServiceEnabled } = require("./api-key-holder");
+
+/**
+ * The Moralis key, but only when the operator has left Moralis on.
+ *
+ * One gate rather than an `&& enabled` at each of the three call sites
+ * below — the question "may we call Moralis?" has exactly one answer,
+ * and three copies of it is three chances for them to drift.
+ *
+ * Returns null when the key is absent OR the operator has switched it
+ * off, which is precisely when the caller should fall through to
+ * GeckoTerminal.
+ * @returns {string|null}
+ */
+function _moralisKey() {
+  if (!isServiceEnabled("moralis")) return null;
+  return getApiKey("moralis");
+}
 const { geckoRateLimit, noteGecko429 } = require("./gecko-rate-limit");
 const {
   getGeckoPoolOrientation,
@@ -522,7 +539,7 @@ async function _fetchHistoricalPair(
   c1,
   blockNumber,
 ) {
-  const useMoralis = getApiKey("moralis") && blockNumber;
+  const useMoralis = _moralisKey() && blockNumber;
   let p0 = c0 ?? 0,
     p1 = c1 ?? 0;
   if (useMoralis) {
@@ -589,7 +606,7 @@ const _MORALIS_CHAINS = { pulsechain: "0x171", eth: "0x1" };
  * @returns {Promise<number>} USD price (0 if unavailable).
  */
 async function _fetchMoralisCurrent(tokenAddress, chain = "pulsechain") {
-  const apiKey = getApiKey("moralis");
+  const apiKey = _moralisKey();
   if (!apiKey) return 0;
   const chainHex = _MORALIS_CHAINS[chain];
   if (!chainHex) return 0;
@@ -630,7 +647,7 @@ async function _fetchMoralisHistorical(
   blockNumber,
   chain = "pulsechain",
 ) {
-  const apiKey = getApiKey("moralis");
+  const apiKey = _moralisKey();
   if (!apiKey) return 0;
   const chainHex = _MORALIS_CHAINS[chain];
   if (!chainHex) return 0;

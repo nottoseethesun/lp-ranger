@@ -46,6 +46,14 @@ const GLOBAL_KEYS = [
   "positionManager",
   "factory",
   "rpcUrl",
+  /*-
+   *  Whether the stored Moralis key may be used.  Separate from whether
+   *  a key exists: an operator whose quota has run out wants the calls
+   *  to stop without throwing the key away and pasting it back later.
+   *  Default true, so a key that has never been toggled behaves exactly
+   *  as it did before this setting existed.
+   */
+  "moralisEnabled",
   "approvalMultiple",
   /*-
    *  Maximum gas cost as a percentage of swap value before the gas gate
