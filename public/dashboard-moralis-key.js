@@ -83,6 +83,24 @@ export async function saveMoralisKeyFromSettings() {
 }
 
 /**
+ * The `moralisEnabled` value the server currently holds.
+ *
+ * @returns {Promise<boolean|undefined>}  Undefined when unknown, which
+ *   callers must read as "on" — absent has always meant enabled.
+ */
+async function _savedMoralisEnabled() {
+  try {
+    const res = await fetch("/api/status");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    return d?.global?.moralisEnabled;
+  } catch {
+    /*- Fall back to the polled copy; stale beats nothing. */
+    return getLastStatus()?.global?.moralisEnabled;
+  }
+}
+
+/**
  * Reflect the current key + toggle state into the dialog.
  *
  * The toggle answers "use the stored key?", which only means anything
@@ -96,7 +114,12 @@ export async function saveMoralisKeyFromSettings() {
  */
 export async function refreshMoralisToggle() {
   const box = g("moralisEnabledToggle");
-  const row = box && box.closest(".9mm-pos-mgr-moralis-use-row");
+  /*- Looked up by id, not by class.  These class names begin with a
+   *  digit, which is legal in HTML but NOT in a CSS selector unless
+   *  escaped — `closest(".9mm-…")` throws a DOMException, and it throws
+   *  before the control is set, so the toggle would silently never
+   *  reflect reality. */
+  const row = g("moralisEnabledRow");
   if (!box) return;
 
   const status = await checkMoralisKeyStatus();
@@ -104,9 +127,17 @@ export async function refreshMoralisToggle() {
   box.disabled = !hasKey;
   if (row) row.classList.toggle("disabled", !hasKey);
 
-  /*- Read the saved value rather than assuming: the operator may have
-   *  turned it off in a previous session.  Absent means on. */
-  const saved = getLastStatus()?.global?.moralisEnabled;
+  /*- Read the saved value from the server rather than from the last
+   *  poll.  The polled copy is up to one interval stale, which shows up
+   *  in two ways that both read as "the setting did not stick": opening
+   *  the dialog before the first poll lands, and reopening it within a
+   *  few seconds of toggling — where the stale copy would flip the
+   *  switch back to its old position in front of the operator.
+   *
+   *  One extra request on a deliberate click is a fair price for the
+   *  control never showing a state the server does not hold.  Falls
+   *  back to the polled copy if that request fails. */
+  const saved = await _savedMoralisEnabled();
   box.checked = hasKey && saved !== false;
   box.title = hasKey
     ? "Turn off to stop using the key without deleting it"

@@ -74,8 +74,12 @@ export function closePrivacyModal() {
 export function openMoralisKeyModal() {
   _open(_MORALIS);
   /*- Populate on open rather than at page load: the control depends on
-   *  whether a key exists, which can change while the dashboard is up. */
-  refreshMoralisToggle();
+   *  whether a key exists, which can change while the dashboard is up.
+   *  Caught, not floated: an unhandled rejection here would leave the
+   *  dialog open with a control showing whatever it happened to show. */
+  refreshMoralisToggle().catch((e) =>
+    console.log("[lp-ranger] Moralis toggle refresh failed:", e.message),
+  );
 }
 
 /** Close the Moralis API Key dialog. @returns {void} */

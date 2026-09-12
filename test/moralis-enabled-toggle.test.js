@@ -12,7 +12,9 @@
 
 "use strict";
 
-const { describe, it, beforeEach } = require("node:test");
+require("global-jsdom/register");
+
+const { describe, it, beforeEach, before } = require("node:test");
 const assert = require("assert");
 
 const holder = require("../src/api-key-holder");
@@ -121,5 +123,100 @@ describe("the gate price lookups actually consult", () => {
     assert.strictEqual(resolve(), null);
     holder.setServiceEnabled("moralis", false);
     assert.strictEqual(resolve(), null);
+  });
+});
+
+/*- The dialog itself, under jsdom.
+ *
+ *  These exist because the first version of refreshMoralisToggle looked
+ *  the row up with `closest(".9mm-pos-mgr-moralis-use-row")`. That class
+ *  begins with a digit, which is fine in HTML and illegal in an
+ *  unescaped CSS selector, so the call threw a DOMException — before
+ *  the control was disabled or checked, and inside a promise nobody
+ *  awaited. The switch would have sat there looking plausible and
+ *  reflecting nothing. Holder-level tests cannot catch that; only
+ *  driving the DOM path can. */
+describe("the dialog control itself", () => {
+  let mod;
+
+  before(async () => {
+    mod = await import("../public/dashboard-moralis-key.js");
+  });
+
+  /** The dialog fragment, matching public/index.html. */
+  function renderDialog() {
+    document.body.innerHTML = `
+      <div class="9mm-pos-mgr-moralis-use-row" id="moralisEnabledRow">
+        <span class="9mm-pos-mgr-range-mode-label">Use Moralis Key</span>
+        <label class="9mm-pos-mgr-range-toggle" id="moralisEnabledToggleWrap">
+          <input type="checkbox" id="moralisEnabledToggle">
+          <span class="9mm-pos-mgr-toggle-track"></span>
+        </label>
+      </div>
+      <span id="moralisKeyDot"></span>`;
+  }
+
+  /** Stub the status endpoint the refresh consults. */
+  function stubStatus(moralis) {
+    global.fetch = async () => ({
+      ok: true,
+      json: async () => ({ moralis }),
+    });
+  }
+
+  it("does not throw while reading the dialog", async () => {
+    /*- The regression: an invalid selector threw here and left the
+     *  control untouched. */
+    renderDialog();
+    stubStatus("valid");
+    await mod.refreshMoralisToggle();
+    assert.ok(true, "refreshMoralisToggle completed");
+  });
+
+  it("disables the switch when no key is configured", async () => {
+    renderDialog();
+    stubStatus("none");
+    await mod.refreshMoralisToggle();
+    const box = document.getElementById("moralisEnabledToggle");
+    assert.strictEqual(box.disabled, true, "no key means nothing to use");
+    assert.strictEqual(box.checked, false);
+    assert.ok(
+      document
+        .getElementById("moralisEnabledRow")
+        .classList.contains("disabled"),
+      "the row should read as unavailable, not merely inert",
+    );
+  });
+
+  it("enables it and defaults to on once a key exists", async () => {
+    renderDialog();
+    stubStatus("valid");
+    await mod.refreshMoralisToggle();
+    const box = document.getElementById("moralisEnabledToggle");
+    assert.strictEqual(box.disabled, false);
+    assert.strictEqual(
+      box.checked,
+      true,
+      "a key nobody has toggled is in use, so the switch must show on",
+    );
+  });
+
+  it("enables it even when the key is out of quota", async () => {
+    /*- Out of quota is exactly when an operator reaches for this
+     *  switch; refusing to let them touch it would be backwards. */
+    renderDialog();
+    stubStatus("quota");
+    await mod.refreshMoralisToggle();
+    assert.strictEqual(
+      document.getElementById("moralisEnabledToggle").disabled,
+      false,
+    );
+  });
+
+  it("survives the dialog not being in the DOM", async () => {
+    document.body.innerHTML = "";
+    stubStatus("valid");
+    await mod.refreshMoralisToggle();
+    assert.ok(true, "no throw when the control is absent");
   });
 });
