@@ -56,20 +56,23 @@ export async function saveMoralisApiKey(key, pw, inp) {
 export async function saveMoralisKeyFromSettings() {
   const inp = g("moralisKeyInput");
   if (!inp) return;
-  if (!inp.value.trim()) {
-    /*- Silence here reads as a broken button: the operator clicks Save
-     *  and nothing whatsoever happens.  Say why.  The Use Moralis Key
-     *  switch saves itself the moment it is flipped, so there is
-     *  genuinely nothing for Save to do with an empty field. */
-    act(
-      "\u2139\uFE0F",
-      "info",
-      "Nothing to Save",
-      "Paste a key first. The Use Moralis Key switch saves on its own.",
-    );
+  const key = inp.value.trim();
+
+  /*- The switch is persisted here, by Save, and nowhere else.  It
+   *  deliberately does NOT save on flip: everything else in this dialog
+   *  commits on Save, and a control that writes the moment it is
+   *  touched turns a mis-click into a settings change. */
+  const switchSaved = await saveMoralisEnabled();
+
+  if (!key) {
+    /*- No key typed is a perfectly ordinary way to use Save — the
+     *  operator came in to change the switch.  Silence would read as a
+     *  broken button, so say what did happen. */
+    if (switchSaved) await refreshMoralisToggle();
     return;
   }
-  const saved = await saveMoralisApiKey(inp.value.trim(), null, inp);
+
+  const saved = await saveMoralisApiKey(key, null, inp);
   if (!saved) return;
   /*- A key now exists, so the Use-Moralis toggle stops being disabled.
    *  Refresh it here or the operator has to reopen the dialog to find
@@ -158,16 +161,19 @@ export async function refreshMoralisToggle() {
 }
 
 /**
- * Persist the toggle and tell the operator what it changed.
+ * Persist the switch and tell the operator what changed.
  *
- * The server applies it to the running process as well as saving it, so
- * this takes effect on the next price lookup rather than at the next
- * restart.
- * @returns {Promise<void>}
+ * Called by Save, never by the switch itself — flipping it only changes
+ * what the dialog shows until Save commits it, so a mis-click costs
+ * nothing. The server applies it to the running process as well as
+ * writing it to disk, so it takes effect on the next price lookup
+ * rather than at the next restart.
+ * @returns {Promise<boolean>}  True when a value was written.
  */
 export async function saveMoralisEnabled() {
   const box = g("moralisEnabledToggle");
-  if (!box || box.disabled) return;
+  /*- Disabled means no key, so there is no usage decision to record. */
+  if (!box || box.disabled) return false;
   const on = box.checked;
   try {
     const res = await fetchWithCsrf("/api/config", {
@@ -186,11 +192,13 @@ export async function saveMoralisEnabled() {
         ? "Price lookups will use your Moralis key."
         : "Price lookups will skip Moralis. Your key is kept.",
     );
+    return true;
   } catch (err) {
     /*- Put the switch back where it was: leaving it showing a state the
      *  server never accepted is how a setting comes to look as though
      *  it works when it does not. */
     box.checked = !on;
     act("\u274C", "error", "Save Failed", err.message);
+    return false;
   }
 }

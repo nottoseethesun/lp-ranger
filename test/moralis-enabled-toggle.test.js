@@ -227,6 +227,57 @@ describe("the dialog control itself", () => {
     );
   });
 
+  it("does not write anything merely because the switch was flipped", async () => {
+    /*- The switch commits on Save and nowhere else, so a mis-click
+     *  costs nothing.  Flipping it must leave the server untouched. */
+    renderDialog();
+    stubStatus("valid");
+    await mod.refreshMoralisToggle();
+    const posted = [];
+    global.fetch = async (url) => {
+      posted.push(url);
+      return { ok: true, json: async () => ({ ok: true, moralis: "valid" }) };
+    };
+    const box = document.getElementById("moralisEnabledToggle");
+    box.checked = false;
+    box.dispatchEvent(new window.Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepStrictEqual(
+      posted.filter((u) => String(u).includes("/api/config")),
+      [],
+      "flipping the switch must not persist anything on its own",
+    );
+  });
+
+  it("writes the switch when Save is used", async () => {
+    renderDialog();
+    stubStatus("valid");
+    await mod.refreshMoralisToggle();
+    const bodies = [];
+    global.fetch = async (url, opts) => {
+      if (String(url).includes("/api/config")) bodies.push(opts.body);
+      return { ok: true, json: async () => ({ ok: true, moralis: "valid" }) };
+    };
+    document.getElementById("moralisEnabledToggle").checked = false;
+    await mod.saveMoralisEnabled();
+    assert.deepStrictEqual(bodies, ['{"moralisEnabled":false}']);
+  });
+
+  it("records nothing when there is no key to use", async () => {
+    /*- Disabled switch means no key, so there is no usage decision. */
+    renderDialog();
+    stubStatus("none");
+    await mod.refreshMoralisToggle();
+    const bodies = [];
+    global.fetch = async (url, opts) => {
+      if (String(url).includes("/api/config")) bodies.push(opts.body);
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+    const wrote = await mod.saveMoralisEnabled();
+    assert.strictEqual(wrote, false);
+    assert.deepStrictEqual(bodies, []);
+  });
+
   it("survives the dialog not being in the DOM", async () => {
     document.body.innerHTML = "";
     stubStatus("valid");

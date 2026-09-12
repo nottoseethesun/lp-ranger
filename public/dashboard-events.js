@@ -199,7 +199,6 @@ function _saveGlobalConfig(inputId, configKey) {
 import {
   saveMoralisApiKey,
   saveMoralisKeyFromSettings as _saveMoralisKey,
-  saveMoralisEnabled as _saveMoralisEnabled,
 } from "./dashboard-moralis-key.js";
 export { saveMoralisApiKey };
 
@@ -418,7 +417,6 @@ export function bindAllEvents() {
   _click("wsAddrCopy", () => copyElText("wsAddr", "wsAddrCopy"));
   _click("wsTokenCopy", () => copyElText("wsToken", "wsTokenCopy"));
   _click("moralisKeySaveBtn", _saveMoralisKey);
-  _change("moralisEnabledToggle", _saveMoralisEnabled);
   _click("saveGasFeePctBtn", saveGasFeePct);
 
   /*- The three dialogs claimed out of the Settings menu wire their own
