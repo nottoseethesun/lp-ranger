@@ -301,19 +301,65 @@ it intact. See
 - `MAX_REBALANCES_PER_DAY` — Hard daily cap (default: `20`)
 - `LOG_FILE` — JSON log path (default: `./app-data/rebalance_log.json`)
 
-### Contract Address Overrides (`.env`)
+### Contract Addresses
 
-These variables override the per-chain defaults from
-`app-config/app-defaults-for-user-configurable/chains.json`. In normal operation you should
-never need to set them — only edit them if you're pointing the bot at a
-custom deployment of the 9mm Pro V3 contracts.
+**These are not editable from the dashboard, by design.** The Bot
+Settings panel once offered Position Manager and Factory fields; they
+have been removed. See [why](#why-contract-addresses-are-not-editable)
+below.
+
+The shipped addresses live in
+`app-config/app-defaults-for-user-configurable/chains.json`, per chain:
+
+```json
+"contracts": {
+  "positionManager": { "address": "0xCC05bf…", "mintGasLimit": 600000 },
+  "factory": "0xe50Dbd…",
+  "swapRouter": "0x7bE8fb…"
+}
+```
 
 Canonical deployment addresses:
 <https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json>
 
-- `POSITION_MANAGER` — NonfungiblePositionManager (default: `0xCC05bf…`)
-- `FACTORY` — V3 Factory (default: `0xe50Dbd…`)
-- `SWAP_ROUTER` — V3 SwapRouter (default: `0x7bE8fb…`)
+Two ways to override them, both read once at startup:
+
+1. **`app-config/user-configurable/chains.json`** — deep-merged over the
+   shipped defaults, gitignored, and preserved across upgrades.
+2. **`.env`** — `POSITION_MANAGER`, `FACTORY`, `SWAP_ROUTER`. These win
+   over both JSON layers.
+
+In normal operation you should never set either. Only do so to point the
+bot at a different deployment of the 9mm Pro V3 contracts.
+
+#### Why contract addresses are not editable
+
+Changing the Position Manager or Factory mid-life does not just change
+where transactions go — it invalidates everything already on disk. Both
+addresses are part of the scope key for every cache:
+
+- the event cache (`event-cache-{chain}-{contract}-{wallet}-…`)
+- the LP position cache (`lp-position-cache-{chain}-{contract}-{wallet}`)
+- the epoch cache, keyed by `blockchain.contract.wallet.token0.token1.fee`
+- per-position config in `bot-config.json`, keyed by a composite that
+  includes the contract address
+
+Change the address and every one of those keys stops matching. The old
+entries are not wrong, they are simply unreachable — so the app would
+rescan five years of history from scratch while the previous results sat
+there orphaned, and any position keyed to the old contract would read as
+missing.
+
+**To change them, start from a fresh install of LP Ranger** rather than
+editing an existing one: extract a new release into its own directory,
+set the addresses there, and let it build its own caches. Do not carry
+the old `app-config/user-configurable/` and `tmp/` contents across with
+`migrate-app-state.js`, since those are exactly the files scoped to the
+addresses you are leaving behind.
+
+A `positionManager` or `factory` value left in an existing
+`bot-config.json` from an older release is inert: nothing reads it, and
+`POST /api/config` no longer accepts either key.
 
 ### Where Other Configuration Lives
 
