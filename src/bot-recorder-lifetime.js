@@ -33,6 +33,9 @@ const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const ethers = require("ethers");
 const { getPoolState } = require("./rebalancer-pools");
 const {
+  mintBlocksByTokenId: _mintBlocksByTokenId,
+} = require("./nft-mint-blocks");
+const {
   PoolStateInvalidError,
   isIntegerInRange,
 } = require("./pool-state-validate");
@@ -695,7 +698,13 @@ async function _scanLifetimePoolData(
       positionManagerAddress: config.POSITION_MANAGER,
     };
     const ids = _collectTokenIds(position, rebalanceEvents);
-    const { allNftEvents, maxBlock } = await _fetchAllNftEvents(ids, fromBlock);
+    /*- Per-NFT floors from the same events `ids` came from, so each NFT
+     *  is scanned across its own life instead of the whole pool's. */
+    const { allNftEvents, maxBlock } = await _fetchAllNftEvents(
+      ids,
+      fromBlock,
+      _mintBlocksByTokenId(rebalanceEvents),
+    );
     if (!hasCompoundData)
       await _classifyAllCompounds(
         ids,
