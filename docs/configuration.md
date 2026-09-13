@@ -297,12 +297,13 @@ deliberate: endpoint operators leave some limits unpublished on purpose, so an
 observed ceiling is not a promise.
 
 **Failures propagate.** A chunk that fails fails the scan, unless a call site
-explicitly opts into `bestEffort`. Several scans used to swallow query errors
-and return an empty array, which reads as "this wallet has no deposits" rather
-than "we could not read" — the two lead to opposite conclusions, and that
-confusion is what kept a real outage invisible. When an endpoint does reject a
-range, the error names the span, the cap and this setting, instead of the raw
-multi-line ethers dump that used to reach the Activity Log.
+explicitly opts into `bestEffort`. Swallowing a query error and returning an
+empty array would report "this wallet has no deposits" when the truth is "we
+could not read", and callers act on those two answers in opposite directions —
+an empty scan result is taken as settled fact, not as a gap to retry. When an
+endpoint rejects a range, the error names the span, the cap and this setting,
+because ethers reports a JSON-RPC `-32602` as a generic `UNKNOWN_ERROR` with
+the real code nested, which is not actionable as raised.
 
 ### Why pacing is global
 

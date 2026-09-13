@@ -86,6 +86,13 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 - **HTML files: never cache** — serve with `Cache-Control: no-cache, no-store, must-revalidate`, `Pragma: no-cache`, `Expires: 0`. This ensures the browser always fetches fresh HTML, which contains the cache-bust query string for JS/CSS bundles. Note: `no-cache` alone does NOT mean "don't cache" — it means "cache but revalidate." `no-store` is required to actually prevent caching.
 - **Versioned assets (JS, CSS, fonts): long-lived immutable caching** — serve with `Cache-Control: public, max-age=31536000, immutable`. Freshness is handled by the cache-bust query string (`bundle.js?v=<timestamp>`) in the HTML, which changes on every build.
 
+## Documentation
+
+- **Technical docs describe how the system works, not how it came to work that way.** Never recount a past bug in one. No "used to", "previously", "this was broken", "the fix caught two of the four sites", no narrative of who found what when. A reader needs the current mechanism and the constraint it satisfies; the story of the defect is noise they must read past to reach it, and it dates the document the moment anything changes. The sole exception is a document whose stated purpose *is* a root-cause analysis.
+- **Replace a removed story with the mechanism, not with nothing.** A bug narrative is usually carrying the reason a rule exists, so deleting it outright loses information. Keep the reason, drop the incident: state the invariant, what breaks if it is violated, and where it is enforced. "A lower bound above an NFT's first event drops those events, and the caller reads the short result as *the event never fired*" is the reason; "we got this wrong four times" is not.
+- **No adjective-and-analogy substitutes for explanation.** Do not write that something is "load-bearing", "surprisingly subtle", or "a footgun" and stop there. Name the actual mechanism: what calls what, what value flows where, what fails. If the explanation cannot be written concretely, it is not yet understood well enough to document.
+- **History belongs in git and in `docs/claude/memory/`.** Commit messages carry the incident and the diagnosis. Memory files carry decisions and user preferences. Neither is a reason to duplicate that material into a reference doc.
+
 ## Dependencies & Tooling
 
 - **Never use `npx`** — always use `npm` (e.g. `npm run lint`, not `npx eslint`).

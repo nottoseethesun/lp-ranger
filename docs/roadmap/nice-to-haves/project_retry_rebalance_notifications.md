@@ -48,10 +48,8 @@ Independent feature change; new branch.
 
 ## Context
 
-Surfaced 2026-06-21 during a production / staging rebalance-frequency
-investigation that turned out to be operationally fine (the visible
-rapid rebalances were normal-OOR-then-residual-cleanup pairs, working
-as designed).  The investigation made clear that the existing
-`Rebalance Succeeded` label gives the user no way to distinguish the
-two — both look identical in Telegram, so a rapid back-to-back pair
-reads alarmingly even when the bot is behaving correctly.
+A normal OOR rebalance and the residual-cleanup rebalance that follows
+it both send `Rebalance Succeeded`, with nothing in the message to tell
+them apart. The pair fires minutes apart by design, so in Telegram it
+reads as the bot rebalancing twice for no reason. Distinguishing the
+two is the point of this item.

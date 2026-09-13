@@ -34,8 +34,8 @@ sequence.
 - [Dust Threshold](#dust-threshold)
 - [Lifetime History Lookback](#lifetime-history-lookback)
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
-  - [Why this matters more than it used to](#why-this-matters-more-than-it-used-to)
-  - [Five call sites, one rule](#five-call-sites-one-rule)
+  - [Cost](#cost)
+  - [Call sites](#call-sites)
   - [The dashboard does not scan a position the bot owns](#the-dashboard-does-not-scan-a-position-the-bot-owns)
 - [Client-Side URL Routing](#client-side-url-routing)
 - [Shared Help Copy](#shared-help-copy)
@@ -434,8 +434,8 @@ only after `executeRebalance` returns, so a rejected rebalance never
 counts toward Max Rebalances / Day and never advances doubling mode.
 
 **A rejection is not a recovery either.** An ILG rejection reports the
-same shape as a quiet poll while meaning the opposite, which used to
-raise a "Position Recovered" modal beside the block modal. See
+same result shape as a quiet poll while meaning the opposite, so the
+recovery test must not read it as one. See
 [Poll-Result Recovery Signal](#poll-result-recovery-signal).
 
 **Reported on screen as well as by Telegram.** A rejection would
@@ -494,10 +494,21 @@ whether a poll means the position's price came back. When it says yes,
 `_handleRecovery` clears `rebalanceError`, `rebalancePaused` and
 `rebalanceFailedMidway`, and raises the **Position Recovered** modal.
 
-It used to decide by elimination: a poll reporting no rebalance, no
-error and no gas deferral was assumed to be a recovery. That inference
-only holds if every "nothing happened" result names a reason, and five
-shapes did not:
+`isRecoveryResult` asserts the positive signal rather than enumerating
+the things that would block one:
+
+```js
+result.inRange === true &&
+!botState.rebalanceFailedMidway &&
+!botState.rebalancePaused
+```
+
+`inRange` is set by `_checkRangeAndThreshold`
+([`src/bot-cycle.js`](../src/bot-cycle.js)), which runs **before** every
+execution gate, so no blocked result can carry it. That is the whole
+reason the test is written this way: a poll can decline to rebalance for
+at least nine distinct reasons, and most of them return a shape that
+names no reason at all.
 
 | Result shape | Returned by |
 | --- | --- |
@@ -507,28 +518,16 @@ shapes did not:
 | `{…, scanRunning: true}` | scan in progress |
 | `{…, swapBackoff: true}` | swap backoff |
 
-Every one read as a recovery. A position that was out of range and
-blocked would be announced as recovered, and the error explaining why it
-was stuck was discarded. Only `paused` and `retired` were ever guarded,
-because those two were the cases someone happened to hit.
+A test written as "no rebalance, no error, no deferral" would read every
+row above as a recovery, announcing a blocked out-of-range position as
+recovered and discarding the error explaining why it was stuck. It would
+also need a new clause each time a gate is added. Asserting `inRange`
+needs none, because the gates all run downstream of it.
 
-`isRecoveryResult` now asserts the signal instead of enumerating the
-blockers:
-
-```js
-result.inRange === true &&
-!botState.rebalanceFailedMidway &&
-!botState.rebalancePaused
-```
-
-`inRange` is set by `_checkRangeAndThreshold`
-([`src/bot-cycle.js`](../src/bot-cycle.js)), which runs **before** any
-gate, so no blocked result can carry it. Adding a clause per gate would
-have left the next gate to repeat the bug — which is how it reached
-five. The two `botState` clauses stay: they hold a position that is back
-in range but still mid-recovery or swap-aborted, and the second one is
-what stops a paused-and-aborted position from clearing its own pause
-flag and skipping its scheduled retire.
+The two `botState` clauses hold a position that is back in range but
+still mid-recovery or swap-aborted. The second also stops a
+paused-and-aborted position from clearing its own pause flag and
+skipping its scheduled retire.
 
 One accepted cost: when a residual-cleanup rebalance sets
 `forceRebalance`, an in-range position skips the `inRange` return that
@@ -772,104 +771,105 @@ to the chain head.
 | `nftScanFrom(mints, id, sharedFloor)` | where one NFT's scan starts |
 | `nftScanTo(retirements, id)` | where it stops, or `"latest"` |
 | `chainScanFloor(events, poolFloor)` | the floor for the chain's oldest NFT |
+| `nftScanWindow({mintBlock, retirementBlock, sharedFloor})` | both bounds, for a caller holding the block numbers rather than the events |
 
-Three details are load-bearing and easy to get backwards:
+Three rules within that module decide correctness:
 
 - **The duplicate rule is asymmetric.** `mintBlocksByTokenId` keeps the
   *earliest* block when an id repeats; `retirementBlocksByTokenId` keeps
-  the *latest*. A lower bound that is too high, or an upper bound that
-  is too low, silently loses events. Erring the other way only costs
-  time.
-- **`nftScanFrom` combines with `Math.max`, not by replacement.** On an
-  incremental rescan the shared floor is a resume checkpoint rather than
-  the pool's creation block, and it has to win over an earlier mint
-  block or the scan re-walks ground the last one already covered.
-- **The chain's oldest NFT has no mint block in the events** — it
-  appears only as an `oldTokenId`. It falls back to `chainScanFloor`,
-  which lifts the pool's creation block to the chain's own first mint
-  (`firstMintBlockNumber`, resolved by the event scanner). On a pool
-  older than the operator's first deposit that one NFT is otherwise the
-  most expensive scan of the run.
+  the *latest*. A lower bound above an NFT's first event, or an upper
+  bound below its last, drops those events from the scan and the caller
+  reads the short result as "the event never fired". Erring wide costs
+  only time.
+- **`nftScanFrom` combines with `Math.max`, not by replacement.** The
+  shared floor is the pool's creation block on a first run and a resume
+  checkpoint on an incremental rescan. Taking the maximum satisfies
+  both: a mint block later than the pool floor tightens it, and a
+  checkpoint later than the mint block keeps the rescan off ground the
+  previous scan already covered.
+- **The chain's oldest NFT has no mint block in the events**, because it
+  appears only as an `oldTokenId`. `chainScanFloor` supplies one: it
+  raises the pool's creation block to `events.firstMintBlockNumber`, the
+  chain's own first mint as resolved by the event scanner. No NFT in the
+  chain predates that block. On a pool older than the wallet's first
+  deposit this is the difference between that NFT's scan and every
+  other's.
 
-### Why this matters more than it used to
+### Cost
 
-None of this was visible while log queries ran unpaced: they fired in
-parallel and finished fast enough that nobody counted them. Once every
-request went through the global 250 ms queue, the volume became the
-wall-clock cost.
+Every RPC request in the process is released by the global 250 ms queue
+(see
+[RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking)),
+so a scan's wall-clock time is its request count divided by four per
+second. Chunk width is 7,500 blocks.
 
-Measured on a real position — a 132-rebalance chain in a pool created
-two years before the operator's first deposit:
+For a 132-rebalance chain in a pool created two years before the first
+deposit, scanning two event types per NFT:
 
-| | chunks per NFT | ~133 NFTs |
+| Window | Chunks per NFT | ~133 NFTs |
 | --- | --- | --- |
-| unbounded (pool creation → head) | 1,144 | ~32 hours |
-| lower bound only | 201 | hours |
-| both bounds | 1–2, current NFT excepted | minutes |
+| pool creation → head | 1,144 | ~32 hours |
+| NFT mint → head | 201 | hours |
+| NFT mint → retirement | 1–2, current NFT excepted | minutes |
 
-### Five call sites, one rule
+The upper bound carries most of the saving on a long chain: with only a
+lower bound, each retired NFT still re-reads every block between its own
+retirement and the chain head.
 
-This mistake was made five separate times, in five files, because
-nothing connected them — each resolved a floor for the *pool* and handed
-the same floor to every NFT. The call sites are
+### Call sites
+
+Five files scan a chain of NFTs and must derive both bounds per NFT:
 `src/bot-recorder-scan-helpers.js`, `src/position-details-compound.js`,
 `src/position-details-lifetime-scan.js`, `src/bot-pnl-current-nft.js`
 and `src/position-history.js`.
 
-`test/nft-scan-floor-coverage.test.js` is the structural guard: it
-enumerates every `src/` file that scans one NFT's events and fails
-unless the file routes its floor through `nft-mint-blocks.js` or carries
-a written exemption.
+`src/position-history.js` is the one where the loop lives elsewhere.
+`getPositionHistory()` handles a single NFT, and
+`src/epoch-reconstructor.js` calls it once per closed NFT in the chain,
+so a pool-wide window there costs once per rebalance. Its bounds come
+from `result.mintBlockNumber` and `result.closeBlockNumber`, which
+`_supplementFromEvents` fills from the rebalance events before any scan
+runs.
 
-**The guard missed the fifth site, and how it missed it is the point.**
-It enumerated files by *helper name* — `scanNftEvents` and
-`detectCompoundsOnChain`. `position-history.js` scans per NFT through a
-third helper, `scanCollectAndDrain`, so it was never a candidate. A name
-list only catches sites you already knew about, which is the same blind
-spot that produced four copies of the bug in the first place.
+`test/nft-scan-floor-coverage.test.js` enforces this. It identifies a
+per-NFT scan two ways — by helper name (`scanNftEvents`,
+`detectCompoundsOnChain`, `scanCollectAndDrain`) and by shape, where a
+chunked scan whose `label` interpolates a `tokenId` is per-NFT whatever
+the helper is called. The shape detector is what covers a helper the
+list does not yet name. Each matched file must either require
+`nft-mint-blocks.js` or hold an entry in the test's `EXEMPT` map giving
+the reason.
 
-The guard now also matches on **shape**: a chunked scan whose `label`
-names a `tokenId` is by definition per-NFT, whatever the helper is
-called. That detector is what makes a sixth site fail CI.
-
-`position-history.js` is worth its own note because the loop is not in
-the file. `getPositionHistory()` handles one NFT; `epoch-reconstructor.js`
-calls it once per closed NFT in the chain. Read alone, each call looked
-like a single bounded lookup — it was the caller that turned a pool-wide
-window into a per-rebalance cost. Both bounds were already sitting on
-the result object (`mintBlockNumber`, `closeBlockNumber`, filled from
-the events by `_supplementFromEvents`) and simply were not passed to the
-scan.
-
-Two per-NFT scans are exempt because they search *for* a mint block and
-so cannot be bounded by one: `event-scanner-mint-lookup.js` (which stops
-at the first hit instead) and `hodl-baseline.js`.
+Two files are exempt because they search *for* a mint block and so
+cannot be bounded below by one: `src/event-scanner-mint-lookup.js`,
+which instead stops at the first chunk that yields a hit, and
+`src/hodl-baseline.js`.
 
 ### The dashboard does not scan a position the bot owns
 
-A position is either managed or not, but on a cold page load the browser
-is asked before it can answer: `isPositionManaged()` reads a Set filled
-from `/api/status` polling, and the bot starts its positions on a
-stagger. For the first minute the honest answer was "not managed", so
-the dashboard's unmanaged-details path scanned a chain the bot was about
-to scan itself — two full passes over every NFT, every startup.
+The dashboard's unmanaged-details path computes the same per-NFT
+history the bot computes for a position it manages. Running both is two
+full passes over every NFT in the chain, so the dashboard suppresses its
+fetch for a managed position.
 
-`shouldSkipUnmanagedFetch()` in `public/dashboard-unmanaged.js` decides
-this, consulted from `flushPendingUnmanagedFetch()`. It suppresses the
-fetch only when a poll **has landed** and the position is managed.
+`shouldSkipUnmanagedFetch()` in `public/dashboard-unmanaged.js` is the
+decision, consulted from `flushPendingUnmanagedFetch()`. It takes two
+inputs and suppresses only when **both** hold: a `/api/status` response
+has landed, and that response reports the position as managed.
 
-The `hasPolled` half is not belt-and-braces. The managed Set is also
-restored from `localStorage` for instant badge render, so before any
-response arrives it may be a carry-over from a previous session — the
-server may have retired the position while the page was closed.
-Suppressing on that stale value would leave a genuinely unmanaged
-position with nothing to populate its KPIs.
+`hasPolled` is required because `isPositionManaged()` reads a Set that
+is restored from `localStorage` on page load for instant badge render.
+Before the first response arrives that Set is a carry-over from a
+previous session, and the server may have retired the position while
+the page was closed. Suppressing on it would leave a genuinely
+unmanaged position with nothing to populate its KPIs.
 
-Once a poll has landed the answer is authoritative, because the server's
-`managedPositions` is the union of live bot loops **and** positions whose
-saved status is `running` but have not started yet
-(`src/handle-api-status.js`). Intent is therefore known from the very
-first payload, well before the bot loop exists.
+After the first response the value is authoritative. The server's
+`managedPositions` (`src/handle-api-status.js`) is the union of live bot
+loops **and** positions whose saved status is `running` but whose loop
+has not started yet, so a position the bot is about to pick up already
+reads as managed. This matters because the bot starts positions on a
+stagger, and the fetch flush fires at wallet unlock.
 
 ---
 
@@ -1066,9 +1066,9 @@ blockchain wallet scans on next start to rebuild caches.
   names the missing files if you forget.
   Implemented in [`scripts/clean.js`](../scripts/clean.js), which
   delegates the cache to `clear-blockchain-scan-cache.js` rather than
-  keeping its own list. It used to keep one, and three caches added
-  since were never added to it, so a "full state reset" quietly left a
-  warm cache — the exact condition the command exists to remove.
+  naming cache files itself. That script is the single definition of
+  "the scan cache", so a cache added later is covered here without a
+  second list to update.
   **Note:** browser localStorage is NOT cleared, and does not need to be
   for a cold scan — the browser holds display state only (last viewed
   position, privacy toggles, price overrides, a copy of the
@@ -1413,22 +1413,21 @@ Caveats:
 ##### Scenario-Reproduction Scripts
 
 Companion shell scripts (also under `util/diagnostic/`) that
-**deliberately mutate local state** so a previously-observed bug can
-be triggered on demand. Distinct from the read-only Node tools above:
+**deliberately mutate local state** to put the app into a specific
+recovery path on demand. Distinct from the read-only Node tools above:
 each script backs the original up to a timestamped sibling first and
 prints the exact restore command.
 
-- `inject-stuck-lifetime-state.sh` — Mutates every pool entry in
-  `tmp/pnl-epochs-cache.json` to match Prod's 2026-06-09 stuck shape:
-  `freshDeposits: null`, `lifetimeHodlAmounts: null`,
-  `lastNftScanBlock: 0`. Then `npm start` triggers the same lifetime-
-  scan recovery path the fix in `src/bot-recorder-lifetime.js` and
-  `src/bot-loop.js` exercises (see
+- `inject-stuck-lifetime-state.sh` — Sets every pool entry in
+  `tmp/pnl-epochs-cache.json` to `freshDeposits: null`,
+  `lifetimeHodlAmounts: null`, `lastNftScanBlock: 0`. On the next
+  `npm start` that combination drives the lifetime-scan recovery path in
+  `src/bot-recorder-lifetime.js` and `src/bot-loop.js` (see
   [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
-  for the surrounding price-lookup gating). Used to verify the
-  `lifetimeScanComplete` flag + Syncing-badge UX behave correctly
-  when the cache is in the stuck shape; otherwise the bug only
-  reproduces on the live Prod box.
+  for the surrounding price-lookup gating), which is what exercises the
+  `lifetimeScanComplete` flag and the Syncing badge. A cache built by a
+  normal run never has that shape, so the path is otherwise unreachable
+  locally.
 
 #### Update Utilities
 
@@ -1446,12 +1445,12 @@ procedure documented in README.md &sect; Update.
   default without an old file silently overwriting it, and the old
   install is never modified &mdash; it remains a rollback.
 
-  It replaced a hand-typed `cp -rn`, which failed two ways. `cp` is a
-  Unix command, so Windows operators had to be sent to Git Bash for one
-  line of an otherwise cross-platform procedure. And excluding
-  `node_modules` from it required `shopt -s extglob`, which does not
-  exist in zsh &mdash; the default shell on macOS &mdash; and which is
-  applied at parse time, so the two lines break if joined with `;`.
+  **Why not `cp -rn`.** `cp` is a Unix command, so a shell one-liner
+  would send Windows operators to Git Bash for one step of an otherwise
+  cross-platform procedure. Excluding `node_modules` from it also needs
+  `shopt -s extglob`, which zsh &mdash; the macOS default shell &mdash;
+  does not have, and which applies at parse time, so the enabling line
+  and the copy cannot be joined with `;`.
 
   **Node built-ins only.** It runs before `npm ci` in the update
   procedure, so `node_modules` may not exist yet and this tool must not
@@ -2004,10 +2003,11 @@ The two reasons share a root cause:
 | `Expired CSRF token` | Token still in `_issued`, but past `tokenTtlMs`. |
 | `Unknown CSRF token` | Token cryptographically valid (issued by this server) but no longer in `_issued` — i.e. expired *and* already pruned by `_pruneExpired` (which runs only when `_issued.size >= 500` and only deletes tokens already past TTL). |
 
-Treating both as retryable closes the gap that previously dropped the
-"Unknown" path silently — observed in burn-in logs as
-`[csrf] 403 POST /api/positions/scan — Unknown CSRF token` with no
-matching recovery line.
+Both must therefore be treated as retryable. Which of the two a stale
+token produces depends only on whether `_pruneExpired` happened to have
+run, which is a function of total issued-token count and says nothing
+about the client. Retrying one and not the other would make recovery
+depend on server-side bookkeeping the client cannot observe.
 
 **Retry observability.** Server-side, `handleCsrf` keeps a small ring
 buffer of the most recent 403 per `(method, url)` (windowed at 30 s).
@@ -2033,8 +2033,9 @@ method overriding is ever introduced.
 
 `server.js` dispatches only `GET`, `POST`, `DELETE`, and `OPTIONS`.
 Any other verb (`PUT`, `PATCH`, `TRACE`, etc.) returns a `405 Method
-Not Allowed`, so footgun methods cannot be abused to pivot around the
-CORS/CSRF checks.
+Not Allowed`. The CORS and CSRF checks are written against the four
+dispatched verbs, so a verb that reaches a handler without passing
+through them would bypass both.
 
 #### Path Traversal in Static Serving
 
@@ -3694,12 +3695,12 @@ Prefix: `act-`. Loaded via **`<img src="icons/act-<name>.svg">`**.
 Registered as URL strings in the `ACT_ICONS` map in
 `public/dashboard-helpers.js`.
 
-**Why `<img>`.** An icon that renders in dozens of log entries used to
-be dozens of cloned copies of the same inline `<svg>` in the DOM, so
-every `id=""` inside the SVG (for example the `<defs><path id="rope">`
-inside `act-lasso.svg`) collided across copies. `<img>` renders each
-instance in its own isolated document context, so ids are per-file and
-can never collide.
+**Why `<img>`.** These icons render once per Activity Log entry, so an
+inline `<svg>` would put dozens of clones of the same markup in one
+document, and every `id=""` inside it — for example the
+`<defs><path id="rope">` in `act-lasso.svg` — would be duplicated.
+`<img>` renders each instance in its own document context, so ids stay
+per-file and cannot collide.
 
 **No `currentColor`.** `<img>`-loaded SVGs don't inherit the parent
 page's `color`, so every stroke and fill in `act-*.svg` uses an
@@ -3835,12 +3836,12 @@ the next line's indentation becomes a real descendant combinator, and
 ```
 
 parses as `.9 mm-pos-mgr-toggle-track::after` — a selector matching
-nothing. Nothing in the toolchain objects: stylelint passes, Prettier
-passes, the tests pass, and only the browser shows the declaration
-quietly not applying. This shipped twice; the second time it froze the
-Privacy Mode and browser toggle knobs in the off position while their
-track colour (a short enough rule to escape wrapping) kept working,
-which made it read as a behavioural bug rather than a formatting one.
+nothing. No gate catches it: stylelint passes, Prettier passes, the
+tests pass, and the only symptom is the declaration not applying in the
+browser. Because line width decides which rules break, a long rule can
+stop applying while a short rule on the same component keeps working,
+so the symptom presents as a behavioural defect rather than a formatting
+one.
 
 **The fix:** write the escape with six hex digits —
 `.\000039mm-pos-mgr-foo`. Six digits is the maximum an escape can
