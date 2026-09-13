@@ -806,15 +806,29 @@ Three rules within that module decide correctness:
   deposit this is the difference between that NFT's scan and every
   other's.
 
-  The same field also spares that NFT a chain read for its *own* mint
-  date. `_applyFirstMint` in `src/position-history.js` takes it straight
-  off the events array, gated on `events.firstMintTokenId` matching the
-  token being asked about. Without that gate the figure can be wrong:
-  the first mint describes the oldest *arrival*, while `pairTransfers`
-  builds the chain from direct mints only, so a pool whose earliest
-  arrival came in by transfer has a first-mint naming a different token
-  — and this NFT would be dated from that one's mint. A missing or
-  mismatched id falls back to `supplementMintFromChain`.
+  That NFT also needs its own mint date, for the opening row of the
+  Per-Day P&L table, and `_applyFirstMint` in `src/position-history.js`
+  takes it off the events array rather than reading chain. Two fields
+  can supply it, and both are gated on a token id:
+
+  | Field | Records | Names the chain's first NFT |
+  | --- | --- | --- |
+  | `chainFirst*` | earliest arrival that was a **mint** | always |
+  | `firstMint*` | earliest arrival of **any kind** | only when no NFT arrived by transfer |
+
+  `resolveChainFirstMint` produces the first pair; it is pure, because a
+  direct mint needs no follow-back — the arrival *is* the mint.
+  `resolveFirstMintWithForeign` produces the second, for Lifetime Days,
+  and follows a transferred-in NFT back to its true mint.
+
+  The id gates are what keep the two apart. `pairTransfers` builds the
+  chain from mints only, so an NFT that arrived by transfer is never a
+  link in it — and on such a pool `firstMint*` names a different NFT
+  entirely. Using its block would date the chain's first NFT from
+  another NFT's mint. `chainFirst*` is preferred because its id always
+  matches; `firstMint*` is the fallback for caches written before
+  `chainFirst*` existed, and a mismatch on both falls through to
+  `supplementMintFromChain`.
 
 ### Cost
 

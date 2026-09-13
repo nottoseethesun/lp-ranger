@@ -223,7 +223,60 @@ async function findOriginalMintOnChain(
   return { timestamp: block.timestamp, blockNumber: mintEvt.blockNumber };
 }
 
+/**
+ * Resolve the earliest position NFT that arrived at this wallet AS A MINT,
+ * in this pool — the first link of the chain the app infers.
+ *
+ * Distinct from `resolveFirstMintWithForeign`, which answers "the oldest
+ * position NFT this wallet ever held here", for Lifetime Days. The two
+ * name the same NFT whenever every arrival was a mint, and different
+ * NFTs as soon as one arrived by transfer: `pairTransfers` builds the
+ * chain from mints only, so a transferred-in NFT is never a link in it.
+ *
+ * Per-day P&L needs THIS one. Its mint block opens the first row of the
+ * table, and no rebalance event names it — every other NFT in the chain
+ * is named as some event's replacement, but the first is only ever the
+ * NFT being replaced.
+ *
+ * Pure: a direct mint needs no follow-back, because the arrival IS the
+ * mint. Reconciles against the cache the same way its sibling does, so
+ * an incremental scan that sees only later mints cannot drag the answer
+ * toward the chain tip.
+ *
+ * @param {object} cachedEvents  Prior cache; may carry the same fields.
+ * @param {object[]} transfers   Pool-filtered transfers for this window.
+ * @returns {{chainFirstTokenId: string|null, chainFirstMintBlock: number|null,
+ *   chainFirstMintTimestamp: number|null}}
+ */
+function resolveChainFirstMint(cachedEvents, transfers) {
+  const cachedId = cachedEvents.chainFirstTokenId || null;
+  const cachedBlock = cachedEvents.chainFirstMintBlock || null;
+  const cachedTs = cachedEvents.chainFirstMintTimestamp || null;
+  const cached = {
+    chainFirstTokenId: cachedId,
+    chainFirstMintBlock: cachedBlock,
+    chainFirstMintTimestamp: cachedTs,
+  };
+
+  /*- `timestamp > 0` because an arrival whose block time could not be
+   *  read carries 0, which sorts first and would win. Upstream already
+   *  drops those, but this function is exported and tested on its own
+   *  inputs, so it does not lean on that. */
+  const mints = (transfers || [])
+    .filter((t) => t.direction === "in" && t.from === ZERO && t.timestamp > 0)
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const oldest = mints[0];
+  if (!oldest) return cached;
+  if (cachedTs && oldest.timestamp >= cachedTs) return cached;
+  return {
+    chainFirstTokenId: String(oldest.tokenId),
+    chainFirstMintBlock: oldest.blockNumber,
+    chainFirstMintTimestamp: oldest.timestamp,
+  };
+}
+
 module.exports = {
   resolveFirstMintWithForeign,
+  resolveChainFirstMint,
   findOriginalMintOnChain,
 };

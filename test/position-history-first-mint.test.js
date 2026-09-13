@@ -95,9 +95,13 @@ describe("oldest NFT takes its mint from the events array", () => {
     delete require.cache[require.resolve("../src/position-history")];
   });
 
-  it("dates the oldest NFT without reading chain", async () => {
+  it("dates the chain-first NFT from chainFirst* without reading chain", async () => {
     const r = await mod.getPositionHistory(OLDEST, {
-      rebalanceEvents: mkEvents({ firstMintTokenId: OLDEST }),
+      rebalanceEvents: mkEvents({
+        chainFirstTokenId: OLDEST,
+        chainFirstMintBlock: MINT_BLOCK,
+        chainFirstMintTimestamp: MINT_TS,
+      }),
     });
     assert.equal(r.mintBlockNumber, MINT_BLOCK);
     assert.equal(r.mintDate, new Date(MINT_TS * 1000).toISOString());
@@ -108,13 +112,40 @@ describe("oldest NFT takes its mint from the events array", () => {
     );
   });
 
-  it("reads chain when the first mint belongs to a different NFT", async () => {
-    /*- The case the id gate exists for.  A pool whose earliest arrival
-     *  came in by transfer has a first-mint naming that token, not the
-     *  chain's oldest — using its block here would date this NFT from
-     *  another one's mint. */
+  it("uses chainFirst* even when the oldest-held NFT was transferred in", async () => {
+    /*- The case the whole field exists for.  `firstMint*` names the
+     *  transferred-in NFT, so it cannot date this one; `chainFirst*`
+     *  names this one directly, so no chain read is needed. */
     const r = await mod.getPositionHistory(OLDEST, {
-      rebalanceEvents: mkEvents({ firstMintTokenId: FOREIGN }),
+      rebalanceEvents: mkEvents({
+        firstMintTokenId: FOREIGN,
+        chainFirstTokenId: OLDEST,
+        chainFirstMintBlock: MINT_BLOCK,
+        chainFirstMintTimestamp: MINT_TS,
+      }),
+    });
+    assert.equal(r.mintBlockNumber, MINT_BLOCK);
+    assert.equal(counts.mintFromChain, 0);
+  });
+
+  it("falls back to firstMint* on a cache written before chainFirst*", async () => {
+    const r = await mod.getPositionHistory(OLDEST, {
+      rebalanceEvents: mkEvents({ firstMintTokenId: OLDEST }),
+    });
+    assert.equal(r.mintBlockNumber, MINT_BLOCK);
+    assert.equal(counts.mintFromChain, 0);
+  });
+
+  it("reads chain when both fields name a different NFT", async () => {
+    /*- Neither source describes this NFT, so neither may date it —
+     *  using either block would date this NFT from another one's mint. */
+    const r = await mod.getPositionHistory(OLDEST, {
+      rebalanceEvents: mkEvents({
+        firstMintTokenId: FOREIGN,
+        chainFirstTokenId: FOREIGN,
+        chainFirstMintBlock: MINT_BLOCK,
+        chainFirstMintTimestamp: MINT_TS,
+      }),
     });
     assert.notEqual(
       r.mintBlockNumber,

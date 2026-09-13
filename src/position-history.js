@@ -79,37 +79,60 @@ function _applyCloseEntry(result, close) {
 }
 
 /**
- * Supply the mint of the one NFT no rebalance event can name.
+ * Supply the mint of the one position NFT no rebalance event can name.
  *
- * A rebalance records "old X replaced by new Y" at a block, so Y's mint
- * block is that event's. The oldest NFT in a chain appears only as an
- * `oldTokenId`, so nothing names its mint and it would otherwise be read
- * from chain — a scan of the pool's whole history for a single Transfer.
+ * A rebalance records "NFT X replaced by NFT Y at block B", so Y's mint
+ * block is B. The earliest NFT in the inferred chain appears only as an
+ * `oldTokenId` — it replaced nothing — so nothing names its mint, and it
+ * would otherwise be read from chain: a scan of the pool's whole history
+ * for one Transfer log.
  *
- * The event scanner already resolved it. `resolveFirstMintWithForeign`
- * takes the oldest incoming transfer from the set it just read and, when
- * that NFT arrived from another wallet, follows it back to its true
- * mint. The answer rides on the events array.
+ * The event scanner already saw that mint. `resolveChainFirstMint`
+ * records the earliest arrival that was a mint, which by construction is
+ * that NFT, and hangs it on the events array this function receives.
  *
- * **Gated on the id**, because the oldest ARRIVAL is not always the
- * chain's oldest `oldTokenId`: `pairTransfers` builds the chain from
- * direct mints, so a pool whose earliest arrival came in by transfer has
- * a first-mint belonging to some other token. Using the block without
- * checking would date this NFT from a different one's mint. A missing or
- * mismatched id falls through to the chain read.
+ * Two id-gated sources, in order of preference:
+ *
+ *   - `chainFirst*` — recorded for this purpose; the id always matches.
+ *   - `firstMint*` — the oldest NFT the wallet ever held here, kept for
+ *     Lifetime Days. Names the same NFT only when every arrival in the
+ *     pool was a mint; a transferred-in NFT makes it a different one.
+ *     Present on caches written before `chainFirst*` existed.
+ *
+ * Both are gated on the id because using the wrong one would date this
+ * NFT from another NFT's mint. No match falls through to the chain read.
  *
  * @param {object} result   Result object to supplement.
- * @param {string} tokenId  NFT token ID.
- * @param {Array & {firstMintTokenId?: string, firstMintTimestamp?: number,
- *   firstMintBlockNumber?: number}} events
+ * @param {string} tokenId  Position NFT token ID.
+ * @param {Array & {chainFirstTokenId?: string, chainFirstMintBlock?: number,
+ *   chainFirstMintTimestamp?: number, firstMintTokenId?: string,
+ *   firstMintTimestamp?: number, firstMintBlockNumber?: number}} events
  */
 function _applyFirstMint(result, tokenId, events) {
-  if (!events.firstMintTokenId) return;
-  if (String(events.firstMintTokenId) !== String(tokenId)) return;
-  if (!result.mintDate && events.firstMintTimestamp)
-    result.mintDate = new Date(events.firstMintTimestamp * 1000).toISOString();
-  if (!result.mintBlockNumber && events.firstMintBlockNumber)
-    result.mintBlockNumber = events.firstMintBlockNumber;
+  /*- Preferred: the field that names this NFT directly.  It is recorded
+   *  for exactly this purpose, so the id always matches and no fallback
+   *  is reached. */
+  if (String(events.chainFirstTokenId || "") === String(tokenId)) {
+    _stampMint(
+      result,
+      events.chainFirstMintTimestamp,
+      events.chainFirstMintBlock,
+    );
+    return;
+  }
+  /*- A cache written before that field existed carries only the
+   *  oldest-held NFT's mint, which names this NFT whenever every arrival
+   *  in the pool was a mint.  Same id check, for the same reason. */
+  if (String(events.firstMintTokenId || "") !== String(tokenId)) return;
+  _stampMint(result, events.firstMintTimestamp, events.firstMintBlockNumber);
+}
+
+/** Record a mint date and block without overwriting a known value. */
+function _stampMint(result, timestamp, blockNumber) {
+  if (!result.mintDate && timestamp)
+    result.mintDate = new Date(timestamp * 1000).toISOString();
+  if (!result.mintBlockNumber && blockNumber)
+    result.mintBlockNumber = blockNumber;
 }
 
 /**

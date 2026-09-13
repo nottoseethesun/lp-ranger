@@ -34,7 +34,10 @@ const _PAIRING_WINDOW_SEC = 300;
 const { scanChunked, _DEFAULT_CHUNK_SIZE } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
-const { resolveFirstMintWithForeign } = require("./event-scanner-mint-lookup");
+const {
+  resolveFirstMintWithForeign,
+  resolveChainFirstMint,
+} = require("./event-scanner-mint-lookup");
 
 /**
  * @typedef {object} RebalanceEvent
@@ -356,6 +359,11 @@ async function loadCache(cache, cacheKey, fromBlock) {
      *  than mis-attributing. */
     if (cached.firstMintTokenId)
       evts.firstMintTokenId = cached.firstMintTokenId;
+    if (cached.chainFirstTokenId) {
+      evts.chainFirstTokenId = cached.chainFirstTokenId;
+      evts.chainFirstMintBlock = cached.chainFirstMintBlock;
+      evts.chainFirstMintTimestamp = cached.chainFirstMintTimestamp;
+    }
     return { cachedEvents: evts, scanFrom: cached.lastBlock + 1 };
   }
   return { cachedEvents: [], scanFrom: fromBlock };
@@ -566,7 +574,23 @@ async function _processRawEvents(
   if (firstMintTimestamp) merged.firstMintTimestamp = firstMintTimestamp;
   if (firstMintBlockNumber) merged.firstMintBlockNumber = firstMintBlockNumber;
   if (firstMintTokenId) merged.firstMintTokenId = firstMintTokenId;
-  return { merged, firstMintTimestamp, firstMintBlockNumber, firstMintTokenId };
+
+  /*- The first link of the inferred chain, which per-day P&L needs and
+   *  which the fields above do not always name — see
+   *  resolveChainFirstMint. */
+  const chainFirst = resolveChainFirstMint(cachedEvents, transfers);
+  if (chainFirst.chainFirstTokenId) {
+    merged.chainFirstTokenId = chainFirst.chainFirstTokenId;
+    merged.chainFirstMintBlock = chainFirst.chainFirstMintBlock;
+    merged.chainFirstMintTimestamp = chainFirst.chainFirstMintTimestamp;
+  }
+  return {
+    merged,
+    firstMintTimestamp,
+    firstMintBlockNumber,
+    firstMintTokenId,
+    ...chainFirst,
+  };
 }
 
 /**
@@ -646,6 +670,9 @@ async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
     firstMintTimestamp: cachedEvents.firstMintTimestamp || null,
     firstMintBlockNumber: cachedEvents.firstMintBlockNumber || null,
     firstMintTokenId: cachedEvents.firstMintTokenId || null,
+    chainFirstTokenId: cachedEvents.chainFirstTokenId || null,
+    chainFirstMintBlock: cachedEvents.chainFirstMintBlock || null,
+    chainFirstMintTimestamp: cachedEvents.chainFirstMintTimestamp || null,
     mintSchemaVersion: 2,
   });
 }
@@ -729,16 +756,23 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     return cachedEvents;
   }
 
-  const { merged, firstMintTimestamp, firstMintBlockNumber, firstMintTokenId } =
-    await _processRawEvents(
-      provider,
-      ethersLib,
-      rawEvents,
-      walletAddress,
-      positionManagerAddress,
-      cachedEvents,
-      { poolToken0, poolToken1, poolFee, factoryAddress, poolAddress },
-    );
+  const {
+    merged,
+    firstMintTimestamp,
+    firstMintBlockNumber,
+    firstMintTokenId,
+    chainFirstTokenId,
+    chainFirstMintBlock,
+    chainFirstMintTimestamp,
+  } = await _processRawEvents(
+    provider,
+    ethersLib,
+    rawEvents,
+    walletAddress,
+    positionManagerAddress,
+    cachedEvents,
+    { poolToken0, poolToken1, poolFee, factoryAddress, poolAddress },
+  );
 
   if (cache)
     await cache.set(cacheKey, {
@@ -751,6 +785,9 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
       firstMintTimestamp,
       firstMintBlockNumber,
       firstMintTokenId,
+      chainFirstTokenId,
+      chainFirstMintBlock,
+      chainFirstMintTimestamp,
       mintSchemaVersion: 2,
     });
   return merged;

@@ -36,6 +36,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — User uses them interchangeably; don't ask which
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Answer only what was asked, about only the thing named; yes/no means yes/no
 - [prose style](feedback_prose_style.md) — Short sentences, concise, spell out small numbers, no gwei
+- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no pronoun where two candidates exist
 - [release notes style](feedback_release_notes_style.md) — Overview naming an honorable Old West gunslinger + one-line summary; state consequences and payoffs, not just changes
 - [revert means code](feedback_revert_means_code.md) — "Revert the changes" = repo edits only, never the in-flight plan
 - [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed during review

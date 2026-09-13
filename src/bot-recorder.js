@@ -263,6 +263,12 @@ async function _scanHistory(
     events.firstMintTimestamp = found.firstMintTimestamp;
     events.firstMintBlockNumber = found.firstMintBlockNumber;
     events.firstMintTokenId = found.firstMintTokenId;
+    /*- The first link of the inferred chain and its mint block. Per-day
+     *  P&L opens its first row from these; dropping them here sends that
+     *  lookup to the chain instead. */
+    events.chainFirstTokenId = found.chainFirstTokenId;
+    events.chainFirstMintBlock = found.chainFirstMintBlock;
+    events.chainFirstMintTimestamp = found.chainFirstMintTimestamp;
     log.info("[bot] Found %d historical rebalance events", found.length);
     if (throttle && found.length > 0) {
       const cutoff = Math.floor(
