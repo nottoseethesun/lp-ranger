@@ -35,7 +35,7 @@ sequence.
 - [Lifetime History Lookback](#lifetime-history-lookback)
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
   - [Why this matters more than it used to](#why-this-matters-more-than-it-used-to)
-  - [Four call sites, one rule](#four-call-sites-one-rule)
+  - [Five call sites, one rule](#five-call-sites-one-rule)
   - [The dashboard does not scan a position the bot owns](#the-dashboard-does-not-scan-a-position-the-bot-owns)
 - [Client-Side URL Routing](#client-side-url-routing)
 - [Shared Help Copy](#shared-help-copy)
@@ -807,20 +807,43 @@ two years before the operator's first deposit:
 | lower bound only | 201 | hours |
 | both bounds | 1–2, current NFT excepted | minutes |
 
-### Four call sites, one rule
+### Five call sites, one rule
 
-This mistake was made four separate times, in four files, because
+This mistake was made five separate times, in five files, because
 nothing connected them — each resolved a floor for the *pool* and handed
 the same floor to every NFT. The call sites are
 `src/bot-recorder-scan-helpers.js`, `src/position-details-compound.js`,
-`src/position-details-lifetime-scan.js` and
-`src/bot-pnl-current-nft.js`.
+`src/position-details-lifetime-scan.js`, `src/bot-pnl-current-nft.js`
+and `src/position-history.js`.
 
 `test/nft-scan-floor-coverage.test.js` is the structural guard: it
-enumerates every `src/` file calling `scanNftEvents` or
-`detectCompoundsOnChain` and fails unless the file routes its floor
-through `nft-mint-blocks.js` or carries a written exemption. A fifth
-scan site cannot ship unbounded.
+enumerates every `src/` file that scans one NFT's events and fails
+unless the file routes its floor through `nft-mint-blocks.js` or carries
+a written exemption.
+
+**The guard missed the fifth site, and how it missed it is the point.**
+It enumerated files by *helper name* — `scanNftEvents` and
+`detectCompoundsOnChain`. `position-history.js` scans per NFT through a
+third helper, `scanCollectAndDrain`, so it was never a candidate. A name
+list only catches sites you already knew about, which is the same blind
+spot that produced four copies of the bug in the first place.
+
+The guard now also matches on **shape**: a chunked scan whose `label`
+names a `tokenId` is by definition per-NFT, whatever the helper is
+called. That detector is what makes a sixth site fail CI.
+
+`position-history.js` is worth its own note because the loop is not in
+the file. `getPositionHistory()` handles one NFT; `epoch-reconstructor.js`
+calls it once per closed NFT in the chain. Read alone, each call looked
+like a single bounded lookup — it was the caller that turned a pool-wide
+window into a per-rebalance cost. Both bounds were already sitting on
+the result object (`mintBlockNumber`, `closeBlockNumber`, filled from
+the events by `_supplementFromEvents`) and simply were not passed to the
+scan.
+
+Two per-NFT scans are exempt because they search *for* a mint block and
+so cannot be bounded by one: `event-scanner-mint-lookup.js` (which stops
+at the first hit instead) and `hodl-baseline.js`.
 
 ### The dashboard does not scan a position the bot owns
 

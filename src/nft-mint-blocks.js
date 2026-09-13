@@ -184,6 +184,31 @@ function nftScanTo(retirementBlocks, tokenId, fallback = "latest") {
   return typeof known === "number" ? known : fallback;
 }
 
+/**
+ * The same window, for a caller that already knows the two blocks.
+ *
+ * `nftScanFrom` and `nftScanTo` look the bounds up in maps built from a
+ * rebalance chain. A caller working one NFT at a time may already have
+ * resolved them from somewhere wider than the chain — the rebalance log,
+ * or a mint cache — so it needs the rule without the lookup. Same rule,
+ * so it lives here rather than being restated at the call site.
+ *
+ * @param {object} opts
+ * @param {number} [opts.mintBlock]        Block the NFT was minted in.
+ * @param {number} [opts.retirementBlock]  Block it was replaced at;
+ *   omit for the current NFT, which scans to the chain head.
+ * @param {number} [opts.sharedFloor]      Pool creation block, or a
+ *   resume checkpoint.
+ * @returns {{from: number, to: number|string}}
+ */
+function nftScanWindow({ mintBlock, retirementBlock, sharedFloor } = {}) {
+  const floor = Number.isFinite(sharedFloor) ? sharedFloor : 0;
+  return {
+    from: Math.max(floor, Number.isFinite(mintBlock) ? mintBlock : 0),
+    to: Number.isFinite(retirementBlock) ? retirementBlock : "latest",
+  };
+}
+
 module.exports = {
   mintBlocksByTokenId,
   scanFloorFor,
@@ -191,4 +216,5 @@ module.exports = {
   chainScanFloor,
   retirementBlocksByTokenId,
   nftScanTo,
+  nftScanWindow,
 };

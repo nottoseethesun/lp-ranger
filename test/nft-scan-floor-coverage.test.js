@@ -23,6 +23,14 @@
  * that scans NFT events must route its floor through
  * `src/nft-mint-blocks.js`, or be listed below with a reason. A new
  * scan site fails CI until one of those is true.
+ *
+ * **A fifth site shipped unbounded anyway**, and the reason is recorded
+ * next to `NFT_LABEL` below: this guard originally looked for two
+ * helper names, and `position-history.js` scanned per NFT through a
+ * third. Epoch reconstruction called it once per closed NFT with the
+ * pool's window each time — 132 x 2 x 1,144 chunks, about a day. The
+ * guard now also matches on the shape (a chunked scan whose label names
+ * a tokenId), so it no longer depends on knowing the helper's name.
  */
 
 "use strict";
@@ -34,24 +42,45 @@ const path = require("node:path");
 
 const SRC = path.join(__dirname, "..", "src");
 
-/** Calls that scan one NFT's event history. */
-const SCAN_CALLS = /\b(scanNftEvents|detectCompoundsOnChain)\s*\(/;
+/*- Named calls that scan one NFT's event history. */
+const SCAN_CALLS =
+  /\b(scanNftEvents|detectCompoundsOnChain|scanCollectAndDrain)\s*\(/;
+
+/*- The general shape, independent of any helper's name: a chunked scan
+ *  whose label names a tokenId is by definition a per-NFT scan.
+ *
+ *  This detector is here because the name list above was not enough.
+ *  It named two helpers; `position-history.js` scanned per NFT through a
+ *  third, `scanCollectAndDrain`, and was therefore invisible to a guard
+ *  whose file header claimed "a new scan site fails CI". It shipped
+ *  unbounded and cost the operator a day of wall-clock. A name list only
+ *  catches the sites you already knew about. */
+const NFT_LABEL = /label:\s*`[^`]*#\$\{\s*tokenId\s*\}/;
 
 /**
- * Files allowed to call a scan without importing the mint-block helper,
- * and why. Each entry is a claim a reader can check.
+ * Files allowed to scan without importing the mint-block helper, and
+ * why. Each entry is a claim a reader can check.
  */
 const EXEMPT = {
   "compounder.js":
     "defines scanNftEvents/detectCompoundsOnChain; the floor is its caller's to set",
+  "position-history-scan-helpers.js":
+    "defines scanCollectAndDrain; both bounds are passed in by position-history.js",
+  "event-scanner-mint-lookup.js":
+    "searches FOR a mint block, so cannot be bounded by one; exits at the first hit instead",
+  "hodl-baseline.js":
+    "searches FOR the current NFT's mint block, so cannot be bounded by one",
 };
 
-/** Every src/ file that scans NFT events. */
+/** Every src/ file that scans one NFT's events. */
 function scanSites() {
   return fs
     .readdirSync(SRC)
     .filter((f) => f.endsWith(".js"))
-    .filter((f) => SCAN_CALLS.test(fs.readFileSync(path.join(SRC, f), "utf8")));
+    .filter((f) => {
+      const src = fs.readFileSync(path.join(SRC, f), "utf8");
+      return SCAN_CALLS.test(src) || NFT_LABEL.test(src);
+    });
 }
 
 /** Whether a file routes its floor through the shared helper. */
@@ -67,6 +96,22 @@ describe("per-NFT scan floors", () => {
     assert.ok(
       scanSites().length >= 4,
       `expected several NFT scan sites, found ${scanSites().join(", ")}`,
+    );
+  });
+
+  it("finds sites by label as well as by call name", () => {
+    /*- The name list missed a real site once already. If the label
+     *  detector silently stops matching, the guard quietly narrows back
+     *  to what it was when that happened. */
+    const byLabel = fs
+      .readdirSync(SRC)
+      .filter((f) => f.endsWith(".js"))
+      .filter((f) =>
+        NFT_LABEL.test(fs.readFileSync(path.join(SRC, f), "utf8")),
+      );
+    assert.ok(
+      byLabel.length >= 3,
+      `the per-NFT label detector matched only ${byLabel.join(", ") || "nothing"}`,
     );
   });
 
