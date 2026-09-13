@@ -350,6 +350,12 @@ async function loadCache(cache, cacheKey, fromBlock) {
       evts.firstMintTimestamp = cached.firstMintTimestamp;
     if (cached.firstMintBlockNumber)
       evts.firstMintBlockNumber = cached.firstMintBlockNumber;
+    /*- Absent on caches written before this field existed.  Consumers
+     *  treat a missing id as "cannot attribute the first mint" and fall
+     *  back to reading it from chain, so an old cache degrades rather
+     *  than mis-attributing. */
+    if (cached.firstMintTokenId)
+      evts.firstMintTokenId = cached.firstMintTokenId;
     return { cachedEvents: evts, scanFrom: cached.lastBlock + 1 };
   }
   return { cachedEvents: [], scanFrom: fromBlock };
@@ -548,7 +554,7 @@ async function _processRawEvents(
     );
   }
   const merged = mergeAndIndex(cachedEvents, paired);
-  const { firstMintTimestamp, firstMintBlockNumber } =
+  const { firstMintTimestamp, firstMintBlockNumber, firstMintTokenId } =
     await resolveFirstMintWithForeign(
       provider,
       ethersLib,
@@ -559,7 +565,8 @@ async function _processRawEvents(
     );
   if (firstMintTimestamp) merged.firstMintTimestamp = firstMintTimestamp;
   if (firstMintBlockNumber) merged.firstMintBlockNumber = firstMintBlockNumber;
-  return { merged, firstMintTimestamp, firstMintBlockNumber };
+  if (firstMintTokenId) merged.firstMintTokenId = firstMintTokenId;
+  return { merged, firstMintTimestamp, firstMintBlockNumber, firstMintTokenId };
 }
 
 /**
@@ -638,6 +645,7 @@ async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
     lastBlock: currentBlock,
     firstMintTimestamp: cachedEvents.firstMintTimestamp || null,
     firstMintBlockNumber: cachedEvents.firstMintBlockNumber || null,
+    firstMintTokenId: cachedEvents.firstMintTokenId || null,
     mintSchemaVersion: 2,
   });
 }
@@ -721,7 +729,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     return cachedEvents;
   }
 
-  const { merged, firstMintTimestamp, firstMintBlockNumber } =
+  const { merged, firstMintTimestamp, firstMintBlockNumber, firstMintTokenId } =
     await _processRawEvents(
       provider,
       ethersLib,
@@ -742,6 +750,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
       lastBlock: _resolveLastBlock(rawEvents, scanFrom, currentBlock),
       firstMintTimestamp,
       firstMintBlockNumber,
+      firstMintTokenId,
       mintSchemaVersion: 2,
     });
   return merged;

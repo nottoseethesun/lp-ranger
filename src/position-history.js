@@ -79,6 +79,40 @@ function _applyCloseEntry(result, close) {
 }
 
 /**
+ * Supply the mint of the one NFT no rebalance event can name.
+ *
+ * A rebalance records "old X replaced by new Y" at a block, so Y's mint
+ * block is that event's. The oldest NFT in a chain appears only as an
+ * `oldTokenId`, so nothing names its mint and it would otherwise be read
+ * from chain — a scan of the pool's whole history for a single Transfer.
+ *
+ * The event scanner already resolved it. `resolveFirstMintWithForeign`
+ * takes the oldest incoming transfer from the set it just read and, when
+ * that NFT arrived from another wallet, follows it back to its true
+ * mint. The answer rides on the events array.
+ *
+ * **Gated on the id**, because the oldest ARRIVAL is not always the
+ * chain's oldest `oldTokenId`: `pairTransfers` builds the chain from
+ * direct mints, so a pool whose earliest arrival came in by transfer has
+ * a first-mint belonging to some other token. Using the block without
+ * checking would date this NFT from a different one's mint. A missing or
+ * mismatched id falls through to the chain read.
+ *
+ * @param {object} result   Result object to supplement.
+ * @param {string} tokenId  NFT token ID.
+ * @param {Array & {firstMintTokenId?: string, firstMintTimestamp?: number,
+ *   firstMintBlockNumber?: number}} events
+ */
+function _applyFirstMint(result, tokenId, events) {
+  if (!events.firstMintTokenId) return;
+  if (String(events.firstMintTokenId) !== String(tokenId)) return;
+  if (!result.mintDate && events.firstMintTimestamp)
+    result.mintDate = new Date(events.firstMintTimestamp * 1000).toISOString();
+  if (!result.mintBlockNumber && events.firstMintBlockNumber)
+    result.mintBlockNumber = events.firstMintBlockNumber;
+}
+
+/**
  * Fill in missing data from rebalance events (on-chain event scanner).
  * @param {object}   result  Result object to supplement.
  * @param {string}   tokenId NFT token ID.
@@ -92,6 +126,8 @@ function _supplementFromEvents(result, tokenId, events) {
       result.mintDate = new Date(mintEv.timestamp * 1000).toISOString();
     if (!result.mintTxHash) result.mintTxHash = mintEv.txHash || null;
     if (mintEv.blockNumber) result.mintBlockNumber = mintEv.blockNumber;
+  } else {
+    _applyFirstMint(result, tokenId, events);
   }
   const closeEv = events.find((e) => String(e.oldTokenId) === String(tokenId));
   if (closeEv) {

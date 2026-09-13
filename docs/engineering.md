@@ -806,6 +806,16 @@ Three rules within that module decide correctness:
   deposit this is the difference between that NFT's scan and every
   other's.
 
+  The same field also spares that NFT a chain read for its *own* mint
+  date. `_applyFirstMint` in `src/position-history.js` takes it straight
+  off the events array, gated on `events.firstMintTokenId` matching the
+  token being asked about. Without that gate the figure can be wrong:
+  the first mint describes the oldest *arrival*, while `pairTransfers`
+  builds the chain from direct mints only, so a pool whose earliest
+  arrival came in by transfer has a first-mint naming a different token
+  — and this NFT would be dated from that one's mint. A missing or
+  mismatched id falls back to `supplementMintFromChain`.
+
 ### Cost
 
 Every RPC request in the process is released by the global 250 ms queue

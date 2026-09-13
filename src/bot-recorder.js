@@ -244,20 +244,25 @@ async function _scanHistory(
      * event appendToPoolCache just wrote to the disk cache. */
     events.length = 0;
     events.push(...found);
-    /*- The event scanner hangs `firstMintTimestamp` and
-     *  `firstMintBlockNumber` on the array as non-index properties, and
-     *  `push(...found)` copies only the elements — so without this they
-     *  are lost the moment the scan result is transplanted into the
-     *  bot's own array.
+    /*- The event scanner hangs `firstMintTimestamp`,
+     *  `firstMintBlockNumber` and `firstMintTokenId` on the array as
+     *  non-index properties, and `push(...found)` copies only the
+     *  elements — so without this they are lost the moment the scan
+     *  result is transplanted into the bot's own array.
      *
-     *  `firstMintBlockNumber` is the mint of the OLDEST NFT in the
-     *  chain, and the only lower bound that NFT can get: no rebalance
-     *  event names its mint, so it otherwise falls back to the pool's
-     *  creation block. On a pool older than the operator's first
-     *  deposit that is the single most expensive scan of the run — see
-     *  `chainScanFloor` in src/nft-mint-blocks.js. */
+     *  `firstMintBlockNumber` is the mint of the oldest NFT the wallet
+     *  holds in this pool, and the only lower bound that NFT can get:
+     *  no rebalance event names its mint, so it otherwise falls back to
+     *  the pool's creation block. On a pool older than the operator's
+     *  first deposit that is the single most expensive scan of the run
+     *  — see `chainScanFloor` in src/nft-mint-blocks.js.
+     *
+     *  `firstMintTokenId` says which NFT that mint belongs to. Without
+     *  it the block cannot be attributed, because the oldest arrival is
+     *  not always the chain's oldest `oldTokenId`. */
     events.firstMintTimestamp = found.firstMintTimestamp;
     events.firstMintBlockNumber = found.firstMintBlockNumber;
+    events.firstMintTokenId = found.firstMintTokenId;
     log.info("[bot] Found %d historical rebalance events", found.length);
     if (throttle && found.length > 0) {
       const cutoff = Math.floor(

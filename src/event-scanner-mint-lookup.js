@@ -68,6 +68,7 @@ async function resolveFirstMintWithForeign(
 ) {
   const cachedFirstTs = cachedEvents.firstMintTimestamp || null;
   const cachedFirstBlock = cachedEvents.firstMintBlockNumber || null;
+  const cachedFirstToken = cachedEvents.firstMintTokenId || null;
 
   const incoming = transfers
     .filter((t) => t.direction === "in")
@@ -77,6 +78,7 @@ async function resolveFirstMintWithForeign(
     return {
       firstMintTimestamp: cachedFirstTs,
       firstMintBlockNumber: cachedFirstBlock,
+      firstMintTokenId: cachedFirstToken,
     };
   }
 
@@ -116,15 +118,27 @@ async function resolveFirstMintWithForeign(
     return {
       firstMintTimestamp: candidateTs,
       firstMintBlockNumber: candidateBlock,
+      /*- Which NFT this mint belongs to.  The oldest ARRIVAL is not
+       *  always the chain's oldest `oldTokenId`: `pairTransfers` builds
+       *  the chain from direct mints (`from === ZERO`), so a pool whose
+       *  earliest arrival came in by transfer yields a first-mint that
+       *  names a different token.  Consumers must compare ids before
+       *  using the block as that token's mint. */
+      firstMintTokenId: String(oldest.tokenId),
     };
   }
   if (cachedFirstTs) {
     return {
       firstMintTimestamp: cachedFirstTs,
       firstMintBlockNumber: cachedFirstBlock,
+      firstMintTokenId: cachedFirstToken,
     };
   }
-  return { firstMintTimestamp: null, firstMintBlockNumber: null };
+  return {
+    firstMintTimestamp: null,
+    firstMintBlockNumber: null,
+    firstMintTokenId: null,
+  };
 }
 
 /**
