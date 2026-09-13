@@ -73,9 +73,7 @@ export const PARAM_HELP = {
           "anything. Your saved Price Range Extension, Full-Range and " +
           "Position Offset values stay exactly as you left them &mdash; " +
           "they are simply greyed out and ignored. Turn it off again " +
-          "and they are back in force unchanged. That is the difference " +
-          "from the old No Override button, which cleared the values " +
-          "outright.",
+          "and they are back in force unchanged.",
       },
       {
         heading: "When to use each",

@@ -48,12 +48,10 @@ const _MANAGE_REBALANCE_OPEN_HELP =
 const _NO_ACTIVE_HELP = "Select a position first";
 const _PD_VIEW_HELP = "View pool and contract details";
 
-/*- Per-position click-in-flight Map.  Replaces the old module-private
- *  boolean in dashboard-events-manage.js — that one was page-scoped, so
- *  if a user clicked Manage on A then switched to B, B's button
- *  briefly painted A's "Managing…" optimistic label.  Keying by
- *  walletAddress-contractAddress-tokenId scopes the flag to the
- *  originating position. */
+/*- Per-position click-in-flight Map, keyed by
+ *  walletAddress-contractAddress-tokenId.  A single page-scoped boolean
+ *  cannot serve: click Manage on A, switch to B, and B's button paints
+ *  A's "Managing…" optimistic label. */
 const _manageInFlight = new Map();
 
 /** Build the in-flight Map key for an active position.  Exported so

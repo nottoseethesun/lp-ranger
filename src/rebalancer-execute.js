@@ -286,7 +286,8 @@ async function _adjustRangeAfterSwap(
 /** Compute new tick range.  Precedence:
  *    1. `fullRange === true` → `rangeMath.fullRange()` (mints at
  *       MIN_TICK / MAX_TICK).  Driven by the dashboard's "Full-Range"
- *       checkbox — replaces the old `crw === 100` sentinel.
+ *       checkbox, and a separate flag rather than a `crw === 100`
+ *       sentinel: 100 is also a legal Price Range Extension.
  *    2. `crw` truthy → `rangeMath.computeNewRange(crw/2, ...)` — the
  *       user-specified Price Range Extension (% of current price).
  *    3. Otherwise → `rangeMath.preserveRange(...)` — keep the position's

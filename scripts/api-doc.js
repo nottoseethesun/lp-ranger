@@ -6,9 +6,8 @@
  *   a native dark theme that matches the rest of LP Ranger's palette
  *   out of the box. Start with: `npm run api-doc`.
  *
- *   Replaces the previous Swagger UI setup. The port (5556) is
- *   unchanged from the old `npm run swagger` command for muscle-memory
- *   reasons — only the renderer and the npm script name changed.
+ *   Port 5556, chosen to stay clear of the dashboard's 5555 so both can
+ *   run at once.
  */
 
 "use strict";

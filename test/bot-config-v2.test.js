@@ -422,10 +422,10 @@ describe("bot-config-v2", () => {
 
     it("fullRangeRebalanceEnabled is a POSITION_KEY (per-pool Full-Range toggle)", () => {
       /*- The "Full-Range" checkbox next to the Price Range Extension
-       *  input is per-position (each pool can independently opt into
-       *  full-range rebalances).  Replaces the old
-       *  `rebalanceRangeWidthPct === 100` sentinel with an explicit
-       *  boolean field. */
+       *  input is per-position: each pool opts into full-range
+       *  rebalances independently.  An explicit boolean rather than a
+       *  `rebalanceRangeWidthPct === 100` sentinel, since 100 is also a
+       *  legal width. */
       assert.ok(
         POSITION_KEYS.includes("fullRangeRebalanceEnabled"),
         "fullRangeRebalanceEnabled should live in POSITION_KEYS so each pool can set its own Full-Range flag",

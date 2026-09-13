@@ -117,8 +117,9 @@ function createBrowserPosStore() {
 }
 
 /**
- * Simulates the old (buggy) _ensureBotPosSelected pattern:
- * adds a bot position to the store using `bp.token0Symbol || bp.token0`.
+ * Adds a bot position using `bp.token0Symbol || bp.token0`, the pattern
+ * that leaks a raw contract address into the display name whenever the
+ * symbol has not resolved yet.  Used to show what the guard catches.
  */
 function buggyAddBotPosition(store, bp) {
   const sw = ADDR_WALLET;

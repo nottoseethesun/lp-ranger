@@ -46,10 +46,11 @@ stop that NFT's history scan starting at the pool's creation block. On a
 pool that existed two years before the operator's first deposit, that is
 1,144 chunked queries for a single NFT.
 
-A fix that used the value therefore worked on the two dashboard code
-paths, which read the scanner's array directly, and did nothing at all
-on the bot's path, which is the slow one. The symptom was indistinguishable
-from the fix simply not helping.
+Any consumer of the value therefore works on the two dashboard code
+paths, which read the scanner's array directly, and does nothing at all
+on the bot's path, which is the slow one. Both paths report success, so
+the difference shows only as the bot being slower than the dashboard for
+no stated reason.
 
 Patched at that one copy site, with `test/first-mint-block-survives.test.js`
 asserting the re-attach exists and follows the push. Every other place

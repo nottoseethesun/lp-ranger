@@ -186,9 +186,9 @@ const _NORMALIZERS = {
   rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 200),
   /*- Full-Range rebalance toggle: when true, every rebalance mints at
    *  `MIN_TICK` / `MAX_TICK` regardless of the Price Range Extension
-   *  value.  Replaces the old `rebalanceRangeWidthPct === 100` full-
-   *  range sentinel with an explicit boolean tied to the dashboard's
-   *  Full-Range checkbox. */
+   *  value.  An explicit boolean rather than a sentinel width, because
+   *  `rebalanceRangeWidthPct === 100` is also a legal user-chosen width
+   *  and the two intents cannot be told apart. */
   fullRangeRebalanceEnabled: (v) => (typeof v === "boolean" ? v : false),
   /*- Range section "No Override" toggle default for a position that has
    *  never been configured.  `false` = re-use the existing on-chain

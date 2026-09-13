@@ -216,9 +216,9 @@ describe("saveRangeWidth — the Save button", () => {
 
 describe("onFullRangeToggle — the Full-Range checkbox", () => {
   it("persists nothing", () => {
-    /*- The regression that prompted this file: the checkbox used to
-     *  POST on its own `change` event, applying a range-reshaping
-     *  setting on a stray click. */
+    /*- The checkbox must not POST on its own `change` event: that
+     *  applies a range-reshaping setting on a stray click, with no
+     *  Save to commit it. */
     fullRange().checked = true;
     mod.onFullRangeToggle();
     assert.deepEqual(posted, []);

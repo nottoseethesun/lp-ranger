@@ -231,8 +231,8 @@ function createCanReopenHandler(deps) {
       if (err instanceof WalletReadUnavailableError) {
         /*- Dedicated 503 + structured code so the dashboard renders
          *  the "couldn't read wallet right now, try again in 10+ min"
-         *  modal instead of a generic alert.  Mirrors the
-         *  `pool-info-unavailable` pattern from PR #137. */
+         *  modal instead of a generic alert.  Same shape as the
+         *  `pool-info-unavailable` response. */
         jsonResponse(res, 503, {
           ok: false,
           error: "wallet-read-unavailable",

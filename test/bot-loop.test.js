@@ -2,9 +2,9 @@
  * @file test/bot-loop.test.js
  * @description Tests for src/bot-loop.js — resolvePrivateKey, startBotLoop,
  * pollCycle, appendLog, forceRebalance.  RPC boot-fallback semantics
- * and feeData-patch coverage now live in test/send-transaction.test.js
- * and against `buildProvider` directly (this PR unified read-side RPC
- * failover with the send-transaction.js module).
+ * and feeData-patch coverage live in test/send-transaction.test.js and
+ * against `buildProvider` directly, because `send-transaction.js` owns
+ * read-side failover as well as writes.
  */
 
 "use strict";

@@ -190,10 +190,10 @@ function harness(overrides = {}) {
     positionMgr: { get: (k) => ({ key: k }), getAll: () => [] },
     walletManager: { getAddress: () => "0xW" },
     diskConfig: { positions: { [key]: posConfig } },
-    /*- Shape-checked double.  The previous version accepted any
-     *  argument, which hid a TypeError: the real
-     *  `epoch-cache.setLastNftScanBlock` destructures a keyOpts OBJECT
-     *  and the handler was passing a non-existent `state.epochKey`. */
+    /*- Shape-checked double.  The real
+     *  `epoch-cache.setLastNftScanBlock` destructures a keyOpts OBJECT,
+     *  so a double that accepts any argument passes on a handler
+     *  passing something else and swallows the TypeError. */
     epochCache: {
       setLastNftScanBlock: (keyOpts, b) => {
         const { blockchain, contract, wallet, token0, token1, fee } = keyOpts;

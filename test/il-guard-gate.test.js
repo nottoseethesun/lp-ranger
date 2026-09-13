@@ -328,10 +328,9 @@ describe("a blocked poll is not a recovery", () => {
       "ILG backoff",
       { rebalanced: false, ilGuardRejected: true, ilGuardCoolingDown: true },
     ],
-    /*- These two were already guarded by the old predicate's
-     *  `!result.paused` / `!result.retired` clauses.  Those clauses are
-     *  gone now, subsumed by asserting `inRange`, so these rows are what
-     *  proves the inversion did not lose them. */
+    /*- `paused` and `retired` carry no explicit clause in the
+     *  predicate; asserting `inRange` subsumes both, since neither
+     *  result can carry it.  These rows prove that. */
     ["gate pause", { rebalanced: false, paused: true }],
     ["drained + retiring", { rebalanced: false, retired: true }],
   ];

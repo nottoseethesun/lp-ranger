@@ -77,10 +77,10 @@ describe("buildRebalanceOpts — rebalanceRangeWidthPct source", () => {
   });
 
   it("ignores the state argument (the one-shot code path is dead)", () => {
-    /*- Regression guard: buildRebalanceOpts no longer reads
-     *  state.customRangeWidthPct.  Even if a stale caller stamps it on
-     *  state (e.g., a partial-deploy sequence), the opts must derive
-     *  from config only. */
+    /*- `buildRebalanceOpts` must derive from config only.  A stale
+     *  caller can still stamp `customRangeWidthPct` on state — a
+     *  partial deploy, say — and reading it would apply a width the
+     *  user never saved. */
     const deps = makeDeps(() => undefined);
     const staleState = { customRangeWidthPct: 999 };
     const opts = buildRebalanceOpts(deps, staleState);

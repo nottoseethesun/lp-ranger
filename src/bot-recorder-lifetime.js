@@ -485,10 +485,12 @@ function _classifyHealError(err, position, override) {
  * Ensure the position carries valid on-chain token decimals before the scan
  * values it.  Resolves them through `getPoolState` — the single entry point
  * for on-chain pool/token state (it validates decimals + retries across
- * RPCs) — decoupled from the price-gated init in `bot-loop-detect.js` that
- * can skip caching decimals for a rare token with no price at startup (the
- * root cause of the `NaN`-deposit / stuck-Syncing bug; see the "getPoolState
- * Validation" section in docs/engineering.md).
+ * RPCs) — decoupled from the price-gated init in `bot-loop-detect.js`,
+ * which skips caching decimals for a token that has no price at startup.
+ * Undefined decimals make `10 ** d` NaN and poison every amount derived
+ * from them, leaving the deposit total at `$0` and the badge on
+ * "Syncing…".  See the "getPoolState Validation" section in
+ * docs/engineering.md.
  *
  * Honors the operator's manual override (`{ d0, force0, d1, force1 }`):
  *   - a **force**d token's manual value always wins, even over a good chain read;

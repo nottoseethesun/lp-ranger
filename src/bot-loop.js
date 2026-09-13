@@ -131,9 +131,10 @@ async function startBotLoop(opts) {
   /*- Shared {provider, signer, address} wins when the caller passes one
    *  in.  Production callers (server-positions, bot.js) fetch the
    *  singleton from positionMgr.getSharedSigner so every managed
-   *  position signs through the SAME NonceManager — drifted per-position
-   *  nonce counters were the root cause of the 2026-04-24 "nonce too
-   *  low" storm.  Tests that don't need shared-signer semantics fall
+   *  position signs through the SAME NonceManager.  One NonceManager per
+   *  position means each keeps its own counter for one wallet, and they
+   *  drift apart into "nonce too low" rejections as soon as two
+   *  positions send.  Tests that don't need shared-signer semantics fall
    *  through to the inline branch below. */
   let provider, signer, address;
   if (opts.provider && opts.signer) {
@@ -600,10 +601,10 @@ async function startBotLoop(opts) {
    *       (bot-cycle.js:160) ran into a silent failure in
    *       `_scanLifetimePoolData` and the flag is still set.  Without
    *       this gate condition the loop would early-return because the
-   *       PRIOR scan's `totalLifetimeDepositUsd` is still positive
-   *       (PR #134 changed the rebalance path to preserve in-memory
-   *       totals instead of zeroing them — the previous auto-rescan
-   *       gate that only checked `total > 0` no longer matches).
+   *       PRIOR scan's `totalLifetimeDepositUsd` is still positive: the
+   *       rebalance path preserves in-memory totals rather than zeroing
+   *       them, so `total > 0` alone cannot distinguish a completed
+   *       scan from a failed one.
    *
    *    3. `lifetimeScanComplete === false` — covers the same window as
    *       (2) but from the dashboard-readiness flag's perspective.

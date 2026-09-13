@@ -2,8 +2,7 @@
 
 > **Status:** Nice-to-have / developer-experience — not a bug. The
 > app works correctly today. Funds are never at risk. This entry is
-> a deferred testing improvement that surfaced when fixing the
-> stop-race in PR #130.
+> a deferred testing improvement.
 
 `src/bot-loop.js` exports `startBotLoop`, which wires up a provider,
 signer, detected position, and a self-scheduling `poll()` closure.

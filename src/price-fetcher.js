@@ -518,7 +518,8 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
 async function _geckoForToken0Token1(poolAddr, ts, network, t0, t1) {
   const orient = await getGeckoPoolOrientation(network, poolAddr, t0, t1);
   flushGeckoPoolCache();
-  // Default to "normal" when orientation lookup fails (matches old behavior).
+  // Default to "normal" when the orientation lookup fails: most pools
+  // are, so the fallback is right more often than it is wrong.
   const flipped = orient === "flipped";
   const p0 = await _fetchGeckoTerminalOhlcv(
     poolAddr,

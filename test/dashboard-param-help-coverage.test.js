@@ -104,16 +104,17 @@ test("Fees Earned and Fees Compounded both open a help dialog", async () => {
   }
 });
 
-test("the old Fees Earned tooltip — which was backwards — is gone", async () => {
-  /*- It read "Includes any fees that were compounded."  `feesUsd` in
-   *  src/bot-pnl-updater.js is tokensOwed0*price0 + tokensOwed1*price1,
-   *  i.e. UNCLAIMED fees only; compounding zeroes tokensOwed.  The two
-   *  figures are disjoint, which is why the code adds them. */
+test("the Fees Earned tooltip does not claim compounded fees are included", async () => {
+  /*- `feesUsd` in src/bot-pnl-updater.js is
+   *  tokensOwed0*price0 + tokensOwed1*price1 — UNCLAIMED fees only,
+   *  and compounding zeroes tokensOwed.  The two figures are disjoint,
+   *  which is why the code adds them, so copy saying one includes the
+   *  other states the opposite of what is computed. */
   const html = fs.readFileSync(INDEX_HTML, "utf8");
   assert.equal(
     html.includes("Includes any fees that were compounded"),
     false,
-    "the corrected wording must not regress",
+    "this wording contradicts what feesUsd computes",
   );
 });
 

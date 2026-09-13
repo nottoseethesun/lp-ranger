@@ -80,9 +80,10 @@ export async function runReopenFlow(active, opts) {
 
 /*- Render the "wallet read unavailable" modal when the server
  *  returned 503 + `wallet-read-unavailable`.  Raw err.message is
- *  injected via textContent (not innerHTML) into the existing
- *  scrollable error box from PR #137 so a misbehaving RPC message
- *  can't inject HTML.  Tells the user to wait at least 10 minutes
+ *  injected via textContent (not innerHTML) into the shared scrollable
+ *  error box, so a misbehaving RPC message cannot inject HTML and a
+ *  long one scrolls rather than bursting the modal.  Tells the user to
+ *  wait at least 10 minutes
  *  before retrying — typical transient RPC / Moralis outages clear
  *  in well under that. */
 const WALLET_READ_UNAVAILABLE_MODAL_ID =

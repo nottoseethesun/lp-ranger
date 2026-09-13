@@ -1177,10 +1177,9 @@ back to a default. A silent partial build would publish a site with pages
 or assets quietly absent, which is worse than a failed deploy.
 
 When changing the assembly, verify equivalence rather than trusting it:
-assemble with the old method and the new one into two directories and
-`diff -r` them. That check caught a real error when the spec was
-introduced — `disclosure.html` had been given `gallery.css` instead of
-`help.css`.
+assemble both ways into two directories and `diff -r` them. The failure
+this catches is a page silently paired with the wrong stylesheet, which
+renders without erroring and looks plausible until someone opens it.
 
 The builder covers all three published pages — the gallery, the help and
 user manual, and the disclosure — so the preview surfaces breakage in any
@@ -3041,9 +3040,7 @@ npm run api-doc
 This runs [`scripts/api-doc.js`](../scripts/api-doc.js), which starts a
 standalone HTTP server on **<http://localhost:5556>**. The server is
 independent of the main dashboard — you can run it alongside
-`npm start` (which uses port 5555) without conflict. (The script was
-called `npm run swagger` before the Scalar migration; the old name no
-longer exists.)
+`npm start` (which uses port 5555) without conflict.
 
 How it works:
 
@@ -3345,7 +3342,7 @@ bot loop directly:
    the dust threshold.
 
    Reads are wrapped in a retry orchestrator that mirrors the
-   `getPoolState` contract (PR #137): both tokens must read cleanly
+   `getPoolState` contract: both tokens must read cleanly
    in a single attempt &mdash; partial failure (one token reads, the
    other throws) counts as a complete attempt failure to avoid mixing
    verified + unverified balances in the response. Each configured
@@ -3388,10 +3385,9 @@ bot loop directly:
    the next poll runs a fresh rebalance. Liquidity flips from 0 to
    positive; position is alive again.
 
-   The old three-step flow that opened a separate "Rebalance with
-   Range" modal to collect a per-rebalance width is gone; range width
-   is now a persistent Bot Settings field. See PR #146 for the
-   migration.
+   Re-open collects no per-rebalance width of its own: range width is a
+   persistent Bot Settings field, so the reopened position uses the same
+   settings every other rebalance does.
 
 When `!canReopen`, the dashboard shows a single-button modal listing
 the current per-token wallet balances + the dust threshold so the

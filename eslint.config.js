@@ -214,9 +214,9 @@ module.exports = [
        *  those rather than returning null, taking out whatever ran
        *  after them.  One shipped that way. */
       "9mm/no-unescaped-digit-class-selector": "error",
-      // Catch typos / stale paths in dashboard `import` statements.
-      // This is the rule that would have caught PR #116 — a renamed
-      // dashboard module whose caller's import wasn't updated.
+      // Catch typos / stale paths in dashboard `import` statements: a
+      // renamed module whose caller's import was not updated passes
+      // lint and tests and fails only at esbuild time.
       // npm packages (ethers, navigo) are bundled by esbuild from
       // node_modules; the resolver finds them naturally.
       "n/no-missing-import": "error",

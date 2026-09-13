@@ -94,10 +94,10 @@ describe("lifetimeFeeAmounts — the formula", () => {
       fees0: 35n,
       fees1: 0n,
     });
-    /*- What the old reading produced: last Collect − last DL, blind to
-     *  the 30 that had already been compounded. */
-    const oldReading = collect[1].amount0 - dl[0].amount0;
-    assert.equal(oldReading, 5n);
+    /*- For contrast: `last Collect − last DL` is blind to the 30 that
+     *  had already been compounded, and reports 5 instead of 35. */
+    const lastPairOnly = collect[1].amount0 - dl[0].amount0;
+    assert.equal(lastPairOnly, 5n);
   });
 
   it("ignores a zero-liquidity DecreaseLiquidity poke", () => {

@@ -492,13 +492,12 @@ describe("bot-pnl-updater compound override", () => {
 });
 
 describe("override exposes lifetime fee-earnings inputs", () => {
-  /*- Replaces the old `_computeLifetimeFees` test.  The new lifetime-fee
-   *  model splits fee earnings into two snapshot fields:
-   *    snap.currentFeesUsd    — live unclaimed fees
+  /*- Lifetime fee earnings are two snapshot fields, not one aggregate:
+   *    snap.currentFeesUsd     — live unclaimed fees
    *    snap.totalCompoundedUsd — historical Σ(Collect)−Σ(DL) scan
-   *  Consumers (Lifetime panel, position-details) sum the two for the
-   *  total fee-earnings figure.  The old per-epoch `snap.totalFees`
-   *  was dropped because it missed fees folded into rebalances. */
+   *  Consumers (Lifetime panel, position-details) sum the two.  A single
+   *  per-epoch total cannot serve, because fees folded back in during a
+   *  rebalance are no longer unclaimed and fall outside it. */
   it("exposes currentFeesUsd and totalCompoundedUsd separately", () => {
     const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
     const snap = {
