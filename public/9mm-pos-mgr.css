@@ -1054,6 +1054,13 @@ span[title]:not([title=""]):hover {
      which is the wanted look.  Tune here, not per dialog: every Action
      Dialog header uses the same h2. */
   margin-top: 6px;
+
+  /* The glyph and the word stay on one line.  In a header whose stack
+     holds nothing but this button, the column shrinks to the button and
+     "CLOSE" dropped under the ✕ — the Moralis dialog escaped it only
+     because its stack also carries the Use-Moralis-Key row, which is
+     wider.  Pinned here so no dialog can regress into it. */
+  white-space: nowrap;
 }
 
 /* ── Section Titles ───────────────────────────────────────────────────────── */
@@ -3936,7 +3943,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1789266345146");
+  background-image: url("background-cloud_top.png?v=1789270236482");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3949,7 +3956,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1789266345146");
+  background-image: url("background-cloud_middle.png?v=1789270236482");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3959,7 +3966,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1789266345146");
+  background-image: url("background-cloud_bottom.png?v=1789270236482");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
