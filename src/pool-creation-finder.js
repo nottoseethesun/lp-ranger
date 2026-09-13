@@ -77,7 +77,16 @@ async function findPoolCreationBlock(provider, ethersLib, opts) {
       signal,
       onProgress,
       bestEffort: true,
-      label: "pool-creation",
+      /*- Names the pool it is looking for.  Two of these run at once on
+       *  a cold cache — one per managed position — and an unlabelled
+       *  line leaves two interleaved progress sequences that cannot be
+       *  told apart.
+       *
+       *  The address is written in full, and called a Pool i.d. rather
+       *  than abbreviated like a tx hash: this identifies the pool
+       *  contract itself, so it is the thing an operator pastes into an
+       *  explorer or greps the log for. */
+      label: `pool-creation for Pool i.d. ${poolAddress}`,
       query: (f, t) => factory.queryFilter(factory.filters.PoolCreated(), f, t),
       onChunk: (events) => {
         for (const ev of events) {

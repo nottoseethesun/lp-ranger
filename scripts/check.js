@@ -33,6 +33,7 @@ const {
   JS_TARGETS,
   SECURITY_TARGETS,
   SECRET_TARGETS,
+  MARKDOWN_TARGETS,
 } = require("./lint-targets");
 const fs = require("fs");
 const os = require("os");
@@ -170,18 +171,7 @@ const htmlFileCount = listPublicHtmlFiles().length;
 // ── Lint (Markdown) ───────────────────────────────────────────────────────
 // markdownlint-cli2 has no native JSON reporter — capture stylish text
 // into a single combined stream file (matches old bash `>file 2>&1`).
-const markdownlintRun = run(bin("markdownlint-cli2"), [
-  "README.md",
-  "CLAUDE.md",
-  "docs/claude/CLAUDE-SECURITY.md",
-  "docs/claude/CLAUDE-BEST-PRACTICES.md",
-  "docs/claude/CLAUDE-TESTING.md",
-  "docs/claude/CLAUDE-DISCLOSURES.md",
-  "docs/architecture.md",
-  "docs/configuration.md",
-  "docs/engineering.md",
-  "docs/roadmap/**/*.md",
-]);
+const markdownlintRun = run(bin("markdownlint-cli2"), [...MARKDOWN_TARGETS]);
 fs.writeFileSync(
   path.join(TXT_DIR, "markdownlint.txt"),
   markdownlintRun.stdout + markdownlintRun.stderr,

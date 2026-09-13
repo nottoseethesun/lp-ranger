@@ -28,9 +28,9 @@
     "check": "node scripts/check.js",
     "view-report": "xdg-open test/report-artifacts/report.pdf",
     "prelint": "npm run clean:reports && node scripts/build-info.js && node scripts/build-manual-content.js && node scripts/build-disclosure-content.js && node scripts/build-ui-tokens.js",
-    "lint": "eslint src/ test/ scripts/ util/ server.js bot.js public/dashboard-*.js eslint-rules/ stylelint-rules/ --max-warnings 0 && stylelint public/*.css && html-validate public/*.html && node scripts/lint-svg.js && node scripts/check-openapi-sync.js && markdownlint-cli2 README.md CLAUDE.md docs/claude/CLAUDE-SECURITY.md docs/claude/CLAUDE-BEST-PRACTICES.md docs/claude/CLAUDE-TESTING.md docs/claude/CLAUDE-DISCLOSURES.md docs/architecture.md docs/configuration.md docs/engineering.md \"docs/roadmap/**/*.md\" && npm run format:check && prettier --check \"**/*.json\" && prettier --check \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml",
+    "lint": "eslint src/ test/ scripts/ util/ server.js bot.js public/dashboard-*.js eslint-rules/ stylelint-rules/ --max-warnings 0 && stylelint public/*.css && html-validate public/*.html && node scripts/lint-svg.js && node scripts/check-openapi-sync.js && node scripts/markdownlint.js && npm run format:check && prettier --check \"**/*.json\" && prettier --check \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml",
     "prelint:fix": "npm run clean:reports",
-    "lint:fix": "eslint src/ test/ scripts/ util/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix && html-validate public/*.html && markdownlint-cli2 --fix README.md CLAUDE.md docs/claude/CLAUDE-SECURITY.md docs/claude/CLAUDE-BEST-PRACTICES.md docs/claude/CLAUDE-TESTING.md docs/claude/CLAUDE-DISCLOSURES.md \"docs/roadmap/**/*.md\" && prettier --write \"**/*.json\" && prettier --write \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml",
+    "lint:fix": "eslint src/ test/ scripts/ util/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix && html-validate public/*.html && node scripts/markdownlint.js --fix && prettier --write \"**/*.json\" && prettier --write \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml",
     "preaudit:deps": "npm run clean:reports",
     "audit:deps": "npm audit --audit-level=high",
     "preaudit:security": "npm run clean:reports",
@@ -52,7 +52,8 @@
     "wipe-settings": "node scripts/wipe-settings.js",
     "restore-settings": "node scripts/restore-settings.js",
     "api-doc": "node scripts/api-doc.js",
-    "show-gallery": "node scripts/show-gallery.js"
+    "show-gallery": "node scripts/show-gallery.js",
+    "clear-blockchain-scan-cache": "node scripts/clear-blockchain-scan-cache.js"
   },
   "dependencies": {
     "@fontsource/rye": "^5.2.7",

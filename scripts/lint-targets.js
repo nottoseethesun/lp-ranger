@@ -76,4 +76,34 @@ const SECRET_TARGETS = [
   "*.json",
 ];
 
-module.exports = { JS_TARGETS, SECURITY_TARGETS, SECRET_TARGETS };
+/**
+ * Markdown files under the markdownlint gate.
+ *
+ * Centralised for the same reason as the lists above, and after the
+ * same failure: the list was written out by hand in three places
+ * (`npm run lint`, `npm run lint:fix`, `scripts/check.js`) and drifted.
+ * `lint:fix` was missing `docs/architecture.md`, `docs/configuration.md`
+ * and `docs/engineering.md` — the three largest documents in the repo —
+ * so the check pass reported violations in files the fix pass would
+ * never touch.
+ * @type {string[]}
+ */
+const MARKDOWN_TARGETS = [
+  "README.md",
+  "CLAUDE.md",
+  "docs/claude/CLAUDE-SECURITY.md",
+  "docs/claude/CLAUDE-BEST-PRACTICES.md",
+  "docs/claude/CLAUDE-TESTING.md",
+  "docs/claude/CLAUDE-DISCLOSURES.md",
+  "docs/architecture.md",
+  "docs/configuration.md",
+  "docs/engineering.md",
+  "docs/roadmap/**/*.md",
+];
+
+module.exports = {
+  JS_TARGETS,
+  SECURITY_TARGETS,
+  SECRET_TARGETS,
+  MARKDOWN_TARGETS,
+};

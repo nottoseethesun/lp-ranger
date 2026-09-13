@@ -333,3 +333,29 @@ Serializing removes parallelism, so scan time is roughly *requests x interval*.
 A full five-year scan is ~2,100 chunks / ~4,200 requests, about 18 minutes at the
 defaults. Raising `getLogsChunkSize` (up to the 10,000 cap) is the single lever
 if that is too slow; lowering it is the fix if an endpoint rejects a query.
+
+That figure is the worst case, and in practice almost nothing scans that
+wide. What actually determines a cold start is **how tightly each scan is
+bounded**, and every scan in the app is bounded by something it already
+knows:
+
+| Scan | Bounded by |
+| --- | --- |
+| Pool rebalance events | five-year floor, pool creation block, last cached block |
+| Per-NFT event history | that NFT's own mint block → the block it was replaced |
+| Pool creation lookup | scans newest-first, stops at the first match |
+
+The per-NFT bound is the one that moves the needle on a long rebalance
+chain: a retired NFT covers only the hours it was alive, not every block
+since. On a 132-rebalance position that is the difference between hours
+and minutes. See
+[Per-NFT Scan Windows](engineering.md#per-nft-scan-windows).
+
+Two consequences worth knowing:
+
+- **The bot's polling shares the queue with any running scan.** A long
+  scan slows ordinary poll cycles and vice versa — they interleave, each
+  at roughly half rate, rather than one blocking the other.
+- **A scan only records its resume checkpoint when it completes.**
+  Interrupting a long first scan means the next start repeats it from
+  the same place. Let the first one finish.

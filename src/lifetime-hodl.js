@@ -114,7 +114,11 @@ async function _scanTransfers(
       provider,
       fromBlock,
       toBlock,
-      label: "lifetime-hodl transfers-in",
+      /*- Names the token.  Both directions for BOTH pool tokens run
+       *  concurrently, and more than one position scans at a time, so an
+       *  unlabelled line leaves several interleaved progress sequences
+       *  that cannot be told apart. */
+      label: `lifetime-hodl transfers-in for Token i.d. ${tokenAddr}`,
       query: (from, to) =>
         provider.getLogs({
           address: tokenAddr,
@@ -127,7 +131,7 @@ async function _scanTransfers(
       provider,
       fromBlock,
       toBlock,
-      label: "lifetime-hodl transfers-out",
+      label: `lifetime-hodl transfers-out for Token i.d. ${tokenAddr}`,
       query: (from, to) =>
         provider.getLogs({
           address: tokenAddr,
@@ -222,7 +226,7 @@ async function _scanWrapDeposits(
     provider,
     fromBlock,
     toBlock,
-    label: "lifetime-hodl wrap-deposits",
+    label: `lifetime-hodl wrap-deposits for Token i.d. ${wrappedAddr}`,
     query: (from, to) =>
       provider.getLogs({
         address: wrappedAddr,

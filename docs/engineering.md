@@ -33,6 +33,10 @@ sequence.
 - [Balanced-Band Telegram Notification](#balanced-band-telegram-notification)
 - [Dust Threshold](#dust-threshold)
 - [Lifetime History Lookback](#lifetime-history-lookback)
+- [Per-NFT Scan Windows](#per-nft-scan-windows)
+  - [Why this matters more than it used to](#why-this-matters-more-than-it-used-to)
+  - [Four call sites, one rule](#four-call-sites-one-rule)
+  - [The dashboard does not scan a position the bot owns](#the-dashboard-does-not-scan-a-position-the-bot-owns)
 - [Client-Side URL Routing](#client-side-url-routing)
 - [Shared Help Copy](#shared-help-copy)
 - [Development Tools](#development-tools)
@@ -687,8 +691,16 @@ scan** is answered by three layered bounds, resolved in order by
 
    For a pool created six months ago, this collapses a 15.8 M-block scan
    down to ~1.6 M blocks — roughly a 10× speedup on a fresh install.
-   `findPoolCreationBlock()` binary-searches the factory event log, so
-   the lookup itself is cheap.
+
+   `findPoolCreationBlock()` walks the factory event log **newest-first**
+   with an early exit on the first match, so a recently created pool
+   resolves in a handful of windows. It is not a binary search: the
+   factory emits `PoolCreated` for every pool on the chain, so the
+   target is found by scanning, not by bisecting on block number. An old
+   pool is correspondingly expensive — a pool created at block 18.9 M
+   costs roughly 1,100 windows — but the answer is cached permanently in
+   `tmp/pool-creation-blocks-cache.json`, making it a once-per-pool cost
+   paid only on a cold cache.
 
 3. **Disk cache** (subsequent runs resume from the last scanned block)
 
@@ -697,9 +709,10 @@ scan** is answered by three layered bounds, resolved in order by
    via `cache-store.js`. On the next run `loadCache()` reads the cached
    events and sets `scanFrom = lastScannedBlock + 1`, so only blocks
    produced since the previous scan are queried. A 5-year first-time
-   scan issues ~1,580 chunked queries (10 k blocks per chunk with a
-   250 ms rate-limit delay between them); a warm-cache rescan on the
-   same wallet issues a handful.
+   scan issues ~2,100 chunked queries (7,500 blocks per chunk, every
+   request released by the global 250 ms queue — see
+   [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking));
+   a warm-cache rescan on the same wallet issues a handful.
 
    The cache is **not** invalidated on rebalance. A successful
    rebalance sets `_needsFullRescan` (`src/bot-recorder.js`), and the
@@ -722,6 +735,118 @@ See also:
 - [`src/epoch-reconstructor.js`](../src/epoch-reconstructor.js) — turns
   rebalance events into P&L epochs
 - [`src/cache-store.js`](../src/cache-store.js) — disk cache with TTL
+
+---
+
+## Per-NFT Scan Windows
+
+The section above bounds the scan for **rebalance events**, which are
+per *pool*. A second family of scans is per *NFT*: the
+`IncreaseLiquidity` / `Collect` / `DecreaseLiquidity` history behind
+compound detection, HODL baselines and lifetime P&L. Those run once for
+every NFT in a position's rebalance chain, so a long chain multiplies
+whatever the per-NFT window costs.
+
+Every such scan is bounded at both ends, and both bounds come from the
+rebalance events the caller already holds. **No extra RPC call is made
+to derive either.**
+
+| Bound | Derived from | Meaning |
+| --- | --- | --- |
+| lower | `newTokenId` + `blockNumber` | the block the NFT was minted |
+| upper | `oldTokenId` + `blockNumber` | the block its replacement was minted |
+
+An NFT cannot emit any of those events before it exists, and a retired
+NFT stops emitting once the rebalance that replaced it has drained it —
+the app never returns to a drained NFT, because a re-open mints a fresh
+one rather than reviving it. So a retired NFT is scanned across the
+hours or days it was actually alive, and only the **current** NFT runs
+to the chain head.
+
+`src/nft-mint-blocks.js` owns the whole rule:
+
+| Function | Answers |
+| --- | --- |
+| `mintBlocksByTokenId(events)` | tokenId → mint block |
+| `retirementBlocksByTokenId(events)` | tokenId → replacement's mint block |
+| `nftScanFrom(mints, id, sharedFloor)` | where one NFT's scan starts |
+| `nftScanTo(retirements, id)` | where it stops, or `"latest"` |
+| `chainScanFloor(events, poolFloor)` | the floor for the chain's oldest NFT |
+
+Three details are load-bearing and easy to get backwards:
+
+- **The duplicate rule is asymmetric.** `mintBlocksByTokenId` keeps the
+  *earliest* block when an id repeats; `retirementBlocksByTokenId` keeps
+  the *latest*. A lower bound that is too high, or an upper bound that
+  is too low, silently loses events. Erring the other way only costs
+  time.
+- **`nftScanFrom` combines with `Math.max`, not by replacement.** On an
+  incremental rescan the shared floor is a resume checkpoint rather than
+  the pool's creation block, and it has to win over an earlier mint
+  block or the scan re-walks ground the last one already covered.
+- **The chain's oldest NFT has no mint block in the events** — it
+  appears only as an `oldTokenId`. It falls back to `chainScanFloor`,
+  which lifts the pool's creation block to the chain's own first mint
+  (`firstMintBlockNumber`, resolved by the event scanner). On a pool
+  older than the operator's first deposit that one NFT is otherwise the
+  most expensive scan of the run.
+
+### Why this matters more than it used to
+
+None of this was visible while log queries ran unpaced: they fired in
+parallel and finished fast enough that nobody counted them. Once every
+request went through the global 250 ms queue, the volume became the
+wall-clock cost.
+
+Measured on a real position — a 132-rebalance chain in a pool created
+two years before the operator's first deposit:
+
+| | chunks per NFT | ~133 NFTs |
+| --- | --- | --- |
+| unbounded (pool creation → head) | 1,144 | ~32 hours |
+| lower bound only | 201 | hours |
+| both bounds | 1–2, current NFT excepted | minutes |
+
+### Four call sites, one rule
+
+This mistake was made four separate times, in four files, because
+nothing connected them — each resolved a floor for the *pool* and handed
+the same floor to every NFT. The call sites are
+`src/bot-recorder-scan-helpers.js`, `src/position-details-compound.js`,
+`src/position-details-lifetime-scan.js` and
+`src/bot-pnl-current-nft.js`.
+
+`test/nft-scan-floor-coverage.test.js` is the structural guard: it
+enumerates every `src/` file calling `scanNftEvents` or
+`detectCompoundsOnChain` and fails unless the file routes its floor
+through `nft-mint-blocks.js` or carries a written exemption. A fifth
+scan site cannot ship unbounded.
+
+### The dashboard does not scan a position the bot owns
+
+A position is either managed or not, but on a cold page load the browser
+is asked before it can answer: `isPositionManaged()` reads a Set filled
+from `/api/status` polling, and the bot starts its positions on a
+stagger. For the first minute the honest answer was "not managed", so
+the dashboard's unmanaged-details path scanned a chain the bot was about
+to scan itself — two full passes over every NFT, every startup.
+
+`shouldSkipUnmanagedFetch()` in `public/dashboard-unmanaged.js` decides
+this, consulted from `flushPendingUnmanagedFetch()`. It suppresses the
+fetch only when a poll **has landed** and the position is managed.
+
+The `hasPolled` half is not belt-and-braces. The managed Set is also
+restored from `localStorage` for instant badge render, so before any
+response arrives it may be a carry-over from a previous session — the
+server may have retired the position while the page was closed.
+Suppressing on that stale value would leave a genuinely unmanaged
+position with nothing to populate its KPIs.
+
+Once a poll has landed the answer is authoritative, because the server's
+`managedPositions` is the union of live bot loops **and** positions whose
+saved status is `running` but have not started yet
+(`src/handle-api-status.js`). Intent is therefore known from the very
+first payload, well before the bot loop exists.
 
 ---
 
@@ -897,14 +1022,35 @@ blockchain wallet scans on next start to rebuild caches.
 - `npm run reset-wallet` — Delete `app-config/user-configurable/wallet.json` + clear
   `WALLET_PASSWORD` from `.env`. Forces a fresh wallet import via the
   dashboard on next start.
+- `npm run clear-blockchain-scan-cache` — Delete every `tmp/*.json`, and
+  nothing else. That directory holds derived scan results only — event
+  scans, LP position enumeration, P&L epochs (including the
+  `lastNftScanBlock` resume checkpoint), block timestamps, pool creation
+  blocks, token symbols, fetched prices — all rebuilt from chain on the
+  next start. This is the command for testing scan behaviour from cold.
+  Refuses while a server is running, because clearing the cache under a
+  live process achieves nothing: it rewrites the files within seconds and
+  keeps its in-memory copies regardless. `-- --dry-run` lists without
+  deleting. Configuration, wallet and API keys are untouched.
 - `npm run clean` — `reset-wallet` + delete every runtime file under
   `app-config/user-configurable/` (`bot-config.json`,
   `bot-config.backup.json`, `api-keys.json`) and `app-data/`
-  (`rebalance_log.json`) plus all `tmp/` caches and the entire
-  `test/report-artifacts/` directory. Full state reset.
-  **Note:** browser localStorage is NOT cleared by this command — use the
-  Settings gear icon → "Clear Local Storage & Cookies" in the dashboard,
-  or open DevTools → Application → Local Storage → Clear All.
+  (`rebalance_log.json`) plus most `tmp/` caches and the entire
+  `test/report-artifacts/` directory.
+  **It does not clear every cache.** It names each file individually and
+  three have been added since without being added to the list:
+  `pool-creation-blocks-cache.json`,
+  `liquidity-pair-details-cache.json` and `token-symbol-cache.json`
+  survive it. So `clean` does **not** give a cold-cache start — use
+  `clear-blockchain-scan-cache` for that.
+  **Note:** browser localStorage is NOT cleared by this command, and does
+  not need to be for a cold scan — the browser holds display state only
+  (last viewed position, privacy toggles, price overrides, a copy of the
+  rebalance-events list for instant paint). None of it makes the server
+  skip a scan. Clear it via the Settings gear icon → "Clear Local Storage
+  & Cookies" only when you actually want the browser-side preferences
+  reset, accepting that wallet re-entry and per-position UI state go with
+  it.
 - `npm run dev-clean` — Same as `clean` but preserves the historical price
   cache (`tmp/historical-price-cache.json`), the block-time cache
   (`tmp/block-time-cache.json`), and the gecko-pool orientation cache
