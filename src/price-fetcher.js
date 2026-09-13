@@ -52,6 +52,24 @@ function _moralisKey() {
   if (!isServiceEnabled("moralis")) return null;
   return getApiKey("moralis");
 }
+
+/**
+ * Moralis as a price-source entry, or nothing at all when it is not
+ * usable.
+ *
+ * Returns an empty list rather than a source that returns 0, because
+ * the cascade logs a zero as "Moralis miss — no data". That reads as
+ * "Moralis was asked and had nothing", which is indistinguishable from
+ * a real miss and left an operator who had just switched Moralis off
+ * watching lines that said it was still being consulted. A source that
+ * is not in the list produces no line, which is the truth.
+ *
+ * @param {Function} fn  The fetcher to run when Moralis IS usable.
+ * @returns {Array<{name: string, fn: Function}>}  One entry, or none.
+ */
+function _moralisSource(fn) {
+  return _moralisKey() ? [{ name: "Moralis", fn }] : [];
+}
 const { geckoRateLimit, noteGecko429 } = require("./gecko-rate-limit");
 const {
   getGeckoPoolOrientation,
@@ -257,7 +275,7 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
 
   const fetchPromise = tryPriceSources(
     [
-      { name: "Moralis", fn: () => _fetchMoralisCurrent(tokenAddress, chain) },
+      ..._moralisSource(() => _fetchMoralisCurrent(tokenAddress, chain)),
       {
         name: "GeckoTerminal",
         fn: () => _fetchGeckoTerminalCurrent(tokenAddress, chain),
@@ -756,10 +774,7 @@ async function fetchDustUnitPriceUsd() {
   for (const tok of tokens) {
     const price = await tryPriceSources(
       [
-        {
-          name: "Moralis",
-          fn: () => _fetchMoralisCurrent(tok.address, tok.chain),
-        },
+        ..._moralisSource(() => _fetchMoralisCurrent(tok.address, tok.chain)),
         {
           name: "DexScreener",
           fn: () => _fetchDexScreener(tok.address, tok.dexScreenerChain),

@@ -526,8 +526,6 @@ export function bindAllEvents() {
    *  button looks, not what it saves. */
   _click("saveOorThresholdBtn", saveOorThreshold);
   _click("saveOorTimeoutBtn", saveOorTimeout);
-  _click("savePMBtn", () => _saveGlobalConfig("inPM", "positionManager"));
-  _click("saveFactoryBtn", () => _saveGlobalConfig("inFactory", "factory"));
   _click("saveIlGuardBtn", saveIlGuard);
   _click("saveMinIntervalBtn", saveMinInterval);
   _click("saveMaxRebBtn", saveMaxReb);

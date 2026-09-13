@@ -372,14 +372,6 @@
                     "type": "string",
                     "description": "GLOBAL. Rebalance trigger mode."
                   },
-                  "positionManager": {
-                    "type": "string",
-                    "description": "GLOBAL. NonfungiblePositionManager address, EIP-55 checksummed."
-                  },
-                  "factory": {
-                    "type": "string",
-                    "description": "GLOBAL. V3 factory address, EIP-55 checksummed."
-                  },
                   "rpcUrl": {
                     "type": "string",
                     "description": "GLOBAL. Primary JSON-RPC endpoint."

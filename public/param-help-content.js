@@ -1163,56 +1163,14 @@ export const PARAM_HELP = {
     ],
   },
 
-  inPM: {
-    title: "Position Manager (NonfungiblePositionManager)",
-    sections: [
-      {
-        heading: "What it does",
-        body:
-          "The on-chain smart contract address that manages all V3 NFT " +
-          "liquidity positions. All mint, remove-liquidity, collect, and " +
-          "compound transactions are sent to this contract.",
-      },
-      {
-        heading: "Default value",
-        body:
-          "Pre-filled with the official 9mm Pro V3 NonfungiblePositionManager " +
-          "on PulseChain. Note that other v3 Position Managers are " +
-          "available, such as 9inch. This app currently can only support " +
-          "the 9mm Pro Position Manager contract. " +
-          "<strong>Do not change this unless you know " +
-          "exactly what you are doing.</strong> An incorrect address will " +
-          "cause all transactions to fail or be sent to the wrong contract. " +
-          "<strong>Restart the app for the change to take effect</strong> " +
-          "(the running bot holds the address it was started with).",
-      },
-    ],
-  },
-
-  inFactory: {
-    title: "Factory Address",
-    sections: [
-      {
-        heading: "What it does",
-        body:
-          "The V3 Factory contract address used to look up pool addresses " +
-          "and verify pool state. The bot queries this contract to find " +
-          "the correct pool for your token pair and fee tier.",
-      },
-      {
-        heading: "Default value",
-        body:
-          "Pre-filled with the official 9mm Pro V3 Factory on PulseChain. " +
-          "Note that other v3 Position Managers are available, such as " +
-          "9inch. This app currently can only support the 9mm Pro Position " +
-          "Manager contract. " +
-          "<strong>Do not change this unless you are connecting to a " +
-          "different V3 deployment.</strong> " +
-          "<strong>Restart the app for the change to take effect</strong> " +
-          "(the running bot holds the address it was started with).",
-      },
-    ],
-  },
+  /*- The `inPM` and `inFactory` entries are gone along with their
+   *  fields.  Both promised "Restart the app for the change to take
+   *  effect", which was never true: the addresses come from .env /
+   *  chains.json, and nothing ever read the saved values back.  They
+   *  are not editable from the dashboard by design — both scope the
+   *  on-disk caches, so changing one mid-life orphans every cache keyed
+   *  to the old address.  docs/engineering.md documents where they live
+   *  and why changing them means a fresh install. */
 
   // ── Rebalance timing ───────────────────────────────────────────────────
 

@@ -43,8 +43,21 @@ const CONFIG_FILE = "bot-config.json";
 /** Keys that belong in the global section. */
 const GLOBAL_KEYS = [
   "triggerType",
-  "positionManager",
-  "factory",
+  /*- `positionManager` and `factory` are deliberately NOT here.  The
+   *  dashboard used to save both, and nothing ever read them back: the
+   *  bot resolves each from .env / chains.json at startup, so the
+   *  endpoint accepted an address, wrote it to disk, and the bot went
+   *  on using a different one.
+   *
+   *  They stay un-settable rather than being wired up, because both
+   *  scope the on-disk caches (event cache, LP position cache, epoch
+   *  cache) — changing one mid-life orphans every cache keyed to the
+   *  old address.  That belongs to a fresh install.  See
+   *  docs/engineering.md § "Contract Addresses".
+   *
+   *  A value left in an existing bot-config.json from before is inert:
+   *  nothing reads it, and POST /api/config will no longer accept a
+   *  new one. */
   "rpcUrl",
   /*-
    *  Whether the stored Moralis key may be used.  Separate from whether
