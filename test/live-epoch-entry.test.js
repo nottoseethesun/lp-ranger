@@ -4,12 +4,12 @@
  *   re-opened.
  *
  *   The live epoch is not persisted, so every reconstruction discards it
- *   and the next poll opens a fresh one. Both open sites used to stamp
- *   the position's value at that moment, so the figure moved on every
- *   restart. That surfaced in the Per-Day table's In/Out cell for the
- *   day the current NFT was minted — computed as
- *   `exit(previous) - entry(current)`, it read 1282.57, 1233.64 and
- *   1161.05 across three restarts of one finished rebalance.
+ *   and the next poll opens a fresh one. Neither open site may stamp
+ *   the position's value at that moment, or the figure moves on every
+ *   restart: the Per-Day table's In/Out cell for the day the current
+ *   NFT was minted is `exit(previous) - entry(current)`, so it reports
+ *   a different number each time the process comes up for one finished
+ *   rebalance.
  */
 
 "use strict";

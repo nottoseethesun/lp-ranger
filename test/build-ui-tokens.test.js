@@ -191,10 +191,10 @@ test("the token is referenced with NO fallback literal", () => {
 });
 
 test("no scrollbar-inside-a-scrollbar in the Pool Details dialog", () => {
-  /*- The token blocks used to be capped at 34vh and scrolled so the
-   *  dialog stayed compact.  Once the dialog itself became bounded that
-   *  turned into a nested scrollbar: the user scrolled the inner region,
-   *  hit its end, and had to notice a second bar to keep going.
+  /*- The dialog itself is bounded and scrolls, so the token blocks
+   *  inside it must not.  Capping them (at 34vh, say) nests a second
+   *  scrollbar: the user scrolls the inner region, hits its end, and
+   *  has to notice the outer bar to keep going.
    *
    *  The wrapper element stays (it scopes
    *  `.9mm-pos-mgr-pool-details-block:last-of-type`), but it must carry

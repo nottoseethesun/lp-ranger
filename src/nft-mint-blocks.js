@@ -11,13 +11,12 @@
  * it does not exist yet. Scanning it from pool creation therefore walks
  * millions of blocks that provably hold nothing for that token.
  *
- * That waste was invisible while log queries ran unpaced. Once every
- * RPC request went through the global 250 ms queue, a cold-cache
- * lifetime scan of a three-NFT chain became roughly ten thousand paced
- * requests — about three quarters of an hour, during which the scan
- * owned the queue and the bot's own poll-cycle reads waited behind it.
- * Bounding each NFT to its own life cuts that to the handful of chunks
- * each NFT was actually alive for.
+ * Every RPC request in the process is released by one global 250 ms
+ * queue, so request count is wall-clock time and a scan holds the queue
+ * against the bot's own poll-cycle reads while it runs. Unbounded, a
+ * cold-cache lifetime scan of a three-NFT chain is roughly ten thousand
+ * paced requests, about three quarters of an hour. Bounded to each
+ * NFT's own life it is a handful of chunks per NFT.
  *
  * Pure: no RPC, no files, no logging. The block numbers come from the
  * rebalance events the caller already has.

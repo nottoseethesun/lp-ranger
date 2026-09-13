@@ -5,26 +5,23 @@
  * Returns the install to the state a fresh clone is in. Backs both
  * `npm run clean` and `npm run dev-clean` (`--dev`).
  *
- * **`clean` must leave nothing behind.** It previously listed every
- * cache filename by hand, and three caches added since —
- * `pool-creation-blocks-cache.json`,
- * `liquidity-pair-details-cache.json` and `token-symbol-cache.json` —
- * were never added to the list. So a command advertised as a full state
- * reset quietly left a warm cache, which is exactly the condition it
- * exists to remove. The cache is now cleared by
- * `clear-blockchain-scan-cache.js`, which owns that definition, so a
- * cache added later is covered without anyone remembering to update a
- * second list.
+ * **`clean` must leave nothing behind.** It therefore names no cache
+ * files of its own: `clear-blockchain-scan-cache.js` owns the
+ * definition of "the scan cache", and a cache added later is covered
+ * here without a second list to update. A hand-written list is worse
+ * than it looks, because a stale one still reports success — the
+ * command claims a full reset and leaves a warm cache, which is the
+ * condition it exists to remove.
  *
  * `dev-clean` is the same run with three price/timing caches preserved,
  * because re-fetching them costs third-party API quota and they are not
- * blockchain-derived. It used to be a near-copy of `clean` with its own
- * list, which had already drifted in a second way: it did not delete
- * `api-keys.json`.
+ * blockchain-derived. It shares this file rather than being a near-copy
+ * for the same reason.
  *
- * Why a script rather than an inline npm script: the two commands were
- * ~900 characters each of duplicated shell, far past the project's
- * 100-character threshold, and duplication is what let them drift.
+ * Why a script rather than an inline npm script: the two commands are
+ * ~900 characters each, far past the project's 100-character threshold
+ * for inlining, and a near-copy of one in the other is the duplication
+ * this file exists to avoid.
  *
  * Usage:
  *   node scripts/clean.js         # full reset

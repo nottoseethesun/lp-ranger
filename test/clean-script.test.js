@@ -3,21 +3,15 @@
  * @description Guards what `npm run clean` promises: that it leaves
  *   nothing behind.
  *
- * It used to list every cache filename by hand. Three caches added
- * since — `pool-creation-blocks-cache.json`,
- * `liquidity-pair-details-cache.json` and `token-symbol-cache.json` —
- * were never added to that list, so a command advertised as a full
- * state reset quietly left a warm cache. That is the exact condition it
- * exists to remove, and the failure was invisible: `clean` printed
- * success either way.
+ * A hand-written list of cache filenames cannot hold that promise: a
+ * cache added later is simply absent from it, `clean` prints success
+ * regardless, and the operator is left with a warm cache — the exact
+ * condition the command exists to remove.
  *
- * `dev-clean` was a near-copy with its own list and had drifted a second
- * way — it did not delete `api-keys.json`.
- *
- * Both now run `scripts/clean.js`, which delegates the cache to
- * `clear-blockchain-scan-cache.js`. These tests assert the delegation
- * rather than the filenames, so a cache added later is covered without
- * anyone updating a list.
+ * `clean` and `dev-clean` therefore both run `scripts/clean.js`, which
+ * delegates the cache to `clear-blockchain-scan-cache.js`. These tests
+ * assert the delegation rather than the filenames, so a cache added
+ * later is covered without anyone updating a list.
  *
  * Nothing here deletes anything: the cache helper is exercised in
  * dry-run only.

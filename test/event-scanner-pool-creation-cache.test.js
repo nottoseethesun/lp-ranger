@@ -2,17 +2,17 @@
 
 /**
  * @file test/event-scanner-pool-creation-cache.test.js
- * @description Regression test for the wallet-scoped LP scan bypassing the
- *   pool-creation-block disk cache.
+ * @description The wallet-scoped LP scan must resolve the pool-creation
+ *   block through the disk cache.
  *
- * Bug fixed: `event-scanner.js` `resolveFromBlock` previously called the
- * raw `findPoolCreationBlock` primitive directly.  As a result every
- * wallet-scoped LP scan re-scanned the V3 Factory's PoolCreated logs
- * from scratch — a 5-year lookback meant ~150 50k-chunk Factory queries
- * before the wallet scan even started, every time the user opened a
- * different position or restarted.  The fix routes that lookup through
+ * `event-scanner.js` `resolveFromBlock` routes that lookup through
  * `getPoolCreationBlockCached`, which memoises in-process and persists
- * to disk.
+ * to disk, rather than calling the raw `findPoolCreationBlock`
+ * primitive.  Calling the primitive re-scans the V3 Factory's
+ * PoolCreated logs from scratch on every wallet-scoped LP scan — a
+ * 5-year lookback is ~150 50k-chunk Factory queries before the wallet
+ * scan starts, repeated each time a different position is opened or the
+ * process restarts.
  *
  * This test asserts the integration: two consecutive `scanRebalanceHistory`
  * calls for the same pool must trigger the Factory `PoolCreated`

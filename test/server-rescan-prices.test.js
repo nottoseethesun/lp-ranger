@@ -76,8 +76,9 @@ test("resolveFromBlock — whole history clamps to at least 1", async () => {
 // ── what gets cleared ───────────────────────────────────────────────────────
 
 test("price-derived keys are a strict subset of Reload's key set", () => {
-  /*- If this ever diverges, Re-scan Prices is either wiping something
-   *  Reload does not (a bug) or has drifted from the shared vocabulary. */
+  /*- Re-scan Prices clears a subset of what Reload clears.  If this
+   *  diverges, it is wiping a key Reload leaves alone, or the two have
+   *  stopped sharing a vocabulary for the same state. */
   for (const k of _PRICE_DERIVED_KEYS) {
     assert.ok(
       _ON_CHAIN_DERIVED_KEYS.includes(k),
@@ -165,9 +166,10 @@ function harness(overrides = {}) {
     "pulsechain-0x4e44847675763D5540B32Bee8a713CfDcb4bE61A-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-1";
   /*- Real shape: `status` lives on the DISK CONFIG, never on the bot
    *  state.  `build-status-positions.js` merges the two for the API
-   *  response, which is why the dashboard sees it.  An earlier version
-   *  of this harness put `status` on the state and so mirrored — and
-   *  hid — a bug that rejected every managed position. */
+   *  response, which is why the dashboard sees it.  A harness that puts
+   *  `status` on the state instead supplies the field the code under
+   *  test is failing to find, and passes on input the app never
+   *  produces. */
   const state = {
     activePosition: { tokenId: "1", token0: "0xA", token1: "0xB", fee: 2500 },
     ...(overrides.state || {}),

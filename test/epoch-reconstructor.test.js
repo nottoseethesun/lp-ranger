@@ -141,8 +141,9 @@ describe("isEpochHistoryComplete", () => {
   });
 
   it("is false for a single live-recorded epoch on a long chain", () => {
-    /*- The shape that hid the bug: one rebalance by this bot on a
-     *  position with a long prior history. */
+    /*- The hardest shape to get right: one rebalance by this bot on a
+     *  position with a long prior history, so the epoch count is
+     *  plausible while the chain is almost entirely unreconstructed. */
     assert.strictEqual(isEpochHistoryComplete(new Array(1), ids(40)), false);
   });
 

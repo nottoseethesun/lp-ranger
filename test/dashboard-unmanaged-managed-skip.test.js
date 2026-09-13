@@ -2,28 +2,23 @@
  * @file test/dashboard-unmanaged-managed-skip.test.js
  * @description The dashboard must not scan a position the bot owns.
  *
- * A position is never both managed and unmanaged, but on a cold load the
- * browser is asked before it can answer. `isPositionManaged()` reads a
- * Set filled from `/api/status`, and the bot starts its positions on a
- * stagger — so for the first minute the naive check says "not managed",
- * the dashboard fetches unmanaged details, and the bot then scans the
- * same rebalance chain itself.
+ * A position is never both managed and unmanaged, but on a cold load
+ * the browser is asked before it can answer. `isPositionManaged()`
+ * reads a Set filled from `/api/status`, and the bot starts its
+ * positions on a stagger, so for the first minute a naive check answers
+ * "not managed" and the dashboard fetches unmanaged details for a chain
+ * the bot is about to scan itself — two full passes over every NFT.
  *
- * Observed in an operator log: the dashboard began at 06:45:05, the bot
- * started managing the same NFT at 06:45:54, and both then walked
- * #71544's history — two passes reporting `50/913` three seconds apart.
+ * That fetch is not cheap: every RPC request goes through the 250 ms
+ * global queue, so it is a multi-minute chain scan competing with the
+ * bot for that queue.
  *
- * The fetch used to be waved through on the grounds that it was "a
- * harmless no-op". That stopped being true when every RPC request began
- * going through the 250 ms global queue: it is now a multi-minute chain
- * scan competing with the bot for that queue.
- *
- * `hasPolled` is the load-bearing half of the check and is easy to
- * mistake for belt-and-braces. The managed Set is also restored from
- * localStorage for instant badge render, so before a poll lands it can
- * be a carry-over from a previous session — the server may have retired
- * the position while the page was closed. Suppressing on that stale
- * value would leave a genuinely unmanaged position with empty KPIs and
+ * `hasPolled` is the half of the check that is easy to read as
+ * belt-and-braces. The managed Set is also restored from localStorage
+ * for instant badge render, so before a poll lands it can be a
+ * carry-over from a previous session — the server may have retired the
+ * position while the page was closed. Suppressing on that stale value
+ * would leave a genuinely unmanaged position with empty KPIs and
  * nothing to populate them.
  *
  * Driven through the real exported decision, not a copy of it

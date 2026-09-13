@@ -264,14 +264,14 @@ async function _supplementEntryFromChain(result, tokenId, dec0, dec1, prov) {
  * the deposited token amounts that IL is measured against — and it also
  * happens to compute `entryValueUsd`.  This asks for BOTH, separately.
  *
- * It used to ask only `!result.entryValueUsd`, letting one need stand in
- * for the other.  When the bot rebalances a position itself it writes
- * the USD value to `rebalance_log.json`, `_applyMintEntry` reads it
- * back, and the receipt fetch was then skipped as unnecessary — so the
- * amounts were never collected and `_assembleEpoch` stored
- * `hodlAmount0/1: 0`.  Per-epoch IL then came out as the whole position
- * value rather than a loss.  The positions the bot handled itself were
- * the only ones affected, which is what kept it hidden.
+ * Asking only `!result.entryValueUsd` would let one need stand in for
+ * the other, and the two are not equivalent: when the bot rebalances a
+ * position itself it writes the USD value to `rebalance_log.json` and
+ * `_applyMintEntry` reads it back, so `entryValueUsd` is already
+ * present while the amounts are not.  The receipt fetch would be
+ * skipped, `_assembleEpoch` would store `hodlAmount0/1: 0`, and
+ * per-epoch IL would come out as the whole position value rather than
+ * a loss — on bot-handled positions only.
  *
  * @param {object} result  History result being assembled.
  * @returns {boolean}
@@ -361,20 +361,20 @@ function _supplementExitFromChain(result, ctx) {
 /**
  * Fees this NFT earned across its whole life, valued at its close prices.
  *
- * This used to be `Collect(last) − DecreaseLiquidity(last)`: the fees
- * still unclaimed at the moment the NFT was drained.  Anything auto- or
- * manually compounded before then had already been swept out and folded
- * back into liquidity, so it left again inside the drain's
- * DecreaseLiquidity and was subtracted straight back out.  With
- * auto-compound on, that is most of what a position ever earns — on
- * this project's own HEX pool the per-epoch figures summed to $149
- * against a lifetime $1,084.
+ * Must be measured across every Collect, not as
+ * `Collect(last) − DecreaseLiquidity(last)`.  That last-drain pair sees
+ * only the fees still unclaimed when the NFT was drained; anything
+ * compounded before then was already swept out and folded back into
+ * liquidity, so it leaves again inside the drain's DecreaseLiquidity
+ * and is subtracted straight back out.  With auto-compound on that is
+ * most of what a position earns — a measured case summed to $149 of a
+ * lifetime $1,084.
  *
- * The understated figure reached the Per-Day P&L table twice over: once
- * in the Fees column, and once more in Price P&L, which is
- * `exit − entry − fees` and so credited the missing fees to price
- * movement.  Correcting fees moves that money between the two columns
- * and leaves Net P&L unchanged.
+ * An understated figure would reach the Per-Day P&L table twice: once
+ * in the Fees column, and again in Price P&L, which is
+ * `exit − entry − fees` and would credit the missing fees to price
+ * movement.  Net P&L is unaffected either way, so the error moves money
+ * between two columns without changing the total.
  *
  * A logged value is left alone when the scan cannot see the NFT's
  * history, so a failed query reads as "nothing better to offer" rather

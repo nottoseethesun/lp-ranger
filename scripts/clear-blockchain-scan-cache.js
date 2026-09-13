@@ -13,9 +13,9 @@
  * Clearing it is how you test scan behaviour from cold.
  *
  * Also the single definition of "the scan cache" for
- * `scripts/clean.js`, which used to carry its own hand-written list of
- * cache filenames. That list had drifted: three caches added since
- * survived a "full state reset". One list, one place.
+ * `scripts/clean.js`, so neither command needs a hand-written list of
+ * cache filenames — a list that goes stale still reports success, and
+ * the surviving cache is exactly what the caller asked to be rid of.
  *
  * Usage:
  *   npm run clear-blockchain-scan-cache

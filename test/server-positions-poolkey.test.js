@@ -61,9 +61,9 @@ describe("attachPoolKeys()", () => {
   });
 
   it("accepts fee=0 (valid fee tier edge case — uses !== undefined guard)", () => {
-    // Defensive: if a future fee tier of 0 is introduced, the attach
-    // logic must still compute a key (the bug we're guarding against is
-    // a truthy check filtering out fee=0).
+    // If a future fee tier of 0 is introduced the attach logic must
+    // still compute a key, so the guard has to be `!== undefined`; a
+    // truthy check filters fee=0 out as though it were absent.
     const positions = {
       k: {
         walletAddress: "0xW",

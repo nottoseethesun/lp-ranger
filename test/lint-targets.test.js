@@ -127,8 +127,10 @@ test("MARKDOWN_TARGETS — is a non-empty list of strings", () => {
   for (const t of MARKDOWN_TARGETS) assert.equal(typeof t, "string");
 });
 
-test("MARKDOWN_TARGETS — covers the three docs lint:fix used to skip", () => {
-  /*- The drift that prompted centralising this list. */
+test("MARKDOWN_TARGETS — covers the three largest docs", () => {
+  /*- These are the files a hand-written target list tends to omit, and
+   *  omitting them leaves the repo's biggest docs unlinted while the
+   *  pass still reports success. */
   for (const f of [
     "docs/architecture.md",
     "docs/configuration.md",

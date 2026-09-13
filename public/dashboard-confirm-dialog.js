@@ -3,12 +3,12 @@
  * @description One promise-based replacement for the native `confirm()`,
  *   rendered as a standard tool-grey Action Dialog.
  *
- *   Extracted when the second such dialog appeared (Reload Current
- *   Position, then Clear Local Storage & Cookies) rather than copying the
- *   dismissal logic a second time — the Escape handling below is subtle
- *   enough that two divergent copies would be a bug waiting to happen.
+ *   One implementation shared by every such dialog (Reload Current
+ *   Position, Clear Local Storage & Cookies). The Escape handling below
+ *   has to unbind its own listener on every exit path, so a second copy
+ *   would be a second place to get that right.
  *
- *   Call it exactly where a `confirm()` used to sit:
+ *   Call it where a native `confirm()` would otherwise go:
  *
  *       if (!(await confirmViaDialog("tplMyModal"))) return;
  *

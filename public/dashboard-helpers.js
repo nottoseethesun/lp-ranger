@@ -661,8 +661,10 @@ let _csrfRefreshIntervalMs = 5 * 60 * 1000;
 /**
  * Fetch a fresh CSRF token from the server. Called on init and
  * on a repeating timer set up in dashboard-init.js. Logs success
- * and failure so a missed refresh leaves a visible signal in the
- * browser console (silent failures previously masked stale-token bugs).
+ * and failure, so a missed refresh leaves a visible signal in the
+ * browser console. Without one, the next symptom is a 403 on an
+ * auto-fired background POST, which names the token rather than the
+ * refresh that did not happen.
  * @returns {Promise<void>}
  */
 export async function refreshCsrfToken() {

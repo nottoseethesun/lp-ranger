@@ -35,15 +35,12 @@ export function _computeSyncStatus(inputs) {
     rebalanceScanComplete,
     lifetimeScanComplete,
   } = inputs;
-  /*- Order matters, and it was wrong.  The `!active` check used to come
-   *  first and return complete:true, which paints the badge with the
-   *  `done` class — green, no pulse — while its empty label fell back
-   *  to the text "Syncing…".  The badge then said one thing and looked
-   *  like another for the whole of startup, and this branch, written
-   *  for exactly that case, was unreachable.
-   *
-   *  A wallet with no positions yet is still loading them: that is
-   *  genuinely syncing, so say so and look it. */
+  /*- Order matters: this branch must precede the `!active` check.  A
+   *  wallet with no positions yet is still loading them, which is
+   *  genuinely syncing.  Answering `complete: true` there paints the
+   *  badge with the `done` class — green, no pulse — while the empty
+   *  label falls back to the text "Syncing…", so the badge reads one
+   *  way and looks another for the whole of startup. */
   if (walletAddress && positionCount === 0) {
     /*- Zero positions means one of two very different things, and the
      *  scan status is what separates them.  "idle" or "scanning" means

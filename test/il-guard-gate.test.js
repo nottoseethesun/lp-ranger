@@ -95,8 +95,7 @@ describe("checkIlGuard — the gate", () => {
   });
 
   it("still guards a position with no saved value", () => {
-    /*- This test previously asserted the opposite, and was wrong: an
-     *  unset key falls back to the shipped default, so the Guard is
+    /*- An unset key falls back to the shipped default, so the Guard is
      *  live out of the box.  A position worth $1 against a $1,000 mint
      *  must be refused whether or not anyone opened Bot Settings. */
     deps._getConfig = () => undefined;
@@ -299,12 +298,12 @@ describe("checkIlGuard — the shipped default actually applies", () => {
 describe("a blocked poll is not a recovery", () => {
   /*- `_processPollResult` in bot-loop.js acts on `isRecoveryResult` by
    *  clearing rebalanceError / rebalancePaused / rebalanceFailedMidway
-   *  and raising the "Position Recovered" modal.  It used to decide by
-   *  elimination, so every gate that returned a bare
+   *  and raising the "Position Recovered" modal.  Deciding by
+   *  elimination would read every gate that returns a bare
    *  `{rebalanced: false}` — throttle, pool daily cap, dry run, the ILG
-   *  block — read as a recovery: the dashboard announced that a stuck
-   *  position had come back, and the error explaining why it was stuck
-   *  was discarded.  Pinned against the real predicate, not a copy. */
+   *  block — as a recovery: the dashboard would announce that a stuck
+   *  position had come back, and discard the error explaining why it
+   *  was stuck.  Pinned against the real predicate, not a copy. */
   const healthy = { rebalanceFailedMidway: false, rebalancePaused: false };
 
   /*- One row per distinct payload the poll cycle actually produces.

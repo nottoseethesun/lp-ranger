@@ -3,34 +3,25 @@
  * @description Every per-NFT event scan is bounded by that NFT's own
  *   mint block.
  *
- * This mistake has now been made four separate times, in four files,
- * because nothing connected them: each one resolved a floor for the
- * POOL and handed the same floor to every NFT in the rebalance chain.
  * An NFT cannot emit `IncreaseLiquidity`, `Collect` or
- * `DecreaseLiquidity` before it is minted, so those pre-mint blocks are
- * a guaranteed-empty walk — and on a long chain they are the dominant
- * cost of the entire scan.
+ * `DecreaseLiquidity` before it is minted, so resolving one floor for
+ * the POOL and handing it to every NFT in a rebalance chain makes each
+ * NFT walk every block before its own mint. On a long chain that is the
+ * dominant cost of the whole scan: for a pool created two years before
+ * the wallet's first deposit and a 132-rebalance chain, 1,144 chunks
+ * per NFT across ~133 NFTs — roughly a day of paced requests, nearly
+ * all of it blocks where the NFT did not yet exist.
  *
- * Measured on a real position: a pool created two years before the
- * operator's first deposit, a 132-rebalance chain, 1,144 chunks per NFT
- * across ~133 NFTs at three queries each. About 32 hours, nearly all of
- * it scanning blocks where the NFT did not yet exist. The first fix
- * caught two of the four sites; the operator's log then showed the same
- * NFT scanned at 21 chunks by a fixed path and 1,144 by an unfixed one,
- * four minutes apart.
+ * Five files scan a chain of NFTs, and nothing in the code connects
+ * them, so this is a structural guard rather than a per-file rule. Any
+ * file that scans one NFT's events must route its floor through
+ * `src/nft-mint-blocks.js`, or be listed in `EXEMPT` below with a
+ * reason. A new scan site fails CI until one of those is true.
  *
- * So this is a structural guard rather than another point fix. Any file
- * that scans NFT events must route its floor through
- * `src/nft-mint-blocks.js`, or be listed below with a reason. A new
- * scan site fails CI until one of those is true.
- *
- * **A fifth site shipped unbounded anyway**, and the reason is recorded
- * next to `NFT_LABEL` below: this guard originally looked for two
- * helper names, and `position-history.js` scanned per NFT through a
- * third. Epoch reconstruction called it once per closed NFT with the
- * pool's window each time — 132 x 2 x 1,144 chunks, about a day. The
- * guard now also matches on the shape (a chunked scan whose label names
- * a tokenId), so it no longer depends on knowing the helper's name.
+ * Sites are identified two ways, by helper name and by shape — see the
+ * note on `NFT_LABEL`. Name matching alone only covers helpers the list
+ * already knows about, which is the same limitation that let the same
+ * mistake be made independently five times.
  */
 
 "use strict";
@@ -49,12 +40,10 @@ const SCAN_CALLS =
 /*- The general shape, independent of any helper's name: a chunked scan
  *  whose label names a tokenId is by definition a per-NFT scan.
  *
- *  This detector is here because the name list above was not enough.
- *  It named two helpers; `position-history.js` scanned per NFT through a
- *  third, `scanCollectAndDrain`, and was therefore invisible to a guard
- *  whose file header claimed "a new scan site fails CI". It shipped
- *  unbounded and cost the operator a day of wall-clock. A name list only
- *  catches the sites you already knew about. */
+ *  This detector is what makes the guard complete. The name list above
+ *  can only match helpers it already names, so a per-NFT scan reached
+ *  through a new helper is invisible to it — and invisible to a guard
+ *  is indistinguishable from bounded. */
 const NFT_LABEL = /label:\s*`[^`]*#\$\{\s*tokenId\s*\}/;
 
 /**
@@ -100,9 +89,9 @@ describe("per-NFT scan floors", () => {
   });
 
   it("finds sites by label as well as by call name", () => {
-    /*- The name list missed a real site once already. If the label
-     *  detector silently stops matching, the guard quietly narrows back
-     *  to what it was when that happened. */
+    /*- If the label detector stops matching — a label reworded, the
+     *  interpolation renamed — the guard narrows to name matching alone
+     *  and still reports success. */
     const byLabel = fs
       .readdirSync(SRC)
       .filter((f) => f.endsWith(".js"))
@@ -143,8 +132,8 @@ describe("per-NFT scan floors", () => {
 });
 
 describe("the loops that walk a rebalance chain", () => {
-  /*- The specific shape that went wrong: iterate a set of tokenIds,
-   *  scan each one. Every such loop must derive its floor per NFT. */
+  /*- The shape this guard is about: iterate a set of tokenIds, scan
+   *  each one. Every such loop must derive its floor per NFT. */
   const CHAIN_LOOPS = [
     "bot-recorder-scan-helpers.js",
     "position-details-lifetime-scan.js",

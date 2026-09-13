@@ -97,16 +97,16 @@ function _assembleEpoch(h, index) {
  * The contract comes from `config.POSITION_MANAGER`, the same source the
  * other three builders use — `_persistEpochCache` (server-positions.js),
  * the startup restore (bot-loop-detect.js) and the unmanaged-position
- * read (position-details.js).  It used to read `botState.positionManager`,
- * which nothing ever sets on a bot-state object, so `|| ""` left a hole
- * in the middle of every key this module wrote: `pulsechain..0x4e44…`
- * instead of `pulsechain.0xcc05bf….0x4e44…`.
+ * read (position-details.js).  All four must agree, because the key is
+ * the only thing joining them: a key built from a different source —
+ * `botState.positionManager`, say, which nothing sets — yields
+ * `pulsechain..0x4e44…` instead of `pulsechain.0xcc05bf….0x4e44…`, and
+ * that is a second, private history for the same pool.
  *
- * That gave each affected pool two independent histories — one the app
- * maintains, one only this module could see — and it defeated Reload
- * Current Position: the reload clears the properly-labelled entry, then
- * reconstruction finds its own private copy still populated and takes
- * the fast-restart shortcut instead of rebuilding from the chain.
+ * The visible symptom would be Reload Current Position failing to
+ * reload: it clears the entry under the shared key, then reconstruction
+ * finds its own copy still populated and takes the fast-restart
+ * shortcut instead of rebuilding from the chain.
  *
  * @param {object} botState  Bot state with activePosition and walletAddress.
  * @returns {object|null}

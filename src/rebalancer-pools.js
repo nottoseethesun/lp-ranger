@@ -535,10 +535,9 @@ function _setRetryDelayForTests(ms) {
  * @throws {PoolStateUnavailableError}  All RPCs exhausted.
  */
 async function getPoolState(passedProvider, ethersLib, opts) {
-  /*- The full ordered endpoint list.  This used to be a hand-built
-   *  primary/fallback pair with a comment predicting that array-style
-   *  fallbacks would one day make it a one-line change — this is that
-   *  change.  `config.RPC_URLS` is already deduplicated and blank-free.
+  /*- The full ordered endpoint list, not a primary/fallback pair:
+   *  `config.RPC_URLS` is already deduplicated and blank-free, so
+   *  adding an endpoint needs no change here.
    *
    *  Deliberately still bypasses `sendTx`: retrying here must not
    *  mutate the global sticky failover window (see the note above

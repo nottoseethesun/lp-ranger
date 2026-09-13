@@ -165,10 +165,10 @@ async function _classifyAllCompounds(
  *      or `totalCompoundedUsd` is sufficient: the bot's own scans
  *      populate both, but the unmanaged-view detail scan
  *      (`position-details._scanCompounds`) persists only
- *      `totalCompoundedUsd`.  Without this guard, a fresh
- *      `Manage Position` on a previously-viewed position would re-run
- *      `_classifyAllCompounds` from a stale `lastNftScanBlock`, get a
- *      partial sum, and stomp the correct disk value.
+ *      `totalCompoundedUsd`.  Without this guard, `Manage Position` on
+ *      a position the unmanaged view has already scanned re-runs
+ *      `_classifyAllCompounds` from a stale `lastNftScanBlock`, gets a
+ *      partial sum, and stomps the correct disk value.
  *
  *      No rescan is ever needed to keep this total current, because both
  *      ways fees get recycled already maintain it as they happen:
@@ -336,10 +336,11 @@ async function _resolveScanFromBlock(
  *  Also keeps `lifetimeScanComplete` at false so the Syncing badge stays
  *  engaged until a future scan succeeds.
  *
- *  Catastrophic-failure record: this catch is where the "silent lifetime
- *  scan abort" bug hid on Prod (July 2026, PulseX/WPLS position stuck at
- *  $11.63 Fees Compounded instead of $255.50).  Every entry to this
- *  function now:
+ *  Catastrophic-failure record.  A lifetime scan that aborts here
+ *  leaves the position's totals frozen at whatever the partial scan
+ *  reached — a plausible-looking number, with no indication it is
+ *  short — so the abort has to announce itself.  Every entry to this
+ *  function:
  *    (a) appends a stacktrace record to logs/error.log via
  *        writeErrorLog(), so a fresh install two weeks later can still
  *        show the operator exactly what went wrong; and

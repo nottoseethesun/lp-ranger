@@ -6,9 +6,9 @@
  * The manual is one long page that leans on internal anchors: the
  * table of contents jumps into it, and entries cross-reference each
  * other (an FAQ answer points at the section that explains the
- * remedy). Nothing else in the suite reads this file, so a renamed
- * `id` or a typo'd `href` used to ship silently — lint does not
- * resolve HTML fragments and no test opened the document.
+ * remedy). Nothing else in the suite reads this file and lint does not
+ * resolve HTML fragments, so without these tests a renamed `id` or a
+ * typo'd `href` ships with every gate green.
  *
  * A dead anchor is a real user-visible defect: the reader clicks a
  * link inside a troubleshooting answer and the page does not move,

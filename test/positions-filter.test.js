@@ -6,10 +6,10 @@
  * with zero browser dependencies (no DOM, no localStorage), so it can be
  * loaded into Node tests via dynamic ESM import.
  *
- * Regression history: the matcher used to omit `token0Symbol` and
- * `token1Symbol` from the haystack, so typing the pair name (e.g. "CRO"
- * or "dwb") in the LP browser filter matched nothing. Adding the symbols
- * fixed it; these tests guard against the regression coming back.
+ * The haystack must include `token0Symbol` and `token1Symbol`: the pair
+ * name is what a user types into the LP browser filter (e.g. "CRO" or
+ * "dwb"), and omitting the symbols makes that search match nothing
+ * while every other field still works.
  */
 
 "use strict";

@@ -81,12 +81,12 @@ describe("_cacheKeyFromState", () => {
   });
 
   it("uses the same contract as every other epoch-cache key builder", () => {
-    /*- Four places build this key.  Three read config.POSITION_MANAGER;
-     *  this one used to read `botState.positionManager`, which nothing
-     *  ever sets on a bot-state object, so `|| ""` wrote every key with
-     *  a hole where the contract belongs — `pulsechain..0x4e44…`.  That
-     *  gave the pool two independent histories and defeated Reload
-     *  Current Position, which clears the properly-labelled one. */
+    /*- Four places build this key and all must agree, because the key
+     *  is the only thing joining them.  Reading it from somewhere the
+     *  bot state does not set — `botState.positionManager`, say —
+     *  leaves `|| ""` a hole where the contract belongs
+     *  (`pulsechain..0x4e44…`), which is a second private history for
+     *  the pool and defeats Reload Current Position. */
     const state = {
       activePosition: { token0: "0xA", token1: "0xB", fee: 3000 },
       walletAddress: "0xW",
@@ -128,9 +128,9 @@ describe("_cacheKeyFromState", () => {
   });
 
   it("falls back to an empty wallet, but never an empty contract", () => {
-    /*- This case used to assert `contract === ""` — it pinned the bug in
-     *  place rather than catching it.  A wallet-less key is a real
-     *  fallback; a contract-less one is a key nothing else can find. */
+    /*- The two fallbacks are not equivalent: a wallet-less key is a
+     *  real fallback, a contract-less one is a key nothing else can
+     *  find.  Asserting `contract === ""` here would pin that. */
     const state = {
       activePosition: { token0: "0xA", token1: "0xB", fee: 100 },
     };

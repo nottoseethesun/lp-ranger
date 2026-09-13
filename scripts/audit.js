@@ -6,14 +6,11 @@
  * `scripts/lint-targets.js`.  Backs `npm run audit:security`
  * (`--security`) and `npm run audit:secrets` (`--secrets`).
  *
- * Why a script rather than inline npm scripts: both target lists were
- * previously spelled out twice — once in the npm script and once
- * inside `scripts/check.js` — and both copies had drifted.  `check.js`
- * omitted `util/` from each, so `npm run check` security-linted 155
- * files while `npm run audit:security` covered 178, and the secret
- * scanner never looked at `util/` at all under the gate CI runs.
- * Importing the lists here means the standalone command and the gate
- * cannot disagree.
+ * Why a script rather than inline npm scripts: the standalone command
+ * and the `npm run check` gate need identical target lists, and a list
+ * spelled out in both places can differ without either reporting it —
+ * each pass succeeds on whatever it was given.  Importing the lists
+ * from `lint-targets.js` makes them one list.
  *
  * Usage:
  *   node scripts/audit.js --security

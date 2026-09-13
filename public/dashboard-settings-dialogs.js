@@ -100,11 +100,11 @@ export function closeGasFeeModal() {
 /**
  * Confirm, then wipe this browser's stored settings.
  *
- * The confirmation used to be a native `confirm()` inside
- * `clearLocalStorageAndCookies`; it now goes through the same tool-grey
- * Action Dialog as Re-scan Prices and Reload Current Position. The guard
- * lives here rather than in dashboard-helpers.js so that module — which
- * nearly every dashboard file imports — takes no dialog dependency.
+ * The confirmation goes through the same tool-grey Action Dialog as
+ * Re-scan Prices and Reload Current Position, not a native `confirm()`.
+ * It lives here rather than inside `clearLocalStorageAndCookies` so
+ * that dashboard-helpers.js — which nearly every dashboard file imports
+ * — takes no dialog dependency.
  * @returns {Promise<void>}
  */
 export async function confirmClearStorage() {

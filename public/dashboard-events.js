@@ -478,14 +478,12 @@ export function bindAllEvents() {
   bindRpcAddEvents();
   _change("inGas", saveGasStrategy);
 
-  /*- Bound by id like every other Save button.  This used to be a
-   *  `.save-range-btn` sweep with a `:not(...)` list that grew by one
-   *  entry per new row — and still leaked: Min Interval, Max
-   *  Rebalances, Check Interval and both per-token Slippage buttons
-   *  matched it, so each of them fired saveOorThreshold on top of its
-   *  own handler and re-POSTed the OOR threshold.  A blocklist over a
-   *  shared style class cannot be right, since the class says how a
-   *  button looks, not what it saves. */
+  /*- Bound by id like every other Save button, not by a
+   *  `.save-range-btn` sweep with a `:not(...)` blocklist.  That class
+   *  says how a button looks, not what it saves, so every Save button
+   *  in Bot Settings carries it — Min Interval, Max Rebalances, Check
+   *  Interval and both per-token Slippage buttons included — and a
+   *  sweep binds saveOorThreshold on top of each one's own handler. */
   _click("saveOorThresholdBtn", saveOorThreshold);
   _click("saveOorTimeoutBtn", saveOorTimeout);
   _click("saveIlGuardBtn", saveIlGuard);

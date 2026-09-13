@@ -75,9 +75,9 @@ function resolveSafe(urlPath) {
 /**
  * Stop anything already listening on the preview port.
  *
- * Re-running the command previously died with EADDRINUSE against its own
- * leftover server. Killing by PORT rather than by process name is
- * deliberate: a name pattern like `show-gallery` also matches the very
+ * Without this, re-running the command exits with EADDRINUSE against
+ * its own leftover server. Killing by PORT rather than by process name
+ * is deliberate: a name pattern like `show-gallery` also matches the
  * shell that launched the lookup, so a pattern-based kill can take out
  * its own caller.
  * @returns {void}

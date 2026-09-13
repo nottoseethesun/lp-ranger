@@ -3,12 +3,11 @@
  * @description Tests for `GET /api/rpc-endpoints`, which feeds the RPC
  *   endpoint list in Bot Settings → Network and the Add RPC dialog.
  *
- * The list used to be three hardcoded `<li>` entries in index.html, and
- * it had drifted: it offered an endpoint that is not in the failover
- * chain at all, so it advertised something the bot would never use.
- * Serving the list from the same config the failover walks is what
- * makes that impossible — which only holds if this route really does
- * report the configured order, so that is what these tests pin.
+ * Hardcoding the list in index.html would let the menu offer an
+ * endpoint that is not in the failover chain, advertising something the
+ * bot would never use. Serving it from the same config the failover
+ * walks makes that impossible — but only if this route reports the
+ * configured order faithfully, so that is what these tests pin.
  */
 
 "use strict";

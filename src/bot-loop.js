@@ -60,16 +60,16 @@ const {
  * `createBotPollScheduler` was extracted (see
  * test/bot-loop-kick-poll.test.js).
  *
- * **Asserted positively, on purpose.**  This used to decide by
- * elimination: a poll that reported no rebalance, no error and no gas
- * deferral was assumed to be a recovery.  That inference only holds if
- * every "nothing happened" result names a reason, and several do not —
- * the throttle and the pool daily cap both return a bare
+ * **Asserted positively, on purpose.**  Deciding by elimination — no
+ * rebalance, no error, no gas deferral, therefore a recovery — only
+ * holds if every "nothing happened" result names a reason, and several
+ * do not: the throttle and the pool daily cap both return a bare
  * `{rebalanced: false}` while the position sits out of range and
- * blocked.  Each one silently qualified as a recovery, so the dashboard
- * announced that a stuck position had come back and `_handleRecovery`
- * discarded the `rebalanceError` explaining why it was stuck.  Adding a
- * clause per gate would have left the next gate to repeat it.
+ * blocked.  Each would qualify as a recovery, so the dashboard would
+ * announce that a stuck position had come back and `_handleRecovery`
+ * would discard the `rebalanceError` explaining why it was stuck.  A
+ * clause per gate would also need extending every time a gate is
+ * added.
  *
  * `inRange` is set by `_checkRangeAndThreshold` (src/bot-cycle.js),
  * which runs before any gate, so no blocked result can carry it.  A

@@ -1,19 +1,18 @@
 /**
  * @file test/scan-failure-recovery.test.js
- * @description Guards two ways a failed or partial scan used to leave
- *   the app stuck, both of which put the recovery burden on the
- *   operator.
+ * @description Guards two ways a failed or partial scan can leave the
+ *   app stuck, both of which put the recovery burden on the operator.
  *
- * 1. A scan that threw left the global status on "scanning" for the life
- *    of the process. "scanning" means "still coming" to every reader, so
- *    the dashboard pulsed its Syncing badge forever and held the KPI,
- *    range and history panels under blur with pointer-events disabled.
- *    Nothing short of a restart cleared it.
+ * 1. A scan that throws must not leave the global status on "scanning".
+ *    "scanning" means "still coming" to every reader, so the dashboard
+ *    pulses its Syncing badge indefinitely and holds the KPI, range and
+ *    history panels under blur with pointer-events disabled. Nothing
+ *    short of a restart clears it.
  *
- * 2. A scan that skipped a window under best-effort still recorded
- *    "scanned through the chain head". The next scan resumed past the
- *    hole, so the events inside it stayed missing until someone thought
- *    to run Reload Position by hand.
+ * 2. A scan that skips a window under best-effort must not record
+ *    "scanned through the chain head". The next scan resumes past the
+ *    hole, so the events inside it stay missing until someone runs
+ *    Reload Position by hand.
  *
  * Both are silent: the app looks like it is working.
  */

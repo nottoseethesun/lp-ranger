@@ -157,8 +157,8 @@ function renderRecorded(row, ev, tok) {
      *  depends on whether those prices were correct at the recorded
      *  timestamp, which this tool cannot know — live prices are
      *  today's, so any older row shows a ratio purely from market
-     *  drift.  Asserting a price fault here sent the first real run
-     *  chasing a bug that did not exist. */
+     *  drift.  Asserting a price fault here would report a defect for
+     *  every row the tool reconciles. */
     console.log(
       "    → ✓ reproduces the stored figure: the arithmetic was faithful,",
     );

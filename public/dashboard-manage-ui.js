@@ -1,11 +1,11 @@
 /**
  * @file dashboard-manage-ui.js
  * @description Single owner of Manage button + badge + Lifetime panel +
- *   Pool-details button UI. Replaces the nine competing writers that
- *   used to scatter across dashboard-manage-badge.js,
- *   dashboard-events-manage.js, dashboard-data.js, and the now-deleted
- *   dashboard-throttle-rebalance.js (see the "Migrate Rebalance UI
- *   dialog into Bot Settings" plan).
+ *   Pool-details button UI. Every write to those elements goes through
+ *   here; `dashboard-manage-badge.js`, `dashboard-events-manage.js` and
+ *   `dashboard-data.js` all call `paintManageUI()` rather than touching
+ *   the DOM themselves, so the rendered state cannot depend on which
+ *   trigger fired last.
  *
  * Architecture:
  *   - `computeManageUI(inputs)` — pure: state -> UISpec (or null to skip)

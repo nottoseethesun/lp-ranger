@@ -3,12 +3,13 @@
  * @description Guards the whole-life fee figure behind the Per-Day P&L
  *   table's Fees column.
  *
- *   The column used to read `Collect(last) − DecreaseLiquidity(last)` —
- *   only the fees still unclaimed when the NFT was drained.  Anything
- *   auto-compound had already swept was folded back into liquidity, so
- *   it left again inside the drain's DecreaseLiquidity and was
- *   subtracted straight back out.  On this project's own HEX pool that
- *   showed $149 of a lifetime $1,084.
+ *   It must be measured across every Collect, not as
+ *   `Collect(last) − DecreaseLiquidity(last)`.  That pair sees only the
+ *   fees still unclaimed when the NFT was drained; anything
+ *   auto-compound already swept was folded back into liquidity, so it
+ *   leaves again inside the drain's DecreaseLiquidity and is subtracted
+ *   straight back out.  A measured case showed $149 of a lifetime
+ *   $1,084.
  *
  *   Logs are built with a real `ethers.Interface` and read back through
  *   the real parser, so these cases exercise the encode/parse path

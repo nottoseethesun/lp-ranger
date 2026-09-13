@@ -2,17 +2,16 @@
  * @file test/nft-mint-blocks.test.js
  * @description Pins the per-NFT scan floor.
  *
- * Every NFT in a rebalance chain used to be scanned from the pool's
- * creation block. An NFT cannot emit `IncreaseLiquidity`, `Collect` or
- * `DecreaseLiquidity` before the block it was minted in, so all of the
- * blocks before its mint were a guaranteed-empty walk.
+ * An NFT cannot emit `IncreaseLiquidity`, `Collect` or
+ * `DecreaseLiquidity` before the block it was minted in, so scanning
+ * one from the pool's creation block is a guaranteed-empty walk across
+ * everything before its mint.
  *
- * That was invisible while log queries ran unpaced. Once every request
- * went through the global 250 ms queue it became the dominant cost: a
- * cold-cache lifetime scan of a three-NFT chain ran ~10,000 paced
- * requests — about three quarters of an hour — and because the bot's
- * poll cycle awaits the same scan, the bot read nothing and could not
- * rebalance for the duration.
+ * Every request goes through the global 250 ms queue, so that walk is
+ * wall-clock time: a cold-cache lifetime scan of a three-NFT chain
+ * unbounded is ~10,000 paced requests, about three quarters of an
+ * hour. The bot's poll cycle awaits the same scan, so it reads nothing
+ * and cannot rebalance for the duration.
  *
  * Two things are pinned: the mapping itself, and that the scan really
  * uses it (driven through the exported `_scanCompounds`, with the

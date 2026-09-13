@@ -5,14 +5,12 @@
  * gates apply to.
  *
  * Why this file exists:
- *   The same list used to be spelled out in four places — the `format`
- *   and `format:check` npm scripts, a hard-coded copy inside
- *   `scripts/check.js`, and (broadest of all, as bare `*.js`) the
- *   `lint-staged` config that the pre-commit hook ran.  Four copies
- *   meant four chances to drift, and they had already drifted: the
- *   pre-commit hook formatted every `*.js` in the repo while
- *   `npm run lint` checked none of them, so JS formatting was written
- *   on commit but never verified by the master command.
+ *   Four consumers need the same list — the `format` and `format:check`
+ *   npm scripts, `scripts/check.js`, and the `lint-staged` config the
+ *   pre-commit hook runs.  Spelled out separately they drift, and the
+ *   drift is invisible: a hook that formats a wider set than the gate
+ *   checks writes formatting on commit that no command verifies, and
+ *   the gate stays green either way.
  *
  *   Everything that needs the list now imports it from here, and the
  *   pre-commit hook runs `npm run lint` rather than defining its own
@@ -53,8 +51,8 @@ const JS_TARGETS = [
  *
  * `util/` belongs here — these tools read operator config and hit RPC
  * endpoints, so they are exactly the code the security rules exist for.
- * `scripts/check.js` used to omit it, security-linting 155 files while
- * `npm run audit:security` covered 178.
+ * Omitting it costs roughly 23 files of coverage, and the pass still
+ * reports success on the ones it did read.
  * @type {string[]}
  */
 const SECURITY_TARGETS = ["src/", "scripts/", "util/", "server.js", "bot.js"];

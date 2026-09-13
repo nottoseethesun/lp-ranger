@@ -178,11 +178,12 @@ fs.writeFileSync(
 );
 
 // ── Lint (JS) — Prettier --check ──────────────────────────────────────────
-// JS formatting was previously enforced ONLY by the pre-commit hook, so a
-// file whose formatting drifted (or that was never committed through the
-// hook) passed both `npm run lint` and `npm run check`.  The glob list is
-// the same one `npm run format:check` uses and mirrors the ESLint targets,
-// so src/ and util/ are covered to the same depth by both passes.
+// JS formatting is verified here, not only by the pre-commit hook: a
+// file that never went through the hook, or whose formatting drifted
+// outside it, would otherwise pass both `npm run lint` and this gate.
+// The glob list is the one `npm run format:check` uses and mirrors the
+// ESLint targets, so src/ and util/ are covered to the same depth by
+// both passes.
 const prettierJsRun = run(bin("prettier"), [
   "--check",
   "--log-level=warn",
@@ -279,9 +280,8 @@ fs.writeFileSync(path.join(RAW_DIR, "npm-audit.json"), npmAuditRun.stdout);
 const securityLintRun = run(bin("eslint"), [
   "-c",
   "eslint-security.config.js",
-  /*- Shared list.  This call used to name its own directories and omit
-   *  `util/`, so the gate CI runs security-linted 155 files while
-   *  `npm run audit:security` covered 178. */
+  /*- Shared list, so the gate CI runs and `npm run audit:security`
+   *  cover the same files. */
   ...SECURITY_TARGETS,
   "--max-warnings",
   "0",
@@ -305,7 +305,7 @@ fs.writeFileSync(
 
 // ── Security: secretlint ──────────────────────────────────────────────────
 const secretlintRun = run(bin("secretlint"), [
-  /*- Shared list; this call also used to omit `util/`. */
+  /*- Shared list, for the same reason. */
   ...SECRET_TARGETS,
   "--format",
   "json",

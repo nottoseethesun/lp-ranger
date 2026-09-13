@@ -104,11 +104,10 @@ async function _scanTransfers(
    *  rebalances, which for a long-lived position runs to millions of
    *  blocks — far past every endpoint's getLogs range cap.
    *
-   *  Errors are NOT swallowed.  This used to `.catch(() => [])` on both
-   *  queries, so a range-cap rejection returned "no transfers", the
-   *  caller read that as "no fresh deposits", and the lifetime HODL
-   *  baseline came out silently understated.  A failure here must be a
-   *  failure. */
+   *  Errors are NOT swallowed.  `.catch(() => [])` here would turn a
+   *  range-cap rejection into "no transfers", which the caller reads as
+   *  "no fresh deposits", understating the lifetime HODL baseline with
+   *  nothing reported.  A failure here must be a failure. */
   const [inLogs, outLogs] = await Promise.all([
     scanChunked({
       provider,

@@ -356,11 +356,11 @@ describe("_mergeSwapSources", () => {
   });
 });
 
-/*- Regression: _swapAndAdjust used to reconstruct the result object
- *  with only txHash/gasCostWei/extra0/extra1 — dropping swapSources.
- *  Downstream _buildRebalanceResult then saw `swapped.swapSources ===
- *  undefined` and the rebalance event was logged as "(no swap)" even
- *  when the aggregator route had been used. */
+/*- `_swapAndAdjust` must carry `swapSources` through, not rebuild the
+ *  result from txHash/gasCostWei/extra0/extra1 alone.  Downstream,
+ *  `_buildRebalanceResult` reads `swapped.swapSources === undefined` as
+ *  "no swap" and logs the rebalance event that way even when the
+ *  aggregator route was used. */
 describe("_swapAndAdjust — swapSources propagation", () => {
   const EXEC_PATH = require.resolve("../src/rebalancer-execute");
   const GATES_PATH = require.resolve("../src/swap-gates");

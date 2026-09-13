@@ -20,11 +20,10 @@
  * enforces.  Runs zero HTTP requests and reads at most O(number of
  * icons) files.
  *
- * `--json` prints the machine-readable result the check report reads.
- * The report used to regex the numbers back out of the human sentence
- * below, which every other tool in the check avoids by emitting
- * structured output; rewording one log line would have silently zeroed
- * the summary row.
+ * `--json` prints the machine-readable result the check report reads,
+ * matching every other tool in the check. Parsing the human sentence
+ * below instead would make the summary row depend on its wording:
+ * rewording the line zeroes the row, and nothing reports that.
  */
 
 "use strict";

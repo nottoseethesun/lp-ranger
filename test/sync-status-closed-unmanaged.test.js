@@ -138,10 +138,9 @@ describe("_computeSyncStatus: position-state combinations", () => {
 
 describe("_computeSyncStatus: edge cases", () => {
   it("no active position → complete, labelled Synced", () => {
-    /*- The label used to be "" here.  The caller renders an empty label
-     *  as "Syncing…" while `complete: true` paints the badge green and
-     *  still, so the badge contradicted itself.  Every branch now names
-     *  its label outright. */
+    /*- Every branch must name its label outright.  The caller renders
+     *  an empty label as "Syncing…" while `complete: true` paints the
+     *  badge green and still, so an unset label contradicts itself. */
     const r = mod._computeSyncStatus({ ..._base, active: null });
     assert.strictEqual(r.complete, true);
     assert.strictEqual(r.label, "Synced");

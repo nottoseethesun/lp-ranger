@@ -11,10 +11,10 @@
  * either until this one.
  *
  * Also guards the shipped-default bounds for the Price Range Extension
- * "Default" button, and the wording of the two fee dialogs — the
- * Current panel's "Fees Earned" tooltip previously asserted the exact
- * opposite of what the code computes, which is the kind of error that
- * survives indefinitely because nothing but a reader can catch it.
+ * "Default" button, and the wording of the two fee dialogs.  Help copy
+ * that contradicts what the code computes is invisible to every gate —
+ * only a reader can catch it — so the claims that matter are pinned
+ * here against the behaviour.
  */
 
 "use strict";

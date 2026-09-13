@@ -8,8 +8,9 @@
  * anything wider — `rpc-pulsechain.g4mm4.io` answers a too-wide query
  * with JSON-RPC `-32602`, "eth_getLogs is limited to a 10000 block
  * range".  A caller that hands over a five-year span therefore gets an
- * error rather than logs, and several callers used to swallow that
- * error and report "nothing found", which is far worse than failing.
+ * error rather than logs.  A caller that swallows that error and
+ * reports "nothing found" turns an unread range into an assertion that
+ * the range is empty, which downstream code treats as settled.
  *
  * This module removes block arithmetic from every caller: hand it a
  * range and a `query` function, and it walks the range in windows no

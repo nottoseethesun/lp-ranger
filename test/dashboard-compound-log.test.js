@@ -2,12 +2,11 @@
  * @file test/dashboard-compound-log.test.js
  * @description Tests for the compound Activity Log formatter.
  *
- * Regression history: compound executions (manual + auto) were never
- * surfaced in the Activity Log — only sound effects fired.  Users saw
- * no record of compounds in the log.  Fix: parallel block in
- * dashboard-data-events.js#_logCompound that calls formatCompoundEntry
- * when `lastCompoundAt` advances.  These tests guard the pure
- * formatter against regression.
+ * Compound executions, manual and auto, reach the Activity Log through
+ * `dashboard-data-events.js#_logCompound`, which calls
+ * `formatCompoundEntry` when `lastCompoundAt` advances.  Without that
+ * block a compound fires only its sound effect and leaves no record the
+ * user can go back to.  These tests drive the pure formatter.
  */
 
 "use strict";

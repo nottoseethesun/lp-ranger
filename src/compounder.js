@@ -504,11 +504,9 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
   /*- Chunked, and resolved to a concrete head once per event type
    *  rather than per window, so all three cover the same range.
    *
-   *  The range is wide: `detectCompoundsOnChain` calls this with no
-   *  `fromBlock` at all, i.e. genesis to head.  These three queries
-   *  used to `.catch(() => [])` with no log, so a range-cap rejection
-   *  reported "no compounds ever" and the compounded-fee total silently
-   *  reset to zero.  Errors now propagate. */
+   *  Errors propagate.  `.catch(() => [])` here would turn a range-cap
+   *  rejection into "no compounds ever", resetting the compounded-fee
+   *  total to zero with nothing logged. */
   const scanEvent = (name) =>
     scanChunked({
       provider: prov,
@@ -569,9 +567,10 @@ function _sumAmounts(events, requireLiquidity) {
  * share it: `classifyCompounds` below, for the Lifetime panel's Fees
  * Compounded row, and `_supplementFeesFromChain` in
  * position-history.js, for the per-epoch figure behind the Per-Day P&L
- * table.  Those two disagreed until 2026-09-02 — the second read only
- * the fees left unclaimed at the final drain, so everything
- * auto-compound had already swept was invisible to it.
+ * table.  Both must come from here: measuring instead from the fees
+ * left unclaimed at the final drain omits everything auto-compound
+ * already swept back into liquidity, which on a compounding position is
+ * most of the total.
  *
  * @param {Array<{amount0: bigint, amount1: bigint}>} collectEvents
  * @param {Array<{amount0: bigint, amount1: bigint, liquidity: bigint}>} dlEvents
@@ -712,16 +711,11 @@ async function classifyCompounds(nftEvents, opts = {}) {
  * Fetches events via scanNftEvents, then classifies via classifyCompounds.
  */
 async function detectCompoundsOnChain(tokenId, opts = {}) {
-  /*- Pass the caller's lower bound through.  This used to call
-   *  scanNftEvents with no options at all, so every lookup started at
-   *  block 0 — the whole chain, three event types, for one NFT.
-   *
-   *  That was survivable while the queries were unchunked: three wide
-   *  calls, one round-trip each (and rejected outright by an endpoint
-   *  that caps ranges, which is how it came back empty). Chunked and
-   *  paced, the same range is thousands of requests that would hold the
-   *  global queue for the better part of an hour and stall every other
-   *  position's polling behind it.
+  /*- Pass the caller's lower bound through.  Calling scanNftEvents with
+   *  no options starts every lookup at block 0 — the whole chain, three
+   *  event types, for one NFT.  Chunked and paced, that range is
+   *  thousands of requests holding the global queue for the better part
+   *  of an hour, stalling every other position's polling behind it.
    *
    *  See feedback_no_genesis_chain_scans: every log scan needs a tight
    *  lower bound. Callers that know the pool pass its creation block. */

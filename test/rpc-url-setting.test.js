@@ -84,9 +84,9 @@ describe("readGlobalSetting", () => {
 });
 
 describe("composeRpcUrls", () => {
-  /*- Drives the real exported function.  This block used to re-implement
-   *  the composition rule locally, which is a mirror: it would have gone
-   *  on passing after the real rule changed. */
+  /*- Drives the real exported function rather than re-implementing the
+   *  composition rule locally.  A local copy is a mirror: it keeps
+   *  passing after the real rule changes. */
   const SHIPPED = ["https://a.test", "https://b.test", "https://c.test"];
 
   it("puts an added endpoint first", () => {

@@ -330,16 +330,15 @@ function _setIdlePill(d) {
     return;
   }
 
-  /*- Reached only when the position on screen is not itself running, so
-   *  this used to say MANAGING — a second word for the state RUNNING
-   *  already names, differing only in whose position it referred to.
-   *  One condition, two labels, and nothing on screen saying which you
-   *  were reading.
+  /*- Reached only when the position on screen is not itself running.
+   *  The pill still says RUNNING here, because it answers one question
+   *  in every branch: is the bot running? A second word for that state
+   *  — MANAGING — would differ only in whose position it referred to,
+   *  with nothing on screen saying which reading applied.
    *
-   *  The pill now answers one question in every branch: is the bot
-   *  running? Whether THIS position is managed is the card's job, and
-   *  it says so in words ("Being Actively Managed" / "Not Actively
-   *  Managed"); which positions are managed is the LP browser's. */
+   *  Whether THIS position is managed is the card's job, and it says so
+   *  in words ("Being Actively Managed" / "Not Actively Managed");
+   *  which positions are managed is the LP browser's. */
   _setStatusPill(
     "status-pill active",
     "dot green",

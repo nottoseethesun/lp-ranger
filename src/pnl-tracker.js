@@ -486,12 +486,12 @@ function _epochIl(ep) {
 /**
  * Aggregate epoch data into per-day P&L records.
  * Each day shows the breakdown of price-change P&L vs fee P&L.
- * Only days with activity get a row.  The table used to pad a blank row
- * for every calendar day back to the pool's first mint, which on a
- * position with 55 active days across 172 calendar days meant fifteen
- * pages of dashes hiding one page worth of figures — and it read as
- * missing data every time.  A day with no row means the same thing a
- * row of dashes did, and says it without burying the rest.
+ * Only days with activity get a row; inactive calendar days are omitted
+ * rather than padded with dashes.  Activity is sparse — 55 active days
+ * across 172 calendar is typical — so padding would put roughly fifteen
+ * pages of empty rows around one page of figures, and a row of dashes
+ * is indistinguishable from missing data.  An absent day carries the
+ * same information without the paging cost.
  *
  * @param {Epoch[]} closedEpochs
  * @param {Epoch|null} liveEpoch

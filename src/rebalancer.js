@@ -79,8 +79,8 @@ async function mintPosition(
   // adjacent-nonce TXs to the RPC, which under mempool load can force
   // the second into the `queued` sub-pool before the first reaches
   // `pending`.  On go-ethereum nodes with a saturated per-account
-  // queued pool this causes "queued sub-pool is full" rejections and
-  // a cascade as `_retrySend` used to re-sign at ever-higher nonces.
+  // queued pool this causes "queued sub-pool is full" rejections, and
+  // `_retrySend` then re-signs at ever-higher nonces, compounding it.
   // See docs/claude or MEMORY project_rpc_fallback_on_saturation.
   const appGas0 = await _ensureAllowance(
     token0Contract,
@@ -502,7 +502,8 @@ async function enrichResultUsd(result, priceFn, token0, token1) {
 }
 
 // ── Module exports ───────────────────────────────────────────────────────────
-// Re-export ALL previously exported symbols so no external callers break.
+// This module's public surface, including the symbols it re-exports
+// from the helper modules it was split into.
 
 module.exports = {
   enrichResultUsd,

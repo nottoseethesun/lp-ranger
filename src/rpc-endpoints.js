@@ -6,18 +6,12 @@
  * RPC URL control's preset menu is built from configuration instead of
  * being written into the markup.
  *
- * **Why this exists at all.**  `public/index.html` used to carry the
- * presets as three hardcoded `<li data-rpc="…">` entries.  That is
- * config data living in the presentation layer, which the project
- * forbids for a concrete reason: markup becomes a silent second source
- * of truth.  The hardcoded list had already drifted — it offered an
- * endpoint that appears nowhere else in the repo and is not part of the
- * failover chain, so the menu advertised something the bot would never
- * actually use.
- *
- * Serving the same list the failover walks means the menu cannot
- * disagree with the bot, and adding a fourth endpoint is a one-line
- * change in `chains.json` with no HTML edit.
+ * **Why not hardcode the presets in the markup.**  Config data in the
+ * presentation layer is a second source of truth that nothing
+ * reconciles: the menu can offer an endpoint the failover chain does
+ * not contain, and no gate reports the disagreement.  Serving the same
+ * list the failover walks makes that impossible, and adding a fourth
+ * endpoint is a one-line change in `chains.json` with no HTML edit.
  *
  * Mirrors `src/chart-providers.js`, which solves the same problem for
  * the chart links.

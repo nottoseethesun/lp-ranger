@@ -158,10 +158,10 @@ function setRpcUrls(urls, ethersLib) {
 /**
  * How many endpoints are actually available to move between.
  *
- * Replaces the `_primaryUrl === _fallbackUrl` check that used to appear
- * at five separate call sites.  A chain configured with one endpoint
- * (the testnet ships exactly that) cannot fail over, and every caller
- * needs to know it without re-deriving the rule.
+ * A chain configured with one endpoint (the testnet ships exactly that)
+ * cannot fail over, and five call sites need that answer.  One accessor
+ * rather than a `_primaryUrl === _fallbackUrl` test at each, which also
+ * stops being correct once the list can hold more than two.
  * @returns {number}
  */
 function _endpointCount() {
@@ -189,11 +189,10 @@ function _isReadFailoverable(err) {
 /**
  * Boot-time reachability probe for the primary RPC.  Calls
  * `primary.getBlockNumber()`; if it throws, engages `failoverToNextRPC()`
- * and verifies that `fallback.getBlockNumber()` succeeds.  Replaces the
- * boot check that previously lived in `bot-provider.createProviderWithFallback`,
- * but now reports the result through the shared `getCurrentRPC` state so
- * subsequent reads (via `getManagedReadProvider`) and writes go to the
- * same RPC.
+ * and verifies that `fallback.getBlockNumber()` succeeds.  The result
+ * is reported through the shared `getCurrentRPC` state, so subsequent
+ * reads (via `getManagedReadProvider`) and writes go to the same RPC as
+ * the probe settled on.
  *
  * Idempotent: a second call when the sticky-failover window is active
  * simply re-probes the primary and lets `failoverToNextRPC()` extend
@@ -439,10 +438,9 @@ async function _estimateWithFailover(populated, label) {
     return await cur.estimateGas(populated);
   } catch (curErr) {
     /*- Walk forward through the remaining endpoints rather than taking
-     *  a single hop.  This used to be one-way primary → fallback, which
-     *  was the whole story when the list was a pair; with an ordered
-     *  list, stopping after one hop would leave the last endpoint
-     *  unreachable on the write path for no reason.
+     *  a single hop: with three or more configured, stopping after one
+     *  hop leaves every endpoint past the second unreachable on the
+     *  write path.
      *
      *  Candidates are PROBED, not committed to: the sticky window moves
      *  only once an endpoint has actually answered.  Committing first

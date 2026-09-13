@@ -2,11 +2,12 @@
  * @file test/pool-creation-block.test.js
  * @description Tests for the pool-creation-block disk-cached resolver.
  *
- * Regression history: HODL baseline, compound classifier, closed-position
- * history, and unmanaged-position details all used `fromBlock: 0` for NFT
- * event scans, replaying every block back to chain genesis.  This module
- * resolves the pool's `PoolCreated` block once per pool, caches it to disk,
- * and feeds it to those scans as a tighter lower bound.
+ * Four callers need a lower bound for their NFT event scans — HODL
+ * baseline, compound classifier, closed-position history and
+ * unmanaged-position details — and without one each replays every block
+ * back to chain genesis.  This module resolves the pool's `PoolCreated`
+ * block once per pool and caches it to disk, so the bound costs one
+ * Factory lookup per pool rather than one per scan.
  */
 
 "use strict";

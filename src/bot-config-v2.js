@@ -44,10 +44,9 @@ const CONFIG_FILE = "bot-config.json";
 const GLOBAL_KEYS = [
   "triggerType",
   /*- `positionManager` and `factory` are deliberately NOT here.  The
-   *  dashboard used to save both, and nothing ever read them back: the
-   *  bot resolves each from .env / chains.json at startup, so the
-   *  endpoint accepted an address, wrote it to disk, and the bot went
-   *  on using a different one.
+   *  bot resolves each from .env / chains.json at startup and never
+   *  reads them back from this file, so accepting one here would write
+   *  an address to disk that nothing acts on.
    *
    *  They stay un-settable rather than being wired up, because both
    *  scope the on-disk caches (event cache, LP position cache, epoch
@@ -361,10 +360,10 @@ function loadConfig(dir) {
  * etc.) — by the time a position is started, `_persistPositionConfig`
  * has at minimum written `nftGasWeiByTokenId` or similar.
  *
- * Phantoms are produced by the bug fixed in this PR: a stale composite
- * key written by `handleManage` after a key migration during force-
- * rebalance.  This purge heals any existing `bot-config.json` that
- * carries a phantom from before the fix shipped.
+ * A phantom is a stale composite key: `handleManage` writes the key it
+ * was called with, and a force-rebalance that migrates the key in
+ * between leaves the old one behind carrying nothing but its status.
+ * An on-disk file may already hold one, so the purge runs on load.
  *
  * Conservative — never touches an entry with any field besides status
  * (no false positives possible for a legitimately-running position).
