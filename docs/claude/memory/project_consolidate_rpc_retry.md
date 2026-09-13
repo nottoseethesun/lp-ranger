@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-09-13T20:34:57.018Z
 ---
 
 **Status: DEFERRED.** Per user 2026-06-18: "It seems that there might be a lot of opportunity to consolidate the re-try code for reading token balances and other items in the app. But I don't want to do a big refactor for a long time." Holding the refactor until the user signals readiness.
@@ -59,7 +60,7 @@ Before refactoring, grep for similar patterns. Quick mental list:
 - `src/send-transaction.js` — already has its own RPC-failover Proxy + retry layer (`_retrySend` in `src/tx-retry.js`), but that's WRITE-path with nonce considerations; probably orthogonal, don't try to merge.
 - `src/event-scanner.js` — chunk-loop with rate limiting; retry on chunk failure?
 - `src/price-fetcher.js` — has Moralis → GeckoTerminal → DexScreener cascade with its own retry / fallback logic. Different shape (fallback DATA SOURCES not fallback RPCs); probably should stay separate.
-- `src/pool-creation-finder.js` — Factory event scan; check for retry pattern.
+- `src/pool-creation-finder.js` — binary search on `eth_getCode`; deliberately has NO retry. A provider error there means the node cannot serve historical state, and the caller's degraded path (return 0, keep your own floor) is correct and cheap. Leave it alone.
 
 The consolidation only makes sense for the SHAPE that appears in `getPoolState` + `_readBothBalancesWithRetry` (per-URL × per-attempt JsonRpcProvider construction). Don't try to unify with the price-source cascade or the sendTx write-path Proxy — those are different concerns.
 

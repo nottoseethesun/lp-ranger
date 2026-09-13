@@ -303,7 +303,6 @@ async function resolveFromBlock(
   if (!factoryAddress || !poolAddress) return fromBlock;
   const creationBlock = await getPoolCreationBlockCached({
     provider,
-    ethersLib,
     factoryAddress,
     poolAddress,
     onProgress,
@@ -563,15 +562,22 @@ async function _processRawEvents(
   return { merged, firstMintTimestamp, firstMintBlockNumber };
 }
 
-/** Build a human-readable label for scan progress logs. */
+/**
+ * Build a human-readable label for scan progress logs.
+ *
+ * Named for what the scan is, not just what it covers: the `[scan]`
+ * lines from this pass interleave with the per-NFT ones, and both carry
+ * a four-digit chunk count, so the prefix is what tells an operator
+ * which of the two they are reading.
+ */
 function _scanLabel(walletAddress, poolToken0, poolToken1, poolFee) {
   const wallet = walletAddress.slice(0, 8) + "…";
   if (poolToken0 && poolToken1 && poolFee) {
     const t0 = poolToken0.slice(0, 8) + "…";
     const t1 = poolToken1.slice(0, 8) + "…";
-    return `Pool ${t0}/${t1} fee=${poolFee} (wallet ${wallet})`;
+    return `Per-Pool Rebalance-History Scan: ${t0}/${t1} fee=${poolFee} (wallet ${wallet})`;
   }
-  return `All pools (wallet ${wallet})`;
+  return `Per-Pool Rebalance-History Scan: all pools (wallet ${wallet})`;
 }
 
 /** Check cache; skip pool-creation lookup if cached data exists. */

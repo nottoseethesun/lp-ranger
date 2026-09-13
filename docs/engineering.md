@@ -680,9 +680,8 @@ scan** is answered by three layered bounds, resolved in order by
 
    Most pools are nowhere near five years old, so querying every chunk
    back to `baseFrom` would waste thousands of RPC calls on empty ranges.
-   Before the chunk loop starts, `resolveFromBlock()` asks the V3 Factory
-   for its `PoolCreated(token0, token1, fee)` event; when found, the
-   block number of that event becomes the effective `fromBlock`:
+   Before the chunk loop starts, `resolveFromBlock()` resolves the block
+   the pool was deployed in, and that becomes the effective `fromBlock`:
 
    ```text
    effectiveFrom = max(baseFrom, poolCreationBlock)
@@ -691,13 +690,25 @@ scan** is answered by three layered bounds, resolved in order by
    For a pool created six months ago, this collapses a 15.8 M-block scan
    down to ~1.6 M blocks — roughly a 10× speedup on a fresh install.
 
-   `findPoolCreationBlock()` walks the factory event log **newest-first**
-   with an early exit on the first match, so a recently created pool
-   resolves in a handful of windows. It is not a binary search: the
-   factory emits `PoolCreated` for every pool on the chain, so the
-   target is found by scanning, not by bisecting on block number. An old
-   pool is correspondingly expensive — a pool created at block 18.9 M
-   costs roughly 1,100 windows — but the answer is cached permanently in
+   **`findPoolCreationBlock()` binary-searches `eth_getCode`.** Contract
+   code is account state, and state is addressable per block, so "does
+   this pool exist at block N" is a single call and the lowest block
+   answering yes is the deployment block. Over a 27.5 M-block chain that
+   is 27 calls, a few seconds, and exact.
+
+   Scanning the Factory's `PoolCreated` log cannot do this: those events
+   are ordered by block, not by pool address, so finding one pool means
+   reading every event until it appears — 900–1,100 chunked queries for a
+   pool a few years old, each paced by the global RPC queue.
+
+   The search needs **historical state**. A node that has pruned it
+   answers with an error rather than an empty result, so it cannot
+   produce a wrong block; the error reaches `getPoolCreationBlockCached`,
+   which returns `0`, and the caller's `creationBlock > fromBlock` test
+   discards it in favour of its own floor. That widens a scan rather than
+   narrowing it, so an unanswerable lookup costs time and never events.
+
+   The answer is cached permanently in
    `tmp/pool-creation-blocks-cache.json`, making it a once-per-pool cost
    paid only on a cold cache.
 

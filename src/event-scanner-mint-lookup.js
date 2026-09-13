@@ -165,7 +165,6 @@ async function findOriginalMintOnChain(
     try {
       const creation = await getPoolCreationBlockCached({
         provider,
-        ethersLib,
         factoryAddress: poolCtx.factoryAddress,
         poolAddress: poolCtx.poolAddress,
       });

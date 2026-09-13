@@ -279,7 +279,6 @@ async function initHodlBaseline(
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return;
     const poolCreationBlock = await getPoolCreationBlockCached({
       provider,
-      ethersLib,
       factoryAddress: config.FACTORY,
       poolAddress,
     });
@@ -356,7 +355,6 @@ async function getPositionBaseline(provider, ethersLib, position) {
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return null;
     const poolCreationBlock = await getPoolCreationBlockCached({
       provider,
-      ethersLib,
       factoryAddress: config.FACTORY,
       poolAddress,
     });

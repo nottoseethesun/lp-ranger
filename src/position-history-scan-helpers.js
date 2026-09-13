@@ -178,7 +178,6 @@ async function resolveScanFromBlock(prov, ethers, tokenId) {
   const poolCreationBlock = poolAddress
     ? await getPoolCreationBlockCached({
         provider: prov,
-        ethersLib: ethers,
         factoryAddress: config.FACTORY,
         poolAddress,
       })

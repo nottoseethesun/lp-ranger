@@ -22,7 +22,6 @@ const { log } = require("./log");
 const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { detectCompoundsOnChain } = require("./compounder");
-const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const {
@@ -99,7 +98,6 @@ async function _backfill(deps, position, poolState) {
       const creationBlock = poolState.poolAddress
         ? await getPoolCreationBlockCached({
             provider: deps.provider || sendTx.getManagedReadProvider(),
-            ethersLib: ethers,
             factoryAddress: config.FACTORY,
             poolAddress: poolState.poolAddress,
           })

@@ -475,29 +475,26 @@ describe("scanRebalanceHistory pool-age optimisation", () => {
     const creationBlock = 3000;
     const ethers = {
       Contract: class {
-        constructor(addr) {
-          if (addr === "0xFACTORY") {
-            this.filters = { PoolCreated: () => ({ topics: [] }) };
-            this.queryFilter = async () => [
-              {
-                args: [null, null, null, null, "0xPOOL"],
-                blockNumber: creationBlock,
-              },
-            ];
-          } else {
-            this.filters = {
-              Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }),
-            };
-            this.queryFilter = async (_f, from) => {
-              ranges.push(from);
-              return [];
-            };
-          }
+        constructor() {
+          this.filters = {
+            Transfer: (f, t) => ({ _from: f, _to: t, topics: [] }),
+          };
+          this.queryFilter = async (_f, from) => {
+            ranges.push(from);
+            return [];
+          };
         }
       },
     };
+    /*- The deployment block is resolved from the pool's own account
+     *  state, so the stub is `getCode`, not a Factory event. */
+    const provider = {
+      ...mkProvider(5000, BASE_TS),
+      getCode: async (_addr, blk) =>
+        blk >= creationBlock ? "0x60806040" : "0x",
+    };
     await scanRebalanceHistory(
-      mkProvider(5000, BASE_TS),
+      provider,
       ethers,
       scanOpts({ factoryAddress: "0xFACTORY", poolAddress: "0xPOOL" }),
     );

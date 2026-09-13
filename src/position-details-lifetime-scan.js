@@ -34,7 +34,6 @@ async function _resolveScanFromBlock(prov, ethers, poolAddress) {
   if (!poolAddress) return 0;
   return getPoolCreationBlockCached({
     provider: prov,
-    ethersLib: ethers,
     factoryAddress: config.FACTORY,
     poolAddress,
   });

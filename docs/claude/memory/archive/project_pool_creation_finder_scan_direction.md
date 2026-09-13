@@ -1,20 +1,18 @@
 ---
 name: Pool-creation Factory scan direction
-description: Resolved 2026-09-13 — findPoolCreationBlock now scans newest-first; the roadmap entry and README row are gone
+description: Obsolete 2026-09-13 — findPoolCreationBlock no longer reads the Factory log at all; it binary-searches eth_getCode
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
-modified: 2026-09-13T19:33:44.995Z
+modified: 2026-09-13T20:34:51.326Z
 ---
 
-**Resolved 2026-09-13.** `findPoolCreationBlock` passes
-`direction: "desc"` to `scanChunked`, so the Factory's `PoolCreated` log
-is walked newest-first with an early exit on the first match. The
-roadmap file `project_pool_creation_scan_direction.md` and the README's
-"Reverse the Pool-Creation Block Scan" row have been removed.
-
-Chunk width is `getLogsChunkSize` (7,500), not the 50k this memory
-originally recorded — endpoints reject `eth_getLogs` above 10,000
-blocks, so no caller can ask for wider.
+**Obsolete 2026-09-13.** Scan direction stopped mattering:
+`findPoolCreationBlock` does not read the Factory's `PoolCreated` log.
+It binary-searches `eth_getCode` for the lowest block at which the pool
+address holds contract code — 27 calls over a 27.5M-block chain,
+verified exact against both of the operator's pools. The roadmap file
+`project_pool_creation_scan_direction.md` and the README's "Reverse the
+Pool-Creation Block Scan" row are gone.
 
 Kept for history below.
 

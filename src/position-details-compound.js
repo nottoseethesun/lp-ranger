@@ -15,7 +15,6 @@ const config = require("./config");
 const { getPositionConfig, saveConfig } = require("./bot-config-v2");
 const { detectCompoundsOnChain } = require("./compounder");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
-const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const {
@@ -43,7 +42,6 @@ async function _scanFloor(poolAddress) {
   try {
     return await getPoolCreationBlockCached({
       provider: sendTx.getManagedReadProvider(),
-      ethersLib: ethers,
       factoryAddress: config.FACTORY,
       poolAddress,
     });

@@ -5,9 +5,9 @@
  * Four callers need a lower bound for their NFT event scans — HODL
  * baseline, compound classifier, closed-position history and
  * unmanaged-position details — and without one each replays every block
- * back to chain genesis.  This module resolves the pool's `PoolCreated`
- * block once per pool and caches it to disk, so the bound costs one
- * Factory lookup per pool rather than one per scan.
+ * back to chain genesis.  This module resolves the pool's deployment
+ * block once per pool and caches it in memory and on disk, so the bound
+ * costs one lookup per pool rather than one per scan.
  */
 
 "use strict";
@@ -70,45 +70,32 @@ describe("pool-creation-block", () => {
   });
 
   it("caches a successful lookup in memory and on disk", async () => {
-    let calls = 0;
+    /*- Counted on `getBlockNumber`, which the resolver calls exactly once
+     *  per cold lookup.  Counting `getCode` would count the binary
+     *  search's own steps instead. */
+    let lookups = 0;
     const provider = {
-      getBlockNumber: async () => 200,
-    };
-    /*- Stub ethersLib.Contract so findPoolCreationBlock returns block 100. */
-    const ethersLib = {
-      Contract: class {
-        constructor() {}
-        filters = {
-          PoolCreated: () => ({}),
-        };
-        async queryFilter() {
-          calls += 1;
-          return [
-            {
-              args: { 4: POOL, pool: POOL },
-              blockNumber: 100,
-            },
-          ];
-        }
+      getBlockNumber: async () => {
+        lookups += 1;
+        return 200;
       },
+      getCode: async (_addr, blk) => (blk >= 100 ? "0x60806040" : "0x"),
     };
     const first = await mod.getPoolCreationBlockCached({
       provider,
-      ethersLib,
       factoryAddress: FACTORY,
       poolAddress: POOL,
     });
     assert.equal(first, 100);
-    assert.equal(calls, 1);
+    assert.equal(lookups, 1);
     /*- Second call hits the in-memory cache. */
     const second = await mod.getPoolCreationBlockCached({
       provider,
-      ethersLib,
       factoryAddress: FACTORY,
       poolAddress: POOL,
     });
     assert.equal(second, 100);
-    assert.equal(calls, 1);
+    assert.equal(lookups, 1);
     /*- Disk cache file is written. */
     const raw = JSON.parse(fs.readFileSync(mod._CACHE_PATH, "utf8"));
     const key = FACTORY.toLowerCase() + "|" + POOL.toLowerCase();
@@ -116,45 +103,29 @@ describe("pool-creation-block", () => {
   });
 
   it("dedupes concurrent in-flight lookups for the same pool", async () => {
-    let calls = 0;
+    let lookups = 0;
     const provider = {
-      getBlockNumber: async () => 300,
-    };
-    const ethersLib = {
-      Contract: class {
-        constructor() {}
-        filters = { PoolCreated: () => ({}) };
-        async queryFilter() {
-          calls += 1;
-          await new Promise((r) => setTimeout(r, 10));
-          return [{ args: { 4: POOL, pool: POOL }, blockNumber: 42 }];
-        }
+      getBlockNumber: async () => {
+        lookups += 1;
+        /*- Hold the first lookup open so the other two arrive while it is
+         *  still in flight — otherwise they would hit the memo instead and
+         *  the dedup path would go untested. */
+        await new Promise((r) => setTimeout(r, 10));
+        return 300;
       },
+      getCode: async (_addr, blk) => (blk >= 42 ? "0x60806040" : "0x"),
     };
-    const [a, b, c] = await Promise.all([
+    const call = () =>
       mod.getPoolCreationBlockCached({
         provider,
-        ethersLib,
         factoryAddress: FACTORY,
         poolAddress: POOL,
-      }),
-      mod.getPoolCreationBlockCached({
-        provider,
-        ethersLib,
-        factoryAddress: FACTORY,
-        poolAddress: POOL,
-      }),
-      mod.getPoolCreationBlockCached({
-        provider,
-        ethersLib,
-        factoryAddress: FACTORY,
-        poolAddress: POOL,
-      }),
-    ]);
+      });
+    const [a, b, c] = await Promise.all([call(), call(), call()]);
     assert.equal(a, 42);
     assert.equal(b, 42);
     assert.equal(c, 42);
-    assert.equal(calls, 1);
+    assert.equal(lookups, 1);
   });
 
   it("re-throws AbortError so cancellation propagates to the caller", async () => {
@@ -181,21 +152,15 @@ describe("pool-creation-block", () => {
   });
 
   it("returns 0 (and caches it) when the pool is not found", async () => {
+    /*- No code at the head: the pool does not exist on this chain, so the
+     *  finder answers null and the resolver degrades to 0 — which callers
+     *  discard in favour of their own floor. */
     const provider = {
       getBlockNumber: async () => 500,
-    };
-    const ethersLib = {
-      Contract: class {
-        constructor() {}
-        filters = { PoolCreated: () => ({}) };
-        async queryFilter() {
-          return []; /*- never matches POOL */
-        }
-      },
+      getCode: async () => "0x",
     };
     const result = await mod.getPoolCreationBlockCached({
       provider,
-      ethersLib,
       factoryAddress: FACTORY,
       poolAddress: POOL,
     });
