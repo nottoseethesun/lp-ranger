@@ -77,7 +77,7 @@ function createApiStatusHandler(deps) {
         positionScan: routeHandlers.getPositionScanStatus(),
         port: config.PORT,
         host: config.HOST,
-        rpcUrl: config.RPC_URL,
+        rpcUrl: config.RPC_URLS[0],
         positionManager: config.POSITION_MANAGER,
         /*- Single source of truth for the LP-provider label is
          *  app-config/app-defaults-for-user-configurable/lp-providers.json

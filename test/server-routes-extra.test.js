@@ -79,7 +79,7 @@ describe("_handleApiConfig — global-only", () => {
     const deps = makeDeps({
       readJsonBody: async () => ({
         triggerType: "timeout",
-        rpcUrl: "http://custom",
+        rpcUrls: ["http://custom"],
       }),
     });
     const h = createRouteHandlers(deps);
@@ -87,9 +87,9 @@ describe("_handleApiConfig — global-only", () => {
     await h._handleApiConfig({}, res);
     assert.strictEqual(res._status, 200);
     assert.strictEqual(res._body.applied.triggerType, "timeout");
-    assert.strictEqual(res._body.applied.rpcUrl, "http://custom");
+    assert.deepStrictEqual(res._body.applied.rpcUrls, ["http://custom"]);
     assert.strictEqual(deps.diskConfig.global.triggerType, "timeout");
-    assert.strictEqual(deps.diskConfig.global.rpcUrl, "http://custom");
+    assert.deepStrictEqual(deps.diskConfig.global.rpcUrls, ["http://custom"]);
   });
 });
 

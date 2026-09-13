@@ -15,7 +15,6 @@ import {
   g,
   botConfig,
   toggleSettingsPopover,
-  fetchWithCsrf,
   showDisclosure,
   copyElText,
 } from "./dashboard-helpers.js";
@@ -175,27 +174,6 @@ function _qa(sel, evt, fn) {
   document.querySelectorAll(sel).forEach((el) => el.addEventListener(evt, fn));
 }
 
-const _RPC_KEY = "9mm_rpc_url";
-/** @param {string} url */
-function _saveRpc(url) {
-  try {
-    localStorage.setItem(_RPC_KEY, url);
-  } catch {
-    /* private mode */
-  }
-  _saveGlobalConfig("inRpc", "rpcUrl");
-}
-/** Save a global config key from an input element to the server. */
-function _saveGlobalConfig(inputId, configKey) {
-  const el = g(inputId);
-  if (!el) return;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ [configKey]: el.value }),
-  }).catch(() => {});
-}
-
 import {
   saveMoralisApiKey,
   saveMoralisKeyFromSettings as _saveMoralisKey,
@@ -207,6 +185,7 @@ import {
   bindSettingsDialogEvents,
   closeMoralisKeyModal,
 } from "./dashboard-settings-dialogs.js";
+import { bindRpcAddEvents } from "./dashboard-rpc-add.js";
 
 /*- Table-driven wiring for the "Return to Automatic Detection" reset
  *  buttons and their paired Cancel buttons across every inline-edit
@@ -494,26 +473,9 @@ export function bindAllEvents() {
 
   /* ── Bot configuration ────────────────── */
   _input("inMaxReb", onParamChange);
-  const rpcToggle = g("rpcToggle");
-  const rpcList = g("rpcList");
-  if (rpcToggle && rpcList) {
-    rpcToggle.addEventListener("click", () => rpcList.classList.toggle("open"));
-    rpcList.addEventListener("click", (e) => {
-      const li = e.target.closest("[data-rpc]");
-      if (!li) return;
-      const inp = g("inRpc");
-      if (inp) {
-        inp.value = li.dataset.rpc;
-        _saveRpc(inp.value);
-      }
-      rpcList.classList.remove("open");
-    });
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest(".rpc-combo")) rpcList.classList.remove("open");
-    });
-  }
-  const rpcInp = g("inRpc");
-  if (rpcInp) rpcInp.addEventListener("change", () => _saveRpc(rpcInp.value));
+  /*- The RPC list is read-only; adding one goes through its own dialog,
+   *  which wires itself. */
+  bindRpcAddEvents();
   _change("inGas", saveGasStrategy);
 
   /*- Bound by id like every other Save button.  This used to be a

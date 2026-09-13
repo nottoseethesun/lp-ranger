@@ -92,36 +92,70 @@ const _RPC_ENV_OVERRIDES = [
   process.env.RPC_URL_FALLBACK_2,
 ];
 
-/*- The RPC URL saved from Bot Settings, if the operator set one.
+/*- Endpoints the operator added with Bot Settings → Network → Add RPC,
+ *  most recently added first.
  *
  *  Read quietly at module load — this runs on every import, including
  *  in tests, so it must not log or throw.  Per the documented
- *  precedence, a value saved in Bot Settings wins over the env and
- *  shipped layers; it is the most deliberate expression of intent
- *  available, and it is the one the dashboard shows back to the
+ *  precedence, endpoints added in Bot Settings win over the env and
+ *  shipped layers; they are the most deliberate expression of intent
+ *  available, and they are what the dashboard shows back to the
  *  operator.
  *
- *  It is PREPENDED rather than used as a replacement: the operator gets
- *  their endpoint tried first, and still keeps the shipped endpoints
- *  behind it as automatic failover.  Replacing the list would mean that
- *  choosing a private node also silently gives up redundancy. */
-const _SAVED_RPC_URL = (() => {
-  const v = botConfigV2.readGlobalSetting("rpcUrl");
-  return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+ *  They are PREPENDED rather than used as a replacement: the operator
+ *  gets their endpoint tried first, and still keeps the shipped
+ *  endpoints behind it as automatic failover.  Replacing the list would
+ *  mean that choosing a private node also silently gives up
+ *  redundancy. */
+const _SAVED_RPC_URLS = (() => {
+  const v = botConfigV2.readGlobalSetting("rpcUrls");
+  return Array.isArray(v) ? v : [];
 })();
 
 /*- The composition rule itself lives in src/rpc-url-list.js as a pure
  *  function, so it can be driven directly by tests.  Resolving it here
  *  from live files and environment would otherwise leave the rule
  *  testable only by re-implementing it in a test, which is a mirror. */
+
+/**
+ * The shipped + env endpoint list, WITHOUT anything the operator added.
+ *
+ * `RPC_URLS` mixes the two, so recomposing from it would re-seed the
+ * saved entries on every save and make them impossible to remove. The
+ * server recomposes from this base plus the freshly saved list.
+ * @type {string[]}
+ */
+const RPC_URLS_BASE = composeRpcUrls({
+  envOverrides: _RPC_ENV_OVERRIDES,
+  chainUrls: _CHAIN_RPC_URLS,
+});
+
 const RPC_URLS = composeRpcUrls({
-  saved: _SAVED_RPC_URL,
+  saved: _SAVED_RPC_URLS,
   envOverrides: _RPC_ENV_OVERRIDES,
   chainUrls: _CHAIN_RPC_URLS,
 });
 
 /** Primary JSON-RPC endpoint — first entry of `RPC_URLS`. */
 const RPC_URL = RPC_URLS[0] || "";
+
+/**
+ * Replace the live endpoint list, in place, after the operator adds one.
+ *
+ * Mutates rather than rebinding because `RPC_URLS` is read directly by
+ * `src/rpc-endpoints.js`, `src/rebalancer-pools.js` and
+ * `src/server-can-reopen.js`, each of which captured the array. A
+ * rebind would leave all three walking the endpoints the process
+ * started with.
+ * @param {string[]} urls  Ordered endpoints, most-preferred first.
+ * @returns {void}
+ */
+function setRpcUrls(urls) {
+  if (!Array.isArray(urls) || urls.length === 0) {
+    throw new Error("[config] setRpcUrls: expected a non-empty array");
+  }
+  RPC_URLS.splice(0, RPC_URLS.length, ...urls);
+}
 
 /** NFT token ID for single-position NFT mode (optional). */
 const POSITION_ID = process.env.POSITION_ID || null;
@@ -324,6 +358,8 @@ module.exports = {
   DRY_RUN,
   RPC_URL,
   RPC_URLS,
+  RPC_URLS_BASE,
+  setRpcUrls,
   POSITION_ID,
   ERC20_POSITION_ADDRESS,
   REBALANCE_OOR_THRESHOLD_PCT,

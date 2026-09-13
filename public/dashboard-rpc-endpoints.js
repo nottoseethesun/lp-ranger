@@ -1,25 +1,29 @@
 /**
  * @file dashboard-rpc-endpoints.js
- * @description Fills the RPC URL control's preset menu, and its
- *   placeholder, from the endpoints the server actually uses.
+ * @description Renders the RPC endpoint list in Bot Settings → Network
+ *   from the endpoints the server actually uses, and exposes the
+ *   operator-added subset to the Add RPC dialog.
  *
- *   The menu used to be three `<li data-rpc="…">` entries written into
- *   index.html. Two problems with that: config data does not belong in
- *   markup, and the list had already drifted — it offered an endpoint
- *   that is not in the failover chain at all, so the menu advertised
- *   something the bot would never use. Reading the list from
- *   `GET /api/rpc-endpoints` means the menu and the bot cannot disagree,
- *   and a fourth endpoint needs no HTML change.
+ *   The control used to be an editable combo box: a free-text input
+ *   with a preset dropdown. Two problems. The input saved on every
+ *   `change` event, so a stray edit re-pointed the bot; and the list it
+ *   dropped down looked selectable but only ever wrote into that input,
+ *   which left "which endpoint am I actually on?" unanswered. It is now
+ *   a read-only list showing the real failover order, with adding done
+ *   deliberately through a dialog (`dashboard-rpc-add.js`).
  *
- *   Mirrors `dashboard-chart-providers.js`, which does the same for the
- *   chart links. The click handling stays in `dashboard-events.js`,
- *   which is already delegated over `[data-rpc]` and so needs no change.
+ *   The endpoint data comes from `GET /api/rpc-endpoints` rather than
+ *   from markup, so the list and the bot cannot disagree and a fourth
+ *   endpoint needs no HTML change.
  */
 
 import { g } from "./dashboard-helpers.js";
 
-/** Cached first endpoint, used as the input's placeholder. */
+/** Cached first endpoint, used by callers that build their own provider. */
 let _primaryUrl = "";
+
+/** Endpoints the operator added, newest first. Empty until loaded. */
+let _saved = [];
 
 /** The in-flight (or settled) load, so callers can wait for it. */
 let _ready = null;
@@ -45,30 +49,48 @@ export async function rpcUrlReady() {
 }
 
 /**
- * Build one preset row.
+ * The endpoints the operator added, newest first.
+ *
+ * The Add RPC dialog prepends to this list. It is the operator's own
+ * list only — never the shipped endpoints — so that adding one does not
+ * silently copy the shipped set into saved config, where it would then
+ * stop tracking `chains.json`.
+ * @returns {string[]}
+ */
+export function savedRpcUrls() {
+  return [..._saved];
+}
+
+/**
+ * Build one endpoint row.
  *
  * `createElement` + `textContent` rather than an innerHTML string: the
  * label comes from config that an operator can edit, and building
  * markup from it by interpolation is the pattern the project's lint
  * rule exists to prevent.
- * @param {{url: string, label: string}} ep
+ * @param {{url: string, host: string, label: string, primary: boolean}} ep
  * @returns {HTMLLIElement}
  */
 function _buildRow(ep) {
   const li = document.createElement("li");
-  li.dataset.rpc = ep.url;
-  li.textContent = ep.label;
   li.title = ep.url;
+  const host = document.createElement("span");
+  host.className = "9mm-pos-mgr-rpc-host";
+  host.textContent = ep.host;
+  const role = document.createElement("span");
+  role.className = ep.primary
+    ? "9mm-pos-mgr-rpc-role 9mm-pos-mgr-rpc-role-primary"
+    : "9mm-pos-mgr-rpc-role";
+  role.textContent = ep.primary ? "primary" : "failover";
+  li.append(host, role);
   return li;
 }
 
 /**
- * Fetch the endpoint list and render it into the preset menu.
+ * Fetch the endpoint list and render it.
  *
- * Failure is deliberately quiet: the combo is a free-text input, so an
- * empty menu costs the operator a dropdown, not the ability to set an
- * RPC. Logging it keeps the cause visible without a modal for something
- * this peripheral.
+ * Idempotent on first call only; use `refreshRpcEndpoints()` to pick up
+ * a newly added endpoint.
  * @returns {Promise<void>}
  */
 export async function initRpcEndpoints() {
@@ -78,33 +100,48 @@ export async function initRpcEndpoints() {
 }
 
 /**
- * Fetch the endpoint list and render the preset menu.
+ * Re-fetch and re-render, after the operator adds an endpoint.
+ *
+ * The dialog does not render the new row itself: the server decides the
+ * final order (duplicates are dropped, an endpoint already present is
+ * promoted rather than repeated), so the list has to come back from the
+ * server or it would show an order the bot does not use.
+ * @returns {Promise<void>}
+ */
+export async function refreshRpcEndpoints() {
+  _ready = _loadEndpoints();
+  return _ready;
+}
+
+/**
+ * Fetch the endpoint list and render it.
+ *
+ * Failure is deliberately quiet: an empty list costs the operator the
+ * display, not the ability to run — the bot has its own copy. Logging
+ * it keeps the cause visible without a modal for something this
+ * peripheral.
  * @returns {Promise<void>}
  */
 async function _loadEndpoints() {
   try {
     const res = await fetch("/api/rpc-endpoints");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { endpoints } = await res.json();
+    const { endpoints, saved } = await res.json();
     if (!Array.isArray(endpoints) || endpoints.length === 0) return;
 
     /*- Record the URL BEFORE touching the DOM.  `rpcUrlReady()` callers
-     *  build providers from this; a missing menu element must not cost
-     *  them the endpoint, so the data lands first and the menu is
+     *  build providers from this; a missing list element must not cost
+     *  them the endpoint, so the data lands first and the list is
      *  decoration on top of it. */
     _primaryUrl = endpoints[0].url;
+    _saved = Array.isArray(saved) ? saved : [];
 
     const list = g("rpcList");
     if (list) list.replaceChildren(...endpoints.map(_buildRow));
-    const input = g("inRpc");
-    /*- Placeholder only, never the value: an empty input means "use the
-     *  configured default", and pre-filling it would make the operator's
-     *  own saved choice indistinguishable from the shipped one. */
-    if (input && !input.placeholder) input.placeholder = _primaryUrl;
     console.log(
-      `[lp-ranger] RPC presets loaded: ${endpoints.length} endpoint(s), primary ${_primaryUrl}`,
+      `[lp-ranger] RPC endpoints loaded: ${endpoints.length} endpoint(s), primary ${_primaryUrl}, ${_saved.length} added by operator`,
     );
   } catch (e) {
-    console.log("[lp-ranger] RPC preset list unavailable:", e.message);
+    console.log("[lp-ranger] RPC endpoint list unavailable:", e.message);
   }
 }

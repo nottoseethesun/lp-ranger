@@ -26,6 +26,7 @@
 "use strict";
 
 const config = require("./config");
+const { readGlobalSetting } = require("./bot-config-v2");
 
 /**
  * Shape one endpoint for display.
@@ -62,14 +63,37 @@ function readRpcEndpoints() {
 }
 
 /**
+ * The endpoints the operator added with **Add RPC**, newest first.
+ *
+ * Read from disk rather than from `config.RPC_URLS` so the two cannot
+ * be confused: the composed list also contains the shipped endpoints,
+ * and the Add RPC dialog must prepend to the operator's own list only.
+ * Reading it back each time keeps the dialog correct after a save
+ * without a second in-memory copy to keep in step.
+ * @returns {string[]}
+ */
+function readSavedRpcUrls() {
+  const v = readGlobalSetting("rpcUrls");
+  return Array.isArray(v) ? v.filter((u) => typeof u === "string") : [];
+}
+
+/**
  * Route handler for `GET /api/rpc-endpoints`.  Always 200 with an
- * `{ endpoints: [...] }` shape.
+ * `{ endpoints: [...], saved: [...] }` shape.
  * @param {import('http').IncomingMessage} _req
  * @param {import('http').ServerResponse} res
  * @param {Function} jsonResponse  `(res, status, body) => void`
  */
 function handleRpcEndpoints(_req, res, jsonResponse) {
-  jsonResponse(res, 200, { endpoints: readRpcEndpoints() });
+  jsonResponse(res, 200, {
+    endpoints: readRpcEndpoints(),
+    saved: readSavedRpcUrls(),
+  });
 }
 
-module.exports = { readRpcEndpoints, handleRpcEndpoints, _describe };
+module.exports = {
+  readRpcEndpoints,
+  readSavedRpcUrls,
+  handleRpcEndpoints,
+  _describe,
+};

@@ -103,29 +103,35 @@ function createRouteHandlers(deps) {
   let _sessionPassword = null;
 
   /**
-   * Put a newly-saved RPC URL into service without a restart.
+   * Put newly-added RPC endpoints into service without a restart.
    *
    * Composed the same way `config.js` composes `RPC_URLS`: the
-   * operator's endpoint first, the shipped ones behind it as failover,
-   * duplicates dropped. Recomposed here rather than read from
-   * `config.RPC_URLS` because that was resolved at module load and
-   * still holds the previous value.
+   * operator's endpoints first (newest added first), the shipped ones
+   * behind them as failover, duplicates dropped. Composed from
+   * `config.RPC_URLS_BASE` — the shipped-plus-env list — rather than
+   * from `config.RPC_URLS`, which already contains previously added
+   * entries and would re-seed them on every save.
+   *
+   * `config.setRpcUrls` updates the live list as well as `sendTx`,
+   * because `GET /api/rpc-endpoints`, `rebalancer-pools` and
+   * `server-can-reopen` all read `config.RPC_URLS` directly.
    *
    * Failures are logged, not thrown: the value is already saved, and a
    * bad URL must not take down the config endpoint. The next restart
    * picks it up regardless.
-   * @param {string} url  The URL just saved.
+   * @param {string[]} saved  The operator-added endpoints just saved.
    */
-  function _applyRpcUrl(url) {
+  function _applyRpcUrls(saved) {
     try {
       const urls = composeRpcUrls({
-        saved: url,
-        chainUrls: config.RPC_URLS,
+        saved,
+        chainUrls: config.RPC_URLS_BASE,
       });
+      config.setRpcUrls(urls);
       if (sendTx.setRpcUrls(urls))
         log.info("[server] RPC now in use: %s", urls[0]);
     } catch (err) {
-      log.warn("[server] Could not apply the new RPC URL: %s", err.message);
+      log.warn("[server] Could not apply the new RPC list: %s", err.message);
     }
   }
 
@@ -137,22 +143,14 @@ function createRouteHandlers(deps) {
     for (const k of POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
     Object.assign(diskConfig.global, gPatch);
-    /*- Push the Moralis toggle into the in-memory holder immediately.
-     *  Persisting alone would leave the running process still calling a
-     *  service the operator just switched off, until the next restart —
-     *  and "it did nothing" is exactly the complaint the RPC URL field
-     *  earned by behaving that way. */
+    /*- Apply to the in-memory holder as well as persisting, so the
+     *  running process stops calling Moralis on the next price lookup
+     *  rather than at the next restart. */
     if (gPatch.moralisEnabled !== undefined)
       setServiceEnabled("moralis", gPatch.moralisEnabled !== false);
-    /*- Adopt a new RPC immediately.  Saving it and waiting for a restart
-     *  is what made this field feel dead for so long; there is no reason
-     *  for the delay. Providers are cheap to rebuild and nothing holds
-     *  one across a call.
-     *
-     *  config.RPC_URLS was resolved at module load, so recompose the
-     *  list here with the value just saved at the front — same rule
-     *  config.js applies, applied to the newer input. */
-    if (gPatch.rpcUrl !== undefined) _applyRpcUrl(gPatch.rpcUrl);
+    /*- Same for the RPC list: rebuild the providers now, not at the
+     *  next restart. */
+    if (gPatch.rpcUrls !== undefined) _applyRpcUrls(gPatch.rpcUrls);
     const hasPosKeys = Object.keys(pPatch).length > 0;
     /*- Slippage-paused clear runs FIRST so that even if disk persistence
      *  bails out (404 below), an in-flight paused bot loop still gets

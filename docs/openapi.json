@@ -372,9 +372,12 @@
                     "type": "string",
                     "description": "GLOBAL. Rebalance trigger mode."
                   },
-                  "rpcUrl": {
-                    "type": "string",
-                    "description": "GLOBAL. Primary JSON-RPC endpoint."
+                  "rpcUrls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "GLOBAL. JSON-RPC endpoints added by the operator, most recently added first. The first entry is the primary; the endpoints shipped in chains.json stay behind them as failover. Applied immediately, without a restart."
                   },
                   "approvalMultiple": {
                     "type": "integer",

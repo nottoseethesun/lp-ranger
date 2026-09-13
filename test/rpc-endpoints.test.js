@@ -1,9 +1,9 @@
 /**
  * @file test/rpc-endpoints.test.js
- * @description Tests for `GET /api/rpc-endpoints`, which feeds the
- *   dashboard's RPC preset menu.
+ * @description Tests for `GET /api/rpc-endpoints`, which feeds the RPC
+ *   endpoint list in Bot Settings → Network and the Add RPC dialog.
  *
- * The menu used to be three hardcoded `<li>` entries in index.html, and
+ * The list used to be three hardcoded `<li>` entries in index.html, and
  * it had drifted: it offered an endpoint that is not in the failover
  * chain at all, so it advertised something the bot would never use.
  * Serving the list from the same config the failover walks is what
@@ -20,6 +20,7 @@ const {
   readRpcEndpoints,
   handleRpcEndpoints,
   _describe,
+  readSavedRpcUrls,
 } = require("../src/rpc-endpoints");
 const config = require("../src/config");
 
@@ -46,7 +47,8 @@ describe("_describe — how one endpoint is presented", () => {
   });
 
   it("keeps the full URL alongside the display host", () => {
-    /*- The menu shows the host; clicking must fill in the whole URL. */
+    /*- The list shows the host; the title attribute carries the whole
+     *  URL, so both have to survive. */
     const e = _describe("https://rpc.example.com/v1/abc", 1);
     assert.strictEqual(e.url, "https://rpc.example.com/v1/abc");
     assert.strictEqual(e.host, "rpc.example.com");
@@ -54,7 +56,7 @@ describe("_describe — how one endpoint is presented", () => {
 
   it("shows an unparseable entry verbatim rather than hiding it", () => {
     /*- An operator who configured something odd should see it, not find
-     *  it silently missing from the menu. */
+     *  it silently missing from the list. */
     const e = _describe("not a url", 1);
     assert.strictEqual(e.url, "not a url");
     assert.strictEqual(e.host, "not a url");
@@ -67,7 +69,7 @@ describe("readRpcEndpoints — the served list", () => {
     assert.deepStrictEqual(
       list.map((e) => e.url),
       config.RPC_URLS,
-      "the menu must be the same list, in the same order, that failover walks",
+      "the list must be the same one, in the same order, that failover walks",
     );
   });
 
@@ -98,9 +100,9 @@ describe("handleRpcEndpoints — the route", () => {
   }
 
   it("always answers 200 with an endpoints array", () => {
-    /*- The dashboard treats a failure here as "no presets", which costs
-     *  a dropdown rather than the ability to set an RPC — so this route
-     *  has no reason to ever return an error status. */
+    /*- The dashboard treats a failure here as "no list", which costs
+     *  the display rather than the ability to run — so this route has
+     *  no reason to ever return an error status. */
     const sent = capture();
     assert.strictEqual(sent.status, 200);
     assert.ok(Array.isArray(sent.body.endpoints));
@@ -108,5 +110,19 @@ describe("handleRpcEndpoints — the route", () => {
 
   it("serves the same list readRpcEndpoints computes", () => {
     assert.deepStrictEqual(capture().body.endpoints, readRpcEndpoints());
+  });
+
+  it("reports the operator-added endpoints separately", () => {
+    /*- The Add RPC dialog prepends to THIS list, not to `endpoints`.
+     *  Sending the composed list back instead would make the first save
+     *  copy the shipped endpoints into saved config, where they would
+     *  then stop tracking chains.json. */
+    const sent = capture();
+    assert.ok(Array.isArray(sent.body.saved));
+    assert.deepStrictEqual(sent.body.saved, readSavedRpcUrls());
+  });
+
+  it("reports no added endpoints on a fresh install", () => {
+    assert.deepStrictEqual(readSavedRpcUrls(), []);
   });
 });

@@ -1,19 +1,20 @@
 /**
  * @file test/rpc-url-setting.test.js
- * @description Tests that the RPC URL saved in Bot Settings actually
- *   reaches the server.
+ * @description Tests that endpoints added with Bot Settings → Network →
+ *   Add RPC actually reach the server, and reach it immediately.
  *
- * It did not, for a long time. The dashboard wrote the value to
- * localStorage and to `bot-config.json`, the help text promised a
- * restart would apply it, and nothing ever read it back — the bot used
- * `.env` / `chains.json` regardless. A setting that silently does
- * nothing is worse than an absent one, because the operator believes
- * they have acted.
+ * The control this replaced was a free-text combo box whose value was
+ * written to localStorage and to `bot-config.json` and read back by
+ * nothing — the bot used `.env` / `chains.json` regardless. A setting
+ * that silently does nothing is worse than an absent one, because the
+ * operator believes they have acted.
  *
- * Two behaviours are worth pinning:
- *   - the saved value is honoured, and comes FIRST;
- *   - the shipped endpoints stay behind it, so choosing a private node
- *     does not silently cost you failover.
+ * Four behaviours are worth pinning:
+ *   - added endpoints are honoured, and come FIRST;
+ *   - the most recently added is the primary;
+ *   - the shipped endpoints stay behind them, so choosing a private
+ *     node does not silently cost you failover;
+ *   - the change applies without a restart.
  */
 
 "use strict";
@@ -42,27 +43,26 @@ function withConfigDir(contents) {
 describe("readGlobalSetting", () => {
   it("reads a saved global value", () => {
     const dir = withConfigDir({
-      global: { rpcUrl: "https://my-node.local" },
+      global: { rpcUrls: ["https://my-node.local"] },
       positions: {},
     });
-    assert.strictEqual(
-      readGlobalSetting("rpcUrl", dir),
+    assert.deepStrictEqual(readGlobalSetting("rpcUrls", dir), [
       "https://my-node.local",
-    );
+    ]);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("returns undefined for a key that was never set", () => {
     const dir = withConfigDir({ global: {}, positions: {} });
-    assert.strictEqual(readGlobalSetting("rpcUrl", dir), undefined);
+    assert.strictEqual(readGlobalSetting("rpcUrls", dir), undefined);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("treats an explicit null as unset", () => {
     /*- The dashboard can round-trip a cleared field as null; that means
      *  "no override", not "use the string null". */
-    const dir = withConfigDir({ global: { rpcUrl: null }, positions: {} });
-    assert.strictEqual(readGlobalSetting("rpcUrl", dir), undefined);
+    const dir = withConfigDir({ global: { rpcUrls: null }, positions: {} });
+    assert.strictEqual(readGlobalSetting("rpcUrls", dir), undefined);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -77,7 +77,7 @@ describe("readGlobalSetting", () => {
   ]) {
     it(`returns undefined for ${label}, without throwing`, () => {
       const dir = withConfigDir(contents);
-      assert.strictEqual(readGlobalSetting("rpcUrl", dir), undefined);
+      assert.strictEqual(readGlobalSetting("rpcUrls", dir), undefined);
       fs.rmSync(dir, { recursive: true, force: true });
     });
   }
@@ -89,9 +89,9 @@ describe("composeRpcUrls", () => {
    *  on passing after the real rule changed. */
   const SHIPPED = ["https://a.test", "https://b.test", "https://c.test"];
 
-  it("puts the saved endpoint first", () => {
+  it("puts an added endpoint first", () => {
     const urls = composeRpcUrls({
-      saved: "https://mine.test",
+      saved: ["https://mine.test"],
       chainUrls: SHIPPED,
     });
     assert.strictEqual(urls[0], "https://mine.test");
@@ -101,45 +101,78 @@ describe("composeRpcUrls", () => {
     /*- The point of prepending rather than replacing: choosing your own
      *  node must not quietly cost you redundancy. */
     const urls = composeRpcUrls({
-      saved: "https://mine.test",
+      saved: ["https://mine.test"],
       chainUrls: SHIPPED,
     });
     assert.deepStrictEqual(urls, ["https://mine.test", ...SHIPPED]);
   });
 
-  it("is a no-op when the saved value is already the shipped primary", () => {
-    const urls = composeRpcUrls({ saved: SHIPPED[0], chainUrls: SHIPPED });
+  it("makes the most recently added endpoint the primary", () => {
+    /*- The Add RPC dialog prepends, so index 0 is the newest.  Pinned
+     *  because "newest wins" is the whole contract of that button. */
+    const urls = composeRpcUrls({
+      saved: ["https://newest.test", "https://older.test"],
+      chainUrls: SHIPPED,
+    });
+    assert.deepStrictEqual(urls, [
+      "https://newest.test",
+      "https://older.test",
+      ...SHIPPED,
+    ]);
+  });
+
+  it("is a no-op when the added endpoint is already the shipped primary", () => {
+    const urls = composeRpcUrls({ saved: [SHIPPED[0]], chainUrls: SHIPPED });
     assert.deepStrictEqual(urls, SHIPPED, "must not list the same URL twice");
   });
 
-  it("promotes a saved endpoint already further down the list", () => {
-    const urls = composeRpcUrls({ saved: SHIPPED[2], chainUrls: SHIPPED });
+  it("promotes an endpoint already further down the list", () => {
+    const urls = composeRpcUrls({ saved: [SHIPPED[2]], chainUrls: SHIPPED });
     assert.deepStrictEqual(urls, [SHIPPED[2], SHIPPED[0], SHIPPED[1]]);
     assert.strictEqual(new Set(urls).size, urls.length, "no duplicates");
   });
 
-  it("falls back to the shipped list when nothing is saved", () => {
-    assert.deepStrictEqual(composeRpcUrls({ chainUrls: SHIPPED }), SHIPPED);
+  it("drops a repeat of an already-added endpoint", () => {
+    /*- Re-adding one the operator already added promotes it rather than
+     *  listing it twice — failing over to the endpoint just left is a
+     *  wasted round-trip. */
+    const urls = composeRpcUrls({
+      saved: ["https://mine.test", "https://other.test", "https://mine.test"],
+      chainUrls: SHIPPED,
+    });
+    assert.deepStrictEqual(urls, [
+      "https://mine.test",
+      "https://other.test",
+      ...SHIPPED,
+    ]);
   });
 
-  it("ignores a blank or whitespace-only saved value", () => {
+  it("falls back to the shipped list when nothing was added", () => {
+    assert.deepStrictEqual(composeRpcUrls({ chainUrls: SHIPPED }), SHIPPED);
     assert.deepStrictEqual(
-      composeRpcUrls({ saved: "   ", chainUrls: SHIPPED }),
+      composeRpcUrls({ saved: [], chainUrls: SHIPPED }),
       SHIPPED,
     );
   });
 
-  it("trims a saved value", () => {
+  it("ignores blank and whitespace-only entries", () => {
+    assert.deepStrictEqual(
+      composeRpcUrls({ saved: ["   ", ""], chainUrls: SHIPPED }),
+      SHIPPED,
+    );
+  });
+
+  it("trims an added value", () => {
     const urls = composeRpcUrls({
-      saved: "  https://mine.test  ",
+      saved: ["  https://mine.test  "],
       chainUrls: SHIPPED,
     });
     assert.strictEqual(urls[0], "https://mine.test");
   });
 
-  it("layers a saved value above env overrides", () => {
+  it("layers added endpoints above env overrides", () => {
     const urls = composeRpcUrls({
-      saved: "https://mine.test",
+      saved: ["https://mine.test"],
       envOverrides: ["https://env.test"],
       chainUrls: SHIPPED,
     });
@@ -165,10 +198,7 @@ describe("composeRpcUrls", () => {
   });
 });
 
-describe("a saved RPC takes effect without a restart", () => {
-  /*- The field was dead for a long time, then merely slow: saved, but
-   *  not in use until the next restart, which the help text admitted.
-   *  These pin that it is adopted on save. */
+describe("an added RPC takes effect without a restart", () => {
   const sendTx = require("../src/send-transaction");
   const config = require("../src/config");
 
@@ -184,14 +214,14 @@ describe("a saved RPC takes effect without a restart", () => {
 
   function bootedAtDefaults() {
     sendTx._resetForTests();
-    sendTx.init({ urls: config.RPC_URLS }, LIB);
+    sendTx.init({ urls: config.RPC_URLS_BASE }, LIB);
   }
 
   it("puts the new endpoint in use immediately", () => {
     bootedAtDefaults();
     const urls = composeRpcUrls({
-      saved: "https://my-node.local",
-      chainUrls: config.RPC_URLS,
+      saved: ["https://my-node.local"],
+      chainUrls: config.RPC_URLS_BASE,
     });
     assert.strictEqual(sendTx.setRpcUrls(urls, LIB), true);
     assert.strictEqual(
@@ -204,25 +234,69 @@ describe("a saved RPC takes effect without a restart", () => {
   it("keeps the shipped endpoints behind it as failover", () => {
     bootedAtDefaults();
     const urls = composeRpcUrls({
-      saved: "https://my-node.local",
-      chainUrls: config.RPC_URLS,
+      saved: ["https://my-node.local"],
+      chainUrls: config.RPC_URLS_BASE,
     });
     sendTx.setRpcUrls(urls, LIB);
     assert.strictEqual(sendTx.failoverToNextRPC(), true);
-    assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS[0]);
+    assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS_BASE[0]);
   });
 
-  it("does not rebuild when the value has not changed", () => {
+  it("does not rebuild when the list has not changed", () => {
     /*- An unrelated config save must not reset a failover window that
      *  is doing its job. */
     bootedAtDefaults();
-    assert.strictEqual(sendTx.setRpcUrls([...config.RPC_URLS], LIB), false);
+    assert.strictEqual(
+      sendTx.setRpcUrls([...config.RPC_URLS_BASE], LIB),
+      false,
+    );
   });
 
   it("refuses an empty list rather than leaving no endpoints", () => {
     bootedAtDefaults();
     assert.throws(() => sendTx.setRpcUrls([], LIB), /non-empty/);
-    assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS[0]);
+    assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS_BASE[0]);
+  });
+});
+
+describe("config.setRpcUrls keeps the live list truthful", () => {
+  /*- `GET /api/rpc-endpoints`, `rebalancer-pools` and
+   *  `server-can-reopen` all read `config.RPC_URLS` directly, so the
+   *  live list has to change in place.  A rebind would leave all three
+   *  walking the endpoints the process started with — which is exactly
+   *  the "saved but not in use" failure this whole feature exists to
+   *  remove. */
+  const config = require("../src/config");
+  const { readRpcEndpoints } = require("../src/rpc-endpoints");
+
+  it("updates what the endpoints route reports", () => {
+    const original = [...config.RPC_URLS];
+    try {
+      config.setRpcUrls(["https://added.test", ...config.RPC_URLS_BASE]);
+      const eps = readRpcEndpoints();
+      assert.strictEqual(eps[0].url, "https://added.test");
+      assert.strictEqual(eps[0].primary, true);
+      assert.strictEqual(eps[1].primary, false);
+    } finally {
+      config.setRpcUrls(original);
+    }
+  });
+
+  it("is the same array object, not a replacement", () => {
+    const before = config.RPC_URLS;
+    const original = [...config.RPC_URLS];
+    try {
+      config.setRpcUrls(["https://added.test"]);
+      assert.strictEqual(config.RPC_URLS, before, "captured refs must see it");
+      assert.deepStrictEqual(config.RPC_URLS, ["https://added.test"]);
+    } finally {
+      config.setRpcUrls(original);
+    }
+  });
+
+  it("refuses an empty list", () => {
+    assert.throws(() => config.setRpcUrls([]), /non-empty/);
+    assert.ok(config.RPC_URLS.length > 0);
   });
 });
 
@@ -241,5 +315,16 @@ describe("the live config", () => {
       config.RPC_URLS.length,
       "failing over to the endpoint we just left is a wasted round-trip",
     );
+  });
+
+  it("exposes the shipped list separately from the composed one", () => {
+    /*- The server recomposes from RPC_URLS_BASE.  If that quietly
+     *  became the same array as RPC_URLS, every save would re-seed the
+     *  operator's own endpoints into the base and they could never be
+     *  removed. */
+    const config = require("../src/config");
+    assert.ok(Array.isArray(config.RPC_URLS_BASE));
+    assert.ok(config.RPC_URLS_BASE.length > 0);
+    assert.notStrictEqual(config.RPC_URLS_BASE, config.RPC_URLS);
   });
 });

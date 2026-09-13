@@ -2140,7 +2140,7 @@ position as stopped, or polluting internal bookkeeping fields).
 
 LP Ranger prevents this with a strict `allowlist`. The route handler
 in `src/server-routes.js` walks two hardcoded arrays —
-`GLOBAL_KEYS` (gas strategy, RPC URL, etc.) and `POSITION_KEYS`
+`GLOBAL_KEYS` (gas strategy, RPC URLs, etc.) and `POSITION_KEYS`
 (slippage, threshold, timeout, auto-compound settings, etc.) defined
 in `src/bot-config-v2.js` — and copies only those recognized names
 from the request body. Every other field is silently dropped. Because

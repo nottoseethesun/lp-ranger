@@ -400,23 +400,11 @@ function _afterDisclaimer() {
 
   // ── Activity log ─────────────────────────────────────────────────────────────
 
-  /*- Preset menu + placeholder, from the endpoints the server actually
-   *  uses.  Fired before the localStorage restore below so the operator's
-   *  own saved value still wins over the placeholder. */
+  /*- The endpoint list, in the failover order the bot actually walks.
+   *  Read-only — Add RPC has its own dialog.  The list is no longer
+   *  mirrored into localStorage: the server holds it, and a browser
+   *  copy could disagree with the endpoints the bot is really using. */
   initRpcEndpoints();
-
-  // Restore RPC URL from localStorage
-  (function restoreRpcUrl() {
-    try {
-      const saved = localStorage.getItem("9mm_rpc_url");
-      if (saved) {
-        const el = g("inRpc");
-        if (el) el.value = saved;
-      }
-    } catch {
-      /* private mode */
-    }
-  })();
 
   act(ACT_ICONS.play, "start", "Dashboard Ready", "Import a wallet to begin");
 

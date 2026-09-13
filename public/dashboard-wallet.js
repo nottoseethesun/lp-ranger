@@ -181,9 +181,6 @@ export function getUpdateRouteForWallet() {
  * @returns {Promise<string>}
  */
 export async function getRpcUrl() {
-  const el = g("inRpc");
-  const typed = el && el.value.trim();
-  if (typed) return typed;
   return await rpcUrlReady();
 }
 

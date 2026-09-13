@@ -122,11 +122,9 @@ function init(rpcConfig, ethersLib) {
  * over the endpoint list, and it should stay. This is the explicit,
  * operator-initiated exception.
  *
- * Why this exists at all: the RPC URL saved in Bot Settings used to
- * need a restart, and the help text said so. There is no reason for
- * that. Providers are cheap to rebuild and nothing holds one across a
- * call — `getManagedReadProvider` resolves through `getCurrentRPC()` on
- * every property access, and the nonce manager rebinds when the active
+ * Safe to call mid-run: nothing holds a provider across a call.
+ * `getManagedReadProvider` resolves through `getCurrentRPC()` on every
+ * property access, and the nonce manager rebinds when the active
  * provider changes.
  *
  * Rebuilding resets the failover position to the top of the new list

@@ -149,12 +149,23 @@ override it positionally, so setting only `RPC_URL` leaves the endpoints behind
 it intact. See
 [RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking).
 
-There is a fourth source, and it outranks all of these: the **RPC URL** field
-in the dashboard's Bot Settings. It is saved to `bot-config.json` and goes
-first in the list, with the endpoints above kept behind it as automatic
-failover — so pointing LP Ranger at your own node does not cost you
-redundancy. Unlike the layers above, it is applied to the running process the
-moment you save it; no restart.
+There is a fourth source, and it outranks all of these: **Bot Settings →
+Network → Add RPC** in the dashboard. The section lists the endpoints in the
+order the bot tries them, marking the one in use as *primary*; the list is
+read-only, and **Add RPC** opens a dialog with Save and Close buttons, so an
+endpoint is only ever added deliberately.
+
+What you add becomes the new primary, and everything already listed stays
+behind it as automatic failover — so pointing LP Ranger at your own node does
+not cost you redundancy. Add a second, and it becomes the primary in turn,
+pushing the first down one place. Added endpoints are stored in
+`bot-config.json` under `rpcUrls`, newest first. Duplicates are dropped, so
+re-adding one already present promotes it rather than listing it twice.
+
+Unlike the layers above, an addition is applied to the running process the
+moment you save it; no restart. The endpoint is not contacted before being
+added — an endpoint can be down at the moment you add it and fine a minute
+later, and the failover list already handles one that never answers.
 
 - `REBALANCE_OOR_THRESHOLD_PCT` — % beyond boundary to trigger rebalance
   (default: `10`)

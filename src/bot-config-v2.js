@@ -58,7 +58,7 @@ const GLOBAL_KEYS = [
    *  A value left in an existing bot-config.json from before is inert:
    *  nothing reads it, and POST /api/config will no longer accept a
    *  new one. */
-  "rpcUrl",
+  "rpcUrls",
   /*-
    *  Whether the stored Moralis key may be used.  Separate from whether
    *  a key exists: an operator whose quota has run out wants the calls

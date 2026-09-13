@@ -1961,65 +1961,62 @@ header{
   margin-bottom:12px;
 }
 
-/* ── RPC combo input ── */
+/* ── RPC endpoint list (read-only; Add RPC opens a dialog) ── */
 
-.rpc-combo{
-  position:relative;
-  display:flex;
-  align-items:stretch;
-}
-
-.rpc-combo-input{
-  flex:1;
-  border-top-right-radius:0;
-  border-bottom-right-radius:0;
-}
-
-.rpc-combo-toggle{
-  background:var(--bg3);
-  border:1px solid var(--border);
-  border-left:0;
-  border-radius:0 9px 9px 0;
-  color:var(--muted);
-  cursor:pointer;
-  font-size:15px;
-  padding:0 12px;
-  transition:background .2s;
-}
-
-.rpc-combo-toggle:hover{
-  background:var(--border);
-}
-
-.rpc-combo-list{
-  display:none;
-  position:absolute;
-  top:100%;
-  left:0;
-  right:0;
+.\39 mm-pos-mgr-rpc-list{
   list-style:none;
-  background:var(--bg2);
+  margin:0;
+  padding:0;
   border:1px solid var(--border);
-  border-radius:0 0 9px 9px;
-  z-index:20;
-  max-height:270px;
-  overflow-y:auto;
+  border-radius:9px;
+  background:var(--bg2);
+  overflow:hidden;
 }
 
-.rpc-combo-list.open{
-  display:block;
-}
-
-.rpc-combo-list li{
-  padding:12px 15px;
-  font-size:18px;
+.\39 mm-pos-mgr-rpc-list li{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 14px;
+  font-size:16px;
   color:var(--text);
-  cursor:pointer;
-  transition:background .15s;
 }
 
-.rpc-combo-list li:hover{
-  background:var(--bg3);
+.\39 mm-pos-mgr-rpc-list li + li{
+  border-top:1px solid var(--border);
+}
+
+.\39 mm-pos-mgr-rpc-host{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.\39 mm-pos-mgr-rpc-role{
+  flex:none;
+  font-size:13px;
+  letter-spacing:.5px;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+
+/* Lawn green (--accent3): the endpoint currently in use. */
+.\39 mm-pos-mgr-rpc-role-primary{
+  color:var(--accent3);
+}
+
+.\39 mm-pos-mgr-rpc-add-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+}
+
+/* Crimson (--danger): inline validation message in the Add RPC dialog. */
+.\39 mm-pos-mgr-rpc-add-error{
+  margin:10px 0 0;
+  color:var(--danger);
+  font-size:15px;
 }
 
 /* Token type selector */

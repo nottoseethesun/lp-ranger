@@ -1128,37 +1128,40 @@ export const PARAM_HELP = {
     ],
   },
 
-  inRpc: {
-    title: "RPC URL",
+  rpcUrls: {
+    title: "RPC URLs",
     sections: [
       {
         heading: "What it does",
         body:
-          "The blockchain RPC endpoint LP Ranger uses to read on-chain " +
-          "data and submit transactions. This is your connection to the " +
-          "PulseChain network. What you enter here is tried first, and " +
-          "the endpoints LP Ranger ships with stay behind it as " +
-          "automatic backups \u2014 so using your own node does not cost " +
-          "you failover.",
+          "The blockchain RPC endpoints LP Ranger uses to read on-chain " +
+          "data and submit transactions — your connection to the " +
+          "PulseChain network. The list is shown in the order the bot " +
+          "tries them: the one marked <strong>primary</strong> is the " +
+          "one in use, and the rest are automatic failover for when it " +
+          "stops responding.",
       },
       {
         heading: "Recommended values",
         body:
-          "Leave it blank to use the endpoints LP Ranger ships with. The " +
-          "dropdown lists them in the order the bot tries them. If you " +
-          "run your own PulseChain node, enter its URL here for maximum " +
-          "privacy and reliability.",
+          "The endpoints LP Ranger ships with work as-is, and most " +
+          "people never change them. If you run your own PulseChain " +
+          "node, use <strong>Add RPC</strong> to enter its URL for " +
+          "maximum privacy and reliability. What you add becomes the " +
+          "primary, and the shipped endpoints stay behind it — so " +
+          "using your own node does not cost you failover.",
       },
       {
         heading: "When to change",
         body:
-          "Change if you experience RPC timeouts, slow responses, or " +
-          "want to use a private node. LP Ranger ships with several " +
-          "endpoints and moves down the list automatically when one " +
-          "stops responding, sticking with the replacement for an hour " +
-          "before trying the preferred one again. " +
-          "<strong>The change takes effect immediately</strong> — the " +
-          "next on-chain read or transaction uses it. No restart needed.",
+          "Add one if you experience RPC timeouts, slow responses, or " +
+          "want to use a private node. LP Ranger moves down the list " +
+          "automatically when an endpoint stops responding, sticking " +
+          "with the replacement for an hour before trying the preferred " +
+          "one again. " +
+          "<strong>The change takes effect immediately</strong> — " +
+          "the next on-chain read or transaction uses it. No restart " +
+          "needed.",
       },
     ],
   },
