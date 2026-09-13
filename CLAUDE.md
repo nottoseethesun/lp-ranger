@@ -282,8 +282,9 @@ npm run test:coverage  # with --experimental-test-coverage (Node 20+)
 npm run test:watch     # watch mode
 npm run check          # Combined lint (JS+CSS) + test + coverage check
 npm run reset-wallet   # Delete app-config/user-configurable/wallet.json + clear WALLET_PASSWORD from .env
-npm run clean          # reset-wallet + delete bot config, epoch cache, rebalance log, event cache
-                       # NOTE: misses pool-creation/liquidity-pair/token-symbol caches — NOT a cold start
+npm run clean          # Full reset to fresh-clone state: wallet, bot config, api keys, rebalance log,
+                       # every tmp/*.json cache, logs, and build artifacts (rebuild before npm start)
+npm run dev-clean      # Same, but keeps the price/block-time/gecko caches (they cost API quota)
 npm run clear-blockchain-scan-cache  # Delete tmp/*.json (every blockchain scan cache); refuses if the server is running
 npm run nuke           # Delete node_modules + package-lock.json for a clean reinstall
 npm run wipe-settings  # Back up user settings to tmp/.settings-backup/ (fresh-install simulation)

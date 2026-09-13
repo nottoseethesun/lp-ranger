@@ -1032,30 +1032,35 @@ blockchain wallet scans on next start to rebuild caches.
   live process achieves nothing: it rewrites the files within seconds and
   keeps its in-memory copies regardless. `-- --dry-run` lists without
   deleting. Configuration, wallet and API keys are untouched.
-- `npm run clean` — `reset-wallet` + delete every runtime file under
-  `app-config/user-configurable/` (`bot-config.json`,
-  `bot-config.backup.json`, `api-keys.json`) and `app-data/`
-  (`rebalance_log.json`) plus most `tmp/` caches and the entire
-  `test/report-artifacts/` directory.
-  **It does not clear every cache.** It names each file individually and
-  three have been added since without being added to the list:
-  `pool-creation-blocks-cache.json`,
-  `liquidity-pair-details-cache.json` and `token-symbol-cache.json`
-  survive it. So `clean` does **not** give a cold-cache start — use
-  `clear-blockchain-scan-cache` for that.
-  **Note:** browser localStorage is NOT cleared by this command, and does
-  not need to be for a cold scan — the browser holds display state only
-  (last viewed position, privacy toggles, price overrides, a copy of the
+- `npm run clean` — Returns the install to the state a fresh clone is
+  in. Stops the server and **waits for it to exit**, runs `reset-wallet`,
+  then deletes operator state (`bot-config.json`,
+  `bot-config.backup.json`, `api-keys.json`, `rebalance_log.json`),
+  every `tmp/*.json` cache, `logs/*.log`, the build artifacts
+  (`public/dist/`, `public/fonts/`, `public/ui-tokens.css`,
+  `public/disclosure-content.js`) and `test/report-artifacts/`.
+  Run `npm run build` before `npm start` afterwards — the prestart guard
+  names the missing files if you forget.
+  Implemented in [`scripts/clean.js`](../scripts/clean.js), which
+  delegates the cache to `clear-blockchain-scan-cache.js` rather than
+  keeping its own list. It used to keep one, and three caches added
+  since were never added to it, so a "full state reset" quietly left a
+  warm cache — the exact condition the command exists to remove.
+  **Note:** browser localStorage is NOT cleared, and does not need to be
+  for a cold scan — the browser holds display state only (last viewed
+  position, privacy toggles, price overrides, a copy of the
   rebalance-events list for instant paint). None of it makes the server
   skip a scan. Clear it via the Settings gear icon → "Clear Local Storage
   & Cookies" only when you actually want the browser-side preferences
   reset, accepting that wallet re-entry and per-position UI state go with
   it.
-- `npm run dev-clean` — Same as `clean` but preserves the historical price
-  cache (`tmp/historical-price-cache.json`), the block-time cache
-  (`tmp/block-time-cache.json`), and the gecko-pool orientation cache
-  (`tmp/gecko-pool-cache.json`) for faster restart during development.
-  Avoids re-fetching GeckoTerminal data.
+- `npm run dev-clean` — The same run with three caches preserved for a
+  faster development restart: the historical price cache
+  (`tmp/historical-price-cache.json`), the block-time cache
+  (`tmp/block-time-cache.json`) and the gecko-pool orientation cache
+  (`tmp/gecko-pool-cache.json`). None is derived from chain and all three
+  cost third-party API quota to refill. Logs are kept too. Same script,
+  `--dev`.
 
 ### Housekeeping
 

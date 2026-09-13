@@ -12,6 +12,11 @@
  *
  * Clearing it is how you test scan behaviour from cold.
  *
+ * Also the single definition of "the scan cache" for
+ * `scripts/clean.js`, which used to carry its own hand-written list of
+ * cache filenames. That list had drifted: three caches added since
+ * survived a "full state reset". One list, one place.
+ *
  * Usage:
  *   npm run clear-blockchain-scan-cache
  *   npm run clear-blockchain-scan-cache -- --dry-run
@@ -25,8 +30,6 @@ const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const TMP = path.join(ROOT, "tmp");
 const PID_FILE = path.join(TMP, "lp-ranger.pid");
-
-const DRY_RUN = process.argv.includes("--dry-run");
 
 /**
  * The PID of a running server, or null.
@@ -54,6 +57,29 @@ function runningPid() {
   }
 }
 
+/**
+ * Wait for a shutting-down server to actually exit.
+ *
+ * `npm run clean` sends SIGTERM and then clears the cache. Shutdown is
+ * not instant — the server stops every position and closes the HTTP
+ * listener first — so checking once would refuse on a server that is
+ * two seconds from gone. Polls instead, and only gives up if the
+ * process is genuinely still there.
+ * @param {number} [timeoutMs=15000]
+ * @returns {number|null}  Surviving PID, or null once it is gone.
+ */
+function waitForServerExit(timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  let pid = runningPid();
+  while (pid !== null && Date.now() < deadline) {
+    /*- Synchronous sleep: this is a CLI step that must finish before
+     *  the next one starts, and there is nothing else to do meanwhile. */
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    pid = runningPid();
+  }
+  return pid;
+}
+
 /** Human-readable byte count. */
 function human(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -61,31 +87,31 @@ function human(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function main() {
-  const pid = runningPid();
-  if (pid !== null) {
-    console.error(
-      `[clear-cache] LP Ranger is running (PID ${pid}). Stop it first:\n\n    npm stop\n`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  let files;
+/**
+ * Delete every `tmp/*.json`, optionally keeping some by name.
+ *
+ * Non-`.json` entries are left alone by design: `tmp/` also collects
+ * the PID file, ad-hoc diagnostic output and developer scratch files
+ * that no app code wrote and that no reset should destroy.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.dryRun]      Report without deleting.
+ * @param {string[]} [opts.preserve]   Bare filenames to keep.
+ * @returns {{files: string[], kept: string[], removed: number, bytes: number}}
+ */
+function clearScanCache({ dryRun = false, preserve = [] } = {}) {
+  const keep = new Set(preserve);
+  let entries;
   try {
-    files = fs
-      .readdirSync(TMP)
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => path.join(TMP, f));
+    entries = fs.readdirSync(TMP).filter((f) => f.endsWith(".json"));
   } catch {
-    console.log("[clear-cache] No tmp/ directory — nothing to clear.");
-    return;
+    return { files: [], kept: [], removed: 0, bytes: 0 };
   }
 
-  if (files.length === 0) {
-    console.log("[clear-cache] Cache already empty — nothing to clear.");
-    return;
-  }
+  const kept = entries.filter((f) => keep.has(f));
+  const files = entries
+    .filter((f) => !keep.has(f))
+    .map((f) => path.join(TMP, f));
 
   let bytes = 0;
   for (const f of files) {
@@ -95,14 +121,7 @@ function main() {
       /*- Raced with something else removing it; it is going anyway. */
     }
   }
-
-  if (DRY_RUN) {
-    console.log(
-      `[clear-cache] DRY RUN — would delete ${files.length} file(s), ${human(bytes)}:`,
-    );
-    for (const f of files) console.log("    " + path.relative(ROOT, f));
-    return;
-  }
+  if (dryRun) return { files, kept, removed: 0, bytes };
 
   let removed = 0;
   for (const f of files) {
@@ -115,9 +134,36 @@ function main() {
       );
     }
   }
+  return { files, kept, removed, bytes };
+}
+
+function main() {
+  const dryRun = process.argv.includes("--dry-run");
+  const pid = waitForServerExit();
+  if (pid !== null) {
+    console.error(
+      `[clear-cache] LP Ranger is running (PID ${pid}). Stop it first:\n\n    npm stop\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const r = clearScanCache({ dryRun });
+  if (r.files.length === 0) {
+    console.log("[clear-cache] Cache already empty — nothing to clear.");
+    return;
+  }
+
+  if (dryRun) {
+    console.log(
+      `[clear-cache] DRY RUN — would delete ${r.files.length} file(s), ${human(r.bytes)}:`,
+    );
+    for (const f of r.files) console.log("    " + path.relative(ROOT, f));
+    return;
+  }
 
   console.log(
-    `[clear-cache] Cleared ${removed} cache file(s), ${human(bytes)} freed.`,
+    `[clear-cache] Cleared ${r.removed} cache file(s), ${human(r.bytes)} freed.`,
   );
   console.log(
     "[clear-cache] Next start re-scans from chain. Let it finish so the " +
@@ -125,4 +171,6 @@ function main() {
   );
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { clearScanCache, runningPid, waitForServerExit, human, TMP };
