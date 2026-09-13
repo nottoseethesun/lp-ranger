@@ -70,4 +70,27 @@ function scanFloorFor(mintBlocks, tokenId, fallbackBlock) {
   return typeof known === "number" ? known : fallbackBlock;
 }
 
-module.exports = { mintBlocksByTokenId, scanFloorFor };
+/**
+ * The block one NFT's event scan should start at, given a floor shared
+ * by the whole chain.
+ *
+ * The shared floor is the pool's creation block on a first run, or a
+ * checkpoint from a previous scan when resuming. `Math.max` is what
+ * makes both correct with one rule: a later mint block tightens a
+ * pool-creation floor, and a later checkpoint beats an earlier mint
+ * block so a resume never re-walks ground it already covered.
+ *
+ * Every loop that scans a chain of NFTs must go through this. Four such
+ * loops existed and three of them started every NFT at the shared
+ * floor, which on a long chain is the dominant cost of the whole scan.
+ *
+ * @param {Map<string, number>} mintBlocks  From `mintBlocksByTokenId`.
+ * @param {string|number} tokenId
+ * @param {number} sharedFloor  Pool creation block, or resume checkpoint.
+ * @returns {number}
+ */
+function nftScanFrom(mintBlocks, tokenId, sharedFloor) {
+  return Math.max(sharedFloor, scanFloorFor(mintBlocks, tokenId, 0));
+}
+
+module.exports = { mintBlocksByTokenId, scanFloorFor, nftScanFrom };

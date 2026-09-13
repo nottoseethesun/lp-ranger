@@ -9,7 +9,7 @@
 "use strict";
 
 const { scanNftEvents } = require("./compounder");
-const { scanFloorFor } = require("./nft-mint-blocks");
+const { nftScanFrom } = require("./nft-mint-blocks");
 
 /**
  * Collect all unique tokenIds from the rebalance chain plus the current
@@ -41,14 +41,8 @@ function collectTokenIds(position, rebalanceEvents) {
  * 32 hours of paced requests, nearly all of it scanning blocks where
  * the NFT in question did not yet exist.
  *
- * `fromBlock` remains the floor for any NFT whose mint is not in the
- * chain — the oldest one, which appears only as an `oldTokenId`.
- *
- * The two are combined with `Math.max`, which is what makes this safe
- * for the incremental-resume path: there `fromBlock` is a checkpoint
- * from a previous scan rather than the pool's creation block, and it
- * must win over an earlier mint block or the scan would re-walk ground
- * it already covered.
+ * `nftScanFrom` owns how the two floors combine, including the
+ * resume case; see `src/nft-mint-blocks.js`.
  *
  * @param {Set<string>|string[]} ids
  * @param {number} fromBlock  Shared floor: pool creation, or a resume
@@ -61,8 +55,9 @@ async function fetchAllNftEvents(ids, fromBlock, mintBlocks) {
   const allNftEvents = new Map();
   let maxBlock = fromBlock;
   for (const tid of ids) {
-    const from = Math.max(fromBlock, scanFloorFor(mintBlocks, tid, 0));
-    const ev = await scanNftEvents(tid, { fromBlock: from });
+    const ev = await scanNftEvents(tid, {
+      fromBlock: nftScanFrom(mintBlocks, tid, fromBlock),
+    });
     allNftEvents.set(tid, ev);
     for (const e of [...ev.ilEvents, ...ev.collectEvents, ...ev.dlEvents]) {
       if (e.blockNumber > maxBlock) maxBlock = e.blockNumber;
