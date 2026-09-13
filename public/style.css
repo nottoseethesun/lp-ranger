@@ -1963,15 +1963,26 @@ header{
 
 /* ── RPC endpoint control ── */
 
+/* Takes the row's spare width up to 600px, rather than the fixed 230px
+   it used to carry.  A fixed width meant the hostname was ellipsized
+   against 230px however much room the row actually had — on a wide
+   window every endpoint read as a left-clipped stub with empty space
+   beside it.  `flex-basis` rather than `width` so it still shrinks on a
+   narrow window, where the ellipsis is doing real work.
+
+   The margin is load-bearing: `.prow` is `justify-content:space-between`,
+   which leaves no gap once a child fills the row. */
 .\39 mm-pos-mgr-rpc-combo{
   position:relative;
+  flex:0 1 600px;
+  margin-left:18px;
 }
 
 .\39 mm-pos-mgr-rpc-current{
   display:flex;
   align-items:center;
   gap:9px;
-  width:230px;
+  width:100%;
   cursor:pointer;
 }
 
