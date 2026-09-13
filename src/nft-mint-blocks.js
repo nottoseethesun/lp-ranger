@@ -90,7 +90,13 @@ function scanFloorFor(mintBlocks, tokenId, fallbackBlock) {
  * @returns {number}
  */
 function nftScanFrom(mintBlocks, tokenId, sharedFloor) {
-  return Math.max(sharedFloor, scanFloorFor(mintBlocks, tokenId, 0));
+  /*- A non-finite floor would make `Math.max` return NaN, and
+   *  `chunkRanges` answers an empty window list for a non-finite
+   *  bound — so the scan would find nothing and report it as "no
+   *  events" rather than as a failure.  Falling back to 0 can only
+   *  widen the scan, never narrow it, so it cannot hide data. */
+  const floor = Number.isFinite(sharedFloor) ? sharedFloor : 0;
+  return Math.max(floor, scanFloorFor(mintBlocks, tokenId, 0));
 }
 
 module.exports = { mintBlocksByTokenId, scanFloorFor, nftScanFrom };

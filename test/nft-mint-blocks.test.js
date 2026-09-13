@@ -24,7 +24,11 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { mintBlocksByTokenId, scanFloorFor } = require("../src/nft-mint-blocks");
+const {
+  mintBlocksByTokenId,
+  scanFloorFor,
+  nftScanFrom,
+} = require("../src/nft-mint-blocks");
 const { _scanCompounds } = require("../src/position-details-compound");
 
 /** A rebalance chain: #100 → #200 → #300. */
@@ -98,6 +102,41 @@ describe("scanFloorFor", () => {
 
   it("tolerates a missing map", () => {
     assert.equal(scanFloorFor(undefined, "1", 9), 9);
+  });
+});
+
+describe("nftScanFrom", () => {
+  const MINTS = mintBlocksByTokenId(CHAIN);
+
+  it("tightens a pool-creation floor to the NFT's own mint", () => {
+    assert.equal(nftScanFrom(MINTS, "300", 1_000), 6_000_000);
+  });
+
+  it("lets a resume checkpoint beat an earlier mint block", () => {
+    /*- The incremental path's floor is a checkpoint, not pool creation.
+     *  Using the earlier mint would re-walk what the last scan covered. */
+    assert.equal(nftScanFrom(MINTS, "200", 9_000_000), 9_000_000);
+  });
+
+  it("falls back to the shared floor for an NFT not in the chain", () => {
+    assert.equal(nftScanFrom(MINTS, "100", 1_000), 1_000);
+  });
+
+  it("never returns a non-finite block", () => {
+    /*- NaN would make chunkRanges answer an empty window list, so the
+     *  scan would find nothing and report it as "no events" rather than
+     *  as a failure.  0 can only widen the scan, never narrow it. */
+    for (const bad of [undefined, null, NaN, Infinity, "5"]) {
+      const got = nftScanFrom(MINTS, "100", bad);
+      assert.ok(
+        Number.isFinite(got),
+        `floor ${String(bad)} produced ${String(got)}`,
+      );
+    }
+  });
+
+  it("still applies the mint block when the shared floor is unusable", () => {
+    assert.equal(nftScanFrom(MINTS, "300", undefined), 6_000_000);
   });
 });
 

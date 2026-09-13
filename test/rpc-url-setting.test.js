@@ -298,6 +298,50 @@ describe("config.setRpcUrls keeps the live list truthful", () => {
     assert.throws(() => config.setRpcUrls([]), /non-empty/);
     assert.ok(config.RPC_URLS.length > 0);
   });
+
+  it("keeps a later sendTx.init() from throwing after a change", () => {
+    /*- The sharp edge.  `sendTx.init` throws when handed a list that
+     *  differs from the one it already holds, and bot-loop.js and
+     *  position-manager.js call it on EVERY position start with
+     *  `config.RPC_URLS`.  So the two have to move together: updating
+     *  only sendTx would leave config stale, and the next Manage would
+     *  hand init a mismatched list and take down the start path.
+     *
+     *  Driven through the real modules, in the real order, because the
+     *  failure is an interaction between them and neither one looks
+     *  wrong on its own. */
+    const sendTx = require("../src/send-transaction");
+    class StubProvider {
+      constructor(url) {
+        this._url = url;
+      }
+      async send() {
+        return "0x1";
+      }
+    }
+    const LIB = { JsonRpcProvider: StubProvider };
+    const original = [...config.RPC_URLS];
+    try {
+      sendTx._resetForTests();
+      sendTx.init({ urls: config.RPC_URLS }, LIB);
+
+      const composed = composeRpcUrls({
+        saved: ["https://added.test"],
+        chainUrls: config.RPC_URLS_BASE,
+      });
+      config.setRpcUrls(composed);
+      sendTx.setRpcUrls(composed, LIB);
+
+      assert.doesNotThrow(
+        () => sendTx.init({ urls: config.RPC_URLS }, LIB),
+        "a position start after an RPC change must not throw",
+      );
+      assert.strictEqual(sendTx.getCurrentRPC()._url, "https://added.test");
+    } finally {
+      config.setRpcUrls(original);
+      sendTx._resetForTests();
+    }
+  });
 });
 
 describe("the live config", () => {

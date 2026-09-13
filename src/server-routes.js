@@ -112,9 +112,19 @@ function createRouteHandlers(deps) {
    * from `config.RPC_URLS`, which already contains previously added
    * entries and would re-seed them on every save.
    *
-   * `config.setRpcUrls` updates the live list as well as `sendTx`,
-   * because `GET /api/rpc-endpoints`, `rebalancer-pools` and
-   * `server-can-reopen` all read `config.RPC_URLS` directly.
+   * `config.setRpcUrls` updates the live list as well as `sendTx`, and
+   * both halves are load-bearing:
+   *
+   *   - `GET /api/rpc-endpoints`, `rebalancer-pools` and
+   *     `server-can-reopen` read `config.RPC_URLS` directly, so without
+   *     it they keep walking the endpoints the process started with;
+   *   - `sendTx.init` THROWS when called again with a different list,
+   *     and `bot-loop.js` / `position-manager.js` call it on every
+   *     position start. Updating only `sendTx` would leave
+   *     `config.RPC_URLS` stale, so the next Manage would hand `init` a
+   *     list that no longer matches and take down the start path.
+   *
+   * Neither is optional; do not "simplify" this to one call.
    *
    * Failures are logged, not thrown: the value is already saved, and a
    * bad URL must not take down the config endpoint. The next restart

@@ -18,7 +18,11 @@ const { actualGasCostUsd } = require("./bot-pnl-updater");
 const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
-const { mintBlocksByTokenId, scanFloorFor } = require("./nft-mint-blocks");
+const {
+  mintBlocksByTokenId,
+  nftScanFrom,
+  scanFloorFor,
+} = require("./nft-mint-blocks");
 
 /**
  * Lower bound for an NFT event scan: the pool's own creation block.
@@ -123,7 +127,7 @@ async function _scanCompounds(
     for (const tid of ids) {
       const r = await _detect(tid, {
         ...opts,
-        fromBlock: scanFloorFor(mintBlocks, tid, poolFloor),
+        fromBlock: nftScanFrom(mintBlocks, tid, poolFloor),
       });
       total += r.totalCompoundedUsd;
       if (tid === curId) {
@@ -165,7 +169,14 @@ async function _detectCurrentNftValues(
   _detect = detectCompoundsOnChain,
 ) {
   try {
+    /*- The pool-creation lookup is only reached when the chain does not
+     *  name this NFT's mint.  Written as a branch rather than as an
+     *  argument to `scanFloorFor`, because an argument is evaluated
+     *  eagerly — which billed this warm path an RPC round-trip on every
+     *  lifetime request for a floor it then discarded. */
     const mintBlocks = mintBlocksByTokenId(events);
+    let fromBlock = scanFloorFor(mintBlocks, position.tokenId, null);
+    if (fromBlock === null) fromBlock = await _scanFloor(ps.poolAddress);
     const opts = {
       positionManagerAddress: config.POSITION_MANAGER,
       token0: position.token0,
@@ -178,11 +189,7 @@ async function _detectCurrentNftValues(
       price1: prices.price1,
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
-      fromBlock: scanFloorFor(
-        mintBlocks,
-        position.tokenId,
-        await _scanFloor(ps.poolAddress),
-      ),
+      fromBlock,
     };
     const r = await _detect(String(position.tokenId), opts);
     return await _currentValuesFromScan(r);
