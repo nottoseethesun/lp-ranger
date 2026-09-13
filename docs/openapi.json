@@ -114,7 +114,8 @@
                           "type": "integer"
                         },
                         "rpcUrl": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "The endpoint currently in use — the live primary, which changes the moment an operator adds or promotes one. Not the value resolved at startup."
                         },
                         "positionManager": {
                           "type": "string"
@@ -1031,14 +1032,48 @@
       "get": {
         "summary": "RPC endpoints in failover order",
         "tags": ["Config"],
-        "description": "Serves the active chain's RPC endpoints, most-preferred first, so the dashboard's RPC URL preset menu is built from configuration rather than hardcoded in markup. The list is the same one failover walks, so the menu cannot advertise an endpoint the bot would not use. Always 200; an empty list means no endpoints are configured and the combo stays free-text.",
+        "description": "Serves the active chain's RPC endpoints, most-preferred first, so the dashboard's Network section is built from configuration rather than hardcoded in markup. The list is the same one failover walks, so it cannot advertise an endpoint the bot would not use. `saved` is reported separately because the Add RPC dialog prepends to the operator's own list only — sending it the composed list would copy the shipped endpoints into saved config, where they would stop tracking chains.json. Always 200; an empty `endpoints` list means none are configured.",
         "responses": {
           "200": {
-            "description": "Ordered endpoint list.",
+            "description": "Ordered endpoint list, plus the operator-added subset.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "endpoints": {
+                      "type": "array",
+                      "description": "Every endpoint, in the order failover walks them.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": {
+                            "type": "string",
+                            "description": "Full endpoint URL."
+                          },
+                          "host": {
+                            "type": "string",
+                            "description": "Bare host, for display."
+                          },
+                          "label": {
+                            "type": "string",
+                            "description": "Host plus its role, e.g. \"rpc.example.com (fallback 1)\"."
+                          },
+                          "primary": {
+                            "type": "boolean",
+                            "description": "True for the endpoint currently in use. Exactly one entry is true, and it is the first."
+                          }
+                        }
+                      }
+                    },
+                    "saved": {
+                      "type": "array",
+                      "description": "Endpoints the operator added via Add RPC, most recently added first. Excludes the endpoints shipped in chains.json. Empty on a fresh install.",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
