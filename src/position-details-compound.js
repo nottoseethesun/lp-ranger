@@ -18,6 +18,7 @@ const { actualGasCostUsd } = require("./bot-pnl-updater");
 const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
+const { mintBlocksByTokenId, scanFloorFor } = require("./nft-mint-blocks");
 
 /**
  * Lower bound for an NFT event scan: the pool's own creation block.
@@ -98,8 +99,16 @@ async function _scanCompounds(
       price1: prices.price1,
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
-      fromBlock: await _scanFloor(ps.poolAddress),
     };
+    /*- Each NFT is scanned from its OWN mint block, not from the pool's
+     *  creation block.  An NFT cannot emit events before it exists, so
+     *  the earlier blocks provably hold nothing for it — and scanning
+     *  them anyway is what made a cold-cache lifetime scan take most of
+     *  an hour once every request went through the 250 ms queue.  The
+     *  pool floor stays the fallback for the first NFT in the chain,
+     *  whose mint predates the chain. */
+    const poolFloor = await _scanFloor(ps.poolAddress);
+    const mintBlocks = mintBlocksByTokenId(events);
     /*- total = lifetime collected fees across the rebalance chain
      *  (Lifetime panel "Fees Compounded"). current = sum of standalone
      *  compound deposit values for the current NFT only (Current panel
@@ -112,7 +121,10 @@ async function _scanCompounds(
     let currentGasUsd = 0;
     const curId = String(position.tokenId);
     for (const tid of ids) {
-      const r = await _detect(tid, opts);
+      const r = await _detect(tid, {
+        ...opts,
+        fromBlock: scanFloorFor(mintBlocks, tid, poolFloor),
+      });
       total += r.totalCompoundedUsd;
       if (tid === curId) {
         const cv = await _currentValuesFromScan(r);
@@ -138,16 +150,22 @@ async function _scanCompounds(
   }
 }
 
-/*- Detect Current-panel values for the current NFT only (one cheap
- *  scan): standalone compound USD and total NFT gas USD. */
+/*- Detect Current-panel values for the current NFT only (one scan):
+ *  standalone compound USD and total NFT gas USD.  Bounded to the
+ *  current NFT's own mint block when the rebalance chain supplies it —
+ *  this is the warm-cache path, so it runs on every lifetime request,
+ *  and from the pool's creation block it was scanning years of blocks
+ *  for an NFT that is usually days old. */
 async function _detectCurrentNftValues(
   position,
   body,
   ps,
   prices,
+  events,
   _detect = detectCompoundsOnChain,
 ) {
   try {
+    const mintBlocks = mintBlocksByTokenId(events);
     const opts = {
       positionManagerAddress: config.POSITION_MANAGER,
       token0: position.token0,
@@ -160,7 +178,11 @@ async function _detectCurrentNftValues(
       price1: prices.price1,
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
-      fromBlock: await _scanFloor(ps.poolAddress),
+      fromBlock: scanFloorFor(
+        mintBlocks,
+        position.tokenId,
+        await _scanFloor(ps.poolAddress),
+      ),
     };
     const r = await _detect(String(position.tokenId), opts);
     return await _currentValuesFromScan(r);
@@ -191,10 +213,17 @@ async function _resolveCompounded(
 ) {
   const posConfig = diskConfig.positions[posKey] || {};
   if (posConfig.totalCompoundedUsd) {
-    /*- Cache hit on the lifetime total — still need a one-NFT scan
-     *  for the current values (not cached on disk; per-tokenId scan
-     *  is cheap, ~1 RPC call vs the full chain scan for the cold path). */
-    const cv = await _detectCurrentNftValues(position, body, ps, prices);
+    /*- Cache hit on the lifetime total — still need a one-NFT scan for
+     *  the current values, which are not cached on disk.  One NFT
+     *  rather than the whole chain, and bounded to that NFT's own life
+     *  by the events passed through. */
+    const cv = await _detectCurrentNftValues(
+      position,
+      body,
+      ps,
+      prices,
+      events,
+    );
     return {
       total: posConfig.totalCompoundedUsd,
       current: cv.compoundUsd,

@@ -25,6 +25,7 @@ const { detectCompoundsOnChain } = require("./compounder");
 const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
+const { mintBlocksByTokenId, scanFloorFor } = require("./nft-mint-blocks");
 
 /*-
  *  Convert wei (string-safe) to USD at the current native-token price.
@@ -75,18 +76,28 @@ async function _backfill(deps, position, poolState) {
       decimals0: poolState.decimals0,
       decimals1: poolState.decimals1,
     };
-    /*- Bound the scan to the pool's own creation block.  Without it the
-     *  lookup walks the chain from genesis, which on a cache miss (a
-     *  fresh NFT after a rebalance) means thousands of paced requests
-     *  monopolising the global queue while every other position waits. */
-    const fromBlock = poolState.poolAddress
-      ? await getPoolCreationBlockCached({
-          provider: deps.provider || sendTx.getManagedReadProvider(),
-          ethersLib: ethers,
-          factoryAddress: config.FACTORY,
-          poolAddress: poolState.poolAddress,
-        })
-      : 0;
+    /*- Bound the scan to THIS NFT's own mint block.  It cannot have
+     *  emitted events before it existed, so anything earlier is a
+     *  guaranteed-empty walk — and this runs inside the poll cycle,
+     *  which is awaiting it, so a scan that takes minutes is a bot that
+     *  reads nothing and cannot rebalance for that long.
+     *
+     *  The pool's creation block is the fallback for the first NFT of a
+     *  chain, whose mint predates the rebalance events. */
+    const mintBlocks = mintBlocksByTokenId(deps._rebalanceEvents);
+    let fromBlock = scanFloorFor(mintBlocks, tid, null);
+    if (fromBlock === null) {
+      /*- Only reached when the chain does not name this NFT's mint, so
+       *  the pool lookup is not paid for in the common case. */
+      fromBlock = poolState.poolAddress
+        ? await getPoolCreationBlockCached({
+            provider: deps.provider || sendTx.getManagedReadProvider(),
+            ethersLib: ethers,
+            factoryAddress: config.FACTORY,
+            poolAddress: poolState.poolAddress,
+          })
+        : 0;
+    }
     const r = await detectCompoundsOnChain(tid, { ...opts, fromBlock });
     const gasWei = String(r.totalNftGasWei || "0");
     const compoundedUsd = (r.compounds || []).reduce(
