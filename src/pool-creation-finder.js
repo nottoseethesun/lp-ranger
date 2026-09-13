@@ -33,8 +33,11 @@ const POOL_CREATED_ABI = [
  * @param {string} opts.poolAddress    - The pool address to search for.
  * @param {number} opts.fromBlock      - Earliest block to search from.
  * @param {number} opts.toBlock        - Latest block to search to.
- * @param {number} [opts.chunkSize=50000] - Block range per query (wider since
- *                                          PoolCreated events are rare).
+ * @param {number} [opts.chunkSize] - Block range per query.  Defaults to
+ *   `getLogsChunkSize` (7,500).  Do not widen it on the grounds that
+ *   `PoolCreated` events are rare: endpoints cap `eth_getLogs` on the
+ *   block span, not on the result count, and reject anything above
+ *   10,000 blocks whatever the filter matches.
  * @param {function} [opts.onProgress]    - (chunkIdx, totalChunks) => void.
  * @param {AbortSignal} [opts.signal]     - Abort signal for cancellation.
  * @returns {Promise<number|null>} Block number of pool creation, or null.

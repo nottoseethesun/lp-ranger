@@ -131,7 +131,6 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [ESM migration](project_esm_migration.md) — 100% CJS today; ESM would be a deliberate big-bang change
 - [gas-defer retry limit](project_gas_defer_retry_limit.md) — Optional cap on the gas-defer retry loop; not required
 - [log to file](project_log_to_file.md) — Auto-write server console to a log file for Pi 5 scrollback
-- [pool-creation finder scan direction](project_pool_creation_finder_scan_direction.md) — Scans oldest→newest; reversing would be faster
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses pairing a new rebalance; brief ~30 min lag
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources, so Routed Via shows an em-dash
 - [split rebalancePaused flag](project_split_rebalance_paused_flag.md) — Split the overloaded flag into aborted vs deferred
