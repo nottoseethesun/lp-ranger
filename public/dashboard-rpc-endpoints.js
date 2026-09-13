@@ -1,20 +1,23 @@
 /**
  * @file dashboard-rpc-endpoints.js
- * @description Renders the RPC endpoint list in Bot Settings → Network
- *   from the endpoints the server actually uses, and exposes the
- *   operator-added subset to the Add RPC dialog.
+ * @description Fills the RPC dropdown in Bot Settings → Network from
+ *   the endpoints the server actually uses, and exposes the
+ *   operator-added subset to `dashboard-rpc-add.js`.
  *
- *   The control used to be an editable combo box: a free-text input
- *   with a preset dropdown. Two problems. The input saved on every
- *   `change` event, so a stray edit re-pointed the bot; and the list it
- *   dropped down looked selectable but only ever wrote into that input,
- *   which left "which endpoint am I actually on?" unanswered. It is now
- *   a read-only list showing the real failover order, with adding done
- *   deliberately through a dialog (`dashboard-rpc-add.js`).
+ *   The dropdown lists the endpoints in the order the bot walks them,
+ *   and the SELECTED option is the primary — so the control answers
+ *   "which endpoint am I on?" as well as offering the others. Picking a
+ *   different one promotes it; adding a new one goes through a dialog.
+ *   Both writes live in `dashboard-rpc-add.js`.
+ *
+ *   The control this replaced was an editable combo box whose text
+ *   input saved on every `change` event, so a stray edit re-pointed
+ *   every on-chain read the bot makes, and whose menu only ever wrote
+ *   into that input.
  *
  *   The endpoint data comes from `GET /api/rpc-endpoints` rather than
- *   from markup, so the list and the bot cannot disagree and a fourth
- *   endpoint needs no HTML change.
+ *   from markup, so the dropdown and the bot cannot disagree and a
+ *   fourth endpoint needs no HTML change.
  */
 
 import { g } from "./dashboard-helpers.js";
@@ -24,6 +27,9 @@ let _primaryUrl = "";
 
 /** Endpoints the operator added, newest first. Empty until loaded. */
 let _saved = [];
+
+/** True once a load has actually succeeded — see savedRpcUrlsKnown. */
+let _loaded = false;
 
 /** The in-flight (or settled) load, so callers can wait for it. */
 let _ready = null;
@@ -62,17 +68,39 @@ export function savedRpcUrls() {
 }
 
 /**
- * Build one endpoint row.
+ * Whether the saved list is actually known.
+ *
+ * Writers must check this. `_saved` starts empty and only fills on a
+ * successful load, so an empty array means either "nothing added" or
+ * "the request failed" — and the two are indistinguishable. Sending a
+ * prepend built on the failed case would persist a list with the
+ * operator's existing endpoints missing, deleting them. The Add RPC
+ * button is static markup, so the dialog opens whether or not the load
+ * succeeded; this is the guard that makes that safe.
+ * @returns {boolean}
+ */
+export function savedRpcUrlsKnown() {
+  return _loaded;
+}
+
+/**
+ * Build one dropdown row.
  *
  * `createElement` + `textContent` rather than an innerHTML string: the
- * label comes from config that an operator can edit, and building
- * markup from it by interpolation is the pattern the project's lint
- * rule exists to prevent.
- * @param {{url: string, host: string, label: string, primary: boolean}} ep
+ * host comes from config that an operator can edit, and building markup
+ * from it by interpolation is the pattern the project's lint rule
+ * exists to prevent.
+ *
+ * Host and role are separate elements so the role can carry its own
+ * colour. That is the whole reason this is a `<ul>` and not a
+ * `<select>` — an `<option>` holds plain text, and its popup is drawn
+ * by the OS, so neither striping nor a coloured PRIMARY survives there.
+ * @param {{url: string, host: string, primary: boolean}} ep
  * @returns {HTMLLIElement}
  */
 function _buildRow(ep) {
   const li = document.createElement("li");
+  li.dataset.rpc = ep.url;
   li.title = ep.url;
   const host = document.createElement("span");
   host.className = "9mm-pos-mgr-rpc-host";
@@ -81,7 +109,7 @@ function _buildRow(ep) {
   role.className = ep.primary
     ? "9mm-pos-mgr-rpc-role 9mm-pos-mgr-rpc-role-primary"
     : "9mm-pos-mgr-rpc-role";
-  role.textContent = ep.primary ? "primary" : "failover";
+  role.textContent = ep.primary ? "PRIMARY" : "FAILOVER";
   li.append(host, role);
   return li;
 }
@@ -135,9 +163,18 @@ async function _loadEndpoints() {
      *  decoration on top of it. */
     _primaryUrl = endpoints[0].url;
     _saved = Array.isArray(saved) ? saved : [];
+    _loaded = true;
 
     const list = g("rpcList");
     if (list) list.replaceChildren(...endpoints.map(_buildRow));
+    /*- The closed control shows the primary, read from the server's
+     *  order rather than from anything the browser remembers.  A stale
+     *  browser-side selection would claim the bot is on an endpoint it
+     *  is not. */
+    const cur = g("rpcCurrentHost");
+    if (cur) cur.textContent = endpoints[0].host;
+    const btn = g("rpcCurrent");
+    if (btn) btn.title = _primaryUrl;
     console.log(
       `[lp-ranger] RPC endpoints loaded: ${endpoints.length} endpoint(s), primary ${_primaryUrl}, ${_saved.length} added by operator`,
     );

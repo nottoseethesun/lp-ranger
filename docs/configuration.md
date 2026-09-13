@@ -150,17 +150,21 @@ it intact. See
 [RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking).
 
 There is a fourth source, and it outranks all of these: **Bot Settings →
-Network → Add RPC** in the dashboard. The section lists the endpoints in the
-order the bot tries them, marking the one in use as *primary*; the list is
-read-only, and **Add RPC** opens a dialog with Save and Close buttons, so an
-endpoint is only ever added deliberately.
+Network** in the dashboard. The **RPC URL** dropdown lists every endpoint in
+the order the bot tries them, each marked `PRIMARY` or `FAILOVER`. The selected
+option *is* the primary — picking a different one promotes it to the front of
+the failover order immediately. **Add RPC** opens a dialog with Save and Close
+buttons for entering a new endpoint, so one is only ever added deliberately.
 
 What you add becomes the new primary, and everything already listed stays
 behind it as automatic failover — so pointing LP Ranger at your own node does
 not cost you redundancy. Add a second, and it becomes the primary in turn,
 pushing the first down one place. Added endpoints are stored in
-`bot-config.json` under `rpcUrls`, newest first. Duplicates are dropped, so
-re-adding one already present promotes it rather than listing it twice.
+`bot-config.json` under `rpcUrls`, newest first. Duplicates are dropped keeping
+the earliest position, which is what makes promotion work: selecting an
+endpoint prepends it, and the duplicate further down is discarded. That holds
+for shipped endpoints too, so selecting one of those records it under `rpcUrls`
+as your preference.
 
 Unlike the layers above, an addition is applied to the running process the
 moment you save it; no restart. The endpoint is not contacted before being

@@ -41,21 +41,45 @@ describe("the Network section's markup", () => {
      *  `inRpc` was read by three modules, so a leftover would look
      *  harmless while still being the thing that saves on change. */
     assert.equal(doc.getElementById("inRpc"), null);
+
     assert.equal(doc.getElementById("rpcToggle"), null);
   });
 
-  it("shows the endpoint list and an Add RPC button", () => {
-    assert.ok(doc.getElementById("rpcList"), "endpoint list");
+  it("shows the endpoint dropdown and an Add RPC button", () => {
+    assert.ok(doc.getElementById("rpcCurrent"), "the closed control");
+    assert.ok(doc.getElementById("rpcList"), "the dropdown list");
     const btn = doc.getElementById("rpcAddBtn");
     assert.ok(btn, "Add RPC button");
     assert.equal(btn.textContent.trim(), "Add RPC");
   });
 
-  it("ships the endpoint list empty", () => {
+  it("ships the dropdown empty", () => {
     /*- Endpoint data in markup is a second source of truth, and the
      *  hardcoded version had already drifted out of the failover set.
-     *  The list is filled from GET /api/rpc-endpoints. */
+     *  The options are filled from GET /api/rpc-endpoints. */
     assert.equal(doc.getElementById("rpcList").children.length, 0);
+  });
+
+  it("puts the row in the panel's standard prow layout", () => {
+    /*- A `pcol` here left the circle-i sitting low and the label flush
+     *  against the panel edge while every row above it was indented.
+     *  `prow` centres the label against its control and carries the
+     *  padding, so alignment matches by construction rather than by a
+     *  one-off override. */
+    const row = doc.getElementById("rpcCurrent").closest(".prow");
+    assert.ok(row, "the control sits in a .prow");
+    assert.ok(
+      row.querySelector("[data-param-help]"),
+      "the circle-i shares that row",
+    );
+  });
+
+  it("styles Add RPC like the panel's other buttons", () => {
+    /*- `pos-scan-btn` rendered it noticeably larger than the Save
+     *  buttons it sits beneath. */
+    assert.ok(
+      doc.getElementById("rpcAddBtn").classList.contains("save-range-btn"),
+    );
   });
 
   it("gives the dialog a Save and a Close button", () => {
@@ -70,6 +94,20 @@ describe("the Network section's markup", () => {
       doc.getElementById("rpcAddModal").classList.contains("hidden"),
       "a dialog visible on page load is a dialog nobody asked for",
     );
+  });
+
+  it("is registered with the Escape handler", () => {
+    /*- Every dialog closes on Escape.  The handler works off an explicit
+     *  id list in dashboard-events-manage.js, so a new dialog is opted
+     *  OUT by default — telegramModal sat unregistered for exactly that
+     *  reason.  Asserted against the source because the wiring is a
+     *  table entry, not a computed value. */
+    const src = fs.readFileSync(
+      path.join(__dirname, "..", "public", "dashboard-events-manage.js"),
+      "utf8",
+    );
+    assert.match(src, /id:\s*"rpcAddModal"/);
+    assert.match(src, /closeRpcAddModal/);
   });
 
   it("wires the info icon to help content that exists", () => {

@@ -1134,12 +1134,13 @@ export const PARAM_HELP = {
       {
         heading: "What it does",
         body:
-          "The blockchain RPC endpoints LP Ranger uses to read on-chain " +
+          "The blockchain RPC endpoint LP Ranger uses to read on-chain " +
           "data and submit transactions — your connection to the " +
-          "PulseChain network. The list is shown in the order the bot " +
-          "tries them: the one marked <strong>primary</strong> is the " +
-          "one in use, and the rest are automatic failover for when it " +
-          "stops responding.",
+          "PulseChain network. The dropdown lists every endpoint in the " +
+          "order the bot tries them, marked <strong>PRIMARY</strong> or " +
+          "<strong>FAILOVER</strong>. The one showing is the one in " +
+          "use; the rest take over automatically if it stops responding. " +
+          "Pick a different one and it becomes the primary immediately.",
       },
       {
         heading: "Recommended values",

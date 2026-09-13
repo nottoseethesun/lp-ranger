@@ -1961,55 +1961,78 @@ header{
   margin-bottom:12px;
 }
 
-/* ── RPC endpoint list (read-only; Add RPC opens a dialog) ── */
+/* ── RPC endpoint control ── */
 
-.\39 mm-pos-mgr-rpc-list{
-  list-style:none;
-  margin:0;
-  padding:0;
-  border:1px solid var(--border);
-  border-radius:9px;
-  background:var(--bg2);
-  overflow:hidden;
+.\39 mm-pos-mgr-rpc-combo{
+  position:relative;
 }
 
-.\39 mm-pos-mgr-rpc-list li{
+.\39 mm-pos-mgr-rpc-current{
   display:flex;
   align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  padding:10px 14px;
-  font-size:16px;
-  color:var(--text);
+  gap:9px;
+  width:230px;
+  cursor:pointer;
 }
 
-.\39 mm-pos-mgr-rpc-list li + li{
-  border-top:1px solid var(--border);
-}
-
-.\39 mm-pos-mgr-rpc-host{
+/* The host name is longer than the box, so it has to be allowed to
+   shrink — a flex item refuses to go below its text width without
+   min-width:0, and would push the caret out of the box instead. */
+.\39 mm-pos-mgr-rpc-current span:first-child{
+  min-width:0;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
 
-.\39 mm-pos-mgr-rpc-role{
-  flex:none;
+.\39 mm-pos-mgr-rpc-caret{
+  margin-left:auto;
   font-size:13px;
-  letter-spacing:.5px;
-  text-transform:uppercase;
   color:var(--muted);
 }
 
-/* Lawn green (--accent3): the endpoint currently in use. */
-.\39 mm-pos-mgr-rpc-role-primary{
-  color:var(--accent3);
+.\39 mm-pos-mgr-rpc-list{
+  display:none;
+  position:absolute;
+  top:100%;
+  right:0;
+  z-index:20;
+  min-width:100%;
+  list-style:none;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:0 0 9px 9px;
 }
+
+.\39 mm-pos-mgr-rpc-list.open{
+  display:block;
+}
+
+.\39 mm-pos-mgr-rpc-list li{
+  display:flex;
+  justify-content:space-between;
+  gap:18px;
+  padding:9px 15px;
+  font-size:18px;
+  white-space:nowrap;
+  cursor:pointer;
+}
+
+/* Matches .prow:nth-child(odd), so the open list stripes the same way
+   the settings rows behind it do. */
+.\39 mm-pos-mgr-rpc-list li:nth-child(odd){background:rgb(255 255 255 / 3%);}
+.\39 mm-pos-mgr-rpc-list li:hover{background:rgb(255 255 255 / 7%);}
+
+.\39 mm-pos-mgr-rpc-role{color:var(--muted);}
+
+/* Lawn green (--accent3): the endpoint the bot is using right now. */
+.\39 mm-pos-mgr-rpc-role-primary{color:var(--accent3);}
 
 .\39 mm-pos-mgr-rpc-add-row{
   display:flex;
   justify-content:flex-end;
   margin-top:10px;
+  padding:0 9px;
 }
 
 /* Crimson (--danger): inline validation message in the Add RPC dialog. */
