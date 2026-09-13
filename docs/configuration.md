@@ -149,6 +149,13 @@ override it positionally, so setting only `RPC_URL` leaves the endpoints behind
 it intact. See
 [RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking).
 
+There is a fourth source, and it outranks all of these: the **RPC URL** field
+in the dashboard's Bot Settings. It is saved to `bot-config.json` and goes
+first in the list, with the endpoints above kept behind it as automatic
+failover — so pointing LP Ranger at your own node does not cost you
+redundancy. Unlike the layers above, it is applied to the running process the
+moment you save it; no restart.
+
 - `REBALANCE_OOR_THRESHOLD_PCT` — % beyond boundary to trigger rebalance
   (default: `10`)
 - `REBALANCE_TIMEOUT_MIN` — Minutes of continuous OOR before auto-rebalance

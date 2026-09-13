@@ -165,6 +165,67 @@ describe("composeRpcUrls", () => {
   });
 });
 
+describe("a saved RPC takes effect without a restart", () => {
+  /*- The field was dead for a long time, then merely slow: saved, but
+   *  not in use until the next restart, which the help text admitted.
+   *  These pin that it is adopted on save. */
+  const sendTx = require("../src/send-transaction");
+  const config = require("../src/config");
+
+  class StubProvider {
+    constructor(url) {
+      this._url = url;
+    }
+    async send() {
+      return "0x1";
+    }
+  }
+  const LIB = { JsonRpcProvider: StubProvider };
+
+  function bootedAtDefaults() {
+    sendTx._resetForTests();
+    sendTx.init({ urls: config.RPC_URLS }, LIB);
+  }
+
+  it("puts the new endpoint in use immediately", () => {
+    bootedAtDefaults();
+    const urls = composeRpcUrls({
+      saved: "https://my-node.local",
+      chainUrls: config.RPC_URLS,
+    });
+    assert.strictEqual(sendTx.setRpcUrls(urls, LIB), true);
+    assert.strictEqual(
+      sendTx.getCurrentRPC()._url,
+      "https://my-node.local",
+      "the very next on-chain read must use it",
+    );
+  });
+
+  it("keeps the shipped endpoints behind it as failover", () => {
+    bootedAtDefaults();
+    const urls = composeRpcUrls({
+      saved: "https://my-node.local",
+      chainUrls: config.RPC_URLS,
+    });
+    sendTx.setRpcUrls(urls, LIB);
+    assert.strictEqual(sendTx.failoverToNextRPC(), true);
+    assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS[0]);
+  });
+
+  it("does not rebuild when the value has not changed", () => {
+    /*- An unrelated config save must not reset a failover window that
+     *  is doing its job. */
+    bootedAtDefaults();
+    assert.strictEqual(sendTx.setRpcUrls([...config.RPC_URLS], LIB), false);
+  });
+
+  it("refuses an empty list rather than leaving no endpoints", () => {
+    bootedAtDefaults();
+    assert.throws(() => sendTx.setRpcUrls([], LIB), /non-empty/);
+    assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS[0]);
+  });
+});
+
 describe("the live config", () => {
   it("exposes a non-empty ordered endpoint list", () => {
     const config = require("../src/config");

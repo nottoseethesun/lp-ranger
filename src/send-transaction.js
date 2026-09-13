@@ -115,6 +115,49 @@ function init(rpcConfig, ethersLib) {
 }
 
 /**
+ * Re-point the RPC list at runtime, after the operator changes it.
+ *
+ * Separate from `init`, which deliberately refuses a second call with
+ * different URLs — that guard exists so three boot paths cannot fight
+ * over the endpoint list, and it should stay. This is the explicit,
+ * operator-initiated exception.
+ *
+ * Why this exists at all: the RPC URL saved in Bot Settings used to
+ * need a restart, and the help text said so. There is no reason for
+ * that. Providers are cheap to rebuild and nothing holds one across a
+ * call — `getManagedReadProvider` resolves through `getCurrentRPC()` on
+ * every property access, and the nonce manager rebinds when the active
+ * provider changes.
+ *
+ * Rebuilding resets the failover position to the top of the new list
+ * and clears any sticky window, which is right: a window engaged
+ * against the old list says nothing about the new one.
+ *
+ * @param {string[]} urls        Ordered RPC URLs, most-preferred first.
+ * @param {object} [ethersLib]   Injected ethers library (for testing).
+ * @returns {boolean}  True when the list changed and was rebuilt.
+ */
+function setRpcUrls(urls, ethersLib) {
+  if (!Array.isArray(urls) || urls.length === 0 || !urls.every(Boolean)) {
+    throw new Error(
+      "[send-tx] setRpcUrls: expected a non-empty ordered array of URL strings",
+    );
+  }
+  if (_urls.length === urls.length && _urls.every((u, i) => u === urls[i])) {
+    /*- No change.  Returning early keeps an unrelated config save from
+     *  resetting a failover window that is doing its job. */
+    return false;
+  }
+  const was = _urls.join(", ");
+  _urls = [...urls];
+  _providers = _urls.map((u) => buildProvider(u, ethersLib || ethers));
+  _activeIdx = 0;
+  _stickyUntilMs = 0;
+  log.info("[send-tx] RPC list changed: %s → %s", was || "(none)", _urls[0]);
+  return true;
+}
+
+/**
  * How many endpoints are actually available to move between.
  *
  * Replaces the `_primaryUrl === _fallbackUrl` check that used to appear
@@ -804,6 +847,7 @@ function _resetForTests() {
 
 module.exports = {
   init,
+  setRpcUrls,
   sendTransaction,
   getCurrentRPC,
   failoverToNextRPC,

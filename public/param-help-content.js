@@ -1157,8 +1157,8 @@ export const PARAM_HELP = {
           "endpoints and moves down the list automatically when one " +
           "stops responding, sticking with the replacement for an hour " +
           "before trying the preferred one again. " +
-          "<strong>Restart the app for the change to take effect</strong> " +
-          "(the running bot holds the provider it was started with).",
+          "<strong>The change takes effect immediately</strong> — the " +
+          "next on-chain read or transaction uses it. No restart needed.",
       },
     ],
   },

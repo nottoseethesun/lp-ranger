@@ -11,6 +11,7 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
+const { composeRpcUrls } = require("./rpc-url-list");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
@@ -101,6 +102,33 @@ function createRouteHandlers(deps) {
   /** Cached wallet password for API key encryption (set on unlock). */
   let _sessionPassword = null;
 
+  /**
+   * Put a newly-saved RPC URL into service without a restart.
+   *
+   * Composed the same way `config.js` composes `RPC_URLS`: the
+   * operator's endpoint first, the shipped ones behind it as failover,
+   * duplicates dropped. Recomposed here rather than read from
+   * `config.RPC_URLS` because that was resolved at module load and
+   * still holds the previous value.
+   *
+   * Failures are logged, not thrown: the value is already saved, and a
+   * bad URL must not take down the config endpoint. The next restart
+   * picks it up regardless.
+   * @param {string} url  The URL just saved.
+   */
+  function _applyRpcUrl(url) {
+    try {
+      const urls = composeRpcUrls({
+        saved: url,
+        chainUrls: config.RPC_URLS,
+      });
+      if (sendTx.setRpcUrls(urls))
+        log.info("[server] RPC now in use: %s", urls[0]);
+    } catch (err) {
+      log.warn("[server] Could not apply the new RPC URL: %s", err.message);
+    }
+  }
+
   async function _handleApiConfig(req, res) {
     const body = await readJsonBody(req);
     const gPatch = {},
@@ -116,6 +144,15 @@ function createRouteHandlers(deps) {
      *  earned by behaving that way. */
     if (gPatch.moralisEnabled !== undefined)
       setServiceEnabled("moralis", gPatch.moralisEnabled !== false);
+    /*- Adopt a new RPC immediately.  Saving it and waiting for a restart
+     *  is what made this field feel dead for so long; there is no reason
+     *  for the delay. Providers are cheap to rebuild and nothing holds
+     *  one across a call.
+     *
+     *  config.RPC_URLS was resolved at module load, so recompose the
+     *  list here with the value just saved at the front — same rule
+     *  config.js applies, applied to the newer input. */
+    if (gPatch.rpcUrl !== undefined) _applyRpcUrl(gPatch.rpcUrl);
     const hasPosKeys = Object.keys(pPatch).length > 0;
     /*- Slippage-paused clear runs FIRST so that even if disk persistence
      *  bails out (404 below), an in-flight paused bot loop still gets
