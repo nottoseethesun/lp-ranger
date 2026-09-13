@@ -133,6 +133,8 @@ npm start                        # dashboard + bot at http://localhost:5555
 > you get the exact tested versions with no version drift.
 
 Third, prepare your crypto wallet information per the instructions in the [Usage](#usage) section here.
+The time to load your Liquidity Positions on the first run of LP Ranger may take some time depending on
+length of history. You can just let it run and come back later.
 
 Finally, visit <http://localhost:5555> in your web browser.
 
