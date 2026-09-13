@@ -330,27 +330,22 @@ function _setIdlePill(d) {
     return;
   }
 
-  /*- This runs only when the position on screen is NOT itself running —
-   *  the caller has already handled RUNNING, ABORTED and HALTED, which
-   *  are all about the viewed position.
+  /*- Reached only when the position on screen is not itself running, so
+   *  this used to say MANAGING — a second word for the state RUNNING
+   *  already names, differing only in whose position it referred to.
+   *  One condition, two labels, and nothing on screen saying which you
+   *  were reading.
    *
-   *  So a bare "MANAGING" here was about a DIFFERENT position, while
-   *  sitting directly above a card reading "NOT ACTIVELY MANAGED". Two
-   *  subjects, one label, no way for a reader to tell them apart. Name
-   *  the subject instead: the pill still reports the whole bot's state,
-   *  it just says whose. */
-  const activeTid = posStore.getActive()?.tokenId;
-  const others = running.filter((p) => String(p.tokenId) !== String(activeTid));
-  if (activeTid !== undefined && others.length === running.length) {
-    const n = others.length;
-    return _setStatusPill(
-      "status-pill active",
-      "dot green",
-      `MANAGING ${n} OTHER${n === 1 ? "" : "S"}`,
-      "The bot is managing other positions. The position shown here is not one of them.",
-    );
-  }
-  _setStatusPill("status-pill active", "dot green", "MANAGING");
+   *  The pill now answers one question in every branch: is the bot
+   *  running? Whether THIS position is managed is the card's job, and
+   *  it says so in words ("Being Actively Managed" / "Not Actively
+   *  Managed"); which positions are managed is the LP browser's. */
+  _setStatusPill(
+    "status-pill active",
+    "dot green",
+    "RUNNING",
+    "The bot is running. Whether this position is one it manages is shown on the position card.",
+  );
 }
 
 /** Update the bot status pill, alerts, price marker, and last-check labels. */
