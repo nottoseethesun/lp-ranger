@@ -22,6 +22,9 @@ const {
   mintBlocksByTokenId,
   nftScanFrom,
   scanFloorFor,
+  chainScanFloor,
+  retirementBlocksByTokenId,
+  nftScanTo,
 } = require("./nft-mint-blocks");
 
 /**
@@ -104,15 +107,21 @@ async function _scanCompounds(
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
     };
-    /*- Each NFT is scanned from its OWN mint block, not from the pool's
-     *  creation block.  An NFT cannot emit events before it exists, so
-     *  the earlier blocks provably hold nothing for it — and scanning
-     *  them anyway is what made a cold-cache lifetime scan take most of
-     *  an hour once every request went through the 250 ms queue.  The
-     *  pool floor stays the fallback for the first NFT in the chain,
-     *  whose mint predates the chain. */
-    const poolFloor = await _scanFloor(ps.poolAddress);
+    /*- Two floors.  Each NFT is scanned from its OWN mint block — it
+     *  cannot emit events before it exists, and scanning those blocks
+     *  anyway is what made a cold-cache lifetime scan take most of an
+     *  hour once every request went through the 250 ms queue.  The
+     *  chain's oldest NFT has no mint block in the events, so it falls
+     *  back to `chainScanFloor`: the pool's creation block, lifted to
+     *  the chain's own first mint when the scanner resolved one. */
+    const creationBlock = await _scanFloor(ps.poolAddress);
+    const poolFloor = chainScanFloor(events, creationBlock);
     const mintBlocks = mintBlocksByTokenId(events);
+    /*- A retired NFT stops emitting when its replacement is minted, so
+     *  scanning it to head re-reads everything that happened since for
+     *  nothing.  The current NFT is absent from this map and keeps
+     *  scanning to head. */
+    const retirementBlocks = retirementBlocksByTokenId(events);
     /*- total = lifetime collected fees across the rebalance chain
      *  (Lifetime panel "Fees Compounded"). current = sum of standalone
      *  compound deposit values for the current NFT only (Current panel
@@ -128,6 +137,7 @@ async function _scanCompounds(
       const r = await _detect(tid, {
         ...opts,
         fromBlock: nftScanFrom(mintBlocks, tid, poolFloor),
+        toBlock: nftScanTo(retirementBlocks, tid),
       });
       total += r.totalCompoundedUsd;
       if (tid === curId) {
@@ -176,7 +186,13 @@ async function _detectCurrentNftValues(
      *  lifetime request for a floor it then discarded. */
     const mintBlocks = mintBlocksByTokenId(events);
     let fromBlock = scanFloorFor(mintBlocks, position.tokenId, null);
-    if (fromBlock === null) fromBlock = await _scanFloor(ps.poolAddress);
+    if (fromBlock === null) {
+      /*- Never-rebalanced position: this NFT IS the chain's first mint,
+       *  so lift the pool floor to it rather than scanning from pool
+       *  creation. */
+      const creationBlock = await _scanFloor(ps.poolAddress);
+      fromBlock = chainScanFloor(events, creationBlock);
+    }
     const opts = {
       positionManagerAddress: config.POSITION_MANAGER,
       token0: position.token0,

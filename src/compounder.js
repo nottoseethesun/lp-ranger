@@ -486,7 +486,7 @@ async function _fetchCompoundGas(prov, compoundEvents) {
  * Fetch IncreaseLiquidity, Collect, and DecreaseLiquidity logs for one NFT.
  * Single RPC round-trip (3 parallel getLogs).  Pure data — no classification.
  * @param {string|number} tokenId
- * @param {{ fromBlock?: number }} [scanOpts]
+ * @param {{ fromBlock?: number, toBlock?: number|string }} [scanOpts]
  * @returns {Promise<{ilEvents: object[], collectEvents: object[], dlEvents: object[], ilLogsCount: number}>}
  */
 async function scanNftEvents(tokenId, scanOpts = {}) {
@@ -494,6 +494,13 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
   const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const addr = config.POSITION_MANAGER;
   const from = scanOpts.fromBlock ?? 0;
+  /*- A RETIRED NFT stops emitting at the block the next one was minted:
+   *  the rebalance drains it and mints its replacement, and the app
+   *  never returns to a drained NFT (a re-open mints fresh rather than
+   *  reviving it).  Scanning it to head is therefore a guaranteed-empty
+   *  walk across the whole remainder of the chain.  Only the CURRENT
+   *  NFT needs "latest". */
+  const to = scanOpts.toBlock ?? "latest";
   /*- Chunked, and resolved to a concrete head once per event type
    *  rather than per window, so all three cover the same range.
    *
@@ -506,7 +513,7 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
     scanChunked({
       provider: prov,
       fromBlock: from,
-      toBlock: "latest",
+      toBlock: to,
       label: `compounder ${name} #${tokenId}`,
       query: (f, t) =>
         prov.getLogs({
@@ -720,6 +727,7 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
    *  lower bound. Callers that know the pool pass its creation block. */
   const nftEvents = await scanNftEvents(tokenId, {
     fromBlock: opts.fromBlock,
+    toBlock: opts.toBlock,
   });
   return classifyCompounds(nftEvents, { ...opts, tokenId });
 }

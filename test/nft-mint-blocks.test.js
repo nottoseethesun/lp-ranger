@@ -28,6 +28,9 @@ const {
   mintBlocksByTokenId,
   scanFloorFor,
   nftScanFrom,
+  chainScanFloor,
+  retirementBlocksByTokenId,
+  nftScanTo,
 } = require("../src/nft-mint-blocks");
 const { _scanCompounds } = require("../src/position-details-compound");
 
@@ -140,12 +143,114 @@ describe("nftScanFrom", () => {
   });
 });
 
+describe("chainScanFloor", () => {
+  /*- The oldest NFT in a chain has no mint block in the events, so it
+   *  would otherwise fall all the way back to the pool's creation
+   *  block.  On a pool that existed long before the operator's first
+   *  deposit that one NFT is the most expensive scan of the run. */
+  function withFirstMint(block) {
+    const evts = [...CHAIN];
+    evts.firstMintBlockNumber = block;
+    return evts;
+  }
+
+  it("lifts the pool floor to the chain's first mint", () => {
+    assert.equal(
+      chainScanFloor(withFirstMint(26_000_000), 18_900_000),
+      26_000_000,
+    );
+  });
+
+  it("keeps the pool floor when it is already higher", () => {
+    /*- A resume checkpoint can outrank the first mint; taking the lower
+     *  of the two would re-walk what the last scan covered. */
+    assert.equal(chainScanFloor(withFirstMint(5_000), 9_000), 9_000);
+  });
+
+  it("keeps the pool floor when the scanner resolved no first mint", () => {
+    assert.equal(chainScanFloor(CHAIN, 18_900_000), 18_900_000);
+  });
+
+  it("tolerates missing events and a non-finite floor", () => {
+    assert.equal(chainScanFloor(undefined, 100), 100);
+    assert.equal(chainScanFloor(null, 100), 100);
+    assert.equal(chainScanFloor(withFirstMint(500), undefined), 500);
+    assert.ok(Number.isFinite(chainScanFloor(CHAIN, undefined)));
+  });
+
+  it("ignores a non-numeric firstMintBlockNumber", () => {
+    assert.equal(chainScanFloor(withFirstMint("26000000"), 7), 7);
+    assert.equal(chainScanFloor(withFirstMint(null), 7), 7);
+  });
+});
+
+describe("retirementBlocksByTokenId", () => {
+  /*- A rebalance drains the old NFT and mints its replacement, so the
+   *  old one stops emitting at that block.  Scanning it to head after
+   *  that re-reads the entire remainder of the chain for nothing. */
+  it("maps each retired NFT to the block it was replaced at", () => {
+    const m = retirementBlocksByTokenId(CHAIN);
+    assert.equal(m.get("100"), 5_000_000);
+    assert.equal(m.get("200"), 6_000_000);
+  });
+
+  it("leaves the CURRENT NFT out, so it keeps scanning to head", () => {
+    /*- #300 was never replaced — it only appears as a newTokenId. */
+    assert.equal(retirementBlocksByTokenId(CHAIN).get("300"), undefined);
+  });
+
+  it("keeps the LATEST block when an id repeats", () => {
+    /*- Mirror of the mint map taking the earliest: an upper bound that
+     *  is too low silently loses events; too high only costs time. */
+    const m = retirementBlocksByTokenId([
+      { oldTokenId: "7", blockNumber: 400 },
+      { oldTokenId: "7", blockNumber: 900 },
+    ]);
+    assert.equal(m.get("7"), 900);
+  });
+
+  it("ignores entries with no usable block number", () => {
+    const m = retirementBlocksByTokenId([
+      { oldTokenId: "1" },
+      { oldTokenId: "2", blockNumber: null },
+      { oldTokenId: "3", blockNumber: "800" },
+      { oldTokenId: "4", blockNumber: -1 },
+      null,
+    ]);
+    assert.equal(m.size, 0);
+  });
+
+  it("returns an empty map for a missing or non-array input", () => {
+    assert.equal(retirementBlocksByTokenId(undefined).size, 0);
+    assert.equal(retirementBlocksByTokenId({}).size, 0);
+  });
+});
+
+describe("nftScanTo", () => {
+  const RETIRED = retirementBlocksByTokenId(CHAIN);
+
+  it("stops a retired NFT at its replacement's mint", () => {
+    assert.equal(nftScanTo(RETIRED, "100"), 5_000_000);
+    assert.equal(nftScanTo(RETIRED, "200"), 6_000_000);
+  });
+
+  it("scans the current NFT to head", () => {
+    assert.equal(nftScanTo(RETIRED, "300"), "latest");
+  });
+
+  it("tolerates a missing map", () => {
+    assert.equal(nftScanTo(undefined, "1"), "latest");
+  });
+});
+
 describe("_scanCompounds uses each NFT's own floor", () => {
   /** Record the fromBlock each per-NFT scan was given. */
+  const seenTo = new Map();
   function run(events, position) {
     const seen = new Map();
     const detect = async (tid, opts) => {
       seen.set(String(tid), opts.fromBlock);
+      seenTo.set(String(tid), opts.toBlock);
       return { totalCompoundedUsd: 0, compounds: [], totalNftGasWei: "0" };
     };
     return _scanCompounds(
@@ -183,5 +288,14 @@ describe("_scanCompounds uses each NFT's own floor", () => {
   it("covers every NFT in the chain", async () => {
     const seen = await run(CHAIN, { tokenId: "300" });
     assert.deepEqual([...seen.keys()].sort(), ["100", "200", "300"]);
+  });
+
+  it("stops each retired NFT at its replacement's mint", async () => {
+    /*- The other half of the bound: a drained NFT emits nothing after
+     *  the rebalance that replaced it. */
+    await run(CHAIN, { tokenId: "300" });
+    assert.equal(seenTo.get("100"), 5_000_000);
+    assert.equal(seenTo.get("200"), 6_000_000);
+    assert.equal(seenTo.get("300"), "latest", "the current NFT runs to head");
   });
 });

@@ -25,7 +25,11 @@ const { detectCompoundsOnChain } = require("./compounder");
 const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
-const { mintBlocksByTokenId, scanFloorFor } = require("./nft-mint-blocks");
+const {
+  mintBlocksByTokenId,
+  scanFloorFor,
+  chainScanFloor,
+} = require("./nft-mint-blocks");
 
 /*-
  *  Convert wei (string-safe) to USD at the current native-token price.
@@ -87,9 +91,12 @@ async function _backfill(deps, position, poolState) {
     const mintBlocks = mintBlocksByTokenId(deps._rebalanceEvents);
     let fromBlock = scanFloorFor(mintBlocks, tid, null);
     if (fromBlock === null) {
-      /*- Only reached when the chain does not name this NFT's mint, so
-       *  the pool lookup is not paid for in the common case. */
-      fromBlock = poolState.poolAddress
+      /*- Only reached when the chain does not name this NFT's mint —
+       *  which is the never-rebalanced case, where this NFT IS the
+       *  chain's first mint.  The pool lookup is therefore not paid for
+       *  in the common case, and when it is, `chainScanFloor` lifts it
+       *  to that first mint rather than leaving it at pool creation. */
+      const creationBlock = poolState.poolAddress
         ? await getPoolCreationBlockCached({
             provider: deps.provider || sendTx.getManagedReadProvider(),
             ethersLib: ethers,
@@ -97,6 +104,7 @@ async function _backfill(deps, position, poolState) {
             poolAddress: poolState.poolAddress,
           })
         : 0;
+      fromBlock = chainScanFloor(deps._rebalanceEvents, creationBlock);
     }
     const r = await detectCompoundsOnChain(tid, { ...opts, fromBlock });
     const gasWei = String(r.totalNftGasWei || "0");

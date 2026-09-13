@@ -99,4 +99,96 @@ function nftScanFrom(mintBlocks, tokenId, sharedFloor) {
   return Math.max(floor, scanFloorFor(mintBlocks, tokenId, 0));
 }
 
-module.exports = { mintBlocksByTokenId, scanFloorFor, nftScanFrom };
+/**
+ * Raise a pool-level floor to the chain's own first mint.
+ *
+ * `mintBlocksByTokenId` cannot name a mint block for the OLDEST NFT in
+ * a chain: it appears only as an `oldTokenId`, so its mint predates
+ * every event. That one NFT therefore falls back to the pool's creation
+ * block — which on a pool that existed long before the operator ever
+ * deposited is the single most expensive scan in the whole run.
+ *
+ * The event scanner already resolves that mint as
+ * `firstMintBlockNumber` and hangs it on the events array (see
+ * `resolveFirstMintWithForeign`, which follows an NFT minted on another
+ * wallet back to its true mint). No NFT in the chain can predate it, so
+ * it is a sound floor for all of them, and it costs no extra RPC.
+ *
+ * Observed: pool created at ~18.95M, first deposit at 26.03M — 1,144
+ * chunks reduced to about 200.
+ *
+ * @param {Array & {firstMintBlockNumber?: number}} events  Rebalance
+ *   events, as returned by the event scanner.
+ * @param {number} poolFloor  Pool creation block, or resume checkpoint.
+ * @returns {number}
+ */
+function chainScanFloor(events, poolFloor) {
+  const base = Number.isFinite(poolFloor) ? poolFloor : 0;
+  const first = events && events.firstMintBlockNumber;
+  return typeof first === "number" && first > base ? first : base;
+}
+
+/**
+ * Map each retired NFT to the block its replacement was minted.
+ *
+ * A rebalance drains the old NFT and mints a new one, so the old NFT's
+ * last possible event is at or before the block recorded on that
+ * rebalance event. After it, the NFT is empty and the app never returns
+ * to it — a re-open mints a fresh NFT rather than reviving a drained
+ * one.
+ *
+ * So scanning a retired NFT all the way to the chain head is a
+ * guaranteed-empty walk across everything that happened since. On a
+ * long chain that is the bulk of the remaining cost even after each
+ * scan is given a correct lower bound: a hundred-odd retired NFTs, each
+ * re-reading a million blocks it cannot appear in.
+ *
+ * The current NFT is deliberately absent from this map — it appears
+ * only as a `newTokenId` — so it keeps scanning to head, which is
+ * right.
+ *
+ * @param {Array<{oldTokenId?: string|number, blockNumber?: number}>} events
+ * @returns {Map<string, number>}  tokenId → block it was replaced at.
+ */
+function retirementBlocksByTokenId(events) {
+  const out = new Map();
+  if (!Array.isArray(events)) return out;
+  for (const e of events) {
+    if (!e || typeof e.blockNumber !== "number" || e.blockNumber < 0) continue;
+    if (e.oldTokenId === undefined || e.oldTokenId === null) continue;
+    const id = String(e.oldTokenId);
+    const prev = out.get(id);
+    /*- LATEST wins, the mirror of `mintBlocksByTokenId` taking the
+     *  earliest: an upper bound that is too low silently loses events,
+     *  one that is too high only costs time. */
+    if (prev === undefined || e.blockNumber > prev) out.set(id, e.blockNumber);
+  }
+  return out;
+}
+
+/**
+ * The block one NFT's event scan should stop at.
+ *
+ * @param {Map<string, number>} retirementBlocks  From
+ *   `retirementBlocksByTokenId`.
+ * @param {string|number} tokenId
+ * @param {number|string} [fallback="latest"]  Used when the NFT was
+ *   never retired — i.e. it is the current one.
+ * @returns {number|string}
+ */
+function nftScanTo(retirementBlocks, tokenId, fallback = "latest") {
+  const known =
+    retirementBlocks instanceof Map
+      ? retirementBlocks.get(String(tokenId))
+      : undefined;
+  return typeof known === "number" ? known : fallback;
+}
+
+module.exports = {
+  mintBlocksByTokenId,
+  scanFloorFor,
+  nftScanFrom,
+  chainScanFloor,
+  retirementBlocksByTokenId,
+  nftScanTo,
+};

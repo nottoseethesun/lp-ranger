@@ -387,12 +387,21 @@ function _afterDisclaimer() {
        *  The wallet is always still locked at init time, so the call
        *  itself entry-skips with "wallet-locked" and records pos as
        *  pending.  flushPendingUnmanagedFetch() (called from the unlock
-       *  paths) drains it once the wallet is ready.  We do NOT gate on
-       *  isPositionManaged here — the localStorage managed-tokenIds Set
-       *  may be stale across sessions (e.g. server auto-retired the
-       *  position while the page was closed), and a one-shot fetch for
-       *  a position that turns out to be managed is a harmless no-op
-       *  that the dedup guard prevents from re-firing. */
+       *  paths) drains it once the wallet is ready.
+       *
+       *  Still no isPositionManaged gate HERE, and for the original
+       *  reason: no /api/status response has necessarily landed this
+       *  early, so the managed-tokenIds Set may be a localStorage
+       *  carry-over from a previous session (the server may have
+       *  retired the position while the page was closed).
+       *
+       *  The gate moved to the flush, where a poll has landed and the
+       *  answer is authoritative.  It had to move: the claim that a
+       *  fetch for a managed position is "a harmless no-op" stopped
+       *  being true once every RPC request went through the 250 ms
+       *  global queue — it is a multi-minute chain scan racing the bot
+       *  for that queue.  See `shouldSkipUnmanagedFetch` in
+       *  dashboard-unmanaged.js. */
       fetchUnmanagedDetails(active);
     }
     refreshCurDepositDisplay();

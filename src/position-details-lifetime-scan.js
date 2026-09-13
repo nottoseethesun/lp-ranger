@@ -20,7 +20,13 @@ const {
 } = require("./epoch-cache");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const { scanNftEvents } = require("./compounder");
-const { mintBlocksByTokenId, nftScanFrom } = require("./nft-mint-blocks");
+const {
+  mintBlocksByTokenId,
+  nftScanFrom,
+  chainScanFloor,
+  retirementBlocksByTokenId,
+  nftScanTo,
+} = require("./nft-mint-blocks");
 const { computeLifetimeHodl } = require("./lifetime-hodl");
 
 /** Resolve the NFT-scan lower bound; 0 when the pool address is unknown. */
@@ -79,14 +85,19 @@ async function scanLifetimeHodl(
       then scanned from its own mint block, because it cannot have
       emitted events before it existed, and on a long chain those
       pre-mint blocks are the dominant cost of the whole scan. */
-  const fromBlock = await _resolveScanFromBlock(prov, ethers, poolAddress);
+  const creationBlock = await _resolveScanFromBlock(prov, ethers, poolAddress);
+  const fromBlock = chainScanFloor(events, creationBlock);
   const mintBlocks = mintBlocksByTokenId(events);
+  /*- Retired NFTs stop emitting at their replacement's mint; only the
+   *  current one needs scanning to head. */
+  const retirementBlocks = retirementBlocksByTokenId(events);
   const allNftEvents = new Map();
   for (const tid of ids) {
     allNftEvents.set(
       tid,
       await scanNftEvents(tid, {
         fromBlock: nftScanFrom(mintBlocks, tid, fromBlock),
+        toBlock: nftScanTo(retirementBlocks, tid),
       }),
     );
   }

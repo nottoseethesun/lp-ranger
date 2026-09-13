@@ -34,6 +34,8 @@ const ethers = require("ethers");
 const { getPoolState } = require("./rebalancer-pools");
 const {
   mintBlocksByTokenId: _mintBlocksByTokenId,
+  chainScanFloor: _chainScanFloor,
+  retirementBlocksByTokenId: _retirementBlocksByTokenId,
 } = require("./nft-mint-blocks");
 const {
   PoolStateInvalidError,
@@ -698,12 +700,24 @@ async function _scanLifetimePoolData(
       positionManagerAddress: config.POSITION_MANAGER,
     };
     const ids = _collectTokenIds(position, rebalanceEvents);
-    /*- Per-NFT floors from the same events `ids` came from, so each NFT
-     *  is scanned across its own life instead of the whole pool's. */
+    /*- Two floors, both derived from events already in hand — no extra
+     *  RPC.  `chainScanFloor` lifts the pool-level floor to the chain's
+     *  own first mint, which is the only bound the OLDEST NFT can get
+     *  (it appears solely as an `oldTokenId`, so no event names its
+     *  mint); `mintBlocksByTokenId` then gives every later NFT its own.
+     *
+     *  `scanFrom` is deliberately a separate binding from `fromBlock`:
+     *  the checkpoint comparison below still uses `fromBlock`, so a run
+     *  that finds no events but did lift its floor still records the
+     *  higher floor as the resume point. */
+    const scanFrom = _chainScanFloor(rebalanceEvents, fromBlock);
+    const mintBlocks = _mintBlocksByTokenId(rebalanceEvents);
+    const retirementBlocks = _retirementBlocksByTokenId(rebalanceEvents);
     const { allNftEvents, maxBlock } = await _fetchAllNftEvents(
       ids,
-      fromBlock,
-      _mintBlocksByTokenId(rebalanceEvents),
+      scanFrom,
+      mintBlocks,
+      retirementBlocks,
     );
     if (!hasCompoundData)
       await _classifyAllCompounds(

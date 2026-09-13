@@ -8,7 +8,7 @@
 
 import { log } from "./dashboard-log.js";
 import { g, botConfig, fetchWithCsrf, cloneTpl } from "./dashboard-helpers.js";
-import { resetKpis, pollNow } from "./dashboard-data.js";
+import { resetKpis, pollNow, getLastStatus } from "./dashboard-data.js";
 import {
   loadPriceOverrides,
   loadForceOverride,
@@ -17,7 +17,11 @@ import { _apply, _applyLifetime } from "./dashboard-unmanaged-apply.js";
 import { enterClosedPosView } from "./dashboard-closed-pos.js";
 import { isWalletUnlocked } from "./dashboard-wallet.js";
 import { LT_BD_IDS } from "./dashboard-data-kpi-breakdown.js";
-import { posStore, updatePosStripUI } from "./dashboard-positions-store.js";
+import {
+  posStore,
+  updatePosStripUI,
+  isPositionManaged,
+} from "./dashboard-positions-store.js";
 import { renderPosBrowser } from "./dashboard-positions-browser.js";
 
 /*- Compare a queued/in-flight fetch's tokenId against the currently-
@@ -84,6 +88,40 @@ export function resetLastFetchedId() {
 }
 
 /**
+ * Whether the pending unmanaged fetch should be dropped because the bot
+ * owns this position.
+ *
+ * A position is never both managed and unmanaged — but on a cold load
+ * the browser is asked before it can answer. `isPositionManaged()` reads
+ * a Set filled from `/api/status`, and the bot starts its positions on a
+ * stagger, so the naive check says "not managed" for the first minute
+ * and the dashboard scans a chain the bot is about to scan itself. That
+ * cost two full passes over every NFT in the rebalance chain on every
+ * startup.
+ *
+ * `hasPolled` is what makes the check trustworthy, and it is not
+ * belt-and-braces. The managed Set is also restored from localStorage
+ * for instant badge render, so before any poll lands it may be a
+ * carry-over from a previous session — the server may have retired the
+ * position while the page was closed. Until a real response arrives we
+ * do not trust it, and the fetch proceeds exactly as it always has.
+ *
+ * Once a poll HAS landed the answer is authoritative, because the
+ * server's `managedPositions` is the union of live bot loops and
+ * positions whose saved status is `running` but have not started yet
+ * (`src/handle-api-status.js`). So intent is known from the very first
+ * payload, well before the bot loop exists.
+ *
+ * Pure so the decision can be driven directly by a test rather than
+ * re-expressed in one.
+ * @param {{isManaged: boolean, hasPolled: boolean}} state
+ * @returns {boolean}  True to skip the fetch.
+ */
+export function shouldSkipUnmanagedFetch({ isManaged, hasPolled }) {
+  return hasPolled === true && isManaged === true;
+}
+
+/**
  * Fire any pending unmanaged-details fetch that was deferred because the
  * wallet was still locked when the activation path tried to fetch.  Called
  * from the wallet unlock paths (auto-unlock, manual submit, import).  No-op
@@ -93,6 +131,23 @@ export function flushPendingUnmanagedFetch() {
   const pos = _pendingPos;
   _pendingPos = null;
   if (!pos) return;
+  /*- Drop the pending if the bot owns this position.  The prime at init
+   *  deliberately does not check — no poll has landed that early — so
+   *  this is where the question gets asked, by which time /api/status
+   *  has answered it.  See `shouldSkipUnmanagedFetch`. */
+  if (
+    shouldSkipUnmanagedFetch({
+      isManaged: isPositionManaged(pos.tokenId),
+      hasPolled: getLastStatus() !== null,
+    })
+  ) {
+    log.info(
+      "%c[lp-ranger] [unmanaged] FLUSH-SKIP managed #%s",
+      "color:#fa0;background:#310;padding:1px 4px;border-radius:2px",
+      pos?.tokenId,
+    );
+    return;
+  }
   /*- Drop the pending if the active position changed since this was
    *  queued (e.g. URL routing activated a different NFT after the
    *  initial bestAutoSelect).  Firing the stale fetch would write the

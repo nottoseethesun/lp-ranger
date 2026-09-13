@@ -9,7 +9,7 @@
 "use strict";
 
 const { scanNftEvents } = require("./compounder");
-const { nftScanFrom } = require("./nft-mint-blocks");
+const { nftScanFrom, nftScanTo } = require("./nft-mint-blocks");
 
 /**
  * Collect all unique tokenIds from the rebalance chain plus the current
@@ -49,14 +49,21 @@ function collectTokenIds(position, rebalanceEvents) {
  *   checkpoint.
  * @param {Map<string, number>} [mintBlocks]  tokenId → mint block, from
  *   `nft-mint-blocks.mintBlocksByTokenId`.
+ * @param {Map<string, number>} [retirementBlocks]  tokenId → the block
+ *   its replacement was minted, from
+ *   `nft-mint-blocks.retirementBlocksByTokenId`.  A retired NFT stops
+ *   emitting there, so scanning it to head is a guaranteed-empty walk
+ *   across the whole remainder of the chain.  The CURRENT NFT is absent
+ *   from the map and keeps scanning to head.
  * @returns {Promise<{allNftEvents: Map<string, object>, maxBlock: number}>}
  */
-async function fetchAllNftEvents(ids, fromBlock, mintBlocks) {
+async function fetchAllNftEvents(ids, fromBlock, mintBlocks, retirementBlocks) {
   const allNftEvents = new Map();
   let maxBlock = fromBlock;
   for (const tid of ids) {
     const ev = await scanNftEvents(tid, {
       fromBlock: nftScanFrom(mintBlocks, tid, fromBlock),
+      toBlock: nftScanTo(retirementBlocks, tid),
     });
     allNftEvents.set(tid, ev);
     for (const e of [...ev.ilEvents, ...ev.collectEvents, ...ev.dlEvents]) {
