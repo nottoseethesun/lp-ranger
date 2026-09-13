@@ -1169,7 +1169,7 @@ export const PARAM_HELP = {
    *  chains.json, and nothing ever read the saved values back.  They
    *  are not editable from the dashboard by design — both scope the
    *  on-disk caches, so changing one mid-life orphans every cache keyed
-   *  to the old address.  docs/engineering.md documents where they live
+   *  to the old address.  docs/configuration.md documents where they live
    *  and why changing them means a fresh install. */
 
   // ── Rebalance timing ───────────────────────────────────────────────────

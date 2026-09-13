@@ -6,6 +6,12 @@ real-time view into the bot with GUI controls. The two halves communicate
 through a well-defined HTTP API, documented in an interactive local Scalar
 API reference (`npm run api-doc`).
 
+Two companion references sit alongside this one:
+[`docs/configuration.md`](configuration.md) for how the app is configured —
+every environment variable, where each setting lives, and which are
+deliberately not editable — and [`docs/engineering.md`](engineering.md) for
+runtime state, development tools and the check-report pipeline.
+
 ---
 
 ## Table of Contents

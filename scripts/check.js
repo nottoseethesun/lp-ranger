@@ -178,6 +178,7 @@ const markdownlintRun = run(bin("markdownlint-cli2"), [
   "docs/claude/CLAUDE-TESTING.md",
   "docs/claude/CLAUDE-DISCLOSURES.md",
   "docs/architecture.md",
+  "docs/configuration.md",
   "docs/engineering.md",
   "docs/roadmap/**/*.md",
 ]);

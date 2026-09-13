@@ -53,7 +53,7 @@ const GLOBAL_KEYS = [
    *  scope the on-disk caches (event cache, LP position cache, epoch
    *  cache) — changing one mid-life orphans every cache keyed to the
    *  old address.  That belongs to a fresh install.  See
-   *  docs/engineering.md § "Contract Addresses".
+   *  docs/configuration.md § "Contract Addresses".
    *
    *  A value left in an existing bot-config.json from before is inert:
    *  nothing reads it, and POST /api/config will no longer accept a

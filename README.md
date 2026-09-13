@@ -403,6 +403,10 @@ For an overview of LP Ranger's architecture — how the bot and dashboard
 interact, the rebalance pipeline, P&L tracking, and security model — see
 **[`docs/architecture.md`](docs/architecture.md)**.
 
+**For configuration** — every environment variable, where each setting lives
+on disk, how the layered defaults resolve, and which settings are deliberately
+not editable — see **[`docs/configuration.md`](docs/configuration.md)**.
+
 **For engineering details** — development tools, the check-report pipeline,
 and the rest of the internals — see
 **[`docs/engineering.md`](docs/engineering.md)**.  That is the authoritative
