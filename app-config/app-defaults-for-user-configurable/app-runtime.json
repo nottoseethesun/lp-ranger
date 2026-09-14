@@ -5,6 +5,7 @@
     "host": "127.0.0.1"
   },
   "defaults": {
+    "_comment": "chain: which entry of chains.json the app runs against when CHAIN_NAME is not set in .env. Read by src/runtime-flags.js, which lowercases it and looks it up in chains.json; a value matching no entry there throws at startup rather than falling back to another chain, since the entry carries the RPC endpoints and contract addresses every transaction is built against. Per feedback_one_literal_per_shipped_default the chain name lives here only.",
     "chain": "pulsechain"
   },
   "tx": {
