@@ -254,9 +254,9 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 | `CHECK_INTERVAL_SEC` | `300` | On-chain poll frequency |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | |
 | `MAX_REBALANCES_PER_DAY` | `5` | |
-| `POSITION_MANAGER` | `0xCC05bf…` | NonfungiblePositionManager (9mm Pro V3) |
-| `FACTORY` | `0xe50Dbd…` | V3 Factory (9mm Pro) |
-| `SWAP_ROUTER` | `0x7bE8fb…` | V3 SwapRouter (9mm Pro) |
+| `POSITION_MANAGER` | `0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2` | NonfungiblePositionManager (9mm Pro V3) |
+| `FACTORY` | `0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68` | V3 Factory (9mm Pro) |
+| `SWAP_ROUTER` | `0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA` | V3 SwapRouter (9mm Pro) |
 | `AGGREGATOR_URL` | `https://api.9mm.pro` | 9mm DEX Aggregator API (0x v1 fork) |
 | `AGGREGATOR_API_KEY` | *(built-in)* | 0x-api-key header for aggregator quotes |
 
@@ -353,7 +353,7 @@ the same timestamp. Full detail in docs/engineering.md §
 
 **Multi-position management:** The tool manages **multiple LP positions simultaneously** across different pools from a single wallet. Each managed position gets its own independent `startBotLoop()` instance sharing a single provider/signer. A **rebalance lock** (`src/rebalance-lock.js`, backed by `async-mutex`) ensures only one position sends transactions at a time (same wallet = same nonce), while all positions continue polling independently. The `src/position-manager.js` orchestrator tracks all managed positions with start/stop lifecycle (two states: `'running'` and `'stopped'`). When rebalancing, the old NFT is drained (`decreaseLiquidity` + `collect`) but NOT burned. Rebalance history is detected via consecutive mint events. Closed positions (liquidity=0) are displayed but the bot skips rebalance checks.
 
-**Position key format:** All per-position state is keyed by a **composite key**: `blockchain-wallet-contract-tokenId` (dash-separated). Example: `pulsechain-0x4e448...-0xCC05b...-157149`. Built/parsed by `compositeKey()` / `parseCompositeKey()` in `src/bot-config-v2.js`. The same components appear in the URL path.
+**Position key format:** All per-position state is keyed by a **composite key**: `blockchain-wallet-contract-tokenId` (dash-separated). Example: `pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-157149`. Built/parsed by `compositeKey()` / `parseCompositeKey()` in `src/bot-config-v2.js`. The same components appear in the URL path.
 
 **Position lifecycle:** `POST /api/position/manage { tokenId }` starts a new bot loop. `DELETE /api/position/manage { key }` stops and removes from management (sets `status: 'stopped'`, keeps config data for history). No pause/resume — only start and stop. On server restart, all positions with `status: 'running'` in config auto-start. Focus is client-side (URL determines which position a browser tab shows) — the server does NOT track focus. The `handleManage` start path uses a `_starting` Set guard + try/catch/finally to prevent duplicate bot loops and ensure cleanup on failure.
 

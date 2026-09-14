@@ -197,9 +197,12 @@ The shipped addresses live in
 
 ```json
 "contracts": {
-  "positionManager": { "address": "0xCC05bf…", "mintGasLimit": 600000 },
-  "factory": "0xe50Dbd…",
-  "swapRouter": "0x7bE8fb…"
+  "positionManager": {
+    "address": "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2",
+    "mintGasLimit": 600000
+  },
+  "factory": "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68",
+  "swapRouter": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA"
 }
 ```
 

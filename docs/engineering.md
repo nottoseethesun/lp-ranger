@@ -923,7 +923,8 @@ shareable URLs that reflect the active wallet and position.
 - `/pulsechain/:wallet` — Wallet loaded, no position selected
 - `/pulsechain/:wallet/:contract/:tokenId` — Specific NFT position deep-link
 
-Example: `/pulsechain/0xabc123.../0xCC05bf.../157149`
+Example:
+`/pulsechain/0x1111111111111111111111111111111111111111/0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2/157149`
 
 ### SPA Catch-All
 
@@ -2326,7 +2327,9 @@ bookkeeping.
 LP Ranger manages multiple positions simultaneously, so every
 position-specific API call must identify **which position** it's
 acting on. The identifier is a composite key — a dash-separated
-string like `pulsechain-0x4e448...-0xCC05b...-157149` that encodes
+string like
+`pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-157149`
+that encodes
 the blockchain name, wallet address, the contract address of the
 liquidity pool provider's NFT factory, and NFT token ID. A malformed or missing key could route a config change,
 a rebalance, or a stop command to the wrong position — or to no
@@ -2345,7 +2348,15 @@ position-specific route (`POST /api/config`,
 
 When the dashboard saves a setting — say the user changes their
 slippage tolerance from 0.5% to 0.75% — the browser sends a JSON
-body like `{ "slippagePct": 0.75, "positionKey": "pulsechain-0x4e4..." }`
+body like:
+
+```json
+{
+  "slippagePct": 0.75,
+  "positionKey": "pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-157149"
+}
+```
+
 to `POST /api/config`. A naive handler that merged every field from
 that body into the config object would let an attacker inject
 unexpected keys (for example, overwriting `status` to mark a
