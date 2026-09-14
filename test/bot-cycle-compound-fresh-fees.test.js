@@ -33,6 +33,24 @@ function loadWithProbe(prices) {
   const probe = { fetches: 0, scopeOpenAtFetch: null };
   let scopeOpen = false;
   Module.prototype.require = function (id) {
+    /*- Each function is stubbed on the module that actually exports it,
+     *  and every stub spreads the real module rather than replacing it.
+     *  A stub that invents an export tests a module shape that does not
+     *  exist: `fetchTokenPrices` lives in bot-pnl-updater, and supplying
+     *  it on price-fetcher here would let the source import it from the
+     *  wrong place and still pass — which is a green suite over a
+     *  `fetchTokenPrices is not a function` throw on every poll. */
+    if (id === "./bot-pnl-updater") {
+      const real = orig.apply(this, arguments);
+      return {
+        ...real,
+        fetchTokenPrices: async () => {
+          probe.fetches++;
+          probe.scopeOpenAtFetch = scopeOpen;
+          return prices;
+        },
+      };
+    }
     if (id !== "./price-fetcher") return orig.apply(this, arguments);
     const real = orig.apply(this, arguments);
     return {
@@ -44,11 +62,6 @@ function loadWithProbe(prices) {
         } finally {
           scopeOpen = false;
         }
-      },
-      fetchTokenPrices: async () => {
-        probe.fetches++;
-        probe.scopeOpenAtFetch = scopeOpen;
-        return prices;
       },
     };
   };

@@ -8,14 +8,16 @@
 
 const { log } = require("./log");
 const config = require("./config");
-const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
+const {
+  actualGasCostUsd: _actualGasCostUsd,
+  fetchTokenPrices,
+} = require("./bot-pnl-updater");
 const { notify } = require("./telegram-notifications/telegram");
 const { getTokenSymbol } = require("./server-scan");
 const { executeCompound: runCompound } = require("./compounder");
 const {
   withFreshPricesAllowed,
   invalidatePriceCacheFor,
-  fetchTokenPrices,
 } = require("./price-fetcher");
 const { loadShippedDefaults } = require("./load-merged-defaults");
 
