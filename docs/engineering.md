@@ -25,6 +25,9 @@ sequence.
 - [Quick Start](#quick-start)
 - [Command-Line Flags](#command-line-flags)
 - [Configuration](#configuration) → [`docs/configuration.md`](configuration.md)
+- [Engineering Design](#engineering-design)
+  - [System View](#system-view)
+  - [Sequence View](#sequence-view)
 - [USD Pricing](#usd-pricing)
 - [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
 - [Idle-Suppressed Polling Sounds](#idle-suppressed-polling-sounds)
@@ -200,6 +203,177 @@ from. Other entry points worth knowing:
   — the map from a setting to the file that holds it.
 - [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking)
   — the two settings that govern how the app talks to an RPC endpoint.
+
+---
+
+## Engineering Design
+
+### System View
+
+Read [`docs/architecture.md`](architecture.md) first. It sets out the two
+halves — the backend bot and the web app — the HTTP API between them, the
+rebalance and compound pipelines, and how P&L is tracked. This section
+assumes that picture and names the pieces underneath it.
+
+**Major functions.**
+
+| Function | File | How it fits |
+| --- | --- | --- |
+| `startBotLoop` | `bot-loop.js` | One call per managed position. Builds or accepts a provider and signer, detects the position, restores cached P&L, polls once, starts the scheduler, fires the history scan. Returns `stop()`. |
+| `pollCycle` | `bot-cycle.js` | One poll. Reads pool state, refreshes the position, updates P&L, considers a compound, checks range, runs the rebalance gates, executes. Everything downstream is called from here. |
+| `executeRebalance` | `rebalancer.js` | Drains the old NFT, swaps to the ratio the new range needs, mints a new NFT. Holds the rebalance lock for its whole run. |
+| `executeCompound` | `compounder.js` | Collects unclaimed fees, swaps to the range's ratio, adds them back as liquidity. Same NFT, same range, no mint. |
+| `detectPositionType` | `position-detector.js` | Enumerates the wallet's NFTs, up to 300, and returns the V3 positions it finds. The only discovery path; both the bot and the scan route use it. |
+| `scanPoolHistory` | `pool-scanner.js` | Walks a pool's Transfer events to build the rebalance chain. Serialized per pool, so two positions in one pool cannot scan it twice. |
+| `reconstructEpochs` | `epoch-reconstructor.js` | Turns that chain into P&L epochs with historical prices. Runs after the scan, never beside it. |
+| `getPoolState` | `rebalancer-pools.js` | Resolves the pool from the Factory, reads `slot0` and tick spacing. The price read every poll and every rebalance starts from. |
+| `getManagedReadProvider` | `send-transaction.js` | The single read path. A Proxy that retries a failed call through the RPC failover list. Nothing reads chain state another way. |
+| `loadMergedDefaults` | `load-merged-defaults.js` | Shipped JSON deep-merged with the operator's override. Every shipped default enters the app here. |
+
+**Major objects.** Each is created by a factory and held for the process
+or the position's lifetime.
+
+| Object | File | How it fits |
+| --- | --- | --- |
+| Position manager | `position-manager.js` | The one orchestrator. Starts and stops positions by composite key, owns the shared signer, and counts rebalances per pool. |
+| Per-position bot state | `server-positions.js` | The mutable record one loop writes and `GET /api/status` serves. The only channel from bot to dashboard. |
+| P&L tracker | `pnl-tracker.js` | Closed epochs plus one live epoch. Persisted by pool identity, so it survives the rebalances that change tokenIds. |
+| Throttle | `throttle.js` | Minimum interval, daily cap, doubling window. One per position, so a volatile pool cannot slow a quiet one. |
+| Residual tracker | `residual-tracker.js` | Per-pool leftovers across rebalances. Feeds both the IL/G credit and the cleanup sweep. |
+| Rebalance lock | `rebalance-lock.js` | One async mutex. One wallet means one nonce, so only one position may send at a time. |
+| RPC request queue | `rpc-request-manager.js` | One FIFO queue. Every JSON-RPC request in the process leaves on its schedule, whichever provider issued it. |
+| Shared signer | via `getSharedSigner` | One NonceManager for the wallet. Per-position signers would keep separate counters and collide. |
+
+### Sequence View
+
+#### From a fresh install to a scanned position
+
+`npm run build`, then `npm start`. `server.js` creates the `app-config/`
+directories, hands the chain's RPC list to `sendTx.init`, and opens the HTTP
+listener. The call that creates those directories also moves a fixed list of
+config files out of the pre-`app-config/` layout, but a fresh install has
+none of them, so nothing moves.
+
+It then looks for a signing key in two places: `PRIVATE_KEY` in `.env`, or
+an encrypted `wallet.json` unlocked by `WALLET_PASSWORD` or a terminal
+prompt under `--headless`. A fresh install has neither, so the server logs
+dashboard-only mode, writes its PID file, and waits.
+
+You open the dashboard, accept the disclosure, and import or create a
+wallet. Unlocking it decrypts any stored API keys and calls the
+auto-start, which finds nothing to start — `bot-config.json` has no
+positions yet.
+
+Now the first scan runs, and it is a **wallet scan**, not a chain-history
+scan. The dashboard posts to the scan route, which reads the current block
+and checks the LP-position cache. On a fresh install that misses, so the
+full scan runs: enumerate the wallet's NFTs through the Position Manager,
+resolve each pool's token symbols, and write the result to a cache keyed
+by chain, contract and wallet. Progress is reported as it goes. No
+position's history has been touched at this point.
+
+You pick a position and click Manage. That starts a bot loop, and the loop
+scans in a fixed order.
+
+First it confirms the NFT and opens a P&L tracker. On a fresh install the
+epoch cache is empty, so a live epoch is opened rather than restored. A
+residual tracker is created, the HODL baseline starts resolving in the
+background, and a throttle is built from the saved settings.
+
+Then one poll runs immediately, so the dashboard has live numbers before
+any scan finishes.
+
+Then the history scan, in three stages. **Stage one** walks the pool's
+Transfer events to build the rebalance chain. Its floor is the pool's
+deployment block, found by bisecting `eth_getCode` rather than scanning
+for it, and the walk is chunked at 9,000 blocks with every request paced
+by the global queue. **Stage two** reconstructs P&L epochs from that
+chain. **Stage three** walks each NFT in the chain for its
+`IncreaseLiquidity`, `Collect` and `DecreaseLiquidity` events, floored at
+that NFT's own mint block, which is what compound detection, the HODL
+baseline and lifetime P&L are built from.
+
+The Sync badge flips to Synced when all three finish. A 30-minute timer
+re-runs the scan if the lifetime deposit total is missing or a rebalance
+has flagged one.
+
+#### Restarting with two positions managed and several unmanaged
+
+**Managed comes first, and not narrowly.** Starting managed positions is
+server-side and automatic; everything about the unmanaged ones is
+browser-initiated and cannot begin until a browser connects.
+
+Directory setup, `sendTx.init` and the listener come up as before. The
+key resolver now finds `wallet.json`. With `WALLET_PASSWORD` set it
+unlocks immediately; otherwise the server waits for the browser unlock and
+runs the same path afterwards.
+
+Auto-start then reads the keys whose saved `status` is `running` — the two
+positions — initialises the single shared NonceManager, and walks them in
+config order. Each is checked with `ownerOf` before its loop starts: an
+NFT the wallet no longer owns is dropped from management rather than
+started.
+
+The second position waits before starting. The stagger is the poll
+interval divided by the number of managed positions, so at the defaults
+the second waits 150 seconds. This spreads both their polls and their
+history scans rather than firing every RPC request at once.
+
+Each loop then runs the same sequence as a fresh position, with two
+differences. The scan does not block: the first poll runs, the scheduler
+starts, and the history scan proceeds in the background, so the dashboard
+has numbers within seconds. And the P&L tracker now finds cached epochs
+keyed by pool identity, so history is restored rather than rebuilt — that
+key is the pool, not the NFT, so it survived every rebalance that minted a
+new tokenId.
+
+The unmanaged positions are untouched by any of this. They are discovered
+only when the browser asks for a wallet scan, and that request hits the
+LP-position cache written on the previous run rather than re-enumerating
+the wallet. When the browser then asks for one position's detail, it skips
+any position the bot already manages, so the two do not scan the same NFT
+chain twice.
+
+#### Automatic rebalancing and auto-compounding
+
+Every poll — 300 seconds apart by default, per position — runs the same
+opening. The throttle ticks and publishes a fresh snapshot. `getPoolState`
+resolves the pool and reads the current price. The position's liquidity
+and ticks are re-read from the Position Manager. P&L and stats are
+recomputed: token prices, position value, unclaimed fees, and IL/G against
+the HODL baseline. Token prices come from a two-minute cache, and are
+suppressed entirely while the dashboard and server are both idle. A
+residual-cleanup check runs next, before the range check, so a sweep can
+fire while the position is still in range.
+
+Then the range check decides which of two paths runs.
+
+**In range — compound.** Auto-compound fires only when it is enabled, when
+unclaimed fees are at or above both the configured threshold and the $1
+floor, when no scan is running, and when the last compound was longer ago
+than five poll intervals or 300 seconds, whichever is greater. It then
+collects the fees, swaps whatever the target ratio needs, and adds them
+back to the same NFT. No new NFT, no range change.
+
+**Out of range — rebalance.** The gates run in order: state gates, swap
+backoff, the throttle's minimum interval and doubling window, the pool's
+daily cap, the Impermanent Loss Guard, and dry-run. A manual Rebalance Now
+skips the gates but still counts against the cap. Past them, a gas check
+defers the rebalance if the estimated cost exceeds the configured percent
+of position value.
+
+The rebalance itself takes the lock, then: read pool state, confirm
+ownership, read liquidity, drain the NFT with a single multicall, compute
+the amounts the new range needs, swap the excess through the aggregator
+with the V3 router as fallback, re-check the tick in case the swap moved
+it, and mint. Every transaction is wrapped in the speed-up and auto-cancel
+pipeline.
+
+On success the new tokenId replaces the old one in the composite key, the
+HODL baseline and residuals migrate with it, the epoch closes with its gas
+recorded, the throttle and the pool's daily count both increment, and a
+full rescan is flagged for the next 30-minute tick to pick up the new
+mint.
 
 ---
 
