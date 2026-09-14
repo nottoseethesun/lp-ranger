@@ -120,7 +120,7 @@ Second, on the commandline in your Terminal, do:
 tar xvzf lp-ranger-*.tar.gz     # Recommended: Instead of the star, use the full version number
 cd lp-ranger-[current-version-number]
 npm ci                           # install exact pinned dependencies
-# Security warnings are detailed here: https://github.com/nottoseethesun/lp-ranger/blob/main/docs/engineering.md#npm-audit
+# Security warnings are detailed here: https://github.com/nottoseethesun/lp-ranger/blob/main/docs/security.md#npm-audit
 # The next step is optional, and not for standard set-ups.
 #    Only use it if you have a specific custom set-up in mind.
 #    Uncomment the line below for a custom set-up.
@@ -408,6 +408,10 @@ interact, the rebalance pipeline, P&L tracking, and security model — see
 **For configuration** — every environment variable, where each setting lives
 on disk, how the layered defaults resolve, and which settings are deliberately
 not editable — see **[`docs/configuration.md`](docs/configuration.md)**.
+
+**For security** — what is at stake, every control in effect, and the lint
+and test gates enforcing each one — see
+**[`docs/security.md`](docs/security.md)**.
 
 **For engineering details** — development tools, the check-report pipeline,
 and the rest of the internals — see

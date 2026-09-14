@@ -104,7 +104,7 @@ editing the text in a way that no longer matches the code.
 | Transaction History / Post-Trade Data | [`src/bot-recorder.js`](../../src/bot-recorder.js), [`src/position-history.js`](../../src/position-history.js), [`public/dashboard-history.js`](../../public/dashboard-history.js), [`public/dashboard-data-kpi.js`](../../public/dashboard-data-kpi.js) |
 | User-Customizable Parameters (if/when added to in-app disclosure) | [`public/index.html`](../../public/index.html) form inputs, [`src/config.js`](../../src/config.js), [`src/bot-config-v2.js`](../../src/bot-config-v2.js) `GLOBAL_KEYS` / `POSITION_KEYS` |
 | MEV Exposure (if/when added) | [`src/rebalancer-pools.js`](../../src/rebalancer-pools.js) `_checkSwapImpact`, [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js) |
-| Cybersecurity Controls (if/when added) | [`docs/engineering.md`](../engineering.md) § Security, [`CLAUDE-SECURITY.md`](CLAUDE-SECURITY.md) |
+| Cybersecurity Controls (if/when added) | [`docs/security.md`](../security.md), [`CLAUDE-SECURITY.md`](CLAUDE-SECURITY.md) |
 
 If you edit one of these source files in a way that changes externally
 observable behavior, check the disclosure.

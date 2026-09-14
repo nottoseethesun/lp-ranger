@@ -19,6 +19,7 @@ dashboard.
 For the runtime mechanisms these settings govern, see
 [`docs/engineering.md`](engineering.md). For how the bot and dashboard
 cooperate at a higher level, see [`docs/architecture.md`](architecture.md).
+For the controls protecting the wallet, see [`docs/security.md`](security.md).
 
 ---
 
@@ -198,8 +199,7 @@ saved falls back to.
 Mutating API endpoints (POST, DELETE) are protected by three layers —
 network binding, CORS origin guard, and CSRF tokens. GET requests
 require none of them. Full details and the lint/test enforcement behind
-each layer live in the [Security](engineering.md#security) section of the
-engineering reference.
+each layer live in [`docs/security.md`](security.md).
 
 ### Chain Selection (`.env`)
 
