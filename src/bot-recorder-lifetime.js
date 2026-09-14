@@ -243,6 +243,11 @@ function _recordScanSuccess(botState, updateState, ctx) {
   const total = botState?.totalLifetimeDepositUsd || 0;
   const ready = total > 0;
   if (botState) {
+    /*- Released on success: the buffer exists to carry one scan across
+     *  a failure, not to answer the next one. The chain head advances
+     *  between scans, so holding it would hand a later run reads that
+     *  stop short of the head. */
+    botState._lifetimeResumeBuffer = null;
     botState._needsFullRescan = false;
     botState._lifetimeScanError = null;
     botState._lifetimeScanErrorAt = null;
@@ -329,6 +334,42 @@ async function _resolveScanFromBlock(
     factoryAddress: config.FACTORY,
     position,
   });
+}
+
+/**
+ * The position's per-NFT resume buffer, created on first use.
+ *
+ * Same purpose as the buffer in `epoch-reconstructor.js`, for the other
+ * long per-NFT pass. The lifetime loop walks the whole rebalance chain
+ * three queries at a time; without somewhere to keep the NFTs already
+ * read, a throw anywhere in it costs every one of them and the next
+ * attempt starts from the first again. See `fetchAllNftEvents` for why
+ * reuse is gated on the scan floor and on the NFT being retired, and
+ * `_recordScanSuccess` for the release.
+ *
+ * Extracted from `_scanLifetimePoolData` so the lazy-create branch does
+ * not push that function past the complexity cap.
+ *
+ * @param {object} [botState]  Live per-position bot state.  Without one
+ *   there is nowhere to carry reads to, so a throwaway Map is returned
+ *   and the scan simply does not resume — the caller stays working.
+ * @param {boolean} [fullRescan]  True when a rebalance forced this scan.
+ * @returns {Map<string, {from: number, ev: object}>}
+ */
+function _lifetimeResumeBuffer(botState, fullRescan) {
+  /*- Tolerates a missing state object.  This is the first thing in the
+   *  scan to reach into `botState`, and a scan is worth running with no
+   *  resume at all — so an absent one costs the buffer, not the scan. */
+  if (botState === undefined || botState === null) return new Map();
+  /*- A full rescan means a rebalance fired, so any NFT in the chain may
+   *  have emitted since the buffered read — the one it just retired
+   *  certainly did. Start from nothing rather than trust a floor
+   *  comparison to notice, since the floor is the pool creation block
+   *  on both sides when no scan has completed yet. */
+  if (fullRescan === true) botState._lifetimeResumeBuffer = null;
+  if (!(botState._lifetimeResumeBuffer instanceof Map))
+    botState._lifetimeResumeBuffer = new Map();
+  return botState._lifetimeResumeBuffer;
 }
 
 /*- Persist scan-failure state so the 30-min auto-rescan can see the gap.
@@ -718,6 +759,10 @@ async function _scanLifetimePoolData(
       ids,
       scanFrom,
       mintBlocks,
+      {
+        resumeBuffer: _lifetimeResumeBuffer(botState, fullRescan),
+        liveTokenId: position?.tokenId,
+      },
     );
     if (!hasCompoundData)
       await _classifyAllCompounds(
@@ -766,4 +811,5 @@ module.exports = {
   _ensureTokenDecimals, // exported for tests
   _recordScanFailure, // exported for tests
   _recordScanSuccess, // exported for tests
+  _lifetimeResumeBuffer, // exported for tests
 };
