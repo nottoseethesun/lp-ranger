@@ -99,7 +99,6 @@ async function _detectWithRetry(address, targetId, getProvider, onRpcFailure) {
       walletAddress: address,
       positionManagerAddress: config.POSITION_MANAGER,
       tokenId: targetId,
-      candidateAddress: config.ERC20_POSITION_ADDRESS || undefined,
     });
     if (detection.type === "nft" && detection.nftPositions?.length) break;
     if (attempt < _DETECT_RETRIES) {

@@ -254,7 +254,6 @@ describe("config module shape", () => {
     "PRIVATE_KEY",
     "RPC_URL",
     "POSITION_ID",
-    "ERC20_POSITION_ADDRESS",
     "REBALANCE_OOR_THRESHOLD_PCT",
     "SLIPPAGE_PCT",
     "CHECK_INTERVAL_SEC",

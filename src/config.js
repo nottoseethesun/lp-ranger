@@ -160,9 +160,6 @@ function setRpcUrls(urls) {
 /** NFT token ID for single-position NFT mode (optional). */
 const POSITION_ID = process.env.POSITION_ID || null;
 
-/** ERC-20 / PRC-20 position token contract address (optional fallback). */
-const ERC20_POSITION_ADDRESS = process.env.ERC20_POSITION_ADDRESS || null;
-
 /** % the price must move beyond the position boundary before triggering a rebalance. */
 const REBALANCE_OOR_THRESHOLD_PCT = parsePositiveFloat(
   process.env.REBALANCE_OOR_THRESHOLD_PCT,
@@ -361,7 +358,6 @@ module.exports = {
   RPC_URLS_BASE,
   setRpcUrls,
   POSITION_ID,
-  ERC20_POSITION_ADDRESS,
   REBALANCE_OOR_THRESHOLD_PCT,
   REBALANCE_TIMEOUT_MIN,
   DEFAULT_SLIPPAGE_PCT,
