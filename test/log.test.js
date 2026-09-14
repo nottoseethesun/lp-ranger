@@ -20,6 +20,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
 
 const {
   log,
@@ -234,4 +235,44 @@ test("_colorize paints [rescan-prices] in the tool palette", () => {
 test("_colorize leaves other [server] lines on the plain tag colour", () => {
   const out = _colorize("[server] [reload] unrelated");
   assert.ok(!out.includes("38;2;48;48;59"), "no tool grey on unrelated lines");
+});
+
+test("_colorize paints the lifetime auto-rescan in the soil palette", () => {
+  /*- Earth Green #185E3F (24,94,63) on Deep Soil Brown #181612
+   *  (24,22,18), so a run of retries reads as one block while
+   *  scrolling instead of lines to be picked out of the [bot] purple.
+   *
+   *  Registered as a HIGHLIGHT rather than a _COLORS tag because these
+   *  lines lead with "[bot] ", which has its own colour and is shared
+   *  with every other bot line. */
+  const out = _colorize(
+    "[bot] WPLS/DAI NFT #71544: pool= 0xabc — Auto-rescanning lifetime, retry #3 since startup (epochHistoryIncomplete=true)",
+  );
+  assert.ok(
+    out.includes(_ESC + "[38;2;24;94;63;48;2;24;22;18m"),
+    "must carry Earth Green on Deep Soil Brown",
+  );
+  /*- toEnd: the highlight starts at the phrase and runs to end-of-line,
+   *  so the retry number and the reason are inside it. */
+  const idx = out.indexOf(_ESC + "[38;2;24;94;63");
+  assert.ok(idx > 0, "highlight begins mid-line, after the [bot] prefix");
+  assert.ok(
+    out.endsWith(_ESC + "[0m"),
+    "and is closed, so the next line is not left tinted",
+  );
+});
+
+test("the auto-rescan colour is tied to the wording the log uses", () => {
+  /*- The highlight matches on a substring, so rewording the log line in
+   *  src/bot-loop.js silently drops the colour with every gate still
+   *  green. This pins the two together — and the same phrase is what
+   *  the burn-in procedure greps for.
+   *
+   *  Asserted against the real format string rather than a copy of it,
+   *  so a reword fails here instead of being mirrored into the test. */
+  const src = readFileSync(require.resolve("../src/bot-loop.js"), "utf8");
+  assert.ok(
+    src.includes("Auto-rescanning lifetime"),
+    "src/bot-loop.js no longer logs the phrase the colour keys on",
+  );
 });
