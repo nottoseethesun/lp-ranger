@@ -183,10 +183,16 @@ describe("the shipped configuration resolves", () => {
   it("is what the module actually resolved at load", () => {
     /*- Guards against the two functions being correct while the module
      *  still picks its chain some other way. Skipped when the
-     *  environment sets CHAIN_NAME, since that legitimately wins. */
+     *  environment sets CHAIN_NAME, since that legitimately wins.
+     *
+     *  `deepEqual` on the row, not `equal`: loadMergedDefaults does no
+     *  caching — "each call hits the disk" — so the CHAINS read at the
+     *  top of this file is a different object from the one runtime-flags
+     *  read at load. Their contents are what this test is about; their
+     *  identity is something the loader's contract rules out. */
     if (_cleanEnvChainName()) return;
     assert.equal(runtimeFlags.CHAIN_NAME, APP_RUNTIME.defaults.chain);
-    assert.equal(
+    assert.deepEqual(
       runtimeFlags.CHAIN,
       selectChain(CHAINS, APP_RUNTIME.defaults.chain),
     );
