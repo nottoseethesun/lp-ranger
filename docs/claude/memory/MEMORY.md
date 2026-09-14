@@ -47,6 +47,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [instrument before inferring](feedback_instrument_before_inferring.md) — Two wrong models on one bug = add logging, stop guessing
 - [grep before writing](feedback_grep_before_writing.md) — Grep existing usage before writing code against a data shape or API
 - [tests cover full contract before manual](feedback_tests_cover_full_contract_before_manual.md) — Automated tests cover the full user-visible contract first
+- [always test a regression](feedback_always_test_a_regression.md) — Every regression gets a test; prove it fails without the fix
 - [tests with implementation](feedback_tests_with_implementation.md) — Write tests as you implement; no coverage scramble after
 - [use the path being tested](feedback_use_the_path_being_tested.md) — Validate a trigger through its exact entry point
 - [prove the revert applied](feedback_prove_the_revert_applied.md) — A silently-failed revert patch reports green and looks like proof
