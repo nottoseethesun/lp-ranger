@@ -757,39 +757,43 @@ compound detection, HODL baselines and lifetime P&L. Those run once for
 every NFT in a position's rebalance chain, so a long chain multiplies
 whatever the per-NFT window costs.
 
-Every such scan is bounded at both ends, and both bounds come from the
+Every such scan is floored at the NFT's own mint block, taken from the
 rebalance events the caller already holds. **No extra RPC call is made
-to derive either.**
+to derive it.** An NFT cannot emit any of those events before it
+exists, so every block before its mint is a guaranteed-empty walk.
 
-| Bound | Derived from | Meaning |
-| --- | --- | --- |
-| lower | `newTokenId` + `blockNumber` | the block the NFT was minted |
-| upper | `oldTokenId` + `blockNumber` | the block its replacement was minted |
+**There is no upper bound. Every scan runs to the chain head.**
 
-An NFT cannot emit any of those events before it exists, and a retired
-NFT stops emitting once the rebalance that replaced it has drained it —
-the app never returns to a drained NFT, because a re-open mints a fresh
-one rather than reviving it. So a retired NFT is scanned across the
-hours or days it was actually alive, and only the **current** NFT runs
-to the chain head.
+An upper bound could only come from the app's inferred succession, and
+that inference is not sound enough to bound a scan with. `pairTransfers`
+reads consecutive mints as successive rebalances, which holds only when
+every mint in the pool *is* a rebalance. A dust mint — a failed or
+partial rebalance, or a manual action — is indistinguishable from a
+real one in the Transfer log, so the NFT it appears to replace can still
+be funded and drain later.
 
-`src/nft-mint-blocks.js` owns the whole rule:
+Bounding there truncates the scan, and the loss is silent in both
+directions it can land:
+
+- an NFT whose drain falls past the bound returns **zero** Collects, is
+  reported as "incomplete data", and its epoch disappears from the
+  Per-Day P&L table;
+- an NFT that compounded mid-life returns the **compound's** Collect,
+  which `_supplementExitFromChain` then reads as its exit value.
+
+`src/nft-mint-blocks.js` owns the floor rule:
 
 | Function | Answers |
 | --- | --- |
 | `mintBlocksByTokenId(events)` | tokenId → mint block |
-| `retirementBlocksByTokenId(events)` | tokenId → replacement's mint block |
 | `nftScanFrom(mints, id, sharedFloor)` | where one NFT's scan starts |
-| `nftScanTo(retirements, id)` | where it stops, or `"latest"` |
+| `nftScanFromBlock({mintBlock, sharedFloor})` | the same, for a caller holding the block rather than the events |
 | `chainScanFloor(events, poolFloor)` | the floor for the chain's oldest NFT |
-| `nftScanWindow({mintBlock, retirementBlock, sharedFloor})` | both bounds, for a caller holding the block numbers rather than the events |
 
-Three rules within that module decide correctness:
+Two rules within that module decide correctness:
 
-- **The duplicate rule is asymmetric.** `mintBlocksByTokenId` keeps the
-  *earliest* block when an id repeats; `retirementBlocksByTokenId` keeps
-  the *latest*. A lower bound above an NFT's first event, or an upper
-  bound below its last, drops those events from the scan and the caller
+- **A repeated id resolves to the *earliest* block.** A floor above an
+  NFT's first event drops those events from the scan, and the caller
   reads the short result as "the event never fired". Erring wide costs
   only time.
 - **`nftScanFrom` combines with `Math.max`, not by replacement.** The
@@ -844,16 +848,16 @@ deposit, scanning two event types per NFT:
 | Window | Chunks per NFT | ~133 NFTs |
 | --- | --- | --- |
 | pool creation → head | 1,144 | ~32 hours |
-| NFT mint → head | 201 | hours |
-| NFT mint → retirement | 1–2, current NFT excepted | minutes |
+| **NFT mint → head** (what runs) | 201 | hours |
 
-The upper bound carries most of the saving on a long chain: with only a
-lower bound, each retired NFT still re-reads every block between its own
-retirement and the chain head.
+An upper bound would take this to one or two chunks per retired NFT, and
+that is the saving deliberately given up: on a long chain each retired
+NFT still re-reads every block between its own retirement and the chain
+head. Correctness wins, because no sound upper bound exists — see above.
 
 ### Call sites
 
-Five files scan a chain of NFTs and must derive both bounds per NFT:
+Five files scan a chain of NFTs and must derive the floor per NFT:
 `src/bot-recorder-scan-helpers.js`, `src/position-details-compound.js`,
 `src/position-details-lifetime-scan.js`, `src/bot-pnl-current-nft.js`
 and `src/position-history.js`.

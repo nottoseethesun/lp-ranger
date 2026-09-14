@@ -24,8 +24,6 @@ const {
   mintBlocksByTokenId,
   nftScanFrom,
   chainScanFloor,
-  retirementBlocksByTokenId,
-  nftScanTo,
 } = require("./nft-mint-blocks");
 const { computeLifetimeHodl } = require("./lifetime-hodl");
 
@@ -87,16 +85,12 @@ async function scanLifetimeHodl(
   const creationBlock = await _resolveScanFromBlock(prov, ethers, poolAddress);
   const fromBlock = chainScanFloor(events, creationBlock);
   const mintBlocks = mintBlocksByTokenId(events);
-  /*- Retired NFTs stop emitting at their replacement's mint; only the
-   *  current one needs scanning to head. */
-  const retirementBlocks = retirementBlocksByTokenId(events);
   const allNftEvents = new Map();
   for (const tid of ids) {
     allNftEvents.set(
       tid,
       await scanNftEvents(tid, {
         fromBlock: nftScanFrom(mintBlocks, tid, fromBlock),
-        toBlock: nftScanTo(retirementBlocks, tid),
       }),
     );
   }

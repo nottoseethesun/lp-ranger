@@ -27,7 +27,6 @@ const config = require("./config");
 const sendTx = require("./send-transaction");
 const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
-const { nftScanWindow } = require("./nft-mint-blocks");
 const {
   getPoolCreationBlockCached,
   resolvePoolAddressForToken,
@@ -69,7 +68,7 @@ function _saveMintCache() {
 }
 
 /** Resolve the scan window for one NFT's mint. */
-async function _mintScanWindow(prov, tokenId, closeBlockNumber) {
+async function _mintScanWindow(prov, tokenId) {
   /* Search recent blocks only — NFTs are minted within
      the last ~5 years max (~15.8M blocks on PulseChain). */
   const latest = await prov.getBlockNumber();
@@ -90,13 +89,14 @@ async function _mintScanWindow(prov, tokenId, closeBlockNumber) {
         poolAddress,
       })
     : 0;
-  /*- `to` is the NFT's retirement block when known: it cannot have been
-   *  minted after it was replaced, so scanning past that point is a
-   *  guaranteed-empty walk across everything the pool has done since. */
-  return nftScanWindow({
-    retirementBlock: closeBlockNumber,
-    sharedFloor: Math.max(fiveYearFloor, poolCreationBlock),
-  });
+  /*- No upper bound, for the same reason the event scans have none: the
+   *  only candidate is the app's inferred succession, and that reads
+   *  consecutive mints as successive rebalances — sound only when every
+   *  mint in the pool IS a rebalance. */
+  return {
+    from: Math.max(fiveYearFloor, poolCreationBlock),
+    to: "latest",
+  };
 }
 
 /**
@@ -120,11 +120,7 @@ async function supplementMintFromChain(result, tokenId) {
   }
   try {
     const prov = sendTx.getManagedReadProvider();
-    const { from, to } = await _mintScanWindow(
-      prov,
-      tokenId,
-      result.closeBlockNumber,
-    );
+    const { from, to } = await _mintScanWindow(prov, tokenId);
     const logs = await scanChunked({
       provider: prov,
       fromBlock: from,

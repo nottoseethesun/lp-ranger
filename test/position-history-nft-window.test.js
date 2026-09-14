@@ -1,23 +1,25 @@
 /**
  * @file test/position-history-nft-window.test.js
- * @description Guards that closed-NFT history scans are bounded to the
- *   NFT's own life, not the pool's.
+ * @description Guards that a closed-NFT history scan starts at that
+ *   NFT's own mint, and runs to the chain head.
  *
- * `test/position-history-scan-bound.test.js` already pins the *lower*
- * bound at the pool's creation block. That was never tight enough:
- * epoch reconstruction calls `getPositionHistory` once per closed NFT in
- * a rebalance chain, so a pool-wide window is re-walked once per
- * rebalance. On a 132-rebalance chain that was 132 x 2 x 1,144 chunks —
- * roughly 300,000 paced requests, over a day of wall-clock, for NFTs
- * that each lived a few minutes.
+ * `test/position-history-scan-bound.test.js` pins the floor at the
+ * pool's creation block, which is not tight enough on its own: epoch
+ * reconstruction calls `getPositionHistory` once per closed NFT in the
+ * chain, so a pool-wide floor is re-walked once per rebalance. On a
+ * 132-rebalance chain that is 132 x 2 x 1,144 chunks. The NFT's own
+ * mint block costs nothing extra — `_supplementFromEvents` resolves it
+ * before any scan runs.
  *
- * Both bounds are free: `_supplementFromEvents` resolves the NFT's mint
- * block and the block it was replaced at before any scan runs.
+ * There is no upper bound, and these tests pin its absence. One could
+ * only come from the app's inferred succession, which reads consecutive
+ * mints as successive rebalances — untrue when a dust mint from a
+ * failed or partial rebalance sits between two real ones. The NFT it
+ * appears to replace is then still funded and drains past that bound.
  *
  * These tests drive the real `getPositionHistory` entry point rather
- * than the helper, because the defect was in which arguments the entry
- * point passed down — a helper-level test would have stayed green
- * through the whole bug.
+ * than the helper, because what matters is which arguments the entry
+ * point passes down — a helper-level test cannot see that.
  */
 
 "use strict";
@@ -25,7 +27,6 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("assert");
 const Module = require("module");
-const { nftScanWindow } = require("../src/nft-mint-blocks");
 
 const POOL_CREATED = 1_000_000;
 const LATEST = 30_000_000;
@@ -162,22 +163,31 @@ describe("closed-NFT history scans are bounded to that NFT's life", () => {
         );
     });
 
-    it("never reads past the block it was replaced at", () => {
-      for (const c of calls)
-        assert.ok(
-          c.toBlock <= CLOSE_BLOCK,
-          `toBlock ${c.toBlock} runs past the replacement at ${CLOSE_BLOCK}`,
-        );
+    it("still reads to the chain head, not to its replacement's mint", () => {
+      /*- There is no sound upper bound.  The only candidate comes from
+       *  the app's inferred succession, which reads consecutive mints
+       *  as successive rebalances — untrue when a dust mint from a
+       *  failed or partial rebalance sits between two real ones. The
+       *  NFT it appears to replace is then still funded, and drains
+       *  past that bound.
+       *
+       *  The loss is silent either way it lands: an NFT whose drain
+       *  falls past the bound returns zero Collects and is skipped,
+       *  and one that compounded mid-life returns the compound's
+       *  Collect, which is read as its exit value. */
+      const last = Math.max(...calls.map((c) => c.toBlock));
+      assert.equal(last, LATEST);
     });
 
-    it("costs a couple of chunks, not the pool's whole history", () => {
-      /*- The regression this file exists for: unbounded, the same run
-       *  was ~1,144 chunks per event type. Two event types are scanned,
-       *  so allow a handful and no more. */
+    it("still costs far less than scanning the pool's whole history", () => {
+      /*- The lower bound is the half that survives: the NFT's own mint
+       *  rather than the pool's creation block. */
+      const poolWide = Math.ceil((LATEST - POOL_CREATED) / 7500);
       assert.ok(
-        calls.length <= 8,
-        `${calls.length} chunks for a 1,000-block window — the bound is gone`,
+        calls.length < poolWide,
+        `${calls.length} chunks is no better than the pool-wide ${poolWide}`,
       );
+      for (const c of calls) assert.ok(c.fromBlock >= MINT_BLOCK);
     });
   });
 
@@ -191,37 +201,5 @@ describe("closed-NFT history scans are bounded to that NFT's life", () => {
   });
 });
 
-describe("nftScanWindow", () => {
-  it("takes the later of the shared floor and the NFT's mint", () => {
-    assert.equal(
-      nftScanWindow({ mintBlock: 500, sharedFloor: 900 }).from,
-      900,
-      "a resume checkpoint past the mint must win",
-    );
-    assert.equal(
-      nftScanWindow({ mintBlock: 900, sharedFloor: 500 }).from,
-      900,
-      "a mint past the pool floor must tighten it",
-    );
-  });
-
-  it("scans to the head when the NFT was never retired", () => {
-    assert.equal(nftScanWindow({ mintBlock: 1 }).to, "latest");
-  });
-
-  it("stops at the retirement block when there is one", () => {
-    assert.equal(nftScanWindow({ retirementBlock: 42 }).to, 42);
-  });
-
-  it("widens rather than breaking on a non-finite floor", () => {
-    /*- Math.max would yield NaN, and a non-finite bound makes the
-     *  chunker answer an empty window list — which reads as "no events"
-     *  rather than as a failure. */
-    assert.equal(nftScanWindow({ sharedFloor: undefined }).from, 0);
-    assert.equal(nftScanWindow({ mintBlock: NaN, sharedFloor: 7 }).from, 7);
-  });
-
-  it("defaults to the widest window when told nothing", () => {
-    assert.deepEqual(nftScanWindow(), { from: 0, to: "latest" });
-  });
-});
+/*- `nftScanFromBlock`, the helper this file's floor comes from, is
+ *  covered directly in test/nft-mint-blocks.test.js. */

@@ -128,92 +128,44 @@ function chainScanFloor(events, poolFloor) {
 }
 
 /**
- * Map each retired NFT to the block its replacement was minted.
+ * The same floor, for a caller that already knows the block.
  *
- * A rebalance drains the old NFT and mints a new one, so the old NFT's
- * last possible event is at or before the block recorded on that
- * rebalance event. After it, the NFT is empty and the app never returns
- * to it — a re-open mints a fresh NFT rather than reviving a drained
- * one.
- *
- * So scanning a retired NFT all the way to the chain head is a
- * guaranteed-empty walk across everything that happened since. On a
- * long chain that is the bulk of the remaining cost even after each
- * scan is given a correct lower bound: a hundred-odd retired NFTs, each
- * re-reading a million blocks it cannot appear in.
- *
- * The current NFT is deliberately absent from this map — it appears
- * only as a `newTokenId` — so it keeps scanning to head, which is
- * right.
- *
- * @param {Array<{oldTokenId?: string|number, blockNumber?: number}>} events
- * @returns {Map<string, number>}  tokenId → block it was replaced at.
- */
-function retirementBlocksByTokenId(events) {
-  const out = new Map();
-  if (!Array.isArray(events)) return out;
-  for (const e of events) {
-    if (!e || typeof e.blockNumber !== "number" || e.blockNumber < 0) continue;
-    if (e.oldTokenId === undefined || e.oldTokenId === null) continue;
-    const id = String(e.oldTokenId);
-    const prev = out.get(id);
-    /*- LATEST wins, the mirror of `mintBlocksByTokenId` taking the
-     *  earliest: an upper bound that is too low silently loses events,
-     *  one that is too high only costs time. */
-    if (prev === undefined || e.blockNumber > prev) out.set(id, e.blockNumber);
-  }
-  return out;
-}
-
-/**
- * The block one NFT's event scan should stop at.
- *
- * @param {Map<string, number>} retirementBlocks  From
- *   `retirementBlocksByTokenId`.
- * @param {string|number} tokenId
- * @param {number|string} [fallback="latest"]  Used when the NFT was
- *   never retired — i.e. it is the current one.
- * @returns {number|string}
- */
-function nftScanTo(retirementBlocks, tokenId, fallback = "latest") {
-  const known =
-    retirementBlocks instanceof Map
-      ? retirementBlocks.get(String(tokenId))
-      : undefined;
-  return typeof known === "number" ? known : fallback;
-}
-
-/**
- * The same window, for a caller that already knows the two blocks.
- *
- * `nftScanFrom` and `nftScanTo` look the bounds up in maps built from a
- * rebalance chain. A caller working one NFT at a time may already have
- * resolved them from somewhere wider than the chain — the rebalance log,
- * or a mint cache — so it needs the rule without the lookup. Same rule,
- * so it lives here rather than being restated at the call site.
+ * `nftScanFrom` looks the mint up in a map built from a rebalance
+ * chain. A caller working one NFT at a time may already have resolved
+ * it from somewhere wider — the rebalance log, or a mint cache — so it
+ * needs the rule without the lookup.
  *
  * @param {object} opts
- * @param {number} [opts.mintBlock]        Block the NFT was minted in.
- * @param {number} [opts.retirementBlock]  Block it was replaced at;
- *   omit for the current NFT, which scans to the chain head.
- * @param {number} [opts.sharedFloor]      Pool creation block, or a
- *   resume checkpoint.
- * @returns {{from: number, to: number|string}}
+ * @param {number} [opts.mintBlock]   Block the NFT was minted in.
+ * @param {number} [opts.sharedFloor] Pool creation block, or a resume
+ *   checkpoint.
+ * @returns {number}
  */
-function nftScanWindow({ mintBlock, retirementBlock, sharedFloor } = {}) {
+function nftScanFromBlock({ mintBlock, sharedFloor } = {}) {
   const floor = Number.isFinite(sharedFloor) ? sharedFloor : 0;
-  return {
-    from: Math.max(floor, Number.isFinite(mintBlock) ? mintBlock : 0),
-    to: Number.isFinite(retirementBlock) ? retirementBlock : "latest",
-  };
+  return Math.max(floor, Number.isFinite(mintBlock) ? mintBlock : 0);
 }
+
+/*- There is deliberately NO upper-bound helper here.
+ *
+ *  One would have to come from the app's inferred succession, which
+ *  `pairTransfers` derives by reading consecutive mints as successive
+ *  rebalances. That is sound only when every mint in the pool IS a
+ *  rebalance. A dust mint — a failed or partial rebalance, or a manual
+ *  action — is indistinguishable in the Transfer log, so the NFT it
+ *  appears to replace can still be funded and drain later.
+ *
+ *  Bounding a scan there truncates it, and the loss is silent in the
+ *  worst way: an NFT whose drain falls past the bound returns zero
+ *  Collects and is skipped, while one that compounded mid-life returns
+ *  the compound's Collect and has it read as the exit value.
+ *
+ *  Every per-NFT scan therefore runs to the chain head. */
 
 module.exports = {
   mintBlocksByTokenId,
   scanFloorFor,
   nftScanFrom,
+  nftScanFromBlock,
   chainScanFloor,
-  retirementBlocksByTokenId,
-  nftScanTo,
-  nftScanWindow,
 };

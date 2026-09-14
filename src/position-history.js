@@ -22,7 +22,7 @@ const {
   scanCollectAndDrain,
   resolveScanFromBlock,
 } = require("./position-history-scan-helpers");
-const { nftScanWindow } = require("./nft-mint-blocks");
+const { nftScanFromBlock } = require("./nft-mint-blocks");
 const { supplementMintFromChain } = require("./position-history-mint");
 const { lifetimeFeeAmounts } = require("./compounder");
 
@@ -369,21 +369,25 @@ async function _supplementAmountsFromChain(result, tokenId) {
     ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
     : 0n;
   if (needExit || needFees) {
-    /*- Bound to THIS NFT's life, not the pool's.  The pool's creation
-     *  block alone is nowhere near tight enough: epoch reconstruction
-     *  calls this once per closed NFT in the chain, so a pool-wide
-     *  window is re-walked once per rebalance — 132 of them here, each
-     *  1,144 chunks twice over, for NFTs that lived a few minutes each.
-     *  `mintBlockNumber` and `closeBlockNumber` were resolved above from
-     *  the rebalance events and log, so both bounds are already in hand.
+    /*- Floored at this NFT's own mint: it cannot emit before it exists.
+     *  Epoch reconstruction calls this once per closed NFT in the chain,
+     *  so a pool-wide floor is re-walked once per rebalance.
+     *
+     *  Runs to the chain head, with no upper bound.  One would have to
+     *  come from the app's inferred succession, which reads consecutive
+     *  mints as successive rebalances — sound only when every mint in
+     *  the pool IS a rebalance.  A dust mint from a failed or partial
+     *  rebalance looks identical in the Transfer log, so the NFT it
+     *  appears to replace can still be funded and drain later; bounding
+     *  there truncates the scan and loses the drain.
+     *
      *  One scan serves both consumers below — see scanCollectAndDrain. */
     const poolFloor = await resolveScanFromBlock(prov, ethers, tokenId);
-    const { from, to } = nftScanWindow({
+    const from = nftScanFromBlock({
       mintBlock: result.mintBlockNumber,
-      retirementBlock: result.closeBlockNumber,
       sharedFloor: poolFloor,
     });
-    const scan = await scanCollectAndDrain(tokenId, prov, from, to);
+    const scan = await scanCollectAndDrain(tokenId, prov, from);
     if (scan) {
       const ctx = { tokenId, dec0, dec1, scan };
       if (needExit) _supplementExitFromChain(result, ctx);

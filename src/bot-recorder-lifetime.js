@@ -35,7 +35,6 @@ const { getPoolState } = require("./rebalancer-pools");
 const {
   mintBlocksByTokenId: _mintBlocksByTokenId,
   chainScanFloor: _chainScanFloor,
-  retirementBlocksByTokenId: _retirementBlocksByTokenId,
 } = require("./nft-mint-blocks");
 const {
   PoolStateInvalidError,
@@ -715,12 +714,10 @@ async function _scanLifetimePoolData(
      *  higher floor as the resume point. */
     const scanFrom = _chainScanFloor(rebalanceEvents, fromBlock);
     const mintBlocks = _mintBlocksByTokenId(rebalanceEvents);
-    const retirementBlocks = _retirementBlocksByTokenId(rebalanceEvents);
     const { allNftEvents, maxBlock } = await _fetchAllNftEvents(
       ids,
       scanFrom,
       mintBlocks,
-      retirementBlocks,
     );
     if (!hasCompoundData)
       await _classifyAllCompounds(

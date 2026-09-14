@@ -27,9 +27,8 @@ const {
   mintBlocksByTokenId,
   scanFloorFor,
   nftScanFrom,
+  nftScanFromBlock,
   chainScanFloor,
-  retirementBlocksByTokenId,
-  nftScanTo,
 } = require("../src/nft-mint-blocks");
 const { _scanCompounds } = require("../src/position-details-compound");
 
@@ -183,62 +182,39 @@ describe("chainScanFloor", () => {
   });
 });
 
-describe("retirementBlocksByTokenId", () => {
-  /*- A rebalance drains the old NFT and mints its replacement, so the
-   *  old one stops emitting at that block.  Scanning it to head after
-   *  that re-reads the entire remainder of the chain for nothing. */
-  it("maps each retired NFT to the block it was replaced at", () => {
-    const m = retirementBlocksByTokenId(CHAIN);
-    assert.equal(m.get("100"), 5_000_000);
-    assert.equal(m.get("200"), 6_000_000);
-  });
-
-  it("leaves the CURRENT NFT out, so it keeps scanning to head", () => {
-    /*- #300 was never replaced — it only appears as a newTokenId. */
-    assert.equal(retirementBlocksByTokenId(CHAIN).get("300"), undefined);
-  });
-
-  it("keeps the LATEST block when an id repeats", () => {
-    /*- Mirror of the mint map taking the earliest: an upper bound that
-     *  is too low silently loses events; too high only costs time. */
-    const m = retirementBlocksByTokenId([
-      { oldTokenId: "7", blockNumber: 400 },
-      { oldTokenId: "7", blockNumber: 900 },
-    ]);
-    assert.equal(m.get("7"), 900);
-  });
-
-  it("ignores entries with no usable block number", () => {
-    const m = retirementBlocksByTokenId([
-      { oldTokenId: "1" },
-      { oldTokenId: "2", blockNumber: null },
-      { oldTokenId: "3", blockNumber: "800" },
-      { oldTokenId: "4", blockNumber: -1 },
-      null,
-    ]);
-    assert.equal(m.size, 0);
-  });
-
-  it("returns an empty map for a missing or non-array input", () => {
-    assert.equal(retirementBlocksByTokenId(undefined).size, 0);
-    assert.equal(retirementBlocksByTokenId({}).size, 0);
+describe("the module offers no upper bound", () => {
+  /*- Deliberate.  One could only come from the app's inferred
+   *  succession, which reads consecutive mints as successive
+   *  rebalances.  A dust mint from a failed or partial rebalance is
+   *  indistinguishable in the Transfer log, so the NFT it appears to
+   *  replace can still be funded and drain later — past any bound taken
+   *  from that inference.
+   *
+   *  Pinned as an export test because the loss is silent: an NFT whose
+   *  drain falls past such a bound returns zero Collects and is
+   *  skipped, and one that compounded mid-life returns the compound's
+   *  Collect, which is then read as its exit value. */
+  it("exports no retirement-block or scan-to helper", () => {
+    const mod = require("../src/nft-mint-blocks");
+    assert.equal(mod.retirementBlocksByTokenId, undefined);
+    assert.equal(mod.nftScanTo, undefined);
+    assert.equal(mod.nftScanWindow, undefined);
   });
 });
 
-describe("nftScanTo", () => {
-  const RETIRED = retirementBlocksByTokenId(CHAIN);
-
-  it("stops a retired NFT at its replacement's mint", () => {
-    assert.equal(nftScanTo(RETIRED, "100"), 5_000_000);
-    assert.equal(nftScanTo(RETIRED, "200"), 6_000_000);
+describe("nftScanFromBlock", () => {
+  it("tightens a shared floor to the NFT's own mint", () => {
+    assert.equal(nftScanFromBlock({ mintBlock: 900, sharedFloor: 500 }), 900);
   });
 
-  it("scans the current NFT to head", () => {
-    assert.equal(nftScanTo(RETIRED, "300"), "latest");
+  it("lets a resume checkpoint beat an earlier mint block", () => {
+    assert.equal(nftScanFromBlock({ mintBlock: 500, sharedFloor: 900 }), 900);
   });
 
-  it("tolerates a missing map", () => {
-    assert.equal(nftScanTo(undefined, "1"), "latest");
+  it("widens rather than breaking on unusable input", () => {
+    assert.equal(nftScanFromBlock({ mintBlock: NaN, sharedFloor: 7 }), 7);
+    assert.equal(nftScanFromBlock({ sharedFloor: undefined }), 0);
+    assert.equal(nftScanFromBlock(), 0);
   });
 });
 
@@ -289,12 +265,18 @@ describe("_scanCompounds uses each NFT's own floor", () => {
     assert.deepEqual([...seen.keys()].sort(), ["100", "200", "300"]);
   });
 
-  it("stops each retired NFT at its replacement's mint", async () => {
-    /*- The other half of the bound: a drained NFT emits nothing after
-     *  the rebalance that replaced it. */
+  it("scans every NFT to the chain head, retired ones included", async () => {
+    /*- There is no sound upper bound.  It could only come from the
+     *  inferred succession, and that reads consecutive mints as
+     *  successive rebalances — untrue when a dust mint from a failed or
+     *  partial rebalance sits between two real ones.  The NFT it
+     *  appears to replace is then still funded and drains later, past
+     *  any bound taken from that inference. */
     await run(CHAIN, { tokenId: "300" });
-    assert.equal(seenTo.get("100"), 5_000_000);
-    assert.equal(seenTo.get("200"), 6_000_000);
-    assert.equal(seenTo.get("300"), "latest", "the current NFT runs to head");
+    for (const id of ["100", "200", "300"])
+      assert.ok(
+        seenTo.get(id) === "latest" || seenTo.get(id) === undefined,
+        `NFT #${id} must scan to head, got ${seenTo.get(id)}`,
+      );
   });
 });

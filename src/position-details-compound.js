@@ -22,8 +22,6 @@ const {
   nftScanFrom,
   scanFloorFor,
   chainScanFloor,
-  retirementBlocksByTokenId,
-  nftScanTo,
 } = require("./nft-mint-blocks");
 
 /**
@@ -115,11 +113,6 @@ async function _scanCompounds(
     const creationBlock = await _scanFloor(ps.poolAddress);
     const poolFloor = chainScanFloor(events, creationBlock);
     const mintBlocks = mintBlocksByTokenId(events);
-    /*- A retired NFT stops emitting when its replacement is minted, so
-     *  scanning it to head re-reads everything that happened since for
-     *  nothing.  The current NFT is absent from this map and keeps
-     *  scanning to head. */
-    const retirementBlocks = retirementBlocksByTokenId(events);
     /*- total = lifetime collected fees across the rebalance chain
      *  (Lifetime panel "Fees Compounded"). current = sum of standalone
      *  compound deposit values for the current NFT only (Current panel
@@ -135,7 +128,6 @@ async function _scanCompounds(
       const r = await _detect(tid, {
         ...opts,
         fromBlock: nftScanFrom(mintBlocks, tid, poolFloor),
-        toBlock: nftScanTo(retirementBlocks, tid),
       });
       total += r.totalCompoundedUsd;
       if (tid === curId) {

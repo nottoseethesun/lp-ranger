@@ -59,6 +59,8 @@ const EXEMPT = {
     "searches FOR a mint block, so cannot be bounded by one; exits at the first hit instead",
   "hodl-baseline.js":
     "searches FOR the current NFT's mint block, so cannot be bounded by one",
+  "position-history-mint.js":
+    "searches FOR the chain's oldest NFT's mint block, so cannot be bounded by one",
 };
 
 /** Every src/ file that scans one NFT's events. */
