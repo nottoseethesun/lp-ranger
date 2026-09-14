@@ -94,6 +94,10 @@ describe("reconstructEpochs — forced rebuild after a reload", () => {
     entryValueUsd: 100,
     exitValueUsd: 95,
     feesEarnedUsd: 35,
+    /*- Declared, not omitted: an omitted gas cost now means "not known"
+     *  and the epoch is rejected. Zero, because this fixture is about
+     *  reload behaviour and not about gas. */
+    gasCostWei: "0",
   };
 
   before(() => {

@@ -184,12 +184,20 @@ describe("_assembleEpoch", () => {
   });
 
   it("handles missing optional fields with defaults", () => {
+    /*- `feesEarnedUsd` and `gasCostUsd` are NOT among the optional
+     *  fields: `_buildClosedEpoch` rejects a null or undefined value for
+     *  either before `_assembleEpoch` is reached, so a number is a
+     *  precondition here rather than something to default. A zero
+     *  fallback at this layer is what let an unreadable fee be recorded
+     *  as $0.00 — and an unreadable gas cost be subtracted as free — so
+     *  the real zeros belong in the fixture. */
     const h = {
       mintDate: "2026-01-01T00:00:00Z",
       closeDate: null,
       entryValueUsd: null,
       exitValueUsd: 0,
-      feesEarnedUsd: null,
+      feesEarnedUsd: 0,
+      gasCostUsd: 0,
     };
     const ep = _assembleEpoch(h, 0);
     assert.strictEqual(ep.entryValue, 0);
