@@ -245,12 +245,11 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 | `RPC_URL_FALLBACK` | `https://rpc.pulsechain.com` | Second RPC |
 | `RPC_URL_FALLBACK_2` | `https://rpc.pulsechain.box` | Third RPC (free tier: 50 req / 10 s per IP) |
 | `POSITION_ID` | — | NFT token ID; blank = full wallet scan |
-| `ERC20_POSITION_ADDRESS` | — | ERC-20 position token (optional fallback) |
 | `REBALANCE_OOR_THRESHOLD_PCT` | `5` | % price must move beyond position boundary before rebalance triggers |
 | `REBALANCE_TIMEOUT_MIN` | `180` | Minutes of continuous OOR before auto-rebalance (0 = disabled) |
 | `SLIPPAGE_PCT` | `0.75` | |
 | `TX_SPEEDUP_SEC` | `120` | Seconds before a pending TX is speed-up-replaced with higher gas |
-| `TX_CANCEL_SEC` | `1200` | Seconds before a stuck TX is cancelled via 0-PLS self-transfer (20 min) |
+| `TX_CANCEL_SEC` | `3600` | Seconds before a stuck TX is cancelled via 0-PLS self-transfer (60 min). Derived as `tx.deadlineSec × tx.cancelToDeadlineMultiple` in `app-runtime.json` |
 | `CHECK_INTERVAL_SEC` | `300` | On-chain poll frequency |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | |
 | `MAX_REBALANCES_PER_DAY` | `5` | |
@@ -312,7 +311,7 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 
 **Chunked log queries:** all `eth_getLogs` / `queryFilter` calls go through `src/get-logs-chunked.js`, which splits a block range into windows no wider than `getLogsChunkSize` (default 9,000 — 90% of the published 10,000-block limit, which g4mm4 enforces exactly while the other two endpoints accept wider; clamped at 10,000 in `src/bot-config-defaults.js`). Endpoints reject over-wide queries with JSON-RPC `-32602`; ethers reports that as a generic `UNKNOWN_ERROR` with the real code nested, so `isBlockRangeCapError` detects it by message and the chunker raises an error naming the span, the cap and the setting to change, because the raw ethers dump is not actionable. Chunk failures propagate by default — `bestEffort` is opt-in per call site, because a swallowed cap rejection reads as "no events", and callers treat an empty scan result as settled fact rather than as a gap to retry.
 
-**TX speed-up + auto-cancel:** `_waitOrSpeedUp()` in `rebalancer.js` wraps every `tx.wait()` call with a 4-phase recovery pipeline. **Phase 1:** wait for confirmation up to `TX_SPEEDUP_SEC` (default 120s). **Phase 2:** speed-up — fetch current gas price, take the higher of current vs original, bump by 1.5×, resend at the same nonce. **Phase 3:** wait for either original or replacement to confirm up to `TX_CANCEL_SEC` (default 1200s = 20 min total). **Phase 4:** auto-cancel — send a 0-PLS self-transfer at the stuck nonce with 50 Gwei gas to free the nonce, then throw a `cancelled: true` error so the bot resumes polling. All four TX types are covered: approve, multicall (removeLiquidity), swap, and mint. Each phase logs clearly to the server console.
+**TX speed-up + auto-cancel:** `_waitOrSpeedUp()` in `rebalancer.js` wraps every `tx.wait()` call with a 4-phase recovery pipeline. **Phase 1:** wait for confirmation up to `TX_SPEEDUP_SEC` (default 120s). **Phase 2:** speed-up — fetch current gas price, take the higher of current vs original, bump by 1.5×, resend at the same nonce. **Phase 3:** wait for either original or replacement to confirm up to `TX_CANCEL_SEC` (default 3600s = 60 min total). **Phase 4:** auto-cancel — send a 0-PLS self-transfer at the stuck nonce with 50 Gwei gas to free the nonce, then throw a `cancelled: true` error so the bot resumes polling. All four TX types are covered: approve, multicall (removeLiquidity), swap, and mint. Each phase logs clearly to the server console.
 
 **SDK ratio math:** `computeDesiredAmounts` uses `@uniswap/v3-sdk` exact 160-bit sqrtPrice math (`maxLiquidityForAmounts` + `SqrtPriceMath`) to determine the precise token ratio the Position Manager needs for the target tick range, then computes the swap to convert excess into the deficient token. Falls back to a 50/50 USD value split when no tick range is provided (e.g. price-only callers). The SDK path requires `jsbi` (direct dependency).
 

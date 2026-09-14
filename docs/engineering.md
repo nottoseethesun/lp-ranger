@@ -2522,7 +2522,7 @@ recovery pipeline to completion before releasing.
 `_waitOrSpeedUp()` in `src/rebalancer.js` wraps every `tx.wait()` in a
 four-phase pipeline: **wait → speed-up (1.5× gas) → wait → auto-cancel
 (0-PLS self-transfer)**. Stuck nonces therefore always free themselves
-within `TX_CANCEL_SEC` (default 20 min) instead of blocking the wallet
+within `TX_CANCEL_SEC` (default 60 min) instead of blocking the wallet
 indefinitely. Every phase logs its state so post-mortem analysis of a
 stuck TX is deterministic.
 
