@@ -502,9 +502,9 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         position.tokenId,
         deps.signer,
       );
-      const feesUsd =
-        toFloat(fees.tokensOwed0, poolState.decimals0) * price0 +
-        toFloat(fees.tokensOwed1, poolState.decimals1) * price1;
+      const fee0 = toFloat(fees.tokensOwed0, poolState.decimals0);
+      const fee1 = toFloat(fees.tokensOwed1, poolState.decimals1);
+      const feesUsd = fee0 * price0 + fee1 * price1;
       if (config.VERBOSE)
         log.info(
           "[bot] fees: owed0=%s owed1=%s dec0=%d dec1=%d p0=%s p1=%s usd=%s",
@@ -517,6 +517,14 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
           feesUsd.toFixed(6),
         );
       deps._lastUnclaimedFeesUsd = feesUsd;
+      /*- The token amounts behind that figure, kept alongside it so the
+       *  compound decision can re-value the same fees at fresh prices
+       *  without re-reading the position from chain. The USD above is
+       *  computed with whatever prices this poll had, which the idle
+       *  pause can answer from cache of any age — fine for display,
+       *  not for deciding whether to spend gas. */
+      deps._lastUnclaimedFee0 = fee0;
+      deps._lastUnclaimedFee1 = fee1;
       deps._lastPrice0 = price0;
       deps._lastPrice1 = price1;
       const residuals = await walletResiduals(

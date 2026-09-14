@@ -510,24 +510,34 @@ async function _runRangeAndExec(
     if (compounded) gate.compounded = true;
     return gate;
   }
-  if (await _isGasTooHigh(deps.provider, deps.position, poolState)) {
-    const r = { rebalanced: false, gasDeferred: true };
-    if (compounded) r.compounded = true;
-    return r;
-  }
   /*- Idle-driven price-lookup pause: drop cached prices for this
    *  position's tokens and run the move under `withFreshPricesAllowed`
-   *  so every downstream price fetch (swap-gates, rebalancer-execute,
-   *  rebalancer-correct, bot-pnl-updater, dust) bypasses the pause flag
-   *  and the cache TTL.  Counter is decremented in `finally` so a
-   *  thrown error still restores the prior pause state. */
+   *  so every downstream price fetch (the gas gate, swap-gates,
+   *  rebalancer-execute, rebalancer-correct, bot-pnl-updater, dust)
+   *  bypasses the pause flag and the cache TTL.  Counter is decremented
+   *  in `finally` so a thrown error still restores the prior pause
+   *  state.
+   *
+   *  The gas gate is INSIDE the scope because deciding whether a move
+   *  is worth its gas is part of the move.  It compares gas cost
+   *  against position value, both in USD, and defers only when both are
+   *  above zero — so a paused read answers it with a cached price of
+   *  any age, or with nothing at all on a process that has never
+   *  fetched one, and in that case the comparison silently passes and
+   *  an uneconomic rebalance proceeds.
+   *
+   *  It runs only after every other gate has passed, so the fetch costs
+   *  one lookup per rebalance actually being attempted, not one per
+   *  poll — which is the traffic the pause exists to stop. */
   invalidatePriceCacheFor([
     { token: deps.position.token0 },
     { token: deps.position.token1 },
   ]);
-  const execResult = await withFreshPricesAllowed(() =>
-    _executeAndRecord(deps, ethersLib),
-  );
+  const execResult = await withFreshPricesAllowed(async () => {
+    if (await _isGasTooHigh(deps.provider, deps.position, poolState))
+      return { rebalanced: false, gasDeferred: true };
+    return _executeAndRecord(deps, ethersLib);
+  });
   if (compounded) execResult.compounded = true;
   return execResult;
 }
@@ -578,6 +588,18 @@ async function pollCycle(deps) {
     log.error("[bot] Pool state error:", err.message);
     return { rebalanced: false, pollError: err.message };
   }
+  /*- Kept so log lines can name the pool by address without paying for
+   *  it.  Resolving one costs a `factory.getPool` call, and the only
+   *  pool identity otherwise reachable outside a poll is the
+   *  token0/token1/fee triple — which does not match what a block
+   *  explorer or the 9mm UI shows.  `getPoolState` has just returned it
+   *  here, so this is a free copy rather than a second lookup.
+   *
+   *  Deliberately on botState and not on `position`: the position
+   *  object is re-emitted to the dashboard via `_activePosSummary`, and
+   *  a field added there becomes part of that payload's contract. */
+  if (deps._botState !== undefined && deps._botState !== null)
+    deps._botState.poolAddress = poolState.poolAddress;
   const prevLiquidity = position.liquidity;
   await _refreshPosition(position, ethersLib, provider);
   /*- On liquidity change (drain, external mint, rebalance-follow), re-emit
@@ -616,6 +638,7 @@ module.exports = {
   _checkRebalanceGates,
   _activateSwapBackoff,
   _liquidityChanged,
+  _runRangeAndExec, // exported for tests
   pollCycle,
   DRAINED_RETIRE_MS,
 };

@@ -102,6 +102,16 @@ function _bumpRebalanceFees(deps) {
     newCompounded.toFixed(2),
   );
   deps._lastUnclaimedFeesUsd = 0;
+  /*- The token amounts behind that figure are cleared with it. They are
+   *  what `_freshFeesUsd` (src/bot-cycle-compound.js) re-values when
+   *  deciding whether to compound, so leaving them set would describe
+   *  fees this rebalance has just swept into the position as still
+   *  unclaimed. The poll refreshes all three before that decision is
+   *  reached, so this keeps a pair consistent rather than repairing a
+   *  reachable fault — but the pair has to move together, or the next
+   *  reader of one gets an answer the other contradicts. */
+  deps._lastUnclaimedFee0 = 0;
+  deps._lastUnclaimedFee1 = 0;
 }
 
 /** Close the current P&L epoch after a rebalance and open a new one. */
