@@ -4,11 +4,17 @@ This is the canonical reference for **how LP Ranger is configured**: every
 environment variable, the layered defaults system, where each setting lives on
 disk, and which settings are deliberately not editable.
 
+**Configure LP Ranger through the JSON files under `app-config/`**, or through
+the dashboard's Bot Settings panel, which writes to them for you.
+[JSON Configuration Values](#json-configuration-values) is where to start.
+`.env` is for headless or unattended operation, and for experiments.
+
 Configuration reaches the app through three layers — shipped JSON defaults,
-per-install operator overrides, and `.env` — and the
-[Configuration Precedence](#configuration-precedence) section below is the rule
-that decides which wins. Read that first; most surprises come from not knowing
-it.
+per-install operator overrides, and `.env`, in that order of increasing
+precedence. [Configuration Precedence](#configuration-precedence) is the rule
+that decides which wins, and most surprises come from not knowing it: `.env`
+sits on top, so a line left there overrides anything set later in the
+dashboard.
 
 For the runtime mechanisms these settings govern, see
 [`docs/engineering.md`](engineering.md). For how the bot and dashboard
@@ -18,7 +24,11 @@ cooperate at a higher level, see [`docs/architecture.md`](architecture.md).
 
 ## Table of Contents
 
+- [JSON Configuration Values](#json-configuration-values)
+  - [Where each setting lives](#where-each-setting-lives)
+  - [How to change one](#how-to-change-one)
 - [Environment Variables](#environment-variables)
+  - [Overview](#overview)
   - [Configuration Precedence](#configuration-precedence)
   - [Server (`.env`)](#server-env)
   - [Request Security](#request-security)
@@ -35,16 +45,93 @@ cooperate at a higher level, see [`docs/architecture.md`](architecture.md).
 
 ---
 
+## JSON Configuration Values
+
+**The JSON files under `app-config/` are where LP Ranger is configured.**
+That is the normal path, and for a dashboard install it is the only one you
+need. Almost every setting has a home there, and most of them also have a
+control in the dashboard's Bot Settings panel, which writes to those files
+for you.
+
+`.env` exists for two narrower purposes:
+
+- **Headless and unattended operation.** Running `npm run bot` on a
+  Raspberry Pi there is no Bot Settings panel to press Save in, so the same
+  tunables are settable as environment variables. The wallet credentials
+  belong to this case as well: `PRIVATE_KEY` and `WALLET_PASSWORD` are how
+  an install unlocks itself with no browser present. A dashboard install
+  imports its wallet through the UI instead, and it is held encrypted in
+  `wallet.json`.
+- **Experiments.** A one-off override to try without editing a file and
+  without it persisting.
+
+Outside those two cases, prefer the JSON files. A value set in `.env`
+outranks the JSON layers (see
+[Configuration Precedence](#configuration-precedence)), so a stale line in
+`.env` silently overrides whatever you later set in the dashboard — the
+panel accepts the change, writes it to disk, and the bot goes on using the
+environment value.
+
+### Where each setting lives
+
+| What | File | Edited by |
+| --- | --- | --- |
+| Server and process settings — listen port and host, default chain, TX recovery timing, scan timeout | `app-config/app-defaults-for-user-configurable/app-runtime.json` | you, by hand |
+| Per-chain static tunables — RPC endpoints, contract addresses, gas multipliers, aggregator timeouts | `app-config/app-defaults-for-user-configurable/chains.json` | you, by hand |
+| Shipped defaults for bot behaviour — thresholds, intervals, caps, chunk size, pacing | `app-config/app-defaults-for-user-configurable/bot-config-defaults.json` | you, by hand |
+| Managed positions and per-position settings — HODL baselines, thresholds, slippage, auto-compound | `app-config/user-configurable/bot-config.json` | the dashboard and the bot; not hand-edited |
+| Encrypted wallet | `app-config/user-configurable/wallet.json` | the dashboard import flow |
+| Encrypted third-party API keys (Moralis, Telegram) | `app-config/user-configurable/api-keys.json` | the dashboard Settings dialog |
+
+Seven more shipped-default files cover narrower concerns — CSRF token TTL,
+the dust threshold, RPC error-classifier strings, logging, LP-provider
+metadata, dashboard first-visit defaults and setting labels. The
+engineering reference linked below inventories them all.
+
+### How to change one
+
+To override a shipped default without losing it on the next release, copy
+the key into the matching file under `app-config/user-configurable/` and
+edit it there. `loadMergedDefaults()` deep-merges your file over the shipped
+one, and the `user-configurable/` directory is gitignored and survives a
+tarball upgrade. Editing the shipped file directly works too, but the next
+release overwrites it.
+
+Settings with a dashboard control need no file editing at all — change them
+in Bot Settings and press Save.
+
+See [The `app-config` Directory](engineering.md#the-app-config-directory) in
+the engineering reference for the full file inventory and the rules for
+where future config files should go.
+
+---
+
 ## Environment Variables
 
-**All settings in this section live in `.env`** at the project root. Copy
-[`.env.example`](../.env.example) to `.env` and edit the values you need.
-Every variable below is read by [`src/config.js`](../src/config.js) at
-startup. Nothing in this section belongs in
-`app-config/app-defaults-for-user-configurable/chains.json`, `app-config/user-configurable/bot-config.json`, or
-`app-config/user-configurable/api-keys.json` — for those files, see the
-[The `app-config` Directory](engineering.md#the-app-config-directory) section
-of the engineering reference.
+### Overview
+
+**Use `.env` only for headless or unattended operation, and for
+experiments.** Anything with a JSON home or a dashboard control belongs
+there instead — see
+[JSON Configuration Values](#json-configuration-values) above. That
+includes `PORT` and `HOST`, whose defaults live in
+`app-config/app-defaults-for-user-configurable/app-runtime.json`.
+
+`PRIVATE_KEY` and `WALLET_PASSWORD` have no JSON home by design, but they
+are not an exception to the rule — they *are* the headless case. A
+dashboard install imports its wallet through the UI and unlocks it in the
+browser, and never needs either one.
+
+The reason to be careful is precedence: `.env` is the **top** layer, so a
+value set here beats both the shipped default and your own
+`user-configurable/` override, and it beats anything the dashboard writes
+later. A forgotten line in `.env` produces a Bot Settings panel that accepts
+your change, saves it, and has no effect.
+
+With that said, the rest of this section is the complete list of what `.env`
+accepts. Copy [`.env.example`](../.env.example) to `.env` and set only what
+you need. Every variable below is read by
+[`src/config.js`](../src/config.js) at startup.
 
 ### Configuration Precedence
 
@@ -209,15 +296,14 @@ The shipped addresses live in
 Canonical deployment addresses:
 <https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json>
 
-Two ways to override them, both read once at startup:
+Override them in `app-config/user-configurable/chains.json`, the same way
+as any other shipped default. `.env` accepts `POSITION_MANAGER`, `FACTORY`
+and `SWAP_ROUTER` on the usual terms — headless installs and experiments,
+outranking both JSON layers.
 
-1. **`app-config/user-configurable/chains.json`** — deep-merged over the
-   shipped defaults, gitignored, and preserved across upgrades.
-2. **`.env`** — `POSITION_MANAGER`, `FACTORY`, `SWAP_ROUTER`. These win
-   over both JSON layers.
-
-In normal operation you should never set either. Only do so to point the
-bot at a different deployment of the 9mm Pro V3 contracts.
+In normal operation you should never set them. The only reason to is to
+point the bot at a different deployment of the 9mm Pro V3 contracts, and
+that needs a fresh install rather than an edit — see below.
 
 #### Why contract addresses are not editable
 
@@ -250,21 +336,13 @@ A `positionManager` or `factory` value left in an existing
 
 ### Where Other Configuration Lives
 
-- **Per-chain static tunables** (RPC endpoints, contract addresses, gas
-  multipliers, aggregator timeouts) →
-  `app-config/app-defaults-for-user-configurable/chains.json`. Tracked in git, user-editable.
-- **Managed positions and per-position settings** (HODL baselines,
-  thresholds, slippage overrides, auto-compound config) →
-  `app-config/user-configurable/bot-config.json`. Runtime-managed, gitignored. Written by
-  the dashboard and bot loops — not hand-edited.
-- **Encrypted wallet** → `app-config/user-configurable/wallet.json`. Managed via the
-  dashboard import flow.
-- **Encrypted third-party API keys** (Moralis, etc.) →
-  `app-config/user-configurable/api-keys.json`. Managed via the dashboard Settings dialog.
-
-See the [The `app-config` Directory](engineering.md#the-app-config-directory) section
-below for the full inventory and the rules for where future config files
-should go.
+Everything not listed in this section — per-chain tunables, contract
+addresses, bot-behaviour defaults, managed positions, the encrypted wallet
+and the encrypted API keys — lives in the JSON files under `app-config/`.
+See [Where each setting lives](#where-each-setting-lives) for the file-by-file
+table, and
+[The `app-config` Directory](engineering.md#the-app-config-directory) in the
+engineering reference for the full inventory.
 
 ---
 
