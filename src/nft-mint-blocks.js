@@ -11,7 +11,7 @@
  * it does not exist yet. Scanning it from pool creation therefore walks
  * millions of blocks that provably hold nothing for that token.
  *
- * Every RPC request in the process is released by one global 250 ms
+ * Every RPC request in the process is released by one global paced
  * queue, so request count is wall-clock time and a scan holds the queue
  * against the bot's own poll-cycle reads while it runs. Unbounded, a
  * cold-cache lifetime scan of a three-NFT chain is roughly ten thousand

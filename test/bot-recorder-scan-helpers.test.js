@@ -11,7 +11,7 @@
  * Measured on a real position: a 132-rebalance chain in a pool created
  * two years before the operator's first deposit. At the 9,000-block
  * chunk width that is 954 chunks per NFT across ~133 NFTs, three
- * queries each, at 250 ms per request — the best part of a day, nearly
+ * queries each, every one of them paced — the best part of a day, nearly
  * all of it scanning blocks where the NFT did not yet exist. Floored at
  * each NFT's own mint, most drop to single-digit
  * chunks.

@@ -668,7 +668,7 @@ function _serveStaticOrSpa(url, res) {
 let _serverPort = config.PORT;
 
 const server = http.createServer(handleRequest);
-// Lifetime P&L scans can take 5+ minutes for old pools (555 chunks × 250ms).
+// Lifetime P&L scans can take 5+ minutes for old pools (555 paced chunks).
 // Node 22's default requestTimeout is 300s — raise via config.
 server.requestTimeout = config.SCAN_TIMEOUT_MS;
 

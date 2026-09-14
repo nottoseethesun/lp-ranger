@@ -390,7 +390,7 @@ decides how fast they leave.
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
 | `getLogsChunkSize` | `9000` | Maximum block span per `eth_getLogs` call |
-| `globalRPCRequestRateIntervalMS` | `250` | Minimum gap between *any* two requests |
+| `globalRPCRequestRateIntervalMS` | `222` | Minimum gap between *any* two requests |
 
 They are not exposed in the GUI because they should never need changing in
 normal operation, and they are not in `GLOBAL_KEYS`, so they never reach

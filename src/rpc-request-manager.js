@@ -32,7 +32,7 @@
  * every JSON-RPC call, reads and writes alike.
  *
  * Interval: `globalRPCRequestRateIntervalMS` in
- * `bot-config-defaults.json` (default 250 ms).  Read once at module
+ * `bot-config-defaults.json` (default 222 ms).  Read once at module
  * load, so a change needs a restart.  Zero disables pacing.
  */
 

@@ -847,7 +847,7 @@ scan** is answered by three layered bounds, resolved in order by
    events and sets `scanFrom = lastScannedBlock + 1`, so only blocks
    produced since the previous scan are queried. A 5-year first-time
    scan issues ~1,750 chunked queries (9,000 blocks per chunk, every
-   request released by the global 250 ms queue — see
+   request released by the global request queue — see
    [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking));
    a warm-cache rescan on the same wallet issues a handful.
 
@@ -963,7 +963,7 @@ Two rules within that module decide correctness:
 
 ### Cost
 
-Every RPC request in the process is released by the global 250 ms queue
+Every RPC request in the process is released by the global request queue
 (see
 [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking)),
 so a scan's wall-clock time is its request count divided by four per
@@ -1923,7 +1923,7 @@ only be changed by editing
 | `pricePauseExceptionPollWindowMultiple` | `10` | `POST /api/config` | Poll cycles between the balanced-band notifier's fresh-price probes. The dashboard reads it to label the resulting cadence next to the checkbox, but offers no field to set it |
 | `rescanPricesDefaultDays` | `60` | the JSON file, then restart | Lookback the Re-scan Prices dialog prefills. Published on every `/api/status`, but not a saved setting |
 | `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request. Clamped to 10,000 by [`src/bot-config-defaults.js`](../src/bot-config-defaults.js) — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
-| `globalRPCRequestRateIntervalMS` | `250` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process. `0` disables pacing, which is only sensible against a local node |
+| `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process. `0` disables pacing, which is only sensible against a local node |
 
 **`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /
 "Gas Critical" badge in [`src/gas-monitor.js`](../src/gas-monitor.js).

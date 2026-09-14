@@ -38,7 +38,7 @@ function collectTokenIds(position, rebalanceEvents) {
  * and on a long chain that walk dominates everything else. Observed on
  * a 132-rebalance position whose pool predated the operator's first
  * deposit by two years: at the 9,000-block chunk width, 954 chunks per
- * NFT across ~133 NFTs, three queries each, paced at 250 ms — the best
+ * NFT across ~133 NFTs, three queries each, every one paced — the best
  * part of a day, nearly all of it scanning blocks where the NFT in
  * question did not yet exist.
  *

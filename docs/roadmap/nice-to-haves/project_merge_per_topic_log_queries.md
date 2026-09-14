@@ -38,8 +38,9 @@ The server log shows the pairs moving in lockstep, which is the tell:
 ```
 
 Measured on a cold rebuild: one 132-rebalance chain at 168 chunks per
-NFT, two queries per chunk — 44,352 paced requests, roughly three hours
-of queue time at the default 250 ms interval. Merged, half of both.
+NFT, two queries per chunk — 44,352 paced requests, roughly two and three
+quarter hours of queue time at the default 222 ms interval. Merged, half
+of both.
 
 A second chain of 39 NFTs was queued behind it in the same run, and a
 third pool resolved to zero rebalances and so contributed none. The

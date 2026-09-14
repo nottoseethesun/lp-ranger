@@ -398,7 +398,7 @@ function _afterDisclaimer() {
        *  The gate moved to the flush, where a poll has landed and the
        *  answer is authoritative.  It had to move: the claim that a
        *  fetch for a managed position is "a harmless no-op" stopped
-       *  being true once every RPC request went through the 250 ms
+       *  being true once every RPC request went through the paced
        *  global queue — it is a multi-minute chain scan racing the bot
        *  for that queue.  See `shouldSkipUnmanagedFetch` in
        *  dashboard-unmanaged.js. */

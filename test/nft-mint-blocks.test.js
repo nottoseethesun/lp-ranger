@@ -7,7 +7,7 @@
  * one from the pool's creation block is a guaranteed-empty walk across
  * everything before its mint.
  *
- * Every request goes through the global 250 ms queue, so that walk is
+ * Every request goes through the global request queue, so that walk is
  * wall-clock time: a cold-cache lifetime scan of a three-NFT chain
  * unbounded is ~10,000 paced requests, about three quarters of an
  * hour. The bot's poll cycle awaits the same scan, so it reads nothing

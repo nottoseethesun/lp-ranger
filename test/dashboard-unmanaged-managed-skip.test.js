@@ -9,7 +9,7 @@
  * "not managed" and the dashboard fetches unmanaged details for a chain
  * the bot is about to scan itself — two full passes over every NFT.
  *
- * That fetch is not cheap: every RPC request goes through the 250 ms
+ * That fetch is not cheap: every RPC request goes through the paced
  * global queue, so it is a multi-minute chain scan competing with the
  * bot for that queue.
  *

@@ -106,7 +106,7 @@ async function _scanCompounds(
     /*- Two floors.  Each NFT is scanned from its OWN mint block — it
      *  cannot emit events before it exists, and scanning those blocks
      *  anyway is what made a cold-cache lifetime scan take most of an
-     *  hour once every request went through the 250 ms queue.  The
+     *  hour once every request went through the paced request queue.  The
      *  chain's oldest NFT has no mint block in the events, so it falls
      *  back to `chainScanFloor`: the pool's creation block, lifted to
      *  the chain's own first mint when the scanner resolved one. */
