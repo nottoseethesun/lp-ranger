@@ -200,11 +200,12 @@ or the position's lifetime.
 
 #### From a fresh install to a scanned position
 
-`npm run build`, then `npm start`. `server.js` creates the `app-config/`
-directories, hands the chain's RPC list to `sendTx.init`, and opens the HTTP
-listener. The call that creates those directories also moves a fixed list of
-config files out of the pre-`app-config/` layout, but a fresh install has
-none of them, so nothing moves.
+`npm run build`, then `npm start`. `server.js` clears the previous run's
+error log, hands the chain's RPC list to `sendTx.init`, and opens the HTTP
+listener. It also calls `migrateAppConfig()`, which moves a fixed list of
+config files out of the pre-`app-config/` layout; a fresh install has none
+of them, so that call does nothing at all. The directories it would move
+them into are tracked, so a clone or a tarball already has them.
 
 It then looks for a signing key in two places: `PRIVATE_KEY` in `.env`, or
 an encrypted `wallet.json` unlocked by `WALLET_PASSWORD` or a terminal
