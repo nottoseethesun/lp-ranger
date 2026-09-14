@@ -1743,10 +1743,11 @@ environment variables to a temp path before require-ing the module.
 
 [`app-config/app-defaults-for-user-configurable/bot-config-defaults.json`](../app-config/app-defaults-for-user-configurable/bot-config-defaults.json)
 holds the default values for every Bot Settings input the dashboard
-exposes, plus two server-internal nested groups. The dashboard fetches
-it at init via `GET /api/bot-config-defaults`; the server falls back to
-it when `getConfig` is asked for a value the user has not overridden.
-Per-user overrides live in `app-config/user-configurable/bot-config.json`.
+exposes, eight more keys with no input of their own, and three nested
+groups. The dashboard fetches it at init via
+`GET /api/bot-config-defaults`; the server falls back to it when
+`getConfig` is asked for a value the user has not overridden. Per-user
+overrides live in `app-config/user-configurable/bot-config.json`.
 
 **User-editable (top-level keys, exposed in the Bot Settings panel):**
 
@@ -1765,7 +1766,6 @@ Per-user overrides live in `app-config/user-configurable/bot-config.json`.
 | `rangeOverrideEnabled` | `false` | Bot Settings → Range "No Override" toggle. `false` re-uses the position's existing on-chain range |
 | `rebalanceRangeWidthPct` | `80` | Value the Price Range Extension row's "Default" button applies. Not auto-populated into the input |
 | `fullRangeRebalanceEnabled` | `false` | Mint the next rebalance across the full tick range |
-| `rescanPricesDefaultDays` | `60` | Lookback the Re-scan Prices dialog offers by default |
 
 **Validation bounds.** These are not settings — each pair is the single
 source for one input's `min`/`max`, the dashboard Save handler's clamp,
@@ -1780,14 +1780,23 @@ onto the input at init, which is why no `min`/`max` literals appear in
 | `impermanentLossGuardPctMin` / `Max` | `1` / `100` | `impermanentLossGuardPct` |
 | `gasFeePctMin` / `Max` | `0.1` / `15` | `gasFeePct` |
 
-**Server-internal (top-level keys, no UI):**
+**No Bot Settings input.** These have no field in the Bot Settings panel.
+Whether they can be changed at runtime at all depends on membership of
+`GLOBAL_KEYS` in [`src/bot-config-v2.js`](../src/bot-config-v2.js): a key
+in that list is accepted by `POST /api/config`, and one that is not can
+only be changed by editing
+`app-config/user-configurable/bot-config-defaults.json` and restarting.
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `priceCacheTtlMs` | `120000` | In-memory token-price cache TTL — see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause) |
-| `dustUnitPriceCacheMultiplier` | `30` | Dust-unit-price TTL as a multiple of `priceCacheTtlMs` |
-| `moveCacheTtlMs` | `4000` | Cache TTL for the fresh-price window around a rebalance or compound |
-| `pricePauseExceptionPollWindowMultiple` | `10` | Poll cycles between the balanced-band notifier's fresh-price probes |
+| Key | Default | Changed by | Description |
+| --- | --- | --- | --- |
+| `moralisEnabled` | `true` | the Moralis API Key dialog | Whether the stored Moralis key is used for price lookups. Separate from whether a key exists, so switching it off stops the calls without discarding the key — which is what an operator wants when a quota runs out. The control is disabled when no key is configured |
+| `priceCacheTtlMs` | `120000` | `POST /api/config` | In-memory token-price cache TTL — see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause) |
+| `dustUnitPriceCacheMultiplier` | `30` | `POST /api/config` | Dust-unit-price TTL as a multiple of `priceCacheTtlMs` |
+| `moveCacheTtlMs` | `4000` | `POST /api/config` | Cache TTL for the fresh-price window around a rebalance or compound |
+| `pricePauseExceptionPollWindowMultiple` | `10` | `POST /api/config` | Poll cycles between the balanced-band notifier's fresh-price probes. The dashboard reads it to label the resulting cadence next to the checkbox, but offers no field to set it |
+| `rescanPricesDefaultDays` | `60` | the JSON file, then restart | Lookback the Re-scan Prices dialog prefills. Published on every `/api/status`, but not a saved setting |
+| `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request. Clamped to 10,000 by [`src/bot-config-defaults.js`](../src/bot-config-defaults.js) — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
+| `globalRPCRequestRateIntervalMS` | `250` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process. `0` disables pacing, which is only sensible against a local node |
 
 **`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /
 "Gas Critical" badge in [`src/gas-monitor.js`](../src/gas-monitor.js).
