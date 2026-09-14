@@ -8,9 +8,10 @@
  * the POOL and handing it to every NFT in a rebalance chain makes each
  * NFT walk every block before its own mint. On a long chain that is the
  * dominant cost of the whole scan: for a pool created two years before
- * the wallet's first deposit and a 132-rebalance chain, 1,144 chunks
- * per NFT across ~133 NFTs — roughly a day of paced requests, nearly
- * all of it blocks where the NFT did not yet exist.
+ * the wallet's first deposit and a 132-rebalance chain, 954 chunks per
+ * NFT across ~133 NFTs at the 9,000-block chunk width — the best part
+ * of a day of paced requests, nearly all of it blocks where the NFT did
+ * not yet exist.
  *
  * Five files scan a chain of NFTs, and nothing in the code connects
  * them, so this is a structural guard rather than a per-file rule. Any

@@ -275,7 +275,7 @@ decides how fast they leave.
 
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
-| `getLogsChunkSize` | `7500` | Maximum block span per `eth_getLogs` call |
+| `getLogsChunkSize` | `9000` | Maximum block span per `eth_getLogs` call |
 | `globalRPCRequestRateIntervalMS` | `250` | Minimum gap between *any* two requests |
 
 They are not exposed in the GUI because they should never need changing in
@@ -291,10 +291,14 @@ limited to a 10000 block range". A five-year history scan asks for ~15.8M
 blocks, so without splitting, the query simply fails.
 
 `src/get-logs-chunked.js` is the only place that arithmetic lives. Callers hand
-it a range and a query function; it walks the range in capped windows. The
-default of 7,500 is 75% of the strictest cap observed, and the margin is
-deliberate: endpoint operators leave some limits unpublished on purpose, so an
-observed ceiling is not a promise.
+it a range and a query function; it walks the range in capped windows.
+
+The default of 9,000 is 90% of the published 10,000-block limit, verified
+accepted on all three configured endpoints. `g4mm4` enforces 10,000 exactly —
+12,000 is rejected — while `rpc.pulsechain.com` and `rpc.pulsechain.box` accept
+wider, so 10,000 is the binding figure. The remaining 1,000 blocks of headroom
+cover an endpoint that enforces slightly under its published limit.
+`src/bot-config-defaults.js` clamps the setting at 10,000 regardless.
 
 **Failures propagate.** A chunk that fails fails the scan, unless a call site
 explicitly opts into `bestEffort`. Swallowing a query error and returning an

@@ -719,7 +719,7 @@ scan** is answered by three layered bounds, resolved in order by
    via `cache-store.js`. On the next run `loadCache()` reads the cached
    events and sets `scanFrom = lastScannedBlock + 1`, so only blocks
    produced since the previous scan are queried. A 5-year first-time
-   scan issues ~2,100 chunked queries (7,500 blocks per chunk, every
+   scan issues ~1,750 chunked queries (9,000 blocks per chunk, every
    request released by the global 250 ms queue — see
    [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking));
    a warm-cache rescan on the same wallet issues a handful.
@@ -840,15 +840,15 @@ Every RPC request in the process is released by the global 250 ms queue
 (see
 [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking)),
 so a scan's wall-clock time is its request count divided by four per
-second. Chunk width is 7,500 blocks.
+second. Chunk width is 9,000 blocks.
 
 For a 132-rebalance chain in a pool created two years before the first
 deposit, scanning two event types per NFT:
 
 | Window | Chunks per NFT | ~133 NFTs |
 | --- | --- | --- |
-| pool creation → head | 1,144 | ~32 hours |
-| **NFT mint → head** (what runs) | 201 | hours |
+| pool creation → head | 954 | ~26 hours |
+| **NFT mint → head** (what runs) | 168 | hours |
 
 An upper bound would take this to one or two chunks per retired NFT, and
 that is the saving deliberately given up: on a long chain each retired

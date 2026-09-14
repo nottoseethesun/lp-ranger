@@ -9,10 +9,11 @@
  * is minted, so everything before its mint was a guaranteed-empty walk.
  *
  * Measured on a real position: a 132-rebalance chain in a pool created
- * two years before the operator's first deposit. 1,144 chunks per NFT
- * across ~133 NFTs, three queries each, at 250 ms per request — about
- * 32 hours, nearly all of it scanning blocks where the NFT did not yet
- * exist. Bounded to each NFT's own mint, most drop to single-digit
+ * two years before the operator's first deposit. At the 9,000-block
+ * chunk width that is 954 chunks per NFT across ~133 NFTs, three
+ * queries each, at 250 ms per request — the best part of a day, nearly
+ * all of it scanning blocks where the NFT did not yet exist. Floored at
+ * each NFT's own mint, most drop to single-digit
  * chunks.
  *
  * The resume case is the subtle one and has its own test: there

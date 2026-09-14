@@ -37,9 +37,10 @@ function collectTokenIds(position, rebalanceEvents) {
  * exists, so the blocks before its mint are a guaranteed-empty walk —
  * and on a long chain that walk dominates everything else. Observed on
  * a 132-rebalance position whose pool predated the operator's first
- * deposit by two years: 1,144 chunks per NFT across ~133 NFTs, about
- * 32 hours of paced requests, nearly all of it scanning blocks where
- * the NFT in question did not yet exist.
+ * deposit by two years: at the 9,000-block chunk width, 954 chunks per
+ * NFT across ~133 NFTs, three queries each, paced at 250 ms — the best
+ * part of a day, nearly all of it scanning blocks where the NFT in
+ * question did not yet exist.
  *
  * `nftScanFrom` owns how the two floors combine, including the
  * resume case; see `src/nft-mint-blocks.js`.

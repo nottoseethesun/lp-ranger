@@ -7,7 +7,7 @@
  * pool's creation block, which is not tight enough on its own: epoch
  * reconstruction calls `getPositionHistory` once per closed NFT in the
  * chain, so a pool-wide floor is re-walked once per rebalance. On a
- * 132-rebalance chain that is 132 x 2 x 1,144 chunks. The NFT's own
+ * 132-rebalance chain that is 132 x 2 x 954 chunks. The NFT's own
  * mint block costs nothing extra — `_supplementFromEvents` resolves it
  * before any scan runs.
  *

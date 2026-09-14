@@ -113,8 +113,8 @@ function nftScanFrom(mintBlocks, tokenId, sharedFloor) {
  * wallet back to its true mint). No NFT in the chain can predate it, so
  * it is a sound floor for all of them, and it costs no extra RPC.
  *
- * Observed: pool created at ~18.95M, first deposit at 26.03M — 1,144
- * chunks reduced to about 200.
+ * Pool created at ~18.95M against a first deposit at 26.03M: at the
+ * 9,000-block chunk width that is 954 chunks reduced to about 168.
  *
  * @param {Array & {firstMintBlockNumber?: number}} events  Rebalance
  *   events, as returned by the event scanner.
