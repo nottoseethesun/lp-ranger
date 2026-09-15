@@ -244,135 +244,165 @@ or the position's lifetime.
 
 ### Sequence View
 
-#### From a fresh install to a scanned position
+Three situations, in the order an operator meets them: the first run on a
+new install, everyday use once that is done, and what a restart looks
+like afterwards.
 
-`npm run build`, then `npm start`. `server.js` clears the previous run's
-error log, hands the chain's RPC list to `sendTx.init`, and opens the HTTP
-listener. It also calls `migrateAppConfig()`, which moves a fixed list of
-config files out of the pre-`app-config/` layout; a fresh install has none
-of them, so that call does nothing at all. The directories it would move
-them into are tracked, so a clone or a tarball already has them.
+#### Start from Fresh Installation
 
-It then looks for a signing key in two places: `PRIVATE_KEY` in `.env`, or
-an encrypted `wallet.json` unlocked by `WALLET_PASSWORD` or a terminal
-prompt under `--headless`. A fresh install has neither, so the server logs
-dashboard-only mode, writes its PID file, and waits.
+Nothing is known yet — no wallet, no positions, no history — so this run
+is the slow one. Everything after it is faster because of what this run
+writes down.
 
-You open the dashboard, accept the disclosure, and import or create a
-wallet. Unlocking it decrypts any stored API keys and calls the
-auto-start, which finds nothing to start — `bot-config.json` has no
-positions yet.
+The server starts in **dashboard-only mode**. It has no signing key, so
+there is nothing to manage and nothing to poll. It waits for a browser.
 
-Now the first scan runs, and it is a **wallet scan**, not a chain-history
-scan. The dashboard posts to the scan route, which reads the current block
-and checks the LP-position cache. On a fresh install that misses, so the
-full scan runs: enumerate the wallet's NFTs through the Position Manager,
-resolve each pool's token symbols, and write the result to a cache keyed
-by chain, contract and wallet. Progress is reported as it goes. No
-position's history has been touched at this point.
+You accept the disclosure and import or create a wallet. That unlocks any
+stored API keys and asks what should be started; on a fresh install the
+answer is nothing, because no position has been marked as managed.
 
-You pick a position and click Manage. That starts a bot loop, and the loop
-scans in a fixed order.
+The first scan is a **wallet scan**, and it is worth separating from the
+chain-history scans that follow. It asks only "which LP positions does
+this wallet hold?" — it enumerates them and resolves each pool's token
+symbols. No position's history is touched. The result is cached against
+the chain, contract and wallet, which is what makes every later startup
+skip this step.
 
-First it confirms the NFT and opens a P&L tracker. On a fresh install the
-epoch cache is empty, so a live epoch is opened rather than restored. A
-residual tracker is created, the HODL baseline starts resolving in the
-background, and a throttle is built from the saved settings.
+You pick a position and click Manage. That starts a bot loop, and the
+loop does the work in a deliberate order: a poll runs **first**, so the
+dashboard shows live price, value and fees within seconds, and only then
+does the history scan begin. Waiting for history before showing anything
+would leave the operator staring at an empty dashboard for hours.
 
-Then one poll runs immediately, so the dashboard has live numbers before
-any scan finishes.
+The history scan has three stages, and all three must finish before the
+position reads Synced:
 
-Then the history scan, in three stages. **Stage one** walks the pool's
-Transfer events to build the rebalance chain. Its floor is the pool's
-deployment block, found by bisecting `eth_getCode` rather than scanning
-for it, and the walk is chunked at 9,000 blocks with every request paced
-by the global queue. **Stage two** reconstructs P&L epochs from that
-chain. **Stage three** walks each NFT in the chain for its
-`IncreaseLiquidity`, `Collect` and `DecreaseLiquidity` events, floored at
-that NFT's own mint block, which is what compound detection, the HODL
-baseline and lifetime P&L are built from.
+1. **The rebalance chain.** Walk the pool's transfer history to find
+   every NFT this wallet has held in it. On a long-lived position that is
+   a chain of a hundred or more.
+2. **P&L epochs.** Turn that chain into one accounting period per NFT,
+   priced at the blocks where each opened and closed.
+3. **Per-NFT history.** Walk each NFT in the chain for its own deposits,
+   fee collections and withdrawals. This is what compound totals, the
+   HODL baseline and lifetime P&L are built from.
 
-The Sync badge flips to Synced when all three finish. A 30-minute timer
-re-runs the scan if the lifetime deposit total is missing or a rebalance
-has flagged one.
+Stage three is the expensive one, because its cost is per NFT rather than
+per pool. A hundred-NFT chain does a hundred walks. Hours is normal on a
+first run; the figures that appear afterwards are worth the wait, and
+nothing is lost if the process is stopped part-way — see
+[How Scans Survive RPC Failures](#how-scans-survive-rpc-failures).
 
-#### Restarting with two positions managed and several unmanaged
+#### Post-Initialization Operation
 
-**Managed comes first, and not narrowly.** Starting managed positions is
-server-side and automatic; everything about the unmanaged ones is
-browser-initiated and cannot begin until a browser connects.
+Once a position has been scanned, day-to-day use is polling and the two
+actions a poll can take. Switching between positions is the other thing
+an operator does constantly, and it behaves in a way worth understanding.
 
-Directory setup, `sendTx.init` and the listener come up as before. The
-key resolver now finds `wallet.json`. With `WALLET_PASSWORD` set it
-unlocks immediately; otherwise the server waits for the browser unlock and
-runs the same path afterwards.
+##### Switching positions
 
-Auto-start then reads the keys whose saved `status` is `running` — the two
-positions — initialises the single shared NonceManager, and walks them in
-config order. Each is checked with `ownerOf` before its loop starts: an
-NFT the wallet no longer owns is dropped from management rather than
-started.
+**Which position you are looking at is a browser concern, not a server
+one.** The server keeps state for every position it knows about; the
+browser decides which one to show. Switching therefore does not tell the
+server to do anything — it changes which position's state you are
+looking at.
 
-The second position waits before starting. The stagger is the poll
-interval divided by the number of managed positions, so at the defaults
-the second waits 150 seconds. This spreads both their polls and their
-history scans rather than firing every RPC request at once.
+That has a consequence that surprises people: **the Sync badge is
+per-position, not per-app.** A position reading Synced means that
+position's scans have finished. Another position, scanned later or not at
+all, can still be mid-scan. Switching to it shows Syncing — not because
+switching started a scan, but because one was already running and you had
+not been looking at it.
 
-Each loop then runs the same sequence as a fresh position, with two
-differences. The scan does not block: the first poll runs, the scheduler
-starts, and the history scan proceeds in the background, so the dashboard
-has numbers within seconds. And the P&L tracker now finds cached epochs
-keyed by pool identity, so history is restored rather than rebuilt — that
-key is the pool, not the NFT, so it survived every rebalance that minted a
-new tokenId.
+What the switch actually triggers depends on whether the bot manages the
+position:
 
-The unmanaged positions are untouched by any of this. They are discovered
-only when the browser asks for a wallet scan, and that request hits the
-LP-position cache written on the previous run rather than re-enumerating
-the wallet. When the browser then asks for one position's detail, it skips
-any position the bot already manages, so the two do not scan the same NFT
-chain twice.
+- **Switching to a managed position** starts nothing. The bot owns that
+  position's history and the dashboard deliberately stays out of the way,
+  because both doing the work would mean walking the same NFT chain
+  twice. You see whatever state the bot's scan is in.
+- **Switching to an unmanaged position** asks the server for that
+  position's detail, since nothing else will. The first visit pays the
+  full per-NFT walk described above, which on a long chain is hours.
 
-#### Automatic rebalancing and auto-compounding
+Either way the result is cached. That is why moving back and forth
+between positions during a session is quick after the first visit to
+each, even though the first visit to one of them was slow.
 
-Every poll — 300 seconds apart by default, per position — runs the same
-opening. The throttle ticks and publishes a fresh snapshot. `getPoolState`
-resolves the pool and reads the current price. The position's liquidity
-and ticks are re-read from the Position Manager. P&L and stats are
-recomputed: token prices, position value, unclaimed fees, and IL/G against
-the HODL baseline. Token prices come from a two-minute cache, and are
-suppressed entirely while the dashboard and server are both idle. A
-residual-cleanup check runs next, before the range check, so a sweep can
-fire while the position is still in range.
+##### What each poll does
 
-Then the range check decides which of two paths runs.
+Every position polls on its own timer, 300 seconds apart by default.
+Each poll re-reads the pool price and the position's liquidity,
+recomputes value, unclaimed fees and IL/G against the HODL baseline, and
+checks whether any wallet residual is large enough to be worth sweeping
+back in. Token prices are cached briefly, and are not fetched at all
+while both the dashboard and the server are idle — those lookups are
+quota-limited and there is nobody watching.
 
-**In range — compound.** Auto-compound fires only when it is enabled, when
-unclaimed fees are at or above both the configured threshold and the $1
-floor, when no scan is running, and when the last compound was longer ago
-than five poll intervals or 300 seconds, whichever is greater. It then
-collects the fees, swaps whatever the target ratio needs, and adds them
-back to the same NFT. No new NFT, no range change.
+Then the price decides which of two things can happen.
 
-**Out of range — rebalance.** The gates run in order: state gates, swap
-backoff, the throttle's minimum interval and doubling window, the pool's
-daily cap, the Impermanent Loss Guard, and dry-run. A manual Rebalance Now
-skips the gates but still counts against the cap. Past them, a gas check
-defers the rebalance if the estimated cost exceeds the configured percent
-of position value.
+**In range — compound.** If auto-compound is on and unclaimed fees have
+grown past the configured threshold, the fees are collected and added
+back to the same NFT. No new NFT, no change of range. A minimum spacing
+between compounds stops small positions burning gas on dust.
 
-The rebalance itself takes the lock, then: read pool state, confirm
-ownership, read liquidity, drain the NFT with a single multicall, compute
-the amounts the new range needs, swap the excess through the aggregator
-with the V3 router as fallback, re-check the tick in case the swap moved
-it, and mint. Every transaction is wrapped in the speed-up and auto-cancel
-pipeline.
+**Out of range — rebalance.** A series of gates run first: recent
+rebalance frequency, the pool's daily cap, the Impermanent Loss Guard,
+and a gas check that defers the move if it would cost too much relative
+to the position. A manual **Rebalance Now** skips the gates but still
+counts against the daily cap.
 
-On success the new tokenId replaces the old one in the composite key, the
-HODL baseline and residuals migrate with it, the epoch closes with its gas
-recorded, the throttle and the pool's daily count both increment, and a
-full rescan is flagged for the next 30-minute tick to pick up the new
-mint.
+Past the gates, the position is drained, the tokens swapped to the ratio
+the new range needs, and a new NFT minted around the current price. Only
+one position rebalances at a time, because they share a wallet and
+therefore a transaction nonce. Every transaction is watched, sped up if
+it stalls, and cancelled if it stays stuck, so a pending transaction
+cannot block the bot indefinitely.
+
+Afterwards the new NFT inherits the old one's accounting — baseline,
+residuals, P&L history — and a rescan is flagged so the new mint is
+picked up.
+
+#### Re-start from Initialized Installation (Has Completed Blockchain Scan)
+
+A restart after a completed scan is fast, and the reason is that almost
+everything the slow run produced was written to disk.
+
+**Managed positions come back on their own; unmanaged ones wait for a
+browser.** Starting managed positions is server-side and automatic.
+Everything about an unmanaged position is browser-initiated and cannot
+begin until someone opens the dashboard.
+
+The server finds the stored wallet rather than starting empty. With a
+wallet password configured it unlocks immediately; otherwise it waits for
+the browser unlock and continues from there.
+
+It then starts each position whose saved status is **running**,
+confirming the wallet still owns each NFT first — one sold or transferred
+since the last run is dropped from management rather than started against
+an NFT that is gone.
+
+Positions start staggered rather than together. With the default poll
+interval and two positions, the second waits 150 seconds. That spreads
+both their polling and their scans instead of firing every request at
+once.
+
+Each position then runs the same sequence as a fresh one, with two
+differences that account for the speed:
+
+- **The scan does not block.** The first poll runs, the schedule starts,
+  and any scanning happens in the background. The dashboard has numbers
+  within seconds.
+- **P&L history is restored rather than rebuilt**, because it is stored
+  against the pool rather than the NFT. Every rebalance mints a new NFT;
+  keying on the pool is what lets that history survive them.
+
+The wallet scan is skipped too — the browser's request hits the cache
+written on the first run instead of re-enumerating the wallet.
+
+A scan can still run after a restart, for a reason unrelated to the
+restart: new rebalances have happened since the last one, or a previous
+scan did not finish. That work is incremental, picking up from where the
+last run got to rather than starting over.
 
 ---
 
