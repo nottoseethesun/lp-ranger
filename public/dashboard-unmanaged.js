@@ -7,7 +7,7 @@
  */
 
 import { log } from "./dashboard-log.js";
-import { g, botConfig, fetchWithCsrf, cloneTpl } from "./dashboard-helpers.js";
+import { g, fetchWithCsrf } from "./dashboard-helpers.js";
 import { resetKpis, pollNow, getLastStatus } from "./dashboard-data.js";
 import {
   loadPriceOverrides,
@@ -278,37 +278,25 @@ function _markSynced() {
   pollNow();
 }
 
-/** Show a modal informing the user the scan timed out. */
-function _showScanTimeoutDialog() {
-  const existing = document.getElementById("scanTimeoutModal");
-  if (existing) existing.remove();
-  const el = document.createElement("div");
-  el.className = "9mm-pos-mgr-il-popover";
-  el.id = "scanTimeoutModal";
-  const frag = cloneTpl("tplScanTimeoutPopover");
-  if (frag) el.appendChild(frag);
-  el.querySelector("[data-dismiss]").addEventListener("click", () =>
-    el.remove(),
-  );
-  el.addEventListener("click", (e) => {
-    if (e.target === el) el.remove();
-  });
-  document.body.appendChild(el);
-}
-
-/** Phase 2: slow — lifetime P&L (event scan + epoch reconstruction). */
+/*- Phase 2: slow — lifetime P&L (event scan + epoch reconstruction).
+ *
+ *  Deliberately unbounded, matching what the bot does for a managed
+ *  position: no deadline, finish or fail. A cold rebuild of a long
+ *  rebalance chain runs for hours — every request paced through one
+ *  global queue — and a deadline short enough to be useful is also
+ *  short enough to kill a healthy run and discard a result the server
+ *  went on to compute anyway.
+ *
+ *  Nothing is lost by waiting: the server writes each stage to the
+ *  epoch and lifetime caches as it goes, so the answer survives even if
+ *  this page never sees it. */
 async function _phase2(body, gen) {
-  const timeoutMs = botConfig.scanTimeoutMs || 7_200_000;
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const r2 = await fetchWithCsrf("/api/position/lifetime", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: ctrl.signal,
     });
-    clearTimeout(timer);
     if (gen === _fetchGen) {
       const d2 = await r2.json();
       /*- Same active-position guard as phase1: if the user navigated to a
@@ -317,15 +305,7 @@ async function _phase2(body, gen) {
       if (d2.ok && _activeMatches(body?.tokenId)) _applyLifetime(d2);
     }
   } catch (e) {
-    if (e.name === "AbortError") {
-      log.warn(
-        "[lp-ranger] [unmanaged] phase 2 timed out after %ds",
-        timeoutMs / 1000,
-      );
-      if (gen === _fetchGen) _showScanTimeoutDialog();
-    } else {
-      log.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
-    }
+    log.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
   }
   // Always clear Syncing badge — even on timeout or gen mismatch
   _markSynced();
