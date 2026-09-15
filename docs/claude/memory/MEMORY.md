@@ -34,6 +34,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Nice-to-have lists in user-facing docs need a "not bugs" note
 - [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete the item; "inert" is a delete signal, not a caveat
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Describe operator-facing behavior, not implementation constants
+- [operator sees UI, not logs](feedback_operator_sees_ui_not_logs.md) — Answer in badge/dialog terms; the log is the assistant's instrument, not the operator's interface
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — User uses them interchangeably; don't ask which
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Answer only what was asked, about only the thing named; yes/no means yes/no
 - [prose style](feedback_prose_style.md) — Short sentences, concise, spell out small numbers, no gwei
