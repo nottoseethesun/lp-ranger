@@ -162,9 +162,12 @@ const _HIGHLIGHTS = [
    *  with every gate still green, which is what the test guards. */
   {
     text: "Auto-rescanning lifetime",
-    style: `\x1b[38;2;${_EARTH_GREEN};48;2;${_DEEP_SOIL_BROWN}m`,
+    /*- Bold as well as coloured: Earth Green on Deep Soil Brown is a
+     *  low-contrast pair by design, so the weight is what makes the
+     *  line legible rather than the hue. */
+    style: `\x1b[1;38;2;${_EARTH_GREEN};48;2;${_DEEP_SOIL_BROWN}m`,
     toEnd: true,
-  }, // Earth Green (#185E3F) on Deep Soil Brown (#181612)
+  }, // Bold Earth Green (#185E3F) on Deep Soil Brown (#181612)
 ];
 
 /*- Apply tag-prefix coloring + substring highlight, if any.  Non-string

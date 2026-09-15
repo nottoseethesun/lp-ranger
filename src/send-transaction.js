@@ -177,14 +177,30 @@ const _READ_FAILOVER_CODES = new Set([
   "SERVER_ERROR",
   "TIMEOUT",
   "NETWORK_ERROR",
+  /*- A TLS socket reset arrives as a bare Node system error rather than
+   *  one of ethers' own codes, so it is listed explicitly.  Without it a
+   *  reset mid-scan is read as the REQUEST being at fault and rethrown
+   *  on the first occurrence, which ends the scan; observed doing
+   *  exactly that after 3h26m of walking on 2026-09-15. A peer closing
+   *  the connection says nothing about the request. */
+  "ECONNRESET",
 ]);
+
+/*- Rate limiting is the endpoint declining to serve *now*, not a
+ *  malformed request, so it is failed over like any other endpoint
+ *  fault.  Excluded by the 5xx test below because it is a 4xx, and at
+ *  least one configured endpoint publishes a request-rate cap. Moving
+ *  to another endpoint also spreads the load that produced it. */
+const _RATE_LIMITED_STATUS = 429;
 
 function _isReadFailoverable(err) {
   if (!err) return false;
   if (err.code && _READ_FAILOVER_CODES.has(err.code)) return true;
   const status = err.info && err.info.responseStatus;
-  if (status && /^5\d\d/.test(String(status))) return true;
-  return false;
+  if (!status) return false;
+  const s = String(status);
+  if (/^5\d\d/.test(s)) return true;
+  return s.startsWith(String(_RATE_LIMITED_STATUS));
 }
 
 /**

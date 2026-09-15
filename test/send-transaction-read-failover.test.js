@@ -484,13 +484,41 @@ describe("send-transaction: _isReadFailoverable", () => {
       true,
     );
   });
-  it("rejects a 4xx responseStatus (request is the problem, not the RPC)", () => {
+  it("classifies ECONNRESET as failover-eligible", () => {
+    /*- Arrives as a bare Node system error, not one of ethers' codes, so
+     *  it has to be listed by name.  Without it a reset mid-scan is read
+     *  as the request being at fault and ends the scan. */
     assert.equal(
       sendTx._isReadFailoverable({
-        info: { responseStatus: "400 Bad Request" },
+        code: "ECONNRESET",
+        message: "read ECONNRESET",
       }),
-      false,
+      true,
     );
+  });
+  it("classifies a 429 responseStatus as failover-eligible", () => {
+    /*- Rate limiting is the endpoint declining to serve now, not a bad
+     *  request, and at least one configured endpoint publishes a rate
+     *  cap.  It is a 4xx, so the 5xx test below does not reach it. */
+    assert.equal(
+      sendTx._isReadFailoverable({
+        info: { responseStatus: "429 Too Many Requests" },
+      }),
+      true,
+    );
+  });
+  it("rejects other 4xx responseStatus (request is the problem, not the RPC)", () => {
+    for (const status of [
+      "400 Bad Request",
+      "404 Not Found",
+      "403 Forbidden",
+    ]) {
+      assert.equal(
+        sendTx._isReadFailoverable({ info: { responseStatus: status } }),
+        false,
+        status,
+      );
+    }
   });
   it("rejects NONCE_EXPIRED and other terminal errors", () => {
     assert.equal(sendTx._isReadFailoverable({ code: "NONCE_EXPIRED" }), false);

@@ -249,12 +249,21 @@ test("_colorize paints the lifetime auto-rescan in the soil palette", () => {
     "[bot] WPLS/DAI NFT #71544: pool= 0xabc — Auto-rescanning lifetime, retry #3 since startup (epochHistoryIncomplete=true)",
   );
   assert.ok(
-    out.includes(_ESC + "[38;2;24;94;63;48;2;24;22;18m"),
-    "must carry Earth Green on Deep Soil Brown",
+    out.includes(_ESC + "[1;38;2;24;94;63;48;2;24;22;18m"),
+    "must carry BOLD Earth Green on Deep Soil Brown",
+  );
+  /*- The bold is load-bearing, not decoration.  This foreground on this
+   *  background is a deliberately low-contrast pair, and at normal
+   *  weight the line is hard to read against the terminal background —
+   *  reported from a live burn-in.  Weight is what makes it legible, so
+   *  dropping the `1;` regresses the thing the highlight exists for. */
+  assert.ok(
+    out.includes(_ESC + "[1;38;2;"),
+    "the highlight must be bold; colour alone is too dark to read",
   );
   /*- toEnd: the highlight starts at the phrase and runs to end-of-line,
    *  so the retry number and the reason are inside it. */
-  const idx = out.indexOf(_ESC + "[38;2;24;94;63");
+  const idx = out.indexOf(_ESC + "[1;38;2;24;94;63");
   assert.ok(idx > 0, "highlight begins mid-line, after the [bot] prefix");
   assert.ok(
     out.endsWith(_ESC + "[0m"),
