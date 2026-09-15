@@ -27,7 +27,7 @@ sequence.
 
 - [Terminology](#terminology)
 - [Quick Start](#quick-start)
-- [Command-Line Flags](#command-line-flags)
+- [`npm` Project Commands](#npm-project-commands)
 - [Configuration](#configuration) → [`docs/configuration.md`](configuration.md)
 - [Engineering Design](#engineering-design)
   - [System View](#system-view)
@@ -62,6 +62,7 @@ sequence.
 - [Check Report Artifacts](#check-report-artifacts)
 - [API Documentation](#api-documentation)
 - [`server.js`](#serverjs)
+- [How Scans Survive RPC Failures](#how-scans-survive-rpc-failures)
 - [`getPoolState` Validation + RPC Retry](#getpoolstate-validation--rpc-retry)
 - [Closed-position Re-open Flow](#closed-position-re-open-flow)
 - [Error Log & Reload Current Position](#error-log--reload-current-position)
@@ -105,47 +106,81 @@ for consensus or validator rotation).
 
 ---
 
-## Command-Line Flags
+## `npm` Project Commands
 
-All flags are passed through the `npm` script for the relevant entry point.
-npm forwards everything after the `--` separator to the underlying Node
-process unchanged, so `npm start -- --verbose` is identical to running
-`node server.js --verbose` directly. Use the npm form in scripts, CI, and
-documentation — the raw `node` form is an implementation detail.
+Every command defined in `package.json`. Run with `npm run <name>`;
+`start`, `test` and `stop` also work without `run`. Flags go after a
+`--` separator, as shown in the examples.
 
-| Flag | npm Invocation | Description |
-| --- | --- | --- |
-| `--verbose`, `-v` | `npm start -- --verbose` | Verbose logging: per-cycle fee details and out-of-range poll diagnostics that are hidden by default. Can also be set via `VERBOSE=1` in `.env` or environment. |
-| `--log-file [PATH]` | `npm start -- --log-file` | Tee every byte written to `process.stdout` and `process.stderr` to a file (ANSI color escapes stripped so the on-disk log is grep-friendly). `PATH` is optional — when omitted, the path falls through to `app-config/app-defaults-for-user-configurable/logging.json` and finally to the built-in default `logs/lp-ranger.log`. With a path: `npm start -- --log-file path/to/run.log`. The file is opened in append mode (multiple runs accumulate); rotate or truncate externally if it grows unbounded. Operators who want the tee always-on can set `"enabled": true` in `logging.json` and run `npm start` with no flag. Implemented by [`src/log-file.js`](../src/log-file.js); wired into both `server.js` and `bot.js` via [`src/boot-log-file.js`](../src/boot-log-file.js). |
-| `--help`, `-h` | `npm start -- --help` | Show all command-line options and exit. |
-| `--start-with-price-lookups-unpaused` | `npm run bot -- --start-with-price-lookups-unpaused` | **Bot-only** (`npm run bot`). Skip the default start-paused state for headless mode (see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)). Use this when you want continuous P&L cache warming on a headless box. |
+### Lifecycle Commands
 
-All flags above work with the alternate entry points too:
-`npm run build-and-start -- <flags>`, `npm run dev -- <flags>`, and
-`npm run bot -- <flags>` (for flags supported by the bot). The `--`
-separator is required for every `npm run …` invocation as well — it is
-NOT a `npm start`-only quirk. For example, to build the dashboard
-bundle and then start the app with log-to-file enabled, use:
+Starting and stopping a running install.
 
-```sh
-# Tee to the default path (logs/lp-ranger.log, or whatever
-# logging.json sets).
-npm run build-and-start -- --log-file
+| Command | Flags | Description | Example |
+| ------- | ----- | ----------- | ------- |
+| `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run bot -- --start-with-price-lookups-unpaused` |
+| `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `tmp/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. | `npm run clear-blockchain-scan-cache -- --dry-run` |
+| `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h`, `--headless` | Start the dashboard server and auto-start every position saved as `running`. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm start -- --verbose` |
+| `stop` | — | Clean shutdown: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. Falls back to an lsof-by-port lookup when no PID file exists. | `npm stop` |
 
-# Tee to a path chosen for this run.
-npm run build-and-start -- --log-file /tmp/burn-in.log
-```
+### Developer Tools
 
-Both forms work because npm appends everything after `--` to the END of
-the script string. `build-and-start` is `npm run build && node
-server.js`, so the flag arrives as `node server.js --log-file` — the
-build step never sees it, and neither form needs the chained script to
-do anything special.
+Building, running from source, debugging, inspecting the codebase, and resetting local state.
 
-Without the `--`, npm consumes the flag itself and forwards nothing to
-the script — the tee will silently not engage.
+| Command | Flags | Description | Example |
+| ------- | ----- | ----------- | ------- |
+| `api-doc` | — | Serve the Scalar API reference at `http://localhost:5556`. | `npm run api-doc` |
+| `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundle, cache-bust stamps, inlined SVGs. | `npm run build` |
+| `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run build-and-start -- --log-file /tmp/burn-in.log` |
+| `build:watch` | — | esbuild in watch mode. Rebuilds the bundle on change; skips the one-off generators `build` runs. | `npm run build:watch` |
+| `clean` | — | Full reset to fresh-clone state: wallet, bot config, API keys, rebalance log, every `tmp/` cache, logs and build artifacts. Rebuild before starting again. | `npm run clean` |
+| `clean:log` | — | Truncate `logs/lp-ranger.log`. | `npm run clean:log` |
+| `debug` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Start the server under `node --inspect`. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run debug` |
+| `debug-attach` | — | Attach a debugger to an already-running server and print the URL to visit. | `npm run debug-attach` |
+| `debug-attach-bot` | — | The same for a running headless bot. | `npm run debug-attach-bot` |
+| `debug-bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Start the headless bot under `node --inspect`. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run debug-bot` |
+| `dev` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Build, then start under `node --watch` so the server restarts on file changes. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run dev -- --verbose` |
+| `dev-clean` | — | The same, but keeps the price, block-time and Gecko caches, which cost API quota to rebuild. | `npm run dev-clean` |
+| `format` | — | Prettier write pass over the tracked file set. | `npm run format` |
+| `knip` | — | Dead-code detection. The `dashboard-*.js` files report as unused because knip cannot trace HTML `<script>` tags — those are false positives. | `npm run knip` |
+| `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint. | `npm run lint` |
+| `lint:fix` | — | The same set with autofix where each tool supports it. | `npm run lint:fix` |
+| `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. | `npm run nuke` |
+| `reset-wallet` | — | Delete `wallet.json` and scrub `WALLET_PASSWORD` from `.env`. | `npm run reset-wallet` |
+| `restore-settings` | — | Restore whatever `wipe-settings` backed up. | `npm run restore-settings` |
+| `show-dependency-cycles` | — | madge circular-import report across the whole source tree. | `npm run show-dependency-cycles` |
+| `show-gallery` | — | Serve a Pages-accurate preview of the screenshot gallery at `http://localhost:5557`. | `npm run show-gallery` |
+| `view-report` | — | Open the PDF report produced by the last `check`. | `npm run view-report` |
+| `wipe-settings` | — | Back up operator settings to `tmp/.settings-backup/` to simulate a fresh install. `check` uses this, so never run it against a live server. | `npm run wipe-settings` |
 
----
+### Test
+
+The gates. `check` runs all of them and is what must pass before a commit.
+
+| Command | Flags | Description | Example |
+| ------- | ----- | ----------- | ------- |
+| `audit:deps` | — | `npm audit` at the `high` threshold. | `npm run audit:deps` |
+| `audit:secrets` | — | secretlint across the repo. | `npm run audit:secrets` |
+| `audit:security` | — | The custom security lint rules. | `npm run audit:security` |
+| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. | `npm run check` |
+| `format:check` | — | Prettier in check mode; fails rather than rewriting. | `npm run format:check` |
+| `test` | any `node --test` flag | Run the suite with a concurrency of 24. | `npm test -- --test-name-pattern="failover"` |
+| `test:coverage` | — | The suite with V8 coverage collection. | `npm run test:coverage` |
+| `test:util` | — | Only the `util/diagnostic/` suites. | `npm run test:util` |
+| `test:watch` | — | Re-run affected tests on file change. | `npm run test:watch` |
+
+### Commands That Are Usually Not Run Alone
+
+npm lifecycle hooks and helpers. These run automatically around the command each is named for.
+
+| Command | Flags | Description | Example |
+| ------- | ----- | ----------- | ------- |
+| `clean:reports` | — | Remove `test/report-artifacts/`. Invoked by all nine `pre*` hooks — `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch` and the three `preaudit:*` — so every gate starts without stale reports. | `npm run clean:reports` |
+| `copy-fonts` | — | Copy the self-hosted WOFF2 files from `node_modules` into `public/fonts/`. Also runs automatically via `postinstall`. | `npm run copy-fonts` |
+| `postinstall` | — | Runs automatically after `npm install`; copies the fonts. | automatic |
+| `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch`, `preaudit:deps`, `preaudit:security`, `preaudit:secrets` | — | Run automatically before the command each is named for; clear stale reports and regenerate generated content so the gate starts from a known state. | automatic |
+| `prepare` | — | Runs automatically after `npm install`; installs the husky hooks. | automatic |
+| `prestart` | — | Runs automatically before `start`; verifies the build artifacts exist. | automatic |
 
 ## Configuration
 
@@ -2294,70 +2329,101 @@ surface is covered by the Swagger spec (see
 
 ---
 
-## The Managed Read Provider Returns Itself
+## How Scans Survive RPC Failures
 
-`getManagedReadProvider()` (`src/send-transaction.js`) is the single
-read path. It is a Proxy with no target state; its `get` trap has three
-branches, evaluated in this order:
+A chunked log scan issues thousands of `eth_getLogs` requests, so over a
+five-year range it will meet a failing endpoint. This section covers what
+the app does about that: the retry that keeps a failure from costing
+data, the two cases that can still leave blocks unread, and how those
+blocks are picked up afterwards.
+
+The short version: **an unhealthy endpoint costs time, not data.**
+
+### A failed read is retried until it succeeds
+
+Every read in the app goes through `getManagedReadProvider()`
+(`src/send-transaction.js`). When a read fails with an error that
+indicates the endpoint rather than the request — `SERVER_ERROR`,
+`TIMEOUT`, `NETWORK_ERROR`, or any 5xx — the call moves to the next
+configured endpoint and is tried again. The loop
+(`src/rpc-read-retry.js`) has no exit condition: it keeps cycling
+endpoints until one serves the read.
+
+Errors that say the *request* is at fault are not retried. An
+`AbortError`, a block-range-cap rejection, and any other
+non-failover-eligible error propagate on the first occurrence.
+
+Two design choices follow from what a dropped read would cost.
+
+**It never gives up.** A dropped read is a dropped block window, and a
+history short by one window is indistinguishable from a complete one at
+every layer above it — the numbers still render, they are just wrong. A
+stalled scan is the visible alternative: it appears in the log as
+accumulating retry lines and resolves on its own when an endpoint
+recovers. If an outage is long enough to matter, the operator sees it and
+decides whether to wait or stop.
+
+**There is no backoff.** Every provider is built by
+`bot-provider.buildProvider`, which funnels each call through the global
+pacing queue, so attempts are already spaced by
+`globalRPCRequestRateIntervalMS` and the loop cannot spin. Adding a delay
+here would be a second rate mechanism competing with the one that owns
+the schedule.
+
+#### Implementation detail: why the Proxy returns itself
+
+`getManagedReadProvider()` is a Proxy whose `get` trap has three
+branches, in this order:
 
 ```text
-prop === "provider"        -> the proxy itself
+prop === "provider"         -> the proxy itself
 typeof value !== "function" -> the active provider's value, raw
 otherwise                   -> the method, wrapped in retry-on-failure
 ```
 
 The active provider is re-resolved through `getCurrentRPC()` on every
-access, so a failover that happens between two calls takes effect on the
-next one without anything holding a stale reference. The wrapper retries
-failover-eligible errors (`SERVER_ERROR`, `TIMEOUT`, `NETWORK_ERROR`,
-any 5xx) against the next endpoint.
+access, so a failover between two calls takes effect on the next one
+without anything holding a stale reference.
 
-The first branch exists because the second one would otherwise defeat
-the third. It is required for `queryFilter` to be covered by the retry
-at all:
+The first branch is what puts `queryFilter` — and therefore every log
+scan — inside the retry at all:
 
 ```text
 ethers contract.js  queryFilter -> getProvider(this.runner)
 ethers contract.js  getProvider -> return value.provider || null
 ```
 
-An ethers provider's own `.provider` is a getter returning itself, and
-is therefore not a function, so without this the Proxy's
-"non-functions pass straight through" branch yields the raw provider.
-Every `queryFilter` in the app — the event scanner, `scanNftEvents`, the
-HODL scan and the pool-creation finder, on both the managed and
-unmanaged paths — would then call `getLogs` outside the wrapper, with
-no retry and no failover.
+An ethers provider's own `.provider` is a getter returning itself, and is
+therefore not a function, so without the first branch the second one
+yields the raw provider and `getLogs` runs outside the wrapper. That
+would exempt the event scanner, `scanNftEvents`, the HODL scan and the
+pool-creation finder, on both the managed and unmanaged paths.
+`test/send-transaction-read-failover.test.js` pins this with a real
+`ethers.Contract` rather than a stub, since the behaviour under test is
+how ethers resolves a contract runner.
 
-That matters more than a missing retry usually would, because a log scan
-that loses a window does not fail: `bestEffort` records the window and
-the scan returns success. Without the wrapper, a pool's rebalance chain
-would come back short by whatever mints sat in the gap, and epoch count,
-Lifetime and Cumulative P&L and IL/G would be computed over an
-incomplete history and shown as settled values. The retry is what stops
-that from arising.
+### What can still leave blocks unread
 
-`test/send-transaction-read-failover.test.js` pins the wrapper with a
-real `ethers.Contract` rather than a stub, since the behaviour under
-test is how ethers resolves a contract runner.
+Two cases, neither of them an endpoint being down.
+
+The first is **interruption**: the process can be stopped by the
+operator, a crash, or a restart while reads are still being retried, so
+the work has simply not finished.
+
+The second is a **non-endpoint error**. `_runWindow`
+(`src/get-logs-chunked.js`) rethrows an `AbortError` and a
+block-range-cap rejection; under `bestEffort` it logs and skips anything
+else that the retry did not treat as endpoint trouble.
+
+Either way the scan does not fail — `bestEffort` records the window and
+the scan returns success — so the recovery below is what keeps an unread
+range from turning into a permanently short history.
 
 ### Resuming at the first unread block
 
-With the retry above in place, an unhealthy endpoint no longer costs a
-window: the read is retried until some endpoint serves it. A window goes
-unread only in two cases, and neither is an endpoint being down.
-
-The first is interruption. The process can be stopped — by the operator,
-a crash, or a restart — while reads are still being retried, so the work
-simply has not finished yet. The second is a read that fails with an
-error the retry does not treat as endpoint trouble: `_runWindow` rethrows
-an `AbortError` and a block-range-cap rejection, and under `bestEffort`
-it skips anything else that is not failover-eligible.
-
-In both cases the requirement is the same, and it is what this mechanism
-provides: the cache must never claim coverage it does not have. It
-records only the blocks it read without a break, so the next scan
-resumes at the first unread block instead of stepping over it. Four
+The requirement is that the scan cache never claims coverage it does not
+have. It records only the blocks it read without a break, so the next
+scan resumes at the first unread block instead of stepping over it. Four
 steps, one per layer:
 
 | Step | Where | What it does |
@@ -2369,56 +2435,36 @@ steps, one per layer:
 
 Two properties make this work. Both are easiest to see with numbers.
 
-**The marker means "everything up to here was read without a break",
-not "this is how far the scan got".** Suppose a scan starts at block
+**The marker means "everything up to here was read without a break", not
+"this is how far the scan got".** Suppose a scan starts at block
 20,000,000, the chain head is 27,000,000, and the single window covering
-24,000,000 to 24,008,999 fails while every other window succeeds. The
-scan carries on to the head and caches every event it found, including
-the ones above the failed window. It then records its marker as
-23,999,999 — one block below the hole — rather than 27,000,000, because
-24,000,000 onward is no longer backed by an unbroken read.
+24,000,000 to 24,008,999 is left unread while every other window
+succeeds. The scan carries on to the head and caches every event it
+found, including the ones above that window. It then records its marker
+as 23,999,999 — one block below the unread range — rather than
+27,000,000, because 24,000,000 onward is no longer backed by an unbroken
+read.
 
 Nothing is thrown away when that happens. The events already found above
-the hole stay in the cache; only the marker is rolled back. The next scan
-therefore starts at 24,000,000 and reads to the head again, so the range
-from 24,009,000 to 27,000,000 is read a second time. That costs requests
-but cannot corrupt anything, because `mergeAndIndex` combines the new
-results with the cached ones and drops any event whose `txHash` it has
-already seen.
+the unread range stay in the cache; only the marker is rolled back. The
+next scan therefore starts at 24,000,000 and reads to the head again, so
+the range from 24,009,000 to 27,000,000 is read a second time. That costs
+requests but cannot corrupt anything, because `mergeAndIndex` combines
+the new results with the cached ones and drops any event whose `txHash`
+it has already seen.
 
 **The marker can never be pushed below where the scan began.** Continuing
 the example: if a later scan resumes at 24,000,000 and its very first
-window fails, the candidate marker would be 23,999,999 — but that block
-was already covered and settled by the previous run. The
+window is left unread, the candidate marker would be 23,999,999 — but
+that block was already covered and settled by the previous run. The
 `Math.max(scanFrom - 1, …)` floor holds the marker at 23,999,999 rather
-than letting a gap drag it lower, so a failure near the start of one run
-cannot re-open history that an earlier run had finished with.
+than letting it drag lower, so a failure near the start of one run cannot
+re-open history an earlier run had finished with.
 
-One limit is worth stating plainly. The marker guarantees that an
-unread range is read by the *next* scan of that pool, but nothing
-schedules a scan on account of an unread range alone. A pool that is
-never scanned again keeps its marker parked where it is.
-
-### No give-up, no backoff
-
-The retry loop (`src/rpc-read-retry.js`) has no exit condition. A
-dropped read is a dropped block window, and a short history is
-indistinguishable from a complete one at every layer above it, whereas a
-stalled scan is visible as accumulating retry lines in the log and
-resolves when the endpoint recovers. The operator decides whether to
-wait or stop.
-
-There is no delay between attempts. Every provider is built by
-`bot-provider.buildProvider`, which funnels each call through the global
-pacing queue, so attempts are already spaced by
-`globalRPCRequestRateIntervalMS` and the loop cannot spin. A delay here
-would be a second rate mechanism competing with the one that owns the
-schedule.
-
-The loop is a separate module rather than part of `send-transaction.js`
-because that file sits near the 500-line cap, and because its
-dependencies arrive by injection, which makes it testable without
-booting the transaction layer.
+One limit is worth stating plainly. The marker guarantees that an unread
+range is read by the *next* scan of that pool, but nothing schedules a
+scan on account of an unread range alone. A pool that is never scanned
+again keeps its marker parked where it is.
 
 ## `getPoolState` Validation + RPC Retry
 
