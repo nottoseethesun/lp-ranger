@@ -15,7 +15,8 @@
     "cancelToDeadlineMultiple": 4,
     "retrySwapLimit": 8
   },
-  "scan": {
+  "rescanPrices": {
+    "_comment": "How long the dashboard's Re-scan Prices dialog waits for the scan it started before handing the button back, rather than spinning forever. Read by public/dashboard-rescan-prices.js via the rescanPricesTimeoutMs field on GET /api/status. It bounds a button, not a scan: nothing server-side reads it, and the scan it is waiting on runs to completion either way.",
     "timeoutMs": 7200000
   },
   "compound": {

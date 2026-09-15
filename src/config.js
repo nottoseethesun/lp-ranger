@@ -391,8 +391,9 @@ module.exports = {
   COMPOUND_MIN_FEE_USD: APP_CONFIG.compound.minFeeUsd,
   COMPOUND_DEFAULT_THRESHOLD_USD: APP_CONFIG.compound.defaultThresholdUsd,
 
-  // Scan
-  SCAN_TIMEOUT_MS: APP_CONFIG.scan.timeoutMs,
+  // Re-scan Prices dialog: how long the button waits before it is
+  // handed back.  Bounds the dialog, not the scan.
+  RESCAN_PRICES_TIMEOUT_MS: APP_CONFIG.rescanPrices.timeoutMs,
 
   // Helpers
   assertLiveModeReady,

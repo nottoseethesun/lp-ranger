@@ -669,8 +669,18 @@ let _serverPort = config.PORT;
 
 const server = http.createServer(handleRequest);
 // Lifetime P&L scans can take 5+ minutes for old pools (555 paced chunks).
-// Node 22's default requestTimeout is 300s — raise via config.
-server.requestTimeout = config.SCAN_TIMEOUT_MS;
+/*- `requestTimeout` is deliberately left at Node's own default.
+ *
+ *  It bounds how long a client may take to SEND a request — a
+ *  slow-client guard against holding a connection open a byte at a
+ *  time — and does NOT bound how long a handler may take to answer.
+ *  Verified: a 3-second handler under a 1-second requestTimeout still
+ *  returns its response intact.
+ *
+ *  It was previously raised to two hours "so lifetime P&L scans don't
+ *  get cut off", which it cannot do. Raising it only weakened the
+ *  guard. A scan that runs for hours is unaffected either way, so
+ *  there is nothing here to tune. */
 
 /**
  * Start the server on the configured port and host.

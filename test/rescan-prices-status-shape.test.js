@@ -67,7 +67,7 @@ function flattenLikeDashboard(v2) {
 const _DIALOG_READS = [
   "rescanPricesDefaultDays",
   "guaranteedDashboardHasPolledMs",
-  "scanTimeoutMs",
+  "rescanPricesTimeoutMs",
 ];
 
 test("every value the dialog reads survives the flatten, at top level", async () => {

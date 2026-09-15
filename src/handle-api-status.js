@@ -103,7 +103,7 @@ function createApiStatusHandler(deps) {
         compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
         compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
         factory: config.FACTORY,
-        scanTimeoutMs: config.SCAN_TIMEOUT_MS,
+        rescanPricesTimeoutMs: config.RESCAN_PRICES_TIMEOUT_MS,
         /*- Dashboard poll cadence + retire-debounce window are config
          *  values so the dashboard reads them from /api/status instead
          *  of duplicating the literal.  GUARANTEED_DASHBOARD_HAS_POLLED_MS

@@ -2239,10 +2239,11 @@ What happens when the process starts, in order:
    the console at boot. A successful load also writes the sibling
    `app-config/user-configurable/bot-config.backup.json` as a safety net.
 7. **The HTTP server is created.** `http.createServer(handleRequest)`
-   builds the server object; `requestTimeout` is raised to
-   `config.SCAN_TIMEOUT_MS` so lifetime P&L scans (which can take
-   5+ minutes on older pools) don't get cut off by Node's default
-   300-second timeout.
+   builds the server object. `requestTimeout` is left at Node's own
+   default: it bounds how long a client may take to **send** a request,
+   not how long a handler may take to answer one, so raising it does
+   nothing for a long-running scan and only weakens a slow-client
+   guard.
 8. **If run directly (`require.main === module`)**:
    1. `start()` calls `server.listen(PORT, HOST)` and logs the
       blockchain name, NFT factory, wallet address (or `(not loaded)`),
