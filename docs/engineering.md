@@ -662,13 +662,49 @@ position until the user pressed Save.
 
 ## Poll-Result Recovery Signal
 
-`_processPollResult` in [`src/bot-loop.js`](../src/bot-loop.js) decides
-whether a poll means the position's price came back. When it says yes,
-`_handleRecovery` clears `rebalanceError`, `rebalancePaused` and
-`rebalanceFailedMidway`, and raises the **Position Recovered** modal.
+When a rebalance fails, the position enters a degraded state: the error
+is recorded, polling backs off to a longer interval, and the dashboard
+shows the position as stuck. Nothing about that state expires on its
+own. Something has to notice when the position is healthy again, clear
+it, and tell the operator.
 
-`isRecoveryResult` asserts the positive signal rather than enumerating
-the things that would block one:
+This section is how the app decides that a poll means **recovered**. The
+decision is one predicate, and both ways of getting it wrong cost
+something real:
+
+- **Missing a recovery** leaves a working position flagged as broken and
+  polling at the backed-off interval, so it reacts late to the next move.
+- **Declaring one falsely** discards the error explaining why the
+  position is stuck, and announces a still-blocked position as
+  recovered.
+
+### What recovery does
+
+`_handleRecovery` in [`src/bot-loop.js`](../src/bot-loop.js) restores
+normal operation in one step:
+
+| Cleared or restored | Effect |
+| ------------------- | ------ |
+| `rebalanceError`, `rebalancePaused`, `rebalanceFailedMidway` | The dashboard stops showing the position as stuck |
+| `firstFailureAt`, `midwayRetryCount` | The failure streak is forgotten, so the next failure starts a fresh one |
+| `currentIntervalMs` | Back to the configured poll interval, undoing the failure backoff |
+| `oorRecoveredMin` | Set to the minutes spent failing, which raises the **Position Recovered** modal; cleared five seconds later |
+
+### When it can fire
+
+Only when `firstFailureAt` is set — a position that was never failing
+has nothing to recover from.
+
+A `pollError` result is deliberately excluded. A pool-state RPC hiccup is
+not a failed rebalance attempt, so counting it as one would fire a
+spurious modal on the next healthy poll. That is most visible on
+full-range positions, which can never actually go out of range and so
+would otherwise announce a recovery they never needed.
+
+### How it decides: assert the positive signal
+
+`isRecoveryResult` tests for the thing that means recovery, rather than
+enumerating the things that would block one:
 
 ```js
 result.inRange === true &&
@@ -676,12 +712,9 @@ result.inRange === true &&
 !botState.rebalancePaused
 ```
 
-`inRange` is set by `_checkRangeAndThreshold`
-([`src/bot-cycle.js`](../src/bot-cycle.js)), which runs **before** every
-execution gate, so no blocked result can carry it. That is the whole
-reason the test is written this way: a poll can decline to rebalance for
-at least nine distinct reasons, and most of them return a shape that
-names no reason at all.
+The alternative — "no rebalance, no error, no deferral" — looks
+equivalent and is not. A poll can decline to rebalance for at least nine
+distinct reasons, and most return a shape that names no reason at all:
 
 | Result shape | Returned by |
 | --- | --- |
@@ -691,22 +724,31 @@ names no reason at all.
 | `{…, scanRunning: true}` | scan in progress |
 | `{…, swapBackoff: true}` | swap backoff |
 
-A test written as "no rebalance, no error, no deferral" would read every
-row above as a recovery, announcing a blocked out-of-range position as
-recovered and discarding the error explaining why it was stuck. It would
-also need a new clause each time a gate is added. Asserting `inRange`
-needs none, because the gates all run downstream of it.
+A negative test reads every row above as a recovery. It would also need a
+new clause each time a gate is added, and the failure mode of forgetting
+one is silent.
 
-The two `botState` clauses hold a position that is back in range but
-still mid-recovery or swap-aborted. The second also stops a
-paused-and-aborted position from clearing its own pause flag and
+### Why `inRange` can be trusted
+
+`inRange` is set by `_checkRangeAndThreshold`
+([`src/bot-cycle.js`](../src/bot-cycle.js)), which runs **before** every
+execution gate. No blocked result can carry it, so asserting it needs no
+clause per gate — the gates all run downstream.
+
+The two `botState` clauses cover what `inRange` alone cannot: a position
+back in range but still mid-recovery or swap-aborted. The second also
+stops a paused-and-aborted position from clearing its own pause flag and
 skipping its scheduled retire.
 
-One accepted cost: when a residual-cleanup rebalance sets
-`forceRebalance`, an in-range position skips the `inRange` return that
-poll, so a pending recovery fires one cycle later.
+### One accepted cost
 
-The predicate is exported and driven directly by
+When a residual-cleanup rebalance sets `forceRebalance`, an in-range
+position skips the `inRange` return for that poll, so a pending recovery
+fires one cycle later.
+
+### Where it is tested
+
+`isRecoveryResult` is exported and driven directly by
 `test/il-guard-gate.test.js`, one case per distinct result shape —
 extracted from the `startBotLoop` closure for the same reason
 `createBotPollScheduler` was.
