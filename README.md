@@ -133,8 +133,12 @@ npm start                        # dashboard + bot at http://localhost:5555
 > you get the exact tested versions with no version drift.
 
 Third, prepare your crypto wallet information per the instructions in the [Usage](#usage) section here.
-The time to load your Liquidity Positions on the first run of LP Ranger may take some time depending on
-length of history. You can just let it run and come back later.
+
+Fourth, wait: Plan for a one-and-done wait that's much shorter once LP Ranger has fully synchronized to
+the blockchain.  The time to load your Liquidity Positions on the first run of LP Ranger may take some
+time depending on length of history: For say 10 positions on 10 different liquidity pools, some of
+which are years old, it may take LP Ranger about a day (24 hours) to sync with the blockchain. You
+may just let it run and come back later.
 
 Finally, visit <http://localhost:5555> in your web browser.
 
