@@ -39,6 +39,7 @@ const ethers = require("ethers");
 const config = require("./config");
 const { buildProvider } = require("./bot-provider");
 const { _retrySend } = require("./tx-retry");
+const { retryRead } = require("./rpc-read-retry");
 
 /**
  * How long a single failover stays sticky before we try the primary again.
@@ -269,10 +270,21 @@ function getManagedReadProvider() {
    *  obtain the proxy but never call into it (e.g. compounder unit
    *  tests that exercise the classifier with zero compound events)
    *  succeed without a full send-transaction init. */
-  return new Proxy(
+  const proxy = new Proxy(
     {},
     {
       get(_target, prop) {
+        /*- ethers resolves a Contract's provider through
+         *  `runner.provider` (`getProvider` in ethers' contract.js), and
+         *  an ethers provider's own `.provider` is a getter returning
+         *  itself.  That is not a function, so the branch below would
+         *  hand back the RAW provider and every `queryFilter` in the app
+         *  — event scanner, scanNftEvents, HODL, pool-creation finder —
+         *  would call `getLogs` outside this wrapper, with no retry and
+         *  no failover.  One transient 502 then drops a whole block
+         *  window.  Returning the proxy keeps the wrapper across the
+         *  hop. */
+        if (prop === "provider") return proxy;
         const current = getCurrentRPC();
         const val = current[prop];
         if (typeof val !== "function") return val;
@@ -283,21 +295,21 @@ function getManagedReadProvider() {
           /*- Async — wrap with failover-on-error retry.  Only retry on
            *  shapes that indicate the RPC itself is the problem, not
            *  the request. */
-          return Promise.resolve(result).catch(async (err) => {
-            if (!_isReadFailoverable(err)) throw err;
-            /*- `failoverToNextRPC` reports whether it actually moved.
-             *  The old code inferred that from `next === current`, which
-             *  only worked while there were exactly two endpoints —
-             *  with three, "the provider changed" and "alternates
-             *  remain" are different questions. */
-            if (!failoverToNextRPC()) throw err;
-            const next = getCurrentRPC();
-            return await next[prop].apply(next, args);
-          });
+          return Promise.resolve(result).catch((err) =>
+            retryRead({
+              prop,
+              args,
+              err,
+              isFailoverable: _isReadFailoverable,
+              failover: failoverToNextRPC,
+              current: getCurrentRPC,
+            }),
+          );
         };
       },
     },
   );
+  return proxy;
 }
 
 /**

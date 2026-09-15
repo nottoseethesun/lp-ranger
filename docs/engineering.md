@@ -128,8 +128,19 @@ NOT a `npm start`-only quirk. For example, to build the dashboard
 bundle and then start the app with log-to-file enabled, use:
 
 ```sh
+# Tee to the default path (logs/lp-ranger.log, or whatever
+# logging.json sets).
 npm run build-and-start -- --log-file
+
+# Tee to a path chosen for this run.
+npm run build-and-start -- --log-file /tmp/burn-in.log
 ```
+
+Both forms work because npm appends everything after `--` to the END of
+the script string. `build-and-start` is `npm run build && node
+server.js`, so the flag arrives as `node server.js --log-file` — the
+build step never sees it, and neither form needs the chained script to
+do anything special.
 
 Without the `--`, npm consumes the flag itself and forwards nothing to
 the script — the tee will silently not engage.
@@ -179,7 +190,7 @@ assumes that picture and names the pieces underneath it.
 | `scanPoolHistory` | `pool-scanner.js` | Walks a pool's Transfer events to build the rebalance chain. Serialized per pool, so two positions in one pool cannot scan it twice. |
 | `reconstructEpochs` | `epoch-reconstructor.js` | Turns that chain into P&L epochs with historical prices. Runs after the scan, never beside it. |
 | `getPoolState` | `rebalancer-pools.js` | Resolves the pool from the Factory, reads `slot0` and tick spacing. The price read every poll and every rebalance starts from. |
-| `getManagedReadProvider` | `send-transaction.js` | The single read path. A Proxy that retries a failed call through the RPC failover list. Nothing reads chain state another way. |
+| `getManagedReadProvider` | `send-transaction.js` | The single read path. A Proxy that retries a failed call through the RPC failover list, without giving up. Returns itself for `provider` so ethers' `queryFilter` cannot escape the wrapper — see docs/security.md. Nothing reads chain state another way. |
 | `loadMergedDefaults` | `load-merged-defaults.js` | Shipped JSON deep-merged with the operator's override. Every shipped default enters the app here. |
 
 **Major objects.** Each is created by a factory and held for the process
@@ -2282,6 +2293,132 @@ surface is covered by the Swagger spec (see
 [API Documentation](#api-documentation) above).
 
 ---
+
+## The Managed Read Provider Returns Itself
+
+`getManagedReadProvider()` (`src/send-transaction.js`) is the single
+read path. It is a Proxy with no target state; its `get` trap has three
+branches, evaluated in this order:
+
+```text
+prop === "provider"        -> the proxy itself
+typeof value !== "function" -> the active provider's value, raw
+otherwise                   -> the method, wrapped in retry-on-failure
+```
+
+The active provider is re-resolved through `getCurrentRPC()` on every
+access, so a failover that happens between two calls takes effect on the
+next one without anything holding a stale reference. The wrapper retries
+failover-eligible errors (`SERVER_ERROR`, `TIMEOUT`, `NETWORK_ERROR`,
+any 5xx) against the next endpoint.
+
+The first branch exists because the second one would otherwise defeat
+the third. It is required for `queryFilter` to be covered by the retry
+at all:
+
+```text
+ethers contract.js  queryFilter -> getProvider(this.runner)
+ethers contract.js  getProvider -> return value.provider || null
+```
+
+An ethers provider's own `.provider` is a getter returning itself, and
+is therefore not a function, so without this the Proxy's
+"non-functions pass straight through" branch yields the raw provider.
+Every `queryFilter` in the app — the event scanner, `scanNftEvents`, the
+HODL scan and the pool-creation finder, on both the managed and
+unmanaged paths — would then call `getLogs` outside the wrapper, with
+no retry and no failover.
+
+That matters more than a missing retry usually would, because a log scan
+that loses a window does not fail: `bestEffort` records the window and
+the scan returns success. Without the wrapper, a pool's rebalance chain
+would come back short by whatever mints sat in the gap, and epoch count,
+Lifetime and Cumulative P&L and IL/G would be computed over an
+incomplete history and shown as settled values. The retry is what stops
+that from arising.
+
+`test/send-transaction-read-failover.test.js` pins the wrapper with a
+real `ethers.Contract` rather than a stub, since the behaviour under
+test is how ethers resolves a contract runner.
+
+### Resuming at the first unread block
+
+With the retry above in place, an unhealthy endpoint no longer costs a
+window: the read is retried until some endpoint serves it. A window goes
+unread only in two cases, and neither is an endpoint being down.
+
+The first is interruption. The process can be stopped — by the operator,
+a crash, or a restart — while reads are still being retried, so the work
+simply has not finished yet. The second is a read that fails with an
+error the retry does not treat as endpoint trouble: `_runWindow` rethrows
+an `AbortError` and a block-range-cap rejection, and under `bestEffort`
+it skips anything else that is not failover-eligible.
+
+In both cases the requirement is the same, and it is what this mechanism
+provides: the cache must never claim coverage it does not have. It
+records only the blocks it read without a break, so the next scan
+resumes at the first unread block instead of stepping over it. Four
+steps, one per layer:
+
+| Step | Where | What it does |
+| ---- | ----- | ------------ |
+| 1 | `get-logs-chunked.js` | Under `bestEffort`, a failed window is logged and skipped, and `onWindowError(err, from, to)` fires for it |
+| 2 | `event-scanner.js` | That callback keeps the **lowest** failed `from` as `firstGapFrom`, attached to the returned events |
+| 3 | `event-scanner.js` | On persist, `_resolveLastBlock` returns `Math.max(scanFrom - 1, gap - 1)` instead of the chain head |
+| 4 | `event-scanner.js` | The next scan starts at `cached.lastBlock + 1` — exactly the first unread block |
+
+Two properties make this work. Both are easiest to see with numbers.
+
+**The marker means "everything up to here was read without a break",
+not "this is how far the scan got".** Suppose a scan starts at block
+20,000,000, the chain head is 27,000,000, and the single window covering
+24,000,000 to 24,008,999 fails while every other window succeeds. The
+scan carries on to the head and caches every event it found, including
+the ones above the failed window. It then records its marker as
+23,999,999 — one block below the hole — rather than 27,000,000, because
+24,000,000 onward is no longer backed by an unbroken read.
+
+Nothing is thrown away when that happens. The events already found above
+the hole stay in the cache; only the marker is rolled back. The next scan
+therefore starts at 24,000,000 and reads to the head again, so the range
+from 24,009,000 to 27,000,000 is read a second time. That costs requests
+but cannot corrupt anything, because `mergeAndIndex` combines the new
+results with the cached ones and drops any event whose `txHash` it has
+already seen.
+
+**The marker can never be pushed below where the scan began.** Continuing
+the example: if a later scan resumes at 24,000,000 and its very first
+window fails, the candidate marker would be 23,999,999 — but that block
+was already covered and settled by the previous run. The
+`Math.max(scanFrom - 1, …)` floor holds the marker at 23,999,999 rather
+than letting a gap drag it lower, so a failure near the start of one run
+cannot re-open history that an earlier run had finished with.
+
+One limit is worth stating plainly. The marker guarantees that an
+unread range is read by the *next* scan of that pool, but nothing
+schedules a scan on account of an unread range alone. A pool that is
+never scanned again keeps its marker parked where it is.
+
+### No give-up, no backoff
+
+The retry loop (`src/rpc-read-retry.js`) has no exit condition. A
+dropped read is a dropped block window, and a short history is
+indistinguishable from a complete one at every layer above it, whereas a
+stalled scan is visible as accumulating retry lines in the log and
+resolves when the endpoint recovers. The operator decides whether to
+wait or stop.
+
+There is no delay between attempts. Every provider is built by
+`bot-provider.buildProvider`, which funnels each call through the global
+pacing queue, so attempts are already spaced by
+`globalRPCRequestRateIntervalMS` and the loop cannot spin. A delay here
+would be a second rate mechanism competing with the one that owns the
+schedule.
+
+The loop is a separate module rather than part of `send-transaction.js`
+because that file sits near the 500-line cap, and because its
+dependencies arrive by injection, which makes it testable without
+booting the transaction layer.
 
 ## `getPoolState` Validation + RPC Retry
 
