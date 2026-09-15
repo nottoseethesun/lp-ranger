@@ -52,6 +52,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [use the path being tested](feedback_use_the_path_being_tested.md) — Validate a trigger through its exact entry point
 - [prove the revert applied](feedback_prove_the_revert_applied.md) — A silently-failed revert patch reports green and looks like proof
 - [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but tests green → check what their runtime is actually running
+- [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check before stating a conclusion; a partial sample is not evidence of absence
 
 ## Engineering, code, UI & docs rules
 - [audit program state](feedback_audit_program_state.md) — After a feature, audit for unnecessary state — derive from what exists
