@@ -28,6 +28,8 @@ import {
   closeMoralisKeyModal,
   closeGasFeeModal,
 } from "./dashboard-settings-dialogs.js";
+import { closeRpcAddModal } from "./dashboard-rpc-add.js";
+import { closePriceOverrideDialog } from "./dashboard-price-override.js";
 import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
@@ -657,6 +659,51 @@ export function bindDelegatedEvents(closers) {
         id: "gasFeeModal",
         close: closeGasFeeModal,
       },
+      {
+        id: "rpcAddModal",
+        close: closeRpcAddModal,
+      },
+      /*- These dismiss by clicking their own button rather than by
+       *  hiding the overlay from here.  hodlBaselineModal's dismissal
+       *  also writes the acknowledgement keys that stop it reappearing;
+       *  slippageOutOfRangeModal's OK is the acknowledgement; and the
+       *  two slippage confirmations leave a pending save dangling
+       *  unless `_cancelPending` runs.  Hiding the element directly
+       *  would look identical on screen and quietly skip all of that.
+       *  Routing through the button keeps one definition of what
+       *  dismissal means per dialog.
+       *
+       *  Escape maps to Cancel, never Confirm: on a dialog guarding a
+       *  slippage above 5% or 10%, the safe reading of a keypress that
+       *  means "get me out of here" is "do not apply it". */
+      {
+        id: "hodlBaselineModal",
+        close: () => g("hodlBaselineClose")?.click(),
+      },
+      {
+        id: "noPositionsModal",
+        close: () => g("noPositionsClose")?.click(),
+      },
+      {
+        id: "slippageOutOfRangeModal",
+        close: () => g("slipOorOkBtn")?.click(),
+      },
+      {
+        id: "slippageAbove5ConfirmModal",
+        close: () => g("slipAbove5CancelBtn")?.click(),
+      },
+      {
+        id: "slippageAbove10TypeConfirmModal",
+        close: () => g("slipAbove10CancelBtn")?.click(),
+      },
+      {
+        id: "priceOverrideModal",
+        close: closePriceOverrideDialog,
+      },
+      /*- walletUnlockModal is deliberately NOT here.  Escape must not
+       *  dismiss the unlock prompt: dropping to view-only is a decision
+       *  the operator makes with the dialog's own button, not something
+       *  a stray keypress does for them. */
     ];
     for (const m of modals) {
       const el = g(m.id);

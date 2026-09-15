@@ -200,11 +200,11 @@ function _wireDialog(overlay, getStatus) {
  *  `lifetimeScanComplete: true` can never be mistaken for this scan
  *  finishing. Polling faster would only re-read the same snapshot.
  *
- *  `scanTimeoutMs` caps the wait: past it, hand the button back rather
+ *  `rescanPricesTimeoutMs` caps the wait: past it, hand the button back rather
  *  than spin forever. */
 function _cadence(status) {
   const every = Number(status?.guaranteedDashboardHasPolledMs);
-  const cap = Number(status?.scanTimeoutMs);
+  const cap = Number(status?.rescanPricesTimeoutMs);
   if (!Number.isFinite(every) || every <= 0) return null;
   return { every, cap: Number.isFinite(cap) && cap > 0 ? cap : null };
 }

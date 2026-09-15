@@ -120,7 +120,7 @@ Second, on the commandline in your Terminal, do:
 tar xvzf lp-ranger-*.tar.gz     # Recommended: Instead of the star, use the full version number
 cd lp-ranger-[current-version-number]
 npm ci                           # install exact pinned dependencies
-# Security warnings are detailed here: https://github.com/nottoseethesun/lp-ranger/blob/main/docs/engineering.md#npm-audit
+# Security warnings are detailed here: https://github.com/nottoseethesun/lp-ranger/blob/main/docs/security.md#npm-audit
 # The next step is optional, and not for standard set-ups.
 #    Only use it if you have a specific custom set-up in mind.
 #    Uncomment the line below for a custom set-up.
@@ -133,6 +133,12 @@ npm start                        # dashboard + bot at http://localhost:5555
 > you get the exact tested versions with no version drift.
 
 Third, prepare your crypto wallet information per the instructions in the [Usage](#usage) section here.
+
+Fourth, wait: Plan for a one-and-done wait that's much shorter once LP Ranger has fully synchronized to
+the blockchain.  The time to load your Liquidity Positions on the first run of LP Ranger may take some
+time depending on length of history: For say 10 positions on 10 different liquidity pools, some of
+which are years old, it may take LP Ranger about a day (24 hours) to sync with the blockchain. You
+may just let it run and come back later.
 
 Finally, visit <http://localhost:5555> in your web browser.
 
@@ -403,6 +409,14 @@ For an overview of LP Ranger's architecture — how the bot and dashboard
 interact, the rebalance pipeline, P&L tracking, and security model — see
 **[`docs/architecture.md`](docs/architecture.md)**.
 
+**For configuration** — every environment variable, where each setting lives
+on disk, how the layered defaults resolve, and which settings are deliberately
+not editable — see **[`docs/configuration.md`](docs/configuration.md)**.
+
+**For security** — what is at stake, every control in effect, and the lint
+and test gates enforcing each one — see
+**[`docs/security.md`](docs/security.md)**.
+
 **For engineering details** — development tools, the check-report pipeline,
 and the rest of the internals — see
 **[`docs/engineering.md`](docs/engineering.md)**.  That is the authoritative
@@ -437,7 +451,11 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Dashboard Cycle Cleanup](docs/roadmap/nice-to-haves/project_dashboard_cycle_cleanup.md) | Untangle the 31 circular imports in `public/dashboard-*.js` (surfaced by `npm run show-dependency-cycles`), then wire `madge --circular` into `npm run check` to block future cycles. Not a major issue — the esbuild bundle dedupes any duplication at build time and nothing breaks at runtime; this is a structural cleanup that would allow a cycle gate to be installed in CI. |
 | [Current-Panel Historical Prices for Gas + Fees Compounded](docs/roadmap/nice-to-haves/project_current_panel_historical_prices.md) | Value the Current panel's Gas and Fees Compounded rows at per-TX historical prices instead of today's prices (applies to both Managed and Unmanaged). A small improvement — the Lifetime panel already exists for comprehensive at-a-glance accounting, so the Current panel snapshot using current prices is acceptable. |
 | [Derive Per-NFT Fees From One Scan Instead of Two](docs/roadmap/nice-to-haves/project_consolidate_fee_scans.md) | Per-NFT trading-fee totals are derived twice, by two passes over the same `Collect`/`DecreaseLiquidity` logs, into two stores (`pnl-epochs-cache.json` for the Per-Day table, `bot-config.json` for the Lifetime panel). Both now share one formula and agree; merging the passes would halve the log queries on a rebuild and make future drift impossible by construction. |
-| [`startBotLoop` Lifecycle Test Scaffolding](docs/roadmap/nice-to-haves/project_bot_loop_test_scaffolding.md) | Build a test fixture for `startBotLoop`'s poll/stop lifecycle so behaviors like the stop-race fix in PR #130 can be regression-tested. Today only the extracted helpers (`pollCycle`, `resolvePrivateKey`, etc.) are covered. |
+| [Merge Per-Topic Log Queries Into One Call Per Chunk](docs/roadmap/nice-to-haves/project_merge_per_topic_log_queries.md) | Reading one NFT's history asks the blockchain the same question twice over the same block range — once per event type — and the compound scan asks three times. A log filter accepts a list of event types, so one request could carry all of them. Measured on a cold rebuild of one 132-rebalance chain: 44,352 paced requests where 22,176 would do, roughly three hours of queue time rather than ninety minutes. Deferred on risk, not size: the partition step sits directly upstream of exit values and fee totals, where a subtly wrong match shows up as wrong money figures rather than an error. |
+| [Walk Mint Lookups Newest-First](docs/roadmap/nice-to-haves/project_mint_lookup_scan_direction.md) | Finding when an NFT was minted walks blockchain windows from the pool's creation block forward, stopping at the one that finds the mint. Token ids are global, so a high id means a recent mint — at the far end of that walk. Observed on a cold start: 945 windows for NFT #163164, roughly eighteen minutes, to reach an event a newest-first walk finds in seconds. Both call sites share the shape (`hodl-baseline.js`, `event-scanner-mint-lookup.js`), and direction cannot change the answer since an NFT is minted exactly once. Deferred because the bound feeds HODL baselines and chain mint blocks, where a wrong block shifts money figures silently rather than erroring. |
+| [Rebuild Only the Missing Epoch, Not the Whole Chain](docs/roadmap/nice-to-haves/project_rebuild_only_missing_epoch.md) | Every rebalance closes one position and so needs one new P&L entry — but a stored epoch does not record which NFT it came from, so the app can only compare counts and rebuild all of them. On a 132-rebalance chain that is 133 positions read to learn about one, and the disk cache is skipped entirely for being short by that one. Two routes: record the tokenId on each epoch (permanent, and also removes the partial-rebuild overwrite), or stop clearing the in-memory resume buffer on success (much smaller, but lost on restart and needs a check on baked-in fallback prices first). Deferred until a cold start is dependable. |
+| [Fan Reads Out Across RPC Endpoints](docs/roadmap/nice-to-haves/project_rpc_read_fan_out.md) | All blockchain requests share one four-per-second queue, but the three configured endpoints are run by three operators who each police only their own door — so one endpoint's allowance is spent while two sit idle. Fanning reads across all three would finish a history rebuild in roughly a third of the time without asking any one of them for more than it allows today. Writes would stay pinned to one endpoint, since a transaction that wanders mid-nonce is a bad day. Deferred until the app is solid — revisit no earlier than March 2027, as it changes the path every read in the process travels. |
+| [`startBotLoop` Lifecycle Test Scaffolding](docs/roadmap/nice-to-haves/project_bot_loop_test_scaffolding.md) | Build a test fixture for `startBotLoop`'s poll/stop lifecycle so behaviours that need a poll held mid-flight — the `stop()` race, for one — can be covered. Today only the extracted helpers (`pollCycle`, `resolvePrivateKey`, etc.) are covered. |
 | [Gas-Defer Retry Limit](docs/roadmap/nice-to-haves/project_gas_defer_retry_limit.md) | Optional cap on the gas-defer retry loop so very small positions don't churn the log indefinitely. Not strictly required: the loop consumes no gas, and the user can always halt it via the LP Browser → Remove flow. |
 | [Label Retry Rebalances in Notifications](docs/roadmap/nice-to-haves/project_retry_rebalance_notifications.md) | Telegram / Activity Log say "Rebalance Succeeded" for every rebalance regardless of whether it was the first or a follow-up retry (corrective swap, post-backoff retry, residual cleanup). Relabel non-initial rebalances as "Retry Rebalance Succeeded (reason)" so the user can tell course-correction from fresh work at a glance. |
 | [Throttle Rehydrate Restores Full State](docs/roadmap/nice-to-haves/project_throttle_rehydrate_full_state.md) | On bot restart, `throttle.rehydrate(count)` restores the daily count but not `rebTimestamps`, so volatility-doubling debounce doesn't recognise history until 3 new rebalances land within the window. Store + rehydrate the timestamps so doubling activates immediately across restarts. |
@@ -446,7 +464,7 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Consolidate the RPC Retry Pattern](docs/roadmap/nice-to-haves/project_consolidate_rpc_retry.md) | `getPoolState` and `_readBothBalancesWithRetry` each carry their own copy of the same primary-then-fallback retry loop, differing only in what they call and which error they raise. A shared helper would collapse both. Deliberately excludes the write path and the price-source cascade, which are different concerns. |
 | [Remove Orphaned HTML Element IDs](docs/roadmap/nice-to-haves/project_orphan_html_ids.md) | About 42 element IDs in the dashboard markup are referenced by no JavaScript or CSS &mdash; leftovers from removed features. Inert, but they mislead anyone reading the HTML. Best cleaned opportunistically, one cluster at a time, when a task already lands nearby; an automated lint was rejected as too false-positive-prone. |
 | [Debug Scripts Print the Inspector URL](docs/roadmap/nice-to-haves/project_debug_scripts_print_url.md) | The four `npm run debug*` scripts start Node's debugger without plainly saying where to go next &mdash; the useful line is either mixed into startup output or buried in a block of alternatives. Print one clean `chrome://inspect` line instead, and move the alternatives to the engineering docs. |
-| [Reverse the Pool-Creation Block Scan](docs/roadmap/nice-to-haves/project_pool_creation_scan_direction.md) | Finding when a pool was created scans the factory log oldest-first, so a pool created last week costs ~150 mostly-empty chunk queries. The answer is cached permanently, making this a cold-cache, once-per-pool cost. Scanning newest-first would resolve new pools in one chunk. |
+| [Stop Hanging Properties on Arrays](docs/roadmap/nice-to-haves/project_no_properties_on_arrays.md) | The event scanner attaches `firstMintBlockNumber` and `firstMintTimestamp` directly to the events array. Copying an array copies its entries, not properties stuck beside them, so `push(...)`, `slice` and `map` all drop them silently &mdash; which made a scan-speed fix a no-op on the bot's code path while working on the dashboard's. Patched at the one copy site and pinned by a test; the pattern remains. Return an object instead, and add a custom ESLint rule rejecting property assignment onto an array. |
 | [Split the Overloaded Rebalance-Paused Flag](docs/roadmap/nice-to-haves/project_split_rebalance_paused_flag.md) | One flag, `rebalancePaused`, covers both a rebalance abandoned over excessive swap cost (needs an operator decision) and one paused after exhausting retries on a volatile pool (may clear itself). Behaviour is correct; the shared name makes accurate wording hard. Splitting it touches ~15 files and one `/api/status` field, so it wants its own PR. |
 
 ### Possible Major New Features

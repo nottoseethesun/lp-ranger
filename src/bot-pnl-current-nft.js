@@ -22,6 +22,13 @@ const { log } = require("./log");
 const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { detectCompoundsOnChain } = require("./compounder");
+const sendTx = require("./send-transaction");
+const { getPoolCreationBlockCached } = require("./pool-creation-block");
+const {
+  mintBlocksByTokenId,
+  scanFloorFor,
+  chainScanFloor,
+} = require("./nft-mint-blocks");
 
 /*-
  *  Convert wei (string-safe) to USD at the current native-token price.
@@ -72,7 +79,32 @@ async function _backfill(deps, position, poolState) {
       decimals0: poolState.decimals0,
       decimals1: poolState.decimals1,
     };
-    const r = await detectCompoundsOnChain(tid, opts);
+    /*- Bound the scan to THIS NFT's own mint block.  It cannot have
+     *  emitted events before it existed, so anything earlier is a
+     *  guaranteed-empty walk — and this runs inside the poll cycle,
+     *  which is awaiting it, so a scan that takes minutes is a bot that
+     *  reads nothing and cannot rebalance for that long.
+     *
+     *  The pool's creation block is the fallback for the first NFT of a
+     *  chain, whose mint predates the rebalance events. */
+    const mintBlocks = mintBlocksByTokenId(deps._rebalanceEvents);
+    let fromBlock = scanFloorFor(mintBlocks, tid, null);
+    if (fromBlock === null) {
+      /*- Only reached when the chain does not name this NFT's mint —
+       *  which is the never-rebalanced case, where this NFT IS the
+       *  chain's first mint.  The pool lookup is therefore not paid for
+       *  in the common case, and when it is, `chainScanFloor` lifts it
+       *  to that first mint rather than leaving it at pool creation. */
+      const creationBlock = poolState.poolAddress
+        ? await getPoolCreationBlockCached({
+            provider: deps.provider || sendTx.getManagedReadProvider(),
+            factoryAddress: config.FACTORY,
+            poolAddress: poolState.poolAddress,
+          })
+        : 0;
+      fromBlock = chainScanFloor(deps._rebalanceEvents, creationBlock);
+    }
+    const r = await detectCompoundsOnChain(tid, { ...opts, fromBlock });
     const gasWei = String(r.totalNftGasWei || "0");
     const compoundedUsd = (r.compounds || []).reduce(
       (s, c) => s + (c.usdValue || 0),

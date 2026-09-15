@@ -223,7 +223,7 @@ const POOL_ABI = [
  *
  * @param {string} pool             Pool address.
  * @param {object} [ethersLib]      ethers module (injected for tests).
- * @param {object} [cfg]            Config source for the two RPC URLs.
+ * @param {object} [cfg]            Config source for the RPC URL list.
  */
 async function resolvePoolTokens(pool, ethersLib = ethers, cfg = config) {
   const tryUrl = async (url) => {
@@ -236,13 +236,20 @@ async function resolvePoolTokens(pool, ethersLib = ethers, cfg = config) {
     ]);
     return { token0: t0, token1: t1, fee: Number(fee) };
   };
-  try {
-    return await tryUrl(cfg.RPC_URL);
-  } catch (err) {
-    if (!cfg.RPC_URL_FALLBACK) throw err;
-    console.warn(`  RPC primary failed (${err.message}); trying fallback…`);
-    return await tryUrl(cfg.RPC_URL_FALLBACK);
+  /*- Walk the ordered endpoint list rather than a hand-rolled
+   *  primary/fallback pair, so every configured endpoint is reachable
+   *  here too. */
+  const urls = cfg.RPC_URLS;
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      return await tryUrl(url);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`  RPC ${url} failed (${err.message})…`);
+    }
   }
+  throw lastErr;
 }
 
 /* ---------- scope abbreviation helpers ----------

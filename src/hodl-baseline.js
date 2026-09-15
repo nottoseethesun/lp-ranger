@@ -11,6 +11,7 @@
 
 const { log } = require("./log");
 const config = require("./config");
+const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { getPoolState } = require("./rebalancer");
@@ -152,11 +153,32 @@ async function _findMintEvent(
   const zeroAddr = ethersLib.zeroPadValue
     ? ethersLib.zeroPadValue("0x" + "0".repeat(40), 32)
     : "0x" + "0".repeat(64);
-  const logs = await provider.getLogs({
-    address: config.POSITION_MANAGER,
+  /*- Chunked: `fromBlock` is the pool's creation block, so the span is
+   *  the pool's entire lifetime.
+   *
+   *  A token is minted once, so the first chunk returning anything
+   *  holds the whole answer and `onChunk` ends the walk there. Without
+   *  it the scan runs on to the chain head carrying an event it already
+   *  has — the same reasoning `src/event-scanner-mint-lookup.js`
+   *  applies to the same lookup. */
+  const logs = await scanChunked({
+    provider,
     fromBlock,
     toBlock: "latest",
-    topics: [iface.getEvent("Transfer").topicHash, zeroAddr, null, tokenIdHex],
+    label: `hodl-baseline mint #${tokenId}`,
+    query: (from, to) =>
+      provider.getLogs({
+        address: config.POSITION_MANAGER,
+        fromBlock: from,
+        toBlock: to,
+        topics: [
+          iface.getEvent("Transfer").topicHash,
+          zeroAddr,
+          null,
+          tokenIdHex,
+        ],
+      }),
+    onChunk: (found) => found.length > 0,
   });
   if (!logs.length) {
     log.info("[bot] No mint logs found for tokenId", tokenId);
@@ -264,7 +286,6 @@ async function initHodlBaseline(
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return;
     const poolCreationBlock = await getPoolCreationBlockCached({
       provider,
-      ethersLib,
       factoryAddress: config.FACTORY,
       poolAddress,
     });
@@ -341,7 +362,6 @@ async function getPositionBaseline(provider, ethersLib, position) {
     if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return null;
     const poolCreationBlock = await getPoolCreationBlockCached({
       provider,
-      ethersLib,
       factoryAddress: config.FACTORY,
       poolAddress,
     });

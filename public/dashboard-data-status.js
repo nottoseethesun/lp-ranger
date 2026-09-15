@@ -317,15 +317,33 @@ export function _updatePriceMarker(d) {
 
 function _setIdlePill(d) {
   const mp = d._managedPositions || [];
-  if (mp.some((p) => p.status === "running"))
-    return _setStatusPill("status-pill active", "dot green", "MANAGING");
+  const running = mp.filter((p) => p.status === "running");
+  if (running.length === 0) {
+    _setStatusPill(
+      "status-pill warning",
+      "dot yellow",
+      "IDLE",
+      mp.length === 0
+        ? "No positions are being managed. After syncing, select a position and click Manage."
+        : "",
+    );
+    return;
+  }
+
+  /*- Reached only when the position on screen is not itself running.
+   *  The pill still says RUNNING here, because it answers one question
+   *  in every branch: is the bot running? A second word for that state
+   *  — MANAGING — would differ only in whose position it referred to,
+   *  with nothing on screen saying which reading applied.
+   *
+   *  Whether THIS position is managed is the card's job, and it says so
+   *  in words ("Being Actively Managed" / "Not Actively Managed");
+   *  which positions are managed is the LP browser's. */
   _setStatusPill(
-    "status-pill warning",
-    "dot yellow",
-    "IDLE",
-    mp.length === 0
-      ? "No positions are being managed. After syncing, select a position and click Manage."
-      : "",
+    "status-pill active",
+    "dot green",
+    "RUNNING",
+    "The bot is running. Whether this position is one it manages is shown on the position card.",
   );
 }
 

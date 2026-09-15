@@ -11,14 +11,13 @@
  * poll opens a fresh one. That is fine and deliberately cheap, PROVIDED
  * each re-open lands on the same answer.
  *
- * It did not. Both open sites stamped the entry as the position's value
- * at that moment, so the figure moved every time the server restarted.
- * The visible symptom was the Per-Day table's In/Out cell for the day
- * the current NFT was minted: computed as
- * `exit(previous NFT) − entry(current NFT)`, it read 1282.57, then
- * 1233.64, then 1161.05 across three restarts of the same finished
- * rebalance. The drift was the position's price decline since mint,
- * reported as though value had been left in the wallet.
+ * Stamping the entry as the position's value at open does not satisfy
+ * that: the value moves with price, so the figure differs on every
+ * restart. It surfaces in the Per-Day table's In/Out cell for the day
+ * the current NFT was minted, computed as
+ * `exit(previous NFT) − entry(current NFT)` — the position's price
+ * decline since mint is reported there as though value had been left
+ * in the wallet.
  *
  * The NFT's mint value does not move, and is already resolved on disk
  * as `hodlBaseline.entryValue` (from the `IncreaseLiquidity` on the mint

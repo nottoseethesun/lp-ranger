@@ -7,11 +7,11 @@
  *   amounts.
  *
  *   Those amounts (`entryAmount0/1`) are what per-epoch impermanent
- *   loss is measured against. The condition used to ask only whether
- *   the USD value was known, so a position whose value came from
- *   `rebalance_log.json` — i.e. one this bot rebalanced itself — never
- *   had its amounts collected, and IL came out as the whole position
- *   value instead of a loss.
+ *   loss is measured against, and the condition must ask about them
+ *   directly rather than about the USD value. A position this bot
+ *   rebalanced itself already has its value in `rebalance_log.json`, so
+ *   a value-only test skips the receipt, leaves the amounts unset, and
+ *   IL comes out as the whole position value instead of a loss.
  */
 
 const { describe, it } = require("node:test");

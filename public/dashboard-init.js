@@ -76,6 +76,7 @@ import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadLpProviders } from "./dashboard-lp-providers.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
+import { initRpcEndpoints } from "./dashboard-rpc-endpoints.js";
 import { loadSettingLabels } from "./dashboard-setting-labels.js";
 import {
   bindAllEvents,
@@ -386,12 +387,21 @@ function _afterDisclaimer() {
        *  The wallet is always still locked at init time, so the call
        *  itself entry-skips with "wallet-locked" and records pos as
        *  pending.  flushPendingUnmanagedFetch() (called from the unlock
-       *  paths) drains it once the wallet is ready.  We do NOT gate on
-       *  isPositionManaged here — the localStorage managed-tokenIds Set
-       *  may be stale across sessions (e.g. server auto-retired the
-       *  position while the page was closed), and a one-shot fetch for
-       *  a position that turns out to be managed is a harmless no-op
-       *  that the dedup guard prevents from re-firing. */
+       *  paths) drains it once the wallet is ready.
+       *
+       *  Still no isPositionManaged gate HERE, and for the original
+       *  reason: no /api/status response has necessarily landed this
+       *  early, so the managed-tokenIds Set may be a localStorage
+       *  carry-over from a previous session (the server may have
+       *  retired the position while the page was closed).
+       *
+       *  The gate moved to the flush, where a poll has landed and the
+       *  answer is authoritative.  It had to move: the claim that a
+       *  fetch for a managed position is "a harmless no-op" stopped
+       *  being true once every RPC request went through the paced
+       *  global queue — it is a multi-minute chain scan racing the bot
+       *  for that queue.  See `shouldSkipUnmanagedFetch` in
+       *  dashboard-unmanaged.js. */
       fetchUnmanagedDetails(active);
     }
     refreshCurDepositDisplay();
@@ -399,18 +409,11 @@ function _afterDisclaimer() {
 
   // ── Activity log ─────────────────────────────────────────────────────────────
 
-  // Restore RPC URL from localStorage
-  (function restoreRpcUrl() {
-    try {
-      const saved = localStorage.getItem("9mm_rpc_url");
-      if (saved) {
-        const el = g("inRpc");
-        if (el) el.value = saved;
-      }
-    } catch {
-      /* private mode */
-    }
-  })();
+  /*- The endpoint list, in the failover order the bot actually walks.
+   *  Read-only — Add RPC has its own dialog.  The list is no longer
+   *  mirrored into localStorage: the server holds it, and a browser
+   *  copy could disagree with the endpoints the bot is really using. */
+  initRpcEndpoints();
 
   act(ACT_ICONS.play, "start", "Dashboard Ready", "Import a wallet to begin");
 

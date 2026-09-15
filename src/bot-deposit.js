@@ -60,12 +60,13 @@ async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
     }
     const a0 = Number(BigInt(dep.raw0)) / 10 ** d0;
     const a1 = Number(BigInt(dep.raw1)) / 10 ** d1;
-    /*- Belt-and-suspenders: undefined/NaN decimals make `10 ** d` NaN, which
-     *  would poison the running total ($NaN → `NaN || 0` = $0 downstream,
-     *  masking the bug and pinning ready=false). The lifetime scan's heal
-     *  step resolves decimals on-chain before we reach here, but guard the
-     *  sum regardless — skip + log the offending entry rather than let one
-     *  bad deposit NaN-poison the whole total. */
+    /*- Undefined/NaN decimals make `10 ** d` NaN, which poisons the
+     *  running total: $NaN reaches the dashboard as `NaN || 0` = $0 and
+     *  pins ready=false, reporting nothing about why. The lifetime
+     *  scan's heal step resolves decimals on-chain before this point,
+     *  so reaching here with a bad one means that step did not cover
+     *  the entry — skip and log it rather than let one deposit
+     *  NaN-poison the whole total. */
     if (!Number.isFinite(a0) || !Number.isFinite(a1)) {
       log.warn(
         "[deposit] #%d block=%d skipped — non-finite amounts (a0=%s a1=%s, decimals d0=%s d1=%s)",

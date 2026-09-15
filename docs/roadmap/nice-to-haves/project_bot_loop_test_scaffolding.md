@@ -2,8 +2,7 @@
 
 > **Status:** Nice-to-have / developer-experience — not a bug. The
 > app works correctly today. Funds are never at risk. This entry is
-> a deferred testing improvement that surfaced when fixing the
-> stop-race in PR #130.
+> a deferred testing improvement.
 
 `src/bot-loop.js` exports `startBotLoop`, which wires up a provider,
 signer, detected position, and a self-scheduling `poll()` closure.
@@ -16,13 +15,12 @@ timer control.
 
 ## Why this matters
 
-PR #130 fixed a real race in `stop()`: an in-flight `poll()` would
-tail-call `_scheduleNext()` after `stop()` had already cleared the
-timer, resurrecting the loop for one more cycle. The fix is two
-defensive `if (_stopped) return` guards. Reviewers and CI verified
-the change against the 1917-test suite, but **no regression test was
-added** for the specific race, because adding one would require
-building scaffolding that does not exist.
+`stop()` and an in-flight `poll()` can race: `poll()` tail-calls
+`_scheduleNext()`, and if `stop()` has already cleared the timer by
+then, the loop is resurrected for one more cycle. Two `if (_stopped)
+return` guards close it. **No test covers that race**, because driving
+it requires holding a poll mid-flight while `stop()` runs, and no
+fixture can do that today.
 
 ## What's needed
 

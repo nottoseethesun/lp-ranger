@@ -187,6 +187,7 @@ module.exports = [
         rules: {
           "no-fetch-without-csrf": require("./eslint-rules/no-fetch-without-csrf"),
           "no-interpolated-innerhtml": require("./eslint-rules/no-interpolated-innerhtml"),
+          "no-unescaped-digit-class-selector": require("./eslint-rules/no-unescaped-digit-class-selector"),
         },
       },
       n: nPlugin,
@@ -207,9 +208,15 @@ module.exports = [
       ],
       "9mm/no-fetch-without-csrf": "error",
       "9mm/no-interpolated-innerhtml": "error",
-      // Catch typos / stale paths in dashboard `import` statements.
-      // This is the rule that would have caught PR #116 — a renamed
-      // dashboard module whose caller's import wasn't updated.
+      /*- Every class here is prefixed `9mm-pos-mgr-`, so every one of
+       *  them starts with a digit — legal in a class attribute, illegal
+       *  in an unescaped CSS selector.  querySelector/closest THROW on
+       *  those rather than returning null, taking out whatever ran
+       *  after them.  One shipped that way. */
+      "9mm/no-unescaped-digit-class-selector": "error",
+      // Catch typos / stale paths in dashboard `import` statements: a
+      // renamed module whose caller's import was not updated passes
+      // lint and tests and fails only at esbuild time.
       // npm packages (ethers, navigo) are bundled by esbuild from
       // node_modules; the resolver finds them naturally.
       "n/no-missing-import": "error",

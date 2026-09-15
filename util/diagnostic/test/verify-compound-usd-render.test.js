@@ -98,10 +98,10 @@ test("renderHypotheses — reports a shift when one reproduces", async () => {
 });
 
 test("renderRecorded — reconciling row does NOT blame prices", async () => {
-  /*- Regression guard.  The first real run asserted "the PRICES were
-   *  wrong" for a row that reconciled perfectly — HEX had simply
-   *  doubled since the row was written.  That sent the investigation
-   *  chasing a bug that did not exist. */
+  /*- A row that reconciles is internally consistent, and the tool
+   *  compares against live prices, so any older row shows a ratio from
+   *  market drift alone.  Blaming the prices there reports a defect for
+   *  every row the tool successfully reconciles. */
   const rp0 = 0.0012263514880044137;
   const rp1 = 0.0004887169910048089;
   const row = {
@@ -168,8 +168,9 @@ test("renderConfigComparison — no rows when history is empty", async () => {
 });
 
 test("renderConfigComparison — sibling rows get a rerun command", async () => {
-  /*- Regression guard: sibling-NFT rows previously printed as "no
-   *  matching event", which reads as an invented compound. */
+  /*- A sibling-NFT row has no event in THIS NFT's scan, so reporting
+   *  "no matching event" would read as an invented compound rather
+   *  than as a row belonging to another NFT. */
   const cfg = {
     compoundHistory: [
       { tokenId: "162237", usdValue: 5.25, txHash: "0xa" },

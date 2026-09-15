@@ -465,7 +465,6 @@ function _syncManagedAndGlobals(data) {
     botConfig.compoundMinFee = data.compoundMinFeeUsd;
   if (data.compoundDefaultThresholdUsd > 0)
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
-  if (data.scanTimeoutMs > 0) botConfig.scanTimeoutMs = data.scanTimeoutMs;
   _syncOorThreshold(data);
   /*- Per-poll so it retries on the "Manage on unmanaged position"
    *  flow.  Each sync inside `syncBotSettingsConfigInputs`

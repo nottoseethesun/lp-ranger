@@ -1961,65 +1961,105 @@ header{
   margin-bottom:12px;
 }
 
-/* ── RPC combo input ── */
+/* ── RPC endpoint control ── */
 
-.rpc-combo{
+/* Takes the row's spare width up to 600px, rather than the fixed 230px
+   it used to carry.  A fixed width meant the hostname was ellipsized
+   against 230px however much room the row actually had — on a wide
+   window every endpoint read as a left-clipped stub with empty space
+   beside it.  `flex-basis` rather than `width` so it still shrinks on a
+   narrow window, where the ellipsis is doing real work.
+
+   The margin is load-bearing: `.prow` is `justify-content:space-between`,
+   which leaves no gap once a child fills the row. */
+.\39 mm-pos-mgr-rpc-combo{
   position:relative;
+  flex:0 1 600px;
+  margin-left:18px;
+}
+
+.\39 mm-pos-mgr-rpc-current{
   display:flex;
-  align-items:stretch;
-}
-
-.rpc-combo-input{
-  flex:1;
-  border-top-right-radius:0;
-  border-bottom-right-radius:0;
-}
-
-.rpc-combo-toggle{
-  background:var(--bg3);
-  border:1px solid var(--border);
-  border-left:0;
-  border-radius:0 9px 9px 0;
-  color:var(--muted);
+  align-items:center;
+  gap:9px;
+  width:100%;
   cursor:pointer;
-  font-size:15px;
-  padding:0 12px;
-  transition:background .2s;
 }
 
-.rpc-combo-toggle:hover{
-  background:var(--border);
+/* The host name is longer than the box, so it has to be allowed to
+   shrink — a flex item refuses to go below its text width without
+   min-width:0, and would push the caret out of the box instead.
+
+   `direction:rtl` moves the ellipsis to the LEFT, keeping the tail
+   visible: every endpoint here starts "rpc" and "rpc.pulsechain", so
+   clipping the end would leave every one of them looking identical.
+   The hostnames begin and end with alphanumerics, so the bidi
+   algorithm leaves their order alone; `text-align:left` keeps a short
+   name against the same edge as a long one. */
+.\39 mm-pos-mgr-rpc-current span:first-child{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  direction:rtl;
+  text-align:left;
 }
 
-.rpc-combo-list{
+.\39 mm-pos-mgr-rpc-caret{
+  margin-left:auto;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.\39 mm-pos-mgr-rpc-list{
   display:none;
   position:absolute;
   top:100%;
-  left:0;
   right:0;
+  z-index:20;
+  min-width:100%;
   list-style:none;
   background:var(--bg2);
   border:1px solid var(--border);
   border-radius:0 0 9px 9px;
-  z-index:20;
-  max-height:270px;
-  overflow-y:auto;
 }
 
-.rpc-combo-list.open{
+.\39 mm-pos-mgr-rpc-list.open{
   display:block;
 }
 
-.rpc-combo-list li{
-  padding:12px 15px;
+.\39 mm-pos-mgr-rpc-list li{
+  display:flex;
+  justify-content:space-between;
+  gap:18px;
+  padding:9px 15px;
   font-size:18px;
-  color:var(--text);
+  white-space:nowrap;
   cursor:pointer;
-  transition:background .15s;
 }
 
-.rpc-combo-list li:hover{
-  background:var(--bg3);
+/* Matches .prow:nth-child(odd), so the open list stripes the same way
+   the settings rows behind it do. */
+.\39 mm-pos-mgr-rpc-list li:nth-child(odd){background:rgb(255 255 255 / 3%);}
+.\39 mm-pos-mgr-rpc-list li:hover{background:rgb(255 255 255 / 7%);}
+
+.\39 mm-pos-mgr-rpc-role{color:var(--muted);}
+
+/* Lawn green (--accent3): the endpoint the bot is using right now. */
+.\39 mm-pos-mgr-rpc-role-primary{color:var(--accent3);}
+
+.\39 mm-pos-mgr-rpc-add-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+  padding:0 9px;
+}
+
+/* Crimson (--danger): inline validation message in the Add RPC dialog. */
+.\39 mm-pos-mgr-rpc-add-error{
+  margin:10px 0 0;
+  color:var(--danger);
+  font-size:15px;
 }
 
 /* Token type selector */

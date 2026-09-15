@@ -15,7 +15,6 @@ import {
   g,
   botConfig,
   toggleSettingsPopover,
-  fetchWithCsrf,
   showDisclosure,
   copyElText,
 } from "./dashboard-helpers.js";
@@ -175,27 +174,6 @@ function _qa(sel, evt, fn) {
   document.querySelectorAll(sel).forEach((el) => el.addEventListener(evt, fn));
 }
 
-const _RPC_KEY = "9mm_rpc_url";
-/** @param {string} url */
-function _saveRpc(url) {
-  try {
-    localStorage.setItem(_RPC_KEY, url);
-  } catch {
-    /* private mode */
-  }
-  _saveGlobalConfig("inRpc", "rpcUrl");
-}
-/** Save a global config key from an input element to the server. */
-function _saveGlobalConfig(inputId, configKey) {
-  const el = g(inputId);
-  if (!el) return;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ [configKey]: el.value }),
-  }).catch(() => {});
-}
-
 import {
   saveMoralisApiKey,
   saveMoralisKeyFromSettings as _saveMoralisKey,
@@ -203,7 +181,11 @@ import {
 export { saveMoralisApiKey };
 
 import { checkForUpdate as _checkForUpdate } from "./dashboard-update-check.js";
-import { bindSettingsDialogEvents } from "./dashboard-settings-dialogs.js";
+import {
+  bindSettingsDialogEvents,
+  closeMoralisKeyModal,
+} from "./dashboard-settings-dialogs.js";
+import { bindRpcAddEvents } from "./dashboard-rpc-add.js";
 
 /*- Table-driven wiring for the "Return to Automatic Detection" reset
  *  buttons and their paired Cancel buttons across every inline-edit
@@ -416,7 +398,16 @@ export function bindAllEvents() {
   _click("aboutClose", () => _hide("aboutOverlay"));
   _click("wsAddrCopy", () => copyElText("wsAddr", "wsAddrCopy"));
   _click("wsTokenCopy", () => copyElText("wsToken", "wsTokenCopy"));
-  _click("moralisKeySaveBtn", _saveMoralisKey);
+  /*- Save closes the dialog: clicking it means you are done.  Only on
+   *  success — a failed save leaves the dialog open so the key that was
+   *  just pasted is still there to correct and retry.
+   *
+   *  Closed from here rather than inside the save function so that
+   *  dashboard-moralis-key does not import the dialog module that
+   *  already imports it. */
+  _click("moralisKeySaveBtn", async () => {
+    if (await _saveMoralisKey()) closeMoralisKeyModal();
+  });
   _click("saveGasFeePctBtn", saveGasFeePct);
 
   /*- The three dialogs claimed out of the Settings menu wire their own
@@ -482,40 +473,19 @@ export function bindAllEvents() {
 
   /* ── Bot configuration ────────────────── */
   _input("inMaxReb", onParamChange);
-  const rpcToggle = g("rpcToggle");
-  const rpcList = g("rpcList");
-  if (rpcToggle && rpcList) {
-    rpcToggle.addEventListener("click", () => rpcList.classList.toggle("open"));
-    rpcList.addEventListener("click", (e) => {
-      const li = e.target.closest("[data-rpc]");
-      if (!li) return;
-      const inp = g("inRpc");
-      if (inp) {
-        inp.value = li.dataset.rpc;
-        _saveRpc(inp.value);
-      }
-      rpcList.classList.remove("open");
-    });
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest(".rpc-combo")) rpcList.classList.remove("open");
-    });
-  }
-  const rpcInp = g("inRpc");
-  if (rpcInp) rpcInp.addEventListener("change", () => _saveRpc(rpcInp.value));
+  /*- The RPC list is read-only; adding one goes through its own dialog,
+   *  which wires itself. */
+  bindRpcAddEvents();
   _change("inGas", saveGasStrategy);
 
-  /*- Bound by id like every other Save button.  This used to be a
-   *  `.save-range-btn` sweep with a `:not(...)` list that grew by one
-   *  entry per new row — and still leaked: Min Interval, Max
-   *  Rebalances, Check Interval and both per-token Slippage buttons
-   *  matched it, so each of them fired saveOorThreshold on top of its
-   *  own handler and re-POSTed the OOR threshold.  A blocklist over a
-   *  shared style class cannot be right, since the class says how a
-   *  button looks, not what it saves. */
+  /*- Bound by id like every other Save button, not by a
+   *  `.save-range-btn` sweep with a `:not(...)` blocklist.  That class
+   *  says how a button looks, not what it saves, so every Save button
+   *  in Bot Settings carries it — Min Interval, Max Rebalances, Check
+   *  Interval and both per-token Slippage buttons included — and a
+   *  sweep binds saveOorThreshold on top of each one's own handler. */
   _click("saveOorThresholdBtn", saveOorThreshold);
   _click("saveOorTimeoutBtn", saveOorTimeout);
-  _click("savePMBtn", () => _saveGlobalConfig("inPM", "positionManager"));
-  _click("saveFactoryBtn", () => _saveGlobalConfig("inFactory", "factory"));
   _click("saveIlGuardBtn", saveIlGuard);
   _click("saveMinIntervalBtn", saveMinInterval);
   _click("saveMaxRebBtn", saveMaxReb);

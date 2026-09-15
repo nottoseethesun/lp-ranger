@@ -15,6 +15,40 @@ const config = require("./config");
 const { getPositionConfig, saveConfig } = require("./bot-config-v2");
 const { detectCompoundsOnChain } = require("./compounder");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
+const sendTx = require("./send-transaction");
+const { getPoolCreationBlockCached } = require("./pool-creation-block");
+const {
+  mintBlocksByTokenId,
+  nftScanFrom,
+  scanFloorFor,
+  chainScanFloor,
+} = require("./nft-mint-blocks");
+
+/**
+ * Lower bound for an NFT event scan: the pool's own creation block.
+ *
+ * Without one, every scan here starts at genesis — and these paths
+ * loop over the whole rebalance chain, so that is one full-chain scan
+ * per NFT. Chunked and paced, that would hold the global request
+ * queue for hours. An NFT cannot have events before its pool existed,
+ * so the creation block is both correct and tight.
+ * @param {string|null|undefined} poolAddress
+ * @returns {Promise<number>}  Creation block, or 0 when unknown.
+ */
+async function _scanFloor(poolAddress) {
+  if (!poolAddress) return 0;
+  try {
+    return await getPoolCreationBlockCached({
+      provider: sendTx.getManagedReadProvider(),
+      factoryAddress: config.FACTORY,
+      poolAddress,
+    });
+  } catch {
+    /*- Unknown creation block falls back to 0.  Slow but correct is
+     *  better than skipping the scan. */
+    return 0;
+  }
+}
 
 /*- Convert a chain-scan result for a single NFT into Current-panel
  *  values: standalone-compound USD (sum of per-event usdValue) and
@@ -69,6 +103,16 @@ async function _scanCompounds(
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
     };
+    /*- Two floors.  Each NFT is scanned from its OWN mint block — it
+     *  cannot emit events before it exists, and scanning those blocks
+     *  anyway is what made a cold-cache lifetime scan take most of an
+     *  hour once every request went through the paced request queue.  The
+     *  chain's oldest NFT has no mint block in the events, so it falls
+     *  back to `chainScanFloor`: the pool's creation block, lifted to
+     *  the chain's own first mint when the scanner resolved one. */
+    const creationBlock = await _scanFloor(ps.poolAddress);
+    const poolFloor = chainScanFloor(events, creationBlock);
+    const mintBlocks = mintBlocksByTokenId(events);
     /*- total = lifetime collected fees across the rebalance chain
      *  (Lifetime panel "Fees Compounded"). current = sum of standalone
      *  compound deposit values for the current NFT only (Current panel
@@ -81,7 +125,10 @@ async function _scanCompounds(
     let currentGasUsd = 0;
     const curId = String(position.tokenId);
     for (const tid of ids) {
-      const r = await _detect(tid, opts);
+      const r = await _detect(tid, {
+        ...opts,
+        fromBlock: nftScanFrom(mintBlocks, tid, poolFloor),
+      });
       total += r.totalCompoundedUsd;
       if (tid === curId) {
         const cv = await _currentValuesFromScan(r);
@@ -107,16 +154,35 @@ async function _scanCompounds(
   }
 }
 
-/*- Detect Current-panel values for the current NFT only (one cheap
- *  scan): standalone compound USD and total NFT gas USD. */
+/*- Detect Current-panel values for the current NFT only (one scan):
+ *  standalone compound USD and total NFT gas USD.  Bounded to the
+ *  current NFT's own mint block when the rebalance chain supplies it —
+ *  this is the warm-cache path, so it runs on every lifetime request,
+ *  and from the pool's creation block it was scanning years of blocks
+ *  for an NFT that is usually days old. */
 async function _detectCurrentNftValues(
   position,
   body,
   ps,
   prices,
+  events,
   _detect = detectCompoundsOnChain,
 ) {
   try {
+    /*- The pool-creation lookup is only reached when the chain does not
+     *  name this NFT's mint.  Written as a branch rather than as an
+     *  argument to `scanFloorFor`, because an argument is evaluated
+     *  eagerly — which billed this warm path an RPC round-trip on every
+     *  lifetime request for a floor it then discarded. */
+    const mintBlocks = mintBlocksByTokenId(events);
+    let fromBlock = scanFloorFor(mintBlocks, position.tokenId, null);
+    if (fromBlock === null) {
+      /*- Never-rebalanced position: this NFT IS the chain's first mint,
+       *  so lift the pool floor to it rather than scanning from pool
+       *  creation. */
+      const creationBlock = await _scanFloor(ps.poolAddress);
+      fromBlock = chainScanFloor(events, creationBlock);
+    }
     const opts = {
       positionManagerAddress: config.POSITION_MANAGER,
       token0: position.token0,
@@ -129,6 +195,7 @@ async function _detectCurrentNftValues(
       price1: prices.price1,
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
+      fromBlock,
     };
     const r = await _detect(String(position.tokenId), opts);
     return await _currentValuesFromScan(r);
@@ -159,10 +226,17 @@ async function _resolveCompounded(
 ) {
   const posConfig = diskConfig.positions[posKey] || {};
   if (posConfig.totalCompoundedUsd) {
-    /*- Cache hit on the lifetime total — still need a one-NFT scan
-     *  for the current values (not cached on disk; per-tokenId scan
-     *  is cheap, ~1 RPC call vs the full chain scan for the cold path). */
-    const cv = await _detectCurrentNftValues(position, body, ps, prices);
+    /*- Cache hit on the lifetime total — still need a one-NFT scan for
+     *  the current values, which are not cached on disk.  One NFT
+     *  rather than the whole chain, and bounded to that NFT's own life
+     *  by the events passed through. */
+    const cv = await _detectCurrentNftValues(
+      position,
+      body,
+      ps,
+      prices,
+      events,
+    );
     return {
       total: posConfig.totalCompoundedUsd,
       current: cv.compoundUsd,

@@ -170,7 +170,7 @@ describe("handleCanReopen", () => {
   it("returns 503 wallet-read-unavailable after exhausting RPC retries", async () => {
     /*- A persistent on-chain read failure (RPC outage, Moralis down,
      *  contract revert on `balanceOf`) is retried twice per RPC
-     *  across both configured RPCs (4 attempts).  On exhaustion the
+     *  across every configured RPC.  On exhaustion the
      *  handler throws `WalletReadUnavailableError` which maps to a
      *  503 with the structured `wallet-read-unavailable` code.  The
      *  dashboard's `runReopenFlow` recognizes the code and shows
@@ -190,12 +190,15 @@ describe("handleCanReopen", () => {
     assert.strictEqual(res._body.error, "wallet-read-unavailable");
     assert.match(res._body.message, /Wallet read failed after \d+ attempt/);
     assert.match(res._body.message, /simulated RPC outage/);
-    /*- 2 URLs × 2 attempts × 2 tokens per attempt (Promise.all) = 8
-     *  readBalance invocations when every attempt fails. */
+    /*- One URL x 2 attempts x 2 tokens per attempt (Promise.all).
+     *  Derived from the configured list so adding an endpoint does not
+     *  fail this test for the wrong reason — what is being guarded is
+     *  that every RPC is tried, not any particular total. */
+    const expected = require("../src/config").RPC_URLS.length * 2 * 2;
     assert.strictEqual(
       calls,
-      8,
-      `expected 8 readBalance calls (2 RPCs × 2 attempts × 2 tokens), got ${calls}`,
+      expected,
+      `expected ${expected} readBalance calls (RPCs x 2 attempts x 2 tokens), got ${calls}`,
     );
   });
 

@@ -2,13 +2,13 @@
  * @file test/dashboard-date-utils.test.js
  * @description Tests for the pure date helpers used by the Lifetime panel.
  *
- * Regression history: `_ltStartDate` in dashboard-data-kpi.js used a `||`
- * cascade (`firstEpochDateUtc || mintDate || poolFirstDate`).  When the bot
- * adopted a long-lived NFT, `firstEpochDateUtc` was much fresher than the
- * on-chain `mintDate`, so the Lifetime Day Count showed e.g. 0.07 days for
- * positions actually alive for months.  Fix: pick the EARLIEST available
- * date string instead of the first non-null.  These tests guard the
- * underlying `pickEarliestDate` helper against regression.
+ * `_ltStartDate` in dashboard-data-kpi.js must pick the EARLIEST
+ * available date, not the first non-null.  A `||` cascade
+ * (`firstEpochDateUtc || mintDate || poolFirstDate`) takes
+ * `firstEpochDateUtc` whenever it is set, and on an adopted long-lived
+ * NFT that is far fresher than the on-chain `mintDate` — the Lifetime
+ * Day Count then reads 0.07 days for a position months old.  These
+ * tests drive the `pickEarliestDate` helper that decides it.
  */
 
 "use strict";

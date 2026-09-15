@@ -5,8 +5,7 @@
  * `postinstall` lifecycle hook after `npm install` / `npm ci`.
  *
  * Keeping the fonts self-hosted (no CDN) avoids a third-party request
- * chain on dashboard load — see docs/engineering.md § Security for the
- * no-CDN posture.
+ * chain on dashboard load — see docs/security.md for the no-CDN posture.
  */
 
 "use strict";

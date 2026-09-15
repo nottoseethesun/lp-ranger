@@ -11,12 +11,13 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
+const { composeRpcUrls } = require("./rpc-url-list");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
   hasEncryptedKey,
 } = require("./api-key-store");
-const { setApiKey } = require("./api-key-holder");
+const { setApiKey, setServiceEnabled } = require("./api-key-holder");
 const {
   pingMoralis,
   validateMoralisKey,
@@ -101,6 +102,49 @@ function createRouteHandlers(deps) {
   /** Cached wallet password for API key encryption (set on unlock). */
   let _sessionPassword = null;
 
+  /**
+   * Put newly-added RPC endpoints into service without a restart.
+   *
+   * Composed the same way `config.js` composes `RPC_URLS`: the
+   * operator's endpoints first (newest added first), the shipped ones
+   * behind them as failover, duplicates dropped. Composed from
+   * `config.RPC_URLS_BASE` — the shipped-plus-env list — rather than
+   * from `config.RPC_URLS`, which already contains previously added
+   * entries and would re-seed them on every save.
+   *
+   * `config.setRpcUrls` updates the live list as well as `sendTx`, and
+   * both halves are load-bearing:
+   *
+   *   - `GET /api/rpc-endpoints`, `rebalancer-pools` and
+   *     `server-can-reopen` read `config.RPC_URLS` directly, so without
+   *     it they keep walking the endpoints the process started with;
+   *   - `sendTx.init` THROWS when called again with a different list,
+   *     and `bot-loop.js` / `position-manager.js` call it on every
+   *     position start. Updating only `sendTx` would leave
+   *     `config.RPC_URLS` stale, so the next Manage would hand `init` a
+   *     list that no longer matches and take down the start path.
+   *
+   * Neither is optional; do not "simplify" this to one call.
+   *
+   * Failures are logged, not thrown: the value is already saved, and a
+   * bad URL must not take down the config endpoint. The next restart
+   * picks it up regardless.
+   * @param {string[]} saved  The operator-added endpoints just saved.
+   */
+  function _applyRpcUrls(saved) {
+    try {
+      const urls = composeRpcUrls({
+        saved,
+        chainUrls: config.RPC_URLS_BASE,
+      });
+      config.setRpcUrls(urls);
+      if (sendTx.setRpcUrls(urls))
+        log.info("[server] RPC now in use: %s", urls[0]);
+    } catch (err) {
+      log.warn("[server] Could not apply the new RPC list: %s", err.message);
+    }
+  }
+
   async function _handleApiConfig(req, res) {
     const body = await readJsonBody(req);
     const gPatch = {},
@@ -109,6 +153,14 @@ function createRouteHandlers(deps) {
     for (const k of POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
     Object.assign(diskConfig.global, gPatch);
+    /*- Apply to the in-memory holder as well as persisting, so the
+     *  running process stops calling Moralis on the next price lookup
+     *  rather than at the next restart. */
+    if (gPatch.moralisEnabled !== undefined)
+      setServiceEnabled("moralis", gPatch.moralisEnabled !== false);
+    /*- Same for the RPC list: rebuild the providers now, not at the
+     *  next restart. */
+    if (gPatch.rpcUrls !== undefined) _applyRpcUrls(gPatch.rpcUrls);
     const hasPosKeys = Object.keys(pPatch).length > 0;
     /*- Slippage-paused clear runs FIRST so that even if disk persistence
      *  bails out (404 below), an in-flight paused bot loop still gets
@@ -570,6 +622,10 @@ function createRouteHandlers(deps) {
         log.warn("[server] Failed to decrypt %s key: %s", svc, err.message);
       }
     }
+    /*- Honour the saved toggle as soon as the key is in memory, so an
+     *  operator who turned Moralis off does not get one round of calls
+     *  on the next unlock before the setting is noticed. */
+    setServiceEnabled("moralis", diskConfig.global?.moralisEnabled !== false);
     // Validate Moralis key after decryption
     validateMoralisKey();
   }

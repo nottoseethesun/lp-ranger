@@ -15,10 +15,11 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [never pattern-kill](feedback_never_pattern_kill.md) — pkill/pgrep -f matches your own shell and kills the caller; kill by port
 - [no flaky push](feedback_no_flaky_push.md) — Fix flaky tests before they reach CI
 - [no npx](feedback_no_npx.md) — NEVER npx — check package.json scripts first
+- [Edit tool, not python](feedback_edit_tool_not_python.md) — Patch files with Edit/Write; never a python3 heredoc or sed
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — One lint command; file lists live only in scripts/lint-targets.js
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile then node_modules, `npm i`. Run it first; never analyse the dep graph
-- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap in wipe/restore-settings; no check inside agents
+- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap in wipe/restore-settings; no check inside agents or against a running server
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the actual linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver, no `v` prefix; latest tag needs `--sort=-v:refname` **plus** `grep -v '^v'`
 
@@ -31,10 +32,13 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [flag operational side effects](feedback_flag_operational_side_effects.md) — Flag server/bot restarts; NEVER say hard-reload — cache-bust stamps make it moot
 - [hardening minimal scope](feedback_hardening_minimal_scope.md) — Hardening/burn-in = no refactor or restyle beyond the fix
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Nice-to-have lists in user-facing docs need a "not bugs" note
+- [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete the item; "inert" is a delete signal, not a caveat
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Describe operator-facing behavior, not implementation constants
+- [operator sees UI, not logs](feedback_operator_sees_ui_not_logs.md) — Answer in badge/dialog terms; the log is the assistant's instrument, not the operator's interface
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — User uses them interchangeably; don't ask which
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Answer only what was asked, about only the thing named; yes/no means yes/no
 - [prose style](feedback_prose_style.md) — Short sentences, concise, spell out small numbers, no gwei
+- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no pronoun where two candidates exist
 - [release notes style](feedback_release_notes_style.md) — Overview naming an honorable Old West gunslinger + one-line summary; state consequences and payoffs, not just changes
 - [revert means code](feedback_revert_means_code.md) — "Revert the changes" = repo edits only, never the in-flight plan
 - [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed during review
@@ -44,10 +48,12 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [instrument before inferring](feedback_instrument_before_inferring.md) — Two wrong models on one bug = add logging, stop guessing
 - [grep before writing](feedback_grep_before_writing.md) — Grep existing usage before writing code against a data shape or API
 - [tests cover full contract before manual](feedback_tests_cover_full_contract_before_manual.md) — Automated tests cover the full user-visible contract first
+- [always test a regression](feedback_always_test_a_regression.md) — Every regression gets a test; prove it fails without the fix
 - [tests with implementation](feedback_tests_with_implementation.md) — Write tests as you implement; no coverage scramble after
 - [use the path being tested](feedback_use_the_path_being_tested.md) — Validate a trigger through its exact entry point
 - [prove the revert applied](feedback_prove_the_revert_applied.md) — A silently-failed revert patch reports green and looks like proof
 - [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but tests green → check what their runtime is actually running
+- [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check before stating a conclusion; a partial sample is not evidence of absence
 
 ## Engineering, code, UI & docs rules
 - [audit program state](feedback_audit_program_state.md) — After a feature, audit for unnecessary state — derive from what exists
@@ -70,6 +76,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [never compact code](feedback_never_compact_code.md) — Don't compress formatting to fit max-lines; extract a file
 - [no delay patches](feedback_no_delay_patches.md) — Never setTimeout as a fix where await/flow control belongs
 - [no duplication](feedback_no_duplication.md) — Never duplicate code or RPC calls; fetch once and pass it down
+- [no computation in params](feedback_no_computation_in_params.md) — Never put an await/lookup inside an argument; hoist it (ESLint rule: deferred)
 - [no extra state](feedback_no_extra_state.md) — No new tracker/Map/flag when existing state can serve double duty
 - [no genesis chain scans](feedback_no_genesis_chain_scans.md) — Every getLogs/queryFilter scan needs a tight lower bound
 - [no global monkey-patch](feedback_no_global_monkey_patch.md) — Never modify JS globals (console, prototypes, Date, Math, fetch)
@@ -103,6 +110,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [PR #125 burn-in watch](project_pr125_burn_in_watch.md) — LP-browser rescan after a failed scan, in prod burn-in
 - [0.8.17 burn-in watch](project_0817_burn_in_watch.md) — Aggregator now really routes via 9mm; swap pricing on Prod changes with this release
 - [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — 0.9.2 + hotfix 0.9.2.1 on Prod; user says the app may be done, 1.0 after burn-in
+- [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a narrow-range test artifact; real positions make 24/year or fewer
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — Two audit workflows; the daily one audits the release tag, not main
 - [maturity staircase](project_maturity_staircase.md) — MVP → soft-launch → approaching battle-tested; stability outranks features
@@ -129,7 +137,6 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [ESM migration](project_esm_migration.md) — 100% CJS today; ESM would be a deliberate big-bang change
 - [gas-defer retry limit](project_gas_defer_retry_limit.md) — Optional cap on the gas-defer retry loop; not required
 - [log to file](project_log_to_file.md) — Auto-write server console to a log file for Pi 5 scrollback
-- [pool-creation finder scan direction](project_pool_creation_finder_scan_direction.md) — Scans oldest→newest; reversing would be faster
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses pairing a new rebalance; brief ~30 min lag
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources, so Routed Via shows an em-dash
 - [split rebalancePaused flag](project_split_rebalance_paused_flag.md) — Split the overloaded flag into aborted vs deferred

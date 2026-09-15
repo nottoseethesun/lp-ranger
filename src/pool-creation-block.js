@@ -2,16 +2,18 @@
  * @file src/pool-creation-block.js
  * @module poolCreationBlock
  * @description
- * Disk-cached resolver for the V3 pool's `PoolCreated` block on the Factory.
- * Used as a safe lower bound for historical NFT-event scans (HODL baseline,
- * compound classifier, closed-position history, unmanaged-position details)
- * so they don't replay all blocks back to chain genesis.
+ * Disk-cached resolver for the block a V3 pool was deployed in.  Used as a
+ * safe lower bound for historical NFT-event scans (HODL baseline, compound
+ * classifier, closed-position history, unmanaged-position details) so they
+ * don't replay all blocks back to chain genesis.
  *
- * The lookup itself is expensive (chunked scan of Factory PoolCreated logs),
- * so the result is memoized in-process and persisted to disk keyed by
- * `factoryAddress|poolAddress` (lower-cased).  Failure to determine the
- * block returns `0` — preserves prior "scan from genesis" behaviour rather
- * than silently dropping events.
+ * The lookup is `pool-creation-finder.js`, a binary search on
+ * `eth_getCode` — about 25 calls.  Results are memoised in-process and
+ * persisted to disk keyed by `factoryAddress|poolAddress` (lower-cased).
+ *
+ * Failure returns `0`, which the callers' `creationBlock > fromBlock` test
+ * discards in favour of their own floor.  That widens a scan rather than
+ * narrowing it, so an unanswerable lookup costs time and never events.
  */
 
 "use strict";
@@ -79,23 +81,18 @@ function _saveDisk() {
  *
  * @param {object} opts
  * @param {object} opts.provider        ethers.js provider
- * @param {object} opts.ethersLib       ethers library (for Contract)
- * @param {string} opts.factoryAddress  V3 Factory address
+ * @param {string} opts.factoryAddress  V3 Factory address. Scopes the cache
+ *   key only — the lookup itself reads the pool's own account state, so it
+ *   never queries the Factory.
  * @param {string} opts.poolAddress     Pool address
  * @param {function} [opts.onProgress]  Cold-cache progress: (idx, total) => void
  * @param {AbortSignal} [opts.signal]   Cold-cache cancellation
  * @returns {Promise<number>}  block number (>=0); 0 means "unknown / use genesis"
  */
 async function getPoolCreationBlockCached(opts) {
-  const {
-    provider,
-    ethersLib,
-    factoryAddress,
-    poolAddress,
-    onProgress,
-    signal,
-  } = opts || {};
-  if (!provider || !ethersLib || !factoryAddress || !poolAddress) return 0;
+  const { provider, factoryAddress, poolAddress, onProgress, signal } =
+    opts || {};
+  if (!provider || !factoryAddress || !poolAddress) return 0;
   _loadDisk();
   const k = _key(factoryAddress, poolAddress);
   const cached = _memCache.get(k);
@@ -104,8 +101,7 @@ async function getPoolCreationBlockCached(opts) {
   const p = (async () => {
     try {
       const currentBlock = await provider.getBlockNumber();
-      const block = await findPoolCreationBlock(provider, ethersLib, {
-        factoryAddress,
+      const block = await findPoolCreationBlock(provider, {
         poolAddress,
         fromBlock: 0,
         toBlock: currentBlock,
@@ -220,7 +216,6 @@ async function resolvePoolCreationBlockForPosition(opts) {
     if (!poolAddress || poolAddress === ethers.ZeroAddress) return 0;
     return await getPoolCreationBlockCached({
       provider,
-      ethersLib: ethers,
       factoryAddress,
       poolAddress,
     });

@@ -8,7 +8,7 @@
 "use strict";
 
 const { log } = require("./log");
-const { getApiKey } = require("./api-key-holder");
+const { getApiKey, isServiceEnabled } = require("./api-key-holder");
 const { hasEncryptedKey } = require("./api-key-store");
 
 /**
@@ -48,6 +48,14 @@ async function pingMoralis() {
  * Validate Moralis key after decryption; log warnings.
  */
 async function validateMoralisKey() {
+  /*- Nothing to validate for a service the operator has switched off,
+   *  and validating anyway spends one of their requests to learn the
+   *  state of a key we are not going to use.  "Use Moralis Key: off"
+   *  has to mean no Moralis traffic at all, or the switch is decorative. */
+  if (!isServiceEnabled("moralis")) {
+    log.info("[moralis] Skipping key validation — Use Moralis Key is off");
+    return;
+  }
   try {
     const status = await pingMoralis();
     if (!status) return;
@@ -71,6 +79,14 @@ async function handleApiKeyStatus(_req, res, jsonResponse) {
     const status = stored ? "locked" : "none";
     log.info("[moralis] Status check: %s", status);
     return jsonResponse(res, 200, { moralis: status });
+  }
+  /*- A key exists but is switched off.  Report that without pinging:
+   *  the dashboard calls this endpoint every time the Moralis dialog
+   *  opens, so pinging here would mean the dialog for turning Moralis
+   *  OFF spends a Moralis request each time it is opened. */
+  if (!isServiceEnabled("moralis")) {
+    log.info("[moralis] Status check: disabled (key present, not in use)");
+    return jsonResponse(res, 200, { moralis: "disabled" });
   }
   try {
     const status = await pingMoralis();

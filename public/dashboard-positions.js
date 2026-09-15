@@ -27,7 +27,7 @@ import {
 import { _posLabel, applySyncBlur } from "./dashboard-data.js";
 import { _setLeadingText } from "./dashboard-data-kpi.js";
 import { LT_BD_IDS } from "./dashboard-data-kpi-breakdown.js";
-import { wallet, getRpcUrl } from "./dashboard-wallet.js";
+import { wallet } from "./dashboard-wallet.js";
 import {
   posStore,
   MAX_POS,
@@ -423,10 +423,15 @@ async function _syncAfterManualScan() {
  *   active position. Pass false for automatic scans.
  */
 async function _fetchAndApplyScan() {
+  /*- No rpcUrl in the body.  The server scans with its own configured
+   *  provider and always ignored this field, so sending it only made it
+   *  look as though the browser chose the endpoint for the scan. The
+   *  saved RPC URL does now reach the server — via bot-config.json, at
+   *  startup — which is what actually makes the setting effective. */
   const res = await fetchWithCsrf("/api/positions/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rpcUrl: getRpcUrl() }),
+    body: JSON.stringify({}),
   });
   const data = await res.json();
   if (!data.ok) throw new Error(data.error);

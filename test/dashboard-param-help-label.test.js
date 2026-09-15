@@ -74,7 +74,8 @@ describe("info icons are never nested inside a form label", () => {
   });
 
   it("the No Override icon is a sibling of the toggle, not a child", () => {
-    /*- The specific placement the bug was reported against. */
+    /*- An info icon inside the `<label>` is clickable as part of it, so
+     *  opening the help dialog also toggles the control it labels. */
     const icon = doc.querySelector('[data-param-help="rangeOverrideToggle"]');
     assert.ok(icon, "the No Override info icon exists");
     assert.equal(icon.closest("label"), null);

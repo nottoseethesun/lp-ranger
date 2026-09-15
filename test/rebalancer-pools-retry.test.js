@@ -220,10 +220,13 @@ test("_getPoolStateOnce rejects non-integer tick", async () => {
 
 // ── Retry orchestrator ──────────────────────────────────────────────────────
 
-test("getPoolState exhausts both RPCs (4 attempts) then throws PoolStateUnavailableError", async () => {
-  /*- Every attempt fails the same way — decimals0 undefined.  With
-   *  2 URLs × 2 attempts each, we expect exactly 4 attempts before
-   *  exhaustion. */
+test("getPoolState exhausts every RPC then throws PoolStateUnavailableError", async () => {
+  /*- Every attempt fails the same way — decimals0 undefined.  The
+   *  expected count is derived from the configured endpoint list rather
+   *  than pinned: the contract is "try every RPC twice", and hard-coding
+   *  the product means the test fails for the wrong reason the next time
+   *  an endpoint is added. */
+  const expectedAttempts = require("../src/config").RPC_URLS.length * 2;
   const { lib, constructed } = makeMockEthers({ decimals0: undefined });
   await assert.rejects(
     () =>
@@ -235,7 +238,11 @@ test("getPoolState exhausts both RPCs (4 attempts) then throws PoolStateUnavaila
       }),
     (err) => {
       if (!(err instanceof PoolStateUnavailableError)) return false;
-      assert.equal(err.attempts, 4, "expected 4 total attempts");
+      assert.equal(
+        err.attempts,
+        expectedAttempts,
+        `expected ${expectedAttempts} attempts (one per RPC x 2)`,
+      );
       assert.ok(
         err.cause instanceof PoolStateInvalidError,
         "cause should be the last invalid-error",
@@ -246,8 +253,8 @@ test("getPoolState exhausts both RPCs (4 attempts) then throws PoolStateUnavaila
   );
   assert.equal(
     constructed.length,
-    4,
-    "expected 4 fresh JsonRpcProvider constructions (one per attempt)",
+    expectedAttempts,
+    `expected ${expectedAttempts} fresh JsonRpcProvider constructions (one per attempt)`,
   );
 });
 

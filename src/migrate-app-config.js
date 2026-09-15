@@ -15,9 +15,11 @@
  *
  * This module's `migrateAppConfig()` function is idempotent and safe:
  *
- *  - Fresh install (no legacy files at root): creates the destination
- *    directories if missing, moves nothing, returns
- *    `{ moved: 0, skipped: 0, dropped: 0 }`.
+ *  - Fresh install (no legacy files at root): does nothing at all and
+ *    returns `{ moved: 0, skipped: 0, dropped: 0 }`.  Each source file
+ *    is tested first, so a missing one skips before the `mkdirSync`
+ *    for its destination — no directory is created on this path, and
+ *    none needs to be, since the destination directories are tracked.
  *
  *  - Upgrade (legacy files at root, destination empty): `fs.renameSync`s
  *    each file to its new home, logs each move, returns

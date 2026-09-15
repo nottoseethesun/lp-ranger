@@ -91,6 +91,56 @@ describe("_closePnlEpoch", () => {
     assert.ok(snap.closedEpochs.length >= 1);
   });
 
+  it("clears the unclaimed-fee amounts with the figure they produced", async () => {
+    /*- A rebalance sweeps unclaimed fees into the new position, so
+     *  `_lastUnclaimedFeesUsd` is zeroed to say they are no longer
+     *  owed. The token amounts behind it must go with it: they are what
+     *  `_freshFeesUsd` (src/bot-cycle-compound.js) re-values when
+     *  deciding whether to compound, and left standing they describe
+     *  fees this rebalance already collected as still available —
+     *  which is a compound spending gas to collect nothing.
+     *
+     *  The poll refreshes all three before that decision is reached, so
+     *  this pins an invariant rather than a reachable fault. The three
+     *  have to move together, or the next reader of one gets an answer
+     *  the others contradict. */
+    _mockGasCost = 0;
+    const tracker = createPnlTracker({ initialDeposit: 100 });
+    tracker.openEpoch({
+      entryValue: 100,
+      entryPrice: 1,
+      lowerPrice: 0.8,
+      upperPrice: 1.2,
+      token0UsdPrice: 2,
+      token1UsdPrice: 0.5,
+    });
+    const deps = {
+      _pnlTracker: tracker,
+      position: { token0: "0xA", token1: "0xB" },
+      updateBotState: () => {},
+      _addCollectedFees: () => {},
+      _lastUnclaimedFeesUsd: 7,
+      _lastUnclaimedFee0: 10,
+      _lastUnclaimedFee1: 4,
+    };
+    await _closePnlEpoch(deps, {
+      token0UsdPrice: 2,
+      token1UsdPrice: 0.5,
+      exitValueUsd: 95,
+      totalGasCostWei: 0n,
+      amount0Minted: 0n,
+      amount1Minted: 0n,
+      currentPrice: 1,
+      newTickLower: -100,
+      newTickUpper: 100,
+      decimals0: 18,
+      decimals1: 18,
+    });
+    assert.strictEqual(deps._lastUnclaimedFeesUsd, 0, "the USD figure");
+    assert.strictEqual(deps._lastUnclaimedFee0, 0, "and both amounts");
+    assert.strictEqual(deps._lastUnclaimedFee1, 0, "and both amounts");
+  });
+
   it("fetches prices when not provided in result", async () => {
     _mockGasCost = 0;
     _mockPrices = { price0: 3, price1: 1.5 };

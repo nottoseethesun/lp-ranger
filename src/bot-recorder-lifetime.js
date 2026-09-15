@@ -33,6 +33,10 @@ const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const ethers = require("ethers");
 const { getPoolState } = require("./rebalancer-pools");
 const {
+  mintBlocksByTokenId: _mintBlocksByTokenId,
+  chainScanFloor: _chainScanFloor,
+} = require("./nft-mint-blocks");
+const {
   PoolStateInvalidError,
   isIntegerInRange,
 } = require("./pool-state-validate");
@@ -160,10 +164,10 @@ async function _classifyAllCompounds(
  *      or `totalCompoundedUsd` is sufficient: the bot's own scans
  *      populate both, but the unmanaged-view detail scan
  *      (`position-details._scanCompounds`) persists only
- *      `totalCompoundedUsd`.  Without this guard, a fresh
- *      `Manage Position` on a previously-viewed position would re-run
- *      `_classifyAllCompounds` from a stale `lastNftScanBlock`, get a
- *      partial sum, and stomp the correct disk value.
+ *      `totalCompoundedUsd`.  Without this guard, `Manage Position` on
+ *      a position the unmanaged view has already scanned re-runs
+ *      `_classifyAllCompounds` from a stale `lastNftScanBlock`, gets a
+ *      partial sum, and stomps the correct disk value.
  *
  *      No rescan is ever needed to keep this total current, because both
  *      ways fees get recycled already maintain it as they happen:
@@ -239,6 +243,11 @@ function _recordScanSuccess(botState, updateState, ctx) {
   const total = botState?.totalLifetimeDepositUsd || 0;
   const ready = total > 0;
   if (botState) {
+    /*- Released on success: the buffer exists to carry one scan across
+     *  a failure, not to answer the next one. The chain head advances
+     *  between scans, so holding it would hand a later run reads that
+     *  stop short of the head. */
+    botState._lifetimeResumeBuffer = null;
     botState._needsFullRescan = false;
     botState._lifetimeScanError = null;
     botState._lifetimeScanErrorAt = null;
@@ -327,14 +336,51 @@ async function _resolveScanFromBlock(
   });
 }
 
+/**
+ * The position's per-NFT resume buffer, created on first use.
+ *
+ * Same purpose as the buffer in `epoch-reconstructor.js`, for the other
+ * long per-NFT pass. The lifetime loop walks the whole rebalance chain
+ * three queries at a time; without somewhere to keep the NFTs already
+ * read, a throw anywhere in it costs every one of them and the next
+ * attempt starts from the first again. See `fetchAllNftEvents` for why
+ * reuse is gated on the scan floor and on the NFT being retired, and
+ * `_recordScanSuccess` for the release.
+ *
+ * Extracted from `_scanLifetimePoolData` so the lazy-create branch does
+ * not push that function past the complexity cap.
+ *
+ * @param {object} [botState]  Live per-position bot state.  Without one
+ *   there is nowhere to carry reads to, so a throwaway Map is returned
+ *   and the scan simply does not resume — the caller stays working.
+ * @param {boolean} [fullRescan]  True when a rebalance forced this scan.
+ * @returns {Map<string, {from: number, ev: object}>}
+ */
+function _lifetimeResumeBuffer(botState, fullRescan) {
+  /*- Tolerates a missing state object.  This is the first thing in the
+   *  scan to reach into `botState`, and a scan is worth running with no
+   *  resume at all — so an absent one costs the buffer, not the scan. */
+  if (botState === undefined || botState === null) return new Map();
+  /*- A full rescan means a rebalance fired, so any NFT in the chain may
+   *  have emitted since the buffered read — the one it just retired
+   *  certainly did. Start from nothing rather than trust a floor
+   *  comparison to notice, since the floor is the pool creation block
+   *  on both sides when no scan has completed yet. */
+  if (fullRescan === true) botState._lifetimeResumeBuffer = null;
+  if (!(botState._lifetimeResumeBuffer instanceof Map))
+    botState._lifetimeResumeBuffer = new Map();
+  return botState._lifetimeResumeBuffer;
+}
+
 /*- Persist scan-failure state so the 30-min auto-rescan can see the gap.
  *  Also keeps `lifetimeScanComplete` at false so the Syncing badge stays
  *  engaged until a future scan succeeds.
  *
- *  Catastrophic-failure record: this catch is where the "silent lifetime
- *  scan abort" bug hid on Prod (July 2026, PulseX/WPLS position stuck at
- *  $11.63 Fees Compounded instead of $255.50).  Every entry to this
- *  function now:
+ *  Catastrophic-failure record.  A lifetime scan that aborts here
+ *  leaves the position's totals frozen at whatever the partial scan
+ *  reached — a plausible-looking number, with no indication it is
+ *  short — so the abort has to announce itself.  Every entry to this
+ *  function:
  *    (a) appends a stacktrace record to logs/error.log via
  *        writeErrorLog(), so a fresh install two weeks later can still
  *        show the operator exactly what went wrong; and
@@ -479,10 +525,12 @@ function _classifyHealError(err, position, override) {
  * Ensure the position carries valid on-chain token decimals before the scan
  * values it.  Resolves them through `getPoolState` — the single entry point
  * for on-chain pool/token state (it validates decimals + retries across
- * RPCs) — decoupled from the price-gated init in `bot-loop-detect.js` that
- * can skip caching decimals for a rare token with no price at startup (the
- * root cause of the `NaN`-deposit / stuck-Syncing bug; see the "getPoolState
- * Validation" section in docs/engineering.md).
+ * RPCs) — decoupled from the price-gated init in `bot-loop-detect.js`,
+ * which skips caching decimals for a token that has no price at startup.
+ * Undefined decimals make `10 ** d` NaN and poison every amount derived
+ * from them, leaving the deposit total at `$0` and the badge on
+ * "Syncing…".  See the "getPoolState Validation" section in
+ * docs/engineering.md.
  *
  * Honors the operator's manual override (`{ d0, force0, d1, force1 }`):
  *   - a **force**d token's manual value always wins, even over a good chain read;
@@ -695,7 +743,27 @@ async function _scanLifetimePoolData(
       positionManagerAddress: config.POSITION_MANAGER,
     };
     const ids = _collectTokenIds(position, rebalanceEvents);
-    const { allNftEvents, maxBlock } = await _fetchAllNftEvents(ids, fromBlock);
+    /*- Two floors, both derived from events already in hand — no extra
+     *  RPC.  `chainScanFloor` lifts the pool-level floor to the chain's
+     *  own first mint, which is the only bound the OLDEST NFT can get
+     *  (it appears solely as an `oldTokenId`, so no event names its
+     *  mint); `mintBlocksByTokenId` then gives every later NFT its own.
+     *
+     *  `scanFrom` is deliberately a separate binding from `fromBlock`:
+     *  the checkpoint comparison below still uses `fromBlock`, so a run
+     *  that finds no events but did lift its floor still records the
+     *  higher floor as the resume point. */
+    const scanFrom = _chainScanFloor(rebalanceEvents, fromBlock);
+    const mintBlocks = _mintBlocksByTokenId(rebalanceEvents);
+    const { allNftEvents, maxBlock } = await _fetchAllNftEvents(
+      ids,
+      scanFrom,
+      mintBlocks,
+      {
+        resumeBuffer: _lifetimeResumeBuffer(botState, fullRescan),
+        liveTokenId: position?.tokenId,
+      },
+    );
     if (!hasCompoundData)
       await _classifyAllCompounds(
         ids,
@@ -743,4 +811,5 @@ module.exports = {
   _ensureTokenDecimals, // exported for tests
   _recordScanFailure, // exported for tests
   _recordScanSuccess, // exported for tests
+  _lifetimeResumeBuffer, // exported for tests
 };

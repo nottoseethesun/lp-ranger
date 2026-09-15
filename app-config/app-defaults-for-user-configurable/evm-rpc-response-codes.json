@@ -1,5 +1,16 @@
 {
   "_comment": "RPC error classification data used by src/rpc-error-classifier.js. Three buckets: transient (retry), terminalNonceUnused (abort, reset NonceManager because the rejected TX never consumed its nonce), terminalNonceConsumed (abort, leave NonceManager alone because the nonce is already used on-chain). Substrings are matched case-insensitively against the verbatim inner node error message; ethersCodes are matched against err.code exactly. Keep lists lowercase. JSON-RPC code -32000 alone is a catch-all and is NOT used for classification — the node's message substring is the reliable signal.",
+  "blockRangeCap": {
+    "description": "The endpoint refused a getLogs/queryFilter because the block span was too wide. NOT a transient error and NOT grounds for failover: the request shape is the problem, and every endpoint would reject the same span. Detected so the caller can raise a message naming the getLogsChunkSize setting instead of surfacing a raw ethers 'could not coalesce error' dump. Matched case-insensitively against the inner node message; ethers reports these as code UNKNOWN_ERROR with the real JSON-RPC -32602 nested underneath, so the message is the only reliable signal.",
+    "messageSubstrings": [
+      "block range",
+      "block range is too large",
+      "exceeds the range",
+      "range limit exceeded",
+      "query returned more than",
+      "limited to a"
+    ]
+  },
   "transient": {
     "description": "Network/infra glitches where the TX may or may not have been broadcast. Safe to reset the NonceManager and retry.",
     "ethersCodes": ["TIMEOUT", "NETWORK_ERROR"],

@@ -102,6 +102,16 @@ function _bumpRebalanceFees(deps) {
     newCompounded.toFixed(2),
   );
   deps._lastUnclaimedFeesUsd = 0;
+  /*- The token amounts behind that figure are cleared with it. They are
+   *  what `_freshFeesUsd` (src/bot-cycle-compound.js) re-values when
+   *  deciding whether to compound, so leaving them set would describe
+   *  fees this rebalance has just swept into the position as still
+   *  unclaimed. The poll refreshes all three before that decision is
+   *  reached, so this keeps a pair consistent rather than repairing a
+   *  reachable fault — but the pair has to move together, or the next
+   *  reader of one gets an answer the other contradicts. */
+  deps._lastUnclaimedFee0 = 0;
+  deps._lastUnclaimedFee1 = 0;
 }
 
 /** Close the current P&L epoch after a rebalance and open a new one. */
@@ -244,6 +254,31 @@ async function _scanHistory(
      * event appendToPoolCache just wrote to the disk cache. */
     events.length = 0;
     events.push(...found);
+    /*- The event scanner hangs `firstMintTimestamp`,
+     *  `firstMintBlockNumber` and `firstMintTokenId` on the array as
+     *  non-index properties, and `push(...found)` copies only the
+     *  elements — so without this they are lost the moment the scan
+     *  result is transplanted into the bot's own array.
+     *
+     *  `firstMintBlockNumber` is the mint of the oldest NFT the wallet
+     *  holds in this pool, and the only lower bound that NFT can get:
+     *  no rebalance event names its mint, so it otherwise falls back to
+     *  the pool's creation block. On a pool older than the operator's
+     *  first deposit that is the single most expensive scan of the run
+     *  — see `chainScanFloor` in src/nft-mint-blocks.js.
+     *
+     *  `firstMintTokenId` says which NFT that mint belongs to. Without
+     *  it the block cannot be attributed, because the oldest arrival is
+     *  not always the chain's oldest `oldTokenId`. */
+    events.firstMintTimestamp = found.firstMintTimestamp;
+    events.firstMintBlockNumber = found.firstMintBlockNumber;
+    events.firstMintTokenId = found.firstMintTokenId;
+    /*- The first link of the inferred chain and its mint block. Per-day
+     *  P&L opens its first row from these; dropping them here sends that
+     *  lookup to the chain instead. */
+    events.chainFirstTokenId = found.chainFirstTokenId;
+    events.chainFirstMintBlock = found.chainFirstMintBlock;
+    events.chainFirstMintTimestamp = found.chainFirstMintTimestamp;
     log.info("[bot] Found %d historical rebalance events", found.length);
     if (throttle && found.length > 0) {
       const cutoff = Math.floor(

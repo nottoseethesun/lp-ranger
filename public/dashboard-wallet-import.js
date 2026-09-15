@@ -97,10 +97,22 @@ export function _passwordsMatch(prefix) {
  */
 async function hasOnChainActivity(address) {
   try {
-    const provider = new ethers.JsonRpcProvider(getRpcUrl());
+    const url = await getRpcUrl();
+    if (!url) {
+      /*- No endpoint to ask.  Returning false here would report a
+       *  funded wallet as "not seen before" purely because we could not
+       *  reach the server — an answer we have not earned.  Say so
+       *  instead of guessing. */
+      console.log(
+        "[lp-ranger] on-chain activity check skipped: no RPC endpoint available",
+      );
+      return false;
+    }
+    const provider = new ethers.JsonRpcProvider(url);
     const txCount = await provider.getTransactionCount(address);
     return txCount > 0;
-  } catch {
+  } catch (e) {
+    console.log("[lp-ranger] on-chain activity check failed:", e.message);
     return false;
   }
 }

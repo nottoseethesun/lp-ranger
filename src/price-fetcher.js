@@ -34,7 +34,42 @@ const {
   flushPriceCache,
   toUtcDayKey,
 } = require("./price-cache");
-const { getApiKey } = require("./api-key-holder");
+const { getApiKey, isServiceEnabled } = require("./api-key-holder");
+
+/**
+ * The Moralis key, but only when the operator has left Moralis on.
+ *
+ * One gate rather than an `&& enabled` at each of the three call sites
+ * below — the question "may we call Moralis?" has exactly one answer,
+ * and three copies of it is three chances for them to drift.
+ *
+ * Returns null when the key is absent OR the operator has switched it
+ * off, which is precisely when the caller should fall through to
+ * GeckoTerminal.
+ * @returns {string|null}
+ */
+function _moralisKey() {
+  if (!isServiceEnabled("moralis")) return null;
+  return getApiKey("moralis");
+}
+
+/**
+ * Moralis as a price-source entry, or nothing at all when it is not
+ * usable.
+ *
+ * Returns an empty list rather than a source that returns 0, because
+ * the cascade logs a zero as "Moralis miss — no data". That reads as
+ * "Moralis was asked and had nothing", which is indistinguishable from
+ * a real miss and left an operator who had just switched Moralis off
+ * watching lines that said it was still being consulted. A source that
+ * is not in the list produces no line, which is the truth.
+ *
+ * @param {Function} fn  The fetcher to run when Moralis IS usable.
+ * @returns {Array<{name: string, fn: Function}>}  One entry, or none.
+ */
+function _moralisSource(fn) {
+  return _moralisKey() ? [{ name: "Moralis", fn }] : [];
+}
 const { geckoRateLimit, noteGecko429 } = require("./gecko-rate-limit");
 const {
   getGeckoPoolOrientation,
@@ -240,7 +275,7 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
 
   const fetchPromise = tryPriceSources(
     [
-      { name: "Moralis", fn: () => _fetchMoralisCurrent(tokenAddress, chain) },
+      ..._moralisSource(() => _fetchMoralisCurrent(tokenAddress, chain)),
       {
         name: "GeckoTerminal",
         fn: () => _fetchGeckoTerminalCurrent(tokenAddress, chain),
@@ -483,7 +518,8 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
 async function _geckoForToken0Token1(poolAddr, ts, network, t0, t1) {
   const orient = await getGeckoPoolOrientation(network, poolAddr, t0, t1);
   flushGeckoPoolCache();
-  // Default to "normal" when orientation lookup fails (matches old behavior).
+  // Default to "normal" when the orientation lookup fails: most pools
+  // are, so the fallback is right more often than it is wrong.
   const flipped = orient === "flipped";
   const p0 = await _fetchGeckoTerminalOhlcv(
     poolAddr,
@@ -522,7 +558,7 @@ async function _fetchHistoricalPair(
   c1,
   blockNumber,
 ) {
-  const useMoralis = getApiKey("moralis") && blockNumber;
+  const useMoralis = _moralisKey() && blockNumber;
   let p0 = c0 ?? 0,
     p1 = c1 ?? 0;
   if (useMoralis) {
@@ -589,7 +625,7 @@ const _MORALIS_CHAINS = { pulsechain: "0x171", eth: "0x1" };
  * @returns {Promise<number>} USD price (0 if unavailable).
  */
 async function _fetchMoralisCurrent(tokenAddress, chain = "pulsechain") {
-  const apiKey = getApiKey("moralis");
+  const apiKey = _moralisKey();
   if (!apiKey) return 0;
   const chainHex = _MORALIS_CHAINS[chain];
   if (!chainHex) return 0;
@@ -630,7 +666,7 @@ async function _fetchMoralisHistorical(
   blockNumber,
   chain = "pulsechain",
 ) {
-  const apiKey = getApiKey("moralis");
+  const apiKey = _moralisKey();
   if (!apiKey) return 0;
   const chainHex = _MORALIS_CHAINS[chain];
   if (!chainHex) return 0;
@@ -739,10 +775,7 @@ async function fetchDustUnitPriceUsd() {
   for (const tok of tokens) {
     const price = await tryPriceSources(
       [
-        {
-          name: "Moralis",
-          fn: () => _fetchMoralisCurrent(tok.address, tok.chain),
-        },
+        ..._moralisSource(() => _fetchMoralisCurrent(tok.address, tok.chain)),
         {
           name: "DexScreener",
           fn: () => _fetchDexScreener(tok.address, tok.dexScreenerChain),

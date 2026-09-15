@@ -19,6 +19,7 @@
 const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
+const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const {
   getPoolCreationBlockCached,
@@ -41,23 +42,44 @@ const _IFACE = new ethers.Interface(PM_ABI);
  * @param {string} eventName 'Collect' or 'DecreaseLiquidity'.
  * @param {string} tokenId   NFT token ID.
  * @param {object} provider  ethers.js provider.
- * @param {number} fromBlock Lower bound for the log scan (use the pool's
- *   creation block to avoid replaying chain history back to genesis).
+ * @param {number} fromBlock Lower bound for the log scan — the block the
+ *   NFT was minted in, since it cannot emit anything before it exists.
+ * @param {number|string} [toBlock="latest"] Upper bound — the block the
+ *   NFT was retired at. Only the current NFT scans to the head.
  * @returns {Promise<Array<object>|null>}  Null when the query itself
  *   failed, which is deliberately distinct from an empty array: empty
  *   means the event never fired, null means we do not know.
  */
-async function _scanEventLogs(eventName, tokenId, provider, fromBlock) {
+async function _scanEventLogs(
+  eventName,
+  tokenId,
+  provider,
+  fromBlock,
+  toBlock = "latest",
+) {
   try {
     const tid = BigInt(tokenId);
-    const logs = await provider.getLogs({
-      address: config.POSITION_MANAGER,
+    /*- Chunked.  The surrounding try/catch is what preserves this
+     *  function's null-vs-[] contract: a chunk failure propagates out of
+     *  scanChunked, lands in the catch below, and returns null ("we do
+     *  not know").  Best-effort chunking would return a short array
+     *  here and be read as "the event never fired", which is the one
+     *  outcome this function exists to avoid. */
+    const logs = await scanChunked({
+      provider,
       fromBlock,
-      toBlock: "latest",
-      topics: [
-        _IFACE.getEvent(eventName).topicHash,
-        "0x" + tid.toString(16).padStart(64, "0"),
-      ],
+      toBlock,
+      label: `history ${eventName} #${tokenId}`,
+      query: (f, t) =>
+        provider.getLogs({
+          address: config.POSITION_MANAGER,
+          fromBlock: f,
+          toBlock: t,
+          topics: [
+            _IFACE.getEvent(eventName).topicHash,
+            "0x" + tid.toString(16).padStart(64, "0"),
+          ],
+        }),
     });
     const out = [];
     for (const l of logs) {
@@ -98,16 +120,29 @@ async function _scanEventLogs(eventName, tokenId, provider, fromBlock) {
  * fetch-once-pass-it-down rule in
  * docs/claude/CLAUDE-BEST-PRACTICES.md.
  *
+ * Both scans take the NFT's own window rather than the pool's. A closed
+ * NFT's whole life is the gap between two consecutive rebalances —
+ * often minutes, i.e. a single chunk — while the pool's history is
+ * millions of blocks. Reconstructing a 132-rebalance chain from the
+ * pool's range issued ~300,000 paced requests and ran for over a day;
+ * the same run bounded per NFT is a couple of hundred.
+ *
  * @param {string} tokenId   NFT token ID.
  * @param {object} provider  ethers.js provider.
  * @param {number} [fromBlock=0]  Lower bound for both log scans.
+ * @param {number|string} [toBlock="latest"]  Upper bound for both.
  * @returns {Promise<{collectEvents: Array, dlEvents: Array}|null>}  Null
  *   when the history could not be read — see below.
  */
-async function scanCollectAndDrain(tokenId, provider, fromBlock = 0) {
+async function scanCollectAndDrain(
+  tokenId,
+  provider,
+  fromBlock = 0,
+  toBlock = "latest",
+) {
   const [collectEvents, dlEvents] = await Promise.all([
-    _scanEventLogs("Collect", tokenId, provider, fromBlock),
-    _scanEventLogs("DecreaseLiquidity", tokenId, provider, fromBlock),
+    _scanEventLogs("Collect", tokenId, provider, fromBlock, toBlock),
+    _scanEventLogs("DecreaseLiquidity", tokenId, provider, fromBlock, toBlock),
   ]);
   if (!collectEvents || !dlEvents) return null;
   /*- A closed NFT always emitted a Collect when it was drained, so zero
@@ -143,7 +178,6 @@ async function resolveScanFromBlock(prov, ethers, tokenId) {
   const poolCreationBlock = poolAddress
     ? await getPoolCreationBlockCached({
         provider: prov,
-        ethersLib: ethers,
         factoryAddress: config.FACTORY,
         poolAddress,
       })

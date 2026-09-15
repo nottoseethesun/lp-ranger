@@ -3,7 +3,7 @@
  * @description
  * Guards the single-source-of-truth invariant for lint/format targets.
  *
- * The bug this exists to prevent already happened twice:
+ * The bug this exists to prevent already happened three times:
  *   1. `scripts/check.js` spelled out its own ESLint directory list and
  *      omitted `util/`, so 23 files were linted by `npm run lint` but
  *      never by `npm run check` — the gate CI runs.
@@ -27,6 +27,7 @@ const {
   JS_TARGETS,
   SECURITY_TARGETS,
   SECRET_TARGETS,
+  MARKDOWN_TARGETS,
 } = require("../scripts/lint-targets");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -118,4 +119,52 @@ test("lint-staged — is fully removed, config and dependency", () => {
     undefined,
     "dependency must be gone once its last usage is removed",
   );
+});
+
+test("MARKDOWN_TARGETS — is a non-empty list of strings", () => {
+  assert.ok(Array.isArray(MARKDOWN_TARGETS));
+  assert.ok(MARKDOWN_TARGETS.length > 0);
+  for (const t of MARKDOWN_TARGETS) assert.equal(typeof t, "string");
+});
+
+test("MARKDOWN_TARGETS — covers the three largest docs", () => {
+  /*- These are the files a hand-written target list tends to omit, and
+   *  omitting them leaves the repo's biggest docs unlinted while the
+   *  pass still reports success. */
+  for (const f of [
+    "docs/architecture.md",
+    "docs/configuration.md",
+    "docs/engineering.md",
+  ]) {
+    assert.ok(MARKDOWN_TARGETS.includes(f), `must include ${f}`);
+  }
+});
+
+test("MARKDOWN_TARGETS — every named file exists", () => {
+  /*- A stale entry makes the list look more complete than it is. */
+  for (const t of MARKDOWN_TARGETS) {
+    if (t.includes("*")) continue;
+    assert.ok(fs.existsSync(path.join(ROOT, t)), `missing: ${t}`);
+  }
+});
+
+test("markdownlint.js — imports the shared list, does not redeclare it", () => {
+  const src = readRoot("scripts/markdownlint.js");
+  assert.match(src, /require\("\.\/lint-targets"\)/);
+  assert.doesNotMatch(src, /"README\.md"/);
+});
+
+test("markdown lint — check and fix both delegate to the runner", () => {
+  /*- Both passes must read the same list; that is the whole point. */
+  assert.match(pkg.scripts.lint, /scripts\/markdownlint\.js/);
+  assert.match(pkg.scripts["lint:fix"], /scripts\/markdownlint\.js --fix/);
+  assert.doesNotMatch(pkg.scripts.lint, /markdownlint-cli2 README/);
+  assert.doesNotMatch(
+    pkg.scripts["lint:fix"],
+    /markdownlint-cli2 --fix README/,
+  );
+});
+
+test("check.js — markdown pass uses the shared list too", () => {
+  assert.match(readRoot("scripts/check.js"), /\.\.\.MARKDOWN_TARGETS/);
 });

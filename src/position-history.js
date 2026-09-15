@@ -19,13 +19,11 @@ const sendTx = require("./send-transaction");
 const { PM_ABI } = require("./pm-abi");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const {
-  getPoolCreationBlockCached,
-  resolvePoolAddressForToken,
-} = require("./pool-creation-block");
-const {
   scanCollectAndDrain,
   resolveScanFromBlock,
 } = require("./position-history-scan-helpers");
+const { nftScanFromBlock } = require("./nft-mint-blocks");
+const { supplementMintFromChain } = require("./position-history-mint");
 const { lifetimeFeeAmounts } = require("./compounder");
 
 /*- Cached at module load: parsing PM logs is stateless, so a single Interface
@@ -81,6 +79,63 @@ function _applyCloseEntry(result, close) {
 }
 
 /**
+ * Supply the mint of the one position NFT no rebalance event can name.
+ *
+ * A rebalance records "NFT X replaced by NFT Y at block B", so Y's mint
+ * block is B. The earliest NFT in the inferred chain appears only as an
+ * `oldTokenId` — it replaced nothing — so nothing names its mint, and it
+ * would otherwise be read from chain: a scan of the pool's whole history
+ * for one Transfer log.
+ *
+ * The event scanner already saw that mint. `resolveChainFirstMint`
+ * records the earliest arrival that was a mint, which by construction is
+ * that NFT, and hangs it on the events array this function receives.
+ *
+ * Two id-gated sources, in order of preference:
+ *
+ *   - `chainFirst*` — recorded for this purpose; the id always matches.
+ *   - `firstMint*` — the oldest NFT the wallet ever held here, kept for
+ *     Lifetime Days. Names the same NFT only when every arrival in the
+ *     pool was a mint; a transferred-in NFT makes it a different one.
+ *     Present on caches written before `chainFirst*` existed.
+ *
+ * Both are gated on the id because using the wrong one would date this
+ * NFT from another NFT's mint. No match falls through to the chain read.
+ *
+ * @param {object} result   Result object to supplement.
+ * @param {string} tokenId  Position NFT token ID.
+ * @param {Array & {chainFirstTokenId?: string, chainFirstMintBlock?: number,
+ *   chainFirstMintTimestamp?: number, firstMintTokenId?: string,
+ *   firstMintTimestamp?: number, firstMintBlockNumber?: number}} events
+ */
+function _applyFirstMint(result, tokenId, events) {
+  /*- Preferred: the field that names this NFT directly.  It is recorded
+   *  for exactly this purpose, so the id always matches and no fallback
+   *  is reached. */
+  if (String(events.chainFirstTokenId || "") === String(tokenId)) {
+    _stampMint(
+      result,
+      events.chainFirstMintTimestamp,
+      events.chainFirstMintBlock,
+    );
+    return;
+  }
+  /*- A cache written before that field existed carries only the
+   *  oldest-held NFT's mint, which names this NFT whenever every arrival
+   *  in the pool was a mint.  Same id check, for the same reason. */
+  if (String(events.firstMintTokenId || "") !== String(tokenId)) return;
+  _stampMint(result, events.firstMintTimestamp, events.firstMintBlockNumber);
+}
+
+/** Record a mint date and block without overwriting a known value. */
+function _stampMint(result, timestamp, blockNumber) {
+  if (!result.mintDate && timestamp)
+    result.mintDate = new Date(timestamp * 1000).toISOString();
+  if (!result.mintBlockNumber && blockNumber)
+    result.mintBlockNumber = blockNumber;
+}
+
+/**
  * Fill in missing data from rebalance events (on-chain event scanner).
  * @param {object}   result  Result object to supplement.
  * @param {string}   tokenId NFT token ID.
@@ -94,6 +149,8 @@ function _supplementFromEvents(result, tokenId, events) {
       result.mintDate = new Date(mintEv.timestamp * 1000).toISOString();
     if (!result.mintTxHash) result.mintTxHash = mintEv.txHash || null;
     if (mintEv.blockNumber) result.mintBlockNumber = mintEv.blockNumber;
+  } else {
+    _applyFirstMint(result, tokenId, events);
   }
   const closeEv = events.find((e) => String(e.oldTokenId) === String(tokenId));
   if (closeEv) {
@@ -101,115 +158,6 @@ function _supplementFromEvents(result, tokenId, events) {
       result.closeDate = new Date(closeEv.timestamp * 1000).toISOString();
     if (!result.closeTxHash) result.closeTxHash = closeEv.txHash || null;
     if (closeEv.blockNumber) result.closeBlockNumber = closeEv.blockNumber;
-  }
-}
-
-const _MINT_CACHE_PATH = path.join(
-  process.cwd(),
-  "tmp",
-  "nft-mint-date-cache.json",
-);
-const _mintCache = new Map();
-
-/** Load disk mint cache into memory on first use. */
-function _loadMintCache() {
-  if (_mintCache.size > 0) return;
-  try {
-    const raw = JSON.parse(fs.readFileSync(_MINT_CACHE_PATH, "utf8"));
-    for (const [k, v] of Object.entries(raw)) _mintCache.set(k, v);
-  } catch {
-    /* no file or corrupt — start empty */
-  }
-}
-
-/** Persist in-memory mint cache to disk. */
-function _saveMintCache() {
-  try {
-    fs.mkdirSync(path.dirname(_MINT_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(
-      _MINT_CACHE_PATH,
-      JSON.stringify(Object.fromEntries(_mintCache), null, 2),
-      "utf8",
-    );
-  } catch {
-    /* best-effort */
-  }
-}
-
-/**
- * Look up NFT's original mint timestamp via Transfer(from=0x0) on-chain.
- * Results are cached to disk (`tmp/nft-mint-date-cache.json`)
- * and in memory to avoid repeated full-chain scans.
- * @param {object} result   Result object to supplement.
- * @param {string} tokenId  NFT token ID.
- */
-async function _supplementMintFromChain(result, tokenId) {
-  _loadMintCache();
-  const cached = _mintCache.get(String(tokenId));
-  if (cached) {
-    result.mintDate = result.mintDate || cached.mintDate;
-    result.mintTxHash = result.mintTxHash || cached.txHash;
-    if (cached.blockNumber && !result.mintBlockNumber)
-      result.mintBlockNumber = cached.blockNumber;
-    return;
-  }
-  try {
-    const prov = sendTx.getManagedReadProvider();
-    /* Search recent blocks only — NFTs are minted within
-       the last ~5 years max (~15.8M blocks on PulseChain). */
-    const latest = await prov.getBlockNumber();
-    const fiveYearFloor = Math.max(0, latest - 15_800_000);
-    /*- Tighten the lower bound to the pool's creation block when we can
-        determine it; the pool can't have minted NFTs before it existed. */
-    const poolAddress = await resolvePoolAddressForToken({
-      provider: prov,
-      ethersLib: ethers,
-      positionManagerAddress: config.POSITION_MANAGER,
-      factoryAddress: config.FACTORY,
-      tokenId,
-    });
-    const poolCreationBlock = poolAddress
-      ? await getPoolCreationBlockCached({
-          provider: prov,
-          ethersLib: ethers,
-          factoryAddress: config.FACTORY,
-          poolAddress,
-        })
-      : 0;
-    const from = Math.max(fiveYearFloor, poolCreationBlock);
-    const logs = await prov.getLogs({
-      address: config.POSITION_MANAGER,
-      fromBlock: from,
-      toBlock: "latest",
-      topics: [
-        _IFACE.getEvent("Transfer").topicHash,
-        "0x" + "0".repeat(64),
-        null,
-        "0x" + BigInt(tokenId).toString(16).padStart(64, "0"),
-      ],
-    });
-    if (!logs.length) return;
-    const block = await prov.getBlock(logs[0].blockNumber);
-    if (!block) return;
-    result.mintDate = new Date(block.timestamp * 1000).toISOString();
-    result.mintTxHash = result.mintTxHash || logs[0].transactionHash;
-    result.mintBlockNumber = result.mintBlockNumber || logs[0].blockNumber;
-    _mintCache.set(String(tokenId), {
-      mintDate: result.mintDate,
-      txHash: logs[0].transactionHash,
-      blockNumber: logs[0].blockNumber,
-    });
-    _saveMintCache();
-    log.info(
-      "[history] Mint date from chain for #" +
-        tokenId +
-        " (block " +
-        logs[0].blockNumber +
-        "): " +
-        result.mintDate,
-    );
-  } catch (err) {
-    log.warn("[history] On-chain mint lookup failed:", err.message);
   }
 }
 
@@ -375,14 +323,14 @@ async function _supplementEntryFromChain(result, tokenId, dec0, dec1, prov) {
  * the deposited token amounts that IL is measured against — and it also
  * happens to compute `entryValueUsd`.  This asks for BOTH, separately.
  *
- * It used to ask only `!result.entryValueUsd`, letting one need stand in
- * for the other.  When the bot rebalances a position itself it writes
- * the USD value to `rebalance_log.json`, `_applyMintEntry` reads it
- * back, and the receipt fetch was then skipped as unnecessary — so the
- * amounts were never collected and `_assembleEpoch` stored
- * `hodlAmount0/1: 0`.  Per-epoch IL then came out as the whole position
- * value rather than a loss.  The positions the bot handled itself were
- * the only ones affected, which is what kept it hidden.
+ * Asking only `!result.entryValueUsd` would let one need stand in for
+ * the other, and the two are not equivalent: when the bot rebalances a
+ * position itself it writes the USD value to `rebalance_log.json` and
+ * `_applyMintEntry` reads it back, so `entryValueUsd` is already
+ * present while the amounts are not.  The receipt fetch would be
+ * skipped, `_assembleEpoch` would store `hodlAmount0/1: 0`, and
+ * per-epoch IL would come out as the whole position value rather than
+ * a loss — on bot-handled positions only.
  *
  * @param {object} result  History result being assembled.
  * @returns {boolean}
@@ -421,11 +369,25 @@ async function _supplementAmountsFromChain(result, tokenId) {
     ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
     : 0n;
   if (needExit || needFees) {
-    /*- Bound Collect/DecreaseLiquidity scans to the pool's creation block
-        so we don't replay every chain block back to genesis.  One scan
-        serves both consumers below — see scanCollectAndDrain. */
-    const fromBlock = await resolveScanFromBlock(prov, ethers, tokenId);
-    const scan = await scanCollectAndDrain(tokenId, prov, fromBlock);
+    /*- Floored at this NFT's own mint: it cannot emit before it exists.
+     *  Epoch reconstruction calls this once per closed NFT in the chain,
+     *  so a pool-wide floor is re-walked once per rebalance.
+     *
+     *  Runs to the chain head, with no upper bound.  One would have to
+     *  come from the app's inferred succession, which reads consecutive
+     *  mints as successive rebalances — sound only when every mint in
+     *  the pool IS a rebalance.  A dust mint from a failed or partial
+     *  rebalance looks identical in the Transfer log, so the NFT it
+     *  appears to replace can still be funded and drain later; bounding
+     *  there truncates the scan and loses the drain.
+     *
+     *  One scan serves both consumers below — see scanCollectAndDrain. */
+    const poolFloor = await resolveScanFromBlock(prov, ethers, tokenId);
+    const from = nftScanFromBlock({
+      mintBlock: result.mintBlockNumber,
+      sharedFloor: poolFloor,
+    });
+    const scan = await scanCollectAndDrain(tokenId, prov, from);
     if (scan) {
       const ctx = { tokenId, dec0, dec1, scan };
       if (needExit) _supplementExitFromChain(result, ctx);
@@ -462,20 +424,20 @@ function _supplementExitFromChain(result, ctx) {
 /**
  * Fees this NFT earned across its whole life, valued at its close prices.
  *
- * This used to be `Collect(last) − DecreaseLiquidity(last)`: the fees
- * still unclaimed at the moment the NFT was drained.  Anything auto- or
- * manually compounded before then had already been swept out and folded
- * back into liquidity, so it left again inside the drain's
- * DecreaseLiquidity and was subtracted straight back out.  With
- * auto-compound on, that is most of what a position ever earns — on
- * this project's own HEX pool the per-epoch figures summed to $149
- * against a lifetime $1,084.
+ * Must be measured across every Collect, not as
+ * `Collect(last) − DecreaseLiquidity(last)`.  That last-drain pair sees
+ * only the fees still unclaimed when the NFT was drained; anything
+ * compounded before then was already swept out and folded back into
+ * liquidity, so it leaves again inside the drain's DecreaseLiquidity
+ * and is subtracted straight back out.  With auto-compound on that is
+ * most of what a position earns — a measured case summed to $149 of a
+ * lifetime $1,084.
  *
- * The understated figure reached the Per-Day P&L table twice over: once
- * in the Fees column, and once more in Price P&L, which is
- * `exit − entry − fees` and so credited the missing fees to price
- * movement.  Correcting fees moves that money between the two columns
- * and leaves Net P&L unchanged.
+ * An understated figure would reach the Per-Day P&L table twice: once
+ * in the Fees column, and again in Price P&L, which is
+ * `exit − entry − fees` and would credit the missing fees to price
+ * movement.  Net P&L is unaffected either way, so the error moves money
+ * between two columns without changing the total.
  *
  * A logged value is left alone when the scan cannot see the NFT's
  * history, so a failed query reads as "nothing better to offer" rather
@@ -631,9 +593,9 @@ async function getPositionHistory(tokenId, opts = {}) {
   _supplementFromEvents(result, tokenId, opts.rebalanceEvents);
   if (!result.mintDate) {
     const _t1 = Date.now();
-    await _supplementMintFromChain(result, tokenId);
+    await supplementMintFromChain(result, tokenId);
     log.info(
-      "[history] _supplementMintFromChain #%s: %dms",
+      "[history] supplementMintFromChain #%s: %dms",
       tokenId,
       Date.now() - _t1,
     );

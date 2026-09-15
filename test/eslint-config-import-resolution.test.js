@@ -4,10 +4,10 @@
  * verifies that `n/no-missing-import` is wired for dashboard ES modules
  * and `n/no-missing-require` is wired for Node CommonJS source files.
  *
- * Closes the PR #116 gap where a renamed dashboard module's stale
- * `import` passed lint + tests + CI green and only blew up at esbuild
- * time. A future config edit that disables either rule will fail this
- * test instead of slipping through.
+ * Without those rules a renamed dashboard module's stale `import`
+ * passes lint, tests and CI green, and fails only at esbuild time. A
+ * config edit that disables either one fails this test rather than
+ * reopening that gap silently.
  */
 
 "use strict";

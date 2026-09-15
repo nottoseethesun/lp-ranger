@@ -52,9 +52,9 @@ const STUB_LIB = {
   },
 };
 
-function initSendTx() {
+function initSendTx(urls) {
   sendTx.init(
-    { primary: "http://primary.test", fallback: "http://fallback.test" },
+    { urls: urls || ["http://primary.test", "http://fallback.test"] },
     STUB_LIB,
   );
 }

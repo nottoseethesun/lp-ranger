@@ -91,10 +91,10 @@ describe("_buildDailyPnl", () => {
   });
 
   it("omits days with no activity entirely", () => {
-    /*- The table used to pad a blank row for every calendar day back to
-     *  the pool's first mint.  On a position with 55 active days across
-     *  172 calendar days that was fifteen pages of dashes hiding one
-     *  page of figures, and it read as missing data every time. */
+    /*- Padding a blank row for every calendar day back to the pool's
+     *  first mint would bury the figures: 55 active days across 172
+     *  calendar is typical, so roughly fifteen pages of dashes around
+     *  one page of data, and a row of dashes reads as missing data. */
     const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000)
       .toISOString()
       .slice(0, 10);

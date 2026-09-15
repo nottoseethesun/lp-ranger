@@ -57,9 +57,9 @@ function _renderEmptyRow(tbody, colSpan, msg) {
  * Profit for one day: fees minus gas, plus or minus impermanent
  * loss/gain — NOT plus price change.
  *
- * It used to add `priceChangePnl`, which made this column identical to
- * Net P&L on every row.  Profit answers a different question: did the
- * fees outrun what the pool cost you against simply holding the coins?
+ * Adding `priceChangePnl` would make this column identical to Net P&L
+ * on every row.  Profit answers a different question: did the fees
+ * outrun what the pool cost you against simply holding the coins?
  *
  * @param {object} d     Day record.
  * @param {number} fees  Day's fee P&L.

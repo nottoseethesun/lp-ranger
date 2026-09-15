@@ -117,6 +117,17 @@ const _COLORS = {
 };
 const _RESET = "\x1b[0m";
 
+/*- Named colours, as close to a CSS custom property as a terminal gets:
+ *  ANSI takes decimal RGB components, and there is no cascade to read a
+ *  variable from, so the name lives on a constant here and the hex it
+ *  came from lives in the comment beside it.  One literal per colour,
+ *  same rule as a shipped default — a second copy of "24;94;63" is a
+ *  second colour to keep in step.
+ *
+ *  Used to build escapes below as `\x1b[38;2;<fg>;48;2;<bg>m`. */
+const _DEEP_SOIL_BROWN = "24;22;18"; // #181612
+const _EARTH_GREEN = "24;94;63"; // #185E3F
+
 /*- Substring highlights: bold/colored text on colored backgrounds.
  *  `toEnd: true` extends the highlight to end-of-line. */
 const _HIGHLIGHTS = [
@@ -141,6 +152,22 @@ const _HIGHLIGHTS = [
     style: "\x1b[38;2;48;48;59;48;2;234;234;235m",
     toEnd: true,
   }, // Chrysler Machine Grey #30303b on 90%-lighter #eaeaeb
+  /*- The lifetime auto-rescan, coloured so a run of retries is one
+   *  block an eye can find while scrolling rather than lines to be
+   *  picked out of the surrounding [bot] purple.
+   *
+   *  Matched on the wording, so this is a second reason the phrase
+   *  "Auto-rescanning lifetime" is fixed — the burn-in procedure greps
+   *  for it too.  Reword the log line and the colour stops applying
+   *  with every gate still green, which is what the test guards. */
+  {
+    text: "Auto-rescanning lifetime",
+    /*- Bold as well as coloured: Earth Green on Deep Soil Brown is a
+     *  low-contrast pair by design, so the weight is what makes the
+     *  line legible rather than the hue. */
+    style: `\x1b[1;38;2;${_EARTH_GREEN};48;2;${_DEEP_SOIL_BROWN}m`,
+    toEnd: true,
+  }, // Bold Earth Green (#185E3F) on Deep Soil Brown (#181612)
 ];
 
 /*- Apply tag-prefix coloring + substring highlight, if any.  Non-string

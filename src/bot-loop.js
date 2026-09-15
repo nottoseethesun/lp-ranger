@@ -60,16 +60,16 @@ const {
  * `createBotPollScheduler` was extracted (see
  * test/bot-loop-kick-poll.test.js).
  *
- * **Asserted positively, on purpose.**  This used to decide by
- * elimination: a poll that reported no rebalance, no error and no gas
- * deferral was assumed to be a recovery.  That inference only holds if
- * every "nothing happened" result names a reason, and several do not —
- * the throttle and the pool daily cap both return a bare
+ * **Asserted positively, on purpose.**  Deciding by elimination — no
+ * rebalance, no error, no gas deferral, therefore a recovery — only
+ * holds if every "nothing happened" result names a reason, and several
+ * do not: the throttle and the pool daily cap both return a bare
  * `{rebalanced: false}` while the position sits out of range and
- * blocked.  Each one silently qualified as a recovery, so the dashboard
- * announced that a stuck position had come back and `_handleRecovery`
- * discarded the `rebalanceError` explaining why it was stuck.  Adding a
- * clause per gate would have left the next gate to repeat it.
+ * blocked.  Each would qualify as a recovery, so the dashboard would
+ * announce that a stuck position had come back and `_handleRecovery`
+ * would discard the `rebalanceError` explaining why it was stuck.  A
+ * clause per gate would also need extending every time a gate is
+ * added.
  *
  * `inRange` is set by `_checkRangeAndThreshold` (src/bot-cycle.js),
  * which runs before any gate, so no blocked result can carry it.  A
@@ -102,6 +102,83 @@ function isRecoveryResult(result, botState) {
 }
 
 /**
+ * Decide whether the 30-minute timer should re-run the lifetime scan,
+ * and say why.
+ *
+ * Both answers come from here rather than the decision being taken in
+ * the timer and a description of it assembled separately.  When they
+ * were separate the description covered only two of the conditions, so
+ * a rescan driven by either of the others logged the other two as false
+ * and read as though nothing had asked for it — which is exactly the
+ * case an operator needs the line for.
+ *
+ * Extracted and exported because the timer it serves has no test
+ * fixture (see docs/roadmap/nice-to-haves/
+ * project_bot_loop_test_scaffolding.md), and this decision schedules
+ * the single most expensive thing the bot does unattended.  Same
+ * treatment as `_isStaleFire` in public/dashboard-idle.js.
+ *
+ * A zero deposit total is a reason on its own — the scan is how that
+ * total gets filled in — but only when nothing else already applies, so
+ * it never masks a more specific cause in the log.
+ *
+ * @param {object} botState  Live per-position bot state.
+ * @returns {{needed: boolean, reason: string}}  `reason` names every
+ *   condition that is true, space-separated.
+ */
+function _needsLifetimeRescan(botState) {
+  const reasons = [];
+  if (botState._needsFullRescan === true) reasons.push("needsFullRescan=true");
+  if (botState.lifetimeScanComplete === false)
+    reasons.push("lifetimeScanComplete=false");
+  /*- Epoch reconstruction built fewer epochs than the chain has closed
+   *  positions.  Set by `reconstructEpochs`, which flags rather than
+   *  schedules.  The conditions above both describe the LIFETIME scan,
+   *  so without this one a short epoch history is retried only when
+   *  that scan happens to fail too, and figures built from it
+   *  understate until the next restart. */
+  if (botState._epochHistoryIncomplete === true)
+    reasons.push("epochHistoryIncomplete=true");
+  if (!reasons.length && (botState.totalLifetimeDepositUsd || 0) <= 0)
+    reasons.push("deposit-total=$0");
+  return { needed: reasons.length > 0, reason: reasons.join(" ") };
+}
+
+/**
+ * Count one auto-rescan for this position and return the new total.
+ *
+ * Counts rescans **launched**, not timer ticks: the caller has already
+ * declined the ones it skipped, so a run of these numbers is a run of
+ * real work.
+ *
+ * The number is what tells an operator whether a retry is converging.
+ * A position that logs retry #2 and then goes quiet recovered; one that
+ * reaches retry #30 with the same reason each time is looping, and
+ * reading that off a log without a count means finding and tallying
+ * every line by hand.
+ *
+ * Never reset, including after a scan succeeds, because a retry that
+ * succeeds and is immediately re-requested is exactly the loop worth
+ * seeing. Per position and in memory, so it starts again from one on
+ * restart — stated in the log line itself so the number is not mistaken
+ * for an all-time total.
+ *
+ * Separate from `_needsLifetimeRescan` so that stays a pure predicate
+ * with no side effect to reason about, and so this can be tested
+ * directly — the timer they both serve has no test fixture.
+ *
+ * @param {object} botState  Live per-position bot state.
+ * @returns {number}  1 on the first rescan of this process.
+ */
+function _countRescan(botState) {
+  const prior = Number.isFinite(botState._lifetimeRescanCount)
+    ? botState._lifetimeRescanCount
+    : 0;
+  botState._lifetimeRescanCount = prior + 1;
+  return botState._lifetimeRescanCount;
+}
+
+/**
  * Start the bot polling loop.  Creates provider, signer, detects position,
  * and begins periodic polling.
  *
@@ -131,9 +208,10 @@ async function startBotLoop(opts) {
   /*- Shared {provider, signer, address} wins when the caller passes one
    *  in.  Production callers (server-positions, bot.js) fetch the
    *  singleton from positionMgr.getSharedSigner so every managed
-   *  position signs through the SAME NonceManager — drifted per-position
-   *  nonce counters were the root cause of the 2026-04-24 "nonce too
-   *  low" storm.  Tests that don't need shared-signer semantics fall
+   *  position signs through the SAME NonceManager.  One NonceManager per
+   *  position means each keeps its own counter for one wallet, and they
+   *  drift apart into "nonce too low" rejections as soon as two
+   *  positions send.  Tests that don't need shared-signer semantics fall
    *  through to the inline branch below. */
   let provider, signer, address;
   if (opts.provider && opts.signer) {
@@ -149,10 +227,7 @@ async function startBotLoop(opts) {
         engages failoverToNextRPC() if it's already down at boot, so
         the read-side managed provider and the TX side both follow
         the same active-RPC selection. */
-    sendTx.init(
-      { primary: config.RPC_URL, fallback: config.RPC_URL_FALLBACK },
-      ethersLib,
-    );
+    sendTx.init({ urls: config.RPC_URLS }, ethersLib);
     await sendTx.ensureReachable();
     provider = sendTx.getManagedReadProvider();
     /*- IMPORTANT: wrap the wallet in NonceManager so concurrent
@@ -603,10 +678,10 @@ async function startBotLoop(opts) {
    *       (bot-cycle.js:160) ran into a silent failure in
    *       `_scanLifetimePoolData` and the flag is still set.  Without
    *       this gate condition the loop would early-return because the
-   *       PRIOR scan's `totalLifetimeDepositUsd` is still positive
-   *       (PR #134 changed the rebalance path to preserve in-memory
-   *       totals instead of zeroing them — the previous auto-rescan
-   *       gate that only checked `total > 0` no longer matches).
+   *       PRIOR scan's `totalLifetimeDepositUsd` is still positive: the
+   *       rebalance path preserves in-memory totals rather than zeroing
+   *       them, so `total > 0` alone cannot distinguish a completed
+   *       scan from a failed one.
    *
    *    3. `lifetimeScanComplete === false` — covers the same window as
    *       (2) but from the dashboard-readiness flag's perspective.
@@ -621,24 +696,24 @@ async function startBotLoop(opts) {
   const lifetimeRescanTimer = setInterval(() => {
     if (_stopped) return;
     if (botState._scanRunning) return;
-    const total = botState.totalLifetimeDepositUsd || 0;
-    const needsRescan =
-      botState._needsFullRescan === true ||
-      botState.lifetimeScanComplete === false;
-    if (total > 0 && !needsRescan) return;
+    const { needed, reason } = _needsLifetimeRescan(botState);
+    if (!needed) return;
     const tokenIdStr = String(position.tokenId || "");
-    const reason = needsRescan
-      ? "needsFullRescan=" +
-        !!botState._needsFullRescan +
-        " lifetimeScanComplete=" +
-        !!botState.lifetimeScanComplete
-      : "deposit-total=$0";
+    const attempt = _countRescan(botState);
     log.info(
-      "[bot] %s/%s NFT #%s %s: Auto-rescanning lifetime (%s, lastError=%s)",
+      "[bot] %s/%s NFT #%s %s: pool= %s — Auto-rescanning lifetime, retry #%d since startup (%s, lastError=%s)",
       position.token0Symbol || "Token0",
       position.token1Symbol || "Token1",
       tokenIdStr,
       emojiId(tokenIdStr),
+      /*- Full address, never abbreviated, and followed by a space
+       *  rather than punctuation so a double-click selects the address
+       *  alone — same reason `hash= %s` is written that way throughout.
+       *  Captured by the poll cycle from pool state it had already
+       *  fetched, so it is unknown only before this position's first
+       *  successful poll. */
+      botState.poolAddress || "unresolved",
+      attempt,
       reason,
       botState._lifetimeScanError || "none",
     );
@@ -674,4 +749,6 @@ module.exports = {
   _initPnlTracker,
   _detectPosition,
   _tryInitPnlTracker,
+  _needsLifetimeRescan, // exported for tests
+  _countRescan, // exported for tests
 };

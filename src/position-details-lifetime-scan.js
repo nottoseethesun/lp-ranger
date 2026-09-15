@@ -20,6 +20,11 @@ const {
 } = require("./epoch-cache");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const { scanNftEvents } = require("./compounder");
+const {
+  mintBlocksByTokenId,
+  nftScanFrom,
+  chainScanFloor,
+} = require("./nft-mint-blocks");
 const { computeLifetimeHodl } = require("./lifetime-hodl");
 
 /** Resolve the NFT-scan lower bound; 0 when the pool address is unknown. */
@@ -27,7 +32,6 @@ async function _resolveScanFromBlock(prov, ethers, poolAddress) {
   if (!poolAddress) return 0;
   return getPoolCreationBlockCached({
     provider: prov,
-    ethersLib: ethers,
     factoryAddress: config.FACTORY,
     poolAddress,
   });
@@ -73,12 +77,22 @@ async function scanLifetimeHodl(
     if (ev.newTokenId) ids.add(String(ev.newTokenId));
   }
   const prov = sendTx.getManagedReadProvider();
-  /*- Bound NFT-event scans to the pool's creation block on first run.
-      Same pool for every NFT in the chain, so resolve once. */
-  const fromBlock = await _resolveScanFromBlock(prov, ethers, poolAddress);
+  /*- The pool's creation block is the same for every NFT in the chain,
+      so it is resolved once — but it is only the FLOOR.  Each NFT is
+      then scanned from its own mint block, because it cannot have
+      emitted events before it existed, and on a long chain those
+      pre-mint blocks are the dominant cost of the whole scan. */
+  const creationBlock = await _resolveScanFromBlock(prov, ethers, poolAddress);
+  const fromBlock = chainScanFloor(events, creationBlock);
+  const mintBlocks = mintBlocksByTokenId(events);
   const allNftEvents = new Map();
   for (const tid of ids) {
-    allNftEvents.set(tid, await scanNftEvents(tid, { fromBlock }));
+    allNftEvents.set(
+      tid,
+      await scanNftEvents(tid, {
+        fromBlock: nftScanFrom(mintBlocks, tid, fromBlock),
+      }),
+    );
   }
   const cachedFresh = poolCacheKey
     ? getCachedFreshDeposits(poolCacheKey)

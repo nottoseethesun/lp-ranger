@@ -58,6 +58,35 @@ npm run restore-settings
 
 Cross-links: [[feedback_never_node_test_directly]] (always `npm run check`, never raw node --test) — wipe/restore is the corollary so the check doesn't blow away state.
 
+## never while the operator's server is running (2026-09-12)
+
+Before `npm run wipe-settings` or `npm run check`, confirm no server is
+running: `cat tmp/lp-ranger.pid` and `ss -ltnp | grep 5555`. If one is,
+**stop and ask the user to shut it down** — they launch the app, so they
+stop it too (see [[feedback_user_launches_app]]).
+
+**Why:** `wipe-settings` MOVES the live wallet, bot config, API keys,
+epoch cache and every event cache into `tmp/.settings-backup/`. For the
+~70 s a check takes, a running server has none of them on disk. Two ways
+that loses data, and neither announces itself:
+
+- The bot records something in that window — a rebalance, a compound, a
+  HODL baseline resolving — and writes a fresh `bot-config.json` into the
+  emptied directory. `restore-settings` deletes test-created files before
+  restoring, so that record is thrown away.
+- The server's in-memory `_diskConfig` is written later, on top of the
+  restored file, reverting it to whatever the process held.
+
+The same window bit us from the other side on 2026-09-12: the user
+started the server nine seconds into a wipe, and it came up with no
+wallet and no managed positions, looking exactly like data loss. Nothing
+was lost, but only because no write happened to land — luck, not design.
+
+**How to apply:** while the user is testing, stay on commands that do not
+touch operator state — `npm run lint`, `npm run build`, `node --check`,
+reading code. Batch the gate run for when the server is down, and say
+plainly that you need it stopped rather than stopping it yourself.
+
 ## no check in agents
 
 NEVER run `npm run check` (or any command that touches production files via check.sh) inside an Agent subprocess. Always run it directly in the main session.

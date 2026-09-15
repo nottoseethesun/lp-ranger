@@ -3,12 +3,13 @@
  * @description Guards the whole-life fee figure behind the Per-Day P&L
  *   table's Fees column.
  *
- *   The column used to read `Collect(last) − DecreaseLiquidity(last)` —
- *   only the fees still unclaimed when the NFT was drained.  Anything
- *   auto-compound had already swept was folded back into liquidity, so
- *   it left again inside the drain's DecreaseLiquidity and was
- *   subtracted straight back out.  On this project's own HEX pool that
- *   showed $149 of a lifetime $1,084.
+ *   It must be measured across every Collect, not as
+ *   `Collect(last) − DecreaseLiquidity(last)`.  That pair sees only the
+ *   fees still unclaimed when the NFT was drained; anything
+ *   auto-compound already swept was folded back into liquidity, so it
+ *   leaves again inside the drain's DecreaseLiquidity and is subtracted
+ *   straight back out.  A measured case showed $149 of a lifetime
+ *   $1,084.
  *
  *   Logs are built with a real `ethers.Interface` and read back through
  *   the real parser, so these cases exercise the encode/parse path
@@ -61,13 +62,20 @@ function dlLog(liquidity, amount0, amount1, blockNumber) {
  * makes that event's query fail, which is what separates "no fees" from
  * "we could not read the history".
  */
-function buildProvider({ collect = [], dl = [] }) {
+function buildProvider({ collect = [], dl = [], head = 1000 }) {
   return {
     async getLogs(opts) {
       const topic = opts.topics[0];
       const set = topic === _COLLECT_TOPIC ? collect : dl;
       if (set === "throw") throw new Error("rpc unavailable");
       return set;
+    },
+    /*- The scan is chunked, so a "latest" upper bound is resolved to a
+     *  number first.  A small head keeps these fixtures to a single
+     *  window, which is what lets the call-count assertions below stay
+     *  meaningful rather than becoming chunk arithmetic. */
+    async getBlockNumber() {
+      return head;
     },
   };
 }
@@ -86,10 +94,10 @@ describe("lifetimeFeeAmounts — the formula", () => {
       fees0: 35n,
       fees1: 0n,
     });
-    /*- What the old reading produced: last Collect − last DL, blind to
-     *  the 30 that had already been compounded. */
-    const oldReading = collect[1].amount0 - dl[0].amount0;
-    assert.equal(oldReading, 5n);
+    /*- For contrast: `last Collect − last DL` is blind to the 30 that
+     *  had already been compounded, and reports 5 instead of 35. */
+    const lastPairOnly = collect[1].amount0 - dl[0].amount0;
+    assert.equal(lastPairOnly, 5n);
   });
 
   it("ignores a zero-liquidity DecreaseLiquidity poke", () => {
@@ -140,6 +148,9 @@ describe("scanCollectAndDrain — reading it off the chain", () => {
           ? [collectLog(10n, 0n, 900)]
           : [];
       },
+      async getBlockNumber() {
+        return 1000;
+      },
     };
     await scanCollectAndDrain("164418", prov, 1);
     assert.equal(topics.length, 2, "exactly two queries");
@@ -155,10 +166,16 @@ describe("scanCollectAndDrain — reading it off the chain", () => {
           ? [collectLog(1n, 0n, 900)]
           : [];
       },
+      async getBlockNumber() {
+        return 13000;
+      },
     };
     await scanCollectAndDrain("164418", prov, 12345);
-    /*- Both queries, never block 0 — see feedback on genesis scans. */
-    assert.deepEqual(seen, [12345, 12345]);
+    /*- Both queries, never block 0 — see feedback on genesis scans.
+     *  The floor is what matters: no window may begin below the bound
+     *  the caller gave, however many windows the range is split into. */
+    assert.ok(seen.length > 0, "expected queries");
+    assert.equal(Math.min(...seen), 12345);
   });
 
   it("returns the Collect events so the exit value can reuse them", async () => {

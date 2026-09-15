@@ -9,6 +9,7 @@
 const { log } = require("./log");
 const rangeMath = require("./range-math");
 const config = require("./config");
+const { buildProvider } = require("./bot-provider");
 const { PM_ABI } = require("./pm-abi");
 const { _retrySend } = require("./tx-retry");
 const sendTx = require("./send-transaction");
@@ -514,9 +515,9 @@ function _setRetryDelayForTests(ms) {
  * `PoolStateUnavailableError`, wrapping the most recent underlying
  * error.
  *
- * The retry orchestrator constructs fresh `JsonRpcProvider` instances
- * per RPC URL (read from `config.RPC_URL` + `config.RPC_URL_FALLBACK`)
- * rather than going through `sendTx`'s managed-provider proxy.  This
+ * The retry orchestrator builds a fresh provider per RPC URL (the whole
+ * ordered list, `config.RPC_URLS`) rather than going through `sendTx`'s
+ * managed-provider proxy.  This
  * lets the orchestrator target a specific RPC for each retry without
  * mutating `sendTx`'s persistent failover state (which would affect
  * every other concurrent read for a full hour).  The `provider`
@@ -534,11 +535,14 @@ function _setRetryDelayForTests(ms) {
  * @throws {PoolStateUnavailableError}  All RPCs exhausted.
  */
 async function getPoolState(passedProvider, ethersLib, opts) {
-  /*- `config.RPC_URL_FALLBACK` may be empty in single-RPC setups;
-   *  `.filter(Boolean)` drops the empty entry so we don't try to build
-   *  a provider for an empty URL.  When `chains.json` / .env later
-   *  grows array-style fallbacks, only this line needs to change. */
-  const urls = [config.RPC_URL, config.RPC_URL_FALLBACK].filter(Boolean);
+  /*- The full ordered endpoint list, not a primary/fallback pair:
+   *  `config.RPC_URLS` is already deduplicated and blank-free, so
+   *  adding an endpoint needs no change here.
+   *
+   *  Deliberately still bypasses `sendTx`: retrying here must not
+   *  mutate the global sticky failover window (see the note above
+   *  `_POOL_STATE_ATTEMPTS_PER_URL`). */
+  const urls = config.RPC_URLS;
   let attemptCount = 0;
   let lastErr = null;
   for (const url of urls) {
@@ -554,7 +558,11 @@ async function getPoolState(passedProvider, ethersLib, opts) {
          *  against the single mock provider instead of N fresh ones. */
         let provider;
         try {
-          provider = new ethersLib.JsonRpcProvider(url);
+          /*- Built through buildProvider, not `new JsonRpcProvider`, so
+           *  these requests queue behind the global request manager
+           *  like every other.  A raw provider here would be an unpaced
+           *  path, and one is enough to breach the published rate. */
+          provider = buildProvider(url, ethersLib);
         } catch {
           provider = passedProvider;
         }

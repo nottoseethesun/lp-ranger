@@ -43,9 +43,29 @@ const CONFIG_FILE = "bot-config.json";
 /** Keys that belong in the global section. */
 const GLOBAL_KEYS = [
   "triggerType",
-  "positionManager",
-  "factory",
-  "rpcUrl",
+  /*- `positionManager` and `factory` are deliberately NOT here.  The
+   *  bot resolves each from .env / chains.json at startup and never
+   *  reads them back from this file, so accepting one here would write
+   *  an address to disk that nothing acts on.
+   *
+   *  They stay un-settable rather than being wired up, because both
+   *  scope the on-disk caches (event cache, LP position cache, epoch
+   *  cache) — changing one mid-life orphans every cache keyed to the
+   *  old address.  That belongs to a fresh install.  See
+   *  docs/configuration.md § "Contract Addresses".
+   *
+   *  A value left in an existing bot-config.json from before is inert:
+   *  nothing reads it, and POST /api/config will no longer accept a
+   *  new one. */
+  "rpcUrls",
+  /*-
+   *  Whether the stored Moralis key may be used.  Separate from whether
+   *  a key exists: an operator whose quota has run out wants the calls
+   *  to stop without throwing the key away and pasting it back later.
+   *  Default true, so a key that has never been toggled behaves exactly
+   *  as it did before this setting existed.
+   */
+  "moralisEnabled",
   "approvalMultiple",
   /*-
    *  Maximum gas cost as a percentage of swap value before the gas gate
@@ -340,10 +360,10 @@ function loadConfig(dir) {
  * etc.) — by the time a position is started, `_persistPositionConfig`
  * has at minimum written `nftGasWeiByTokenId` or similar.
  *
- * Phantoms are produced by the bug fixed in this PR: a stale composite
- * key written by `handleManage` after a key migration during force-
- * rebalance.  This purge heals any existing `bot-config.json` that
- * carries a phantom from before the fix shipped.
+ * A phantom is a stale composite key: `handleManage` writes the key it
+ * was called with, and a force-rebalance that migrates the key in
+ * between leaves the old one behind carrying nothing but its status.
+ * An on-disk file may already hold one, so the purge runs on load.
  *
  * Conservative — never touches an entry with any field besides status
  * (no false positives possible for a legitimately-running position).
@@ -576,6 +596,32 @@ function migratePositionKey(cfg, oldKey, newKey) {
 }
 
 /**
+ * Read a single value from the `global` section, quietly.
+ *
+ * Deliberately NOT `loadConfig`: this runs during module initialisation
+ * of `src/config.js`, before logging is meaningful and on every import
+ * including every test, so it must not log, must not warn, and must not
+ * throw.  Any problem reading the file means "not set".
+ * @param {string} key    Global setting name.
+ * @param {string} [dir]  Directory override (default: app-config dir).
+ * @returns {*}  The value, or undefined when unset or unreadable.
+ */
+function readGlobalSetting(key, dir) {
+  try {
+    const text = fs.readFileSync(_configPath(dir), "utf8");
+    if (!text || text.trim().length === 0) return undefined;
+    const raw = JSON.parse(text);
+    const v = raw && raw.global ? raw.global[key] : undefined;
+    return v === null ? undefined : v;
+  } catch {
+    /*- Absent, empty or malformed config is a normal first-run state,
+     *  not an error worth surfacing.  Callers treat undefined as "the
+     *  operator has not set this", which is exactly right. */
+    return undefined;
+  }
+}
+
+/**
  * Read a config value for a position, falling back to global.
  * Single lookup path — no copies, no sync.
  * @param {object} cfg           Config object (source of truth).
@@ -598,6 +644,7 @@ module.exports = {
   getPositionConfig,
   getOrCreatePositionConfig,
   readConfigValue,
+  readGlobalSetting,
   addManagedPosition,
   removeManagedPosition,
   migratePositionKey,

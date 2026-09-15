@@ -136,9 +136,9 @@ describe("_scanLifetimePoolData — where the event scan starts", () => {
     );
 
   it("starts from pool creation when the compound total is missing", async () => {
-    /*- The regression.  A cached HODL alone used to authorise resuming
-     *  at the cursor, which handed `_classifyAllCompounds` a slice of the
-     *  chain and let it write that slice's sum as the lifetime total. */
+    /*- A cached HODL alone must not authorise resuming at the cursor:
+     *  that hands `_classifyAllCompounds` a slice of the chain, and it
+     *  writes that slice's sum as the lifetime total. */
     await _run({ totalLifetimeDepositUsd: 1704.15 });
     assert.equal(state.classifyCalled, true, "compounds must be classified");
     assert.equal(

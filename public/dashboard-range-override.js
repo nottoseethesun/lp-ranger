@@ -15,8 +15,9 @@
  *
  * The toggle is non-destructive.  Flipping it ON leaves every saved
  * Range value on disk — the fields grey out rather than emptying — so
- * flipping it back OFF restores the user's settings intact.  It replaced
- * the old one-way "No Override" button, which cleared the keys outright.
+ * flipping it back OFF restores the user's settings intact.  Clearing
+ * the keys instead would make the toggle a one-way action: the user
+ * could turn it on but not undo it.
  *
  * The server resolves the mode (`src/range-override.js`) and publishes
  * the answer in `GET /api/status`, so this module never re-derives the

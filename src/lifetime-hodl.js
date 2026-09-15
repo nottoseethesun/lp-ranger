@@ -17,6 +17,7 @@
 
 const { log } = require("./log");
 const { _filterRebalances } = require("./compounder");
+const { scanChunked } = require("./get-logs-chunked");
 
 /**
  * Build an ordered list of tokenIds from rebalance events (oldest → newest).
@@ -99,14 +100,45 @@ async function _scanTransfers(
   if (fromBlock > toBlock) return [];
   const padded = ethersLib.zeroPadValue(wallet, 32);
   const topic0 = ethersLib.id("Transfer(address,address,uint256)");
-  const base = { address: tokenAddr, fromBlock, toBlock };
+  /*- Chunked: the window here is the whole gap between two consecutive
+   *  rebalances, which for a long-lived position runs to millions of
+   *  blocks — far past every endpoint's getLogs range cap.
+   *
+   *  Errors are NOT swallowed.  `.catch(() => [])` here would turn a
+   *  range-cap rejection into "no transfers", which the caller reads as
+   *  "no fresh deposits", understating the lifetime HODL baseline with
+   *  nothing reported.  A failure here must be a failure. */
   const [inLogs, outLogs] = await Promise.all([
-    provider
-      .getLogs({ ...base, topics: [topic0, null, padded] })
-      .catch(() => []),
-    provider
-      .getLogs({ ...base, topics: [topic0, padded, null] })
-      .catch(() => []),
+    scanChunked({
+      provider,
+      fromBlock,
+      toBlock,
+      /*- Names the token.  Both directions for BOTH pool tokens run
+       *  concurrently, and more than one position scans at a time, so an
+       *  unlabelled line leaves several interleaved progress sequences
+       *  that cannot be told apart. */
+      label: `lifetime-hodl transfers-in for Token i.d. ${tokenAddr}`,
+      query: (from, to) =>
+        provider.getLogs({
+          address: tokenAddr,
+          fromBlock: from,
+          toBlock: to,
+          topics: [topic0, null, padded],
+        }),
+    }),
+    scanChunked({
+      provider,
+      fromBlock,
+      toBlock,
+      label: `lifetime-hodl transfers-out for Token i.d. ${tokenAddr}`,
+      query: (from, to) =>
+        provider.getLogs({
+          address: tokenAddr,
+          fromBlock: from,
+          toBlock: to,
+          topics: [topic0, padded, null],
+        }),
+    }),
   ]);
   const out = [];
   for (const log of inLogs)
@@ -187,14 +219,21 @@ async function _scanWrapDeposits(
   if (fromBlock > toBlock) return new Map();
   const padded = ethersLib.zeroPadValue(wallet, 32);
   const topic0 = ethersLib.id("Deposit(address,uint256)");
-  const logs = await provider
-    .getLogs({
-      address: wrappedAddr,
-      fromBlock,
-      toBlock,
-      topics: [topic0, padded],
-    })
-    .catch(() => []);
+  /*- Same range and the same reasoning as `_scanTransfers`: chunked,
+   *  and a failure propagates rather than reading as "no wraps". */
+  const logs = await scanChunked({
+    provider,
+    fromBlock,
+    toBlock,
+    label: `lifetime-hodl wrap-deposits for Token i.d. ${wrappedAddr}`,
+    query: (from, to) =>
+      provider.getLogs({
+        address: wrappedAddr,
+        fromBlock: from,
+        toBlock: to,
+        topics: [topic0, padded],
+      }),
+  });
   const m = new Map();
   for (const log of logs) {
     const wad = BigInt(log.data);

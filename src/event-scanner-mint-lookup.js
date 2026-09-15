@@ -1,4 +1,5 @@
 "use strict";
+const { scanChunked } = require("./get-logs-chunked");
 
 /**
  * @file src/event-scanner-mint-lookup.js
@@ -67,6 +68,7 @@ async function resolveFirstMintWithForeign(
 ) {
   const cachedFirstTs = cachedEvents.firstMintTimestamp || null;
   const cachedFirstBlock = cachedEvents.firstMintBlockNumber || null;
+  const cachedFirstToken = cachedEvents.firstMintTokenId || null;
 
   const incoming = transfers
     .filter((t) => t.direction === "in")
@@ -76,6 +78,7 @@ async function resolveFirstMintWithForeign(
     return {
       firstMintTimestamp: cachedFirstTs,
       firstMintBlockNumber: cachedFirstBlock,
+      firstMintTokenId: cachedFirstToken,
     };
   }
 
@@ -115,15 +118,27 @@ async function resolveFirstMintWithForeign(
     return {
       firstMintTimestamp: candidateTs,
       firstMintBlockNumber: candidateBlock,
+      /*- Which NFT this mint belongs to.  The oldest ARRIVAL is not
+       *  always the chain's oldest `oldTokenId`: `pairTransfers` builds
+       *  the chain from direct mints (`from === ZERO`), so a pool whose
+       *  earliest arrival came in by transfer yields a first-mint that
+       *  names a different token.  Consumers must compare ids before
+       *  using the block as that token's mint. */
+      firstMintTokenId: String(oldest.tokenId),
     };
   }
   if (cachedFirstTs) {
     return {
       firstMintTimestamp: cachedFirstTs,
       firstMintBlockNumber: cachedFirstBlock,
+      firstMintTokenId: cachedFirstToken,
     };
   }
-  return { firstMintTimestamp: null, firstMintBlockNumber: null };
+  return {
+    firstMintTimestamp: null,
+    firstMintBlockNumber: null,
+    firstMintTokenId: null,
+  };
 }
 
 /**
@@ -164,7 +179,6 @@ async function findOriginalMintOnChain(
     try {
       const creation = await getPoolCreationBlockCached({
         provider,
-        ethersLib,
         factoryAddress: poolCtx.factoryAddress,
         poolAddress: poolCtx.poolAddress,
       });
@@ -176,7 +190,24 @@ async function findOriginalMintOnChain(
   let events;
   try {
     const filter = contract.filters.Transfer(ZERO, null, tokenId);
-    events = await contract.queryFilter(filter, fromBlock, "latest");
+    /*- Chunked, and stops at the first window that yields anything.
+     *  `fromBlock` falls back to 0 when the pool context is unavailable,
+     *  so without an early exit this would walk the whole chain past
+     *  the mint it already found.  An NFT is minted once, so the first
+     *  hit is the answer.
+     *
+     *  The module JSDoc argued a lower bound was unnecessary because
+     *  tokenId is an indexed topic and the query is therefore cheap.
+     *  That reasoning does not survive a hard range cap: endpoints
+     *  reject on span, however selective the topics. */
+    events = await scanChunked({
+      provider,
+      fromBlock,
+      toBlock: "latest",
+      label: `mint-lookup #${tokenId}`,
+      query: (f, t) => contract.queryFilter(filter, f, t),
+      onChunk: (found) => found.length > 0,
+    });
   } catch (err) {
     log.warn(
       "[event-scanner] mint-lookup queryFilter failed for tokenId=%s: %s",
@@ -192,7 +223,60 @@ async function findOriginalMintOnChain(
   return { timestamp: block.timestamp, blockNumber: mintEvt.blockNumber };
 }
 
+/**
+ * Resolve the earliest position NFT that arrived at this wallet AS A MINT,
+ * in this pool — the first link of the chain the app infers.
+ *
+ * Distinct from `resolveFirstMintWithForeign`, which answers "the oldest
+ * position NFT this wallet ever held here", for Lifetime Days. The two
+ * name the same NFT whenever every arrival was a mint, and different
+ * NFTs as soon as one arrived by transfer: `pairTransfers` builds the
+ * chain from mints only, so a transferred-in NFT is never a link in it.
+ *
+ * Per-day P&L needs THIS one. Its mint block opens the first row of the
+ * table, and no rebalance event names it — every other NFT in the chain
+ * is named as some event's replacement, but the first is only ever the
+ * NFT being replaced.
+ *
+ * Pure: a direct mint needs no follow-back, because the arrival IS the
+ * mint. Reconciles against the cache the same way its sibling does, so
+ * an incremental scan that sees only later mints cannot drag the answer
+ * toward the chain tip.
+ *
+ * @param {object} cachedEvents  Prior cache; may carry the same fields.
+ * @param {object[]} transfers   Pool-filtered transfers for this window.
+ * @returns {{chainFirstTokenId: string|null, chainFirstMintBlock: number|null,
+ *   chainFirstMintTimestamp: number|null}}
+ */
+function resolveChainFirstMint(cachedEvents, transfers) {
+  const cachedId = cachedEvents.chainFirstTokenId || null;
+  const cachedBlock = cachedEvents.chainFirstMintBlock || null;
+  const cachedTs = cachedEvents.chainFirstMintTimestamp || null;
+  const cached = {
+    chainFirstTokenId: cachedId,
+    chainFirstMintBlock: cachedBlock,
+    chainFirstMintTimestamp: cachedTs,
+  };
+
+  /*- `timestamp > 0` because an arrival whose block time could not be
+   *  read carries 0, which sorts first and would win. Upstream already
+   *  drops those, but this function is exported and tested on its own
+   *  inputs, so it does not lean on that. */
+  const mints = (transfers || [])
+    .filter((t) => t.direction === "in" && t.from === ZERO && t.timestamp > 0)
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const oldest = mints[0];
+  if (!oldest) return cached;
+  if (cachedTs && oldest.timestamp >= cachedTs) return cached;
+  return {
+    chainFirstTokenId: String(oldest.tokenId),
+    chainFirstMintBlock: oldest.blockNumber,
+    chainFirstMintTimestamp: oldest.timestamp,
+  };
+}
+
 module.exports = {
   resolveFirstMintWithForeign,
+  resolveChainFirstMint,
   findOriginalMintOnChain,
 };

@@ -15,9 +15,9 @@
  * **Nothing on this row persists until Save is clicked.**  These are
  * financial settings that reshape the position on the next rebalance, so
  * the app never applies a change the user has not committed.  The
- * Full-Range checkbox used to POST on its own `change` event; it now
- * only flips the field states, and `saveRangeWidth` writes both keys of
- * the row in one request.
+ * Full-Range checkbox therefore only flips the field states on
+ * `change`; `saveRangeWidth` writes both keys of the row in one
+ * request, on Save.
  *
  * Exports:
  *  - `saveRangeWidth` — Save button: persist the row (the typed value if

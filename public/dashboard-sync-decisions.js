@@ -35,9 +35,33 @@ export function _computeSyncStatus(inputs) {
     rebalanceScanComplete,
     lifetimeScanComplete,
   } = inputs;
-  if (!active) return { complete: true, label: "" };
-  if (walletAddress && positionCount === 0)
-    return { complete: false, label: "" };
+  /*- Order matters: this branch must precede the `!active` check.  A
+   *  wallet with no positions yet is still loading them, which is
+   *  genuinely syncing.  Answering `complete: true` there paints the
+   *  badge with the `done` class — green, no pulse — while the empty
+   *  label falls back to the text "Syncing…", so the badge reads one
+   *  way and looks another for the whole of startup. */
+  if (walletAddress && positionCount === 0) {
+    /*- Zero positions means one of two very different things, and the
+     *  scan status is what separates them.  "idle" or "scanning" means
+     *  we do not know yet — still loading.  "ready" means the scan ran
+     *  and this wallet genuinely holds no LP positions, which is an
+     *  answer; pulsing at the operator forever would be a lie in the
+     *  other direction. */
+    /*- "ready" and "error" are both terminal: the scan is not coming
+     *  back with more.  Only "idle" (never started) and "scanning" mean
+     *  wait.  Treating an errored scan as pending would leave the badge
+     *  pulsing and the panels blurred with nothing left to arrive. */
+    const st = positionScan?.status;
+    const scanFinished = st === "ready" || st === "error";
+    return scanFinished
+      ? { complete: true, label: "Synced" }
+      : { complete: false, label: "Syncing…" };
+  }
+  /*- No wallet and nothing selected: there is nothing to sync, so the
+   *  badge is honestly done.  Labelled explicitly — an empty label here
+   *  is what allowed the text and the style to disagree. */
+  if (!active) return { complete: true, label: "Synced" };
   if (!positionManaged && viewingClosed)
     return { complete: true, label: "Synced" };
   if (positionScan && positionScan.status === "scanning") {

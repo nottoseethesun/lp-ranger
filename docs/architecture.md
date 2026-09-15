@@ -6,6 +6,14 @@ real-time view into the bot with GUI controls. The two halves communicate
 through a well-defined HTTP API, documented in an interactive local Scalar
 API reference (`npm run api-doc`).
 
+Three companion references sit alongside this one:
+[`docs/configuration.md`](configuration.md) for how the app is configured —
+every environment variable, where each setting lives, and which are
+deliberately not editable; [`docs/security.md`](security.md) for the controls
+protecting the wallet and the gates enforcing them; and
+[`docs/engineering.md`](engineering.md) for runtime state, development tools
+and the check-report pipeline.
+
 ---
 
 ## Table of Contents
@@ -429,7 +437,7 @@ away leaves the browser paused and its corresponding sound suppressed.
   aborts when price impact exceeds the user's setting.
 - **Automated security checks** run in CI: dependency CVE audit, ESLint
   security plugin, and secretlint for hardcoded credentials.
-- Find complete Security engineering details in the [Security section of the Engineering document](https://github.com/nottoseethesun/lp-ranger/blob/main/docs/engineering.md#security).
+- Find complete Security engineering details in the [Security reference](https://github.com/nottoseethesun/lp-ranger/blob/main/docs/security.md).
 
 ---
 

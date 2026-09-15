@@ -2,21 +2,18 @@
 
 /**
  * @file test/event-scanner-pool-creation-cache.test.js
- * @description Regression test for the wallet-scoped LP scan bypassing the
- *   pool-creation-block disk cache.
+ * @description The wallet-scoped LP scan must resolve the pool-creation
+ *   block through the disk cache.
  *
- * Bug fixed: `event-scanner.js` `resolveFromBlock` previously called the
- * raw `findPoolCreationBlock` primitive directly.  As a result every
- * wallet-scoped LP scan re-scanned the V3 Factory's PoolCreated logs
- * from scratch — a 5-year lookback meant ~150 50k-chunk Factory queries
- * before the wallet scan even started, every time the user opened a
- * different position or restarted.  The fix routes that lookup through
+ * `event-scanner.js` `resolveFromBlock` routes that lookup through
  * `getPoolCreationBlockCached`, which memoises in-process and persists
- * to disk.
+ * to disk, rather than calling the raw `findPoolCreationBlock`
+ * primitive.  Calling the primitive repeats the search on every
+ * wallet-scoped LP scan, once per position opened and once per restart.
  *
- * This test asserts the integration: two consecutive `scanRebalanceHistory`
- * calls for the same pool must trigger the Factory `PoolCreated`
- * `queryFilter` only once.
+ * This test asserts the integration: across two consecutive
+ * `scanRebalanceHistory` calls for the same pool, the deployment-block
+ * search must run only once.
  */
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
@@ -45,51 +42,35 @@ const CURRENT_BLOCK = 1_000_000;
 const POOL_CREATION_BLOCK = 950_000;
 
 /**
- * Build an ethers stub whose Contract differentiates two contract types by
- * the address it was constructed with: the Factory returns one PoolCreated
- * event matching POOL; the position-manager returns no Transfer events
- * (so the scan completes without producing rebalances).  Counts every
- * Factory `queryFilter` call.
+ * Position-manager stub: the wallet scan's Transfer queries return
+ * nothing, so the scan completes without producing rebalances.
  */
-function mkEthers(counter) {
+function mkEthers() {
   return {
     Contract: class {
       constructor(address) {
         this._addr = String(address).toLowerCase();
-        this.filters = {
-          PoolCreated: () => ({ _kind: "PoolCreated" }),
-          Transfer: () => ({ _kind: "Transfer" }),
-        };
+        this.filters = { Transfer: () => ({ _kind: "Transfer" }) };
       }
-      async queryFilter(filter, fromBlock /*, toBlock */) {
-        if (filter._kind === "PoolCreated") {
-          counter.factoryQueries += 1;
-          /*- Factory scans 0..currentBlock in 50k chunks; emit the
-              creation event only inside the chunk that covers it. */
-          if (
-            POOL_CREATION_BLOCK >= fromBlock &&
-            POOL_CREATION_BLOCK < fromBlock + 50_000
-          ) {
-            return [
-              {
-                args: { 4: POOL, pool: POOL },
-                blockNumber: POOL_CREATION_BLOCK,
-              },
-            ];
-          }
-          return [];
-        }
-        /*- Transfer queries from the wallet scan: no events. */
+      async queryFilter() {
         return [];
       }
     },
   };
 }
 
-function mkProvider() {
+/**
+ * Provider reporting POOL as deployed at POOL_CREATION_BLOCK, counting
+ * every `getCode` — the call the deployment-block search is made of.
+ */
+function mkProvider(counter) {
   return {
     getBlockNumber: async () => CURRENT_BLOCK,
     getBlock: async (n) => ({ timestamp: 1_700_000_000 + n }),
+    async getCode(_addr, blk) {
+      counter.codeCalls += 1;
+      return blk >= POOL_CREATION_BLOCK ? "0x60806040" : "0x";
+    },
   };
 }
 
@@ -98,12 +79,11 @@ describe("event-scanner: pool-creation-block cache integration", () => {
   afterEach(() => poolCreationBlock._resetForTests());
 
   it("uses the cached pool-creation resolver across repeat scans", async () => {
-    const counter = { factoryQueries: 0 };
-    const ethers = mkEthers(counter);
-    const provider = mkProvider();
+    const counter = { codeCalls: 0 };
+    const ethers = mkEthers();
+    const provider = mkProvider(counter);
 
-    /*- First scan: cold cache → Factory must be hit (chunked scan up to
-        block 950k = 19 chunks of 50k under default chunkSize). */
+    /*- First scan: cold cache → the deployment-block search runs. */
     await scanRebalanceHistory(provider, ethers, {
       positionManagerAddress: POS_MGR,
       walletAddress: WALLET,
@@ -115,13 +95,13 @@ describe("event-scanner: pool-creation-block cache integration", () => {
       chunkDelayMs: 0,
     });
     assert.ok(
-      counter.factoryQueries > 0,
-      "first scan should query Factory at least once",
+      counter.codeCalls > 0,
+      "first scan should resolve the deployment block",
     );
-    const firstScanQueries = counter.factoryQueries;
+    const firstScanCalls = counter.codeCalls;
 
-    /*- Second scan, same pool: warm cache → Factory must NOT be queried
-        again, regardless of how many wallet chunks run. */
+    /*- Second scan, same pool: warm cache → no further deployment-block
+        lookup, regardless of how many wallet chunks run. */
     await scanRebalanceHistory(provider, ethers, {
       positionManagerAddress: POS_MGR,
       walletAddress: WALLET,
@@ -133,9 +113,9 @@ describe("event-scanner: pool-creation-block cache integration", () => {
       chunkDelayMs: 0,
     });
     assert.equal(
-      counter.factoryQueries,
-      firstScanQueries,
-      "second scan must hit the disk-cached resolver — no new Factory queries",
+      counter.codeCalls,
+      firstScanCalls,
+      "second scan must hit the disk-cached resolver — no new getCode calls",
     );
   });
 });

@@ -158,11 +158,11 @@ describe("handleManage stale-key sequence (direct simulation)", () => {
     states.delete(newKey);
   });
 
-  it("REGRESSION: calling addManagedPosition with the STALE key would resurrect a phantom", () => {
-    /*- This test explicitly demonstrates the bug shape.  Calling
-     *  addManagedPosition with the original (stale) key after a
-     *  migration produces the exact phantom signature the dashboard
-     *  was stuck on.  Verifies our purge would catch it. */
+  it("calling addManagedPosition with the STALE key would resurrect a phantom", () => {
+    /*- Builds the phantom deliberately: `addManagedPosition` called
+     *  with the pre-migration key writes an entry carrying nothing but
+     *  `status: "running"`, which is the signature the purge matches.
+     *  Asserts the purge catches one produced this way. */
     const OLD_TOKEN = "159175";
     const NEW_TOKEN = "161616";
     const oldKey = key(OLD_TOKEN);

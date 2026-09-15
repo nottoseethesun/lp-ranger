@@ -53,13 +53,11 @@ So the gap closes on its own, but the window is up to half an hour
 shorten it: that re-reads `/api/status` and re-renders what the server
 already holds, it does not re-run the scanner.
 
-One correction worth recording, since it changes what a fix would
-look like: notes here and in `CLAUDE.md` used to say the event cache
-was cleared after every successful rebalance via `clearPoolCache` in
-`bot-loop.js`, which would have shortened the window considerably. That
-call is not there &mdash; `clearPoolCache` runs only from
-`src/server-reload-position.js`, the Reload Current Position handler.
-Establishing whether that invalidation was intended is worth doing
+What shapes a fix: the event cache is **not** invalidated on rebalance.
+`clearPoolCache` runs only from `src/server-reload-position.js`, the
+Reload Current Position handler. Invalidating it on a successful
+rebalance would shorten the window considerably, so establishing
+whether that invalidation was intended is worth doing
 before picking a fix: restoring it would close the gap directly and is
 a smaller change than the Pass&nbsp;2 work below.
 

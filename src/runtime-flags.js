@@ -8,8 +8,9 @@
  * override loader; operators override at
  * `app-config/user-configurable/chains.json`) lives here. Pure tracked
  * data (ports, timeouts, aggregator URL, etc.) lives in
- * `app-config/app-defaults-for-user-configurable/app-runtime.json`
- * (loaded by `src/config.js` via the same layered loader).
+ * `app-config/app-defaults-for-user-configurable/app-runtime.json`,
+ * loaded through the same layered loader by `src/config.js` and — for
+ * `defaults.chain`, the shipped fallback behind `CHAIN_NAME` — here.
  *
  * `src/config.js` re-exports everything here so existing callers keep
  * working — new code can import directly from this module when it only
@@ -23,6 +24,7 @@ const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 
 const CHAINS = loadMergedDefaults("chains.json");
+const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
 
 /*- Load .env if present; dotenv.config() returns `{ error }` (without
     throwing) when no file exists, so production environments where env
@@ -51,11 +53,114 @@ function parsePositiveFloat(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/** Active chain name. Set CHAIN_NAME=pulsechain-testnet for testnet. */
-const CHAIN_NAME = (process.env.CHAIN_NAME || "pulsechain").toLowerCase();
+/*- Render a value for an error message. `process.env` only ever yields
+ *  strings, so anything else reaching these functions came from a
+ *  hand-edited app-runtime.json: a number, null, NaN, an object. */
+function _show(value) {
+  if (value === undefined) return "unset";
+  if (typeof value === "string") return `"${value}"`;
+  return String(value);
+}
+
+/*- A usable chain name is a non-empty string once trimmed. Everything
+ *  else — empty, whitespace, undefined, NaN, a number — is not a name. */
+function _cleanName(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+/**
+ * Resolve which chain to run against, from the JSON default and the
+ * environment override.
+ *
+ * `defaults.chain` in `app-runtime.json` is where the name is configured.
+ * `CHAIN_NAME` in `.env` overrides it, for headless installs that have no
+ * dashboard to configure. Neither yielding a usable name throws, rather
+ * than picking one — there is no safe guess about which blockchain an
+ * operator meant to put funds on.
+ *
+ * Each source counts only when it yields a usable name — a non-empty
+ * string once trimmed. An unset, blank or malformed `CHAIN_NAME` is
+ * therefore no override at all, and the JSON default still applies,
+ * rather than a stray `.env` line defeating it.
+ *
+ * The throw is on the RESOLVED value: when neither source yields a
+ * usable name, nothing is picked, because there is no safe guess about
+ * which blockchain an operator meant to put funds on.
+ *
+ * @param {*} envValue       Raw `process.env.CHAIN_NAME`.
+ * @param {*} shippedDefault `app-runtime.json` → `defaults.chain`.
+ * @returns {string} A trimmed, lowercased chain name.
+ * @throws {Error} When neither source yields a non-empty string.
+ */
+function resolveChainName(envValue, shippedDefault) {
+  const resolved = _cleanName(envValue) || _cleanName(shippedDefault);
+  if (resolved) return resolved;
+  throw new Error(
+    "No chain name is configured. Set `defaults.chain` to a chain name in " +
+      "app-config/user-configurable/app-runtime.json — it must match an " +
+      "entry in chains.json. (The shipped copy under " +
+      "app-config/app-defaults-for-user-configurable/ is overwritten by " +
+      "every upgrade, so edit the user-configurable one.) CHAIN_NAME in " +
+      ".env overrides it, for headless installs. " +
+      `Got defaults.chain=${_show(shippedDefault)}, ` +
+      `CHAIN_NAME=${_show(envValue)}.`,
+  );
+}
+
+/**
+ * Look up a chain's configuration row by name.
+ *
+ * A name matching no entry throws. There is nothing to fall back TO: the
+ * entry carries the RPC endpoints and the contract addresses every
+ * transaction is built against, so substituting another chain's entry
+ * would send real transactions to a chain the operator did not ask for.
+ * The name itself is unaffected by any such substitution, and it is what
+ * gets stamped into composite position keys, cache filenames and
+ * notifications — so the mismatch would not be visible in anything the
+ * run recorded.
+ *
+ * @param {Record<string, object>} chains Parsed chains.json, keyed by chain name.
+ * @param {string} name                   Chain name from `resolveChainName`.
+ * @returns {object} That chain's configuration entry.
+ * @throws {Error} When `name` matches no entry in `chains`.
+ */
+function selectChain(chains, name) {
+  const clean = _cleanName(name);
+  const row = clean && chains && chains[clean];
+  if (row) return row;
+  const known =
+    Object.keys(chains || {})
+      .sort()
+      .join(", ") || "(none)";
+  const setIt =
+    `Configured chains: ${known}. Set \`defaults.chain\` to one of those ` +
+    "in app-config/user-configurable/app-runtime.json";
+  if (!clean) {
+    throw new Error(
+      `${_show(name)} is not a usable chain name. ${setIt}. ` +
+        "CHAIN_NAME in .env overrides it, and takes the same values.",
+    );
+  }
+  throw new Error(
+    `No blockchain configuration found for chain name ${_show(name)}. ` +
+      `${setIt}, or add an entry named ${_show(name)} to ` +
+      "app-config/user-configurable/chains.json. CHAIN_NAME in .env " +
+      "overrides both, and takes the same values.",
+  );
+}
+
+/**
+ * Active chain name. Set CHAIN_NAME=pulsechain-testnet for testnet.
+ * The shipped default is `app-runtime.json` → `defaults.chain`, which is
+ * the only place that name is written down.
+ */
+const CHAIN_NAME = resolveChainName(
+  process.env.CHAIN_NAME,
+  APP_RUNTIME.defaults.chain,
+);
 
 /** Active chain config (aggregator tunables, chainId, contracts, etc.). */
-const CHAIN = CHAINS[CHAIN_NAME] || CHAINS.pulsechain;
+const CHAIN = selectChain(CHAINS, CHAIN_NAME);
 
 /** Map human-readable names to EIP-2718 transaction envelope type numbers. */
 const TX_ENVELOPE_TYPES = { legacy: 0, eip1559: 2 };
@@ -81,6 +186,8 @@ const VERBOSE =
 module.exports = {
   parsePositiveInt,
   parsePositiveFloat,
+  resolveChainName,
+  selectChain,
   CHAIN,
   CHAIN_NAME,
   TX_TYPE,

@@ -52,7 +52,7 @@ function mockEthersLib(overrides = {}) {
 /**
  * Build a minimal mock provider.
  * @param {object} overrides - Optional overrides.
- * @returns {object} Mock provider with getLogs, getBlock.
+ * @returns {object} Mock provider with getLogs, getBlock, getBlockNumber.
  */
 function mockProvider(overrides = {}) {
   return {
@@ -60,6 +60,9 @@ function mockProvider(overrides = {}) {
       "logs" in overrides ? overrides.logs : [{ blockNumber: 100 }],
     getBlock: async () =>
       "block" in overrides ? overrides.block : { timestamp: 1700000000 },
+    /*- The mint lookup is chunked, and the chunker resolves a "latest"
+     *  toBlock to a concrete number before it can window the range. */
+    getBlockNumber: async () => ("head" in overrides ? overrides.head : 100),
   };
 }
 
@@ -215,6 +218,7 @@ describe("initHodlBaseline", () => {
       getLogs: async () => {
         throw new Error("RPC down");
       },
+      getBlockNumber: async () => 100,
     };
 
     // Should not throw
@@ -248,6 +252,9 @@ describe("mintGasWei in baseline", () => {
     const provider = {
       getLogs: async () => [{ blockNumber: 100, transactionHash: "0xMintTx" }],
       getBlock: async () => ({ timestamp: 1700000000 }),
+      /*- Needed since the mint lookup is chunked: the chunker resolves
+       *  toBlock "latest" to a number before windowing. */
+      getBlockNumber: async () => 100,
       getTransactionReceipt: async () => ({
         gasUsed: 500_000n,
         gasPrice: 30_000_000_000n,
@@ -324,6 +331,9 @@ describe("mintGasWei in baseline", () => {
     const provider = {
       getLogs: async () => [{ blockNumber: 100, transactionHash: "0xMintTx" }],
       getBlock: async () => ({ timestamp: 1700000000 }),
+      /*- Needed since the mint lookup is chunked: the chunker resolves
+       *  toBlock "latest" to a number before windowing. */
+      getBlockNumber: async () => 100,
       getTransactionReceipt: async () => null,
     };
 
@@ -367,5 +377,78 @@ describe("_positionValueUsd", () => {
     const value = _positionValueUsd(position, poolState, 2.0, 3.0);
     assert.ok(typeof value === "number", "should return a number");
     assert.ok(value > 0, "should return positive value");
+  });
+});
+
+// ── mint lookup stops at the hit ─────────────────────────────────────────────
+
+describe("_findMintEvent early exit", () => {
+  /*- A token is minted once, so the first chunk that returns anything
+   *  holds the whole answer. Without `onChunk` the scan walked on to the
+   *  chain head carrying an event it already had: on a pool two years
+   *  older than the position, 944 chunks for one event.
+   *
+   *  Driven through `getPositionBaseline` rather than the helper, which
+   *  is not exported — and the entry point is what decides which
+   *  arguments reach the chunker anyway. */
+
+  /** Provider that records every getLogs window and hits on the first. */
+  function _countingProvider(head) {
+    const windows = [];
+    return {
+      windows,
+      getBlockNumber: async () => head,
+      getBlock: async () => ({ timestamp: 1700000000 }),
+      getTransactionReceipt: async () => null,
+      getLogs: async (opts) => {
+        windows.push(opts);
+        return windows.length === 1
+          ? [{ blockNumber: 1, transactionHash: "0xMintTx" }]
+          : [];
+      },
+    };
+  }
+
+  it("issues one getLogs when the first chunk carries the mint", async () => {
+    const { getPositionBaseline } = require("../src/hodl-baseline");
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
+    });
+    /*- A head far enough out that the span is many chunks wide, so a
+     *  walk that does not stop is unmistakable in the count. */
+    const prov = _countingProvider(5_000_000);
+    await getPositionBaseline(prov, mockEthersLib(), POSITION);
+    assert.equal(
+      prov.windows.length,
+      1,
+      `scanned ${prov.windows.length} windows after already holding the mint`,
+    );
+  });
+
+  it("still walks the whole span when nothing is found", async () => {
+    /*- The early exit must not truncate a scan that has no answer yet:
+     *  a short walk read as "never minted" is the failure this guards. */
+    const { getPositionBaseline } = require("../src/hodl-baseline");
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
+    });
+    const windows = [];
+    const prov = {
+      getBlockNumber: async () => 100_000,
+      getBlock: async () => ({ timestamp: 1700000000 }),
+      getTransactionReceipt: async () => null,
+      getLogs: async (opts) => {
+        windows.push(opts);
+        return [];
+      },
+    };
+    const out = await getPositionBaseline(prov, mockEthersLib(), POSITION);
+    assert.equal(out, null, "no mint event means no baseline");
+    assert.ok(
+      windows.length > 1,
+      `stopped after ${windows.length} window(s) with nothing found`,
+    );
   });
 });

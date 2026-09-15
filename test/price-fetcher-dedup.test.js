@@ -134,11 +134,11 @@ describe("in-flight dedup", () => {
   });
 
   it("dedupes concurrent calls inside withFreshPricesAllowed", async () => {
-    /*- Move scope no longer bypasses dedup — the rebalance/compound
-     *  pipeline used to call the same source 4-6× per token within
-     *  seconds (gas gate, slippage estimate, pre- and post-move PnL
-     *  snapshots).  Now the in-flight dedup collapses concurrent
-     *  same-token fetches onto one cascade run regardless of scope.
+    /*- Move scope does not bypass dedup.  The rebalance/compound
+     *  pipeline asks for the same token 4-6× within seconds (gas gate,
+     *  slippage estimate, pre- and post-move PnL snapshots), so the
+     *  in-flight dedup collapses concurrent same-token fetches onto one
+     *  cascade run regardless of scope.
      *  The short in-move freshness TTL (moveCacheTtlMs, default 4 s)
      *  guarantees the cache value can't be more than that stale.
      *

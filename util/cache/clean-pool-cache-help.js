@@ -113,9 +113,10 @@ DEFAULT BEHAVIOUR (no options)
     - tmp/block-time-cache.json         keyed by chain + block
 
 REQUIREMENTS
-  Default mode reads token0/token1/fee from the pool via RPC.  Uses
-  config.RPC_URL from .env (with config.RPC_URL_FALLBACK if primary
-  fails).  If the RPC is unreachable, default mode aborts with a
+  Default mode reads token0/token1/fee from the pool via RPC.  Tries
+  each configured endpoint in turn (chains.json rpc.urls, overridable
+  with RPC_URL / RPC_URL_FALLBACK / RPC_URL_FALLBACK_2 in .env).  If
+  every endpoint is unreachable, default mode aborts with a
   non-zero exit and surfaces 3-6 are NOT touched.  Use
   --preserve-pool-history to clean only the lookup caches without
   needing RPC.

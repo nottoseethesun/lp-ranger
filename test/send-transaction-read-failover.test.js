@@ -24,6 +24,9 @@ const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
 const logModule = require("../src/log");
+/*- Real ethers, for the queryFilter regression test: the bug lives in
+ *  how ethers resolves a Contract runner, so a stub cannot exercise it. */
+const { ethers: realEthers } = require("ethers");
 
 /*- Per-test ethers mock factory.  Lets callers stub getBlockNumber
     per-URL (success / throw with a given error shape).  Mirrors the
@@ -37,6 +40,7 @@ function makeLib(behaviours = {}) {
         this.estimateGas = async () => 100_000n;
         const b = behaviours[url] || {};
         this.getBlockNumber = b.getBlockNumber || (async () => 12345);
+        this.getLogs = b.getLogs || (async () => []);
         this._customSend = b.send;
       }
       send(method, params) {
@@ -86,16 +90,16 @@ describe("send-transaction: init idempotency", () => {
 
   it("re-init with the SAME URLs is a no-op (providers preserved)", () => {
     const lib = makeLib();
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     const provFirst = sendTx.getCurrentRPC();
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     const provSecond = sendTx.getCurrentRPC();
     assert.strictEqual(provFirst, provSecond);
   });
 
   it("re-init with the SAME URLs preserves an active failover window", () => {
     const lib = makeLib();
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     const m = muteConsole();
     try {
       sendTx.failoverToNextRPC();
@@ -106,18 +110,14 @@ describe("send-transaction: init idempotency", () => {
     /*- Re-init must NOT wipe the sticky failover state, otherwise a
         second boot path (server.js running after bot-loop.js) would
         silently revert us to a known-broken primary. */
-    sendTx.init({ primary: PRI, fallback: FALL }, lib);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
     assert.equal(sendTx.getCurrentRPC()._url, FALL);
   });
 
   it("re-init with DIFFERENT URLs throws", () => {
-    sendTx.init({ primary: PRI, fallback: FALL }, makeLib());
+    sendTx.init({ urls: [PRI, FALL] }, makeLib());
     assert.throws(
-      () =>
-        sendTx.init(
-          { primary: "http://other.test", fallback: FALL },
-          makeLib(),
-        ),
+      () => sendTx.init({ urls: ["http://other.test", FALL] }, makeLib()),
       /different URLs/,
     );
   });
@@ -132,7 +132,7 @@ describe("send-transaction: ensureReachable", () => {
   });
 
   it("returns silently when primary is reachable (no failover)", async () => {
-    sendTx.init({ primary: PRI, fallback: FALL }, makeLib());
+    sendTx.init({ urls: [PRI, FALL] }, makeLib());
     const m = muteConsole();
     try {
       await sendTx.ensureReachable();
@@ -150,7 +150,7 @@ describe("send-transaction: ensureReachable", () => {
 
   it("engages failover when primary throws and fallback works", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -175,7 +175,7 @@ describe("send-transaction: ensureReachable", () => {
 
   it("propagates the primary error when fallback ALSO fails", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -202,7 +202,7 @@ describe("send-transaction: ensureReachable", () => {
 
   it("propagates the primary error when primary === fallback URL", async () => {
     sendTx.init(
-      { primary: PRI, fallback: PRI },
+      { urls: [PRI] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -236,7 +236,7 @@ describe("send-transaction: getManagedReadProvider", () => {
 
   it("routes method calls through the currently-active RPC", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: { getBlockNumber: async () => 100 },
         [FALL]: { getBlockNumber: async () => 200 },
@@ -254,15 +254,61 @@ describe("send-transaction: getManagedReadProvider", () => {
   });
 
   it("returns non-function properties straight from the active provider", () => {
-    sendTx.init({ primary: PRI, fallback: FALL }, makeLib());
+    sendTx.init({ urls: [PRI, FALL] }, makeLib());
     const managed = sendTx.getManagedReadProvider();
     assert.equal(managed._url, PRI);
+  });
+
+  it("returns ITSELF for `provider`, so ethers cannot escape the wrapper", () => {
+    /*- ethers resolves a Contract's provider via `runner.provider`
+     *  (getProvider in its contract.js), and a provider's own
+     *  `.provider` getter returns itself.  Handing back the raw provider
+     *  there put every queryFilter in the app outside this retry —
+     *  one transient 502 then dropped a whole block window. */
+    sendTx.init({ urls: [PRI, FALL] }, makeLib());
+    const managed = sendTx.getManagedReadProvider();
+    assert.strictEqual(managed.provider, managed);
+  });
+
+  it("retries a real ethers Contract's queryFilter (the regression)", async () => {
+    let priCalls = 0;
+    const lib = makeLib({
+      [PRI]: {
+        getLogs: async () => {
+          priCalls++;
+          const err = new Error("upstream 502");
+          err.code = "SERVER_ERROR";
+          err.info = { responseStatus: "502 Bad Gateway" };
+          throw err;
+        },
+      },
+      [FALL]: { getLogs: async () => [] },
+    });
+    sendTx.init({ urls: [PRI, FALL] }, lib);
+    const managed = sendTx.getManagedReadProvider();
+    const c = new realEthers.Contract(
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2",
+      [
+        "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
+      ],
+      managed,
+    );
+    const m = muteConsole();
+    let logs;
+    try {
+      logs = await c.queryFilter(c.filters.Transfer(), 1, 2);
+    } finally {
+      m.restore();
+    }
+    assert.deepEqual(logs, []);
+    assert.equal(priCalls, 1, "primary should have been tried exactly once");
+    assert.equal(sendTx.getCurrentRPC()._url, FALL);
   });
 
   it("engages failover on SERVER_ERROR and retries against the fallback", async () => {
     let primaryCalls = 0;
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -292,7 +338,7 @@ describe("send-transaction: getManagedReadProvider", () => {
 
   it("does NOT failover on non-failover-eligible errors", async () => {
     sendTx.init(
-      { primary: PRI, fallback: FALL },
+      { urls: [PRI, FALL] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
@@ -310,14 +356,20 @@ describe("send-transaction: getManagedReadProvider", () => {
     assert.equal(sendTx.getCurrentRPC()._url, PRI);
   });
 
-  it("does NOT retry when primary === fallback URL (no point)", async () => {
+  it("keeps retrying a sole endpoint until it heals", async () => {
+    /*- A sole endpoint is retried like any other.  Having no alternate
+     *  to move to is not a reason to drop the read: for a chunked log
+     *  scan a dropped read is a block window that is never read, and a
+     *  history short by that window is indistinguishable from a complete
+     *  one at every layer above it. */
     let calls = 0;
     sendTx.init(
-      { primary: PRI, fallback: PRI },
+      { urls: [PRI] },
       makeLib({
         [PRI]: {
           getBlockNumber: async () => {
             calls++;
+            if (calls >= 4) return 777;
             const err = new Error("upstream 522");
             err.code = "SERVER_ERROR";
             err.info = { responseStatus: "522 <none>" };
@@ -327,8 +379,86 @@ describe("send-transaction: getManagedReadProvider", () => {
       }),
     );
     const managed = sendTx.getManagedReadProvider();
-    await assert.rejects(() => managed.getBlockNumber(), /upstream 522/);
-    assert.equal(calls, 1);
+    const m = muteConsole();
+    let result;
+    try {
+      result = await managed.getBlockNumber();
+    } finally {
+      m.restore();
+    }
+    assert.equal(result, 777);
+    assert.equal(calls, 4);
+  });
+
+  it("logs one retry line per failed attempt", async () => {
+    let calls = 0;
+    sendTx.init(
+      { urls: [PRI] },
+      makeLib({
+        [PRI]: {
+          getBlockNumber: async () => {
+            calls++;
+            if (calls >= 3) return 1;
+            const err = new Error("upstream 522");
+            err.code = "SERVER_ERROR";
+            throw err;
+          },
+        },
+      }),
+    );
+    const managed = sendTx.getManagedReadProvider();
+    const m = muteConsole();
+    try {
+      await managed.getBlockNumber();
+    } finally {
+      m.restore();
+    }
+    /*- The first failure is what enters the loop; attempt #1 inside it
+     *  also throws and IS logged, attempt #2 succeeds.  So exactly one
+     *  retry line.  The sink stores raw args, so the format string is
+     *  `a[0]` and the substitutions follow it. */
+    const lines = m.out.warn.filter((a) =>
+      String(a[0] ?? "").includes("read retry #"),
+    );
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0][1], 1, "attempt number");
+    assert.equal(lines[0][2], "getBlockNumber", "method name");
+  });
+
+  it("propagates a non-failoverable error raised by a later attempt", async () => {
+    let calls = 0;
+    sendTx.init(
+      { urls: [PRI, FALL] },
+      makeLib({
+        [PRI]: {
+          getBlockNumber: async () => {
+            calls++;
+            const err = new Error("upstream 502");
+            err.code = "SERVER_ERROR";
+            throw err;
+          },
+        },
+        [FALL]: {
+          getBlockNumber: async () => {
+            calls++;
+            const err = new Error("execution reverted");
+            err.code = "CALL_EXCEPTION";
+            throw err;
+          },
+        },
+      }),
+    );
+    const managed = sendTx.getManagedReadProvider();
+    const m = muteConsole();
+    try {
+      await assert.rejects(
+        () => managed.getBlockNumber(),
+        /execution reverted/,
+      );
+    } finally {
+      m.restore();
+    }
+    assert.equal(calls, 2);
   });
 });
 
@@ -354,13 +484,41 @@ describe("send-transaction: _isReadFailoverable", () => {
       true,
     );
   });
-  it("rejects a 4xx responseStatus (request is the problem, not the RPC)", () => {
+  it("classifies ECONNRESET as failover-eligible", () => {
+    /*- Arrives as a bare Node system error, not one of ethers' codes, so
+     *  it has to be listed by name.  Without it a reset mid-scan is read
+     *  as the request being at fault and ends the scan. */
     assert.equal(
       sendTx._isReadFailoverable({
-        info: { responseStatus: "400 Bad Request" },
+        code: "ECONNRESET",
+        message: "read ECONNRESET",
       }),
-      false,
+      true,
     );
+  });
+  it("classifies a 429 responseStatus as failover-eligible", () => {
+    /*- Rate limiting is the endpoint declining to serve now, not a bad
+     *  request, and at least one configured endpoint publishes a rate
+     *  cap.  It is a 4xx, so the 5xx test below does not reach it. */
+    assert.equal(
+      sendTx._isReadFailoverable({
+        info: { responseStatus: "429 Too Many Requests" },
+      }),
+      true,
+    );
+  });
+  it("rejects other 4xx responseStatus (request is the problem, not the RPC)", () => {
+    for (const status of [
+      "400 Bad Request",
+      "404 Not Found",
+      "403 Forbidden",
+    ]) {
+      assert.equal(
+        sendTx._isReadFailoverable({ info: { responseStatus: status } }),
+        false,
+        status,
+      );
+    }
   });
   it("rejects NONCE_EXPIRED and other terminal errors", () => {
     assert.equal(sendTx._isReadFailoverable({ code: "NONCE_EXPIRED" }), false);

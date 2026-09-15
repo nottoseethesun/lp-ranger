@@ -8,7 +8,10 @@
 
 const { log } = require("./log");
 const config = require("./config");
-const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
+const {
+  actualGasCostUsd: _actualGasCostUsd,
+  fetchTokenPrices,
+} = require("./bot-pnl-updater");
 const { notify } = require("./telegram-notifications/telegram");
 const { getTokenSymbol } = require("./server-scan");
 const { executeCompound: runCompound } = require("./compounder");
@@ -27,6 +30,48 @@ const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
  * Check if compound conditions are met and execute if so.
  * @returns {Promise<boolean>} true if executeCompound was attempted this cycle.
  */
+/**
+ * Value this position's unclaimed fees at prices fetched right now.
+ *
+ * The poll's own figure (`_lastUnclaimedFeesUsd`) is computed with
+ * whatever prices that poll had, and the idle pause answers a price
+ * read from cache with no age limit — or with nothing at all on a
+ * process that has never fetched one, which is every headless
+ * `npm run bot` start.  Deciding to spend gas on a compound wants a
+ * current number, so the token amounts are re-valued here inside
+ * `withFreshPricesAllowed`.
+ *
+ * Re-values rather than re-reads: the fee amounts were already read
+ * from chain this poll and are carried alongside the USD, so this costs
+ * one price lookup and no extra RPC.
+ *
+ * Falls back to the poll's figure when the amounts are absent (nothing
+ * has populated them yet) or when the fresh fetch yields no price.
+ * Compounding is low-risk — collect and re-deposit on the same NFT, no
+ * range change — so a price outage delaying it indefinitely is worse
+ * than acting on the last known valuation.
+ *
+ * @param {object} deps      Bot deps carrying the position and last read.
+ * @param {boolean} [forced]  True for a manual compound, which skips
+ *   every threshold comparison — so a fresh price could not change its
+ *   outcome, and fetching one would buy nothing but a network call. The
+ *   compound itself still fetches fresh prices for the work it does.
+ * @returns {Promise<number>}  Unclaimed fees in USD.
+ */
+async function _freshFeesUsd(deps, forced) {
+  const last = deps._lastUnclaimedFeesUsd || 0;
+  if (forced === true) return last;
+  const fee0 = deps._lastUnclaimedFee0;
+  const fee1 = deps._lastUnclaimedFee1;
+  if (fee0 === undefined || fee0 === null) return last;
+  if (fee1 === undefined || fee1 === null) return last;
+  const { price0, price1 } = await withFreshPricesAllowed(() =>
+    fetchTokenPrices(deps.position.token0, deps.position.token1),
+  );
+  if (!(price0 > 0) || !(price1 > 0)) return last;
+  return fee0 * price0 + fee1 * price1;
+}
+
 async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
   const botSt = deps._botState || {};
   const _gc = (k) => (deps._getConfig ? deps._getConfig(k) : undefined);
@@ -34,11 +79,13 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
   const autoEnabled = _gc("autoCompoundEnabled") || false;
   const threshold =
     _gc("autoCompoundThresholdUsd") || config.COMPOUND_DEFAULT_THRESHOLD_USD;
-  const feesUsd = deps._lastUnclaimedFeesUsd || 0;
-
+  /*- Order matters here.  The gates that cost nothing run first, and
+   *  only then are the fees re-valued — so the price fetch below is
+   *  paid for once per throttle window on a position that is actually
+   *  a compound candidate, not on every poll.  Reordering is safe
+   *  because each gate is an independent read with no side effect; all
+   *  that changes is which one answers first. */
   if (!forced && !autoEnabled) return false;
-  if (!forced && feesUsd < threshold) return false;
-  if (!forced && feesUsd < config.COMPOUND_MIN_FEE_USD) return false;
   /*- Reload / initial-scan window: skip auto-compound while a scan is
    *  running so the compound doesn't race the state reconstruction.
    *  Manual (`forced === true`) compounds still bypass. */
@@ -56,6 +103,10 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
     const interval = Math.max(config.CHECK_INTERVAL_SEC * 5, 300) * 1000;
     if (Date.now() - new Date(lastAt).getTime() < interval) return false;
   }
+
+  const feesUsd = await _freshFeesUsd(deps, forced);
+  if (!forced && feesUsd < threshold) return false;
+  if (!forced && feesUsd < config.COMPOUND_MIN_FEE_USD) return false;
 
   log.info(
     "[bot] Compound triggered (forced=%s fees=$%s threshold=$%s)",
@@ -293,4 +344,5 @@ module.exports = {
   recordCompound,
   executeCompound,
   handleForceCompound,
+  _freshFeesUsd, // exported for tests
 };

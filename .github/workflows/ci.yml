@@ -20,9 +20,10 @@
 #      for 30 days. Download it from the run page "Artifacts" section to
 #      open the PDF or dig into any tool's raw output.
 #
-# A lint failure no longer aborts the job before tests run — `npm run check`
-# always executes every tool and reports on all of them together, so the
-# artifact always contains complete data even when something is red.
+# A lint failure does not abort the job before tests run: `npm run check`
+# executes every tool and reports on all of them together, so the artifact
+# holds complete data even when something is red. Stopping at the first
+# failure would cost a whole run to learn one thing.
 #
 # Triggers
 # ────────

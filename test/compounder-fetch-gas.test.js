@@ -5,11 +5,12 @@
  * Split out of test/compounder.test.js to keep that file under the
  * project-wide 500-line limit.
  *
- * Regression history: historical compoundHistory entries used to land in
- * `bot-config.json` with `timestamp: null, txHash: null`, which made
- * any planned UI rendering pointless.  `_fetchCompoundGas` is now the
- * single source for both fields — the historical writer in
- * `bot-recorder.js#_classifyAllCompounds` plumbs them through unchanged.
+ * `_fetchCompoundGas` is the single source of `timestamp` and `txHash`
+ * for a compound entry; the historical writer in
+ * `bot-recorder.js#_classifyAllCompounds` plumbs both through
+ * unchanged.  Without them a `compoundHistory` row lands in
+ * `bot-config.json` as `timestamp: null, txHash: null` and cannot be
+ * rendered or traced back to its transaction.
  */
 
 "use strict";

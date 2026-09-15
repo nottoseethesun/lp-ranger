@@ -139,6 +139,21 @@ const _NORMALIZERS = {
    *  benefit; a single price fetch already takes ~100-500 ms), capped at
    *  60 s (longer would defeat the "fresh during move" intent). */
   moveCacheTtlMs: (v) => _clampInt(v, 1_000, 60_000),
+  /*- Moralis on/off.  Anything that is not an explicit false means on,
+   *  so a malformed override cannot silently disable a price source the
+   *  operator is paying for. */
+  moralisEnabled: (v) => (typeof v === "boolean" ? v : true),
+  /*- Max block span per eth_getLogs call.  Floor of 100 — anything
+   *  smaller turns a routine scan into tens of thousands of requests
+   *  for no benefit.  Ceiling of 10 000 is the strictest endpoint cap
+   *  we have observed, so a value above it would be rejected by the
+   *  very endpoint the setting exists to satisfy. */
+  getLogsChunkSize: (v) => _clampInt(v, 100, 10_000),
+  /*- Minimum gap between any two JSON-RPC requests.  Zero is allowed
+   *  and means "no pacing" (local node).  Ceiling of 10 s: beyond that
+   *  a five-year scan would take days, which is a misconfiguration
+   *  rather than a preference. */
+  globalRPCRequestRateIntervalMS: (v) => _clampNonNegInt(v, 10_000),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */
@@ -171,9 +186,9 @@ const _NORMALIZERS = {
   rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 200),
   /*- Full-Range rebalance toggle: when true, every rebalance mints at
    *  `MIN_TICK` / `MAX_TICK` regardless of the Price Range Extension
-   *  value.  Replaces the old `rebalanceRangeWidthPct === 100` full-
-   *  range sentinel with an explicit boolean tied to the dashboard's
-   *  Full-Range checkbox. */
+   *  value.  An explicit boolean rather than a sentinel width, because
+   *  `rebalanceRangeWidthPct === 100` is also a legal user-chosen width
+   *  and the two intents cannot be told apart. */
   fullRangeRebalanceEnabled: (v) => (typeof v === "boolean" ? v : false),
   /*- Range section "No Override" toggle default for a position that has
    *  never been configured.  `false` = re-use the existing on-chain

@@ -19,36 +19,25 @@ const { log } = require("./log");
 /** PulseChain ~10 s block time → blocks per year. */
 const _BLOCKS_PER_YEAR = Math.round((365.25 * 24 * 3600) / 10); // 3_155_760
 
-/**
- * Throw if an AbortSignal is aborted.  Used at chunk-loop checkpoints so the
- * scanner cooperatively bails out when a caller (e.g. cancelPoolScan via the
- * /api/position/scan-cancel endpoint) signals cancellation.  The 250 ms
- * inter-chunk delay is a natural place to poll — worst-case latency to
- * actually stop scanning is one chunk's RPC round-trip.
- * @param {AbortSignal} [signal]
- * @param {string} where  Short label for the log message.
- */
-function _throwIfAborted(signal, where) {
-  if (signal && signal.aborted) {
-    log.info("[event-scanner] %s aborted via AbortSignal", where);
-    const err = new Error("Scan aborted");
-    err.name = "AbortError";
-    throw err;
-  }
-}
-
-/** Default chunk size for getLogs queries. */
-const _DEFAULT_CHUNK_SIZE = 10000;
+/*- Default chunk size comes from the shared chunker, which reads the
+ *  single shipped literal (`getLogsChunkSize`).  Not redeclared here —
+ *  one literal, one owner. */
 
 /** Maximum seconds between paired Transfer-out and Transfer-in. */
 const _PAIRING_WINDOW_SEC = 300;
 
-/** Milliseconds to wait between RPC chunk queries (rate limiting). */
-const _CHUNK_DELAY_MS = 250;
+/*- The old per-chunk delay is gone.  Rate limiting is global now and
+ *  lives in src/rpc-request-manager.js, which paces individual
+ *  requests; a per-chunk delay could not, because each chunk issues two
+ *  queries in parallel. */
 
+const { scanChunked, _DEFAULT_CHUNK_SIZE } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
-const { resolveFirstMintWithForeign } = require("./event-scanner-mint-lookup");
+const {
+  resolveFirstMintWithForeign,
+  resolveChainFirstMint,
+} = require("./event-scanner-mint-lookup");
 
 /**
  * @typedef {object} RebalanceEvent
@@ -70,21 +59,22 @@ const { resolveFirstMintWithForeign } = require("./event-scanner-mint-lookup");
  * @returns {Promise<object[]>} Raw ethers event objects.
  */
 async function queryChunk(contract, walletAddress, fromBlock, toBlock) {
-  const results = [];
-  try {
-    const filterIn = contract.filters.Transfer(null, walletAddress);
-    const filterOut = contract.filters.Transfer(walletAddress, null);
-    const [eventsIn, eventsOut] = await Promise.all([
-      contract.queryFilter(filterIn, fromBlock, toBlock),
-      contract.queryFilter(filterOut, fromBlock, toBlock),
-    ]);
-    results.push(...eventsIn, ...eventsOut);
-  } catch (err) {
-    log.warn(
-      `[event-scanner] chunk ${fromBlock}–${toBlock} failed: ${err.message}`,
-    );
-  }
-  return results;
+  /*- Errors are NOT caught here.  Catching one and returning an empty
+   *  chunk would hide it from the shared chunker, which is the only
+   *  layer that can recognise a block-range-cap rejection and report it
+   *  as one; the scan would just come back short.
+   *
+   *  `scanChunks` calls this through `scanChunked` with
+   *  `bestEffort: true`, so a failed window is still logged and skipped
+   *  — but a cap rejection surfaces as the error naming the setting to
+   *  change. */
+  const filterIn = contract.filters.Transfer(null, walletAddress);
+  const filterOut = contract.filters.Transfer(walletAddress, null);
+  const [eventsIn, eventsOut] = await Promise.all([
+    contract.queryFilter(filterIn, fromBlock, toBlock),
+    contract.queryFilter(filterOut, fromBlock, toBlock),
+  ]);
+  return [...eventsIn, ...eventsOut];
 }
 
 /**
@@ -316,7 +306,6 @@ async function resolveFromBlock(
   if (!factoryAddress || !poolAddress) return fromBlock;
   const creationBlock = await getPoolCreationBlockCached({
     provider,
-    ethersLib,
     factoryAddress,
     poolAddress,
     onProgress,
@@ -364,6 +353,17 @@ async function loadCache(cache, cacheKey, fromBlock) {
       evts.firstMintTimestamp = cached.firstMintTimestamp;
     if (cached.firstMintBlockNumber)
       evts.firstMintBlockNumber = cached.firstMintBlockNumber;
+    /*- Absent on caches written before this field existed.  Consumers
+     *  treat a missing id as "cannot attribute the first mint" and fall
+     *  back to reading it from chain, so an old cache degrades rather
+     *  than mis-attributing. */
+    if (cached.firstMintTokenId)
+      evts.firstMintTokenId = cached.firstMintTokenId;
+    if (cached.chainFirstTokenId) {
+      evts.chainFirstTokenId = cached.chainFirstTokenId;
+      evts.chainFirstMintBlock = cached.chainFirstMintBlock;
+      evts.chainFirstMintTimestamp = cached.chainFirstMintTimestamp;
+    }
     return { cachedEvents: evts, scanFrom: cached.lastBlock + 1 };
   }
   return { cachedEvents: [], scanFrom: fromBlock };
@@ -386,32 +386,42 @@ async function scanChunks(
   chunkSize,
   onProgress,
   label,
-  delayMs,
   signal,
 ) {
-  const rawEvents = [];
-  const totalChunks = Math.ceil((currentBlock - scanFrom + 1) / chunkSize);
-  let done = 0;
-  for (let start = scanFrom; start <= currentBlock; start += chunkSize) {
-    _throwIfAborted(signal, "scanChunks");
-    const end = Math.min(start + chunkSize - 1, currentBlock);
-    rawEvents.push(...(await queryChunk(contract, walletAddress, start, end)));
-    done++;
-    if (done % 50 === 0 || done === totalChunks) {
-      log.info(
-        "[event-scanner] %s: %d/%d chunks scanned (%d events)",
-        label,
-        done,
-        totalChunks,
-        rawEvents.length,
-      );
-    }
-    if (onProgress) onProgress(done, totalChunks);
-    if (done < totalChunks) {
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-  }
-  return rawEvents;
+  /*- Thin wrapper over the shared chunker so one windowing loop exists
+   *  in the codebase.  Pacing is no longer this function's business: it
+   *  is global (src/rpc-request-manager.js), which is the only level at
+   *  which it can be correct — each window here issues TWO queries in
+   *  parallel, so a per-window delay never bounded the request rate it
+   *  appeared to bound.
+   *
+   *  `bestEffort` preserves this scanner's long-standing behaviour of
+   *  logging a failed window and carrying on; `queryChunk` already
+   *  swallows per-window errors itself. */
+  /*- Track where the first hole starts.  bestEffort keeps a flaky
+   *  endpoint from failing a whole five-year scan, but the result is
+   *  then incomplete, and the caller persists a "scanned through block
+   *  N" marker.  Recording N as the head when a window was skipped
+   *  means the gap is never revisited — the events in it stay missing
+   *  until someone runs Reload Position by hand. */
+  let firstGapFrom = null;
+  const events = await scanChunked({
+    fromBlock: scanFrom,
+    toBlock: currentBlock,
+    chunkSize,
+    onProgress,
+    signal,
+    bestEffort: true,
+    label,
+    query: (from, to) => queryChunk(contract, walletAddress, from, to),
+    onWindowError: (_err, from) => {
+      if (firstGapFrom === null || from < firstGapFrom) firstGapFrom = from;
+    },
+  });
+  /*- Attached rather than returned as a pair so the many existing
+   *  callers that treat this as an array keep working. */
+  events.firstGapFrom = firstGapFrom;
+  return events;
 }
 
 /**
@@ -552,7 +562,7 @@ async function _processRawEvents(
     );
   }
   const merged = mergeAndIndex(cachedEvents, paired);
-  const { firstMintTimestamp, firstMintBlockNumber } =
+  const { firstMintTimestamp, firstMintBlockNumber, firstMintTokenId } =
     await resolveFirstMintWithForeign(
       provider,
       ethersLib,
@@ -563,18 +573,42 @@ async function _processRawEvents(
     );
   if (firstMintTimestamp) merged.firstMintTimestamp = firstMintTimestamp;
   if (firstMintBlockNumber) merged.firstMintBlockNumber = firstMintBlockNumber;
-  return { merged, firstMintTimestamp, firstMintBlockNumber };
+  if (firstMintTokenId) merged.firstMintTokenId = firstMintTokenId;
+
+  /*- The first link of the inferred chain, which per-day P&L needs and
+   *  which the fields above do not always name — see
+   *  resolveChainFirstMint. */
+  const chainFirst = resolveChainFirstMint(cachedEvents, transfers);
+  if (chainFirst.chainFirstTokenId) {
+    merged.chainFirstTokenId = chainFirst.chainFirstTokenId;
+    merged.chainFirstMintBlock = chainFirst.chainFirstMintBlock;
+    merged.chainFirstMintTimestamp = chainFirst.chainFirstMintTimestamp;
+  }
+  return {
+    merged,
+    firstMintTimestamp,
+    firstMintBlockNumber,
+    firstMintTokenId,
+    ...chainFirst,
+  };
 }
 
-/** Build a human-readable label for scan progress logs. */
+/**
+ * Build a human-readable label for scan progress logs.
+ *
+ * Named for what the scan is, not just what it covers: the `[scan]`
+ * lines from this pass interleave with the per-NFT ones, and both carry
+ * a four-digit chunk count, so the prefix is what tells an operator
+ * which of the two they are reading.
+ */
 function _scanLabel(walletAddress, poolToken0, poolToken1, poolFee) {
   const wallet = walletAddress.slice(0, 8) + "…";
   if (poolToken0 && poolToken1 && poolFee) {
     const t0 = poolToken0.slice(0, 8) + "…";
     const t1 = poolToken1.slice(0, 8) + "…";
-    return `Pool ${t0}/${t1} fee=${poolFee} (wallet ${wallet})`;
+    return `Per-Pool Rebalance-History Scan: ${t0}/${t1} fee=${poolFee} (wallet ${wallet})`;
   }
-  return `All pools (wallet ${wallet})`;
+  return `Per-Pool Rebalance-History Scan: all pools (wallet ${wallet})`;
 }
 
 /** Check cache; skip pool-creation lookup if cached data exists. */
@@ -608,6 +642,25 @@ function _cacheCovers(scanFrom, currentBlock, cached) {
   return scanFrom > currentBlock && cached.length > 0;
 }
 
+/**
+ * How far the scan can honestly claim to have read.
+ *
+ * Normally the head. When a window was skipped (best-effort), the block
+ * before that window — everything after it may be missing, so resuming
+ * from there is the only way the gap ever gets filled.
+ * @param {Array & {firstGapFrom?: number|null}} rawEvents  Scan result.
+ * @param {number} scanFrom      Where this scan started.
+ * @param {number} currentBlock  Chain head at scan time.
+ * @returns {number}
+ */
+function _resolveLastBlock(rawEvents, scanFrom, currentBlock) {
+  const gap = rawEvents && rawEvents.firstGapFrom;
+  if (typeof gap !== "number") return currentBlock;
+  /*- Never move the marker backwards past where this scan began: the
+   *  blocks before scanFrom were covered by an earlier scan. */
+  return Math.max(scanFrom - 1, gap - 1);
+}
+
 /** Re-persist cached events with updated lastBlock when the new scan returns 0 events. */
 async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
   if (!cache) return;
@@ -616,6 +669,10 @@ async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
     lastBlock: currentBlock,
     firstMintTimestamp: cachedEvents.firstMintTimestamp || null,
     firstMintBlockNumber: cachedEvents.firstMintBlockNumber || null,
+    firstMintTokenId: cachedEvents.firstMintTokenId || null,
+    chainFirstTokenId: cachedEvents.chainFirstTokenId || null,
+    chainFirstMintBlock: cachedEvents.chainFirstMintBlock || null,
+    chainFirstMintTimestamp: cachedEvents.chainFirstMintTimestamp || null,
     mintSchemaVersion: 2,
   });
 }
@@ -633,7 +690,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     poolToken1 = null,
     poolFee = null,
   } = opts;
-  const chunkDelayMs = opts.chunkDelayMs ?? _CHUNK_DELAY_MS;
 
   const currentBlock = await provider.getBlockNumber();
   const cacheKey = _buildCacheKey(
@@ -675,7 +731,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     chunkSize,
     opts.onProgress,
     _scanLabel(walletAddress, poolToken0, poolToken1, poolFee),
-    chunkDelayMs,
     signal,
   );
 
@@ -689,27 +744,50 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     return cachedEvents;
   }
   if (rawEvents.length === 0) {
-    await _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock);
+    /*- Same rule as the main persist below: a scan that found nothing
+     *  because its windows were skipped has not covered the range, and
+     *  must not record that it did. */
+    await _persistCachedOnly(
+      cache,
+      cacheKey,
+      cachedEvents,
+      _resolveLastBlock(rawEvents, scanFrom, currentBlock),
+    );
     return cachedEvents;
   }
 
-  const { merged, firstMintTimestamp, firstMintBlockNumber } =
-    await _processRawEvents(
-      provider,
-      ethersLib,
-      rawEvents,
-      walletAddress,
-      positionManagerAddress,
-      cachedEvents,
-      { poolToken0, poolToken1, poolFee, factoryAddress, poolAddress },
-    );
+  const {
+    merged,
+    firstMintTimestamp,
+    firstMintBlockNumber,
+    firstMintTokenId,
+    chainFirstTokenId,
+    chainFirstMintBlock,
+    chainFirstMintTimestamp,
+  } = await _processRawEvents(
+    provider,
+    ethersLib,
+    rawEvents,
+    walletAddress,
+    positionManagerAddress,
+    cachedEvents,
+    { poolToken0, poolToken1, poolFee, factoryAddress, poolAddress },
+  );
 
   if (cache)
     await cache.set(cacheKey, {
       events: merged,
-      lastBlock: currentBlock,
+      /*- Only claim what was actually read.  If a window was skipped,
+       *  stop the marker one block short of the hole so the next scan
+       *  resumes there and fills it, instead of leaving the operator to
+       *  discover missing events and run Reload Position by hand. */
+      lastBlock: _resolveLastBlock(rawEvents, scanFrom, currentBlock),
       firstMintTimestamp,
       firstMintBlockNumber,
+      firstMintTokenId,
+      chainFirstTokenId,
+      chainFirstMintBlock,
+      chainFirstMintTimestamp,
       mintSchemaVersion: 2,
     });
   return merged;
@@ -719,7 +797,6 @@ module.exports = {
   scanRebalanceHistory,
   buildCacheKey: _buildCacheKey,
   _BLOCKS_PER_YEAR,
-  _DEFAULT_CHUNK_SIZE,
   _PAIRING_WINDOW_SEC,
-  _CHUNK_DELAY_MS,
+  _resolveLastBlock,
 };

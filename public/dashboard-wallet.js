@@ -17,6 +17,7 @@
  */
 
 import { g, act, ACT_ICONS, fetchWithCsrf } from "./dashboard-helpers.js";
+import { rpcUrlReady } from "./dashboard-rpc-endpoints.js";
 import { saveMoralisApiKey } from "./dashboard-events.js";
 import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
@@ -165,12 +166,22 @@ export function getUpdateRouteForWallet() {
 // ── RPC URL ───────────────────────────────────────────────
 
 /**
- * Get the RPC URL from the config input or use the
- * PulseChain default.
+ * Get the RPC URL the operator typed, or the server's configured
+ * primary when the field is blank.
+ *
+ * Async on purpose.  There is no hardcoded URL here any more — the
+ * shipped list in chains.json is the only place that value exists — so
+ * when the field is blank the answer has to come from the server, and
+ * early in page load it has not arrived yet.  A synchronous version
+ * returned "" during that window, and the one caller built an ethers
+ * provider from it, whose every call then threw.
+ *
+ * Returns "" only if the endpoint request itself failed. Callers must
+ * treat that as "unknown", never as an answer.
+ * @returns {Promise<string>}
  */
-export function getRpcUrl() {
-  const el = g("inRpc");
-  return (el && el.value.trim()) || "https://rpc-pulsechain.g4mm4.io";
+export async function getRpcUrl() {
+  return await rpcUrlReady();
 }
 
 // ── Tab switcher ──────────────────────────────────────────

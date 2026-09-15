@@ -176,12 +176,9 @@ migrateAppConfig();
 // server-routes, position-details, etc.) consult sendTx.getManagedReadProvider()
 // to follow the same active-RPC selection as TX submission, so a sustained
 // primary outage fails over uniformly across reads and writes.  Uses the
-// env-var-aware RPC_URL / RPC_URL_FALLBACK so operators can override the
-// chain-default URLs via .env.
-sendTx.init({
-  primary: config.RPC_URL,
-  fallback: config.RPC_URL_FALLBACK,
-});
+// env-var-aware RPC_URLS so operators can override the chain-default
+// endpoints via .env.
+sendTx.init({ urls: config.RPC_URLS });
 
 // ── Position manager (module-level) ─────────────────
 
@@ -671,9 +668,19 @@ function _serveStaticOrSpa(url, res) {
 let _serverPort = config.PORT;
 
 const server = http.createServer(handleRequest);
-// Lifetime P&L scans can take 5+ minutes for old pools (555 chunks × 250ms).
-// Node 22's default requestTimeout is 300s — raise via config.
-server.requestTimeout = config.SCAN_TIMEOUT_MS;
+// Lifetime P&L scans can take 5+ minutes for old pools (555 paced chunks).
+/*- `requestTimeout` is deliberately left at Node's own default.
+ *
+ *  It bounds how long a client may take to SEND a request — a
+ *  slow-client guard against holding a connection open a byte at a
+ *  time — and does NOT bound how long a handler may take to answer.
+ *  Verified: a 3-second handler under a 1-second requestTimeout still
+ *  returns its response intact.
+ *
+ *  It was previously raised to two hours "so lifetime P&L scans don't
+ *  get cut off", which it cannot do. Raising it only weakened the
+ *  guard. A scan that runs for hours is unaffected either way, so
+ *  there is nothing here to tune. */
 
 /**
  * Start the server on the configured port and host.

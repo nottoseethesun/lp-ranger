@@ -13,6 +13,7 @@
  */
 
 "use strict";
+const { scanChunked } = require("./get-logs-chunked");
 
 const { log } = require("./log");
 const fs = require("fs");
@@ -166,31 +167,26 @@ async function hasPositionActivitySince(
     (id) => "0x" + BigInt(id).toString(16).padStart(64, "0"),
   );
 
+  /*- Chunked.  Normally this is a narrow incremental window (last
+   *  cached block -> head), but it is unbounded when the cache is stale
+   *  — an install offline for weeks asks for every block since. */
+  const scan = (filter, label) =>
+    scanChunked({
+      fromBlock,
+      toBlock,
+      label,
+      query: (f, t) => contract.queryFilter(filter, f, t),
+    });
+
   const queries = [
-    contract.queryFilter(
-      contract.filters.Transfer(walletAddress, null),
-      fromBlock,
-      toBlock,
-    ),
-    contract.queryFilter(
-      contract.filters.Transfer(null, walletAddress),
-      fromBlock,
-      toBlock,
-    ),
+    scan(contract.filters.Transfer(walletAddress, null), "lp-cache xfer-out"),
+    scan(contract.filters.Transfer(null, walletAddress), "lp-cache xfer-in"),
   ];
 
   if (tokenIdTopics.length > 0) {
     queries.push(
-      contract.queryFilter(
-        contract.filters.IncreaseLiquidity(tokenIdTopics),
-        fromBlock,
-        toBlock,
-      ),
-      contract.queryFilter(
-        contract.filters.DecreaseLiquidity(tokenIdTopics),
-        fromBlock,
-        toBlock,
-      ),
+      scan(contract.filters.IncreaseLiquidity(tokenIdTopics), "lp-cache il"),
+      scan(contract.filters.DecreaseLiquidity(tokenIdTopics), "lp-cache dl"),
     );
   }
 

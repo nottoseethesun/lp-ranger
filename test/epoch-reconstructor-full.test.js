@@ -69,6 +69,11 @@ describe("reconstructEpochs full flow", () => {
         entryValueUsd: 100,
         exitValueUsd: 95,
         feesEarnedUsd: 2,
+        /*- Gas declared as a known zero, not omitted. An omitted one now
+         *  means "not known" and the epoch is rejected — see the gas
+         *  guard in `_buildClosedEpoch`. Zero keeps the P&L arithmetic
+         *  these tests assert unchanged. */
+        gasCostWei: "0",
       },
       51: {
         mintDate: "2026-01-02T00:00:00Z",
@@ -76,6 +81,7 @@ describe("reconstructEpochs full flow", () => {
         entryValueUsd: 95,
         exitValueUsd: 90,
         feesEarnedUsd: 1.5,
+        gasCostWei: "0",
       },
     };
     _mockGasCost = 0;
@@ -134,6 +140,7 @@ describe("reconstructEpochs full flow", () => {
         entryValueUsd: 100,
         exitValueUsd: 100,
         feesEarnedUsd: 1,
+        gasCostWei: "0",
       },
       // "71" not in mock → will throw
     };
@@ -158,6 +165,7 @@ describe("reconstructEpochs full flow", () => {
         entryValueUsd: 50,
         exitValueUsd: 48,
         feesEarnedUsd: 0.5,
+        gasCostWei: "0",
       },
     };
     _mockGasCost = 0;
@@ -221,6 +229,7 @@ describe("reconstructEpochs full flow", () => {
               entryValueUsd: 100,
               exitValueUsd: 100,
               feesEarnedUsd: 0,
+              gasCostWei: "0",
             };
           },
         };

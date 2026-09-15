@@ -21,6 +21,7 @@ const { log } = require("./log");
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { swapForCompound } = require("./compounder-swap");
+const { scanChunked } = require("./get-logs-chunked");
 
 /*- Thin wrapper around shared `logCtx` in `src/logger.js` so the 6-field
  *  compound/rebalance/swap entry-point format stays in lockstep across
@@ -485,7 +486,7 @@ async function _fetchCompoundGas(prov, compoundEvents) {
  * Fetch IncreaseLiquidity, Collect, and DecreaseLiquidity logs for one NFT.
  * Single RPC round-trip (3 parallel getLogs).  Pure data — no classification.
  * @param {string|number} tokenId
- * @param {{ fromBlock?: number }} [scanOpts]
+ * @param {{ fromBlock?: number, toBlock?: number|string }} [scanOpts]
  * @returns {Promise<{ilEvents: object[], collectEvents: object[], dlEvents: object[], ilLogsCount: number}>}
  */
 async function scanNftEvents(tokenId, scanOpts = {}) {
@@ -493,31 +494,37 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
   const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const addr = config.POSITION_MANAGER;
   const from = scanOpts.fromBlock ?? 0;
+  /*- A RETIRED NFT stops emitting at the block the next one was minted:
+   *  the rebalance drains it and mints its replacement, and the app
+   *  never returns to a drained NFT (a re-open mints fresh rather than
+   *  reviving it).  Scanning it to head is therefore a guaranteed-empty
+   *  walk across the whole remainder of the chain.  Only the CURRENT
+   *  NFT needs "latest". */
+  const to = scanOpts.toBlock ?? "latest";
+  /*- Chunked, and resolved to a concrete head once per event type
+   *  rather than per window, so all three cover the same range.
+   *
+   *  Errors propagate.  `.catch(() => [])` here would turn a range-cap
+   *  rejection into "no compounds ever", resetting the compounded-fee
+   *  total to zero with nothing logged. */
+  const scanEvent = (name) =>
+    scanChunked({
+      provider: prov,
+      fromBlock: from,
+      toBlock: to,
+      label: `compounder ${name} #${tokenId}`,
+      query: (f, t) =>
+        prov.getLogs({
+          address: addr,
+          fromBlock: f,
+          toBlock: t,
+          topics: [_IFACE.getEvent(name).topicHash, tidHex],
+        }),
+    });
   const [ilLogs, colLogs, dlLogs] = await Promise.all([
-    prov
-      .getLogs({
-        address: addr,
-        fromBlock: from,
-        toBlock: "latest",
-        topics: [_IFACE.getEvent("IncreaseLiquidity").topicHash, tidHex],
-      })
-      .catch(() => []),
-    prov
-      .getLogs({
-        address: addr,
-        fromBlock: from,
-        toBlock: "latest",
-        topics: [_IFACE.getEvent("Collect").topicHash, tidHex],
-      })
-      .catch(() => []),
-    prov
-      .getLogs({
-        address: addr,
-        fromBlock: from,
-        toBlock: "latest",
-        topics: [_IFACE.getEvent("DecreaseLiquidity").topicHash, tidHex],
-      })
-      .catch(() => []),
+    scanEvent("IncreaseLiquidity"),
+    scanEvent("Collect"),
+    scanEvent("DecreaseLiquidity"),
   ]);
   return {
     ilEvents: _parseLogs(_IFACE, ilLogs),
@@ -560,9 +567,10 @@ function _sumAmounts(events, requireLiquidity) {
  * share it: `classifyCompounds` below, for the Lifetime panel's Fees
  * Compounded row, and `_supplementFeesFromChain` in
  * position-history.js, for the per-epoch figure behind the Per-Day P&L
- * table.  Those two disagreed until 2026-09-02 — the second read only
- * the fees left unclaimed at the final drain, so everything
- * auto-compound had already swept was invisible to it.
+ * table.  Both must come from here: measuring instead from the fees
+ * left unclaimed at the final drain omits everything auto-compound
+ * already swept back into liquidity, which on a compounding position is
+ * most of the total.
  *
  * @param {Array<{amount0: bigint, amount1: bigint}>} collectEvents
  * @param {Array<{amount0: bigint, amount1: bigint, liquidity: bigint}>} dlEvents
@@ -703,7 +711,18 @@ async function classifyCompounds(nftEvents, opts = {}) {
  * Fetches events via scanNftEvents, then classifies via classifyCompounds.
  */
 async function detectCompoundsOnChain(tokenId, opts = {}) {
-  const nftEvents = await scanNftEvents(tokenId);
+  /*- Pass the caller's lower bound through.  Calling scanNftEvents with
+   *  no options starts every lookup at block 0 — the whole chain, three
+   *  event types, for one NFT.  Chunked and paced, that range is
+   *  thousands of requests holding the global queue for the better part
+   *  of an hour, stalling every other position's polling behind it.
+   *
+   *  See feedback_no_genesis_chain_scans: every log scan needs a tight
+   *  lower bound. Callers that know the pool pass its creation block. */
+  const nftEvents = await scanNftEvents(tokenId, {
+    fromBlock: opts.fromBlock,
+    toBlock: opts.toBlock,
+  });
   return classifyCompounds(nftEvents, { ...opts, tokenId });
 }
 

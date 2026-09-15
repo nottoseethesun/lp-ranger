@@ -1,6 +1,6 @@
 ---
 name: code-cleanup-nice-to-haves
-description: "Running list of code-cleanup nice-to-haves (polish, not bugs). Currently: rename the `9mm-pos-mgr-` CSS class prefix to a letter-first form; merge the two per-NFT fee scans into one pass."
+description: "Running list of code-cleanup nice-to-haves (polish, not bugs). Currently: rename the `9mm-pos-mgr-` CSS class prefix to a letter-first form; merge the two per-NFT fee scans into one pass; stop hanging properties on arrays and add a lint for it."
 metadata: 
   node_type: memory
   type: project
@@ -96,3 +96,31 @@ Do not raise it again unless they open the door.
 Nice-to-Have list as "Letter-First CSS Class Prefix", detailed in
 `docs/roadmap/nice-to-haves/project_css_prefix_rename.md`.
 Keep the two in step, and do not add a second entry for it.
+
+### Stop hanging properties on arrays (plus a lint for it)
+
+`src/event-scanner.js` attaches `firstMintTimestamp` and
+`firstMintBlockNumber` directly to the events array, beside the entries
+rather than as entries.  Copying an array copies its entries only, so
+`push(...list)`, `slice()`, `map()`, `JSON.stringify()` and
+`structuredClone()` all drop them silently.  (`Object.assign([], list)`
+happens to keep them, which makes the rule harder to remember, not
+easier.)
+
+This cost real time on 2026-09-13.  `bot-recorder.js` does
+`events.length = 0; events.push(...found)`, which lost
+`firstMintBlockNumber` — the only available lower bound for the OLDEST
+NFT in a rebalance chain.  A scan-speed fix that used it therefore
+worked on the two dashboard code paths and did nothing at all on the
+bot's, which is the slow one.  Patched at that one copy site and pinned
+by `test/first-mint-block-survives.test.js`; every other copy site is
+still exposed.
+
+Fix has two parts: return
+`{ events, firstMintBlockNumber, firstMintTimestamp }` from the scanner
+and take them as ordinary values; and add a custom ESLint rule (sibling
+to `no-separate-contract-calls.js`) rejecting property assignment onto
+an array.  The lint is the part that makes it stay fixed.
+
+Full write-up:
+`docs/roadmap/nice-to-haves/project_no_properties_on_arrays.md`.

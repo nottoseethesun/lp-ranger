@@ -37,6 +37,8 @@
 const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
 const { loadMergedDefaults } = require("./load-merged-defaults");
+const botConfigV2 = require("./bot-config-v2");
+const { composeRpcUrls } = require("./rpc-url-list");
 
 const {
   parsePositiveInt,
@@ -72,23 +74,91 @@ const HOST = process.env.HOST || APP_CONFIG.server.host;
 
 // ── Bot / wallet ───────────────────────────────────────────────────────────────
 
-/** Primary JSON-RPC endpoint (chain-aware default from chains.json). */
-const RPC_URL =
-  process.env.RPC_URL ||
-  CHAIN.rpc?.primary ||
-  "https://rpc-pulsechain.g4mm4.io";
+/*- Ordered RPC endpoints for the active chain.  chains.json owns the
+ *  URLs — there are deliberately no literals here, per
+ *  feedback_one_literal_per_shipped_default: an env-var fallback
+ *  literal is a second source of truth that drifts silently when the
+ *  shipped list changes.
+ *
+ *  Env overrides are positional and stay backward compatible: RPC_URL
+ *  replaces the first entry, RPC_URL_FALLBACK the second,
+ *  RPC_URL_FALLBACK_2 the third.  An operator who sets only RPC_URL
+ *  keeps the shipped endpoints behind it. */
+/** Ordered RPC endpoints for the active chain, from chains.json. */
+const _CHAIN_RPC_URLS = Array.isArray(CHAIN.rpc?.urls) ? CHAIN.rpc.urls : [];
+const _RPC_ENV_OVERRIDES = [
+  process.env.RPC_URL,
+  process.env.RPC_URL_FALLBACK,
+  process.env.RPC_URL_FALLBACK_2,
+];
 
-/** Fallback RPC endpoint — used automatically if the primary is unreachable. */
-const RPC_URL_FALLBACK =
-  process.env.RPC_URL_FALLBACK ||
-  CHAIN.rpc?.fallback ||
-  "https://rpc.pulsechain.com";
+/*- Endpoints the operator added with Bot Settings → Network → Add RPC,
+ *  most recently added first.
+ *
+ *  Read quietly at module load — this runs on every import, including
+ *  in tests, so it must not log or throw.  Per the documented
+ *  precedence, endpoints added in Bot Settings win over the env and
+ *  shipped layers; they are the most deliberate expression of intent
+ *  available, and they are what the dashboard shows back to the
+ *  operator.
+ *
+ *  They are PREPENDED rather than used as a replacement: the operator
+ *  gets their endpoint tried first, and still keeps the shipped
+ *  endpoints behind it as automatic failover.  Replacing the list would
+ *  mean that choosing a private node also silently gives up
+ *  redundancy. */
+const _SAVED_RPC_URLS = (() => {
+  const v = botConfigV2.readGlobalSetting("rpcUrls");
+  return Array.isArray(v) ? v : [];
+})();
+
+/*- The composition rule itself lives in src/rpc-url-list.js as a pure
+ *  function, so it can be driven directly by tests.  Resolving it here
+ *  from live files and environment would otherwise leave the rule
+ *  testable only by re-implementing it in a test, which is a mirror. */
+
+/**
+ * The shipped + env endpoint list, WITHOUT anything the operator added.
+ *
+ * `RPC_URLS` mixes the two, so recomposing from it would re-seed the
+ * saved entries on every save and make them impossible to remove. The
+ * server recomposes from this base plus the freshly saved list.
+ * @type {string[]}
+ */
+const RPC_URLS_BASE = composeRpcUrls({
+  envOverrides: _RPC_ENV_OVERRIDES,
+  chainUrls: _CHAIN_RPC_URLS,
+});
+
+const RPC_URLS = composeRpcUrls({
+  saved: _SAVED_RPC_URLS,
+  envOverrides: _RPC_ENV_OVERRIDES,
+  chainUrls: _CHAIN_RPC_URLS,
+});
+
+/** Primary JSON-RPC endpoint — first entry of `RPC_URLS`. */
+const RPC_URL = RPC_URLS[0] || "";
+
+/**
+ * Replace the live endpoint list, in place, after the operator adds one.
+ *
+ * Mutates rather than rebinding because `RPC_URLS` is read directly by
+ * `src/rpc-endpoints.js`, `src/rebalancer-pools.js` and
+ * `src/server-can-reopen.js`, each of which captured the array. A
+ * rebind would leave all three walking the endpoints the process
+ * started with.
+ * @param {string[]} urls  Ordered endpoints, most-preferred first.
+ * @returns {void}
+ */
+function setRpcUrls(urls) {
+  if (!Array.isArray(urls) || urls.length === 0) {
+    throw new Error("[config] setRpcUrls: expected a non-empty array");
+  }
+  RPC_URLS.splice(0, RPC_URLS.length, ...urls);
+}
 
 /** NFT token ID for single-position NFT mode (optional). */
 const POSITION_ID = process.env.POSITION_ID || null;
-
-/** ERC-20 / PRC-20 position token contract address (optional fallback). */
-const ERC20_POSITION_ADDRESS = process.env.ERC20_POSITION_ADDRESS || null;
 
 /** % the price must move beyond the position boundary before triggering a rebalance. */
 const REBALANCE_OOR_THRESHOLD_PCT = parsePositiveFloat(
@@ -284,9 +354,10 @@ module.exports = {
   PRIVATE_KEY,
   DRY_RUN,
   RPC_URL,
-  RPC_URL_FALLBACK,
+  RPC_URLS,
+  RPC_URLS_BASE,
+  setRpcUrls,
   POSITION_ID,
-  ERC20_POSITION_ADDRESS,
   REBALANCE_OOR_THRESHOLD_PCT,
   REBALANCE_TIMEOUT_MIN,
   DEFAULT_SLIPPAGE_PCT,
@@ -320,8 +391,9 @@ module.exports = {
   COMPOUND_MIN_FEE_USD: APP_CONFIG.compound.minFeeUsd,
   COMPOUND_DEFAULT_THRESHOLD_USD: APP_CONFIG.compound.defaultThresholdUsd,
 
-  // Scan
-  SCAN_TIMEOUT_MS: APP_CONFIG.scan.timeoutMs,
+  // Re-scan Prices dialog: how long the button waits before it is
+  // handed back.  Bounds the dialog, not the scan.
+  RESCAN_PRICES_TIMEOUT_MS: APP_CONFIG.rescanPrices.timeoutMs,
 
   // Helpers
   assertLiveModeReady,
