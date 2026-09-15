@@ -248,6 +248,27 @@ Three situations, in the order an operator meets them: the first run on a
 new install, everyday use once that is done, and what a restart looks
 like afterwards.
 
+#### The Syncing / Synced Badge
+
+The badge is how an operator knows whether a position's figures can be
+trusted, so it is worth being precise about what it claims.
+
+**Synced** requires two things: the rebalance-history scan finished
+**and** the lifetime scan produced a positive deposit total. A scan that
+completed but resolved nothing useful leaves the badge on **Syncing**
+rather than reporting done — a figure that is wrong but confident is
+worse than one visibly absent.
+
+**It describes one position, not the install.** Each position carries its
+own scan state. One reading Synced while another reads Syncing is normal,
+and switching between them changes which state you are shown, not what
+the app is doing.
+
+**Synced also means the state is on disk.** Setting the flag writes the
+position's config, so a position showing Synced has its baseline and
+totals persisted and is safe to shut down — by Ctrl+C or `npm stop`,
+which share a shutdown handler.
+
 #### Start from Fresh Installation
 
 Nothing is known yet — no wallet, no positions, no history — so this run
@@ -300,33 +321,10 @@ an operator does constantly, and it behaves in a way worth understanding.
 
 ##### Switching positions
 
-**Which position you are looking at is a browser concern, not a server
-one.** The server keeps state for every position it knows about; the
-browser decides which one to show. Switching therefore does not tell the
-server to do anything — it changes which position's state you are
-looking at.
-
-That has a consequence that surprises people: **the Sync badge is
-per-position, not per-app.** A position reading Synced means that
-position's scans have finished. Another position, scanned later or not at
-all, can still be mid-scan. Switching to it shows Syncing — not because
-switching started a scan, but because one was already running and you had
-not been looking at it.
-
-What the switch actually triggers depends on whether the bot manages the
-position:
-
-- **Switching to a managed position** starts nothing. The bot owns that
-  position's history and the dashboard deliberately stays out of the way,
-  because both doing the work would mean walking the same NFT chain
-  twice. You see whatever state the bot's scan is in.
-- **Switching to an unmanaged position** asks the server for that
-  position's detail, since nothing else will. The first visit pays the
-  full per-NFT walk described above, which on a long chain is hours.
-
-Either way the result is cached. That is why moving back and forth
-between positions during a session is quick after the first visit to
-each, even though the first visit to one of them was slow.
+Which position you are looking at is a browser concern, not a server one,
+and what a switch costs depends on whether the bot manages the position
+you switch to. See
+[Switching from a Managed Position to a Different Position That Is Unmanaged](#switching-from-a-managed-position-to-a-different-position-that-is-unmanaged).
 
 ##### What each poll does
 
@@ -405,6 +403,19 @@ scan did not finish. That work is incremental, picking up from where the
 last run got to rather than starting over.
 
 ---
+
+#### Switching from a Managed Position to a Different Position That Is Unmanaged
+
+A managed position's history belongs to the bot, which keeps it current.
+An unmanaged one has nobody working on it, so opening it is the first
+time that work has been asked for and the server starts from nothing.
+That is the scan you see, and the Sync badge describes the position in
+front of you rather than the install.
+
+What is cached is a **pool's** history, not a position's, so the cost is
+per new pool rather than per switch. Each pool is paid for once, which is
+why switching feels slow at first and quick later. Managed positions keep
+polling throughout, and the result survives a restart.
 
 ## USD Pricing
 
