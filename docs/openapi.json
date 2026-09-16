@@ -678,7 +678,31 @@
             "description": "Missing tokenId or no private key"
           },
           "409": {
-            "description": "Position already managed"
+            "description": "Another position already manages this pool. LP Ranger manages one position per liquidity pool so that profit and loss stays attributable to it. The body names the position holding the pool.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string",
+                      "enum": ["pool-already-managed"]
+                    },
+                    "conflictTokenId": {
+                      "type": "string",
+                      "description": "NFT id of the running position holding the pool."
+                    },
+                    "conflictKey": {
+                      "type": "string",
+                      "description": "Composite key (blockchain-wallet-contract-tokenId) of that position."
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
