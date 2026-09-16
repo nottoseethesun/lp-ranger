@@ -15,7 +15,11 @@
  * dependency cycle.
  */
 
-const { ethers } = require("ethers");
+/*- The package itself, not its `ethers` namespace export. Both work
+ *  against the real package, but tests that replace `ethers` supply the
+ *  top-level shape — the one `compounder.js` has always used — and a
+ *  destructured `{ ethers }` reads `undefined` from those stubs. */
+const ethers = require("ethers");
 const { PM_ABI } = require("./pm-abi");
 
 /**

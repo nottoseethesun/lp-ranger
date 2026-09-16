@@ -192,7 +192,7 @@ const {
   _fetchGeckoTerminalCurrent,
   _fetchDexScreener,
 } = require("../../../src/price-fetcher");
-const { _parseLogs } = require("../../../src/compounder");
+const { parseLogs: _parseLogs } = require("../../../src/nft-event-parse");
 const { sleep } = require("../_helpers");
 const { findPositionForTokenId, fmtUsd } = require("./analysis");
 const {
