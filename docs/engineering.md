@@ -42,6 +42,7 @@ sequence.
 - [Lifetime History Lookback](#lifetime-history-lookback)
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
   - [Cost](#cost)
+  - [Batched chain reads](#batched-chain-reads)
   - [Call sites](#call-sites)
   - [The dashboard does not scan a position the bot owns](#the-dashboard-does-not-scan-a-position-the-bot-owns)
 - [Client-Side URL Routing](#client-side-url-routing)
@@ -1099,50 +1100,90 @@ so a scan's wall-clock time is its request count divided by four per
 second. Chunk width is 9,000 blocks.
 
 For a 132-rebalance chain in a pool created two years before the first
-deposit, scanning two event types per NFT:
+deposit, scanning two event types:
 
-| Window | Chunks per NFT | ~133 NFTs |
+| Window | Chunks | ~133 NFTs |
 | --- | --- | --- |
-| pool creation → head | 954 | ~26 hours |
-| **NFT mint → head** (what runs) | 168 | hours |
+| pool creation → head, per NFT | 954 each | ~26 hours |
+| NFT mint → head, per NFT | up to 168 each | hours |
+| **chain's first mint → head, once** (what runs) | 168 in total | about a minute |
 
-An upper bound would take this to one or two chunks per retired NFT, and
-that is the saving deliberately given up: on a long chain each retired
-NFT still re-reads every block between its own retirement and the chain
-head. Correctness wins, because no sound upper bound exists — see above.
+An upper bound would have taken the per-NFT walk to one or two chunks
+per retired NFT. That saving was given up, because no sound upper bound
+exists — see above. Reading the chain in one batch recovers it without
+one: each block is read once for the whole chain, rather than once for
+every NFT minted before it.
 
 ### Batched chain reads
 
-The bot's lifetime scan reads the whole chain in one pass rather than
-one pass per NFT. `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`)
-calls `scanChainNftEvents` (`src/nft-events-batch.js`), whose filter
-OR-matches every token id in the chain — `tokenId` is the first indexed
-parameter on all three events, and a topic slot accepts an array. The
-request covers the union of the NFTs' windows, from the lowest floor in
-the set to the head; the node does the filtering, so the same logs come
-back in one response set rather than one per NFT.
+Every read of a whole chain is one pass, not one pass per NFT. Three
+places read a chain, all through `scanChainNftEvents`
+(`src/nft-events-batch.js`):
+
+| Reader | Events | NFTs | Serves |
+| --- | --- | --- | --- |
+| `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`) | all three | the whole chain | the bot's lifetime scan: Fees Compounded, lifetime HODL, deposit |
+| `scanChainCollectAndDrain` (`src/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, for the bot and the unmanaged view alike |
+| `chainEventsReader` (`src/position-details-chain-read.js`) | all three | the whole chain | one unmanaged details request: Fees Compounded and the lifetime HODL |
+
+The filter OR-matches every token id in the chain — `tokenId` is the
+first indexed parameter on all three events, and a topic slot accepts an
+array. The request covers the union of the NFTs' windows, from the
+lowest floor in the set to the head; the node does the filtering, so the
+same logs come back in one response set rather than one per NFT. A
+reader names the event types it uses (`eventNames`) and pays only for
+those, since each type is a full pass over the union.
 
 Moving token identity from the request to the response is what needs
-care, and four rules carry it:
+care, and five rules carry it:
 
 | Rule | Why |
 | --- | --- |
 | Logs are partitioned by `topics[1]`, not decoded first | Routing must not depend on the ABI being right about the unindexed fields |
 | Each NFT's logs are re-floored to its own window | The union request starts below most NFTs' floors; without this the batch returns events the per-NFT scan excluded |
-| Each NFT's logs are sorted into chain order | `classifyCompounds` reads an NFT's FIRST `IncreaseLiquidity` as the mint deposit |
+| Each NFT's logs are sorted into chain order | `classifyCompounds` reads an NFT's FIRST `IncreaseLiquidity` as the mint deposit, and the exit value is an NFT's LAST `Collect` |
 | Every requested id gets an entry, and `eventsFor` throws for one that was not requested | A missing key would otherwise read as "no history" — a closed epoch with no fees |
+| An entry carries only the event types fetched | A consumer reaching for a history nobody requested fails on `undefined` instead of reading `[]` as "never happened" |
 
 The head is resolved once for the whole batch, and the id list is split
 into groups of 100 so an endpoint that caps a topic array costs a few
 more passes rather than a failure.
 
-A batch succeeds or fails as a unit. The lifetime resume buffer
-therefore stores nothing from a failed read, and the retry asks for
-every NFT not already buffered — affordable because the chain now costs
-minutes, and because transient RPC failures are retried per request
-beneath the batch.
+Each reader prepares its read before anything consumes it, from the same
+inputs its consumers use:
 
-Measured reading every NFT in a chain, at the default request pacing:
+- **Epoch reconstruction** reads before building any epoch, for exactly
+  the NFTs the loop will fetch. Each NFT's slice reaches
+  `getPositionHistory` as `collectAndDrain`. Omitting that option — the
+  single closed-position history route — reads the one NFT on its own;
+  `null` means the chain read was unusable, and is never replaced by a
+  per-NFT read.
+- **The unmanaged view** creates one reader per request in
+  `computeLifetimeDetails` and hands it to both consumers. It reads
+  nothing until one of them finds its figure missing from its cache,
+  and at most once after that. `_detectCurrentNftValues` still reads the
+  current NFT alone: it runs on the warm path, where the chain's figures
+  are cached and a whole-chain read would cost far more than the one NFT
+  it needs.
+
+A batch succeeds or fails as a unit, and each reader decides what a
+failure means:
+
+- **Lifetime scan** — the resume buffer stores nothing from a failed
+  read, and the retry asks for every NFT not already buffered.
+- **Epoch reconstruction** — every NFT in the pass takes its history as
+  unknown, which is what a failed per-NFT read reported. An NFT whose
+  exit value and fee the rebalance log already holds still builds; the
+  rest are skipped, and the short history schedules another attempt.
+- **Unmanaged view** — the failed read is not kept, so the second
+  consumer in the request tries again rather than inheriting the
+  failure.
+
+That is affordable because a chain now costs minutes, and because
+transient RPC failures are retried per request beneath the batch.
+
+Measured reading every NFT in a chain for the lifetime scan, at the
+default request pacing:
 
 | Chain | Batched | One pass per NFT |
 | --- | --- | --- |
@@ -1154,16 +1195,14 @@ on the live NFT the batched and per-NFT reads matched event for event.
 
 ### Call sites
 
-Five files scan a chain of NFTs and must derive the floor per NFT:
-`src/bot-recorder-scan-helpers.js`, `src/position-details-compound.js`,
-`src/position-details-lifetime-scan.js`, `src/bot-pnl-current-nft.js`
-and `src/position-history.js`.
+The three chain readers in the table above each hand the batch the
+chain's mint blocks, so every NFT is floored at its own mint.
 
-`src/position-history.js` is the one where the loop lives elsewhere.
-`getPositionHistory()` handles a single NFT, and
-`src/epoch-reconstructor.js` calls it once per closed NFT in the chain,
-so a pool-wide window there costs once per rebalance. Its bounds come
-from `result.mintBlockNumber` and `result.closeBlockNumber`, which
+Three places read a single NFT, floored at that NFT's own mint:
+`src/bot-pnl-current-nft.js` and `_detectCurrentNftValues` in
+`src/position-details-compound.js` read the current NFT, and
+`src/position-history.js` reads a closed position looked at on its own.
+The last takes its floor from `result.mintBlockNumber`, which
 `_supplementFromEvents` fills from the rebalance events before any scan
 runs.
 
@@ -1175,12 +1214,15 @@ chunked scan whose `label` interpolates a `tokenId` is per-NFT whatever
 the helper is called. The shape detector is what covers a helper the
 list does not yet name. Each matched file must either require
 `nft-mint-blocks.js` or hold an entry in the test's `EXEMPT` map giving
-the reason.
+the reason. Each chain reader must also pass the chain's mint blocks to
+the batch; an empty map would floor every NFT at the shared floor.
 
-Two files are exempt because they search *for* a mint block and so
-cannot be bounded below by one: `src/event-scanner-mint-lookup.js`,
-which instead stops at the first chunk that yields a hit, and
-`src/hodl-baseline.js`.
+`src/compounder.js` is exempt because it defines the single-NFT scan and
+leaves the floor to its caller. Three files are exempt because they
+search *for* a mint block and so cannot be bounded below by one:
+`src/event-scanner-mint-lookup.js`, which instead stops at the first
+chunk that yields a hit, `src/hodl-baseline.js` and
+`src/position-history-mint.js`.
 
 ### The dashboard does not scan a position the bot owns
 

@@ -357,6 +357,14 @@ The same pre-fetched events are then passed to two classifiers:
 Both classifiers share `_filterRebalances` to distinguish rebalance-adjacent
 events from genuine deposits/compounds.
 
+The unmanaged details view follows the same pattern per request: one reader
+(`chainEventsReader` in `src/position-details-chain-read.js`), created in
+`computeLifetimeDetails`, read only when a figure is missing from its cache,
+and shared by both classifiers. Epoch reconstruction reads the closed NFTs'
+Collect and DecreaseLiquidity history in one batch as well
+(`scanChainCollectAndDrain`), before it builds any epoch, and hands each NFT
+its slice.
+
 The scan resumes from `lastNftScanBlock` only when the HODL amounts, the
 compound total and the lifetime deposit are all already on disk
 (`canResumeIncrementally`); otherwise it reads the chain from the pool's

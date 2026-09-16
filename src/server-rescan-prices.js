@@ -28,8 +28,9 @@
  *   - The pool rebalance-history scan (the expensive part of Reload).
  *   - Epoch P&L history.
  *
- * Cost: three `getLogs` per NFT in the chain over the chosen window.
- * With the default 60-day window that is seconds, not hours.
+ * Cost: one batched read of the chain's three event histories over the
+ * chosen window (`src/nft-events-batch.js`), not one per NFT.  With the
+ * default 60-day window that is seconds, not hours.
  */
 
 "use strict";

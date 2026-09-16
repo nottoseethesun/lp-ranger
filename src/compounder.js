@@ -475,12 +475,9 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
   const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
   const addr = config.POSITION_MANAGER;
   const from = scanOpts.fromBlock ?? 0;
-  /*- A RETIRED NFT stops emitting at the block the next one was minted:
-   *  the rebalance drains it and mints its replacement, and the app
-   *  never returns to a drained NFT (a re-open mints fresh rather than
-   *  reviving it).  Scanning it to head is therefore a guaranteed-empty
-   *  walk across the whole remainder of the chain.  Only the CURRENT
-   *  NFT needs "latest". */
+  /*- To the chain head unless the caller bounds it, and no caller does:
+   *  an NFT that looks retired can still be funded and drain later, so
+   *  no sound upper bound exists — see `src/nft-mint-blocks.js`. */
   const to = scanOpts.toBlock ?? "latest";
   /*- Chunked, and resolved to a concrete head once per event type
    *  rather than per window, so all three cover the same range.
