@@ -57,20 +57,9 @@ function poolKeyOf(pool, poolKeyFn) {
   return poolKeyFn(token0, token1, fee);
 }
 
-/**
- * Find a running position that already manages the given pool.
- *
- * @param {object} opts
- * @param {object} opts.pool  Pool identity of the position being started.
- * @param {Map<string, object>|object} opts.botStates  Per-position bot
- *   states, keyed by composite key — `getAllPositionBotStates()`.
- * @param {string} [opts.selfKey]  Composite key of the position being
- *   started, excluded from the comparison. Required for correctness on
- *   the rebalance path: a rebalance mints a new tokenId and migrates the
- *   key within the same pool, so without this the position would be
- *   rejected against itself.
- */
-/*- Scan the RUNNING bot states for one already holding `wanted`. */
+/*- Scan the RUNNING bot states for one already holding `wanted`.
+ *  Split out of `findPoolConflict` to keep it under the complexity
+ *  cap; it carries no policy of its own. */
 function _runningHolder(botStates, selfKey, poolKeyFn, wanted) {
   const entries =
     botStates instanceof Map
@@ -91,6 +80,32 @@ function _runningHolder(botStates, selfKey, poolKeyFn, wanted) {
   return null;
 }
 
+/**
+ * Find a position that already holds the given pool.
+ *
+ * Two kinds count. A RUNNING position holds its pool outright. So does
+ * one that is still STARTING: its Manage request was allowed and the
+ * loop is coming up, but `state.running` is not set until it is, and
+ * that window is seconds of RPC work — long enough for a second
+ * request in the same pool to arrive and find nothing.
+ *
+ * @param {object} opts
+ * @param {object} opts.pool  Pool identity of the position being started.
+ * @param {Map<string, object>|object} opts.botStates  Per-position bot
+ *   states, keyed by composite key — `getAllPositionBotStates()`.
+ * @param {string} [opts.selfKey]  Composite key of the position being
+ *   started, excluded from the comparison. Required for correctness on
+ *   the rebalance path: a rebalance mints a new tokenId and migrates the
+ *   key within the same pool, so without this the position would be
+ *   rejected against itself.
+ * @param {(t0: string, t1: string, fee: *) => string} opts.poolKeyFn
+ *   Canonical key builder, bound to chain/contract/wallet by the caller.
+ * @param {Map<string, string|null>} [opts.startingPools]  Composite key
+ *   -> pool key for requests that passed the gate but have not finished
+ *   starting.
+ * @returns {{key: string, tokenId: string}|null}  The conflicting
+ *   position, or null when the pool is free.
+ */
 function findPoolConflict({
   pool,
   botStates,
