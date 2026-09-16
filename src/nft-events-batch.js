@@ -49,8 +49,11 @@
  * already resolved it once per event type for the same reason.
  */
 
+const config = require("./config");
+const sendTx = require("./send-transaction");
 const { scanChunked } = require("./get-logs-chunked");
 const { nftScanFrom } = require("./nft-mint-blocks");
+const { IFACE, parseLogs } = require("./nft-event-parse");
 
 /*- Token ids per filter.
  *
@@ -155,7 +158,27 @@ async function _scanGroup(o, name, idsHex) {
   });
 }
 
-/*- Drop logs that fall below the id's OWN floor.
+/*- Chain order: block, then position within the block.
+ *
+ *  Order is load-bearing downstream. `classifyCompounds` reads an NFT's
+ *  FIRST `IncreaseLiquidity` as the mint deposit and every later one as
+ *  a compound, so a compound sorted ahead of the mint would be skipped
+ *  and the mint counted as a compound — both silent, both money.
+ *
+ *  Today the transport already delivers this order: `scanChunked` walks
+ *  windows in sequence and each id lives in exactly one id-group. The
+ *  sort makes that a property of this module rather than an accident of
+ *  how its dependencies happen to be written. `Array.prototype.sort` is
+ *  stable, so logs lacking an `index` keep their arrival order. */
+function _byChainOrder(a, b) {
+  if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
+  const ai = typeof a.index === "number" ? a.index : 0;
+  const bi = typeof b.index === "number" ? b.index : 0;
+  return ai - bi;
+}
+
+/*- Drop logs that fall below the id's OWN floor, then put each id's
+ *  logs in chain order.
  *
  *  The single request covers from the lowest floor in the set, which is
  *  below most ids' floors. Re-flooring here is what makes the batched
@@ -172,6 +195,7 @@ function _keepAtOrAbove(logs, floors) {
     if (!out.has(id)) out.set(id, []);
     out.get(id).push(log);
   }
+  for (const list of out.values()) list.sort(_byChainOrder);
   return out;
 }
 
@@ -259,6 +283,34 @@ function eventsFor(batch, tokenId) {
   return hit;
 }
 
+/**
+ * The whole-chain counterpart of `scanNftEvents`.
+ *
+ * Supplies what `scanNftEvents` supplies for itself — the managed read
+ * provider (with its RPC failover), the configured position manager,
+ * the shared ABI interface and decoder — so a caller swaps one for the
+ * other without learning the wiring. The chunk width is left to
+ * `scanChunked`'s own default, exactly as `scanNftEvents` leaves it,
+ * so both paths read the same `getLogsChunkSize` setting.
+ *
+ * @param {Iterable<string|number>} tokenIds  Every NFT to fetch.
+ * @param {object} o
+ * @param {Map|object} o.mintBlocks  tokenId -> mint block.
+ * @param {number} o.sharedFloor     Pool floor, or resume checkpoint.
+ * @returns {Promise<Map<string, object>>}  One entry per id.
+ */
+function scanChainNftEvents(tokenIds, o) {
+  return fetchChainNftEvents({
+    tokenIds: [...tokenIds],
+    mintBlocks: o.mintBlocks,
+    sharedFloor: o.sharedFloor,
+    provider: sendTx.getManagedReadProvider(),
+    iface: IFACE,
+    address: config.POSITION_MANAGER,
+    parseLogs,
+  });
+}
+
 module.exports = {
   ID_BATCH_SIZE,
   EVENT_NAMES,
@@ -267,7 +319,9 @@ module.exports = {
   scanFloors,
   emptyEvents,
   fetchChainNftEvents,
+  scanChainNftEvents,
   eventsFor,
   _chunkIds,
   _keepAtOrAbove,
+  _byChainOrder,
 };

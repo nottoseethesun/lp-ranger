@@ -34,9 +34,16 @@ const path = require("node:path");
 
 const SRC = path.join(__dirname, "..", "src");
 
-/*- Named calls that scan one NFT's event history. */
+/*- Named calls that scan NFT event history — one NFT at a time, or a
+ *  whole chain at once.
+ *
+ *  The batched pair is here for the same reason as the rest. A caller
+ *  of `scanChainNftEvents` supplies the mint blocks the batch floors
+ *  each NFT at; hand it an empty map and every NFT silently falls back
+ *  to the pool's creation block — the exact waste this guard exists to
+ *  catch, now reached through a new name. */
 const SCAN_CALLS =
-  /\b(scanNftEvents|detectCompoundsOnChain|scanCollectAndDrain)\s*\(/;
+  /\b(scanNftEvents|detectCompoundsOnChain|scanCollectAndDrain|scanChainNftEvents|fetchChainNftEvents)\s*\(/;
 
 /*- The general shape, independent of any helper's name: a chunked scan
  *  whose label names a tokenId is by definition a per-NFT scan.

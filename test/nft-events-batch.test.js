@@ -34,6 +34,7 @@ const {
   eventsFor,
   _chunkIds,
   _keepAtOrAbove,
+  _byChainOrder,
 } = require("../src/nft-events-batch");
 const PM_ABI = require("../src/pm-abi");
 
@@ -462,5 +463,78 @@ describe("batched result equals the per-NFT result", () => {
     const expect = await perNft(provider, "99", 100, 1000);
     assert.equal(expect.Collect.length, 0);
     assert.deepEqual(eventsFor(batch, "99"), emptyEvents());
+  });
+});
+
+// ── Chain order ──────────────────────────────────────────────────────
+
+describe("per-id logs come back in chain order", () => {
+  /*- `classifyCompounds` reads an NFT's FIRST IncreaseLiquidity as the
+   *  mint deposit and the rest as compounds. Out of order, a compound is
+   *  skipped as "the mint" and the mint is counted as a compound — both
+   *  silent, both wrong money. */
+  it("sorts by block, then by position within the block", () => {
+    const a = { ...logFor("IncreaseLiquidity", "1", 300), index: 0 };
+    const b = { ...logFor("IncreaseLiquidity", "1", 100), index: 5 };
+    const c = { ...logFor("IncreaseLiquidity", "1", 100), index: 2 };
+    const out = _keepAtOrAbove([a, b, c], new Map([["1", 0]]));
+    assert.deepEqual(
+      out.get("1").map((l) => [l.blockNumber, l.index]),
+      [
+        [100, 2],
+        [100, 5],
+        [300, 0],
+      ],
+    );
+  });
+
+  it("keeps arrival order within a block when index is absent", () => {
+    /*- Array.prototype.sort is stable, so this is the transport's order,
+     *  not an arbitrary one. */
+    const first = { ...logFor("Collect", "1", 100), transactionHash: "0x1" };
+    const second = { ...logFor("Collect", "1", 100), transactionHash: "0x2" };
+    const out = _keepAtOrAbove([first, second], new Map([["1", 0]]));
+    assert.deepEqual(
+      out.get("1").map((l) => l.transactionHash),
+      ["0x1", "0x2"],
+    );
+  });
+
+  it("orders the fetch result even when the transport does not", async () => {
+    /*- A provider returning logs newest-first stands in for any future
+     *  change that parallelises windows. The mint must still lead. */
+    const mint = { ...logFor("IncreaseLiquidity", "1", 100), index: 0 };
+    const compound = { ...logFor("IncreaseLiquidity", "1", 900), index: 0 };
+    const p = makeProvider([compound, mint], 1000);
+    const orig = p.getLogs;
+    /*- Force newest-first whatever order the fixture array is in. A
+     *  plain .reverse() of an array that already happened to be
+     *  newest-first delivers ascending order, and the test then passes
+     *  without the sort it exists to check. */
+    p.getLogs = async (q) =>
+      (await orig(q)).sort((x, y) => y.blockNumber - x.blockNumber);
+    const batch = await fetchChainNftEvents(
+      base(p, { tokenIds: ["1"], mintBlocks: new Map(), sharedFloor: 0 }),
+    );
+    assert.deepEqual(
+      eventsFor(batch, "1").ilEvents.map((e) => e.blockNumber),
+      [100, 900],
+      "the mint deposit must be the first IncreaseLiquidity",
+    );
+  });
+
+  it("compares numerically, not as text", () => {
+    assert.ok(
+      _byChainOrder(
+        { blockNumber: 9, index: 0 },
+        { blockNumber: 10, index: 0 },
+      ) < 0,
+    );
+    assert.ok(
+      _byChainOrder(
+        { blockNumber: 5, index: 9 },
+        { blockNumber: 5, index: 10 },
+      ) < 0,
+    );
   });
 });
