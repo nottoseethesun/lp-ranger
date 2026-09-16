@@ -34,6 +34,7 @@ const {
 } = require("./position-details-quick");
 const { _resolveCompounded } = require("./position-details-compound");
 const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
+const { chainEventsReader } = require("./position-details-chain-read");
 const { resolvePositionSymbols } = require("./resolve-position-symbols");
 const { computeHodlIL } = require("./il-calculator");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
@@ -187,7 +188,9 @@ function _buildDailyFallback(snap, entryValue, value, body) {
 
 /** Compute lifetime IL using accumulated HODL amounts across rebalance chain.
  *  `residualValueUsd` is the pool-scoped wallet residual to credit to the
- *  LP-side of the comparison — see computeHodlIL's JSDoc for the rationale. */
+ *  LP-side of the comparison — see computeHodlIL's JSDoc for the rationale.
+ *  `readChainEvents` is the request's shared chain reader, read only when
+ *  the HODL is not cached. */
 async function _computeLifetimeIL(
   position,
   events,
@@ -197,6 +200,7 @@ async function _computeLifetimeIL(
   price1,
   poolAddress,
   residualValueUsd,
+  readChainEvents,
 ) {
   const poolCacheKey = _poolCacheKey(position);
   let hodl = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
@@ -208,6 +212,7 @@ async function _computeLifetimeIL(
         body,
         poolAddress,
         poolCacheKey,
+        readChainEvents,
       );
     } catch (err) {
       log.warn("[position details] Lifetime HODL error:", err.message);
@@ -411,6 +416,14 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ps.poolAddress,
   );
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
+  /*- One chain read for this request, shared by Fees Compounded and the
+   *  lifetime HODL below.  Lazy: nothing is read unless one of them is
+   *  missing from its cache. */
+  const readChainEvents = chainEventsReader({
+    position,
+    events,
+    poolAddress: ps.poolAddress,
+  });
   /*- Resolve lifetime compounded BEFORE _lifetimePnl so the new fee-
    *  earnings model (currentFees + lifetimeCompounded) has both inputs
    *  on hand.  No extra cost — _resolveCompounded reads from cached
@@ -427,6 +440,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     { price0, price1 },
     diskConfig,
     posKey,
+    readChainEvents,
   );
   const lt = _lifetimePnl(
     tracker,
@@ -467,6 +481,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     price1,
     ps.poolAddress,
     cur.residualValueUsd,
+    readChainEvents,
   );
   const ltIl = ltResult?.il ?? null;
   await _enrichSnap(

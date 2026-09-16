@@ -21,11 +21,11 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { ethers } = require("ethers");
 
 const {
   ID_BATCH_SIZE,
   EVENT_NAMES,
+  eventNamesOf,
   topicForTokenId,
   tokenIdOfLog,
   scanFloors,
@@ -36,53 +36,12 @@ const {
   _keepAtOrAbove,
   _byChainOrder,
 } = require("../src/nft-events-batch");
-const PM_ABI = require("../src/pm-abi");
-
-const ABI = Array.isArray(PM_ABI)
-  ? PM_ABI
-  : PM_ABI.PM_ABI || Object.values(PM_ABI).find(Array.isArray);
-const IFACE = new ethers.Interface(ABI);
-const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
-
-/** A log as an RPC returns it, for `name` / `tokenId` at `blockNumber`. */
-function logFor(name, tokenId, blockNumber) {
-  return {
-    address: PM,
-    topics: [IFACE.getEvent(name).topicHash, topicForTokenId(tokenId)],
-    data: "0x",
-    blockNumber,
-    transactionHash: "0xabc",
-  };
-}
-
-/**
- * Provider that serves a fixed log set, recording every getLogs call.
- * Filters the way a node does: by address, block range, topic0, and
- * OR-matching topic1 against the supplied array.
- */
-function makeProvider(logs, head = 1000) {
-  const calls = [];
-  return {
-    calls,
-    async getBlockNumber() {
-      calls.push({ method: "getBlockNumber" });
-      return head;
-    },
-    async getLogs({ address, fromBlock, toBlock, topics }) {
-      calls.push({ method: "getLogs", fromBlock, toBlock, topics });
-      const [t0, t1] = topics;
-      const wanted = Array.isArray(t1) ? new Set(t1) : new Set([t1]);
-      return logs.filter(
-        (l) =>
-          l.address === address &&
-          l.topics[0] === t0 &&
-          wanted.has(l.topics[1]) &&
-          l.blockNumber >= fromBlock &&
-          l.blockNumber <= toBlock,
-      );
-    },
-  };
-}
+const {
+  IFACE,
+  PM,
+  logFor,
+  makeProvider,
+} = require("./helpers/nft-log-fixtures");
 
 const parseLogs = (_iface, logs) =>
   logs.map((l) => ({ blockNumber: l.blockNumber, txHash: l.transactionHash }));
@@ -354,6 +313,101 @@ describe("fetchChainNftEvents", () => {
       }),
     );
     assert.equal(batch.get("7").collectEvents.length, 1);
+  });
+});
+
+// ── Fetching only some event types ───────────────────────────────────
+
+describe("fetching only the event types a caller reads", () => {
+  /*- Each event type is a full pass over the union range, so a reader
+   *  that uses two of the three pays half as much again for the third
+   *  unless it can leave it out. */
+  const DRAIN = ["Collect", "DecreaseLiquidity"];
+  const topicOf = (name) => IFACE.getEvent(name).topicHash;
+
+  it("defaults to all three, in a fixed order", () => {
+    assert.deepEqual(eventNamesOf(undefined), [...EVENT_NAMES]);
+    assert.deepEqual(eventNamesOf(null), [...EVENT_NAMES]);
+  });
+
+  it("returns the requested types in the fixed order", () => {
+    assert.deepEqual(eventNamesOf(["DecreaseLiquidity", "Collect"]), DRAIN);
+  });
+
+  it("refuses an unknown event before any request is made", async () => {
+    /*- A misspelling must not cost a long scan before it is noticed. */
+    const p = makeProvider([]);
+    await assert.rejects(
+      fetchChainNftEvents(
+        base(p, {
+          tokenIds: ["1"],
+          mintBlocks: new Map(),
+          sharedFloor: 0,
+          eventNames: ["Colect"],
+        }),
+      ),
+      /unknown event "Colect"/,
+    );
+    assert.equal(p.calls.length, 0);
+  });
+
+  it("refuses an empty selection", () => {
+    assert.throws(() => eventNamesOf([]), /no event types requested/);
+  });
+
+  it("queries only the requested types", async () => {
+    const p = makeProvider([]);
+    await fetchChainNftEvents(
+      base(p, {
+        tokenIds: ["1", "2"],
+        mintBlocks: new Map(),
+        sharedFloor: 0,
+        eventNames: DRAIN,
+      }),
+    );
+    const topics = p.calls
+      .filter((c) => c.method === "getLogs")
+      .map((c) => c.topics[0]);
+    assert.deepEqual(topics, DRAIN.map(topicOf));
+  });
+
+  it("gives each entry only the histories that were fetched", async () => {
+    /*- No `ilEvents` at all, rather than an empty one: a consumer
+     *  reaching for a history nobody requested must not read `[]` as
+     *  "this NFT never added liquidity". */
+    const batch = await fetchChainNftEvents(
+      base(makeProvider([logFor("Collect", "1", 200)]), {
+        tokenIds: ["1", "2"],
+        mintBlocks: new Map(),
+        sharedFloor: 0,
+        eventNames: DRAIN,
+      }),
+    );
+    assert.deepEqual(Object.keys(eventsFor(batch, "1")).sort(), [
+      "collectEvents",
+      "dlEvents",
+    ]);
+    assert.equal(eventsFor(batch, "1").collectEvents.length, 1);
+    assert.deepEqual(eventsFor(batch, "2"), emptyEvents(DRAIN));
+    assert.equal("ilEvents" in eventsFor(batch, "2"), false);
+  });
+
+  it("sends a repeated id once", async () => {
+    /*- The id-group size is what bounds the topic array, so a duplicate
+     *  would take a slot a real id needs. */
+    const p = makeProvider([]);
+    const batch = await fetchChainNftEvents(
+      base(p, {
+        tokenIds: ["1", "2", "1", 2],
+        mintBlocks: new Map(),
+        sharedFloor: 0,
+      }),
+    );
+    const gets = p.calls.filter((c) => c.method === "getLogs");
+    for (const c of gets) {
+      assert.deepEqual(c.topics[1], [topicForTokenId(1), topicForTokenId(2)]);
+    }
+    assert.deepEqual([...batch.keys()], ["1", "2"]);
   });
 });
 

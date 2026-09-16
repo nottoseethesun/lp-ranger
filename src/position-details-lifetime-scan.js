@@ -2,10 +2,11 @@
  * @file src/position-details-lifetime-scan.js
  * @module position-details-lifetime-scan
  * @description
- * Lifetime-HODL on-chain scan for closed/unmanaged positions, extracted from
- * `position-details.js` to keep that file under the 500-line cap.  Owns the
- * NFT-event fetch (bounded by the pool's creation block) and the per-pool
- * cache persistence.
+ * Lifetime-HODL computation for closed/unmanaged positions, extracted from
+ * `position-details.js` to keep that file under the 500-line cap.  Runs the
+ * HODL accumulator over the request's shared chain read
+ * (`position-details-chain-read.js`) and owns the per-pool cache
+ * persistence.
  */
 
 "use strict";
@@ -18,24 +19,9 @@ const {
   setCachedFreshDeposits,
   getCachedFreshDeposits,
 } = require("./epoch-cache");
-const { getPoolCreationBlockCached } = require("./pool-creation-block");
-const { scanNftEvents } = require("./compounder");
-const {
-  mintBlocksByTokenId,
-  nftScanFrom,
-  chainScanFloor,
-} = require("./nft-mint-blocks");
+const { eventsFor } = require("./nft-events-batch");
+const { collectTokenIds } = require("./bot-recorder-scan-helpers");
 const { computeLifetimeHodl } = require("./lifetime-hodl");
-
-/** Resolve the NFT-scan lower bound; 0 when the pool address is unknown. */
-async function _resolveScanFromBlock(prov, ethers, poolAddress) {
-  if (!poolAddress) return 0;
-  return getPoolCreationBlockCached({
-    provider: prov,
-    factoryAddress: config.FACTORY,
-    poolAddress,
-  });
-}
 
 /** Persist HODL + fresh-deposit caches when keyed and present. */
 function _persistLifetimeHodlCache(poolCacheKey, hodl, cachedFresh) {
@@ -53,15 +39,17 @@ function _persistLifetimeHodlCache(poolCacheKey, hodl, cachedFresh) {
 
 /**
  * Run the lifetime-HODL scan for a closed/unmanaged position.
- * Reads NFT events for every tokenId in the rebalance chain (bounded by the
- * pool's creation block on first run), runs the HODL accumulator, and
- * persists the result.
+ * Takes the NFT events for every tokenId in the rebalance chain from the
+ * request's shared chain read, runs the HODL accumulator, and persists the
+ * result.
  *
  * @param {object} position
  * @param {object[]} events       Rebalance events
- * @param {object} body           Request body with `tokenId`, `walletAddress`
+ * @param {object} body           Request body with `walletAddress`
  * @param {string} poolAddress    Pool contract address (can be falsy)
  * @param {string|null} poolCacheKey
+ * @param {() => Promise<Map<string, object>>} readChainEvents  The
+ *   request's chain reader, from `chainEventsReader`.
  * @returns {Promise<object>}     HODL result from `computeLifetimeHodl`.
  */
 async function scanLifetimeHodl(
@@ -70,29 +58,15 @@ async function scanLifetimeHodl(
   body,
   poolAddress,
   poolCacheKey,
+  readChainEvents,
 ) {
-  const ids = new Set([String(body.tokenId)]);
-  for (const ev of events || []) {
-    if (ev.oldTokenId) ids.add(String(ev.oldTokenId));
-    if (ev.newTokenId) ids.add(String(ev.newTokenId));
-  }
-  const prov = sendTx.getManagedReadProvider();
-  /*- The pool's creation block is the same for every NFT in the chain,
-      so it is resolved once — but it is only the FLOOR.  Each NFT is
-      then scanned from its own mint block, because it cannot have
-      emitted events before it existed, and on a long chain those
-      pre-mint blocks are the dominant cost of the whole scan. */
-  const creationBlock = await _resolveScanFromBlock(prov, ethers, poolAddress);
-  const fromBlock = chainScanFloor(events, creationBlock);
-  const mintBlocks = mintBlocksByTokenId(events);
+  const batch = await readChainEvents();
+  /*- Looked up per NFT rather than handed over whole: `eventsFor` throws
+   *  for an NFT the read did not cover, where the accumulator would
+   *  skip a missing one as "no deposits" and understate the HODL. */
   const allNftEvents = new Map();
-  for (const tid of ids) {
-    allNftEvents.set(
-      tid,
-      await scanNftEvents(tid, {
-        fromBlock: nftScanFrom(mintBlocks, tid, fromBlock),
-      }),
-    );
+  for (const tid of collectTokenIds(position, events)) {
+    allNftEvents.set(tid, eventsFor(batch, tid));
   }
   const cachedFresh = poolCacheKey
     ? getCachedFreshDeposits(poolCacheKey)
@@ -100,7 +74,7 @@ async function scanLifetimeHodl(
   const hodl = await computeLifetimeHodl(allNftEvents, {
     rebalanceEvents: events,
     position,
-    provider: prov,
+    provider: sendTx.getManagedReadProvider(),
     ethersLib: ethers,
     walletAddress: body.walletAddress,
     excludeFromAddrs: [config.POSITION_MANAGER, poolAddress],

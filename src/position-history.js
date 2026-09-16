@@ -281,12 +281,6 @@ function _computeUsdValue(amount0, amount1, dec0, dec1, price0, price1) {
   return human0 * price0 + human1 * price1;
 }
 
-/**
- * Extract token amounts from mint/close TX receipts and compute USD values.
- * Requires txHashes and token prices to already be populated in the result.
- * @param {object} result   History result to supplement in-place.
- * @param {string} tokenId  NFT token ID.
- */
 /** Extract entry value + gas from the mint TX receipt. Returns mint gas (BigInt). */
 async function _supplementEntryFromChain(result, tokenId, dec0, dec1, prov) {
   const amounts = await _parseEventFromReceipt(
@@ -345,7 +339,55 @@ function needsEntryFromChain(result) {
   );
 }
 
-async function _supplementAmountsFromChain(result, tokenId) {
+/**
+ * This NFT's Collect and DecreaseLiquidity history — the one read that
+ * both its exit value and its lifetime fees are derived from.
+ *
+ * Taken as given when the caller already read it along with the rest of
+ * its rebalance chain (epoch reconstruction — see
+ * `scanChainCollectAndDrain`).  That includes a given null, which says
+ * the chain read could not be trusted: reading again here would repeat,
+ * one NFT at a time, the very walk the chain read exists to avoid.
+ *
+ * Read here only when nothing was supplied, which is a single closed
+ * position looked at on its own.  That read is floored at the NFT's own
+ * mint, since it cannot emit before it exists, and runs to the chain
+ * head with no upper bound.  One would have to come from the app's
+ * inferred succession, which reads consecutive mints as successive
+ * rebalances — sound only when every mint in the pool IS a rebalance.
+ * A dust mint from a failed or partial rebalance looks identical in the
+ * Transfer log, so the NFT it appears to replace can still be funded and
+ * drain later; bounding there truncates the scan and loses the drain.
+ *
+ * @param {object} result  History result being assembled.
+ * @param {string} tokenId  NFT token ID.
+ * @param {object} prov  ethers.js provider.
+ * @param {{collectEvents: Array, dlEvents: Array}|null} [prefetched]
+ *   The history from a chain read, null when that read was unusable, or
+ *   undefined when there was none.
+ * @returns {Promise<{collectEvents: Array, dlEvents: Array}|null>}
+ */
+async function _readCollectAndDrain(result, tokenId, prov, prefetched) {
+  if (prefetched !== undefined) return prefetched;
+  const poolFloor = await resolveScanFromBlock(prov, ethers, tokenId);
+  const from = nftScanFromBlock({
+    mintBlock: result.mintBlockNumber,
+    sharedFloor: poolFloor,
+  });
+  return scanCollectAndDrain(tokenId, prov, from);
+}
+
+/**
+ * Extract token amounts from chain and compute USD values: the entry
+ * from the mint TX receipt, the exit value and lifetime fees from the
+ * NFT's Collect/DecreaseLiquidity history, and gas from the receipts.
+ * Requires txHashes and token prices to already be populated in the result.
+ * @param {object} result   History result to supplement in-place.
+ * @param {string} tokenId  NFT token ID.
+ * @param {{collectEvents: Array, dlEvents: Array}|null} [collectAndDrain]
+ *   See `getPositionHistory`'s `opts.collectAndDrain`.
+ */
+async function _supplementAmountsFromChain(result, tokenId, collectAndDrain) {
   const needEntry = needsEntryFromChain(result);
   const needExit = !result.exitValueUsd && result.token0UsdPriceAtClose;
   /*- Fees are re-derived from the chain for every closed NFT whose close
@@ -369,25 +411,13 @@ async function _supplementAmountsFromChain(result, tokenId) {
     ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
     : 0n;
   if (needExit || needFees) {
-    /*- Floored at this NFT's own mint: it cannot emit before it exists.
-     *  Epoch reconstruction calls this once per closed NFT in the chain,
-     *  so a pool-wide floor is re-walked once per rebalance.
-     *
-     *  Runs to the chain head, with no upper bound.  One would have to
-     *  come from the app's inferred succession, which reads consecutive
-     *  mints as successive rebalances — sound only when every mint in
-     *  the pool IS a rebalance.  A dust mint from a failed or partial
-     *  rebalance looks identical in the Transfer log, so the NFT it
-     *  appears to replace can still be funded and drain later; bounding
-     *  there truncates the scan and loses the drain.
-     *
-     *  One scan serves both consumers below — see scanCollectAndDrain. */
-    const poolFloor = await resolveScanFromBlock(prov, ethers, tokenId);
-    const from = nftScanFromBlock({
-      mintBlock: result.mintBlockNumber,
-      sharedFloor: poolFloor,
-    });
-    const scan = await scanCollectAndDrain(tokenId, prov, from);
+    /*- One read serves both consumers below — see scanCollectAndDrain. */
+    const scan = await _readCollectAndDrain(
+      result,
+      tokenId,
+      prov,
+      collectAndDrain,
+    );
     if (scan) {
       const ctx = { tokenId, dec0, dec1, scan };
       if (needExit) _supplementExitFromChain(result, ctx);
@@ -562,6 +592,10 @@ async function _supplementHistoricalPrices(result, activePosition) {
  * @param {object[]} opts.rebalanceEvents  From the event scanner.
  * @param {object}   opts.activePosition   Bot's active position (for pool lookup).
  * @param {object}   [opts.fallbackPrices] Current prices {price0, price1} used when historical unavailable.
+ * @param {{collectEvents: Array, dlEvents: Array}|null} [opts.collectAndDrain]
+ *   This NFT's Collect/DecreaseLiquidity history, when the caller read
+ *   it with the rest of its chain; null when that read was unusable.
+ *   Omit it to have the history read here, for this NFT alone.
  * @returns {Promise<object>}  Historical data (null fields where unavailable).
  */
 async function getPositionHistory(tokenId, opts = {}) {
@@ -620,7 +654,7 @@ async function getPositionHistory(tokenId, opts = {}) {
       result.token1UsdPriceAtClose = fb.price1;
   }
   const _t3 = Date.now();
-  await _supplementAmountsFromChain(result, tokenId);
+  await _supplementAmountsFromChain(result, tokenId, opts.collectAndDrain);
   log.info(
     "[history] _supplementAmountsFromChain #%s: %dms",
     tokenId,

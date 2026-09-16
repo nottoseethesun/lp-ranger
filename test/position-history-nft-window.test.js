@@ -113,8 +113,8 @@ function _events({ withClose }) {
   return evts;
 }
 
-async function _run({ withClose }) {
-  _ctx = { calls: [], prov: _provider() };
+async function _run({ withClose, extraOpts = {} }) {
+  _ctx = { calls: [], prov: _provider(), result: null };
   const origRequire = Module.prototype.require;
   const stub = _ethersStub();
   Module.prototype.require = function (id) {
@@ -132,9 +132,10 @@ async function _run({ withClose }) {
       module,
       "../src/position-history",
     );
-    await getPositionHistory(TOKEN_ID, {
+    _ctx.result = await getPositionHistory(TOKEN_ID, {
       rebalanceEvents: _events({ withClose }),
       fallbackPrices: { price0: 1, price1: 1 },
+      ...extraOpts,
     });
   } finally {
     Module.prototype.require = origRequire;
@@ -198,6 +199,58 @@ describe("closed-NFT history scans are bounded to that NFT's life", () => {
       const last = Math.max(...head.map((c) => c.toBlock));
       assert.equal(last, LATEST, "an unretired NFT must scan to the head");
     });
+  });
+});
+
+describe("a history already read with the rest of its chain", () => {
+  /*- Epoch reconstruction reads every closed NFT's history in one pass
+   *  and hands each NFT its slice. Reading it again here would repeat,
+   *  one NFT at a time, the walk that pass replaces. */
+  const E18 = 10n ** 18n;
+  const chainRead = {
+    collectEvents: [
+      { amount0: 2n * E18, amount1: 0n, blockNumber: MINT_BLOCK + 10 },
+      { amount0: 7n * E18, amount1: 3n * E18, blockNumber: CLOSE_BLOCK },
+    ],
+    dlEvents: [
+      {
+        liquidity: 1n,
+        amount0: 6n * E18,
+        amount1: 3n * E18,
+        blockNumber: CLOSE_BLOCK,
+      },
+    ],
+  };
+
+  it("is used as given, with no scan of its own", async () => {
+    const calls = await _run({
+      withClose: true,
+      extraOpts: { collectAndDrain: chainRead },
+    });
+    assert.deepEqual(calls, []);
+  });
+
+  it("supplies the exit value and the lifetime fees", async () => {
+    await _run({
+      withClose: true,
+      extraOpts: { collectAndDrain: chainRead },
+    });
+    /*- Exit: the final Collect, 7 + 3, at the fallback price of 1.
+     *  Fees: every Collect less the drained principal, (9 − 6) + (3 − 3). */
+    assert.equal(_ctx.result.exitValueUsd, 10);
+    assert.equal(_ctx.result.feesEarnedUsd, 3);
+  });
+
+  it("is not replaced by a scan when the chain read was unusable", async () => {
+    /*- null says the chain read could not be trusted. The NFT's figures
+     *  stay unknown, and the epoch is retried as a whole. */
+    const calls = await _run({
+      withClose: true,
+      extraOpts: { collectAndDrain: null },
+    });
+    assert.deepEqual(calls, []);
+    assert.equal(_ctx.result.exitValueUsd, null);
+    assert.equal(_ctx.result.feesEarnedUsd, null);
   });
 });
 

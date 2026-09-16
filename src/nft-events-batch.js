@@ -6,6 +6,8 @@
  *
  * Fetches `IncreaseLiquidity` / `Collect` / `DecreaseLiquidity` history
  * for a WHOLE chain of NFTs in one pass, instead of one pass per NFT.
+ * A caller that needs only some of the three names them, and pays only
+ * for those.
  *
  * ## Why
  *
@@ -66,7 +68,49 @@ const { IFACE, parseLogs } = require("./nft-event-parse");
 const ID_BATCH_SIZE = 100;
 
 /** The three events this module fetches, in a fixed order. */
-const EVENT_NAMES = ["IncreaseLiquidity", "Collect", "DecreaseLiquidity"];
+const EVENT_NAMES = Object.freeze([
+  "IncreaseLiquidity",
+  "Collect",
+  "DecreaseLiquidity",
+]);
+
+/** The result field each event's history is stored under. */
+const FIELD_OF = Object.freeze({
+  IncreaseLiquidity: "ilEvents",
+  Collect: "collectEvents",
+  DecreaseLiquidity: "dlEvents",
+});
+
+/**
+ * The event types a batch fetches, checked and in `EVENT_NAMES` order.
+ *
+ * A caller that needs only some of the histories names them. Each event
+ * type is a full pass over the union range, so a reader that uses only
+ * `Collect` and `DecreaseLiquidity` would otherwise pay half as much
+ * again for `IncreaseLiquidity` logs it never reads.
+ *
+ * Checked before any request is made, so a misspelled name fails
+ * immediately rather than after a long scan.
+ *
+ * @param {Iterable<string>} [requested]  Defaults to all three.
+ * @returns {string[]}
+ */
+function eventNamesOf(requested) {
+  if (requested === undefined || requested === null) return [...EVENT_NAMES];
+  const wanted = new Set(requested);
+  for (const name of wanted) {
+    if (!EVENT_NAMES.includes(name)) {
+      throw new Error(
+        `nft-events-batch: unknown event "${name}" — expected one of ` +
+          EVENT_NAMES.join(", "),
+      );
+    }
+  }
+  if (wanted.size === 0) {
+    throw new Error("nft-events-batch: no event types requested");
+  }
+  return EVENT_NAMES.filter((name) => wanted.has(name));
+}
 
 /**
  * A token id as a 32-byte topic word.
@@ -134,10 +178,20 @@ function scanFloors(tokenIds, mintBlocks, sharedFloor) {
 /**
  * Empty result shape, so every requested id has a real entry.
  *
- * @returns {{ilEvents: object[], collectEvents: object[], dlEvents: object[], ilLogsCount: number}}
+ * Carries a field only for each event type that was fetched. An entry
+ * from a `Collect`/`DecreaseLiquidity` batch has no `ilEvents` at all,
+ * rather than an empty one, so a consumer reaching for a history that
+ * was never requested fails on `undefined` instead of reading `[]` as
+ * "this NFT never added liquidity".
+ *
+ * @param {string[]} [names=EVENT_NAMES]  Event types fetched.
+ * @returns {{ilEvents?: object[], collectEvents?: object[], dlEvents?: object[], ilLogsCount?: number}}
  */
-function emptyEvents() {
-  return { ilEvents: [], collectEvents: [], dlEvents: [], ilLogsCount: 0 };
+function emptyEvents(names = EVENT_NAMES) {
+  const entry = {};
+  for (const name of names) entry[FIELD_OF[name]] = [];
+  if (names.includes("IncreaseLiquidity")) entry.ilLogsCount = 0;
+  return entry;
 }
 
 /*- Run one chunked scan for a single (event type, id-group) pair. */
@@ -213,10 +267,15 @@ function _keepAtOrAbove(logs, floors) {
  *   so every id and event type covers an identical range.
  * @param {number} [o.chunkSize]    Block-window width.
  * @param {Function} [o.parseLogs]  (iface, logs) -> decoded events.
+ * @param {Iterable<string>} [o.eventNames]  Event types to fetch;
+ *   defaults to all three. See `eventNamesOf`.
  * @returns {Promise<Map<string, object>>}  One entry per requested id.
  */
 async function fetchChainNftEvents(o) {
-  const ids = (o.tokenIds || []).map(String);
+  const names = eventNamesOf(o.eventNames);
+  /*- De-duplicated: a repeated id would take a second slot in the
+   *  topic array, and the id-group size is what bounds that array. */
+  const ids = [...new Set((o.tokenIds || []).map(String))];
   if (ids.length === 0) return new Map();
   const { floors, unionFrom } = scanFloors(ids, o.mintBlocks, o.sharedFloor);
   const head =
@@ -229,7 +288,7 @@ async function fetchChainNftEvents(o) {
    *  the scans return nothing for it. A missing key would otherwise be
    *  indistinguishable from an NFT with no history. */
   const byId = new Map();
-  for (const id of ids) byId.set(id, emptyEvents());
+  for (const id of ids) byId.set(id, emptyEvents(names));
 
   const base = {
     provider: o.provider,
@@ -239,12 +298,7 @@ async function fetchChainNftEvents(o) {
     toBlock: head,
     chunkSize: o.chunkSize,
   };
-  const FIELD = {
-    IncreaseLiquidity: "ilEvents",
-    Collect: "collectEvents",
-    DecreaseLiquidity: "dlEvents",
-  };
-  for (const name of EVENT_NAMES) {
+  for (const name of names) {
     const perGroup = await Promise.all(
       groups.map((g) => _scanGroup(base, name, g)),
     );
@@ -252,7 +306,7 @@ async function fetchChainNftEvents(o) {
     for (const [id, logs] of split.entries()) {
       const entry = byId.get(id);
       if (entry === undefined) continue;
-      entry[FIELD[name]] = o.parseLogs(o.iface, logs);
+      entry[FIELD_OF[name]] = o.parseLogs(o.iface, logs);
       if (name === "IncreaseLiquidity") entry.ilLogsCount = logs.length;
     }
   }
@@ -297,6 +351,8 @@ function eventsFor(batch, tokenId) {
  * @param {object} o
  * @param {Map|object} o.mintBlocks  tokenId -> mint block.
  * @param {number} o.sharedFloor     Pool floor, or resume checkpoint.
+ * @param {Iterable<string>} [o.eventNames]  Event types to fetch;
+ *   defaults to all three.
  * @returns {Promise<Map<string, object>>}  One entry per id.
  */
 function scanChainNftEvents(tokenIds, o) {
@@ -304,6 +360,7 @@ function scanChainNftEvents(tokenIds, o) {
     tokenIds: [...tokenIds],
     mintBlocks: o.mintBlocks,
     sharedFloor: o.sharedFloor,
+    eventNames: o.eventNames,
     provider: sendTx.getManagedReadProvider(),
     iface: IFACE,
     address: config.POSITION_MANAGER,
@@ -314,6 +371,7 @@ function scanChainNftEvents(tokenIds, o) {
 module.exports = {
   ID_BATCH_SIZE,
   EVENT_NAMES,
+  eventNamesOf,
   topicForTokenId,
   tokenIdOfLog,
   scanFloors,

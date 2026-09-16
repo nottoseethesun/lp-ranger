@@ -14,6 +14,10 @@ const {
   isEpochHistoryComplete,
   reconstructEpochs,
 } = require("../src/epoch-reconstructor");
+const {
+  CHAIN_HISTORY_MODULE,
+  chainHistoryStub,
+} = require("./helpers/chain-history-stub");
 
 /**
  * Capture `log.warn` output as formatted strings.
@@ -327,6 +331,7 @@ describe("_fetchEpochsFromChain resume buffer", () => {
     const seen = [];
     let failed = false;
     Module.prototype.require = function (id) {
+      if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       /*- The gas converter is stubbed alongside the history because the
        *  real one calls `fetchTokenPriceUsd`, which would put network
        *  I/O in a unit test — and because a zero USD is now meaningful

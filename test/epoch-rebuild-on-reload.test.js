@@ -17,6 +17,10 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
+const {
+  CHAIN_HISTORY_MODULE,
+  chainHistoryStub,
+} = require("./helpers/chain-history-stub");
 
 /** Minimal tracker double: records what it was restored with. */
 function mockTracker(closedEpochs, liveEpoch) {
@@ -102,6 +106,7 @@ describe("reconstructEpochs — forced rebuild after a reload", () => {
 
   before(() => {
     Module.prototype.require = function (id) {
+      if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       if (id === "./position-history") {
         return {
           getPositionHistory: async (tokenId) => {

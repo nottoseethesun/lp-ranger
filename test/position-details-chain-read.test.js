@@ -1,0 +1,307 @@
+"use strict";
+
+/**
+ * @file test/position-details-chain-read.test.js
+ * @description The unmanaged details path reads a rebalance chain's
+ *   events once per request, and both consumers — Fees Compounded and
+ *   the lifetime HODL — take their events from that one read.
+ *
+ *   Pinned here: the read covers the whole chain with each NFT floored
+ *   at its own mint and no upper bound; it happens only when a consumer
+ *   asks, and at most once; a failed read is retried by the next
+ *   consumer rather than handed on; and `computeLifetimeDetails` gives
+ *   both consumers the same reader.
+ *
+ *   The batched read is replaced by a recorder that reports the floors
+ *   the module's real `scanFloors` computes from the arguments given, so
+ *   a reader passing the wrong floor fails here.
+ */
+
+const { describe, it } = require("node:test");
+const assert = require("node:assert/strict");
+const Module = require("node:module");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const batch = require("../src/nft-events-batch");
+const { _scanCompounds } = require("../src/position-details-compound");
+const { scanLifetimeHodl } = require("../src/position-details-lifetime-scan");
+
+/** #100 → #200 → #300, the second and third minted 5M and 6M blocks in. */
+const CHAIN = [
+  { oldTokenId: "100", newTokenId: "200", blockNumber: 5_000_000 },
+  { oldTokenId: "200", newTokenId: "300", blockNumber: 6_000_000 },
+];
+const POSITION = { tokenId: "300", token0: "0xA", token1: "0xB", fee: 3000 };
+
+/**
+ * Load the reader module with the batched read and the pool-creation
+ * lookup replaced.
+ *
+ * @param {object} [o]
+ * @param {number} [o.creationBlock=0]  What the pool lookup answers.
+ * @param {number} [o.failures=0]  Reject the first N reads.
+ */
+function loadReader({ creationBlock = 0, failures = 0 } = {}) {
+  const calls = [];
+  let left = failures;
+  const origRead = batch.scanChainNftEvents;
+  batch.scanChainNftEvents = async (ids, args) => {
+    const list = [...ids].map(String);
+    const { floors } = batch.scanFloors(
+      list,
+      args.mintBlocks,
+      args.sharedFloor,
+    );
+    calls.push({ ids: list, floors, args });
+    if (left > 0) {
+      left -= 1;
+      throw new Error("simulated read failure");
+    }
+    return new Map(list.map((id) => [id, batch.emptyEvents()]));
+  };
+  const origRequire = Module.prototype.require;
+  Module.prototype.require = function (id) {
+    if (id === "./pool-creation-block") {
+      return { getPoolCreationBlockCached: async () => creationBlock };
+    }
+    return origRequire.apply(this, arguments);
+  };
+  const file = require.resolve("../src/position-details-chain-read");
+  delete require.cache[file];
+  try {
+    return { mod: require(file), calls };
+  } finally {
+    Module.prototype.require = origRequire;
+    /*- The loaded copy keeps the stub it bound; the shared export and
+     *  the cache entry go back to the real ones. */
+    batch.scanChainNftEvents = origRead;
+    delete require.cache[file];
+  }
+}
+
+const reader = (mod, events = CHAIN, poolAddress = "0xPool") =>
+  mod.chainEventsReader({ position: POSITION, events, poolAddress });
+
+describe("the unmanaged chain read covers the chain", () => {
+  it("asks for every NFT in the chain, in one read", async () => {
+    const { mod, calls } = loadReader();
+    await reader(mod)();
+    assert.equal(calls.length, 1);
+    assert.deepEqual([...calls[0].ids].sort(), ["100", "200", "300"]);
+  });
+
+  it("floors each NFT at its own mint block", async () => {
+    const { mod, calls } = loadReader({ creationBlock: 1_000_000 });
+    await reader(mod)();
+    assert.equal(calls[0].floors.get("200"), 5_000_000);
+    assert.equal(calls[0].floors.get("300"), 6_000_000);
+  });
+
+  it("floors the chain's oldest NFT at the chain's first mint", async () => {
+    /*- No rebalance event names #100's mint; the event scanner hangs the
+     *  chain's first mint on the events array instead. */
+    const events = Object.assign([...CHAIN], {
+      firstMintBlockNumber: 4_000_000,
+    });
+    const { mod, calls } = loadReader({ creationBlock: 1_000_000 });
+    await reader(mod, events)();
+    assert.equal(calls[0].floors.get("100"), 4_000_000);
+  });
+
+  it("falls back to the pool's creation block for it otherwise", async () => {
+    const { mod, calls } = loadReader({ creationBlock: 1_000_000 });
+    await reader(mod)();
+    assert.equal(calls[0].floors.get("100"), 1_000_000);
+  });
+
+  it("floors at zero when the pool is unknown, rather than not reading", async () => {
+    const { mod, calls } = loadReader({ creationBlock: 1_000_000 });
+    await reader(mod, CHAIN, null)();
+    assert.equal(calls[0].floors.get("100"), 0);
+    assert.equal(calls[0].floors.get("200"), 5_000_000);
+  });
+
+  it("sets no upper bound", async () => {
+    /*- One could only come from the inferred succession, and a dust mint
+     *  between two real rebalances makes that wrong. */
+    const { mod, calls } = loadReader();
+    await reader(mod)();
+    assert.equal("toBlock" in calls[0].args, false);
+  });
+
+  it("reads a never-rebalanced position as a chain of one", async () => {
+    const { mod, calls } = loadReader();
+    await reader(mod, [])();
+    assert.deepEqual(calls[0].ids, ["300"]);
+  });
+});
+
+describe("the unmanaged chain read happens at most once", () => {
+  it("reads nothing until a consumer asks", () => {
+    const { mod, calls } = loadReader();
+    reader(mod);
+    assert.equal(calls.length, 0);
+  });
+
+  it("shares one read between later callers", async () => {
+    const { mod, calls } = loadReader();
+    const read = reader(mod);
+    const first = await read();
+    const second = await read();
+    assert.equal(calls.length, 1);
+    assert.strictEqual(first, second);
+  });
+
+  it("shares one read between concurrent callers", async () => {
+    const { mod, calls } = loadReader();
+    const read = reader(mod);
+    await Promise.all([read(), read()]);
+    assert.equal(calls.length, 1);
+  });
+
+  it("does not hand a failed read to the next caller", async () => {
+    /*- Each consumer used to read for itself, so each got its own
+     *  attempt. Sharing a success must not turn into sharing a failure. */
+    const { mod, calls } = loadReader({ failures: 1 });
+    const read = reader(mod);
+    await assert.rejects(read(), /simulated read failure/);
+    const result = await read();
+    assert.equal(calls.length, 2);
+    assert.equal(result.size, 3);
+  });
+
+  it("serves Fees Compounded and the lifetime HODL from one read", async () => {
+    const { mod, calls } = loadReader();
+    const read = reader(mod);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chain-read-"));
+    try {
+      const compounds = await _scanCompounds(
+        POSITION,
+        CHAIN,
+        { walletAddress: "0xW" },
+        { decimals0: 18, decimals1: 18 },
+        { price0: 1, price1: 1 },
+        { global: {}, positions: {} },
+        "key",
+        read,
+        dir,
+        async () => ({ totalCompoundedUsd: 1, compounds: [] }),
+      );
+      /*- No wallet in the body, so the HODL accumulator makes no reads
+       *  of its own. */
+      const hodl = await scanLifetimeHodl(
+        POSITION,
+        CHAIN,
+        {},
+        null,
+        null,
+        read,
+      );
+      assert.equal(compounds.total, 3, "all three NFTs were classified");
+      assert.ok(hodl, "the HODL was computed");
+      assert.equal(calls.length, 1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("computeLifetimeDetails wires one reader to both consumers", () => {
+  const BODY = {
+    tokenId: "300",
+    token0: "0x" + "1".repeat(40),
+    token1: "0x" + "2".repeat(40),
+    fee: 3000,
+    tickLower: -100,
+    tickUpper: 100,
+    liquidity: "1",
+    walletAddress: "0x" + "3".repeat(40),
+  };
+
+  /** Load `position-details.js` with everything around the wiring stubbed. */
+  function loadDetails(seen) {
+    const stubs = {
+      "./rebalancer": {
+        getPoolState: async () => ({
+          poolAddress: "0x" + "4".repeat(40),
+          decimals0: 18,
+          decimals1: 18,
+          price: 1,
+        }),
+      },
+      "./bot-pnl-updater": {
+        positionValueUsd: () => 100,
+        fetchTokenPrices: async () => ({ price0: 1, price1: 1 }),
+        _totalLifetimeDeposit: async () => ({ total: 0, usedFallback: false }),
+      },
+      "./epoch-reconstructor": { reconstructEpochs: async () => 0 },
+      "./epoch-cache": {
+        getCachedEpochs: () => null,
+        setCachedEpochs: () => {},
+        getCachedLifetimeHodl: () => null,
+        getCachedFreshDeposits: () => null,
+      },
+      "./pool-scanner": { scanPoolHistory: async () => CHAIN },
+      "./position-details-quick": {
+        computeQuickDetails: async () => ({}),
+        _currentPnl: () => ({
+          value: 100,
+          il: 0,
+          residualValueUsd: 0,
+          priceGainLoss: 0,
+          profit: 0,
+        }),
+        _applyPriceOverrides: () => {},
+        _walletResiduals: async () => ({}),
+      },
+      "./position-details-compound": {
+        _resolveCompounded: async (...args) => {
+          seen.compound = args[7];
+          return { total: 0, current: 0, currentGasUsd: 0 };
+        },
+      },
+      "./position-details-lifetime-scan": {
+        scanLifetimeHodl: async (...args) => {
+          seen.hodl = args[5];
+          return { amount0: 1, amount1: 1 };
+        },
+      },
+      "./resolve-position-symbols": { resolvePositionSymbols: async () => {} },
+      "./price-fetcher": {
+        fetchHistoricalPriceGecko: async () => ({ price0: 0, price1: 0 }),
+      },
+      "./block-time-cache": {
+        getBlockTimestamp: async () => 0,
+        flushBlockTimeCache: () => {},
+      },
+      "./bot-pnl-initial-residual": { applyInitialResidualFromCache: () => {} },
+    };
+    const origRequire = Module.prototype.require;
+    Module.prototype.require = function (id) {
+      if (Object.prototype.hasOwnProperty.call(stubs, id)) return stubs[id];
+      return origRequire.apply(this, arguments);
+    };
+    const file = require.resolve("../src/position-details");
+    delete require.cache[file];
+    try {
+      return require(file);
+    } finally {
+      Module.prototype.require = origRequire;
+      delete require.cache[file];
+    }
+  }
+
+  it("hands Fees Compounded and the lifetime HODL the same reader", async () => {
+    const seen = {};
+    const { computeLifetimeDetails } = loadDetails(seen);
+    await computeLifetimeDetails({}, {}, BODY, { global: {}, positions: {} });
+    assert.equal(typeof seen.compound, "function");
+    assert.strictEqual(
+      seen.compound,
+      seen.hodl,
+      "two readers would read the chain twice",
+    );
+  });
+});

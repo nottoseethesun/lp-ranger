@@ -6,8 +6,11 @@
  * When the P&L tracker has no closed epochs (e.g. after wallet re-import),
  * this module queries each closed NFT in the rebalance chain via
  * `getPositionHistory()` and builds closed epoch objects that the tracker
- * can restore.  Results are cached to `.epoch-cache.json` (gitignored)
- * keyed by blockchain/wallet/contract/tokenId for fast restarts.
+ * can restore.  The on-chain Collect/DecreaseLiquidity history behind
+ * those queries is read for the whole chain in one pass first, rather
+ * than once per NFT — see `_readChainHistories`.  Results are cached in
+ * the epoch cache (`src/epoch-cache.js`), keyed by pool identity, for
+ * fast restarts.
  *
  * Rate limiting
  * ─────────────
@@ -22,6 +25,8 @@
 const { log } = require("./log");
 const config = require("./config");
 const { getPositionHistory } = require("./position-history");
+const { scanChainCollectAndDrain } = require("./position-history-scan-helpers");
+const { eventsFor } = require("./nft-events-batch");
 const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
 const {
@@ -194,6 +199,89 @@ async function _warmNativePrice() {
 }
 
 /**
+ * A closed NFT's buffered history from an earlier attempt, if any.
+ *
+ * A closed NFT is inert: it was drained and the app never returns to
+ * it, so its history cannot change between one attempt and the next.
+ * Reusing a buffered read is therefore exact, not a cache with a
+ * staleness window.
+ *
+ * @param {Map<string, object>|undefined} resumeBuffer
+ * @param {string} tokenId
+ * @returns {object|undefined}
+ */
+function _buffered(resumeBuffer, tokenId) {
+  return resumeBuffer instanceof Map ? resumeBuffer.get(tokenId) : undefined;
+}
+
+/**
+ * Read the Collect/DecreaseLiquidity history of every closed NFT this
+ * pass will build, in one batch, before the per-NFT loop starts.
+ *
+ * Read one NFT at a time, each from its own mint block to the chain
+ * head, those histories overlap almost entirely; on a long chain that
+ * was hours of paced requests on every rebuild. See
+ * `scanChainCollectAndDrain`.
+ *
+ * Covers exactly the NFTs the loop will fetch — the ones not in the
+ * resume buffer, by the same test the loop applies — so every lookup the
+ * loop makes was prepared, and a buffered NFT is not read again.
+ *
+ * A failed read is not an exception here, for the same reason no
+ * per-NFT failure is: the pass must finish. It returns null, and every
+ * NFT then takes its history as unknown — what a failed per-NFT read
+ * always reported. An NFT whose exit value and fee the rebalance log
+ * already holds still builds; the rest are skipped, which flags the
+ * history for another attempt.
+ *
+ * @param {string[]} closedIds
+ * @param {Array} events  Rebalance events.
+ * @param {Map<string, object>|undefined} resumeBuffer
+ * @returns {Promise<Map<string, object|null>|null>}  Null when the read
+ *   failed.
+ */
+async function _readChainHistories(closedIds, events, resumeBuffer) {
+  const unread = closedIds.filter(
+    (id) => _buffered(resumeBuffer, id) === undefined,
+  );
+  try {
+    return await scanChainCollectAndDrain(unread, events);
+  } catch (err) {
+    log.warn(
+      "[pnl] Could not read Collect/DecreaseLiquidity history for %d closed NFT(s): %s",
+      unread.length,
+      err.message,
+    );
+    return null;
+  }
+}
+
+/**
+ * One closed NFT's history, read from chain.
+ *
+ * @param {string} tokenId
+ * @param {object} ctx
+ * @param {Map<string, object|null>|null} ctx.histories  From
+ *   `_readChainHistories`.
+ * @param {Array} ctx.events  Rebalance events.
+ * @param {object|null} ctx.activePos
+ * @param {object|null} ctx.fallbackPrices
+ * @returns {Promise<object>}
+ */
+async function _readHistory(tokenId, ctx) {
+  /*- `eventsFor` throws for an NFT the batch was not prepared with,
+   *  rather than answering "no history" for it. */
+  const collectAndDrain =
+    ctx.histories === null ? null : eventsFor(ctx.histories, tokenId);
+  return getPositionHistory(tokenId, {
+    rebalanceEvents: ctx.events,
+    activePosition: ctx.activePos,
+    fallbackPrices: ctx.fallbackPrices,
+    collectAndDrain,
+  });
+}
+
+/**
  * Fetch closed epoch data from chain for each closed NFT in the rebalance chain.
  * GeckoTerminal rate limiting is handled centrally in price-fetcher.js — no
  * per-position delay needed here.
@@ -202,6 +290,8 @@ async function _warmNativePrice() {
  * @param {object|null} activePos   Active position for pool lookup.
  * @param {object|null} fallbackPrices  Current prices {price0, price1} for when historical unavailable.
  * @param {Function|null} onProgress  Optional (done, total) callback for UI progress.
+ * @param {Map<string, object>} [resumeBuffer]  NFTs already read by an
+ *   earlier attempt; see `reconstructEpochs`.
  * @returns {Promise<object[]>}   Array of closed Epoch objects (unsorted).
  */
 async function _fetchEpochsFromChain(
@@ -213,24 +303,15 @@ async function _fetchEpochsFromChain(
   resumeBuffer,
 ) {
   await _warmNativePrice();
+  const histories = await _readChainHistories(closedIds, events, resumeBuffer);
+  const ctx = { histories, events, activePos, fallbackPrices };
   const closedEpochs = [];
   for (let i = 0; i < closedIds.length; i++) {
     if (onProgress) onProgress(i, closedIds.length);
     const tokenId = closedIds[i];
     try {
-      /*- A closed NFT is inert: it was drained and the app never returns
-       *  to it, so its history cannot change between one attempt and the
-       *  next. Reusing a buffered read is therefore exact, not a cache
-       *  with a staleness window. */
-      const buffered =
-        resumeBuffer instanceof Map ? resumeBuffer.get(tokenId) : undefined;
-      const h =
-        buffered ??
-        (await getPositionHistory(tokenId, {
-          rebalanceEvents: events,
-          activePosition: activePos,
-          fallbackPrices,
-        }));
+      const buffered = _buffered(resumeBuffer, tokenId);
+      const h = buffered ?? (await _readHistory(tokenId, ctx));
       /*- Explicit, not truthiness: a genuine zero must convert rather
        *  than fall through and be read as an unknown. */
       const gasKnown = h.gasCostWei !== null && h.gasCostWei !== undefined;

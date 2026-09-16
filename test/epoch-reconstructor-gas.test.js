@@ -24,6 +24,10 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const { _buildClosedEpoch } = require("../src/epoch-reconstructor");
+const {
+  CHAIN_HISTORY_MODULE,
+  chainHistoryStub,
+} = require("./helpers/chain-history-stub");
 
 describe("_buildClosedEpoch", () => {
   /*- Gas is the third input to `epochPnl` and the last to get the guard.
@@ -104,6 +108,7 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
     const orig = Module.prototype.require;
     let inScope = false;
     Module.prototype.require = function (id) {
+      if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       if (id === "./bot-pnl-updater")
         return { actualGasCostUsd: async () => gasUsd };
       /*- Stubbed so no unit test reaches the network, and so the trace

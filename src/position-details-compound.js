@@ -3,7 +3,8 @@
  * @description Compound-detection helpers for the unmanaged-position
  *   details flow. Extracted from position-details.js to keep that file
  *   under the 500-line cap. Provides:
- *   - _scanCompounds: full chain scan returning { total, current, currentGasUsd }
+ *   - _scanCompounds: whole-chain classification over the request's
+ *     shared chain read, returning { total, current, currentGasUsd }
  *   - _detectCurrentNftValues: cheap one-NFT scan returning { compoundUsd, gasUsd }
  *   - _resolveCompounded: cache-first wrapper used by computeLifetimeDetails
  */
@@ -13,42 +14,16 @@
 const { log } = require("./log");
 const config = require("./config");
 const { getPositionConfig, saveConfig } = require("./bot-config-v2");
-const { detectCompoundsOnChain } = require("./compounder");
+const { detectCompoundsOnChain, classifyCompounds } = require("./compounder");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
-const sendTx = require("./send-transaction");
-const { getPoolCreationBlockCached } = require("./pool-creation-block");
+const { eventsFor } = require("./nft-events-batch");
+const { collectTokenIds } = require("./bot-recorder-scan-helpers");
+const { poolCreationFloor } = require("./position-details-chain-read");
 const {
   mintBlocksByTokenId,
-  nftScanFrom,
   scanFloorFor,
   chainScanFloor,
 } = require("./nft-mint-blocks");
-
-/**
- * Lower bound for an NFT event scan: the pool's own creation block.
- *
- * Without one, every scan here starts at genesis — and these paths
- * loop over the whole rebalance chain, so that is one full-chain scan
- * per NFT. Chunked and paced, that would hold the global request
- * queue for hours. An NFT cannot have events before its pool existed,
- * so the creation block is both correct and tight.
- * @param {string|null|undefined} poolAddress
- * @returns {Promise<number>}  Creation block, or 0 when unknown.
- */
-async function _scanFloor(poolAddress) {
-  if (!poolAddress) return 0;
-  try {
-    return await getPoolCreationBlockCached({
-      provider: sendTx.getManagedReadProvider(),
-      factoryAddress: config.FACTORY,
-      poolAddress,
-    });
-  } catch {
-    /*- Unknown creation block falls back to 0.  Slow but correct is
-     *  better than skipping the scan. */
-    return 0;
-  }
-}
 
 /*- Convert a chain-scan result for a single NFT into Current-panel
  *  values: standalone-compound USD (sum of per-event usdValue) and
@@ -67,11 +42,27 @@ async function _currentValuesFromScan(r) {
 }
 
 /**
- * Detect compounds across all NFTs in the rebalance chain and cache result.
- * `_detect` is injectable for tests; defaults to the production scanner.
- * Returns `{ total, current }` — total is lifetime across the chain;
- * current is the current NFT's own compounded value (used by the
+ * Classify compounds across all NFTs in the rebalance chain and cache result.
+ * Returns `{ total, current, currentGasUsd }` — total is lifetime across
+ * the chain; current is the current NFT's own compounded value (used by the
  * Current panel's "Fees Compounded" row).
+ *
+ * The events come from the request's shared chain read, which the lifetime
+ * HODL scan reads from too — see `position-details-chain-read.js`.
+ *
+ * @param {object} position
+ * @param {object[]} events  Rebalance events.
+ * @param {object} body  Request body with `walletAddress`.
+ * @param {object} ps  Pool state (decimals).
+ * @param {{price0: number, price1: number}} prices
+ * @param {object} diskConfig
+ * @param {string} posKey
+ * @param {() => Promise<Map<string, object>>} readChainEvents  The
+ *   request's chain reader, from `chainEventsReader`.
+ * @param {string} [dir]  Config directory (tests).
+ * @param {Function} [_classify]  Injectable for tests; defaults to
+ *   `classifyCompounds`.
+ * @returns {Promise<{total: number, current: number, currentGasUsd: number}>}
  */
 async function _scanCompounds(
   position,
@@ -81,15 +72,12 @@ async function _scanCompounds(
   prices,
   diskConfig,
   posKey,
+  readChainEvents,
   dir,
-  _detect = detectCompoundsOnChain,
+  _classify = classifyCompounds,
 ) {
   try {
-    const ids = new Set([String(position.tokenId)]);
-    for (const e of events) {
-      if (e.oldTokenId) ids.add(String(e.oldTokenId));
-      if (e.newTokenId) ids.add(String(e.newTokenId));
-    }
+    const ids = collectTokenIds(position, events);
     const opts = {
       positionManagerAddress: config.POSITION_MANAGER,
       token0: position.token0,
@@ -103,16 +91,7 @@ async function _scanCompounds(
       decimals0: ps.decimals0,
       decimals1: ps.decimals1,
     };
-    /*- Two floors.  Each NFT is scanned from its OWN mint block — it
-     *  cannot emit events before it exists, and scanning those blocks
-     *  anyway is what made a cold-cache lifetime scan take most of an
-     *  hour once every request went through the paced request queue.  The
-     *  chain's oldest NFT has no mint block in the events, so it falls
-     *  back to `chainScanFloor`: the pool's creation block, lifted to
-     *  the chain's own first mint when the scanner resolved one. */
-    const creationBlock = await _scanFloor(ps.poolAddress);
-    const poolFloor = chainScanFloor(events, creationBlock);
-    const mintBlocks = mintBlocksByTokenId(events);
+    const batch = await readChainEvents();
     /*- total = lifetime collected fees across the rebalance chain
      *  (Lifetime panel "Fees Compounded"). current = sum of standalone
      *  compound deposit values for the current NFT only (Current panel
@@ -125,10 +104,10 @@ async function _scanCompounds(
     let currentGasUsd = 0;
     const curId = String(position.tokenId);
     for (const tid of ids) {
-      const r = await _detect(tid, {
-        ...opts,
-        fromBlock: nftScanFrom(mintBlocks, tid, poolFloor),
-      });
+      /*- `eventsFor` throws for an NFT the read did not cover, rather
+       *  than answering "no compounds" for it. */
+      const nftEvents = eventsFor(batch, tid);
+      const r = await _classify(nftEvents, { ...opts, tokenId: tid });
       total += r.totalCompoundedUsd;
       if (tid === curId) {
         const cv = await _currentValuesFromScan(r);
@@ -180,7 +159,7 @@ async function _detectCurrentNftValues(
       /*- Never-rebalanced position: this NFT IS the chain's first mint,
        *  so lift the pool floor to it rather than scanning from pool
        *  creation. */
-      const creationBlock = await _scanFloor(ps.poolAddress);
+      const creationBlock = await poolCreationFloor(ps.poolAddress);
       fromBlock = chainScanFloor(events, creationBlock);
     }
     const opts = {
@@ -214,7 +193,10 @@ async function _detectCurrentNftValues(
  *  NFT's standalone-compound USD; currentGasUsd is the current NFT's
  *  total gas (mint + standalone compounds). The Current panel reads
  *  the latter two — they would otherwise render as dash on unmanaged
- *  positions even when the values are material. */
+ *  positions even when the values are material.
+ *
+ *  `readChainEvents` is the request's shared chain reader; it is read
+ *  only on the full-chain path. */
 async function _resolveCompounded(
   position,
   events,
@@ -223,6 +205,7 @@ async function _resolveCompounded(
   prices,
   diskConfig,
   posKey,
+  readChainEvents,
 ) {
   const posConfig = diskConfig.positions[posKey] || {};
   if (posConfig.totalCompoundedUsd) {
@@ -244,7 +227,16 @@ async function _resolveCompounded(
     };
   }
   if (events.length === 0) return { total: 0, current: 0, currentGasUsd: 0 };
-  return _scanCompounds(position, events, body, ps, prices, diskConfig, posKey);
+  return _scanCompounds(
+    position,
+    events,
+    body,
+    ps,
+    prices,
+    diskConfig,
+    posKey,
+    readChainEvents,
+  );
 }
 
 module.exports = {

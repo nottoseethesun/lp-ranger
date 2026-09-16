@@ -170,7 +170,10 @@ describe("position-history scan bound", () => {
       logsToReturn: [
         {
           blockNumber: 14_500_000,
-          topics: ["0xtopic", "0xtid"],
+          /*- The token id is a real topic word: the read attributes each
+           *  log to its NFT by `topics[1]`, as a node's logs always
+           *  carry it. */
+          topics: ["0xtopic", "0x" + (12345).toString(16).padStart(64, "0")],
           data: "0x",
         },
       ],

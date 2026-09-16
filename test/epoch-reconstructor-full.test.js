@@ -9,6 +9,10 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
+const {
+  CHAIN_HISTORY_MODULE,
+  chainHistoryStub,
+} = require("./helpers/chain-history-stub");
 
 describe("reconstructEpochs full flow", () => {
   let reconstructEpochs;
@@ -18,6 +22,7 @@ describe("reconstructEpochs full flow", () => {
 
   before(() => {
     Module.prototype.require = function (id) {
+      if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       if (id === "./position-history") {
         return {
           getPositionHistory: async (tokenId) => {
@@ -219,6 +224,7 @@ describe("reconstructEpochs full flow", () => {
   it("passes fallbackPrices to getPositionHistory", async () => {
     let capturedOpts = null;
     Module.prototype.require = function (id) {
+      if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       if (id === "./position-history") {
         return {
           getPositionHistory: async (_tid, opts) => {
