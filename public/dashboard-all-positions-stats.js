@@ -432,12 +432,27 @@ function _renderCurrentValue(rows) {
   const el = g("allPositionsStatsCurrentValue");
   if (el === null) return;
   const n = rows.length;
-  if (n === 0) {
-    el.textContent = "";
-    return;
-  }
+  /*- Clear first.  The previous version assigned textContent, which
+   *  replaced whatever was there; appending nodes does not, and this
+   *  runs on every re-render (sort, radio change, poll). */
+  el.replaceChildren();
+  if (n === 0) return;
   const noun = n === 1 ? "managed position" : "managed positions";
-  el.textContent = `Current total of ${n} ${noun}: ${_fmtUsd(sumCurrentValue(rows))}`;
+  /*- Built as nodes, not markup: the label is a text node and the
+   *  amount its own span, so neither can be interpreted as HTML and
+   *  the colour applies to the figure alone rather than the sentence.
+   *
+   *  `data-privacy="usd"` goes on the span for the same reason. The
+   *  threshold scan parses the element's textContent as a dollar
+   *  amount; on the surrounding <p> it would read "Current total of 3
+   *  managed positions: $5,540.13" and could take the position count
+   *  for the figure. */
+  el.appendChild(document.createTextNode(`Current total of ${n} ${noun}: `));
+  const amount = document.createElement("span");
+  amount.className = "9mm-pos-mgr-all-positions-current-value-amount";
+  amount.dataset.privacy = "usd";
+  amount.textContent = _fmtUsd(sumCurrentValue(rows));
+  el.appendChild(amount);
 }
 
 function _renderTotals(rows, maxDays) {

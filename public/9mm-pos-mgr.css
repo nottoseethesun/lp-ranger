@@ -110,6 +110,14 @@
   font-size: 0.95rem;
 }
 
+/* The amount itself, in the same Lawn Green (--accent3) the totals row
+   uses for a positive figure, so money reads the same everywhere in
+   this dialog. Only the number is coloured; the label around it stays
+   --fg. */
+.\000039mm-pos-mgr-all-positions-current-value-amount {
+  color: var(--accent3);
+}
+
 /* Totals table sits in normal flow above the scrollable wrapper.
  * `margin-top` replaces the wrapper's old top spacing (removed
  * above); `margin-bottom` gives the one-blank-line gap below. */
@@ -499,7 +507,6 @@ span[title]:not([title=""]):hover {
   margin: 0;
   cursor: pointer;
 }
-
 
 /*  Popover sizes are 13px, which reads as unusably small in a dialog.
     Raised past the 17.5px dialog body scale to 20px: this section is the
@@ -1738,7 +1745,6 @@ span[title]:not([title=""]):hover {
   display: block;
 }
 
-
 /* "Above" variant: flip vertical position AND anchor the popover's
  * left edge to the icon so it extends rightward.
  *
@@ -2157,7 +2163,6 @@ span[title]:not([title=""]):hover {
   background: rgb(255 59 92 / 25%);
 }
 
-
 /* ── Tool Modal (Chrysler Machine Grey) ───────────────────────────────────
    For maintenance actions the user runs to FIX something — e.g. Re-scan
    Prices.  Deliberately NOT the danger/caution palette: nothing is at
@@ -2310,7 +2315,12 @@ span[title]:not([title=""]):hover {
   }
 }
 
-.\39 mm-pos-mgr-modal-tool .\39 mm-pos-mgr-rescan-window input[type="checkbox"] {
+/* Six-digit escapes: this selector is long enough that a formatter
+   wraps it, and a trailing "\39" would swallow the newline as its
+   terminator and truncate the class name. */
+.\000039mm-pos-mgr-modal-tool
+  .\000039mm-pos-mgr-rescan-window
+  input[type="checkbox"] {
   accent-color: var(--tool-grey-text);
 }
 
@@ -3957,7 +3967,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1789515949329");
+  background-image: url("background-cloud_top.png?v=1789544979518");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3970,7 +3980,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1789515949329");
+  background-image: url("background-cloud_middle.png?v=1789544979518");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3980,7 +3990,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1789515949329");
+  background-image: url("background-cloud_bottom.png?v=1789544979518");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
