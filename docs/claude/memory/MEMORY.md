@@ -75,7 +75,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [multiline comment style](feedback_multiline_comment_style.md) — `/*- ... */` block form over stacked `//` lines
 - [never compact code](feedback_never_compact_code.md) — Don't compress formatting to fit max-lines; extract a file
 - [no delay patches](feedback_no_delay_patches.md) — Never setTimeout as a fix where await/flow control belongs
-- [no duplication](feedback_no_duplication.md) — Never duplicate code or RPC calls; fetch once and pass it down
+- [no duplication](feedback_no_duplication.md) — Never duplicate code or RPC calls; fetch once and pass it down. Client/server is no excuse — extract the pure part both tiers can import
 - [no computation in params](feedback_no_computation_in_params.md) — Never put an await/lookup inside an argument; hoist it (ESLint rule: deferred)
 - [no extra state](feedback_no_extra_state.md) — No new tracker/Map/flag when existing state can serve double duty
 - [no genesis chain scans](feedback_no_genesis_chain_scans.md) — Every getLogs/queryFilter scan needs a tight lower bound
