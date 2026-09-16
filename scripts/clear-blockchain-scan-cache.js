@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 /**
  * @file scripts/clear-blockchain-scan-cache.js
- * @description Delete the on-disk blockchain scan cache: every
- *   `tmp/*.json`.
+ * @description Delete everything on disk that was derived from scanning
+ *   the chain, so the next start rebuilds it from scratch.
  *
- * That directory holds derived scan results only — event scans, LP
- * position enumeration, P&L epochs (including the `lastNftScanBlock`
- * resume checkpoint), block timestamps, pool creation blocks, token
- * symbols, fetched prices. All of it is rebuilt from chain on the next
- * start.
+ * Two places hold it:
  *
- * Clearing it is how you test scan behaviour from cold.
+ * - **`tmp/*.json`** — event scans, LP position enumeration, P&L
+ *   epochs (including the `lastNftScanBlock` resume checkpoint), block
+ *   timestamps, pool creation blocks, token symbols, fetched prices.
+ * - **Scan-derived keys in each position's slot** in
+ *   `app-config/user-configurable/bot-config.json` — compound history
+ *   and totals, per-NFT gas and compound figures, the HODL baseline and
+ *   amounts, and the lifetime deposit (`CHAIN_DERIVED_POSITION_KEYS`).
+ *
+ * The second matters as much as the first. The lifetime scan treats a
+ * value already in the config as settled and does not re-derive it, so
+ * clearing `tmp/` alone gives a start that is cold for the caches and
+ * warm for everything the config remembers — including any error in
+ * it. Settings, managed status and values recorded live that a scan
+ * cannot reproduce are left alone.
+ *
+ * Clearing both is how you test scan behaviour from cold.
  *
  * Also the single definition of "the scan cache" for
  * `scripts/clean.js`, so neither command needs a hand-written list of
@@ -26,6 +37,11 @@
 
 const fs = require("fs");
 const path = require("path");
+const {
+  loadConfig,
+  saveConfig,
+  CHAIN_DERIVED_POSITION_KEYS,
+} = require("../src/bot-config-v2");
 
 const ROOT = path.resolve(__dirname, "..");
 const TMP = path.join(ROOT, "tmp");
@@ -137,6 +153,59 @@ function clearScanCache({ dryRun = false, preserve = [] } = {}) {
   return { files, kept, removed, bytes };
 }
 
+/**
+ * Remove scan-derived values from every position slot in the config.
+ *
+ * Clears exactly `CHAIN_DERIVED_POSITION_KEYS` — the set Reload Current
+ * Position clears for one position — so the two commands cannot drift
+ * on what "derived from the chain" means.
+ *
+ * Saves only when something was removed. That is also what makes a
+ * config that fails to parse safe: `loadConfig` returns an empty config
+ * then, nothing is removed, and the damaged file is left for the
+ * operator rather than overwritten with an empty one.
+ *
+ * `loadConfig` snapshots the file to `bot-config.backup.json` before
+ * anything here runs, so the pre-clear values are recoverable from
+ * there — until the next start, which snapshots the cleared file over
+ * it.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.dryRun]  Report without changing anything.
+ * @param {string} [opts.dir]      Config directory (tests).
+ * @returns {{positions: number, keys: number}}  Slots touched, keys
+ *   removed (or that would be, on a dry run).
+ */
+function clearScanDerivedConfig({ dryRun = false, dir } = {}) {
+  const cfg = loadConfig(dir);
+  let positions = 0;
+  let keys = 0;
+  for (const slot of Object.values(cfg.positions)) {
+    let touched = false;
+    for (const k of CHAIN_DERIVED_POSITION_KEYS) {
+      if (!Object.prototype.hasOwnProperty.call(slot, k)) continue;
+      keys++;
+      touched = true;
+      if (!dryRun) delete slot[k];
+    }
+    if (touched) positions++;
+  }
+  if (!dryRun && keys > 0) saveConfig(cfg, dir);
+  return { positions, keys };
+}
+
+/** Print what a dry run would do. */
+function _reportDryRun(r, c) {
+  console.log(
+    `[clear-cache] DRY RUN — would delete ${r.files.length} cache file(s), ${human(r.bytes)}:`,
+  );
+  for (const f of r.files) console.log("    " + path.relative(ROOT, f));
+  console.log(
+    `[clear-cache] DRY RUN — would remove ${c.keys} scan-derived value(s) ` +
+      `from ${c.positions} position(s) in bot-config.json.`,
+  );
+}
+
 function main() {
   const dryRun = process.argv.includes("--dry-run");
   const pid = waitForServerExit();
@@ -149,22 +218,26 @@ function main() {
   }
 
   const r = clearScanCache({ dryRun });
-  if (r.files.length === 0) {
-    console.log("[clear-cache] Cache already empty — nothing to clear.");
+  const c = clearScanDerivedConfig({ dryRun });
+  if (r.files.length === 0 && c.keys === 0) {
+    console.log("[clear-cache] Nothing to clear — already cold.");
     return;
   }
-
   if (dryRun) {
-    console.log(
-      `[clear-cache] DRY RUN — would delete ${r.files.length} file(s), ${human(r.bytes)}:`,
-    );
-    for (const f of r.files) console.log("    " + path.relative(ROOT, f));
+    _reportDryRun(r, c);
     return;
   }
 
   console.log(
     `[clear-cache] Cleared ${r.removed} cache file(s), ${human(r.bytes)} freed.`,
   );
+  if (c.keys > 0) {
+    console.log(
+      `[clear-cache] Removed ${c.keys} scan-derived value(s) from ` +
+        `${c.positions} position(s) in bot-config.json. The previous ` +
+        "values are in bot-config.backup.json until the next start.",
+    );
+  }
   console.log(
     "[clear-cache] Next start re-scans from chain. Let it finish so the " +
       "scan checkpoint is written.",
@@ -173,4 +246,11 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { clearScanCache, runningPid, waitForServerExit, human, TMP };
+module.exports = {
+  clearScanCache,
+  clearScanDerivedConfig,
+  runningPid,
+  waitForServerExit,
+  human,
+  TMP,
+};

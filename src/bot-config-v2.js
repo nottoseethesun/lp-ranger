@@ -117,6 +117,37 @@ const GLOBAL_KEYS = [
 ];
 
 /** Keys that belong in a per-position (per-pool) section. */
+/**
+ * Position-config keys whose values are derived from scanning the chain.
+ *
+ * Every one can be rebuilt by a fresh scan, and each would otherwise
+ * compete with that scan: the lifetime scan treats a value already on
+ * disk as settled and skips re-deriving it. Two callers clear exactly
+ * this set, and must agree on it:
+ *
+ * - Reload Current Position (`server-reload-position.js`), for one
+ *   position, so the rebuild it triggers is authoritative;
+ * - `npm run clear-blockchain-scan-cache`, for every position, so a
+ *   cold start is actually cold rather than cold for `tmp/` only.
+ *
+ * Not included, deliberately: settings, and values recorded live that a
+ * scan cannot reproduce — `residuals` (collected minus minted at each
+ * rebalance) and `lastCompoundAt` (the auto-compound throttle).
+ */
+const CHAIN_DERIVED_POSITION_KEYS = Object.freeze([
+  "compoundHistory",
+  "totalCompoundedUsd",
+  "collectedFeesUsd",
+  "nftCompoundedUsdByTokenId",
+  "nftGasWeiByTokenId",
+  "hodlBaseline",
+  "lifetimeHodlAmounts",
+  "totalLifetimeDepositUsd",
+  /*- Travels with the total: a stale "fallback price was used" flag left
+   *  behind would mislabel the freshly rebuilt deposit. */
+  "depositUsedFallback",
+]);
+
 const POSITION_KEYS = [
   /*-
    * Impermanent Loss Guard, percent.  The most a position may have lost
@@ -651,4 +682,5 @@ module.exports = {
   managedKeys,
   GLOBAL_KEYS,
   POSITION_KEYS,
+  CHAIN_DERIVED_POSITION_KEYS,
 };

@@ -16,9 +16,11 @@ const os = require("node:os");
 
 const {
   createReloadPositionHandler,
-  _ON_CHAIN_DERIVED_KEYS,
   _resetBotState,
 } = require("../src/server-reload-position");
+const {
+  CHAIN_DERIVED_POSITION_KEYS: _ON_CHAIN_DERIVED_KEYS,
+} = require("../src/bot-config-v2");
 
 /*- Every test that hits `loadConfig`/`saveConfig` (bot-config-v2) needs
  *  the config file to live in a tmp dir so real user state is never

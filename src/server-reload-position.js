@@ -26,29 +26,13 @@ const {
   saveConfig,
   getPositionConfig,
   parseCompositeKey,
+  CHAIN_DERIVED_POSITION_KEYS,
 } = require("./bot-config-v2");
 const _epochCache = require("./epoch-cache");
 const { cancelPoolScan, clearPoolCache } = require("./pool-scanner");
 const { resolveLiveKey } = require("./server-key-resolver");
 const { logCtx } = require("./logger");
 const { getTokenSymbol } = require("./server-scan");
-
-/*- Config keys that hold on-chain-derived values for a single position.
- *  These are wiped on reload so the fresh scan is authoritative and no
- *  stale figure survives to compete with it. */
-const _ON_CHAIN_DERIVED_KEYS = [
-  "compoundHistory",
-  "totalCompoundedUsd",
-  "collectedFeesUsd",
-  "nftCompoundedUsdByTokenId",
-  "nftGasWeiByTokenId",
-  "hodlBaseline",
-  "lifetimeHodlAmounts",
-  "totalLifetimeDepositUsd",
-  /*- Travels with the total: a stale "fallback price was used" flag left
-   *  behind would mislabel the freshly rebuilt deposit. */
-  "depositUsedFallback",
-];
 
 /*- Bot-state fields to reset so the fresh scan's persist-conditions all
  *  re-evaluate as "no data on disk" and the readiness gates re-engage. */
@@ -88,7 +72,7 @@ function _resetBotState(state) {
 function _clearDiskConfigForKey(diskConfig, positionKey) {
   const posCfg = getPositionConfig(diskConfig, positionKey);
   if (!posCfg) return false;
-  for (const k of _ON_CHAIN_DERIVED_KEYS) {
+  for (const k of CHAIN_DERIVED_POSITION_KEYS) {
     if (k in posCfg) delete posCfg[k];
   }
   saveConfig(diskConfig);
@@ -310,7 +294,6 @@ function createReloadPositionHandler(deps) {
 
 module.exports = {
   createReloadPositionHandler,
-  _ON_CHAIN_DERIVED_KEYS, // exported for tests
   _resetBotState, // exported for tests
   /*- Shared with server-rescan-prices.js, which performs the same
    *  key validation, position resolution and in-flight guarding

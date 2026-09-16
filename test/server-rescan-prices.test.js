@@ -26,7 +26,9 @@ const {
   _PRICE_DERIVED_KEYS,
   _BLOCK_TIME_SEC,
 } = require("../src/server-rescan-prices");
-const { _ON_CHAIN_DERIVED_KEYS } = require("../src/server-reload-position");
+const {
+  CHAIN_DERIVED_POSITION_KEYS: _ON_CHAIN_DERIVED_KEYS,
+} = require("../src/bot-config-v2");
 
 // ── window / argument parsing ───────────────────────────────────────────────
 

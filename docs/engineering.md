@@ -2868,8 +2868,10 @@ should not permanently disable the escape hatch.
    `compoundHistory`, `totalCompoundedUsd`, `collectedFeesUsd`,
    `nftCompoundedUsdByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
    `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`,
-   `depositUsedFallback`. The canonical list is `_ON_CHAIN_DERIVED_KEYS` in
-   `server-reload-position.js` (exported for tests).
+   `depositUsedFallback`. The canonical list is
+   `CHAIN_DERIVED_POSITION_KEYS` in `bot-config-v2.js`, shared with
+   `npm run clear-blockchain-scan-cache`, which clears the same keys
+   from every position.
 3. Clear the pool's entry in the epoch cache
    (`_epochCache.clearCacheEntry(keyOpts)`) so the fresh scan starts
    from pool creation block instead of the stale `lastNftScanBlock`.

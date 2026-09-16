@@ -51,8 +51,9 @@ const {
 } = require("./server-reload-position");
 
 /*- Only the price-derived keys.  Compare with
- *  `server-reload-position._ON_CHAIN_DERIVED_KEYS`, which also drops
- *  `hodlBaseline`, `lifetimeHodlAmounts` and `totalLifetimeDepositUsd`
+ *  `bot-config-v2.CHAIN_DERIVED_POSITION_KEYS`, which Reload clears and
+ *  which also holds `hodlBaseline`, `lifetimeHodlAmounts` and
+ *  `totalLifetimeDepositUsd`
  *  — those are amount-derived, and re-deriving them is what makes
  *  Reload slow.  Keeping them is the whole point of this route. */
 const _PRICE_DERIVED_KEYS = [
