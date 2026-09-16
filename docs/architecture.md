@@ -358,20 +358,31 @@ Both classifiers share `_filterRebalances` to distinguish rebalance-adjacent
 events from genuine deposits/compounds.
 
 The unmanaged details view follows the same pattern per request: one reader
-(`chainEventsReader` in `src/position-details-chain-read.js`), created in
+(`requestChainReader` in `src/position-details-chain-read.js`), created in
 `computeLifetimeDetails`, read only when a figure is missing from its cache,
-and shared by both classifiers. Epoch reconstruction reads the closed NFTs'
-Collect and DecreaseLiquidity history in one batch as well
-(`scanChainCollectAndDrain`), before it builds any epoch, and hands each NFT
-its slice.
+and shared by both classifiers.
 
-The scan resumes from `lastNftScanBlock` only when the HODL amounts, the
-compound total and the lifetime deposit are all already on disk
-(`canResumeIncrementally`); otherwise it reads the chain from the pool's
-creation block, because a consumer about to compute from scratch needs the
-whole chain rather than a slice of it. All three are saved and restored with
-the position's config (`PERSISTED_STATE_KEYS` in `src/server-positions.js`),
-so after the first complete scan a restart reads only the blocks since.
+Epoch reconstruction needs a subset of the same history — Collect and
+DecreaseLiquidity for the closed NFTs — before it builds any epoch. When the
+lifetime side is going to read the chain in the same pass, reconstruction
+takes its histories from that read: the bot's scan pass prepares the
+lifetime read before reconstruction (`prepareLifetimeRead`), and the
+unmanaged view hands reconstruction its request reader. Otherwise
+reconstruction reads the closed NFTs itself, in one batch
+(`scanChainCollectAndDrain`). Either way the chain is read once per pass.
+
+When the HODL amounts, the compound total and the lifetime deposit are all
+already on disk (`canResumeIncrementally`), the scan has nothing to compute
+and does not read at all, unless a rebalance has flagged a full rescan.
+Whenever it does read, it reads from the pool's creation block (lifted to the
+chain's first mint), because a consumer about to compute from scratch needs
+the whole chain rather than a slice of it. `_resolveScanFromBlock` keeps a
+branch that starts at `lastNftScanBlock`, but no scan that reads can take it:
+its precondition is the state in which the scan returns before reading. All
+three totals are saved and restored with the position's config
+(`PERSISTED_STATE_KEYS` in `src/server-positions.js`), so after the first
+complete scan a restart reads nothing for them; the compound and rebalance
+paths keep them current as those happen.
 
 ### Lifetime Sync vs Bot Loop
 

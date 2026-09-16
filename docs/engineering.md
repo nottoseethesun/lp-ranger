@@ -43,6 +43,7 @@ sequence.
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
   - [Cost](#cost)
   - [Batched chain reads](#batched-chain-reads)
+    - [One read per pass](#one-read-per-pass)
   - [Call sites](#call-sites)
   - [The dashboard does not scan a position the bot owns](#the-dashboard-does-not-scan-a-position-the-bot-owns)
 - [Client-Side URL Routing](#client-side-url-routing)
@@ -1122,9 +1123,9 @@ places read a chain, all through `scanChainNftEvents`
 
 | Reader | Events | NFTs | Serves |
 | --- | --- | --- | --- |
-| `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`) | all three | the whole chain | the bot's lifetime scan: Fees Compounded, lifetime HODL, deposit |
-| `scanChainCollectAndDrain` (`src/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, for the bot and the unmanaged view alike |
-| `chainEventsReader` (`src/position-details-chain-read.js`) | all three | the whole chain | one unmanaged details request: Fees Compounded and the lifetime HODL |
+| `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`), prepared by `prepareLifetimeRead` | all three | the whole chain | the bot's lifetime scan — Fees Compounded, lifetime HODL, deposit — and epoch reconstruction in the same pass |
+| `scanChainCollectAndDrain` (`src/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, when nothing else in its pass reads the chain |
+| `chainEventsReader` (`src/position-details-chain-read.js`) | all three | the whole chain | one unmanaged details request: Fees Compounded, the lifetime HODL, and epoch reconstruction |
 
 The filter OR-matches every token id in the chain — `tokenId` is the
 first indexed parameter on all three events, and a topic slot accepts an
@@ -1152,19 +1153,50 @@ more passes rather than a failure.
 Each reader prepares its read before anything consumes it, from the same
 inputs its consumers use:
 
-- **Epoch reconstruction** reads before building any epoch, for exactly
-  the NFTs the loop will fetch. Each NFT's slice reaches
-  `getPositionHistory` as `collectAndDrain`. Omitting that option — the
-  single closed-position history route — reads the one NFT on its own;
-  `null` means the chain read was unusable, and is never replaced by a
-  per-NFT read.
-- **The unmanaged view** creates one reader per request in
-  `computeLifetimeDetails` and hands it to both consumers. It reads
-  nothing until one of them finds its figure missing from its cache,
-  and at most once after that. `_detectCurrentNftValues` still reads the
-  current NFT alone: it runs on the warm path, where the chain's figures
-  are cached and a whole-chain read would cost far more than the one NFT
-  it needs.
+- **Epoch reconstruction** gets its histories before building any
+  epoch, for exactly the NFTs the loop will fetch — from the pass's
+  shared read when there is one (below), otherwise from its own. Each
+  NFT's slice reaches `getPositionHistory` as `collectAndDrain`.
+  Omitting that option — the single closed-position history route —
+  reads the one NFT on its own; `null` means the chain read was
+  unusable, and is never replaced by a per-NFT read.
+- **The unmanaged view** keeps one reader per request
+  (`requestChainReader`, created in `computeLifetimeDetails`) and hands
+  it to Fees Compounded, the lifetime HODL, and epoch reconstruction. It
+  reads nothing until a consumer finds its figure missing from its
+  cache, and at most once after that. `_detectCurrentNftValues` still
+  reads the current NFT alone: it runs on the warm path, where the
+  chain's figures are cached and a whole-chain read would cost far more
+  than the one NFT it needs.
+
+#### One read per pass
+
+A scan pass needs the chain's history twice: epoch reconstruction wants
+Collect and DecreaseLiquidity for the closed NFTs, and the lifetime
+figures want all three event types for every NFT. The first is a subset
+of the second, so when the lifetime side is going to read the chain in
+that pass, reconstruction takes its histories out of that read
+(`collectAndDrainOf`) rather than making its own. A read shared this way
+is made once however many consumers ask (`shareRead`).
+
+- **The bot.** `_scanAndReconstruct` asks `lifetimeScanPlan` as soon as
+  the event scan has found the chain. When the lifetime scan will read,
+  the pass prepares that read (`prepareLifetimeRead`,
+  `src/bot-recorder-lifetime-read.js`) and hands it to reconstruction;
+  the lifetime scan then uses the same read. Where the read starts and
+  which resume buffer it draws on are decided when it runs, by the
+  lifetime scan's usual rules.
+- **The unmanaged view.** Reconstruction gets the request's reader when
+  Fees Compounded (`compoundsReadChain`) or the lifetime HODL is missing
+  from its cache.
+
+Three rules keep the sharing sound:
+
+| Rule | Why |
+| --- | --- |
+| Reconstruction shares only a read that will happen anyway | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper |
+| A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read the plan calls for never resumes from `lastNftScanBlock` — a scan that could resume has nothing left to compute and returns first — and `test/bot-recorder-lifetime-share.test.js` pins that for every state |
+| The lifetime scan reuses the pass's read only for the chain it was prepared for (`chainSignature`: the live NFT, every NFT with its mint block, and the chain's first mint) | Reconstruction can run long enough for a manual rebalance to land. A read prepared before it describes a chain that no longer exists, so the scan reads afresh and logs why |
 
 A batch succeeds or fails as a unit, and each reader decides what a
 failure means:
@@ -1175,9 +1207,8 @@ failure means:
   unknown, which is what a failed per-NFT read reported. An NFT whose
   exit value and fee the rebalance log already holds still builds; the
   rest are skipped, and the short history schedules another attempt.
-- **Unmanaged view** — the failed read is not kept, so the second
-  consumer in the request tries again rather than inheriting the
-  failure.
+- **A shared read** — the failure is not kept, so the next consumer in
+  the pass or request makes its own attempt rather than inheriting it.
 
 That is affordable because a chain now costs minutes, and because
 transient RPC failures are retried per request beneath the batch.
