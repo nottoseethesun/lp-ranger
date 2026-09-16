@@ -3070,11 +3070,12 @@ refuses to rebuild those from chain once disk holds a non-zero value,
 so the bad figure is permanent until something clears it.
 
 Reload clears it but re-walks the pool's whole Transfer history (minutes
-to hours). This route clears **only** the four price-derived keys
-(`compoundHistory`, `totalCompoundedUsd`, `collectedFeesUsd`,
-`nftCompoundedUsdByTokenId`), rewinds the NFT event watermark to the
-start of a bounded window, and calls `_triggerScan` so the existing
-lifetime scan re-values immediately. `hodlBaseline`,
+to hours). This route clears **only** three price-derived keys
+(`compoundHistory`, `totalCompoundedUsd`, `nftCompoundedUsdByTokenId`),
+rewinds the NFT event watermark to the start of the chosen window, and
+calls `_triggerScan` so the existing lifetime scan re-values
+immediately. `collectedFeesUsd` is price-derived too, but nothing
+rebuilds it, so clearing it would destroy it. `hodlBaseline`,
 `lifetimeHodlAmounts`, `totalLifetimeDepositUsd` and
 `depositUsedFallback` are preserved —
 keeping those is the entire cost advantage.
@@ -3091,7 +3092,12 @@ bot-state object, and `src/build-status-positions.js` merges the two for
 the API response. Also rejects mid-rebalance, mid-compound, and while a
 scan is already running.
 
-Cost: three `getLogs` per NFT in the chain over the chosen window.
+Cost: one batched read of the chain's three event histories, from each
+NFT's mint. The window does not narrow it: with the compound total
+cleared, the lifetime scan cannot resume from the watermark, and must
+not, since a total summed over part of the chain would be short. On a
+long chain that is minutes; see [One read per pass](#one-read-per-pass)
+for measured figures.
 
 ## Dead Code Detection
 

@@ -20,7 +20,7 @@
  *   This route fixes only the prices. It clears the USD-derived keys,
  *   rewinds the NFT event watermark to the start of the chosen window,
  *   and lets the existing lifetime scan recompute — at freshly fetched
- *   prices, from amounts it re-reads over a bounded block range.
+ *   prices, from amounts it re-reads from the chain.
  *
  * What it deliberately does NOT touch:
  *   - `hodlBaseline` — its amounts are the mint-time deposit, and its
@@ -28,9 +28,12 @@
  *   - The pool rebalance-history scan (the expensive part of Reload).
  *   - Epoch P&L history.
  *
- * Cost: one batched read of the chain's three event histories over the
- * chosen window (`src/nft-events-batch.js`), not one per NFT.  With the
- * default 60-day window that is seconds, not hours.
+ * Cost: one batched read of the chain's three event histories
+ * (`src/nft-events-batch.js`), from each NFT's mint. The window does not
+ * narrow it: with the compound total cleared, the lifetime scan cannot
+ * resume from the watermark (`canResumeIncrementally`), and must not,
+ * since a total summed over part of the chain would be short. On a long
+ * chain that is minutes, not seconds.
  */
 
 "use strict";
@@ -149,9 +152,8 @@ function clearPriceDerivedConfig(diskConfig, positionKey) {
  * Reset the in-memory bot state's price-derived fields so the scan's
  * persist-conditions re-evaluate as "nothing on disk".
  *
- * `_needsFullRescan` is deliberately NOT set — that flag forces the
- * scan back to the pool creation block, which is exactly the expensive
- * behaviour this route avoids.
+ * `_needsFullRescan` is deliberately NOT set: it would also recompute
+ * the deposit total, which this route keeps.
  *
  * @param {object} state
  */
