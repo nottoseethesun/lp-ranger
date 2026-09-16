@@ -96,6 +96,20 @@
    * gives a horizontal scrollbar on narrow phones. */
 }
 
+/* Present-value summary line above the All Positions Stats tables.
+ * Sits outside both tables because it is the one figure here the
+ * Per-Day / Weighted radios do not transform.  Given the totals
+ * table's top margin so the two read as one block, and left-aligned
+ * against the modal body rather than the right-aligned number
+ * columns, since it is a sentence and not a column value. */
+.\000039mm-pos-mgr-all-positions-current-value {
+  margin-top: 18px;
+  margin-bottom: 0;
+  color: var(--fg);
+  font-family: "Space Mono", monospace;
+  font-size: 0.95rem;
+}
+
 /* Totals table sits in normal flow above the scrollable wrapper.
  * `margin-top` replaces the wrapper's old top spacing (removed
  * above); `margin-bottom` gives the one-blank-line gap below. */
@@ -3943,7 +3957,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1789452112887");
+  background-image: url("background-cloud_top.png?v=1789515949329");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3956,7 +3970,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1789452112887");
+  background-image: url("background-cloud_middle.png?v=1789515949329");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3966,7 +3980,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1789452112887");
+  background-image: url("background-cloud_bottom.png?v=1789515949329");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

@@ -241,6 +241,12 @@ function _computeRow(key, posState, globalCtx, mode, maxDays) {
     walletAddress: globalCtx.walletAddress,
     contractAddress: globalCtx.positionManager,
     tokenId: ap.tokenId,
+    /*- Deliberately NOT part of `nums`, so the Per-Day and Weighted
+     *  modes cannot divide it.  Those modes turn a lifetime total into
+     *  a rate, which is meaningful for P&L but not for a position's
+     *  present value — a balance divided by days-alive is not a
+     *  quantity anyone wants. */
+    currentValue: _num(snap.currentValue, 0),
     ...nums,
     _rawNums: rawNumsStash,
   };
@@ -397,6 +403,43 @@ function _renderNumCell(value) {
  *  positive (no eligible position has a known start date).  Uses
  *  `_renderNumCell` and thus `_fmtUsd` so rounding + green/red
  *  class rules match the main table exactly. */
+/**
+ * Sum the present USD value of the given rows.
+ *
+ * Exported and pure so the arithmetic is testable without a DOM. Rows
+ * arrive already filtered to managed, currently-open positions by
+ * `_computeRows`, so this needs no filtering of its own.
+ *
+ * @param {object[]} rows  Rows from `_computeRows`.
+ * @returns {number}  Total present value in USD.
+ */
+export function sumCurrentValue(rows) {
+  let total = 0;
+  for (const r of rows) total += _num(r.currentValue, 0);
+  return total;
+}
+
+/*- Paint the one-line present-value summary above both tables.
+ *
+ *  Sits outside the tables because it is the only figure here that is
+ *  not affected by the Per-Day / Weighted radios: those express a
+ *  lifetime total as a rate, and a present balance has no rate. Keeping
+ *  it out of the columns is what stops a reader assuming it does.
+ *
+ *  Written with textContent rather than markup so a token symbol or
+ *  amount can never be interpreted as HTML. */
+function _renderCurrentValue(rows) {
+  const el = g("allPositionsStatsCurrentValue");
+  if (el === null) return;
+  const n = rows.length;
+  if (n === 0) {
+    el.textContent = "";
+    return;
+  }
+  const noun = n === 1 ? "managed position" : "managed positions";
+  el.textContent = `Current total of ${n} ${noun}: ${_fmtUsd(sumCurrentValue(rows))}`;
+}
+
 function _renderTotals(rows, maxDays) {
   const tbody = g("allPositionsStatsTotalsBody");
   if (tbody === null) return;
@@ -468,6 +511,7 @@ function _renderTable(data) {
   const maxDays = maxDaysAlive(data, Date.now());
   _updateModeTooltips(maxDays);
   const rows = _sortRows(_computeRows(data), _sortCol, _sortDir);
+  _renderCurrentValue(rows);
   _renderTotals(rows, maxDays);
   tbody.replaceChildren();
   for (const row of rows) {
