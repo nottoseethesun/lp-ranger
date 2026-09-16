@@ -812,4 +812,5 @@ module.exports = {
   _recordScanFailure, // exported for tests
   _recordScanSuccess, // exported for tests
   _lifetimeResumeBuffer, // exported for tests
+  _resolveDiskState, // exported for tests
 };

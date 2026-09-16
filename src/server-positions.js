@@ -40,6 +40,37 @@ const {
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
 
+/*- Bot-state fields saved to the position's config slot and read back on
+ *  the next start — ONE list, used in both directions.
+ *
+ *  Invariant: a field the save path writes must be one the restore path
+ *  reads, and vice versa. A single list makes that structural; two copies
+ *  make it a matter of remembering to edit both.
+ *
+ *  The lifetime deposit and its fallback flag belong here because of the
+ *  resume gate. `_scanLifetimePoolData` may start from its saved
+ *  checkpoint only when the HODL amounts, the compound total AND the
+ *  deposit total are all on disk (`canResumeIncrementally`). A deposit
+ *  that is never written keeps that gate shut, and every restart then
+ *  re-walks the whole rebalance chain from the pool's creation block.
+ *
+ *  Both directions matter. A resumed scan skips the deposit recompute, so
+ *  the total must come back into memory from disk: readiness is
+ *  `totalLifetimeDepositUsd > 0`, and without the restore the Syncing
+ *  badge would never clear. */
+const PERSISTED_STATE_KEYS = [
+  "hodlBaseline",
+  "residuals",
+  "collectedFeesUsd",
+  "compoundHistory",
+  "totalCompoundedUsd",
+  "nftGasWeiByTokenId",
+  "nftCompoundedUsdByTokenId",
+  "lastCompoundAt",
+  "totalLifetimeDepositUsd",
+  "depositUsedFallback",
+];
+
 /**
  * Create a fresh per-position bot state with defaults + saved config.
  * @param {object} globalCfg  Global config section from v2 disk config.
@@ -71,18 +102,10 @@ function createPerPositionBotState(_globalCfg, saved) {
     _lastBalancedNotifyTs: 0,
     _lastBalancedPriceFetchTs: 0,
   };
-  if (saved) {
-    if (saved.hodlBaseline) state.hodlBaseline = saved.hodlBaseline;
-    if (saved.residuals) state.residuals = saved.residuals;
-    if (saved.collectedFeesUsd) state.collectedFeesUsd = saved.collectedFeesUsd;
-    if (saved.totalCompoundedUsd)
-      state.totalCompoundedUsd = saved.totalCompoundedUsd;
-    if (saved.compoundHistory) state.compoundHistory = saved.compoundHistory;
-    if (saved.nftGasWeiByTokenId)
-      state.nftGasWeiByTokenId = saved.nftGasWeiByTokenId;
-    if (saved.nftCompoundedUsdByTokenId)
-      state.nftCompoundedUsdByTokenId = saved.nftCompoundedUsdByTokenId;
-    if (saved.lastCompoundAt) state.lastCompoundAt = saved.lastCompoundAt;
+  if (saved !== undefined && saved !== null) {
+    for (const k of PERSISTED_STATE_KEYS) {
+      if (saved[k] !== undefined && saved[k] !== null) state[k] = saved[k];
+    }
   }
   return state;
 }
@@ -111,17 +134,7 @@ function _persistEpochCache(state, epochs) {
  */
 /** Persist position-scoped fields from a bot state patch to disk config. */
 function _persistPositionConfig(patch, diskConfig, key, dir) {
-  const _PERSIST = [
-    "hodlBaseline",
-    "residuals",
-    "collectedFeesUsd",
-    "compoundHistory",
-    "totalCompoundedUsd",
-    "nftGasWeiByTokenId",
-    "nftCompoundedUsdByTokenId",
-    "lastCompoundAt",
-  ];
-  const changed = _PERSIST.filter((k) => patch[k] !== undefined);
+  const changed = PERSISTED_STATE_KEYS.filter((k) => patch[k] !== undefined);
   const needsSave = !!patch.activePositionId || changed.length > 0;
   if (!needsSave) return;
   /*- Non-lazy lookup: a slot SHOULD exist by now (handleManage created
@@ -764,4 +777,5 @@ module.exports = {
   getAllPositionBotStates,
   createOnRetire,
   createPositionRoutes,
+  PERSISTED_STATE_KEYS,
 };

@@ -2825,8 +2825,8 @@ should not permanently disable the escape hatch.
    disk config, then save via `saveConfig`:
    `compoundHistory`, `totalCompoundedUsd`, `collectedFeesUsd`,
    `nftCompoundedUsdByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
-   `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`. The
-   canonical list is `_ON_CHAIN_DERIVED_KEYS` in
+   `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`,
+   `depositUsedFallback`. The canonical list is `_ON_CHAIN_DERIVED_KEYS` in
    `server-reload-position.js` (exported for tests).
 3. Clear the pool's entry in the epoch cache
    (`_epochCache.clearCacheEntry(keyOpts)`) so the fresh scan starts
@@ -2835,7 +2835,8 @@ should not permanently disable the escape hatch.
 5. Reset the same fields on the live bot state and set
    `_needsFullRescan = true`, `_needsEpochRebuild = true`,
    `_catastrophicScanError = null`, `lifetimeScanComplete = false`,
-   `rebalanceScanComplete = false`, `totalLifetimeDepositUsd = 0`. See
+   `rebalanceScanComplete = false`, `totalLifetimeDepositUsd = 0`,
+   `depositUsedFallback = false`. See
    `_resetBotState` in `server-reload-position.js`.
 
    `_needsEpochRebuild` is what makes step 3 mean anything. Clearing
@@ -2956,7 +2957,8 @@ to hours). This route clears **only** the four price-derived keys
 `nftCompoundedUsdByTokenId`), rewinds the NFT event watermark to the
 start of a bounded window, and calls `_triggerScan` so the existing
 lifetime scan re-values immediately. `hodlBaseline`,
-`lifetimeHodlAmounts` and `totalLifetimeDepositUsd` are preserved —
+`lifetimeHodlAmounts`, `totalLifetimeDepositUsd` and
+`depositUsedFallback` are preserved —
 keeping those is the entire cost advantage.
 
 Body: `{ positionKey, days }`. `days` omitted or `null` means the whole

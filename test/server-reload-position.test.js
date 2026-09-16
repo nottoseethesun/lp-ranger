@@ -176,6 +176,9 @@ describe("_ON_CHAIN_DERIVED_KEYS", () => {
       "hodlBaseline",
       "lifetimeHodlAmounts",
       "totalLifetimeDepositUsd",
+      /*- Travels with the deposit total. Left behind, it would mislabel
+       *  the freshly rebuilt deposit as fallback-priced. */
+      "depositUsedFallback",
     ];
     assert.deepStrictEqual([..._ON_CHAIN_DERIVED_KEYS].sort(), expected.sort());
   });
@@ -193,6 +196,7 @@ describe("_resetBotState", () => {
       lifetimeScanComplete: true,
       rebalanceScanComplete: true,
       totalLifetimeDepositUsd: 999.99,
+      depositUsedFallback: true,
       compoundHistory: [{ tokenId: "1" }],
       totalCompoundedUsd: 100,
       collectedFeesUsd: 50,
@@ -212,6 +216,7 @@ describe("_resetBotState", () => {
     assert.strictEqual(state.lifetimeScanComplete, false);
     assert.strictEqual(state.rebalanceScanComplete, false);
     assert.strictEqual(state.totalLifetimeDepositUsd, 0);
+    assert.strictEqual(state.depositUsedFallback, false);
     assert.deepStrictEqual(state.compoundHistory, []);
     assert.strictEqual(state.totalCompoundedUsd, 0);
     assert.strictEqual(state.collectedFeesUsd, 0);

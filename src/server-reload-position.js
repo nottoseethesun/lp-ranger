@@ -45,6 +45,9 @@ const _ON_CHAIN_DERIVED_KEYS = [
   "hodlBaseline",
   "lifetimeHodlAmounts",
   "totalLifetimeDepositUsd",
+  /*- Travels with the total: a stale "fallback price was used" flag left
+   *  behind would mislabel the freshly rebuilt deposit. */
+  "depositUsedFallback",
 ];
 
 /*- Bot-state fields to reset so the fresh scan's persist-conditions all
@@ -64,6 +67,7 @@ function _resetBotState(state) {
   state.lifetimeScanComplete = false;
   state.rebalanceScanComplete = false;
   state.totalLifetimeDepositUsd = 0;
+  state.depositUsedFallback = false;
   state.compoundHistory = [];
   state.totalCompoundedUsd = 0;
   state.collectedFeesUsd = 0;
