@@ -23,6 +23,7 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 const { format } = require("node:util");
 const { _setSinkForTests } = require("../src/log");
+const { collectAndDrainOf } = require("../src/position-history-scan-helpers");
 
 const IDS = ["10", "11", "12"];
 
@@ -68,6 +69,9 @@ function load(read) {
           trace.push({ step: "read", ids: [...ids], events });
           return read(ids, events);
         },
+        /*- The real mapping: which histories a shared read yields is
+         *  part of what these tests pin. */
+        collectAndDrainOf,
       };
     }
     if (id === "./position-history") {
@@ -253,5 +257,154 @@ describe("a failed chain read", () => {
     } finally {
       cap.restore();
     }
+  });
+});
+
+describe("a chain read shared with the lifetime scan", () => {
+  /*- When the lifetime scan is going to read the whole chain this pass,
+   *  reconstruction takes its histories from that read instead of making
+   *  a second. That read carries all three event types for every NFT. */
+
+  /** A whole-chain entry, as the lifetime read returns it. */
+  const fullEntry = (id) => ({
+    ilEvents: [{ amount0: 1n, amount1: 1n, blockNumber: +id }],
+    ...drainOf(id),
+    ilLogsCount: 1,
+  });
+
+  /** A shared read over `ids`, counting how often it is asked for. */
+  function sharedOver(ids, entryOf = fullEntry) {
+    const asked = [];
+    const read = async () => {
+      asked.push(1);
+      return new Map(ids.map((id) => [String(id), entryOf(id)]));
+    };
+    return { read, asked };
+  }
+
+  it("takes each NFT's history from it, and makes no read of its own", async () => {
+    const { fetch, trace } = load(readAll);
+    const shared = sharedOver([...IDS, "13"]);
+    await fetch(IDS, [], null, null, null, new Map(), shared.read);
+    assert.equal(
+      trace.some((t) => t.step === "read"),
+      false,
+      "a second read of the same chain",
+    );
+    assert.equal(shared.asked.length, 1);
+    for (const c of historyCalls(trace)) {
+      assert.deepEqual(c.opts.collectAndDrain, drainOf(c.tokenId));
+    }
+  });
+
+  it("hands on only Collect and DecreaseLiquidity", async () => {
+    const { fetch, trace } = load(readAll);
+    await fetch(IDS, [], null, null, null, new Map(), sharedOver(IDS).read);
+    for (const c of historyCalls(trace)) {
+      assert.deepEqual(Object.keys(c.opts.collectAndDrain).sort(), [
+        "collectEvents",
+        "dlEvents",
+      ]);
+    }
+  });
+
+  it("keeps the rule that no Collect means the history was not seen", async () => {
+    const { fetch, trace } = load(readAll);
+    const noCollect = (id) =>
+      id === "11" ? { ...fullEntry(id), collectEvents: [] } : fullEntry(id);
+    await fetch(
+      IDS,
+      [],
+      null,
+      null,
+      null,
+      new Map(),
+      sharedOver(IDS, noCollect).read,
+    );
+    const byId = new Map(historyCalls(trace).map((c) => [c.tokenId, c]));
+    assert.strictEqual(byId.get("11").opts.collectAndDrain, null);
+    assert.notStrictEqual(byId.get("10").opts.collectAndDrain, null);
+  });
+
+  it("does not start it when every NFT is already buffered", async () => {
+    /*- Nothing to read, so reconstruction must not be the reason the
+     *  shared read runs. */
+    const { fetch } = load(readAll);
+    const shared = sharedOver(IDS);
+    const buffer = new Map(IDS.map((id) => [id, { ...BUFFERED }]));
+    await fetch(IDS, [], null, null, null, buffer, shared.read);
+    assert.equal(shared.asked.length, 0);
+  });
+
+  it("uses it only for the NFTs still to be read", async () => {
+    const { fetch, trace } = load(readAll);
+    const buffer = new Map([["11", { ...BUFFERED }]]);
+    const epochs = await fetch(
+      IDS,
+      [],
+      null,
+      null,
+      null,
+      buffer,
+      sharedOver(IDS).read,
+    );
+    assert.deepEqual(
+      historyCalls(trace).map((c) => c.tokenId),
+      ["10", "12"],
+    );
+    assert.equal(epochs.length, 3);
+  });
+
+  it("fails an NFT the shared read does not cover, alone", async () => {
+    const { fetch, trace } = load(readAll);
+    const cap = captureWarnings();
+    let epochs;
+    try {
+      epochs = await fetch(
+        IDS,
+        [],
+        null,
+        null,
+        null,
+        new Map(),
+        sharedOver(["10", "12"]).read,
+      );
+    } finally {
+      cap.restore();
+    }
+    assert.deepEqual(
+      historyCalls(trace).map((c) => c.tokenId),
+      ["10", "12"],
+    );
+    assert.equal(epochs.length, 2);
+    assert.ok(
+      cap.lines.some((l) => /NFT #11:.*no events fetched for #11/.test(l)),
+      cap.lines.join("\n"),
+    );
+  });
+
+  it("leaves every history unknown when it fails, without reading again", async () => {
+    /*- The lifetime scan retries the shared read on its own turn; a
+     *  second read here would be the duplicate this sharing removes. */
+    const { fetch, trace } = load(readAll);
+    const cap = captureWarnings();
+    try {
+      await fetch(IDS, [], null, null, null, new Map(), async () => {
+        throw new Error("rpc unavailable");
+      });
+    } finally {
+      cap.restore();
+    }
+    assert.equal(
+      trace.some((t) => t.step === "read"),
+      false,
+    );
+    for (const c of historyCalls(trace)) {
+      assert.strictEqual(c.opts.collectAndDrain, null);
+    }
+    assert.ok(
+      cap.lines.some((l) => l.includes("3 closed NFT(s): rpc unavailable")),
+      cap.lines.join("\n"),
+    );
   });
 });

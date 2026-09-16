@@ -19,10 +19,11 @@
  * nothing.  A failed read is not kept, so the next consumer tries again
  * rather than inheriting the failure.
  *
- * The epoch rebuild earlier in the same request is not a consumer.  It
- * reads only Collect and DecreaseLiquidity, for the closed NFTs, inside
- * the pool scan and before this reader exists — and the managed bot
- * shares that code with no request to hang a reader on.
+ * Epoch reconstruction earlier in the same request can use it too.  It runs
+ * inside the pool scan, ahead of the other two, so the request keeps one
+ * reader from the first moment anything needs it (`requestChainReader`),
+ * and reconstruction takes its Collect/DecreaseLiquidity histories from it
+ * whenever the other two are going to read the chain anyway.
  */
 
 "use strict";
@@ -30,7 +31,7 @@
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
-const { scanChainNftEvents } = require("./nft-events-batch");
+const { scanChainNftEvents, shareRead } = require("./nft-events-batch");
 const { mintBlocksByTokenId, chainScanFloor } = require("./nft-mint-blocks");
 const { collectTokenIds } = require("./bot-recorder-scan-helpers");
 
@@ -85,16 +86,34 @@ async function _readChain(position, events, poolAddress) {
  *   per NFT; the first call reads, later calls share that read.
  */
 function chainEventsReader({ position, events, poolAddress }) {
-  let pending = null;
-  return function readChainEvents() {
-    if (pending === null) {
-      pending = _readChain(position, events, poolAddress).catch((err) => {
-        pending = null;
-        throw err;
-      });
+  return shareRead(() => _readChain(position, events, poolAddress));
+}
+
+/**
+ * The chain reader for one request, made the first time something needs
+ * it and handed to everything after.
+ *
+ * Epoch reconstruction runs inside the pool scan's callback, before Fees
+ * Compounded and the lifetime HODL, so the reader has to exist by then and
+ * be the one those two use afterwards.  The pool scan passes its callback
+ * the same events array it returns to its caller; that array is what ties
+ * the two, so a reader is kept for the array it was made for.
+ *
+ * @param {object} o
+ * @param {object} o.position  Current position.
+ * @param {string|null} [o.poolAddress]
+ * @returns {(events: Array) => (() => Promise<Map<string, object>>)}
+ */
+function requestChainReader({ position, poolAddress }) {
+  let madeFor = null;
+  let read = null;
+  return function readerFor(events) {
+    if (read === null || events !== madeFor) {
+      madeFor = events;
+      read = chainEventsReader({ position, events, poolAddress });
     }
-    return pending;
+    return read;
   };
 }
 
-module.exports = { chainEventsReader, poolCreationFloor };
+module.exports = { chainEventsReader, requestChainReader, poolCreationFloor };

@@ -20,9 +20,19 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const { eventsFor } = require("../src/nft-events-batch");
+const {
+  eventsFor,
+  fetchChainNftEvents,
+  emptyEvents,
+} = require("../src/nft-events-batch");
+const { parseLogs } = require("../src/nft-event-parse");
+const {
+  mintBlocksByTokenId,
+  chainScanFloor,
+} = require("../src/nft-mint-blocks");
 const {
   IFACE,
+  PM,
   encodedLog,
   makeProvider,
 } = require("./helpers/nft-log-fixtures");
@@ -271,5 +281,75 @@ describe("scanChainCollectAndDrain — what the entries mean", () => {
     };
     const { mod } = load(node);
     assert.equal(await mod.scanCollectAndDrain("100", node, 2_000), null);
+  });
+});
+
+describe("collectAndDrainOf — histories out of a whole-chain read", () => {
+  const { mod } = load(makeProvider([], HEAD));
+  const entry = (collect) => ({
+    ...emptyEvents(),
+    ilEvents: [{ blockNumber: 1 }],
+    collectEvents: collect,
+    dlEvents: [{ blockNumber: 3 }],
+  });
+
+  it("hands on only Collect and DecreaseLiquidity", () => {
+    const out = mod.collectAndDrainOf(
+      new Map([["100", entry([{ blockNumber: 2 }])]]),
+      ["100"],
+    );
+    assert.deepEqual(out.get("100"), {
+      collectEvents: [{ blockNumber: 2 }],
+      dlEvents: [{ blockNumber: 3 }],
+    });
+  });
+
+  it("answers null for an NFT with no Collect", () => {
+    const out = mod.collectAndDrainOf(new Map([["100", entry([])]]), ["100"]);
+    assert.strictEqual(out.get("100"), null);
+  });
+
+  it("leaves out an NFT the read does not cover", () => {
+    /*- So the caller's `eventsFor` fails for that NFT, rather than the
+     *  NFT reading as one with no history. */
+    const out = mod.collectAndDrainOf(
+      new Map([["100", entry([{ blockNumber: 2 }])]]),
+      ["100", "101"],
+    );
+    assert.deepEqual([...out.keys()], ["100"]);
+    assert.throws(() => eventsFor(out, "101"), /no events fetched for #101/);
+  });
+
+  it("matches numeric ids as strings", () => {
+    const out = mod.collectAndDrainOf(
+      new Map([["100", entry([{ blockNumber: 2 }])]]),
+      [100],
+    );
+    assert.ok(out.has("100"));
+  });
+});
+
+describe("the lifetime read serves epoch reconstruction exactly", () => {
+  /*- What lets one pass read the chain once: the lifetime scan's read —
+   *  all three event types, every NFT, each floored at its own mint
+   *  above the chain's first mint — yields, for each closed NFT, the
+   *  same Collect/DecreaseLiquidity history epoch reconstruction's own
+   *  read returns. */
+  it("gives every closed NFT the history its own read would", async () => {
+    const node = makeProvider(LOGS, HEAD);
+    const { mod } = load(node);
+    const closed = ["100", "101"];
+    const own = await mod.scanChainCollectAndDrain(closed, EVENTS);
+    /*- The lifetime read, as `scanChainNftEvents` makes it for the bot. */
+    const lifetime = await fetchChainNftEvents({
+      tokenIds: CHAIN,
+      mintBlocks: mintBlocksByTokenId(EVENTS),
+      sharedFloor: chainScanFloor(EVENTS, POOL_CREATED),
+      provider: node,
+      iface: IFACE,
+      address: PM,
+      parseLogs,
+    });
+    assert.deepEqual(mod.collectAndDrainOf(lifetime, closed), own);
   });
 });

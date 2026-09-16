@@ -31,6 +31,7 @@ const {
   scanFloors,
   emptyEvents,
   fetchChainNftEvents,
+  shareRead,
   eventsFor,
   _chunkIds,
   _keepAtOrAbove,
@@ -408,6 +409,42 @@ describe("fetching only the event types a caller reads", () => {
       assert.deepEqual(c.topics[1], [topicForTokenId(1), topicForTokenId(2)]);
     }
     assert.deepEqual([...batch.keys()], ["1", "2"]);
+  });
+});
+
+// ── One read for a pass ──────────────────────────────────────────────
+
+describe("shareRead", () => {
+  it("reads nothing until first asked", () => {
+    let reads = 0;
+    shareRead(async () => {
+      reads += 1;
+    });
+    assert.equal(reads, 0);
+  });
+
+  it("reads once, however many callers ask", async () => {
+    let reads = 0;
+    const read = shareRead(async () => ({ n: ++reads }));
+    const [a, b] = await Promise.all([read(), read()]);
+    const c = await read();
+    assert.equal(reads, 1);
+    assert.strictEqual(a, b);
+    assert.strictEqual(a, c);
+  });
+
+  it("does not keep a failed read", async () => {
+    /*- Each consumer used to read for itself and got its own attempt;
+     *  sharing the read must not share its failure. */
+    let reads = 0;
+    const read = shareRead(async () => {
+      reads += 1;
+      if (reads === 1) throw new Error("rpc unavailable");
+      return reads;
+    });
+    await assert.rejects(read(), /rpc unavailable/);
+    assert.equal(await read(), 2);
+    assert.equal(await read(), 2, "and a success is kept");
   });
 });
 

@@ -32,9 +32,12 @@ const {
   _applyPriceOverrides,
   _walletResiduals,
 } = require("./position-details-quick");
-const { _resolveCompounded } = require("./position-details-compound");
+const {
+  _resolveCompounded,
+  compoundsReadChain,
+} = require("./position-details-compound");
 const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
-const { chainEventsReader } = require("./position-details-chain-read");
+const { requestChainReader } = require("./position-details-chain-read");
 const { resolvePositionSymbols } = require("./resolve-position-symbols");
 const { computeHodlIL } = require("./il-calculator");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
@@ -44,8 +47,14 @@ const {
 } = require("./block-time-cache");
 const { applyInitialResidualFromCache } = require("./bot-pnl-initial-residual");
 
-/** Load or fetch + cache the HODL baseline for a position. */
-/** Run event scan + epoch reconstruction. Reads from disk cache if available. */
+/**
+ * Run event scan + epoch reconstruction. Reads from disk cache if available.
+ *
+ * `epochChainFor(events)` answers the request's chain reader when the
+ * request's other consumers are going to read the chain anyway, so epoch
+ * reconstruction takes its histories from that read; otherwise undefined,
+ * and reconstruction reads for itself.
+ */
 async function _getLifetimeSnapshot(
   provider,
   ethersLib,
@@ -56,6 +65,7 @@ async function _getLifetimeSnapshot(
   prices,
   deposit,
   poolAddress,
+  epochChainFor,
 ) {
   const poolCacheKey = position.token0
     ? {
@@ -91,6 +101,7 @@ async function _getLifetimeSnapshot(
         tracker.restore(freshCache);
         return;
       }
+      const readChainEvents = epochChainFor(evts);
       await reconstructEpochs({
         pnlTracker: tracker,
         rebalanceEvents: evts,
@@ -100,6 +111,7 @@ async function _getLifetimeSnapshot(
           positionManager: config.POSITION_MANAGER,
         },
         fallbackPrices: prices,
+        readChainEvents,
       });
       if (poolCacheKey) setCachedEpochs(poolCacheKey, tracker.serialize());
     },
@@ -203,7 +215,7 @@ async function _computeLifetimeIL(
   readChainEvents,
 ) {
   const poolCacheKey = _poolCacheKey(position);
-  let hodl = poolCacheKey ? getCachedLifetimeHodl(poolCacheKey) : null;
+  let hodl = _cachedLifetimeHodl(position);
   if (!hodl) {
     try {
       hodl = await scanLifetimeHodl(
@@ -336,6 +348,18 @@ async function _enrichSnap(
   snap.ilInputs = _buildIlInputs(cur.value, p0, p1, bl, ltResult);
 }
 
+/**
+ * The lifetime HODL cached for this position's pool, or null.
+ *
+ * `_computeLifetimeIL` reads the chain exactly when this is null, and
+ * `computeLifetimeDetails` asks it ahead of the pool scan, to decide
+ * whether epoch reconstruction can share that read.
+ */
+function _cachedLifetimeHodl(position) {
+  const key = _poolCacheKey(position);
+  return key ? getCachedLifetimeHodl(key) : null;
+}
+
 /** Build pool cache key from position data. */
 function _poolCacheKey(pos) {
   if (!pos.token0 || !pos.fee) return null;
@@ -404,6 +428,26 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     price1,
     residuals,
   );
+  // Position with the metadata the lifetime HODL needs (same as managed path)
+  const _posWithMeta = {
+    ...position,
+    walletAddress: body.walletAddress,
+    decimals0: ps.decimals0,
+    decimals1: ps.decimals1,
+  };
+  /*- One chain read for this request, shared by Fees Compounded, the
+   *  lifetime HODL, and epoch reconstruction when those two are going to
+   *  read the chain anyway.  Lazy: nothing is read unless a figure is
+   *  missing from its cache. */
+  const readerFor = requestChainReader({
+    position,
+    poolAddress: ps.poolAddress,
+  });
+  const epochChainFor = (evts) =>
+    compoundsReadChain(diskConfig, posKey, evts) ||
+    !_cachedLifetimeHodl(_posWithMeta)
+      ? readerFor(evts)
+      : undefined;
   const { tracker, events } = await _getLifetimeSnapshot(
     provider,
     ethersLib,
@@ -414,16 +458,10 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     { price0, price1 },
     entryValue,
     ps.poolAddress,
+    epochChainFor,
   );
   const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
-  /*- One chain read for this request, shared by Fees Compounded and the
-   *  lifetime HODL below.  Lazy: nothing is read unless one of them is
-   *  missing from its cache. */
-  const readChainEvents = chainEventsReader({
-    position,
-    events,
-    poolAddress: ps.poolAddress,
-  });
+  const readChainEvents = readerFor(events);
   /*- Resolve lifetime compounded BEFORE _lifetimePnl so the new fee-
    *  earnings model (currentFees + lifetimeCompounded) has both inputs
    *  on hand.  No extra cost — _resolveCompounded reads from cached
@@ -466,12 +504,6 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     Date.now() - _ltT0,
   );
   // Compute lifetime HODL from chain events (same as managed path)
-  const _posWithMeta = {
-    ...position,
-    walletAddress: body.walletAddress,
-    decimals0: ps.decimals0,
-    decimals1: ps.decimals1,
-  };
   const ltResult = await _computeLifetimeIL(
     _posWithMeta,
     events,

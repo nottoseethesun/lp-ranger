@@ -220,3 +220,93 @@ describe("_scanCompounds", () => {
     assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
   });
 });
+
+describe("compoundsReadChain", () => {
+  /*- Decides whether Fees Compounded reads the whole chain. The request
+   *  asks it before the pool scan, to know whether epoch reconstruction
+   *  can share that read, so it must match `_resolveCompounded`. */
+  const { compoundsReadChain } = require("../src/position-details-compound");
+  const EVENTS = [{ oldTokenId: "99", newTokenId: "100" }];
+  const disk = (slot) => ({
+    global: {},
+    positions: slot ? { "test-key": slot } : {},
+  });
+
+  it("reads when no total is saved and there is a chain", () => {
+    assert.strictEqual(
+      compoundsReadChain(disk(null), "test-key", EVENTS),
+      true,
+    );
+    assert.strictEqual(
+      compoundsReadChain(disk({ status: "stopped" }), "test-key", EVENTS),
+      true,
+    );
+  });
+
+  it("does not read when a total is saved", () => {
+    assert.strictEqual(
+      compoundsReadChain(disk({ totalCompoundedUsd: 5 }), "test-key", EVENTS),
+      false,
+    );
+  });
+
+  it("does not read without a chain", () => {
+    assert.strictEqual(compoundsReadChain(disk(null), "test-key", []), false);
+  });
+});
+
+describe("_resolveCompounded takes the chain path exactly when predicted", () => {
+  const {
+    _resolveCompounded,
+    compoundsReadChain,
+  } = require("../src/position-details-compound");
+  const POS = { tokenId: "100", token0: "0xA", token1: "0xB", fee: 3000 };
+  const EVENTS = [{ oldTokenId: "99", newTokenId: "100", blockNumber: 7 }];
+  const PS = { decimals0: 18, decimals1: 18 };
+  const PRICES = { price0: 1, price1: 1 };
+
+  /** Resolve with a reader that counts how often it is read. */
+  async function resolve(cfg, events) {
+    const r = readerFor(["100", "99"]);
+    const result = await _resolveCompounded(
+      POS,
+      events,
+      { walletAddress: "0xW" },
+      PS,
+      PRICES,
+      cfg,
+      "test-key",
+      r.read,
+    );
+    return { result, reads: r.calls.length };
+  }
+
+  it("reads the chain when no total is saved", async () => {
+    const cfg = { global: {}, positions: {} };
+    assert.equal(compoundsReadChain(cfg, "test-key", EVENTS), true);
+    const { result, reads } = await resolve(cfg, EVENTS);
+    assert.equal(reads, 1);
+    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
+  });
+
+  it("answers zero without reading when there is no chain", async () => {
+    const cfg = { global: {}, positions: {} };
+    const { result, reads } = await resolve(cfg, []);
+    assert.equal(reads, 0);
+    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
+  });
+
+  it("uses the saved total without reading the chain", async () => {
+    /*- This path also reads the current NFT on its own for the Current
+     *  panel. No RPC is initialised here, so that read fails and those
+     *  two figures fall back to zero — not what this test is about. */
+    const cfg = {
+      global: {},
+      positions: { "test-key": { totalCompoundedUsd: 42 } },
+    };
+    assert.equal(compoundsReadChain(cfg, "test-key", EVENTS), false);
+    const { result, reads } = await resolve(cfg, EVENTS);
+    assert.equal(reads, 0);
+    assert.equal(result.total, 42);
+  });
+});

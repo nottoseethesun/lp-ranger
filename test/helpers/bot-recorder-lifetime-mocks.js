@@ -18,7 +18,9 @@
  * and observations through the same object:
  *
  *   - `scanCalled` / `classifyCalled` / `depositCalled`
+ *   - `scanCount`       how many chain reads `fetchAllNftEvents` served
  *   - `scanFromBlock`   the block `fetchAllNftEvents` was actually given
+ *   - `scanOpts`        the options it was given (resume buffer, live id)
  *   - `errorLogCalls`   write/clear calls made by the heal path
  */
 
@@ -28,12 +30,28 @@ const Module = require("module");
 
 const _origRequire = Module.prototype.require;
 
+/*- The lifetime scan, and the module it delegates its chain read to —
+ *  which is where `./bot-recorder-scan-helpers` is required. Evicting
+ *  only the first would leave the second bound to whatever it loaded
+ *  with first, and the stubs below would not reach the read. */
+const _LIFETIME_MODULES = [
+  "../../src/bot-recorder-lifetime",
+  "../../src/bot-recorder-lifetime-read",
+];
+
+/** Drop the lifetime modules from the require cache. */
+function _evictLifetimeModules() {
+  for (const m of _LIFETIME_MODULES) delete require.cache[require.resolve(m)];
+}
+
 /** Live mock state — reset by `resetState()`, read by the installed mocks. */
 const state = {};
 
 /** Restore every knob and observation to its default. */
 function resetState() {
   state.scanCalled = false;
+  state.scanCount = 0;
+  state.scanOpts = null;
   state.classifyCalled = false;
   state.depositCalled = false;
   state.cachedHodl = { poolAddress: "0xPOOL" };
@@ -110,9 +128,11 @@ function _installMocks() {
     if (id === "./bot-recorder-scan-helpers") {
       return {
         collectTokenIds: () => new Set([1]),
-        fetchAllNftEvents: async (_ids, fromBlock) => {
+        fetchAllNftEvents: async (_ids, fromBlock, _mintBlocks, opts) => {
           state.scanCalled = true;
+          state.scanCount += 1;
           state.scanFromBlock = fromBlock;
+          state.scanOpts = opts;
           return { allNftEvents: new Map([[1, []]]), maxBlock: 0 };
         },
       };
@@ -125,12 +145,12 @@ function _installMocks() {
     if (id === "./error-log") return _errorLogMock();
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../../src/bot-recorder-lifetime")];
+  _evictLifetimeModules();
 }
 
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../../src/bot-recorder-lifetime")];
+  _evictLifetimeModules();
 }
 
 function _makePosition() {
@@ -162,6 +182,7 @@ module.exports = {
   resetState,
   installMocks: _installMocks,
   restoreMocks: _restoreMocks,
+  evictLifetimeModules: _evictLifetimeModules,
   makePosition: _makePosition,
   makeBotState: _makeBotState,
 };

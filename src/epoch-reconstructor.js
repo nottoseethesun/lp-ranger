@@ -25,7 +25,10 @@
 const { log } = require("./log");
 const config = require("./config");
 const { getPositionHistory } = require("./position-history");
-const { scanChainCollectAndDrain } = require("./position-history-scan-helpers");
+const {
+  scanChainCollectAndDrain,
+  collectAndDrainOf,
+} = require("./position-history-scan-helpers");
 const { eventsFor } = require("./nft-events-batch");
 const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
@@ -227,6 +230,11 @@ function _buffered(resumeBuffer, tokenId) {
  * resume buffer, by the same test the loop applies — so every lookup the
  * loop makes was prepared, and a buffered NFT is not read again.
  *
+ * When another consumer in the same pass is going to read the whole chain
+ * anyway (`readChainEvents`), the histories come out of that read instead
+ * of a second one. With nothing left to read, neither read is started on
+ * this function's behalf.
+ *
  * A failed read is not an exception here, for the same reason no
  * per-NFT failure is: the pass must finish. It returns null, and every
  * NFT then takes its history as unknown — what a failed per-NFT read
@@ -237,15 +245,31 @@ function _buffered(resumeBuffer, tokenId) {
  * @param {string[]} closedIds
  * @param {Array} events  Rebalance events.
  * @param {Map<string, object>|undefined} resumeBuffer
+ * @param {() => Promise<Map<string, object>>} [readChainEvents]  The
+ *   pass's shared whole-chain read, when there is one.
  * @returns {Promise<Map<string, object|null>|null>}  Null when the read
  *   failed.
  */
-async function _readChainHistories(closedIds, events, resumeBuffer) {
+async function _readChainHistories(
+  closedIds,
+  events,
+  resumeBuffer,
+  readChainEvents,
+) {
   const unread = closedIds.filter(
     (id) => _buffered(resumeBuffer, id) === undefined,
   );
+  if (unread.length === 0) return new Map();
   try {
-    return await scanChainCollectAndDrain(unread, events);
+    if (readChainEvents === undefined) {
+      return await scanChainCollectAndDrain(unread, events);
+    }
+    const chainEvents = await readChainEvents();
+    log.info(
+      "[pnl] Taking %d closed NFT(s)' Collect/DecreaseLiquidity history from the lifetime read of the same chain",
+      unread.length,
+    );
+    return collectAndDrainOf(chainEvents, unread);
   } catch (err) {
     log.warn(
       "[pnl] Could not read Collect/DecreaseLiquidity history for %d closed NFT(s): %s",
@@ -292,6 +316,8 @@ async function _readHistory(tokenId, ctx) {
  * @param {Function|null} onProgress  Optional (done, total) callback for UI progress.
  * @param {Map<string, object>} [resumeBuffer]  NFTs already read by an
  *   earlier attempt; see `reconstructEpochs`.
+ * @param {() => Promise<Map<string, object>>} [readChainEvents]  The
+ *   pass's shared whole-chain read; see `_readChainHistories`.
  * @returns {Promise<object[]>}   Array of closed Epoch objects (unsorted).
  */
 async function _fetchEpochsFromChain(
@@ -301,9 +327,15 @@ async function _fetchEpochsFromChain(
   fallbackPrices,
   onProgress,
   resumeBuffer,
+  readChainEvents,
 ) {
   await _warmNativePrice();
-  const histories = await _readChainHistories(closedIds, events, resumeBuffer);
+  const histories = await _readChainHistories(
+    closedIds,
+    events,
+    resumeBuffer,
+    readChainEvents,
+  );
   const ctx = { histories, events, activePos, fallbackPrices };
   const closedEpochs = [];
   for (let i = 0; i < closedIds.length; i++) {
@@ -517,6 +549,11 @@ function _markHistoryComplete(botState, complete) {
  * @param {Array}    opts.rebalanceEvents   Rebalance events from the scanner.
  * @param {object}   opts.botState          Bot state object.
  * @param {Function} opts.updateBotState    State update callback.
+ * @param {object}   [opts.fallbackPrices]  Current prices {price0, price1}.
+ * @param {() => Promise<Map<string, object>>} [opts.readChainEvents]
+ *   A whole-chain read another consumer in the same pass will make anyway.
+ *   When given, the closed NFTs' histories come out of it rather than a
+ *   read of their own; see `_readChainHistories`.
  * @returns {Promise<number>} Number of epochs reconstructed.
  */
 async function reconstructEpochs({
@@ -525,6 +562,7 @@ async function reconstructEpochs({
   botState,
   updateBotState,
   fallbackPrices,
+  readChainEvents,
 }) {
   /*- Nothing to reconstruct is a complete history, not a short one: the
    *  yardstick is empty, so nothing can fall short of it. Saying so
@@ -623,6 +661,7 @@ async function reconstructEpochs({
     fallbackPrices,
     _progress,
     botState._epochResumeBuffer,
+    readChainEvents,
   );
   /*- Short history flags itself for another go.
    *

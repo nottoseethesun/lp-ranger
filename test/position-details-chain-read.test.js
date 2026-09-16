@@ -25,7 +25,12 @@ const os = require("node:os");
 const path = require("node:path");
 
 const batch = require("../src/nft-events-batch");
-const { _scanCompounds } = require("../src/position-details-compound");
+const config = require("../src/config");
+const { compositeKey } = require("../src/bot-config-v2");
+const {
+  _scanCompounds,
+  compoundsReadChain,
+} = require("../src/position-details-compound");
 const { scanLifetimeHodl } = require("../src/position-details-lifetime-scan");
 
 /** #100 → #200 → #300, the second and third minted 5M and 6M blocks in. */
@@ -236,14 +241,27 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
         fetchTokenPrices: async () => ({ price0: 1, price1: 1 }),
         _totalLifetimeDeposit: async () => ({ total: 0, usedFallback: false }),
       },
-      "./epoch-reconstructor": { reconstructEpochs: async () => 0 },
+      "./epoch-reconstructor": {
+        reconstructEpochs: async (o) => {
+          seen.epochCalled = true;
+          seen.epoch = o.readChainEvents;
+          return 0;
+        },
+      },
       "./epoch-cache": {
         getCachedEpochs: () => null,
         setCachedEpochs: () => {},
-        getCachedLifetimeHodl: () => null,
+        getCachedLifetimeHodl: () => seen.cachedHodl ?? null,
         getCachedFreshDeposits: () => null,
       },
-      "./pool-scanner": { scanPoolHistory: async () => CHAIN },
+      /*- Calls back with the chain it returns, as the real pool scan
+       *  does, so epoch reconstruction runs inside it. */
+      "./pool-scanner": {
+        scanPoolHistory: async (_p, _e, opts) => {
+          await opts.computeFromHistoricalPrices(CHAIN);
+          return CHAIN;
+        },
+      },
       "./position-details-quick": {
         computeQuickDetails: async () => ({}),
         _currentPnl: () => ({
@@ -257,6 +275,9 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
         _walletResiduals: async () => ({}),
       },
       "./position-details-compound": {
+        /*- The real predicate: when Fees Compounded reads the chain is
+         *  what decides whether reconstruction may share the read. */
+        compoundsReadChain,
         _resolveCompounded: async (...args) => {
           seen.compound = args[7];
           return { total: 0, current: 0, currentGasUsd: 0 };
@@ -293,15 +314,85 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
     }
   }
 
-  it("hands Fees Compounded and the lifetime HODL the same reader", async () => {
-    const seen = {};
+  const POS_KEY = compositeKey(
+    "pulsechain",
+    BODY.walletAddress,
+    config.POSITION_MANAGER,
+    BODY.tokenId,
+  );
+  /** Disk config, with or without a saved Fees Compounded total. */
+  const diskWith = (saved) => ({
+    global: {},
+    positions: saved ? { [POS_KEY]: { totalCompoundedUsd: 5 } } : {},
+  });
+  const HODL = { amount0: 1, amount1: 1 };
+
+  /** Run one request; returns what each consumer was handed. */
+  async function request({ compoundSaved, hodlCached }) {
+    const seen = { cachedHodl: hodlCached ? HODL : null };
     const { computeLifetimeDetails } = loadDetails(seen);
-    await computeLifetimeDetails({}, {}, BODY, { global: {}, positions: {} });
+    await computeLifetimeDetails({}, {}, BODY, diskWith(compoundSaved));
+    return seen;
+  }
+
+  it("hands Fees Compounded and the lifetime HODL the same reader", async () => {
+    const seen = await request({ compoundSaved: false, hodlCached: false });
     assert.equal(typeof seen.compound, "function");
     assert.strictEqual(
       seen.compound,
       seen.hodl,
       "two readers would read the chain twice",
     );
+  });
+
+  it("hands epoch reconstruction the same reader when both will read", async () => {
+    const seen = await request({ compoundSaved: false, hodlCached: false });
+    assert.equal(seen.epochCalled, true);
+    assert.strictEqual(seen.epoch, seen.compound);
+  });
+
+  it("shares it when only the lifetime HODL will read", async () => {
+    const seen = await request({ compoundSaved: true, hodlCached: false });
+    assert.equal(typeof seen.epoch, "function");
+    assert.strictEqual(seen.epoch, seen.hodl);
+  });
+
+  it("shares it when only Fees Compounded will read", async () => {
+    const seen = await request({ compoundSaved: false, hodlCached: true });
+    assert.equal(typeof seen.epoch, "function");
+    assert.strictEqual(seen.epoch, seen.compound);
+    assert.equal(seen.hodl, undefined, "a cached HODL is not rescanned");
+  });
+
+  it("lets reconstruction read for itself when both figures are cached", async () => {
+    /*- Nothing else will read the chain, and the full three-event read
+     *  would cost reconstruction more than its own two-event one. */
+    const seen = await request({ compoundSaved: true, hodlCached: true });
+    assert.equal(seen.epochCalled, true);
+    assert.strictEqual(seen.epoch, undefined);
+  });
+});
+
+describe("requestChainReader", () => {
+  const { requestChainReader } = require("../src/position-details-chain-read");
+
+  it("keeps one reader for the events array it was made for", () => {
+    const readerFor = requestChainReader({ position: POSITION });
+    const events = [...CHAIN];
+    assert.strictEqual(readerFor(events), readerFor(events));
+  });
+
+  it("makes a new reader for a different array", () => {
+    /*- An equal-looking copy is still a different chain as far as the
+     *  reader can tell; reading again is the safe answer. */
+    const readerFor = requestChainReader({ position: POSITION });
+    const first = readerFor([...CHAIN]);
+    assert.notStrictEqual(readerFor([...CHAIN]), first);
+  });
+
+  it("reads nothing when made", () => {
+    const { mod, calls } = loadReader();
+    mod.requestChainReader({ position: POSITION })([...CHAIN]);
+    assert.equal(calls.length, 0);
   });
 });

@@ -69,6 +69,33 @@ function _usableHistory(entry) {
 }
 
 /**
+ * The Collect/DecreaseLiquidity histories of some NFTs, taken out of a
+ * whole-chain read, in the shape `scanChainCollectAndDrain` returns.
+ *
+ * Also how epoch reconstruction uses a read another consumer made for the
+ * same chain — the lifetime scan's, which fetches all three event types
+ * for every NFT. That read floors each NFT at its mint, the same as or
+ * lower than epoch reconstruction's own read would, so every history it
+ * holds is at least as complete.
+ *
+ * An id the read does not cover is left out, so the caller's `eventsFor`
+ * fails for that NFT alone instead of answering "no history".
+ *
+ * @param {Map<string, {collectEvents: Array, dlEvents: Array}>} batch
+ * @param {Iterable<string|number>} ids
+ * @returns {Map<string, {collectEvents: Array, dlEvents: Array}|null>}
+ */
+function collectAndDrainOf(batch, ids) {
+  const out = new Map();
+  for (const tokenId of ids) {
+    const id = String(tokenId);
+    const entry = batch.get(id);
+    if (entry !== undefined) out.set(id, _usableHistory(entry));
+  }
+  return out;
+}
+
+/**
  * One NFT's complete Collect and DecreaseLiquidity history.
  *
  * Fetched together, and once, because both consumers in
@@ -157,9 +184,7 @@ async function scanChainCollectAndDrain(tokenIds, events) {
     sharedFloor: chainScanFloor(events, poolFloor),
     eventNames: DRAIN_EVENTS,
   });
-  const out = new Map();
-  for (const [id, entry] of batch) out.set(id, _usableHistory(entry));
-  return out;
+  return collectAndDrainOf(batch, batch.keys());
 }
 
 /**
@@ -196,6 +221,7 @@ async function resolveScanFromBlock(prov, ethers, tokenId) {
 module.exports = {
   scanCollectAndDrain,
   scanChainCollectAndDrain,
+  collectAndDrainOf,
   resolveScanFromBlock,
   FIVE_YEAR_BLOCKS,
 };

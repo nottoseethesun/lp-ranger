@@ -187,6 +187,25 @@ async function _detectCurrentNftValues(
   }
 }
 
+/**
+ * Whether this request takes Fees Compounded from the whole chain rather
+ * than from disk: no total is saved for the position, and there is a chain
+ * to read.
+ *
+ * `_resolveCompounded` takes the chain path exactly when this is true, and
+ * `computeLifetimeDetails` asks it ahead of the pool scan, to decide
+ * whether epoch reconstruction can share that read.
+ *
+ * @param {object} diskConfig
+ * @param {string} posKey
+ * @param {Array} events  Rebalance events.
+ * @returns {boolean}
+ */
+function compoundsReadChain(diskConfig, posKey, events) {
+  const posConfig = diskConfig.positions[posKey] || {};
+  return !posConfig.totalCompoundedUsd && events.length > 0;
+}
+
 /*- Resolve compounded USD from disk cache or chain scan.  Returns
  *  `{ total, current, currentGasUsd }`: total is the lifetime compounded
  *  across the rebalance chain (Lifetime panel); current is the current
@@ -207,39 +226,37 @@ async function _resolveCompounded(
   posKey,
   readChainEvents,
 ) {
-  const posConfig = diskConfig.positions[posKey] || {};
-  if (posConfig.totalCompoundedUsd) {
-    /*- Cache hit on the lifetime total — still need a one-NFT scan for
-     *  the current values, which are not cached on disk.  One NFT
-     *  rather than the whole chain, and bounded to that NFT's own life
-     *  by the events passed through. */
-    const cv = await _detectCurrentNftValues(
+  if (compoundsReadChain(diskConfig, posKey, events)) {
+    return _scanCompounds(
       position,
+      events,
       body,
       ps,
       prices,
-      events,
+      diskConfig,
+      posKey,
+      readChainEvents,
     );
-    return {
-      total: posConfig.totalCompoundedUsd,
-      current: cv.compoundUsd,
-      currentGasUsd: cv.gasUsd,
-    };
   }
-  if (events.length === 0) return { total: 0, current: 0, currentGasUsd: 0 };
-  return _scanCompounds(
-    position,
-    events,
-    body,
-    ps,
-    prices,
-    diskConfig,
-    posKey,
-    readChainEvents,
-  );
+  const posConfig = diskConfig.positions[posKey] || {};
+  /*- No saved total and no chain: nothing has been compounded. */
+  if (!posConfig.totalCompoundedUsd) {
+    return { total: 0, current: 0, currentGasUsd: 0 };
+  }
+  /*- Cache hit on the lifetime total — still need a one-NFT scan for
+   *  the current values, which are not cached on disk.  One NFT
+   *  rather than the whole chain, and bounded to that NFT's own life
+   *  by the events passed through. */
+  const cv = await _detectCurrentNftValues(position, body, ps, prices, events);
+  return {
+    total: posConfig.totalCompoundedUsd,
+    current: cv.compoundUsd,
+    currentGasUsd: cv.gasUsd,
+  };
 }
 
 module.exports = {
+  compoundsReadChain,
   _scanCompounds,
   _detectCurrentNftValues,
   _resolveCompounded,

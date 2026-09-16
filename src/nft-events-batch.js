@@ -314,6 +314,32 @@ async function fetchChainNftEvents(o) {
 }
 
 /**
+ * One read, shared by every consumer in a pass.
+ *
+ * The first call starts the read, and every later call gets the same
+ * promise, so the chain is read once however many consumers ask. A read
+ * that fails is not kept: the next call starts a fresh one, so each
+ * consumer still gets an attempt of its own, as it did when each read
+ * for itself.
+ *
+ * @template T
+ * @param {() => Promise<T>} readOnce  Performs the read.
+ * @returns {() => Promise<T>}
+ */
+function shareRead(readOnce) {
+  let pending = null;
+  return function sharedRead() {
+    if (pending === null) {
+      pending = readOnce().catch((err) => {
+        pending = null;
+        throw err;
+      });
+    }
+    return pending;
+  };
+}
+
+/**
  * Read one NFT's events out of a batch result.
  *
  * Throws when the id was not part of the batch. That is the point: a
@@ -378,6 +404,7 @@ module.exports = {
   emptyEvents,
   fetchChainNftEvents,
   scanChainNftEvents,
+  shareRead,
   eventsFor,
   _chunkIds,
   _keepAtOrAbove,

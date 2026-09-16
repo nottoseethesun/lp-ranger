@@ -25,6 +25,7 @@ const {
   origRequire,
   poolStateMock,
   errorLogMock,
+  evictLifetimeModules,
 } = require("./helpers/bot-recorder-lifetime-mocks");
 
 describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
@@ -353,7 +354,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       if (id === "./error-log") return errorLogMock();
       return origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
+    evictLifetimeModules();
   }
 
   beforeEach(() => {
@@ -483,7 +484,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       }
       return origRequire2.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
+    evictLifetimeModules();
     ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
     await _scanLifetimePoolData(
       makePosition(),

@@ -34,7 +34,11 @@ const {
   estimateGasCostUsd: _estimateGasCostUsd,
   actualGasCostUsd: _actualGasCostUsd,
 } = require("./bot-pnl-updater");
-const { _scanLifetimePoolData } = require("./bot-recorder-lifetime");
+const {
+  _scanLifetimePoolData,
+  lifetimeScanPlan,
+  prepareLifetimeRead,
+} = require("./bot-recorder-lifetime");
 const { ensureInitialResidualData } = require("./liquidity-pair-details");
 const { emojiId } = require("./logger");
 
@@ -326,6 +330,47 @@ async function _scanHistory(
   }
 }
 
+/**
+ * The lifetime scan's chain read, prepared for epoch reconstruction to
+ * share, or null when the lifetime scan will not read the chain this
+ * pass, and reconstruction must read for itself.
+ *
+ * Runs inside the pool scan's callback, whose other steps are all kept
+ * from breaking the event scan; this one is too. A failure here costs the
+ * sharing, not the scan: both reads then happen separately, as they did
+ * before.
+ *
+ * @param {object} position
+ * @param {object} botState
+ * @param {Array} evts  The chain the event scan just found.
+ * @param {object|null} epochKey
+ * @returns {object|null}
+ */
+function _prepareSharedRead(position, botState, evts, epochKey) {
+  if (botState === undefined || botState === null) return null;
+  try {
+    if (!lifetimeScanPlan(botState, epochKey).needed) return null;
+    return prepareLifetimeRead(position, botState, evts, epochKey);
+  } catch (err) {
+    const tokenIdStr = String(position.tokenId || "");
+    log.warn(
+      "[bot] %s/%s NFT #%s %s: Could not prepare the shared chain read, so epoch reconstruction reads on its own: %s",
+      position.token0Symbol || "Token0",
+      position.token1Symbol || "Token1",
+      tokenIdStr,
+      emojiId(tokenIdStr),
+      err.message,
+    );
+    return null;
+  }
+}
+
+/** Epoch reconstruction's view of a shared read: its per-NFT events. */
+function _epochEventsFrom(sharedRead) {
+  if (sharedRead === null) return undefined;
+  return async () => (await sharedRead.read()).allNftEvents;
+}
+
 /** Scan history and reconstruct P&L epochs under the pool lock. */
 async function _scanAndReconstruct(
   provider,
@@ -340,6 +385,12 @@ async function _scanAndReconstruct(
   botState,
   epochKey,
 ) {
+  /*- One chain read for the pass. Epoch reconstruction and the lifetime
+   *  scan both need the chain's history; when the lifetime scan is going
+   *  to read the whole chain anyway, it is prepared here, once the event
+   *  scan has found the chain, and reconstruction takes its events from
+   *  it. See src/bot-recorder-lifetime-read.js. */
+  let sharedRead = null;
   await _scanHistory(
     provider,
     ethersLib,
@@ -351,17 +402,20 @@ async function _scanAndReconstruct(
     async (scannedEvents) => {
       const evts = scannedEvents || events;
       if (!evts.length) return;
+      sharedRead = _prepareSharedRead(position, botState, evts, epochKey);
       log.info("[bot] Reconstructing epochs (%d events)\u2026", evts.length);
       const fb = await _fetchTokenPrices(
         position.token0,
         position.token1,
       ).catch(() => ({ price0: 0, price1: 0 }));
+      const readChainEvents = _epochEventsFrom(sharedRead);
       await reconstructEpochs({
         pnlTracker,
         rebalanceEvents: evts,
         botState,
         updateBotState: updateState,
         fallbackPrices: fb,
+        readChainEvents,
       }).catch((e) => log.warn("[pnl] Epoch reconstruction error:", e.message));
     },
   );
@@ -373,6 +427,7 @@ async function _scanAndReconstruct(
     address,
     pnlTracker,
     epochKey,
+    sharedRead,
   );
   log.info("[bot] Scan + epoch reconstruction complete");
   updateState({
