@@ -29,7 +29,6 @@ describe("compounder", () => {
       assert.equal(typeof mod.scanNftEvents, "function");
       assert.equal(typeof mod.classifyCompounds, "function");
       assert.equal(typeof mod._filterRebalances, "function");
-      assert.equal(typeof mod._parseLogs, "function");
     });
   });
 

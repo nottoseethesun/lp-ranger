@@ -14,7 +14,6 @@
 
 "use strict";
 
-const ethers = require("ethers");
 const { logCtx } = require("./logger");
 const { log } = require("./log");
 
@@ -22,6 +21,7 @@ const config = require("./config");
 const sendTx = require("./send-transaction");
 const { swapForCompound } = require("./compounder-swap");
 const { scanChunked } = require("./get-logs-chunked");
+const { IFACE, parseLogs } = require("./nft-event-parse");
 
 /*- Thin wrapper around shared `logCtx` in `src/logger.js` so the 6-field
  *  compound/rebalance/swap entry-point format stays in lockstep across
@@ -46,7 +46,6 @@ const {
 
 /*- Cached at module load: parsing PM logs is stateless, so a single Interface
     instance can serve every call in scanNftEvents/classifyCompounds. */
-const _IFACE = new ethers.Interface(PM_ABI);
 
 /**
  * Collect unclaimed fees from a position to the wallet.
@@ -396,24 +395,6 @@ async function executeCompound(signer, ethersLib, opts) {
  * @returns {Promise<{compounds: object[], totalCompoundedUsd: number}>}
  */
 /** Parse event logs into structured objects. */
-function _parseLogs(iface, logs) {
-  const out = [];
-  for (const log of logs) {
-    try {
-      const p = iface.parseLog({ topics: log.topics, data: log.data });
-      out.push({
-        amount0: p.args.amount0,
-        amount1: p.args.amount1,
-        liquidity: p.args.liquidity,
-        blockNumber: log.blockNumber,
-        txHash: log.transactionHash,
-      });
-    } catch {
-      /* skip unparseable */
-    }
-  }
-  return out;
-}
 
 /**
  * Filter IncreaseLiquidity candidates: remove any that follow a
@@ -518,7 +499,7 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
           address: addr,
           fromBlock: f,
           toBlock: t,
-          topics: [_IFACE.getEvent(name).topicHash, tidHex],
+          topics: [IFACE.getEvent(name).topicHash, tidHex],
         }),
     });
   const [ilLogs, colLogs, dlLogs] = await Promise.all([
@@ -527,9 +508,9 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
     scanEvent("DecreaseLiquidity"),
   ]);
   return {
-    ilEvents: _parseLogs(_IFACE, ilLogs),
-    collectEvents: _parseLogs(_IFACE, colLogs),
-    dlEvents: _parseLogs(_IFACE, dlLogs),
+    ilEvents: parseLogs(IFACE, ilLogs),
+    collectEvents: parseLogs(IFACE, colLogs),
+    dlEvents: parseLogs(IFACE, dlLogs),
     ilLogsCount: ilLogs.length,
   };
 }
@@ -735,6 +716,5 @@ module.exports = {
   classifyCompounds,
   lifetimeFeeAmounts,
   _filterRebalances,
-  _parseLogs,
   _fetchCompoundGas,
 };

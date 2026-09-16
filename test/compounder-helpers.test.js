@@ -1,13 +1,14 @@
 /**
  * @file test/compounder-helpers.test.js
- * @description Tests for _filterRebalances and _parseLogs in compounder.js.
+ * @description Tests for _filterRebalances in compounder.js and parseLogs in nft-event-parse.js (compounder.js.
  */
 
 "use strict";
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { _filterRebalances, _parseLogs } = require("../src/compounder");
+const { _filterRebalances } = require("../src/compounder");
+const { parseLogs: _parseLogs } = require("../src/nft-event-parse");
 
 // ── _filterRebalances ───────────────────────────────────────────────
 
