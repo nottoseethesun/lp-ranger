@@ -384,6 +384,12 @@ three totals are saved and restored with the position's config
 complete scan a restart reads nothing for them; the compound and rebalance
 paths keep them current as those happen.
 
+A pass whose event scan fails computes none of them. The chain the bot holds
+is then whatever it held before the pass, which on a cold start is nothing,
+and figures computed from it would be saved and kept by later passes. When a
+figure is missing, the position stays unready instead, and the 30-minute
+rescan retries the pass.
+
 ### Lifetime Sync vs Bot Loop
 
 The lifetime P&L scan (event scan, epoch reconstruction, price fetching) is

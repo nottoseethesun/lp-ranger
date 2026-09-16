@@ -208,7 +208,13 @@ async function _attachInitialResidual(stPatch, ctx) {
   }
 }
 
-/** Resolve pool address and scan on-chain rebalance history (fire-and-forget). */
+/**
+ * Resolve pool address and scan on-chain rebalance history (fire-and-forget).
+ *
+ * @returns {Promise<boolean>}  False when the scan failed. `events` then
+ *   still holds what it held before the pass, which on a cold start is
+ *   nothing.
+ */
 async function _scanHistory(
   provider,
   ethersLib,
@@ -324,9 +330,11 @@ async function _scanHistory(
       ethersLib,
     });
     updateState(stPatch);
+    return true;
   } catch (err) {
     log.warn("[bot] Event scan error:", err.message);
     updateState({ rebalanceScanComplete: true });
+    return false;
   }
 }
 
@@ -391,7 +399,7 @@ async function _scanAndReconstruct(
    *  scan has found the chain, and reconstruction takes its events from
    *  it. See src/bot-recorder-lifetime-read.js. */
   let sharedRead = null;
-  await _scanHistory(
+  const chainFound = await _scanHistory(
     provider,
     ethersLib,
     address,
@@ -428,6 +436,7 @@ async function _scanAndReconstruct(
     pnlTracker,
     epochKey,
     sharedRead,
+    chainFound,
   );
   log.info("[bot] Scan + epoch reconstruction complete");
   updateState({

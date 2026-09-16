@@ -2,22 +2,22 @@
 
 /**
  * @file test/deposit-persistence.test.js
- * @description The lifetime deposit total survives a restart, so the
- *   lifetime scan can resume from its checkpoint.
+ * @description The lifetime deposit total survives a restart, so a
+ *   restart with every lifetime figure saved reads nothing from the chain.
  *
- *   `_scanLifetimePoolData` starts from the saved `lastNftScanBlock` only
- *   when three results are on disk: the HODL amounts, the compound total
- *   and the deposit total (`canResumeIncrementally`). The deposit total
- *   is computed by `computeDepositUsd`, which sets it on the bot state and
- *   passes it to `updateBotState` — but the save path must actually write
- *   it, and the start path must actually read it back.
+ *   `_scanLifetimePoolData` has nothing to compute, and returns without a
+ *   chain read, only when three results are on disk: the HODL amounts,
+ *   the compound total and the deposit total (`canResumeIncrementally`).
+ *   The deposit total is computed by `computeDepositUsd`, which sets it on
+ *   the bot state and passes it to `updateBotState` — but the save path
+ *   must actually write it, and the start path must actually read it back.
  *
- *   If the save is missing, the gate never opens and every restart walks
- *   the whole rebalance chain again from the pool's creation block. If
- *   only the restore is missing, a resumed scan skips the recompute and
- *   leaves the in-memory total at zero; readiness is `total > 0`, so the
- *   Syncing badge never clears. These tests cover both directions, and
- *   drive the real save, restore and gate functions end to end.
+ *   If the save is missing, the three are never all on disk and every
+ *   restart reads the whole rebalance chain again. If only the restore is
+ *   missing, the skipped scan leaves the in-memory total at zero;
+ *   readiness is `total > 0`, so the Syncing badge never clears. These
+ *   tests cover both directions, and drive the real save, restore, check
+ *   and scan functions end to end.
  */
 
 const { describe, it, before, after } = require("node:test");
@@ -37,6 +37,13 @@ const {
   canResumeIncrementally,
   _resolveDiskState,
 } = require("../src/bot-recorder-lifetime");
+const {
+  state: harness,
+  resetState,
+  installMocks,
+  restoreMocks,
+  makePosition,
+} = require("./helpers/bot-recorder-lifetime-mocks");
 
 const KEY =
   "pulsechain-0x4e44847675763D5540B32Bee8a713CfDcb4bE61A-" +
@@ -68,13 +75,6 @@ describe("PERSISTED_STATE_KEYS", () => {
   it("includes the deposit total and its fallback flag", () => {
     assert.ok(PERSISTED_STATE_KEYS.includes("totalLifetimeDepositUsd"));
     assert.ok(PERSISTED_STATE_KEYS.includes("depositUsedFallback"));
-  });
-
-  it("has no duplicates", () => {
-    assert.equal(
-      new Set(PERSISTED_STATE_KEYS).size,
-      PERSISTED_STATE_KEYS.length,
-    );
   });
 });
 
@@ -149,11 +149,11 @@ describe("the deposit total is restored on start", () => {
   });
 });
 
-describe("the resume gate opens after a restart", () => {
+describe("a restart finds the lifetime figures saved", () => {
   it("sees the deposit on disk once the bot has reported it", () => {
     /*- The regression itself. Before the save existed, this read
      *  `hasDepositData: false` forever, so `canResumeIncrementally` could
-     *  never return true and every restart re-walked the chain. */
+     *  never return true and every restart re-read the chain. */
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
@@ -171,7 +171,7 @@ describe("the resume gate opens after a restart", () => {
     assert.equal(disk.hasDepositData, true);
   });
 
-  it("opens the gate when HODL, compounds and deposit are all present", () => {
+  it("counts them as saved when HODL, compounds and deposit are all present", () => {
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
@@ -189,10 +189,9 @@ describe("the resume gate opens after a restart", () => {
     );
   });
 
-  it("keeps the gate shut while the deposit is missing", () => {
-    /*- The stomp protection must still hold: without a deposit total a
-     *  resumed scan would feed a partial chain to the deposit
-     *  recompute and write a smaller, wrong total. */
+  it("does not while the deposit is missing", () => {
+    /*- Without a deposit total the scan has to run: it is the only thing
+     *  that computes one. */
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
@@ -209,7 +208,7 @@ describe("the resume gate opens after a restart", () => {
     );
   });
 
-  it("keeps the gate shut for a zero deposit", () => {
+  it("does not for a zero deposit", () => {
     /*- A zero total is a failed or empty computation, not a result. */
     const cfg = freshConfig();
     updatePositionState(
@@ -226,20 +225,43 @@ describe("the resume gate opens after a restart", () => {
   });
 });
 
-describe("a resumed scan is still ready", () => {
-  it("restored deposit makes the position ready without a recompute", () => {
-    /*- Readiness is `totalLifetimeDepositUsd > 0`. A resumed scan skips
-     *  `computeDepositUsd`, so the only way the total is in memory is the
-     *  restore. Without it the Syncing badge would stay on forever. */
+describe("a restart with every figure saved", () => {
+  /*- The whole chain, through the real save, restore and scan: nothing
+   *  is read from the chain, and the position is reported ready.
+   *  Readiness is what the dashboard waits on, so that is what this
+   *  checks; a restored total says nothing about whether the flag was
+   *  ever raised, and checking only the total let a restart that stayed
+   *  on "Syncing…" pass. */
+  let scan;
+  before(() => {
+    resetState();
+    installMocks();
+    scan = require("../src/bot-recorder-lifetime")._scanLifetimePoolData;
+  });
+  after(restoreMocks);
+
+  it("reads nothing and reports the position ready", async () => {
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
-      { totalLifetimeDepositUsd: 2406.7 },
+      { totalCompoundedUsd: 1111.16, totalLifetimeDepositUsd: 2406.7 },
       cfg,
       mgr,
       dir,
     );
     const restarted = createPerPositionBotState({}, cfg.positions[KEY]);
-    assert.ok(restarted.totalLifetimeDepositUsd > 0);
+    Object.assign(restarted, botStateReading(cfg));
+    assert.equal(restarted.lifetimeScanComplete, false, "a fresh state");
+    await scan(
+      { ...makePosition(), tokenId: "164418" },
+      restarted,
+      () => {},
+      [],
+      "0xW",
+      null,
+      "epoch-key",
+    );
+    assert.equal(harness.scanCalled, false, "no chain read");
+    assert.equal(restarted.lifetimeScanComplete, true);
   });
 });

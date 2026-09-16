@@ -1750,7 +1750,7 @@ Reading the hypothesis block:
 - **decimals shift** — every `(decimals0, decimals1)` pair within ±4
   that reproduces the reported figure to within 5%. A hit means the
   amounts were divided by the wrong power of ten. Cross-check against
-  the decimals heal / override path in `src/bot-recorder-lifetime.js`
+  the decimals heal / override path in `src/bot-recorder-decimals-heal.js`
   and the `decimalsOverride0` / `decimalsOverride1` /
   `decimalsOverrideForce0` / `decimalsOverrideForce1` config keys.
 
@@ -2853,8 +2853,9 @@ human weeks or months later; a huge blank margin makes a new incident
 unmissable when the file is opened for the first time in a while.
 
 **Scope: catastrophic failures only.** The current callers are
-`_recordScanFailure` and the token-decimals heal (`_ensureTokenDecimals`),
-both in `src/bot-recorder-lifetime.js`. Do NOT add `writeErrorLog()` calls
+`_recordScanFailure` in `src/bot-recorder-lifetime.js` and the
+token-decimals heal (`_handleHealResult`) in
+`src/bot-recorder-decimals-heal.js`. Do NOT add `writeErrorLog()` calls
 to routine `catch` blocks, retry handlers, or expected transient errors.
 Every added surface dilutes the "unread error.log &rArr; nothing
 catastrophic has happened" invariant that makes the file useful.

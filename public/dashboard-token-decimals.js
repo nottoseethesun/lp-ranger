@@ -3,7 +3,7 @@
  * @description Manual per-token decimals override for the Pool Details dialog —
  *   a last-ditch fail-safe for rare tokens whose decimals can't be read
  *   on-chain (which otherwise auto-stops the position; see
- *   `src/bot-recorder-lifetime._ensureTokenDecimals`). Pool-scoped; persisted
+ *   `src/bot-recorder-decimals-heal._ensureTokenDecimals`). Pool-scoped; persisted
  *   to localStorage + server config (`decimalsOverride0/1` +
  *   `decimalsOverrideForce0/1`, POSITION_KEYS). The heal consults these only
  *   when the on-chain read fails — or, with Force checked, always. Each token

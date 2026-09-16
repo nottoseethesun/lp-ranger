@@ -30,13 +30,15 @@ const Module = require("module");
 
 const _origRequire = Module.prototype.require;
 
-/*- The lifetime scan, and the module it delegates its chain read to —
- *  which is where `./bot-recorder-scan-helpers` is required. Evicting
- *  only the first would leave the second bound to whatever it loaded
- *  with first, and the stubs below would not reach the read. */
+/*- The lifetime scan, and the two modules it delegates to: its chain
+ *  read, which requires `./bot-recorder-scan-helpers`, and its decimals
+ *  heal, which requires `./rebalancer-pools` and `./error-log`. Evicting
+ *  only the scan would leave the other two bound to whatever they loaded
+ *  with first, and the stubs below would not reach them. */
 const _LIFETIME_MODULES = [
   "../../src/bot-recorder-lifetime",
   "../../src/bot-recorder-lifetime-read",
+  "../../src/bot-recorder-decimals-heal",
 ];
 
 /** Drop the lifetime modules from the require cache. */
