@@ -135,14 +135,25 @@ npm start                        # dashboard + bot at http://localhost:5555
 
 Third, prepare your crypto wallet information per the instructions in the [Usage](#usage) section here.
 
-Fourth, wait: Plan for a one-and-done wait that's much shorter once LP Ranger has fully synchronized to
-the blockchain. The time to load your Liquidity Positions on the first run of LP Ranger may take some
-time depending on length of history: For say 10 positions on 10 different liquidity pools, some of
-which are years old, it may take LP Ranger about a day (24 hours) to sync with the blockchain. You
-may just let it run and come back later to check if the "Syncing" badge at top right of the app
-has turned green and says, "Synced". That's when the app is ready to use.
+Fourth, visit <http://localhost:5555> in your web browser, accept the disclosure, and
+import or create your wallet. LP Ranger then lists the liquidity positions your wallet
+holds, which takes a few minutes.
 
-Finally, visit <http://localhost:5555> in your web browser.
+The first position you select will commence a synchronization process with the
+blockchain. Note that you'll need to wait up to six hours, depending on how long ago the
+liquidity pool was created, for a given liquidity position to sync.
+
+Once the position you are currently on is sync'd, choose a position you want to be
+automatically rebalanced (and optionally, auto-compounded), and click the "Manage" button
+on it (top left). Clicking the "Manage" button brings a position under management for
+active automatic rebalancing and compounding.
+
+For this first session, plan for a one-and-done wait that is much shorter on every run
+afterwards. How long depends on how much history your positions have: a single position
+takes roughly four hours, while 10 positions in 10 different liquidity pools, some of
+them years old, may take LP Ranger about two days (48 hours). You may just let it run and
+come back later to check whether the "Syncing" badge at top right of the app has turned
+green and says "Synced". That's when the app is ready to use.
 
 ### Development
 
@@ -241,7 +252,7 @@ npm ci
 npm start
 ```
 
-The dashboard remains at <http://localhost:5555>. Note that for larger sets of positions, such as 10 count liquidity positions each in a different liquidity pool, re-syncing may take up to 24 hours; you can just go away and come back later to check if the "Syncing" badge at top right of the app has turned green and says, "Synced". That's when the app is ready to use.
+The dashboard remains at <http://localhost:5555>. Note that re-syncing may take up to an hour per managed position, depending on how long it has been since LP Ranger last ran; you can just go away and come back later to check if the "Syncing" badge at top right of the app has turned green and says, "Synced". That's when the app is ready to use.
 
 **Step Nine** &mdash; Once you've verified the new install is working correctly, remove the old version's directory to reclaim disk space.
 
@@ -320,6 +331,10 @@ rm -rf lp-ranger*
 5. Visit <http://localhost:5555> in your web browser.
 6. Now, continue on by proceeding with Step #2 under the "Getting Started & How to Use" section of the "LP Ranger Help and User Manual" (pull it up by clicking on the "? Help" button at top right on the app).
 
+> **Note:** Selecting a position starts LP Ranger synchronizing it with the
+> blockchain, which may take a few hours depending on how long ago the liquidity pool
+> was created. The "Manage" button stays disabled until that position has synced.
+>
 > **Stopping LP Ranger:** press Ctrl+C in the terminal where it is running, or run `npm stop` from another terminal in the app directory. Either way it performs the same clean shutdown &mdash; it stops all managed positions, closes the server, and removes its PID file. (`npm stop` reads the server's PID from `tmp/lp-ranger.pid` and sends it SIGTERM.)
 
 ### Help and User Manual
