@@ -11,6 +11,7 @@ const { describe, it, before, after, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const TMP = path.join(process.cwd(), "tmp", "boot-log-file-test");
 const CFG_PATH = path.join(
@@ -19,7 +20,64 @@ const CFG_PATH = path.join(
   "app-defaults-for-user-configurable",
   "logging.json",
 );
+
+/*- Absolute path of the default log, resolved the way
+ *  src/boot-log-file.js resolves it (relative to the project root). */
+function _absDefaultLog() {
+  const { _DEFAULT_PATH: d } = require("../src/boot-log-file");
+  return path.join(process.cwd(), d);
+}
+
+/** File contents, or null when the file is absent. */
+function _readIfPresent(p) {
+  try {
+    return fs.readFileSync(p);
+  } catch {
+    return null;
+  }
+}
+
+/*- Put the operator's file back exactly as it was, or remove it when
+ *  there was none to begin with.  Never leaves a test artifact behind
+ *  and never destroys real data. */
+function _restoreOrRemove(p, prior) {
+  if (prior !== null) {
+    try {
+      fs.writeFileSync(p, prior);
+    } catch {
+      /* */
+    }
+    return;
+  }
+  try {
+    fs.unlinkSync(p);
+  } catch {
+    /* */
+  }
+}
+
 let _origCfg = null;
+
+/*- Sentinel guarding the operator's live log.
+ *
+ *  Invariant: no test in this file may delete or truncate
+ *  `logs/lp-ranger.log`. It is the file a real `--log-file` run
+ *  appends to, and `scripts/check.js` does not back up `logs/`, so a
+ *  test that removes it removes it for good. It is also gitignored,
+ *  so the loss shows up nowhere else and the suite still reports
+ *  green — which is why the check has to be an assertion here.
+ *
+ *  The pull towards violating it is `_DEFAULT_PATH`: it is relative,
+ *  and `enableLogFile` resolves it against `process.cwd()`, so any
+ *  test that boots the logger from the repo root without supplying a
+ *  path opens that exact file.
+ *
+ *  Planted in `before` and asserted in `after` rather than inside a
+ *  test, so the guard holds whichever test does the damage and in
+ *  whatever order they run. A per-test check proves only that that
+ *  test cleaned up after itself. */
+let _priorLog = null;
+const _SENTINEL = "operator log sentinel — must survive this suite\n";
 
 before(() => {
   fs.mkdirSync(TMP, { recursive: true });
@@ -28,6 +86,10 @@ before(() => {
   } catch {
     _origCfg = null;
   }
+  const abs = _absDefaultLog();
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  _priorLog = _readIfPresent(abs);
+  fs.writeFileSync(abs, _SENTINEL);
 });
 
 after(() => {
@@ -42,6 +104,23 @@ after(() => {
   /*- Always tear down any tee that survived a failing test. */
   const { disableLogFile } = require("../src/log-file");
   disableLogFile();
+
+  /*- Check the sentinel BEFORE restoring, then put the operator's file
+   *  back whatever the verdict — a failed assertion must not also cost
+   *  them the log. Appending to it is fine; only losing it is not. */
+  const abs = _absDefaultLog();
+  const after = _readIfPresent(abs);
+  _restoreOrRemove(abs, _priorLog);
+  assert.notEqual(
+    after,
+    null,
+    "a test deleted the operator's log at " + abs + " — see the note above",
+  );
+  assert.equal(
+    after.toString("utf8").startsWith(_SENTINEL),
+    true,
+    "a test truncated or overwrote the operator's log at " + abs,
+  );
 });
 
 describe("_parseCliFlag", () => {
@@ -200,16 +279,33 @@ describe("bootLogFile end-to-end", () => {
     } catch {
       /* */
     }
-    const r = bootLogFile();
+    /*- Run in a temp working directory.
+     *
+     *  `_DEFAULT_PATH` is the relative "logs/lp-ranger.log", and
+     *  `enableLogFile` resolves it against `process.cwd()` — so at the
+     *  repo root this case opens the operator's live log, the same file
+     *  a real `--log-file` run appends to, and any cleanup that unlinks
+     *  it takes their log with it. `logs/` is not among the paths
+     *  `scripts/check.js` backs up, so nothing restores it afterwards.
+     *
+     *  Moving cwd keeps the assertion honest — the fallback still has
+     *  to resolve to the same relative path — while confining the file
+     *  it creates to the temp tree. `loadMergedDefaults` resolves from
+     *  `__dirname`, so config reads are unaffected by the change. */
+    const cwd = process.cwd();
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "lp-boot-log-"));
+    process.chdir(sandbox);
     try {
+      const r = bootLogFile();
       assert.ok(r.endsWith(_DEFAULT_PATH), "default path used: " + r);
+      assert.ok(
+        r.startsWith(fs.realpathSync(sandbox)),
+        "fallback must resolve inside the sandbox, not the repo: " + r,
+      );
     } finally {
       disableLogFile();
-      try {
-        fs.unlinkSync(r);
-      } catch {
-        /* */
-      }
+      process.chdir(cwd);
+      fs.rmSync(sandbox, { recursive: true, force: true });
     }
   });
 });
