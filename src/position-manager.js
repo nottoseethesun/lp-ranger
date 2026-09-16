@@ -20,6 +20,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { poolKey } = require("./pool-key");
 const { Mutex } = require("async-mutex");
 const { nextMidnight } = require("./throttle");
 const { emojiId } = require("./logger");
@@ -122,23 +123,6 @@ function createPositionManager(opts) {
    * addresses are sorted for a canonical ordering regardless of how the
    * caller orders them.
    */
-  function poolKey(chain, contract, wallet, token0, token1, fee) {
-    const a = String(token0).toLowerCase(),
-      b = String(token1).toLowerCase();
-    const pair = a < b ? a + "-" + b : b + "-" + a;
-    return (
-      String(chain).toLowerCase() +
-      "-" +
-      String(contract).toLowerCase() +
-      "-" +
-      String(wallet).toLowerCase() +
-      "-" +
-      pair +
-      "-" +
-      fee
-    );
-  }
-
   /** Reset all pool counters at midnight UTC. */
   function _tickPoolDaily() {
     if (_clock() >= _poolResetAt) {
