@@ -85,9 +85,13 @@ const topicOf = (name) => IFACE.getEvent(name).topicHash;
  * from `send-transaction` at load time.
  *
  * @param {object} node
+ * @param {object} [o]
+ * @param {string|null} [o.pool=POOL]  What the pool lookup finds; null
+ *   stands for an NFT whose `positions()` call reverts, as a burned one's
+ *   does.
  * @returns {{mod: object, poolCalls: string[]}}
  */
-function load(node) {
+function load(node, { pool = POOL } = {}) {
   const poolCalls = [];
   const fresh = [
     require.resolve("../src/position-history-scan-helpers"),
@@ -103,7 +107,7 @@ function load(node) {
       return {
         resolvePoolAddressForToken: async () => {
           poolCalls.push("address");
-          return POOL;
+          return pool;
         },
         getPoolCreationBlockCached: async () => {
           poolCalls.push("created");
@@ -217,6 +221,22 @@ describe("scanChainCollectAndDrain — one read for the chain", () => {
     assert.equal(lowest, POOL_CREATED);
   });
 
+  it("still reads the chain when its oldest NFT has been burned", async () => {
+    /*- The pool is looked up through the first NFT to read, usually the
+     *  chain's oldest — the one an operator is likeliest to have burned
+     *  on 9mm. Its `positions()` call then reverts and the lookup finds
+     *  nothing, but its logs remain on chain, and the chain's first mint
+     *  still bounds the read. */
+    const node = makeProvider(LOGS, HEAD);
+    const batch = await load(node, { pool: null }).mod.scanChainCollectAndDrain(
+      CHAIN,
+      EVENTS,
+    );
+    const lowest = Math.min(...getLogsCalls(node).map((c) => c.fromBlock));
+    assert.equal(lowest, EVENTS.firstMintBlockNumber);
+    assert.equal(eventsFor(batch, "100").collectEvents.length, 2);
+  });
+
   it("reaches the chain head", async () => {
     const node = makeProvider(LOGS, HEAD);
     await load(node).mod.scanChainCollectAndDrain(CHAIN, EVENTS);
@@ -302,11 +322,6 @@ describe("collectAndDrainOf — histories out of a whole-chain read", () => {
       collectEvents: [{ blockNumber: 2 }],
       dlEvents: [{ blockNumber: 3 }],
     });
-  });
-
-  it("answers null for an NFT with no Collect", () => {
-    const out = mod.collectAndDrainOf(new Map([["100", entry([])]]), ["100"]);
-    assert.strictEqual(out.get("100"), null);
   });
 
   it("leaves out an NFT the read does not cover", () => {

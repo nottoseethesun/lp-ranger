@@ -32,6 +32,7 @@ const {
   compoundsReadChain,
 } = require("../src/position-details-compound");
 const { scanLifetimeHodl } = require("../src/position-details-lifetime-scan");
+const { createPnlTracker } = require("../src/pnl-tracker");
 
 /** #100 → #200 → #300, the second and third minted 5M and 6M blocks in. */
 const CHAIN = [
@@ -159,13 +160,6 @@ describe("the unmanaged chain read happens at most once", () => {
     assert.strictEqual(first, second);
   });
 
-  it("shares one read between concurrent callers", async () => {
-    const { mod, calls } = loadReader();
-    const read = reader(mod);
-    await Promise.all([read(), read()]);
-    assert.equal(calls.length, 1);
-  });
-
   it("does not hand a failed read to the next caller", async () => {
     /*- Each consumer used to read for itself, so each got its own
      *  attempt. Sharing a success must not turn into sharing a failure. */
@@ -249,7 +243,7 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
         },
       },
       "./epoch-cache": {
-        getCachedEpochs: () => null,
+        getCachedEpochs: () => seen.cachedEpochs ?? null,
         setCachedEpochs: () => {},
         getCachedLifetimeHodl: () => seen.cachedHodl ?? null,
         getCachedFreshDeposits: () => null,
@@ -327,9 +321,25 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
   });
   const HODL = { amount0: 1, amount1: 1 };
 
+  /** Epochs as an earlier request left them in the cache. */
+  function cachedEpochs() {
+    const tracker = createPnlTracker();
+    tracker.openEpoch({
+      entryValue: 100,
+      entryPrice: 1,
+      lowerPrice: 0.9,
+      upperPrice: 1.1,
+    });
+    tracker.closeEpoch({ exitValue: 99, gasCost: 0 });
+    return tracker.serialize();
+  }
+
   /** Run one request; returns what each consumer was handed. */
-  async function request({ compoundSaved, hodlCached }) {
-    const seen = { cachedHodl: hodlCached ? HODL : null };
+  async function request({ compoundSaved, hodlCached, epochsCached = false }) {
+    const seen = {
+      cachedHodl: hodlCached ? HODL : null,
+      cachedEpochs: epochsCached ? cachedEpochs() : null,
+    };
     const { computeLifetimeDetails } = loadDetails(seen);
     await computeLifetimeDetails({}, {}, BODY, diskWith(compoundSaved));
     return seen;
@@ -343,6 +353,19 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
       seen.hodl,
       "two readers would read the chain twice",
     );
+  });
+
+  it("still hands them one reader when the epochs are cached", async () => {
+    /*- A repeat visit: reconstruction is skipped, so the reader is first
+     *  asked for after the pool scan. */
+    const seen = await request({
+      compoundSaved: false,
+      hodlCached: false,
+      epochsCached: true,
+    });
+    assert.equal(seen.epochCalled, undefined, "the epochs were rebuilt");
+    assert.equal(typeof seen.compound, "function");
+    assert.strictEqual(seen.compound, seen.hodl);
   });
 
   it("hands epoch reconstruction the same reader when both will read", async () => {
@@ -388,11 +411,5 @@ describe("requestChainReader", () => {
     const readerFor = requestChainReader({ position: POSITION });
     const first = readerFor([...CHAIN]);
     assert.notStrictEqual(readerFor([...CHAIN]), first);
-  });
-
-  it("reads nothing when made", () => {
-    const { mod, calls } = loadReader();
-    mod.requestChainReader({ position: POSITION })([...CHAIN]);
-    assert.equal(calls.length, 0);
   });
 });

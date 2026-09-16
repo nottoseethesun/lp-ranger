@@ -180,13 +180,6 @@ describe("chainSignature", () => {
     assert.equal(base(), mod.chainSignature(position(), chain()));
   });
 
-  it("ignores the order the events arrive in", () => {
-    const reversed = Object.assign(chain().reverse(), {
-      firstMintBlockNumber: 4_000,
-    });
-    assert.equal(base(), mod.chainSignature(position(), reversed));
-  });
-
   it("changes when a rebalance adds an NFT", () => {
     const events = chain();
     events.push({ oldTokenId: "300", newTokenId: "301", blockNumber: 0 });

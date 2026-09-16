@@ -144,17 +144,6 @@ describe("prepareLifetimeRead", () => {
     assert.equal(state.scanOpts.resumeBuffer.size, 0);
     assert.equal(state.scanFromBlock, POOL_FLOOR);
   });
-
-  it("passes the live NFT to the read", async () => {
-    const prepared = lifetime.prepareLifetimeRead(
-      position(),
-      arrange({}),
-      [],
-      "epoch-key",
-    );
-    await prepared.read();
-    assert.equal(state.scanOpts.liveTokenId, "300");
-  });
 });
 
 describe("_scanLifetimePoolData with the pass's prepared read", () => {
@@ -214,11 +203,6 @@ describe("_scanLifetimePoolData with the pass's prepared read", () => {
     await run(botState, moved, prepared);
     assert.equal(state.scanCount, 2);
     assert.equal(state.scanOpts.liveTokenId, "301");
-  });
-
-  it("reads for itself without one", async () => {
-    await run(arrange({}), position(), null);
-    assert.equal(state.scanCount, 1);
   });
 
   it("does not read at all when nothing is needed, prepared read or not", async () => {

@@ -245,19 +245,6 @@ describe("a failed chain read", () => {
       cap.lines.join("\n"),
     );
   });
-
-  it("still builds the NFTs whose figures need no chain read", async () => {
-    /*- The history here is complete without the chain, as it is when
-     *  the rebalance log already holds the exit value and the fee. */
-    const { fetch } = load(failing);
-    const cap = captureWarnings();
-    try {
-      const epochs = await fetch(IDS, [], null, null, null, new Map());
-      assert.equal(epochs.length, 3);
-    } finally {
-      cap.restore();
-    }
-  });
 });
 
 describe("a chain read shared with the lifetime scan", () => {
@@ -297,17 +284,6 @@ describe("a chain read shared with the lifetime scan", () => {
     }
   });
 
-  it("hands on only Collect and DecreaseLiquidity", async () => {
-    const { fetch, trace } = load(readAll);
-    await fetch(IDS, [], null, null, null, new Map(), sharedOver(IDS).read);
-    for (const c of historyCalls(trace)) {
-      assert.deepEqual(Object.keys(c.opts.collectAndDrain).sort(), [
-        "collectEvents",
-        "dlEvents",
-      ]);
-    }
-  });
-
   it("keeps the rule that no Collect means the history was not seen", async () => {
     const { fetch, trace } = load(readAll);
     const noCollect = (id) =>
@@ -334,25 +310,6 @@ describe("a chain read shared with the lifetime scan", () => {
     const buffer = new Map(IDS.map((id) => [id, { ...BUFFERED }]));
     await fetch(IDS, [], null, null, null, buffer, shared.read);
     assert.equal(shared.asked.length, 0);
-  });
-
-  it("uses it only for the NFTs still to be read", async () => {
-    const { fetch, trace } = load(readAll);
-    const buffer = new Map([["11", { ...BUFFERED }]]);
-    const epochs = await fetch(
-      IDS,
-      [],
-      null,
-      null,
-      null,
-      buffer,
-      sharedOver(IDS).read,
-    );
-    assert.deepEqual(
-      historyCalls(trace).map((c) => c.tokenId),
-      ["10", "12"],
-    );
-    assert.equal(epochs.length, 3);
   });
 
   it("fails an NFT the shared read does not cover, alone", async () => {

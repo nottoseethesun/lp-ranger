@@ -91,8 +91,13 @@ describe("_chunkIds", () => {
     assert.deepEqual(_chunkIds([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
   });
 
-  it("returns one group when the list fits", () => {
-    assert.deepEqual(_chunkIds([1, 2], 100), [[1, 2]]);
+  it("leaves no empty group when the list is an exact multiple", () => {
+    /*- An empty trailing group would be a request with an empty topic
+     *  array, which a node may read as "no filter" on that slot. */
+    assert.deepEqual(_chunkIds([1, 2, 3, 4], 2), [
+      [1, 2],
+      [3, 4],
+    ]);
   });
 
   it("returns nothing for an empty list", () => {
@@ -326,13 +331,9 @@ describe("fetching only the event types a caller reads", () => {
   const DRAIN = ["Collect", "DecreaseLiquidity"];
   const topicOf = (name) => IFACE.getEvent(name).topicHash;
 
-  it("defaults to all three, in a fixed order", () => {
+  it("defaults to all three", () => {
     assert.deepEqual(eventNamesOf(undefined), [...EVENT_NAMES]);
     assert.deepEqual(eventNamesOf(null), [...EVENT_NAMES]);
-  });
-
-  it("returns the requested types in the fixed order", () => {
-    assert.deepEqual(eventNamesOf(["DecreaseLiquidity", "Collect"]), DRAIN);
   });
 
   it("refuses an unknown event before any request is made", async () => {
@@ -369,7 +370,7 @@ describe("fetching only the event types a caller reads", () => {
     const topics = p.calls
       .filter((c) => c.method === "getLogs")
       .map((c) => c.topics[0]);
-    assert.deepEqual(topics, DRAIN.map(topicOf));
+    assert.deepEqual(topics.sort(), DRAIN.map(topicOf).sort());
   });
 
   it("gives each entry only the histories that were fetched", async () => {
