@@ -239,7 +239,8 @@ async function _resolveCompounded(
     );
   }
   const posConfig = diskConfig.positions[posKey] || {};
-  /*- No saved total and no chain: nothing has been compounded. */
+  /*- No saved total and no rebalance events: every figure is zero, and
+   *  nothing is read. */
   if (!posConfig.totalCompoundedUsd) {
     return { total: 0, current: 0, currentGasUsd: 0 };
   }
