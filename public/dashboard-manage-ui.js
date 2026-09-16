@@ -22,6 +22,11 @@
 import { g } from "./dashboard-helpers.js";
 import { isPositionClosed } from "./dashboard-positions-store.js";
 import { isWalletUnlocked } from "./dashboard-wallet.js";
+/*- The SAME pair-normalisation the server decides with, not a copy of
+ *  it.  src/pool-key.js is deliberately dependency-free so esbuild can
+ *  bundle it into this browser build; src/position-manager.js, which
+ *  builds the scoped key on top, cannot cross that line. */
+import { poolKey } from "../src/pool-key.js";
 
 export const MANAGE_SYNCING_HELP =
   'This button will be clickable once the "Syncing…" badge above is finished.';
@@ -147,6 +152,9 @@ export function computeManageUI(inputs) {
     manageInFlight,
     nowMs,
     retireDebounceMs,
+    poolManagedBy,
+    reopenSupersededBy,
+    poolHasOpen,
   } = inputs;
 
   if (!hasActive) {
@@ -215,8 +223,86 @@ export function computeManageUI(inputs) {
     };
   }
 
+  const blocked = _refusalTitle({
+    isRunning,
+    isClosed,
+    poolManagedBy,
+    poolHasOpen,
+    reopenSupersededBy,
+  });
+  if (blocked !== null) {
+    return {
+      buttonText: "Manage",
+      buttonDisabled: true,
+      buttonTitle: blocked,
+      ..._common,
+    };
+  }
+
   if (isClosed) return _computeClosedSynced(posState, nowMs, retireDebounceMs);
   return _computeOpenSynced(posState, isRunning, _currentText);
+}
+
+/**
+ * Why the Manage button must be refused, or null when it need not be.
+ *
+ * Three rules, all serving one invariant: a pool holds at most one
+ * funded position, so that profit and loss stays attributable to it.
+ * They are checked strongest-first.
+ *
+ *  1. The pool already has a MANAGED position. The server refuses this
+ *     outright (409 `pool-already-managed`), so offering the button
+ *     would only produce an error after the click. Skipped when this
+ *     IS the running position — it must keep its "Stop Managing".
+ *  2. The pool already has an OPEN position. Re-opening a closed one
+ *     beside it would fund the pool twice. Stronger than rule 3: it
+ *     does not matter whether this is the newest closed NFT, because
+ *     nothing was lost and so nothing needs recovering.
+ *  3. This is not the NEWEST closed position in the pool. Re-opening
+ *     recovers a position a rebalance drained and failed to replace,
+ *     which is always the newest one; an older drained NFT is settled
+ *     history the app has already accounted for.
+ *
+ * Extracted from `computeManageUI` to keep that function under the
+ * complexity cap, and because the three read as one policy.
+ *
+ * @param {object} o
+ * @returns {string|null}  Tooltip text, or null to allow.
+ */
+function _refusalTitle(o) {
+  if (!o.isRunning && o.poolManagedBy) {
+    return (
+      "This liquidity pool is already managed by position #" +
+      o.poolManagedBy +
+      ". LP Ranger manages one position per pool, so that profit and " +
+      "loss stays attributable. Stop that position first if you want " +
+      "to manage this one instead."
+    );
+  }
+  if (!o.isClosed) return null;
+  if (o.poolHasOpen) {
+    return (
+      "This liquidity pool already has an open position, #" +
+      o.poolHasOpen +
+      ". Re-opening this closed one would leave two positions in the " +
+      "same pool, which makes profit and loss impossible to attribute " +
+      "to either. Manage #" +
+      o.poolHasOpen +
+      " instead, or close it first."
+    );
+  }
+  if (o.reopenSupersededBy) {
+    return (
+      "Only the newest closed position in a pool can be re-opened, " +
+      "and this is not it — position #" +
+      o.reopenSupersededBy +
+      " in the same pool is newer. Re-opening recovers a position a " +
+      "rebalance drained and did not replace, which is always the " +
+      "newest one. You can still select this position to view its " +
+      "history."
+    );
+  }
+  return null;
 }
 
 function _deriveBadgeText(isClosed, isRunning) {
@@ -337,6 +423,167 @@ function _paintBadge(spec) {
 /* ──────────────────── gather + paint convenience ──────────────────── */
 
 /** Single entry point — every trigger calls this. */
+/*- Which running position, if any, already holds the active position's
+ *  pool — advisory only.
+ *
+ *  The server is the authority: `rejectIfPoolManaged` in
+ *  src/pool-already-managed.js refuses the request regardless of what
+ *  this returns, using the canonical key from `src/pool-key.js`.
+ *  That rule cannot be imported here (CommonJS), and the position being
+ *  managed is unmanaged, so the server has not attached a pool key for
+ *  it. The comparison is therefore repeated on the raw triple.
+ *
+ *  Drift is tolerable precisely because this is advisory: if the two
+ *  ever disagree, the button is offered and the server refuses the
+ *  click — the behaviour before this gate existed — rather than
+ *  anything being managed that should not be. */
+/**
+ * Fully-qualified canonical pool key for a posStore entry, or null.
+ *
+ * Built with `poolKey` from `src/pool-key.js` — the same function the
+ * server decides with — so the two tiers cannot disagree about what
+ * counts as one pool. Qualified by chain, position-manager contract and
+ * wallet as well as the pair and fee, matching what `attachPoolKeys`
+ * publishes on `GET /api/status`.
+ *
+ * The chain defaults to "pulsechain" exactly as `compositeKey` in
+ * dashboard-helpers.js does; entries do not carry one. On a chain whose
+ * name differs, keys built here stop matching the server's and every
+ * gate below simply goes quiet — the button is offered and the server
+ * refuses it, which is the safe direction for an advisory check.
+ *
+ * Null for an incomplete identity rather than a partial key:
+ * `poolKey` stringifies whatever it is given, so an entry missing its
+ * wallet would yield "…-undefined-…" and two such entries would compare
+ * equal.
+ *
+ * @param {object|null|undefined} e  posStore entry.
+ * @returns {string|null}
+ */
+export function _poolKeyOf(e) {
+  if (e === undefined || e === null) return null;
+  const parts = [e.walletAddress, e.contractAddress, e.token0, e.token1];
+  for (const v of parts) {
+    if (typeof v !== "string" || v.length === 0) return null;
+  }
+  if (e.fee === undefined || e.fee === null || e.fee === "") return null;
+  return poolKey(
+    e.blockchain || "pulsechain",
+    e.contractAddress,
+    e.walletAddress,
+    e.token0,
+    e.token1,
+    e.fee,
+  );
+}
+
+export function _poolHeldBy(active, allStates) {
+  const want = _poolKeyOf(active);
+  if (want === null) return null;
+  for (const st of Object.values(allStates || {})) {
+    if (!st || st.running !== true) continue;
+    /*- The server attaches this in `attachPoolKeys`, built by the same
+     *  `poolKey`. Read it rather than rebuilding from activePosition,
+     *  which carries no wallet or contract of its own. */
+    if (st.poolKey !== want) continue;
+    const ap = st.activePosition;
+    if (!ap || String(ap.tokenId) === String(active.tokenId)) continue;
+    return String(ap.tokenId);
+  }
+  return null;
+}
+
+/*- Same-pool test for two entries, via the one canonical key above.
+ *  Two entries whose identity cannot be resolved are NOT the same pool
+ *  — null must not match null. */
+function _samePool(a, b) {
+  const k = _poolKeyOf(a);
+  return k !== null && k === _poolKeyOf(b);
+}
+
+/**
+ * The newest closed position in `active`'s pool, when it is not
+ * `active` itself.
+ *
+ * Returns a tokenId string when some OTHER closed position in the same
+ * pool is newer, meaning `active` must not be re-opened; null when
+ * `active` is the newest closed one, is not closed, or the comparison
+ * cannot be made.
+ *
+ * Compared as BigInt, not as text: NFT ids grow with mint order, so
+ * numeric order IS recency, but "#99" sorts after "#100" as a string
+ * and the newest would be mistaken for an old one.
+ *
+ * @param {object|null} active   posStore entry.
+ * @param {object[]} entries     All posStore entries.
+ * @returns {string|null}
+ */
+/**
+ * An open position in `active`'s pool, other than `active` itself.
+ *
+ * Re-opening a closed position while the pool already holds an open one
+ * would leave two funded positions in that pool — the situation the
+ * one-position-per-pool rule exists to prevent, arrived at from the
+ * other direction. The pool gate catches it only when the open position
+ * is being *managed*; an open position sitting unmanaged in the wallet
+ * is invisible to it, and this is what covers that case.
+ *
+ * Liquidity is tested explicitly rather than through
+ * `isPositionClosed`, which reports a position with no liquidity field
+ * as not-closed. Here that would read as "open" and block a legitimate
+ * re-open on missing data. The question this asks is "is it definitely
+ * open", which is not the negation of "is it closed": unknown counts as
+ * neither.
+ *
+ * @param {object|null} active   posStore entry.
+ * @param {object[]} entries     All posStore entries.
+ * @returns {string|null}  Token id of an open sibling, or null.
+ */
+export function _openInPool(active, entries) {
+  if (!active || !Array.isArray(entries)) return null;
+  for (const e of entries) {
+    if (!e || !_samePool(active, e)) continue;
+    if (String(e.tokenId) === String(active.tokenId)) continue;
+    if (e.liquidity === undefined || e.liquidity === null) continue;
+    if (String(e.liquidity) === "0") continue;
+    return String(e.tokenId);
+  }
+  return null;
+}
+
+/*- Token id as BigInt, or null when it is absent or not a number. */
+function _asBigInt(v) {
+  if (v === null || v === undefined) return null;
+  /*- BigInt("") is 0n rather than a throw, so an empty id would read as
+   *  token 0 — below every real id, which silently turns "is anything
+   *  newer than me" into "everything is". */
+  if (typeof v === "string" && v.trim().length === 0) return null;
+  try {
+    return BigInt(v);
+  } catch {
+    return null;
+  }
+}
+
+export function _newerClosedInPool(active, entries) {
+  const mine = active ? _asBigInt(active.tokenId) : null;
+  if (mine === null || !Array.isArray(entries)) return null;
+  let newest = null;
+  for (const e of entries) {
+    /*- Order matters: the pool and id tests are cheap and silent,
+     *  while `isPositionClosed` warns to the console for an entry with
+     *  no liquidity field.  Running it over the whole store on every
+     *  three-second paint would fill the log.  By here the candidates
+     *  are the same pool AND newer, which is a handful at most. */
+    if (!e || !_samePool(active, e)) continue;
+    const id = _asBigInt(e.tokenId);
+    if (id === null || id <= mine) continue;
+    if (!isPositionClosed(e)) continue;
+    if (newest === null || id > newest) newest = id;
+  }
+  return newest === null ? null : String(newest);
+}
+
 export function paintManageUI() {
   const active = _posStoreRef?.getActive?.() || null;
   const status = _getLastStatusRef ? _getLastStatusRef() : null;
@@ -351,15 +598,23 @@ export function paintManageUI() {
     : false;
   const walletUnlocked = isWalletUnlocked();
   const manageInFlight = _manageInFlight.has(manageKey(active));
+  const isClosedActive = !!active && isPositionClosed(active);
   applyManageUI(
     computeManageUI({
       hasActive: !!active,
-      isClosed: !!active && isPositionClosed(active),
+      isClosed: isClosedActive,
       isNft: !!active && active.positionType === "nft",
       posState: status,
       syncComplete,
       walletUnlocked,
       manageInFlight,
+      poolManagedBy: _poolHeldBy(active, status?._allPositionStates),
+      poolHasOpen: isClosedActive
+        ? _openInPool(active, _posStoreRef?.entries)
+        : null,
+      reopenSupersededBy: isClosedActive
+        ? _newerClosedInPool(active, _posStoreRef?.entries)
+        : null,
       nowMs: Date.now(),
       /*- Server's GUARANTEED_DASHBOARD_HAS_POLLED_MS (=
        *  DASHBOARD_POLL_INTERVAL_MS * 2.5 in src/config.js) flows
