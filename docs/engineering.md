@@ -1111,6 +1111,47 @@ that is the saving deliberately given up: on a long chain each retired
 NFT still re-reads every block between its own retirement and the chain
 head. Correctness wins, because no sound upper bound exists — see above.
 
+### Batched chain reads
+
+The bot's lifetime scan reads the whole chain in one pass rather than
+one pass per NFT. `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`)
+calls `scanChainNftEvents` (`src/nft-events-batch.js`), whose filter
+OR-matches every token id in the chain — `tokenId` is the first indexed
+parameter on all three events, and a topic slot accepts an array. The
+request covers the union of the NFTs' windows, from the lowest floor in
+the set to the head; the node does the filtering, so the same logs come
+back in one response set rather than one per NFT.
+
+Moving token identity from the request to the response is what needs
+care, and four rules carry it:
+
+| Rule | Why |
+| --- | --- |
+| Logs are partitioned by `topics[1]`, not decoded first | Routing must not depend on the ABI being right about the unindexed fields |
+| Each NFT's logs are re-floored to its own window | The union request starts below most NFTs' floors; without this the batch returns events the per-NFT scan excluded |
+| Each NFT's logs are sorted into chain order | `classifyCompounds` reads an NFT's FIRST `IncreaseLiquidity` as the mint deposit |
+| Every requested id gets an entry, and `eventsFor` throws for one that was not requested | A missing key would otherwise read as "no history" — a closed epoch with no fees |
+
+The head is resolved once for the whole batch, and the id list is split
+into groups of 100 so an endpoint that caps a topic array costs a few
+more passes rather than a failure.
+
+A batch succeeds or fails as a unit. The lifetime resume buffer
+therefore stores nothing from a failed read, and the retry asks for
+every NFT not already buffered — affordable because the chain now costs
+minutes, and because transient RPC failures are retried per request
+beneath the batch.
+
+Measured reading every NFT in a chain, at the default request pacing:
+
+| Chain | Batched | One pass per NFT |
+| --- | --- | --- |
+| 40 NFTs | 3.6 min | 1 h 56 min |
+| 133 NFTs | 6.5 min | 5 h 30 min |
+
+Both batched reads reproduced every compound in the saved history, and
+on the live NFT the batched and per-NFT reads matched event for event.
+
 ### Call sites
 
 Five files scan a chain of NFTs and must derive the floor per NFT:
@@ -1128,7 +1169,8 @@ runs.
 
 `test/nft-scan-floor-coverage.test.js` enforces this. It identifies a
 per-NFT scan two ways — by helper name (`scanNftEvents`,
-`detectCompoundsOnChain`, `scanCollectAndDrain`) and by shape, where a
+`detectCompoundsOnChain`, `scanCollectAndDrain`, and the batched
+`scanChainNftEvents` / `fetchChainNftEvents`) and by shape, where a
 chunked scan whose `label` interpolates a `tokenId` is per-NFT whatever
 the helper is called. The shape detector is what covers a helper the
 list does not yet name. Each matched file must either require

@@ -342,17 +342,28 @@ baseline when the scan hasn't run yet.
 ### Scan Architecture: Single Fetch, Two Classifiers
 
 To avoid duplicate RPC calls, the lifetime scan fetches IncreaseLiquidity,
-DecreaseLiquidity, and Collect events **once per NFT** via `scanNftEvents`
-(3 parallel `getLogs` calls per NFT).  The same pre-fetched events are then
-passed to two classifiers:
+DecreaseLiquidity, and Collect events for the **whole rebalance chain in one
+batched read** (`scanChainNftEvents` in `src/nft-events-batch.js`). `tokenId`
+is the first indexed parameter on all three events, and a log filter's topic
+slot OR-matches an array, so one filter carries every NFT in the chain. The
+node returns the logs interleaved; the batch partitions them by `topics[1]`,
+floors each NFT's logs at its own mint block, and puts them in chain order.
+The same pre-fetched events are then passed to two classifiers:
 
 1. **Compound classifier** (`classifyCompounds`) — identifies fee re-deposits.
 2. **Lifetime HODL classifier** (`computeLifetimeHodl`) — accumulates external
    deposits.
 
 Both classifiers share `_filterRebalances` to distinguish rebalance-adjacent
-events from genuine deposits/compounds.  The scan is incremental:
-`lastNftScanBlock` is cached so subsequent startups only query new blocks.
+events from genuine deposits/compounds.
+
+The scan resumes from `lastNftScanBlock` only when the HODL amounts, the
+compound total and the lifetime deposit are all already on disk
+(`canResumeIncrementally`); otherwise it reads the chain from the pool's
+creation block, because a consumer about to compute from scratch needs the
+whole chain rather than a slice of it. All three are saved and restored with
+the position's config (`PERSISTED_STATE_KEYS` in `src/server-positions.js`),
+so after the first complete scan a restart reads only the blocks since.
 
 ### Lifetime Sync vs Bot Loop
 
