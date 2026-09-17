@@ -6,8 +6,8 @@
  *   Collect/DecreaseLiquidity history once, for exactly the NFTs it is
  *   about to build, and hands each NFT its own slice.
  *
- *   Reading one NFT at a time, each from its own mint to the chain head,
- *   repeated almost the whole chain per NFT. Reading the chain at once
+ *   Read one NFT at a time, each from its own mint to the chain head, the
+ *   chain would be read almost once per NFT. Reading the chain at once
  *   moves "which NFT is this" from the request to the response, so what
  *   needs pinning is the sequencing: the read runs before the loop, it
  *   was prepared with the ids the loop will ask for, and a failed read
@@ -21,9 +21,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const { format } = require("node:util");
-const { _setSinkForTests } = require("../src/log");
 const { collectAndDrainOf } = require("../src/position-history-scan-helpers");
+const { captureWarnings } = require("./helpers/capture-warnings");
 
 const IDS = ["10", "11", "12"];
 
@@ -37,9 +36,11 @@ const HISTORY = {
   gasCostWei: "0",
 };
 
-/*- What a buffered NFT holds: the history as it was when its epoch
+/*-
+ *  What a buffered NFT holds: the history as it was when its epoch
  *  built, gas already converted — a buffered read is not converted
- *  again. */
+ *  again.
+ */
 const BUFFERED = { ...HISTORY, gasNative: 0, gasCostUsd: 0 };
 
 /** A history unique to `id`, so a mixed-up hand-off shows. */
@@ -69,8 +70,10 @@ function load(read) {
           trace.push({ step: "read", ids: [...ids], events });
           return read(ids, events);
         },
-        /*- The real mapping: which histories a shared read yields is
-         *  part of what these tests pin. */
+        /*-
+         *  The real mapping: which histories a shared read yields is
+         *  part of what these tests pin.
+         */
         collectAndDrainOf,
       };
     }
@@ -82,7 +85,7 @@ function load(read) {
         },
       };
     }
-    /*- Neither may reach the network from a unit test. */
+    // Neither may reach the network from a unit test.
     if (id === "./bot-pnl-updater") return { actualGasCostUsd: async () => 0 };
     if (id === "./price-fetcher") {
       return {
@@ -95,8 +98,10 @@ function load(read) {
   try {
     delete require.cache[require.resolve("../src/epoch-reconstructor")];
     const mod = require("../src/epoch-reconstructor");
-    /*- Evicted again so the stubbed copy is not handed to whoever
-     *  requires the module next. */
+    /*-
+     *  Evicted again so the stubbed copy is not handed to whoever
+     *  requires the module next.
+     */
     delete require.cache[require.resolve("../src/epoch-reconstructor")];
     return { fetch: mod._fetchEpochsFromChain, trace };
   } finally {
@@ -105,15 +110,6 @@ function load(read) {
 }
 
 const historyCalls = (trace) => trace.filter((t) => t.step === "history");
-
-/** Capture formatted `log.warn` lines through the module's test sink. */
-function captureWarnings() {
-  const lines = [];
-  const restore = _setSinkForTests({
-    warn: (...a) => lines.push(format(...a)),
-  });
-  return { lines, restore };
-}
 
 describe("epoch reconstruction reads the chain once", () => {
   it("reads before any NFT is built, and only once", async () => {
@@ -139,9 +135,11 @@ describe("epoch reconstruction reads the chain once", () => {
   });
 
   it("passes the rebalance events through unchanged", async () => {
-    /*- The same array, not a copy: the chain's first mint travels as a
+    /*-
+     *  The same array, not a copy: the chain's first mint travels as a
      *  property on it, and a copy would drop the oldest NFT's floor to
-     *  the pool's creation block. */
+     *  the pool's creation block.
+     */
     const events = [{ oldTokenId: "10", newTokenId: "11", blockNumber: 5 }];
     events.firstMintBlockNumber = 3;
     const { fetch, trace } = load(readAll);
@@ -194,8 +192,10 @@ describe("the read covers exactly the NFTs the loop will fetch", () => {
   });
 
   it("fails an NFT the read was not prepared for, alone and loudly", async () => {
-    /*- An NFT missing from the read must not be taken as "no history":
-     *  downstream that is a closed epoch with no fees. */
+    /*-
+     *  An NFT missing from the read must not be taken as "no history":
+     *  downstream that is a closed epoch with no fees.
+     */
     const { fetch, trace } = load(async (ids) =>
       readAll(ids.filter((id) => id !== "11")),
     );
@@ -235,9 +235,11 @@ describe("a failed chain read", () => {
     const calls = historyCalls(trace);
     assert.equal(calls.length, 3, "the pass still finishes");
     for (const c of calls) {
-      /*- null, not undefined: undefined tells `getPositionHistory` to
-       *  read the NFT on its own, which is the walk the chain read
-       *  replaces — one NFT at a time, for the whole chain. */
+      /*-
+       *  null, not undefined: undefined tells `getPositionHistory` to
+       *  read the NFT on its own, so a failed chain read would turn into
+       *  a read per NFT, one at a time, for the whole chain.
+       */
       assert.strictEqual(c.opts.collectAndDrain, null);
     }
     assert.ok(
@@ -248,9 +250,11 @@ describe("a failed chain read", () => {
 });
 
 describe("a chain read shared with the lifetime scan", () => {
-  /*- When the lifetime scan is going to read the whole chain this pass,
+  /*-
+   *  When the lifetime scan is going to read the whole chain this pass,
    *  reconstruction takes its histories from that read instead of making
-   *  a second. That read carries all three event types for every NFT. */
+   *  a second. That read carries all three event types for every NFT.
+   */
 
   /** A whole-chain entry, as the lifetime read returns it. */
   const fullEntry = (id) => ({
@@ -303,8 +307,10 @@ describe("a chain read shared with the lifetime scan", () => {
   });
 
   it("does not start it when every NFT is already buffered", async () => {
-    /*- Nothing to read, so reconstruction must not be the reason the
-     *  shared read runs. */
+    /*-
+     *  Nothing to read, so reconstruction must not be the reason the
+     *  shared read runs.
+     */
     const { fetch } = load(readAll);
     const shared = sharedOver(IDS);
     const buffer = new Map(IDS.map((id) => [id, { ...BUFFERED }]));
@@ -341,8 +347,10 @@ describe("a chain read shared with the lifetime scan", () => {
   });
 
   it("leaves every history unknown when it fails, without reading again", async () => {
-    /*- The lifetime scan retries the shared read on its own turn; a
-     *  second read here would be the duplicate this sharing removes. */
+    /*-
+     *  The lifetime scan retries the shared read on its own turn; a
+     *  second read here would read the chain twice.
+     */
     const { fetch, trace } = load(readAll);
     const cap = captureWarnings();
     try {

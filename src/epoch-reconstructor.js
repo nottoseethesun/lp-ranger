@@ -222,8 +222,8 @@ function _buffered(resumeBuffer, tokenId) {
  * pass will build, in one batch, before the per-NFT loop starts.
  *
  * Read one NFT at a time, each from its own mint block to the chain
- * head, those histories overlap almost entirely; on a long chain that
- * was hours of paced requests on every rebuild. See
+ * head, those histories would overlap almost entirely. On a long chain
+ * that would be hours of paced requests on every rebuild. See
  * `scanChainCollectAndDrain`.
  *
  * Covers exactly the NFTs the loop will fetch — the ones not in the
@@ -237,8 +237,8 @@ function _buffered(resumeBuffer, tokenId) {
  *
  * A failed read is not an exception here, for the same reason no
  * per-NFT failure is: the pass must finish. It returns null, and every
- * NFT then takes its history as unknown — what a failed per-NFT read
- * always reported. An NFT whose exit value and fee the rebalance log
+ * NFT then takes its history as unknown, the same answer a failed
+ * per-NFT read gives. An NFT whose exit value and fee the rebalance log
  * already holds still builds; the rest are skipped, which flags the
  * history for another attempt.
  *
@@ -261,7 +261,7 @@ async function _readChainHistories(
   );
   if (unread.length === 0) return new Map();
   try {
-    if (readChainEvents === undefined) {
+    if (readChainEvents === undefined || readChainEvents === null) {
       return await scanChainCollectAndDrain(unread, events);
     }
     const chainEvents = await readChainEvents();
@@ -293,8 +293,10 @@ async function _readChainHistories(
  * @returns {Promise<object>}
  */
 async function _readHistory(tokenId, ctx) {
-  /*- `eventsFor` throws for an NFT the batch was not prepared with,
-   *  rather than answering "no history" for it. */
+  /*-
+   *  `eventsFor` throws for an NFT the batch was not prepared with,
+   *  rather than answering "no history" for it.
+   */
   const collectAndDrain =
     ctx.histories === null ? null : eventsFor(ctx.histories, tokenId);
   return getPositionHistory(tokenId, {

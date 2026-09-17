@@ -143,8 +143,10 @@ const CHAIN_DERIVED_POSITION_KEYS = Object.freeze([
   "hodlBaseline",
   "lifetimeHodlAmounts",
   "totalLifetimeDepositUsd",
-  /*- Travels with the total: a stale "fallback price was used" flag left
-   *  behind would mislabel the freshly rebuilt deposit. */
+  /*-
+   *  Travels with the total: a stale "fallback price was used" flag left
+   *  behind would mislabel the freshly rebuilt deposit.
+   */
   "depositUsedFallback",
 ]);
 

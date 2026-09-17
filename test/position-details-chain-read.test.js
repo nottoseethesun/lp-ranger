@@ -80,8 +80,10 @@ function loadReader({ creationBlock = 0, failures = 0 } = {}) {
     return { mod: require(file), calls };
   } finally {
     Module.prototype.require = origRequire;
-    /*- The loaded copy keeps the stub it bound; the shared export and
-     *  the cache entry go back to the real ones. */
+    /*-
+     *  The loaded copy keeps the stub it bound; the shared export and
+     *  the cache entry go back to the real ones.
+     */
     batch.scanChainNftEvents = origRead;
     delete require.cache[file];
   }
@@ -106,8 +108,10 @@ describe("the unmanaged chain read covers the chain", () => {
   });
 
   it("floors the chain's oldest NFT at the chain's first mint", async () => {
-    /*- No rebalance event names #100's mint; the event scanner hangs the
-     *  chain's first mint on the events array instead. */
+    /*-
+     *  No rebalance event names #100's mint; the event scanner hangs the
+     *  chain's first mint on the events array instead.
+     */
     const events = Object.assign([...CHAIN], {
       firstMintBlockNumber: 4_000_000,
     });
@@ -130,8 +134,10 @@ describe("the unmanaged chain read covers the chain", () => {
   });
 
   it("sets no upper bound", async () => {
-    /*- One could only come from the inferred succession, and a dust mint
-     *  between two real rebalances makes that wrong. */
+    /*-
+     *  One could only come from the inferred succession, and a dust mint
+     *  between two real rebalances makes that wrong.
+     */
     const { mod, calls } = loadReader();
     await reader(mod)();
     assert.equal("toBlock" in calls[0].args, false);
@@ -161,8 +167,10 @@ describe("the unmanaged chain read happens at most once", () => {
   });
 
   it("does not hand a failed read to the next caller", async () => {
-    /*- Each consumer used to read for itself, so each got its own
-     *  attempt. Sharing a success must not turn into sharing a failure. */
+    /*-
+     *  Each consumer gets an attempt of its own. Sharing a success must
+     *  not turn into sharing a failure.
+     */
     const { mod, calls } = loadReader({ failures: 1 });
     const read = reader(mod);
     await assert.rejects(read(), /simulated read failure/);
@@ -188,8 +196,10 @@ describe("the unmanaged chain read happens at most once", () => {
         dir,
         async () => ({ totalCompoundedUsd: 1, compounds: [] }),
       );
-      /*- No wallet in the body, so the HODL accumulator makes no reads
-       *  of its own. */
+      /*-
+       *  No wallet in the body, so the HODL accumulator makes no reads
+       *  of its own.
+       */
       const hodl = await scanLifetimeHodl(
         POSITION,
         CHAIN,
@@ -248,8 +258,10 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
         getCachedLifetimeHodl: () => seen.cachedHodl ?? null,
         getCachedFreshDeposits: () => null,
       },
-      /*- Calls back with the chain it returns, as the real pool scan
-       *  does, so epoch reconstruction runs inside it. */
+      /*-
+       *  Calls back with the chain it returns, as the real pool scan
+       *  does, so epoch reconstruction runs inside it.
+       */
       "./pool-scanner": {
         scanPoolHistory: async (_p, _e, opts) => {
           await opts.computeFromHistoricalPrices(CHAIN);
@@ -269,8 +281,10 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
         _walletResiduals: async () => ({}),
       },
       "./position-details-compound": {
-        /*- The real predicate: when Fees Compounded reads the chain is
-         *  what decides whether reconstruction may share the read. */
+        /*-
+         *  The real predicate: when Fees Compounded reads the chain is
+         *  what decides whether reconstruction may share the read.
+         */
         compoundsReadChain,
         _resolveCompounded: async (...args) => {
           seen.compound = args[7];
@@ -355,17 +369,21 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
     );
   });
 
-  it("still hands them one reader when the epochs are cached", async () => {
-    /*- A repeat visit: reconstruction is skipped, so the reader is first
-     *  asked for after the pool scan. */
+  it("still hands them one reader when some epochs are saved", async () => {
+    /*-
+     *  A repeat visit. Reconstruction is still asked, because only it
+     *  checks that the saved history covers every closed NFT, and it
+     *  gets the reader the other two consumers use.
+     */
     const seen = await request({
       compoundSaved: false,
       hodlCached: false,
       epochsCached: true,
     });
-    assert.equal(seen.epochCalled, undefined, "the epochs were rebuilt");
+    assert.equal(seen.epochCalled, true, "reconstruction was not asked");
     assert.equal(typeof seen.compound, "function");
     assert.strictEqual(seen.compound, seen.hodl);
+    assert.strictEqual(seen.epoch, seen.compound);
   });
 
   it("hands epoch reconstruction the same reader when both will read", async () => {
@@ -388,8 +406,10 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
   });
 
   it("lets reconstruction read for itself when both figures are cached", async () => {
-    /*- Nothing else will read the chain, and the full three-event read
-     *  would cost reconstruction more than its own two-event one. */
+    /*-
+     *  Nothing else will read the chain, and the full three-event read
+     *  would cost reconstruction more than its own two-event one.
+     */
     const seen = await request({ compoundSaved: true, hodlCached: true });
     assert.equal(seen.epochCalled, true);
     assert.strictEqual(seen.epoch, undefined);
@@ -406,8 +426,10 @@ describe("requestChainReader", () => {
   });
 
   it("makes a new reader for a different array", () => {
-    /*- An equal-looking copy is still a different chain as far as the
-     *  reader can tell; reading again is the safe answer. */
+    /*-
+     *  An equal-looking copy is still a different chain as far as the
+     *  reader can tell; reading again is the safe answer.
+     */
     const readerFor = requestChainReader({ position: POSITION });
     const first = readerFor([...CHAIN]);
     assert.notStrictEqual(readerFor([...CHAIN]), first);

@@ -129,9 +129,11 @@ describe("scanCollectAndDrain — reading it off the chain", () => {
   }
 
   it("sums every Collect against every drained principal", async () => {
-    /*- Every block at or above the 500 floor `feesFor` reads from: this
+    /*-
+     *  Every block at or above the 500 floor `feesFor` reads from: this
      *  stub ignores block ranges, and the read drops anything below the
-     *  NFT's floor, as a real node never returns it. */
+     *  NFT's floor, as a real node never returns it.
+     */
     const prov = buildProvider({
       collect: [collectLog(30n, 3n, 600), collectLog(135n, 12n, 700)],
       dl: [dlLog(9n, 130n, 11n, 699)],

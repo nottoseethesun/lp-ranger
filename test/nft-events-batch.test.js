@@ -21,22 +21,24 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const { format } = require("node:util");
+const { _setSinkForTests } = require("../src/log");
+const { emojiId } = require("../src/logger");
 
 const {
   ID_BATCH_SIZE,
   EVENT_NAMES,
   eventNamesOf,
-  topicForTokenId,
   tokenIdOfLog,
   scanFloors,
   emptyEvents,
   fetchChainNftEvents,
-  shareRead,
   eventsFor,
   _chunkIds,
   _keepAtOrAbove,
   _byChainOrder,
 } = require("../src/nft-events-batch");
+const { topicForTokenId } = require("../src/nft-token-topic");
 const {
   IFACE,
   PM,
@@ -72,8 +74,10 @@ describe("topicForTokenId / tokenIdOfLog", () => {
   });
 
   it("reads the id from topics[1], not from the decoded body", () => {
-    /*- Partitioning must not depend on the ABI being right about the
-     *  unindexed fields; an undecodable log still has to be routed. */
+    /*-
+     *  Partitioning must not depend on the ABI being right about the
+     *  unindexed fields; an undecodable log still has to be routed.
+     */
     const l = logFor("Collect", "12345", 10);
     l.data = "0xdeadbeef";
     assert.equal(tokenIdOfLog(l), "12345");
@@ -92,8 +96,10 @@ describe("_chunkIds", () => {
   });
 
   it("leaves no empty group when the list is an exact multiple", () => {
-    /*- An empty trailing group would be a request with an empty topic
-     *  array, which a node may read as "no filter" on that slot. */
+    /*-
+     *  An empty trailing group would be a request with an empty topic
+     *  array, which a node may read as "no filter" on that slot.
+     */
     assert.deepEqual(_chunkIds([1, 2, 3, 4], 2), [
       [1, 2],
       [3, 4],
@@ -121,18 +127,21 @@ describe("scanFloors", () => {
     assert.equal(unionFrom, 300, "one request starts at the lowest floor");
   });
 
-  it("a shared floor above a mint block wins (resume checkpoint)", () => {
-    /*- `nftScanFrom` combines with Math.max: on an incremental rescan
-     *  the shared floor is a checkpoint, and it must keep the scan off
-     *  ground already covered. */
+  it("a shared floor above a mint block wins", () => {
+    /*-
+     *  `nftScanFrom` combines with Math.max: the scan reads nothing
+     *  below the shared floor, even for an NFT minted before it.
+     */
     const { floors, unionFrom } = scanFloors(["1"], new Map([["1", 500]]), 800);
     assert.equal(floors.get("1"), 800);
     assert.equal(unionFrom, 800);
   });
 
   it("falls back to the shared floor for an id with no mint block", () => {
-    /*- The chain's oldest NFT appears only as an oldTokenId and has no
-     *  mint block in the events. */
+    /*-
+     *  The chain's oldest NFT appears only as an oldTokenId and has no
+     *  mint block in the events.
+     */
     const { floors } = scanFloors(["9"], new Map(), 250);
     assert.equal(floors.get("9"), 250);
   });
@@ -156,9 +165,11 @@ describe("_keepAtOrAbove", () => {
   });
 
   it("drops a log below that id's own floor", () => {
-    /*- The union request starts at 100, so #2's window legitimately
+    /*-
+     *  The union request starts at 100, so #2's window legitimately
      *  returns blocks it must not keep. Without this the batched result
-     *  would include events the per-NFT scan excluded. */
+     *  would include events a per-NFT scan excludes.
+     */
     const out = _keepAtOrAbove([logFor("Collect", "2", 200)], floors);
     assert.equal(out.has("2"), false);
   });
@@ -178,9 +189,11 @@ describe("_keepAtOrAbove", () => {
 
 describe("fetchChainNftEvents", () => {
   it("returns an entry for EVERY requested id, even with no events", () => {
-    /*- A missing key would be read downstream as "this NFT has no
+    /*-
+     *  A missing key would be read downstream as "this NFT has no
      *  history", which is a closed epoch with no fees rather than a
-     *  bug. */
+     *  bug.
+     */
     return fetchChainNftEvents(
       base(makeProvider([]), {
         tokenIds: ["1", "2", "3"],
@@ -219,9 +232,11 @@ describe("fetchChainNftEvents", () => {
   });
 
   it("re-floors each id, so the result matches the per-NFT scan", () => {
-    /*- #2 is minted at 500. The union request starts at 100 for #1's
+    /*-
+     *  #2 is minted at 500. The union request starts at 100 for #1's
      *  sake and so sees #2's block-200 log, which a per-NFT scan floored
-     *  at 500 would never have returned. */
+     *  at 500 never returns.
+     */
     const logs = [logFor("Collect", "2", 200), logFor("Collect", "2", 700)];
     return fetchChainNftEvents(
       base(makeProvider(logs), {
@@ -239,8 +254,10 @@ describe("fetchChainNftEvents", () => {
   });
 
   it("resolves the head once for the whole batch", async () => {
-    /*- Every id and every event type must cover an identical range; a
-     *  head resolved per scan could drift between them. */
+    /*-
+     *  Every id and every event type must cover an identical range; a
+     *  head resolved per scan could drift between them.
+     */
     const p = makeProvider([]);
     await fetchChainNftEvents(
       base(p, { tokenIds: ["1", "2"], mintBlocks: new Map(), sharedFloor: 0 }),
@@ -283,8 +300,10 @@ describe("fetchChainNftEvents", () => {
       true,
       "each request should OR-match all 50 ids",
     );
-    /*- 3 event types x 1 block chunk x 1 id-group. The per-NFT path
-     *  would have made 150 requests for the same data. */
+    /*-
+     *  3 event types x 1 block chunk x 1 id-group. A per-NFT scan of
+     *  each id makes 150 requests for the same data.
+     */
     assert.equal(gets.length, EVENT_NAMES.length);
   });
 
@@ -299,6 +318,41 @@ describe("fetchChainNftEvents", () => {
     assert.equal(gets.length, EVENT_NAMES.length * 2, "two id-groups");
     const sizes = gets.map((c) => c.topics[1].length).sort((a, b) => a - b);
     assert.deepEqual(sizes.slice(0, 3), [25, 25, 25]);
+  });
+
+  it("labels each group's progress with its first NFT", async () => {
+    // Two reads can run at once, so each progress line names its group.
+    const ids = Array.from({ length: ID_BATCH_SIZE + 25 }, (_, i) =>
+      String(i + 1),
+    );
+    const second = String(ID_BATCH_SIZE + 1);
+    const lines = [];
+    const restore = _setSinkForTests({
+      log: (...a) => lines.push(format(...a)),
+    });
+    try {
+      await fetchChainNftEvents(
+        base(makeProvider([]), {
+          tokenIds: ids,
+          mintBlocks: new Map(),
+          sharedFloor: 0,
+          eventNames: ["Collect"],
+        }),
+      );
+    } finally {
+      restore();
+    }
+    const progress = lines.filter((l) => l.includes("nft-batch Collect"));
+    const firstLabel = `#1 ${emojiId("1")} +${ID_BATCH_SIZE - 1}`;
+    const secondLabel = `#${second} ${emojiId(second)} +24`;
+    assert.ok(
+      progress.some((l) => l.includes(firstLabel)),
+      progress.join("\n"),
+    );
+    assert.ok(
+      progress.some((l) => l.includes(secondLabel)),
+      progress.join("\n"),
+    );
   });
 
   it("returns an empty map for an empty chain, asking nothing", async () => {
@@ -325,9 +379,11 @@ describe("fetchChainNftEvents", () => {
 // ── Fetching only some event types ───────────────────────────────────
 
 describe("fetching only the event types a caller reads", () => {
-  /*- Each event type is a full pass over the union range, so a reader
+  /*-
+   *  Each event type is a full pass over the union range, so a reader
    *  that uses two of the three pays half as much again for the third
-   *  unless it can leave it out. */
+   *  unless it can leave it out.
+   */
   const DRAIN = ["Collect", "DecreaseLiquidity"];
   const topicOf = (name) => IFACE.getEvent(name).topicHash;
 
@@ -337,7 +393,7 @@ describe("fetching only the event types a caller reads", () => {
   });
 
   it("refuses an unknown event before any request is made", async () => {
-    /*- A misspelling must not cost a long scan before it is noticed. */
+    // A misspelling must not cost a long scan before it is noticed.
     const p = makeProvider([]);
     await assert.rejects(
       fetchChainNftEvents(
@@ -374,9 +430,11 @@ describe("fetching only the event types a caller reads", () => {
   });
 
   it("gives each entry only the histories that were fetched", async () => {
-    /*- No `ilEvents` at all, rather than an empty one: a consumer
+    /*-
+     *  No `ilEvents` at all, rather than an empty one: a consumer
      *  reaching for a history nobody requested must not read `[]` as
-     *  "this NFT never added liquidity". */
+     *  "this NFT never added liquidity".
+     */
     const batch = await fetchChainNftEvents(
       base(makeProvider([logFor("Collect", "1", 200)]), {
         tokenIds: ["1", "2"],
@@ -395,8 +453,10 @@ describe("fetching only the event types a caller reads", () => {
   });
 
   it("sends a repeated id once", async () => {
-    /*- The id-group size is what bounds the topic array, so a duplicate
-     *  would take a slot a real id needs. */
+    /*-
+     *  The id-group size is what bounds the topic array, so a duplicate
+     *  would take a slot a real id needs.
+     */
     const p = makeProvider([]);
     const batch = await fetchChainNftEvents(
       base(p, {
@@ -410,42 +470,6 @@ describe("fetching only the event types a caller reads", () => {
       assert.deepEqual(c.topics[1], [topicForTokenId(1), topicForTokenId(2)]);
     }
     assert.deepEqual([...batch.keys()], ["1", "2"]);
-  });
-});
-
-// ── One read for a pass ──────────────────────────────────────────────
-
-describe("shareRead", () => {
-  it("reads nothing until first asked", () => {
-    let reads = 0;
-    shareRead(async () => {
-      reads += 1;
-    });
-    assert.equal(reads, 0);
-  });
-
-  it("reads once, however many callers ask", async () => {
-    let reads = 0;
-    const read = shareRead(async () => ({ n: ++reads }));
-    const [a, b] = await Promise.all([read(), read()]);
-    const c = await read();
-    assert.equal(reads, 1);
-    assert.strictEqual(a, b);
-    assert.strictEqual(a, c);
-  });
-
-  it("does not keep a failed read", async () => {
-    /*- Each consumer used to read for itself and got its own attempt;
-     *  sharing the read must not share its failure. */
-    let reads = 0;
-    const read = shareRead(async () => {
-      reads += 1;
-      if (reads === 1) throw new Error("rpc unavailable");
-      return reads;
-    });
-    await assert.rejects(read(), /rpc unavailable/);
-    assert.equal(await read(), 2);
-    assert.equal(await read(), 2, "and a success is kept");
   });
 });
 
@@ -464,11 +488,13 @@ describe("eventsFor", () => {
   });
 
   it("THROWS for an id the batch never queried", () => {
-    /*- The whole point. Returning empty here would be indistinguishable
+    /*-
+     *  The whole point. Returning empty here would be indistinguishable
      *  from an NFT with no history, and downstream that is a closed
      *  epoch with no fees — a wrong money figure, reported confidently.
      *  A caller reaching for an unqueried id has a sequencing bug and
-     *  must hear about it. */
+     *  must hear about it.
+     */
     const batch = new Map([["1", emptyEvents()]]);
     assert.throws(() => eventsFor(batch, "2"), /no events fetched for #2/);
   });
@@ -479,14 +505,16 @@ describe("eventsFor", () => {
   });
 });
 
-// ── Equivalence with the per-NFT path it replaces ────────────────────
+// ── Equivalence with the per-NFT scan ────────────────────────────────
 
 describe("batched result equals the per-NFT result", () => {
-  /*- The substitution this module exists to justify. The oracle is the
+  /*-
+   *  The substitution this module exists to justify. The oracle is the
    *  fake node answering a SINGLE-id filter over that id's own window —
    *  the exact request `scanNftEvents` makes — not a re-implementation
    *  of our own partitioning, which would only prove the copy matches
-   *  the copy. */
+   *  the copy.
+   */
   async function perNft(provider, id, from, head) {
     const out = {};
     for (const name of EVENT_NAMES) {
@@ -508,8 +536,10 @@ describe("batched result equals the per-NFT result", () => {
     ]);
     const ids = ["10", "20", "30"];
     const logs = [];
-    /*- Spread events across the whole range, including blocks that fall
-     *  below a younger NFT's floor — the case re-flooring exists for. */
+    /*-
+     *  Spread events across the whole range, including blocks that fall
+     *  below a younger NFT's floor — the case re-flooring exists for.
+     */
     for (const [i, id] of ids.entries()) {
       for (const b of [150, 450, 750, 950]) {
         logs.push(logFor(EVENT_NAMES[i % 3], id, b));
@@ -561,10 +591,12 @@ describe("batched result equals the per-NFT result", () => {
 // ── Chain order ──────────────────────────────────────────────────────
 
 describe("per-id logs come back in chain order", () => {
-  /*- `classifyCompounds` reads an NFT's FIRST IncreaseLiquidity as the
+  /*-
+   *  `classifyCompounds` reads an NFT's FIRST IncreaseLiquidity as the
    *  mint deposit and the rest as compounds. Out of order, a compound is
    *  skipped as "the mint" and the mint is counted as a compound — both
-   *  silent, both wrong money. */
+   *  silent, both wrong money.
+   */
   it("sorts by block, then by position within the block", () => {
     const a = { ...logFor("IncreaseLiquidity", "1", 300), index: 0 };
     const b = { ...logFor("IncreaseLiquidity", "1", 100), index: 5 };
@@ -581,8 +613,10 @@ describe("per-id logs come back in chain order", () => {
   });
 
   it("keeps arrival order within a block when index is absent", () => {
-    /*- Array.prototype.sort is stable, so this is the transport's order,
-     *  not an arbitrary one. */
+    /*-
+     *  Array.prototype.sort is stable, so this is the transport's order,
+     *  not an arbitrary one.
+     */
     const first = { ...logFor("Collect", "1", 100), transactionHash: "0x1" };
     const second = { ...logFor("Collect", "1", 100), transactionHash: "0x2" };
     const out = _keepAtOrAbove([first, second], new Map([["1", 0]]));
@@ -593,16 +627,20 @@ describe("per-id logs come back in chain order", () => {
   });
 
   it("orders the fetch result even when the transport does not", async () => {
-    /*- A provider returning logs newest-first stands in for any future
-     *  change that parallelises windows. The mint must still lead. */
+    /*-
+     *  A provider returning logs newest-first stands in for any future
+     *  change that parallelises windows. The mint must still lead.
+     */
     const mint = { ...logFor("IncreaseLiquidity", "1", 100), index: 0 };
     const compound = { ...logFor("IncreaseLiquidity", "1", 900), index: 0 };
     const p = makeProvider([compound, mint], 1000);
     const orig = p.getLogs;
-    /*- Force newest-first whatever order the fixture array is in. A
+    /*-
+     *  Force newest-first whatever order the fixture array is in. A
      *  plain .reverse() of an array that already happened to be
      *  newest-first delivers ascending order, and the test then passes
-     *  without the sort it exists to check. */
+     *  without the sort it exists to check.
+     */
     p.getLogs = async (q) =>
       (await orig(q)).sort((x, y) => y.blockNumber - x.blockNumber);
     const batch = await fetchChainNftEvents(

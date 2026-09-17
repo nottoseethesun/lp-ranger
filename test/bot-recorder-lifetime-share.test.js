@@ -101,12 +101,14 @@ describe("lifetimeScanPlan", () => {
   });
 
   it("never calls for a read that would resume from the checkpoint", async () => {
-    /*- What epoch reconstruction relies on when it takes its histories
+    /*-
+     *  What epoch reconstruction relies on when it takes its histories
      *  from the lifetime read: every NFT covered from its mint. A read
      *  starting at the checkpoint would hand it the tail of each history,
      *  and a closed NFT's fees and exit value would come out wrong with
      *  nothing to show for it. If a change ever lets a needed read
-     *  resume, `_scanAndReconstruct` must stop sharing that read. */
+     *  resume, `_scanAndReconstruct` must stop sharing that read.
+     */
     for (const s of everyState()) {
       state.scanFromBlock = null;
       const botState = arrange(s);
@@ -127,8 +129,10 @@ describe("lifetimeScanPlan", () => {
 
 describe("prepareLifetimeRead", () => {
   it("decides the start and the buffer when it runs", async () => {
-    /*- A full rescan flagged after preparation still discards the resume
-     *  buffer, because the read applies the scan's rules at read time. */
+    /*-
+     *  A full rescan flagged after preparation still discards the resume
+     *  buffer, because the read applies the scan's rules at read time.
+     */
     const botState = arrange({ fullRescan: false });
     const stale = new Map([["100", { from: 0, ev: {} }]]);
     botState._lifetimeResumeBuffer = stale;
@@ -142,6 +146,24 @@ describe("prepareLifetimeRead", () => {
     await prepared.read();
     assert.notStrictEqual(state.scanOpts.resumeBuffer, stale);
     assert.equal(state.scanOpts.resumeBuffer.size, 0);
+    assert.equal(state.scanFromBlock, POOL_FLOOR);
+  });
+
+  it("reads from the pool floor even when every figure is saved after it was prepared", async () => {
+    /*-
+     *  Its consumers settled on computing from scratch when the read was
+     *  prepared. Resuming from the checkpoint once every figure is saved
+     *  would hand them only the tail of each history.
+     */
+    const botState = arrange({ hodl: true, deposit: true });
+    const prepared = lifetime.prepareLifetimeRead(
+      position(),
+      botState,
+      [],
+      "epoch-key",
+    );
+    botState._getConfig = (k) => SAVED[k];
+    await prepared.read();
     assert.equal(state.scanFromBlock, POOL_FLOOR);
   });
 });
@@ -188,8 +210,10 @@ describe("_scanLifetimePoolData with the pass's prepared read", () => {
   });
 
   it("reads afresh when the live NFT moved during the pass", async () => {
-    /*- A manual rebalance mid-pass: the prepared read describes the
-     *  chain before it. */
+    /*-
+     *  A manual rebalance mid-pass: the prepared read describes the
+     *  chain before it.
+     */
     const botState = arrange({});
     const prepared = lifetime.prepareLifetimeRead(
       position(),

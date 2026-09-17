@@ -3,7 +3,7 @@
 /**
  * @file src/pool-already-managed.js
  * @module pool-already-managed
- *
+ * @description
  * Decides whether a liquidity pool already has a managed position.
  *
  * LP Ranger supports **one active position per pool**, a rule the README

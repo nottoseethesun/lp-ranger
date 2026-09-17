@@ -30,10 +30,9 @@
  *
  * Cost: one batched read of the chain's three event histories
  * (`src/nft-events-batch.js`), from each NFT's mint. The window does not
- * narrow it: with the compound total cleared, the lifetime scan cannot
- * resume from the watermark (`canResumeIncrementally`), and must not,
- * since a total summed over part of the chain would be short. On a long
- * chain that is minutes, not seconds.
+ * narrow it: the lifetime scan never resumes from the watermark
+ * (`prepareLifetimeRead`), since a total summed over part of the chain
+ * would be short. On a long chain that is minutes, not seconds.
  */
 
 "use strict";
@@ -54,12 +53,14 @@ const {
   _cacheKeyOpts,
 } = require("./server-reload-position");
 
-/*- Only the price-derived keys.  Compare with
+/*-
+ *  Only the price-derived keys.  Compare with
  *  `bot-config-v2.CHAIN_DERIVED_POSITION_KEYS`, which Reload clears and
  *  which also holds `hodlBaseline`, `lifetimeHodlAmounts` and
- *  `totalLifetimeDepositUsd`
- *  — those are amount-derived, and re-deriving them is what makes
- *  Reload slow.  Keeping them is the whole point of this route. */
+ *  `totalLifetimeDepositUsd` — those are amount-derived, and
+ *  re-deriving them is what makes Reload slow.  Keeping them is the
+ *  whole point of this route.
+ */
 const _PRICE_DERIVED_KEYS = [
   "compoundHistory",
   "totalCompoundedUsd",

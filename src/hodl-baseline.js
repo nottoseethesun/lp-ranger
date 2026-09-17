@@ -13,6 +13,7 @@ const { log } = require("./log");
 const config = require("./config");
 const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
+const { topicForTokenId } = require("./nft-token-topic");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { getPoolState } = require("./rebalancer");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
@@ -149,7 +150,7 @@ async function _findMintEvent(
   tokenId,
   fromBlock = 0,
 ) {
-  const tokenIdHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
+  const tokenIdHex = topicForTokenId(tokenId);
   const zeroAddr = ethersLib.zeroPadValue
     ? ethersLib.zeroPadValue("0x" + "0".repeat(40), 32)
     : "0x" + "0".repeat(64);

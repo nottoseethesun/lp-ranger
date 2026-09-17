@@ -3,9 +3,10 @@
  * @description `_applyRebalanceResult`'s post-rebalance path: the scan
  *   trigger and the epoch-cache clears it performs.
  *
- *   Extracted from test/bot-recorder.test.js so that file stays under the
- *   500-line cap. The epoch cache is redirected to a per-process file for
- *   the duration and restored afterwards — see the `after` hook.
+ *   Kept apart from test/bot-recorder.test.js so that file stays under
+ *   the 500-line cap. The epoch cache is redirected to a file in a
+ *   temporary directory for the duration and restored afterwards — see
+ *   the `after` hook.
  */
 
 "use strict";
@@ -13,6 +14,7 @@
 const { describe, it, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 // ── _applyRebalanceResult: post-rebalance cache clears ─────────────
@@ -21,27 +23,20 @@ describe("_applyRebalanceResult — post-rebalance scan trigger", () => {
   const { _applyRebalanceResult } = require("../src/bot-recorder");
   const epochCache = require("../src/epoch-cache");
 
-  // Isolated cache file per-PID to avoid collision with other suites.
-  const TMP = path.join(process.cwd(), "tmp");
-  const isolatedPath = path.join(
-    TMP,
-    `pnl-epochs-cache-arr-${process.pid}.json`,
-  );
-  fs.mkdirSync(TMP, { recursive: true });
-  if (fs.existsSync(isolatedPath)) fs.unlinkSync(isolatedPath);
-  epochCache._setCachePath(isolatedPath);
+  // An isolated cache file, outside the project's tmp/.
+  const isolatedDir = fs.mkdtempSync(path.join(os.tmpdir(), "arr-epochs-"));
+  epochCache._setCachePath(path.join(isolatedDir, "pnl-epochs-cache.json"));
 
-  /*- Put the module's path back and remove the file. The path is a
+  /*-
+   *  Put the module's path back and remove the directory. The path is a
    *  module-level singleton, so leaving it redirected would send any
-   *  later test in this process to the isolated file; and the file sits
-   *  in the project's tmp/, where a run outside `npm run check` leaves
-   *  it for good — check.js would then back it up and restore it as
-   *  though it were a production cache. */
+   *  later test in this process to the isolated file.
+   */
   after(() => {
     epochCache._setCachePath(
       path.join(process.cwd(), "tmp", "pnl-epochs-cache.json"),
     );
-    if (fs.existsSync(isolatedPath)) fs.unlinkSync(isolatedPath);
+    fs.rmSync(isolatedDir, { recursive: true, force: true });
   });
 
   /** Build a unique key so each test is independent. */

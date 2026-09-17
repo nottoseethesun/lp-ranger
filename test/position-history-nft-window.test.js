@@ -203,9 +203,11 @@ describe("closed-NFT history scans are bounded to that NFT's life", () => {
 });
 
 describe("a history already read with the rest of its chain", () => {
-  /*- Epoch reconstruction reads every closed NFT's history in one pass
-   *  and hands each NFT its slice. Reading it again here would repeat,
-   *  one NFT at a time, the walk that pass replaces. */
+  /*-
+   *  Epoch reconstruction reads every closed NFT's history in one pass
+   *  and hands each NFT its slice. Reading it again here would read the
+   *  chain once more, one NFT at a time.
+   */
   const E18 = 10n ** 18n;
   const chainRead = {
     collectEvents: [
@@ -235,15 +237,19 @@ describe("a history already read with the rest of its chain", () => {
       withClose: true,
       extraOpts: { collectAndDrain: chainRead },
     });
-    /*- Exit: the final Collect, 7 + 3, at the fallback price of 1.
-     *  Fees: every Collect less the drained principal, (9 − 6) + (3 − 3). */
+    /*-
+     *  Exit: the final Collect, 7 + 3, at the fallback price of 1.
+     *  Fees: every Collect less the drained principal, (9 − 6) + (3 − 3).
+     */
     assert.equal(_ctx.result.exitValueUsd, 10);
     assert.equal(_ctx.result.feesEarnedUsd, 3);
   });
 
   it("is not replaced by a scan when the chain read was unusable", async () => {
-    /*- null says the chain read could not be trusted. The NFT's figures
-     *  stay unknown, and the epoch is retried as a whole. */
+    /*-
+     *  null says the chain read could not be trusted. The NFT's figures
+     *  stay unknown, and the epoch is retried as a whole.
+     */
     const calls = await _run({
       withClose: true,
       extraOpts: { collectAndDrain: null },

@@ -9,7 +9,7 @@
  *   That equivalence is what lets epoch reconstruction use it in place
  *   of one read per closed NFT. The oracle is the single-NFT read,
  *   `scanCollectAndDrain`, run against the same node from each NFT's own
- *   mint — the request epoch reconstruction used to make for every NFT.
+ *   mint.
  *
  *   Logs are encoded with the real position-manager ABI and decoded by
  *   the real decoder. The node filters the way a real one does, and one
@@ -46,11 +46,13 @@ const E = (n) => BigInt(n) * 10n ** 15n;
 /** Where each NFT in the chain was really minted. */
 const MINTS = { 100: 2_000, 101: 12_000, 102: 25_000 };
 
-/*- A three-NFT chain. #100 is the oldest: no rebalance event names its
+/*-
+ *  A three-NFT chain. #100 is the oldest: no rebalance event names its
  *  mint, so its floor has to come from the chain's first mint. #101 is
  *  minted in the block #100 is drained in. #999 belongs to someone else
- *  and sits inside the chain's range. #103 was minted and never
- *  collected. */
+ *  and sits inside the chain's range. #103 is minted and never
+ *  collected.
+ */
 const LOGS = [
   encodedLog("IncreaseLiquidity", "100", [500n, E(100), E(100)], 2_000),
   encodedLog("Collect", "100", [RECIPIENT, E(3), E(1)], 8_000, 0),
@@ -124,8 +126,10 @@ function load(node, { pool = POOL } = {}) {
     };
   } finally {
     Module.prototype.require = orig;
-    /*- Evicted again so the copies holding these stubs are not handed
-     *  to whoever requires the modules next. */
+    /*-
+     *  Evicted again so the copies holding these stubs are not handed
+     *  to whoever requires the modules next.
+     */
     for (const f of fresh) delete require.cache[f];
   }
 }
@@ -145,8 +149,10 @@ describe("scanChainCollectAndDrain — the same answer as one NFT at a time", ()
   });
 
   it("attributes logs by token id, even from a node that does not", async () => {
-    /*- A node that ignores the token-id filter returns every NFT's logs
-     *  for each event type. The answer must not change. */
+    /*-
+     *  A node that ignores the token-id filter returns every NFT's logs
+     *  for each event type. The answer must not change.
+     */
     const loose = makeProvider(LOGS, HEAD);
     const strictGetLogs = loose.getLogs;
     loose.getLogs = async (q) =>
@@ -168,8 +174,10 @@ describe("scanChainCollectAndDrain — the same answer as one NFT at a time", ()
   });
 
   it("orders each NFT's Collects by chain position, whatever the node does", async () => {
-    /*- The exit value is read from the LAST Collect, so a compound
-     *  sorted after the drain would be reported as the exit. */
+    /*-
+     *  The exit value is read from the LAST Collect, so a compound
+     *  sorted after the drain would be reported as the exit.
+     */
     const node = makeProvider(LOGS, HEAD);
     const inOrder = node.getLogs;
     node.getLogs = async (q) =>
@@ -196,7 +204,7 @@ describe("scanChainCollectAndDrain — one read for the chain", () => {
   });
 
   it("asks only for Collect and DecreaseLiquidity", async () => {
-    /*- IncreaseLiquidity is a third full pass nobody here reads. */
+    // IncreaseLiquidity is a third full pass nobody here reads.
     const node = makeProvider(LOGS, HEAD);
     await load(node).mod.scanChainCollectAndDrain(CHAIN, EVENTS);
     assert.deepEqual(
@@ -213,8 +221,10 @@ describe("scanChainCollectAndDrain — one read for the chain", () => {
   });
 
   it("falls back to the pool's creation block without a first mint", async () => {
-    /*- A copied events array loses the property. That costs time, not
-     *  correctness: the floor can only move down. */
+    /*-
+     *  A copied events array loses the property. That costs time, not
+     *  correctness: the floor can only move down.
+     */
     const node = makeProvider(LOGS, HEAD);
     await load(node).mod.scanChainCollectAndDrain(CHAIN, [...EVENTS]);
     const lowest = Math.min(...getLogsCalls(node).map((c) => c.fromBlock));
@@ -222,11 +232,13 @@ describe("scanChainCollectAndDrain — one read for the chain", () => {
   });
 
   it("still reads the chain when its oldest NFT has been burned", async () => {
-    /*- The pool is looked up through the first NFT to read, usually the
+    /*-
+     *  The pool is looked up through the first NFT to read, usually the
      *  chain's oldest — the one an operator is likeliest to have burned
      *  on 9mm. Its `positions()` call then reverts and the lookup finds
      *  nothing, but its logs remain on chain, and the chain's first mint
-     *  still bounds the read. */
+     *  still bounds the read.
+     */
     const node = makeProvider(LOGS, HEAD);
     const batch = await load(node, { pool: null }).mod.scanChainCollectAndDrain(
       CHAIN,
@@ -271,9 +283,11 @@ describe("scanChainCollectAndDrain — what the entries mean", () => {
   });
 
   it("answers null for an NFT that never emitted a Collect", async () => {
-    /*- A closed NFT always emitted one when it was drained, so none at
+    /*-
+     *  A closed NFT always emitted one when it was drained, so none at
      *  all means its history was not seen. Zero would overwrite a real
-     *  logged figure with a wrong one. */
+     *  logged figure with a wrong one.
+     */
     const batch = await load(
       makeProvider(LOGS, HEAD),
     ).mod.scanChainCollectAndDrain(["100", "103"], EVENTS);
@@ -293,8 +307,10 @@ describe("scanChainCollectAndDrain — what the entries mean", () => {
   });
 
   it("still answers null, without throwing, for a single NFT", async () => {
-    /*- The single-NFT read keeps its own contract: null for "we do not
-     *  know", never an exception. */
+    /*-
+     *  The single-NFT read keeps its own contract: null for "we do not
+     *  know", never an exception.
+     */
     const node = makeProvider(LOGS, HEAD);
     node.getLogs = async () => {
       throw new Error("rpc unavailable");
@@ -325,8 +341,10 @@ describe("collectAndDrainOf — histories out of a whole-chain read", () => {
   });
 
   it("leaves out an NFT the read does not cover", () => {
-    /*- So the caller's `eventsFor` fails for that NFT, rather than the
-     *  NFT reading as one with no history. */
+    /*-
+     *  So the caller's `eventsFor` fails for that NFT, rather than the
+     *  NFT reading as one with no history.
+     */
     const out = mod.collectAndDrainOf(
       new Map([["100", entry([{ blockNumber: 2 }])]]),
       ["100", "101"],
@@ -345,17 +363,19 @@ describe("collectAndDrainOf — histories out of a whole-chain read", () => {
 });
 
 describe("the lifetime read serves epoch reconstruction exactly", () => {
-  /*- What lets one pass read the chain once: the lifetime scan's read —
+  /*-
+   *  What lets one pass read the chain once: the lifetime scan's read —
    *  all three event types, every NFT, each floored at its own mint
    *  above the chain's first mint — yields, for each closed NFT, the
    *  same Collect/DecreaseLiquidity history epoch reconstruction's own
-   *  read returns. */
+   *  read returns.
+   */
   it("gives every closed NFT the history its own read would", async () => {
     const node = makeProvider(LOGS, HEAD);
     const { mod } = load(node);
     const closed = ["100", "101"];
     const own = await mod.scanChainCollectAndDrain(closed, EVENTS);
-    /*- The lifetime read, as `scanChainNftEvents` makes it for the bot. */
+    // The lifetime read, as `scanChainNftEvents` makes it for the bot.
     const lifetime = await fetchChainNftEvents({
       tokenIds: CHAIN,
       mintBlocks: mintBlocksByTokenId(EVENTS),

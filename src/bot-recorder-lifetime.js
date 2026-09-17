@@ -207,9 +207,16 @@ function _resolveDiskState(botState, epochKey) {
   return { cachedHodl, hasCompoundData, hasDepositData };
 }
 
-/** Build a logging-context bundle (symbols + tokenId + emoji) for the scan. */
-function _scanLogCtx(position) {
-  const tokenIdStr = String(position.tokenId || "");
+/**
+ * Build a logging-context bundle (symbols + tokenId + emoji) for a
+ * position's scan log lines.
+ *
+ * @param {object} position  Live position.
+ * @returns {{t0Sym: string, t1Sym: string, tokenIdStr: string,
+ *   tokenEmoji: string}}
+ */
+function scanLogCtx(position) {
+  const tokenIdStr = String(position.tokenId ?? "");
   return {
     t0Sym: position.token0Symbol || "Token0",
     t1Sym: position.token1Symbol || "Token1",
@@ -259,13 +266,12 @@ function _recordScanSuccess(botState, updateState, ctx) {
 }
 
 /**
- * Whether `lastNftScanBlock` can be trusted as a starting point for THIS
- * scan.
+ * Whether every result the lifetime scan computes is already on disk.
  *
- * That cursor means "every block before this one has already been
- * accounted for".  Skipping ahead to it is only safe if the results of
- * that earlier scanning were KEPT — and one pass over the chain's events
- * feeds three separate results, each with its own disk flag:
+ * `lastNftScanBlock` means "every block before this one has already been
+ * accounted for".  Skipping ahead to it would only be safe if the results
+ * of that earlier scanning were KEPT — and one pass over the chain's
+ * events feeds three separate results, each with its own disk flag:
  *
  *   - lifetime HODL amounts  → `cachedHodl`
  *   - Fees Compounded        → `hasCompoundData`
@@ -274,7 +280,9 @@ function _recordScanSuccess(botState, updateState, ctx) {
  * So all three must be satisfied.  Any one of them missing means a
  * consumer downstream is about to compute from scratch, and handing that
  * consumer a slice of the chain instead of the whole of it produces a
- * silently wrong total rather than an error.
+ * silently wrong total rather than an error.  When all three hold, the
+ * scan skips its read altogether (`lifetimeScanPlan`); otherwise the read
+ * starts from the pool's creation block (`prepareLifetimeRead`).
  *
  * This is not hypothetical.  On 2026-09-01, position #164418 had a
  * cached HODL but no `totalCompoundedUsd` on disk (the unmanaged detail
@@ -300,38 +308,15 @@ function canResumeIncrementally({
   return !!cachedHodl && !!hasCompoundData && !!hasDepositData;
 }
 
-/** Resolve the starting block for the event scan, honoring the rescan flag. */
-async function _resolveScanFromBlock(
-  epochKey,
-  fullRescan,
-  position,
-  canResume,
-) {
-  /*- `canResume` is the whole precondition (see `canResumeIncrementally`):
-   *  every lifetime aggregate this scan can produce already has an
-   *  authoritative value on disk, so there is nothing left that needs the
-   *  older events.  Otherwise start from the pool creation block. */
-  const useCached = !!epochKey && !fullRescan && canResume;
-  const cachedFromBlock = useCached
-    ? _epochCache.getLastNftScanBlock(epochKey)
-    : 0;
-  if (cachedFromBlock > 0) return cachedFromBlock;
-  return resolvePoolCreationBlockForPosition({
-    factoryAddress: config.FACTORY,
-    position,
-  });
-}
-
 /**
  * The position's per-NFT resume buffer, created on first use.
  *
- * Same purpose as the buffer in `epoch-reconstructor.js`, for the other
- * long per-NFT pass. The lifetime loop walks the whole rebalance chain
- * three queries at a time; without somewhere to keep the NFTs already
- * read, a throw anywhere in it costs every one of them and the next
- * attempt starts from the first again. See `fetchAllNftEvents` for why
- * reuse is gated on the scan floor and on the NFT being retired, and
- * `_recordScanSuccess` for the release.
+ * Same purpose as the buffer in `epoch-reconstructor.js`, for the
+ * lifetime scan. The lifetime read succeeds or fails as a whole, but a
+ * later step of the scan can still throw. The buffer keeps the retired
+ * NFTs' histories, so the retry does not read them again. See
+ * `fetchAllNftEvents` for why reuse is gated on the scan floor and on
+ * the NFT being retired, and `_recordScanSuccess` for the release.
  *
  * Extracted from `_scanLifetimePoolData` so the lazy-create branch does
  * not push that function past the complexity cap.
@@ -343,15 +328,17 @@ async function _resolveScanFromBlock(
  * @returns {Map<string, {from: number, ev: object}>}
  */
 function _lifetimeResumeBuffer(botState, fullRescan) {
-  /*- Tolerates a missing state object.  This is the first thing in the
-   *  scan to reach into `botState`, and a scan is worth running with no
-   *  resume at all — so an absent one costs the buffer, not the scan. */
+  /*-
+   *  Tolerates a missing state object: with nowhere to carry reads, the
+   *  caller gets a throwaway buffer and simply reads everything.
+   */
   if (botState === undefined || botState === null) return new Map();
-  /*- A full rescan means a rebalance fired, so any NFT in the chain may
+  /*-
+   *  A full rescan means a rebalance fired, so any NFT in the chain may
    *  have emitted since the buffered read — the one it just retired
    *  certainly did. Start from nothing rather than trust a floor
-   *  comparison to notice, since the floor is the pool creation block
-   *  on both sides when no scan has completed yet. */
+   *  comparison to notice: both sides floor each NFT at the same block.
+   */
   if (fullRescan === true) botState._lifetimeResumeBuffer = null;
   if (!(botState._lifetimeResumeBuffer instanceof Map))
     botState._lifetimeResumeBuffer = new Map();
@@ -368,10 +355,10 @@ function _lifetimeResumeBuffer(botState, fullRescan) {
  * read instead of making its own.
  *
  * Reconstruction needs each closed NFT's whole history, so that sharing
- * depends on a needed read never resuming from `lastNftScanBlock`. The
- * early return guarantees it: a scan that could resume has every result it
- * would compute already saved, so it does not run at all.
- * `test/bot-recorder-lifetime-share.test.js` pins that for every state.
+ * depends on a read never resuming from `lastNftScanBlock`.
+ * `prepareLifetimeRead` guarantees it: every read starts from the pool's
+ * creation block. `test/bot-recorder-lifetime-share.test.js` pins that for
+ * every state.
  *
  * @param {object} botState  Live per-position bot state.
  * @param {object|null} epochKey  Epoch-cache key for the pool.
@@ -379,11 +366,13 @@ function _lifetimeResumeBuffer(botState, fullRescan) {
  *   hasCompoundData: boolean, hasDepositData: boolean}}
  */
 function lifetimeScanPlan(botState, epochKey) {
-  const fullRescan = !!botState?._needsFullRescan;
+  const fullRescan = botState?._needsFullRescan === true;
   const disk = _resolveDiskState(botState, epochKey);
-  /*- The rebalance path sets `_needsFullRescan` to force re-classification
+  /*-
+   *  The rebalance path sets `_needsFullRescan` to force re-classification
    *  of every IncreaseLiquidity event in the (now-extended) chain, so it
-   *  overrides saved totals. */
+   *  overrides saved totals.
+   */
   const needed = fullRescan || !canResumeIncrementally(disk);
   return { ...disk, fullRescan, needed };
 }
@@ -391,10 +380,14 @@ function lifetimeScanPlan(botState, epochKey) {
 /**
  * This position's lifetime chain read, prepared but not started.
  *
- * Where it starts and which resume buffer it draws on are decided when it
- * runs, by the rules the scan has always used: from the pool's creation
- * block, lifted to the chain's first mint, and a full rescan treats the
- * buffer as untrusted.
+ * It always starts from the pool's creation block, lifted to the chain's
+ * first mint, never from `lastNftScanBlock`. Its consumers compute from
+ * scratch, and they settled on that when the read was prepared; a figure
+ * saved before the read starts must not turn it into a resumed read that
+ * hands them only the tail of each history.
+ *
+ * Whether the resume buffer can be trusted is decided when the read runs,
+ * so a full rescan flagged after preparation still discards the buffer.
  *
  * @param {object} position  Live position.
  * @param {object} botState  Live per-position bot state.
@@ -407,14 +400,12 @@ function prepareLifetimeRead(position, botState, rebalanceEvents, epochKey) {
     position,
     rebalanceEvents,
     start: async () => {
-      const plan = lifetimeScanPlan(botState, epochKey);
-      const fromBlock = await _resolveScanFromBlock(
-        epochKey,
-        plan.fullRescan,
+      const { fullRescan } = lifetimeScanPlan(botState, epochKey);
+      const fromBlock = await resolvePoolCreationBlockForPosition({
+        factoryAddress: config.FACTORY,
         position,
-        canResumeIncrementally(plan),
-      );
-      const resumeBuffer = _lifetimeResumeBuffer(botState, plan.fullRescan);
+      });
+      const resumeBuffer = _lifetimeResumeBuffer(botState, fullRescan);
       return { fromBlock, resumeBuffer };
     },
   });
@@ -520,15 +511,17 @@ async function _scanLifetimePoolData(
   preparedRead,
   chainFound = true,
 ) {
-  const ctx = _scanLogCtx(position);
+  const ctx = scanLogCtx(position);
   const plan = lifetimeScanPlan(botState, epochKey);
   const { fullRescan, cachedHodl, hasCompoundData, hasDepositData } = plan;
   if (!plan.needed) {
-    /*- Nothing to compute, but readiness must still be recorded. Every
+    /*-
+     *  Nothing to compute, but readiness must still be recorded. Every
      *  pass starts by lowering `lifetimeScanComplete`, and only this
-     *  function raises it; skipping it here left a restart with every
-     *  figure saved showing "Syncing…" for good, its Lifetime panel
-     *  blank and the rescan timer firing every 30 minutes. */
+     *  function raises it. Skipping it here would leave a restart with
+     *  every figure saved on "Syncing…" for good: the Lifetime panel
+     *  blank, and the rescan timer firing every 30 minutes.
+     */
     log.info(
       "[bot] %s/%s NFT #%s %s: Lifetime figures are already saved; no chain read needed",
       ctx.t0Sym,
@@ -539,12 +532,14 @@ async function _scanLifetimePoolData(
     _recordScanSuccess(botState, updateState, ctx);
     return;
   }
-  if (!chainFound) {
-    /*- The chain is whatever the bot held before this pass, which on a
+  if (chainFound !== true) {
+    /*-
+     *  The chain is whatever the bot held before this pass, which on a
      *  cold start is nothing. Figures computed from it would cover the
      *  live NFT alone, and they would be saved as settled, which later
      *  passes keep. Readiness stays as the pass start lowered it, and the
-     *  30-minute rescan retries the whole pass. */
+     *  30-minute rescan retries the whole pass.
+     */
     log.warn(
       "[bot] %s/%s NFT #%s %s: The rebalance history could not be read, so the lifetime figures wait for the next scan",
       ctx.t0Sym,
@@ -574,12 +569,12 @@ async function _scanLifetimePoolData(
       _readDecimalsOverride(botState),
     );
     if (_handleHealResult(heal, botState, position, ctx)) return;
-    /*- The pass's shared read when epoch reconstruction already made it
+    /*-
+     *  The pass's shared read when epoch reconstruction already made it
      *  for this same chain, so the chain is read once; otherwise this
-     *  scan's own. `fromBlock` is the unlifted start block: the checkpoint
-     *  comparison below uses it, so a run that finds no events but did
-     *  lift its floor to the chain's first mint still records that higher
-     *  floor as the resume point. */
+     *  scan's own. `fromBlock` is the unlifted start block, which the
+     *  checkpoint write below compares against.
+     */
     const chainRead = chainReadFor(
       preparedRead,
       position,
@@ -649,6 +644,7 @@ module.exports = {
   canResumeIncrementally,
   lifetimeScanPlan,
   prepareLifetimeRead,
+  scanLogCtx,
   _applyCompoundGas,
   _classifyAllCompounds,
   _scanLifetimePoolData,

@@ -48,20 +48,32 @@ const {
 const { applyInitialResidualFromCache } = require("./bot-pnl-initial-residual");
 
 /**
- * Run event scan + epoch reconstruction. Reads from disk cache if available.
+ * Run the pool's event scan and bring the P&L history up to date.
+ *
+ * Starts from the history saved for the pool. `reconstructEpochs` keeps
+ * that history only when it covers every closed NFT in the chain, and
+ * rebuilds it otherwise.
  *
  * `epochChainFor(events)` answers the request's chain reader when the
  * request's other consumers are going to read the chain anyway, so epoch
  * reconstruction takes its histories from that read; otherwise undefined,
  * and reconstruction reads for itself.
+ *
+ * @param {object} provider  ethers provider.
+ * @param {object} ethersLib  ethers library.
+ * @param {object} position  Position with `token0`, `token1`, `fee`.
+ * @param {string} walletAddr  Wallet address, or "".
+ * @param {{price0: number, price1: number}} prices  Fallback prices.
+ * @param {number} deposit  Initial deposit for the tracker, USD.
+ * @param {string|null} poolAddress  Pool contract, for the pool scan.
+ * @param {(events: Array) => (Function|undefined)} epochChainFor
+ * @returns {Promise<{tracker: object, events: object[]}>}
  */
 async function _getLifetimeSnapshot(
   provider,
   ethersLib,
   position,
   walletAddr,
-  diskConfig,
-  posKey,
   prices,
   deposit,
   poolAddress,
@@ -91,16 +103,14 @@ async function _getLifetimeSnapshot(
     position,
     poolAddress: poolAddress || null,
     computeFromHistoricalPrices: async (evts) => {
-      if (tracker.epochCount() > 0 || evts.length === 0) return;
-      // Re-check epoch cache — another concurrent scan may have populated
-      // it while we waited for the pool scan lock.  Without this guard,
-      // two dashboard detail fetches reconstruct all 71 epochs in parallel,
-      // doubling GeckoTerminal price requests and rate-limit delays.
-      const freshCache = poolCacheKey ? getCachedEpochs(poolCacheKey) : null;
-      if (freshCache) {
-        tracker.restore(freshCache);
-        return;
-      }
+      if (evts.length === 0) return;
+      /*-
+       *  `reconstructEpochs` decides whether to rebuild. It keeps a
+       *  history that covers every closed NFT, whether restored above or
+       *  saved since by another request for this pool, and rebuilds one
+       *  that falls short. Stopping here whenever some history is saved
+       *  would keep a short one on every later visit.
+       */
       const readChainEvents = epochChainFor(evts);
       await reconstructEpochs({
         pnlTracker: tracker,
@@ -198,11 +208,24 @@ function _buildDailyFallback(snap, entryValue, value, body) {
   ];
 }
 
-/** Compute lifetime IL using accumulated HODL amounts across rebalance chain.
- *  `residualValueUsd` is the pool-scoped wallet residual to credit to the
- *  LP-side of the comparison — see computeHodlIL's JSDoc for the rationale.
- *  `readChainEvents` is the request's shared chain reader, read only when
- *  the HODL is not cached. */
+/**
+ * Compute lifetime IL using accumulated HODL amounts across the rebalance
+ * chain.
+ *
+ * @param {object} position  Position with the metadata the HODL needs.
+ * @param {object[]} events  Rebalance events.
+ * @param {object} body  Request body with `walletAddress`.
+ * @param {number} lpValue  Current LP value, USD.
+ * @param {number} price0
+ * @param {number} price1
+ * @param {string|null} poolAddress
+ * @param {number} residualValueUsd  The pool-scoped wallet residual to
+ *   credit to the LP side of the comparison; see `computeHodlIL`.
+ * @param {() => Promise<Map<string, object>>} readChainEvents  The
+ *   request's shared chain reader, read only when the HODL is not cached.
+ * @returns {Promise<{il: number|null, hodlAmount0: number,
+ *   hodlAmount1: number}|null>}  Null when no HODL is available.
+ */
 async function _computeLifetimeIL(
   position,
   events,
@@ -357,7 +380,7 @@ async function _enrichSnap(
  */
 function _cachedLifetimeHodl(position) {
   const key = _poolCacheKey(position);
-  return key ? getCachedLifetimeHodl(key) : null;
+  return key === null ? null : (getCachedLifetimeHodl(key) ?? null);
 }
 
 /** Build pool cache key from position data. */
@@ -435,17 +458,19 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     decimals0: ps.decimals0,
     decimals1: ps.decimals1,
   };
-  /*- One chain read for this request, shared by Fees Compounded, the
+  /*-
+   *  One chain read for this request, shared by Fees Compounded, the
    *  lifetime HODL, and epoch reconstruction when those two are going to
    *  read the chain anyway.  Lazy: nothing is read unless a figure is
-   *  missing from its cache. */
+   *  missing from its cache.
+   */
   const readerFor = requestChainReader({
     position,
     poolAddress: ps.poolAddress,
   });
   const epochChainFor = (evts) =>
     compoundsReadChain(diskConfig, posKey, evts) ||
-    !_cachedLifetimeHodl(_posWithMeta)
+    _cachedLifetimeHodl(_posWithMeta) === null
       ? readerFor(evts)
       : undefined;
   const { tracker, events } = await _getLifetimeSnapshot(
@@ -453,8 +478,6 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ethersLib,
     position,
     body.walletAddress || "",
-    diskConfig,
-    posKey,
     { price0, price1 },
     entryValue,
     ps.poolAddress,
@@ -553,6 +576,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
 module.exports = {
   computeQuickDetails,
   computeLifetimeDetails,
+  _getLifetimeSnapshot,
   _extractSnap,
   _lifetimePnl,
   _resolveEntryValueCached,

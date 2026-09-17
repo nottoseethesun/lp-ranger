@@ -8,7 +8,7 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, after } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -44,6 +44,7 @@ function scan({ position, events, cfg, dir, read, classify }) {
 
 describe("_scanCompounds", () => {
   const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-shared-"));
+  after(() => fs.rmSync(_tmpDir, { recursive: true, force: true }));
 
   it("returns total=0, current=0 when no compounds detected", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test-"));
@@ -133,8 +134,10 @@ describe("_scanCompounds", () => {
   });
 
   it("classifies each NFT with its own events", async () => {
-    /*- The read returns every NFT's events at once, so which events
-     *  reach which NFT's classification is the thing to pin. */
+    /*-
+     *  The read returns every NFT's events at once, so which events
+     *  reach which NFT's classification is the thing to pin.
+     */
     const own = (id) => ({ ...emptyEvents(), ilLogsCount: Number(id) });
     const seen = new Map();
     await scan({
@@ -173,8 +176,10 @@ describe("_scanCompounds", () => {
   });
 
   it("does not count an NFT the read left out as zero", async () => {
-    /*- A partial total written as the lifetime figure would stand until
-     *  the next full reload. Failing the scan leaves nothing written. */
+    /*-
+     *  A partial total written as the lifetime figure would stand until
+     *  the next full reload. Failing the scan leaves nothing written.
+     */
     const cfg = {
       global: {},
       positions: { "test-key": { status: "running" } },
@@ -222,9 +227,11 @@ describe("_scanCompounds", () => {
 });
 
 describe("compoundsReadChain", () => {
-  /*- Decides whether Fees Compounded reads the whole chain. The request
+  /*-
+   *  Decides whether Fees Compounded reads the whole chain. The request
    *  asks it before the pool scan, to know whether epoch reconstruction
-   *  can share that read, so it must match `_resolveCompounded`. */
+   *  can share that read, so it must match `_resolveCompounded`.
+   */
   const { compoundsReadChain } = require("../src/position-details-compound");
   const EVENTS = [{ oldTokenId: "99", newTokenId: "100" }];
   const disk = (slot) => ({
@@ -239,6 +246,15 @@ describe("compoundsReadChain", () => {
     );
     assert.strictEqual(
       compoundsReadChain(disk({ status: "stopped" }), "test-key", EVENTS),
+      true,
+    );
+    /*-
+     *  A saved zero is no total: Reload and Re-scan Prices zero the
+     *  in-memory figure, and a save can write it before the rescan
+     *  replaces it.
+     */
+    assert.strictEqual(
+      compoundsReadChain(disk({ totalCompoundedUsd: 0 }), "test-key", EVENTS),
       true,
     );
   });
@@ -297,9 +313,11 @@ describe("_resolveCompounded takes the chain path exactly when predicted", () =>
   });
 
   it("uses the saved total without reading the chain", async () => {
-    /*- This path also reads the current NFT on its own for the Current
-     *  panel. No RPC is initialised here, so that read fails and those
-     *  two figures fall back to zero — not what this test is about. */
+    /*-
+     *  This path also reads the current NFT on its own for the Current
+     *  panel. No RPC is initialized here, so that read fails and those
+     *  two figures fall back to zero — not what this test is about.
+     */
     const cfg = {
       global: {},
       positions: { "test-key": { totalCompoundedUsd: 42 } },

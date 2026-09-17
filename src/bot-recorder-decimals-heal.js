@@ -3,15 +3,15 @@
  * @module bot-recorder-decimals-heal
  * @description
  * The lifetime scan's token-decimals heal: make sure a position carries
- * valid on-chain token decimals before the scan values anything, honour the
+ * valid on-chain token decimals before the scan values anything, honor the
  * operator's manual override, and decide what an unreadable value means —
  * retire the position, or skip this run and retry.
  *
- * Extracted from `bot-recorder-lifetime.js`, which runs the heal at the
- * start of every lifetime scan, to keep that file under the 500-line cap.
- * Everything here writes under the `[token-decimals]` log tag, and its
- * error.log entries carry their own per-pool scope so a later successful
- * heal can clear them.
+ * `bot-recorder-lifetime.js` runs the heal at the start of every lifetime
+ * scan. The heal lives in its own module to keep that file under the
+ * 500-line cap. Everything here writes under the `[token-decimals]` log
+ * tag, and its error.log entries carry their own per-pool scope so a
+ * later successful heal can clear them.
  */
 
 "use strict";

@@ -8,7 +8,7 @@
  *   Tests that replace `getPositionHistory` with a canned answer never
  *   look at the history handed to it, but the read still runs first.
  *   Left real, it reaches for the managed RPC provider and fails only
- *   because no test initialised one. A suite should not depend on that,
+ *   because no test initialized one. A suite should not depend on that,
  *   so these tests replace the read alongside the history.
  *
  *   The stub answers every id with null: history unknown.

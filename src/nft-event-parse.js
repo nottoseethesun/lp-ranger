@@ -3,22 +3,24 @@
 /**
  * @file src/nft-event-parse.js
  * @module nft-event-parse
- *
+ * @description
  * The position manager's event interface, and the decoder for the three
  * NFT history events (`IncreaseLiquidity`, `Collect`,
  * `DecreaseLiquidity`).
  *
- * Extracted so the single-NFT scanner in `src/compounder.js` and the
- * whole-chain batch fetch in `src/nft-events-batch.js` decode logs with
- * the same code rather than a copy each. A **leaf module**: it requires
- * only the ABI, so both can depend on it without `src/` gaining a
- * dependency cycle.
+ * Shared by the single-NFT scanner in `src/compounder.js` and the
+ * whole-chain batch fetch in `src/nft-events-batch.js`, so both decode
+ * logs with the same code. A **leaf module**: nothing in `src/` but the
+ * ABI is required here, so both can depend on it without `src/` gaining
+ * a dependency cycle.
  */
 
-/*- The package itself, not its `ethers` namespace export. Both work
- *  against the real package, but tests that replace `ethers` supply the
- *  top-level shape — the one `compounder.js` has always used — and a
- *  destructured `{ ethers }` reads `undefined` from those stubs. */
+/*-
+ *  The package itself, not its `ethers` namespace export. Both work
+ *  against the real package, but tests that replace `ethers` supply only
+ *  the top-level shape, and a destructured `{ ethers }` reads
+ *  `undefined` from those stubs.
+ */
 const ethers = require("ethers");
 const { PM_ABI } = require("./pm-abi");
 
@@ -55,7 +57,7 @@ function parseLogs(iface, logs) {
         txHash: log.transactionHash,
       });
     } catch {
-      /* not one of ours */
+      // Not one of ours.
     }
   }
   return out;

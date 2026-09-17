@@ -73,11 +73,10 @@ function scanFloorFor(mintBlocks, tokenId, fallbackBlock) {
  * The block one NFT's event scan should start at, given a floor shared
  * by the whole chain.
  *
- * The shared floor is the pool's creation block on a first run, or a
- * checkpoint from a previous scan when resuming. `Math.max` is what
- * makes both correct with one rule: a later mint block tightens a
- * pool-creation floor, and a later checkpoint beats an earlier mint
- * block so a resume never re-walks ground it already covered.
+ * The shared floor is the pool's floor: its creation block, or a later
+ * bound such as the chain's first mint (`chainScanFloor`). The NFT has
+ * no events before its own mint, and the scan reads nothing before the
+ * floor. So `Math.max` keeps the later of the two.
  *
  * Every loop that scans a chain of NFTs must go through this. Four such
  * loops existed and three of them started every NFT at the shared
@@ -85,7 +84,8 @@ function scanFloorFor(mintBlocks, tokenId, fallbackBlock) {
  *
  * @param {Map<string, number>} mintBlocks  From `mintBlocksByTokenId`.
  * @param {string|number} tokenId
- * @param {number} sharedFloor  Pool creation block, or resume checkpoint.
+ * @param {number} sharedFloor  Pool floor: its creation block, or a
+ *   later bound.
  * @returns {number}
  */
 function nftScanFrom(mintBlocks, tokenId, sharedFloor) {
@@ -118,7 +118,8 @@ function nftScanFrom(mintBlocks, tokenId, sharedFloor) {
  *
  * @param {Array & {firstMintBlockNumber?: number}} events  Rebalance
  *   events, as returned by the event scanner.
- * @param {number} poolFloor  Pool creation block, or resume checkpoint.
+ * @param {number} poolFloor  Pool floor: its creation block, or a later
+ *   bound.
  * @returns {number}
  */
 function chainScanFloor(events, poolFloor) {
@@ -137,8 +138,8 @@ function chainScanFloor(events, poolFloor) {
  *
  * @param {object} opts
  * @param {number} [opts.mintBlock]   Block the NFT was minted in.
- * @param {number} [opts.sharedFloor] Pool creation block, or a resume
- *   checkpoint.
+ * @param {number} [opts.sharedFloor] Pool floor: its creation block, or
+ *   a later bound.
  * @returns {number}
  */
 function nftScanFromBlock({ mintBlock, sharedFloor } = {}) {

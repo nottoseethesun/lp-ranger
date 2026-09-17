@@ -21,7 +21,7 @@
  * it. Settings, managed status and values recorded live that a scan
  * cannot reproduce are left alone.
  *
- * Clearing both is how you test scan behaviour from cold.
+ * Clearing both is how you test scan behavior from cold.
  *
  * Also the single definition of "the scan cache" for
  * `scripts/clean.js`, so neither command needs a hand-written list of

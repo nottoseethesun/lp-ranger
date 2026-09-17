@@ -53,11 +53,11 @@ function chainSignature(position, rebalanceEvents) {
     .map(String)
     .sort();
   const firstMint = rebalanceEvents?.firstMintBlockNumber ?? null;
-  return JSON.stringify([
-    String(position.tokenId),
-    ids.map((id) => [id, mints.has(id) ? mints.get(id) : null]),
-    firstMint,
+  const mintOfEach = ids.map((id) => [
+    id,
+    mints.has(id) ? mints.get(id) : null,
   ]);
+  return JSON.stringify([String(position.tokenId), mintOfEach, firstMint]);
 }
 
 /**
@@ -114,9 +114,11 @@ function prepareChainRead({ position, rebalanceEvents, start }) {
  */
 function chainReadFor(prepared, position, rebalanceEvents, prepareOwn, ctx) {
   if (prepared === null || prepared === undefined) return prepareOwn();
-  /*- Both outcomes are logged. Sharing leaves the lifetime scan with no
-   *  read of its own in the log, and not sharing leaves two reads there;
-   *  either way the line says why. */
+  /*-
+   *  Both outcomes are logged. Sharing leaves the lifetime scan with no
+   *  read of its own in the log, and not sharing leaves two reads there.
+   *  Either way, the line says why.
+   */
   if (prepared.signature === chainSignature(position, rebalanceEvents)) {
     log.info(
       "[bot] %s/%s NFT #%s %s: The lifetime scan uses this scan pass's chain read",

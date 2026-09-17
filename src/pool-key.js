@@ -3,7 +3,7 @@
 /**
  * @file src/pool-key.js
  * @module pool-key
- *
+ * @description
  * The single definition of "these two positions are in the same pool".
  *
  * A pool is identified by its token pair and fee tier. Two things make

@@ -98,8 +98,10 @@ describe("prepareChainRead", () => {
     assert.deepEqual([...reads[0].ids].sort(), ["100", "200", "300"]);
     assert.equal(reads[0].mintBlocks.get("200"), 5_000);
     assert.equal(reads[0].mintBlocks.get("300"), 6_000);
-    /*- The shared floor lifted to the chain's first mint, and the start
-     *  block handed back unlifted for the checkpoint comparison. */
+    /*-
+     *  The shared floor lifted to the chain's first mint, and the start
+     *  block handed back unlifted for the checkpoint comparison.
+     */
     assert.equal(reads[0].fromBlock, 4_000);
     assert.equal(result.fromBlock, 1_000);
     assert.equal(result.maxBlock, 4_001);
@@ -121,9 +123,11 @@ describe("prepareChainRead", () => {
   });
 
   it("keeps the live NFT it was prepared for", async () => {
-    /*- The read has to agree with its own signature: a rebalance that
+    /*-
+     *  The read has to agree with its own signature: a rebalance that
      *  moves the live NFT after preparation is detected by comparing
-     *  signatures, not absorbed silently into the read. */
+     *  signatures, not absorbed silently into the read.
+     */
     const { mod, reads } = load();
     const pos = position();
     const prepared = mod.prepareChainRead({
@@ -187,8 +191,10 @@ describe("chainSignature", () => {
   });
 
   it("changes when the live NFT changes within the same chain", () => {
-    /*- A re-opened NFT is already in the chain, so the id set alone
-     *  would not show the change. */
+    /*-
+     *  A re-opened NFT is already in the chain, so the id set alone
+     *  would not show the change.
+     */
     assert.notEqual(base(), mod.chainSignature({ tokenId: "200" }, chain()));
   });
 

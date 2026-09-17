@@ -9,9 +9,8 @@
  * Fees Compounded (`position-details-compound.js`) and the lifetime HODL
  * behind Lifetime IL/G (`position-details-lifetime-scan.js`).  Both need
  * `IncreaseLiquidity`, `Collect` and `DecreaseLiquidity` for every NFT in
- * the chain, each from its own mint to the chain head.  Each used to walk
- * the chain itself, one NFT at a time, so a request that needed both read
- * the chain twice over — and on a long chain one read alone took hours.
+ * the chain, each from its own mint to the chain head.  So both take them
+ * from one read.
  *
  * The reader fetches the whole chain in one batched pass
  * (`nft-events-batch.js`), at most once per request, and only when a
@@ -19,11 +18,12 @@
  * nothing.  A failed read is not kept, so the next consumer tries again
  * rather than inheriting the failure.
  *
- * Epoch reconstruction earlier in the same request can use it too.  It runs
- * inside the pool scan, ahead of the other two, so the request keeps one
- * reader from the first moment anything needs it (`requestChainReader`),
- * and reconstruction takes its Collect/DecreaseLiquidity histories from it
- * whenever the other two are going to read the chain anyway.
+ * Epoch reconstruction in the same request can use the read too.
+ * Reconstruction runs inside the pool scan, ahead of the other two.  So
+ * the request keeps one reader from the first moment anything needs it
+ * (`requestChainReader`).  Reconstruction takes its
+ * Collect/DecreaseLiquidity histories from that reader whenever the other
+ * two are going to read the chain anyway.
  */
 
 "use strict";
@@ -48,24 +48,28 @@ const { collectTokenIds } = require("./bot-recorder-scan-helpers");
  *   and a scan from further back is slower, not wrong.
  */
 async function poolCreationFloor(poolAddress) {
-  if (!poolAddress) return 0;
+  if (poolAddress === undefined || poolAddress === null || poolAddress === "")
+    return 0;
+  const provider = sendTx.getManagedReadProvider();
   return getPoolCreationBlockCached({
-    provider: sendTx.getManagedReadProvider(),
+    provider,
     factoryAddress: config.FACTORY,
     poolAddress,
   });
 }
 
-/*- The one read.  Each NFT is floored at its own mint block; the
- *  chain's oldest, whose mint no rebalance event names, at the chain's
- *  first mint (`chainScanFloor`); the pool's creation block lies beneath
- *  both. */
+/**
+ * The one read.  Each NFT is floored at its own mint block.  The chain's
+ * oldest NFT, whose mint no rebalance event names, is floored at the
+ * chain's first mint (`chainScanFloor`).  The pool's creation block lies
+ * beneath both.
+ */
 async function _readChain(position, events, poolAddress) {
   const creationBlock = await poolCreationFloor(poolAddress);
-  return scanChainNftEvents(collectTokenIds(position, events), {
-    mintBlocks: mintBlocksByTokenId(events),
-    sharedFloor: chainScanFloor(events, creationBlock),
-  });
+  const ids = collectTokenIds(position, events);
+  const mintBlocks = mintBlocksByTokenId(events);
+  const sharedFloor = chainScanFloor(events, creationBlock);
+  return scanChainNftEvents(ids, { mintBlocks, sharedFloor });
 }
 
 /**

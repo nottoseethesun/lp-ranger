@@ -16,7 +16,7 @@
 const { ethers } = require("ethers");
 const config = require("../../src/config");
 const { PM_ABI } = require("../../src/pm-abi");
-const { topicForTokenId } = require("../../src/nft-events-batch");
+const { topicForTokenId } = require("../../src/nft-token-topic");
 
 const IFACE = new ethers.Interface(PM_ABI);
 

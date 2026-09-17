@@ -42,11 +42,13 @@ const {
 /** ~5 years of PulseChain blocks (10s block time). */
 const FIVE_YEAR_BLOCKS = 15_800_000;
 
-/*- The two histories a closed NFT's figures come from: the exit value
+/*-
+ *  The two histories a closed NFT's figures come from: the exit value
  *  from its final Collect, and the lifetime fees from every Collect
  *  measured against the principal each DecreaseLiquidity released.
  *  `IncreaseLiquidity` is left out because nothing here reads it, and
- *  each event type is a full pass over the range. */
+ *  each event type is a full pass over the range.
+ */
 const DRAIN_EVENTS = ["Collect", "DecreaseLiquidity"];
 
 /**
@@ -131,12 +133,15 @@ async function scanCollectAndDrain(tokenId, provider, fromBlock = 0) {
       address: config.POSITION_MANAGER,
       parseLogs,
     });
-    return _usableHistory(eventsFor(batch, tokenId));
+    const entry = eventsFor(batch, tokenId);
+    return _usableHistory(entry);
   } catch (err) {
-    /*- A chunk failure propagates out of the batch read and lands here,
+    /*-
+     *  A chunk failure propagates out of the batch read and lands here,
      *  which is what keeps this function's contract: null means "we do
      *  not know".  Best-effort chunking would hand back a short history
-     *  instead, and it would be read as "the event never fired". */
+     *  instead, and it would be read as "the event never fired".
+     */
     log.warn(
       "[history] On-chain Collect/DecreaseLiquidity lookup failed for #%s: %s",
       tokenId,
@@ -179,9 +184,11 @@ async function scanChainCollectAndDrain(tokenIds, events) {
   if (tokenIds.length === 0) return new Map();
   const prov = sendTx.getManagedReadProvider();
   const poolFloor = await resolveScanFromBlock(prov, ethers, tokenIds[0]);
+  const mintBlocks = mintBlocksByTokenId(events);
+  const sharedFloor = chainScanFloor(events, poolFloor);
   const batch = await scanChainNftEvents(tokenIds, {
-    mintBlocks: mintBlocksByTokenId(events),
-    sharedFloor: chainScanFloor(events, poolFloor),
+    mintBlocks,
+    sharedFloor,
     eventNames: DRAIN_EVENTS,
   });
   return collectAndDrainOf(batch, batch.keys());

@@ -120,8 +120,10 @@ describe("the deposit total is restored on start", () => {
   });
 
   it("restores a false fallback flag as false, not as absent", () => {
-    /*- The flag is a boolean; `false` is a value, and dropping it would
-     *  leave the field undefined rather than stating the price source. */
+    /*-
+     *  The flag is a boolean; `false` is a value, and dropping it would
+     *  leave the field undefined rather than stating the price source.
+     */
     const st = createPerPositionBotState({}, { depositUsedFallback: false });
     assert.equal(st.depositUsedFallback, false);
   });
@@ -140,8 +142,10 @@ describe("the deposit total is restored on start", () => {
   });
 
   it("round-trips every persisted key", () => {
-    /*- One list drives both directions, so anything saved comes back.
-     *  Pins that for the whole list, not just the deposit. */
+    /*-
+     *  One list drives both directions, so anything saved comes back.
+     *  Pins that for the whole list, not just the deposit.
+     */
     const saved = {};
     for (const [i, k] of PERSISTED_STATE_KEYS.entries()) saved[k] = `v${i}`;
     const st = createPerPositionBotState({}, saved);
@@ -151,9 +155,11 @@ describe("the deposit total is restored on start", () => {
 
 describe("a restart finds the lifetime figures saved", () => {
   it("sees the deposit on disk once the bot has reported it", () => {
-    /*- The regression itself. Before the save existed, this read
-     *  `hasDepositData: false` forever, so `canResumeIncrementally` could
-     *  never return true and every restart re-read the chain. */
+    /*-
+     *  Without the save this reads `hasDepositData: false` forever, so
+     *  `canResumeIncrementally` can never return true and every restart
+     *  re-reads the chain.
+     */
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
@@ -181,8 +187,10 @@ describe("a restart finds the lifetime figures saved", () => {
       dir,
     );
     const disk = _resolveDiskState(botStateReading(cfg), null);
-    /*- The HODL amounts live in the epoch cache, not the config slot;
-     *  supplied directly here so the test isolates the deposit. */
+    /*-
+     *  The HODL amounts live in the epoch cache, not the config slot;
+     *  supplied directly here so the test isolates the deposit.
+     */
     assert.equal(
       canResumeIncrementally({ ...disk, cachedHodl: { deposits: [] } }),
       true,
@@ -190,8 +198,10 @@ describe("a restart finds the lifetime figures saved", () => {
   });
 
   it("does not while the deposit is missing", () => {
-    /*- Without a deposit total the scan has to run: it is the only thing
-     *  that computes one. */
+    /*-
+     *  Without a deposit total the scan has to run: it is the only thing
+     *  that computes one.
+     */
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
@@ -209,7 +219,7 @@ describe("a restart finds the lifetime figures saved", () => {
   });
 
   it("does not for a zero deposit", () => {
-    /*- A zero total is a failed or empty computation, not a result. */
+    // A zero total is a failed or empty computation, not a result.
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
@@ -226,12 +236,14 @@ describe("a restart finds the lifetime figures saved", () => {
 });
 
 describe("a restart with every figure saved", () => {
-  /*- The whole chain, through the real save, restore and scan: nothing
+  /*-
+   *  The whole chain, through the real save, restore and scan: nothing
    *  is read from the chain, and the position is reported ready.
    *  Readiness is what the dashboard waits on, so that is what this
-   *  checks; a restored total says nothing about whether the flag was
-   *  ever raised, and checking only the total let a restart that stayed
-   *  on "Syncing…" pass. */
+   *  checks. A restored total says nothing about whether the flag was
+   *  ever raised, so checking only the total would pass a restart that
+   *  stays on "Syncing…".
+   */
   let scan;
   before(() => {
     resetState();

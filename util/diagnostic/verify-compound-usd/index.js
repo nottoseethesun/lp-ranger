@@ -193,6 +193,7 @@ const {
   _fetchDexScreener,
 } = require("../../../src/price-fetcher");
 const { parseLogs: _parseLogs } = require("../../../src/nft-event-parse");
+const { topicForTokenId } = require("../../../src/nft-token-topic");
 const { sleep } = require("../_helpers");
 const { findPositionForTokenId, fmtUsd } = require("./analysis");
 const {
@@ -342,7 +343,7 @@ async function readPosition(provider, tokenId) {
  */
 async function scanEvents(provider, tokenId, fromBlock, toBlock) {
   const iface = new ethers.Interface(PM_ABI);
-  const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
+  const tidHex = topicForTokenId(tokenId);
   const zeroTopic = "0x" + "0".repeat(64);
   const topics = {
     il: [iface.getEvent("IncreaseLiquidity").topicHash, tidHex],

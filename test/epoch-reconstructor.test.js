@@ -7,8 +7,6 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { format } = require("node:util");
-const { _setSinkForTests } = require("../src/log");
 const {
   _buildClosedEpoch,
   isEpochHistoryComplete,
@@ -18,25 +16,7 @@ const {
   CHAIN_HISTORY_MODULE,
   chainHistoryStub,
 } = require("./helpers/chain-history-stub");
-
-/**
- * Capture `log.warn` output as formatted strings.
- *
- * Through the module's own test sink rather than by replacing `console`
- * — see [[feedback_no_global_monkey_patch]].  The sink receives the
- * printf format string and its arguments unexpanded, so `format` is
- * what turns "%d of %d" into the line an operator actually reads, which
- * is the thing worth asserting.
- *
- * @returns {{lines: string[], restore: Function}}
- */
-function captureWarnings() {
-  const lines = [];
-  const restore = _setSinkForTests({
-    warn: (...a) => lines.push(format(...a)),
-  });
-  return { lines, restore };
-}
+const { captureWarnings } = require("./helpers/capture-warnings");
 
 describe("_buildClosedEpoch", () => {
   it("returns null when no dates available", () => {

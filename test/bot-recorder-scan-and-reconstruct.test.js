@@ -25,6 +25,7 @@ const { format } = require("node:util");
 const { _setSinkForTests } = require("../src/log");
 const { emptyEvents } = require("../src/nft-events-batch");
 const { collectTokenIds } = require("../src/bot-recorder-scan-helpers");
+const { captureWarnings } = require("./helpers/capture-warnings");
 const {
   state,
   resetState,
@@ -94,9 +95,11 @@ function load(mode) {
     "./epoch-reconstructor": {
       reconstructEpochs: async (o) => {
         run.epochCalls.push(o);
-        /*- Without a shared read, the real reconstructor reads the
+        /*-
+         *  Without a shared read, the real reconstructor reads the
          *  closed NFTs' histories itself: counted, so a pass that reads
-         *  twice shows it. */
+         *  twice shows it.
+         */
         if (mode.epochReads && !o.readChainEvents) run.ownEpochReads += 1;
         if (mode.epochReads && o.readChainEvents) {
           try {
@@ -206,8 +209,10 @@ describe("one scan pass, one chain read", () => {
     assert.equal(typeof run.epochCalls[0].readChainEvents, "function");
     assert.ok(run.epochEvents.has("100"));
     assert.ok(run.epochEvents.has("200"));
-    /*- From each NFT's mint: the pool floor lifted to the chain's first
-     *  mint, not the checkpoint. */
+    /*-
+     *  From each NFT's mint: the pool floor lifted to the chain's first
+     *  mint, not the checkpoint.
+     */
     assert.equal(run.reads[0].fromBlock, 4_000);
   });
 
@@ -227,9 +232,11 @@ describe("one scan pass, one chain read", () => {
   });
 
   it("reads nothing on a restart with everything saved, and reports ready", async () => {
-    /*- The common restart: epochs restored from cache, every lifetime
+    /*-
+     *  The common restart: epochs restored from cache, every lifetime
      *  figure on disk. The pass lowers readiness as it starts, so the
-     *  skipped lifetime scan must raise it again. */
+     *  skipped lifetime scan must raise it again.
+     */
     state.cachedHodl = { poolAddress: "0xPOOL" };
     const botState = makeBotState(SAVED);
     botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
@@ -240,10 +247,31 @@ describe("one scan pass, one chain read", () => {
     assert.equal(botState.lifetimeScanComplete, true);
   });
 
+  it("reads once after a rebalance, from the first mint, and finishes ready", async () => {
+    /*-
+     *  The pass every rebalance queues: figures saved, a full rescan
+     *  flagged, the epochs already closed live. The flag forces the read
+     *  and the deposit recompute, and it is cleared once they succeed.
+     */
+    state.cachedHodl = { poolAddress: "0xPOOL" };
+    const botState = makeBotState(SAVED);
+    botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
+    botState._needsFullRescan = true;
+    const scan = load({ epochReads: false });
+    await pass(scan, position(), botState);
+    assert.equal(run.reads.length + run.ownEpochReads, 1);
+    assert.equal(run.reads[0].fromBlock, 4_000);
+    assert.equal(state.depositCalled, true);
+    assert.equal(botState._needsFullRescan, false);
+    assert.equal(botState.lifetimeScanComplete, true);
+  });
+
   it("shares the read before any P&L tracker, and so any cache key, exists", async () => {
-    /*- A fresh install whose token prices could not be fetched at start
+    /*-
+     *  A fresh install whose token prices could not be fetched at start
      *  has no tracker; epoch reconstruction then does nothing, and the
-     *  lifetime scan still reads the chain, once. */
+     *  lifetime scan still reads the chain, once.
+     */
     const scan = load({ epochReads: false });
     await pass(scan, position(), coldState(), { epochKey: undefined });
     assert.equal(typeof run.epochCalls[0].readChainEvents, "function");
@@ -262,53 +290,56 @@ describe("one scan pass, one chain read", () => {
 
 describe("when the pass does not go to plan", () => {
   it("computes no lifetime figures on a cold start whose event scan failed", async () => {
-    /*- The bot holds no chain yet. Figures computed now would cover the
+    /*-
+     *  The bot holds no chain yet. Figures computed now would cover the
      *  live NFT alone and be saved as settled, and later passes keep
-     *  saved figures. */
+     *  saved figures.
+     */
     const botState = coldState();
     const scan = load({ scanFails: true });
-    const warnings = [];
-    const restore = _setSinkForTests({
-      warn: (...a) => warnings.push(format(...a)),
-    });
+    const cap = captureWarnings();
     try {
       await pass(scan, position(), botState);
     } finally {
-      restore();
+      cap.restore();
     }
     assert.equal(run.reads.length, 0, "the empty chain was read");
     assert.equal(state.classifyCalled, false);
     assert.equal(state.depositCalled, false);
     assert.equal(botState.lifetimeScanComplete, false, "so the rescan retries");
     assert.ok(
-      warnings.some((l) =>
+      cap.lines.some((l) =>
         l.includes("The rebalance history could not be read"),
       ),
-      warnings.join("\n"),
+      cap.lines.join("\n"),
     );
   });
 
   it("still reports ready when the event scan fails with every figure saved", async () => {
-    /*- The saved figures came from a pass that did read the chain, so
-     *  they stay on show. */
+    /*-
+     *  The saved figures came from a pass that did read the chain, so
+     *  they stay on show.
+     */
     state.cachedHodl = { poolAddress: "0xPOOL" };
     const botState = makeBotState(SAVED);
     botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
     const scan = load({ scanFails: true });
-    const restore = _setSinkForTests({ warn: () => {} });
+    const cap = captureWarnings();
     try {
       await pass(scan, position(), botState);
     } finally {
-      restore();
+      cap.restore();
     }
     assert.equal(run.reads.length, 0);
     assert.equal(botState.lifetimeScanComplete, true);
   });
 
   it("reads afresh when a rebalance lands during reconstruction", async () => {
-    /*- A manual rebalance moves the live NFT and flags a full rescan
+    /*-
+     *  A manual rebalance moves the live NFT and flags a full rescan
      *  while reconstruction runs. The prepared read describes the chain
-     *  before it. */
+     *  before it.
+     */
     const pos = position();
     const botState = coldState();
     const scan = load({
@@ -344,9 +375,11 @@ describe("when the pass does not go to plan", () => {
   });
 
   it("costs only the sharing when preparation fails", async () => {
-    /*- The first config read throws — inside the event scan's callback —
+    /*-
+     *  The first config read throws — inside the event scan's callback —
      *  and the second succeeds. The event scan must still complete, and
-     *  both consumers still get their data. */
+     *  both consumers still get their data.
+     */
     let calls = 0;
     const botState = coldState();
     botState._getConfig = () => {
@@ -355,24 +388,21 @@ describe("when the pass does not go to plan", () => {
       return undefined;
     };
     const scan = load({ epochReads: true });
-    const warnings = [];
-    const restore = _setSinkForTests({
-      warn: (...a) => warnings.push(format(...a)),
-    });
+    const cap = captureWarnings();
     let events;
     try {
       events = await pass(scan, position(), botState);
     } finally {
-      restore();
+      cap.restore();
     }
     assert.equal(events.length, 2, "the event scan completed");
     assert.strictEqual(run.epochCalls[0].readChainEvents, undefined);
     assert.equal(run.reads.length, 1, "the lifetime scan read for itself");
     assert.ok(
-      warnings.some((l) =>
+      cap.lines.some((l) =>
         l.includes("Could not prepare the shared chain read"),
       ),
-      warnings.join("\n"),
+      cap.lines.join("\n"),
     );
   });
 });

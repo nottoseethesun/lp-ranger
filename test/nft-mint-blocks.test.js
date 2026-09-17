@@ -111,9 +111,8 @@ describe("nftScanFrom", () => {
     assert.equal(nftScanFrom(MINTS, "300", 1_000), 6_000_000);
   });
 
-  it("lets a resume checkpoint beat an earlier mint block", () => {
-    /*- The incremental path's floor is a checkpoint, not pool creation.
-     *  Using the earlier mint would re-walk what the last scan covered. */
+  it("lets a later shared floor beat an earlier mint block", () => {
+    // The scan reads nothing below the floor, even for an older NFT.
     assert.equal(nftScanFrom(MINTS, "200", 9_000_000), 9_000_000);
   });
 
@@ -158,8 +157,10 @@ describe("chainScanFloor", () => {
   });
 
   it("keeps the pool floor when it is already higher", () => {
-    /*- A resume checkpoint can outrank the first mint; taking the lower
-     *  of the two would re-walk what the last scan covered. */
+    /*-
+     *  A later bound, such as the five-year lookback, can lie above the
+     *  first mint; lowering it would read past that bound.
+     */
     assert.equal(chainScanFloor(withFirstMint(5_000), 9_000), 9_000);
   });
 
@@ -205,7 +206,7 @@ describe("nftScanFromBlock", () => {
     assert.equal(nftScanFromBlock({ mintBlock: 900, sharedFloor: 500 }), 900);
   });
 
-  it("lets a resume checkpoint beat an earlier mint block", () => {
+  it("lets a later shared floor beat an earlier mint block", () => {
     assert.equal(nftScanFromBlock({ mintBlock: 500, sharedFloor: 900 }), 900);
   });
 
@@ -216,8 +217,10 @@ describe("nftScanFromBlock", () => {
   });
 });
 
-/*- That the chain reads really use these floors is pinned where each
+/*-
+ *  That the chain reads really use these floors is pinned where each
  *  read is made: test/bot-recorder-scan-helpers.test.js (the managed
  *  lifetime scan), test/position-details-chain-read.test.js (the
  *  unmanaged details path) and test/position-history-scan-chain.test.js
- *  (epoch reconstruction). */
+ *  (epoch reconstruction).
+ */

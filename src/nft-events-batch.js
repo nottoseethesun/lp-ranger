@@ -3,7 +3,7 @@
 /**
  * @file src/nft-events-batch.js
  * @module nft-events-batch
- *
+ * @description
  * Fetches `IncreaseLiquidity` / `Collect` / `DecreaseLiquidity` history
  * for a WHOLE chain of NFTs in one pass, instead of one pass per NFT.
  * A caller that needs only some of the three names them, and pays only
@@ -23,7 +23,8 @@
  * a JSON-RPC topic slot accepts an array of values matched as OR. One
  * filter can therefore carry the entire chain, collapsing those
  * overlapping passes into a single sweep of their union: three event
- * types over the union range, ~510 requests for the same chain.
+ * types over the union range, in two id groups, about 1,000 requests for
+ * the same chain.
  *
  * The node does the filtering. This is not "fetch more and discard" —
  * the same logs come back, in one response set rather than 133.
@@ -31,7 +32,7 @@
  * ## The contract that makes it safe
  *
  * Batching moves the token identity from the *request* to the
- * *response*: today a result set is implicitly labelled by the id the
+ * *response*: a per-NFT result set is implicitly labelled by the id the
  * caller asked about, whereas here the logs arrive interleaved and are
  * partitioned by `topics[1]`. Two rules keep that sound:
  *
@@ -43,12 +44,12 @@
  * 2. **Each NFT's logs are re-floored to its own mint block.** The
  *    union range starts at the earliest floor in the set, which is
  *    below most NFTs' own floors. Filtering per id afterwards makes the
- *    batched result identical to what the per-NFT scans returned, so
- *    this is an optimisation and not a change in meaning.
+ *    batched result identical to what a per-NFT scan returns, so
+ *    batching changes the cost and not the meaning.
  *
  * The head block is resolved ONCE for the whole batch, so every NFT and
  * every event type covers exactly the same range. The per-NFT path
- * already resolved it once per event type for the same reason.
+ * resolves it once per event type for the same reason.
  */
 
 const config = require("./config");
@@ -56,15 +57,18 @@ const sendTx = require("./send-transaction");
 const { scanChunked } = require("./get-logs-chunked");
 const { nftScanFrom } = require("./nft-mint-blocks");
 const { IFACE, parseLogs } = require("./nft-event-parse");
+const { topicForTokenId } = require("./nft-token-topic");
+const { emojiId } = require("./logger");
 
-/*- Token ids per filter.
+/**
+ * Token ids per filter.
  *
- *  All three shipped PulseChain endpoints accept a 132-value topic
- *  array over a 9,000-block window, but that is an observation about
- *  today's endpoints, not a guarantee in the JSON-RPC spec — an
- *  operator's own node may cap it. Chunking the id list keeps the win
- *  (a chain of any length costs ceil(n/100) passes, not n) while
- *  bounding the blast radius if a node refuses a long array. */
+ * The three shipped PulseChain endpoints accept a 132-value topic array
+ * over a 9,000-block window. The JSON-RPC spec sets no such minimum,
+ * though, and an operator's own node may cap the array. Chunking caps
+ * every request at 100 ids, so a chain of any length reads on any node
+ * that accepts 100, at ceil(n/100) passes rather than n.
+ */
 const ID_BATCH_SIZE = 100;
 
 /** The three events this module fetches, in a fixed order. */
@@ -113,16 +117,6 @@ function eventNamesOf(requested) {
 }
 
 /**
- * A token id as a 32-byte topic word.
- *
- * @param {string|number|bigint} tokenId
- * @returns {string}  0x-prefixed, 64 hex characters.
- */
-function topicForTokenId(tokenId) {
-  return "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
-}
-
-/**
  * Recover the token id a log belongs to.
  *
  * Reads `topics[1]` — the indexed `tokenId` — rather than decoding the
@@ -134,7 +128,8 @@ function topicForTokenId(tokenId) {
  *   second topic (not one of ours).
  */
 function tokenIdOfLog(log) {
-  if (!log || !Array.isArray(log.topics) || log.topics.length < 2) return null;
+  if (log === undefined || log === null) return null;
+  if (!Array.isArray(log.topics) || log.topics.length < 2) return null;
   try {
     return BigInt(log.topics[1]).toString(10);
   } catch {
@@ -142,7 +137,15 @@ function tokenIdOfLog(log) {
   }
 }
 
-/*- Split a list into fixed-size groups. */
+/**
+ * Split a list into fixed-size groups. The last group holds the
+ * remainder, and no group is empty.
+ *
+ * @template T
+ * @param {T[]} ids
+ * @param {number} size  Largest group.
+ * @returns {T[][]}
+ */
 function _chunkIds(ids, size) {
   const out = [];
   for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
@@ -154,14 +157,14 @@ function _chunkIds(ids, size) {
  *
  * Each id keeps its own floor — that is what the batched result is
  * filtered back to — while the single request covers from the lowest of
- * them. `nftScanFrom` owns how a mint block and a shared floor combine
- * (`Math.max`, so a resume checkpoint beats an earlier mint block); see
- * docs/engineering.md § "Per-NFT Scan Windows".
+ * them. `nftScanFrom` owns how a mint block and the shared floor combine
+ * (`Math.max`: the later of the two wins); see docs/engineering.md §
+ * "Per-NFT Scan Windows".
  *
  * @param {string[]} tokenIds
  * @param {Map<string, number>|object} mintBlocks  tokenId -> mint block.
- * @param {number} sharedFloor  Pool creation block, or a resume
- *   checkpoint on an incremental rescan.
+ * @param {number} sharedFloor  Floor beneath every id's own, such as the
+ *   pool's creation block.
  * @returns {{floors: Map<string, number>, unionFrom: number}}
  */
 function scanFloors(tokenIds, mintBlocks, sharedFloor) {
@@ -194,36 +197,56 @@ function emptyEvents(names = EVENT_NAMES) {
   return entry;
 }
 
-/*- Run one chunked scan for a single (event type, id-group) pair. */
-async function _scanGroup(o, name, idsHex) {
+/**
+ * Run one chunked scan for a single (event type, id-group) pair.
+ *
+ * The label names the group's first NFT and how many follow it, so the
+ * progress lines of two reads running at once can be told apart.
+ *
+ * @param {object} o  Scan options shared by every group.
+ * @param {string} name  Event type.
+ * @param {string[]} groupIds  The group's token ids, in decimal.
+ * @returns {Promise<object[]>}  Raw logs.
+ */
+async function _scanGroup(o, name, groupIds) {
+  const topics = groupIds.map(topicForTokenId);
+  const eventTopic = o.iface.getEvent(name).topicHash;
+  const first = groupIds[0];
+  const label = `nft-batch ${name} #${first} ${emojiId(first)} +${groupIds.length - 1}`;
   return scanChunked({
     provider: o.provider,
     fromBlock: o.fromBlock,
     toBlock: o.toBlock,
     chunkSize: o.chunkSize,
-    label: `nft-batch ${name} x${idsHex.length}`,
+    label,
     query: (f, t) =>
       o.provider.getLogs({
         address: o.address,
         fromBlock: f,
         toBlock: t,
-        topics: [o.iface.getEvent(name).topicHash, idsHex],
+        topics: [eventTopic, topics],
       }),
   });
 }
 
-/*- Chain order: block, then position within the block.
+/**
+ * Chain order: block, then position within the block.
  *
- *  Order is load-bearing downstream. `classifyCompounds` reads an NFT's
- *  FIRST `IncreaseLiquidity` as the mint deposit and every later one as
- *  a compound, so a compound sorted ahead of the mint would be skipped
- *  and the mint counted as a compound — both silent, both money.
+ * Callers depend on this order. `classifyCompounds` reads an NFT's FIRST
+ * `IncreaseLiquidity` as the mint deposit and every later one as a
+ * compound. A compound sorted ahead of the mint would be skipped, and
+ * the mint counted as a compound, with nothing logged either way.
  *
- *  Today the transport already delivers this order: `scanChunked` walks
- *  windows in sequence and each id lives in exactly one id-group. The
- *  sort makes that a property of this module rather than an accident of
- *  how its dependencies happen to be written. `Array.prototype.sort` is
- *  stable, so logs lacking an `index` keep their arrival order. */
+ * The transport already delivers this order: `scanChunked` walks windows
+ * in sequence, and each id lives in exactly one id-group. Sorting here
+ * keeps the order a property of this module, whatever its dependencies
+ * do. `Array.prototype.sort` is stable, so logs lacking an `index` keep
+ * their arrival order.
+ *
+ * @param {{blockNumber: number, index?: number}} a
+ * @param {{blockNumber: number, index?: number}} b
+ * @returns {number}  Negative when `a` comes first.
+ */
 function _byChainOrder(a, b) {
   if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
   const ai = typeof a.index === "number" ? a.index : 0;
@@ -231,12 +254,19 @@ function _byChainOrder(a, b) {
   return ai - bi;
 }
 
-/*- Drop logs that fall below the id's OWN floor, then put each id's
- *  logs in chain order.
+/**
+ * Drop logs that fall below the id's OWN floor, then put each id's logs
+ * in chain order.
  *
- *  The single request covers from the lowest floor in the set, which is
- *  below most ids' floors. Re-flooring here is what makes the batched
- *  result identical to the per-NFT scans it replaces. */
+ * The single request covers from the lowest floor in the set, which is
+ * below most ids' floors. Re-flooring here makes the batched result
+ * identical to a per-NFT scan of each id. A log whose id has no floor
+ * was not requested, and is dropped.
+ *
+ * @param {object[]} logs  Raw logs from every id-group.
+ * @param {Map<string, number>} floors  Requested id -> its floor.
+ * @returns {Map<string, object[]>}  Kept logs per id, in chain order.
+ */
 function _keepAtOrAbove(logs, floors) {
   const out = new Map();
   for (const log of logs) {
@@ -257,9 +287,11 @@ function _keepAtOrAbove(logs, floors) {
  * Fetch the three event histories for a whole chain of NFTs at once.
  *
  * @param {object} o
- * @param {string[]} o.tokenIds     Every NFT in the chain. Must be non-empty.
+ * @param {string[]} o.tokenIds     Every NFT in the chain. An empty list
+ *   reads nothing and returns an empty Map.
  * @param {Map|object} o.mintBlocks tokenId -> mint block.
- * @param {number} o.sharedFloor    Pool floor, or resume checkpoint.
+ * @param {number} o.sharedFloor    Floor beneath every id's own, such as
+ *   the pool's creation block.
  * @param {object} o.provider       ethers provider.
  * @param {object} o.iface          ethers Interface carrying the three events.
  * @param {string} o.address        NonfungiblePositionManager address.
@@ -273,20 +305,24 @@ function _keepAtOrAbove(logs, floors) {
  */
 async function fetchChainNftEvents(o) {
   const names = eventNamesOf(o.eventNames);
-  /*- De-duplicated: a repeated id would take a second slot in the
-   *  topic array, and the id-group size is what bounds that array. */
-  const ids = [...new Set((o.tokenIds || []).map(String))];
+  /*-
+   *  De-duplicated: a repeated id would take a second slot in the topic
+   *  array, and the id-group size is what bounds that array.
+   */
+  const ids = [...new Set((o.tokenIds ?? []).map(String))];
   if (ids.length === 0) return new Map();
   const { floors, unionFrom } = scanFloors(ids, o.mintBlocks, o.sharedFloor);
   const head =
     typeof o.toBlock === "number"
       ? o.toBlock
       : await o.provider.getBlockNumber();
-  const groups = _chunkIds(ids.map(topicForTokenId), ID_BATCH_SIZE);
+  const groups = _chunkIds(ids, ID_BATCH_SIZE);
 
-  /*- Result skeleton FIRST, so every requested id has an entry even if
+  /*-
+   *  Result skeleton FIRST, so every requested id has an entry even if
    *  the scans return nothing for it. A missing key would otherwise be
-   *  indistinguishable from an NFT with no history. */
+   *  indistinguishable from an NFT with no history.
+   */
   const byId = new Map();
   for (const id of ids) byId.set(id, emptyEvents(names));
 
@@ -299,10 +335,10 @@ async function fetchChainNftEvents(o) {
     chunkSize: o.chunkSize,
   };
   for (const name of names) {
-    const perGroup = await Promise.all(
-      groups.map((g) => _scanGroup(base, name, g)),
-    );
-    const split = _keepAtOrAbove(perGroup.flat(), floors);
+    const scans = groups.map((g) => _scanGroup(base, name, g));
+    const perGroup = await Promise.all(scans);
+    const logsOfType = perGroup.flat();
+    const split = _keepAtOrAbove(logsOfType, floors);
     for (const [id, logs] of split.entries()) {
       const entry = byId.get(id);
       if (entry === undefined) continue;
@@ -319,8 +355,7 @@ async function fetchChainNftEvents(o) {
  * The first call starts the read, and every later call gets the same
  * promise, so the chain is read once however many consumers ask. A read
  * that fails is not kept: the next call starts a fresh one, so each
- * consumer still gets an attempt of its own, as it did when each read
- * for itself.
+ * consumer still gets an attempt of its own.
  *
  * @template T
  * @param {() => Promise<T>} readOnce  Performs the read.
@@ -376,18 +411,20 @@ function eventsFor(batch, tokenId) {
  * @param {Iterable<string|number>} tokenIds  Every NFT to fetch.
  * @param {object} o
  * @param {Map|object} o.mintBlocks  tokenId -> mint block.
- * @param {number} o.sharedFloor     Pool floor, or resume checkpoint.
+ * @param {number} o.sharedFloor     Floor beneath every id's own, such
+ *   as the pool's creation block.
  * @param {Iterable<string>} [o.eventNames]  Event types to fetch;
  *   defaults to all three.
  * @returns {Promise<Map<string, object>>}  One entry per id.
  */
 function scanChainNftEvents(tokenIds, o) {
+  const provider = sendTx.getManagedReadProvider();
   return fetchChainNftEvents({
     tokenIds: [...tokenIds],
     mintBlocks: o.mintBlocks,
     sharedFloor: o.sharedFloor,
     eventNames: o.eventNames,
-    provider: sendTx.getManagedReadProvider(),
+    provider,
     iface: IFACE,
     address: config.POSITION_MANAGER,
     parseLogs,
@@ -398,7 +435,6 @@ module.exports = {
   ID_BATCH_SIZE,
   EVENT_NAMES,
   eventNamesOf,
-  topicForTokenId,
   tokenIdOfLog,
   scanFloors,
   emptyEvents,

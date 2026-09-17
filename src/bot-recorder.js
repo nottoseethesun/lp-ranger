@@ -38,9 +38,9 @@ const {
   _scanLifetimePoolData,
   lifetimeScanPlan,
   prepareLifetimeRead,
+  scanLogCtx,
 } = require("./bot-recorder-lifetime");
 const { ensureInitialResidualData } = require("./liquidity-pair-details");
-const { emojiId } = require("./logger");
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -345,8 +345,7 @@ async function _scanHistory(
  *
  * Runs inside the pool scan's callback, whose other steps are all kept
  * from breaking the event scan; this one is too. A failure here costs the
- * sharing, not the scan: both reads then happen separately, as they did
- * before.
+ * sharing, not the scan: both reads then happen separately.
  *
  * @param {object} position
  * @param {object} botState
@@ -360,13 +359,13 @@ function _prepareSharedRead(position, botState, evts, epochKey) {
     if (!lifetimeScanPlan(botState, epochKey).needed) return null;
     return prepareLifetimeRead(position, botState, evts, epochKey);
   } catch (err) {
-    const tokenIdStr = String(position.tokenId || "");
+    const ctx = scanLogCtx(position);
     log.warn(
       "[bot] %s/%s NFT #%s %s: Could not prepare the shared chain read, so epoch reconstruction reads on its own: %s",
-      position.token0Symbol || "Token0",
-      position.token1Symbol || "Token1",
-      tokenIdStr,
-      emojiId(tokenIdStr),
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
       err.message,
     );
     return null;
@@ -393,11 +392,13 @@ async function _scanAndReconstruct(
   botState,
   epochKey,
 ) {
-  /*- One chain read for the pass. Epoch reconstruction and the lifetime
-   *  scan both need the chain's history; when the lifetime scan is going
-   *  to read the whole chain anyway, it is prepared here, once the event
-   *  scan has found the chain, and reconstruction takes its events from
-   *  it. See src/bot-recorder-lifetime-read.js. */
+  /*-
+   *  One chain read for the pass. Epoch reconstruction and the lifetime
+   *  scan both need the chain's history. When the lifetime scan is going
+   *  to read the whole chain anyway, its read is prepared here, once the
+   *  event scan has found the chain, and reconstruction takes its events
+   *  from it. See src/bot-recorder-lifetime-read.js.
+   */
   let sharedRead = null;
   const chainFound = await _scanHistory(
     provider,
@@ -578,15 +579,13 @@ function _applyRebalanceResult(deps, result) {
      *  the Syncing badge + blur kick in until then. */
     deps._botState.lifetimeScanComplete = false;
     deps.updateBotState?.({ lifetimeScanComplete: false });
-    const t0Sym = position.token0Symbol || "Token0";
-    const t1Sym = position.token1Symbol || "Token1";
-    const tokenIdStr = String(position.tokenId || "");
+    const ctx = scanLogCtx(position);
     log.info(
       "[bot] %s/%s NFT #%s %s: Rebalance complete, queuing lifetime re-scan",
-      t0Sym,
-      t1Sym,
-      tokenIdStr,
-      emojiId(tokenIdStr),
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
     );
     _updateHodlBaseline(deps._botState, result, mintNow);
   }

@@ -34,14 +34,16 @@ const path = require("node:path");
 
 const SRC = path.join(__dirname, "..", "src");
 
-/*- Named calls that scan NFT event history — one NFT at a time, or a
+/*-
+ *  Named calls that scan NFT event history — one NFT at a time, or a
  *  whole chain at once.
  *
  *  The batched pair is here for the same reason as the rest. A caller
  *  of `scanChainNftEvents` supplies the mint blocks the batch floors
  *  each NFT at; hand it an empty map and every NFT silently falls back
- *  to the pool's creation block — the exact waste this guard exists to
- *  catch, now reached through a new name. */
+ *  to the pool's creation block — the waste this guard exists to catch,
+ *  reached through another name.
+ */
 const SCAN_CALLS =
   /\b(scanNftEvents|detectCompoundsOnChain|scanCollectAndDrain|scanChainNftEvents|fetchChainNftEvents)\s*\(/;
 
@@ -140,23 +142,27 @@ describe("per-NFT scan floors", () => {
 });
 
 describe("the reads that cover a rebalance chain", () => {
-  /*- The shape this guard is about: one read for a whole chain of NFTs.
+  /*-
+   *  The shape this guard is about: one read for a whole chain of NFTs.
    *  The batch floors each NFT at the mint block its caller hands it, so
    *  every such caller must pass the chain's mint blocks — without them
-   *  every NFT silently falls back to the shared floor. */
+   *  every NFT silently falls back to the shared floor.
+   */
   const CHAIN_READS = [
     "bot-recorder-scan-helpers.js",
     "position-details-chain-read.js",
     "position-history-scan-helpers.js",
   ];
 
-  /*- The batch call, with its arguments, naming the mint blocks — and
-   *  not as an empty map, which floors nothing. */
+  /*-
+   *  The batch call, with its arguments, naming the mint blocks — and
+   *  not as an empty map, which floors nothing.
+   */
   const PASSES_MINT_BLOCKS =
     /scanChainNftEvents\([^;]*\bmintBlocks\b(?!:\s*new Map)/;
 
   it("recognises a batch call that passes the mint blocks", () => {
-    /*- Guards the guard, in both argument styles the code uses. */
+    // Guards the guard, in both argument styles the code uses.
     assert.match(
       "scanChainNftEvents(ids, {\n  mintBlocks,\n  sharedFloor,\n});",
       PASSES_MINT_BLOCKS,

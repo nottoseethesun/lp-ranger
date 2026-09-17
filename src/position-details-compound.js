@@ -104,8 +104,10 @@ async function _scanCompounds(
     let currentGasUsd = 0;
     const curId = String(position.tokenId);
     for (const tid of ids) {
-      /*- `eventsFor` throws for an NFT the read did not cover, rather
-       *  than answering "no compounds" for it. */
+      /*-
+       *  `eventsFor` throws for an NFT the read did not cover, rather
+       *  than answering "no compounds" for it.
+       */
       const nftEvents = eventsFor(batch, tid);
       const r = await _classify(nftEvents, { ...opts, tokenId: tid });
       total += r.totalCompoundedUsd;
@@ -188,6 +190,20 @@ async function _detectCurrentNftValues(
 }
 
 /**
+ * The Fees Compounded total saved for the position, or null when none
+ * is. A zero total counts as none: it records nothing a read would not
+ * reproduce.
+ *
+ * @param {object} diskConfig
+ * @param {string} posKey
+ * @returns {number|null}
+ */
+function _savedCompoundTotal(diskConfig, posKey) {
+  const saved = diskConfig.positions[posKey]?.totalCompoundedUsd;
+  return typeof saved === "number" && saved > 0 ? saved : null;
+}
+
+/**
  * Whether this request takes Fees Compounded from the whole chain rather
  * than from disk: no total is saved for the position, and there is a chain
  * to read.
@@ -202,20 +218,29 @@ async function _detectCurrentNftValues(
  * @returns {boolean}
  */
 function compoundsReadChain(diskConfig, posKey, events) {
-  const posConfig = diskConfig.positions[posKey] || {};
-  return !posConfig.totalCompoundedUsd && events.length > 0;
+  return _savedCompoundTotal(diskConfig, posKey) === null && events.length > 0;
 }
 
-/*- Resolve compounded USD from disk cache or chain scan.  Returns
- *  `{ total, current, currentGasUsd }`: total is the lifetime compounded
- *  across the rebalance chain (Lifetime panel); current is the current
- *  NFT's standalone-compound USD; currentGasUsd is the current NFT's
- *  total gas (mint + standalone compounds). The Current panel reads
- *  the latter two — they would otherwise render as dash on unmanaged
- *  positions even when the values are material.
+/**
+ * Resolve compounded USD from the saved total or a chain read.
  *
- *  `readChainEvents` is the request's shared chain reader; it is read
- *  only on the full-chain path. */
+ * `total` is the lifetime compounded across the rebalance chain (Lifetime
+ * panel). `current` is the current NFT's standalone-compound USD, and
+ * `currentGasUsd` is the current NFT's total gas (mint + standalone
+ * compounds). The Current panel reads those two; without them it would
+ * show a dash on unmanaged positions even when the values are material.
+ *
+ * @param {object} position
+ * @param {object[]} events  Rebalance events.
+ * @param {object} body  Request body with `walletAddress`.
+ * @param {object} ps  Pool state.
+ * @param {{price0: number, price1: number}} prices
+ * @param {object} diskConfig
+ * @param {string} posKey
+ * @param {() => Promise<Map<string, object>>} readChainEvents  The
+ *   request's shared chain reader, read only on the full-chain path.
+ * @returns {Promise<{total: number, current: number, currentGasUsd: number}>}
+ */
 async function _resolveCompounded(
   position,
   events,
@@ -238,19 +263,16 @@ async function _resolveCompounded(
       readChainEvents,
     );
   }
-  const posConfig = diskConfig.positions[posKey] || {};
-  /*- No saved total and no rebalance events: every figure is zero, and
-   *  nothing is read. */
-  if (!posConfig.totalCompoundedUsd) {
-    return { total: 0, current: 0, currentGasUsd: 0 };
-  }
+  const saved = _savedCompoundTotal(diskConfig, posKey);
+  // No saved total and no rebalance events: all zero, and nothing read.
+  if (saved === null) return { total: 0, current: 0, currentGasUsd: 0 };
   /*- Cache hit on the lifetime total — still need a one-NFT scan for
    *  the current values, which are not cached on disk.  One NFT
    *  rather than the whole chain, and bounded to that NFT's own life
    *  by the events passed through. */
   const cv = await _detectCurrentNftValues(position, body, ps, prices, events);
   return {
-    total: posConfig.totalCompoundedUsd,
+    total: saved,
     current: cv.compoundUsd,
     currentGasUsd: cv.gasUsd,
   };

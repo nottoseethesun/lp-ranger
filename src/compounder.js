@@ -22,6 +22,7 @@ const sendTx = require("./send-transaction");
 const { swapForCompound } = require("./compounder-swap");
 const { scanChunked } = require("./get-logs-chunked");
 const { IFACE, parseLogs } = require("./nft-event-parse");
+const { topicForTokenId } = require("./nft-token-topic");
 
 /*- Thin wrapper around shared `logCtx` in `src/logger.js` so the 6-field
  *  compound/rebalance/swap entry-point format stays in lockstep across
@@ -43,9 +44,6 @@ const {
   _deadline,
   _ensureAllowance,
 } = require("./rebalancer-pools");
-
-/*- Cached at module load: parsing PM logs is stateless, so a single Interface
-    instance can serve every call in scanNftEvents/classifyCompounds. */
 
 /**
  * Collect unclaimed fees from a position to the wallet.
@@ -381,22 +379,6 @@ async function executeCompound(signer, ethersLib, opts) {
 }
 
 /**
- * Detect historical compound events for a given NFT by querying on-chain
- * IncreaseLiquidity, Collect, and DecreaseLiquidity events.  First
- * IncreaseLiquidity = mint deposit (skipped); subsequent ones are compound
- * candidates.  An IncreaseLiquidity that follows a DecreaseLiquidity within
- * 50k blocks is a rebalance (drain → re-deposit), not a compound, and is
- * excluded.  Compound amounts are capped per-token by total Collect amounts
- * (fees can't exceed collections).
- * Uses THREE getLogs calls (IL + Collect + DL), run in parallel.
- *
- * @param {string} tokenId
- * @param {object} [opts]  { decimals0, decimals1, price0, price1 }
- * @returns {Promise<{compounds: object[], totalCompoundedUsd: number}>}
- */
-/** Parse event logs into structured objects. */
-
-/**
  * Filter IncreaseLiquidity candidates: remove any that follow a
  * DecreaseLiquidity (drain) within a block window. A drain followed by
  * re-deposit is a rebalance, not a compound.
@@ -472,12 +454,14 @@ async function _fetchCompoundGas(prov, compoundEvents) {
  */
 async function scanNftEvents(tokenId, scanOpts = {}) {
   const prov = sendTx.getManagedReadProvider();
-  const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
+  const tidHex = topicForTokenId(tokenId);
   const addr = config.POSITION_MANAGER;
   const from = scanOpts.fromBlock ?? 0;
-  /*- To the chain head unless the caller bounds it, and no caller does:
+  /*-
+   *  To the chain head unless the caller bounds it, and no caller does:
    *  an NFT that looks retired can still be funded and drain later, so
-   *  no sound upper bound exists — see `src/nft-mint-blocks.js`. */
+   *  no sound upper bound exists — see `src/nft-mint-blocks.js`.
+   */
   const to = scanOpts.toBlock ?? "latest";
   /*- Chunked, and resolved to a concrete head once per event type
    *  rather than per window, so all three cover the same range.
@@ -512,14 +496,6 @@ async function scanNftEvents(tokenId, scanOpts = {}) {
   };
 }
 
-/**
- * Classify compound events from pre-fetched NFT events.
- * First IL = mint (skipped); subsequent non-rebalance ILs = compounds,
- * capped per-token by total Collect amounts.
- * @param {{ ilEvents, collectEvents, dlEvents, ilLogsCount }} nftEvents
- * @param {object} opts  { decimals0, decimals1, price0, price1, token0Symbol, token1Symbol, wallet, tokenId }
- * @returns {Promise<{compounds: object[], totalCompoundedUsd: number, totalGasWei: string}>}
- */
 /** Sum amounts across an event list, optionally filtering by liquidity > 0. */
 function _sumAmounts(events, requireLiquidity) {
   let s0 = 0n,
@@ -625,6 +601,23 @@ async function _fetchMintGasWei(prov, mintTxHash) {
   }
 }
 
+/**
+ * Classify one NFT's compounds from its pre-fetched events.
+ *
+ * The events must be in chain order: the first IncreaseLiquidity is the
+ * mint deposit and is skipped. Each later one is a standalone compound
+ * unless it follows a drain within `_DRAIN_WINDOW` blocks, which makes it
+ * a rebalance re-deposit. `totalCompoundedUsd` is the NFT's lifetime fees
+ * (`lifetimeFeeAmounts`) at current prices, so it counts fees re-deposited
+ * by a rebalance as well as standalone compounds.
+ *
+ * @param {{ilEvents: object[], collectEvents: object[],
+ *   dlEvents: object[], ilLogsCount: number}} nftEvents
+ * @param {object} [opts]  { decimals0, decimals1, price0, price1,
+ *   token0Symbol, token1Symbol, wallet, tokenId, positionManagerAddress }
+ * @returns {Promise<{compounds: object[], totalCompoundedUsd: number,
+ *   totalGasWei: string, totalNftGasWei: string}>}
+ */
 async function classifyCompounds(nftEvents, opts = {}) {
   const prov = sendTx.getManagedReadProvider();
   const { ilEvents, collectEvents, dlEvents, ilLogsCount } = nftEvents;
@@ -685,8 +678,17 @@ async function classifyCompounds(nftEvents, opts = {}) {
 }
 
 /**
- * Detect historical compounds for a single NFT (backward-compat wrapper).
- * Fetches events via scanNftEvents, then classifies via classifyCompounds.
+ * Detect historical compounds for a single NFT.
+ *
+ * Reads the NFT's IncreaseLiquidity, Collect and DecreaseLiquidity
+ * events (`scanNftEvents`, three chunked scans run in parallel), then
+ * classifies them (`classifyCompounds`).
+ *
+ * @param {string} tokenId
+ * @param {object} [opts]  `classifyCompounds` options, plus `fromBlock`
+ *   and `toBlock` to bound the read.
+ * @returns {Promise<{compounds: object[], totalCompoundedUsd: number,
+ *   totalGasWei: string, totalNftGasWei: string}>}
  */
 async function detectCompoundsOnChain(tokenId, opts = {}) {
   /*- Pass the caller's lower bound through.  Calling scanNftEvents with

@@ -40,7 +40,8 @@ const {
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
 
-/*- Bot-state fields saved to the position's config slot and read back on
+/*-
+ *  Bot-state fields saved to the position's config slot and read back on
  *  the next start — ONE list, used in both directions.
  *
  *  Invariant: a field the save path writes must be one the restore path
@@ -48,16 +49,17 @@ const _positionBotStates = new Map();
  *  make it a matter of remembering to edit both.
  *
  *  The lifetime deposit and its fallback flag belong here because of the
- *  resume gate. `_scanLifetimePoolData` may start from its saved
- *  checkpoint only when the HODL amounts, the compound total AND the
+ *  gate on the lifetime scan's chain read. `_scanLifetimePoolData` skips
+ *  that read only when the HODL amounts, the compound total AND the
  *  deposit total are all on disk (`canResumeIncrementally`). A deposit
- *  that is never written keeps that gate shut, and every restart then
- *  re-walks the whole rebalance chain from the pool's creation block.
+ *  that is never written keeps the read on, and every restart then reads
+ *  the whole rebalance chain again.
  *
- *  Both directions matter. A resumed scan skips the deposit recompute, so
- *  the total must come back into memory from disk: readiness is
+ *  Both directions matter. A skipped scan does not recompute the deposit,
+ *  so the total must come back into memory from disk: readiness is
  *  `totalLifetimeDepositUsd > 0`, and without the restore the Syncing
- *  badge would never clear. */
+ *  badge would never clear.
+ */
 const PERSISTED_STATE_KEYS = [
   "hodlBaseline",
   "residuals",

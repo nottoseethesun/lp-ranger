@@ -27,6 +27,7 @@ const config = require("./config");
 const sendTx = require("./send-transaction");
 const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
+const { topicForTokenId } = require("./nft-token-topic");
 const {
   getPoolCreationBlockCached,
   resolvePoolAddressForToken,
@@ -135,7 +136,7 @@ async function supplementMintFromChain(result, tokenId) {
             _IFACE.getEvent("Transfer").topicHash,
             "0x" + "0".repeat(64),
             null,
-            "0x" + BigInt(tokenId).toString(16).padStart(64, "0"),
+            topicForTokenId(tokenId),
           ],
         }),
     });

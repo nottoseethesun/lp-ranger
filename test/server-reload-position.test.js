@@ -18,9 +18,7 @@ const {
   createReloadPositionHandler,
   _resetBotState,
 } = require("../src/server-reload-position");
-const {
-  CHAIN_DERIVED_POSITION_KEYS: _ON_CHAIN_DERIVED_KEYS,
-} = require("../src/bot-config-v2");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-v2");
 
 /*- Every test that hits `loadConfig`/`saveConfig` (bot-config-v2) needs
  *  the config file to live in a tmp dir so real user state is never
@@ -163,7 +161,7 @@ describe("POST /api/position/reload — in-progress guard", () => {
 
 // ── Clear-list invariant ────────────────────────────────────────────
 
-describe("_ON_CHAIN_DERIVED_KEYS", () => {
+describe("CHAIN_DERIVED_POSITION_KEYS", () => {
   it("covers every on-chain-derived key documented in engineering.md", () => {
     /*- The clear-list is the invariant the reload flow depends on:
      *  every value that could survive a reload and re-corrupt the
@@ -178,11 +176,16 @@ describe("_ON_CHAIN_DERIVED_KEYS", () => {
       "hodlBaseline",
       "lifetimeHodlAmounts",
       "totalLifetimeDepositUsd",
-      /*- Travels with the deposit total. Left behind, it would mislabel
-       *  the freshly rebuilt deposit as fallback-priced. */
+      /*-
+       *  Travels with the deposit total. Left behind, it would mislabel
+       *  the freshly rebuilt deposit as fallback-priced.
+       */
       "depositUsedFallback",
     ];
-    assert.deepStrictEqual([..._ON_CHAIN_DERIVED_KEYS].sort(), expected.sort());
+    assert.deepStrictEqual(
+      [...CHAIN_DERIVED_POSITION_KEYS].sort(),
+      expected.sort(),
+    );
   });
 });
 

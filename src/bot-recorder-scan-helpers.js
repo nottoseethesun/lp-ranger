@@ -2,8 +2,9 @@
  * @file src/bot-recorder-scan-helpers.js
  * @module bot-recorder-scan-helpers
  * @description
- * Small extracted helpers for `bot-recorder._scanLifetimePoolData` — kept in
- * a separate file so `bot-recorder.js` stays under the 500-line cap.
+ * Helpers for the lifetime scan (`_scanLifetimePoolData` in
+ * `bot-recorder-lifetime.js`): the token ids in a rebalance chain, and
+ * the batched read of their event histories.
  */
 
 "use strict";
@@ -37,10 +38,10 @@ function collectTokenIds(position, rebalanceEvents) {
  * - **The NFT is retired.** The live one keeps emitting, and the chain
  *   head advances between a failed attempt and the retry 30 minutes
  *   later, so a buffered read of it would be short by that window.
- * - **The floor matches.** A buffered read taken from a different
- *   `fromBlock` covers a different span — wider double-counts into the
- *   aggregates, narrower drops events — and the floor moves with the
- *   resume checkpoint and with `fullRescan`.
+ * - **The floor matches.** A buffered read taken from a different floor
+ *   covers a different span. Floors can differ between attempts: a
+ *   failed pool-creation lookup answers 0, and the retry can find the
+ *   real block.
  *
  * @param {string[]} idList
  * @param {Map<string, {from: number, ev: object}>|null} buffer
@@ -61,7 +62,7 @@ function partitionByBuffer(idList, buffer, floorOf, liveId) {
   return { reusedEv, toFetch };
 }
 
-/*- Highest event block in one NFT's read, or `floor` if it has none. */
+/** Highest event block in one NFT's read, or `floor` if it has none. */
 function _maxEventBlock(ev, floor) {
   let max = floor;
   for (const e of [...ev.ilEvents, ...ev.collectEvents, ...ev.dlEvents]) {
@@ -80,15 +81,16 @@ function _maxEventBlock(ev, floor) {
  * Every NFT's window runs from its own mint block to the chain head, so
  * per-NFT passes re-read the same blocks once for each NFT alive in them
  * — on a 132-rebalance chain, tens of thousands of paced requests and
- * hours of wall clock. One filter OR-matching every token id covers the
- * union in a few hundred. The batch re-floors each NFT's logs to its own
- * window afterwards, so what each NFT receives is unchanged.
+ * hours of wall clock. Filters that OR-match up to 100 token ids each
+ * cover the union in about a thousand. The batch re-floors each NFT's
+ * logs to its own window afterwards, so what each NFT receives is
+ * unchanged.
  *
- * **Each NFT is still floored at its own mint block**, both inside the
+ * **Each NFT is floored at its own mint block**, both inside the
  * batch and in the resume check below — both through `nftScanFrom`, so
  * the two cannot disagree. An NFT cannot emit these events before it
- * exists. `nftScanFrom` owns how the two floors combine, including the
- * resume case; see `src/nft-mint-blocks.js`.
+ * exists. `nftScanFrom` owns how the two floors combine; see
+ * `src/nft-mint-blocks.js`.
  *
  * Every NFT scans to the chain head.  There is no sound upper bound:
  * one would have to come from the app's inferred succession, and that
@@ -100,7 +102,7 @@ function _maxEventBlock(ev, floor) {
  *
  * **The batch succeeds or fails as a unit**, so a failed read buffers
  * nothing and the retry re-reads every NFT not already buffered. That is
- * affordable because the whole chain now costs minutes, and because the
+ * affordable because the whole chain costs minutes, and because the
  * managed read provider already retries transient failures — timeouts,
  * 5xx, socket resets, rate limiting — beneath this call, so a batch only
  * fails outright on an error a retry would not fix. The buffer still
@@ -108,8 +110,8 @@ function _maxEventBlock(ev, floor) {
  * lifetime scan throws: the retry then re-reads only the live NFT.
  *
  * @param {Set<string>|string[]} ids
- * @param {number} fromBlock  Shared floor: pool creation, or a resume
- *   checkpoint.
+ * @param {number} fromBlock  Shared floor: the pool's creation block,
+ *   lifted to the chain's first mint.
  * @param {Map<string, number>} [mintBlocks]  tokenId → mint block, from
  *   `nft-mint-blocks.mintBlocksByTokenId`.
  * @param {object} [opts]
@@ -139,9 +141,11 @@ async function fetchAllNftEvents(ids, fromBlock, mintBlocks, opts = {}) {
     liveId,
   );
 
-  /*- One read for everything the buffer could not answer. Hoisted out
-   *  of the loop below so the loop only assembles: a throw here leaves
-   *  the buffer exactly as it was. */
+  /*-
+   *  One read for everything the buffer could not answer. It runs before
+   *  the loop below, so the loop only assembles: a throw here leaves the
+   *  buffer exactly as it was.
+   */
   const fetched =
     toFetch.length > 0
       ? await scanChainNftEvents(toFetch, {
@@ -153,13 +157,16 @@ async function fetchAllNftEvents(ids, fromBlock, mintBlocks, opts = {}) {
   const allNftEvents = new Map();
   let maxBlock = fromBlock;
   for (const tid of idList) {
-    /*- `eventsFor` throws for an id the batch was not asked about, so an
+    /*-
+     *  `eventsFor` throws for an id the batch was not asked about, so an
      *  id missing here is a loud sequencing error rather than an NFT
-     *  quietly reported as having no history. */
+     *  quietly reported as having no history.
+     */
     const ev = reusedEv.has(tid) ? reusedEv.get(tid) : eventsFor(fetched, tid);
     allNftEvents.set(tid, ev);
-    /*- Stored only after the read resolved, so a failed batch leaves
-     *  the buffer untouched and the next attempt fetches again.
+    /*-
+     *  Stored only after the read resolved, so a failed batch leaves the
+     *  buffer untouched and the next attempt fetches again.
      *
      *  The live NFT is never stored, not merely never reused. It retires
      *  at the next rebalance, and from that moment it is no longer the
@@ -167,20 +174,23 @@ async function fetchAllNftEvents(ids, fromBlock, mintBlocks, opts = {}) {
      *  NFT was still open, so it predates the drain that retired it.
      *  Reusing it would drop that NFT's closing Collect and
      *  DecreaseLiquidity and understate its lifetime fees. Only inert
-     *  NFTs belong here. */
+     *  NFTs belong here.
+     */
     if (buffer !== null && tid !== liveId)
       buffer.set(tid, { from: floorOf.get(tid), ev });
     maxBlock = _maxEventBlock(ev, maxBlock);
   }
   const reused = reusedEv.size;
-  /*- One line after the fact, not one per NFT: on a long chain the
+  /*-
+   *  One line after the fact, not one per NFT: on a long chain the
    *  per-NFT form would bury the scan's own progress output.
    *
    *  Silent when nothing was reused, so its presence means the resume
    *  actually did something. The batched read logs its progress per
    *  event type across the whole id list, not per NFT, so nothing else
    *  in the log says which NFTs were skipped — this line is the only
-   *  record that the buffer answered any of them. */
+   *  record that the buffer answered any of them.
+   */
   if (reused > 0)
     log.info(
       "[bot] Lifetime scan resumed: %d of %d NFT read(s) taken from the buffer, %d re-fetched",

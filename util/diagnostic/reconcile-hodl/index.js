@@ -94,6 +94,7 @@ process.chdir(path.resolve(__dirname, "..", ".."));
 const { ethers } = require("ethers");
 const config = require("../../../src/config");
 const { PM_ABI } = require("../../../src/pm-abi");
+const { topicForTokenId } = require("../../../src/nft-token-topic");
 const { sleep, addrTopic } = require("../_helpers");
 const render = require("./render");
 
@@ -232,7 +233,7 @@ async function filterByPool(provider, tokenIds, target) {
  */
 async function sumEvents(provider, tokenId) {
   const iface = new ethers.Interface(PM_ABI);
-  const tidHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
+  const tidHex = topicForTokenId(tokenId);
   const ilTopic = iface.getEvent("IncreaseLiquidity").topicHash;
   const dlTopic = iface.getEvent("DecreaseLiquidity").topicHash;
   const cTopic = iface.getEvent("Collect").topicHash;

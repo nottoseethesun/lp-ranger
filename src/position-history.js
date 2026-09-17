@@ -411,7 +411,7 @@ async function _supplementAmountsFromChain(result, tokenId, collectAndDrain) {
     ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
     : 0n;
   if (needExit || needFees) {
-    /*- One read serves both consumers below — see scanCollectAndDrain. */
+    // One read serves both consumers below — see scanCollectAndDrain.
     const scan = await _readCollectAndDrain(
       result,
       tokenId,

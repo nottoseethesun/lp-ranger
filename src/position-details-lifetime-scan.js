@@ -61,20 +61,25 @@ async function scanLifetimeHodl(
   readChainEvents,
 ) {
   const batch = await readChainEvents();
-  /*- Looked up per NFT rather than handed over whole: `eventsFor` throws
+  /*-
+   *  Looked up per NFT rather than handed over whole: `eventsFor` throws
    *  for an NFT the read did not cover, where the accumulator would
-   *  skip a missing one as "no deposits" and understate the HODL. */
+   *  skip a missing one as "no deposits" and understate the HODL.
+   */
   const allNftEvents = new Map();
-  for (const tid of collectTokenIds(position, events)) {
-    allNftEvents.set(tid, eventsFor(batch, tid));
+  const ids = collectTokenIds(position, events);
+  for (const tid of ids) {
+    const nftEvents = eventsFor(batch, tid);
+    allNftEvents.set(tid, nftEvents);
   }
   const cachedFresh = poolCacheKey
     ? getCachedFreshDeposits(poolCacheKey)
     : null;
+  const provider = sendTx.getManagedReadProvider();
   const hodl = await computeLifetimeHodl(allNftEvents, {
     rebalanceEvents: events,
     position,
-    provider: sendTx.getManagedReadProvider(),
+    provider,
     ethersLib: ethers,
     walletAddress: body.walletAddress,
     excludeFromAddrs: [config.POSITION_MANAGER, poolAddress],

@@ -825,7 +825,7 @@ falling back to `bot-config-defaults.json`):
 | `pricePauseExceptionPollWindowMultiple` | `10` | Multiplier on `CHECK_INTERVAL_SEC`. Effective fetch cadence = `CHECK_INTERVAL_SEC × multiplier` seconds. Default 10 → 50 min at the default 300 s poll. Higher = lighter load, slower band detection. Positive integer ≥ 1. |
 
 The threshold (±2.5%) and cooldown (30 min) are code-only constants in
-`src/balanced-notifier.js` (`BALANCED_THRESHOLD`, `BALANCED_COOLDOWN_MS`)
+`src/telegram-notifications/balanced-notifier.js` (`BALANCED_THRESHOLD`, `BALANCED_COOLDOWN_MS`)
 — change in code if needed.
 
 **Notification payload.** Header lines list the blockchain
@@ -1055,11 +1055,10 @@ Two rules within that module decide correctness:
   reads the short result as "the event never fired". Erring wide costs
   only time.
 - **`nftScanFrom` combines with `Math.max`, not by replacement.** The
-  shared floor is the pool's creation block on a first run and a resume
-  checkpoint on an incremental rescan. Taking the maximum satisfies
-  both: a mint block later than the pool floor tightens it, and a
-  checkpoint later than the mint block keeps the rescan off ground the
-  previous scan already covered.
+  shared floor is the pool's floor: its creation block, or a later
+  bound such as the chain's first mint. An NFT has no events before its
+  own mint, and the scan reads nothing before the floor. So the later of
+  the two is the one to use.
 - **The chain's oldest NFT has no mint block in the events**, because it
   appears only as an `oldTokenId`. `chainScanFloor` supplies one: it
   raises the pool's creation block to `events.firstMintBlockNumber`, the
@@ -1101,19 +1100,25 @@ so a scan's wall-clock time is its request count divided by four per
 second. Chunk width is 9,000 blocks.
 
 For a 132-rebalance chain in a pool created two years before the first
-deposit, scanning two event types:
+deposit, reading all three event types, as the lifetime scan does:
 
 | Window | Chunks | ~133 NFTs |
 | --- | --- | --- |
 | pool creation → head, per NFT | 954 each | ~26 hours |
 | NFT mint → head, per NFT | up to 168 each | hours |
-| **chain's first mint → head, once** (what runs) | 168 in total | about a minute |
+| **chain's first mint → head, once** (what runs) | 168, shared by every NFT | minutes |
 
-An upper bound would have taken the per-NFT walk to one or two chunks
-per retired NFT. That saving was given up, because no sound upper bound
-exists — see above. Reading the chain in one batch recovers it without
-one: each block is read once for the whole chain, rather than once for
-every NFT minted before it.
+The batched read carries at most 100 ids per filter, so 133 NFTs take
+two id groups. That makes 168 chunks × 3 event types × 2 groups, or about
+1,000 requests. At the queue's rate, with nothing else in the queue, that
+is nearly four minutes. Measured times are under
+[One read per pass](#one-read-per-pass).
+
+An upper bound would cut the per-NFT walk to one or two chunks per
+retired NFT, but no sound upper bound exists — see above. Reading the
+chain in one batch gets the same saving without one: each block is read
+once for the whole chain, rather than once for every NFT minted before
+it.
 
 ### Batched chain reads
 
@@ -1141,14 +1146,14 @@ care, and five rules carry it:
 | Rule | Why |
 | --- | --- |
 | Logs are partitioned by `topics[1]`, not decoded first | Routing must not depend on the ABI being right about the unindexed fields |
-| Each NFT's logs are re-floored to its own window | The union request starts below most NFTs' floors; without this the batch returns events the per-NFT scan excluded |
+| Each NFT's logs are re-floored to its own window | The union request starts below most NFTs' floors; without this the batch returns events a per-NFT scan excludes |
 | Each NFT's logs are sorted into chain order | `classifyCompounds` reads an NFT's FIRST `IncreaseLiquidity` as the mint deposit, and the exit value is an NFT's LAST `Collect` |
 | Every requested id gets an entry, and `eventsFor` throws for one that was not requested | A missing key would otherwise read as "no history" — a closed epoch with no fees |
 | An entry carries only the event types fetched | A consumer reaching for a history nobody requested fails on `undefined` instead of reading `[]` as "never happened" |
 
-The head is resolved once for the whole batch, and the id list is split
-into groups of 100 so an endpoint that caps a topic array costs a few
-more passes rather than a failure.
+The head is resolved once for the whole batch. The id list is split into
+groups of 100, so no request carries more than 100 ids in its topic
+array, however long the chain.
 
 Each reader prepares its read before anything consumes it, from the same
 inputs its consumers use:
@@ -1164,8 +1169,8 @@ inputs its consumers use:
   (`requestChainReader`, created in `computeLifetimeDetails`) and hands
   it to Fees Compounded, the lifetime HODL, and epoch reconstruction. It
   reads nothing until a consumer finds its figure missing from its
-  cache, and at most once after that. `_detectCurrentNftValues` still
-  reads the current NFT alone: it runs on the warm path, where the
+  cache, and at most once after that. `_detectCurrentNftValues` reads
+  the current NFT alone: it runs on the warm path, where the
   chain's figures are cached and a whole-chain read would cost far more
   than the one NFT it needs.
 
@@ -1183,9 +1188,9 @@ is made once however many consumers ask (`shareRead`).
   the event scan has found the chain. When the lifetime scan will read,
   the pass prepares that read (`prepareLifetimeRead`,
   `src/bot-recorder-lifetime-read.js`) and hands it to reconstruction;
-  the lifetime scan then uses the same read. Where the read starts and
-  which resume buffer it draws on are decided when it runs, by the
-  lifetime scan's usual rules.
+  the lifetime scan then uses the same read. When the read runs, it
+  looks up the pool's creation block and decides whether the resume
+  buffer can still be trusted.
 - **The unmanaged view.** Reconstruction gets the request's reader when
   Fees Compounded (`compoundsReadChain`) or the lifetime HODL is missing
   from its cache.
@@ -1195,7 +1200,7 @@ Three rules keep the sharing sound:
 | Rule | Why |
 | --- | --- |
 | Reconstruction shares only a read that will happen anyway | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper |
-| A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read the plan calls for never resumes from `lastNftScanBlock` — a scan that could resume has nothing left to compute and returns first — and `test/bot-recorder-lifetime-share.test.js` pins that for every state |
+| A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read never resumes from `lastNftScanBlock`: it always starts from the pool's creation block, even if every figure is saved after it was prepared, and `test/bot-recorder-lifetime-share.test.js` pins that for every state |
 | The lifetime scan reuses the pass's read only for the chain it was prepared for (`chainSignature`: the live NFT, every NFT with its mint block, and the chain's first mint) | Reconstruction can run long enough for a manual rebalance to land. A read prepared before it describes a chain that no longer exists, so the scan reads afresh and logs why |
 
 A batch succeeds or fails as a unit, and each reader decides what a
@@ -1204,14 +1209,14 @@ failure means:
 - **Lifetime scan** — the resume buffer stores nothing from a failed
   read, and the retry asks for every NFT not already buffered.
 - **Epoch reconstruction** — every NFT in the pass takes its history as
-  unknown, which is what a failed per-NFT read reported. An NFT whose
+  unknown, the same answer a failed per-NFT read gives. An NFT whose
   exit value and fee the rebalance log already holds still builds; the
   rest are skipped, and the short history schedules another attempt.
 - **A shared read** — the failure is not kept, so the next consumer in
   the pass or request makes its own attempt rather than inheriting it.
 
-That is affordable because a chain now costs minutes, and because
-transient RPC failures are retried per request beneath the batch.
+That is affordable because a chain costs minutes, and because transient
+RPC failures are retried per request beneath the batch.
 
 Measured reading every NFT in a chain for the lifetime scan, at the
 default request pacing:
@@ -1221,8 +1226,10 @@ default request pacing:
 | 40 NFTs | 3.6 min | 1 h 56 min |
 | 133 NFTs | 6.5 min | 5 h 30 min |
 
-Both batched reads reproduced every compound in the saved history, and
-on the live NFT the batched and per-NFT reads matched event for event.
+`test/nft-events-batch.test.js` pins that a batched read returns, for
+every id, what a per-NFT scan returns, and
+`test/position-history-scan-chain.test.js` pins the same for each
+closed NFT's Collect and DecreaseLiquidity history.
 
 ### Call sites
 
@@ -3093,11 +3100,10 @@ the API response. Also rejects mid-rebalance, mid-compound, and while a
 scan is already running.
 
 Cost: one batched read of the chain's three event histories, from each
-NFT's mint. The window does not narrow it: with the compound total
-cleared, the lifetime scan cannot resume from the watermark, and must
-not, since a total summed over part of the chain would be short. On a
-long chain that is minutes; see [One read per pass](#one-read-per-pass)
-for measured figures.
+NFT's mint. The window does not narrow it: the lifetime scan never
+resumes from the watermark, since a total summed over part of the chain
+would be short. On a long chain that is minutes; see
+[One read per pass](#one-read-per-pass) for measured figures.
 
 ## Dead Code Detection
 

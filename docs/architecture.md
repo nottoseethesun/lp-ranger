@@ -301,12 +301,12 @@ during the startup scan and cached in the epoch cache
   scanned — previously accumulated fresh amounts are restored from cache.
   RPC cost per boundary: 4 `getLogs` calls (2 tokens × in/out).
 
-- **Lifetime compounded amount** (`totalCompoundedUsd`) — the total USD value
-  of fees that were re-deposited as liquidity via compound operations.
-  Detected by scanning IncreaseLiquidity events after the mint on each NFT and
-  filtering out rebalance-adjacent ones (`_filterRebalances`).  Amounts are
-  capped per-token by total Collect amounts so compounds never exceed
-  collected fees.
+- **Lifetime compounded amount** (`totalCompoundedUsd`) — the USD value of
+  the fees each NFT earned and re-deposited, whether by a compound or by the
+  rebalance that closed it. Each NFT's figure is its Collect amounts less the
+  principal its DecreaseLiquidity events released (`lifetimeFeeAmounts`).
+  The per-event compound history is the IncreaseLiquidity events after the
+  mint, less the rebalance-adjacent ones (`_filterRebalances`).
 
 - **Lifetime gas** (`totalGas`) — the cumulative gas cost in USD across all
   rebalance and compound transactions.  Extracted from TX receipts during
@@ -374,21 +374,22 @@ reconstruction reads the closed NFTs itself, in one batch
 When the HODL amounts, the compound total and the lifetime deposit are all
 already on disk (`canResumeIncrementally`), the scan has nothing to compute
 and does not read at all, unless a rebalance has flagged a full rescan.
-Whenever it does read, it reads from the pool's creation block (lifted to the
-chain's first mint), because a consumer about to compute from scratch needs
-the whole chain rather than a slice of it. `_resolveScanFromBlock` keeps a
-branch that starts at `lastNftScanBlock`, but no scan that reads can take it:
-its precondition is the state in which the scan returns before reading. All
-three totals are saved and restored with the position's config
-(`PERSISTED_STATE_KEYS` in `src/server-positions.js`), so after the first
-complete scan a restart reads nothing for them; the compound and rebalance
-paths keep them current as those happen.
+Whenever it does read, it reads from the pool's creation block, lifted to the
+chain's first mint. It never reads from the `lastNftScanBlock` checkpoint: a
+consumer about to compute from scratch needs the whole chain, not a slice of
+it. The start block is taken from the pool when the read runs. So a figure
+saved between preparing a read and starting it cannot turn it into a resumed
+read. The compound total and the lifetime deposit are saved and
+restored with the position's config (`PERSISTED_STATE_KEYS` in
+`src/server-positions.js`). The HODL amounts are kept in the pool's epoch
+cache. So after the first complete scan, a restart reads nothing for them.
+The compound and rebalance paths keep them current as those happen.
 
 A pass whose event scan fails computes none of them. The chain the bot holds
-is then whatever it held before the pass, which on a cold start is nothing,
-and figures computed from it would be saved and kept by later passes. When a
-figure is missing, the position stays unready instead, and the 30-minute
-rescan retries the pass.
+is then whatever it held before the pass, which on a cold start is nothing.
+Figures computed from it would be saved, and later passes would keep them.
+When the pass needed a read, the position stays unready instead, and the
+30-minute rescan retries the pass.
 
 ### Lifetime Sync vs Bot Loop
 

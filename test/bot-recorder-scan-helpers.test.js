@@ -9,11 +9,9 @@
  * **Floors.** Each NFT is floored at its own mint block, not the pool's
  * creation block. An NFT cannot emit IncreaseLiquidity / Collect /
  * DecreaseLiquidity before it is minted, so everything before its mint
- * is a guaranteed-empty walk. The resume case is the subtle one: there
- * `fromBlock` is a checkpoint from a previous scan, and it has to win
- * over an earlier mint block or the scan re-walks covered ground. The
- * floors are computed by `nft-events-batch.scanFloors`; these tests
- * record what that real function produces from the arguments the
+ * is a guaranteed-empty walk. A shared floor above a mint block still
+ * wins. The floors are computed by `nft-events-batch.scanFloors`; these
+ * tests record what that real function produces from the arguments the
  * helper passes, so a helper passing the wrong floor or dropping the
  * mint blocks fails here.
  *
@@ -83,8 +81,10 @@ function stubBatch(o = {}) {
   };
 }
 
-/*- Required after the stub is installed, so the helper binds the stub
- *  rather than the real batched read. */
+/*-
+ *  Required after the stub is installed, so the helper binds the stub
+ *  rather than the real batched read.
+ */
 function helpers() {
   delete require.cache[require.resolve("../src/bot-recorder-scan-helpers")];
   return require("../src/bot-recorder-scan-helpers");
@@ -204,15 +204,13 @@ describe("fetchAllNftEvents scan floors", () => {
       assert.equal(s.floors.get("100"), POOL_FLOOR);
     }));
 
-  it("keeps a resume checkpoint that is later than the mint block", () => {
-    /*- The incremental path passes a checkpoint as `fromBlock`. Using
-     *  the earlier mint block would re-walk everything the last scan
-     *  already covered. */
-    const CHECKPOINT = 7_000_000;
+  it("keeps a shared floor that is later than the mint block", () => {
+    // `nftScanFrom` keeps the later of the two floors.
+    const FLOOR = 7_000_000;
     return withStub({}, async (s, { fetchAllNftEvents }) => {
-      await fetchAllNftEvents(IDS, CHECKPOINT, mintBlocksByTokenId(CHAIN));
+      await fetchAllNftEvents(IDS, FLOOR, mintBlocksByTokenId(CHAIN));
       for (const tid of IDS) {
-        assert.equal(s.floors.get(tid), CHECKPOINT, `${tid} must resume`);
+        assert.equal(s.floors.get(tid), FLOOR, `${tid} keeps the floor`);
       }
     });
   });
@@ -241,14 +239,18 @@ describe("fetchAllNftEvents scan floors", () => {
 // ── Resume buffer ────────────────────────────────────────────────────
 
 describe("fetchAllNftEvents resume buffer", () => {
-  /*- The buffer carries one lifetime scan across a failure; it is not a
+  /*-
+   *  The buffer carries one lifetime scan across a failure; it is not a
    *  cache that may answer a later scan, which is why the floor and the
-   *  live NFT both gate reuse. */
+   *  live NFT both gate reuse.
+   */
 
   it("a failed read leaves the buffer untouched", () =>
-    /*- The batch succeeds or fails as a unit, so nothing from a failed
+    /*-
+     *  The batch succeeds or fails as a unit, so nothing from a failed
      *  read may be stored — a partial result stored as complete would be
-     *  reused as settled history on the retry. */
+     *  reused as settled history on the retry.
+     */
     withStub({ failCalls: 1 }, async (_s, { fetchAllNftEvents }) => {
       const buf = new Map();
       const out = await pass(fetchAllNftEvents, buf);
@@ -257,11 +259,13 @@ describe("fetchAllNftEvents resume buffer", () => {
     }));
 
   it("the retry after a failed read asks for everything unbuffered", () =>
-    /*- The contract that changed with batching. Per-NFT reads kept each
-     *  NFT as it completed, so a failure part-way kept the rest. A batch
-     *  has no part-way. That is affordable: the whole chain costs minutes,
-     *  and transient failures are retried per request beneath this call,
-     *  so a read fails outright only on an error a retry would not fix. */
+    /*-
+     *  A batch has no part-way: a failed read stores nothing, and the
+     *  retry reads every NFT not already buffered. That is affordable:
+     *  the whole chain costs minutes, and transient failures are retried
+     *  per request beneath this call, so a read fails outright only on
+     *  an error a retry would not fix.
+     */
     withStub({ failCalls: 1 }, async (s, { fetchAllNftEvents }) => {
       const buf = new Map();
       await pass(fetchAllNftEvents, buf);
@@ -271,8 +275,10 @@ describe("fetchAllNftEvents resume buffer", () => {
     }));
 
   it("after a successful read, a retry re-reads only the live NFT", () =>
-    /*- Where the buffer still pays: the read succeeded and a LATER step
-     *  of the lifetime scan threw, so the whole scan is retried. */
+    /*-
+     *  Where the buffer still pays: the read succeeded and a LATER step
+     *  of the lifetime scan threw, so the whole scan is retried.
+     */
     withStub({}, async (s, { fetchAllNftEvents }) => {
       const buf = new Map();
       await pass(fetchAllNftEvents, buf, { liveTokenId: "300" });
@@ -282,10 +288,12 @@ describe("fetchAllNftEvents resume buffer", () => {
     }));
 
   it("re-reads an NFT whose effective floor changed", () =>
-    /*- Reuse across a different span double-counts when wider and drops
-     *  events when narrower. Only #100 moves here: the others' own mint
-     *  blocks already exceed both floors, so Math.max leaves their span
-     *  untouched. */
+    /*-
+     *  Reuse across a different span would hand the scan events its own
+     *  read excludes, or leave out events that read includes. Only #100
+     *  moves here: the others' own mint blocks already exceed both
+     *  floors, so Math.max leaves their span untouched.
+     */
     withStub({}, async (s, { fetchAllNftEvents }) => {
       const buf = new Map();
       await pass(fetchAllNftEvents, buf);
@@ -304,16 +312,17 @@ describe("fetchAllNftEvents resume buffer", () => {
 });
 
 describe("fetchAllNftEvents — the live NFT is never buffered", () => {
-  /*- Not merely never reused. The live NFT retires at the next
+  /*-
+   *  Not merely never reused. The live NFT retires at the next
    *  rebalance; from then it is no longer the live one, so a buffered
    *  entry for it looks reusable — but it was read while the NFT was
    *  still open and predates the drain that retired it. Reusing it drops
    *  that NFT's closing Collect and DecreaseLiquidity and understates its
    *  lifetime fees.
    *
-   *  The floor cannot catch this: until a scan completes there is no
-   *  resume checkpoint, so both passes floor at the pool creation block
-   *  and compare equal. */
+   *  The floor cannot catch this: both passes floor the NFT at the same
+   *  block, so they compare equal.
+   */
 
   it("keeps the live NFT out of the buffer entirely", () =>
     withStub({}, async (_s, { fetchAllNftEvents }) => {
@@ -323,8 +332,10 @@ describe("fetchAllNftEvents — the live NFT is never buffered", () => {
     }));
 
   it("re-reads a just-retired NFT after a rebalance", () =>
-    /*- Pass one with #300 live; a rebalance then makes #400 live and
-     *  #300 retired. #300 must be read again, at the same floor. */
+    /*-
+     *  Pass one with #300 live; a rebalance then makes #400 live and
+     *  #300 retired. #300 must be read again, at the same floor.
+     */
     withStub({}, async (s, { fetchAllNftEvents }) => {
       const buf = new Map();
       await pass(fetchAllNftEvents, buf, { liveTokenId: "300" });
@@ -388,12 +399,13 @@ describe("partitionByBuffer", () => {
 });
 
 describe("_lifetimeResumeBuffer", () => {
-  /*- A full rescan means a rebalance fired, so the chain it buffered is
+  /*-
+   *  A full rescan means a rebalance fired, so the chain it buffered is
    *  no longer the chain being scanned — most obviously the NFT that
    *  rebalance just retired, whose drain is not in the buffered read.
-   *  The floor comparison cannot catch that: with no completed scan
-   *  there is no resume checkpoint, so both passes floor at the pool
-   *  creation block and compare equal. */
+   *  The floor comparison cannot catch that: both passes floor the NFT
+   *  at the same block, so they compare equal.
+   */
   const { _lifetimeResumeBuffer } = require("../src/bot-recorder-lifetime");
 
   it("creates one on first use", () => {
@@ -427,10 +439,10 @@ describe("_lifetimeResumeBuffer", () => {
   });
 
   it("tolerates no state object at all", () => {
-    /*- This is the first thing in the lifetime scan to reach into
-     *  `botState`. Throwing here would turn an absent one into a failure
-     *  before any scanning is attempted, so the scan must still run,
-     *  just without resume. */
+    /*-
+     *  Without a state object there is nowhere to carry reads, so the
+     *  caller still gets a usable buffer and simply reads everything.
+     */
     for (const missing of [undefined, null]) {
       const buf = _lifetimeResumeBuffer(missing, false);
       assert.ok(buf instanceof Map, "callers must still get a usable buffer");
@@ -440,10 +452,12 @@ describe("_lifetimeResumeBuffer", () => {
 });
 
 describe("fetchAllNftEvents — reporting what the buffer saved", () => {
-  /*- The batched read logs progress per event type across the whole id
+  /*-
+   *  The batched read logs progress per event type across the whole id
    *  list, so nothing else in the log says which NFTs were skipped. This
    *  line is the only record that the buffer answered any of them, and
-   *  the burn-in procedure greps for it. */
+   *  the burn-in procedure greps for it.
+   */
 
   /** Capture `log.info` through the module's own sink. */
   function captureInfo() {
@@ -457,8 +471,10 @@ describe("fetchAllNftEvents — reporting what the buffer saved", () => {
   it("reports the split once the buffer is used", () =>
     withStub({}, async (_s, { fetchAllNftEvents }) => {
       const buf = new Map();
-      /*- #300 is live on the first pass, so only #100 and #200 are
-       *  buffered. On the second, #300 has retired and must be read. */
+      /*-
+       *  #300 is live on the first pass, so only #100 and #200 are
+       *  buffered. On the second, #300 has retired and must be read.
+       */
       await pass(fetchAllNftEvents, buf, { liveTokenId: "300" });
       const { lines, restore } = captureInfo();
       try {

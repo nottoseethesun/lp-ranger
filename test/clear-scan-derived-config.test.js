@@ -73,9 +73,11 @@ describe("clearScanDerivedConfig", () => {
   });
 
   it("keeps settings, status and live-recorded values", () => {
-    /*- `residuals` and `lastCompoundAt` are recorded at rebalance and
+    /*-
+     *  `residuals` and `lastCompoundAt` are recorded at rebalance and
      *  compound time; a scan cannot reproduce them, so clearing them
-     *  would lose them rather than rebuild them. */
+     *  would lose them rather than rebuild them.
+     */
     write({ global: {}, positions: { [A]: fullSlot("running") } });
     clearScanDerivedConfig({ dir });
     const slot = read().positions[A];
@@ -119,7 +121,7 @@ describe("clearScanDerivedConfig", () => {
   });
 
   it("snapshots the pre-clear file to bot-config.backup.json", () => {
-    /*- The recovery path the command's output points the operator to. */
+    // The recovery path the command's output points the operator to.
     write({ global: {}, positions: { [A]: fullSlot("running") } });
     clearScanDerivedConfig({ dir });
     const backup = JSON.parse(
@@ -137,8 +139,10 @@ describe("clearScanDerivedConfig", () => {
   });
 
   it("never overwrites a config it could not parse", () => {
-    /*- `loadConfig` returns an empty config for a damaged file. Saving
-     *  that would replace a recoverable file with an empty one. */
+    /*-
+     *  `loadConfig` returns an empty config for a damaged file. Saving
+     *  that would replace a recoverable file with an empty one.
+     */
     fs.writeFileSync(file(), "{ this is not json");
     const r = clearScanDerivedConfig({ dir });
     assert.equal(r.keys, 0);

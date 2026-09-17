@@ -1,8 +1,9 @@
 /**
  * @file test/bot-recorder-lifetime-resume.test.js
- * @description Tests for the incremental-resume decision in
- * `src/bot-recorder-lifetime.js` — whether the scan may start at the
- * cached `lastNftScanBlock` or must rescan the chain from pool creation.
+ * @description Tests for where the lifetime scan in
+ * `src/bot-recorder-lifetime.js` starts: from pool creation whenever it
+ * reads, never at the cached `lastNftScanBlock`, and not at all when
+ * every result is already saved.
  *
  * Split from `bot-recorder-lifetime.test.js` when that file passed the
  * 500-line cap; the mock harness is shared via `test/helpers/`, not
@@ -163,7 +164,7 @@ describe("_scanLifetimePoolData — where the event scan starts", () => {
     assert.equal(state.scanFromBlock, 100);
   });
 
-  it("resumes at the cursor on a forced rescan of an otherwise-complete slot", async () => {
+  it("ignores the cursor on a forced rescan of an otherwise-complete slot", async () => {
     /*- All three present, so nothing needs the old events — but
      *  `_needsFullRescan` overrides regardless, because the rebalance
      *  path sets it precisely when the chain has grown. */
