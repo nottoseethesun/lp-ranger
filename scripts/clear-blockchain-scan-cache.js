@@ -7,7 +7,7 @@
  * Two places hold it:
  *
  * - **`tmp/*.json`** — event scans, LP position enumeration, P&L
- *   epochs (including the `lastNftScanBlock` resume checkpoint), block
+ *   epochs and the lifetime HODL amounts kept beside them, block
  *   timestamps, pool creation blocks, token symbols, fetched prices.
  * - **Scan-derived keys in each position's slot** in
  *   `app-config/user-configurable/bot-config.json` — compound history
@@ -239,8 +239,8 @@ function main() {
     );
   }
   console.log(
-    "[clear-cache] Next start re-scans from chain. Let it finish so the " +
-      "scan checkpoint is written.",
+    "[clear-cache] Next start re-scans from chain. Let it finish so its " +
+      "results are saved.",
   );
 }
 

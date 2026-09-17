@@ -75,8 +75,8 @@ function chainSignature(position, rebalanceEvents) {
  *   Where the read starts and which resume buffer it draws on, decided
  *   when the read runs rather than when it is prepared.
  * @returns {{signature: string, ids: Set<string>,
- *   read: () => Promise<{allNftEvents: Map<string, object>,
- *   maxBlock: number, fromBlock: number}>}}
+ *   read: () => Promise<Map<string, object>>}}  `read` resolves to each
+ *   NFT's events, keyed by tokenId.
  */
 function prepareChainRead({ position, rebalanceEvents, start }) {
   const ids = collectTokenIds(position, rebalanceEvents);
@@ -85,13 +85,10 @@ function prepareChainRead({ position, rebalanceEvents, start }) {
   const read = shareRead(async () => {
     const { fromBlock, resumeBuffer } = await start();
     const scanFrom = chainScanFloor(rebalanceEvents, fromBlock);
-    const { allNftEvents, maxBlock } = await fetchAllNftEvents(
-      ids,
-      scanFrom,
-      mintBlocks,
-      { resumeBuffer, liveTokenId },
-    );
-    return { allNftEvents, maxBlock, fromBlock };
+    return fetchAllNftEvents(ids, scanFrom, mintBlocks, {
+      resumeBuffer,
+      liveTokenId,
+    });
   });
   return {
     signature: chainSignature(position, rebalanceEvents),

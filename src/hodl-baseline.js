@@ -415,4 +415,8 @@ module.exports = {
   initHodlBaseline,
   getPositionBaseline,
   _positionValueUsd,
+  /*- The baseline's shape and its update channel live here, so the
+   *  Re-scan Prices re-value in bot-hodl-scan.js publishes through this
+   *  rather than assembling a second copy of the object. */
+  _publishBaseline,
 };

@@ -328,9 +328,6 @@ function createRouteHandlers(deps) {
     positionMgr,
     walletManager,
     diskConfig,
-    /*- Injected so the handler never reaches for a provider itself —
-     *  keeps it unit-testable without standing up an RPC. */
-    getBlockNumber: () => sendTx.getManagedReadProvider().getBlockNumber(),
   });
 
   async function _handleShutdown(_req, res, srv) {

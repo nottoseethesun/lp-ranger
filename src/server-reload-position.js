@@ -301,7 +301,4 @@ module.exports = {
   _validateKey,
   _resolveStateAndPosition,
   _checkInProgress,
-  /*- The epoch-cache key shape.  `setLastNftScanBlock` /
-   *  `clearCacheEntry` take this OBJECT, not a string. */
-  _cacheKeyOpts,
 };

@@ -2,10 +2,10 @@
  * @file test/bot-recorder-lifetime.test.js
  * @description Regression tests for `_scanLifetimePoolData`'s early-exit
  *   logic.  Disk values for `totalCompoundedUsd` are treated as
- *   source-of-truth — once present, classification must NOT re-run
- *   (a partial NFT scan from a stale `lastNftScanBlock` would otherwise
- *   stomp the correct disk value with a smaller, wrong total).  See
- *   `src/bot-recorder-lifetime.js` for the full reasoning.
+ *   source-of-truth — once present, classification must NOT re-run; the
+ *   compound and rebalance paths keep the saved total current.  See
+ *   `_resolveDiskState` in `src/bot-recorder-lifetime.js` for the full
+ *   reasoning.
  */
 
 "use strict";
@@ -112,10 +112,9 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
      *  If a future refactor drops the `botState._getConfig = gc` wiring in
      *  `startBotLoop`, the disk-as-source-of-truth gate falls back to
      *  "no signal" and classification runs.  That's strictly worse than
-     *  the wired path (a fresh `Manage Position` on a previously-viewed
-     *  position re-runs `_classifyAllCompounds` from a stale
-     *  `lastNftScanBlock` and stomps the correct disk total) but it's
-     *  the only behavior the unit can express on its own.
+     *  the wired path: every scan then re-reads the chain and recomputes
+     *  the saved totals.  But it's the only behavior the unit can express
+     *  on its own.
      *
      *  The integration contract — that `startBotLoop` actually wires
      *  `_getConfig` — is asserted in test/bot-loop.test.js's
@@ -168,14 +167,11 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
     );
   });
 
-  // ── Deposit-side stomp guard ────────────────────────────────────────────────
+  // ── Deposit-side guard ──────────────────────────────────────────────────────
   /*-
    *  These mirror the compound-side tests above but focus on the
-   *  `totalLifetimeDepositUsd` disk total.  Without the guard, a partial
-   *  NFT event scan from a stale `lastNftScanBlock` would re-run
-   *  `computeDepositUsd` and overwrite the correct lifetime deposit
-   *  (e.g. $1,704.15) with a smaller partial sum (e.g. $427.04),
-   *  cascading wrong values into Lifetime Net P&L and Price Change.
+   *  `totalLifetimeDepositUsd` disk total: a saved total is kept, and
+   *  `computeDepositUsd` runs only when none is saved.
    *  See `_resolveDiskState` JSDoc, item 2.
    */
   it("skips computeDepositUsd when totalLifetimeDepositUsd > 0 on disk", async () => {
@@ -302,11 +298,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
   function _installMocksThrowingHodl() {
     Module.prototype.require = function (id) {
       if (id === "./epoch-cache") {
-        return {
-          getCachedLifetimeHodl: () => state.cachedHodl,
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
-        };
+        return { getCachedLifetimeHodl: () => state.cachedHodl };
       }
       if (id === "./bot-pnl-updater") {
         return {
@@ -341,10 +333,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       if (id === "./bot-recorder-scan-helpers") {
         return {
           collectTokenIds: () => new Set([1]),
-          fetchAllNftEvents: async () => ({
-            allNftEvents: new Map([[1, []]]),
-            maxBlock: 0,
-          }),
+          fetchAllNftEvents: async () => new Map([[1, []]]),
         };
       }
       /*- The scan heals decimals via getPoolState before valuing; stub it so

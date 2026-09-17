@@ -24,8 +24,6 @@ describe("bot-loop _initPnlTracker", () => {
           setCachedEpochs: () => {},
           getCachedLifetimeHodl: () => _cachedHodl,
           setCachedLifetimeHodl: () => {},
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
         };
       }
       return _origRequire.apply(this, arguments);
@@ -169,8 +167,6 @@ describe("bot-loop _tryInitPnlTracker", () => {
           setCachedEpochs: () => {},
           getCachedLifetimeHodl: () => null,
           setCachedLifetimeHodl: () => {},
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
         };
       }
       return _origRequire2.apply(this, arguments);
@@ -261,8 +257,6 @@ describe("bot-loop _tryInitPnlTracker", () => {
           setCachedEpochs: () => {},
           getCachedLifetimeHodl: () => null,
           setCachedLifetimeHodl: () => {},
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
         };
       }
       return _origRequire2.apply(this, arguments);

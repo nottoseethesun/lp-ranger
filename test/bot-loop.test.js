@@ -322,8 +322,7 @@ describe("bot-loop: forceRebalance", () => {
 /*-
  *  The `_scanLifetimePoolData` disk-as-source-of-truth gate reads
  *  `botState._getConfig("totalCompoundedUsd")` to decide whether to skip
- *  `_classifyAllCompounds` (a partial NFT scan from a stale
- *  `lastNftScanBlock` would otherwise stomp the correct disk value).
+ *  `_classifyAllCompounds` and keep the saved total.
  *
  *  That gate only works if `startBotLoop` has wired `_getConfig` onto
  *  `botState` before any path that reaches `_scanLifetimePoolData`.

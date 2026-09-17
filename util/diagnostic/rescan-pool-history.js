@@ -5,11 +5,11 @@
  * One-shot recovery tool that forces a from-pool-creation rescan of a
  * managed position's lifetime compound + deposit history.  Use when
  * `compoundHistory` and/or `totalLifetimeDepositUsd` on disk are wrong
- * (e.g. zeroed by a stomp from a stale `lastNftScanBlock` partial scan
- * — see `src/bot-recorder-lifetime.js`'s disk-as-source-of-truth gate
- * for the underlying bug class) and you want the bot to rebuild them
- * from on-chain `IncreaseLiquidity` + `Collect` events on the next
- * restart.
+ * and you want the bot to rebuild them from on-chain
+ * `IncreaseLiquidity` + `Collect` events on the next restart.  The
+ * lifetime scan keeps a saved total rather than recompute it (the
+ * disk-as-source-of-truth gate in `src/bot-recorder-lifetime.js`).  A
+ * wrong one stays until something clears it.
  *
  * Why this isn't a Settings button:
  *   The action is destructive — it zeroes the very fields the gate is
@@ -22,25 +22,27 @@
  *      the position by
  *      tokenId (or by full composite key components if disambiguation
  *      is needed).
- *   2. Loads `tmp/pnl-epochs-cache.json` and finds the pool epoch key
- *      that the position belongs to (matched by blockchain + contract +
- *      wallet — the per-pool key uses these plus token0/token1/fee).
+ *   2. With `--clear-hodl`, loads `tmp/pnl-epochs-cache.json` and finds
+ *      the pool epoch key that the position belongs to.  It matches on
+ *      blockchain, contract and wallet; the per-pool key adds token0,
+ *      token1 and fee.
  *   3. Prints a summary of what will change and prompts y/N.  Aborts
  *      on anything other than `y` / `yes`.
- *   4. Writes timestamped backup copies of both files alongside the
- *      originals (`.pre-rescan.<ISO>.json` suffix).
- *   5. Deletes `lastNftScanBlock` from the pool's epoch entry → next
- *      scan starts from pool creation block, not a stale watermark.
- *   6. Removes `totalCompoundedUsd`, `compoundHistory`, `lastCompoundAt`,
+ *   4. Writes a timestamped backup of each file it will change,
+ *      alongside the original (`.pre-rescan.<ISO>.json` suffix).
+ *   5. Removes `totalCompoundedUsd`, `compoundHistory`, `lastCompoundAt`,
  *      `totalLifetimeDepositUsd`, `depositUsedFallback` from the
  *      position config → `hasCompoundData=false` and `hasDepositData=
  *      false` so the gate in `_scanLifetimePoolData` does not
- *      short-circuit.
+ *      short-circuit, and the scan reads the chain from the pool's
+ *      creation block.
+ *   6. With `--clear-hodl`, deletes `lifetimeHodlAmounts` from the pool's
+ *      epoch entry, so that scan recomputes the lifetime HODL too.
  *   7. Prints the restart command.
  *
  * What it does NOT touch:
- *   - `lifetimeHodl` cache (HODL math survives) unless `--clear-hodl`
- *     is passed.
+ *   - The pool's epoch cache entry, unless `--clear-hodl` is passed.
+ *     Its P&L epochs survive either way.
  *   - Live in-memory bot state.  The bot reads the cleared values from
  *     disk only on next startup (`createPerPositionBotState` in
  *     `src/server-positions.js`), which is why a restart is required.
@@ -54,11 +56,11 @@
  *   --wallet <0x...>      required if multiple positions match tokenId
  *   --contract <0x...>    default: only-match if exactly one position
  *                         in config has that tokenId
- *   --token0 <addr>       required when the wallet has multiple managed
- *   --token1 <addr>       pools on the same contract — the script will
- *   --fee <int>           list the candidates and refuse to proceed
+ *   --token0 <addr>       required with --clear-hodl when the wallet has
+ *   --token1 <addr>       several pools on the same contract — the script
+ *   --fee <int>           will list the candidates and refuse to proceed
  *                         without these flags
- *   --clear-hodl          ALSO drop the cached lifetimeHodl for the pool
+ *   --clear-hodl          ALSO drop the pool's cached lifetimeHodlAmounts
  *                         (forces hodl recompute too — slower restart)
  *   --yes                 skip the y/N prompt (for scripted recovery)
  *
@@ -70,7 +72,8 @@
  * Exit codes:
  *   0 — completed (or user aborted at prompt)
  *   1 — bad arguments, position not found, or ambiguous match
- *   2 — config file missing or unparseable
+ *   2 — config file missing or unparseable, or, with --clear-hodl, an
+ *       unparseable epoch cache
  */
 
 "use strict";
@@ -182,8 +185,14 @@ function _filterDescription(flags) {
  * prefix (same wallet has multiple managed positions on the same
  * NonfungiblePositionManager contract — the common case), the caller
  * must disambiguate with `--token0`, `--token1`, and `--fee` flags.
- * Blasting `lastNftScanBlock` on every match would force unrelated
- * pools into expensive from-creation rescans.
+ * Clearing the HODL on every match would make unrelated pools recompute
+ * theirs.
+ *
+ * @param {object} epochCache  Parsed epoch cache.
+ * @param {string} posKey      Composite position key.
+ * @param {object} flags       Parsed CLI flags.
+ * @returns {string[]|null}  The one matching key, in a list, or null when
+ *   none matches. Exits 1 when several match.
  */
 function _findPoolKey(epochCache, posKey, flags) {
   const [blockchain, wallet, contract] = posKey.split("-");
@@ -226,7 +235,38 @@ function _findPoolKey(epochCache, posKey, flags) {
   return matches;
 }
 
-/** Print a one-screen summary of pending changes for the y/N prompt. */
+/**
+ * Whether `--clear-hodl` was passed.
+ *
+ * @param {object} flags  Parsed CLI flags.
+ * @returns {boolean}
+ */
+function _clearHodlAsked(flags) {
+  const flag = flags["clear-hodl"];
+  return flag !== undefined && flag !== null;
+}
+
+/**
+ * Whether this run changes the pool's epoch cache entry: only with
+ * `--clear-hodl`, and only when that entry was found.
+ *
+ * @param {string[]|null} poolKeys  From `_findPoolKey`.
+ * @param {object} flags            Parsed CLI flags.
+ * @returns {boolean}
+ */
+function _clearsHodl(poolKeys, flags) {
+  if (!_clearHodlAsked(flags)) return false;
+  return Array.isArray(poolKeys) && poolKeys.length > 0;
+}
+
+/**
+ * Print a one-screen summary of pending changes for the y/N prompt.
+ *
+ * @param {string} posKey             Composite position key.
+ * @param {object} pos                The position's config slot.
+ * @param {string[]|null} poolKeys    From `_findPoolKey`.
+ * @param {object} flags              Parsed CLI flags.
+ */
 function _printPlan(posKey, pos, poolKeys, flags) {
   console.log("");
   console.log("=== Rescan plan ===");
@@ -251,19 +291,21 @@ function _printPlan(posKey, pos, poolKeys, flags) {
   console.log("  - position.totalLifetimeDepositUsd");
   console.log("  - position.depositUsedFallback");
   console.log("");
-  console.log("Pool epoch cache key(s):");
-  if (!poolKeys || poolKeys.length === 0)
-    console.log("  (none found — only the position config will change)");
-  else for (const k of poolKeys) console.log("  %s", k);
-  console.log("");
-  console.log("Will be cleared on the pool epoch entries:");
-  console.log("  - lastNftScanBlock        (forces from-creation rescan)");
-  if (flags["clear-hodl"])
-    console.log("  - lifetimeHodl            (--clear-hodl was passed)");
-  console.log("");
+  if (_clearHodlAsked(flags)) {
+    console.log("Pool epoch cache key(s):");
+    if (_clearsHodl(poolKeys, flags)) {
+      for (const k of poolKeys) console.log("  %s", k);
+      console.log("");
+      console.log("Will be cleared on the pool epoch entries:");
+      console.log("  - lifetimeHodlAmounts     (--clear-hodl was passed)");
+    } else {
+      console.log("  (none found — only the position config will change)");
+    }
+    console.log("");
+  }
   console.log("Backups will be written to:");
   console.log("  %s.pre-rescan.<ISO>.json", CONFIG_PATH);
-  if (poolKeys && poolKeys.length)
+  if (_clearsHodl(poolKeys, flags))
     console.log("  %s.pre-rescan.<ISO>.json", EPOCH_CACHE_PATH);
   console.log("");
 }
@@ -304,7 +346,8 @@ function _confirm(createInterface = readline.createInterface) {
  * @param {object} cfg          Parsed bot-config (mutated in place).
  * @param {object} epochCache   Parsed epoch cache (mutated in place).
  * @param {string} posKey       Composite position key.
- * @param {string[]} poolKeys   Epoch-cache keys, possibly empty.
+ * @param {string[]|null} poolKeys  Epoch-cache keys; null or empty when
+ *   none were found or none were looked for.
  * @param {object} flags        Parsed CLI flags.
  * @param {object} [paths]      `{ configPath, epochPath }` — injected
  *   so tests exercise the real copy/delete/write against fixtures
@@ -316,8 +359,9 @@ function _applyMutations(cfg, epochCache, posKey, poolKeys, flags, paths = {}) {
   const stamp = new Date().toISOString().replace(/[:]/g, "-");
   const cfgBackup = configPath + ".pre-rescan." + stamp + ".json";
   const cacheBackup = epochPath + ".pre-rescan." + stamp + ".json";
+  const clearHodl = _clearsHodl(poolKeys, flags);
   fs.copyFileSync(configPath, cfgBackup);
-  if (poolKeys && poolKeys.length) fs.copyFileSync(epochPath, cacheBackup);
+  if (clearHodl) fs.copyFileSync(epochPath, cacheBackup);
 
   const pos = cfg.positions[posKey];
   delete pos.totalCompoundedUsd;
@@ -327,18 +371,12 @@ function _applyMutations(cfg, epochCache, posKey, poolKeys, flags, paths = {}) {
   delete pos.depositUsedFallback;
   _writeJson(configPath, cfg);
 
-  if (poolKeys && poolKeys.length) {
-    for (const k of poolKeys) {
-      delete epochCache[k].lastNftScanBlock;
-      if (flags["clear-hodl"]) delete epochCache[k].lifetimeHodl;
-    }
+  if (clearHodl) {
+    for (const k of poolKeys) delete epochCache[k].lifetimeHodlAmounts;
     _writeJson(epochPath, epochCache);
   }
 
-  return {
-    cfgBackup,
-    cacheBackup: poolKeys && poolKeys.length ? cacheBackup : null,
-  };
+  return { cfgBackup, cacheBackup: clearHodl ? cacheBackup : null };
 }
 
 /**
@@ -368,13 +406,19 @@ async function main(argv = process.argv.slice(2), opts = {}) {
     process.exit(2);
   }
   const cfg = _loadJson(configPath, "bot-config");
-  const epochCache = fs.existsSync(epochPath)
-    ? _loadJson(epochPath, "epoch-cache")
-    : {};
+  /*-
+   *  The epoch cache changes only for `--clear-hodl`, so only then is it
+   *  read, and only then must the pool be pinned down.
+   */
+  const clearHodl = _clearHodlAsked(flags);
+  const epochCache =
+    clearHodl && fs.existsSync(epochPath)
+      ? _loadJson(epochPath, "epoch-cache")
+      : {};
 
   const posKey = _findPositionKey(cfg.positions || {}, tokenId, flags);
   const pos = cfg.positions[posKey];
-  const poolKeys = _findPoolKey(epochCache, posKey, flags);
+  const poolKeys = clearHodl ? _findPoolKey(epochCache, posKey, flags) : null;
 
   _printPlan(posKey, pos, poolKeys, flags);
 
@@ -422,6 +466,7 @@ module.exports = {
   _findPoolKey,
   _writeJson,
   _loadJson,
+  _clearsHodl,
   _printPlan,
   _confirm,
   _applyMutations,

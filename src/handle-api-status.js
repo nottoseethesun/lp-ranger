@@ -56,10 +56,6 @@ function createApiStatusHandler(deps) {
       maxRebalancesPerDay: config.MAX_REBALANCES_PER_DAY,
       impermanentLossGuardPct: config.IMPERMANENT_LOSS_GUARD_PCT,
       gasStrategy: "auto",
-      /*- Published so the Re-scan Prices dialog sizes its window
-       *  option from the shipped default instead of holding a second
-       *  literal (feedback-one-literal-per-shipped-default). */
-      rescanPricesDefaultDays: config.RESCAN_PRICES_DEFAULT_DAYS,
     };
     const positions = buildStatusPositions(
       diskConfig,

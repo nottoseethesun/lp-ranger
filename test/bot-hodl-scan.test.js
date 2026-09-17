@@ -24,6 +24,7 @@ const Module = require("module");
 const _origRequire = Module.prototype.require;
 let _cachedHodlWrites = [];
 let _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
+let _historicalImpl = async () => ({ price0: 0, price1: 0 });
 
 /**
  * Local ethers stub matching the `mockEthersLib()` pattern used by
@@ -69,6 +70,14 @@ function _installMocks() {
       };
     }
     if (id === "ethers") return _ETHERS_STUB;
+    /*- The historical price source, for the Re-scan Prices re-value.
+     *  `hodl-baseline` reaches for the same module, and the stub is
+     *  equally right there. */
+    if (id === "./price-fetcher") {
+      return {
+        fetchHistoricalPriceGecko: (...args) => _historicalImpl(...args),
+      };
+    }
     /*- bot-hodl-scan now sources its provider via
      *  sendTx.getManagedReadProvider().  Return a stub for sendTx so
      *  the test doesn't need to drive a full send-transaction init. */
@@ -242,5 +251,104 @@ describe("_ensureHodlPoolAddress", () => {
     assert.strictEqual(result, "0xPOOL");
     assert.strictEqual(botState.lifetimeHodlAmounts.poolAddress, "0xPOOL");
     assert.strictEqual(_cachedHodlWrites.length, 0);
+  });
+});
+
+// ── revalueHodlBaseline (Re-scan Prices) ────────────────────────────────
+
+describe("revalueHodlBaseline", () => {
+  let revalueHodlBaseline;
+  let patches;
+
+  const POSITION = { token0: "0xA", token1: "0xB", fee: 3000, tokenId: 7 };
+  /** A saved baseline: 10 of token0 and 20 of token1, valued at $100. */
+  const saved = () => ({
+    entryValue: 100,
+    hodlAmount0: 10,
+    hodlAmount1: 20,
+    token0UsdPrice: 6,
+    token1UsdPrice: 2,
+    mintDate: "2026-03-15",
+    mintTimestamp: 1_773_000_000,
+    mintGasWei: "42",
+  });
+  const stateWith = (baseline) => ({
+    hodlBaseline: baseline,
+    lifetimeHodlAmounts: { poolAddress: "0xPOOL", deposits: [] },
+  });
+
+  beforeEach(() => {
+    patches = [];
+    _cachedHodlWrites = [];
+    _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
+    _historicalImpl = async () => ({ price0: 2, price1: 3 });
+    _installMocks();
+    ({ revalueHodlBaseline } = require("../src/bot-hodl-scan"));
+  });
+
+  afterEach(_restoreMocks);
+
+  const run = (botState, mintBlock) =>
+    revalueHodlBaseline(
+      botState,
+      (p) => patches.push(p),
+      POSITION,
+      mintBlock,
+      "epoch-key",
+    );
+
+  it("re-prices the mint amounts, which it keeps as the chain recorded them", async () => {
+    const botState = stateWith(saved());
+    await run(botState, 123);
+    const base = botState.hodlBaseline;
+    assert.strictEqual(base.entryValue, 10 * 2 + 20 * 3);
+    assert.strictEqual(base.hodlAmount0, 10, "amounts are not re-derived");
+    assert.strictEqual(base.hodlAmount1, 20);
+    assert.strictEqual(base.mintDate, "2026-03-15");
+    assert.strictEqual(base.mintGasWei, "42");
+    assert.strictEqual(patches.length, 1, "the dashboard is told once");
+  });
+
+  it("reads past the cached price, at the block of this NFT's mint", async () => {
+    let seen = null;
+    _historicalImpl = async (_pool, ts, _network, opts) => {
+      seen = { ts, opts };
+      return { price0: 1, price1: 1 };
+    };
+    await run(stateWith(saved()), 123);
+    assert.strictEqual(seen.ts, 1_773_000_000, "priced at the mint");
+    assert.strictEqual(seen.opts.blockNumber, 123);
+    assert.strictEqual(
+      seen.opts.refresh,
+      true,
+      "a cached bad price is what this action exists to replace",
+    );
+  });
+
+  it("keeps the saved figure when no price comes back", async () => {
+    _historicalImpl = async () => ({ price0: 0, price1: 0 });
+    const botState = stateWith(saved());
+    await run(botState, 123);
+    assert.strictEqual(botState.hodlBaseline.entryValue, 100, "left alone");
+    assert.strictEqual(patches.length, 0);
+  });
+
+  it("does nothing when there is no saved baseline", async () => {
+    const botState = stateWith(null);
+    await run(botState, 123);
+    assert.strictEqual(botState.hodlBaseline, null);
+    assert.strictEqual(patches.length, 0);
+  });
+
+  it("leaves a baseline that carries no mint amounts", async () => {
+    /*- Amounts come from the mint event, so a baseline without them is
+     *  one no scan wrote. Multiplying by a price would publish NaN into
+     *  the Lifetime panel and into the value the IL Guard measures
+     *  against. */
+    const baseline = { ...saved(), hodlAmount0: undefined };
+    const botState = stateWith(baseline);
+    await run(botState, 123);
+    assert.strictEqual(botState.hodlBaseline.entryValue, 100, "untouched");
+    assert.strictEqual(patches.length, 0);
   });
 });

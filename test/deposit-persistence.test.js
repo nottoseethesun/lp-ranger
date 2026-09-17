@@ -7,7 +7,7 @@
  *
  *   `_scanLifetimePoolData` has nothing to compute, and returns without a
  *   chain read, only when three results are on disk: the HODL amounts,
- *   the compound total and the deposit total (`canResumeIncrementally`).
+ *   the compound total and the deposit total (`lifetimeFiguresSaved`).
  *   The deposit total is computed by `computeDepositUsd`, which sets it on
  *   the bot state and passes it to `updateBotState` — but the save path
  *   must actually write it, and the start path must actually read it back.
@@ -34,7 +34,7 @@ const {
 } = require("../src/server-positions");
 const { readConfigValue } = require("../src/bot-config-v2");
 const {
-  canResumeIncrementally,
+  lifetimeFiguresSaved,
   _resolveDiskState,
 } = require("../src/bot-recorder-lifetime");
 const {
@@ -157,7 +157,7 @@ describe("a restart finds the lifetime figures saved", () => {
   it("sees the deposit on disk once the bot has reported it", () => {
     /*-
      *  Without the save this reads `hasDepositData: false` forever, so
-     *  `canResumeIncrementally` can never return true and every restart
+     *  `lifetimeFiguresSaved` can never return true and every restart
      *  re-reads the chain.
      */
     const cfg = freshConfig();
@@ -191,10 +191,9 @@ describe("a restart finds the lifetime figures saved", () => {
      *  The HODL amounts live in the epoch cache, not the config slot;
      *  supplied directly here so the test isolates the deposit.
      */
-    assert.equal(
-      canResumeIncrementally({ ...disk, cachedHodl: { deposits: [] } }),
-      true,
-    );
+    const withHodl = { ...disk, cachedHodl: { deposits: [] } };
+    const saved = lifetimeFiguresSaved(withHodl);
+    assert.equal(saved, true);
   });
 
   it("does not while the deposit is missing", () => {
@@ -212,10 +211,9 @@ describe("a restart finds the lifetime figures saved", () => {
     );
     const disk = _resolveDiskState(botStateReading(cfg), null);
     assert.equal(disk.hasDepositData, false);
-    assert.equal(
-      canResumeIncrementally({ ...disk, cachedHodl: { deposits: [] } }),
-      false,
-    );
+    const withHodl = { ...disk, cachedHodl: { deposits: [] } };
+    const saved = lifetimeFiguresSaved(withHodl);
+    assert.equal(saved, false);
   });
 
   it("does not for a zero deposit", () => {

@@ -124,7 +124,7 @@ function savedHistory(closed, { open = false } = {}) {
     tracker.openEpoch(params);
     tracker.closeEpoch({ exitValue: 99, gasCost: 0 });
   }
-  if (open) tracker.openEpoch(params);
+  if (open === true) tracker.openEpoch(params);
   return tracker.serialize();
 }
 

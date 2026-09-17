@@ -129,6 +129,12 @@ function isRecoveryResult(result, botState) {
 function _needsLifetimeRescan(botState) {
   const reasons = [];
   if (botState._needsFullRescan === true) reasons.push("needsFullRescan=true");
+  /*- Re-scan Prices asked for the stored dollar figures to be rebuilt.
+   *  The route triggers a scan itself, so this covers the case where
+   *  that trigger never ran or threw: the request would otherwise sit
+   *  unanswered, since a scan is the only thing that reads it. */
+  if (botState._needsPriceRevalue === true)
+    reasons.push("needsPriceRevalue=true");
   if (botState.lifetimeScanComplete === false)
     reasons.push("lifetimeScanComplete=false");
   /*- Epoch reconstruction built fewer epochs than the chain has closed
@@ -673,8 +679,8 @@ async function startBotLoop(opts) {
    *       entirely (e.g. because the startup scan failed silently while
    *       Moralis quota was exhausted, or no scan has ever succeeded).
    *
-   *    2. `_needsFullRescan === true` — a rebalance fired and set the
-   *       "re-classify the chain" flag, but the follow-up `_triggerScan`
+   *    2. `_needsFullRescan === true` — a rebalance fired and asked for
+   *       the chain-wide figures to be re-derived, but `_triggerScan`
    *       (bot-cycle.js:160) ran into a silent failure in
    *       `_scanLifetimePoolData` and the flag is still set.  Without
    *       this gate condition the loop would early-return because the

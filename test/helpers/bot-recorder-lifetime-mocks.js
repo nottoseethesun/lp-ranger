@@ -1,23 +1,23 @@
 /**
  * @file test/helpers/bot-recorder-lifetime-mocks.js
  * @description Shared mock harness for the `_scanLifetimePoolData` test
- * files.  Extracted when `bot-recorder-lifetime.test.js` passed the
- * 500-line cap and the incremental-resume suites moved to their own
- * file — copying the harness into the second file would have been a
- * mirror, and the two copies would have drifted the moment either grew
- * a new mock.
+ * files.  Every test file that drives `_scanLifetimePoolData` uses this
+ * one harness; a copy in each file would drift the moment one grew a new
+ * mock.
  *
  * Mutable knobs are exposed through `state` (a live object, so a test
  * can reassign fields and the installed mocks read the new value):
  *
  *   - `cachedHodl`        what `getCachedLifetimeHodl` returns
+ *   - `compoundResult`    what `classifyCompounds` returns per NFT
  *   - `poolStateResult`   pool state, or an Error for `getPoolState` to throw
- *   - `lastNftScanBlock`  the incremental cursor
- *   - `poolCreationBlock` the from-scratch starting block
+ *   - `poolCreationBlock` what the pool-creation lookup returns
+ *   - `scanError`         an Error for the chain read to throw
  *
  * and observations through the same object:
  *
- *   - `scanCalled` / `classifyCalled` / `depositCalled`
+ *   - `scanCalled` / `classifyCalled` / `depositCalled` / `hodlComputed` /
+ *     `baselineRevalued`
  *   - `scanCount`       how many chain reads `fetchAllNftEvents` served
  *   - `scanFromBlock`   the block `fetchAllNftEvents` was actually given
  *   - `scanOpts`        the options it was given (resume buffer, live id)
@@ -58,12 +58,19 @@ function resetState() {
   state.scanOpts = null;
   state.classifyCalled = false;
   state.depositCalled = false;
+  state.hodlComputed = false;
+  state.baselineRevalued = false;
   state.cachedHodl = { poolAddress: "0xPOOL" };
+  state.compoundResult = {
+    compounds: [],
+    totalCompoundedUsd: 0,
+    totalGasWei: "0",
+  };
   state.poolStateResult = { decimals0: 18, decimals1: 18 };
   state.errorLogCalls = [];
-  state.lastNftScanBlock = 0;
   state.poolCreationBlock = 0;
   state.scanFromBlock = null;
+  state.scanError = null;
 }
 
 /*- Mock builders shared by both install functions (keeps them DRY). */
@@ -92,11 +99,7 @@ function _errorLogMock() {
 function _installMocks() {
   Module.prototype.require = function (id) {
     if (id === "./epoch-cache") {
-      return {
-        getCachedLifetimeHodl: () => state.cachedHodl,
-        getLastNftScanBlock: () => state.lastNftScanBlock,
-        setLastNftScanBlock: () => {},
-      };
+      return { getCachedLifetimeHodl: () => state.cachedHodl };
     }
     if (id === "./bot-pnl-updater") {
       return {
@@ -108,7 +111,7 @@ function _installMocks() {
       return {
         classifyCompounds: async () => {
           state.classifyCalled = true;
-          return { compounds: [], totalCompoundedUsd: 0, totalGasWei: "0" };
+          return state.compoundResult;
         },
       };
     }
@@ -117,9 +120,15 @@ function _installMocks() {
     }
     if (id === "./bot-hodl-scan") {
       return {
-        computeAndCacheHodl: async () => ({}),
+        computeAndCacheHodl: async () => {
+          state.hodlComputed = true;
+          return {};
+        },
         computeDepositUsd: async () => {
           state.depositCalled = true;
+        },
+        revalueHodlBaseline: async () => {
+          state.baselineRevalued = true;
         },
       };
     }
@@ -137,7 +146,8 @@ function _installMocks() {
           state.scanCount += 1;
           state.scanFromBlock = fromBlock;
           state.scanOpts = opts;
-          return { allNftEvents: new Map([[1, []]]), maxBlock: 0 };
+          if (state.scanError) throw state.scanError;
+          return new Map([[1, []]]);
         },
       };
     }

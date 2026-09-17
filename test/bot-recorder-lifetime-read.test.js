@@ -47,8 +47,7 @@ function load() {
         collectTokenIds,
         fetchAllNftEvents: async (ids, fromBlock, mintBlocks, opts) => {
           reads.push({ ids: [...ids], fromBlock, mintBlocks, opts });
-          const allNftEvents = new Map([...ids].map((id) => [id, { id }]));
-          return { allNftEvents, maxBlock: fromBlock + 1 };
+          return new Map([...ids].map((id) => [id, { id }]));
         },
       };
     }
@@ -94,17 +93,14 @@ describe("prepareChainRead", () => {
       rebalanceEvents: chain(),
       start: startAt(1_000).start,
     });
-    const result = await prepared.read();
+    const events = await prepared.read();
     assert.deepEqual([...reads[0].ids].sort(), ["100", "200", "300"]);
     assert.equal(reads[0].mintBlocks.get("200"), 5_000);
     assert.equal(reads[0].mintBlocks.get("300"), 6_000);
-    /*-
-     *  The shared floor lifted to the chain's first mint, and the start
-     *  block handed back unlifted for the checkpoint comparison.
-     */
+    // The shared floor, lifted to the chain's first mint.
     assert.equal(reads[0].fromBlock, 4_000);
-    assert.equal(result.fromBlock, 1_000);
-    assert.equal(result.maxBlock, 4_001);
+    const readIds = [...events.keys()].sort();
+    assert.deepEqual(readIds, ["100", "200", "300"]);
     assert.deepEqual([...prepared.ids].sort(), ["100", "200", "300"]);
   });
 

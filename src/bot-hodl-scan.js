@@ -1,7 +1,8 @@
 /**
  * @file src/bot-hodl-scan.js
  * @description Lifetime HODL scan helpers: compute and cache HODL amounts,
- * resolve total lifetime deposit USD from per-deposit historical prices.
+ * resolve total lifetime deposit USD from per-deposit historical prices,
+ * and re-value the HODL baseline when Re-scan Prices asks for it.
  * Extracted from bot-recorder.js to stay within the 500-line limit.
  */
 
@@ -14,6 +15,7 @@ const sendTx = require("./send-transaction");
 const { getPoolState } = require("./rebalancer");
 const _epochCache = require("./epoch-cache");
 const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
+const { _publishBaseline } = require("./hodl-baseline");
 const { fetchHistoricalPriceGecko: _fhp } = require("./price-fetcher");
 const {
   getBlockTimestamp,
@@ -146,7 +148,20 @@ async function _ensureHodlPoolAddress(
   }
 }
 
-/** Compute total lifetime deposit USD from HODL deposit entries. */
+/**
+ * Compute total lifetime deposit USD from HODL deposit entries.
+ *
+ * Each deposit is valued at the historical price for its own block, so
+ * the total is the money that went in, not what it would be worth today.
+ *
+ * @param {object} botState   Per-position bot state.
+ * @param {Function} updateState  State-update channel.
+ * @param {object} position   Live position (token0, token1, fee).
+ * @param {object} opts       Scan options; `decimals0`, `decimals1`, and
+ *   `refreshPrices` when the caller is re-valuing at fresh prices.
+ * @param {string|null} epochKey  Epoch cache key, or null.
+ * @returns {Promise<void>}
+ */
 async function computeDepositUsd(
   botState,
   updateState,
@@ -173,6 +188,9 @@ async function computeDepositUsd(
       token0Address: position.token0,
       token1Address: position.token1,
       blockNumber: block,
+      /*- Set by the Re-scan Prices path: read past the cached price so
+       *  the total is built from a freshly fetched one. */
+      refresh: opts.refreshPrices === true,
     });
   };
   const result = await _totalLifetimeDeposit(
@@ -180,7 +198,13 @@ async function computeDepositUsd(
     opts.decimals0,
     opts.decimals1,
     pFn,
-    { token0: position.token0, token1: position.token1 },
+    {
+      token0: position.token0,
+      token1: position.token1,
+      /*- Each deposit keeps the dollar figure it was last given, so a
+       *  re-value has to say it wants them priced again. */
+      refresh: opts.refreshPrices === true,
+    },
   );
   flushBlockTimeCache();
   if (result.total <= 0) return;
@@ -192,8 +216,90 @@ async function computeDepositUsd(
   });
 }
 
+/**
+ * Re-value the saved HODL baseline at a freshly fetched historical price.
+ *
+ * The mint amounts and the mint date are what the chain recorded, so they
+ * are kept. Only the price changes, and only when the lookup returns one:
+ * a failed lookup leaves the saved figure as it was rather than replacing
+ * it with zero.
+ *
+ * @param {object} botState   Per-position bot state.
+ * @param {Function} updateState  State-update channel.
+ * @param {object} position   Live position (token0, token1, fee).
+ * @param {number|undefined} mintBlock  Block this NFT was minted in, for
+ *   the block-scoped price lookup.
+ * @param {string|null} epochKey  Epoch cache key, or null.
+ * @returns {Promise<void>}
+ */
+async function revalueHodlBaseline(
+  botState,
+  updateState,
+  position,
+  mintBlock,
+  epochKey,
+) {
+  const saved = botState?.hodlBaseline;
+  if (saved === undefined || saved === null) return;
+  /*- The mint's own moment is what the price is asked for, so without it
+   *  there is nothing to re-value against. */
+  if (typeof saved.mintTimestamp !== "number" || saved.mintTimestamp <= 0)
+    return;
+  /*- Both amounts come from the mint's own event, so a baseline without
+   *  them is one no scan wrote. Re-pricing it would put NaN where a
+   *  dollar figure belongs, in the Lifetime panel and in the value the
+   *  IL Guard measures against. */
+  const a0 = saved.hodlAmount0,
+    a1 = saved.hodlAmount1;
+  if (typeof a0 !== "number" || typeof a1 !== "number") return;
+  const provider = sendTx.getManagedReadProvider();
+  const poolAddr = await _ensureHodlPoolAddress(
+    botState,
+    position,
+    epochKey,
+    provider,
+    ethers,
+  );
+  if (!poolAddr) return;
+  const { price0, price1 } = await _fhp(
+    poolAddr,
+    saved.mintTimestamp,
+    "pulsechain",
+    {
+      token0Address: position.token0,
+      token1Address: position.token1,
+      blockNumber: mintBlock,
+      refresh: true,
+    },
+  );
+  if (!(price0 > 0) && !(price1 > 0)) {
+    log.warn(
+      "[bot] %s/%s NFT #%s %s: no historical price at the mint, so the HODL baseline keeps its saved value",
+      position.token0Symbol || "Token0",
+      position.token1Symbol || "Token1",
+      String(position.tokenId || ""),
+      emojiId(String(position.tokenId || "")),
+    );
+    return;
+  }
+  _publishBaseline(
+    {
+      hodlAmount0: a0,
+      hodlAmount1: a1,
+      price0,
+      price1,
+      mintDate: saved.mintDate,
+      mintTimestamp: saved.mintTimestamp,
+      mintGasWei: saved.mintGasWei,
+    },
+    botState,
+    updateState,
+  );
+}
+
 module.exports = {
   computeAndCacheHodl,
   computeDepositUsd,
+  revalueHodlBaseline,
   _ensureHodlPoolAddress,
 };

@@ -401,8 +401,10 @@ written on the first run instead of re-enumerating the wallet.
 
 A scan can still run after a restart, for a reason unrelated to the
 restart: new rebalances have happened since the last one, or a previous
-scan did not finish. That work is incremental, picking up from where the
-last run got to rather than starting over.
+scan did not finish. The rebalance-event scan picks up from the last
+block it saved, so new rebalances cost only the blocks since then. It
+saves only when it completes. An interrupted one starts over, and so
+does a lifetime scan's chain read.
 
 ---
 
@@ -1200,7 +1202,7 @@ Three rules keep the sharing sound:
 | Rule | Why |
 | --- | --- |
 | Reconstruction shares only a read that will happen anyway | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper |
-| A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read never resumes from `lastNftScanBlock`: it always starts from the pool's creation block, even if every figure is saved after it was prepared, and `test/bot-recorder-lifetime-share.test.js` pins that for every state |
+| A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read always starts from the pool's creation block, lifted to the chain's first mint. That holds even if every figure is saved after the read was prepared. `test/bot-recorder-lifetime-share.test.js` pins it for every state |
 | The lifetime scan reuses the pass's read only for the chain it was prepared for (`chainSignature`: the live NFT, every NFT with its mint block, and the chain's first mint) | Reconstruction can run long enough for a manual rebalance to land. A read prepared before it describes a chain that no longer exists, so the scan reads afresh and logs why |
 
 A batch succeeds or fails as a unit, and each reader decides what a
@@ -1465,8 +1467,8 @@ blockchain wallet scans on next start to rebuild caches.
   dashboard on next start.
 - `npm run clear-blockchain-scan-cache` — Delete every `tmp/*.json`, and
   nothing else. That directory holds derived scan results only — event
-  scans, LP position enumeration, P&L epochs (including the
-  `lastNftScanBlock` resume checkpoint), block timestamps, pool creation
+  scans, LP position enumeration, P&L epochs and the lifetime HODL
+  amounts kept beside them, block timestamps, pool creation
   blocks, token symbols, fetched prices — all rebuilt from chain on the
   next start. This is the command for testing scan behaviour from cold.
   Refuses while a server is running, because clearing the cache under a
@@ -1836,8 +1838,8 @@ each script backs the original up to a timestamped sibling first and
 prints the exact restore command.
 
 - `inject-stuck-lifetime-state.sh` — Sets every pool entry in
-  `tmp/pnl-epochs-cache.json` to `freshDeposits: null`,
-  `lifetimeHodlAmounts: null`, `lastNftScanBlock: 0`. On the next
+  `tmp/pnl-epochs-cache.json` to `freshDeposits: null` and
+  `lifetimeHodlAmounts: null`. On the next
   `npm start` that combination drives the lifetime-scan recovery path in
   `src/bot-recorder-lifetime.js` and `src/bot-loop.js` (see
   [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
@@ -2172,7 +2174,6 @@ only be changed by editing
 | `dustUnitPriceCacheMultiplier` | `30` | `POST /api/config` | Dust-unit-price TTL as a multiple of `priceCacheTtlMs` |
 | `moveCacheTtlMs` | `4000` | `POST /api/config` | Cache TTL for the fresh-price window around a rebalance or compound |
 | `pricePauseExceptionPollWindowMultiple` | `10` | `POST /api/config` | Poll cycles between the balanced-band notifier's fresh-price probes. The dashboard reads it to label the resulting cadence next to the checkbox, but offers no field to set it |
-| `rescanPricesDefaultDays` | `60` | the JSON file, then restart | Lookback the Re-scan Prices dialog prefills. Published on every `/api/status`, but not a saved setting |
 | `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request. Clamped to 10,000 by [`src/bot-config-defaults.js`](../src/bot-config-defaults.js) — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
 | `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process. `0` disables pacing, which is only sensible against a local node |
 
@@ -2954,8 +2955,9 @@ should not permanently disable the escape hatch.
    `npm run clear-blockchain-scan-cache`, which clears the same keys
    from every position.
 3. Clear the pool's entry in the epoch cache
-   (`_epochCache.clearCacheEntry(keyOpts)`) so the fresh scan starts
-   from pool creation block instead of the stale `lastNftScanBlock`.
+   (`_epochCache.clearCacheEntry(keyOpts)`). That drops its saved epochs,
+   lifetime HODL amounts and fresh-deposit totals, so the fresh scan
+   recomputes them.
 4. Clear the pool's event cache file (`clearPoolCache(position, wallet)`).
 5. Reset the same fields on the live bot state and set
    `_needsFullRescan = true`, `_needsEpochRebuild = true`,
@@ -3071,27 +3073,60 @@ The narrow counterpart to `POST /api/position/reload`. Every USD figure
 is `amount x price`; the amounts come from chain and are reliable, but
 `src/price-source-cascade.js` accepts the first source returning any
 positive number, with no plausibility check. One bad response therefore
-lands in `compoundHistory[].usdValue` and `totalCompoundedUsd` — and
-`_resolveDiskState` in `src/bot-recorder-lifetime.js` deliberately
-refuses to rebuild those from chain once disk holds a non-zero value,
-so the bad figure is permanent until something clears it.
+lands in any stored dollar figure — and the lifetime scan deliberately
+refuses to rebuild a figure disk already holds, so a bad one is
+permanent until something asks for it to be rebuilt.
 
-Reload clears it but re-walks the pool's whole Transfer history (minutes
-to hours). This route clears **only** three price-derived keys
-(`compoundHistory`, `totalCompoundedUsd`, `nftCompoundedUsdByTokenId`),
-rewinds the NFT event watermark to the start of the chosen window, and
-calls `_triggerScan` so the existing lifetime scan re-values
-immediately. `collectedFeesUsd` is price-derived too, but nothing
-rebuilds it, so clearing it would destroy it. `hodlBaseline`,
-`lifetimeHodlAmounts`, `totalLifetimeDepositUsd` and
-`depositUsedFallback` are preserved —
-keeping those is the entire cost advantage.
+Reload asks for that, but re-walks the pool's whole Transfer history
+(minutes to hours). This route sets `_needsPriceRevalue` on the bot
+state and calls `_triggerScan`, so the existing lifetime scan re-values
+immediately. `lifetimeScanPlan` reads the request and runs three steps
+that a saved figure would otherwise skip:
 
-Body: `{ positionKey, days }`. `days` omitted or `null` means the whole
-history, which resolves to the pool creation block, never zero. The
-default window ships as `rescanPricesDefaultDays` in
-`bot-config-defaults.json`, is read once by `src/config.js`, and is
-published on `/api/status` so the dashboard holds no second literal.
+| Figure | Rebuilt from |
+| ------ | ------------ |
+| Fees Compounded (`totalCompoundedUsd`, `compoundHistory`, `nftCompoundedUsdByTokenId`) | the chain's events, at current prices |
+| Lifetime Deposit (`totalLifetimeDepositUsd`) | the saved deposits, at the historical price for each deposit's own block |
+| HODL baseline entry value (`hodlBaseline.entryValue`) | the saved mint amounts, at the historical price for the mint's block |
+
+The token amounts behind all three are read from chain but never
+re-derived from the pool's history, which is the cost advantage over
+Reload. `collectedFeesUsd` is price-derived too, but nothing rebuilds
+it, so there is no fresh value to put in its place.
+
+**Nothing is deleted.** Each figure is overwritten only once its
+replacement exists, and each step keeps the saved figure when its price
+source answers with nothing. Only a scan that finishes clears the
+request, so a scan that fails is retried on the next pass; the request
+lives in memory, so a restart drops it and the figures stand as they
+were.
+
+Clearing a figure to make the guard rebuild it is the thing to avoid.
+While it is missing another writer can fill it — `_bumpRebalanceFees`
+credits a rebalance's fees into whatever is there — and the guard then
+reads that partial number as settled, so it survives every later scan.
+
+A price is remembered in two places, and a re-value has to read past
+both:
+
+- `tmp/historical-price-cache.json` keeps historical prices with no
+  expiry. `fetchHistoricalPriceGecko` takes `refresh`, which skips the
+  cached entry and overwrites it with whatever comes back.
+- Each deposit entry memoizes the dollar figure it was last given, and
+  `totalLifetimeDeposit` returns that figure without asking any source.
+  It takes `refresh` for the same reason.
+
+Current-price reads run inside `withFreshPricesAllowed` for the length
+of the re-value, so neither the idle pause nor the price cache can
+answer with the figure being replaced.
+
+The 30-minute rescan loop also fires on an unanswered request
+(`_needsLifetimeRescan`), since the route's own trigger can fail, and a
+scan is the only thing that reads it. A scan clears only the requests it
+carried in: one that arrives mid-scan describes a chain that scan never
+read, so it waits for the next one.
+
+Body: `{ positionKey }`.
 
 Rejects with 409 `not-managed` unless the position's **disk config**
 says `status: "running"` — `status` lives on the config, not the
@@ -3100,9 +3135,7 @@ the API response. Also rejects mid-rebalance, mid-compound, and while a
 scan is already running.
 
 Cost: one batched read of the chain's three event histories, from each
-NFT's mint. The window does not narrow it: the lifetime scan never
-resumes from the watermark, since a total summed over part of the chain
-would be short. On a long chain that is minutes; see
+NFT's mint. On a long chain that is minutes; see
 [One read per pass](#one-read-per-pass) for measured figures.
 
 ## Dead Code Detection

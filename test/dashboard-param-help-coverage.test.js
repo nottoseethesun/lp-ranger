@@ -23,6 +23,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { indexHtmlDocument } = require("./helpers/index-html");
 
 const ROOT = path.join(__dirname, "..");
 const INDEX_HTML = path.join(ROOT, "public", "index.html");
@@ -228,10 +229,7 @@ test("every circle-i in index.html opens something on click", async () => {
    *  click handler.  This asserts that, so a new icon cannot ship with
    *  no click path. */
   require("global-jsdom/register");
-  const doc = new window.DOMParser().parseFromString(
-    fs.readFileSync(INDEX_HTML, "utf8"),
-    "text/html",
-  );
+  const doc = indexHtmlDocument();
   const icons = [...doc.querySelectorAll(".\\39mm-pos-mgr-il-info-btn")];
   assert.ok(icons.length > 30, "selector should match the app's ~44 icons");
 

@@ -62,19 +62,9 @@ function partitionByBuffer(idList, buffer, floorOf, liveId) {
   return { reusedEv, toFetch };
 }
 
-/** Highest event block in one NFT's read, or `floor` if it has none. */
-function _maxEventBlock(ev, floor) {
-  let max = floor;
-  for (const e of [...ev.ilEvents, ...ev.collectEvents, ...ev.dlEvents]) {
-    if (e.blockNumber > max) max = e.blockNumber;
-  }
-  return max;
-}
-
 /**
  * Fetch IncreaseLiquidity / Collect / DecreaseLiquidity events for every
- * tokenId in `ids`, tracking the highest block seen so the caller can
- * persist an incremental-scan checkpoint.
+ * tokenId in `ids`.
  *
  * **The whole chain is read in one batched pass** by
  * `nft-events-batch.scanChainNftEvents`, rather than one pass per NFT.
@@ -120,7 +110,8 @@ function _maxEventBlock(ev, floor) {
  *   the retry pays only for what is left.  Omit to scan everything.
  * @param {string|number|null} [opts.liveTokenId]  The position's current
  *   NFT, which is neither reused from nor written to the buffer.
- * @returns {Promise<{allNftEvents: Map<string, object>, maxBlock: number}>}
+ * @returns {Promise<Map<string, object>>}  Each NFT's events, keyed by
+ *   string tokenId, with an entry for every id in `ids`.
  */
 async function fetchAllNftEvents(ids, fromBlock, mintBlocks, opts = {}) {
   const { resumeBuffer = null, liveTokenId = null } = opts;
@@ -155,7 +146,6 @@ async function fetchAllNftEvents(ids, fromBlock, mintBlocks, opts = {}) {
       : new Map();
 
   const allNftEvents = new Map();
-  let maxBlock = fromBlock;
   for (const tid of idList) {
     /*-
      *  `eventsFor` throws for an id the batch was not asked about, so an
@@ -178,7 +168,6 @@ async function fetchAllNftEvents(ids, fromBlock, mintBlocks, opts = {}) {
      */
     if (buffer !== null && tid !== liveId)
       buffer.set(tid, { from: floorOf.get(tid), ev });
-    maxBlock = _maxEventBlock(ev, maxBlock);
   }
   const reused = reusedEv.size;
   /*-
@@ -198,7 +187,7 @@ async function fetchAllNftEvents(ids, fromBlock, mintBlocks, opts = {}) {
       allNftEvents.size,
       allNftEvents.size - reused,
     );
-  return { allNftEvents, maxBlock };
+  return allNftEvents;
 }
 
 module.exports = { collectTokenIds, fetchAllNftEvents, partitionByBuffer };

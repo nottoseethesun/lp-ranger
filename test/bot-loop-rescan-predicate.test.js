@@ -47,6 +47,19 @@ describe("_needsLifetimeRescan()", () => {
     assert.strictEqual(r.reason, "needsFullRescan=true");
   });
 
+  it("fires on a Re-scan Prices request the route could not start", () => {
+    /*- The route triggers its own scan, so this only matters when that
+     *  trigger never ran or threw. A scan is the only thing that reads
+     *  the request, so without this the click would go unanswered with
+     *  the figures the user asked to replace still on screen. */
+    const r = _needsLifetimeRescan({
+      ...settled(),
+      _needsPriceRevalue: true,
+    });
+    assert.strictEqual(r.needed, true);
+    assert.strictEqual(r.reason, "needsPriceRevalue=true");
+  });
+
   it("fires when the lifetime scan has not completed", () => {
     const r = _needsLifetimeRescan({
       ...settled(),

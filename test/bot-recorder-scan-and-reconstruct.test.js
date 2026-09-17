@@ -123,8 +123,7 @@ function load(mode) {
           failures -= 1;
           throw new Error("simulated read failure");
         }
-        const allNftEvents = new Map([...ids].map((id) => [id, emptyEvents()]));
-        return { allNftEvents, maxBlock: fromBlock };
+        return new Map([...ids].map((id) => [id, emptyEvents()]));
       },
     },
   };
@@ -209,10 +208,7 @@ describe("one scan pass, one chain read", () => {
     assert.equal(typeof run.epochCalls[0].readChainEvents, "function");
     assert.ok(run.epochEvents.has("100"));
     assert.ok(run.epochEvents.has("200"));
-    /*-
-     *  From each NFT's mint: the pool floor lifted to the chain's first
-     *  mint, not the checkpoint.
-     */
+    // From each NFT's mint: the pool floor lifted to the chain's first mint.
     assert.equal(run.reads[0].fromBlock, 4_000);
   });
 

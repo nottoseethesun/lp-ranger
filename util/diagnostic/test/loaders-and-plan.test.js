@@ -8,7 +8,7 @@
  *
  * `_printPlan` is the safety feature of a destructive tool — it is the
  * screen an operator reads before answering y/N to wiping
- * `compoundHistory` and `lastNftScanBlock`.  If it under-reports what
+ * `compoundHistory` and the lifetime deposit.  If it under-reports what
  * will change, the operator consents to something they did not see, so
  * these assertions are about consent accuracy, not just coverage.
  */
@@ -91,7 +91,7 @@ test("_printPlan — lists every field that will be cleared", async () => {
     totalLifetimeDepositUsd: 2500,
   };
   const { out } = await captureConsole(() =>
-    _printPlan(KEY, pos, ["pool.key.one"], {}),
+    _printPlan(KEY, pos, ["pool.key.one"], { "clear-hodl": true }),
   );
   const text = out.join("\n");
   assert.match(text, /=== Rescan plan ===/);
@@ -110,7 +110,7 @@ test("_printPlan — lists every field that will be cleared", async () => {
   ]) {
     assert.ok(text.includes(field), `plan must name ${field}`);
   }
-  assert.match(text, /lastNftScanBlock/);
+  assert.match(text, /lifetimeHodlAmounts/);
   assert.match(text, /pool\.key\.one/);
 });
 
@@ -123,27 +123,44 @@ test("_printPlan — absent on-disk values render as placeholders", async () => 
 });
 
 test("_printPlan — says so when no pool epoch key was found", async () => {
-  const { out } = await captureConsole(() => _printPlan(KEY, {}, [], {}));
-  assert.match(out.join("\n"), /none found — only the position config/);
+  const { out } = await captureConsole(() =>
+    _printPlan(KEY, {}, [], { "clear-hodl": true }),
+  );
+  const text = out.join("\n");
+  assert.match(text, /none found — only the position config/);
+  assert.doesNotMatch(text, /lifetimeHodlAmounts/, "nothing to clear there");
 });
 
-test("_printPlan — announces lifetimeHodl only if --clear-hodl", async () => {
+test("_printPlan — names the pool and its HODL only if --clear-hodl", async () => {
   const withFlag = await captureConsole(() =>
     _printPlan(KEY, {}, ["k"], { "clear-hodl": true }),
   );
-  assert.match(withFlag.out.join("\n"), /lifetimeHodl\s+\(--clear-hodl/);
+  const withText = withFlag.out.join("\n");
+  assert.match(withText, /lifetimeHodlAmounts\s+\(--clear-hodl/);
   const without = await captureConsole(() => _printPlan(KEY, {}, ["k"], {}));
-  assert.doesNotMatch(without.out.join("\n"), /lifetimeHodl/);
+  const withoutText = without.out.join("\n");
+  assert.doesNotMatch(withoutText, /lifetimeHodlAmounts|Pool epoch cache/);
 });
 
-test("_printPlan — names both backups when a pool key is in play", async () => {
-  const { out } = await captureConsole(() => _printPlan(KEY, {}, ["k"], {}));
-  const backups = out.filter((l) => l.includes(".pre-rescan.<ISO>.json"));
+/** The backup lines a plan names. */
+async function plannedBackups(poolKeys, flags) {
+  const { out } = await captureConsole(() =>
+    _printPlan(KEY, {}, poolKeys, flags),
+  );
+  return out.filter((l) => l.includes(".pre-rescan.<ISO>.json"));
+}
+
+test("_printPlan — names both backups when --clear-hodl has a pool key", async () => {
+  const backups = await plannedBackups(["k"], { "clear-hodl": true });
   assert.equal(backups.length, 2, "config + epoch cache backups");
 });
 
+test("_printPlan — names only the config backup without --clear-hodl", async () => {
+  const backups = await plannedBackups(["k"], {});
+  assert.equal(backups.length, 1);
+});
+
 test("_printPlan — names only the config backup when no pool key", async () => {
-  const { out } = await captureConsole(() => _printPlan(KEY, {}, [], {}));
-  const backups = out.filter((l) => l.includes(".pre-rescan.<ISO>.json"));
+  const backups = await plannedBackups([], { "clear-hodl": true });
   assert.equal(backups.length, 1);
 });

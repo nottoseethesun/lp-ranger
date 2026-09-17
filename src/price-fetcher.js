@@ -506,6 +506,8 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
  * @param {string} [opts.token0Address] - Token0 contract address.
  * @param {string} [opts.token1Address] - Token1 contract address.
  * @param {number} [opts.blockNumber]   - Block number for Moralis fallback.
+ * @param {boolean} [opts.refresh]      - Fetch even when the price is cached,
+ *   and overwrite the cached entry with what comes back.
  * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.
  */
 /**
@@ -591,8 +593,14 @@ async function fetchHistoricalPriceGecko(
     : toUtcDayKey(timestamp);
   const t0 = opts.token0Address;
   const t1 = opts.token1Address;
-  const c0 = t0 ? getHistoricalPrice(network, t0, utcKey) : null;
-  const c1 = t1 ? getHistoricalPrice(network, t1, utcKey) : null;
+  /*- `refresh` is the Re-scan Prices path. A historical price never
+   *  changes, so the disk cache has no expiry — which also means a bad
+   *  entry stays until something reads past it. Reading past it is the
+   *  only way a re-value reaches a new number; whatever comes back is
+   *  written over the old entry below. */
+  const useCache = opts.refresh !== true;
+  const c0 = t0 && useCache ? getHistoricalPrice(network, t0, utcKey) : null;
+  const c1 = t1 && useCache ? getHistoricalPrice(network, t1, utcKey) : null;
   if (c0 !== null && c1 !== null) return { price0: c0, price1: c1 };
   const { price0, price1 } = await _fetchHistoricalPair(
     poolAddress,

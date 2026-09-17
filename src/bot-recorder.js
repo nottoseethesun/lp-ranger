@@ -375,7 +375,7 @@ function _prepareSharedRead(position, botState, evts, epochKey) {
 /** Epoch reconstruction's view of a shared read: its per-NFT events. */
 function _epochEventsFrom(sharedRead) {
   if (sharedRead === null) return undefined;
-  return async () => (await sharedRead.read()).allNftEvents;
+  return sharedRead.read;
 }
 
 /** Scan history and reconstruct P&L epochs under the pool lock. */
@@ -564,13 +564,18 @@ function _applyRebalanceResult(deps, result) {
     deps._botState.oorSince = null;
     // Reset mint gas flag so the new position's mint gas gets applied
     deps._botState._mintGasApplied = false;
-    /*- Flag the next lifetime scan to re-classify from scratch (new NFT in
-     *  the rebalance chain).  Do NOT clear in-memory or on-disk lifetime
-     *  totals here — if the subsequent scan fails (Moralis quota, RPC
-     *  hiccup, etc.) the bot would be stuck with null forever and the
-     *  dashboard's Lifetime panel would silently fall back to a wrong
-     *  value.  Old data with `_needsFullRescan=true` is strictly better
-     *  than null until the new scan succeeds and overwrites it.
+    /*- Flag the next lifetime scan to re-derive the chain-wide figures.
+     *  There is a new NFT in the rebalance chain, and the mint took the
+     *  wallet's whole balance of both tokens — so anything that arrived
+     *  in the wallet since the previous mint is now a deposit in the
+     *  position, and only that scan counts it.
+     *
+     *  Do NOT clear in-memory or on-disk lifetime totals here — if the
+     *  subsequent scan fails (Moralis quota, RPC hiccup, etc.) the bot
+     *  would be stuck with null forever and the dashboard's Lifetime
+     *  panel would silently fall back to a wrong value.  Old data with
+     *  `_needsFullRescan=true` is strictly better than null until the
+     *  new scan succeeds and overwrites it.
      */
     deps._botState._needsFullRescan = true;
     /*- A rebalance just extended the chain, so the prior lifetime

@@ -8,99 +8,18 @@ const {
   _freshDeposits,
 } = require("../src/lifetime-hodl");
 
-function ilEvent(a0, a1, block = 100) {
-  return {
-    amount0: BigInt(a0),
-    amount1: BigInt(a1),
-    blockNumber: block,
-    txHash: "0x" + block.toString(16),
-  };
-}
-function colEvent(a0, a1, block = 200) {
-  return {
-    amount0: BigInt(a0),
-    amount1: BigInt(a1),
-    blockNumber: block,
-    txHash: "0x" + block.toString(16),
-  };
-}
-function dlEvent(liq, block = 150, a0 = 0, a1 = 0) {
-  return {
-    amount0: BigInt(a0),
-    amount1: BigInt(a1),
-    liquidity: BigInt(liq),
-    blockNumber: block,
-    txHash: "0x" + block.toString(16),
-  };
-}
-
-function _topicsMatch(lt, ft) {
-  if (!ft) return true;
-  return ft.every((f, i) => f === null || lt[i] === f);
-}
-
-function mockProvider(opts = {}) {
-  const balances = opts.balances || {};
-  const logs = opts.logs || [];
-  const txs = opts.txs || {};
-  return {
-    getLogs(filter) {
-      return Promise.resolve(
-        logs.filter(
-          (l) =>
-            l.address === filter.address &&
-            l.blockNumber >= filter.fromBlock &&
-            l.blockNumber <= filter.toBlock &&
-            _topicsMatch(l.topics, filter.topics),
-        ),
-      );
-    },
-    getTransaction(hash) {
-      return Promise.resolve(txs[hash] || null);
-    },
-    _balances: balances,
-  };
-}
-
-const TOPIC0 =
-  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-function mockEthers() {
-  return {
-    Contract: class {
-      constructor(addr, _abi, prov) {
-        this._addr = addr;
-        this._prov = prov;
-      }
-      async balanceOf(_w, opts = {}) {
-        const b = opts.blockTag || "latest";
-        return (this._prov._balances[this._addr] || {})[b] ?? 0n;
-      }
-    },
-    zeroPadValue(addr, _len) {
-      return "0x" + addr.toLowerCase().replace("0x", "").padStart(64, "0");
-    },
-    id(_s) {
-      return TOPIC0;
-    },
-  };
-}
-
-/** Create a two-NFT rebalance test fixture (drain NFT #50 → mint NFT #100). */
-function twoNftFixture(drain0, drain1, mint0, mint1) {
-  const events = new Map();
-  events.set("50", {
-    ilEvents: [ilEvent(1000_00000000, 2000_00000000, 10)],
-    collectEvents: [colEvent(drain0, drain1, 200)],
-    dlEvents: [dlEvent(1000, 150)],
-  });
-  events.set("100", {
-    ilEvents: [ilEvent(mint0, mint1, 210)],
-    collectEvents: [],
-    dlEvents: [],
-  });
-  const rebalanceEvents = [{ oldTokenId: "50", newTokenId: "100" }];
-  return { events, rebalanceEvents };
-}
+/*- The event shapes, the chain fixture and the provider/ethers stubs are
+ *  shared with the other lifetime-HODL test files; a copy per file drifted
+ *  as soon as one of them grew a case the others lacked. */
+const {
+  TRANSFER_TOPIC0: TOPIC0,
+  ilEvent,
+  colEvent,
+  dlEvent,
+  mockProvider,
+  mockEthers,
+  twoNftFixture,
+} = require("./helpers/lifetime-hodl-fixtures");
 
 describe("lifetime-hodl", () => {
   describe("_buildChainOrder", () => {

@@ -70,17 +70,17 @@ describe("_applyRebalanceResult — post-rebalance scan trigger", () => {
     amount1Minted: 0n,
   };
 
-  it("REGRESSION: does NOT null lifetimeHodl/freshDeposits/lastNftScanBlock on disk", () => {
-    /*- Earlier implementation wrote `null` to all three fields on every
-     *  rebalance and relied on the subsequent `_triggerScan` to repopulate.
-     *  When that scan failed silently (Moralis quota exhausted, RPC
-     *  hiccup, swallowed catch in bot-recorder-lifetime), the cache
-     *  stayed at null forever — the dashboard then fell through to
-     *  `closedEpochs[0].entryValue` and surfaced a wrong Total Lifetime
-     *  Deposit indefinitely.  See bot-recorder.js:_applyRebalanceResult
-     *  and the `_needsFullRescan` flag pattern. */
+  it("REGRESSION: does NOT null lifetimeHodl/freshDeposits on disk", () => {
+    /*-
+     *  Nulling them on every rebalance would leave the refill to the
+     *  following `_triggerScan`. That scan can fail: Moralis quota
+     *  exhausted, an RPC hiccup, a caught error in bot-recorder-lifetime.
+     *  The cache then stays null until a scan succeeds. Meanwhile the
+     *  dashboard falls through to `closedEpochs[0].entryValue` and shows
+     *  a wrong Total Lifetime Deposit. The `_needsFullRescan` flag drives
+     *  the next scan instead; see bot-recorder.js:_applyRebalanceResult.
+     */
     const key = uniqKey("A");
-    epochCache.setLastNftScanBlock(key, 26_312_976);
     epochCache.setCachedLifetimeHodl(key, { amount0: 100, amount1: 200 });
     epochCache.setCachedFreshDeposits(key, {
       raw0: "1",
@@ -88,11 +88,6 @@ describe("_applyRebalanceResult — post-rebalance scan trigger", () => {
       lastBlock: 26_312_976,
     });
     _applyRebalanceResult(makeDeps(key), result);
-    assert.strictEqual(
-      epochCache.getLastNftScanBlock(key),
-      26_312_976,
-      "lastNftScanBlock must NOT be reset — _needsFullRescan flag drives the next scan instead",
-    );
     assert.ok(
       epochCache.getCachedLifetimeHodl(key),
       "lifetimeHodlAmounts must NOT be nulled — old data is strictly better than null until the next scan succeeds",

@@ -301,6 +301,11 @@ during the startup scan and cached in the epoch cache
   scanned — previously accumulated fresh amounts are restored from cache.
   RPC cost per boundary: 4 `getLogs` calls (2 tokens × in/out).
 
+  The scan a rebalance triggers takes exactly this path. That rebalance
+  minted with the wallet's whole balance of both tokens, so any coins
+  that arrived since the previous mint are now deposits in the position;
+  the one new boundary is scanned and the rest come back from cache.
+
 - **Lifetime compounded amount** (`totalCompoundedUsd`) — the USD value of
   the fees each NFT earned and re-deposited, whether by a compound or by the
   rebalance that closed it. Each NFT's figure is its Collect amounts less the
@@ -372,18 +377,23 @@ reconstruction reads the closed NFTs itself, in one batch
 (`scanChainCollectAndDrain`). Either way the chain is read once per pass.
 
 When the HODL amounts, the compound total and the lifetime deposit are all
-already on disk (`canResumeIncrementally`), the scan has nothing to compute
-and does not read at all, unless a rebalance has flagged a full rescan.
+already on disk (`lifetimeFiguresSaved`), the scan has nothing to compute
+and does not read at all, unless a rebalance has flagged a full rescan or
+Re-scan Prices has asked for the figures to be re-priced.
 Whenever it does read, it reads from the pool's creation block, lifted to the
-chain's first mint. It never reads from the `lastNftScanBlock` checkpoint: a
-consumer about to compute from scratch needs the whole chain, not a slice of
-it. The start block is taken from the pool when the read runs. So a figure
-saved between preparing a read and starting it cannot turn it into a resumed
-read. The compound total and the lifetime deposit are saved and
+chain's first mint. A consumer about to compute from scratch needs the whole
+chain, not a slice of it. The start block is taken from the pool when the read
+runs. The compound total and the lifetime deposit are saved and
 restored with the position's config (`PERSISTED_STATE_KEYS` in
 `src/server-positions.js`). The HODL amounts are kept in the pool's epoch
 cache. So after the first complete scan, a restart reads nothing for them.
-The compound and rebalance paths keep them current as those happen.
+Compounds and rebalances add to the compound total as they happen. The full
+rescan a rebalance flags re-derives the HODL amounts and the lifetime
+deposit, because that rebalance minted with the wallet's whole balance:
+coins that arrived since the previous mint are deposits in the new NFT.
+Re-scan Prices asks for the other kind of rebuild — the amounts stand and
+every dollar figure built on them is fetched again at fresh prices. See
+docs/engineering.md § `POST /api/position/rescan-prices`.
 
 A pass whose event scan fails computes none of them. The chain the bot holds
 is then whatever it held before the pass, which on a cold start is nothing.

@@ -51,7 +51,7 @@ const _positionBotStates = new Map();
  *  The lifetime deposit and its fallback flag belong here because of the
  *  gate on the lifetime scan's chain read. `_scanLifetimePoolData` skips
  *  that read only when the HODL amounts, the compound total AND the
- *  deposit total are all on disk (`canResumeIncrementally`). A deposit
+ *  deposit total are all on disk (`lifetimeFiguresSaved`). A deposit
  *  that is never written keeps the read on, and every restart then reads
  *  the whole rebalance chain again.
  *

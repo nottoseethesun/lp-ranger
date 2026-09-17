@@ -46,7 +46,9 @@ describe("shareRead", () => {
       return reads;
     });
     await assert.rejects(read(), /rpc unavailable/);
-    assert.equal(await read(), 2);
-    assert.equal(await read(), 2, "and a success is kept");
+    const retried = await read();
+    assert.equal(retried, 2);
+    const again = await read();
+    assert.equal(again, 2, "and a success is kept");
   });
 });

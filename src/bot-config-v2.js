@@ -258,9 +258,7 @@ const POSITION_KEYS = [
    *  produced by `computeDepositUsd` in `bot-hodl-scan.js`.  Persisted so
    *  that the disk-as-source-of-truth gate in `_scanLifetimePoolData` can
    *  read them on the next bot start and skip a redundant deposit
-   *  recompute — a stale `lastNftScanBlock` would otherwise replay an
-   *  incremental NFT scan, miss earlier `IncreaseLiquidity` events, and
-   *  overwrite the correct lifetime deposit with a partial smaller total.
+   *  recompute.
    */
   "totalLifetimeDepositUsd",
   "depositUsedFallback",

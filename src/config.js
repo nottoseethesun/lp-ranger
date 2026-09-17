@@ -223,17 +223,6 @@ const MAX_REBALANCES_PER_DAY = parsePositiveInt(
 );
 
 /**
- * Default window, in days, for the Re-scan Prices dialog's "limit to
- * recent history" option.  The single literal lives in
- * `bot-config-defaults.json`; this is the read, and `/api/status`
- * publishes it so the dashboard never holds its own copy.
- */
-const RESCAN_PRICES_DEFAULT_DAYS = parsePositiveInt(
-  process.env.RESCAN_PRICES_DEFAULT_DAYS,
-  _BOT_DEFAULTS.rescanPricesDefaultDays,
-);
-
-/**
  * Impermanent Loss Guard, percent.  The single literal lives in
  * `bot-config-defaults.json`; this is the read, and `/api/status`
  * publishes it through `posDefaults` so the Auto-Rebalance Settings
@@ -369,7 +358,6 @@ module.exports = {
   MIN_REBALANCE_INTERVAL_MIN,
   MAX_REBALANCES_PER_DAY,
   IMPERMANENT_LOSS_GUARD_PCT,
-  RESCAN_PRICES_DEFAULT_DAYS,
   REBALANCE_RETRY_SWAP_LIMIT,
   DASHBOARD_POLL_INTERVAL_MS,
   GUARANTEED_DASHBOARD_HAS_POLLED_MS,

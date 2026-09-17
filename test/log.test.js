@@ -217,7 +217,9 @@ test("_colorize paints [rescan-prices] in the tool palette", () => {
    *
    *  Registered as a HIGHLIGHT, not a _COLORS tag: these lines lead
    *  with "[server] " and _COLORS matches with startsWith(). */
-  const out = _colorize("[server] [rescan-prices] window=60d fromBlock=1");
+  const out = _colorize(
+    "[server] [rescan-prices] clearing the price-derived figures and re-scanning",
+  );
   assert.ok(
     out.includes(_ESC + "[38;2;48;48;59;48;2;234;234;235m"),
     "must carry the tool-grey fg + 90%-lighter bg",
@@ -227,7 +229,7 @@ test("_colorize paints [rescan-prices] in the tool palette", () => {
   assert.ok(idx > 0, "highlight begins at the tag, after the [server] prefix");
   assert.equal(
     stripAnsi(out),
-    "[server] [rescan-prices] window=60d fromBlock=1",
+    "[server] [rescan-prices] clearing the price-derived figures and re-scanning",
     "colour must not alter the text",
   );
 });

@@ -4,8 +4,8 @@
  * Current Position.
  *
  * Owns:
- *   - `openRescanPricesDialog()` — the explanation dialog, its
- *     60-day-window checkbox, and the guarded action button.
+ *   - `openRescanPricesDialog()` — the explanation dialog and its
+ *     guarded action button.
  *   - `paintRescanPricesButton()` — enable/disable + tooltip for the
  *     Settings item, called every poll alongside the Reload button's
  *     painter.
@@ -15,8 +15,8 @@
  * `amount x price`. Amounts come from chain and are reliable; prices
  * come from a feed cascade with no plausibility check, so one bad
  * response can be recorded permanently. Reload fixes that but re-walks
- * the pool's whole history. This re-values at fresh prices over a
- * bounded window instead.
+ * the pool's whole history. This clears only the price-derived figures
+ * and re-values them at fresh prices.
  *
  * Managed-state gate: read from the published position state
  * (`posState.status`), never from the badge's CSS class — see
@@ -45,17 +45,6 @@ import { ethers } from "./ethers-adapter.js";
 import { log } from "./dashboard-log.js";
 import { g, cloneTpl, fetchWithCsrf } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
-
-/*- The window default is NOT duplicated here.  It ships in
- *  bot-config-defaults.json, is read once by src/config.js, and is
- *  published on every /api/status as `rescanPricesDefaultDays` — see
- *  feedback-one-literal-per-shipped-default.  A missing value means
- *  the status poll has not landed yet, which the dialog treats as
- *  "no window" (whole history) rather than inventing a number. */
-function _windowDays(status) {
-  const n = Number(status?.rescanPricesDefaultDays);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
 
 /*- Canonicalize to EIP-55 so the composite key byte-matches the
  *  server's (built via bot-config-v2.compositeKey, which checksums).
@@ -92,10 +81,8 @@ function _positionState(status, key) {
 /**
  * Is the active position managed?
  *
- * Mirrors `dashboard-manage-ui.js`'s `isRunning`: the server's
- * `status` field, which is the same value `managedKeys()` filters on
- * server-side. A closed (drained) position is not eligible either —
- * re-valuing it would be a no-op against zero liquidity.
+ * Reads the server's `status` field, which is the same value
+ * `managedKeys()` filters on server-side and the route checks.
  *
  * @param {object} status  The latest /api/status payload.
  * @returns {boolean}
@@ -129,11 +116,12 @@ export function paintRescanPricesButton(status) {
     : "Re-value this position at freshly fetched prices. Use when a USD figure looks wrong.";
 }
 
-/*- The dialog's status line changes visibility only, never layout: its
- *  height is reserved in CSS, so revealing a message cannot grow the
- *  dialog and shift the buttons out from under the pointer.
+/*-
+ *  Show the dialog's status line. It takes no space while hidden; see
+ *  the `rescan-notice` rule in 9mm-pos-mgr.css for when it appears.
  *
- *  `text` omitted keeps the template's default copy. */
+ *  `text` omitted keeps the template's default copy.
+ */
 function _showNotice(el, text) {
   if (!el) return;
   if (text) el.textContent = text;
@@ -149,45 +137,14 @@ function _wireDialog(overlay, getStatus) {
   const status = getStatus();
   const managed = isActivePositionManaged(status);
   const go = overlay.querySelector("#rescanPricesGoBtn");
-  const box = overlay.querySelector("#rescanPricesRecentOnly");
   const notice = overlay.querySelector('[data-tpl="notManaged"]');
 
-  /*- Both the action and the window checkbox are gated on managed —
-   *  a checkbox that cannot affect anything is worse than a disabled
-   *  one, because it looks like it took the setting. */
-  if (go) go.disabled = !managed;
-  if (box) box.disabled = !managed;
   if (managed) _hideNotice(notice);
   else _showNotice(notice);
 
-  /*- Label and tooltip are filled from the published default so the
-   *  markup holds no data (feedback-no-data-in-presentation).
-   *
-   *  When the default has not arrived (status poll not landed), the
-   *  option is disabled and cleared rather than left checked: a checked
-   *  box that silently means "whole history" would promise a bounded
-   *  scan and run the expensive one. */
-  const label = overlay.querySelector('[data-tpl="windowLabel"]');
-  const row = overlay.querySelector('[data-tpl="windowRow"]');
-  const days = _windowDays(status);
-  if (label)
-    label.textContent = days
-      ? `Limit to the last ${days} days (recommended)`
-      : "Window unavailable — will re-value the entire history";
-  if (row)
-    row.title = days
-      ? `Most bad price data is recent, so a ${days}-day window fixes nearly every case in seconds. Clear this box to re-value the position's entire history instead — correct, but it reads far more blockchain data and takes considerably longer.`
-      : "The default window has not loaded yet. Close and reopen this dialog once the dashboard has polled.";
-  if (box && !days) {
-    box.checked = false;
-    box.disabled = true;
-  }
-
-  if (go)
-    go.addEventListener("click", () => {
-      const days = box && box.checked ? _windowDays(getStatus()) : null;
-      _submit(overlay, go, days, getStatus);
-    });
+  if (go === null) return;
+  go.disabled = !managed;
+  go.addEventListener("click", () => _submit(overlay, go, getStatus));
 }
 
 /*- Poll cadence and cap both come from values the server already
@@ -261,23 +218,20 @@ function _awaitCompletion(overlay, go, key, getStatus) {
 }
 
 /** POST the request and report the outcome in-dialog. */
-async function _submit(overlay, go, days, getStatus) {
+async function _submit(overlay, go, getStatus) {
   const key = _activeKey();
   if (!key) return;
   _setBusy(overlay, go, true);
+  const body = JSON.stringify({ positionKey: key });
   try {
     const res = await fetchWithCsrf("/api/position/rescan-prices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positionKey: key, days }),
+      body,
     });
     const j = await res.json().catch(() => ({}));
     if (res.ok && j.ok) {
-      log.info(
-        "[rescan-prices] started for %s (window: %s)",
-        key,
-        days === null ? "all history" : days + "d",
-      );
+      log.info("[rescan-prices] started for %s", key);
       _awaitCompletion(overlay, go, key, getStatus);
       return;
     }

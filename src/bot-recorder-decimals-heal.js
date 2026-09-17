@@ -125,10 +125,10 @@ function _classifyHealError(err, position, override) {
  *   - a **force**d token's manual value always wins, even over a good chain read;
  *   - a non-force value is a **fallback** used only when getPoolState fails.
  *
- * Runs unconditionally on a full rescan ("Reload Current Position", which
- * sets `_needsFullRescan`), so Reload re-reads decimals through this same
- * path with zero duplication; on incremental scans, only when a heal is
- * actually needed.
+ * Runs unconditionally on a full rescan (`_needsFullRescan`, set by
+ * "Reload Current Position" and after every rebalance). So Reload re-reads
+ * decimals through this same path, with zero duplication. On other scans
+ * it runs only when a heal is actually needed.
  *
  * @param {object} position     Live position (mutated in place on success).
  * @param {boolean} fullRescan  True to re-resolve even when decimals look valid.

@@ -134,7 +134,7 @@ describe("fetchAllNftEvents reads the chain in one batch", () => {
 
   it("returns an entry for every NFT, keyed by string id", () =>
     withStub({}, async (_s, { fetchAllNftEvents }) => {
-      const { allNftEvents } = await fetchAllNftEvents(
+      const allNftEvents = await fetchAllNftEvents(
         [100, 200, 300],
         POOL_FLOOR,
         mintBlocksByTokenId(CHAIN),
@@ -151,39 +151,25 @@ describe("fetchAllNftEvents reads the chain in one batch", () => {
       assert.equal(s.calls.length, 0);
     }));
 
-  it("carries the highest event block out as the checkpoint", () => {
-    const events = new Map([
-      [
-        "200",
-        {
-          ...batch.emptyEvents(),
-          collectEvents: [{ blockNumber: 6_500_000 }],
-        },
-      ],
-      [
-        "300",
-        { ...batch.emptyEvents(), ilEvents: [{ blockNumber: 7_250_000 }] },
-      ],
-    ]);
+  it("hands each NFT the events the batch read for it", () => {
+    const own = {
+      ...batch.emptyEvents(),
+      collectEvents: [{ blockNumber: 6_500_000 }],
+    };
+    const events = new Map([["200", own]]);
     return withStub({ events }, async (_s, { fetchAllNftEvents }) => {
-      const { maxBlock } = await fetchAllNftEvents(
+      const allNftEvents = await fetchAllNftEvents(
         IDS,
         POOL_FLOOR,
         mintBlocksByTokenId(CHAIN),
       );
-      assert.equal(maxBlock, 7_250_000);
+      const withEvents = allNftEvents.get("200");
+      const withNone = allNftEvents.get("100");
+      const empty = batch.emptyEvents();
+      assert.strictEqual(withEvents, own);
+      assert.deepEqual(withNone, empty);
     });
   });
-
-  it("leaves the checkpoint at the floor when nothing was found", () =>
-    withStub({}, async (_s, { fetchAllNftEvents }) => {
-      const { maxBlock } = await fetchAllNftEvents(
-        IDS,
-        POOL_FLOOR,
-        mintBlocksByTokenId(CHAIN),
-      );
-      assert.equal(maxBlock, POOL_FLOOR);
-    }));
 });
 
 // ── Floors ───────────────────────────────────────────────────────────

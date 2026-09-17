@@ -7,9 +7,10 @@
  *
  * This is the only tool in `util/diagnostic/` that WRITES. It deletes
  * compound history and deposit totals from the operator's bot-config
- * and rewinds the epoch cache's scan watermark. None of those fields
- * can be recomputed from what is left behind, so two properties matter
- * more than anything else here and are asserted directly:
+ * and, with `--clear-hodl`, the pool's cached lifetime HODL. None of
+ * those fields can be recomputed from what is left behind, so two
+ * properties matter more than anything else here and are asserted
+ * directly:
  *
  *   1. A backup exists before anything is deleted.
  *   2. Nothing is deleted unless the operator said yes.
@@ -51,8 +52,25 @@ function positionFixture() {
   };
 }
 
-/** A scratch install with a config and an epoch cache on disk. */
-function fixture({ withCache = true } = {}) {
+/** A second pool on the same wallet and contract. */
+const OTHER_POOL_KEY = `pulsechain.${PM}.${WALLET}.0xT2.0xT3.500`;
+
+/** A pool's epoch cache entry, as the app writes it. */
+function poolEntry() {
+  return {
+    lifetimeHodlAmounts: { amount0: 1, amount1: 2 },
+    closedEpochs: [{ keep: true }],
+  };
+}
+
+/**
+ * A scratch install with a config and an epoch cache on disk.
+ *
+ * @param {object} [o]
+ * @param {boolean} [o.withCache]  Write the epoch cache at all.
+ * @param {boolean} [o.twoPools]   Give the wallet a second pool.
+ */
+function fixture({ withCache = true, twoPools = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rescan-test-"));
   const configPath = path.join(dir, "bot-config.json");
   const epochPath = path.join(dir, "pnl-epochs-cache.json");
@@ -61,16 +79,9 @@ function fixture({ withCache = true } = {}) {
     JSON.stringify({ global: {}, positions: { [POS_KEY]: positionFixture() } }),
   );
   if (withCache) {
-    fs.writeFileSync(
-      epochPath,
-      JSON.stringify({
-        [POOL_KEY]: {
-          lastNftScanBlock: 23_000_000,
-          lifetimeHodl: { a: 1 },
-          closedEpochs: [{ keep: true }],
-        },
-      }),
-    );
+    const cache = { [POOL_KEY]: poolEntry() };
+    if (twoPools === true) cache[OTHER_POOL_KEY] = poolEntry();
+    fs.writeFileSync(epochPath, JSON.stringify(cache));
   }
   return { dir, configPath, epochPath };
 }
@@ -174,58 +185,81 @@ test("_applyMutations — backs up the config BEFORE deleting from it", async ()
   fs.rmSync(f.dir, { recursive: true, force: true });
 });
 
-test("_applyMutations — rewinds the scan watermark, keeps the epochs", async () => {
+/** The config and the epoch cache as they are on disk now. */
+function loaded(f) {
+  return { cfg: readJson(f.configPath), cache: readJson(f.epochPath) };
+}
+
+/** Assert the epoch cache was neither backed up nor changed. */
+function assertCacheUntouched(f, before, cacheBackup) {
+  assert.equal(cacheBackup, null, "no cache backup path is reported");
+  const after = readJson(f.epochPath);
+  assert.deepEqual(after, before, "the cache is unchanged");
+  const cacheBackups = backups(f.dir).filter((n) => n.startsWith("pnl-epochs"));
+  assert.equal(cacheBackups.length, 0);
+}
+
+test("_applyMutations — without --clear-hodl the cache is neither backed up nor touched", async () => {
   const f = fixture();
-  _applyMutations(
-    readJson(f.configPath),
-    readJson(f.epochPath),
+  const before = readJson(f.epochPath);
+  const { cfg, cache } = loaded(f);
+  const { cacheBackup } = _applyMutations(
+    cfg,
+    cache,
     POS_KEY,
     [POOL_KEY],
     {},
     f,
   );
-  const entry = readJson(f.epochPath)[POOL_KEY];
-  assert.equal("lastNftScanBlock" in entry, false, "the watermark is cleared");
-  assert.deepEqual(
-    entry.closedEpochs,
-    [{ keep: true }],
-    "P&L epochs are not price-derived and must survive",
-  );
-  assert.deepEqual(entry.lifetimeHodl, { a: 1 }, "kept without --clear-hodl");
+  assertCacheUntouched(f, before, cacheBackup);
   fs.rmSync(f.dir, { recursive: true, force: true });
 });
 
-test("_applyMutations — --clear-hodl also drops the lifetime HODL", async () => {
+test("_applyMutations — --clear-hodl drops the lifetime HODL, keeps the epochs", async () => {
+  /*-
+   *  The field the app writes and reads is `lifetimeHodlAmounts`
+   *  (`epoch-cache.getCachedLifetimeHodl`). Deleting any other name
+   *  leaves the HODL in place, and the rescan never recomputes it.
+   */
   const f = fixture();
-  _applyMutations(
-    readJson(f.configPath),
-    readJson(f.epochPath),
+  const { cfg, cache } = loaded(f);
+  const { cacheBackup } = _applyMutations(
+    cfg,
+    cache,
     POS_KEY,
     [POOL_KEY],
     { "clear-hodl": true },
     f,
   );
-  assert.equal("lifetimeHodl" in readJson(f.epochPath)[POOL_KEY], false);
+  const entry = readJson(f.epochPath)[POOL_KEY];
+  assert.equal("lifetimeHodlAmounts" in entry, false, "the HODL is cleared");
+  assert.deepEqual(
+    entry.closedEpochs,
+    [{ keep: true }],
+    "P&L epochs are not price-derived and must survive",
+  );
+  const saved = readJson(cacheBackup)[POOL_KEY];
+  assert.deepEqual(
+    saved.lifetimeHodlAmounts,
+    { amount0: 1, amount1: 2 },
+    "the backup holds the HODL as it was",
+  );
   fs.rmSync(f.dir, { recursive: true, force: true });
 });
 
 test("_applyMutations — no pool keys means the cache is neither backed up nor touched", async () => {
   const f = fixture();
   const before = readJson(f.epochPath);
+  const { cfg, cache } = loaded(f);
   const { cacheBackup } = _applyMutations(
-    readJson(f.configPath),
-    readJson(f.epochPath),
+    cfg,
+    cache,
     POS_KEY,
     [],
-    {},
+    { "clear-hodl": true },
     f,
   );
-  assert.equal(cacheBackup, null, "no cache backup path is reported");
-  assert.deepEqual(readJson(f.epochPath), before, "the cache is unchanged");
-  assert.equal(
-    backups(f.dir).filter((n) => n.startsWith("pnl-epochs")).length,
-    0,
-  );
+  assertCacheUntouched(f, before, cacheBackup);
   fs.rmSync(f.dir, { recursive: true, force: true });
 });
 
@@ -260,6 +294,41 @@ test("main — accepting the prompt applies the mutation", async () => {
     out,
     /npm run stop && npm run build-and-start/,
     "names the next step",
+  );
+  fs.rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("main — without --clear-hodl, a wallet with two pools needs no disambiguation", async () => {
+  /*-
+   *  Only `--clear-hodl` touches the epoch cache, so only it has to know
+   *  which pool the position is in.
+   */
+  const f = fixture({ twoPools: true });
+  const before = readJson(f.epochPath);
+  await captureConsole(() => captureExit(() => main([TOKEN_ID, "--yes"], f)));
+  const { cfg, cache } = loaded(f);
+  assert.equal(
+    "totalCompoundedUsd" in cfg.positions[POS_KEY],
+    false,
+    "the config was still cleared",
+  );
+  assert.deepEqual(cache, before, "the cache is unchanged");
+  fs.rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("main --clear-hodl — a wallet with two pools must name one", async () => {
+  const f = fixture({ twoPools: true });
+  const res = await captureConsole(() =>
+    captureExit(() => main([TOKEN_ID, "--clear-hodl", "--yes"], f)),
+  );
+  assert.equal(res.value.code, 1);
+  const errors = res.err.join("\n");
+  assert.match(errors, /AMBIGUOUS/);
+  const cfg = readJson(f.configPath);
+  assert.equal(
+    "totalCompoundedUsd" in cfg.positions[POS_KEY],
+    true,
+    "nothing is cleared before the pool is known",
   );
   fs.rmSync(f.dir, { recursive: true, force: true });
 });

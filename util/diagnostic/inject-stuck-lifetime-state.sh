@@ -10,7 +10,6 @@
 #
 #   freshDeposits        : null
 #   lifetimeHodlAmounts  : null
-#   lastNftScanBlock     : 0
 #
 # Everything else (closedEpochs, liveEpoch, cachedAt) is left untouched,
 # mirroring how the rebalance-then-fail path actually leaves the cache.
@@ -49,13 +48,12 @@ cp tmp/pnl-epochs-cache.json "$BACKUP"
 jq 'with_entries(.value |= (
       .freshDeposits = null
       | .lifetimeHodlAmounts = null
-      | .lastNftScanBlock = 0
     ))' tmp/pnl-epochs-cache.json > tmp/pnl-epochs-cache.json.tmp \
   && mv tmp/pnl-epochs-cache.json.tmp tmp/pnl-epochs-cache.json
 
 # 5. Show one entry to confirm the shape, then print next steps.
 echo "Stuck state injected (matches Prod 2026-06-09 paste). Sample entry:"
-jq 'to_entries[0].value | {freshDeposits, lifetimeHodlAmounts, lastNftScanBlock}' tmp/pnl-epochs-cache.json
+jq 'to_entries[0].value | {freshDeposits, lifetimeHodlAmounts}' tmp/pnl-epochs-cache.json
 echo ""
 echo "Run \`npm start\` (or \`npm run debug\`) to test."
 echo ""

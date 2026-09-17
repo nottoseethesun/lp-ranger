@@ -9,7 +9,7 @@
  *   read; the scan pass asks it before reconstruction. Reconstruction can
  *   only take its histories from the lifetime read if that read covers
  *   each NFT's whole history, so the invariant that makes sharing safe —
- *   a read the plan calls for never resumes from the checkpoint — is
+ *   every read the plan calls for starts from the pool's floor — is
  *   pinned here for every state.
  *
  *   Uses the shared lifetime mock harness; see
@@ -29,7 +29,6 @@ const {
 } = require("./helpers/bot-recorder-lifetime-mocks");
 
 const POOL_FLOOR = 100;
-const CURSOR = 999_000;
 const SAVED = { totalCompoundedUsd: 148.38, totalLifetimeDepositUsd: 1704.15 };
 
 /** Every combination of the four flags that decide a lifetime scan. */
@@ -63,7 +62,6 @@ let lifetime;
 beforeEach(() => {
   resetState();
   state.poolCreationBlock = POOL_FLOOR;
-  state.lastNftScanBlock = CURSOR;
   installMocks();
   lifetime = require("../src/bot-recorder-lifetime");
 });
@@ -100,14 +98,14 @@ describe("lifetimeScanPlan", () => {
     }
   });
 
-  it("never calls for a read that would resume from the checkpoint", async () => {
+  it("starts every read it calls for at the pool floor", async () => {
     /*-
      *  What epoch reconstruction relies on when it takes its histories
      *  from the lifetime read: every NFT covered from its mint. A read
-     *  starting at the checkpoint would hand it the tail of each history,
-     *  and a closed NFT's fees and exit value would come out wrong with
-     *  nothing to show for it. If a change ever lets a needed read
-     *  resume, `_scanAndReconstruct` must stop sharing that read.
+     *  starting later would hand it the tail of each history. A closed
+     *  NFT's fees and exit value would then come out wrong, with nothing
+     *  to show for it. If a change ever lets a needed read start later,
+     *  `_scanAndReconstruct` must stop sharing that read.
      */
     for (const s of everyState()) {
       state.scanFromBlock = null;
@@ -152,8 +150,8 @@ describe("prepareLifetimeRead", () => {
   it("reads from the pool floor even when every figure is saved after it was prepared", async () => {
     /*-
      *  Its consumers settled on computing from scratch when the read was
-     *  prepared. Resuming from the checkpoint once every figure is saved
-     *  would hand them only the tail of each history.
+     *  prepared, so it covers each history from its mint whatever is
+     *  saved by the time it runs.
      */
     const botState = arrange({ hodl: true, deposit: true });
     const prepared = lifetime.prepareLifetimeRead(
