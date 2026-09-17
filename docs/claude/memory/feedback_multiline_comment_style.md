@@ -3,6 +3,7 @@ name: Multi-line comment style
 description: Prefer `/*- ... */` block form for multi-line comments over stacked `//` lines
 type: feedback
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
+modified: 2026-09-17T06:55:45.018Z
 ---
 For multi-line comments, use the block form opened with `/*-` (dash
 after the star) and closed with `*/` on its own line, rather than
@@ -17,9 +18,8 @@ line, use:
 
 ```js
 /*-
- *  Clear cached HODL so re-scan picks up the new rebalance boundary.
- *  lastNftScanBlock MUST be reset too — otherwise the next scan uses
- *  the pre-rebalance max block as fromBlock ...
+ *  Explain why the code below does what it does, in as many lines as
+ *  the reason needs.
  */
 ```
 

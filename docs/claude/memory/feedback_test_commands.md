@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-08-08T16:39:53.374Z
+  modified: 2026-09-17T08:02:28.125Z
 ---
 
 # Running tests
@@ -86,6 +86,22 @@ was lost, but only because no write happened to land — luck, not design.
 touch operator state — `npm run lint`, `npm run build`, `node --check`,
 reading code. Batch the gate run for when the server is down, and say
 plainly that you need it stopped rather than stopping it yourself.
+
+## ad-hoc scripts count too (2026-09-17)
+
+A scratch script that `require`s anything under `src/` needs the same
+wipe as a test run.
+
+**Why:** `src/price-fetcher-gate.js` calls `loadConfig()` when it loads.
+`loadConfig` copies the live `bot-config.json` over
+`bot-config.backup.json`, the config-stomp safety net. Most server
+modules reach it (`bot-recorder.js` and `server-rescan-prices.js` both
+do). An audit script run without a wipe rewrote the backup. No harm that
+time: the live config was healthy, so the copy matched it. After a
+stomp, the same copy would destroy the only good version.
+
+**How to apply:** wipe before a script that loads `src/`, restore after
+it, as separate tool calls. Check that the server is down first.
 
 ## no check in agents
 

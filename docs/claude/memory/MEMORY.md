@@ -19,7 +19,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — One lint command; file lists live only in scripts/lint-targets.js
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile then node_modules, `npm i`. Run it first; never analyse the dep graph
-- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap in wipe/restore-settings; no check inside agents or against a running server
+- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap tests and any script that loads `src/` in wipe/restore-settings; no check inside agents or against a running server
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the actual linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver, no `v` prefix; latest tag needs `--sort=-v:refname` **plus** `grep -v '^v'`
 
@@ -83,6 +83,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no global monkey-patch](feedback_no_global_monkey_patch.md) — Never modify JS globals (console, prototypes, Date, Math, fetch)
 - [no heuristic thresholds](feedback_no_heuristic_thresholds.md) — No heuristic dollar amounts guarding logic
 - [no junk repair code](feedback_no_junk_repair_code.md) — "Backfill" is banned; no repair/migration/dedup heaped onto a problem
+- [never clear to force a recompute](feedback_never_clear_to_force_a_recompute.md) — Ask for the rebuild with a flag; overwrite when the new value exists, never delete first
 - [no lazy loading](feedback_no_lazy_loading.md) — No lazy `require()` inside functions; import at module top
 - [no re-exports](feedback_no_reexports.md) — No barrel/aggregator re-exports; import from the owning module
 - [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — Exactly one literal per shipped config value, in the defaults file
