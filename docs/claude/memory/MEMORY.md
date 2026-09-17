@@ -70,6 +70,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [KISS](feedback_kiss.md) — One clean heuristic beats layered complex approaches
 - [logging](feedback_logging.md) — Token symbols, NFT id + emoji, full context on compound/rebalance/swap
 - [minimize caching](feedback_minimize_caching.md) — No new caching layers unless unavoidable; reuse existing resolvers
+- [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key blockchain-derived caches as generically as possible (e.g. by pool) so every position can use them
 - [module self-announcement](feedback_module_self_announcement.md) — A module needing a lifecycle event announces itself; B doesn't reach into A
 - [Moralis first](feedback_moralis_first.md) — Moralis is the primary historical price source when a key exists
 - [multiline comment style](feedback_multiline_comment_style.md) — `/*- ... */` block form over stacked `//` lines
@@ -128,7 +129,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [scan-running guard intentional](project_scan_running_guard_intentional.md) — `_scanRunning` dropping concurrent scan requests is deliberate
 - [single nonce manager](project_single_nonce_manager.md) — One shared NonceManager per wallet, never per-position
 - [swap serialized](project_swap_serialized.md) — Swap path is deliberately serialized to avoid RPC acceptance issues
-- [unmanaged N/A principle](project_unmanaged_na_principle.md) — Unmanaged positions show N/A for anything about rebalance control
+- [unmanaged N/A principle](project_unmanaged_na_principle.md) — Unmanaged positions show N/A for anything about rebalance control, and no Lifetime panel
 - [bot-loop test scaffolding](project_bot_loop_test_scaffolding.md) — startBotLoop's poll/stop lifecycle has no direct test fixture
 - [code cleanup nice-to-haves](project_code_cleanup_nice_to_haves.md) — Running list of code-cleanup polish items
 - [consolidate RPC retry](project_consolidate_rpc_retry.md) — Consolidate the per-URL × per-attempt RPC-retry pattern
