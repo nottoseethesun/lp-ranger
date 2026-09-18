@@ -47,6 +47,7 @@ const {
   _readDecimalsOverride,
 } = require("./bot-recorder-decimals-heal");
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
+const { isIntegerInRange } = require("./pool-state-validate");
 
 /** Add historical compound gas to the P&L tracker if available. */
 async function _applyCompoundGas(totalGasWei, pnlTracker) {
@@ -92,18 +93,55 @@ function _mintBlockOf(allNftEvents, tokenId) {
 }
 
 /*-
- *  Each NFT's own compounded total, from the events just classified.
+ *  Refuse to classify against decimals that are not a real ERC-20
+ *  answer.
  *
- *  The Current panel reads this per-NFT figure, and `bot-pnl-current-nft.js`
- *  otherwise fills it by scanning that one NFT again. Writing it here
- *  spares that scan, and keeps the per-NFT figure and the lifetime total
- *  at one set of prices rather than two.
+ *  Every figure below turns raw token units into coins by dividing by
+ *  `10 ** decimals`, so a wrong exponent is a wrong money figure by
+ *  orders of magnitude, written to disk and priced on screen with
+ *  nothing about it that looks unusual. A default in place of the real
+ *  value buys nothing here: it cannot be right except by luck, and it
+ *  hides the one condition worth knowing about.
+ *
+ *  `_ensureTokenDecimals` runs earlier in the scan and aborts on a
+ *  defect it cannot heal, so reaching this with an invalid value means
+ *  that guarantee broke. Throwing puts it in `logs/error.log` through
+ *  `_recordScanFailure` and leaves the Sync badge on "Syncing…", which
+ *  is the same treatment every other unhealable scan defect gets.
+ *
+ *  The predicate is the one `getPoolState` validates against, so this
+ *  and the heal step cannot disagree about what "valid" means.
  */
-function _compoundedByTokenId(history) {
+function _requireValidDecimals(opts) {
+  const ok = (d) => isIntegerInRange(d, 0, 77);
+  if (ok(opts.decimals0) && ok(opts.decimals1)) return;
+  throw new Error(
+    `${opts.token0Symbol || "token0"}/${opts.token1Symbol || "token1"}: ` +
+      `cannot classify compounds — token decimals are invalid ` +
+      `(decimals0=${opts.decimals0} decimals1=${opts.decimals1}); every ` +
+      `compounded amount would be mis-scaled, so nothing is saved`,
+  );
+}
+
+/*-
+ *  The coins each NFT compounded, from the events just classified.
+ *
+ *  The Current panel shows this per-NFT figure in dollars, and
+ *  `bot-pnl-current-nft.js` otherwise fills it by scanning that one NFT
+ *  again. Writing the amounts here spares that scan, and leaves the
+ *  pricing to whoever displays it.
+ *
+ *  `d0`/`d1` are guaranteed valid by `_requireValidDecimals`, so there
+ *  is no fallback exponent to fall back to.
+ */
+function _compoundedAmountsByTokenId(history, d0, d1) {
   const byTokenId = {};
   for (const c of history) {
     const tid = String(c.tokenId);
-    byTokenId[tid] = (byTokenId[tid] || 0) + c.usdValue;
+    const held = byTokenId[tid] || { amount0: 0, amount1: 0 };
+    held.amount0 += Number(c.amount0Deposited) / 10 ** d0;
+    held.amount1 += Number(c.amount1Deposited) / 10 ** d1;
+    byTokenId[tid] = held;
   }
   return byTokenId;
 }
@@ -116,8 +154,11 @@ async function _classifyAllCompounds(
   updateState,
   pnlTracker,
 ) {
+  _requireValidDecimals(opts);
   const allCompounds = [];
   let totalUsd = 0;
+  let totalAmount0 = 0,
+    totalAmount1 = 0;
   let totalCompoundGasWei = 0n;
   /*-
    *  Per-NFT total gas wei (mint + standalone compounds), keyed by tokenId.
@@ -133,6 +174,10 @@ async function _classifyAllCompounds(
     });
     for (const c of r.compounds) allCompounds.push({ ...c, tokenId: tid });
     totalUsd += r.totalCompoundedUsd;
+    /*- The coins are what gets saved; the dollars above are for this
+     *  scan's own log lines and for deciding there is anything to save. */
+    totalAmount0 += r.feeAmount0 || 0;
+    totalAmount1 += r.feeAmount1 || 0;
     totalCompoundGasWei += BigInt(r.totalGasWei || "0");
     nftGasWeiByTokenId[String(tid)] = String(r.totalNftGasWei || "0");
   }
@@ -160,12 +205,13 @@ async function _classifyAllCompounds(
   );
   log.info("[bot]   combined lifetime compounded: $%s", totalUsd.toFixed(2));
   /*-
-   *  Persist totalCompoundedUsd whenever it's > 0 even if there are no
-   *  standalone compound events — a position that only ever rebalanced
-   *  (no auto/manual compound) still has fees that were re-deposited
-   *  via the rebalance flow.
+   *  Persist the compounded coins whenever the chain shows any, even
+   *  with no standalone compound events — a position that only ever
+   *  rebalanced still has fees that were re-deposited by the rebalance
+   *  flow. The amounts decide, not their dollar value: a live price of
+   *  zero would otherwise read as "nothing to save".
    */
-  if (totalUsd > 0) {
+  if (totalAmount0 > 0 || totalAmount1 > 0) {
     const history = allCompounds.map((c) => ({
       /*-
        *  Block timestamp + tx hash come from _fetchCompoundGas in
@@ -185,12 +231,17 @@ async function _classifyAllCompounds(
       usdValue: c.usdValue || 0,
       trigger: "historical",
     }));
-    const nftCompoundedUsdByTokenId = _compoundedByTokenId(history);
+    const nftCompoundedAmountsByTokenId = _compoundedAmountsByTokenId(
+      history,
+      opts.decimals0,
+      opts.decimals1,
+    );
     updateState({
       compoundHistory: history,
-      totalCompoundedUsd: totalUsd,
+      compoundedAmount0: totalAmount0,
+      compoundedAmount1: totalAmount1,
       nftGasWeiByTokenId,
-      nftCompoundedUsdByTokenId,
+      nftCompoundedAmountsByTokenId,
     });
     await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
   } else {
@@ -214,11 +265,19 @@ async function _classifyAllCompounds(
  *
  * The lifetime scan keeps a saved total rather than recompute it:
  *
- *   1. **Compound total** (`hasCompoundData`).  Either `compoundHistory`
- *      or `totalCompoundedUsd` is sufficient: the bot's own scans
- *      populate both, but the unmanaged-view detail scan
- *      (`position-details-compound._scanCompounds`) persists only
- *      `totalCompoundedUsd`.
+ *   1. **Compounded coins** (`hasCompoundData`).  Only
+ *      `compoundedAmount0`/`compoundedAmount1` count.  Both producers
+ *      write them — the bot's own scans and the unmanaged-view detail
+ *      scan (`position-details-compound._scanCompounds`) — so requiring
+ *      them costs nothing.
+ *
+ *      Requiring them is what makes the gate mean what it says.  The
+ *      coins are the only thing Fees Compounded can be priced from, so
+ *      a slot holding none has nothing to show and must re-classify,
+ *      whatever else it holds.  `compoundHistory` in particular is not
+ *      enough: it records the standalone compounds only, and a slot can
+ *      carry it while carrying no coins — accept it here and that
+ *      position reports zero compounded for as long as it runs.
  *
  *      No rescan is ever needed to keep this total current, because both
  *      ways fees get recycled already maintain it as they happen:
@@ -237,9 +296,9 @@ async function _classifyAllCompounds(
  *      number that is already right.
  *
  *      Re-scan Prices is the one caller that does ask for a
- *      re-classification (`_needsPriceRevalue`).  The total is right in
- *      token amounts and wrong only in the prices those amounts were
- *      valued at, which is exactly what that action replaces.
+ *      re-classification (`_needsPriceRevalue`).  The amounts are right;
+ *      what that action replaces is the historical prices the *other*
+ *      lifetime figures were valued at.
  *
  *   2. **Lifetime deposit** (`hasDepositData`).  A positive
  *      `totalLifetimeDepositUsd` means an earlier scan already valued
@@ -251,10 +310,21 @@ function _resolveDiskState(botState, epochKey) {
     ? _epochCache.getCachedLifetimeHodl(epochKey)
     : null;
   const get = botState._getConfig;
-  const gc = get ? get("compoundHistory") : undefined;
-  const diskTotal = get ? get("totalCompoundedUsd") : undefined;
+  /*- The coins, and only the coins. A saved dollar figure is true only
+   *  at the price that computed it, so it is not what "already known"
+   *  means; a config written before the coins existed has none, and
+   *  re-classifies once from chain to get them.
+   *
+   *  `compoundHistory` does NOT count, though every bot scan writes it
+   *  alongside the coins. It records the standalone compounds only, so
+   *  a config carrying history but no coins is one written by the old
+   *  model — exactly the case that must re-classify. Accepting it here
+   *  would leave those positions with no coins to price and report
+   *  every one of them as zero compounded. */
+  const savedAmount0 = get ? get("compoundedAmount0") : undefined;
+  const savedAmount1 = get ? get("compoundedAmount1") : undefined;
   const diskDeposit = get ? get("totalLifetimeDepositUsd") : undefined;
-  const hasCompoundData = gc?.length > 0 || (diskTotal || 0) > 0;
+  const hasCompoundData = (savedAmount0 || 0) > 0 || (savedAmount1 || 0) > 0;
   const hasDepositData = (diskDeposit || 0) > 0;
   return { cachedHodl, hasCompoundData, hasDepositData };
 }

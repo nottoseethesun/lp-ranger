@@ -118,7 +118,6 @@ describe("_closePnlEpoch", () => {
       _pnlTracker: tracker,
       position: { token0: "0xA", token1: "0xB" },
       updateBotState: () => {},
-      _addCollectedFees: () => {},
       _lastUnclaimedFeesUsd: 7,
       _lastUnclaimedFee0: 10,
       _lastUnclaimedFee1: 4,
@@ -180,12 +179,14 @@ describe("_closePnlEpoch", () => {
       lowerPrice: 0.5,
       upperPrice: 1.5,
     });
-    let collectedFees = 0;
+    const patches = [];
     const deps = {
       _pnlTracker: tracker,
       position: { token0: "0xA", token1: "0xB" },
-      _addCollectedFees: (v) => (collectedFees = v),
       _lastUnclaimedFeesUsd: 5.5,
+      _lastUnclaimedFee0: 2,
+      _lastUnclaimedFee1: 3.5,
+      updateBotState: (p) => patches.push(p),
     };
     const result = {
       token0UsdPrice: 1,
@@ -198,11 +199,14 @@ describe("_closePnlEpoch", () => {
       newTickUpper: 100,
     };
     await _closePnlEpoch(deps, result);
-    assert.strictEqual(collectedFees, 5.5);
+    /*- The fees this rebalance swept back in are credited as coins. */
+    const patch = patches.find((p) => "compoundedAmount0" in p);
+    assert.strictEqual(patch.compoundedAmount0, 2);
+    assert.strictEqual(patch.compoundedAmount1, 3.5);
     assert.strictEqual(deps._lastUnclaimedFeesUsd, 0);
   });
 
-  it("bumps totalCompoundedUsd by rebalance-time fees", async () => {
+  it("bumps the compounded coins by rebalance-time fees", async () => {
     _mockGasCost = 0;
     _mockPrices = { price0: 1, price1: 1 };
     const tracker = createPnlTracker({ initialDeposit: 100 });
@@ -216,9 +220,10 @@ describe("_closePnlEpoch", () => {
     const deps = {
       _pnlTracker: tracker,
       position: { token0: "0xA", token1: "0xB" },
-      _addCollectedFees: () => {},
       _lastUnclaimedFeesUsd: 4.25,
-      _botState: { totalCompoundedUsd: 10 },
+      _lastUnclaimedFee0: 1.25,
+      _lastUnclaimedFee1: 3,
+      _botState: { compoundedAmount0: 10, compoundedAmount1: 20 },
       updateBotState: (p) => patches.push(p),
     };
     const result = {
@@ -232,13 +237,14 @@ describe("_closePnlEpoch", () => {
       newTickUpper: 100,
     };
     await _closePnlEpoch(deps, result);
-    const compPatch = patches.find((p) => "totalCompoundedUsd" in p);
-    assert.ok(compPatch, "should emit a totalCompoundedUsd patch");
-    assert.strictEqual(compPatch.totalCompoundedUsd, 14.25);
+    const compPatch = patches.find((p) => "compoundedAmount0" in p);
+    assert.ok(compPatch, "should emit a compounded-coins patch");
+    assert.strictEqual(compPatch.compoundedAmount0, 11.25);
+    assert.strictEqual(compPatch.compoundedAmount1, 23);
     assert.strictEqual(deps._lastUnclaimedFeesUsd, 0);
   });
 
-  it("does not bump totalCompoundedUsd when no unclaimed fees", async () => {
+  it("does not bump the compounded coins when no unclaimed fees", async () => {
     _mockGasCost = 0;
     _mockPrices = { price0: 1, price1: 1 };
     const tracker = createPnlTracker({ initialDeposit: 100 });
@@ -252,9 +258,10 @@ describe("_closePnlEpoch", () => {
     const deps = {
       _pnlTracker: tracker,
       position: { token0: "0xA", token1: "0xB" },
-      _addCollectedFees: () => {},
       _lastUnclaimedFeesUsd: 0,
-      _botState: { totalCompoundedUsd: 10 },
+      _lastUnclaimedFee0: 0,
+      _lastUnclaimedFee1: 0,
+      _botState: { compoundedAmount0: 10, compoundedAmount1: 20 },
       updateBotState: (p) => patches.push(p),
     };
     const result = {
@@ -268,11 +275,11 @@ describe("_closePnlEpoch", () => {
       newTickUpper: 100,
     };
     await _closePnlEpoch(deps, result);
-    const compPatch = patches.find((p) => "totalCompoundedUsd" in p);
+    const compPatch = patches.find((p) => "compoundedAmount0" in p);
     assert.strictEqual(
       compPatch,
       undefined,
-      "should not emit a totalCompoundedUsd patch",
+      "should not emit a compounded-coins patch",
     );
   });
 

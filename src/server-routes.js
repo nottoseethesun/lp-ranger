@@ -32,9 +32,8 @@ const {
   compositeKey,
   parseCompositeKey,
   readConfigValue,
-  GLOBAL_KEYS,
-  POSITION_KEYS,
 } = require("./bot-config-v2");
+const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");

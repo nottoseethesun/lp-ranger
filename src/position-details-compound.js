@@ -19,6 +19,7 @@ const { actualGasCostUsd } = require("./bot-pnl-updater");
 const { eventsFor } = require("./nft-events-batch");
 const { collectTokenIds } = require("./bot-recorder-scan-helpers");
 const { poolCreationFloor } = require("./position-details-chain-read");
+const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
 const {
   mintBlocksByTokenId,
   scanFloorFor,
@@ -100,6 +101,8 @@ async function _scanCompounds(
      *  currentGasUsd = mint + standalone compound gas for the current
      *  NFT, valued at current native price. */
     let total = 0;
+    let amount0 = 0;
+    let amount1 = 0;
     let current = 0;
     let currentGasUsd = 0;
     const curId = String(position.tokenId);
@@ -111,20 +114,24 @@ async function _scanCompounds(
       const nftEvents = eventsFor(batch, tid);
       const r = await _classify(nftEvents, { ...opts, tokenId: tid });
       total += r.totalCompoundedUsd;
+      /*- The coins behind that figure, which is what gets saved. */
+      amount0 += r.feeAmount0 || 0;
+      amount1 += r.feeAmount1 || 0;
       if (tid === curId) {
         const cv = await _currentValuesFromScan(r);
         current = cv.compoundUsd;
         currentGasUsd = cv.gasUsd;
       }
     }
-    if (total > 0) {
+    if (amount0 > 0 || amount1 > 0) {
       /*- Skip the disk write when there's no existing slot for this
        *  position — only managed positions own disk state.  Prior
        *  lazy-create produced phantom stubs for unmanaged positions
        *  whose details endpoint was invoked from the dashboard. */
       const pos = getPositionConfig(diskConfig, posKey);
       if (pos) {
-        pos.totalCompoundedUsd = total;
+        pos.compoundedAmount0 = amount0;
+        pos.compoundedAmount1 = amount1;
         saveConfig(diskConfig, dir);
       }
     }
@@ -190,17 +197,24 @@ async function _detectCurrentNftValues(
 }
 
 /**
- * The Fees Compounded total saved for the position, or null when none
- * is. A zero total counts as none: it records nothing a read would not
- * reproduce.
+ * The compounded coins saved for the position, or null when none are.
+ * Zero counts as none: it records nothing a read would not reproduce.
+ *
+ * Coins rather than a dollar total, so the figure this request reports
+ * is priced at this request's prices — the same rule the panels follow.
  *
  * @param {object} diskConfig
  * @param {string} posKey
- * @returns {number|null}
+ * @returns {{amount0: number, amount1: number}|null}
  */
-function _savedCompoundTotal(diskConfig, posKey) {
-  const saved = diskConfig.positions[posKey]?.totalCompoundedUsd;
-  return typeof saved === "number" && saved > 0 ? saved : null;
+function _savedCompoundAmounts(diskConfig, posKey) {
+  const pos = diskConfig.positions[posKey];
+  const amount0 =
+    typeof pos?.compoundedAmount0 === "number" ? pos.compoundedAmount0 : 0;
+  const amount1 =
+    typeof pos?.compoundedAmount1 === "number" ? pos.compoundedAmount1 : 0;
+  if (amount0 <= 0 && amount1 <= 0) return null;
+  return { amount0, amount1 };
 }
 
 /**
@@ -218,7 +232,9 @@ function _savedCompoundTotal(diskConfig, posKey) {
  * @returns {boolean}
  */
 function compoundsReadChain(diskConfig, posKey, events) {
-  return _savedCompoundTotal(diskConfig, posKey) === null && events.length > 0;
+  return (
+    _savedCompoundAmounts(diskConfig, posKey) === null && events.length > 0
+  );
 }
 
 /**
@@ -263,19 +279,45 @@ async function _resolveCompounded(
       readChainEvents,
     );
   }
-  const saved = _savedCompoundTotal(diskConfig, posKey);
-  // No saved total and no rebalance events: all zero, and nothing read.
+  const saved = _savedCompoundAmounts(diskConfig, posKey);
+  // No saved coins and no rebalance events: all zero, and nothing read.
   if (saved === null) return { total: 0, current: 0, currentGasUsd: 0 };
-  /*- Cache hit on the lifetime total — still need a one-NFT scan for
-   *  the current values, which are not cached on disk.  One NFT
-   *  rather than the whole chain, and bounded to that NFT's own life
-   *  by the events passed through. */
+  /*- Cache hit on the lifetime coins — still need a one-NFT scan for
+   *  the current values, which are not saved.  One NFT rather than the
+   *  whole chain, and bounded to that NFT's own life by the events
+   *  passed through. */
   const cv = await _detectCurrentNftValues(position, body, ps, prices, events);
   return {
-    total: saved,
+    total: coinsToUsd(saved, prices.price0, prices.price1),
     current: cv.compoundUsd,
     currentGasUsd: cv.gasUsd,
   };
+}
+
+/**
+ * What the named NFT has compounded, from the coins already on disk.
+ *
+ * The cheap answer: no chain read, no scan. Both request phases use it
+ * to take fee earnings out of the LP value before comparing against
+ * HODL, so the IL/G an unmanaged position reports matches the managed
+ * one. A slot with no saved coins answers zero, and the full
+ * `_resolveCompounded` path corrects it later in the same request.
+ *
+ * @param {object} diskConfig  Loaded bot config.
+ * @param {string} posKey      Composite key for the position.
+ * @param {string|number} tokenId  The NFT to value.
+ * @param {number} price0      Token0 USD price.
+ * @param {number} price1      Token1 USD price.
+ * @returns {number}  USD value of that NFT's compounded coins.
+ */
+function savedNftCompoundedUsd(diskConfig, posKey, tokenId, price0, price1) {
+  const pos = getPositionConfig(diskConfig, posKey);
+  return nftCoinsToUsd(
+    pos?.nftCompoundedAmountsByTokenId,
+    tokenId,
+    price0,
+    price1,
+  );
 }
 
 module.exports = {
@@ -283,4 +325,5 @@ module.exports = {
   _scanCompounds,
   _detectCurrentNftValues,
   _resolveCompounded,
+  savedNftCompoundedUsd,
 };

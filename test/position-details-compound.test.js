@@ -76,11 +76,20 @@ describe("_scanCompounds", () => {
       cfg,
       dir,
       read: readerFor(["200", "199"]).read,
-      classify: async () => ({ totalCompoundedUsd: 5.5, compounds: [] }),
+      classify: async () => ({
+        totalCompoundedUsd: 5.5,
+        feeAmount0: 2,
+        feeAmount1: 1,
+        compounds: [],
+      }),
     });
     // Mock returns 5.5 per NFT, 2 NFTs classified (199, 200) = total 11
     assert.strictEqual(result.total, 11);
-    assert.strictEqual(cfg.positions["test-key"].totalCompoundedUsd, 11);
+    /*- The coins are what is saved; the total above is this request's
+     *  valuation of them. */
+    assert.strictEqual(cfg.positions["test-key"].compoundedAmount0, 4);
+    assert.strictEqual(cfg.positions["test-key"].compoundedAmount1, 2);
+    assert.strictEqual(cfg.positions["test-key"].totalCompoundedUsd, undefined);
     fs.rmSync(dir, { recursive: true });
   });
 
@@ -196,7 +205,7 @@ describe("_scanCompounds", () => {
       classify: async () => ({ totalCompoundedUsd: 5, compounds: [] }),
     });
     assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
-    assert.strictEqual(cfg.positions["test-key"].totalCompoundedUsd, undefined);
+    assert.strictEqual(cfg.positions["test-key"].compoundedAmount0, undefined);
   });
 
   it("returns total=0, current=0 when classification fails", async () => {
@@ -254,14 +263,14 @@ describe("compoundsReadChain", () => {
      *  replaces it.
      */
     assert.strictEqual(
-      compoundsReadChain(disk({ totalCompoundedUsd: 0 }), "test-key", EVENTS),
+      compoundsReadChain(disk({ compoundedAmount0: 0 }), "test-key", EVENTS),
       true,
     );
   });
 
-  it("does not read when a total is saved", () => {
+  it("does not read when the coins are saved", () => {
     assert.strictEqual(
-      compoundsReadChain(disk({ totalCompoundedUsd: 5 }), "test-key", EVENTS),
+      compoundsReadChain(disk({ compoundedAmount0: 5 }), "test-key", EVENTS),
       false,
     );
   });
@@ -320,7 +329,9 @@ describe("_resolveCompounded takes the chain path exactly when predicted", () =>
      */
     const cfg = {
       global: {},
-      positions: { "test-key": { totalCompoundedUsd: 42 } },
+      positions: {
+        "test-key": { compoundedAmount0: 42, compoundedAmount1: 0 },
+      },
     };
     assert.equal(compoundsReadChain(cfg, "test-key", EVENTS), false);
     const { result, reads } = await resolve(cfg, EVENTS);

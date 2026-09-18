@@ -26,8 +26,8 @@ const {
   saveConfig,
   getPositionConfig,
   parseCompositeKey,
-  CHAIN_DERIVED_POSITION_KEYS,
 } = require("./bot-config-v2");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("./bot-config-keys");
 const _epochCache = require("./epoch-cache");
 const { cancelPoolScan, clearPoolCache } = require("./pool-scanner");
 const { resolveLiveKey } = require("./server-key-resolver");
@@ -53,9 +53,9 @@ function _resetBotState(state) {
   state.totalLifetimeDepositUsd = 0;
   state.depositUsedFallback = false;
   state.compoundHistory = [];
-  state.totalCompoundedUsd = 0;
-  state.collectedFeesUsd = 0;
-  state.nftCompoundedUsdByTokenId = {};
+  state.compoundedAmount0 = 0;
+  state.compoundedAmount1 = 0;
+  state.nftCompoundedAmountsByTokenId = {};
   state.nftGasWeiByTokenId = {};
   state.hodlBaseline = null;
   state.lifetimeHodlAmounts = null;
@@ -66,7 +66,7 @@ function _resetBotState(state) {
  *  `readConfigValue(diskConfig, key, ...)`.  Loading a fresh copy from
  *  disk here would leave the shared reference stale and
  *  `_resolveDiskState` in bot-recorder-lifetime.js would keep seeing
- *  the old `compoundHistory` / `totalCompoundedUsd`, gating
+ *  the old `compoundHistory` / compounded coins, gating
  *  `_classifyAllCompounds` off and silently skipping the chain-wide
  *  rescan — exactly the July-2026 reload-no-op bug. */
 function _clearDiskConfigForKey(diskConfig, positionKey) {

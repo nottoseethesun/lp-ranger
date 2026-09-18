@@ -1714,9 +1714,10 @@ three from the chain and from live price sources, then reports which
 one has to be wrong to produce the reported figure.
 
 The figure matters beyond the alert text. `recordCompound` in
-`src/bot-cycle-compound.js` adds the same `usdValue` to the position's
-`totalCompoundedUsd`, which is half of the dashboard's lifetime
-fee-earnings figure (`currentFeesUsd + totalCompoundedUsd`, see
+`src/bot-cycle-compound.js` adds the same compound's **coins** to the
+position's `compoundedAmount0` / `compoundedAmount1`, and those coins
+priced at the current poll are half of the dashboard's lifetime
+fee-earnings figure (`currentFeesUsd + snap.totalCompoundedUsd`, see
 `src/ui-state.js`). That total is only ever accumulated incrementally
 once disk holds a non-zero value — the on-chain rescan in
 `src/bot-recorder-lifetime.js` is deliberately gated off by
@@ -2835,7 +2836,7 @@ subtly wrong &mdash; the initial pool-wide lifetime scan aborting
 before anything hits disk. That's the failure mode that produced the
 July 2026 Prod discrepancy where `Fees Compounded` for a PulseX/WPLS
 position showed $11.63 instead of the correct ~$255.50: the disk
-config's `totalCompoundedUsd` had been populated entirely by a single
+config's compounded coins had been populated entirely by a single
 runtime auto-compound event because `_classifyAllCompounds` never
 persisted anything.
 
@@ -2947,8 +2948,8 @@ should not permanently disable the escape hatch.
    (`cancelPoolScan(token0, token1, fee, wallet)`).
 2. Delete the following on-chain-derived keys from the position's
    disk config, then save via `saveConfig`:
-   `compoundHistory`, `totalCompoundedUsd`, `collectedFeesUsd`,
-   `nftCompoundedUsdByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
+   `compoundHistory`, `compoundedAmount0`, `compoundedAmount1`,
+   `nftCompoundedAmountsByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
    `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`,
    `depositUsedFallback`. The canonical list is
    `CHAIN_DERIVED_POSITION_KEYS` in `bot-config-v2.js`, shared with
@@ -3085,14 +3086,22 @@ that a saved figure would otherwise skip:
 
 | Figure | Rebuilt from |
 | ------ | ------------ |
-| Fees Compounded (`totalCompoundedUsd`, `compoundHistory`, `nftCompoundedUsdByTokenId`) | the chain's events, at current prices |
+| Fees Compounded (`compoundedAmount0` / `compoundedAmount1`, `compoundHistory`, `nftCompoundedAmountsByTokenId`) | the chain's events — the coins, which carry no price |
 | Lifetime Deposit (`totalLifetimeDepositUsd`) | the saved deposits, at the historical price for each deposit's own block |
 | HODL baseline entry value (`hodlBaseline.entryValue`) | the saved mint amounts, at the historical price for the mint's block |
 
 The token amounts behind all three are read from chain but never
 re-derived from the pool's history, which is the cost advantage over
-Reload. `collectedFeesUsd` is price-derived too, but nothing rebuilds
-it, so there is no fresh value to put in its place.
+Reload.
+
+Fees Compounded is the odd one in that table, because the row covers
+two figures that answer to different rules. The KPI is the saved coins
+priced wherever it is shown, so no stored price can make it wrong and
+Re-scan Prices cannot improve it. The Compound Log's per-event dollars
+are stored (`compoundHistory[].usdValue`), so they can be stale, and
+this is the action that rewrites them — the same pass that reads the
+chain values each event at the fresh prices. A position slot holding no
+coins gets them from the same pass.
 
 **Nothing is deleted.** Each figure is overwritten only once its
 replacement exists, and each step keeps the saved figure when its price

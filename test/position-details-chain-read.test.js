@@ -30,6 +30,7 @@ const { compositeKey } = require("../src/bot-config-v2");
 const {
   _scanCompounds,
   compoundsReadChain,
+  savedNftCompoundedUsd,
 } = require("../src/position-details-compound");
 const { scanLifetimeHodl } = require("../src/position-details-lifetime-scan");
 const { createPnlTracker } = require("../src/pnl-tracker");
@@ -286,6 +287,9 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
          *  what decides whether reconstruction may share the read.
          */
         compoundsReadChain,
+        /*- Real too: it only reads saved coins, makes no request, and
+         *  the current-IL figure would throw without it. */
+        savedNftCompoundedUsd,
         _resolveCompounded: async (...args) => {
           seen.compound = args[7];
           return { total: 0, current: 0, currentGasUsd: 0 };
@@ -328,10 +332,10 @@ describe("computeLifetimeDetails wires one reader to both consumers", () => {
     config.POSITION_MANAGER,
     BODY.tokenId,
   );
-  /** Disk config, with or without a saved Fees Compounded total. */
+  /** Disk config, with or without the saved Fees Compounded coins. */
   const diskWith = (saved) => ({
     global: {},
-    positions: saved ? { [POS_KEY]: { totalCompoundedUsd: 5 } } : {},
+    positions: saved ? { [POS_KEY]: { compoundedAmount0: 5 } } : {},
   });
   const HODL = { amount0: 1, amount1: 1 };
 

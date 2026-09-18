@@ -384,9 +384,9 @@ describe("lifetime-hodl", () => {
     });
   });
 
-  describe("_lifetimeAmounts in bot-pnl-updater", () => {
+  describe("_lifetimeAmounts in bot-pnl-il", () => {
     it("prefers lifetimeHodlAmounts over closedEpochs[0]", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-updater");
+      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
       const deps = {
         _botState: {
           lifetimeHodlAmounts: { amount0: 100, amount1: 50 },
@@ -400,7 +400,7 @@ describe("lifetime-hodl", () => {
     });
 
     it("falls back to closedEpochs[0] when no lifetimeHodlAmounts", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-updater");
+      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
       const deps = {
         _botState: { hodlBaseline: { hodlAmount0: 5, hodlAmount1: 3 } },
       };
@@ -411,7 +411,7 @@ describe("lifetime-hodl", () => {
     });
 
     it("uses scan amounts even when baseline is larger", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-updater");
+      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
       const deps = {
         _botState: {
           lifetimeHodlAmounts: { amount0: 50, amount1: 30 },
@@ -424,12 +424,12 @@ describe("lifetime-hodl", () => {
     });
 
     it("_ilFor returns undefined when amounts are zero", () => {
-      const { _ilFor } = require("../src/bot-pnl-updater");
+      const { _ilFor } = require("../src/bot-pnl-il");
       assert.strictEqual(_ilFor(100, 0, 0, 1, 1), undefined);
     });
 
     it("_ilFor computes HODL IL", () => {
-      const { _ilFor } = require("../src/bot-pnl-updater");
+      const { _ilFor } = require("../src/bot-pnl-il");
       assert.strictEqual(_ilFor(100, 50, 50, 1, 1), 0);
     });
 
@@ -440,7 +440,7 @@ describe("lifetime-hodl", () => {
     });
 
     it("returns zeros when no data available", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-updater");
+      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
       const { a0, a1 } = _lifetimeAmounts(
         { _botState: {} },
         { closedEpochs: [] },

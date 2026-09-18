@@ -86,24 +86,41 @@ function appendLog(result) {
 /**
  * After an epoch close, credit unclaimed fees that were re-deposited via
  * the rebalance flow (drain → swap → mint).  These were already in the
- * NFT and would otherwise be invisible to `totalCompoundedUsd` (only
- * standalone compounds bump it via bot-cycle-compound).  See the Lifetime
- * "Fees Compounded" info dialog for the user-facing explanation.
+ * NFT and would otherwise be invisible to the compounded totals (only
+ * standalone compounds bump those via bot-cycle-compound).  See the
+ * Lifetime "Fees Compounded" info dialog for the user-facing
+ * explanation.
+ *
+ * The coins are what is added, not their value: `_lastUnclaimedFee0` and
+ * `_lastUnclaimedFee1` are in token units, and whoever displays the
+ * total prices it at the moment it is shown.
  */
 function _bumpRebalanceFees(deps) {
-  if (!deps._addCollectedFees || !deps._lastUnclaimedFeesUsd) return;
-  const rebalanceFeesUsd = deps._lastUnclaimedFeesUsd;
-  deps._addCollectedFees(rebalanceFeesUsd);
+  const fee0 = deps._lastUnclaimedFee0 || 0;
+  const fee1 = deps._lastUnclaimedFee1 || 0;
+  if (fee0 <= 0 && fee1 <= 0) return;
   const gc = deps._getConfig;
-  const prevCompounded =
-    (gc && gc("totalCompoundedUsd")) || deps._botState?.totalCompoundedUsd || 0;
-  const newCompounded = prevCompounded + rebalanceFeesUsd;
+  /*- Disk first, then the in-memory state, then nothing — and a saved
+   *  zero is a real answer that must stop the search, not fall through
+   *  to the next source. */
+  const saved = (key) => (gc ? gc(key) : undefined);
+  const prev0 =
+    saved("compoundedAmount0") ?? deps._botState?.compoundedAmount0 ?? 0;
+  const prev1 =
+    saved("compoundedAmount1") ?? deps._botState?.compoundedAmount1 ?? 0;
+  const newAmount0 = prev0 + fee0;
+  const newAmount1 = prev1 + fee1;
   if (deps.updateBotState)
-    deps.updateBotState({ totalCompoundedUsd: newCompounded });
+    deps.updateBotState({
+      compoundedAmount0: newAmount0,
+      compoundedAmount1: newAmount1,
+    });
   log.info(
-    "[bot] Rebalance compound: $%s fees re-deposited (lifetime $%s)",
-    rebalanceFeesUsd.toFixed(2),
-    newCompounded.toFixed(2),
+    "[bot] Rebalance compound: %s/%s fees re-deposited (lifetime %s/%s)",
+    fee0.toFixed(6),
+    fee1.toFixed(6),
+    newAmount0.toFixed(6),
+    newAmount1.toFixed(6),
   );
   deps._lastUnclaimedFeesUsd = 0;
   /*- The token amounts behind that figure are cleared with it. They are
@@ -332,7 +349,23 @@ async function _scanHistory(
     updateState(stPatch);
     return true;
   } catch (err) {
-    log.warn("[bot] Event scan error:", err.message);
+    /*- The operator reaches this line from the Manual's FAQ, sent here
+     *  by a Sync badge that has stayed on "Syncing…". So it carries what
+     *  every other scan line carries — which position, and its pair —
+     *  plus the error's class, and what the failure costs: the lifetime
+     *  figures are skipped rather than built from a history this read
+     *  did not finish. Keep the words "Event scan error", which is what
+     *  the FAQ tells them to search for. */
+    const ctx = scanLogCtx(position);
+    log.warn(
+      "[bot] %s/%s NFT #%s %s: Event scan error (%s): %s — lifetime figures skipped; the Sync badge stays on Syncing and the scan retries in 30 minutes",
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
+      err.name || "Error",
+      err.message,
+    );
     updateState({ rebalanceScanComplete: true });
     return false;
   }

@@ -26,7 +26,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { POSITION_KEYS, GLOBAL_KEYS } = require("../src/bot-config-v2");
+const { POSITION_KEYS, GLOBAL_KEYS } = require("../src/bot-config-keys");
 
 const ROOT = path.join(__dirname, "..");
 const SPEC_PATH = path.join(ROOT, "docs", "openapi.json");

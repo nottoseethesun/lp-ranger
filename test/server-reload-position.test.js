@@ -18,7 +18,7 @@ const {
   createReloadPositionHandler,
   _resetBotState,
 } = require("../src/server-reload-position");
-const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-v2");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
 
 /*- Every test that hits `loadConfig`/`saveConfig` (bot-config-v2) needs
  *  the config file to live in a tmp dir so real user state is never
@@ -169,9 +169,9 @@ describe("CHAIN_DERIVED_POSITION_KEYS", () => {
      *  disk config get a matching test-failure. */
     const expected = [
       "compoundHistory",
-      "totalCompoundedUsd",
-      "collectedFeesUsd",
-      "nftCompoundedUsdByTokenId",
+      "compoundedAmount0",
+      "compoundedAmount1",
+      "nftCompoundedAmountsByTokenId",
       "nftGasWeiByTokenId",
       "hodlBaseline",
       "lifetimeHodlAmounts",
@@ -203,9 +203,9 @@ describe("_resetBotState", () => {
       totalLifetimeDepositUsd: 999.99,
       depositUsedFallback: true,
       compoundHistory: [{ tokenId: "1" }],
-      totalCompoundedUsd: 100,
-      collectedFeesUsd: 50,
-      nftCompoundedUsdByTokenId: { 1: 42 },
+      compoundedAmount0: 100,
+      compoundedAmount1: 50,
+      nftCompoundedAmountsByTokenId: { 1: { amount0: 42, amount1: 0 } },
       nftGasWeiByTokenId: { 1: "abc" },
       hodlBaseline: { mintDate: "2026-01-01" },
       lifetimeHodlAmounts: { amount0: 1, amount1: 2 },
@@ -223,9 +223,9 @@ describe("_resetBotState", () => {
     assert.strictEqual(state.totalLifetimeDepositUsd, 0);
     assert.strictEqual(state.depositUsedFallback, false);
     assert.deepStrictEqual(state.compoundHistory, []);
-    assert.strictEqual(state.totalCompoundedUsd, 0);
-    assert.strictEqual(state.collectedFeesUsd, 0);
-    assert.deepStrictEqual(state.nftCompoundedUsdByTokenId, {});
+    assert.strictEqual(state.compoundedAmount0, 0);
+    assert.strictEqual(state.compoundedAmount1, 0);
+    assert.deepStrictEqual(state.nftCompoundedAmountsByTokenId, {});
     assert.deepStrictEqual(state.nftGasWeiByTokenId, {});
     assert.strictEqual(state.hodlBaseline, null);
     assert.strictEqual(state.lifetimeHodlAmounts, null);

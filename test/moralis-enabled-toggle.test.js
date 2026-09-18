@@ -18,7 +18,7 @@ const { describe, it, beforeEach, before } = require("node:test");
 const assert = require("assert");
 
 const holder = require("../src/api-key-holder");
-const { GLOBAL_KEYS } = require("../src/bot-config-v2");
+const { GLOBAL_KEYS } = require("../src/bot-config-keys");
 const { readBotConfigDefaults } = require("../src/bot-config-defaults");
 
 describe("api-key-holder — enabled is separate from present", () => {

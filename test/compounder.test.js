@@ -126,11 +126,15 @@ describe("compounder", () => {
 
   describe("compound config keys", () => {
     it("POSITION_KEYS includes compound fields", () => {
-      const { POSITION_KEYS } = require("../src/bot-config-v2");
+      const { POSITION_KEYS } = require("../src/bot-config-keys");
       assert.ok(POSITION_KEYS.includes("autoCompoundEnabled"));
       assert.ok(POSITION_KEYS.includes("autoCompoundThresholdUsd"));
       assert.ok(POSITION_KEYS.includes("compoundHistory"));
-      assert.ok(POSITION_KEYS.includes("totalCompoundedUsd"));
+      /*- Coins, not a dollar total: the saved figure is priced wherever
+       *  it is shown. */
+      assert.ok(POSITION_KEYS.includes("compoundedAmount0"));
+      assert.ok(POSITION_KEYS.includes("compoundedAmount1"));
+      assert.ok(!POSITION_KEYS.includes("totalCompoundedUsd"));
       assert.ok(POSITION_KEYS.includes("lastCompoundAt"));
     });
 

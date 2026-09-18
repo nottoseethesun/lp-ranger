@@ -35,7 +35,11 @@ const {
 } = require("./helpers/bot-recorder-lifetime-mocks");
 
 const POOL_FLOOR = 100;
-const SAVED = { totalCompoundedUsd: 148.38, totalLifetimeDepositUsd: 1704.15 };
+const SAVED = {
+  compoundedAmount0: 12.5,
+  compoundedAmount1: 40,
+  totalLifetimeDepositUsd: 1704.15,
+};
 
 /** #100 → #200 → #300, as the event scan finds it. */
 function scannedChain() {
@@ -328,6 +332,29 @@ describe("when the pass does not go to plan", () => {
     }
     assert.equal(run.reads.length, 0);
     assert.equal(botState.lifetimeScanComplete, true);
+  });
+
+  it("names the position and the cost when the event scan fails", async () => {
+    /*-
+     *  The Manual's FAQ sends an operator here from a Sync badge stuck
+     *  on "Syncing…", telling them to search the log for "Event scan
+     *  error". So the phrase has to stay, and the line has to say which
+     *  position it is about and what the failure cost — a bare message
+     *  leaves them with a symptom and no next step.
+     */
+    const scan = load({ scanFails: true });
+    const cap = captureWarnings();
+    try {
+      await pass(scan, position(), coldState());
+    } finally {
+      cap.restore();
+    }
+    const line = cap.lines.find((l) => l.includes("Event scan error"));
+    assert.ok(line, cap.lines.join("\n"));
+    assert.match(line, /A\/B NFT #300/, "names the position and its pair");
+    assert.match(line, /simulated event scan failure/, "carries the reason");
+    assert.match(line, /lifetime figures skipped/, "says what it cost");
+    assert.match(line, /retries in 30 minutes/, "says what happens next");
   });
 
   it("reads afresh when a rebalance lands during reconstruction", async () => {

@@ -14,19 +14,23 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _computeIL } = require("../src/bot-pnl-updater");
+const { _computeIL } = require("../src/bot-pnl-il");
 
-/** Run _computeIL over a position worth `lpValue`, 100+100 deposited. */
-function run({ lpValue, compounded = 0, perNft = 0 }) {
+/*-
+ *  Run _computeIL over a position worth `lpValue`, 100+100 deposited.
+ *  `perNft` is the COINS of token0 this NFT compounded, not their value:
+ *  what is saved is coins, and pricing them is the function's job.
+ */
+function run({ lpValue, compounded = 0, perNft = 0, price = 1 }) {
   const snap = { residualValueUsd: 0, totalCompoundedUsd: compounded };
   const deps = {
     _botState: {
       hodlBaseline: { hodlAmount0: 100, hodlAmount1: 100 },
       lifetimeHodlAmounts: { amount0: 100, amount1: 100 },
-      nftCompoundedUsdByTokenId: { 7: perNft },
+      nftCompoundedAmountsByTokenId: { 7: { amount0: perNft, amount1: 0 } },
     },
   };
-  _computeIL(snap, deps, lpValue, 1, 1, "7");
+  _computeIL(snap, deps, lpValue, price, price, "7");
   return snap;
 }
 
@@ -67,5 +71,20 @@ describe("IL/G excludes compounded fees", () => {
   it("treats a missing per-NFT entry as nothing compounded", () => {
     const snap = run({ lpValue: 260, compounded: 60 });
     assert.equal(snap.ilInputs.cur.compoundedRemoved, 0);
+  });
+
+  it("values this NFT's compounds at today's price, not the coin count", () => {
+    /*-
+     *  What is saved is 25 coins of token0. At $2 they are $50, so a
+     *  position worth $460 against a $400 HODL diverges by $10.
+     *
+     *  Reading the saved number as dollars — which is what a stored
+     *  total amounts to — would remove $25 and report $35. That error
+     *  is the whole reason the app stores coins: it grows with every
+     *  move the pair makes after the compound.
+     */
+    const snap = run({ lpValue: 460, compounded: 0, perNft: 25, price: 2 });
+    assert.equal(snap.ilInputs.cur.compoundedRemoved, 50);
+    assert.equal(snap.totalIL, 10);
   });
 });

@@ -243,10 +243,6 @@
                     "type": "string",
                     "description": "ISO-8601 UTC date. Overrides the detected start of the lifetime window."
                   },
-                  "collectedFeesUsd": {
-                    "type": "number",
-                    "description": "Cumulative fees collected out of the position, USD."
-                  },
                   "decimalsOverride0": {
                     "type": "integer",
                     "description": "Manual decimals for token0, when on-chain detection fails."
@@ -263,9 +259,13 @@
                     "type": "boolean",
                     "description": "Apply decimalsOverride1 even when on-chain detection succeeded."
                   },
-                  "totalCompoundedUsd": {
+                  "compoundedAmount0": {
                     "type": "number",
-                    "description": "Lifetime fees swept back into liquidity, USD."
+                    "description": "Lifetime token0 swept back into liquidity, in coins. Priced at the current price wherever it is displayed — never stored as a dollar total."
+                  },
+                  "compoundedAmount1": {
+                    "type": "number",
+                    "description": "Lifetime token1 swept back into liquidity, in coins."
                   },
                   "lastCompoundAt": {
                     "type": "string",
@@ -311,11 +311,19 @@
                       "type": "string"
                     }
                   },
-                  "nftCompoundedUsdByTokenId": {
+                  "nftCompoundedAmountsByTokenId": {
                     "type": "object",
-                    "description": "Compounded USD per NFT in the rebalance chain, keyed by tokenId.",
+                    "description": "Compounded coins per NFT in the rebalance chain, keyed by tokenId.",
                     "additionalProperties": {
-                      "type": "number"
+                      "type": "object",
+                      "properties": {
+                        "amount0": {
+                          "type": "number"
+                        },
+                        "amount1": {
+                          "type": "number"
+                        }
+                      }
                     }
                   },
                   "hodlBaseline": {

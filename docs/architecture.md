@@ -306,12 +306,22 @@ during the startup scan and cached in the epoch cache
   that arrived since the previous mint are now deposits in the position;
   the one new boundary is scanned and the rest come back from cache.
 
-- **Lifetime compounded amount** (`totalCompoundedUsd`) — the USD value of
-  the fees each NFT earned and re-deposited, whether by a compound or by the
-  rebalance that closed it. Each NFT's figure is its Collect amounts less the
-  principal its DecreaseLiquidity events released (`lifetimeFeeAmounts`).
-  The per-event compound history is the IncreaseLiquidity events after the
-  mint, less the rebalance-adjacent ones (`_filterRebalances`).
+- **Lifetime compounded amount** (`compoundedAmount0` / `compoundedAmount1`)
+  — the **coins** each NFT earned in fees and re-deposited, whether by a
+  compound or by the rebalance that closed it. Each NFT's figure is its
+  Collect amounts less the principal its DecreaseLiquidity events released
+  (`lifetimeFeeAmounts`). The per-event compound history is the
+  IncreaseLiquidity events after the mint, less the rebalance-adjacent ones
+  (`_filterRebalances`).
+
+  The saved figure is coins, never dollars. A stored USD total is true only
+  at the price that computed it, so its error grows with every move the pair
+  makes afterwards — on an old position, without bound. `snap.totalCompoundedUsd`
+  is therefore computed fresh on every poll, coins × current price, through
+  `src/coin-value.js`. The historical figures are the deliberate exceptions
+  and keep their own prices: Total Lifetime Deposit values each deposit at its
+  own block, the HODL Baseline's Entry Value stands at the NFT's mint, and a
+  closed epoch in the Historical P&L table keeps the dollars it closed at.
 
 - **Lifetime gas** (`totalGas`) — the cumulative gas cost in USD across all
   rebalance and compound transactions.  Extracted from TX receipts during
@@ -333,10 +343,20 @@ Compounded fees come off the LP side. Compounding calls
 `positionValueUsd` measures, while the HODL side stays fixed at the
 amounts deposited. Leaving them in would report reinvested earnings as
 LP outperformance, and the Profit figure already counts them. The
-lifetime figure removes `totalCompoundedUsd`; the current-NFT figure
+lifetime figure removes `snap.totalCompoundedUsd`; the current-NFT figure
 removes only that NFT's share, since its mint value already contained
-the earlier compounds. The subtraction happens in `_computeIL`
-(`src/bot-pnl-updater.js`) — `computeHodlIL` itself is unchanged.
+the earlier compounds. Both are the saved coins priced at the current
+poll, so IL/G does not drift as the pair moves after a compound.
+
+`ilFigures` (`src/bot-pnl-il.js`) computes both, and is the only place
+either is computed. It is pure — every input is an argument — which is
+what lets the bot tier and the unmanaged details endpoint share it
+despite holding their state in different shapes. A position therefore
+reports the same IL/G managed or not: managing one changes nothing on
+chain, so nothing on screen may move when it starts or stops. Were the
+view tier to compare the raw LP value instead, the gap would be the
+whole compounded amount — enough on a long-running position to flip the
+sign. `computeHodlIL` itself is unchanged.
 
 Both the managed and unmanaged paths use the same `computeHodlIL` function
 from `src/il-calculator.js`.  The HODL amounts come from

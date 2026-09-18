@@ -29,7 +29,11 @@ const {
 } = require("./helpers/bot-recorder-lifetime-mocks");
 
 const POOL_FLOOR = 100;
-const SAVED = { totalCompoundedUsd: 148.38, totalLifetimeDepositUsd: 1704.15 };
+const SAVED = {
+  compoundedAmount0: 12.5,
+  compoundedAmount1: 40,
+  totalLifetimeDepositUsd: 1704.15,
+};
 
 /** Every combination of the four flags that decide a lifetime scan. */
 function everyState() {
@@ -49,7 +53,10 @@ function everyState() {
 function arrange(s) {
   state.cachedHodl = s.hodl ? { poolAddress: "0xPOOL" } : null;
   const cfg = {};
-  if (s.compound) cfg.totalCompoundedUsd = SAVED.totalCompoundedUsd;
+  if (s.compound) {
+    cfg.compoundedAmount0 = SAVED.compoundedAmount0;
+    cfg.compoundedAmount1 = SAVED.compoundedAmount1;
+  }
   if (s.deposit) cfg.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
   const botState = makeBotState(cfg);
   botState._needsFullRescan = s.fullRescan;

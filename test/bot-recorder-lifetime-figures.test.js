@@ -114,7 +114,7 @@ describe("_scanLifetimePoolData — one figure missing", () => {
   });
 
   it("recomputes only the deposit total when it alone is missing", async () => {
-    await _run({ totalCompoundedUsd: 148.38 });
+    await _run({ compoundedAmount0: 12.5, compoundedAmount1: 40 });
     assert.equal(state.depositCalled, true, "deposit must be recomputed");
     assert.equal(state.classifyCalled, false, "the saved compounds are kept");
     assert.equal(state.scanFromBlock, 100, "read from pool creation");
@@ -199,6 +199,8 @@ describe("_classifyAllCompounds — the per-NFT figure", () => {
         },
       ],
       totalCompoundedUsd: 7,
+      feeAmount0: 3,
+      feeAmount1: 4,
       totalGasWei: "0",
       totalNftGasWei: "0",
     };
@@ -210,13 +212,43 @@ describe("_classifyAllCompounds — the per-NFT figure", () => {
       (p) => patches.push(p),
       null,
     );
-    const patch = patches.find((p) => p.totalCompoundedUsd !== undefined);
-    assert.equal(patch.totalCompoundedUsd, 7, "the lifetime total");
+    const patch = patches.find((p) => p.compoundedAmount0 !== undefined);
+    assert.equal(patch.compoundedAmount0, 3, "the lifetime coins, not dollars");
+    assert.equal(patch.compoundedAmount1, 4);
     assert.deepEqual(
-      patch.nftCompoundedUsdByTokenId,
-      { 1: 2 },
-      "one token0 at $2, against this NFT",
+      patch.nftCompoundedAmountsByTokenId,
+      { 1: { amount0: 1, amount1: 0 } },
+      "one token0 compounded against this NFT",
     );
+  });
+
+  it("refuses to classify against invalid decimals, and saves nothing", async () => {
+    /*-
+     *  Every amount below is raw units divided by `10 ** decimals`, so a
+     *  wrong exponent is a money figure wrong by orders of magnitude —
+     *  saved to disk and priced on screen looking entirely ordinary.
+     *  Defaulting the exponent cannot be right except by luck, so the
+     *  scan fails instead and the operator gets a log line.
+     *
+     *  `_ensureTokenDecimals` should have stopped the scan long before
+     *  here; this is the backstop for that guarantee breaking.
+     */
+    const patches = [];
+    for (const bad of [undefined, null, NaN, -1, 78, "18"]) {
+      await assert.rejects(
+        () =>
+          _classifyAllCompounds(
+            new Set(["1"]),
+            new Map([["1", { ilEvents: [], collectEvents: [], dlEvents: [] }]]),
+            { decimals0: bad, decimals1: 18, price0: 1, price1: 1 },
+            (p) => patches.push(p),
+            null,
+          ),
+        /decimals are invalid/,
+        `decimals0=${String(bad)} must be refused`,
+      );
+    }
+    assert.equal(patches.length, 0, "nothing may be written");
   });
 });
 
@@ -286,7 +318,8 @@ describe("_scanLifetimePoolData — after a rebalance", () => {
   /** Every figure saved, and a rebalance has just fired. */
   const _run = async () => {
     const botState = makeBotState({
-      totalCompoundedUsd: 148.38,
+      compoundedAmount0: 12.5,
+      compoundedAmount1: 40,
       totalLifetimeDepositUsd: 1704.15,
     });
     botState._needsFullRescan = true;
@@ -348,7 +381,8 @@ describe("_scanLifetimePoolData — Re-scan Prices", () => {
 
   /** Every figure saved, so only the re-value can make the scan run. */
   const SAVED = {
-    totalCompoundedUsd: 148.38,
+    compoundedAmount0: 12.5,
+    compoundedAmount1: 40,
     totalLifetimeDepositUsd: 1704.15,
   };
 

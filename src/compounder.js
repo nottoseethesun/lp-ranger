@@ -342,9 +342,14 @@ async function executeCompound(signer, ethersLib, opts) {
 
   const d0 = opts.decimals0 ?? 8;
   const d1 = opts.decimals1 ?? 8;
+  /*- The coins this compound put back into the position. The caller
+   *  adds these to the saved running totals; the dollars below are for
+   *  this moment's log line and the Activity Log entry. */
+  const depositedAmount0 = Number(deposited.amount0Deposited) / 10 ** d0;
+  const depositedAmount1 = Number(deposited.amount1Deposited) / 10 ** d1;
   const usdValue =
-    (Number(deposited.amount0Deposited) / 10 ** d0) * (opts.price0 || 0) +
-    (Number(deposited.amount1Deposited) / 10 ** d1) * (opts.price1 || 0);
+    depositedAmount0 * (opts.price0 || 0) +
+    depositedAmount1 * (opts.price1 || 0);
   /*-
    *  USD value of the full Collect — typically larger than usdValue
    *  because increaseLiquidity requires tokens in the current tick's
@@ -368,6 +373,8 @@ async function executeCompound(signer, ethersLib, opts) {
     swapGateReason: swap.gateReason,
     amount0Deposited: String(deposited.amount0Deposited),
     amount1Deposited: String(deposited.amount1Deposited),
+    depositedAmount0,
+    depositedAmount1,
     liquidity: String(deposited.liquidity),
     usdValue,
     collectedUsd,
@@ -640,9 +647,15 @@ async function classifyCompounds(nftEvents, opts = {}) {
   const { fees0, fees1 } = lifetimeFeeAmounts(collectEvents, dlEvents);
   const d0 = opts.decimals0 ?? 8,
     d1 = opts.decimals1 ?? 8;
+  /*- The coins, in token units. Callers store these rather than the
+   *  dollars below: a dollar total is only true at the price it was
+   *  computed with, and it drifts further from the truth the longer the
+   *  position runs, with nothing short of a chain re-read to correct
+   *  it. The coins never change. */
+  const feeAmount0 = Number(fees0) / 10 ** d0;
+  const feeAmount1 = Number(fees1) / 10 ** d1;
   const totalCompoundedUsd =
-    (Number(fees0) / 10 ** d0) * (opts.price0 || 0) +
-    (Number(fees1) / 10 ** d1) * (opts.price1 || 0);
+    feeAmount0 * (opts.price0 || 0) + feeAmount1 * (opts.price1 || 0);
   const { compounds, totalGasWei } = await _fetchCompoundGas(
     prov,
     compoundEvents,
@@ -672,6 +685,8 @@ async function classifyCompounds(nftEvents, opts = {}) {
   return {
     compounds,
     totalCompoundedUsd,
+    feeAmount0,
+    feeAmount1,
     totalGasWei: String(totalGasWei),
     totalNftGasWei: String(totalNftGasWei),
   };

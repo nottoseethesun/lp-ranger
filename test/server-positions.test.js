@@ -115,10 +115,11 @@ describe("createPerPositionBotState", () => {
     assert.deepStrictEqual(state.residuals, { token0: 5 });
   });
 
-  it("restores collectedFeesUsd from saved config", () => {
-    const saved = { collectedFeesUsd: 42.5 };
+  it("restores the compounded coins from saved config", () => {
+    const saved = { compoundedAmount0: 42.5, compoundedAmount1: 7 };
     const state = createPerPositionBotState({}, saved);
-    assert.strictEqual(state.collectedFeesUsd, 42.5);
+    assert.strictEqual(state.compoundedAmount0, 42.5);
+    assert.strictEqual(state.compoundedAmount1, 7);
   });
 
   it("ignores unknown saved config fields", () => {
@@ -227,7 +228,7 @@ describe("updatePositionState", () => {
     getAllPositionBotStates().delete(key);
   });
 
-  it("persists collectedFeesUsd to disk config", () => {
+  it("persists the compounded coins to disk config", () => {
     const key = "pulsechain-0xW-0xC-502";
     const keyRef = { current: key };
     /*- Pre-seed an existing entry; see note above. */
@@ -239,12 +240,12 @@ describe("updatePositionState", () => {
 
     updatePositionState(
       keyRef,
-      { collectedFeesUsd: 55.5 },
+      { compoundedAmount0: 55.5 },
       diskConfig,
       mgr,
       _tmpDir,
     );
-    assert.strictEqual(diskConfig.positions[key].collectedFeesUsd, 55.5);
+    assert.strictEqual(diskConfig.positions[key].compoundedAmount0, 55.5);
 
     getAllPositionBotStates().delete(key);
   });

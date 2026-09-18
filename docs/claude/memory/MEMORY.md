@@ -133,6 +133,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [unmanaged N/A principle](project_unmanaged_na_principle.md) — Unmanaged positions show N/A for anything about rebalance control, and no Lifetime panel
 - [bot-loop test scaffolding](project_bot_loop_test_scaffolding.md) — startBotLoop's poll/stop lifecycle has no direct test fixture
 - [code cleanup nice-to-haves](project_code_cleanup_nice_to_haves.md) — Running list of code-cleanup polish items
+- [deferred comment cleanup](project_deferred_comment_cleanup.md) — Storytelling JSDoc (one claim false), 119 old-form openers, an engineering.md passage — queued behind #2.2 and #3
 - [consolidate RPC retry](project_consolidate_rpc_retry.md) — Consolidate the per-URL × per-attempt RPC-retry pattern
 - [dashboard cleanup NTH](project_dashboard_cleanup_nth.md) — Import cycles, module-level cache sweep, 42 orphan HTML ids
 - [debug scripts print URL](project_debug_scripts_print_url.md) — Every `debug*` script should print its visit-this URL

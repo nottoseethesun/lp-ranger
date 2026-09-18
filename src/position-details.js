@@ -26,6 +26,7 @@ const {
 } = require("./epoch-cache");
 const { scanPoolHistory } = require("./pool-scanner");
 const { compositeKey } = require("./bot-config-v2");
+const { ilFigures } = require("./bot-pnl-il");
 const {
   computeQuickDetails,
   _currentPnl,
@@ -34,6 +35,7 @@ const {
 } = require("./position-details-quick");
 const {
   _resolveCompounded,
+  savedNftCompoundedUsd,
   compoundsReadChain,
 } = require("./position-details-compound");
 const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
@@ -266,23 +268,6 @@ async function _computeLifetimeIL(
   return { il, hodlAmount0: hodl.amount0, hodlAmount1: hodl.amount1 };
 }
 
-/** Build ilInputs for the IL debug popover from baseline and lifetime scan. */
-function _buildIlInputs(value, price0, price1, baseline, ltResult) {
-  const curHodl = {
-    hodlAmount0: baseline?.hodlAmount0 || 0,
-    hodlAmount1: baseline?.hodlAmount1 || 0,
-  };
-  return {
-    lpValue: value,
-    price0,
-    price1,
-    cur: curHodl,
-    lt: ltResult
-      ? { hodlAmount0: ltResult.hodlAmount0, hodlAmount1: ltResult.hodlAmount1 }
-      : curHodl,
-  };
-}
-
 /** Pick the IL value closer to zero (from the larger HODL). */
 function _pickSmaller(a, b) {
   if (a === null || a === undefined) return b;
@@ -334,8 +319,34 @@ async function _enrichSnap(
 ) {
   if (!snap) return;
   snap.currentValue = cur.value;
-  snap.totalIL = cur.il ?? snap.totalIL;
-  snap.lifetimeIL = ltIl ?? cur.il ?? snap.totalIL;
+  /*-
+   *  Both figures come from the same function the bot tier uses, so a
+   *  position reports the same IL/G whether or not it is managed.
+   *  Computed here rather than where `cur.il` and `ltIl` were, because
+   *  this is the first point that holds the compounded figures as well
+   *  as the HODL amounts both sides need.
+   *
+   *  The HODL amounts fall back to what the earlier steps resolved:
+   *  `bl` is the current NFT's baseline, `ltResult` the lifetime scan.
+   *  Where a side has no amounts, `ilFigures` answers `undefined` and
+   *  the dashboard shows a dash — which is what `cur.il` / `ltIl` were
+   *  already carrying for that case.
+   */
+  const figures = ilFigures({
+    lpValue: cur.value,
+    residualValueUsd: cur.residualValueUsd,
+    price0: p0,
+    price1: p1,
+    curHodl: { amount0: bl?.hodlAmount0, amount1: bl?.hodlAmount1 },
+    ltHodl: {
+      amount0: ltResult?.hodlAmount0,
+      amount1: ltResult?.hodlAmount1,
+    },
+    curCompoundedUsd: curComp,
+    ltCompoundedUsd: ltComp,
+  });
+  snap.totalIL = figures.totalIL ?? snap.totalIL;
+  snap.lifetimeIL = figures.lifetimeIL ?? figures.totalIL ?? snap.totalIL;
   snap.totalCompoundedUsd = ltComp;
   snap.currentCompoundedUsd = curComp || 0;
   snap.currentGasUsd = curGasUsd || 0;
@@ -368,7 +379,12 @@ async function _enrichSnap(
   const depResult = await _computeDepositUsd(pos, ps);
   snap.totalLifetimeDeposit = depResult.total;
   snap.depositUsedFallback = depResult.usedFallback;
-  snap.ilInputs = _buildIlInputs(cur.value, p0, p1, bl, ltResult);
+  /*- The inputs the figures above were actually computed from, so the
+   *  IL/G popover explains the number it sits beside — including what
+   *  each side removed in compounded fees, and the residual credited to
+   *  the LP side. Built by `ilFigures` rather than assembled a second
+   *  time here, which is what let the popover omit both. */
+  snap.ilInputs = figures.ilInputs;
 }
 
 /**
@@ -450,6 +466,12 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     price0,
     price1,
     residuals,
+    /*- The saved coins, which cost nothing to read. `_resolveCompounded`
+     *  below produces the authoritative figure — it may scan — and
+     *  `_enrichSnap` recomputes both IL figures from it. This keeps
+     *  `cur.il` consistent with that in the meantime, since it feeds the
+     *  Profit fallback for a position with no closed epochs. */
+    savedNftCompoundedUsd(diskConfig, posKey, position.tokenId, price0, price1),
   );
   // Position with the metadata the lifetime HODL needs (same as managed path)
   const _posWithMeta = {

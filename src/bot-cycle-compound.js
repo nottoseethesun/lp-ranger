@@ -145,14 +145,21 @@ async function recordCompound(deps, result) {
     gasCostUsd,
     trigger: result.trigger,
   });
-  const total = (_gc("totalCompoundedUsd") || 0) + result.usdValue;
+  /*- Add the coins, never a dollar total: the saved figure has to stay
+   *  true at whatever price the next poll reads, and a sum of dollars
+   *  frozen at each compound's own price drifts further from that the
+   *  longer the position runs. */
+  const amount0 =
+    (_gc("compoundedAmount0") || 0) + (result.depositedAmount0 || 0);
+  const amount1 =
+    (_gc("compoundedAmount1") || 0) + (result.depositedAmount1 || 0);
   /*-
    *  Invalidate the per-NFT Current-panel caches for this tokenId so the
    *  next poll re-scans and picks up the new compound's gas + USD.  Cheap
    *  (one per-NFT scan), runs at most once per compound.
    */
   const nftGasMap = { ...(_gc("nftGasWeiByTokenId") || {}) };
-  const nftCompMap = { ...(_gc("nftCompoundedUsdByTokenId") || {}) };
+  const nftCompMap = { ...(_gc("nftCompoundedAmountsByTokenId") || {}) };
   if (deps.position?.tokenId) {
     const tid = String(deps.position.tokenId);
     delete nftGasMap[tid];
@@ -160,9 +167,10 @@ async function recordCompound(deps, result) {
   }
   emit({
     compoundHistory: history,
-    totalCompoundedUsd: total,
+    compoundedAmount0: amount0,
+    compoundedAmount1: amount1,
     nftGasWeiByTokenId: nftGasMap,
-    nftCompoundedUsdByTokenId: nftCompMap,
+    nftCompoundedAmountsByTokenId: nftCompMap,
     lastCompoundAt: result.timestamp,
   });
   /* Add compound gas to the P&L tracker so it shows in the Gas KPI */
@@ -172,15 +180,20 @@ async function recordCompound(deps, result) {
     tracker.addGas(gasCostUsd, gasNative);
     emit({ pnlEpochs: tracker.serialize() });
   }
-  if (deps._addCollectedFees) deps._addCollectedFees(result.usdValue);
-  /*-
-   *  Show both numbers so users can see the residual: collected = full
-   *  Collect output; reinvested = what fit the current tick ratio and
-   *  was actually re-deposited.  The remainder stays in the wallet as
-   *  residual (tracked by residual-tracker.js) and is NOT counted as
-   *  compounded.  "lifetime" is the cumulative totalCompoundedUsd
-   *  across all NFTs in this rebalance chain (per-pool, not per-NFT).
-   */
+  _logCompound(result, gasCostUsd, amount0, amount1);
+}
+
+/*-
+ *  Show both numbers so users can see the residual: collected = full
+ *  Collect output; reinvested = what fit the current tick ratio and was
+ *  actually re-deposited.  The remainder stays in the wallet as residual
+ *  (tracked by residual-tracker.js) and is NOT counted as compounded.
+ *
+ *  "lifetime" is this pool's cumulative compounded coins across every
+ *  NFT in the rebalance chain, reported in coins because coins are what
+ *  is saved; their dollar value belongs to whichever poll displays it.
+ */
+function _logCompound(result, gasCostUsd, amount0, amount1) {
   const collectedUsd = result.collectedUsd ?? result.usdValue;
   const residualUsd = Math.max(0, collectedUsd - result.usdValue);
   const trig = result.trigger === "manual" ? "manual" : "auto";
@@ -194,9 +207,10 @@ async function recordCompound(deps, result) {
     residualUsd.toFixed(2),
   );
   log.info(
-    "[bot]   gas $%s | lifetime compounded $%s",
+    "[bot]   gas $%s | lifetime compounded %s/%s",
     gasCostUsd.toFixed(4),
-    total.toFixed(2),
+    amount0.toFixed(6),
+    amount1.toFixed(6),
   );
 }
 

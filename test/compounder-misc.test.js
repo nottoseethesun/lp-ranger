@@ -42,13 +42,13 @@ describe("compounder", () => {
       const cfg = {
         global: {},
         positions: {
-          "test-key": { status: "running", totalCompoundedUsd: 5.5 },
+          "test-key": { status: "running", compoundedAmount0: 5.5 },
         },
       };
       saveConfig(cfg, dir);
       const loaded = loadConfig(dir);
       assert.equal(loaded.positions["test-key"].status, "running");
-      assert.equal(loaded.positions["test-key"].totalCompoundedUsd, 5.5);
+      assert.equal(loaded.positions["test-key"].compoundedAmount0, 5.5);
       fs.rmSync(dir, { recursive: true });
     });
 
@@ -66,12 +66,14 @@ describe("compounder", () => {
     it("createPerPositionBotState copies compound fields from saved config", () => {
       const { createPerPositionBotState } = require("../src/server-positions");
       const saved = {
-        totalCompoundedUsd: 12.5,
+        compoundedAmount0: 12.5,
+        compoundedAmount1: 3,
         compoundHistory: [{ trigger: "auto", usdValue: 12.5 }],
         lastCompoundAt: "2026-04-04T12:00:00Z",
       };
       const state = createPerPositionBotState({}, saved);
-      assert.equal(state.totalCompoundedUsd, 12.5);
+      assert.equal(state.compoundedAmount0, 12.5);
+      assert.equal(state.compoundedAmount1, 3);
       assert.equal(state.compoundHistory.length, 1);
       assert.equal(state.lastCompoundAt, "2026-04-04T12:00:00Z");
     });
@@ -79,13 +81,13 @@ describe("compounder", () => {
     it("createPerPositionBotState handles missing compound fields", () => {
       const { createPerPositionBotState } = require("../src/server-positions");
       const state = createPerPositionBotState({}, {});
-      assert.equal(state.totalCompoundedUsd, undefined);
+      assert.equal(state.compoundedAmount0, undefined);
       assert.equal(state.compoundHistory, undefined);
     });
   });
 
   describe("P&L override with compound", () => {
-    it("overridePnlWithRealValues subtracts totalCompoundedUsd", () => {
+    it("prices the compounded coins at the poll's prices", () => {
       const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
       const snap = {
         closedEpochs: [],
@@ -93,9 +95,11 @@ describe("compounder", () => {
         initialDeposit: 100,
         totalGas: 0,
       };
+      /*- 2000 of token0 and 1000 of token1, at $0.001 each below: $3.
+       *  Stored as coins, so the published figure moves with the pair
+       *  instead of freezing at whatever price wrote it. */
       const deps = {
-        _botState: { totalCompoundedUsd: 3 },
-        _collectedFeesUsd: 0,
+        _botState: { compoundedAmount0: 2000, compoundedAmount1: 1000 },
       };
       const position = {
         liquidity: "1000000",
@@ -127,11 +131,12 @@ describe("compounder", () => {
 
   describe("config SETTINGS_KEYS coverage", () => {
     it("status response includes compound settings", () => {
-      const { POSITION_KEYS } = require("../src/bot-config-v2");
+      const { POSITION_KEYS } = require("../src/bot-config-keys");
       const compoundKeys = [
         "autoCompoundEnabled",
         "autoCompoundThresholdUsd",
-        "totalCompoundedUsd",
+        "compoundedAmount0",
+        "compoundedAmount1",
         "lastCompoundAt",
         "compoundHistory",
       ];
@@ -155,12 +160,12 @@ describe("compounder", () => {
       const keyRef = { current: "test-key" };
       const pm = { migrateKey: () => {} };
       const patch = {
-        totalCompoundedUsd: 7.5,
+        compoundedAmount0: 7.5,
         lastCompoundAt: "2026-04-04T15:00:00Z",
         compoundHistory: [{ trigger: "auto" }],
       };
       updatePositionState(keyRef, patch, cfg, pm, _dir);
-      assert.equal(cfg.positions["test-key"].totalCompoundedUsd, 7.5);
+      assert.equal(cfg.positions["test-key"].compoundedAmount0, 7.5);
       assert.equal(
         cfg.positions["test-key"].lastCompoundAt,
         "2026-04-04T15:00:00Z",

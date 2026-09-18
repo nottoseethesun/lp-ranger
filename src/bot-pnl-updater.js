@@ -15,7 +15,8 @@ const { ensureLiveEpoch } = require("./live-epoch-entry");
 const config = require("./config");
 const rangeMath = require("./range-math");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
-const { computeHodlIL } = require("./il-calculator");
+const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
+const { _computeIL } = require("./bot-pnl-il");
 const { PM_ABI } = require("./pm-abi");
 const {
   maybeNotifyBalanced,
@@ -202,116 +203,14 @@ async function walletResiduals(
   }
 }
 
-/** Compute HODL IL for a given pair of token amounts.
- *  `residualValueUsd` (current pool-scoped wallet residual) is credited
- *  to the LP-side of the comparison — see computeHodlIL's JSDoc for
- *  why, and the original verbatim issue from the user: "Wallet
- *  Residual is not included in overall profit-loss - an oversight
- *  from our earlier work that is not visible with the bigger tokens
- *  since those swaps are always easy to do." */
-function _ilFor(realValue, a0, a1, price0, price1, residualValueUsd) {
-  return a0 > 0 || a1 > 0
-    ? computeHodlIL({
-        lpValue: realValue,
-        hodlAmount0: a0,
-        hodlAmount1: a1,
-        currentPrice0: price0,
-        currentPrice1: price1,
-        residualValueUsd: residualValueUsd || 0,
-      })
-    : undefined;
-}
-
 /** Pick the larger of two candidate amounts. */
 function _maxAmount(a, b) {
   return a > b ? a : b;
 }
 
-/** First non-zero value from a list of candidates. */
-function _first(vals) {
-  for (const v of vals) if (v > 0) return v;
-  return 0;
-}
-
 const {
   totalLifetimeDeposit: _totalLifetimeDeposit,
 } = require("./bot-deposit");
-
-/** Resolve lifetime HODL amounts from best available source. */
-function _lifetimeAmounts(deps, snap) {
-  const ltHodl = deps._botState?.lifetimeHodlAmounts;
-  const bl = deps._botState?.hodlBaseline;
-  const first = Array.isArray(snap.closedEpochs) ? snap.closedEpochs[0] : null;
-  // Scan result is authoritative; fall back to first epoch or baseline.
-  return {
-    a0: _first([ltHodl?.amount0, first?.hodlAmount0, bl?.hodlAmount0]),
-    a1: _first([ltHodl?.amount1, first?.hodlAmount1, bl?.hodlAmount1]),
-  };
-}
-
-/**
- * Write `totalIL` and `lifetimeIL` onto the snapshot.
- *
- * Both are a difference: (LP value + wallet residual) minus the
- * deposited amounts priced today. Neither carries fee earnings — see
- * the note on `ltComp` / `curComp` below.
- *
- * @param {object} snap       P&L snapshot, mutated in place.
- * @param {object} deps       Bot deps; `_botState` supplies the baselines.
- * @param {number} realValue  LP position value now (USD), fees included.
- * @param {number} price0     Token0 USD price.
- * @param {number} price1     Token1 USD price.
- * @param {string|number} tokenId  Current NFT, for its compounded total.
- */
-function _computeIL(snap, deps, realValue, price0, price1, tokenId) {
-  const bl = deps._botState?.hodlBaseline;
-  const curA0 = bl?.hodlAmount0 || 0,
-    curA1 = bl?.hodlAmount1 || 0;
-  /*- Credit the current pool-scoped wallet residual to the LP-side of
-   *  the HODL comparison.  Simple "a vs b" comparison per the user's
-   *  mandate: a = (LP value + wallet residual), b = HODL value at
-   *  current prices.  We do NOT subtract the initial-mint residual
-   *  here even though the LP may have absorbed some of it into its
-   *  current value — the user explicitly chose the simple credit over
-   *  full LP-accounting symmetry, so the dashboard shows a number that
-   *  matches "the coins the LP still has, valued today, vs the coins
-   *  you put in, valued today."  Accepted edge case: a freshly minted
-   *  LP that has not yet rebalanced will show +$X of IL/G equal to its
-   *  initial-mint leftover residual until the first rebalance folds
-   *  that leftover into the position. */
-  const rUsd = snap.residualValueUsd || 0;
-  /*- Fees are not impermanent loss.  Compounding calls
-   *  `increaseLiquidity`, so compounded fees are part of the liquidity
-   *  `realValue` measures, while the HODL side stays fixed at the
-   *  deposited amounts.  Left in, a $100 compound reads as $100 of LP
-   *  outperformance and Profit adds the same $100 again as earnings.
-   *  Taking them out keeps IL/G what the standard definition says it
-   *  is — divergence only, fees counted separately — and matches
-   *  `_epochIl` in pnl-tracker.js, which subtracts an epoch's fees
-   *  from its exit value for the Per-Day table.
-   *
-   *  Two totals: the lifetime figure compares against the first
-   *  deposit, so every compound ever made sits in today's liquidity;
-   *  the current-NFT figure compares against this NFT's mint, which
-   *  already contained the earlier ones, so only compounds made since
-   *  that mint are removed. */
-  const ltComp = snap.totalCompoundedUsd || 0;
-  const compMap = deps._botState?.nftCompoundedUsdByTokenId;
-  const curComp = compMap?.[String(tokenId)] || 0;
-  const lpCur = realValue - curComp;
-  const lpLt = realValue - ltComp;
-  snap.totalIL = _ilFor(lpCur, curA0, curA1, price0, price1, rUsd);
-  const { a0, a1 } = _lifetimeAmounts(deps, snap);
-  snap.lifetimeIL = _ilFor(lpLt, a0, a1, price0, price1, rUsd);
-  snap.ilInputs = {
-    lpValue: realValue,
-    residualValueUsd: rUsd,
-    price0,
-    price1,
-    cur: { hodlAmount0: curA0, hodlAmount1: curA1, compoundedRemoved: curComp },
-    lt: { hodlAmount0: a0, hodlAmount1: a1, compoundedRemoved: ltComp },
-  };
-}
 
 /** Write residual USD + per-token coin amounts onto the snapshot. */
 function _applyResiduals(snap, residuals, rUsd) {
@@ -348,7 +247,22 @@ async function overridePnlWithRealValues(
   const entryVal = snap.liveEpoch
     ? snap.liveEpoch.entryValue
     : snap.initialDeposit;
-  const compounded = deps._botState?.totalCompoundedUsd || 0;
+  /*-
+   *  Priced here, never stored. The saved figure is the coins the
+   *  position compounded (`compoundedAmount0` / `compoundedAmount1`),
+   *  written by the lifetime scan and added to by every compound and
+   *  rebalance. Valuing them at this poll's prices is what keeps the
+   *  Lifetime panel true as the pair moves; a dollar total saved at
+   *  yesterday's price drifts further every day the position runs.
+   */
+  const compounded = coinsToUsd(
+    {
+      amount0: deps._botState?.compoundedAmount0,
+      amount1: deps._botState?.compoundedAmount1,
+    },
+    price0,
+    price1,
+  );
   snap.totalCompoundedUsd = compounded;
   /*-
    *  snap.currentCompoundedUsd and snap.currentGasUsd are populated by
@@ -536,17 +450,21 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         price0,
         price1,
       );
+      const nftCompoundedUsd = nftCoinsToUsd(
+        deps._botState?.nftCompoundedAmountsByTokenId,
+        position.tokenId,
+        price0,
+        price1,
+      );
       pnlTracker.updateLiveEpoch({
         currentPrice: poolState.price,
         feesAccrued: feesUsd,
-        /*- Per-NFT compounded total, filled by applyCurrentNftFigures
-         *  (bot-pnl-current-nft.js).  Absent on the first poll after a
-         *  rebalance mints a new tokenId, which reads as 0 until that
-         *  scan lands — the same figure the Current panel shows. */
-        compoundedAccrued:
-          deps._botState?.nftCompoundedUsdByTokenId?.[
-            String(position.tokenId)
-          ] || 0,
+        /*- The coins this NFT compounded, priced at this poll — filled by
+         *  applyCurrentNftFigures (bot-pnl-current-nft.js).  Absent on the
+         *  first poll after a rebalance mints a new tokenId, which reads
+         *  as 0 until that scan lands — the same figure the Current panel
+         *  shows. */
+        compoundedAccrued: nftCompoundedUsd,
       });
       await _applyMintGas(deps, pnlTracker);
       pnlSnapshot = pnlTracker.snapshot(poolState.price);
@@ -655,9 +573,6 @@ module.exports = {
   actualGasCostUsd,
   updatePnlAndStats,
   _applyMintGas,
-  _lifetimeAmounts,
-  _ilFor,
-  _computeIL,
   _maxAmount,
   _totalLifetimeDeposit,
 };

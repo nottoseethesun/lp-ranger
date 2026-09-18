@@ -77,10 +77,6 @@ const {
  * dialog both read it: it is how "Syncing…" appears and how the dialog
  * learns the re-scan has finished.
  *
- * `collectedFeesUsd` is left alone. `bot-loop.js` seeds it from disk and
- * then only ever adds to it, so nothing rebuilds it and there is no
- * fresh value to overwrite it with.
- *
  * @param {object} state  Per-position bot state.
  */
 function requestPriceRevalue(state) {

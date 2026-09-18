@@ -325,7 +325,8 @@ describe("server-positions compound state", () => {
     const state = createPerPositionBotState(
       {},
       {
-        totalCompoundedUsd: 50,
+        compoundedAmount0: 50,
+        compoundedAmount1: 20,
         compoundHistory: [
           { trigger: "auto" },
           { trigger: "auto" },
@@ -334,21 +335,20 @@ describe("server-positions compound state", () => {
         lastCompoundAt: "2026-01-01T00:00:00Z",
         hodlBaseline: { entryValue: 200 },
         residuals: { pool: { t0: 100, t1: 200 } },
-        collectedFeesUsd: 15,
       },
     );
-    assert.equal(state.totalCompoundedUsd, 50);
+    assert.equal(state.compoundedAmount0, 50);
+    assert.equal(state.compoundedAmount1, 20);
     assert.equal(state.compoundHistory.length, 3);
     assert.equal(state.lastCompoundAt, "2026-01-01T00:00:00Z");
     assert.equal(state.hodlBaseline.entryValue, 200);
-    assert.equal(state.collectedFeesUsd, 15);
   });
 
   it("createPerPositionBotState with null saved", () => {
     const { createPerPositionBotState } = require("../src/server-positions");
     const state = createPerPositionBotState({}, null);
     assert.equal(state.running, false);
-    assert.equal(state.totalCompoundedUsd, undefined);
+    assert.equal(state.compoundedAmount0, undefined);
   });
 
   it("updatePositionState persists compound fields", () => {
@@ -366,12 +366,12 @@ describe("server-positions compound state", () => {
 
     updatePositionState(
       { current: "test" },
-      { totalCompoundedUsd: 99, lastCompoundAt: "2026-06-01T00:00:00Z" },
+      { compoundedAmount0: 99, lastCompoundAt: "2026-06-01T00:00:00Z" },
       cfg,
       { migrateKey: () => {} },
       tmpDir,
     );
-    assert.equal(cfg.positions.test.totalCompoundedUsd, 99);
+    assert.equal(cfg.positions.test.compoundedAmount0, 99);
     assert.equal(cfg.positions.test.lastCompoundAt, "2026-06-01T00:00:00Z");
     assert.equal(cfg.positions.test.status, "running");
     fs.rmSync(tmpDir, { recursive: true });
@@ -443,7 +443,7 @@ describe("pnl-tracker residual and missingPrice", () => {
 });
 
 describe("bot-pnl-updater compound override", () => {
-  it("snapshot includes totalCompoundedUsd from botState", () => {
+  it("snapshot prices the botState coins into totalCompoundedUsd", () => {
     const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
@@ -451,9 +451,10 @@ describe("bot-pnl-updater compound override", () => {
       initialDeposit: 500,
       totalGas: 1,
     };
+    /*- 10 of token0 and 5 of token1, at $1 each below: $15. */
     overridePnlWithRealValues(
       snap,
-      { _botState: { totalCompoundedUsd: 15 }, _collectedFeesUsd: 30 },
+      { _botState: { compoundedAmount0: 10, compoundedAmount1: 5 } },
       { liquidity: "100000000", tickLower: -1000, tickUpper: 1000 },
       { tick: 0, decimals0: 18, decimals1: 18 },
       1,
@@ -479,7 +480,7 @@ describe("bot-pnl-updater compound override", () => {
     };
     overridePnlWithRealValues(
       snap,
-      { _botState: {}, _collectedFeesUsd: 5 },
+      { _botState: {} },
       { liquidity: "100000000", tickLower: 0, tickUpper: 1000 },
       { tick: 500, decimals0: 8, decimals1: 8 },
       0.001,
@@ -494,7 +495,8 @@ describe("bot-pnl-updater compound override", () => {
 describe("override exposes lifetime fee-earnings inputs", () => {
   /*- Lifetime fee earnings are two snapshot fields, not one aggregate:
    *    snap.currentFeesUsd     — live unclaimed fees
-   *    snap.totalCompoundedUsd — historical Σ(Collect)−Σ(DL) scan
+   *    snap.totalCompoundedUsd — the saved compounded coins, priced at
+   *                              this poll's prices
    *  Consumers (Lifetime panel, position-details) sum the two.  A single
    *  per-epoch total cannot serve, because fees folded back in during a
    *  rebalance are no longer unclaimed and fall outside it. */
@@ -506,8 +508,7 @@ describe("override exposes lifetime fee-earnings inputs", () => {
       closedEpochs: [],
     };
     const deps = {
-      _collectedFeesUsd: 0,
-      _botState: { totalCompoundedUsd: 50 },
+      _botState: { compoundedAmount0: 50, compoundedAmount1: 0 },
     };
     const pos = { liquidity: 1000n, tickLower: -600, tickUpper: 600 };
     const pool = { tick: 0, decimals0: 18, decimals1: 18 };

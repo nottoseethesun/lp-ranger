@@ -14,7 +14,7 @@
  * Wire the disk-config reader onto `botState` so callers reached via
  * `botState` (not `pollCycle.deps`) can read persisted config — notably
  * `_scanLifetimePoolData` in bot-recorder-lifetime.js, whose
- * disk-as-source-of-truth gate against stomping `totalCompoundedUsd`
+ * disk-as-source-of-truth gate against stomping the compounded coins
  * and `totalLifetimeDepositUsd` needs to read the persisted values.
  * Without this, `botState._getConfig` was always undefined and the
  * gate never tripped.

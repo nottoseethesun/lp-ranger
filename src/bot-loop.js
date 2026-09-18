@@ -299,8 +299,7 @@ async function startBotLoop(opts) {
     activePosition: _activePosSummary(position),
   });
 
-  let collectedFeesUsd = botState.collectedFeesUsd || 0,
-    rebalanceCount = 0,
+  let rebalanceCount = 0,
     firstFailureAt = null,
     midwayRetryCount = 0,
     polling = false,
@@ -571,11 +570,6 @@ async function startBotLoop(opts) {
         _botState: botState,
         _pnlTracker: pnlTracker,
         _rebalanceEvents: rebalanceEvents,
-        _collectedFeesUsd: collectedFeesUsd,
-        _addCollectedFees: (usd) => {
-          collectedFeesUsd += usd;
-          updateBotState({ collectedFeesUsd });
-        },
         _residualTracker: residualTracker,
         _getTokenPositionAmounts: botState._getTokenPositionAmounts || null,
         _getConfig: gc,

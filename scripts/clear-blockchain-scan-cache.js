@@ -37,11 +37,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const {
-  loadConfig,
-  saveConfig,
-  CHAIN_DERIVED_POSITION_KEYS,
-} = require("../src/bot-config-v2");
+const { loadConfig, saveConfig } = require("../src/bot-config-v2");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
 
 const ROOT = path.resolve(__dirname, "..");
 const TMP = path.join(ROOT, "tmp");

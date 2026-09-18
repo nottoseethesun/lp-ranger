@@ -165,7 +165,7 @@ describe("a restart finds the lifetime figures saved", () => {
       { current: KEY },
       {
         compoundHistory: [{ txHash: "0x1" }],
-        totalCompoundedUsd: 1111.16,
+        compoundedAmount0: 1111.16,
         totalLifetimeDepositUsd: 2406.7,
       },
       cfg,
@@ -181,7 +181,7 @@ describe("a restart finds the lifetime figures saved", () => {
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
-      { totalCompoundedUsd: 1111.16, totalLifetimeDepositUsd: 2406.7 },
+      { compoundedAmount0: 1111.16, totalLifetimeDepositUsd: 2406.7 },
       cfg,
       mgr,
       dir,
@@ -204,7 +204,7 @@ describe("a restart finds the lifetime figures saved", () => {
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
-      { totalCompoundedUsd: 1111.16 },
+      { compoundedAmount0: 1111.16 },
       cfg,
       mgr,
       dir,
@@ -221,7 +221,7 @@ describe("a restart finds the lifetime figures saved", () => {
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
-      { totalCompoundedUsd: 1, totalLifetimeDepositUsd: 0 },
+      { compoundedAmount0: 1, totalLifetimeDepositUsd: 0 },
       cfg,
       mgr,
       dir,
@@ -254,7 +254,7 @@ describe("a restart with every figure saved", () => {
     const cfg = freshConfig();
     updatePositionState(
       { current: KEY },
-      { totalCompoundedUsd: 1111.16, totalLifetimeDepositUsd: 2406.7 },
+      { compoundedAmount0: 1111.16, totalLifetimeDepositUsd: 2406.7 },
       cfg,
       mgr,
       dir,

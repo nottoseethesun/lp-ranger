@@ -25,7 +25,7 @@ const path = require("node:path");
 const {
   clearScanDerivedConfig,
 } = require("../scripts/clear-blockchain-scan-cache");
-const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-v2");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
 
 const A = "pulsechain-0xW-0xC-100";
 const B = "pulsechain-0xW-0xC-200";
@@ -51,9 +51,9 @@ function fullSlot(status) {
     residuals: { amount0: "5" },
     lastCompoundAt: "2026-09-15T17:53:11.894Z",
     compoundHistory: [{ txHash: "0x1" }],
-    totalCompoundedUsd: 1111.16,
-    collectedFeesUsd: 12,
-    nftCompoundedUsdByTokenId: { 100: 3 },
+    compoundedAmount0: 1111.16,
+    compoundedAmount1: 12,
+    nftCompoundedAmountsByTokenId: { 100: { amount0: 3, amount1: 0 } },
     nftGasWeiByTokenId: { 100: "1" },
     hodlBaseline: { entryValue: 1 },
     lifetimeHodlAmounts: { amount0: 1 },
