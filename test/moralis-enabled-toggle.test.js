@@ -164,15 +164,6 @@ describe("the dialog control itself", () => {
     });
   }
 
-  it("does not throw while reading the dialog", async () => {
-    /*- The regression: an invalid selector threw here and left the
-     *  control untouched. */
-    renderDialog();
-    stubStatus("valid");
-    await mod.refreshMoralisToggle();
-    assert.ok(true, "refreshMoralisToggle completed");
-  });
-
   it("disables the switch when no key is configured", async () => {
     renderDialog();
     stubStatus("none");
@@ -317,9 +308,12 @@ describe("the dialog control itself", () => {
   });
 
   it("survives the dialog not being in the DOM", async () => {
+    /*- Not throwing IS the requirement here: with no dialog mounted there
+     *  is no control to inspect, so `doesNotReject` states that directly
+     *  rather than an `assert.ok(true)` that asserts nothing and only
+     *  looks like an assertion. */
     document.body.innerHTML = "";
     stubStatus("valid");
-    await mod.refreshMoralisToggle();
-    assert.ok(true, "no throw when the control is absent");
+    await assert.doesNotReject(() => mod.refreshMoralisToggle());
   });
 });

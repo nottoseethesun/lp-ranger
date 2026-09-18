@@ -281,6 +281,15 @@ describe("compounder", () => {
           logs: [],
         }),
       };
+      /*- A receipt carrying a real IncreaseLiquidity log, so the deposited
+       *  amounts are the ones the event reports rather than the zeros an
+       *  empty `logs` array yields. Zeros make every downstream figure
+       *  zero, and an assertion on zero cannot tell a working scaling
+       *  from a broken one.
+       *
+       *  `_parseIncreaseLiquidity` only attempts a log with two topics
+       *  and at least 130 hex characters of data, so the shape matters
+       *  even though the mock interface ignores the contents. */
       const _incTx = {
         hash: "0xi",
         nonce: 2,
@@ -291,12 +300,32 @@ describe("compounder", () => {
           gasPrice: 1000n,
           effectiveGasPrice: 1000n,
           blockNumber: 2,
-          logs: [],
+          logs: [
+            {
+              topics: ["0x" + "1".repeat(64), "0x" + "2".repeat(64)],
+              data: "0x" + "0".repeat(130),
+            },
+          ],
         }),
       };
       const mockEthers = {
         Contract: function () {
           return {
+            /*- Raw token units, deliberately unequal, and at decimals the
+             *  test sets unequal too: 2 coins of an 18-decimal token and
+             *  5 of a 6-decimal one. Equal amounts, equal decimals or
+             *  equal prices would each let a swapped pair produce the
+             *  right answer anyway. */
+            interface: {
+              parseLog: () => ({
+                name: "IncreaseLiquidity",
+                args: {
+                  liquidity: 123n,
+                  amount0: 2000000000000000000n,
+                  amount1: 5000000n,
+                },
+              }),
+            },
             collect: _withPopulate(async () => _collectTx, _POPULATED),
             balanceOf: async () => {
               balCall++;
@@ -331,15 +360,23 @@ describe("compounder", () => {
         token0: "0xA",
         token1: "0xB",
         recipient: "0x1234",
-        decimals0: 8,
-        decimals1: 8,
-        price0: 0.001,
-        price1: 0.001,
+        decimals0: 18,
+        decimals1: 6,
+        price0: 3,
+        price1: 7,
         trigger: "auto",
       });
       assert.equal(result.compounded, true);
       assert.equal(result.trigger, "auto");
-      assert.ok(result.usdValue >= 0);
+      /*- Each token scaled by its OWN decimals: 2e18 at 18dp is 2 coins,
+       *  5e6 at 6dp is 5. Swapping the two exponents gives 2e12 and
+       *  5e-12, so this pins the pairing rather than merely the arithmetic
+       *  running. */
+      assert.equal(result.depositedAmount0, 2);
+      assert.equal(result.depositedAmount1, 5);
+      /*- 2 x $3 + 5 x $7 = 41. Every number distinct, so a swapped price
+       *  pair gives 29 and a dropped side gives 6 or 35. */
+      assert.equal(result.usdValue, 41);
       assert.ok(result.collectTxHash);
       assert.ok(result.depositTxHash);
     });
