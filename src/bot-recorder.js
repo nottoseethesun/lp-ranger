@@ -25,7 +25,10 @@ const { scanPoolHistory } = require("./pool-scanner");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
 const { buildUpdatePatch } = require("./bot-recorder-patch");
-const { hasCompoundedTotal } = require("./bot-config-keys");
+const {
+  hasCompoundedTotal,
+  isRecordedCoinTotal,
+} = require("./bot-config-keys");
 const {
   collectTokenIds: _collectTokenIds,
 } = require("./bot-recorder-scan-helpers");
@@ -129,8 +132,11 @@ function _bumpRebalanceFees(deps) {
       fee1.toFixed(6),
     );
   } else {
-    const newAmount0 = prev0 + fee0;
-    const newAmount1 = prev1 + fee1;
+    /*- Each side on its own merit: either alone established the total, so
+     *  the other may hold anything the config can express, and adding to
+     *  a string would concatenate rather than sum. */
+    const newAmount0 = (isRecordedCoinTotal(prev0) ? prev0 : 0) + fee0;
+    const newAmount1 = (isRecordedCoinTotal(prev1) ? prev1 : 0) + fee1;
     if (deps.updateBotState)
       deps.updateBotState({
         compoundedAmount0: newAmount0,

@@ -319,15 +319,25 @@ const POSITION_KEYS = [
  * @returns {boolean}  True when a chain-established total is present.
  */
 function hasCompoundedTotal(amount0, amount1) {
-  return _isRecordedCoinTotal(amount0) || _isRecordedCoinTotal(amount1);
+  return isRecordedCoinTotal(amount0) || isRecordedCoinTotal(amount1);
 }
 
 /**
- * @private A coin total a classification actually wrote.
+ * Whether one saved coin figure is one a classification wrote.
+ *
+ * Exported because the writers need it per side, not just as the pair
+ * test above. Either side alone establishes the total, so the other may
+ * still hold anything the config file can express — and these values are
+ * read straight out of JSON, where a hand-edited `"100"` is a string.
+ * Adding to that string concatenates instead of summing, and the result
+ * reaches `toFixed` and throws, in the middle of recording a compound
+ * whose transactions already landed on chain. Each side is therefore
+ * tested on its own and falls back to zero.
+ *
  * @param {*} v  Candidate value.
  * @returns {boolean}
  */
-function _isRecordedCoinTotal(v) {
+function isRecordedCoinTotal(v) {
   return typeof v === "number" && Number.isFinite(v) && v >= 0;
 }
 
@@ -337,4 +347,5 @@ module.exports = {
   CHAIN_DERIVED_POSITION_KEYS,
   RETIRED_POSITION_KEYS,
   hasCompoundedTotal,
+  isRecordedCoinTotal,
 };

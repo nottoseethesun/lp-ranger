@@ -20,7 +20,10 @@ const {
   invalidatePriceCacheFor,
 } = require("./price-fetcher");
 const { loadShippedDefaults } = require("./load-merged-defaults");
-const { hasCompoundedTotal } = require("./bot-config-keys");
+const {
+  hasCompoundedTotal,
+  isRecordedCoinTotal,
+} = require("./bot-config-keys");
 
 /*- Shipped default for the approvalMultiple per-position config
  *  fallback below.  Per feedback_one_literal_per_shipped_default, the
@@ -144,13 +147,13 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
  */
 function _compoundedTotalFields(saved0, saved1, dep0, dep1) {
   if (!hasCompoundedTotal(saved0, saved1)) return null;
-  /*- Falsy-fallback is wanted here, not `??`. Either side alone
-   *  establishes the total, so the other may still be absent or NaN, and
-   *  `??` would carry a NaN straight into the sum. A saved zero is
-   *  unaffected: both forms leave it at zero. */
+  /*- Each side on its own merit. Either alone establishes the total, so
+   *  the other may still hold anything the config can express — and a
+   *  falsy-fallback would pass a string straight through to be
+   *  concatenated rather than summed. */
   return {
-    compoundedAmount0: (saved0 || 0) + dep0,
-    compoundedAmount1: (saved1 || 0) + dep1,
+    compoundedAmount0: (isRecordedCoinTotal(saved0) ? saved0 : 0) + dep0,
+    compoundedAmount1: (isRecordedCoinTotal(saved1) ? saved1 : 0) + dep1,
   };
 }
 

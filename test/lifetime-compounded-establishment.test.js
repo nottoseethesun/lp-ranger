@@ -388,6 +388,34 @@ describe("the lifetime compounded total is established by the chain scan", () =>
     assert.equal(slot.compoundedAmount1, 45);
   });
 
+  it("survives a saved figure the config can express but code never writes", async () => {
+    /*-
+     *  These come out of a JSON file, so the domain is any JSON value,
+     *  not "a number". Either side alone establishes the total, so the
+     *  other can still be a hand-edited string — and adding to a string
+     *  concatenates, then reaches `toFixed` and throws, in the middle of
+     *  recording a compound whose transactions already landed on chain.
+     *  Each side is judged on its own and falls back to zero.
+     */
+    for (const junk of ["100", "", true, {}, [], NaN, Infinity, -1]) {
+      const slot = {
+        compoundHistory: [],
+        compoundedAmount0: junk,
+        compoundedAmount1: 5,
+      };
+      await recordCompound(slotDeps(slot, { tokenId: 163164 }), COMPOUND);
+      const got = slot.compoundedAmount0;
+      assert.equal(
+        typeof got === "number" && Number.isFinite(got),
+        true,
+        "saved a non-number for " + JSON.stringify(junk),
+      );
+      /*- The junk side contributes nothing; the good side still adds. */
+      assert.equal(got, COMPOUND.depositedAmount0);
+      assert.equal(slot.compoundedAmount1, 5 + COMPOUND.depositedAmount1);
+    }
+  });
+
   it("a request raised mid-scan is not cleared by that scan", () => {
     /*- The whole point. A scan that did not carry the request in read a
      *  chain without those coins, so clearing it would settle a total
