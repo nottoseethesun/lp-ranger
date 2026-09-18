@@ -266,10 +266,9 @@ async function _classifyAllCompounds(
  * The lifetime scan keeps a saved total rather than recompute it:
  *
  *   1. **Compounded coins** (`hasCompoundData`).  Only
- *      `compoundedAmount0`/`compoundedAmount1` count.  Both producers
- *      write them — the bot's own scans and the unmanaged-view detail
- *      scan (`position-details-compound._scanCompounds`) — so requiring
- *      them costs nothing.
+ *      `compoundedAmount0`/`compoundedAmount1` count.  This scan is the
+ *      only thing that writes them: the unmanaged details path shows no
+ *      Lifetime panel and so classifies nothing across the chain.
  *
  *      Requiring them is what makes the gate mean what it says.  The
  *      coins are the only thing Fees Compounded can be priced from, so

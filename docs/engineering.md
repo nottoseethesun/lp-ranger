@@ -1132,7 +1132,7 @@ places read a chain, all through `scanChainNftEvents`
 | --- | --- | --- | --- |
 | `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`), prepared by `prepareLifetimeRead` | all three | the whole chain | the bot's lifetime scan — Fees Compounded, lifetime HODL, deposit — and epoch reconstruction in the same pass |
 | `scanChainCollectAndDrain` (`src/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, when nothing else in its pass reads the chain |
-| `chainEventsReader` (`src/position-details-chain-read.js`) | all three | the whole chain | one unmanaged details request: Fees Compounded, the lifetime HODL, and epoch reconstruction |
+| `_detectCurrentNftValues` (`src/position-details-compound.js`) | all three | the one NFT being looked at | the unmanaged view's Current-panel Fees Compounded and Gas |
 
 The filter OR-matches every token id in the chain — `tokenId` is the
 first indexed parameter on all three events, and a topic slot accepts an
@@ -1167,14 +1167,14 @@ inputs its consumers use:
   Omitting that option — the single closed-position history route —
   reads the one NFT on its own; `null` means the chain read was
   unusable, and is never replaced by a per-NFT read.
-- **The unmanaged view** keeps one reader per request
-  (`requestChainReader`, created in `computeLifetimeDetails`) and hands
-  it to Fees Compounded, the lifetime HODL, and epoch reconstruction. It
-  reads nothing until a consumer finds its figure missing from its
-  cache, and at most once after that. `_detectCurrentNftValues` reads
-  the current NFT alone: it runs on the warm path, where the
-  chain's figures are cached and a whole-chain read would cost far more
-  than the one NFT it needs.
+- **The unmanaged view** reads no chain. It shows no Lifetime panel and
+  no Per-Day P&L, so it has nothing a whole-chain history would answer.
+  `_detectCurrentNftValues` reads the one NFT being looked at, floored
+  at that NFT's own mint block, for the Current panel's Fees Compounded
+  and Gas; where those coins are already on disk, `savedNftCompoundedUsd`
+  answers without any scan. The pool's Transfer scan still runs — it is
+  what the Rebalance Events table is built from, and it is a different
+  read from the per-NFT walk.
 
 #### One read per pass
 
@@ -1193,9 +1193,8 @@ is made once however many consumers ask (`shareRead`).
   the lifetime scan then uses the same read. When the read runs, it
   looks up the pool's creation block and decides whether the resume
   buffer can still be trusted.
-- **The unmanaged view.** Reconstruction gets the request's reader when
-  Fees Compounded (`compoundsReadChain`) or the lifetime HODL is missing
-  from its cache.
+- **The unmanaged view.** Nothing to share: it builds no epochs, because
+  it renders no Per-Day P&L, and reads no chain.
 
 Three rules keep the sharing sound:
 

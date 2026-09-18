@@ -150,7 +150,6 @@ describe("the reads that cover a rebalance chain", () => {
    */
   const CHAIN_READS = [
     "bot-recorder-scan-helpers.js",
-    "position-details-chain-read.js",
     "position-history-scan-helpers.js",
   ];
 

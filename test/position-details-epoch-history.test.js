@@ -88,7 +88,6 @@ function loadSnapshot() {
     "./rebalancer": {},
     "./position-details-quick": {},
     "./position-details-compound": {},
-    "./position-details-lifetime-scan": {},
     "./resolve-position-symbols": {},
     "./block-time-cache": {},
     "./bot-pnl-initial-residual": {},

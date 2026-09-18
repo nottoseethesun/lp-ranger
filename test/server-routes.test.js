@@ -8,6 +8,8 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const { createRouteHandlers } = require("../src/server-routes");
+const { compositeKey } = require("../src/bot-config-v2");
+const { CHAIN_NAME } = require("../src/config");
 
 /** Build a minimal deps object with stubs for createRouteHandlers. */
 function makeDeps(overrides = {}) {
@@ -410,6 +412,63 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._status, 500);
       assert.strictEqual(res._body.ok, false);
       assert.ok(res._body.error);
+    });
+
+    /*-
+     *  Who owns a position's `pnlSnapshot`. This route builds one for
+     *  what an UNMANAGED position shows — the Current panel's two rows —
+     *  and the dashboard suppresses its fetch only once a poll has
+     *  landed, so a page load fires it at a MANAGED position too. The
+     *  bot owns that position's snapshot, and it carries the Lifetime
+     *  figures this route does not compute; writing over it would blank
+     *  the Lifetime panel until the next poll, one CHECK_INTERVAL_SEC
+     *  away.
+     */
+    /*- Real addresses: `compositeKey` checksums them. */
+    const lifetimeBody = {
+      tokenId: "100",
+      token0: "0x" + "1".repeat(40),
+      token1: "0x" + "2".repeat(40),
+      fee: 3000,
+      walletAddress: "0x" + "3".repeat(40),
+      contractAddress: "0x" + "4".repeat(40),
+    };
+    /** Run the route with a stub result, against one position's state. */
+    async function runLifetime(status) {
+      const posStates = new Map();
+      const key = compositeKey(
+        CHAIN_NAME,
+        lifetimeBody.walletAddress,
+        lifetimeBody.contractAddress,
+        lifetimeBody.tokenId,
+      );
+      posStates.set(key, {
+        pnlSnapshot: { lifetimeIL: -42, fromTheBot: true },
+      });
+      const deps = makeDeps({
+        readJsonBody: async () => ({ ...lifetimeBody }),
+        getAllPositionBotStates: () => posStates,
+        computeLifetimeDetails: async () => ({
+          ok: true,
+          pnlSnapshot: { currentCompoundedUsd: 3, fromTheRoute: true },
+        }),
+      });
+      deps.diskConfig.positions[key] = { status };
+      const h = createRouteHandlers(deps);
+      await h._handlePositionLifetime({}, makeRes());
+      return posStates.get(key);
+    }
+
+    it("leaves a managed position's snapshot to the bot", async () => {
+      const s = await runLifetime("running");
+      assert.equal(s.pnlSnapshot.fromTheBot, true, "the bot's must survive");
+      assert.equal(s.pnlSnapshot.lifetimeIL, -42);
+    });
+
+    it("writes the snapshot for an unmanaged position", async () => {
+      const s = await runLifetime("stopped");
+      assert.equal(s.pnlSnapshot.fromTheRoute, true);
+      assert.equal(s.pnlSnapshot.currentCompoundedUsd, 3);
     });
   });
 

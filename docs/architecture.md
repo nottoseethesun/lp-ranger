@@ -382,19 +382,21 @@ The same pre-fetched events are then passed to two classifiers:
 Both classifiers share `_filterRebalances` to distinguish rebalance-adjacent
 events from genuine deposits/compounds.
 
-The unmanaged details view follows the same pattern per request: one reader
-(`requestChainReader` in `src/position-details-chain-read.js`), created in
-`computeLifetimeDetails`, read only when a figure is missing from its cache,
-and shared by both classifiers.
+The unmanaged details view reads no chain at all. It shows no Lifetime
+panel and no Per-Day P&L, so there is nothing it would walk a chain to
+produce. Its Current-panel Fees Compounded and Gas come from one scan of
+the NFT being looked at, floored at that NFT's own mint block
+(`_detectCurrentNftValues`), or from the coins already on disk.
 
 Epoch reconstruction needs a subset of the same history — Collect and
 DecreaseLiquidity for the closed NFTs — before it builds any epoch. When the
 lifetime side is going to read the chain in the same pass, reconstruction
 takes its histories from that read: the bot's scan pass prepares the
-lifetime read before reconstruction (`prepareLifetimeRead`), and the
-unmanaged view hands reconstruction its request reader. Otherwise
+lifetime read before reconstruction (`prepareLifetimeRead`). Otherwise
 reconstruction reads the closed NFTs itself, in one batch
 (`scanChainCollectAndDrain`). Either way the chain is read once per pass.
+Reconstruction runs for the bot only; the unmanaged view builds no
+epochs, because it renders no Per-Day P&L.
 
 When the HODL amounts, the compound total and the lifetime deposit are all
 already on disk (`lifetimeFiguresSaved`), the scan has nothing to compute

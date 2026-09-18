@@ -1,32 +1,36 @@
 /**
  * @file position-details.js
- * @description Phase 2 (slow) lifetime P&L computation for unmanaged positions.
- *   Runs event scan + epoch reconstruction for historical data.
- *   Phase 1 (fast) details are in position-details-quick.js.
+ * @description Phase 2 of the unmanaged position detail request: the
+ *   pool's rebalance-event scan. Phase 1 (fast) is in
+ *   position-details-quick.js.
+ *
+ *   An unmanaged position shows no Lifetime panel — `ltContent` is
+ *   replaced by a placeholder telling the operator to click Manage — and
+ *   no Per-Day P&L. So this phase computes neither. What it returns is
+ *   what such a position actually displays: the Rebalance Events table,
+ *   and the Current panel's Fees Compounded and Gas.
+ *
+ *   That is why nothing here walks the rebalance chain. The per-NFT walk
+ *   is the largest repeated cost in the app, and on this path it can
+ *   only produce figures no panel renders. The Current panel's two come
+ *   from a single-NFT scan bounded to that NFT's own mint block.
+ *
+ *   Epochs already saved for the pool are still restored, so a position
+ *   managed earlier keeps what it built then. Reconstruction from chain
+ *   is not run.
  */
 
 "use strict";
 
 const { log } = require("./log");
 const config = require("./config");
-const sendTx = require("./send-transaction");
 const { getPoolState } = require("./rebalancer");
-const {
-  positionValueUsd,
-  fetchTokenPrices,
-  _totalLifetimeDeposit,
-} = require("./bot-pnl-updater");
+const { positionValueUsd, fetchTokenPrices } = require("./bot-pnl-updater");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { createPnlTracker } = require("./pnl-tracker");
-const {
-  getCachedEpochs,
-  setCachedEpochs,
-  getCachedLifetimeHodl,
-  getCachedFreshDeposits,
-} = require("./epoch-cache");
+const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
 const { scanPoolHistory } = require("./pool-scanner");
 const { compositeKey } = require("./bot-config-v2");
-const { ilFigures } = require("./bot-pnl-il");
 const {
   computeQuickDetails,
   _currentPnl,
@@ -34,19 +38,10 @@ const {
   _walletResiduals,
 } = require("./position-details-quick");
 const {
-  _resolveCompounded,
+  _detectCurrentNftValues,
   savedNftCompoundedUsd,
-  compoundsReadChain,
 } = require("./position-details-compound");
-const { scanLifetimeHodl } = require("./position-details-lifetime-scan");
-const { requestChainReader } = require("./position-details-chain-read");
 const { resolvePositionSymbols } = require("./resolve-position-symbols");
-const { computeHodlIL } = require("./il-calculator");
-const { fetchHistoricalPriceGecko } = require("./price-fetcher");
-const {
-  getBlockTimestamp,
-  flushBlockTimeCache,
-} = require("./block-time-cache");
 const { applyInitialResidualFromCache } = require("./bot-pnl-initial-residual");
 
 /**
@@ -131,62 +126,6 @@ async function _getLifetimeSnapshot(
   return { tracker, events };
 }
 
-/** Extract lifetime data from a tracker snapshot (or fall back to current-epoch data). */
-function _extractSnap(snap, cur, feesUsd) {
-  /*- Lifetime fee earnings model: lifetimeCompounded + currentFees.  The
-   *  caller resolves `lifetimeCompounded` separately via the on-chain
-   *  scan (see _resolveCompounded); here we just expose `currentFees`
-   *  (= feesUsd, the live unclaimed reading) and let _lifetimePnl fold
-   *  in compounded later.  The old `snap.totalFees` per-epoch sum is
-   *  gone — it missed fees folded into rebalances. */
-  const currentFees = feesUsd;
-  const ltGas = snap ? snap.totalGas : 0;
-  const ltPc = snap ? snap.priceChangePnl : cur.priceGainLoss;
-  const il = snap?.lifetimeIL ?? snap?.totalIL ?? cur.il;
-  return {
-    currentFees,
-    ltGas,
-    ltPc,
-    il,
-    firstEpochDate: snap?.firstEpochDateUtc || null,
-    rebalanceCount: snap?.closedEpochs?.length || 0,
-  };
-}
-
-/** Compute lifetime P&L from tracker snapshot. */
-function _lifetimePnl(
-  tracker,
-  ps,
-  entryValue,
-  cur,
-  feesUsd,
-  currentValue,
-  ltCompounded,
-) {
-  const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
-  const s = _extractSnap(snap, cur, feesUsd);
-  // Price change = current position value − initial deposit.
-  // NOT the epoch-chain cumulative (which leaks value through residuals).
-  const ltPc = entryValue > 0 ? currentValue - entryValue : s.ltPc || 0;
-  const comp = ltCompounded || 0;
-  /*- Fee earnings = currentFees + lifetimeCompounded.  Both are real
-   *  earnings; compounded is already swept back into liquidity, current
-   *  is unclaimed and will be compounded next. */
-  const feeEarnings = s.currentFees + comp;
-  return {
-    ltNetPnl: entryValue > 0 ? ltPc + feeEarnings - s.ltGas : null,
-    ltCurrentFees: s.currentFees,
-    ltGas: s.ltGas,
-    ltPriceChange: ltPc,
-    ltProfit:
-      s.il !== null && s.il !== undefined
-        ? feeEarnings - s.ltGas + s.il
-        : cur.profit,
-    firstEpochDate: s.firstEpochDate,
-    rebalanceCount: s.rebalanceCount,
-  };
-}
-
 /** Resolve entry value from disk config for phase 2 (no chain baseline fetch). */
 function _resolveEntryValueCached(diskConfig, posKey) {
   const deposit = diskConfig.positions[posKey]?.initialDepositUsd || 0;
@@ -195,159 +134,19 @@ function _resolveEntryValueCached(diskConfig, posKey) {
   return { baseline: bl, entryValue: ev };
 }
 
-/** Phase 2: slow data (event scan + epoch reconstruction → lifetime P&L). */
-/** Build a single-day fallback when no historical epochs exist. */
-function _buildDailyFallback(snap, entryValue, value, body) {
-  if (snap?.dailyPnl) return snap.dailyPnl;
-  if (entryValue <= 0) return null;
-  return [
-    {
-      date: new Date().toISOString().slice(0, 10),
-      feePnl: body.feesUsd || 0,
-      gasCost: 0,
-      priceChangePnl: value - entryValue,
-    },
-  ];
-}
-
 /**
- * Compute lifetime IL using accumulated HODL amounts across the rebalance
- * chain.
+ * Enrich a tracker snapshot with the fields the unmanaged view shows.
  *
- * @param {object} position  Position with the metadata the HODL needs.
- * @param {object[]} events  Rebalance events.
- * @param {object} body  Request body with `walletAddress`.
- * @param {number} lpValue  Current LP value, USD.
- * @param {number} price0
- * @param {number} price1
- * @param {string|null} poolAddress
- * @param {number} residualValueUsd  The pool-scoped wallet residual to
- *   credit to the LP side of the comparison; see `computeHodlIL`.
- * @param {() => Promise<Map<string, object>>} readChainEvents  The
- *   request's shared chain reader, read only when the HODL is not cached.
- * @returns {Promise<{il: number|null, hodlAmount0: number,
- *   hodlAmount1: number}|null>}  Null when no HODL is available.
+ * Current-panel figures only. An unmanaged position replaces the
+ * Lifetime panel with a placeholder, so nothing renders a lifetime IL, a
+ * lifetime compounded total or the lifetime HODL amounts — and resolving
+ * the HODL costs a walk of the whole rebalance chain.
  */
-async function _computeLifetimeIL(
-  position,
-  events,
-  body,
-  lpValue,
-  price0,
-  price1,
-  poolAddress,
-  residualValueUsd,
-  readChainEvents,
-) {
-  const poolCacheKey = _poolCacheKey(position);
-  let hodl = _cachedLifetimeHodl(position);
-  if (!hodl) {
-    try {
-      hodl = await scanLifetimeHodl(
-        position,
-        events,
-        body,
-        poolAddress,
-        poolCacheKey,
-        readChainEvents,
-      );
-    } catch (err) {
-      log.warn("[position details] Lifetime HODL error:", err.message);
-      return null;
-    }
-  }
-  if (!hodl || (hodl.amount0 <= 0 && hodl.amount1 <= 0)) return null;
-  const il = computeHodlIL({
-    lpValue,
-    hodlAmount0: hodl.amount0,
-    hodlAmount1: hodl.amount1,
-    currentPrice0: price0,
-    currentPrice1: price1,
-    residualValueUsd: residualValueUsd || 0,
-  });
-  return { il, hodlAmount0: hodl.amount0, hodlAmount1: hodl.amount1 };
-}
-
-/** Pick the IL value closer to zero (from the larger HODL). */
-function _pickSmaller(a, b) {
-  if (a === null || a === undefined) return b;
-  if (b === null || b === undefined) return a;
-  return Math.abs(a) < Math.abs(b) ? a : b;
-}
-
-/** Compute total lifetime deposit USD from cached fresh deposit entries. */
-async function _computeDepositUsd(position, ps) {
-  const poolCK = _poolCacheKey(position);
-  const deps = (poolCK ? getCachedFreshDeposits(poolCK) : null)?.deposits;
-  if (!deps?.length) return { total: 0, usedFallback: false };
-  const provider = sendTx.getManagedReadProvider();
-  const poolAddr = ps.poolAddress || "";
-  const result = await _totalLifetimeDeposit(
-    deps,
-    ps.decimals0,
-    ps.decimals1,
-    async (block) => {
-      const blockTs = await getBlockTimestamp(provider, "pulsechain", block);
-      const ts = blockTs > 0 ? blockTs : Math.floor(Date.now() / 1000);
-      return fetchHistoricalPriceGecko(poolAddr, ts, "pulsechain", {
-        token0Address: position.token0,
-        token1Address: position.token1,
-        blockNumber: block,
-      });
-    },
-    { token0: position.token0, token1: position.token1 },
-  );
-  flushBlockTimeCache();
-  return result;
-}
-
-/** Enrich a tracker snapshot with fields the dashboard expects. */
-async function _enrichSnap(
-  snap,
-  cur,
-  ltIl,
-  ltResult,
-  ltComp,
-  curComp,
-  curGasUsd,
-  entry,
-  bl,
-  pos,
-  ps,
-  p0,
-  p1,
-) {
-  if (!snap) return;
+async function _enrichSnap(snap, cur, curComp, curGasUsd, entry, pos) {
+  /*- The caller always passes an object; this only stops a future one
+   *  silently writing onto nothing. */
+  if (snap === undefined || snap === null) return;
   snap.currentValue = cur.value;
-  /*-
-   *  Both figures come from the same function the bot tier uses, so a
-   *  position reports the same IL/G whether or not it is managed.
-   *  Computed here rather than where `cur.il` and `ltIl` were, because
-   *  this is the first point that holds the compounded figures as well
-   *  as the HODL amounts both sides need.
-   *
-   *  The HODL amounts fall back to what the earlier steps resolved:
-   *  `bl` is the current NFT's baseline, `ltResult` the lifetime scan.
-   *  Where a side has no amounts, `ilFigures` answers `undefined` and
-   *  the dashboard shows a dash — which is what `cur.il` / `ltIl` were
-   *  already carrying for that case.
-   */
-  const figures = ilFigures({
-    lpValue: cur.value,
-    residualValueUsd: cur.residualValueUsd,
-    price0: p0,
-    price1: p1,
-    curHodl: { amount0: bl?.hodlAmount0, amount1: bl?.hodlAmount1 },
-    ltHodl: {
-      amount0: ltResult?.hodlAmount0,
-      amount1: ltResult?.hodlAmount1,
-    },
-    curCompoundedUsd: curComp,
-    ltCompoundedUsd: ltComp,
-  });
-  snap.totalIL = figures.totalIL ?? snap.totalIL;
-  snap.lifetimeIL = figures.lifetimeIL ?? figures.totalIL ?? snap.totalIL;
-  snap.totalCompoundedUsd = ltComp;
   snap.currentCompoundedUsd = curComp || 0;
   snap.currentGasUsd = curGasUsd || 0;
   snap.initialDeposit = entry;
@@ -376,39 +175,6 @@ async function _enrichSnap(
       fee: pos.fee,
     });
   }
-  const depResult = await _computeDepositUsd(pos, ps);
-  snap.totalLifetimeDeposit = depResult.total;
-  snap.depositUsedFallback = depResult.usedFallback;
-  /*- The inputs the figures above were actually computed from, so the
-   *  IL/G popover explains the number it sits beside — including what
-   *  each side removed in compounded fees, and the residual credited to
-   *  the LP side. Built by `ilFigures` rather than assembled a second
-   *  time here, which is what let the popover omit both. */
-  snap.ilInputs = figures.ilInputs;
-}
-
-/**
- * The lifetime HODL cached for this position's pool, or null.
- *
- * `_computeLifetimeIL` reads the chain exactly when this is null, and
- * `computeLifetimeDetails` asks it ahead of the pool scan, to decide
- * whether epoch reconstruction can share that read.
- */
-function _cachedLifetimeHodl(position) {
-  const key = _poolCacheKey(position);
-  return key === null ? null : (getCachedLifetimeHodl(key) ?? null);
-}
-
-/** Build pool cache key from position data. */
-function _poolCacheKey(pos) {
-  if (!pos.token0 || !pos.fee) return null;
-  return {
-    contract: config.POSITION_MANAGER,
-    wallet: pos.walletAddress || "",
-    token0: pos.token0,
-    token1: pos.token1,
-    fee: pos.fee,
-  };
 }
 
 async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
@@ -466,11 +232,11 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     price0,
     price1,
     residuals,
-    /*- The saved coins, which cost nothing to read. `_resolveCompounded`
-     *  below produces the authoritative figure — it may scan — and
-     *  `_enrichSnap` recomputes both IL figures from it. This keeps
-     *  `cur.il` consistent with that in the meantime, since it feeds the
-     *  Profit fallback for a position with no closed epochs. */
+    /*- The saved coins, which cost nothing to read: this NFT's own
+     *  compounded fees come out of the LP value before it is compared
+     *  against HODL, so `cur.il` matches what the bot reports for the
+     *  same position. Zero while the position has never been managed,
+     *  since only the bot's lifetime scan writes those coins. */
     savedNftCompoundedUsd(diskConfig, posKey, position.tokenId, price0, price1),
   );
   // Position with the metadata the lifetime HODL needs (same as managed path)
@@ -481,20 +247,19 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     decimals1: ps.decimals1,
   };
   /*-
-   *  One chain read for this request, shared by Fees Compounded, the
-   *  lifetime HODL, and epoch reconstruction when those two are going to
-   *  read the chain anyway.  Lazy: nothing is read unless a figure is
-   *  missing from its cache.
+   *  Never the chain. Epoch reconstruction exists here to fill the
+   *  Per-Day P&L table, and that table is not shown for an unmanaged
+   *  position — which is every position this path serves. Reconstructing
+   *  would walk each NFT in the chain to produce rows nothing renders.
+   *
+   *  Epochs already in the pool cache are still restored, so a position
+   *  that was managed before keeps whatever it built then. What is gone
+   *  is this path ALSO warming that cache for a position that was never
+   *  managed: the bot reconstructs for itself on the first Manage, and
+   *  paying minutes up front for a table with no reader was the cost
+   *  this removes.
    */
-  const readerFor = requestChainReader({
-    position,
-    poolAddress: ps.poolAddress,
-  });
-  const epochChainFor = (evts) =>
-    compoundsReadChain(diskConfig, posKey, evts) ||
-    _cachedLifetimeHodl(_posWithMeta) === null
-      ? readerFor(evts)
-      : undefined;
+  const epochChainFor = () => undefined;
   const { tracker, events } = await _getLifetimeSnapshot(
     provider,
     ethersLib,
@@ -505,91 +270,73 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     ps.poolAddress,
     epochChainFor,
   );
-  const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : null;
-  const readChainEvents = readerFor(events);
-  /*- Resolve lifetime compounded BEFORE _lifetimePnl so the new fee-
-   *  earnings model (currentFees + lifetimeCompounded) has both inputs
-   *  on hand.  No extra cost — _resolveCompounded reads from cached
-   *  posConfig first and only scans events when missing. */
-  const {
-    total: ltCompounded,
-    current: curCompounded,
-    currentGasUsd: curGasUsd,
-  } = await _resolveCompounded(
-    position,
-    events,
-    body,
-    ps,
-    { price0, price1 },
-    diskConfig,
-    posKey,
-    readChainEvents,
-  );
-  const lt = _lifetimePnl(
-    tracker,
-    ps,
-    entryValue,
-    cur,
-    feesUsd,
-    cur.value,
-    ltCompounded,
-  );
+  /*-
+   *  An object either way, never null. The Current panel's Fees
+   *  Compounded and Gas travel on this snapshot — through
+   *  `_syncLifetimeState` into the position's state, and out again on the
+   *  next `/api/status` poll — and they are not epoch figures. A
+   *  never-managed position has no epochs at all now that nothing
+   *  reconstructs them here, so keying the snapshot's existence on the
+   *  epoch count would withhold those two rows from exactly the
+   *  positions this path serves.
+   */
+  const snap = tracker.epochCount() > 0 ? tracker.snapshot(ps.price) : {};
+  /*-
+   *  One NFT, not the chain. The Current panel's Fees Compounded and Gas
+   *  are about the NFT being looked at, and reading it is a single scan
+   *  bounded to that NFT's own mint block. The lifetime total across
+   *  every NFT in the chain would cost the whole walk, for a figure the
+   *  Lifetime panel does not display.
+   */
+  const { compoundUsd: curCompounded, gasUsd: curGasUsd } =
+    await _detectCurrentNftValues(
+      position,
+      body,
+      ps,
+      { price0, price1 },
+      events,
+    );
   log.info(
-    "[position details] lifetime tokenId=%s epochs=%d baseline=%s cur.il=%s lt.il=%s",
+    "[position details] tokenId=%s epochs=%d baseline=%s",
     body.tokenId,
     tracker.epochCount(),
     !!baseline,
-    cur.il,
-    lt.il,
   );
-  const dailyPnl = _buildDailyFallback(snap, entryValue, cur.value, body);
   log.info(
-    "[position details] Lifetime P&L for #%s done (%dms)",
+    "[position details] #%s done (%dms)",
     body.tokenId,
     Date.now() - _ltT0,
   );
-  // Compute lifetime HODL from chain events (same as managed path)
-  const ltResult = await _computeLifetimeIL(
-    _posWithMeta,
-    events,
-    body,
-    cur.value,
-    price0,
-    price1,
-    ps.poolAddress,
-    cur.residualValueUsd,
-    readChainEvents,
-  );
-  const ltIl = ltResult?.il ?? null;
+  /*-
+   *  No lifetime HODL and no lifetime IL. Both appear only in the
+   *  Lifetime panel, which an unmanaged position replaces with a
+   *  placeholder, and resolving the HODL walks the whole rebalance
+   *  chain — minutes, for a figure with no reader.
+   */
   await _enrichSnap(
     snap,
     cur,
-    ltIl,
-    ltResult,
-    ltCompounded,
     curCompounded,
     curGasUsd,
     entryValue,
-    baseline,
     _posWithMeta,
-    ps,
-    price0,
-    price1,
   );
   /*- The managed bot path sets `currentFeesUsd` via
    *  bot-pnl-updater.overridePnlWithRealValues; the unmanaged details
    *  path needs the same field so _syncLifetimeState and the dashboard
    *  Lifetime panel see live unclaimed fees (not undefined). */
   if (snap) snap.currentFeesUsd = feesUsd;
+  /*-
+   *  Exactly what an unmanaged position displays: the Rebalance Events
+   *  table, and the Current panel's Fees Compounded and Gas. Lifetime
+   *  figures and Per-Day P&L rows belong to a panel and a table such a
+   *  position does not show, so returning them would buy nothing and
+   *  cost the chain walk that produces them.
+   */
   return {
-    totalGasNative: snap?.totalGasNative || 0,
     ok: true,
-    ...lt,
-    ltCompounded,
     entryValue,
     currentValue: cur.value,
-    firstEpochDate: lt.firstEpochDate || baseline?.mintDate || null,
-    dailyPnl,
     rebalanceEvents: events.length > 0 ? events : null,
     pnlSnapshot: snap,
   };
@@ -599,9 +346,5 @@ module.exports = {
   computeQuickDetails,
   computeLifetimeDetails,
   _getLifetimeSnapshot,
-  _extractSnap,
-  _lifetimePnl,
   _resolveEntryValueCached,
-  _buildDailyFallback,
-  _pickSmaller,
 };

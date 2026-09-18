@@ -1,341 +1,170 @@
 /**
  * @file test/position-details-compound.test.js
- * @description Tests for _scanCompounds in position-details-compound.js.
+ * @description The two compound figures an unmanaged position shows, and
+ *   the one thing that must stay true of both: neither reads the chain
+ *   beyond the single NFT being looked at.
  *
- *   The chain's events come from the request's shared chain read, and the
- *   classifier is injected, so no RPC is involved.
+ *   An unmanaged position has no Lifetime panel, so nothing here
+ *   classifies compounds across the rebalance chain. The Current panel's
+ *   Fees Compounded and Gas come from one scan floored at that NFT's own
+ *   mint block — and where the coins are already on disk, from no scan
+ *   at all.
  */
 
 "use strict";
 
-const { describe, it, after } = require("node:test");
-const assert = require("assert");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const { _scanCompounds } = require("../src/position-details-compound");
-const { emptyEvents } = require("../src/nft-events-batch");
+const { describe, it } = require("node:test");
+const assert = require("node:assert/strict");
 
-/** A chain read answering every id with `eventsOf(id)`. */
-function readerFor(ids, eventsOf = () => emptyEvents()) {
+const {
+  _detectCurrentNftValues,
+  savedNftCompoundedUsd,
+} = require("../src/position-details-compound");
+
+/** #100 → #200 → #300, the later two minted 5M and 6M blocks in. */
+const CHAIN = [
+  { oldTokenId: "100", newTokenId: "200", blockNumber: 5_000_000 },
+  { oldTokenId: "200", newTokenId: "300", blockNumber: 6_000_000 },
+];
+const POSITION = { tokenId: "300", token0: "0xA", token1: "0xB", fee: 3000 };
+const PS = { decimals0: 18, decimals1: 18, poolAddress: "0xPool" };
+const PRICES = { price0: 1, price1: 2 };
+
+/** A stand-in detector recording the options it was handed. */
+function detector(result) {
   const calls = [];
-  const read = async () => {
-    calls.push(1);
-    return new Map(ids.map((id) => [id, eventsOf(id)]));
+  const fn = async (tokenId, opts) => {
+    calls.push({ tokenId, opts });
+    if (result instanceof Error) throw result;
+    return result;
   };
-  return { read, calls };
+  return { fn, calls };
 }
 
-/** Run `_scanCompounds` with the fixture's constant arguments filled in. */
-function scan({ position, events, cfg, dir, read, classify }) {
-  return _scanCompounds(
-    { token0: "0xA", token1: "0xB", fee: 3000, ...position },
-    events,
-    { walletAddress: "0xW" },
-    { decimals0: 18, decimals1: 18 },
-    { price0: 1, price1: 1 },
-    cfg || { global: {}, positions: {} },
-    "test-key",
-    read,
-    dir,
-    classify,
-  );
-}
-
-describe("_scanCompounds", () => {
-  const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-shared-"));
-  after(() => fs.rmSync(_tmpDir, { recursive: true, force: true }));
-
-  it("returns total=0, current=0 when no compounds detected", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test-"));
-    const result = await scan({
-      position: { tokenId: "100" },
-      events: [{ oldTokenId: "99", newTokenId: "100" }],
-      dir,
-      read: readerFor(["100", "99"]).read,
-      classify: async () => ({ totalCompoundedUsd: 0, compounds: [] }),
-    });
-    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
-    fs.rmSync(dir, { recursive: true });
-  });
-
-  it("returns total and updates in-memory config when compounds found", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test2-"));
-    /*- Pre-seed the position slot — _scanCompounds no longer lazy-
-     *  creates on the write path; the write is skipped when the slot
-     *  is absent (so we don't resurrect phantoms for unmanaged
-     *  positions).  This test mimics a MANAGED position where the
-     *  slot already exists. */
-    const cfg = {
-      global: {},
-      positions: { "test-key": { status: "running" } },
-    };
-    const result = await scan({
-      position: { tokenId: "200" },
-      events: [{ oldTokenId: "199", newTokenId: "200" }],
-      cfg,
-      dir,
-      read: readerFor(["200", "199"]).read,
-      classify: async () => ({
-        totalCompoundedUsd: 5.5,
-        feeAmount0: 2,
-        feeAmount1: 1,
-        compounds: [],
-      }),
-    });
-    // Mock returns 5.5 per NFT, 2 NFTs classified (199, 200) = total 11
-    assert.strictEqual(result.total, 11);
-    /*- The coins are what is saved; the total above is this request's
-     *  valuation of them. */
-    assert.strictEqual(cfg.positions["test-key"].compoundedAmount0, 4);
-    assert.strictEqual(cfg.positions["test-key"].compoundedAmount1, 2);
-    assert.strictEqual(cfg.positions["test-key"].totalCompoundedUsd, undefined);
-    fs.rmSync(dir, { recursive: true });
-  });
-
-  it("current = sum of standalone compounds' usdValue, not totalCompoundedUsd", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-test-cur-"));
-    /*- Per-tokenId mock: current NFT (250) has totalCompoundedUsd=7.42
-     *  (lifetime collected fees) but only 3 standalone compound events
-     *  worth 2.21 each.  Verifies the loop sums the standalone events
-     *  for `current` (matching bot-recorder-lifetime's compoundHistory
-     *  model), not totalCompoundedUsd. */
-    const perToken = {
-      248: { totalCompoundedUsd: 1.0, compounds: [{ usdValue: 1.0 }] },
-      249: { totalCompoundedUsd: 2.5, compounds: [{ usdValue: 2.5 }] },
-      250: {
-        totalCompoundedUsd: 7.42,
-        compounds: [{ usdValue: 2.21 }, { usdValue: 2.21 }, { usdValue: 2.22 }],
-      },
-    };
-    const result = await scan({
-      position: { tokenId: "250" },
-      events: [
-        { oldTokenId: "248", newTokenId: "249" },
-        { oldTokenId: "249", newTokenId: "250" },
-      ],
-      dir,
-      read: readerFor(["250", "248", "249"]).read,
-      classify: async (_ev, opts) =>
-        perToken[opts.tokenId] || { totalCompoundedUsd: 0, compounds: [] },
-    });
-    assert.strictEqual(result.total, 1.0 + 2.5 + 7.42);
-    assert.strictEqual(result.current, 2.21 + 2.21 + 2.22);
-    fs.rmSync(dir, { recursive: true });
-  });
-
-  it("classifies every NFT in the chain, the current one included", async () => {
-    const classified = [];
-    await scan({
-      position: { tokenId: "300" },
-      events: [
-        { oldTokenId: "298", newTokenId: "299" },
-        { oldTokenId: "299", newTokenId: "300" },
-      ],
-      dir: _tmpDir,
-      read: readerFor(["300", "298", "299"]).read,
-      classify: async (_ev, opts) => {
-        classified.push(opts.tokenId);
-        return { totalCompoundedUsd: 0, compounds: [] };
-      },
-    });
-    assert.deepStrictEqual(classified.sort(), ["298", "299", "300"]);
-  });
-
-  it("classifies each NFT with its own events", async () => {
-    /*-
-     *  The read returns every NFT's events at once, so which events
-     *  reach which NFT's classification is the thing to pin.
-     */
-    const own = (id) => ({ ...emptyEvents(), ilLogsCount: Number(id) });
-    const seen = new Map();
-    await scan({
-      position: { tokenId: "300" },
-      events: [
-        { oldTokenId: "298", newTokenId: "299" },
-        { oldTokenId: "299", newTokenId: "300" },
-      ],
-      dir: _tmpDir,
-      read: readerFor(["300", "298", "299"], own).read,
-      classify: async (ev, opts) => {
-        seen.set(opts.tokenId, ev.ilLogsCount);
-        return { totalCompoundedUsd: 0, compounds: [] };
-      },
-    });
-    assert.deepStrictEqual(Object.fromEntries(seen), {
-      298: 298,
-      299: 299,
-      300: 300,
-    });
-  });
-
-  it("reads the chain once, not once per NFT", async () => {
-    const r = readerFor(["300", "298", "299"]);
-    await scan({
-      position: { tokenId: "300" },
-      events: [
-        { oldTokenId: "298", newTokenId: "299" },
-        { oldTokenId: "299", newTokenId: "300" },
-      ],
-      dir: _tmpDir,
-      read: r.read,
-      classify: async () => ({ totalCompoundedUsd: 0, compounds: [] }),
-    });
-    assert.strictEqual(r.calls.length, 1);
-  });
-
-  it("does not count an NFT the read left out as zero", async () => {
-    /*-
-     *  A partial total written as the lifetime figure would stand until
-     *  the next full reload. Failing the scan leaves nothing written.
-     */
-    const cfg = {
-      global: {},
-      positions: { "test-key": { status: "running" } },
-    };
-    const result = await scan({
-      position: { tokenId: "300" },
-      events: [
-        { oldTokenId: "298", newTokenId: "299" },
-        { oldTokenId: "299", newTokenId: "300" },
-      ],
-      cfg,
-      dir: _tmpDir,
-      read: readerFor(["300", "299"]).read,
-      classify: async () => ({ totalCompoundedUsd: 5, compounds: [] }),
-    });
-    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
-    assert.strictEqual(cfg.positions["test-key"].compoundedAmount0, undefined);
-  });
-
-  it("returns total=0, current=0 when classification fails", async () => {
-    const result = await scan({
-      position: { tokenId: "400" },
-      events: [{ oldTokenId: "399", newTokenId: "400" }],
-      dir: _tmpDir,
-      read: readerFor(["400", "399"]).read,
-      classify: async () => {
-        throw new Error("RPC fail");
-      },
-    });
-    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
-  });
-
-  it("returns total=0, current=0 when the chain read fails", async () => {
-    const result = await scan({
-      position: { tokenId: "400" },
-      events: [{ oldTokenId: "399", newTokenId: "400" }],
-      dir: _tmpDir,
-      read: async () => {
-        throw new Error("RPC fail");
-      },
-      classify: async () => ({ totalCompoundedUsd: 5, compounds: [] }),
-    });
-    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
-  });
+const scan = (compounds, totalNftGasWei = "0") => ({
+  compounds,
+  totalCompoundedUsd: 0,
+  totalGasWei: "0",
+  totalNftGasWei,
 });
 
-describe("compoundsReadChain", () => {
-  /*-
-   *  Decides whether Fees Compounded reads the whole chain. The request
-   *  asks it before the pool scan, to know whether epoch reconstruction
-   *  can share that read, so it must match `_resolveCompounded`.
-   */
-  const { compoundsReadChain } = require("../src/position-details-compound");
-  const EVENTS = [{ oldTokenId: "99", newTokenId: "100" }];
-  const disk = (slot) => ({
-    global: {},
-    positions: slot ? { "test-key": slot } : {},
+describe("_detectCurrentNftValues", () => {
+  it("reads only the NFT being looked at", async () => {
+    const d = detector(scan([]));
+    await _detectCurrentNftValues(POSITION, {}, PS, PRICES, CHAIN, d.fn);
+    assert.equal(d.calls.length, 1, "one NFT, never the chain");
+    assert.equal(d.calls[0].tokenId, "300");
   });
 
-  it("reads when no total is saved and there is a chain", () => {
-    assert.strictEqual(
-      compoundsReadChain(disk(null), "test-key", EVENTS),
-      true,
-    );
-    assert.strictEqual(
-      compoundsReadChain(disk({ status: "stopped" }), "test-key", EVENTS),
-      true,
-    );
+  it("floors the scan at that NFT's own mint block", async () => {
     /*-
-     *  A saved zero is no total: Reload and Re-scan Prices zero the
-     *  in-memory figure, and a save can write it before the rescan
-     *  replaces it.
+     *  This runs on every unmanaged request. From the pool's creation
+     *  block it would re-read years of blocks for an NFT usually days
+     *  old; the chain names its mint, so the floor is free.
      */
-    assert.strictEqual(
-      compoundsReadChain(disk({ compoundedAmount0: 0 }), "test-key", EVENTS),
-      true,
+    const d = detector(scan([]));
+    await _detectCurrentNftValues(POSITION, {}, PS, PRICES, CHAIN, d.fn);
+    assert.equal(d.calls[0].opts.fromBlock, 6_000_000);
+  });
+
+  it("sums the standalone compounds' own values", async () => {
+    const d = detector(
+      scan([{ usdValue: 2.5 }, { usdValue: 1.25 }, { usdValue: 0.25 }]),
     );
-  });
-
-  it("does not read when the coins are saved", () => {
-    assert.strictEqual(
-      compoundsReadChain(disk({ compoundedAmount0: 5 }), "test-key", EVENTS),
-      false,
-    );
-  });
-
-  it("does not read without a chain", () => {
-    assert.strictEqual(compoundsReadChain(disk(null), "test-key", []), false);
-  });
-});
-
-describe("_resolveCompounded takes the chain path exactly when predicted", () => {
-  const {
-    _resolveCompounded,
-    compoundsReadChain,
-  } = require("../src/position-details-compound");
-  const POS = { tokenId: "100", token0: "0xA", token1: "0xB", fee: 3000 };
-  const EVENTS = [{ oldTokenId: "99", newTokenId: "100", blockNumber: 7 }];
-  const PS = { decimals0: 18, decimals1: 18 };
-  const PRICES = { price0: 1, price1: 1 };
-
-  /** Resolve with a reader that counts how often it is read. */
-  async function resolve(cfg, events) {
-    const r = readerFor(["100", "99"]);
-    const result = await _resolveCompounded(
-      POS,
-      events,
-      { walletAddress: "0xW" },
+    const r = await _detectCurrentNftValues(
+      POSITION,
+      {},
       PS,
       PRICES,
-      cfg,
-      "test-key",
-      r.read,
+      CHAIN,
+      d.fn,
     );
-    return { result, reads: r.calls.length };
-  }
-
-  it("reads the chain when no total is saved", async () => {
-    const cfg = { global: {}, positions: {} };
-    assert.equal(compoundsReadChain(cfg, "test-key", EVENTS), true);
-    const { result, reads } = await resolve(cfg, EVENTS);
-    assert.equal(reads, 1);
-    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
+    assert.equal(r.compoundUsd, 4);
   });
 
-  it("answers zero without reading when there is no chain", async () => {
-    const cfg = { global: {}, positions: {} };
-    const { result, reads } = await resolve(cfg, []);
-    assert.equal(reads, 0);
-    assert.deepStrictEqual(result, { total: 0, current: 0, currentGasUsd: 0 });
-  });
-
-  it("uses the saved total without reading the chain", async () => {
+  it("answers zero for both rather than failing the request", async () => {
     /*-
-     *  This path also reads the current NFT on its own for the Current
-     *  panel. No RPC is initialized here, so that read fails and those
-     *  two figures fall back to zero — not what this test is about.
+     *  The figures feed two Current-panel rows. A scan that cannot run
+     *  leaves them at zero; it must not take the whole details response
+     *  down with it.
      */
-    const cfg = {
-      global: {},
-      positions: {
-        "test-key": { compoundedAmount0: 42, compoundedAmount1: 0 },
-      },
-    };
-    assert.equal(compoundsReadChain(cfg, "test-key", EVENTS), false);
-    const { result, reads } = await resolve(cfg, EVENTS);
-    assert.equal(reads, 0);
-    assert.equal(result.total, 42);
+    const d = detector(new Error("RPC down"));
+    const r = await _detectCurrentNftValues(
+      POSITION,
+      {},
+      PS,
+      PRICES,
+      CHAIN,
+      d.fn,
+    );
+    assert.deepEqual(r, { compoundUsd: 0, gasUsd: 0 });
+  });
+
+  it("reports no gas when the scan found none", async () => {
+    const d = detector(scan([], "0"));
+    const r = await _detectCurrentNftValues(
+      POSITION,
+      {},
+      PS,
+      PRICES,
+      CHAIN,
+      d.fn,
+    );
+    assert.equal(r.gasUsd, 0);
+  });
+});
+
+describe("savedNftCompoundedUsd", () => {
+  const KEY = "pulsechain-0xW-0xC-300";
+  const cfg = (slot) => ({
+    global: {},
+    positions: slot ? { [KEY]: slot } : {},
+  });
+
+  it("prices the saved coins at the prices given", () => {
+    const disk = cfg({
+      nftCompoundedAmountsByTokenId: { 300: { amount0: 4, amount1: 3 } },
+    });
+    // 4 at $1 plus 3 at $2.
+    assert.equal(savedNftCompoundedUsd(disk, KEY, "300", 1, 2), 10);
+  });
+
+  it("follows the price, since what is saved is coins", () => {
+    const disk = cfg({
+      nftCompoundedAmountsByTokenId: { 300: { amount0: 4, amount1: 0 } },
+    });
+    const a = savedNftCompoundedUsd(disk, KEY, "300", 1, 1);
+    const b = savedNftCompoundedUsd(disk, KEY, "300", 2, 2);
+    assert.equal(b, a * 2);
+  });
+
+  it("answers zero for a position with no slot", () => {
+    assert.equal(savedNftCompoundedUsd(cfg(null), KEY, "300", 1, 1), 0);
+  });
+
+  it("answers zero for an NFT the map does not name", () => {
+    const disk = cfg({
+      nftCompoundedAmountsByTokenId: { 999: { amount0: 5, amount1: 5 } },
+    });
+    assert.equal(savedNftCompoundedUsd(disk, KEY, "300", 1, 1), 0);
+  });
+
+  it("answers zero for a slot that has never been managed", () => {
+    /*-
+     *  Only the bot's lifetime scan writes those coins, so an unmanaged
+     *  position keeps answering zero. Removing nothing is the honest
+     *  answer — the LP value stands as it is.
+     */
+    assert.equal(savedNftCompoundedUsd(cfg({}), KEY, "300", 1, 1), 0);
+  });
+
+  it("resolves a numeric tokenId the same as a string one", () => {
+    const disk = cfg({
+      nftCompoundedAmountsByTokenId: { 300: { amount0: 4, amount1: 0 } },
+    });
+    assert.equal(
+      savedNftCompoundedUsd(disk, KEY, 300, 1, 1),
+      savedNftCompoundedUsd(disk, KEY, "300", 1, 1),
+    );
   });
 });
