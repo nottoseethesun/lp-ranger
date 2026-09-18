@@ -6,9 +6,10 @@
  * NFTs in the rebalance chain.  Extracted from bot-recorder.js for
  * line-count compliance.
  *
- * Each figure is computed once and then read from disk.  Two requests
- * override that, both carried on the bot state and both cleared only by
- * a scan that finishes:
+ * Each figure is computed once and then read from disk.  Three requests
+ * override that, all carried on the bot state and all cleared only by
+ * a scan that finishes — and only when that scan carried them in, so one
+ * raised mid-scan survives to the next pass:
  *
  *   - `_needsFullRescan` — set after a rebalance, and by Reload.
  *   - `_needsPriceRevalue` — set by Re-scan Prices.  Every dollar figure
@@ -16,6 +17,11 @@
  *     lifetime deposit, and the HODL baseline's entry value.  Each one
  *     is overwritten only once its new value exists, so a failed scan or
  *     a silent price source leaves the saved figure intact.
+ *   - `_needsCompoundReclassify` — set by a compound or a rebalance fee
+ *     credit that found no established total to add to.  Those coins are
+ *     on chain and in no saved figure until a classification counts
+ *     them, and nothing else schedules one once the other figures look
+ *     settled.
  */
 
 "use strict";
@@ -48,6 +54,7 @@ const {
 } = require("./bot-recorder-decimals-heal");
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { isIntegerInRange } = require("./pool-state-validate");
+const { hasCompoundedTotal } = require("./bot-config-keys");
 
 /** Add historical compound gas to the P&L tracker if available. */
 async function _applyCompoundGas(totalGasWei, pnlTracker) {
@@ -146,6 +153,34 @@ function _compoundedAmountsByTokenId(history, d0, d1) {
   return byTokenId;
 }
 
+/**
+ * Whether this pass must leave the compounded total absent.
+ *
+ * Coins that arrived after this pass read the chain are not in the figure
+ * it is about to write. Writing it anyway would settle a total that is
+ * short by those coins — and a written total is what stops every later
+ * scan re-classifying, so "short" would become "final".
+ *
+ * Leaving it absent is self-correcting and needs nothing remembered:
+ * absence is the signal that the chain is unclassified, it is absent on
+ * disk as well as in memory, and the next scan therefore does the walk
+ * whatever happened to the process in between. The pass throws away one
+ * derived figure; every other figure it computed still lands.
+ *
+ * @param {() => boolean} isStale  Reports coins arriving mid-pass.
+ * @param {object} opts            Scan opts, for the log line's symbols.
+ * @returns {boolean}
+ */
+function _keepTotalAbsent(isStale, opts) {
+  if (isStale() !== true) return false;
+  log.info(
+    "[bot] %s/%s: compounded coins arrived after this scan read the chain — leaving the lifetime total for the next scan rather than saving a short one",
+    opts.token0Symbol || "Token0",
+    opts.token1Symbol || "Token1",
+  );
+  return true;
+}
+
 /** Classify compounds across all NFTs and persist results. */
 async function _classifyAllCompounds(
   ids,
@@ -153,6 +188,7 @@ async function _classifyAllCompounds(
   opts,
   updateState,
   pnlTracker,
+  isStale = () => false,
 ) {
   _requireValidDecimals(opts);
   const allCompounds = [];
@@ -236,13 +272,20 @@ async function _classifyAllCompounds(
       opts.decimals0,
       opts.decimals1,
     );
-    updateState({
+    const patch = {
       compoundHistory: history,
-      compoundedAmount0: totalAmount0,
-      compoundedAmount1: totalAmount1,
       nftGasWeiByTokenId,
       nftCompoundedAmountsByTokenId,
-    });
+    };
+    if (_keepTotalAbsent(isStale, opts)) {
+      /*- The per-NFT figures still go in: they are keyed per NFT, and the
+       *  compound deleted its own entry for `applyCurrentNftFigures` to
+       *  refill, so nothing here overwrites it. */
+    } else {
+      patch.compoundedAmount0 = totalAmount0;
+      patch.compoundedAmount1 = totalAmount1;
+    }
+    updateState(patch);
     await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
   } else {
     /*-
@@ -250,9 +293,22 @@ async function _classifyAllCompounds(
      *  scanned still drive the Current-panel "Gas" row.  Persist them
      *  even when totalUsd is zero so a never-compounded NFT still shows
      *  the matching Unmanaged gas figure.
+     *
+     *  The zero total is recorded too, and that is the point: "this
+     *  chain compounded nothing" is a result, and writing it is what
+     *  stops every later scan walking the whole chain to reach it again.
+     *  It is also what lets the next compound add — `hasCompoundedTotal`
+     *  reads presence, so without this the position would keep declining
+     *  its own compounds until some other trigger classified it.
      */
+    const patch = {};
+    if (!_keepTotalAbsent(isStale, opts)) {
+      patch.compoundedAmount0 = 0;
+      patch.compoundedAmount1 = 0;
+    }
     if (Object.keys(nftGasWeiByTokenId).length > 0)
-      updateState({ nftGasWeiByTokenId });
+      patch.nftGasWeiByTokenId = nftGasWeiByTokenId;
+    if (Object.keys(patch).length > 0) updateState(patch);
   }
 }
 
@@ -267,8 +323,10 @@ async function _classifyAllCompounds(
  *
  *   1. **Compounded coins** (`hasCompoundData`).  Only
  *      `compoundedAmount0`/`compoundedAmount1` count.  This scan is the
- *      only thing that writes them: the unmanaged details path shows no
- *      Lifetime panel and so classifies nothing across the chain.
+ *      only thing that ESTABLISHES them — compounds and rebalances add
+ *      to a total it has already written, and the unmanaged details path
+ *      shows no Lifetime panel and so classifies nothing across the
+ *      chain.
  *
  *      Requiring them is what makes the gate mean what it says.  The
  *      coins are the only thing Fees Compounded can be priced from, so
@@ -278,8 +336,9 @@ async function _classifyAllCompounds(
  *      carry it while carrying no coins — accept it here and that
  *      position reports zero compounded for as long as it runs.
  *
- *      No rescan is ever needed to keep this total current, because both
- *      ways fees get recycled already maintain it as they happen:
+ *      Once this scan has established the total, no rescan is needed to
+ *      keep it current, because both ways fees get recycled add to it as
+ *      they happen:
  *
  *        - standalone compounds (auto / "Compound Now") add their amount
  *          in `bot-cycle-compound.js` on success;
@@ -287,12 +346,20 @@ async function _classifyAllCompounds(
  *          new NFT are added by `_bumpRebalanceFees` in `bot-recorder.js`,
  *          called from `_closePnlEpoch`.
  *
- *      That is why this guard has no `|| fullRescan` escape while the
- *      deposit guard below does — the asymmetry is deliberate, not an
- *      oversight.  `_needsFullRescan` is set after every rebalance, but
- *      by then `_bumpRebalanceFees` has already credited that rebalance's
- *      fees, so re-classifying the whole chain would only recompute a
- *      number that is already right.
+ *      **Established** is the operative word, and both writers check it
+ *      with `hasCompoundedTotal` before adding.  Neither may create the
+ *      total.  A writer that created one would hand this guard its own
+ *      single amount as proof the whole chain had been classified: the
+ *      classification would then never run, and Fees Compounded would
+ *      report one compound's coins for an entire rebalance chain for as
+ *      long as the position ran.
+ *
+ *      That is also why this guard has no `|| fullRescan` escape while
+ *      the deposit guard below does — the asymmetry is deliberate, not
+ *      an oversight.  `_needsFullRescan` is set after every rebalance,
+ *      but by then `_bumpRebalanceFees` has already credited that
+ *      rebalance's fees onto an established total, so re-classifying the
+ *      whole chain would only recompute a number that is already right.
  *
  *      Re-scan Prices is the one caller that does ask for a
  *      re-classification (`_needsPriceRevalue`).  The amounts are right;
@@ -323,7 +390,7 @@ function _resolveDiskState(botState, epochKey) {
   const savedAmount0 = get ? get("compoundedAmount0") : undefined;
   const savedAmount1 = get ? get("compoundedAmount1") : undefined;
   const diskDeposit = get ? get("totalLifetimeDepositUsd") : undefined;
-  const hasCompoundData = (savedAmount0 || 0) > 0 || (savedAmount1 || 0) > 0;
+  const hasCompoundData = hasCompoundedTotal(savedAmount0, savedAmount1);
   const hasDepositData = (diskDeposit || 0) > 0;
   return { cachedHodl, hasCompoundData, hasDepositData };
 }
@@ -394,6 +461,10 @@ function _recordScanSuccess(botState, updateState, ctx, served = {}) {
     if (served.revalue === true) {
       botState._needsPriceRevalue = false;
       patch._needsPriceRevalue = false;
+    }
+    if (served.reclassify === true) {
+      botState._needsCompoundReclassify = false;
+      patch._needsCompoundReclassify = false;
     }
     updateState(patch);
   }
@@ -498,6 +569,7 @@ function _lifetimeResumeBuffer(botState, fullRescan) {
 function lifetimeScanPlan(botState, epochKey) {
   const fullRescan = botState?._needsFullRescan === true;
   const revalue = botState?._needsPriceRevalue === true;
+  const reclassify = botState?._needsCompoundReclassify === true;
   const disk = _resolveDiskState(botState, epochKey);
   /*-
    *  A rebalance sets `_needsFullRescan`. The scan then reads the chain
@@ -516,9 +588,20 @@ function lifetimeScanPlan(botState, epochKey) {
    *  every figure built on them is re-priced. Folding either into the
    *  other would make every rebalance pay for price work, or make a bad
    *  price cost a walk of the chain.
+   *
+   *  A compound or a rebalance fee credit sets `_needsCompoundReclassify`
+   *  when it had no established total to add to, so its coins went
+   *  unrecorded. Usually the classification it is waiting for reads a
+   *  chain that already contains them and the request costs nothing. It
+   *  earns its keep when the request arrives DURING a scan: that scan
+   *  read the chain before those coins existed, so clearing the request
+   *  would strand them in a total that looks settled. `_recordScanSuccess`
+   *  clears only the requests a scan carried in, so this one survives to
+   *  the next pass.
    */
-  const needed = fullRescan || revalue || !lifetimeFiguresSaved(disk);
-  return { ...disk, fullRescan, revalue, needed };
+  const needed =
+    fullRescan || revalue || reclassify || !lifetimeFiguresSaved(disk);
+  return { ...disk, fullRescan, revalue, reclassify, needed };
 }
 
 /**
@@ -656,8 +739,14 @@ async function _scanLifetimePoolData(
 ) {
   const ctx = scanLogCtx(position);
   const plan = lifetimeScanPlan(botState, epochKey);
-  const { fullRescan, revalue, cachedHodl, hasCompoundData, hasDepositData } =
-    plan;
+  const {
+    fullRescan,
+    revalue,
+    reclassify,
+    cachedHodl,
+    hasCompoundData,
+    hasDepositData,
+  } = plan;
   if (!plan.needed) {
     /*-
      *  Nothing to compute, but readiness must still be recorded. Every
@@ -694,13 +783,14 @@ async function _scanLifetimePoolData(
     return;
   }
   log.info(
-    "[bot] %s/%s NFT #%s %s: Starting lifetime scan (fullRescan=%s priceRevalue=%s)",
+    "[bot] %s/%s NFT #%s %s: Starting lifetime scan (fullRescan=%s priceRevalue=%s reclassify=%s)",
     ctx.t0Sym,
     ctx.t1Sym,
     ctx.tokenIdStr,
     ctx.tokenEmoji,
     fullRescan,
     revalue,
+    reclassify,
   );
   try {
     /*- Heal step: ensure valid on-chain token decimals (honoring any manual
@@ -746,13 +836,19 @@ async function _scanLifetimePoolData(
       positionManagerAddress: config.POSITION_MANAGER,
     };
     const ids = chainRead.ids;
-    if (!hasCompoundData || revalue)
+    if (!hasCompoundData || revalue || reclassify)
       await _classifyAllCompounds(
         ids,
         allNftEvents,
         opts,
         updateState,
         pnlTracker,
+        /*- A request standing now that this pass did not carry in was
+         *  raised after the chain read, so those coins are missing from
+         *  what is about to be written. One carried in is different: it
+         *  was raised before the read, so the read contains them and
+         *  `_recordScanSuccess` answers it. */
+        () => botState._needsCompoundReclassify === true && reclassify !== true,
       );
     /*-
      *  A rebalance mints with the wallet's whole balance of both pool

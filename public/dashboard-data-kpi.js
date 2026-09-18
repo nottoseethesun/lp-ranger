@@ -517,6 +517,53 @@ export function _updateIL(d, ltDeposit) {
   }
   return il;
 }
+/**
+ * Draw the Lifetime panel's breakdown rows and cache them for the info
+ * dialog.
+ *
+ * `totalCompoundedUsd` arrives null while the chain has yet to be
+ * classified, and is passed through as null so the row draws an em-dash.
+ * A $0.00 there would read as "this position compounded nothing", which
+ * is a different fact and one the app does not yet know.
+ *
+ * @param {object} d           Status payload.
+ * @param {number} total       Lifetime net P&L.
+ * @param {number} ltDeposit   Total lifetime deposit.
+ * @param {object} parts       The remaining lifetime figures.
+ */
+function _renderLtBreakdown(d, total, ltDeposit, parts) {
+  const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd ?? null;
+  const ltGas2 = d.pnlSnapshot?.totalGas || 0;
+  const resid = parts.ltResidual || 0;
+  const initResid = parts.ltInitialResidual || 0;
+  _updateNetBreakdown(
+    parts.ltPriceChange,
+    parts.ltRealized,
+    ltGas2,
+    resid,
+    ltCompounded,
+    initResid,
+  );
+  _setLtCurrentValue(d);
+  // currentValue is LP-only; residuals are tracked separately.
+  const cv = d.pnlSnapshot.currentValue || 0;
+  Object.assign(_ltBreakdown, {
+    currentFees: parts.ltCurrentFees,
+    /*- The dialog explains the summation, where an unknown figure
+     *  contributes nothing — so zero here, even though the row above
+     *  draws a dash. */
+    compounded: ltCompounded ?? 0,
+    gas: ltGas2,
+    priceChange: parts.ltPriceChange,
+    residual: resid,
+    initialResidual: initResid,
+    realized: parts.ltRealized,
+    total,
+    currentValue: cv,
+    deposit: ltDeposit,
+  });
+}
+
 export function _updateNetReturn(
   d,
   total,
@@ -546,32 +593,12 @@ export function _updateNetReturn(
           ).toFixed(2) +
           " Days"
         : "Net Profit and Loss Return";
-    const ltCompounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
-    const ltGas2 = d.pnlSnapshot?.totalGas || 0;
-    const resid = ltResidual || 0;
-    const initResid = ltInitialResidual || 0;
-    _updateNetBreakdown(
+    _renderLtBreakdown(d, total, ltDeposit, {
+      ltCurrentFees,
       ltPriceChange,
       ltRealized,
-      ltGas2,
-      resid,
-      ltCompounded,
-      initResid,
-    );
-    _setLtCurrentValue(d);
-    // currentValue is LP-only; residuals are tracked separately.
-    const cv = d.pnlSnapshot.currentValue || 0;
-    Object.assign(_ltBreakdown, {
-      currentFees: ltCurrentFees,
-      compounded: ltCompounded,
-      gas: ltGas2,
-      priceChange: ltPriceChange,
-      residual: resid,
-      initialResidual: initResid,
-      realized: ltRealized,
-      total,
-      currentValue: cv,
-      deposit: ltDeposit,
+      ltResidual,
+      ltInitialResidual,
     });
   }
   const il = _updateIL(d, ltDeposit);

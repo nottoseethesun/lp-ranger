@@ -470,7 +470,11 @@ describe("bot-pnl-updater compound override", () => {
     assert.equal(snap.currentFeesUsd, 20);
   });
 
-  it("zero compounded does not affect netReturn", () => {
+  /*- The published figure separates "nothing compounded" from "not
+   *  classified yet": the Lifetime panel draws the first as a figure and
+   *  the second as an em-dash. Every arithmetic consumer coalesces to
+   *  zero, so netReturn is unaffected either way. */
+  const _runOverride = (botState) => {
     const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
@@ -480,7 +484,7 @@ describe("bot-pnl-updater compound override", () => {
     };
     overridePnlWithRealValues(
       snap,
-      { _botState: {} },
+      { _botState: botState },
       { liquidity: "100000000", tickLower: 0, tickUpper: 1000 },
       { tick: 500, decimals0: 8, decimals1: 8 },
       0.001,
@@ -488,7 +492,19 @@ describe("bot-pnl-updater compound override", () => {
       5,
       0,
     );
+    return snap;
+  };
+
+  it("publishes null compounded when the chain has not been classified", () => {
+    const snap = _runOverride({});
+    assert.equal(snap.totalCompoundedUsd, null);
+    assert.ok(Number.isFinite(snap.netReturn), "netReturn stays a number");
+  });
+
+  it("publishes a recorded zero as zero, not as unknown", () => {
+    const snap = _runOverride({ compoundedAmount0: 0, compoundedAmount1: 0 });
     assert.equal(snap.totalCompoundedUsd, 0);
+    assert.ok(Number.isFinite(snap.netReturn), "netReturn stays a number");
   });
 });
 

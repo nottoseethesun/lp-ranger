@@ -135,6 +135,12 @@ function _needsLifetimeRescan(botState) {
    *  unanswered, since a scan is the only thing that reads it. */
   if (botState._needsPriceRevalue === true)
     reasons.push("needsPriceRevalue=true");
+  /*- A compound or rebalance fee credit had no established total to add
+   *  to, so its coins are on chain and in no saved figure. Only a
+   *  classification can count them, and nothing else here would schedule
+   *  one once the other figures look settled. */
+  if (botState._needsCompoundReclassify === true)
+    reasons.push("needsCompoundReclassify=true");
   if (botState.lifetimeScanComplete === false)
     reasons.push("lifetimeScanComplete=false");
   /*- Epoch reconstruction built fewer epochs than the chain has closed

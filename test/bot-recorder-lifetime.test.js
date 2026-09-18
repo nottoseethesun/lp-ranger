@@ -101,8 +101,31 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
     assert.equal(state.depositCalled, true, "computeDepositUsd must run");
   });
 
-  it("runs classification when the saved coins are 0 (zero-or-undefined treated alike)", async () => {
+  it("skips classification when the saved coins are 0 — a recorded zero is an answer", async () => {
+    /*-
+     *  A chain whose NFTs never compounded totals zero, and the scan that
+     *  found that out wrote it. Re-deriving it means walking the whole
+     *  chain again to arrive back at zero, on every scan, for as long as
+     *  the position runs. Only ABSENCE means "not asked yet" — see
+     *  `hasCompoundedTotal` in bot-config-keys.js.
+     */
     const botState = makeBotState({ compoundedAmount0: 0 });
+    await _scanLifetimePoolData(
+      makePosition(),
+      botState,
+      () => {},
+      [],
+      "0xW",
+      null,
+      "epoch-key",
+    );
+    assert.equal(state.classifyCalled, false);
+  });
+
+  it("runs classification when the saved coins are absent", async () => {
+    /*- The counterpart: nothing recorded, so the chain has not been
+     *  classified and the walk is owed. */
+    const botState = makeBotState({});
     await _scanLifetimePoolData(
       makePosition(),
       botState,

@@ -280,9 +280,61 @@ const POSITION_KEYS = [
   "lifetimeStartDateOverrideUtc",
 ];
 
+/**
+ * Whether a position slot carries a compounded total that the chain
+ * classification established.
+ *
+ * `compoundedAmount0` / `compoundedAmount1` mean *the whole rebalance
+ * chain's* re-deposited fees, and only the lifetime scan's chain-wide
+ * classification can say what that is. Absence is therefore a statement,
+ * not a gap: it says the chain has not been classified. That is exactly
+ * what `clear-blockchain-scan-cache` and Reload Current Position assert
+ * by deleting these keys, and what `_resolveDiskState` in
+ * `bot-recorder-lifetime.js` reads to decide whether to classify.
+ *
+ * Which is why the incremental writers — a standalone compound, and the
+ * fee credit on a rebalance — ask this before adding. **They may add to
+ * a total that exists; they may not create one.** A compound landing
+ * between the clear and the scan would otherwise write its own amount
+ * into a slot that claims to hold the chain's, and the scan would read
+ * that real number as proof the work was already done and skip it for
+ * good. Declining costs nothing: the compound is on chain, so the
+ * classification counts it whenever it runs.
+ *
+ * The test is **presence, not magnitude**. A stored zero is an answer —
+ * a chain whose NFTs never compounded — and re-deriving it would walk
+ * the whole chain again to arrive back at zero, on every scan, for as
+ * long as the position runs. Only absence means "not asked yet". That is
+ * also why a zero reached by clearing must delete the keys rather than
+ * write `0` over them: see `_resetStateForReload` in
+ * `server-reload-position.js`, which nulls them for exactly this reason.
+ *
+ * A non-finite or negative value is treated as absent. Neither is a
+ * figure any classification produced — coins re-deposited cannot be
+ * fewer than none — so both mean something upstream went wrong, and
+ * accepting either would freeze it in place instead of re-deriving it.
+ *
+ * @param {number|undefined|null} amount0  Saved token0 compounded coins.
+ * @param {number|undefined|null} amount1  Saved token1 compounded coins.
+ * @returns {boolean}  True when a chain-established total is present.
+ */
+function hasCompoundedTotal(amount0, amount1) {
+  return _isRecordedCoinTotal(amount0) || _isRecordedCoinTotal(amount1);
+}
+
+/**
+ * @private A coin total a classification actually wrote.
+ * @param {*} v  Candidate value.
+ * @returns {boolean}
+ */
+function _isRecordedCoinTotal(v) {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0;
+}
+
 module.exports = {
   GLOBAL_KEYS,
   POSITION_KEYS,
   CHAIN_DERIVED_POSITION_KEYS,
   RETIRED_POSITION_KEYS,
+  hasCompoundedTotal,
 };

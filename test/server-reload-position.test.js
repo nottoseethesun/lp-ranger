@@ -223,8 +223,11 @@ describe("_resetBotState", () => {
     assert.strictEqual(state.totalLifetimeDepositUsd, 0);
     assert.strictEqual(state.depositUsedFallback, false);
     assert.deepStrictEqual(state.compoundHistory, []);
-    assert.strictEqual(state.compoundedAmount0, 0);
-    assert.strictEqual(state.compoundedAmount1, 0);
+    /*- Null, not zero: `hasCompoundedTotal` reads these by presence, so a
+     *  zero would claim the chain was classified and found nothing —
+     *  the opposite of what a reload asks for. */
+    assert.strictEqual(state.compoundedAmount0, null);
+    assert.strictEqual(state.compoundedAmount1, null);
     assert.deepStrictEqual(state.nftCompoundedAmountsByTokenId, {});
     assert.deepStrictEqual(state.nftGasWeiByTokenId, {});
     assert.strictEqual(state.hodlBaseline, null);

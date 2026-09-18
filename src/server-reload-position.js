@@ -53,8 +53,12 @@ function _resetBotState(state) {
   state.totalLifetimeDepositUsd = 0;
   state.depositUsedFallback = false;
   state.compoundHistory = [];
-  state.compoundedAmount0 = 0;
-  state.compoundedAmount1 = 0;
+  /*- Null, not zero. `hasCompoundedTotal` reads these by presence, so a
+   *  zero here would claim the chain had been classified and found
+   *  nothing — the opposite of what a reload is asking for. Null matches
+   *  what `_clearDiskConfigForKey` does to the same keys on disk. */
+  state.compoundedAmount0 = null;
+  state.compoundedAmount1 = null;
   state.nftCompoundedAmountsByTokenId = {};
   state.nftGasWeiByTokenId = {};
   state.hodlBaseline = null;

@@ -25,6 +25,7 @@ const { scanPoolHistory } = require("./pool-scanner");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
 const { buildUpdatePatch } = require("./bot-recorder-patch");
+const { hasCompoundedTotal } = require("./bot-config-keys");
 const {
   collectTokenIds: _collectTokenIds,
 } = require("./bot-recorder-scan-helpers");
@@ -104,24 +105,45 @@ function _bumpRebalanceFees(deps) {
    *  zero is a real answer that must stop the search, not fall through
    *  to the next source. */
   const saved = (key) => (gc ? gc(key) : undefined);
-  const prev0 =
-    saved("compoundedAmount0") ?? deps._botState?.compoundedAmount0 ?? 0;
-  const prev1 =
-    saved("compoundedAmount1") ?? deps._botState?.compoundedAmount1 ?? 0;
-  const newAmount0 = prev0 + fee0;
-  const newAmount1 = prev1 + fee1;
-  if (deps.updateBotState)
-    deps.updateBotState({
-      compoundedAmount0: newAmount0,
-      compoundedAmount1: newAmount1,
-    });
-  log.info(
-    "[bot] Rebalance compound: %s/%s fees re-deposited (lifetime %s/%s)",
-    fee0.toFixed(6),
-    fee1.toFixed(6),
-    newAmount0.toFixed(6),
-    newAmount1.toFixed(6),
-  );
+  const prev0 = saved("compoundedAmount0") ?? deps._botState?.compoundedAmount0;
+  const prev1 = saved("compoundedAmount1") ?? deps._botState?.compoundedAmount1;
+  /*- Credit the chain's total only where there is one. With none saved,
+   *  the chain has not been classified yet — see `hasCompoundedTotal` —
+   *  and these fees would be passed off as the whole chain's, which the
+   *  lifetime scan then believes and skips the classification. The fees
+   *  are not lost: they went on chain with the rebalance, so the scan
+   *  counts them when it runs. The pending amounts are still cleared
+   *  below, because they HAVE been swept into the position and are no
+   *  longer unclaimed, whoever ends up totalling them. */
+  if (!hasCompoundedTotal(prev0, prev1)) {
+    /*- Ask for the classification, for the reason `lifetimeScanPlan`
+     *  gives: if these coins landed during a scan, that scan read the
+     *  chain before they existed, and its write would settle a total
+     *  without them. */
+    if (deps._botState) deps._botState._needsCompoundReclassify = true;
+    if (deps.updateBotState)
+      deps.updateBotState({ _needsCompoundReclassify: true });
+    log.info(
+      "[bot] Rebalance compound: %s/%s fees re-deposited; lifetime total left for the chain scan to establish",
+      fee0.toFixed(6),
+      fee1.toFixed(6),
+    );
+  } else {
+    const newAmount0 = prev0 + fee0;
+    const newAmount1 = prev1 + fee1;
+    if (deps.updateBotState)
+      deps.updateBotState({
+        compoundedAmount0: newAmount0,
+        compoundedAmount1: newAmount1,
+      });
+    log.info(
+      "[bot] Rebalance compound: %s/%s fees re-deposited (lifetime %s/%s)",
+      fee0.toFixed(6),
+      fee1.toFixed(6),
+      newAmount0.toFixed(6),
+      newAmount1.toFixed(6),
+    );
+  }
   deps._lastUnclaimedFeesUsd = 0;
   /*- The token amounts behind that figure are cleared with it. They are
    *  what `_freshFeesUsd` (src/bot-cycle-compound.js) re-values when
@@ -655,4 +677,5 @@ module.exports = {
   _applyRebalanceResult,
   _collectTokenIds,
   _pushRebalanceEvent,
+  _bumpRebalanceFees, // exported for tests
 };

@@ -16,6 +16,7 @@ const config = require("./config");
 const rangeMath = require("./range-math");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
+const { hasCompoundedTotal } = require("./bot-config-keys");
 const { _computeIL } = require("./bot-pnl-il");
 const { PM_ABI } = require("./pm-abi");
 const {
@@ -250,20 +251,28 @@ async function overridePnlWithRealValues(
   /*-
    *  Priced here, never stored. The saved figure is the coins the
    *  position compounded (`compoundedAmount0` / `compoundedAmount1`),
-   *  written by the lifetime scan and added to by every compound and
-   *  rebalance. Valuing them at this poll's prices is what keeps the
+   *  established by the lifetime scan's chain-wide classification and
+   *  added to by every compound and rebalance thereafter — absent until
+   *  that scan runs, which prices to zero rather than to a partial
+   *  figure. Valuing them at this poll's prices is what keeps the
    *  Lifetime panel true as the pair moves; a dollar total saved at
    *  yesterday's price drifts further every day the position runs.
    */
+  const saved0 = deps._botState?.compoundedAmount0;
+  const saved1 = deps._botState?.compoundedAmount1;
   const compounded = coinsToUsd(
-    {
-      amount0: deps._botState?.compoundedAmount0,
-      amount1: deps._botState?.compoundedAmount1,
-    },
+    { amount0: saved0, amount1: saved1 },
     price0,
     price1,
   );
-  snap.totalCompoundedUsd = compounded;
+  /*- Null, not zero, while the chain has yet to be classified. The two
+   *  are different facts — "nothing compounded" against "not known yet" —
+   *  and the Lifetime panel draws them differently: a figure for the
+   *  first, an em-dash for the second. Every arithmetic consumer
+   *  coalesces to zero, so only the display changes. */
+  snap.totalCompoundedUsd = hasCompoundedTotal(saved0, saved1)
+    ? compounded
+    : null;
   /*-
    *  snap.currentCompoundedUsd and snap.currentGasUsd are populated by
    *  the bot-loop-injected `applyCurrentNftFigures` hook (see deps wiring

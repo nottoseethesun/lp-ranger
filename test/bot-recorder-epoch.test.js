@@ -186,6 +186,11 @@ describe("_closePnlEpoch", () => {
       _lastUnclaimedFeesUsd: 5.5,
       _lastUnclaimedFee0: 2,
       _lastUnclaimedFee1: 3.5,
+      /*- A total the chain scan already established. Without one there is
+       *  nothing to credit onto: the coins mean the whole chain's, and
+       *  only the classification can say what that is — see
+       *  test/lifetime-compounded-establishment.test.js. */
+      _botState: { compoundedAmount0: 1, compoundedAmount1: 0.5 },
       updateBotState: (p) => patches.push(p),
     };
     const result = {
@@ -201,8 +206,8 @@ describe("_closePnlEpoch", () => {
     await _closePnlEpoch(deps, result);
     /*- The fees this rebalance swept back in are credited as coins. */
     const patch = patches.find((p) => "compoundedAmount0" in p);
-    assert.strictEqual(patch.compoundedAmount0, 2);
-    assert.strictEqual(patch.compoundedAmount1, 3.5);
+    assert.strictEqual(patch.compoundedAmount0, 3); // 1 + 2
+    assert.strictEqual(patch.compoundedAmount1, 4); // 0.5 + 3.5
     assert.strictEqual(deps._lastUnclaimedFeesUsd, 0);
   });
 
