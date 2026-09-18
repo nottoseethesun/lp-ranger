@@ -62,7 +62,32 @@ function positionValueUsd(p, ps, pr0, pr1) {
     ps.decimals0,
     ps.decimals1,
   );
-  return a.amount0 * pr0 + a.amount1 * pr1;
+  const value = a.amount0 * pr0 + a.amount1 * pr1;
+  /*-
+   *  NaN here means a caller handed this something that is not a number,
+   *  and it must not be allowed to leave: this figure is Current Value,
+   *  and Net P&L, Profit and IL/G are all built on it, so a NaN spreads
+   *  to every money reading at once and compares false against every
+   *  threshold it meets on the way — including the Impermanent Loss
+   *  Guard's.
+   *
+   *  Nothing upstream produces it. `fetchTokenPriceUsd` answers a number
+   *  and falls back to zero on every failure path, so a missing price
+   *  arrives as zero and values the position at zero. NaN can only come
+   *  from a caller passing the wrong thing, which is a defect in this
+   *  app rather than a condition in the world.
+   *
+   *  So it throws rather than substituting a default. A default cannot be
+   *  right here except by luck — zero would report a funded position as
+   *  worthless — and it would hide the one thing worth knowing.
+   */
+  if (!Number.isFinite(value))
+    throw new Error(
+      `positionValueUsd: non-finite result (${value}) from amounts ` +
+        `${a.amount0}/${a.amount1} at prices ${pr0}/${pr1} — a caller ` +
+        `passed something that is not a number`,
+    );
+  return value;
 }
 
 /** Fetch USD prices for both tokens in a position. */

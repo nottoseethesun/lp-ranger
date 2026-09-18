@@ -97,15 +97,10 @@ describe("positionValueUsd", () => {
   });
 
   it("answers zero for a price of zero or null", () => {
-    /*- Both are how a failed price read reaches here today:
-     *  `_readCurrentPrices` catches and substitutes zeros, and a JSON
-     *  round-trip turns an absent figure into null.
-     *
-     *  NOT asserted: `undefined` prices, which currently yield NaN and
-     *  would carry it into Current Value and everything derived from it.
-     *  That is application behaviour, and this audit does not change
-     *  application code — it is reported instead, rather than pinned here
-     *  as though it were intended. */
+    /*- Zero is how a failed price read reaches here: every failure path
+     *  in `fetchTokenPriceUsd` answers zero rather than throwing, so a
+     *  position whose prices could not be read is valued at zero rather
+     *  than reported as broken. Null coerces the same way. */
     for (const [p0, p1] of [
       [0, 0],
       [null, null],
@@ -117,5 +112,47 @@ describe("positionValueUsd", () => {
         "prices " + JSON.stringify([p0, p1]),
       );
     }
+  });
+
+  it("throws rather than returning NaN", () => {
+    /*- A NaN would not stay local. This figure is Current Value, and Net
+     *  P&L, Profit and IL/G are built on it, so one NaN turns every money
+     *  reading into NaN at once — and compares false against every
+     *  threshold it meets, including the Impermanent Loss Guard's.
+     *
+     *  Nothing upstream can produce it: the price fetcher answers a
+     *  number and falls back to zero on every failure. So NaN means a
+     *  caller passed the wrong thing, which is a defect to surface rather
+     *  than a condition to absorb. */
+    /*- Not covered, deliberately: a numeric string like "3". It coerces
+     *  to the right number, so the figure is correct and there is nothing
+     *  to alert anyone to. This guard is about a result that cannot be
+     *  used, not about argument types. */
+    for (const [p0, p1] of [
+      [undefined, undefined],
+      [undefined, 7],
+      [3, undefined],
+      [NaN, 7],
+      [3, NaN],
+    ]) {
+      assert.throws(
+        () => positionValueUsd(POSITION, POOL, p0, p1),
+        /non-finite result/,
+        "should have thrown for prices " + JSON.stringify([p0, p1]),
+      );
+    }
+  });
+
+  it("names the values in the error, so the defect is locatable", () => {
+    /*- An error saying only "NaN" sends the reader back to the call
+     *  stack to work out which input was wrong. */
+    assert.throws(
+      () => positionValueUsd(POSITION, POOL, undefined, 7),
+      (err) => {
+        assert.match(err.message, /positionValueUsd/);
+        assert.match(err.message, /prices undefined\/7/);
+        return true;
+      },
+    );
   });
 });
