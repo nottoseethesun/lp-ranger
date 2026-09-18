@@ -31,9 +31,9 @@ test("requestPriceRevalue — asks for the re-value, deletes nothing", () => {
    */
   const st = {
     compoundHistory: [{ usdValue: 240.1 }],
-    totalCompoundedUsd: 240.1,
-    collectedFeesUsd: 9,
-    nftCompoundedUsdByTokenId: { 1: 2 },
+    compoundedAmount0: 240.1,
+    compoundedAmount1: 12,
+    nftCompoundedAmountsByTokenId: { 1: { amount0: 2, amount1: 1 } },
     totalLifetimeDepositUsd: 2500,
     lifetimeScanComplete: true,
     hodlBaseline: { hodlAmount0: 1 },
@@ -42,11 +42,15 @@ test("requestPriceRevalue — asks for the re-value, deletes nothing", () => {
   assert.equal(st._needsPriceRevalue, true);
   assert.equal(st.lifetimeScanComplete, false, "the Lifetime panel syncs");
   assert.deepEqual(st.compoundHistory, [{ usdValue: 240.1 }]);
-  assert.equal(st.totalCompoundedUsd, 240.1);
-  assert.deepEqual(st.nftCompoundedUsdByTokenId, { 1: 2 });
+  /*- The compounded COINS, which are what the position stores; the
+   *  dollars are priced wherever they are shown. */
+  assert.equal(st.compoundedAmount0, 240.1);
+  assert.equal(st.compoundedAmount1, 12);
+  assert.deepEqual(st.nftCompoundedAmountsByTokenId, {
+    1: { amount0: 2, amount1: 1 },
+  });
   assert.equal(st.totalLifetimeDepositUsd, 2500);
   assert.deepEqual(st.hodlBaseline, { hodlAmount0: 1 });
-  assert.equal(st.collectedFeesUsd, 9, "accumulator must survive");
   /*-
    *  _needsFullRescan would also re-derive the token amounts from the
    *  pool's history, which is what makes Reload slow.

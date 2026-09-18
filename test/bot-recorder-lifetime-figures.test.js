@@ -188,11 +188,14 @@ describe("_classifyAllCompounds — the per-NFT figure", () => {
      */
     /*- `usdValue` comes attached by the real `classifyCompounds`, which
      *  prices each event from the same options the scan passes it. */
+    /*- RAW units at UNEQUAL decimals — 18 for token0, 6 for token1 — so
+     *  a map that scaled both sides by one token's decimals could not
+     *  land on the right answer. 1 of token0, 2 of token1. */
     state.compoundResult = {
       compounds: [
         {
           amount0Deposited: "1000000000000000000",
-          amount1Deposited: "0",
+          amount1Deposited: "2000000",
           usdValue: 2,
           timestamp: 1,
           txHash: "0xc1",
@@ -208,7 +211,7 @@ describe("_classifyAllCompounds — the per-NFT figure", () => {
     await _classifyAllCompounds(
       new Set(["1"]),
       new Map([["1", { ilEvents: [], collectEvents: [], dlEvents: [] }]]),
-      { decimals0: 18, decimals1: 18, price0: 2, price1: 1 },
+      { decimals0: 18, decimals1: 6, price0: 2, price1: 1 },
       (p) => patches.push(p),
       null,
     );
@@ -217,8 +220,8 @@ describe("_classifyAllCompounds — the per-NFT figure", () => {
     assert.equal(patch.compoundedAmount1, 4);
     assert.deepEqual(
       patch.nftCompoundedAmountsByTokenId,
-      { 1: { amount0: 1, amount1: 0 } },
-      "one token0 compounded against this NFT",
+      { 1: { amount0: 1, amount1: 2 } },
+      "each token scaled by its own decimals",
     );
   });
 
@@ -234,19 +237,29 @@ describe("_classifyAllCompounds — the per-NFT figure", () => {
      *  here; this is the backstop for that guarantee breaking.
      */
     const patches = [];
+    /*- BOTH sides, every shape. Corrupting only one would pass a guard
+     *  that checked only that one, and the untested token's amounts
+     *  would be the ones mis-scaled. */
     for (const bad of [undefined, null, NaN, -1, 78, "18"]) {
-      await assert.rejects(
-        () =>
-          _classifyAllCompounds(
-            new Set(["1"]),
-            new Map([["1", { ilEvents: [], collectEvents: [], dlEvents: [] }]]),
-            { decimals0: bad, decimals1: 18, price0: 1, price1: 1 },
-            (p) => patches.push(p),
-            null,
-          ),
-        /decimals are invalid/,
-        `decimals0=${String(bad)} must be refused`,
-      );
+      for (const opts of [
+        { decimals0: bad, decimals1: 6 },
+        { decimals0: 18, decimals1: bad },
+      ]) {
+        await assert.rejects(
+          () =>
+            _classifyAllCompounds(
+              new Set(["1"]),
+              new Map([
+                ["1", { ilEvents: [], collectEvents: [], dlEvents: [] }],
+              ]),
+              { ...opts, price0: 1, price1: 1 },
+              (p) => patches.push(p),
+              null,
+            ),
+          /decimals are invalid/,
+          `${JSON.stringify(opts)} must be refused`,
+        );
+      }
     }
     assert.equal(patches.length, 0, "nothing may be written");
   });
