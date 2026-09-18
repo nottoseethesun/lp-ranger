@@ -28,6 +28,7 @@ import {
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import { renderRebalanceEvents } from "./dashboard-history.js";
 import { posStore } from "./dashboard-positions.js";
+import { rememberUnmanagedUnclaimedFees } from "./dashboard-data-kpi-fees.js";
 
 /** Update the composition bar + labels, or show grey "no price data" state. */
 export function _applyComposition(d, pos) {
@@ -226,6 +227,9 @@ function _applyILDebug(d) {
 
 /** Apply phase-1 (fast) position details to the dashboard UI. */
 export function _apply(d, pos) {
+  /*- Recorded before anything renders, so the Compound gate reads the
+   *  same figure the panel is about to show. */
+  rememberUnmanagedUnclaimedFees(pos?.tokenId, d.feesUsd);
   // Range chart + price marker
   botConfig.price = d.poolState.price;
   pos.poolAddress = d.poolState.poolAddress || null;

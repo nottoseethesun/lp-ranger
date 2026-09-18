@@ -1651,12 +1651,13 @@ export const PARAM_HELP = {
         heading: "How it affects P&L",
         body:
           "Net P&amp;L = Current Position Value + Fees Earned &minus; " +
-          "Fees Compounded &minus; Initial Deposit for This LP. " +
-          "Fees Compounded are subtracted because they are already " +
-          "included in the Current Position Value (they were reinvested " +
-          "as additional liquidity). Without this subtraction, compounded " +
-          "fees would be double-counted. A higher deposit value lowers " +
-          "your reported profit; a lower value inflates it.",
+          "Initial Deposit for This LP. " +
+          "Fees Compounded are not added in: they were reinvested as " +
+          "additional liquidity, so they are already inside the Current " +
+          "Position Value, and <strong>Fees Earned</strong> counts only " +
+          "what is still unclaimed. Counting them again would " +
+          "double-count them. A higher deposit value lowers your " +
+          "reported profit; a lower value inflates it.",
       },
     ],
   },
