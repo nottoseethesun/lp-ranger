@@ -87,6 +87,13 @@ describe(".gitignore safety", () => {
     );
   });
 
+  it("ignores scratchpad/ (working notes; has held a pasted credential)", () => {
+    assert.ok(
+      lines.some((l) => l === "scratchpad/" || l === "scratchpad"),
+      "scratchpad/ should be in .gitignore — nothing in it belongs to the app, and it is where a credential gets pasted while debugging",
+    );
+  });
+
   it("ignores node_modules", () => {
     assert.ok(
       lines.some((l) => l === "node_modules" || l === "node_modules/"),
