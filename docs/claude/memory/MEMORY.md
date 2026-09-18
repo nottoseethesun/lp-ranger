@@ -84,6 +84,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no heuristic thresholds](feedback_no_heuristic_thresholds.md) — No heuristic dollar amounts guarding logic
 - [no junk repair code](feedback_no_junk_repair_code.md) — "Backfill" is banned; no repair/migration/dedup heaped onto a problem
 - [never clear to force a recompute](feedback_never_clear_to_force_a_recompute.md) — Ask for the rebuild with a flag; overwrite when the new value exists, never delete first
+- [don't persist a correction](feedback_dont_persist_a_correction.md) — Before adding state to remember a fix-up, ask whether the wrong value should be written at all
 - [no lazy loading](feedback_no_lazy_loading.md) — No lazy `require()` inside functions; import at module top
 - [no re-exports](feedback_no_reexports.md) — No barrel/aggregator re-exports; import from the owning module
 - [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — Exactly one literal per shipped config value, in the defaults file
