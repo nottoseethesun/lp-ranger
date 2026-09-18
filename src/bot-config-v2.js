@@ -29,17 +29,47 @@
 
 const { log } = require("./log");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { getAddress } = require("ethers");
 const { RETIRED_POSITION_KEYS } = require("./bot-config-keys");
 
-/** Default directory that holds the runtime bot config file. */
-const APP_CONFIG_DIR = path.join(
-  process.cwd(),
-  "app-config",
-  "user-configurable",
-);
 const CONFIG_FILE = "bot-config.json";
+
+/*-
+ *  Per-process sandbox standing in for the operator's config directory
+ *  while tests run. Created on first use, so a run that never touches an
+ *  undirected path creates nothing.
+ */
+let _testConfigDir = null;
+
+/**
+ * @private Directory holding the runtime bot config file.
+ *
+ * Under `node --test` this is a sandbox, not the operator's directory.
+ * Node sets `NODE_TEST_CONTEXT` in every test worker, so the redirect
+ * cannot be forgotten the way a per-file one can: a test that reaches
+ * this path is one that did not ask for a directory, and no test wants
+ * the operator's own config — the ones that need a config pass an
+ * explicit `dir`, and `scripts/check.js` only has to back the real file
+ * up because writes used to land on it.
+ *
+ * Resolved per call rather than once at load, so the answer cannot be
+ * fixed before a test process has identified itself. Production is
+ * unaffected: `NODE_TEST_CONTEXT` is undefined and `process.cwd()` does
+ * not move, so this returns what the module constant always did.
+ *
+ * @returns {string}
+ */
+function _appConfigDir() {
+  if (process.env.NODE_TEST_CONTEXT === undefined)
+    return path.join(process.cwd(), "app-config", "user-configurable");
+  if (_testConfigDir === null)
+    _testConfigDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "lp-ranger-test-config-"),
+    );
+  return _testConfigDir;
+}
 
 /**
  * Build a composite key from URL-style components.
@@ -90,7 +120,7 @@ function parseCompositeKey(key) {
  * @returns {string}
  */
 function _configPath(dir) {
-  return path.join(dir || APP_CONFIG_DIR, CONFIG_FILE);
+  return path.join(dir || _appConfigDir(), CONFIG_FILE);
 }
 
 /** @private Empty config structure. */
