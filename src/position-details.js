@@ -135,6 +135,30 @@ function _resolveEntryValueCached(diskConfig, posKey) {
 }
 
 /**
+ * The snapshot without the Per-Day P&L rows.
+ *
+ * `tracker.snapshot()` builds those rows from whatever epochs the
+ * tracker holds, and this path restores them from the epoch cache, which
+ * is keyed by POOL rather than by position. So a pool that was managed
+ * at some point leaves epochs behind, and a never-managed position in
+ * that same pool inherits them — arriving on screen as a populated table
+ * on a view that has no such table of its own.
+ *
+ * Dropped here rather than hidden in the dashboard: what is not shown is
+ * not sent. The rest of the snapshot stays, because the Current panel is
+ * built from it.
+ *
+ * @param {object|null} snap  Tracker snapshot, possibly empty.
+ * @returns {object|null} The same snapshot without `dailyPnl`.
+ */
+function _withoutPerDayRows(snap) {
+  if (snap === undefined || snap === null) return snap;
+  const rest = { ...snap };
+  delete rest.dailyPnl;
+  return rest;
+}
+
+/**
  * Enrich a tracker snapshot with the fields the unmanaged view shows.
  *
  * Current-panel figures only. An unmanaged position replaces the
@@ -338,7 +362,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     entryValue,
     currentValue: cur.value,
     rebalanceEvents: events.length > 0 ? events : null,
-    pnlSnapshot: snap,
+    pnlSnapshot: _withoutPerDayRows(snap),
   };
 }
 
@@ -347,4 +371,5 @@ module.exports = {
   computeLifetimeDetails,
   _getLifetimeSnapshot,
   _resolveEntryValueCached,
+  _withoutPerDayRows, // exported for tests
 };

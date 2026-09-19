@@ -110,7 +110,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [config stomp investigation](project_config_stomp_investigation.md) — bot-config.json silently overwritten before; root cause unknown, guards in place
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three-tier layout (config/data/logs); only two subdirs at the app-config top
 - [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
-- [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Always "Raspberry Pi 5 with Heat Sink and Fan"
+- [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Always "Raspberry Pi 5 (recommended configuration: …)", whole recommendation inside the parens
 - [PR #125 burn-in watch](project_pr125_burn_in_watch.md) — LP-browser rescan after a failed scan, in prod burn-in
 - [0.8.17 burn-in watch](project_0817_burn_in_watch.md) — Aggregator now really routes via 9mm; swap pricing on Prod changes with this release
 - [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — 0.9.2 + hotfix 0.9.2.1 on Prod; user says the app may be done, 1.0 after burn-in
@@ -127,6 +127,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [fresh deposit detection](project_fresh_deposit_detection.md) — Transfer scan with swap/drain/contract filters for lifetime HODL
 - [P&L accounting model](project_pnl_accounting_model.md) — Settled definitions: IL/G is divergence only, fees counted once in Profit
 - [lifetime metrics distinction](project_lifetime_metrics_distinction.md) — Lifetime Net P&L vs Lifetime IL/G — different formulas, different roles
+- [top panels price at today](project_top_panels_price_at_today.md) — Current + Lifetime value everything at today's prices; only Per-Day keeps period dollars
 - [Moralis setup flow](project_moralis_setup_flow.md) — Moralis key can be entered during wallet setup, not just Settings
 - [price source priority](project_price_source_priority.md) — Moralis → GeckoTerminal → DexScreener, current and historical
 - [scan-running guard intentional](project_scan_running_guard_intentional.md) — `_scanRunning` dropping concurrent scan requests is deliberate

@@ -37,7 +37,12 @@
  *     not need re-deriving, which is the whole cost advantage over
  *     Reload.
  *   - The pool rebalance-history scan (the expensive part of Reload).
- *   - Epoch P&L history.
+ *   - Epoch P&L history, unless `includeDailyPnl` is sent. A closed
+ *     period keeps its dollars but not the token amounts behind them, so
+ *     re-pricing one means reading its NFT's history again — which is
+ *     why it is opt-in and why it costs minutes on a long chain. It
+ *     still skips the pool's five-year Transfer scan, which is what
+ *     separates it from Reload.
  *
  * Cost: one batched read of the chain's three event histories
  * (`src/nft-events-batch.js`), from each NFT's mint
@@ -52,6 +57,7 @@ const { log } = require("./log");
 const { logCtx } = require("./logger");
 const { getPositionConfig } = require("./bot-config-v2");
 const { getTokenSymbol } = require("./server-scan");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 const {
   _validateKey,
   _resolveStateAndPosition,
@@ -78,11 +84,32 @@ const {
  * learns the re-scan has finished.
  *
  * @param {object} state  Per-position bot state.
+ * @param {boolean} [includeEpochs]  Also rebuild the Per-Day P&L table
+ *   at fresh prices. Off unless the operator ticked the box, because it
+ *   re-reads every NFT in the chain.
+ * @param {number} [windowDays]  Reach back only this many days when
+ *   rebuilding that table; 0 means the whole chain. Ignored without
+ *   `includeEpochs`, because nothing else this route does is
+ *   date-scoped — the rest are chain-wide totals that need every NFT.
  */
-function requestPriceRevalue(state) {
+function requestPriceRevalue(state, includeEpochs = false, windowDays = 0) {
   if (!state) return;
   state._needsPriceRevalue = true;
   state.lifetimeScanComplete = false;
+  /*-
+   *  Opt-in, because it is the expensive half. The stored figures this
+   *  route normally rebuilds are a handful; the Per-Day table is one
+   *  closed period per rebalance, and a period cannot be re-priced from
+   *  what is stored — it keeps its dollars but not the token amounts
+   *  behind them — so each NFT's history has to be read again.
+   */
+  if (includeEpochs !== true) return;
+  state._needsEpochPriceRevalue = true;
+  /*- Set alongside the request, never on its own: a window with no
+   *  rebuild behind it would sit on the state unread until some later
+   *  rebuild picked it up and silently scoped itself. */
+  state._epochRevalueWindowDays =
+    Number.isInteger(windowDays) && windowDays > 0 ? windowDays : 0;
 }
 
 /**
@@ -152,12 +179,26 @@ function createRescanPricesHandler(deps) {
       symbol1: getTokenSymbol(r.position.token1),
     });
 
+    const includeEpochs = body?.includeDailyPnl === true;
+    /*- The window is the operator's opt-in to a cheaper rebuild, but the
+     *  NUMBER is ours: the request carries a flag, not a day count, so a
+     *  hand-rolled POST cannot ask for a window the UI never offered.
+     *  One literal, in the shipped defaults, read by both tiers. */
+    const windowDays =
+      includeEpochs && body?.limitToRecentDays === true
+        ? readBotConfigDefaults().rescanPricesRecentWindowDays
+        : 0;
     log.info(
-      "[server] [rescan-prices] %s: re-valuing every stored figure at fresh prices",
+      "[server] [rescan-prices] %s: re-valuing every stored figure at fresh prices%s",
       cx,
+      includeEpochs
+        ? windowDays > 0
+          ? `, Per-Day P&L table included (last ${windowDays} days only)`
+          : ", Per-Day P&L table included"
+        : "",
     );
 
-    requestPriceRevalue(r.state);
+    requestPriceRevalue(r.state, includeEpochs, windowDays);
 
     /*- Trigger the scan NOW, exactly as Reload does.  Clearing state
      *  alone is not enough: bot-loop.js only re-scans off a 30-minute

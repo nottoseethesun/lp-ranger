@@ -269,13 +269,25 @@ async function _executeAndRecord(deps, ethersLib) {
   }
 }
 
-/** Record cancel TX gas in the P&L tracker when a rebalance is cancelled. */
+/**
+ * Record cancel TX gas in the P&L tracker when a rebalance is cancelled.
+ *
+ * Persisted immediately, like every other gas charge. A cancel pays for
+ * a rebalance that did NOT happen, so no epoch closes behind it and no
+ * other writer follows it — leave it unpersisted and it sits in memory
+ * until some unrelated rebalance or compound saves the tracker, and a
+ * restart before that drops it. Gas only accumulates; whatever is not
+ * written down cannot be rebuilt.
+ */
 async function _recordCancelGas(result, deps) {
   if (!result.cancelGasCostWei || result.cancelGasCostWei <= 0n) return;
   if (!deps._pnlTracker) return;
   const gasUsd = await _actualGasCostUsd(result.cancelGasCostWei);
   const gasNative = Number(result.cancelGasCostWei) / 1e18;
-  if (gasUsd > 0) deps._pnlTracker.addGas(gasUsd, gasNative);
+  if (gasUsd <= 0) return;
+  deps._pnlTracker.addGas(gasUsd, gasNative);
+  if (deps.updateBotState)
+    deps.updateBotState({ pnlEpochs: deps._pnlTracker.serialize() });
 }
 
 /** Check if estimated gas cost exceeds 0.5% of position value. */
@@ -639,6 +651,7 @@ module.exports = {
   _activateSwapBackoff,
   _liquidityChanged,
   _runRangeAndExec, // exported for tests
+  _recordCancelGas, // exported for tests
   pollCycle,
   DRAINED_RETIRE_MS,
 };

@@ -5,11 +5,15 @@
  * Decides what a newly opened live P&L epoch should record as its entry
  * value, and opens it.
  *
- * The live epoch is the period the position is in right now. It is not
- * persisted — `_mergeAndPersist` in `epoch-reconstructor.js` writes only
- * the closed epochs — so every reconstruction discards it and the next
- * poll opens a fresh one. That is fine and deliberately cheap, PROVIDED
- * each re-open lands on the same answer.
+ * The live epoch is the period the position is in right now. It is
+ * persisted with the closed epochs (`_mergeAndPersist` in
+ * `epoch-reconstructor.js`), because it carries the period's gas and gas
+ * only accumulates — nothing can rebuild a charge that is dropped.
+ *
+ * The figures THIS file is about need no such protection: an entry value
+ * is re-derived, identically, every time a period opens. But a restart
+ * can still find no saved period — before the first save, and after a
+ * rebalance closes one — so each re-open must land on the same answer.
  *
  * Stamping the entry as the position's value at open does not satisfy
  * that: the value moves with price, so the figure differs on every

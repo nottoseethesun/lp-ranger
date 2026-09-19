@@ -47,7 +47,7 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 - `pnl-epochs-cache.json` — reconstructed P&L epochs (expensive to rebuild)
 - `historical-price-cache.json` — GeckoTerminal OHLCV prices (rate-limited API)
 - `block-time-cache.json` — block-number → timestamp cache
-- `gecko-pool-cache.json` — GeckoTerminal pool base/quote orientation
+- `gecko-pool-cache.json` — GeckoTerminal pool base/quote orientation, and which pool a bare token's price is read from
 - `event-cache-*.json` — per-pool rebalance event scan results
 - `lp-position-cache-*.json` — LP position enumeration results
 - `nft-mint-date-cache.json` — NFT mint timestamps

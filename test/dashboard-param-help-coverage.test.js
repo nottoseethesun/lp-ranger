@@ -339,3 +339,25 @@ test("the slippage labels keep their live token-symbol span", async () => {
   assert.match(html, /<span id="slipT0Name">Token 0<\/span>\)/);
   assert.match(html, /<span id="slipT1Name">Token 1<\/span>\)/);
 });
+
+test("no section heading carries an HTML entity", async () => {
+  /*-
+   *  `dashboard-param-help.js` sets a heading with `textContent` and
+   *  only the body with `innerHTML`. An entity in a heading therefore
+   *  reaches the screen as the literal characters "&rsquo;" rather than
+   *  an apostrophe — visible to a reader, invisible to every gate.
+   *
+   *  Bodies are deliberately exempt: rich text there is the point.
+   */
+  const help = await paramHelp();
+  const offenders = [];
+  for (const [key, entry] of Object.entries(help))
+    for (const s of entry.sections || [])
+      if (/&[a-zA-Z]+;|&#\d+;/.test(s.heading || ""))
+        offenders.push(`${key}: ${s.heading}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    "headings are plain text — use the character itself, not an entity",
+  );
+});

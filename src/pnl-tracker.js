@@ -184,6 +184,11 @@ function createPnlTracker(opts = {}) {
       token0UsdExit: 0,
       token1UsdExit: 0,
       status: "open",
+      /*- Whether this epoch has already absorbed its NFT's mint gas.
+       *  Carried ON the epoch, not beside it, because the epoch is what
+       *  holds the charge: it is saved and restored with the epoch, so a
+       *  restart cannot add the same charge twice. See `addMintGas`. */
+      mintGasApplied: false,
     };
   }
 
@@ -366,6 +371,36 @@ function createPnlTracker(opts = {}) {
     if (native > 0) liveEpoch.gasNative += native;
   }
 
+  /**
+   * Add an NFT's mint gas to the live epoch, at most once per epoch.
+   *
+   * Separate from `addGas` because this is the one gas charge a caller
+   * may offer repeatedly: the mint receipt sits on disk in the HODL
+   * baseline, so every process start finds it again and offers it again.
+   * Every other charge is offered once, by the code that just spent it.
+   *
+   * The "already done" mark lives on the epoch rather than in bot state,
+   * so it is saved, restored and discarded alongside the charge it
+   * describes. A mark held anywhere else disagrees with the epoch as
+   * soon as one of the two survives a restart and the other does not,
+   * and the disagreement is silent: the charge is present, the mark says
+   * otherwise, and the epoch takes a second copy.
+   *
+   * A rebalance closes the epoch and opens a fresh one, whose mark is
+   * false, so the NEW NFT's mint gas is accepted. That is intended: each
+   * NFT's mint gas belongs to the epoch that NFT opened.
+   *
+   * @param {number} usd     Mint gas in USD, valued at the mint.
+   * @param {number} native  Mint gas in the chain's native token.
+   * @returns {boolean} Whether the charge was taken up.
+   */
+  function addMintGas(usd, native) {
+    if (!liveEpoch || liveEpoch.mintGasApplied === true) return false;
+    liveEpoch.mintGasApplied = true;
+    addGas(usd, native);
+    return true;
+  }
+
   return {
     openEpoch,
     updateLiveEpoch,
@@ -374,6 +409,7 @@ function createPnlTracker(opts = {}) {
     epochCount,
     getLiveEpoch,
     addGas,
+    addMintGas,
     serialize,
     restore,
   };

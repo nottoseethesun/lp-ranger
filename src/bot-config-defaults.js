@@ -158,6 +158,12 @@ const _NORMALIZERS = {
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */
   pricePauseExceptionPollWindowMultiple: (v) => _clampInt(v, 1, 10000),
+  /*- Re-scan Prices' "last N days" window.  Floor of 1 — a zero-day
+   *  window would re-price nothing and report success, which is the
+   *  silent no-op this option exists to avoid.  Ceiling of 3650 (ten
+   *  years) is past any pool's life, so a larger value is indistinct
+   *  from leaving the box unticked. */
+  rescanPricesRecentWindowDays: (v) => _clampInt(v, 1, 3650),
   /*- Impermanent Loss Guard, percent.  1..100; 100 is effectively off
    *  (the position would have to be worthless to trip it).  The bounds
    *  come from the shipped JSON itself (impermanentLossGuardPctMin /

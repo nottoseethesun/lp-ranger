@@ -44,9 +44,9 @@ describe("_applyMintGas", () => {
       const snap = tracker.snapshot(0.001);
       assert.ok(snap.totalGas > 0, "gas should be added to epoch");
       assert.strictEqual(
-        deps._botState._mintGasApplied,
+        tracker.getLiveEpoch().mintGasApplied,
         true,
-        "flag should be on _botState",
+        "the already-counted mark belongs on the epoch, so it is saved and restored with the charge it describes",
       );
 
       // Second call should be a no-op

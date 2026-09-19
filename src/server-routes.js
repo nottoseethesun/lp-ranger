@@ -45,21 +45,6 @@ const {
   computeLifetimeDetails: _defaultComputeLifetimeDetails,
 } = require("./position-details");
 const { emojiId } = require("./logger");
-const { fetchTokenPriceUsd } = require("./price-fetcher");
-
-/** Recompute gas at current native token price for unmanaged results. */
-async function _recomputeGasUsd(result) {
-  if (!result.totalGasNative) return;
-  try {
-    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
-    result.ltGas = result.totalGasNative * p;
-    if (result.dailyPnl)
-      for (const d of result.dailyPnl)
-        if (d.gasNative > 0) d.gasCost = d.gasNative * p;
-  } catch {
-    /* keep historical USD */
-  }
-}
 
 /**
  * Create route handler functions.
@@ -452,7 +437,6 @@ function createRouteHandlers(deps) {
         body,
         diskConfig,
       );
-      await _recomputeGasUsd(result);
       // Mark scan complete in the position's server state so the poll
       // cycle reports it — same path as managed positions.  This is the
       // ONLY way the dashboard detects "Synced" (no separate client flag).

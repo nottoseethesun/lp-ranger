@@ -44,10 +44,38 @@ const CHAIN = [
   { oldTokenId: "200", newTokenId: "300", blockNumber: 6_000 },
 ];
 
+/**
+ * A closed period as the pool-keyed epoch cache stores one.
+ *
+ * Only pools that were managed at some point have these. A position in
+ * such a pool that was never itself managed still restores them, because
+ * the cache is keyed by pool — which is the whole reason the response
+ * has to be explicit about what it withholds.
+ */
+const CACHED_EPOCH = Object.freeze({
+  id: 1,
+  openTime: Date.parse("2026-01-01T00:00:00Z"),
+  closeTime: Date.parse("2026-01-02T00:00:00Z"),
+  entryValue: 100,
+  exitValue: 95,
+  fees: 2,
+  feePnl: 2,
+  priceChangePnl: -7,
+  gas: 0.04,
+  gasNative: 0.03,
+  il: 0,
+  status: "closed",
+});
+
 /** Load the module with everything that would touch a chain replaced. */
-function load() {
+function load(cachedEpochs) {
   const walked = [];
   const stubs = {
+    "./epoch-cache": {
+      getCachedEpochs: () =>
+        cachedEpochs ? { closedEpochs: cachedEpochs, liveEpoch: null } : null,
+      setCachedEpochs: () => {},
+    },
     "./rebalancer": {
       getPoolState: async () => ({
         tick: 0,
@@ -120,8 +148,8 @@ function load() {
   }
 }
 
-const run = () => {
-  const { fn, walked } = load();
+const run = (cachedEpochs) => {
+  const { fn, walked } = load(cachedEpochs);
   return fn(null, null, BODY, { global: {}, positions: {} }).then((r) => ({
     r,
     walked,
@@ -175,6 +203,36 @@ describe("the unmanaged details response", () => {
      *  is built from, and it is not the per-NFT walk. */
     const { r } = await run();
     assert.equal(r.rebalanceEvents.length, 2);
+  });
+
+  it("ships no Per-Day rows even when the pool's cache holds epochs", async () => {
+    /*-
+     *  The case that can fail. With no cached epochs the snapshot has no
+     *  rows to leak and any implementation passes; the leak needs a pool
+     *  that was managed at some point, whose epochs this position
+     *  inherits through the pool-keyed cache.
+     *
+     *  `dashboard-history.js` reads `pnlSnapshot.dailyPnl` straight off
+     *  the polled payload, so a row reaching this field is a row on
+     *  screen — on a view that has no Per-Day table of its own.
+     */
+    const { r } = await run([{ ...CACHED_EPOCH }]);
+    assert.ok(r.pnlSnapshot, "the Current panel still needs the snapshot");
+    assert.equal(
+      r.pnlSnapshot.dailyPnl,
+      undefined,
+      "Per-Day rows must not reach an unmanaged position",
+    );
+  });
+
+  it("keeps the Current panel's figures alongside that", async () => {
+    /*-
+     *  Withholding the rows must not cost the two rows this view does
+     *  show. Dropping the whole snapshot would dash them.
+     */
+    const { r } = await run([{ ...CACHED_EPOCH }]);
+    assert.equal(r.pnlSnapshot.currentCompoundedUsd, 7.5);
+    assert.equal(r.pnlSnapshot.currentGasUsd, 1.25);
   });
 });
 

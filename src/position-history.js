@@ -378,18 +378,58 @@ async function _readCollectAndDrain(result, tokenId, prov, prefetched) {
 }
 
 /**
+ * Whether the exit value has to come off the chain.
+ *
+ * Normally only when none is recorded. For an NFT the bot rebalanced
+ * itself, `_applyCloseEntry` has already loaded one out of the rebalance
+ * log, so this is otherwise false and the recorded figure stands.
+ *
+ * Under `refresh` that is the wrong answer, and wrong in the way that
+ * matters most: the exit value is the largest term in a closed period,
+ * and `priceChangePnl` is `exitValue − entryValue − fees`. Re-pricing
+ * the entry and the fees while leaving the exit at its recorded price
+ * does not correct the row, it makes it wrong differently. The fee gate
+ * below already reasons this way about its own logged figure.
+ *
+ * `_supplementExitFromChain` recomputes it from the Collect amounts at
+ * the close prices, which `_supplementHistoricalPrices` has already
+ * refreshed by the time this runs.
+ *
+ * @param {object} result    History record for one NFT.
+ * @param {boolean} [refresh] Re-derive a figure the log already gave.
+ * @returns {boolean} Whether to read the exit value off the chain.
+ */
+function _needsExitFromChain(result, refresh) {
+  const recorded =
+    result.exitValueUsd !== undefined &&
+    result.exitValueUsd !== null &&
+    result.exitValueUsd !== 0;
+  const priced =
+    result.token0UsdPriceAtClose !== undefined &&
+    result.token0UsdPriceAtClose !== null;
+  return priced && (refresh === true || !recorded);
+}
+
+/**
  * Extract token amounts from chain and compute USD values: the entry
  * from the mint TX receipt, the exit value and lifetime fees from the
  * NFT's Collect/DecreaseLiquidity history, and gas from the receipts.
  * Requires txHashes and token prices to already be populated in the result.
+ *
  * @param {object} result   History result to supplement in-place.
  * @param {string} tokenId  NFT token ID.
  * @param {{collectEvents: Array, dlEvents: Array}|null} [collectAndDrain]
  *   See `getPositionHistory`'s `opts.collectAndDrain`.
+ * @param {boolean} [refresh]  Re-derive figures the log already supplied.
  */
-async function _supplementAmountsFromChain(result, tokenId, collectAndDrain) {
+async function _supplementAmountsFromChain(
+  result,
+  tokenId,
+  collectAndDrain,
+  refresh,
+) {
   const needEntry = needsEntryFromChain(result);
-  const needExit = !result.exitValueUsd && result.token0UsdPriceAtClose;
+  const needExit = _needsExitFromChain(result, refresh);
   /*- Fees are re-derived from the chain for every closed NFT whose close
    *  prices are known — including the ones the rebalance log already
    *  supplied a figure for, because that figure is the understated one.
@@ -542,13 +582,55 @@ async function _resolvePoolAddress(activePosition, tokenId) {
 }
 
 /**
+ * Which ends of a period still need a price fetched.
+ *
+ * Normally only the ends that have none: a price already on the record
+ * came from the rebalance log or an earlier scan and re-reading it would
+ * spend quota to arrive at the same number.
+ *
+ * Under `refresh` that reasoning inverts. The stored price is the one
+ * the operator is asking to replace, so treating it as sufficient makes
+ * the whole request a no-op — the request completes, reports success,
+ * and changes nothing.
+ *
+ * A period with no date at that end is never fetchable either way:
+ * there is no moment to ask about.
+ *
+ * @param {object} result   History record for one NFT.
+ * @param {boolean} refresh Re-read prices already present.
+ * @returns {{needOpen: boolean, needClose: boolean}}
+ */
+function _needsPriceFill(result, refresh) {
+  const wanted = refresh === true;
+  const hasOpen = result.mintDate !== undefined && result.mintDate !== null;
+  const hasClose = result.closeDate !== undefined && result.closeDate !== null;
+  const openPriced =
+    result.token0UsdPriceAtOpen !== undefined &&
+    result.token0UsdPriceAtOpen !== null;
+  const closePriced =
+    result.token0UsdPriceAtClose !== undefined &&
+    result.token0UsdPriceAtClose !== null;
+  return {
+    needOpen: hasOpen && (wanted || !openPriced),
+    needClose: hasClose && (wanted || !closePriced),
+  };
+}
+
+/**
  * Fill missing token prices from GeckoTerminal when dates are available.
+ *
+ * With `refresh`, a price already on the record is re-read rather than
+ * kept. That is the point of the Re-scan Prices path: the stored figure
+ * is the one under suspicion, so trusting it would make the whole
+ * request a no-op.
+ *
  * @param {object} result          History result to supplement in-place.
  * @param {object} activePosition  Bot's active position.
+ * @param {boolean} [refresh]      Re-read prices already present.
  */
-async function _supplementHistoricalPrices(result, activePosition) {
-  const needOpen = result.mintDate && !result.token0UsdPriceAtOpen;
-  const needClose = result.closeDate && !result.token0UsdPriceAtClose;
+async function _supplementHistoricalPrices(result, activePosition, refresh) {
+  const wanted = refresh === true;
+  const { needOpen, needClose } = _needsPriceFill(result, wanted);
   if (!needOpen && !needClose) return;
   const pool = await _resolvePoolAddress(activePosition, result.tokenId);
   if (!pool) return;
@@ -563,6 +645,7 @@ async function _supplementHistoricalPrices(result, activePosition) {
     const p = await fetchHistoricalPriceGecko(pool, ts, "pulsechain", {
       ...tokenOpts,
       blockNumber,
+      refresh: wanted,
     });
     if (p.price0 > 0) result[k0] = p.price0;
     if (p.price1 > 0) result[k1] = p.price1;
@@ -635,7 +718,11 @@ async function getPositionHistory(tokenId, opts = {}) {
     );
   }
   const _t2 = Date.now();
-  await _supplementHistoricalPrices(result, opts.activePosition);
+  await _supplementHistoricalPrices(
+    result,
+    opts.activePosition,
+    opts.refreshPrices === true,
+  );
   log.info(
     "[history] _supplementHistoricalPrices #%s: %dms",
     tokenId,
@@ -654,7 +741,12 @@ async function getPositionHistory(tokenId, opts = {}) {
       result.token1UsdPriceAtClose = fb.price1;
   }
   const _t3 = Date.now();
-  await _supplementAmountsFromChain(result, tokenId, opts.collectAndDrain);
+  await _supplementAmountsFromChain(
+    result,
+    tokenId,
+    opts.collectAndDrain,
+    opts.refreshPrices === true,
+  );
   log.info(
     "[history] _supplementAmountsFromChain #%s: %dms",
     tokenId,
@@ -663,4 +755,9 @@ async function getPositionHistory(tokenId, opts = {}) {
   return result;
 }
 
-module.exports = { getPositionHistory, needsEntryFromChain };
+module.exports = {
+  getPositionHistory,
+  needsEntryFromChain,
+  _needsPriceFill, // exported for tests
+  _needsExitFromChain, // exported for tests
+};

@@ -84,10 +84,18 @@ function getCachedEpochs(keyOpts) {
 
 /**
  * Save P&L tracker state to the cache for a position.
- * Accepts either a full tracker state ({ closedEpochs, liveEpoch })
- * or a plain closedEpochs array (backward compat with epoch-reconstructor).
+ *
+ * Pass a full tracker state — `tracker.serialize()`. Every caller does.
+ *
+ * A bare array is also accepted, and asserts something: that there is no
+ * live epoch. It stores `null` for one. That is destructive to say by
+ * accident, because the live epoch holds gas, gas only accumulates, and
+ * nothing can re-derive it — so a `null` written in passing erases a
+ * period's cost permanently. Pass an array only to mean it.
+ *
  * @param {object}         keyOpts  Options for _cacheKey.
- * @param {object|object[]} data    Tracker state or closedEpochs array.
+ * @param {object|object[]} data    Tracker state, or a closedEpochs
+ *   array to store with no live epoch.
  */
 function setCachedEpochs(keyOpts, data) {
   const cache = _readCache();

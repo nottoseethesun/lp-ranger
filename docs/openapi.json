@@ -1710,6 +1710,16 @@
                   "positionKey": {
                     "type": "string",
                     "description": "Composite key."
+                  },
+                  "includeDailyPnl": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Also re-price the Per-Day P&L table — every closed period's gas and both pair-token prices. A closed period keeps its dollar figures but not the token amounts behind them, so this re-reads each NFT's history: minutes on a long rebalance chain. Still skips the five-year pool scan that Reload Current Position performs."
+                  },
+                  "limitToRecentDays": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Rebuild only the most recent periods of the Per-Day P&L table, leaving older rows with the figures they already hold. A flag, not a day count: the window length is the rescanPricesRecentWindowDays shipped default, so a request cannot ask for a reach the dashboard never offered. Ignored without includeDailyPnl, since nothing else this route re-values is date-scoped. Ignored too when the table is incomplete, because a stored period does not record which NFT it came from, so a partial rebuild cannot tell a gap from an old period."
                   }
                 },
                 "required": ["positionKey"]

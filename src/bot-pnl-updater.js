@@ -15,6 +15,7 @@ const { ensureLiveEpoch } = require("./live-epoch-entry");
 const config = require("./config");
 const rangeMath = require("./range-math");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
+const { fetchHistoricalTokenPriceUsd } = require("./historical-token-price");
 const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
 const { hasCompoundedTotal } = require("./bot-config-keys");
 const { _computeIL } = require("./bot-pnl-il");
@@ -309,19 +310,29 @@ async function overridePnlWithRealValues(
    *  see a stable shape rather than `undefined`.
    */
   snap.currentCompoundedUsd = 0;
-  // Recompute all gas in current USD: gasNative × current native token price
+  /*-
+   *  The Lifetime panel's Gas line is the whole position's gas coins
+   *  priced now, the way every other lifetime figure is priced now.
+   *
+   *  The Per-Day table is deliberately NOT re-priced here. Each of its
+   *  rows is a closed accounting period, and a closed period keeps the
+   *  dollars it closed at — its fees and price movement already do.
+   *  Gas re-priced on every poll would be the one column in that table
+   *  whose history moved with the native token, and it would carry
+   *  Profit and Net P&L with it, since both subtract gas.
+   *
+   *  The two therefore answer different questions and will not agree
+   *  once the native token has moved: the Lifetime line says what this
+   *  position's gas is worth today, the column says what each period's
+   *  gas cost at the time. Documented for the operator in the table's
+   *  own help dialog.
+   */
   if (snap.totalGasNative > 0) {
     try {
       const nativePrice = await fetchTokenPriceUsd(
         config.CHAIN.nativeWrappedToken,
       );
       snap.totalGas = snap.totalGasNative * nativePrice;
-      // Recompute per-day gas costs at current price
-      if (snap.dailyPnl) {
-        for (const day of snap.dailyPnl) {
-          if (day.gasNative > 0) day.gasCost = day.gasNative * nativePrice;
-        }
-      }
     } catch {
       /* keep historical USD sums as fallback */
     }
@@ -343,25 +354,52 @@ async function overridePnlWithRealValues(
 }
 
 /**
- * Apply initial mint gas to the P&L tracker (once).
- * The HODL baseline stores `mintGasWei` from the mint TX receipt.
- * Convert to USD and add to the live epoch's gas on first encounter.
+ * Apply the NFT's mint gas to the P&L tracker, once per epoch.
+ *
+ * The HODL baseline holds `mintGasWei` from the mint TX receipt, and
+ * holds it permanently — so this runs on every poll of every process and
+ * has to decide each time whether the charge is already in. The epoch
+ * itself answers that (`addMintGas`), because the mark is saved with the
+ * charge; a mark kept in bot state was lost on restart while the charge
+ * was not, and the difference was a second copy of the charge.
+ *
+ * **Valued at the mint, not at today.** `mintGasWei` is a coin amount
+ * from a transaction that may be years old, and the dollars it cost are
+ * the dollars it cost then. Pricing it at the current market would make
+ * the figure depend on when the operator last restarted the app, which
+ * is not a property of the position. The baseline already carries
+ * `mintTimestamp` for this.
+ *
+ * A baseline carrying no timestamp falls back to today's price rather
+ * than skipping the charge, matching `_nativePriceForGas`: a gas figure
+ * that is slightly off beats one that silently reads as free.
+ *
+ * @param {object} deps         Poll-cycle deps; `_botState.hodlBaseline`
+ *   supplies `mintGasWei` and `mintTimestamp`.
+ * @param {object} pnlTracker   Tracker holding the live epoch.
+ * @returns {Promise<void>}
  */
 async function _applyMintGas(deps, pnlTracker) {
-  // Guard flag must be on _botState (persists across polls), not on deps
-  // (recreated every poll cycle — see bot-loop.js poll closure).
-  if (deps._botState?._mintGasApplied) return;
+  const live = pnlTracker.getLiveEpoch ? pnlTracker.getLiveEpoch() : null;
+  if (live === undefined || live === null) return;
+  if (live.mintGasApplied === true) return;
   const bl = deps._botState?.hodlBaseline;
   if (!bl?.mintGasWei || bl.mintGasWei === "0") return;
   const wei = BigInt(bl.mintGasWei);
   if (wei <= 0n) return;
-  const usd = await actualGasCostUsd(wei);
+  const ts = bl.mintTimestamp;
+  const when =
+    typeof ts === "number" && ts > 0
+      ? { timestamp: ts, refresh: false }
+      : undefined;
+  const usd = await actualGasCostUsd(wei, when);
   const native = Number(wei) / 1e18;
-  if (usd > 0) {
-    pnlTracker.addGas(usd, native);
-    if (deps._botState) deps._botState._mintGasApplied = true;
-    log.info("[bot] Applied initial mint gas: $%s", usd.toFixed(4));
-  }
+  if (usd > 0 && pnlTracker.addMintGas(usd, native))
+    log.info(
+      "[bot] Applied initial mint gas: $%s (%s)",
+      usd.toFixed(4),
+      bl.mintDate || "date unknown — valued at today's price",
+    );
 }
 
 /** Estimate gas cost in USD for a rebalance (~800k gas). */
@@ -376,10 +414,51 @@ async function estimateGasCostUsd(provider) {
   }
 }
 
-/** Compute actual gas cost in USD from total PLS spent (in wei). */
-async function actualGasCostUsd(gasCostWei) {
+/**
+ * The native token's USD price for a gas charge.
+ *
+ * With no `when`, the current price — right for gas being spent now,
+ * which is every live rebalance, compound and cancel.
+ *
+ * With a `when`, the price on that day, so a charge from months ago is
+ * valued at what it cost rather than at today's market. The current
+ * price is the fallback rather than zero: `actualGasCostUsd` answers 0
+ * on failure, and a positive wei amount costing $0 is read downstream as
+ * "price unknown", which drops that epoch from the Per-Day table
+ * entirely. A slightly-off figure beats a vanished row.
+ */
+async function _nativePriceForGas(when) {
+  const token = config.CHAIN.nativeWrappedToken;
+  const at = when !== undefined && when !== null ? when.timestamp : undefined;
+  if (at !== undefined && at !== null) {
+    const historical = await fetchHistoricalTokenPriceUsd(token, {
+      timestamp: at,
+      blockNumber: when.blockNumber,
+      refresh: when.refresh === true,
+    });
+    if (historical > 0) return historical;
+    log.warn(
+      "[bot] gas: no historical native price for ts=%s — valuing at today's",
+      at,
+    );
+  }
+  return fetchTokenPriceUsd(token);
+}
+
+/**
+ * Compute actual gas cost in USD from total PLS spent (in wei).
+ *
+ * @param {bigint|number} gasCostWei  Native token spent, in wei.
+ * @param {object} [when]             When the gas was spent. Omit for now.
+ * @param {number} [when.timestamp]   Unix seconds of the charge.
+ * @param {number} [when.blockNumber] Block of the charge, for Moralis.
+ * @param {boolean} [when.refresh]    Read past the price cache and
+ *   replace what it holds, rather than trusting a cached day.
+ * @returns {Promise<number>} USD cost, or 0 when no price could be had.
+ */
+async function actualGasCostUsd(gasCostWei, when) {
   try {
-    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
+    const p = await _nativePriceForGas(when);
     return (Number(gasCostWei) / 1e18) * p;
   } catch {
     return 0;

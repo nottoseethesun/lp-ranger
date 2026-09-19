@@ -365,7 +365,13 @@ describe("_applyRebalanceResult", () => {
     assert.strictEqual(position.tickUpper, 100);
     assert.strictEqual(position.liquidity, "5000");
     assert.strictEqual(deps._botState.oorSince, null);
-    assert.strictEqual(deps._botState._mintGasApplied, false);
+    /*- No mint-gas flag is set here any more. The "already counted"
+     *  mark lives on the epoch, and this rebalance closes it; the fresh
+     *  epoch opens unmarked. See test/live-epoch-gas-persistence.js. */
+    assert.ok(
+      !("_mintGasApplied" in deps._botState),
+      "bot state must not carry a mint-gas flag — it disagreed with the epoch across restarts",
+    );
   });
 
   it("does not update tokenId when newTokenId is 0n", () => {

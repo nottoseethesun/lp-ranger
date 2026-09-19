@@ -93,15 +93,54 @@ afterEach(() => {
 });
 
 describe("Re-scan Prices dialog", () => {
-  it("offers no options", () => {
+  it("offers two options, both off, and the window needs the rebuild", () => {
+    /*-
+     *  The first option is the expensive half — re-pricing the Per-Day
+     *  table re-reads every NFT in the chain. Ticked by default it would
+     *  turn a quick correction into minutes of chain reads that nobody
+     *  asked for, so the default is the thing being pinned here.
+     *
+     *  The second only narrows the first, so it starts disabled: a
+     *  window with no rebuild behind it scopes nothing.
+     */
     dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
     const open = overlay();
     assert.notEqual(open, null, "the dialog opened");
     const inputs = open.querySelectorAll("input");
-    assert.equal(inputs.length, 0);
+    assert.equal(inputs.length, 2, "the Per-Day opt-in and its window");
+    const box = open.querySelector("#rescanIncludeDailyPnl");
+    assert.notEqual(box, null, "the Per-Day opt-in is present");
+    assert.equal(box.type, "checkbox");
+    assert.equal(box.checked, false, "unticked by default");
+    const win = open.querySelector("#rescanLimitRecent");
+    assert.notEqual(win, null, "the window option is present");
+    assert.equal(win.checked, false, "unticked by default");
+    assert.equal(win.disabled, true, "and unusable until the rebuild is on");
   });
 
-  it("sends only the position key", async () => {
+  it("enables the window with the rebuild, and clears it again", () => {
+    /*-
+     *  Clearing on the way back matters: a tick left standing on a
+     *  disabled control still reads as checked at submit time, which
+     *  would send a window for a rebuild that is not happening.
+     */
+    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    const open = overlay();
+    const daily = open.querySelector("#rescanIncludeDailyPnl");
+    const win = open.querySelector("#rescanLimitRecent");
+
+    daily.checked = true;
+    daily.dispatchEvent(new window.Event("change"));
+    assert.equal(win.disabled, false, "available once the rebuild is on");
+
+    win.checked = true;
+    daily.checked = false;
+    daily.dispatchEvent(new window.Event("change"));
+    assert.equal(win.disabled, true, "unusable again");
+    assert.equal(win.checked, false, "and no longer ticked");
+  });
+
+  it("sends the key, and does not opt in unless asked", async () => {
     dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
     overlay().querySelector("#rescanPricesGoBtn").click();
     await settle();
@@ -110,7 +149,63 @@ describe("Re-scan Prices dialog", () => {
     assert.equal(request.url, "/api/position/rescan-prices");
     assert.equal(request.init.method, "POST");
     const body = JSON.parse(request.init.body);
-    assert.deepEqual(body, { positionKey: KEY });
+    assert.deepEqual(body, {
+      positionKey: KEY,
+      includeDailyPnl: false,
+      limitToRecentDays: false,
+    });
+  });
+
+  it("opts in when the box is ticked", async () => {
+    /*-
+     *  A real boolean, not the string a form would carry: the server
+     *  commits to minutes of chain reads only on `=== true`.
+     */
+    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    overlay().querySelector("#rescanIncludeDailyPnl").checked = true;
+    overlay().querySelector("#rescanPricesGoBtn").click();
+    await settle();
+    const body = JSON.parse(requests[0].init.body);
+    assert.deepEqual(body, {
+      positionKey: KEY,
+      includeDailyPnl: true,
+      limitToRecentDays: false,
+    });
+  });
+
+  it("asks for the window only when both boxes are ticked", async () => {
+    /*-
+     *  A flag, not a day count: the server owns the number, so a request
+     *  cannot ask for a reach the dialog never offered.
+     */
+    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    const open = overlay();
+    const daily = open.querySelector("#rescanIncludeDailyPnl");
+    daily.checked = true;
+    daily.dispatchEvent(new window.Event("change"));
+    open.querySelector("#rescanLimitRecent").checked = true;
+    open.querySelector("#rescanPricesGoBtn").click();
+    await settle();
+    assert.deepEqual(JSON.parse(requests[0].init.body), {
+      positionKey: KEY,
+      includeDailyPnl: true,
+      limitToRecentDays: true,
+    });
+  });
+
+  it("starts unticked again on a later open", async () => {
+    /*-
+     *  The dialog is rebuilt from its template each time, so a choice
+     *  made once must not quietly ride along on the next request.
+     */
+    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    overlay().querySelector("#rescanIncludeDailyPnl").checked = true;
+    overlay().remove();
+    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    assert.equal(
+      overlay().querySelector("#rescanIncludeDailyPnl").checked,
+      false,
+    );
   });
 
   it("shows the server's reason when it refuses, and hands the button back", async () => {

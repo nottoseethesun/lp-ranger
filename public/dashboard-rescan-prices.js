@@ -45,6 +45,11 @@ import { ethers } from "./ethers-adapter.js";
 import { log } from "./dashboard-log.js";
 import { g, cloneTpl, fetchWithCsrf } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
+/*- Safe to import: dashboard-config-inputs reaches only helpers,
+ *  data-cache and throttle, none of which import this module — so unlike
+ *  the dashboard-data import the header warns about, this closes no
+ *  cycle. */
+import { getInputDefault } from "./dashboard-config-inputs.js";
 
 /*- Canonicalize to EIP-55 so the composite key byte-matches the
  *  server's (built via bot-config-v2.compositeKey, which checksums).
@@ -132,6 +137,38 @@ function _hideNotice(el) {
   if (el) el.classList.remove("9mm-pos-mgr-is-shown");
 }
 
+/**
+ * Bind the "last N days" option to the Per-Day rebuild it narrows.
+ *
+ * It only scopes that rebuild, so it follows that checkbox: enabled with
+ * it, disabled and CLEARED without it. Clearing matters — a tick left
+ * standing on a disabled control still reads as checked at submit time,
+ * which would send a window for a rebuild that is not happening.
+ *
+ * The day count comes from the server's shipped defaults rather than a
+ * literal here, so the label cannot disagree with the number the server
+ * applies (feedback_one_literal_per_shipped_default). Until that fetch
+ * resolves the label keeps its template wording, which names no number.
+ *
+ * @param {HTMLElement} overlay  The open dialog.
+ */
+function _wireRecentLimit(overlay) {
+  const daily = overlay.querySelector("#rescanIncludeDailyPnl");
+  const recent = overlay.querySelector("#rescanLimitRecent");
+  if (daily === null || recent === null) return;
+  const days = getInputDefault("rescanPricesRecentWindowDays");
+  if (typeof days === "number" && days > 0) {
+    const label = overlay.querySelector('[data-tpl="limitRecentLabel"]');
+    if (label) label.textContent = `Limit to the last ${days} days`;
+  }
+  const sync = () => {
+    recent.disabled = !daily.checked;
+    if (!daily.checked) recent.checked = false;
+  };
+  daily.addEventListener("change", sync);
+  sync();
+}
+
 /** Wire the dialog's controls once it is in the DOM. */
 function _wireDialog(overlay, getStatus) {
   const status = getStatus();
@@ -141,6 +178,8 @@ function _wireDialog(overlay, getStatus) {
 
   if (managed) _hideNotice(notice);
   else _showNotice(notice);
+
+  _wireRecentLimit(overlay);
 
   if (go === null) return;
   go.disabled = !managed;
@@ -222,7 +261,26 @@ async function _submit(overlay, go, getStatus) {
   const key = _activeKey();
   if (!key) return;
   _setBusy(overlay, go, true);
-  const body = JSON.stringify({ positionKey: key });
+  /*-
+   *  Read from the checkbox rather than kept in module state: the dialog
+   *  is rebuilt from its template on every open, so the control starts
+   *  unticked each time and the request cannot inherit a choice the
+   *  operator made in an earlier one.
+   */
+  const includeDailyPnl =
+    overlay.querySelector("#rescanIncludeDailyPnl")?.checked === true;
+  /*- Sent as a flag, not a day count: the server owns the number, so a
+   *  request cannot ask for a window the operator was never shown. Only
+   *  meaningful with the rebuild above, and `_wireRecentLimit` clears it
+   *  whenever that is unticked. */
+  const limitToRecentDays =
+    includeDailyPnl &&
+    overlay.querySelector("#rescanLimitRecent")?.checked === true;
+  const body = JSON.stringify({
+    positionKey: key,
+    includeDailyPnl,
+    limitToRecentDays,
+  });
   try {
     const res = await fetchWithCsrf("/api/position/rescan-prices", {
       method: "POST",
