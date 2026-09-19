@@ -353,72 +353,6 @@ async function overridePnlWithRealValues(
   }
 }
 
-/**
- * Record the NFT's mint gas on the P&L tracker's open period.
- *
- * The HODL baseline holds `mintGasWei` from the mint TX receipt, and
- * holds it permanently — so this runs on every poll of every process and
- * offers the same charge each time. `setMintGas` is written rather than
- * added for exactly that reason: the epoch records how much of its gas
- * is the mint charge, so offering the figure again costs nothing and
- * offering a re-priced one replaces it.
- *
- * **Does not persist the tracker, unlike every other gas writer.**
- * `_recordCancelGas` and `_applyCompoundGas` both write out immediately
- * because what they charge cannot be cheaply recovered — a cancel is
- * offered once by the code that spent it, and a chain-wide compound
- * total costs a lifetime scan. This charge is different: the amount is
- * on disk in the baseline and the price is in the day-keyed cache, so a
- * restart that loses it re-derives it on the next poll. Both halves are
- * lost together — the moved `gas` and the recorded portion live in the
- * same object — so the epoch that comes back is self-consistent and the
- * charge lands once, not twice.
- *
- * **Valued at the mint, not at today.** `mintGasWei` is a coin amount
- * from a transaction that may be years old, and the dollars it cost are
- * the dollars it cost then. Pricing it at the current market would make
- * the figure depend on when the operator last restarted the app, which
- * is not a property of the position. The baseline already carries
- * `mintTimestamp` for this.
- *
- * A baseline carrying no timestamp falls back to today's price rather
- * than skipping the charge, matching `_nativePriceForGas`: a gas figure
- * that is slightly off beats one that silently reads as free.
- *
- * @param {object} deps         Poll-cycle deps; `_botState.hodlBaseline`
- *   supplies `mintGasWei` and `mintTimestamp`.
- * @param {object} pnlTracker   Tracker holding the live epoch.
- * @returns {Promise<void>}
- */
-async function _applyMintGas(deps, pnlTracker) {
-  const live = pnlTracker.getLiveEpoch ? pnlTracker.getLiveEpoch() : null;
-  if (live === undefined || live === null) return;
-  const bl = deps._botState?.hodlBaseline;
-  if (!bl?.mintGasWei || bl.mintGasWei === "0") return;
-  const wei = BigInt(bl.mintGasWei);
-  if (wei <= 0n) return;
-  const ts = bl.mintTimestamp;
-  /*- The block goes with the timestamp. Only Moralis can price an old
-      mint — it looks up by block, and GeckoTerminal's public OHLCV
-      answers 401 for anything past 180 days — so a `when` carrying the
-      timestamp alone silently falls through to today's price on every
-      NFT older than that. Undefined when the baseline carries no block,
-      which reaches the same fallback; Reload Position re-derives the
-      baseline and with it the block. */
-  const when =
-    typeof ts === "number" && ts > 0
-      ? { timestamp: ts, blockNumber: bl.mintBlockNumber, refresh: false }
-      : undefined;
-  const usd = await actualGasCostUsd(wei, when);
-  const native = Number(wei) / 1e18;
-  if (usd > 0 && pnlTracker.setMintGas(usd, native))
-    log.info(
-      "[bot] Applied initial mint gas: $%s (%s)",
-      usd.toFixed(4),
-      bl.mintDate || "date unknown — valued at today's price",
-    );
-}
-
 /** Estimate gas cost in USD for a rebalance (~800k gas). */
 async function estimateGasCostUsd(provider) {
   try {
@@ -596,7 +530,6 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
          *  shows. */
         compoundedAccrued: nftCompoundedUsd,
       });
-      await _applyMintGas(deps, pnlTracker);
       pnlSnapshot = pnlTracker.snapshot(poolState.price);
       await overridePnlWithRealValues(
         pnlSnapshot,
@@ -702,7 +635,6 @@ module.exports = {
   estimateGasCostUsd,
   actualGasCostUsd,
   updatePnlAndStats,
-  _applyMintGas,
   _maxAmount,
   _totalLifetimeDeposit,
 };

@@ -237,14 +237,6 @@ function _publishBaseline(d, botState, updateBotState) {
         public/dashboard-date-utils.js#toMintTsSeconds for read-side
         normalization that still tolerates legacy ISO strings. */
     mintTimestamp: d.mintTimestamp,
-    /*- The block the mint landed in. Kept because Moralis prices by
-        block and is the only historical source that can still answer
-        for an old NFT: GeckoTerminal's public OHLCV refuses anything
-        past 180 days with a 401, so a timestamp alone strands the mint
-        gas at today's price. Both lookups that need it read it here: the
-        entry-value prices at this block, and `_applyMintGas` in
-        bot-pnl-updater.js prices the gas at it. */
-    mintBlockNumber: d.mintBlockNumber,
     mintGasWei: d.mintGasWei || "0",
   };
   botState.hodlBaseline = baseline;
@@ -338,7 +330,6 @@ async function initHodlBaseline(
         price1,
         mintDate,
         mintTimestamp,
-        mintBlockNumber: mintLog.blockNumber,
         mintGasWei,
       },
       botState,
@@ -353,7 +344,7 @@ async function initHodlBaseline(
  * Compute position baseline (entry amounts, entry value, mint date) from chain data.
  * Standalone version of initHodlBaseline — no bot state needed.
  * @returns {Promise<{entryValue, hodlAmount0, hodlAmount1, mintDate,
- *   mintTimestamp, mintBlockNumber, mintGasWei, price0, price1}|null>}
+ *   mintTimestamp, mintGasWei, price0, price1}|null>}
  */
 async function getPositionBaseline(provider, ethersLib, position) {
   try {
@@ -412,7 +403,6 @@ async function getPositionBaseline(provider, ethersLib, position) {
       hodlAmount1,
       mintDate: new Date(mintTimestamp * 1000).toISOString().slice(0, 10),
       mintTimestamp,
-      mintBlockNumber: mintLog.blockNumber,
       mintGasWei: mintGasWei || "0",
       price0,
       price1,

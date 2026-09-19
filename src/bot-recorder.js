@@ -577,8 +577,11 @@ function _updateHodlBaseline(botState, result, mintNow) {
     hodlAmount1: a1,
     token0UsdPrice: p0,
     token1UsdPrice: p1,
-    // Preserve mint gas from the rebalance result so _applyMintGas can
-    // add it to the new epoch.  Without this, the gas field shows "—".
+    /*- The new NFT's mint gas, kept on the baseline because that is
+        where the lifetime scan and `position-history` read it from: it
+        seeds `totalNftGasWei` for this NFT, which the Current panel
+        prices at today and a reconstructed period prices at its own
+        close day. */
     mintGasWei: result.mintGasCostWei ? String(result.mintGasCostWei) : "0",
   };
 }
@@ -623,10 +626,6 @@ function _applyRebalanceResult(deps, result) {
   const mintNow = new Date().toISOString();
   if (deps._botState) {
     deps._botState.oorSince = null;
-    /*- Nothing to reset here for mint gas. The recorded figure lives on
-     *  the epoch (see `setMintGas` in pnl-tracker.js), and this
-     *  rebalance closes the old epoch; the fresh one opens with no
-     *  figure, so the new NFT's mint gas is taken up there. */
     /*- Flag the next lifetime scan to re-derive the chain-wide figures.
      *  There is a new NFT in the rebalance chain, and the mint took the
      *  wallet's whole balance of both tokens — so anything that arrived

@@ -365,12 +365,13 @@ describe("_applyRebalanceResult", () => {
     assert.strictEqual(position.tickUpper, 100);
     assert.strictEqual(position.liquidity, "5000");
     assert.strictEqual(deps._botState.oorSince, null);
-    /*- No mint-gas flag is set here any more. The "already counted"
-     *  mark lives on the epoch, and this rebalance closes it; the fresh
-     *  epoch opens unmarked. See test/live-epoch-gas-persistence.js. */
+    /*- No mint-gas flag on bot state. An NFT's mint gas is not copied
+     *  onto a period at all: it is part of that NFT's chain-derived
+     *  `totalNftGasWei`, which the Current panel prices at today and a
+     *  reconstructed period prices at its own close day. */
     assert.ok(
       !("_mintGasApplied" in deps._botState),
-      "bot state must not carry a mint-gas flag — it disagreed with the epoch across restarts",
+      "bot state must not carry a mint-gas flag — the charge is not tracked per-period",
     );
   });
 

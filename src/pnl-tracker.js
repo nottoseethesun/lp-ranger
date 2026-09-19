@@ -87,8 +87,6 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number}  il               Impermanent loss (USD, positive = loss).
  * @property {number}  gas              Gas cost charged to this epoch (USD).
  * @property {number}  gasNative        The same, in the chain's native token.
- * @property {number}  mintGas          How much of `gas` is this NFT's mint charge (USD), so a re-offer rewrites that portion rather than adding to it. See `setMintGas`.
- * @property {number}  mintGasNative    The same, in the chain's native token.
  * @property {number}  importedGas      Compound gas spent BEFORE this epoch opened (USD). Held apart from `gas`: the lifetime total counts it, the Per-Day row does not. See `setImportedGas`.
  * @property {number}  importedGasNative The same, in the chain's native token.
  * @property {number|null} exitValue    USD value at close (null while open).
@@ -189,12 +187,6 @@ function createPnlTracker(opts = {}) {
       token0UsdExit: 0,
       token1UsdExit: 0,
       status: "open",
-      /*- How much of `gas` is this NFT's mint charge. Recorded so the
-       *  charge can be re-offered — the mint receipt is on disk and
-       *  every poll finds it — without being added twice, and so a
-       *  re-priced figure can replace it. See `setMintGas`. */
-      mintGas: 0,
-      mintGasNative: 0,
       /*- Gas the position spent on compounds BEFORE this period opened,
        *  recovered from chain by the lifetime scan. Held apart from
        *  `gas` because it belongs to the position's history, not to this
@@ -394,70 +386,6 @@ function createPnlTracker(opts = {}) {
   }
 
   /**
-   * Record an NFT's mint gas on the live epoch.
-   *
-   * Separate from `addGas` because this is the one gas charge a caller
-   * offers repeatedly: the mint receipt sits on disk in the HODL
-   * baseline, so every poll finds it again and offers it again. Every
-   * other charge is offered once, by the code that just spent it.
-   *
-   * So the epoch records how much of `gas` IS the mint charge, and this
-   * moves `gas` by the difference. Offering the same figure again
-   * changes nothing; offering a re-priced figure replaces the old one
-   * exactly. `gas` therefore stays the epoch's whole gas — the Lifetime
-   * total and the Per-Day row read it unchanged — while the mint portion
-   * stays correctable, which is what lets Re-scan Prices fix a charge
-   * that was first valued at a fallback price.
-   *
-   * A rebalance opens a fresh epoch with no figure recorded, so the NEW
-   * NFT's mint gas is taken up there: each NFT's mint gas belongs to the
-   * epoch that NFT opened.
-   *
-   * @param {number} usd     Mint gas in USD, valued at the mint.
-   * @param {number} native  Mint gas in the chain's native token.
-   * @returns {boolean} Whether the epoch's figure changed.
-   */
-  function setMintGas(usd, native) {
-    if (!liveEpoch) return false;
-    /*- Refuse what cannot be money. `addGas` is guarded by its own
-     *  `> 0` tests; this one writes, so it needs its own. `gas` is read
-     *  by the Lifetime panel, the Per-Day table and every epoch's P&L,
-     *  so a NaN written here is not one wrong figure — it is every money
-     *  figure at once, and it compares false against every threshold it
-     *  meets. Refused rather than thrown: the contract is already "did
-     *  the figure change", the answer is honestly no, and the poll that
-     *  called it carries the rest of the position's readings. */
-    if (!Number.isFinite(usd) || !Number.isFinite(native)) return false;
-    if (usd < 0 || native < 0) return false;
-    /*- Whether a figure has ever been recorded. Read the same way in
-     *  both places below: the seed must not fire for an epoch that has
-     *  one, and `prevUsd` must not treat one as absent. */
-    const recorded =
-      liveEpoch.mintGas !== undefined && liveEpoch.mintGas !== null;
-    /*- TRANSITIONAL — delete once no stored epoch carries the boolean.
-     *  An epoch written before the figure was recorded says only that
-     *  `gas` already holds one copy, not how much. The amount cannot be
-     *  recovered from the epoch, so the first offer after the upgrade is
-     *  taken AS that amount: `gas` is left alone and the figure is
-     *  recorded, after which offers adjust by the difference as usual.
-     *  Adding here instead would double a charge already counted. */
-    if (liveEpoch.mintGasApplied === true && !recorded) {
-      delete liveEpoch.mintGasApplied;
-      liveEpoch.mintGas = usd;
-      liveEpoch.mintGasNative = native;
-      return false;
-    }
-    const prevUsd = recorded ? liveEpoch.mintGas : 0;
-    const prevNative = liveEpoch.mintGasNative ?? 0;
-    if (usd === prevUsd && native === prevNative) return false;
-    liveEpoch.gas += usd - prevUsd;
-    liveEpoch.gasNative += native - prevNative;
-    liveEpoch.mintGas = usd;
-    liveEpoch.mintGasNative = native;
-    return true;
-  }
-
-  /**
    * Take up the gas this position spent compounding BEFORE the open
    * period began — the whole chain's worth, recovered from chain by the
    * lifetime scan.
@@ -469,11 +397,10 @@ function createPnlTracker(opts = {}) {
    * Landing them there reported a day's gas as the position's lifetime
    * gas. The lifetime total still counts it — see `snapshot`.
    *
-   * Written, not accumulated, by the same rule as `setMintGas`: the
-   * lifetime scan runs again on every re-scan and every restart and
-   * offers the same total each time. The total IS the figure, so
-   * assigning it is idempotent and a re-priced total replaces the old
-   * one.
+   * Written, not accumulated: the lifetime scan runs again on every
+   * re-scan and every restart and offers the same total each time. The
+   * total IS the figure, so assigning it is idempotent and a re-priced
+   * total replaces the old one.
    *
    * @param {number} usd     Chain-wide compound gas in USD.
    * @param {number} native  The same in the chain's native token.
@@ -481,15 +408,16 @@ function createPnlTracker(opts = {}) {
    */
   function setImportedGas(usd, native) {
     if (!liveEpoch) return false;
-    /*- Refuse what cannot be money, for the reason given in
-     *  `setMintGas`: `snapshot` adds this straight into the Lifetime
-     *  Gas figure, so a NaN here reaches the same displays. */
+    /*- Refuse what cannot be money. `snapshot` adds this straight into
+     *  the Lifetime Gas figure, so a NaN here is not one wrong reading
+     *  but every money reading at once. `addGas` is guarded by its own
+     *  `> 0` tests; this one writes, so it needs its own. */
     if (!Number.isFinite(usd) || !Number.isFinite(native)) return false;
     if (usd < 0 || native < 0) return false;
-    /*- TRANSITIONAL — delete alongside the one in `setMintGas`. The
-     *  figure itself was always stored here, so unlike mint gas there is
-     *  nothing to reconstruct: the boolean is inert litter on epochs
-     *  written before it was dropped. */
+    /*- TRANSITIONAL — the figure itself was always stored here, so
+     *  there is nothing to reconstruct: the boolean is inert litter on
+     *  epochs written before it was dropped. Delete once no stored
+     *  epoch carries it. */
     delete liveEpoch.importedGasApplied;
     if (liveEpoch.importedGas === usd && liveEpoch.importedGasNative === native)
       return false;
@@ -506,7 +434,6 @@ function createPnlTracker(opts = {}) {
     epochCount,
     getLiveEpoch,
     addGas,
-    setMintGas,
     setImportedGas,
     serialize,
     restore,

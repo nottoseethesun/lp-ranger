@@ -316,11 +316,6 @@ describe("mintGasWei in baseline", () => {
       String(500_000n * 30_000_000_000n),
       "should store mintGasWei = gasUsed × gasPrice",
     );
-    assert.strictEqual(
-      botState.hodlBaseline.mintBlockNumber,
-      100,
-      "the mint block goes with the gas: Moralis prices by block and is the only historical source that answers past GeckoTerminal's 180-day wall, so a baseline without it strands the charge at today's price",
-    );
   });
 
   it("defaults mintGasWei to '0' when receipt is unavailable", async () => {

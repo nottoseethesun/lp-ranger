@@ -495,5 +495,3 @@ describe("saveConfig status warning", () => {
     _fs.rmSync(dir, { recursive: true });
   });
 });
-
-// _applyMintGas tests moved to test/apply-mint-gas.test.js
