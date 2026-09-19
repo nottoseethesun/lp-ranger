@@ -228,6 +228,53 @@ describe("mint gas is written, not accumulated", () => {
     );
   });
 
+  it("refuses a figure that is not money, leaving the total intact", () => {
+    /*- `gas` feeds the Lifetime panel, the Per-Day table and every
+     *  epoch's P&L, so one NaN written here is every money figure at
+     *  once. `addGas` is guarded by its `> 0` tests; a write needs its
+     *  own. Same stance as `positionValueUsd` refusing a non-finite
+     *  result rather than passing it on. */
+    for (const [usd, native] of [
+      [NaN, 100],
+      [0.02, NaN],
+      [Infinity, 100],
+      [0.02, Infinity],
+      [-5, 100],
+      [0.02, -100],
+    ]) {
+      const t = openLive(createPnlTracker());
+      t.addGas(1, 80);
+      assert.equal(
+        t.setMintGas(usd, native),
+        false,
+        `setMintGas(${usd}, ${native}) must be refused`,
+      );
+      const live = t.getLiveEpoch();
+      assert.equal(live.gas, 1, `gas must be untouched by (${usd}, ${native})`);
+      assert.equal(live.gasNative, 80, "and so must gasNative");
+    }
+  });
+
+  it("does not double when the stored figure is null rather than absent", () => {
+    /*- The seed and the delta must agree on what "no figure recorded"
+     *  means. Checking `=== undefined` in one and `?? 0` in the other
+     *  let a null fall past the seed and be added on top. */
+    const src = openLive(createPnlTracker());
+    src.addGas(0.04, 3069);
+    const onDisk = JSON.parse(JSON.stringify(src.serialize()));
+    onDisk.liveEpoch.mintGas = null;
+    onDisk.liveEpoch.mintGasNative = null;
+    onDisk.liveEpoch.mintGasApplied = true;
+
+    const t = createPnlTracker();
+    t.restore(onDisk);
+    assert.equal(t.setMintGas(0.04, 3069), false, "seeded, not added");
+    assert.ok(
+      Math.abs(t.getLiveEpoch().gas - 0.04) < 1e-9,
+      `gas must be untouched, got ${t.getLiveEpoch().gas}`,
+    );
+  });
+
   it("refuses a second offer of the same charge", () => {
     const tracker = openLive(createPnlTracker());
     assert.equal(tracker.setMintGas(2, 100), true, "first offer is taken");

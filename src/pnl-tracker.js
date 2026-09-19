@@ -419,6 +419,21 @@ function createPnlTracker(opts = {}) {
    */
   function setMintGas(usd, native) {
     if (!liveEpoch) return false;
+    /*- Refuse what cannot be money. `addGas` is guarded by its own
+     *  `> 0` tests; this one writes, so it needs its own. `gas` is read
+     *  by the Lifetime panel, the Per-Day table and every epoch's P&L,
+     *  so a NaN written here is not one wrong figure — it is every money
+     *  figure at once, and it compares false against every threshold it
+     *  meets. Refused rather than thrown: the contract is already "did
+     *  the figure change", the answer is honestly no, and the poll that
+     *  called it carries the rest of the position's readings. */
+    if (!Number.isFinite(usd) || !Number.isFinite(native)) return false;
+    if (usd < 0 || native < 0) return false;
+    /*- Whether a figure has ever been recorded. Read the same way in
+     *  both places below: the seed must not fire for an epoch that has
+     *  one, and `prevUsd` must not treat one as absent. */
+    const recorded =
+      liveEpoch.mintGas !== undefined && liveEpoch.mintGas !== null;
     /*- TRANSITIONAL — delete once no stored epoch carries the boolean.
      *  An epoch written before the figure was recorded says only that
      *  `gas` already holds one copy, not how much. The amount cannot be
@@ -426,13 +441,13 @@ function createPnlTracker(opts = {}) {
      *  taken AS that amount: `gas` is left alone and the figure is
      *  recorded, after which offers adjust by the difference as usual.
      *  Adding here instead would double a charge already counted. */
-    if (liveEpoch.mintGasApplied === true && liveEpoch.mintGas === undefined) {
+    if (liveEpoch.mintGasApplied === true && !recorded) {
       delete liveEpoch.mintGasApplied;
       liveEpoch.mintGas = usd;
       liveEpoch.mintGasNative = native;
       return false;
     }
-    const prevUsd = liveEpoch.mintGas ?? 0;
+    const prevUsd = recorded ? liveEpoch.mintGas : 0;
     const prevNative = liveEpoch.mintGasNative ?? 0;
     if (usd === prevUsd && native === prevNative) return false;
     liveEpoch.gas += usd - prevUsd;
@@ -466,6 +481,11 @@ function createPnlTracker(opts = {}) {
    */
   function setImportedGas(usd, native) {
     if (!liveEpoch) return false;
+    /*- Refuse what cannot be money, for the reason given in
+     *  `setMintGas`: `snapshot` adds this straight into the Lifetime
+     *  Gas figure, so a NaN here reaches the same displays. */
+    if (!Number.isFinite(usd) || !Number.isFinite(native)) return false;
+    if (usd < 0 || native < 0) return false;
     /*- TRANSITIONAL — delete alongside the one in `setMintGas`. The
      *  figure itself was always stored here, so unlike mint gas there is
      *  nothing to reconstruct: the boolean is inert litter on epochs

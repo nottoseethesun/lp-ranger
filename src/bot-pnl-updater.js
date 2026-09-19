@@ -363,6 +363,17 @@ async function overridePnlWithRealValues(
  * is the mint charge, so offering the figure again costs nothing and
  * offering a re-priced one replaces it.
  *
+ * **Does not persist the tracker, unlike every other gas writer.**
+ * `_recordCancelGas` and `_applyCompoundGas` both write out immediately
+ * because what they charge cannot be cheaply recovered — a cancel is
+ * offered once by the code that spent it, and a chain-wide compound
+ * total costs a lifetime scan. This charge is different: the amount is
+ * on disk in the baseline and the price is in the day-keyed cache, so a
+ * restart that loses it re-derives it on the next poll. Both halves are
+ * lost together — the moved `gas` and the recorded portion live in the
+ * same object — so the epoch that comes back is self-consistent and the
+ * charge lands once, not twice.
+ *
  * **Valued at the mint, not at today.** `mintGasWei` is a coin amount
  * from a transaction that may be years old, and the dollars it cost are
  * the dollars it cost then. Pricing it at the current market would make
