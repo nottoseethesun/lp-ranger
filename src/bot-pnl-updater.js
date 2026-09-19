@@ -354,14 +354,14 @@ async function overridePnlWithRealValues(
 }
 
 /**
- * Apply the NFT's mint gas to the P&L tracker, once per epoch.
+ * Record the NFT's mint gas on the P&L tracker's open period.
  *
  * The HODL baseline holds `mintGasWei` from the mint TX receipt, and
  * holds it permanently — so this runs on every poll of every process and
- * has to decide each time whether the charge is already in. The epoch
- * itself answers that (`addMintGas`), because the mark is saved with the
- * charge; a mark kept in bot state was lost on restart while the charge
- * was not, and the difference was a second copy of the charge.
+ * offers the same charge each time. `setMintGas` is written rather than
+ * added for exactly that reason: the epoch records how much of its gas
+ * is the mint charge, so offering the figure again costs nothing and
+ * offering a re-priced one replaces it.
  *
  * **Valued at the mint, not at today.** `mintGasWei` is a coin amount
  * from a transaction that may be years old, and the dollars it cost are
@@ -382,19 +382,25 @@ async function overridePnlWithRealValues(
 async function _applyMintGas(deps, pnlTracker) {
   const live = pnlTracker.getLiveEpoch ? pnlTracker.getLiveEpoch() : null;
   if (live === undefined || live === null) return;
-  if (live.mintGasApplied === true) return;
   const bl = deps._botState?.hodlBaseline;
   if (!bl?.mintGasWei || bl.mintGasWei === "0") return;
   const wei = BigInt(bl.mintGasWei);
   if (wei <= 0n) return;
   const ts = bl.mintTimestamp;
+  /*- The block goes with the timestamp. Only Moralis can price an old
+      mint — it looks up by block, and GeckoTerminal's public OHLCV
+      answers 401 for anything past 180 days — so a `when` carrying the
+      timestamp alone silently falls through to today's price on every
+      NFT older than that. Undefined when the baseline carries no block,
+      which reaches the same fallback; Reload Position re-derives the
+      baseline and with it the block. */
   const when =
     typeof ts === "number" && ts > 0
-      ? { timestamp: ts, refresh: false }
+      ? { timestamp: ts, blockNumber: bl.mintBlockNumber, refresh: false }
       : undefined;
   const usd = await actualGasCostUsd(wei, when);
   const native = Number(wei) / 1e18;
-  if (usd > 0 && pnlTracker.addMintGas(usd, native))
+  if (usd > 0 && pnlTracker.setMintGas(usd, native))
     log.info(
       "[bot] Applied initial mint gas: $%s (%s)",
       usd.toFixed(4),

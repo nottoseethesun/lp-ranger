@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-09-19T19:57:43.031Z
+  modified: 2026-09-19T22:08:14.421Z
 ---
 
 # Running tests
@@ -24,6 +24,7 @@ NEVER run `node --test` AND NEVER run `npm test` directly on this project. Alway
 **Earlier incident:** Ran `node --test test/price-cache.test.js` to verify a migration. The test deleted the user's `tmp/historical-price-cache.json` (185 entries of real Moralis historical price data).
 
 **How to apply:**
+
 - ALWAYS use `npm run check` for full local verification (it handles ALL the backup/restore).
 - For a faster individual-file test loop, you must first run `npm run wipe-settings`, then run the test, then `npm run restore-settings`. NEVER cp/mv individual config files yourself — the canonical backup list is in `scripts/wipe-settings.js` and changes over time.
 - A safer long-term fix: tests should use env-var-injected paths so production paths are never reachable from a test process.
@@ -44,7 +45,7 @@ NEVER run `node --test` AND NEVER run `npm test` directly on this project. Alway
 
 Always wrap any test run that could touch app-config/ state in:
 
-```
+```sh
 npm run wipe-settings  # backs up to tmp/.settings-backup/
 npm run check          # or whatever the test target is
 npm run restore-settings
@@ -130,3 +131,47 @@ NEVER run `npm run check` (or any command that touches production files via chec
 **Why:** The check.sh script backs up production files (.bot-config.json, etc.) before tests and restores them via an EXIT trap. If an agent is killed (timeout, SIGKILL), the trap doesn't fire and production config is destroyed. This happened — the user's managed positions were wiped because an agent ran `npm run check` and the restore didn't complete.
 
 **How to apply:** When delegating work to agents, tell them to make code changes only. Run `npm run check` yourself in the main session after the agent returns.
+
+## `wipe-settings` is NOT the protection `check` has (2026-09-19)
+
+Wrapping a raw `node --test` in wipe/restore does **not** give it the
+protection `npm run check` gives. The two cover different sets, and the
+difference is most of `tmp/`:
+
+- `scripts/check.js` — `backupProdFiles` copies `app-config/user-configurable/`,
+  `app-data/` and **every `tmp/*.json`**, wipes them, and restores in a
+  `finally`. This is why a full check leaves the caches untouched.
+- `scripts/wipe-settings.js` — `.env`, `tmp/pnl-epochs-cache.json`, and
+  `tmp/event-cache*.json`. **That is the whole list.**
+
+So a wrapped direct test run still exposes `historical-price-cache.json`,
+`block-time-cache.json`, `gecko-pool-cache.json`, `nft-mint-date-cache.json`,
+`token-symbol-cache.json` and `lp-position-cache-*.json`.
+
+**What it cost:** a new test drove the real `fetchHistoricalTokenPriceUsd`
+with a stubbed `fetch`, so the stub's price was cached by day and flushed
+to disk — writing `wPLS @ 2024-06-21 = $0.00002`, a number that came from
+a test fixture, into the operator's real cache. Historical entries never
+expire, so it would have been served to the mint-gas lookup forever,
+producing a wrong figure that looks entirely plausible. The same file was
+destroyed a different way in an earlier incident recorded above.
+
+**How to apply:** a test that exercises a real cache-writing path must
+redirect the cache, not rely on the wrapper. Set the env override
+**before** requiring anything that reads it:
+
+```js
+process.env.PRICE_CACHE_PATH = path.join(process.cwd(), "tmp",
+  `test-<name>-${process.pid}.json`);
+```
+
+`PRICE_CACHE_PATH` and `GECKO_POOL_CACHE_PATH` already exist for this;
+`test/gecko-pool-cache.test.js` and `test/price-cache.test.js` are the
+templates. This is the "safer long-term fix" named at the top of this
+file, and it is what makes the test safe to run directly at all.
+
+**Detecting it afterwards:** entries carry `cachedAt`, so a run's damage
+is findable — filter the cache for entries newer than when the run
+started, and delete only those keys. Never clear the file to be sure
+(see [[feedback_never_clear_to_force_a_recompute]]); 322 of the 323
+entries were real.

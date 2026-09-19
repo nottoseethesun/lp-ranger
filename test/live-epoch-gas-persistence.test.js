@@ -8,7 +8,9 @@
  * entry value from the NFT's mint, fees and compounded coins from the
  * chain — so losing those costs nothing. Gas is the exception: it only
  * accumulates. A charge that is not written down is gone, and a charge
- * that comes back without its "already counted" mark is counted twice.
+ * re-offered against a running total is counted twice — so the two that
+ * ARE re-offered, the NFT's mint gas and the chain's past compound gas,
+ * are written rather than added.
  *
  * Three guarantees, one per defect these were written against:
  *   1. Cancel-TX gas reaches the cache when it is charged. Nothing else
@@ -132,7 +134,7 @@ describe("a reconstruction keeps the live epoch", () => {
     const tracker = createPnlTracker();
     openLive(tracker);
     tracker.addGas(4.5, 400);
-    tracker.addMintGas(1.25, 100);
+    tracker.setMintGas(1.25, 100);
     const live = tracker.getLiveEpoch();
 
     _mergeAndPersist(createPnlTracker(), [], live, null, key);
@@ -149,18 +151,87 @@ describe("a reconstruction keeps the live epoch", () => {
       "its gas must come back intact (cancel/compound charges plus mint)",
     );
     assert.equal(
-      back.liveEpoch.mintGasApplied,
-      true,
-      "and its already-counted mark, or the mint charge is added again on restore",
+      back.liveEpoch.mintGas,
+      1.25,
+      "and the recorded mint portion, or a later offer adds the charge on top instead of replacing it",
     );
   });
 });
 
-describe("mint gas is taken up once per epoch", () => {
+describe("mint gas is written, not accumulated", () => {
+  it("re-prices the charge instead of adding a second copy", () => {
+    /*- The charge whose dollars were a fallback is the reason the figure
+     *  is written rather than added: Re-scan Prices offers the same coin
+     *  amount at a corrected price, and the epoch must end up holding
+     *  the new figure and only the new figure. */
+    const tracker = openLive(createPnlTracker());
+    tracker.addGas(1, 80); // a real same-day charge, must be untouched
+    tracker.setMintGas(0.0161, 1401.85); // first valued at a fallback price
+    assert.equal(
+      tracker.setMintGas(0.0247, 1401.85),
+      true,
+      "a re-priced figure is a change",
+    );
+    const live = tracker.getLiveEpoch();
+    assert.ok(
+      Math.abs(live.gas - 1.0247) < 1e-9,
+      `gas must hold the other charge plus the NEW mint figure, got ${live.gas}`,
+    );
+    assert.equal(live.mintGas, 0.0247, "and record what the mint portion is");
+    assert.ok(
+      Math.abs(live.gasNative - 1481.85) < 1e-9,
+      `the coin amount is unchanged, so gasNative must not move, got ${live.gasNative}`,
+    );
+  });
+
+  it("does not re-add the charge an epoch stored under the old boolean", () => {
+    /*- TRANSITIONAL, paired with the seed in `setMintGas`. An epoch
+     *  written before the figure was recorded says only that `gas`
+     *  already holds one copy. Adding on top of that doubles a charge
+     *  the operator already has. Delete with the seed. */
+    const src = openLive(createPnlTracker());
+    src.addGas(0.0408718, 3069.187); // the whole charge, already in `gas`
+    const onDisk = JSON.parse(JSON.stringify(src.serialize()));
+    delete onDisk.liveEpoch.mintGas;
+    delete onDisk.liveEpoch.mintGasNative;
+    onDisk.liveEpoch.mintGasApplied = true;
+
+    const tracker = createPnlTracker();
+    tracker.restore(onDisk);
+
+    assert.equal(
+      tracker.setMintGas(0.0408718, 3069.187),
+      false,
+      "the first offer records the figure without moving gas",
+    );
+    let live = tracker.getLiveEpoch();
+    assert.ok(
+      Math.abs(live.gas - 0.0408718) < 1e-9,
+      `gas must be untouched, got ${live.gas}`,
+    );
+    assert.equal(live.mintGas, 0.0408718, "and the figure is now recorded");
+    assert.equal(
+      live.mintGasApplied,
+      undefined,
+      "the boolean is dropped, so this path runs once",
+    );
+
+    assert.equal(
+      tracker.setMintGas(0.05, 3069.187),
+      true,
+      "and a later re-price adjusts normally",
+    );
+    live = tracker.getLiveEpoch();
+    assert.ok(
+      Math.abs(live.gas - 0.05) < 1e-9,
+      `the re-price replaces the portion, got ${live.gas}`,
+    );
+  });
+
   it("refuses a second offer of the same charge", () => {
     const tracker = openLive(createPnlTracker());
-    assert.equal(tracker.addMintGas(2, 100), true, "first offer is taken");
-    assert.equal(tracker.addMintGas(2, 100), false, "second is refused");
+    assert.equal(tracker.setMintGas(2, 100), true, "first offer is taken");
+    assert.equal(tracker.setMintGas(2, 100), false, "second is refused");
     assert.equal(
       tracker.snapshot(0.001).totalGas,
       2,
@@ -170,7 +241,7 @@ describe("mint gas is taken up once per epoch", () => {
 
   it("refuses it again after a save and restore", () => {
     const first = openLive(createPnlTracker());
-    first.addMintGas(2, 100);
+    first.setMintGas(2, 100);
     /*- The restart: serialize to disk shape, JSON round-trip, restore
      *  into the fresh process's tracker. */
     const onDisk = JSON.parse(JSON.stringify(first.serialize()));
@@ -178,27 +249,27 @@ describe("mint gas is taken up once per epoch", () => {
     const second = createPnlTracker();
     second.restore(onDisk);
     assert.equal(
-      second.addMintGas(2, 100),
+      second.setMintGas(2, 100),
       false,
       "the mark must travel with the charge — this is the double-count",
     );
     assert.equal(second.snapshot(0.001).totalGas, 2, "still one charge");
   });
 
-  it("accepts the new NFT's charge after a rebalance closes the epoch", () => {
+  it("takes the new NFT's charge after a rebalance closes the epoch", () => {
     const tracker = openLive(createPnlTracker());
-    tracker.addMintGas(2, 100);
+    tracker.setMintGas(2, 100);
     tracker.closeEpoch({ exitValue: 1000, gasCost: 0, currentPrice: 0.001 });
     openLive(tracker);
     assert.equal(
-      tracker.addMintGas(3, 150),
+      tracker.setMintGas(3, 150),
       true,
       "each NFT's mint gas belongs to the epoch that NFT opened",
     );
   });
 
   it("does nothing when no epoch is open", () => {
-    assert.equal(createPnlTracker().addMintGas(2, 100), false);
+    assert.equal(createPnlTracker().setMintGas(2, 100), false);
   });
 });
 
@@ -304,12 +375,12 @@ describe("the chain's past compound gas does not become today's gas", () => {
    *  merely happened to be open when the scan finished. Counting it as
    *  that period's gas reports a position's lifetime cost as one day's.
    *  And the scan re-offers the same total on every restart and every
-   *  Re-scan Prices, so without a mark it accumulates. */
+   *  Re-scan Prices, so the total is written rather than added. */
 
   it("keeps it out of the open period's own gas", () => {
     const t = openLive(createPnlTracker());
     t.addGas(0.5, 40); // a charge that really is today's
-    t.addImportedGas(2.27, 197000);
+    t.setImportedGas(2.27, 197000);
     const live = t.getLiveEpoch();
     assert.equal(live.gas, 0.5, "today's row shows only today's charge");
     assert.equal(live.importedGas, 2.27, "the history is held apart");
@@ -318,7 +389,7 @@ describe("the chain's past compound gas does not become today's gas", () => {
   it("still counts it in the lifetime total", () => {
     const t = openLive(createPnlTracker());
     t.addGas(0.5, 40);
-    t.addImportedGas(2.27, 197000);
+    t.setImportedGas(2.27, 197000);
     const snap = t.snapshot(0.001);
     assert.ok(
       Math.abs(snap.totalGas - 2.77) < 1e-9,
@@ -330,7 +401,7 @@ describe("the chain's past compound gas does not become today's gas", () => {
   it("leaves the Per-Day rows carrying only same-day charges", () => {
     const t = openLive(createPnlTracker());
     t.addGas(0.5, 40);
-    t.addImportedGas(2.27, 197000);
+    t.setImportedGas(2.27, 197000);
     const rows = t.snapshot(0.001).dailyPnl.filter((d) => d.gasCost > 0);
     for (const r of rows)
       assert.ok(
@@ -346,19 +417,19 @@ describe("the chain's past compound gas does not become today's gas", () => {
 
   it("refuses a second offer of the same total", () => {
     const t = openLive(createPnlTracker());
-    assert.equal(t.addImportedGas(2.27, 197000), true);
-    assert.equal(t.addImportedGas(2.27, 197000), false, "re-scan offers again");
+    assert.equal(t.setImportedGas(2.27, 197000), true);
+    assert.equal(t.setImportedGas(2.27, 197000), false, "re-scan offers again");
     assert.ok(Math.abs(t.snapshot(0.001).totalGas - 2.27) < 1e-9);
   });
 
   it("refuses it again after a save and restore", () => {
     const first = openLive(createPnlTracker());
-    first.addImportedGas(2.27, 197000);
+    first.setImportedGas(2.27, 197000);
     const onDisk = JSON.parse(JSON.stringify(first.serialize()));
     const second = createPnlTracker();
     second.restore(onDisk);
     assert.equal(
-      second.addImportedGas(2.27, 197000),
+      second.setImportedGas(2.27, 197000),
       false,
       "a restart must not buy the position's history twice",
     );

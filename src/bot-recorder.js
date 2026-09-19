@@ -623,11 +623,10 @@ function _applyRebalanceResult(deps, result) {
   const mintNow = new Date().toISOString();
   if (deps._botState) {
     deps._botState.oorSince = null;
-    /*- No mint-gas flag to reset here. The "already counted" mark lives
-     *  on the epoch (see `addMintGas` in pnl-tracker.js), and this
-     *  rebalance closes the old epoch; the fresh one opens unmarked, so
-     *  the new NFT's mint gas is accepted without anything clearing a
-     *  flag on its behalf. */
+    /*- Nothing to reset here for mint gas. The recorded figure lives on
+     *  the epoch (see `setMintGas` in pnl-tracker.js), and this
+     *  rebalance closes the old epoch; the fresh one opens with no
+     *  figure, so the new NFT's mint gas is taken up there. */
     /*- Flag the next lifetime scan to re-derive the chain-wide figures.
      *  There is a new NFT in the rebalance chain, and the mint took the
      *  wallet's whole balance of both tokens — so anything that arrived

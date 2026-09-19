@@ -543,10 +543,12 @@ async function _rebuildClosedEpochs(o) {
  * It has to persist because it carries a figure nothing can rebuild.
  * Its entry value, fees and compounded coins are all re-derived on the
  * next poll, so those would cost nothing to drop. Its GAS would: gas
- * only accumulates, so a dropped charge is gone, and a charge restored
- * without its "already counted" mark is added a second time. See
- * `addMintGas` in `pnl-tracker.js` and `_recordCancelGas` in
- * `bot-cycle.js` for the two charges that depend on this.
+ * only accumulates, so a dropped charge is gone. `_recordCancelGas` in
+ * `bot-cycle.js` is the charge that depends on this: it is offered once,
+ * by the code that just spent it, and nothing re-derives it. The mint
+ * charge is not at risk the same way — `setMintGas` in `pnl-tracker.js`
+ * records how much of `gas` it is and rewrites that portion, so it
+ * survives being offered again.
  *
  * @param {object}   pnlTracker     Tracker instance.
  * @param {object[]} closedEpochs   Sorted closed epoch array.

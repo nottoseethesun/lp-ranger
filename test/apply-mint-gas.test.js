@@ -43,10 +43,9 @@ describe("_applyMintGas", () => {
       await _applyMintGas(deps, tracker);
       const snap = tracker.snapshot(0.001);
       assert.ok(snap.totalGas > 0, "gas should be added to epoch");
-      assert.strictEqual(
-        tracker.getLiveEpoch().mintGasApplied,
-        true,
-        "the already-counted mark belongs on the epoch, so it is saved and restored with the charge it describes",
+      assert.ok(
+        tracker.getLiveEpoch().mintGas > 0,
+        "the mint portion belongs on the epoch, so it is saved and restored with the charge it describes",
       );
 
       // Second call should be a no-op

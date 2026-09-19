@@ -60,7 +60,7 @@ const { hasCompoundedTotal } = require("./bot-config-keys");
  * Add the chain's historical compound gas to the P&L tracker.
  *
  * This is every compound the position ever made, summed — months of
- * charges, recovered from chain. It goes in through `addImportedGas`
+ * charges, recovered from chain. It goes in through `setImportedGas`
  * rather than `addGas` for two reasons, and both matter:
  *
  * - **It is not today's cost.** `addGas` credits the open period, which
@@ -69,7 +69,8 @@ const { hasCompoundedTotal } = require("./bot-config-keys");
  *   width of the position's life.
  * - **It is offered repeatedly.** The lifetime scan runs on every
  *   restart and every Re-scan Prices, and hands over the same total each
- *   time. `addImportedGas` takes it once per period.
+ *   time. `setImportedGas` writes it rather than adding, so the same
+ *   total offered again changes nothing.
  *
  * Persisted immediately, because nothing else writes the tracker out
  * after this point — the same reason `_recordCancelGas` persists.
@@ -84,7 +85,7 @@ async function _applyCompoundGas(totalGasWei, pnlTracker, emit) {
   const gasUsd = await _actualGasCostUsd(totalGasWei);
   const gasNative = Number(totalGasWei) / 1e18;
   if (gasUsd <= 0) return;
-  if (!pnlTracker.addImportedGas(gasUsd, gasNative)) return;
+  if (!pnlTracker.setImportedGas(gasUsd, gasNative)) return;
   if (typeof emit === "function") emit({ pnlEpochs: pnlTracker.serialize() });
 }
 
