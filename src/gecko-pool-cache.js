@@ -31,6 +31,7 @@ const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
 const { geckoRateLimit } = require("./gecko-rate-limit");
+const { retryOn429 } = require("./price-source-backoff");
 
 // Path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
@@ -76,12 +77,8 @@ async function _fetchPoolInfoOnce(network, poolAddress) {
   return { ok: true, status: r.status, baseAddr };
 }
 
-/** Retry schedule for pool-info 429 responses (milliseconds per attempt). */
-const _POOL_INFO_429_DELAYS_MS = [30_000, 30_000];
-
 /**
- * Run a one-shot GeckoTerminal request, retrying a 429 on the schedule
- * above.
+ * Run a one-shot GeckoTerminal request, retrying a 429.
  *
  * Shared by both lookups in this file because both are once-per-subject
  * and both hit the endpoints the free tier is strictest on. A restart
@@ -90,37 +87,21 @@ const _POOL_INFO_429_DELAYS_MS = [30_000, 30_000];
  * does not merely slow something down: the answer is cached on success
  * only, so the subject goes unresolved for the life of the process.
  *
+ * The schedule and the cross-call escalation are NOT kept here. Both
+ * belong to `price-source-backoff.js`, because a refusal of this
+ * endpoint and a refusal of the OHLCV endpoint in `price-fetcher.js`
+ * are the same service refusing the same process — a schedule private
+ * to either one cannot slow the other, and the thing that needs slowing
+ * is every call.
+ *
  * @param {string} label            What is being looked up, for the log.
  * @param {() => Promise<{ok: boolean, status: number}>} fetchOnce
  * @returns {Promise<object>} The final response, ok or not.
  */
 async function _with429Retry(label, fetchOnce) {
-  let res = await fetchOnce();
-  let attempt = 0;
-  while (
-    !res.ok &&
-    res.status === 429 &&
-    attempt < _POOL_INFO_429_DELAYS_MS.length
-  ) {
-    const delay = _POOL_INFO_429_DELAYS_MS[attempt];
-    log.warn(
-      "[gecko-pool-cache] %s 429 — retry %d/%d in %ds",
-      label,
-      attempt + 1,
-      _POOL_INFO_429_DELAYS_MS.length,
-      delay / 1000,
-    );
-    await new Promise((r) => setTimeout(r, delay));
-    res = await fetchOnce();
-    attempt++;
-  }
+  const res = await retryOn429({ source: "gecko", label, fetchOnce });
   if (!res.ok)
-    log.warn(
-      "[gecko-pool-cache] %s status=%d (final after %d retries)",
-      label,
-      res.status,
-      attempt,
-    );
+    log.warn("[gecko-pool-cache] %s status=%d (final)", label, res.status);
   return res;
 }
 

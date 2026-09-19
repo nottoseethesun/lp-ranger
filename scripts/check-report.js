@@ -236,7 +236,13 @@ function loadResults() {
     },
     npmAudit: {
       ok: exitCodes.auditDeps === 0,
-      detail: `${npmAudit.total} advisories`,
+      /*- A run that never reached the advisory service reports its
+       *  reason, not a count. Zero advisories and zero knowledge print
+       *  identically otherwise, and the check is red in both cases —
+       *  leaving the count as the only thing distinguishing them. */
+      detail: npmAudit.ok
+        ? `${npmAudit.total} advisories`
+        : `DID NOT RUN — ${npmAudit.reason}`,
     },
     securityLint: {
       ok: exitCodes.securityLint === 0,

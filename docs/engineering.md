@@ -27,7 +27,7 @@ sequence.
 
 - [Terminology](#terminology)
 - [Quick Start](#quick-start)
-- [`npm` Project Commands](#npm-project-commands)
+- [`npm` Project Commands](#npm-project-commands) → [`docs/npm-project-commands.md`](npm-project-commands.md)
 - [Configuration](#configuration) → [`docs/configuration.md`](configuration.md)
 - [Engineering Design](#engineering-design)
   - [System View](#system-view)
@@ -48,11 +48,8 @@ sequence.
   - [The dashboard does not scan a position the bot owns](#the-dashboard-does-not-scan-a-position-the-bot-owns)
 - [Client-Side URL Routing](#client-side-url-routing)
 - [Shared Help Copy](#shared-help-copy)
-- [Development Tools](#development-tools)
-  - [Build and Run](#build-and-run)
-  - [Lint and Test](#lint-and-test)
-  - [Wallet Management](#wallet-management)
-  - [Housekeeping](#housekeeping)
+- [Development Tools](#development-tools) → npm scripts in [`docs/npm-project-commands.md`](npm-project-commands.md)
+  - [Previewing the Screenshot Gallery](#previewing-the-screenshot-gallery)
   - [Utilities](#utilities)
     - [Diagnostic Utilities](#diagnostic-utilities)
       - [Verifying a Reported USD Figure](#verifying-a-reported-usd-figure)
@@ -106,83 +103,31 @@ for consensus or validator rotation).
 3. `npm start` — dashboard + bot (if wallet key available)
 4. `npm run bot` — headless bot only (no dashboard)
 
+Every other command, with its flags and an example, is in
+[`docs/npm-project-commands.md`](npm-project-commands.md). Any entry point
+will also list its own flags: `npm start -- --help`.
+
 ---
 
 ## `npm` Project Commands
 
-Every command defined in `package.json`. Run with `npm run <name>`;
-`start`, `test` and `stop` also work without `run`. Flags go after a
-`--` separator, as shown in the examples.
+**Moved.** Every command defined in `package.json` — with its flags, a
+description and a copy-pasteable example — now lives in
+[`docs/npm-project-commands.md`](npm-project-commands.md).
 
-### Lifecycle Commands
+Jump straight to what you need:
 
-Starting and stopping a running install.
+| You want to | Go to |
+| ----------- | ----- |
+| Start or stop an install | [Lifecycle Commands](npm-project-commands.md#lifecycle-commands) |
+| Build, debug, or reset local state | [Developer Tools](npm-project-commands.md#developer-tools) |
+| Run the gates before a commit | [Test](npm-project-commands.md#test) |
+| See a command's flags | [Getting Help on Any Command](npm-project-commands.md#getting-help-on-any-command) |
+| Know what `--` is for | [Passing Flags](npm-project-commands.md#passing-flags) |
+| Understand a hook that runs on its own | [Commands That Are Usually Not Run Alone](npm-project-commands.md#commands-that-are-usually-not-run-alone) |
 
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run bot -- --start-with-price-lookups-unpaused` |
-| `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `tmp/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. | `npm run clear-blockchain-scan-cache -- --dry-run` |
-| `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h`, `--headless` | Start the dashboard server and auto-start every position saved as `running`. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm start -- --verbose` |
-| `stop` | — | Clean shutdown: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. Falls back to an lsof-by-port lookup when no PID file exists. | `npm stop` |
-
-### Developer Tools
-
-Building, running from source, debugging, inspecting the codebase, and resetting local state.
-
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `api-doc` | — | Serve the Scalar API reference at `http://localhost:5556`. | `npm run api-doc` |
-| `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundle, cache-bust stamps, inlined SVGs. | `npm run build` |
-| `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run build-and-start -- --log-file /tmp/burn-in.log` |
-| `build:watch` | — | esbuild in watch mode. Rebuilds the bundle on change; skips the one-off generators `build` runs. | `npm run build:watch` |
-| `clean` | — | Full reset to fresh-clone state: wallet, bot config, API keys, rebalance log, every `tmp/` cache, logs and build artifacts. Rebuild before starting again. | `npm run clean` |
-| `clean:log` | — | Truncate `logs/lp-ranger.log`. | `npm run clean:log` |
-| `debug` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Start the server under `node --inspect`. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run debug` |
-| `debug-attach` | — | Attach a debugger to an already-running server and print the URL to visit. | `npm run debug-attach` |
-| `debug-attach-bot` | — | The same for a running headless bot. | `npm run debug-attach-bot` |
-| `debug-bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Start the headless bot under `node --inspect`. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run debug-bot` |
-| `dev` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Build, then start under `node --watch` so the server restarts on file changes. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run dev -- --verbose` |
-| `dev-clean` | — | The same, but keeps the price, block-time and Gecko caches, which cost API quota to rebuild. | `npm run dev-clean` |
-| `format` | — | Prettier write pass over the tracked file set. | `npm run format` |
-| `knip` | — | Dead-code detection. The `dashboard-*.js` files report as unused because knip cannot trace HTML `<script>` tags — those are false positives. | `npm run knip` |
-| `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint. | `npm run lint` |
-| `lint:fix` | — | The same set with autofix where each tool supports it. | `npm run lint:fix` |
-| `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. | `npm run nuke` |
-| `reset-wallet` | — | Delete `wallet.json` and scrub `WALLET_PASSWORD` from `.env`. | `npm run reset-wallet` |
-| `restore-settings` | — | Restore whatever `wipe-settings` backed up. | `npm run restore-settings` |
-| `show-dependency-cycles` | — | madge circular-import report across the whole source tree. | `npm run show-dependency-cycles` |
-| `show-gallery` | — | Serve a Pages-accurate preview of the screenshot gallery at `http://localhost:5557`. | `npm run show-gallery` |
-| `view-report` | — | Open the PDF report produced by the last `check`. | `npm run view-report` |
-| `wipe-settings` | — | Back up operator settings to `tmp/.settings-backup/` to simulate a fresh install. `check` uses this, so never run it against a live server. | `npm run wipe-settings` |
-
-### Test
-
-The gates. `check` runs all of them and is what must pass before a commit.
-
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `audit:deps` | — | `npm audit` at the `high` threshold. | `npm run audit:deps` |
-| `audit:secrets` | — | secretlint across the repo. | `npm run audit:secrets` |
-| `audit:security` | — | The custom security lint rules. | `npm run audit:security` |
-| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. | `npm run check` |
-| `format:check` | — | Prettier in check mode; fails rather than rewriting. | `npm run format:check` |
-| `test` | any `node --test` flag | Run the suite with a concurrency of 24. | `npm test -- --test-name-pattern="failover"` |
-| `test:coverage` | — | The suite with V8 coverage collection. | `npm run test:coverage` |
-| `test:util` | — | Only the `util/diagnostic/` suites. | `npm run test:util` |
-| `test:watch` | — | Re-run affected tests on file change. | `npm run test:watch` |
-
-### Commands That Are Usually Not Run Alone
-
-npm lifecycle hooks and helpers. These run automatically around the command each is named for.
-
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `clean:reports` | — | Remove `test/report-artifacts/`. Invoked by all nine `pre*` hooks — `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch` and the three `preaudit:*` — so every gate starts without stale reports. | `npm run clean:reports` |
-| `copy-fonts` | — | Copy the self-hosted WOFF2 files from `node_modules` into `public/fonts/`. Also runs automatically via `postinstall`. | `npm run copy-fonts` |
-| `postinstall` | — | Runs automatically after `npm install`; copies the fonts. | automatic |
-| `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch`, `preaudit:deps`, `preaudit:security`, `preaudit:secrets` | — | Run automatically before the command each is named for; clear stale reports and regenerate generated content so the gate starts from a known state. | automatic |
-| `prepare` | — | Runs automatically after `npm install`; installs the husky hooks. | automatic |
-| `prestart` | — | Runs automatically before `start`; verifies the build artifacts exist. | automatic |
+The `node util/…` tools are not npm scripts and are documented here, under
+[Utilities](#utilities).
 
 ## Configuration
 
@@ -1393,139 +1338,22 @@ link.
 
 All dev tools are available via npm scripts — no `npx` needed.
 
-### Build and Run
+**The npm scripts themselves are documented in
+[`docs/npm-project-commands.md`](npm-project-commands.md)**, which is the
+single place every command, flag and example lives:
 
-- `npm run build` — esbuild bundle + cache-bust stamp (`bundle.js?v=<ms>`)
-- `npm start` — Start server only (no build — use after `npm run build`)
-- `npm run build-and-start` — Build + start in one command
-- `npm run dev` — Build + start with `--watch` (auto-restart on file changes)
-- `npm stop` (alias `npm run stop`) — Clean shutdown without switching to the server's terminal. Reads the server PID from `tmp/lp-ranger.pid` (written on startup by `src/server-pid.js`) and sends **SIGTERM** — the same handler as Ctrl+C, so it stops all managed positions, closes the HTTP server, and removes the PID file. Escalates to SIGKILL if the process does not exit within ~3 s, and falls back to an lsof-by-port lookup when no PID file is present. Both SIGINT and SIGTERM run the one `shutdown` handler in `server.js`.
+| You want to | Go to |
+| ----------- | ----- |
+| Build, start, or stop | [Lifecycle Commands](npm-project-commands.md#lifecycle-commands) · [Stopping a Running Install](npm-project-commands.md#stopping-a-running-install) |
+| Lint, test, or run the full gate | [Test](npm-project-commands.md#test) |
+| Know what a gate writes to before you Ctrl-C it | [Before Running Any Lint or Test Command](npm-project-commands.md#before-running-any-lint-or-test-command) |
+| Reset a wallet or a scan cache | [Wallet and Scan-Cache Resets](npm-project-commands.md#wallet-and-scan-cache-resets) |
+| Clear logs, node_modules, or settings | [Housekeeping](npm-project-commands.md#housekeeping) |
+| Find circular imports | [Dependency Cycles](npm-project-commands.md#dependency-cycles) |
+| See any command's flags | [Getting Help on Any Command](npm-project-commands.md#getting-help-on-any-command) |
 
-### Lint and Test
-
-**Caution — read before running any lint or test command.** `npm run check`,
-`npm test`, and their variants actively write to config and cache files
-during test execution. Those files are backed up by `scripts/check.js`
-before the tests start and restored automatically when the process exits.
-However, if you Ctrl-C the process mid-run, the restore may not complete
-and the files will be left in a state that is only appropriate for the
-automated tests (stub position keys, missing managed positions, etc.).
-**Always let tests and checks finish before interrupting.**
-
-**Step 1 — back up your real state out of tree (do this once per machine
-before your first run):**
-
-```sh
-mkdir -p ../app-config-backup
-cp -R ./app-config ../app-config-backup/
-cp .env ../app-config-backup
-```
-
-If you ever end up with corrupted state after an interrupted run, restore
-from `../app-config-backup/`. `npm run clean` is also available as a
-nuclear option — it wipes runtime files entirely and triggers full-length
-blockchain wallet scans on next start to rebuild caches.
-
-**Step 2 — run the commands:**
-
-- `npm run lint` — ESLint — 0 warnings, complexity ≤17, max-lines ≤500
-- `npm run lint:fix` — ESLint auto-fix
-- `npm test` — Node.js built-in test runner (`node:test`)
-- `npm run test:coverage` — Test coverage report (Node 20+,
-  `--experimental-test-coverage`)
-- `npm run test:watch` — Re-run tests on file changes
-- `npm run test:util` — Runs ONLY the `util/diagnostic/test/` suites,
-  for a fast loop while working on a diagnostic tool. These suites also
-  run as part of plain `npm test` and `npm run check`, and count toward
-  the 80% coverage gate — `util/` is held to the same bar as `src/`.
-  See [Diagnostic Utilities](#diagnostic-utilities).
-- `npm run check` — Combined lint + test + 80% coverage gate + security
-  audits (matches CI)
-- `npm run show-dependency-cycles` — Optional diagnostic. Runs
-  [`madge`](https://github.com/pahen/madge) `--circular` across every
-  `.js` file in the project (`src/`, `bot.js`, `server.js`, `scripts/`,
-  `eslint-rules/`, `test/`, `public/`) and lists any circular module
-  imports. Not wired into `npm run check` — surface only when you want
-  it. Why a CLI tool instead of an ESLint rule: the server-side code
-  is CommonJS (`require`/`module.exports`) because Node loads it
-  directly with no `"type": "module"` in `package.json`; the dashboard
-  code under `public/dashboard-*.js` is ESM (`import`/`export`)
-  because esbuild bundles it into `public/dist/bundle.js` for the
-  browser. The standard ESLint cycle rules (`import/no-cycle`,
-  `import-x/no-cycle`) only reliably detect ESM cycles — they cannot
-  trace `require()` calls because `require` is a runtime function call,
-  not a static import. `madge` traverses both `import` and `require`
-  by walking the actual dependency graph, so it catches cycles in
-  both halves of the codebase. Dashboard `public/` ESM cycles are
-  also reported; cleaning those up is a separate nice-to-have task.
-
-### Wallet Management
-
-- `npm run reset-wallet` — Delete `app-config/user-configurable/wallet.json` + clear
-  `WALLET_PASSWORD` from `.env`. Forces a fresh wallet import via the
-  dashboard on next start.
-- `npm run clear-blockchain-scan-cache` — Delete every `tmp/*.json`, and
-  nothing else. That directory holds derived scan results only — event
-  scans, LP position enumeration, P&L epochs and the lifetime HODL
-  amounts kept beside them, block timestamps, pool creation
-  blocks, token symbols, fetched prices — all rebuilt from chain on the
-  next start. This is the command for testing scan behaviour from cold.
-  Refuses while a server is running, because clearing the cache under a
-  live process achieves nothing: it rewrites the files within seconds and
-  keeps its in-memory copies regardless. `-- --dry-run` lists without
-  deleting. Configuration, wallet and API keys are untouched.
-- `npm run clean` — Returns the install to the state a fresh clone is
-  in. Stops the server and **waits for it to exit**, runs `reset-wallet`,
-  then deletes operator state (`bot-config.json`,
-  `bot-config.backup.json`, `api-keys.json`, `rebalance_log.json`),
-  every `tmp/*.json` cache, `logs/*.log`, the build artifacts
-  (`public/dist/`, `public/fonts/`, `public/ui-tokens.css`,
-  `public/disclosure-content.js`) and `test/report-artifacts/`.
-  Run `npm run build` before `npm start` afterwards — the prestart guard
-  names the missing files if you forget.
-  Implemented in [`scripts/clean.js`](../scripts/clean.js), which
-  delegates the cache to `clear-blockchain-scan-cache.js` rather than
-  naming cache files itself. That script is the single definition of
-  "the scan cache", so a cache added later is covered here without a
-  second list to update.
-  **Note:** browser localStorage is NOT cleared, and does not need to be
-  for a cold scan — the browser holds display state only (last viewed
-  position, privacy toggles, price overrides, a copy of the
-  rebalance-events list for instant paint). None of it makes the server
-  skip a scan. Clear it via the Settings gear icon → "Clear Local Storage
-  & Cookies" only when you actually want the browser-side preferences
-  reset, accepting that wallet re-entry and per-position UI state go with
-  it.
-- `npm run dev-clean` — The same run with three caches preserved for a
-  faster development restart: the historical price cache
-  (`tmp/historical-price-cache.json`), the block-time cache
-  (`tmp/block-time-cache.json`) and the gecko-pool orientation cache
-  (`tmp/gecko-pool-cache.json`). None is derived from chain and all three
-  cost third-party API quota to refill. Logs are kept too. Same script,
-  `--dev`.
-
-### Housekeeping
-
-- `npm run clean:log` — Delete the log-to-file output at
-  `logs/lp-ranger.log` (the file produced when the app is started
-  with `--log-file` or with `enabled: true` in
-  `app-config/app-defaults-for-user-configurable/logging.json`). No-op when the file is
-  absent. Use this to free disk space, to start a clean capture before
-  a diagnostic session, or to scrub a log before sharing.  The log is
-  NOT automatically rotated — long-lived production tails should run
-  this on a cron or external logrotate setup.
-- `npm run nuke` — Delete `node_modules` + `package-lock.json` for a clean
-  reinstall. Run `npm install` afterwards.
-- `npm run wipe-settings` — Back up all user settings/state (`.env`, every
-  runtime file in `app-config/`, `tmp/pnl-epochs-cache.json`,
-  `tmp/event-cache*.json`, `*.keyfile.json`) to `tmp/.settings-backup/` and
-  remove them — simulates a fresh install. Also clear browser localStorage
-  via Settings gear → "Clear Local Storage & Cookies" to complete the
-  simulation.
-- `npm run restore-settings` — Restore settings previously backed up by
-  `wipe-settings`.
-- `npm run view-report` — Open `test/report-artifacts/report.pdf` via
-  `xdg-open` (Linux dev box).
+What remains below is not an npm script: the `util/` tools, which are run
+directly with `node`, and the architecture behind the Pages preview.
 
 ### Previewing the Screenshot Gallery
 

@@ -9,6 +9,7 @@ CI and merge protocol: [docs/claude/CLAUDE-CI.md](docs/claude/CLAUDE-CI.md)
 Code style and formatting: [docs/claude/CLAUDE-CODE-STYLE.md](docs/claude/CLAUDE-CODE-STYLE.md)
 Best practices: [docs/claude/CLAUDE-BEST-PRACTICES.md](docs/claude/CLAUDE-BEST-PRACTICES.md)
 Testing: [docs/claude/CLAUDE-TESTING.md](docs/claude/CLAUDE-TESTING.md)
+Every npm command, its flags and an example: [docs/npm-project-commands.md](docs/npm-project-commands.md)
 Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCLOSURES.md)
 Accumulated context — decisions, user preferences, open items: [docs/claude/memory/MEMORY.md](docs/claude/memory/MEMORY.md)
 
@@ -264,6 +265,11 @@ Contract address source: <https://github.com/9mm-exchange/deployments/blob/main/
 ---
 
 ## npm Scripts
+
+Full reference — every command, its flags, and a copy-pasteable example
+(including `--help`) — in
+[docs/npm-project-commands.md](docs/npm-project-commands.md). The most
+used ones:
 
 ```bash
 npm run build          # esbuild bundle + cache-bust stamp (bundle.js?v=<ms>)

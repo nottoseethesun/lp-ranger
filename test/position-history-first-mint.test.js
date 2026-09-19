@@ -6,12 +6,21 @@
  *   the events array rather than from chain.
  *
  * Every other NFT's mint is free: a rebalance records "old X replaced by
- * new Y" at a block, so Y's mint block is that event's. The oldest one
- * appears only as an `oldTokenId`, so nothing names its mint. Reading it
- * from chain means scanning the pool's whole history for one Transfer —
- * 943 chunks on a real position, all of it for a number the event
- * scanner already resolved and hung on the array as
- * `firstMintBlockNumber`.
+ * new Y" at a block, so Y's mint block AND its mint transaction are that
+ * event's. The oldest one appears only as an `oldTokenId`, so nothing
+ * names its mint.
+ *
+ * The events array still supplies its DATE and BLOCK, as
+ * `chainFirstMint*` / `firstMint*`, and those are taken from there — no
+ * search. What the array cannot supply is the mint TRANSACTION, and
+ * `position-history.js` needs it: `needsEntryFromChain` and the
+ * creation-gas read are both gated on `mintTxHash`. Without it the
+ * oldest NFT opens at $0 and its mint costs nothing.
+ *
+ * So that one NFT does reach `supplementMintFromChain` — for the hash,
+ * not the date. It is not the 943-chunk walk that argument was once
+ * against: the caller hands over the block the events already gave, and
+ * `_mintScanWindow` searches that single block.
  *
  * The gate is `firstMintTokenId`, and it is not ceremony. The first mint
  * describes the oldest ARRIVAL, while the chain is built by
@@ -44,6 +53,11 @@ function mkEvents(extra = {}) {
       newTokenId: NEWER,
       blockNumber: CLOSE_BLOCK,
       timestamp: MINT_TS + 10_000,
+      /*- A rebalance event always carries the transaction that made it;
+       *  the scanner reads it straight off the log. NEWER's mint IS this
+       *  transaction, which is why an NFT named as a `newTokenId` never
+       *  needs a chain lookup — and why OLDEST, named by no event, does. */
+      txHash: "0xREBALANCE",
     },
   ];
   evts.firstMintTimestamp = MINT_TS;
@@ -95,7 +109,7 @@ describe("oldest NFT takes its mint from the events array", () => {
     delete require.cache[require.resolve("../src/position-history")];
   });
 
-  it("dates the chain-first NFT from chainFirst* without reading chain", async () => {
+  it("dates the chain-first NFT from chainFirst*, and still fetches its transaction", async () => {
     const r = await mod.getPositionHistory(OLDEST, {
       rebalanceEvents: mkEvents({
         chainFirstTokenId: OLDEST,
@@ -103,19 +117,20 @@ describe("oldest NFT takes its mint from the events array", () => {
         chainFirstMintTimestamp: MINT_TS,
       }),
     });
+    /*- Date and block come off the array — no search for either. */
     assert.equal(r.mintBlockNumber, MINT_BLOCK);
     assert.equal(r.mintDate, new Date(MINT_TS * 1000).toISOString());
     assert.equal(
       counts.mintFromChain,
-      0,
-      "the block was already on the events array",
+      1,
+      "the transaction is not on the array, and the entry value and creation gas are both gated on it",
     );
   });
 
   it("uses chainFirst* even when the oldest-held NFT was transferred in", async () => {
     /*- The case the whole field exists for.  `firstMint*` names the
      *  transferred-in NFT, so it cannot date this one; `chainFirst*`
-     *  names this one directly, so no chain read is needed. */
+     *  names this one directly, so the DATE needs no search. */
     const r = await mod.getPositionHistory(OLDEST, {
       rebalanceEvents: mkEvents({
         firstMintTokenId: FOREIGN,
@@ -124,8 +139,12 @@ describe("oldest NFT takes its mint from the events array", () => {
         chainFirstMintTimestamp: MINT_TS,
       }),
     });
-    assert.equal(r.mintBlockNumber, MINT_BLOCK);
-    assert.equal(counts.mintFromChain, 0);
+    assert.equal(
+      r.mintBlockNumber,
+      MINT_BLOCK,
+      "dated from chainFirst*, not from the transferred-in NFT",
+    );
+    assert.equal(counts.mintFromChain, 1, "the transaction still is not");
   });
 
   it("falls back to firstMint* on a cache written before chainFirst*", async () => {
@@ -133,7 +152,7 @@ describe("oldest NFT takes its mint from the events array", () => {
       rebalanceEvents: mkEvents({ firstMintTokenId: OLDEST }),
     });
     assert.equal(r.mintBlockNumber, MINT_BLOCK);
-    assert.equal(counts.mintFromChain, 0);
+    assert.equal(counts.mintFromChain, 1, "still only for the transaction");
   });
 
   it("reads chain when both fields name a different NFT", async () => {

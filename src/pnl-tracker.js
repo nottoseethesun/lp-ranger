@@ -189,6 +189,14 @@ function createPnlTracker(opts = {}) {
        *  holds the charge: it is saved and restored with the epoch, so a
        *  restart cannot add the same charge twice. See `addMintGas`. */
       mintGasApplied: false,
+      /*- Gas the position spent on compounds BEFORE this period opened,
+       *  recovered from chain by the lifetime scan. Held apart from
+       *  `gas` because it belongs to the position's history, not to this
+       *  period: the lifetime total counts it, the Per-Day row does not.
+       *  See `addImportedGas`. */
+      importedGas: 0,
+      importedGasNative: 0,
+      importedGasApplied: false,
     };
   }
 
@@ -282,11 +290,20 @@ function createPnlTracker(opts = {}) {
 
     const totalIL =
       closedEpochs.reduce((s, e) => s + e.il, 0) + (liveEpoch?.il ?? 0);
+    /*- Imported gas is added here and nowhere else. The lifetime figure
+     *  is the position's whole cost, so it belongs; the Per-Day rows are
+     *  per-day, so it does not. See `addImportedGas`. */
     const totalGas =
-      closedEpochs.reduce((s, e) => s + e.gas, 0) + (liveEpoch?.gas ?? 0);
+      closedEpochs.reduce((s, e) => s + e.gas + (e.importedGas ?? 0), 0) +
+      (liveEpoch?.gas ?? 0) +
+      (liveEpoch?.importedGas ?? 0);
     const totalGasNative =
-      closedEpochs.reduce((s, e) => s + (e.gasNative ?? 0), 0) +
-      (liveEpoch?.gasNative ?? 0);
+      closedEpochs.reduce(
+        (s, e) => s + (e.gasNative ?? 0) + (e.importedGasNative ?? 0),
+        0,
+      ) +
+      (liveEpoch?.gasNative ?? 0) +
+      (liveEpoch?.importedGasNative ?? 0);
 
     // ── P&L breakdown: price-change ──────────────────────────────────────────
     /*- Per-epoch fees are still summed by daily P&L and by the per-epoch
@@ -401,6 +418,35 @@ function createPnlTracker(opts = {}) {
     return true;
   }
 
+  /**
+   * Take up the gas this position spent compounding BEFORE the open
+   * period began — the whole chain's worth, recovered from chain by the
+   * lifetime scan.
+   *
+   * Kept out of `gas`, and so out of the Per-Day table, because it did
+   * not happen on the open period's day. It is months of charges spread
+   * across the position's whole history, and the only thing the open
+   * period has to do with them is being open when the scan finished.
+   * Landing them there reported a day's gas as the position's lifetime
+   * gas. The lifetime total still counts it — see `snapshot`.
+   *
+   * Once per period, by the same rule as `addMintGas`: the lifetime scan
+   * runs again on every re-scan and every restart, and offers the same
+   * total each time.
+   *
+   * @param {number} usd     Chain-wide compound gas in USD.
+   * @param {number} native  The same in the chain's native token.
+   * @returns {boolean} Whether the charge was taken up.
+   */
+  function addImportedGas(usd, native) {
+    if (!liveEpoch || liveEpoch.importedGasApplied === true) return false;
+    liveEpoch.importedGasApplied = true;
+    if (usd > 0) liveEpoch.importedGas = (liveEpoch.importedGas || 0) + usd;
+    if (native > 0)
+      liveEpoch.importedGasNative = (liveEpoch.importedGasNative || 0) + native;
+    return true;
+  }
+
   return {
     openEpoch,
     updateLiveEpoch,
@@ -410,6 +456,7 @@ function createPnlTracker(opts = {}) {
     getLiveEpoch,
     addGas,
     addMintGas,
+    addImportedGas,
     serialize,
     restore,
   };

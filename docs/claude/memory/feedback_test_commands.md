@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-09-17T08:02:28.125Z
+  modified: 2026-09-19T19:57:43.031Z
 ---
 
 # Running tests
@@ -86,6 +86,26 @@ was lost, but only because no write happened to land — luck, not design.
 touch operator state — `npm run lint`, `npm run build`, `node --check`,
 reading code. Batch the gate run for when the server is down, and say
 plainly that you need it stopped rather than stopping it yourself.
+
+**Check it as a command, every time — not from memory (2026-09-19).**
+The port check must be part of the same tool call as the wipe, so it
+cannot be skipped by assuming:
+
+```sh
+lsof -ti:5555 && echo "SERVER UP — do not wipe" || npm run wipe-settings
+```
+
+**Why this hardening exists:** I observed "port 5555 free" early in a
+long session, then ran `npm run check` an hour later without re-checking.
+The user had started the server in between — they had said so, in the
+message immediately before. Their state survived, but only because no
+write landed in the window.
+
+A remembered precondition decays across a long session; a command in the
+same call does not. The stale-observation failure is the specific one to
+design against: the longer the session, the less any earlier "server is
+down" reading is worth, and it is worth nothing at all once the user has
+said they started it.
 
 ## ad-hoc scripts count too (2026-09-17)
 

@@ -324,11 +324,14 @@ function _securitySection(data) {
   const content = [{ text: "Security", style: "h2" }];
   const sev = data.npmAudit.bySeverity || {};
   const auditLine =
-    data.npmAudit.total === 0
-      ? "npm audit: 0 advisories"
-      : `npm audit: ${data.npmAudit.total} advisories  ` +
-        `(critical ${sev.critical || 0}, high ${sev.high || 0}, ` +
-        `moderate ${sev.moderate || 0}, low ${sev.low || 0})`;
+    data.npmAudit.ok === false
+      ? `npm audit: DID NOT RUN — ${data.npmAudit.reason}` +
+        " (dependencies were not checked)"
+      : data.npmAudit.total === 0
+        ? "npm audit: 0 advisories"
+        : `npm audit: ${data.npmAudit.total} advisories  ` +
+          `(critical ${sev.critical || 0}, high ${sev.high || 0}, ` +
+          `moderate ${sev.moderate || 0}, low ${sev.low || 0})`;
   content.push({ text: auditLine });
   content.push({
     text:

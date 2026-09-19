@@ -708,7 +708,20 @@ async function getPositionHistory(tokenId, opts = {}) {
   if (close) _applyCloseEntry(result, close);
 
   _supplementFromEvents(result, tokenId, opts.rebalanceEvents);
-  if (!result.mintDate) {
+  /*-
+   *  The transaction, not just the date. Every NFT a rebalance created
+   *  gets both from that rebalance's event. The chain's OLDEST NFT gets
+   *  neither from an event — no event names it as a `newTokenId` — so
+   *  `_applyFirstMint` stamps the date and block from the scanner's
+   *  `chainFirstMint*` fields and leaves the hash null.
+   *
+   *  Gating on the date alone therefore skipped the lookup for the one
+   *  NFT it exists to serve. The hash is what `needsEntryFromChain` and
+   *  the creation-gas read both require, so without it that NFT opens at
+   *  $0 and its mint costs nothing — the first row of the Per-Day table
+   *  dashes out and the totals count the missing entry as zero.
+   */
+  if (!result.mintDate || !result.mintTxHash) {
     const _t1 = Date.now();
     await supplementMintFromChain(result, tokenId);
     log.info(

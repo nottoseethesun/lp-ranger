@@ -107,6 +107,18 @@
 
 "use strict";
 
+const cliHelp = require("./src/cli-help");
+
+/*- `--help` answers and leaves, ahead of every other line in this file.
+ *  It starts no server, so it must not open the operator's log file and
+ *  must not announce a start — and the help text it prints names
+ *  `npm run build-and-start`, so a start banner above it read as though
+ *  the server it describes was already up. */
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  cliHelp("server");
+  process.exit(0);
+}
+
 /*- Boot wiring for the --log-file CLI flag + logging.json static
  *  tunable.  MUST run before any log output so the file captures the
  *  startup banner.  No-op when neither source opts in.  See
@@ -116,8 +128,8 @@ require("./src/boot-log-file").bootLogFile();
 const { log } = require("./src/log");
 const { resetErrorLog } = require("./src/error-log");
 const { writePidFile, removePidFile } = require("./src/server-pid");
-// Very first statement of the app — printed before any require so it
-// always lands at the top of the log.  Black on light gray (inverse of
+// First statement of a real run — `--help` has already exited above, so
+// nothing logs before this and it always tops the log.  Black on light gray (inverse of
 // bot.js), rocket emoji before and after "Started."  ANSI: 30=black fg,
 // 47=lt-gray bg, 0=reset.
 log.info(
@@ -126,13 +138,7 @@ log.info(
 
 const { emojiId } = require("./src/logger");
 
-const cliHelp = require("./src/cli-help");
 const installServerErrorGuard = require("./src/server-error-guard");
-
-if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  cliHelp("server");
-  process.exit(0);
-}
 
 const _headless = process.argv.includes("--headless");
 

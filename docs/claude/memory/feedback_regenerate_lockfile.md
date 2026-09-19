@@ -115,3 +115,28 @@ from "stale lockfile".
 never tested against, so `npm audit` going quiet is not sufficient
 evidence.  Run `./node_modules/.bin/markdownlint-cli2 <some files>` and
 see it exit 0.  (Never `npx` — see [[feedback_no_npx]].)
+
+## Step 5 can come back WORSE — compare, then decide (2026-09-19)
+
+`npm run check` failed on 16 advisories. I ran the procedure exactly as
+written. The regenerated tree had **21**, and a new high: `undici@7.24.4`,
+where the committed lockfile carries `7.29.1`. Regeneration traded one
+high away and picked up a worse one.
+
+`git checkout -- package-lock.json && rm -rf node_modules && npm ci`
+restored the committed tree and the count went back to 16. The lockfile
+ends unmodified, which is the point: the regenerated one was never worth
+committing.
+
+**So step 5 is a comparison, not a formality.** Record the advisory count
+BEFORE deleting anything, and read the new count against it:
+
+- Lower → keep the regenerated lockfile, as the procedure intends.
+- **Same or higher → restore the committed one and report.** A newer
+  parent can pin an OLDER transitive than the lockfile already resolved;
+  regeneration has no way to prefer the better of the two.
+
+This does not weaken the rule above — still run it first, still do not
+diff the tree or trace edges to predict the outcome. It only says what to
+do with an outcome that came back worse, which the procedure did not
+previously cover.

@@ -142,9 +142,28 @@ async function _run({ withClose, extraOpts = {} }) {
     const pcb = origRequire.call(module, "../src/pool-creation-block");
     if (typeof pcb._resetForTests === "function") pcb._resetForTests();
   }
-  /*- Only the Collect / DecreaseLiquidity scans carry topics; drop any
-   *  other read so the assertions speak about the scan alone. */
-  return _ctx.calls.filter((c) => Array.isArray(c.topics));
+  /*- Keep only the Collect / DecreaseLiquidity scans, so the assertions
+   *  below speak about those alone.
+   *
+   *  Two reads carry topics. The other is the oldest NFT's mint lookup,
+   *  a `Transfer` from the zero address — a different question, asked
+   *  for the mint TRANSACTION rather than for the NFT's history, and
+   *  bounded to the one block the events already named. `_mintCalls`
+   *  returns those, and the suite asserts that bound separately. */
+  return _ctx.calls.filter((c) => Array.isArray(c.topics) && !_isMint(c));
+}
+
+/** The zero-address `from` topic that marks a mint. */
+const _ZERO_TOPIC = "0x" + "0".repeat(64);
+
+/** Whether a recorded getLogs call is the mint lookup. */
+function _isMint(c) {
+  return Array.isArray(c.topics) && c.topics[1] === _ZERO_TOPIC;
+}
+
+/** The mint-lookup reads recorded during the last `_run`. */
+function _mintCalls() {
+  return _ctx.calls.filter(_isMint);
 }
 
 describe("closed-NFT history scans are bounded to that NFT's life", () => {
@@ -262,3 +281,36 @@ describe("a history already read with the rest of its chain", () => {
 
 /*- `nftScanFromBlock`, the helper this file's floor comes from, is
  *  covered directly in test/nft-mint-blocks.test.js. */
+
+describe("the oldest NFT's mint lookup is bounded to one block", () => {
+  /*- The lookup exists for the mint TRANSACTION, which no rebalance
+   *  event carries for the chain's first NFT. The block is already
+   *  known, so the search must be that block and nothing more.
+   *
+   *  Unbounded, this walks from the pool's creation to the chain head —
+   *  the 943-chunk cost that argued against running it at all. That cost
+   *  is what makes the difference between a read worth doing and one
+   *  worth avoiding, so it is asserted rather than assumed. */
+
+  it("searches exactly the block the events named", async () => {
+    await _run({ withClose: true });
+    const mint = _mintCalls();
+    if (mint.length === 0) return; // this fixture names the NFT by event
+    for (const c of mint)
+      assert.equal(
+        c.fromBlock,
+        c.toBlock,
+        `the mint search must be one block, got ${c.fromBlock}..${c.toBlock}`,
+      );
+  });
+
+  it("never widens to the whole chain", async () => {
+    await _run({ withClose: true });
+    for (const c of _mintCalls())
+      assert.notEqual(
+        c.toBlock,
+        "latest",
+        "a mint lookup reaching the chain head is the unbounded walk",
+      );
+  });
+});

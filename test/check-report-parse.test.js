@@ -264,9 +264,53 @@ describe("check-report-parse: parseNpmAudit", () => {
     assert.equal(r.bySeverity.low, 2);
   });
 
+  it("marks a completed run ok", () => {
+    const json = { metadata: { vulnerabilities: { low: 0, high: 0 } } };
+    const r = P.parseNpmAudit(json);
+    assert.equal(r.ok, true, "it reached the advisory service");
+    assert.equal(r.total, 0);
+    assert.equal(r.reason, null);
+  });
+
+  /*- A registry outage and a clean tree both total zero. Only `ok`
+   *  separates them, and the renderers key off it — without this the
+   *  report says "0 advisories" over a run that checked nothing. */
+  it("does not report an outage as a clean audit", () => {
+    const outage = {
+      error: {
+        code: "E503",
+        summary: "503 Service Unavailable - POST https://registry.npmjs.org",
+        detail: "We are currently performing maintenance.",
+      },
+    };
+    const r = P.parseNpmAudit(outage);
+    assert.equal(r.ok, false, "nothing was audited");
+    assert.equal(r.total, 0);
+    assert.match(r.reason, /E503/, "the reason names the failure");
+    assert.match(r.reason, /Service Unavailable/);
+  });
+
+  it("reads a bare string error", () => {
+    const r = P.parseNpmAudit({ error: "audit endpoint returned an error" });
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, "audit endpoint returned an error");
+  });
+
+  it("falls back to a reason when the error carries none", () => {
+    for (const json of [{}, { error: {} }, { error: null }, { metadata: {} }]) {
+      const r = P.parseNpmAudit(json);
+      assert.equal(r.ok, false, `for ${JSON.stringify(json)}`);
+      assert.ok(
+        typeof r.reason === "string" && r.reason.length > 0,
+        "a failure always states a reason",
+      );
+    }
+  });
+
   it("handles missing metadata", () => {
     assert.equal(P.parseNpmAudit({}).total, 0);
     assert.equal(P.parseNpmAudit(null).total, 0);
+    assert.equal(P.parseNpmAudit(null).ok, false);
   });
 });
 

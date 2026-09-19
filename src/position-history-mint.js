@@ -10,11 +10,19 @@
  * `position-history-scan-helpers.js` because it owns persistent state —
  * the two files next to it are stateless.
  *
- * **When this runs.** Almost never. `_supplementFromEvents` names the
- * mint block of every NFT in a rebalance chain except the oldest, which
- * appears only as an `oldTokenId` and whose mint predates every event.
- * So this is the fallback for that one NFT, and the disk cache means it
- * is paid once per pool rather than once per start.
+ * **When this runs.** Almost never. `_supplementFromEvents` fills both
+ * the mint date and the mint TRANSACTION for every NFT a rebalance
+ * created, reading each off that rebalance's own event. The chain's
+ * oldest NFT has no such event — it appears only as an `oldTokenId` —
+ * so it arrives here with a date and block stamped from the scanner's
+ * `chainFirstMint*` fields and no transaction hash. That hash is the
+ * reason this runs: `needsEntryFromChain` and the creation-gas read in
+ * `position-history.js` both require it.
+ *
+ * **What it costs.** One block. The caller passes the block it already
+ * knows, so the search does not walk a range. Without it the window
+ * would run from the pool's creation to the chain head. The disk cache
+ * then makes even that one request a once-ever cost per NFT.
  */
 
 "use strict";
@@ -43,6 +51,23 @@ const _MINT_CACHE_PATH = path.join(
 );
 const _mintCache = new Map();
 
+/**
+ * Cache key for one NFT's mint.
+ *
+ * Scoped by the NFT contract, because a token id identifies an NFT only
+ * WITHIN its contract. Two position managers both number their NFTs from
+ * one, so a key of the id alone hands the first provider's mint back for
+ * the second provider's NFT — a wrong mint date, a wrong opening value,
+ * and a wrong creation gas, all silently.
+ *
+ * @param {string} pmAddress  NFT contract (NonfungiblePositionManager).
+ * @param {string|number} tokenId
+ * @returns {string}
+ */
+function _mintKey(pmAddress, tokenId) {
+  return `${String(pmAddress).toLowerCase()}-${String(tokenId)}`;
+}
+
 /** Load disk mint cache into memory on first use. */
 function _loadMintCache() {
   if (_mintCache.size > 0) return;
@@ -69,7 +94,15 @@ function _saveMintCache() {
 }
 
 /** Resolve the scan window for one NFT's mint. */
-async function _mintScanWindow(prov, tokenId) {
+async function _mintScanWindow(prov, tokenId, knownBlock, pmAddress) {
+  /*- When the block is already known, it IS the window. The chain's
+   *  oldest NFT reaches here with `mintBlockNumber` already stamped from
+   *  the scanner's `chainFirstMintBlock`, and only its transaction hash
+   *  is missing — so the search is one block, not a chunked walk from
+   *  the pool's creation to the chain head. That walk is thousands of
+   *  requests; this is one. */
+  if (Number.isInteger(knownBlock) && knownBlock > 0)
+    return { from: knownBlock, to: knownBlock };
   /* Search recent blocks only — NFTs are minted within
      the last ~5 years max (~15.8M blocks on PulseChain). */
   const latest = await prov.getBlockNumber();
@@ -79,7 +112,7 @@ async function _mintScanWindow(prov, tokenId) {
   const poolAddress = await resolvePoolAddressForToken({
     provider: prov,
     ethersLib: ethers,
-    positionManagerAddress: config.POSITION_MANAGER,
+    positionManagerAddress: pmAddress || config.POSITION_MANAGER,
     factoryAddress: config.FACTORY,
     tokenId,
   });
@@ -108,10 +141,20 @@ async function _mintScanWindow(prov, tokenId) {
  *   `closeBlockNumber` (the scan's upper bound); written with
  *   `mintDate`, `mintTxHash` and `mintBlockNumber`.
  * @param {string} tokenId  NFT token ID.
+ * @param {object} [opts]
+ * @param {string} [opts.positionManagerAddress]  The NFT contract to read.
+ *   Defaults to the configured one. Taken as a parameter because a token
+ *   id names an NFT only within its own contract, and this app addresses
+ *   positions by `blockchain-wallet-contract-tokenId`.
  */
-async function supplementMintFromChain(result, tokenId) {
+async function supplementMintFromChain(result, tokenId, opts = {}) {
+  const pmAddress =
+    typeof opts.positionManagerAddress === "string" &&
+    opts.positionManagerAddress !== ""
+      ? opts.positionManagerAddress
+      : config.POSITION_MANAGER;
   _loadMintCache();
-  const cached = _mintCache.get(String(tokenId));
+  const cached = _mintCache.get(_mintKey(pmAddress, tokenId));
   if (cached) {
     result.mintDate = result.mintDate || cached.mintDate;
     result.mintTxHash = result.mintTxHash || cached.txHash;
@@ -121,7 +164,12 @@ async function supplementMintFromChain(result, tokenId) {
   }
   try {
     const prov = sendTx.getManagedReadProvider();
-    const { from, to } = await _mintScanWindow(prov, tokenId);
+    const { from, to } = await _mintScanWindow(
+      prov,
+      tokenId,
+      result.mintBlockNumber,
+      pmAddress,
+    );
     const logs = await scanChunked({
       provider: prov,
       fromBlock: from,
@@ -129,7 +177,7 @@ async function supplementMintFromChain(result, tokenId) {
       label: `history mint #${tokenId}`,
       query: (f, t) =>
         prov.getLogs({
-          address: config.POSITION_MANAGER,
+          address: pmAddress,
           fromBlock: f,
           toBlock: t,
           topics: [
@@ -146,7 +194,7 @@ async function supplementMintFromChain(result, tokenId) {
     result.mintDate = new Date(block.timestamp * 1000).toISOString();
     result.mintTxHash = result.mintTxHash || logs[0].transactionHash;
     result.mintBlockNumber = result.mintBlockNumber || logs[0].blockNumber;
-    _mintCache.set(String(tokenId), {
+    _mintCache.set(_mintKey(pmAddress, tokenId), {
       mintDate: result.mintDate,
       txHash: logs[0].transactionHash,
       blockNumber: logs[0].blockNumber,

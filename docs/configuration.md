@@ -17,7 +17,9 @@ sits on top, so a line left there overrides anything set later in the
 dashboard.
 
 For the runtime mechanisms these settings govern, see
-[`docs/engineering.md`](engineering.md). For how the bot and dashboard
+[`docs/engineering.md`](engineering.md). For the commands that read this
+configuration, see
+[`docs/npm-project-commands.md`](npm-project-commands.md). For how the bot and dashboard
 cooperate at a higher level, see [`docs/architecture.md`](architecture.md).
 For the controls protecting the wallet, see [`docs/security.md`](security.md).
 

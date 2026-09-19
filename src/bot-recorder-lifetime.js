@@ -56,13 +56,36 @@ const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { isIntegerInRange } = require("./pool-state-validate");
 const { hasCompoundedTotal } = require("./bot-config-keys");
 
-/** Add historical compound gas to the P&L tracker if available. */
-async function _applyCompoundGas(totalGasWei, pnlTracker) {
+/**
+ * Add the chain's historical compound gas to the P&L tracker.
+ *
+ * This is every compound the position ever made, summed — months of
+ * charges, recovered from chain. It goes in through `addImportedGas`
+ * rather than `addGas` for two reasons, and both matter:
+ *
+ * - **It is not today's cost.** `addGas` credits the open period, which
+ *   the Per-Day table renders as one day's gas. A whole position's
+ *   compounding history shown as a single day's charge is wrong by the
+ *   width of the position's life.
+ * - **It is offered repeatedly.** The lifetime scan runs on every
+ *   restart and every Re-scan Prices, and hands over the same total each
+ *   time. `addImportedGas` takes it once per period.
+ *
+ * Persisted immediately, because nothing else writes the tracker out
+ * after this point — the same reason `_recordCancelGas` persists.
+ *
+ * @param {bigint} totalGasWei  Chain-wide compound gas, in wei.
+ * @param {object} pnlTracker   Tracker holding the open period.
+ * @param {Function} [emit]     `updateBotState`, to persist the result.
+ */
+async function _applyCompoundGas(totalGasWei, pnlTracker, emit) {
   if (!totalGasWei || totalGasWei === 0n) return;
   if (!pnlTracker || pnlTracker.epochCount() === 0) return;
   const gasUsd = await _actualGasCostUsd(totalGasWei);
   const gasNative = Number(totalGasWei) / 1e18;
-  if (gasUsd > 0) pnlTracker.addGas(gasUsd, gasNative);
+  if (gasUsd <= 0) return;
+  if (!pnlTracker.addImportedGas(gasUsd, gasNative)) return;
+  if (typeof emit === "function") emit({ pnlEpochs: pnlTracker.serialize() });
 }
 
 /*-
@@ -286,7 +309,7 @@ async function _classifyAllCompounds(
       patch.compoundedAmount1 = totalAmount1;
     }
     updateState(patch);
-    await _applyCompoundGas(totalCompoundGasWei, pnlTracker);
+    await _applyCompoundGas(totalCompoundGasWei, pnlTracker, updateState);
   } else {
     /*-
      *  No standalone compounds, but the per-NFT mint-gas figures we just

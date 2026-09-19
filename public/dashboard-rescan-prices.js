@@ -115,6 +115,9 @@ export function paintRescanPricesButton(status) {
   const key = _activeKey();
   const st = key ? _positionState(status, key) : null;
   const busy = !!st?.rebalanceInProgress || !!st?.compoundInProgress;
+  /*- Sync state deliberately does NOT disable this button. The dialog
+   *  opens either way and explains itself — a greyed-out control with a
+   *  tooltip makes the operator hunt for the reason. See `_wireDialog`. */
   btn.disabled = busy;
   btn.title = busy
     ? "Wait for the current move to finish before re-scanning prices."
@@ -123,7 +126,7 @@ export function paintRescanPricesButton(status) {
 
 /*-
  *  Show the dialog's status line. It takes no space while hidden; see
- *  the `rescan-notice` rule in 9mm-pos-mgr.css for when it appears.
+ *  the `dialog-notice` rule in 9mm-pos-mgr.css for when it appears.
  *
  *  `text` omitted keeps the template's default copy.
  */
@@ -170,19 +173,35 @@ function _wireRecentLimit(overlay) {
 }
 
 /** Wire the dialog's controls once it is in the DOM. */
-function _wireDialog(overlay, getStatus) {
+function _wireDialog(overlay, getStatus, getSynced) {
   const status = getStatus();
   const managed = isActivePositionManaged(status);
+  /*-
+   *  Only an explicit `true` counts. `isSyncComplete()` answers null
+   *  until the first poll lands, and a position that has not reported
+   *  yet is not one to re-value.
+   *
+   *  The dialog still opens while syncing — it explains itself at the
+   *  top and disables the action. A greyed-out Settings item with a
+   *  tooltip makes the operator hunt for the reason instead.
+   */
+  const synced = typeof getSynced === "function" && getSynced() === true;
   const go = overlay.querySelector("#rescanPricesGoBtn");
-  const notice = overlay.querySelector('[data-tpl="notManaged"]');
+  const notManaged = overlay.querySelector('[data-tpl="notManaged"]');
+  const notSynced = overlay.querySelector('[data-tpl="notSynced"]');
 
-  if (managed) _hideNotice(notice);
-  else _showNotice(notice);
+  /*- One reason at a time, most fundamental first: an unmanaged
+   *  position cannot be re-valued at all, so say that rather than
+   *  telling the operator to wait for a sync that is not running. */
+  _hideNotice(notManaged);
+  _hideNotice(notSynced);
+  if (!managed) _showNotice(notManaged);
+  else if (!synced) _showNotice(notSynced);
 
   _wireRecentLimit(overlay);
 
   if (go === null) return;
-  go.disabled = !managed;
+  go.disabled = !managed || !synced;
   go.addEventListener("click", () => _submit(overlay, go, getStatus));
 }
 
@@ -259,7 +278,21 @@ function _awaitCompletion(overlay, go, key, getStatus) {
 /** POST the request and report the outcome in-dialog. */
 async function _submit(overlay, go, getStatus) {
   const key = _activeKey();
-  if (!key) return;
+  /*-
+   *  No key means no position has resolved in the browser yet. This
+   *  returned silently: no request, no spinner, no message — the button
+   *  simply did nothing, which reads as a broken button rather than as
+   *  "not ready". Say so instead. The sync gate in `_wireDialog` should
+   *  make this unreachable; it stays because a silent no-op is the worse
+   *  failure of the two.
+   */
+  if (!key) {
+    _showNotice(
+      overlay.querySelector('[data-tpl="notSynced"]'),
+      "No position is loaded yet. Wait for the badge at the top of the app to read Synced, then reopen this dialog.",
+    );
+    return;
+  }
   _setBusy(overlay, go, true);
   /*-
    *  Read from the checkbox rather than kept in module state: the dialog
@@ -316,7 +349,7 @@ async function _submit(overlay, go, getStatus) {
  * Body markup lives in the `tplRescanPricesModal` template in
  * index.html — no HTML is built here (per feedback-no-new-html-in-js).
  */
-export function openRescanPricesDialog(getStatus) {
+export function openRescanPricesDialog(getStatus, getSynced) {
   const frag = cloneTpl("tplRescanPricesModal");
   if (!frag) return;
   const overlay = document.createElement("div");
@@ -324,5 +357,5 @@ export function openRescanPricesDialog(getStatus) {
   overlay.id = "rescanPricesModal";
   overlay.appendChild(frag);
   document.body.appendChild(overlay);
-  _wireDialog(overlay, getStatus);
+  _wireDialog(overlay, getStatus, getSynced);
 }

@@ -297,3 +297,71 @@ describe("mint gas is valued at the mint, not at today", () => {
     );
   });
 });
+
+describe("the chain's past compound gas does not become today's gas", () => {
+  /*- The lifetime scan recovers every compound the position ever made
+   *  and hands over one total. It is months of charges; the open period
+   *  merely happened to be open when the scan finished. Counting it as
+   *  that period's gas reports a position's lifetime cost as one day's.
+   *  And the scan re-offers the same total on every restart and every
+   *  Re-scan Prices, so without a mark it accumulates. */
+
+  it("keeps it out of the open period's own gas", () => {
+    const t = openLive(createPnlTracker());
+    t.addGas(0.5, 40); // a charge that really is today's
+    t.addImportedGas(2.27, 197000);
+    const live = t.getLiveEpoch();
+    assert.equal(live.gas, 0.5, "today's row shows only today's charge");
+    assert.equal(live.importedGas, 2.27, "the history is held apart");
+  });
+
+  it("still counts it in the lifetime total", () => {
+    const t = openLive(createPnlTracker());
+    t.addGas(0.5, 40);
+    t.addImportedGas(2.27, 197000);
+    const snap = t.snapshot(0.001);
+    assert.ok(
+      Math.abs(snap.totalGas - 2.77) < 1e-9,
+      `lifetime gas must include it, got ${snap.totalGas}`,
+    );
+    assert.equal(snap.totalGasNative, 197040);
+  });
+
+  it("leaves the Per-Day rows carrying only same-day charges", () => {
+    const t = openLive(createPnlTracker());
+    t.addGas(0.5, 40);
+    t.addImportedGas(2.27, 197000);
+    const rows = t.snapshot(0.001).dailyPnl.filter((d) => d.gasCost > 0);
+    for (const r of rows)
+      assert.ok(
+        r.gasCost < 2.27,
+        `no row may carry the imported total, got ${r.gasCost}`,
+      );
+    const summed = rows.reduce((s, r) => s + r.gasCost, 0);
+    assert.ok(
+      Math.abs(summed - 0.5) < 1e-9,
+      `the table shows today's charge only, got ${summed}`,
+    );
+  });
+
+  it("refuses a second offer of the same total", () => {
+    const t = openLive(createPnlTracker());
+    assert.equal(t.addImportedGas(2.27, 197000), true);
+    assert.equal(t.addImportedGas(2.27, 197000), false, "re-scan offers again");
+    assert.ok(Math.abs(t.snapshot(0.001).totalGas - 2.27) < 1e-9);
+  });
+
+  it("refuses it again after a save and restore", () => {
+    const first = openLive(createPnlTracker());
+    first.addImportedGas(2.27, 197000);
+    const onDisk = JSON.parse(JSON.stringify(first.serialize()));
+    const second = createPnlTracker();
+    second.restore(onDisk);
+    assert.equal(
+      second.addImportedGas(2.27, 197000),
+      false,
+      "a restart must not buy the position's history twice",
+    );
+    assert.ok(Math.abs(second.snapshot(0.001).totalGas - 2.27) < 1e-9);
+  });
+});

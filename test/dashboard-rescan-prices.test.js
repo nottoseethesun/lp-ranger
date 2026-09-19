@@ -33,6 +33,11 @@ const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 const KEY = `pulsechain-${WALLET}-${PM}-1`;
 
+/*- The sync signal the dialog gates on. These suites test everything
+ *  EXCEPT the gate, so they assert a synced position; the gate itself is
+ *  covered in "the dialog waits for the position to finish syncing". */
+const SYNCED = () => true;
+
 let dialog;
 let requests;
 
@@ -103,7 +108,10 @@ describe("Re-scan Prices dialog", () => {
      *  The second only narrows the first, so it starts disabled: a
      *  window with no rebuild behind it scopes nothing.
      */
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     const open = overlay();
     assert.notEqual(open, null, "the dialog opened");
     const inputs = open.querySelectorAll("input");
@@ -124,7 +132,10 @@ describe("Re-scan Prices dialog", () => {
      *  disabled control still reads as checked at submit time, which
      *  would send a window for a rebuild that is not happening.
      */
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     const open = overlay();
     const daily = open.querySelector("#rescanIncludeDailyPnl");
     const win = open.querySelector("#rescanLimitRecent");
@@ -141,7 +152,10 @@ describe("Re-scan Prices dialog", () => {
   });
 
   it("sends the key, and does not opt in unless asked", async () => {
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     overlay().querySelector("#rescanPricesGoBtn").click();
     await settle();
     assert.equal(requests.length, 1);
@@ -161,7 +175,10 @@ describe("Re-scan Prices dialog", () => {
      *  A real boolean, not the string a form would carry: the server
      *  commits to minutes of chain reads only on `=== true`.
      */
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     overlay().querySelector("#rescanIncludeDailyPnl").checked = true;
     overlay().querySelector("#rescanPricesGoBtn").click();
     await settle();
@@ -178,7 +195,10 @@ describe("Re-scan Prices dialog", () => {
      *  A flag, not a day count: the server owns the number, so a request
      *  cannot ask for a reach the dialog never offered.
      */
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     const open = overlay();
     const daily = open.querySelector("#rescanIncludeDailyPnl");
     daily.checked = true;
@@ -198,10 +218,16 @@ describe("Re-scan Prices dialog", () => {
      *  The dialog is rebuilt from its template each time, so a choice
      *  made once must not quietly ride along on the next request.
      */
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     overlay().querySelector("#rescanIncludeDailyPnl").checked = true;
     overlay().remove();
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     assert.equal(
       overlay().querySelector("#rescanIncludeDailyPnl").checked,
       false,
@@ -215,7 +241,10 @@ describe("Re-scan Prices dialog", () => {
       const refusal = { ok: false, error: "not-managed", message: reason };
       return { ok: false, status: 409, json: async () => refusal };
     };
-    dialog.openRescanPricesDialog(() => statusWith({ status: "running" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "running" }),
+      SYNCED,
+    );
     const go = overlay().querySelector("#rescanPricesGoBtn");
     go.click();
     await settle();
@@ -227,7 +256,10 @@ describe("Re-scan Prices dialog", () => {
   });
 
   it("waits for the position to be managed", () => {
-    dialog.openRescanPricesDialog(() => statusWith({ status: "stopped" }));
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "stopped" }),
+      SYNCED,
+    );
     const go = overlay().querySelector("#rescanPricesGoBtn");
     const notice = overlay().querySelector('[data-tpl="notManaged"]');
     const shown = notice.classList.contains("9mm-pos-mgr-is-shown");
@@ -237,7 +269,7 @@ describe("Re-scan Prices dialog", () => {
 
   it("closes itself once the re-scan reports complete", async () => {
     let status = statusWith({ status: "running", lifetimeScanComplete: false });
-    dialog.openRescanPricesDialog(() => status);
+    dialog.openRescanPricesDialog(() => status, SYNCED);
     overlay().querySelector("#rescanPricesGoBtn").click();
     await settle();
     mock.timers.tick(1);
@@ -247,5 +279,86 @@ describe("Re-scan Prices dialog", () => {
     mock.timers.tick(1);
     const afterDone = overlay();
     assert.equal(afterDone, null, "closed when the scan finished");
+  });
+});
+
+describe("the dialog waits for the position to finish syncing", () => {
+  /*- The operator clicked Re-scan Prices before the position had
+   *  loaded. The dialog opened, the action did nothing — no request, no
+   *  spinner, no message — because `_submit` returned before `_setBusy`
+   *  when no position key had resolved.
+   *
+   *  The dialog now opens either way and says why the action is
+   *  unavailable. It is NOT reached by disabling the Settings item: a
+   *  greyed-out control with a tooltip makes the reason something the
+   *  operator has to go looking for. */
+
+  const RUNNING = () => statusWith({ status: "running" });
+
+  it("disables the action and says why, while syncing", () => {
+    dialog.openRescanPricesDialog(RUNNING, () => false);
+    const open = overlay();
+    assert.notEqual(open, null, "the dialog still opens");
+    const go = open.querySelector("#rescanPricesGoBtn");
+    assert.equal(go.disabled, true, "the action waits for the sync");
+    const notice = open.querySelector('[data-tpl="notSynced"]');
+    assert.notEqual(notice, null, "the dialog carries the explanation");
+    assert.ok(
+      notice.className.includes("9mm-pos-mgr-is-shown"),
+      "and shows it — an unavailable action with no stated reason is the bug",
+    );
+    assert.match(notice.textContent, /Synced/, "it names the badge to watch");
+  });
+
+  it("treats 'not polled yet' as not synced", () => {
+    /*- `isSyncComplete()` answers null until the first poll lands. Only
+     *  an explicit true may enable; null is not yet an answer. */
+    dialog.openRescanPricesDialog(RUNNING, () => null);
+    assert.equal(
+      overlay().querySelector("#rescanPricesGoBtn").disabled,
+      true,
+      "null is not a synced position",
+    );
+  });
+
+  it("enables the action once synced, and hides the notice", () => {
+    dialog.openRescanPricesDialog(RUNNING, SYNCED);
+    const open = overlay();
+    assert.equal(open.querySelector("#rescanPricesGoBtn").disabled, false);
+    const notice = open.querySelector('[data-tpl="notSynced"]');
+    assert.ok(
+      !notice.className.includes("9mm-pos-mgr-is-shown"),
+      "a synced position is told nothing about syncing",
+    );
+  });
+
+  it("sends nothing while syncing", async () => {
+    dialog.openRescanPricesDialog(RUNNING, () => false);
+    overlay().querySelector("#rescanPricesGoBtn").click();
+    await settle();
+    assert.equal(requests.length, 0, "no request may leave while syncing");
+  });
+
+  it("reports the unmanaged reason ahead of the sync one", async () => {
+    /*- One reason at a time, most fundamental first. An unmanaged
+     *  position cannot be re-valued at all, so telling the operator to
+     *  wait for a sync that is not running would send them nowhere. */
+    dialog.openRescanPricesDialog(
+      () => statusWith({ status: "stopped" }),
+      () => false,
+    );
+    const open = overlay();
+    assert.ok(
+      open
+        .querySelector('[data-tpl="notManaged"]')
+        .className.includes("9mm-pos-mgr-is-shown"),
+      "the managed requirement is the one shown",
+    );
+    assert.ok(
+      !open
+        .querySelector('[data-tpl="notSynced"]')
+        .className.includes("9mm-pos-mgr-is-shown"),
+      "and the sync notice stays out of the way",
+    );
   });
 });

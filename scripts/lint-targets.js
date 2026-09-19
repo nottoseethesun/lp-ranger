@@ -96,6 +96,7 @@ const MARKDOWN_TARGETS = [
   "docs/architecture.md",
   "docs/configuration.md",
   "docs/engineering.md",
+  "docs/npm-project-commands.md",
   "docs/security.md",
   "docs/roadmap/**/*.md",
 ];

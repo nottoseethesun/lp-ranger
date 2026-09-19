@@ -64,6 +64,40 @@ Bot-only options:
                   See docs/architecture.md "Idle-Driven Price-Lookup
                   Pause" for the full rationale.
 ${COMMON}`,
+
+  /*- `build-and-start` runs two things, so its help answers for itself
+   *  and then hands off. It does NOT repeat the server's flag list: that
+   *  list lives in one place, and a copy here would drift the first time
+   *  a flag changed. The lines below are meant to be pasted. */
+  "build-and-start": `
+LP Ranger — Build the dashboard, then start the server
+
+Usage:
+  npm run build-and-start [-- options]
+
+What it does, in order:
+  1. npm run build     Rebuild the dashboard bundle, the generated
+                       content and the cache-bust stamps.
+  2. node server.js    Start the dashboard server and auto-start every
+                       position saved as running.
+
+  Options after \`--\` are passed to the server, not to the build.
+  The build takes no options.
+
+Help for what it runs:
+  npm start -- --help            Server options (the ones you can pass here)
+  npm run build                  The build itself; it has no options
+
+Common forms:
+  npm run build-and-start
+  npm run build-and-start -- --verbose
+  npm run build-and-start -- --headless
+  npm run build-and-start -- --log-file /tmp/burn-in.log
+  npm run build-and-start -- --help     Show this text and exit
+
+  Every command in the project is listed in
+  docs/npm-project-commands.md.
+`,
 };
 
 module.exports = function showHelp(mode) {

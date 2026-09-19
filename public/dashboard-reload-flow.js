@@ -22,7 +22,11 @@ import { log } from "./dashboard-log.js";
 import { ethers } from "./ethers-adapter.js";
 import { g, fetchWithCsrf } from "./dashboard-helpers.js";
 import { confirmViaDialog } from "./dashboard-confirm-dialog.js";
-import { getLastStatus, resetHistoryFlag } from "./dashboard-data.js";
+import {
+  getLastStatus,
+  resetHistoryFlag,
+  isSyncComplete,
+} from "./dashboard-data.js";
 import { clearHistory } from "./dashboard-history.js";
 import { resetLastFetchedId } from "./dashboard-unmanaged.js";
 import { _createModal } from "./dashboard-data-status.js";
@@ -242,12 +246,53 @@ function _waitForReloadCompletion(key, startedAtMs) {
  * @param {string|number|null|undefined} tokenId  NFT id, for the prompt.
  * @returns {Promise<boolean>} True when the user confirmed.
  */
+/**
+ * Say why the action is unavailable, and disable it.
+ *
+ * The dialog opens either way and explains itself, rather than being
+ * unreachable — the same treatment as Re-scan Prices. A greyed-out
+ * Settings item with a tooltip makes the reason something the operator
+ * has to hunt for.
+ *
+ * Two reasons, and only the more fundamental one is shown. An unmanaged
+ * position has no bot-loop state on the server, so the route answers 404
+ * whatever its sync looks like — telling the operator to wait for a sync
+ * that is not running would send them nowhere.
+ *
+ * `synced` enables only on an explicit `true`: `isSyncComplete()` answers
+ * null until the first poll lands, and a position that has not reported
+ * yet is not one to spend hours re-scanning.
+ *
+ * Exported as a pure decision so it can be driven directly against the
+ * real template — see CLAUDE-TESTING.md § No Mirroring.
+ *
+ * @param {DocumentFragment|Element} frag  The dialog's content.
+ * @param {{managed: boolean, synced: boolean|null}} state
+ */
+export function applySyncGate(frag, state) {
+  const managed = state?.managed === true;
+  const synced = state?.synced === true;
+  if (managed && synced) return;
+  const which = managed ? "notSynced" : "notManaged";
+  const notice = frag.querySelector(`[data-tpl="${which}"]`);
+  if (notice) notice.classList.add("9mm-pos-mgr-is-shown");
+  const go = frag.querySelector('[data-tpl="go"]');
+  if (go) go.disabled = true;
+}
+
 function _confirmReload(tokenId) {
   return confirmViaDialog("tplReloadConfirmModal", {
     overlayId: "reloadConfirmModal",
     fill: (frag) => {
       const idEl = frag.querySelector('[data-tpl="tokenId"]');
       if (idEl) idEl.textContent = String(tokenId || "?");
+      applySyncGate(frag, {
+        /*- Managed means a live bot loop, which is what the server
+         *  resolves this position's state from. Without one the route
+         *  answers 404 — see `_resolveStateAndPosition`. */
+        managed: _positionState(_activeKey())?.status === "running",
+        synced: isSyncComplete(),
+      });
     },
   });
 }

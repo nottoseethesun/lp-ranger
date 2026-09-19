@@ -2295,19 +2295,32 @@ span[title]:not([title=""]):hover {
   color: var(--tool-grey-border);
 }
 
-/* Status slot for the Re-scan Prices dialog.
+/* Status slot for an action dialog — Re-scan Prices and Reload Current
+   Position both use it.
    Collapses when empty rather than reserving its height.  The dialog
-   still does not resize under the pointer: the not-managed message is
-   painted while the dialog is being wired, so it reaches its final size
-   before the user sees it.  The one reveal that comes later is a failed
-   submit, a rare error path. */
-.\39 mm-pos-mgr-rescan-notice {
+   still does not resize under the pointer: the not-managed and
+   not-synced messages are painted while the dialog is being wired, so
+   it reaches its final size before the user sees it.  The one reveal
+   that comes later is a failed submit, a rare error path. */
+.\39 mm-pos-mgr-dialog-notice {
   display: none;
   margin: 12px 0 0;
 }
 
-.\39 mm-pos-mgr-rescan-notice.\39 mm-pos-mgr-is-shown {
+.\39 mm-pos-mgr-dialog-notice.\39 mm-pos-mgr-is-shown {
   display: block;
+}
+
+/* A notice that leads the dialog rather than trailing it — the reason
+   the action below is unavailable, read before the explanation. */
+.\39 mm-pos-mgr-dialog-notice-lead.\39 mm-pos-mgr-is-shown {
+  display: block;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+
+  /* amber, matching the app's "wait, not an error" banners */
+  border-left: 3px solid #d79921;
+  background: rgb(215 153 33 / 12%);
 }
 
 /* Blocking overlay for Reload Current Position — mirrors modal-overlay
@@ -3932,7 +3945,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1789841046595");
+  background-image: url("background-cloud_top.png?v=1789851526189");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3945,7 +3958,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1789841046595");
+  background-image: url("background-cloud_middle.png?v=1789851526189");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3955,7 +3968,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1789841046595");
+  background-image: url("background-cloud_bottom.png?v=1789851526189");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

@@ -26,6 +26,7 @@ const {
   _CACHE_PATH,
 } = require("../src/gecko-pool-cache");
 const { _resetForTest: _resetRateLimit } = require("../src/gecko-rate-limit");
+const { _getDelays } = require("../src/price-source-backoff");
 
 describe("gecko-pool-cache", () => {
   let _origFetch;
@@ -170,8 +171,16 @@ describe("gecko-pool-cache", () => {
       "0xtok1",
     );
     assert.equal(o, null);
-    // With 2 retries scheduled, total attempts = 1 initial + 2 retries = 3
-    assert.equal(calls, 3, "should retry twice on 429 then give up");
+    /*- The schedule belongs to price-source-backoff.js, shared with the
+     *  OHLCV caller, so the count is read from it rather than restated
+     *  here — a second copy of the number goes stale the moment the
+     *  schedule is retuned, and reports it as a pool-cache failure. */
+    const expected = _getDelays().length + 1;
+    assert.equal(
+      calls,
+      expected,
+      `should retry ${_getDelays().length} times on 429 then give up`,
+    );
   });
 
   it("returns null when fetch throws", async () => {

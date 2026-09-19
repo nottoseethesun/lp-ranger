@@ -11,6 +11,8 @@ Three companion references sit alongside this one:
 every environment variable, where each setting lives, and which are
 deliberately not editable; [`docs/security.md`](security.md) for the controls
 protecting the wallet and the gates enforcing them; and
+[`docs/npm-project-commands.md`](npm-project-commands.md) for every npm
+command and its flags, and
 [`docs/engineering.md`](engineering.md) for runtime state, development tools
 and the check-report pipeline.
 

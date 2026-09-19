@@ -1,8 +1,11 @@
 ---
 name: feedback_prose_style
-description: Prose style: short sentences, concise replies, no redundant restatement of known rules, spell out small numbers, no gwei/wei, 'aborted' not 'paused'
-metadata:
+description: "Prose style: short sentences, concise replies, no redundant restatement of known rules, no slop words ('honest', 'straight') or empty structural announcements, spell out small numbers, no gwei/wei, 'aborted' not 'paused'"
+metadata: 
+  node_type: memory
   type: feedback
+  originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
+  modified: 2026-09-19T19:32:11.783Z
 ---
 
 # Prose style
@@ -53,6 +56,38 @@ always need `npm build` first", then "Please avoid confusing redundancy"
   and don't repeat a caveat given earlier in the conversation.
 - When unsure whether something is known, leave it out. The user asks
   when they want more.
+
+## no slop words, no empty structure
+
+Two habits the user named as slop, 2026-09-19.
+
+**"Honest", "honesty", "straight", "to be straight with you".** Do not
+describe data, code or a report as honest, and do not announce your own
+candour. Say what the thing does. "The row is honest" is nothing; "the
+row shows dashes rather than a figure it cannot compute" is the claim.
+Applied to myself it is worse — "let me be straight with you" implies
+the surrounding text was not, and spends a line saying so.
+
+**Structural announcements that carry no content.** "The answer splits
+in two", "there are two sides to this", "it comes down to one thing" —
+these promise a shape and deliver nothing. Either name the two things in
+the same breath, or drop the sentence and start with the first one.
+
+**Why:** the user, on a report about a P&L row: *"Avoid references to
+'honesty' and 'straight' — that is SLOP"*, and earlier in the same
+exchange, *"avoid abstract AI spew like 'it splits in two' where there's
+nothing specific"*.
+
+**How to apply:**
+- Before writing an adjective about a figure or a row, ask whether it
+  names a behaviour. Honest, sensible, reasonable, healthy, clean:
+  usually not. Replace with what the code does.
+- Never narrate your own reliability. The reader judges that from the
+  content.
+- Cut any sentence whose whole job is to announce that a list follows.
+  The list announces itself.
+- Related: [[feedback_no_internal_constants_in_design_talk]] (describe
+  behaviour, not implementation), [[feedback_concise_responses]].
 
 ## spell out small numbers
 
