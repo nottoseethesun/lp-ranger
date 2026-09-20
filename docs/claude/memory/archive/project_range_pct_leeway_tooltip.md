@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d932d59e-01b4-45db-82b1-6d987abcda8f
+  modified: 2026-09-20T22:43:47.313Z
 ---
 
 Add a circle-`i` info affordance next to the two "±X% below price" / "+Y% above price" figures rendered by `updateRangePctLabels()` in `public/dashboard-data-range.js` (the `rangePctLower` and `rangePctUpper` spans just below the range visual bar).
@@ -27,10 +28,11 @@ Add a circle-`i` info affordance next to the two "±X% below price" / "+Y% above
 
 ---
 
-**On the public list (2026-09-02).** Published on the README's
-Nice-to-Have list as "Explain the Range Leeway Percentages", detailed in
-`docs/roadmap/nice-to-haves/project_range_pct_leeway_tooltip.md`.
-Keep the two in step, and do not add a second entry for it.
+**Was on the public list (2026-09-02).** Published on the README's
+Nice-to-Have list as "Explain the Range Leeway Percentages", with a
+roadmap file beside it. Both were removed the same day, when the item
+turned out to have already shipped — see below. Neither exists now, and
+nothing needs keeping in step.
 
 ---
 

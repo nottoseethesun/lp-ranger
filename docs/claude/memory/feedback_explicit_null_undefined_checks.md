@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: ef6c5215-1055-44cf-b98a-f7aa871665e8
+  modified: 2026-09-20T22:45:15.929Z
 ---
 
 For **type checks**, never rely on JavaScript's built-in type conversions.
@@ -58,5 +59,5 @@ etc.) — this rule codifies that as the standard.
 optional-field mutation, presence tests before `String()`/`Number()`
 coercion) is written explicitly.  Same in test mirrors so the tests catch
 the same class of bug as production.  Codified in
-[docs/claude/CLAUDE-BEST-PRACTICES.md](docs/claude/CLAUDE-BEST-PRACTICES.md)
+[docs/claude/CLAUDE-BEST-PRACTICES.md](../CLAUDE-BEST-PRACTICES.md)
 under "Type Checks".
