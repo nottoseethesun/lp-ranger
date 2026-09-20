@@ -4,8 +4,8 @@
  * Current Position.
  *
  * Owns:
- *   - `openRescanPricesDialog()` — the explanation dialog, its
- *     60-day-window checkbox, and the guarded action button.
+ *   - `openRescanPricesDialog()` — the explanation dialog and its
+ *     guarded action button.
  *   - `paintRescanPricesButton()` — enable/disable + tooltip for the
  *     Settings item, called every poll alongside the Reload button's
  *     painter.
@@ -15,8 +15,8 @@
  * `amount x price`. Amounts come from chain and are reliable; prices
  * come from a feed cascade with no plausibility check, so one bad
  * response can be recorded permanently. Reload fixes that but re-walks
- * the pool's whole history. This re-values at fresh prices over a
- * bounded window instead.
+ * the pool's whole history. This clears only the price-derived figures
+ * and re-values them at fresh prices.
  *
  * Managed-state gate: read from the published position state
  * (`posState.status`), never from the badge's CSS class — see
@@ -45,17 +45,11 @@ import { ethers } from "./ethers-adapter.js";
 import { log } from "./dashboard-log.js";
 import { g, cloneTpl, fetchWithCsrf } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
-
-/*- The window default is NOT duplicated here.  It ships in
- *  bot-config-defaults.json, is read once by src/config.js, and is
- *  published on every /api/status as `rescanPricesDefaultDays` — see
- *  feedback-one-literal-per-shipped-default.  A missing value means
- *  the status poll has not landed yet, which the dialog treats as
- *  "no window" (whole history) rather than inventing a number. */
-function _windowDays(status) {
-  const n = Number(status?.rescanPricesDefaultDays);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
+/*- Safe to import: dashboard-config-inputs reaches only helpers,
+ *  data-cache and throttle, none of which import this module — so unlike
+ *  the dashboard-data import the header warns about, this closes no
+ *  cycle. */
+import { getInputDefault } from "./dashboard-config-inputs.js";
 
 /*- Canonicalize to EIP-55 so the composite key byte-matches the
  *  server's (built via bot-config-v2.compositeKey, which checksums).
@@ -92,10 +86,8 @@ function _positionState(status, key) {
 /**
  * Is the active position managed?
  *
- * Mirrors `dashboard-manage-ui.js`'s `isRunning`: the server's
- * `status` field, which is the same value `managedKeys()` filters on
- * server-side. A closed (drained) position is not eligible either —
- * re-valuing it would be a no-op against zero liquidity.
+ * Reads the server's `status` field, which is the same value
+ * `managedKeys()` filters on server-side and the route checks.
  *
  * @param {object} status  The latest /api/status payload.
  * @returns {boolean}
@@ -123,17 +115,21 @@ export function paintRescanPricesButton(status) {
   const key = _activeKey();
   const st = key ? _positionState(status, key) : null;
   const busy = !!st?.rebalanceInProgress || !!st?.compoundInProgress;
+  /*- Sync state deliberately does NOT disable this button. The dialog
+   *  opens either way and explains itself — a greyed-out control with a
+   *  tooltip makes the operator hunt for the reason. See `_wireDialog`. */
   btn.disabled = busy;
   btn.title = busy
     ? "Wait for the current move to finish before re-scanning prices."
     : "Re-value this position at freshly fetched prices. Use when a USD figure looks wrong.";
 }
 
-/*- The dialog's status line changes visibility only, never layout: its
- *  height is reserved in CSS, so revealing a message cannot grow the
- *  dialog and shift the buttons out from under the pointer.
+/*-
+ *  Show the dialog's status line. It takes no space while hidden; see
+ *  the `dialog-notice` rule in 9mm-pos-mgr.css for when it appears.
  *
- *  `text` omitted keeps the template's default copy. */
+ *  `text` omitted keeps the template's default copy.
+ */
 function _showNotice(el, text) {
   if (!el) return;
   if (text) el.textContent = text;
@@ -144,50 +140,69 @@ function _hideNotice(el) {
   if (el) el.classList.remove("9mm-pos-mgr-is-shown");
 }
 
+/**
+ * Bind the "last N days" option to the Per-Day rebuild it narrows.
+ *
+ * It only scopes that rebuild, so it follows that checkbox: enabled with
+ * it, disabled and CLEARED without it. Clearing matters — a tick left
+ * standing on a disabled control still reads as checked at submit time,
+ * which would send a window for a rebuild that is not happening.
+ *
+ * The day count comes from the server's shipped defaults rather than a
+ * literal here, so the label cannot disagree with the number the server
+ * applies (feedback_one_literal_per_shipped_default). Until that fetch
+ * resolves the label keeps its template wording, which names no number.
+ *
+ * @param {HTMLElement} overlay  The open dialog.
+ */
+function _wireRecentLimit(overlay) {
+  const daily = overlay.querySelector("#rescanIncludeDailyPnl");
+  const recent = overlay.querySelector("#rescanLimitRecent");
+  if (daily === null || recent === null) return;
+  const days = getInputDefault("rescanPricesRecentWindowDays");
+  if (typeof days === "number" && days > 0) {
+    const label = overlay.querySelector('[data-tpl="limitRecentLabel"]');
+    if (label) label.textContent = `Limit to the last ${days} days`;
+  }
+  const sync = () => {
+    recent.disabled = !daily.checked;
+    if (!daily.checked) recent.checked = false;
+  };
+  daily.addEventListener("change", sync);
+  sync();
+}
+
 /** Wire the dialog's controls once it is in the DOM. */
-function _wireDialog(overlay, getStatus) {
+function _wireDialog(overlay, getStatus, getSynced) {
   const status = getStatus();
   const managed = isActivePositionManaged(status);
-  const go = overlay.querySelector("#rescanPricesGoBtn");
-  const box = overlay.querySelector("#rescanPricesRecentOnly");
-  const notice = overlay.querySelector('[data-tpl="notManaged"]');
-
-  /*- Both the action and the window checkbox are gated on managed —
-   *  a checkbox that cannot affect anything is worse than a disabled
-   *  one, because it looks like it took the setting. */
-  if (go) go.disabled = !managed;
-  if (box) box.disabled = !managed;
-  if (managed) _hideNotice(notice);
-  else _showNotice(notice);
-
-  /*- Label and tooltip are filled from the published default so the
-   *  markup holds no data (feedback-no-data-in-presentation).
+  /*-
+   *  Only an explicit `true` counts. `isSyncComplete()` answers null
+   *  until the first poll lands, and a position that has not reported
+   *  yet is not one to re-value.
    *
-   *  When the default has not arrived (status poll not landed), the
-   *  option is disabled and cleared rather than left checked: a checked
-   *  box that silently means "whole history" would promise a bounded
-   *  scan and run the expensive one. */
-  const label = overlay.querySelector('[data-tpl="windowLabel"]');
-  const row = overlay.querySelector('[data-tpl="windowRow"]');
-  const days = _windowDays(status);
-  if (label)
-    label.textContent = days
-      ? `Limit to the last ${days} days (recommended)`
-      : "Window unavailable — will re-value the entire history";
-  if (row)
-    row.title = days
-      ? `Most bad price data is recent, so a ${days}-day window fixes nearly every case in seconds. Clear this box to re-value the position's entire history instead — correct, but it reads far more blockchain data and takes considerably longer.`
-      : "The default window has not loaded yet. Close and reopen this dialog once the dashboard has polled.";
-  if (box && !days) {
-    box.checked = false;
-    box.disabled = true;
-  }
+   *  The dialog still opens while syncing — it explains itself at the
+   *  top and disables the action. A greyed-out Settings item with a
+   *  tooltip makes the operator hunt for the reason instead.
+   */
+  const synced = typeof getSynced === "function" && getSynced() === true;
+  const go = overlay.querySelector("#rescanPricesGoBtn");
+  const notManaged = overlay.querySelector('[data-tpl="notManaged"]');
+  const notSynced = overlay.querySelector('[data-tpl="notSynced"]');
 
-  if (go)
-    go.addEventListener("click", () => {
-      const days = box && box.checked ? _windowDays(getStatus()) : null;
-      _submit(overlay, go, days, getStatus);
-    });
+  /*- One reason at a time, most fundamental first: an unmanaged
+   *  position cannot be re-valued at all, so say that rather than
+   *  telling the operator to wait for a sync that is not running. */
+  _hideNotice(notManaged);
+  _hideNotice(notSynced);
+  if (!managed) _showNotice(notManaged);
+  else if (!synced) _showNotice(notSynced);
+
+  _wireRecentLimit(overlay);
+
+  if (go === null) return;
+  go.disabled = !managed || !synced;
+  go.addEventListener("click", () => _submit(overlay, go, getStatus));
 }
 
 /*- Poll cadence and cap both come from values the server already
@@ -261,23 +276,53 @@ function _awaitCompletion(overlay, go, key, getStatus) {
 }
 
 /** POST the request and report the outcome in-dialog. */
-async function _submit(overlay, go, days, getStatus) {
+async function _submit(overlay, go, getStatus) {
   const key = _activeKey();
-  if (!key) return;
+  /*-
+   *  No key means no position has resolved in the browser yet. This
+   *  returned silently: no request, no spinner, no message — the button
+   *  simply did nothing, which reads as a broken button rather than as
+   *  "not ready". Say so instead. The sync gate in `_wireDialog` should
+   *  make this unreachable; it stays because a silent no-op is the worse
+   *  failure of the two.
+   */
+  if (!key) {
+    _showNotice(
+      overlay.querySelector('[data-tpl="notSynced"]'),
+      "No position is loaded yet. Wait for the badge at the top of the app to read Synced, then reopen this dialog.",
+    );
+    return;
+  }
   _setBusy(overlay, go, true);
+  /*-
+   *  Read from the checkbox rather than kept in module state: the dialog
+   *  is rebuilt from its template on every open, so the control starts
+   *  unticked each time and the request cannot inherit a choice the
+   *  operator made in an earlier one.
+   */
+  const includeDailyPnl =
+    overlay.querySelector("#rescanIncludeDailyPnl")?.checked === true;
+  /*- Sent as a flag, not a day count: the server owns the number, so a
+   *  request cannot ask for a window the operator was never shown. Only
+   *  meaningful with the rebuild above, and `_wireRecentLimit` clears it
+   *  whenever that is unticked. */
+  const limitToRecentDays =
+    includeDailyPnl &&
+    overlay.querySelector("#rescanLimitRecent")?.checked === true;
+  const body = JSON.stringify({
+    positionKey: key,
+    includeDailyPnl,
+    limitToRecentDays,
+  });
   try {
     const res = await fetchWithCsrf("/api/position/rescan-prices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positionKey: key, days }),
+      body,
     });
     const j = await res.json().catch(() => ({}));
     if (res.ok && j.ok) {
-      log.info(
-        "[rescan-prices] started for %s (window: %s)",
-        key,
-        days === null ? "all history" : days + "d",
-      );
+      log.info("[rescan-prices] started for %s", key);
       _awaitCompletion(overlay, go, key, getStatus);
       return;
     }
@@ -304,7 +349,7 @@ async function _submit(overlay, go, days, getStatus) {
  * Body markup lives in the `tplRescanPricesModal` template in
  * index.html — no HTML is built here (per feedback-no-new-html-in-js).
  */
-export function openRescanPricesDialog(getStatus) {
+export function openRescanPricesDialog(getStatus, getSynced) {
   const frag = cloneTpl("tplRescanPricesModal");
   if (!frag) return;
   const overlay = document.createElement("div");
@@ -312,5 +357,5 @@ export function openRescanPricesDialog(getStatus) {
   overlay.id = "rescanPricesModal";
   overlay.appendChild(frag);
   document.body.appendChild(overlay);
-  _wireDialog(overlay, getStatus);
+  _wireDialog(overlay, getStatus, getSynced);
 }

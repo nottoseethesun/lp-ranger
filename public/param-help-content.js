@@ -1651,12 +1651,13 @@ export const PARAM_HELP = {
         heading: "How it affects P&L",
         body:
           "Net P&amp;L = Current Position Value + Fees Earned &minus; " +
-          "Fees Compounded &minus; Initial Deposit for This LP. " +
-          "Fees Compounded are subtracted because they are already " +
-          "included in the Current Position Value (they were reinvested " +
-          "as additional liquidity). Without this subtraction, compounded " +
-          "fees would be double-counted. A higher deposit value lowers " +
-          "your reported profit; a lower value inflates it.",
+          "Initial Deposit for This LP. " +
+          "Fees Compounded are not added in: they were reinvested as " +
+          "additional liquidity, so they are already inside the Current " +
+          "Position Value, and <strong>Fees Earned</strong> counts only " +
+          "what is still unclaimed. Counting them again would " +
+          "double-count them. A higher deposit value lowers your " +
+          "reported profit; a lower value inflates it.",
       },
     ],
   },
@@ -1852,6 +1853,22 @@ export const PARAM_HELP = {
           "earns.",
       },
       {
+        heading: "Which prices these figures use",
+        body:
+          "A closed period keeps the dollars it closed at: its fees, Price " +
+          "P&L and In/Out were worked out from the two tokens&rsquo; prices " +
+          "at the time, and do not move afterwards. Only the most recent " +
+          "row, the period still open, is valued at current prices.",
+      },
+      {
+        heading: "Gas",
+        body:
+          "Gas is recorded as the coins actually spent, and each row keeps " +
+          "the dollars its gas was recorded at rather than being converted " +
+          "again at today&rsquo;s price. Profit and Net P&L both subtract " +
+          "gas, so they stay put with it.",
+      },
+      {
         heading: "Price P&L",
         body:
           "How far the position&rsquo;s dollar value moved over the period, " +
@@ -1898,6 +1915,20 @@ export const PARAM_HELP = {
           "were recorded without them. <strong>Settings &rarr; Reload " +
           "Current Position</strong> re-reads them from the blockchain and " +
           "fills the gaps.",
+      },
+      {
+        /*-
+         *  Plain text, no entities: the dialog sets a heading with
+         *  `textContent` and only the body with `innerHTML`, so an
+         *  entity here would be shown literally.
+         */
+        heading: "Why this Gas column and the Lifetime panel differ",
+        body:
+          "They are the same coins counted two ways, and they part company " +
+          "once the native token has moved. The Lifetime panel prices all " +
+          "of this position&rsquo;s gas at today&rsquo;s price, as it " +
+          "prices everything else. This column keeps what each period cost " +
+          "at the time.",
       },
     ],
   },

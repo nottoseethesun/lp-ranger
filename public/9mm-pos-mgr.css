@@ -96,6 +96,28 @@
    * gives a horizontal scrollbar on narrow phones. */
 }
 
+/* Present-value summary line above the All Positions Stats tables.
+ * Sits outside both tables because it is the one figure here the
+ * Per-Day / Weighted radios do not transform.  Given the totals
+ * table's top margin so the two read as one block, and left-aligned
+ * against the modal body rather than the right-aligned number
+ * columns, since it is a sentence and not a column value. */
+.\000039mm-pos-mgr-all-positions-current-value {
+  margin-top: 18px;
+  margin-bottom: 0;
+  color: var(--fg);
+  font-family: "Space Mono", monospace;
+  font-size: 0.95rem;
+}
+
+/* The amount itself, in the same Lawn Green (--accent3) the totals row
+   uses for a positive figure, so money reads the same everywhere in
+   this dialog. Only the number is coloured; the label around it stays
+   --fg. */
+.\000039mm-pos-mgr-all-positions-current-value-amount {
+  color: var(--accent3);
+}
+
 /* Totals table sits in normal flow above the scrollable wrapper.
  * `margin-top` replaces the wrapper's old top spacing (removed
  * above); `margin-bottom` gives the one-blank-line gap below. */
@@ -485,7 +507,6 @@ span[title]:not([title=""]):hover {
   margin: 0;
   cursor: pointer;
 }
-
 
 /*  Popover sizes are 13px, which reads as unusably small in a dialog.
     Raised past the 17.5px dialog body scale to 20px: this section is the
@@ -1148,30 +1169,6 @@ span[title]:not([title=""]):hover {
   margin-top: 0;
 }
 
-/* Checkbox + label row for the Re-scan Prices window option. */
-.\39 mm-pos-mgr-rescan-window {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 18px;
-  cursor: pointer;
-}
-
-.\39 mm-pos-mgr-rescan-window input[type="checkbox"] {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--muted); /* Slate Grey — matches the tool chrome */
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.\39 mm-pos-mgr-rescan-window input:disabled,
-.\39 mm-pos-mgr-rescan-window input:disabled + span {
-  color: var(--muted);
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
 /* ── Info & Notice Boxes ──────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-info-box {
@@ -1724,7 +1721,6 @@ span[title]:not([title=""]):hover {
   display: block;
 }
 
-
 /* "Above" variant: flip vertical position AND anchor the popover's
  * left edge to the icon so it extends rightward.
  *
@@ -2143,7 +2139,6 @@ span[title]:not([title=""]):hover {
   background: rgb(255 59 92 / 25%);
 }
 
-
 /* ── Tool Modal (Chrysler Machine Grey) ───────────────────────────────────
    For maintenance actions the user runs to FIX something — e.g. Re-scan
    Prices.  Deliberately NOT the danger/caution palette: nothing is at
@@ -2296,29 +2291,36 @@ span[title]:not([title=""]):hover {
   }
 }
 
-.\39 mm-pos-mgr-modal-tool .\39 mm-pos-mgr-rescan-window input[type="checkbox"] {
-  accent-color: var(--tool-grey-text);
-}
-
 .\39 mm-pos-mgr-modal-tool .\39 mm-pos-mgr-text-muted {
   color: var(--tool-grey-border);
 }
 
-/* Status slot for the Re-scan Prices dialog.
-   Collapses when empty rather than reserving its height.  Reserving it
-   cost three blank lines above the window checkbox in the common case,
-   pushing it below the fold — paid to stop the dialog resizing under the
-   pointer.  That is not what happens: the not-managed message is painted
-   while the dialog is being wired, so it reaches its final size before
-   the user sees it.  The one reveal that comes later is a failed submit,
-   a rare error path. */
-.\39 mm-pos-mgr-rescan-notice {
+/* Status slot for an action dialog — Re-scan Prices and Reload Current
+   Position both use it.
+   Collapses when empty rather than reserving its height.  The dialog
+   still does not resize under the pointer: the not-managed and
+   not-synced messages are painted while the dialog is being wired, so
+   it reaches its final size before the user sees it.  The one reveal
+   that comes later is a failed submit, a rare error path. */
+.\39 mm-pos-mgr-dialog-notice {
   display: none;
   margin: 12px 0 0;
 }
 
-.\39 mm-pos-mgr-rescan-notice.\39 mm-pos-mgr-is-shown {
+.\39 mm-pos-mgr-dialog-notice.\39 mm-pos-mgr-is-shown {
   display: block;
+}
+
+/* A notice that leads the dialog rather than trailing it — the reason
+   the action below is unavailable, read before the explanation. */
+.\39 mm-pos-mgr-dialog-notice-lead.\39 mm-pos-mgr-is-shown {
+  display: block;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+
+  /* amber, matching the app's "wait, not an error" banners */
+  border-left: 3px solid #d79921;
+  background: rgb(215 153 33 / 12%);
 }
 
 /* Blocking overlay for Reload Current Position — mirrors modal-overlay
@@ -3943,7 +3945,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1789452112887");
+  background-image: url("background-cloud_top.png?v=1789862940693");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3956,7 +3958,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1789452112887");
+  background-image: url("background-cloud_middle.png?v=1789862940693");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3966,7 +3968,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1789452112887");
+  background-image: url("background-cloud_bottom.png?v=1789862940693");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

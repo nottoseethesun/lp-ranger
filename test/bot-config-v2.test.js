@@ -21,10 +21,9 @@ const {
   removeManagedPosition,
   migratePositionKey,
   managedKeys,
-  GLOBAL_KEYS,
-  POSITION_KEYS,
   readConfigValue,
 } = require("../src/bot-config-v2");
+const { GLOBAL_KEYS, POSITION_KEYS } = require("../src/bot-config-keys");
 
 /** Create a temp directory for each test. */
 function tmpDir() {

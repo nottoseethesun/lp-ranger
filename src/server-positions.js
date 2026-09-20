@@ -23,6 +23,8 @@ const {
   PoolStateUnavailableError,
 } = require("./pool-state-validate");
 const { createCanReopenHandler } = require("./server-can-reopen");
+const { rejectIfPoolManaged } = require("./pool-already-managed");
+const sendTx = require("./send-transaction");
 const {
   compositeKey,
   parseCompositeKey,
@@ -37,6 +39,39 @@ const {
 
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
+
+/*-
+ *  Bot-state fields saved to the position's config slot and read back on
+ *  the next start — ONE list, used in both directions.
+ *
+ *  Invariant: a field the save path writes must be one the restore path
+ *  reads, and vice versa. A single list makes that structural; two copies
+ *  make it a matter of remembering to edit both.
+ *
+ *  The lifetime deposit and its fallback flag belong here because of the
+ *  gate on the lifetime scan's chain read. `_scanLifetimePoolData` skips
+ *  that read only when the HODL amounts, the compound total AND the
+ *  deposit total are all on disk (`lifetimeFiguresSaved`). A deposit
+ *  that is never written keeps the read on, and every restart then reads
+ *  the whole rebalance chain again.
+ *
+ *  Both directions matter. A skipped scan does not recompute the deposit,
+ *  so the total must come back into memory from disk: readiness is
+ *  `totalLifetimeDepositUsd > 0`, and without the restore the Syncing
+ *  badge would never clear.
+ */
+const PERSISTED_STATE_KEYS = [
+  "hodlBaseline",
+  "residuals",
+  "compoundHistory",
+  "compoundedAmount0",
+  "compoundedAmount1",
+  "nftGasWeiByTokenId",
+  "nftCompoundedAmountsByTokenId",
+  "lastCompoundAt",
+  "totalLifetimeDepositUsd",
+  "depositUsedFallback",
+];
 
 /**
  * Create a fresh per-position bot state with defaults + saved config.
@@ -69,18 +104,10 @@ function createPerPositionBotState(_globalCfg, saved) {
     _lastBalancedNotifyTs: 0,
     _lastBalancedPriceFetchTs: 0,
   };
-  if (saved) {
-    if (saved.hodlBaseline) state.hodlBaseline = saved.hodlBaseline;
-    if (saved.residuals) state.residuals = saved.residuals;
-    if (saved.collectedFeesUsd) state.collectedFeesUsd = saved.collectedFeesUsd;
-    if (saved.totalCompoundedUsd)
-      state.totalCompoundedUsd = saved.totalCompoundedUsd;
-    if (saved.compoundHistory) state.compoundHistory = saved.compoundHistory;
-    if (saved.nftGasWeiByTokenId)
-      state.nftGasWeiByTokenId = saved.nftGasWeiByTokenId;
-    if (saved.nftCompoundedUsdByTokenId)
-      state.nftCompoundedUsdByTokenId = saved.nftCompoundedUsdByTokenId;
-    if (saved.lastCompoundAt) state.lastCompoundAt = saved.lastCompoundAt;
+  if (saved !== undefined && saved !== null) {
+    for (const k of PERSISTED_STATE_KEYS) {
+      if (saved[k] !== undefined && saved[k] !== null) state[k] = saved[k];
+    }
   }
   return state;
 }
@@ -109,17 +136,7 @@ function _persistEpochCache(state, epochs) {
  */
 /** Persist position-scoped fields from a bot state patch to disk config. */
 function _persistPositionConfig(patch, diskConfig, key, dir) {
-  const _PERSIST = [
-    "hodlBaseline",
-    "residuals",
-    "collectedFeesUsd",
-    "compoundHistory",
-    "totalCompoundedUsd",
-    "nftGasWeiByTokenId",
-    "nftCompoundedUsdByTokenId",
-    "lastCompoundAt",
-  ];
-  const changed = _PERSIST.filter((k) => patch[k] !== undefined);
+  const changed = PERSISTED_STATE_KEYS.filter((k) => patch[k] !== undefined);
   const needsSave = !!patch.activePositionId || changed.length > 0;
   if (!needsSave) return;
   /*- Non-lazy lookup: a slot SHOULD exist by now (handleManage created
@@ -315,7 +332,13 @@ function createOnRetire(deps) {
  * @returns {object}  Map of route key → handler.
  */
 /** Keys currently in the process of starting (guards against concurrent requests). */
-const _starting = new Set();
+/*- Composite key -> pool key, for Manage requests that passed the gate
+ *  but whose bot loop has not finished starting.  A Set would answer
+ *  "is THIS position starting"; the pool is needed too, because the
+ *  one-position-per-pool gate has to see an in-flight start as holding
+ *  its pool — `state.running` is not set until the loop is up, and the
+ *  window between is long enough to fit a second click. */
+const _starting = new Map();
 
 /*- Closed-position re-open path: when the dashboard calls Manage on a
  *  drained (liquidity=0) position, it sends `forceRebalance: true`.
@@ -371,6 +394,22 @@ function _stampReopenFlagsOnLive(key, body) {
   return true;
 }
 
+/*- The three things a Manage request must carry before anything else
+ *  happens.  Grouped into one predicate so `handleManage` spends one
+ *  branch on them rather than three, leaving room under the complexity
+ *  cap for the checks that actually decide something.  Returns the
+ *  refusal to send, or null when the request is well-formed. */
+function _managePreflight(body, wallet, pk) {
+  if (!body.tokenId || !/^\d+$/.test(String(body.tokenId)))
+    return {
+      status: 400,
+      error: "Missing or invalid tokenId (must be numeric)",
+    };
+  if (!wallet) return { status: 400, error: "No wallet loaded" };
+  if (!pk) return { status: 400, error: "No private key available" };
+  return null;
+}
+
 function createPositionRoutes(deps) {
   const {
     diskConfig,
@@ -379,30 +418,22 @@ function createPositionRoutes(deps) {
     getPrivateKey,
     jsonResponse,
     readJsonBody,
+    /*- Injectable so the one-position-per-pool gate can be driven in a
+     *  test.  A thunk, not a value: the managed read provider is not
+     *  built until `sendTx.init()` has run, which is after this factory. */
+    ethersLib = ethers,
+    readProvider = () => sendTx.getManagedReadProvider(),
   } = deps;
 
   async function handleManage(req, res) {
     const body = await readJsonBody(req);
-    if (!body.tokenId || !/^\d+$/.test(String(body.tokenId))) {
-      jsonResponse(res, 400, {
-        ok: false,
-        error: "Missing or invalid tokenId (must be numeric)",
-      });
-      return;
-    }
     const blockchain = body.blockchain || "pulsechain";
     const contract = body.contract || config.POSITION_MANAGER;
     const wallet = walletManager.getAddress();
-    if (!wallet) {
-      jsonResponse(res, 400, { ok: false, error: "No wallet loaded" });
-      return;
-    }
     const pk = getPrivateKey();
-    if (!pk) {
-      jsonResponse(res, 400, {
-        ok: false,
-        error: "No private key available",
-      });
+    const bad = _managePreflight(body, wallet, pk);
+    if (bad) {
+      jsonResponse(res, bad.status, { ok: false, error: bad.error });
       return;
     }
     const key = compositeKey(
@@ -447,7 +478,35 @@ function createPositionRoutes(deps) {
       });
       return;
     }
-    _starting.add(key);
+    /*- One active position per pool.  Two positions open in the same
+     *  pool hold indistinguishable tokens in the same wallet, so gains
+     *  moving between them cannot be attributed to either and residual
+     *  coins cannot be allocated — the rule the README and User Manual
+     *  state.  `key` is passed as selfKey so a rebalance, which mints a
+     *  new tokenId within the same pool, cannot reject itself. */
+    if (
+      await rejectIfPoolManaged({
+        res,
+        jsonResponse,
+        log: log.warn,
+        key,
+        tokenId: String(body.tokenId),
+        positionManager: contract,
+        botStates: _positionBotStates,
+        provider: readProvider(),
+        /*- The canonical pool-key builder, bound to this wallet.  Reused
+         *  rather than re-derived so the gate cannot disagree with the
+         *  pool keys the status payload and daily-cap counters use. */
+        poolKeyFn: (t0, t1, f) =>
+          positionMgr.poolKey(blockchain, contract, wallet, t0, t1, f),
+        ethersLib,
+        startingPools: _starting,
+        /*- Claimed synchronously inside the gate, so the check and the
+         *  claim cannot be split by another request. */
+        claimPool: (pk) => _starting.set(key, pk),
+      })
+    )
+      return;
 
     /*- Build the per-position config in memory only.  We DO NOT
      *  saveConfig() until startBotLoop succeeds: a failure here used to
@@ -463,8 +522,15 @@ function createPositionRoutes(deps) {
     const _hadExistingConfig = Object.keys(posConfig).length > 0;
     const _prevStatus = posConfig.status;
     if (posConfig.autoCompoundEnabled === undefined) {
+      /*- `liquidity` comes from the client, and BigInt() throws on
+       *  anything non-numeric. An exception here escapes between the
+       *  pool claim and the try/finally that releases it, leaving the
+       *  pool claimed for the life of the process. Treat unusable
+       *  input as "no liquidity stated", which is the same branch an
+       *  absent value already takes. */
       const liq = body.liquidity;
-      posConfig.autoCompoundEnabled = !liq || BigInt(liq) > 0n;
+      const usable = /^\d+$/.test(String(liq));
+      posConfig.autoCompoundEnabled = !liq || !usable || BigInt(liq) > 0n;
     }
     const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, positionMgr);
@@ -476,12 +542,14 @@ function createPositionRoutes(deps) {
     /*- Fetch (or reuse) the app-wide shared signer before starting the
      *  bot loop.  Every managed position must use the SAME NonceManager
      *  — see positionMgr.getSharedSigner for the rationale. */
-    const shared = await positionMgr.getSharedSigner({
-      privateKey: pk,
-      ethersLib: ethers,
-      dryRun: config.DRY_RUN,
-    });
+    /*- Inside the try: a signer failure must release the pool claim
+     *  via the finally, not strand it. */
     try {
+      const shared = await positionMgr.getSharedSigner({
+        privateKey: pk,
+        ethersLib: ethers,
+        dryRun: config.DRY_RUN,
+      });
       await positionMgr.startPosition(key, {
         tokenId: String(body.tokenId),
         startLoop: () =>
@@ -711,4 +779,5 @@ module.exports = {
   getAllPositionBotStates,
   createOnRetire,
   createPositionRoutes,
+  PERSISTED_STATE_KEYS,
 };

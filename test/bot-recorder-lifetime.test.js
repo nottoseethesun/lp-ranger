@@ -1,11 +1,11 @@
 /**
  * @file test/bot-recorder-lifetime.test.js
  * @description Regression tests for `_scanLifetimePoolData`'s early-exit
- *   logic.  Disk values for `totalCompoundedUsd` are treated as
- *   source-of-truth — once present, classification must NOT re-run
- *   (a partial NFT scan from a stale `lastNftScanBlock` would otherwise
- *   stomp the correct disk value with a smaller, wrong total).  See
- *   `src/bot-recorder-lifetime.js` for the full reasoning.
+ *   logic.  Disk values for `compoundedAmount0`/`compoundedAmount1` are
+ *   treated as source-of-truth — once present, classification must NOT
+ *   re-run; the compound and rebalance paths keep the saved coins
+ *   current.  See `_resolveDiskState` in `src/bot-recorder-lifetime.js`
+ *   for the full reasoning.
  */
 
 "use strict";
@@ -25,6 +25,7 @@ const {
   origRequire,
   poolStateMock,
   errorLogMock,
+  evictLifetimeModules,
 } = require("./helpers/bot-recorder-lifetime-mocks");
 
 describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
@@ -40,7 +41,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
 
   it("returns early when compound + hodl + deposit are all present on disk", async () => {
     const botState = makeBotState({
-      totalCompoundedUsd: 148.38,
+      compoundedAmount0: 148.38,
       totalLifetimeDepositUsd: 1704.15,
     });
     await _scanLifetimePoolData(
@@ -57,7 +58,17 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
     assert.equal(state.depositCalled, false, "computeDepositUsd must not run");
   });
 
-  it("returns early when compoundHistory + hodl + deposit are all present", async () => {
+  it("re-classifies a config that has compoundHistory but no coins", async () => {
+    /*-
+     *  This is every config written before compounds were stored as
+     *  coins: the bot's scans wrote `compoundHistory` alongside a dollar
+     *  total, so history is present and the coins are not.
+     *
+     *  Accepting history as "already known" would leave those positions
+     *  with nothing to price and report Fees Compounded as $0 — a live
+     *  figure in the hundreds of dollars, gone. One re-classification
+     *  from chain fills the coins, and every scan after it returns early.
+     */
     const botState = makeBotState({
       compoundHistory: [{ trigger: "auto", usdValue: 5 }],
       totalLifetimeDepositUsd: 1704.15,
@@ -71,9 +82,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
       null,
       "epoch-key",
     );
-    assert.equal(state.scanCalled, false);
-    assert.equal(state.classifyCalled, false);
-    assert.equal(state.depositCalled, false);
+    assert.equal(state.classifyCalled, true, "must re-read the chain once");
   });
 
   it("runs classification + deposit when neither disk signal is present", async () => {
@@ -92,8 +101,31 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
     assert.equal(state.depositCalled, true, "computeDepositUsd must run");
   });
 
-  it("runs classification when totalCompoundedUsd is 0 (zero-or-undefined treated alike)", async () => {
-    const botState = makeBotState({ totalCompoundedUsd: 0 });
+  it("skips classification when the saved coins are 0 — a recorded zero is an answer", async () => {
+    /*-
+     *  A chain whose NFTs never compounded totals zero, and the scan that
+     *  found that out wrote it. Re-deriving it means walking the whole
+     *  chain again to arrive back at zero, on every scan, for as long as
+     *  the position runs. Only ABSENCE means "not asked yet" — see
+     *  `hasCompoundedTotal` in bot-config-keys.js.
+     */
+    const botState = makeBotState({ compoundedAmount0: 0 });
+    await _scanLifetimePoolData(
+      makePosition(),
+      botState,
+      () => {},
+      [],
+      "0xW",
+      null,
+      "epoch-key",
+    );
+    assert.equal(state.classifyCalled, false);
+  });
+
+  it("runs classification when the saved coins are absent", async () => {
+    /*- The counterpart: nothing recorded, so the chain has not been
+     *  classified and the walk is owed. */
+    const botState = makeBotState({});
     await _scanLifetimePoolData(
       makePosition(),
       botState,
@@ -111,10 +143,9 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
      *  If a future refactor drops the `botState._getConfig = gc` wiring in
      *  `startBotLoop`, the disk-as-source-of-truth gate falls back to
      *  "no signal" and classification runs.  That's strictly worse than
-     *  the wired path (a fresh `Manage Position` on a previously-viewed
-     *  position re-runs `_classifyAllCompounds` from a stale
-     *  `lastNftScanBlock` and stomps the correct disk total) but it's
-     *  the only behavior the unit can express on its own.
+     *  the wired path: every scan then re-reads the chain and recomputes
+     *  the saved totals.  But it's the only behavior the unit can express
+     *  on its own.
      *
      *  The integration contract — that `startBotLoop` actually wires
      *  `_getConfig` — is asserted in test/bot-loop.test.js's
@@ -135,14 +166,14 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
     assert.equal(state.classifyCalled, true);
   });
 
-  it("does NOT short-circuit when disk has totalCompoundedUsd but cachedHodl is missing", async () => {
+  it("does NOT short-circuit when disk has the coins but cachedHodl is missing", async () => {
     /*-
      *  Hodl still needs computing the first time even if compounds are
      *  already known — only the *combined* condition skips work.
      */
     state.cachedHodl = null;
     const botState = makeBotState({
-      totalCompoundedUsd: 148.38,
+      compoundedAmount0: 148.38,
       totalLifetimeDepositUsd: 1704.15,
     });
     await _scanLifetimePoolData(
@@ -167,14 +198,11 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
     );
   });
 
-  // ── Deposit-side stomp guard ────────────────────────────────────────────────
+  // ── Deposit-side guard ──────────────────────────────────────────────────────
   /*-
    *  These mirror the compound-side tests above but focus on the
-   *  `totalLifetimeDepositUsd` disk total.  Without the guard, a partial
-   *  NFT event scan from a stale `lastNftScanBlock` would re-run
-   *  `computeDepositUsd` and overwrite the correct lifetime deposit
-   *  (e.g. $1,704.15) with a smaller partial sum (e.g. $427.04),
-   *  cascading wrong values into Lifetime Net P&L and Price Change.
+   *  `totalLifetimeDepositUsd` disk total: a saved total is kept, and
+   *  `computeDepositUsd` runs only when none is saved.
    *  See `_resolveDiskState` JSDoc, item 2.
    */
   it("skips computeDepositUsd when totalLifetimeDepositUsd > 0 on disk", async () => {
@@ -184,7 +212,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
      */
     state.cachedHodl = null;
     const botState = makeBotState({
-      totalCompoundedUsd: 148.38,
+      compoundedAmount0: 148.38,
       totalLifetimeDepositUsd: 1704.15,
     });
     await _scanLifetimePoolData(
@@ -202,7 +230,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
   it("runs computeDepositUsd when totalLifetimeDepositUsd is 0 (zero-or-undefined treated alike)", async () => {
     state.cachedHodl = null;
     const botState = makeBotState({
-      totalCompoundedUsd: 148.38,
+      compoundedAmount0: 148.38,
       totalLifetimeDepositUsd: 0,
     });
     await _scanLifetimePoolData(
@@ -219,7 +247,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
 
   it("runs computeDepositUsd when totalLifetimeDepositUsd is missing", async () => {
     state.cachedHodl = null;
-    const botState = makeBotState({ totalCompoundedUsd: 148.38 });
+    const botState = makeBotState({ compoundedAmount0: 148.38 });
     await _scanLifetimePoolData(
       makePosition(),
       botState,
@@ -240,7 +268,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
      */
     state.cachedHodl = null;
     const botState = makeBotState({
-      totalCompoundedUsd: 148.38,
+      compoundedAmount0: 148.38,
       totalLifetimeDepositUsd: 1704.15,
     });
     await _scanLifetimePoolData(
@@ -301,11 +329,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
   function _installMocksThrowingHodl() {
     Module.prototype.require = function (id) {
       if (id === "./epoch-cache") {
-        return {
-          getCachedLifetimeHodl: () => state.cachedHodl,
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
-        };
+        return { getCachedLifetimeHodl: () => state.cachedHodl };
       }
       if (id === "./bot-pnl-updater") {
         return {
@@ -340,10 +364,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       if (id === "./bot-recorder-scan-helpers") {
         return {
           collectTokenIds: () => new Set([1]),
-          fetchAllNftEvents: async () => ({
-            allNftEvents: new Map([[1, []]]),
-            maxBlock: 0,
-          }),
+          fetchAllNftEvents: async () => new Map([[1, []]]),
         };
       }
       /*- The scan heals decimals via getPoolState before valuing; stub it so
@@ -353,7 +374,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       if (id === "./error-log") return errorLogMock();
       return origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
+    evictLifetimeModules();
   }
 
   beforeEach(() => {
@@ -465,7 +486,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
   it("honors _needsFullRescan by bypassing the disk-fully-populated early-return", async () => {
     state.cachedHodl = { poolAddress: "0xPOOL" };
     const botState = makeBotState({
-      totalCompoundedUsd: 148.38,
+      compoundedAmount0: 148.38,
       totalLifetimeDepositUsd: 1704.15,
     });
     botState._needsFullRescan = true;
@@ -483,7 +504,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       }
       return origRequire2.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
+    evictLifetimeModules();
     ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
     await _scanLifetimePoolData(
       makePosition(),

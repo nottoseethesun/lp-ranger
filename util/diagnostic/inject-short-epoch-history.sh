@@ -8,7 +8,7 @@
 #
 # Drops the last N closed epochs from every pool entry in
 # `tmp/pnl-epochs-cache.json`, leaving everything else — liveEpoch,
-# lastNftScanBlock, lifetimeHodlAmounts — untouched.  The chain's
+# lifetimeHodlAmounts, freshDeposits — untouched.  The chain's
 # rebalance events are not touched either, so on the next start the app
 # still knows how many closed positions the chain HAS while its stored
 # history covers fewer.  That mismatch is exactly what

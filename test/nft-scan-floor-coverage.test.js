@@ -34,9 +34,18 @@ const path = require("node:path");
 
 const SRC = path.join(__dirname, "..", "src");
 
-/*- Named calls that scan one NFT's event history. */
+/*-
+ *  Named calls that scan NFT event history — one NFT at a time, or a
+ *  whole chain at once.
+ *
+ *  The batched pair is here for the same reason as the rest. A caller
+ *  of `scanChainNftEvents` supplies the mint blocks the batch floors
+ *  each NFT at; hand it an empty map and every NFT silently falls back
+ *  to the pool's creation block — the waste this guard exists to catch,
+ *  reached through another name.
+ */
 const SCAN_CALLS =
-  /\b(scanNftEvents|detectCompoundsOnChain|scanCollectAndDrain)\s*\(/;
+  /\b(scanNftEvents|detectCompoundsOnChain|scanCollectAndDrain|scanChainNftEvents|fetchChainNftEvents)\s*\(/;
 
 /*- The general shape, independent of any helper's name: a chunked scan
  *  whose label names a tokenId is by definition a per-NFT scan.
@@ -54,8 +63,6 @@ const NFT_LABEL = /label:\s*`[^`]*#\$\{\s*tokenId\s*\}/;
 const EXEMPT = {
   "compounder.js":
     "defines scanNftEvents/detectCompoundsOnChain; the floor is its caller's to set",
-  "position-history-scan-helpers.js":
-    "defines scanCollectAndDrain; both bounds are passed in by position-history.js",
   "event-scanner-mint-lookup.js":
     "searches FOR a mint block, so cannot be bounded by one; exits at the first hit instead",
   "hodl-baseline.js":
@@ -134,24 +141,50 @@ describe("per-NFT scan floors", () => {
   });
 });
 
-describe("the loops that walk a rebalance chain", () => {
-  /*- The shape this guard is about: iterate a set of tokenIds, scan
-   *  each one. Every such loop must derive its floor per NFT. */
-  const CHAIN_LOOPS = [
+describe("the reads that cover a rebalance chain", () => {
+  /*-
+   *  The shape this guard is about: one read for a whole chain of NFTs.
+   *  The batch floors each NFT at the mint block its caller hands it, so
+   *  every such caller must pass the chain's mint blocks — without them
+   *  every NFT silently falls back to the shared floor.
+   */
+  const CHAIN_READS = [
     "bot-recorder-scan-helpers.js",
-    "position-details-lifetime-scan.js",
-    "position-details-compound.js",
+    "position-history-scan-helpers.js",
   ];
 
-  for (const file of CHAIN_LOOPS) {
-    it(`${file} derives a floor per NFT`, () => {
+  /*-
+   *  The batch call, with its arguments, naming the mint blocks — and
+   *  not as an empty map, which floors nothing.
+   */
+  const PASSES_MINT_BLOCKS =
+    /scanChainNftEvents\([^;]*\bmintBlocks\b(?!:\s*new Map)/;
+
+  it("recognises a batch call that passes the mint blocks", () => {
+    // Guards the guard, in both argument styles the code uses.
+    assert.match(
+      "scanChainNftEvents(ids, {\n  mintBlocks,\n  sharedFloor,\n});",
+      PASSES_MINT_BLOCKS,
+    );
+    assert.match(
+      "scanChainNftEvents(ids, { mintBlocks: mintBlocksByTokenId(e) });",
+      PASSES_MINT_BLOCKS,
+    );
+    assert.doesNotMatch(
+      "scanChainNftEvents(ids, { mintBlocks: new Map(), sharedFloor });",
+      PASSES_MINT_BLOCKS,
+    );
+  });
+
+  for (const file of CHAIN_READS) {
+    it(`${file} reads the chain in one batch, floored per NFT`, () => {
       const src = fs.readFileSync(path.join(SRC, file), "utf8");
       assert.match(
         src,
-        /nftScanFrom|scanFloorFor/,
-        `${file} loops over a chain of NFTs, so one shared fromBlock is wrong`,
+        PASSES_MINT_BLOCKS,
+        `${file} must read the chain in one batch and pass each NFT's ` +
+          "mint block to it",
       );
-      assert.match(src, /mintBlocksByTokenId|mintBlocks/);
     });
   }
 });

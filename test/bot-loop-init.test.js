@@ -24,8 +24,6 @@ describe("bot-loop _initPnlTracker", () => {
           setCachedEpochs: () => {},
           getCachedLifetimeHodl: () => _cachedHodl,
           setCachedLifetimeHodl: () => {},
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
         };
       }
       return _origRequire.apply(this, arguments);
@@ -140,13 +138,18 @@ describe("bot-loop _tryInitPnlTracker", () => {
   let _mockPrices = { price0: 0, price1: 0 };
   let _mockPoolState = null;
   let _mockPosValue = 0;
+  /*- Indirection so a test can decide the prices at the moment of the
+   *  call rather than beforehand.  The values have to be read inside the
+   *  stub: the caller destructures the resolved object, and that happens
+   *  after any scope the call was wrapped in has already closed. */
+  let _pricesNow = () => _mockPrices;
 
   before(() => {
     Module.prototype.require = function (id) {
       if (id === "./bot-pnl-updater") {
         return {
           positionValueUsd: () => _mockPosValue,
-          fetchTokenPrices: async () => _mockPrices,
+          fetchTokenPrices: async () => _pricesNow(),
           overridePnlWithRealValues: () => {},
           readUnclaimedFees: async () => ({
             tokensOwed0: 0n,
@@ -169,8 +172,6 @@ describe("bot-loop _tryInitPnlTracker", () => {
           setCachedEpochs: () => {},
           getCachedLifetimeHodl: () => null,
           setCachedLifetimeHodl: () => {},
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
         };
       }
       return _origRequire2.apply(this, arguments);
@@ -235,6 +236,66 @@ describe("bot-loop _tryInitPnlTracker", () => {
     assert.ok(patches.length > 0);
   });
 
+  it("initialises while price lookups are idle-paused", async () => {
+    /*-
+     *  The pause stops recurring poll traffic against a quota-limited
+     *  price API while nobody is watching. This read is not that: it
+     *  happens once per position start, and the tracker it builds is
+     *  never built again — so a paused read here costs the position its
+     *  P&L for the life of the process, every panel a dash until a
+     *  restart.
+     *
+     *  The stub answers the way the real fetcher does under a pause: a
+     *  token with no cache entry reads zero unless the caller has lifted
+     *  the gate. Asserting a tracker comes back therefore asserts the
+     *  call was made inside `withFreshPricesAllowed`.
+     */
+    const gate = require("../src/price-fetcher-gate");
+    _mockPoolState = {
+      price: 3,
+      tick: 0,
+      decimals0: 18,
+      decimals1: 18,
+      sqrtPriceX96: 0n,
+      poolAddress: "0xPool",
+    };
+    _mockPosValue = 100;
+    /*- Answered at the moment of the call, so what comes back depends on
+     *  whether the caller had lifted the gate. */
+    _pricesNow = () =>
+      gate.inMove() ? { price0: 1.5, price1: 0.5 } : { price0: 0, price1: 0 };
+    gate.pausePriceLookups();
+    try {
+      assert.equal(
+        _pricesNow().price0,
+        0,
+        "fixture must read zero outside the override, or it proves nothing",
+      );
+      const result = await _tryInitPnlTracker(
+        {},
+        {},
+        {
+          token0: "0xA",
+          token1: "0xB",
+          fee: 3000,
+          tickLower: -100,
+          tickUpper: 100,
+        },
+        {},
+        () => {},
+        "0xW",
+      );
+      assert.ok(
+        result,
+        "a paused price lookup must not cost the position its tracker",
+      );
+    } finally {
+      gate.unpausePriceLookups();
+      _pricesNow = () => _mockPrices;
+      _mockPrices = { price0: 0, price1: 0 };
+    }
+  });
+
   it("returns null on error", async () => {
     _mockPrices = { price0: 1, price1: 1 };
     _mockPoolState = null; // will cause getPoolState to throw
@@ -261,8 +322,6 @@ describe("bot-loop _tryInitPnlTracker", () => {
           setCachedEpochs: () => {},
           getCachedLifetimeHodl: () => null,
           setCachedLifetimeHodl: () => {},
-          getLastNftScanBlock: () => 0,
-          setLastNftScanBlock: () => {},
         };
       }
       return _origRequire2.apply(this, arguments);

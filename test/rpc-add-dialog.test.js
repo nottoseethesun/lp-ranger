@@ -23,15 +23,13 @@ const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-
-const INDEX_HTML = path.join(__dirname, "..", "public", "index.html");
+const { indexHtmlDocument } = require("./helpers/index-html");
 
 let doc;
 let validateRpcUrl;
 
 before(async () => {
-  const html = fs.readFileSync(INDEX_HTML, "utf8");
-  doc = new window.DOMParser().parseFromString(html, "text/html");
+  doc = indexHtmlDocument();
   ({ validateRpcUrl } = await import("../public/dashboard-rpc-add.js"));
 });
 

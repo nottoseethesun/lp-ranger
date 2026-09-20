@@ -46,12 +46,21 @@ describe("_currentPnl", () => {
     assert.strictEqual(r.profit, 32); // fees + il = 2 + 30
   });
 
-  it("computes profit as fees + il when il is 0", () => {
+  it("reports no IL when the baseline carries no deposited amounts", () => {
+    /*-
+     *  A baseline of 0/0 is a HODL side that has not resolved, not a
+     *  position that deposited nothing. Comparing against it would
+     *  report the entire LP value as gain — "+$200" for a position whose
+     *  deposit is simply unknown yet.
+     *
+     *  So the figure is withheld and the dashboard shows a dash, which
+     *  is what the managed path has always done: the same guard in
+     *  `_ilFor` (src/bot-pnl-il.js) is now the one both tiers use.
+     */
     const baseline = { hodlAmount0: 0, hodlAmount1: 0 };
     const r = _currentPnl(baseline, 200, 200, 10, 1, 1);
-    // hodlValue = 0, il = 200 - 0 = 200
-    assert.strictEqual(r.il, 200);
-    assert.strictEqual(r.profit, 210); // fees + il = 10 + 200
+    assert.strictEqual(r.il, null);
+    assert.strictEqual(r.profit, null);
   });
 
   it("handles negative price gain with fees", () => {

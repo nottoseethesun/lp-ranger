@@ -120,12 +120,12 @@ describe("atomic config write", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "atomic-test-"));
     const cfg = {
       global: { triggerType: "oor" },
-      positions: { k1: { status: "running", totalCompoundedUsd: 10 } },
+      positions: { k1: { status: "running", compoundedAmount0: 10 } },
     };
     saveConfig(cfg, dir);
     const loaded = loadConfig(dir);
     assert.equal(loaded.positions.k1.status, "running");
-    assert.equal(loaded.positions.k1.totalCompoundedUsd, 10);
+    assert.equal(loaded.positions.k1.compoundedAmount0, 10);
     assert.equal(loaded.global.triggerType, "oor");
     const files = fs.readdirSync(dir);
     assert.ok(!files.some((f) => f.endsWith(".tmp")));
@@ -246,9 +246,9 @@ describe("compound P&L integration", () => {
       initialDeposit: 200,
       totalGas: 0,
     };
+    /*- 5000 of token0 at the $0.001 passed below: $5. */
     const deps = {
-      _botState: { totalCompoundedUsd: 5 },
-      _collectedFeesUsd: 0,
+      _botState: { compoundedAmount0: 5000 },
     };
     overridePnlWithRealValues(
       snap,
@@ -273,7 +273,7 @@ describe("compound P&L integration", () => {
     };
     overridePnlWithRealValues(
       snap,
-      { _botState: { totalCompoundedUsd: 7 }, _collectedFeesUsd: 10 },
+      { _botState: { compoundedAmount0: 7000 } },
       { liquidity: "100000000", tickLower: 0, tickUpper: 1000 },
       { tick: 500, decimals0: 8, decimals1: 8 },
       0.001,
@@ -289,13 +289,13 @@ describe("compound P&L integration", () => {
   it("createPerPositionBotState restores compound state", () => {
     const { createPerPositionBotState } = require("../src/server-positions");
     const saved = {
-      totalCompoundedUsd: 25,
+      compoundedAmount0: 25,
       compoundHistory: [{ trigger: "auto" }, { trigger: "manual" }],
       lastCompoundAt: "2026-04-04T10:00:00Z",
       hodlBaseline: { entryValue: 100 },
     };
     const state = createPerPositionBotState({}, saved);
-    assert.equal(state.totalCompoundedUsd, 25);
+    assert.equal(state.compoundedAmount0, 25);
     assert.equal(state.compoundHistory.length, 2);
     assert.equal(state.lastCompoundAt, "2026-04-04T10:00:00Z");
     assert.deepEqual(state.hodlBaseline, { entryValue: 100 });
@@ -495,5 +495,3 @@ describe("saveConfig status warning", () => {
     _fs.rmSync(dir, { recursive: true });
   });
 });
-
-// _applyMintGas tests moved to test/apply-mint-gas.test.js

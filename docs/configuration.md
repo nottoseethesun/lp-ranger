@@ -17,7 +17,9 @@ sits on top, so a line left there overrides anything set later in the
 dashboard.
 
 For the runtime mechanisms these settings govern, see
-[`docs/engineering.md`](engineering.md). For how the bot and dashboard
+[`docs/engineering.md`](engineering.md). For the commands that read this
+configuration, see
+[`docs/npm-project-commands.md`](npm-project-commands.md). For how the bot and dashboard
 cooperate at a higher level, see [`docs/architecture.md`](architecture.md).
 For the controls protecting the wallet, see [`docs/security.md`](security.md).
 
@@ -234,7 +236,6 @@ each layer live in [`docs/security.md`](security.md).
 | `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | `bot-config-defaults.json` → `minRebalanceIntervalMin` | Shortest wait between two rebalances of one position. |
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
-| `RESCAN_PRICES_DEFAULT_DAYS` | `60` | `bot-config-defaults.json` → `rescanPricesDefaultDays` | Days of history a price rescan covers when no span is given. |
 | `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive swap-backoff retries before the bot pauses rebalancing and waits for the operator. |
 | `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. |
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. |
@@ -454,20 +455,23 @@ defaults. Raising `getLogsChunkSize` (up to the 10,000 cap) is the single lever
 if that is too slow; lowering it is the fix if an endpoint rejects a query.
 
 That figure is the worst case, and in practice almost nothing scans that
-wide. What actually determines a cold start is **how tightly each scan is
-bounded**, and every scan in the app is bounded by something it already
-knows:
+wide. What actually determines a cold start is **where each scan starts**,
+and every scan in the app starts from a bound it already knows:
 
-| Scan | Bounded by |
+| Scan | Starts at |
 | --- | --- |
-| Pool rebalance events | five-year floor, pool creation block, last cached block |
-| Per-NFT event history | that NFT's own mint block → the block it was replaced |
-| Pool creation lookup | scans newest-first, stops at the first match |
+| Pool rebalance events | the later of the five-year floor, the pool's creation block, and the last cached block |
+| Per-NFT event history | that NFT's own mint block, and runs to the current block |
+| Pool creation lookup | the newest block, working backwards, stopping at the first match |
 
-The per-NFT bound is the one that moves the needle on a long rebalance
-chain: a retired NFT covers only the hours it was alive, not every block
-since. On a 132-rebalance position that is the difference between hours
-and minutes. See
+The per-NFT floor is the one that moves the needle on a long rebalance
+chain. Every scan runs to the current block, including a retired NFT's:
+a dust mint left by a failed rebalance looks exactly like a real one in
+the Transfer log, so the app never assumes an NFT has stopped emitting —
+one that appears replaced can still hold coins and release them later.
+The saving comes from the floor. On a 132-rebalance position in a pool
+two years older than the first deposit, that is up to 168 chunked queries
+per NFT instead of 954. See
 [Per-NFT Scan Windows](engineering.md#per-nft-scan-windows).
 
 Two consequences worth knowing:
@@ -475,6 +479,7 @@ Two consequences worth knowing:
 - **The bot's polling shares the queue with any running scan.** A long
   scan slows ordinary poll cycles and vice versa — they interleave, each
   at roughly half rate, rather than one blocking the other.
-- **A scan only records its resume checkpoint when it completes.**
-  Interrupting a long first scan means the next start repeats it from
-  the same place. Let the first one finish.
+- **An interrupted scan starts over.** The pool rebalance-event scan
+  saves its progress only when it completes. The per-NFT event history
+  is read afresh after a restart. Interrupting a long first scan means
+  the next start repeats it. Let the first one finish.

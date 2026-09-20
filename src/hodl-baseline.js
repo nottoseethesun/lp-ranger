@@ -13,6 +13,7 @@ const { log } = require("./log");
 const config = require("./config");
 const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
+const { topicForTokenId } = require("./nft-token-topic");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { getPoolState } = require("./rebalancer");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
@@ -149,7 +150,7 @@ async function _findMintEvent(
   tokenId,
   fromBlock = 0,
 ) {
-  const tokenIdHex = "0x" + BigInt(tokenId).toString(16).padStart(64, "0");
+  const tokenIdHex = topicForTokenId(tokenId);
   const zeroAddr = ethersLib.zeroPadValue
     ? ethersLib.zeroPadValue("0x" + "0".repeat(40), 32)
     : "0x" + "0".repeat(64);
@@ -342,7 +343,8 @@ async function initHodlBaseline(
 /**
  * Compute position baseline (entry amounts, entry value, mint date) from chain data.
  * Standalone version of initHodlBaseline — no bot state needed.
- * @returns {Promise<{entryValue, hodlAmount0, hodlAmount1, mintDate, price0, price1}|null>}
+ * @returns {Promise<{entryValue, hodlAmount0, hodlAmount1, mintDate,
+ *   mintTimestamp, mintGasWei, price0, price1}|null>}
  */
 async function getPositionBaseline(provider, ethersLib, position) {
   try {
@@ -414,4 +416,8 @@ module.exports = {
   initHodlBaseline,
   getPositionBaseline,
   _positionValueUsd,
+  /*- The baseline's shape and its update channel live here, so the
+   *  Re-scan Prices re-value in bot-hodl-scan.js publishes through this
+   *  rather than assembling a second copy of the object. */
+  _publishBaseline,
 };

@@ -15,6 +15,7 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const Module = require("module");
+const { topicForTokenId } = require("../src/nft-token-topic");
 
 const FIVE_YEAR_BLOCKS = 15_800_000;
 
@@ -170,7 +171,12 @@ describe("position-history scan bound", () => {
       logsToReturn: [
         {
           blockNumber: 14_500_000,
-          topics: ["0xtopic", "0xtid"],
+          /*-
+           *  The token id is a real topic word: the read attributes each
+           *  log to its NFT by `topics[1]`, as a node's logs always
+           *  carry it.
+           */
+          topics: ["0xtopic", topicForTokenId(12345)],
           data: "0x",
         },
       ],

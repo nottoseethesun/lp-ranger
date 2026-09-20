@@ -172,19 +172,72 @@ function parseConfigRuleCount(json) {
 }
 
 /**
- * Parse npm audit `--json` output. Pulls the severity breakdown and total
- * vulnerability count from metadata.
+ * Why npm audit produced no severity counts.
+ *
+ * npm reports a failed run as an `error` object — `{ code, summary,
+ * detail }` — or occasionally as a bare string. Both are turned into one
+ * short line for the report, because the alternative the caller has is
+ * to say nothing, and saying nothing is how "could not check" comes to
+ * read as "nothing to report".
+ *
+ * @param {object} json  Parsed npm audit output.
+ * @returns {string} A reason, never empty.
+ */
+function _npmAuditFailureReason(json) {
+  const e = json.error;
+  if (typeof e === "string" && e !== "") return e;
+  if (e !== undefined && e !== null && typeof e === "object") {
+    const code = typeof e.code === "string" ? e.code : "";
+    const text =
+      (typeof e.summary === "string" && e.summary !== "" && e.summary) ||
+      (typeof e.detail === "string" && e.detail !== "" && e.detail) ||
+      "";
+    if (code !== "" && text !== "") return `${code}: ${text}`;
+    if (code !== "") return code;
+    if (text !== "") return text;
+  }
+  return "no severity data in npm's output";
+}
+
+/**
+ * Parse npm audit `--json` output.
+ *
+ * Distinguishes "audited, found nothing" from "did not audit". A run that
+ * completed ALWAYS carries `metadata.vulnerabilities`, so its absence
+ * means npm never reached the advisory service — a registry outage, a
+ * network failure, a malformed tree. Both cases used to total zero, and
+ * a caller rendering that total said "0 advisories" over a failed run:
+ * the reassuring reading of the one situation where nothing is known.
+ *
+ * `ok` distinguishes them. The exit status still decides pass/fail, so
+ * an unreachable service fails the check either way — this only governs
+ * what the failure is allowed to claim.
+ *
  * @param {object|null} json
- * @returns {{ total:number, bySeverity:object }}
+ * @returns {{ ok:boolean, reason:string|null, total:number,
+ *   bySeverity:object }}
  */
 function parseNpmAudit(json) {
-  if (!json) return { total: 0, bySeverity: {} };
-  const meta = (json.metadata && json.metadata.vulnerabilities) || {};
+  if (!json)
+    return {
+      ok: false,
+      reason: "npm audit produced no output",
+      total: 0,
+      bySeverity: {},
+    };
+  const meta = json.metadata && json.metadata.vulnerabilities;
+  if (meta === undefined || meta === null)
+    return {
+      ok: false,
+      reason: _npmAuditFailureReason(json),
+      total: 0,
+      bySeverity: {},
+    };
   const total = ["info", "low", "moderate", "high", "critical"].reduce(
     (a, k) => a + (meta[k] || 0),
     0,
   );
-  return { total, bySeverity: meta };
+  return { ok: true, reason: null, total, bySeverity: meta };
 }
 
 /**

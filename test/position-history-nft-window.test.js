@@ -113,8 +113,8 @@ function _events({ withClose }) {
   return evts;
 }
 
-async function _run({ withClose }) {
-  _ctx = { calls: [], prov: _provider() };
+async function _run({ withClose, extraOpts = {} }) {
+  _ctx = { calls: [], prov: _provider(), result: null };
   const origRequire = Module.prototype.require;
   const stub = _ethersStub();
   Module.prototype.require = function (id) {
@@ -132,18 +132,38 @@ async function _run({ withClose }) {
       module,
       "../src/position-history",
     );
-    await getPositionHistory(TOKEN_ID, {
+    _ctx.result = await getPositionHistory(TOKEN_ID, {
       rebalanceEvents: _events({ withClose }),
       fallbackPrices: { price0: 1, price1: 1 },
+      ...extraOpts,
     });
   } finally {
     Module.prototype.require = origRequire;
     const pcb = origRequire.call(module, "../src/pool-creation-block");
     if (typeof pcb._resetForTests === "function") pcb._resetForTests();
   }
-  /*- Only the Collect / DecreaseLiquidity scans carry topics; drop any
-   *  other read so the assertions speak about the scan alone. */
-  return _ctx.calls.filter((c) => Array.isArray(c.topics));
+  /*- Keep only the Collect / DecreaseLiquidity scans, so the assertions
+   *  below speak about those alone.
+   *
+   *  Two reads carry topics. The other is the oldest NFT's mint lookup,
+   *  a `Transfer` from the zero address — a different question, asked
+   *  for the mint TRANSACTION rather than for the NFT's history, and
+   *  bounded to the one block the events already named. `_mintCalls`
+   *  returns those, and the suite asserts that bound separately. */
+  return _ctx.calls.filter((c) => Array.isArray(c.topics) && !_isMint(c));
+}
+
+/** The zero-address `from` topic that marks a mint. */
+const _ZERO_TOPIC = "0x" + "0".repeat(64);
+
+/** Whether a recorded getLogs call is the mint lookup. */
+function _isMint(c) {
+  return Array.isArray(c.topics) && c.topics[1] === _ZERO_TOPIC;
+}
+
+/** The mint-lookup reads recorded during the last `_run`. */
+function _mintCalls() {
+  return _ctx.calls.filter(_isMint);
 }
 
 describe("closed-NFT history scans are bounded to that NFT's life", () => {
@@ -201,5 +221,96 @@ describe("closed-NFT history scans are bounded to that NFT's life", () => {
   });
 });
 
+describe("a history already read with the rest of its chain", () => {
+  /*-
+   *  Epoch reconstruction reads every closed NFT's history in one pass
+   *  and hands each NFT its slice. Reading it again here would read the
+   *  chain once more, one NFT at a time.
+   */
+  const E18 = 10n ** 18n;
+  const chainRead = {
+    collectEvents: [
+      { amount0: 2n * E18, amount1: 0n, blockNumber: MINT_BLOCK + 10 },
+      { amount0: 7n * E18, amount1: 3n * E18, blockNumber: CLOSE_BLOCK },
+    ],
+    dlEvents: [
+      {
+        liquidity: 1n,
+        amount0: 6n * E18,
+        amount1: 3n * E18,
+        blockNumber: CLOSE_BLOCK,
+      },
+    ],
+  };
+
+  it("is used as given, with no scan of its own", async () => {
+    const calls = await _run({
+      withClose: true,
+      extraOpts: { collectAndDrain: chainRead },
+    });
+    assert.deepEqual(calls, []);
+  });
+
+  it("supplies the exit value and the lifetime fees", async () => {
+    await _run({
+      withClose: true,
+      extraOpts: { collectAndDrain: chainRead },
+    });
+    /*-
+     *  Exit: the final Collect, 7 + 3, at the fallback price of 1.
+     *  Fees: every Collect less the drained principal, (9 − 6) + (3 − 3).
+     */
+    assert.equal(_ctx.result.exitValueUsd, 10);
+    assert.equal(_ctx.result.feesEarnedUsd, 3);
+  });
+
+  it("is not replaced by a scan when the chain read was unusable", async () => {
+    /*-
+     *  null says the chain read could not be trusted. The NFT's figures
+     *  stay unknown, and the epoch is retried as a whole.
+     */
+    const calls = await _run({
+      withClose: true,
+      extraOpts: { collectAndDrain: null },
+    });
+    assert.deepEqual(calls, []);
+    assert.equal(_ctx.result.exitValueUsd, null);
+    assert.equal(_ctx.result.feesEarnedUsd, null);
+  });
+});
+
 /*- `nftScanFromBlock`, the helper this file's floor comes from, is
  *  covered directly in test/nft-mint-blocks.test.js. */
+
+describe("the oldest NFT's mint lookup is bounded to one block", () => {
+  /*- The lookup exists for the mint TRANSACTION, which no rebalance
+   *  event carries for the chain's first NFT. The block is already
+   *  known, so the search must be that block and nothing more.
+   *
+   *  Unbounded, this walks from the pool's creation to the chain head —
+   *  the 943-chunk cost that argued against running it at all. That cost
+   *  is what makes the difference between a read worth doing and one
+   *  worth avoiding, so it is asserted rather than assumed. */
+
+  it("searches exactly the block the events named", async () => {
+    await _run({ withClose: true });
+    const mint = _mintCalls();
+    if (mint.length === 0) return; // this fixture names the NFT by event
+    for (const c of mint)
+      assert.equal(
+        c.fromBlock,
+        c.toBlock,
+        `the mint search must be one block, got ${c.fromBlock}..${c.toBlock}`,
+      );
+  });
+
+  it("never widens to the whole chain", async () => {
+    await _run({ withClose: true });
+    for (const c of _mintCalls())
+      assert.notEqual(
+        c.toBlock,
+        "latest",
+        "a mint lookup reaching the chain head is the unbounded walk",
+      );
+  });
+});

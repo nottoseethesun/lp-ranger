@@ -86,6 +86,9 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number}  fees             Cumulative fees earned (USD).
  * @property {number}  il               Impermanent loss (USD, positive = loss).
  * @property {number}  gas              Gas cost charged to this epoch (USD).
+ * @property {number}  gasNative        The same, in the chain's native token.
+ * @property {number}  importedGas      Compound gas spent BEFORE this epoch opened (USD). Held apart from `gas`: the lifetime total counts it, the Per-Day row does not. See `setImportedGas`.
+ * @property {number}  importedGasNative The same, in the chain's native token.
  * @property {number|null} exitValue    USD value at close (null while open).
  * @property {number|null} epochPnl     Closed P&L: exitValue − entryValue + fees − il − gas.
  * @property {number|null} priceChangePnl Price-change component: exitValue − entryValue (excludes fees).
@@ -184,6 +187,13 @@ function createPnlTracker(opts = {}) {
       token0UsdExit: 0,
       token1UsdExit: 0,
       status: "open",
+      /*- Gas the position spent on compounds BEFORE this period opened,
+       *  recovered from chain by the lifetime scan. Held apart from
+       *  `gas` because it belongs to the position's history, not to this
+       *  period: the lifetime total counts it, the Per-Day row does not.
+       *  See `setImportedGas`. */
+      importedGas: 0,
+      importedGasNative: 0,
     };
   }
 
@@ -277,11 +287,20 @@ function createPnlTracker(opts = {}) {
 
     const totalIL =
       closedEpochs.reduce((s, e) => s + e.il, 0) + (liveEpoch?.il ?? 0);
+    /*- Imported gas is added here and nowhere else. The lifetime figure
+     *  is the position's whole cost, so it belongs; the Per-Day rows are
+     *  per-day, so it does not. See `setImportedGas`. */
     const totalGas =
-      closedEpochs.reduce((s, e) => s + e.gas, 0) + (liveEpoch?.gas ?? 0);
+      closedEpochs.reduce((s, e) => s + e.gas + (e.importedGas ?? 0), 0) +
+      (liveEpoch?.gas ?? 0) +
+      (liveEpoch?.importedGas ?? 0);
     const totalGasNative =
-      closedEpochs.reduce((s, e) => s + (e.gasNative ?? 0), 0) +
-      (liveEpoch?.gasNative ?? 0);
+      closedEpochs.reduce(
+        (s, e) => s + (e.gasNative ?? 0) + (e.importedGasNative ?? 0),
+        0,
+      ) +
+      (liveEpoch?.gasNative ?? 0) +
+      (liveEpoch?.importedGasNative ?? 0);
 
     // ── P&L breakdown: price-change ──────────────────────────────────────────
     /*- Per-epoch fees are still summed by daily P&L and by the per-epoch
@@ -366,6 +385,47 @@ function createPnlTracker(opts = {}) {
     if (native > 0) liveEpoch.gasNative += native;
   }
 
+  /**
+   * Take up the gas this position spent compounding BEFORE the open
+   * period began — the whole chain's worth, recovered from chain by the
+   * lifetime scan.
+   *
+   * Kept out of `gas`, and so out of the Per-Day table, because it did
+   * not happen on the open period's day. It is months of charges spread
+   * across the position's whole history, and the only thing the open
+   * period has to do with them is being open when the scan finished.
+   * Landing them there reported a day's gas as the position's lifetime
+   * gas. The lifetime total still counts it — see `snapshot`.
+   *
+   * Written, not accumulated: the lifetime scan runs again on every
+   * re-scan and every restart and offers the same total each time. The
+   * total IS the figure, so assigning it is idempotent and a re-priced
+   * total replaces the old one.
+   *
+   * @param {number} usd     Chain-wide compound gas in USD.
+   * @param {number} native  The same in the chain's native token.
+   * @returns {boolean} Whether the epoch's figure changed.
+   */
+  function setImportedGas(usd, native) {
+    if (!liveEpoch) return false;
+    /*- Refuse what cannot be money. `snapshot` adds this straight into
+     *  the Lifetime Gas figure, so a NaN here is not one wrong reading
+     *  but every money reading at once. `addGas` is guarded by its own
+     *  `> 0` tests; this one writes, so it needs its own. */
+    if (!Number.isFinite(usd) || !Number.isFinite(native)) return false;
+    if (usd < 0 || native < 0) return false;
+    /*- TRANSITIONAL — the figure itself was always stored here, so
+     *  there is nothing to reconstruct: the boolean is inert litter on
+     *  epochs written before it was dropped. Delete once no stored
+     *  epoch carries it. */
+    delete liveEpoch.importedGasApplied;
+    if (liveEpoch.importedGas === usd && liveEpoch.importedGasNative === native)
+      return false;
+    liveEpoch.importedGas = usd;
+    liveEpoch.importedGasNative = native;
+    return true;
+  }
+
   return {
     openEpoch,
     updateLiveEpoch,
@@ -374,6 +434,7 @@ function createPnlTracker(opts = {}) {
     epochCount,
     getLiveEpoch,
     addGas,
+    setImportedGas,
     serialize,
     restore,
   };

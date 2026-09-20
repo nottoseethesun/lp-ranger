@@ -17,6 +17,10 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
+const {
+  CHAIN_HISTORY_MODULE,
+  chainHistoryStub,
+} = require("./helpers/chain-history-stub");
 
 /** Minimal tracker double: records what it was restored with. */
 function mockTracker(closedEpochs, liveEpoch) {
@@ -35,10 +39,11 @@ describe("_consumeRebuildRequest — the one-shot request", () => {
 
   it("does nothing when no rebuild was requested", () => {
     const tracker = mockTracker([{ id: 1 }, { id: 2 }]);
-    assert.equal(
-      _consumeRebuildRequest({}, tracker, tracker.serialize()),
-      false,
-    );
+    assert.deepEqual(_consumeRebuildRequest({}, tracker, tracker.serialize()), {
+      forced: false,
+      refreshPrices: false,
+      windowDays: 0,
+    });
     assert.equal(tracker.serialize().closedEpochs.length, 2);
   });
 
@@ -47,9 +52,10 @@ describe("_consumeRebuildRequest — the one-shot request", () => {
     const live = { id: 9, status: "open" };
     const tracker = mockTracker([{ id: 1 }, { id: 2 }], live);
     const botState = { _needsEpochRebuild: true };
-    assert.equal(
+    assert.deepEqual(
       _consumeRebuildRequest(botState, tracker, tracker.serialize()),
-      true,
+      { forced: true, refreshPrices: false, windowDays: 0 },
+      "Reload rebuilds the history but keeps the cached prices",
     );
     assert.deepEqual(tracker.serialize().closedEpochs, []);
     assert.equal(tracker.serialize().liveEpoch, live);
@@ -61,7 +67,7 @@ describe("_consumeRebuildRequest — the one-shot request", () => {
     _consumeRebuildRequest(botState, tracker, tracker.serialize());
     assert.equal(botState._needsEpochRebuild, false);
     assert.equal(
-      _consumeRebuildRequest(botState, tracker, tracker.serialize()),
+      _consumeRebuildRequest(botState, tracker, tracker.serialize()).forced,
       false,
     );
   });
@@ -74,8 +80,56 @@ describe("_consumeRebuildRequest — the one-shot request", () => {
         { _needsEpochRebuild: "yes" },
         tracker,
         tracker.serialize(),
-      ),
+      ).forced,
       false,
+    );
+  });
+
+  it("keeps the existing epochs while a re-value rebuilds them", () => {
+    /*-
+     *  A re-value doubts the prices, not the history. Emptying the set
+     *  first would blank the Per-Day table for the whole run and leave
+     *  nothing behind if the run were interrupted — the opposite of
+     *  what the dialog promises, which is that each figure is replaced
+     *  only once its replacement exists.
+     *
+     *  Reload is the other request and does empty it, pinned above.
+     */
+    const tracker = mockTracker([{ id: 1 }, { id: 2 }]);
+    const botState = { _needsEpochPriceRevalue: true };
+    _consumeRebuildRequest(botState, tracker, tracker.serialize());
+    assert.equal(
+      tracker.serialize().closedEpochs.length,
+      2,
+      "the old rows must stay on screen until new ones arrive",
+    );
+  });
+
+  it("asks for fresh prices only when Re-scan Prices requested it", () => {
+    /*-
+     *  The two requests differ in what they trust. Reload wants the
+     *  history rebuilt, and the cached prices serve that correctly, so
+     *  re-fetching would spend quota to reach the same numbers. Re-scan
+     *  Prices is asking precisely because a cached price is suspect.
+     */
+    const tracker = mockTracker([{ id: 1 }]);
+    const botState = { _needsEpochPriceRevalue: true };
+    assert.deepEqual(
+      _consumeRebuildRequest(botState, tracker, tracker.serialize()),
+      { forced: true, refreshPrices: true, windowDays: 0 },
+    );
+    assert.equal(botState._needsEpochPriceRevalue, false, "one-shot");
+  });
+
+  it("ignores a truthy-but-not-true re-value request", () => {
+    const tracker = mockTracker([{ id: 1 }]);
+    assert.deepEqual(
+      _consumeRebuildRequest(
+        { _needsEpochPriceRevalue: 1 },
+        tracker,
+        tracker.serialize(),
+      ),
+      { forced: false, refreshPrices: false, windowDays: 0 },
     );
   });
 });
@@ -102,6 +156,7 @@ describe("reconstructEpochs — forced rebuild after a reload", () => {
 
   before(() => {
     Module.prototype.require = function (id) {
+      if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       if (id === "./position-history") {
         return {
           getPositionHistory: async (tokenId) => {

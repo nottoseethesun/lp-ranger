@@ -129,6 +129,18 @@ function isRecoveryResult(result, botState) {
 function _needsLifetimeRescan(botState) {
   const reasons = [];
   if (botState._needsFullRescan === true) reasons.push("needsFullRescan=true");
+  /*- Re-scan Prices asked for the stored dollar figures to be rebuilt.
+   *  The route triggers a scan itself, so this covers the case where
+   *  that trigger never ran or threw: the request would otherwise sit
+   *  unanswered, since a scan is the only thing that reads it. */
+  if (botState._needsPriceRevalue === true)
+    reasons.push("needsPriceRevalue=true");
+  /*- A compound or rebalance fee credit had no established total to add
+   *  to, so its coins are on chain and in no saved figure. Only a
+   *  classification can count them, and nothing else here would schedule
+   *  one once the other figures look settled. */
+  if (botState._needsCompoundReclassify === true)
+    reasons.push("needsCompoundReclassify=true");
   if (botState.lifetimeScanComplete === false)
     reasons.push("lifetimeScanComplete=false");
   /*- Epoch reconstruction built fewer epochs than the chain has closed
@@ -293,8 +305,7 @@ async function startBotLoop(opts) {
     activePosition: _activePosSummary(position),
   });
 
-  let collectedFeesUsd = botState.collectedFeesUsd || 0,
-    rebalanceCount = 0,
+  let rebalanceCount = 0,
     firstFailureAt = null,
     midwayRetryCount = 0,
     polling = false,
@@ -565,11 +576,6 @@ async function startBotLoop(opts) {
         _botState: botState,
         _pnlTracker: pnlTracker,
         _rebalanceEvents: rebalanceEvents,
-        _collectedFeesUsd: collectedFeesUsd,
-        _addCollectedFees: (usd) => {
-          collectedFeesUsd += usd;
-          updateBotState({ collectedFeesUsd });
-        },
         _residualTracker: residualTracker,
         _getTokenPositionAmounts: botState._getTokenPositionAmounts || null,
         _getConfig: gc,
@@ -673,8 +679,8 @@ async function startBotLoop(opts) {
    *       entirely (e.g. because the startup scan failed silently while
    *       Moralis quota was exhausted, or no scan has ever succeeded).
    *
-   *    2. `_needsFullRescan === true` — a rebalance fired and set the
-   *       "re-classify the chain" flag, but the follow-up `_triggerScan`
+   *    2. `_needsFullRescan === true` — a rebalance fired and asked for
+   *       the chain-wide figures to be re-derived, but `_triggerScan`
    *       (bot-cycle.js:160) ran into a silent failure in
    *       `_scanLifetimePoolData` and the flag is still set.  Without
    *       this gate condition the loop would early-return because the

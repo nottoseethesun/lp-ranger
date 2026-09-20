@@ -32,9 +32,8 @@ const {
   compositeKey,
   parseCompositeKey,
   readConfigValue,
-  GLOBAL_KEYS,
-  POSITION_KEYS,
 } = require("./bot-config-v2");
+const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
@@ -46,21 +45,6 @@ const {
   computeLifetimeDetails: _defaultComputeLifetimeDetails,
 } = require("./position-details");
 const { emojiId } = require("./logger");
-const { fetchTokenPriceUsd } = require("./price-fetcher");
-
-/** Recompute gas at current native token price for unmanaged results. */
-async function _recomputeGasUsd(result) {
-  if (!result.totalGasNative) return;
-  try {
-    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
-    result.ltGas = result.totalGasNative * p;
-    if (result.dailyPnl)
-      for (const d of result.dailyPnl)
-        if (d.gasNative > 0) d.gasCost = d.gasNative * p;
-  } catch {
-    /* keep historical USD */
-  }
-}
 
 /**
  * Create route handler functions.
@@ -328,9 +312,6 @@ function createRouteHandlers(deps) {
     positionMgr,
     walletManager,
     diskConfig,
-    /*- Injected so the handler never reaches for a provider itself —
-     *  keeps it unit-testable without standing up an RPC. */
-    getBlockNumber: () => sendTx.getManagedReadProvider().getBlockNumber(),
   });
 
   async function _handleShutdown(_req, res, srv) {
@@ -390,9 +371,18 @@ function createRouteHandlers(deps) {
     // own scan starts moments later.
     const isManaged = diskConfig.positions[pk]?.status === "running";
     if (!isManaged) s.rebalanceScanComplete = true;
-    // pnlSnapshot is already enriched by computeLifetimeDetails with
-    // currentValue, lifetimeIL, totalCompoundedUsd, initialDeposit.
-    if (result.pnlSnapshot) s.pnlSnapshot = result.pnlSnapshot;
+    /*-
+     *  The snapshot belongs to the bot on a managed position, and this
+     *  route can still be asked about one: the dashboard suppresses its
+     *  fetch only once a poll has landed, so a page load fires it before
+     *  the first poll. What this route builds covers what an UNMANAGED
+     *  position shows — the Current panel's two figures — and writing it
+     *  over the bot's would drop the Lifetime panel's figures until the
+     *  next poll rebuilt them, which is one `CHECK_INTERVAL_SEC` away.
+     */
+    const snapshot = result.pnlSnapshot;
+    if (!isManaged && snapshot !== undefined && snapshot !== null)
+      s.pnlSnapshot = snapshot;
     if (result.entryValue) s.entryValue = result.entryValue;
     const bl = diskConfig.positions[pk]?.hodlBaseline;
     if (bl) s.hodlBaseline = bl;
@@ -447,7 +437,6 @@ function createRouteHandlers(deps) {
         body,
         diskConfig,
       );
-      await _recomputeGasUsd(result);
       // Mark scan complete in the position's server state so the poll
       // cycle reports it — same path as managed positions.  This is the
       // ONLY way the dashboard detects "Synced" (no separate client flag).

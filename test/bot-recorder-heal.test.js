@@ -17,7 +17,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { _ensureTokenDecimals } = require("../src/bot-recorder-lifetime");
+const { _ensureTokenDecimals } = require("../src/bot-recorder-decimals-heal");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,

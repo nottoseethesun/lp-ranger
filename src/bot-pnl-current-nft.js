@@ -22,6 +22,7 @@ const { log } = require("./log");
 const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { detectCompoundsOnChain } = require("./compounder");
+const { coinsToUsd } = require("./coin-value");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const {
@@ -57,7 +58,7 @@ async function _weiToUsd(weiStr) {
  */
 async function _backfill(deps, position, poolState) {
   const tid = String(position.tokenId);
-  const empty = { gasWei: "0", compoundedUsd: 0 };
+  const empty = { gasWei: "0", amounts: { amount0: 0, amount1: 0 } };
   if (!deps?.signer) return empty;
   try {
     const walletAddr = await deps.signer.getAddress();
@@ -106,24 +107,25 @@ async function _backfill(deps, position, poolState) {
     }
     const r = await detectCompoundsOnChain(tid, { ...opts, fromBlock });
     const gasWei = String(r.totalNftGasWei || "0");
-    const compoundedUsd = (r.compounds || []).reduce(
-      (s, c) => s + (c.usdValue || 0),
-      0,
-    );
+    /*- The coins this NFT compounded, kept instead of their value: the
+     *  figure on screen is priced every poll, so it follows the pair. */
+    const amounts = _sumDeposited(r.compounds, opts.decimals0, opts.decimals1);
     const gasMap = { ...(deps._botState?.nftGasWeiByTokenId || {}) };
-    const compMap = { ...(deps._botState?.nftCompoundedUsdByTokenId || {}) };
+    const compMap = {
+      ...(deps._botState?.nftCompoundedAmountsByTokenId || {}),
+    };
     gasMap[tid] = gasWei;
-    compMap[tid] = compoundedUsd;
+    compMap[tid] = amounts;
     if (deps._botState) {
       deps._botState.nftGasWeiByTokenId = gasMap;
-      deps._botState.nftCompoundedUsdByTokenId = compMap;
+      deps._botState.nftCompoundedAmountsByTokenId = compMap;
     }
     if (deps.updateBotState)
       deps.updateBotState({
         nftGasWeiByTokenId: gasMap,
-        nftCompoundedUsdByTokenId: compMap,
+        nftCompoundedAmountsByTokenId: compMap,
       });
-    return { gasWei, compoundedUsd };
+    return { gasWei, amounts };
   } catch (e) {
     log.warn(
       "[pnl-current-nft] per-NFT backfill failed for tokenId %s: %s",
@@ -141,45 +143,65 @@ async function _backfill(deps, position, poolState) {
  *  same NFT.  Best-effort — never throws; on any failure leaves snap fields
  *  untouched so the dashboard's existing `?? liveEpoch.gas` fallback kicks in.
  */
-/*-
- *  Sum compoundHistory.usdValue entries that match the current tokenId.
- *  Used when the bot's lifetime scan populated history (entries carry
- *  tokenId) but the per-NFT compounded cache is missing.  Avoids an
- *  unnecessary backfill scan when the figure can be derived locally.
- */
-function _compoundedFromHistory(deps, tid) {
-  const history = deps._botState?.compoundHistory;
-  if (!history || !history.length) return 0;
-  let sum = 0;
-  for (const c of history) {
-    if (c.tokenId !== undefined && String(c.tokenId) === tid)
-      sum += c.usdValue || 0;
+/*- The coins a list of compound events put back, in token units. */
+function _sumDeposited(compounds, d0, d1) {
+  let amount0 = 0,
+    amount1 = 0;
+  for (const c of compounds || []) {
+    amount0 += Number(c.amount0Deposited || 0) / 10 ** (d0 ?? 8);
+    amount1 += Number(c.amount1Deposited || 0) / 10 ** (d1 ?? 8);
   }
-  return sum;
+  return { amount0, amount1 };
+}
+
+/*-
+ *  The coins compoundHistory records against the current tokenId. Used
+ *  when the bot's lifetime scan populated history (entries carry
+ *  tokenId) but the per-NFT amounts are missing. Avoids an unnecessary
+ *  backfill scan when the figure can be derived locally.
+ */
+function _compoundedFromHistory(deps, tid, d0, d1) {
+  const history = deps._botState?.compoundHistory;
+  if (!history || !history.length) return { amount0: 0, amount1: 0 };
+  const mine = history.filter(
+    (c) => c.tokenId !== undefined && String(c.tokenId) === tid,
+  );
+  return _sumDeposited(mine, d0, d1);
+}
+
+/*- The coins, at this poll's prices. Everything on the Current panel is
+ *  a current figure, so it is priced where it is shown. */
+function _priced(amounts, deps) {
+  return coinsToUsd(amounts, deps._lastPrice0, deps._lastPrice1);
 }
 
 async function applyCurrentNftFigures(snap, deps, position, poolState) {
   if (!snap || !position?.tokenId || !poolState) return;
   const tid = String(position.tokenId);
+  const d0 = poolState.decimals0,
+    d1 = poolState.decimals1;
   const cachedGas = deps._botState?.nftGasWeiByTokenId?.[tid];
-  const cachedComp = deps._botState?.nftCompoundedUsdByTokenId?.[tid];
+  const cachedComp = deps._botState?.nftCompoundedAmountsByTokenId?.[tid];
   if (cachedGas !== undefined) {
     snap.currentGasUsd = await _weiToUsd(cachedGas);
-    snap.currentCompoundedUsd =
-      cachedComp !== undefined ? cachedComp : _compoundedFromHistory(deps, tid);
+    const amounts =
+      cachedComp !== undefined
+        ? cachedComp
+        : _compoundedFromHistory(deps, tid, d0, d1);
+    snap.currentCompoundedUsd = _priced(amounts, deps);
     return;
   }
   /*-
    *  Cache miss: backfill scans both gas + compounded together (one RPC
    *  set, not two).  Both `nftGasWeiByTokenId` and
-   *  `nftCompoundedUsdByTokenId` get persisted so subsequent polls hit
+   *  `nftCompoundedAmountsByTokenId` get persisted so subsequent polls hit
    *  the cache.  Best-effort — on scan failure leaves snap fields as
    *  whatever overridePnlWithRealValues left (currentCompoundedUsd=0,
    *  currentGasUsd undefined → dashboard falls back to liveEpoch.gas).
    */
   const fresh = await _backfill(deps, position, poolState);
   snap.currentGasUsd = await _weiToUsd(fresh.gasWei);
-  snap.currentCompoundedUsd = fresh.compoundedUsd;
+  snap.currentCompoundedUsd = _priced(fresh.amounts, deps);
 }
 
 module.exports = { applyCurrentNftFigures };

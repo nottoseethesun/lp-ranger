@@ -27,7 +27,7 @@ sequence.
 
 - [Terminology](#terminology)
 - [Quick Start](#quick-start)
-- [`npm` Project Commands](#npm-project-commands)
+- [`npm` Project Commands](#npm-project-commands) → [`docs/npm-project-commands.md`](npm-project-commands.md)
 - [Configuration](#configuration) → [`docs/configuration.md`](configuration.md)
 - [Engineering Design](#engineering-design)
   - [System View](#system-view)
@@ -42,15 +42,14 @@ sequence.
 - [Lifetime History Lookback](#lifetime-history-lookback)
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
   - [Cost](#cost)
+  - [Batched chain reads](#batched-chain-reads)
+    - [One read per pass](#one-read-per-pass)
   - [Call sites](#call-sites)
   - [The dashboard does not scan a position the bot owns](#the-dashboard-does-not-scan-a-position-the-bot-owns)
 - [Client-Side URL Routing](#client-side-url-routing)
 - [Shared Help Copy](#shared-help-copy)
-- [Development Tools](#development-tools)
-  - [Build and Run](#build-and-run)
-  - [Lint and Test](#lint-and-test)
-  - [Wallet Management](#wallet-management)
-  - [Housekeeping](#housekeeping)
+- [Development Tools](#development-tools) → npm scripts in [`docs/npm-project-commands.md`](npm-project-commands.md)
+  - [Previewing the Screenshot Gallery](#previewing-the-screenshot-gallery)
   - [Utilities](#utilities)
     - [Diagnostic Utilities](#diagnostic-utilities)
       - [Verifying a Reported USD Figure](#verifying-a-reported-usd-figure)
@@ -104,83 +103,31 @@ for consensus or validator rotation).
 3. `npm start` — dashboard + bot (if wallet key available)
 4. `npm run bot` — headless bot only (no dashboard)
 
+Every other command, with its flags and an example, is in
+[`docs/npm-project-commands.md`](npm-project-commands.md). Any entry point
+will also list its own flags: `npm start -- --help`.
+
 ---
 
 ## `npm` Project Commands
 
-Every command defined in `package.json`. Run with `npm run <name>`;
-`start`, `test` and `stop` also work without `run`. Flags go after a
-`--` separator, as shown in the examples.
+**Moved.** Every command defined in `package.json` — with its flags, a
+description and a copy-pasteable example — now lives in
+[`docs/npm-project-commands.md`](npm-project-commands.md).
 
-### Lifecycle Commands
+Jump straight to what you need:
 
-Starting and stopping a running install.
+| You want to | Go to |
+| ----------- | ----- |
+| Start or stop an install | [Lifecycle Commands](npm-project-commands.md#lifecycle-commands) |
+| Build, debug, or reset local state | [Developer Tools](npm-project-commands.md#developer-tools) |
+| Run the gates before a commit | [Test](npm-project-commands.md#test) |
+| See a command's flags | [Getting Help on Any Command](npm-project-commands.md#getting-help-on-any-command) |
+| Know what `--` is for | [Passing Flags](npm-project-commands.md#passing-flags) |
+| Understand a hook that runs on its own | [Commands That Are Usually Not Run Alone](npm-project-commands.md#commands-that-are-usually-not-run-alone) |
 
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run bot -- --start-with-price-lookups-unpaused` |
-| `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `tmp/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. | `npm run clear-blockchain-scan-cache -- --dry-run` |
-| `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h`, `--headless` | Start the dashboard server and auto-start every position saved as `running`. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm start -- --verbose` |
-| `stop` | — | Clean shutdown: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. Falls back to an lsof-by-port lookup when no PID file exists. | `npm stop` |
-
-### Developer Tools
-
-Building, running from source, debugging, inspecting the codebase, and resetting local state.
-
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `api-doc` | — | Serve the Scalar API reference at `http://localhost:5556`. | `npm run api-doc` |
-| `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundle, cache-bust stamps, inlined SVGs. | `npm run build` |
-| `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run build-and-start -- --log-file /tmp/burn-in.log` |
-| `build:watch` | — | esbuild in watch mode. Rebuilds the bundle on change; skips the one-off generators `build` runs. | `npm run build:watch` |
-| `clean` | — | Full reset to fresh-clone state: wallet, bot config, API keys, rebalance log, every `tmp/` cache, logs and build artifacts. Rebuild before starting again. | `npm run clean` |
-| `clean:log` | — | Truncate `logs/lp-ranger.log`. | `npm run clean:log` |
-| `debug` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Start the server under `node --inspect`. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run debug` |
-| `debug-attach` | — | Attach a debugger to an already-running server and print the URL to visit. | `npm run debug-attach` |
-| `debug-attach-bot` | — | The same for a running headless bot. | `npm run debug-attach-bot` |
-| `debug-bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Start the headless bot under `node --inspect`. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run debug-bot` |
-| `dev` | `--verbose`/`-v`, `--log-file [PATH]`, `--help`/`-h` | Build, then start under `node --watch` so the server restarts on file changes. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. | `npm run dev -- --verbose` |
-| `dev-clean` | — | The same, but keeps the price, block-time and Gecko caches, which cost API quota to rebuild. | `npm run dev-clean` |
-| `format` | — | Prettier write pass over the tracked file set. | `npm run format` |
-| `knip` | — | Dead-code detection. The `dashboard-*.js` files report as unused because knip cannot trace HTML `<script>` tags — those are false positives. | `npm run knip` |
-| `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint. | `npm run lint` |
-| `lint:fix` | — | The same set with autofix where each tool supports it. | `npm run lint:fix` |
-| `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. | `npm run nuke` |
-| `reset-wallet` | — | Delete `wallet.json` and scrub `WALLET_PASSWORD` from `.env`. | `npm run reset-wallet` |
-| `restore-settings` | — | Restore whatever `wipe-settings` backed up. | `npm run restore-settings` |
-| `show-dependency-cycles` | — | madge circular-import report across the whole source tree. | `npm run show-dependency-cycles` |
-| `show-gallery` | — | Serve a Pages-accurate preview of the screenshot gallery at `http://localhost:5557`. | `npm run show-gallery` |
-| `view-report` | — | Open the PDF report produced by the last `check`. | `npm run view-report` |
-| `wipe-settings` | — | Back up operator settings to `tmp/.settings-backup/` to simulate a fresh install. `check` uses this, so never run it against a live server. | `npm run wipe-settings` |
-
-### Test
-
-The gates. `check` runs all of them and is what must pass before a commit.
-
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `audit:deps` | — | `npm audit` at the `high` threshold. | `npm run audit:deps` |
-| `audit:secrets` | — | secretlint across the repo. | `npm run audit:secrets` |
-| `audit:security` | — | The custom security lint rules. | `npm run audit:security` |
-| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. | `npm run check` |
-| `format:check` | — | Prettier in check mode; fails rather than rewriting. | `npm run format:check` |
-| `test` | any `node --test` flag | Run the suite with a concurrency of 24. | `npm test -- --test-name-pattern="failover"` |
-| `test:coverage` | — | The suite with V8 coverage collection. | `npm run test:coverage` |
-| `test:util` | — | Only the `util/diagnostic/` suites. | `npm run test:util` |
-| `test:watch` | — | Re-run affected tests on file change. | `npm run test:watch` |
-
-### Commands That Are Usually Not Run Alone
-
-npm lifecycle hooks and helpers. These run automatically around the command each is named for.
-
-| Command | Flags | Description | Example |
-| ------- | ----- | ----------- | ------- |
-| `clean:reports` | — | Remove `test/report-artifacts/`. Invoked by all nine `pre*` hooks — `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch` and the three `preaudit:*` — so every gate starts without stale reports. | `npm run clean:reports` |
-| `copy-fonts` | — | Copy the self-hosted WOFF2 files from `node_modules` into `public/fonts/`. Also runs automatically via `postinstall`. | `npm run copy-fonts` |
-| `postinstall` | — | Runs automatically after `npm install`; copies the fonts. | automatic |
-| `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch`, `preaudit:deps`, `preaudit:security`, `preaudit:secrets` | — | Run automatically before the command each is named for; clear stale reports and regenerate generated content so the gate starts from a known state. | automatic |
-| `prepare` | — | Runs automatically after `npm install`; installs the husky hooks. | automatic |
-| `prestart` | — | Runs automatically before `start`; verifies the build artifacts exist. | automatic |
+The `node util/…` tools are not npm scripts and are documented here, under
+[Utilities](#utilities).
 
 ## Configuration
 
@@ -399,8 +346,10 @@ written on the first run instead of re-enumerating the wallet.
 
 A scan can still run after a restart, for a reason unrelated to the
 restart: new rebalances have happened since the last one, or a previous
-scan did not finish. That work is incremental, picking up from where the
-last run got to rather than starting over.
+scan did not finish. The rebalance-event scan picks up from the last
+block it saved, so new rebalances cost only the blocks since then. It
+saves only when it completes. An interrupted one starts over, and so
+does a lifetime scan's chain read.
 
 ---
 
@@ -823,7 +772,7 @@ falling back to `bot-config-defaults.json`):
 | `pricePauseExceptionPollWindowMultiple` | `10` | Multiplier on `CHECK_INTERVAL_SEC`. Effective fetch cadence = `CHECK_INTERVAL_SEC × multiplier` seconds. Default 10 → 50 min at the default 300 s poll. Higher = lighter load, slower band detection. Positive integer ≥ 1. |
 
 The threshold (±2.5%) and cooldown (30 min) are code-only constants in
-`src/balanced-notifier.js` (`BALANCED_THRESHOLD`, `BALANCED_COOLDOWN_MS`)
+`src/telegram-notifications/balanced-notifier.js` (`BALANCED_THRESHOLD`, `BALANCED_COOLDOWN_MS`)
 — change in code if needed.
 
 **Notification payload.** Header lines list the blockchain
@@ -1053,11 +1002,10 @@ Two rules within that module decide correctness:
   reads the short result as "the event never fired". Erring wide costs
   only time.
 - **`nftScanFrom` combines with `Math.max`, not by replacement.** The
-  shared floor is the pool's creation block on a first run and a resume
-  checkpoint on an incremental rescan. Taking the maximum satisfies
-  both: a mint block later than the pool floor tightens it, and a
-  checkpoint later than the mint block keeps the rescan off ground the
-  previous scan already covered.
+  shared floor is the pool's floor: its creation block, or a later
+  bound such as the chain's first mint. An NFT has no events before its
+  own mint, and the scan reads nothing before the floor. So the later of
+  the two is the one to use.
 - **The chain's oldest NFT has no mint block in the events**, because it
   appears only as an `oldTokenId`. `chainScanFloor` supplies one: it
   raises the pool's creation block to `events.firstMintBlockNumber`, the
@@ -1099,46 +1047,166 @@ so a scan's wall-clock time is its request count divided by four per
 second. Chunk width is 9,000 blocks.
 
 For a 132-rebalance chain in a pool created two years before the first
-deposit, scanning two event types per NFT:
+deposit, reading all three event types, as the lifetime scan does:
 
-| Window | Chunks per NFT | ~133 NFTs |
+| Window | Chunks | ~133 NFTs |
 | --- | --- | --- |
-| pool creation → head | 954 | ~26 hours |
-| **NFT mint → head** (what runs) | 168 | hours |
+| pool creation → head, per NFT | 954 each | ~26 hours |
+| NFT mint → head, per NFT | up to 168 each | hours |
+| **chain's first mint → head, once** (what runs) | 168, shared by every NFT | minutes |
 
-An upper bound would take this to one or two chunks per retired NFT, and
-that is the saving deliberately given up: on a long chain each retired
-NFT still re-reads every block between its own retirement and the chain
-head. Correctness wins, because no sound upper bound exists — see above.
+The batched read carries at most 100 ids per filter, so 133 NFTs take
+two id groups. That makes 168 chunks × 3 event types × 2 groups, or about
+1,000 requests. At the queue's rate, with nothing else in the queue, that
+is nearly four minutes. Measured times are under
+[One read per pass](#one-read-per-pass).
+
+An upper bound would cut the per-NFT walk to one or two chunks per
+retired NFT, but no sound upper bound exists — see above. Reading the
+chain in one batch gets the same saving without one: each block is read
+once for the whole chain, rather than once for every NFT minted before
+it.
+
+### Batched chain reads
+
+Every read of a whole chain is one pass, not one pass per NFT. Three
+places read a chain, all through `scanChainNftEvents`
+(`src/nft-events-batch.js`):
+
+| Reader | Events | NFTs | Serves |
+| --- | --- | --- | --- |
+| `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`), prepared by `prepareLifetimeRead` | all three | the whole chain | the bot's lifetime scan — Fees Compounded, lifetime HODL, deposit — and epoch reconstruction in the same pass |
+| `scanChainCollectAndDrain` (`src/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, when nothing else in its pass reads the chain |
+| `_detectCurrentNftValues` (`src/position-details-compound.js`) | all three | the one NFT being looked at | the unmanaged view's Current-panel Fees Compounded and Gas |
+
+The filter OR-matches every token id in the chain — `tokenId` is the
+first indexed parameter on all three events, and a topic slot accepts an
+array. The request covers the union of the NFTs' windows, from the
+lowest floor in the set to the head; the node does the filtering, so the
+same logs come back in one response set rather than one per NFT. A
+reader names the event types it uses (`eventNames`) and pays only for
+those, since each type is a full pass over the union.
+
+Moving token identity from the request to the response is what needs
+care, and five rules carry it:
+
+| Rule | Why |
+| --- | --- |
+| Logs are partitioned by `topics[1]`, not decoded first | Routing must not depend on the ABI being right about the unindexed fields |
+| Each NFT's logs are re-floored to its own window | The union request starts below most NFTs' floors; without this the batch returns events a per-NFT scan excludes |
+| Each NFT's logs are sorted into chain order | `classifyCompounds` reads an NFT's FIRST `IncreaseLiquidity` as the mint deposit, and the exit value is an NFT's LAST `Collect` |
+| Every requested id gets an entry, and `eventsFor` throws for one that was not requested | A missing key would otherwise read as "no history" — a closed epoch with no fees |
+| An entry carries only the event types fetched | A consumer reaching for a history nobody requested fails on `undefined` instead of reading `[]` as "never happened" |
+
+The head is resolved once for the whole batch. The id list is split into
+groups of 100, so no request carries more than 100 ids in its topic
+array, however long the chain.
+
+Each reader prepares its read before anything consumes it, from the same
+inputs its consumers use:
+
+- **Epoch reconstruction** gets its histories before building any
+  epoch, for exactly the NFTs the loop will fetch — from the pass's
+  shared read when there is one (below), otherwise from its own. Each
+  NFT's slice reaches `getPositionHistory` as `collectAndDrain`.
+  Omitting that option — the single closed-position history route —
+  reads the one NFT on its own; `null` means the chain read was
+  unusable, and is never replaced by a per-NFT read.
+- **The unmanaged view** reads no chain. It shows no Lifetime panel and
+  no Per-Day P&L, so it has nothing a whole-chain history would answer.
+  `_detectCurrentNftValues` reads the one NFT being looked at, floored
+  at that NFT's own mint block, for the Current panel's Fees Compounded
+  and Gas; where those coins are already on disk, `savedNftCompoundedUsd`
+  answers without any scan. The pool's Transfer scan still runs — it is
+  what the Rebalance Events table is built from, and it is a different
+  read from the per-NFT walk.
+
+#### One read per pass
+
+A scan pass needs the chain's history twice: epoch reconstruction wants
+Collect and DecreaseLiquidity for the closed NFTs, and the lifetime
+figures want all three event types for every NFT. The first is a subset
+of the second, so when the lifetime side is going to read the chain in
+that pass, reconstruction takes its histories out of that read
+(`collectAndDrainOf`) rather than making its own. A read shared this way
+is made once however many consumers ask (`shareRead`).
+
+- **The bot.** `_scanAndReconstruct` asks `lifetimeScanPlan` as soon as
+  the event scan has found the chain. When the lifetime scan will read,
+  the pass prepares that read (`prepareLifetimeRead`,
+  `src/bot-recorder-lifetime-read.js`) and hands it to reconstruction;
+  the lifetime scan then uses the same read. When the read runs, it
+  looks up the pool's creation block and decides whether the resume
+  buffer can still be trusted.
+- **The unmanaged view.** Nothing to share: it builds no epochs, because
+  it renders no Per-Day P&L, and reads no chain.
+
+Three rules keep the sharing sound:
+
+| Rule | Why |
+| --- | --- |
+| Reconstruction shares only a read that will happen anyway | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper |
+| A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read always starts from the pool's creation block, lifted to the chain's first mint. That holds even if every figure is saved after the read was prepared. `test/bot-recorder-lifetime-share.test.js` pins it for every state |
+| The lifetime scan reuses the pass's read only for the chain it was prepared for (`chainSignature`: the live NFT, every NFT with its mint block, and the chain's first mint) | Reconstruction can run long enough for a manual rebalance to land. A read prepared before it describes a chain that no longer exists, so the scan reads afresh and logs why |
+
+A batch succeeds or fails as a unit, and each reader decides what a
+failure means:
+
+- **Lifetime scan** — the resume buffer stores nothing from a failed
+  read, and the retry asks for every NFT not already buffered.
+- **Epoch reconstruction** — every NFT in the pass takes its history as
+  unknown, the same answer a failed per-NFT read gives. An NFT whose
+  exit value and fee the rebalance log already holds still builds; the
+  rest are skipped, and the short history schedules another attempt.
+- **A shared read** — the failure is not kept, so the next consumer in
+  the pass or request makes its own attempt rather than inheriting it.
+
+That is affordable because a chain costs minutes, and because transient
+RPC failures are retried per request beneath the batch.
+
+Measured reading every NFT in a chain for the lifetime scan, at the
+default request pacing:
+
+| Chain | Batched | One pass per NFT |
+| --- | --- | --- |
+| 40 NFTs | 3.6 min | 1 h 56 min |
+| 133 NFTs | 6.5 min | 5 h 30 min |
+
+`test/nft-events-batch.test.js` pins that a batched read returns, for
+every id, what a per-NFT scan returns, and
+`test/position-history-scan-chain.test.js` pins the same for each
+closed NFT's Collect and DecreaseLiquidity history.
 
 ### Call sites
 
-Five files scan a chain of NFTs and must derive the floor per NFT:
-`src/bot-recorder-scan-helpers.js`, `src/position-details-compound.js`,
-`src/position-details-lifetime-scan.js`, `src/bot-pnl-current-nft.js`
-and `src/position-history.js`.
+The three chain readers in the table above each hand the batch the
+chain's mint blocks, so every NFT is floored at its own mint.
 
-`src/position-history.js` is the one where the loop lives elsewhere.
-`getPositionHistory()` handles a single NFT, and
-`src/epoch-reconstructor.js` calls it once per closed NFT in the chain,
-so a pool-wide window there costs once per rebalance. Its bounds come
-from `result.mintBlockNumber` and `result.closeBlockNumber`, which
+Three places read a single NFT, floored at that NFT's own mint:
+`src/bot-pnl-current-nft.js` and `_detectCurrentNftValues` in
+`src/position-details-compound.js` read the current NFT, and
+`src/position-history.js` reads a closed position looked at on its own.
+The last takes its floor from `result.mintBlockNumber`, which
 `_supplementFromEvents` fills from the rebalance events before any scan
 runs.
 
 `test/nft-scan-floor-coverage.test.js` enforces this. It identifies a
 per-NFT scan two ways — by helper name (`scanNftEvents`,
-`detectCompoundsOnChain`, `scanCollectAndDrain`) and by shape, where a
+`detectCompoundsOnChain`, `scanCollectAndDrain`, and the batched
+`scanChainNftEvents` / `fetchChainNftEvents`) and by shape, where a
 chunked scan whose `label` interpolates a `tokenId` is per-NFT whatever
 the helper is called. The shape detector is what covers a helper the
 list does not yet name. Each matched file must either require
 `nft-mint-blocks.js` or hold an entry in the test's `EXEMPT` map giving
-the reason.
+the reason. Each chain reader must also pass the chain's mint blocks to
+the batch; an empty map would floor every NFT at the shared floor.
 
-Two files are exempt because they search *for* a mint block and so
-cannot be bounded below by one: `src/event-scanner-mint-lookup.js`,
-which instead stops at the first chunk that yields a hit, and
-`src/hodl-baseline.js`.
+`src/compounder.js` is exempt because it defines the single-NFT scan and
+leaves the floor to its caller. Three files are exempt because they
+search *for* a mint block and so cannot be bounded below by one:
+`src/event-scanner-mint-lookup.js`, which instead stops at the first
+chunk that yields a hit, `src/hodl-baseline.js` and
+`src/position-history-mint.js`.
 
 ### The dashboard does not scan a position the bot owns
 
@@ -1270,139 +1338,22 @@ link.
 
 All dev tools are available via npm scripts — no `npx` needed.
 
-### Build and Run
+**The npm scripts themselves are documented in
+[`docs/npm-project-commands.md`](npm-project-commands.md)**, which is the
+single place every command, flag and example lives:
 
-- `npm run build` — esbuild bundle + cache-bust stamp (`bundle.js?v=<ms>`)
-- `npm start` — Start server only (no build — use after `npm run build`)
-- `npm run build-and-start` — Build + start in one command
-- `npm run dev` — Build + start with `--watch` (auto-restart on file changes)
-- `npm stop` (alias `npm run stop`) — Clean shutdown without switching to the server's terminal. Reads the server PID from `tmp/lp-ranger.pid` (written on startup by `src/server-pid.js`) and sends **SIGTERM** — the same handler as Ctrl+C, so it stops all managed positions, closes the HTTP server, and removes the PID file. Escalates to SIGKILL if the process does not exit within ~3 s, and falls back to an lsof-by-port lookup when no PID file is present. Both SIGINT and SIGTERM run the one `shutdown` handler in `server.js`.
+| You want to | Go to |
+| ----------- | ----- |
+| Build, start, or stop | [Lifecycle Commands](npm-project-commands.md#lifecycle-commands) · [Stopping a Running Install](npm-project-commands.md#stopping-a-running-install) |
+| Lint, test, or run the full gate | [Test](npm-project-commands.md#test) |
+| Know what a gate writes to before you Ctrl-C it | [Before Running Any Lint or Test Command](npm-project-commands.md#before-running-any-lint-or-test-command) |
+| Reset a wallet or a scan cache | [Wallet and Scan-Cache Resets](npm-project-commands.md#wallet-and-scan-cache-resets) |
+| Clear logs, node_modules, or settings | [Housekeeping](npm-project-commands.md#housekeeping) |
+| Find circular imports | [Dependency Cycles](npm-project-commands.md#dependency-cycles) |
+| See any command's flags | [Getting Help on Any Command](npm-project-commands.md#getting-help-on-any-command) |
 
-### Lint and Test
-
-**Caution — read before running any lint or test command.** `npm run check`,
-`npm test`, and their variants actively write to config and cache files
-during test execution. Those files are backed up by `scripts/check.js`
-before the tests start and restored automatically when the process exits.
-However, if you Ctrl-C the process mid-run, the restore may not complete
-and the files will be left in a state that is only appropriate for the
-automated tests (stub position keys, missing managed positions, etc.).
-**Always let tests and checks finish before interrupting.**
-
-**Step 1 — back up your real state out of tree (do this once per machine
-before your first run):**
-
-```sh
-mkdir -p ../app-config-backup
-cp -R ./app-config ../app-config-backup/
-cp .env ../app-config-backup
-```
-
-If you ever end up with corrupted state after an interrupted run, restore
-from `../app-config-backup/`. `npm run clean` is also available as a
-nuclear option — it wipes runtime files entirely and triggers full-length
-blockchain wallet scans on next start to rebuild caches.
-
-**Step 2 — run the commands:**
-
-- `npm run lint` — ESLint — 0 warnings, complexity ≤17, max-lines ≤500
-- `npm run lint:fix` — ESLint auto-fix
-- `npm test` — Node.js built-in test runner (`node:test`)
-- `npm run test:coverage` — Test coverage report (Node 20+,
-  `--experimental-test-coverage`)
-- `npm run test:watch` — Re-run tests on file changes
-- `npm run test:util` — Runs ONLY the `util/diagnostic/test/` suites,
-  for a fast loop while working on a diagnostic tool. These suites also
-  run as part of plain `npm test` and `npm run check`, and count toward
-  the 80% coverage gate — `util/` is held to the same bar as `src/`.
-  See [Diagnostic Utilities](#diagnostic-utilities).
-- `npm run check` — Combined lint + test + 80% coverage gate + security
-  audits (matches CI)
-- `npm run show-dependency-cycles` — Optional diagnostic. Runs
-  [`madge`](https://github.com/pahen/madge) `--circular` across every
-  `.js` file in the project (`src/`, `bot.js`, `server.js`, `scripts/`,
-  `eslint-rules/`, `test/`, `public/`) and lists any circular module
-  imports. Not wired into `npm run check` — surface only when you want
-  it. Why a CLI tool instead of an ESLint rule: the server-side code
-  is CommonJS (`require`/`module.exports`) because Node loads it
-  directly with no `"type": "module"` in `package.json`; the dashboard
-  code under `public/dashboard-*.js` is ESM (`import`/`export`)
-  because esbuild bundles it into `public/dist/bundle.js` for the
-  browser. The standard ESLint cycle rules (`import/no-cycle`,
-  `import-x/no-cycle`) only reliably detect ESM cycles — they cannot
-  trace `require()` calls because `require` is a runtime function call,
-  not a static import. `madge` traverses both `import` and `require`
-  by walking the actual dependency graph, so it catches cycles in
-  both halves of the codebase. Dashboard `public/` ESM cycles are
-  also reported; cleaning those up is a separate nice-to-have task.
-
-### Wallet Management
-
-- `npm run reset-wallet` — Delete `app-config/user-configurable/wallet.json` + clear
-  `WALLET_PASSWORD` from `.env`. Forces a fresh wallet import via the
-  dashboard on next start.
-- `npm run clear-blockchain-scan-cache` — Delete every `tmp/*.json`, and
-  nothing else. That directory holds derived scan results only — event
-  scans, LP position enumeration, P&L epochs (including the
-  `lastNftScanBlock` resume checkpoint), block timestamps, pool creation
-  blocks, token symbols, fetched prices — all rebuilt from chain on the
-  next start. This is the command for testing scan behaviour from cold.
-  Refuses while a server is running, because clearing the cache under a
-  live process achieves nothing: it rewrites the files within seconds and
-  keeps its in-memory copies regardless. `-- --dry-run` lists without
-  deleting. Configuration, wallet and API keys are untouched.
-- `npm run clean` — Returns the install to the state a fresh clone is
-  in. Stops the server and **waits for it to exit**, runs `reset-wallet`,
-  then deletes operator state (`bot-config.json`,
-  `bot-config.backup.json`, `api-keys.json`, `rebalance_log.json`),
-  every `tmp/*.json` cache, `logs/*.log`, the build artifacts
-  (`public/dist/`, `public/fonts/`, `public/ui-tokens.css`,
-  `public/disclosure-content.js`) and `test/report-artifacts/`.
-  Run `npm run build` before `npm start` afterwards — the prestart guard
-  names the missing files if you forget.
-  Implemented in [`scripts/clean.js`](../scripts/clean.js), which
-  delegates the cache to `clear-blockchain-scan-cache.js` rather than
-  naming cache files itself. That script is the single definition of
-  "the scan cache", so a cache added later is covered here without a
-  second list to update.
-  **Note:** browser localStorage is NOT cleared, and does not need to be
-  for a cold scan — the browser holds display state only (last viewed
-  position, privacy toggles, price overrides, a copy of the
-  rebalance-events list for instant paint). None of it makes the server
-  skip a scan. Clear it via the Settings gear icon → "Clear Local Storage
-  & Cookies" only when you actually want the browser-side preferences
-  reset, accepting that wallet re-entry and per-position UI state go with
-  it.
-- `npm run dev-clean` — The same run with three caches preserved for a
-  faster development restart: the historical price cache
-  (`tmp/historical-price-cache.json`), the block-time cache
-  (`tmp/block-time-cache.json`) and the gecko-pool orientation cache
-  (`tmp/gecko-pool-cache.json`). None is derived from chain and all three
-  cost third-party API quota to refill. Logs are kept too. Same script,
-  `--dev`.
-
-### Housekeeping
-
-- `npm run clean:log` — Delete the log-to-file output at
-  `logs/lp-ranger.log` (the file produced when the app is started
-  with `--log-file` or with `enabled: true` in
-  `app-config/app-defaults-for-user-configurable/logging.json`). No-op when the file is
-  absent. Use this to free disk space, to start a clean capture before
-  a diagnostic session, or to scrub a log before sharing.  The log is
-  NOT automatically rotated — long-lived production tails should run
-  this on a cron or external logrotate setup.
-- `npm run nuke` — Delete `node_modules` + `package-lock.json` for a clean
-  reinstall. Run `npm install` afterwards.
-- `npm run wipe-settings` — Back up all user settings/state (`.env`, every
-  runtime file in `app-config/`, `tmp/pnl-epochs-cache.json`,
-  `tmp/event-cache*.json`, `*.keyfile.json`) to `tmp/.settings-backup/` and
-  remove them — simulates a fresh install. Also clear browser localStorage
-  via Settings gear → "Clear Local Storage & Cookies" to complete the
-  simulation.
-- `npm run restore-settings` — Restore settings previously backed up by
-  `wipe-settings`.
-- `npm run view-report` — Open `test/report-artifacts/report.pdf` via
-  `xdg-open` (Linux dev box).
+What remains below is not an npm script: the `util/` tools, which are run
+directly with `node`, and the architecture behind the Pages preview.
 
 ### Previewing the Screenshot Gallery
 
@@ -1590,9 +1541,10 @@ three from the chain and from live price sources, then reports which
 one has to be wrong to produce the reported figure.
 
 The figure matters beyond the alert text. `recordCompound` in
-`src/bot-cycle-compound.js` adds the same `usdValue` to the position's
-`totalCompoundedUsd`, which is half of the dashboard's lifetime
-fee-earnings figure (`currentFeesUsd + totalCompoundedUsd`, see
+`src/bot-cycle-compound.js` adds the same compound's **coins** to the
+position's `compoundedAmount0` / `compoundedAmount1`, and those coins
+priced at the current poll are half of the dashboard's lifetime
+fee-earnings figure (`currentFeesUsd + snap.totalCompoundedUsd`, see
 `src/ui-state.js`). That total is only ever accumulated incrementally
 once disk holds a non-zero value — the on-chain rescan in
 `src/bot-recorder-lifetime.js` is deliberately gated off by
@@ -1635,7 +1587,7 @@ Reading the hypothesis block:
 - **decimals shift** — every `(decimals0, decimals1)` pair within ±4
   that reproduces the reported figure to within 5%. A hit means the
   amounts were divided by the wrong power of ten. Cross-check against
-  the decimals heal / override path in `src/bot-recorder-lifetime.js`
+  the decimals heal / override path in `src/bot-recorder-decimals-heal.js`
   and the `decimalsOverride0` / `decimalsOverride1` /
   `decimalsOverrideForce0` / `decimalsOverrideForce1` config keys.
 
@@ -1714,8 +1666,8 @@ each script backs the original up to a timestamped sibling first and
 prints the exact restore command.
 
 - `inject-stuck-lifetime-state.sh` — Sets every pool entry in
-  `tmp/pnl-epochs-cache.json` to `freshDeposits: null`,
-  `lifetimeHodlAmounts: null`, `lastNftScanBlock: 0`. On the next
+  `tmp/pnl-epochs-cache.json` to `freshDeposits: null` and
+  `lifetimeHodlAmounts: null`. On the next
   `npm start` that combination drives the lifetime-scan recovery path in
   `src/bot-recorder-lifetime.js` and `src/bot-loop.js` (see
   [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
@@ -2050,7 +2002,6 @@ only be changed by editing
 | `dustUnitPriceCacheMultiplier` | `30` | `POST /api/config` | Dust-unit-price TTL as a multiple of `priceCacheTtlMs` |
 | `moveCacheTtlMs` | `4000` | `POST /api/config` | Cache TTL for the fresh-price window around a rebalance or compound |
 | `pricePauseExceptionPollWindowMultiple` | `10` | `POST /api/config` | Poll cycles between the balanced-band notifier's fresh-price probes. The dashboard reads it to label the resulting cadence next to the checkbox, but offers no field to set it |
-| `rescanPricesDefaultDays` | `60` | the JSON file, then restart | Lookback the Re-scan Prices dialog prefills. Published on every `/api/status`, but not a saved setting |
 | `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request. Clamped to 10,000 by [`src/bot-config-defaults.js`](../src/bot-config-defaults.js) — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
 | `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process. `0` disables pacing, which is only sensible against a local node |
 
@@ -2712,7 +2663,7 @@ subtly wrong &mdash; the initial pool-wide lifetime scan aborting
 before anything hits disk. That's the failure mode that produced the
 July 2026 Prod discrepancy where `Fees Compounded` for a PulseX/WPLS
 position showed $11.63 instead of the correct ~$255.50: the disk
-config's `totalCompoundedUsd` had been populated entirely by a single
+config's compounded coins had been populated entirely by a single
 runtime auto-compound event because `_classifyAllCompounds` never
 persisted anything.
 
@@ -2738,8 +2689,9 @@ human weeks or months later; a huge blank margin makes a new incident
 unmissable when the file is opened for the first time in a while.
 
 **Scope: catastrophic failures only.** The current callers are
-`_recordScanFailure` and the token-decimals heal (`_ensureTokenDecimals`),
-both in `src/bot-recorder-lifetime.js`. Do NOT add `writeErrorLog()` calls
+`_recordScanFailure` in `src/bot-recorder-lifetime.js` and the
+token-decimals heal (`_handleHealResult`) in
+`src/bot-recorder-decimals-heal.js`. Do NOT add `writeErrorLog()` calls
 to routine `catch` blocks, retry handlers, or expected transient errors.
 Every added surface dilutes the "unread error.log &rArr; nothing
 catastrophic has happened" invariant that makes the file useful.
@@ -2823,19 +2775,23 @@ should not permanently disable the escape hatch.
    (`cancelPoolScan(token0, token1, fee, wallet)`).
 2. Delete the following on-chain-derived keys from the position's
    disk config, then save via `saveConfig`:
-   `compoundHistory`, `totalCompoundedUsd`, `collectedFeesUsd`,
-   `nftCompoundedUsdByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
-   `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`. The
-   canonical list is `_ON_CHAIN_DERIVED_KEYS` in
-   `server-reload-position.js` (exported for tests).
+   `compoundHistory`, `compoundedAmount0`, `compoundedAmount1`,
+   `nftCompoundedAmountsByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
+   `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`,
+   `depositUsedFallback`. The canonical list is
+   `CHAIN_DERIVED_POSITION_KEYS` in `bot-config-v2.js`, shared with
+   `npm run clear-blockchain-scan-cache`, which clears the same keys
+   from every position.
 3. Clear the pool's entry in the epoch cache
-   (`_epochCache.clearCacheEntry(keyOpts)`) so the fresh scan starts
-   from pool creation block instead of the stale `lastNftScanBlock`.
+   (`_epochCache.clearCacheEntry(keyOpts)`). That drops its saved epochs,
+   lifetime HODL amounts and fresh-deposit totals, so the fresh scan
+   recomputes them.
 4. Clear the pool's event cache file (`clearPoolCache(position, wallet)`).
 5. Reset the same fields on the live bot state and set
    `_needsFullRescan = true`, `_needsEpochRebuild = true`,
    `_catastrophicScanError = null`, `lifetimeScanComplete = false`,
-   `rebalanceScanComplete = false`, `totalLifetimeDepositUsd = 0`. See
+   `rebalanceScanComplete = false`, `totalLifetimeDepositUsd = 0`,
+   `depositUsedFallback = false`. See
    `_resetBotState` in `server-reload-position.js`.
 
    `_needsEpochRebuild` is what makes step 3 mean anything. Clearing
@@ -2945,25 +2901,68 @@ The narrow counterpart to `POST /api/position/reload`. Every USD figure
 is `amount x price`; the amounts come from chain and are reliable, but
 `src/price-source-cascade.js` accepts the first source returning any
 positive number, with no plausibility check. One bad response therefore
-lands in `compoundHistory[].usdValue` and `totalCompoundedUsd` — and
-`_resolveDiskState` in `src/bot-recorder-lifetime.js` deliberately
-refuses to rebuild those from chain once disk holds a non-zero value,
-so the bad figure is permanent until something clears it.
+lands in any stored dollar figure — and the lifetime scan deliberately
+refuses to rebuild a figure disk already holds, so a bad one is
+permanent until something asks for it to be rebuilt.
 
-Reload clears it but re-walks the pool's whole Transfer history (minutes
-to hours). This route clears **only** the four price-derived keys
-(`compoundHistory`, `totalCompoundedUsd`, `collectedFeesUsd`,
-`nftCompoundedUsdByTokenId`), rewinds the NFT event watermark to the
-start of a bounded window, and calls `_triggerScan` so the existing
-lifetime scan re-values immediately. `hodlBaseline`,
-`lifetimeHodlAmounts` and `totalLifetimeDepositUsd` are preserved —
-keeping those is the entire cost advantage.
+Reload asks for that, but re-walks the pool's whole Transfer history
+(minutes to hours). This route sets `_needsPriceRevalue` on the bot
+state and calls `_triggerScan`, so the existing lifetime scan re-values
+immediately. `lifetimeScanPlan` reads the request and runs three steps
+that a saved figure would otherwise skip:
 
-Body: `{ positionKey, days }`. `days` omitted or `null` means the whole
-history, which resolves to the pool creation block, never zero. The
-default window ships as `rescanPricesDefaultDays` in
-`bot-config-defaults.json`, is read once by `src/config.js`, and is
-published on `/api/status` so the dashboard holds no second literal.
+| Figure | Rebuilt from |
+| ------ | ------------ |
+| Fees Compounded (`compoundedAmount0` / `compoundedAmount1`, `compoundHistory`, `nftCompoundedAmountsByTokenId`) | the chain's events — the coins, which carry no price |
+| Lifetime Deposit (`totalLifetimeDepositUsd`) | the saved deposits, at the historical price for each deposit's own block |
+| HODL baseline entry value (`hodlBaseline.entryValue`) | the saved mint amounts, at the historical price for the mint's block |
+
+The token amounts behind all three are read from chain but never
+re-derived from the pool's history, which is the cost advantage over
+Reload.
+
+Fees Compounded is the odd one in that table, because the row covers
+two figures that answer to different rules. The KPI is the saved coins
+priced wherever it is shown, so no stored price can make it wrong and
+Re-scan Prices cannot improve it. The Compound Log's per-event dollars
+are stored (`compoundHistory[].usdValue`), so they can be stale, and
+this is the action that rewrites them — the same pass that reads the
+chain values each event at the fresh prices. A position slot holding no
+coins gets them from the same pass.
+
+**Nothing is deleted.** Each figure is overwritten only once its
+replacement exists, and each step keeps the saved figure when its price
+source answers with nothing. Only a scan that finishes clears the
+request, so a scan that fails is retried on the next pass; the request
+lives in memory, so a restart drops it and the figures stand as they
+were.
+
+Clearing a figure to make the guard rebuild it is the thing to avoid.
+While it is missing another writer can fill it — `_bumpRebalanceFees`
+credits a rebalance's fees into whatever is there — and the guard then
+reads that partial number as settled, so it survives every later scan.
+
+A price is remembered in two places, and a re-value has to read past
+both:
+
+- `tmp/historical-price-cache.json` keeps historical prices with no
+  expiry. `fetchHistoricalPriceGecko` takes `refresh`, which skips the
+  cached entry and overwrites it with whatever comes back.
+- Each deposit entry memoizes the dollar figure it was last given, and
+  `totalLifetimeDeposit` returns that figure without asking any source.
+  It takes `refresh` for the same reason.
+
+Current-price reads run inside `withFreshPricesAllowed` for the length
+of the re-value, so neither the idle pause nor the price cache can
+answer with the figure being replaced.
+
+The 30-minute rescan loop also fires on an unanswered request
+(`_needsLifetimeRescan`), since the route's own trigger can fail, and a
+scan is the only thing that reads it. A scan clears only the requests it
+carried in: one that arrives mid-scan describes a chain that scan never
+read, so it waits for the next one.
+
+Body: `{ positionKey }`.
 
 Rejects with 409 `not-managed` unless the position's **disk config**
 says `status: "running"` — `status` lives on the config, not the
@@ -2971,7 +2970,9 @@ bot-state object, and `src/build-status-positions.js` merges the two for
 the API response. Also rejects mid-rebalance, mid-compound, and while a
 scan is already running.
 
-Cost: three `getLogs` per NFT in the chain over the chosen window.
+Cost: one batched read of the chain's three event histories, from each
+NFT's mint. On a long chain that is minutes; see
+[One read per pass](#one-read-per-pass) for measured figures.
 
 ## Dead Code Detection
 

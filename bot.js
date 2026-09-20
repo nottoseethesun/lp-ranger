@@ -16,6 +16,18 @@
 
 "use strict";
 
+const cliHelp = require("./src/cli-help");
+
+/*- `--help` answers and leaves, ahead of every other line in this file.
+ *  It starts no bot, so it must not open the operator's log file and
+ *  must not announce a start. The banner below is a REQUIRE side effect,
+ *  which is what put it ahead of this check: moving the check up is the
+ *  only way to stay in front of it. */
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  cliHelp("bot");
+  process.exit(0);
+}
+
 /*- Boot wiring for the --log-file CLI flag + logging.json static
  *  tunable.  MUST run before any log output so the file captures the
  *  startup banner.  No-op when neither source opts in.  See
@@ -23,18 +35,12 @@
 require("./src/boot-log-file").bootLogFile();
 
 const { log } = require("./src/log");
-// Very first statement of the bot process — bot-banner prints on require
-// (side effect, cached so it fires exactly once per process). Required first
-// so the banner lands at the top of the log before any other module loads.
+// First statement of a real run — bot-banner prints on require (side
+// effect, cached so it fires exactly once per process). Required here so
+// the banner lands at the top of the log before any other module loads.
 require("./src/bot-banner");
 
-const cliHelp = require("./src/cli-help");
 const { pausePriceLookups } = require("./src/price-fetcher");
-
-if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  cliHelp("bot");
-  process.exit(0);
-}
 
 /*- Headless default: pause price lookups at startup.  Without a server
  *  there is no idle tracker and no browser to drive pause/unpause, so

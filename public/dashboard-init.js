@@ -300,7 +300,14 @@ function _afterDisclaimer() {
    *  ⇒ preserve current Range Width on rebalance).  Auto-injecting
    *  the shipped default at init would look like a saved value the
    *  user never made. */
-  const _STORE_ONLY_DEFAULT_KEYS = ["rebalanceRangeWidthPct"];
+  /*- `rescanPricesRecentWindowDays` joins them for the same reason from
+   *  the other direction: it has no input at all. It only labels the
+   *  Re-scan Prices window checkbox, and caching it here keeps the one
+   *  literal in the shipped JSON rather than in the dialog's markup. */
+  const _STORE_ONLY_DEFAULT_KEYS = [
+    "rebalanceRangeWidthPct",
+    "rescanPricesRecentWindowDays",
+  ];
   /*- Copy a min/max pair from the shipped defaults onto an input, and
    *  cache both so the matching Save handler can reject out-of-range
    *  input against the same source.  Silent when either is absent — the

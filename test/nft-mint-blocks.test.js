@@ -13,9 +13,8 @@
  * hour. The bot's poll cycle awaits the same scan, so it reads nothing
  * and cannot rebalance for the duration.
  *
- * Two things are pinned: the mapping itself, and that the scan really
- * uses it (driven through the exported `_scanCompounds`, with the
- * detector injected so no RPC is involved).
+ * This file pins the mapping itself. That each chain read really uses
+ * it is pinned beside each read — see the note at the end.
  */
 
 "use strict";
@@ -30,7 +29,6 @@ const {
   nftScanFromBlock,
   chainScanFloor,
 } = require("../src/nft-mint-blocks");
-const { _scanCompounds } = require("../src/position-details-compound");
 
 /** A rebalance chain: #100 → #200 → #300. */
 const CHAIN = [
@@ -113,9 +111,8 @@ describe("nftScanFrom", () => {
     assert.equal(nftScanFrom(MINTS, "300", 1_000), 6_000_000);
   });
 
-  it("lets a resume checkpoint beat an earlier mint block", () => {
-    /*- The incremental path's floor is a checkpoint, not pool creation.
-     *  Using the earlier mint would re-walk what the last scan covered. */
+  it("lets a later shared floor beat an earlier mint block", () => {
+    // The scan reads nothing below the floor, even for an older NFT.
     assert.equal(nftScanFrom(MINTS, "200", 9_000_000), 9_000_000);
   });
 
@@ -160,8 +157,10 @@ describe("chainScanFloor", () => {
   });
 
   it("keeps the pool floor when it is already higher", () => {
-    /*- A resume checkpoint can outrank the first mint; taking the lower
-     *  of the two would re-walk what the last scan covered. */
+    /*-
+     *  A later bound, such as the five-year lookback, can lie above the
+     *  first mint; lowering it would read past that bound.
+     */
     assert.equal(chainScanFloor(withFirstMint(5_000), 9_000), 9_000);
   });
 
@@ -207,7 +206,7 @@ describe("nftScanFromBlock", () => {
     assert.equal(nftScanFromBlock({ mintBlock: 900, sharedFloor: 500 }), 900);
   });
 
-  it("lets a resume checkpoint beat an earlier mint block", () => {
+  it("lets a later shared floor beat an earlier mint block", () => {
     assert.equal(nftScanFromBlock({ mintBlock: 500, sharedFloor: 900 }), 900);
   });
 
@@ -218,65 +217,10 @@ describe("nftScanFromBlock", () => {
   });
 });
 
-describe("_scanCompounds uses each NFT's own floor", () => {
-  /** Record the fromBlock each per-NFT scan was given. */
-  const seenTo = new Map();
-  function run(events, position) {
-    const seen = new Map();
-    const detect = async (tid, opts) => {
-      seen.set(String(tid), opts.fromBlock);
-      seenTo.set(String(tid), opts.toBlock);
-      return { totalCompoundedUsd: 0, compounds: [], totalNftGasWei: "0" };
-    };
-    return _scanCompounds(
-      position,
-      events,
-      { walletAddress: "0xw" },
-      { decimals0: 18, decimals1: 18, poolAddress: null },
-      { price0: 1, price1: 1 },
-      { positions: {} },
-      "key",
-      undefined,
-      detect,
-    ).then(() => seen);
-  }
-
-  it("scans each NFT from its own mint block", async () => {
-    const seen = await run(CHAIN, { tokenId: "300" });
-    assert.equal(seen.get("200"), 5_000_000);
-    assert.equal(seen.get("300"), 6_000_000);
-  });
-
-  it("falls back to the pool floor only for the chain's first NFT", async () => {
-    /*- poolAddress is null here, so the pool floor resolves to 0.  What
-     *  matters is that ONLY #100 gets it. */
-    const seen = await run(CHAIN, { tokenId: "300" });
-    assert.equal(
-      seen.get("100"),
-      0,
-      "first NFT has no mint block in the chain",
-    );
-    assert.notEqual(seen.get("200"), 0);
-    assert.notEqual(seen.get("300"), 0);
-  });
-
-  it("covers every NFT in the chain", async () => {
-    const seen = await run(CHAIN, { tokenId: "300" });
-    assert.deepEqual([...seen.keys()].sort(), ["100", "200", "300"]);
-  });
-
-  it("scans every NFT to the chain head, retired ones included", async () => {
-    /*- There is no sound upper bound.  It could only come from the
-     *  inferred succession, and that reads consecutive mints as
-     *  successive rebalances — untrue when a dust mint from a failed or
-     *  partial rebalance sits between two real ones.  The NFT it
-     *  appears to replace is then still funded and drains later, past
-     *  any bound taken from that inference. */
-    await run(CHAIN, { tokenId: "300" });
-    for (const id of ["100", "200", "300"])
-      assert.ok(
-        seenTo.get(id) === "latest" || seenTo.get(id) === undefined,
-        `NFT #${id} must scan to head, got ${seenTo.get(id)}`,
-      );
-  });
-});
+/*-
+ *  That the chain reads really use these floors is pinned where each
+ *  read is made: test/bot-recorder-scan-helpers.test.js (the managed
+ *  lifetime scan) and test/position-history-scan-chain.test.js (epoch
+ *  reconstruction). The unmanaged details path makes no chain read —
+ *  see the file header of src/position-details.js.
+ */

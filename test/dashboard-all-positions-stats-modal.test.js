@@ -287,3 +287,43 @@ describe("applyWeighted()", () => {
     assert.ok(w.ltIL > 0);
   });
 });
+
+describe("sumCurrentValue()", () => {
+  it("sums the present value across rows", () => {
+    const rows = [
+      { currentValue: 3947.23 },
+      { currentValue: 2143.71 },
+      { currentValue: 190.5 },
+    ];
+    assert.strictEqual(
+      Math.round(mod.sumCurrentValue(rows) * 100) / 100,
+      6281.44,
+    );
+  });
+
+  it("returns 0 for no rows", () => {
+    assert.strictEqual(mod.sumCurrentValue([]), 0);
+  });
+
+  it("treats a missing or non-numeric value as 0 rather than NaN", () => {
+    /*- One unresolved position must not blank the whole figure. A
+     *  total that silently reads NaN is worse than one that is short
+     *  by a position still resolving. */
+    const rows = [
+      { currentValue: 100 },
+      {},
+      { currentValue: null },
+      { currentValue: undefined },
+      { currentValue: "abc" },
+    ];
+    assert.strictEqual(mod.sumCurrentValue(rows), 100);
+  });
+
+  it("carries negative and zero values through unchanged", () => {
+    assert.strictEqual(mod.sumCurrentValue([{ currentValue: 0 }]), 0);
+    assert.strictEqual(
+      mod.sumCurrentValue([{ currentValue: 50 }, { currentValue: -20 }]),
+      30,
+    );
+  });
+});

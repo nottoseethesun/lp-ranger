@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-09-02T07:47:27.671Z
+  modified: 2026-09-17T06:55:20.366Z
 ---
 
 When writing a condition, ask: **is this testing the thing I actually
@@ -35,7 +35,7 @@ actively **asserted** by tests, one literally checking
   them?" not "do I have ANY?". "Are the amounts present?" not "is the
   value known?".
 - When two needs are bundled behind one flag, split them. Both
-  `canResumeIncrementally` and `needsEntryFromChain` exist because the
+  `lifetimeFiguresSaved` and `needsEntryFromChain` exist because the
   original single condition answered two questions at once.
 - Name the derived column after what it holds. `IL/G` displaying
   `priceChangePnl` is the same error in the UI layer.

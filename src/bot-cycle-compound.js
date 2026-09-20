@@ -20,6 +20,10 @@ const {
   invalidatePriceCacheFor,
 } = require("./price-fetcher");
 const { loadShippedDefaults } = require("./load-merged-defaults");
+const {
+  hasCompoundedTotal,
+  isRecordedCoinTotal,
+} = require("./bot-config-keys");
 
 /*- Shipped default for the approvalMultiple per-position config
  *  fallback below.  Per feedback_one_literal_per_shipped_default, the
@@ -120,6 +124,65 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
   return true;
 }
 
+/**
+ * The compounded-coins fields a recorded compound contributes, or `null`
+ * when it contributes none.
+ *
+ * Add the coins, never a dollar total: the saved figure has to stay true
+ * at whatever price the next poll reads, and a sum of dollars frozen at
+ * each compound's own price drifts further from that the longer the
+ * position runs.
+ *
+ * And add only to a total that already exists. With none saved, the
+ * chain has not been classified yet — see `hasCompoundedTotal` in
+ * `bot-config-keys.js` — and writing this compound's coins there would
+ * pass one compound off as the whole chain's, which the lifetime scan
+ * then reads as proof its work is done.
+ *
+ * @param {number|undefined|null} saved0  Saved token0 compounded coins.
+ * @param {number|undefined|null} saved1  Saved token1 compounded coins.
+ * @param {number} dep0  Token0 coins this compound re-deposited.
+ * @param {number} dep1  Token1 coins this compound re-deposited.
+ * @returns {{compoundedAmount0: number, compoundedAmount1: number}|null}
+ */
+function _compoundedTotalFields(saved0, saved1, dep0, dep1) {
+  if (!hasCompoundedTotal(saved0, saved1)) return null;
+  /*- Each side on its own merit. Either alone establishes the total, so
+   *  the other may still hold anything the config can express — and a
+   *  falsy-fallback would pass a string straight through to be
+   *  concatenated rather than summed. */
+  return {
+    compoundedAmount0: (isRecordedCoinTotal(saved0) ? saved0 : 0) + dep0,
+    compoundedAmount1: (isRecordedCoinTotal(saved1) ? saved1 : 0) + dep1,
+  };
+}
+
+/**
+ * Ask the next lifetime scan to classify the chain, because coins just
+ * went unrecorded.
+ *
+ * A writer that finds no established total adds nothing, and the coins it
+ * declined to add live only on chain until a classification counts them.
+ * Nearly always the scan that follows reads a chain that already holds
+ * them and this request costs nothing. It matters when the coins land
+ * DURING a scan: that scan read the chain before they existed, so without
+ * a request outstanding its write would settle a total that omits them
+ * for good. `_recordScanSuccess` clears only requests a scan carried in,
+ * so one raised mid-scan survives to the next pass.
+ *
+ * Set on the live state as well as the patch: the scan reads
+ * `botState._needsCompoundReclassify` directly, and waiting for the patch
+ * to round-trip through persistence would miss the very pass this is
+ * meant to reach.
+ *
+ * @param {object} deps   Bot deps; `_botState` is the live state.
+ * @param {object} patch  Bot-state patch being assembled.
+ */
+function _requestCompoundReclassify(deps, patch) {
+  if (deps._botState) deps._botState._needsCompoundReclassify = true;
+  patch._needsCompoundReclassify = true;
+}
+
 /** Record a successful compound: update history, P&L tracker gas, collected fees. */
 async function recordCompound(deps, result) {
   const emit = deps.updateBotState || (() => {});
@@ -145,26 +208,35 @@ async function recordCompound(deps, result) {
     gasCostUsd,
     trigger: result.trigger,
   });
-  const total = (_gc("totalCompoundedUsd") || 0) + result.usdValue;
+  const dep0 = result.depositedAmount0 || 0;
+  const dep1 = result.depositedAmount1 || 0;
+  const totals = _compoundedTotalFields(
+    _gc("compoundedAmount0"),
+    _gc("compoundedAmount1"),
+    dep0,
+    dep1,
+  );
   /*-
    *  Invalidate the per-NFT Current-panel caches for this tokenId so the
    *  next poll re-scans and picks up the new compound's gas + USD.  Cheap
    *  (one per-NFT scan), runs at most once per compound.
    */
   const nftGasMap = { ...(_gc("nftGasWeiByTokenId") || {}) };
-  const nftCompMap = { ...(_gc("nftCompoundedUsdByTokenId") || {}) };
+  const nftCompMap = { ...(_gc("nftCompoundedAmountsByTokenId") || {}) };
   if (deps.position?.tokenId) {
     const tid = String(deps.position.tokenId);
     delete nftGasMap[tid];
     delete nftCompMap[tid];
   }
-  emit({
+  const patch = {
     compoundHistory: history,
-    totalCompoundedUsd: total,
     nftGasWeiByTokenId: nftGasMap,
-    nftCompoundedUsdByTokenId: nftCompMap,
+    nftCompoundedAmountsByTokenId: nftCompMap,
     lastCompoundAt: result.timestamp,
-  });
+  };
+  if (totals !== null) Object.assign(patch, totals);
+  else _requestCompoundReclassify(deps, patch);
+  emit(patch);
   /* Add compound gas to the P&L tracker so it shows in the Gas KPI */
   const tracker = deps._pnlTracker;
   if (tracker && tracker.epochCount() > 0) {
@@ -172,15 +244,20 @@ async function recordCompound(deps, result) {
     tracker.addGas(gasCostUsd, gasNative);
     emit({ pnlEpochs: tracker.serialize() });
   }
-  if (deps._addCollectedFees) deps._addCollectedFees(result.usdValue);
-  /*-
-   *  Show both numbers so users can see the residual: collected = full
-   *  Collect output; reinvested = what fit the current tick ratio and
-   *  was actually re-deposited.  The remainder stays in the wallet as
-   *  residual (tracked by residual-tracker.js) and is NOT counted as
-   *  compounded.  "lifetime" is the cumulative totalCompoundedUsd
-   *  across all NFTs in this rebalance chain (per-pool, not per-NFT).
-   */
+  _logCompound(result, gasCostUsd, totals, dep0, dep1);
+}
+
+/*-
+ *  Show both numbers so users can see the residual: collected = full
+ *  Collect output; reinvested = what fit the current tick ratio and was
+ *  actually re-deposited.  The remainder stays in the wallet as residual
+ *  (tracked by residual-tracker.js) and is NOT counted as compounded.
+ *
+ *  "lifetime" is this pool's cumulative compounded coins across every
+ *  NFT in the rebalance chain, reported in coins because coins are what
+ *  is saved; their dollar value belongs to whichever poll displays it.
+ */
+function _logCompound(result, gasCostUsd, totals, dep0, dep1) {
   const collectedUsd = result.collectedUsd ?? result.usdValue;
   const residualUsd = Math.max(0, collectedUsd - result.usdValue);
   const trig = result.trigger === "manual" ? "manual" : "auto";
@@ -194,9 +271,38 @@ async function recordCompound(deps, result) {
     residualUsd.toFixed(2),
   );
   log.info(
-    "[bot]   gas $%s | lifetime compounded $%s",
+    "[bot]   gas $%s | lifetime compounded %s",
     gasCostUsd.toFixed(4),
-    total.toFixed(2),
+    _lifetimeCoinsText(totals, dep0, dep1),
+  );
+}
+
+/**
+ * The lifetime-compounded half of the compound log line.
+ *
+ * With no chain total established yet, say so and report this compound's
+ * own coins instead — the alternative is printing a figure that leaves
+ * out every earlier compound in the chain, which is the confusion this
+ * whole rule exists to prevent.
+ *
+ * @param {{compoundedAmount0: number, compoundedAmount1: number}|null} totals
+ * @param {number} dep0  Token0 coins this compound re-deposited.
+ * @param {number} dep1  Token1 coins this compound re-deposited.
+ * @returns {string}
+ */
+function _lifetimeCoinsText(totals, dep0, dep1) {
+  if (totals === null)
+    return (
+      "awaiting the chain scan (this compound: " +
+      dep0.toFixed(6) +
+      "/" +
+      dep1.toFixed(6) +
+      ")"
+    );
+  return (
+    totals.compoundedAmount0.toFixed(6) +
+    "/" +
+    totals.compoundedAmount1.toFixed(6)
   );
 }
 

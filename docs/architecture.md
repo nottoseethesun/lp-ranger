@@ -11,6 +11,8 @@ Three companion references sit alongside this one:
 every environment variable, where each setting lives, and which are
 deliberately not editable; [`docs/security.md`](security.md) for the controls
 protecting the wallet and the gates enforcing them; and
+[`docs/npm-project-commands.md`](npm-project-commands.md) for every npm
+command and its flags, and
 [`docs/engineering.md`](engineering.md) for runtime state, development tools
 and the check-report pipeline.
 
@@ -301,12 +303,27 @@ during the startup scan and cached in the epoch cache
   scanned — previously accumulated fresh amounts are restored from cache.
   RPC cost per boundary: 4 `getLogs` calls (2 tokens × in/out).
 
-- **Lifetime compounded amount** (`totalCompoundedUsd`) — the total USD value
-  of fees that were re-deposited as liquidity via compound operations.
-  Detected by scanning IncreaseLiquidity events after the mint on each NFT and
-  filtering out rebalance-adjacent ones (`_filterRebalances`).  Amounts are
-  capped per-token by total Collect amounts so compounds never exceed
-  collected fees.
+  The scan a rebalance triggers takes exactly this path. That rebalance
+  minted with the wallet's whole balance of both tokens, so any coins
+  that arrived since the previous mint are now deposits in the position;
+  the one new boundary is scanned and the rest come back from cache.
+
+- **Lifetime compounded amount** (`compoundedAmount0` / `compoundedAmount1`)
+  — the **coins** each NFT earned in fees and re-deposited, whether by a
+  compound or by the rebalance that closed it. Each NFT's figure is its
+  Collect amounts less the principal its DecreaseLiquidity events released
+  (`lifetimeFeeAmounts`). The per-event compound history is the
+  IncreaseLiquidity events after the mint, less the rebalance-adjacent ones
+  (`_filterRebalances`).
+
+  The saved figure is coins, never dollars. A stored USD total is true only
+  at the price that computed it, so its error grows with every move the pair
+  makes afterwards — on an old position, without bound. `snap.totalCompoundedUsd`
+  is therefore computed fresh on every poll, coins × current price, through
+  `src/coin-value.js`. The historical figures are the deliberate exceptions
+  and keep their own prices: Total Lifetime Deposit values each deposit at its
+  own block, the HODL Baseline's Entry Value stands at the NFT's mint, and a
+  closed epoch in the Historical P&L table keeps the dollars it closed at.
 
 - **Lifetime gas** (`totalGas`) — the cumulative gas cost in USD across all
   rebalance and compound transactions.  Extracted from TX receipts during
@@ -328,10 +345,20 @@ Compounded fees come off the LP side. Compounding calls
 `positionValueUsd` measures, while the HODL side stays fixed at the
 amounts deposited. Leaving them in would report reinvested earnings as
 LP outperformance, and the Profit figure already counts them. The
-lifetime figure removes `totalCompoundedUsd`; the current-NFT figure
+lifetime figure removes `snap.totalCompoundedUsd`; the current-NFT figure
 removes only that NFT's share, since its mint value already contained
-the earlier compounds. The subtraction happens in `_computeIL`
-(`src/bot-pnl-updater.js`) — `computeHodlIL` itself is unchanged.
+the earlier compounds. Both are the saved coins priced at the current
+poll, so IL/G does not drift as the pair moves after a compound.
+
+`ilFigures` (`src/bot-pnl-il.js`) computes both, and is the only place
+either is computed. It is pure — every input is an argument — which is
+what lets the bot tier and the unmanaged details endpoint share it
+despite holding their state in different shapes. A position therefore
+reports the same IL/G managed or not: managing one changes nothing on
+chain, so nothing on screen may move when it starts or stops. Were the
+view tier to compare the raw LP value instead, the gap would be the
+whole compounded amount — enough on a long-running position to flip the
+sign. `computeHodlIL` itself is unchanged.
 
 Both the managed and unmanaged paths use the same `computeHodlIL` function
 from `src/il-calculator.js`.  The HODL amounts come from
@@ -342,17 +369,61 @@ baseline when the scan hasn't run yet.
 ### Scan Architecture: Single Fetch, Two Classifiers
 
 To avoid duplicate RPC calls, the lifetime scan fetches IncreaseLiquidity,
-DecreaseLiquidity, and Collect events **once per NFT** via `scanNftEvents`
-(3 parallel `getLogs` calls per NFT).  The same pre-fetched events are then
-passed to two classifiers:
+DecreaseLiquidity, and Collect events for the **whole rebalance chain in one
+batched read** (`scanChainNftEvents` in `src/nft-events-batch.js`). `tokenId`
+is the first indexed parameter on all three events, and a log filter's topic
+slot OR-matches an array, so one filter carries every NFT in the chain. The
+node returns the logs interleaved; the batch partitions them by `topics[1]`,
+floors each NFT's logs at its own mint block, and puts them in chain order.
+The same pre-fetched events are then passed to two classifiers:
 
 1. **Compound classifier** (`classifyCompounds`) — identifies fee re-deposits.
 2. **Lifetime HODL classifier** (`computeLifetimeHodl`) — accumulates external
    deposits.
 
 Both classifiers share `_filterRebalances` to distinguish rebalance-adjacent
-events from genuine deposits/compounds.  The scan is incremental:
-`lastNftScanBlock` is cached so subsequent startups only query new blocks.
+events from genuine deposits/compounds.
+
+The unmanaged details view reads no chain at all. It shows no Lifetime
+panel and no Per-Day P&L, so there is nothing it would walk a chain to
+produce. Its Current-panel Fees Compounded and Gas come from one scan of
+the NFT being looked at, floored at that NFT's own mint block
+(`_detectCurrentNftValues`), or from the coins already on disk.
+
+Epoch reconstruction needs a subset of the same history — Collect and
+DecreaseLiquidity for the closed NFTs — before it builds any epoch. When the
+lifetime side is going to read the chain in the same pass, reconstruction
+takes its histories from that read: the bot's scan pass prepares the
+lifetime read before reconstruction (`prepareLifetimeRead`). Otherwise
+reconstruction reads the closed NFTs itself, in one batch
+(`scanChainCollectAndDrain`). Either way the chain is read once per pass.
+Reconstruction runs for the bot only; the unmanaged view builds no
+epochs, because it renders no Per-Day P&L.
+
+When the HODL amounts, the compound total and the lifetime deposit are all
+already on disk (`lifetimeFiguresSaved`), the scan has nothing to compute
+and does not read at all, unless a rebalance has flagged a full rescan or
+Re-scan Prices has asked for the figures to be re-priced.
+Whenever it does read, it reads from the pool's creation block, lifted to the
+chain's first mint. A consumer about to compute from scratch needs the whole
+chain, not a slice of it. The start block is taken from the pool when the read
+runs. The compound total and the lifetime deposit are saved and
+restored with the position's config (`PERSISTED_STATE_KEYS` in
+`src/server-positions.js`). The HODL amounts are kept in the pool's epoch
+cache. So after the first complete scan, a restart reads nothing for them.
+Compounds and rebalances add to the compound total as they happen. The full
+rescan a rebalance flags re-derives the HODL amounts and the lifetime
+deposit, because that rebalance minted with the wallet's whole balance:
+coins that arrived since the previous mint are deposits in the new NFT.
+Re-scan Prices asks for the other kind of rebuild — the amounts stand and
+every dollar figure built on them is fetched again at fresh prices. See
+docs/engineering.md § `POST /api/position/rescan-prices`.
+
+A pass whose event scan fails computes none of them. The chain the bot holds
+is then whatever it held before the pass, which on a cold start is nothing.
+Figures computed from it would be saved, and later passes would keep them.
+When the pass needed a read, the position stays unready instead, and the
+30-minute rescan retries the pass.
 
 ### Lifetime Sync vs Bot Loop
 

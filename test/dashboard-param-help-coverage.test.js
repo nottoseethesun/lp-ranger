@@ -23,6 +23,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { indexHtmlDocument } = require("./helpers/index-html");
 
 const ROOT = path.join(__dirname, "..");
 const INDEX_HTML = path.join(ROOT, "public", "index.html");
@@ -228,10 +229,7 @@ test("every circle-i in index.html opens something on click", async () => {
    *  click handler.  This asserts that, so a new icon cannot ship with
    *  no click path. */
   require("global-jsdom/register");
-  const doc = new window.DOMParser().parseFromString(
-    fs.readFileSync(INDEX_HTML, "utf8"),
-    "text/html",
-  );
+  const doc = indexHtmlDocument();
   const icons = [...doc.querySelectorAll(".\\39mm-pos-mgr-il-info-btn")];
   assert.ok(icons.length > 30, "selector should match the app's ~44 icons");
 
@@ -340,4 +338,26 @@ test("the slippage labels keep their live token-symbol span", async () => {
   const html = fs.readFileSync(INDEX_HTML, "utf8");
   assert.match(html, /<span id="slipT0Name">Token 0<\/span>\)/);
   assert.match(html, /<span id="slipT1Name">Token 1<\/span>\)/);
+});
+
+test("no section heading carries an HTML entity", async () => {
+  /*-
+   *  `dashboard-param-help.js` sets a heading with `textContent` and
+   *  only the body with `innerHTML`. An entity in a heading therefore
+   *  reaches the screen as the literal characters "&rsquo;" rather than
+   *  an apostrophe — visible to a reader, invisible to every gate.
+   *
+   *  Bodies are deliberately exempt: rich text there is the point.
+   */
+  const help = await paramHelp();
+  const offenders = [];
+  for (const [key, entry] of Object.entries(help))
+    for (const s of entry.sections || [])
+      if (/&[a-zA-Z]+;|&#\d+;/.test(s.heading || ""))
+        offenders.push(`${key}: ${s.heading}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    "headings are plain text — use the character itself, not an entity",
+  );
 });

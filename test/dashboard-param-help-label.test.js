@@ -28,17 +28,12 @@ require("global-jsdom/register");
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const { indexHtmlDocument } = require("./helpers/index-html");
 
 let doc;
 
 before(() => {
-  const html = fs.readFileSync(
-    path.join(__dirname, "..", "public", "index.html"),
-    "utf8",
-  );
-  doc = new window.DOMParser().parseFromString(html, "text/html");
+  doc = indexHtmlDocument();
 });
 
 describe("info icons are never nested inside a form label", () => {

@@ -21,6 +21,10 @@ import {
   positionRangeVisual,
 } from "./dashboard-data-kpi.js";
 import { showPerPositionAlerts } from "./dashboard-alerts.js";
+import {
+  currentUnclaimedFees,
+  unmanagedUnclaimedFees,
+} from "./dashboard-data-kpi-fees.js";
 
 /**
  * Create and append a modal overlay to the document body. The shell
@@ -546,11 +550,23 @@ export function _updateCompoundButton(d, rebInProgress) {
     return;
   }
   const minFee = botConfig.compoundMinFee;
-  // Read fees from snapshot or from the displayed KPI (covers unmanaged positions)
-  let feesUsd = d.pnlSnapshot?.liveEpoch?.fees || 0;
+  /*- Fees available to collect, which is the unclaimed figure alone:
+   *  `liveEpoch.fees` also carries what earlier compounds already swept
+   *  into the position, and enabling on that offers to compound money
+   *  that is not there to collect. The server's own gate reads the
+   *  unclaimed figure, so this keeps the button and the gate agreeing.
+   *  Falls back to the displayed KPI, which covers unmanaged positions —
+   *  they populate that row without a live epoch. */
+  let feesUsd = currentUnclaimedFees(
+    d,
+    d.pnlSnapshot?.currentCompoundedUsd || 0,
+  );
   if (!feesUsd) {
-    const el = g("pnlFees");
-    if (el) feesUsd = parseFloat(el.textContent.replace(/[^0-9.-]/g, "")) || 0;
+    /*- An unmanaged position has no bot poll publishing the figure, so
+     *  its one-shot details response is the only source. Read the value
+     *  that response supplied, not the text it was rendered into. */
+    const un = unmanagedUnclaimedFees(posStore.getActive()?.tokenId);
+    if (un !== null) feesUsd = un;
   }
   const canCompound =
     !rebInProgress && !d.compoundInProgress && feesUsd >= minFee;

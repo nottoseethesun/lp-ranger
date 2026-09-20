@@ -46,7 +46,10 @@ const _UNMANAGED_SETTINGS_KEYS = [
   "priceOverrideForce",
   "autoCompoundEnabled",
   "autoCompoundThresholdUsd",
-  "totalCompoundedUsd",
+  /*- The coins, not a dollar total. The P&L snapshot prices them for the
+   *  panels; this carries the saved figure itself. */
+  "compoundedAmount0",
+  "compoundedAmount1",
   "lastCompoundAt",
   "offsetToken0Pct",
   "rangeOverrideEnabled",

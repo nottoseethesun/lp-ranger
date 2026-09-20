@@ -14,6 +14,7 @@
 
 "use strict";
 const { scanChunked } = require("./get-logs-chunked");
+const { topicForTokenId } = require("./nft-token-topic");
 
 const { log } = require("./log");
 const fs = require("fs");
@@ -163,9 +164,7 @@ async function hasPositionActivitySince(
 ) {
   if (fromBlock > toBlock) return false;
 
-  const tokenIdTopics = cachedTokenIds.map(
-    (id) => "0x" + BigInt(id).toString(16).padStart(64, "0"),
-  );
+  const tokenIdTopics = cachedTokenIds.map((id) => topicForTokenId(id));
 
   /*- Chunked.  Normally this is a narrow incremental window (last
    *  cached block -> head), but it is unbounded when the cache is stale

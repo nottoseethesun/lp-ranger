@@ -18,7 +18,8 @@ const {
   addPoolShare,
 } = require("./bot-pnl-updater");
 const { getPositionBaseline } = require("./hodl-baseline");
-const { computeHodlIL } = require("./il-calculator");
+const { ilFigures } = require("./bot-pnl-il");
+const { savedNftCompoundedUsd } = require("./position-details-compound");
 const {
   compositeKey,
   getPositionConfig,
@@ -169,21 +170,32 @@ function _currentPnl(
   price0,
   price1,
   residuals,
+  compoundedUsd,
 ) {
   const rUsd = residuals?.usd || 0;
   const pgl = entryValue > 0 ? value - entryValue : null;
-  /*- Credit the current pool-scoped wallet residual to the LP-side of
-   *  the HODL comparison.  See computeHodlIL JSDoc for the full
-   *  rationale; same fix as in bot-pnl-updater._computeIL. */
+  /*- Through `ilFigures` (src/bot-pnl-il.js), the one expression of the
+   *  rule, so this figure matches what the bot tier reports for the same
+   *  position — including taking this NFT's compounded fees out of the
+   *  LP value, which are liquidity the HODL side never had.
+   *
+   *  Only the current-NFT figure is asked for here; the lifetime one
+   *  needs a chain scan this fast path does not make, and
+   *  `computeLifetimeDetails` supplies it. */
   const il = baseline
-    ? computeHodlIL({
+    ? (ilFigures({
         lpValue: value,
-        hodlAmount0: baseline.hodlAmount0,
-        hodlAmount1: baseline.hodlAmount1,
-        currentPrice0: price0,
-        currentPrice1: price1,
         residualValueUsd: rUsd,
-      })
+        price0,
+        price1,
+        curHodl: {
+          amount0: baseline.hodlAmount0,
+          amount1: baseline.hodlAmount1,
+        },
+        ltHodl: {},
+        curCompoundedUsd: compoundedUsd,
+        ltCompoundedUsd: 0,
+      }).totalIL ?? null)
     : null;
   return {
     value,
@@ -385,6 +397,7 @@ async function computeQuickDetails(
     price0,
     price1,
     residuals,
+    savedNftCompoundedUsd(diskConfig, posKey, position.tokenId, price0, price1),
   );
   const poolState = {
     tick: ps.tick,

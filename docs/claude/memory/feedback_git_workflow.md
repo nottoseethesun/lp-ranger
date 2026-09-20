@@ -32,7 +32,7 @@ Never run `gh pr merge` (or commit + push + open PR + merge as a bundled flow) u
 
 ## never delete branches
 
-Never delete branches after merging. Do NOT pass `--delete-branch` to `gh pr merge`, and do NOT run `git branch -d`/`-D` or `git push origin --delete <branch>` unless the user explicitly asks for branch deletion.
+**Always leave the branches.** Never delete one after merging, and do not offer to. Do NOT pass `--delete-branch` to `gh pr merge`, and do NOT run `git branch -d`/`-D` or `git push origin --delete <branch>`.
 
 **Why:** User keeps merged branches around for history, bisecting, and reference. Auto-deleting destroys that audit trail. I deleted `fix-full-range-recovery-modal` after merging PR #71 without authorization and had to restore it via `git push origin <commit>:refs/heads/<branch>`.
 
@@ -40,6 +40,7 @@ Never delete branches after merging. Do NOT pass `--delete-branch` to `gh pr mer
 - `gh pr merge <n> --merge` with NO `--delete-branch` flag
 - Leave both local and remote branches intact after merge
 - Only delete a branch if the user says so in the imperative ("delete the branch")
+- Do not raise branch deletion as a loose end, a question, or an option. Stated as a standing rule on 2026-09-15: "Always leave the branches." Merged branches simply stay.
 
 ## never rebase
 
@@ -56,7 +57,7 @@ Never use `git rebase` in any form on this project. Always integrate with `git m
 
 ## no squash merge
 
-Never use `--squash` when merging PRs. Use `gh pr merge --merge --delete-branch`.
+Never use `--squash` when merging PRs. Use `gh pr merge --merge` — with NO `--delete-branch`, per "never delete branches" above. (This line previously read `--merge --delete-branch`, contradicting that rule.)
 
 **Why:** User wants the full commit history preserved on main, not compressed into a single commit.
 

@@ -243,10 +243,6 @@
                     "type": "string",
                     "description": "ISO-8601 UTC date. Overrides the detected start of the lifetime window."
                   },
-                  "collectedFeesUsd": {
-                    "type": "number",
-                    "description": "Cumulative fees collected out of the position, USD."
-                  },
                   "decimalsOverride0": {
                     "type": "integer",
                     "description": "Manual decimals for token0, when on-chain detection fails."
@@ -263,9 +259,13 @@
                     "type": "boolean",
                     "description": "Apply decimalsOverride1 even when on-chain detection succeeded."
                   },
-                  "totalCompoundedUsd": {
+                  "compoundedAmount0": {
                     "type": "number",
-                    "description": "Lifetime fees swept back into liquidity, USD."
+                    "description": "Lifetime token0 swept back into liquidity, in coins. Priced at the current price wherever it is displayed — never stored as a dollar total."
+                  },
+                  "compoundedAmount1": {
+                    "type": "number",
+                    "description": "Lifetime token1 swept back into liquidity, in coins."
                   },
                   "lastCompoundAt": {
                     "type": "string",
@@ -311,11 +311,19 @@
                       "type": "string"
                     }
                   },
-                  "nftCompoundedUsdByTokenId": {
+                  "nftCompoundedAmountsByTokenId": {
                     "type": "object",
-                    "description": "Compounded USD per NFT in the rebalance chain, keyed by tokenId.",
+                    "description": "Compounded coins per NFT in the rebalance chain, keyed by tokenId.",
                     "additionalProperties": {
-                      "type": "number"
+                      "type": "object",
+                      "properties": {
+                        "amount0": {
+                          "type": "number"
+                        },
+                        "amount1": {
+                          "type": "number"
+                        }
+                      }
                     }
                   },
                   "hodlBaseline": {
@@ -678,7 +686,31 @@
             "description": "Missing tokenId or no private key"
           },
           "409": {
-            "description": "Position already managed"
+            "description": "Another position already manages this pool. LP Ranger manages one position per liquidity pool so that profit and loss stays attributable to it. The body names the position holding the pool.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string",
+                      "enum": ["pool-already-managed"]
+                    },
+                    "conflictTokenId": {
+                      "type": "string",
+                      "description": "NFT id of the running position holding the pool."
+                    },
+                    "conflictKey": {
+                      "type": "string",
+                      "description": "Composite key (blockchain-wallet-contract-tokenId) of that position."
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -1665,9 +1697,9 @@
     },
     "/api/position/rescan-prices": {
       "post": {
-        "summary": "Re-scan historical USD prices",
+        "summary": "Re-value a position at freshly fetched prices",
         "tags": ["Positions"],
-        "description": "Re-fetches historical prices over a lookback window and recomputes the position's P&L. Only a managed position has a running bot loop to pick the re-scan up, so an unmanaged one is rejected with 409 \"not-managed\" rather than silently doing nothing. The default window is rescanPricesDefaultDays.",
+        "description": "Asks the position's next lifetime scan to rebuild every stored dollar figure at freshly fetched prices: Fees Compounded, the lifetime deposit, and the HODL baseline's entry value. The token amounts behind them are re-read from the chain but never re-derived from the pool's history, which is what makes this cheaper than a reload. Nothing is deleted: each figure is overwritten once its replacement exists, so a scan that fails leaves the old figure in place. Only a managed position has a running bot loop to pick the re-scan up, so an unmanaged one is rejected with 409 \"not-managed\" rather than silently doing nothing.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1679,9 +1711,15 @@
                     "type": "string",
                     "description": "Composite key."
                   },
-                  "days": {
-                    "type": "integer",
-                    "description": "Lookback in days. Defaults to rescanPricesDefaultDays."
+                  "includeDailyPnl": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Also re-price the Per-Day P&L table — every closed period's gas and both pair-token prices. A closed period keeps its dollar figures but not the token amounts behind them, so this re-reads each NFT's history: minutes on a long rebalance chain. Still skips the five-year pool scan that Reload Current Position performs."
+                  },
+                  "limitToRecentDays": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Rebuild only the most recent periods of the Per-Day P&L table, leaving older rows with the figures they already hold. A flag, not a day count: the window length is the rescanPricesRecentWindowDays shipped default, so a request cannot ask for a reach the dashboard never offered. Ignored without includeDailyPnl, since nothing else this route re-values is date-scoped. Ignored too when the table is incomplete, because a stored period does not record which NFT it came from, so a partial rebuild cannot tell a gap from an old period."
                   }
                 },
                 "required": ["positionKey"]
@@ -1705,12 +1743,6 @@
                     },
                     "liveKey": {
                       "type": "string"
-                    },
-                    "fromBlock": {
-                      "type": "integer"
-                    },
-                    "days": {
-                      "type": "integer"
                     }
                   }
                 }
@@ -1718,7 +1750,7 @@
             }
           },
           "400": {
-            "description": "Missing positionKey or invalid days.",
+            "description": "Missing or malformed positionKey.",
             "content": {
               "application/json": {
                 "schema": {

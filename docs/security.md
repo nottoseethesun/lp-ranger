@@ -268,7 +268,9 @@ defines two values:
 schedules `setInterval(refreshCsrfToken, csrfRefreshIntervalMs())` using
 the server-delivered interval. This timer is independent of the
 `/api/status` poll loop and fires regardless of poll health — which is
-the whole point. On a long-running host (e.g. Raspberry Pi 5 with Heat Sink and Fan (5GB RAM, and Ethernet cable Internet connection instead of Wi-Fi) during a
+the whole point. On a long-running host (e.g. Raspberry Pi 5
+(recommended configuration: with Heat Sink and Fan, 5GB RAM, and
+Ethernet cable Internet connection instead of Wi-Fi) during a
 multi-hour phase-2 event scan) the status poll's in-flight guard can
 skip ticks for extended windows; if the CSRF refresh were tied to that
 path, tokens would silently expire and auto-fired background POSTs

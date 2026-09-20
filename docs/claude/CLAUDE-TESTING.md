@@ -47,7 +47,7 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 - `pnl-epochs-cache.json` — reconstructed P&L epochs (expensive to rebuild)
 - `historical-price-cache.json` — GeckoTerminal OHLCV prices (rate-limited API)
 - `block-time-cache.json` — block-number → timestamp cache
-- `gecko-pool-cache.json` — GeckoTerminal pool base/quote orientation
+- `gecko-pool-cache.json` — GeckoTerminal pool base/quote orientation, and which pool a bare token's price is read from
 - `event-cache-*.json` — per-pool rebalance event scan results
 - `lp-position-cache-*.json` — LP position enumeration results
 - `nft-mint-date-cache.json` — NFT mint timestamps
@@ -60,6 +60,25 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 3. After tests (try/finally in `check.js`): `restoreProdFiles()` deletes any test-created files and copies the backed-up originals back into place
 
 This is the ONLY protection mechanism. Individual test files do NOT need their own snapshot/restore logic.
+
+### Not protected: `logs/`
+
+The backup pass covers `app-config/user-configurable/`, `app-data/` and
+`tmp/*.json`. It does **not** cover `logs/`, so nothing restores
+`logs/lp-ranger.log` after a test run.
+
+That file is the operator's own log — `--log-file` opens it in append
+mode, so it accumulates across runs and a delete is permanent. It is
+gitignored, so its loss is reported nowhere and the suite still exits 0.
+
+The path that reaches it is `_DEFAULT_PATH` in `src/boot-log-file.js`:
+it is the relative `"logs/lp-ranger.log"`, and `enableLogFile` resolves
+it against `process.cwd()`. Any test that boots the logger from the
+repo root without supplying an explicit path therefore opens the live
+file. Run such a test in a `mkdtempSync` working directory instead —
+`loadMergedDefaults` resolves from `__dirname`, so moving cwd does not
+disturb config reads. `test/boot-log-file.test.js` does this, and
+asserts in an `after` hook that the file survived the suite.
 
 ### Adding new cache or config files
 

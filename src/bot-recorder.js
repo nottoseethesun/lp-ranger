@@ -26,6 +26,10 @@ const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
 const { buildUpdatePatch } = require("./bot-recorder-patch");
 const {
+  hasCompoundedTotal,
+  isRecordedCoinTotal,
+} = require("./bot-config-keys");
+const {
   collectTokenIds: _collectTokenIds,
 } = require("./bot-recorder-scan-helpers");
 const {
@@ -34,9 +38,13 @@ const {
   estimateGasCostUsd: _estimateGasCostUsd,
   actualGasCostUsd: _actualGasCostUsd,
 } = require("./bot-pnl-updater");
-const { _scanLifetimePoolData } = require("./bot-recorder-lifetime");
+const {
+  _scanLifetimePoolData,
+  lifetimeScanPlan,
+  prepareLifetimeRead,
+  scanLogCtx,
+} = require("./bot-recorder-lifetime");
 const { ensureInitialResidualData } = require("./liquidity-pair-details");
-const { emojiId } = require("./logger");
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -82,25 +90,66 @@ function appendLog(result) {
 /**
  * After an epoch close, credit unclaimed fees that were re-deposited via
  * the rebalance flow (drain → swap → mint).  These were already in the
- * NFT and would otherwise be invisible to `totalCompoundedUsd` (only
- * standalone compounds bump it via bot-cycle-compound).  See the Lifetime
- * "Fees Compounded" info dialog for the user-facing explanation.
+ * NFT and would otherwise be invisible to the compounded totals (only
+ * standalone compounds bump those via bot-cycle-compound).  See the
+ * Lifetime "Fees Compounded" info dialog for the user-facing
+ * explanation.
+ *
+ * The coins are what is added, not their value: `_lastUnclaimedFee0` and
+ * `_lastUnclaimedFee1` are in token units, and whoever displays the
+ * total prices it at the moment it is shown.
  */
 function _bumpRebalanceFees(deps) {
-  if (!deps._addCollectedFees || !deps._lastUnclaimedFeesUsd) return;
-  const rebalanceFeesUsd = deps._lastUnclaimedFeesUsd;
-  deps._addCollectedFees(rebalanceFeesUsd);
+  const fee0 = deps._lastUnclaimedFee0 || 0;
+  const fee1 = deps._lastUnclaimedFee1 || 0;
+  if (fee0 <= 0 && fee1 <= 0) return;
   const gc = deps._getConfig;
-  const prevCompounded =
-    (gc && gc("totalCompoundedUsd")) || deps._botState?.totalCompoundedUsd || 0;
-  const newCompounded = prevCompounded + rebalanceFeesUsd;
-  if (deps.updateBotState)
-    deps.updateBotState({ totalCompoundedUsd: newCompounded });
-  log.info(
-    "[bot] Rebalance compound: $%s fees re-deposited (lifetime $%s)",
-    rebalanceFeesUsd.toFixed(2),
-    newCompounded.toFixed(2),
-  );
+  /*- Disk first, then the in-memory state, then nothing — and a saved
+   *  zero is a real answer that must stop the search, not fall through
+   *  to the next source. */
+  const saved = (key) => (gc ? gc(key) : undefined);
+  const prev0 = saved("compoundedAmount0") ?? deps._botState?.compoundedAmount0;
+  const prev1 = saved("compoundedAmount1") ?? deps._botState?.compoundedAmount1;
+  /*- Credit the chain's total only where there is one. With none saved,
+   *  the chain has not been classified yet — see `hasCompoundedTotal` —
+   *  and these fees would be passed off as the whole chain's, which the
+   *  lifetime scan then believes and skips the classification. The fees
+   *  are not lost: they went on chain with the rebalance, so the scan
+   *  counts them when it runs. The pending amounts are still cleared
+   *  below, because they HAVE been swept into the position and are no
+   *  longer unclaimed, whoever ends up totalling them. */
+  if (!hasCompoundedTotal(prev0, prev1)) {
+    /*- Ask for the classification, for the reason `lifetimeScanPlan`
+     *  gives: if these coins landed during a scan, that scan read the
+     *  chain before they existed, and its write would settle a total
+     *  without them. */
+    if (deps._botState) deps._botState._needsCompoundReclassify = true;
+    if (deps.updateBotState)
+      deps.updateBotState({ _needsCompoundReclassify: true });
+    log.info(
+      "[bot] Rebalance compound: %s/%s fees re-deposited; lifetime total left for the chain scan to establish",
+      fee0.toFixed(6),
+      fee1.toFixed(6),
+    );
+  } else {
+    /*- Each side on its own merit: either alone established the total, so
+     *  the other may hold anything the config can express, and adding to
+     *  a string would concatenate rather than sum. */
+    const newAmount0 = (isRecordedCoinTotal(prev0) ? prev0 : 0) + fee0;
+    const newAmount1 = (isRecordedCoinTotal(prev1) ? prev1 : 0) + fee1;
+    if (deps.updateBotState)
+      deps.updateBotState({
+        compoundedAmount0: newAmount0,
+        compoundedAmount1: newAmount1,
+      });
+    log.info(
+      "[bot] Rebalance compound: %s/%s fees re-deposited (lifetime %s/%s)",
+      fee0.toFixed(6),
+      fee1.toFixed(6),
+      newAmount0.toFixed(6),
+      newAmount1.toFixed(6),
+    );
+  }
   deps._lastUnclaimedFeesUsd = 0;
   /*- The token amounts behind that figure are cleared with it. They are
    *  what `_freshFeesUsd` (src/bot-cycle-compound.js) re-values when
@@ -204,7 +253,13 @@ async function _attachInitialResidual(stPatch, ctx) {
   }
 }
 
-/** Resolve pool address and scan on-chain rebalance history (fire-and-forget). */
+/**
+ * Resolve pool address and scan on-chain rebalance history (fire-and-forget).
+ *
+ * @returns {Promise<boolean>}  False when the scan failed. `events` then
+ *   still holds what it held before the pass, which on a cold start is
+ *   nothing.
+ */
 async function _scanHistory(
   provider,
   ethersLib,
@@ -320,10 +375,68 @@ async function _scanHistory(
       ethersLib,
     });
     updateState(stPatch);
+    return true;
   } catch (err) {
-    log.warn("[bot] Event scan error:", err.message);
+    /*- The operator reaches this line from the Manual's FAQ, sent here
+     *  by a Sync badge that has stayed on "Syncing…". So it carries what
+     *  every other scan line carries — which position, and its pair —
+     *  plus the error's class, and what the failure costs: the lifetime
+     *  figures are skipped rather than built from a history this read
+     *  did not finish. Keep the words "Event scan error", which is what
+     *  the FAQ tells them to search for. */
+    const ctx = scanLogCtx(position);
+    log.warn(
+      "[bot] %s/%s NFT #%s %s: Event scan error (%s): %s — lifetime figures skipped; the Sync badge stays on Syncing and the scan retries in 30 minutes",
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
+      err.name || "Error",
+      err.message,
+    );
     updateState({ rebalanceScanComplete: true });
+    return false;
   }
+}
+
+/**
+ * The lifetime scan's chain read, prepared for epoch reconstruction to
+ * share, or null when the lifetime scan will not read the chain this
+ * pass, and reconstruction must read for itself.
+ *
+ * Runs inside the pool scan's callback, whose other steps are all kept
+ * from breaking the event scan; this one is too. A failure here costs the
+ * sharing, not the scan: both reads then happen separately.
+ *
+ * @param {object} position
+ * @param {object} botState
+ * @param {Array} evts  The chain the event scan just found.
+ * @param {object|null} epochKey
+ * @returns {object|null}
+ */
+function _prepareSharedRead(position, botState, evts, epochKey) {
+  if (botState === undefined || botState === null) return null;
+  try {
+    if (!lifetimeScanPlan(botState, epochKey).needed) return null;
+    return prepareLifetimeRead(position, botState, evts, epochKey);
+  } catch (err) {
+    const ctx = scanLogCtx(position);
+    log.warn(
+      "[bot] %s/%s NFT #%s %s: Could not prepare the shared chain read, so epoch reconstruction reads on its own: %s",
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
+      err.message,
+    );
+    return null;
+  }
+}
+
+/** Epoch reconstruction's view of a shared read: its per-NFT events. */
+function _epochEventsFrom(sharedRead) {
+  if (sharedRead === null) return undefined;
+  return sharedRead.read;
 }
 
 /** Scan history and reconstruct P&L epochs under the pool lock. */
@@ -340,7 +453,15 @@ async function _scanAndReconstruct(
   botState,
   epochKey,
 ) {
-  await _scanHistory(
+  /*-
+   *  One chain read for the pass. Epoch reconstruction and the lifetime
+   *  scan both need the chain's history. When the lifetime scan is going
+   *  to read the whole chain anyway, its read is prepared here, once the
+   *  event scan has found the chain, and reconstruction takes its events
+   *  from it. See src/bot-recorder-lifetime-read.js.
+   */
+  let sharedRead = null;
+  const chainFound = await _scanHistory(
     provider,
     ethersLib,
     address,
@@ -351,17 +472,20 @@ async function _scanAndReconstruct(
     async (scannedEvents) => {
       const evts = scannedEvents || events;
       if (!evts.length) return;
+      sharedRead = _prepareSharedRead(position, botState, evts, epochKey);
       log.info("[bot] Reconstructing epochs (%d events)\u2026", evts.length);
       const fb = await _fetchTokenPrices(
         position.token0,
         position.token1,
       ).catch(() => ({ price0: 0, price1: 0 }));
+      const readChainEvents = _epochEventsFrom(sharedRead);
       await reconstructEpochs({
         pnlTracker,
         rebalanceEvents: evts,
         botState,
         updateBotState: updateState,
         fallbackPrices: fb,
+        readChainEvents,
       }).catch((e) => log.warn("[pnl] Epoch reconstruction error:", e.message));
     },
   );
@@ -373,6 +497,8 @@ async function _scanAndReconstruct(
     address,
     pnlTracker,
     epochKey,
+    sharedRead,
+    chainFound,
   );
   log.info("[bot] Scan + epoch reconstruction complete");
   updateState({
@@ -451,8 +577,11 @@ function _updateHodlBaseline(botState, result, mintNow) {
     hodlAmount1: a1,
     token0UsdPrice: p0,
     token1UsdPrice: p1,
-    // Preserve mint gas from the rebalance result so _applyMintGas can
-    // add it to the new epoch.  Without this, the gas field shows "—".
+    /*- The new NFT's mint gas, kept on the baseline because that is
+        where the lifetime scan and `position-history` read it from: it
+        seeds `totalNftGasWei` for this NFT, which the Current panel
+        prices at today and a reconstructed period prices at its own
+        close day. */
     mintGasWei: result.mintGasCostWei ? String(result.mintGasCostWei) : "0",
   };
 }
@@ -497,15 +626,18 @@ function _applyRebalanceResult(deps, result) {
   const mintNow = new Date().toISOString();
   if (deps._botState) {
     deps._botState.oorSince = null;
-    // Reset mint gas flag so the new position's mint gas gets applied
-    deps._botState._mintGasApplied = false;
-    /*- Flag the next lifetime scan to re-classify from scratch (new NFT in
-     *  the rebalance chain).  Do NOT clear in-memory or on-disk lifetime
-     *  totals here — if the subsequent scan fails (Moralis quota, RPC
-     *  hiccup, etc.) the bot would be stuck with null forever and the
-     *  dashboard's Lifetime panel would silently fall back to a wrong
-     *  value.  Old data with `_needsFullRescan=true` is strictly better
-     *  than null until the new scan succeeds and overwrites it.
+    /*- Flag the next lifetime scan to re-derive the chain-wide figures.
+     *  There is a new NFT in the rebalance chain, and the mint took the
+     *  wallet's whole balance of both tokens — so anything that arrived
+     *  in the wallet since the previous mint is now a deposit in the
+     *  position, and only that scan counts it.
+     *
+     *  Do NOT clear in-memory or on-disk lifetime totals here — if the
+     *  subsequent scan fails (Moralis quota, RPC hiccup, etc.) the bot
+     *  would be stuck with null forever and the dashboard's Lifetime
+     *  panel would silently fall back to a wrong value.  Old data with
+     *  `_needsFullRescan=true` is strictly better than null until the
+     *  new scan succeeds and overwrites it.
      */
     deps._botState._needsFullRescan = true;
     /*- A rebalance just extended the chain, so the prior lifetime
@@ -514,15 +646,13 @@ function _applyRebalanceResult(deps, result) {
      *  the Syncing badge + blur kick in until then. */
     deps._botState.lifetimeScanComplete = false;
     deps.updateBotState?.({ lifetimeScanComplete: false });
-    const t0Sym = position.token0Symbol || "Token0";
-    const t1Sym = position.token1Symbol || "Token1";
-    const tokenIdStr = String(position.tokenId || "");
+    const ctx = scanLogCtx(position);
     log.info(
       "[bot] %s/%s NFT #%s %s: Rebalance complete, queuing lifetime re-scan",
-      t0Sym,
-      t1Sym,
-      tokenIdStr,
-      emojiId(tokenIdStr),
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
     );
     _updateHodlBaseline(deps._botState, result, mintNow);
   }
@@ -554,4 +684,5 @@ module.exports = {
   _applyRebalanceResult,
   _collectTokenIds,
   _pushRebalanceEvent,
+  _bumpRebalanceFees, // exported for tests
 };

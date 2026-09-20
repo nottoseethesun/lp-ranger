@@ -281,12 +281,6 @@ function _computeUsdValue(amount0, amount1, dec0, dec1, price0, price1) {
   return human0 * price0 + human1 * price1;
 }
 
-/**
- * Extract token amounts from mint/close TX receipts and compute USD values.
- * Requires txHashes and token prices to already be populated in the result.
- * @param {object} result   History result to supplement in-place.
- * @param {string} tokenId  NFT token ID.
- */
 /** Extract entry value + gas from the mint TX receipt. Returns mint gas (BigInt). */
 async function _supplementEntryFromChain(result, tokenId, dec0, dec1, prov) {
   const amounts = await _parseEventFromReceipt(
@@ -345,9 +339,97 @@ function needsEntryFromChain(result) {
   );
 }
 
-async function _supplementAmountsFromChain(result, tokenId) {
+/**
+ * This NFT's Collect and DecreaseLiquidity history — the one read that
+ * both its exit value and its lifetime fees are derived from.
+ *
+ * Taken as given when the caller already read it along with the rest of
+ * its rebalance chain (epoch reconstruction — see
+ * `scanChainCollectAndDrain`).  That includes a given null, which says
+ * the chain read could not be trusted: reading again here would repeat,
+ * one NFT at a time, the very walk the chain read exists to avoid.
+ *
+ * Read here only when nothing was supplied, which is a single closed
+ * position looked at on its own.  That read is floored at the NFT's own
+ * mint, since it cannot emit before it exists, and runs to the chain
+ * head with no upper bound.  One would have to come from the app's
+ * inferred succession, which reads consecutive mints as successive
+ * rebalances — sound only when every mint in the pool IS a rebalance.
+ * A dust mint from a failed or partial rebalance looks identical in the
+ * Transfer log, so the NFT it appears to replace can still be funded and
+ * drain later; bounding there truncates the scan and loses the drain.
+ *
+ * @param {object} result  History result being assembled.
+ * @param {string} tokenId  NFT token ID.
+ * @param {object} prov  ethers.js provider.
+ * @param {{collectEvents: Array, dlEvents: Array}|null} [prefetched]
+ *   The history from a chain read, null when that read was unusable, or
+ *   undefined when there was none.
+ * @returns {Promise<{collectEvents: Array, dlEvents: Array}|null>}
+ */
+async function _readCollectAndDrain(result, tokenId, prov, prefetched) {
+  if (prefetched !== undefined) return prefetched;
+  const poolFloor = await resolveScanFromBlock(prov, ethers, tokenId);
+  const from = nftScanFromBlock({
+    mintBlock: result.mintBlockNumber,
+    sharedFloor: poolFloor,
+  });
+  return scanCollectAndDrain(tokenId, prov, from);
+}
+
+/**
+ * Whether the exit value has to come off the chain.
+ *
+ * Normally only when none is recorded. For an NFT the bot rebalanced
+ * itself, `_applyCloseEntry` has already loaded one out of the rebalance
+ * log, so this is otherwise false and the recorded figure stands.
+ *
+ * Under `refresh` that is the wrong answer, and wrong in the way that
+ * matters most: the exit value is the largest term in a closed period,
+ * and `priceChangePnl` is `exitValue − entryValue − fees`. Re-pricing
+ * the entry and the fees while leaving the exit at its recorded price
+ * does not correct the row, it makes it wrong differently. The fee gate
+ * below already reasons this way about its own logged figure.
+ *
+ * `_supplementExitFromChain` recomputes it from the Collect amounts at
+ * the close prices, which `_supplementHistoricalPrices` has already
+ * refreshed by the time this runs.
+ *
+ * @param {object} result    History record for one NFT.
+ * @param {boolean} [refresh] Re-derive a figure the log already gave.
+ * @returns {boolean} Whether to read the exit value off the chain.
+ */
+function _needsExitFromChain(result, refresh) {
+  const recorded =
+    result.exitValueUsd !== undefined &&
+    result.exitValueUsd !== null &&
+    result.exitValueUsd !== 0;
+  const priced =
+    result.token0UsdPriceAtClose !== undefined &&
+    result.token0UsdPriceAtClose !== null;
+  return priced && (refresh === true || !recorded);
+}
+
+/**
+ * Extract token amounts from chain and compute USD values: the entry
+ * from the mint TX receipt, the exit value and lifetime fees from the
+ * NFT's Collect/DecreaseLiquidity history, and gas from the receipts.
+ * Requires txHashes and token prices to already be populated in the result.
+ *
+ * @param {object} result   History result to supplement in-place.
+ * @param {string} tokenId  NFT token ID.
+ * @param {{collectEvents: Array, dlEvents: Array}|null} [collectAndDrain]
+ *   See `getPositionHistory`'s `opts.collectAndDrain`.
+ * @param {boolean} [refresh]  Re-derive figures the log already supplied.
+ */
+async function _supplementAmountsFromChain(
+  result,
+  tokenId,
+  collectAndDrain,
+  refresh,
+) {
   const needEntry = needsEntryFromChain(result);
-  const needExit = !result.exitValueUsd && result.token0UsdPriceAtClose;
+  const needExit = _needsExitFromChain(result, refresh);
   /*- Fees are re-derived from the chain for every closed NFT whose close
    *  prices are known — including the ones the rebalance log already
    *  supplied a figure for, because that figure is the understated one.
@@ -369,25 +451,13 @@ async function _supplementAmountsFromChain(result, tokenId) {
     ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
     : 0n;
   if (needExit || needFees) {
-    /*- Floored at this NFT's own mint: it cannot emit before it exists.
-     *  Epoch reconstruction calls this once per closed NFT in the chain,
-     *  so a pool-wide floor is re-walked once per rebalance.
-     *
-     *  Runs to the chain head, with no upper bound.  One would have to
-     *  come from the app's inferred succession, which reads consecutive
-     *  mints as successive rebalances — sound only when every mint in
-     *  the pool IS a rebalance.  A dust mint from a failed or partial
-     *  rebalance looks identical in the Transfer log, so the NFT it
-     *  appears to replace can still be funded and drain later; bounding
-     *  there truncates the scan and loses the drain.
-     *
-     *  One scan serves both consumers below — see scanCollectAndDrain. */
-    const poolFloor = await resolveScanFromBlock(prov, ethers, tokenId);
-    const from = nftScanFromBlock({
-      mintBlock: result.mintBlockNumber,
-      sharedFloor: poolFloor,
-    });
-    const scan = await scanCollectAndDrain(tokenId, prov, from);
+    // One read serves both consumers below — see scanCollectAndDrain.
+    const scan = await _readCollectAndDrain(
+      result,
+      tokenId,
+      prov,
+      collectAndDrain,
+    );
     if (scan) {
       const ctx = { tokenId, dec0, dec1, scan };
       if (needExit) _supplementExitFromChain(result, ctx);
@@ -512,13 +582,55 @@ async function _resolvePoolAddress(activePosition, tokenId) {
 }
 
 /**
+ * Which ends of a period still need a price fetched.
+ *
+ * Normally only the ends that have none: a price already on the record
+ * came from the rebalance log or an earlier scan and re-reading it would
+ * spend quota to arrive at the same number.
+ *
+ * Under `refresh` that reasoning inverts. The stored price is the one
+ * the operator is asking to replace, so treating it as sufficient makes
+ * the whole request a no-op — the request completes, reports success,
+ * and changes nothing.
+ *
+ * A period with no date at that end is never fetchable either way:
+ * there is no moment to ask about.
+ *
+ * @param {object} result   History record for one NFT.
+ * @param {boolean} refresh Re-read prices already present.
+ * @returns {{needOpen: boolean, needClose: boolean}}
+ */
+function _needsPriceFill(result, refresh) {
+  const wanted = refresh === true;
+  const hasOpen = result.mintDate !== undefined && result.mintDate !== null;
+  const hasClose = result.closeDate !== undefined && result.closeDate !== null;
+  const openPriced =
+    result.token0UsdPriceAtOpen !== undefined &&
+    result.token0UsdPriceAtOpen !== null;
+  const closePriced =
+    result.token0UsdPriceAtClose !== undefined &&
+    result.token0UsdPriceAtClose !== null;
+  return {
+    needOpen: hasOpen && (wanted || !openPriced),
+    needClose: hasClose && (wanted || !closePriced),
+  };
+}
+
+/**
  * Fill missing token prices from GeckoTerminal when dates are available.
+ *
+ * With `refresh`, a price already on the record is re-read rather than
+ * kept. That is the point of the Re-scan Prices path: the stored figure
+ * is the one under suspicion, so trusting it would make the whole
+ * request a no-op.
+ *
  * @param {object} result          History result to supplement in-place.
  * @param {object} activePosition  Bot's active position.
+ * @param {boolean} [refresh]      Re-read prices already present.
  */
-async function _supplementHistoricalPrices(result, activePosition) {
-  const needOpen = result.mintDate && !result.token0UsdPriceAtOpen;
-  const needClose = result.closeDate && !result.token0UsdPriceAtClose;
+async function _supplementHistoricalPrices(result, activePosition, refresh) {
+  const wanted = refresh === true;
+  const { needOpen, needClose } = _needsPriceFill(result, wanted);
   if (!needOpen && !needClose) return;
   const pool = await _resolvePoolAddress(activePosition, result.tokenId);
   if (!pool) return;
@@ -533,6 +645,7 @@ async function _supplementHistoricalPrices(result, activePosition) {
     const p = await fetchHistoricalPriceGecko(pool, ts, "pulsechain", {
       ...tokenOpts,
       blockNumber,
+      refresh: wanted,
     });
     if (p.price0 > 0) result[k0] = p.price0;
     if (p.price1 > 0) result[k1] = p.price1;
@@ -562,6 +675,10 @@ async function _supplementHistoricalPrices(result, activePosition) {
  * @param {object[]} opts.rebalanceEvents  From the event scanner.
  * @param {object}   opts.activePosition   Bot's active position (for pool lookup).
  * @param {object}   [opts.fallbackPrices] Current prices {price0, price1} used when historical unavailable.
+ * @param {{collectEvents: Array, dlEvents: Array}|null} [opts.collectAndDrain]
+ *   This NFT's Collect/DecreaseLiquidity history, when the caller read
+ *   it with the rest of its chain; null when that read was unusable.
+ *   Omit it to have the history read here, for this NFT alone.
  * @returns {Promise<object>}  Historical data (null fields where unavailable).
  */
 async function getPositionHistory(tokenId, opts = {}) {
@@ -591,7 +708,20 @@ async function getPositionHistory(tokenId, opts = {}) {
   if (close) _applyCloseEntry(result, close);
 
   _supplementFromEvents(result, tokenId, opts.rebalanceEvents);
-  if (!result.mintDate) {
+  /*-
+   *  The transaction, not just the date. Every NFT a rebalance created
+   *  gets both from that rebalance's event. The chain's OLDEST NFT gets
+   *  neither from an event — no event names it as a `newTokenId` — so
+   *  `_applyFirstMint` stamps the date and block from the scanner's
+   *  `chainFirstMint*` fields and leaves the hash null.
+   *
+   *  Gating on the date alone therefore skipped the lookup for the one
+   *  NFT it exists to serve. The hash is what `needsEntryFromChain` and
+   *  the creation-gas read both require, so without it that NFT opens at
+   *  $0 and its mint costs nothing — the first row of the Per-Day table
+   *  dashes out and the totals count the missing entry as zero.
+   */
+  if (!result.mintDate || !result.mintTxHash) {
     const _t1 = Date.now();
     await supplementMintFromChain(result, tokenId);
     log.info(
@@ -601,7 +731,11 @@ async function getPositionHistory(tokenId, opts = {}) {
     );
   }
   const _t2 = Date.now();
-  await _supplementHistoricalPrices(result, opts.activePosition);
+  await _supplementHistoricalPrices(
+    result,
+    opts.activePosition,
+    opts.refreshPrices === true,
+  );
   log.info(
     "[history] _supplementHistoricalPrices #%s: %dms",
     tokenId,
@@ -620,7 +754,12 @@ async function getPositionHistory(tokenId, opts = {}) {
       result.token1UsdPriceAtClose = fb.price1;
   }
   const _t3 = Date.now();
-  await _supplementAmountsFromChain(result, tokenId);
+  await _supplementAmountsFromChain(
+    result,
+    tokenId,
+    opts.collectAndDrain,
+    opts.refreshPrices === true,
+  );
   log.info(
     "[history] _supplementAmountsFromChain #%s: %dms",
     tokenId,
@@ -629,4 +768,9 @@ async function getPositionHistory(tokenId, opts = {}) {
   return result;
 }
 
-module.exports = { getPositionHistory, needsEntryFromChain };
+module.exports = {
+  getPositionHistory,
+  needsEntryFromChain,
+  _needsPriceFill, // exported for tests
+  _needsExitFromChain, // exported for tests
+};

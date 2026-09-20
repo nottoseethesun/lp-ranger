@@ -22,14 +22,23 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const {
-  _fetchGeckoOhlcvAtTimeframe,
-  _setOhlcv429Delays,
-} = require("../src/price-fetcher");
+const { _fetchGeckoOhlcvAtTimeframe } = require("../src/price-fetcher");
 const {
   _resetForTest: _resetGeckoRateLimit,
   _getPenaltyUntilMs,
 } = require("../src/gecko-rate-limit");
+/*- The schedule is owned by price-source-backoff.js and shared by every
+ *  price source, so it is imported from there rather than through
+ *  price-fetcher (per feedback_no_reexports) — and RESTORED from what it
+ *  actually was, not from a copy of the numbers. A hardcoded restore
+ *  writes one module's stale constant into state the whole process
+ *  reads. */
+const {
+  _setDelays: _setOhlcv429Delays,
+  _getDelays,
+} = require("../src/price-source-backoff");
+
+const _REAL_DELAYS = _getDelays();
 
 const POOL = "0x1234567890abcdef1234567890abcdef12345678";
 const TS = 1700000000;
@@ -51,7 +60,7 @@ describe("GeckoTerminal OHLCV 429 retry", () => {
   afterEach(() => {
     globalThis.fetch = _originalFetch;
     global.setTimeout = _origSetTimeout;
-    _setOhlcv429Delays([3_000, 10_000]);
+    _setOhlcv429Delays(_REAL_DELAYS);
     _resetGeckoRateLimit();
   });
 

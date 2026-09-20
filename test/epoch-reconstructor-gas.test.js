@@ -24,6 +24,10 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const { _buildClosedEpoch } = require("../src/epoch-reconstructor");
+const {
+  CHAIN_HISTORY_MODULE,
+  chainHistoryStub,
+} = require("./helpers/chain-history-stub");
 
 describe("_buildClosedEpoch", () => {
   /*- Gas is the third input to `epochPnl` and the last to get the guard.
@@ -99,13 +103,24 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
    *  cheap and reliable, price lookups are quota-limited and pausable. */
 
   /** Load the module with one history shape and one gas price. */
-  function withGas(historyPatch, gasUsd, trace = []) {
+  function withGas(historyPatch, gasUsd, trace = [], seen = null) {
     const Module = require("module");
     const orig = Module.prototype.require;
     let inScope = false;
     Module.prototype.require = function (id) {
+      if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       if (id === "./bot-pnl-updater")
-        return { actualGasCostUsd: async () => gasUsd };
+        return {
+          /*-
+           *  Both arguments are recorded, not just the first. Every
+           *  other stub in the suite ignores them, which is how the
+           *  second one could be dropped with every test still green.
+           */
+          actualGasCostUsd: async (wei, when) => {
+            if (seen) seen.push({ wei, when });
+            return gasUsd;
+          },
+        };
       /*- Stubbed so no unit test reaches the network, and so the trace
        *  can show WHERE the native-price fetch happened relative to the
        *  fresh-prices scope. */
@@ -188,6 +203,55 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
     assert.strictEqual(epochs[0].epochPnl, 95 - 100 + 2 - 0.03);
   });
 
+  it("prices the gas at the moment the epoch closed", async () => {
+    /*-
+     *  Gas charged to an epoch is the rebalance that closed it, so it is
+     *  valued then rather than at today's market. Nothing else in the
+     *  suite pins this: every other stub takes no arguments, so dropping
+     *  the second one would leave the whole suite green while silently
+     *  re-pricing years of history at this morning's rate.
+     */
+    const seen = [];
+    await run(
+      withGas(
+        { gasCostWei: "2000000000000000", closeBlockNumber: 27_123_456 },
+        0.03,
+        [],
+        seen,
+      ),
+    );
+    assert.strictEqual(seen.length, 1, "gas should be converted once");
+    const { when } = seen[0];
+    assert.ok(when, "a close moment must be handed to the converter");
+    assert.strictEqual(
+      when.timestamp,
+      Math.floor(Date.parse("2026-03-16T10:00:00Z") / 1000),
+      "timestamp must be the close, in seconds",
+    );
+    assert.strictEqual(
+      when.blockNumber,
+      27_123_456,
+      "the close block lets the exact-to-the-moment source answer",
+    );
+  });
+
+  it("falls back to today when the close moment is unknown", async () => {
+    /*-
+     *  An absent close date is not a reason to withhold the epoch. The
+     *  converter is handed nothing and prices at today.
+     */
+    const seen = [];
+    await run(
+      withGas(
+        { gasCostWei: "2000000000000000", closeDate: null },
+        0.03,
+        [],
+        seen,
+      ),
+    );
+    assert.strictEqual(seen[0].when, undefined);
+  });
+
   it("leaves an NFT rejected for gas out of the resume buffer", async () => {
     /*- What makes rejection acceptable: the NFT stays on the to-do
      *  list, so the rescan re-reads exactly it rather than inheriting
@@ -198,8 +262,10 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
   });
 
   it("resolves the native price past the idle pause before converting", async () => {
-    /*- Gas is the only epoch figure needing a CURRENT price; exit values
-     *  and fees use historical ones carried on the history record.
+    /*-
+     *  Gas is priced at the day it was spent, like exit values and fees.
+     *  The CURRENT price is its fallback, for a day no historical source
+     *  can answer — and that fallback has to be reachable.
      *
      *  `bot.js` pauses price lookups at startup unless
      *  `--start-with-price-lookups-unpaused` is passed, and only browser

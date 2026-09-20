@@ -70,4 +70,36 @@ describe("classifyCompounds — fees from rebalance vs standalone", () => {
     });
     assert.equal(r.totalCompoundedUsd, 0);
   });
+
+  it("attaches each standalone compound's own USD value", async () => {
+    /*-
+     *  Two consumers read this figure and neither computes it: the
+     *  lifetime scan sums it into `compoundHistory` and the per-NFT
+     *  total (`bot-recorder-lifetime.js`), and the unmanaged details
+     *  view sums it for the Current panel
+     *  (`position-details-compound.js`). It is the event's own deposit
+     *  at the prices passed in — 3 token0 at $2 plus 4 token1 at $0.50.
+     *
+     *  The compound event carries no block or hash, so the classifier
+     *  reaches for neither a receipt nor a block timestamp here.
+     */
+    const nftEvents = {
+      ilEvents: [
+        { amount0: 10n, amount1: 5n, blockNumber: 100 },
+        { amount0: 3n, amount1: 4n },
+      ],
+      collectEvents: [],
+      dlEvents: [],
+      ilLogsCount: 2,
+    };
+    const r = await classifyCompounds(nftEvents, {
+      decimals0: 0,
+      decimals1: 0,
+      price0: 2,
+      price1: 0.5,
+      tokenId: "1",
+    });
+    assert.equal(r.compounds.length, 1);
+    assert.equal(r.compounds[0].usdValue, 8);
+  });
 });

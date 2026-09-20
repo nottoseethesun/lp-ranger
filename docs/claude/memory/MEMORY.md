@@ -19,7 +19,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — One lint command; file lists live only in scripts/lint-targets.js
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile then node_modules, `npm i`. Run it first; never analyse the dep graph
-- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap in wipe/restore-settings; no check inside agents or against a running server
+- [test commands](feedback_test_commands.md) — Never raw `node --test`/`npm test`; wrap tests and any script that loads `src/` in wipe/restore-settings; no check inside agents or against a running server
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the actual linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver, no `v` prefix; latest tag needs `--sort=-v:refname` **plus** `grep -v '^v'`
 
@@ -37,7 +37,8 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [operator sees UI, not logs](feedback_operator_sees_ui_not_logs.md) — Answer in badge/dialog terms; the log is the assistant's instrument, not the operator's interface
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — User uses them interchangeably; don't ask which
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Answer only what was asked, about only the thing named; yes/no means yes/no
-- [prose style](feedback_prose_style.md) — Short sentences, concise, spell out small numbers, no gwei
+- [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mentioned mid-fix is information, not a work order; downstream ones get dropped
+- [prose style](feedback_prose_style.md) — Short sentences, concise, no slop words or empty structure, spell out small numbers, no gwei
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no pronoun where two candidates exist
 - [release notes style](feedback_release_notes_style.md) — Overview naming an honorable Old West gunslinger + one-line summary; state consequences and payoffs, not just changes
 - [revert means code](feedback_revert_means_code.md) — "Revert the changes" = repo edits only, never the in-flight plan
@@ -70,18 +71,21 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [KISS](feedback_kiss.md) — One clean heuristic beats layered complex approaches
 - [logging](feedback_logging.md) — Token symbols, NFT id + emoji, full context on compound/rebalance/swap
 - [minimize caching](feedback_minimize_caching.md) — No new caching layers unless unavoidable; reuse existing resolvers
+- [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key blockchain-derived caches as generically as possible (e.g. by pool) so every position can use them
 - [module self-announcement](feedback_module_self_announcement.md) — A module needing a lifecycle event announces itself; B doesn't reach into A
 - [Moralis first](feedback_moralis_first.md) — Moralis is the primary historical price source when a key exists
 - [multiline comment style](feedback_multiline_comment_style.md) — `/*- ... */` block form over stacked `//` lines
 - [never compact code](feedback_never_compact_code.md) — Don't compress formatting to fit max-lines; extract a file
 - [no delay patches](feedback_no_delay_patches.md) — Never setTimeout as a fix where await/flow control belongs
-- [no duplication](feedback_no_duplication.md) — Never duplicate code or RPC calls; fetch once and pass it down
+- [no duplication](feedback_no_duplication.md) — Never duplicate code or RPC calls; fetch once and pass it down. Client/server is no excuse — extract the pure part both tiers can import
 - [no computation in params](feedback_no_computation_in_params.md) — Never put an await/lookup inside an argument; hoist it (ESLint rule: deferred)
 - [no extra state](feedback_no_extra_state.md) — No new tracker/Map/flag when existing state can serve double duty
 - [no genesis chain scans](feedback_no_genesis_chain_scans.md) — Every getLogs/queryFilter scan needs a tight lower bound
 - [no global monkey-patch](feedback_no_global_monkey_patch.md) — Never modify JS globals (console, prototypes, Date, Math, fetch)
 - [no heuristic thresholds](feedback_no_heuristic_thresholds.md) — No heuristic dollar amounts guarding logic
 - [no junk repair code](feedback_no_junk_repair_code.md) — "Backfill" is banned; no repair/migration/dedup heaped onto a problem
+- [never clear to force a recompute](feedback_never_clear_to_force_a_recompute.md) — Ask for the rebuild with a flag; overwrite when the new value exists, never delete first
+- [don't persist a correction](feedback_dont_persist_a_correction.md) — Before adding state to remember a fix-up, ask whether the wrong value should be written at all
 - [no lazy loading](feedback_no_lazy_loading.md) — No lazy `require()` inside functions; import at module top
 - [no re-exports](feedback_no_reexports.md) — No barrel/aggregator re-exports; import from the owning module
 - [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — Exactly one literal per shipped config value, in the defaults file
@@ -106,7 +110,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [config stomp investigation](project_config_stomp_investigation.md) — bot-config.json silently overwritten before; root cause unknown, guards in place
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three-tier layout (config/data/logs); only two subdirs at the app-config top
 - [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
-- [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Always "Raspberry Pi 5 with Heat Sink and Fan"
+- [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Always "Raspberry Pi 5 (recommended configuration: …)", whole recommendation inside the parens
 - [PR #125 burn-in watch](project_pr125_burn_in_watch.md) — LP-browser rescan after a failed scan, in prod burn-in
 - [0.8.17 burn-in watch](project_0817_burn_in_watch.md) — Aggregator now really routes via 9mm; swap pricing on Prod changes with this release
 - [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — 0.9.2 + hotfix 0.9.2.1 on Prod; user says the app may be done, 1.0 after burn-in
@@ -123,14 +127,16 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [fresh deposit detection](project_fresh_deposit_detection.md) — Transfer scan with swap/drain/contract filters for lifetime HODL
 - [P&L accounting model](project_pnl_accounting_model.md) — Settled definitions: IL/G is divergence only, fees counted once in Profit
 - [lifetime metrics distinction](project_lifetime_metrics_distinction.md) — Lifetime Net P&L vs Lifetime IL/G — different formulas, different roles
+- [top panels price at today](project_top_panels_price_at_today.md) — Current + Lifetime value everything at today's prices; only Per-Day keeps period dollars
 - [Moralis setup flow](project_moralis_setup_flow.md) — Moralis key can be entered during wallet setup, not just Settings
 - [price source priority](project_price_source_priority.md) — Moralis → GeckoTerminal → DexScreener, current and historical
 - [scan-running guard intentional](project_scan_running_guard_intentional.md) — `_scanRunning` dropping concurrent scan requests is deliberate
 - [single nonce manager](project_single_nonce_manager.md) — One shared NonceManager per wallet, never per-position
 - [swap serialized](project_swap_serialized.md) — Swap path is deliberately serialized to avoid RPC acceptance issues
-- [unmanaged N/A principle](project_unmanaged_na_principle.md) — Unmanaged positions show N/A for anything about rebalance control
+- [unmanaged N/A principle](project_unmanaged_na_principle.md) — Unmanaged positions show N/A for anything about rebalance control, and no Lifetime panel
 - [bot-loop test scaffolding](project_bot_loop_test_scaffolding.md) — startBotLoop's poll/stop lifecycle has no direct test fixture
 - [code cleanup nice-to-haves](project_code_cleanup_nice_to_haves.md) — Running list of code-cleanup polish items
+- [deferred comment cleanup](project_deferred_comment_cleanup.md) — Storytelling JSDoc (one claim false), 119 old-form openers, an engineering.md passage — queued behind #2.2 and #3
 - [consolidate RPC retry](project_consolidate_rpc_retry.md) — Consolidate the per-URL × per-attempt RPC-retry pattern
 - [dashboard cleanup NTH](project_dashboard_cleanup_nth.md) — Import cycles, module-level cache sweep, 42 orphan HTML ids
 - [debug scripts print URL](project_debug_scripts_print_url.md) — Every `debug*` script should print its visit-this URL

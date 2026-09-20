@@ -40,3 +40,42 @@ describe("totalLifetimeDeposit NaN guard", () => {
     assert.equal(res.total, 8);
   });
 });
+
+describe("totalLifetimeDeposit — re-valuing at fresh prices", () => {
+  /** One deposit that already carries the figure a bad price produced. */
+  const priced = () => [{ ...oneDeposit()[0], usd: 9999 }];
+
+  it("reuses the figure a deposit already carries", async () => {
+    let calls = 0;
+    const counted = async () => {
+      calls += 1;
+      return { price0: 2, price1: 3 };
+    };
+    const res = await totalLifetimeDeposit(priced(), 18, 18, counted);
+    assert.equal(res.total, 9999);
+    assert.equal(calls, 0, "no source is asked");
+  });
+
+  it("prices every deposit again when asked to refresh", async () => {
+    let calls = 0;
+    const counted = async () => {
+      calls += 1;
+      return { price0: 2, price1: 3 };
+    };
+    const res = await totalLifetimeDeposit(priced(), 18, 18, counted, {
+      refresh: true,
+    });
+    assert.equal(calls, 1, "the source is asked again");
+    assert.equal(res.total, 8, "the new price replaces the old figure");
+  });
+
+  it("keeps the old figure when the refresh finds no price", async () => {
+    /*- Zero means no source answered. Replacing a real figure with it
+     *  would make Re-scan Prices destructive on a bad feed day. */
+    const empty = async () => ({ price0: 0, price1: 0 });
+    const res = await totalLifetimeDeposit(priced(), 18, 18, empty, {
+      refresh: true,
+    });
+    assert.equal(res.total, 9999);
+  });
+});

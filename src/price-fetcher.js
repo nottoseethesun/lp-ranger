@@ -70,7 +70,8 @@ function _moralisKey() {
 function _moralisSource(fn) {
   return _moralisKey() ? [{ name: "Moralis", fn }] : [];
 }
-const { geckoRateLimit, noteGecko429 } = require("./gecko-rate-limit");
+const { geckoRateLimit } = require("./gecko-rate-limit");
+const { retryOn429 } = require("./price-source-backoff");
 const {
   getGeckoPoolOrientation,
   flushGeckoPoolCache,
@@ -315,22 +316,6 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
  * @param {'day'|'hour'|'minute'} timeframe  Candle granularity.
  * @returns {Promise<number>}  USD close price (0 if unavailable).
  */
-/**
- * Retry delays (ms) when GeckoTerminal OHLCV returns HTTP 429. The first
- * delay (3s) gives the server's short-term burst counter a moment to drain;
- * the second (10s) covers longer cool-downs. Kept short enough that the worst
- * case per call (~13s) doesn't blow up the test suite, long enough that we
- * usually recover a genuine transient rate limit.
- *
- * Exposed via `_setOhlcv429Delays` so tests can shrink them to near-zero.
- * @type {number[]}
- */
-let _ohlcv429DelaysMs = [3_000, 10_000];
-
-/** Override the OHLCV 429 retry schedule (tests only). */
-function _setOhlcv429Delays(delays) {
-  _ohlcv429DelaysMs = delays;
-}
 
 /**
  * Perform one OHLCV HTTP request. Returns `{ status, close }`:
@@ -371,7 +356,6 @@ async function _fetchGeckoOhlcvAtTimeframe(
   network,
   timeframe,
 ) {
-  await geckoRateLimit();
   // End of the UTC day the timestamp falls in. `limit=1` returns the
   // most recent candle whose close time is ≤ `before_timestamp`.
   const dayStart = Math.floor(timestamp / 86400) * 86400;
@@ -380,28 +364,27 @@ async function _fetchGeckoOhlcvAtTimeframe(
     `https://api.geckoterminal.com/api/v2/networks/${network}` +
     `/pools/${poolAddress}/ohlcv/${timeframe}` +
     `?before_timestamp=${before}&limit=1&currency=usd&token=${token}`;
-  let res = await _fetchOhlcvOnce(url, timeframe);
-  // Retry 429s: GeckoTerminal enforces a server-side rate limit on top of
-  // our in-process limiter (the limiter tracks our intent, not their
-  // counter). During startup bursts Gecko trips even when our limiter says
-  // OK. A 429 means "retry later", distinct from "no data" — retry it with
-  // backoff AND push the shared gecko-rate-limit window forward so
-  // subsequent callers in the same burst also back off, preventing a cascade
-  // of 429s.
-  for (let i = 0; res.status === 429 && i < _ohlcv429DelaysMs.length; i++) {
-    const delay = _ohlcv429DelaysMs[i];
-    noteGecko429(delay);
-    log.warn(
-      "[price-fetcher] GeckoTerminal OHLCV %s pool=%s 429 — retry %d/%d in %dms",
-      timeframe,
-      poolAddress,
-      i + 1,
-      _ohlcv429DelaysMs.length,
-      delay,
-    );
-    await new Promise((r) => setTimeout(r, delay));
-    res = await _fetchOhlcvOnce(url, timeframe);
-  }
+  /*- GeckoTerminal enforces its own limit on top of our in-process one,
+   *  which tracks our intent rather than their counter, so a burst can
+   *  trip them while the limiter still says OK. A 429 means "retry
+   *  later", distinct from "no data".
+   *
+   *  The retry AND the cross-call escalation both live in
+   *  `price-source-backoff.js` — the other GeckoTerminal caller raises
+   *  the same penalty, and neither module owns the other. */
+  const res = await retryOn429({
+    source: "gecko",
+    label: `OHLCV ${timeframe} pool=${poolAddress}`,
+    /*- The limiter goes INSIDE, so every attempt consults it — a retry
+     *  is a request like any other and must take a slot in the window
+     *  and honour the cool-down. Outside, a call that retried three
+     *  times made four requests and recorded one, and its retries were
+     *  the only Gecko traffic in the process that ignored the penalty. */
+    fetchOnce: async () => {
+      await geckoRateLimit();
+      return _fetchOhlcvOnce(url, timeframe);
+    },
+  });
   if (res.status !== 200 && res.status !== 0) {
     log.warn(
       "[price-fetcher] GeckoTerminal OHLCV %s pool=%s status=%d (treating as empty)",
@@ -506,6 +489,8 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
  * @param {string} [opts.token0Address] - Token0 contract address.
  * @param {string} [opts.token1Address] - Token1 contract address.
  * @param {number} [opts.blockNumber]   - Block number for Moralis fallback.
+ * @param {boolean} [opts.refresh]      - Fetch even when the price is cached,
+ *   and overwrite the cached entry with what comes back.
  * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.
  */
 /**
@@ -591,8 +576,14 @@ async function fetchHistoricalPriceGecko(
     : toUtcDayKey(timestamp);
   const t0 = opts.token0Address;
   const t1 = opts.token1Address;
-  const c0 = t0 ? getHistoricalPrice(network, t0, utcKey) : null;
-  const c1 = t1 ? getHistoricalPrice(network, t1, utcKey) : null;
+  /*- `refresh` is the Re-scan Prices path. A historical price never
+   *  changes, so the disk cache has no expiry — which also means a bad
+   *  entry stays until something reads past it. Reading past it is the
+   *  only way a re-value reaches a new number; whatever comes back is
+   *  written over the old entry below. */
+  const useCache = opts.refresh !== true;
+  const c0 = t0 && useCache ? getHistoricalPrice(network, t0, utcKey) : null;
+  const c1 = t1 && useCache ? getHistoricalPrice(network, t1, utcKey) : null;
   if (c0 !== null && c1 !== null) return { price0: c0, price1: c1 };
   const { price0, price1 } = await _fetchHistoricalPair(
     poolAddress,
@@ -838,7 +829,6 @@ module.exports = {
   _fetchGeckoOhlcvAtTimeframe,
   _fetchMoralisCurrent,
   _fetchMoralisHistorical,
-  _setOhlcv429Delays,
   _resetDustUnitPriceCache,
   _resetPauseStateForTests,
   _cache,

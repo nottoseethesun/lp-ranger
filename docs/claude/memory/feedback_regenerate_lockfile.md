@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 53c63b8a-d973-4be1-8005-50ac113c57eb
+  modified: 2026-09-20T00:13:43.092Z
 ---
 
 The lockfile (`package-lock.json`) exists so every developer (and CI) installs the exact same dependency tree. But it must be **deleted and regenerated periodically** — otherwise transitive deps stay pinned at old versions indefinitely, even when the parent's caret range already accepts a newer patched release. Stale lockfiles are how unnecessary overrides and unpatched advisories accumulate.
@@ -115,3 +116,36 @@ from "stale lockfile".
 never tested against, so `npm audit` going quiet is not sufficient
 evidence.  Run `./node_modules/.bin/markdownlint-cli2 <some files>` and
 see it exit 0.  (Never `npx` — see [[feedback_no_npx]].)
+
+## Never go back from a deleted lockfile (2026-09-19)
+
+`npm run check` failed on 16 advisories. I ran the procedure, the
+regenerated tree came back with **21** including a new high
+(`undici@7.24.4`, where the committed lockfile had `7.29.1`), and I
+restored the committed lockfile with `git checkout --`.
+
+**That restore was wrong.** The user, on being told:
+
+> "on the lockfile, no, delete it and regenerate, and attempt to fix
+> piecemeal if that does not work — but don't ever go back from a deleted
+> lockfile."
+
+So the regenerated tree is the tree. A worse advisory count is not a
+reason to go back; it is the starting point for the next step.
+
+**The procedure, corrected:**
+
+1. Confirm the server/bot is stopped.
+2. `rm package-lock.json`
+3. `rm -rf node_modules`
+4. `npm i`
+5. `npm audit`. Whatever it says, **keep the regenerated lockfile.**
+6. Anything left, fix piecemeal — a scoped override for the specific
+   parent that pins a bad transitive, as the `markdownlint-cli2` section
+   above describes. Confirm the pin with
+   `npm view <parent>@<ver> dependencies.<dep>` before overriding, and
+   run the tool afterwards to prove the forced version works.
+
+Never `git checkout -- package-lock.json` to undo a regeneration. Going
+back restores the stale pins the regeneration existed to clear, and
+leaves the next person to rediscover the same thing.

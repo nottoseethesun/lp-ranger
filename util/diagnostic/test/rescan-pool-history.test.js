@@ -26,6 +26,7 @@ const {
   _findPositionKey,
   _filterDescription,
   _findPoolKey,
+  _clearsHodl,
   _writeJson,
 } = require("../rescan-pool-history");
 const { captureConsole, captureExit } = require("./_capture");
@@ -164,6 +165,26 @@ test("_findPoolKey — exits 1 when several pools share the prefix", async () =>
   assert.equal(res.value.code, 1);
   assert.match(res.err.join("\n"), /AMBIGUOUS/);
   assert.match(res.err.join("\n"), /--token0/);
+});
+
+test("_clearsHodl — only with --clear-hodl and a pool entry to clear", () => {
+  const flag = { "clear-hodl": true };
+  const cases = [
+    { keys: ["k"], flags: flag, want: true, why: "asked, entry found" },
+    { keys: ["k"], flags: {}, want: false, why: "not asked" },
+    {
+      keys: ["k"],
+      flags: { "clear-hodl": null },
+      want: false,
+      why: "a null flag is not a request",
+    },
+    { keys: [], flags: flag, want: false, why: "no entry found" },
+    { keys: null, flags: flag, want: false, why: "no entry looked up" },
+  ];
+  for (const c of cases) {
+    const got = _clearsHodl(c.keys, c.flags);
+    assert.equal(got, c.want, c.why);
+  }
 });
 
 test("_writeJson — writes via a temp file and leaves no .tmp behind", () => {

@@ -23,6 +23,7 @@ const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
 const sendTx = require("./send-transaction");
+const config = require("./config");
 const { findPoolCreationBlock } = require("./pool-creation-finder");
 
 /** Disk-cache file path (overridable via env for tests). */
@@ -236,10 +237,36 @@ function _resetForTests() {
   }
 }
 
+/**
+ * The block a pool was created in: the lower bound for any scan of its
+ * NFTs.
+ *
+ * Without it a scan starts at genesis. An NFT cannot have events before
+ * its pool existed, so the creation block is both correct and tight.
+ *
+ * Supplies the provider and the configured factory, which is the whole
+ * difference between this and `getPoolCreationBlockCached`.
+ *
+ * @param {string|null|undefined} poolAddress
+ * @returns {Promise<number>}  Creation block, or 0 when unknown. Never
+ *   rejects on a failed lookup: `getPoolCreationBlockCached` answers 0,
+ *   and a scan from further back is slower, not wrong.
+ */
+async function poolCreationFloor(poolAddress) {
+  if (poolAddress === undefined || poolAddress === null || poolAddress === "")
+    return 0;
+  return getPoolCreationBlockCached({
+    provider: sendTx.getManagedReadProvider(),
+    factoryAddress: config.FACTORY,
+    poolAddress,
+  });
+}
+
 module.exports = {
   getPoolCreationBlockCached,
   resolvePoolAddressForToken,
   resolvePoolCreationBlockForPosition,
+  poolCreationFloor,
   _resetForTests,
   _CACHE_PATH,
 };

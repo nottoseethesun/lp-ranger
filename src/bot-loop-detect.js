@@ -34,6 +34,7 @@ const {
   fetchTokenPrices: _fetchTokenPrices,
 } = require("./bot-pnl-updater");
 const { ensureLiveEpoch } = require("./live-epoch-entry");
+const { withFreshPricesAllowed } = require("./price-fetcher-gate");
 
 /*- Retry policy for `_detectPosition`.  The detector swallows
  *  per-RPC-call errors (logged at [pos-detect] for diagnostics) and
@@ -232,9 +233,31 @@ async function _tryInitPnlTracker(
   walletAddress,
 ) {
   try {
-    const { price0, price1 } = await _fetchTokenPrices(
-      position.token0,
-      position.token1,
+    /*-
+     *  Read outside the idle price-lookup pause, the way a rebalance or a
+     *  compound does.
+     *
+     *  The pause exists to stop *recurring* poll traffic against a
+     *  quota-limited price API while nobody is watching. This read is not
+     *  that: it happens once, when a position starts, and the tracker it
+     *  builds is never built again. A paused read answers zero for a
+     *  token that is not already cached, which sends this function down
+     *  its "prices unavailable" path and leaves the position with no
+     *  tracker, no epochs and no P&L snapshot for the life of the
+     *  process — every figure on its panels a dash until a restart.
+     *
+     *  That is reachable on an ordinary morning: positions auto-start on
+     *  a stagger and their pool scans run for half an hour apiece, so the
+     *  sequence easily outlasts the browser's 15-minute idle timer, and
+     *  an operator who walks away strands whichever position starts on
+     *  the wrong side of it. A token already priced for another position
+     *  survives on its cache entry, which is why this presents as one
+     *  position blank and the rest fine.
+     *
+     *  Bounded by construction: two tokens, once per position start.
+     */
+    const { price0, price1 } = await withFreshPricesAllowed(() =>
+      _fetchTokenPrices(position.token0, position.token1),
     );
     if (price0 > 0 || price1 > 0) {
       const ps = await getPoolState(provider, ethersLib, {

@@ -4,7 +4,7 @@
  *   that populates `snap.currentCompoundedUsd` and `snap.currentGasUsd`
  *   for the Managed Current panel.  The panel must agree with what the
  *   Unmanaged on-chain scan reports for the same NFT (see
- *   position-details-compound._scanCompounds).
+ *   position-details-compound._detectCurrentNftValues).
  *
  *   Three resolution paths are covered:
  *     1. Per-NFT cache hit (gas + compounded both cached) → no scan.
@@ -70,11 +70,15 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
 
   it("uses per-NFT cache when present, no scan", async () => {
     const snap = {};
+    /*- The cache holds coins; this poll's prices turn them into the
+     *  figure on screen. 4 of token0 at $2 plus 0.39 of token1 at $1. */
     const deps = {
       _botState: {
         nftGasWeiByTokenId: { 12345: "1600000000000000" }, // 0.0016 PLS
-        nftCompoundedUsdByTokenId: { 12345: 8.39 },
+        nftCompoundedAmountsByTokenId: { 12345: { amount0: 4, amount1: 0.39 } },
       },
+      _lastPrice0: 2,
+      _lastPrice1: 1,
     };
     const position = { tokenId: 12345 };
     const poolState = { decimals0: 18, decimals1: 18 };
@@ -91,27 +95,59 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
         /*- Gas is cached, compounded is not — the resolver should fall back
          *  to compoundHistory filtered by tokenId, not trigger a scan. */
         nftGasWeiByTokenId: { 12345: "1000000000000000" },
+        /*-
+         *  RAW units, as the scan records them, at the pool's real
+         *  decimals — 18 for token0, 6 for token1, deliberately unequal.
+         *  Equal decimals, or decimals of 0, would let an implementation
+         *  that never divided produce the right answer anyway.
+         *
+         *  5 + 3.39 of token0 at $1, and 2 of token1 at $3: 14.39.
+         *  The other NFT's entry must be skipped.
+         */
         compoundHistory: [
-          { tokenId: "12345", usdValue: 5 },
-          { tokenId: "12345", usdValue: 3.39 },
-          { tokenId: "99999", usdValue: 100 }, // different NFT, must be skipped
+          {
+            tokenId: "12345",
+            amount0Deposited: "5000000000000000000",
+            amount1Deposited: "0",
+          },
+          {
+            tokenId: "12345",
+            amount0Deposited: "3390000000000000000",
+            amount1Deposited: "2000000",
+          },
+          {
+            tokenId: "99999",
+            amount0Deposited: "100000000000000000000",
+            amount1Deposited: "0",
+          },
         ],
       },
+      _lastPrice0: 1,
+      _lastPrice1: 3,
     };
     const position = { tokenId: 12345 };
-    const poolState = { decimals0: 18, decimals1: 18 };
+    const poolState = { decimals0: 18, decimals1: 6 };
     await applyCurrentNftFigures(snap, deps, position, poolState);
     assert.strictEqual(
       snap.currentCompoundedUsd,
-      8.39,
-      "should sum only entries matching tokenId",
+      14.39,
+      "sums only this NFT's entries, scaled by each token's own decimals",
     );
     assert.strictEqual(_detectCalls.length, 0, "no scan when gas is cached");
   });
 
   it("triggers backfill scan and persists both caches on full miss", async () => {
     _detectImpl = async () => ({
-      compounds: [{ usdValue: 4.0 }, { usdValue: 4.39 }],
+      /*- RAW deposited amounts, as the classifier returns them, at the
+       *  pool's real and unequal decimals: 4 + 4.39 of token0 (18dp) and
+       *  2 of token1 (6dp). Priced below at $1 and $3 → 8.39 + 6. */
+      compounds: [
+        { amount0Deposited: "4000000000000000000", amount1Deposited: "0" },
+        {
+          amount0Deposited: "4390000000000000000",
+          amount1Deposited: "2000000",
+        },
+      ],
       totalCompoundedUsd: 100, // Lifetime total — not used by Current panel
       totalGasWei: "500000000000000",
       totalNftGasWei: "1600000000000000",
@@ -122,7 +158,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
       _botState: {},
       signer: { getAddress: async () => "0xWALLET" },
       _lastPrice0: 1,
-      _lastPrice1: 1,
+      _lastPrice1: 3,
       updateBotState: (patch) => updates.push(patch),
     };
     const position = {
@@ -131,23 +167,25 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
       token1: "0xB",
       fee: 3000,
     };
-    const poolState = { decimals0: 18, decimals1: 18 };
+    const poolState = { decimals0: 18, decimals1: 6 };
     await applyCurrentNftFigures(snap, deps, position, poolState);
     assert.strictEqual(_detectCalls.length, 1, "one backfill scan");
     assert.strictEqual(_detectCalls[0].tokenId, "12345");
-    assert.strictEqual(snap.currentCompoundedUsd, 8.39);
+    assert.strictEqual(snap.currentCompoundedUsd, 14.39);
     assert.ok(snap.currentGasUsd > 0);
     assert.strictEqual(updates.length, 1);
     assert.deepStrictEqual(updates[0].nftGasWeiByTokenId, {
       12345: "1600000000000000",
     });
-    assert.deepStrictEqual(updates[0].nftCompoundedUsdByTokenId, {
-      12345: 8.39,
+    /*- Coins are what is saved — each token scaled by its OWN decimals;
+     *  the dollars above came from pricing them at this poll's prices. */
+    assert.deepStrictEqual(updates[0].nftCompoundedAmountsByTokenId, {
+      12345: { amount0: 8.39, amount1: 2 },
     });
     /*- Caches must also be visible on _botState immediately so subsequent
      *  in-process reads (without waiting for the disk round-trip) see them. */
-    assert.deepStrictEqual(deps._botState.nftCompoundedUsdByTokenId, {
-      12345: 8.39,
+    assert.deepStrictEqual(deps._botState.nftCompoundedAmountsByTokenId, {
+      12345: { amount0: 8.39, amount1: 2 },
     });
   });
 

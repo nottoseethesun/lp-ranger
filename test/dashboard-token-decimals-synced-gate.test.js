@@ -389,7 +389,8 @@ describe("Re-scan Prices: the tool header", () => {
     /*- Reserving its height cost three blank lines above the window
      *  checkbox and pushed it below the fold. */
     const css = read("9mm-pos-mgr.css");
-    const i = css.indexOf("mm-pos-mgr-rescan-notice {");
+    const i = css.indexOf("mm-pos-mgr-dialog-notice {");
+    assert.notEqual(i, -1, "the notice rule must exist");
     const rule = css.slice(i, css.indexOf("}", i));
     assert.match(rule, /display:\s*none/);
     assert.equal(/min-height/.test(rule), false, "no reserved height");

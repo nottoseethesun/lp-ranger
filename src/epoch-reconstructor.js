@@ -6,8 +6,11 @@
  * When the P&L tracker has no closed epochs (e.g. after wallet re-import),
  * this module queries each closed NFT in the rebalance chain via
  * `getPositionHistory()` and builds closed epoch objects that the tracker
- * can restore.  Results are cached to `.epoch-cache.json` (gitignored)
- * keyed by blockchain/wallet/contract/tokenId for fast restarts.
+ * can restore.  The on-chain Collect/DecreaseLiquidity history behind
+ * those queries is read for the whole chain in one pass first, rather
+ * than once per NFT — see `_readChainHistories`.  Results are cached in
+ * the epoch cache (`src/epoch-cache.js`), keyed by pool identity, for
+ * fast restarts.
  *
  * Rate limiting
  * ─────────────
@@ -22,6 +25,11 @@
 const { log } = require("./log");
 const config = require("./config");
 const { getPositionHistory } = require("./position-history");
+const {
+  scanChainCollectAndDrain,
+  collectAndDrainOf,
+} = require("./position-history-scan-helpers");
+const { eventsFor } = require("./nft-events-batch");
 const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
 const {
@@ -155,11 +163,45 @@ function _cacheKeyFromState(botState) {
 }
 
 /**
+ * When an epoch's gas was spent, for pricing it.
+ *
+ * The gas charged to an epoch is the rebalance that closed it, so the
+ * close is the moment to price at: the date for GeckoTerminal, whose
+ * historical candles are per-day, and the block for Moralis, which is
+ * exact. A record carrying neither returns `undefined`, and the charge
+ * is valued at today's price instead.
+ *
+ * @param {object} h  History record for one NFT in the chain.
+ * @param {boolean} [refresh]  Read past the price cache and replace what
+ *   it holds — the Re-scan Prices path, for a day cached at a bad price.
+ * @returns {{timestamp: number, blockNumber: number|undefined,
+ *   refresh: boolean}|undefined}
+ */
+function _gasSpentAt(h, refresh = false) {
+  if (h.closeDate === undefined || h.closeDate === null) return undefined;
+  const ms = new Date(h.closeDate).getTime();
+  /*-
+   *  An unparseable date gives NaN, which would travel as a timestamp
+   *  and price the gas against nothing.
+   */
+  if (Number.isNaN(ms) || ms <= 0) return undefined;
+  return {
+    timestamp: Math.floor(ms / 1000),
+    blockNumber: h.closeBlockNumber,
+    refresh,
+  };
+}
+
+/**
  * Resolve the native token's USD price once, before converting any gas.
  *
- * Gas is the only epoch figure that needs a CURRENT price — exit values
- * and fees are valued at historical prices carried on the history
- * record. `actualGasCostUsd` reports a failed price lookup as `0`, and a
+ * Gas is priced at the day it was spent, like every other figure on an
+ * epoch. This warms the CURRENT price because that is gas's fallback:
+ * when no historical source can answer for a given day, the charge is
+ * valued at today's market rather than at nothing.
+ *
+ * That fallback is the reason this matters at all.
+ * `actualGasCostUsd` reports a failed price lookup as `0`, and a
  * zero USD on a non-zero wei amount is what `_fetchEpochsFromChain`
  * reads as "price unknown", so without a resolved price every epoch in
  * the chain is rejected and the history never builds.
@@ -170,10 +212,12 @@ function _cacheKeyFromState(botState) {
  * never has. A paused lookup returns the last cached value or `0`, and
  * a process that has never fetched has nothing cached.
  *
- * One fetch per reconstruction, inside `withFreshPricesAllowed` so the
- * pause does not apply to it. Everything downstream reads it from cache,
- * including while paused, so this does not reopen per-NFT price traffic
- * — which is what the pause exists to prevent.
+ * One fetch, inside `withFreshPricesAllowed` so the pause does not
+ * apply to it, and every later reader of the CURRENT price takes it from
+ * cache. The historical lookups each epoch makes are a separate matter:
+ * they are not behind the pause at all, and they are bounded by the
+ * number of distinct days the chain closed on rather than by the number
+ * of NFTs, because the day cache answers the repeats.
  *
  * Failure is left to speak for itself: a genuinely unresolvable price
  * still yields `0`, the epochs are still rejected, and the rescan
@@ -194,6 +238,113 @@ async function _warmNativePrice() {
 }
 
 /**
+ * A closed NFT's buffered history from an earlier attempt, if any.
+ *
+ * A closed NFT is inert: it was drained and the app never returns to
+ * it, so its history cannot change between one attempt and the next.
+ * Reusing a buffered read is therefore exact, not a cache with a
+ * staleness window.
+ *
+ * @param {Map<string, object>|undefined} resumeBuffer
+ * @param {string} tokenId
+ * @returns {object|undefined}
+ */
+function _buffered(resumeBuffer, tokenId) {
+  return resumeBuffer instanceof Map ? resumeBuffer.get(tokenId) : undefined;
+}
+
+/**
+ * Read the Collect/DecreaseLiquidity history of every closed NFT this
+ * pass will build, in one batch, before the per-NFT loop starts.
+ *
+ * Read one NFT at a time, each from its own mint block to the chain
+ * head, those histories would overlap almost entirely. On a long chain
+ * that would be hours of paced requests on every rebuild. See
+ * `scanChainCollectAndDrain`.
+ *
+ * Covers exactly the NFTs the loop will fetch — the ones not in the
+ * resume buffer, by the same test the loop applies — so every lookup the
+ * loop makes was prepared, and a buffered NFT is not read again.
+ *
+ * When another consumer in the same pass is going to read the whole chain
+ * anyway (`readChainEvents`), the histories come out of that read instead
+ * of a second one. With nothing left to read, neither read is started on
+ * this function's behalf.
+ *
+ * A failed read is not an exception here, for the same reason no
+ * per-NFT failure is: the pass must finish. It returns null, and every
+ * NFT then takes its history as unknown, the same answer a failed
+ * per-NFT read gives. An NFT whose exit value and fee the rebalance log
+ * already holds still builds; the rest are skipped, which flags the
+ * history for another attempt.
+ *
+ * @param {string[]} closedIds
+ * @param {Array} events  Rebalance events.
+ * @param {Map<string, object>|undefined} resumeBuffer
+ * @param {() => Promise<Map<string, object>>} [readChainEvents]  The
+ *   pass's shared whole-chain read, when there is one.
+ * @returns {Promise<Map<string, object|null>|null>}  Null when the read
+ *   failed.
+ */
+async function _readChainHistories(
+  closedIds,
+  events,
+  resumeBuffer,
+  readChainEvents,
+) {
+  const unread = closedIds.filter(
+    (id) => _buffered(resumeBuffer, id) === undefined,
+  );
+  if (unread.length === 0) return new Map();
+  try {
+    if (readChainEvents === undefined || readChainEvents === null) {
+      return await scanChainCollectAndDrain(unread, events);
+    }
+    const chainEvents = await readChainEvents();
+    log.info(
+      "[pnl] Taking %d closed NFT(s)' Collect/DecreaseLiquidity history from the lifetime read of the same chain",
+      unread.length,
+    );
+    return collectAndDrainOf(chainEvents, unread);
+  } catch (err) {
+    log.warn(
+      "[pnl] Could not read Collect/DecreaseLiquidity history for %d closed NFT(s): %s",
+      unread.length,
+      err.message,
+    );
+    return null;
+  }
+}
+
+/**
+ * One closed NFT's history, read from chain.
+ *
+ * @param {string} tokenId
+ * @param {object} ctx
+ * @param {Map<string, object|null>|null} ctx.histories  From
+ *   `_readChainHistories`.
+ * @param {Array} ctx.events  Rebalance events.
+ * @param {object|null} ctx.activePos
+ * @param {object|null} ctx.fallbackPrices
+ * @returns {Promise<object>}
+ */
+async function _readHistory(tokenId, ctx) {
+  /*-
+   *  `eventsFor` throws for an NFT the batch was not prepared with,
+   *  rather than answering "no history" for it.
+   */
+  const collectAndDrain =
+    ctx.histories === null ? null : eventsFor(ctx.histories, tokenId);
+  return getPositionHistory(tokenId, {
+    rebalanceEvents: ctx.events,
+    activePosition: ctx.activePos,
+    fallbackPrices: ctx.fallbackPrices,
+    collectAndDrain,
+    refreshPrices: ctx.refreshPrices === true,
+  });
+}
+
+/**
  * Fetch closed epoch data from chain for each closed NFT in the rebalance chain.
  * GeckoTerminal rate limiting is handled centrally in price-fetcher.js — no
  * per-position delay needed here.
@@ -202,6 +353,12 @@ async function _warmNativePrice() {
  * @param {object|null} activePos   Active position for pool lookup.
  * @param {object|null} fallbackPrices  Current prices {price0, price1} for when historical unavailable.
  * @param {Function|null} onProgress  Optional (done, total) callback for UI progress.
+ * @param {Map<string, object>} [resumeBuffer]  NFTs already read by an
+ *   earlier attempt; see `reconstructEpochs`.
+ * @param {() => Promise<Map<string, object>>} [readChainEvents]  The
+ *   pass's shared whole-chain read; see `_readChainHistories`.
+ * @param {boolean} [refreshPrices]  Read past the price cache while
+ *   rebuilding — the Re-scan Prices opt-in, not an ordinary Reload.
  * @returns {Promise<object[]>}   Array of closed Epoch objects (unsorted).
  */
 async function _fetchEpochsFromChain(
@@ -211,32 +368,33 @@ async function _fetchEpochsFromChain(
   fallbackPrices,
   onProgress,
   resumeBuffer,
+  readChainEvents,
+  refreshPrices = false,
 ) {
   await _warmNativePrice();
+  const histories = await _readChainHistories(
+    closedIds,
+    events,
+    resumeBuffer,
+    readChainEvents,
+  );
+  const ctx = { histories, events, activePos, fallbackPrices, refreshPrices };
   const closedEpochs = [];
   for (let i = 0; i < closedIds.length; i++) {
     if (onProgress) onProgress(i, closedIds.length);
     const tokenId = closedIds[i];
     try {
-      /*- A closed NFT is inert: it was drained and the app never returns
-       *  to it, so its history cannot change between one attempt and the
-       *  next. Reusing a buffered read is therefore exact, not a cache
-       *  with a staleness window. */
-      const buffered =
-        resumeBuffer instanceof Map ? resumeBuffer.get(tokenId) : undefined;
-      const h =
-        buffered ??
-        (await getPositionHistory(tokenId, {
-          rebalanceEvents: events,
-          activePosition: activePos,
-          fallbackPrices,
-        }));
+      const buffered = _buffered(resumeBuffer, tokenId);
+      const h = buffered ?? (await _readHistory(tokenId, ctx));
       /*- Explicit, not truthiness: a genuine zero must convert rather
        *  than fall through and be read as an unknown. */
       const gasKnown = h.gasCostWei !== null && h.gasCostWei !== undefined;
       if (buffered === undefined && gasKnown) {
         const wei = BigInt(h.gasCostWei);
-        const usd = await actualGasCostUsd(wei);
+        const usd = await actualGasCostUsd(
+          wei,
+          _gasSpentAt(h, ctx.refreshPrices === true),
+        );
         /*- A second way to a fabricated $0.00, and the likelier one:
          *  the wei amount is known but the price behind it is not.
          *  `actualGasCostUsd` answers 0 both when its price lookup
@@ -303,7 +461,92 @@ async function _fetchEpochsFromChain(
 }
 
 /**
+ * Read the chain and return the whole closed-epoch set.
+ *
+ * Ordinarily that means every closed NFT. Under a windowed re-value it
+ * means only the recent ones, with the older epochs carried over from
+ * what is already held — `_splitByWindow` decides which is which, and
+ * hands back an empty `keep` for every non-windowed caller, so their
+ * behaviour is unchanged.
+ *
+ * The set returned is always measured against the WHOLE chain by the
+ * completeness check downstream, never against the window. A windowed
+ * pass that re-read everything it meant to therefore reports the table
+ * as complete rather than arming the thirty-minute retry.
+ *
+ * @param {object} o  See `reconstructEpochs`; `cachedEpochs` is the set
+ *   already held, and `windowDays` 0 means the whole chain.
+ * @param {Function} [o._fetch]  Stands in for `_fetchEpochsFromChain`
+ *   in tests, so the short-read fallback can run without a chain.
+ * @returns {Promise<object[]>} Closed epochs, unsorted.
+ */
+async function _rebuildClosedEpochs(o) {
+  /*- Injected in tests so the short-read fallback can be exercised
+   *  without a chain; the same shape as `_detect` in
+   *  position-details-compound.js. */
+  const fetchEpochs = o._fetch ?? _fetchEpochsFromChain;
+  /*- Both reads below differ only in which NFTs they cover, so the rest
+   *  of the arguments are named once. */
+  const read = (nftIds) =>
+    fetchEpochs(
+      nftIds,
+      o.rebalanceEvents,
+      o.botState.activePosition,
+      o.fallbackPrices,
+      o.onProgress,
+      o.botState._epochResumeBuffer,
+      o.readChainEvents,
+      o.refreshPrices,
+    );
+  const { ids, keep } = _splitByWindow(
+    o.rebalanceEvents,
+    o.closedIds,
+    o.cachedEpochs ?? [],
+    o.windowDays,
+  );
+  const rebuilt = await read(ids);
+  if (keep.length === 0) return rebuilt;
+  /*-
+   *  A windowed pass that came back short cannot be merged, and the
+   *  reason is in `setCachedEpochs`: its "never lose historical epochs"
+   *  rule reads a short incoming set as one whose OLD periods are
+   *  missing, and prepends that many from the existing cache. That
+   *  premise holds for every other caller. It does not hold here —
+   *  `keep` is already carrying those old periods — so the prepend
+   *  would add a second copy of the oldest ones while the period that
+   *  actually failed stayed missing. The Per-Day table would show a
+   *  duplicated old row, and its gas would be counted twice.
+   *
+   *  So on a short read the window is abandoned and the whole chain is
+   *  rebuilt in this same pass. The NFTs just read are in the resume
+   *  buffer and are not read again, so the cost is only the periods the
+   *  window had skipped — and the result is a set whose length means
+   *  what every reader downstream assumes it means.
+   */
+  if (rebuilt.length >= ids.length) return [...keep, ...rebuilt];
+  log.warn(
+    "[pnl] Re-scan window abandoned — %d of %d period(s) came back; rebuilding the whole chain rather than merging a short set",
+    rebuilt.length,
+    ids.length,
+  );
+  return read(o.closedIds);
+}
+
+/**
  * Merge closed epochs into the P&L tracker and persist.
+ *
+ * The live epoch goes to disk with the closed ones, so both writes below
+ * say the same thing. `setCachedEpochs` reads a bare array as "no live
+ * epoch" and stores `null` for one, which would undo the full state
+ * written a line above it.
+ *
+ * It has to persist because it carries a figure nothing can rebuild.
+ * Its entry value, fees and compounded coins are all re-derived on the
+ * next poll, so those would cost nothing to drop. Its GAS would: gas
+ * only accumulates, so a dropped charge is gone. `_recordCancelGas` in
+ * `bot-cycle.js` is the charge that depends on this: it is offered once,
+ * by the code that just spent it, and nothing re-derives it.
+ *
  * @param {object}   pnlTracker     Tracker instance.
  * @param {object[]} closedEpochs   Sorted closed epoch array.
  * @param {object|null} liveEpoch   Current live epoch to preserve.
@@ -323,7 +566,7 @@ function _mergeAndPersist(
   });
   pnlTracker.restore({ closedEpochs, liveEpoch });
   if (updateBotState) updateBotState({ pnlEpochs: pnlTracker.serialize() });
-  if (cacheKey) setCachedEpochs(cacheKey, closedEpochs);
+  if (cacheKey) setCachedEpochs(cacheKey, pnlTracker.serialize());
 }
 
 /**
@@ -390,14 +633,133 @@ function isEpochHistoryComplete(closedEpochs, closedIds) {
  * @param {object} botState     Live bot state (same object the reload mutates).
  * @param {object} pnlTracker   Tracker to clear when a rebuild is requested.
  * @param {object} current      Already-serialized tracker state.
- * @returns {boolean}
+ * @returns {{forced: boolean, refreshPrices: boolean, windowDays: number}}
+ *   Whether to rebuild from scratch, whether to read past the price cache
+ *   while doing so, and how many days back to reach (0 = no limit).
  */
 function _consumeRebuildRequest(botState, pnlTracker, current) {
-  if (botState._needsEpochRebuild !== true) return false;
+  const rebuild = botState._needsEpochRebuild === true;
+  const revalue = botState._needsEpochPriceRevalue === true;
+  if (!rebuild && !revalue)
+    return { forced: false, refreshPrices: false, windowDays: 0 };
+  /*- Only a re-value is date-scoped. Reload's purpose is to replace the
+   *  whole history, so a window on it would leave behind exactly the
+   *  stale rows it was asked to discard. */
+  const days = revalue ? botState._epochRevalueWindowDays : 0;
+  const windowDays = Number.isInteger(days) && days > 0 ? days : 0;
   botState._needsEpochRebuild = false;
-  log.info("[pnl] Reload requested a full epoch rebuild — discarding cache");
-  pnlTracker.restore({ closedEpochs: [], liveEpoch: current.liveEpoch });
-  return true;
+  botState._needsEpochPriceRevalue = false;
+  botState._epochRevalueWindowDays = 0;
+  log.info(
+    "[pnl] %s requested a full epoch rebuild%s",
+    revalue ? "Re-scan Prices" : "Reload",
+    revalue
+      ? windowDays > 0
+        ? ` — re-reading prices from the last ${windowDays} day(s)`
+        : " — re-reading every price"
+      : " — discarding cache",
+  );
+  /*-
+   *  Reload empties the history first because its whole purpose is to
+   *  replace what is held with what the chain says; keeping the old set
+   *  would let a stale epoch survive the rebuild it asked for.
+   *
+   *  A re-value is the opposite request. Only the prices are in doubt,
+   *  and the figures stand until their replacements exist —
+   *  `_mergeAndPersist` overwrites the set once the rebuild returns. So
+   *  the epochs are left alone here: emptying them would blank the
+   *  Per-Day table for the whole run, and a re-scan interrupted halfway
+   *  would leave nothing behind rather than what it started with.
+   *
+   *  `forced` still does the work either way: it bypasses the
+   *  completeness guard and the cache fast path below, and discards the
+   *  resume buffer, so the chain is genuinely re-read.
+   */
+  if (rebuild)
+    pnlTracker.restore({ closedEpochs: [], liveEpoch: current.liveEpoch });
+  return { forced: true, refreshPrices: revalue, windowDays };
+}
+
+/**
+ * Split the chain's closed NFTs into the ones a windowed re-value has to
+ * re-read and the epochs it can leave alone.
+ *
+ * The window exists so an operator who spots one bad recent price does
+ * not pay for a whole chain. It is a date cutoff because that is the
+ * only axis the stored data supports: an epoch records `closeTime` but
+ * NOT the NFT it came from, so "rebuild just this one" is not
+ * expressible — see the *Rebuild Only the Missing Epoch* nice-to-have.
+ *
+ * That same gap decides the guard below. A history missing entries
+ * cannot be repaired within a window, because there is no way to tell a
+ * gap from a period that legitimately predates the cutoff. So an
+ * incomplete history ignores the window and rebuilds in full: slower
+ * than asked for, but it cannot silently preserve a hole.
+ *
+ * @param {object[]} rebalanceEvents  Chain events; each carries the
+ *   `oldTokenId` it closed and the `timestamp` it closed at.
+ * @param {string[]} closedIds        Every closed NFT in the chain.
+ * @param {object[]} cachedEpochs     Epochs already held.
+ * @param {number} windowDays         Days back to reach; 0 = no limit.
+ * @param {number} nowMs              Clock, injected for tests.
+ * @returns {{ids: string[], keep: object[]}} NFTs to re-read, and the
+ *   epochs to carry over untouched.
+ */
+function _splitByWindow(
+  rebalanceEvents,
+  closedIds,
+  cachedEpochs,
+  windowDays,
+  nowMs = Date.now(),
+) {
+  if (windowDays <= 0) return { ids: closedIds, keep: [] };
+  if (!isEpochHistoryComplete(cachedEpochs, closedIds)) {
+    log.info(
+      "[pnl] Re-scan window ignored — history holds %d of %d period(s); a partial set cannot tell a gap from an old period",
+      cachedEpochs.length,
+      closedIds.length,
+    );
+    return { ids: closedIds, keep: [] };
+  }
+  const cutoffMs = nowMs - windowDays * 24 * 60 * 60 * 1000;
+  const closedAt = new Map();
+  for (const e of rebalanceEvents || []) {
+    /*- `timestamp` is Unix SECONDS on these events. */
+    if (e.oldTokenId && typeof e.timestamp === "number")
+      closedAt.set(String(e.oldTokenId), e.timestamp * 1000);
+  }
+  /*- An NFT with no usable close time is re-read rather than skipped:
+   *  the window is an optimisation, and an unknown date must not be
+   *  read as "old enough to ignore". */
+  const ids = closedIds.filter((id) => {
+    const ts = closedAt.get(String(id));
+    return ts === undefined || ts >= cutoffMs;
+  });
+  const keep = cachedEpochs.filter(
+    (e) => typeof e.closeTime === "number" && e.closeTime < cutoffMs,
+  );
+  /*- The two sides have to account for every period between them. They
+   *  can disagree when an epoch's closeTime and its rebalance event's
+   *  timestamp fall on opposite sides of the cutoff — minutes apart at
+   *  worst, but enough to drop or duplicate a row. Rebuilding in full is
+   *  the only answer that cannot corrupt the table. */
+  if (ids.length + keep.length !== closedIds.length) {
+    log.warn(
+      "[pnl] Re-scan window ignored — %d to re-read + %d kept ≠ %d period(s); rebuilding in full",
+      ids.length,
+      keep.length,
+      closedIds.length,
+    );
+    return { ids: closedIds, keep: [] };
+  }
+  log.info(
+    "[pnl] Re-scan window: re-reading %d of %d period(s), keeping %d older than %d day(s)",
+    ids.length,
+    closedIds.length,
+    keep.length,
+    windowDays,
+  );
+  return { ids, keep };
 }
 
 /**
@@ -436,6 +798,11 @@ function _markHistoryComplete(botState, complete) {
  * @param {Array}    opts.rebalanceEvents   Rebalance events from the scanner.
  * @param {object}   opts.botState          Bot state object.
  * @param {Function} opts.updateBotState    State update callback.
+ * @param {object}   [opts.fallbackPrices]  Current prices {price0, price1}.
+ * @param {() => Promise<Map<string, object>>} [opts.readChainEvents]
+ *   A whole-chain read another consumer in the same pass will make anyway.
+ *   When given, the closed NFTs' histories come out of it rather than a
+ *   read of their own; see `_readChainHistories`.
  * @returns {Promise<number>} Number of epochs reconstructed.
  */
 async function reconstructEpochs({
@@ -444,6 +811,7 @@ async function reconstructEpochs({
   botState,
   updateBotState,
   fallbackPrices,
+  readChainEvents,
 }) {
   /*- Nothing to reconstruct is a complete history, not a short one: the
    *  yardstick is empty, so nothing can fall short of it. Saying so
@@ -467,7 +835,11 @@ async function reconstructEpochs({
   }
 
   const current = pnlTracker.serialize();
-  const forced = _consumeRebuildRequest(botState, pnlTracker, current);
+  const { forced, refreshPrices, windowDays } = _consumeRebuildRequest(
+    botState,
+    pnlTracker,
+    current,
+  );
   /*- Reached with a complete history when a live epoch closed and filled
    *  the last gap — no rebuild needed, but completeness still has to be
    *  recorded; see `_markHistoryComplete`. */
@@ -535,14 +907,17 @@ async function reconstructEpochs({
     botState._epochResumeBuffer instanceof Map
       ? botState._epochResumeBuffer
       : new Map();
-  const closedEpochs = await _fetchEpochsFromChain(
+  const closedEpochs = await _rebuildClosedEpochs({
+    botState,
     closedIds,
     rebalanceEvents,
-    botState.activePosition,
+    cachedEpochs: current.closedEpochs,
     fallbackPrices,
-    _progress,
-    botState._epochResumeBuffer,
-  );
+    readChainEvents,
+    refreshPrices,
+    windowDays,
+    onProgress: _progress,
+  });
   /*- Short history flags itself for another go.
    *
    *  The entry guard above rebuilds whenever reconstruction next runs,
@@ -575,6 +950,8 @@ module.exports = {
   _buildClosedEpoch,
   _cacheKeyFromState,
   _mergeAndPersist,
+  _splitByWindow, // exported for tests
+  _rebuildClosedEpochs, // exported for tests
   _hasValidTimestamps,
   _assembleEpoch,
   _fetchEpochsFromChain,

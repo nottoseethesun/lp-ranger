@@ -119,34 +119,17 @@ describe("epoch-cache", () => {
     assert.strictEqual(got.amount1, 200);
   });
 
-  it("stores and retrieves lastNftScanBlock", () => {
-    const {
-      setLastNftScanBlock,
-      getLastNftScanBlock,
-    } = require("../src/epoch-cache");
-    const key = {
-      wallet: `0xSB${U}`,
-      token0: "0xT0",
-      token1: "0xT1",
-      fee: 500,
-    };
-    assert.strictEqual(getLastNftScanBlock(key), 0);
-    setLastNftScanBlock(key, 12345);
-    assert.strictEqual(getLastNftScanBlock(key), 12345);
-  });
-
   it("REGRESSION: setCachedEpochs preserves pool-scan sibling fields", () => {
-    /*- The entry shares a cache slot with lifetimeHodlAmounts,
-     *  freshDeposits, and lastNftScanBlock. An earlier impl did
-     *  `cache[key] = {...value, cachedAt}` which silently nuked all
-     *  three siblings on every epoch persist — re-breaking the
-     *  lifetime-deposit UI on the next scan. This test pins the
-     *  merge contract. */
+    /*-
+     *  The entry shares a cache slot with lifetimeHodlAmounts and
+     *  freshDeposits. A plain `cache[key] = {...value, cachedAt}` would
+     *  wipe both siblings on every epoch persist, which breaks the
+     *  lifetime-deposit UI on the next scan. This test pins the merge
+     *  contract.
+     */
     const {
       setCachedLifetimeHodl,
       getCachedLifetimeHodl,
-      setLastNftScanBlock,
-      getLastNftScanBlock,
       setCachedFreshDeposits,
       getCachedFreshDeposits,
     } = require("../src/epoch-cache");
@@ -167,9 +150,10 @@ describe("epoch-cache", () => {
       raw1: "2",
       lastBlock: 26_000_000,
     });
-    setLastNftScanBlock(key, 26_000_000);
-    // Simulate epoch-reconstructor writing closed epochs — must NOT wipe
-    // the three pool-scan fields set just above.
+    /*-
+     *  Simulate epoch-reconstructor writing closed epochs — must NOT wipe
+     *  the two pool-scan fields set just above.
+     */
     setCachedEpochs(key, [{ id: 1, entryValue: 500 }]);
     assert.ok(
       getCachedLifetimeHodl(key),
@@ -179,11 +163,6 @@ describe("epoch-cache", () => {
     assert.ok(
       getCachedFreshDeposits(key),
       "freshDeposits must survive setCachedEpochs",
-    );
-    assert.strictEqual(
-      getLastNftScanBlock(key),
-      26_000_000,
-      "lastNftScanBlock must survive setCachedEpochs",
     );
     // And the epoch actually landed.
     assert.strictEqual(getCachedEpochs(key).closedEpochs[0].id, 1);
@@ -205,16 +184,15 @@ describe("epoch-cache", () => {
   });
 
   it("clearCacheEntry deletes every field cached under a pool's key", () => {
-    /*- Reload Current Position depends on this: closedEpochs,
-     *  liveEpoch, lifetimeHodlAmounts, freshDeposits, and
-     *  lastNftScanBlock all must go so the fresh scan starts from
-     *  pool creation with no stale merge. */
+    /*-
+     *  Reload Current Position depends on this: closedEpochs, liveEpoch,
+     *  lifetimeHodlAmounts and freshDeposits all must go, so the fresh
+     *  scan recomputes them with nothing stale merged in.
+     */
     const {
       clearCacheEntry,
       setCachedLifetimeHodl,
       getCachedLifetimeHodl,
-      setLastNftScanBlock,
-      getLastNftScanBlock,
       setCachedFreshDeposits,
       getCachedFreshDeposits,
     } = require("../src/epoch-cache");
@@ -230,18 +208,15 @@ describe("epoch-cache", () => {
       liveEpoch: { entryValue: 100 },
     });
     setCachedLifetimeHodl(key, { amount0: 1, amount1: 2 });
-    setLastNftScanBlock(key, 12_345_678);
     setCachedFreshDeposits(key, { raw0: "1", raw1: "2", lastBlock: 42 });
     /*- Sanity: everything present before clear. */
     assert.ok(getCachedEpochs(key));
     assert.ok(getCachedLifetimeHodl(key));
-    assert.strictEqual(getLastNftScanBlock(key), 12_345_678);
     assert.ok(getCachedFreshDeposits(key));
     clearCacheEntry(key);
     /*- Every field gone after clear. */
     assert.strictEqual(getCachedEpochs(key), null);
     assert.strictEqual(getCachedLifetimeHodl(key), null);
-    assert.strictEqual(getLastNftScanBlock(key), 0);
     assert.strictEqual(getCachedFreshDeposits(key), null);
   });
 

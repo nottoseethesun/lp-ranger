@@ -13,6 +13,7 @@
 
 const { log } = require("./log");
 const ethers = require("ethers");
+const { claimPoolForBoot } = require("./pool-already-managed");
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const {
@@ -151,6 +152,8 @@ function createAutoStartManagedPositions(deps) {
     );
     const wAddr = walletManager.getAddress();
     const shared = await _initSharedSigner(ethers);
+    /** poolKey -> tokenId that claimed it this boot. */
+    const claimedPools = new Map();
     let i = 0;
     for (const key of [...keys]) {
       /*- Non-lazy lookup.  `keys` came from `managedKeys(diskConfig)`
@@ -171,6 +174,30 @@ function createAutoStartManagedPositions(deps) {
       const tokenId = key.split("-").pop();
       const ok = await _verifyOwnership(pmC, wAddr, tokenId, key);
       if (!ok) {
+        i++;
+        continue;
+      }
+      /*- One active position per pool — see `claimPoolForBoot`, which
+       *  owns the rule and the reasoning for skipping rather than
+       *  stopping the loser. */
+      const claimed = await claimPoolForBoot({
+        claimedPools,
+        tokenId,
+        provider: prov,
+        ethersLib: ethers,
+        positionManager: config.POSITION_MANAGER,
+        poolKeyFn: (t0, t1, f) =>
+          positionMgr.poolKey(
+            config.CHAIN_NAME,
+            config.POSITION_MANAGER,
+            wAddr,
+            t0,
+            t1,
+            f,
+          ),
+        log: log.warn,
+      });
+      if (!claimed) {
         i++;
         continue;
       }

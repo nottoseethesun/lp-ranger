@@ -120,7 +120,7 @@ function checkZeroLiquidity(deps) {
 /**
  * When the lifetime scan flags a position as un-healable — e.g. its token
  * decimals are structurally unreadable on-chain (see
- * `bot-recorder-lifetime._ensureTokenDecimals`) — it stamps
+ * `bot-recorder-decimals-heal._ensureTokenDecimals`) — it stamps
  * `state._retireReason`.  Fire the `positionDataInvalid` Telegram
  * notification carrying that explanation and signal the poll loop to retire,
  * mirroring the drained-position path (`checkZeroLiquidity`, which fires

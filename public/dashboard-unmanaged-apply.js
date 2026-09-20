@@ -19,16 +19,16 @@ import {
   setKpiValue,
   checkHodlBaselineDialog,
 } from "./dashboard-data.js";
-import { _setPctSpan, _setAprSpan, _fmtUsd } from "./dashboard-data-kpi.js";
+import { _setPctSpan, _setAprSpan } from "./dashboard-data-kpi.js";
 import { toMintTsSeconds } from "./dashboard-date-utils.js";
-import { updateNetBreakdown } from "./dashboard-data-kpi-breakdown.js";
 import {
   setLastPrices,
   clearPriceOverrideIfFetched,
 } from "./dashboard-price-override.js";
 import { updateILDebugData } from "./dashboard-il-debug.js";
-import { renderDailyPnl, renderRebalanceEvents } from "./dashboard-history.js";
+import { renderRebalanceEvents } from "./dashboard-history.js";
 import { posStore } from "./dashboard-positions.js";
+import { rememberUnmanagedUnclaimedFees } from "./dashboard-data-kpi-fees.js";
 
 /** Update the composition bar + labels, or show grey "no price data" state. */
 export function _applyComposition(d, pos) {
@@ -67,30 +67,6 @@ export function _applyComposition(d, pos) {
   }
 }
 
-/** Update the lifetime date range label and duration. */
-export function _applyLifetimeDates(d) {
-  const startDate = d.firstEpochDate || d.mintDate;
-  const sub = g("kpiPnlPct");
-  if (sub)
-    sub.textContent = startDate
-      ? startDate + " \u2192 " + new Date().toISOString().slice(0, 10)
-      : "";
-  if (startDate) {
-    const days = (
-      (Date.now() - new Date(startDate).getTime()) /
-      86400000
-    ).toFixed(2);
-    const ltLabel = g("ltPnlLabel");
-    if (ltLabel)
-      ltLabel.textContent = "Net Profit and Loss Return over " + days + " days";
-  }
-}
-
-/** Adjust a lifetime KPI by subtracting compounded fees (avoids double-counting). */
-function _adjCompounded(raw, fallback, compounded) {
-  return raw !== undefined ? raw - (compounded || 0) : fallback;
-}
-
 /** Build positionStats payload for IL debug popover from unmanaged details. */
 function _balanceStats(amounts) {
   if (!amounts) return undefined;
@@ -99,67 +75,28 @@ function _balanceStats(amounts) {
     balance1: amounts.amount1.toFixed(6),
   };
 }
-
-/*-
- * Populate the trailing %/APR spans on the Lifetime cards so the layout
- * matches the managed-view flow (_updateNetReturn / _updateIL). Lifetime
- * pct/APR is relative to the total lifetime deposit and measured from the
- * pool's first epoch (or mint date as a fallback).
+/**
+ * Apply what phase 2 still returns for an unmanaged position.
+ *
+ * The Lifetime panel is replaced by a placeholder for these positions —
+ * everything it holds, from the Net P&L KPI down to the IL/G popover,
+ * sits inside `ltContent` and is hidden. Painting those was writing into
+ * elements nobody sees, and the figures behind them cost a walk of every
+ * NFT in the rebalance chain.
+ *
+ * What remains visible: the Rebalance Events table, and the Current
+ * panel's Fees Compounded and Gas, which come from a single-NFT scan
+ * rather than the chain.
+ *
+ * @param {object} d  The `/api/position/lifetime` response.
  */
-function _applyLifetimePctSpans(d, ltNet) {
-  const ltDeposit = d.entryValue || 0;
-  const ltStart = d.firstEpochDate || d.mintDate || null;
-  _setPctSpan("kpiNetPct", ltNet ?? 0, ltDeposit);
-  _setAprSpan("kpiNetApr", ltNet ?? 0, ltDeposit, ltStart);
-  _setPctSpan("netILPct", d.il ?? 0, ltDeposit);
-  _setAprSpan("netILApr", d.il ?? 0, ltDeposit, ltStart);
-}
-
-/** Populate the Lifetime panel from phase-2 response. */
 export function _applyLifetime(d) {
-  const comp = d.ltCompounded || 0;
-  /*- Parity with the managed flow (_resolveKpiTotals): Lifetime Net
-   *  includes the wallet residual so the KPI matches the sum of the
-   *  six breakdown rows. */
-  const ltNet =
-    _adjCompounded(d.ltNetPnl, d.netPnl, comp) + (d.residualValueUsd || 0);
-  setKpiValue("kpiNet", ltNet);
-  setKpiValue("ltProfit", _adjCompounded(d.ltProfit, d.profit, comp));
-  if (d.il !== null && d.il !== undefined) setKpiValue("netIL", d.il);
-  _applyLifetimePctSpans(d, ltNet);
   log.info(
-    "%c[lp-ranger] [unmanaged] lifetime entryValue=%s",
+    "%c[lp-ranger] [unmanaged] phase 2 entryValue=%s",
     "color:#fa0",
     d.entryValue,
   );
-  const ltDep = g("lifetimeDepositDisplay");
-  if (ltDep && d.entryValue > 0) ltDep.textContent = _fmtUsd(d.entryValue);
-  if (d.ltPriceChange !== undefined) _applyLifetimeBreakdown(d);
-  _applyLifetimeDates(d);
-  if (d.dailyPnl) renderDailyPnl(d.dailyPnl);
   if (d.rebalanceEvents) renderRebalanceEvents(d.rebalanceEvents);
-  // Update IL debug popover with lifetime HODL amounts from phase 2
-  if (d.pnlSnapshot?.ilInputs)
-    updateILDebugData({
-      pnlSnapshot: d.pnlSnapshot,
-      positionStats: _balanceStats(d.amounts),
-    });
-}
-
-/*- Server returns `residualValueUsd` (capped to wallet balance) in
- *  the quick-details payload; use it directly so unmanaged lifetime
- *  breakdown matches the managed flow.  New shape: Fees Compounded
- *  retains its row + dedicated info dialog; "Lifetime Fees" was
- *  dropped (per-epoch tracker sum was imprecise). */
-function _applyLifetimeBreakdown(d) {
-  updateNetBreakdown(
-    d.ltPriceChange || 0,
-    0,
-    d.ltGas || 0,
-    d.residualValueUsd || 0,
-    d.ltCompounded || 0,
-    d.pnlSnapshot?.initialResidualUsd || 0,
-  );
 }
 
 /** Apply balances, pool share, and tick to the position stats panel. */
@@ -290,6 +227,9 @@ function _applyILDebug(d) {
 
 /** Apply phase-1 (fast) position details to the dashboard UI. */
 export function _apply(d, pos) {
+  /*- Recorded before anything renders, so the Compound gate reads the
+   *  same figure the panel is about to show. */
+  rememberUnmanagedUnclaimedFees(pos?.tokenId, d.feesUsd);
   // Range chart + price marker
   botConfig.price = d.poolState.price;
   pos.poolAddress = d.poolState.poolAddress || null;

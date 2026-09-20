@@ -1,8 +1,9 @@
 ---
 name: Unmanaged positions show N/A for rebalance-control status
-description: Design principle for Unmanaged positions — any UI element about rebalance control/throttle/cap shows "N/A" with a circle-i tooltip "Only for Managed Positions"
+description: Design principle for Unmanaged positions — any UI element about rebalance control/throttle/cap shows "N/A" with a circle-i tooltip "Only for Managed Positions"; no Lifetime panel at all
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
+modified: 2026-09-17T04:19:08.818Z
 ---
 For an **Unmanaged** position, the dashboard must not show any rebalance-control
 status (CAPPED / THROTTLED / DOUBLING / OK / countdown / "Daily Limit" / etc.).
@@ -27,5 +28,14 @@ the user exclude information that is not of concern — Unmanaged should
   countdown — anything that controls or reports on rebalance scheduling.
 - The circle-i tooltip is a machine-default tooltip (browser `title=`),
   not a custom dialog. Short, terse: "Only for Managed Positions".
-- Whatever IS shown for unmanaged today (Activity Log subset, lifetime
-  P&L, KPIs from `_UNMANAGED_SETTINGS_KEYS`) keeps showing.
+- **Lifetime is not supported for Unmanaged positions.** The Lifetime
+  panel is hidden behind the placeholder "Click “Manage” to get reporting
+  of Lifetime values." (`lifetimeVisible` in
+  `public/dashboard-manage-ui.js`, true only while the position runs).
+  Never describe an Unmanaged position's behavior in terms of the
+  Lifetime panel. The server's `/api/position/lifetime` request still
+  runs for Unmanaged positions: it fills the Per-Day P&L and Rebalance
+  Events tables, and its finish clears the Sync badge.
+- Whatever else IS shown for unmanaged today (Activity Log subset,
+  Per-Day P&L, Rebalance Events, KPIs from `_UNMANAGED_SETTINGS_KEYS`)
+  keeps showing.

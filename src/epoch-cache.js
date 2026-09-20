@@ -2,10 +2,12 @@
  * @file src/epoch-cache.js
  * @module epochCache
  * @description
- * Disk-backed JSON cache for reconstructed P&L epochs.  Keyed by a
- * hierarchical path: `blockchain / wallet / nftContract / tokenId`,
- * mirroring the client-side URL structure.  Currently only PulseChain
- * is supported, but the key structure is designed for multi-chain use.
+ * Disk-backed JSON cache for reconstructed P&L epochs.  Keyed by pool
+ * identity, `blockchain.contract.wallet.token0.token1.fee` (`_cacheKey`),
+ * so a position's history survives the new NFT every rebalance mints.
+ * Each entry also holds the lifetime HODL amounts and fresh-deposit
+ * totals, written by the bot's lifetime scan and by the unmanaged
+ * details view.
  *
  * Cache file: `tmp/pnl-epochs-cache.json` (gitignored).
  */
@@ -82,10 +84,18 @@ function getCachedEpochs(keyOpts) {
 
 /**
  * Save P&L tracker state to the cache for a position.
- * Accepts either a full tracker state ({ closedEpochs, liveEpoch })
- * or a plain closedEpochs array (backward compat with epoch-reconstructor).
+ *
+ * Pass a full tracker state — `tracker.serialize()`. Every caller does.
+ *
+ * A bare array is also accepted, and asserts something: that there is no
+ * live epoch. It stores `null` for one. That is destructive to say by
+ * accident, because the live epoch holds gas, gas only accumulates, and
+ * nothing can re-derive it — so a `null` written in passing erases a
+ * period's cost permanently. Pass an array only to mean it.
+ *
  * @param {object}         keyOpts  Options for _cacheKey.
- * @param {object|object[]} data    Tracker state or closedEpochs array.
+ * @param {object|object[]} data    Tracker state, or a closedEpochs
+ *   array to store with no live epoch.
  */
 function setCachedEpochs(keyOpts, data) {
   const cache = _readCache();
@@ -107,12 +117,14 @@ function setCachedEpochs(keyOpts, data) {
     );
     value.closedEpochs = [...missing, ...incomingEpochs];
   }
-  /*- Merge — do NOT replace. The entry also holds `lifetimeHodlAmounts`,
-   *  `freshDeposits`, and `lastNftScanBlock` written by the lifetime-pool
-   *  scan. A naked `cache[key] = {...value, cachedAt}` silently wipes
-   *  those siblings every time epochs are persisted, re-breaking the
-   *  lifetime-deposit UI. Preserve the existing entry and only overwrite
-   *  the epoch-shaped keys. */
+  /*-
+   *  Merge — do NOT replace. The entry also holds `lifetimeHodlAmounts`
+   *  and `freshDeposits`, written by the lifetime scans. A naked
+   *  `cache[key] = {...value, cachedAt}` silently wipes those siblings
+   *  every time epochs are persisted, which breaks the lifetime-deposit
+   *  UI. Preserve the existing entry and only overwrite the epoch-shaped
+   *  keys.
+   */
   cache[key] = {
     ...(existing || {}),
     ...value,
@@ -145,33 +157,14 @@ function setCachedLifetimeHodl(keyOpts, hodl) {
 }
 
 /**
- * Read the last NFT scan block for incremental scanning.
- * @param {object} keyOpts  Options for _cacheKey.
- * @returns {number} Last scanned block, or 0 if not cached.
- */
-function getLastNftScanBlock(keyOpts) {
-  const cache = _readCache();
-  const entry = cache[_cacheKey(keyOpts)];
-  return entry?.lastNftScanBlock || 0;
-}
-
-/**
- * Save the last NFT scan block.
- * @param {object} keyOpts  Options for _cacheKey.
- * @param {number} block
- */
-function setLastNftScanBlock(keyOpts, block) {
-  const cache = _readCache();
-  const key = _cacheKey(keyOpts);
-  cache[key] = { ...(cache[key] || {}), lastNftScanBlock: block };
-  _writeCache(cache);
-}
-
-/**
  * Read cached fresh deposit totals for a pool.
  * @param {object} keyOpts  Options for _cacheKey.
- * @returns {{ raw0: string, raw1: string, lastBlock: number }|null}
- *   raw0/raw1 are BigInt-as-string for lossless storage.
+ * @returns {{ raw0: string, raw1: string, lastBlock: number,
+ *   deposits: object[] }|null}  raw0/raw1 are BigInt-as-string for
+ *   lossless storage. `lastBlock` is the newest mint whose window has
+ *   been scanned, so a later scan covers only what came after it.
+ *   `deposits` is the per-deposit list the lifetime deposit total is
+ *   built from; each entry keeps the dollar figure it was last given.
  */
 function getCachedFreshDeposits(keyOpts) {
   const cache = _readCache();
@@ -193,7 +186,7 @@ function setCachedFreshDeposits(keyOpts, data) {
 
 /**
  * Delete every field cached under a pool's key (closedEpochs,
- * liveEpoch, lifetimeHodlAmounts, lastNftScanBlock, freshDeposits).
+ * liveEpoch, lifetimeHodlAmounts, freshDeposits).
  * Used by the "Reload Current Position" endpoint to reset a position's
  * on-chain-derived state so the next scan starts from pool creation
  * with no stale data merged in.  No-op when the key is not present.
@@ -217,8 +210,6 @@ module.exports = {
   setCachedEpochs,
   getCachedLifetimeHodl,
   setCachedLifetimeHodl,
-  getLastNftScanBlock,
-  setLastNftScanBlock,
   getCachedFreshDeposits,
   setCachedFreshDeposits,
   clearCacheEntry,

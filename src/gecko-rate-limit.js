@@ -22,6 +22,12 @@
 "use strict";
 
 const { log } = require("./log");
+const {
+  penaltyWaitMs,
+  note429,
+  _penaltyUntilMs,
+  _resetForTest: _resetBackoff,
+} = require("./price-source-backoff");
 /** @type {number[]} Timestamps (ms) of recent GeckoTerminal API calls. */
 const _callTimes = [];
 
@@ -36,14 +42,13 @@ const _MAX_CALLS = 20;
 /** Sliding window length in milliseconds (60 seconds). */
 const _WINDOW_MS = 60_000;
 
-/**
- * Extra cool-down (ms) imposed when GeckoTerminal returns a 429 response. This
- * pushes the window forward so subsequent calls in the same burst pause rather
- * than immediately re-firing and collecting more 429s. Caller signals this via
- * `noteGecko429()`.
- * @type {number}
- */
-let _penaltyUntilMs = 0;
+/*- The 429 penalty itself lives in `price-source-backoff.js`, keyed by
+ *  source, because BOTH GeckoTerminal callers must share it and neither
+ *  owns the other: `price-fetcher.js` fetches OHLCV, `gecko-pool-cache.js`
+ *  fetches pool info, and a refusal of either is a refusal of the same
+ *  service. This module keeps only the sliding window, which is
+ *  GeckoTerminal's own published budget and belongs to GeckoTerminal. */
+const SOURCE = "gecko";
 
 /**
  * Wait if necessary to stay within GeckoTerminal's rate limit.
@@ -57,13 +62,15 @@ async function geckoRateLimit() {
   while (_callTimes.length > 0 && _callTimes[0] < now - _WINDOW_MS) {
     _callTimes.shift();
   }
-  // Honor any server-imposed cool-down from a previous 429 signal.
-  if (_penaltyUntilMs > now) {
-    const waitMs = _penaltyUntilMs - now;
+  /*- Honour the shared 429 penalty. It is owned by
+   *  price-source-backoff.js because the other GeckoTerminal caller
+   *  raises it too, and a refusal there is a refusal of this service. */
+  const penalty = penaltyWaitMs(SOURCE);
+  if (penalty > 0) {
     log.info(
-      `[gecko-rate-limit] 429 cool-down: waiting ${Math.ceil(waitMs / 1000)}s`,
+      `[gecko-rate-limit] 429 cool-down: waiting ${Math.ceil(penalty / 1000)}s`,
     );
-    await new Promise((r) => setTimeout(r, waitMs));
+    await new Promise((r) => setTimeout(r, penalty));
   }
   if (_callTimes.length >= _MAX_CALLS) {
     const waitMs = _callTimes[0] + _WINDOW_MS - now + 200;
@@ -76,27 +83,31 @@ async function geckoRateLimit() {
 }
 
 /**
- * Signal that GeckoTerminal returned a 429. The next call via
- * `geckoRateLimit()` will sleep for `coolDownMs` before firing. Any pending
- * in-flight callers in the same burst will also wait. This is shared state —
- * all callers across modules see the penalty.
+ * Signal that GeckoTerminal returned a 429.
  *
- * @param {number} coolDownMs  How long to delay the next call (milliseconds).
+ * Thin pass-through to the shared backoff, kept so callers that already
+ * know this module need not learn a second one. The escalation across
+ * consecutive refusals happens there — see `note429`.
+ *
+ * @param {number} coolDownMs  The delay the caller was going to wait.
  */
 function noteGecko429(coolDownMs) {
-  const until = Date.now() + Math.max(0, coolDownMs);
-  if (until > _penaltyUntilMs) _penaltyUntilMs = until;
+  note429(SOURCE, coolDownMs);
 }
 
-/** Current penalty timestamp (for tests / diagnostics). */
+/**
+ * The instant the shared cool-down expires, epoch ms (tests /
+ * diagnostics). The deadline as stored, not a remaining duration — a
+ * reading taken after it has passed still shows that a 429 was recorded.
+ */
 function _getPenaltyUntilMs() {
-  return _penaltyUntilMs;
+  return _penaltyUntilMs(SOURCE);
 }
 
-/** Reset call timestamps + penalty (for testing). */
+/** Reset call timestamps + the shared backoff state (for testing). */
 function _resetForTest() {
   _callTimes.length = 0;
-  _penaltyUntilMs = 0;
+  _resetBackoff();
 }
 
 module.exports = {

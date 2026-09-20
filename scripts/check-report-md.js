@@ -102,12 +102,17 @@ function _failures(data) {
 
 function _security(data) {
   const sev = data.npmAudit.bySeverity || {};
+  /*- This block is appended to $GITHUB_STEP_SUMMARY, so it is what a
+   *  reviewer reads before merging. A run that never reached the
+   *  advisory service must not render as a clean audit here. */
   const audit =
-    data.npmAudit.total === 0
-      ? "0 advisories"
-      : `${data.npmAudit.total} advisories (` +
-        `critical ${sev.critical || 0}, high ${sev.high || 0}, ` +
-        `moderate ${sev.moderate || 0}, low ${sev.low || 0})`;
+    data.npmAudit.ok === false
+      ? `**DID NOT RUN** — ${data.npmAudit.reason}. Dependencies were not checked.`
+      : data.npmAudit.total === 0
+        ? "0 advisories"
+        : `${data.npmAudit.total} advisories (` +
+          `critical ${sev.critical || 0}, high ${sev.high || 0}, ` +
+          `moderate ${sev.moderate || 0}, low ${sev.low || 0})`;
   return [
     "## Security",
     "",

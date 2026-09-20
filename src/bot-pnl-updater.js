@@ -15,7 +15,10 @@ const { ensureLiveEpoch } = require("./live-epoch-entry");
 const config = require("./config");
 const rangeMath = require("./range-math");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
-const { computeHodlIL } = require("./il-calculator");
+const { fetchHistoricalTokenPriceUsd } = require("./historical-token-price");
+const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
+const { hasCompoundedTotal } = require("./bot-config-keys");
+const { _computeIL } = require("./bot-pnl-il");
 const { PM_ABI } = require("./pm-abi");
 const {
   maybeNotifyBalanced,
@@ -60,7 +63,32 @@ function positionValueUsd(p, ps, pr0, pr1) {
     ps.decimals0,
     ps.decimals1,
   );
-  return a.amount0 * pr0 + a.amount1 * pr1;
+  const value = a.amount0 * pr0 + a.amount1 * pr1;
+  /*-
+   *  NaN here means a caller handed this something that is not a number,
+   *  and it must not be allowed to leave: this figure is Current Value,
+   *  and Net P&L, Profit and IL/G are all built on it, so a NaN spreads
+   *  to every money reading at once and compares false against every
+   *  threshold it meets on the way — including the Impermanent Loss
+   *  Guard's.
+   *
+   *  Nothing upstream produces it. `fetchTokenPriceUsd` answers a number
+   *  and falls back to zero on every failure path, so a missing price
+   *  arrives as zero and values the position at zero. NaN can only come
+   *  from a caller passing the wrong thing, which is a defect in this
+   *  app rather than a condition in the world.
+   *
+   *  So it throws rather than substituting a default. A default cannot be
+   *  right here except by luck — zero would report a funded position as
+   *  worthless — and it would hide the one thing worth knowing.
+   */
+  if (!Number.isFinite(value))
+    throw new Error(
+      `positionValueUsd: non-finite result (${value}) from amounts ` +
+        `${a.amount0}/${a.amount1} at prices ${pr0}/${pr1} — a caller ` +
+        `passed something that is not a number`,
+    );
+  return value;
 }
 
 /** Fetch USD prices for both tokens in a position. */
@@ -202,116 +230,14 @@ async function walletResiduals(
   }
 }
 
-/** Compute HODL IL for a given pair of token amounts.
- *  `residualValueUsd` (current pool-scoped wallet residual) is credited
- *  to the LP-side of the comparison — see computeHodlIL's JSDoc for
- *  why, and the original verbatim issue from the user: "Wallet
- *  Residual is not included in overall profit-loss - an oversight
- *  from our earlier work that is not visible with the bigger tokens
- *  since those swaps are always easy to do." */
-function _ilFor(realValue, a0, a1, price0, price1, residualValueUsd) {
-  return a0 > 0 || a1 > 0
-    ? computeHodlIL({
-        lpValue: realValue,
-        hodlAmount0: a0,
-        hodlAmount1: a1,
-        currentPrice0: price0,
-        currentPrice1: price1,
-        residualValueUsd: residualValueUsd || 0,
-      })
-    : undefined;
-}
-
 /** Pick the larger of two candidate amounts. */
 function _maxAmount(a, b) {
   return a > b ? a : b;
 }
 
-/** First non-zero value from a list of candidates. */
-function _first(vals) {
-  for (const v of vals) if (v > 0) return v;
-  return 0;
-}
-
 const {
   totalLifetimeDeposit: _totalLifetimeDeposit,
 } = require("./bot-deposit");
-
-/** Resolve lifetime HODL amounts from best available source. */
-function _lifetimeAmounts(deps, snap) {
-  const ltHodl = deps._botState?.lifetimeHodlAmounts;
-  const bl = deps._botState?.hodlBaseline;
-  const first = Array.isArray(snap.closedEpochs) ? snap.closedEpochs[0] : null;
-  // Scan result is authoritative; fall back to first epoch or baseline.
-  return {
-    a0: _first([ltHodl?.amount0, first?.hodlAmount0, bl?.hodlAmount0]),
-    a1: _first([ltHodl?.amount1, first?.hodlAmount1, bl?.hodlAmount1]),
-  };
-}
-
-/**
- * Write `totalIL` and `lifetimeIL` onto the snapshot.
- *
- * Both are a difference: (LP value + wallet residual) minus the
- * deposited amounts priced today. Neither carries fee earnings — see
- * the note on `ltComp` / `curComp` below.
- *
- * @param {object} snap       P&L snapshot, mutated in place.
- * @param {object} deps       Bot deps; `_botState` supplies the baselines.
- * @param {number} realValue  LP position value now (USD), fees included.
- * @param {number} price0     Token0 USD price.
- * @param {number} price1     Token1 USD price.
- * @param {string|number} tokenId  Current NFT, for its compounded total.
- */
-function _computeIL(snap, deps, realValue, price0, price1, tokenId) {
-  const bl = deps._botState?.hodlBaseline;
-  const curA0 = bl?.hodlAmount0 || 0,
-    curA1 = bl?.hodlAmount1 || 0;
-  /*- Credit the current pool-scoped wallet residual to the LP-side of
-   *  the HODL comparison.  Simple "a vs b" comparison per the user's
-   *  mandate: a = (LP value + wallet residual), b = HODL value at
-   *  current prices.  We do NOT subtract the initial-mint residual
-   *  here even though the LP may have absorbed some of it into its
-   *  current value — the user explicitly chose the simple credit over
-   *  full LP-accounting symmetry, so the dashboard shows a number that
-   *  matches "the coins the LP still has, valued today, vs the coins
-   *  you put in, valued today."  Accepted edge case: a freshly minted
-   *  LP that has not yet rebalanced will show +$X of IL/G equal to its
-   *  initial-mint leftover residual until the first rebalance folds
-   *  that leftover into the position. */
-  const rUsd = snap.residualValueUsd || 0;
-  /*- Fees are not impermanent loss.  Compounding calls
-   *  `increaseLiquidity`, so compounded fees are part of the liquidity
-   *  `realValue` measures, while the HODL side stays fixed at the
-   *  deposited amounts.  Left in, a $100 compound reads as $100 of LP
-   *  outperformance and Profit adds the same $100 again as earnings.
-   *  Taking them out keeps IL/G what the standard definition says it
-   *  is — divergence only, fees counted separately — and matches
-   *  `_epochIl` in pnl-tracker.js, which subtracts an epoch's fees
-   *  from its exit value for the Per-Day table.
-   *
-   *  Two totals: the lifetime figure compares against the first
-   *  deposit, so every compound ever made sits in today's liquidity;
-   *  the current-NFT figure compares against this NFT's mint, which
-   *  already contained the earlier ones, so only compounds made since
-   *  that mint are removed. */
-  const ltComp = snap.totalCompoundedUsd || 0;
-  const compMap = deps._botState?.nftCompoundedUsdByTokenId;
-  const curComp = compMap?.[String(tokenId)] || 0;
-  const lpCur = realValue - curComp;
-  const lpLt = realValue - ltComp;
-  snap.totalIL = _ilFor(lpCur, curA0, curA1, price0, price1, rUsd);
-  const { a0, a1 } = _lifetimeAmounts(deps, snap);
-  snap.lifetimeIL = _ilFor(lpLt, a0, a1, price0, price1, rUsd);
-  snap.ilInputs = {
-    lpValue: realValue,
-    residualValueUsd: rUsd,
-    price0,
-    price1,
-    cur: { hodlAmount0: curA0, hodlAmount1: curA1, compoundedRemoved: curComp },
-    lt: { hodlAmount0: a0, hodlAmount1: a1, compoundedRemoved: ltComp },
-  };
-}
 
 /** Write residual USD + per-token coin amounts onto the snapshot. */
 function _applyResiduals(snap, residuals, rUsd) {
@@ -348,8 +274,31 @@ async function overridePnlWithRealValues(
   const entryVal = snap.liveEpoch
     ? snap.liveEpoch.entryValue
     : snap.initialDeposit;
-  const compounded = deps._botState?.totalCompoundedUsd || 0;
-  snap.totalCompoundedUsd = compounded;
+  /*-
+   *  Priced here, never stored. The saved figure is the coins the
+   *  position compounded (`compoundedAmount0` / `compoundedAmount1`),
+   *  established by the lifetime scan's chain-wide classification and
+   *  added to by every compound and rebalance thereafter — absent until
+   *  that scan runs, which prices to zero rather than to a partial
+   *  figure. Valuing them at this poll's prices is what keeps the
+   *  Lifetime panel true as the pair moves; a dollar total saved at
+   *  yesterday's price drifts further every day the position runs.
+   */
+  const saved0 = deps._botState?.compoundedAmount0;
+  const saved1 = deps._botState?.compoundedAmount1;
+  const compounded = coinsToUsd(
+    { amount0: saved0, amount1: saved1 },
+    price0,
+    price1,
+  );
+  /*- Null, not zero, while the chain has yet to be classified. The two
+   *  are different facts — "nothing compounded" against "not known yet" —
+   *  and the Lifetime panel draws them differently: a figure for the
+   *  first, an em-dash for the second. Every arithmetic consumer
+   *  coalesces to zero, so only the display changes. */
+  snap.totalCompoundedUsd = hasCompoundedTotal(saved0, saved1)
+    ? compounded
+    : null;
   /*-
    *  snap.currentCompoundedUsd and snap.currentGasUsd are populated by
    *  the bot-loop-injected `applyCurrentNftFigures` hook (see deps wiring
@@ -361,19 +310,29 @@ async function overridePnlWithRealValues(
    *  see a stable shape rather than `undefined`.
    */
   snap.currentCompoundedUsd = 0;
-  // Recompute all gas in current USD: gasNative × current native token price
+  /*-
+   *  The Lifetime panel's Gas line is the whole position's gas coins
+   *  priced now, the way every other lifetime figure is priced now.
+   *
+   *  The Per-Day table is deliberately NOT re-priced here. Each of its
+   *  rows is a closed accounting period, and a closed period keeps the
+   *  dollars it closed at — its fees and price movement already do.
+   *  Gas re-priced on every poll would be the one column in that table
+   *  whose history moved with the native token, and it would carry
+   *  Profit and Net P&L with it, since both subtract gas.
+   *
+   *  The two therefore answer different questions and will not agree
+   *  once the native token has moved: the Lifetime line says what this
+   *  position's gas is worth today, the column says what each period's
+   *  gas cost at the time. Documented for the operator in the table's
+   *  own help dialog.
+   */
   if (snap.totalGasNative > 0) {
     try {
       const nativePrice = await fetchTokenPriceUsd(
         config.CHAIN.nativeWrappedToken,
       );
       snap.totalGas = snap.totalGasNative * nativePrice;
-      // Recompute per-day gas costs at current price
-      if (snap.dailyPnl) {
-        for (const day of snap.dailyPnl) {
-          if (day.gasNative > 0) day.gasCost = day.gasNative * nativePrice;
-        }
-      }
     } catch {
       /* keep historical USD sums as fallback */
     }
@@ -394,28 +353,6 @@ async function overridePnlWithRealValues(
   }
 }
 
-/**
- * Apply initial mint gas to the P&L tracker (once).
- * The HODL baseline stores `mintGasWei` from the mint TX receipt.
- * Convert to USD and add to the live epoch's gas on first encounter.
- */
-async function _applyMintGas(deps, pnlTracker) {
-  // Guard flag must be on _botState (persists across polls), not on deps
-  // (recreated every poll cycle — see bot-loop.js poll closure).
-  if (deps._botState?._mintGasApplied) return;
-  const bl = deps._botState?.hodlBaseline;
-  if (!bl?.mintGasWei || bl.mintGasWei === "0") return;
-  const wei = BigInt(bl.mintGasWei);
-  if (wei <= 0n) return;
-  const usd = await actualGasCostUsd(wei);
-  const native = Number(wei) / 1e18;
-  if (usd > 0) {
-    pnlTracker.addGas(usd, native);
-    if (deps._botState) deps._botState._mintGasApplied = true;
-    log.info("[bot] Applied initial mint gas: $%s", usd.toFixed(4));
-  }
-}
-
 /** Estimate gas cost in USD for a rebalance (~800k gas). */
 async function estimateGasCostUsd(provider) {
   try {
@@ -428,10 +365,51 @@ async function estimateGasCostUsd(provider) {
   }
 }
 
-/** Compute actual gas cost in USD from total PLS spent (in wei). */
-async function actualGasCostUsd(gasCostWei) {
+/**
+ * The native token's USD price for a gas charge.
+ *
+ * With no `when`, the current price — right for gas being spent now,
+ * which is every live rebalance, compound and cancel.
+ *
+ * With a `when`, the price on that day, so a charge from months ago is
+ * valued at what it cost rather than at today's market. The current
+ * price is the fallback rather than zero: `actualGasCostUsd` answers 0
+ * on failure, and a positive wei amount costing $0 is read downstream as
+ * "price unknown", which drops that epoch from the Per-Day table
+ * entirely. A slightly-off figure beats a vanished row.
+ */
+async function _nativePriceForGas(when) {
+  const token = config.CHAIN.nativeWrappedToken;
+  const at = when !== undefined && when !== null ? when.timestamp : undefined;
+  if (at !== undefined && at !== null) {
+    const historical = await fetchHistoricalTokenPriceUsd(token, {
+      timestamp: at,
+      blockNumber: when.blockNumber,
+      refresh: when.refresh === true,
+    });
+    if (historical > 0) return historical;
+    log.warn(
+      "[bot] gas: no historical native price for ts=%s — valuing at today's",
+      at,
+    );
+  }
+  return fetchTokenPriceUsd(token);
+}
+
+/**
+ * Compute actual gas cost in USD from total PLS spent (in wei).
+ *
+ * @param {bigint|number} gasCostWei  Native token spent, in wei.
+ * @param {object} [when]             When the gas was spent. Omit for now.
+ * @param {number} [when.timestamp]   Unix seconds of the charge.
+ * @param {number} [when.blockNumber] Block of the charge, for Moralis.
+ * @param {boolean} [when.refresh]    Read past the price cache and
+ *   replace what it holds, rather than trusting a cached day.
+ * @returns {Promise<number>} USD cost, or 0 when no price could be had.
+ */
+async function actualGasCostUsd(gasCostWei, when) {
   try {
-    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
+    const p = await _nativePriceForGas(when);
     return (Number(gasCostWei) / 1e18) * p;
   } catch {
     return 0;
@@ -536,19 +514,22 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         price0,
         price1,
       );
+      const nftCompoundedUsd = nftCoinsToUsd(
+        deps._botState?.nftCompoundedAmountsByTokenId,
+        position.tokenId,
+        price0,
+        price1,
+      );
       pnlTracker.updateLiveEpoch({
         currentPrice: poolState.price,
         feesAccrued: feesUsd,
-        /*- Per-NFT compounded total, filled by applyCurrentNftFigures
-         *  (bot-pnl-current-nft.js).  Absent on the first poll after a
-         *  rebalance mints a new tokenId, which reads as 0 until that
-         *  scan lands — the same figure the Current panel shows. */
-        compoundedAccrued:
-          deps._botState?.nftCompoundedUsdByTokenId?.[
-            String(position.tokenId)
-          ] || 0,
+        /*- The coins this NFT compounded, priced at this poll — filled by
+         *  applyCurrentNftFigures (bot-pnl-current-nft.js).  Absent on the
+         *  first poll after a rebalance mints a new tokenId, which reads
+         *  as 0 until that scan lands — the same figure the Current panel
+         *  shows. */
+        compoundedAccrued: nftCompoundedUsd,
       });
-      await _applyMintGas(deps, pnlTracker);
       pnlSnapshot = pnlTracker.snapshot(poolState.price);
       await overridePnlWithRealValues(
         pnlSnapshot,
@@ -654,10 +635,6 @@ module.exports = {
   estimateGasCostUsd,
   actualGasCostUsd,
   updatePnlAndStats,
-  _applyMintGas,
-  _lifetimeAmounts,
-  _ilFor,
-  _computeIL,
   _maxAmount,
   _totalLifetimeDeposit,
 };

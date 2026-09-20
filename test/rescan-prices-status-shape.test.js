@@ -9,21 +9,28 @@
  * `{ ...global, ...activePositionData, _allPositionStates, … }`, so the
  * server's `global.*` fields end up at the TOP level.
  *
- * Reading `status.global.rescanPricesDefaultDays` therefore silently
- * yielded undefined and the dialog degraded to "Window unavailable —
- * will re-value the entire history" even though the server was
- * publishing the value correctly. Unit tests on either side passed;
- * only the seam was wrong. This test covers the seam by running the
- * REAL flattener over a REAL server payload.
+ * A read of `status.global.<field>` therefore yields undefined even
+ * while the server publishes the value, and unit tests on either side
+ * still pass. This test covers the seam by running the REAL flattener
+ * over a REAL server payload. Uses jsdom (via `global-jsdom/register`)
+ * so the browser module can be imported directly.
  */
 
 "use strict";
 
-const { test } = require("node:test");
+require("global-jsdom/register");
+
+const { test, before } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createApiStatusHandler } = require("../src/handle-api-status");
 const config = require("../src/config");
+
+let flattenV2Status;
+
+before(async () => {
+  ({ flattenV2Status } = await import("../public/dashboard-data-cache.js"));
+});
 
 /** The real `/api/status` body, from the real handler. */
 async function realStatusBody() {
@@ -50,28 +57,20 @@ async function realStatusBody() {
   return body;
 }
 
-/*- Mirror of `flattenV2Status`'s reshape.  Kept minimal and derived
- *  from the same rule the browser applies: global is spread at the top
- *  level, positions move to `_allPositionStates`. */
-function flattenLikeDashboard(v2) {
-  const global = v2.global || {};
-  const positions = v2.positions || {};
-  return {
-    ...global,
-    _managedPositions: global.managedPositions || [],
-    _allPositionStates: positions,
-  };
+/** The status the dialog is given: the real body, flattened. */
+async function flatStatus() {
+  const body = await realStatusBody();
+  return flattenV2Status(body);
 }
 
-/** The three values the dialog reads off the flattened object. */
+/** The two values the dialog reads off the flattened object. */
 const _DIALOG_READS = [
-  "rescanPricesDefaultDays",
   "guaranteedDashboardHasPolledMs",
   "rescanPricesTimeoutMs",
 ];
 
 test("every value the dialog reads survives the flatten, at top level", async () => {
-  const flat = flattenLikeDashboard(await realStatusBody());
+  const flat = await flatStatus();
   for (const key of _DIALOG_READS) {
     const n = Number(flat[key]);
     assert.ok(
@@ -82,19 +81,13 @@ test("every value the dialog reads survives the flatten, at top level", async ()
 });
 
 test("those values are NOT under a surviving `.global`", async () => {
-  /*- The bug: reading status.global.X. After flattening there is no
-   *  `.global`, so that read is always undefined. */
-  const flat = flattenLikeDashboard(await realStatusBody());
+  // After flattening there is no `.global`, so reading through it fails.
+  const flat = await flatStatus();
   assert.equal(flat.global, undefined, "flattened status has no .global");
 });
 
-test("the dialog's window default matches the shipped config", async () => {
-  const flat = flattenLikeDashboard(await realStatusBody());
-  assert.equal(flat.rescanPricesDefaultDays, config.RESCAN_PRICES_DEFAULT_DAYS);
-});
-
 test("the poll cadence is the 2.5x heartbeat value, not a literal", async () => {
-  const flat = flattenLikeDashboard(await realStatusBody());
+  const flat = await flatStatus();
   assert.equal(
     flat.guaranteedDashboardHasPolledMs,
     flat.dashboardPollIntervalMs * 2.5,

@@ -16,9 +16,9 @@ const os = require("node:os");
 
 const {
   createReloadPositionHandler,
-  _ON_CHAIN_DERIVED_KEYS,
   _resetBotState,
 } = require("../src/server-reload-position");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
 
 /*- Every test that hits `loadConfig`/`saveConfig` (bot-config-v2) needs
  *  the config file to live in a tmp dir so real user state is never
@@ -161,7 +161,7 @@ describe("POST /api/position/reload — in-progress guard", () => {
 
 // ── Clear-list invariant ────────────────────────────────────────────
 
-describe("_ON_CHAIN_DERIVED_KEYS", () => {
+describe("CHAIN_DERIVED_POSITION_KEYS", () => {
   it("covers every on-chain-derived key documented in engineering.md", () => {
     /*- The clear-list is the invariant the reload flow depends on:
      *  every value that could survive a reload and re-corrupt the
@@ -169,15 +169,23 @@ describe("_ON_CHAIN_DERIVED_KEYS", () => {
      *  disk config get a matching test-failure. */
     const expected = [
       "compoundHistory",
-      "totalCompoundedUsd",
-      "collectedFeesUsd",
-      "nftCompoundedUsdByTokenId",
+      "compoundedAmount0",
+      "compoundedAmount1",
+      "nftCompoundedAmountsByTokenId",
       "nftGasWeiByTokenId",
       "hodlBaseline",
       "lifetimeHodlAmounts",
       "totalLifetimeDepositUsd",
+      /*-
+       *  Travels with the deposit total. Left behind, it would mislabel
+       *  the freshly rebuilt deposit as fallback-priced.
+       */
+      "depositUsedFallback",
     ];
-    assert.deepStrictEqual([..._ON_CHAIN_DERIVED_KEYS].sort(), expected.sort());
+    assert.deepStrictEqual(
+      [...CHAIN_DERIVED_POSITION_KEYS].sort(),
+      expected.sort(),
+    );
   });
 });
 
@@ -193,10 +201,11 @@ describe("_resetBotState", () => {
       lifetimeScanComplete: true,
       rebalanceScanComplete: true,
       totalLifetimeDepositUsd: 999.99,
+      depositUsedFallback: true,
       compoundHistory: [{ tokenId: "1" }],
-      totalCompoundedUsd: 100,
-      collectedFeesUsd: 50,
-      nftCompoundedUsdByTokenId: { 1: 42 },
+      compoundedAmount0: 100,
+      compoundedAmount1: 50,
+      nftCompoundedAmountsByTokenId: { 1: { amount0: 42, amount1: 0 } },
       nftGasWeiByTokenId: { 1: "abc" },
       hodlBaseline: { mintDate: "2026-01-01" },
       lifetimeHodlAmounts: { amount0: 1, amount1: 2 },
@@ -212,10 +221,14 @@ describe("_resetBotState", () => {
     assert.strictEqual(state.lifetimeScanComplete, false);
     assert.strictEqual(state.rebalanceScanComplete, false);
     assert.strictEqual(state.totalLifetimeDepositUsd, 0);
+    assert.strictEqual(state.depositUsedFallback, false);
     assert.deepStrictEqual(state.compoundHistory, []);
-    assert.strictEqual(state.totalCompoundedUsd, 0);
-    assert.strictEqual(state.collectedFeesUsd, 0);
-    assert.deepStrictEqual(state.nftCompoundedUsdByTokenId, {});
+    /*- Null, not zero: `hasCompoundedTotal` reads these by presence, so a
+     *  zero would claim the chain was classified and found nothing —
+     *  the opposite of what a reload asks for. */
+    assert.strictEqual(state.compoundedAmount0, null);
+    assert.strictEqual(state.compoundedAmount1, null);
+    assert.deepStrictEqual(state.nftCompoundedAmountsByTokenId, {});
     assert.deepStrictEqual(state.nftGasWeiByTokenId, {});
     assert.strictEqual(state.hodlBaseline, null);
     assert.strictEqual(state.lifetimeHodlAmounts, null);
