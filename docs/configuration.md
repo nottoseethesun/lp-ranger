@@ -416,10 +416,10 @@ that position drained until the wait ends. Dashboard figures stop advancing
 for the duration, which is what the yellow line exists to explain.
 
 Set it to `0` to disable the wait entirely — the bot then keeps cycling
-through the endpoints continuously. There is no upper bound; how long to sit
-out an outage is your call. Unlike the two settings above, this one is read
-each time the list is exhausted, so a change to it takes effect without a
-restart.
+through the endpoints continuously. The ceiling is two days, which is far
+past any outage worth waiting out. Unlike the two settings above, this one is
+read each time the list is exhausted, so a change to it takes effect without
+a restart.
 
 ### Why chunking exists
 

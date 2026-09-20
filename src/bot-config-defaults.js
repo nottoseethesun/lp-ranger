@@ -69,13 +69,6 @@ function _clampNonNegInt(v, max) {
   return n;
 }
 
-/*- Non-negative integer with no upper bound.  Returns null on failure. */
-function _nonNegInt(v) {
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  const n = Math.floor(v);
-  return n < 0 ? null : n;
-}
-
 /*- Clamp a positive float to [min, max].  Returns null on failure. */
 function _clampFloat(v, min, max) {
   if (typeof v !== "number" || !Number.isFinite(v)) return null;
@@ -162,9 +155,12 @@ const _NORMALIZERS = {
    *  rather than a preference. */
   globalRPCRequestRateIntervalMS: (v) => _clampNonNegInt(v, 10_000),
   /*- How long every request is held once failover has exhausted the
-   *  endpoint list.  Zero is allowed and means "never pause".  No upper
-   *  bound: how long to sit out an outage is the operator's call. */
-  rpcAllEndpointsDownPauseMS: _nonNegInt,
+   *  endpoint list.  Zero is allowed and means "never pause".  Ceiling
+   *  of two days, which is far past any outage worth waiting out and
+   *  keeps the value inside what a single `setTimeout` can hold — its
+   *  limit is about 24.8 days, and beyond that Node fires immediately
+   *  instead of waiting. */
+  rpcAllEndpointsDownPauseMS: (v) => _clampNonNegInt(v, 172_800_000),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */

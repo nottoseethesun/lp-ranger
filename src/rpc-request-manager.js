@@ -80,8 +80,11 @@ function _haltRemainingMs() {
  *
  * The timer is deliberately NOT `unref`'d: callers are awaiting these
  * resolvers, and an unref'd timer would let the process exit with
- * requests still queued, stranding those promises.  The cost is that
- * shutdown can wait out at most one interval.
+ * requests still queued, stranding those promises.  The cost is that it
+ * holds the event loop open — for a pacing interval normally, and for
+ * as long as an outage halt runs when one is engaged.  `server.js`
+ * covers that: its shutdown handler force-exits three seconds after
+ * SIGINT or SIGTERM regardless of what is still pending.
  * @returns {void}
  */
 function _drain() {
