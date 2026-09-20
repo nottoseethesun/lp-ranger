@@ -92,7 +92,7 @@ and the responsive layout &mdash; see the
     1. <https://chocolatey.org/install>
     2. <https://community.chocolatey.org/packages/nodejs-lts>
 - Web browser
-- Not more than one liquidity position per liquidity pool. Starting with no liquidity positions is fine too.
+- On the crypto wallet that you will be using with LP Ranger, there must be not more than one liquidity position per liquidity pool. Starting with no liquidity positions is fine too. For more detail, see [this entry in the FAQ](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html#one-position-per-pool).
 
 ---
 
