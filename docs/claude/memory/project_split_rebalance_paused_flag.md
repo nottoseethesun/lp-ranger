@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-09-20T22:28:53.320Z
 ---
 
 **Status: DEFERRED to a future cleanup PR.** User picked option C in the 2026-06-18 closed-position-reopen-via-manage review: leave the flag as-is for now, discipline the user-facing prose via [[feedback_paused_vs_aborted]]. Tackle the rename when there's appetite for a small, focused cleanup PR.
@@ -56,5 +57,5 @@ Cross-links: [[feedback_paused_vs_aborted]] (the prose discipline that this rena
 
 **On the public list (2026-09-02).** Published on the README's
 Nice-to-Have list as "Split the Overloaded Rebalance-Paused Flag", detailed in
-`docs/roadmap/nice-to-haves/project_split_rebalance_paused_flag.md`.
+`docs/roadmap/clean-ups/project_split_rebalance_paused_flag.md`.
 Keep the two in step, and do not add a second entry for it.

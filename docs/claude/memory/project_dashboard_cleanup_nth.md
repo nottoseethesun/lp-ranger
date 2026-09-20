@@ -1,8 +1,11 @@
 ---
 name: project_dashboard_cleanup_nth
-description: NTH (polish, not bugs) — dashboard import cycles, module-level cache sweep, 42 orphan HTML ids
-metadata:
+description: "NTH (polish, not bugs) — dashboard import cycles, module-level cache sweep, 42 orphan HTML ids"
+metadata: 
+  node_type: memory
   type: project
+  originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
+  modified: 2026-09-20T22:28:49.522Z
 ---
 
 # Dashboard cleanup — nice-to-haves
@@ -105,5 +108,5 @@ hygiene pass while context is loaded.
 
 **On the public list (2026-09-02).** The orphan-HTML-ids section is now published on the README's
 Nice-to-Have list as "Remove Orphaned HTML Element IDs", detailed in
-`docs/roadmap/nice-to-haves/project_orphan_html_ids.md`.
+`docs/roadmap/clean-ups/project_orphan_html_ids.md`.
 Keep the two in step, and do not add a second entry for it.
