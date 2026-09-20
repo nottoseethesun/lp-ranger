@@ -248,10 +248,25 @@ async function ensureReachable() {
     } catch (err) {
       lastErr = err;
       const more = i < _providers.length - 1;
-      log.warn(`[bot] RPC unreachable (${_urls[i]}): ${err.message}`);
+      log.warn(
+        `[bot] RPC unreachable at startup (${i + 1} of ${_providers.length}): ${_urls[i]} — ${err.message}`,
+      );
       if (more) log.info(`[bot] Falling back to ${_urls[i + 1]}`);
     }
   }
+  /*- Every endpoint failed.  Say it plainly and in one line: what the
+   *  caller logs is the raw ethers error plus a stack, which names a
+   *  single endpoint and reads like a crash rather than like "this
+   *  machine cannot reach the chain".
+   *
+   *  Startup is NOT the all-endpoints-down pause.  That pause belongs
+   *  to `failoverToNextRPC`, which this probe does not use — it walks
+   *  the list itself and commits only on success.  So nothing is held
+   *  here, and the operator can restart the moment the connection is
+   *  back rather than waiting an hour. */
+  log.error(
+    `[bot] STARTUP: no RPC endpoint answered — tried all ${_providers.length}, last was ${_urls[_providers.length - 1]}. The bot cannot start until one is reachable. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.`,
+  );
   throw lastErr;
 }
 

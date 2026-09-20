@@ -66,10 +66,12 @@ function pauseForExhaustedEndpoints({ endpointCount, lastUrl }) {
    *  retrying dead endpoints at the normal pace. The line still prints,
    *  because "every endpoint failed" is worth saying either way. */
   rpcRequestManager.halt(pauseMs);
-  /*- Hours, because that is the unit the wait is set in.  Trimmed of
-   *  trailing zeros so the default reads "1 HOUR(S)" rather than
-   *  "1.00", and a half-hour setting still reads "0.5". */
-  const hours = Number((pauseMs / 3_600_000).toFixed(2));
+  /*- Hours is the unit; the value is whatever the division gives.  Six
+   *  decimal places so a short wait still reads as a number rather than
+   *  as zero, and `Number` drops the trailing zeros — the default reads
+   *  "1 HOUR(S)", half an hour reads "0.5", a hundred milliseconds
+   *  reads "0.000028". */
+  const hours = Number((pauseMs / 3_600_000).toFixed(6));
   const holding =
     pauseMs > 0
       ? `PAUSING ALL RPC REQUESTS FOR ${hours} HOUR(S), THEN RESTARTING`

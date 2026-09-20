@@ -2363,6 +2363,48 @@ surface is covered by the Swagger spec (see
 
 ---
 
+## RPC Reachability at Startup
+
+Before a position's loop begins, `ensureReachable()`
+(`src/send-transaction.js`) proves that at least one configured endpoint
+answers. It calls `getBlockNumber` against each endpoint in the order
+`chains.json` → `rpc.urls` lists them and stops at the first that
+replies. When that is not the first in the list, the sticky failover
+window is engaged, so reads and writes both start where the probe
+succeeded instead of retrying the dead one on the first real call.
+
+The probe is what puts an unreachable chain in the terminal at startup,
+rather than leaving the operator to infer it from figures that never
+arrive.
+
+### What it prints
+
+| Situation | Line |
+| --- | --- |
+| The first endpoint answers | `[bot] RPC:    <url>` |
+| A later one answers | the failover banner naming the move, then `[bot] RPC:    <url> (fallback)` |
+| An endpoint does not answer | `[bot] RPC unreachable at startup (n of N): <url> — <error>` |
+| Another one remains to try | `[bot] Falling back to <next url>` |
+| None answered | `[bot] STARTUP: no RPC endpoint answered — tried all N, last was <url>. The bot cannot start until one is reachable. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.` |
+
+The summary line earns its place from what follows it. `ensureReachable`
+throws the last endpoint's error, and the caller logs that error with a
+stack trace — which names a single endpoint and reads like a crash
+rather than like "this machine cannot reach the chain". The summary says
+the latter in one sentence, before the stack arrives.
+
+### Startup is not the all-endpoints-down wait
+
+Running out of endpoints during normal operation holds every JSON-RPC
+request for `rpcAllEndpointsDownPauseMS` and prints the Road Sign Yellow
+banner. Startup does neither, and the two are separate by construction:
+the wait belongs to `failoverToNextRPC`, which the probe does not call —
+it walks the list itself and commits only on success.
+
+For the operator that means a failed startup can be retried the moment
+the connection is back. Nothing is being held, so there is no wait to
+sit out first.
+
 ## How Scans Survive RPC Failures
 
 A chunked log scan issues thousands of `eth_getLogs` requests, so over a
