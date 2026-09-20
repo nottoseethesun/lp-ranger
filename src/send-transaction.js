@@ -43,10 +43,7 @@ const { buildProvider } = require("./bot-provider");
 const { _retrySend } = require("./tx-retry");
 const { _waitOrSpeedUp } = require("./tx-speedup");
 const { retryRead } = require("./rpc-read-retry");
-const {
-  pauseForExhaustedEndpoints,
-  endpointsArePaused,
-} = require("./rpc-endpoints-exhausted");
+const { pauseForExhaustedEndpoints } = require("./rpc-endpoints-exhausted");
 const rpcRequestManager = require("./rpc-request-manager");
 
 /**
@@ -362,10 +359,10 @@ function getCurrentRPC() {
  * underlying RPC throws.
  *
  * The end of the list is not a dead end.  Stepping off the last endpoint
- * pauses ALL RPC traffic for the configured outage pause and puts
- * selection back on the first endpoint, so the list is walked again in
- * its original order when the pause lifts.  Further calls during that
- * pause move nothing: they report the same outage.
+ * holds ALL RPC traffic for the configured wait, staying on the endpoint
+ * it was on, and the list starts over at its first endpoint once that
+ * wait is up — so later failovers walk it in the order they walked it at
+ * startup.
  *
  * No-op on a single-endpoint chain (the PulseChain testnet ships one) —
  * there is nowhere to move and nothing a pause would achieve.
@@ -382,15 +379,6 @@ function failoverToNextRPC() {
    *  to; no-op so callers need not know how many endpoints exist. */
   if (_endpointCount() < 2) return false;
 
-  /*- An all-endpoints-down pause is already running.  It was started by
-   *  a walk that had just tried every endpoint, and it put selection
-   *  back on the first one; this report describes that same outage.
-   *  Moving on it would walk the list forward again while nothing can
-   *  be sent anyway, so the pause would lift with selection stranded
-   *  mid-list.  Two positions failing in the same minute is all it
-   *  takes.  Reported as "did not move", which is the truth. */
-  if (endpointsArePaused()) return false;
-
   /*- Read through getCurrentRPC first so an expired sticky window has
    *  already snapped us back to index 0.  Without this, a failover
    *  arriving after a long quiet period would advance from a stale
@@ -398,28 +386,15 @@ function failoverToNextRPC() {
   getCurrentRPC();
   const from = _activeIdx;
   if (from >= _providers.length - 1) {
-    pauseForExhaustedEndpoints({
+    /*- Stay on the current endpoint for the duration — nothing can be
+     *  sent anyway.  The pause's deadline becomes the sticky deadline,
+     *  so the snapback `getCurrentRPC` already runs returns the list to
+     *  its first endpoint once the wait is up: no second timer, and
+     *  nothing else changes. */
+    _stickyUntilMs = pauseForExhaustedEndpoints({
       endpointCount: _providers.length,
       lastUrl: _urls[from],
     });
-    /*- Back to the top of the list NOW, not when the pause lifts.
-     *  Every request is held for the duration anyway, so the endpoint
-     *  selected here is simply the one the first request after the
-     *  pause will use — and that must be the preferred endpoint, so
-     *  the list is walked in its original order.
-     *
-     *  Deferring the wrap to the snapback in `getCurrentRPC` looks
-     *  equivalent and is not.  `retryRead` advances BEFORE each
-     *  attempt, so it would spend its first post-pause call on the
-     *  endpoint that just failed and then step from there to the
-     *  second — skipping the preferred endpoint on every lap.
-     *
-     *  The index alone, without also expiring `_stickyUntilMs`: at index
-     *  0 that deadline is never read — `getCurrentRPC` short-circuits on
-     *  `_activeIdx !== 0` — and every path that leaves index 0 writes a
-     *  fresh one. Clearing it too would be a second way to say the same
-     *  thing, and only one of the two could ever be the one that works. */
-    _activeIdx = 0;
     return true;
   }
 
@@ -633,10 +608,9 @@ async function sendTransaction(opts) {
     re-init with different rpcConfig shapes without leaking module state.
 
     The all-endpoints-down pause counts as this module's state even
-    though it is held in the queue: exhausting the list engages it, and
-    `failoverToNextRPC` refuses to move while it runs.  Left behind, one
-    test that walks a short endpoint list to its end would silently
-    freeze failover for every test after it in the same file. */
+    though it is held in the queue: exhausting the list engages it.
+    Left behind, one test that walks a short endpoint list to its end
+    would hold every RPC request for the rest of the run. */
 function _resetForTests() {
   _providers = [];
   _urls = [];

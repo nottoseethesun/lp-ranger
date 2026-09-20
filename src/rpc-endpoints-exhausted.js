@@ -38,11 +38,12 @@ const BANNER_OFF = "\x1b[0m";
  *      answering, continuing to send only hammers dead hosts and buries
  *      the log in failures that all say the same thing. The hold is
  *      absolute — see `halt` in `src/rpc-request-manager.js`.
- *   2. **Selection returns to the first endpoint**, so the first request
- *      to leave once the pause lifts goes to the preferred endpoint and
- *      later failovers walk the list in the order they walked it at
- *      startup. The caller does that part — it owns the endpoint list —
- *      immediately after calling this.
+ *   2. **The list restarts from the first endpoint when the pause is
+ *      up**, so later failovers walk it in the order they walked it at
+ *      startup. Selection does not move meanwhile — the app sits on the
+ *      endpoint it was on. This function does not do that part: it
+ *      returns the deadline, and the caller feeds it to the snapback it
+ *      already has.
  *   3. **One loud line** says so, because an hour of silence with no
  *      explanation looks exactly like a hung process.
  *
@@ -54,7 +55,9 @@ const BANNER_OFF = "\x1b[0m";
  * @param {object} o
  * @param {number} o.endpointCount  How many endpoints were tried.
  * @param {string} o.lastUrl        The endpoint that failed last.
- * @returns {void}
+ * @returns {number} Epoch ms the pause runs until, for the caller's
+ *   snapback; 0 when the pause is configured off, which restarts the
+ *   list on the next read.
  */
 function pauseForExhaustedEndpoints({ endpointCount, lastUrl }) {
   const pauseMs = readBotConfigDefaults().rpcAllEndpointsDownPauseMS;
@@ -63,11 +66,13 @@ function pauseForExhaustedEndpoints({ endpointCount, lastUrl }) {
    *  retrying dead endpoints at the normal pace. The line still prints,
    *  because "every endpoint failed" is worth saying either way. */
   rpcRequestManager.halt(pauseMs);
-  /*- Say what actually happened. "PAUSING FOR 0 MINUTE(S)" would report
-   *  a hold that was never taken. */
+  /*- Hours, because that is the unit the wait is set in.  Trimmed of
+   *  trailing zeros so the default reads "1 HOUR(S)" rather than
+   *  "1.00", and a half-hour setting still reads "0.5". */
+  const hours = Number((pauseMs / 3_600_000).toFixed(2));
   const holding =
     pauseMs > 0
-      ? `PAUSING ALL RPC REQUESTS FOR ${Math.round(pauseMs / 60_000)} MINUTE(S), THEN RESTARTING`
+      ? `PAUSING ALL RPC REQUESTS FOR ${hours} HOUR(S), THEN RESTARTING`
       : "PAUSE IS DISABLED — RESTARTING IMMEDIATELY";
   log.warn(
     `${BANNER_ON}[SEND-TX] ALL %d RPC ENDPOINT(S) FAILED — LAST WAS %s. ` +
@@ -76,22 +81,7 @@ function pauseForExhaustedEndpoints({ endpointCount, lastUrl }) {
     String(lastUrl).toUpperCase(),
     holding,
   );
+  return pauseMs > 0 ? Date.now() + pauseMs : 0;
 }
 
-/**
- * Is an all-endpoints-down pause running right now?
- *
- * Failover asks before moving. A failure reported while the pause runs
- * describes the very outage that started it — every endpoint was tried
- * moments ago — so acting on it would walk the list forward again and
- * leave selection somewhere in the middle when the pause lifts, instead
- * of at the first endpoint where exhaustion just put it. Two positions
- * failing within the same minute is all it takes.
- *
- * @returns {boolean}
- */
-function endpointsArePaused() {
-  return rpcRequestManager.haltRemainingMs() > 0;
-}
-
-module.exports = { pauseForExhaustedEndpoints, endpointsArePaused };
+module.exports = { pauseForExhaustedEndpoints };

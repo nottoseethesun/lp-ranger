@@ -11,20 +11,18 @@
  * loop re-asked the same dead endpoint forever. Observed pinned to the
  * third endpoint on a repeating 502.
  *
- * The wrap is immediate — selection returns to the first endpoint as the
- * pause begins, not as it ends. Nothing is sent while the pause runs, so
- * the endpoint chosen at the start is simply the one the first released
- * request uses, and choosing it up front is what makes `retryRead`
- * correct: it advances BEFORE each attempt, so a wrap deferred to the
- * end of the pause would have it spend that first call on the endpoint
- * that just failed and step from there to the second, skipping the
- * preferred endpoint on every lap.
+ * Selection does not move during the pause — the app sits on the
+ * endpoint it was on, since nothing can be sent anyway. The list returns
+ * to its first endpoint when the wait is up, through the same sticky
+ * snapback `getCurrentRPC` already runs: no second timer, and nothing
+ * else changes.
  */
 
 "use strict";
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { format } = require("node:util");
 
 const sendTx = require("../src/send-transaction");
 const rpcQueue = require("../src/rpc-request-manager");
@@ -44,6 +42,10 @@ class StubProvider {
   }
 }
 const LIB = { JsonRpcProvider: StubProvider };
+
+/*- Matches an ANSI colour escape.  Built from the ESC char code because
+ *  `no-control-regex` rejects a literal one inside a pattern. */
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 /** Walk failover until the list is exhausted; returns each return value. */
 function exhaust() {
@@ -115,42 +117,76 @@ describe("failover wraps to the first endpoint after the pause", () => {
     );
   });
 
-  it("selects the first endpoint at once, so the first request after the pause uses it", () => {
-    /*- The wrap is immediate, not deferred to the end of the pause.
-     *  Nothing is sent meanwhile — the queue is halted — so the endpoint
-     *  chosen here is precisely the one the first released request will
-     *  use.  Deferring it instead would leave `retryRead`, which
-     *  advances BEFORE each attempt, spending that first call on the
-     *  endpoint that just failed and stepping from there to the second,
-     *  skipping the preferred endpoint on every lap. */
+  it("stays on the current endpoint while the pause runs", () => {
     exhaust();
     assert.ok(rpcQueue.haltRemainingMs() > 0, "still held");
     assert.equal(
       sendTx.getCurrentRPC()._url,
-      URLS[0],
-      "selection must be back at the first endpoint while the pause runs",
+      URLS[URLS.length - 1],
+      "nothing can be sent, so there is nothing to move for",
     );
   });
 
-  it("moves nothing while the pause runs", () => {
-    exhaust();
-    assert.equal(
-      sendTx.failoverToNextRPC(),
-      false,
-      "a failure reported during the pause is the outage that started it",
+  it("announces the pause in capitals, on Road Sign Yellow, in hours", () => {
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = (...a) => warns.push(a);
+    try {
+      exhaust();
+    } finally {
+      console.warn = origWarn;
+    }
+    /*- Render the way the terminal does: the `%s` values carry the
+     *  endpoint and the wait, so the raw format string shows neither. */
+    const banner = warns
+      .map((a) => format(...a))
+      .find((s) => s.includes("ENDPOINT(S) FAILED"));
+    assert.ok(
+      banner,
+      `no exhaustion banner logged, got ${JSON.stringify(warns)}`,
     );
-    assert.equal(
-      sendTx.getCurrentRPC()._url,
-      URLS[0],
-      "and must not walk the list forward again while nothing can be sent",
+    /*- Bold black on #FFCC00 = 255;204;0, 24-bit background escape. */
+    assert.ok(
+      banner.includes("48;2;255;204;0"),
+      "the line must carry the Road Sign Yellow background",
     );
+    assert.ok(
+      banner.includes("HOUR(S)"),
+      `the wait must be stated in hours, got: ${banner}`,
+    );
+    /*- Text only — the colour escapes are not letters, and the log's own
+     *  timestamp prefix is not part of this line's wording. */
+    const words = banner
+      .replace(ANSI, "")
+      .replace(/\[\d{4}-\d\d-\d\d [\d:]+\]/, "");
+    assert.equal(words, words.toUpperCase(), "the line must be all capitals");
   });
 
   it("walks the same order again once the pause lifts", () => {
     withClock((clock) => {
-      exhaust();
-      assert.equal(sendTx.getCurrentRPC()._url, URLS[0], "back at the start");
-      clock.advance(rpcQueue.haltRemainingMs());
+      sendTx.failoverToNextRPC(); // first → second
+      sendTx.failoverToNextRPC(); // second → last
+      /*- Endpoints fail one at a time, not all in the same millisecond.
+       *  This gap is what separates the wait's own deadline from the
+       *  ordinary failover window that last move opened — both are an
+       *  hour by default, so without a gap nothing can tell which of
+       *  them released the endpoint. It must be the wait's. */
+      clock.advance(30 * 60_000);
+      sendTx.failoverToNextRPC(); // last → exhausted
+      const waitLeft = rpcQueue.haltRemainingMs();
+
+      clock.advance(waitLeft - 1);
+      assert.equal(
+        sendTx.getCurrentRPC()._url,
+        URLS[URLS.length - 1],
+        "a millisecond before the wait is up, still on the endpoint it was on",
+      );
+      clock.advance(1);
+      assert.equal(
+        sendTx.getCurrentRPC()._url,
+        URLS[0],
+        "the wait is up, so the list starts over at the first endpoint",
+      );
       sendTx.failoverToNextRPC();
       assert.equal(
         sendTx.getCurrentRPC()._url,

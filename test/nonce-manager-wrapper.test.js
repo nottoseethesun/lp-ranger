@@ -306,7 +306,7 @@ describe("nonce-manager-wrapper: sendTransaction with failover", () => {
     assert.equal(attempts, 1);
   });
 
-  it("on the last endpoint, retries on the first rather than the same one", async () => {
+  it("does not retry when already on the fallback (would loop on the same RPC)", async () => {
     let primaryAttempts = 0;
     let fallbackAttempts = 0;
     const sendImpl = async (_tx, nm) => {
@@ -337,13 +337,8 @@ describe("nonce-manager-wrapper: sendTransaction with failover", () => {
     } finally {
       restore();
     }
-    /*- Failing on the LAST endpoint exhausts the list, which restarts it
-        at the first — so the one retry goes to the primary rather than
-        back into the endpoint that just failed.  In production that
-        retry waits out the all-endpoints-down pause first; here the
-        mocked signer never reaches the paced queue, so it returns at
-        once and this asserts the routing, not the wait. */
-    assert.equal(fallbackAttempts, 1, "the failing endpoint is tried once");
-    assert.equal(primaryAttempts, 1, "the retry goes back to the first");
+    /*- Fallback was tried once; primary was NOT consulted. */
+    assert.equal(fallbackAttempts, 1);
+    assert.equal(primaryAttempts, 0);
   });
 });

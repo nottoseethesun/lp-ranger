@@ -158,37 +158,27 @@ describe("send-transaction: failoverToNextRPC", () => {
     }
   });
 
-  it("a second failover on a two-endpoint chain exhausts it, and a third is a no-op", () => {
-    /*- Two endpoints means the SECOND call is already the end of the
-        list.  It pauses all RPC traffic and restarts selection at the
-        first endpoint (see test/rpc-failover-wraps-after-pause.test.js).
-        Calls arriving while that pause runs must not move anything —
-        they describe the outage that started it. */
+  it("repeated failoverToNextRPC inside window refreshes the timer silently", () => {
     sendTx.init(
       { urls: ["http://primary.test", "http://fallback.test"] },
       mockEthersLib(),
     );
+    /*- Capture console.warn so we can assert exactly ONE failover banner
+        fires across two calls inside the same window. */
     const warns = [];
     const origWarn = console.warn;
     console.warn = (...a) => warns.push(a);
-    let third;
     try {
-      sendTx.failoverToNextRPC(); // primary → fallback
-      sendTx.failoverToNextRPC(); // fallback → exhausted: pause, restart
-      third = sendTx.failoverToNextRPC(); // during the pause
+      sendTx.failoverToNextRPC();
+      sendTx.failoverToNextRPC();
     } finally {
       console.warn = origWarn;
     }
     const banners = warns.filter((a) =>
       String(a[0] ?? "").includes("RPC failover engaged"),
     );
-    assert.equal(banners.length, 1, "only the one real move is announced");
-    assert.equal(third, false, "a report during the pause moves nothing");
-    assert.equal(
-      sendTx.getCurrentRPC()._url,
-      "http://primary.test",
-      "exhaustion restarts the list, and the pause keeps it there",
-    );
+    assert.equal(banners.length, 1);
+    assert.equal(sendTx.getCurrentRPC()._url, "http://fallback.test");
   });
 
   it("is a no-op when primary === fallback URL (single-RPC chain config)", () => {
