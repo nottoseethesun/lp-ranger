@@ -157,6 +157,27 @@ describe("Lifetime Gas counts the open NFT's mint", () => {
     }
   });
 
+  it("never produces NaN from a snapshot that has no coin total yet", async () => {
+    /*- The exported function is driven directly by several suites with
+     *  hand-built snapshots, and `undefined += n` is NaN. A NaN here is
+     *  not one wrong reading: totalGas feeds the Lifetime line, Net P&L
+     *  and Profit, and compares false against every threshold. */
+    for (const mintGasWei of [ONE_COIN_WEI, "0"]) {
+      const snap = _snap();
+      delete snap.totalGasNative;
+      const deps = { _botState: { hodlBaseline: _baseline({ mintGasWei }) } };
+      await overridePnlWithRealValues(snap, deps, POS, POOL, 10, 2, 0, null);
+      assert.ok(
+        !Number.isNaN(snap.totalGasNative),
+        `mintGasWei=${mintGasWei} left totalGasNative NaN`,
+      );
+      assert.ok(
+        !Number.isNaN(snap.totalGas),
+        `mintGasWei=${mintGasWei} left totalGas NaN`,
+      );
+    }
+  });
+
   it("counts the mint once however many times a poll runs", async () => {
     /*- The charge is derived at snapshot time rather than stored, so a
      *  fresh snapshot each poll starts from the periods' gas again. This

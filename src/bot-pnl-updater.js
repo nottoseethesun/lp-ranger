@@ -370,7 +370,15 @@ async function overridePnlWithRealValues(
    *  gas cost at the time. Documented for the operator in the table's
    *  own help dialog.
    */
-  snap.totalGasNative += _openNftMintGasNative(deps, snap);
+  /*- Added, not `+=`d onto whatever is there. A snapshot arriving
+   *  without `totalGasNative` would make `+=` produce NaN, and NaN in a
+   *  gas figure is not one wrong reading: `totalGas` feeds the Lifetime
+   *  line, Net P&L and Profit, and compares false against every
+   *  threshold it meets. `snapshot()` always supplies the field, so this
+   *  guards the exported function against a caller that does not. */
+  const mintNative = _openNftMintGasNative(deps, snap);
+  if (mintNative > 0)
+    snap.totalGasNative = (snap.totalGasNative ?? 0) + mintNative;
   if (snap.totalGasNative > 0) {
     try {
       const nativePrice = await fetchTokenPriceUsd(
