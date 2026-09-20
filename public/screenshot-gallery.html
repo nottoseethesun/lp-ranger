@@ -61,15 +61,29 @@
     position and saved field by field: when a rebalance triggers and how far
     a position may fall before the Impermanent Loss Guard stops it, how often
     a rebalance is allowed, the range and slippage it works within, and the
-    contracts and RPC it talks to. <strong>Range</strong> is headed by a
-    &ldquo;No Override&rdquo; toggle &mdash; off by default, so a rebalance
-    re-uses the position&rsquo;s existing range rather than applying the
-    settings beneath it. Every row carries a circle-i explaining what the
-    setting does and how to tune it.</p>
+    contracts and RPC it talks to. Every row carries a circle-i explaining
+    what the setting does and how to tune it.</p>
+  <p><strong>Range</strong> is headed by a &ldquo;No Override&rdquo; toggle
+    with two modes. Turned <strong>off</strong>, the badge reads
+    &ldquo;Use Settings Below&rdquo; and Price Range Extension, Full-Range
+    and Position Offset are live &mdash; the next rebalance applies them.
+    Turned <strong>on</strong>, the badge reads &ldquo;Re-Use Existing
+    Position Range&rdquo;, those three fields grey out, and the next
+    rebalance keeps the position&rsquo;s existing range re-centred on the
+    current price. On is the default for a position that has never been
+    configured. The toggle never clears the fields it disables, so
+    flipping back restores your settings intact.</p>
   <figure class="gallery-figure">
     <a href="images/dashboard-screenshot-bot-configuration.png">
-      <img src="images/dashboard-screenshot-bot-configuration.png" alt="Bot Configuration &mdash; auto-rebalance triggers and Impermanent Loss Guard, throttle, range, execution, contracts and network">
+      <img src="images/dashboard-screenshot-bot-configuration.png" alt="Bot Configuration &mdash; auto-rebalance triggers and Impermanent Loss Guard, throttle, range set to Use Settings Below, execution, and network">
     </a>
+    <figcaption>No Override off &mdash; &ldquo;Use Settings Below&rdquo;, with the Range fields live.</figcaption>
+  </figure>
+  <figure class="gallery-figure">
+    <a href="images/dashboard-screenshot-bot-configuration-reuse-range.png">
+      <img src="images/dashboard-screenshot-bot-configuration-reuse-range.png" alt="Bot Configuration &mdash; Range set to Re-Use Existing Position Range, with Price Range Extension, Full-Range and Position Offset disabled">
+    </a>
+    <figcaption>No Override on &mdash; &ldquo;Re-Use Existing Position Range&rdquo;, the default, with those fields greyed out.</figcaption>
   </figure>
 
   <h2 id="action-dialogs">Action Dialogs</h2>
@@ -193,11 +207,6 @@
   <figure class="gallery-figure">
     <a href="images/dashboard-screenshot-responsive-6.png">
       <img src="images/dashboard-screenshot-responsive-6.png" alt="Responsive layout 6">
-    </a>
-  </figure>
-  <figure class="gallery-figure">
-    <a href="images/dashboard-screenshot-responsive-7.png">
-      <img src="images/dashboard-screenshot-responsive-7.png" alt="Responsive layout 7">
     </a>
   </figure>
   <figure class="gallery-figure">
