@@ -154,6 +154,12 @@ const _NORMALIZERS = {
    *  a five-year scan would take days, which is a misconfiguration
    *  rather than a preference. */
   globalRPCRequestRateIntervalMS: (v) => _clampNonNegInt(v, 10_000),
+  /*- How long every request is held once failover has exhausted the
+   *  endpoint list.  Zero is allowed and means "never pause", which
+   *  restores the old behaviour of retrying dead endpoints forever.
+   *  Ceiling of 24 h: a pause longer than a day is an operator who
+   *  wanted the bot stopped, and stopping it is what `npm stop` is for. */
+  rpcAllEndpointsDownPauseMS: (v) => _clampNonNegInt(v, 86_400_000),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */
