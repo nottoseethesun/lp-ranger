@@ -38,6 +38,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — User uses them interchangeably; don't ask which
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Answer only what was asked, about only the thing named; yes/no means yes/no
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mentioned mid-fix is information, not a work order; downstream ones get dropped
+- [don't invent a requirement](feedback_dont_invent_a_requirement.md) — Find how the app already answers this class; a guard protecting a guard means the first step was wrong
 - [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms; never start mid-explanation
 - [prose style](feedback_prose_style.md) — Short sentences, concise, no slop words or empty structure, spell out small numbers, no gwei
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no pronoun where two candidates exist
