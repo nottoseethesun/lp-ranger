@@ -265,6 +265,18 @@ rm -rf lp-ranger-[current-version-number]
 
 **Step Ten** &mdash; Post-update tasks. A few releases need a one-time action once you are running the new version. Compare the version you noted in Step Nine against the list below. If your old version is newer than everything listed here, you are done.
 
+- **Updating from LP Ranger version 0.9.2.1 or earlier** &mdash; clear the blockchain scan caches. Step Six copies `tmp/` forward so an update normally starts warm, but this release changes how scan results and profit-and-loss periods are stored, and a figure cached by an older version can hold a value the new code no longer produces. Nothing detects that on its own: the old number simply persists and is displayed.
+
+  Stop the bot first &mdash; the command refuses to run while a server is up &mdash; then, from your new install directory:
+
+  ```bash
+  npm stop
+  npm run clear-blockchain-scan-cache
+  npm start
+  ```
+
+  Your wallet, settings, managed positions and rebalance log are untouched; only the re-derivable scan caches go. Everything is then re-read from the blockchain, so expect the same re-sync wait as a fresh install &mdash; about an hour per position, less with a Moralis API key set up. A clean install instead of an update achieves the same thing and needs none of this.
+
 - **Updating from LP Ranger version 0.9.1 or earlier** &mdash; run **Reload Current Position** once for every position you manage. This may take some time &mdash; allow about an hour per position, a little more for one with a long rebalance chain, and rather less with a Moralis API key set up.
 
   Use the Open Positions button in the header to switch to a position, then open the Settings gear at top right and click "Reload Current Position". Repeat for each managed position in turn.
