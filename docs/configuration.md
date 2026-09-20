@@ -382,21 +382,44 @@ engineering reference for the full inventory.
 
 ## RPC Request Pacing and Log Chunking
 
-Two settings govern how LP Ranger talks to an RPC endpoint. Both live in
-`app-config/app-defaults-for-user-configurable/bot-config-defaults.json`, both
-are deliberately **absent from the dashboard**, and they only make sense as a
-pair: the chunk size decides how many requests a scan produces, the interval
-decides how fast they leave.
+Three settings govern how LP Ranger talks to an RPC endpoint. All live in
+`app-config/app-defaults-for-user-configurable/bot-config-defaults.json` and
+all are deliberately **absent from the dashboard**. The first two are a pair:
+the chunk size decides how many requests a scan produces, the interval decides
+how fast they leave. The third decides what happens when no endpoint answers
+at all.
 
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
 | `getLogsChunkSize` | `9000` | Maximum block span per `eth_getLogs` call |
 | `globalRPCRequestRateIntervalMS` | `222` | Minimum gap between *any* two requests |
+| `rpcAllEndpointsDownPauseMS` | `3600000` | How long to hold every request once failover has tried every endpoint and none answered |
 
 They are not exposed in the GUI because they should never need changing in
 normal operation, and they are not in `GLOBAL_KEYS`, so they never reach
 `POST /api/config` or the OpenAPI schema. Override them by editing the file
 under `app-config/user-configurable/` and restarting.
+
+### When every endpoint is down
+
+Failover walks the endpoint list in order. Stepping off the last one starts
+the wait: every JSON-RPC request is held for `rpcAllEndpointsDownPauseMS`
+(one hour by default), and a line in Road Sign Yellow says so, in capitals,
+stating the wait in hours. The bot stays on the endpoint it was on for the
+duration — there is nothing to move to — and when the wait is up the list
+starts over at its first endpoint, so later failovers walk it in the order
+they walked it at startup.
+
+The hold is absolute. A rebalance or compound waits it out like every other
+request; a rebalance held between its liquidity removal and its mint leaves
+that position drained until the wait ends. Dashboard figures stop advancing
+for the duration, which is what the yellow line exists to explain.
+
+Set it to `0` to disable the wait entirely — the bot then keeps cycling
+through the endpoints continuously. There is no upper bound; how long to sit
+out an outage is your call. Unlike the two settings above, this one is read
+each time the list is exhausted, so a change to it takes effect without a
+restart.
 
 ### Why chunking exists
 
