@@ -277,10 +277,6 @@ rm -rf lp-ranger-[current-version-number]
 
   Your wallet, settings, managed positions and rebalance log are untouched; only the re-derivable scan caches go. Everything is then re-read from the blockchain, so expect the same re-sync wait as a fresh install &mdash; about an hour per position, less with a Moralis API key set up. A clean install instead of an update achieves the same thing and needs none of this.
 
-- **Updating from LP Ranger version 0.9.1 or earlier** &mdash; run **Reload Current Position** once for every position you manage. This may take some time &mdash; allow about an hour per position, a little more for one with a long rebalance chain, and rather less with a Moralis API key set up.
-
-  Use the Open Positions button in the header to switch to a position, then open the Settings gear at top right and click "Reload Current Position". Repeat for each managed position in turn.
-
 ### Details
 
 This sub-section is optional background on the update process above &mdash; you do not need any of it to complete an update.
