@@ -149,3 +149,33 @@ reason to go back; it is the starting point for the next step.
 Never `git checkout -- package-lock.json` to undo a regeneration. Going
 back restores the stale pins the regeneration existed to clear, and
 leaves the next person to rediscover the same thing.
+
+## `npm run check` cannot catch a lockfile desync (2026-09-19)
+
+After ANY change that touches `package-lock.json` — a regeneration, an
+added override, a dependency added or removed — verify with the two
+commands CI actually runs:
+
+```sh
+rm -rf node_modules && npm ci   # must exit 0
+npm ls                          # must exit 0, not ELSPROBLEMS
+```
+
+**`npm run check` passing proves nothing about this.** It reuses the
+`node_modules` already on disk and never re-resolves from the lockfile,
+so a package.json/lockfile mismatch is structurally invisible to it. A
+full green local check and a CI install failure are perfectly consistent
+states.
+
+**What it cost:** I added the `@scalar/json-magic` override and then ran
+`npm i` against the existing tree — an incremental resolve, which the top
+of this file already warns against. The lockfile came out missing three
+nested `@noble/hashes@1.8.0` entries. `npm run check` exited 0. Four CI
+jobs then died in about ten seconds each on `npm ci` with
+`Missing: @noble/hashes@1.8.0 from lock file`, the same package and the
+same signature recorded in the 2026-08-08 section above.
+
+The fix was not a repair of that lockfile: delete it and `node_modules`,
+`npm i` with the override already in `package.json`, and verify as above.
+An override belongs in `package.json` BEFORE the regeneration, never
+bolted on after one.
