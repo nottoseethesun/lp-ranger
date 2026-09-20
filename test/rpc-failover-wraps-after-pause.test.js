@@ -26,6 +26,7 @@ const { format } = require("node:util");
 
 const sendTx = require("../src/send-transaction");
 const rpcQueue = require("../src/rpc-request-manager");
+const logModule = require("../src/log");
 
 const URLS = [
   "https://rpc-one.example",
@@ -128,13 +129,17 @@ describe("failover wraps to the first endpoint after the pause", () => {
   });
 
   it("announces the pause in capitals, on Road Sign Yellow, in hours", () => {
+    /*- Captured through `src/log.js`'s sink injector rather than by
+     *  reassigning `console.warn`: the global stays untouched, which is
+     *  what that injector exists for. */
     const warns = [];
-    const origWarn = console.warn;
-    console.warn = (...a) => warns.push(a);
+    const restore = logModule._setSinkForTests({
+      warn: (...a) => warns.push(a),
+    });
     try {
       exhaust();
     } finally {
-      console.warn = origWarn;
+      restore();
     }
     /*- Render the way the terminal does: the `%s` values carry the
      *  endpoint and the wait, so the raw format string shows neither. */
