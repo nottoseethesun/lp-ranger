@@ -6,10 +6,10 @@
  * answered.
  *
  * Lives apart from `src/send-transaction.js` for the same reason
- * `src/rpc-read-retry.js` does: that module is at its 500-line cap, and
- * this is a self-contained decision rather than part of endpoint
- * selection. It takes no state of its own — the caller owns the endpoint
- * list and the sticky window, and is handed back the deadline to apply.
+ * `src/rpc-read-retry.js` does: this is a self-contained decision, not
+ * part of endpoint selection. It takes no state of its own — the caller
+ * owns the endpoint list and the sticky window, and is handed back the
+ * deadline to apply.
  */
 
 "use strict";

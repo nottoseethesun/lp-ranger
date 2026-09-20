@@ -19,10 +19,10 @@
  *      beat both, then throw an error marked `cancelled` so the caller
  *      resumes polling rather than treating it as a hard failure.
  *
- * Lives apart from `src/send-transaction.js`, which was at its 500-line
- * cap, and the seam is a real one: nothing here consults the RPC
- * endpoint list or the failover window. It is handed a transaction and a
- * signer and works with those alone.
+ * Lives apart from `src/send-transaction.js`, and the seam is a real
+ * one: nothing here consults the RPC endpoint list or the failover
+ * window. It is handed a transaction and a signer and works with those
+ * alone.
  */
 
 "use strict";

@@ -4,12 +4,12 @@
  * Failing the LAST endpoint must pause all RPC traffic and then resume
  * from the FIRST endpoint, not sit on the dead one.
  *
- * The production failure this pins: `failoverToNextRPC` returned `false`
- * and left `_activeIdx` on the last endpoint. `src/rpc-read-retry.js`
- * ignores that return — its comment says `false` "is a reason to come
- * back round to the first one rather than to give up" — so its unbounded
- * loop re-asked the same dead endpoint forever. Observed pinned to the
- * third endpoint on a repeating 502.
+ * What these pin: the end of the list has to come round.
+ * `src/rpc-read-retry.js` ignores whether failover actually moved — its
+ * comment says `false` "is a reason to come back round to the first one
+ * rather than to give up" — and its loop has no exit condition. A last
+ * endpoint that failover leaves selection sitting on is therefore a dead
+ * endpoint that loop re-asks indefinitely.
  *
  * Selection does not move during the pause — the app sits on the
  * endpoint it was on, since nothing can be sent anyway. The list returns

@@ -5,11 +5,10 @@
  * holds ALL JSON-RPC traffic for a configured pause, then starts again
  * from the first endpoint.
  *
- * Before this, `failoverToNextRPC` stood still on the last endpoint and
- * returned `false`. `src/rpc-read-retry.js` ignores that return and
- * expects to "come back round to the first one", so its unbounded retry
- * loop re-asked the same dead endpoint forever — observed in production
- * pinned to the third endpoint on a repeating 502.
+ * The hold is what makes that safe to retry into. `src/rpc-read-retry.js`
+ * ignores whether failover moved and loops with no exit condition, so
+ * with every endpoint refusing, the only thing bounding how fast it
+ * re-asks them is this queue.
  *
  * The pause is deliberately ABSOLUTE: a rebalance or compound waits it
  * out like every other request. An exemption would be a hole the pause
