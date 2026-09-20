@@ -91,6 +91,47 @@ function positionValueUsd(p, ps, pr0, pr1) {
   return value;
 }
 
+/**
+ * The open period's NFT mint gas, in native coins, or 0.
+ *
+ * Every other charge the position ever paid is on a period: a closed
+ * period carries its NFT's whole gas, read from chain and priced at that
+ * period's close day, and the open one collects its compounds and
+ * cancels as they happen. The one charge no period holds is the mint of
+ * the NFT open right now — it was spent before that period began, and
+ * only reaches a period when the period closes and is rebuilt from
+ * chain. Without this the Lifetime Gas line omits it, while the Current
+ * panel shows it, and a position that has never rebalanced reports no
+ * gas at all.
+ *
+ * Read from the baseline's `mintGasWei`, which is that mint transaction
+ * alone. Deliberately NOT `nftGasWeiByTokenId`, which is the mint PLUS
+ * that NFT's compound gas — the open period already counts those
+ * compounds, so using it would double them.
+ *
+ * Derived here rather than stored on the period. A stored copy would be
+ * offered again on every poll and need a mark to stop it accumulating,
+ * and that mark then freezes a figure the operator may need re-priced.
+ *
+ * @param {object} deps  Bot deps; `_botState.hodlBaseline` holds the mint.
+ * @param {object} snap  Snapshot being completed; its live period decides
+ *   whether a mint is outstanding at all.
+ * @returns {number} Native coins, or 0 when there is no open period or no
+ *   mint recorded.
+ */
+function _openNftMintGasNative(deps, snap) {
+  if (snap?.liveEpoch === undefined || snap?.liveEpoch === null) return 0;
+  const wei = deps?._botState?.hodlBaseline?.mintGasWei;
+  if (typeof wei !== "string" || wei === "" || wei === "0") return 0;
+  let native;
+  try {
+    native = Number(BigInt(wei)) / 1e18;
+  } catch {
+    return 0;
+  }
+  return Number.isFinite(native) && native > 0 ? native : 0;
+}
+
 /** Fetch USD prices for both tokens in a position. */
 async function fetchTokenPrices(token0, token1) {
   const [price0, price1] = await Promise.all([
@@ -312,7 +353,9 @@ async function overridePnlWithRealValues(
   snap.currentCompoundedUsd = 0;
   /*-
    *  The Lifetime panel's Gas line is the whole position's gas coins
-   *  priced now, the way every other lifetime figure is priced now.
+   *  priced now, the way every other lifetime figure is priced now, and
+   *  `_openNftMintGasNative` supplies the one part of "the whole
+   *  position" the periods do not carry.
    *
    *  The Per-Day table is deliberately NOT re-priced here. Each of its
    *  rows is a closed accounting period, and a closed period keeps the
@@ -327,6 +370,15 @@ async function overridePnlWithRealValues(
    *  gas cost at the time. Documented for the operator in the table's
    *  own help dialog.
    */
+  /*- Added, not `+=`d onto whatever is there. A snapshot arriving
+   *  without `totalGasNative` would make `+=` produce NaN, and NaN in a
+   *  gas figure is not one wrong reading: `totalGas` feeds the Lifetime
+   *  line, Net P&L and Profit, and compares false against every
+   *  threshold it meets. `snapshot()` always supplies the field, so this
+   *  guards the exported function against a caller that does not. */
+  const mintNative = _openNftMintGasNative(deps, snap);
+  if (mintNative > 0)
+    snap.totalGasNative = (snap.totalGasNative ?? 0) + mintNative;
   if (snap.totalGasNative > 0) {
     try {
       const nativePrice = await fetchTokenPriceUsd(
