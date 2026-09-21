@@ -96,4 +96,8 @@ function timerSecProblem(sec, fallbackSec, name) {
   return null;
 }
 
-module.exports = { TIMER_CEILING_CAP_SEC, timerCeilingSec, timerSecProblem };
+/*- Only the question callers actually ask is exported. The cap and the
+ *  ceiling arithmetic stay private: publishing them would invite a
+ *  second site to re-derive the rule from its parts, which is the
+ *  duplication this module exists to prevent. */
+module.exports = { timerSecProblem };
