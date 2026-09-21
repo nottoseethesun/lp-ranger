@@ -71,6 +71,7 @@ function parseTimerSec(value, fallbackSec, envName, key) {
     return assertTimerSec({
       sec,
       key,
+      defaultSec: fallbackSec,
       label: envName,
       remedy:
         `Set ${envName} in .env within range, or correct the ` +
