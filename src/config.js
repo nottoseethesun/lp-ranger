@@ -42,6 +42,7 @@ const { composeRpcUrls } = require("./rpc-url-list");
 
 const {
   parsePositiveInt,
+  parseTimerSec,
   parsePositiveFloat,
   CHAIN,
   CHAIN_NAME,
@@ -182,9 +183,10 @@ const SLIPPAGE_PCT = parsePositiveFloat(
 );
 
 /** Seconds before a pending TX is speed-up-replaced with higher gas. */
-const TX_SPEEDUP_SEC = parsePositiveInt(
+const TX_SPEEDUP_SEC = parseTimerSec(
   process.env.TX_SPEEDUP_SEC,
   APP_CONFIG.tx.speedupSec,
+  "TX_SPEEDUP_SEC",
 );
 
 /*- On-chain contract deadline (seconds) stamped into removeLiquidity /
@@ -199,15 +201,17 @@ const DEADLINE_SEC = parsePositiveInt(
  *  DERIVED from `deadlineSec × cancelToDeadlineMultiple` (both in
  *  app-runtime.json) so the two values can't drift.  The environment
  *  override still wins if operators need to force a specific value. */
-const TX_CANCEL_SEC = parsePositiveInt(
+const TX_CANCEL_SEC = parseTimerSec(
   process.env.TX_CANCEL_SEC,
   DEADLINE_SEC * APP_CONFIG.tx.cancelToDeadlineMultiple,
+  "TX_CANCEL_SEC",
 );
 
 /** How often the bot checks the on-chain position, in seconds. */
-const CHECK_INTERVAL_SEC = parsePositiveInt(
+const CHECK_INTERVAL_SEC = parseTimerSec(
   process.env.CHECK_INTERVAL_SEC,
   _BOT_DEFAULTS.checkIntervalSec,
+  "CHECK_INTERVAL_SEC",
 );
 
 /** Minimum time that must elapse between two rebalances, in minutes. */

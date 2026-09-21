@@ -249,7 +249,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 | `REBALANCE_OOR_THRESHOLD_PCT` | `5` | % price must move beyond position boundary before rebalance triggers |
 | `REBALANCE_TIMEOUT_MIN` | `180` | Minutes of continuous OOR before auto-rebalance (0 = disabled) |
 | `SLIPPAGE_PCT` | `0.75` | |
-| `TX_SPEEDUP_SEC` | `120` | Seconds before a pending TX is speed-up-replaced with higher gas |
+| `TX_SPEEDUP_SEC` | `120` | Seconds before a pending TX is speed-up-replaced with higher gas. Ceiling 120000 — the three settings that become a timer delay (this, `TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`, both capped at 172800) are bounded by `parseTimerSec` at 1000× their default or 48 h, **whichever is lesser**. Lesser is what keeps them clear of the 2147483 s a timer can hold: the greater would give `TX_CANCEL_SEC` a 41-day ceiling, and past the limit a timer fires immediately instead of waiting. Over-ceiling **throws at startup** rather than falling back — a setting replaced by its default leaves the bot on a schedule nobody chose |
 | `TX_CANCEL_SEC` | `3600` | Seconds before a stuck TX is cancelled via 0-PLS self-transfer (60 min). Derived as `tx.deadlineSec × tx.cancelToDeadlineMultiple` in `app-runtime.json` |
 | `CHECK_INTERVAL_SEC` | `300` | On-chain poll frequency |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | |

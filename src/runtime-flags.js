@@ -42,6 +42,57 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/*- Ceiling over every timer setting, whatever its default.
+ *
+ *  Two days is past anything these settings are for, and it is also
+ *  what keeps them clear of the runtime's own limit: a timer holds its
+ *  delay as a 32-bit count of milliseconds, 2,147,483,647 of them, or
+ *  about 24.8 days. 48 hours is 172,800,000 ms — an order of magnitude
+ *  inside it, with no arithmetic needed to see that.
+ *
+ *  Taking the LESSER of this and 1000x the default is what guarantees
+ *  that. The greater would not: 1000x `TX_CANCEL_SEC`'s hour is 41
+ *  days, past the limit, and a delay past the limit does not wait
+ *  longer — it fires after 1 ms. */
+const TIMER_CEILING_CAP_SEC = 48 * 60 * 60;
+
+/**
+ * Parse a positive integer of seconds that becomes a timer delay.
+ *
+ * The ceiling is a thousand times the shipped default, or 48 hours,
+ * whichever is LESSER. A setting with a small default stays near it; no
+ * setting gets past two days.
+ *
+ * **Out of range throws rather than falling back.** A value quietly
+ * replaced by its default leaves the bot running on a schedule its
+ * operator did not choose, and the schedule it was asked for is the one
+ * thing nobody would then think to check. Refusing to start, naming the
+ * key and the ceiling, is the only version of this an operator can act
+ * on.
+ *
+ * One check, not two: the ceiling cannot exceed 48 hours, which is what
+ * keeps every value clear of the runtime's own timer limit, so a second
+ * test against that limit could never fire.
+ *
+ * @param {string|undefined} value  Raw environment override, if any.
+ * @param {number} fallbackSec      Shipped default; also sets the ceiling.
+ * @param {string} name             Key name, for the error message.
+ * @returns {number} Seconds, within range.
+ * @throws {Error} When the resolved value exceeds the ceiling.
+ */
+function parseTimerSec(value, fallbackSec, name) {
+  const sec = parsePositiveInt(value, fallbackSec);
+  const ceilingSec = Math.min(fallbackSec * 1000, TIMER_CEILING_CAP_SEC);
+  if (sec > ceilingSec) {
+    throw new Error(
+      `[config] ${name}=${sec} exceeds its ceiling of ${ceilingSec} seconds ` +
+        `(1000x the default of ${fallbackSec}, or 48 hours, whichever is ` +
+        `lesser). Lower it in .env or app-runtime.json and restart.`,
+    );
+  }
+  return sec;
+}
+
 /**
  * Parse a positive float from a string, returning `fallback` on failure.
  * @param {string|undefined} value
@@ -185,6 +236,7 @@ const VERBOSE =
 
 module.exports = {
   parsePositiveInt,
+  parseTimerSec,
   parsePositiveFloat,
   resolveChainName,
   selectChain,

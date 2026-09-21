@@ -233,13 +233,13 @@ each layer live in [`docs/security.md`](security.md).
 | `REBALANCE_TIMEOUT_MIN` | `180` | `bot-config-defaults.json` → `rebalanceTimeoutMin` | Minutes continuously out of range before a rebalance fires whatever the distance. `0` disables it. |
 | `IMPERMANENT_LOSS_GUARD_PCT` | `50` | `bot-config-defaults.json` → `impermanentLossGuardPct` | How far below its own mint value a position may fall before the bot stops rebalancing it. Accepted range 1–100. |
 | `SLIPPAGE_PCT` | `0.75` | `bot-config-defaults.json` → `slippagePct` | Most slippage a swap may take, measured against the quoted output rather than the spot price. |
-| `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. |
+| `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. Ceiling 172800 — see [Ceilings on the timer settings](#ceilings-on-the-timer-settings). |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | `bot-config-defaults.json` → `minRebalanceIntervalMin` | Shortest wait between two rebalances of one position. |
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
 | `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive swap-backoff retries before the bot pauses rebalancing and waits for the operator. |
-| `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. |
+| `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. Ceiling 120000 — see [Ceilings on the timer settings](#ceilings-on-the-timer-settings). |
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. |
-| `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. |
+| `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Ceiling 172800 — see [Ceilings on the timer settings](#ceilings-on-the-timer-settings). |
 | `AGGREGATOR_URL` | `https://api.9mm.pro` | `app-runtime.json` → `aggregator.url` | 9mm DEX Aggregator endpoint. |
 | `AGGREGATOR_API_KEY` | `f9275849-2a1d-406b-b2a2-a6be1ac127dc` | `app-runtime.json` → `aggregator.apiKey` | `0x-api-key` header sent with aggregator quotes. Public and embedded in 9mm's own product, not an operator credential, which is why it ships in a tracked file rather than the encrypted key store. |
 | `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. |
@@ -274,6 +274,36 @@ Unlike the layers above, an addition is applied to the running process the
 moment you save it; no restart. The endpoint is not contacted before being
 added — an endpoint can be down at the moment you add it and fine a minute
 later, and the failover list already handles one that never answers.
+
+### Ceilings on the timer settings
+
+Three settings become a countdown the app schedules: `TX_SPEEDUP_SEC`,
+`TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`. Each has a ceiling, and a value
+above it **stops the app from starting**, with a message naming the setting
+and the limit.
+
+| Setting | Default | Ceiling | Which bound sets it |
+| ------- | ------- | ------- | ------------------- |
+| `TX_SPEEDUP_SEC` | `120` | `120000` (33 hours) | 1000× the default, being under 48 hours |
+| `TX_CANCEL_SEC` | `3600` | `172800` (48 hours) | 48 hours, since 1000× the default is 41 days |
+| `CHECK_INTERVAL_SEC` | `300` | `172800` (48 hours) | 48 hours, since 1000× the default is 3.4 days |
+
+The ceiling is 1000× the setting's default or 48 hours, **whichever is
+lesser**. A setting with a small default stays near it, and nothing gets
+past two days.
+
+Lesser rather than greater is what keeps these safe. A countdown is held as
+a 32-bit count of milliseconds — about 24.8 days — and the runtime will not
+wait longer than that. Ask it to and it does not wait at all: it fires
+immediately. Taking the greater would have given `TX_CANCEL_SEC` a ceiling
+of 41 days, past that limit. Taking the lesser puts every setting an order
+of magnitude inside it.
+
+An over-ceiling value is refused rather than quietly lowered, because a
+setting replaced by its default leaves the bot running on a schedule nobody
+chose — and the schedule is then the last thing anyone would think to
+check. Refusing to start, and naming the setting and its ceiling, is the
+only form of this an operator can act on.
 
 ### Contract Addresses
 
