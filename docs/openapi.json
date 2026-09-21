@@ -268,13 +268,13 @@
                     "type": "integer",
                     "description": "Manual decimals for token0, when on-chain detection fails.",
                     "minimum": 0,
-                    "maximum": 36
+                    "maximum": 77
                   },
                   "decimalsOverride1": {
                     "type": "integer",
                     "description": "Manual decimals for token1.",
                     "minimum": 0,
-                    "maximum": 36
+                    "maximum": 77
                   },
                   "decimalsOverrideForce0": {
                     "type": "boolean",

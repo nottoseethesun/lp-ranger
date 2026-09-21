@@ -351,7 +351,7 @@ last accepted. Nothing is saved, and you can edit and save again.
 | Max Gas Fee | 0.1 to 15% |
 | Total Lifetime Deposit | 0 or more |
 | Token Price Override | 0 or more (0 clears it) |
-| Token Decimals Override | 0 to 36 |
+| Token Decimals Override | 0 to 77 |
 | RPC Endpoints | 1 to 10 addresses, each beginning `http://` or `https://` |
 
 Two things that look like bad values are not. **An empty field clears
