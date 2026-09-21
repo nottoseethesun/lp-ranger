@@ -33,6 +33,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [hardening minimal scope](feedback_hardening_minimal_scope.md) — Hardening/burn-in = no refactor or restyle beyond the fix
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Nice-to-have lists in user-facing docs need a "not bugs" note
 - [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete the item; "inert" is a delete signal, not a caveat
+- [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line of any report; write each one somewhere durable the moment it's found
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Describe operator-facing behavior, not implementation constants
 - [operator sees UI, not logs](feedback_operator_sees_ui_not_logs.md) — Answer in badge/dialog terms; the log is the assistant's instrument, not the operator's interface
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — User uses them interchangeably; don't ask which
@@ -57,6 +58,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [prove the revert applied](feedback_prove_the_revert_applied.md) — A silently-failed revert patch reports green and looks like proof
 - [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but tests green → check what their runtime is actually running
 - [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check before stating a conclusion; a partial sample is not evidence of absence
+- [verify symbols a comment names](feedback_verify_symbols_a_comment_names.md) — Grep every function/file/flag a comment names; no gate catches a comment that lies
 
 ## Engineering, code, UI & docs rules
 - [audit program state](feedback_audit_program_state.md) — After a feature, audit for unnecessary state — derive from what exists
