@@ -201,7 +201,15 @@ function createRouteHandlers(deps) {
       if (body[k] !== undefined) pPatch[k] = body[k];
     const timerProblem = _timerKeyProblem(pPatch);
     if (timerProblem) {
-      jsonResponse(res, 400, { ok: false, error: timerProblem });
+      /*- `invalidKey` marks this as a rejected VALUE, as against the
+       *  other 400 this route returns, which is a malformed request.
+       *  The dashboard shows its "that value was not accepted" dialog
+       *  and restores the field only for the former. */
+      jsonResponse(res, 400, {
+        ok: false,
+        error: timerProblem,
+        invalidKey: "checkIntervalSec",
+      });
       return;
     }
     Object.assign(diskConfig.global, gPatch);

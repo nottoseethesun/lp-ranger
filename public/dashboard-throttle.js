@@ -512,6 +512,33 @@ export function rememberGoodInput(inputId, value) {
     _lastGoodByInput.set(inputId, String(value));
 }
 
+/**
+ * Put a refused field back to its last accepted value, and say what to
+ * tell the operator.
+ *
+ * Exported so the decision can be driven directly by a test —
+ * `fetchWithCsrf` goes through the global `fetch`, which a test must
+ * not replace. The alert itself stays with the caller.
+ *
+ * @param {string} inputId
+ * @param {string} key     The setting that was being saved.
+ * @param {object} body    The server's response body.
+ * @returns {string|null}  The dialog text, or null to say nothing —
+ *   which is the answer whenever the 400 was about the request rather
+ *   than the value, such as no position being selected.
+ */
+export function _applySaveRejection(inputId, key, body) {
+  if (!body || body.invalidKey !== key) return null;
+  const prior = _lastGoodByInput.get(inputId);
+  const el = g(inputId);
+  if (el && prior !== undefined) el.value = prior;
+  return `That value was not accepted:\n\n${
+    body.error || "It is outside the allowed range."
+  }\n\nThe field has been set back to ${
+    prior === undefined ? "its previous value" : prior
+  }. Edit it and save again if you like.`;
+}
+
 export function _saveSingleConfig(inputId, key, parse) {
   markInputDirty(inputId);
   const val = parse(g(inputId)?.value);
@@ -547,18 +574,15 @@ export function _saveSingleConfig(inputId, key, parse) {
       }
       /*- The server refuses a value it cannot run on rather than
        *  quietly correcting it, so put the field back to what was last
-       *  accepted and say why. The user can edit and save again. */
+       *  accepted and say why. The user can edit and save again.
+       *
+       *  Only for a rejected VALUE, which `invalidKey` marks. This
+       *  route also 400s on a malformed request — no position selected,
+       *  most often — and that is not something to show the operator a
+       *  dialog about, nor a reason to touch what they typed. */
       const body = await res.json().catch(() => ({}));
-      const prior = _lastGoodByInput.get(inputId);
-      const el = g(inputId);
-      if (el && prior !== undefined) el.value = prior;
-      alert(
-        `That value was not accepted:\n\n${
-          body.error || "It is outside the allowed range."
-        }\n\nThe field has been set back to ${
-          prior === undefined ? "its previous value" : prior
-        }. Edit it and save again if you like.`,
-      );
+      const message = _applySaveRejection(inputId, key, body);
+      if (message) alert(message);
     })
     .catch(() => {});
 }

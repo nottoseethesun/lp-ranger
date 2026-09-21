@@ -377,3 +377,45 @@ describe("saveMinInterval() — Save click applies the value + label", () => {
     },
   );
 });
+
+describe("a save the server refuses", () => {
+  beforeEach(() => {
+    document.body.innerHTML = `<input id="inInterval" value="300">`;
+  });
+
+  it("puts the field back to the last accepted value and says why", () => {
+    mod.rememberGoodInput("inInterval", 300);
+    document.getElementById("inInterval").value = "7200";
+    const msg = mod._applySaveRejection("inInterval", "checkIntervalSec", {
+      error: "checkIntervalSec resolves to 7200 seconds, above its maximum.",
+      invalidKey: "checkIntervalSec",
+    });
+    assert.equal(document.getElementById("inInterval").value, "300");
+    assert.match(msg, /was not accepted/);
+    assert.match(msg, /above its maximum/);
+    assert.match(msg, /set back to 300/);
+  });
+
+  it("stays silent when the 400 was about the request, not the value", () => {
+    /*- This route also refuses a malformed request — no position
+     *  selected, most often. That is not a bad value, so it neither
+     *  raises a dialog nor touches what the operator typed. */
+    mod.rememberGoodInput("inInterval", 300);
+    document.getElementById("inInterval").value = "7200";
+    const msg = mod._applySaveRejection("inInterval", "checkIntervalSec", {
+      error: "positionKey required for position-specific config",
+    });
+    assert.equal(msg, null);
+    assert.equal(document.getElementById("inInterval").value, "7200");
+  });
+
+  it("still reports when nothing good was recorded yet", () => {
+    /*- An input the panel has never populated from the server, so
+     *  there is no accepted value to go back to. */
+    const msg = mod._applySaveRejection("inNeverPopulated", "someSetting", {
+      error: "out of range",
+      invalidKey: "someSetting",
+    });
+    assert.match(msg, /its previous value/);
+  });
+});
