@@ -84,10 +84,21 @@ function parseTimerSec(value, fallbackSec, name) {
   const sec = parsePositiveInt(value, fallbackSec);
   const ceilingSec = Math.min(fallbackSec * 1000, TIMER_CEILING_CAP_SEC);
   if (sec > ceilingSec) {
+    /*- Name the bound that actually produced the ceiling.  Saying "1000x
+     *  the default" when 48 hours is what bound it reads as arithmetic
+     *  that does not add up — and it does not add up hardest in the case
+     *  most in need of a clear message: `TX_CANCEL_SEC` defaults to
+     *  `DEADLINE_SEC x cancelToDeadlineMultiple`, so a large enough
+     *  `DEADLINE_SEC` puts the DEFAULT over the ceiling and the value
+     *  being rejected is one nobody set. */
+    const bound =
+      ceilingSec === TIMER_CEILING_CAP_SEC
+        ? "48 hours"
+        : `1000x its default of ${fallbackSec}`;
     throw new Error(
-      `[config] ${name}=${sec} exceeds its ceiling of ${ceilingSec} seconds ` +
-        `(1000x the default of ${fallbackSec}, or 48 hours, whichever is ` +
-        `lesser). Lower it in .env or app-runtime.json and restart.`,
+      `[config] ${name} resolves to ${sec} seconds, above its ceiling of ` +
+        `${ceilingSec} (${bound}). Set ${name} lower in .env, or lower the ` +
+        `app-runtime.json values it defaults from, and restart.`,
     );
   }
   return sec;

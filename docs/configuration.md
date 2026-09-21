@@ -305,6 +305,14 @@ chose — and the schedule is then the last thing anyone would think to
 check. Refusing to start, and naming the setting and its ceiling, is the
 only form of this an operator can act on.
 
+One of the three can breach its ceiling without being set at all.
+`TX_CANCEL_SEC` defaults to `deadlineSec × cancelToDeadlineMultiple`, so
+raising `DEADLINE_SEC` past 43200 — twelve hours, with the shipped
+multiplier of 4 — carries the derived default past 48 hours and the app
+refuses to start. The message names `TX_CANCEL_SEC`, because that is the
+setting that is out of range, and points at the `app-runtime.json` values
+it derives from, because that is where the lever is.
+
 ### Contract Addresses
 
 **These are not editable from the dashboard, by design.** The Bot

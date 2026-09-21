@@ -52,7 +52,8 @@ describe("parseTimerSec", () => {
     assert.throws(
       () =>
         parseTimerSec(String(SPEEDUP * 1000 + 1), SPEEDUP, "TX_SPEEDUP_SEC"),
-      /exceeds its ceiling of 120000 seconds/,
+      /above its ceiling of 120000 \(1000x its default of 120\)/,
+      "and the message names the bound that produced that ceiling",
     );
   });
 
@@ -66,7 +67,7 @@ describe("parseTimerSec", () => {
       assert.equal(parseTimerSec(String(TWO_DAYS), def, name), TWO_DAYS);
       assert.throws(
         () => parseTimerSec(String(TWO_DAYS + 1), def, name),
-        /exceeds its ceiling of 172800 seconds/,
+        /above its ceiling of 172800 \(48 hours\)/,
         `${name} must stop at two days`,
       );
     }
@@ -85,7 +86,7 @@ describe("parseTimerSec", () => {
     }
     assert.throws(
       () => parseTimerSec(String(TIMER_LIMIT), CANCEL, "TX_CANCEL_SEC"),
-      /exceeds its ceiling/,
+      /above its ceiling/,
       "the timer limit itself is far out of range, and refused",
     );
   });
@@ -94,10 +95,39 @@ describe("parseTimerSec", () => {
     assert.throws(
       () => parseTimerSec("999999999", POLL, "CHECK_INTERVAL_SEC"),
       (err) => {
-        assert.match(err.message, /CHECK_INTERVAL_SEC=999999999/);
-        assert.match(err.message, /1000x the default of 300, or 48 hours/);
-        assert.match(err.message, /whichever is lesser/);
-        assert.match(err.message, /\.env or app-runtime\.json/);
+        assert.match(err.message, /CHECK_INTERVAL_SEC resolves to 999999999/);
+        assert.match(err.message, /above its ceiling of 172800 \(48 hours\)/);
+        assert.match(err.message, /Set CHECK_INTERVAL_SEC lower in \.env/);
+        assert.match(err.message, /app-runtime\.json values it defaults from/);
+        return true;
+      },
+    );
+  });
+
+  it("stays coherent when the DEFAULT itself is above the ceiling", () => {
+    /*- `TX_CANCEL_SEC` defaults to `DEADLINE_SEC x
+     *  cancelToDeadlineMultiple`, and `DEADLINE_SEC` has no ceiling of
+     *  its own. A large one therefore puts the DEFAULT out of range, and
+     *  the value refused is then one nobody set — so the message must
+     *  not tell the operator to lower a setting they never touched, and
+     *  must not claim a ceiling of 172800 is "1000x a default of
+     *  200000", which is what naming the wrong bound would say. */
+    const derived = 50_000 * 4;
+    assert.throws(
+      () => parseTimerSec(undefined, derived, "TX_CANCEL_SEC"),
+      (err) => {
+        assert.match(err.message, /TX_CANCEL_SEC resolves to 200000 seconds/);
+        assert.match(err.message, /above its ceiling of 172800 \(48 hours\)/);
+        assert.doesNotMatch(
+          err.message,
+          /1000x/,
+          "48 hours is what bound it, so 1000x must not be named",
+        );
+        assert.match(
+          err.message,
+          /lower the app-runtime\.json values it defaults from/,
+          "and the operator is pointed at the setting that actually moves it",
+        );
         return true;
       },
     );
