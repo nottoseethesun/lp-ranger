@@ -93,10 +93,14 @@ const BOUNDS = Object.freeze({
   /*- A figure the operator types to describe money already spent, so
    *  the only wrong values are negative ones and ones no wallet holds. */
   initialDepositUsd: Object.freeze({ min: 0, max: 1e12 }),
-  /*- ERC-20 decimals. 18 is near-universal; 36 leaves room above every
-   *  token in circulation. */
-  decimalsOverride0: Object.freeze({ min: 0, max: 36, integer: true }),
-  decimalsOverride1: Object.freeze({ min: 0, max: 36, integer: true }),
+  /*- ERC-20 decimals. The ceiling is the app's own, from
+   *  `_parseDecimals` in `public/dashboard-token-decimals.js`, which has
+   *  called [0, 77] a valid decimals since that form was written. A
+   *  second, tighter figure here would refuse a value the form itself
+   *  had already written to localStorage, leaving the two disagreeing
+   *  about the same token. */
+  decimalsOverride0: Object.freeze({ min: 0, max: 77, integer: true }),
+  decimalsOverride1: Object.freeze({ min: 0, max: 77, integer: true }),
 });
 
 /*- Settings whose value is a yes or a no. */

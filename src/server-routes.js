@@ -197,6 +197,15 @@ function createRouteHandlers(deps) {
       return;
     }
     Object.assign(diskConfig.global, gPatch);
+    /*- Same null-sweep the per-position patch gets below, and for the
+     *  same reason: `null` means "clear this setting", and assigning it
+     *  leaves a literal `null` on disk instead. Global keys reach this
+     *  now that an empty Bot Settings field is sent as `null` — Max Gas
+     *  Fee and Approval Multiple are both global. Their readers do cope
+     *  with a stored `null`, so this is about what the file says, not
+     *  about what the bot does. */
+    for (const k of Object.keys(gPatch))
+      if (gPatch[k] === null) delete diskConfig.global[k];
     /*- Apply to the in-memory holder as well as persisting, so the
      *  running process stops calling Moralis on the next price lookup
      *  rather than at the next restart. */

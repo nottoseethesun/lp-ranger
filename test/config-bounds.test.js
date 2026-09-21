@@ -236,6 +236,25 @@ describe("every bounded key is one the app actually has", () => {
       assert.ok(known.has(key), `${key} is not a GLOBAL_KEY or POSITION_KEY`);
   });
 
+  it("does not refuse a decimals the form itself would write", () => {
+    /*- The form's own `_parseDecimals` has called [0, 77] valid since it
+     *  was written, and it writes to localStorage before the save. A
+     *  tighter bound here would refuse a value the browser had already
+     *  stored, leaving the two disagreeing about the same token. */
+    const src = require("node:fs").readFileSync(
+      require("node:path").join(
+        __dirname,
+        "..",
+        "public",
+        "dashboard-token-decimals.js",
+      ),
+      "utf8",
+    );
+    const formCeiling = Number(/n >= 0 && n <= (\d+)/.exec(src)[1]);
+    assert.equal(BOUNDS.decimalsOverride0.max, formCeiling);
+    assert.equal(BOUNDS.decimalsOverride1.max, formCeiling);
+  });
+
   it("declares a min at or below the max for every range", () => {
     for (const [key, b] of Object.entries(BOUNDS)) {
       assert.equal(typeof b.min, "number", `${key} min`);

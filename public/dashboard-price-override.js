@@ -120,12 +120,16 @@ export function savePriceOverrideDialog() {
     p1 = parseFloat(i1?.value) || 0;
   const fc = g("priceOverrideForce");
   const force = fc ? fc.checked : false;
-  _save(p0, p1);
-  _saveForce(force);
   const m = g("priceOverrideModal");
   if (m) m.classList.add("hidden");
   const active = posStore.getActive();
-  if (!active) return;
+  if (!active) {
+    /*- No position to save against, so the browser copy is all there
+     *  is. */
+    _save(p0, p1);
+    _saveForce(force);
+    return;
+  }
   const pk = compositeKey(
     "pulsechain",
     active.walletAddress,
@@ -144,6 +148,12 @@ export function savePriceOverrideDialog() {
       priceOverride1: "priceOverrideInput1",
     },
     onSaved: () => {
+      /*- The browser copy is written only once the server has taken the
+       *  prices. Written first, a refused price would still be the one
+       *  the KPI panel valued the position at — the panel reads
+       *  localStorage, and nothing later corrects it. */
+      _save(p0, p1);
+      _saveForce(force);
       if (!isPositionManaged(active.tokenId) && _refetchUnmanaged)
         _refetchUnmanaged(active);
     },
