@@ -34,6 +34,7 @@ const {
   readConfigValue,
 } = require("./bot-config-v2");
 const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
+const { timerSecProblem } = require("./timer-bounds");
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
@@ -64,6 +65,60 @@ const { emojiId } = require("./logger");
  * @param {Function} deps.updatePositionState
  * @returns {object} Handler function map.
  */
+/**
+ * Why a saved position patch cannot be accepted, or null when it can.
+ *
+ * `checkIntervalSec` is the one settable key that becomes a timer
+ * delay: the poll cycle re-reads it through `_reloadFromConfig` on
+ * every pass and hands it to `setTimeout`, so a bad value takes effect
+ * on a RUNNING bot rather than at the next start. Past what a timer
+ * holds it does not poll slowly — it polls with no gap at all. The rule
+ * is the startup path's rule, from the same module, because two copies
+ * of it would drift; see `src/timer-bounds.js`.
+ *
+ * Refused rather than clamped, so the dashboard can say what was wrong
+ * instead of saving a different number than the one entered.
+ *
+ * @param {object} pPatch  The position keys pulled out of the body.
+ * @returns {string|null}
+ */
+/**
+ * Un-pause every bot loop that stopped over excessive swap cost, when
+ * the saved patch carries a new slippage.
+ *
+ * Operates on the in-memory bot states, not on disk — orthogonal to the
+ * persist that follows it, which is why the caller runs this first: a
+ * patch that fails to persist still frees a loop the operator was
+ * trying to unblock.
+ *
+ * `_retireImmediately` is cleared alongside, for the case where
+ * `bot-loop.js`'s re-open-failure path set it: without that, changing
+ * Slippage on a stuck-aborted re-open would open the gates and the next
+ * poll would still take `drain.js`'s retire branch instead of retrying.
+ *
+ * @param {object} pPatch                 The position keys from the body.
+ * @param {() => Iterable} getAllStates   Per-position bot states.
+ * @returns {void}
+ */
+function _clearSlippagePause(pPatch, getAllStates) {
+  if (pPatch.slippagePct === undefined) return;
+  for (const [, s] of getAllStates())
+    if (s.rebalancePaused) {
+      s.rebalancePaused = false;
+      s.rebalanceError = null;
+      s._retireImmediately = false;
+    }
+}
+
+function _timerKeyProblem(pPatch) {
+  if (pPatch.checkIntervalSec === undefined) return null;
+  return timerSecProblem(
+    pPatch.checkIntervalSec,
+    config.CHECK_INTERVAL_SEC,
+    "checkIntervalSec",
+  );
+}
+
 function createRouteHandlers(deps) {
   const {
     diskConfig,
@@ -136,6 +191,11 @@ function createRouteHandlers(deps) {
     for (const k of GLOBAL_KEYS) if (body[k] !== undefined) gPatch[k] = body[k];
     for (const k of POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
+    const timerProblem = _timerKeyProblem(pPatch);
+    if (timerProblem) {
+      jsonResponse(res, 400, { ok: false, error: timerProblem });
+      return;
+    }
     Object.assign(diskConfig.global, gPatch);
     /*- Apply to the in-memory holder as well as persisting, so the
      *  running process stops calling Moralis on the next price lookup
@@ -146,23 +206,10 @@ function createRouteHandlers(deps) {
      *  next restart. */
     if (gPatch.rpcUrls !== undefined) _applyRpcUrls(gPatch.rpcUrls);
     const hasPosKeys = Object.keys(pPatch).length > 0;
-    /*- Slippage-paused clear runs FIRST so that even if disk persistence
-     *  bails out (404 below), an in-flight paused bot loop still gets
-     *  unblocked by the user's slippage bump.  Operates on bot states
-     *  (in-memory), not disk — orthogonal to the disk persist below. */
-    if (pPatch.slippagePct !== undefined) {
-      for (const [, s] of getAllPositionBotStates())
-        if (s.rebalancePaused) {
-          s.rebalancePaused = false;
-          s.rebalanceError = null;
-          /*- Also clear `_retireImmediately` if set by bot-loop.js's
-           *  re-open-failure path.  Without this, changing Slippage on
-           *  a stuck-aborted re-open would unblock the gates but the
-           *  next poll would still hit drain.js's _retireImmediately
-           *  branch and retire instead of retrying. */
-          s._retireImmediately = false;
-        }
-    }
+    /*- Runs FIRST so that even if disk persistence bails out (404
+     *  below), an in-flight paused bot loop still gets unblocked by the
+     *  user's slippage bump. */
+    _clearSlippagePause(pPatch, getAllPositionBotStates);
     if (hasPosKeys) {
       const parsed = parseCompositeKey(body.positionKey);
       if (!parsed) {

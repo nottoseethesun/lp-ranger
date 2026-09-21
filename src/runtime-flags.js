@@ -22,6 +22,7 @@
 
 const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
+const { timerSecProblem } = require("./timer-bounds");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
@@ -42,81 +43,35 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/*- Ceiling over every timer setting, whatever its default.
- *
- *  Two days is past anything these settings are for, and it is also
- *  what keeps them clear of the runtime's own limit: a timer holds its
- *  delay as a 32-bit count of milliseconds, 2,147,483,647 of them, or
- *  about 24.8 days. 48 hours is 172,800,000 ms — an order of magnitude
- *  inside it, with no arithmetic needed to see that.
- *
- *  Taking the LESSER of this and 1000x the default is what guarantees
- *  that. The greater would not: 1000x `TX_CANCEL_SEC`'s hour is 41
- *  days, past the limit, and a delay past the limit does not wait
- *  longer — it fires after 1 ms. */
-const TIMER_CEILING_CAP_SEC = 48 * 60 * 60;
-
 /**
  * Parse a positive integer of seconds that becomes a timer delay.
  *
- * The ceiling is a thousand times the shipped default, or 48 hours,
- * whichever is LESSER. A setting with a small default stays near it; no
- * setting gets past two days.
+ * The rule itself lives in `src/timer-bounds.js`, shared with
+ * `POST /api/config` — a per-position `checkIntervalSec` reaches a timer
+ * too, and one rule in two places would drift.
  *
  * **Out of range throws rather than falling back.** A value quietly
  * replaced by its default leaves the bot running on a schedule its
- * operator did not choose, and the schedule it was asked for is the one
- * thing nobody would then think to check. Refusing to start, naming the
- * key and the ceiling, is the only version of this an operator can act
- * on.
- *
- * One check, not two: the ceiling cannot exceed 48 hours, which is what
- * keeps every value clear of the runtime's own timer limit, so a second
- * test against that limit could never fire.
+ * operator did not choose, and the schedule is then the one thing
+ * nobody would think to check. Refusing to start, naming the key and
+ * the ceiling, is the only version of this an operator can act on.
  *
  * @param {string|undefined} value  Raw environment override, if any.
  * @param {number} fallbackSec      Shipped default; also sets the ceiling.
  * @param {string} name             Key name, for the error message.
  * @returns {number} Seconds, within range.
- * @throws {Error} When the resolved value exceeds the ceiling.
+ * @throws {Error} When the resolved value is unusable as a delay.
  */
 function parseTimerSec(value, fallbackSec, name) {
-  const sec = parsePositiveInt(value, fallbackSec);
   /*- `parsePositiveInt` vets the OVERRIDE and hands back the fallback
-   *  untouched, so a bad default arrives here intact. `TX_CANCEL_SEC`
-   *  is where that bites: it defaults to
-   *  `deadlineSec x cancelToDeadlineMultiple`, and a zero multiplier
-   *  makes that 0 while a non-numeric one makes it NaN.
-   *
-   *  Both are worse than they look. `setTimeout` treats NaN as 1 ms and
-   *  0 as "next tick", and the 10-second floor in the cancel phase
-   *  cannot catch NaN either — `Math.max(10000, NaN)` is NaN. So the
-   *  nonce of every transaction would be cancelled about a millisecond
-   *  after it was sped up. Checked before the ceiling, so a negative
-   *  value is reported as what it is rather than as too large. */
-  if (!Number.isInteger(sec) || sec < 1) {
+   *  untouched, so a bad default arrives here intact — which is not
+   *  hypothetical: `TX_CANCEL_SEC` defaults to
+   *  `deadlineSec x cancelToDeadlineMultiple`, both operator-editable. */
+  const sec = parsePositiveInt(value, fallbackSec);
+  const problem = timerSecProblem(sec, fallbackSec, name);
+  if (problem) {
     throw new Error(
-      `[config] ${name} resolves to ${_show(sec)}, which is not a whole ` +
-        `number of seconds of at least 1. Check ${name} in .env and the ` +
-        `app-runtime.json values it defaults from, and restart.`,
-    );
-  }
-  const ceilingSec = Math.min(fallbackSec * 1000, TIMER_CEILING_CAP_SEC);
-  if (sec > ceilingSec) {
-    /*- Name the bound that actually produced the ceiling.  Saying "1000x
-     *  the default" when 48 hours is what bound it reads as arithmetic
-     *  that does not add up — and it does not add up hardest in the case
-     *  most in need of a clear message: `TX_CANCEL_SEC` defaults to
-     *  `DEADLINE_SEC x cancelToDeadlineMultiple`, so a large enough
-     *  `DEADLINE_SEC` puts the DEFAULT over the ceiling and the value
-     *  being rejected is one nobody set. */
-    const bound =
-      ceilingSec === TIMER_CEILING_CAP_SEC
-        ? "48 hours"
-        : `1000x its default of ${fallbackSec}`;
-    throw new Error(
-      `[config] ${name} resolves to ${sec} seconds, above its ceiling of ` +
-        `${ceilingSec} (${bound}). Set ${name} lower in .env, or lower the ` +
+      `[config] ${problem} Set ${name} lower in .env, or correct the ` +
         `app-runtime.json values it defaults from, and restart.`,
     );
   }

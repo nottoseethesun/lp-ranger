@@ -2363,6 +2363,51 @@ surface is covered by the Swagger spec (see
 
 ---
 
+## Reading Configuration Values
+
+**Read a configured value through the reader that vets it, never through
+the raw file.** Each shipped-defaults JSON has a reader beside it that
+applies the per-key rules declared next to the values —
+`readBotConfigDefaults()` for `bot-config-defaults.json`, and the
+`parse*` helpers in `src/runtime-flags.js` for `app-runtime.json` and
+`.env`. `loadMergedDefaults()` is what those readers are built on, not
+an alternative to them: it layers the operator's override over the
+shipped file and stops there.
+
+The difference only shows when a value is wrong, which is exactly when
+it matters. `checkIntervalSec` is declared with a 10-to-3600-second
+clamp in `src/bot-config-defaults.js`; read raw, a hand-edited `0` or
+`"soon"` travels on as a live setting instead of falling back to the
+shipped 300.
+
+Three rules follow.
+
+**A value that becomes a `setTimeout` or `setInterval` delay is vetted
+by `src/timer-bounds.js`, and by nothing else.** One module, because
+such a value arrives by more than one road: `.env` and
+`app-runtime.json` at startup, and `POST /api/config` at runtime, since
+the poll cycle re-reads a per-position `checkIntervalSec` on every pass.
+A second copy of the rule would drift, and the half that drifted would
+be the half nobody tested. That file also carries the reasoning — in
+short, a timer asked for more than about 24.8 days does not wait longer,
+it fires after a millisecond, and `NaN` behaves the same way.
+
+**Where the app cannot run on a wrong value, throw rather than fall
+back.** `src/config.js` does this for the three settings that become
+timer delays, and already did it for an unresolvable chain name. A
+value quietly replaced by its default leaves the bot running on a
+schedule or against a chain nobody chose — and that is then the last
+thing anyone would think to check. The throw happens while
+`src/config.js` is being required, so it stops the process before any
+position starts, and the message names the setting and the bound.
+
+**Where the app can carry on, answer rather than throw.** A bad value
+arriving at `POST /api/config` gets a 400 naming the problem; the server
+keeps serving and the dashboard can say what was wrong. This is why
+`timerSecProblem()` returns its reason instead of throwing it — the
+startup path throws that sentence, the route replies with it, and
+neither restates the rule.
+
 ## RPC Reachability at Startup
 
 Before a position's loop begins, `ensureReachable()`

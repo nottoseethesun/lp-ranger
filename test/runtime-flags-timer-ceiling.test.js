@@ -125,7 +125,7 @@ describe("parseTimerSec", () => {
         );
         assert.match(
           err.message,
-          /lower the app-runtime\.json values it defaults from/,
+          /correct the app-runtime\.json values it defaults from/,
           "and the operator is pointed at the setting that actually moves it",
         );
         return true;

@@ -78,6 +78,54 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(deps.diskConfig.global.triggerType, "oor");
     });
 
+    it("refuses a checkIntervalSec that cannot serve as a timer delay", async () => {
+      /*- The one settable key that becomes a `setTimeout` delay. The
+       *  poll cycle re-reads it every pass, so a bad value lands on a
+       *  RUNNING bot — and past what a timer holds it does not poll
+       *  slowly, it polls with no gap at all. 400 rather than a clamp,
+       *  so the dashboard can say what was wrong instead of saving a
+       *  different number than the one entered. */
+      for (const bad of [0, -5, "abc", 1.5, 99_999_999]) {
+        const deps = makeDeps({
+          readJsonBody: async () => ({
+            positionKey: "pulsechain-0x1-0x2-100",
+            checkIntervalSec: bad,
+          }),
+        });
+        deps.diskConfig.positions = {
+          "pulsechain-0x1-0x2-100": { status: "running" },
+        };
+        const h = createRouteHandlers(deps);
+        const res = makeRes();
+        await h._handleApiConfig({}, res);
+        assert.strictEqual(res._status, 400, `${String(bad)} must be refused`);
+        assert.strictEqual(res._body.ok, false);
+        assert.match(res._body.error, /checkIntervalSec/);
+        assert.strictEqual(
+          deps.diskConfig.positions["pulsechain-0x1-0x2-100"].checkIntervalSec,
+          undefined,
+          "and nothing is written",
+        );
+      }
+    });
+
+    it("accepts a checkIntervalSec inside the bounds", async () => {
+      const deps = makeDeps({
+        readJsonBody: async () => ({
+          positionKey: "pulsechain-0x1-0x2-100",
+          checkIntervalSec: 600,
+        }),
+      });
+      deps.diskConfig.positions = {
+        "pulsechain-0x1-0x2-100": { status: "running" },
+      };
+      const h = createRouteHandlers(deps);
+      const res = makeRes();
+      await h._handleApiConfig({}, res);
+      assert.strictEqual(res._status, 200);
+      assert.strictEqual(res._body.applied.checkIntervalSec, 600);
+    });
+
     it("applies position keys to specific positionKey", async () => {
       const deps = makeDeps({
         readJsonBody: async () => ({
