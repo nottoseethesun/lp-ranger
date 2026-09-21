@@ -2363,6 +2363,143 @@ surface is covered by the Swagger spec (see
 
 ---
 
+## Reading Configuration Values
+
+**Read a configured value through the reader that vets it, never through
+the raw file.** Each shipped-defaults JSON has a reader beside it that
+applies the per-key rules declared next to the values —
+`readBotConfigDefaults()` for `bot-config-defaults.json`, and the
+`parse*` helpers in `src/runtime-flags.js` for `app-runtime.json` and
+`.env`. `loadMergedDefaults()` is what those readers are built on, not
+an alternative to them: it layers the operator's override over the
+shipped file and stops there.
+
+The difference only shows when a value is wrong, which is exactly when
+it matters. `checkIntervalSec` is declared with a 10-to-3600-second
+clamp in `src/bot-config-defaults.js`; read raw, a hand-edited `0` or
+`"soon"` travels on as a live setting instead of falling back to the
+shipped 300.
+
+Three rules follow.
+
+**A value that becomes a `setTimeout` or `setInterval` delay is vetted
+by `src/timer-bounds.js`, and by nothing else.** One module, because
+such a value arrives by more than one road: `.env` and
+`app-runtime.json` at startup, and `POST /api/config` at runtime, since
+the poll cycle re-reads a per-position `checkIntervalSec` on every pass.
+A second copy of the rule would drift, and the half that drifted would
+be the half nobody tested. That file also carries the reasoning — in
+short, a timer asked for more than about 24.8 days does not wait longer,
+it fires after a millisecond, and `NaN` behaves the same way.
+
+**Where the app cannot run on a wrong value, throw rather than fall
+back.** `src/config.js` does this for the three settings that become
+timer delays, and already did it for an unresolvable chain name. A
+value quietly replaced by its default leaves the bot running on a
+schedule or against a chain nobody chose — and that is then the last
+thing anyone would think to check. The throw happens while
+`src/config.js` is being required, so it stops the process before any
+position starts, and the message names the setting and the bound.
+
+**Throw at a boundary a person writes to, never on a hot path.** This is
+why `bot-config-defaults.js` has two readers.
+`readBotConfigDefaultsStrict()` refuses an out-of-range timer setting
+and is called exactly once, by `src/config.js`, at startup.
+`readBotConfigDefaults()` never throws over a value, and is what
+everything else calls — because this file is re-read on every call, and
+those calls include a poll cycle, a price lookup, the all-endpoints-down
+pause, and `GET /api/bot-config-defaults`. A throw from there would turn
+an edit made while the bot is running into a broken poll and a 500, and
+the route's own contract is that it never 500s. The same edit is still
+refused: at the next start, which is when the operator can act on it.
+
+**Where the app can carry on, answer rather than throw.** A bad value
+arriving at `POST /api/config` gets a 400 naming the problem; the server
+keeps serving and the dashboard can say what was wrong. This is why
+`_timerKeyProblem()` in `src/server-routes.js` returns its reason
+instead of throwing it — the startup path throws that sentence, the
+route replies with it, and neither restates the rule.
+
+That 400 carries an `invalidValueForKey` field naming the setting whose
+value was refused, because the same route answers 400 for a second,
+unrelated reason: a malformed request, most often one with no
+`positionKey`. The dashboard raises its dialog and restores the field
+only for the first.
+
+**The browser does not decide whether a value is acceptable.**
+`src/config-bounds.js` is the only place that decision is made, for
+every setting the dashboard lets an operator type into, and
+`public/dashboard-config-save.js` is the only path a save takes. Adding
+a settable key means adding its rule to the first and mapping the key
+to its input id in the second; leave either out and the save fails with
+nothing said and the refused value still on screen.
+
+Three things make this one module rather than each control's own
+opinion. The browser's copies had drifted into four different policies:
+four settings quietly rewrote what was typed and saved the rewrite, so
+the bot ran on a number nobody chose; three refused with no message,
+which reads as a broken Save button; and the rest each raised a dialog
+of their own wording. None of it bound a request that did not come from
+the form — the same hole `src/timer-bounds.js` was built to close on the
+timer settings, and this is the rest of it.
+
+Bounds live with the check, not in the browser. Where a bound pair is
+already shipped in `bot-config-defaults.json` — `gasFeePctMin/Max`,
+`impermanentLossGuardPctMin/Max` — the module reads it from there rather
+than restating the figures, and the dashboard input's `min`/`max`
+attributes stay what they always were: an affordance for the spinner
+arrows, not a gate.
+
+Two values look like refusals but are not. **`null` clears a setting** —
+the route deletes the key and the shipped default stands again — so the
+checker passes it through untouched, and an empty field is sent as
+`null` for exactly that reason. **Zero is a real setting** for several
+keys: a price override of 0 means "no override" (every reader gates on
+`> 0`), and an OOR timeout of 0 means "off". A floor above zero on
+either would strand a setting the operator could set but never undo.
+
+## RPC Reachability at Startup
+
+Before a position's loop begins, `ensureReachable()`
+(`src/send-transaction.js`) proves that at least one configured endpoint
+answers. It calls `getBlockNumber` against each endpoint in the order
+`chains.json` → `rpc.urls` lists them and stops at the first that
+replies. When that is not the first in the list, the sticky failover
+window is engaged, so reads and writes both start where the probe
+succeeded instead of retrying the dead one on the first real call.
+
+The probe is what puts an unreachable chain in the terminal at startup,
+rather than leaving the operator to infer it from figures that never
+arrive.
+
+### What it prints
+
+| Situation | Line |
+| --- | --- |
+| The first endpoint answers | `[bot] RPC:    <url>` |
+| A later one answers | the failover banner naming the move, then `[bot] RPC:    <url> (fallback)` |
+| An endpoint does not answer | `[bot] RPC unreachable at startup (n of N): <url> — <error>` |
+| Another one remains to try | `[bot] Falling back to <next url>` |
+| None answered | `[bot] STARTUP: no RPC endpoint answered — tried all N, last was <url>. The bot cannot start until one is reachable. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.` |
+
+The summary line earns its place from what follows it. `ensureReachable`
+throws the last endpoint's error, and the caller logs that error with a
+stack trace — which names a single endpoint and reads like a crash
+rather than like "this machine cannot reach the chain". The summary says
+the latter in one sentence, before the stack arrives.
+
+### Startup is not the all-endpoints-down wait
+
+Running out of endpoints during normal operation holds every JSON-RPC
+request for `rpcAllEndpointsDownPauseMS` and prints the Road Sign Yellow
+banner. Startup does neither, and the two are separate by construction:
+the wait belongs to `failoverToNextRPC`, which the probe does not call —
+it walks the list itself and commits only on success.
+
+For the operator that means a failed startup can be retried the moment
+the connection is back. Nothing is being held, so there is no wait to
+sit out first.
+
 ## How Scans Survive RPC Failures
 
 A chunked log scan issues thousands of `eth_getLogs` requests, so over a

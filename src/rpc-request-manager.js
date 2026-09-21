@@ -55,6 +55,23 @@ let _lastReleaseMs = 0;
 /** Handle for the pending drain timer, or null when idle. */
 let _timer = null;
 
+/*- Epoch ms until which every request is held, or 0 when not halted.
+ *
+ *  Set by `src/send-transaction.js` when failover runs out of endpoints:
+ *  with nothing left that answers, continuing to send is just hammering
+ *  dead hosts. The halt is ABSOLUTE and content-agnostic, like the
+ *  pacing it sits beside — a rebalance or compound waits it out with
+ *  everything else. An exemption would be a hole the halt escapes
+ *  through, and the one request that matters most during an outage is
+ *  the one least likely to succeed. */
+let _haltUntilMs = 0;
+
+/** Milliseconds left on the halt; 0 when not halted. */
+function _haltRemainingMs() {
+  const remaining = _haltUntilMs - Date.now();
+  return remaining > 0 ? remaining : 0;
+}
+
 /**
  * Release the head of the queue and schedule the next drain.
  *
@@ -63,12 +80,24 @@ let _timer = null;
  *
  * The timer is deliberately NOT `unref`'d: callers are awaiting these
  * resolvers, and an unref'd timer would let the process exit with
- * requests still queued, stranding those promises.  The cost is that
- * shutdown can wait out at most one interval.
+ * requests still queued, stranding those promises.  The cost is that it
+ * holds the event loop open — for a pacing interval normally, and for
+ * as long as an outage halt runs when one is engaged.  `server.js`
+ * covers that: its shutdown handler force-exits three seconds after
+ * SIGINT or SIGTERM regardless of what is still pending.
  * @returns {void}
  */
 function _drain() {
   _timer = null;
+  /*- Halted: release nobody and come back when it lifts. Checked here
+   *  rather than only at `acquire` so requests already queued when the
+   *  halt begins are held too — otherwise the backlog would drain
+   *  straight into the dead endpoints the halt exists to stop calling. */
+  const haltMs = _haltRemainingMs();
+  if (haltMs > 0) {
+    if (_queue.length > 0) _timer = setTimeout(_drain, haltMs);
+    return;
+  }
   const next = _queue.shift();
   if (next === undefined) return;
   _lastReleaseMs = Date.now();
@@ -87,10 +116,20 @@ function _drain() {
  * @returns {Promise<void>}  Resolves when the caller may send.
  */
 function acquire() {
-  if (_INTERVAL_MS <= 0) return Promise.resolve();
+  /*- The halt outranks pacing, including the `0` that disables pacing:
+   *  an operator who turned pacing off still wants the process to stop
+   *  calling endpoints that have all stopped answering. Both fast paths
+   *  below are therefore gated on it. */
+  const haltMs = _haltRemainingMs();
+  if (haltMs === 0 && _INTERVAL_MS <= 0) return Promise.resolve();
 
   const sinceLast = Date.now() - _lastReleaseMs;
-  if (_queue.length === 0 && _timer === null && sinceLast >= _INTERVAL_MS) {
+  if (
+    haltMs === 0 &&
+    _queue.length === 0 &&
+    _timer === null &&
+    sinceLast >= _INTERVAL_MS
+  ) {
     _lastReleaseMs = Date.now();
     return Promise.resolve();
   }
@@ -100,8 +139,9 @@ function acquire() {
     if (_timer === null) {
       /*- Wait out whatever remains of the interval since the last
        *  release, not a full interval — otherwise a request arriving
-       *  just after one leaves would be penalised twice. */
-      const wait = Math.max(0, _INTERVAL_MS - sinceLast);
+       *  just after one leaves would be penalised twice. A halt, when
+       *  one is running, outlasts both. */
+      const wait = Math.max(0, _INTERVAL_MS - sinceLast, haltMs);
       _timer = setTimeout(_drain, wait);
     }
   });
@@ -114,6 +154,39 @@ function acquire() {
  */
 function getIntervalMs() {
   return _INTERVAL_MS;
+}
+
+/**
+ * Hold every JSON-RPC request for `ms`, then resume at the normal pace.
+ *
+ * Called when RPC failover runs out of endpoints. Extends an existing
+ * halt but never shortens one: two exhaustion reports in quick
+ * succession describe the same outage, and the later one must not cut
+ * the wait the first one started.
+ *
+ * No timer is touched here. A drain already scheduled will fire, see the
+ * halt, and reschedule itself past it; an idle queue schedules past it
+ * when the next request arrives. That leaves exactly one timer in play
+ * however the halt lands.
+ *
+ * @param {number} ms  How long to hold requests. Ignored when not finite
+ *   or not positive, so a misread config cannot wedge the process.
+ * @returns {number} Epoch ms the halt now runs until; 0 if not halted.
+ */
+function halt(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return _haltUntilMs;
+  const until = Date.now() + ms;
+  if (until > _haltUntilMs) _haltUntilMs = until;
+  return _haltUntilMs;
+}
+
+/**
+ * Milliseconds left on the current halt; 0 when requests flow normally.
+ * Diagnostic, and the seam tests assert the halt through.
+ * @returns {number}
+ */
+function haltRemainingMs() {
+  return _haltRemainingMs();
 }
 
 /**
@@ -136,6 +209,14 @@ function _resetForTests() {
   }
   while (_queue.length > 0) _queue.shift()();
   _lastReleaseMs = 0;
+  _haltUntilMs = 0;
 }
 
-module.exports = { acquire, getIntervalMs, queueLength, _resetForTests };
+module.exports = {
+  acquire,
+  getIntervalMs,
+  halt,
+  haltRemainingMs,
+  queueLength,
+  _resetForTests,
+};

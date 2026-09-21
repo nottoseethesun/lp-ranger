@@ -1,6 +1,6 @@
 # Code Style and Formatting Rules
 
-Companion to [CLAUDE.md](../CLAUDE.md). Collects the formatting and lint
+Companion to [CLAUDE.md](../../CLAUDE.md). Collects the formatting and lint
 rules that are most commonly violated, so they are impossible to miss.
 
 ---

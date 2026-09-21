@@ -331,7 +331,12 @@ async function _buildCompoundOpts(deps, poolState, trigger) {
     tickLower: position.tickLower,
     tickUpper: position.tickUpper,
     swapRouterAddress: config.SWAP_ROUTER,
-    slippagePct: deps._getConfig?.("slippagePct") ?? config.SLIPPAGE_PCT,
+    /*- The two per-token settings, passed through as saved. The swap
+     *  picks the destination token's one (`resolveSlippagePct`) and
+     *  falls back to the shipped default when it is unset — the same
+     *  answer a rebalance of this pair would get. */
+    slippagePctToken0: deps._getConfig?.("slippagePctToken0"),
+    slippagePctToken1: deps._getConfig?.("slippagePctToken1"),
     gasFeePct: deps._getConfig?.("gasFeePct"),
   };
 }

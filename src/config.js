@@ -37,11 +37,13 @@
 const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
 const { loadMergedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaultsStrict } = require("./bot-config-defaults");
 const botConfigV2 = require("./bot-config-v2");
 const { composeRpcUrls } = require("./rpc-url-list");
 
 const {
   parsePositiveInt,
+  parseTimerSec,
   parsePositiveFloat,
   CHAIN,
   CHAIN_NAME,
@@ -58,11 +60,24 @@ const {
  *  file. */
 const APP_CONFIG = loadMergedDefaults("app-runtime.json");
 
-/*- Single-source baseline for every Bot-Setting default value: read
- *  the merged JSON once at module init.  Used below as the
- *  env-var-fallback expression in every `parsePositiveInt/Float` call
- *  site so no numeric default is ever literally written in this file. */
-const _BOT_DEFAULTS = loadMergedDefaults("bot-config-defaults.json");
+/*- Single-source baseline for every Bot-Setting default value, used
+ *  below as the env-var-fallback expression in every
+ *  `parsePositiveInt/Float/TimerSec` call site, so no numeric default is
+ *  ever literally written in this file.
+ *
+ *  Read through the reader that vets, rather than `loadMergedDefaults`
+ *  directly: it applies the per-key clamps declared beside the values,
+ *  so an out-of-range or non-numeric override falls back to the shipped
+ *  value HERE rather than travelling on as a live setting.  Reading the
+ *  merged JSON raw takes the same file with none of that.
+ *
+ *  The STRICT variant, because this is startup.  A timer setting an
+ *  operator wrote out of range stops the app here, rather than being
+ *  replaced by a number nobody chose — and startup is the only place
+ *  that can refuse, since the lenient reader is what a poll cycle and
+ *  an HTTP route call.  See docs/engineering.md § "Reading
+ *  Configuration Values". */
+const _BOT_DEFAULTS = readBotConfigDefaultsStrict();
 
 // ── Server ─────────────────────────────────────────────────────────────────────
 
@@ -182,9 +197,11 @@ const SLIPPAGE_PCT = parsePositiveFloat(
 );
 
 /** Seconds before a pending TX is speed-up-replaced with higher gas. */
-const TX_SPEEDUP_SEC = parsePositiveInt(
+const TX_SPEEDUP_SEC = parseTimerSec(
   process.env.TX_SPEEDUP_SEC,
   APP_CONFIG.tx.speedupSec,
+  "TX_SPEEDUP_SEC",
+  "txSpeedupSec",
 );
 
 /*- On-chain contract deadline (seconds) stamped into removeLiquidity /
@@ -199,15 +216,19 @@ const DEADLINE_SEC = parsePositiveInt(
  *  DERIVED from `deadlineSec × cancelToDeadlineMultiple` (both in
  *  app-runtime.json) so the two values can't drift.  The environment
  *  override still wins if operators need to force a specific value. */
-const TX_CANCEL_SEC = parsePositiveInt(
+const TX_CANCEL_SEC = parseTimerSec(
   process.env.TX_CANCEL_SEC,
   DEADLINE_SEC * APP_CONFIG.tx.cancelToDeadlineMultiple,
+  "TX_CANCEL_SEC",
+  "txCancelSec",
 );
 
 /** How often the bot checks the on-chain position, in seconds. */
-const CHECK_INTERVAL_SEC = parsePositiveInt(
+const CHECK_INTERVAL_SEC = parseTimerSec(
   process.env.CHECK_INTERVAL_SEC,
   _BOT_DEFAULTS.checkIntervalSec,
+  "CHECK_INTERVAL_SEC",
+  "checkIntervalSec",
 );
 
 /** Minimum time that must elapse between two rebalances, in minutes. */

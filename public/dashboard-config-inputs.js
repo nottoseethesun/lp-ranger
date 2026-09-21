@@ -22,10 +22,10 @@
 import { g } from "./dashboard-helpers.js";
 import { isInputDirty } from "./dashboard-data-cache.js";
 import { applySavedMinInterval } from "./dashboard-throttle.js";
+import { rememberGoodInput } from "./dashboard-config-save.js";
 
 /* Map of server config key → form input id. */
 const _CONFIG_INPUT_MAP = {
-  slippagePct: "inSlip",
   checkIntervalSec: "inInterval",
   minRebalanceIntervalMin: "inMinInterval",
   maxRebalancesPerDay: "inMaxReb",
@@ -89,6 +89,9 @@ export function populateConfigInputs(d) {
     if (val !== undefined && val !== null && !isInputDirty(elId)) {
       const el = g(elId);
       if (el) el.value = val;
+      /*- This came from the server, so it is a value the server takes.
+       *  A save the server later refuses puts the field back to it. */
+      rememberGoodInput(elId, val);
     }
   }
   /*- Seed the client throttle from the SAVED per-position value so the

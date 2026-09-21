@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d932d59e-01b4-45db-82b1-6d987abcda8f
+  modified: 2026-09-20T22:28:42.547Z
 ---
 
 Running list of **code-cleanup nice-to-haves**.  Each entry here is polish
@@ -94,7 +95,7 @@ Do not raise it again unless they open the door.
 
 **On the public list (2026-09-02).** Item 1 (the CSS prefix rename) is now published on the README's
 Nice-to-Have list as "Letter-First CSS Class Prefix", detailed in
-`docs/roadmap/nice-to-haves/project_css_prefix_rename.md`.
+`docs/roadmap/clean-ups/project_css_prefix_rename.md`.
 Keep the two in step, and do not add a second entry for it.
 
 ### Stop hanging properties on arrays (plus a lint for it)
@@ -123,4 +124,4 @@ to `no-separate-contract-calls.js`) rejecting property assignment onto
 an array.  The lint is the part that makes it stay fixed.
 
 Full write-up:
-`docs/roadmap/nice-to-haves/project_no_properties_on_arrays.md`.
+`docs/roadmap/clean-ups/project_no_properties_on_arrays.md`.

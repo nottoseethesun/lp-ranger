@@ -4,13 +4,16 @@
  * @description
  * Resolve which slippage percentage applies to a given swap direction.
  *
- * The dashboard's single "Slippage Tolerance" input was replaced by
- * two per-token inputs (`slippagePctToken0` / `slippagePctToken1`).
- * The rule is simple: use the DESTINATION-token's per-token value if
- * set, otherwise use the shipped `slippagePct` default (currently
- * 0.75%).  The position's legacy saved `slippagePct` is no longer
- * consulted — that field lingers in `bot-config.json` on upgrades but
- * is dormant.
+ * Slippage is two settings, one per token, and nothing else. The rule
+ * is simple: use the DESTINATION-token's value if set, otherwise the
+ * shipped `slippagePct` default (currently 0.75%) — a default in
+ * `bot-config-defaults.json`, not a per-position setting.
+ *
+ * **Every swap asks this, rebalance and compound alike.** The single
+ * per-position `slippagePct` that the old Slippage row saved is
+ * retired: it was dormant for rebalances and still honoured by
+ * compounds, so one position could swap at two different slippages
+ * depending on which move it was making.
  *
  * Destination-token rule:
  *   - A `token0 → token1` swap uses `slippagePctToken1`.

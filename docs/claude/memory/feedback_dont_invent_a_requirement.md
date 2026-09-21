@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-09-20T06:29:01.026Z
+  modified: 2026-09-20T21:06:56.716Z
 ---
 
 Before adding a mechanism, find out how this app already answers that
@@ -52,8 +52,42 @@ flew against entirely how the app should be working."* **When an
 explanation will not come out coherent, suspect the design, not the
 wording.**
 
+## An audit finding is a report, not a work order
+
+**2026-09-20, same session, second occurrence.** Auditing the RPC
+outage pause, I found that an operator adding an RPC endpoint during the
+pause would have it accepted and then not called until the pause lapsed
+— and `docs/configuration.md` promises an addition "is applied to the
+running process the moment you save it". I built the fix: a `resume()`
+on the request queue, called from `setRpcUrls`.
+
+The user had already settled that question one instruction earlier:
+*"The yellow rpc pause is absolute."* Their response: *"I didn't ask you
+to clear the wait for anything"*, *"You added a bunch of excess
+complexity there"*, *"Don't add functionality requirements without
+asking me."* Backed out to the committed state, no trace.
+
+**Two rules from it.**
+
+**A rule the user calls absolute has no exceptions you get to discover.**
+"Absolute" was said about this exact mechanism, in this session, after
+they had already reversed one proposed exemption for rebalances and
+compounds. A later finding that seems to justify an exemption is a thing
+to report, not a licence to build one.
+
+**Audits produce findings, and findings go to the user.** Every audit
+item lands in one of two piles: a defect in the thing just built, which
+is fixed; or a design question about behaviour the user specified, which
+is reported with the concrete consequence and left to them. Building
+from the second pile is inventing a requirement, however well the audit
+justified it.
+
+The user's own summary, and it is fair: this should not need saying —
+*"it should be something you know by default."*
+
 Related: [[feedback_no_extra_state]] (reuse existing state before adding
 new), [[feedback_audit_program_state]] (audit for state that can be
 derived), [[feedback_dont_persist_a_correction]] (before storing a
 fix-up, ask whether the wrong value should be written at all),
+[[feedback_fix_only_what_was_asked]], [[feedback_no_finding_without_a_failure]],
 [[feedback_kiss]], [[feedback_general_to_specific]].

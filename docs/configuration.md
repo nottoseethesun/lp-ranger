@@ -232,14 +232,14 @@ each layer live in [`docs/security.md`](security.md).
 | `REBALANCE_OOR_THRESHOLD_PCT` | `5` | `bot-config-defaults.json` → `rebalanceOutOfRangeThresholdPercent` | How far past the position's price boundary the price must move before the distance condition fires, as a percentage of the position's own range width. `0` fires the moment the position leaves range. |
 | `REBALANCE_TIMEOUT_MIN` | `180` | `bot-config-defaults.json` → `rebalanceTimeoutMin` | Minutes continuously out of range before a rebalance fires whatever the distance. `0` disables it. |
 | `IMPERMANENT_LOSS_GUARD_PCT` | `50` | `bot-config-defaults.json` → `impermanentLossGuardPct` | How far below its own mint value a position may fall before the bot stops rebalancing it. Accepted range 1–100. |
-| `SLIPPAGE_PCT` | `0.75` | `bot-config-defaults.json` → `slippagePct` | Most slippage a swap may take, measured against the quoted output rather than the spot price. |
-| `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. |
+| `SLIPPAGE_PCT` | `0.75` | `bot-config-defaults.json` → `slippagePct` | Most slippage a swap may take, measured against the quoted output rather than the spot price. This is the **default**: a position sets slippage per token, in the two Slippage rows, and this applies to a token that has no figure of its own. See [Slippage is two settings](#slippage-is-two-settings). |
+| `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. Range 10 to 3600 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | `bot-config-defaults.json` → `minRebalanceIntervalMin` | Shortest wait between two rebalances of one position. |
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
 | `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive swap-backoff retries before the bot pauses rebalancing and waits for the operator. |
-| `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. |
+| `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. Range 1 to 120000 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. |
-| `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. |
+| `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `AGGREGATOR_URL` | `https://api.9mm.pro` | `app-runtime.json` → `aggregator.url` | 9mm DEX Aggregator endpoint. |
 | `AGGREGATOR_API_KEY` | `f9275849-2a1d-406b-b2a2-a6be1ac127dc` | `app-runtime.json` → `aggregator.apiKey` | `0x-api-key` header sent with aggregator quotes. Public and embedded in 9mm's own product, not an operator credential, which is why it ships in a tracked file rather than the encrypted key store. |
 | `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. |
@@ -274,6 +274,123 @@ Unlike the layers above, an addition is applied to the running process the
 moment you save it; no restart. The endpoint is not contacted before being
 added — an endpoint can be down at the moment you add it and fine a minute
 later, and the failover list already handles one that never answers.
+
+### Ranges on the timer settings
+
+Three settings become a countdown the app schedules: `TX_SPEEDUP_SEC`,
+`TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`. Each has a ceiling, and what an
+out-of-range value does depends on where it was written. In the JSON file
+or in `.env` it **stops the app from starting**, with a message naming the
+setting and the limit. In the dashboard's Bot Settings form **the save is
+refused**: a dialog says what was wrong, the field goes back to the value
+it last saved, and the bot carries on with that one. Edit and save again
+whenever you like.
+
+That second rule is not only for the timer settings. **Every value you
+can type into the dashboard is checked the same way** — see
+[What the dashboard accepts](#what-the-dashboard-accepts) below.
+
+| Setting | Default | Range | Which bound sets it |
+| ------- | ------- | ----- | ------------------- |
+| `TX_SPEEDUP_SEC` | `120` | 1 to `120000` (33 hours) | 1000× the default, being under 48 hours |
+| `TX_CANCEL_SEC` | `3600` | 1 to `172800` (48 hours) | 48 hours, since 1000× the default is 41 days |
+| `CHECK_INTERVAL_SEC` | `300` | `10` to `3600` (one hour) | its own range — an hour between looks at a position is already past any use |
+
+Most of them take the general bound: 1000× the setting's default or 48
+hours, **whichever is lesser**. A setting with a small default stays near
+it, and nothing gets past two days. A setting with a sensible range of its
+own declares that instead, which the poll interval does.
+
+**The same range applies wherever the setting is written** — the JSON file,
+`.env`, and the dashboard's Bot Settings form all ask
+`src/timer-bounds.js`. They used to disagree: a poll interval of two hours
+was silently discarded in the JSON file and accepted by the other two.
+
+Lesser rather than greater is what keeps these safe. A countdown is held as
+a 32-bit count of milliseconds — about 24.8 days — and the runtime will not
+wait longer than that. Ask it to and it does not wait at all: it fires
+immediately. Taking the greater would have given `TX_CANCEL_SEC` a ceiling
+of 41 days, past that limit. Taking the lesser puts every setting an order
+of magnitude inside it.
+
+An over-ceiling value is refused rather than quietly lowered, because a
+setting replaced by its default leaves the bot running on a schedule nobody
+chose — and the schedule is then the last thing anyone would think to
+check. Naming the setting and its ceiling — by refusing to start, or by
+refusing the save — is the only form of this an operator can act on.
+
+One of the three can breach its ceiling without being set at all.
+`TX_CANCEL_SEC` defaults to `deadlineSec × cancelToDeadlineMultiple`, so
+raising `DEADLINE_SEC` past 43200 — twelve hours, with the shipped
+multiplier of 4 — carries the derived default past 48 hours and the app
+refuses to start. The message names `TX_CANCEL_SEC`, because that is the
+setting that is out of range, and points at the `app-runtime.json` values
+it derives from, because that is where the lever is.
+
+### Slippage is two settings
+
+One per token, and nothing else. Bot Settings → Execution has a
+**Slippage (Token 0)** row and a **Slippage (Token 1)** row. They may
+hold the same figure; they are two rows because the two sides of a pair
+often need different ones.
+
+Which one applies to a swap is decided by where the swap is **going**,
+not where it starts. Selling token 0 to buy token 1 uses Token 1's
+figure; selling token 1 to buy token 0 uses Token 0's. The destination
+side is where the value can be taken, so that is where the budget sits.
+
+A token whose row you have not set falls back to the shipped default,
+`slippagePct` in `bot-config-defaults.json` (0.75%). That default is
+also what both rows show before you save anything of your own.
+
+**The figures in those rows are what the bot uses — for rebalances and
+for compounds alike.** Earlier versions kept a third, older slippage
+value per position, from before the row was split in two. Rebalances
+ignored it and compounds obeyed it, so one position could swap at two
+different rates depending on which move it was making, with nothing on
+screen to say so. That value is gone. Nothing reads it, and it is
+removed from your config file the next time the app writes it. If you
+had one, both tokens fall back to the shipped default until you set the
+two rows.
+
+### What the dashboard accepts
+
+Every value you can type into the dashboard has a range, and **the
+server is what checks it** — not the page. Save sends what you typed; a
+value outside the range comes back refused, with a dialog naming the
+setting and the range, and the field is put back to the value that was
+last accepted. Nothing is saved, and you can edit and save again.
+
+| Setting | Accepts |
+| ------- | ------- |
+| Check Interval | 10 to 3600 sec |
+| OOR Timeout | 0 to 1440 min (0 = off) |
+| Min Time Between Rebalances | 1 to 10080 min (one week) |
+| Max Rebalances per Day | 1 to 12 |
+| Impermanent Loss Guard | 1 to 100% |
+| OOR Threshold | 1 to 100% |
+| Price Range Extension | 0.1 to 200% |
+| Position Offset (Token 0 share) | 0 to 100%, whole numbers |
+| Slippage (Token 0 / Token 1) | 0.1 to 20% |
+| Auto-Compound Threshold | at least the minimum fee a compound needs |
+| Approval Multiple | 1 to 1,000,000 |
+| Max Gas Fee | 0.1 to 15% |
+| Total Lifetime Deposit | 0 or more |
+| Token Price Override | 0 or more (0 clears it) |
+| Token Decimals Override | 0 to 77 |
+| RPC Endpoints | 1 to 10 addresses, each beginning `http://` or `https://` |
+
+Two things that look like bad values are not. **An empty field clears
+the setting**, so it falls back to the shipped default — that is how you
+undo an override from the same box you set it in. And **zero is a real
+setting** for some of them: a price override of zero means "no
+override", and an OOR Timeout of zero switches the timeout off.
+
+Earlier versions decided this in the browser, and decided it
+differently per field: four settings quietly changed what you typed to
+the nearest allowed figure and saved that, and three did nothing at all
+on a bad value, with no message. The first meant the bot could be
+running on a number you never chose.
 
 ### Contract Addresses
 
@@ -382,21 +499,44 @@ engineering reference for the full inventory.
 
 ## RPC Request Pacing and Log Chunking
 
-Two settings govern how LP Ranger talks to an RPC endpoint. Both live in
-`app-config/app-defaults-for-user-configurable/bot-config-defaults.json`, both
-are deliberately **absent from the dashboard**, and they only make sense as a
-pair: the chunk size decides how many requests a scan produces, the interval
-decides how fast they leave.
+Three settings govern how LP Ranger talks to an RPC endpoint. All live in
+`app-config/app-defaults-for-user-configurable/bot-config-defaults.json` and
+all are deliberately **absent from the dashboard**. The first two are a pair:
+the chunk size decides how many requests a scan produces, the interval decides
+how fast they leave. The third decides what happens when no endpoint answers
+at all.
 
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
 | `getLogsChunkSize` | `9000` | Maximum block span per `eth_getLogs` call |
 | `globalRPCRequestRateIntervalMS` | `222` | Minimum gap between *any* two requests |
+| `rpcAllEndpointsDownPauseMS` | `3600000` | How long to hold every request once failover has tried every endpoint and none answered |
 
 They are not exposed in the GUI because they should never need changing in
 normal operation, and they are not in `GLOBAL_KEYS`, so they never reach
 `POST /api/config` or the OpenAPI schema. Override them by editing the file
 under `app-config/user-configurable/` and restarting.
+
+### When every endpoint is down
+
+Failover walks the endpoint list in order. Stepping off the last one starts
+the wait: every JSON-RPC request is held for `rpcAllEndpointsDownPauseMS`
+(one hour by default), and a line in Road Sign Yellow says so, in capitals,
+stating the wait in hours. The bot stays on the endpoint it was on for the
+duration — there is nothing to move to — and when the wait is up the list
+starts over at its first endpoint, so later failovers walk it in the order
+they walked it at startup.
+
+The hold is absolute. A rebalance or compound waits it out like every other
+request; a rebalance held between its liquidity removal and its mint leaves
+that position drained until the wait ends. Dashboard figures stop advancing
+for the duration, which is what the yellow line exists to explain.
+
+Set it to `0` to disable the wait entirely — the bot then keeps cycling
+through the endpoints continuously. The ceiling is two days, which is far
+past any outage worth waiting out. Unlike the two settings above, this one is
+read each time the list is exhausted, so a change to it takes effect without
+a restart.
 
 ### Why chunking exists
 

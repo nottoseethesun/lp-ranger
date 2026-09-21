@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-09-13T20:34:57.018Z
+  modified: 2026-09-20T22:28:46.145Z
 ---
 
 **Status: DEFERRED.** Per user 2026-06-18: "It seems that there might be a lot of opportunity to consolidate the re-try code for reading token balances and other items in the app. But I don't want to do a big refactor for a long time." Holding the refactor until the user signals readiness.
@@ -72,5 +72,5 @@ When future features need RPC retry, **copy from the closer of the two existing 
 
 **On the public list (2026-09-02).** Published on the README's
 Nice-to-Have list as "Consolidate the RPC Retry Pattern", detailed in
-`docs/roadmap/nice-to-haves/project_consolidate_rpc_retry.md`.
+`docs/roadmap/clean-ups/project_consolidate_rpc_retry.md`.
 Keep the two in step, and do not add a second entry for it.

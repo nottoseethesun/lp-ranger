@@ -74,20 +74,6 @@ function _savedListUsable() {
  * @param {string} url  Raw operator input.
  * @returns {string|null}  Error message, or null when acceptable.
  */
-export function validateRpcUrl(url) {
-  if (!url) return "Enter an RPC URL.";
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "That is not a valid URL.";
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return "Use an http:// or https:// endpoint.";
-  }
-  return null;
-}
-
 /**
  * Open the dialog, cleared and focused.
  * @returns {void}
@@ -124,12 +110,10 @@ export async function saveRpcAdd() {
   const inp = g("rpcAddInput");
   if (!inp) return false;
   const url = inp.value.trim();
-
-  const invalid = validateRpcUrl(url);
-  if (invalid) {
-    _setError(invalid);
-    return false;
-  }
+  /*- Whether this is a usable endpoint is the server's question —
+   *  `src/config-bounds.js` checks it with `validator.isURL` and names
+   *  the entry it refused, and the catch below puts that sentence in
+   *  the dialog's own error line. */
   if (!_savedListUsable()) return false;
 
   /*- Prepend, so the newest addition is the primary.  An endpoint

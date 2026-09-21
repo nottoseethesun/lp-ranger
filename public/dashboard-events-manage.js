@@ -666,8 +666,7 @@ export function bindDelegatedEvents(closers) {
       /*- These dismiss by clicking their own button rather than by
        *  hiding the overlay from here.  hodlBaselineModal's dismissal
        *  also writes the acknowledgement keys that stop it reappearing;
-       *  slippageOutOfRangeModal's OK is the acknowledgement; and the
-       *  two slippage confirmations leave a pending save dangling
+       *  and the two slippage confirmations leave a pending save dangling
        *  unless `_cancelPending` runs.  Hiding the element directly
        *  would look identical on screen and quietly skip all of that.
        *  Routing through the button keeps one definition of what
@@ -683,10 +682,6 @@ export function bindDelegatedEvents(closers) {
       {
         id: "noPositionsModal",
         close: () => g("noPositionsClose")?.click(),
-      },
-      {
-        id: "slippageOutOfRangeModal",
-        close: () => g("slipOorOkBtn")?.click(),
       },
       {
         id: "slippageAbove5ConfirmModal",

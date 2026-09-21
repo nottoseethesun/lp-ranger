@@ -5,9 +5,13 @@
  *
  * The resolver picks the DESTINATION-token's per-token slippage
  * value.  When the destination side is unset, it returns the shipped
- * `slippagePct` default (0.75%).  The position's legacy saved
- * `slippagePct` is NOT consulted — after the single-slippage UI was
- * replaced by two per-token inputs, the legacy field is dormant.
+ * `slippagePct` default (0.75%) from bot-config-defaults.json.
+ *
+ * It is the ONLY answer to the question, for every swap the app makes.
+ * There used to be a second: a single `slippagePct` saved per position,
+ * which rebalances ignored and compounds honoured — so one position
+ * could swap at two different slippages depending on which move it was
+ * making. That key is retired and both paths come here now.
  */
 
 "use strict";
@@ -57,10 +61,11 @@ describe("resolveSlippagePct — destination-token rule", () => {
     assert.strictEqual(resolveSlippagePct(opts, false), 2);
   });
 
-  it("legacy slippagePct is IGNORED (dormant field, no longer consulted)", () => {
-    /*- Even with slippagePct=5 saved, the resolver does not fall back
-     *  to it.  This is the semantic shift when the single-slippage UI
-     *  was replaced: opts.slippagePct is dormant. */
+  it("a retired single slippagePct is not consulted", () => {
+    /*- A config file written before the key was retired can still
+     *  carry it on disk until the next save. Even then it must not
+     *  reach a swap: the two per-token settings are the whole of
+     *  slippage. */
     const opts = { slippagePct: 5 };
     assert.strictEqual(resolveSlippagePct(opts, true), 0.75);
     assert.strictEqual(resolveSlippagePct(opts, false), 0.75);

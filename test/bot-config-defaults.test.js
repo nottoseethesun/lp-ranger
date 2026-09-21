@@ -3,23 +3,40 @@
  * @description Unit tests for src/bot-config-defaults.js and the
  * GET /api/bot-config-defaults route handler.
  *
- * Tests write to the gitignored
- * `app-config/user-configurable/bot-config-defaults.json` (operator
- * override) rather than the tracked shipped file under
- * `app-defaults-for-user-configurable/` — the loader deep-merges the
- * user file on top of the shipped defaults, so this exercises the
- * exact same path real operators use.  The shipped file is the
- * known-good baseline that `loadShippedDefaults()` reads once at
+ * Tests write a `bot-config-defaults.json` operator override and let
+ * the loader deep-merge it on top of the shipped defaults, so this
+ * exercises the exact same path real operators use.  The shipped file
+ * is the known-good baseline that `loadShippedDefaults()` reads once at
  * module init for the per-key fallback when an operator's override
  * contains an out-of-range value.
+ *
+ * **The override goes in this process's own directory, not the real
+ * one.**  Some of these cases write a deliberately bad value to prove
+ * the strict reader refuses it.  The real
+ * `app-config/user-configurable/` is one directory shared by every
+ * process on the machine, and the runner starts a separate process per
+ * test file and runs 24 at once — so a bad override left there for even
+ * a moment is the live config of 23 unrelated test processes, and one
+ * of them requiring `src/config.js` in that window dies on the startup
+ * throw.  That produced a real intermittent (`bot-hodl-scan` failing
+ * once in CI and never on a re-run).  `LP_RANGER_USER_CONFIG_DIR` is
+ * read by `src/load-merged-defaults.js` at module load, so it is set
+ * here BEFORE anything under `src/` is required.
  */
 
 "use strict";
 
-const { describe, it, beforeEach, afterEach } = require("node:test");
+const { describe, it, beforeEach, afterEach, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+
+const _TMP_ROOT = path.join(__dirname, "..", "tmp");
+fs.mkdirSync(_TMP_ROOT, { recursive: true });
+const _USER_DIR = fs.mkdtempSync(path.join(_TMP_ROOT, "defaults-test-"));
+process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
+
+after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const _SHIPPED_FILE = path.join(
   __dirname,
@@ -29,13 +46,7 @@ const _SHIPPED_FILE = path.join(
   "bot-config-defaults.json",
 );
 
-const _USER_FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "user-configurable",
-  "bot-config-defaults.json",
-);
+const _USER_FILE = path.join(_USER_DIR, "bot-config-defaults.json");
 
 /*- The shipped JSON is the source of truth for default values; the
  *  tests read it (NOT a hardcoded copy) so this file never drifts
@@ -168,12 +179,76 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     assert.equal(out.offsetToken0Pct, 60);
   });
 
+  it("STRICT refuses an out-of-range checkIntervalSec rather than resetting it", () => {
+    /*- The poll interval becomes a `setTimeout` delay, so it is bounded
+     *  by `src/timer-bounds.js` — the same module `.env` and
+     *  `POST /api/config` ask. At startup it is refused rather than
+     *  replaced, because a schedule silently swapped for a default is a
+     *  bot running on a cadence nobody chose, and the cadence is then
+     *  the last thing anyone would think to check. */
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
+    for (const bad of [1, 9, 3601, 7200, "abc", 0, -5]) {
+      _writeUser({ checkIntervalSec: bad });
+      assert.throws(
+        () => readBotConfigDefaultsStrict(),
+        /checkIntervalSec/,
+        `${String(bad)} must be refused, not replaced`,
+      );
+    }
+    /*- The bounds are the shared ones: 10 through 3600. */
+    for (const good of [10, 300, 3600]) {
+      _writeUser({ checkIntervalSec: good });
+      assert.equal(readBotConfigDefaultsStrict().checkIntervalSec, good);
+    }
+  });
+
+  it("LENIENT never throws, because a poll cycle and a route call it", () => {
+    /*- This file is re-read on every call, and several of those calls
+     *  are on hot paths — `GET /api/bot-config-defaults` among them,
+     *  which the file header promises never 500s. An edit made while
+     *  the bot is running must not break a poll; it falls back here and
+     *  is refused at the next start. */
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    for (const bad of [1, 9, 3601, 7200, "abc", 0, -5]) {
+      _writeUser({ checkIntervalSec: bad });
+      assert.equal(
+        readBotConfigDefaults().checkIntervalSec,
+        _SHIPPED.checkIntervalSec,
+        `${String(bad)} falls back rather than throwing`,
+      );
+    }
+  });
+
+  it("keeps GET /api/bot-config-defaults off a 500", () => {
+    const { handleBotConfigDefaults } = require("../src/bot-config-defaults");
+    _writeUser({ checkIntervalSec: 7200 });
+    let status = null;
+    handleBotConfigDefaults(null, null, (_res, s) => {
+      status = s;
+    });
+    assert.equal(status, 200);
+  });
+
+  it("leaves the other keys falling back, not throwing", () => {
+    /*- Only a value that becomes a timer delay is refused, and only by
+     *  the strict reader. Everything else keeps the per-key fallback. */
+    _writeUser({ slippagePct: 99, checkIntervalSec: 300 });
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
+    assert.equal(
+      readBotConfigDefaultsStrict().slippagePct,
+      _SHIPPED.slippagePct,
+    );
+  });
+
   it("rejects out-of-range overrides and falls back per-key to shipped", () => {
     _writeUser({
       rebalanceOutOfRangeThresholdPercent: 0, // below min
       rebalanceTimeoutMin: -10, // negative
       slippagePct: 99, // above max
-      checkIntervalSec: 1, // below min
       minRebalanceIntervalMin: 9999, // above max
       maxRebalancesPerDay: 0, // below min
       offsetToken0Pct: 200, // above max

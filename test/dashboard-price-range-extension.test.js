@@ -152,14 +152,25 @@ describe("computeRangeRowPatch — what Save commits", () => {
     );
   });
 
-  it("omits an out-of-range or unparseable extension", () => {
-    /*- Rejected rather than clamped, per
-     *  feedback_one_literal_per_shipped_default — no silent
-     *  substitution of a default the user did not choose. */
-    for (const raw of ["", "abc", "0", "0.05", "201", undefined])
+  it("omits the extension only when the row is not asking for one", () => {
+    /*- An empty or unparseable field means "no width override", which
+     *  is the one case the key is left out. */
+    for (const raw of ["", "abc", undefined])
       assert.ok(
         !("rebalanceRangeWidthPct" in mod.computeRangeRowPatch(raw, false)),
         `"${raw}" should not be saved as an extension`,
+      );
+  });
+
+  it("sends an out-of-range figure rather than dropping it", () => {
+    /*- Dropping it here logged "Setting Saved" over a width nothing
+     *  stored. It goes to the server, which refuses it by name
+     *  (`src/config-bounds.js`) and has the field put back. */
+    for (const raw of ["0", "0.05", "201"])
+      assert.equal(
+        mod.computeRangeRowPatch(raw, false).rebalanceRangeWidthPct,
+        Number(raw),
+        `"${raw}" should be sent for the server to judge`,
       );
   });
 

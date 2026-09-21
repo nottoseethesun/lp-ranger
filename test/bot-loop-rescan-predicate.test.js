@@ -6,7 +6,7 @@
  * `_countRescan`, which numbers the attempts for the log.
  *
  * It gets its own file because the timer that calls it has no test
- * fixture (docs/roadmap/nice-to-haves/project_bot_loop_test_scaffolding.md),
+ * fixture (docs/roadmap/clean-ups/project_bot_loop_test_scaffolding.md),
  * and the decision it makes schedules the most expensive thing the bot
  * does unattended: a full pool scan plus a per-NFT walk of the whole
  * rebalance chain.  Wrong in one direction that runs every thirty

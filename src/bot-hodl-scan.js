@@ -126,7 +126,7 @@ async function _ensureHodlPoolAddress(
       _epochCache.setCachedLifetimeHodl(epochKey, botState.lifetimeHodlAmounts);
     const tokenIdStr = String(position.tokenId || "");
     log.info(
-      "[bot] %s/%s NFT #%s %s: Backfilled lifetimeHodlAmounts.poolAddress → %s",
+      "[bot] %s/%s NFT #%s %s: Resolved lifetimeHodlAmounts.poolAddress → %s",
       position.token0Symbol || "Token0",
       position.token1Symbol || "Token1",
       tokenIdStr,

@@ -7,6 +7,7 @@ import { log } from "./dashboard-log.js";
 import { g, compositeKey, fetchWithCsrf } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { _fmtUsd } from "./dashboard-data-kpi.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 
 let _refetchUnmanaged = null;
 let _lastStatusRef = null;
@@ -324,14 +325,11 @@ export function saveInitialDeposit() {
             )
           : undefined;
       log.info("[lp-ranger] [deposit] save %s to %s", amount, pk);
-      await fetchWithCsrf("/api/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          initialDepositUsd: amount,
-          positionKey: pk,
-        }),
-      }).catch(() => {});
+      await saveConfigValues({
+        values: { initialDepositUsd: amount },
+        positionKey: pk,
+        inputs: { initialDepositUsd: "initialDepositInput" },
+      });
       refreshDepositLabel();
       if (active && !isPositionManaged(active.tokenId) && _refetchUnmanaged)
         _refetchUnmanaged(active);

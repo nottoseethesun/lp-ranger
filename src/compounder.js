@@ -299,7 +299,8 @@ async function _resolveDepositAmounts(
  * @param {number} [opts.tickLower]   Position tick lower — enables ratio-swap
  * @param {number} [opts.tickUpper]   Position tick upper — enables ratio-swap
  * @param {string} [opts.swapRouterAddress]
- * @param {number} [opts.slippagePct]
+ * @param {number} [opts.slippagePctToken0]  Slippage for swaps INTO token0.
+ * @param {number} [opts.slippagePctToken1]  Slippage for swaps INTO token1.
  * @returns {Promise<object>}     Compound result with amounts, USD values, TX hashes
  */
 async function executeCompound(signer, ethersLib, opts) {

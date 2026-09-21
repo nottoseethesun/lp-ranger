@@ -34,6 +34,7 @@ const {
   readConfigValue,
 } = require("./bot-config-v2");
 const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
+const { checkConfigValues } = require("./config-bounds");
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
@@ -64,6 +65,54 @@ const { emojiId } = require("./logger");
  * @param {Function} deps.updatePositionState
  * @returns {object} Handler function map.
  */
+/**
+ * Un-pause every bot loop that stopped over excessive swap cost, when
+ * the saved patch carries a new slippage.
+ *
+ * Operates on the in-memory bot states, not on disk — orthogonal to the
+ * persist that follows it, which is why the caller runs this first: a
+ * patch that fails to persist still frees a loop the operator was
+ * trying to unblock.
+ *
+ * `_retireImmediately` is cleared alongside, for the case where
+ * `bot-loop.js`'s re-open-failure path set it: without that, changing
+ * Slippage on a stuck-aborted re-open would open the gates and the next
+ * poll would still take `drain.js`'s retire branch instead of retrying.
+ *
+ * Keyed on the two per-token settings, which are what the Slippage rows
+ * save. It used to key on a single `slippagePct`, and went dead the day
+ * that row became two: nothing sent that key any more, so a paused
+ * position could only be freed by a manual rebalance while the app went
+ * on saying that changing Slippage would free it.
+ *
+ * @param {object} pPatch                 The position keys from the body.
+ * @param {() => Iterable} getAllStates   Per-position bot states.
+ * @returns {void}
+ */
+function _clearSlippagePause(pPatch, getAllStates) {
+  if (
+    pPatch.slippagePctToken0 === undefined &&
+    pPatch.slippagePctToken1 === undefined
+  )
+    return;
+  for (const [, s] of getAllStates())
+    if (s.rebalancePaused) {
+      s.rebalancePaused = false;
+      s.rebalanceError = null;
+      s._retireImmediately = false;
+    }
+}
+
+/*- What the value checker needs that only this tier has read: the
+ *  shipped default a timer setting is bounded against, and the fee
+ *  floor the auto-compound threshold may not sit below. */
+function _valueCheckContext() {
+  return {
+    defaultsSec: { checkIntervalSec: config.CHECK_INTERVAL_SEC },
+    compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
+  };
+}
+
 function createRouteHandlers(deps) {
   const {
     diskConfig,
@@ -136,7 +185,37 @@ function createRouteHandlers(deps) {
     for (const k of GLOBAL_KEYS) if (body[k] !== undefined) gPatch[k] = body[k];
     for (const k of POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
+    /*- Checked before anything is applied, so a refused value leaves
+     *  no trace: nothing assigned, no provider rebuilt, no paused loop
+     *  freed. */
+    const refused = checkConfigValues(
+      { ...gPatch, ...pPatch },
+      _valueCheckContext(),
+    );
+    if (refused) {
+      /*- `invalidValueForKey` names the setting whose VALUE was
+       *  refused, as against the other 400 this route returns, which
+       *  is a malformed request. The key itself is fine — an unknown
+       *  one is simply not copied into the patch above. The dashboard
+       *  shows its "that value was not accepted" dialog and restores
+       *  the field only for the former. */
+      jsonResponse(res, 400, {
+        ok: false,
+        error: refused.message,
+        invalidValueForKey: refused.key,
+      });
+      return;
+    }
     Object.assign(diskConfig.global, gPatch);
+    /*- Same null-sweep the per-position patch gets below, and for the
+     *  same reason: `null` means "clear this setting", and assigning it
+     *  leaves a literal `null` on disk instead. Global keys reach this
+     *  now that an empty Bot Settings field is sent as `null` — Max Gas
+     *  Fee and Approval Multiple are both global. Their readers do cope
+     *  with a stored `null`, so this is about what the file says, not
+     *  about what the bot does. */
+    for (const k of Object.keys(gPatch))
+      if (gPatch[k] === null) delete diskConfig.global[k];
     /*- Apply to the in-memory holder as well as persisting, so the
      *  running process stops calling Moralis on the next price lookup
      *  rather than at the next restart. */
@@ -146,23 +225,10 @@ function createRouteHandlers(deps) {
      *  next restart. */
     if (gPatch.rpcUrls !== undefined) _applyRpcUrls(gPatch.rpcUrls);
     const hasPosKeys = Object.keys(pPatch).length > 0;
-    /*- Slippage-paused clear runs FIRST so that even if disk persistence
-     *  bails out (404 below), an in-flight paused bot loop still gets
-     *  unblocked by the user's slippage bump.  Operates on bot states
-     *  (in-memory), not disk — orthogonal to the disk persist below. */
-    if (pPatch.slippagePct !== undefined) {
-      for (const [, s] of getAllPositionBotStates())
-        if (s.rebalancePaused) {
-          s.rebalancePaused = false;
-          s.rebalanceError = null;
-          /*- Also clear `_retireImmediately` if set by bot-loop.js's
-           *  re-open-failure path.  Without this, changing Slippage on
-           *  a stuck-aborted re-open would unblock the gates but the
-           *  next poll would still hit drain.js's _retireImmediately
-           *  branch and retire instead of retrying. */
-          s._retireImmediately = false;
-        }
-    }
+    /*- Runs FIRST so that even if disk persistence bails out (404
+     *  below), an in-flight paused bot loop still gets unblocked by the
+     *  user's slippage bump. */
+    _clearSlippagePause(pPatch, getAllPositionBotStates);
     if (hasPosKeys) {
       const parsed = parseCompositeKey(body.positionKey);
       if (!parsed) {

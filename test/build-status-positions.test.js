@@ -24,7 +24,7 @@ const CONTRACT = "0xCC05BF51E2B8f0A457E8F15FD5E8e25F34f8b279";
 const key = (tid) => `pulsechain-${WALLET}-${CONTRACT}-${tid}`;
 
 const POS_DEFAULTS = {
-  slippagePct: 0.5,
+  slippagePctToken0: 0.5,
   rebalanceOutOfRangeThresholdPercent: 5,
 };
 
@@ -52,7 +52,7 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
       positions: {
         [k]: {
           status: "stopped",
-          slippagePct: 9,
+          slippagePctToken0: 9,
           hodlBaseline: { entry: 100 },
         },
       },
@@ -81,9 +81,9 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
     );
     assert.strictEqual(out[k].status, "stopped", "status surfaced for clarity");
     assert.strictEqual(
-      out[k].slippagePct,
+      out[k].slippagePctToken0,
       9,
-      "settings (slippagePct) still flow through to the dashboard",
+      "settings (slippagePctToken0) still flow through to the dashboard",
     );
   });
 
@@ -101,7 +101,7 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
       positions: {
         [k]: {
           status: "running",
-          slippagePct: 0.75,
+          slippagePctToken0: 0.75,
         },
       },
     };
@@ -147,7 +147,7 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
     const diskConfig = {
       global: {},
       positions: {
-        [k]: { status: "running", slippagePct: 0.75 },
+        [k]: { status: "running", slippagePctToken0: 0.75 },
       },
     };
     const out = buildStatusPositions(
@@ -180,7 +180,7 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
       positions: {
         [k]: {
           status: "stopped",
-          slippagePct: 2,
+          slippagePctToken0: 2,
           rebalanceTimeoutMin: 180,
         },
       },

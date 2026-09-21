@@ -52,11 +52,11 @@ async function _weiToUsd(weiStr) {
  *  One-shot per-NFT scan that fills both per-NFT caches on miss.  Cheap
  *  (~one filtered Transfer query per NFT, not the full chain scan) and
  *  runs at most once per NFT until invalidated by `recordCompound` or a
- *  rebalance (new tokenId → no cache entry → backfill again).  Returns
+ *  rebalance (new tokenId → no cache entry → scan again).  Returns
  *  the freshly-computed { gasWei, compoundedUsd } so the caller doesn't
  *  re-read the cache it just wrote.
  */
-async function _backfill(deps, position, poolState) {
+async function _scanNftTotals(deps, position, poolState) {
   const tid = String(position.tokenId);
   const empty = { gasWei: "0", amounts: { amount0: 0, amount1: 0 } };
   if (!deps?.signer) return empty;
@@ -128,7 +128,7 @@ async function _backfill(deps, position, poolState) {
     return { gasWei, amounts };
   } catch (e) {
     log.warn(
-      "[pnl-current-nft] per-NFT backfill failed for tokenId %s: %s",
+      "[pnl-current-nft] per-NFT scan failed for tokenId %s: %s",
       tid,
       e.message,
     );
@@ -158,7 +158,7 @@ function _sumDeposited(compounds, d0, d1) {
  *  The coins compoundHistory records against the current tokenId. Used
  *  when the bot's lifetime scan populated history (entries carry
  *  tokenId) but the per-NFT amounts are missing. Avoids an unnecessary
- *  backfill scan when the figure can be derived locally.
+ *  chain scan when the figure can be derived locally.
  */
 function _compoundedFromHistory(deps, tid, d0, d1) {
   const history = deps._botState?.compoundHistory;
@@ -192,14 +192,14 @@ async function applyCurrentNftFigures(snap, deps, position, poolState) {
     return;
   }
   /*-
-   *  Cache miss: backfill scans both gas + compounded together (one RPC
+   *  Cache miss: one scan reads gas + compounded together (one RPC
    *  set, not two).  Both `nftGasWeiByTokenId` and
    *  `nftCompoundedAmountsByTokenId` get persisted so subsequent polls hit
    *  the cache.  Best-effort — on scan failure leaves snap fields as
    *  whatever overridePnlWithRealValues left (currentCompoundedUsd=0,
    *  currentGasUsd undefined → dashboard falls back to liveEpoch.gas).
    */
-  const fresh = await _backfill(deps, position, poolState);
+  const fresh = await _scanNftTotals(deps, position, poolState);
   snap.currentGasUsd = await _weiToUsd(fresh.gasWei);
   snap.currentCompoundedUsd = _priced(fresh.amounts, deps);
 }

@@ -30,6 +30,7 @@ const {
   loadMergedDefaults,
   loadShippedDefaults,
 } = require("./load-merged-defaults");
+const { assertTimerSec } = require("./timer-bounds");
 
 const _FILENAME = "bot-config-defaults.json";
 
@@ -67,6 +68,51 @@ function _clampNonNegInt(v, max) {
   const n = Math.floor(v);
   if (n < 0 || n > max) return null;
   return n;
+}
+
+/*- A timer setting's value, or null to leave the shipped default
+ *  standing.  The bounds are `src/timer-bounds.js`'s — this is the same
+ *  rule `.env` and `POST /api/config` apply, with the lenient policy
+ *  this reader needs. */
+function _timerOrNull(v, key) {
+  try {
+    return assertTimerSec({ sec: v, key, defaultSec: _FALLBACK[key] });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refuse a timer setting the operator has written out of range.
+ *
+ * Separate from the normalizer above because the two have different
+ * jobs. The normalizer runs on every read — a poll cycle and an HTTP
+ * route among them — so it must never throw. This runs once, at
+ * startup, from `src/config.js`, where refusing means the app does not
+ * come up on a schedule nobody chose.
+ *
+ * Reads the value as written rather than as normalized, since the
+ * normalizer has already replaced a bad one by then.
+ * @param {object} parsed  The merged file, before normalizing.
+ * @throws {Error} Tagged `badTimerValue`.
+ */
+function _assertTimerKeys(parsed) {
+  for (const key of [
+    "checkIntervalSec",
+    "globalRPCRequestRateIntervalMS",
+    "rpcAllEndpointsDownPauseMS",
+  ]) {
+    const v = parsed[key];
+    if (v === undefined || v === null) continue;
+    assertTimerSec({
+      sec: v,
+      key,
+      defaultSec: _FALLBACK[key],
+      remedy:
+        "Correct it in app-config/user-configurable/" +
+        "bot-config-defaults.json and restart.",
+    });
+  }
 }
 
 /*- Clamp a positive float to [min, max].  Returns null on failure. */
@@ -153,7 +199,16 @@ const _NORMALIZERS = {
    *  and means "no pacing" (local node).  Ceiling of 10 s: beyond that
    *  a five-year scan would take days, which is a misconfiguration
    *  rather than a preference. */
-  globalRPCRequestRateIntervalMS: (v) => _clampNonNegInt(v, 10_000),
+  globalRPCRequestRateIntervalMS: (v) =>
+    _timerOrNull(v, "globalRPCRequestRateIntervalMS"),
+  /*- How long every request is held once failover has exhausted the
+   *  endpoint list.  Zero is allowed and means "never pause".  Ceiling
+   *  of two days, which is far past any outage worth waiting out and
+   *  keeps the value inside what a single `setTimeout` can hold — its
+   *  limit is about 24.8 days, and beyond that Node fires immediately
+   *  instead of waiting. */
+  rpcAllEndpointsDownPauseMS: (v) =>
+    _timerOrNull(v, "rpcAllEndpointsDownPauseMS"),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */
@@ -210,7 +265,17 @@ const _NORMALIZERS = {
    *  public/dashboard-per-token-slippage.js). */
   slippagePctToken0: (v) => _clampFloat(v, 0.1, 20),
   slippagePctToken1: (v) => _clampFloat(v, 0.1, 20),
-  checkIntervalSec: (v) => _clampInt(v, 10, 3600),
+  /*- The poll interval becomes a `setTimeout` delay, so its bounds come
+   *  from `src/timer-bounds.js` — the same module `.env` and
+   *  `POST /api/config` ask, because three copies of this rule gave
+   *  three different answers to the same question.
+   *
+   *  Lenient HERE, and refused at startup by
+   *  `readBotConfigDefaultsStrict` instead. This function runs on every
+   *  read, and those include a poll cycle and an HTTP route; throwing
+   *  from it would turn an edit made while the bot is running into a
+   *  broken poll and a 500. */
+  checkIntervalSec: (v) => _timerOrNull(v, "checkIntervalSec"),
   minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),
   maxRebalancesPerDay: (v) => _clampInt(v, 1, 200),
   offsetToken0Pct: (v) => _clampNonNegInt(v, 100),
@@ -226,6 +291,32 @@ const _NORMALIZERS = {
  * @returns {object}  Defaults object with the same keys as `_FALLBACK`.
  */
 function readBotConfigDefaults() {
+  return _read({ strict: false });
+}
+
+/**
+ * The same values, but refusing a timer setting written out of range
+ * rather than quietly standing the shipped default in its place.
+ *
+ * **Call this once, at startup, and nowhere else.** `src/config.js` does,
+ * and that is the right place: refusing there means the app does not come
+ * up on a schedule nobody chose, which is the whole point — a silently
+ * corrected interval is the last thing anyone would think to check.
+ *
+ * The lenient reader is what every other caller wants, because several
+ * of them are a poll cycle or an HTTP route and this file is re-read on
+ * every call. Throwing from those would turn an edit made while the bot
+ * is running into a broken poll and a 500.
+ *
+ * @returns {object} Same shape as `readBotConfigDefaults`.
+ * @throws {Error} Tagged `badTimerValue`, when a timer setting is set
+ *   and out of range.
+ */
+function readBotConfigDefaultsStrict() {
+  return _read({ strict: true });
+}
+
+function _read({ strict }) {
   try {
     const parsed = loadMergedDefaults(_FILENAME);
     const out = { ..._FALLBACK };
@@ -233,8 +324,16 @@ function readBotConfigDefaults() {
       const v = normalize(parsed[key]);
       if (v !== null) out[key] = v;
     }
+    if (strict) _assertTimerKeys(parsed);
     return out;
   } catch (err) {
+    /*- A value this reader must refuse is not the same as a file it
+     *  merely failed to read. Falling back on the first would discard
+     *  every other override alongside the bad one, and leave the bot on
+     *  a schedule nobody chose — the thing the check exists to prevent.
+     *  So it propagates; only read and parse failures fall back, which
+     *  is what keeps `GET /api/bot-config-defaults` off a 500. */
+    if (err.badTimerValue) throw err;
     log.warn(
       "[bot-config-defaults] Falling back to built-in defaults: %s",
       err.message,
@@ -254,4 +353,8 @@ function handleBotConfigDefaults(_req, res, jsonResponse) {
   jsonResponse(res, 200, readBotConfigDefaults());
 }
 
-module.exports = { readBotConfigDefaults, handleBotConfigDefaults };
+module.exports = {
+  readBotConfigDefaults,
+  readBotConfigDefaultsStrict,
+  handleBotConfigDefaults,
+};

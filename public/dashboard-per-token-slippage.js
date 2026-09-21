@@ -4,23 +4,30 @@
  * ("Slippage (Token 0)" / "Slippage (Token 1)") in Bot Settings →
  * Execution.
  *
- * Validation on Save:
- *   - v in [0.1, 5]: save immediately.
+ * Confirmation on Save.  Whether a figure is acceptable at all is the
+ * server's question (`src/config-bounds.js`); these tiers only ask the
+ * operator to mean it, because a high slippage is accepted and costly
+ * rather than wrong:
+ *   - v up to 5: save immediately.
  *   - v in (5, 10): show "Elevated Slippage" confirm modal (Confirm /
  *     Cancel).  Confirm → save; Cancel → revert input to previous
  *     value (saved server value or shipped default).
- *   - v in [10, 20]: show "Extreme Slippage" type-Confirm modal — user
- *     must type "Confirm" (case-sensitive) into an autofill-resistant
- *     text box.  Confirm → save; Cancel → revert.
- *   - Anything else (NaN, < 0.1, > 20): show "Out of Range" modal
- *     stating the valid range.  Nothing saved; the invalid value
- *     stays in the input so the user can edit.
+ *   - v of 10 or more: show "Extreme Slippage" type-Confirm modal —
+ *     user must type "Confirm" (case-sensitive) into an
+ *     autofill-resistant text box.  Confirm → save; Cancel → revert.
+ *   - A figure outside what the server accepts comes back as a 400 and
+ *     the field is put back to the last accepted value.
  *
  * The per-poll sync populates the input with either the saved value
  * or the shipped default (0.75%), so the input is never empty.
  *
- * The legacy `slippagePct` field on disk is dormant — the swap layer
- * (see src/slippage-resolver.js) uses only the per-token values.
+ * These two fields are the whole of slippage.  The single
+ * `slippagePct` the old row saved per position is retired and dropped
+ * on load; `slippagePct` in bot-config-defaults.json survives as the
+ * shipped DEFAULT both fields seed from and that a swap falls back to
+ * when a token has no setting of its own.  Rebalances and compounds
+ * both resolve through src/slippage-resolver.js, so what is shown here
+ * is what both use.
  */
 
 "use strict";
@@ -110,13 +117,11 @@ function _handleSave(inputId, configKey) {
   const el = g(inputId);
   const raw = parseFloat(el?.value);
   const valueLabel = Number.isFinite(raw) ? raw.toFixed(2) : String(el?.value);
-  /*- Out of range or non-finite → warn, do not save, leave input as-is. */
-  if (!Number.isFinite(raw) || raw < 0.1 || raw > 20) {
-    const disp = g("slipOorValue");
-    if (disp) disp.textContent = valueLabel;
-    _showModal("slippageOutOfRangeModal");
-    return;
-  }
+  /*- Whether the figure is one the app can run on is the server's
+   *  question — it answers 400 and the field goes back. The two modals
+   *  below are not that: they are confirmations for a value that IS
+   *  accepted and is merely expensive, so they stay in the browser
+   *  where the operator can be asked before anything is sent. */
   /*- Extreme tier — require typed confirmation. */
   if (raw >= 10) {
     _pending.inputId = inputId;
@@ -212,7 +217,6 @@ export function wirePerTokenSlippageEvents(onClick, onInput) {
   onInput("inSlipToken1", () => markInputDirty("inSlipToken1"));
 
   /* ── Validation modal wiring ─────────────────────────────────── */
-  onClick("slipOorOkBtn", () => _hideModal("slippageOutOfRangeModal"));
   onClick("slipAbove5ConfirmBtn", () => {
     _hideModal("slippageAbove5ConfirmModal");
     _confirmPending();

@@ -21,7 +21,6 @@
     "unit": "%"
   },
   "rebalanceTimeoutMin": { "label": "OOR Timeout", "unit": " min" },
-  "slippagePct": { "label": "Slippage", "unit": "%" },
   "slippagePctToken0": { "label": "Slippage (Token 0)", "unit": "%" },
   "slippagePctToken1": { "label": "Slippage (Token 1)", "unit": "%" },
   "checkIntervalSec": { "label": "Check Interval", "unit": " sec" },
@@ -40,5 +39,26 @@
     "label": "Auto-Compound Threshold",
     "unit": " USD"
   },
-  "gasFeePct": { "label": "Max Gas Fee", "unit": "%" }
+  "gasFeePct": { "label": "Max Gas Fee", "unit": "%" },
+  "initialDepositUsd": { "label": "Total Lifetime Deposit", "unit": " USD" },
+  "priceOverride0": { "label": "Token 0 Price Override", "unit": " USD" },
+  "priceOverride1": { "label": "Token 1 Price Override", "unit": " USD" },
+  "priceOverrideForce": { "label": "Force Price Override", "unit": "" },
+  "decimalsOverride0": { "label": "Token 0 Decimals Override", "unit": "" },
+  "decimalsOverride1": { "label": "Token 1 Decimals Override", "unit": "" },
+  "decimalsOverrideForce0": {
+    "label": "Force Token 0 Decimals Override",
+    "unit": ""
+  },
+  "decimalsOverrideForce1": {
+    "label": "Force Token 1 Decimals Override",
+    "unit": ""
+  },
+  "autoCompoundEnabled": { "label": "Auto-Compound", "unit": "" },
+  "moralisEnabled": { "label": "Moralis Price Source", "unit": "" },
+  "rpcUrls": { "label": "RPC Endpoints", "unit": "" },
+  "lifetimeStartDateOverrideUtc": {
+    "label": "Lifetime Start Date",
+    "unit": ""
+  }
 }

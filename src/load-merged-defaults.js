@@ -42,8 +42,28 @@ const DEFAULTS_DIR = path.join(
   "app-defaults-for-user-configurable",
 );
 
-/** Absolute path to the per-install user-overrides directory. */
-const USER_DIR = path.join(_APP_CONFIG_DIR, "user-configurable");
+/**
+ * Absolute path to the per-install user-overrides directory.
+ *
+ * `LP_RANGER_USER_CONFIG_DIR` redirects it, and exists for the tests
+ * alone — nothing ships that sets it, and an operator has no reason to.
+ * The tests need it because this directory is ONE directory shared by
+ * every process on the machine, while the test runner starts a separate
+ * process per file and runs 24 at once. A test that writes a deliberately
+ * bad override here to prove the reader refuses it is, for as long as
+ * that file exists, corrupting the config of 23 unrelated test processes
+ * — and one of them requiring `src/config.js` in that window takes the
+ * startup throw and fails for a reason that has nothing to do with it.
+ * That is a real intermittent, seen once in CI and not reproducible on
+ * demand. Pointing each such test at its own directory removes the
+ * shared resource rather than narrowing the window.
+ *
+ * Read once, at module load: the path a process reads its config from
+ * must not change underneath it mid-run.
+ */
+const USER_DIR = process.env.LP_RANGER_USER_CONFIG_DIR
+  ? path.resolve(process.env.LP_RANGER_USER_CONFIG_DIR)
+  : path.join(_APP_CONFIG_DIR, "user-configurable");
 
 /*- Recursively strip top-level and nested keys beginning with `_`
  *  before returning the parsed JSON to callers.  JSON has no comment

@@ -1,6 +1,6 @@
 # Security Audit Guide
 
-Companion to [CLAUDE.md](../CLAUDE.md). Covers the automated security
+Companion to [CLAUDE.md](../../CLAUDE.md). Covers the automated security
 checks, why they matter for EVM fund safety, how to run them, and how
 to triage findings.
 

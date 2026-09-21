@@ -11,6 +11,7 @@ import {
   fetchWithCsrf,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 import {
   _createModal,
   _posLabel,
@@ -162,49 +163,30 @@ export function toggleAutoCompound() {
  *   defined value; the wiring in dashboard-events.js gates the call
  *   on `botConfig.compoundMinFee !== undefined`).
  */
-export function saveCompoundThreshold(minFee) {
+export function saveCompoundThreshold() {
   const el = g("autoCompoundThreshold");
   if (!el) return;
   const val = parseFloat(el.value);
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
-   *  the caller guarantees `minFee` is defined.  A bad `minFee` here
-   *  means the wiring is broken — fail loudly rather than silently
-   *  substituting a literal. */
-  if (!Number.isFinite(minFee) || minFee <= 0) {
-    throw new Error(
-      "[compound] saveCompoundThreshold called with non-numeric minFee: " +
-        String(minFee),
-    );
-  }
-  const min = minFee;
-  if (!Number.isFinite(val) || val < min) {
-    el.value = min;
-    _createModal(
-      null,
-      "9mm-pos-mgr-modal-caution",
-      "Invalid Threshold",
-      _posContextHtml() +
-        "<p>Auto-compound threshold must be at least $" +
-        min.toFixed(2) +
-        " (the minimum fee required to compound).</p>",
-    );
-    return;
-  }
   const a = posStore.getActive();
   const positionKey = a
     ? compositeKey("pulsechain", a.walletAddress, a.contractAddress, a.tokenId)
     : undefined;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ autoCompoundThresholdUsd: val, positionKey }),
-  }).catch(() => {});
-  const pl = _posLabel();
-  act(
-    ACT_ICONS.gear,
-    "start",
-    "Setting Saved",
-    formatSettingChange("autoCompoundThresholdUsd", val) +
-      (pl ? "\n" + pl : ""),
-  );
+  /*- The floor — the fee a compound needs to be worth its gas — is
+   *  applied by `src/config-bounds.js`, which holds the shipped figure
+   *  already and does not need the dashboard to pass it back. */
+  saveConfigValues({
+    values: { autoCompoundThresholdUsd: val },
+    positionKey,
+    inputs: { autoCompoundThresholdUsd: "autoCompoundThreshold" },
+    onSaved: () => {
+      const pl = _posLabel();
+      act(
+        ACT_ICONS.gear,
+        "start",
+        "Setting Saved",
+        formatSettingChange("autoCompoundThresholdUsd", val) +
+          (pl ? "\n" + pl : ""),
+      );
+    },
+  });
 }

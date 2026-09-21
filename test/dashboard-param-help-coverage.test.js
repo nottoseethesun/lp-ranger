@@ -164,25 +164,22 @@ test("the Lifetime Fees Compounded dialog gained the price-feed section", async 
 
 /* ---------- shipped default for the Price Range Extension button ---------- */
 
-test("the shipped Price Range Extension default is within its validator bounds", async () => {
-  /*- The "Default" button injects this straight into the input.  A
-   *  value outside 0.1..200 would be clamped elsewhere and the button
-   *  would appear to do the wrong thing. */
+test("the shipped Price Range Extension default is one the server accepts", async () => {
+  /*- The "Default" button injects this straight into the input, and the
+   *  user then clicks Save. A shipped default the server would refuse
+   *  makes that button look broken.
+   *
+   *  Checked against `src/config-bounds.js`, which is where the range
+   *  lives — not against a `min`/`max` on the input, which is where it
+   *  used to live and no longer does: a bound stamped on an element
+   *  binds only this one frontend, and it had already drifted from the
+   *  server's answer in three places before it was removed. */
   const shipped = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
+  const { checkConfigValues } = require("../src/config-bounds");
   const v = shipped.rebalanceRangeWidthPct;
   assert.equal(typeof v, "number");
-  assert.ok(v >= 0.1 && v <= 200, `out of range: ${v}`);
-});
-
-test("the Price Range Extension default is not below the input's min", async () => {
-  const shipped = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
-  const html = fs.readFileSync(INDEX_HTML, "utf8");
-  const line = html.split("\n").find((l) => l.includes('id="inRangeWidth"'));
-  const min = Number(/min="([\d.]+)"/.exec(line)[1]);
-  assert.ok(
-    shipped.rebalanceRangeWidthPct >= min,
-    `default ${shipped.rebalanceRangeWidthPct} is below the input min ${min}`,
-  );
+  const refused = checkConfigValues({ rebalanceRangeWidthPct: v });
+  assert.equal(refused, null, refused ? refused.message : "");
 });
 
 /* ---------- the throttle dialog, converted to a standard info-dialog ---------- */

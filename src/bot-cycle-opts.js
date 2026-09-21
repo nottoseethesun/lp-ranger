@@ -17,10 +17,12 @@ const { loadShippedDefaults } = require("./load-merged-defaults");
 const { resolveRangeOverrideEnabled } = require("./range-override");
 
 /** Return `{[key]: value}` if the config value is a finite number,
- *  else `{}`.  Used for optional per-position overrides where the
- *  presence of the key in opts is the opt-in signal (see the swap
- *  layer's `resolveSlippagePct`).  Keeps `buildRebalanceOpts`
- *  under the cyclomatic-complexity cap. */
+ *  else `{}`.  Used for optional per-position overrides, so the opts
+ *  carry a key only where the position actually set one.  Readers do
+ *  not depend on that: `resolveSlippagePct` asks whether the value is
+ *  a finite number, so a key present and undefined reads the same as
+ *  an absent one.  Keeps `buildRebalanceOpts` under the
+ *  cyclomatic-complexity cap. */
 function _optionalConfig(deps, key) {
   const v = deps._getConfig?.(key);
   return typeof v === "number" && Number.isFinite(v) ? { [key]: v } : {};
@@ -76,11 +78,10 @@ function buildRebalanceOpts(deps, _state) {
     factoryAddress: config.FACTORY,
     positionManagerAddress: config.POSITION_MANAGER,
     swapRouterAddress: config.SWAP_ROUTER,
-    slippagePct: deps._getConfig?.("slippagePct") ?? config.SLIPPAGE_PCT,
-    /*- Per-token slippage overrides.  Only pass through when actually
-     *  set on the position — the swap layer detects opt-in by their
-     *  presence.  Absent → legacy single-slippage path (no behavior
-     *  change from before this feature landed). */
+    /*- Slippage is two settings, one per token, and nothing else.
+     *  Passed through only when actually set; `resolveSlippagePct`
+     *  picks the destination token's and falls back to the shipped
+     *  default when that one is unset. */
     ..._optionalConfig(deps, "slippagePctToken0"),
     ..._optionalConfig(deps, "slippagePctToken1"),
     symbol0: getTokenSymbol(position.token0),

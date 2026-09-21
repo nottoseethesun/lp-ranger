@@ -33,13 +33,7 @@
 
 "use strict";
 
-import {
-  g,
-  act,
-  ACT_ICONS,
-  compositeKey,
-  fetchWithCsrf,
-} from "./dashboard-helpers.js";
+import { g, act, ACT_ICONS, compositeKey } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions.js";
 import {
   _posLabel,
@@ -47,6 +41,7 @@ import {
   getInputDefault,
 } from "./dashboard-data.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 import {
   applyRangeFieldState,
   isRangeOverrideActive,
@@ -57,12 +52,12 @@ import {
  * persist.  Pure so the rules can be driven directly in tests.
  *
  * The row owns two config keys and Save commits both together — one
- * request, one Activity Log line.  The width is rejected rather than
- * clamped when it is not a legal number in [0.1, 200], per
- * feedback_one_literal_per_shipped_default (no silent
- * clamp-to-default); the Full-Range boolean always goes, since an
- * unchecked box is a meaningful state the user may be committing.
- * Full-range behavior is its own boolean — 100 is NOT a sentinel.
+ * request, one Activity Log line.  Whether the width is a figure the
+ * app can run on is decided by `src/config-bounds.js` on the server,
+ * not here; this only decides whether the row is asking for a width at
+ * all.  The Full-Range boolean always goes, since an unchecked box is a
+ * meaningful state the user may be committing.  Full-range behavior is
+ * its own boolean — 100 is NOT a sentinel.
  *
  * @param {string|undefined} rawWidth   The width input's raw value.
  * @param {boolean} fullRangeChecked    The Full-Range checkbox state.
@@ -71,8 +66,11 @@ import {
 export function computeRangeRowPatch(rawWidth, fullRangeChecked) {
   const patch = { fullRangeRebalanceEnabled: fullRangeChecked === true };
   const raw = parseFloat(rawWidth);
-  if (Number.isFinite(raw) && raw >= 0.1 && raw <= 200)
-    patch.rebalanceRangeWidthPct = raw;
+  /*- An empty field means "no width override", which is the one case
+   *  the key is left out. A figure that is merely out of range IS sent:
+   *  the server refuses it by name and the field goes back, where
+   *  dropping it here logged "saved" over a width nothing stored. */
+  if (!Number.isNaN(raw)) patch.rebalanceRangeWidthPct = raw;
   return patch;
 }
 
@@ -101,19 +99,27 @@ export function saveRangeWidth() {
         active.tokenId,
       )
     : undefined;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...patch, positionKey }),
-  }).catch(() => {});
-  const pl = _posLabel();
-  const detail = patch.fullRangeRebalanceEnabled
-    ? "Full-Range Rebalance enabled — Price Range Extension ignored"
-    : formatSettingChange(
-        "rebalanceRangeWidthPct",
-        patch.rebalanceRangeWidthPct ?? "\u2014",
-      );
-  act(ACT_ICONS.gear, "start", "Setting Saved", detail + (pl ? "\n" + pl : ""));
+  const announce = () => {
+    const pl = _posLabel();
+    const detail = patch.fullRangeRebalanceEnabled
+      ? "Full-Range Rebalance enabled — Price Range Extension ignored"
+      : formatSettingChange(
+          "rebalanceRangeWidthPct",
+          patch.rebalanceRangeWidthPct ?? "\u2014",
+        );
+    act(
+      ACT_ICONS.gear,
+      "start",
+      "Setting Saved",
+      detail + (pl ? "\n" + pl : ""),
+    );
+  };
+  saveConfigValues({
+    values: patch,
+    positionKey,
+    inputs: { rebalanceRangeWidthPct: "inRangeWidth" },
+    onSaved: announce,
+  });
 }
 
 /**

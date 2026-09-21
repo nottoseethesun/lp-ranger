@@ -34,14 +34,15 @@ describe("saveConfig drops retired keys", () => {
 
   /*-
    *  Save a slot carrying every retired key, then read it back.
-   *  `slippagePct` stands in for whatever real content a slot has:
-   *  without it the stripped slot is status-only, which the phantom
-   *  purge removes on load — a different mechanism, and not the one
-   *  under test here.
+   *  `slippagePctToken0` stands in for whatever real content a slot
+   *  has: without it the stripped slot is status-only, which the
+   *  phantom purge removes on load — a different mechanism, and not
+   *  the one under test here. It must be a key that is NOT retired,
+   *  which is why it is not the single `slippagePct` it used to be.
    */
   function saveAndReload(extra) {
     const dir = tmpDir();
-    const slot = { status: "running", slippagePct: 0.75 };
+    const slot = { status: "running", slippagePctToken0: 0.75 };
     for (const k of RETIRED_POSITION_KEYS) slot[k] = 1;
     Object.assign(slot, extra);
     saveConfig({ global: {}, positions: { [KEY]: slot } }, dir);
@@ -55,6 +56,63 @@ describe("saveConfig drops retired keys", () => {
     assert.ok(slot, "the position must survive the save");
     for (const k of RETIRED_POSITION_KEYS)
       assert.equal(slot[k], undefined, `${k} should not survive the save`);
+  });
+
+  it("never strips a slot down to its status alone", () => {
+    /*- The position would be gone by the next restart. A slot holding
+     *  status and one retired key strips to `{status:"running"}`, which
+     *  is exactly what `_purgePhantomEntries` deletes on load — so the
+     *  operator's managed position would silently stop being managed.
+     *  Reproduced before this guard existed: save, reload, and the key
+     *  was no longer in `positions` at all.
+     *
+     *  The retired key is left in place for that one slot instead. It
+     *  is read by nothing, and the next save that leaves real content
+     *  behind clears it. */
+    const dir = tmpDir();
+    const slot = { status: "running", slippagePct: 2.75 };
+    saveConfig({ global: {}, positions: { [KEY]: slot } }, dir);
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.ok(
+      loaded.positions[KEY],
+      "the managed position must still be there",
+    );
+    assert.equal(loaded.positions[KEY].status, "running");
+  });
+
+  it("does strip a STOPPED slot down to its status", () => {
+    /*- The guard above is only as wide as the danger. A stopped slot
+     *  is never a phantom — the purge takes `status: "running"` and
+     *  nothing else — so holding the key back here would preserve it
+     *  against a danger that does not exist, in a file operators read. */
+    const dir = tmpDir();
+    saveConfig(
+      {
+        global: {},
+        positions: { [KEY]: { status: "stopped", slippagePct: 2.75 } },
+      },
+      dir,
+    );
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.ok(loaded.positions[KEY], "a stopped position is not purged");
+    assert.equal(loaded.positions[KEY].slippagePct, undefined);
+    assert.equal(loaded.positions[KEY].status, "stopped");
+  });
+
+  it("still purges a genuine phantom, which carries no retired key", () => {
+    /*- The guard above must not blunt the purge itself: a bare
+     *  status-only stub is the stale composite key the purge exists
+     *  for, and nothing was stripped to make it. */
+    const dir = tmpDir();
+    saveConfig(
+      { global: {}, positions: { [KEY]: { status: "running" } } },
+      dir,
+    );
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.equal(loaded.positions[KEY], undefined);
   });
 
   it("keeps the coins and the settings around them", () => {

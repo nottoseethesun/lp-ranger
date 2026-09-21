@@ -9,10 +9,10 @@
  *   Three resolution paths are covered:
  *     1. Per-NFT cache hit (gas + compounded both cached) → no scan.
  *     2. Cache miss with compoundHistory entries tagged by tokenId →
- *        compounded derived from history (still no backfill scan needed
+ *        compounded derived from history (still no chain scan needed
  *        for compounded; gas falls back to cache lookup which is missing
- *        and triggers backfill via the injected scan stub).
- *     3. Full miss → backfill scan populates both caches.
+ *        and triggers a scan via the injected stub).
+ *     3. Full miss → a chain scan populates both caches.
  *
  *   Lifetime panel fields (`snap.totalCompoundedUsd`, `snap.totalGas`)
  *   are not exercised here — they remain owned by `bot-pnl-updater`.
@@ -85,7 +85,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     await applyCurrentNftFigures(snap, deps, position, poolState);
     assert.strictEqual(snap.currentCompoundedUsd, 8.39);
     assert.ok(snap.currentGasUsd > 0);
-    assert.strictEqual(_detectCalls.length, 0, "no backfill scan expected");
+    assert.strictEqual(_detectCalls.length, 0, "no chain scan expected");
   });
 
   it("derives compounded from compoundHistory when comp cache missing", async () => {
@@ -136,7 +136,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     assert.strictEqual(_detectCalls.length, 0, "no scan when gas is cached");
   });
 
-  it("triggers backfill scan and persists both caches on full miss", async () => {
+  it("triggers a chain scan and persists both caches on full miss", async () => {
     _detectImpl = async () => ({
       /*- RAW deposited amounts, as the classifier returns them, at the
        *  pool's real and unequal decimals: 4 + 4.39 of token0 (18dp) and
@@ -169,7 +169,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     };
     const poolState = { decimals0: 18, decimals1: 6 };
     await applyCurrentNftFigures(snap, deps, position, poolState);
-    assert.strictEqual(_detectCalls.length, 1, "one backfill scan");
+    assert.strictEqual(_detectCalls.length, 1, "one chain scan");
     assert.strictEqual(_detectCalls[0].tokenId, "12345");
     assert.strictEqual(snap.currentCompoundedUsd, 14.39);
     assert.ok(snap.currentGasUsd > 0);
@@ -205,7 +205,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     assert.strictEqual(_detectCalls.length, 0);
   });
 
-  it("swallows backfill scan failure (no throw, no snap mutation)", async () => {
+  it("swallows a chain-scan failure (no throw, no snap mutation)", async () => {
     _detectImpl = async () => {
       throw new Error("RPC down");
     };
@@ -220,7 +220,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
       { tokenId: 12345, token0: "0xA", token1: "0xB", fee: 3000 },
       { decimals0: 18, decimals1: 18 },
     );
-    /*- On scan failure _backfill returns { gasWei: '0', compoundedUsd: 0 }.
+    /*- On scan failure _scanNftTotals returns { gasWei: '0', compoundedUsd: 0 }.
      *  snap.currentGasUsd is set to 0 (treated as "no gas to display"),
      *  snap.currentCompoundedUsd is 0 (no override). */
     assert.strictEqual(snap.currentGasUsd, 0);

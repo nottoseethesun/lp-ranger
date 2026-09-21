@@ -34,7 +34,6 @@ const _UNMANAGED_SETTINGS_KEYS = [
   "rebalanceTimeoutMin",
   "rebalanceRangeWidthPct",
   "fullRangeRebalanceEnabled",
-  "slippagePct",
   "slippagePctToken0",
   "slippagePctToken1",
   "checkIntervalSec",

@@ -48,7 +48,9 @@ describe("undirected config writes never reach the operator's file", () => {
 
     saveConfig({
       global: {},
-      positions: { "pulsechain-0xSandbox-0xSandbox-1": { slippagePct: 1 } },
+      positions: {
+        "pulsechain-0xSandbox-0xSandbox-1": { slippagePctToken0: 1 },
+      },
     });
 
     const after = fs.existsSync(LIVE) ? fs.readFileSync(LIVE) : null;
@@ -67,9 +69,12 @@ describe("undirected config writes never reach the operator's file", () => {
      *  reloads has to see its own data, or the sandbox would be hiding
      *  broken behaviour rather than protecting a file. */
     const key = "pulsechain-0xRoundTrip-0xRoundTrip-7";
-    saveConfig({ global: {}, positions: { [key]: { slippagePct: 0.5 } } });
+    saveConfig({
+      global: {},
+      positions: { [key]: { slippagePctToken0: 0.5 } },
+    });
     const back = loadConfig();
-    assert.equal(back.positions[key]?.slippagePct, 0.5);
+    assert.equal(back.positions[key]?.slippagePctToken0, 0.5);
   });
 
   it("writes inside a temp directory, not the project", () => {

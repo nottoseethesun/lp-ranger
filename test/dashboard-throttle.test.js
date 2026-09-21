@@ -377,3 +377,6 @@ describe("saveMinInterval() — Save click applies the value + label", () => {
     },
   );
 });
+
+/*- A refused save is `public/dashboard-config-save.js`'s job now, and
+ *  is covered by test/dashboard-config-save.test.js. */

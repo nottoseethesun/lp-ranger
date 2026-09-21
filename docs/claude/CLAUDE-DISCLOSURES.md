@@ -1,6 +1,6 @@
 # Working on the LP Ranger Disclosure
 
-Companion to [CLAUDE.md](../CLAUDE.md). An internal working guide for
+Companion to [CLAUDE.md](../../CLAUDE.md). An internal working guide for
 Claude sessions that edit the app's regulatory disclosure text — not a
 legal artifact, not a substitute for legal review, and not a
 restatement of the disclosure itself.

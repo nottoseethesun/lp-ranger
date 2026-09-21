@@ -23,66 +23,10 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
-const logModule = require("../src/log");
+const { PRI, FALL, makeLib, muteConsole } = require("./helpers/send-tx-stubs");
 /*- Real ethers, for the queryFilter regression test: the bug lives in
  *  how ethers resolves a Contract runner, so a stub cannot exercise it. */
 const { ethers: realEthers } = require("ethers");
-
-/*- Per-test ethers mock factory.  Lets callers stub getBlockNumber
-    per-URL (success / throw with a given error shape).  Mirrors the
-    pattern used in test/send-transaction.test.js. */
-function makeLib(behaviours = {}) {
-  return {
-    JsonRpcProvider: class {
-      constructor(url) {
-        this._url = url;
-        this.getFeeData = async () => ({ gasPrice: 1n });
-        this.estimateGas = async () => 100_000n;
-        const b = behaviours[url] || {};
-        this.getBlockNumber = b.getBlockNumber || (async () => 12345);
-        this.getLogs = b.getLogs || (async () => []);
-        this._customSend = b.send;
-      }
-      send(method, params) {
-        if (this._customSend) return this._customSend(method, params);
-        if (method === "eth_gasPrice") return Promise.resolve("0x1");
-        return Promise.resolve(null);
-      }
-    },
-    FeeData: class {
-      constructor(gp, mf, mp) {
-        this.gasPrice = gp;
-        this.maxFeePerGas = mf;
-        this.maxPriorityFeePerGas = mp;
-      }
-    },
-  };
-}
-
-/*- Capture log output via the `src/log.js` sink injector so the global
- *  `console` is never patched (see [[feedback-no-global-monkey-patch]]).
- *  Strip the `[YYYY-MM-DD HH:MM:SS] ` timestamp prefix from each
- *  captured first arg so substring assertions like `.includes("[bot]
- *  RPC:")` keep matching the original tag+message contiguously. */
-const _TS = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] /g;
-function _stripTs(args) {
-  if (typeof args[0] === "string") {
-    const stripped = args[0].replace(_TS, "");
-    return [stripped, ...args.slice(1)];
-  }
-  return args;
-}
-function muteConsole() {
-  const out = { warn: [], log: [] };
-  const restore = logModule._setSinkForTests({
-    warn: (...a) => out.warn.push(_stripTs(a)),
-    log: (...a) => out.log.push(_stripTs(a)),
-  });
-  return { out, restore };
-}
-
-const PRI = "http://primary.test";
-const FALL = "http://fallback.test";
 
 describe("send-transaction: init idempotency", () => {
   beforeEach(() => sendTx._resetForTests());

@@ -6,7 +6,7 @@
  *     (without this, subsequent bot restarts would load a poolAddress-less
  *     cached hodl and fall back to current prices when resolving lifetime
  *     deposit USD — see bot-hodl-scan.js:_ensureHodlPoolAddress docstring).
- *  2. `_ensureHodlPoolAddress` backfills a missing pool address from the
+ *  2. `_ensureHodlPoolAddress` resolves a missing pool address from the
  *     factory and writes the updated hodl back to the epoch cache, so
  *     existing pre-fix cache entries self-heal on next startup.
  *  3. `_ensureHodlPoolAddress` returns the cached value without touching
@@ -167,7 +167,7 @@ describe("computeAndCacheHodl — poolAddress ordering", () => {
   });
 });
 
-// ── _ensureHodlPoolAddress backfill ─────────────────────────────────────
+// ── _ensureHodlPoolAddress pool-address resolution ─────────────────────────────────────
 
 describe("_ensureHodlPoolAddress", () => {
   let _ensureHodlPoolAddress;
@@ -200,7 +200,7 @@ describe("_ensureHodlPoolAddress", () => {
     assert.strictEqual(_cachedHodlWrites.length, 0);
   });
 
-  it("backfills a missing poolAddress and persists it to the epoch cache", async () => {
+  it("resolves a missing poolAddress and persists it to the epoch cache", async () => {
     const botState = {
       lifetimeHodlAmounts: {
         deposits: [{ raw0: "1", raw1: "2", block: 1 }],
@@ -209,14 +209,14 @@ describe("_ensureHodlPoolAddress", () => {
     const result = await _ensureHodlPoolAddress(
       botState,
       { token0: "0xA", token1: "0xB", fee: 3000 },
-      "epoch-key-backfill",
+      "epoch-key-resolve",
       {},
       {},
     );
     assert.strictEqual(result, "0xPOOL");
     assert.strictEqual(botState.lifetimeHodlAmounts.poolAddress, "0xPOOL");
     assert.strictEqual(_cachedHodlWrites.length, 1);
-    assert.strictEqual(_cachedHodlWrites[0].key, "epoch-key-backfill");
+    assert.strictEqual(_cachedHodlWrites[0].key, "epoch-key-resolve");
     assert.strictEqual(_cachedHodlWrites[0].hodl.poolAddress, "0xPOOL");
   });
 

@@ -1,6 +1,6 @@
 # CI and Merge Protocol
 
-Companion to [CLAUDE.md](../CLAUDE.md). Defines the exact steps for
+Companion to [CLAUDE.md](../../CLAUDE.md). Defines the exact steps for
 getting code from a feature branch into `main`. The remote must
 **always stay clean** — no failures should ever appear on GitHub.
 
