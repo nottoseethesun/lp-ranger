@@ -2401,6 +2401,18 @@ thing anyone would think to check. The throw happens while
 `src/config.js` is being required, so it stops the process before any
 position starts, and the message names the setting and the bound.
 
+**Throw at a boundary a person writes to, never on a hot path.** This is
+why `bot-config-defaults.js` has two readers.
+`readBotConfigDefaultsStrict()` refuses an out-of-range timer setting
+and is called exactly once, by `src/config.js`, at startup.
+`readBotConfigDefaults()` never throws over a value, and is what
+everything else calls — because this file is re-read on every call, and
+those calls include a poll cycle, a price lookup, the all-endpoints-down
+pause, and `GET /api/bot-config-defaults`. A throw from there would turn
+an edit made while the bot is running into a broken poll and a 500, and
+the route's own contract is that it never 500s. The same edit is still
+refused: at the next start, which is when the operator can act on it.
+
 **Where the app can carry on, answer rather than throw.** A bad value
 arriving at `POST /api/config` gets a 400 naming the problem; the server
 keeps serving and the dashboard can say what was wrong. This is why

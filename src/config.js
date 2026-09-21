@@ -37,7 +37,7 @@
 const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
 const { loadMergedDefaults } = require("./load-merged-defaults");
-const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { readBotConfigDefaultsStrict } = require("./bot-config-defaults");
 const botConfigV2 = require("./bot-config-v2");
 const { composeRpcUrls } = require("./rpc-url-list");
 
@@ -65,14 +65,19 @@ const APP_CONFIG = loadMergedDefaults("app-runtime.json");
  *  `parsePositiveInt/Float/TimerSec` call site, so no numeric default is
  *  ever literally written in this file.
  *
- *  Read through `readBotConfigDefaults()` rather than
- *  `loadMergedDefaults` directly: that reader applies the per-key
- *  clamps declared beside the values, so an out-of-range or
- *  non-numeric operator override falls back to the shipped value HERE
- *  rather than travelling on as a live setting.  Reading the merged
- *  JSON raw takes the same file with none of that.  See
- *  docs/engineering.md § "Reading Configuration Values". */
-const _BOT_DEFAULTS = readBotConfigDefaults();
+ *  Read through the reader that vets, rather than `loadMergedDefaults`
+ *  directly: it applies the per-key clamps declared beside the values,
+ *  so an out-of-range or non-numeric override falls back to the shipped
+ *  value HERE rather than travelling on as a live setting.  Reading the
+ *  merged JSON raw takes the same file with none of that.
+ *
+ *  The STRICT variant, because this is startup.  A timer setting an
+ *  operator wrote out of range stops the app here, rather than being
+ *  replaced by a number nobody chose — and startup is the only place
+ *  that can refuse, since the lenient reader is what a poll cycle and
+ *  an HTTP route call.  See docs/engineering.md § "Reading
+ *  Configuration Values". */
+const _BOT_DEFAULTS = readBotConfigDefaultsStrict();
 
 // ── Server ─────────────────────────────────────────────────────────────────────
 

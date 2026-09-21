@@ -168,35 +168,69 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     assert.equal(out.offsetToken0Pct, 60);
   });
 
-  it("THROWS on an out-of-range checkIntervalSec rather than resetting it", () => {
+  it("STRICT refuses an out-of-range checkIntervalSec rather than resetting it", () => {
     /*- The poll interval becomes a `setTimeout` delay, so it is bounded
      *  by `src/timer-bounds.js` — the same module `.env` and
-     *  `POST /api/config` ask. It throws where the other keys here fall
-     *  back, because a schedule silently replaced by a default is a bot
-     *  running on a cadence nobody chose, and the cadence is then the
-     *  last thing anyone would think to check. */
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+     *  `POST /api/config` ask. At startup it is refused rather than
+     *  replaced, because a schedule silently swapped for a default is a
+     *  bot running on a cadence nobody chose, and the cadence is then
+     *  the last thing anyone would think to check. */
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
     for (const bad of [1, 9, 3601, 7200, "abc", 0, -5]) {
       _writeUser({ checkIntervalSec: bad });
       assert.throws(
-        () => readBotConfigDefaults(),
+        () => readBotConfigDefaultsStrict(),
         /checkIntervalSec/,
         `${String(bad)} must be refused, not replaced`,
       );
     }
-    /*- And the bounds are the shared ones: 10 through 3600. */
+    /*- The bounds are the shared ones: 10 through 3600. */
     for (const good of [10, 300, 3600]) {
       _writeUser({ checkIntervalSec: good });
-      assert.equal(readBotConfigDefaults().checkIntervalSec, good);
+      assert.equal(readBotConfigDefaultsStrict().checkIntervalSec, good);
     }
   });
 
-  it("leaves the other keys falling back, not throwing", () => {
-    /*- Only a value that becomes a timer delay refuses. Everything else
-     *  in this file keeps the per-key fallback it had. */
-    _writeUser({ slippagePct: 99, checkIntervalSec: 300 });
+  it("LENIENT never throws, because a poll cycle and a route call it", () => {
+    /*- This file is re-read on every call, and several of those calls
+     *  are on hot paths — `GET /api/bot-config-defaults` among them,
+     *  which the file header promises never 500s. An edit made while
+     *  the bot is running must not break a poll; it falls back here and
+     *  is refused at the next start. */
     const { readBotConfigDefaults } = require("../src/bot-config-defaults");
-    assert.equal(readBotConfigDefaults().slippagePct, _SHIPPED.slippagePct);
+    for (const bad of [1, 9, 3601, 7200, "abc", 0, -5]) {
+      _writeUser({ checkIntervalSec: bad });
+      assert.equal(
+        readBotConfigDefaults().checkIntervalSec,
+        _SHIPPED.checkIntervalSec,
+        `${String(bad)} falls back rather than throwing`,
+      );
+    }
+  });
+
+  it("keeps GET /api/bot-config-defaults off a 500", () => {
+    const { handleBotConfigDefaults } = require("../src/bot-config-defaults");
+    _writeUser({ checkIntervalSec: 7200 });
+    let status = null;
+    handleBotConfigDefaults(null, null, (_res, s) => {
+      status = s;
+    });
+    assert.equal(status, 200);
+  });
+
+  it("leaves the other keys falling back, not throwing", () => {
+    /*- Only a value that becomes a timer delay is refused, and only by
+     *  the strict reader. Everything else keeps the per-key fallback. */
+    _writeUser({ slippagePct: 99, checkIntervalSec: 300 });
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
+    assert.equal(
+      readBotConfigDefaultsStrict().slippagePct,
+      _SHIPPED.slippagePct,
+    );
   });
 
   it("rejects out-of-range overrides and falls back per-key to shipped", () => {

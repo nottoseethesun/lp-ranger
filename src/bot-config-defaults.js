@@ -70,6 +70,45 @@ function _clampNonNegInt(v, max) {
   return n;
 }
 
+/*- A timer setting's value, or null to leave the shipped default
+ *  standing.  The bounds are `src/timer-bounds.js`'s — this is the same
+ *  rule `.env` and `POST /api/config` apply, with the lenient policy
+ *  this reader needs. */
+function _timerOrNull(v, key) {
+  try {
+    return assertTimerSec({ sec: v, key, defaultSec: _FALLBACK[key] });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refuse a timer setting the operator has written out of range.
+ *
+ * Separate from the normalizer above because the two have different
+ * jobs. The normalizer runs on every read — a poll cycle and an HTTP
+ * route among them — so it must never throw. This runs once, at
+ * startup, from `src/config.js`, where refusing means the app does not
+ * come up on a schedule nobody chose.
+ *
+ * Reads the value as written rather than as normalized, since the
+ * normalizer has already replaced a bad one by then.
+ * @param {object} parsed  The merged file, before normalizing.
+ * @throws {Error} Tagged `badTimerValue`.
+ */
+function _assertTimerKeys(parsed) {
+  const v = parsed.checkIntervalSec;
+  if (v === undefined || v === null) return;
+  assertTimerSec({
+    sec: v,
+    key: "checkIntervalSec",
+    defaultSec: _FALLBACK.checkIntervalSec,
+    remedy:
+      "Correct it in app-config/user-configurable/" +
+      "bot-config-defaults.json and restart.",
+  });
+}
+
 /*- Clamp a positive float to [min, max].  Returns null on failure. */
 function _clampFloat(v, min, max) {
   if (typeof v !== "number" || !Number.isFinite(v)) return null;
@@ -221,21 +260,14 @@ const _NORMALIZERS = {
   /*- The poll interval becomes a `setTimeout` delay, so its bounds come
    *  from `src/timer-bounds.js` — the same module `.env` and
    *  `POST /api/config` ask, because three copies of this rule gave
-   *  three different answers to the same question. Unset is no answer
-   *  and leaves the shipped default standing; a value that IS set and
-   *  is out of range throws, rather than being quietly replaced by a
-   *  number the operator did not choose. */
-  checkIntervalSec: (v) =>
-    v === undefined || v === null
-      ? null
-      : assertTimerSec({
-          sec: v,
-          key: "checkIntervalSec",
-          defaultSec: _FALLBACK.checkIntervalSec,
-          remedy:
-            "Correct it in app-config/user-configurable/" +
-            "bot-config-defaults.json and restart.",
-        }),
+   *  three different answers to the same question.
+   *
+   *  Lenient HERE, and refused at startup by
+   *  `readBotConfigDefaultsStrict` instead. This function runs on every
+   *  read, and those include a poll cycle and an HTTP route; throwing
+   *  from it would turn an edit made while the bot is running into a
+   *  broken poll and a 500. */
+  checkIntervalSec: (v) => _timerOrNull(v, "checkIntervalSec"),
   minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),
   maxRebalancesPerDay: (v) => _clampInt(v, 1, 200),
   offsetToken0Pct: (v) => _clampNonNegInt(v, 100),
@@ -251,6 +283,32 @@ const _NORMALIZERS = {
  * @returns {object}  Defaults object with the same keys as `_FALLBACK`.
  */
 function readBotConfigDefaults() {
+  return _read({ strict: false });
+}
+
+/**
+ * The same values, but refusing a timer setting written out of range
+ * rather than quietly standing the shipped default in its place.
+ *
+ * **Call this once, at startup, and nowhere else.** `src/config.js` does,
+ * and that is the right place: refusing there means the app does not come
+ * up on a schedule nobody chose, which is the whole point — a silently
+ * corrected interval is the last thing anyone would think to check.
+ *
+ * The lenient reader is what every other caller wants, because several
+ * of them are a poll cycle or an HTTP route and this file is re-read on
+ * every call. Throwing from those would turn an edit made while the bot
+ * is running into a broken poll and a 500.
+ *
+ * @returns {object} Same shape as `readBotConfigDefaults`.
+ * @throws {Error} Tagged `badTimerValue`, when a timer setting is set
+ *   and out of range.
+ */
+function readBotConfigDefaultsStrict() {
+  return _read({ strict: true });
+}
+
+function _read({ strict }) {
   try {
     const parsed = loadMergedDefaults(_FILENAME);
     const out = { ..._FALLBACK };
@@ -258,13 +316,15 @@ function readBotConfigDefaults() {
       const v = normalize(parsed[key]);
       if (v !== null) out[key] = v;
     }
+    if (strict) _assertTimerKeys(parsed);
     return out;
   } catch (err) {
-    /*- A value this file must refuse is not the same as a file it
+    /*- A value this reader must refuse is not the same as a file it
      *  merely failed to read. Falling back on the first would discard
      *  every other override alongside the bad one, and leave the bot on
      *  a schedule nobody chose — the thing the check exists to prevent.
-     *  So it propagates; only read and parse failures fall back. */
+     *  So it propagates; only read and parse failures fall back, which
+     *  is what keeps `GET /api/bot-config-defaults` off a 500. */
     if (err.badTimerValue) throw err;
     log.warn(
       "[bot-config-defaults] Falling back to built-in defaults: %s",
@@ -285,4 +345,8 @@ function handleBotConfigDefaults(_req, res, jsonResponse) {
   jsonResponse(res, 200, readBotConfigDefaults());
 }
 
-module.exports = { readBotConfigDefaults, handleBotConfigDefaults };
+module.exports = {
+  readBotConfigDefaults,
+  readBotConfigDefaultsStrict,
+  handleBotConfigDefaults,
+};
