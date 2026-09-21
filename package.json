@@ -65,7 +65,8 @@
     "ethers": "^6.17.0",
     "jsbi": "^4.3.0",
     "navigo": "^8.11.1",
-    "numbro": "^2.5.0"
+    "numbro": "^2.5.0",
+    "validator": "^13.15.35"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -100,7 +100,11 @@ describe("server-routes createRouteHandlers", () => {
         await h._handleApiConfig({}, res);
         assert.strictEqual(res._status, 400, `${String(bad)} must be refused`);
         assert.strictEqual(res._body.ok, false);
-        assert.match(res._body.error, /checkIntervalSec/);
+        /*- The message names the setting the way the dashboard labels
+         *  it, so the operator reads the same words they typed into;
+         *  `invalidValueForKey` carries the config key for the code. */
+        assert.match(res._body.error, /Check Interval/);
+        assert.strictEqual(res._body.invalidValueForKey, "checkIntervalSec");
         assert.strictEqual(
           deps.diskConfig.positions["pulsechain-0x1-0x2-100"].checkIntervalSec,
           undefined,

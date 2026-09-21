@@ -79,11 +79,12 @@ describe("Escape closes every dialog", () => {
   });
 
   it("names a closer for the dialogs whose dismissal has side effects", () => {
-    /*- These three dismiss by clicking their own button rather than by
-     *  hiding the overlay: hodlBaselineModal writes the acknowledgement
-     *  keys that stop it reappearing, and slippageOutOfRangeModal's OK
-     *  IS the acknowledgement. Hiding the element directly would look
-     *  identical on screen and silently skip that. */
+    /*- These dismiss by clicking their own button rather than by hiding
+     *  the overlay: hodlBaselineModal writes the acknowledgement keys
+     *  that stop it reappearing, and the two slippage confirmations
+     *  leave a pending save dangling unless their Cancel runs. Hiding
+     *  the element directly would look identical on screen and silently
+     *  skip that. */
     const src = fs.readFileSync(
       path.join(ROOT, "public", "dashboard-events-manage.js"),
       "utf8",
@@ -91,7 +92,6 @@ describe("Escape closes every dialog", () => {
     for (const btn of [
       "hodlBaselineClose",
       "noPositionsClose",
-      "slipOorOkBtn",
       "slipAbove5CancelBtn",
       "slipAbove10CancelBtn",
     ]) {

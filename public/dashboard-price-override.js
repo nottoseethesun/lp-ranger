@@ -5,14 +5,10 @@
  *   in detail requests. Non-zero fetched prices automatically replace overrides.
  */
 
-import {
-  g,
-  truncName,
-  compositeKey,
-  fetchWithCsrf,
-} from "./dashboard-helpers.js";
+import { g, truncName, compositeKey } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { _posContextHtml } from "./dashboard-data.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 
 let _refetchUnmanaged = null;
 /** Inject re-fetch callback (avoids circular import). */
@@ -136,18 +132,22 @@ export function savePriceOverrideDialog() {
     active.contractAddress,
     active.tokenId,
   );
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  saveConfigValues({
+    values: {
       priceOverride0: p0,
       priceOverride1: p1,
       priceOverrideForce: force,
-      positionKey: pk,
-    }),
-  }).catch(() => {});
-  if (!isPositionManaged(active.tokenId) && _refetchUnmanaged)
-    _refetchUnmanaged(active);
+    },
+    positionKey: pk,
+    inputs: {
+      priceOverride0: "priceOverrideInput0",
+      priceOverride1: "priceOverrideInput1",
+    },
+    onSaved: () => {
+      if (!isPositionManaged(active.tokenId) && _refetchUnmanaged)
+        _refetchUnmanaged(active);
+    },
+  });
 }
 
 /** Close the price override dialog without saving. */

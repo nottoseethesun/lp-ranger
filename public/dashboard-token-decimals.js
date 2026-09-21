@@ -11,10 +11,11 @@
  *   advisory. Mirrors the shape of `dashboard-price-override.js`.
  */
 
-import { g, compositeKey, fetchWithCsrf } from "./dashboard-helpers.js";
+import { g, compositeKey } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { getLastStatus, isSyncComplete } from "./dashboard-data.js";
 import { log } from "./dashboard-log.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 
 /*- The app has ONE Synced state, shown by the single sync badge and read
  *  here through its single source of truth. It is not true until every
@@ -270,17 +271,19 @@ function _persistToServer(ov) {
     a.contractAddress,
     a.tokenId,
   );
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  saveConfigValues({
+    values: {
       decimalsOverride0: ov.d0 ?? null,
       decimalsOverride1: ov.d1 ?? null,
       decimalsOverrideForce0: ov.force0 === true,
       decimalsOverrideForce1: ov.force1 === true,
-      positionKey: pk,
-    }),
-  }).catch(() => {});
+    },
+    positionKey: pk,
+    inputs: {
+      decimalsOverride0: "pdDecimals0",
+      decimalsOverride1: "pdDecimals1",
+    },
+  });
 }
 
 /** Save one token's decimals override (localStorage + server), then repaint. */

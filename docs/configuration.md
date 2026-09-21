@@ -286,6 +286,10 @@ refused**: a dialog says what was wrong, the field goes back to the value
 it last saved, and the bot carries on with that one. Edit and save again
 whenever you like.
 
+That second rule is not only for the timer settings. **Every value you
+can type into the dashboard is checked the same way** — see
+[What the dashboard accepts](#what-the-dashboard-accepts) below.
+
 | Setting | Default | Range | Which bound sets it |
 | ------- | ------- | ----- | ------------------- |
 | `TX_SPEEDUP_SEC` | `120` | 1 to `120000` (33 hours) | 1000× the default, being under 48 hours |
@@ -322,6 +326,45 @@ multiplier of 4 — carries the derived default past 48 hours and the app
 refuses to start. The message names `TX_CANCEL_SEC`, because that is the
 setting that is out of range, and points at the `app-runtime.json` values
 it derives from, because that is where the lever is.
+
+### What the dashboard accepts
+
+Every value you can type into the dashboard has a range, and **the
+server is what checks it** — not the page. Save sends what you typed; a
+value outside the range comes back refused, with a dialog naming the
+setting and the range, and the field is put back to the value that was
+last accepted. Nothing is saved, and you can edit and save again.
+
+| Setting | Accepts |
+| ------- | ------- |
+| Check Interval | 10 to 3600 sec |
+| OOR Timeout | 0 to 1440 min (0 = off) |
+| Min Time Between Rebalances | 1 to 10080 min (one week) |
+| Max Rebalances per Day | 1 to 1440 |
+| Impermanent Loss Guard | 1 to 100% |
+| OOR Threshold | 1 to 100% |
+| Price Range Extension | 0.1 to 200% |
+| Position Offset (Token 0 share) | 0 to 100%, whole numbers |
+| Slippage (Token 0 / Token 1) | 0.1 to 20% |
+| Auto-Compound Threshold | at least the minimum fee a compound needs |
+| Approval Multiple | 1 to 1,000,000 |
+| Max Gas Fee | 0.1 to 15% |
+| Total Lifetime Deposit | 0 or more |
+| Token Price Override | 0 or more (0 clears it) |
+| Token Decimals Override | 0 to 36 |
+| RPC Endpoints | 1 to 10 addresses, each beginning `http://` or `https://` |
+
+Two things that look like bad values are not. **An empty field clears
+the setting**, so it falls back to the shipped default — that is how you
+undo an override from the same box you set it in. And **zero is a real
+setting** for some of them: a price override of zero means "no
+override", and an OOR Timeout of zero switches the timeout off.
+
+Earlier versions decided this in the browser, and decided it
+differently per field: four settings quietly changed what you typed to
+the nearest allowed figure and saved that, and three did nothing at all
+on a bad value, with no message. The first meant the bot could be
+running on a number you never chose.
 
 ### Contract Addresses
 

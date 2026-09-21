@@ -126,16 +126,24 @@ describe("saveOffset — the Save button", () => {
     assert.equal(t1(), "65");
   });
 
-  it("clamps an out-of-range value into 0-100 before saving", () => {
+  it("sends an out-of-range value rather than correcting it", () => {
+    /*- The browser used to rewrite 140 to 100 and save that, so the
+     *  operator got a setting they never chose and no sign of it.
+     *  `src/config-bounds.js` refuses it by name instead, and
+     *  `dashboard-config-save.js` puts the field back. */
     document.getElementById("inOffsetToken0").value = "140";
     mod.saveOffset();
-    assert.equal(posted[0].body.offsetToken0Pct, 100);
-    assert.equal(t0(), "100");
+    assert.equal(posted[0].body.offsetToken0Pct, 140);
   });
 
-  it("saves nothing when the input is not a number", () => {
+  it("saves an empty field as a clear, rather than going quiet", () => {
+    /*- An empty field used to make Save do nothing at all — no save, no
+     *  message, a button that looked broken. It now sends `null`, which
+     *  is how the server is told to drop the override and fall back to
+     *  the shipped default. */
     document.getElementById("inOffsetToken0").value = "";
     mod.saveOffset();
-    assert.deepEqual(posted, []);
+    assert.equal(posted.length, 1);
+    assert.equal(posted[0].body.offsetToken0Pct, null);
   });
 });

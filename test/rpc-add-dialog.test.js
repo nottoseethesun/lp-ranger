@@ -26,11 +26,9 @@ const path = require("node:path");
 const { indexHtmlDocument } = require("./helpers/index-html");
 
 let doc;
-let validateRpcUrl;
 
-before(async () => {
+before(() => {
   doc = indexHtmlDocument();
-  ({ validateRpcUrl } = await import("../public/dashboard-rpc-add.js"));
 });
 
 describe("the Network section's markup", () => {
@@ -119,34 +117,8 @@ describe("the Network section's markup", () => {
   });
 });
 
-describe("validateRpcUrl", () => {
-  it("accepts an https endpoint", () => {
-    assert.equal(validateRpcUrl("https://rpc.example.com"), null);
-  });
-
-  it("accepts an http endpoint", () => {
-    /*- A node on the operator's own LAN is a normal, deliberate case. */
-    assert.equal(validateRpcUrl("http://192.168.1.50:8545"), null);
-  });
-
-  it("accepts a path-bearing endpoint", () => {
-    assert.equal(validateRpcUrl("https://rpc.example.com/v1/abc"), null);
-  });
-
-  it("rejects an empty value", () => {
-    assert.match(validateRpcUrl(""), /Enter an RPC URL/);
-  });
-
-  it("rejects something that is not a URL", () => {
-    assert.match(validateRpcUrl("rpc.example.com"), /not a valid URL/);
-    assert.match(validateRpcUrl("just some words"), /not a valid URL/);
-  });
-
-  it("rejects a non-HTTP scheme", () => {
-    /*- A typo'd scheme never recovers, unlike an endpoint that happens
-     *  to be down — which is why shape is checked and reachability is
-     *  not. */
-    assert.match(validateRpcUrl("ws://rpc.example.com"), /http:\/\/ or https/);
-    assert.match(validateRpcUrl("ftp://rpc.example.com"), /http:\/\/ or https/);
-  });
-});
+/*- Whether an endpoint is usable is no longer decided in the browser.
+ *  `src/config-bounds.js` checks it with `validator.isURL` and answers
+ *  400 naming the entry it refused, and the dialog puts that sentence in
+ *  its own error line. The rules are covered by
+ *  test/config-bounds.test.js § "checkConfigValues — RPC endpoints". */

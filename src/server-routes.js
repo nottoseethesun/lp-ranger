@@ -34,7 +34,7 @@ const {
   readConfigValue,
 } = require("./bot-config-v2");
 const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
-const { assertTimerSec } = require("./timer-bounds");
+const { checkConfigValues } = require("./config-bounds");
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
@@ -66,23 +66,6 @@ const { emojiId } = require("./logger");
  * @returns {object} Handler function map.
  */
 /**
- * Why a saved position patch cannot be accepted, or null when it can.
- *
- * `checkIntervalSec` is the one settable key that becomes a timer
- * delay: the poll cycle re-reads it through `_reloadFromConfig` on
- * every pass and hands it to `setTimeout`, so a bad value takes effect
- * on a RUNNING bot rather than at the next start. Past what a timer
- * holds it does not poll slowly — it polls with no gap at all. The rule
- * is the startup path's rule, from the same module, because two copies
- * of it would drift; see `src/timer-bounds.js`.
- *
- * Refused rather than clamped, so the dashboard can say what was wrong
- * instead of saving a different number than the one entered.
- *
- * @param {object} pPatch  The position keys pulled out of the body.
- * @returns {string|null}
- */
-/**
  * Un-pause every bot loop that stopped over excessive swap cost, when
  * the saved patch carries a new slippage.
  *
@@ -110,21 +93,14 @@ function _clearSlippagePause(pPatch, getAllStates) {
     }
 }
 
-function _timerKeyProblem(pPatch) {
-  if (pPatch.checkIntervalSec === undefined) return null;
-  try {
-    assertTimerSec({
-      sec: pPatch.checkIntervalSec,
-      key: "checkIntervalSec",
-      defaultSec: config.CHECK_INTERVAL_SEC,
-      remedy: "Choose a value within range and save again.",
-    });
-    return null;
-  } catch (err) {
-    /*- Caught rather than propagated: the route can answer, and the
-     *  server has every other request to go on serving. */
-    return err.message;
-  }
+/*- What the value checker needs that only this tier has read: the
+ *  shipped default a timer setting is bounded against, and the fee
+ *  floor the auto-compound threshold may not sit below. */
+function _valueCheckContext() {
+  return {
+    defaultsSec: { checkIntervalSec: config.CHECK_INTERVAL_SEC },
+    compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
+  };
 }
 
 function createRouteHandlers(deps) {
@@ -199,8 +175,14 @@ function createRouteHandlers(deps) {
     for (const k of GLOBAL_KEYS) if (body[k] !== undefined) gPatch[k] = body[k];
     for (const k of POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
-    const timerProblem = _timerKeyProblem(pPatch);
-    if (timerProblem) {
+    /*- Checked before anything is applied, so a refused value leaves
+     *  no trace: nothing assigned, no provider rebuilt, no paused loop
+     *  freed. */
+    const refused = checkConfigValues(
+      { ...gPatch, ...pPatch },
+      _valueCheckContext(),
+    );
+    if (refused) {
       /*- `invalidValueForKey` names the setting whose VALUE was
        *  refused, as against the other 400 this route returns, which
        *  is a malformed request. The key itself is fine — an unknown
@@ -209,8 +191,8 @@ function createRouteHandlers(deps) {
        *  the field only for the former. */
       jsonResponse(res, 400, {
         ok: false,
-        error: timerProblem,
-        invalidValueForKey: "checkIntervalSec",
+        error: refused.message,
+        invalidValueForKey: refused.key,
       });
       return;
     }

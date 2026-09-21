@@ -13,7 +13,6 @@ import { log } from "./dashboard-log.js";
 import { openRescanPricesDialog } from "./dashboard-rescan-prices.js";
 import {
   g,
-  botConfig,
   toggleSettingsPopover,
   showDisclosure,
   copyElText,
@@ -541,15 +540,7 @@ export function bindAllEvents() {
   _click("ilWarnConfirmBtn", confirmRebalance);
   _click("compoundNowBtn", compoundNow);
   _change("autoCompoundToggle", toggleAutoCompound);
-  _click("saveCompoundThresholdBtn", () => {
-    /*- No literal fallback per feedback_one_literal_per_shipped_default:
-     *  shipped default lives only in app-runtime.json (COMPOUND_MIN_FEE_USD
-     *  → botConfig.compoundMinFee).  Skip the save when the AJAX-
-     *  populated value is undefined; the button is disabled in that
-     *  state anyway (see dashboard-data-status._updateCompoundButton). */
-    if (botConfig.compoundMinFee === undefined) return;
-    saveCompoundThreshold(botConfig.compoundMinFee);
-  });
+  _click("saveCompoundThresholdBtn", saveCompoundThreshold);
 
   /* ── Table pagination ─────────────────── */
   _click("rebFirstBtn", rebFirstPage);

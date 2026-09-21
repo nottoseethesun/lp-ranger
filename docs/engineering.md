@@ -2424,9 +2424,39 @@ That 400 carries an `invalidValueForKey` field naming the setting whose
 value was refused, because the same route answers 400 for a second,
 unrelated reason: a malformed request, most often one with no
 `positionKey`. The dashboard raises its dialog and restores the field
-only for the first. A further bounds-checked setting therefore has to
-be added in both places — the check and the field — or its save will
-fail with nothing said and the refused value still on screen.
+only for the first.
+
+**The browser does not decide whether a value is acceptable.**
+`src/config-bounds.js` is the only place that decision is made, for
+every setting the dashboard lets an operator type into, and
+`public/dashboard-config-save.js` is the only path a save takes. Adding
+a settable key means adding its rule to the first and mapping the key
+to its input id in the second; leave either out and the save fails with
+nothing said and the refused value still on screen.
+
+Three things make this one module rather than each control's own
+opinion. The browser's copies had drifted into four different policies:
+four settings quietly rewrote what was typed and saved the rewrite, so
+the bot ran on a number nobody chose; three refused with no message,
+which reads as a broken Save button; and the rest each raised a dialog
+of their own wording. None of it bound a request that did not come from
+the form — the same hole `src/timer-bounds.js` was built to close on the
+timer settings, and this is the rest of it.
+
+Bounds live with the check, not in the browser. Where a bound pair is
+already shipped in `bot-config-defaults.json` — `gasFeePctMin/Max`,
+`impermanentLossGuardPctMin/Max` — the module reads it from there rather
+than restating the figures, and the dashboard input's `min`/`max`
+attributes stay what they always were: an affordance for the spinner
+arrows, not a gate.
+
+Two values look like refusals but are not. **`null` clears a setting** —
+the route deletes the key and the shipped default stands again — so the
+checker passes it through untouched, and an empty field is sent as
+`null` for exactly that reason. **Zero is a real setting** for several
+keys: a price override of 0 means "no override" (every reader gates on
+`> 0`), and an OOR timeout of 0 means "off". A floor above zero on
+either would strand a setting the operator could set but never undo.
 
 ## RPC Reachability at Startup
 

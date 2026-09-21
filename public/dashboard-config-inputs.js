@@ -21,10 +21,8 @@
 
 import { g } from "./dashboard-helpers.js";
 import { isInputDirty } from "./dashboard-data-cache.js";
-import {
-  applySavedMinInterval,
-  rememberGoodInput,
-} from "./dashboard-throttle.js";
+import { applySavedMinInterval } from "./dashboard-throttle.js";
+import { rememberGoodInput } from "./dashboard-config-save.js";
 
 /* Map of server config key → form input id. */
 const _CONFIG_INPUT_MAP = {

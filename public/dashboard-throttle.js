@@ -20,7 +20,6 @@ import {
   botConfig,
   savePositionOorThreshold,
   compositeKey,
-  fetchWithCsrf,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import {
@@ -30,6 +29,7 @@ import {
 } from "./dashboard-data.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 
 // Late-bound import to avoid circular dep issues at evaluation time.
 // Populated by dashboard-init.js after all modules load.
@@ -402,57 +402,22 @@ function _validateIntervalVsTimeout() {
 
 /** Save the OOR timeout setting and persist to backend. */
 export function saveOorTimeout() {
-  const el = g("inOorTimeout");
-  const val = parseInt(el?.value, 10);
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
-   *  reject invalid input instead of silently substituting a literal.
-   *  User must re-enter a valid value to save. */
-  if (!Number.isFinite(val) || val < 0) return;
-  const timeoutMin = val;
-  if (el) el.value = timeoutMin;
   markInputDirty("inOorTimeout");
-  const active = posStore.getActive();
-  const positionKey = active
-    ? compositeKey(
-        "pulsechain",
-        active.walletAddress,
-        active.contractAddress,
-        active.tokenId,
-      )
-    : undefined;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rebalanceTimeoutMin: timeoutMin, positionKey }),
-  }).catch(function () {
-    /* dashboard-only mode */
-  });
+  _saveSingleConfig("inOorTimeout", "rebalanceTimeoutMin", (v) =>
+    parseInt(v, 10),
+  );
   _validateIntervalVsTimeout();
 }
 
 /**
  * Save the Impermanent Loss Guard percent.
  *
- * Clamps to the shipped bounds and writes the clamped figure back into
- * the field, the same contract as `saveOorThreshold` above — a Save
- * click always saves something and always shows what it saved.  A
- * silent no-op on out-of-range input would look like a broken button.
- * The badge under Trigger Type follows on the next poll via
+ * Sends what was typed. The server decides whether it is acceptable and
+ * says so; the badge under Trigger Type follows on the next poll via
  * `updateTriggerDisplay`.
  */
 export function saveIlGuard() {
-  /*- Bounds come from bot-config-defaults.json via
-   *  /api/bot-config-defaults — no literals here, and the same pair the
-   *  input's min/max and the server-side clamp use.  No-op until the
-   *  fetch resolves rather than inventing a range. */
-  const min = getInputDefault("impermanentLossGuardPctMin");
-  const max = getInputDefault("impermanentLossGuardPctMax");
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-  const raw = parseInt(g("inIlGuard")?.value, 10);
-  if (!Number.isFinite(raw)) return;
-  const pct = Math.min(max, Math.max(min, raw));
-  const inp = g("inIlGuard");
-  if (inp) inp.value = pct;
+  const pct = parseInt(g("inIlGuard")?.value, 10);
   _saveSingleConfig("inIlGuard", "impermanentLossGuardPct", () => pct);
   const disp = g("activeIlGuard");
   if (disp) disp.textContent = String(pct);
@@ -461,85 +426,39 @@ export function saveIlGuard() {
 /** Save just the OOR threshold, update the preview, and persist to backend. */
 export function saveOorThreshold() {
   const raw = parseFloat(g("inOorThreshold")?.value);
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
-   *  reject invalid input instead of silently substituting a literal.
-   *  User must re-enter a valid value (1..100) to save. */
-  if (!Number.isFinite(raw)) return;
-  botConfig.oorThreshold = Math.min(100, Math.max(1, raw));
-  const inp = g("inOorThreshold");
-  if (inp) inp.value = botConfig.oorThreshold;
   markInputDirty("inOorThreshold");
+  _saveSingleConfig(
+    "inOorThreshold",
+    "rebalanceOutOfRangeThresholdPercent",
+    () => raw,
+  );
+  /*- The derived displays follow the typed value straight away, as they
+   *  always have: the diagram is a preview, the poll re-syncs it from
+   *  the server every cycle, and a refused save has already put the
+   *  field back by then. Nothing here decides whether the value is
+   *  acceptable — that is `src/config-bounds.js`. */
+  botConfig.oorThreshold = raw;
   const disp = g("activeOorThreshold");
-  if (disp) disp.textContent = botConfig.oorThreshold;
+  if (disp) disp.textContent = raw;
   const activePos = posStore.getActive();
-  if (activePos) savePositionOorThreshold(activePos, botConfig.oorThreshold);
+  if (activePos) savePositionOorThreshold(activePos, raw);
   if (_positionRangeVisual) _positionRangeVisual();
-  const positionKey = activePos
-    ? compositeKey(
-        "pulsechain",
-        activePos.walletAddress,
-        activePos.contractAddress,
-        activePos.tokenId,
-      )
-    : undefined;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      rebalanceOutOfRangeThresholdPercent: botConfig.oorThreshold,
-      positionKey,
-    }),
-  }).catch(function () {
-    /* dashboard-only mode */
-  });
 }
 
-/** Save a single config key from an input element. */
-/*- The value each Bot Settings input last held that the server
- *  accepted, so a rejected save can put the field back to it. Seeded by
- *  `rememberGoodInput` when the panel populates from `/api/status`, and
- *  updated on every save the server takes. */
-const _lastGoodByInput = new Map();
-
 /**
- * Record what an input currently shows as a value the server accepts.
+ * Save one Bot Settings input, whatever it holds.
+ *
+ * Nothing here judges the value — `src/config-bounds.js` on the server
+ * does that, and `saveConfigValues` puts the field back and says why
+ * when it is refused.
+ *
  * @param {string} inputId
- * @param {*} value
+ * @param {string} key              The config key to write.
+ * @param {Function} parse          Turns the field's text into the value.
+ * @param {Function} [onSaved]      Ran only once the server has taken it.
  * @returns {void}
  */
-export function rememberGoodInput(inputId, value) {
-  if (value !== undefined && value !== null)
-    _lastGoodByInput.set(inputId, String(value));
-}
-
-/**
- * Put a refused field back to its last accepted value, and say what to
- * tell the operator.
- *
- * Exported so the decision can be driven directly by a test —
- * `fetchWithCsrf` goes through the global `fetch`, which a test must
- * not replace. The alert itself stays with the caller.
- *
- * @param {string} inputId
- * @param {string} key     The setting that was being saved.
- * @param {object} body    The server's response body.
- * @returns {string|null}  The dialog text, or null to say nothing —
- *   which is the answer whenever the 400 was about the request rather
- *   than the value, such as no position being selected.
- */
-export function _applySaveRejection(inputId, key, body) {
-  if (!body || body.invalidValueForKey !== key) return null;
-  const prior = _lastGoodByInput.get(inputId);
-  const el = g(inputId);
-  if (el && prior !== undefined) el.value = prior;
-  return `That value was not accepted:\n\n${
-    body.error || "It is outside the allowed range."
-  }\n\nThe field has been set back to ${
-    prior === undefined ? "its previous value" : prior
-  }. Edit it and save again if you like.`;
-}
-
-export function _saveSingleConfig(inputId, key, parse) {
+export function _saveSingleConfig(inputId, key, parse, onSaved) {
   markInputDirty(inputId);
   const val = parse(g(inputId)?.value);
   const active = posStore.getActive();
@@ -551,40 +470,24 @@ export function _saveSingleConfig(inputId, key, parse) {
         active.tokenId,
       )
     : undefined;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ [key]: val, positionKey }),
-  })
-    .then(async (res) => {
-      if (res.ok) {
-        _lastGoodByInput.set(inputId, String(val));
-        /*- Logged once the server has taken it, not when the request
-         *  goes out: a refused save would otherwise read "Setting
-         *  Saved" in the Activity Log while the dialog says it was
-         *  rejected. */
-        const pl = _posLabel();
-        act(
-          ACT_ICONS.gear,
-          "start",
-          "Setting Saved",
-          formatSettingChange(key, val) + (pl ? "\n" + pl : ""),
-        );
-        return;
-      }
-      /*- The server refuses a value it cannot run on rather than
-       *  quietly correcting it, so put the field back to what was last
-       *  accepted and say why. The user can edit and save again.
-       *
-       *  Only for a rejected VALUE, which `invalidValueForKey` marks. This
-       *  route also 400s on a malformed request — no position selected,
-       *  most often — and that is not something to show the operator a
-       *  dialog about, nor a reason to touch what they typed. */
-      const body = await res.json().catch(() => ({}));
-      const message = _applySaveRejection(inputId, key, body);
-      if (message) alert(message);
-    })
-    .catch(() => {});
+  saveConfigValues({
+    values: { [key]: val },
+    positionKey,
+    inputs: { [key]: inputId },
+    onSaved: () => {
+      /*- Logged once the server has taken it, not when the request goes
+       *  out: a refused save would otherwise read "Setting Saved" in the
+       *  Activity Log while the dialog says it was rejected. */
+      const pl = _posLabel();
+      act(
+        ACT_ICONS.gear,
+        "start",
+        "Setting Saved",
+        formatSettingChange(key, val) + (pl ? "\n" + pl : ""),
+      );
+      if (onSaved) onSaved();
+    },
+  });
 }
 
 /**
@@ -638,14 +541,12 @@ export function applyPolledMinInterval(minIntervalMs) {
  *  stamp the one-shot poll-skip marker, persist to the server. */
 export function saveMinInterval() {
   const n = parseInt(g("inMinInterval")?.value, 10);
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
-   *  reject invalid input rather than silently using a literal default. */
-  if (!Number.isFinite(n) || n < 1) return;
   /*- Optimistic client apply on Save: the Doubling Trigger Window label
    *  and countdown KPI derive from `throttle.minIntervalMs`, which is
-   *  save-gated (see `onParamChange`).  Applying here makes the label
+   *  save-gated (see `onParamChange`). Applying here makes the label
    *  reflect the new value on the Save click itself instead of waiting
-   *  up to one poll cycle for the server round-trip. */
+   *  for the round-trip; the poll re-syncs it from the server every
+   *  cycle, so a refused value does not persist on screen. */
   applySavedMinInterval(n);
   /*- One-shot poll-skip marker — see `applyPolledMinInterval`. */
   const lbl = g("dblWindowLabel");
@@ -656,10 +557,6 @@ export function saveMinInterval() {
 /** Save max rebalances per day. */
 export function saveMaxReb() {
   const n = parseInt(g("inMaxReb")?.value, 10);
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
-   *  reject invalid input rather than silently using `throttle.dailyMax`.
-   *  The user must enter a valid positive integer to save. */
-  if (!Number.isFinite(n) || n < 1) return;
   _saveSingleConfig("inMaxReb", "maxRebalancesPerDay", () => n);
   const el = g("kpiToday");
   if (el) {
@@ -678,13 +575,7 @@ export function saveMaxReb() {
 
 /** Save check interval. */
 export function saveCheckInterval() {
-  const n = parseInt(g("inInterval")?.value, 10);
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
-   *  reject invalid input rather than silently substituting a literal
-   *  (the previous `|| 60` was a stale fallback — the shipped JSON
-   *  default is now 300, not 60). */
-  if (!Number.isFinite(n) || n < 1) return;
-  _saveSingleConfig("inInterval", "checkIntervalSec", () => n);
+  _saveSingleConfig("inInterval", "checkIntervalSec", (v) => parseInt(v, 10));
 }
 /** Save gas strategy. */
 export function saveGasStrategy() {
@@ -705,26 +596,20 @@ export function updateOffsetComplement(sourceId) {
 
 /** Save the current offset value. */
 export function saveOffset() {
-  const el = g("inOffsetToken0");
-  const n = parseInt(el?.value, 10);
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
-   *  reject invalid input rather than silently substituting a literal. */
-  if (!Number.isFinite(n)) return;
-  const val = Math.max(0, Math.min(100, n));
-  if (el) el.value = val;
+  const val = parseInt(g("inOffsetToken0")?.value, 10);
+  _saveSingleConfig("inOffsetToken0", "offsetToken0Pct", () => val);
+  /*- The two shares add to 100, so the companion field tracks this one.
+   *  Whether the figure is acceptable is the server's answer, not this
+   *  field's. */
   const other = g("inOffsetToken1");
   if (other) other.value = 100 - val;
-  _saveSingleConfig("inOffsetToken0", "offsetToken0Pct", () => val);
 }
 
 /** Save the Approval Multiple (global). */
 export function saveApprovalMultiple() {
-  const el = g("inApprovalMultiple");
-  let val = parseInt(el?.value, 10);
-  if (!Number.isFinite(val) || val < 1) val = 1;
-  if (val > 1_000_000) val = 1_000_000;
-  if (el) el.value = val;
-  _saveSingleConfig("inApprovalMultiple", "approvalMultiple", () => val);
+  _saveSingleConfig("inApprovalMultiple", "approvalMultiple", (v) =>
+    parseInt(v, 10),
+  );
 }
 
 /**

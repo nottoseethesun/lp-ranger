@@ -166,13 +166,19 @@
                     "description": "Impermanent Loss Guard, percent. Per position. Bounds come from impermanentLossGuardPctMin/Max in bot-config-defaults.json."
                   },
                   "rebalanceOutOfRangeThresholdPercent": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 100
                   },
                   "rebalanceTimeoutMin": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
                   },
                   "slippagePct": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 20
                   },
                   "checkIntervalSec": {
                     "type": "integer",
@@ -181,17 +187,23 @@
                     "description": "On-chain poll frequency, seconds. Per position. A value outside the range is refused with 400 and nothing is saved; bounds come from src/timer-bounds.js, which every road into this setting shares."
                   },
                   "minRebalanceIntervalMin": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10080
                   },
                   "maxRebalancesPerDay": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
                   },
                   "gasStrategy": {
                     "type": "string",
                     "enum": ["auto"]
                   },
                   "initialDepositUsd": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000000000000
                   },
                   "priceOverride0": {
                     "type": "number"
@@ -214,7 +226,9 @@
                   },
                   "rebalanceRangeWidthPct": {
                     "type": "number",
-                    "description": "Price Range Extension: half-width of the new range as a percent of the current price. Ignored while rangeOverrideEnabled is false."
+                    "description": "Price Range Extension: half-width of the new range as a percent of the current price. Ignored while rangeOverrideEnabled is false.",
+                    "minimum": 0.1,
+                    "maximum": 200
                   },
                   "fullRangeRebalanceEnabled": {
                     "type": "boolean",
@@ -228,11 +242,15 @@
                   },
                   "slippagePctToken0": {
                     "type": "number",
-                    "description": "Per-token slippage tolerance for token0 swaps. Overrides slippagePct for that leg."
+                    "description": "Per-token slippage tolerance for token0 swaps. Overrides slippagePct for that leg.",
+                    "minimum": 0.1,
+                    "maximum": 20
                   },
                   "slippagePctToken1": {
                     "type": "number",
-                    "description": "Per-token slippage tolerance for token1 swaps."
+                    "description": "Per-token slippage tolerance for token1 swaps.",
+                    "minimum": 0.1,
+                    "maximum": 20
                   },
                   "totalLifetimeDepositUsd": {
                     "type": "number",
@@ -248,11 +266,15 @@
                   },
                   "decimalsOverride0": {
                     "type": "integer",
-                    "description": "Manual decimals for token0, when on-chain detection fails."
+                    "description": "Manual decimals for token0, when on-chain detection fails.",
+                    "minimum": 0,
+                    "maximum": 36
                   },
                   "decimalsOverride1": {
                     "type": "integer",
-                    "description": "Manual decimals for token1."
+                    "description": "Manual decimals for token1.",
+                    "minimum": 0,
+                    "maximum": 36
                   },
                   "decimalsOverrideForce0": {
                     "type": "boolean",
@@ -393,11 +415,15 @@
                   },
                   "approvalMultiple": {
                     "type": "integer",
-                    "description": "GLOBAL. ERC-20 approval multiplier for swap allowances."
+                    "description": "GLOBAL. ERC-20 approval multiplier for swap allowances.",
+                    "minimum": 1,
+                    "maximum": 1000000
                   },
                   "gasFeePct": {
                     "type": "number",
-                    "description": "GLOBAL. Gas-cost ceiling as a percent of position value. Bounds: gasFeePctMin/Max in bot-config-defaults.json."
+                    "description": "GLOBAL. Gas-cost ceiling as a percent of position value. Bounds: gasFeePctMin/Max in bot-config-defaults.json.",
+                    "minimum": 0.1,
+                    "maximum": 15
                   },
                   "priceCacheTtlMs": {
                     "type": "integer",
@@ -429,7 +455,7 @@
             "description": "Config saved"
           },
           "400": {
-            "description": "Missing or invalid positionKey for position-specific keys, or a timer setting outside its range. The two are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request."
+            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The two are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/config-bounds.js; null clears a setting rather than being checked."
           }
         }
       }
