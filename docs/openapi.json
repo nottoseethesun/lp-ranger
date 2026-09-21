@@ -175,11 +175,6 @@
                     "minimum": 0,
                     "maximum": 1440
                   },
-                  "slippagePct": {
-                    "type": "number",
-                    "minimum": 0.1,
-                    "maximum": 20
-                  },
                   "checkIntervalSec": {
                     "type": "integer",
                     "minimum": 10,
@@ -242,13 +237,13 @@
                   },
                   "slippagePctToken0": {
                     "type": "number",
-                    "description": "Per-token slippage tolerance for token0 swaps. Overrides slippagePct for that leg.",
+                    "description": "Slippage tolerance, percent, for swaps whose DESTINATION token is token0. Unset falls back to the shipped slippagePct default in bot-config-defaults.json. Honoured by rebalances and compounds alike.",
                     "minimum": 0.1,
                     "maximum": 20
                   },
                   "slippagePctToken1": {
                     "type": "number",
-                    "description": "Per-token slippage tolerance for token1 swaps.",
+                    "description": "Slippage tolerance, percent, for swaps whose DESTINATION token is token1. Unset falls back to the shipped slippagePct default in bot-config-defaults.json. Honoured by rebalances and compounds alike.",
                     "minimum": 0.1,
                     "maximum": 20
                   },

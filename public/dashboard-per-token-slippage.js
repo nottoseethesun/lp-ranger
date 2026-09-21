@@ -21,8 +21,13 @@
  * The per-poll sync populates the input with either the saved value
  * or the shipped default (0.75%), so the input is never empty.
  *
- * The legacy `slippagePct` field on disk is dormant — the swap layer
- * (see src/slippage-resolver.js) uses only the per-token values.
+ * These two fields are the whole of slippage.  The single
+ * `slippagePct` the old row saved per position is retired and dropped
+ * on load; `slippagePct` in bot-config-defaults.json survives as the
+ * shipped DEFAULT both fields seed from and that a swap falls back to
+ * when a token has no setting of its own.  Rebalances and compounds
+ * both resolve through src/slippage-resolver.js, so what is shown here
+ * is what both use.
  */
 
 "use strict";

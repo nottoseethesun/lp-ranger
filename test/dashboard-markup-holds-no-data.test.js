@@ -44,10 +44,8 @@ before(() => {
 
 /*- Every setting `src/config-bounds.js` declares a numeric range for,
  *  and the input an operator types it into — or `null` where there is
- *  no input. `slippagePct` is the dormant one: the single Slippage
- *  field became two per-token fields, and the key stayed valid on disk
- *  so saved values still load. The third test below fails if this list
- *  falls behind the checker. */
+ *  no input. The third test below fails if this list falls behind the
+ *  checker. */
 const INPUT_BY_KEY = {
   checkIntervalSec: "inInterval",
   rebalanceTimeoutMin: "inOorTimeout",
@@ -57,7 +55,6 @@ const INPUT_BY_KEY = {
   rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
   rebalanceRangeWidthPct: "inRangeWidth",
   offsetToken0Pct: "inOffsetToken0",
-  slippagePct: null,
   slippagePctToken0: "inSlipToken0",
   slippagePctToken1: "inSlipToken1",
   autoCompoundThresholdUsd: "autoCompoundThreshold",

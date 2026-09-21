@@ -79,12 +79,22 @@ const { emojiId } = require("./logger");
  * Slippage on a stuck-aborted re-open would open the gates and the next
  * poll would still take `drain.js`'s retire branch instead of retrying.
  *
+ * Keyed on the two per-token settings, which are what the Slippage rows
+ * save. It used to key on a single `slippagePct`, and went dead the day
+ * that row became two: nothing sent that key any more, so a paused
+ * position could only be freed by a manual rebalance while the app went
+ * on saying that changing Slippage would free it.
+ *
  * @param {object} pPatch                 The position keys from the body.
  * @param {() => Iterable} getAllStates   Per-position bot states.
  * @returns {void}
  */
 function _clearSlippagePause(pPatch, getAllStates) {
-  if (pPatch.slippagePct === undefined) return;
+  if (
+    pPatch.slippagePctToken0 === undefined &&
+    pPatch.slippagePctToken1 === undefined
+  )
+    return;
   for (const [, s] of getAllStates())
     if (s.rebalancePaused) {
       s.rebalancePaused = false;

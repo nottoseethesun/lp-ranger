@@ -154,14 +154,16 @@ describe("atomic config write", () => {
   it("strips legacy version and managedPositions fields", () => {
     const { saveConfig, loadConfig } = require("../src/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "strip-test-"));
-    /*- `slippagePct` makes this a legitimately-running entry (not the
+    /*- A real setting makes this a legitimately-running entry (not the
      *  bare {status:"running"} phantom signature that the load-time
-     *  purge removes). */
+     *  purge removes).  It has to be a key that is not retired — the
+     *  single `slippagePct` this used to carry now IS retired, so the
+     *  slot was stripped back to a phantom and purged. */
     const cfg = {
       version: 1,
       managedPositions: ["old"],
       global: {},
-      positions: { k: { status: "running", slippagePct: 0.5 } },
+      positions: { k: { status: "running", slippagePctToken0: 0.5 } },
     };
     saveConfig(cfg, dir);
     const loaded = loadConfig(dir);

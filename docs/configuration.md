@@ -232,7 +232,7 @@ each layer live in [`docs/security.md`](security.md).
 | `REBALANCE_OOR_THRESHOLD_PCT` | `5` | `bot-config-defaults.json` → `rebalanceOutOfRangeThresholdPercent` | How far past the position's price boundary the price must move before the distance condition fires, as a percentage of the position's own range width. `0` fires the moment the position leaves range. |
 | `REBALANCE_TIMEOUT_MIN` | `180` | `bot-config-defaults.json` → `rebalanceTimeoutMin` | Minutes continuously out of range before a rebalance fires whatever the distance. `0` disables it. |
 | `IMPERMANENT_LOSS_GUARD_PCT` | `50` | `bot-config-defaults.json` → `impermanentLossGuardPct` | How far below its own mint value a position may fall before the bot stops rebalancing it. Accepted range 1–100. |
-| `SLIPPAGE_PCT` | `0.75` | `bot-config-defaults.json` → `slippagePct` | Most slippage a swap may take, measured against the quoted output rather than the spot price. |
+| `SLIPPAGE_PCT` | `0.75` | `bot-config-defaults.json` → `slippagePct` | Most slippage a swap may take, measured against the quoted output rather than the spot price. This is the **default**: a position sets slippage per token, in the two Slippage rows, and this applies to a token that has no figure of its own. See [Slippage is two settings](#slippage-is-two-settings). |
 | `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. Range 10 to 3600 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | `bot-config-defaults.json` → `minRebalanceIntervalMin` | Shortest wait between two rebalances of one position. |
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
@@ -326,6 +326,31 @@ multiplier of 4 — carries the derived default past 48 hours and the app
 refuses to start. The message names `TX_CANCEL_SEC`, because that is the
 setting that is out of range, and points at the `app-runtime.json` values
 it derives from, because that is where the lever is.
+
+### Slippage is two settings
+
+One per token, and nothing else. Bot Settings → Execution has a
+**Slippage (Token 0)** row and a **Slippage (Token 1)** row. They may
+hold the same figure; they are two rows because the two sides of a pair
+often need different ones.
+
+Which one applies to a swap is decided by where the swap is **going**,
+not where it starts. Selling token 0 to buy token 1 uses Token 1's
+figure; selling token 1 to buy token 0 uses Token 0's. The destination
+side is where the value can be taken, so that is where the budget sits.
+
+A token whose row you have not set falls back to the shipped default,
+`slippagePct` in `bot-config-defaults.json` (0.75%). That default is
+also what both rows show before you save anything of your own.
+
+**The figures in those rows are what the bot uses — for rebalances and
+for compounds alike.** Earlier versions kept a third, older slippage
+value per position, from before the row was split in two. Rebalances
+ignored it and compounds obeyed it, so one position could swap at two
+different rates depending on which move it was making, with nothing on
+screen to say so. That value is gone; it is removed from your config
+file the next time the app loads it. If you had one, both tokens fall
+back to the shipped default until you set the two rows.
 
 ### What the dashboard accepts
 

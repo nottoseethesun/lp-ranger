@@ -143,13 +143,13 @@ describe("server", () => {
       port: TEST_PORT,
       method: "POST",
       path: "/api/config",
-      body: { slippagePct: 1.0, positionKey: pk },
+      body: { slippagePctToken0: 1.0, positionKey: pk },
       headers: { "x-csrf-token": await csrfToken() },
     });
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
-    assert.strictEqual(body.applied.slippagePct, 1.0);
+    assert.strictEqual(body.applied.slippagePctToken0, 1.0);
   });
 
   it("POST /api/config rejects position keys without positionKey", async () => {
@@ -157,7 +157,7 @@ describe("server", () => {
       port: TEST_PORT,
       method: "POST",
       path: "/api/config",
-      body: { slippagePct: 0.5 },
+      body: { slippagePctToken0: 0.5 },
       headers: { "x-csrf-token": await csrfToken() },
     });
     assert.strictEqual(res.status, 400);

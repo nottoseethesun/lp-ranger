@@ -156,7 +156,7 @@ describe("POST /api/config", () => {
     const deps = makeDeps({
       readJsonBody: async () => ({
         positionKey: "pulsechain-0x1-0x2-100",
-        slippagePct: 2.0,
+        slippagePctToken0: 2.0,
       }),
     });
     deps.diskConfig.positions = {
@@ -166,7 +166,7 @@ describe("POST /api/config", () => {
     const res = makeRes();
     await h._handleApiConfig({}, res);
     assert.strictEqual(res._status, 200);
-    assert.strictEqual(res._body.applied.slippagePct, 2.0);
+    assert.strictEqual(res._body.applied.slippagePctToken0, 2.0);
   });
 
   it("lazy-creates the position slot when absent (Save-before-Manage)", async () => {
@@ -176,7 +176,7 @@ describe("POST /api/config", () => {
     const deps = makeDeps({
       readJsonBody: async () => ({
         positionKey: pk,
-        slippagePct: 0.5,
+        slippagePctToken0: 0.5,
         rebalanceOutOfRangeThresholdPercent: 3,
       }),
     });
@@ -185,7 +185,7 @@ describe("POST /api/config", () => {
     const res = makeRes();
     await h._handleApiConfig({}, res);
     assert.strictEqual(res._status, 200);
-    assert.strictEqual(res._body.applied.slippagePct, 0.5);
+    assert.strictEqual(res._body.applied.slippagePctToken0, 0.5);
     assert.strictEqual(
       res._body.applied.rebalanceOutOfRangeThresholdPercent,
       3,
@@ -193,7 +193,7 @@ describe("POST /api/config", () => {
     // Slot now exists with the user's values, no status flipped yet.
     const slot = deps.diskConfig.positions[pk];
     assert.ok(slot, "position slot should have been lazy-created");
-    assert.strictEqual(slot.slippagePct, 0.5);
+    assert.strictEqual(slot.slippagePctToken0, 0.5);
     assert.strictEqual(slot.rebalanceOutOfRangeThresholdPercent, 3);
     assert.strictEqual(
       slot.status,
@@ -204,7 +204,7 @@ describe("POST /api/config", () => {
 
   it("rejects position keys without positionKey", async () => {
     const deps = makeDeps({
-      readJsonBody: async () => ({ slippagePct: 3.0 }),
+      readJsonBody: async () => ({ slippagePctToken0: 3.0 }),
     });
     const h = createRouteHandlers(deps);
     const res = makeRes();
@@ -216,7 +216,7 @@ describe("POST /api/config", () => {
   it("rejects malformed positionKey", async () => {
     const deps = makeDeps({
       readJsonBody: async () => ({
-        slippagePct: 1.5,
+        slippagePctToken0: 1.5,
         positionKey: "bad-key",
       }),
     });
@@ -227,9 +227,12 @@ describe("POST /api/config", () => {
     assert.ok(res._body.error.includes("positionKey"));
   });
 
-  it("clears rebalancePaused when slippagePct changes", async () => {
-    // slippagePct is a POSITION_KEY — changing it should clear
-    // rebalance pause so the bot retries with the new slippage.
+  it("clears rebalancePaused when a per-token slippage changes", async () => {
+    /*- Either Slippage row frees a position the swap-cost gate paused,
+     *  so the bot retries with the new figure. This keyed on the single
+     *  `slippagePct` until that key was retired, by which time no saver
+     *  had sent it since the row became two — the promise in CLAUDE.md
+     *  that changing Slippage un-pauses was quietly false. */
     const pk = "pulsechain-0xAb5-0xCd9-42";
     const posStates = new Map();
     posStates.set(pk, {
@@ -238,7 +241,7 @@ describe("POST /api/config", () => {
     });
     const deps = makeDeps({
       readJsonBody: async () => ({
-        slippagePct: 1.5,
+        slippagePctToken0: 1.5,
         positionKey: pk,
       }),
       getAllPositionBotStates: () => posStates,

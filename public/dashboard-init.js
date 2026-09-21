@@ -307,6 +307,12 @@ function _afterDisclaimer() {
   const _STORE_ONLY_DEFAULT_KEYS = [
     "rebalanceRangeWidthPct",
     "rescanPricesRecentWindowDays",
+    /*- Seeds BOTH per-token slippage inputs, which is why it is here
+     *  rather than in the map above — that map drives one input per
+     *  key. Without it `getInputDefault("slippagePct")` was never
+     *  populated at all, so the two Slippage fields rendered empty
+     *  while every swap went on using this very number. */
+    "slippagePct",
   ];
   /*- No input carries a min/max any more. Whether a value is acceptable
    *  is `src/config-bounds.js`'s answer, on the server, because the core

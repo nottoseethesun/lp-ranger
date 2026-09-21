@@ -56,7 +56,7 @@ describe("key migration on rebalance", () => {
 
     // Set up initial state
     addManagedPosition(diskConfig, oldKey);
-    getPositionConfig(diskConfig, oldKey).slippagePct = 2;
+    getPositionConfig(diskConfig, oldKey).slippagePctToken0 = 2;
     const posBotState = createPerPositionBotState(
       diskConfig.global,
       getPositionConfig(diskConfig, oldKey),
@@ -107,7 +107,7 @@ describe("key migration on rebalance", () => {
 
     // getConfig should read from the new key's config
     assert.strictEqual(
-      getConfig("slippagePct"),
+      getConfig("slippagePctToken0"),
       2,
       "getConfig should read from migrated position config",
     );

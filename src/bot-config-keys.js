@@ -144,6 +144,14 @@ const RETIRED_POSITION_KEYS = Object.freeze([
   "totalCompoundedUsd",
   "nftCompoundedUsdByTokenId",
   "collectedFeesUsd",
+  /*- The single per-position slippage, left behind when the Slippage
+   *  row became two per-token rows. Dropped rather than migrated: it
+   *  was one number covering both sides, and there is no honest way to
+   *  split it into two — the two exist because the sides differ. A
+   *  position that had it falls back to the shipped default until the
+   *  operator sets each token's own, which is where the dashboard has
+   *  been pointing them since the row was split. */
+  "slippagePct",
 ]);
 
 const POSITION_KEYS = [
@@ -197,16 +205,20 @@ const POSITION_KEYS = [
    * old `rebalanceRangeWidthPct === 100` full-range sentinel.
    */
   "fullRangeRebalanceEnabled",
-  "slippagePct",
   /*-
-   *  Per-token slippage overrides for asymmetric-liquidity pairs.
-   *  When either is set, the swap layer picks slippage by DESTINATION
-   *  token: a token0 → token1 swap uses `slippagePctToken1`, a token1
-   *  → token0 swap uses `slippagePctToken0`.  Unset destination-side
-   *  under per-token opt-in → shipped `slippagePct` default (currently
-   *  0.75).  Purely additive; a position with neither field set
-   *  continues to use its saved `slippagePct` for both sides — no
-   *  migration on upgrade.
+   *  Slippage is two settings, one per token, and nothing else. The
+   *  swap layer picks by DESTINATION token: a token0 → token1 swap
+   *  uses `slippagePctToken1`, a token1 → token0 swap uses
+   *  `slippagePctToken0`. A token with no setting of its own falls
+   *  back to the shipped `slippagePct` default in
+   *  bot-config-defaults.json (currently 0.75), which is a default and
+   *  not a per-position setting.
+   *
+   *  There was a third, `slippagePct` saved per position, left behind
+   *  when the single Slippage row became two. It was dormant for
+   *  rebalances and still honoured by compounds, so one position could
+   *  swap at two different slippages depending on which move it was
+   *  making. Retired: `RETIRED_POSITION_KEYS` drops it on load.
    */
   "slippagePctToken0",
   "slippagePctToken1",

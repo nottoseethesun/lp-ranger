@@ -94,14 +94,14 @@ describe("buildRebalanceOpts — rebalanceRangeWidthPct source", () => {
     /*- Sanity check: the seam refactor didn't disturb any other
      *  option the rebalancer consumes. */
     const deps = makeDeps((k) => {
-      if (k === "slippagePct") return 1.25;
+      if (k === "slippagePctToken1") return 1.25;
       if (k === "offsetToken0Pct") return 60;
       if (k === "gasFeePct") return 0.5;
       if (k === "approvalMultiple") return 10;
       return undefined;
     });
     const opts = buildRebalanceOpts(deps, {});
-    assert.equal(opts.slippagePct, 1.25);
+    assert.equal(opts.slippagePctToken1, 1.25);
     assert.equal(opts.offsetToken0Pct, 60);
     assert.equal(opts.approvalMultiple, 10);
     assert.equal(opts.gasFeePct, 0.5);
@@ -154,17 +154,19 @@ describe("buildRebalanceOpts — per-token slippage source", () => {
     assert.ok(!("slippagePctToken1" in opts));
   });
 
-  it("legacy slippagePct still flows through untouched", () => {
-    /*- Whether or not per-token overrides are set, opts.slippagePct
-     *  should carry the config value.  The slippage-resolver picks
-     *  between them at swap time. */
+  it("carries no single slippage figure at all", () => {
+    /*- Slippage is two settings and nothing else. `opts.slippagePct`
+     *  used to be a third — read from the position, passed into the
+     *  rebalance opts, ignored by the rebalance swap and honoured by
+     *  the compound one. A position could swap at two different
+     *  slippages depending on which move it was making. */
     const deps = makeDeps((k) => {
       if (k === "slippagePct") return 2.5;
       if (k === "slippagePctToken0") return 1;
       return undefined;
     });
     const opts = buildRebalanceOpts(deps, {});
-    assert.strictEqual(opts.slippagePct, 2.5);
+    assert.ok(!("slippagePct" in opts));
     assert.strictEqual(opts.slippagePctToken0, 1);
   });
 });

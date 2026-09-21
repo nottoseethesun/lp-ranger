@@ -23,12 +23,11 @@
 const { log } = require("./log");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { resolveSlippagePct } = require("./slippage-resolver");
 
-/*- Single-source default: per feedback_one_literal_per_shipped_default,
- *  the shipped slippage default lives only in bot-config-defaults.json.
- *  Read once at module init for the opts fallback in `_fireSwap`. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+/*- The shipped slippage default is no longer read here: the fallback
+ *  when a token has no setting of its own belongs to
+ *  `src/slippage-resolver.js`, which is where a rebalance gets it too. */
 const {
   estimateSwapGasUsd,
   shouldSkipSwap,
@@ -98,7 +97,11 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
     amountIn: desired.swapAmount,
     tokenIn: is0to1 ? opts.token0 : opts.token1,
     tokenOut: is0to1 ? opts.token1 : opts.token0,
-    slippagePct: opts.slippagePct ?? _DEFAULTS.slippagePct,
+    /*- The same answer a rebalance would get for this swap: the
+     *  destination token's own setting, or the shipped default when it
+     *  is unset. A compound and a rebalance move the same pair through
+     *  the same router, so they cannot answer this differently. */
+    slippagePct: resolveSlippagePct(opts, is0to1),
     currentPrice: ps.price,
     decimalsIn: is0to1 ? opts.decimals0 : opts.decimals1,
     decimalsOut: is0to1 ? opts.decimals1 : opts.decimals0,

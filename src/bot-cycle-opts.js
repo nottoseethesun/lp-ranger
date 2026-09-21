@@ -76,11 +76,10 @@ function buildRebalanceOpts(deps, _state) {
     factoryAddress: config.FACTORY,
     positionManagerAddress: config.POSITION_MANAGER,
     swapRouterAddress: config.SWAP_ROUTER,
-    slippagePct: deps._getConfig?.("slippagePct") ?? config.SLIPPAGE_PCT,
-    /*- Per-token slippage overrides.  Only pass through when actually
-     *  set on the position — the swap layer detects opt-in by their
-     *  presence.  Absent → legacy single-slippage path (no behavior
-     *  change from before this feature landed). */
+    /*- Slippage is two settings, one per token, and nothing else.
+     *  Passed through only when actually set; `resolveSlippagePct`
+     *  picks the destination token's and falls back to the shipped
+     *  default when that one is unset. */
     ..._optionalConfig(deps, "slippagePctToken0"),
     ..._optionalConfig(deps, "slippagePctToken1"),
     symbol0: getTokenSymbol(position.token0),

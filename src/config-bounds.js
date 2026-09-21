@@ -80,7 +80,6 @@ const BOUNDS = Object.freeze({
    *  rounds to the same degenerate range. */
   rebalanceRangeWidthPct: Object.freeze({ min: 0.1, max: 200 }),
   offsetToken0Pct: Object.freeze({ min: 0, max: 100, integer: true }),
-  slippagePct: Object.freeze({ min: 0.1, max: 20 }),
   slippagePctToken0: Object.freeze({ min: 0.1, max: 20 }),
   slippagePctToken1: Object.freeze({ min: 0.1, max: 20 }),
   approvalMultiple: Object.freeze({ min: 1, max: 1_000_000, integer: true }),

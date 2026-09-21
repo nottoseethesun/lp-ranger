@@ -26,7 +26,6 @@ import { rememberGoodInput } from "./dashboard-config-save.js";
 
 /* Map of server config key → form input id. */
 const _CONFIG_INPUT_MAP = {
-  slippagePct: "inSlip",
   checkIntervalSec: "inInterval",
   minRebalanceIntervalMin: "inMinInterval",
   maxRebalancesPerDay: "inMaxReb",

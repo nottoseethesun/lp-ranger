@@ -565,13 +565,11 @@ export function saveMaxReb() {
   }
 }
 /*- `saveSlippage` (and its `_validSlip` validator) was removed when
- *  the single "Slippage Tolerance" input was replaced by two
- *  per-token inputs (slippagePctToken0 / slippagePctToken1) driven
- *  by dashboard-per-token-slippage.js.  The per-position
- *  `slippagePct` field remains valid in bot-config.json so existing
- *  saved values load without error; the swap layer's
- *  `resolveSlippagePct` uses per-token values (or the shipped
- *  default when unset) — the legacy value is dormant. */
+ *  the single "Slippage Tolerance" input was replaced by two per-token
+ *  inputs (slippagePctToken0 / slippagePctToken1) driven by
+ *  dashboard-per-token-slippage.js.  The per-position `slippagePct`
+ *  that row used to save is retired and dropped on load; every swap
+ *  now asks `resolveSlippagePct` for the destination token's value. */
 
 /** Save check interval. */
 export function saveCheckInterval() {

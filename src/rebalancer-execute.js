@@ -107,10 +107,9 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     gasFeePct,
   );
   if (gated) return gated;
-  /*- Destination-token slippage — when per-token overrides are set
-   *  on the position, this picks slippagePctToken<destination>; when
-   *  they aren't, it returns the legacy single slippagePct.  See
-   *  src/slippage-resolver.js for the full precedence. */
+  /*- Destination-token slippage: `slippagePctToken<destination>` when
+   *  the position has one, otherwise the shipped default.  See
+   *  src/slippage-resolver.js. */
   const effectiveSlippage = resolveSlippagePct(ctx, is0to1);
   const result = await swapIfNeeded(signer, ethersLib, {
     swapRouterAddress,

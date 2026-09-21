@@ -34,14 +34,15 @@ describe("saveConfig drops retired keys", () => {
 
   /*-
    *  Save a slot carrying every retired key, then read it back.
-   *  `slippagePct` stands in for whatever real content a slot has:
-   *  without it the stripped slot is status-only, which the phantom
-   *  purge removes on load — a different mechanism, and not the one
-   *  under test here.
+   *  `slippagePctToken0` stands in for whatever real content a slot
+   *  has: without it the stripped slot is status-only, which the
+   *  phantom purge removes on load — a different mechanism, and not
+   *  the one under test here. It must be a key that is NOT retired,
+   *  which is why it is not the single `slippagePct` it used to be.
    */
   function saveAndReload(extra) {
     const dir = tmpDir();
-    const slot = { status: "running", slippagePct: 0.75 };
+    const slot = { status: "running", slippagePctToken0: 0.75 };
     for (const k of RETIRED_POSITION_KEYS) slot[k] = 1;
     Object.assign(slot, extra);
     saveConfig({ global: {}, positions: { [KEY]: slot } }, dir);
