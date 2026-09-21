@@ -66,30 +66,10 @@ let _timer = null;
  *  the one least likely to succeed. */
 let _haltUntilMs = 0;
 
-/*- When the current halt began, and the total of every halt that has
- *  already finished. Together these answer "how long has this process
- *  spent unable to reach a chain", which is not the same question as
- *  "how long has it been" — and a caller holding a deadline needs the
- *  difference. A transaction's confirm-or-cancel budget is time the
- *  CHAIN had to confirm it; an hour spent held here is time nobody
- *  asked the chain anything, and charging it to that budget cancels a
- *  transaction that was never given its chance. */
-let _haltStartedMs = 0;
-let _haltedBeforeCurrentMs = 0;
-
 /** Milliseconds left on the halt; 0 when not halted. */
 function _haltRemainingMs() {
   const remaining = _haltUntilMs - Date.now();
   return remaining > 0 ? remaining : 0;
-}
-
-/*- How much of the current halt has been served so far. Capped at the
- *  halt's own end, so a halt that finished an hour ago does not go on
- *  accruing. */
-function _currentHaltServedMs() {
-  if (_haltStartedMs === 0) return 0;
-  const end = Math.min(Date.now(), _haltUntilMs);
-  return end > _haltStartedMs ? end - _haltStartedMs : 0;
 }
 
 /**
@@ -195,35 +175,9 @@ function getIntervalMs() {
  */
 function halt(ms) {
   if (!Number.isFinite(ms) || ms <= 0) return _haltUntilMs;
-  const now = Date.now();
-  /*- A fresh halt rather than an extension of a running one: bank what
-   *  the last halt served before the clock restarts, so `totalHaltedMs`
-   *  accumulates across outages instead of only reporting the latest. */
-  if (now >= _haltUntilMs) {
-    _haltedBeforeCurrentMs += _currentHaltServedMs();
-    _haltStartedMs = now;
-  }
-  const until = now + ms;
+  const until = Date.now() + ms;
   if (until > _haltUntilMs) _haltUntilMs = until;
   return _haltUntilMs;
-}
-
-/**
- * Milliseconds this process has spent with the queue halted, counting
- * every outage since start and including the one running now.
- *
- * For a caller holding a deadline that is meant to measure the chain's
- * opportunity rather than the wall clock: read it when the deadline
- * starts, read it again when checking, and subtract the difference.
- * `_waitOrSpeedUp` in `src/rebalancer-pools.js` is the caller this
- * exists for — without it, an outage pause eats the whole
- * confirm-or-cancel budget and the bot cancels a healthy transaction
- * seconds after the chain comes back.
- *
- * @returns {number}
- */
-function totalHaltedMs() {
-  return _haltedBeforeCurrentMs + _currentHaltServedMs();
 }
 
 /**
@@ -256,8 +210,6 @@ function _resetForTests() {
   while (_queue.length > 0) _queue.shift()();
   _lastReleaseMs = 0;
   _haltUntilMs = 0;
-  _haltStartedMs = 0;
-  _haltedBeforeCurrentMs = 0;
 }
 
 module.exports = {
@@ -265,7 +217,6 @@ module.exports = {
   getIntervalMs,
   halt,
   haltRemainingMs,
-  totalHaltedMs,
   queueLength,
   _resetForTests,
 };
