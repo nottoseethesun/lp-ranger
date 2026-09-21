@@ -116,7 +116,6 @@ function _timerKeyProblem(pPatch) {
     assertTimerSec({
       sec: pPatch.checkIntervalSec,
       key: "checkIntervalSec",
-      defaultSec: config.CHECK_INTERVAL_SEC,
       remedy: "Choose a value within range and save again.",
     });
     return null;

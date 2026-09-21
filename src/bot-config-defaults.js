@@ -76,7 +76,7 @@ function _clampNonNegInt(v, max) {
  *  this reader needs. */
 function _timerOrNull(v, key) {
   try {
-    return assertTimerSec({ sec: v, key, defaultSec: _FALLBACK[key] });
+    return assertTimerSec({ sec: v, key });
   } catch {
     return null;
   }
@@ -102,7 +102,6 @@ function _assertTimerKeys(parsed) {
   assertTimerSec({
     sec: v,
     key: "checkIntervalSec",
-    defaultSec: _FALLBACK.checkIntervalSec,
     remedy:
       "Correct it in app-config/user-configurable/" +
       "bot-config-defaults.json and restart.",
