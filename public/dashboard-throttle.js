@@ -532,6 +532,17 @@ export function _saveSingleConfig(inputId, key, parse) {
     .then(async (res) => {
       if (res.ok) {
         _lastGoodByInput.set(inputId, String(val));
+        /*- Logged once the server has taken it, not when the request
+         *  goes out: a refused save would otherwise read "Setting
+         *  Saved" in the Activity Log while the dialog says it was
+         *  rejected. */
+        const pl = _posLabel();
+        act(
+          ACT_ICONS.gear,
+          "start",
+          "Setting Saved",
+          formatSettingChange(key, val) + (pl ? "\n" + pl : ""),
+        );
         return;
       }
       /*- The server refuses a value it cannot run on rather than
@@ -550,13 +561,6 @@ export function _saveSingleConfig(inputId, key, parse) {
       );
     })
     .catch(() => {});
-  const pl = _posLabel();
-  act(
-    ACT_ICONS.gear,
-    "start",
-    "Setting Saved",
-    formatSettingChange(key, val) + (pl ? "\n" + pl : ""),
-  );
 }
 
 /**

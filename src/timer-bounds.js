@@ -96,9 +96,14 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
   }
   const explicit = EXPLICIT_BOUNDS_SEC[key];
   const minSec = explicit && explicit.min !== undefined ? explicit.min : 1;
-  /*- The cap is 48 hours expressed in whatever unit this setting uses.
-   *  Keys ending in MS are milliseconds; the rest are seconds. */
-  const cap = key.endsWith("MS") ? GENERAL_CAP_SEC * 1000 : GENERAL_CAP_SEC;
+  /*- The cap is 48 hours expressed in whatever unit this setting uses,
+   *  and the key name says which: a name ending in "ms" is
+   *  milliseconds, anything else seconds. Matched without regard to
+   *  case because this file spells it both ways —
+   *  `rpcAllEndpointsDownPauseMS` beside `priceCacheTtlMs` — and
+   *  reading one of those as seconds would set its cap a thousand times
+   *  too low without saying so. */
+  const cap = /ms$/i.test(key) ? GENERAL_CAP_SEC * 1000 : GENERAL_CAP_SEC;
   const maxSec = Math.min(
     defaultSec * MAX_DEFAULT_MULTIPLE,
     cap,
