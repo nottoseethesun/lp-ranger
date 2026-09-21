@@ -2416,9 +2416,17 @@ refused: at the next start, which is when the operator can act on it.
 **Where the app can carry on, answer rather than throw.** A bad value
 arriving at `POST /api/config` gets a 400 naming the problem; the server
 keeps serving and the dashboard can say what was wrong. This is why
-`timerSecProblem()` returns its reason instead of throwing it — the
-startup path throws that sentence, the route replies with it, and
-neither restates the rule.
+`_timerKeyProblem()` in `src/server-routes.js` returns its reason
+instead of throwing it — the startup path throws that sentence, the
+route replies with it, and neither restates the rule.
+
+That 400 carries an `invalidValueForKey` field naming the setting whose
+value was refused, because the same route answers 400 for a second,
+unrelated reason: a malformed request, most often one with no
+`positionKey`. The dashboard raises its dialog and restores the field
+only for the first. A further bounds-checked setting therefore has to
+be added in both places — the check and the field — or its save will
+fail with nothing said and the refused value still on screen.
 
 ## RPC Reachability at Startup
 

@@ -175,7 +175,10 @@
                     "type": "number"
                   },
                   "checkIntervalSec": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 3600,
+                    "description": "On-chain poll frequency, seconds. Per position. A value outside the range is refused with 400 and nothing is saved; bounds come from src/timer-bounds.js, which every road into this setting shares."
                   },
                   "minRebalanceIntervalMin": {
                     "type": "integer"
@@ -426,7 +429,7 @@
             "description": "Config saved"
           },
           "400": {
-            "description": "Missing or invalid positionKey for position-specific keys"
+            "description": "Missing or invalid positionKey for position-specific keys, or a timer setting outside its range. The two are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request."
           }
         }
       }

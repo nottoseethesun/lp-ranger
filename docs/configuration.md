@@ -278,9 +278,13 @@ later, and the failover list already handles one that never answers.
 ### Ranges on the timer settings
 
 Three settings become a countdown the app schedules: `TX_SPEEDUP_SEC`,
-`TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`. Each has a ceiling, and a value
-above it **stops the app from starting**, with a message naming the setting
-and the limit.
+`TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`. Each has a ceiling, and what an
+out-of-range value does depends on where it was written. In the JSON file
+or in `.env` it **stops the app from starting**, with a message naming the
+setting and the limit. In the dashboard's Bot Settings form **the save is
+refused**: a dialog says what was wrong, the field goes back to the value
+it last saved, and the bot carries on with that one. Edit and save again
+whenever you like.
 
 | Setting | Default | Range | Which bound sets it |
 | ------- | ------- | ----- | ------------------- |
@@ -308,8 +312,8 @@ of magnitude inside it.
 An over-ceiling value is refused rather than quietly lowered, because a
 setting replaced by its default leaves the bot running on a schedule nobody
 chose — and the schedule is then the last thing anyone would think to
-check. Refusing to start, and naming the setting and its ceiling, is the
-only form of this an operator can act on.
+check. Naming the setting and its ceiling — by refusing to start, or by
+refusing the save — is the only form of this an operator can act on.
 
 One of the three can breach its ceiling without being set at all.
 `TX_CANCEL_SEC` defaults to `deadlineSec × cancelToDeadlineMultiple`, so

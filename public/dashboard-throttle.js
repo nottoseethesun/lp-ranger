@@ -528,7 +528,7 @@ export function rememberGoodInput(inputId, value) {
  *   than the value, such as no position being selected.
  */
 export function _applySaveRejection(inputId, key, body) {
-  if (!body || body.invalidKey !== key) return null;
+  if (!body || body.invalidValueForKey !== key) return null;
   const prior = _lastGoodByInput.get(inputId);
   const el = g(inputId);
   if (el && prior !== undefined) el.value = prior;
@@ -576,7 +576,7 @@ export function _saveSingleConfig(inputId, key, parse) {
        *  quietly correcting it, so put the field back to what was last
        *  accepted and say why. The user can edit and save again.
        *
-       *  Only for a rejected VALUE, which `invalidKey` marks. This
+       *  Only for a rejected VALUE, which `invalidValueForKey` marks. This
        *  route also 400s on a malformed request — no position selected,
        *  most often — and that is not something to show the operator a
        *  dialog about, nor a reason to touch what they typed. */

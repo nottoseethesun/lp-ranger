@@ -388,7 +388,7 @@ describe("a save the server refuses", () => {
     document.getElementById("inInterval").value = "7200";
     const msg = mod._applySaveRejection("inInterval", "checkIntervalSec", {
       error: "checkIntervalSec resolves to 7200 seconds, above its maximum.",
-      invalidKey: "checkIntervalSec",
+      invalidValueForKey: "checkIntervalSec",
     });
     assert.equal(document.getElementById("inInterval").value, "300");
     assert.match(msg, /was not accepted/);
@@ -414,7 +414,7 @@ describe("a save the server refuses", () => {
      *  there is no accepted value to go back to. */
     const msg = mod._applySaveRejection("inNeverPopulated", "someSetting", {
       error: "out of range",
-      invalidKey: "someSetting",
+      invalidValueForKey: "someSetting",
     });
     assert.match(msg, /its previous value/);
   });

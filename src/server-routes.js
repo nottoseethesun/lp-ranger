@@ -201,14 +201,16 @@ function createRouteHandlers(deps) {
       if (body[k] !== undefined) pPatch[k] = body[k];
     const timerProblem = _timerKeyProblem(pPatch);
     if (timerProblem) {
-      /*- `invalidKey` marks this as a rejected VALUE, as against the
-       *  other 400 this route returns, which is a malformed request.
-       *  The dashboard shows its "that value was not accepted" dialog
-       *  and restores the field only for the former. */
+      /*- `invalidValueForKey` names the setting whose VALUE was
+       *  refused, as against the other 400 this route returns, which
+       *  is a malformed request. The key itself is fine — an unknown
+       *  one is simply not copied into the patch above. The dashboard
+       *  shows its "that value was not accepted" dialog and restores
+       *  the field only for the former. */
       jsonResponse(res, 400, {
         ok: false,
         error: timerProblem,
-        invalidKey: "checkIntervalSec",
+        invalidValueForKey: "checkIntervalSec",
       });
       return;
     }
