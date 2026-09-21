@@ -12,6 +12,7 @@ const config = require("./config");
 const { buildProvider } = require("./bot-provider");
 const { PM_ABI } = require("./pm-abi");
 const { _retrySend } = require("./tx-retry");
+const rpcRequestManager = require("./rpc-request-manager");
 const sendTx = require("./send-transaction");
 const {
   PoolStateInvalidError,
@@ -139,6 +140,43 @@ function _resetNonce(signer) {
 }
 
 /**
+ * How long phase 3 may wait for a confirmation before cancelling.
+ *
+ * The budget is `TX_CANCEL_SEC` of **chain time** — time the chain had
+ * to confirm this transaction — so any outage halt served since the
+ * wait began is subtracted from the wall clock rather than charged to
+ * it. Those were the same number until the RPC failover loop could
+ * hold every request for an hour: `tx.wait()` polls through the same
+ * queue, so the hour came straight out of this budget, the subtraction
+ * went negative, and the floor handed back ten seconds. The bot then
+ * cancelled — on chain, for gas — a transaction that had never been
+ * given its hour, and nothing in the log said why.
+ *
+ * The floor stays, for the ordinary case where a slow phase 1 and 2
+ * leave little of the budget. It is a floor on a real remainder now,
+ * not a stand-in for one that went missing.
+ *
+ * @param {number} startTime      Epoch ms the wait began.
+ * @param {number} haltedAtStart  `totalHaltedMs()` read at that moment.
+ * @param {string} label          TX label, for the log line.
+ * @returns {number} Milliseconds to wait before cancelling.
+ */
+function _cancelWindowMs(startTime, haltedAtStart, label) {
+  const haltedMs = rpcRequestManager.totalHaltedMs() - haltedAtStart;
+  const elapsed = Date.now() - startTime - haltedMs;
+  if (haltedMs > 0)
+    log.warn(
+      "[rebalance] %s: %ds of the wait was an RPC outage hold — not " +
+        "charged to the cancel budget (%ds of chain time used of %ds)",
+      label,
+      Math.round(haltedMs / 1000),
+      Math.round(elapsed / 1000),
+      _CANCEL_TIMEOUT_MS / 1000,
+    );
+  return Math.max(10_000, _CANCEL_TIMEOUT_MS - elapsed);
+}
+
+/**
  * Wait for a TX to confirm, automatically speeding it up if it hasn't
  * confirmed within `_SPEEDUP_TIMEOUT_MS`.  Resends the same TX data with
  * the same nonce but a bumped gas price so miners/validators prefer it.
@@ -171,6 +209,10 @@ async function _waitOrSpeedUp(tx, signer, label) {
       return t;
     });
   const startTime = Date.now();
+  /*- Read alongside the clock, and subtracted from it at phase 3. The
+   *  cancel budget is time the CHAIN had to confirm this transaction,
+   *  and an outage halt is time nobody asked the chain anything. */
+  const haltedAtStart = rpcRequestManager.totalHaltedMs();
   let timer1, timer2;
 
   // Phase 1: wait for confirmation, or speed-up after TX_SPEEDUP_SEC
@@ -241,8 +283,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
   }
 
   // Phase 3: wait for either to confirm, or cancel after _CANCEL_TIMEOUT_MS total
-  const elapsed = Date.now() - startTime;
-  const cancelIn = Math.max(10_000, _CANCEL_TIMEOUT_MS - elapsed);
+  const cancelIn = _cancelWindowMs(startTime, haltedAtStart, label);
   try {
     timer2 = _timeout(cancelIn, "_CANCEL");
     const receipt = await Promise.race([
@@ -743,6 +784,10 @@ module.exports = {
   _bestAttemptError,
   _deadline,
   _waitOrSpeedUp,
+  /*- Exported for its regression test: driving the whole pipeline needs
+   *  a signer, a chain and an hour, and the decision under test is this
+   *  one number. */
+  _cancelWindowMs,
   _ensureAllowance,
   _resolveMintGasFloor,
   // Functions
