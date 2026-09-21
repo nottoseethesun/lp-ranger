@@ -133,6 +133,48 @@ describe("parseTimerSec", () => {
     );
   });
 
+  it("refuses a default that is not a whole number of seconds", () => {
+    /*- `parsePositiveInt` vets the override and passes the fallback
+     *  through untouched, so a bad default arrives intact.
+     *  `TX_CANCEL_SEC` is where that is reachable: it defaults to
+     *  `deadlineSec x cancelToDeadlineMultiple`, so a zero multiplier
+     *  gives 0 and a non-numeric one gives NaN.
+     *
+     *  Both are worse than they look — `setTimeout` treats NaN as 1 ms,
+     *  and the cancel phase's 10-second floor cannot catch it either,
+     *  since `Math.max(10000, NaN)` is NaN. Every transaction would
+     *  have its nonce cancelled about a millisecond after the speed-up. */
+    for (const bad of [0, -60, NaN, 0.5, Infinity]) {
+      assert.throws(
+        () => parseTimerSec(undefined, bad, "TX_CANCEL_SEC"),
+        /is not a whole number of seconds of at least 1/,
+        `a default of ${String(bad)} must be refused`,
+      );
+    }
+  });
+
+  it("reports a negative as what it is, not as too large", () => {
+    /*- Order matters: the ceiling of a negative default is itself
+     *  negative, so checking the ceiling first would call -60 "above
+     *  its ceiling of -60000". */
+    assert.throws(
+      () => parseTimerSec(undefined, -60, "TX_CANCEL_SEC"),
+      (err) => {
+        assert.match(err.message, /resolves to -60/);
+        assert.doesNotMatch(err.message, /above its ceiling/);
+        return true;
+      },
+    );
+  });
+
+  it("still falls back when only the OVERRIDE is unusable", () => {
+    /*- A zero or negative override is not a configuration error — it is
+     *  no override at all, and the shipped default stands. */
+    assert.equal(parseTimerSec("0", POLL, "CHECK_INTERVAL_SEC"), POLL);
+    assert.equal(parseTimerSec("-5", POLL, "CHECK_INTERVAL_SEC"), POLL);
+    assert.equal(parseTimerSec("abc", POLL, "CHECK_INTERVAL_SEC"), POLL);
+  });
+
   it("accepts every shipped default well inside its ceiling", () => {
     for (const [name, def] of [
       ["TX_SPEEDUP_SEC", SPEEDUP],

@@ -82,6 +82,25 @@ const TIMER_CEILING_CAP_SEC = 48 * 60 * 60;
  */
 function parseTimerSec(value, fallbackSec, name) {
   const sec = parsePositiveInt(value, fallbackSec);
+  /*- `parsePositiveInt` vets the OVERRIDE and hands back the fallback
+   *  untouched, so a bad default arrives here intact. `TX_CANCEL_SEC`
+   *  is where that bites: it defaults to
+   *  `deadlineSec x cancelToDeadlineMultiple`, and a zero multiplier
+   *  makes that 0 while a non-numeric one makes it NaN.
+   *
+   *  Both are worse than they look. `setTimeout` treats NaN as 1 ms and
+   *  0 as "next tick", and the 10-second floor in the cancel phase
+   *  cannot catch NaN either — `Math.max(10000, NaN)` is NaN. So the
+   *  nonce of every transaction would be cancelled about a millisecond
+   *  after it was sped up. Checked before the ceiling, so a negative
+   *  value is reported as what it is rather than as too large. */
+  if (!Number.isInteger(sec) || sec < 1) {
+    throw new Error(
+      `[config] ${name} resolves to ${_show(sec)}, which is not a whole ` +
+        `number of seconds of at least 1. Check ${name} in .env and the ` +
+        `app-runtime.json values it defaults from, and restart.`,
+    );
+  }
   const ceilingSec = Math.min(fallbackSec * 1000, TIMER_CEILING_CAP_SEC);
   if (sec > ceilingSec) {
     /*- Name the bound that actually produced the ceiling.  Saying "1000x
