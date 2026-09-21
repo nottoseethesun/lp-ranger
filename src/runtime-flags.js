@@ -22,7 +22,7 @@
 
 const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
-const { timerSecProblem } = require("./timer-bounds");
+const { assertTimerSec } = require("./timer-bounds");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
@@ -46,36 +46,43 @@ function parsePositiveInt(value, fallback) {
 /**
  * Parse a positive integer of seconds that becomes a timer delay.
  *
- * The rule itself lives in `src/timer-bounds.js`, shared with
- * `POST /api/config` — a per-position `checkIntervalSec` reaches a timer
- * too, and one rule in two places would drift.
+ * The bounds live in `src/timer-bounds.js`, shared with the two other
+ * roads to the same settings — the shipped-defaults JSON and
+ * `POST /api/config`. Three copies of the rule is how they came to
+ * disagree.
  *
- * **Out of range throws rather than falling back.** A value quietly
- * replaced by its default leaves the bot running on a schedule its
- * operator did not choose, and the schedule is then the one thing
- * nobody would think to check. Refusing to start, naming the key and
- * the ceiling, is the only version of this an operator can act on.
+ * Out of range throws, so the app stops at startup naming the setting,
+ * rather than running on a schedule its operator did not choose.
  *
  * @param {string|undefined} value  Raw environment override, if any.
- * @param {number} fallbackSec      Shipped default; also sets the ceiling.
- * @param {string} name             Key name, for the error message.
+ * @param {number} fallbackSec      Shipped default; also sets a ceiling.
+ * @param {string} envName          Name as `.env` spells it.
+ * @param {string} key              Canonical name, for the bounds table.
  * @returns {number} Seconds, within range.
  * @throws {Error} When the resolved value is unusable as a delay.
  */
-function parseTimerSec(value, fallbackSec, name) {
+function parseTimerSec(value, fallbackSec, envName, key) {
   /*- `parsePositiveInt` vets the OVERRIDE and hands back the fallback
    *  untouched, so a bad default arrives here intact — which is not
    *  hypothetical: `TX_CANCEL_SEC` defaults to
    *  `deadlineSec x cancelToDeadlineMultiple`, both operator-editable. */
   const sec = parsePositiveInt(value, fallbackSec);
-  const problem = timerSecProblem(sec, fallbackSec, name);
-  if (problem) {
-    throw new Error(
-      `[config] ${problem} Set ${name} lower in .env, or correct the ` +
+  try {
+    return assertTimerSec({
+      sec,
+      key,
+      defaultSec: fallbackSec,
+      label: envName,
+      remedy:
+        `Set ${envName} in .env within range, or correct the ` +
         `app-runtime.json values it defaults from, and restart.`,
-    );
+    });
+  } catch (err) {
+    /*- Re-thrown only to carry the `[config]` tag the rest of this
+     *  file's startup errors use; the sentence is already the right
+     *  one. */
+    throw new Error(`[config] ${err.message}`, { cause: err });
   }
-  return sec;
 }
 
 /**

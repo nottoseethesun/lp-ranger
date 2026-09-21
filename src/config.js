@@ -196,6 +196,7 @@ const TX_SPEEDUP_SEC = parseTimerSec(
   process.env.TX_SPEEDUP_SEC,
   APP_CONFIG.tx.speedupSec,
   "TX_SPEEDUP_SEC",
+  "txSpeedupSec",
 );
 
 /*- On-chain contract deadline (seconds) stamped into removeLiquidity /
@@ -214,6 +215,7 @@ const TX_CANCEL_SEC = parseTimerSec(
   process.env.TX_CANCEL_SEC,
   DEADLINE_SEC * APP_CONFIG.tx.cancelToDeadlineMultiple,
   "TX_CANCEL_SEC",
+  "txCancelSec",
 );
 
 /** How often the bot checks the on-chain position, in seconds. */
@@ -221,6 +223,7 @@ const CHECK_INTERVAL_SEC = parseTimerSec(
   process.env.CHECK_INTERVAL_SEC,
   _BOT_DEFAULTS.checkIntervalSec,
   "CHECK_INTERVAL_SEC",
+  "checkIntervalSec",
 );
 
 /** Minimum time that must elapse between two rebalances, in minutes. */

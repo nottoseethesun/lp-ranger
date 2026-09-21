@@ -30,6 +30,7 @@ const {
   loadMergedDefaults,
   loadShippedDefaults,
 } = require("./load-merged-defaults");
+const { assertTimerSec } = require("./timer-bounds");
 
 const _FILENAME = "bot-config-defaults.json";
 
@@ -217,7 +218,24 @@ const _NORMALIZERS = {
    *  public/dashboard-per-token-slippage.js). */
   slippagePctToken0: (v) => _clampFloat(v, 0.1, 20),
   slippagePctToken1: (v) => _clampFloat(v, 0.1, 20),
-  checkIntervalSec: (v) => _clampInt(v, 10, 3600),
+  /*- The poll interval becomes a `setTimeout` delay, so its bounds come
+   *  from `src/timer-bounds.js` — the same module `.env` and
+   *  `POST /api/config` ask, because three copies of this rule gave
+   *  three different answers to the same question. Unset is no answer
+   *  and leaves the shipped default standing; a value that IS set and
+   *  is out of range throws, rather than being quietly replaced by a
+   *  number the operator did not choose. */
+  checkIntervalSec: (v) =>
+    v === undefined || v === null
+      ? null
+      : assertTimerSec({
+          sec: v,
+          key: "checkIntervalSec",
+          defaultSec: _FALLBACK.checkIntervalSec,
+          remedy:
+            "Correct it in app-config/user-configurable/" +
+            "bot-config-defaults.json and restart.",
+        }),
   minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),
   maxRebalancesPerDay: (v) => _clampInt(v, 1, 200),
   offsetToken0Pct: (v) => _clampNonNegInt(v, 100),
@@ -242,6 +260,12 @@ function readBotConfigDefaults() {
     }
     return out;
   } catch (err) {
+    /*- A value this file must refuse is not the same as a file it
+     *  merely failed to read. Falling back on the first would discard
+     *  every other override alongside the bad one, and leave the bot on
+     *  a schedule nobody chose — the thing the check exists to prevent.
+     *  So it propagates; only read and parse failures fall back. */
+    if (err.badTimerValue) throw err;
     log.warn(
       "[bot-config-defaults] Falling back to built-in defaults: %s",
       err.message,

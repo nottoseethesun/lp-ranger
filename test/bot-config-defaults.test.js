@@ -168,12 +168,42 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     assert.equal(out.offsetToken0Pct, 60);
   });
 
+  it("THROWS on an out-of-range checkIntervalSec rather than resetting it", () => {
+    /*- The poll interval becomes a `setTimeout` delay, so it is bounded
+     *  by `src/timer-bounds.js` — the same module `.env` and
+     *  `POST /api/config` ask. It throws where the other keys here fall
+     *  back, because a schedule silently replaced by a default is a bot
+     *  running on a cadence nobody chose, and the cadence is then the
+     *  last thing anyone would think to check. */
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    for (const bad of [1, 9, 3601, 7200, "abc", 0, -5]) {
+      _writeUser({ checkIntervalSec: bad });
+      assert.throws(
+        () => readBotConfigDefaults(),
+        /checkIntervalSec/,
+        `${String(bad)} must be refused, not replaced`,
+      );
+    }
+    /*- And the bounds are the shared ones: 10 through 3600. */
+    for (const good of [10, 300, 3600]) {
+      _writeUser({ checkIntervalSec: good });
+      assert.equal(readBotConfigDefaults().checkIntervalSec, good);
+    }
+  });
+
+  it("leaves the other keys falling back, not throwing", () => {
+    /*- Only a value that becomes a timer delay refuses. Everything else
+     *  in this file keeps the per-key fallback it had. */
+    _writeUser({ slippagePct: 99, checkIntervalSec: 300 });
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    assert.equal(readBotConfigDefaults().slippagePct, _SHIPPED.slippagePct);
+  });
+
   it("rejects out-of-range overrides and falls back per-key to shipped", () => {
     _writeUser({
       rebalanceOutOfRangeThresholdPercent: 0, // below min
       rebalanceTimeoutMin: -10, // negative
       slippagePct: 99, // above max
-      checkIntervalSec: 1, // below min
       minRebalanceIntervalMin: 9999, // above max
       maxRebalancesPerDay: 0, // below min
       offsetToken0Pct: 200, // above max

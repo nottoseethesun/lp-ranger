@@ -34,7 +34,7 @@ const {
   readConfigValue,
 } = require("./bot-config-v2");
 const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
-const { timerSecProblem } = require("./timer-bounds");
+const { assertTimerSec } = require("./timer-bounds");
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
@@ -112,11 +112,19 @@ function _clearSlippagePause(pPatch, getAllStates) {
 
 function _timerKeyProblem(pPatch) {
   if (pPatch.checkIntervalSec === undefined) return null;
-  return timerSecProblem(
-    pPatch.checkIntervalSec,
-    config.CHECK_INTERVAL_SEC,
-    "checkIntervalSec",
-  );
+  try {
+    assertTimerSec({
+      sec: pPatch.checkIntervalSec,
+      key: "checkIntervalSec",
+      defaultSec: config.CHECK_INTERVAL_SEC,
+      remedy: "Choose a value within range and save again.",
+    });
+    return null;
+  } catch (err) {
+    /*- Caught rather than propagated: the route can answer, and the
+     *  server has every other request to go on serving. */
+    return err.message;
+  }
 }
 
 function createRouteHandlers(deps) {
