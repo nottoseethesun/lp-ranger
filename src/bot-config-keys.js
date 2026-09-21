@@ -250,8 +250,9 @@ const POSITION_KEYS = [
   "compoundedAmount1",
   /*-
    *  Per-NFT total gas wei (mint TX gas + standalone compound TX gas) keyed
-   *  by tokenId.  Populated by the lifetime scan and the on-demand per-NFT
-   *  scan in `bot-pnl-updater._currentNftGasUsd`.  Drives the Current
+   *  by tokenId.  Populated by the lifetime scan
+   *  (`bot-recorder-lifetime.js`) and the on-demand per-NFT scan
+   *  (`bot-pnl-current-nft._scanNftTotals`).  Drives the Current
    *  panel's "Gas" row so Managed and Unmanaged report the same figure for
    *  the same NFT.  Lifetime panel still uses the per-epoch tracker sum;
    *  this field is Current-panel only.
