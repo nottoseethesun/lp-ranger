@@ -261,10 +261,16 @@ export function refreshDecimalsOverrideOnPoll() {
   populateDecimalsOverride();
 }
 
-/*- Persist both tokens' overrides to server config for the active position. */
-function _persistToServer(ov) {
+/*- Persist both tokens' overrides to server config for the active
+ *  position, and run `onAccepted` once the server has taken them. */
+function _persistToServer(ov, onAccepted) {
   const a = posStore.getActive();
-  if (!a) return;
+  if (!a) {
+    /*- No position to save against, so the browser copy is all there
+     *  is and nothing can refuse it. */
+    onAccepted();
+    return;
+  }
   const pk = compositeKey(
     "pulsechain",
     a.walletAddress,
@@ -283,17 +289,22 @@ function _persistToServer(ov) {
       decimalsOverride0: "pdDecimals0",
       decimalsOverride1: "pdDecimals1",
     },
+    onSaved: onAccepted,
   });
 }
 
-/** Save one token's decimals override (localStorage + server), then repaint. */
+/** Save one token's decimals override (server, then localStorage). */
 export function saveDecimalsOverride(idx) {
   const ov = loadDecimalsOverrides();
   const input = g("pdDecimals" + idx);
   const force = g("pdDecimalsForce" + idx);
   ov["d" + idx] = input ? _parseDecimals(input.value) : null;
   ov["force" + idx] = force ? force.checked === true : false;
-  _save(ov);
-  _persistToServer(ov);
+  /*- The browser copy is written only once the server has taken the
+   *  override. Written first, a refused value would still be the one
+   *  the position is read with — the KPI panel reads localStorage, and
+   *  nothing later corrects it. Same order as the price-override
+   *  dialog, for the same reason. */
+  _persistToServer(ov, () => _save(ov));
   _paintNotice(idx);
 }
