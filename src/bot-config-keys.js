@@ -218,7 +218,8 @@ const POSITION_KEYS = [
    *  when the single Slippage row became two. It was dormant for
    *  rebalances and still honoured by compounds, so one position could
    *  swap at two different slippages depending on which move it was
-   *  making. Retired: `RETIRED_POSITION_KEYS` drops it on load.
+   *  making. Retired: `RETIRED_POSITION_KEYS` drops it on the next
+   *  save, and nothing reads it in the meantime.
    */
   "slippagePctToken0",
   "slippagePctToken1",

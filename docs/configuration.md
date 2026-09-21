@@ -348,9 +348,10 @@ for compounds alike.** Earlier versions kept a third, older slippage
 value per position, from before the row was split in two. Rebalances
 ignored it and compounds obeyed it, so one position could swap at two
 different rates depending on which move it was making, with nothing on
-screen to say so. That value is gone; it is removed from your config
-file the next time the app loads it. If you had one, both tokens fall
-back to the shipped default until you set the two rows.
+screen to say so. That value is gone. Nothing reads it, and it is
+removed from your config file the next time the app writes it. If you
+had one, both tokens fall back to the shipped default until you set the
+two rows.
 
 ### What the dashboard accepts
 

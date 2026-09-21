@@ -81,6 +81,26 @@ describe("saveConfig drops retired keys", () => {
     assert.equal(loaded.positions[KEY].status, "running");
   });
 
+  it("does strip a STOPPED slot down to its status", () => {
+    /*- The guard above is only as wide as the danger. A stopped slot
+     *  is never a phantom — the purge takes `status: "running"` and
+     *  nothing else — so holding the key back here would preserve it
+     *  against a danger that does not exist, in a file operators read. */
+    const dir = tmpDir();
+    saveConfig(
+      {
+        global: {},
+        positions: { [KEY]: { status: "stopped", slippagePct: 2.75 } },
+      },
+      dir,
+    );
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.ok(loaded.positions[KEY], "a stopped position is not purged");
+    assert.equal(loaded.positions[KEY].slippagePct, undefined);
+    assert.equal(loaded.positions[KEY].status, "stopped");
+  });
+
   it("still purges a genuine phantom, which carries no retired key", () => {
     /*- The guard above must not blunt the purge itself: a bare
      *  status-only stub is the stale composite key the purge exists
