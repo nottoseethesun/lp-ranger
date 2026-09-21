@@ -495,6 +495,23 @@ export function saveOorThreshold() {
 }
 
 /** Save a single config key from an input element. */
+/*- The value each Bot Settings input last held that the server
+ *  accepted, so a rejected save can put the field back to it. Seeded by
+ *  `rememberGoodInput` when the panel populates from `/api/status`, and
+ *  updated on every save the server takes. */
+const _lastGoodByInput = new Map();
+
+/**
+ * Record what an input currently shows as a value the server accepts.
+ * @param {string} inputId
+ * @param {*} value
+ * @returns {void}
+ */
+export function rememberGoodInput(inputId, value) {
+  if (value !== undefined && value !== null)
+    _lastGoodByInput.set(inputId, String(value));
+}
+
 export function _saveSingleConfig(inputId, key, parse) {
   markInputDirty(inputId);
   const val = parse(g(inputId)?.value);
@@ -511,7 +528,28 @@ export function _saveSingleConfig(inputId, key, parse) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ [key]: val, positionKey }),
-  }).catch(() => {});
+  })
+    .then(async (res) => {
+      if (res.ok) {
+        _lastGoodByInput.set(inputId, String(val));
+        return;
+      }
+      /*- The server refuses a value it cannot run on rather than
+       *  quietly correcting it, so put the field back to what was last
+       *  accepted and say why. The user can edit and save again. */
+      const body = await res.json().catch(() => ({}));
+      const prior = _lastGoodByInput.get(inputId);
+      const el = g(inputId);
+      if (el && prior !== undefined) el.value = prior;
+      alert(
+        `That value was not accepted:\n\n${
+          body.error || "It is outside the allowed range."
+        }\n\nThe field has been set back to ${
+          prior === undefined ? "its previous value" : prior
+        }. Edit it and save again if you like.`,
+      );
+    })
+    .catch(() => {});
   const pl = _posLabel();
   act(
     ACT_ICONS.gear,

@@ -41,6 +41,9 @@
  *  limit. */
 const GENERAL_CAP_SEC = 48 * 60 * 60;
 
+/*- How far above its own shipped default a timer setting may be set. */
+const MAX_DEFAULT_MULTIPLE = 1000;
+
 /*- Settings whose own sensible range is narrower than the general rule
  *  produces. The poll interval is the one that has such a range: an
  *  hour between looks at a position is already far beyond any use, and
@@ -49,6 +52,9 @@ const GENERAL_CAP_SEC = 48 * 60 * 60;
  *  to disagree in the first place. */
 const EXPLICIT_BOUNDS_SEC = Object.freeze({
   checkIntervalSec: Object.freeze({ min: 10, max: 3600 }),
+  /*- Both of these take 0 to mean "off" — no pacing, no outage pause. */
+  globalRPCRequestRateIntervalMS: Object.freeze({ min: 0 }),
+  rpcAllEndpointsDownPauseMS: Object.freeze({ min: 0 }),
 });
 
 /**
@@ -89,11 +95,14 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
     );
   }
   const explicit = EXPLICIT_BOUNDS_SEC[key];
-  const minSec = explicit ? explicit.min : 1;
+  const minSec = explicit && explicit.min !== undefined ? explicit.min : 1;
+  /*- The cap is 48 hours expressed in whatever unit this setting uses.
+   *  Keys ending in MS are milliseconds; the rest are seconds. */
+  const cap = key.endsWith("MS") ? GENERAL_CAP_SEC * 1000 : GENERAL_CAP_SEC;
   const maxSec = Math.min(
-    defaultSec * 1000,
-    GENERAL_CAP_SEC,
-    explicit ? explicit.max : Infinity,
+    defaultSec * MAX_DEFAULT_MULTIPLE,
+    cap,
+    explicit && explicit.max !== undefined ? explicit.max : Infinity,
   );
   /*- Checked before the ceiling, so a negative is reported as what it
    *  is: the ceiling of a negative default is itself negative, and

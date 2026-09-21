@@ -97,16 +97,22 @@ function _timerOrNull(v, key) {
  * @throws {Error} Tagged `badTimerValue`.
  */
 function _assertTimerKeys(parsed) {
-  const v = parsed.checkIntervalSec;
-  if (v === undefined || v === null) return;
-  assertTimerSec({
-    sec: v,
-    key: "checkIntervalSec",
-    defaultSec: _FALLBACK.checkIntervalSec,
-    remedy:
-      "Correct it in app-config/user-configurable/" +
-      "bot-config-defaults.json and restart.",
-  });
+  for (const key of [
+    "checkIntervalSec",
+    "globalRPCRequestRateIntervalMS",
+    "rpcAllEndpointsDownPauseMS",
+  ]) {
+    const v = parsed[key];
+    if (v === undefined || v === null) continue;
+    assertTimerSec({
+      sec: v,
+      key,
+      defaultSec: _FALLBACK[key],
+      remedy:
+        "Correct it in app-config/user-configurable/" +
+        "bot-config-defaults.json and restart.",
+    });
+  }
 }
 
 /*- Clamp a positive float to [min, max].  Returns null on failure. */
@@ -193,14 +199,16 @@ const _NORMALIZERS = {
    *  and means "no pacing" (local node).  Ceiling of 10 s: beyond that
    *  a five-year scan would take days, which is a misconfiguration
    *  rather than a preference. */
-  globalRPCRequestRateIntervalMS: (v) => _clampNonNegInt(v, 10_000),
+  globalRPCRequestRateIntervalMS: (v) =>
+    _timerOrNull(v, "globalRPCRequestRateIntervalMS"),
   /*- How long every request is held once failover has exhausted the
    *  endpoint list.  Zero is allowed and means "never pause".  Ceiling
    *  of two days, which is far past any outage worth waiting out and
    *  keeps the value inside what a single `setTimeout` can hold — its
    *  limit is about 24.8 days, and beyond that Node fires immediately
    *  instead of waiting. */
-  rpcAllEndpointsDownPauseMS: (v) => _clampNonNegInt(v, 172_800_000),
+  rpcAllEndpointsDownPauseMS: (v) =>
+    _timerOrNull(v, "rpcAllEndpointsDownPauseMS"),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */
