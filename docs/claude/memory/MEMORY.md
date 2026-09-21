@@ -103,6 +103,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [inline-edit dialog button set](feedback_inline_edit_dialog_button_set.md) — Save / Return to Automatic X / Cancel, with distinct styling
 - [no classList for state](feedback_no_classlist_for_state.md) — Never read classList or any DOM property to determine program state
 - [no data in presentation](feedback_no_data_in_presentation.md) — No defaults, config, or business data in HTML/CSS/templates
+- [validate in the core, not the UI](feedback_validate_in_the_core_not_the_ui.md) — Bounds and bad-value checks go on the server/core; one core, many frontends
 - [no HTML in Markdown](feedback_no_html_in_markdown.md) — Pure Markdown, no inline HTML ever (MD033)
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No innerHTML built from interpolated values in dashboard JS
 - [sound gate scope](feedback_sound_gate_scope.md) — Jingles gated on the browser input-idle timer is correct, not a bug

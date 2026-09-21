@@ -194,7 +194,7 @@
                   "maxRebalancesPerDay": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 1440
+                    "maximum": 12
                   },
                   "gasStrategy": {
                     "type": "string",

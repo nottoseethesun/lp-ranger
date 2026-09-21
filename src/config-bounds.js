@@ -65,9 +65,7 @@ const BOUNDS = Object.freeze({
   rebalanceTimeoutMin: Object.freeze({ min: 0, max: 1440, integer: true }),
   /*- A week. Longer is indistinguishable from not rebalancing. */
   minRebalanceIntervalMin: Object.freeze({ min: 1, max: 10080, integer: true }),
-  /*- One a minute for a day. Past that the daily cap is not what is
-   *  limiting anything. */
-  maxRebalancesPerDay: Object.freeze({ min: 1, max: 1440, integer: true }),
+  maxRebalancesPerDay: Object.freeze({ min: 1, max: 12, integer: true }),
   impermanentLossGuardPct: Object.freeze({
     min: _SHIPPED.impermanentLossGuardPctMin,
     max: _SHIPPED.impermanentLossGuardPctMax,

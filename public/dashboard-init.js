@@ -308,19 +308,10 @@ function _afterDisclaimer() {
     "rebalanceRangeWidthPct",
     "rescanPricesRecentWindowDays",
   ];
-  /*- Copy a min/max pair from the shipped defaults onto an input, and
-   *  cache both so the matching Save handler can reject out-of-range
-   *  input against the same source.  Silent when either is absent — the
-   *  input is simply unbounded until the fetch resolves. */
-  function _applyInputBounds(d, elId, keys) {
-    const el = g(elId);
-    for (const [attr, key] of Object.entries(keys)) {
-      const v = d[key];
-      if (typeof v !== "number") continue;
-      setConfigInputDefault(key, v);
-      if (el) el.setAttribute(attr, String(v));
-    }
-  }
+  /*- No input carries a min/max any more. Whether a value is acceptable
+   *  is `src/config-bounds.js`'s answer, on the server, because the core
+   *  has more than one frontend and a bound stamped onto an element
+   *  binds only this one. */
   fetch("/api/bot-config-defaults")
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
@@ -336,15 +327,6 @@ function _afterDisclaimer() {
         const v = d[key];
         if (typeof v === "number") setConfigInputDefault(key, v);
       }
-      /*- Input bounds that are data, not presentation: stamped onto the
-       *  element here rather than written as literal min/max attributes
-       *  in index.html, so the pair lives only in
-       *  bot-config-defaults.json.  Also cached so the row's Save
-       *  handler validates against the same numbers. */
-      _applyInputBounds(d, "inIlGuard", {
-        min: "impermanentLossGuardPctMin",
-        max: "impermanentLossGuardPctMax",
-      });
       /*- Keep the complement offset input in sync with the offsetToken0
        *  default so the row reads correctly on first paint. */
       if (typeof d.offsetToken0Pct === "number") {

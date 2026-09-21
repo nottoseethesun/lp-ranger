@@ -340,7 +340,7 @@ last accepted. Nothing is saved, and you can edit and save again.
 | Check Interval | 10 to 3600 sec |
 | OOR Timeout | 0 to 1440 min (0 = off) |
 | Min Time Between Rebalances | 1 to 10080 min (one week) |
-| Max Rebalances per Day | 1 to 1440 |
+| Max Rebalances per Day | 1 to 12 |
 | Impermanent Loss Guard | 1 to 100% |
 | OOR Threshold | 1 to 100% |
 | Price Range Extension | 0.1 to 200% |

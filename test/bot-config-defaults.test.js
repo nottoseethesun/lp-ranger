@@ -3,23 +3,40 @@
  * @description Unit tests for src/bot-config-defaults.js and the
  * GET /api/bot-config-defaults route handler.
  *
- * Tests write to the gitignored
- * `app-config/user-configurable/bot-config-defaults.json` (operator
- * override) rather than the tracked shipped file under
- * `app-defaults-for-user-configurable/` — the loader deep-merges the
- * user file on top of the shipped defaults, so this exercises the
- * exact same path real operators use.  The shipped file is the
- * known-good baseline that `loadShippedDefaults()` reads once at
+ * Tests write a `bot-config-defaults.json` operator override and let
+ * the loader deep-merge it on top of the shipped defaults, so this
+ * exercises the exact same path real operators use.  The shipped file
+ * is the known-good baseline that `loadShippedDefaults()` reads once at
  * module init for the per-key fallback when an operator's override
  * contains an out-of-range value.
+ *
+ * **The override goes in this process's own directory, not the real
+ * one.**  Some of these cases write a deliberately bad value to prove
+ * the strict reader refuses it.  The real
+ * `app-config/user-configurable/` is one directory shared by every
+ * process on the machine, and the runner starts a separate process per
+ * test file and runs 24 at once — so a bad override left there for even
+ * a moment is the live config of 23 unrelated test processes, and one
+ * of them requiring `src/config.js` in that window dies on the startup
+ * throw.  That produced a real intermittent (`bot-hodl-scan` failing
+ * once in CI and never on a re-run).  `LP_RANGER_USER_CONFIG_DIR` is
+ * read by `src/load-merged-defaults.js` at module load, so it is set
+ * here BEFORE anything under `src/` is required.
  */
 
 "use strict";
 
-const { describe, it, beforeEach, afterEach } = require("node:test");
+const { describe, it, beforeEach, afterEach, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+
+const _TMP_ROOT = path.join(__dirname, "..", "tmp");
+fs.mkdirSync(_TMP_ROOT, { recursive: true });
+const _USER_DIR = fs.mkdtempSync(path.join(_TMP_ROOT, "defaults-test-"));
+process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
+
+after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const _SHIPPED_FILE = path.join(
   __dirname,
@@ -29,13 +46,7 @@ const _SHIPPED_FILE = path.join(
   "bot-config-defaults.json",
 );
 
-const _USER_FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "user-configurable",
-  "bot-config-defaults.json",
-);
+const _USER_FILE = path.join(_USER_DIR, "bot-config-defaults.json");
 
 /*- The shipped JSON is the source of truth for default values; the
  *  tests read it (NOT a hardcoded copy) so this file never drifts
