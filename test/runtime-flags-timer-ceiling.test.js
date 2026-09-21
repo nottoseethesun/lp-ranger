@@ -135,6 +135,53 @@ describe("timer bounds: values that are not numbers of seconds", () => {
   });
 });
 
+describe("timer bounds: the default the maximum is derived from", () => {
+  it("refuses to bound a value against a default that is not a number", () => {
+    /*- The maximum is `min(defaultSec * 1000, 48h, any explicit max)`.
+     *  A broken `defaultSec` does not weaken that — it removes it:
+     *  `Math.min(NaN, …)` is NaN and `x > NaN` is false, so every value
+     *  would pass, including past a setting's own explicit maximum.
+     *
+     *  Reachable: `txSpeedupSec`'s shipped default is read raw from
+     *  `app-runtime.json`, so mistyping it there and setting a large
+     *  `.env` override got the override accepted. */
+    for (const bad of [NaN, undefined, null, "120", Infinity, {}]) {
+      assert.throws(
+        () =>
+          assertTimerSec({
+            sec: 999_999,
+            key: "txSpeedupSec",
+            defaultSec: bad,
+          }),
+        /cannot be bounded: its shipped default is/,
+        `a default of ${String(bad)} must not silently remove the maximum`,
+      );
+    }
+  });
+
+  it("says the install is wrong, not the value the operator set", () => {
+    assert.throws(
+      () =>
+        assertTimerSec({ sec: 300, key: "checkIntervalSec", defaultSec: NaN }),
+      /The install's JSON defaults are wrong, not the value you set/,
+    );
+  });
+
+  it("does not let a broken default defeat an explicit maximum", () => {
+    /*- checkIntervalSec declares its own 3600. That must not evaporate
+     *  because the default it sits beside is unreadable. */
+    assert.throws(
+      () =>
+        assertTimerSec({
+          sec: 999_999,
+          key: "checkIntervalSec",
+          defaultSec: NaN,
+        }),
+      /cannot be bounded/,
+    );
+  });
+});
+
 describe("timer bounds: the .env road", () => {
   it("names the setting the way .env spells it", () => {
     assert.throws(

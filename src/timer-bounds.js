@@ -70,6 +70,24 @@ const EXPLICIT_BOUNDS_SEC = Object.freeze({
  */
 function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
   const name = label || key;
+  /*- The maximum is derived from `defaultSec`, so a broken one does not
+   *  weaken the maximum — it removes it. `Math.min(NaN, …)` is `NaN`,
+   *  and `x > NaN` is false, so every value would pass, including past
+   *  the explicit maximum a setting declares for itself. Reachable: the
+   *  shipped default for `txSpeedupSec` is read raw from
+   *  `app-runtime.json`, so an operator who mistypes it there and sets
+   *  a large `.env` override would get the override accepted.
+   *
+   *  A broken shipped default is an install problem rather than an
+   *  operator typo, so it says so. */
+  if (typeof defaultSec !== "number" || !Number.isFinite(defaultSec)) {
+    throw _badTimerValue(
+      `${name} cannot be bounded: its shipped default is ` +
+        `${String(defaultSec)}, not a number. The install's JSON defaults ` +
+        `are wrong, not the value you set.`,
+      remedy,
+    );
+  }
   const explicit = EXPLICIT_BOUNDS_SEC[key];
   const minSec = explicit ? explicit.min : 1;
   const maxSec = Math.min(
