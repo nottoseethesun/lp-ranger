@@ -96,17 +96,20 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
   }
   const explicit = EXPLICIT_BOUNDS_SEC[key];
   const minSec = explicit && explicit.min !== undefined ? explicit.min : 1;
-  /*- The cap is 48 hours expressed in whatever unit this setting uses,
-   *  and the key name says which: a name ending in "ms" is
+  /*- The cap is the LESSER of 48 hours and 1000x the default; this is
+   *  the 48-hour half of it, expressed in whatever unit the setting
+   *  uses. The key name says which: a name ending in "ms" is
    *  milliseconds, anything else seconds. Matched without regard to
    *  case because this file spells it both ways —
    *  `rpcAllEndpointsDownPauseMS` beside `priceCacheTtlMs` — and
-   *  reading one of those as seconds would set its cap a thousand times
-   *  too low without saying so. */
-  const cap = /ms$/i.test(key) ? GENERAL_CAP_SEC * 1000 : GENERAL_CAP_SEC;
+   *  reading one of those as seconds would put this half a thousand
+   *  times too low without saying so. */
+  const capFromHours = /ms$/i.test(key)
+    ? GENERAL_CAP_SEC * 1000
+    : GENERAL_CAP_SEC;
   const maxSec = Math.min(
     defaultSec * MAX_DEFAULT_MULTIPLE,
-    cap,
+    capFromHours,
     explicit && explicit.max !== undefined ? explicit.max : Infinity,
   );
   /*- Checked before the ceiling, so a negative is reported as what it
