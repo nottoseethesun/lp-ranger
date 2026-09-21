@@ -120,7 +120,7 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
  * @param {object} ethersLib
  * @param {object} opts  Compound opts (must include token0/1, decimals,
  *   recipient, fee; optionally poolState/tickLower/tickUpper/
- *   swapRouterAddress/slippagePct).
+ *   swapRouterAddress and the two per-token slippage settings).
  * @param {bigint} amount0  Collected amount0.
  * @param {bigint} amount1  Collected amount1.
  * @returns {Promise<{

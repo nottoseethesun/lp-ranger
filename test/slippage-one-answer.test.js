@@ -85,10 +85,15 @@ describe("the compound path carries the same settings the rebalance does", () =>
   });
 
   it("reads no single slippagePct in either opts builder", () => {
+    /*- Matched loosely on purpose. Pinned to the exact call spelling
+     *  (`_getConfig?.("slippagePct")`), this guard would have gone
+     *  blind the moment someone dropped the optional chaining — it
+     *  would still read as coverage while the defect walked back in.
+     *  Any read of that string as a config key is what matters. */
+    const reads = /_getConfig\s*\??\.?\s*\(\s*["']slippagePct["']\s*\)/;
     for (const f of ["bot-cycle-compound.js", "bot-cycle-opts.js"]) {
-      const src = read(f);
       assert.ok(
-        !/_getConfig\?\.\("slippagePct"\)/.test(src),
+        !reads.test(read(f)),
         `${f} still reads the retired single slippagePct`,
       );
     }
@@ -96,9 +101,11 @@ describe("the compound path carries the same settings the rebalance does", () =>
 
   it("sends the compound swap through resolveSlippagePct", () => {
     /*- The compound swap used to take `opts.slippagePct ?? default`,
-     *  which is the fork this whole file exists to prevent. */
+     *  which is the fork this whole file exists to prevent. The call
+     *  is matched by name only: pinning its argument names would fail
+     *  on a rename that changes nothing. */
     const src = read("compounder-swap.js");
-    assert.match(src, /resolveSlippagePct\(opts, is0to1\)/);
+    assert.match(src, /resolveSlippagePct\(/);
     assert.ok(
       !/opts\.slippagePct\b/.test(src),
       "compounder-swap still reads a single slippagePct off its opts",

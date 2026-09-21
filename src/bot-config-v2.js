@@ -242,12 +242,27 @@ function _readDiskConfig(filePath) {
  * exactly once per write, and so a slot the app never touches is still
  * cleaned the next time anything saves.
  *
+ * **Never strips a slot down to its status alone.** That is the phantom
+ * signature `_purgePhantomEntries` deletes on the next load, and the
+ * position would stop being managed with nothing said — the operator
+ * restarts and finds it gone. The purge calls itself conservative
+ * because "legitimate entries always carry additional fields"; a strip
+ * that removes the last of those fields is what would make that false,
+ * so the strip is what gives way. The key stays in that one slot,
+ * unread by anything, and goes on the next save that leaves the slot
+ * with real content — which is any save that follows an operator
+ * setting or a persisted figure.
+ *
  * @param {object} cfg  Config object, mutated in place.
  */
 function _stripRetiredKeys(cfg) {
   for (const slot of Object.values(cfg.positions || {})) {
     if (slot === undefined || slot === null) continue;
-    for (const key of RETIRED_POSITION_KEYS) delete slot[key];
+    const retired = RETIRED_POSITION_KEYS.filter((k) => k in slot);
+    if (retired.length === 0) continue;
+    const keeping = Object.keys(slot).filter((k) => !retired.includes(k));
+    if (keeping.length === 1 && keeping[0] === "status") continue;
+    for (const key of retired) delete slot[key];
   }
 }
 

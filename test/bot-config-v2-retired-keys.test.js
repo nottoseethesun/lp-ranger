@@ -58,6 +58,43 @@ describe("saveConfig drops retired keys", () => {
       assert.equal(slot[k], undefined, `${k} should not survive the save`);
   });
 
+  it("never strips a slot down to its status alone", () => {
+    /*- The position would be gone by the next restart. A slot holding
+     *  status and one retired key strips to `{status:"running"}`, which
+     *  is exactly what `_purgePhantomEntries` deletes on load — so the
+     *  operator's managed position would silently stop being managed.
+     *  Reproduced before this guard existed: save, reload, and the key
+     *  was no longer in `positions` at all.
+     *
+     *  The retired key is left in place for that one slot instead. It
+     *  is read by nothing, and the next save that leaves real content
+     *  behind clears it. */
+    const dir = tmpDir();
+    const slot = { status: "running", slippagePct: 2.75 };
+    saveConfig({ global: {}, positions: { [KEY]: slot } }, dir);
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.ok(
+      loaded.positions[KEY],
+      "the managed position must still be there",
+    );
+    assert.equal(loaded.positions[KEY].status, "running");
+  });
+
+  it("still purges a genuine phantom, which carries no retired key", () => {
+    /*- The guard above must not blunt the purge itself: a bare
+     *  status-only stub is the stale composite key the purge exists
+     *  for, and nothing was stripped to make it. */
+    const dir = tmpDir();
+    saveConfig(
+      { global: {}, positions: { [KEY]: { status: "running" } } },
+      dir,
+    );
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.equal(loaded.positions[KEY], undefined);
+  });
+
   it("keeps the coins and the settings around them", () => {
     /*-
      *  The strip is by name, so a key whose name merely resembles a

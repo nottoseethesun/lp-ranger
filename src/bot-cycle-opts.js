@@ -17,10 +17,12 @@ const { loadShippedDefaults } = require("./load-merged-defaults");
 const { resolveRangeOverrideEnabled } = require("./range-override");
 
 /** Return `{[key]: value}` if the config value is a finite number,
- *  else `{}`.  Used for optional per-position overrides where the
- *  presence of the key in opts is the opt-in signal (see the swap
- *  layer's `resolveSlippagePct`).  Keeps `buildRebalanceOpts`
- *  under the cyclomatic-complexity cap. */
+ *  else `{}`.  Used for optional per-position overrides, so the opts
+ *  carry a key only where the position actually set one.  Readers do
+ *  not depend on that: `resolveSlippagePct` asks whether the value is
+ *  a finite number, so a key present and undefined reads the same as
+ *  an absent one.  Keeps `buildRebalanceOpts` under the
+ *  cyclomatic-complexity cap. */
 function _optionalConfig(deps, key) {
   const v = deps._getConfig?.(key);
   return typeof v === "number" && Number.isFinite(v) ? { [key]: v } : {};
