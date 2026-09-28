@@ -257,7 +257,20 @@ async function runChecks(endpoint) {
     };
   });
 
+  /*- Set by "Latest block available" and read by the two checks after
+   *  it.  When that check fails it stays unset, and a run continues
+   *  rather than stopping, so the dependants have to say why they could
+   *  not run. Without this they dereference it and report a JavaScript
+   *  internal — "Cannot read properties of undefined" — in a table whose
+   *  entire job is telling an operator what is wrong. */
   let firstBlock;
+
+  /** Refuse a dependent check when the block number never arrived. */
+  function requireFirstBlock() {
+    if (!Number.isInteger(firstBlock)) {
+      throw new Error("no block number — see 'Latest block available' above");
+    }
+  }
 
   await check("Latest block available", async () => {
     const response = await call("eth_blockNumber");
@@ -271,6 +284,7 @@ async function runChecks(endpoint) {
   });
 
   await check("Latest block details", async () => {
+    requireFirstBlock();
     const response = await call("eth_getBlockByNumber", [
       `0x${firstBlock.toString(16)}`,
       false,
@@ -305,6 +319,7 @@ async function runChecks(endpoint) {
   await sleep(3000);
 
   await check("Block progression", async () => {
+    requireFirstBlock();
     const response = await call("eth_blockNumber");
     const secondBlock = hexToNumber(response.result);
 

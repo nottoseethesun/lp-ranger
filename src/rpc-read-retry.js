@@ -40,8 +40,12 @@ const { log } = require("./log");
  * @param {Error} opts.err            The failure that triggered the retry.
  * @param {(e: unknown) => boolean} opts.isFailoverable  True when the
  *   error shape indicates the endpoint is at fault, not the request.
- * @param {() => boolean} opts.failover  Advance to the next endpoint.
+ * @param {(failed?: object) => boolean} opts.failover  Report that an
+ *   endpoint failed; advances selection only if it is still on that one.
  * @param {() => object} opts.current    The endpoint to use now.
+ * @param {object} [opts.failedProvider] The provider whose failure is
+ *   `err`. Naming it keeps concurrent failures on one endpoint from
+ *   advancing the list once each.
  * @returns {Promise<*>}  The first successful result.
  * @throws  `err` when it is not failover-eligible, or any
  *   non-failoverable error raised by a later attempt.
@@ -53,20 +57,27 @@ async function retryRead({
   isFailoverable,
   failover,
   current,
+  failedProvider,
 }) {
   if (!isFailoverable(err)) throw err;
+  /*- Which endpoint the failure being reported came from.  It changes
+   *  every iteration, because each attempt runs against whichever
+   *  endpoint selection had moved to by then. */
+  let failed = failedProvider;
   for (let attempt = 1; ; attempt++) {
-    /*- Advance unconditionally, ignoring whether an alternate was
-     *  actually available.  `false` means every endpoint has been tried,
-     *  which is a reason to come back round to the first one rather than
-     *  to give up — an outage covering all of them is precisely the case
-     *  this loop exists for. */
-    failover();
+    /*- Report, rather than command.  `false` means either that another
+     *  caller already moved us off this endpoint — in which case the
+     *  retry below simply uses theirs — or that every endpoint has been
+     *  tried, which is a reason to come back round to the first one
+     *  rather than to give up, since an outage covering all of them is
+     *  precisely the case this loop exists for. */
+    failover(failed);
     const next = current();
     try {
       return await next[prop].apply(next, args);
     } catch (e) {
       if (!isFailoverable(e)) throw e;
+      failed = next;
       log.warn(
         "[send-tx] read retry #%d on %s failed: %s",
         attempt,

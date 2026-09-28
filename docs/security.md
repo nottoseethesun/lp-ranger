@@ -799,8 +799,11 @@ the configured primary and fallback URLs are identical.
 Reads use the same window. `getManagedReadProvider()` returns a Proxy
 that delegates each call to `getCurrentRPC()` and retries failover-
 eligible errors (`SERVER_ERROR`, `TIMEOUT`, `NETWORK_ERROR`, 5xx) via
-`failoverToNextRPC()`. Boot reachability is `ensureReachable()`. One
-sticky failover state covers both sides.
+`failoverToNextRPC(failedProvider)`, which names the endpoint that
+failed so selection advances only while it is still on that one — one
+endpoint's failure reaching many concurrent reads then costs one
+endpoint, not the whole list. Boot reachability is `ensureReachable()`.
+One sticky failover state covers both sides.
 
 ### Slippage Guards
 

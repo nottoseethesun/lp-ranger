@@ -181,6 +181,12 @@ describe("talking to a node", () => {
           res.writeHead(502, { "content-type": "text/plain" });
           return res.end("error code: 502\n");
         }
+        /*- Everything answers except the block number, so the checks
+         *  that depend on it are reached with it unset. */
+        if (mode === "blockNumberOnly" && method === "eth_blockNumber") {
+          res.writeHead(502, { "content-type": "text/plain" });
+          return res.end("error code: 502\n");
+        }
         if (mode === "garbage") {
           res.writeHead(200, { "content-type": "text/plain" });
           return res.end("<html>not json</html>");
@@ -268,6 +274,33 @@ describe("talking to a node", () => {
       failed.map((c) => `${c.name}: ${c.error}`),
       [],
       "a healthy node must pass every check",
+    );
+  });
+
+  test("a check that needs the block number says so when it is missing", async () => {
+    /*- `firstBlock` is state one check sets and two later ones read. A
+     *  run continues past a failure, so those two can reach a value that
+     *  was never assigned. They must name the dependency rather than
+     *  dereference it and surface a JavaScript internal into a table an
+     *  operator is reading to find out what is wrong. */
+    mode = "blockNumberOnly";
+    const checks = await runChecks(base);
+    const byName = Object.fromEntries(checks.map((c) => [c.name, c]));
+
+    assert.equal(byName["Latest block available"].ok, false);
+    for (const dependant of ["Latest block details", "Block progression"]) {
+      assert.equal(byName[dependant].ok, false);
+      assert.match(
+        byName[dependant].error,
+        /no block number/,
+        `${dependant} must name the dependency, not leak an internal`,
+      );
+      assert.doesNotMatch(byName[dependant].error, /Cannot read properties/);
+    }
+    assert.equal(
+      byName["Transaction pool API"].ok,
+      true,
+      "checks that do not depend on it still run",
     );
   });
 
