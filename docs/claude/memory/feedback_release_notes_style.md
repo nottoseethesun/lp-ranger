@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-09-28T19:38:38.155Z
+  modified: 2026-09-28T23:47:53.092Z
 ---
 
 # Writing release notes
@@ -100,6 +100,15 @@ pass.
 Still keep a change's consequence (rule 2) — the cut is to explanation,
 never to the payoff. The one item that changes behavior on an install
 that does nothing may keep more room than the others.
+
+**Cutting is not the same as omitting a whole area.** Drafting 0.9.6 I
+left out a release's worth of `util/` work — test coverage, layout,
+argument parsing — judging it invisible to an operator. The user added
+it back as one Technical Details line: *"Cleaned up `util/` with regard
+to test coverage and organization, and code re-use."* The lesson is the
+grain, not the length: compress an area to a line, do not decide on the
+reader's behalf that it did not happen. A release is also a record of
+where the work went.
 
 **And it was still too long after all that.** The user's verdict on the
 shipped 0.9.5 draft: *"yes you still had bulked up the release notes and

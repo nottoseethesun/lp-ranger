@@ -113,12 +113,13 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [help page](project_help_page.md) — Help lives at /help.html with its own CSS
 
 ## Project state, architecture & nice-to-haves
-- [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork, watch Prod
+- [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork in 0.9.5
+- [failover exhausts on concurrent errors](project_failover_exhausts_on_concurrent_errors.md) — Prod 0.9.5 froze for an hour when ONE endpoint blipped; fixed in 0.9.6 by naming the failed endpoint
 - [config stomp investigation](project_config_stomp_investigation.md) — bot-config.json once overwritten; root cause unknown, guards in place
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
 - [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
 - [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Whole recommendation inside the parens
-- [0.9.5 burn-in watch](project_0095_burn_in_watch.md) — IL Guard 50 → 15 moves every unset position; outage fix untested by a real outage
+- [0.9.6 burn-in watch](project_0096_burn_in_watch.md) — 0.9.6 on Prod; the all-endpoints-down banner is now the instrument — at most once an hour, never with fewer than three failovers
 - [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a test artifact; real positions make ≤24/year
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — The daily audit covers the release tag, not main
