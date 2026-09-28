@@ -162,7 +162,20 @@ describe("_buildClosedEpoch", () => {
 });
 
 describe("epoch-cache round-trip", () => {
-  const { getCachedEpochs, setCachedEpochs } = require("../src/epoch-cache");
+  /*- The cache is one JSON file, and a dozen test files write it while
+   *  the suite runs 24 at a time — so a run against the real path races
+   *  the others and fails intermittently while passing in isolation.
+   *  Point it at a per-process file, the same isolation
+   *  `epoch-cache.test.js` uses. */
+  const mod = require("../src/epoch-cache");
+  const { getCachedEpochs, setCachedEpochs } = mod;
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const TMP = path.join(process.cwd(), "tmp");
+  fs.mkdirSync(TMP, { recursive: true });
+  mod._setCachePath(
+    path.join(TMP, `pnl-epochs-cache-reconstructor-${process.pid}.json`),
+  );
   const key = {
     blockchain: "test",
     contract: "0xPM",
