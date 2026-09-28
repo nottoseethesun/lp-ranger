@@ -1485,16 +1485,50 @@ reference example: `index.js` (CLI, chain I/O, rendering) plus
 and `wallet-token-flow/` follow the same shape with `index.js` (CLI,
 chain I/O, orchestration) plus `render.js` (console output only) —
 the split that makes a report layer assertable by capturing stdout
-instead of leaving it dark. Tests stay in the
-category's `test/` directory regardless, since `npm run test:util`
-globs `util/diagnostic/test/*.test.js`.
+instead of leaving it dark. Tests do not move with the tool: every
+`util/` test lives in `util/test/`, whatever category the tool belongs
+to, since `npm run test:util` globs `util/test/*.test.js`.
 
 #### Diagnostic Utilities
 
 `util/diagnostic/` holds read-only Node.js tools for investigating
 on-chain state and bot data. End users run these when something looks
-wrong. All five tools take CLI args, never mutate state, and write only
+wrong. All six tools take CLI args, never mutate state, and write only
 to stdout (redirect to `tmp/` for logs).
+
+**Arguments are parsed by `commander`, never by hand**, and every tool
+answers `--help` and `-h`. A new tool is not finished until it does.
+Declare the command once — name, description, each `.option()` with its
+default — and Commander both parses it and renders the help from that
+same declaration, so the two cannot disagree. Hand-rolled `argv`
+scanning and hand-written `USAGE` strings are what this replaces: they
+drift from the options they describe, and they miss cases a parser gets
+free, such as an unknown flag or a missing option value.
+
+What that buys, and what still needs care:
+
+- **Help is handled for you**, printed to **stdout**, exiting **0**,
+  and before any argument validation. That ordering matters: someone
+  reaching for `--help` is by definition unsure of the arguments, so
+  refusing them for a missing one answers the wrong question. An actual
+  mistake goes to **stderr** and exits non-zero. Reversing the two
+  breaks `tool --help | less`, which sees nothing on stdout, and any
+  script reading the exit status.
+- **Validate option values in the parser.** Pass a function as
+  `.option()`'s third argument and throw `InvalidArgumentError` from it.
+  Commander then names the offending option in the message and refuses
+  before the tool does any work — where accepting it surfaces later as a
+  failure deep in the run that never mentions the flag.
+- **Lead the description with what the tool is for**, not with how to
+  spell a flag. The reader at `--help` has usually forgotten the former.
+  Use `.addHelpText("after", …)` for exit codes and anything that
+  belongs below the option list.
+- **Build the command in a function**, not at module scope, so a test
+  can parse several argument lists without options accumulating between
+  them.
+
+All seven tools here parse this way. The hand-written `USAGE` strings
+and each tool's own `argv` scanner are gone.
 
 - `inspect-pool.js` — Pretty-prints `app-config/user-configurable/bot-config.json` and
   `tmp/pnl-epochs-cache.json` for a position or pool fragment: status,
@@ -1509,16 +1543,23 @@ to stdout (redirect to `tmp/` for logs).
   `node util/diagnostic/wallet-token-flow`.
 - `verify-compound-usd/` — Explains a reported liquidity-event USD
   figure. See [Verifying a Reported USD Figure](#verifying-a-reported-usd-figure).
+- `check-rpc-health.js` — Asks one RPC endpoint whether it is healthy
+  and prints seven checks: that it responds, that it is PulseChain,
+  that it has a latest block and can describe it, that it is not still
+  syncing, that the chain is advancing, and that its transaction pool
+  answers. See [Checking One RPC Endpoint](#checking-one-rpc-endpoint).
 
 Audited under `npm run audit:security` and `npm run audit:secrets` —
-same bar as `src/`. Tests live in `util/diagnostic/test/` and run under
-plain `npm test` and `npm run check` (use `npm run test:util` for a
-fast loop on just these). Pure helpers shared across tools live in
+same bar as `src/`. Tests live in **`util/test/`** — one directory for
+everything under `util/`, mirroring the root `test/` for `src/`, so no
+test reaches across a category boundary for a fixture or a double. They
+run under plain `npm test` and `npm run check` (use `npm run test:util`
+for a fast loop on all of them). Pure helpers shared across tools live in
 `util/diagnostic/_helpers.js` — `sleep`, `addrTopic`, `addrFromTopic`,
 `fmtTs`, and `fetchTimestamps` (the throttled block-time lookup both
 the chain walker and the token-flow scanner need; it lived in two
 places until it was consolidated here); console/exit/provider doubles for
-driving the CLIs live in `util/diagnostic/test/_capture.js`. Each
+driving the CLIs live in `util/test/_capture.js`. Each
 tool's CLI `main()` is gated behind `require.main === module` so
 requiring it from a test does not start an RPC scan — and each tool
 exports its internals (renderers, scan loops) so those are testable
@@ -1666,6 +1707,48 @@ Caveats:
   `IncreaseLiquidity` is labelled `mint`. Widen with `--days`.
 - Never scans from block 0 — the window is always bounded by `--days`
   or `--from-block`.
+
+##### Checking One RPC Endpoint
+
+`check-rpc-health.js` answers whether a single endpoint is serving. It
+exists because the bot's own failure messages name endpoints without
+proving anything about them: when the log says every endpoint failed,
+the question "is that true?" needs an instrument that asks the endpoint
+directly.
+
+```bash
+node util/diagnostic/check-rpc-health.js
+node util/diagnostic/check-rpc-health.js --rpc-endpoint https://rpc.pulsechain.com
+```
+
+The default is `https://rpc-pulsechain.g4mm4.io`, the first endpoint in
+`chains.json`; `--rpc-endpoint <url>` points it anywhere else. **One
+endpoint per run** — each of the three is a separate host, so a health
+answer only ever applies to one of them. The endpoint under test is
+printed above the table for that reason, and the UTC start time beside
+it, because the app logs in UTC and the point of a run is usually to
+line it up against a log line.
+
+Seven checks, each timed: `web3_clientVersion` for reachability,
+`eth_chainId` + `net_version` against 369, `eth_blockNumber`,
+`eth_getBlockByNumber` for block detail and age, `eth_syncing`, a
+three-second wait then a second `eth_blockNumber` for progression, and
+`txpool_status`. A failing check records its error and the run
+continues, since which parts still work is more informative than
+stopping at the first failure. Exit status is 0 only when all seven
+pass, so it can gate a shell script.
+
+The timings are worth reading, not just the verdicts. A first call on a
+cold connection costs several hundred milliseconds for TLS setup where
+steady state is under 200 ms — which is why a run of newly-built
+providers overlaps the global request queue's release interval and a
+warm one does not.
+
+Unlike the other tools here it imports nothing from `src/` — only
+`_helpers` — so it opens no log file and reads no operator settings, and
+is therefore safe to run against a live install. That is the whole point
+of it, and it is why the default endpoint is a literal here rather than
+being read from `config.RPC_URLS`.
 
 ##### Scenario-Reproduction Scripts
 

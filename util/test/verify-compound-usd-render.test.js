@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/verify-compound-usd-render.test.js
+ * @file util/test/verify-compound-usd-render.test.js
  * @description
  * Tests for the console-emitting and log-scanning half of
  * `verify-compound-usd/index.js`.  The pure math lives in
@@ -19,7 +19,10 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { scanEvents, printHelp } = require("../verify-compound-usd");
+const {
+  scanEvents,
+  buildProgram,
+} = require("../diagnostic/verify-compound-usd");
 const {
   renderPrices,
   renderEventRow,
@@ -27,7 +30,7 @@ const {
   renderRecorded,
   renderEvents,
   renderConfigComparison,
-} = require("../verify-compound-usd/render");
+} = require("../diagnostic/verify-compound-usd/render");
 const { captureConsole, fakeProvider } = require("./_capture");
 
 /** The real 2026-08-04 compound on NFT #162980. */
@@ -298,9 +301,10 @@ test("scanEvents — a getLogs failure degrades, does not throw", async () => {
   assert.match(res.err.join("\n"), /boom/);
 });
 
-test("printHelp — lists every option", async () => {
-  const { out } = await captureConsole(() => printHelp());
-  const text = out.join("\n");
+test("help — lists every option", () => {
+  /*- Rendered by Commander from the same declaration that parses the
+   *  arguments, so this can no longer drift from what is accepted. */
+  const text = buildProgram().helpInformation();
   for (const flag of [
     "--token-id",
     "--usd",

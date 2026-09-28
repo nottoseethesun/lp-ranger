@@ -83,6 +83,7 @@ process.chdir(path.resolve(__dirname, "..", ".."));
 const { ethers } = require("ethers");
 const config = require("../../../src/config");
 const helpers = require("../_helpers");
+const { Command, InvalidArgumentError } = require("commander");
 
 const render = require("./render");
 
@@ -180,24 +181,58 @@ async function scanToken(provider, tokenAddr, walletAddr, fromBlock, toBlock) {
   return out;
 }
 
-/** Parse CLI argv. */
-function parseArgs(argv) {
-  const positional = [];
-  let from = null;
-  let to = null;
-  for (const a of argv) {
-    const dArg = parseDateArg(a);
-    if (dArg) {
-      if (dArg.kind === "from") from = dArg.date;
-      else to = dArg.date;
-    } else if (a.startsWith("--")) {
-      console.error(`Unknown flag: ${a}`);
-      process.exit(1);
-    } else {
-      positional.push(a);
-    }
+/**
+ * Accept a `--from`/`--to` value, or reject it naming the option.
+ *
+ * Checked during parsing so a malformed date is refused before any
+ * block-range arithmetic, which would otherwise turn it into a
+ * nonsensical window rather than an error.
+ *
+ * @param {string} value  The raw option value.
+ * @returns {string}  The same value, once it is `YYYY-MM-DD`.
+ * @throws {InvalidArgumentError} When it is not.
+ */
+function parseDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new InvalidArgumentError("expected YYYY-MM-DD");
   }
-  return { positional, from, to };
+  return value;
+}
+
+/**
+ * Describe the command line, so Commander both parses it and renders
+ * `--help` from the one declaration.
+ *
+ * Built per call rather than held at module scope, so a test can parse
+ * several argument lists without state carrying between them.
+ *
+ * @returns {Command}  Configured, not yet parsed.
+ */
+function buildProgram() {
+  return new Command()
+    .name("wallet-token-flow")
+    .description(
+      "List ERC-20 Transfer events for a wallet over a UTC date window, " +
+        "with a net-flow summary.\n\nThe window becomes a block range via " +
+        "head plus a per-block time estimate, so it is approximate by a " +
+        "few minutes — fine for reading, not for accounting.",
+    )
+    .argument("<wallet>", "20-byte hex, EIP-55 or lowercase")
+    .argument("<tokens>", "comma-separated 20-byte hex token addresses")
+    .option(
+      "--from <date>",
+      "UTC start, inclusive (default: 24 h ago)",
+      parseDate,
+    )
+    .option("--to <date>", "UTC end, inclusive (default: now)", parseDate)
+    .addHelpText(
+      "after",
+      "\nExamples:\n" +
+        "  wallet-token-flow 0x4e44... 0xA1077a...\n" +
+        "  wallet-token-flow 0x4e44... 0xA1077a...,0x95B303... \\\n" +
+        "      --from 2026-04-28 --to 2026-04-28\n" +
+        "\nExit codes:\n  0  completed\n  1  bad arguments\n",
+    );
 }
 
 /**
@@ -320,13 +355,12 @@ async function reportToken(
 }
 
 /** Main. */
-async function main() {
-  const { positional, from, to } = parseArgs(process.argv.slice(2));
+async function main(argv = process.argv.slice(2)) {
+  const program = buildProgram().parse(argv, { from: "user" });
+  const positional = program.args;
+  const { from = null, to = null } = program.opts();
   if (positional.length !== 2) {
-    console.error(
-      "usage: node util/diagnostic/wallet-token-flow <wallet>" +
-        " <token1[,token2,...]> [--from=YYYY-MM-DD] [--to=YYYY-MM-DD]",
-    );
+    console.error(program.helpInformation());
     process.exit(1);
   }
   const wallet = ethers.getAddress(positional[0]);
@@ -373,10 +407,11 @@ if (require.main === module) {
  *  double rather than the network. */
 module.exports = {
   parseDateArg,
+  parseDate,
+  buildProgram,
   dateStartSec,
   dateEndSec,
   fmtAmount,
-  parseArgs,
   dateWindowToBlocks,
   scanToken,
   readTokenMeta,

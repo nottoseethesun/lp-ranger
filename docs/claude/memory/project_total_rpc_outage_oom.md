@@ -1,14 +1,18 @@
 ---
 name: project_total_rpc_outage_oom
-description: "Production 0.9.4 was OOM-killed on 2026-09-27 when all three RPC endpoints failed together: ethers' network detection bypasses the paced send(), so the read-retry loop spun and leaked ~11 KB per iteration. Fixed 2026-09-28 with staticNetwork in buildProvider; not yet on Production."
+description: "Production 0.9.4 was OOM-killed on 2026-09-27 when all three RPC endpoints failed together: ethers' network detection bypasses the paced send(), so the read-retry loop spun and leaked ~11 KB per iteration. Fixed with staticNetwork in buildProvider, shipped in 0.9.5."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T17:32:37.389Z
+  modified: 2026-09-28T19:35:30.319Z
 ---
 
-**Fixed 2026-09-28, uncommitted/unreleased at the time of writing.**
+**Fixed 2026-09-28, shipped in release 0.9.5** (PR #210, merged as
+`c468af9`) and deployed to Production the same day. No real outage has
+exercised the fix since — [[project_0095_burn_in_watch]] carries the
+tell if it regresses.
+
 Hit Production on release 0.9.4 (`commit=4df40c5`), 2026-09-27.
 Evidence: `troubleshooting-work/out-of-memory-error/lp-ranger.log`
 (113 MB, 483,727 lines).
@@ -72,14 +76,6 @@ needs a **real socket** — a stub provider never runs `_detectNetwork`, so
 it has no seam to exercise. Against the unfixed tree it fails on all
 three assertions: 3,806 requests and 3,807 queued reads in a 1.5-second
 window, versus three requests and a queue of one after the fix.
-
-## What to watch on Production
-
-The pause should now behave as written: one banner, silence for the
-hour, then the list restarts at `g4mm4`. If a future log shows the
-banner repeating faster than hourly, something has reopened a path
-around `acquire()` — that repetition is the tell, and it is cheap to
-grep for.
 
 ## Theories checked and discarded
 

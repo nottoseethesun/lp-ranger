@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/wallet-token-flow.test.js
+ * @file util/test/wallet-token-flow.test.js
  * @description
  * Tests for the pure helpers in wallet-token-flow/index.js.  The CLI
  * `main()` is gated behind `require.main === module`.
@@ -15,9 +15,9 @@ const {
   dateStartSec,
   dateEndSec,
   fmtAmount,
-  parseArgs,
+  buildProgram,
   dateWindowToBlocks,
-} = require("../wallet-token-flow");
+} = require("../diagnostic/wallet-token-flow");
 
 test("parseDateArg — recognises --from and --to with YYYY-MM-DD", () => {
   assert.deepEqual(parseDateArg("--from=2026-04-28"), {
@@ -75,22 +75,43 @@ test("fmtAmount — handles sub-1 amounts correctly", () => {
   assert.equal(fmtAmount(5n * 10n ** 17n, 18), "0.5");
 });
 
-test("parseArgs — collects positional args and date flags", () => {
-  const r = parseArgs([
-    "0xWALLET",
-    "0xTOKEN",
-    "--from=2026-04-01",
-    "--to=2026-04-28",
-  ]);
-  assert.deepEqual(r.positional, ["0xWALLET", "0xTOKEN"]);
-  assert.equal(r.from, "2026-04-01");
-  assert.equal(r.to, "2026-04-28");
+test("buildProgram — collects positional args and date options", () => {
+  const p = buildProgram().parse(
+    ["0xWALLET", "0xTOKEN", "--from=2026-04-01", "--to=2026-04-28"],
+    { from: "user" },
+  );
+  assert.deepEqual(p.args, ["0xWALLET", "0xTOKEN"]);
+  assert.equal(p.opts().from, "2026-04-01");
+  assert.equal(p.opts().to, "2026-04-28");
 });
 
-test("parseArgs — defaults missing date flags to null", () => {
-  const r = parseArgs(["0xWALLET", "0xTOKEN"]);
-  assert.equal(r.from, null);
-  assert.equal(r.to, null);
+test("buildProgram — accepts the space form as well as the equals form", () => {
+  /*- The old hand-rolled parser matched `--from=DATE` with a regex and
+   *  silently ignored `--from DATE`; a parser handles both. */
+  const p = buildProgram().parse(
+    ["0xWALLET", "0xTOKEN", "--from", "2026-04-01"],
+    { from: "user" },
+  );
+  assert.equal(p.opts().from, "2026-04-01");
+});
+
+test("buildProgram — leaves missing date options undefined", () => {
+  const p = buildProgram().parse(["0xWALLET", "0xTOKEN"], { from: "user" });
+  assert.equal(p.opts().from, undefined);
+  assert.equal(p.opts().to, undefined);
+});
+
+test("buildProgram — refuses a date that is not YYYY-MM-DD", () => {
+  /*- Refused while parsing, so a malformed date cannot become a
+   *  nonsensical block window further down. */
+  assert.throws(
+    () =>
+      buildProgram()
+        .exitOverride()
+        .configureOutput({ writeErr: () => {} })
+        .parse(["0xW", "0xT", "--from", "April 1st"], { from: "user" }),
+    /YYYY-MM-DD/,
+  );
 });
 
 test("dateWindowToBlocks — defaults to last-24h when no dates given", () => {

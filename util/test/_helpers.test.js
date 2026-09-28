@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/_helpers.test.js
+ * @file util/test/_helpers.test.js
  * @description
  * Tests for the shared pure helpers in util/diagnostic/_helpers.js.
  * These run via `npm run test:util` and stay out of CI / pre-commit.
@@ -10,7 +10,12 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { sleep, addrTopic, addrFromTopic, fmtTs } = require("../_helpers");
+const {
+  sleep,
+  addrTopic,
+  addrFromTopic,
+  fmtTs,
+} = require("../diagnostic/_helpers");
 
 test("addrTopic — pads a 20-byte address to a 32-byte topic", () => {
   const addr = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";

@@ -240,6 +240,31 @@ ensureOrWrite(
   '{"ok":false,"files":0,"errors":0,"problems":["linter did not run"]}',
 );
 
+// ── Dead code (knip) — unused FILES only ──────────────────────────────────
+// Only the `files` issue type is a gate.  knip's unused-exports pass is
+// noise here by design: `public/dashboard-*.js` is reached through HTML
+// script tags it cannot trace, and both `src/` and `util/` export their
+// internals deliberately so tests and other tools can compose them — an
+// export nothing imports yet is a seam, not a defect.  An unused FILE is
+// different: nothing reaches it at all, so it is dead weight that still
+// ships, and knip.json declares every real entry point, which is what
+// makes the answer trustworthy.
+const knipRun = run("npm", [
+  "run",
+  "--silent",
+  "knip:files",
+  "--",
+  "--reporter",
+  "json",
+]);
+fs.writeFileSync(
+  path.join(RAW_DIR, "knip.json"),
+  knipRun.stdout + knipRun.stderr,
+);
+/*- A crashed run leaves an empty file; hand the aggregator a shape it
+ *  can render rather than a parse error. */
+ensureOrWrite(path.join(RAW_DIR, "knip.json"), '{"files":[],"issues":[]}');
+
 // ── Docs (OpenAPI) — spec-vs-code sync ────────────────────────────────────
 // Its own row rather than a line buried in the test rollup: "is the API
 // reference still true?" is a question a reviewer should be able to
@@ -370,6 +395,7 @@ const exitCodes = {
   prettierYaml: prettierYamlRun.status,
   actionlint: actionlintRun.status,
   lintSvg: lintSvgRun.status,
+  knip: knipRun.status,
   openapiSync: openapiSyncRun.status,
   auditDeps: npmAuditRun.status,
   securityLint: securityLintRun.status,
@@ -419,7 +445,7 @@ function listWorkflowFiles() {
  *
  * Kept in lockstep with the `test` script in package.json: `npm run
  * check` must execute the same set, or a suite can pass one gate while
- * never running in the other.  `util/diagnostic/test/` is included so
+ * never running in the other.  `util/test/` is included so
  * util/ is covered — and counted toward the coverage floor — on the
  * same footing as src/.
  */
@@ -428,7 +454,7 @@ function listTestFiles() {
     "test",
     "test/eslint-rules",
     "test/stylelint-rules",
-    "util/diagnostic/test",
+    "util/test",
   ];
   const out = [];
   for (const dir of dirs) {

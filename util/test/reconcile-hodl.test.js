@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/reconcile-hodl.test.js
+ * @file util/test/reconcile-hodl.test.js
  * @description
  * Tests for the pure helpers in reconcile-hodl/index.js.  The CLI `main()`
  * is gated behind `require.main === module` so it does not start
@@ -24,10 +24,10 @@ const {
   accumulateChain,
   loadConfigOrExit,
   resolveKey,
-} = require("../reconcile-hodl");
+} = require("../diagnostic/reconcile-hodl");
 /*- toFloat / fmtDelta live in the render module now — imported from
  *  their owner, never re-exported through reconcile-hodl/index.js. */
-const { toFloat, fmtDelta } = require("../reconcile-hodl/render");
+const { toFloat, fmtDelta } = require("../diagnostic/reconcile-hodl/render");
 
 const TOKEN = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
 

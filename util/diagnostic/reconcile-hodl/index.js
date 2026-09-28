@@ -95,8 +95,40 @@ const { ethers } = require("ethers");
 const config = require("../../../src/config");
 const { PM_ABI } = require("../../../src/pm-abi");
 const { topicForTokenId } = require("../../../src/nft-token-topic");
+const { Command } = require("commander");
 const { sleep, addrTopic } = require("../_helpers");
 const render = require("./render");
+
+/**
+ * Describe the command line, so Commander both parses it and renders
+ * `--help` from the one declaration.
+ *
+ * Built per call rather than held at module scope, so a test can parse
+ * several argument lists without state carrying between them.
+ *
+ * @returns {Command}  Configured, not yet parsed.
+ */
+function buildProgram() {
+  return new Command()
+    .name("reconcile-hodl")
+    .description(
+      "Compare on-chain liquidity events to the cached HODL baseline for " +
+        "one position.\n\nSums IncreaseLiquidity, DecreaseLiquidity and " +
+        "Collect across the NFT chain and reports the difference. Token " +
+        "decimals are read from each contract at reconcile time.",
+    )
+    .argument(
+      "<compositeKey-or-fragment>",
+      "blockchain-wallet-contract-tokenId, or any substring of one that " +
+        "matches exactly one position",
+    )
+    .addHelpText(
+      "after",
+      "\nTip: run inspect-pool.js first to list configured composite keys.\n" +
+        "\nExit codes:\n  0  completed\n" +
+        "  1  config missing, key not found, or fragment ambiguous\n",
+    );
+}
 
 const CONFIG_PATH = path.join(
   process.cwd(),
@@ -370,15 +402,9 @@ async function accumulateChain(
 }
 
 /** Main. */
-async function main() {
-  const arg = process.argv[2];
-  if (!arg) {
-    console.error(
-      "usage: node util/diagnostic/reconcile-hodl" +
-        " <compositeKey-or-fragment>",
-    );
-    process.exit(1);
-  }
+async function main(argv = process.argv.slice(2)) {
+  const program = buildProgram().parse(argv, { from: "user" });
+  const arg = program.args[0];
   const cfg = loadConfigOrExit();
   const positions = cfg.positions || {};
   const key = resolveKey(positions, arg);
@@ -457,4 +483,5 @@ module.exports = {
   findAllTokenIds,
   filterByPool,
   sumEvents,
+  buildProgram,
 };

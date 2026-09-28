@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/rescan-pool-history.test.js
+ * @file util/test/rescan-pool-history.test.js
  * @description
  * Tests for the pure helpers in rescan-pool-history.js.  This tool had
  * no test file at all and, until this suite was added, no
@@ -22,48 +22,58 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
-  _parseArgs,
+  buildProgram,
   _findPositionKey,
   _filterDescription,
   _findPoolKey,
   _clearsHodl,
   _writeJson,
-} = require("../rescan-pool-history");
+} = require("../diagnostic/rescan-pool-history");
 const { captureConsole, captureExit } = require("./_capture");
 
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 const KEY = `pulsechain-${WALLET}-${PM}-162980`;
 
-test("_parseArgs — splits positionals from --flag value pairs", () => {
-  const { positional, flags } = _parseArgs([
-    "162980",
-    "--wallet",
-    WALLET,
-    "--fee",
-    "2500",
-  ]);
-  assert.deepEqual(positional, ["162980"]);
-  assert.equal(flags.wallet, WALLET);
-  assert.equal(flags.fee, "2500");
+/** Parse an argv through the tool's Commander declaration. */
+function parse(argv) {
+  return buildProgram().parse(argv, { from: "user" });
+}
+
+test("buildProgram — splits the tokenId from --flag value pairs", () => {
+  const p = parse(["162980", "--wallet", WALLET, "--fee", "2500"]);
+  assert.deepEqual(p.args, ["162980"]);
+  assert.equal(p.opts().wallet, WALLET);
+  assert.equal(p.opts().fee, "2500");
 });
 
-test("_parseArgs — a flag with no value is boolean true", () => {
-  const { flags } = _parseArgs(["1", "--clear-hodl", "--yes"]);
-  assert.equal(flags["clear-hodl"], true);
-  assert.equal(flags.yes, true);
+test("buildProgram — a valueless flag is boolean true", () => {
+  const p = parse(["1", "--clear-hodl", "--yes"]);
+  assert.equal(p.opts().clearHodl, true);
+  assert.equal(p.opts().yes, true);
 });
 
-test("_parseArgs — a flag followed by another flag stays boolean", () => {
-  const { flags } = _parseArgs(["--yes", "--fee", "2500"]);
-  assert.equal(flags.yes, true);
-  assert.equal(flags.fee, "2500");
+test("buildProgram — a boolean flag before an option keeps both", () => {
+  const p = parse(["1", "--yes", "--fee", "2500"]);
+  assert.equal(p.opts().yes, true);
+  assert.equal(p.opts().fee, "2500");
 });
 
-test("_parseArgs — empty argv yields empty positionals and flags", () => {
-  const { positional, flags } = _parseArgs([]);
-  assert.deepEqual(positional, []);
-  assert.deepEqual(flags, {});
+test("buildProgram — blockchain defaults to pulsechain", () => {
+  assert.equal(parse(["1"]).opts().blockchain, "pulsechain");
+});
+
+test("buildProgram — rejects an unknown flag instead of ignoring it", () => {
+  /*- The hand-rolled parser accepted any `--word` and stashed it, so a
+   *  typo ran with defaults and looked like it worked. */
+  assert.throws(
+    () =>
+      buildProgram()
+        .exitOverride()
+        .configureOutput({ writeErr: () => {} })
+        .parse(["1", "--clear-hodls"], { from: "user" }),
+    /unknown option/,
+  );
 });
 
 test("_filterDescription — renders only the flags that are set", () => {

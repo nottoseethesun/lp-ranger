@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/loaders-and-plan.test.js
+ * @file util/test/loaders-and-plan.test.js
  * @description
  * Tests for the remaining untested surfaces of the diagnostic tools:
  * the JSON loaders (`rescan-pool-history._loadJson`,
@@ -21,8 +21,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { _loadJson, _printPlan } = require("../rescan-pool-history");
-const { loadEpochCache } = require("../inspect-pool");
+const { _loadJson, _printPlan } = require("../diagnostic/rescan-pool-history");
+const { loadEpochCache } = require("../diagnostic/inspect-pool");
 const { captureConsole, captureExit } = require("./_capture");
 
 const KEY = "pulsechain-0xW-0xPM-162980";

@@ -72,6 +72,38 @@
 
 const fs = require("fs");
 const path = require("path");
+const { Command } = require("commander");
+
+/**
+ * Describe the command line, so Commander both parses it and renders
+ * `--help` from the one declaration.
+ *
+ * Built per call rather than held at module scope, so a test can parse
+ * several argument lists without state carrying between them.
+ *
+ * @returns {Command}  Configured, not yet parsed.
+ */
+function buildProgram() {
+  return new Command()
+    .name("inspect-pool")
+    .description("Dump bot-config positions and epoch-cache entries.")
+    .argument(
+      "[fragment]",
+      "case-insensitive substring matched against BOTH position composite " +
+        "keys AND epoch-cache pool keys, so a token contract fragment " +
+        "matches an epoch entry even when no composite key contains it",
+    )
+    .addHelpText(
+      "after",
+      "\nExamples:\n" +
+        "  inspect-pool.js 159250    by tokenId\n" +
+        "  inspect-pool.js 0x4e44    by wallet\n" +
+        "  inspect-pool.js b4d363d5  by token contract\n" +
+        "\nExit codes:\n" +
+        "  0  completed, even with no matches\n" +
+        "  1  config file missing or unparseable\n",
+    );
+}
 
 const CONFIG_PATH = path.join(
   process.cwd(),
@@ -238,8 +270,9 @@ function filterPositions(positions, fragment) {
 }
 
 /** Main. */
-function main() {
-  const fragment = process.argv[2] || "";
+function main(argv = process.argv.slice(2)) {
+  const program = buildProgram().parse(argv, { from: "user" });
+  const fragment = program.args[0] || "";
   const cfg = loadConfigOrExit();
   const positions = cfg.positions || {};
   const filtered = filterPositions(positions, fragment);
@@ -294,4 +327,5 @@ module.exports = {
   printPosition,
   printEpochEntry,
   loadEpochCache,
+  buildProgram,
 };

@@ -194,6 +194,7 @@ const {
 } = require("../../../src/price-fetcher");
 const { parseLogs: _parseLogs } = require("../../../src/nft-event-parse");
 const { topicForTokenId } = require("../../../src/nft-token-topic");
+const { Command, InvalidArgumentError } = require("commander");
 const { sleep } = require("../_helpers");
 const { findPositionForTokenId, fmtUsd } = require("./analysis");
 const {
@@ -226,46 +227,78 @@ const ERC20_ABI = [
 ];
 
 /**
- * Parse CLI arguments.  Unknown flags are an error so a typo never
- * silently changes the scan window.
+ * Accept a numeric option value, or reject it naming the option.
  *
- * @param {string[]} argv  Arguments after the script path.
+ * @param {string} value  The raw option value.
+ * @returns {number}  The parsed number.
+ * @throws {InvalidArgumentError} When it is not a finite number.
+ */
+function parseNumber(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new InvalidArgumentError("needs a number");
+  return n;
+}
+
+/**
+ * Describe the command line, so Commander both parses it and renders
+ * `--help` from the one declaration.
+ *
+ * Built per call rather than held at module scope, so a test can parse
+ * several argument lists without state carrying between them.
+ *
+ * @returns {Command}  Configured, not yet parsed.
+ */
+function buildProgram() {
+  return new Command()
+    .name("verify-compound-usd")
+    .description("Explain a reported liquidity-event USD figure.")
+    .argument(
+      "[compositeKey-or-fragment]",
+      "the position to explain; omit it when using --token-id",
+    )
+    .option("--token-id <id>", "verify a bare NFT id; skips the config lookup")
+    .option("--usd <amount>", "a reported figure to explain", parseNumber)
+    .option("--days <n>", "scan window in days", parseNumber, DEFAULT_DAYS)
+    .option("--from-block <n>", "explicit window start", parseNumber)
+    .option(
+      "--moralis-key <key>",
+      "include the bot's primary price source; prefer the MORALIS_API_KEY " +
+        "env var, since an argument is visible to ps",
+    )
+    .addHelpText(
+      "after",
+      "\nSee the file header for how to read the hypothesis block.\n",
+    );
+}
+
+/**
+ * Turn a parsed command line into the shape the rest of the tool takes.
+ *
+ * Kept separate from `buildProgram` so the target/tokenId requirement —
+ * which Commander cannot express, since either one satisfies it — has a
+ * single home that tests can drive directly.
+ *
+ * @param {Command} program  An already-parsed program.
  * @returns {{target: string|null, tokenId: string|null, usd: number|null,
  *   days: number, fromBlock: number|null, moralisKey: string|null,
- *   help: boolean, error: string|null}}
+ *   error: string|null}}
  */
-function parseArgs(argv) {
-  const out = {
-    target: null,
-    tokenId: null,
-    usd: null,
-    days: DEFAULT_DAYS,
-    fromBlock: null,
-    moralisKey: process.env.MORALIS_API_KEY || null,
-    help: false,
-    error: null,
+function argsFrom(program) {
+  const o = program.opts();
+  const target = program.args[0] || null;
+  const tokenId = o.tokenId || null;
+  return {
+    target,
+    tokenId,
+    usd: o.usd ?? null,
+    days: o.days,
+    fromBlock: o.fromBlock ?? null,
+    moralisKey: o.moralisKey || process.env.MORALIS_API_KEY || null,
+    error:
+      target === null && tokenId === null
+        ? "need a composite key / fragment, or --token-id"
+        : null,
   };
-  const num = (v, label) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) out.error = `${label} needs a number, got "${v}"`;
-    return n;
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--help" || a === "-h") out.help = true;
-    else if (a === "--token-id") out.tokenId = argv[++i];
-    else if (a === "--usd") out.usd = num(argv[++i], "--usd");
-    else if (a === "--days") out.days = num(argv[++i], "--days");
-    else if (a === "--from-block")
-      out.fromBlock = num(argv[++i], "--from-block");
-    else if (a === "--moralis-key") out.moralisKey = argv[++i];
-    else if (a.startsWith("-")) out.error = `unknown option: ${a}`;
-    else if (out.target === null) out.target = a;
-    else out.error = `unexpected argument: ${a}`;
-  }
-  if (!out.help && !out.target && !out.tokenId)
-    out.error = "need a composite key / fragment, or --token-id";
-  return out;
 }
 
 /**
@@ -463,31 +496,12 @@ function resolveTarget(args, configPath = CONFIG_PATH) {
   return { tokenId, posConfig: positions[res.key], key: res.key };
 }
 
-/** Print the usage summary (the Usage section of this file's header). */
-function printHelp() {
-  console.log(`
-verify-compound-usd — explain a reported liquidity-event USD figure.
-
-  node util/diagnostic/verify-compound-usd <compositeKey-or-fragment>
-  node util/diagnostic/verify-compound-usd --token-id <id>
-
-  --token-id <id>      Verify a bare NFT id; skips the config lookup.
-  --usd <amount>       A reported figure to explain (e.g. a Telegram alert).
-  --days <n>           Scan window in days (default ${DEFAULT_DAYS}).
-  --from-block <n>     Explicit window start; overrides --days.
-  --moralis-key <key>  Include the bot's primary price source.  Prefer the
-                       MORALIS_API_KEY env var — an argument is visible to ps.
-  --help               This message.
-
-See the file header for how to read the hypothesis block.
-`);
-}
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (args.help) return printHelp();
+async function main(argv = process.argv.slice(2)) {
+  const program = buildProgram().parse(argv, { from: "user" });
+  const args = argsFrom(program);
   if (args.error) {
     console.error(args.error);
-    printHelp();
+    console.error(program.helpInformation());
     process.exit(1);
   }
   const { tokenId, posConfig, key } = resolveTarget(args);
@@ -551,11 +565,12 @@ if (require.main === module) {
  *  observable behaviour is the text they print, so they are asserted by
  *  capturing console output rather than left uncovered. */
 module.exports = {
-  parseArgs,
+  buildProgram,
+  argsFrom,
+  parseNumber,
   resolveKey,
   tokenIdFromKey,
   scanEvents,
-  printHelp,
   loadConfig,
   resolveTarget,
 };

@@ -24,7 +24,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const cpc = require("../../util/cache/clean-pool-cache");
+const cpc = require("../../cache/clean-pool-cache");
 
 const POOL = "0x1234567890abcdef1234567890ABCDEF12345678";
 const FACTORY = "0xCC05bf158fF2Bdc37eb0d2A2Ea6D2A4Ba1Bd0Ee7";

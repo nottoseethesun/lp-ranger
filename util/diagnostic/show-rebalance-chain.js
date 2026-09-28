@@ -76,7 +76,53 @@ process.chdir(
 const { ethers } = require("ethers");
 const config = require("../../src/config");
 const { PM_ABI } = require("../../src/pm-abi");
+const { Command, InvalidArgumentError } = require("commander");
 const { sleep, addrTopic, fmtTs, fetchTimestamps } = require("./_helpers");
+
+/**
+ * Accept a 0x-prefixed 20-byte wallet address, or reject it naming the
+ * argument.
+ *
+ * Checked during parsing so a malformed address is refused before a
+ * multi-minute scan starts, rather than after it.
+ *
+ * @param {string} value  The raw argument.
+ * @returns {string}  The same value, once it is well-formed.
+ * @throws {InvalidArgumentError} When it is not.
+ */
+function parseWallet(value) {
+  if (!value.startsWith("0x") || value.length !== 42) {
+    throw new InvalidArgumentError("must be a 0x-prefixed 20-byte hex address");
+  }
+  return value;
+}
+
+/**
+ * Describe the command line, so Commander both parses it and renders
+ * `--help` from the one declaration.
+ *
+ * Built per call rather than held at module scope, so a test can parse
+ * several argument lists without state carrying between them.
+ *
+ * @returns {Command}  Configured, not yet parsed.
+ */
+function buildProgram() {
+  return new Command()
+    .name("show-rebalance-chain")
+    .description(
+      "List every NFT mint, burn and move for a wallet, by walking " +
+        "position-manager Transfer events.",
+    )
+    .argument("<walletAddress>", "EIP-55 or lowercased hex", parseWallet)
+    .argument("[yearsBack]", `how far back to scan (default ${DEFAULT_YEARS})`)
+    .addHelpText(
+      "after",
+      "\nA five-year PulseChain scan is roughly 1,580 chunks at ~250 ms —\n" +
+        "about seven minutes — plus 50 ms per block holding an event. Pass\n" +
+        "a smaller yearsBack to shorten it.\n" +
+        "\nExit codes:\n  0  completed\n  1  invalid arguments\n",
+    );
+}
 
 /** Block time on PulseChain ≈ 10 s.  Used to estimate the start block. */
 const BLOCK_TIME_SEC = 10;
@@ -226,16 +272,10 @@ function renderTransfers(logs, tsMap) {
 }
 
 /** Main. */
-async function main() {
-  const wallet = process.argv[2];
-  const years = Number(process.argv[3]) || DEFAULT_YEARS;
-  if (!wallet || !wallet.startsWith("0x") || wallet.length !== 42) {
-    console.error(
-      "usage: node util/diagnostic/show-rebalance-chain.js" +
-        " <walletAddress> [yearsBack]",
-    );
-    process.exit(1);
-  }
+async function main(argv = process.argv.slice(2)) {
+  const program = buildProgram().parse(argv, { from: "user" });
+  const [wallet, yearsArg] = program.args;
+  const years = Number(yearsArg) || DEFAULT_YEARS;
   const checksummed = ethers.getAddress(wallet);
   const provider = new ethers.JsonRpcProvider(config.RPC_URL);
   const head = await provider.getBlockNumber();
@@ -278,4 +318,6 @@ module.exports = {
   classifyTransfer,
   renderHeader,
   renderTransfers,
+  parseWallet,
+  buildProgram,
 };

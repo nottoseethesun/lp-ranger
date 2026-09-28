@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/reconcile-hodl-render.test.js
+ * @file util/test/reconcile-hodl-render.test.js
  * @description
  * Tests the presentation layer of `reconcile-hodl`.
  *
@@ -19,7 +19,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { captureConsole } = require("./_capture");
-const render = require("../reconcile-hodl/render");
+const render = require("../diagnostic/reconcile-hodl/render");
 
 const SUMS = {
   ilSum0: 1_500_000_000n, // 15.0 at 8 decimals

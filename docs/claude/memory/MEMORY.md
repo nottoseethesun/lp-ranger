@@ -92,6 +92,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [don't persist a correction](feedback_dont_persist_a_correction.md) — Ask whether the wrong value should be written at all
 - [no lazy loading](feedback_no_lazy_loading.md) — No `require()` inside functions
 - [no re-exports](feedback_no_reexports.md) — Import from the owning module
+- [unused exports are fine](feedback_unused_exports_are_fine.md) — An export nothing imports yet is composability, not a gap; never a finding, never deleted for knip
 - [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file
 - [price API, no pool](feedback_price_api_no_pool.md) — Let the price service pick the pool
 - [slippage lowest floor](feedback_slippage_lowest_floor.md) — `_bestAttemptError` taking the LOWEST impact is intentional
@@ -117,9 +118,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
 - [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
 - [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Whole recommendation inside the parens
-- [PR #125 burn-in watch](project_pr125_burn_in_watch.md) — LP-browser rescan after a failed scan
-- [0.8.17 burn-in watch](project_0817_burn_in_watch.md) — Aggregator really routes via 9mm; swap pricing changed
-- [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — User says the app may be done; 1.0 after burn-in
+- [0.9.5 burn-in watch](project_0095_burn_in_watch.md) — IL Guard 50 → 15 moves every unset position; outage fix untested by a real outage
 - [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a test artifact; real positions make ≤24/year
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — The daily audit covers the release tag, not main
@@ -148,12 +147,10 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [debug scripts print URL](project_debug_scripts_print_url.md) — Every `debug*` script prints its visit-this URL
 - [ESM migration](project_esm_migration.md) — 100% CJS; ESM would be a big-bang change
 - [gas-defer retry limit](project_gas_defer_retry_limit.md) — Optional cap on the gas-defer loop; not required
-- [log to file](project_log_to_file.md) — Auto-write the console to a log file for Pi 5 scrollback
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses a new pairing; ~30 min lag
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources; Routed Via shows an em-dash
 - [split rebalancePaused flag](project_split_rebalance_paused_flag.md) — Split the flag into aborted vs deferred
 - [suppress OOR until synced](project_suppress_oor_until_synced.md) — Unmanaged view flashes "out of range" too early
 - [throttle rehydrate loses timestamps](project_throttle_rehydrate_loses_timestamps.md) — rehydrate() restores dailyCount, not rebTimestamps
-- [util coverage recipe](project_util_coverage_deferred.md) — Resolved; keeps the render-split + inject-paths recipe
 - [bug reports on dependencies](reference_bug_reports_on_dependencies.md) — `../bug-reports-on-dependencies/` holds upstream repros
 - [release notes header](reference_release_notes_header.md) — docs/release-notes-header.md is the install blockquote

@@ -125,7 +125,7 @@ Command](#before-running-any-lint-or-test-command) first.
 | `format:check` | — | Prettier in check mode; fails rather than rewriting. | `npm run format:check` |
 | `test` | any `node --test` flag | Run the suite with a concurrency of 24. | `npm test -- --test-name-pattern="failover"` |
 | `test:coverage` | — | The suite with V8 coverage collection. | `npm run test:coverage` |
-| `test:util` | — | Only the `util/diagnostic/` suites. See [engineering.md § Diagnostic Utilities](engineering.md#diagnostic-utilities). | `npm run test:util` |
+| `test:util` | — | Only the `util/test/` suites, covering everything under `util/`. See [engineering.md § Diagnostic Utilities](engineering.md#diagnostic-utilities). | `npm run test:util` |
 | `test:watch` | — | Re-run affected tests on file change. | `npm run test:watch` |
 
 ---
@@ -176,8 +176,9 @@ from `../app-config-backup/`. `npm run clean` is also available as a
 nuclear option — it wipes runtime files entirely and triggers full-length
 blockchain wallet scans on next start to rebuild caches.
 
-`npm run test:util` runs ONLY the `util/diagnostic/test/` suites, for a
-fast loop while working on a diagnostic tool. Those suites also run as
+`npm run test:util` runs ONLY the `util/test/` suites — every test for
+everything under `util/`, not just the diagnostic tools — for a fast
+loop while working on one. Those suites also run as
 part of plain `npm test` and `npm run check`, and count toward the 80%
 coverage gate — `util/` is held to the same bar as `src/`.
 

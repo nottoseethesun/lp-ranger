@@ -1,5 +1,5 @@
 /**
- * @file test/clean-pool-cache-wipe.test.js
+ * @file util/test/clean-pool-cache-wipe.test.js
  * @description
  * Covers the destructive surface of `util/cache/clean-pool-cache.js` —
  * scope abbreviation, file globbing, the four per-surface wipers, RPC
@@ -27,12 +27,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const {
-  captureConsole,
-  captureExit,
-} = require("../util/diagnostic/test/_capture");
+const { captureConsole, captureExit } = require("./_capture");
 
-const cpc = require("../util/cache/clean-pool-cache");
+const cpc = require("../cache/clean-pool-cache");
 const {
   POOL,
   FACTORY,

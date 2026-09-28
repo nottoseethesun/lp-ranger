@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/inspect-pool-render.test.js
+ * @file util/test/inspect-pool-render.test.js
  * @description
  * Tests for `inspect-pool.js`'s two renderers, which together are the
  * tool's entire output.  `inspect-pool.test.js` covers the pure
@@ -18,7 +18,10 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { printPosition, printEpochEntry } = require("../inspect-pool");
+const {
+  printPosition,
+  printEpochEntry,
+} = require("../diagnostic/inspect-pool");
 const { captureConsole } = require("./_capture");
 
 const KEY = "pulsechain-0xW-0xPM-162980";
