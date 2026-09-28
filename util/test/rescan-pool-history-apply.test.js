@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/rescan-pool-history-apply.test.js
+ * @file util/test/rescan-pool-history-apply.test.js
  * @description
  * Covers the destructive half of `rescan-pool-history` — the y/N gate,
  * the mutation itself, and the `main` orchestration that sequences
@@ -34,7 +34,7 @@ const {
   _applyMutations,
   main,
   buildProgram,
-} = require("../rescan-pool-history");
+} = require("../diagnostic/rescan-pool-history");
 
 const WALLET = "0x4e448D6fd48B2Bb0F2Ca5c1D1d34E4bDd5FE6E8f";
 const PM = "0xCC05bf158fF2Bdc37eb0d2A2Ea6D2A4Ba1Bd0Ee7";

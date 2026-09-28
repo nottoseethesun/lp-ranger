@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 8264efa3-921c-4733-b040-c9845e2b3a5e
-  modified: 2026-08-04T22:04:12.830Z
+  modified: 2026-09-28T21:59:38.807Z
 ---
 
 In `util/`, one file per utility OR one directory per utility. The moment a
@@ -20,8 +20,9 @@ tools rather than a list of fragments.
 
 **How to apply:** Reference example is `util/diagnostic/verify-compound-usd/`:
 `index.js` (CLI, chain I/O, rendering) + `analysis.js` (pure math and
-formatting, no I/O). Tests stay in the category's `test/` dir regardless —
-`npm run test:util` globs `util/diagnostic/test/*.test.js`. Watch the relative
+formatting, no I/O). Tests do NOT move with the tool: every `util/` test
+lives in `util/test/`, one directory for the whole tree, and
+`npm run test:util` globs `util/test/*.test.js`. Watch the relative
 require depth when moving files in: `../../src/x` becomes `../../../src/x`, and
 `n/no-missing-require` catches it (see [[feedback_use_linter_to_locate_issues]]).
 Per [[feedback_no_reexports]], the entry must not re-export the sibling

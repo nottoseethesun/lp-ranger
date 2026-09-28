@@ -445,7 +445,7 @@ function listWorkflowFiles() {
  *
  * Kept in lockstep with the `test` script in package.json: `npm run
  * check` must execute the same set, or a suite can pass one gate while
- * never running in the other.  `util/diagnostic/test/` is included so
+ * never running in the other.  `util/test/` is included so
  * util/ is covered — and counted toward the coverage floor — on the
  * same footing as src/.
  */
@@ -454,7 +454,7 @@ function listTestFiles() {
     "test",
     "test/eslint-rules",
     "test/stylelint-rules",
-    "util/diagnostic/test",
+    "util/test",
   ];
   const out = [];
   for (const dir of dirs) {

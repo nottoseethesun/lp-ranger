@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/wallet-token-flow-render.test.js
+ * @file util/test/wallet-token-flow-render.test.js
  * @description
  * Covers the presentation layer of `wallet-token-flow`, plus the two
  * pieces of the tool that decide what reaches it: `buildTransferRows`
@@ -19,13 +19,13 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { captureConsole } = require("./_capture");
-const render = require("../wallet-token-flow/render");
+const render = require("../diagnostic/wallet-token-flow/render");
 const {
   fmtAmount,
   buildTransferRows,
   reportToken,
   readTokenMeta,
-} = require("../wallet-token-flow");
+} = require("../diagnostic/wallet-token-flow");
 
 const WALLET = "0x4e448D6fd48B2Bb0F2Ca5c1D1d34E4bDd5FE6E8f";
 const OTHER = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";

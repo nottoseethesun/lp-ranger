@@ -1485,9 +1485,9 @@ reference example: `index.js` (CLI, chain I/O, rendering) plus
 and `wallet-token-flow/` follow the same shape with `index.js` (CLI,
 chain I/O, orchestration) plus `render.js` (console output only) —
 the split that makes a report layer assertable by capturing stdout
-instead of leaving it dark. Tests stay in the
-category's `test/` directory regardless, since `npm run test:util`
-globs `util/diagnostic/test/*.test.js`.
+instead of leaving it dark. Tests do not move with the tool: every
+`util/` test lives in `util/test/`, whatever category the tool belongs
+to, since `npm run test:util` globs `util/test/*.test.js`.
 
 #### Diagnostic Utilities
 
@@ -1550,14 +1550,16 @@ and each tool's own `argv` scanner are gone.
   answers. See [Checking One RPC Endpoint](#checking-one-rpc-endpoint).
 
 Audited under `npm run audit:security` and `npm run audit:secrets` —
-same bar as `src/`. Tests live in `util/diagnostic/test/` and run under
-plain `npm test` and `npm run check` (use `npm run test:util` for a
-fast loop on just these). Pure helpers shared across tools live in
+same bar as `src/`. Tests live in **`util/test/`** — one directory for
+everything under `util/`, mirroring the root `test/` for `src/`, so no
+test reaches across a category boundary for a fixture or a double. They
+run under plain `npm test` and `npm run check` (use `npm run test:util`
+for a fast loop on all of them). Pure helpers shared across tools live in
 `util/diagnostic/_helpers.js` — `sleep`, `addrTopic`, `addrFromTopic`,
 `fmtTs`, and `fetchTimestamps` (the throttled block-time lookup both
 the chain walker and the token-flow scanner need; it lived in two
 places until it was consolidated here); console/exit/provider doubles for
-driving the CLIs live in `util/diagnostic/test/_capture.js`. Each
+driving the CLIs live in `util/test/_capture.js`. Each
 tool's CLI `main()` is gated behind `require.main === module` so
 requiring it from a test does not start an RPC scan — and each tool
 exports its internals (renderers, scan loops) so those are testable

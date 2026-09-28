@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/show-rebalance-chain.test.js
+ * @file util/test/show-rebalance-chain.test.js
  * @description
  * Tests for the pure helpers in show-rebalance-chain.js.  The CLI
  * `main()` is gated behind `require.main === module`, so requiring
@@ -17,7 +17,7 @@ const {
   classifyTransfer,
   renderHeader,
   renderTransfers,
-} = require("../show-rebalance-chain");
+} = require("../diagnostic/show-rebalance-chain");
 const { captureConsole } = require("./_capture");
 
 const ZERO = "0x" + "0".repeat(64);

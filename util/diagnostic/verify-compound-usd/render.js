@@ -12,7 +12,7 @@
  * in `renderEvents`, block-timestamp lookups through an injected
  * provider.  That is what makes the whole layer testable by capturing
  * console output, which the
- * `util/diagnostic/test/verify-compound-usd-render.test.js` suite does.
+ * `util/test/verify-compound-usd-render.test.js` suite does.
  */
 
 "use strict";

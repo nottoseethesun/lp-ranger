@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/rescan-pool-history.test.js
+ * @file util/test/rescan-pool-history.test.js
  * @description
  * Tests for the pure helpers in rescan-pool-history.js.  This tool had
  * no test file at all and, until this suite was added, no
@@ -28,7 +28,7 @@ const {
   _findPoolKey,
   _clearsHodl,
   _writeJson,
-} = require("../rescan-pool-history");
+} = require("../diagnostic/rescan-pool-history");
 const { captureConsole, captureExit } = require("./_capture");
 
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";

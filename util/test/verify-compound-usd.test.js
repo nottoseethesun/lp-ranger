@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/verify-compound-usd.test.js
+ * @file util/test/verify-compound-usd.test.js
  * @description
  * Tests for verify-compound-usd/: the pure helpers in
  * analysis.js and the CLI helpers in index.js.  The CLI
@@ -34,7 +34,7 @@ const {
   fmtUsd,
   fmtPrice,
   fmtRatio,
-} = require("../verify-compound-usd/analysis");
+} = require("../diagnostic/verify-compound-usd/analysis");
 const {
   buildProgram,
   argsFrom,
@@ -42,7 +42,7 @@ const {
   tokenIdFromKey,
   loadConfig,
   resolveTarget,
-} = require("../verify-compound-usd");
+} = require("../diagnostic/verify-compound-usd");
 
 /** The compound that motivated this tool. */
 const EV = { raw0: 97870110000n, raw1: 192505560000n };

@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/inspect-pool.test.js
+ * @file util/test/inspect-pool.test.js
  * @description
  * Tests for the pure helpers exported from inspect-pool.js.  The CLI
  * `main()` is gated behind `require.main === module`, so requiring
@@ -16,7 +16,8 @@ const {
   fmtUsd,
   filterPositions,
   filterEpochByFragment,
-} = require("../inspect-pool");
+  buildProgram,
+} = require("../diagnostic/inspect-pool");
 
 test("fmtNum — formats finite numbers with the requested precision", () => {
   assert.equal(fmtNum(3.14159, 2), "3.14");
@@ -89,4 +90,39 @@ test("filterEpochByFragment — filters epoch cache by substring", () => {
 test("filterEpochByFragment — empty fragment returns whole cache", () => {
   const cache = { foo: 1, bar: 2 };
   assert.deepEqual(filterEpochByFragment(cache, ""), cache);
+});
+
+/* ---------- the command line ---------- */
+
+/** Parse an argv through the tool's Commander declaration. */
+function parse(argv) {
+  return buildProgram().parse(argv, { from: "user" });
+}
+
+test("buildProgram — the fragment is optional", () => {
+  /*- A bare run dumps everything, so omitting the argument must not be
+   *  an error the way it is for the tools that need a target. */
+  assert.deepEqual(parse([]).args, []);
+});
+
+test("buildProgram — a fragment is taken as the filter", () => {
+  assert.deepEqual(parse(["b4d363d5"]).args, ["b4d363d5"]);
+});
+
+test("buildProgram — rejects an unknown option rather than ignoring it", () => {
+  assert.throws(
+    () =>
+      buildProgram()
+        .exitOverride()
+        .configureOutput({ writeErr: () => {} })
+        .parse(["--frgament", "x"], { from: "user" }),
+    /unknown option/,
+  );
+});
+
+test("buildProgram — help names the tool and the fragment argument", () => {
+  const help = buildProgram().helpInformation();
+  assert.match(help, /inspect-pool/);
+  assert.match(help, /\[fragment\]/);
+  assert.match(help, /-h, --help/);
 });

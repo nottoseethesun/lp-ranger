@@ -1,5 +1,5 @@
 /**
- * @file test/clean-pool-cache-cli.test.js
+ * @file util/test/clean-pool-cache-cli.test.js
  * @description
  * Covers the CLI surface of `util/cache/clean-pool-cache.js` —
  * argument parsing, chain resolution, factory validation and the file
@@ -14,7 +14,7 @@
  * Every test runs against a scratch directory. The tool's real paths
  * point at `tmp/`, which holds live operator caches.
  *
- * `_capture` is borrowed from `util/diagnostic/test/`: these tools are
+ * `_capture` sits beside this file in `util/test/`: these tools are
  * console-first, and capturing stdout plus intercepting `process.exit`
  * is the same problem there and here. Copying it would be duplication.
  */
@@ -26,12 +26,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const {
-  captureConsole,
-  captureExit,
-} = require("../util/diagnostic/test/_capture");
+const { captureConsole, captureExit } = require("./_capture");
 
-const cpc = require("../util/cache/clean-pool-cache");
+const cpc = require("../cache/clean-pool-cache");
 const {
   POOL,
   FACTORY,

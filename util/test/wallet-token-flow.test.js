@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/wallet-token-flow.test.js
+ * @file util/test/wallet-token-flow.test.js
  * @description
  * Tests for the pure helpers in wallet-token-flow/index.js.  The CLI
  * `main()` is gated behind `require.main === module`.
@@ -17,7 +17,7 @@ const {
   fmtAmount,
   buildProgram,
   dateWindowToBlocks,
-} = require("../wallet-token-flow");
+} = require("../diagnostic/wallet-token-flow");
 
 test("parseDateArg — recognises --from and --to with YYYY-MM-DD", () => {
   assert.deepEqual(parseDateArg("--from=2026-04-28"), {

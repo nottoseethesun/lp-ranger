@@ -1,5 +1,5 @@
 /**
- * @file test/clean-pool-cache.test.js
+ * @file util/test/clean-pool-cache.test.js
  * @description
  * Unit tests for the pure `filterPositionsForPool` helper exported by
  * `util/cache/clean-pool-cache.js`. The helper drives the surgical
@@ -17,7 +17,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { filterPositionsForPool } = require("../util/cache/clean-pool-cache");
+const { filterPositionsForPool } = require("../cache/clean-pool-cache");
 
 const POS_HEX_HEX_2500_A = {
   tokenId: "156966",

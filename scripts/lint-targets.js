@@ -19,7 +19,7 @@
  * Keep in lockstep with the ESLint invocation in the `lint` npm script:
  * a file that ESLint checks but Prettier does not (or vice versa) is
  * the drift this file exists to prevent.  `test/eslint-rules/` and
- * `util/diagnostic/test/` are covered by the `test/**` and `util/**`
+ * `util/test/` are covered by the `test/**` and `util/**`
  * globs respectively.
  */
 

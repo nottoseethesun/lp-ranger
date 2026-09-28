@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/scan-loops.test.js
+ * @file util/test/scan-loops.test.js
  * @description
  * Tests for the chunked `getLogs` scan loops that the diagnostic tools
  * share in shape but not in code: `show-rebalance-chain.scanTransfers`,
@@ -18,17 +18,17 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { scanTransfers } = require("../show-rebalance-chain");
+const { scanTransfers } = require("../diagnostic/show-rebalance-chain");
 /*- fetchTimestamps is shared by the chain walker and the token-flow
  *  scanner, so it lives in _helpers.js and is imported from there. */
-const { fetchTimestamps } = require("../_helpers");
-const { scanToken } = require("../wallet-token-flow");
+const { fetchTimestamps } = require("../diagnostic/_helpers");
+const { scanToken } = require("../diagnostic/wallet-token-flow");
 const {
   resolveKey,
   findAllTokenIds,
   filterByPool,
   sumEvents,
-} = require("../reconcile-hodl");
+} = require("../diagnostic/reconcile-hodl");
 const { captureConsole, fakeProvider } = require("./_capture");
 
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";

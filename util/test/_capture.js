@@ -1,5 +1,5 @@
 /**
- * @file util/diagnostic/test/_capture.js
+ * @file util/test/_capture.js
  * @description
  * Test-only helpers for driving the `util/diagnostic/` CLI tools.
  *

@@ -1,5 +1,5 @@
 /**
- * @file test/migrate-app-state.test.js
+ * @file util/test/migrate-app-state.test.js
  * @description Tests for `util/update/migrate-app-state.js`, the Step Six
  *   helper that carries operator state into a freshly extracted release.
  *
@@ -30,7 +30,7 @@ const {
   planTotal,
   validateDirs,
   main,
-} = require("../util/update/migrate-app-state");
+} = require("../update/migrate-app-state");
 
 /** A throwaway parent directory. */
 function tmpRoot() {
