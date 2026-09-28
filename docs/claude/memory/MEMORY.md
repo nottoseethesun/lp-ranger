@@ -146,7 +146,6 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [debug scripts print URL](project_debug_scripts_print_url.md) — Every `debug*` script prints its visit-this URL
 - [ESM migration](project_esm_migration.md) — 100% CJS; ESM would be a big-bang change
 - [gas-defer retry limit](project_gas_defer_retry_limit.md) — Optional cap on the gas-defer loop; not required
-- [log to file](project_log_to_file.md) — Auto-write the console to a log file for Pi 5 scrollback
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses a new pairing; ~30 min lag
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources; Routed Via shows an em-dash
 - [split rebalancePaused flag](project_split_rebalance_paused_flag.md) — Split the flag into aborted vs deferred

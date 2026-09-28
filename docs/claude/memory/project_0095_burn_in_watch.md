@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T19:37:22.859Z
+  modified: 2026-09-28T19:40:32.752Z
 ---
 
 Release **0.9.5** cut and deployed to Production 2026-09-28.
@@ -65,6 +65,24 @@ RPC requests they did, since network detection no longer fires on every
 one. A five-year event scan should finish in roughly half the wall-clock
 time. Worth confirming on the ~133-NFT chain, which is the install's
 heaviest scan — see [[project_test_wallet_is_atypical]].
+
+## How to check, concretely
+
+The operator runs Production with log-to-file on, so both tells are in
+one place: `logs/lp-ranger.log` under the install root, appended across
+runs. (The shipped default in `logging.json` is off; this install opts
+in.)
+
+```bash
+grep -c 'ILG rejected' logs/lp-ranger.log     # the Guard change showing up
+grep 'ALL 3 RPC ENDPOINT' logs/lp-ranger.log  # want: one banner, then an hour's silence
+```
+
+Each `ILG rejected` line carries the position, the projected value, the
+floor, the percent and — as of 0.9.5 — the name of the setting that
+produced it. File size is itself a signal: the 0.9.4 log reached 113 MB
+and roughly 90% of that was the runaway loop, so a quiet week should
+stay far smaller.
 
 The standing bar is [[project_maturity_staircase]]: stability outranks
 features, and the operator's own read since 0.9.2 is that the app may be
