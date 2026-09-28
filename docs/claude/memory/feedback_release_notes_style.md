@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-09-28T19:34:43.679Z
+  modified: 2026-09-28T19:38:38.155Z
 ---
 
 # Writing release notes
@@ -100,6 +100,24 @@ pass.
 Still keep a change's consequence (rule 2) — the cut is to explanation,
 never to the payoff. The one item that changes behavior on an install
 that does nothing may keep more room than the others.
+
+**And it was still too long after all that.** The user's verdict on the
+shipped 0.9.5 draft: *"yes you still had bulked up the release notes and
+obfuscated the main points a lot."* Three rounds of cutting landed at
+~300 words and that was roughly three times what it should have been.
+So the instinct is not merely "trim" — it is wrong at the outset, and
+the correction is structural:
+
+- **One line per change, and the line is the change.** Not the change
+  plus its mechanism plus its trade-off. If a bullet needs a second
+  sentence, the second sentence is usually the part to drop.
+- **Technical Details is two to four sentences total, not paragraphs
+  per topic.** It says what was wrong and what now happens. It is not
+  the commit message, and pasting the commit body in is the specific
+  habit that bloated 0.9.5.
+- **Target a hundred words for the whole body.** Every explanatory
+  clause competes with the four things a reader came for, and burying
+  them is the actual failure — length is only the symptom.
 
 ## Also
 
