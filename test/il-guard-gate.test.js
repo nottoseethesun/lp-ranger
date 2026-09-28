@@ -273,24 +273,38 @@ describe("checkIlGuard — the shipped default actually applies", () => {
     assert.deepEqual(
       r,
       { rebalanced: false, ilGuardRejected: true },
-      "an 87% loss must be refused at the shipped 50%",
+      "an 87% loss must be refused at the shipped default",
     );
   });
 
   it("still allows a loss inside the shipped default", () => {
     assert.equal(
-      checkIlGuard(virgin(), false, { currentValue: 2788.65 }, notifyPos),
+      checkIlGuard(virgin(), false, { currentValue: 3600 }, notifyPos),
       null,
-      "29% down passes a 50% guard",
+      "8.8% down sits inside the shipped 15%",
     );
   });
 
   it("a saved per-position value overrides the shipped default", () => {
-    const deps = virgin();
-    deps._getConfig = (k) => (k === "impermanentLossGuardPct" ? 20 : undefined);
+    /*- 29.4% down, the drawdown this position really had: refused by the
+     *  shipped 15, allowed once the operator raises the guard to 50. The
+     *  outcome flips, so it is the saved value deciding, not the default.
+     *  Each case gets its own state — a rejection stamps the retry clock,
+     *  and a second call on the same object would be held by it rather
+     *  than re-decided. */
+    const shipped = virgin();
     assert.ok(
-      checkIlGuard(deps, false, { currentValue: 2788.65 }, notifyPos),
-      "the same 29% loss is refused at 20%",
+      checkIlGuard(shipped, false, { currentValue: 2788.65 }, notifyPos),
+      "the shipped 15% refuses this one",
+    );
+
+    const raised = virgin();
+    raised._getConfig = (k) =>
+      k === "impermanentLossGuardPct" ? 50 : undefined;
+    assert.equal(
+      checkIlGuard(raised, false, { currentValue: 2788.65 }, notifyPos),
+      null,
+      "the same loss passes once the guard is raised to 50",
     );
   });
 });

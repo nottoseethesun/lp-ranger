@@ -18,7 +18,7 @@
       },
       {
         "heading": "Worked example",
-        "body": "The NFT was worth <strong>$1,000</strong> at mint and the Impermanent Loss Guard (ILG) is set to <strong>50%</strong>. Rebalancing stops if the position would come out below <strong>$500</strong>. At $640 it rebalances normally; at $480 it is rejected and left alone."
+        "body": "The NFT was worth <strong>$1,000</strong> at mint and the Impermanent Loss Guard (ILG) is set to <strong>15%</strong> (the default). Rebalancing stops if the position would come out below <strong>$850</strong>. At $910 it rebalances normally; at $820 it is rejected and left alone."
       },
       {
         "heading": "Retries back off, 4 hours to a week",
@@ -30,7 +30,7 @@
       },
       {
         "heading": "Choosing a value",
-        "body": "The check only comes up when a rebalance was due, which usually means the position is already out of range and earning no fees. So a rejection keeps it idle. That is the trade: you avoid locking a loss in at a new price range, and you give up the fees a re-centred position would have earned.<br><strong>50%</strong> (the default) is a catastrophe brake &mdash; the position has halved since you minted it.<br><strong>20% or below</strong> fires during ordinary volatility on a swingy pair, and will stop rebalancing often.<br><strong>100%</strong> effectively turns it off."
+        "body": "The two sides of this trade are not alike, which is why the default is tight. Rebalancing <strong>crystallizes</strong> the loss: the position is re-minted around today&rsquo;s price, so a paper loss that a price recovery would have undone becomes permanent. Declining costs you fees &mdash; but the check only comes up when a rebalance was due, which usually means the position is already out of range and earning few fees anyway. And fees are what would have to earn that loss back. In a quiet pool that can take longer than you hold the position.<br><strong>15%</strong> (the default) leaves ordinary drawdowns to rebalance and holds back on deep ones.<br><strong>Higher</strong> rebalances through steeper losses, so the position keeps earning &mdash; at the price of locking those losses in.<br><strong>Lower</strong> protects harder, and will stop rebalancing often on a swingy pair.<br><strong>100%</strong> effectively turns it off."
       },
       {
         "heading": "What is not included",

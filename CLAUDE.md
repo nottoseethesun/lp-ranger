@@ -330,8 +330,14 @@ npm run api-doc        # Start Scalar API reference at http://localhost:5556 (AP
 **Range override toggle:** Bot Settings → **Range** is headed by a "No Override" toggle and a status badge reading either "Re-Use Existing Position Range" or "Use Settings Below". It gates all three Range settings at once — `rebalanceRangeWidthPct`, `fullRangeRebalanceEnabled`, `offsetToken0Pct` — and is stored per position as `rangeOverrideEnabled`. When the toggle is on, `buildRebalanceOpts` withholds the width and the Full-Range flag and pins the offset to the shipped default, so `_computeRange` lands on `preserveRange()` centered on the current tick. Pinning the offset is required, not redundant: `preserveRange()` keeps the existing tick spread but a saved non-centered `offsetToken0Pct` would still shift where that spread lands. The toggle is **non-destructive**: it never clears the keys it suppresses — the dashboard greys the fields out instead, so flipping back restores the user's settings intact. `resolveRangeOverrideEnabled` in `src/range-override.js` is the sole decider: an explicit boolean wins; otherwise a slot already carrying Range settings resolves to `true` (so upgrading doesn't silently stop applying a live position's settings) and an empty slot resolves to the shipped `false`, i.e. every position starts on "No Override". The server publishes the **resolved** value in `GET /api/status`, so the dashboard never re-derives the rule.
 
 **Impermanent Loss Guard (ILG):** A per-position ceiling
-(`impermanentLossGuardPct`, default 50) on how far a position may have
-fallen before the bot stops rebalancing it. Before every **automatic**
+(`impermanentLossGuardPct`, default 15) on how far a position may have
+fallen before the bot stops rebalancing it. The default is tight because
+the two sides are not alike: rebalancing **crystallizes** the loss by
+re-minting around the current price, turning a paper loss a recovery
+would have undone into a permanent one, while declining costs only fees
+the position is largely not earning — it is out of range, which is why a
+rebalance was due. Fees are also what would have to earn the loss back,
+and in a low-volume pool that can outlast the position. Before every **automatic**
 rebalance, `checkIlGuard` (`src/il-guard.js`) compares the hypothetical
 post-rebalance position — LP value plus the pool residual a rebalance
 would fold in, slippage excluded — against `hodlBaseline.entryValue`,

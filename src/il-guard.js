@@ -66,7 +66,7 @@ const _DEFAULTS = readBotConfigDefaults();
  *  and `posDefaults` in handle-api-status.js publishes that same value
  *  to the Auto-Rebalance Settings badge.  Reading the JSON here instead
  *  made `IMPERMANENT_LOSS_GUARD_PCT=30` show 30 on the badge while the
- *  bot still enforced 50. */
+ *  bot went on enforcing the shipped default. */
 const _DEFAULT_GUARD_PCT = config.IMPERMANENT_LOSS_GUARD_PCT;
 
 /**
