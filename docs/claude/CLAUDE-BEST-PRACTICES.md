@@ -73,6 +73,16 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 - **Use definitive boolean/status fields** — never use heuristic guesses for detection. When tracking state (e.g. "has lifetime data loaded?"), use an explicit flag set at the moment the event occurs, not an inference from secondary signals.
 - **Log hashes with a space after `=`** — write `hash= %s` not `hash=%s` so the hash is a separate word that can be double-click-copied in the terminal. Applies to all TX hashes, cancel hashes, and any hex value a developer might need to copy.
 
+## CLI Tools
+
+- **Never hand-roll argument parsing. Use `commander`.** No `argv.indexOf`, no `startsWith("--")` scanning, no hand-written `USAGE` string. Declare the command once — name, description, each `.option()` with its default — and the help is generated from that declaration, so the two cannot drift. A parser also catches what hand-rolling misses: unknown flags, missing option values.
+- **Every CLI answers `--help` and `-h`, and is not finished until it does.** Applies to `util/` tools and `scripts/` alike. Commander does this for free, to stdout, exiting 0, ahead of any validation — which is the right order, since someone reaching for `--help` is unsure of the arguments and must not be refused for omitting one.
+- **Help goes to stdout and exits 0; an argument mistake goes to stderr and exits non-zero.** Reversing them breaks `tool --help | less` and any script reading the exit status.
+- **Validate option values inside the parser** — a function as `.option()`'s third argument, throwing `InvalidArgumentError`. Commander then names the option in the message and refuses before the tool works. Accepting a bad value instead surfaces it later as a failure that never mentions the flag.
+- **Lead the description with what the tool is for**, not how to spell a flag. Put exit codes and trailing notes in `.addHelpText("after", …)`.
+- **Build the command inside a function**, not at module scope, so a test can parse several argument lists without options accumulating.
+- **A diagnostic that may be run against a live install imports nothing from `src/`** — loading the app's config opens the log file and reads operator settings. Accept a duplicated default over that, and say so in the file header.
+
 ## UI & Display
 
 - **No skeuomorphic icons** — avoid emoji icons that mimic real-world objects (folders, keys, magnifying glasses). Use minimal inline SVG or Unicode geometric symbols instead. Icons should be abstract, clean, and consistent with the dashboard's dark terminal aesthetic.

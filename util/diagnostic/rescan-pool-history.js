@@ -81,33 +81,66 @@
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
+const { Command } = require("commander");
+
+/**
+ * Describe the command line, so Commander both parses it and renders
+ * `--help` from the one declaration.
+ *
+ * Built per call rather than held at module scope, so a test can parse
+ * several argument lists without state carrying between them.
+ *
+ * @returns {Command}  Configured, not yet parsed.
+ */
+function buildProgram() {
+  return (
+    new Command()
+      .name("rescan-pool-history")
+      .description(
+        "Drop a pool's cached scan results so the bot rebuilds them on next " +
+          "start. MUTATES local cache files.",
+      )
+      .argument("<tokenId>", "the NFT whose pool should be rescanned")
+      .option("--blockchain <name>", "chain name", "pulsechain")
+      /*- Placeholders avoid a literal "..." — Commander reads that as a
+       *  variadic option and hands back an array instead of a string. */
+      .option(
+        "--wallet <address>",
+        "required if several positions match tokenId",
+      )
+      .option(
+        "--contract <address>",
+        "position manager; by default matches only when exactly one " +
+          "position in config carries that tokenId",
+      )
+      .option("--token0 <addr>", "disambiguates a wallet with several pools")
+      .option("--token1 <addr>", "on the same contract; without these the")
+      .option("--fee <int>", "script lists the candidates and refuses")
+      .option(
+        "--clear-hodl",
+        "ALSO drop the pool's cached lifetimeHodlAmounts, forcing a HODL " +
+          "recompute — slower restart",
+      )
+      .option("--yes", "skip the y/N prompt, for scripted recovery")
+      .addHelpText(
+        "after",
+        "\nExamples:\n" +
+          "  rescan-pool-history.js 159289\n" +
+          "  rescan-pool-history.js 159289 --wallet 0x4e44...\n" +
+          "  rescan-pool-history.js 159289 --yes\n" +
+          "\nExit codes:\n" +
+          "  0  completed, or the user declined at the prompt\n" +
+          "  1  bad arguments, position not found, or ambiguous match\n" +
+          "  2  config missing/unparseable, or with --clear-hodl an\n" +
+          "     unparseable epoch cache\n",
+      )
+  );
+}
 
 const CONFIG_PATH = path.resolve(
   "app-config/user-configurable/bot-config.json",
 );
 const EPOCH_CACHE_PATH = path.resolve("tmp/pnl-epochs-cache.json");
-
-/** Parse a `--flag value` style CLI args object from process.argv. */
-function _parseArgs(argv) {
-  const positional = [];
-  const flags = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a.startsWith("--")) {
-      const name = a.slice(2);
-      const next = argv[i + 1];
-      if (next && !next.startsWith("--")) {
-        flags[name] = next;
-        i++;
-      } else {
-        flags[name] = true;
-      }
-    } else {
-      positional.push(a);
-    }
-  }
-  return { positional, flags };
-}
 
 /** Load + parse a JSON file, exiting with code 2 on any failure. */
 function _loadJson(filePath, label) {
@@ -388,18 +421,29 @@ async function main(argv = process.argv.slice(2), opts = {}) {
   const configPath = opts.configPath || CONFIG_PATH;
   const epochPath = opts.epochPath || EPOCH_CACHE_PATH;
   const confirm = opts.confirm || _confirm;
-  const { positional, flags } = _parseArgs(argv);
-  if (positional.length !== 1 || flags.help) {
-    console.error(
-      "Usage: node util/diagnostic/rescan-pool-history.js <tokenId>" +
-        " [--wallet 0x...] [--contract 0x...]" +
-        " [--blockchain pulsechain] [--token0 0x...] [--token1 0x...]" +
-        " [--fee 2500] [--clear-hodl] [--yes]",
-    );
+  /*- Commander handles --help and -h itself: stdout, exit 0, ahead of
+   *  any validation, which is the right order because someone reaching
+   *  for usage is by definition unsure of the arguments. */
+  const program = buildProgram().parse(argv, { from: "user" });
+  const positional = program.args;
+  if (positional.length !== 1) {
+    console.error(program.helpInformation());
     process.exit(1);
   }
   const tokenId = positional[0];
-  if (!flags.blockchain) flags.blockchain = "pulsechain";
+  /*- Commander's camelCase option names mapped back to the flag shape
+   *  the resolver helpers below already take. */
+  const o = program.opts();
+  const flags = {
+    blockchain: o.blockchain,
+    wallet: o.wallet,
+    contract: o.contract,
+    token0: o.token0,
+    token1: o.token1,
+    fee: o.fee,
+    yes: o.yes,
+    "clear-hodl": o.clearHodl,
+  };
 
   if (!fs.existsSync(configPath)) {
     console.error("[rescan] config not found at %s", configPath);
@@ -460,7 +504,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  _parseArgs,
+  buildProgram,
   _findPositionKey,
   _filterDescription,
   _findPoolKey,

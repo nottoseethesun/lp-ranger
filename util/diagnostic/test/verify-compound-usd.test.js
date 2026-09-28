@@ -36,7 +36,8 @@ const {
   fmtRatio,
 } = require("../verify-compound-usd/analysis");
 const {
-  parseArgs,
+  buildProgram,
+  argsFrom,
   resolveKey,
   tokenIdFromKey,
   loadConfig,
@@ -264,38 +265,60 @@ test("classifyIl — an empty event list stays empty", () => {
   assert.deepEqual(classifyIl([], [], false), []);
 });
 
-test("parseArgs — bare fragment plus the reported figure", () => {
-  const a = parseArgs(["162980", "--usd", "240.10"]);
+/** Parse an argv through the tool's Commander declaration. */
+function args(argv) {
+  return argsFrom(buildProgram().parse(argv, { from: "user" }));
+}
+
+/** A program that throws instead of exiting, and prints nothing. */
+function quiet() {
+  return buildProgram()
+    .exitOverride()
+    .configureOutput({ writeErr: () => {} });
+}
+
+test("argsFrom — bare fragment plus the reported figure", () => {
+  const a = args(["162980", "--usd", "240.10"]);
   assert.equal(a.target, "162980");
   assert.equal(a.usd, 240.1);
   assert.equal(a.days, 30);
   assert.equal(a.error, null);
 });
 
-test("parseArgs — --token-id skips the config lookup", () => {
-  const a = parseArgs(["--token-id", "162980"]);
+test("argsFrom — --token-id skips the config lookup", () => {
+  const a = args(["--token-id", "162980"]);
   assert.equal(a.tokenId, "162980");
   assert.equal(a.target, null);
   assert.equal(a.error, null);
 });
 
-test("parseArgs — rejects an unknown option instead of ignoring it", () => {
-  assert.match(parseArgs(["--dayz", "5"]).error, /unknown option/);
+test("buildProgram — rejects an unknown option instead of ignoring it", () => {
+  assert.throws(
+    () => quiet().parse(["--dayz", "5"], { from: "user" }),
+    /unknown option/,
+  );
 });
 
-test("parseArgs — rejects a non-numeric window", () => {
-  assert.match(parseArgs(["162980", "--days", "lots"]).error, /needs a number/);
+test("buildProgram — rejects a non-numeric window", () => {
+  assert.throws(
+    () => quiet().parse(["162980", "--days", "lots"], { from: "user" }),
+    /needs a number/,
+  );
 });
 
-test("parseArgs — requires a target unless --help", () => {
-  assert.match(parseArgs([]).error, /need a composite key/);
-  assert.equal(parseArgs(["--help"]).error, null);
-  assert.equal(parseArgs(["--help"]).help, true);
+test("argsFrom — requires a target or --token-id", () => {
+  /*- Commander cannot express "either of these two", since each alone
+   *  satisfies it, so the rule lives in argsFrom and is asserted here. */
+  assert.match(args([]).error, /need a composite key/);
+  assert.equal(args(["162980"]).error, null);
+  assert.equal(args(["--token-id", "1"]).error, null);
 });
 
-test("parseArgs — --from-block overrides are parsed as numbers", () => {
-  const a = parseArgs(["162980", "--from-block", "27000000"]);
-  assert.equal(a.fromBlock, 27000000);
+test("argsFrom — --from-block overrides are parsed as numbers", () => {
+  assert.equal(
+    args(["162980", "--from-block", "27000000"]).fromBlock,
+    27000000,
+  );
 });
 
 test("resolveKey — exact key, fragment, miss, and ambiguity", () => {
@@ -439,7 +462,13 @@ test("resolveTarget — exits and lists all positions when nothing matches", asy
   fs.rmSync(path.dirname(p), { recursive: true, force: true });
 });
 
-test("parseArgs — a second positional is an error, not a silent drop", () => {
-  const out = parseArgs(["162980", "extra"]);
-  assert.match(out.error, /unexpected argument: extra/);
+test("buildProgram — a second positional is an error, not a silent drop", () => {
+  assert.throws(
+    () =>
+      buildProgram()
+        .exitOverride()
+        .configureOutput({ writeErr: () => {} })
+        .parse(["162980", "extra"], { from: "user" }),
+    /too many arguments/i,
+  );
 });

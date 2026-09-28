@@ -42,6 +42,7 @@ getting code from a feature branch into `main`. The remote must
 | **stylelint** | CSS lint (`public/*.css`) |
 | **markdownlint** | Markdown lint (`README.md`, `CLAUDE.md`, `docs/*.md`) |
 | **lint-svg** | `public/icons/*.svg` — strict XML, no `id=` attributes (`scripts/lint-svg.js`) |
+| **knip (files)** | Dead files — `knip --include files`. Only the `files` issue type gates; unused *exports* are deliberate seams, not defects. `knip.json` declares every real entry point (`scripts/`, `util/`, the dashboard bundle root, tests), without which CLI tools read as unreachable |
 | **openapi-sync** | `docs/openapi.json` still matches the code — every registered route documented, every documented route still served, every `POST /api/config` key in its schema, every operation summarised, every tag declared |
 | **Tests** | `node --test test/*.test.js` — all must pass |
 | **Coverage** | 80% line coverage minimum |

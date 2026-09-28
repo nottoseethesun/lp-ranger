@@ -29,7 +29,12 @@ const os = require("node:os");
 const path = require("node:path");
 
 const { captureConsole, captureExit } = require("./_capture");
-const { _confirm, _applyMutations, main } = require("../rescan-pool-history");
+const {
+  _confirm,
+  _applyMutations,
+  main,
+  buildProgram,
+} = require("../rescan-pool-history");
 
 const WALLET = "0x4e448D6fd48B2Bb0F2Ca5c1D1d34E4bDd5FE6E8f";
 const PM = "0xCC05bf158fF2Bdc37eb0d2A2Ea6D2A4Ba1Bd0Ee7";
@@ -353,13 +358,36 @@ test("main --yes — skips the prompt entirely", async () => {
   fs.rmSync(f.dir, { recursive: true, force: true });
 });
 
-test("main — exits 1 with usage when no tokenId is given", async () => {
+/*- Commander writes help and errors through its own output hooks, not
+ *  console, so these assert on the exit code and let `captureConsole`
+ *  prove nothing leaked to the wrong stream. */
+
+test("main — a missing tokenId is refused with a non-zero exit", async () => {
   const res = await captureConsole(() => captureExit(() => main([], {})));
-  assert.equal(res.value.code, 1);
-  assert.match(
-    res.err.join("\n"),
-    /Usage: node util\/diagnostic\/rescan-pool-history/,
+  assert.equal(res.value.code, 1, "a usage error exits non-zero");
+  assert.equal(res.out.join("\n"), "", "nothing on stdout for an error");
+});
+
+test("main — --help exits 0 rather than as an error", async () => {
+  /*- Asking for usage is not a failure.  This once went to stderr and
+   *  exited 1, which breaks `tool --help | less` and any script reading
+   *  the status. */
+  const res = await captureConsole(() =>
+    captureExit(() => main(["--help"], {})),
   );
+  assert.equal(res.value.code, 0, "help is a success, not an error");
+});
+
+test("main — -h is accepted as well as --help", async () => {
+  const res = await captureConsole(() => captureExit(() => main(["-h"], {})));
+  assert.equal(res.value.code, 0);
+});
+
+test("buildProgram — help text names the tool and its options", () => {
+  const help = buildProgram().helpInformation();
+  assert.match(help, /rescan-pool-history/);
+  assert.match(help, /--clear-hodl/);
+  assert.match(help, /<tokenId>/);
 });
 
 test("main — exits 2 when the config file is absent", async () => {

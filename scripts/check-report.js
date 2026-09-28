@@ -85,6 +85,24 @@ function _gitInfo() {
 }
 
 /**
+ * Summarise the dead-file result for the overview table.
+ *
+ * Its own function rather than a ternary inside `loadResults`, which
+ * sits near the complexity ceiling: one more branch there costs a lint
+ * error, and the rule is to extract rather than compress.
+ *
+ * @param {{files?: string[]}} knip  knip's `--include files` JSON.
+ * @returns {string}  One line, naming up to three offenders.
+ */
+function _knipDetail(knip) {
+  const files = knip.files || [];
+  if (files.length === 0) return "0 unused files, every entry point declared";
+  const shown = files.slice(0, 3).join(", ");
+  const more = files.length > 3 ? ` (+${files.length - 3} more)` : "";
+  return `${files.length} unused file(s): ${shown}${more}`;
+}
+
+/**
  * Load and parse all captured raw outputs into a single results object.
  * @returns {object}
  */
@@ -121,6 +139,10 @@ function loadResults() {
     files: 0,
     errors: 0,
   };
+  /*- knip's own JSON reporter, restricted to the `files` issue type:
+   *  `{ files: [...], issues: [...] }`.  A missing or crashed run reads
+   *  as no findings, and the exit code is what decides pass/fail. */
+  const knip = _readJson("knip.json") || { files: [] };
   /*- The checker emits its own JSON, so there is nothing to parse —
    *  just a shape to fall back to when the file is missing. */
   const openapiSync = _readJson("openapi-sync.json") || {
@@ -208,6 +230,7 @@ function loadResults() {
           ? `0 err, ${lintSvg.files} files, icon policy clean`
           : `${lintSvg.errors} err across ${lintSvg.files} files`,
     },
+    knip: { ok: exitCodes.knip === 0, detail: _knipDetail(knip) },
     openapiSync: {
       ok: exitCodes.openapiSync === 0,
       detail: openapiSync.ok
@@ -265,6 +288,7 @@ function loadResults() {
     { name: "Prettier (YAML)", ...checks.prettierYaml },
     { name: "actionlint", ...checks.actionlint },
     { name: "lint-svg", ...checks.lintSvg },
+    { name: "knip (files)", ...checks.knip },
     { name: "openapi-sync", ...checks.openapiSync },
     { name: "Tests", ...checks.tests },
     { name: "Coverage", ...checks.coverage },
@@ -292,6 +316,7 @@ function loadResults() {
     prettierYaml,
     actionlint,
     lintSvg,
+    knip,
     openapiSync,
     npmAudit,
     securityLint,

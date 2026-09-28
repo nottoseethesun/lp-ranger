@@ -92,6 +92,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [don't persist a correction](feedback_dont_persist_a_correction.md) — Ask whether the wrong value should be written at all
 - [no lazy loading](feedback_no_lazy_loading.md) — No `require()` inside functions
 - [no re-exports](feedback_no_reexports.md) — Import from the owning module
+- [unused exports are fine](feedback_unused_exports_are_fine.md) — An export nothing imports yet is composability, not a gap; never a finding, never deleted for knip
 - [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file
 - [price API, no pool](feedback_price_api_no_pool.md) — Let the price service pick the pool
 - [slippage lowest floor](feedback_slippage_lowest_floor.md) — `_bestAttemptError` taking the LOWEST impact is intentional

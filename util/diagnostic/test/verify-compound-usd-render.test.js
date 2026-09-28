@@ -19,7 +19,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { scanEvents, printHelp } = require("../verify-compound-usd");
+const { scanEvents, buildProgram } = require("../verify-compound-usd");
 const {
   renderPrices,
   renderEventRow,
@@ -298,9 +298,10 @@ test("scanEvents — a getLogs failure degrades, does not throw", async () => {
   assert.match(res.err.join("\n"), /boom/);
 });
 
-test("printHelp — lists every option", async () => {
-  const { out } = await captureConsole(() => printHelp());
-  const text = out.join("\n");
+test("help — lists every option", () => {
+  /*- Rendered by Commander from the same declaration that parses the
+   *  arguments, so this can no longer drift from what is accepted. */
+  const text = buildProgram().helpInformation();
   for (const flag of [
     "--token-id",
     "--usd",
