@@ -117,9 +117,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
 - [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
 - [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Whole recommendation inside the parens
-- [PR #125 burn-in watch](project_pr125_burn_in_watch.md) — LP-browser rescan after a failed scan
-- [0.8.17 burn-in watch](project_0817_burn_in_watch.md) — Aggregator really routes via 9mm; swap pricing changed
-- [0.9.2 burn-in watch](project_0092_burn_in_watch.md) — User says the app may be done; 1.0 after burn-in
+- [0.9.5 burn-in watch](project_0095_burn_in_watch.md) — IL Guard 50 → 15 moves every unset position; outage fix untested by a real outage
 - [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a test artifact; real positions make ≤24/year
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — The daily audit covers the release tag, not main
@@ -154,6 +152,5 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [split rebalancePaused flag](project_split_rebalance_paused_flag.md) — Split the flag into aborted vs deferred
 - [suppress OOR until synced](project_suppress_oor_until_synced.md) — Unmanaged view flashes "out of range" too early
 - [throttle rehydrate loses timestamps](project_throttle_rehydrate_loses_timestamps.md) — rehydrate() restores dailyCount, not rebTimestamps
-- [util coverage recipe](project_util_coverage_deferred.md) — Resolved; keeps the render-split + inject-paths recipe
 - [bug reports on dependencies](reference_bug_reports_on_dependencies.md) — `../bug-reports-on-dependencies/` holds upstream repros
 - [release notes header](reference_release_notes_header.md) — docs/release-notes-header.md is the install blockquote

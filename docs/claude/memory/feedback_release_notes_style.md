@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-08-08T23:32:19.052Z
+  modified: 2026-09-28T19:34:43.679Z
 ---
 
 # Writing release notes
@@ -70,6 +70,36 @@ what kind of thing it is and everything it does.
 
 The shared-builder bullet gained "avoiding any duplication of logic".
 Having explained a mechanism, say what it buys.
+
+## 7. Draft short, then cut it in half again
+
+Added 2026-09-28, drafting 0.9.5. A ~730-word draft was cut to ~300 on
+the instruction *"Trim the word count by 60%"*, and one 75-word bullet
+was then cut again to 20: *"Reduce to 20 words; the reader does not care
+about details such as 'no saved value'."* Four rules came out of that
+pass.
+
+- **No history.** *"don't mention old stuff."* Cut the incident recap,
+  the "down from 50%" framing, the before/after test numbers, and the
+  "if you want the old behavior" paragraph. A release note says what the
+  release does, not what the last one did. The operator reading it has
+  no memory of the bug being fixed and does not need one.
+- **Cut qualifiers that narrow who is affected.** "A position with no
+  saved value…" is true and was struck anyway. Conditions and caveats
+  live in the help dialog and the Manual; the bullet carries the
+  headline.
+- **End the bullet on the decision, with the reasons leading to it.**
+  The Guard bullet started as "**now defaults to 15%.** <reasons>" and
+  the user rewrote the tail as "…fees may never earn it back, **so the
+  default loss is capped at 15% now**." Reason → reason → conclusion.
+  When the figure moves to the end, drop it from the bold lead — it was
+  stated twice otherwise, and the lead becomes a plain category label.
+- **A word budget is a real number.** "20 words" meant twenty. Count
+  them.
+
+Still keep a change's consequence (rule 2) — the cut is to explanation,
+never to the payoff. The one item that changes behavior on an install
+that does nothing may keep more room than the others.
 
 ## Also
 
