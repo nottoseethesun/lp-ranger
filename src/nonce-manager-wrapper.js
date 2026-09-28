@@ -209,7 +209,11 @@ class FailoverNonceManager {
       return await this._sync().sendTransaction(tx);
     } catch (err) {
       if (classifyRpcError(err) !== "transient") throw err;
-      sendTx.failoverToNextRPC();
+      /*- Name the provider this broadcast used.  A concurrent read may
+       *  already have moved selection off it, in which case there is
+       *  nothing to report and the `before !== after` check below still
+       *  sends the retry to wherever that read moved us. */
+      sendTx.failoverToNextRPC(before);
       const after = sendTx.getCurrentRPC();
       if (before === after) throw err;
       log.warn(

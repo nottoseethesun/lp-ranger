@@ -335,6 +335,10 @@ function getManagedReadProvider() {
               isFailoverable: _isReadFailoverable,
               failover: failoverToNextRPC,
               current: getCurrentRPC,
+              /*- The provider this call was actually made against, so
+               *  the first failover report names it rather than
+               *  advancing from wherever selection has since drifted. */
+              failedProvider: current,
             }),
           );
         };
@@ -366,12 +370,35 @@ function getCurrentRPC() {
 }
 
 /**
- * Step one place forward through the RPC list, sticky for
+ * Report that an endpoint failed, and step one place forward through the
+ * RPC list if it is still the one selected, sticky for
  * FAILOVER_DURATION_MS.
  *
  * Called by the read-retry loop when an endpoint answers with a failure
  * that is the endpoint's fault, and by the NonceManager wrapper when its
  * underlying RPC throws.
+ *
+ * **`failedProvider` is what keeps one endpoint from spending the whole
+ * list.** Selection is process-wide, and the bot reads concurrently —
+ * ten positions polling, a pool-state read, a chunked scan — so one
+ * endpoint's failure arrives here several times within the same second.
+ * Advancing on each arrival walks the index off the end of a
+ * three-endpoint list in about that long, and stepping off the end
+ * halts every JSON-RPC request in the process for an hour. The cost of
+ * getting this wrong is therefore not a slow read: it is a frozen bot,
+ * on endpoints that were never asked.
+ *
+ * Naming the endpoint makes the call idempotent. Ten failures against
+ * the first endpoint advance once, because after the first advance
+ * selection no longer sits where the others failed; the rest return
+ * `false` and their callers retry on the endpoint the first one moved
+ * to. The list is then spent only by endpoints that actually refused.
+ *
+ * Omitting the argument keeps the unconditional advance, which is a
+ * different request — "step the list" rather than "this endpoint
+ * failed" — and is what boot probes and tests driving state want. A
+ * caller reacting to a failure always has the provider it called and
+ * should pass it.
  *
  * The end of the list is not a dead end.  Stepping off the last endpoint
  * holds ALL RPC traffic for the configured wait, staying on the endpoint
@@ -382,9 +409,13 @@ function getCurrentRPC() {
  * No-op on a single-endpoint chain (the PulseChain testnet ships one) —
  * there is nowhere to move and nothing a pause would achieve.
  *
+ * @param {object} [failedProvider]  The provider the caller just saw
+ *   fail. When given and selection has already moved off it, nothing
+ *   happens. `null` counts as not given, so a caller whose provider
+ *   turned out absent still steps rather than being silently pinned.
  * @returns {boolean} Whether selection actually moved.
  */
-function failoverToNextRPC() {
+function failoverToNextRPC(failedProvider) {
   if (_providers.length === 0) {
     throw new Error(
       "[send-tx] failoverToNextRPC: not initialized — call init() at boot first",
@@ -400,6 +431,17 @@ function failoverToNextRPC() {
    *  index and skip endpoints. */
   getCurrentRPC();
   const from = _activeIdx;
+
+  /*- Both absent forms mean "no endpoint named", so a caller holding a
+   *  provider that turned out null gets the unconditional step rather
+   *  than a guard that can never match — which would disable its
+   *  failover silently, for the life of the process. */
+  const named = failedProvider !== undefined && failedProvider !== null;
+
+  /*- Someone else already moved us off the endpoint this caller saw
+   *  fail, so its call is spent.  Checked after the snapback above,
+   *  because that is what decides which endpoint `from` names. */
+  if (named && _providers[from] !== failedProvider) return false;
   if (from >= _providers.length - 1) {
     /*- Stay on the current endpoint for the duration — nothing can be
      *  sent anyway.  The pause's deadline becomes the sticky deadline,
