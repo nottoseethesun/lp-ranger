@@ -5,12 +5,18 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 53c63b8a-d973-4be1-8005-50ac113c57eb
-  modified: 2026-09-20T00:13:43.092Z
+  modified: 2026-09-21T07:20:47.939Z
 ---
 
 The lockfile (`package-lock.json`) exists so every developer (and CI) installs the exact same dependency tree. But it must be **deleted and regenerated periodically** — otherwise transitive deps stay pinned at old versions indefinitely, even when the parent's caret range already accepts a newer patched release. Stale lockfiles are how unnecessary overrides and unpatched advisories accumulate.
 
 Never add an npm override as the first response to a transitive-dep issue. Instead: delete **both `node_modules` and `package-lock.json`**, run `npm install`, and check whether the newer version resolves naturally. Only add an override if the parent's declared range genuinely excludes the fix (exact pin, range ceiling).
+
+**`npm run check` cannot catch a broken lockfile — run `npm ci --dry-run` after adding any dependency.** The local gate runs against whatever `node_modules` already sits on disk; it never installs from `package-lock.json`. So a lockfile that *cannot reproduce that tree* passes all fifteen gates, including the local merge-to-main check. `npm ci` is the only command that tests it, and it runs only in CI.
+
+**Why:** 2026-09-21, PR #209 failed CI at "Install dependencies" in nine seconds, before a single test ran — jsdom's `@exodus/bytes` wanted `@noble/hashes@^1.8.0` while the hoisted copy was 1.3.2 from ethers, and npm called it invalid. Adding `validator` earlier in that branch put package.json and the lockfile out of step. Steps 2 and 3 of the merge protocol both passed and could not have caught it. `npm install` would not repair it either — the existing tree already satisfied npm locally. The fix was the delete-both-and-reinstall above.
+
+**How to apply:** after `npm i <pkg>`, run `npm ci --dry-run` before committing. It is the exact command CI runs. See also [[feedback_ci_protocol]], [[feedback_check_before_push]].
 
 Do NOT do incremental `npm install` / `npm update <pkg>` and then investigate the resulting tree — that produced spurious dedup churn and even a stale `invalid` resolution (`@noble/hashes` under `@exodus/bytes`) that a clean full regen fixed automatically. Just blow the tree away and let Node rebuild it; don't overthink the dep graph.
 

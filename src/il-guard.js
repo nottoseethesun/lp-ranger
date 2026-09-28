@@ -66,7 +66,7 @@ const _DEFAULTS = readBotConfigDefaults();
  *  and `posDefaults` in handle-api-status.js publishes that same value
  *  to the Auto-Rebalance Settings badge.  Reading the JSON here instead
  *  made `IMPERMANENT_LOSS_GUARD_PCT=30` show 30 on the badge while the
- *  bot still enforced 50. */
+ *  bot went on enforcing the shipped default. */
 const _DEFAULT_GUARD_PCT = config.IMPERMANENT_LOSS_GUARD_PCT;
 
 /**
@@ -381,7 +381,10 @@ function checkIlGuard(deps, forced, snap, notifyPos) {
     ilGuardRetryWaitMs((st?._ilGuardRejectCount || 0) + 1) / 3_600_000
   ).toFixed(0);
   log.info(
-    "[bot] ILG rejected rebalance for #%s: projected $%s is %s%% below the $%s this NFT was worth at mint (floor $%s at %d%%). Position untouched; next check in %sh.",
+    "[bot] ILG rejected rebalance for #%s: projected $%s is %s%% below the " +
+      "$%s this NFT was worth at mint (floor $%s at %d%% as set by the Bot " +
+      'Configuration setting, "Impermanent Loss Guard (%%)"). Position ' +
+      "untouched; next check in %sh.",
     deps.position?.tokenId,
     projectedValueUsd.toFixed(2),
     r.lossPct.toFixed(1),

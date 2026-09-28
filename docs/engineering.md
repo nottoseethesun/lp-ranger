@@ -613,9 +613,18 @@ Telegram alert with a manual link appended and
 `textContent`. Two hand-kept copies of those sentences drifted the
 moment either was copy-edited.
 
-**Config.** `impermanentLossGuardPct` (default 50) is a `POSITION_KEYS`
+**Config.** `impermanentLossGuardPct` (default 15) is a `POSITION_KEYS`
 entry — per position, settable in Bot Settings → Execution, and shown as
-a badge in Auto-Rebalance Settings. Its input bounds live beside it in
+a badge in Auto-Rebalance Settings. The default is deliberately tight.
+Rebalancing crystallizes the loss — the position is re-minted around the
+current price, so a paper loss that a recovery would have undone becomes
+permanent — whereas declining forgoes fees the position is largely not
+earning, since the guard is only consulted when a rebalance was due and
+that usually means out of range. Fees are also the only thing that earns
+such a loss back, and a low-volume pool may not produce them faster than
+the position is held. What tightness costs is that a rejection clears
+only on price: a blocked position cannot mint a new NFT, so it cannot
+take a new baseline. Its input bounds live beside it in
 `bot-config-defaults.json` as `impermanentLossGuardPctMin` /
 `impermanentLossGuardPctMax` (1 / 100), which are the single source for
 the input's `min`/`max` (stamped on by `dashboard-init.js`), the Save
@@ -633,7 +642,8 @@ panel to press Save in. `src/il-guard.js` reads the same
 `config.IMPERMANENT_LOSS_GUARD_PCT` export for its own fallback, so the
 badge and the enforced threshold resolve through one expression —
 reading `bot-config-defaults.json` directly there is what made
-`IMPERMANENT_LOSS_GUARD_PCT=30` display 30 while the bot enforced 50.
+`IMPERMANENT_LOSS_GUARD_PCT=30` display 30 while the bot went on
+enforcing the shipped default.
 
 The Bot Settings input is not a third resolution path, despite prefilling
 from `/api/bot-config-defaults`: `buildStatusPositions` spreads
@@ -1969,7 +1979,7 @@ overrides live in `app-config/user-configurable/bot-config.json`.
 | `minRebalanceIntervalMin` | `10` | Minimum gap between back-to-back rebalances on the same pool |
 | `maxRebalancesPerDay` | `5` | Per-pool daily rebalance cap (UTC reset; every successful rebalance counts) |
 | `offsetToken0Pct` | `50` | Position offset bias toward token0 (50 = balanced) |
-| `impermanentLossGuardPct` | `50` | Most a position may have lost before the bot stops rebalancing it — see [Impermanent Loss Guard](#impermanent-loss-guard) |
+| `impermanentLossGuardPct` | `15` | Most a position may have lost before the bot stops rebalancing it — see [Impermanent Loss Guard](#impermanent-loss-guard) |
 | `gasFeePct` | `1` | Gas-cost ceiling as a percent of position value |
 | `rangeOverrideEnabled` | `false` | Bot Settings → Range "No Override" toggle. `false` re-uses the position's existing on-chain range |
 | `rebalanceRangeWidthPct` | `80` | Value the Price Range Extension row's "Default" button applies. Not auto-populated into the input |

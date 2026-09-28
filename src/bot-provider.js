@@ -91,6 +91,67 @@ function _patchRequestPacing(provider) {
 }
 
 /**
+ * Name the chain the app runs on, from configuration rather than by
+ * asking an endpoint.
+ *
+ * ethers describes a chain with a `Network` object, and by default works
+ * one out for itself: on the first read a provider issues `eth_chainId`
+ * and adopts whatever answer comes back.  Sparing it that is the whole
+ * purpose here.  `buildProvider` is the only caller, and it hands the
+ * `Network` built below to every provider it constructs as the
+ * `staticNetwork` option — which is ethers' way of being told the answer
+ * in advance, so the provider reports that chain instead of asking.
+ *
+ * Two things follow, the first far weightier than the second.
+ *
+ * Detection is the one JSON-RPC call ethers can make without routing it
+ * through `send()`; until a provider is `ready` it reaches past `send()`
+ * to the `_send` primitive beneath.  That matters because `send()` is
+ * where `src/rpc-request-manager.js` is wired in, and therefore where
+ * the global pacing queue and the all-endpoints-down halt take hold.  A
+ * provider that detects has a way to the wire around both of them; a
+ * provider that never detects has none, which is what lets the queue's
+ * promise be taken at face value — every JSON-RPC request the process
+ * makes, with nothing outside it.
+ *
+ * The second is economy.  `getNetwork` detects afresh on every call so
+ * it can check the answer against the first one it was given, so a read
+ * cost two round trips where it now costs one.  Endpoints publish per-IP
+ * limits, and reads are most of what the app spends them on.
+ *
+ * That repeated check is also what is given up: ethers will no longer
+ * report an endpoint that changes chain mid-session.  It guarded little.
+ * Each provider only ever compared an endpoint against its own earlier
+ * answer, so two endpoints in the list disagreeing with each other went
+ * unnoticed regardless, and a wrong chain announces itself immediately
+ * as contract reads that find nothing where the pool should be.
+ *
+ * The id itself comes from `config.CHAIN`, chains.json being its sole
+ * source of truth.  One ethers does not recognise is no obstacle:
+ * `Network.from` then returns a network named "unknown" carrying that
+ * id, which is all a provider needs of it.
+ *
+ * @param {object} lib  ethers module, or a test stub standing in for it.
+ * @returns {object|null}  The chain's `Network`, or null when `lib` is a
+ *   stub carrying no `Network` to build one from; `buildProvider` falls
+ *   back to constructing the provider the plain way.
+ * @throws {Error} When `config.CHAIN.chainId` is missing or is not a
+ *   positive integer — rather than leave a provider to settle on a chain
+ *   nobody chose.
+ */
+function _knownNetwork(lib) {
+  if (typeof lib.Network?.from !== "function") return null;
+  const chainId = config.CHAIN?.chainId;
+  if (!Number.isInteger(chainId) || chainId <= 0) {
+    throw new Error(
+      "[bot-provider] chainId missing/invalid for " +
+        `${config.CHAIN?.displayName ?? "?"} — must be a positive integer in chains.json`,
+    );
+  }
+  return lib.Network.from(chainId);
+}
+
+/**
  * Construct a single JsonRpcProvider for `url`, pace its requests, and
  * apply the feeData patch.
  *
@@ -104,7 +165,14 @@ function _patchRequestPacing(provider) {
  */
 function buildProvider(url, ethersLib) {
   const lib = ethersLib || ethers;
-  const provider = new lib.JsonRpcProvider(url);
+  const network = _knownNetwork(lib);
+  /*- The network goes in twice, as the provider's network AND as
+   *  `staticNetwork`.  ethers asserts the two agree, then keeps the
+   *  static one and hands it back from every later detection. */
+  const provider =
+    network === null
+      ? new lib.JsonRpcProvider(url)
+      : new lib.JsonRpcProvider(url, network, { staticNetwork: network });
   _patchRequestPacing(provider);
   _patchFeeData(provider);
   return provider;

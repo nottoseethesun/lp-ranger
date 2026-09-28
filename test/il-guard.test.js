@@ -432,11 +432,15 @@ describe("the shipped defaults", () => {
     assert.equal(typeof merged.ilGuardRetry.maxMs, "number");
   });
 
-  it("is 50 — a catastrophe brake, not a routine one", () => {
-    /*- Deliberately loose.  The check only arises when a rebalance was
-     *  due, which usually means the position is out of range and earning
-     *  nothing, and a rejection can only clear on a price recovery. */
-    assert.equal(SHIPPED, 50);
+  it("is 15 — tight, because a rebalance crystallizes the loss", () => {
+    /*- The two sides of the trade are not alike.  Rebalancing re-mints
+     *  around the current price, so a paper loss a recovery would have
+     *  undone becomes permanent.  Declining forgoes fees the position is
+     *  largely not earning, since the guard is only consulted when a
+     *  rebalance was due and that usually means out of range — and fees
+     *  are the only thing that earns such a loss back, which a
+     *  low-volume pool may never produce fast enough. */
+    assert.equal(SHIPPED, 15);
   });
 
   it("rejects a position that has more than halved", () => {
@@ -450,17 +454,22 @@ describe("the shipped defaults", () => {
     );
   });
 
-  it("allows the real-world drawdown that a 20% guard would have blocked", () => {
-    /*- Position #164418 on 2026-09-01: $3,947.23 at mint, $2,788.65 now.
-     *  29.4% down — blocked at 20, allowed at the shipped 50. */
+  it("rejects the real-world drawdown that the old 50 default allowed", () => {
+    /*- Position #164418 on 2026-09-01: $3,947.23 at mint, $2,788.65 now,
+     *  29.4% down.  It rebalanced under the old default and would not
+     *  under this one — the clearest illustration of what tightening
+     *  buys and costs.  Bought: that 29.4% stays a paper loss with a
+     *  recovery still able to undo it.  Cost: the position sits out of
+     *  range earning nothing until price returns or the operator raises
+     *  the guard. */
     const at = (guardPct) =>
       evaluateIlGuard({
         projectedValueUsd: 2788.65,
         originalValueUsd: 3947.23,
         guardPct,
       }).rejected;
-    assert.equal(at(20), true);
-    assert.equal(at(SHIPPED), false);
+    assert.equal(at(SHIPPED), true);
+    assert.equal(at(50), false, "the old default let this one through");
   });
 });
 
