@@ -57,6 +57,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [prove the revert applied](feedback_prove_the_revert_applied.md) — A silently-failed revert reports green
 - [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but green? Check what's actually running
 - [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check; a partial sample proves nothing
+- [audit before declaring done](feedback_audit_before_declaring_done.md) — Re-read the rules and audit state + sequence before saying done; a green check is not sufficient
 - [verify symbols a comment names](feedback_verify_symbols_a_comment_names.md) — Grep every symbol a comment names
 
 ## Engineering, code, UI & docs rules

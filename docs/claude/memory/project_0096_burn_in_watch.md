@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T23:51:35.948Z
+  modified: 2026-09-28T23:59:33.908Z
 ---
 
 Release **0.9.6** cut and deployed to Production 2026-09-28, hours after
@@ -17,6 +17,12 @@ Two releases in one day because 0.9.5 shipped a fix that exposed a
 second defect — see [[project_total_rpc_outage_oom]] and
 [[project_failover_exhausts_on_concurrent_errors]]. Both are now on
 Production, and neither has met a real outage.
+
+**First signal, 2026-09-28:** the operator reports Production running
+well on 0.9.6 shortly after deploy. That is the start of burn-in, not
+the end of it — the two items carried forward below are both slow to
+show, and neither the outage fix nor the failover fix has met a real
+outage.
 
 ## 1. The banner is now the instrument
 
