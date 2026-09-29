@@ -1,16 +1,33 @@
 ---
 name: project_failover_exhausts_on_concurrent_errors
-description: "OPEN BUG on Production 0.9.5: 'ALL 3 RPC ENDPOINT(S) FAILED' fires when only one endpoint actually failed. failoverToNextRPC() advances a shared index from wherever it is, so concurrent failing reads each advance it and walk off the end of the list in about a second, freezing the app for an hour."
+description: "Hit Production 0.9.5: 'ALL 3 RPC ENDPOINT(S) FAILED' fired when only one endpoint had failed, because failoverToNextRPC() advanced a shared index from wherever it was and concurrent failures each advanced it. Fixed by naming the failed endpoint; shipped in 0.9.6."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T20:46:58.153Z
+  modified: 2026-09-28T23:47:40.653Z
 ---
 
-**Open. Seen on Production 0.9.5 (`commit=c468af9`), 2026-09-28**, where
-it stopped the initial sync from finishing. Evidence:
+**Fixed, shipped in release 0.9.6** (PR #212, merged as `0587078`).
+Hit Production on 0.9.5 (`commit=c468af9`), 2026-09-28, where it stopped
+the initial sync from finishing. Evidence:
 `troubleshooting-work/lp-ranger.log`, 125 lines.
+
+**The fix:** the caller names the endpoint it saw fail, and selection
+advances only while it is still on that one — an identity check against
+`_activeIdx`, no new state, no timer. Ten failures against the first
+endpoint advance once; the rest return `false` and their callers retry
+on whatever the first moved to. Pinned by
+`test/rpc-failover-idempotent-per-endpoint.test.js`, four of whose ten
+cases fail against the unfixed tree, including eight concurrent reads
+driven through the real proxy and retry loop.
+
+**No two-strike rule.** It was considered and rejected: the evidence
+says one endpoint really was refusing, and the damage came from that one
+failure being counted three times. Requiring two consecutive failures
+would let a genuinely dead endpoint waste another read for a benefit
+this fix already delivers. Revisit only if burn-in shows single blips
+still rotating endpoints needlessly.
 
 The banner says every endpoint failed. **It is false.** At 19:34:25,
 inside one second:

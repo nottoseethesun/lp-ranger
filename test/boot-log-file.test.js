@@ -168,6 +168,7 @@ describe("_readLoggingConfig", () => {
 
   beforeEach(() => {
     if (_origCfg !== null) fs.writeFileSync(CFG_PATH, _origCfg);
+    require("../src/load-merged-defaults")._resetMemoForTests();
   });
 
   it("reads enabled + path from logging.json", () => {
@@ -210,6 +211,7 @@ describe("bootLogFile end-to-end", () => {
     _origArgv = process.argv;
     disableLogFile();
     if (_origCfg !== null) fs.writeFileSync(CFG_PATH, _origCfg);
+    require("../src/load-merged-defaults")._resetMemoForTests();
   });
 
   after(() => {

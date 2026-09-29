@@ -517,6 +517,26 @@ normal operation, and they are not in `GLOBAL_KEYS`, so they never reach
 `POST /api/config` or the OpenAPI schema. Override them by editing the file
 under `app-config/user-configurable/` and restarting.
 
+### When an endpoint is deemed out of service
+
+What moves failover off an endpoint is a failure *rate*, not a single error.
+Every RPC outcome in the process — reads, writes, gas estimates, the
+pool-state and wallet-balance walks, successes as well as failures — is
+reported to one decider, and an endpoint is left only once it is failing more
+than `rpcFailoverRatePercentage` of what it is asked inside the last
+`rpcFailoverRateDurationMinutes`. Successes are counted because a rate needs
+a denominator.
+
+A single 502 therefore costs nothing. That is what lets the components which
+fail often and legitimately report what they see, rather than staying silent
+to avoid retiring an endpoint on the whole process's behalf.
+
+An HTTP 429 is the exception that is waited out rather than moved off: it
+says this process is sending too fast, and moving would carry the same rate
+to the next endpoint. `rpcRetryOn429DelaysMs` is the schedule for one refused
+request, and `rpcMax429PenaltyMs` caps the standing per-endpoint penalty that
+every request to that endpoint honours.
+
 ### When every endpoint is down
 
 Failover walks the endpoint list in order. Stepping off the last one starts

@@ -30,6 +30,7 @@ const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
 const rpcQueue = require("../src/rpc-request-manager");
+const { condemn } = require("./helpers/send-tx-stubs");
 
 const URLS = ["http://one.test", "http://two.test", "http://three.test"];
 
@@ -64,6 +65,7 @@ describe("a failure report names its endpoint", () => {
      *  first provider, all failing on the same blip. */
     const first = at();
     assert.equal(first.url, URLS[0]);
+    condemn(URLS[0]);
 
     assert.equal(
       sendTx.failoverToNextRPC(first),
@@ -88,6 +90,7 @@ describe("a failure report names its endpoint", () => {
     /*- The defect, stated as its consequence: the halt must not engage
      *  while two of three endpoints have never been asked. */
     const first = at();
+    condemn(URLS[0]);
     for (let i = 0; i < 20; i++) sendTx.failoverToNextRPC(first);
     assert.equal(at().url, URLS[1]);
     assert.equal(
@@ -99,11 +102,14 @@ describe("a failure report names its endpoint", () => {
 
   it("still walks the whole list when each endpoint really fails", () => {
     /*- Idempotence must not cost the genuine case its progress. */
+    condemn(URLS[0]);
     assert.equal(sendTx.failoverToNextRPC(at()), true);
     assert.equal(at().url, URLS[1]);
+    condemn(URLS[1]);
     assert.equal(sendTx.failoverToNextRPC(at()), true);
     assert.equal(at().url, URLS[2]);
     /*- Stepping off the last one is the real exhaustion, and pauses. */
+    condemn(URLS[2]);
     assert.equal(sendTx.failoverToNextRPC(at()), true);
     assert.ok(
       rpcQueue.haltRemainingMs() > 0,
@@ -120,13 +126,21 @@ describe("a failure report names its endpoint", () => {
     assert.equal(at(), second, "selection is unchanged");
   });
 
-  it("omitting the argument keeps the unconditional step", () => {
-    /*- Boot probes and tests driving state ask for "step the list",
-     *  which is a different request from "this endpoint failed". */
+  it("omitting the argument skips the identity check, not the rate", () => {
+    /*- The argument decides whether a report is spent, and nothing
+     *  else.  What decides a MOVE is the endpoint's failure rate, and
+     *  no caller is exempt from it — a step requested with no endpoint
+     *  named would otherwise be a way around the one decider. */
+    assert.equal(
+      sendTx.failoverToNextRPC(),
+      false,
+      "nothing reported yet, so nothing is out of service",
+    );
+    assert.equal(at().url, URLS[0]);
+
+    condemn(URLS[0]);
     assert.equal(sendTx.failoverToNextRPC(), true);
     assert.equal(at().url, URLS[1]);
-    assert.equal(sendTx.failoverToNextRPC(), true);
-    assert.equal(at().url, URLS[2]);
   });
 
   it("a report held across the sticky window's expiry is spent", () => {
@@ -140,6 +154,7 @@ describe("a failure report names its endpoint", () => {
     let nowMs = realNow();
     Date.now = () => nowMs;
     try {
+      condemn(URLS[0]);
       sendTx.failoverToNextRPC();
       const stale = at();
       assert.equal(stale.url, URLS[1]);
@@ -162,8 +177,10 @@ describe("a failure report names its endpoint", () => {
      *  call returns false and that caller's failover is dead for the
      *  life of the process, silently. Both absent forms must behave
      *  like an omitted argument. */
+    condemn(URLS[0]);
     assert.equal(sendTx.failoverToNextRPC(null), true);
     assert.equal(at().url, URLS[1], "null must not pin the bot in place");
+    condemn(URLS[1]);
     assert.equal(sendTx.failoverToNextRPC(undefined), true);
     assert.equal(at().url, URLS[2]);
   });

@@ -108,9 +108,18 @@ class FailoverNonceManager {
     return this._inner;
   }
 
-  /** Provider in current use.  Read by `ethers.Contract` for read calls. */
+  /**
+   * Provider reads go through.  ethers resolves a contract's provider
+   * here (`runner.provider`), so this carries every `queryFilter` on a
+   * signer-bound contract plus the call sites that open with
+   * `signer.provider || signer`.  Returns the managed read proxy so
+   * those reads retry and report failover like any other, and so a
+   * provider held across a long operation follows a failover under it.
+   * Writes are unaffected: they use the inner NonceManager, and
+   * receipt polling stays bound to the provider that broadcast.
+   */
   get provider() {
-    return this._sync().provider;
+    return sendTx.getManagedReadProvider();
   }
 
   /**
@@ -169,9 +178,16 @@ class FailoverNonceManager {
     return this._sync().estimateGas(tx);
   }
 
-  /** Read-only call. */
+  /**
+   * Read-only call.  ethers sends a signer-bound contract's view
+   * functions here rather than through `provider`, so every balance,
+   * allowance and `positions()` read in a rebalance or compound
+   * arrives here.  `populateCall` fills `from`; the call itself goes
+   * through the managed read proxy so it retries and reports.
+   */
   async call(tx) {
-    return this._sync().call(tx);
+    const populated = await this._sync().populateCall(tx);
+    return sendTx.getManagedReadProvider().call(populated);
   }
 
   /** ENS resolver (rarely used in this codebase). */
@@ -206,9 +222,15 @@ class FailoverNonceManager {
   async sendTransaction(tx) {
     const before = sendTx.getCurrentRPC();
     try {
-      return await this._sync().sendTransaction(tx);
+      const sent = await this._sync().sendTransaction(tx);
+      sendTx.noteRpcOutcome(before, true);
+      return sent;
     } catch (err) {
       if (classifyRpcError(err) !== "transient") throw err;
+      /*- Only a transient error is the endpoint's fault; a rejected or
+       *  nonce-conflicted broadcast is the transaction's, and counting
+       *  it would retire an endpoint for our own mistake. */
+      sendTx.noteRpcOutcome(before, false);
       /*- Name the provider this broadcast used.  A concurrent read may
        *  already have moved selection off it, in which case there is
        *  nothing to report and the `before !== after` check below still

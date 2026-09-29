@@ -23,6 +23,8 @@ const { ERC20_ABI } = require("./rebalancer-pools");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { getDustThresholdUsd } = require("./dust");
 const sendTx = require("./send-transaction");
+const { walkOrderFrom } = require("./rpc-walk-order");
+const { noteRpcResult } = require("./rpc-out-of-service");
 
 /**
  * Error thrown when the wallet-balance + price reads for the
@@ -117,7 +119,10 @@ async function _readBothBalancesWithRetry({
   readBalance,
   providerFactory,
 }) {
-  const urls = config.RPC_URLS;
+  /*- Rotated to begin at the selected endpoint, so these balances come
+   *  from one the bot still trusts rather than from the head of a list
+   *  it has moved off.  The retries below never engage failover. */
+  const urls = walkOrderFrom(config.RPC_URLS, sendTx.getCurrentRPCUrl());
   let attemptCount = 0;
   let lastErr = null;
   for (const url of urls) {
@@ -149,8 +154,13 @@ async function _readBothBalancesWithRetry({
             thresholdUsd,
           }),
         ]);
+        noteRpcResult(url, true);
         return { t0, t1 };
       } catch (err) {
+        /*- Reports for the same reason the pool-state walk does: a rate
+         *  decides now, so a reader that walks the list itself can say
+         *  what it saw without retiring an endpoint for everyone. */
+        noteRpcResult(url, false);
         lastErr = err;
         log.warn(
           "[can-reopen] rpc=%s attempt=%d/%d failed: %s",

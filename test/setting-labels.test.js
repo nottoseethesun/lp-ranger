@@ -28,6 +28,10 @@ let _originalContent = null;
 
 function _clearModuleCache() {
   delete require.cache[require.resolve("../src/setting-labels")];
+  /*- The loader reads each config file once and keeps it, so a case
+   *  that writes an override has to drop that memo as well; the module
+   *  alone would come back and be handed the first read. */
+  require("../src/load-merged-defaults")._resetMemoForTests();
 }
 
 beforeEach(() => {

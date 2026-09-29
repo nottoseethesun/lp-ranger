@@ -60,6 +60,16 @@ function _clearModuleCache() {
 
 function _writeUser(obj) {
   fs.writeFileSync(_USER_FILE, JSON.stringify(obj));
+  /*- The loader reads each file once and keeps it, so changing the file
+   *  on disk is exactly the moment that read stops being true.  Doing it
+   *  here rather than in each case means a loop that writes several
+   *  overrides gets each one.
+   *
+   *  Required inside the function, not hoisted: `_clearModuleCache`
+   *  drops the loader from the require cache, so a reference captured
+   *  at file load would reset an instance nothing reads any more while
+   *  the fresh one kept its memo. */
+  require("../src/load-merged-defaults")._resetMemoForTests();
 }
 
 function _clearUser() {
@@ -71,6 +81,7 @@ function _clearUser() {
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
   }
+  require("../src/load-merged-defaults")._resetMemoForTests();
 }
 
 beforeEach(() => {
@@ -318,6 +329,40 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     assert.equal(out.slippagePct, _SHIPPED.slippagePct);
     assert.equal(out.checkIntervalSec, _SHIPPED.checkIntervalSec);
     assert.equal(out.offsetToken0Pct, _SHIPPED.offsetToken0Pct);
+  });
+});
+
+describe("bot-config-defaults: the file is read once", () => {
+  it("returns the same frozen object rather than re-reading", () => {
+    /*- Parsing and merging the file costs real synchronous I/O, and
+     *  callers include a poll cycle and a per-request path.  One read
+     *  is also the semantics the file documents: override it and
+     *  restart. */
+    const mod = require("../src/bot-config-defaults");
+    const first = mod.readBotConfigDefaults();
+    assert.equal(mod.readBotConfigDefaults(), first, "same object");
+    assert.equal(Object.isFrozen(first), true, "frozen");
+  });
+
+  it("picks up an override written after the first read only on reset", () => {
+    /*- Every caller shares one object now, so the memo is what makes a
+     *  mid-run edit invisible until restart — and the reset hook is
+     *  what lets a test stand in for that restart. */
+    const mod = require("../src/bot-config-defaults");
+    assert.equal(
+      mod.readBotConfigDefaults().approvalMultiple,
+      _SHIPPED.approvalMultiple,
+    );
+
+    _writeUser({ approvalMultiple: 77 });
+    assert.equal(
+      mod.readBotConfigDefaults().approvalMultiple,
+      _SHIPPED.approvalMultiple,
+      "the edit is not seen while the process is up",
+    );
+
+    mod._resetMemoForTests();
+    assert.equal(mod.readBotConfigDefaults().approvalMultiple, 77);
   });
 });
 

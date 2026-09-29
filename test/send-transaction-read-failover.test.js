@@ -23,7 +23,13 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
-const { PRI, FALL, makeLib, muteConsole } = require("./helpers/send-tx-stubs");
+const {
+  PRI,
+  FALL,
+  makeLib,
+  muteConsole,
+  condemn,
+} = require("./helpers/send-tx-stubs");
 /*- Real ethers, for the queryFilter regression test: the bug lives in
  *  how ethers resolves a Contract runner, so a stub cannot exercise it. */
 const { ethers: realEthers } = require("ethers");
@@ -44,6 +50,7 @@ describe("send-transaction: init idempotency", () => {
   it("re-init with the SAME URLs preserves an active failover window", () => {
     const lib = makeLib();
     sendTx.init({ urls: [PRI, FALL] }, lib);
+    condemn(PRI);
     const m = muteConsole();
     try {
       sendTx.failoverToNextRPC();
@@ -188,6 +195,7 @@ describe("send-transaction: getManagedReadProvider", () => {
     );
     const managed = sendTx.getManagedReadProvider();
     assert.equal(await managed.getBlockNumber(), 100);
+    condemn(PRI);
     const m = muteConsole();
     try {
       sendTx.failoverToNextRPC();
@@ -451,17 +459,55 @@ describe("send-transaction: _isReadFailoverable", () => {
       true,
     );
   });
-  it("rejects other 4xx responseStatus (request is the problem, not the RPC)", () => {
-    for (const status of [
-      "400 Bad Request",
-      "404 Not Found",
-      "403 Forbidden",
-    ]) {
+  it("rejects the 4xx answers that describe the request", () => {
+    /*- 400 is a malformed request and 413 an over-wide `getLogs`, which
+     *  `isBlockRangeCapError` names with the setting to change.  Failing
+     *  over on either walks the whole list hiding a bug of ours. */
+    for (const status of ["400 Bad Request", "413 Payload Too Large"]) {
       assert.equal(
         sendTx._isReadFailoverable({ info: { responseStatus: status } }),
         false,
         status,
       );
+    }
+  });
+
+  it("accepts the 4xx answers that describe the endpoint", () => {
+    /*- Credentials, a block, a moved service, an endpoint giving up on
+     *  its own read.  None of these is the request's fault, and an
+     *  endpoint answering 404 to every call is as dead as one
+     *  answering 502. */
+    for (const status of [
+      "401 Unauthorized",
+      "403 Forbidden",
+      "404 Not Found",
+      "408 Request Timeout",
+      "429 Too Many Requests",
+    ]) {
+      assert.equal(
+        sendTx._isReadFailoverable({ info: { responseStatus: status } }),
+        true,
+        status,
+      );
+    }
+  });
+
+  it("accepts connection-level failures ethers passes through bare", () => {
+    /*- Measured against the pinned ethers: a closed port surfaces
+     *  `ECONNREFUSED` and an unresolvable name `ENOTFOUND`, neither
+     *  folded into one of ethers' own codes and neither carrying a
+     *  `responseStatus`.  Without these an endpoint that is wholly down
+     *  is not failover-eligible at all. */
+    for (const code of [
+      "ECONNREFUSED",
+      "ENOTFOUND",
+      "EAI_AGAIN",
+      "ETIMEDOUT",
+      "EHOSTUNREACH",
+      "ENETUNREACH",
+      "EPIPE",
+    ]) {
+      assert.equal(sendTx._isReadFailoverable({ code }), true, code);
     }
   });
   it("rejects NONCE_EXPIRED and other terminal errors", () => {

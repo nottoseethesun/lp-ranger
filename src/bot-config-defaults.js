@@ -209,6 +209,26 @@ const _NORMALIZERS = {
    *  instead of waiting. */
   rpcAllEndpointsDownPauseMS: (v) =>
     _timerOrNull(v, "rpcAllEndpointsDownPauseMS"),
+  /*- Share of failures inside the window that retires an endpoint.
+   *  1-99: at 0 every endpoint is out of service the moment anything
+   *  is reported, and at 100 none ever is. */
+  rpcFailoverRatePercentage: (v) => _clampInt(v, 1, 99),
+  /*- How far back the rate looks, in MINUTES.  Ceiling of one hour:
+   *  past that a window is measuring history rather than health, and
+   *  the ceiling is also what bounds the decider's memory — it keeps
+   *  one small tally per second per endpoint, so the longest window
+   *  the config can ask for is the most it can ever hold. */
+  rpcFailoverRateDurationMinutes: (v) => _clampInt(v, 1, 60),
+  /*- Delays between retries of one 429-refused request, in order.
+   *  An empty list disables the retry; each entry is 1 ms to 10 min. */
+  rpcRetryOn429DelaysMs: (v) =>
+    Array.isArray(v) && v.every((n) => _clampInt(n, 1, 600_000) !== null)
+      ? v.map((n) => Math.floor(n))
+      : null,
+  /*- Ceiling on the escalating per-endpoint 429 penalty.  Zero is
+   *  allowed and means no standing penalty, only the per-request
+   *  retries above. */
+  rpcMax429PenaltyMs: (v) => _clampNonNegInt(v, 600_000),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */
@@ -284,14 +304,31 @@ const _NORMALIZERS = {
   residualCleanup: _normalizeResidualCleanup,
 };
 
+/*- The one read of the file, held for the life of the process. */
+let _memo = null;
+
 /**
  * Read and parse the Bot Config defaults JSON, stripping `_comment` and
  * `_migration`.  Each known key passes through its normalizer; values
  * that fail clamping fall back to the built-in default for that key.
+ *
+ * **The file is read once and the answer is kept.** Parsing and merging
+ * it costs about 46 microseconds of synchronous file I/O, and callers
+ * include a poll cycle and a per-request path, so a reader that went to
+ * disk every time would put that I/O in front of the bot's work. Once
+ * is also the semantics the file documents: these are operator-tunable
+ * plumbing, overridden in `app-config/user-configurable/` and picked up
+ * on restart.
+ *
+ * The result is frozen because every caller now shares one object; a
+ * caller that mutated its own copy before would silently change the
+ * value every other caller sees.
+ *
  * @returns {object}  Defaults object with the same keys as `_FALLBACK`.
  */
 function readBotConfigDefaults() {
-  return _read({ strict: false });
+  if (_memo === null) _memo = Object.freeze(_read({ strict: false }));
+  return _memo;
 }
 
 /**
@@ -304,16 +341,27 @@ function readBotConfigDefaults() {
  * corrected interval is the last thing anyone would think to check.
  *
  * The lenient reader is what every other caller wants, because several
- * of them are a poll cycle or an HTTP route and this file is re-read on
- * every call. Throwing from those would turn an edit made while the bot
- * is running into a broken poll and a 500.
+ * of them are a poll cycle or an HTTP route. Throwing from those would
+ * turn an edit made while the bot is running into a broken poll and a
+ * 500.
+ *
+ * Reads the file itself rather than taking the memo, because the memo
+ * may have been filled by a lenient caller that accepted a value this
+ * one must refuse. The answer then becomes the memo, so the file is
+ * still read once in the ordinary boot order.
  *
  * @returns {object} Same shape as `readBotConfigDefaults`.
  * @throws {Error} Tagged `badTimerValue`, when a timer setting is set
  *   and out of range.
  */
 function readBotConfigDefaultsStrict() {
-  return _read({ strict: true });
+  _memo = Object.freeze(_read({ strict: true }));
+  return _memo;
+}
+
+/** Forget the memo, so the next read goes to disk again (tests only). */
+function _resetMemoForTests() {
+  _memo = null;
 }
 
 function _read({ strict }) {
@@ -357,4 +405,5 @@ module.exports = {
   readBotConfigDefaults,
   readBotConfigDefaultsStrict,
   handleBotConfigDefaults,
+  _resetMemoForTests,
 };
