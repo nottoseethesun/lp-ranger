@@ -13,7 +13,7 @@
  *     `console.*` method
  *   - `console.log` / `warn` / `error` themselves are NOT modified —
  *     importing `src/log.js` must not patch globals
- *   - `_utcTimestamp()` produces the `YYYY-MM-DD HH:MM:SS` shape
+ *   - `utcTimestamp()` names the zone it formats in
  */
 
 "use strict";
@@ -25,12 +25,21 @@ const { readFileSync } = require("node:fs");
 const {
   log,
   _withTimestamp,
-  _utcTimestamp,
   _colorize,
   _setSinkForTests,
 } = require("../src/log");
+/*- From the owning module, not re-exported through the logger. */
+const {
+  UTC_LABEL,
+  UTC_TIMESTAMP_PATTERN,
+  utcTimestamp,
+} = require("../src/utc-timestamp");
 
-const TS = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/;
+/*- The format is described by reference, not restated.  A pattern
+ *  copied into each assertion is a second definition of the timestamp
+ *  that can stop matching the first without anything failing to say
+ *  so. */
+const TS = new RegExp(UTC_TIMESTAMP_PATTERN);
 
 /*- Strip ANSI CSI escape sequences from a string for assertion purposes.
  *  Built via `String.fromCharCode(0x1b)` instead of a literal `\x1b` in
@@ -43,7 +52,9 @@ test("_withTimestamp inserts after first bracketed prefix", () => {
   const out = _withTimestamp("[bot] OOR but within 5% threshold");
   assert.match(
     out,
-    /^\[bot\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] OOR but within 5% threshold$/,
+    new RegExp(
+      `^\\[bot\\] \\[${UTC_TIMESTAMP_PATTERN}\\] OOR but within 5% threshold$`,
+    ),
   );
 });
 
@@ -51,7 +62,7 @@ test("_withTimestamp prepends bare on bracket-less lines", () => {
   const out = _withTimestamp("plain text no brackets");
   assert.match(
     out,
-    /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] plain text no brackets$/,
+    new RegExp(`^\\[${UTC_TIMESTAMP_PATTERN}\\] plain text no brackets$`),
   );
 });
 
@@ -73,7 +84,7 @@ test("_withTimestamp leaves non-string first args alone", () => {
 
 test("_withTimestamp handles tag-only line (no trailing content)", () => {
   const out = _withTimestamp("[bot]");
-  assert.match(out, /^\[bot\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]$/);
+  assert.match(out, new RegExp(`^\\[bot\\] \\[${UTC_TIMESTAMP_PATTERN}\\]$`));
 });
 
 /*- Tests for ANSI-wrapped input: assert structurally (startsWith,
@@ -112,9 +123,15 @@ test("_withTimestamp prepends bare when an ANSI escape isn't followed by a tag",
   assert.ok(out.endsWith("] \x1b[31mplain red text\x1b[0m"));
 });
 
-test("_utcTimestamp shape: YYYY-MM-DD HH:MM:SS", () => {
-  const ts = _utcTimestamp();
-  assert.match(ts, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+test("utcTimestamp names the zone it formats in", () => {
+  /*- Asserted against a fixed instant, so this says what the format is
+   *  rather than only that it matches its own pattern. */
+  const at = new Date(Date.UTC(2026, 8, 29, 7, 6, 22));
+  assert.equal(utcTimestamp(at), `2026-09-29 07:06:22${UTC_LABEL}`);
+  /*- And the designator is the Date's own, not a string we wrote: the
+   *  one it ends its canonical rendering with. */
+  assert.equal(UTC_LABEL, at.toISOString().slice(-1));
+  assert.match(utcTimestamp(), new RegExp(`^${UTC_TIMESTAMP_PATTERN}$`));
 });
 
 /*- Importing `src/log.js` must NOT modify `console` globals.  The whole

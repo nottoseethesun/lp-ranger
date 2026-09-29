@@ -133,6 +133,28 @@ function _writeToFile(chunk) {
 }
 
 /**
+ * The absolute path a log-file argument names.
+ *
+ * Relative paths resolve against `process.cwd()`, which is what makes
+ * the shipped default `logs/lp-ranger.log` mean "under the install".
+ * Exported because anything that acts on the log file before it is
+ * opened — deleting a previous run's, for one — has to land on the
+ * same file this will open, and a second copy of the rule is a second
+ * answer waiting to disagree.
+ *
+ * @param {string} filePath  Absolute, or relative to `process.cwd()`.
+ * @returns {string} Absolute path.
+ */
+function resolveLogFilePath(filePath) {
+  if (!filePath || typeof filePath !== "string") {
+    throw new TypeError("resolveLogFilePath requires a filePath string");
+  }
+  return path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(process.cwd(), filePath);
+}
+
+/**
  * Enable log-to-file teeing.  Wraps process.stdout.write and
  * process.stderr.write to ALSO append every byte to `filePath`
  * (ANSI escapes stripped for the file copy).
@@ -141,12 +163,7 @@ function _writeToFile(chunk) {
  * @returns {string}  The absolute path of the active log file.
  */
 function enableLogFile(filePath) {
-  if (!filePath || typeof filePath !== "string") {
-    throw new TypeError("enableLogFile requires a filePath string");
-  }
-  const abs = path.isAbsolute(filePath)
-    ? filePath
-    : path.resolve(process.cwd(), filePath);
+  const abs = resolveLogFilePath(filePath);
   if (_fd !== null && _activePath === abs) return _activePath;
   if (_fd !== null) disableLogFile();
   fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -222,5 +239,6 @@ module.exports = {
   enableLogFile,
   disableLogFile,
   getActiveLogFilePath,
+  resolveLogFilePath,
   _stripAnsi, // exported for tests
 };

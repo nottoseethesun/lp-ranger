@@ -311,3 +311,111 @@ describe("bootLogFile end-to-end", () => {
     }
   });
 });
+
+describe("--delete-pre-existing-log-file", () => {
+  const {
+    bootLogFile,
+    DELETE_FLAG,
+    _DEFAULT_PATH,
+  } = require("../src/boot-log-file");
+  const { disableLogFile } = require("../src/log-file");
+
+  let _origArgv;
+  beforeEach(() => {
+    _origArgv = process.argv;
+    disableLogFile();
+    if (_origCfg !== null) fs.writeFileSync(CFG_PATH, _origCfg);
+    require("../src/load-merged-defaults")._resetMemoForTests();
+  });
+
+  after(() => {
+    process.argv = _origArgv;
+    disableLogFile();
+  });
+
+  /**
+   * Run `fn` with cwd inside a throwaway tree.
+   *
+   * Every case here writes to, or deletes, the DEFAULT log path — the
+   * same relative path the operator's own `logs/lp-ranger.log` resolves
+   * to from the repo root. `scripts/check.js` does not back up `logs/`,
+   * so a case that ran from the repo root would delete that file for
+   * good and the suite would still report green.
+   */
+  function _inSandbox(fn) {
+    const cwd = process.cwd();
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "lp-del-log-"));
+    process.chdir(sandbox);
+    try {
+      return fn(path.join(fs.realpathSync(sandbox), _DEFAULT_PATH));
+    } finally {
+      disableLogFile();
+      process.chdir(cwd);
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  }
+
+  it("clears a previous run's file before writing this one", () => {
+    _inSandbox((logPath) => {
+      fs.mkdirSync(path.dirname(logPath), { recursive: true });
+      fs.writeFileSync(logPath, "lines from an earlier run\n");
+      process.argv = ["node", "server.js", "--log-file", DELETE_FLAG];
+
+      bootLogFile();
+
+      const after = fs.readFileSync(logPath, "utf8");
+      assert.equal(
+        after.includes("earlier run"),
+        false,
+        "the previous run's lines are gone",
+      );
+      assert.match(after, /\[log-file\] Opened at /, "and this run opened it");
+    });
+  });
+
+  it("treats an absent file as already empty", () => {
+    /*- The flag asks for an empty log, and there is nothing emptier
+     *  than no file. A first run must not fail for having nothing to
+     *  delete. */
+    _inSandbox((logPath) => {
+      process.argv = ["node", "server.js", "--log-file", DELETE_FLAG];
+      assert.doesNotThrow(() => bootLogFile());
+      assert.ok(fs.existsSync(logPath), "the run still opened its log");
+    });
+  });
+
+  it("does nothing when log-to-file is off", () => {
+    /*- Asked for on its own, there is no file this run will write, so
+     *  deleting would take away a previous run's log and replace it
+     *  with nothing. */
+    _inSandbox((logPath) => {
+      fs.mkdirSync(path.dirname(logPath), { recursive: true });
+      fs.writeFileSync(logPath, "keep me\n");
+      fs.writeFileSync(
+        CFG_PATH,
+        JSON.stringify({ enabled: false, path: null }),
+      );
+      require("../src/load-merged-defaults")._resetMemoForTests();
+      process.argv = ["node", "server.js", DELETE_FLAG];
+
+      assert.equal(bootLogFile(), null, "log-to-file stayed off");
+      assert.equal(fs.readFileSync(logPath, "utf8"), "keep me\n");
+    });
+  });
+
+  it("is absent by default, so an ordinary run appends", () => {
+    _inSandbox((logPath) => {
+      fs.mkdirSync(path.dirname(logPath), { recursive: true });
+      fs.writeFileSync(logPath, "lines from an earlier run\n");
+      process.argv = ["node", "server.js", "--log-file"];
+
+      bootLogFile();
+
+      assert.match(
+        fs.readFileSync(logPath, "utf8"),
+        /earlier run/,
+        "append mode is still the default",
+      );
+    });
+  });
+});

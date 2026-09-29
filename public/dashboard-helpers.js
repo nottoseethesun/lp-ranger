@@ -9,6 +9,9 @@
  */
 
 import { log } from "./dashboard-log.js";
+/*- The zone designator the `Date` itself emits, not a spelled-out
+ *  name. See `src/utc-timestamp.js` for why "UTC" cannot be derived. */
+import { UTC_LABEL } from "../src/utc-timestamp.js";
 /**
  * Get a DOM element by its ID.
  * @param {string} id  The element's id attribute.
@@ -295,13 +298,14 @@ export function fmtDateTime(input, opts) {
   const tz = tzCode();
 
   if (dateOnly) {
-    return utcDate + " UTC (" + localDate + " " + tz + ")";
+    return utcDate + UTC_LABEL + " (" + localDate + " " + tz + ")";
   }
   return (
     utcDate +
     " " +
     utcTime +
-    " UTC (" +
+    UTC_LABEL +
+    " (" +
     localDate +
     " " +
     localTime +
@@ -315,7 +319,7 @@ export function fmtDateTime(input, opts) {
 export function fmtReset(r) {
   if (!r) return "";
   const d = new Date(r);
-  const u = d.toISOString().slice(11, 16) + " UTC";
+  const u = d.toISOString().slice(11, 16) + UTC_LABEL;
   const l = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const z = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" })
     .formatToParts(d)

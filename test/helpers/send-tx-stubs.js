@@ -12,6 +12,7 @@
 
 const logModule = require("../../src/log");
 const { noteRpcResult } = require("../../src/rpc-out-of-service");
+const { UTC_TIMESTAMP_PATTERN } = require("../../src/utc-timestamp");
 
 /** The two endpoints every test in this family walks between. */
 const PRI = "http://primary.test";
@@ -51,10 +52,11 @@ function makeLib(behaviours = {}) {
   };
 }
 
-/*- Strip the `[YYYY-MM-DD HH:MM:SS] ` timestamp prefix from a captured
- *  first arg so substring assertions like `.includes("[bot] RPC:")` keep
- *  matching the tag and message contiguously. */
-const _TS = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] /g;
+/*- Strip the timestamp prefix from a captured first arg so substring
+ *  assertions like `.includes("[bot] RPC:")` keep matching the tag and
+ *  message contiguously.  Built from the format's own definition, so a
+ *  change there cannot leave this silently matching nothing. */
+const _TS = new RegExp(`\\[${UTC_TIMESTAMP_PATTERN}\\] `, "g");
 function _stripTs(args) {
   if (typeof args[0] === "string") {
     const stripped = args[0].replace(_TS, "");

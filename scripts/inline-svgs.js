@@ -116,7 +116,7 @@ function main() {
   if (!fs.existsSync(_DIST_DIR)) fs.mkdirSync(_DIST_DIR, { recursive: true });
   fs.writeFileSync(_OUT, out);
   log.info(
-    "[npm run build process][inline-svgs] %d placeholder(s) inlined → %s\n",
+    "[npm run build process] [inline-svgs] %d placeholder(s) inlined → %s\n",
     replaced,
     path.relative(process.cwd(), _OUT),
   );

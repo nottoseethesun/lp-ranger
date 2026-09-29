@@ -17,6 +17,11 @@
  *   3. logging.json enabled=true → enable, use config path
  *   4. (default)                  → disabled, no-op
  *
+ * `--delete-pre-existing-log-file` clears whichever file the above
+ * settles on, before the first byte is written. It acts only when
+ * log-to-file is on, so asking for it alone cannot delete a previous
+ * run's log that this run will not replace.
+ *
  * The default path when neither CLI nor config supplies one is
  * `logs/lp-ranger.log`.  Called from server.js and bot.js as the
  * very first executable statement after `"use strict"`.
@@ -24,8 +29,20 @@
 
 "use strict";
 
-const { enableLogFile } = require("./log-file");
+const fs = require("fs");
+const { enableLogFile, resolveLogFilePath } = require("./log-file");
 const { loadMergedDefaults } = require("./load-merged-defaults");
+
+/**
+ * Flag that clears the log file before this run starts writing to it.
+ *
+ * The file is opened in append mode, so a long-lived install
+ * accumulates every run in one file. An operator reproducing a fault
+ * wants the file to contain that attempt and nothing else, and
+ * deleting it by hand between runs is a step that gets forgotten
+ * exactly when the log matters.
+ */
+const DELETE_FLAG = "--delete-pre-existing-log-file";
 
 /*- Default path when neither --log-file nor logging.json supplies one.
  *  Relative to process.cwd() — src/log-file.js resolves it via
@@ -66,23 +83,60 @@ function _readLoggingConfig() {
 }
 
 /**
+ * Delete the log file this run is about to open, if it is there.
+ *
+ * An absent file is the success case, not an error — the flag asks for
+ * an empty log, and there is nothing emptier than no file. Any other
+ * failure warns rather than throwing: the run is still worth having,
+ * and a log that opens with a previous run's lines still in it is
+ * better than no bot. The warning goes to the terminal because nothing
+ * is teeing to the file yet, and it says plainly that the file was NOT
+ * cleared, since reading stale lines as current is the whole failure
+ * this flag exists to prevent.
+ *
+ * @param {string} absPath  Resolved path of the file to remove.
+ * @returns {void}
+ */
+function _deletePreExistingLogFile(absPath) {
+  try {
+    fs.unlinkSync(absPath);
+  } catch (err) {
+    if (err.code === "ENOENT") return;
+    process.stderr.write(
+      `[log-file] Could not delete ${absPath}: ${err.message}\n` +
+        `[log-file] NOT cleared — this run appends to the previous one.\n`,
+    );
+  }
+}
+
+/**
  * Run the boot wiring.  Inspects argv + logging.json and enables
  * log-to-file teeing when either source opts in.
  * @returns {string | null}  Absolute path of the active log file,
  *   or null when log-to-file remains disabled.
  */
 function bootLogFile() {
-  const cli = _parseCliFlag(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const cli = _parseCliFlag(argv);
   const cfg = _readLoggingConfig();
   const enable = cli.present || cfg.enabled;
   if (!enable) return null;
   const filePath = cli.pathArg || cfg.path || _DEFAULT_PATH;
+  /*- Only when a file is actually about to be written.  Asked for
+   *  without `--log-file`, and with logging.json off, there is nothing
+   *  this run will write and deleting would take away the previous
+   *  run's log to no purpose. */
+  if (argv.includes(DELETE_FLAG)) {
+    _deletePreExistingLogFile(resolveLogFilePath(filePath));
+  }
   return enableLogFile(filePath);
 }
 
 module.exports = {
   bootLogFile,
+  DELETE_FLAG,
   _parseCliFlag, // exported for tests
   _readLoggingConfig, // exported for tests
+  _deletePreExistingLogFile, // exported for tests
   _DEFAULT_PATH, // exported for tests
 };

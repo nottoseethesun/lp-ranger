@@ -31,17 +31,7 @@
 
 "use strict";
 
-/** Format the current instant as `YYYY-MM-DD HH:MM:SS` in UTC. */
-function _utcTimestamp() {
-  const d = new Date();
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mi = String(d.getUTCMinutes()).padStart(2, "0");
-  const ss = String(d.getUTCSeconds()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
-}
+const { utcTimestamp } = require("./utc-timestamp");
 
 /*- Skip any leading ANSI CSI escape sequences (`\x1b[<params>m`) so a
  *  color-wrapped tag like `"\x1b[30;47m[lp-ranger server]\x1b[0m hi"`
@@ -65,7 +55,7 @@ function _skipAnsi(s, start) {
  *  `]` within 80 chars from the tag start (cheap runaway-scan guard). */
 function _withTimestamp(first) {
   if (typeof first !== "string") return first;
-  const ts = _utcTimestamp();
+  const ts = utcTimestamp();
   const tagStart = _skipAnsi(first, 0);
   if (first.charCodeAt(tagStart) !== 0x5b /* [ */) return `[${ts}] ${first}`;
   const closeIdx = first.indexOf("]", tagStart);
@@ -234,7 +224,6 @@ function _setSinkForTests(sink) {
 module.exports = {
   log,
   _withTimestamp, // exported for tests
-  _utcTimestamp, // exported for tests
   _colorize, // exported for tests
   _setSinkForTests,
 };
