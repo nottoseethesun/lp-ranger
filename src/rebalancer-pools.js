@@ -13,6 +13,8 @@ const { buildProvider } = require("./bot-provider");
 const { PM_ABI } = require("./pm-abi");
 const { _retrySend } = require("./tx-retry");
 const sendTx = require("./send-transaction");
+const { walkOrderFrom } = require("./rpc-walk-order");
+const { noteRpcResult } = require("./rpc-out-of-service");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
@@ -539,10 +541,13 @@ async function getPoolState(passedProvider, ethersLib, opts) {
    *  `config.RPC_URLS` is already deduplicated and blank-free, so
    *  adding an endpoint needs no change here.
    *
-   *  Deliberately still bypasses `sendTx`: retrying here must not
-   *  mutate the global sticky failover window (see the note above
-   *  `_POOL_STATE_ATTEMPTS_PER_URL`). */
-  const urls = config.RPC_URLS;
+   *  Rotated to begin at whichever endpoint failover has selected, so
+   *  a failover moves this read too — it is the most frequent one in
+   *  the bot, once per position per poll.  Asking which endpoint that
+   *  is runs the sticky-window snapback, as any read would; what stays
+   *  this caller's own are the retries below, which never engage
+   *  failover (see the note above `_POOL_STATE_ATTEMPTS_PER_URL`). */
+  const urls = walkOrderFrom(config.RPC_URLS, sendTx.getCurrentRPCUrl());
   let attemptCount = 0;
   let lastErr = null;
   for (const url of urls) {
@@ -566,12 +571,20 @@ async function getPoolState(passedProvider, ethersLib, opts) {
         } catch {
           provider = passedProvider;
         }
-        return await _getPoolStateOnce(provider, ethersLib, {
+        const state = await _getPoolStateOnce(provider, ethersLib, {
           ...opts,
           _rpcUrl: url,
         });
+        noteRpcResult(url, true);
+        return state;
       } catch (err) {
         lastErr = err;
+        /*- This walk is the most frequent read in the bot — once per
+         *  position per poll — which makes it the best-informed witness
+         *  to an endpoint's health.  Reporting is safe here because a
+         *  rate decides, not a report: the six failures one call can
+         *  produce cannot retire an endpoint by themselves. */
+        noteRpcResult(url, false);
         log.warn(
           "[pool-state] rpc=%s attempt=%d/%d failed: %s",
           url,

@@ -45,6 +45,9 @@ const { _waitOrSpeedUp } = require("./tx-speedup");
 const { retryRead } = require("./rpc-read-retry");
 const { pauseForExhaustedEndpoints } = require("./rpc-endpoints-exhausted");
 const rpcRequestManager = require("./rpc-request-manager");
+const rpcOutOfService = require("./rpc-out-of-service");
+const { noteRpcResult, decideIfCurrentRPCIsOutOfService, clearRpcSamples } =
+  rpcOutOfService;
 
 /**
  * How long a single failover stays sticky before we try the primary again.
@@ -185,14 +188,35 @@ const _READ_FAILOVER_CODES = new Set([
    *  exactly that after 3h26m of walking on 2026-09-15. A peer closing
    *  the connection says nothing about the request. */
   "ECONNRESET",
+  /*- Connection-level refusals, which ethers passes through as the bare
+   *  Node code rather than folding into one of its own.  Measured, not
+   *  assumed: a closed port surfaces `ECONNREFUSED` and a name that
+   *  does not resolve surfaces `ENOTFOUND`, both with no
+   *  `responseStatus` at all.  Without these an endpoint that is wholly
+   *  down is not failover-eligible — the read is read as the REQUEST
+   *  being at fault and rethrown. */
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EPIPE",
 ]);
 
-/*- Rate limiting is the endpoint declining to serve *now*, not a
- *  malformed request, so it is failed over like any other endpoint
- *  fault.  Excluded by the 5xx test below because it is a 4xx, and at
- *  least one configured endpoint publishes a request-rate cap. Moving
- *  to another endpoint also spreads the load that produced it. */
-const _RATE_LIMITED_STATUS = 429;
+/*- 4xx answers that are the endpoint's fault rather than the request's.
+ *  401 and 403 are credentials or a block (an expired key, a banned IP,
+ *  a CDN refusing); 404 is the service moved or the path is wrong; 408
+ *  is the endpoint giving up on its own read; 429 is a rate cap, which
+ *  at least one configured endpoint publishes.
+ *
+ *  400 and 413 are deliberately absent.  Both describe the request —
+ *  malformed, or an over-wide `getLogs` that `isBlockRangeCapError`
+ *  already names with the setting to change — and failing over on them
+ *  would walk the whole list hiding a bug instead of routing around an
+ *  outage.  JSON-RPC errors such as -32602 arrive as HTTP 200 with an
+ *  error body and never reach this test at all. */
+const _READ_FAILOVER_STATUSES = new Set([401, 403, 404, 408, 429]);
 
 function _isReadFailoverable(err) {
   if (!err) return false;
@@ -201,7 +225,39 @@ function _isReadFailoverable(err) {
   if (!status) return false;
   const s = String(status);
   if (/^5\d\d/.test(s)) return true;
-  return s.startsWith(String(_RATE_LIMITED_STATUS));
+  return _READ_FAILOVER_STATUSES.has(Number.parseInt(s, 10));
+}
+
+/**
+ * The URL an endpoint provider was built for.
+ *
+ * Reports name the endpoint they describe, and a provider is what a
+ * caller holds, so the two are matched here by identity against the
+ * registered list rather than by reading a URL off the provider —
+ * ethers v6 exposes it only through `_getConnection()`, and a test
+ * double has neither.
+ *
+ * @param {object} provider
+ * @returns {string|null} The URL, or null for a provider not in the list.
+ */
+function _urlOf(provider) {
+  const idx = _providers.indexOf(provider);
+  return idx === -1 ? null : _urls[idx];
+}
+
+/**
+ * Record an outcome for callers that hold a provider rather than a URL.
+ *
+ * The nonce wrapper broadcasts through whichever provider selection
+ * named, and only this module can turn that object back into the
+ * endpoint it belongs to.
+ *
+ * @param {object} provider  The provider the request went through.
+ * @param {boolean} ok       Whether the endpoint answered.
+ * @returns {void}
+ */
+function noteRpcOutcome(provider, ok) {
+  noteRpcResult(_urlOf(provider), ok);
 }
 
 /**
@@ -235,6 +291,7 @@ async function ensureReachable() {
   for (let i = 0; i < _providers.length; i++) {
     try {
       await _providers[i].getBlockNumber();
+      noteRpcResult(_urls[i], true);
       if (i > 0) {
         /*- Engage the sticky window so reads and writes both start on
          *  the endpoint we just proved reachable, rather than retrying
@@ -247,6 +304,7 @@ async function ensureReachable() {
       return;
     } catch (err) {
       lastErr = err;
+      noteRpcResult(_urls[i], false);
       const more = i < _providers.length - 1;
       log.warn(
         `[bot] RPC unreachable at startup (${i + 1} of ${_providers.length}): ${_urls[i]} — ${err.message}`,
@@ -327,19 +385,36 @@ function getManagedReadProvider() {
           /*- Async — wrap with failover-on-error retry.  Only retry on
            *  shapes that indicate the RPC itself is the problem, not
            *  the request. */
-          return Promise.resolve(result).catch((err) =>
-            retryRead({
-              prop,
-              args,
-              err,
-              isFailoverable: _isReadFailoverable,
-              failover: failoverToNextRPC,
-              current: getCurrentRPC,
-              /*- The provider this call was actually made against, so
-               *  the first failover report names it rather than
-               *  advancing from wherever selection has since drifted. */
-              failedProvider: current,
-            }),
+          return Promise.resolve(result).then(
+            (value) => {
+              noteRpcResult(_urlOf(current), true);
+              return value;
+            },
+            (err) => {
+              /*- Reported before the retry, and only when the endpoint
+               *  is what failed: a malformed request says nothing about
+               *  the endpoint's health and must not count against it. */
+              if (_isReadFailoverable(err)) {
+                noteRpcResult(_urlOf(current), false);
+              }
+              return retryRead({
+                prop,
+                args,
+                err,
+                isFailoverable: _isReadFailoverable,
+                failover: failoverToNextRPC,
+                current: getCurrentRPC,
+                /*- Every attempt inside the retry loop is an outcome
+                 *  too, and during an outage it is most of them.  Left
+                 *  unreported, the rate would be judged on the single
+                 *  sample above and never cross. */
+                note: (provider, ok) => noteRpcResult(_urlOf(provider), ok),
+                /*- The provider this call was actually made against, so
+                 *  the first failover report names it rather than
+                 *  advancing from wherever selection has since drifted. */
+                failedProvider: current,
+              });
+            },
           );
         };
       },
@@ -367,6 +442,19 @@ function getCurrentRPC() {
    *  work to cancel and no way for the reset to be missed. */
   if (_activeIdx !== 0 && Date.now() >= _stickyUntilMs) _activeIdx = 0;
   return _providers[_activeIdx];
+}
+
+/**
+ * URL of the currently selected endpoint, for the two callers that
+ * build a provider per URL and need to know where to start.  Reads
+ * through `getCurrentRPC` so an expired sticky window has snapped back
+ * first.  `null` before `init` — those callers then use their own order.
+ * @returns {string|null}
+ */
+function getCurrentRPCUrl() {
+  if (_providers.length === 0) return null;
+  getCurrentRPC();
+  return _urls[_activeIdx];
 }
 
 /**
@@ -442,6 +530,14 @@ function failoverToNextRPC(failedProvider) {
    *  fail, so its call is spent.  Checked after the snapback above,
    *  because that is what decides which endpoint `from` names. */
   if (named && _providers[from] !== failedProvider) return false;
+
+  /*- A failure is a sample, not a verdict.  Selection moves only once
+   *  this endpoint is failing more than the configured share of what it
+   *  is asked, which is what lets every caller in the process report
+   *  honestly — including the two that walk the endpoint list
+   *  themselves and so fail several times per call. */
+  if (!decideIfCurrentRPCIsOutOfService(_urls[from])) return false;
+
   if (from >= _providers.length - 1) {
     /*- Stay on the current endpoint for the duration — nothing can be
      *  sent anyway.  The pause's deadline becomes the sticky deadline,
@@ -473,6 +569,12 @@ function failoverToNextRPC(failedProvider) {
 function _engageFailoverTo(idx, from) {
   _activeIdx = idx;
   _stickyUntilMs = Date.now() + FAILOVER_DURATION_MS;
+  /*- Forget what the endpoint we are leaving did.  Coming back to it
+   *  later should judge it on what it does then; carrying the window
+   *  that retired it would retire it again on arrival, and relying on
+   *  the window being shorter than the sticky period couples two
+   *  settings an operator can change independently. */
+  clearRpcSamples(_urls[from]);
   log.warn(
     "[send-tx] RPC failover engaged: %s → %s (sticky for %d min)",
     _urls[from],
@@ -499,8 +601,14 @@ function _engageFailoverTo(idx, from) {
 async function _estimateWithFailover(populated, label) {
   const cur = getCurrentRPC();
   try {
-    return await cur.estimateGas(populated);
+    const gas = await cur.estimateGas(populated);
+    noteRpcResult(_urlOf(cur), true);
+    return gas;
   } catch (curErr) {
+    /*- Only an endpoint fault is a sample.  An estimate that reverts is
+     *  the contract answering through a working endpoint, and counting
+     *  it would retire endpoints for the transaction being wrong. */
+    if (_isReadFailoverable(curErr)) noteRpcResult(_urlOf(cur), false);
     /*- Walk forward through the remaining endpoints rather than taking
      *  a single hop: with three or more configured, stopping after one
      *  hop leaves every endpoint past the second unreachable on the
@@ -522,9 +630,11 @@ async function _estimateWithFailover(populated, label) {
       );
       try {
         const gas = await _providers[i].estimateGas(populated);
+        noteRpcResult(_urls[i], true);
         _engageFailoverTo(i, startIdx);
         return gas;
       } catch (nextErr) {
+        if (_isReadFailoverable(nextErr)) noteRpcResult(_urls[i], false);
         log.warn(
           "[send-tx] %s: estimateGas on %s also failed. Inner: %s",
           label,
@@ -673,6 +783,9 @@ function _resetForTests() {
   _urls = [];
   _activeIdx = 0;
   _stickyUntilMs = 0;
+  /*- Failure samples are this module's state too: left behind, one
+   *  test's outage retires an endpoint for every test after it. */
+  rpcOutOfService._resetForTests();
   rpcRequestManager._resetForTests();
 }
 
@@ -681,6 +794,8 @@ module.exports = {
   setRpcUrls,
   sendTransaction,
   getCurrentRPC,
+  getCurrentRPCUrl,
+  noteRpcOutcome,
   failoverToNextRPC,
   ensureReachable,
   getManagedReadProvider,

@@ -11,6 +11,7 @@
  */
 
 const logModule = require("../../src/log");
+const { noteRpcResult } = require("../../src/rpc-out-of-service");
 
 /** The two endpoints every test in this family walks between. */
 const PRI = "http://primary.test";
@@ -78,4 +79,19 @@ function muteConsole() {
   return { out, restore };
 }
 
-module.exports = { PRI, FALL, makeLib, muteConsole };
+/**
+ * Report enough failures that the decider calls `url` out of service.
+ *
+ * Selection moves on a failure RATE, so a case whose subject is
+ * something else — which endpoint a report names, where a walk goes,
+ * whether the inner NonceManager rebinds — has to supply the failures
+ * that cause a move. Four with no successes is 100%, past any
+ * threshold the shipped config can hold.
+ *
+ * @param {string} url  The endpoint to condemn.
+ */
+function condemn(url) {
+  for (let i = 0; i < 4; i++) noteRpcResult(url, false);
+}
+
+module.exports = { PRI, FALL, makeLib, muteConsole, condemn };

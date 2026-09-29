@@ -18,6 +18,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
+const { condemn } = require("./helpers/send-tx-stubs");
 
 /*- Stand-in ethers lib: JsonRpcProvider becomes a recognisable stub so
     the tests can assert without touching the network.  buildProvider
@@ -143,6 +144,7 @@ describe("send-transaction: failoverToNextRPC", () => {
     /*- Sanity: primary by default. */
     assert.equal(sendTx.getCurrentRPC()._url, "http://primary.test");
 
+    condemn("http://primary.test");
     sendTx.failoverToNextRPC();
     assert.equal(sendTx.getCurrentRPC()._url, "http://fallback.test");
 
@@ -169,6 +171,7 @@ describe("send-transaction: failoverToNextRPC", () => {
     const origWarn = console.warn;
     console.warn = (...a) => warns.push(a);
     try {
+      condemn("http://primary.test");
       sendTx.failoverToNextRPC();
       sendTx.failoverToNextRPC();
     } finally {
@@ -372,6 +375,7 @@ describe("send-transaction: _estimateWithFailover", () => {
     /*- Engage failover so getCurrentRPC returns fallback. */
     const m = muteConsole();
     try {
+      condemn("http://primary.test");
       sendTx.failoverToNextRPC();
       assert.equal(sendTx.getCurrentRPC()._url, "http://fallback.test");
       await assert.rejects(

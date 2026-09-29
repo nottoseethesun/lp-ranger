@@ -27,6 +27,7 @@ const { format } = require("node:util");
 const sendTx = require("../src/send-transaction");
 const rpcQueue = require("../src/rpc-request-manager");
 const logModule = require("../src/log");
+const { condemn } = require("./helpers/send-tx-stubs");
 
 const URLS = [
   "https://rpc-one.example",
@@ -51,8 +52,10 @@ const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 /** Walk failover until the list is exhausted; returns each return value. */
 function exhaust() {
   const results = [];
-  for (let i = 0; i < URLS.length; i++)
+  for (let i = 0; i < URLS.length; i++) {
+    condemn(sendTx.getCurrentRPCUrl());
     results.push(sendTx.failoverToNextRPC());
+  }
   return results;
 }
 
@@ -93,8 +96,10 @@ describe("failover wraps to the first endpoint after the pause", () => {
 
   it("walks the list in order before exhausting it", () => {
     assert.equal(sendTx.getCurrentRPC()._url, URLS[0], "starts at the first");
+    condemn(URLS[0]);
     sendTx.failoverToNextRPC();
     assert.equal(sendTx.getCurrentRPC()._url, URLS[1]);
+    condemn(URLS[1]);
     sendTx.failoverToNextRPC();
     assert.equal(sendTx.getCurrentRPC()._url, URLS[2], "the last endpoint");
   });
@@ -169,7 +174,13 @@ describe("failover wraps to the first endpoint after the pause", () => {
 
   it("walks the same order again once the pause lifts", () => {
     withClock((clock) => {
+      /*- Condemned immediately before each move: the clock advances by
+       *  more than the sample window between them, so failures reported
+       *  earlier have aged out by the time the next step is asked for —
+       *  which is the whole point of judging on a window. */
+      condemn(sendTx.getCurrentRPCUrl());
       sendTx.failoverToNextRPC(); // first → second
+      condemn(sendTx.getCurrentRPCUrl());
       sendTx.failoverToNextRPC(); // second → last
       /*- Endpoints fail one at a time, not all in the same millisecond.
        *  This gap is what separates the wait's own deadline from the
@@ -177,6 +188,7 @@ describe("failover wraps to the first endpoint after the pause", () => {
        *  hour by default, so without a gap nothing can tell which of
        *  them released the endpoint. It must be the wait's. */
       clock.advance(30 * 60_000);
+      condemn(sendTx.getCurrentRPCUrl());
       sendTx.failoverToNextRPC(); // last → exhausted
       const waitLeft = rpcQueue.haltRemainingMs();
 
@@ -192,12 +204,14 @@ describe("failover wraps to the first endpoint after the pause", () => {
         URLS[0],
         "the wait is up, so the list starts over at the first endpoint",
       );
+      condemn(sendTx.getCurrentRPCUrl());
       sendTx.failoverToNextRPC();
       assert.equal(
         sendTx.getCurrentRPC()._url,
         URLS[1],
         "later failovers must repeat the original order, not resume from the dead end",
       );
+      condemn(sendTx.getCurrentRPCUrl());
       sendTx.failoverToNextRPC();
       assert.equal(sendTx.getCurrentRPC()._url, URLS[2], "and on to the last");
     });

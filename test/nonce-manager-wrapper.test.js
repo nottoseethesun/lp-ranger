@@ -16,6 +16,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
+const { condemn } = require("./helpers/send-tx-stubs");
 const {
   FailoverNonceManager,
   createFailoverSigner,
@@ -176,11 +177,18 @@ describe("nonce-manager-wrapper: lazy _sync and provider tracking", () => {
     /*- Engage failover; inner NM must rebind on next access. */
     const restore = muteConsole();
     try {
+      condemn("http://primary.test");
       sendTx.failoverToNextRPC();
     } finally {
       restore();
     }
     assert.equal(signer.provider._url, "http://fallback.test");
+    /*- `.provider` is the managed read proxy, which resolves selection
+     *  on each access without touching the inner NonceManager — so the
+     *  rebind is driven by the write path that needs it.  `.signer` is
+     *  the cheapest of those, and the nonce delta it carries is what
+     *  must not survive a move to another endpoint. */
+    assert.equal(signer.signer.provider._url, "http://fallback.test");
     assert.notEqual(signer._inner, innerBefore);
   });
 
@@ -328,6 +336,7 @@ describe("nonce-manager-wrapper: sendTransaction with failover", () => {
     /*- Engage failover up-front so getCurrentRPC returns fallback. */
     const restore = muteConsole();
     try {
+      condemn("http://primary.test");
       sendTx.failoverToNextRPC();
       assert.equal(sendTx.getCurrentRPC()._url, "http://fallback.test");
       await assert.rejects(

@@ -61,6 +61,7 @@ sequence.
 - [Check Report Artifacts](#check-report-artifacts)
 - [API Documentation](#api-documentation)
 - [`server.js`](#serverjs)
+- [RPC Failover](#rpc-failover)
 - [How Scans Survive RPC Failures](#how-scans-survive-rpc-failures)
 - [`getPoolState` Validation + RPC Retry](#getpoolstate-validation--rpc-retry)
 - [Closed-position Re-open Flow](#closed-position-re-open-flow)
@@ -2550,6 +2551,69 @@ checker passes it through untouched, and an empty field is sent as
 keys: a price override of 0 means "no override" (every reader gates on
 `> 0`), and an OOR timeout of 0 means "off". A floor above zero on
 either would strand a setting the operator could set but never undo.
+
+## RPC Failover
+
+All TX-sending paths route through
+[`src/send-transaction.js`](../src/send-transaction.js), which owns the
+single active-endpoint selection over the ordered list in
+`chains.json` → `rpc.urls`. On `estimateGas` failure it probes the
+remaining endpoints and commits only to one that answers; on success it
+engages a sticky one-hour window so subsequent broadcasts, receipts and
+nonce lookups follow. The window self-heals — `getCurrentRPC()` returns
+to the first endpoint once it lapses. Broadcast failover requires the
+signer to be a `FailoverNonceManager`, which rebinds on change. No-op
+on a single-endpoint chain.
+
+**What moves selection is a failure rate, not one error.**
+`decideIfCurrentRPCIsOutOfService` (`src/rpc-out-of-service.js`) is the
+single decider, and an endpoint is left only once it is failing more
+than `rpcFailoverRatePercentage` of what it is asked inside the last
+`rpcFailoverRateDurationMinutes`. Every RPC outcome in the process
+reports to `noteRpcResult`, successes included, because a rate needs a
+denominator — which is what lets the components that fail often and
+legitimately say what they see instead of staying silent to avoid
+retiring an endpoint for the whole process.
+
+Outcomes are tallied per second rather than kept one by one, so the
+store holds at most one small record per second per endpoint however
+fast requests arrive: roughly a quarter of a megabyte at the paced
+default, and the same at ten thousand requests a second with pacing
+off. The window's edge therefore moves in whole seconds, which a
+five-minute health judgement does not notice.
+
+A rate takes time to cross. An endpoint that has been busy and healthy
+and then dies is retried for about half the window before selection
+moves — 676 requests over 150 seconds at the shipped defaults. Shorten
+`rpcFailoverRateDurationMinutes` to converge sooner.
+
+**Failover-eligible errors** are the endpoint's fault, not the
+request's: `SERVER_ERROR`, `TIMEOUT`, `NETWORK_ERROR`, the
+connection-level codes ethers passes through bare (`ECONNRESET`,
+`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`, `ETIMEDOUT`, `EHOSTUNREACH`,
+`ENETUNREACH`, `EPIPE`), any 5xx, and the 4xx answers that describe the
+endpoint — 401, 403, 404, 408, 429. HTTP 400 and 413 are excluded
+because both describe the request, and failing over on them walks the
+whole list hiding a defect of ours.
+
+**An HTTP 429 is waited out rather than moved off.** It says this
+process is sending too fast, and moving carries the same rate to the
+next endpoint. `_patchRequestPacing` (`src/bot-provider.js`) retries on
+the `rpcRetryOn429DelaysMs` schedule and leaves a per-endpoint penalty,
+capped at `rpcMax429PenaltyMs`, that every later request to that
+endpoint honours and any success clears.
+
+**Every read in the process reaches the managed proxy.**
+`getManagedReadProvider()` returns a Proxy that resolves selection on
+each property access and retries a failover-eligible error on the next
+endpoint. `FailoverNonceManager` returns it from `.provider` and routes
+`.call()` through it, so the reads ethers takes from a signer — a
+signer-bound contract's view functions, and `queryFilter` via
+`runner.provider` — retry and report like any other. The two readers
+that walk the endpoint list themselves, `getPoolState` and the
+can-reopen balance check, order their walk from the selected endpoint
+(`src/rpc-walk-order.js`) without mutating selection, so a failover
+moves them while their own retries stay private.
 
 ## RPC Reachability at Startup
 

@@ -238,6 +238,10 @@ describe("an added RPC takes effect without a restart", () => {
       chainUrls: config.RPC_URLS_BASE,
     });
     sendTx.setRpcUrls(urls, LIB);
+    /*- Selection moves on a failure RATE, so the added endpoint has to
+     *  actually be failing before the shipped list behind it is used. */
+    const { noteRpcResult } = require("../src/rpc-out-of-service");
+    for (let i = 0; i < 4; i++) noteRpcResult("https://my-node.local", false);
     assert.strictEqual(sendTx.failoverToNextRPC(), true);
     assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS_BASE[0]);
   });

@@ -43,6 +43,10 @@ const { log } = require("./log");
  * @param {(failed?: object) => boolean} opts.failover  Report that an
  *   endpoint failed; advances selection only if it is still on that one.
  * @param {() => object} opts.current    The endpoint to use now.
+ * @param {(provider: object, ok: boolean) => void} opts.note  Record one
+ *   attempt's outcome against the endpoint that served it. During an
+ *   outage these attempts are most of the traffic, so a rate judged
+ *   without them would be judged on a single sample.
  * @param {object} [opts.failedProvider] The provider whose failure is
  *   `err`. Naming it keeps concurrent failures on one endpoint from
  *   advancing the list once each.
@@ -57,6 +61,10 @@ async function retryRead({
   isFailoverable,
   failover,
   current,
+  /*- Defaulted so a caller that has no decider to report to — a test
+   *  driving the loop in isolation — does not crash on a missing
+   *  function.  Production has one caller and it passes one. */
+  note = () => {},
   failedProvider,
 }) {
   if (!isFailoverable(err)) throw err;
@@ -74,9 +82,12 @@ async function retryRead({
     failover(failed);
     const next = current();
     try {
-      return await next[prop].apply(next, args);
+      const value = await next[prop].apply(next, args);
+      note(next, true);
+      return value;
     } catch (e) {
       if (!isFailoverable(e)) throw e;
+      note(next, false);
       failed = next;
       log.warn(
         "[send-tx] read retry #%d on %s failed: %s",

@@ -785,25 +785,17 @@ stuck TX is deterministic.
 
 ### RPC Failover
 
-All TX-sending paths route through
-[`src/send-transaction.js`](../src/send-transaction.js), which holds
-both the primary and fallback providers built at boot. On `estimateGas`
-failure against the primary, the module retries against the fallback;
-on success it engages a sticky one-hour failover window so subsequent
-broadcasts, receipts, and nonce lookups also flow through the fallback.
-The window self-heals — `getCurrentRPC()` reverts to primary once the
-timer expires. Broadcast failover requires the signer to be a
-`FailoverNonceManager` that lazily rebinds on RPC change. No-op when
-the configured primary and fallback URLs are identical.
-
-Reads use the same window. `getManagedReadProvider()` returns a Proxy
-that delegates each call to `getCurrentRPC()` and retries failover-
-eligible errors (`SERVER_ERROR`, `TIMEOUT`, `NETWORK_ERROR`, 5xx) via
-`failoverToNextRPC(failedProvider)`, which names the endpoint that
-failed so selection advances only while it is still on that one — one
-endpoint's failure reaching many concurrent reads then costs one
-endpoint, not the whole list. Boot reachability is `ensureReachable()`.
-One sticky failover state covers both sides.
+A wallet read or a broadcast that reaches a dead endpoint is an
+availability problem, not a custody one, so the mechanism is documented
+where the rest of the runtime is: see
+[RPC Failover](engineering.md#rpc-failover) in the engineering
+reference. What matters here is the property it preserves — no
+transaction is sent twice because an endpoint changed underneath it.
+Broadcast failover rebinds the `FailoverNonceManager`, whose fresh
+nonce comes from chain state rather than from a delta carried over from
+the endpoint that failed, and receipt polling stays bound to the
+provider that broadcast, so a half-mined transaction is never asked
+about on an endpoint that has not seen it.
 
 ### Slippage Guards
 

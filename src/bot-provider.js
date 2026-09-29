@@ -11,6 +11,7 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const rpcRequestManager = require("./rpc-request-manager");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
 /*- Throttle for the per-call feeData log line.  Every call logs in
     --verbose mode; otherwise log at most once per hour so the terminal
@@ -81,13 +82,137 @@ function _patchFeeData(provider) {
  * process, not of any single endpoint.
  * @param {import('ethers').JsonRpcProvider} provider
  */
-function _patchRequestPacing(provider) {
+/*- Per-endpoint 429 state, keyed by URL: `{ streak, penaltyUntilMs }`.
+ *  Module state rather than per-request, because the penalty a refused
+ *  request earns has to slow every LATER request to that endpoint: a
+ *  schedule owned by one request restarts at its first delay for the
+ *  next caller, so under a sustained refusal each one rediscovers the
+ *  limit from scratch. */
+const _rateLimited = new Map();
+
+/** The record for one endpoint, created on first use. */
+function _limitState(url) {
+  let s = _rateLimited.get(url);
+  if (!s) {
+    s = { streak: 0, penaltyUntilMs: 0 };
+    _rateLimited.set(url, s);
+  }
+  return s;
+}
+
+/*- Retry schedule override, for tests that must not wait ten seconds
+ *  and must not patch `setTimeout` to avoid it.  Same shape as
+ *  `_setDelays` in `src/price-source-backoff.js`; null means "use the
+ *  configured schedule", which is every path but a test. */
+let _delaysOverrideMs = null;
+
+/*- Read once at load, as `rpc-request-manager.js` reads its pacing
+ *  interval. `readBotConfigDefaults()` re-reads and merges the JSON
+ *  from disk on every call — 46 microseconds — and `_delays` is
+ *  consulted once per JSON-RPC request, which at ten thousand requests
+ *  a second is most of a core spent on file I/O in the request path. */
+const _CONFIGURED_DELAYS_MS = readBotConfigDefaults().rpcRetryOn429DelaysMs;
+const _MAX_PENALTY_MS = readBotConfigDefaults().rpcMax429PenaltyMs;
+
+/** The retry schedule now, in milliseconds. */
+function _delays() {
+  return _delaysOverrideMs === null ? _CONFIGURED_DELAYS_MS : _delaysOverrideMs;
+}
+
+/** Whether an error is the endpoint saying we are sending too fast. */
+function _is429(err) {
+  const status = err && err.info && err.info.responseStatus;
+  return status !== undefined && status !== null && /^429/.test(String(status));
+}
+
+/** Wait `ms`, or return immediately when there is nothing to wait for. */
+function _sleep(ms) {
+  return ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve();
+}
+
+/**
+ * Lengthen this endpoint's standing penalty after a refusal.
+ *
+ * Doubling with the streak is what makes the process as a whole slow
+ * down: a per-request schedule restarts at its first delay for every
+ * caller, so under a sustained refusal each one rediscovers the limit
+ * from scratch.
+ *
+ * @param {string} url    The endpoint that refused.
+ * @param {number} baseMs The delay this request was about to wait anyway.
+ */
+function _note429(url, baseMs) {
+  const s = _limitState(url);
+  s.streak += 1;
+  const escalated = Math.max(0, baseMs) * 2 ** (s.streak - 1);
+  const until = Date.now() + Math.min(escalated, _MAX_PENALTY_MS);
+  if (until > s.penaltyUntilMs) s.penaltyUntilMs = until;
+}
+
+/**
+ * Send one request, waiting out this endpoint's rate limit rather than
+ * moving off it.
+ *
+ * A 429 says this process is sending too fast; the endpoint is up and
+ * answering. Moving would carry the same request rate to the next
+ * endpoint and collect its refusal too, so the response is to wait.
+ * The standing penalty is honoured before the request as well as after
+ * it, so every caller to this endpoint slows down, not only the one
+ * that was refused.
+ *
+ * @param {string} url   The endpoint this provider addresses.
+ * @param {Function} send  The underlying `provider.send`.
+ * @param {string} method
+ * @param {unknown[]} params
+ * @returns {Promise<*>}
+ */
+async function _sendWaitingOutRateLimits(url, send, method, params) {
+  await _sleep(_limitState(url).penaltyUntilMs - Date.now());
+  const delays = _delays();
+  for (let i = 0; ; i++) {
+    try {
+      const out = await send(method, params);
+      _rateLimited.delete(url);
+      return out;
+    } catch (err) {
+      if (!_is429(err) || i >= delays.length) throw err;
+      _note429(url, delays[i]);
+      log.warn(
+        "[rpc-429] %s refused %s — waiting %ds (retry %d/%d)",
+        url,
+        method,
+        Math.round(delays[i] / 1000),
+        i + 1,
+        delays.length,
+      );
+      await _sleep(delays[i]);
+    }
+  }
+}
+
+function _patchRequestPacing(provider, url) {
   if (typeof provider.send !== "function") return;
   const _orig = provider.send.bind(provider);
   provider.send = async function (method, params) {
     await rpcRequestManager.acquire();
-    return _orig(method, params);
+    return _sendWaitingOutRateLimits(url, _orig, method, params);
   };
+}
+
+/** Drop every endpoint's rate-limit state (tests only). */
+function _reset429ForTests() {
+  _rateLimited.clear();
+  _delaysOverrideMs = null;
+}
+
+/** Override the retry schedule (tests only); null restores the config. */
+function _setDelaysForTests(delaysMs) {
+  _delaysOverrideMs = delaysMs;
+}
+
+/** This endpoint's standing penalty deadline in epoch ms, 0 when none. */
+function _penaltyUntilMs(url) {
+  return _limitState(url).penaltyUntilMs;
 }
 
 /**
@@ -173,9 +298,16 @@ function buildProvider(url, ethersLib) {
     network === null
       ? new lib.JsonRpcProvider(url)
       : new lib.JsonRpcProvider(url, network, { staticNetwork: network });
-  _patchRequestPacing(provider);
+  _patchRequestPacing(provider, url);
   _patchFeeData(provider);
   return provider;
 }
 
-module.exports = { _patchFeeData, _patchRequestPacing, buildProvider };
+module.exports = {
+  _patchFeeData,
+  _patchRequestPacing,
+  _penaltyUntilMs,
+  _reset429ForTests,
+  _setDelaysForTests,
+  buildProvider,
+};

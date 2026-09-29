@@ -274,26 +274,31 @@ test("getPoolState succeeds on first try when the RPC returns valid data", async
   assert.equal(constructed.length, 1);
 });
 
-test("getPoolState does NOT touch sendTx's persistent failover state", () => {
-  /*- Snapshot the live sendTx module's getCurrentRPC before and after
-   *  a getPoolState call.  The orchestrator builds its own
-   *  JsonRpcProviders rather than going through sendTx, so the
-   *  sticky `_useFallbackUntilMs` state should be unchanged whether
-   *  getPoolState succeeds or fails. */
-  const sendTx = require("../src/send-transaction");
-  let before, after;
+test("getPoolState reports what it sees to the decider", async () => {
+  /*- Replaces a rule that said the opposite — that pool state must
+   *  never touch shared failover state.  It had to stay silent while
+   *  one report was the same act as retiring an endpoint for the whole
+   *  process: this walk produces up to six failures per call, across
+   *  ten positions.  A rate decides now, so the most frequent read in
+   *  the bot can say what it sees. */
+  const decider = require("../src/rpc-out-of-service");
+  const { RPC_URLS } = require("../src/config");
+  decider._resetForTests();
   try {
-    before = sendTx.getCurrentRPC?.();
-  } catch {
-    before = "uninit";
+    const { lib } = makeMockEthers({ tick: undefined });
+    await assert.rejects(() =>
+      getPoolState(null, lib, {
+        factoryAddress: FACTORY,
+        token0: TOKEN0,
+        token1: TOKEN1,
+        fee: 10000,
+      }),
+    );
+    assert.ok(
+      RPC_URLS.some((u) => decider.decideIfCurrentRPCIsOutOfService(u)),
+      "every attempt failed, so an endpoint is now out of service",
+    );
+  } finally {
+    decider._resetForTests();
   }
-  /*- Synchronous probe of the same accessor — we don't need to await
-   *  the call here, just verify the bookkeeping interface didn't get
-   *  flipped by the import or the module-level retry-constants. */
-  try {
-    after = sendTx.getCurrentRPC?.();
-  } catch {
-    after = "uninit";
-  }
-  assert.deepEqual(before, after);
 });
