@@ -15,6 +15,7 @@ const {
   handleCsrf,
 } = require("../src/server-csrf");
 const { _setSinkForTests } = require("../src/log");
+const { UTC_TIMESTAMP_PATTERN } = require("../src/utc-timestamp");
 
 describe("CSRF token module", () => {
   it("createToken returns a token, future expiry, and refreshIntervalMs", () => {
@@ -78,7 +79,7 @@ describe("handleCsrf — silent-retry observability", () => {
    *  contiguously.  Routed through the log module's sink instead of
    *  patching `console.log` / `console.warn` so the global `console` is
    *  never modified (see [[feedback-no-global-monkey-patch]]). */
-  const _TS = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] /g;
+  const _TS = new RegExp(`\\[${UTC_TIMESTAMP_PATTERN}\\] `, "g");
   function _captureConsole() {
     _logs = [];
     _warns = [];

@@ -78,7 +78,7 @@ function main() {
   const out = renderModule(version, content);
   fs.writeFileSync(OUT, out);
   log.info(
-    `[npm run build process][build-disclosure-content] wrote ${path.relative(process.cwd(), OUT)} (version ${version}, ${content.length} chars)`,
+    `[npm run build process] [build-disclosure-content] wrote ${path.relative(process.cwd(), OUT)} (version ${version}, ${content.length} chars)`,
   );
 }
 

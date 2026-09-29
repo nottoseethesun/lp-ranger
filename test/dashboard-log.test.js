@@ -27,7 +27,23 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const TS = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]/;
+/*- The format is described by reference, not restated — the browser
+ *  logger and the server logger share one definition, and these
+ *  assertions follow it rather than a copy. */
+const { UTC_TIMESTAMP_PATTERN } = require("../src/utc-timestamp");
+const TS = new RegExp(`\\[${UTC_TIMESTAMP_PATTERN}\\]`);
+
+/**
+ * A whole-line matcher: `prefix` (regex source) then the timestamp in
+ * brackets, then `rest` as a literal.
+ *
+ * @param {string} prefix  Regex source for everything before the stamp.
+ * @param {string} rest    Literal text after it; regex chars escaped.
+ */
+function _line(prefix, rest) {
+  const literal = rest.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${prefix}\\[${UTC_TIMESTAMP_PATTERN}\\] ${literal}$`);
+}
 const _ESC = String.fromCharCode(0x1b);
 
 let _withTimestamp, _scanTags, _skipFormatNoise, APP_TAG, APP_TAG_PREFIX, log;
@@ -102,7 +118,7 @@ test("auto-prefixes [lp-ranger] when first tag is something else", () => {
   const out = _withTimestamp("[posList] activating idx=175");
   assert.match(
     out,
-    /^\[lp-ranger\] \[posList\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] activating idx=175$/,
+    _line(String.raw`\[lp-ranger\] \[posList\] `, "activating idx=175"),
   );
 });
 
@@ -117,17 +133,14 @@ test("does NOT double-prefix when [lp-ranger] is already first", () => {
 
 test("does NOT double-prefix the [lp-ranger app] banner variant", () => {
   const out = _withTimestamp("[lp-ranger app] 🚀 Started.");
-  assert.match(
-    out,
-    /^\[lp-ranger app\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] 🚀 Started\.$/,
-  );
+  assert.match(out, _line(String.raw`\[lp-ranger app\] `, "🚀 Started."));
 });
 
 test("auto-prefixes on bracket-less message (no tag at all)", () => {
   const out = _withTimestamp("plain text no brackets");
   assert.match(
     out,
-    /^\[lp-ranger\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] plain text no brackets$/,
+    _line(String.raw`\[lp-ranger\] `, "plain text no brackets"),
   );
 });
 
@@ -140,24 +153,18 @@ test("timestamp comes after BOTH tags when subscope is present", () => {
   const out = _withTimestamp("[lp-ranger] [js heap] 75.9 MB used");
   assert.match(
     out,
-    /^\[lp-ranger\] \[js heap\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] 75\.9 MB used$/,
+    _line(String.raw`\[lp-ranger\] \[js heap\] `, "75.9 MB used"),
   );
 });
 
 test("timestamp comes after [lp-ranger] when no subscope exists", () => {
   const out = _withTimestamp("[lp-ranger] LP Ranger commit=abc");
-  assert.match(
-    out,
-    /^\[lp-ranger\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] LP Ranger commit=abc$/,
-  );
+  assert.match(out, _line(String.raw`\[lp-ranger\] `, "LP Ranger commit=abc"));
 });
 
 test("timestamp comes after three stacked tags too (no truncation)", () => {
   const out = _withTimestamp("[lp-ranger] [a] [b] message");
-  assert.match(
-    out,
-    /^\[lp-ranger\] \[a\] \[b\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] message$/,
-  );
+  assert.match(out, _line(String.raw`\[lp-ranger\] \[a\] \[b\] `, "message"));
 });
 
 // ── _withTimestamp: %c-styled call sites ─────────────────────────────
@@ -174,7 +181,7 @@ test("%c[tag] msg auto-prefixes [lp-ranger] after the %c directive", () => {
   const out = _withTimestamp("%c[scan] 181 NFTs returned");
   assert.match(
     out,
-    /^%c\[lp-ranger\] \[scan\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] 181 NFTs returned$/,
+    _line(String.raw`%c\[lp-ranger\] \[scan\] `, "181 NFTs returned"),
   );
 });
 
@@ -249,8 +256,5 @@ test("PIN: '%s msg' + NS-as-arg cannot be auto-fixed by the logger", () => {
   const out = _withTimestamp("%s submitUnlock ENTRY");
   /*- `%s` is content-producing, so the logger treats it as message
    *  body.  Output: `[lp-ranger] [<ts>] %s submitUnlock ENTRY`. */
-  assert.match(
-    out,
-    /^\[lp-ranger\] \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] %s submitUnlock ENTRY$/,
-  );
+  assert.match(out, _line(String.raw`\[lp-ranger\] `, "%s submitUnlock ENTRY"));
 });

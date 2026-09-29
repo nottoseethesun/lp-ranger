@@ -18,6 +18,13 @@ Options:
                   opened in append mode; rotate externally if it
                   grows.  Operators can enable persistently by
                   setting "enabled": true in the JSON.
+  --delete-pre-existing-log-file
+                  Delete the log file before this run starts writing,
+                  so it holds this run and nothing else.  Needs
+                  log-to-file to be on (via --log-file or the JSON);
+                  on its own it does nothing.  Note that under
+                  "npm run dev" the server restarts on every file
+                  change, and each restart clears the log again.
   --help, -h      Show this help message and exit.
 
 Environment:
@@ -93,6 +100,8 @@ Common forms:
   npm run build-and-start -- --verbose
   npm run build-and-start -- --headless
   npm run build-and-start -- --log-file /tmp/burn-in.log
+  npm run build-and-start -- --log-file --delete-pre-existing-log-file
+                                        Fresh log holding this run only
   npm run build-and-start -- --help     Show this text and exit
 
   Every command in the project is listed in

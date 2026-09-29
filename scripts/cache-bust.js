@@ -38,6 +38,6 @@ for (const layer of ["top", "middle", "bottom"]) {
 fs.writeFileSync(cssPath, c);
 
 log.info(
-  "[npm run build process][cache-bust] bundle.js, style.css, ui-tokens.css, 9mm-pos-mgr.css, cloud PNGs → v=%d\n",
+  "[npm run build process] [cache-bust] bundle.js, style.css, ui-tokens.css, 9mm-pos-mgr.css, cloud PNGs → v=%d\n",
   v,
 );

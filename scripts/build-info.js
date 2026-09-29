@@ -77,7 +77,7 @@ fs.writeFileSync(
 );
 
 log.info(
-  "[npm run build process][build-info] version=%s commit=%s date=%s tag=%s",
+  "[npm run build process] [build-info] version=%s commit=%s date=%s tag=%s",
   packageVersion,
   commit,
   commitDate,

@@ -45,23 +45,18 @@
 
 "use strict";
 
+/*- The SAME timestamp the server prints, not a copy of it, so a console
+ *  line and a log line can be read side by side.  `src/utc-timestamp.js`
+ *  is dependency-free so esbuild can bundle it here, the constraint
+ *  `src/pool-key.js` is written to for the same reason. */
+import { utcTimestamp } from "../src/utc-timestamp.js";
+
 const APP_TAG = "[lp-ranger]";
 /*- Treat any first tag whose text starts with `[lp-ranger` as
  *  "already prefixed".  Covers both the bare `[lp-ranger]` and the
  *  startup banner's `[lp-ranger app]` so the banner doesn't end up
  *  with a stuttering `[lp-ranger] [lp-ranger app]`. */
 const APP_TAG_PREFIX = "[lp-ranger";
-
-function _utcTimestamp() {
-  const d = new Date();
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mi = String(d.getUTCMinutes()).padStart(2, "0");
-  const ss = String(d.getUTCSeconds()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
-}
 
 /*- Skip leading ANSI CSI escapes (`\x1b[<params>m`).  DevTools strips
  *  these from display, but pre-color-wrapped banners can still arrive
@@ -164,7 +159,7 @@ function _composeOutput(s, i, endOfTags, hasAppTag, ts) {
  */
 function _withTimestamp(first) {
   if (typeof first !== "string") return first;
-  const ts = _utcTimestamp();
+  const ts = utcTimestamp();
   const i = _skipFormatNoise(first, 0);
   const { endOfTags, hasAppTag } = _scanTags(first, i);
   return _composeOutput(first, i, endOfTags, hasAppTag, ts);
@@ -178,11 +173,4 @@ export const log = {
 };
 
 /*- Exports below are test-only.  Production code uses `log.*`. */
-export {
-  _withTimestamp,
-  _utcTimestamp,
-  _scanTags,
-  _skipFormatNoise,
-  APP_TAG,
-  APP_TAG_PREFIX,
-};
+export { _withTimestamp, _scanTags, _skipFormatNoise, APP_TAG, APP_TAG_PREFIX };
