@@ -13,6 +13,7 @@ const path = require("path");
 
 const {
   loadMergedDefaults,
+  _resetMemoForTests,
   DEFAULTS_DIR,
   USER_DIR,
 } = require("../src/load-merged-defaults");
@@ -38,11 +39,16 @@ function _safeUnlink(p) {
 
 beforeEach(() => {
   if (!fs.existsSync(USER_DIR)) fs.mkdirSync(USER_DIR, { recursive: true });
+  /*- The loader reads each file once and keeps it.  These cases write
+   *  a different file under the same name for each assertion, so each
+   *  one starts from a loader that has not read anything yet. */
+  _resetMemoForTests();
 });
 
 afterEach(() => {
   _safeUnlink(_DEF);
   _safeUnlink(_USR);
+  _resetMemoForTests();
 });
 
 describe("loadMergedDefaults", () => {

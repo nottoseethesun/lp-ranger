@@ -23,9 +23,13 @@
  * falls back to the shipped defaults so a hand-edit typo never bricks
  * the install.
  *
- * No caching — each call hits the disk.  Callers that want caching
- * implement it themselves (most existing consumers already cache the
- * parsed object at module-load time).
+ * Each file is read once and the parsed result is kept for the life of
+ * the process, frozen all the way down.  Every file loaded here is
+ * operator-tunable plumbing documented as taking effect on restart, and
+ * its readers include a poll cycle and per-request paths; caching here
+ * rather than in each reader is what gives that guarantee to readers
+ * not yet written.  `_resetMemoForTests` is how a test stands in for
+ * the restart.
  */
 
 "use strict";
@@ -166,11 +170,51 @@ function _readUserOverride(filename) {
  * @param {string} filename  Bare filename, e.g. `"chains.json"`.
  * @returns {object}  The merged config object.
  */
+/*- One read per file, held for the life of the process.
+ *
+ *  Every config file this loads is operator-tunable plumbing that the
+ *  docs describe as taking effect on restart, and its readers include a
+ *  poll cycle and per-request paths. Memoizing here rather than in each
+ *  reader is what makes that true for readers not yet written: a new
+ *  one gets the guarantee by calling this, without having to remember
+ *  to cache. Results are frozen because callers now share one object.
+ *  `_deepMerge` is pure, so a frozen shipped default is safe as its
+ *  left-hand side. */
+const _merged = new Map();
+const _shipped = new Map();
+
+/**
+ * Freeze a config object and everything under it.
+ *
+ * Shallow freezing would leave the nested objects — `chains.json`'s
+ * `rpc`, `contracts` and `aggregator` among them — writable and, now
+ * that one object is handed to every caller, shared. A single stray
+ * assignment would then change that value for the whole process, for
+ * its whole life, silently and from anywhere. Freezing all the way
+ * down turns that into a throw at the assignment.
+ *
+ * Costs one recursive walk per file, once.
+ *
+ * @param {*} node
+ * @returns {*} The same node, frozen.
+ */
+function _freezeDeep(node) {
+  if (node && typeof node === "object" && !Object.isFrozen(node)) {
+    Object.freeze(node);
+    for (const value of Object.values(node)) _freezeDeep(value);
+  }
+  return node;
+}
+
 function loadMergedDefaults(filename) {
+  if (_merged.has(filename)) return _merged.get(filename);
   const defaults = _readDefaults(filename);
   const user = _readUserOverride(filename);
-  if (user === undefined) return defaults;
-  return _deepMerge(defaults, user);
+  const out = _freezeDeep(
+    user === undefined ? defaults : _deepMerge(defaults, user),
+  );
+  _merged.set(filename, out);
+  return out;
 }
 
 /**
@@ -183,12 +227,22 @@ function loadMergedDefaults(filename) {
  * @returns {object}  The shipped-defaults object.
  */
 function loadShippedDefaults(filename) {
-  return _readDefaults(filename);
+  if (_shipped.has(filename)) return _shipped.get(filename);
+  const out = _freezeDeep(_readDefaults(filename));
+  _shipped.set(filename, out);
+  return out;
+}
+
+/** Forget every memoized file, so the next read goes to disk (tests only). */
+function _resetMemoForTests() {
+  _merged.clear();
+  _shipped.clear();
 }
 
 module.exports = {
   loadMergedDefaults,
   loadShippedDefaults,
+  _resetMemoForTests,
   DEFAULTS_DIR,
   USER_DIR,
 };

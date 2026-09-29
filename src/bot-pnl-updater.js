@@ -26,23 +26,31 @@ const {
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 const { applyInitialResidual } = require("./bot-pnl-initial-residual");
 
+/*- The shipped default, read once at load.  `readBotConfigDefaults()`
+ *  merges the JSON from disk on every call and this resolves once per
+ *  position per poll cycle, so reading it per call would put file I/O
+ *  on the poll path.  Reading once is also the semantics the setting's
+ *  group documents: override it in the user-configurable file and
+ *  restart. */
+const _SHIPPED_BALANCED_MULTIPLIER = (() => {
+  try {
+    const d = readBotConfigDefaults();
+    return typeof d.pricePauseExceptionPollWindowMultiple === "number"
+      ? d.pricePauseExceptionPollWindowMultiple
+      : 10;
+  } catch {
+    return 10;
+  }
+})();
+
 /*- Resolve the balanced-notifier fetch-window multiplier.  Order of
- *  precedence: explicit override in the merged cfg → user-editable
- *  defaults file → built-in fallback (10).  Defaults file is re-read
- *  on each call so operators editing `bot-config-defaults.json` live
- *  take effect on the next poll without a restart. */
+ *  precedence: explicit override in the merged cfg → the shipped
+ *  default read at load → built-in fallback (10). */
 function _resolveBalancedMultiplier(deps) {
   const gc = deps._getConfig;
   const explicit = gc && gc("pricePauseExceptionPollWindowMultiple");
   if (typeof explicit === "number" && explicit >= 1) return explicit;
-  try {
-    const d = readBotConfigDefaults();
-    if (typeof d.pricePauseExceptionPollWindowMultiple === "number")
-      return d.pricePauseExceptionPollWindowMultiple;
-  } catch {
-    /* fall through to built-in */
-  }
-  return 10;
+  return _SHIPPED_BALANCED_MULTIPLIER;
 }
 
 const _ERC20_BAL_ABI = ["function balanceOf(address) view returns (uint256)"];
