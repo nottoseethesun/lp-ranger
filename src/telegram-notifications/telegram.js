@@ -214,7 +214,11 @@ async function _send(text) {
     return true;
   }
   if (!_isParseFailure(first)) {
-    log.warn("[telegram] Send failed: %d %s", first.status, first.body);
+    /*- Status 0 is `_post` reporting that the request could not be made
+     *  at all, which is a different thing from Telegram refusing one
+     *  and keeps the wording it has always had. */
+    if (first.status === 0) log.warn("[telegram] Send error: %s", first.body);
+    else log.warn("[telegram] Send failed: %d %s", first.status, first.body);
     return false;
   }
   log.warn(

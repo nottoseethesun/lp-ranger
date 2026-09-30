@@ -318,10 +318,16 @@ function buildProvider(url, ethersLib) {
    *  within 250 ms now cost two requests.  That is the right trade:
    *  the global queue in `src/rpc-request-manager.js` is what bounds
    *  the request rate, and a cache that also silently bounded it was
-   *  answering a question nobody asked it. */
+   *  answering a question nobody asked it.
+   *
+   *  Only the branch that has a network.  The other one is reached when
+   *  `Network.from` is absent — a stand-in ethers in a test — or when
+   *  no chain declares a `chainId`, which neither shipped chain does.
+   *  Nothing runs there in production, so nothing there needs the
+   *  option. */
   const provider =
     network === null
-      ? new lib.JsonRpcProvider(url, undefined, { cacheTimeout: -1 })
+      ? new lib.JsonRpcProvider(url)
       : new lib.JsonRpcProvider(url, network, {
           staticNetwork: network,
           cacheTimeout: -1,

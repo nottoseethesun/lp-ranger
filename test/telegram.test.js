@@ -275,6 +275,29 @@ describe("telegram — Markdown refused", () => {
     assert.strictEqual(stub.calls.length, 1, "no retry when none is needed");
   });
 
+  it("keeps 'Send error' wording when the request cannot be made", async () => {
+    /*- A transport failure is not a refusal, and the phrase has always
+     *  distinguished them. Pinned because a refactor of `_send` folded
+     *  it into the refusal message, and nothing noticed — this project
+     *  greps log phrases. */
+    const lines = [];
+    const restore = require("../src/log")._setSinkForTests({
+      warn: (first, ...rest) => lines.push([first, ...rest].join(" ")),
+      log: () => {},
+      error: () => {},
+    });
+    globalThis.fetch = async () => {
+      throw new Error("getaddrinfo ENOTFOUND api.telegram.org");
+    };
+    const sent = await notify("compoundFail", { error: "x" });
+    restore();
+    assert.strictEqual(sent, false);
+    assert.ok(
+      lines.some((l) => l.includes("Send error")),
+      `expected a "Send error" line, got: ${lines.join(" | ")}`,
+    );
+  });
+
   it("reports failure when the plain-text retry is refused too", async () => {
     const stub = _refusing(2, PARSE_REFUSAL);
     globalThis.fetch = stub.fetch;
