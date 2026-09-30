@@ -1,14 +1,16 @@
 ---
 name: project_telegram_markdown_drops_alerts
-description: "OPEN BUG, Production 0.9.7, 2026-09-30: Telegram alerts are sent with parse_mode Markdown and no escaping, so any notification carrying arbitrary error text is rejected 400 and silently dropped. The compoundFail alert was lost this way — the channel fails exactly when there is something to report."
+description: "FIXED on branch, Production 0.9.7 2026-09-30: Telegram alerts were sent with parse_mode Markdown and no escaping, so any notification carrying arbitrary error text was rejected 400 and silently dropped. A parse refusal now resends the same words unformatted."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-30T16:57:22.503Z
+  modified: 2026-09-30T17:26:08.678Z
 ---
 
-**Open.** Confirmed on Production 0.9.7, 2026-09-30 13:23:14Z.
+**Fixed** on branch
+`scan-floor_read-retries-pacing_escape-telegram-md-content`; open on
+Production until that merges and ships. Confirmed 2026-09-30 13:23:14Z.
 
 ## What happened
 
@@ -51,20 +53,27 @@ The shape of the defect is the worst one an alerting channel can have:
 it works for routine and test traffic, and fails on exactly the
 messages that report a problem.
 
-## The fix, when taken up
+## The fix taken
 
-Escape the interpolated text, or drop `parse_mode` for messages that
-carry arbitrary content. Escaping is the better answer, since the
-headers deliberately use `*bold*` — so escape the *values* at the point
-they are interpolated, not the assembled string. Telegram's legacy
-Markdown has no official escape for every case, which is a further
-argument for `MarkdownV2` (well-defined escaping) or plain text for the
-body with the header kept formatted.
+A refusal naming a parse error resends the same words with no
+`parse_mode` at all (`_send` / `_isParseFailure`,
+`src/telegram-notifications/telegram.js`). The formatting is what gets
+sacrificed, never the alert.
 
-Whatever is chosen, a 400 from Telegram should be visible beyond a
-`log.warn` — a dropped alert currently looks identical to no alert
-being due. Consider one retry as plain text on a parse failure, so the
-operator always gets the words even when the formatting is lost.
+Escaping the values was considered and rejected. It would be tidier if
+legacy Markdown had a dependable escape, which it does not — that is
+why MarkdownV2 exists — and an escaping pass that missed one future
+interpolation site would restore exactly this silence. There are at
+least three arbitrary-text sites already (`_hostname`, token symbols via
+`_truncSym`, and `details.error`), and token symbols on this chain
+include names like `NoExpectationsButPumpMyBagsRichardPlease`.
+
+A 400 that is not about parsing — a bad chat id — is not retried, since
+resending fixes nothing about it. Losing both attempts is logged at
+error level, because nothing downstream reports it and the operator's
+only other sign would be the silence itself.
+
+Pinned by four cases in `test/telegram.test.js`.
 
 Related: [[project_tx_wait_not_failover_covered]], the compound failure
 that produced the message this bug then swallowed.

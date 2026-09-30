@@ -115,8 +115,8 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 
 ## Project state, architecture & nice-to-haves
 - [OPEN: tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Prod 0.9.7: a 502 during a receipt wait kills a whole compound; the failover had already moved and the wait stayed on the dead endpoint
-- [OPEN: Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Prod 0.9.7: unescaped error text + parse_mode Markdown = 400, alert silently lost; test messages still pass
-- [OPEN: read retry spins unpaced](project_read_retry_spins_unpaced.md) — Prod 0.9.7: 678 getLogs retries in ONE second at a dead endpoint; the no-backoff invariant in rpc-read-retry.js is false
+- [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Fixed on branch: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
+- [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Fixed on branch: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure
 - [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork in 0.9.5
 - [failover exhausts on concurrent errors](project_failover_exhausts_on_concurrent_errors.md) — Prod 0.9.5 froze for an hour when ONE endpoint blipped; fixed in 0.9.6 by naming the failed endpoint
 - [config stomp investigation](project_config_stomp_investigation.md) — bot-config.json once overwritten; root cause unknown, guards in place
