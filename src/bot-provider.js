@@ -293,11 +293,39 @@ function buildProvider(url, ethersLib) {
   const network = _knownNetwork(lib);
   /*- The network goes in twice, as the provider's network AND as
    *  `staticNetwork`.  ethers asserts the two agree, then keeps the
-   *  static one and hands it back from every later detection. */
+   *  static one and hands it back from every later detection.
+   *
+   *  `cacheTimeout: -1` turns off ethers' own request cache, which
+   *  otherwise holds each request's promise for 250 ms and hands the
+   *  same one back to any identical request arriving inside that
+   *  window.  **A rejected promise is cached like any other**, and the
+   *  read-retry loop retries with identical arguments — so a failed
+   *  read was answered from memory, instantly, as many times as the
+   *  loop went round.  Two things followed, both bad.
+   *
+   *  The loop stopped being paced.  Pacing lives inside the patched
+   *  `send()`, and a cached answer never reaches it; the loop then
+   *  spun at memory speed, which is exactly what
+   *  `src/rpc-read-retry.js` states cannot happen and why it carries no
+   *  backoff of its own.
+   *
+   *  Worse, every turn of that loop reported another failure to
+   *  `src/rpc-out-of-service.js`.  One refusal by one endpoint was
+   *  counted hundreds of times, so what decides failover stopped being
+   *  the endpoint's failure rate and became the loop's iteration count.
+   *
+   *  The cost of switching it off is that two identical reads issued
+   *  within 250 ms now cost two requests.  That is the right trade:
+   *  the global queue in `src/rpc-request-manager.js` is what bounds
+   *  the request rate, and a cache that also silently bounded it was
+   *  answering a question nobody asked it. */
   const provider =
     network === null
-      ? new lib.JsonRpcProvider(url)
-      : new lib.JsonRpcProvider(url, network, { staticNetwork: network });
+      ? new lib.JsonRpcProvider(url, undefined, { cacheTimeout: -1 })
+      : new lib.JsonRpcProvider(url, network, {
+          staticNetwork: network,
+          cacheTimeout: -1,
+        });
   _patchRequestPacing(provider, url);
   _patchFeeData(provider);
   return provider;
