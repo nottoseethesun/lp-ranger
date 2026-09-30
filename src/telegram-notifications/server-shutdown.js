@@ -18,6 +18,7 @@ const os = require("os");
 const { spawn } = require("child_process");
 
 const telegram = require("./telegram");
+const { escapeValue } = require("./telegram-markdown");
 
 /** Path to the detached sender script, resolved from project root.  We're
  *  in `src/telegram-notifications/`, so the project root is two levels up. */
@@ -40,10 +41,14 @@ function notifyShutdown() {
     return;
   }
   log.info("[server] Sending shutdown notification via Telegram");
-  const host = os.hostname();
+  /*- The hostname is escaped for the same reason every other value is:
+   *  it is not ours to choose, and a `-` or `_` in it is markup to
+   *  MarkdownV2. The rest of this line is fixed prose, so its own
+   *  reserved characters are escaped here by hand — there are two. */
+  const host = escapeValue(os.hostname());
   const msg =
-    `*LP Ranger on ${host}*: The Server (includes the Bot) is shutting ` +
-    `down: Manual restart may be required.`;
+    `*LP Ranger on ${host}*: The Server \\(includes the Bot\\) is shutting ` +
+    `down: Manual restart may be required\\.`;
   const child = spawn(
     process.execPath,
     [_SEND_SCRIPT, telegram.getBotToken(), telegram.getChatId(), msg],

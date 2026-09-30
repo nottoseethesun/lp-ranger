@@ -140,8 +140,12 @@ describe("telegram — notify", () => {
     });
     assert.strictEqual(sent, true);
     assert.ok(captured.url.includes("/sendMessage"));
+    assert.strictEqual(captured.body.parse_mode, "MarkdownV2");
     assert.ok(captured.body.text.includes("Rebalance Failed"));
-    assert.ok(captured.body.text.includes("Position: #99"));
+    /*- Escaped, because `#` is reserved in MarkdownV2. Telegram renders
+     *  an escaped character as itself, so the reader still sees
+     *  "Position: #99". */
+    assert.ok(captured.body.text.includes("Position: \\#99"));
     assert.ok(captured.body.text.includes("A /"));
     assert.ok(captured.body.text.includes("    B"));
     assert.ok(captured.body.text.includes("revert"));
@@ -179,6 +183,103 @@ describe("telegram — testConnection", () => {
     });
     const r = await testConnection();
     assert.strictEqual(r.ok, true);
+  });
+});
+
+// ── the assembled message is valid MarkdownV2 ────────────────────────────────
+
+describe("telegram — the whole message parses", () => {
+  /*- The escaper is proven on its own in telegram-markdown.test.js.
+   *  What that cannot show is whether the ASSEMBLED message is valid,
+   *  because the templates contribute markup of their own — the bold
+   *  pair around the header and the backticks around a hash. Those must
+   *  stay unescaped, and everything else must not.
+   *
+   *  So the check here is: reserved characters are all escaped except
+   *  `*` and backtick, and those two appear in pairs, which is what
+   *  makes them entity delimiters rather than a parse error.
+   *
+   *  Driven through `notify` rather than a builder, so it is the real
+   *  path that is being judged.
+   *
+   *  TEST-ONLY global swap: `globalThis.fetch` again, restored by this
+   *  file's own beforeEach/afterEach pair at the top. */
+
+  const RESERVED = "_*[]()~`>#+-=|{}.!";
+
+  /** Unescaped occurrences of every reserved character, by character. */
+  function _unescapedCounts(text) {
+    const counts = {};
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === "\\") {
+        i++;
+        continue;
+      }
+      if (RESERVED.includes(text[i])) {
+        counts[text[i]] = (counts[text[i]] || 0) + 1;
+      }
+    }
+    return counts;
+  }
+
+  beforeEach(() => {
+    setBotToken("tok");
+    setChatId("123");
+    setEnabledEvents(EVENT_DEFAULTS);
+  });
+  afterEach(() => {
+    setBotToken(null);
+    setChatId(null);
+  });
+
+  it("escapes every reserved character except the entity delimiters", async () => {
+    let body = null;
+    globalThis.fetch = async (url, opts) => {
+      body = JSON.parse(opts.body);
+      return { ok: true, json: async () => ({}) };
+    };
+    await notify("compoundFail", {
+      position: {
+        tokenId: 164418,
+        fee: 2500,
+        token0Symbol: "HEX_from_Eth",
+        token1Symbol: "*weird*",
+      },
+      txHash: "0x6da4172cbb14f78a1e902e260052293a",
+      error:
+        'nonce has already been used (info={ "code": -32000 }, ' +
+        "code=NONCE_EXPIRED, version=6.17.0)",
+    });
+
+    const counts = _unescapedCounts(body.text);
+    const stars = counts["*"] || 0;
+    const ticks = counts["`"] || 0;
+    delete counts["*"];
+    delete counts["`"];
+
+    assert.deepStrictEqual(
+      counts,
+      {},
+      "only * and ` may stand unescaped: " + JSON.stringify(body.text),
+    );
+    assert.strictEqual(stars % 2, 0, `bold delimiters must pair, saw ${stars}`);
+    assert.strictEqual(ticks % 2, 0, `code delimiters must pair, saw ${ticks}`);
+  });
+
+  it("does not escape inside the code span around a hash", async () => {
+    /*- A code span renders its contents literally, so an escape there
+     *  would show the backslash to the reader. */
+    let body = null;
+    globalThis.fetch = async (url, opts) => {
+      body = JSON.parse(opts.body);
+      return { ok: true, json: async () => ({}) };
+    };
+    const hash = "0xAbC_123";
+    await notify("compoundFail", { txHash: hash });
+    assert.ok(
+      body.text.includes("`" + hash + "`"),
+      "hash must sit unescaped between backticks: " + body.text,
+    );
   });
 });
 
@@ -247,15 +348,23 @@ describe("telegram — Markdown refused", () => {
     });
     assert.strictEqual(sent, true, "the alert must still arrive");
     assert.strictEqual(stub.calls.length, 2, "one retry, not more");
-    assert.strictEqual(stub.calls[0].parse_mode, "Markdown");
+    assert.strictEqual(stub.calls[0].parse_mode, "MarkdownV2");
     assert.ok(
       !("parse_mode" in stub.calls[1]),
       "the retry must ask for no parsing at all",
     );
-    assert.strictEqual(
-      stub.calls[1].text,
-      stub.calls[0].text,
-      "the words must be unchanged; only the formatting is given up",
+    /*- The retry carries the UNESCAPED words. Sending the MarkdownV2
+     *  form with no parse mode would render every escape literally, so
+     *  the reader would get `NONCE\_EXPIRED` — the fallback would
+     *  deliver the alert and mangle it. */
+    assert.ok(
+      stub.calls[0].text.includes("\\("),
+      "the first attempt is escaped for MarkdownV2",
+    );
+    assert.ok(
+      stub.calls[1].text.includes("(transaction=") &&
+        !stub.calls[1].text.includes("\\("),
+      "the retry carries the words unescaped: " + stub.calls[1].text,
     );
   });
 
