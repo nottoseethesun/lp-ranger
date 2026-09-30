@@ -18,6 +18,7 @@ const os = require("os");
 const { spawn } = require("child_process");
 
 const telegram = require("./telegram");
+const { escapeValue } = require("./telegram-message");
 
 /** Path to the detached sender script, resolved from project root.  We're
  *  in `src/telegram-notifications/`, so the project root is two levels up. */
@@ -40,13 +41,21 @@ function notifyShutdown() {
     return;
   }
   log.info("[server] Sending shutdown notification via Telegram");
+  /*- Built twice, the same way `notify` builds its messages: escaped
+   *  for MarkdownV2, and raw for the plain-text fallback. The hostname
+   *  is escaped for the reason every value is — it is not ours to
+   *  choose, and a `-` or `_` in it is markup to MarkdownV2. The rest
+   *  of the line is fixed prose, so its own two reserved characters are
+   *  written escaped in the template. */
   const host = os.hostname();
+  const tail = "is shutting down: Manual restart may be required";
   const msg =
-    `*LP Ranger on ${host}*: The Server (includes the Bot) is shutting ` +
-    `down: Manual restart may be required.`;
+    `*LP Ranger on ${escapeValue(host)}*: ` +
+    `The Server \\(includes the Bot\\) ${escapeValue(tail)}\\.`;
+  const plain = `*LP Ranger on ${host}*: The Server (includes the Bot) ${tail}.`;
   const child = spawn(
     process.execPath,
-    [_SEND_SCRIPT, telegram.getBotToken(), telegram.getChatId(), msg],
+    [_SEND_SCRIPT, telegram.getBotToken(), telegram.getChatId(), msg, plain],
     { detached: true, stdio: "ignore" },
   );
   child.unref();

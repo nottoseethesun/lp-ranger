@@ -14,11 +14,24 @@
 
 "use strict";
 
-const { log } = require("../log");
 const os = require("os");
 const config = require("../config");
 const { getLpProviderDisplayName } = require("../lp-providers");
 const { getTokenSymbol } = require("../token-symbol-cache");
+const { escapeValue, escapeCode, sendMessage } = require("./telegram-message");
+
+/*- Every send in this file goes through `sendMessage`, which is also
+ *  what the detached `scripts/telegram-send.js` calls. One sender means
+ *  one parse mode, one fallback and one set of log lines; two meant the
+ *  shutdown path kept the legacy mode after this one had left it. */
+function _send(text, plainText) {
+  return sendMessage({
+    botToken: _botToken,
+    chatId: _chatId,
+    text,
+    plainText,
+  });
+}
 
 /** Machine hostname, included in all notifications. */
 const _hostname = os.hostname();
@@ -131,117 +144,12 @@ function getEnabledEvents() {
   return { ..._enabledEvents };
 }
 
-/**
- * Post one message to the Bot API.
- *
- * @param {string} url        The sendMessage endpoint.
- * @param {string} text       Message text.
- * @param {string|null} mode  `parse_mode` to request, or null for none.
- * @returns {Promise<{ok: boolean, status: number, body: string}>}
- *   `status` is 0 and `body` the error message when the request itself
- *   could not be made.
- */
-async function _post(url, text, mode) {
-  const payload = {
-    chat_id: _chatId,
-    text,
-    disable_web_page_preview: true,
-  };
-  if (mode) payload.parse_mode = mode;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) return { ok: true, status: res.status, body: "" };
-    return {
-      ok: false,
-      status: res.status,
-      body: await res.text().catch(() => ""),
-    };
-  } catch (err) {
-    return { ok: false, status: 0, body: err.message };
-  }
-}
-
-/**
- * Whether Telegram rejected a message because it could not parse the
- * formatting, as opposed to any other refusal.
- *
- * Telegram answers 400 with a description naming the offending byte —
- * "can't parse entities: Can't find end of the entity starting at byte
- * offset 597". Matched on the phrase rather than the status, because a
- * 400 also covers a bad chat id, which resending fixes nothing about.
- *
- * @param {{status: number, body: string}} res  A failed `_post` result.
- * @returns {boolean}
- */
-function _isParseFailure(res) {
-  return res.status === 400 && /can't parse entities/i.test(res.body);
-}
-
-/**
- * Send a Telegram message via the Bot API, in Markdown when Telegram
- * will take it and as plain text when it will not.
- *
- * The retry is the point. Notifications carry text the app does not
- * control — an error message, a token symbol, an operator's hostname —
- * and Telegram's legacy Markdown treats `_`, `*`, `` ` `` and `[` as
- * entity delimiters. One unbalanced delimiter anywhere makes the whole
- * message unparseable, and Telegram then refuses all of it. On
- * Production that silently swallowed a compound-failure alert whose
- * body quoted a raw ethers error, and the operator learned of the
- * failure a day later by reading the log.
- *
- * Escaping the values instead would be the tidier fix if legacy
- * Markdown had a dependable escape, which it does not; and an escaping
- * pass that missed one future call site would restore exactly this
- * silence. Resending covers every message, including ones not yet
- * written, and costs a second request only when the first was refused.
- *
- * The formatting is what gets sacrificed, never the alert.
- *
- * @param {string} text  Message text (Markdown or plain).
- * @returns {Promise<boolean>} True on success, false on failure.
- */
-async function _send(text) {
-  if (!_botToken || !_chatId) return false;
-  const url = `https://api.telegram.org/bot${_botToken}/sendMessage`;
-  const first = await _post(url, text, "Markdown");
-  if (first.ok) {
-    log.info("[telegram] Notification sent: %s", text.split("\n")[0]);
-    return true;
-  }
-  if (!_isParseFailure(first)) {
-    /*- Status 0 is `_post` reporting that the request could not be made
-     *  at all, which is a different thing from Telegram refusing one
-     *  and keeps the wording it has always had. */
-    if (first.status === 0) log.warn("[telegram] Send error: %s", first.body);
-    else log.warn("[telegram] Send failed: %d %s", first.status, first.body);
-    return false;
-  }
-  log.warn(
-    "[telegram] Markdown refused (%s) — resending as plain text",
-    first.body,
-  );
-  const plain = await _post(url, text, null);
-  if (plain.ok) {
-    log.info(
-      "[telegram] Notification sent unformatted: %s",
-      text.split("\n")[0],
-    );
-    return true;
-  }
-  /*- Both attempts refused, so this alert is lost. Logged at error
-   *  level because nothing downstream reports it and the operator's
-   *  only other sign would be the silence itself. */
-  log.error(
-    "[telegram] Send failed after plain-text retry: %d %s",
-    plain.status,
-    plain.body,
-  );
-  return false;
+/*- The identity escape, for building the plain-text form of a message
+ *  and for `buildHeader`'s default. Named rather than inlined so the
+ *  two call sites cannot drift into different notions of "no escaping".
+ *  @param {*} s  @returns {string} */
+function _raw(s) {
+  return String(s);
 }
 
 /** Truncate a token symbol to `max` chars (default = compact header width).
@@ -300,22 +208,24 @@ function _resolvePairSymbols(position) {
  *                              Falsy → only the title line is returned.
  * @returns {string[]}          Header lines (no trailing blank line).
  */
-function buildHeader(title, position) {
-  const lines = [`*LP Ranger on ${_hostname}*: ${title}`];
+function buildHeader(title, position, esc = _raw) {
+  const lines = [`*LP Ranger on ${esc(_hostname)}*: ${esc(title)}`];
   if (!position) return lines;
   const chain = config.CHAIN?.displayName;
-  if (chain) lines.push(chain);
+  if (chain) lines.push(esc(chain));
   const provider = _resolveProviderName();
-  if (provider) lines.push(provider);
+  if (provider) lines.push(esc(provider));
   const [sym0Raw, sym1Raw] = _resolvePairSymbols(position);
   if (sym0Raw && sym1Raw) {
-    lines.push(`${_truncSym(sym0Raw)} /`);
-    lines.push(`    ${_truncSym(sym1Raw)}`);
+    lines.push(`${esc(_truncSym(sym0Raw))} /`);
+    lines.push(`    ${esc(_truncSym(sym1Raw))}`);
   }
   if (position.fee) {
-    lines.push(`Fee Tier: ${(position.fee / 10_000).toFixed(2)}%`);
+    lines.push(`Fee Tier: ${esc((position.fee / 10_000).toFixed(2))}%`);
   }
-  if (position.tokenId) lines.push(`Position: #${position.tokenId}`);
+  /*- The `#` is escaped as part of the value, not left in the template,
+   *  because MarkdownV2 reserves it. Escaped, it renders as itself. */
+  if (position.tokenId) lines.push(`Position: ${esc("#" + position.tokenId)}`);
   return lines;
 }
 
@@ -340,14 +250,21 @@ async function notify(eventType, details = {}) {
   if (!isConfigured()) return false;
   if (!_enabledEvents[eventType]) return false;
   const title = EVENT_LABELS[eventType] || eventType;
-  const lines = buildHeader(title, details.position);
-  if (details.message) {
-    lines.push("");
-    lines.push(details.message);
-  }
-  if (details.txHash) lines.push(`TX: \`${details.txHash}\``);
-  if (details.error) lines.push(`Error: ${details.error}`);
-  return _send(lines.join("\n"));
+  /*- Built twice from one builder: once escaped for MarkdownV2, once
+   *  raw for the plain-text fallback. Two builders would be a mirror,
+   *  and the fallback is exactly the path nobody watches, so it is the
+   *  one a drifting copy would rot in unnoticed. */
+  const build = (esc, code) => {
+    const lines = buildHeader(title, details.position, esc);
+    if (details.message) {
+      lines.push("");
+      lines.push(esc(details.message));
+    }
+    if (details.txHash) lines.push(`TX: \`${code(details.txHash)}\``);
+    if (details.error) lines.push(`Error: ${esc(details.error)}`);
+    return lines.join("\n");
+  };
+  return _send(build(escapeValue, escapeCode), build(_raw, _raw));
 }
 
 /**
