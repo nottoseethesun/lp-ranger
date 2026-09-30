@@ -275,7 +275,17 @@ async function testConnection() {
   if (!_botToken || !_chatId) {
     return { ok: false, error: "Bot token or chat ID not configured" };
   }
+  /*- Escaped like any other message, and for the same reason: the
+   *  hostname is not ours to choose, and `-` is markup to MarkdownV2.
+   *  The `!` is fixed prose, so it is written escaped here.
+   *
+   *  This one matters more than its size suggests. It is the operator's
+   *  instrument for asking whether Telegram works, so a version of it
+   *  that only arrives via the plain-text fallback reports success
+   *  while demonstrating the failure it is meant to detect. */
   const ok = await _send(
+    `*LP Ranger on ${escapeValue(_hostname)}*: ` +
+      `Test notification \u2014 connection OK\\!`,
     `*LP Ranger on ${_hostname}*: Test notification \u2014 connection OK!`,
   );
   return ok ? { ok: true } : { ok: false, error: "Failed to send message" };
