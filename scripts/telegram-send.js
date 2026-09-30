@@ -2,37 +2,30 @@
  * @file scripts/telegram-send.js
  * @description Standalone one-shot Telegram message sender.
  *
- * Designed to be spawned as a detached child process during server shutdown
- * so the notification survives the parent's exit.
+ * Designed to be spawned as a detached child process during server
+ * shutdown so the notification survives the parent's exit. That is the
+ * whole of its job: the escaping, the parse mode and the plain-text
+ * fallback all belong to `src/telegram-notifications/telegram-message.js`,
+ * which this calls, so this path cannot drift away from the in-process
+ * one the way it did when each had its own `fetch`.
  *
- * Usage: node scripts/telegram-send.js <botToken> <chatId> <message>
+ * Usage: node scripts/telegram-send.js <botToken> <chatId> <escaped> [plain]
+ *
+ * `escaped` is already escaped for MarkdownV2 by the caller, which is
+ * the only side that knows which characters are markup and which are
+ * text. `plain` is the same words unescaped, for the fallback; omitting
+ * it sends the escaped form both times.
  */
 
 "use strict";
 
 const {
-  PARSE_MODE,
-} = require("../src/telegram-notifications/telegram-markdown");
+  sendMessage,
+} = require("../src/telegram-notifications/telegram-message");
 
-const [, , botToken, chatId, text] = process.argv;
+const [, , botToken, chatId, text, plainText] = process.argv;
 if (!botToken || !chatId || !text) process.exit(0);
 
-/*- The parse mode comes from the shared module rather than a literal
- *  here. This sender is a second road to Telegram, spawned detached so
- *  the message outlives the parent, and a mode written out twice is a
- *  mode that moves in one place only — which is how this path stayed on
- *  the legacy one after the main path had left it. The caller escapes
- *  the text; this script only delivers it. */
-const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-fetch(url, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    chat_id: chatId,
-    text,
-    parse_mode: PARSE_MODE,
-    disable_web_page_preview: true,
-  }),
-})
-  .then(() => process.exit(0))
+sendMessage({ botToken, chatId, text, plainText })
+  .then((ok) => process.exit(ok ? 0 : 1))
   .catch(() => process.exit(1));

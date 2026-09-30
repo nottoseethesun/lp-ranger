@@ -14,12 +14,24 @@
 
 "use strict";
 
-const { log } = require("../log");
 const os = require("os");
 const config = require("../config");
 const { getLpProviderDisplayName } = require("../lp-providers");
 const { getTokenSymbol } = require("../token-symbol-cache");
-const { PARSE_MODE, escapeValue, escapeCode } = require("./telegram-markdown");
+const { escapeValue, escapeCode, sendMessage } = require("./telegram-message");
+
+/*- Every send in this file goes through `sendMessage`, which is also
+ *  what the detached `scripts/telegram-send.js` calls. One sender means
+ *  one parse mode, one fallback and one set of log lines; two meant the
+ *  shutdown path kept the legacy mode after this one had left it. */
+function _send(text, plainText) {
+  return sendMessage({
+    botToken: _botToken,
+    chatId: _chatId,
+    text,
+    plainText,
+  });
+}
 
 /** Machine hostname, included in all notifications. */
 const _hostname = os.hostname();
@@ -130,127 +142,6 @@ function setEnabledEvents(events) {
 /** @returns {Object<string, boolean>} Current enabled-events map. */
 function getEnabledEvents() {
   return { ..._enabledEvents };
-}
-
-/**
- * Post one message to the Bot API.
- *
- * @param {string} url        The sendMessage endpoint.
- * @param {string} text       Message text.
- * @param {string|null} mode  `parse_mode` to request, or null for none.
- * @returns {Promise<{ok: boolean, status: number, body: string}>}
- *   `status` is 0 and `body` the error message when the request itself
- *   could not be made.
- */
-async function _post(url, text, mode) {
-  const payload = {
-    chat_id: _chatId,
-    text,
-    disable_web_page_preview: true,
-  };
-  if (mode) payload.parse_mode = mode;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) return { ok: true, status: res.status, body: "" };
-    return {
-      ok: false,
-      status: res.status,
-      body: await res.text().catch(() => ""),
-    };
-  } catch (err) {
-    return { ok: false, status: 0, body: err.message };
-  }
-}
-
-/**
- * Whether Telegram rejected a message because it could not parse the
- * formatting, as opposed to any other refusal.
- *
- * Telegram answers 400 with a description naming the offending byte —
- * "can't parse entities: Can't find end of the entity starting at byte
- * offset 597". Matched on the phrase rather than the status, because a
- * 400 also covers a bad chat id, which resending fixes nothing about.
- *
- * @param {{status: number, body: string}} res  A failed `_post` result.
- * @returns {boolean}
- */
-function _isParseFailure(res) {
-  return res.status === 400 && /can't parse entities/i.test(res.body);
-}
-
-/**
- * Send a Telegram message via the Bot API, in Markdown when Telegram
- * will take it and as plain text when it will not.
- *
- * Two mechanisms, and they answer different questions. `notify` escapes
- * every value it interpolates, which is what makes the message parse in
- * the ordinary case; this retry is what happens when it does not anyway.
- * Notifications carry text the app does not control — an error message,
- * a token symbol, an operator's hostname — so a message that Telegram
- * refuses is an alert nobody receives, and the escaping is a claim about
- * correctness rather than a guarantee.
- *
- * So the retry stays underneath it, and is strictly the slower path: it
- * costs a second request, and only after the first was refused for a
- * reason that resending can address. It also covers messages not yet
- * written, whose author may interpolate something unescaped.
- *
- * The formatting is what gets sacrificed, never the alert.
- *
- * @param {string} text  Message text, escaped for `PARSE_MODE`.
- * @param {string} [plainText]  The same words unescaped, for the retry.
- *   Omit when the two are identical; the escapes would otherwise render
- *   literally once the parse mode is dropped.
- * @returns {Promise<boolean>} True on success, false on failure.
- */
-async function _send(text, plainText) {
-  if (!_botToken || !_chatId) return false;
-  const url = `https://api.telegram.org/bot${_botToken}/sendMessage`;
-  /*- The fallback sends `plainText`, not `text`. `text` carries the
-   *  backslashes that make it valid MarkdownV2, and a send with no
-   *  parse mode renders them literally — the reader would get
-   *  `HEX\_from\_Ethereum`. Callers that have no separate plain form
-   *  pass none and get the same string both ways, which is what the
-   *  old behaviour was. */
-  const plain = plainText === undefined ? text : plainText;
-  const first = await _post(url, text, PARSE_MODE);
-  if (first.ok) {
-    log.info("[telegram] Notification sent: %s", plain.split("\n")[0]);
-    return true;
-  }
-  if (!_isParseFailure(first)) {
-    /*- Status 0 is `_post` reporting that the request could not be made
-     *  at all, which is a different thing from Telegram refusing one
-     *  and keeps the wording it has always had. */
-    if (first.status === 0) log.warn("[telegram] Send error: %s", first.body);
-    else log.warn("[telegram] Send failed: %d %s", first.status, first.body);
-    return false;
-  }
-  log.warn(
-    "[telegram] Markdown refused (%s) — resending as plain text",
-    first.body,
-  );
-  const retry = await _post(url, plain, null);
-  if (retry.ok) {
-    log.info(
-      "[telegram] Notification sent unformatted: %s",
-      plain.split("\n")[0],
-    );
-    return true;
-  }
-  /*- Both attempts refused, so this alert is lost. Logged at error
-   *  level because nothing downstream reports it and the operator's
-   *  only other sign would be the silence itself. */
-  log.error(
-    "[telegram] Send failed after plain-text retry: %d %s",
-    retry.status,
-    retry.body,
-  );
-  return false;
 }
 
 /*- The identity escape, for building the plain-text form of a message

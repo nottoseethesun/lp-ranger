@@ -1,5 +1,5 @@
 /**
- * @file test/telegram-markdown.test.js
+ * @file test/telegram-message.test.js
  * @description
  * Proves that what the app sends Telegram is valid MarkdownV2.
  *
@@ -31,12 +31,14 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   PARSE_MODE,
   escapeValue,
   escapeCode,
-} = require("../src/telegram-notifications/telegram-markdown");
+} = require("../src/telegram-notifications/telegram-message");
 
 /** Every character Telegram reserves in ordinary MarkdownV2 text. */
 const RESERVED = "_*[]()~`>#+-=|{}.!";
@@ -87,7 +89,7 @@ const CORPUS = [
   ["every reserved character at once", "_*[]()~`>#+-=|{}.!\\"],
 ];
 
-describe("telegram-markdown — escapeValue", () => {
+describe("telegram-message — escapeValue", () => {
   it("declares MarkdownV2, the mode with a published escape rule", () => {
     assert.strictEqual(PARSE_MODE, "MarkdownV2");
   });
@@ -127,7 +129,55 @@ describe("telegram-markdown — escapeValue", () => {
   });
 });
 
-describe("telegram-markdown — escapeCode", () => {
+describe("telegram-message — one sender, one escaper", () => {
+  /*- The defect this guards is how the shutdown path kept the legacy
+   *  parse mode: it had its own `fetch` to the Bot API, so a fix to the
+   *  ordinary sender never reached it. A second sender is not a style
+   *  problem — it is a second set of answers to what mode to use, what
+   *  to escape, and whether to retry. */
+
+  const SRC = path.join(__dirname, "..", "src");
+  const SCRIPTS = path.join(__dirname, "..", "scripts");
+
+  /** Every .js file under a directory, recursively. */
+  function _jsFiles(dir) {
+    const out = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(..._jsFiles(full));
+      else if (entry.name.endsWith(".js")) out.push(full);
+    }
+    return out;
+  }
+
+  it("has exactly one file that talks to the Bot API", () => {
+    const callers = [..._jsFiles(SRC), ..._jsFiles(SCRIPTS)].filter((f) =>
+      fs.readFileSync(f, "utf8").includes("api.telegram.org"),
+    );
+    assert.deepStrictEqual(
+      callers.map((f) => path.basename(f)),
+      ["telegram-message.js"],
+      "every Telegram send must go through telegram-message.js",
+    );
+  });
+
+  it("sets the parse_mode field in exactly one place", () => {
+    /*- The API field, not the word. Other files mention MarkdownV2 in
+     *  comments to explain why a value is escaped, which is the comment
+     *  doing its job; what must not spread is the code that decides
+     *  which mode a request asks for. */
+    const setters = [..._jsFiles(SRC), ..._jsFiles(SCRIPTS)].filter((f) =>
+      /parse_mode/.test(fs.readFileSync(f, "utf8")),
+    );
+    assert.deepStrictEqual(
+      setters.map((f) => path.basename(f)),
+      ["telegram-message.js"],
+      "a second file setting the mode is a second mode waiting to diverge",
+    );
+  });
+});
+
+describe("telegram-message — escapeCode", () => {
   it("escapes only the two characters a code span reserves", () => {
     assert.strictEqual(escapeCode("a`b"), "a\\`b");
     assert.strictEqual(escapeCode("a\\b"), "a\\\\b");

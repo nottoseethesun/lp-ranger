@@ -189,7 +189,7 @@ describe("telegram — testConnection", () => {
 // ── the assembled message is valid MarkdownV2 ────────────────────────────────
 
 describe("telegram — the whole message parses", () => {
-  /*- The escaper is proven on its own in telegram-markdown.test.js.
+  /*- The escaper is proven on its own in telegram-message.test.js.
    *  What that cannot show is whether the ASSEMBLED message is valid,
    *  because the templates contribute markup of their own — the bold
    *  pair around the header and the backticks around a hash. Those must
