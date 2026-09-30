@@ -7,6 +7,7 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { assertValidMarkdownV2 } = require("./helpers/markdown-v2");
 
 let _originalFetch;
 beforeEach(() => {
@@ -205,40 +206,10 @@ describe("telegram — the whole message parses", () => {
    *  TEST-ONLY global swap: `globalThis.fetch` again, restored by this
    *  file's own beforeEach/afterEach pair at the top. */
 
-  const RESERVED = "_*[]()~`>#+-=|{}.!";
-
-  /** Unescaped occurrences of every reserved character, by character. */
-  function _unescapedCounts(text) {
-    const counts = {};
-    /*- Code spans are counted out. Telegram reserves only `` ` `` and
-     *  `\` inside one, and escaping anything else there would show the
-     *  backslash to the reader — so an underscore between backticks is
-     *  correct, not a miss.
-     *
-     *  The first version of this walked the string uniformly and passed
-     *  only because the hash it was given happened to contain no
-     *  reserved character. Swap in a hash with an underscore and it
-     *  reported a defect that was not there. */
-    let inCode = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      if (c === "\\") {
-        i++;
-        continue;
-      }
-      if (c === "`") {
-        inCode = !inCode;
-        counts["`"] = (counts["`"] || 0) + 1;
-        continue;
-      }
-      if (inCode) continue;
-      if (RESERVED.includes(c)) counts[c] = (counts[c] || 0) + 1;
-    }
-    /*- An unterminated code span is itself a parse error, and the
-     *  caller only checks the counts, so it is surfaced here. */
-    assert.strictEqual(inCode, false, "unterminated code span: " + text);
-    return counts;
-  }
+  /*- The rule itself lives in `test/helpers/markdown-v2.js`, shared
+   *  with `server-shutdown.test.js`. It has already been wrong once, in
+   *  a way that only showed when the inputs changed, so the copy that
+   *  gets fixed has to be the copy everyone uses. */
 
   beforeEach(() => {
     setBotToken("tok");
@@ -269,19 +240,7 @@ describe("telegram — the whole message parses", () => {
         "code=NONCE_EXPIRED, version=6.17.0)",
     });
 
-    const counts = _unescapedCounts(body.text);
-    const stars = counts["*"] || 0;
-    const ticks = counts["`"] || 0;
-    delete counts["*"];
-    delete counts["`"];
-
-    assert.deepStrictEqual(
-      counts,
-      {},
-      "only * and ` may stand unescaped: " + JSON.stringify(body.text),
-    );
-    assert.strictEqual(stars % 2, 0, `bold delimiters must pair, saw ${stars}`);
-    assert.strictEqual(ticks % 2, 0, `code delimiters must pair, saw ${ticks}`);
+    assertValidMarkdownV2(body.text, "compoundFail with nasty values");
   });
 
   it("produces valid MarkdownV2 for every event type", async () => {
@@ -308,18 +267,7 @@ describe("telegram — the whole message parses", () => {
         error: 'info={ "code": -32000 } a\\_b ~tilde~ {brace}',
         txHash: "0xAbC_123",
       });
-      const counts = _unescapedCounts(body.text);
-      const stars = counts["*"] || 0;
-      const ticks = counts["`"] || 0;
-      delete counts["*"];
-      delete counts["`"];
-      assert.deepStrictEqual(
-        counts,
-        {},
-        `${type}: only * and \` may stand unescaped — ${body.text}`,
-      );
-      assert.strictEqual(stars % 2, 0, `${type}: bold delimiters must pair`);
-      assert.strictEqual(ticks % 2, 0, `${type}: code delimiters must pair`);
+      assertValidMarkdownV2(body.text, type);
     }
   });
 
@@ -338,15 +286,7 @@ describe("telegram — the whole message parses", () => {
     const r = await testConnection();
     assert.strictEqual(r.ok, true);
 
-    const counts = _unescapedCounts(body.text);
-    const stars = counts["*"] || 0;
-    delete counts["*"];
-    assert.deepStrictEqual(
-      counts,
-      {},
-      "only the bold delimiters may stand unescaped: " + body.text,
-    );
-    assert.strictEqual(stars % 2, 0, `bold delimiters must pair, saw ${stars}`);
+    assertValidMarkdownV2(body.text, "Test Connection message");
   });
 
   it("does not escape inside the code span around a hash", async () => {
