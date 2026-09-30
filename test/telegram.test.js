@@ -210,15 +210,33 @@ describe("telegram — the whole message parses", () => {
   /** Unescaped occurrences of every reserved character, by character. */
   function _unescapedCounts(text) {
     const counts = {};
+    /*- Code spans are counted out. Telegram reserves only `` ` `` and
+     *  `\` inside one, and escaping anything else there would show the
+     *  backslash to the reader — so an underscore between backticks is
+     *  correct, not a miss.
+     *
+     *  The first version of this walked the string uniformly and passed
+     *  only because the hash it was given happened to contain no
+     *  reserved character. Swap in a hash with an underscore and it
+     *  reported a defect that was not there. */
+    let inCode = false;
     for (let i = 0; i < text.length; i++) {
-      if (text[i] === "\\") {
+      const c = text[i];
+      if (c === "\\") {
         i++;
         continue;
       }
-      if (RESERVED.includes(text[i])) {
-        counts[text[i]] = (counts[text[i]] || 0) + 1;
+      if (c === "`") {
+        inCode = !inCode;
+        counts["`"] = (counts["`"] || 0) + 1;
+        continue;
       }
+      if (inCode) continue;
+      if (RESERVED.includes(c)) counts[c] = (counts[c] || 0) + 1;
     }
+    /*- An unterminated code span is itself a parse error, and the
+     *  caller only checks the counts, so it is surfaced here. */
+    assert.strictEqual(inCode, false, "unterminated code span: " + text);
     return counts;
   }
 
@@ -264,6 +282,45 @@ describe("telegram — the whole message parses", () => {
     );
     assert.strictEqual(stars % 2, 0, `bold delimiters must pair, saw ${stars}`);
     assert.strictEqual(ticks % 2, 0, `code delimiters must pair, saw ${ticks}`);
+  });
+
+  it("produces valid MarkdownV2 for every event type", async () => {
+    /*- The per-type titles are not inert prose. "Position Balanced
+     *  (±2.5% of 50/50)" carries four reserved characters, and a title
+     *  is interpolated like any other value — so every type is driven,
+     *  not a representative one. */
+    const types = Object.keys(EVENT_DEFAULTS);
+    setEnabledEvents(Object.fromEntries(types.map((k) => [k, true])));
+    for (const type of types) {
+      let body = null;
+      globalThis.fetch = async (url, opts) => {
+        body = JSON.parse(opts.body);
+        return { ok: true, json: async () => ({}) };
+      };
+      await notify(type, {
+        position: {
+          tokenId: 164418,
+          fee: 2500,
+          token0Symbol: "HEX_from_Eth",
+          token1Symbol: "*w*",
+        },
+        message: "a body with (parens). and a dash-here!",
+        error: 'info={ "code": -32000 } a\\_b ~tilde~ {brace}',
+        txHash: "0xAbC_123",
+      });
+      const counts = _unescapedCounts(body.text);
+      const stars = counts["*"] || 0;
+      const ticks = counts["`"] || 0;
+      delete counts["*"];
+      delete counts["`"];
+      assert.deepStrictEqual(
+        counts,
+        {},
+        `${type}: only * and \` may stand unescaped — ${body.text}`,
+      );
+      assert.strictEqual(stars % 2, 0, `${type}: bold delimiters must pair`);
+      assert.strictEqual(ticks % 2, 0, `${type}: code delimiters must pair`);
+    }
   });
 
   it("sends a Test Connection message Telegram can parse", async () => {
