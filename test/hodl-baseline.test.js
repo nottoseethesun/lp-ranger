@@ -459,7 +459,13 @@ describe("_findMintEvent early exit", () => {
    *  near the chain head while `fromBlock` sits at the pool's creation.
    *
    *  Production 2026-09-30 walked it the other way: 969 windows and
-   *  four minutes for an NFT minted five weeks earlier. */
+   *  four minutes for an NFT minted five weeks earlier.
+   *
+   *  TEST-ONLY global swap: both cases below replace `globalThis.fetch`,
+   *  because the baseline's historical-price lookup calls `fetch`
+   *  directly and offers no seam to inject it through. The original is
+   *  captured and restored by this file's own `beforeEach`/`afterEach`
+   *  pair at the top, so each case starts and ends with it pristine. */
 
   it("requests windows newest-first", async () => {
     const { getPositionBaseline } = require("../src/hodl-baseline");
