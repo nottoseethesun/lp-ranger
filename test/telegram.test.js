@@ -266,6 +266,32 @@ describe("telegram — the whole message parses", () => {
     assert.strictEqual(ticks % 2, 0, `code delimiters must pair, saw ${ticks}`);
   });
 
+  it("sends a Test Connection message Telegram can parse", async () => {
+    /*- The button exists to answer "does Telegram work". Left
+     *  unescaped it failed its own first attempt — the hostname's
+     *  hyphens and the closing `!` are reserved — and arrived only via
+     *  the plain-text fallback, reporting success while demonstrating
+     *  the failure. The fallback is what hid it, which is the hazard of
+     *  having one. */
+    let body = null;
+    globalThis.fetch = async (url, opts) => {
+      body = JSON.parse(opts.body);
+      return { ok: true, json: async () => ({}) };
+    };
+    const r = await testConnection();
+    assert.strictEqual(r.ok, true);
+
+    const counts = _unescapedCounts(body.text);
+    const stars = counts["*"] || 0;
+    delete counts["*"];
+    assert.deepStrictEqual(
+      counts,
+      {},
+      "only the bold delimiters may stand unescaped: " + body.text,
+    );
+    assert.strictEqual(stars % 2, 0, `bold delimiters must pair, saw ${stars}`);
+  });
+
   it("does not escape inside the code span around a hash", async () => {
     /*- A code span renders its contents literally, so an escape there
      *  would show the backslash to the reader. */
