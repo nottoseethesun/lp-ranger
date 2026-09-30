@@ -6,6 +6,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [always build](feedback_always_build.md) — Edited public/? Run `npm run build`
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
 - [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push
+- [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the suite under 22 too
 - [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo
 - [git workflow](feedback_git_workflow.md) — No push/merge/rebase/delete-branch/release without OK
