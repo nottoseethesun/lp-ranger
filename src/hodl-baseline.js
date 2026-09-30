@@ -161,11 +161,25 @@ async function _findMintEvent(
    *  holds the whole answer and `onChunk` ends the walk there. Without
    *  it the scan runs on to the chain head carrying an event it already
    *  has — the same reasoning `src/event-scanner-mint-lookup.js`
-   *  applies to the same lookup. */
+   *  applies to the same lookup.
+   *
+   *  Walked newest-first, which is what makes that early exit worth
+   *  having. The id asked about is the position's CURRENT NFT, and a
+   *  managed position mints a new one on every rebalance, so the answer
+   *  sits near the chain head while `fromBlock` sits at the pool's
+   *  creation. Oldest-first reaches it last, paying for the pool's
+   *  whole history to find one recent event.
+   *
+   *  Direction cannot change the answer. ERC-721 mints a given id
+   *  exactly once, so one matching log exists in the range and both
+   *  ends of the walk reach the same one. Compare
+   *  `src/position-history-mint.js`, which looks up the chain's OLDEST
+   *  NFT and so keeps the default oldest-first for the same reason. */
   const logs = await scanChunked({
     provider,
     fromBlock,
     toBlock: "latest",
+    direction: "desc",
     label: `hodl-baseline mint #${tokenId}`,
     query: (from, to) =>
       provider.getLogs({
