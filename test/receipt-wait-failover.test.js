@@ -58,21 +58,30 @@ function serverError(url) {
 }
 
 /**
- * An ethers stand-in whose providers answer `waitForTransaction`.
+ * An ethers stand-in whose providers answer `getTransactionReceipt`.
  *
- * @param {object} waits  Per-URL `waitForTransaction` behaviour.
+ * That is the call the re-ask makes, and the reason matters: it returns
+ * `null` for a transaction that is not mined and throws only when the
+ * endpoint is at fault, so "not yet" and "broken" are different
+ * answers. `waitForTransaction` conflates them behind a subscription.
+ *
+ * `pollingInterval` is tiny here because the loop waits it out between
+ * attempts; ethers' own default is four seconds.
+ *
+ * @param {object} receipts  Per-URL `getTransactionReceipt` behaviour.
  * @returns {object} A stand-in for the ethers library.
  */
-function makeLib(waits = {}) {
+function makeLib(receipts = {}) {
   return {
     JsonRpcProvider: class {
       constructor(url) {
         this._url = url;
+        this.pollingInterval = 5;
         this.getFeeData = async () => ({ gasPrice: 1n });
         this.estimateGas = async () => 100_000n;
         this.getBlockNumber = async () => 1;
-        this.waitForTransaction =
-          waits[url] || (async () => ({ ...RECEIPT, servedBy: url }));
+        this.getTransactionReceipt =
+          receipts[url] || (async () => ({ ...RECEIPT, servedBy: url }));
       }
       send(method) {
         if (method === "eth_gasPrice") return Promise.resolve("0x1");
@@ -94,6 +103,9 @@ function makeLib(waits = {}) {
 function makeSigner(wait) {
   return {
     getAddress: async () => "0x" + "11".repeat(20),
+    /*- The speed-up reads fee data off `signer.provider || signer`, and
+     *  this stub has no provider, so the signer answers for it. */
+    getFeeData: async () => ({ gasPrice: 1n }),
     sendTransaction: async () => ({
       hash: "0xdeadbeef",
       nonce: 7,
@@ -186,11 +198,14 @@ describe("every re-ask is bounded, on both the compound and rebalance paths", ()
   async function _driveSpeedUp(label) {
     const asks = [];
     const lib = makeLib({
-      [PRI]: async (hash, confirms, timeout) => {
-        asks.push({ hash, timeout });
-        /*- The first hash is the original. It was replaced, so its
-         *  receipt never arrives — the wait that would run forever. */
-        if (hash === "0xhash1") return new Promise(() => {});
+      [PRI]: async (hash) => {
+        asks.push({ hash, at: Date.now() });
+        /*- The first hash is the original. It was replaced, so it never
+         *  mines — and an unmined transaction is `null`, not a hang.
+         *  Modelling it as a promise that never settles was wrong twice
+         *  over: ethers does not behave that way, and Node 22's runner
+         *  cancels a whole file over one pending promise. */
+        if (hash === "0xhash1") return null;
         return { ...RECEIPT, servedBy: PRI };
       },
     });
@@ -210,21 +225,17 @@ describe("every re-ask is bounded, on both the compound and rebalance paths", ()
     it(`bounds every receipt re-ask during a speed-up: ${label}`, async () => {
       const asks = await _driveSpeedUp(label);
       assert.ok(
-        asks.length >= 2,
-        `the speed-up path must produce more than one re-ask, saw ${asks.length}`,
-      );
-      const unbounded = asks.filter(
-        (a) => typeof a.timeout !== "number" || !(a.timeout > 0),
-      );
-      assert.deepStrictEqual(
-        unbounded,
-        [],
-        "every re-ask needs a deadline; these had none: " +
-          JSON.stringify(unbounded),
-      );
-      assert.ok(
         asks.some((a) => a.hash === "0xhash1"),
-        "the never-mined hash must be among them — it is the one that leaks",
+        "the never-mined hash must be asked about — it is the one that leaks",
+      );
+      /*- Finite is the whole claim. The hash asked about here can never
+       *  mine, so every one of these would repeat until the process
+       *  died if the phase's budget were not carried down to the loop
+       *  that does the asking. */
+      assert.ok(
+        asks.length < 200,
+        `${asks.length} re-asks for hashes that include one that never mines — ` +
+          "the phase budget is not reaching the loop",
       );
     });
   }
@@ -282,44 +293,83 @@ describe("a receipt survives the endpoint that broadcast it going down", () => {
     assert.strictEqual(receipt.blockNumber, 99);
   });
 
-  it("bounds the re-ask, so a hash that never mines stops being polled", async () => {
-    /*- ethers re-subscribes to the next block every time the receipt is
-     *  absent, so a `waitForTransaction` with no deadline polls forever.
-     *  The speed-up path waits on two hashes at once and only one can
-     *  mine — the loser would issue a getTransactionReceipt per block
-     *  for the life of the process, through the same global queue that
-     *  once filled until the process was OOM-killed.
+  it("stops asking for a hash that never mines, and reports why", async () => {
+    /*- The property, asserted by behaviour rather than by inspecting an
+     *  argument: a transaction that never mines must stop being asked
+     *  about, and the caller must learn the endpoint failure that
+     *  started it rather than a timeout of our own making.
      *
-     *  `tx.wait()` never had this problem: it knows the sender and
-     *  nonce and settles itself with TRANSACTION_REPLACED. Asking by
-     *  hash gives that up, so the deadline has to replace it. */
-    let seen = null;
-    sendTx.init(
-      { urls: [PRI, FALL] },
-      makeLib({
-        [PRI]: async (hash, confirms, timeout) => {
-          seen = { hash, confirms, timeout };
-          return { ...RECEIPT, servedBy: PRI };
-        },
-      }),
-    );
-    const signer = makeSigner(async () => {
-      throw serverError(PRI);
-    });
-    await sendTx.sendTransaction({
-      populate: async () => ({ to: "0x" + "22".repeat(20), gasLimit: 300000n }),
-      signer,
-      label: "[compound] collect",
-    });
-    assert.ok(seen, "the re-ask must have gone through waitForTransaction");
-    assert.strictEqual(
-      typeof seen.timeout,
-      "number",
-      "a deadline must be passed, or the poll never ends",
-    );
+     *  The first attempt at this bound handed a deadline to ethers'
+     *  `waitForTransaction`. That does not hold, because the call goes
+     *  through the managed read provider and ethers rejects a deadline
+     *  with `code: "TIMEOUT"` — which that provider classes as an
+     *  endpoint failure and retries, re-arming the bound on the next
+     *  endpoint forever. Measured at the time: twenty-six re-asks
+     *  before a probe's own cap stopped it. */
+    const savedSpeedup = config.TX_SPEEDUP_SEC;
+    const savedCancel = config.TX_CANCEL_SEC;
+    config.TX_SPEEDUP_SEC = 0.1;
+    config.TX_CANCEL_SEC = 0.3;
+    let asked = 0;
+    try {
+      sendTx.init(
+        { urls: [PRI, FALL] },
+        makeLib({
+          [PRI]: async () => {
+            asked++;
+            return null;
+          },
+          [FALL]: async () => {
+            asked++;
+            return null;
+          },
+        }),
+      );
+      /*- Driven through phase 2's fallback, where the speed-up send
+       *  fails and no phase timeout races the wait — so the loop's own
+       *  budget is the only thing that can end it, which is the point.
+       *  In phases 1 and 3 the phase timeout governs by design, and
+       *  correctly wins. */
+      let sends = 0;
+      const signer = makeSigner(async () => {
+        throw serverError(PRI);
+      });
+      const firstSend = signer.sendTransaction;
+      signer.sendTransaction = async (...args) => {
+        if (++sends > 1) {
+          /*- The Production shape exactly: the speed-up is refused
+           *  because the original already occupied the nonce. A
+           *  transient error here would be retried by `_retrySend`
+           *  instead of reaching the fallback. */
+          const e = new Error("nonce has already been used");
+          e.code = "NONCE_EXPIRED";
+          throw e;
+        }
+        return firstSend(...args);
+      };
+      await assert.rejects(
+        () =>
+          sendTx.sendTransaction({
+            populate: async () => ({
+              to: "0x" + "22".repeat(20),
+              gasLimit: 300000n,
+            }),
+            signer,
+            label: "[compound] collect",
+          }),
+        /502 Bad Gateway/,
+        "the endpoint failure that started it is what the caller should see",
+      );
+    } finally {
+      config.TX_SPEEDUP_SEC = savedSpeedup;
+      config.TX_CANCEL_SEC = savedCancel;
+    }
+    assert.ok(asked > 0, "it must have asked at least once");
+    /*- Generous, because the point is that the count is FINITE. Without
+     *  the bound this loops until the process dies. */
     assert.ok(
-      seen.timeout > 0,
-      `deadline must be positive, got ${seen.timeout}`,
+      asked < 200,
+      `asked ${asked} times for a hash that never mines — the bound is not holding`,
     );
   });
 

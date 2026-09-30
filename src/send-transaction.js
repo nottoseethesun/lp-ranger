@@ -693,6 +693,32 @@ async function _resolveGasLimit(populated, floor, label) {
 }
 
 /**
+ * Pause between receipt polls, ending early if the phase is over.
+ *
+ * Ends on whichever comes first, the pause or the phase, so it always
+ * settles. Not unref'd, for the same reason the phase timer is not: a
+ * transaction is in flight and the rebalance lock is held, so the
+ * process should see it through. `server.js` force-exits three seconds
+ * after a shutdown signal regardless.
+ *
+ * @param {number} ms  How long to pause.
+ * @param {AbortSignal} [signal]  Raised when the phase ends.
+ * @returns {Promise<void>}
+ */
+function _waitOrAbort(ms, signal) {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const handle = setTimeout(finish, ms);
+    function finish() {
+      clearTimeout(handle);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    }
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+/**
  * Get a transaction's receipt after its own provider stopped answering.
  *
  * Handed to `_waitOrSpeedUp`, which calls it when `tx.wait()` rejects.
@@ -713,29 +739,37 @@ async function _resolveGasLimit(populated, floor, label) {
  * say — re-throw untouched. Those are answers, and another endpoint
  * would give the same one.
  *
- * **The timeout is not optional.** `waitForTransaction` re-subscribes to
- * the next block every time the receipt is absent, so without one it
- * polls a hash forever. That matters because the speed-up path waits on
- * two hashes at once and only one of them can ever mine — the loser is
- * a wait that never ends, issuing a `getTransactionReceipt` per block
- * through the global queue for the life of the process. `tx.wait()` has
- * no such problem: it knows the sender and nonce, so it settles itself
- * with `TRANSACTION_REPLACED`. Asking by hash alone gives that up, and
- * the deadline is what replaces it.
+ * **It polls rather than calling `waitForTransaction`**, and the
+ * difference is the whole of this function's correctness.
  *
- * `TX_CANCEL_SEC` is the right deadline because it is the move's own:
- * past it the caller cancels the nonce regardless, so nothing here
- * should still be waiting. It is also longer than every phase timeout
- * that races this, and starts later than all of them, so the phase
- * logic decides an ordinary outcome and this only ever catches the
- * wait nothing else would have ended.
+ * `waitForTransaction` subscribes: absent a receipt it re-subscribes to
+ * the next block, forever. The speed-up path waits on two hashes and
+ * only one can ever mine, so the loser would poll for the life of the
+ * process. Handing it a deadline does not fix that here, because this
+ * call goes through the managed read provider — and ethers rejects a
+ * deadline with `code: "TIMEOUT"`, which that provider classes as an
+ * endpoint failure and retries. The bound would be re-armed on the next
+ * endpoint, forever, blaming a healthy one each time round.
+ *
+ * `getTransactionReceipt` has no such problem: it returns `null` when
+ * the transaction is not mined and throws only when the endpoint is at
+ * fault. "Not yet" and "broken" stop being the same signal, so the
+ * managed provider can retry the second without touching the first, and
+ * this loop owns the waiting. Nothing is subscribed, so when it stops,
+ * it has stopped.
+ *
+ * The deadline comes from the caller, which owns the phase clock; the
+ * config value is only the fallback for a caller that supplies none.
+ * On expiry the ORIGINAL error is rethrown rather than a timeout,
+ * because the endpoint failure is what actually went wrong.
  *
  * @param {Error} err    Why `tx.wait()` rejected.
  * @param {object} tx    The transaction being waited on.
  * @param {string} label Log label.
+ * @param {number} [deadlineMs]  How long to keep asking.
  * @returns {Promise<object>} The receipt, from whichever endpoint serves it.
  */
-function _receiptAcrossEndpoints(err, tx, label) {
+async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
   if (!_isReadFailoverable(err)) throw err;
   log.warn(
     "[send-tx] %s: receipt wait failed (%s) — re-asking across endpoints for %s",
@@ -743,11 +777,21 @@ function _receiptAcrossEndpoints(err, tx, label) {
     err.message,
     tx.hash,
   );
-  return getManagedReadProvider().waitForTransaction(
-    tx.hash,
-    1,
-    config.TX_CANCEL_SEC * 1000,
-  );
+  const provider = getManagedReadProvider();
+  const until = Date.now() + (budget.deadlineMs ?? config.TX_CANCEL_SEC * 1000);
+  for (;;) {
+    /*- Checked before asking as well as after, so a phase that ended
+     *  while the previous request was queued costs nothing more. */
+    if (budget.signal?.aborted) throw err;
+    const receipt = await provider.getTransactionReceipt(tx.hash);
+    if (receipt) return receipt;
+    if (budget.signal?.aborted || Date.now() >= until) throw err;
+    /*- ethers' own block cadence, read off the provider rather than
+     *  named here, so there is no second opinion about how often a
+     *  chain produces a block. The global queue spaces requests but
+     *  does not decide how often to ask for one. */
+    await _waitOrAbort(provider.pollingInterval, budget.signal);
+  }
 }
 
 // ── Public sendTransaction ───────────────────────────────────────────────────

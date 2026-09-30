@@ -76,16 +76,21 @@ function markdownV2Report(text) {
  * Assert that a message is valid MarkdownV2, failing with the offending
  * characters and the message itself.
  *
- * Exported as an assertion rather than a predicate so the three checks
- * that make up "valid" — no bare reserved characters, paired bold,
- * paired code — cannot be copied into each test and drift apart.
+ * Exported as an assertion rather than a predicate so the checks that
+ * make up "valid" cannot be copied into each test and drift apart.
+ *
+ * There are three, not four. An unterminated code span and an odd
+ * count of code delimiters are the same fact stated twice: `inCode` is
+ * toggled on exactly the characters that increment `code`, both from a
+ * standing start, so `unterminated === (code % 2 === 1)` for every
+ * possible input. Asserting both reads as more coverage than it is.
  *
  * @param {string} text   The message as it would be sent.
  * @param {string} label  What is being checked, for the failure message.
  * @returns {void}
  */
 function assertValidMarkdownV2(text, label) {
-  const { violations, bold, code, unterminated } = markdownV2Report(text);
+  const { violations, bold, unterminated } = markdownV2Report(text);
   assert.deepStrictEqual(
     violations,
     [],
@@ -97,7 +102,6 @@ function assertValidMarkdownV2(text, label) {
     `${label}: unterminated code span — ${JSON.stringify(text)}`,
   );
   assert.strictEqual(bold % 2, 0, `${label}: bold delimiters must pair`);
-  assert.strictEqual(code % 2, 0, `${label}: code delimiters must pair`);
 }
 
 module.exports = { RESERVED, markdownV2Report, assertValidMarkdownV2 };

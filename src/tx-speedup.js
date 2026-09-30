@@ -82,31 +82,87 @@ async function _cancelGasPrice(provider, stuckGas) {
  * `onWaitError` is how that is repaired without this module learning
  * about endpoints. It is handed the error and decides: re-throw when
  * the transaction is what failed, or return a receipt obtained some
- * other way when the endpoint is. Its absence keeps the old behaviour,
- * which is what the tests that drive `_waitOrSpeedUp` directly rely on.
+ * other way when the endpoint is. It is optional so that a caller with
+ * no way to reach another endpoint still gets the plain `tx.wait()`
+ * behaviour; the one production caller always supplies it.
  *
  * @param {object} tx        The transaction to wait on.
  * @param {string} label     Log label.
- * @param {Function} [onWaitError]  `(err, tx, label) => Promise<receipt>`.
+ * @param {Function} [onWaitError]  `(err, tx, label, budget) => Promise<receipt>`.
+ * @param {{deadlineMs: number, signal?: AbortSignal}} [budget]
+ *   How long the phase will still be interested, and the signal it
+ *   raises when it stops being.
  * @returns {Promise<object>} The receipt.
  */
-function _tolerantWait(tx, label, onWaitError) {
+function _tolerantWait(tx, label, onWaitError, budget) {
   return tx.wait().catch((e) => {
     if (e.code === "TRANSACTION_REPLACED" && e.receipt) {
       log.info("[send-tx] %s: TX replaced, using replacement receipt", label);
       return e.receipt;
     }
     if (!onWaitError) throw e;
-    return onWaitError(e, tx, label);
+    return onWaitError(e, tx, label, budget);
   });
 }
 
 /** Promise that rejects after `ms` with the given sentinel message. */
 function _timeout(ms, sentinel) {
-  return new Promise((_, reject) => {
-    const t = setTimeout(() => reject(new Error(sentinel)), ms);
-    t.unref?.();
+  let done;
+  let handle;
+  const promise = new Promise((resolve, reject) => {
+    done = resolve;
+    /*- Deliberately NOT unref'd. This timer is what defines a phase,
+     *  and a phase only exists while a transaction is in flight and the
+     *  rebalance lock is held — work the process should stay alive to
+     *  finish rather than drain out from under. Shutdown is not at risk:
+     *  `server.js` force-exits three seconds after SIGINT or SIGTERM
+     *  regardless of what is pending.
+     *
+     *  It was unref'd before, which is why nothing could test these
+     *  phases: with every timer here unref'd, a test process has
+     *  nothing holding the loop open and drains before the first phase
+     *  elapses, leaving promises unsettled. */
+    handle = setTimeout(() => reject(new Error(sentinel)), ms);
   });
+  /*- Called once the race it belongs to has settled. Clearing the timer
+   *  alone would leave this promise pending for the life of the
+   *  process — the losing branch of a race still holding something —
+   *  so it is also resolved. Nothing observes that value: the race has
+   *  already chosen by the time this runs. */
+  promise.cancel = () => {
+    clearTimeout(handle);
+    done();
+  };
+  return promise;
+}
+
+/**
+ * One phase of the wait: its timeout, the budget it hands to a re-ask,
+ * and the one call that ends both.
+ *
+ * A phase is a `Promise.race`, and a race abandons its losers rather
+ * than stopping them — so without this, a timed-out phase leaves its
+ * timer armed and its receipt poll running against an endpoint, both
+ * for as long as their own deadlines allow, while the move has already
+ * gone on to the next phase. `done()` in a `finally` is what makes
+ * "this phase is over" mean the phase is actually over.
+ *
+ * @param {number} ms       How long the phase waits.
+ * @param {string} sentinel Message its timeout rejects with.
+ * @returns {{timer: Promise, budget: {deadlineMs: number, signal: AbortSignal},
+ *   done: () => void}}
+ */
+function _phase(ms, sentinel) {
+  const controller = new AbortController();
+  const timer = _timeout(ms, sentinel);
+  return {
+    timer,
+    budget: { deadlineMs: ms, signal: controller.signal },
+    done: () => {
+      timer.cancel();
+      controller.abort();
+    },
+  };
 }
 
 /** Coerce whatever Promise.race returned into a TransactionReceipt. */
@@ -256,15 +312,26 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   const cancelMs = config.TX_CANCEL_SEC * 1000;
   const startTime = Date.now();
 
-  /*- Phase 1: wait for confirmation, or fall through to speed-up. */
+  /*- Phase 1: wait for confirmation, or fall through to speed-up.
+   *
+   *  Each phase hands down its own remaining budget AND a signal. The
+   *  budget stops a re-ask outliving the phase that started it; the
+   *  signal stops it outliving the RACE that started it, which is
+   *  sooner and matters more. A `Promise.race` abandons its losers
+   *  without stopping them, and a loser here is a poll against an
+   *  endpoint, released one at a time through a queue everything else
+   *  shares. */
+  const speedupPhase = _phase(speedupMs, "_SPEEDUP");
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label, onWaitError),
-      _timeout(speedupMs, "_SPEEDUP"),
+      _tolerantWait(tx, label, onWaitError, speedupPhase.budget),
+      speedupPhase.timer,
     ]);
     return _extractReceipt(receipt);
   } catch (err) {
     if (err.message !== "_SPEEDUP") throw err;
+  } finally {
+    speedupPhase.done();
   }
 
   /*- Phase 2: submit the speed-up replacement. */
@@ -279,21 +346,35 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
     /*- Speed-up send failed — fall back to waiting for the original.
         Common case: the original confirmed between phases 1 and 2,
         so the same-nonce replacement is rejected as "nonce too low". */
-    return _extractReceipt(await _tolerantWait(tx, label, onWaitError));
+    /*- Nothing races this one, so it needs neither a timeout nor a
+     *  signal: there is no loser to stop, and the move's own remaining
+     *  budget is the only bound there is. A phase object here would add
+     *  a timer whose rejection nobody is waiting for. */
+    return _extractReceipt(
+      await _tolerantWait(tx, label, onWaitError, {
+        deadlineMs: Math.max(0, cancelMs - (Date.now() - startTime)),
+      }),
+    );
   }
 
   /*- Phase 3: wait for either to confirm, or fall through to cancel. */
   const elapsed = Date.now() - startTime;
   const cancelIn = Math.max(10_000, cancelMs - elapsed);
+  /*- Two waits here, and only one transaction can ever mine, so one of
+   *  them is guaranteed to be a loser. That is the poll this phase must
+   *  stop rather than merely stop reading. */
+  const cancelPhase = _phase(cancelIn, "_CANCEL");
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label, onWaitError),
-      _tolerantWait(replacement, label, onWaitError),
-      _timeout(cancelIn, "_CANCEL"),
+      _tolerantWait(tx, label, onWaitError, cancelPhase.budget),
+      _tolerantWait(replacement, label, onWaitError, cancelPhase.budget),
+      cancelPhase.timer,
     ]);
     return _extractReceipt(receipt);
   } catch (err) {
     if (err.message !== "_CANCEL") throw err;
+  } finally {
+    cancelPhase.done();
   }
 
   /*- Phase 4: cancel the stuck nonce. Always throws (cancelled or fail). */
