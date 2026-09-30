@@ -32,6 +32,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const sendTx = require("../src/send-transaction");
+const config = require("../src/config");
 const rpcQueue = require("../src/rpc-request-manager");
 const outOfService = require("../src/rpc-out-of-service");
 const logModule = require("../src/log");
@@ -102,6 +103,132 @@ function makeSigner(wait) {
     }),
   };
 }
+
+/**
+ * A signer that hands back a fresh hash each time, so the speed-up
+ * replacement is a different transaction from the original — which is
+ * what makes two concurrent receipt waits possible, and only one of
+ * them ever satisfiable.
+ *
+ * @param {Function} wait  What every returned `tx.wait()` does.
+ * @returns {object} A signer stand-in.
+ */
+function makeSpeedUpSigner(wait) {
+  let n = 0;
+  return {
+    getAddress: async () => "0x" + "11".repeat(20),
+    /*- `_submitSpeedUp` reads fee data off `signer.provider || signer`,
+     *  and this stub has no provider, so the signer answers for it. */
+    getFeeData: async () => ({ gasPrice: 1n }),
+    sendTransaction: async () => ({
+      hash: "0xhash" + ++n,
+      nonce: 7,
+      gasLimit: 300000n,
+      gasPrice: 1n,
+      to: "0x" + "22".repeat(20),
+      data: "0x",
+      value: 0n,
+      wait,
+    }),
+  };
+}
+
+describe("every re-ask is bounded, on both the compound and rebalance paths", () => {
+  /*- The condition is the speed-up: two hashes waited on at once, of
+   *  which only one can ever mine. The loser is a wait nothing will
+   *  ever satisfy, and without a deadline it polls a block at a time
+   *  forever, through the queue everything else shares.
+   *
+   *  Compound and rebalance both reach the chain through
+   *  `sendTransaction`, so the same pipeline carries both — but they
+   *  are driven separately here rather than asserted to be equivalent,
+   *  because "they share a code path" is the kind of claim that stops
+   *  being true quietly. */
+
+  let savedSpeedup;
+  let savedCancel;
+  let restore;
+
+  beforeEach(() => {
+    /*- Shortened so phase 2 actually fires inside a test. `config` is a
+     *  plain module object, not a JS global, and every value is put
+     *  back in `afterEach`; node runs each test FILE in its own
+     *  process, so nothing here can reach another file. */
+    savedSpeedup = config.TX_SPEEDUP_SEC;
+    savedCancel = config.TX_CANCEL_SEC;
+    config.TX_SPEEDUP_SEC = 0.05;
+    config.TX_CANCEL_SEC = 3;
+    sendTx._resetForTests();
+    rpcQueue._resetForTests();
+    outOfService._resetForTests();
+    restore = logModule._setSinkForTests({
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    });
+  });
+  afterEach(() => {
+    config.TX_SPEEDUP_SEC = savedSpeedup;
+    config.TX_CANCEL_SEC = savedCancel;
+    if (restore) restore();
+    sendTx._resetForTests();
+    rpcQueue._resetForTests();
+    outOfService._resetForTests();
+  });
+
+  /**
+   * Drive one move through a speed-up in which every `tx.wait()` fails
+   * and the original's hash never mines.
+   *
+   * @param {string} label  The move's log label.
+   * @returns {Promise<object[]>} Every `waitForTransaction` call made.
+   */
+  async function _driveSpeedUp(label) {
+    const asks = [];
+    const lib = makeLib({
+      [PRI]: async (hash, confirms, timeout) => {
+        asks.push({ hash, timeout });
+        /*- The first hash is the original. It was replaced, so its
+         *  receipt never arrives — the wait that would run forever. */
+        if (hash === "0xhash1") return new Promise(() => {});
+        return { ...RECEIPT, servedBy: PRI };
+      },
+    });
+    sendTx.init({ urls: [PRI, FALL] }, lib);
+    const signer = makeSpeedUpSigner(async () => {
+      throw serverError(PRI);
+    });
+    await sendTx.sendTransaction({
+      populate: async () => ({ to: "0x" + "22".repeat(20), gasLimit: 300000n }),
+      signer,
+      label,
+    });
+    return asks;
+  }
+
+  for (const label of ["[compound] collect", "[rebalance] mint"]) {
+    it(`bounds every receipt re-ask during a speed-up: ${label}`, async () => {
+      const asks = await _driveSpeedUp(label);
+      assert.ok(
+        asks.length >= 2,
+        `the speed-up path must produce more than one re-ask, saw ${asks.length}`,
+      );
+      const unbounded = asks.filter(
+        (a) => typeof a.timeout !== "number" || !(a.timeout > 0),
+      );
+      assert.deepStrictEqual(
+        unbounded,
+        [],
+        "every re-ask needs a deadline; these had none: " +
+          JSON.stringify(unbounded),
+      );
+      assert.ok(
+        asks.some((a) => a.hash === "0xhash1"),
+        "the never-mined hash must be among them — it is the one that leaks",
+      );
+    });
+  }
+});
 
 let restoreLog;
 describe("a receipt survives the endpoint that broadcast it going down", () => {
