@@ -193,9 +193,11 @@ describe("telegram — Markdown refused", () => {
    *  Production while the Test button still reported the connection
    *  healthy, its own message being short and clean.
    *
-   *  `globalThis.fetch` is replaced here and restored by the file's
-   *  afterEach; modifying a JS global is permitted in test code only
-   *  and must be put back pristine immediately. */
+   *  TEST-ONLY global swap: every case below replaces `globalThis.fetch`,
+   *  because `_send` calls `fetch` directly and the module offers no
+   *  seam to inject it through. The original is captured and restored
+   *  by this file's own `beforeEach`/`afterEach` pair at the top, so
+   *  each case starts and ends with it pristine. */
 
   /** Telegram's actual refusal for an unparseable message. */
   const PARSE_REFUSAL = JSON.stringify({
@@ -289,8 +291,14 @@ describe("telegram — Markdown refused", () => {
     globalThis.fetch = async () => {
       throw new Error("getaddrinfo ENOTFOUND api.telegram.org");
     };
-    const sent = await notify("compoundFail", { error: "x" });
-    restore();
+    let sent;
+    try {
+      sent = await notify("compoundFail", { error: "x" });
+    } finally {
+      /*- In a `finally` so a throw from `notify` cannot leave the sink
+       *  installed for the rest of the file. */
+      restore();
+    }
     assert.strictEqual(sent, false);
     assert.ok(
       lines.some((l) => l.includes("Send error")),
