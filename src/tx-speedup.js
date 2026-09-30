@@ -67,14 +67,37 @@ async function _cancelGasPrice(provider, stuckGas) {
   return base * 2n;
 }
 
-/** Wrap tx.wait() to surface the receipt of a TRANSACTION_REPLACED event. */
-function _tolerantWait(tx, label) {
+/**
+ * Wait for a transaction's receipt, surfacing the receipt of a
+ * TRANSACTION_REPLACED event and surviving the endpoint going down.
+ *
+ * `tx.wait()` polls the provider the transaction object was built with
+ * and never asks which endpoint is current, so an endpoint that fails
+ * mid-wait took the whole move down with it — including moves whose
+ * transaction had already been mined. On Production 2026-09-30 the
+ * failover moved off a failing endpoint three seconds before a compound
+ * died on a 502 from the endpoint it had just left; the fee collection
+ * was on chain, and the fees were stranded in the wallet.
+ *
+ * `onWaitError` is how that is repaired without this module learning
+ * about endpoints. It is handed the error and decides: re-throw when
+ * the transaction is what failed, or return a receipt obtained some
+ * other way when the endpoint is. Its absence keeps the old behaviour,
+ * which is what the tests that drive `_waitOrSpeedUp` directly rely on.
+ *
+ * @param {object} tx        The transaction to wait on.
+ * @param {string} label     Log label.
+ * @param {Function} [onWaitError]  `(err, tx, label) => Promise<receipt>`.
+ * @returns {Promise<object>} The receipt.
+ */
+function _tolerantWait(tx, label, onWaitError) {
   return tx.wait().catch((e) => {
     if (e.code === "TRANSACTION_REPLACED" && e.receipt) {
       log.info("[send-tx] %s: TX replaced, using replacement receipt", label);
       return e.receipt;
     }
-    throw e;
+    if (!onWaitError) throw e;
+    return onWaitError(e, tx, label);
   });
 }
 
@@ -225,7 +248,7 @@ async function _cancelStuckNonce(
  *   3. wait up to total TX_CANCEL_SEC for either to confirm.
  *   4. cancel the stuck nonce with a 0-PLS self-transfer.
  */
-async function _waitOrSpeedUp(tx, signer, label) {
+async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   /*- No literal fallbacks per feedback_one_literal_per_shipped_default:
    *  config.TX_SPEEDUP_SEC and TX_CANCEL_SEC are sourced from
    *  app-runtime.json via parsePositiveInt; always positive numbers. */
@@ -236,7 +259,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
   /*- Phase 1: wait for confirmation, or fall through to speed-up. */
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label),
+      _tolerantWait(tx, label, onWaitError),
       _timeout(speedupMs, "_SPEEDUP"),
     ]);
     return _extractReceipt(receipt);
@@ -256,7 +279,7 @@ async function _waitOrSpeedUp(tx, signer, label) {
     /*- Speed-up send failed — fall back to waiting for the original.
         Common case: the original confirmed between phases 1 and 2,
         so the same-nonce replacement is rejected as "nonce too low". */
-    return _extractReceipt(await _tolerantWait(tx, label));
+    return _extractReceipt(await _tolerantWait(tx, label, onWaitError));
   }
 
   /*- Phase 3: wait for either to confirm, or fall through to cancel. */
@@ -264,8 +287,8 @@ async function _waitOrSpeedUp(tx, signer, label) {
   const cancelIn = Math.max(10_000, cancelMs - elapsed);
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label),
-      _tolerantWait(replacement, label),
+      _tolerantWait(tx, label, onWaitError),
+      _tolerantWait(replacement, label, onWaitError),
       _timeout(cancelIn, "_CANCEL"),
     ]);
     return _extractReceipt(receipt);

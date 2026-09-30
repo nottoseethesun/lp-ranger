@@ -692,6 +692,43 @@ async function _resolveGasLimit(populated, floor, label) {
   }
 }
 
+/**
+ * Get a transaction's receipt after its own provider stopped answering.
+ *
+ * Handed to `_waitOrSpeedUp`, which calls it when `tx.wait()` rejects.
+ * `tx.wait()` polls the provider the transaction object was built with
+ * and never asks which endpoint is current, so before this an endpoint
+ * going down took the whole move with it — including moves whose
+ * transaction had already been mined, which left funds moved and
+ * nothing recorded.
+ *
+ * **A receipt is a read.** The transaction is already broadcast and
+ * nothing is re-sent here; all that is needed is to ask a different
+ * endpoint the same question. So it asks through the managed read
+ * provider, which reports the outcome to the out-of-service decider and
+ * fails over by itself. Nothing is added on top, because a second
+ * failover mechanism would only race the first.
+ *
+ * Errors describing the TRANSACTION rather than the endpoint — a revert,
+ * say — re-throw untouched. Those are answers, and another endpoint
+ * would give the same one.
+ *
+ * @param {Error} err    Why `tx.wait()` rejected.
+ * @param {object} tx    The transaction being waited on.
+ * @param {string} label Log label.
+ * @returns {Promise<object>} The receipt, from whichever endpoint serves it.
+ */
+function _receiptAcrossEndpoints(err, tx, label) {
+  if (!_isReadFailoverable(err)) throw err;
+  log.warn(
+    "[send-tx] %s: receipt wait failed (%s) — re-asking across endpoints for %s",
+    label,
+    err.message,
+    tx.hash,
+  );
+  return getManagedReadProvider().waitForTransaction(tx.hash, 1);
+}
+
 // ── Public sendTransaction ───────────────────────────────────────────────────
 
 /**
@@ -760,7 +797,12 @@ async function sendTransaction(opts) {
     String(tx.gasPrice ?? tx.maxFeePerGas ?? "—"),
   );
 
-  const receipt = await _waitOrSpeedUp(tx, opts.signer, label);
+  const receipt = await _waitOrSpeedUp(
+    tx,
+    opts.signer,
+    label,
+    _receiptAcrossEndpoints,
+  );
   log.info(
     "[send-tx] %s: confirmed, gasUsed=%s gasPrice=%s block=%s",
     label,

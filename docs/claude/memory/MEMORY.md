@@ -114,7 +114,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [help page](project_help_page.md) — Help lives at /help.html with its own CSS
 
 ## Project state, architecture & nice-to-haves
-- [OPEN: tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Prod 0.9.7: a 502 during a receipt wait kills a whole compound; the failover had already moved and the wait stayed on the dead endpoint
+- [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Fixed on branch: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
 - [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Fixed on branch: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
 - [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Fixed on branch: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure
 - [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork in 0.9.5
