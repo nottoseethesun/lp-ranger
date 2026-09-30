@@ -1,15 +1,16 @@
 ---
 name: project_tx_wait_not_failover_covered
-description: "OPEN BUG, Production 0.9.7, 2026-09-30: a transient rpc 502 during tx.wait() aborts a whole compound or rebalance, because _tolerantWait tolerates only TRANSACTION_REPLACED and tx.wait() never goes through the rpc retry/failover path. The collect had already mined, so fees sat in the wallet with their gas unrecorded."
+description: "FIXED on branch, Production 0.9.7 2026-09-30: a transient rpc 502 during tx.wait() aborts a whole compound or rebalance, because _tolerantWait tolerates only TRANSACTION_REPLACED and tx.wait() never goes through the rpc retry/failover path. The collect had already mined, so fees sat in the wallet with their gas unrecorded."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-30T16:52:24.958Z
+  modified: 2026-09-30T22:30:38.602Z
 ---
 
-**Open.** Seen on Production 0.9.7 at 13:21Z on 2026-09-30, on
-NFT #164418 (HEX / HEX from Ethereum).
+**Fixed** on branch `receipt-waits-follow-failover`; open on Production
+until that merges and ships. Seen at 13:21Z on 2026-09-30, on NFT
+#164418 (HEX / HEX from Ethereum).
 
 ## What happened
 
@@ -92,16 +93,45 @@ Collects; the eleventh Collect has no matching deposit. So:
 - **Nothing reaches the Activity log**, correctly — no
   `IncreaseLiquidity` event exists to scan.
 
-## The fix, when taken up
+## The fix taken
 
-Make `_tolerantWait` treat a failover-eligible error the way the read
-path does: report the outcome, fail over, and re-poll for the receipt,
-rather than throwing. The receipt is a read like any other and the
-transaction is already on chain — there is nothing to re-send, only
-something to re-ask. Keep `TRANSACTION_REPLACED` handling as is.
+`_tolerantWait` accepts an `onWaitError` callback and `send-transaction.js`
+supplies `_receiptAcrossEndpoints`, which re-asks through
+`getManagedReadProvider().waitForTransaction(hash)`.
 
-Check the same pattern at `src/rebalancer-pools.js:237`, which carries
-the twin of this code for the rebalance path.
+Injection rather than an import, because `tx-speedup.js` states in its
+own header that nothing in it consults the endpoint list or the failover
+window. That seam is worth keeping and costs nothing here: the module
+has exactly one caller, and that caller is the module which owns
+failover.
+
+Nothing reports or fails over explicitly. **A receipt is a read** — the
+transaction is already broadcast, so the only thing needed is to ask a
+different endpoint the same question, and the managed read provider
+already reports outcomes to `rpc-out-of-service.js` and fails over by
+itself. Adding either on top would be a second failover mechanism racing
+the first.
+
+Errors describing the TRANSACTION rather than the endpoint — a revert —
+re-throw untouched, and `TRANSACTION_REPLACED` still returns the
+replacement's receipt.
+
+Pinned by `test/receipt-wait-failover.test.js`. Its strongest case
+asserts the receipt arrives carrying the OTHER endpoint's name, since a
+receipt from the original endpoint would prove nothing.
+
+**One caution for whoever reads the tally next.** Engaging a failover
+clears the samples for the endpoint being left, so
+`decideIfCurrentRPCIsOutOfService` reads false immediately after a
+successful move. An assertion that the failing endpoint is "out of
+service" can therefore never hold once the move has happened; what
+survives as evidence is selection having advanced.
+
+`src/rebalancer-pools.js` carries a second, 180-line copy of this whole
+pipeline with the same defect. **Nothing calls it** — the only call to
+any `_waitOrSpeedUp` in the tree is `send-transaction.js`. Left alone
+deliberately: an unused export is not a finding here, and deleting it is
+a separate decision from fixing the live path.
 
 ## The missing Telegram was a second bug, now confirmed
 
