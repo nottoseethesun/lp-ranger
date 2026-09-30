@@ -155,6 +155,47 @@ describe("a receipt survives the endpoint that broadcast it going down", () => {
     assert.strictEqual(receipt.blockNumber, 99);
   });
 
+  it("bounds the re-ask, so a hash that never mines stops being polled", async () => {
+    /*- ethers re-subscribes to the next block every time the receipt is
+     *  absent, so a `waitForTransaction` with no deadline polls forever.
+     *  The speed-up path waits on two hashes at once and only one can
+     *  mine — the loser would issue a getTransactionReceipt per block
+     *  for the life of the process, through the same global queue that
+     *  once filled until the process was OOM-killed.
+     *
+     *  `tx.wait()` never had this problem: it knows the sender and
+     *  nonce and settles itself with TRANSACTION_REPLACED. Asking by
+     *  hash gives that up, so the deadline has to replace it. */
+    let seen = null;
+    sendTx.init(
+      { urls: [PRI, FALL] },
+      makeLib({
+        [PRI]: async (hash, confirms, timeout) => {
+          seen = { hash, confirms, timeout };
+          return { ...RECEIPT, servedBy: PRI };
+        },
+      }),
+    );
+    const signer = makeSigner(async () => {
+      throw serverError(PRI);
+    });
+    await sendTx.sendTransaction({
+      populate: async () => ({ to: "0x" + "22".repeat(20), gasLimit: 300000n }),
+      signer,
+      label: "[compound] collect",
+    });
+    assert.ok(seen, "the re-ask must have gone through waitForTransaction");
+    assert.strictEqual(
+      typeof seen.timeout,
+      "number",
+      "a deadline must be passed, or the poll never ends",
+    );
+    assert.ok(
+      seen.timeout > 0,
+      `deadline must be positive, got ${seen.timeout}`,
+    );
+  });
+
   it("does not swallow an error that describes the transaction", async () => {
     /*- A revert is an answer, not an endpoint problem. Asking a second
      *  endpoint would return the same one, and treating it as

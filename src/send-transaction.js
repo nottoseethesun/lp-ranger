@@ -713,6 +713,23 @@ async function _resolveGasLimit(populated, floor, label) {
  * say — re-throw untouched. Those are answers, and another endpoint
  * would give the same one.
  *
+ * **The timeout is not optional.** `waitForTransaction` re-subscribes to
+ * the next block every time the receipt is absent, so without one it
+ * polls a hash forever. That matters because the speed-up path waits on
+ * two hashes at once and only one of them can ever mine — the loser is
+ * a wait that never ends, issuing a `getTransactionReceipt` per block
+ * through the global queue for the life of the process. `tx.wait()` has
+ * no such problem: it knows the sender and nonce, so it settles itself
+ * with `TRANSACTION_REPLACED`. Asking by hash alone gives that up, and
+ * the deadline is what replaces it.
+ *
+ * `TX_CANCEL_SEC` is the right deadline because it is the move's own:
+ * past it the caller cancels the nonce regardless, so nothing here
+ * should still be waiting. It is also longer than every phase timeout
+ * that races this, and starts later than all of them, so the phase
+ * logic decides an ordinary outcome and this only ever catches the
+ * wait nothing else would have ended.
+ *
  * @param {Error} err    Why `tx.wait()` rejected.
  * @param {object} tx    The transaction being waited on.
  * @param {string} label Log label.
@@ -726,7 +743,11 @@ function _receiptAcrossEndpoints(err, tx, label) {
     err.message,
     tx.hash,
   );
-  return getManagedReadProvider().waitForTransaction(tx.hash, 1);
+  return getManagedReadProvider().waitForTransaction(
+    tx.hash,
+    1,
+    config.TX_CANCEL_SEC * 1000,
+  );
 }
 
 // ── Public sendTransaction ───────────────────────────────────────────────────
