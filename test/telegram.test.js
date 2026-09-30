@@ -181,3 +181,105 @@ describe("telegram — testConnection", () => {
     assert.strictEqual(r.ok, true);
   });
 });
+
+// ── the alert survives text Telegram will not parse ──────────────────────────
+
+describe("telegram — Markdown refused", () => {
+  /*- Notifications carry text the app does not control: an error
+   *  message, a token symbol, an operator's hostname. Legacy Markdown
+   *  treats `_`, `*`, backtick and `[` as entity delimiters, so one
+   *  unbalanced delimiter anywhere makes Telegram refuse the whole
+   *  message — which is how a compound-failure alert was lost on
+   *  Production while the Test button still reported the connection
+   *  healthy, its own message being short and clean.
+   *
+   *  `globalThis.fetch` is replaced here and restored by the file's
+   *  afterEach; modifying a JS global is permitted in test code only
+   *  and must be put back pristine immediately. */
+
+  /** Telegram's actual refusal for an unparseable message. */
+  const PARSE_REFUSAL = JSON.stringify({
+    ok: false,
+    error_code: 400,
+    description:
+      "Bad Request: can't parse entities: Can't find end of the entity " +
+      "starting at byte offset 597",
+  });
+
+  beforeEach(() => {
+    setBotToken("tok");
+    setChatId("123");
+    setEnabledEvents(EVENT_DEFAULTS);
+  });
+  afterEach(() => {
+    setBotToken(null);
+    setChatId(null);
+  });
+
+  /**
+   * A fetch stub that refuses with `body` until `failTimes` is spent.
+   * @param {number} failTimes  How many calls to refuse.
+   * @param {string} body       The refusal body.
+   * @returns {{calls: object[], fetch: Function}}
+   */
+  function _refusing(failTimes, body) {
+    const calls = [];
+    return {
+      calls,
+      fetch: async (url, opts) => {
+        calls.push(JSON.parse(opts.body));
+        if (calls.length <= failTimes) {
+          return { ok: false, status: 400, text: async () => body };
+        }
+        return { ok: true, json: async () => ({}) };
+      },
+    };
+  }
+
+  it("resends without formatting and reports the alert as sent", async () => {
+    const stub = _refusing(1, PARSE_REFUSAL);
+    globalThis.fetch = stub.fetch;
+    const sent = await notify("compoundFail", {
+      position: { tokenId: 164418 },
+      error: 'nonce has already been used (transaction="0xf8f0…", code=X)',
+    });
+    assert.strictEqual(sent, true, "the alert must still arrive");
+    assert.strictEqual(stub.calls.length, 2, "one retry, not more");
+    assert.strictEqual(stub.calls[0].parse_mode, "Markdown");
+    assert.ok(
+      !("parse_mode" in stub.calls[1]),
+      "the retry must ask for no parsing at all",
+    );
+    assert.strictEqual(
+      stub.calls[1].text,
+      stub.calls[0].text,
+      "the words must be unchanged; only the formatting is given up",
+    );
+  });
+
+  it("does not resend a refusal that is not about parsing", async () => {
+    /*- A 400 also covers a bad chat id, which resending fixes nothing
+     *  about and would merely double. */
+    const stub = _refusing(2, "Bad Request: chat not found");
+    globalThis.fetch = stub.fetch;
+    const sent = await notify("compoundFail", { error: "x" });
+    assert.strictEqual(sent, false);
+    assert.strictEqual(stub.calls.length, 1, "no retry for a non-parse 400");
+  });
+
+  it("sends once when Telegram accepts the formatting", async () => {
+    const stub = _refusing(0, PARSE_REFUSAL);
+    globalThis.fetch = stub.fetch;
+    const sent = await notify("compoundFail", { error: "clean" });
+    assert.strictEqual(sent, true);
+    assert.strictEqual(stub.calls.length, 1, "no retry when none is needed");
+  });
+
+  it("reports failure when the plain-text retry is refused too", async () => {
+    const stub = _refusing(2, PARSE_REFUSAL);
+    globalThis.fetch = stub.fetch;
+    const sent = await notify("compoundFail", { error: "x" });
+    assert.strictEqual(sent, false);
+    assert.strictEqual(stub.calls.length, 2, "tried twice, then gave up");
+  });
+});

@@ -1,11 +1,11 @@
 ---
 name: feedback_prose_style
-description: "Prose style: short sentences, concise replies, no redundant restatement of known rules, no slop words ('honest', 'straight') or empty structural announcements, spell out small numbers, no gwei/wei, 'aborted' not 'paused'"
+description: "Prose style: short sentences, concise replies, no redundant restatement of known rules, no slop words ('honest', 'straight') or empty structural announcements, spell out small numbers, lowercase tech initials (rpc, http), no gwei/wei, 'aborted' not 'paused'"
 metadata: 
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-09-19T19:32:11.783Z
+  modified: 2026-09-29T22:25:03.354Z
 ---
 
 # Prose style
@@ -124,6 +124,32 @@ Never use gwei (or wei) units anywhere except the lowest-level point where they'
 - Keep raw wei/gwei ONLY at the boundary where the RPC or contract requires it (bigint math passed to ethers, gasPrice fields, etc.) — and only that final conversion line.
 - Gas units (e.g., "1.9M gas") are fine and chain-agnostic — they're unit-counts, not gwei.
 - If you reference gasPrice in logs, convert to native (`X PLS per 1M gas`) or just report the total native cost the user cares about.
+
+## lowercase common tech initials
+
+Write common technology initialisms in lower case: `rpc`, `http`, `url`,
+`api`, `json`. Not `RPC`, `HTTP`.
+
+**Why:** the user, reviewing the 0.9.7 release notes on 2026-09-29, after
+I proposed upper-casing them: *"I actually don't believe in
+upper-casing common tech initials."*
+
+**How to apply:**
+- Prose, release notes, UI copy, chat replies: lower case.
+- Leave code identifiers, config keys, environment variables and log
+  tags exactly as the code spells them (`RPC_URL`, `rpcFailoverRatePercentage`,
+  `[send-tx]`). The rule is about prose, not about renaming symbols.
+- A status code keeps its number and takes the lowercase form of any
+  protocol name beside it: "http 429".
+- Apply to NEW copy; do not sweep existing text unless asked
+  ([[feedback_fix_only_what_was_asked]]).
+- **A named feature still takes caps**, and that is not an exception to
+  the rule. `Rpc Failover` beside a generic `rpc failures` in the same
+  sentence is correct, on the same footing as Impermanent Loss Guard
+  beside impermanent loss. The user's words: *"I believe that Rpc
+  Failover qualifies as a proper noun in the world of LP."* Do not
+  flag that pairing as drift; the drift is an initialism changing case
+  in two generic uses.
 
 ## paused vs aborted
 

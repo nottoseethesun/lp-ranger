@@ -451,4 +451,71 @@ describe("_findMintEvent early exit", () => {
       `stopped after ${windows.length} window(s) with nothing found`,
     );
   });
+
+  /*- Direction. The early exit above is only worth having if the walk
+   *  starts at the end the answer is likely to be. This lookup asks
+   *  where the position's CURRENT NFT was minted, and a managed
+   *  position mints a new one on every rebalance, so that block sits
+   *  near the chain head while `fromBlock` sits at the pool's creation.
+   *
+   *  Production 2026-09-30 walked it the other way: 969 windows and
+   *  four minutes for an NFT minted five weeks earlier. */
+
+  it("requests windows newest-first", async () => {
+    const { getPositionBaseline } = require("../src/hodl-baseline");
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
+    });
+    const windows = [];
+    const prov = {
+      getBlockNumber: async () => 100_000,
+      getBlock: async () => ({ timestamp: 1700000000 }),
+      getTransactionReceipt: async () => null,
+      getLogs: async (opts) => {
+        windows.push(opts);
+        return [];
+      },
+    };
+    await getPositionBaseline(prov, mockEthersLib(), POSITION);
+    assert.ok(windows.length > 1, "needs several windows to show an order");
+    const descending = windows.every(
+      (w, i) => i === 0 || w.fromBlock < windows[i - 1].fromBlock,
+    );
+    assert.ok(
+      descending,
+      "windows must descend from the head: " +
+        windows.map((w) => w.fromBlock).join(", "),
+    );
+  });
+
+  it("costs one window when the mint is near the head", async () => {
+    const { getPositionBaseline } = require("../src/hodl-baseline");
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
+    });
+    const HEAD = 5_000_000;
+    const windows = [];
+    const prov = {
+      getBlockNumber: async () => HEAD,
+      getBlock: async () => ({ timestamp: 1700000000 }),
+      getTransactionReceipt: async () => null,
+      /*- The mint sits in the newest window, which is where a managed
+       *  position's current NFT actually is. Walked oldest-first this
+       *  is the LAST window reached, so the count is the whole span. */
+      getLogs: async (opts) => {
+        windows.push(opts);
+        return opts.toBlock === HEAD
+          ? [{ blockNumber: HEAD - 5, transactionHash: "0xMintTx" }]
+          : [];
+      },
+    };
+    await getPositionBaseline(prov, mockEthersLib(), POSITION);
+    assert.equal(
+      windows.length,
+      1,
+      `scanned ${windows.length} windows to reach a mint at the head`,
+    );
+  });
 });

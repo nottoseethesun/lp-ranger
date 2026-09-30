@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-09-28T23:47:53.092Z
+  modified: 2026-09-29T22:25:14.295Z
 ---
 
 # Writing release notes
@@ -127,6 +127,27 @@ the correction is structural:
 - **Target a hundred words for the whole body.** Every explanatory
   clause competes with the four things a reader came for, and burying
   them is the actual failure — length is only the symptom.
+
+## 8. "Fixes bug" is itself a reason to upgrade
+
+Added 2026-09-29, drafting 0.9.7. I pushed twice to expand a bare
+`- Fixes RPC Failover` into a consequence clause, citing rule 2. The
+user: *"'Fixes bug' is a reason to upgrade."*
+
+Rule 2 asks that a change not read as churn. A stated fix does not read
+as churn — an operator upgrades for it without being told why it
+matters. So rule 2 binds on additions, refinements and behavior
+changes, not on the word "fixes."
+
+Where expansion IS worth proposing: when the previous release also led
+with fixing the same area, since two releases running that both open
+with "fixes X" read as though the first did not take. Name what is
+different, not what was wrong before. Propose once, then drop it.
+
+**And "discuss" means a recommendation, not a survey.** Asked to
+discuss the point, I produced three paragraphs and three phrasings.
+The user: *"You are spewing on me."* Give the one line you would use
+and stop; they will ask if they want the reasoning.
 
 ## Also
 

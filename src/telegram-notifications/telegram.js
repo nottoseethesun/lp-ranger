@@ -132,35 +132,112 @@ function getEnabledEvents() {
 }
 
 /**
- * Send a Telegram message via the Bot API.
+ * Post one message to the Bot API.
+ *
+ * @param {string} url        The sendMessage endpoint.
+ * @param {string} text       Message text.
+ * @param {string|null} mode  `parse_mode` to request, or null for none.
+ * @returns {Promise<{ok: boolean, status: number, body: string}>}
+ *   `status` is 0 and `body` the error message when the request itself
+ *   could not be made.
+ */
+async function _post(url, text, mode) {
+  const payload = {
+    chat_id: _chatId,
+    text,
+    disable_web_page_preview: true,
+  };
+  if (mode) payload.parse_mode = mode;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) return { ok: true, status: res.status, body: "" };
+    return {
+      ok: false,
+      status: res.status,
+      body: await res.text().catch(() => ""),
+    };
+  } catch (err) {
+    return { ok: false, status: 0, body: err.message };
+  }
+}
+
+/**
+ * Whether Telegram rejected a message because it could not parse the
+ * formatting, as opposed to any other refusal.
+ *
+ * Telegram answers 400 with a description naming the offending byte —
+ * "can't parse entities: Can't find end of the entity starting at byte
+ * offset 597". Matched on the phrase rather than the status, because a
+ * 400 also covers a bad chat id, which resending fixes nothing about.
+ *
+ * @param {{status: number, body: string}} res  A failed `_post` result.
+ * @returns {boolean}
+ */
+function _isParseFailure(res) {
+  return res.status === 400 && /can't parse entities/i.test(res.body);
+}
+
+/**
+ * Send a Telegram message via the Bot API, in Markdown when Telegram
+ * will take it and as plain text when it will not.
+ *
+ * The retry is the point. Notifications carry text the app does not
+ * control — an error message, a token symbol, an operator's hostname —
+ * and Telegram's legacy Markdown treats `_`, `*`, `` ` `` and `[` as
+ * entity delimiters. One unbalanced delimiter anywhere makes the whole
+ * message unparseable, and Telegram then refuses all of it. On
+ * Production that silently swallowed a compound-failure alert whose
+ * body quoted a raw ethers error, and the operator learned of the
+ * failure a day later by reading the log.
+ *
+ * Escaping the values instead would be the tidier fix if legacy
+ * Markdown had a dependable escape, which it does not; and an escaping
+ * pass that missed one future call site would restore exactly this
+ * silence. Resending covers every message, including ones not yet
+ * written, and costs a second request only when the first was refused.
+ *
+ * The formatting is what gets sacrificed, never the alert.
+ *
  * @param {string} text  Message text (Markdown or plain).
  * @returns {Promise<boolean>} True on success, false on failure.
  */
 async function _send(text) {
   if (!_botToken || !_chatId) return false;
   const url = `https://api.telegram.org/bot${_botToken}/sendMessage`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: _chatId,
-        text,
-        parse_mode: "Markdown",
-        disable_web_page_preview: true,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      log.warn("[telegram] Send failed: %d %s", res.status, body);
-      return false;
-    }
+  const first = await _post(url, text, "Markdown");
+  if (first.ok) {
     log.info("[telegram] Notification sent: %s", text.split("\n")[0]);
     return true;
-  } catch (err) {
-    log.warn("[telegram] Send error: %s", err.message);
+  }
+  if (!_isParseFailure(first)) {
+    log.warn("[telegram] Send failed: %d %s", first.status, first.body);
     return false;
   }
+  log.warn(
+    "[telegram] Markdown refused (%s) — resending as plain text",
+    first.body,
+  );
+  const plain = await _post(url, text, null);
+  if (plain.ok) {
+    log.info(
+      "[telegram] Notification sent unformatted: %s",
+      text.split("\n")[0],
+    );
+    return true;
+  }
+  /*- Both attempts refused, so this alert is lost. Logged at error
+   *  level because nothing downstream reports it and the operator's
+   *  only other sign would be the silence itself. */
+  log.error(
+    "[telegram] Send failed after plain-text retry: %d %s",
+    plain.status,
+    plain.body,
+  );
+  return false;
 }
 
 /** Truncate a token symbol to `max` chars (default = compact header width).

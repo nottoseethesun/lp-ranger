@@ -40,9 +40,9 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
 - [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms
-- [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, no gwei
+- [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns
-- [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes
+- [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
 - [revert means code](feedback_revert_means_code.md) — "Revert" = repo edits only, never the plan
 - [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review
 - [try before commit](feedback_try_before_commit.md) — Browser-observable changes wait for sign-off
@@ -114,13 +114,16 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [help page](project_help_page.md) — Help lives at /help.html with its own CSS
 
 ## Project state, architecture & nice-to-haves
+- [OPEN: tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Prod 0.9.7: a 502 during a receipt wait kills a whole compound; the failover had already moved and the wait stayed on the dead endpoint
+- [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Fixed on branch: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
+- [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Fixed on branch: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure
 - [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork in 0.9.5
 - [failover exhausts on concurrent errors](project_failover_exhausts_on_concurrent_errors.md) — Prod 0.9.5 froze for an hour when ONE endpoint blipped; fixed in 0.9.6 by naming the failed endpoint
 - [config stomp investigation](project_config_stomp_investigation.md) — bot-config.json once overwritten; root cause unknown, guards in place
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
 - [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
 - [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Whole recommendation inside the parens
-- [0.9.6 burn-in watch](project_0096_burn_in_watch.md) — 0.9.6 on Prod; the all-endpoints-down banner is now the instrument — at most once an hour, never with fewer than three failovers
+- [0.9.7 burn-in watch](project_0097_burn_in_watch.md) — 0.9.7 on Prod, burned in first: five real outages survived on the read path, but the write path under failover and the 429 backoff have never run
 - [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a test artifact; real positions make ≤24/year
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — The daily audit covers the release tag, not main
