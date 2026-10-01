@@ -115,16 +115,16 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [help page](project_help_page.md) — Help lives at /help.html with its own CSS
 
 ## Project state, architecture & nice-to-haves
-- [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Fixed on branch: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
-- [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Fixed on branch: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
-- [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Fixed on branch: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure
+- [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Hit Prod 0.9.7, fixed in 0.9.8: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
+- [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Hit Prod 0.9.7, fixed in 0.9.8: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
+- [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Hit Prod 0.9.7, fixed in 0.9.8: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure
 - [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork in 0.9.5
 - [failover exhausts on concurrent errors](project_failover_exhausts_on_concurrent_errors.md) — Prod 0.9.5 froze for an hour when ONE endpoint blipped; fixed in 0.9.6 by naming the failed endpoint
 - [config stomp investigation](project_config_stomp_investigation.md) — bot-config.json once overwritten; root cause unknown, guards in place
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
 - [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
 - [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Whole recommendation inside the parens
-- [0.9.7 burn-in watch](project_0097_burn_in_watch.md) — 0.9.7 on Prod, burned in first: five real outages survived on the read path, but the write path under failover and the 429 backoff have never run
+- [0.9.8 burn-in watch](project_0098_burn_in_watch.md) — 0.9.8 on Prod: ten hours of burn-in sent zero transactions, so the swap and nonce path the release exists to fix shipped unexercised
 - [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a test artifact; real positions make ≤24/year
 - [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
 - [security audit two-tier](project_security_audit_two_tier.md) — The daily audit covers the release tag, not main
