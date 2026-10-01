@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-08-08T05:42:53.183Z
+  modified: 2026-10-01T05:41:29.778Z
 ---
 
 # Branching — where work goes
@@ -26,6 +26,27 @@ onto a branch before it can go anywhere.
 
 **Why:** user, 2026-08-08, declining a push of a docs-only memory commit:
 "we have direct push-to-main blocked universally."
+
+### Check the branch out before the first edit (2026-10-01)
+
+The paragraph above says committing locally on main is fine so long as the
+commit moves to a branch before it is pushed. **Narrow that: do not edit
+files with `main` checked out at all.** User, 2026-10-01: *"You should be
+doing this work on a branch."*
+
+**Why:** that session had already gone wrong once at the same seam. After
+an interrupted step-3 merge check, local `main` was sitting at the branch
+commit, and the next thing I did was edit a memory file — with `main`
+checked out. The edit reached the branch only because it was still
+uncommitted when I switched; one `git commit` in between and it would have
+been a commit on `main` that then had to be moved. "Allowed if you move it
+later" is a rule that depends on remembering to move it.
+
+**How to apply:** the branch is the first step of the work, before the
+first `Edit`, not something arranged once the change is written. If an edit
+has already been made on `main`, switch branches before committing —
+uncommitted changes carry across — and say so rather than letting it look
+deliberate.
 
 
 ## one branch at a time

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T23:59:23.018Z
+  modified: 2026-10-01T05:32:43.638Z
 ---
 
 Two passes belong at the end of any non-trivial change, and neither is
@@ -59,5 +59,35 @@ Together they found five real defects in work already declared done:
   to name, not to leave for CI to blame on you
   ([[feedback_no_flaky_push]]).
 
+## The audit comes before any merge step, including the local one (2026-10-01)
+
+Both passes run **before** step 3 of the eight-step protocol, not after.
+Leave local `main` sitting at `origin/main` until the branch has been
+audited.
+
+**Why:** on 2026-10-01 I finished a transaction-logic fix, ran the gate,
+then did the step-3 `git checkout main && git merge <branch>` check, and
+only then would have audited. The user stopped the next command: *"I
+wanted you to do more checks before you merged to main — wtf?"* Nothing
+had reached the remote and step 4 would have reset it, but that is not
+the point. From the outside, `git checkout main && git merge` **is**
+merging to main; a protocol step that is only safe because of the step
+that follows it looks identical to the unsafe thing until that step runs.
+
+**How to apply:** finish the audit, fix what it finds, re-run the gate,
+and only then touch `main` at all. If an audit is requested after the
+local merge has happened, say plainly what is on the remote versus local
+before anything else — the distinction is invisible to someone reading
+the commands.
+
+The interrupted call also left `wipe-settings` outstanding. Restoring it
+first was right — and worth being accurate about why: the server was
+**down**, so nothing could write into the emptied directory and no data
+was at risk. `wipe-settings` moves files rather than deleting them, and
+an outstanding wipe is only dangerous while a server is running, which is
+the condition [[feedback_test_commands]] actually names. Restore it
+because leaving state displaced compounds if the next call is interrupted
+too, not because something is burning.
+
 Related: [[feedback_verify_before_claiming]], [[feedback_finish_logic]],
-[[feedback_no_extra_state]].
+[[feedback_no_extra_state]], [[feedback_ci_protocol]].
