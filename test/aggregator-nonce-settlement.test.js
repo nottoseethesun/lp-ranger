@@ -45,11 +45,18 @@ function providerWith(receipts, { throwOn } = {}) {
   };
 }
 
-const receipt = (hash, gasUsed = 21000n) => ({
+/*- `status: 1` is not decoration.  A reverted transaction also has a
+ *  receipt, so the production code reads `status` to tell "the swap landed"
+ *  from "the swap consumed its nonce and moved nothing" — a fixture without
+ *  it exercises neither. */
+const receipt = (hash, gasUsed = 21000n, status = 1) => ({
   hash,
   gasUsed,
   gasPrice: 2n,
+  status,
 });
+/** A receipt for a transaction that reverted: nonce spent, no funds moved. */
+const revertedReceipt = (hash) => receipt(hash, 21000n, 0);
 
 // ── _settleNonce ─────────────────────────────────────────────────────
 
@@ -62,6 +69,34 @@ describe("_settleNonce", () => {
     });
     assert.strictEqual(out.swapReceipt.hash, SWAP_HASH);
     assert.strictEqual(out.nonceSpent, true);
+  });
+
+  it("re-quotes when the swap mined but reverted", async () => {
+    /*- A reverted swap has a receipt, so "receipt present" is not "swap
+     *  happened".  It consumed the nonce and moved nothing, which is the
+     *  one case where a re-quote is both safe and required. */
+    const p = providerWith({ [SWAP_HASH]: revertedReceipt(SWAP_HASH) });
+    const out = await _settleNonce(p, SWAP_HASH, {
+      hash: CANCEL_HASH,
+      receipt: null,
+    });
+    assert.strictEqual(out.swapReceipt, null);
+    assert.strictEqual(out.nonceSpent, true);
+  });
+
+  it("sends nothing more when a receipt carries no status", async () => {
+    /*- Unknown is not "reverted".  Treating it as reverted would re-quote,
+     *  and if the swap had in fact landed that re-quote is the second swap.
+     *  So an unreadable status stops the loop instead. */
+    const p = providerWith({
+      [SWAP_HASH]: { hash: SWAP_HASH, gasUsed: 1n, gasPrice: 1n },
+    });
+    const out = await _settleNonce(p, SWAP_HASH, {
+      hash: CANCEL_HASH,
+      receipt: null,
+    });
+    assert.strictEqual(out.swapReceipt, null);
+    assert.strictEqual(out.nonceSpent, false);
   });
 
   it("takes a cancel receipt already in hand without re-reading it", async () => {
@@ -178,6 +213,11 @@ describe("_resolveSwapOutcome", () => {
          *  reading it needs to be able to look the swap up. */
         assert.match(err.message, /nonce 7/);
         assert.match(err.message, new RegExp(SWAP_HASH));
+        /*- The cancel's gas is spent on chain whatever happens next, and
+         *  `executeRebalance`'s catch reads this field off the error.
+         *  Without it the charge falls in the gap between the thrown frame
+         *  and the recorder. */
+        assert.strictEqual(err.cancelGasCostWei, 5n);
         return true;
       },
     );
@@ -228,6 +268,63 @@ describe("_handleSwapError", () => {
     assert.strictEqual(out.swapReceipt.hash, SWAP_HASH);
     assert.strictEqual(out.nonceSpent, true);
     assert.strictEqual(out.cancelGasWei, 0n);
+  });
+
+  it("settles instead of rethrowing when the cancel send fails", async () => {
+    /*- The regression, second door.  "Already known" means the cancel is in
+     *  the mempool, but `_isNonceTooLow` is false for it, so an earlier
+     *  version rethrew — and an error leaving here carries no
+     *  `nonceUnsettled`, so the router fallback swapped again.  Any cancel
+     *  failure must reach the chain, never the caller. */
+    const signer = {
+      signer: {
+        getAddress: async () => "0xme",
+        sendTransaction: async () => {
+          throw new Error("already known");
+        },
+      },
+      reset: () => {},
+    };
+    const provider = providerWith({ [SWAP_HASH]: receipt(SWAP_HASH, 300n) });
+    const out = await _handleSwapError(
+      { message: "_AGG_TIMEOUT" },
+      signer,
+      provider,
+      tx,
+      10,
+      "TKA",
+      "TKB",
+      1n,
+    );
+    assert.strictEqual(out.swapReceipt.hash, SWAP_HASH);
+    assert.strictEqual(out.nonceSpent, true);
+  });
+
+  it("reports an unspent slot when the cancel send fails and nothing mined", async () => {
+    /*- Same door, worse room: no cancel pending and no swap receipt, so
+     *  the slot is open and the swap can still land.  Must not rethrow and
+     *  must not license a re-quote. */
+    const signer = {
+      signer: {
+        getAddress: async () => "0xme",
+        sendTransaction: async () => {
+          throw new Error("txpool is full");
+        },
+      },
+      reset: () => {},
+    };
+    const out = await _handleSwapError(
+      { message: "_AGG_TIMEOUT" },
+      signer,
+      providerWith({}),
+      tx,
+      10,
+      "TKA",
+      "TKB",
+      1n,
+    );
+    assert.strictEqual(out.swapReceipt, null);
+    assert.strictEqual(out.nonceSpent, false);
   });
 
   it("reports an unspent slot when the cancel never confirms", async () => {

@@ -798,9 +798,26 @@ at the next nonce, or letting the failure reach the V3 router fallback —
 would swap the same balance a second time. So the loop asks the chain for
 a receipt on each hash before it does anything: the swap's receipt is
 returned as the swap, the cancel's receipt licenses a re-quote, and
-neither fails the rebalance with the nonce named. A failed rebalance
-leaves tokens un-swapped in the wallet, which the corrective and
-residual-cleanup paths already recover; a second swap is spent.
+neither fails the rebalance with the nonce named. A receipt alone does not
+settle it — a reverted transaction has one too — so the swap's `status`
+decides: `1` means it landed and a re-quote would be the second swap, `0`
+means it consumed the nonce without moving funds and a re-quote is right,
+and absent means unknown, where nothing further is sent. Every way the
+cancel itself can fail reaches that same question rather than being raised
+as an error, because an error leaving the aggregator carries no flag and
+the router fallback reads an unflagged error as "no swap happened".
+
+**What the operator is left with, stated precisely, because the obvious
+summary is wrong.** This is not a rebalance that simply did not happen.
+The swap runs after liquidity has been removed, so the position is drained
+and un-minted, and the swap at that nonce **can still mine at any time** —
+the tokens may therefore be swapped minutes later by a transaction nothing
+is waiting on. The next poll recomputes from the wallet's actual balances,
+so it works from truth rather than from an assumption, but its own swap
+goes out at the following nonce and cannot mine ahead of the stuck one.
+The position can therefore stay drained across several cycles until that
+nonce resolves. That is a delay, visible in the log with the nonce and the
+hash named; a second swap of the same balance is money.
 
 ### RPC Failover
 
