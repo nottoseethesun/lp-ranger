@@ -169,10 +169,14 @@ cause stuck or lost transactions.
 
 ### TX recovery pipeline
 
-`_waitOrSpeedUp()` in `src/rebalancer.js` wraps every `tx.wait()`
-with a 4-phase pipeline: wait, speed-up (1.5x gas), wait again,
-auto-cancel (0-PLS self-transfer). This ensures nonces are never
-permanently stuck.
+`_waitOrSpeedUp()` in `src/tx-speedup.js` wraps the `tx.wait()` of
+every send that goes through `sendTx.sendTransaction`, with a 4-phase
+pipeline: wait, speed-up (1.5x gas), wait again, auto-cancel (0-PLS
+self-transfer). The aggregator swap sends outside that entry point and
+carries its own cancel-and-re-quote loop. Either way a cancel goes out
+at the stuck nonce instead of the wallet being left blocked, and a
+cancel that cannot be confirmed is logged as possibly still stuck rather
+than assumed clear.
 
 ### Slippage guards
 
