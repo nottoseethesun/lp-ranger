@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-01T00:13:16.391Z
+  modified: 2026-10-01T04:55:17.085Z
 ---
 
 **Fixed** on branch `receipt-waits-follow-failover`; open on Production
@@ -133,9 +133,13 @@ no abort for the losing branch of a race, no re-ask hook at all. Nothing
 ever called it, so none of that could fire: the one `_waitOrSpeedUp` the
 app reaches is `tx-speedup.js`, through `send-transaction.js`. Deleted
 2026-09-30, with its private `_cancelGasPrice`, `_baseSigner` and
-`_resetNonce`; `_receiptGas` stayed, because `_ensureAllowance` uses it.
-`_receiptGas` is the one helper the roadmap entry listed as duplicated
-that was not dead — worth knowing before trusting a list like that.
+`_resetNonce`; the gas helper stayed, because `_ensureAllowance` uses it.
+That helper was the one name the roadmap entry listed as duplicated which
+was not dead — worth knowing before trusting a list like that. It is no
+longer called `_receiptGas` and no longer lives there: the same expression
+turned out to exist thirteen times across nine modules, and it is now
+`receiptGasWei` in `src/receipt-gas.js`, shared by every path that records
+a charge.
 
 ## The missing Telegram was a second bug, now confirmed
 

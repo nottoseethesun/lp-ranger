@@ -6,8 +6,8 @@
  * `receiptGasWei` — the single expression of what a confirmed transaction
  * cost, which thirteen call sites across nine modules now share.
  *
- * These cases came from `rebalancer-aggregator._gasCost` and moved here with
- * the function. They pin the two field names (`gasPrice` and the v5-shaped
+ * These cases moved here with the function, from the copy of it that used to
+ * sit in the aggregator. They pin the two field names (`gasPrice` and the v5-shaped
  * `effectiveGasPrice`), which one wins when both are present, and that a
  * receipt missing either yields `0n` rather than throwing — a cost that cannot
  * be determined is reported as nothing rather than failing a move that has
