@@ -27,6 +27,12 @@ const {
 } = require("./rebalancer-pools");
 
 /** Chain-specific aggregator tunables from app-config/app-defaults-for-user-configurable/chains.json. */
+const { settleNonce } = require("./aggregator-nonce-settle");
+/*- The classifier the retry layer uses, from the module that owns it: a
+ *  failed send is safe to fall back from only when the node never admitted
+ *  the transaction, and that bucket is its answer, not ours to restate. */
+const { classifyRpcError } = require("./rpc-error-classifier");
+
 const _agg = config.CHAIN.aggregator;
 
 /*- `_agg.waitMs` is 180 s and `config.CHAIN` is frozen, so a test covering
@@ -225,7 +231,7 @@ function _baseSigner(signer) {
  * a number cannot carry that: zero wei is both a plausible cost and the value
  * an unconfirmed cancel would report. The wait is bounded by `waitMs` and a
  * rejected wait resolves to null, so a null receipt means only "no receipt
- * yet", never "cancelled". `_settleNonce` turns that into an answer.
+ * yet", never "cancelled". `settleNonce` turns that into an answer.
  *
  * @param {import('ethers').Signer} signer Signer, possibly a NonceManager.
  * @param {object} provider  Provider used for the fee-data read.
@@ -277,93 +283,6 @@ async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
 }
 
 /**
- * Read a receipt, treating an unreadable answer as no answer.
- *
- * A read that throws leaves the nonce's owner unknown, which is the state the
- * caller must treat most cautiously, so the failure resolves to null rather
- * than propagating: an error escaping here would reach the swap fallback as an
- * ordinary failure and earn a second swap, which is the outcome this whole
- * path exists to prevent. It is logged, because "unknown" chosen by an RPC
- * error should be visible in the record.
- *
- * @param {object} provider Read provider.
- * @param {string} hash     Transaction hash to look up.
- * @returns {Promise<object|null>} The receipt, or null if absent or unreadable.
- */
-async function _receiptOrNull(provider, hash) {
-  try {
-    return await provider.getTransactionReceipt(hash);
-  } catch (readErr) {
-    log.warn(
-      "[aggregator] could not read receipt for %s: %s —" +
-        " treating this nonce as unsettled",
-      hash,
-      readErr.message,
-    );
-    return null;
-  }
-}
-
-/**
- * Decide which transaction owns a nonce once the swap's wait has expired.
- *
- * A swap and the cancel sent to displace it share one nonce, so at most one of
- * them can ever mine, and which one it is decides what the caller may do next.
- * A receipt for the swap means it landed and there is nothing to retry. A
- * receipt for the cancel means the slot is spent, the swap can never mine, and
- * a fresh quote at the next nonce is safe. Neither means the slot is still
- * open and the swap may yet mine — the one state in which sending anything
- * risks swapping the same balance a second time.
- *
- * The chain is asked directly rather than the cancel's own `wait()` being
- * trusted, because that wait collapses three different outcomes into a null:
- * an expired timer, a rejected wait, and an RPC error during it. A cancel
- * receipt already in hand is taken as given and not re-read.
- *
- * A receipt is not by itself proof the swap happened — a reverted
- * transaction has one — so the swap's `status` decides, and its three values
- * are not a gradient from strict to lax. `1` means it landed and a re-quote
- * would swap the balance twice; `0` means it consumed the nonce without
- * moving funds and a re-quote is right; absent means unknown, where sending
- * anything risks being the second swap. The rule across all of them is to
- * send nothing while unsure.
- *
- * @param {object} provider Read provider.
- * @param {string} swapHash Hash of the aggregator swap at this nonce.
- * @param {{hash: string, receipt: object|null}} cancel  What `_cancelNonce`
- *   reported, or a null hash when no cancel was ever broadcast.
- * @returns {Promise<{swapReceipt: object|null, nonceSpent: boolean}>}
- */
-async function _settleNonce(provider, swapHash, cancel) {
-  const swap = await _receiptOrNull(provider, swapHash);
-  if (swap) {
-    /*- A reverted swap has a receipt too, so the receipt alone does not
-     *  mean the swap happened — `status` decides, and the three answers
-     *  are not a strictness gradient.  `1`: it landed, and re-quoting
-     *  would swap the balance twice.  `0`: it consumed the nonce without
-     *  moving funds, which is what the CALL_EXCEPTION branch already
-     *  treats as a clean re-quote.  Absent: unknown, and a re-quote might
-     *  be the second swap, so nothing more is sent. */
-    if (swap.status === 1) return { swapReceipt: swap, nonceSpent: true };
-    if (swap.status === 0) return { swapReceipt: null, nonceSpent: true };
-    log.warn(
-      "[aggregator] receipt for %s carries no status — treating this nonce" +
-        " as unsettled rather than guessing whether the swap landed",
-      swapHash,
-    );
-    return { swapReceipt: null, nonceSpent: false };
-  }
-  /*- The cancel needs no status check: a 0-value self-transfer at 21000
-   *  gas does not revert, and a reverted transaction consumes its nonce
-   *  regardless, so either way the slot is closed to the swap. */
-  if (cancel.receipt) return { swapReceipt: null, nonceSpent: true };
-  const cancelReceipt = cancel.hash
-    ? await _receiptOrNull(provider, cancel.hash)
-    : null;
-  return { swapReceipt: null, nonceSpent: Boolean(cancelReceipt) };
-}
-
-/**
  * Handle a retryable aggregator error (timeout or on-chain revert) and report
  * whether the nonce it used is settled.
  *
@@ -376,7 +295,7 @@ async function _settleNonce(provider, swapHash, cancel) {
  * itself is pending, or never broadcast at all because the txpool is full or
  * the retries ran out. An error leaving here is unflagged, and the caller's
  * router fallback reads unflagged as "no swap happened" and sends a second
- * one — so all of them hand the question to `_settleNonce` and the chain.
+ * one — so all of them hand the question to `settleNonce` and the chain.
  *
  * The caller needs three distinguishable answers and so gets an object rather
  * than a gas total: `swapReceipt` when the swap itself landed and must be
@@ -448,7 +367,7 @@ async function _handleSwapError(
      *  `_retrySend` resubmits a byte-identical request. A full txpool, a
      *  refused gas price, or three exhausted retries mean no cancel is
      *  pending at all.  None of them says what became of the swap, so all
-     *  of them hand the question to `_settleNonce` and the chain. */
+     *  of them hand the question to `settleNonce` and the chain. */
     log.warn(
       "[rebalance] swap (aggregator): cancel at nonce %d did not confirm" +
         " (%s) — settling from chain state",
@@ -458,7 +377,7 @@ async function _handleSwapError(
   }
   // Re-sync NonceManager after cancel so its counter matches chain state.
   if (typeof signer.reset === "function") signer.reset();
-  const settled = await _settleNonce(provider, tx.hash, cancel);
+  const settled = await settleNonce(provider, tx.hash, cancel);
   log.info(
     "[rebalance] swap (aggregator): nonce %d — swap mined=%s, slot spent=%s",
     tx.nonce,
@@ -470,6 +389,41 @@ async function _handleSwapError(
     swapReceipt: settled.swapReceipt,
     nonceSpent: settled.nonceSpent,
   };
+}
+
+/**
+ * Broadcast the swap, marking a failure the caller must not fall back from.
+ *
+ * A send that failed is not the same as a send that did not happen, and the
+ * difference decides whether `swapIfNeeded`'s V3-router fallback is a recovery
+ * or a second swap of this balance. The classifier's own buckets answer it,
+ * which is why the question is asked of `classifyRpcError` rather than
+ * restated here: `terminal-nonce-unused` is the node rejecting the transaction
+ * "before it was admitted to the executable pending pool", so nothing is live
+ * and falling back is correct. A `transient` failure says the transaction "may
+ * or may not have been broadcast", and `_retrySend` resets the nonce and tries
+ * again, so one that did land can be joined by a second at another nonce; a
+ * consumed nonce says something is on chain already.
+ *
+ * Those two cannot be settled the way a timeout can — the send threw, so there
+ * is no hash to ask the chain about — so they are stamped `nonceUnsettled` and
+ * the rebalance fails rather than risking the swap twice.
+ *
+ * @param {import('ethers').Signer} signer Nonce-managed signer.
+ * @param {object} txReq   Populated transaction request, without a nonce.
+ * @param {string} label   Log label for the retry layer.
+ * @returns {Promise<object>} The submitted transaction.
+ */
+async function _sendSwap(signer, txReq, label) {
+  try {
+    return await _retrySend(() => signer.sendTransaction(txReq), label, {
+      signer,
+    });
+  } catch (sendErr) {
+    if (classifyRpcError(sendErr) === "terminal-nonce-unused") throw sendErr;
+    sendErr.nonceUnsettled = true;
+    throw sendErr;
+  }
 }
 
 /**
@@ -618,10 +572,10 @@ async function _sendWithRetry(
       String(useGp),
     );
     // Nonce is managed by NonceManager — never fetch manually.
-    const tx = await _retrySend(
-      () => signer.sendTransaction(txReq),
+    const tx = await _sendSwap(
+      signer,
+      txReq,
       "[aggregator] swap " + fromSym + "->" + toSym,
-      { signer },
     );
     log.info(
       "[aggregator] %s: Step 6 swap TX submitted, %s -> %s hash= %s nonce=%d type=%s" +
@@ -690,7 +644,14 @@ async function _sendWithRetry(
       }
     }
   }
-  throw new Error("Aggregator swap failed after " + maxAttempts + " attempts");
+  const exhausted = new Error(
+    "Aggregator swap failed after " + maxAttempts + " attempts",
+  );
+  /*- Reachable only once an attempt reported the nonce spent, so nothing is
+   *  pending and the fallback is safe — but the cancels along the way were
+   *  broadcast and their gas is spent.  Same seam the unsettled error uses. */
+  exhausted.cancelGasCostWei = cancelGasTotal;
+  throw exhausted;
 }
 
 /**
@@ -797,7 +758,6 @@ module.exports = {
   _baseSigner,
   _getGasPrice,
   _handleSwapError,
-  _settleNonce,
   _resolveSwapOutcome,
   _submitGasPrice,
   _setWaitMsForTests, // exported for tests
