@@ -456,3 +456,137 @@ describe("Fund safety — one swap intent, at most one swap", () => {
     }
   });
 });
+
+// ── A live swap is distinguishable from an ordinary failure ──────────────────
+
+describe("Fund safety — a pending swap is distinguishable", () => {
+  /**
+   * `executeRebalance` reports a failure as an object, and a caller that
+   * cannot tell "this failed" from "this failed and a swap may still mine"
+   * can only treat both as ordinary. The second leaves the position drained
+   * until that nonce resolves, so the flag rides the result rather than only
+   * the message prose.
+   */
+  it("carries nonceUnsettled through to the result", async () => {
+    const d = defaultDispatch();
+    d[ADDR.pm] = {
+      ...d[ADDR.pm],
+      mint: async () => {
+        const err = new Error("nonce 7 unsettled: swap may still mine");
+        err.nonceUnsettled = true;
+        throw err;
+      },
+    };
+    const r = await executeRebalance(
+      mockSigner(),
+      buildMockEthersLib({ contractDispatch: d }),
+      rebalOpts(),
+    );
+    assert.strictEqual(r.success, false);
+    assert.strictEqual(r.nonceUnsettled, true);
+  });
+
+  it("reports false for an ordinary failure", async () => {
+    /*- Without this, a field hard-coded to true would pass the case above
+     *  and tell every caller that every failure left a swap pending. */
+    const d = defaultDispatch();
+    d[ADDR.pm] = {
+      ...d[ADDR.pm],
+      mint: async () => {
+        throw new Error("mint reverted");
+      },
+    };
+    const r = await executeRebalance(
+      mockSigner(),
+      buildMockEthersLib({ contractDispatch: d }),
+      rebalOpts(),
+    );
+    assert.strictEqual(r.success, false);
+    assert.strictEqual(r.nonceUnsettled, false);
+  });
+});
+
+// ── Chunked swaps must not be re-swapped by the fallback ─────────────────────
+
+/**
+ * `_swapInChunks` splits one swap into three and runs them in sequence, but
+ * `params.amountIn` stays the whole amount — each chunk builds its own locally.
+ * So a mid-sequence failure used to reach a router fallback holding the FULL
+ * original amount, on top of whatever the earlier chunks had already moved.
+ *
+ * Two chunks of three at two-thirds, plus a full-size router swap, is about
+ * 1⅔× the intended trade. The fix keeps the partial instead: the caller mints
+ * with the balances it finds, which is what a gate-skipped swap already does,
+ * and the corrective and residual-cleanup paths pick up the rest.
+ */
+describe("Fund safety — a partial chunked swap is not swapped again", () => {
+  const AGG_PATH = require.resolve("../src/rebalancer-aggregator");
+  const ROUTER_PATH = require.resolve("../src/rebalancer-router");
+  const SWAP_PATH = require.resolve("../src/rebalancer-swap");
+
+  const CHUNK_OUT = 500n;
+
+  /**
+   * Load `swapIfNeeded` against an aggregator that aborts at full size,
+   * succeeds on chunk 1 and fails on chunk 2, and a router that counts calls.
+   * @returns {{swapIfNeeded: Function, routerCalls: object}}
+   */
+  function loadStubs() {
+    const routerCalls = { count: 0, amountIn: null };
+    const stub = (id, exports) => {
+      require.cache[id] = { id, filename: id, loaded: true, exports };
+    };
+    stub(AGG_PATH, {
+      AGGREGATOR_LABEL: "9mm Aggregator",
+      swapViaAggregator: async (_s, _e, params) => {
+        const label = params._attemptLabel || "";
+        if (label.includes("(full)")) {
+          const err = new Error("price impact too high");
+          err.isSwapImpactAbort = true;
+          throw err;
+        }
+        if (label.includes("chunk 1/3"))
+          return { amountOut: CHUNK_OUT, txHash: "0xchunk1", gasCostWei: 7n };
+        throw new Error("aggregator HTTP 503 on chunk 2");
+      },
+    });
+    stub(ROUTER_PATH, {
+      swapViaRouter: async (_s, _e, params) => {
+        routerCalls.count++;
+        routerCalls.amountIn = params.amountIn;
+        return { amountOut: 9999n, txHash: "0xrouter", gasCostWei: 0n };
+      },
+    });
+    delete require.cache[SWAP_PATH];
+    const { swapIfNeeded } = require(SWAP_PATH);
+    return { swapIfNeeded, routerCalls };
+  }
+
+  it("returns the partial and never calls the router", async () => {
+    const { swapIfNeeded, routerCalls } = loadStubs();
+    try {
+      const out = await swapIfNeeded(
+        {},
+        {},
+        {
+          amountIn: 3n * 10n ** 18n,
+          tokenIn: ADDR.token0,
+          tokenOut: ADDR.token1,
+          recipient: ADDR.signer,
+          swapRouterAddress: ADDR.router,
+          slippagePct: 1,
+          fee: 3000,
+        },
+      );
+      assert.strictEqual(out.amountOut, CHUNK_OUT);
+      assert.strictEqual(out.txHash, "0xchunk1");
+      /*- The whole point: the router holds the full original amountIn, so
+       *  one call here would re-swap what chunk 1 already moved. */
+      assert.strictEqual(routerCalls.count, 0);
+    } finally {
+      delete require.cache[AGG_PATH];
+      delete require.cache[ROUTER_PATH];
+      delete require.cache[SWAP_PATH];
+    }
+  });
+});

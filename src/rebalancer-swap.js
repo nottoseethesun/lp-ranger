@@ -451,11 +451,30 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
     const amt = i === n - 1 ? chunk + remainder : chunk;
     if (amt < _MIN_SWAP_THRESHOLD) continue;
     log.info("[rebalance] chunk %d/%d: %s", i + 1, n, String(amt));
-    const r = await swapFn(signer, ethersLib, {
-      ...params,
-      amountIn: amt,
-      _attemptLabel: `9mm Aggregator (chunk ${i + 1}/${n})`,
-    });
+    let r;
+    try {
+      r = await swapFn(signer, ethersLib, {
+        ...params,
+        amountIn: amt,
+        _attemptLabel: `9mm Aggregator (chunk ${i + 1}/${n})`,
+      });
+    } catch (chunkErr) {
+      /*- Carry out what the earlier chunks already moved.  `params.amountIn`
+       *  is the whole amount and is never decremented — each chunk builds
+       *  its own `amountIn` locally — so a caller that falls back after a
+       *  mid-sequence failure would swap the full amount on top of the part
+       *  already swapped.  `amountOut > 0n` is the test because it means
+       *  balance actually moved: a chunk the swap gates skipped returns zero
+       *  and leaves the full amount genuinely unswapped. */
+      if (amountOut > 0n)
+        chunkErr.partialSwap = {
+          amountOut,
+          txHash,
+          gasCostWei,
+          ...(sources.length ? { swapSources: sources.join("+") } : {}),
+        };
+      throw chunkErr;
+    }
     amountOut += r.amountOut;
     gasCostWei += r.gasCostWei || 0n;
     txHash = r.txHash || txHash;
@@ -483,6 +502,17 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
  *      a broken route at full size is broken at 1/3 size too, and
  *      chunking would just burn three nonces before falling through.
  *   3. V3 SwapRouter against the position's own pool.
+ *
+ * Step 3 is skipped in two cases, both because taking it would swap the same
+ * balance twice. If a chunk fails after an earlier one already moved
+ * balance, the partial is returned instead: `params.amountIn` is never
+ * decremented, so the router would be handed the full original amount on top
+ * of what was already swapped. And an aggregator error carrying
+ * `nonceUnsettled` means its swap is neither confirmed nor cancelled and may
+ * still mine, so it propagates rather than being treated as "no swap
+ * happened". A partial or abandoned swap leaves the mint to proceed on the
+ * balances it finds, which is what a tripped swap-gate already does, and the
+ * corrective and residual-cleanup paths recover the remainder.
  *
  * @param {object} signer      ethers Signer.
  * @param {object} ethersLib   ethers library.
@@ -526,6 +556,22 @@ async function swapIfNeeded(signer, ethersLib, params) {
         );
       } catch (chunkErr) {
         if (chunkErr?.nonceUnsettled) throw chunkErr;
+        /*- Earlier chunks already moved part of the balance, and the router
+         *  fallback below is handed the FULL original amount, so taking it
+         *  would swap that part a second time.  Report what was swapped
+         *  instead: the caller mints with the balances it finds, which is
+         *  what a gate-skipped swap already does, and the corrective and
+         *  residual-cleanup paths pick up the rest. */
+        if (chunkErr.partialSwap) {
+          log.warn(
+            "[rebalance] Aggregator chunks stopped after a partial swap" +
+              " (out=%s): %s — keeping the partial rather than re-swapping" +
+              " it through the V3 router",
+            String(chunkErr.partialSwap.amountOut),
+            chunkErr.message,
+          );
+          return chunkErr.partialSwap;
+        }
         log.warn(
           "[rebalance] Aggregator chunks also failed: %s" +
             " — falling back to V3 router",

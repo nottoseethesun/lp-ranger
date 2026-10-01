@@ -480,6 +480,13 @@ async function executeRebalance(signer, ethersLib, opts) {
       cancelled: !!err.cancelled,
       cancelTxHash: err.cancelTxHash || null,
       cancelGasCostWei: err.cancelGasCostWei || 0n,
+      /*- Distinguishes "this rebalance failed" from "this rebalance failed
+       *  and a swap may still mine".  The two want different handling —
+       *  the second leaves the position drained until that nonce resolves,
+       *  and a caller that cannot tell them apart can only treat both as
+       *  ordinary.  The hash is in `error`; this is the part a caller can
+       *  branch on without reading prose. */
+      nonceUnsettled: !!err.nonceUnsettled,
     };
   }
 }
