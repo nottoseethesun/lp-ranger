@@ -13,6 +13,11 @@ This file is **not** auto-loaded, so open it when any of these apply:
   ([lead with open bugs](feedback_lead_with_open_bugs.md)).
 - **Before proposing a change to an area below.** Several entries record
   a decision that looks like a defect until you read why.
+- **Before explaining why the code does something.** Not only before
+  changing it. An entry may already call it a known duplication or a
+  deferred cleanup, and answering from the source alone turns into a
+  defense of something already on the list
+  ([check state before explaining design](feedback_check_state_before_explaining_design.md)).
 - **When adding a `project_*` or `reference_*` memory.** Its one-line
   pointer goes in this file, not in `MEMORY.md`.
 
