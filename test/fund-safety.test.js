@@ -227,6 +227,13 @@ describe("Fund safety — partial failure", () => {
     );
     assert.strictEqual(r.success, false);
     assert.ok(r.error.includes("mint reverted"));
+    /*- The control for "a pending swap is distinguishable" below: an
+     *  ordinary failure must report false, or a field hard-coded to true
+     *  would tell every caller that every failure left a swap pending.
+     *  It lives here rather than beside that case because the setup is
+     *  this one, and copying it to gain adjacency is the mirror the
+     *  testing guide forbids. */
+    assert.strictEqual(r.nonceUnsettled, false);
   });
 });
 
@@ -466,6 +473,10 @@ describe("Fund safety — a pending swap is distinguishable", () => {
    * can only treat both as ordinary. The second leaves the position drained
    * until that nonce resolves, so the flag rides the result rather than only
    * the message prose.
+   *
+   * The control — that an ordinary failure reports `false`, so the field is
+   * not hard-coded — lives in "Fund safety — partial failure", whose setup
+   * is already exactly that case.
    */
   it("carries nonceUnsettled through to the result", async () => {
     const d = defaultDispatch();
@@ -484,25 +495,6 @@ describe("Fund safety — a pending swap is distinguishable", () => {
     );
     assert.strictEqual(r.success, false);
     assert.strictEqual(r.nonceUnsettled, true);
-  });
-
-  it("reports false for an ordinary failure", async () => {
-    /*- Without this, a field hard-coded to true would pass the case above
-     *  and tell every caller that every failure left a swap pending. */
-    const d = defaultDispatch();
-    d[ADDR.pm] = {
-      ...d[ADDR.pm],
-      mint: async () => {
-        throw new Error("mint reverted");
-      },
-    };
-    const r = await executeRebalance(
-      mockSigner(),
-      buildMockEthersLib({ contractDispatch: d }),
-      rebalOpts(),
-    );
-    assert.strictEqual(r.success, false);
-    assert.strictEqual(r.nonceUnsettled, false);
   });
 });
 
