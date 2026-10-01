@@ -206,8 +206,9 @@ with 1.5x gas, wait again, then auto-cancel with a 0-value self-transfer if
 still stuck. What it wraps is whatever passes through
 `sendTx.sendTransaction` — every step above except the aggregator swap,
 which sends on its own and carries its own timeout, cancel and re-quote
-loop. Either route frees a stuck nonce, so none is ever permanently
-blocked.
+loop. Either route sends a cancel at the stuck nonce rather than leaving
+it blocked, and a cancel that cannot be confirmed is logged as possibly
+still stuck rather than assumed clear.
 
 ---
 

@@ -1,9 +1,16 @@
 /**
  * @file rebalancer.js
  * @description Mint, execution, and orchestration for the 9mm v3
- * Position Manager rebalancer.  Re-exports all public symbols from
- * rebalancer-pools and rebalancer-swap so external callers are
- * unaffected by the split.
+ * Position Manager rebalancer.  Three functions are its own —
+ * `executeRebalance`, `mintPosition` and `enrichResultUsd` — and
+ * alongside them it re-exports eight names from rebalancer-pools and
+ * rebalancer-swap: the pool read, liquidity removal, the two swap
+ * functions and four constants, which are what its callers already
+ * reached for through this module.  That is a subset and not those
+ * modules' surface: `_waitOrSpeedUp`, `_ensureAllowance` and everything
+ * else they export are absent here, so a consumer wanting one imports
+ * it from the module that owns it, which is where a new one belongs
+ * too.
  */
 
 "use strict";
