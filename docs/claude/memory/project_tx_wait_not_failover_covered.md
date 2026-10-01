@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-30T22:30:38.602Z
+  modified: 2026-10-01T00:13:16.391Z
 ---
 
 **Fixed** on branch `receipt-waits-follow-failover`; open on Production
@@ -127,11 +127,15 @@ successful move. An assertion that the failing endpoint is "out of
 service" can therefore never hold once the move has happened; what
 survives as evidence is selection having advanced.
 
-`src/rebalancer-pools.js` carries a second, 180-line copy of this whole
-pipeline with the same defect. **Nothing calls it** — the only call to
-any `_waitOrSpeedUp` in the tree is `send-transaction.js`. Left alone
-deliberately: an unused export is not a finding here, and deleting it is
-a separate decision from fixing the live path.
+`src/rebalancer-pools.js` carried a second, 180-line copy of this whole
+pipeline, holding this defect and three more besides — `unref`'d timers,
+no abort for the losing branch of a race, no re-ask hook at all. Nothing
+ever called it, so none of that could fire: the one `_waitOrSpeedUp` the
+app reaches is `tx-speedup.js`, through `send-transaction.js`. Deleted
+2026-09-30, with its private `_cancelGasPrice`, `_baseSigner` and
+`_resetNonce`; `_receiptGas` stayed, because `_ensureAllowance` uses it.
+`_receiptGas` is the one helper the roadmap entry listed as duplicated
+that was not dead — worth knowing before trusting a list like that.
 
 ## The missing Telegram was a second bug, now confirmed
 
