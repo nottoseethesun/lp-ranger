@@ -23,6 +23,7 @@ const {
   _deadline,
   _ensureAllowance,
 } = require("./rebalancer-pools");
+const { receiptGasWei } = require("./receipt-gas");
 
 /**
  * Display label for the V3 router fallback route.  Stamped onto
@@ -30,11 +31,6 @@ const {
  * the 9mm V3 SwapRouter.  Surfaces to the Rebalance Events table only.
  */
 const V3_ROUTER_LABEL = "9mm V3 Router";
-
-/** Compute gas cost from a TX receipt. */
-function _gasCost(r) {
-  return (r.gasUsed ?? 0n) * (r.gasPrice ?? r.effectiveGasPrice ?? 0n);
-}
 
 /**
  * Swap via V3 SwapRouter (fallback path — single pool).
@@ -132,7 +128,7 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     );
     return {
       txHash: receipt.hash,
-      gasCostWei: _gasCost(receipt) + (approvalGas || 0n),
+      gasCostWei: receiptGasWei(receipt) + (approvalGas || 0n),
       swapSources: V3_ROUTER_LABEL,
     };
   });

@@ -178,6 +178,18 @@ at the stuck nonce instead of the wallet being left blocked, and a
 cancel that cannot be confirmed is logged as possibly still stuck rather
 than assumed clear.
 
+**At most one swap per swap intent.** A swap and the cancel sent to
+displace it occupy one nonce, so at most one of them can mine, and the
+aggregator's retry will not send anything until the chain names which.
+It reads a receipt for each hash and checks the swap's `status`, because a
+reverted transaction has a receipt too. When neither is named the
+rebalance fails rather than re-quoting, and the error is flagged so
+`swapIfNeeded` declines its V3-router fallback — a fallback that would
+otherwise read the failure as "no swap happened" and swap the same balance
+again. The cost of the refusal is a drained position for a few cycles; see
+[security.md § TX Recovery Pipeline](../security.md) for what the operator
+is left holding.
+
 ### Slippage guards
 
 Swap slippage is applied to a `staticCall` quote, not spot price.

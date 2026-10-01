@@ -1,7 +1,16 @@
 /**
  * @file test/rebalancer-aggregator.test.js
  * @description Unit tests for pure helpers in rebalancer-aggregator.js:
- *   _gasCost, _gasLimit, _baseSigner, _getGasPrice, and _handleSwapError.
+ *   _gasLimit, _baseSigner, and _getGasPrice.
+ *
+ * The gas-cost helper's cases moved to test/receipt-gas.test.js with the
+ * function itself, which is now `receiptGasWei` in src/receipt-gas.js and
+ * shared by every path that records a charge.
+ *
+ * `_handleSwapError` is covered by test/aggregator-nonce-settlement.test.js,
+ * which drives all three of its answers rather than the one revert case that
+ * used to live here — it is a decision about nonce ownership, not a pure
+ * helper, and its outcomes only make sense beside each other.
  */
 
 "use strict";
@@ -9,40 +18,10 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  _gasCost,
   _gasLimit,
   _baseSigner,
   _getGasPrice,
-  _handleSwapError,
 } = require("../src/rebalancer-aggregator");
-
-// ── _gasCost ────────────────────────────────────────────────────────
-
-describe("_gasCost", () => {
-  it("computes gas cost from receipt", () => {
-    const r = { gasUsed: 21000n, gasPrice: 50000000000n };
-    assert.strictEqual(_gasCost(r), 21000n * 50000000000n);
-  });
-
-  it("uses effectiveGasPrice when gasPrice is missing", () => {
-    const r = { gasUsed: 100n, effectiveGasPrice: 200n };
-    assert.strictEqual(_gasCost(r), 100n * 200n);
-  });
-
-  it("returns 0n when gasUsed is missing", () => {
-    assert.strictEqual(_gasCost({}), 0n);
-  });
-
-  it("returns 0n for empty receipt fields", () => {
-    const r = { gasUsed: 0n, gasPrice: 0n };
-    assert.strictEqual(_gasCost(r), 0n);
-  });
-
-  it("prefers gasPrice over effectiveGasPrice", () => {
-    const r = { gasUsed: 10n, gasPrice: 5n, effectiveGasPrice: 3n };
-    assert.strictEqual(_gasCost(r), 50n);
-  });
-});
 
 // ── _gasLimit ───────────────────────────────────────────────────────
 
@@ -116,16 +95,6 @@ describe("_getGasPrice", () => {
     };
     const gp = await _getGasPrice(provider);
     assert.strictEqual(gp, 0n);
-  });
-});
-
-// ── _handleSwapError ────────────────────────────────────────────────
-
-describe("_handleSwapError", () => {
-  it("returns 0n for on-chain revert (non-timeout)", async () => {
-    const err = { message: "CALL_EXCEPTION", code: "CALL_EXCEPTION" };
-    const gas = await _handleSwapError(err, {}, {}, 0, 5000, "TKA", "TKB", 0n);
-    assert.strictEqual(gas, 0n);
   });
 });
 

@@ -12,6 +12,7 @@ const config = require("./config");
 const { buildProvider } = require("./bot-provider");
 const { PM_ABI } = require("./pm-abi");
 const { _retrySend } = require("./tx-retry");
+const { receiptGasWei } = require("./receipt-gas");
 const sendTx = require("./send-transaction");
 const { walkOrderFrom } = require("./rpc-walk-order");
 const { noteRpcResult } = require("./rpc-out-of-service");
@@ -94,11 +95,6 @@ function _deadline(offsetSeconds = _DEADLINE_SECONDS) {
   return BigInt(Math.floor(Date.now() / 1000) + offsetSeconds);
 }
 
-/** Extract gas cost in wei from a TX receipt. */
-function _receiptGas(rcpt) {
-  return (rcpt.gasUsed ?? 0n) * (rcpt.gasPrice ?? rcpt.effectiveGasPrice ?? 0n);
-}
-
 /**
  * Ensure an ERC-20 allowance is at least `requiredAmount` for `spender`.
  *
@@ -145,7 +141,7 @@ async function _ensureAllowance(
     signer: tokenContract.runner,
     label: "[rebalance] approve",
   });
-  return _receiptGas(rcpt);
+  return receiptGasWei(rcpt);
 }
 
 // ── Exported functions ───────────────────────────────────────────────────────
@@ -477,9 +473,7 @@ async function removeLiquidity(
     );
   }
 
-  const gasCostWei =
-    (receipt.gasUsed ?? 0n) *
-    (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
+  const gasCostWei = receiptGasWei(receipt);
   return { amount0, amount1, txHash: receipt.hash, gasCostWei };
 }
 

@@ -30,6 +30,7 @@
 const { log } = require("./log");
 const config = require("./config");
 const { _retrySend } = require("./tx-retry");
+const { receiptGasWei } = require("./receipt-gas");
 
 /** Default speed-up gas-price bump when chain config doesn't set one. */
 const _DEFAULT_SPEEDUP_GAS_BUMP = 1.5;
@@ -49,11 +50,6 @@ function _baseSigner(signer) {
 /** Re-sync NonceManager after a cancel so its counter matches chain state. */
 function _resetNonce(signer) {
   if (typeof signer.reset === "function") signer.reset();
-}
-
-/** Extract gas cost in wei from a TX receipt. */
-function _receiptGas(rcpt) {
-  return (rcpt.gasUsed ?? 0n) * (rcpt.gasPrice ?? rcpt.effectiveGasPrice ?? 0n);
 }
 
 /**
@@ -290,7 +286,7 @@ async function _cancelStuckNonce(
   );
   cancelErr.cancelled = true;
   cancelErr.cancelTxHash = cancelTx.hash;
-  cancelErr.cancelGasCostWei = _receiptGas(cancelReceipt);
+  cancelErr.cancelGasCostWei = receiptGasWei(cancelReceipt);
   throw cancelErr;
 }
 

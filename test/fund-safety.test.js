@@ -346,3 +346,113 @@ describe("Fund safety — new range validity", () => {
     }
   });
 });
+
+// ── One swap intent produces at most one on-chain swap ───────────────────────
+
+/**
+ * The aggregator's timeout recovery cancels a nonce and then re-quotes. Both
+ * of those moves spend the balance again if the original swap is still able to
+ * mine, and `swapIfNeeded` makes it worse by falling back to the V3 router on
+ * any aggregator throw — so a throw is not by itself a safe way to stop.
+ *
+ * The guard is an `err.nonceUnsettled` flag that the fallback declines. This
+ * drives the real chain — `swapIfNeeded` → `swapViaAggregator` →
+ * `_sendWithRetry` → `_settleNonce` → `_balanceDiff` — with only the quote
+ * endpoint and the signer stubbed, because the flag's whole job is to survive
+ * those layers. Stubbing the aggregator module would prove the two halves and
+ * not the join: a refactor that re-wrapped the error on its way out would
+ * strip the flag, restore the second swap, and pass a module-level test.
+ *
+ * The assertion is that the rejection still carries `nonceUnsettled`. Had the
+ * router run, `swapIfNeeded` would have returned its result or thrown the
+ * router's own error instead, neither of which carries the flag.
+ */
+describe("Fund safety — one swap intent, at most one swap", () => {
+  const { swapIfNeeded: realSwapIfNeeded } = require("../src/rebalancer-swap");
+  const { _setWaitMsForTests } = require("../src/rebalancer-aggregator");
+
+  /** Quote the stubbed aggregator endpoint returns for both calls. */
+  const QUOTE = {
+    to: ADDR.router,
+    data: "0xdeadbeef",
+    value: "0",
+    gas: "500000",
+    gasPrice: "1000000000",
+    buyAmount: "1000",
+    estimatedPriceImpact: "0",
+    allowanceTarget: ADDR.router,
+    sources: [],
+  };
+
+  it("declines the router fallback when the swap's nonce is unsettled", async () => {
+    const origFetch = globalThis.fetch;
+    /*- Two bounded waits run in series — the swap's and the cancel's — so
+     *  this is half the runtime of the case.  Not tighter than this: the
+     *  suite runs 24 files at once, and a budget close to the scheduler's
+     *  own jitter would be measuring the machine rather than the code. */
+    _setWaitMsForTests(100);
+    globalThis.fetch = async () => ({ ok: true, json: async () => QUOTE });
+
+    const sends = [];
+    /*- Neither the swap nor the cancel ever confirms, and no receipt is
+     *  readable for either: nobody owns the nonce, and the swap can still
+     *  mine.  This is the state with no safe continuation. */
+    const neverConfirms = {
+      hash: "0xpending",
+      nonce: 7,
+      wait: () => new Promise(() => {}),
+    };
+    const signer = {
+      getAddress: async () => ADDR.signer,
+      sendTransaction: async (req) => {
+        sends.push(req);
+        return neverConfirms;
+      },
+      provider: {
+        getFeeData: async () => ({ gasPrice: 1_000_000_000n }),
+        getTransactionReceipt: async () => null,
+      },
+    };
+    const ethersLib = {
+      Contract: class {
+        async allowance() {
+          /*- Already approved, so `_ensureAllowance` short-circuits and no
+           *  approve transaction joins the sequence. */
+          return 2n ** 255n;
+        }
+        async balanceOf() {
+          return 0n;
+        }
+      },
+    };
+
+    try {
+      await assert.rejects(
+        () =>
+          realSwapIfNeeded(signer, ethersLib, {
+            amountIn: ONE_ETH,
+            tokenIn: ADDR.token0,
+            tokenOut: ADDR.token1,
+            recipient: ADDR.signer,
+            swapRouterAddress: ADDR.router,
+            slippagePct: 1,
+            fee: 3000,
+          }),
+        (err) => {
+          assert.strictEqual(
+            err.nonceUnsettled,
+            true,
+            "flag must survive _sendWithRetry, swapViaAggregator and _balanceDiff",
+          );
+          return true;
+        },
+      );
+      /*- The swap and its cancel, and nothing after them.  A third send
+       *  would be the router's. */
+      assert.strictEqual(sends.length, 2);
+    } finally {
+      globalThis.fetch = origFetch;
+      _setWaitMsForTests(null);
+    }
+  });
+});

@@ -27,7 +27,26 @@ const {
 } = require("./rebalancer-pools");
 
 /** Chain-specific aggregator tunables from app-config/app-defaults-for-user-configurable/chains.json. */
+const { settleNonce } = require("./aggregator-nonce-settle");
+const { receiptGasWei } = require("./receipt-gas");
+/*- The classifier the retry layer uses, from the module that owns it: a
+ *  failed send is safe to fall back from only when the node never admitted
+ *  the transaction, and that bucket is its answer, not ours to restate. */
+const { classifyRpcError } = require("./rpc-error-classifier");
+
 const _agg = config.CHAIN.aggregator;
+
+/*- `_agg.waitMs` is 180 s and `config.CHAIN` is frozen, so a test covering
+ *  the timeout path would otherwise have to wait it out twice — once for the
+ *  swap and again for the cancel.  Same shape as `_setRetryDelayForTests` in
+ *  rebalancer-pools: a `let` the test lowers, leaving the orchestration it is
+ *  exercising untouched. */
+let _waitMsForTests = null;
+
+/** Test-only helper: override the confirmation budget (default 180 s). */
+function _setWaitMsForTests(ms) {
+  _waitMsForTests = ms;
+}
 
 /**
  * Base URL for the aggregator REST API on the active chain, including
@@ -159,11 +178,6 @@ async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
   return json;
 }
 
-/** Compute gas cost from a TX receipt. */
-function _gasCost(r) {
-  return (r.gasUsed ?? 0n) * (r.gasPrice ?? r.effectiveGasPrice ?? 0n);
-}
-
 /** Get gasPrice from provider fee data. */
 async function _getGasPrice(provider) {
   const fd = await provider.getFeeData();
@@ -189,13 +203,6 @@ function _gasLimit(quote) {
 }
 
 /**
- * Cancel a pending nonce with a 0-value self-transfer at higher gas.
- * Uses max(feeData × cancelMultiplier, sentGasPrice × 1.5) so the
- * cancel always outbids the pending TX — same pattern as _waitOrSpeedUp.
- * @param {bigint} sentGasPrice Gas price the pending TX was sent at.
- * @returns {Promise<bigint>} Gas cost of the cancel TX in wei (0n if unconfirmed).
- */
-/**
  * Unwrap a NonceManager to get the base signer for cancel TXs.
  * @param {import('ethers').Signer} signer
  * @returns {import('ethers').Signer}
@@ -204,6 +211,31 @@ function _baseSigner(signer) {
   return signer.signer ?? signer;
 }
 
+/**
+ * Cancel a pending nonce with a 0-value self-transfer at higher gas, and
+ * report what became of it.
+ *
+ * Gas is `max(feeData × cancelMultiplier, sentGasPrice × 1.5)` so the cancel
+ * always outbids the transaction it is replacing — the same pattern as
+ * `_waitOrSpeedUp`. The send reuses the stuck nonce, which is why it goes
+ * through `_baseSigner` to bypass the NonceManager, and why
+ * `retryingTxWithSameNonce` tells `_retrySend` that a "nonce too low" refusal
+ * means the original mined rather than that the send needs recovery.
+ *
+ * It returns the hash and the receipt-or-null rather than a gas figure,
+ * because the caller's next move turns on whether this nonce is now spent and
+ * a number cannot carry that: zero wei is both a plausible cost and the value
+ * an unconfirmed cancel would report. The wait is bounded by `waitMs` and a
+ * rejected wait resolves to null, so a null receipt means only "no receipt
+ * yet", never "cancelled". `settleNonce` turns that into an answer.
+ *
+ * @param {import('ethers').Signer} signer Signer, possibly a NonceManager.
+ * @param {object} provider  Provider used for the fee-data read.
+ * @param {number} nonce     The stuck nonce to occupy.
+ * @param {number} waitMs    How long to wait for the cancel's receipt.
+ * @param {bigint} sentGasPrice Gas price the pending TX was sent at.
+ * @returns {Promise<{hash: string, receipt: object|null}>}
+ */
 async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
   const gp = await _getGasPrice(provider);
   const fromFee = BigInt(Math.ceil(Number(gp) * _agg.cancelGasMultiplier));
@@ -243,61 +275,240 @@ async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
     c.wait().catch(() => null),
     new Promise((r) => setTimeout(r, waitMs)).then(() => null),
   ]);
-  if (!receipt) return 0n;
-  return (
-    (receipt.gasUsed ?? 0n) *
-    (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n)
-  );
+  return { hash: c.hash, receipt };
 }
 
 /**
- * Handle a retryable aggregator error (timeout or on-chain revert).
- * @returns {Promise<bigint>} Cancel gas cost in wei (0n if no cancel or revert).
+ * Handle a retryable aggregator error (timeout or on-chain revert) and report
+ * whether the nonce it used is settled.
+ *
+ * The two failure modes differ in what they leave behind. An on-chain revert
+ * consumed the nonce itself, so nothing is pending and the slot is spent. A
+ * timeout leaves the swap in the mempool, and the only way to free the slot is
+ * a cancel at the same nonce. Every way that cancel can fail leaves the nonce
+ * unexamined, and none of them may escape as an error: refused as "nonce too
+ * low" because the swap mined, answered "already known" because the cancel
+ * itself is pending, or never broadcast at all because the txpool is full or
+ * the retries ran out. An error leaving here is unflagged, and the caller's
+ * router fallback reads unflagged as "no swap happened" and sends a second
+ * one — so all of them hand the question to `settleNonce` and the chain.
+ *
+ * The caller needs three distinguishable answers and so gets an object rather
+ * than a gas total: `swapReceipt` when the swap itself landed and must be
+ * reported as the swap, `nonceSpent` when the slot is settled and a re-quote
+ * at the next nonce is safe, and neither when the slot is still open — the
+ * state in which a retry would risk a second swap of the same balance.
+ * `cancelGasWei` is carried alongside because the cancel's gas is spent either
+ * way and belongs in the move's cost.
+ *
+ * @param {Error}  err      The error that ended the swap's wait.
+ * @param {import('ethers').Signer} signer Signer, possibly a NonceManager.
+ * @param {object} provider Read provider.
+ * @param {object} tx       The submitted swap, for its `hash` and `nonce`.
+ * @param {number} waitMs   Confirmation budget, reused for the cancel.
+ * @param {string} fromSym  Sell-token symbol, for logs.
+ * @param {string} toSym    Buy-token symbol, for logs.
+ * @param {bigint} sentGasPrice Gas price the swap was sent at.
+ * @returns {Promise<{cancelGasWei: bigint, swapReceipt: object|null,
+ *   nonceSpent: boolean}>}
  */
 async function _handleSwapError(
   err,
   signer,
   provider,
-  nonce,
+  tx,
   waitMs,
   fromSym,
   toSym,
   sentGasPrice,
 ) {
-  if (err.message === "_AGG_TIMEOUT") {
+  if (err.message !== "_AGG_TIMEOUT") {
     log.warn(
-      "[rebalance] swap (aggregator): %s -> %s not confirmed" +
-        " in %ds — cancelling nonce %d (%sx gas)",
+      "[rebalance] swap (aggregator): %s -> %s reverted" +
+        " on-chain (gasUsed=%s) — re-quoting",
       fromSym,
       toSym,
-      waitMs / 1000,
-      nonce,
-      String(_agg.cancelGasMultiplier),
+      String(err.receipt?.gasUsed ?? "?"),
     );
-    const cancelGas = await _cancelNonce(
+    return { cancelGasWei: 0n, swapReceipt: null, nonceSpent: true };
+  }
+  log.warn(
+    "[rebalance] swap (aggregator): %s -> %s not confirmed" +
+      " in %ds — cancelling nonce %d (%sx gas)",
+    fromSym,
+    toSym,
+    waitMs / 1000,
+    tx.nonce,
+    String(_agg.cancelGasMultiplier),
+  );
+  let cancel = { hash: null, receipt: null };
+  try {
+    cancel = await _cancelNonce(
       signer,
       provider,
-      nonce,
+      tx.nonce,
       waitMs,
       sentGasPrice,
     );
-    // Re-sync NonceManager after cancel so its counter matches chain state.
-    if (typeof signer.reset === "function") signer.reset();
-    log.info(
-      "[rebalance] swap (aggregator): nonce %d cancelled" +
-        " (or original confirmed)",
-      nonce,
+  } catch (cancelErr) {
+    /*- No cancel failure may rethrow from here.  An error leaving this
+     *  function carries no `nonceUnsettled`, and the caller's router
+     *  fallback reads an unflagged error as "no swap happened" and sends a
+     *  second swap of the same balance — the defect this whole path
+     *  exists to prevent, reached through the cancel instead of the swap.
+     *
+     *  Every way the cancel can fail is the same fact: this nonce is
+     *  unexamined.  "Nonce too low" is the chain reporting the swap mined.
+     *  "Already known" is the cancel itself sitting in the mempool, since
+     *  `_retrySend` resubmits a byte-identical request. A full txpool, a
+     *  refused gas price, or three exhausted retries mean no cancel is
+     *  pending at all.  None of them says what became of the swap, so all
+     *  of them hand the question to `settleNonce` and the chain. */
+    log.warn(
+      "[rebalance] swap (aggregator): cancel at nonce %d did not confirm" +
+        " (%s) — settling from chain state",
+      tx.nonce,
+      cancelErr.message,
     );
-    return cancelGas;
   }
-  log.warn(
-    "[rebalance] swap (aggregator): %s -> %s reverted" +
-      " on-chain (gasUsed=%s) — re-quoting",
-    fromSym,
-    toSym,
-    String(err.receipt?.gasUsed ?? "?"),
+  // Re-sync NonceManager after cancel so its counter matches chain state.
+  if (typeof signer.reset === "function") signer.reset();
+  const settled = await settleNonce(provider, tx.hash, cancel);
+  log.info(
+    "[rebalance] swap (aggregator): nonce %d — swap mined=%s, slot spent=%s",
+    tx.nonce,
+    settled.swapReceipt ? "yes" : "no",
+    settled.nonceSpent ? "yes" : "no",
   );
-  return 0n;
+  return {
+    cancelGasWei: cancel.receipt ? receiptGasWei(cancel.receipt) : 0n,
+    swapReceipt: settled.swapReceipt,
+    nonceSpent: settled.nonceSpent,
+  };
+}
+
+/**
+ * Broadcast the swap, marking a failure the caller must not fall back from.
+ *
+ * A send that failed is not the same as a send that did not happen, and the
+ * difference decides whether `swapIfNeeded`'s V3-router fallback is a recovery
+ * or a second swap of this balance. The classifier's own buckets answer it,
+ * which is why the question is asked of `classifyRpcError` rather than
+ * restated here: `terminal-nonce-unused` is the node rejecting the transaction
+ * "before it was admitted to the executable pending pool", so nothing is live
+ * and falling back is correct. A `transient` failure says the transaction "may
+ * or may not have been broadcast", and `_retrySend` resets the nonce and tries
+ * again, so one that did land can be joined by a second at another nonce; a
+ * consumed nonce says something is on chain already.
+ *
+ * Those two cannot be settled the way a timeout can — the send threw, so there
+ * is no hash to ask the chain about — so they are stamped `nonceUnsettled` and
+ * the rebalance fails rather than risking the swap twice.
+ *
+ * @param {import('ethers').Signer} signer Nonce-managed signer.
+ * @param {object} txReq   Populated transaction request, without a nonce.
+ * @param {string} label   Log label for the retry layer.
+ * @returns {Promise<object>} The submitted transaction.
+ */
+async function _sendSwap(signer, txReq, label) {
+  try {
+    return await _retrySend(() => signer.sendTransaction(txReq), label, {
+      signer,
+    });
+  } catch (sendErr) {
+    if (classifyRpcError(sendErr) === "terminal-nonce-unused") throw sendErr;
+    sendErr.nonceUnsettled = true;
+    throw sendErr;
+  }
+}
+
+/**
+ * Price an aggregator submission.
+ *
+ * The quote carries the gas price the aggregator assumed, and the chain has
+ * whatever it has now; taking the higher of the two keeps a quote priced
+ * during a lull from being submitted under the current market. The chain's
+ * `gasPriceMultiplier` is then applied so the submission sits above the going
+ * rate rather than at it. A quote without a gas price and a chain without a
+ * multiplier both fall back to a figure that leaves the other term unchanged.
+ *
+ * @param {object} provider Provider for the fee-data read.
+ * @param {object} quote    Aggregator quote, possibly carrying `gasPrice`.
+ * @returns {Promise<bigint>} The gas price to submit at.
+ */
+async function _submitGasPrice(provider, quote) {
+  const gp = await _getGasPrice(provider);
+  const qgp = BigInt(quote.gasPrice || 0);
+  const base = qgp > gp ? qgp : gp;
+  const m = _agg.gasPriceMultiplier || 1;
+  return (base * BigInt(Math.round(m * 1000))) / 1000n;
+}
+
+/**
+ * Turn a handled swap failure into the retry loop's next move.
+ *
+ * Three answers come back from `_handleSwapError` and each has exactly one
+ * safe continuation. A `swapReceipt` means the swap mined after its wait
+ * expired, so it is returned as the swap's result — which is what keeps the
+ * caller's router fallback from swapping the same balance a second time, since
+ * that fallback treats any throw from here as "no swap happened". A spent
+ * nonce means the slot is closed to the swap and a fresh quote at the next
+ * nonce is safe, so this returns null and the loop continues. An unspent nonce
+ * means the swap is still able to mine, and every continuation — retrying at
+ * the next nonce, or falling through to the router — spends the balance twice
+ * if it does, so it throws with `nonceUnsettled` set for the fallback to
+ * recognise and decline.
+ *
+ * @param {object} a            Arguments.
+ * @param {object} a.outcome    What `_handleSwapError` reported.
+ * @param {object} a.tx         The submitted swap, for its `hash` and `nonce`.
+ * @param {number} a.waitMs     Confirmation budget, for the message.
+ * @param {bigint} a.cancelGasTotal Cancel gas accumulated across attempts.
+ * @param {string} a.ctx        Log context.
+ * @param {string} a.fromSym    Sell-token symbol.
+ * @param {string} a.toSym      Buy-token symbol.
+ * @returns {object|null} The swap's result when it landed, else null.
+ */
+function _resolveSwapOutcome({
+  outcome,
+  tx,
+  waitMs,
+  cancelGasTotal,
+  ctx,
+  fromSym,
+  toSym,
+}) {
+  if (outcome.swapReceipt) {
+    log.info(
+      "[rebalance] %s: swap (aggregator) confirmed late %s -> %s" +
+        " gasUsed=%s — accepting it instead of retrying",
+      ctx,
+      fromSym,
+      toSym,
+      String(outcome.swapReceipt.gasUsed),
+    );
+    return {
+      txHash: outcome.swapReceipt.hash,
+      gasCostWei: receiptGasWei(outcome.swapReceipt) + cancelGasTotal,
+    };
+  }
+  if (outcome.nonceSpent) return null;
+  const unsettled = new Error(
+    "Aggregator swap nonce " +
+      tx.nonce +
+      " unsettled: neither the swap (" +
+      tx.hash +
+      ") nor its cancel confirmed within " +
+      waitMs / 1000 +
+      "s. Not retrying — the swap may still mine.",
+  );
+  unsettled.nonceUnsettled = true;
+  /*- The cancel was broadcast and its gas is spent whatever happens next.
+   *  `executeRebalance`'s catch reads this field off the error already, the
+   *  same seam `tx-speedup.js` uses, so carrying it here is what keeps the
+   *  charge out of the gap between a thrown frame and the recorder. */
+  unsettled.cancelGasCostWei = cancelGasTotal;
+  throw unsettled;
 }
 
 /**
@@ -324,7 +535,7 @@ async function _sendWithRetry(
   symOut,
   cx,
 ) {
-  const waitMs = _agg.waitMs;
+  const waitMs = _waitMsForTests ?? _agg.waitMs;
   const maxAttempts = _agg.maxAttempts;
   const fromSym = symIn || tokenIn.slice(0, 10);
   const toSym = symOut || tokenOut.slice(0, 10);
@@ -334,11 +545,7 @@ async function _sendWithRetry(
 
   let cancelGasTotal = 0n;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const gp = await _getGasPrice(provider);
-    const qgp = BigInt(quote.gasPrice || 0);
-    const base = qgp > gp ? qgp : gp;
-    const m = _agg.gasPriceMultiplier || 1;
-    const useGp = (base * BigInt(Math.round(m * 1000))) / 1000n;
+    const useGp = await _submitGasPrice(provider, quote);
     const gl = _gasLimit(quote);
     const txReq = {
       to: quote.to,
@@ -358,13 +565,13 @@ async function _sendWithRetry(
       toSym,
       (quote.data || "").length,
       String(gl),
-      String(gp),
+      String(useGp),
     );
     // Nonce is managed by NonceManager — never fetch manually.
-    const tx = await _retrySend(
-      () => signer.sendTransaction(txReq),
+    const tx = await _sendSwap(
+      signer,
+      txReq,
       "[aggregator] swap " + fromSym + "->" + toSym,
-      { signer },
     );
     log.info(
       "[aggregator] %s: Step 6 swap TX submitted, %s -> %s hash= %s nonce=%d type=%s" +
@@ -386,7 +593,7 @@ async function _sendWithRetry(
           setTimeout(() => rej(new Error("_AGG_TIMEOUT")), waitMs),
         ),
       ]);
-      const costPls = (Number(_gasCost(r)) / 1e18).toFixed(4);
+      const costPls = (Number(receiptGasWei(r)) / 1e18).toFixed(4);
       log.info(
         "[rebalance] %s: swap (aggregator) confirmed %s -> %s" +
           " gasUsed=%s cost=%s PLS",
@@ -396,20 +603,31 @@ async function _sendWithRetry(
         String(r.gasUsed),
         costPls,
       );
-      return { txHash: r.hash, gasCostWei: _gasCost(r) + cancelGasTotal };
+      return { txHash: r.hash, gasCostWei: receiptGasWei(r) + cancelGasTotal };
     } catch (err) {
       if (err.message !== "_AGG_TIMEOUT" && err.code !== "CALL_EXCEPTION")
         throw err;
-      cancelGasTotal += await _handleSwapError(
+      const outcome = await _handleSwapError(
         err,
         signer,
         provider,
-        tx.nonce,
+        tx,
         waitMs,
         fromSym,
         toSym,
         useGp,
       );
+      cancelGasTotal += outcome.cancelGasWei;
+      const landed = _resolveSwapOutcome({
+        outcome,
+        tx,
+        waitMs,
+        cancelGasTotal,
+        ctx,
+        fromSym,
+        toSym,
+      });
+      if (landed) return landed;
       if (attempt < maxAttempts) {
         quote = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
         log.info(
@@ -422,7 +640,14 @@ async function _sendWithRetry(
       }
     }
   }
-  throw new Error("Aggregator swap failed after " + maxAttempts + " attempts");
+  const exhausted = new Error(
+    "Aggregator swap failed after " + maxAttempts + " attempts",
+  );
+  /*- Reachable only once an attempt reported the nonce spent, so nothing is
+   *  pending and the fallback is safe — but the cancels along the way were
+   *  broadcast and their gas is spent.  Same seam the unsettled error uses. */
+  exhausted.cancelGasCostWei = cancelGasTotal;
+  throw exhausted;
 }
 
 /**
@@ -524,9 +749,11 @@ module.exports = {
   swapViaAggregator,
   AGGREGATOR_LABEL,
   _aggregatorBase,
-  _gasCost,
   _gasLimit,
   _baseSigner,
   _getGasPrice,
   _handleSwapError,
+  _resolveSwapOutcome,
+  _submitGasPrice,
+  _setWaitMsForTests, // exported for tests
 };
