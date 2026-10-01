@@ -1,7 +1,12 @@
 /**
  * @file test/rebalancer-aggregator.test.js
  * @description Unit tests for pure helpers in rebalancer-aggregator.js:
- *   _gasCost, _gasLimit, _baseSigner, _getGasPrice, and _handleSwapError.
+ *   _gasCost, _gasLimit, _baseSigner, and _getGasPrice.
+ *
+ * `_handleSwapError` is covered by test/aggregator-nonce-settlement.test.js,
+ * which drives all three of its answers rather than the one revert case that
+ * used to live here — it is a decision about nonce ownership, not a pure
+ * helper, and its outcomes only make sense beside each other.
  */
 
 "use strict";
@@ -13,7 +18,6 @@ const {
   _gasLimit,
   _baseSigner,
   _getGasPrice,
-  _handleSwapError,
 } = require("../src/rebalancer-aggregator");
 
 // ── _gasCost ────────────────────────────────────────────────────────
@@ -116,16 +120,6 @@ describe("_getGasPrice", () => {
     };
     const gp = await _getGasPrice(provider);
     assert.strictEqual(gp, 0n);
-  });
-});
-
-// ── _handleSwapError ────────────────────────────────────────────────
-
-describe("_handleSwapError", () => {
-  it("returns 0n for on-chain revert (non-timeout)", async () => {
-    const err = { message: "CALL_EXCEPTION", code: "CALL_EXCEPTION" };
-    const gas = await _handleSwapError(err, {}, {}, 0, 5000, "TKA", "TKB", 0n);
-    assert.strictEqual(gas, 0n);
   });
 });
 

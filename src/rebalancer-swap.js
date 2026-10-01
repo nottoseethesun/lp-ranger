@@ -506,6 +506,11 @@ async function swapIfNeeded(signer, ethersLib, params) {
       _attemptLabel: "9mm Aggregator (full)",
     });
   } catch (err) {
+    /*- An unsettled nonce means the aggregator's swap is neither confirmed
+     *  nor cancelled and may still mine.  Every fallback below sends a
+     *  second swap of the same balance, so this one error propagates
+     *  untouched and the rebalance fails instead. */
+    if (err?.nonceUnsettled) throw err;
     if (err?.isSwapImpactAbort) {
       log.warn(
         "[rebalance] Aggregator slippage abort at full amount" +
@@ -520,6 +525,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
           3,
         );
       } catch (chunkErr) {
+        if (chunkErr?.nonceUnsettled) throw chunkErr;
         log.warn(
           "[rebalance] Aggregator chunks also failed: %s" +
             " — falling back to V3 router",

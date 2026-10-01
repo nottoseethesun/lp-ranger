@@ -790,6 +790,18 @@ stuck, so what the wallet is left holding is reported rather than
 assumed. Every phase logs its state so post-mortem analysis of a stuck TX
 is deterministic.
 
+What the aggregator does with that uncertainty is a custody property, so
+it belongs here. A swap and the cancel sent to displace it share one
+nonce, so at most one of them can ever mine. Until a receipt names the
+winner the swap may still land, and both of the alternatives — re-quoting
+at the next nonce, or letting the failure reach the V3 router fallback —
+would swap the same balance a second time. So the loop asks the chain for
+a receipt on each hash before it does anything: the swap's receipt is
+returned as the swap, the cancel's receipt licenses a re-quote, and
+neither fails the rebalance with the nonce named. A failed rebalance
+leaves tokens un-swapped in the wallet, which the corrective and
+residual-cleanup paths already recover; a second swap is spent.
+
 ### RPC Failover
 
 A wallet read or a broadcast that reaches a dead endpoint is an
