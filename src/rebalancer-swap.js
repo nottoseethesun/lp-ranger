@@ -514,6 +514,14 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
  * balances it finds, which is what a tripped swap-gate already does, and the
  * corrective and residual-cleanup paths recover the remainder.
  *
+ * One consequence worth knowing rather than mistaking for a hole: the
+ * "raise slippage to N" message `_bestAttemptError` synthesises fires only
+ * on the router's own failure, so returning a partial skips it for that
+ * cycle. A genuinely too-tight slippage still surfaces — the cleanup
+ * rebalance retries the remainder at full size, aborts on impact, and
+ * reaches the router and the message then. Surfacing it sooner would mean
+ * re-swapping the balance or inventing a second guidance path.
+ *
  * @param {object} signer      ethers Signer.
  * @param {object} ethersLib   ethers library.
  * @param {object} params      Swap parameters.
