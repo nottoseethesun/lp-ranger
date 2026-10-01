@@ -200,10 +200,14 @@ executes as a single synchronous sequence under the rebalance lock:
 6. **mintPosition** — mint a new NFT at the re-centered tick range with the
    swapped balances.
 
-Every transaction in this pipeline is wrapped in a 4-phase recovery system
-(`_waitOrSpeedUp`): wait for confirmation, speed-up with 1.5x gas, wait
-again, then auto-cancel with a 0-value self-transfer if still stuck. This
-ensures nonces are never permanently blocked.
+Transactions in this pipeline are wrapped in a 4-phase recovery system
+(`_waitOrSpeedUp`, in `src/tx-speedup.js`): wait for confirmation, speed-up
+with 1.5x gas, wait again, then auto-cancel with a 0-value self-transfer if
+still stuck. What it wraps is whatever passes through
+`sendTx.sendTransaction` — every step above except the aggregator swap,
+which sends on its own and carries its own timeout, cancel and re-quote
+loop. Either route frees a stuck nonce, so none is ever permanently
+blocked.
 
 ---
 

@@ -776,12 +776,17 @@ recovery pipeline to completion before releasing.
 
 ### TX Recovery Pipeline
 
-`_waitOrSpeedUp()` in `src/rebalancer.js` wraps every `tx.wait()` in a
-four-phase pipeline: **wait → speed-up (1.5× gas) → wait → auto-cancel
-(0-PLS self-transfer)**. Stuck nonces therefore always free themselves
-within `TX_CANCEL_SEC` (default 60 min) instead of blocking the wallet
-indefinitely. Every phase logs its state so post-mortem analysis of a
-stuck TX is deterministic.
+`_waitOrSpeedUp()` in `src/tx-speedup.js` wraps the `tx.wait()` of every
+send that goes through `sendTx.sendTransaction` — approve, the
+removeLiquidity multicall, the V3-router swap, mint, and the compound's
+collect and increaseLiquidity — in a four-phase pipeline: **wait →
+speed-up (1.5× gas) → wait → auto-cancel (0-PLS self-transfer)**. Stuck
+nonces therefore always free themselves within `TX_CANCEL_SEC` (default
+60 min) instead of blocking the wallet indefinitely. The aggregator swap
+is the one send that does not use this pipeline; it brings its own
+timeout, cancel and re-quote loop, which frees the nonce the same way.
+Every phase logs its state so post-mortem analysis of a stuck TX is
+deterministic.
 
 ### RPC Failover
 
