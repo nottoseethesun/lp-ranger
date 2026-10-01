@@ -447,6 +447,16 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   /*- Preserve swapSources across chunks so the rebalance log displays
    *  "NineMM_V3+DEX_X" rather than "(no swap)" after a chunked retry. */
   const sources = [];
+  /*- What has been swapped so far.  One construction for both exits,
+   *  because a partial and a completed run are the same shape: a partial
+   *  IS what has been swapped so far.  Two literals would mean the next
+   *  field added to the result reaches only one of them. */
+  const swapped = () => ({
+    amountOut,
+    txHash,
+    gasCostWei,
+    ...(sources.length ? { swapSources: sources.join("+") } : {}),
+  });
   for (let i = 0; i < n; i++) {
     const amt = i === n - 1 ? chunk + remainder : chunk;
     if (amt < _MIN_SWAP_THRESHOLD) continue;
@@ -466,13 +476,7 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
        *  already swapped.  `amountOut > 0n` is the test because it means
        *  balance actually moved: a chunk the swap gates skipped returns zero
        *  and leaves the full amount genuinely unswapped. */
-      if (amountOut > 0n)
-        chunkErr.partialSwap = {
-          amountOut,
-          txHash,
-          gasCostWei,
-          ...(sources.length ? { swapSources: sources.join("+") } : {}),
-        };
+      if (amountOut > 0n) chunkErr.partialSwap = swapped();
       throw chunkErr;
     }
     amountOut += r.amountOut;
@@ -480,12 +484,7 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
     txHash = r.txHash || txHash;
     if (r.swapSources) sources.push(r.swapSources);
   }
-  return {
-    amountOut,
-    txHash,
-    gasCostWei,
-    ...(sources.length ? { swapSources: sources.join("+") } : {}),
-  };
+  return swapped();
 }
 
 /**

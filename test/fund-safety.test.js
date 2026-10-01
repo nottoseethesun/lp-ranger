@@ -532,7 +532,7 @@ describe("Fund safety — a partial chunked swap is not swapped again", () => {
    * @returns {{swapIfNeeded: Function, routerCalls: object}}
    */
   function loadStubs() {
-    const routerCalls = { count: 0, amountIn: null };
+    const routerCalls = { count: 0 };
     const stub = (id, exports) => {
       require.cache[id] = { id, filename: id, loaded: true, exports };
     };
@@ -551,9 +551,8 @@ describe("Fund safety — a partial chunked swap is not swapped again", () => {
       },
     });
     stub(ROUTER_PATH, {
-      swapViaRouter: async (_s, _e, params) => {
+      swapViaRouter: async () => {
         routerCalls.count++;
-        routerCalls.amountIn = params.amountIn;
         return { amountOut: 9999n, txHash: "0xrouter", gasCostWei: 0n };
       },
     });
