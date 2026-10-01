@@ -15,6 +15,7 @@
 "use strict";
 
 const { logCtx } = require("./logger");
+const { receiptGasWei } = require("./receipt-gas");
 const { log } = require("./log");
 
 const config = require("./config");
@@ -110,9 +111,7 @@ async function collectFees(signer, ethersLib, opts) {
     String(amount1),
   );
 
-  const gasCostWei =
-    (receipt.gasUsed ?? 0n) *
-    (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
+  const gasCostWei = receiptGasWei(receipt);
   return { amount0, amount1, txHash: receipt.hash, gasCostWei };
 }
 
@@ -209,9 +208,7 @@ async function addLiquidity(signer, ethersLib, opts) {
     String(amount1Deposited),
   );
 
-  const depositGas =
-    (receipt.gasUsed ?? 0n) *
-    (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
+  const depositGas = receiptGasWei(receipt);
   const gasCostWei = depositGas + (appGas0 || 0n) + (appGas1 || 0n);
   return {
     liquidity,
@@ -418,10 +415,7 @@ async function _fetchCompoundGas(prov, compoundEvents) {
     if (e.txHash) {
       try {
         const rcpt = await prov.getTransactionReceipt(e.txHash);
-        if (rcpt)
-          gasWei =
-            (rcpt.gasUsed ?? 0n) *
-            (rcpt.gasPrice ?? rcpt.effectiveGasPrice ?? 0n);
+        if (rcpt) gasWei = receiptGasWei(rcpt);
       } catch {
         /* receipt fetch failed — gas stays 0 */
       }
@@ -601,9 +595,7 @@ async function _fetchMintGasWei(prov, mintTxHash) {
   try {
     const rcpt = await prov.getTransactionReceipt(mintTxHash);
     if (!rcpt) return 0n;
-    return (
-      (rcpt.gasUsed ?? 0n) * (rcpt.gasPrice ?? rcpt.effectiveGasPrice ?? 0n)
-    );
+    return receiptGasWei(rcpt);
   } catch {
     return 0n;
   }

@@ -28,6 +28,7 @@ const {
 
 /** Chain-specific aggregator tunables from app-config/app-defaults-for-user-configurable/chains.json. */
 const { settleNonce } = require("./aggregator-nonce-settle");
+const { receiptGasWei } = require("./receipt-gas");
 /*- The classifier the retry layer uses, from the module that owns it: a
  *  failed send is safe to fall back from only when the node never admitted
  *  the transaction, and that bucket is its answer, not ours to restate. */
@@ -175,11 +176,6 @@ async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
     log.info("[aggregator] Response: %s", JSON.stringify(brief));
   }
   return json;
-}
-
-/** Compute gas cost from a TX receipt. */
-function _gasCost(r) {
-  return (r.gasUsed ?? 0n) * (r.gasPrice ?? r.effectiveGasPrice ?? 0n);
 }
 
 /** Get gasPrice from provider fee data. */
@@ -385,7 +381,7 @@ async function _handleSwapError(
     settled.nonceSpent ? "yes" : "no",
   );
   return {
-    cancelGasWei: cancel.receipt ? _gasCost(cancel.receipt) : 0n,
+    cancelGasWei: cancel.receipt ? receiptGasWei(cancel.receipt) : 0n,
     swapReceipt: settled.swapReceipt,
     nonceSpent: settled.nonceSpent,
   };
@@ -493,7 +489,7 @@ function _resolveSwapOutcome({
     );
     return {
       txHash: outcome.swapReceipt.hash,
-      gasCostWei: _gasCost(outcome.swapReceipt) + cancelGasTotal,
+      gasCostWei: receiptGasWei(outcome.swapReceipt) + cancelGasTotal,
     };
   }
   if (outcome.nonceSpent) return null;
@@ -597,7 +593,7 @@ async function _sendWithRetry(
           setTimeout(() => rej(new Error("_AGG_TIMEOUT")), waitMs),
         ),
       ]);
-      const costPls = (Number(_gasCost(r)) / 1e18).toFixed(4);
+      const costPls = (Number(receiptGasWei(r)) / 1e18).toFixed(4);
       log.info(
         "[rebalance] %s: swap (aggregator) confirmed %s -> %s" +
           " gasUsed=%s cost=%s PLS",
@@ -607,7 +603,7 @@ async function _sendWithRetry(
         String(r.gasUsed),
         costPls,
       );
-      return { txHash: r.hash, gasCostWei: _gasCost(r) + cancelGasTotal };
+      return { txHash: r.hash, gasCostWei: receiptGasWei(r) + cancelGasTotal };
     } catch (err) {
       if (err.message !== "_AGG_TIMEOUT" && err.code !== "CALL_EXCEPTION")
         throw err;
@@ -753,7 +749,6 @@ module.exports = {
   swapViaAggregator,
   AGGREGATOR_LABEL,
   _aggregatorBase,
-  _gasCost,
   _gasLimit,
   _baseSigner,
   _getGasPrice,

@@ -10,6 +10,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { receiptGasWei } = require("./receipt-gas");
 const config = require("./config");
 const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
@@ -98,9 +99,7 @@ async function _readMintedAmounts(
   try {
     const receipt = await provider.getTransactionReceipt(txHash);
     if (!receipt) return { hodlAmount0: 0, hodlAmount1: 0, mintGasWei: "0" };
-    const mintGasWei =
-      (receipt.gasUsed ?? 0n) *
-      (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
+    const mintGasWei = receiptGasWei(receipt);
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== config.POSITION_MANAGER.toLowerCase())
         continue;

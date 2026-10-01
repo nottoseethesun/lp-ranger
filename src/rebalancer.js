@@ -16,6 +16,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { receiptGasWei } = require("./receipt-gas");
 const { emojiId } = require("./logger");
 const pools = require("./rebalancer-pools");
 const { _resolveMintGasFloor } = require("./rebalancer-pools");
@@ -158,9 +159,7 @@ async function mintPosition(
     String(amount1),
     String(liquidity),
   );
-  const mintGas =
-    (receipt.gasUsed ?? 0n) *
-    (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
+  const mintGas = receiptGasWei(receipt);
   const gasCostWei = mintGas + (appGas0 || 0n) + (appGas1 || 0n);
   return {
     tokenId,

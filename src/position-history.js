@@ -11,6 +11,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { receiptGasWei } = require("./receipt-gas");
 const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
@@ -217,9 +218,7 @@ async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
   try {
     const receipt = await provider.getTransactionReceipt(txHash);
     if (!receipt) return null;
-    const gasWei =
-      (receipt.gasUsed ?? 0n) *
-      (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n);
+    const gasWei = receiptGasWei(receipt);
     const tid = BigInt(tokenId);
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== config.POSITION_MANAGER.toLowerCase())
@@ -251,15 +250,12 @@ async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
 }
 
 /** Fetch gas cost from a TX receipt. */
-async function _receiptGasWei(txHash, provider) {
+async function _fetchReceiptGasWei(txHash, provider) {
   if (!txHash) return 0n;
   try {
     const receipt = await provider.getTransactionReceipt(txHash);
     if (!receipt) return 0n;
-    return (
-      (receipt.gasUsed ?? 0n) *
-      (receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n)
-    );
+    return receiptGasWei(receipt);
   } catch {
     return 0n;
   }
@@ -536,9 +532,9 @@ function _supplementFeesFromChain(result, ctx) {
 async function _supplementGasFromChain(result, mintGasWei, prov) {
   let totalGas = mintGasWei;
   if (!totalGas && result.mintTxHash)
-    totalGas += await _receiptGasWei(result.mintTxHash, prov);
+    totalGas += await _fetchReceiptGasWei(result.mintTxHash, prov);
   if (result.closeTxHash)
-    totalGas += await _receiptGasWei(result.closeTxHash, prov);
+    totalGas += await _fetchReceiptGasWei(result.closeTxHash, prov);
   if (totalGas > 0n) result.gasCostWei = String(totalGas);
 }
 
