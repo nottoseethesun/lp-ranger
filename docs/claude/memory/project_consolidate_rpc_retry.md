@@ -5,12 +5,53 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-10-01T20:32:46.906Z
+  modified: 2026-10-02T03:12:10.313Z
 ---
 
-**Status: DEFERRED, with a named gate.** Per user 2026-06-18: "It seems that there might be a lot of opportunity to consolidate the re-try code for reading token balances and other items in the app. But I don't want to do a big refactor for a long time." Holding the refactor until the user signals readiness.
+**Status: ACTIVE, and the target changed.** This entry was a deferred
+tidy-up; it is now step two of a three-step plan the user set on
+2026-10-01, and the destination is different from what the rest of this
+file describes. Read the next section before the older material.
 
-**The gate is now explicit.** User, 2026-10-01: *"we'll address that nice-to-have cleanup once the big fixes are all confirmed stable."* The big fixes are 0.9.8's transaction-path work, which shipped unexercised — see [[project_0098_burn_in_watch]]. So the trigger is that release being proven in the field, not a date.
+## The plan, and where it stands (2026-10-01)
+
+The user's words, in order:
+
+1. *"make the main consolidated failover route properly log one log line
+   about success if the previous attempt was a failure and logged as
+   such."* **DONE** — `retryRead` (`src/rpc-read-retry.js`) closes a run
+   it has logged with one line naming the endpoint that answered and
+   whether that endpoint is the one that had been failing. Gated on
+   `attempt > 1`. Pinned by `test/rpc-read-retry-recovery-log.test.js`.
+2. *"the consolidation of that one path that doesn't use the new
+   consolidated failover route, onto the new consolidated failover
+   route."* **NEXT.** This is `getPoolState`, and note the target: move
+   it **onto `retryRead`**, retiring its private walk. That is NOT the
+   `withRpcRetry` helper shared between two private walks that the
+   sections below propose — that design keeps the bypass and merely
+   deduplicates it. Treat the old sketch as background, not as the spec.
+3. *"all logs of failures should, once there is recovery to success,
+   result in a single log line about that recovery to success, so that
+   the read of the log (dev or user) can be spared wondering if things
+   are working."* **Scoped by the user to rpc calls only:** *"no need to
+   go exhaustively through the app to check all the other places."*
+
+**What prompted it.** Reading the 0.9.8 Production log, a burst of
+`[pool-state]` and `read retry` failures at 20:47 ended in silence. The
+user: *"the dev or user is left reading about some bad errors, and
+wonders if maybe something isn't working. Do you get it?!!!"* Recovery
+and giving up both looked like silence. Being on the centralized
+failover route bought no confirmation either — `rpc-read-retry.js` had
+exactly one log statement, the failure.
+
+The earlier gate (0.9.8 proving stable) applied to the old tidy-up
+framing and no longer holds for steps two and three.
+
+**Also observed in that log and still true:** no failover ever engaged
+in 6h 38m, because the rate gate
+(`send-transaction.js`, `decideIfCurrentRPCIsOutOfService`) correctly
+refused to move for blips lasting seconds. So a recovery line saying
+"recovered, no failover" is the common case, not the exception.
 
 > **Updated 2026-09-12.** Both orchestrators now walk `config.RPC_URLS`
 > rather than a hand-built primary/fallback pair, and both build their

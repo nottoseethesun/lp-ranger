@@ -24,6 +24,10 @@ This file is **not** auto-loaded, so open it when any of these apply:
 Nothing here is a bug report unless it says so. The Deferred section is
 nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md)).
 
+## In flight — read this before touching rpc retry or failover
+
+- [consolidate RPC retry](project_consolidate_rpc_retry.md) — Three-step plan, 2026-10-01: recovery log on the central route (done), then move `getPoolState` ONTO that route, then a recovery line for every rpc failure log. The old `withRpcRetry` sketch in that file is background, not the spec
+
 ## Production incidents — all fixed, kept as the record
 
 - [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Hit Prod 0.9.7, fixed in 0.9.8: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
@@ -71,7 +75,6 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 - [code cleanup nice-to-haves](project_code_cleanup_nice_to_haves.md) — Running list of polish items
 - [dashboard cleanup NTH](project_dashboard_cleanup_nth.md) — Import cycles, cache sweep, 42 orphan HTML ids
 - [deferred comment cleanup](project_deferred_comment_cleanup.md) — Storytelling JSDoc, 119 old-form openers, an engineering.md passage
-- [consolidate RPC retry](project_consolidate_rpc_retry.md) — Consolidate the per-URL × per-attempt retry pattern
 - [ESM migration](project_esm_migration.md) — 100% CJS; ESM would be a big-bang change
 - [bot-loop test scaffolding](project_bot_loop_test_scaffolding.md) — startBotLoop's lifecycle has no direct fixture
 - [debug scripts print URL](project_debug_scripts_print_url.md) — Every `debug*` script prints its visit-this URL
