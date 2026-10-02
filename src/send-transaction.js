@@ -553,9 +553,9 @@ function failoverToNextRPC(failedProvider) {
 
   /*- A failure is a sample, not a verdict.  Selection moves only once
    *  this endpoint is failing more than the configured share of what it
-   *  is asked, which is what lets every caller in the process report
-   *  honestly — including the two that walk the endpoint list
-   *  themselves and so fail several times per call. */
+   *  is asked, which is what lets every caller report honestly —
+   *  including the bounded readers, whose budget means one call can
+   *  report several failures against the same endpoint. */
   if (!decideIfCurrentRPCIsOutOfService(_urls[from])) return false;
 
   if (from >= _providers.length - 1) {

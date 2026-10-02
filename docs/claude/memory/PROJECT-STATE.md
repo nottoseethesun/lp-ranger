@@ -24,9 +24,6 @@ This file is **not** auto-loaded, so open it when any of these apply:
 Nothing here is a bug report unless it says so. The Deferred section is
 nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md)).
 
-## In flight — read this before touching rpc retry or failover
-
-- [consolidate RPC retry](project_consolidate_rpc_retry.md) — Three-step plan, 2026-10-01: recovery log on the central route (done), then move `getPoolState` ONTO that route, then a recovery line for every rpc failure log. The old `withRpcRetry` sketch in that file is background, not the spec
 
 ## Production incidents — all fixed, kept as the record
 
@@ -50,6 +47,7 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 
 ## Why the app is the way it is — check before changing these
 
+- [consolidate RPC retry](project_consolidate_rpc_retry.md) — DONE 2026-10-02: one retry loop, no reader keeps its own endpoint list. Carries the three-grep sweep that tells you whether a new reader reintroduced one
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
 - [single nonce manager](project_single_nonce_manager.md) — One NonceManager per wallet, never per-position
 - [swap serialized](project_swap_serialized.md) — The swap path is deliberately serialized
@@ -83,6 +81,7 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 
 ## Known rough edges — observed, low priority, not yet fixed
 
+- [receipt re-ask test flake](project_receipt_rewait_test_flake.md) — UNRESOLVED: one full-suite run in five, only under the suite's own contention; needs a timing seam in tx-speedup.js
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses a new pairing; ~30 min lag
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources; Routed Via shows an em-dash
 - [suppress OOR until synced](project_suppress_oor_until_synced.md) — Unmanaged view flashes "out of range" too early

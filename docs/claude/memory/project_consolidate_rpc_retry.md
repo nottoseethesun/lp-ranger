@@ -5,13 +5,37 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-10-02T03:12:10.313Z
+  modified: 2026-10-02T22:17:55.710Z
 ---
 
-**Status: ACTIVE, and the target changed.** This entry was a deferred
-tidy-up; it is now step two of a three-step plan the user set on
-2026-10-01, and the destination is different from what the rest of this
-file describes. Read the next section before the older material.
+**Status: DONE, 2026-10-02.** All three steps shipped. The duplication
+this file was opened for no longer exists: `src/rpc-walk-order.js` is
+deleted, and no reader outside `src/send-transaction.js` builds a
+provider or keeps an endpoint list. Everything below is kept as the
+record of what was done and why, not as work outstanding — the one
+thing still worth carrying forward is the shape of the sweep in
+"How it was checked", which is how to tell whether a new reader has
+quietly reintroduced a private walk.
+
+## How it was checked
+
+A reader can only bypass selection if it holds a provider that did not
+come from `sendTx`. Providers come from exactly three places, so three
+greps settle it:
+
+- builds its own — `buildProvider(` / `new JsonRpcProvider` — expect
+  hits only in `src/send-transaction.js`;
+- takes one from a signer — `signer.provider` / `runner.provider` —
+  fine, because `FailoverNonceManager.provider` returns the managed
+  proxy;
+- asks the rpc layer — `getManagedReadProvider` or, for the write path
+  and the shared loop, `getCurrentRPC`.
+
+Two deliberate exceptions live inside the mechanism rather than around
+it: `nonce-manager-wrapper.js` takes the selected provider directly
+because broadcasting needs the raw one, and reports to the same
+failover; and `_estimateWithFailover` walks the list inside the module
+that owns it.
 
 ## The plan, and where it stands (2026-10-01)
 

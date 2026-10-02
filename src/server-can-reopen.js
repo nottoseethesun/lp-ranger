@@ -73,12 +73,12 @@ async function readTokenBalance({
   address,
   symbolHint,
   thresholdUsd,
+  priceUsd,
 }) {
   const contract = new ethers.Contract(address, ERC20_ABI, provider);
-  const [rawBal, decimalsRaw, priceUsd, onChainSymbol] = await Promise.all([
+  const [rawBal, decimalsRaw, onChainSymbol] = await Promise.all([
     contract.balanceOf(wallet),
     contract.decimals(),
-    fetchTokenPriceUsd(address),
     symbolHint
       ? Promise.resolve(symbolHint)
       : contract.symbol().catch(() => "?"),
@@ -112,13 +112,36 @@ async function readTokenBalance({
  *
  *  Both balances come from ONE provider per attempt, which is why the
  *  retried unit is the pair and not each read: two balances fetched
- *  from different endpoints could straddle a block and disagree. */
+ *  from different endpoints could straddle a block and disagree.
+ *
+ *  The USD prices are fetched FIRST and kept out of that unit, because
+ *  they are not rpc at all — `fetchTokenPriceUsd` takes a token address
+ *  and asks Moralis or GeckoTerminal over HTTP, with no provider
+ *  involved.  Inside the retry it cost twice over: a price API being
+ *  down looked like the endpoint being down, which reports a failure
+ *  against the endpoint and can move the selection every other read in
+ *  the process is using; and an rpc outage re-asked the price API once
+ *  per attempt, against a quota the rest of the app rations with an
+ *  idle pause.  A price failure is still the operator's 503 — they
+ *  cannot be told whether they have enough without it — so it is
+ *  raised as the same error the exhausted budget raises. */
 async function _readBothBalancesWithRetry({
   body,
   wallet,
   thresholdUsd,
   readBalance,
+  fetchPrice,
 }) {
+  let prices;
+  try {
+    prices = await Promise.all([
+      fetchPrice(body.token0),
+      fetchPrice(body.token1),
+    ]);
+  } catch (err) {
+    throw new WalletReadUnavailableError(0, err);
+  }
+  const [price0, price1] = prices;
   return retryRead({
     tag: "can-reopen",
     label: "wallet balances",
@@ -130,6 +153,7 @@ async function _readBothBalancesWithRetry({
           address: body.token0,
           symbolHint: body.token0Symbol,
           thresholdUsd,
+          priceUsd: price0,
         }),
         readBalance({
           provider,
@@ -137,6 +161,7 @@ async function _readBothBalancesWithRetry({
           address: body.token1,
           symbolHint: body.token1Symbol,
           thresholdUsd,
+          priceUsd: price1,
         }),
       ]).then(([t0, t1]) => ({ t0, t1 })),
     /*- The loop needs a failure to enter on and this caller has not
@@ -176,6 +201,9 @@ async function _readBothBalancesWithRetry({
  *   per-token balance reader (test-injection point).
  * @param {Function} [deps.getDust]  Optional override for the dust
  *   threshold getter (test-injection point).
+ * @param {Function} [deps.fetchPrice]  Optional override for the USD
+ *   price lookup (test-injection point). Called once per token, before
+ *   the chain reads and outside their retry — it is HTTP, not rpc.
  * @returns {(req, res) => Promise<void>}
  */
 function createCanReopenHandler(deps) {
@@ -185,6 +213,7 @@ function createCanReopenHandler(deps) {
     readJsonBody,
     readBalance = readTokenBalance,
     getDust = getDustThresholdUsd,
+    fetchPrice = fetchTokenPriceUsd,
   } = deps;
   return async function handleCanReopen(req, res) {
     const body = await readJsonBody(req);
@@ -207,6 +236,7 @@ function createCanReopenHandler(deps) {
         wallet,
         thresholdUsd,
         readBalance,
+        fetchPrice,
       });
       const canReopen = !t0.isDust || !t1.isDust;
       jsonResponse(res, 200, {
