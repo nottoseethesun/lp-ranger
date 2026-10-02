@@ -39,6 +39,9 @@
 "use strict";
 
 const { readBotConfigDefaults } = require("./bot-config-defaults");
+/*- `log` reaches only `utc-timestamp`, so requiring it here adds no
+ *  cycle through this module's own importers. */
+const { log } = require("./log");
 
 /*- Read once at load rather than per request.  This is plumbing an
  *  operator sets and forgets; re-reading the file on every RPC call
@@ -69,7 +72,27 @@ let _haltUntilMs = 0;
 /** Milliseconds left on the halt; 0 when not halted. */
 function _haltRemainingMs() {
   const remaining = _haltUntilMs - Date.now();
-  return remaining > 0 ? remaining : 0;
+  if (remaining > 0) return remaining;
+  /*- The hold has lapsed, and this is where that is noticed.  Engaging
+   *  it is announced in capitals, so its end is announced too —
+   *  otherwise an hour of silence is followed by traffic resuming with
+   *  nothing to say the wait is what ended.
+   *
+   *  Here rather than in `_drain`, because `acquire` has two fast paths
+   *  that return without ever draining once the halt is clear: a lapse
+   *  noticed only by the drain would go unannounced on the common path
+   *  and then announce itself later, whenever a queue happened to form.
+   *  Every path asks this function, so every path notices.  Clearing the
+   *  deadline is what makes it fire exactly once, which is the same
+   *  on-read reset `getCurrentRPC` uses for the sticky window. */
+  if (_haltUntilMs !== 0) {
+    _haltUntilMs = 0;
+    log.info(
+      "[rpc-queue] outage hold lifted — resuming paced requests (%d queued)",
+      _queue.length,
+    );
+  }
+  return 0;
 }
 
 /**

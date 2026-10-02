@@ -25,6 +25,7 @@ const { getDustThresholdUsd } = require("./dust");
 const sendTx = require("./send-transaction");
 const { walkOrderFrom } = require("./rpc-walk-order");
 const { noteRpcResult } = require("./rpc-out-of-service");
+const { logRpcRecovery } = require("./rpc-read-retry");
 
 /**
  * Error thrown when the wallet-balance + price reads for the
@@ -125,6 +126,10 @@ async function _readBothBalancesWithRetry({
   const urls = walkOrderFrom(config.RPC_URLS, sendTx.getCurrentRPCUrl());
   let attemptCount = 0;
   let lastErr = null;
+  /*- Paired with `lastErr`: the recovery line names the endpoint that
+   *  answered and the one that last refused, and the two being equal is
+   *  what distinguishes an endpoint recovering from a move to another. */
+  let lastFailedUrl = null;
   for (const url of urls) {
     for (let attempt = 1; attempt <= _ATTEMPTS_PER_URL; attempt++) {
       attemptCount++;
@@ -155,6 +160,20 @@ async function _readBothBalancesWithRetry({
           }),
         ]);
         noteRpcResult(url, true);
+        /*- Say so when earlier attempts failed.  Every failure above
+         *  writes a line, so `attemptCount > 1` means a reader has seen
+         *  one; without this, a run of them simply stopped and recovery
+         *  looked no different from giving up.  The wording is the
+         *  shared one rather than a second copy of it. */
+        if (attemptCount > 1) {
+          logRpcRecovery(
+            "can-reopen",
+            "wallet balances",
+            attemptCount - 1,
+            url,
+            lastFailedUrl,
+          );
+        }
         return { t0, t1 };
       } catch (err) {
         /*- Reports for the same reason the pool-state walk does: a rate
@@ -162,6 +181,7 @@ async function _readBothBalancesWithRetry({
          *  what it saw without retiring an endpoint for everyone. */
         noteRpcResult(url, false);
         lastErr = err;
+        lastFailedUrl = url;
         log.warn(
           "[can-reopen] rpc=%s attempt=%d/%d failed: %s",
           url,

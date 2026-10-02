@@ -446,8 +446,21 @@ function getCurrentRPC() {
   }
   /*- Snap back to the preferred endpoint once the sticky window lapses.
    *  Done here, on read, rather than on a timer: there is no background
-   *  work to cancel and no way for the reset to be missed. */
-  if (_activeIdx !== 0 && Date.now() >= _stickyUntilMs) _activeIdx = 0;
+   *  work to cancel and no way for the reset to be missed.
+   *
+   *  Announced, because engaging the failover is announced and a log
+   *  that shows the leaving but not the returning leaves a reader to
+   *  infer which endpoint is in service from whichever one next fails.
+   *  Fires once per snapback — the assignment below is what makes the
+   *  condition false again — so this cannot chatter on a hot path. */
+  if (_activeIdx !== 0 && Date.now() >= _stickyUntilMs) {
+    log.info(
+      "[send-tx] RPC sticky window lapsed — back to %s (was on %s)",
+      _urls[0],
+      _urls[_activeIdx],
+    );
+    _activeIdx = 0;
+  }
   return _providers[_activeIdx];
 }
 

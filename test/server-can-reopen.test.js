@@ -32,6 +32,8 @@ const {
 } = require("../src/server-positions");
 const { compositeKey } = require("../src/bot-config-v2");
 const config = require("../src/config");
+const logModule = require("../src/log");
+const { format } = require("node:util");
 
 const TOKEN0 = "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b";
 const TOKEN1 = "0xAEbcD0F8f69ECF9587e292bdfc4d731c1abedB68";
@@ -225,9 +227,32 @@ describe("handleCanReopen", () => {
     });
     const handler = createCanReopenHandler(deps);
     const res = makeRes();
-    await handler({}, res);
+    /*- Each failed attempt above writes a warning, so the recovery has
+     *  to write one too: a run of warnings that simply stops reads the
+     *  same as giving up, and an operator is left guessing whether the
+     *  balances were ever read. */
+    const said = [];
+    const restore = logModule._setSinkForTests({
+      log: (...a) => said.push(format(...a)),
+    });
+    try {
+      await handler({}, res);
+    } finally {
+      restore();
+    }
     assert.strictEqual(res._status, 200);
     assert.strictEqual(res._body.canReopen, true);
+
+    const recovery = said.filter((l) => l.includes("read ok on"));
+    assert.strictEqual(recovery.length, 1, "exactly one recovery line");
+    assert.ok(
+      recovery[0].includes("[can-reopen]"),
+      `the line must name this reader, got: ${recovery[0]}`,
+    );
+    assert.ok(
+      recovery[0].includes("failed attempt"),
+      "and how many attempts failed first",
+    );
   });
 
   it("partial failure (one token throws) counts as complete attempt failure", async () => {
