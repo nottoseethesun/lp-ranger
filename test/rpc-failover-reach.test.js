@@ -266,6 +266,21 @@ function canReopenDeps({ seen, refuse = false }) {
   };
 }
 
+/*- Minimal ethers stand-in for the rpc layer in the can-reopen cases.
+ *  The balance double identifies an endpoint the way real ethers exposes
+ *  it, `provider._getConnection().url`, so the provider must answer
+ *  that; nothing else about it is exercised. */
+const CAN_REOPEN_LIB = {
+  JsonRpcProvider: class {
+    constructor(url) {
+      this._url = url;
+    }
+    _getConnection() {
+      return { url: this._url };
+    }
+  },
+};
+
 describe("a failover moves the can-reopen balance read", () => {
   let savedUrls;
 
@@ -288,7 +303,9 @@ describe("a failover moves the can-reopen balance read", () => {
      *  a wasted request: the Can-Reopen check reports on balances read
      *  from an endpoint the bot has already given up on. */
     const seen = [];
-    sendTx.init({ urls: URLS }, { JsonRpcProvider: class {} });
+    /*- The balance read now takes its provider from the rpc layer, so
+     *  that layer is given the stub whose endpoint the double records. */
+    sendTx.init({ urls: URLS }, CAN_REOPEN_LIB);
     condemn(URLS[0]);
     sendTx.failoverToNextRPC();
 

@@ -2609,11 +2609,13 @@ each property access and retries a failover-eligible error on the next
 endpoint. `FailoverNonceManager` returns it from `.provider` and routes
 `.call()` through it, so the reads ethers takes from a signer — a
 signer-bound contract's view functions, and `queryFilter` via
-`runner.provider` — retry and report like any other. The two readers
-that walk the endpoint list themselves, `getPoolState` and the
-can-reopen balance check, order their walk from the selected endpoint
-(`src/rpc-walk-order.js`) without mutating selection, so a failover
-moves them while their own retries stay private.
+`runner.provider` — retry and report like any other. No reader keeps an
+endpoint list of its own: `getPoolState` and the can-reopen balance
+check both go through the shared retry loop in
+`src/rpc-read-retry.js`, which asks the same selection and reports to
+the same rate. What each adds is a bounded attempt budget and the error
+it raises when that budget is spent, because a poll cycle and a dialog
+are both waiting on an answer rather than on an eventual one.
 
 ## RPC Reachability at Startup
 

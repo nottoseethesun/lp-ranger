@@ -291,8 +291,4 @@ async function retryRead({
   return onExhausted(maxAttempts, lastErr);
 }
 
-/*- `logRpcRecovery` is exported for the one rpc read that still walks
- *  the endpoint list itself (`server-can-reopen.js`). It needs the same
- *  sentence this loop writes, and a second copy of the wording would
- *  drift from this one on the next change. */
-module.exports = { retryRead, logRpcRecovery: _logRecovery };
+module.exports = { retryRead };

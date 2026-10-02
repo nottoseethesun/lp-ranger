@@ -45,6 +45,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
 - [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms
+- [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one

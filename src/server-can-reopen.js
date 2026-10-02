@@ -17,15 +17,12 @@
 
 const ethers = require("ethers");
 const { log } = require("./log");
-const config = require("./config");
-const { buildProvider } = require("./bot-provider");
 const { ERC20_ABI } = require("./rebalancer-pools");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { getDustThresholdUsd } = require("./dust");
 const sendTx = require("./send-transaction");
-const { walkOrderFrom } = require("./rpc-walk-order");
 const { noteRpcResult } = require("./rpc-out-of-service");
-const { logRpcRecovery } = require("./rpc-read-retry");
+const { retryRead } = require("./rpc-read-retry");
 
 /**
  * Error thrown when the wallet-balance + price reads for the
@@ -99,100 +96,71 @@ async function readTokenBalance({
   };
 }
 
-/*- Read BOTH tokens' balances atomically across the configured RPCs.
- *  Partial failure (one token reads OK, the other throws) counts as
- *  a complete attempt failure per the user-approved policy — we'd
- *  rather present a clean "try again" to the user than mix
- *  verified + unverified balances in the response.
+/*- Read BOTH tokens' balances across the configured RPCs.  Partial
+ *  failure (one token reads OK, the other throws) counts as a complete
+ *  attempt failure per the user-approved policy — better a clean "try
+ *  again" than a response mixing verified and unverified balances.
  *
- *  Iterates `[primary, fallback]`, each tried up to
- *  `_ATTEMPTS_PER_URL` times with a `_RETRY_DELAY_MS` wait before
- *  each retry.  Constructs fresh `JsonRpcProvider`s per URL (real
- *  ethers); falls back to the caller-supplied `providerFactory`
- *  return when ethersLib lacks the constructor (test-mock case).
+ *  Endpoints come from the app's failover, not from a list this file
+ *  walks: the shared loop in `src/rpc-read-retry.js` asks
+ *  `sendTx.getCurrentRPC()` and reports failures to
+ *  `sendTx.failoverToNextRPC()`, so this read follows selection and
+ *  feeds the same rate as every other.  What it supplies is the pair of
+ *  reads, a bounded budget, and the error raised when that budget is
+ *  spent — a bound rather than an ordinary read's endless retry because
+ *  someone is waiting on the dialog this answers.
  *
- *  Exhaustion throws `WalletReadUnavailableError` wrapping the most
- *  recent underlying error. */
+ *  Both balances come from ONE provider per attempt, which is why the
+ *  retried unit is the pair and not each read: two balances fetched
+ *  from different endpoints could straddle a block and disagree. */
 async function _readBothBalancesWithRetry({
   body,
   wallet,
   thresholdUsd,
   readBalance,
-  providerFactory,
 }) {
-  /*- Rotated to begin at the selected endpoint, so these balances come
-   *  from one the bot still trusts rather than from the head of a list
-   *  it has moved off.  The retries below never engage failover. */
-  const urls = walkOrderFrom(config.RPC_URLS, sendTx.getCurrentRPCUrl());
-  let attemptCount = 0;
-  let lastErr = null;
-  /*- Paired with `lastErr`: the recovery line names the endpoint that
-   *  answered and the one that last refused, and the two being equal is
-   *  what distinguishes an endpoint recovering from a move to another. */
-  let lastFailedUrl = null;
-  for (const url of urls) {
-    for (let attempt = 1; attempt <= _ATTEMPTS_PER_URL; attempt++) {
-      attemptCount++;
-      if (attempt > 1) await new Promise((r) => setTimeout(r, _RETRY_DELAY_MS));
-      try {
-        let provider;
-        try {
-          /*- buildProvider, so these reads queue behind the global
-           *  request manager rather than forming an unpaced path. */
-          provider = buildProvider(url, ethers);
-        } catch {
-          provider = providerFactory();
-        }
-        const [t0, t1] = await Promise.all([
-          readBalance({
-            provider,
-            wallet,
-            address: body.token0,
-            symbolHint: body.token0Symbol,
-            thresholdUsd,
-          }),
-          readBalance({
-            provider,
-            wallet,
-            address: body.token1,
-            symbolHint: body.token1Symbol,
-            thresholdUsd,
-          }),
-        ]);
-        noteRpcResult(url, true);
-        /*- Say so when earlier attempts failed.  Every failure above
-         *  writes a line, so `attemptCount > 1` means a reader has seen
-         *  one; without this, a run of them simply stopped and recovery
-         *  looked no different from giving up.  The wording is the
-         *  shared one rather than a second copy of it. */
-        if (attemptCount > 1) {
-          logRpcRecovery(
-            "can-reopen",
-            "wallet balances",
-            attemptCount - 1,
-            url,
-            lastFailedUrl,
-          );
-        }
-        return { t0, t1 };
-      } catch (err) {
-        /*- Reports for the same reason the pool-state walk does: a rate
-         *  decides now, so a reader that walks the list itself can say
-         *  what it saw without retiring an endpoint for everyone. */
-        noteRpcResult(url, false);
-        lastErr = err;
-        lastFailedUrl = url;
-        log.warn(
-          "[can-reopen] rpc=%s attempt=%d/%d failed: %s",
-          url,
-          attempt,
-          _ATTEMPTS_PER_URL,
-          err.message,
-        );
-      }
-    }
-  }
-  throw new WalletReadUnavailableError(attemptCount, lastErr);
+  return retryRead({
+    tag: "can-reopen",
+    label: "wallet balances",
+    run: (provider) =>
+      Promise.all([
+        readBalance({
+          provider,
+          wallet,
+          address: body.token0,
+          symbolHint: body.token0Symbol,
+          thresholdUsd,
+        }),
+        readBalance({
+          provider,
+          wallet,
+          address: body.token1,
+          symbolHint: body.token1Symbol,
+          thresholdUsd,
+        }),
+      ]).then(([t0, t1]) => ({ t0, t1 })),
+    /*- The loop needs a failure to enter on and this caller has not
+     *  attempted anything; only `isFailoverable` reads it. */
+    err: new Error("wallet balances not read yet"),
+    /*- Every failure here is treated as the endpoint's, which is what
+     *  the hand-rolled walk did: a balance read that throws for any
+     *  reason is worth asking another endpoint. */
+    isFailoverable: () => true,
+    failover: sendTx.failoverToNextRPC,
+    current: sendTx.getCurrentRPC,
+    urlOf: sendTx.urlOf,
+    note: (provider, ok) => noteRpcResult(sendTx.urlOf(provider), ok),
+    /*- Sized from the endpoints in service rather than
+     *  `config.RPC_URLS.length`, which `setRpcUrls` can leave
+     *  disagreeing.  Floored at one so an rpc layer nobody initialised
+     *  throws that fault by name from `current()` instead of reporting
+     *  a spent budget. */
+    maxAttempts: Math.max(1, sendTx.endpointCount() * _ATTEMPTS_PER_URL),
+    onExhausted: (attempts, lastErr) => {
+      throw new WalletReadUnavailableError(attempts, lastErr);
+    },
+    delayMs: _RETRY_DELAY_MS,
+  });
 }
 
 /**
@@ -204,9 +172,6 @@ async function _readBothBalancesWithRetry({
  * @param {object} deps.walletManager  Wallet manager instance.
  * @param {Function} deps.jsonResponse  `(res, status, body) => void`.
  * @param {Function} deps.readJsonBody  `(req) => Promise<object>`.
- * @param {Function} [deps.providerFactory]  Optional override that
- *   returns the read-provider; defaults to
- *   `sendTx.getManagedReadProvider`.  Tests inject a stub here.
  * @param {Function} [deps.readBalance]  Optional override for the
  *   per-token balance reader (test-injection point).
  * @param {Function} [deps.getDust]  Optional override for the dust
@@ -218,7 +183,6 @@ function createCanReopenHandler(deps) {
     walletManager,
     jsonResponse,
     readJsonBody,
-    providerFactory = () => sendTx.getManagedReadProvider(),
     readBalance = readTokenBalance,
     getDust = getDustThresholdUsd,
   } = deps;
@@ -243,7 +207,6 @@ function createCanReopenHandler(deps) {
         wallet,
         thresholdUsd,
         readBalance,
-        providerFactory,
       });
       const canReopen = !t0.isDust || !t1.isDust;
       jsonResponse(res, 200, {

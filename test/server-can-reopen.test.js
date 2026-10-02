@@ -16,7 +16,7 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const {
   createCanReopenHandler,
@@ -33,11 +33,33 @@ const {
 const { compositeKey } = require("../src/bot-config-v2");
 const config = require("../src/config");
 const logModule = require("../src/log");
+const sendTx = require("../src/send-transaction");
 const { format } = require("node:util");
 
 const TOKEN0 = "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b";
 const TOKEN1 = "0xAEbcD0F8f69ECF9587e292bdfc4d731c1abedB68";
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
+
+/*- The balance read takes its endpoint from the app's failover now, so
+ *  the rpc layer has to be stood up here as `server.js` stands it up at
+ *  boot.  The provider is never exercised: every case below injects
+ *  `readBalance` and ignores what it was handed. */
+before(() => {
+  sendTx._resetForTests();
+  /*- The real endpoint list, so the retry budget spans as many endpoints
+   *  here as it does in production.  No network is reached: the stub
+   *  constructor returns a bare object and every case injects
+   *  `readBalance`. */
+  sendTx.init(
+    { urls: [...config.RPC_URLS] },
+    {
+      JsonRpcProvider: function () {
+        return {};
+      },
+    },
+  );
+});
+after(() => sendTx._resetForTests());
 
 function makeRes() {
   return { _status: null, _body: null };
@@ -50,7 +72,6 @@ function makeDeps(overrides = {}) {
       res._body = body;
     },
     readJsonBody: async () => overrides.body || {},
-    providerFactory: () => ({ _mock: true }),
     getDust: async () => ({ thresholdUsd: 0.5 }),
     readBalance: overrides.readBalance,
     ...overrides,
@@ -192,11 +213,12 @@ describe("handleCanReopen", () => {
     assert.strictEqual(res._body.error, "wallet-read-unavailable");
     assert.match(res._body.message, /Wallet read failed after \d+ attempt/);
     assert.match(res._body.message, /simulated RPC outage/);
-    /*- One URL x 2 attempts x 2 tokens per attempt (Promise.all).
-     *  Derived from the configured list so adding an endpoint does not
-     *  fail this test for the wrong reason — what is being guarded is
-     *  that every RPC is tried, not any particular total. */
-    const expected = require("../src/config").RPC_URLS.length * 2 * 2;
+    /*- Endpoints in service x 2 attempts each x 2 tokens per attempt
+     *  (one `Promise.all`).  Read from `sendTx`, which is where the
+     *  budget itself comes from, so the two cannot pass for different
+     *  reasons; what is guarded is that the whole budget is spent, not
+     *  any particular total. */
+    const expected = sendTx.endpointCount() * 2 * 2;
     assert.strictEqual(
       calls,
       expected,
