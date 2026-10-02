@@ -301,6 +301,16 @@ function _setRetryDelayForTests(ms) {
  * `_POOL_STATE_RETRY_DELAY_MS` between tries, which is what gives a
  * blip lasting seconds time to clear.
  *
+ * Spending the whole budget therefore takes a while, and deliberately:
+ * selection moves on a failure rate rather than on each refusal, so a
+ * blip keeps the retry on one endpoint and the wait applies to every
+ * attempt after the first.  At the shipped three endpoints and two
+ * attempts each that is five waits, so a Manage click against a sick
+ * endpoint can sit for the better part of twenty seconds before the
+ * dialog appears.  Waiting is the right trade for a poll — the blips
+ * that cause it last seconds — and the dialog is what bounds it for
+ * someone watching.
+ *
  * @param {object} _passedProvider  UNUSED — kept so the six existing
  *   call sites (`bot-loop-detect.js`, `bot-cycle.js`, `rebalancer.js`,
  *   `position-details.js`, `bot-hodl-scan.js`, `hodl-baseline.js`) need
@@ -344,7 +354,18 @@ async function getPoolState(_passedProvider, ethersLib, opts) {
      *  raises the error the dashboard renders as
      *  `pool-info-unavailable` and `bot-cycle.js` turns into a
      *  `pollError`, rather than leaving either waiting. */
-    maxAttempts: config.RPC_URLS.length * _POOL_STATE_ATTEMPTS_PER_URL,
+    /*- Sized from the endpoints actually in service, not from
+     *  `config.RPC_URLS`: the two agree at boot but `setRpcUrls` can
+     *  re-point either, and a budget counting endpoints that are not
+     *  there spends attempts on an endpoint it already tried. */
+    /*- At least one attempt even with no endpoints in service, so an
+     *  rpc layer that was never initialised surfaces as its own error
+     *  carried on the `cause` rather than as a budget of zero that
+     *  reports "pool unavailable" and names nothing. */
+    maxAttempts: Math.max(
+      1,
+      sendTx.endpointCount() * _POOL_STATE_ATTEMPTS_PER_URL,
+    ),
     onExhausted: (attempts, lastErr) => {
       throw new PoolStateUnavailableError(attempts, lastErr);
     },

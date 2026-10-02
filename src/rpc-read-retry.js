@@ -104,6 +104,55 @@ function _logRecovery(tag, label, failures, servedBy, lastFailed) {
 }
 
 /**
+ * Log one attempt's failure, naming the endpoint and the budget left.
+ *
+ * The budget appears only when there is one: an ordinary read retries
+ * for ever, and `#3/∞` would be noise. The endpoint appears only when
+ * it resolves, which is every time but the window described on
+ * `urlOf`.
+ *
+ * @param {string} tag         Log prefix identifying the caller.
+ * @param {string} label       What the retried work is called.
+ * @param {number} attempt     Which attempt just failed, from one.
+ * @param {number} maxAttempts Budget, possibly `Infinity`.
+ * @param {?string} url        Endpoint that failed, if known.
+ * @param {Error} err          The failure.
+ */
+function _logAttemptFailure(tag, label, attempt, maxAttempts, url, err) {
+  const budget = Number.isFinite(maxAttempts) ? `/${maxAttempts}` : "";
+  const where = url ? ` rpc=${url}` : "";
+  log.warn(
+    "[%s] read retry #%d%s on %s failed:%s %s",
+    tag,
+    attempt,
+    budget,
+    label,
+    where,
+    err.message,
+  );
+}
+
+/**
+ * Report the failure in hand, if there is one, and say whether
+ * selection moved.
+ *
+ * A caller that arrived having already failed names the provider it saw
+ * fail, so it reports on its first attempt. One that has attempted
+ * nothing yet must not: it would step selection for a read that then
+ * succeeds, and it would step it unnamed, which skips the guard in
+ * `failoverToNextRPC` that keeps concurrent callers from each advancing
+ * the list once.
+ *
+ * @param {(failed?: object) => boolean} failover  Reporting function.
+ * @param {?object} failed  Provider whose failure is being reported.
+ * @returns {boolean}  Whether selection moved.
+ */
+function _report(failover, failed) {
+  if (failed === undefined || failed === null) return false;
+  return failover(failed);
+}
+
+/**
  * Retry a failed read across endpoints until one serves it.
  *
  * @param {object} opts
@@ -124,7 +173,13 @@ function _logRecovery(tag, label, failures, servedBy, lastFailed) {
  *   outage these attempts are most of the traffic, so a rate judged
  *   without them would be judged on a single sample.
  * @param {(provider: object) => ?string} [opts.urlOf]  Resolve a
- *   provider to its endpoint url, for the log lines.
+ *   provider to its endpoint url, for the log lines. May answer `null`
+ *   for one attempt if the operator re-points the endpoint list while a
+ *   retry is in flight, since the provider in hand is then no longer
+ *   one of the list's: that attempt's outcome is dropped from the rate
+ *   and its log line carries no endpoint. Both self-correct on the next
+ *   attempt, which resolves `current()` afresh, so this is left to pass
+ *   rather than guarded against.
  * @param {number} [opts.maxAttempts]  Attempts before giving up.
  *   Unbounded by default; see the file header.
  * @param {(attempts: number, lastErr: Error) => never} [opts.onExhausted]
@@ -171,8 +226,16 @@ async function retryRead({
      *  retry below simply uses theirs — or that every endpoint has been
      *  tried, which is a reason to come back round to the first one
      *  rather than to give up, since an outage covering all of them is
-     *  precisely the case this loop exists for. */
-    const moved = failover(failed);
+     *  precisely the case this loop exists for.
+     *
+     *  Only when there IS a failure to report.  A caller that arrives
+     *  having already failed names the provider it saw fail and so
+     *  reports on its first attempt; one that has attempted nothing yet
+     *  must not, for two reasons.  It would step selection for a read
+     *  that then succeeds, and it would step it unnamed — which skips
+     *  the guard in `failoverToNextRPC` that keeps ten concurrent
+     *  callers from each advancing the list once. */
+    const moved = _report(failover, failed);
     if (attempt > 1 && !moved && delayMs > 0) {
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -194,17 +257,7 @@ async function retryRead({
       note(next, false);
       failed = next;
       lastErr = e;
-      const budget = Number.isFinite(maxAttempts) ? `/${maxAttempts}` : "";
-      const where = urlOf(next) ? ` rpc=${urlOf(next)}` : "";
-      log.warn(
-        "[%s] read retry #%d%s on %s failed:%s %s",
-        tag,
-        attempt,
-        budget,
-        label,
-        where,
-        e.message,
-      );
+      _logAttemptFailure(tag, label, attempt, maxAttempts, urlOf(next), e);
     }
   }
   return onExhausted(maxAttempts, lastErr);

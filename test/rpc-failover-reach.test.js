@@ -12,10 +12,10 @@
  *
  * The can-reopen balance walk builds its own provider per URL and
  * starts at `config.RPC_URLS[0]` every time, so a failover does not
- * change where it looks first. `getPoolState` was the same until it was
- * moved onto the shared retry loop and the app's selection; its cases
- * below now pin that it asks wherever selection points, and remain here
- * because that is the property most expensive to lose. Reads taken from
+ * change where it looks first. `getPoolState` reads through selection
+ * instead, and its cases below pin both halves of that: it asks
+ * wherever selection points, and it does not move selection for a read
+ * that never failed. Reads taken from
  * the signer — `signer.provider`, and the `signer.call` that ethers routes
  * a contract read through — resolve to the raw selected provider, which
  * carries no retry and reports nothing back, so a refusal inside a
@@ -193,6 +193,30 @@ describe("a failover moves the pool-state read", () => {
           "the budget is every endpoint twice over, and it was spent",
         );
       },
+    );
+  });
+
+  it("does not move selection for a read that never failed", async () => {
+    /*- Reporting a failure is for failures.  The retry loop asks
+     *  `failover` at the top of every attempt including the first, so a
+     *  caller that arrives without one of its own — pool state has not
+     *  tried anything yet — would step selection before reading, and
+     *  step it unnamed, which skips the guard that stops concurrent
+     *  callers each advancing the list.  Here the endpoint's rate is
+     *  already over the threshold, so an unconditional report moves;
+     *  the read itself then succeeds, having been moved for nothing. */
+    const { lib, asked } = poolStateEthers();
+    sendTx.init({ urls: URLS }, lib);
+    condemn(URLS[0]);
+    assert.equal(sendTx.getCurrentRPCUrl(), URLS[0], "starts at the head");
+
+    await getPoolState(null, lib, POOL_OPTS);
+
+    assert.equal(asked[0], URLS[0], "read the endpoint selection held");
+    assert.equal(
+      sendTx.getCurrentRPCUrl(),
+      URLS[0],
+      "a read that never failed must leave selection where it was",
     );
   });
 

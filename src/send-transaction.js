@@ -917,6 +917,11 @@ module.exports = {
    *  caller that drives `retryRead` itself can name endpoints in its
    *  log lines the way the managed proxy does. */
   urlOf: _urlOf,
+  /*- How many endpoints are actually in service.  A caller sizing an
+   *  attempt budget needs this rather than `config.RPC_URLS.length`:
+   *  the two are the same at boot but not afterwards, since
+   *  `setRpcUrls` can re-point one without the other. */
+  endpointCount: _endpointCount,
   /*- Internal helpers exposed for tests in test/send-transaction.test.js. */
   _resolveGasLimit,
   _estimateWithFailover,
