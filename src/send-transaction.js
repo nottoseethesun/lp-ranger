@@ -409,6 +409,9 @@ function getManagedReadProvider() {
                  *  unreported, the rate would be judged on the single
                  *  sample above and never cross. */
                 note: (provider, ok) => noteRpcResult(_urlOf(provider), ok),
+                /*- So the recovery line can say which endpoint answered,
+                 *  and whether it is the one that had been failing. */
+                urlOf: _urlOf,
                 /*- The provider this call was actually made against, so
                  *  the first failover report names it rather than
                  *  advancing from wherever selection has since drifted. */

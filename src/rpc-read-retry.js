@@ -27,9 +27,55 @@
  * cannot spin. A delay here would be a second rate mechanism competing
  * with the one that owns the schedule — the very "hole through which the
  * rate escapes" that module warns against.
+ *
+ * **Why a success is logged, having said nothing on the way in.** Each
+ * failed attempt writes a line, and a run of them that simply stops is
+ * ambiguous: a read served by the next endpoint and a read abandoned
+ * altogether both end in silence. Whoever reads the log is then left
+ * deciding whether the bot is working. So a retry that eventually
+ * succeeds closes its own run with one line, naming the endpoint that
+ * served it and whether that endpoint is the one that had been failing.
+ * It fires only when a failure was logged first — an attempt that
+ * succeeds immediately has nothing to resolve, and announcing it would
+ * bury the runs that matter.
  */
 
 const { log } = require("./log");
+
+/**
+ * Close out a run of logged retry failures with a single line.
+ *
+ * Reports how many attempts failed and which endpoint finally answered.
+ * Naming both that endpoint and the last one to fail is what makes the
+ * line worth printing: the two being different says selection moved and
+ * another endpoint served the read, while the two being equal says the
+ * original endpoint recovered on its own and nothing moved. Those are
+ * the two outcomes a reader cannot otherwise tell apart, and they call
+ * for different follow-up.
+ *
+ * Both urls are optional because `urlOf` is injected and a caller
+ * without an endpoint list resolves neither; the line then carries the
+ * count alone, which still answers whether the read completed.
+ *
+ * @param {string|symbol} prop   Provider method that was retried.
+ * @param {number} failures      Attempts that failed before this one.
+ * @param {?string} servedBy     Endpoint that answered, if known.
+ * @param {?string} lastFailed   Endpoint that failed last, if known.
+ */
+function _logRecovery(prop, failures, servedBy, lastFailed) {
+  let where = "";
+  if (servedBy && lastFailed && servedBy !== lastFailed) {
+    where = ` — served by ${servedBy} (failed over from ${lastFailed})`;
+  } else if (servedBy) {
+    where = ` — ${servedBy} recovered, no failover`;
+  }
+  log.info(
+    "[send-tx] read ok on %s after %d failed attempt(s)%s",
+    String(prop),
+    failures,
+    where,
+  );
+}
 
 /**
  * Retry a failed provider read across endpoints until one serves it.
@@ -47,6 +93,9 @@ const { log } = require("./log");
  *   attempt's outcome against the endpoint that served it. During an
  *   outage these attempts are most of the traffic, so a rate judged
  *   without them would be judged on a single sample.
+ * @param {(provider: object) => ?string} [opts.urlOf]  Resolve a
+ *   provider to its endpoint url, for the recovery line. Defaulted so a
+ *   caller with no endpoint list still drives the loop.
  * @param {object} [opts.failedProvider] The provider whose failure is
  *   `err`. Naming it keeps concurrent failures on one endpoint from
  *   advancing the list once each.
@@ -65,6 +114,7 @@ async function retryRead({
    *  driving the loop in isolation — does not crash on a missing
    *  function.  Production has one caller and it passes one. */
   note = () => {},
+  urlOf = () => null,
   failedProvider,
 }) {
   if (!isFailoverable(err)) throw err;
@@ -84,6 +134,14 @@ async function retryRead({
     try {
       const value = await next[prop].apply(next, args);
       note(next, true);
+      /*- `attempt > 1` is the "a failure was logged" test, not a second
+       *  flag tracking it: every catch below logs, so reaching attempt
+       *  N means N-1 lines were printed.  Attempt 1 succeeding means
+       *  this loop said nothing, and the pre-loop failure that sent us
+       *  here is not ours to announce. */
+      if (attempt > 1) {
+        _logRecovery(prop, attempt - 1, urlOf(next), urlOf(failed));
+      }
       return value;
     } catch (e) {
       if (!isFailoverable(e)) throw e;
