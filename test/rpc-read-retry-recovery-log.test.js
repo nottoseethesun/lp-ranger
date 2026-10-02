@@ -216,6 +216,81 @@ describe("the read-retry loop closes a logged run with one success line", () => 
     assert.ok(!recovery[0].includes("no failover"));
   });
 
+  /*- The delay is the one behaviour in this loop with no coverage: every
+   *  pool-state test zeroes it through `_setRetryDelayForTests`, so
+   *  neither the wait nor the condition that decides it was exercised
+   *  anywhere.  `delayMs` is already a parameter, so driving it here
+   *  needs no new seam.  Both cases assert the DECISION — waited or did
+   *  not — with a gap wide enough that scheduler jitter cannot reach
+   *  across it. */
+  const DELAY = 60;
+  const GAP = 50;
+
+  it("waits before asking the same endpoint again", async () => {
+    cap = capture();
+    const provider = { url: URLS[0] };
+    let calls = 0;
+    const started = Date.now();
+
+    const value = await retryRead({
+      label: "getBalance",
+      run: async () => {
+        calls++;
+        if (calls === 1) throw boom();
+        return 1n;
+      },
+      err: boom(),
+      isFailoverable: () => true,
+      /*- Rate not crossed, so selection stays put and the retry is
+       *  against the endpoint that just refused. */
+      failover: () => false,
+      current: () => provider,
+      urlOf: (p) => p.url,
+      failedProvider: provider,
+      delayMs: DELAY,
+    });
+
+    assert.equal(value, 1n);
+    assert.ok(
+      Date.now() - started >= GAP,
+      "a blip needs time to clear before the same endpoint is asked again",
+    );
+  });
+
+  it("does not wait when selection moved underneath it", async () => {
+    cap = capture();
+    const a = { url: URLS[0] };
+    const b = { url: URLS[1] };
+    let calls = 0;
+    const started = Date.now();
+
+    const value = await retryRead({
+      label: "getBalance",
+      run: async (p) => {
+        calls++;
+        if (p === a) throw boom();
+        return 2n;
+      },
+      err: boom(),
+      isFailoverable: () => true,
+      /*- `false` here means this report was spent: another caller had
+       *  already moved selection off the failing endpoint.  The next
+       *  attempt therefore goes somewhere else, and waiting first buys
+       *  nothing — which is the whole finding. */
+      failover: () => false,
+      current: () => (calls === 0 ? a : b),
+      urlOf: (p) => p.url,
+      failedProvider: a,
+      delayMs: DELAY,
+    });
+
+    assert.equal(value, 2n);
+    assert.ok(
+      Date.now() - started < GAP,
+      "a different endpoint is no reason to wait",
+    );
+  });
+
   it("counts every failed attempt, not just the last", async () => {
     cap = capture();
     const value = await drive([boom(), boom(), 5n], { advance: false });

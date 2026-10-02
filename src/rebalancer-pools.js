@@ -296,7 +296,8 @@ function _setRetryDelayForTests(ms) {
  * The bound is the one departure from an ordinary read, which retries
  * for ever.  This answer gates a poll cycle and an interactive Manage
  * click, so running out has to produce something an operator can read
- * rather than a wait with no end.  Within the budget the retry stays on
+ * rather than retrying until some endpoint relents.  Within the budget
+ * the retry stays on
  * whichever endpoint selection holds, waiting
  * `_POOL_STATE_RETRY_DELAY_MS` between tries, which is what gives a
  * blip lasting seconds time to clear.
@@ -310,6 +311,15 @@ function _setRetryDelayForTests(ms) {
  * dialog appears.  Waiting is the right trade for a poll — the blips
  * that cause it last seconds — and the dialog is what bounds it for
  * someone watching.
+ *
+ * **The budget bounds attempts, not wall-clock.**  When every endpoint
+ * is down, `failoverToNextRPC` holds the whole JSON-RPC queue for
+ * `rpcAllEndpointsDownPauseMS` — an hour by default — and an attempt
+ * made during that hold simply waits it out.  So a total outage is the
+ * one case where this read offers an operator nothing sooner than the
+ * hold allows, budget or no budget.  That is the queue's decision and
+ * the right one: exempting the bot's most frequent read would be the
+ * hole its rate limit escapes through.
  *
  * @param {object} _passedProvider  UNUSED — kept so the six existing
  *   call sites (`bot-loop-detect.js`, `bot-cycle.js`, `rebalancer.js`,

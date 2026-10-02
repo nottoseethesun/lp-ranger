@@ -146,8 +146,7 @@ function _logAttemptFailure(tag, label, attempt, maxAttempts, url, err) {
 }
 
 /**
- * Report the failure in hand, if there is one, and say whether
- * selection moved.
+ * Report the failure in hand, if there is one.
  *
  * A caller that arrived having already failed names the provider it saw
  * fail, so it reports on its first attempt. One that has attempted
@@ -156,13 +155,23 @@ function _logAttemptFailure(tag, label, attempt, maxAttempts, url, err) {
  * `failoverToNextRPC` that keeps concurrent callers from each advancing
  * the list once.
  *
+ * The trade is that a first attempt can go to an endpoint the failure
+ * rate already considers bad, where reporting first would have moved
+ * off it. That is worth taking: the rate is a lagging measure and the
+ * endpoint may well serve this read, whereas stepping on no failure of
+ * one's own is wrong whatever the outcome.
+ *
+ * Whether selection moved is deliberately not passed back. `failover`
+ * answers `false` for three different situations and only one of them
+ * means the next attempt faces the same endpoint, so the loop settles
+ * that by looking at the provider it is handed instead.
+ *
  * @param {(failed?: object) => boolean} failover  Reporting function.
  * @param {?object} failed  Provider whose failure is being reported.
- * @returns {boolean}  Whether selection moved.
  */
 function _report(failover, failed) {
-  if (failed === undefined || failed === null) return false;
-  return failover(failed);
+  if (failed === undefined || failed === null) return;
+  failover(failed);
 }
 
 /**
@@ -177,8 +186,7 @@ function _report(failover, failed) {
  * @param {(e: unknown) => boolean} opts.isFailoverable  True when the
  *   error shape indicates the endpoint is at fault, not the request.
  * @param {(failed?: object) => boolean} opts.failover  Report that an
- *   endpoint failed. Returns whether selection actually moved, which is
- *   also what decides whether `delayMs` applies.
+ *   endpoint failed. Its return value is not consulted; see `_report`.
  * @param {() => object} opts.current    The endpoint to use now.
  * @param {string} [opts.tag]         Log prefix. Defaults to `send-tx`.
  * @param {(provider: object, ok: boolean) => void} [opts.note]  Record
@@ -198,8 +206,9 @@ function _report(failover, failed) {
  * @param {(attempts: number, lastErr: Error) => never} [opts.onExhausted]
  *   Raise the caller's own error once `maxAttempts` is spent. Defaults
  *   to rethrowing the last failure.
- * @param {number} [opts.delayMs]     Wait before asking the SAME
- *   endpoint again. Not applied when selection moved.
+ * @param {number} [opts.delayMs]     Wait before asking the very
+ *   provider that just refused. Skipped whenever `current()` hands back
+ *   a different one, however selection came to change.
  * @param {object} [opts.failedProvider] The provider whose failure is
  *   `err`. Naming it keeps concurrent failures on one endpoint from
  *   advancing the list once each.
@@ -234,25 +243,31 @@ async function retryRead({
   let failed = failedProvider;
   let lastErr = err;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    /*- Report, rather than command.  `false` means either that another
-     *  caller already moved us off this endpoint — in which case the
-     *  retry below simply uses theirs — or that every endpoint has been
-     *  tried, which is a reason to come back round to the first one
-     *  rather than to give up, since an outage covering all of them is
-     *  precisely the case this loop exists for.
+    /*- Report, rather than command: this says an endpoint failed and
+     *  lets selection decide.  Its answer is deliberately not used to
+     *  choose whether to wait, because `false` conflates three
+     *  situations — the failure rate has not crossed, another caller
+     *  already moved us off this endpoint, or the whole list is spent —
+     *  and only the first of those leaves us asking the same endpoint
+     *  again.
      *
-     *  Only when there IS a failure to report.  A caller that arrives
+     *  Reported only when there IS a failure.  A caller that arrives
      *  having already failed names the provider it saw fail and so
      *  reports on its first attempt; one that has attempted nothing yet
-     *  must not, for two reasons.  It would step selection for a read
-     *  that then succeeds, and it would step it unnamed — which skips
-     *  the guard in `failoverToNextRPC` that keeps ten concurrent
-     *  callers from each advancing the list once. */
-    const moved = _report(failover, failed);
-    if (attempt > 1 && !moved && delayMs > 0) {
+     *  must not.  It would step selection for a read that then
+     *  succeeds, and step it unnamed, which skips the guard in
+     *  `failoverToNextRPC` that keeps ten concurrent callers from each
+     *  advancing the list once. */
+    _report(failover, failed);
+    const next = current();
+    /*- Wait only when about to ask the very provider that just refused,
+     *  which is what gives a momentary blip time to clear.  Compared by
+     *  identity rather than by url: a provider rebuilt for the same
+     *  endpoint is a new connection, and a fresh connection is the one
+     *  case where retrying at once is worth more than waiting. */
+    if (attempt > 1 && delayMs > 0 && next === failed) {
       await new Promise((r) => setTimeout(r, delayMs));
     }
-    const next = current();
     try {
       const value = await run(next);
       note(next, true);
