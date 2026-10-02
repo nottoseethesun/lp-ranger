@@ -4,7 +4,7 @@
  * @file src/rpc-read-retry.js
  * @module rpc-read-retry
  *
- * Retry loop for reads served by the managed read provider.
+ * The one retry loop for a read that an endpoint refused.
  *
  * Extracted from `src/send-transaction.js` rather than living beside the
  * failover state it drives, for two reasons: that file sits on the
@@ -12,21 +12,46 @@
  * loop can be exercised directly without booting the transaction layer
  * or standing up providers.
  *
- * **Why it never gives up.** The alternative is dropping the read. For a
- * chunked log scan a dropped read is a block window that is never read,
- * which leaves the pool's rebalance chain short a rebalance — and epoch
- * count, Lifetime and Cumulative P&L and IL/G are then all computed over
- * an incomplete history and rendered as settled fact. A stalled scan is
- * visible in the log and recoverable by waiting; a silently short one is
- * neither. These outages almost always heal.
+ * **Injection is what lets one loop serve two very different callers.**
+ * The loop never decides which endpoint to use; it asks `current()` and
+ * reports failures to `failover()`. A caller that reads through the
+ * managed read provider passes the process-wide selection, so its
+ * retries follow whatever failover has chosen. A caller that must try
+ * every endpoint regardless — `getPoolState`, whose answer the bot
+ * cannot poll without — passes a cursor of its own instead, and so
+ * walks the list without moving global selection for everyone else.
+ * Both get the same reporting, the same recovery line and the same
+ * accounting.
  *
- * **Why there is no backoff.** Every provider is built by
+ * **The unit of retry is a function, not a provider method.** One pool
+ * state is five reads that have to agree with each other, so retrying
+ * them individually could pair a price from one endpoint with a pool
+ * address from another. `run(provider)` therefore receives the endpoint
+ * and does whatever it needs with it, and `label` is only what the logs
+ * call that work.
+ *
+ * **Why the default is never to give up.** The alternative is dropping
+ * the read. For a chunked log scan a dropped read is a block window
+ * that is never read, which leaves the pool's rebalance chain short a
+ * rebalance — and epoch count, Lifetime and Cumulative P&L and IL/G are
+ * then all computed over an incomplete history and rendered as settled
+ * fact. A stalled scan is visible in the log and recoverable by
+ * waiting; a silently short one is neither. These outages almost always
+ * heal. A caller for whom a bounded wait matters more than an eventual
+ * answer sets `maxAttempts` and an `onExhausted` that throws — which is
+ * how pool state keeps reporting `pool-info-unavailable` to the
+ * dashboard rather than hanging a Manage click for ever.
+ *
+ * **Why there is no backoff by default.** Every provider is built by
  * `bot-provider.buildProvider`, which funnels each call through the
  * global pacing queue (`src/rpc-request-manager.js`), so attempts are
  * already spaced by `globalRPCRequestRateIntervalMS` and this loop
  * cannot spin. A delay here would be a second rate mechanism competing
  * with the one that owns the schedule — the very "hole through which the
- * rate escapes" that module warns against.
+ * rate escapes" that module warns against. `delayMs` exists for the
+ * caller that wants a blip time to clear before asking the SAME
+ * endpoint again, and applies only then: moving to a different endpoint
+ * is not a reason to wait.
  *
  * **Why a success is logged, having said nothing on the way in.** Each
  * failed attempt writes a line, and a run of them that simply stops is
@@ -47,22 +72,22 @@ const { log } = require("./log");
  *
  * Reports how many attempts failed and which endpoint finally answered.
  * Naming both that endpoint and the last one to fail is what makes the
- * line worth printing: the two being different says selection moved and
- * another endpoint served the read, while the two being equal says the
- * original endpoint recovered on its own and nothing moved. Those are
- * the two outcomes a reader cannot otherwise tell apart, and they call
- * for different follow-up.
+ * line worth printing: the two being different says another endpoint
+ * served the read, while the two being equal says the one that had been
+ * failing recovered on its own. Those are the two outcomes a reader
+ * cannot otherwise tell apart, and they call for different follow-up.
  *
  * Both urls are optional because `urlOf` is injected and a caller
  * without an endpoint list resolves neither; the line then carries the
  * count alone, which still answers whether the read completed.
  *
- * @param {string|symbol} prop   Provider method that was retried.
+ * @param {string} tag           Log prefix identifying the caller.
+ * @param {string} label         What the retried work is called.
  * @param {number} failures      Attempts that failed before this one.
  * @param {?string} servedBy     Endpoint that answered, if known.
  * @param {?string} lastFailed   Endpoint that failed last, if known.
  */
-function _logRecovery(prop, failures, servedBy, lastFailed) {
+function _logRecovery(tag, label, failures, servedBy, lastFailed) {
   let where = "";
   if (servedBy && lastFailed && servedBy !== lastFailed) {
     where = ` — served by ${servedBy} (failed over from ${lastFailed})`;
@@ -70,51 +95,68 @@ function _logRecovery(prop, failures, servedBy, lastFailed) {
     where = ` — ${servedBy} recovered, no failover`;
   }
   log.info(
-    "[send-tx] read ok on %s after %d failed attempt(s)%s",
-    String(prop),
+    "[%s] read ok on %s after %d failed attempt(s)%s",
+    tag,
+    label,
     failures,
     where,
   );
 }
 
 /**
- * Retry a failed provider read across endpoints until one serves it.
+ * Retry a failed read across endpoints until one serves it.
  *
  * @param {object} opts
- * @param {string|symbol} opts.prop   Provider method being retried.
- * @param {unknown[]} opts.args       Original call arguments.
+ * @param {string} opts.label         What the logs call this work.
+ * @param {(provider: object) => Promise<*>} opts.run  Perform the read
+ *   against the given endpoint. Receives the provider so a composite
+ *   read stays on one endpoint for all of its parts.
  * @param {Error} opts.err            The failure that triggered the retry.
  * @param {(e: unknown) => boolean} opts.isFailoverable  True when the
  *   error shape indicates the endpoint is at fault, not the request.
  * @param {(failed?: object) => boolean} opts.failover  Report that an
- *   endpoint failed; advances selection only if it is still on that one.
+ *   endpoint failed. Returns whether selection actually moved, which is
+ *   also what decides whether `delayMs` applies.
  * @param {() => object} opts.current    The endpoint to use now.
- * @param {(provider: object, ok: boolean) => void} opts.note  Record one
- *   attempt's outcome against the endpoint that served it. During an
+ * @param {string} [opts.tag]         Log prefix. Defaults to `send-tx`.
+ * @param {(provider: object, ok: boolean) => void} [opts.note]  Record
+ *   one attempt's outcome against the endpoint that served it. During an
  *   outage these attempts are most of the traffic, so a rate judged
  *   without them would be judged on a single sample.
  * @param {(provider: object) => ?string} [opts.urlOf]  Resolve a
- *   provider to its endpoint url, for the recovery line. Defaulted so a
- *   caller with no endpoint list still drives the loop.
+ *   provider to its endpoint url, for the log lines.
+ * @param {number} [opts.maxAttempts]  Attempts before giving up.
+ *   Unbounded by default; see the file header.
+ * @param {(attempts: number, lastErr: Error) => never} [opts.onExhausted]
+ *   Raise the caller's own error once `maxAttempts` is spent. Defaults
+ *   to rethrowing the last failure.
+ * @param {number} [opts.delayMs]     Wait before asking the SAME
+ *   endpoint again. Not applied when selection moved.
  * @param {object} [opts.failedProvider] The provider whose failure is
  *   `err`. Naming it keeps concurrent failures on one endpoint from
  *   advancing the list once each.
  * @returns {Promise<*>}  The first successful result.
- * @throws  `err` when it is not failover-eligible, or any
- *   non-failoverable error raised by a later attempt.
+ * @throws  `err` when it is not failover-eligible, any non-failoverable
+ *   error raised by a later attempt, or whatever `onExhausted` raises.
  */
 async function retryRead({
-  prop,
-  args,
+  label,
+  run,
   err,
   isFailoverable,
   failover,
   current,
+  tag = "send-tx",
   /*- Defaulted so a caller that has no decider to report to — a test
    *  driving the loop in isolation — does not crash on a missing
-   *  function.  Production has one caller and it passes one. */
+   *  function. */
   note = () => {},
   urlOf = () => null,
+  maxAttempts = Infinity,
+  onExhausted = (attempts, lastErr) => {
+    throw lastErr;
+  },
+  delayMs = 0,
   failedProvider,
 }) {
   if (!isFailoverable(err)) throw err;
@@ -122,17 +164,21 @@ async function retryRead({
    *  every iteration, because each attempt runs against whichever
    *  endpoint selection had moved to by then. */
   let failed = failedProvider;
-  for (let attempt = 1; ; attempt++) {
+  let lastErr = err;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     /*- Report, rather than command.  `false` means either that another
      *  caller already moved us off this endpoint — in which case the
      *  retry below simply uses theirs — or that every endpoint has been
      *  tried, which is a reason to come back round to the first one
      *  rather than to give up, since an outage covering all of them is
      *  precisely the case this loop exists for. */
-    failover(failed);
+    const moved = failover(failed);
+    if (attempt > 1 && !moved && delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
     const next = current();
     try {
-      const value = await next[prop].apply(next, args);
+      const value = await run(next);
       note(next, true);
       /*- `attempt > 1` is the "a failure was logged" test, not a second
        *  flag tracking it: every catch below logs, so reaching attempt
@@ -140,21 +186,28 @@ async function retryRead({
        *  this loop said nothing, and the pre-loop failure that sent us
        *  here is not ours to announce. */
       if (attempt > 1) {
-        _logRecovery(prop, attempt - 1, urlOf(next), urlOf(failed));
+        _logRecovery(tag, label, attempt - 1, urlOf(next), urlOf(failed));
       }
       return value;
     } catch (e) {
       if (!isFailoverable(e)) throw e;
       note(next, false);
       failed = next;
+      lastErr = e;
+      const budget = Number.isFinite(maxAttempts) ? `/${maxAttempts}` : "";
+      const where = urlOf(next) ? ` rpc=${urlOf(next)}` : "";
       log.warn(
-        "[send-tx] read retry #%d on %s failed: %s",
+        "[%s] read retry #%d%s on %s failed:%s %s",
+        tag,
         attempt,
-        String(prop),
+        budget,
+        label,
+        where,
         e.message,
       );
     }
   }
+  return onExhausted(maxAttempts, lastErr);
 }
 
 module.exports = { retryRead };

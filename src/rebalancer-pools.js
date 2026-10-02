@@ -16,6 +16,7 @@ const { receiptGasWei } = require("./receipt-gas");
 const sendTx = require("./send-transaction");
 const { walkOrderFrom } = require("./rpc-walk-order");
 const { noteRpcResult } = require("./rpc-out-of-service");
+const { retryRead } = require("./rpc-read-retry");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
@@ -277,25 +278,32 @@ function _setRetryDelayForTests(ms) {
  * for any reason (invalid data, RPC error, network timeout) is
  * retried: each configured RPC is tried up to
  * `_POOL_STATE_ATTEMPTS_PER_URL` times, with a
- * `_POOL_STATE_RETRY_DELAY_MS` wait before each retry.  After
- * exhausting every configured RPC the orchestrator throws
+ * `_POOL_STATE_RETRY_DELAY_MS` wait before asking the SAME endpoint
+ * again — moving to a different one is not a reason to wait.  After
+ * spending that budget across every configured RPC it throws
  * `PoolStateUnavailableError`, wrapping the most recent underlying
- * error.
+ * error.  That error is what the dashboard renders as
+ * `pool-info-unavailable` and what `bot-cycle.js` turns into a
+ * `pollError`, so the budget exists to keep a Manage click answerable
+ * rather than hanging.
  *
- * The retry orchestrator builds a fresh provider per RPC URL (the whole
- * ordered list, `config.RPC_URLS`) rather than going through `sendTx`'s
- * managed-provider proxy.  This
- * lets the orchestrator target a specific RPC for each retry without
- * mutating `sendTx`'s persistent failover state (which would affect
- * every other concurrent read for a full hour).  The `provider`
- * parameter is retained for backward source compatibility with the
- * existing call sites but is not used internally.
+ * The loop itself is the shared one in `src/rpc-read-retry.js`, so this
+ * read reports outcomes, logs retries and announces its recovery the
+ * same way every other read does.  What it supplies is a cursor of its
+ * own rather than process-wide selection, and that is a correctness
+ * property: `failoverToNextRPC` moves only once an endpoint has failed
+ * over half of what it served in five minutes, which a blip lasting
+ * seconds never reaches, so a pool state that deferred to it would
+ * spend its whole budget on the sick endpoint and come back empty —
+ * and the bot cannot poll a position without this answer.  Walking
+ * locally also leaves global selection alone, so one position's retries
+ * do not pin every other concurrent read for an hour.
  *
- * @param {object} _provider     UNUSED — kept for source-compat with
- *   existing callers (`bot-loop-detect.js`, `bot-cycle.js`,
- *   `rebalancer.js`, `position-details.js`, `bot-hodl-scan.js`,
- *   `hodl-baseline.js`).  The orchestrator builds its own per-URL
- *   providers.
+ * @param {object} passedProvider  Stands in when `ethersLib` has no
+ *   `JsonRpcProvider` constructor, which is the test-mock case; real
+ *   ethers builds a fresh per-endpoint provider instead.  Callers are
+ *   `bot-loop-detect.js`, `bot-cycle.js`, `rebalancer.js`,
+ *   `position-details.js`, `bot-hodl-scan.js` and `hodl-baseline.js`.
  * @param {object} ethersLib    ethers module.
  * @param {object} opts         Same shape as `_getPoolStateOnce`.
  * @returns {Promise<object>}   Validated pool state.
@@ -309,58 +317,105 @@ async function getPoolState(passedProvider, ethersLib, opts) {
    *  Rotated to begin at whichever endpoint failover has selected, so
    *  a failover moves this read too — it is the most frequent one in
    *  the bot, once per position per poll.  Asking which endpoint that
-   *  is runs the sticky-window snapback, as any read would; what stays
-   *  this caller's own are the retries below, which never engage
-   *  failover (see the note above `_POOL_STATE_ATTEMPTS_PER_URL`). */
+   *  is runs the sticky-window snapback, as any read would. */
   const urls = walkOrderFrom(config.RPC_URLS, sendTx.getCurrentRPCUrl());
-  let attemptCount = 0;
-  let lastErr = null;
-  for (const url of urls) {
-    for (let attempt = 1; attempt <= _POOL_STATE_ATTEMPTS_PER_URL; attempt++) {
-      attemptCount++;
-      if (attempt > 1)
-        await new Promise((r) => setTimeout(r, _POOL_STATE_RETRY_DELAY_MS));
-      try {
-        /*- Construct a fresh per-URL provider when ethersLib supports
-         *  it (real production ethers).  Fall back to the caller's
-         *  passed provider when the ethers lib is a test mock without
-         *  a `JsonRpcProvider` constructor — same retry budget, just
-         *  against the single mock provider instead of N fresh ones. */
-        let provider;
-        try {
-          /*- Built through buildProvider, not `new JsonRpcProvider`, so
-           *  these requests queue behind the global request manager
-           *  like every other.  A raw provider here would be an unpaced
-           *  path, and one is enough to breach the published rate. */
-          provider = buildProvider(url, ethersLib);
-        } catch {
-          provider = passedProvider;
-        }
-        const state = await _getPoolStateOnce(provider, ethersLib, {
-          ...opts,
-          _rpcUrl: url,
-        });
-        noteRpcResult(url, true);
-        return state;
-      } catch (err) {
-        lastErr = err;
-        /*- This walk is the most frequent read in the bot — once per
-         *  position per poll — which makes it the best-informed witness
-         *  to an endpoint's health.  Reporting is safe here because a
-         *  rate decides, not a report: the six failures one call can
-         *  produce cannot retire an endpoint by themselves. */
-        noteRpcResult(url, false);
-        log.warn(
-          "[pool-state] rpc=%s attempt=%d/%d failed: %s",
-          url,
-          attempt,
-          _POOL_STATE_ATTEMPTS_PER_URL,
-          err.message,
-        );
-      }
+
+  /*- A fresh provider per attempt, not one cached per endpoint: an
+   *  endpoint that just refused may be holding a poisoned keep-alive
+   *  connection, and a new provider brings a new agent.  Reusing one
+   *  would make the second attempt against a sick endpoint less of a
+   *  real retry than the first.
+   *
+   *  buildProvider rather than `new JsonRpcProvider`, so these requests
+   *  queue behind the global request manager like every other; a raw
+   *  provider here would be an unpaced path, and one is enough to
+   *  breach the published rate.  It throws for a test mock whose ethers
+   *  has no constructor, and the caller's own provider stands in —
+   *  same retry budget, just against the single mock.
+   *
+   *  The map is what lets a provider be named in a log line.  Fresh
+   *  providers are distinct objects so it is exact, and it is discarded
+   *  with the call; an index-of lookup cannot serve here precisely
+   *  because construction is per attempt rather than per endpoint. */
+  const urlByProvider = new Map();
+  const providerFor = (i) => {
+    let provider;
+    try {
+      provider = buildProvider(urls[i], ethersLib);
+    } catch {
+      provider = passedProvider;
     }
-  }
-  throw new PoolStateUnavailableError(attemptCount, lastErr);
+    urlByProvider.set(provider, urls[i]);
+    return provider;
+  };
+  const urlOf = (p) => urlByProvider.get(p) ?? null;
+
+  /*- A cursor of this caller's own, handed to the shared retry loop in
+   *  place of process-wide selection.  The loop asks `failover` whether
+   *  to move and `current` for the endpoint, so passing these makes it
+   *  walk the list deterministically — every endpoint tried, whatever
+   *  the failure RATE happens to say.
+   *
+   *  That is the whole reason this read does not follow global
+   *  selection.  `failoverToNextRPC` moves only once an endpoint has
+   *  failed over half of what it served in five minutes, which a blip
+   *  lasting seconds never reaches; a pool state that deferred to it
+   *  would spend its whole budget on the sick endpoint and come back
+   *  empty, and the bot cannot poll a position without this answer.
+   *  Walking locally also leaves global selection alone, so one
+   *  position's retries do not pin every other concurrent read for an
+   *  hour. */
+  let idx = 0;
+  let onCurrent = 0;
+  const advance = () => {
+    if (onCurrent < _POOL_STATE_ATTEMPTS_PER_URL) {
+      onCurrent++;
+      return false;
+    }
+    if (idx < urls.length - 1) {
+      idx++;
+      onCurrent = 1;
+      return true;
+    }
+    onCurrent++;
+    return false;
+  };
+
+  return retryRead({
+    tag: "pool-state",
+    label: "getPoolState",
+    /*- The whole read, not one call of it: a pool state is five reads
+     *  that have to agree, so retrying them individually could pair a
+     *  price from one endpoint with a pool address from another. */
+    run: (provider) =>
+      _getPoolStateOnce(provider, ethersLib, {
+        ...opts,
+        _rpcUrl: urlOf(provider),
+      }),
+    /*- The loop needs a failure to start from and every failure here is
+     *  the endpoint's, so it is always eligible; a request-shaped error
+     *  reaches it from `run` and `_getPoolStateOnce`'s own validation
+     *  throws are not retried by shape either way. */
+    err: new Error("pool state not read yet"),
+    isFailoverable: () => true,
+    failover: advance,
+    current: () => providerFor(idx),
+    urlOf,
+    /*- This walk is the most frequent read in the bot, which makes it
+     *  the best-informed witness to an endpoint's health.  Reporting is
+     *  safe because a rate decides, not a report: the failures one call
+     *  can produce cannot retire an endpoint by themselves. */
+    note: (provider, ok) => noteRpcResult(urlOf(provider), ok),
+    maxAttempts: urls.length * _POOL_STATE_ATTEMPTS_PER_URL,
+    onExhausted: (attempts, lastErr) => {
+      throw new PoolStateUnavailableError(attempts, lastErr);
+    },
+    /*- Applied only when the next attempt is the SAME endpoint, which
+     *  is what gives a momentary blip time to clear.  Switching
+     *  endpoints is not a reason to wait, so exhausting the list stays
+     *  as quick as it was for an interactive Manage click. */
+    delayMs: _POOL_STATE_RETRY_DELAY_MS,
+  });
 }
 
 /**

@@ -76,14 +76,16 @@ const boom = () =>
  * line should report a failover. False pins selection, so the same
  * endpoint recovers and the line must not claim one.
  */
+const EXHAUSTED = "test script exhausted";
+
 function drive(outcomes, { advance = true } = {}) {
   let cursor = 0;
   let idx = 0;
   const take = () => {
     if (cursor >= outcomes.length) {
       throw new Error(
-        `test script exhausted after ${outcomes.length} attempt(s) — ` +
-          "the loop never gives up, so the last outcome must succeed",
+        `${EXHAUSTED} after ${outcomes.length} attempt(s) — the loop ` +
+          "never gives up, so the last outcome must succeed",
       );
     }
     const outcome = outcomes[cursor++];
@@ -95,10 +97,14 @@ function drive(outcomes, { advance = true } = {}) {
     getBalance: async () => take(),
   }));
   return retryRead({
-    prop: "getBalance",
-    args: [],
+    label: "getBalance",
+    run: (p) => p.getBalance(),
     err: boom(),
-    isFailoverable: () => true,
+    /*- The exhaustion error must NOT look failoverable, or the loop
+     *  retries it for ever and a mis-scripted case hangs instead of
+     *  failing.  Everything else here is treated as the endpoint's
+     *  fault, which is what drives the retry. */
+    isFailoverable: (e) => !String(e?.message).includes(EXHAUSTED),
     failover: () => {
       if (advance && idx < providers.length - 1) idx++;
       return advance;

@@ -398,8 +398,12 @@ function getManagedReadProvider() {
                 noteRpcResult(_urlOf(current), false);
               }
               return retryRead({
-                prop,
-                args,
+                label: String(prop),
+                /*- The read is one provider method here, so `run` just
+                 *  re-applies it to whichever endpoint the loop hands
+                 *  back.  A composite read uses the same seam to keep
+                 *  all of its parts on one endpoint. */
+                run: (provider) => provider[prop].apply(provider, args),
                 err,
                 isFailoverable: _isReadFailoverable,
                 failover: failoverToNextRPC,

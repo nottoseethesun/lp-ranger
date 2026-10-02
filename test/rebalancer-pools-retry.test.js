@@ -302,3 +302,41 @@ test("getPoolState reports what it sees to the decider", async () => {
     decider._resetForTests();
   }
 });
+
+/*- Pool state walks the endpoint list with a cursor of its own rather
+ *  than following process-wide selection, and that is a correctness
+ *  property, not a style choice.  `failoverToNextRPC` moves only once
+ *  an endpoint has failed over half of what it served in five minutes,
+ *  which a 502 lasting seconds never reaches — so a pool state that
+ *  deferred to it would spend its whole budget on the sick endpoint and
+ *  come back empty, while the bot cannot poll a position without this
+ *  answer.  Production 0.9.8 hit exactly that shape three times in one
+ *  evening and the local walk is what kept the reads succeeding. */
+test("getPoolState tries every endpoint, independent of the failover rate", async () => {
+  const sendTx = require("../src/send-transaction");
+  const { RPC_URLS } = require("../src/config");
+  const before = sendTx.getCurrentRPCUrl();
+  const { lib, constructed } = makeMockEthers({ decimals0: undefined });
+
+  await assert.rejects(
+    () =>
+      getPoolState(undefined, lib, {
+        factoryAddress: FACTORY,
+        token0: TOKEN0,
+        token1: TOKEN1,
+        fee: 10000,
+      }),
+    PoolStateUnavailableError,
+  );
+
+  assert.deepEqual(
+    [...new Set(constructed)].sort(),
+    [...RPC_URLS].sort(),
+    "every configured endpoint must be tried, whatever the rate says",
+  );
+  assert.equal(
+    sendTx.getCurrentRPCUrl(),
+    before,
+    "walking locally must not move selection for every other read",
+  );
+});
