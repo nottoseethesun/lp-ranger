@@ -358,10 +358,14 @@ async function getPoolState(_passedProvider, ethersLib, opts) {
      *  `config.RPC_URLS`: the two agree at boot but `setRpcUrls` can
      *  re-point either, and a budget counting endpoints that are not
      *  there spends attempts on an endpoint it already tried. */
-    /*- At least one attempt even with no endpoints in service, so an
-     *  rpc layer that was never initialised surfaces as its own error
-     *  carried on the `cause` rather than as a budget of zero that
-     *  reports "pool unavailable" and names nothing. */
+    /*- At least one attempt even with no endpoints in service.  A
+     *  budget of zero would skip the loop entirely and raise
+     *  `PoolStateUnavailableError` with a synthetic cause, reporting
+     *  "pool unavailable" for what is really an rpc layer nobody
+     *  initialised.  With one attempt the loop reaches `current()`,
+     *  which is `sendTx.getCurrentRPC` and throws that programming
+     *  fault by name — and does so uncaught, since `current()` is
+     *  resolved before the `try`. */
     maxAttempts: Math.max(
       1,
       sendTx.endpointCount() * _POOL_STATE_ATTEMPTS_PER_URL,

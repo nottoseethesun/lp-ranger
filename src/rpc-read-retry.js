@@ -88,11 +88,24 @@ const { log } = require("./log");
  * @param {?string} lastFailed   Endpoint that failed last, if known.
  */
 function _logRecovery(tag, label, failures, servedBy, lastFailed) {
+  /*- Truthiness rather than an explicit `!== null` on purpose: these
+   *  are optional strings, and an empty one would print a bare `rpc=`
+   *  or "` recovered`" with nothing named, which reads worse than
+   *  saying nothing. The question here is "is there a url to print",
+   *  not "is this value present". */
   let where = "";
-  if (servedBy && lastFailed && servedBy !== lastFailed) {
-    where = ` — served by ${servedBy} (failed over from ${lastFailed})`;
+  if (servedBy && lastFailed) {
+    where =
+      servedBy === lastFailed
+        ? ` — ${servedBy} recovered, no failover`
+        : ` — served by ${servedBy} (failed over from ${lastFailed})`;
   } else if (servedBy) {
-    where = ` — ${servedBy} recovered, no failover`;
+    /*- Something served the read but the endpoint that failed cannot be
+     *  named — `urlOf` answers null for a provider no longer in the
+     *  list, which is the re-pointed-list window. Saying "no failover"
+     *  here would assert the two are the same endpoint on no evidence,
+     *  so say only what is known. */
+    where = ` — served by ${servedBy} (previous endpoint unknown)`;
   }
   log.info(
     "[%s] read ok on %s after %d failed attempt(s)%s",

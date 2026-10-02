@@ -78,7 +78,7 @@ const boom = () =>
  */
 const EXHAUSTED = "test script exhausted";
 
-function drive(outcomes, { advance = true } = {}) {
+function drive(outcomes, { advance = true, urlOf } = {}) {
   let cursor = 0;
   let idx = 0;
   const take = () => {
@@ -110,7 +110,7 @@ function drive(outcomes, { advance = true } = {}) {
       return advance;
     },
     current: () => providers[idx],
-    urlOf: (p) => p?.url ?? null,
+    urlOf: urlOf ?? ((p) => p?.url ?? null),
     failedProvider: providers[0],
   });
 }
@@ -168,6 +168,52 @@ describe("the read-retry loop closes a logged run with one success line", () => 
       [],
       "no recovery line without a failure to recover from",
     );
+  });
+
+  it("names no endpoint, and claims nothing, when none can be resolved", async () => {
+    cap = capture();
+    /*- `urlOf` answers null for a provider that is no longer one of the
+     *  list's, which happens for one attempt if the operator re-points
+     *  the endpoints mid-retry.  Both lines must still appear and carry
+     *  the count — the reader's question is whether the read completed
+     *  — and neither may name an endpoint it could not resolve. */
+    const value = await drive([boom(), 3n], { urlOf: () => null });
+
+    assert.equal(value, 3n);
+    assert.equal(cap.warn.length, 1);
+    assert.ok(
+      !cap.warn[0].includes("rpc="),
+      "a failure line must not print an empty endpoint",
+    );
+    const recovery = cap.info.filter((l) => l.includes("read ok"));
+    assert.equal(recovery.length, 1);
+    assert.match(recovery[0], /after 1 failed attempt\(s\)$/);
+    assert.ok(
+      !recovery[0].includes("no failover"),
+      "must not claim the endpoint recovered when none was resolved",
+    );
+  });
+
+  it("does not claim 'no failover' when only the serving endpoint is known", async () => {
+    cap = capture();
+    /*- The asymmetric case: the read was served by an endpoint we can
+     *  name, but the one that failed is no longer in the list.  Falling
+     *  back to the same-endpoint wording would assert the two are one
+     *  endpoint on no evidence. */
+    const value = await drive([boom(), 11n], {
+      /*- Selection advances, so attempt one fails on the second
+       *  endpoint and attempt two succeeds on the third.  Resolving
+       *  only the second to null leaves the serving endpoint nameable
+       *  and the failed one not. */
+      urlOf: (p) => (p?.url === URLS[1] ? null : (p?.url ?? null)),
+    });
+
+    assert.equal(value, 11n);
+    const recovery = cap.info.filter((l) => l.includes("read ok"));
+    assert.equal(recovery.length, 1);
+    assert.match(recovery[0], /served by https:\/\/third\.example/);
+    assert.match(recovery[0], /previous endpoint unknown/);
+    assert.ok(!recovery[0].includes("no failover"));
   });
 
   it("counts every failed attempt, not just the last", async () => {

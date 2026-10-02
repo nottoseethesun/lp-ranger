@@ -189,7 +189,7 @@ describe("a failover moves the pool-state read", () => {
         assert.equal(err.constructor.name, "PoolStateUnavailableError");
         assert.equal(
           asked.length,
-          config.RPC_URLS.length * 2,
+          sendTx.endpointCount() * 2,
           "the budget is every endpoint twice over, and it was spent",
         );
       },
