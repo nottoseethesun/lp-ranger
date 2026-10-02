@@ -6,8 +6,30 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
+
+const sendTx = require("../src/send-transaction");
+
+/*- A poll cycle reads pool state, and that read takes its endpoint from
+ *  the app's failover the way every other read does — so the rpc layer
+ *  has to be stood up here as `server.js` and `bot-loop.js` stand it up
+ *  at boot.  File scope rather than per-describe, because more than one
+ *  block below drives a poll cycle.  The provider itself is never
+ *  exercised: the mocked `Contract` in each block serves the pool data
+ *  and ignores what it was constructed with. */
+before(() => {
+  sendTx._resetForTests();
+  sendTx.init(
+    { urls: ["http://mock-rpc.invalid"] },
+    {
+      JsonRpcProvider: function () {
+        return {};
+      },
+    },
+  );
+});
+after(() => sendTx._resetForTests());
 
 describe("bot-cycle compound gates", () => {
   // Import pollCycle to exercise _checkCompound and _handleForceCompound

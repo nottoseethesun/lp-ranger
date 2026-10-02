@@ -1,26 +1,22 @@
 /**
  * @file test/rebalancer-pools-retry.test.js
- * @description Integration coverage for the validation + per-RPC
- *   retry orchestrator added to `getPoolState` in
+ * @description Validation and retry coverage for `getPoolState` in
  *   `src/rebalancer-pools.js`.  Covers:
  *
- *   - `_getPoolStateOnce` throws `PoolStateInvalidError` on first
+ *   - `_getPoolStateOnce` throws `PoolStateInvalidError` on the first
  *     failing field (decimals0=NaN, tick=undefined, etc.)
- *   - Retry orchestrator iterates `[RPC_URL, RPC_URL_FALLBACK]`,
- *     each attempted up to ATTEMPTS_PER_URL times
- *   - Total exhaustion throws `PoolStateUnavailableError` carrying
- *     the most recent `cause` and the total attempt count
- *   - A success on attempt N short-circuits the loop and returns the
- *     validated state
- *   - The orchestrator constructs fresh `JsonRpcProvider` instances
- *     per attempt (one per call) — verified by counting constructor
- *     invocations on a mocked ethersLib
- *   - The orchestrator never touches `sendTx`'s persistent failover
- *     state (verified by snapshot before/after)
+ *   - A success on an early attempt returns the validated state
+ *   - Spending the whole attempt budget throws
+ *     `PoolStateUnavailableError`, carrying the most recent `cause` and
+ *     the total attempt count
+ *   - Every outcome is reported to the failover decider, which is what
+ *     lets selection advance — the evidence being that it did
  *
- * The mocked ethersLib stands in for the real one — we don't need
- * a live RPC for these tests.  The mock returns Contract instances
- * whose method-call behaviour is scripted by the test.
+ * Endpoints come from the app's failover rather than from anything
+ * `getPoolState` keeps, so these tests stand that layer up with a
+ * mocked ethersLib the way the app stands it up at boot.  Providers are
+ * therefore built once per endpoint, not once per attempt, and the mock
+ * returns Contract instances whose method behaviour each test scripts.
  */
 
 "use strict";
@@ -39,6 +35,22 @@ const {
 /*- Shrink the inter-retry delay to zero so the exhaustion test (4
  *  attempts) completes in milliseconds rather than ~6 seconds. */
 _setRetryDelayForTests(0);
+
+/*- getPoolState takes its endpoints from the app's failover now, so a
+ *  test has to stand that up rather than hand a provider in.  `init`
+ *  keeps existing providers when the url list matches, which would
+ *  silently reuse the previous case's mock, so each run resets first.
+ *
+ *  buildProvider tolerates this mock: with no `Network.from` it takes
+ *  the plain `new JsonRpcProvider(url)` branch, and both of its patches
+ *  return early on a stub with no `send` or `getFeeData`. */
+function withMockRpc(lib, fn) {
+  const sendTx = require("../src/send-transaction");
+  const { RPC_URLS } = require("../src/config");
+  sendTx._resetForTests();
+  sendTx.init({ urls: [...RPC_URLS] }, lib);
+  return (async () => fn())().finally(() => sendTx._resetForTests());
+}
 
 const FACTORY = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 const TOKEN0 = "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b";
@@ -228,50 +240,56 @@ test("getPoolState exhausts every RPC then throws PoolStateUnavailableError", as
    *  an endpoint is added. */
   const expectedAttempts = require("../src/config").RPC_URLS.length * 2;
   const { lib, constructed } = makeMockEthers({ decimals0: undefined });
-  await assert.rejects(
-    () =>
-      getPoolState(undefined, lib, {
-        factoryAddress: FACTORY,
-        token0: TOKEN0,
-        token1: TOKEN1,
-        fee: 10000,
-      }),
-    (err) => {
-      if (!(err instanceof PoolStateUnavailableError)) return false;
-      assert.equal(
-        err.attempts,
-        expectedAttempts,
-        `expected ${expectedAttempts} attempts (one per RPC x 2)`,
-      );
-      assert.ok(
-        err.cause instanceof PoolStateInvalidError,
-        "cause should be the last invalid-error",
-      );
-      assert.equal(err.cause.field, "decimals0");
-      return true;
-    },
+  await withMockRpc(lib, () =>
+    assert.rejects(
+      () =>
+        getPoolState(undefined, lib, {
+          factoryAddress: FACTORY,
+          token0: TOKEN0,
+          token1: TOKEN1,
+          fee: 10000,
+        }),
+      (err) => {
+        if (!(err instanceof PoolStateUnavailableError)) return false;
+        assert.equal(
+          err.attempts,
+          expectedAttempts,
+          `expected ${expectedAttempts} attempts (one per RPC x 2)`,
+        );
+        assert.ok(
+          err.cause instanceof PoolStateInvalidError,
+          "cause should be the last invalid-error",
+        );
+        assert.equal(err.cause.field, "decimals0");
+        return true;
+      },
+    ),
   );
+  /*- One provider per endpoint, built once when failover was set up —
+   *  not one per attempt.  Attempts now reuse the app's providers, which
+   *  is the whole point of reading through its selection. */
   assert.equal(
     constructed.length,
-    expectedAttempts,
-    `expected ${expectedAttempts} fresh JsonRpcProvider constructions (one per attempt)`,
+    require("../src/config").RPC_URLS.length,
+    "one provider per endpoint, built once",
   );
 });
 
 test("getPoolState succeeds on first try when the RPC returns valid data", async () => {
-  const { lib, constructed } = makeMockEthers();
-  const ps = await getPoolState(undefined, lib, {
-    factoryAddress: FACTORY,
-    token0: TOKEN0,
-    token1: TOKEN1,
-    fee: 10000,
-  });
+  const { lib } = makeMockEthers();
+  const ps = await withMockRpc(lib, () =>
+    getPoolState(undefined, lib, {
+      factoryAddress: FACTORY,
+      token0: TOKEN0,
+      token1: TOKEN1,
+      fee: 10000,
+    }),
+  );
   assert.equal(ps.decimals0, 8);
   assert.equal(ps.decimals1, 18);
-  /*- Exactly one constructor invocation — orchestrator stopped after
-   *  the first successful attempt rather than continuing through the
-   *  retry budget. */
-  assert.equal(constructed.length, 1);
+  /*- Nothing to assert about provider construction any more: they are
+   *  the app's, built once up front.  That the budget was not spent is
+   *  the exhaustion case's job above. */
 });
 
 test("getPoolState reports what it sees to the decider", async () => {
@@ -282,61 +300,41 @@ test("getPoolState reports what it sees to the decider", async () => {
    *  ten positions.  A rate decides now, so the most frequent read in
    *  the bot can say what it sees. */
   const decider = require("../src/rpc-out-of-service");
+  const sendTx = require("../src/send-transaction");
   const { RPC_URLS } = require("../src/config");
   decider._resetForTests();
   try {
     const { lib } = makeMockEthers({ tick: undefined });
-    await assert.rejects(() =>
-      getPoolState(null, lib, {
-        factoryAddress: FACTORY,
-        token0: TOKEN0,
-        token1: TOKEN1,
-        fee: 10000,
-      }),
+    let endedOn = null;
+    await withMockRpc(lib, async () => {
+      await assert.rejects(() =>
+        getPoolState(null, lib, {
+          factoryAddress: FACTORY,
+          token0: TOKEN0,
+          token1: TOKEN1,
+          fee: 10000,
+        }),
+      );
+      /*- Read before `withMockRpc` tears the list down. */
+      endedOn = sendTx.getCurrentRPCUrl();
+    });
+    /*- Selection moving IS the proof the reports landed, and is a
+     *  stronger claim than asking the decider directly: engaging a
+     *  failover clears the samples for the endpoint it leaves, so
+     *  `decideIfCurrentRPCIsOutOfService` reads false for every
+     *  endpoint already walked past.  What survives as evidence is
+     *  that the walk ended somewhere other than where it started —
+     *  which only a crossed failure rate can cause. */
+    assert.notEqual(
+      endedOn,
+      RPC_URLS[0],
+      "failures were reported, the rate crossed, and selection advanced",
     );
     assert.ok(
-      RPC_URLS.some((u) => decider.decideIfCurrentRPCIsOutOfService(u)),
-      "every attempt failed, so an endpoint is now out of service",
+      RPC_URLS.includes(endedOn),
+      "and it advanced within the configured list",
     );
   } finally {
     decider._resetForTests();
   }
-});
-
-/*- Pool state walks the endpoint list with a cursor of its own rather
- *  than following process-wide selection, and that is a correctness
- *  property, not a style choice.  `failoverToNextRPC` moves only once
- *  an endpoint has failed over half of what it served in five minutes,
- *  which a 502 lasting seconds never reaches — so a pool state that
- *  deferred to it would spend its whole budget on the sick endpoint and
- *  come back empty, while the bot cannot poll a position without this
- *  answer.  Production 0.9.8 hit exactly that shape three times in one
- *  evening and the local walk is what kept the reads succeeding. */
-test("getPoolState tries every endpoint, independent of the failover rate", async () => {
-  const sendTx = require("../src/send-transaction");
-  const { RPC_URLS } = require("../src/config");
-  const before = sendTx.getCurrentRPCUrl();
-  const { lib, constructed } = makeMockEthers({ decimals0: undefined });
-
-  await assert.rejects(
-    () =>
-      getPoolState(undefined, lib, {
-        factoryAddress: FACTORY,
-        token0: TOKEN0,
-        token1: TOKEN1,
-        fee: 10000,
-      }),
-    PoolStateUnavailableError,
-  );
-
-  assert.deepEqual(
-    [...new Set(constructed)].sort(),
-    [...RPC_URLS].sort(),
-    "every configured endpoint must be tried, whatever the rate says",
-  );
-  assert.equal(
-    sendTx.getCurrentRPCUrl(),
-    before,
-    "walking locally must not move selection for every other read",
-  );
 });

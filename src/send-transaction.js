@@ -913,6 +913,10 @@ module.exports = {
   failoverToNextRPC,
   ensureReachable,
   getManagedReadProvider,
+  /*- Resolve one of this module's providers back to its url, so a
+   *  caller that drives `retryRead` itself can name endpoints in its
+   *  log lines the way the managed proxy does. */
+  urlOf: _urlOf,
   /*- Internal helpers exposed for tests in test/send-transaction.test.js. */
   _resolveGasLimit,
   _estimateWithFailover,
