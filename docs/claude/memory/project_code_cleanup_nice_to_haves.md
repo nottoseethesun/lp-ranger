@@ -125,28 +125,3 @@ an array.  The lint is the part that makes it stay fixed.
 
 Full write-up:
 `docs/roadmap/clean-ups/project_no_properties_on_arrays.md`.
-
-## Config slots with no `status` accumulate forever (2026-10-01)
-
-Very minor; the user set it aside explicitly when it surfaced. Noted so
-it is not rediscovered from scratch.
-
-`POST /api/config` creates a position slot on first write via
-`getOrCreatePositionConfig` (`src/server-routes.js`). Save a setting for
-a position you never start managing and the slot holds settings with no
-`status` key at all. Production 0.9.8 had two, printed at startup as
-`status=MISSING` by `server.js` (`v.status || "MISSING"`).
-
-Verified inert, not merely assumed: `managedKeys` filters
-`status === "running"`, so nothing starts; `_purgePhantomEntries` only
-deletes a slot whose status IS `"running"` with exactly one key, so
-these survive every load; every read of a position's `.status` in `src/`
-is an `===` compare or an `|| fallback`, never a method call, so none
-can throw; and `_guardRunningPositions` reads `status === undefined` as
-a lost-running signal only for a slot that was `running` on disk, which
-these never were.
-
-So the only cost is accumulation, plus a startup inventory that counts
-them. The open question is a product one and the user's to answer:
-should settings saved for a never-managed position be remembered against
-the day it is managed, or treated as litter and dropped?
