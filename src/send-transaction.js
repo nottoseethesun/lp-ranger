@@ -41,7 +41,7 @@ const ethers = require("ethers");
 const config = require("./config");
 const { buildProvider } = require("./bot-provider");
 const { _retrySend } = require("./tx-retry");
-const { _waitOrSpeedUp } = require("./tx-speedup");
+const { _waitOrSpeedUp, _waitOnePhase } = require("./tx-speedup");
 const { retryRead } = require("./rpc-read-retry");
 const { pauseForExhaustedEndpoints } = require("./rpc-endpoints-exhausted");
 const rpcRequestManager = require("./rpc-request-manager");
@@ -838,6 +838,45 @@ async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
   }
 }
 
+/**
+ * Wait for a transaction's receipt through this module's endpoint list.
+ *
+ * The one way to wait for a receipt without going through
+ * `sendTransaction`. A caller that broadcasts its own transaction and
+ * carries its own recovery — the aggregator swap is the only one — still
+ * has to read the receipt, and reading is this module's business: it
+ * owns which endpoint is current, the failover between them, and the
+ * rate every request is paced at.
+ *
+ * The re-ask is wired in here rather than passed by the caller, so
+ * there is no version of this call that lacks it. A bare `tx.wait()`
+ * asks only the endpoint that broadcast the transaction and never
+ * learns that selection has moved on; that is how a compound died on a
+ * 502 from an endpoint the failover had already left, on Production
+ * 2026-09-30, while the fee collection it was waiting for was on chain.
+ *
+ * What comes back is a receipt, `sentinel` when the wait ran out, or an
+ * error describing the transaction itself. An unreachable endpoint is
+ * none of those — it is retried until `ms` elapses.
+ *
+ * @param {object} o
+ * @param {object} o.tx        The broadcast transaction.
+ * @param {string} o.label     Log label.
+ * @param {number} o.ms        How long to wait before giving up.
+ * @param {string} o.sentinel  Message the deadline rejects with, chosen
+ *   by the caller so its own catch can recognise its own timeout.
+ * @returns {Promise<object>} The receipt.
+ */
+function waitForReceipt({ tx, label, ms, sentinel }) {
+  return _waitOnePhase({
+    tx,
+    label,
+    onWaitError: _receiptAcrossEndpoints,
+    ms,
+    sentinel,
+  });
+}
+
 // ── Public sendTransaction ───────────────────────────────────────────────────
 
 /**
@@ -950,6 +989,11 @@ module.exports = {
   failoverToNextRPC,
   ensureReachable,
   getManagedReadProvider,
+  /*- The only receipt wait available to a caller that broadcasts its
+   *  own transaction. Exported with the cross-endpoint re-ask already
+   *  attached, because a caller holding the pieces is a caller that can
+   *  forget one. */
+  waitForReceipt,
   /*- Resolve one of this module's providers back to its url, so a
    *  caller that drives `retryRead` itself can name endpoints in its
    *  log lines the way the managed proxy does. */

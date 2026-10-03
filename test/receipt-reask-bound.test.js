@@ -239,3 +239,132 @@ describe("what bounds a receipt re-ask", () => {
     );
   });
 });
+
+// ── The gateway, and the one caller that broadcasts its own transaction ──
+
+describe("waitForReceipt — the only receipt wait outside sendTransaction", () => {
+  let restoreLog;
+
+  beforeEach(() => {
+    sendTx._resetForTests();
+    rpcQueue._resetForTests();
+    outOfService._resetForTests();
+    restoreLog = logModule._setSinkForTests({
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    });
+  });
+  afterEach(() => {
+    if (restoreLog) restoreLog();
+    sendTx._resetForTests();
+    rpcQueue._resetForTests();
+    outOfService._resetForTests();
+  });
+
+  /** A broadcast transaction whose own `wait()` fails the given way. */
+  function txWhoseWaitFails(err) {
+    return {
+      hash: TX.hash,
+      nonce: 3,
+      wait: async () => {
+        throw err;
+      },
+    };
+  }
+
+  it("gets the receipt elsewhere when the broadcasting endpoint quits", async () => {
+    /*- The whole point. `tx.wait()` polls the endpoint the transaction
+     *  was sent through and cannot follow a failover, so its failure
+     *  must not be an outcome the caller has to handle — the gateway
+     *  asks another endpoint and the wait resolves normally. */
+    const lib = makeLib(() => RECEIPT);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
+
+    const r = await sendTx.waitForReceipt({
+      tx: txWhoseWaitFails(serverError(PRI)),
+      label: "[aggregator] swap A->B",
+      ms: 500,
+      sentinel: "_AGG_TIMEOUT",
+    });
+
+    assert.strictEqual(r.blockNumber, 1234);
+  });
+
+  it("rejects with the caller's own sentinel when nothing serves it", async () => {
+    /*- Preserved behaviour, and the aggregator depends on it: its catch
+     *  recognises `_AGG_TIMEOUT` and runs the cancel-and-settle recovery
+     *  on it. If the deadline arrived as anything else that recovery
+     *  would be skipped. */
+    const lib = makeLib(() => null);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
+
+    await assert.rejects(
+      () =>
+        sendTx.waitForReceipt({
+          tx: txWhoseWaitFails(serverError(PRI)),
+          label: "[aggregator] swap A->B",
+          ms: 60,
+          sentinel: "_AGG_TIMEOUT",
+        }),
+      /_AGG_TIMEOUT/,
+    );
+  });
+
+  it("passes a transaction-level failure through untouched", async () => {
+    /*- A revert is an answer about the transaction, not about an
+     *  endpoint. It has to reach the caller as itself, because the
+     *  aggregator branches on `CALL_EXCEPTION` to re-quote against
+     *  refreshed pool state. */
+    const lib = makeLib(() => RECEIPT);
+    sendTx.init({ urls: [PRI, FALL] }, lib);
+    const reverted = new Error("execution reverted");
+    reverted.code = "CALL_EXCEPTION";
+
+    await assert.rejects(
+      () =>
+        sendTx.waitForReceipt({
+          tx: txWhoseWaitFails(reverted),
+          label: "[aggregator] swap A->B",
+          ms: 500,
+          sentinel: "_AGG_TIMEOUT",
+        }),
+      /execution reverted/,
+    );
+  });
+
+  it("is what the aggregator's swap wait actually uses", () => {
+    /*- Wiring, not behaviour, so it is asserted against the source. The
+     *  bug was never in how a receipt was fetched — it was that this one
+     *  caller fetched its own, with a bare `tx.wait()` raced against a
+     *  timer, so an endpoint failure escaped unflagged and the router
+     *  fallback swapped the same balance a second time. Behavioural
+     *  coverage cannot catch that returning: a future edit could go back
+     *  to a bare wait and every case above would still pass. */
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const src = fs
+      .readFileSync(
+        path.join(__dirname, "..", "src", "rebalancer-aggregator.js"),
+        "utf8",
+      )
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "");
+
+    assert.match(
+      src,
+      /waitForReceipt\(/,
+      "the swap's confirmation must come from the endpoint gateway",
+    );
+    /*- Any `.wait()` left in this module must have its rejection
+     *  neutralised, as the cancel's does. An un-neutralised one inside a
+     *  race is the exact shape that caused the double swap. */
+    for (const m of src.matchAll(/\.wait\(\)(.{0,8})/g)) {
+      assert.match(
+        m[1],
+        /^\.catch\(/,
+        `a .wait() in rebalancer-aggregator.js is not neutralised: ".wait()${m[1]}"`,
+      );
+    }
+  });
+});

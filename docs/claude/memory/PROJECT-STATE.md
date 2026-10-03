@@ -27,11 +27,19 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 
 ## Open, reproducible, deliberately unfixed
 
-- None. The speed-up phase-boundary race was the last one; fixed 2026-10-03 and moved to the record below.
+- [**false-zeroes-for-price-and-amounts**](project_false_zeroes_for_price_and_amounts.md) — **Start here.** The user's umbrella name for the three below: a failed endpoint or price-service answer recorded as zero, saved, and never asked again. One fix shape covers all three
+
+Found 2026-10-03. A *value* bug — distinct from the control-flow class
+the speed-up phase-boundary race belonged to.
+
+- [HODL baseline zeroed by an rpc failure](project_hodl_baseline_zero_from_rpc_failure.md) — An endpoint that won't serve the mint receipt is recorded as "opened with zero of both tokens". Looks complete, so never retried: IL/G reports a gain the size of the whole position, and the Impermanent Loss Guard stops evaluating that position permanently
+- [per-NFT gas zeroed by an rpc failure](project_nft_gas_zero_from_rpc_failure.md) — A refused receipt read becomes "cost no gas", persisted and then a cache hit forever. The mint TX is an NFT's largest charge, so gas is understated and profit overstated, silently
+- [initial residual priced at zero](project_initial_residual_zero_price_persisted.md) — A failed historical-price lookup is persisted as $0 and never re-fetched. The subtraction that excludes the initial-mint leftover from Lifetime Net P&L then removes nothing. Its sibling half of the same function aborts without persisting, which is the shape all three want
 
 ## Production incidents — all fixed, kept as the record
 
 - [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Hit Prod 0.9.7, fixed in 0.9.8: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
+- [aggregator swap wait could cause a double swap](project_aggregator_swap_wait_double_swap.md) — Caught in development. Fixed 2026-10-03: the swap's confirmation wait was a bare `tx.wait()` raced against a timer, so an endpoint failure escaped unflagged and the router fallback swapped the same balance again. Now goes through `sendTx.waitForReceipt`, the single door to a receipt wait, with the cross-endpoint re-ask already attached
 - [speed-up phase-boundary race](project_speedup_phase_boundary_race.md) — Caught in development, not Prod. Fixed 2026-10-03: a receipt re-ask carried a second deadline the length of the phase it ran inside, so the two could expire together and conclude opposite things. The fix removed the deadline rather than teaching the code to tell them apart
 - [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Hit Prod 0.9.7, fixed in 0.9.8: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
 - [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Hit Prod 0.9.7, fixed in 0.9.8: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure

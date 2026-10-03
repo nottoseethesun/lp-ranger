@@ -210,6 +210,50 @@ function _extractReceipt(result) {
 }
 
 /**
+ * Wait for one transaction's receipt, bounded by a single phase.
+ *
+ * The first phase of `_waitOrSpeedUp`, offered on its own for a caller
+ * that brings its own recovery and wants only the waiting: ask for the
+ * receipt, keep asking when an endpoint will not answer, and give up at
+ * a deadline with a sentinel the caller recognises.
+ *
+ * **An endpoint failure is not one of the outcomes.** `onWaitError` is
+ * handed the phase's signal and keeps asking other endpoints until the
+ * phase ends it, so exactly three things can come back: a receipt, the
+ * caller's own sentinel, or an error that describes the TRANSACTION
+ * rather than an endpoint — a revert, which every endpoint would report
+ * the same way. A caller can therefore branch on its sentinel and on a
+ * real answer, and need no branch for "the endpoint was unreachable",
+ * which is the branch that gets forgotten.
+ *
+ * The phase hands down its signal and no deadline of its own, so the
+ * clock here is the only clock. Two of the same length would conclude
+ * opposite things about one silence and let the event loop pick.
+ *
+ * @param {object} o
+ * @param {object} o.tx               The transaction to wait on.
+ * @param {string} o.label            Log label.
+ * @param {Function} o.onWaitError    `(err, tx, label, budget)` — the
+ *   re-ask. Injected rather than imported because the module that owns
+ *   endpoint selection imports this one.
+ * @param {number} o.ms               How long to wait.
+ * @param {string} o.sentinel         Message the deadline rejects with.
+ * @returns {Promise<object>} The receipt.
+ */
+async function _waitOnePhase({ tx, label, onWaitError, ms, sentinel }) {
+  const phase = _phase(ms, sentinel);
+  try {
+    const receipt = await Promise.race([
+      _settled(_tolerantWait(tx, label, onWaitError, phase.budget)),
+      phase.timer,
+    ]);
+    return _extractReceipt(receipt);
+  } finally {
+    phase.done();
+  }
+}
+
+/**
  * Submit a speed-up replacement at the same nonce with a bumped gas price.
  * Returns the replacement TransactionResponse, or null when the original
  * has already been mined (so there's nothing to replace).
@@ -443,4 +487,4 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   }
 }
 
-module.exports = { _waitOrSpeedUp };
+module.exports = { _waitOrSpeedUp, _waitOnePhase };

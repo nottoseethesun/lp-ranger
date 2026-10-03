@@ -33,6 +33,10 @@ const { receiptGasWei } = require("./receipt-gas");
  *  failed send is safe to fall back from only when the node never admitted
  *  the transaction, and that bucket is its answer, not ours to restate. */
 const { classifyRpcError } = require("./rpc-error-classifier");
+/*- For the receipt wait only. This module broadcasts its own swap and
+ *  runs its own cancel-and-requote recovery, but reading a receipt means
+ *  asking an endpoint, and which endpoint to ask is owned there. */
+const sendTx = require("./send-transaction");
 
 const _agg = config.CHAIN.aggregator;
 
@@ -587,12 +591,23 @@ async function _sendWithRetry(
       String(tx.maxPriorityFeePerGas ?? "—"),
     );
     try {
-      const r = await Promise.race([
-        tx.wait(),
-        new Promise((_, rej) =>
-          setTimeout(() => rej(new Error("_AGG_TIMEOUT")), waitMs),
-        ),
-      ]);
+      /*- Through the endpoint gateway, not a bare `tx.wait()`. A bare
+       *  wait asks only the endpoint that broadcast the swap and cannot
+       *  follow a failover, so an endpoint going quiet rejected with its
+       *  own error — which is neither `_AGG_TIMEOUT` nor a revert, so
+       *  the catch below rethrew it. That skipped the cancel, left the
+       *  nonce held by a swap still in the mempool, and reached
+       *  `swapIfNeeded` unflagged, where an unflagged error means "no
+       *  swap happened" and the router fallback swaps the same balance
+       *  again. `waitForReceipt` keeps asking other endpoints instead,
+       *  so an unreachable endpoint is no longer one of the outcomes and
+       *  only the two this catch already handles can arrive. */
+      const r = await sendTx.waitForReceipt({
+        tx,
+        label: "[aggregator] swap " + fromSym + "->" + toSym,
+        ms: waitMs,
+        sentinel: "_AGG_TIMEOUT",
+      });
       const costPls = (Number(receiptGasWei(r)) / 1e18).toFixed(4);
       log.info(
         "[rebalance] %s: swap (aggregator) confirmed %s -> %s" +
