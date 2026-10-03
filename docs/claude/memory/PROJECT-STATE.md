@@ -27,11 +27,12 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 
 ## Open, reproducible, deliberately unfixed
 
-- [speed-up phase-boundary race](project_speedup_phase_boundary_race.md) — At a phase boundary the receipt wait's rejection can beat the phase timer, so a stuck move fails instead of being sped up. Microtask ordering decides. Reproduction recipe included
+- None. The speed-up phase-boundary race was the last one; fixed 2026-10-03 and moved to the record below.
 
 ## Production incidents — all fixed, kept as the record
 
 - [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Hit Prod 0.9.7, fixed in 0.9.8: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
+- [speed-up phase-boundary race](project_speedup_phase_boundary_race.md) — Caught in development, not Prod. Fixed 2026-10-03: a receipt re-ask carried a second deadline the length of the phase it ran inside, so the two could expire together and conclude opposite things. The fix removed the deadline rather than teaching the code to tell them apart
 - [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Hit Prod 0.9.7, fixed in 0.9.8: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
 - [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Hit Prod 0.9.7, fixed in 0.9.8: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure
 - [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork in 0.9.5

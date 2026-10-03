@@ -1,11 +1,11 @@
 ---
 name: project_receipt_rewait_test_flake
-description: "FIXED 2026-10-02: what looked like a timing-dependent flake was two real races in the speed-up pipeline. One left an abandoned racer rejection unhandled, which the process guard turns into process.exit for several error codes; the other is still open."
+description: "FIXED 2026-10-02: what looked like a timing-dependent flake was two real races in the speed-up pipeline. One left an abandoned racer rejection unhandled, which the process guard turns into process.exit for several error codes; the other was the phase-boundary race, fixed 2026-10-03."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-03T00:22:55.544Z
+  modified: 2026-10-03T17:20:15.290Z
 ---
 
 `test/receipt-wait-failover.test.js` → `bounds every receipt re-ask
@@ -42,13 +42,17 @@ shortened — turned it from "flaky under load" into two real faults in
    hosts and endpoint 4xx as well. Phase 3 guarantees a loser, since
    only one of the two transactions can mine. Fixed with `_settled`,
    which attaches a handler and says why.
-2. **The phase-boundary race**, which is NOT fixed and has its own
-   entry: [[project_speedup_phase_boundary_race]].
+2. **The phase-boundary race**, fixed a day later on 2026-10-03 and
+   kept in its own entry: [[project_speedup_phase_boundary_race]]. Both
+   faults are now closed.
 
-The test now measures what it claims — that the re-asks are bounded —
-rather than also requiring the move to succeed, which made it fail for
-the second fault's reason. Twenty concurrent runs pass where one in
-sixteen failed before.
+The test briefly measured only what it claims — that the re-asks are
+bounded — and stopped requiring the move to succeed, because the second
+fault made that assertion fail for its reason rather than the test's.
+With that fault fixed the assertion is back, and it is the stronger one:
+every receipt wait in the fixture is refused, so a confirmed receipt
+proves the refusals were asked around instead of ending the move.
+Twenty concurrent runs pass where one in sixteen failed before.
 
 The original diagnosis in this file was wrong in an instructive way: it
 read "fails only under contention, passes in isolation" as the test

@@ -778,15 +778,33 @@ function _waitOrAbort(ms, signal) {
  * this loop owns the waiting. Nothing is subscribed, so when it stops,
  * it has stopped.
  *
- * The deadline comes from the caller, which owns the phase clock; the
- * config value is only the fallback for a caller that supplies none.
- * On expiry the ORIGINAL error is rethrown rather than a timeout,
- * because the endpoint failure is what actually went wrong.
+ * **An endpoint refusing to answer is never the move's failure.** The
+ * transaction is on chain or it is not, and nothing here decides which,
+ * so the only thing to do about a refusal is ask again. What stops the
+ * asking is therefore never an error — it is whatever outranks this loop
+ * saying the answer is no longer wanted.
+ *
+ * Exactly one thing outranks it, and the caller picks which by what it
+ * passes. A phase passes its abort signal: the phase's clock ends the
+ * wait, and the move then goes on to its next phase rather than failing.
+ * A caller with no phase around it passes a deadline, which is then the
+ * only bound there is. Both at once would be two clocks of the same
+ * length concluding opposite things about one silence — the phase's
+ * "speed it up" against a deadline's "give up" — settled by whichever
+ * callback the event loop reached first.
+ *
+ * Either way the stop rethrows the ORIGINAL error rather than a timeout,
+ * because the endpoint failure is what actually went wrong. A phase that
+ * has already moved on absorbs it (`_settled` in `tx-speedup.js`); a
+ * caller holding its own deadline is the one still waiting for it.
  *
  * @param {Error} err    Why `tx.wait()` rejected.
  * @param {object} tx    The transaction being waited on.
  * @param {string} label Log label.
- * @param {number} [deadlineMs]  How long to keep asking.
+ * @param {{signal?: AbortSignal, deadlineMs?: number}} [budget]
+ *   What bounds the asking. A signal takes precedence and suppresses any
+ *   deadline; with neither, `TX_CANCEL_SEC` is the fallback so a caller
+ *   that supplies nothing cannot ask forever.
  * @returns {Promise<object>} The receipt, from whichever endpoint serves it.
  */
 async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
@@ -798,14 +816,20 @@ async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
     tx.hash,
   );
   const provider = getManagedReadProvider();
-  const until = Date.now() + (budget.deadlineMs ?? config.TX_CANCEL_SEC * 1000);
+  /*- A signal means the caller owns this loop's lifetime, so there is no
+   *  deadline of our own to reach — `null` says that outright rather
+   *  than leaning on a number large enough never to arrive. */
+  const until = budget.signal
+    ? null
+    : Date.now() + (budget.deadlineMs ?? config.TX_CANCEL_SEC * 1000);
   for (;;) {
     /*- Checked before asking as well as after, so a phase that ended
      *  while the previous request was queued costs nothing more. */
     if (budget.signal?.aborted) throw err;
     const receipt = await provider.getTransactionReceipt(tx.hash);
     if (receipt) return receipt;
-    if (budget.signal?.aborted || Date.now() >= until) throw err;
+    if (budget.signal?.aborted) throw err;
+    if (until !== null && Date.now() >= until) throw err;
     /*- ethers' own block cadence, read off the provider rather than
      *  named here, so there is no second opinion about how often a
      *  chain produces a block. The global queue spaces requests but
@@ -939,5 +963,10 @@ module.exports = {
   _resolveGasLimit,
   _estimateWithFailover,
   _isReadFailoverable,
+  /*- Exposed so what bounds a re-ask can be asserted directly. Driving
+   *  it through a whole move cannot do that: the pre-fix defect was a
+   *  race between two deadlines of equal length, so reproducing it that
+   *  way is a coin flip, and a coin flip does not prove a fix. */
+  _receiptAcrossEndpoints,
   _resetForTests,
 };

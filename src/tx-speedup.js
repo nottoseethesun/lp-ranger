@@ -85,9 +85,12 @@ async function _cancelGasPrice(provider, stuckGas) {
  * @param {object} tx        The transaction to wait on.
  * @param {string} label     Log label.
  * @param {Function} [onWaitError]  `(err, tx, label, budget) => Promise<receipt>`.
- * @param {{deadlineMs: number, signal?: AbortSignal}} [budget]
- *   How long the phase will still be interested, and the signal it
- *   raises when it stops being.
+ * @param {{signal?: AbortSignal, deadlineMs?: number}} [budget]
+ *   What bounds the re-ask `onWaitError` performs. A phase passes its
+ *   abort signal and nothing else, because the phase's own clock is
+ *   what ends the wait. The one call with no phase around it — the
+ *   fallback after a speed-up could not be sent — passes a deadline
+ *   instead, which is then the only bound there is.
  * @returns {Promise<object>} The receipt.
  */
 function _tolerantWait(tx, label, onWaitError, budget) {
@@ -143,9 +146,18 @@ function _timeout(ms, sentinel) {
  * gone on to the next phase. `done()` in a `finally` is what makes
  * "this phase is over" mean the phase is actually over.
  *
+ * The budget it hands down carries the signal and NOTHING ELSE. A
+ * re-ask inside a phase is bounded by that phase, and a clock of its own
+ * would be a second bound of the same length deciding the opposite
+ * thing: this phase's timeout means "go on to the next phase", while a
+ * re-ask giving up means "the move failed". Two of them racing over one
+ * silence would let the order the event loop happens to run two
+ * callbacks decide whether a stuck transaction gets sped up or dropped.
+ * The phase owns the clock, so the phase alone says when to stop.
+ *
  * @param {number} ms       How long the phase waits.
  * @param {string} sentinel Message its timeout rejects with.
- * @returns {{timer: Promise, budget: {deadlineMs: number, signal: AbortSignal},
+ * @returns {{timer: Promise, budget: {signal: AbortSignal},
  *   done: () => void}}
  */
 function _phase(ms, sentinel) {
@@ -153,7 +165,7 @@ function _phase(ms, sentinel) {
   const timer = _timeout(ms, sentinel);
   return {
     timer,
-    budget: { deadlineMs: ms, signal: controller.signal },
+    budget: { signal: controller.signal },
     done: () => {
       timer.cancel();
       controller.abort();

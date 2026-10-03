@@ -228,37 +228,39 @@ describe("every re-ask is bounded, on both the compound and rebalance paths", ()
     const signer = makeSpeedUpSigner(async () => {
       throw serverError(PRI);
     });
-    /*- Either outcome serves what this measures.  At the phase boundary
-     *  the wait's own rejection can win the race against the phase
-     *  timer, and the catch in `_waitOrSpeedUp` then rethrows it instead
-     *  of falling through to the speed-up — so the move fails rather
-     *  than being sped up.  That is a real race, recorded in
-     *  `project_speedup_phase_boundary_race`, not something this case is
-     *  about: the asks are collected either way and the asks are the
-     *  claim. Asserting a successful move here would make this case fail
-     *  for someone else's reason. */
-    try {
-      await sendTx.sendTransaction({
-        populate: async () => ({
-          to: "0x" + "22".repeat(20),
-          gasLimit: 300000n,
-        }),
-        signer,
-        label,
-      });
-    } catch (err) {
-      /*- Only the known race is tolerated.  A bare catch here would
-       *  absorb a broken fixture too — a mock that stopped throwing, a
-       *  signer that changed shape — and the case would then fail on
-       *  its re-ask counts, saying nothing about the real cause. */
-      if (!/502 Bad Gateway/.test(err.message)) throw err;
-    }
-    return asks;
+    /*- The move must SUCCEED, and that assertion belongs here rather
+     *  than in a tolerated catch. Every receipt wait in this fixture
+     *  fails, so the only way through is the re-ask — and a refusing
+     *  endpoint must never end the move, only send the question
+     *  elsewhere. The original can never mine, so what confirms is the
+     *  speed-up replacement, which means the phase clock has to be the
+     *  one that ended phase 1.
+     *
+     *  This case previously tolerated a failure, because the re-ask once
+     *  carried a deadline of the phase's own length and could reject
+     *  first — leaving the move abandoned instead of sped up. Nothing
+     *  bounds a re-ask inside a phase now except the phase, so there is
+     *  no second outcome to allow for. */
+    const { receipt } = await sendTx.sendTransaction({
+      populate: async () => ({
+        to: "0x" + "22".repeat(20),
+        gasLimit: 300000n,
+      }),
+      signer,
+      label,
+    });
+    return { asks, receipt };
   }
 
   for (const label of ["[compound] collect", "[rebalance] mint"]) {
     it(`bounds every receipt re-ask during a speed-up: ${label}`, async () => {
-      const asks = await _driveSpeedUp(label);
+      const { asks, receipt } = await _driveSpeedUp(label);
+      /*- A refusing endpoint must cost the move nothing. Every wait here
+       *  was refused, so a confirmed receipt is the proof that the
+       *  refusals were asked around rather than treated as the move
+       *  failing — and since the original never mines, the receipt can
+       *  only be the speed-up's. */
+      assert.ok(receipt, "the move must confirm despite every wait failing");
       assert.ok(
         asks.some((a) => a.hash === "0xhash1"),
         "the never-mined hash must be asked about — it is the one that leaks",
