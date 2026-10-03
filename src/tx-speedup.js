@@ -161,6 +161,35 @@ function _phase(ms, sentinel) {
   };
 }
 
+/**
+ * Keep an abandoned racer's rejection from going unhandled.
+ *
+ * `Promise.race` abandons its losers without stopping them. An
+ * abandoned receipt wait rejects as soon as the phase's `done()` aborts
+ * its signal, because the re-ask rethrows the error that started it —
+ * and by then the race has settled, so nothing is listening.
+ *
+ * That matters more than an untidy warning. The process-wide guard in
+ * `server-error-guard.js` treats an unhandled rejection as fatal and
+ * calls `process.exit(1)` unless its code is `TIMEOUT`,
+ * `NETWORK_ERROR` or `SERVER_ERROR`. A re-ask is entered for every
+ * failover-eligible error, which also includes a refused connection, an
+ * unresolvable host and the 4xx answers that describe an endpoint —
+ * none of them on that list. So the endpoint dying at the moment a
+ * phase ends could stop the bot mid-move, and in phase 3 a loser is not
+ * a coincidence: only one of the two transactions can ever mine.
+ *
+ * Absorbed rather than logged, because the rejection carries nothing
+ * the phase has not already acted on by moving past it.
+ *
+ * @param {Promise} p  A racer whose loss is expected.
+ * @returns {Promise}  The same promise, for the race to use.
+ */
+function _settled(p) {
+  p.catch(() => {});
+  return p;
+}
+
 /** Coerce whatever Promise.race returned into a TransactionReceipt. */
 function _extractReceipt(result) {
   if (result && result._type === "TransactionReceipt") return result;
@@ -320,7 +349,7 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   const speedupPhase = _phase(speedupMs, "_SPEEDUP");
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label, onWaitError, speedupPhase.budget),
+      _settled(_tolerantWait(tx, label, onWaitError, speedupPhase.budget)),
       speedupPhase.timer,
     ]);
     return _extractReceipt(receipt);
@@ -362,8 +391,10 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   const cancelPhase = _phase(cancelIn, "_CANCEL");
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label, onWaitError, cancelPhase.budget),
-      _tolerantWait(replacement, label, onWaitError, cancelPhase.budget),
+      _settled(_tolerantWait(tx, label, onWaitError, cancelPhase.budget)),
+      _settled(
+        _tolerantWait(replacement, label, onWaitError, cancelPhase.budget),
+      ),
       cancelPhase.timer,
     ]);
     return _extractReceipt(receipt);

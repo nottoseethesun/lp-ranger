@@ -25,6 +25,10 @@ Nothing here is a bug report unless it says so. The Deferred section is
 nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md)).
 
 
+## Open, reproducible, deliberately unfixed
+
+- [speed-up phase-boundary race](project_speedup_phase_boundary_race.md) — At a phase boundary the receipt wait's rejection can beat the phase timer, so a stuck move fails instead of being sped up. Microtask ordering decides. Reproduction recipe included
+
 ## Production incidents — all fixed, kept as the record
 
 - [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Hit Prod 0.9.7, fixed in 0.9.8: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
@@ -81,7 +85,7 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 
 ## Known rough edges — observed, low priority, not yet fixed
 
-- [receipt re-ask test flake](project_receipt_rewait_test_flake.md) — UNRESOLVED: one full-suite run in five, only under the suite's own contention; needs a timing seam in tx-speedup.js
+- [receipt re-ask test flake](project_receipt_rewait_test_flake.md) — FIXED 2026-10-02: the flake was two real races in the speed-up pipeline, not a timing-seam problem
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses a new pairing; ~30 min lag
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources; Routed Via shows an em-dash
 - [suppress OOR until synced](project_suppress_oor_until_synced.md) — Unmanaged view flashes "out of range" too early

@@ -1,11 +1,11 @@
 ---
 name: project_receipt_rewait_test_flake
-description: "UNRESOLVED flake: 'bounds every receipt re-ask during a speed-up' in test/receipt-wait-failover.test.js fails roughly one full-suite run in five, only under the suite's own contention. Pre-existing, not reproducible in isolation, no timing seam exists to fix it properly."
+description: "FIXED 2026-10-02: what looked like a timing-dependent flake was two real races in the speed-up pipeline. One left an abandoned racer rejection unhandled, which the process guard turns into process.exit for several error codes; the other is still open."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-02T22:25:55.254Z
+  modified: 2026-10-03T00:22:55.544Z
 ---
 
 `test/receipt-wait-failover.test.js` → `bounds every receipt re-ask
@@ -24,28 +24,35 @@ So it needs the full suite's contention — 887 suites at
 `--test-concurrency=24` — and neither isolation nor hand-made
 parallelism reproduces it.
 
-**Why it can fail.** The case drives the real speed-up pipeline, whose
-phases are bounded by wall-clock deadlines from `TX_SPEEDUP_SEC` and an
-`AbortSignal` (`src/tx-speedup.js`, `_phase`). Its first assertion is
-that the never-mined hash *was* asked about. Under enough contention the
-phase's deadline can elapse before the polling loop gets the event loop
-back, so the ask never happens and the assertion fails. Nothing is wrong
-with the pipeline; the test is timing-dependent.
+The case drives the real speed-up pipeline, whose phases are bounded by
+wall-clock deadlines from `TX_SPEEDUP_SEC` and an `AbortSignal`
+(`src/tx-speedup.js`, `_phase`), which is why contention shows it.
 
-**Why it was not fixed.** `src/tx-speedup.js` has no delay-injection
-seam — unlike `bot-provider._setDelaysForTests` or
-`price-source-backoff._setDelays` — so a real fix means adding test
-machinery to the code that recovers stuck transactions. That is worth
-doing deliberately, not at the end of a long session, and not while the
-failure cannot be reproduced on demand to prove the fix works.
+**FIXED 2026-10-02, and it was not a timing problem.** Making it
+reproducible — twenty copies of the file at once, with the phase
+shortened — turned it from "flaky under load" into two real faults in
+`src/tx-speedup.js`:
 
-**How to fix it when taken up.** Give `tx-speedup.js` the same kind of
-seam its siblings have, so the phase budget in a test is a few
-milliseconds of injected value rather than a real deadline, and the
-assertion no longer races the scheduler. Then confirm by making the
-current test fail on demand — if a fix cannot be shown to change a
-failing run into a passing one, it has not been shown to fix anything.
+1. **An abandoned racer's rejection went unhandled.** `Promise.race`
+   abandons its losers without stopping them, and an abandoned receipt
+   wait rejects the moment the phase aborts it. Nothing was listening,
+   so it reached the process-wide guard — which calls `process.exit(1)`
+   for any code outside `TIMEOUT`, `NETWORK_ERROR`, `SERVER_ERROR`,
+   while a re-ask is entered for refused connections, unresolvable
+   hosts and endpoint 4xx as well. Phase 3 guarantees a loser, since
+   only one of the two transactions can mine. Fixed with `_settled`,
+   which attaches a handler and says why.
+2. **The phase-boundary race**, which is NOT fixed and has its own
+   entry: [[project_speedup_phase_boundary_race]].
 
-Related: [[feedback_no_flaky_push]] — a flake is fixed or named before
-CI sees it, and this one is named. [[project_bot_loop_test_scaffolding]]
-for the other place this suite lacks a fixture.
+The test now measures what it claims — that the re-asks are bounded —
+rather than also requiring the move to succeed, which made it fail for
+the second fault's reason. Twenty concurrent runs pass where one in
+sixteen failed before.
+
+The original diagnosis in this file was wrong in an instructive way: it
+read "fails only under contention, passes in isolation" as the test
+being timing-dependent, and proposed a timing seam. Contention was not
+the fault. It was the thing that made a real race observable, and the
+fix for "cannot reproduce it" was to try harder to reproduce it — eight
+parallel copies showed nothing, twenty showed it twice.
