@@ -850,14 +850,18 @@ async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
  *
  * The re-ask is wired in here rather than passed by the caller, so
  * there is no version of this call that lacks it. A bare `tx.wait()`
- * asks only the endpoint that broadcast the transaction and never
- * learns that selection has moved on; that is how a compound died on a
- * 502 from an endpoint the failover had already left, on Production
- * 2026-09-30, while the fee collection it was waiting for was on chain.
+ * polls only the endpoint the transaction object was built with and
+ * never asks which endpoint is current, so it cannot follow a failover:
+ * the endpoint it is waiting on can be one selection has already left,
+ * and its refusal says nothing about whether the transaction is on
+ * chain. A caller that received that refusal would have to tell it
+ * apart from a transaction that genuinely failed, which is the
+ * distinction this function exists to make unnecessary.
  *
- * What comes back is a receipt, `sentinel` when the wait ran out, or an
- * error describing the transaction itself. An unreachable endpoint is
- * none of those — it is retried until `ms` elapses.
+ * What comes back is therefore a receipt, `sentinel` when the wait ran
+ * out, or an error describing the transaction itself — a revert, which
+ * every endpoint would report alike. An unreachable endpoint is none of
+ * those; it is retried until `ms` elapses.
  *
  * @param {object} o
  * @param {object} o.tx        The broadcast transaction.

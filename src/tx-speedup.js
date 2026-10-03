@@ -68,19 +68,19 @@ async function _cancelGasPrice(provider, stuckGas) {
  * TRANSACTION_REPLACED event and surviving the endpoint going down.
  *
  * `tx.wait()` polls the provider the transaction object was built with
- * and never asks which endpoint is current, so an endpoint that fails
- * mid-wait took the whole move down with it — including moves whose
- * transaction had already been mined. On Production 2026-09-30 the
- * failover moved off a failing endpoint three seconds before a compound
- * died on a 502 from the endpoint it had just left; the fee collection
- * was on chain, and the fees were stranded in the wallet.
+ * and never asks which endpoint is current, so the endpoint it waits on
+ * can be one selection has since left. Its refusal says nothing about
+ * whether the transaction is on chain, and a wait that surfaced that
+ * refusal as the move's own failure would abandon moves already mined —
+ * leaving funds moved and nothing recorded, because gas and amounts are
+ * written on the success path.
  *
- * `onWaitError` is how that is repaired without this module learning
- * about endpoints. It is handed the error and decides: re-throw when
- * the transaction is what failed, or return a receipt obtained some
- * other way when the endpoint is. It is optional so that a caller with
- * no way to reach another endpoint still gets the plain `tx.wait()`
- * behaviour; the one production caller always supplies it.
+ * `onWaitError` is how a refusal is answered without this module
+ * learning anything about endpoints. It is handed the error and
+ * decides: re-throw when the TRANSACTION is what failed, or return a
+ * receipt obtained some other way when the endpoint is. It is optional
+ * so that a caller with no way to reach another endpoint still gets the
+ * plain `tx.wait()` behaviour; both production callers supply it.
  *
  * @param {object} tx        The transaction to wait on.
  * @param {string} label     Log label.

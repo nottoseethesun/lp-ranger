@@ -12,7 +12,7 @@ getting code from a feature branch into `main`. The remote must
 | ---- | ---- | ---------------- |
 | **1** | Fix on feature branch | Never commit directly to `main` |
 | **2** | Local check on feature branch | `npm run check` (lint + tests + coverage + security) |
-| **3** | Local merge-to-main check | `git checkout main && git merge <branch>` then `npm run check` — verifies the merged result passes locally before touching the remote |
+| **3** | Local merge-to-main check — **ASK FIRST** | Requires the user's explicit say-so. `git checkout main && git merge <branch>` then `npm run check` — verifies the merged result passes locally before touching the remote |
 | **4** | Undo local merge | `git reset --hard origin/main` — main stays clean locally |
 | **5** | Push branch to GitHub | `git push -u origin <branch>` — remote CI runs automatically |
 | **6** | PR + merge on GitHub | `gh pr create` then `gh pr checks <number> --watch` then `gh pr merge --merge` — never squash, never delete branch |
@@ -25,6 +25,16 @@ getting code from a feature branch into `main`. The remote must
 - **Steps 3–4** catch merge conflicts and integration failures locally,
   then undo the local merge so main stays at `origin/main`. The remote
   CI in step 5 should never fail because step 3 already verified it.
+- **Step 3 is the one step that needs permission every time.** It is the
+  only step that leaves the feature branch, and
+  [CLAUDE-BEST-PRACTICES.md § Git & CI](CLAUDE-BEST-PRACTICES.md#git--ci)
+  forbids checking out `main` until the user says so. The two rules are
+  one rule: step 3 is available, and it is the user's call whether to
+  run it. Ask, and say plainly that step 4 puts `main` back — from
+  outside, `git checkout main && git merge` is indistinguishable from
+  merging, which is why asking is not a formality. If the answer is no,
+  skip to step 5; the remote CI then carries the risk step 3 would have
+  retired.
 - **Step 6** merges via PR on GitHub (not a direct push) so that
   branch protection rules — 6 required status checks — gate the merge.
 - The principle: the remote is a shared resource. All breakage stays

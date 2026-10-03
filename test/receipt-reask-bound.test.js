@@ -34,6 +34,8 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const sendTx = require("../src/send-transaction");
 const config = require("../src/config");
@@ -341,8 +343,6 @@ describe("waitForReceipt — the only receipt wait outside sendTransaction", () 
      *  fallback swapped the same balance a second time. Behavioural
      *  coverage cannot catch that returning: a future edit could go back
      *  to a bare wait and every case above would still pass. */
-    const fs = require("node:fs");
-    const path = require("node:path");
     const src = fs
       .readFileSync(
         path.join(__dirname, "..", "src", "rebalancer-aggregator.js"),

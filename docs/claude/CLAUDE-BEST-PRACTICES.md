@@ -124,4 +124,4 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 ## Git & CI
 
 - **CI before merge** — always push the branch to GitHub first and wait for CI (GitHub Actions) to pass before merging to main. Never merge to main with failing or untested CI.
-- **Stay on the feature branch** — never checkout main or merge until the user explicitly says to. After CI passes, inform the user and wait. The user must manually test before giving the merge order.
+- **Stay on the feature branch** — never checkout main or merge until the user explicitly says to. After CI passes, inform the user and wait. The user must manually test before giving the merge order. This governs **step 3** of [CLAUDE-CI.md](CLAUDE-CI.md#the-eight-steps), the local merge-to-main check: that step exists and is useful, but it leaves the feature branch, so it is offered and never assumed. "Push the branch" is not permission for it.

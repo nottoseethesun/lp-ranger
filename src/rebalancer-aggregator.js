@@ -591,17 +591,18 @@ async function _sendWithRetry(
       String(tx.maxPriorityFeePerGas ?? "—"),
     );
     try {
-      /*- Through the endpoint gateway, not a bare `tx.wait()`. A bare
-       *  wait asks only the endpoint that broadcast the swap and cannot
-       *  follow a failover, so an endpoint going quiet rejected with its
-       *  own error — which is neither `_AGG_TIMEOUT` nor a revert, so
-       *  the catch below rethrew it. That skipped the cancel, left the
-       *  nonce held by a swap still in the mempool, and reached
-       *  `swapIfNeeded` unflagged, where an unflagged error means "no
-       *  swap happened" and the router fallback swaps the same balance
-       *  again. `waitForReceipt` keeps asking other endpoints instead,
-       *  so an unreachable endpoint is no longer one of the outcomes and
-       *  only the two this catch already handles can arrive. */
+      /*- Through the endpoint gateway rather than a bare `tx.wait()`,
+       *  which polls only the endpoint that broadcast the swap and
+       *  cannot follow a failover. That matters here more than anywhere
+       *  else in the app, because of what the catch below can do with an
+       *  error it does not recognise: it rethrows, which skips the
+       *  cancel and leaves the error unflagged, and `swapIfNeeded` reads
+       *  an unflagged error as "no swap happened" and lets the router
+       *  swap the same balance a second time. So an unreachable endpoint
+       *  must not be one of the outcomes, and through the gateway it is
+       *  not — the question moves to another endpoint, leaving only the
+       *  two things this catch does recognise: its own deadline, and a
+       *  revert, which is an answer about the swap itself. */
       const r = await sendTx.waitForReceipt({
         tx,
         label: "[aggregator] swap " + fromSym + "->" + toSym,
