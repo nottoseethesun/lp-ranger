@@ -61,6 +61,7 @@ the speed-up phase-boundary race belonged to.
 ## Why the app is the way it is — check before changing these
 
 - [consolidate RPC retry](project_consolidate_rpc_retry.md) — DONE 2026-10-02: one retry loop, no reader keeps its own endpoint list. Carries the three-grep sweep that tells you whether a new reader reintroduced one
+- [rpc gateway bypass audit](project_rpc_gateway_bypass_audit.md) — CLOSED 2026-10-03: every provider in `src/` originates at the gateway, traced to ground. **Audit origins, not the forty functions taking a provider parameter** — two earlier sweeps missed the aggregator bypass because it constructed nothing and read no config. Carries the four-grep recipe and the two latent non-findings
 - [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
 - [single nonce manager](project_single_nonce_manager.md) — One NonceManager per wallet, never per-position
 - [swap serialized](project_swap_serialized.md) — The swap path is deliberately serialized
