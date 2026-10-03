@@ -194,7 +194,6 @@ describe("_ensureHodlPoolAddress", () => {
       { token0: "0xA", token1: "0xB", fee: 3000 },
       "epoch-key",
       {},
-      {},
     );
     assert.strictEqual(result, "0xCACHED");
     assert.strictEqual(_cachedHodlWrites.length, 0);
@@ -210,7 +209,6 @@ describe("_ensureHodlPoolAddress", () => {
       botState,
       { token0: "0xA", token1: "0xB", fee: 3000 },
       "epoch-key-resolve",
-      {},
       {},
     );
     assert.strictEqual(result, "0xPOOL");
@@ -232,7 +230,6 @@ describe("_ensureHodlPoolAddress", () => {
       { token0: "0xA", token1: "0xB", fee: 3000 },
       "epoch-key-fail",
       {},
-      {},
     );
     assert.strictEqual(result, "");
     assert.strictEqual(_cachedHodlWrites.length, 0);
@@ -245,7 +242,6 @@ describe("_ensureHodlPoolAddress", () => {
       botState,
       { token0: "0xA", token1: "0xB", fee: 3000 },
       null,
-      {},
       {},
     );
     assert.strictEqual(result, "0xPOOL");

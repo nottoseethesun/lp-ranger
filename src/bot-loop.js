@@ -271,7 +271,6 @@ async function startBotLoop(opts) {
   );
 
   const pnlTracker = await _tryInitPnlTracker(
-    provider,
     ethersLib,
     position,
     botState,

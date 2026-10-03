@@ -248,7 +248,6 @@ function _sumGas(...steps) {
  * outside the range.  Skip the adjustment to preserve offset intent.
  */
 async function _adjustRangeAfterSwap(
-  provider,
   ethersLib,
   position,
   factoryAddress,
@@ -436,7 +435,6 @@ function _buildRebalanceResult(
  * Skipped when offset ≠ 50 (one-sided positions are intentional).
  */
 async function _preMintTickCheck(
-  provider,
   ethersLib,
   position,
   factoryAddress,

@@ -246,8 +246,12 @@ describe("every re-ask is bounded, on both the compound and rebalance paths", ()
         signer,
         label,
       });
-    } catch {
-      /*- Counted above, in `asks`. */
+    } catch (err) {
+      /*- Only the known race is tolerated.  A bare catch here would
+       *  absorb a broken fixture too — a mock that stopped throwing, a
+       *  signer that changed shape — and the case would then fail on
+       *  its re-ask counts, saying nothing about the real cause. */
+      if (!/502 Bad Gateway/.test(err.message)) throw err;
     }
     return asks;
   }

@@ -191,7 +191,6 @@ describe("bot-loop _tryInitPnlTracker", () => {
     _mockPrices = { price0: 0, price1: 0 };
     const result = await _tryInitPnlTracker(
       {},
-      {},
       {
         token0: "0xA",
         token1: "0xB",
@@ -219,7 +218,6 @@ describe("bot-loop _tryInitPnlTracker", () => {
     _mockPosValue = 100;
     const patches = [];
     const result = await _tryInitPnlTracker(
-      {},
       {},
       {
         token0: "0xA",
@@ -272,7 +270,6 @@ describe("bot-loop _tryInitPnlTracker", () => {
         "fixture must read zero outside the override, or it proves nothing",
       );
       const result = await _tryInitPnlTracker(
-        {},
         {},
         {
           token0: "0xA",

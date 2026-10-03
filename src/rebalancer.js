@@ -392,7 +392,6 @@ async function executeRebalance(signer, ethersLib, opts) {
     //     outside the range computed in step 4.  Shift if needed.
     //     Skipped when offset ≠ 50 (tick may be intentionally at edge).
     await _adjustRangeAfterSwap(
-      provider,
       ethersLib,
       position,
       factoryAddress,
@@ -403,7 +402,6 @@ async function executeRebalance(signer, ethersLib, opts) {
 
     // 6c. Final tick check — skipped when offset ≠ 50 (one-sided OK).
     const volatileResult = await _preMintTickCheck(
-      provider,
       ethersLib,
       position,
       factoryAddress,
