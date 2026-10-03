@@ -32,7 +32,8 @@
     "prelint:fix": "npm run clean:reports",
     "lint:fix": "eslint src/ test/ scripts/ util/ server.js bot.js public/dashboard-*.js eslint-rules/ --fix && stylelint public/*.css --fix && html-validate public/*.html && node scripts/markdownlint.js --fix && prettier --write \"**/*.json\" && prettier --write \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml",
     "preaudit:deps": "npm run clean:reports",
-    "audit:deps": "npm audit --audit-level=high",
+    "audit:deps": "npm audit --audit-level=high --omit=dev",
+    "audit:deps:all": "npm audit --audit-level=high",
     "preaudit:security": "npm run clean:reports",
     "audit:security": "node scripts/audit.js --security",
     "preaudit:secrets": "npm run clean:reports",
@@ -105,7 +106,8 @@
     "@uniswap/v3-staker": "1.0.2",
     "@uniswap/swap-router-contracts": {
       "hardhat-watcher": {
-        "hardhat": "npm:empty-npm-package@1.0.0"
+        "hardhat": "npm:empty-npm-package@1.0.0",
+        "chokidar": "npm:empty-npm-package@1.0.0"
       }
     },
     "adm-zip": "^0.6.0",
