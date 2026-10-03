@@ -152,7 +152,7 @@ describe("a failover moves the pool-state read", () => {
     sendTx.failoverToNextRPC();
     assert.equal(sendTx.getCurrentRPCUrl(), URLS[1], "selection moved");
 
-    await getPoolState(null, lib, POOL_OPTS);
+    await getPoolState(lib, POOL_OPTS);
 
     assert.equal(
       asked[0],
@@ -183,7 +183,7 @@ describe("a failover moves the pool-state read", () => {
     condemn(URLS[0]);
     sendTx.failoverToNextRPC();
 
-    return getPoolState(null, lib, POOL_OPTS).then(
+    return getPoolState(lib, POOL_OPTS).then(
       () => assert.fail("every endpoint refused — this must reject"),
       (err) => {
         assert.equal(err.constructor.name, "PoolStateUnavailableError");
@@ -210,7 +210,7 @@ describe("a failover moves the pool-state read", () => {
     condemn(URLS[0]);
     assert.equal(sendTx.getCurrentRPCUrl(), URLS[0], "starts at the head");
 
-    await getPoolState(null, lib, POOL_OPTS);
+    await getPoolState(lib, POOL_OPTS);
 
     assert.equal(asked[0], URLS[0], "read the endpoint selection held");
     assert.equal(
@@ -226,7 +226,7 @@ describe("a failover moves the pool-state read", () => {
     const { lib, asked } = poolStateEthers();
     sendTx.init({ urls: URLS }, lib);
 
-    await getPoolState(null, lib, POOL_OPTS);
+    await getPoolState(lib, POOL_OPTS);
 
     assert.equal(asked[0], URLS[0]);
   });

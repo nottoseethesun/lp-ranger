@@ -260,7 +260,7 @@ async function _tryInitPnlTracker(
       _fetchTokenPrices(position.token0, position.token1),
     );
     if (price0 > 0 || price1 > 0) {
-      const ps = await getPoolState(provider, ethersLib, {
+      const ps = await getPoolState(ethersLib, {
         factoryAddress: config.FACTORY,
         token0: position.token0,
         token1: position.token1,

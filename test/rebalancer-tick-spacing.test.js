@@ -26,12 +26,12 @@ const {
 describe("getPoolState — tickSpacing from factory", () => {
   it("returns tickSpacing fetched from factory.feeAmountTickSpacing", async () => {
     // poolArgs.fee = 3000 → spacing 60 from the default mock
-    const r = await getPoolState({}, buildMockEthersLib(), poolArgs);
+    const r = await getPoolState(buildMockEthersLib(), poolArgs);
     assert.strictEqual(r.tickSpacing, 60);
   });
 
   it("returns non-standard 9mm spacing 400 for fee=20000", async () => {
-    const r = await getPoolState({}, buildMockEthersLib(), {
+    const r = await getPoolState(buildMockEthersLib(), {
       ...poolArgs,
       fee: 20000,
     });
@@ -45,8 +45,7 @@ describe("getPoolState — tickSpacing from factory", () => {
       feeAmountTickSpacing: async () => 0n,
     };
     await assert.rejects(
-      () =>
-        getPoolState({}, buildMockEthersLib({ contractDispatch: d }), poolArgs),
+      () => getPoolState(buildMockEthersLib({ contractDispatch: d }), poolArgs),
       /tickSpacing|spacing/i,
     );
   });

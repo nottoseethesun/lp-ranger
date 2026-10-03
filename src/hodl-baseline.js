@@ -109,7 +109,7 @@ async function _readMintedAmounts(
           p.name === "IncreaseLiquidity" &&
           BigInt(p.args.tokenId) === BigInt(position.tokenId)
         ) {
-          const ps = await getPoolState(provider, ethersLib, {
+          const ps = await getPoolState(ethersLib, {
             factoryAddress: config.FACTORY,
             token0: position.token0,
             token1: position.token1,

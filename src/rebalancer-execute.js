@@ -257,7 +257,7 @@ async function _adjustRangeAfterSwap(
   offset,
 ) {
   if (offset !== undefined && offset !== 50) return;
-  const ps = await getPoolState(provider, ethersLib, {
+  const ps = await getPoolState(ethersLib, {
     factoryAddress,
     token0: position.token0,
     token1: position.token1,
@@ -444,7 +444,7 @@ async function _preMintTickCheck(
   offset,
 ) {
   if (offset !== 50) return null;
-  const ps = await getPoolState(provider, ethersLib, {
+  const ps = await getPoolState(ethersLib, {
     factoryAddress,
     token0: position.token0,
     token1: position.token1,

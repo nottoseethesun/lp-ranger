@@ -256,7 +256,7 @@ async function executeRebalance(signer, ethersLib, opts) {
 
     // 1. Get current pool state
     log.info("[rebalance] Step 1: getPoolState…");
-    const poolState = await getPoolState(provider, ethersLib, {
+    const poolState = await getPoolState(ethersLib, {
       factoryAddress,
       token0: position.token0,
       token1: position.token1,

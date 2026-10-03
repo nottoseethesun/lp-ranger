@@ -51,7 +51,7 @@ describe("Constants", () => {
 // ── getPoolState ─────────────────────────────────────────────────────────────
 describe("getPoolState", () => {
   it("returns correct price, tick, decimals, poolAddress", async () => {
-    const r = await getPoolState({}, buildMockEthersLib(), poolArgs);
+    const r = await getPoolState(buildMockEthersLib(), poolArgs);
     assert.strictEqual(r.poolAddress, ADDR.pool);
     assert.strictEqual(r.decimals0, 18);
     assert.strictEqual(r.decimals1, 18);
@@ -59,7 +59,7 @@ describe("getPoolState", () => {
     assert.strictEqual(typeof r.tick, "number");
   });
   it("returns price close to 1.0 for sqrtPriceX96=Q96 with equal decimals", async () => {
-    const r = await getPoolState({}, buildMockEthersLib(), poolArgs);
+    const r = await getPoolState(buildMockEthersLib(), poolArgs);
     assert.ok(Math.abs(r.price - 1.0) < 1e-9);
   });
   it("throws when pool is ZeroAddress", async () => {
@@ -71,8 +71,7 @@ describe("getPoolState", () => {
      *  on the wrap-type + assert the underlying poolAddress reason is
      *  preserved in the message chain. */
     await assert.rejects(
-      () =>
-        getPoolState({}, buildMockEthersLib({ contractDispatch: d }), poolArgs),
+      () => getPoolState(buildMockEthersLib({ contractDispatch: d }), poolArgs),
       (err) =>
         err instanceof PoolStateUnavailableError &&
         /poolAddress/.test(err.message),
@@ -84,7 +83,6 @@ describe("getPoolState", () => {
       slot0: async () => ({ sqrtPriceX96: Q96, tick: 42n }),
     };
     const r = await getPoolState(
-      {},
       buildMockEthersLib({ contractDispatch: d }),
       poolArgs,
     );
@@ -94,7 +92,6 @@ describe("getPoolState", () => {
     const d = defaultDispatch();
     d[ADDR.token0] = { ...d[ADDR.token0], decimals: async () => 6n };
     const r = await getPoolState(
-      {},
       buildMockEthersLib({ contractDispatch: d }),
       poolArgs,
     );

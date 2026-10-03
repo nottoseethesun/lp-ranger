@@ -586,7 +586,7 @@ async function pollCycle(deps) {
   }
   let poolState;
   try {
-    poolState = await getPoolState(provider, ethersLib, {
+    poolState = await getPoolState(ethersLib, {
       factoryAddress: config.FACTORY,
       token0: position.token0,
       token1: position.token1,

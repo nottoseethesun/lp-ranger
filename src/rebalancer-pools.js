@@ -321,16 +321,12 @@ function _setRetryDelayForTests(ms) {
  * the right one: exempting the bot's most frequent read would be the
  * hole its rate limit escapes through.
  *
- * @param {object} _passedProvider  UNUSED — kept so the six existing
- *   call sites (`bot-loop-detect.js`, `bot-cycle.js`, `rebalancer.js`,
- *   `position-details.js`, `bot-hodl-scan.js`, `hodl-baseline.js`) need
- *   no change.  The endpoint comes from `sendTx`.
  * @param {object} ethersLib    ethers module.
  * @param {object} opts         Same shape as `_getPoolStateOnce`.
  * @returns {Promise<object>}   Validated pool state.
  * @throws {PoolStateUnavailableError}  All RPCs exhausted.
  */
-async function getPoolState(_passedProvider, ethersLib, opts) {
+async function getPoolState(ethersLib, opts) {
   return retryRead({
     tag: "pool-state",
     label: "getPoolState",

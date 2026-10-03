@@ -101,7 +101,7 @@ async function fetchPoolTicks(prov, ethersLib, nftPositions) {
     [...poolSet].map(async (k) => {
       try {
         const [t0, t1, fee] = k.split("-");
-        const ps = await getPoolState(prov, ethersLib, {
+        const ps = await getPoolState(ethersLib, {
           factoryAddress: config.FACTORY,
           token0: t0,
           token1: t1,

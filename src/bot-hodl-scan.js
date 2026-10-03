@@ -37,7 +37,7 @@ async function computeAndCacheHodl(
   const cachedFresh = epochKey
     ? _epochCache.getCachedFreshDeposits(epochKey)
     : null;
-  const ps = await getPoolState(prov, ethers, {
+  const ps = await getPoolState(ethers, {
     factoryAddress: config.FACTORY,
     token0: position.token0,
     token1: position.token1,
@@ -114,7 +114,7 @@ async function _ensureHodlPoolAddress(
   const cached = botState.lifetimeHodlAmounts?.poolAddress;
   if (cached) return cached;
   try {
-    const ps = await getPoolState(provider, ethers, {
+    const ps = await getPoolState(ethers, {
       factoryAddress: config.FACTORY,
       token0: position.token0,
       token1: position.token1,

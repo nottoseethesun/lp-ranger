@@ -243,7 +243,7 @@ test("getPoolState exhausts every RPC then throws PoolStateUnavailableError", as
   await withMockRpc(lib, () =>
     assert.rejects(
       () =>
-        getPoolState(undefined, lib, {
+        getPoolState(lib, {
           factoryAddress: FACTORY,
           token0: TOKEN0,
           token1: TOKEN1,
@@ -278,7 +278,7 @@ test("getPoolState exhausts every RPC then throws PoolStateUnavailableError", as
 test("getPoolState succeeds on first try when the RPC returns valid data", async () => {
   const { lib } = makeMockEthers();
   const ps = await withMockRpc(lib, () =>
-    getPoolState(undefined, lib, {
+    getPoolState(lib, {
       factoryAddress: FACTORY,
       token0: TOKEN0,
       token1: TOKEN1,
@@ -308,7 +308,7 @@ test("getPoolState reports what it sees to the decider", async () => {
     let endedOn = null;
     await withMockRpc(lib, async () => {
       await assert.rejects(() =>
-        getPoolState(null, lib, {
+        getPoolState(lib, {
           factoryAddress: FACTORY,
           token0: TOKEN0,
           token1: TOKEN1,

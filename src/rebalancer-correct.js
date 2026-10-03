@@ -124,7 +124,7 @@ function _initAccumulator() {
  * to continue to the next iteration.
  */
 async function _runIteration(signer, ethersLib, ctx, acc, i) {
-  const ps = await getPoolState(ctx.provider, ethersLib, {
+  const ps = await getPoolState(ethersLib, {
     factoryAddress: ctx.factoryAddress,
     token0: ctx.position.token0,
     token1: ctx.position.token1,
