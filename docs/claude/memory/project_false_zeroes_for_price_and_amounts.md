@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T03:44:44.344Z
+  modified: 2026-10-04T05:41:03.187Z
 ---
 
 **"false-zeroes-for-price-and-amounts"** — the user's name for this
@@ -41,10 +41,13 @@ value.
    the mint is an NFT's largest charge, so gas read low and profit read
    high. One unreadable receipt now makes the whole NFT total unknown and
    nothing is saved.
-3. [[project_initial_residual_zero_price_persisted]] — the two tokens'
+3. **FIXED 2026-10-04** —
+   [[project_initial_residual_zero_price_persisted]] — the two tokens'
    prices on the day of the first deposit, used to value the leftover
    that deposit did not consume. Zeroed, so the subtraction that keeps
-   that leftover out of lifetime profit removes nothing.
+   that leftover out of lifetime profit removed nothing. Fixed differently
+   from the other two, by operator decision: the bad write stays, and
+   Reload Position and Re-scan Prices re-read and overwrite it.
 
 A fourth zero in this family is **deliberately left alone**: the
 baseline's own dollar value, when the amounts read fine and only the price

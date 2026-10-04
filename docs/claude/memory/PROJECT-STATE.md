@@ -34,7 +34,7 @@ the speed-up phase-boundary race belonged to.
 
 - [HODL baseline zeroed by an rpc failure](project_hodl_baseline_zero_from_rpc_failure.md) — **FIXED 2026-10-03.** Was: a failed mint read recorded as "opened with zero of both tokens", looking complete so never retried, which silently disabled the Impermanent Loss Guard and let a later retry overwrite good amounts. Trigger was the token-decimals read, not the receipt. Kept as the record of why zero is never a substitute for "unknown" — and of a harm this file overclaimed before tracing it to the screen
 - [per-NFT gas zeroed by an rpc failure](project_nft_gas_zero_from_rpc_failure.md) — **FIXED 2026-10-04.** Was: a refused receipt read becoming "cost no gas", persisted and then a cache hit forever, understating the mint — an NFT's largest charge. One unreadable receipt now makes the whole NFT total unknown and nothing is saved
-- [initial residual priced at zero](project_initial_residual_zero_price_persisted.md) — A failed historical-price lookup is persisted as $0 and never re-fetched. The subtraction that excludes the initial-mint leftover from Lifetime Net P&L then removes nothing. Its sibling half of the same function aborts without persisting, which is the shape all three want
+- [initial residual priced at zero](project_initial_residual_zero_price_persisted.md) — **FIXED 2026-10-04.** Was: a failed historical-price lookup persisted as $0 and never re-fetched, so the subtraction excluding the initial-mint leftover from Lifetime Net P&L removed nothing. Reload Position and Re-scan Prices now re-read and overwrite it; the bad write stays by operator decision. Carries why a clear-to-rebuild was reverted in favour of an overwrite
 
 ## Production incidents — all fixed, kept as the record
 

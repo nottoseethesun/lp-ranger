@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T04:47:10.756Z
+  modified: 2026-10-04T05:41:26.536Z
 ---
 
 Found 2026-10-03 auditing for the same conflation as
@@ -111,10 +111,16 @@ the gas was unknown, which showed **$0 gas** — the figure the fix exists
 to prevent — and **$0 compounded fees**, a figure read correctly from the
 event logs and nothing to do with gas. Both now behave: the compounded
 amounts are computed before the gas is judged and handed back regardless,
-and the gas figure is left unset rather than zeroed. Unset is what the
-dashboard already expects, falling back to the running epoch's gas — a
-behaviour `applyCurrentNftFigures` had described in a comment without ever
-doing.
+and the gas figure is left unset rather than zeroed.
+
+**What "unset" actually gets you, stated precisely**, because the commit
+message overstated it. The dashboard shows gas in two places. One checks
+for the figure's absence and falls back to the running epoch's gas, which
+is the behaviour `applyCurrentNftFigures` had described in a comment
+without ever doing. The other coerces an absent figure to zero and renders
+$0. So not saving a wrong number is the win; a missing number still reads
+as $0 in one of the two displays, and that coercion is pre-existing and
+untouched.
 
 The generalisation, since every issue in this group is about choosing not
 to write something: **ask what withholding costs, not only whether the new

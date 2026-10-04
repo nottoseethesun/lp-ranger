@@ -204,6 +204,7 @@ async function _fetchInitialPrices({
   token0,
   token1,
   scopeKey,
+  refresh,
 }) {
   try {
     const { price0, price1 } = await fetchHistoricalPriceGecko(
@@ -214,6 +215,11 @@ async function _fetchInitialPrices({
         token0Address: token0,
         token1Address: token1,
         blockNumber: Number(firstMintBlock),
+        /*- A historical price never changes, so it is cached with no
+         *  expiry — which also means a price that came back wrong stays
+         *  wrong until something reads past it. This is what reads past
+         *  it, and only when the operator has asked for a re-value. */
+        refresh: refresh === true,
       },
     );
     return {
@@ -251,6 +257,8 @@ async function _fetchInitialPrices({
  * @param {string} args.poolAddress         - Pool address active at first mint (for OHLCV).
  * @param {Object} args.provider            - ethers JsonRpcProvider.
  * @param {Object} args.ethersLib           - ethers module reference.
+ * @param {boolean} [args.refresh]          - Read again and overwrite,
+ *   rather than returning what is stored. See the paragraph below.
  * @returns {Promise<InitialResidualData|null>}
  */
 async function ensureInitialResidualData(args) {
@@ -276,6 +284,7 @@ async function ensureInitialResidualData(args) {
     poolAddress,
     provider,
     ethersLib,
+    refresh,
   } = args;
 
   const scopeKey = liquidityPairScopeKey({
@@ -287,7 +296,19 @@ async function ensureInitialResidualData(args) {
     fee,
   });
 
-  const cached = loadInitialResidualData(scopeKey);
+  /*- Stored once and reused ever after, because the leftover and the day
+   *  it was left on never change. The price it was valued at can still be
+   *  wrong — or missing, which is stored as zero — and the subtraction
+   *  that keeps this leftover out of lifetime profit is built on it, so
+   *  there has to be a way back.
+   *
+   *  `refresh` is that way: it reads again and overwrites below. It is
+   *  deliberately not a delete. A figure cleared to force a rebuild is
+   *  absent while the rebuild runs, and this file's sibling route
+   *  (`server-rescan-prices.js`) explains what that costs — a figure read
+   *  as settled mid-gap. Overwriting leaves the old value standing until
+   *  its replacement exists, so a failed re-read costs nothing. */
+  const cached = refresh === true ? null : loadInitialResidualData(scopeKey);
   if (cached) {
     log.info(
       "[liquidity-pair-details] %s initial residual already cached — reusing",
@@ -295,6 +316,12 @@ async function ensureInitialResidualData(args) {
     );
     return cached;
   }
+  if (refresh === true)
+    log.info(
+      "[liquidity-pair-details] %s re-reading the initial residual at fresh" +
+        " prices, as asked",
+      scopeKey,
+    );
   const blockTag = Number(firstMintBlock);
   log.info(
     "[liquidity-pair-details] %s no cached initial residual — fetching at first-mint block %d (post-mint state)",
@@ -320,6 +347,7 @@ async function ensureInitialResidualData(args) {
     token0,
     token1,
     scopeKey,
+    refresh,
   });
 
   const data = {
