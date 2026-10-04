@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-09-29T22:25:14.295Z
+  modified: 2026-10-01T16:41:31.710Z
 ---
 
 # Writing release notes
@@ -148,6 +148,29 @@ different, not what was wrong before. Propose once, then drop it.
 discuss the point, I produced three paragraphs and three phrasings.
 The user: *"You are spewing on me."* Give the one line you would use
 and stop; they will ask if they want the reasoning.
+
+## 9. Two bullets about one named feature get a parent bullet
+
+Added 2026-10-01, from the user's edit to the shipped 0.9.8 notes. My
+draft had two flat Overview bullets about Rpc Failover — one for the
+refusal miscount, one for the receipt wait. They shipped nested under a
+new parent:
+
+```markdown
+- Fixes edge-case bugs with Rpc Failover
+  - Fixes Rpc Failover in a second place: one endpoint refusal was being counted as hundreds
+  - A transaction waiting to confirm now follows failover to a working endpoint
+```
+
+The parent names the feature and sizes the news ("edge-case"), so a
+reader who does not care stops at one line instead of reading two. Flat
+bullets about the same feature make a release look like it has more
+separate concerns than it does.
+
+The same edit changed "one carrying text Telegram would not parse" to
+"one **alert** carrying text…". A bare "one" after a plural noun reads
+as a count, not a referent — name the thing
+([[feedback_distinct_terms_for_distinct_things]]).
 
 ## Also
 

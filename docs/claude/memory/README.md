@@ -8,7 +8,8 @@ items — the things not derivable from the code or git history.
 
 | Path | Tracked? | Contents |
 | ---- | -------- | -------- |
-| `MEMORY.md` | yes | Grouped index; one line per memory. Loaded every session. |
+| `MEMORY.md` | yes | Index of the `feedback_*` rules — how to work. One line per memory. Loaded every session. |
+| `PROJECT-STATE.md` | yes | Index of `project_*` / `reference_*` — state, incidents, deferred items. NOT auto-loaded; open it before a status report, audit or release. |
 | `*.md` | yes | Public memories — generic rules, architecture, project state. |
 | `private/` | dir only | Machine-local memories. Contents gitignored; see its README. |
 | `archive/` | yes | Resolved items, kept for history, deliberately not indexed. |
@@ -39,7 +40,14 @@ in the default location and none of the below is loaded.
 ## Writing a new memory
 
 One fact per file, frontmatter with `name` / `description` / `metadata.type`,
-then the fact. Add a one-line pointer to `MEMORY.md`.
+then the fact. Add a one-line pointer to the matching index: `MEMORY.md` for a
+`feedback_*` rule, `PROJECT-STATE.md` for `project_*` state or a
+`reference_*` pointer.
+
+**Both indexes are read whole, so each is capped by the 200-line read limit.**
+When one approaches it, the fix is to merge related memories — not to shorten
+hooks, which are already one line, and not to split again. A third index would
+be one more file a session has to know to open.
 
 **Before saving, decide public or private.** This repo is public and the
 production instance holds an unlocked wallet. Infrastructure, remote-access

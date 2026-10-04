@@ -2609,11 +2609,13 @@ each property access and retries a failover-eligible error on the next
 endpoint. `FailoverNonceManager` returns it from `.provider` and routes
 `.call()` through it, so the reads ethers takes from a signer — a
 signer-bound contract's view functions, and `queryFilter` via
-`runner.provider` — retry and report like any other. The two readers
-that walk the endpoint list themselves, `getPoolState` and the
-can-reopen balance check, order their walk from the selected endpoint
-(`src/rpc-walk-order.js`) without mutating selection, so a failover
-moves them while their own retries stay private.
+`runner.provider` — retry and report like any other. No reader keeps an
+endpoint list of its own: `getPoolState` and the can-reopen balance
+check both go through the shared retry loop in
+`src/rpc-read-retry.js`, which asks the same selection and reports to
+the same rate. What each adds is a bounded attempt budget and the error
+it raises when that budget is spent, because a poll cycle and a dialog
+are both waiting on an answer rather than on an eventual one.
 
 ## RPC Reachability at Startup
 
@@ -2828,20 +2830,39 @@ and which RPC produced it.
 
 ### Retry
 
-`getPoolState` iterates `[config.RPC_URL, config.RPC_URL_FALLBACK]`,
-constructing a fresh `JsonRpcProvider` for each attempt. Each RPC is
-tried up to 2 times with a 3-second wait between retries. Any failure
-(invalid response, RPC error, network timeout) counts as an attempt
-failure. After exhausting every configured RPC, throws
-`PoolStateUnavailableError(attempts, lastError)` wrapping the most
-recent cause.
+`getPoolState` keeps no endpoint list of its own. It retries through the
+shared loop in `src/rpc-read-retry.js`, which asks
+`sendTx.getCurrentRPC()` which endpoint is current and reports every
+outcome to the same failure rate that decides when to leave one. A pool
+read is therefore an ordinary participant in process-wide selection:
+when it moves off a failing endpoint, everything else moves with it, and
+its own successes and failures count toward that decision rather than
+being spent privately.
 
-The orchestrator bypasses `sendTx`'s managed-provider proxy on
-purpose: targeting a specific RPC URL per attempt would otherwise
-require mutating `sendTx`'s sticky 1-hour failover state, which would
-affect every other concurrent read. Worst-case latency for an
-exhaustion is `2 URLs × 2 attempts + 3 waits = ~10 s` &mdash;
-acceptable for a one-shot setup operation like position-manage.
+What it adds to the shared loop is a **bound**. Reads whose answer
+nobody is waiting on retry until some endpoint serves them; a pool read
+has a poll cycle or a Manage click waiting, so it stops. The budget is
+`sendTx.endpointCount()` × `_POOL_STATE_ATTEMPTS_PER_URL` (2) — six
+attempts on the three-endpoint mainnet — and `endpointCount()` rather
+than `config.RPC_URLS.length` because `setRpcUrls` can leave the two
+disagreeing. `_POOL_STATE_RETRY_DELAY_MS` (3 s) waits before re-asking
+**the same** endpoint, and is skipped when the next attempt lands on a
+different one, which has no reason to wait.
+
+**Every failure is retried, validation throws included** — the loop is
+given `isFailoverable: () => true`. An endpoint answering with nonsense,
+which is the case `pool-state-validate.js` exists for, is one another
+endpoint may answer correctly, so a `PoolStateInvalidError` is treated as
+that endpoint's fault rather than the pool's. Exhaustion raises
+`PoolStateUnavailableError(attempts, cause)` carrying the most recent
+cause, which the dashboard renders as `pool-info-unavailable` and
+`bot-cycle.js` turns into a `pollError`.
+
+Because it is the most frequent read in the bot, it is also the
+best-informed witness to an endpoint's health, so it reports every
+outcome. That is safe only because a rate decides and not a report: the
+handful of failures one call can produce cannot retire an endpoint by
+themselves.
 
 ### User-facing failure path
 

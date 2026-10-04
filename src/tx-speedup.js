@@ -68,26 +68,29 @@ async function _cancelGasPrice(provider, stuckGas) {
  * TRANSACTION_REPLACED event and surviving the endpoint going down.
  *
  * `tx.wait()` polls the provider the transaction object was built with
- * and never asks which endpoint is current, so an endpoint that fails
- * mid-wait took the whole move down with it — including moves whose
- * transaction had already been mined. On Production 2026-09-30 the
- * failover moved off a failing endpoint three seconds before a compound
- * died on a 502 from the endpoint it had just left; the fee collection
- * was on chain, and the fees were stranded in the wallet.
+ * and never asks which endpoint is current, so the endpoint it waits on
+ * can be one selection has since left. Its refusal says nothing about
+ * whether the transaction is on chain, and a wait that surfaced that
+ * refusal as the move's own failure would abandon moves already mined —
+ * leaving funds moved and nothing recorded, because gas and amounts are
+ * written on the success path.
  *
- * `onWaitError` is how that is repaired without this module learning
- * about endpoints. It is handed the error and decides: re-throw when
- * the transaction is what failed, or return a receipt obtained some
- * other way when the endpoint is. It is optional so that a caller with
- * no way to reach another endpoint still gets the plain `tx.wait()`
- * behaviour; the one production caller always supplies it.
+ * `onWaitError` is how a refusal is answered without this module
+ * learning anything about endpoints. It is handed the error and
+ * decides: re-throw when the TRANSACTION is what failed, or return a
+ * receipt obtained some other way when the endpoint is. It is optional
+ * so that a caller with no way to reach another endpoint still gets the
+ * plain `tx.wait()` behaviour; both production callers supply it.
  *
  * @param {object} tx        The transaction to wait on.
  * @param {string} label     Log label.
  * @param {Function} [onWaitError]  `(err, tx, label, budget) => Promise<receipt>`.
- * @param {{deadlineMs: number, signal?: AbortSignal}} [budget]
- *   How long the phase will still be interested, and the signal it
- *   raises when it stops being.
+ * @param {{signal?: AbortSignal, deadlineMs?: number}} [budget]
+ *   What bounds the re-ask `onWaitError` performs. A phase passes its
+ *   abort signal and nothing else, because the phase's own clock is
+ *   what ends the wait. The one call with no phase around it — the
+ *   fallback after a speed-up could not be sent — passes a deadline
+ *   instead, which is then the only bound there is.
  * @returns {Promise<object>} The receipt.
  */
 function _tolerantWait(tx, label, onWaitError, budget) {
@@ -143,9 +146,18 @@ function _timeout(ms, sentinel) {
  * gone on to the next phase. `done()` in a `finally` is what makes
  * "this phase is over" mean the phase is actually over.
  *
+ * The budget it hands down carries the signal and NOTHING ELSE. A
+ * re-ask inside a phase is bounded by that phase, and a clock of its own
+ * would be a second bound of the same length deciding the opposite
+ * thing: this phase's timeout means "go on to the next phase", while a
+ * re-ask giving up means "the move failed". Two of them racing over one
+ * silence would let the order the event loop happens to run two
+ * callbacks decide whether a stuck transaction gets sped up or dropped.
+ * The phase owns the clock, so the phase alone says when to stop.
+ *
  * @param {number} ms       How long the phase waits.
  * @param {string} sentinel Message its timeout rejects with.
- * @returns {{timer: Promise, budget: {deadlineMs: number, signal: AbortSignal},
+ * @returns {{timer: Promise, budget: {signal: AbortSignal},
  *   done: () => void}}
  */
 function _phase(ms, sentinel) {
@@ -153,7 +165,7 @@ function _phase(ms, sentinel) {
   const timer = _timeout(ms, sentinel);
   return {
     timer,
-    budget: { deadlineMs: ms, signal: controller.signal },
+    budget: { signal: controller.signal },
     done: () => {
       timer.cancel();
       controller.abort();
@@ -161,11 +173,84 @@ function _phase(ms, sentinel) {
   };
 }
 
+/**
+ * Keep an abandoned racer's rejection from going unhandled.
+ *
+ * `Promise.race` abandons its losers without stopping them. An
+ * abandoned receipt wait rejects as soon as the phase's `done()` aborts
+ * its signal, because the re-ask rethrows the error that started it —
+ * and by then the race has settled, so nothing is listening.
+ *
+ * That matters more than an untidy warning. The process-wide guard in
+ * `server-error-guard.js` treats an unhandled rejection as fatal and
+ * calls `process.exit(1)` unless its code is `TIMEOUT`,
+ * `NETWORK_ERROR` or `SERVER_ERROR`. A re-ask is entered for every
+ * failover-eligible error, which also includes a refused connection, an
+ * unresolvable host and the 4xx answers that describe an endpoint —
+ * none of them on that list. So the endpoint dying at the moment a
+ * phase ends could stop the bot mid-move, and in phase 3 a loser is not
+ * a coincidence: only one of the two transactions can ever mine.
+ *
+ * Absorbed rather than logged, because the rejection carries nothing
+ * the phase has not already acted on by moving past it.
+ *
+ * @param {Promise} p  A racer whose loss is expected.
+ * @returns {Promise}  The same promise, for the race to use.
+ */
+function _settled(p) {
+  p.catch(() => {});
+  return p;
+}
+
 /** Coerce whatever Promise.race returned into a TransactionReceipt. */
 function _extractReceipt(result) {
   if (result && result._type === "TransactionReceipt") return result;
   if (result && result.receipt) return result.receipt;
   return result;
+}
+
+/**
+ * Wait for one transaction's receipt, bounded by a single phase.
+ *
+ * The first phase of `_waitOrSpeedUp`, offered on its own for a caller
+ * that brings its own recovery and wants only the waiting: ask for the
+ * receipt, keep asking when an endpoint will not answer, and give up at
+ * a deadline with a sentinel the caller recognises.
+ *
+ * **An endpoint failure is not one of the outcomes.** `onWaitError` is
+ * handed the phase's signal and keeps asking other endpoints until the
+ * phase ends it, so exactly three things can come back: a receipt, the
+ * caller's own sentinel, or an error that describes the TRANSACTION
+ * rather than an endpoint — a revert, which every endpoint would report
+ * the same way. A caller can therefore branch on its sentinel and on a
+ * real answer, and need no branch for "the endpoint was unreachable",
+ * which is the branch that gets forgotten.
+ *
+ * The phase hands down its signal and no deadline of its own, so the
+ * clock here is the only clock. Two of the same length would conclude
+ * opposite things about one silence and let the event loop pick.
+ *
+ * @param {object} o
+ * @param {object} o.tx               The transaction to wait on.
+ * @param {string} o.label            Log label.
+ * @param {Function} o.onWaitError    `(err, tx, label, budget)` — the
+ *   re-ask. Injected rather than imported because the module that owns
+ *   endpoint selection imports this one.
+ * @param {number} o.ms               How long to wait.
+ * @param {string} o.sentinel         Message the deadline rejects with.
+ * @returns {Promise<object>} The receipt.
+ */
+async function _waitOnePhase({ tx, label, onWaitError, ms, sentinel }) {
+  const phase = _phase(ms, sentinel);
+  try {
+    const receipt = await Promise.race([
+      _settled(_tolerantWait(tx, label, onWaitError, phase.budget)),
+      phase.timer,
+    ]);
+    return _extractReceipt(receipt);
+  } finally {
+    phase.done();
+  }
 }
 
 /**
@@ -320,7 +405,7 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   const speedupPhase = _phase(speedupMs, "_SPEEDUP");
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label, onWaitError, speedupPhase.budget),
+      _settled(_tolerantWait(tx, label, onWaitError, speedupPhase.budget)),
       speedupPhase.timer,
     ]);
     return _extractReceipt(receipt);
@@ -362,8 +447,10 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   const cancelPhase = _phase(cancelIn, "_CANCEL");
   try {
     const receipt = await Promise.race([
-      _tolerantWait(tx, label, onWaitError, cancelPhase.budget),
-      _tolerantWait(replacement, label, onWaitError, cancelPhase.budget),
+      _settled(_tolerantWait(tx, label, onWaitError, cancelPhase.budget)),
+      _settled(
+        _tolerantWait(replacement, label, onWaitError, cancelPhase.budget),
+      ),
       cancelPhase.timer,
     ]);
     return _extractReceipt(receipt);
@@ -400,4 +487,4 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   }
 }
 
-module.exports = { _waitOrSpeedUp };
+module.exports = { _waitOrSpeedUp, _waitOnePhase };

@@ -37,7 +37,7 @@ async function computeAndCacheHodl(
   const cachedFresh = epochKey
     ? _epochCache.getCachedFreshDeposits(epochKey)
     : null;
-  const ps = await getPoolState(prov, ethers, {
+  const ps = await getPoolState(ethers, {
     factoryAddress: config.FACTORY,
     token0: position.token0,
     token1: position.token1,
@@ -100,21 +100,14 @@ async function computeAndCacheHodl(
  * @param {object} botState  The bot's in-memory state.
  * @param {object} position  Position with token0/token1/fee.
  * @param {string|null} epochKey  Epoch cache key, or null if not cachable.
- * @param {object} provider  ethers JsonRpcProvider.
  * @param {object} ethers  ethers library.
  * @returns {Promise<string>} Resolved pool address ("" on failure).
  */
-async function _ensureHodlPoolAddress(
-  botState,
-  position,
-  epochKey,
-  provider,
-  ethers,
-) {
+async function _ensureHodlPoolAddress(botState, position, epochKey, ethers) {
   const cached = botState.lifetimeHodlAmounts?.poolAddress;
   if (cached) return cached;
   try {
-    const ps = await getPoolState(provider, ethers, {
+    const ps = await getPoolState(ethers, {
       factoryAddress: config.FACTORY,
       token0: position.token0,
       token1: position.token1,
@@ -176,7 +169,6 @@ async function computeDepositUsd(
     botState,
     position,
     epochKey,
-    provider,
     ethers,
   );
   const pFn = async (block) => {
@@ -252,12 +244,10 @@ async function revalueHodlBaseline(
   const a0 = saved.hodlAmount0,
     a1 = saved.hodlAmount1;
   if (typeof a0 !== "number" || typeof a1 !== "number") return;
-  const provider = sendTx.getManagedReadProvider();
   const poolAddr = await _ensureHodlPoolAddress(
     botState,
     position,
     epochKey,
-    provider,
     ethers,
   );
   if (!poolAddr) return;

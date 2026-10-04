@@ -1,16 +1,15 @@
 ---
 name: project_telegram_markdown_drops_alerts
-description: "FIXED on branch, Production 0.9.7 2026-09-30: Telegram alerts were sent with parse_mode Markdown and no escaping, so any notification carrying arbitrary error text was rejected 400 and silently dropped. A parse refusal now resends the same words unformatted."
+description: "FIXED, shipped in 0.9.8; hit Production on 0.9.7 2026-09-30: Telegram alerts were sent with parse_mode Markdown and no escaping, so any notification carrying arbitrary error text was rejected 400 and silently dropped. A parse refusal now resends the same words unformatted."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-30T17:26:08.678Z
+  modified: 2026-10-01T16:39:47.473Z
 ---
 
-**Fixed** on branch
-`scan-floor_read-retries-pacing_escape-telegram-md-content`; open on
-Production until that merges and ships. Confirmed 2026-09-30 13:23:14Z.
+**Fixed**, shipped in 0.9.8 (Production 2026-10-01). Confirmed on
+Production 0.9.7 at 2026-09-30 13:23:14Z.
 
 ## What happened
 

@@ -154,7 +154,11 @@ const { getPositionHistory } = require("./src/position-history");
 const { createRebalanceLock } = require("./src/rebalance-lock");
 const { createPositionManager } = require("./src/position-manager");
 const botRecorder = require("./src/bot-recorder");
-const { loadConfig, managedKeys } = require("./src/bot-config-v2");
+const {
+  loadConfig,
+  managedKeys,
+  parseCompositeKey,
+} = require("./src/bot-config-v2");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
@@ -226,13 +230,36 @@ if (_managedAtStartup.length > 0)
     "[server] Loaded bot config (%d managed positions)",
     _managedAtStartup.length,
   );
-for (const [k, v] of Object.entries(_diskConfig.positions || {}))
+/*- One line per saved position, written for whoever is reading the log
+ *  rather than for whoever wrote it.
+ *
+ *  Identified by NFT id, which is what the dashboard shows and what an
+ *  operator recognises.  The composite key's other three parts are the
+ *  chain, the wallet and the position manager, identical on every line
+ *  of a given install — printing the key's last ten characters led with
+ *  the tail of a contract address, so every line opened with the same
+ *  meaningless `7f2-`.
+ *
+ *  Three states have to be told apart, and only two of them are a
+ *  status: `running` and `stopped` are positions the bot has been given,
+ *  while a slot with no status was never managed at all.  Saving a
+ *  setting from the dashboard creates that position's slot whether or
+ *  not the bot ever ran it, so such a slot is settings waiting for a
+ *  position that may yet be managed.  It used to print as "MISSING",
+ *  which reads as something absent that ought to be present. */
+for (const [k, v] of Object.entries(_diskConfig.positions || {})) {
+  const parsed = parseCompositeKey(k);
+  /*- A key that does not parse is reported as what it is rather than
+   *  dressed up as an NFT id, since calling it one would hide the real
+   *  problem: a slot nothing in the app could have written. */
+  const label = parsed ? `NFT #${parsed.tokenId}` : `unparsable key ${k}`;
   log.info(
-    "[server] Config position %s: status=%s keys=%s",
-    k.slice(-10),
-    v.status || "MISSING",
+    "[server] Config position %s: %s — saved settings: %s",
+    label,
+    v.status || "never managed",
     Object.keys(v).join(","),
   );
+}
 
 // ── Static file helper ──────────────────────────────
 

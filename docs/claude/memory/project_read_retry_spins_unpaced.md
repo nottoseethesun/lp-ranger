@@ -1,17 +1,15 @@
 ---
 name: project_read_retry_spins_unpaced
-description: "FIXED on branch, Production 0.9.7 2026-09-30: ethers cached the rejected promise for a retried read, so the retry loop spun in memory and reported one endpoint refusal to the failover decider 678 times. The endpoint received one request, not 678. Fixed with cacheTimeout: -1."
+description: "FIXED, shipped in 0.9.8; hit Production on 0.9.7 2026-09-30: ethers cached the rejected promise for a retried read, so the retry loop spun in memory and reported one endpoint refusal to the failover decider 678 times. The endpoint received one request, not 678. Fixed with cacheTimeout: -1."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-30T17:25:36.246Z
+  modified: 2026-10-01T16:40:06.710Z
 ---
 
-**Fixed** on branch
-`scan-floor_read-retries-pacing_escape-telegram-md-content`; open on
-Production until that merges and ships. Found 2026-09-30 16:41:25Z
-during a dashboard page reload.
+**Fixed**, shipped in 0.9.8 (Production 2026-10-01). Found on Production
+0.9.7 at 2026-09-30 16:41:25Z, during a dashboard page reload.
 
 ## What the log showed
 
@@ -109,5 +107,6 @@ first window. `src/position-history-mint.js` and
 `src/event-scanner-mint-lookup.js` deliberately keep oldest-first,
 because both look up OLDER NFTs and that is their near end.
 
-Related: [[project_tx_wait_not_failover_covered]] (still open),
-[[project_telegram_markdown_drops_alerts]] (fixed on the same branch).
+Related: [[project_tx_wait_not_failover_covered]] and
+[[project_telegram_markdown_drops_alerts]], both found on the same
+Production run and both fixed in 0.9.8.

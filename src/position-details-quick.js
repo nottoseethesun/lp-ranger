@@ -231,7 +231,7 @@ async function _fetchPoolData(provider, ethersLib, body, privateKey) {
     tickUpper: body.tickUpper,
     liquidity: body.liquidity,
   };
-  const ps = await getPoolState(provider, ethersLib, {
+  const ps = await getPoolState(ethersLib, {
     factoryAddress: config.FACTORY,
     token0: body.token0,
     token1: body.token1,

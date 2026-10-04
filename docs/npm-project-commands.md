@@ -118,7 +118,8 @@ Command](#before-running-any-lint-or-test-command) first.
 
 | Command | Flags | Description | Example |
 | ------- | ----- | ----------- | ------- |
-| `audit:deps` | — | `npm audit` at the `high` threshold. | `npm run audit:deps` |
+| `audit:deps` | — | `npm audit` at the `high` threshold, over the tree that **ships** (`--omit=dev`). This is the gating audit, and the narrower scope is deliberate: a dev-tool advisory is reached through glob patterns this repo writes, and can be unfixable upstream. See `docs/claude/CLAUDE-SECURITY.md` § "Advisories with no fix available". | `npm run audit:deps` |
+| `audit:deps:all` | — | The same audit over the **whole** tree, development tooling included. Reports rather than gates; `npm run check` writes this full report to `test/report-artifacts/raw-data/npm-audit.json` on every run. No `pre` hook, unlike `audit:deps`, whose hook only clears `test/report-artifacts/`; neither command writes a report of its own, so nothing is lost by the asymmetry. | `npm run audit:deps:all` |
 | `audit:secrets` | — | secretlint across the repo. | `npm run audit:secrets` |
 | `audit:security` | — | The custom security lint rules. | `npm run audit:security` |
 | `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. | `npm run check` |

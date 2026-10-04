@@ -33,6 +33,10 @@ const { receiptGasWei } = require("./receipt-gas");
  *  failed send is safe to fall back from only when the node never admitted
  *  the transaction, and that bucket is its answer, not ours to restate. */
 const { classifyRpcError } = require("./rpc-error-classifier");
+/*- For the receipt wait only. This module broadcasts its own swap and
+ *  runs its own cancel-and-requote recovery, but reading a receipt means
+ *  asking an endpoint, and which endpoint to ask is owned there. */
+const sendTx = require("./send-transaction");
 
 const _agg = config.CHAIN.aggregator;
 
@@ -587,12 +591,24 @@ async function _sendWithRetry(
       String(tx.maxPriorityFeePerGas ?? "—"),
     );
     try {
-      const r = await Promise.race([
-        tx.wait(),
-        new Promise((_, rej) =>
-          setTimeout(() => rej(new Error("_AGG_TIMEOUT")), waitMs),
-        ),
-      ]);
+      /*- Through the endpoint gateway rather than a bare `tx.wait()`,
+       *  which polls only the endpoint that broadcast the swap and
+       *  cannot follow a failover. That matters here more than anywhere
+       *  else in the app, because of what the catch below can do with an
+       *  error it does not recognise: it rethrows, which skips the
+       *  cancel and leaves the error unflagged, and `swapIfNeeded` reads
+       *  an unflagged error as "no swap happened" and lets the router
+       *  swap the same balance a second time. So an unreachable endpoint
+       *  must not be one of the outcomes, and through the gateway it is
+       *  not — the question moves to another endpoint, leaving only the
+       *  two things this catch does recognise: its own deadline, and a
+       *  revert, which is an answer about the swap itself. */
+      const r = await sendTx.waitForReceipt({
+        tx,
+        label: "[aggregator] swap " + fromSym + "->" + toSym,
+        ms: waitMs,
+        sentinel: "_AGG_TIMEOUT",
+      });
       const costPls = (Number(receiptGasWei(r)) / 1e18).toFixed(4);
       log.info(
         "[rebalance] %s: swap (aggregator) confirmed %s -> %s" +

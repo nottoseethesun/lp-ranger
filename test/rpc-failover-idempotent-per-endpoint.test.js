@@ -314,8 +314,8 @@ describe("the retry loop reports the endpoint it actually used", () => {
     }
 
     const out = await retryRead({
-      prop: "call",
-      args: [{}],
+      label: "call",
+      run: (p) => p.call({}),
       err: failoverErr,
       isFailoverable: (e) => e.code === "SERVER_ERROR",
       failover: (failed) => {

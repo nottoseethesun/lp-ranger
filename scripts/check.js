@@ -296,10 +296,31 @@ fs.writeFileSync(
 );
 
 // ── Security: npm audit ───────────────────────────────────────────────────
-// Keep --audit-level=high so moderate pre-existing advisories don't fail
-// the check, but store the full report for review.
-const npmAuditRun = run("npm", ["audit", "--audit-level=high", "--json"]);
-fs.writeFileSync(path.join(RAW_DIR, "npm-audit.json"), npmAuditRun.stdout);
+// Two runs, because what gates and what is worth reading differ.
+//
+// The gate gets --omit=dev: it asks whether the tree that SHIPS carries a
+// high advisory, which is the tree that runs beside an unlocked wallet. A
+// dev-only advisory in the lint tooling is a different risk — it is
+// reached through glob patterns this repo writes, not through anything an
+// attacker supplies — and it can be unfixable through no fault of ours.
+// `braces` is exactly that today: the newest published version is the
+// vulnerable one, and the newest `micromatch` pins it, so every tool that
+// globs carries it. Gating on it would mean a permanently red gate with no
+// action available, which trains people to ignore the gate.
+// --audit-level=high keeps moderate advisories from failing either run,
+// as it always has.
+//
+// The report keeps everything, dev included, so the advisories that are
+// not gated are still read rather than forgotten. See
+// docs/claude/CLAUDE-SECURITY.md § "Advisories with no fix available".
+const npmAuditRun = run("npm", [
+  "audit",
+  "--audit-level=high",
+  "--omit=dev",
+  "--json",
+]);
+const npmAuditFullRun = run("npm", ["audit", "--json"]);
+fs.writeFileSync(path.join(RAW_DIR, "npm-audit.json"), npmAuditFullRun.stdout);
 
 // ── Security: eslint-security rules ───────────────────────────────────────
 const securityLintRun = run(bin("eslint"), [

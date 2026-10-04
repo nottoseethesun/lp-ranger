@@ -41,7 +41,7 @@ const ethers = require("ethers");
 const config = require("./config");
 const { buildProvider } = require("./bot-provider");
 const { _retrySend } = require("./tx-retry");
-const { _waitOrSpeedUp } = require("./tx-speedup");
+const { _waitOrSpeedUp, _waitOnePhase } = require("./tx-speedup");
 const { retryRead } = require("./rpc-read-retry");
 const { pauseForExhaustedEndpoints } = require("./rpc-endpoints-exhausted");
 const rpcRequestManager = require("./rpc-request-manager");
@@ -398,8 +398,12 @@ function getManagedReadProvider() {
                 noteRpcResult(_urlOf(current), false);
               }
               return retryRead({
-                prop,
-                args,
+                label: String(prop),
+                /*- The read is one provider method here, so `run` just
+                 *  re-applies it to whichever endpoint the loop hands
+                 *  back.  A composite read uses the same seam to keep
+                 *  all of its parts on one endpoint. */
+                run: (provider) => provider[prop].apply(provider, args),
                 err,
                 isFailoverable: _isReadFailoverable,
                 failover: failoverToNextRPC,
@@ -409,6 +413,9 @@ function getManagedReadProvider() {
                  *  unreported, the rate would be judged on the single
                  *  sample above and never cross. */
                 note: (provider, ok) => noteRpcResult(_urlOf(provider), ok),
+                /*- So the recovery line can say which endpoint answered,
+                 *  and whether it is the one that had been failing. */
+                urlOf: _urlOf,
                 /*- The provider this call was actually made against, so
                  *  the first failover report names it rather than
                  *  advancing from wherever selection has since drifted. */
@@ -439,8 +446,21 @@ function getCurrentRPC() {
   }
   /*- Snap back to the preferred endpoint once the sticky window lapses.
    *  Done here, on read, rather than on a timer: there is no background
-   *  work to cancel and no way for the reset to be missed. */
-  if (_activeIdx !== 0 && Date.now() >= _stickyUntilMs) _activeIdx = 0;
+   *  work to cancel and no way for the reset to be missed.
+   *
+   *  Announced, because engaging the failover is announced and a log
+   *  that shows the leaving but not the returning leaves a reader to
+   *  infer which endpoint is in service from whichever one next fails.
+   *  Fires once per snapback — the assignment below is what makes the
+   *  condition false again — so this cannot chatter on a hot path. */
+  if (_activeIdx !== 0 && Date.now() >= _stickyUntilMs) {
+    log.info(
+      "[send-tx] RPC sticky window lapsed — back to %s (was on %s)",
+      _urls[0],
+      _urls[_activeIdx],
+    );
+    _activeIdx = 0;
+  }
   return _providers[_activeIdx];
 }
 
@@ -533,9 +553,9 @@ function failoverToNextRPC(failedProvider) {
 
   /*- A failure is a sample, not a verdict.  Selection moves only once
    *  this endpoint is failing more than the configured share of what it
-   *  is asked, which is what lets every caller in the process report
-   *  honestly — including the two that walk the endpoint list
-   *  themselves and so fail several times per call. */
+   *  is asked, which is what lets every caller report honestly —
+   *  including the bounded readers, whose budget means one call can
+   *  report several failures against the same endpoint. */
   if (!decideIfCurrentRPCIsOutOfService(_urls[from])) return false;
 
   if (from >= _providers.length - 1) {
@@ -758,15 +778,33 @@ function _waitOrAbort(ms, signal) {
  * this loop owns the waiting. Nothing is subscribed, so when it stops,
  * it has stopped.
  *
- * The deadline comes from the caller, which owns the phase clock; the
- * config value is only the fallback for a caller that supplies none.
- * On expiry the ORIGINAL error is rethrown rather than a timeout,
- * because the endpoint failure is what actually went wrong.
+ * **An endpoint refusing to answer is never the move's failure.** The
+ * transaction is on chain or it is not, and nothing here decides which,
+ * so the only thing to do about a refusal is ask again. What stops the
+ * asking is therefore never an error — it is whatever outranks this loop
+ * saying the answer is no longer wanted.
+ *
+ * Exactly one thing outranks it, and the caller picks which by what it
+ * passes. A phase passes its abort signal: the phase's clock ends the
+ * wait, and the move then goes on to its next phase rather than failing.
+ * A caller with no phase around it passes a deadline, which is then the
+ * only bound there is. Both at once would be two clocks of the same
+ * length concluding opposite things about one silence — the phase's
+ * "speed it up" against a deadline's "give up" — settled by whichever
+ * callback the event loop reached first.
+ *
+ * Either way the stop rethrows the ORIGINAL error rather than a timeout,
+ * because the endpoint failure is what actually went wrong. A phase that
+ * has already moved on absorbs it (`_settled` in `tx-speedup.js`); a
+ * caller holding its own deadline is the one still waiting for it.
  *
  * @param {Error} err    Why `tx.wait()` rejected.
  * @param {object} tx    The transaction being waited on.
  * @param {string} label Log label.
- * @param {number} [deadlineMs]  How long to keep asking.
+ * @param {{signal?: AbortSignal, deadlineMs?: number}} [budget]
+ *   What bounds the asking. A signal takes precedence and suppresses any
+ *   deadline; with neither, `TX_CANCEL_SEC` is the fallback so a caller
+ *   that supplies nothing cannot ask forever.
  * @returns {Promise<object>} The receipt, from whichever endpoint serves it.
  */
 async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
@@ -778,20 +816,69 @@ async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
     tx.hash,
   );
   const provider = getManagedReadProvider();
-  const until = Date.now() + (budget.deadlineMs ?? config.TX_CANCEL_SEC * 1000);
+  /*- A signal means the caller owns this loop's lifetime, so there is no
+   *  deadline of our own to reach — `null` says that outright rather
+   *  than leaning on a number large enough never to arrive. */
+  const until = budget.signal
+    ? null
+    : Date.now() + (budget.deadlineMs ?? config.TX_CANCEL_SEC * 1000);
   for (;;) {
     /*- Checked before asking as well as after, so a phase that ended
      *  while the previous request was queued costs nothing more. */
     if (budget.signal?.aborted) throw err;
     const receipt = await provider.getTransactionReceipt(tx.hash);
     if (receipt) return receipt;
-    if (budget.signal?.aborted || Date.now() >= until) throw err;
+    if (budget.signal?.aborted) throw err;
+    if (until !== null && Date.now() >= until) throw err;
     /*- ethers' own block cadence, read off the provider rather than
      *  named here, so there is no second opinion about how often a
      *  chain produces a block. The global queue spaces requests but
      *  does not decide how often to ask for one. */
     await _waitOrAbort(provider.pollingInterval, budget.signal);
   }
+}
+
+/**
+ * Wait for a transaction's receipt through this module's endpoint list.
+ *
+ * The one way to wait for a receipt without going through
+ * `sendTransaction`. A caller that broadcasts its own transaction and
+ * carries its own recovery — the aggregator swap is the only one — still
+ * has to read the receipt, and reading is this module's business: it
+ * owns which endpoint is current, the failover between them, and the
+ * rate every request is paced at.
+ *
+ * The re-ask is wired in here rather than passed by the caller, so
+ * there is no version of this call that lacks it. A bare `tx.wait()`
+ * polls only the endpoint the transaction object was built with and
+ * never asks which endpoint is current, so it cannot follow a failover:
+ * the endpoint it is waiting on can be one selection has already left,
+ * and its refusal says nothing about whether the transaction is on
+ * chain. A caller that received that refusal would have to tell it
+ * apart from a transaction that genuinely failed, which is the
+ * distinction this function exists to make unnecessary.
+ *
+ * What comes back is therefore a receipt, `sentinel` when the wait ran
+ * out, or an error describing the transaction itself — a revert, which
+ * every endpoint would report alike. An unreachable endpoint is none of
+ * those; it is retried until `ms` elapses.
+ *
+ * @param {object} o
+ * @param {object} o.tx        The broadcast transaction.
+ * @param {string} o.label     Log label.
+ * @param {number} o.ms        How long to wait before giving up.
+ * @param {string} o.sentinel  Message the deadline rejects with, chosen
+ *   by the caller so its own catch can recognise its own timeout.
+ * @returns {Promise<object>} The receipt.
+ */
+function waitForReceipt({ tx, label, ms, sentinel }) {
+  return _waitOnePhase({
+    tx,
+    label,
+    onWaitError: _receiptAcrossEndpoints,
+    ms,
+    sentinel,
+  });
 }
 
 // ── Public sendTransaction ───────────────────────────────────────────────────
@@ -906,9 +993,28 @@ module.exports = {
   failoverToNextRPC,
   ensureReachable,
   getManagedReadProvider,
+  /*- The only receipt wait available to a caller that broadcasts its
+   *  own transaction. Exported with the cross-endpoint re-ask already
+   *  attached, because a caller holding the pieces is a caller that can
+   *  forget one. */
+  waitForReceipt,
+  /*- Resolve one of this module's providers back to its url, so a
+   *  caller that drives `retryRead` itself can name endpoints in its
+   *  log lines the way the managed proxy does. */
+  urlOf: _urlOf,
+  /*- How many endpoints are actually in service.  A caller sizing an
+   *  attempt budget needs this rather than `config.RPC_URLS.length`:
+   *  the two are the same at boot but not afterwards, since
+   *  `setRpcUrls` can re-point one without the other. */
+  endpointCount: _endpointCount,
   /*- Internal helpers exposed for tests in test/send-transaction.test.js. */
   _resolveGasLimit,
   _estimateWithFailover,
   _isReadFailoverable,
+  /*- Exposed so what bounds a re-ask can be asserted directly. Driving
+   *  it through a whole move cannot do that: the pre-fix defect was a
+   *  race between two deadlines of equal length, so reproducing it that
+   *  way is a coin flip, and a coin flip does not prove a fix. */
+  _receiptAcrossEndpoints,
   _resetForTests,
 };

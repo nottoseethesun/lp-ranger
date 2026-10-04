@@ -1,6 +1,10 @@
 # Memory Index
 
-Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open only what you need. `feedback_*` = how the user wants work done; `project_*` = state and open items; `reference_*` = external pointers. `CLAUDE.md` covers architecture; `private/` is machine-local, `archive/` is resolved history. New here? Read [renamed lp ranger](project_renamed_lp_ranger.md) first.
+Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open only what you need. This file holds the rules for HOW to work (`feedback_*`), and is loaded every session.
+
+**State and open items live in [PROJECT-STATE.md](PROJECT-STATE.md)**, which is not auto-loaded. Open it before any status report, audit, release or burn-in write-up, and before proposing a change to an area it covers. New `project_*` and `reference_*` pointers go there; new `feedback_*` pointers go here.
+
+`CLAUDE.md` covers architecture; `private/` is machine-local, `archive/` is resolved history. New here? Read [renamed lp ranger](project_renamed_lp_ranger.md) first.
 
 ## Workflow, git, CI & testing
 - [always build](feedback_always_build.md) — Edited public/? Run `npm run build`
@@ -41,6 +45,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
 - [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms
+- [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
@@ -60,6 +65,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check; a partial sample proves nothing
 - [audit before declaring done](feedback_audit_before_declaring_done.md) — Re-read the rules and audit state + sequence before saying done; a green check is not sufficient
 - [verify symbols a comment names](feedback_verify_symbols_a_comment_names.md) — Grep every symbol a comment names
+- [check state before explaining design](feedback_check_state_before_explaining_design.md) — "Why does it do X?" → check PROJECT-STATE for a known-duplication entry before calling X deliberate
 
 ## Engineering, code, UI & docs rules
 - [audit program state](feedback_audit_program_state.md) — Audit for needless state; derive from what exists
@@ -113,50 +119,3 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No interpolated innerHTML in dashboard JS
 - [sound gate scope](feedback_sound_gate_scope.md) — Jingles gated on the browser idle timer is correct
 - [help page](project_help_page.md) — Help lives at /help.html with its own CSS
-
-## Project state, architecture & nice-to-haves
-- [tx.wait() not failover-covered](project_tx_wait_not_failover_covered.md) — Fixed on branch: a receipt is a read, so it re-asks through the managed read provider instead of dying on the endpoint the failover already left
-- [Telegram Markdown drops alerts](project_telegram_markdown_drops_alerts.md) — Fixed on branch: a parse refusal now resends unformatted, so the alert survives text Telegram won't parse
-- [read retry counted one refusal 678 times](project_read_retry_spins_unpaced.md) — Fixed on branch: ethers cached the rejected promise, so retries never hit the wire yet each was reported as a failure
-- [total RPC outage OOM](project_total_rpc_outage_oom.md) — Killed Prod 0.9.4: ethers' network detection skips the paced send(); fixed with staticNetwork in 0.9.5
-- [failover exhausts on concurrent errors](project_failover_exhausts_on_concurrent_errors.md) — Prod 0.9.5 froze for an hour when ONE endpoint blipped; fixed in 0.9.6 by naming the failed endpoint
-- [config stomp investigation](project_config_stomp_investigation.md) — bot-config.json once overwritten; root cause unknown, guards in place
-- [disk layout philosophy](project_disk_layout_philosophy.md) — Three tiers (config/data/logs); two subdirs at the app-config top
-- [major features](project_major_features.md) — Platform-scale features queued for post-soft-launch
-- [Pi 5 recommendation phrasing](project_pi5_recommendation_phrasing.md) — Whole recommendation inside the parens
-- [0.9.7 burn-in watch](project_0097_burn_in_watch.md) — 0.9.7 on Prod, burned in first: five real outages survived on the read path, but the write path under failover and the 429 backoff have never run
-- [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a test artifact; real positions make ≤24/year
-- [renamed LP Ranger](project_renamed_lp_ranger.md) — Canonical name is LP Ranger (package `lp-ranger`)
-- [security audit two-tier](project_security_audit_two_tier.md) — The daily audit covers the release tag, not main
-- [maturity staircase](project_maturity_staircase.md) — Stability outranks features
-- [util/diagnostic directory](project_util_diagnostic_directory.md) — util/diagnostic/ = dev tooling; scripts/ = operations
-- [X1 transfer plan](project_x1_transfer_plan.md) — Layered plan to port standards to an X1 chain
-- [api/config lazy-creates](project_api_config_lazy_creates.md) — POST /api/config lazy-creates the position slot
-- [config inputs populate once](project_config_inputs_populate_once.md) — Bot Config inputs populate once per position
-- [CSRF does not gate the bot](project_csrf_does_not_gate_bot.md) — CSRF guards browser POSTs; the bot is in-process
-- [event cache scoping rationale](project_event_cache_scoping_rationale.md) — Why caches key on chain+factory+wallet+tokens+fee
-- [fresh deposit detection](project_fresh_deposit_detection.md) — Transfer scan with swap/drain/contract filters
-- [P&L accounting model](project_pnl_accounting_model.md) — IL/G is divergence only; fees counted once in Profit
-- [lifetime metrics distinction](project_lifetime_metrics_distinction.md) — Lifetime Net P&L vs Lifetime IL/G differ in formula and role
-- [top panels price at today](project_top_panels_price_at_today.md) — Only Per-Day keeps period dollars
-- [Moralis setup flow](project_moralis_setup_flow.md) — The key can be entered during wallet setup
-- [price source priority](project_price_source_priority.md) — Moralis → GeckoTerminal → DexScreener
-- [scan-running guard intentional](project_scan_running_guard_intentional.md) — `_scanRunning` dropping concurrent scans is deliberate
-- [single nonce manager](project_single_nonce_manager.md) — One NonceManager per wallet, never per-position
-- [swap serialized](project_swap_serialized.md) — The swap path is deliberately serialized
-- [unmanaged N/A principle](project_unmanaged_na_principle.md) — Unmanaged shows N/A for rebalance control, no Lifetime panel
-- [bot-loop test scaffolding](project_bot_loop_test_scaffolding.md) — startBotLoop's lifecycle has no direct fixture
-- [code cleanup nice-to-haves](project_code_cleanup_nice_to_haves.md) — Running list of polish items
-- [deferred comment cleanup](project_deferred_comment_cleanup.md) — Storytelling JSDoc, 119 old-form openers, an engineering.md passage
-- [consolidate RPC retry](project_consolidate_rpc_retry.md) — Consolidate the per-URL × per-attempt retry pattern
-- [dashboard cleanup NTH](project_dashboard_cleanup_nth.md) — Import cycles, cache sweep, 42 orphan HTML ids
-- [debug scripts print URL](project_debug_scripts_print_url.md) — Every `debug*` script prints its visit-this URL
-- [ESM migration](project_esm_migration.md) — 100% CJS; ESM would be a big-bang change
-- [gas-defer retry limit](project_gas_defer_retry_limit.md) — Optional cap on the gas-defer loop; not required
-- [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses a new pairing; ~30 min lag
-- [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources; Routed Via shows an em-dash
-- [split rebalancePaused flag](project_split_rebalance_paused_flag.md) — Split the flag into aborted vs deferred
-- [suppress OOR until synced](project_suppress_oor_until_synced.md) — Unmanaged view flashes "out of range" too early
-- [throttle rehydrate loses timestamps](project_throttle_rehydrate_loses_timestamps.md) — rehydrate() restores dailyCount, not rebTimestamps
-- [bug reports on dependencies](reference_bug_reports_on_dependencies.md) — `../bug-reports-on-dependencies/` holds upstream repros
-- [release notes header](reference_release_notes_header.md) — docs/release-notes-header.md is the install blockquote

@@ -227,7 +227,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     body.contractAddress || config.POSITION_MANAGER,
     body.tokenId,
   );
-  const ps = await getPoolState(provider, ethersLib, {
+  const ps = await getPoolState(ethersLib, {
     factoryAddress: config.FACTORY,
     token0: body.token0,
     token1: body.token1,

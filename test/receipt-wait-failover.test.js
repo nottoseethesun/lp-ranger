@@ -168,7 +168,22 @@ describe("every re-ask is bounded, on both the compound and rebalance paths", ()
      *  process, so nothing here can reach another file. */
     savedSpeedup = config.TX_SPEEDUP_SEC;
     savedCancel = config.TX_CANCEL_SEC;
-    config.TX_SPEEDUP_SEC = 0.05;
+    /*- Long enough that the loop certainly gets a turn, short enough
+     *  that the file still runs in about a second.
+     *
+     *  This was 50 ms, which made one case flaky under the suite's own
+     *  concurrency: a re-ask has to travel a dozen awaits — send, wait,
+     *  the error hook, the managed provider, the pacing queue — before
+     *  it reaches the endpoint, and 50 ms of wall-clock can pass across
+     *  those hops while 24 test files compete for the event loop. The
+     *  phase would then expire before a single ask had been made, and
+     *  the case asserts that an ask WAS made.
+     *
+     *  Not smaller than the pacing interval either: at
+     *  `globalRPCRequestRateIntervalMS` of 222 ms, only the first
+     *  release is immediate, so a budget under that leaves no room for
+     *  a second ask and nothing to observe if the first is delayed. */
+    config.TX_SPEEDUP_SEC = 0.6;
     config.TX_CANCEL_SEC = 3;
     sendTx._resetForTests();
     rpcQueue._resetForTests();
@@ -213,17 +228,39 @@ describe("every re-ask is bounded, on both the compound and rebalance paths", ()
     const signer = makeSpeedUpSigner(async () => {
       throw serverError(PRI);
     });
-    await sendTx.sendTransaction({
-      populate: async () => ({ to: "0x" + "22".repeat(20), gasLimit: 300000n }),
+    /*- The move must SUCCEED, and that assertion belongs here rather
+     *  than in a tolerated catch. Every receipt wait in this fixture
+     *  fails, so the only way through is the re-ask — and a refusing
+     *  endpoint must never end the move, only send the question
+     *  elsewhere. The original can never mine, so what confirms is the
+     *  speed-up replacement, which means the phase clock has to be the
+     *  one that ended phase 1.
+     *
+     *  This case previously tolerated a failure, because the re-ask once
+     *  carried a deadline of the phase's own length and could reject
+     *  first — leaving the move abandoned instead of sped up. Nothing
+     *  bounds a re-ask inside a phase now except the phase, so there is
+     *  no second outcome to allow for. */
+    const { receipt } = await sendTx.sendTransaction({
+      populate: async () => ({
+        to: "0x" + "22".repeat(20),
+        gasLimit: 300000n,
+      }),
       signer,
       label,
     });
-    return asks;
+    return { asks, receipt };
   }
 
   for (const label of ["[compound] collect", "[rebalance] mint"]) {
     it(`bounds every receipt re-ask during a speed-up: ${label}`, async () => {
-      const asks = await _driveSpeedUp(label);
+      const { asks, receipt } = await _driveSpeedUp(label);
+      /*- A refusing endpoint must cost the move nothing. Every wait here
+       *  was refused, so a confirmed receipt is the proof that the
+       *  refusals were asked around rather than treated as the move
+       *  failing — and since the original never mines, the receipt can
+       *  only be the speed-up's. */
+      assert.ok(receipt, "the move must confirm despite every wait failing");
       assert.ok(
         asks.some((a) => a.hash === "0xhash1"),
         "the never-mined hash must be asked about — it is the one that leaks",

@@ -276,7 +276,7 @@ async function _scanHistory(
       lifetimeScanComplete: false,
       rebalanceScanProgress: 0,
     });
-    const poolState = await getPoolState(provider, ethersLib, {
+    const poolState = await getPoolState(ethersLib, {
       factoryAddress: config.FACTORY,
       token0: position.token0,
       token1: position.token1,

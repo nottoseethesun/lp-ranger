@@ -17,14 +17,12 @@
 
 const ethers = require("ethers");
 const { log } = require("./log");
-const config = require("./config");
-const { buildProvider } = require("./bot-provider");
 const { ERC20_ABI } = require("./rebalancer-pools");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { getDustThresholdUsd } = require("./dust");
 const sendTx = require("./send-transaction");
-const { walkOrderFrom } = require("./rpc-walk-order");
 const { noteRpcResult } = require("./rpc-out-of-service");
+const { retryRead } = require("./rpc-read-retry");
 
 /**
  * Error thrown when the wallet-balance + price reads for the
@@ -75,12 +73,12 @@ async function readTokenBalance({
   address,
   symbolHint,
   thresholdUsd,
+  priceUsd,
 }) {
   const contract = new ethers.Contract(address, ERC20_ABI, provider);
-  const [rawBal, decimalsRaw, priceUsd, onChainSymbol] = await Promise.all([
+  const [rawBal, decimalsRaw, onChainSymbol] = await Promise.all([
     contract.balanceOf(wallet),
     contract.decimals(),
-    fetchTokenPriceUsd(address),
     symbolHint
       ? Promise.resolve(symbolHint)
       : contract.symbol().catch(() => "?"),
@@ -98,81 +96,96 @@ async function readTokenBalance({
   };
 }
 
-/*- Read BOTH tokens' balances atomically across the configured RPCs.
- *  Partial failure (one token reads OK, the other throws) counts as
- *  a complete attempt failure per the user-approved policy — we'd
- *  rather present a clean "try again" to the user than mix
- *  verified + unverified balances in the response.
+/*- Read BOTH tokens' balances across the configured RPCs.  Partial
+ *  failure (one token reads OK, the other throws) counts as a complete
+ *  attempt failure per the user-approved policy — better a clean "try
+ *  again" than a response mixing verified and unverified balances.
  *
- *  Iterates `[primary, fallback]`, each tried up to
- *  `_ATTEMPTS_PER_URL` times with a `_RETRY_DELAY_MS` wait before
- *  each retry.  Constructs fresh `JsonRpcProvider`s per URL (real
- *  ethers); falls back to the caller-supplied `providerFactory`
- *  return when ethersLib lacks the constructor (test-mock case).
+ *  Endpoints come from the app's failover, not from a list this file
+ *  walks: the shared loop in `src/rpc-read-retry.js` asks
+ *  `sendTx.getCurrentRPC()` and reports failures to
+ *  `sendTx.failoverToNextRPC()`, so this read follows selection and
+ *  feeds the same rate as every other.  What it supplies is the pair of
+ *  reads, a bounded budget, and the error raised when that budget is
+ *  spent — a bound rather than an ordinary read's endless retry because
+ *  someone is waiting on the dialog this answers.
  *
- *  Exhaustion throws `WalletReadUnavailableError` wrapping the most
- *  recent underlying error. */
+ *  Both balances come from ONE provider per attempt, which is why the
+ *  retried unit is the pair and not each read: two balances fetched
+ *  from different endpoints could straddle a block and disagree.
+ *
+ *  The USD prices are fetched FIRST and kept out of that unit, because
+ *  they are not rpc at all — `fetchTokenPriceUsd` takes a token address
+ *  and asks Moralis or GeckoTerminal over HTTP, with no provider
+ *  involved.  Inside the retry it cost twice over: a price API being
+ *  down looked like the endpoint being down, which reports a failure
+ *  against the endpoint and can move the selection every other read in
+ *  the process is using; and an rpc outage re-asked the price API once
+ *  per attempt, against a quota the rest of the app rations with an
+ *  idle pause.  A price failure is still the operator's 503 — they
+ *  cannot be told whether they have enough without it — so it is
+ *  raised as the same error the exhausted budget raises. */
 async function _readBothBalancesWithRetry({
   body,
   wallet,
   thresholdUsd,
   readBalance,
-  providerFactory,
+  fetchPrice,
 }) {
-  /*- Rotated to begin at the selected endpoint, so these balances come
-   *  from one the bot still trusts rather than from the head of a list
-   *  it has moved off.  The retries below never engage failover. */
-  const urls = walkOrderFrom(config.RPC_URLS, sendTx.getCurrentRPCUrl());
-  let attemptCount = 0;
-  let lastErr = null;
-  for (const url of urls) {
-    for (let attempt = 1; attempt <= _ATTEMPTS_PER_URL; attempt++) {
-      attemptCount++;
-      if (attempt > 1) await new Promise((r) => setTimeout(r, _RETRY_DELAY_MS));
-      try {
-        let provider;
-        try {
-          /*- buildProvider, so these reads queue behind the global
-           *  request manager rather than forming an unpaced path. */
-          provider = buildProvider(url, ethers);
-        } catch {
-          provider = providerFactory();
-        }
-        const [t0, t1] = await Promise.all([
-          readBalance({
-            provider,
-            wallet,
-            address: body.token0,
-            symbolHint: body.token0Symbol,
-            thresholdUsd,
-          }),
-          readBalance({
-            provider,
-            wallet,
-            address: body.token1,
-            symbolHint: body.token1Symbol,
-            thresholdUsd,
-          }),
-        ]);
-        noteRpcResult(url, true);
-        return { t0, t1 };
-      } catch (err) {
-        /*- Reports for the same reason the pool-state walk does: a rate
-         *  decides now, so a reader that walks the list itself can say
-         *  what it saw without retiring an endpoint for everyone. */
-        noteRpcResult(url, false);
-        lastErr = err;
-        log.warn(
-          "[can-reopen] rpc=%s attempt=%d/%d failed: %s",
-          url,
-          attempt,
-          _ATTEMPTS_PER_URL,
-          err.message,
-        );
-      }
-    }
+  let prices;
+  try {
+    prices = await Promise.all([
+      fetchPrice(body.token0),
+      fetchPrice(body.token1),
+    ]);
+  } catch (err) {
+    throw new WalletReadUnavailableError(0, err);
   }
-  throw new WalletReadUnavailableError(attemptCount, lastErr);
+  const [price0, price1] = prices;
+  return retryRead({
+    tag: "can-reopen",
+    label: "wallet balances",
+    run: (provider) =>
+      Promise.all([
+        readBalance({
+          provider,
+          wallet,
+          address: body.token0,
+          symbolHint: body.token0Symbol,
+          thresholdUsd,
+          priceUsd: price0,
+        }),
+        readBalance({
+          provider,
+          wallet,
+          address: body.token1,
+          symbolHint: body.token1Symbol,
+          thresholdUsd,
+          priceUsd: price1,
+        }),
+      ]).then(([t0, t1]) => ({ t0, t1 })),
+    /*- The loop needs a failure to enter on and this caller has not
+     *  attempted anything; only `isFailoverable` reads it. */
+    err: new Error("wallet balances not read yet"),
+    /*- Every failure here is treated as the endpoint's, which is what
+     *  the hand-rolled walk did: a balance read that throws for any
+     *  reason is worth asking another endpoint. */
+    isFailoverable: () => true,
+    failover: sendTx.failoverToNextRPC,
+    current: sendTx.getCurrentRPC,
+    urlOf: sendTx.urlOf,
+    note: (provider, ok) => noteRpcResult(sendTx.urlOf(provider), ok),
+    /*- Sized from the endpoints in service rather than
+     *  `config.RPC_URLS.length`, which `setRpcUrls` can leave
+     *  disagreeing.  Floored at one so an rpc layer nobody initialised
+     *  throws that fault by name from `current()` instead of reporting
+     *  a spent budget. */
+    maxAttempts: Math.max(1, sendTx.endpointCount() * _ATTEMPTS_PER_URL),
+    onExhausted: (attempts, lastErr) => {
+      throw new WalletReadUnavailableError(attempts, lastErr);
+    },
+    delayMs: _RETRY_DELAY_MS,
+  });
 }
 
 /**
@@ -184,13 +197,13 @@ async function _readBothBalancesWithRetry({
  * @param {object} deps.walletManager  Wallet manager instance.
  * @param {Function} deps.jsonResponse  `(res, status, body) => void`.
  * @param {Function} deps.readJsonBody  `(req) => Promise<object>`.
- * @param {Function} [deps.providerFactory]  Optional override that
- *   returns the read-provider; defaults to
- *   `sendTx.getManagedReadProvider`.  Tests inject a stub here.
  * @param {Function} [deps.readBalance]  Optional override for the
  *   per-token balance reader (test-injection point).
  * @param {Function} [deps.getDust]  Optional override for the dust
  *   threshold getter (test-injection point).
+ * @param {Function} [deps.fetchPrice]  Optional override for the USD
+ *   price lookup (test-injection point). Called once per token, before
+ *   the chain reads and outside their retry — it is HTTP, not rpc.
  * @returns {(req, res) => Promise<void>}
  */
 function createCanReopenHandler(deps) {
@@ -198,9 +211,9 @@ function createCanReopenHandler(deps) {
     walletManager,
     jsonResponse,
     readJsonBody,
-    providerFactory = () => sendTx.getManagedReadProvider(),
     readBalance = readTokenBalance,
     getDust = getDustThresholdUsd,
+    fetchPrice = fetchTokenPriceUsd,
   } = deps;
   return async function handleCanReopen(req, res) {
     const body = await readJsonBody(req);
@@ -223,7 +236,7 @@ function createCanReopenHandler(deps) {
         wallet,
         thresholdUsd,
         readBalance,
-        providerFactory,
+        fetchPrice,
       });
       const canReopen = !t0.isDust || !t1.isDust;
       jsonResponse(res, 200, {

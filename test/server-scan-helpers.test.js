@@ -161,7 +161,7 @@ describe("formatNftResponse — edge cases", () => {
 
 describe("fetchPoolTicks", () => {
   it("returns empty map for empty positions", async () => {
-    const r = await fetchPoolTicks({}, {}, []);
+    const r = await fetchPoolTicks({}, []);
     assert.deepStrictEqual(r, {});
   });
 
@@ -170,7 +170,7 @@ describe("fetchPoolTicks", () => {
       { token0: "0xA", token1: "0xB", fee: 0 },
       { token0: "0xC", token1: "0xD" },
     ];
-    const r = await fetchPoolTicks({}, {}, positions);
+    const r = await fetchPoolTicks({}, positions);
     assert.deepStrictEqual(r, {});
   });
 
@@ -184,14 +184,13 @@ describe("fetchPoolTicks", () => {
         }
       },
     };
-    const mockProv = {};
     const positions = [
       { token0: "0xA", token1: "0xB", fee: 3000 },
       { token0: "0xA", token1: "0xB", fee: 3000 },
     ];
     // fetchPoolTicks calls getPoolState which will fail with mock,
     // but the catch block means it just skips → empty map
-    const r = await fetchPoolTicks(mockProv, mockEthers, positions);
+    const r = await fetchPoolTicks(mockEthers, positions);
     // Should not throw, returns empty due to failed pool queries
     assert.ok(typeof r === "object");
     void calls; // suppress unused

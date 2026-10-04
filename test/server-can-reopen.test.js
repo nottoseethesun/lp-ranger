@@ -16,7 +16,7 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const {
   createCanReopenHandler,
@@ -32,10 +32,46 @@ const {
 } = require("../src/server-positions");
 const { compositeKey } = require("../src/bot-config-v2");
 const config = require("../src/config");
+const logModule = require("../src/log");
+const sendTx = require("../src/send-transaction");
+const { condemn } = require("./helpers/send-tx-stubs");
+const { format } = require("node:util");
 
 const TOKEN0 = "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b";
 const TOKEN1 = "0xAEbcD0F8f69ECF9587e292bdfc4d731c1abedB68";
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
+
+/*- The balance read takes its endpoint from the app's failover, so the
+ *  rpc layer has to be stood up here as `server.js` stands it up at
+ *  boot.  The provider itself is never exercised.
+ *
+ *  Per test, not once for the file.  Each case that exhausts its retry
+ *  budget reports failures, which walks selection along the endpoint
+ *  list and leaves it there for whatever runs next — and a case starting
+ *  from the END of the list cannot observe a further move at all, so it
+ *  would pass whether or not the thing it asserts is true.  The decider
+ *  is reset with it, since a crossed failure rate carries over the same
+ *  way. */
+beforeEach(() => {
+  sendTx._resetForTests();
+  require("../src/rpc-out-of-service")._resetForTests();
+  /*- The real endpoint list, so the retry budget spans as many endpoints
+   *  here as it does in production.  No network is reached: the stub
+   *  constructor returns a bare object and every case injects both
+   *  `readBalance` and `fetchPrice`. */
+  sendTx.init(
+    { urls: [...config.RPC_URLS] },
+    {
+      JsonRpcProvider: function () {
+        return {};
+      },
+    },
+  );
+});
+afterEach(() => {
+  sendTx._resetForTests();
+  require("../src/rpc-out-of-service")._resetForTests();
+});
 
 function makeRes() {
   return { _status: null, _body: null };
@@ -48,8 +84,12 @@ function makeDeps(overrides = {}) {
       res._body = body;
     },
     readJsonBody: async () => overrides.body || {},
-    providerFactory: () => ({ _mock: true }),
     getDust: async () => ({ thresholdUsd: 0.5 }),
+    /*- Injected so no case reaches the real price fetcher, which is
+     *  HTTP against a quota-limited API.  It used to sit behind the
+     *  injected `readBalance`; now that the handler asks for prices
+     *  itself, the seam has to be stubbed here. */
+    fetchPrice: async () => 1,
     readBalance: overrides.readBalance,
     ...overrides,
   };
@@ -190,11 +230,12 @@ describe("handleCanReopen", () => {
     assert.strictEqual(res._body.error, "wallet-read-unavailable");
     assert.match(res._body.message, /Wallet read failed after \d+ attempt/);
     assert.match(res._body.message, /simulated RPC outage/);
-    /*- One URL x 2 attempts x 2 tokens per attempt (Promise.all).
-     *  Derived from the configured list so adding an endpoint does not
-     *  fail this test for the wrong reason — what is being guarded is
-     *  that every RPC is tried, not any particular total. */
-    const expected = require("../src/config").RPC_URLS.length * 2 * 2;
+    /*- Endpoints in service x 2 attempts each x 2 tokens per attempt
+     *  (one `Promise.all`).  Read from `sendTx`, which is where the
+     *  budget itself comes from, so the two cannot pass for different
+     *  reasons; what is guarded is that the whole budget is spent, not
+     *  any particular total. */
+    const expected = sendTx.endpointCount() * 2 * 2;
     assert.strictEqual(
       calls,
       expected,
@@ -225,9 +266,101 @@ describe("handleCanReopen", () => {
     });
     const handler = createCanReopenHandler(deps);
     const res = makeRes();
-    await handler({}, res);
+    /*- Each failed attempt above writes a warning, so the recovery has
+     *  to write one too: a run of warnings that simply stops reads the
+     *  same as giving up, and an operator is left guessing whether the
+     *  balances were ever read. */
+    const said = [];
+    const restore = logModule._setSinkForTests({
+      log: (...a) => said.push(format(...a)),
+    });
+    try {
+      await handler({}, res);
+    } finally {
+      restore();
+    }
     assert.strictEqual(res._status, 200);
     assert.strictEqual(res._body.canReopen, true);
+
+    const recovery = said.filter((l) => l.includes("read ok on"));
+    assert.strictEqual(recovery.length, 1, "exactly one recovery line");
+    assert.ok(
+      recovery[0].includes("[can-reopen]"),
+      `the line must name this reader, got: ${recovery[0]}`,
+    );
+    assert.ok(
+      recovery[0].includes("failed attempt"),
+      "and how many attempts failed first",
+    );
+  });
+
+  it("asks the price API once per token, not once per rpc attempt", async () => {
+    /*- The price lookup takes a token address and asks an HTTP API; no
+     *  provider is involved.  Inside the retried unit an rpc outage
+     *  re-asked it once per attempt, against a quota the rest of the
+     *  app rations with an idle pause. */
+    let priceCalls = 0;
+    let readCalls = 0;
+    const deps = makeDeps({
+      body: { token0: TOKEN0, token1: TOKEN1 },
+      fetchPrice: async () => {
+        priceCalls++;
+        return 1;
+      },
+      readBalance: async () => {
+        readCalls++;
+        throw new Error("simulated RPC outage");
+      },
+    });
+    const res = makeRes();
+    await createCanReopenHandler(deps)({}, res);
+
+    assert.strictEqual(res._status, 503, "the rpc reads were exhausted");
+    assert.ok(readCalls > 2, `the budget was spent, got ${readCalls}`);
+    assert.strictEqual(
+      priceCalls,
+      2,
+      `one lookup per token, whatever the rpc retries did; got ${priceCalls}`,
+    );
+  });
+
+  it("a price-API failure leaves the rpc endpoint alone", async () => {
+    /*- A price API being down says nothing about the endpoint, so it
+     *  must not move one.  A guard against a future change rather than
+     *  a reproduction of a past one: with the lookup hoisted out of the
+     *  retried unit a price failure cannot reach the failover report at
+     *  all, and putting it back inside would have to get past this.
+     *
+     *  The rate is put over the threshold first, so that a report of a
+     *  failure WOULD move selection — otherwise the case passes because
+     *  nothing moves under the threshold, whatever was reported. */
+    const before = sendTx.getCurrentRPCUrl();
+    /*- The rate is put over the threshold first, so that a report of a
+     *  failure would actually move selection.  Without this the case
+     *  passes for the wrong reason — nothing moves while the rate is
+     *  under, whether or not the failure was reported. */
+    condemn(before);
+    const deps = makeDeps({
+      body: { token0: TOKEN0, token1: TOKEN1 },
+      fetchPrice: async () => {
+        throw new Error("Moralis 503");
+      },
+      readBalance: async () => {
+        throw new Error("readBalance must not be reached");
+      },
+    });
+    const res = makeRes();
+    await createCanReopenHandler(deps)({}, res);
+
+    assert.strictEqual(
+      sendTx.getCurrentRPCUrl(),
+      before,
+      "a price failure must not move rpc selection",
+    );
+    /*- Still the operator's 503: without a price they cannot be told
+     *  whether they have enough to re-open. */
+    assert.strictEqual(res._status, 503);
+    assert.strictEqual(res._body.error, "wallet-read-unavailable");
   });
 
   it("partial failure (one token throws) counts as complete attempt failure", async () => {

@@ -217,6 +217,86 @@ describe("failover wraps to the first endpoint after the pause", () => {
     });
   });
 
+  it("announces the snapback, once, when the sticky window lapses", () => {
+    /*- Engaging a failover is announced, so returning must be too: a log
+     *  that shows the leaving and not the returning leaves a reader to
+     *  work out which endpoint is in service from whichever one next
+     *  fails. */
+    const said = [];
+    const restore = logModule._setSinkForTests({
+      log: (...a) => said.push(format(...a)),
+    });
+    try {
+      withClock((clock) => {
+        condemn(sendTx.getCurrentRPCUrl());
+        sendTx.failoverToNextRPC();
+        assert.equal(
+          sendTx.getCurrentRPC()._url,
+          URLS[1],
+          "moved off the head",
+        );
+        said.length = 0;
+
+        clock.advance(61 * 60_000);
+        assert.equal(sendTx.getCurrentRPC()._url, URLS[0], "snapped back");
+
+        const lapse = said.filter((l) => l.includes("sticky window lapsed"));
+        assert.equal(lapse.length, 1, "exactly one announcement");
+        assert.ok(
+          lapse[0].includes(`back to ${URLS[0]}`),
+          "names where it went",
+        );
+        assert.ok(lapse[0].includes(`was on ${URLS[1]}`), "and where it was");
+
+        /*- Hot path: every read calls this, and it must not chatter. */
+        sendTx.getCurrentRPC();
+        sendTx.getCurrentRPC();
+        assert.equal(
+          said.filter((l) => l.includes("sticky window lapsed")).length,
+          1,
+          "later reads say nothing",
+        );
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("announces the outage hold lifting, on whichever path notices", () => {
+    /*- `acquire` has fast paths that never drain, so the lapse has to be
+     *  noticed wherever the remaining time is asked for.  Asking through
+     *  the public `haltRemainingMs` is what a caller on any path does. */
+    const said = [];
+    const restore = logModule._setSinkForTests({
+      log: (...a) => said.push(format(...a)),
+    });
+    try {
+      withClock((clock) => {
+        for (const _ of URLS) {
+          condemn(sendTx.getCurrentRPCUrl());
+          sendTx.failoverToNextRPC();
+        }
+        const waitLeft = rpcQueue.haltRemainingMs();
+        assert.ok(waitLeft > 0, "the hold is running");
+        said.length = 0;
+
+        clock.advance(waitLeft);
+        assert.equal(rpcQueue.haltRemainingMs(), 0, "the hold has lapsed");
+
+        const lifted = said.filter((l) => l.includes("outage hold lifted"));
+        assert.equal(lifted.length, 1, "announced once");
+        rpcQueue.haltRemainingMs();
+        assert.equal(
+          said.filter((l) => l.includes("outage hold lifted")).length,
+          1,
+          "and not again",
+        );
+      });
+    } finally {
+      restore();
+    }
+  });
+
   it("does not pause on a single-endpoint chain", () => {
     /*- The testnet ships one endpoint. There is nothing to fail over to
      *  and nothing an outage-wide pause would achieve. */

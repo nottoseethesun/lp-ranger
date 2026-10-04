@@ -107,6 +107,50 @@ npm run check
   confirmed vulnerability. Evaluate whether untrusted input reaches
   the flagged code.
 
+### Advisories with no fix available
+
+What gates is the tree that **ships**. `npm run audit:deps` and the
+dependency check inside `npm run check` both pass `--omit=dev`, because
+that is the tree running beside an unlocked wallet. The full tree,
+development tooling included, is audited by `npm run audit:deps:all` and
+is written to `test/report-artifacts/raw-data/npm-audit.json` on every
+`npm run check`, so what is not gated is still read.
+
+The distinction is not convenience. A dev-tool advisory is reached
+through glob patterns this repository writes, never through anything an
+attacker supplies, and it can be unfixable through no fault of ours.
+`braces` is that case: the newest published version **is** the
+vulnerable one, and the newest `micromatch` declares `^3.0.3`, which
+only that version satisfies. Every tool that globs — stylelint, knip,
+secretlint, markdownlint-cli2 — therefore carries it, and those tools
+are the gate. Gating on it would mean a permanently red gate with no
+action available, which teaches people to ignore the gate.
+
+The same advisory **did** reach the shipped tree, and that was worth
+fixing rather than accepting: `@uniswap/v3-sdk` depends on
+`@uniswap/swap-router-contracts`, which declares the `hardhat-watcher`
+dev tool as a runtime dependency, which pulled an old `chokidar` and so
+`braces`. Nothing in this app loads any of it. The scoped override in
+`package.json` replaces that `chokidar` with `empty-npm-package`,
+beside the entry that already does the same for `hardhat`, and the
+shipped tree now reports no high advisory at all.
+
+So when a high advisory appears: run the regeneration
+([[feedback_regenerate_lockfile]]), and if it survives, establish
+whether it reaches the shipped tree. If it does, fix it — a scoped
+override that prunes an unused subtree is a legitimate fix. If it is
+dev-only and unfixable, it belongs here, named, with the reason it
+cannot be fixed and the condition that would let it be.
+
+**A dev-only advisory that CAN be fixed is still fixed.** The gate no
+longer forces the issue, which is exactly why this has to be said:
+`--omit=dev` means "not a release blocker", never "not our problem".
+`npm run audit:deps:all` is the command that shows them, the full
+report is written on every `npm run check`, and a patched version that
+a regeneration would pick up should be picked up. What the narrower
+gate buys is that an advisory nobody can act on cannot hold the branch
+hostage — not permission to stop looking.
+
 ### Disabled rules and why
 
 Two `eslint-plugin-security` rules are disabled in

@@ -74,7 +74,6 @@ function _pickBestNft(valid) {
  * mid-session RPC failover so the next attempt routes through the
  * fallback RPC.
  *
- * @param {object} provider   ethers provider (used when getProvider not supplied).
  * @param {string} address    Wallet address.
  * @param {string} [targetId] Specific NFT token ID to select.
  * @param {object} [opts]
@@ -225,7 +224,6 @@ function _initPnlTracker(
 
 /** Initialize P&L tracker from token prices. Returns null if prices unavailable. */
 async function _tryInitPnlTracker(
-  provider,
   ethersLib,
   position,
   botState,
@@ -260,7 +258,7 @@ async function _tryInitPnlTracker(
       _fetchTokenPrices(position.token0, position.token1),
     );
     if (price0 > 0 || price1 > 0) {
-      const ps = await getPoolState(provider, ethersLib, {
+      const ps = await getPoolState(ethersLib, {
         factoryAddress: config.FACTORY,
         token0: position.token0,
         token1: position.token1,

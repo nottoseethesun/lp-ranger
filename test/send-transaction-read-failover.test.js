@@ -21,6 +21,7 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { format } = require("node:util");
 
 const sendTx = require("../src/send-transaction");
 const {
@@ -367,14 +368,15 @@ describe("send-transaction: getManagedReadProvider", () => {
     }
     /*- The first failure is what enters the loop; attempt #1 inside it
      *  also throws and IS logged, attempt #2 succeeds.  So exactly one
-     *  retry line.  The sink stores raw args, so the format string is
-     *  `a[0]` and the substitutions follow it. */
-    const lines = m.out.warn.filter((a) =>
-      String(a[0] ?? "").includes("read retry #"),
-    );
+     *  retry line.  The sink stores raw args, so the line is rendered
+     *  the way `console.warn` would before being read — asserting on
+     *  the rendered text rather than on argument positions, which shift
+     *  whenever the format string gains a field. */
+    const lines = m.out.warn
+      .map((a) => format(...a))
+      .filter((l) => l.includes("read retry #"));
     assert.equal(lines.length, 1);
-    assert.equal(lines[0][1], 1, "attempt number");
-    assert.equal(lines[0][2], "getBlockNumber", "method name");
+    assert.match(lines[0], /read retry #1 on getBlockNumber failed:/);
   });
 
   it("propagates a non-failoverable error raised by a later attempt", async () => {

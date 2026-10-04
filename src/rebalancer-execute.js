@@ -248,7 +248,6 @@ function _sumGas(...steps) {
  * outside the range.  Skip the adjustment to preserve offset intent.
  */
 async function _adjustRangeAfterSwap(
-  provider,
   ethersLib,
   position,
   factoryAddress,
@@ -257,7 +256,7 @@ async function _adjustRangeAfterSwap(
   offset,
 ) {
   if (offset !== undefined && offset !== 50) return;
-  const ps = await getPoolState(provider, ethersLib, {
+  const ps = await getPoolState(ethersLib, {
     factoryAddress,
     token0: position.token0,
     token1: position.token1,
@@ -436,7 +435,6 @@ function _buildRebalanceResult(
  * Skipped when offset ≠ 50 (one-sided positions are intentional).
  */
 async function _preMintTickCheck(
-  provider,
   ethersLib,
   position,
   factoryAddress,
@@ -444,7 +442,7 @@ async function _preMintTickCheck(
   offset,
 ) {
   if (offset !== 50) return null;
-  const ps = await getPoolState(provider, ethersLib, {
+  const ps = await getPoolState(ethersLib, {
     factoryAddress,
     token0: position.token0,
     token1: position.token1,

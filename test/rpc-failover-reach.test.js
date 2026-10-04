@@ -10,10 +10,13 @@
  * failover-eligible error on the next endpoint. Two other kinds of
  * caller do not.
  *
- * `getPoolState` and the can-reopen balance walk build their own
- * provider per URL and start at `config.RPC_URLS[0]` every time, so a
- * failover does not change where they look first. Reads taken from the
- * signer — `signer.provider`, and the `signer.call` that ethers routes
+ * The can-reopen balance walk builds its own provider per URL and
+ * starts at `config.RPC_URLS[0]` every time, so a failover does not
+ * change where it looks first. `getPoolState` reads through selection
+ * instead, and its cases below pin both halves of that: it asks
+ * wherever selection points, and it does not move selection for a read
+ * that never failed. Reads taken from
+ * the signer — `signer.provider`, and the `signer.call` that ethers routes
  * a contract read through — resolve to the raw selected provider, which
  * carries no retry and reports nothing back, so a refusal inside a
  * rebalance or a compound both fails the move and leaves selection
@@ -67,14 +70,15 @@ _setCanReopenRetryDelay(0);
  * URL it was built for, and `failing` decides which of them refuse.
  *
  * @param {Set<string>} failing  URLs whose reads should throw.
- * @returns {{lib: object, asked: string[]}}  `asked` is every URL a
- *   provider was built for, in the order the walk built them.
+ * @returns {{lib: object, asked: string[]}}  `asked` is the url of every
+ *   endpoint a read actually went to, in order. Recorded at the first
+ *   contract call rather than at construction, since the rpc layer
+ *   builds all of its providers up front.
  */
 function poolStateEthers(failing = new Set()) {
   const asked = [];
   function JsonRpcProvider(url) {
     this.url = url;
-    asked.push(url);
   }
   function Contract(address, _abi, provider) {
     const refuse = () => {
@@ -85,7 +89,14 @@ function poolStateEthers(failing = new Set()) {
       }
     };
     return {
-      getPool: async () => (refuse(), POOL),
+      /*- Recorded when the read ASKS, not when the provider was built:
+       *  pool state takes its endpoint from the app's failover now, so
+       *  all of them exist from the moment the rpc layer is stood up
+       *  and construction order says nothing about where a read went.
+       *  `getPool` is the first call of every attempt, and the push
+       *  precedes the refusal so a refusing endpoint still counts as
+       *  asked. */
+      getPool: async () => (asked.push(provider.url), refuse(), POOL),
       feeAmountTickSpacing: async () => (refuse(), 200),
       decimals: async () => (refuse(), address === TOKEN0 ? 8 : 18),
       slot0: async () => (
@@ -112,12 +123,6 @@ const POOL_OPTS = {
   fee: 10000,
 };
 
-/*- `init` builds one provider per endpoint up front, so it must not
- *  share the double that records what the walk asked — those three
- *  would land in `asked` before the walk ran.  Selection is read by
- *  URL, so these providers need no behaviour at all. */
-const inertEthers = { JsonRpcProvider: class {} };
-
 describe("a failover moves the pool-state read", () => {
   let savedUrls;
 
@@ -140,12 +145,14 @@ describe("a failover moves the pool-state read", () => {
      *  it keeps asking after a failover is an endpoint the failover did
      *  not move. */
     const { lib, asked } = poolStateEthers();
-    sendTx.init({ urls: URLS }, inertEthers);
+    /*- The rpc layer is given this mock, because the read now uses the
+     *  providers it holds rather than building its own. */
+    sendTx.init({ urls: URLS }, lib);
     condemn(URLS[0]);
     sendTx.failoverToNextRPC();
     assert.equal(sendTx.getCurrentRPCUrl(), URLS[1], "selection moved");
 
-    await getPoolState(null, lib, POOL_OPTS);
+    await getPoolState(lib, POOL_OPTS);
 
     assert.equal(
       asked[0],
@@ -159,34 +166,67 @@ describe("a failover moves the pool-state read", () => {
     );
   });
 
-  it("covers the rest of the list from there, wrapping, when all refuse", () => {
-    /*- Starting elsewhere must not cost the walk its reach: every
-     *  endpoint still gets its attempts, in list order from the
-     *  selected one, and none is tried twice. */
+  it("gives up with the operator's error when every endpoint refuses", () => {
+    /*- What this no longer claims: a guaranteed sweep of the whole list
+     *  in order.  Pool state reads through the app's selection, and
+     *  selection moves on a failure RATE rather than on each refusal —
+     *  so which endpoints a spent budget touched depends on when that
+     *  rate crossed, and pinning a sequence here would pin the
+     *  decider's arithmetic rather than this read's contract.
+     *
+     *  What it does claim, and what an operator depends on: the attempt
+     *  budget is finite, and running out produces the error the
+     *  dashboard renders as `pool-info-unavailable` rather than a wait
+     *  with no end. */
     const { lib, asked } = poolStateEthers(new Set(URLS));
-    sendTx.init({ urls: URLS }, inertEthers);
+    sendTx.init({ urls: URLS }, lib);
     condemn(URLS[0]);
     sendTx.failoverToNextRPC();
 
-    return getPoolState(null, lib, POOL_OPTS).then(
+    return getPoolState(lib, POOL_OPTS).then(
       () => assert.fail("every endpoint refused — this must reject"),
-      () => {
-        assert.deepEqual(
-          [...new Set(asked)],
-          [URLS[1], URLS[2], URLS[0]],
-          "the walk starts at the selected endpoint and wraps once",
+      (err) => {
+        assert.equal(err.constructor.name, "PoolStateUnavailableError");
+        assert.equal(
+          asked.length,
+          sendTx.endpointCount() * 2,
+          "the budget is every endpoint twice over, and it was spent",
         );
       },
     );
   });
 
+  it("does not move selection for a read that never failed", async () => {
+    /*- Reporting a failure is for failures.  The retry loop asks
+     *  `failover` at the top of every attempt including the first, so a
+     *  caller that arrives without one of its own — pool state has not
+     *  tried anything yet — would step selection before reading, and
+     *  step it unnamed, which skips the guard that stops concurrent
+     *  callers each advancing the list.  Here the endpoint's rate is
+     *  already over the threshold, so an unconditional report moves;
+     *  the read itself then succeeds, having been moved for nothing. */
+    const { lib, asked } = poolStateEthers();
+    sendTx.init({ urls: URLS }, lib);
+    condemn(URLS[0]);
+    assert.equal(sendTx.getCurrentRPCUrl(), URLS[0], "starts at the head");
+
+    await getPoolState(lib, POOL_OPTS);
+
+    assert.equal(asked[0], URLS[0], "read the endpoint selection held");
+    assert.equal(
+      sendTx.getCurrentRPCUrl(),
+      URLS[0],
+      "a read that never failed must leave selection where it was",
+    );
+  });
+
   it("still starts at the first endpoint when nothing has failed over", async () => {
     /*- The ordinary case has to stay ordinary: with selection at the
-     *  head of the list, the walk is exactly what it always was. */
+     *  head of the list, the read goes there. */
     const { lib, asked } = poolStateEthers();
-    sendTx.init({ urls: URLS }, inertEthers);
+    sendTx.init({ urls: URLS }, lib);
 
-    await getPoolState(null, lib, POOL_OPTS);
+    await getPoolState(lib, POOL_OPTS);
 
     assert.equal(asked[0], URLS[0]);
   });
@@ -226,6 +266,21 @@ function canReopenDeps({ seen, refuse = false }) {
   };
 }
 
+/*- Minimal ethers stand-in for the rpc layer in the can-reopen cases.
+ *  The balance double identifies an endpoint the way real ethers exposes
+ *  it, `provider._getConnection().url`, so the provider must answer
+ *  that; nothing else about it is exercised. */
+const CAN_REOPEN_LIB = {
+  JsonRpcProvider: class {
+    constructor(url) {
+      this._url = url;
+    }
+    _getConnection() {
+      return { url: this._url };
+    }
+  },
+};
+
 describe("a failover moves the can-reopen balance read", () => {
   let savedUrls;
 
@@ -248,7 +303,9 @@ describe("a failover moves the can-reopen balance read", () => {
      *  a wasted request: the Can-Reopen check reports on balances read
      *  from an endpoint the bot has already given up on. */
     const seen = [];
-    sendTx.init({ urls: URLS }, { JsonRpcProvider: class {} });
+    /*- The balance read now takes its provider from the rpc layer, so
+     *  that layer is given the stub whose endpoint the double records. */
+    sendTx.init({ urls: URLS }, CAN_REOPEN_LIB);
     condemn(URLS[0]);
     sendTx.failoverToNextRPC();
 

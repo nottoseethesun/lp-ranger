@@ -1,16 +1,17 @@
 ---
 name: project_tx_wait_not_failover_covered
-description: "FIXED on branch, Production 0.9.7 2026-09-30: a transient rpc 502 during tx.wait() aborts a whole compound or rebalance, because _tolerantWait tolerates only TRANSACTION_REPLACED and tx.wait() never goes through the rpc retry/failover path. The collect had already mined, so fees sat in the wallet with their gas unrecorded."
+description: "FIXED, shipped in 0.9.8; hit Production on 0.9.7 2026-09-30: a transient rpc 502 during tx.wait() aborted a whole compound or rebalance, because _tolerantWait tolerated only TRANSACTION_REPLACED and tx.wait() never went through the rpc retry/failover path. The collect had already mined, so fees sat in the wallet with their gas unrecorded."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-01T04:55:17.085Z
+  modified: 2026-10-01T16:39:29.860Z
 ---
 
-**Fixed** on branch `receipt-waits-follow-failover`; open on Production
-until that merges and ships. Seen at 13:21Z on 2026-09-30, on NFT
-#164418 (HEX / HEX from Ethereum).
+**Fixed**, shipped in 0.9.8 (Production 2026-10-01). Hit Production on
+0.9.7, at 13:21Z on 2026-09-30, on NFT #164418 (HEX / HEX from
+Ethereum). The stranded fees it left are still stranded — see
+[[project_0098_burn_in_watch]] § 4.
 
 ## What happened
 

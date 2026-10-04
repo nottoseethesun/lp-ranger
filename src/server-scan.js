@@ -85,12 +85,11 @@ async function resolveSymbolMap(prov, addrSet) {
 
 /**
  * Fetch current pool ticks for unique pools.
- * @param {object} prov  ethers provider.
  * @param {object} ethersLib
  * @param {object[]} nftPositions
  * @returns {Promise<Object<string,number>>}
  */
-async function fetchPoolTicks(prov, ethersLib, nftPositions) {
+async function fetchPoolTicks(ethersLib, nftPositions) {
   const poolTickMap = {};
   const poolSet = new Set(
     nftPositions
@@ -101,7 +100,7 @@ async function fetchPoolTicks(prov, ethersLib, nftPositions) {
     [...poolSet].map(async (k) => {
       try {
         const [t0, t1, fee] = k.split("-");
-        const ps = await getPoolState(prov, ethersLib, {
+        const ps = await getPoolState(ethersLib, {
           factoryAddress: config.FACTORY,
           token0: t0,
           token1: t1,
@@ -317,7 +316,7 @@ function createScanHandlers(deps) {
       type = r.type;
     }
 
-    const poolTickMap = await fetchPoolTicks(prov, ethers, nftPositions);
+    const poolTickMap = await fetchPoolTicks(ethers, nftPositions);
     const symMap = nftPositions.some((p) => !p.token0Symbol)
       ? await resolveSymbolMap(
           prov,
@@ -375,7 +374,7 @@ function createScanHandlers(deps) {
     _log("Background refresh for %d positions", tokenIds.length);
     const [liqMap, poolTickMap] = await Promise.all([
       refreshLpPositionLiquidity(prov, pmAddr, tokenIds),
-      fetchPoolTicks(prov, ethers, cached.positions),
+      fetchPoolTicks(ethers, cached.positions),
     ]);
 
     // Update cache with fresh liquidity
