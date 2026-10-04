@@ -1,11 +1,11 @@
 ---
 name: project_initial_residual_zero_price_persisted
-description: "OPEN: when the historical price API fails, the initial-mint residual is persisted with both prices at $0 and never re-fetched. The subtraction that excludes the initial leftover from Lifetime Net P&L then removes nothing, so the leftover is counted as LP profit."
+description: "FIXED 2026-10-04: a failed historical-price lookup left the first-deposit leftover valued at $0 with no way back, so the subtraction that excludes it from Lifetime Net P&L removed nothing. Reload Position and Re-scan Prices now re-read and overwrite it. The bad write itself is deliberately left in place — the operator's two repair actions are the cure."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-03T17:33:08.108Z
+  modified: 2026-10-04T07:07:40.028Z
 ---
 
 Found 2026-10-03 in the whole-app audit for the conflation behind
@@ -60,6 +60,71 @@ a high-liquidity pair the leftover is near nothing and so is the error.
 The dashboard also surfaces the initial residual as its own Lifetime line
 item, which reads $0.00 beside non-zero amounts — visible, if anyone
 looks for it.
+
+## The fix, 2026-10-04 — and what it deliberately is not
+
+**Operator decision: the bad write stays.** A failed lookup still stores
+$0. What was missing was any way back, and the operator named the two
+actions that should provide it — Reload Position and Re-scan Prices — and
+scoped the fix to exactly that.
+
+The scan carries "fresh prices were asked for" down to this figure, which
+re-reads and **overwrites** it.
+
+**Which request it keys off is the whole correctness of this.** Two
+different things reach the scan. "Recompute the saved figures" is what a
+rebalance asks for, and it must — a new NFT means those figures no longer
+describe the chain. "Re-value them at fresh prices" is what only a repair
+asks for. The first version keyed the re-read to either, which fired it
+after every rebalance: a cache-bypassing lookup, against a quota-limited
+service, for a price that cannot change — the leftover and the day it was
+left on are fixed history, which is why that price is cached with no
+expiry in the first place. Up to fifty needless lookups a day across ten
+positions.
+
+So it keys off the fresh-prices request alone, and **Reload Position now
+raises that too.**
+
+Why Reload should: of the eight figures it clears, three need a price to
+rebuild — the lifetime deposit total, the baseline's entry value, and this
+leftover's two prices. The rest are coins on purpose, because a dollar
+figure is only true at the price that computed it, and
+`bot-config-keys.js` says so where it lists them. So Reload is not asking
+for price work it has no use for; it is asking for the part of its own job
+it had never named.
+
+An earlier draft of this paragraph said "every figure it rebuilds is an
+amount times a price", which is backwards — most are coins precisely to
+avoid a price. Corrected, and noted because the same commit recorded
+[[feedback_trace_the_claim_not_just_the_code]]: writing a rule down is not
+applying it.
+
+Pinned by two cases in `test/bot-recorder-scan-and-reconstruct.test.js` —
+a recompute must not bypass the price cache, a repair must. The first
+fails with the over-broad condition restored.
+
+**Overwrite, never clear — and this was got wrong first.** The first
+attempt added a cache-clearing function and called it from both routes.
+That breaks [[feedback_never_clear_to_force_a_recompute]], and the sibling
+route's own file header says why in terms of this very system: a figure
+cleared to force a rebuild is absent while the rebuild runs, and something
+reads that gap as settled. Overwriting leaves the old value standing until
+its replacement exists, so a failed re-read costs nothing. The clearing
+version was reverted before it was committed.
+
+**The refresh reaches the price lookup too.** Dropping or ignoring the
+cached entry alone would not have been enough: a historical price is
+cached with no expiry, so the re-read would be served the same wrong
+number and the figure would be "reloaded" and unchanged. The missing-price
+case would have worked either way, because a zero is never cached — but
+the wrong-price case is the one Re-scan Prices exists for.
+
+## One consequence, accepted
+
+Issue 2 was left alone because a restart fixes it with nothing asked of
+the operator. This one heals only if someone notices and acts, so a first
+failed lookup on a fresh install is silently wrong until then. Raised
+once, scoped out, recorded here so it is not rediscovered as a finding.
 
 ## The shape a fix takes
 

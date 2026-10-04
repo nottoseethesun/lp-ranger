@@ -81,13 +81,65 @@ function _positionValueUsd(position, poolState, price0, price1) {
 }
 
 /**
- * Read actual deposited token amounts from the IncreaseLiquidity event in a mint TX.
+ * Find this position's deposit in a mint receipt's logs.
+ *
+ * A mint receipt carries logs from several contracts, and only the
+ * Position Manager's `IncreaseLiquidity` for this token id states what
+ * was deposited. Decoding a log that belongs to someone else throws, so
+ * the attempt is guarded per log and a failure means "not this one".
+ *
+ * **Nothing that touches the network belongs inside that guard.** It
+ * cannot tell a foreign log from a read that failed, so a network error
+ * raised in here would be read as "keep looking" and the search would
+ * end up reporting no deposit at all.
+ *
+ * @param {object} iface      Position Manager interface, for decoding.
+ * @param {object} receipt    The mint's receipt.
+ * @param {string|number|bigint} tokenId
+ * @returns {{amount0: bigint, amount1: bigint}|null} The deposited raw
+ *   amounts, or null when this receipt holds no deposit for this token.
+ */
+function _findDeposit(iface, receipt, tokenId) {
+  for (const entry of receipt.logs) {
+    if (entry.address.toLowerCase() !== config.POSITION_MANAGER.toLowerCase())
+      continue;
+    try {
+      const p = iface.parseLog({ topics: entry.topics, data: entry.data });
+      if (
+        p.name === "IncreaseLiquidity" &&
+        BigInt(p.args.tokenId) === BigInt(tokenId)
+      )
+        return { amount0: p.args.amount0, amount1: p.args.amount1 };
+    } catch {
+      /* a log from another contract — keep looking */
+    }
+  }
+  return null;
+}
+
+/**
+ * What a position was opened with, read from its mint transaction.
+ *
+ * Three reads have to succeed: the mint's receipt, the deposit inside
+ * it, and the two tokens' decimals. Each can fail on its own, and the
+ * caller needs one thing from all of them — whether the answer is
+ * trustworthy — so every failure returns `null` and `null` means only
+ * "unknown".
+ *
+ * **Zero is reserved for an amount the chain actually stated.** A
+ * position opened with nothing is not a state that exists, so a zero
+ * standing in for a failed read is a lie the rest of the app cannot
+ * detect: it is what IL/G measures against and what the Impermanent
+ * Loss Guard compares a rebalance to, and both read it as fact.
+ *
  * @param {object} provider   Ethers provider.
  * @param {object} ethersLib  Ethers library.
  * @param {object} iface      PM interface for event parsing.
  * @param {object} position   V3 position (tokenId, token0, token1, fee).
  * @param {string} txHash     Mint transaction hash.
- * @returns {Promise<{hodlAmount0: number, hodlAmount1: number, mintGasWei: string}>}
+ * @returns {Promise<{hodlAmount0: number, hodlAmount1: number,
+ *   mintGasWei: string}|null>} The deposited amounts and the mint's gas,
+ *   or null when any part of the read did not come back.
  */
 async function _readMintedAmounts(
   provider,
@@ -96,41 +148,59 @@ async function _readMintedAmounts(
   position,
   txHash,
 ) {
+  let receipt;
   try {
-    const receipt = await provider.getTransactionReceipt(txHash);
-    if (!receipt) return { hodlAmount0: 0, hodlAmount1: 0, mintGasWei: "0" };
-    const mintGasWei = receiptGasWei(receipt);
-    for (const log of receipt.logs) {
-      if (log.address.toLowerCase() !== config.POSITION_MANAGER.toLowerCase())
-        continue;
-      try {
-        const p = iface.parseLog({ topics: log.topics, data: log.data });
-        if (
-          p.name === "IncreaseLiquidity" &&
-          BigInt(p.args.tokenId) === BigInt(position.tokenId)
-        ) {
-          const ps = await getPoolState(ethersLib, {
-            factoryAddress: config.FACTORY,
-            token0: position.token0,
-            token1: position.token1,
-            fee: position.fee,
-          });
-          return {
-            hodlAmount0: Number(p.args.amount0) / 10 ** ps.decimals0,
-            hodlAmount1: Number(p.args.amount1) / 10 ** ps.decimals1,
-            mintGasWei: String(mintGasWei),
-          };
-        }
-      } catch {
-        /* not our event */
-      }
-    }
-    // Event not found but receipt was readable — still return gas
-    return { hodlAmount0: 0, hodlAmount1: 0, mintGasWei: String(mintGasWei) };
-  } catch {
-    /* receipt unavailable */
+    receipt = await provider.getTransactionReceipt(txHash);
+  } catch (err) {
+    log.warn("[bot] HODL baseline: mint receipt unreadable: %s", err.message);
+    return null;
   }
-  return { hodlAmount0: 0, hodlAmount1: 0, mintGasWei: "0" };
+  /*- Null is an answer, not an error: the endpoint does not have this
+   *  transaction, which it will also say for one that is merely not
+   *  mined yet and for one whose block falls outside its transaction
+   *  index. None of those is "opened with nothing". */
+  if (receipt === null || receipt === undefined) {
+    log.warn(
+      "[bot] HODL baseline: endpoint has no receipt for mint TX %s",
+      txHash,
+    );
+    return null;
+  }
+  const deposit = _findDeposit(iface, receipt, position.tokenId);
+  if (deposit === null) {
+    log.warn(
+      "[bot] HODL baseline: mint TX %s carries no deposit for NFT #%s",
+      txHash,
+      String(position.tokenId),
+    );
+    return null;
+  }
+  /*- Deliberately after the search and outside its guard. The deposit
+   *  is stated in each token's smallest unit, so turning it into real
+   *  amounts needs the token decimals, and those come from the chain —
+   *  a bounded read that gives up after trying every endpoint. Raised
+   *  here, its failure is a failure; raised inside the search, it was
+   *  indistinguishable from a foreign log. */
+  let ps;
+  try {
+    ps = await getPoolState(ethersLib, {
+      factoryAddress: config.FACTORY,
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee,
+    });
+  } catch (err) {
+    log.warn(
+      "[bot] HODL baseline: token decimals unavailable: %s",
+      err.message,
+    );
+    return null;
+  }
+  return {
+    hodlAmount0: Number(deposit.amount0) / 10 ** ps.decimals0,
+    hodlAmount1: Number(deposit.amount1) / 10 ** ps.decimals1,
+    mintGasWei: String(receiptGasWei(receipt)),
+  };
 }
 
 /**
@@ -316,13 +386,28 @@ async function initHodlBaseline(
       _patchMintTimestamp(botState, updateBotState, mintTimestamp);
       return;
     }
-    const { hodlAmount0, hodlAmount1, mintGasWei } = await _readMintedAmounts(
+    const minted = await _readMintedAmounts(
       provider,
       ethersLib,
       iface,
       position,
       mintLog.transactionHash,
     );
+    /*- Nothing is published on an unreadable mint. Whatever is already
+     *  saved stands, which matters most on the price-retry path above:
+     *  it re-runs this whole read for the sake of the dollar value, so
+     *  without this a failure here would overwrite amounts that were
+     *  already correct. With no baseline saved yet, publishing nothing
+     *  leaves the next start to try again. */
+    if (minted === null) {
+      log.warn(
+        "[bot] HODL baseline for NFT #%s deferred — mint read incomplete;" +
+          " keeping whatever is saved and retrying on the next start",
+        String(position.tokenId),
+      );
+      return;
+    }
+    const { hodlAmount0, hodlAmount1, mintGasWei } = minted;
     // Fetch historical prices for entry value auto-detection (initial deposit)
     const { price0, price1 } = await fetchHistoricalPriceGecko(
       poolAddress,
@@ -389,13 +474,19 @@ async function getPositionBaseline(provider, ethersLib, position) {
       poolCreationBlock,
     );
     if (!mintTimestamp || !mintLog) return null;
-    const { hodlAmount0, hodlAmount1, mintGasWei } = await _readMintedAmounts(
+    const minted = await _readMintedAmounts(
       provider,
       ethersLib,
       iface,
       position,
       mintLog.transactionHash,
     );
+    /*- This function's whole return is a baseline, so an unreadable mint
+     *  makes it null rather than a baseline of zeros. The caller already
+     *  handles a null — it is what a position with no resolvable mint
+     *  returns above. */
+    if (minted === null) return null;
+    const { hodlAmount0, hodlAmount1, mintGasWei } = minted;
     const { price0, price1 } = await fetchHistoricalPriceGecko(
       poolAddress,
       mintTimestamp,

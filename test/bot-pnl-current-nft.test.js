@@ -220,10 +220,20 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
       { tokenId: 12345, token0: "0xA", token1: "0xB", fee: 3000 },
       { decimals0: 18, decimals1: 18 },
     );
-    /*- On scan failure _scanNftTotals returns { gasWei: '0', compoundedUsd: 0 }.
-     *  snap.currentGasUsd is set to 0 (treated as "no gas to display"),
-     *  snap.currentCompoundedUsd is 0 (no override). */
-    assert.strictEqual(snap.currentGasUsd, 0);
+    /*- A failed scan leaves the gas UNKNOWN, and this case's own name says
+     *  so: no snap mutation. It previously asserted a mutation to zero,
+     *  which told the dashboard the NFT had cost nothing to run — and
+     *  zero is indistinguishable from a real figure, so the operator had
+     *  no way to tell the scan had failed.
+     *
+     *  Absent is what the dashboard already expects: it falls back to the
+     *  running epoch's gas when this field is missing. Compounded stays
+     *  zero because a failed scan read no events to sum. */
+    assert.strictEqual(
+      snap.currentGasUsd,
+      undefined,
+      "a failed scan must leave the gas figure absent, not zero",
+    );
     assert.strictEqual(snap.currentCompoundedUsd, 0);
   });
 });

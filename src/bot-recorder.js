@@ -226,7 +226,8 @@ async function _closePnlEpoch(deps, result) {
  * regardless.
  */
 async function _attachInitialResidual(stPatch, ctx) {
-  const { address, position, found, poolState, provider, ethersLib } = ctx;
+  const { address, position, found, poolState, provider, ethersLib, refresh } =
+    ctx;
   log.info(
     "[bot] Attaching initial residual (firstMintBlock=%s firstMintTimestamp=%s poolAddress=%s)",
     found.firstMintBlockNumber,
@@ -246,6 +247,11 @@ async function _attachInitialResidual(stPatch, ctx) {
       poolAddress: poolState.poolAddress,
       provider,
       ethersLib,
+      /*- Set when the operator asked for a repair — Reload Position or
+       *  Re-scan Prices. Without it this figure is the one stored value a
+       *  re-scan would leave untouched, because it is written once and
+       *  returned ever after. */
+      refresh,
     });
     if (initialResidualData) stPatch.initialResidualData = initialResidualData;
   } catch (err) {
@@ -260,6 +266,12 @@ async function _attachInitialResidual(stPatch, ctx) {
  *   still holds what it held before the pass, which on a cold start is
  *   nothing.
  */
+/**
+ * @param {boolean} [refreshInitialResidual]  True when the operator has
+ *   asked for a repair — Reload Position or Re-scan Prices. The
+ *   first-deposit leftover is written once and returned ever after, so
+ *   without this it is the one stored figure a re-scan leaves alone.
+ */
 async function _scanHistory(
   provider,
   ethersLib,
@@ -269,6 +281,7 @@ async function _scanHistory(
   updateState,
   throttle,
   computeFromHistoricalPrices,
+  refreshInitialResidual,
 ) {
   try {
     updateState({
@@ -373,6 +386,7 @@ async function _scanHistory(
       poolState,
       provider,
       ethersLib,
+      refresh: refreshInitialResidual,
     });
     updateState(stPatch);
     return true;
@@ -488,6 +502,20 @@ async function _scanAndReconstruct(
         readChainEvents,
       }).catch((e) => log.warn("[pnl] Epoch reconstruction error:", e.message));
     },
+    /*- Only a request for fresh prices, never a request to recompute.
+     *
+     *  The two are not the same, and keying this to the wrong one cost
+     *  real quota. A rebalance asks for a recompute — it must, because a
+     *  new NFT means the saved figures no longer describe the chain — so
+     *  keying off that fired this re-read after every rebalance. What it
+     *  re-reads cannot change: the leftover and the day it was left on
+     *  are fixed history, which is why its price is cached with no expiry.
+     *  Bypassing that cache to ask again for a number that could not have
+     *  moved spends a quota-limited lookup for nothing.
+     *
+     *  Reload Position raises this flag as well as the recompute one, so
+     *  both repair actions still reach the figure. */
+    botState?._needsPriceRevalue === true,
   );
   await _scanLifetimePoolData(
     position,

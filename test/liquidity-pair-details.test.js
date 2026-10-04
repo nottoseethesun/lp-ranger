@@ -170,6 +170,77 @@ describe("liquidity-pair-details cache", () => {
     assert.equal(_stubPriceCalls, 1);
   });
 
+  it("re-reads and overwrites when asked, which is the only way back", async () => {
+    /*- Why a way back has to exist. This figure is stored once and
+     *  returned ever after — right, because the leftover and the day it
+     *  was left on never change — but the price it was valued at can come
+     *  back wrong, or missing, which is stored as zero. The subtraction
+     *  that keeps the first deposit's leftover out of lifetime profit is
+     *  built on that price, so a bad one is permanent without this.
+     *
+     *  `refresh` is what Reload Position and Re-scan Prices set. The first
+     *  call here stands in for a failed lookup. */
+    _stubPrice0 = 0;
+    _stubPrice1 = 0;
+    const first = await ensureInitialResidualData(_baseArgs());
+    assert.equal(first.token0Price, 0, "a failed lookup is stored as zero");
+    assert.equal(_stubPriceCalls, 1);
+
+    _stubPrice0 = 0.5;
+    _stubPrice1 = 1500;
+    const second = await ensureInitialResidualData(
+      _baseArgs({ refresh: true }),
+    );
+    assert.equal(_stubPriceCalls, 2, "the price must actually be asked again");
+    assert.equal(second.token0Price, 0.5, "and the new figure is returned");
+
+    /*- Overwritten on disk, not merely returned: the next scan without a
+     *  refresh has to see the repaired figure. */
+    const scope = liquidityPairScopeKey({
+      blockchain: "pulsechain",
+      factory: _baseArgs().factory,
+      wallet: _baseArgs().wallet,
+      token0: _baseArgs().token0,
+      token1: _baseArgs().token1,
+      fee: _baseArgs().fee,
+    });
+    assert.equal(loadInitialResidualData(scope).token0Price, 0.5);
+  });
+
+  it("asks the price source to read past its own cache on a refresh", async () => {
+    /*- Clearing the entry alone would not be enough. A historical price is
+     *  cached with no expiry, so a re-read would be served the same wrong
+     *  number — the figure would be "reloaded" and unchanged. The refresh
+     *  has to reach the price lookup too. */
+    let observed = null;
+    const _origLoadInner = Module._load;
+    Module._load = function (request, parent, ...rest) {
+      if (request === "./price-fetcher" || request.endsWith("/price-fetcher")) {
+        return {
+          fetchHistoricalPriceGecko: async (_pool, _ts, _chain, opts) => {
+            observed = opts;
+            return { price0: 1, price1: 2 };
+          },
+        };
+      }
+      return _origLoadInner.call(this, request, parent, ...rest);
+    };
+    try {
+      _resetForTest();
+      delete require.cache[require.resolve("../src/liquidity-pair-details")];
+      const fresh = require("../src/liquidity-pair-details");
+      await fresh.ensureInitialResidualData(_baseArgs({ refresh: true }));
+      assert.equal(
+        observed.refresh,
+        true,
+        "a refresh must reach the historical price lookup",
+      );
+    } finally {
+      Module._load = _origLoadInner;
+      delete require.cache[require.resolve("../src/liquidity-pair-details")];
+    }
+  });
+
   it("survives an in-memory reset by reloading from disk", async () => {
     _stubPrice0 = 0.5;
     _stubPrice1 = 1500;

@@ -32,9 +32,9 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 Found 2026-10-03. A *value* bug — distinct from the control-flow class
 the speed-up phase-boundary race belonged to.
 
-- [HODL baseline zeroed by an rpc failure](project_hodl_baseline_zero_from_rpc_failure.md) — An endpoint that won't serve the mint receipt is recorded as "opened with zero of both tokens". Looks complete, so never retried: IL/G reports a gain the size of the whole position, and the Impermanent Loss Guard stops evaluating that position permanently
-- [per-NFT gas zeroed by an rpc failure](project_nft_gas_zero_from_rpc_failure.md) — A refused receipt read becomes "cost no gas", persisted and then a cache hit forever. The mint TX is an NFT's largest charge, so gas is understated and profit overstated, silently
-- [initial residual priced at zero](project_initial_residual_zero_price_persisted.md) — A failed historical-price lookup is persisted as $0 and never re-fetched. The subtraction that excludes the initial-mint leftover from Lifetime Net P&L then removes nothing. Its sibling half of the same function aborts without persisting, which is the shape all three want
+- [HODL baseline zeroed by an rpc failure](project_hodl_baseline_zero_from_rpc_failure.md) — **FIXED 2026-10-03.** Was: a failed mint read recorded as "opened with zero of both tokens", looking complete so never retried, which silently disabled the Impermanent Loss Guard and let a later retry overwrite good amounts. Trigger was the token-decimals read, not the receipt. Kept as the record of why zero is never a substitute for "unknown" — and of a harm this file overclaimed before tracing it to the screen
+- [per-NFT gas zeroed by an rpc failure](project_nft_gas_zero_from_rpc_failure.md) — **FIXED 2026-10-04.** Was: a refused receipt read becoming "cost no gas", persisted and then a cache hit forever, understating the mint — an NFT's largest charge. One unreadable receipt now makes the whole NFT total unknown and nothing is saved
+- [initial residual priced at zero](project_initial_residual_zero_price_persisted.md) — **FIXED 2026-10-04.** Was: a failed historical-price lookup persisted as $0 and never re-fetched, so the subtraction excluding the initial-mint leftover from Lifetime Net P&L removed nothing. Reload Position and Re-scan Prices now re-read and overwrite it; the bad write stays by operator decision. Carries why a clear-to-rebuild was reverted in favour of an overwrite
 
 ## Production incidents — all fixed, kept as the record
 
@@ -94,6 +94,8 @@ the speed-up phase-boundary race belonged to.
 - [split rebalancePaused flag](project_split_rebalance_paused_flag.md) — Split the flag into aborted vs deferred
 
 ## Known rough edges — observed, low priority, not yet fixed
+
+- [read retry never probes another endpoint](project_read_retry_never_probes_another_endpoint.md) — A bounded read spends all its attempts on the endpoint that is refusing, because selection only moves when the failure rate retires it. Costs one poll cycle; the endpoint usually comes back. The write path's probe-but-commit-on-success is the fix shape. Shares its trigger with issue 1 of [false-zeroes](project_false_zeroes_for_price_and_amounts.md)
 
 - [receipt re-ask test flake](project_receipt_rewait_test_flake.md) — FIXED 2026-10-02: the flake was two real races in the speed-up pipeline, not a timing-seam problem
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses a new pairing; ~30 min lag

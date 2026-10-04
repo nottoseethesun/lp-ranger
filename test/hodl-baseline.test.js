@@ -11,7 +11,27 @@ const assert = require("node:assert/strict");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+const {
+  initHodlBaseline,
+  getPositionBaseline,
+  _positionValueUsd,
+} = require("../src/hodl-baseline");
 const { _resetForTest } = require("../src/gecko-rate-limit");
+const { _setRetryDelayForTests } = require("../src/rebalancer-pools");
+const sendTx = require("../src/send-transaction");
+const rpcQueue = require("../src/rpc-request-manager");
+const outOfService = require("../src/rpc-out-of-service");
+/*- Shared with test/hodl-baseline-unreadable-mint.test.js. These stubs
+ *  have to track what `getPoolState` validates, and a second copy would
+ *  drift the moment that validation gained a field. */
+const {
+  DEPOSIT,
+  DECIMALS,
+  POSITION,
+  mockEthersLib,
+  mockProvider,
+  noPricesResponse,
+} = require("./helpers/hodl-baseline-stubs");
 
 /** Save and restore the real global fetch around every test. */
 let _originalFetch;
@@ -19,69 +39,47 @@ let _originalFetch;
 beforeEach(() => {
   _originalFetch = globalThis.fetch;
   _resetForTest();
+  sendTx._resetForTests();
+  rpcQueue._resetForTests();
+  outOfService._resetForTests();
+  /*- The decimals read is a bounded retry; left at its shipped three
+   *  seconds, a case that lets it fail sits through the whole budget.
+   *
+   *  Not restored afterwards, deliberately — see the same note in
+   *  test/hodl-baseline-unreadable-mint.test.js. There is no getter to
+   *  restore from, no case here wants the real delay, and each test file
+   *  gets its own process. */
+  _setRetryDelayForTests(0);
 });
 
 afterEach(() => {
   globalThis.fetch = _originalFetch;
   mock.restoreAll();
+  sendTx._resetForTests();
+  rpcQueue._resetForTests();
+  outOfService._resetForTests();
 });
 
 /**
- * Build a minimal mock ethers library for initHodlBaseline tests.
- * @param {object} overrides - Optional overrides for mock behavior.
- * @returns {object} Mock ethersLib with Contract, Interface, ZeroAddress, zeroPadValue.
+ * Register a stub library with the endpoint gateway.
+ *
+ * The token-decimals read inside the baseline goes through
+ * `getPoolState`, which asks the gateway which endpoint is current. With
+ * none registered it raises "not initialized", and the baseline then
+ * correctly declines to publish — indistinguishable from the failures
+ * some of these cases are about.
+ *
+ * @param {object} ethersLib  The stub library to register.
+ * @returns {void}
  */
-function mockEthersLib(overrides = {}) {
-  const poolAddress = overrides.poolAddress || "0xPool1234";
-  return {
-    ZeroAddress: "0x" + "0".repeat(40),
-    zeroPadValue: (val, _len) => val.padEnd(66, "0"),
-    Contract: class {
-      async getPool() {
-        return poolAddress;
-      }
-    },
-    Interface: class {
-      getEvent() {
-        return { topicHash: "0xabc123" };
-      }
-    },
-  };
+function useGateway(ethersLib) {
+  sendTx.init({ urls: ["http://hodl-baseline.test"] }, ethersLib);
 }
-
-/**
- * Build a minimal mock provider.
- * @param {object} overrides - Optional overrides.
- * @returns {object} Mock provider with getLogs, getBlock, getBlockNumber.
- */
-function mockProvider(overrides = {}) {
-  return {
-    getLogs: async () =>
-      "logs" in overrides ? overrides.logs : [{ blockNumber: 100 }],
-    getBlock: async () =>
-      "block" in overrides ? overrides.block : { timestamp: 1700000000 },
-    /*- The mint lookup is chunked, and the chunker resolves a "latest"
-     *  toBlock to a concrete number before it can window the range. */
-    getBlockNumber: async () => ("head" in overrides ? overrides.head : 100),
-  };
-}
-
-/** Minimal position object. */
-const POSITION = {
-  tokenId: 42,
-  token0: "0xToken0",
-  token1: "0xToken1",
-  fee: 3000,
-  liquidity: 1000000n,
-  tickLower: -1000,
-  tickUpper: 1000,
-};
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("initHodlBaseline", () => {
   it("skips if hodlBaseline already set with mintDate and mintTimestamp", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {
       hodlBaseline: {
         entryValue: 100,
@@ -107,7 +105,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("patches mintDate and mintTimestamp when baseline exists without them", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {
       hodlBaseline: { entryValue: 100, mintDate: "2023-11-14" },
     };
@@ -130,7 +127,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("skips when pool address is zero address", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
     const ethers = mockEthersLib({ poolAddress: "0x" + "0".repeat(40) });
@@ -147,7 +143,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("skips when no mint logs found", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -163,7 +158,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("skips when block is null", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -179,7 +173,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("creates baseline with zero entryValue when GeckoTerminal returns no prices", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -189,9 +182,11 @@ describe("initHodlBaseline", () => {
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
     });
 
+    const ethers = mockEthersLib();
+    useGateway(ethers);
     await initHodlBaseline(
       mockProvider(),
-      mockEthersLib(),
+      ethers,
       POSITION,
       botState,
       updateBotState,
@@ -206,10 +201,22 @@ describe("initHodlBaseline", () => {
       0,
       "entryValue should be 0 without prices",
     );
+    /*- The amounts are the point of the case, and asserting them is what
+     *  was missing: a baseline carrying zeros satisfied every other
+     *  assertion here, so a failed decimals read looked like a pass. */
+    assert.strictEqual(
+      botState.hodlBaseline.hodlAmount0,
+      Number(DEPOSIT.amount0) / 10 ** DECIMALS,
+      "deposited amount0 must survive a missing price",
+    );
+    assert.strictEqual(
+      botState.hodlBaseline.hodlAmount1,
+      Number(DEPOSIT.amount1) / 10 ** DECIMALS,
+      "deposited amount1 must survive a missing price",
+    );
   });
 
   it("catches and logs errors without throwing", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -235,75 +242,20 @@ describe("initHodlBaseline", () => {
 });
 
 describe("mintGasWei in baseline", () => {
-  it("publishes mintGasWei from the mint TX receipt", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
-    const config = require("../src/config");
-    const pmAddr = config.POSITION_MANAGER;
+  it("publishes the mint's gas and the deposited amounts", async () => {
+    /*- One receipt read serves both: the gas comes off the receipt
+     *  itself, the amounts out of the deposit event inside it. Asserting
+     *  both is what was missing — a baseline carrying zero amounts
+     *  satisfied a gas-only assertion, so a failed decimals read read as
+     *  a pass. */
     const botState = {};
     const updateBotState = mock.fn();
-
-    // GeckoTerminal returns empty candles (prices unavailable)
-    globalThis.fetch = async () => ({
-      ok: true,
-      json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
-    });
-
-    // Provider with a receipt that has gas data
-    const provider = {
-      getLogs: async () => [{ blockNumber: 100, transactionHash: "0xMintTx" }],
-      getBlock: async () => ({ timestamp: 1700000000 }),
-      /*- Needed since the mint lookup is chunked: the chunker resolves
-       *  toBlock "latest" to a number before windowing. */
-      getBlockNumber: async () => 100,
-      getTransactionReceipt: async () => ({
-        gasUsed: 500_000n,
-        gasPrice: 30_000_000_000n,
-        logs: [
-          {
-            address: pmAddr,
-            topics: ["0xabc123", "0x002a"],
-            data: "0x" + "0".repeat(128),
-          },
-        ],
-      }),
-    };
-
-    // ethersLib that can parse IncreaseLiquidity and return pool state
-    const ethers = {
-      ZeroAddress: "0x" + "0".repeat(40),
-      zeroPadValue: (val, _len) => val.padEnd(66, "0"),
-      Contract: class {
-        constructor() {
-          this.getPool = async () => "0xPool1234";
-          // Pool contract methods for getPoolState
-          this.slot0 = async () => [0n, 0, 0, 0, 0, 0, false];
-          this.token0 = async () => "0xToken0";
-          this.token1 = async () => "0xToken1";
-          this.fee = async () => 3000;
-        }
-        static async decimals() {
-          return 8;
-        }
-      },
-      Interface: class {
-        getEvent() {
-          return { topicHash: "0xabc123" };
-        }
-        parseLog() {
-          return {
-            name: "IncreaseLiquidity",
-            args: {
-              tokenId: 42n,
-              amount0: 1000000n,
-              amount1: 2000000n,
-            },
-          };
-        }
-      },
-    };
+    globalThis.fetch = async () => noPricesResponse();
+    const ethers = mockEthersLib();
+    useGateway(ethers);
 
     await initHodlBaseline(
-      provider,
+      mockProvider(),
       ethers,
       POSITION,
       botState,
@@ -316,50 +268,20 @@ describe("mintGasWei in baseline", () => {
       String(500_000n * 30_000_000_000n),
       "should store mintGasWei = gasUsed × gasPrice",
     );
-  });
-
-  it("defaults mintGasWei to '0' when receipt is unavailable", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
-    const botState = {};
-    const updateBotState = mock.fn();
-
-    globalThis.fetch = async () => ({
-      ok: true,
-      json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
-    });
-
-    const provider = {
-      getLogs: async () => [{ blockNumber: 100, transactionHash: "0xMintTx" }],
-      getBlock: async () => ({ timestamp: 1700000000 }),
-      /*- Needed since the mint lookup is chunked: the chunker resolves
-       *  toBlock "latest" to a number before windowing. */
-      getBlockNumber: async () => 100,
-      getTransactionReceipt: async () => null,
-    };
-
-    const ethers = mockEthersLib();
-
-    await initHodlBaseline(
-      provider,
-      ethers,
-      POSITION,
-      botState,
-      updateBotState,
-    );
-
-    assert.ok(botState.hodlBaseline, "baseline should be set");
     assert.strictEqual(
-      botState.hodlBaseline.mintGasWei,
-      "0",
-      "should default to '0' when receipt unavailable",
+      botState.hodlBaseline.hodlAmount0,
+      Number(DEPOSIT.amount0) / 10 ** DECIMALS,
+      "deposited amount0 must be divided by the token's decimals",
+    );
+    assert.strictEqual(
+      botState.hodlBaseline.hodlAmount1,
+      Number(DEPOSIT.amount1) / 10 ** DECIMALS,
+      "deposited amount1 must be divided by the token's decimals",
     );
   });
 });
-
 describe("_positionValueUsd", () => {
   it("computes USD value from position amounts and prices", () => {
-    const { _positionValueUsd } = require("../src/hodl-baseline");
-
     // Mock range-math — the require inside _positionValueUsd will pick this up
     // since it uses a dynamic require. We need to test with real range-math.
     const position = {
@@ -410,7 +332,6 @@ describe("_findMintEvent early exit", () => {
   }
 
   it("issues one getLogs when the first chunk carries the mint", async () => {
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
@@ -429,7 +350,6 @@ describe("_findMintEvent early exit", () => {
   it("still walks the whole span when nothing is found", async () => {
     /*- The early exit must not truncate a scan that has no answer yet:
      *  a short walk read as "never minted" is the failure this guards. */
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
@@ -468,7 +388,6 @@ describe("_findMintEvent early exit", () => {
    *  pair at the top, so each case starts and ends with it pristine. */
 
   it("requests windows newest-first", async () => {
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
@@ -496,7 +415,6 @@ describe("_findMintEvent early exit", () => {
   });
 
   it("costs one window when the mint is near the head", async () => {
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),

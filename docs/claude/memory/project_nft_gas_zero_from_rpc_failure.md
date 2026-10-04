@@ -1,11 +1,11 @@
 ---
 name: project_nft_gas_zero_from_rpc_failure
-description: "OPEN: a refused receipt read is recorded as 'this transaction cost no gas', then persisted to nftGasWeiByTokenId and treated as a cache hit forever. The enclosing scan does not throw, so nothing retries it — the NFT's gas is understated by its largest charge and profit is overstated."
+description: "FIXED 2026-10-04: a refused receipt read was recorded as 'this transaction cost no gas', persisted, and then accepted on presence forever. Now an unreadable receipt makes the whole NFT total null and nothing is saved, so the next scan can answer properly."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-03T17:28:40.979Z
+  modified: 2026-10-04T05:41:26.536Z
 ---
 
 Found 2026-10-03 auditing for the same conflation as
@@ -63,7 +63,85 @@ dollar amount.
 Nothing surfaces it. There is no "gas unknown" state to render, and a
 plausible-looking small number is indistinguishable from a correct one.
 
-## The shape a fix takes
+## The fix, 2026-10-04
+
+Same shape as [[project_hodl_baseline_zero_from_rpc_failure]]: zero is
+reserved for an answer actually given, and null means unknown.
+
+Three readers changed. `_fetchMintGasWei` and
+`position-history._fetchReceiptGasWei` return `null` on a throw and on a
+`null` receipt, while still returning `0n` when there is **no hash to ask
+about** — no transaction there means nothing to have cost anything, and
+that has to stay distinguishable from a read that failed.
+`_fetchCompoundGas` reads many receipts, so it reports `gasComplete`
+alongside its running total, false the moment one is missing.
+
+An NFT's whole gas is the mint plus every later charge, so one unreadable
+receipt anywhere makes `totalNftGasWei` null rather than smaller. Both
+callers that save it then write nothing: `bot-pnl-current-nft` returns
+early without touching either per-NFT map, and `bot-recorder-lifetime`
+omits that NFT's key. `position-history._supplementGasFromChain` likewise
+leaves `gasCostWei` unset. Each says so in a warning naming the NFT or
+the hash.
+
+**Why nothing is saved rather than saved-and-marked.** The maps are read
+by presence (`cachedGas !== undefined`), so any figure written is
+accepted on every later poll. Leaving the key absent costs a re-scan next
+poll and keeps the door open for one that succeeds — and that cost is not
+new: the scan's outer catch already declined to persist and so already
+re-scanned on failure.
+
+## Withholding a value is not the same as writing nothing
+
+The first version of this fix got that wrong, and the audit pass the next
+day caught it. **The lifetime scan writes the per-NFT gas map whole**, so
+the map it builds replaces the one on disk. Before the fix every NFT
+always got an entry, so a replacement could lose nothing. After it, an
+NFT whose receipt would not load had no entry — and the replacement
+deleted the figure an earlier scan had read correctly.
+
+That is issue 1's own failure, in a new place, one commit after it was
+fixed: a retry destroying a good saved value. The map is now seeded from
+what is already saved, so a readable NFT overwrites its own entry and an
+unreadable one inherits. `bot-cycle-compound.js` already did it this way
+where a compound updates the same map.
+
+The same version also returned an empty result for the Current panel when
+the gas was unknown, which showed **$0 gas** — the figure the fix exists
+to prevent — and **$0 compounded fees**, a figure read correctly from the
+event logs and nothing to do with gas. Both now behave: the compounded
+amounts are computed before the gas is judged and handed back regardless,
+and the gas figure is left unset rather than zeroed.
+
+**What "unset" actually gets you, stated precisely**, because the commit
+message overstated it. The dashboard shows gas in two places. One checks
+for the figure's absence and falls back to the running epoch's gas, which
+is the behaviour `applyCurrentNftFigures` had described in a comment
+without ever doing. The other coerces an absent figure to zero and renders
+$0. So not saving a wrong number is the win; a missing number still reads
+as $0 in one of the two displays, and that coercion is pre-existing and
+untouched.
+
+The generalisation, since every issue in this group is about choosing not
+to write something: **ask what withholding costs, not only whether the new
+value is right.** Checking that readers tolerate an absent value is not
+the same as checking what happens to the value that was already there.
+
+**One consequence taken deliberately.** `position-details-compound`
+values an unknown total at `$0` for the unmanaged Current panel, where it
+previously showed a partial. Nothing is persisted on that path, and an
+obvious zero beats a plausible number that is quietly missing a charge.
+The display layer coerces an absent gas figure to zero in two places
+(`dashboard-data-kpi.js:458`, `position-details.js:175`) while a third
+correctly falls back on `undefined` — pre-existing, and not touched here.
+
+Tests: `test/nft-gas-unknown.test.js`, six cases driving
+`classifyCompounds` and `_fetchCompoundGas` directly — a readable set, an
+absent mint receipt, a throwing mint receipt, one absent compound receipt
+out of two, no hash at all, and the completeness flag itself. Four fail
+with the fix reverted.
+
+## The shape the fix took
 
 Same as its sibling: stop spelling two answers with one value. A
 receipt that could not be read is not a charge of zero, so these helpers

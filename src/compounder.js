@@ -403,9 +403,30 @@ function _filterRebalances(candidates, dlEvents) {
   });
 }
 
-/** Fetch TX receipts for compound events and compute gas costs. */
+/**
+ * Fetch TX receipts for compound events and compute gas costs.
+ *
+ * What a transaction cost is on its receipt, so a receipt that does not
+ * come back leaves that charge unknown — and unknown is not the same as
+ * nothing. The running total is therefore reported alongside
+ * `gasComplete`, which is false the moment any one receipt is missing.
+ * A caller that persists the total needs that flag: a short total saved
+ * as fact understates the NFT's gas for good, and the shortfall is
+ * invisible because a plausible number looks exactly like a correct one.
+ *
+ * `gasCostWei` on an individual compound stays `"0"` when its receipt
+ * was unreadable. That figure is per-event display detail rather than
+ * something summed and saved, and the aggregate already carries the
+ * warning.
+ *
+ * @param {object} prov            Read provider.
+ * @param {object[]} compoundEvents Classified compound events.
+ * @returns {Promise<{compounds: object[], totalGasWei: bigint,
+ *   gasComplete: boolean}>}
+ */
 async function _fetchCompoundGas(prov, compoundEvents) {
   let totalGasWei = 0n;
+  let gasComplete = true;
   const compounds = [];
   /*- Cache block timestamps so we don't re-fetch the same block when
       multiple events sit in it (rare but possible for batched txs). */
@@ -415,9 +436,14 @@ async function _fetchCompoundGas(prov, compoundEvents) {
     if (e.txHash) {
       try {
         const rcpt = await prov.getTransactionReceipt(e.txHash);
-        if (rcpt) gasWei = receiptGasWei(rcpt);
+        /*- Null is an answer, not an error: the endpoint does not have
+         *  this transaction. Either way the charge is unknown. Checked
+         *  explicitly, matching `_fetchMintGasWei` below — this decides
+         *  whether a charge is counted or the whole total is flagged. */
+        if (rcpt === null || rcpt === undefined) gasComplete = false;
+        else gasWei = receiptGasWei(rcpt);
       } catch {
-        /* receipt fetch failed — gas stays 0 */
+        gasComplete = false;
       }
     }
     let ts = null;
@@ -444,7 +470,7 @@ async function _fetchCompoundGas(prov, compoundEvents) {
       gasCostWei: String(gasWei),
     });
   }
-  return { compounds, totalGasWei };
+  return { compounds, totalGasWei, gasComplete };
 }
 
 /**
@@ -591,13 +617,16 @@ function _logCompoundSummary(opts, parts) {
  *  mint + standalone compounds, matching the live-epoch gas the bot
  *  accumulates while managing. */
 async function _fetchMintGasWei(prov, mintTxHash) {
+  /*- No hash to ask about is a different answer from a hash we could not
+   *  resolve: there is no transaction here to have cost anything, so
+   *  zero is the honest figure. Only a read that failed returns null. */
   if (!mintTxHash) return 0n;
   try {
     const rcpt = await prov.getTransactionReceipt(mintTxHash);
-    if (!rcpt) return 0n;
+    if (rcpt === null || rcpt === undefined) return null;
     return receiptGasWei(rcpt);
   } catch {
-    return 0n;
+    return null;
   }
 }
 
@@ -649,7 +678,7 @@ async function classifyCompounds(nftEvents, opts = {}) {
   const feeAmount1 = Number(fees1) / 10 ** d1;
   const totalCompoundedUsd =
     feeAmount0 * (opts.price0 || 0) + feeAmount1 * (opts.price1 || 0);
-  const { compounds, totalGasWei } = await _fetchCompoundGas(
+  const { compounds, totalGasWei, gasComplete } = await _fetchCompoundGas(
     prov,
     compoundEvents,
   );
@@ -663,7 +692,13 @@ async function classifyCompounds(nftEvents, opts = {}) {
       (Number(c.amount1Deposited) / 10 ** d1) * (opts.price1 || 0);
   }
   const mintGasWei = await _fetchMintGasWei(prov, ilEvents[0]?.txHash);
-  const totalNftGasWei = mintGasWei + totalGasWei;
+  /*- The NFT's whole gas is the mint plus every later charge, so one
+   *  unreadable receipt anywhere in that set leaves the total unknown
+   *  rather than smaller. Null says so, and the callers that persist it
+   *  write nothing — the mint is an NFT's largest single charge, and a
+   *  total quietly missing it reads as a profitable position. */
+  const gasKnown = mintGasWei !== null && gasComplete;
+  const totalNftGasWei = gasKnown ? mintGasWei + totalGasWei : null;
   if (compounds.length > 0 || fees0 > 0n || fees1 > 0n) {
     _logCompoundSummary(opts, {
       compounds,
@@ -681,7 +716,9 @@ async function classifyCompounds(nftEvents, opts = {}) {
     feeAmount0,
     feeAmount1,
     totalGasWei: String(totalGasWei),
-    totalNftGasWei: String(totalNftGasWei),
+    /*- Null, not "0", when any receipt in the set was unreadable — the
+     *  callers that save this branch on it. */
+    totalNftGasWei: totalNftGasWei === null ? null : String(totalNftGasWei),
   };
 }
 

@@ -249,15 +249,27 @@ async function _parseEventFromReceipt(txHash, eventName, tokenId, provider) {
   }
 }
 
-/** Fetch gas cost from a TX receipt. */
+/**
+ * Fetch what one transaction cost, from its receipt.
+ *
+ * No hash to ask about is a different answer from a hash that would not
+ * resolve: there is no transaction to have cost anything, so zero is
+ * honest. A read that failed — or an endpoint that does not have the
+ * transaction, which it reports as `null` rather than as an error —
+ * leaves the charge unknown, and says so.
+ *
+ * @param {string|null} txHash
+ * @param {object} provider
+ * @returns {Promise<bigint|null>} The gas in wei, or null when unknown.
+ */
 async function _fetchReceiptGasWei(txHash, provider) {
   if (!txHash) return 0n;
   try {
     const receipt = await provider.getTransactionReceipt(txHash);
-    if (!receipt) return 0n;
+    if (receipt === null || receipt === undefined) return null;
     return receiptGasWei(receipt);
   } catch {
-    return 0n;
+    return null;
   }
 }
 
@@ -528,14 +540,43 @@ function _supplementFeesFromChain(result, ctx) {
   );
 }
 
-/** Extract rebalance gas from mint + close TX receipts. */
+/**
+ * Extract a closed position's gas from its mint and close receipts.
+ *
+ * Both charges are on receipts, so a receipt that does not come back
+ * leaves the total unknown rather than smaller. Nothing is written in
+ * that case: `gasCostWei` is what the closed-position view shows and
+ * what a reconstructed period prices at its own close day, and a total
+ * missing the mint — an NFT's largest single charge — reads as a
+ * position that cost less to run than it did.
+ *
+ * @param {object} result        Mutated in place; gains `gasCostWei`.
+ * @param {bigint} mintGasWei    Gas already known for the mint, or 0n.
+ * @param {object} prov          Read provider.
+ * @returns {Promise<void>}
+ */
 async function _supplementGasFromChain(result, mintGasWei, prov) {
   let totalGas = mintGasWei;
-  if (!totalGas && result.mintTxHash)
-    totalGas += await _fetchReceiptGasWei(result.mintTxHash, prov);
-  if (result.closeTxHash)
-    totalGas += await _fetchReceiptGasWei(result.closeTxHash, prov);
+  if (!totalGas && result.mintTxHash) {
+    const mint = await _fetchReceiptGasWei(result.mintTxHash, prov);
+    if (mint === null) return _warnGasUnknown(result.mintTxHash);
+    totalGas += mint;
+  }
+  if (result.closeTxHash) {
+    const close = await _fetchReceiptGasWei(result.closeTxHash, prov);
+    if (close === null) return _warnGasUnknown(result.closeTxHash);
+    totalGas += close;
+  }
   if (totalGas > 0n) result.gasCostWei = String(totalGas);
+}
+
+/** Say which receipt left a gas total unknown, and record nothing. */
+function _warnGasUnknown(txHash) {
+  log.warn(
+    "[history] gas left unknown — no receipt for %s; not recording a" +
+      " short total",
+    txHash,
+  );
 }
 
 /**

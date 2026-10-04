@@ -226,7 +226,14 @@ async function _classifyAllCompounds(
    *  on-chain scan for the same NFT.  Lifetime panel is untouched —
    *  `_applyCompoundGas` still feeds the tracker for the lifetime sum.
    */
-  const nftGasWeiByTokenId = {};
+  /*- Seeded from what is already saved, not started empty. Both patch
+   *  sites below assign this map WHOLE, so an NFT left out of it loses
+   *  whatever figure an earlier scan had read correctly — and an NFT is
+   *  left out whenever one of its receipts will not load. Carrying the
+   *  prior entries forward makes "unknown this time" leave the saved
+   *  figure alone, which is the same rule the compound path follows when
+   *  it updates this map. */
+  const nftGasWeiByTokenId = { ...(opts.savedNftGasWeiByTokenId || {}) };
   for (const tid of ids) {
     const r = await classifyCompounds(allNftEvents.get(tid), {
       ...opts,
@@ -239,7 +246,19 @@ async function _classifyAllCompounds(
     totalAmount0 += r.feeAmount0 || 0;
     totalAmount1 += r.feeAmount1 || 0;
     totalCompoundGasWei += BigInt(r.totalGasWei || "0");
-    nftGasWeiByTokenId[String(tid)] = String(r.totalNftGasWei || "0");
+    /*- Only a total the whole set answered for. Null means a receipt did
+     *  not come back, leaving this NFT's gas unknown rather than smaller,
+     *  and the map is read by presence — so writing a short figure now
+     *  would have it accepted as fact from here on. Omitting the key
+     *  leaves the next scan free to answer properly. */
+    if (r.totalNftGasWei !== null && r.totalNftGasWei !== undefined)
+      nftGasWeiByTokenId[String(tid)] = String(r.totalNftGasWei);
+    else
+      log.warn(
+        "[bot] gas for NFT #%s left unknown — a receipt in its set was" +
+          " unreadable; not recording a short total",
+        String(tid),
+      );
   }
   /*-
    *  Per-event USD — the event's own deposit value priced at current
@@ -858,6 +877,11 @@ async function _scanLifetimePoolData(
        *  feedback-log-full-context).  Without this, _logCompoundSummary
        *  would render the factory slot empty. */
       positionManagerAddress: config.POSITION_MANAGER,
+      /*- What is already known about each NFT's gas. The scan rebuilds
+       *  that map and writes it whole, so an NFT whose receipts will not
+       *  load this time has to inherit its earlier figure rather than
+       *  drop out of the map and lose it. */
+      savedNftGasWeiByTokenId: botState.nftGasWeiByTokenId,
     };
     const ids = chainRead.ids;
     if (!hasCompoundData || revalue || reclassify)
