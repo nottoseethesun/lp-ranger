@@ -11,6 +11,11 @@ const assert = require("node:assert/strict");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+const {
+  initHodlBaseline,
+  getPositionBaseline,
+  _positionValueUsd,
+} = require("../src/hodl-baseline");
 const { _resetForTest } = require("../src/gecko-rate-limit");
 const { _setRetryDelayForTests } = require("../src/rebalancer-pools");
 const sendTx = require("../src/send-transaction");
@@ -70,11 +75,11 @@ afterEach(() => {
 function useGateway(ethersLib) {
   sendTx.init({ urls: ["http://hodl-baseline.test"] }, ethersLib);
 }
+
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("initHodlBaseline", () => {
   it("skips if hodlBaseline already set with mintDate and mintTimestamp", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {
       hodlBaseline: {
         entryValue: 100,
@@ -100,7 +105,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("patches mintDate and mintTimestamp when baseline exists without them", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {
       hodlBaseline: { entryValue: 100, mintDate: "2023-11-14" },
     };
@@ -123,7 +127,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("skips when pool address is zero address", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
     const ethers = mockEthersLib({ poolAddress: "0x" + "0".repeat(40) });
@@ -140,7 +143,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("skips when no mint logs found", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -156,7 +158,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("skips when block is null", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -172,7 +173,6 @@ describe("initHodlBaseline", () => {
   });
 
   it("creates baseline with zero entryValue when GeckoTerminal returns no prices", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -206,18 +206,17 @@ describe("initHodlBaseline", () => {
      *  assertion here, so a failed decimals read looked like a pass. */
     assert.strictEqual(
       botState.hodlBaseline.hodlAmount0,
-      Number(DEPOSIT.amount0) / 1e8,
+      Number(DEPOSIT.amount0) / 10 ** DECIMALS,
       "deposited amount0 must survive a missing price",
     );
     assert.strictEqual(
       botState.hodlBaseline.hodlAmount1,
-      Number(DEPOSIT.amount1) / 1e8,
+      Number(DEPOSIT.amount1) / 10 ** DECIMALS,
       "deposited amount1 must survive a missing price",
     );
   });
 
   it("catches and logs errors without throwing", async () => {
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
 
@@ -249,7 +248,6 @@ describe("mintGasWei in baseline", () => {
      *  both is what was missing — a baseline carrying zero amounts
      *  satisfied a gas-only assertion, so a failed decimals read read as
      *  a pass. */
-    const { initHodlBaseline } = require("../src/hodl-baseline");
     const botState = {};
     const updateBotState = mock.fn();
     globalThis.fetch = async () => noPricesResponse();
@@ -284,8 +282,6 @@ describe("mintGasWei in baseline", () => {
 });
 describe("_positionValueUsd", () => {
   it("computes USD value from position amounts and prices", () => {
-    const { _positionValueUsd } = require("../src/hodl-baseline");
-
     // Mock range-math — the require inside _positionValueUsd will pick this up
     // since it uses a dynamic require. We need to test with real range-math.
     const position = {
@@ -336,7 +332,6 @@ describe("_findMintEvent early exit", () => {
   }
 
   it("issues one getLogs when the first chunk carries the mint", async () => {
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
@@ -355,7 +350,6 @@ describe("_findMintEvent early exit", () => {
   it("still walks the whole span when nothing is found", async () => {
     /*- The early exit must not truncate a scan that has no answer yet:
      *  a short walk read as "never minted" is the failure this guards. */
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
@@ -394,7 +388,6 @@ describe("_findMintEvent early exit", () => {
    *  pair at the top, so each case starts and ends with it pristine. */
 
   it("requests windows newest-first", async () => {
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
@@ -422,7 +415,6 @@ describe("_findMintEvent early exit", () => {
   });
 
   it("costs one window when the mint is near the head", async () => {
-    const { getPositionBaseline } = require("../src/hodl-baseline");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
