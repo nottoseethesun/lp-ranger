@@ -95,6 +95,8 @@ the speed-up phase-boundary race belonged to.
 
 ## Known rough edges — observed, low priority, not yet fixed
 
+- [read retry never probes another endpoint](project_read_retry_never_probes_another_endpoint.md) — A bounded read spends all its attempts on the endpoint that is refusing, because selection only moves when the failure rate retires it. Costs one poll cycle; the endpoint usually comes back. The write path's probe-but-commit-on-success is the fix shape. Shares its trigger with issue 1 of [false-zeroes](project_false_zeroes_for_price_and_amounts.md)
+
 - [receipt re-ask test flake](project_receipt_rewait_test_flake.md) — FIXED 2026-10-02: the flake was two real races in the speed-up pipeline, not a timing-seam problem
 - [rebalance data lag](project_rebalance_data_lag.md) — Scanner sometimes misses a new pairing; ~30 min lag
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources; Routed Via shows an em-dash
