@@ -32,7 +32,7 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 Found 2026-10-03. A *value* bug — distinct from the control-flow class
 the speed-up phase-boundary race belonged to.
 
-- [HODL baseline zeroed by an rpc failure](project_hodl_baseline_zero_from_rpc_failure.md) — An endpoint that won't serve the mint receipt is recorded as "opened with zero of both tokens". Looks complete, so never retried: IL/G reports a gain the size of the whole position, and the Impermanent Loss Guard stops evaluating that position permanently
+- [HODL baseline zeroed by an rpc failure](project_hodl_baseline_zero_from_rpc_failure.md) — **FIXED 2026-10-03.** Was: a failed mint read recorded as "opened with zero of both tokens", looking complete so never retried. The reachable trigger was the token-decimals read, not the receipt — its failure swallowed by a catch written for log-parse errors. Kept as the record of why zero is never a substitute for "unknown"
 - [per-NFT gas zeroed by an rpc failure](project_nft_gas_zero_from_rpc_failure.md) — A refused receipt read becomes "cost no gas", persisted and then a cache hit forever. The mint TX is an NFT's largest charge, so gas is understated and profit overstated, silently
 - [initial residual priced at zero](project_initial_residual_zero_price_persisted.md) — A failed historical-price lookup is persisted as $0 and never re-fetched. The subtraction that excludes the initial-mint leftover from Lifetime Net P&L then removes nothing. Its sibling half of the same function aborts without persisting, which is the shape all three want
 

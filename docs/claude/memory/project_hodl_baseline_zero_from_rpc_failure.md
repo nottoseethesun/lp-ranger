@@ -1,11 +1,11 @@
 ---
 name: project_hodl_baseline_zero_from_rpc_failure
-description: "OPEN: an endpoint that will not serve the mint receipt is recorded as 'this position was opened with zero of both tokens'. The baseline looks complete, so it is never retried — IL/G then reports a gain the size of the whole position, and the Impermanent Loss Guard stops evaluating for that position permanently."
+description: "FIXED 2026-10-03: a failed mint read was recorded as 'opened with zero of both tokens' and looked complete, so it was never retried. The reachable trigger was not the receipt but the token-decimals read, whose failure a log-parse catch swallowed. Now every unreadable part returns null and nothing is published."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-03T17:28:19.704Z
+  modified: 2026-10-04T02:52:37.195Z
 ---
 
 Found 2026-10-03 auditing for the same conflation as
@@ -67,6 +67,62 @@ rather than until the next scan. The only sign is one
 poll cycle. The guard exists to stop the bot crystallizing a loss by
 re-minting around a collapsed price, so what is lost is the protection,
 not a number on a screen.
+
+## What was actually reachable, and the fix
+
+**The receipt was not the trigger.** The operator's instinct was right:
+receipts are not pruned state, so a full node keeps them even when it
+drops old state, and a failing read is retried across endpoints rather
+than returning zero. A node whose transaction index no longer covers an
+old block does answer `null` rather than erroring — so that path is not
+impossible — but it could not be shown reachable on this install.
+
+**The decimals read was.** The deposit event states amounts in each
+token's smallest unit, so converting them needs the token decimals, and
+those come from `getPoolState` — a bounded read, six attempts on the
+three-endpoint mainnet. That call sat *inside* the loop that walks the
+receipt's logs, and that loop has a `try/catch` for an unrelated job:
+most logs in a mint receipt belong to other contracts and decoding them
+throws, so the catch skips them. A decimals failure was eaten by that
+same catch, the loop treated our own log as foreign, and the function
+returned zeros under a comment reading "Event not found but receipt was
+readable." The event had been found.
+
+Confirmed on Production hardware the same night: `getPoolState` exhausted
+its six attempts twice in three hours. See
+[[project_read_retry_never_probes_another_endpoint]] for why those six
+attempts all went to the one endpoint that was refusing.
+
+**The fix, as the operator specified it:** when a read yields nothing
+usable, keep the saved value. `_readMintedAmounts` now returns `null`
+from each of its three failure points, and the decimals read moved one
+statement past the log loop so its error is no longer swallowed.
+`initHodlBaseline` publishes nothing on a `null` — which stops the
+overwrite outright where a baseline exists, and where none does leaves
+the next start to try again. `getPositionBaseline` returns `null`, which
+its caller already handles.
+
+That overwrite is the half worth remembering: a baseline whose dollar
+value never resolved is re-read at the next start to recover the price,
+and that re-read fetches the amounts again. Before this, a decimals
+failure during that retry replaced correct saved amounts with zeros — the
+retry meant to recover a price destroyed what it was protecting.
+
+## Tests
+
+`test/hodl-baseline-unreadable-mint.test.js`, three cases: an absent
+receipt, an unreadable decimals read, and a saved baseline surviving a
+failed re-read. All three verified to fail with the fix reverted.
+
+The old tests had been passing **because** of the bug. They asserted the
+mint gas and never the amounts, and the decimals read was failing in
+every one of them — the stub pool address was not a valid address shape,
+`slot0` was returned as an array where the code reads named properties,
+and `decimals` was a static where an instance method is called. Zeros
+satisfied every assertion in the file. Stubs now live in
+`test/helpers/hodl-baseline-stubs.js`, whose header states those three
+details, because a second copy would drift the moment `getPoolState`
+validated a new field.
 
 ## The shape a fix takes
 
