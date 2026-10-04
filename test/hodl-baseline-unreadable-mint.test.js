@@ -41,6 +41,12 @@ const {
   noPricesResponse,
 } = require("./helpers/hodl-baseline-stubs");
 
+/*- TEST-ONLY global swap: every case here needs the historical-price
+ *  lookup to come back empty, and the baseline reaches that service by
+ *  calling `fetch` directly — there is no seam to inject it through. The
+ *  original is captured in the `beforeEach` below and restored in the
+ *  matching `afterEach`, so each case begins and ends with it pristine
+ *  whether or not its assertions pass. */
 let _originalFetch;
 
 beforeEach(() => {
@@ -51,14 +57,20 @@ beforeEach(() => {
   outOfService._resetForTests();
   /*- The decimals read is a bounded retry, and two of these cases make it
    *  fail on purpose. Left at its shipped three seconds they would each
-   *  sit through the full budget for no added coverage. */
+   *  sit through the whole budget for no added coverage.
+   *
+   *  Not restored afterwards, deliberately. The override is a module-level
+   *  `let` with no getter to read the old value back from, and restating
+   *  the shipped default here would put a second copy of it in a test.
+   *  Nothing needs the restore: every case in this file wants zero, and
+   *  `node:test` runs each file in its own process, so the override
+   *  cannot reach another file. */
   _setRetryDelayForTests(0);
 });
 
 afterEach(() => {
   globalThis.fetch = _originalFetch;
   mock.restoreAll();
-  _setRetryDelayForTests(null);
   sendTx._resetForTests();
   rpcQueue._resetForTests();
   outOfService._resetForTests();

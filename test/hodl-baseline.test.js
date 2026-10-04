@@ -38,14 +38,18 @@ beforeEach(() => {
   rpcQueue._resetForTests();
   outOfService._resetForTests();
   /*- The decimals read is a bounded retry; left at its shipped three
-   *  seconds, a case that lets it fail sits through the whole budget. */
+   *  seconds, a case that lets it fail sits through the whole budget.
+   *
+   *  Not restored afterwards, deliberately — see the same note in
+   *  test/hodl-baseline-unreadable-mint.test.js. There is no getter to
+   *  restore from, no case here wants the real delay, and each test file
+   *  gets its own process. */
   _setRetryDelayForTests(0);
 });
 
 afterEach(() => {
   globalThis.fetch = _originalFetch;
   mock.restoreAll();
-  _setRetryDelayForTests(null);
   sendTx._resetForTests();
   rpcQueue._resetForTests();
   outOfService._resetForTests();

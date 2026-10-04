@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T02:52:55.030Z
+  modified: 2026-10-04T02:59:38.260Z
 ---
 
 **"false-zeroes-for-price-and-amounts"** — the user's name for this
@@ -29,11 +29,13 @@ value.
 1. **FIXED 2026-10-03** —
    [[project_hodl_baseline_zero_from_rpc_failure]] — the two token
    amounts a position was opened with, read from the deposit
-   transaction's receipt. Zeroed, IL/G then reports the whole position
-   as gain, and the Impermanent Loss Guard stops checking that position.
-   The reachable trigger turned out to be the token-decimals read rather
-   than the receipt, its failure swallowed by a catch written for
-   log-parse errors.
+   transaction's receipt. Zeroed, the Impermanent Loss Guard stops
+   checking that position, and a later retry meant to recover the dollar
+   value overwrites correct saved amounts. The trigger turned out to be
+   the token-decimals read rather than the receipt, its failure swallowed
+   by a catch written for log-parse errors. IL/G itself shows dashes
+   rather than a wrong figure — an earlier draft said otherwise and was
+   corrected.
 2. [[project_nft_gas_zero_from_rpc_failure]] — the gas a transaction
    burned, read from its receipt. Zeroed and saved; the mint is an
    NFT's largest charge, so gas reads low and profit reads high.

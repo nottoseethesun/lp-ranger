@@ -1,11 +1,11 @@
 ---
 name: project_hodl_baseline_zero_from_rpc_failure
-description: "FIXED 2026-10-03: a failed mint read was recorded as 'opened with zero of both tokens' and looked complete, so it was never retried. The reachable trigger was not the receipt but the token-decimals read, whose failure a log-parse catch swallowed. Now every unreadable part returns null and nothing is published."
+description: "FIXED 2026-10-03: a failed mint read was recorded as 'opened with zero of both tokens' and looked complete, so it was never retried. The trigger was the token-decimals read, whose failure a log-parse catch swallowed. The harm was the Impermanent Loss Guard silently never evaluating, plus the overwrite of good amounts — NOT a bogus IL/G figure, which this file and its commit both originally overstated."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T02:52:37.195Z
+  modified: 2026-10-04T02:59:28.176Z
 ---
 
 Found 2026-10-03 auditing for the same conflation as
@@ -49,12 +49,24 @@ clears it.
 
 ## What it costs
 
-**IL/G reports a gain the size of the entire position.**
-`computeHodlIL` (`src/il-calculator.js`) guards `hodlAmount0` and
-`hodlAmount1` against `null` and `undefined` but not against both being
-zero, so `hodlValue` is 0 and `IL = lpValue + residual − 0`. On a
-$5,000 position the operator is shown roughly +$5,000 of impermanent
-gain, in a panel they use to decide whether to stay in the pool.
+**IL/G shows dashes, not a wrong number** — and an earlier draft of this
+file, and the commit that fixed the bug, both said otherwise. Correcting
+it here because the wrong severity is what survives.
+
+`computeHodlIL` (`src/il-calculator.js`) guards its amounts against
+`null` and `undefined` but not against zero, which is where the
+overstatement came from. Its caller closes that gap:
+`_ilFor` (`src/bot-pnl-il.js`) is `a0 > 0 || a1 > 0 ? computeHodlIL(…) :
+undefined`, so two zero amounts never reach the formula and the figure
+comes back absent. The dashboard then renders dashes, which is what
+[CLAUDE-BEST-PRACTICES](../CLAUDE-BEST-PRACTICES.md) asks for by name —
+"dashes for missing data, not $0.00 … e.g. IL before HODL baseline
+resolves".
+
+The lesson is the method, not the number: the claim was reached by
+reading one function's guard and stopping, without following the value to
+what an operator sees. A harm has to be traced to the screen before it is
+written down.
 
 **The Impermanent Loss Guard stops guarding that position.**
 `evaluateIlGuard` correctly refuses a non-positive baseline
