@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T02:59:38.260Z
+  modified: 2026-10-04T03:44:44.344Z
 ---
 
 **"false-zeroes-for-price-and-amounts"** — the user's name for this
@@ -36,13 +36,22 @@ value.
    by a catch written for log-parse errors. IL/G itself shows dashes
    rather than a wrong figure — an earlier draft said otherwise and was
    corrected.
-2. [[project_nft_gas_zero_from_rpc_failure]] — the gas a transaction
-   burned, read from its receipt. Zeroed and saved; the mint is an
-   NFT's largest charge, so gas reads low and profit reads high.
+2. **FIXED 2026-10-04** — [[project_nft_gas_zero_from_rpc_failure]] —
+   the gas a transaction burned, read from its receipt. Zeroed and saved;
+   the mint is an NFT's largest charge, so gas read low and profit read
+   high. One unreadable receipt now makes the whole NFT total unknown and
+   nothing is saved.
 3. [[project_initial_residual_zero_price_persisted]] — the two tokens'
    prices on the day of the first deposit, used to value the leftover
    that deposit did not consume. Zeroed, so the subtraction that keeps
    that leftover out of lifetime profit removes nothing.
+
+A fourth zero in this family is **deliberately left alone**: the
+baseline's own dollar value, when the amounts read fine and only the price
+lookup failed. A restart re-fetches it and Re-scan Prices re-reads past
+the cache, so it heals by two routes the operator already has. Operator
+decision 2026-10-04 — not an open item, and not to be re-raised. Detail
+in [[project_hodl_baseline_zero_from_rpc_failure]].
 
 ## The fix all three want
 

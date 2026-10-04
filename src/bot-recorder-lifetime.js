@@ -239,7 +239,19 @@ async function _classifyAllCompounds(
     totalAmount0 += r.feeAmount0 || 0;
     totalAmount1 += r.feeAmount1 || 0;
     totalCompoundGasWei += BigInt(r.totalGasWei || "0");
-    nftGasWeiByTokenId[String(tid)] = String(r.totalNftGasWei || "0");
+    /*- Only a total the whole set answered for. Null means a receipt did
+     *  not come back, leaving this NFT's gas unknown rather than smaller,
+     *  and the map is read by presence — so writing a short figure now
+     *  would have it accepted as fact from here on. Omitting the key
+     *  leaves the next scan free to answer properly. */
+    if (r.totalNftGasWei !== null && r.totalNftGasWei !== undefined)
+      nftGasWeiByTokenId[String(tid)] = String(r.totalNftGasWei);
+    else
+      log.warn(
+        "[bot] gas for NFT #%s left unknown — a receipt in its set was" +
+          " unreadable; not recording a short total",
+        String(tid),
+      );
   }
   /*-
    *  Per-event USD — the event's own deposit value priced at current

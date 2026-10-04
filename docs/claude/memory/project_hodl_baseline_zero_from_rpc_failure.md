@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T02:59:28.176Z
+  modified: 2026-10-04T03:44:37.477Z
 ---
 
 Found 2026-10-03 auditing for the same conflation as
@@ -119,6 +119,19 @@ value never resolved is re-read at the next start to recover the price,
 and that re-read fetches the amounts again. Before this, a decimals
 failure during that retry replaced correct saved amounts with zeros — the
 retry meant to recover a price destroyed what it was protecting.
+
+## The dollar-value half is deliberately left alone
+
+The baseline's `entryValue` can also come back zero on its own, when the
+amounts read fine and the historical price lookup fails. **Operator
+decision 2026-10-04: leave it.** Two things already cure it — a restart
+re-fetches the price through the existing `needsPrice` path, which fires
+precisely when the value is zero and the amounts are good, and the
+dashboard's Re-scan Prices action re-reads past the cached entry.
+
+Not a nice-to-have, not an open item, and not to be re-raised as a
+finding: it is a figure that heals itself by two routes an operator
+already has.
 
 ## Tests
 

@@ -106,7 +106,21 @@ async function _scanNftTotals(deps, position, poolState) {
       fromBlock = chainScanFloor(deps._rebalanceEvents, creationBlock);
     }
     const r = await detectCompoundsOnChain(tid, { ...opts, fromBlock });
-    const gasWei = String(r.totalNftGasWei || "0");
+    /*- Null means a receipt in this NFT's set did not come back, so the
+     *  total is unknown rather than small. Nothing is saved for it: the
+     *  cache below is read by presence, so a figure written now would be
+     *  accepted on every later poll and the shortfall would be permanent.
+     *  Leaving it absent costs a re-scan next poll and keeps the door
+     *  open for one that succeeds. */
+    if (r.totalNftGasWei === null || r.totalNftGasWei === undefined) {
+      log.warn(
+        "[pnl-current-nft] gas for NFT #%s left unknown — a receipt in its" +
+          " set was unreadable; not caching a short total",
+        tid,
+      );
+      return empty;
+    }
+    const gasWei = String(r.totalNftGasWei);
     /*- The coins this NFT compounded, kept instead of their value: the
      *  figure on screen is priced every poll, so it follows the pair. */
     const amounts = _sumDeposited(r.compounds, opts.decimals0, opts.decimals1);
