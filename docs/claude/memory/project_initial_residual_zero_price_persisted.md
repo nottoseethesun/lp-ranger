@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T07:01:09.302Z
+  modified: 2026-10-04T07:07:40.028Z
 ---
 
 Found 2026-10-03 in the whole-app audit for the conflation behind
@@ -83,9 +83,21 @@ expiry in the first place. Up to fifty needless lookups a day across ten
 positions.
 
 So it keys off the fresh-prices request alone, and **Reload Position now
-raises that too.** Reload already meant it: every figure it rebuilds is an
-amount times a price. It simply never said so, and this is the one figure
-that reads the saying rather than the rebuilding.
+raises that too.**
+
+Why Reload should: of the eight figures it clears, three need a price to
+rebuild — the lifetime deposit total, the baseline's entry value, and this
+leftover's two prices. The rest are coins on purpose, because a dollar
+figure is only true at the price that computed it, and
+`bot-config-keys.js` says so where it lists them. So Reload is not asking
+for price work it has no use for; it is asking for the part of its own job
+it had never named.
+
+An earlier draft of this paragraph said "every figure it rebuilds is an
+amount times a price", which is backwards — most are coins precisely to
+avoid a price. Corrected, and noted because the same commit recorded
+[[feedback_trace_the_claim_not_just_the_code]]: writing a rule down is not
+applying it.
 
 Pinned by two cases in `test/bot-recorder-scan-and-reconstruct.test.js` —
 a recompute must not bypass the price cache, a repair must. The first
