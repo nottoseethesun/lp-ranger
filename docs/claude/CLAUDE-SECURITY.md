@@ -151,6 +151,46 @@ a regeneration would pick up should be picked up. What the narrower
 gate buys is that an advisory nobody can act on cannot hold the branch
 hostage — not permission to stop looking.
 
+### When the release audit is red and main is green
+
+Two workflows run the dependency audit, and they look at different
+code. `security-audit.yml` audits the commit it runs on, so on main the
+auditor and the audited tree are the same thing.
+`security-audit-production.yml` runs daily, resolves the newest
+published release, checks that tag out and audits **it** — the code
+operators are actually running, which can be weeks behind main.
+
+The two therefore disagree whenever a fix has landed on main and has
+not yet been released. That is the normal reading of a red release
+audit: main is ahead. It is not a false alarm, and it does not clear
+itself. Publishing the release clears it.
+
+Two things make such a run hard to read.
+
+**A scheduled run's branch badge always shows the default branch.**
+That is where the workflow file was read from, not what was checked
+out. A run auditing 0.9.8 displays `main`, directly above a
+main-auditing run that also displays `main` — two rows, one badge, two
+different trees. Read the tag off the job's first step instead:
+`Latest published release: X`.
+
+**The result is not a function of the code.** It is the code against
+the advisory database on the day it runs, and that database moves on
+its own. The same immutable 0.9.8 tag audited green on 2026-10-02 and
+red on 10-03, because `braces` began matching its tree in between. A
+tree that has not changed can start failing, and yesterday's pass
+proves nothing about today.
+
+The release audit spells out its own command rather than calling the
+release's `npm run audit:deps`, because a release must not define the
+test it is judged by. 0.9.8's script predates `--omit=dev`, so those
+runs listed fifteen high advisories — five reaching the shipped tree,
+ten dev-only — and the ten camouflaged the five. The flags there and in
+`package.json` are two rules that currently agree, not one rule stated
+twice. `--package-lock-only` keeps the gate from going red because an
+old tag's `npm ci` no longer resolves, and stops an install script
+belonging to the dependencies under suspicion from running.
+
 ### Disabled rules and why
 
 Two `eslint-plugin-security` rules are disabled in

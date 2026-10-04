@@ -1,5 +1,10 @@
 name: Security Audit (Latest Release)
 
+# Asks one question, daily: does the newest published release carry a high
+# advisory in the tree it actually ships? Main gates itself in
+# security-audit.yml; this is the only check that looks at what operators
+# are running, which may be weeks behind main.
+
 on:
   schedule:
     - cron: "55 11 * * *"
@@ -24,5 +29,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
-      - run: npm run audit:deps
+      # The audit is spelled out here instead of calling the release's own
+      # `npm run audit:deps`, and the duplication is the point: a release
+      # must not define the test it is judged by. These are two rules that
+      # currently agree, not one rule stated twice — "how main gates
+      # itself" and "how we judge something already published" are free to
+      # diverge, so do not collapse them.
+      #
+      # What the delegation cost: 0.9.8's script predates `--omit=dev`, so
+      # on 2026-10-03 and 10-04 this job reported fifteen high advisories —
+      # five reaching the shipped tree, ten dev-only — and the ten hid the
+      # five. The genuine finding read as tooling noise for a day.
+      #
+      # `--package-lock-only` answers from the declared tree and installs
+      # nothing. A gate that had to run `npm ci` on an old tag could go red
+      # because that tag no longer resolves, which is not a security
+      # finding, and it would run install scripts belonging to the very
+      # dependencies under suspicion to get there.
+      - name: Audit the shipped tree of the latest release
+        run: npm audit --audit-level=high --omit=dev --package-lock-only
