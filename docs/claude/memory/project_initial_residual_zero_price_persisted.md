@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T05:40:42.414Z
+  modified: 2026-10-04T07:01:09.302Z
 ---
 
 Found 2026-10-03 in the whole-app audit for the conflation behind
@@ -68,10 +68,28 @@ $0. What was missing was any way back, and the operator named the two
 actions that should provide it — Reload Position and Re-scan Prices — and
 scoped the fix to exactly that.
 
-Both already set a flag the lifetime scan reads: Reload sets its
-full-rescan flag, Re-scan Prices sets its price-revalue flag. So **neither
-route needed changing.** The scan now carries "the operator asked for a
-repair" down to this figure, which re-reads and **overwrites** it.
+The scan carries "fresh prices were asked for" down to this figure, which
+re-reads and **overwrites** it.
+
+**Which request it keys off is the whole correctness of this.** Two
+different things reach the scan. "Recompute the saved figures" is what a
+rebalance asks for, and it must — a new NFT means those figures no longer
+describe the chain. "Re-value them at fresh prices" is what only a repair
+asks for. The first version keyed the re-read to either, which fired it
+after every rebalance: a cache-bypassing lookup, against a quota-limited
+service, for a price that cannot change — the leftover and the day it was
+left on are fixed history, which is why that price is cached with no
+expiry in the first place. Up to fifty needless lookups a day across ten
+positions.
+
+So it keys off the fresh-prices request alone, and **Reload Position now
+raises that too.** Reload already meant it: every figure it rebuilds is an
+amount times a price. It simply never said so, and this is the one figure
+that reads the saying rather than the rebuilding.
+
+Pinned by two cases in `test/bot-recorder-scan-and-reconstruct.test.js` —
+a recompute must not bypass the price cache, a repair must. The first
+fails with the over-broad condition restored.
 
 **Overwrite, never clear — and this was got wrong first.** The first
 attempt added a cache-clearing function and called it from both routes.

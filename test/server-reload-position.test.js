@@ -218,6 +218,17 @@ describe("_resetBotState", () => {
     assert.strictEqual(state._lifetimeScanError, null);
     assert.strictEqual(state._lifetimeScanErrorAt, null);
     assert.strictEqual(state._needsFullRescan, true);
+    /*- Raised alongside it, and not the same request. "Recompute the saved
+     *  figures" is what a rebalance also asks for; "re-value them at fresh
+     *  prices" is what only a repair asks for. One stored figure reads the
+     *  second — the first deposit's leftover, written once and returned
+     *  ever after — so Reload has to raise it or that figure is the one
+     *  thing a reload leaves alone. */
+    assert.strictEqual(
+      state._needsPriceRevalue,
+      true,
+      "Reload must ask for fresh prices, not only a recompute",
+    );
     assert.strictEqual(state.lifetimeScanComplete, false);
     assert.strictEqual(state.rebalanceScanComplete, false);
     assert.strictEqual(state.totalLifetimeDepositUsd, 0);

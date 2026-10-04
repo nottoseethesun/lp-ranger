@@ -502,12 +502,20 @@ async function _scanAndReconstruct(
         readChainEvents,
       }).catch((e) => log.warn("[pnl] Epoch reconstruction error:", e.message));
     },
-    /*- Either repair action counts. Reload re-derives everything from
-     *  chain, and a price re-scan exists precisely because a stored dollar
-     *  figure is wrong — and this is one of them. Both flags are already
-     *  on the state; nothing new is set to carry this. */
-    botState?._needsFullRescan === true ||
-      botState?._needsPriceRevalue === true,
+    /*- Only a request for fresh prices, never a request to recompute.
+     *
+     *  The two are not the same, and keying this to the wrong one cost
+     *  real quota. A rebalance asks for a recompute — it must, because a
+     *  new NFT means the saved figures no longer describe the chain — so
+     *  keying off that fired this re-read after every rebalance. What it
+     *  re-reads cannot change: the leftover and the day it was left on
+     *  are fixed history, which is why its price is cached with no expiry.
+     *  Bypassing that cache to ask again for a number that could not have
+     *  moved spends a quota-limited lookup for nothing.
+     *
+     *  Reload Position raises this flag as well as the recompute one, so
+     *  both repair actions still reach the figure. */
+    botState?._needsPriceRevalue === true,
   );
   await _scanLifetimePoolData(
     position,

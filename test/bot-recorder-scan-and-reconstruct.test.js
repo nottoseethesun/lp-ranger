@@ -117,7 +117,10 @@ function load(mode) {
       },
     },
     "./liquidity-pair-details": {
-      ensureInitialResidualData: async () => null,
+      ensureInitialResidualData: async (args) => {
+        run.residualArgs = args;
+        return null;
+      },
     },
     "./bot-recorder-scan-helpers": {
       collectTokenIds,
@@ -285,6 +288,48 @@ describe("one scan pass, one chain read", () => {
     await pass(scan, position(), coldState());
     assert.equal(run.epochCalls.length, 0);
     assert.equal(run.reads.length, 1);
+  });
+});
+
+describe("the first deposit's leftover is re-priced only when asked", () => {
+  /*- Two different requests reach this scan, and only one of them means
+   *  "the stored prices are wrong".
+   *
+   *  A rebalance asks the scan to recompute the saved figures, and it has
+   *  to: a new NFT means those figures no longer describe the chain. An
+   *  operator pressing Reload Position or Re-scan Prices asks for
+   *  something more — the figures re-valued at freshly fetched prices.
+   *
+   *  The leftover from a position's first deposit is valued at that day's
+   *  prices, and both the amounts and the day are fixed history, so that
+   *  price can never change. It is cached with no expiry for exactly that
+   *  reason. Re-reading it bypasses that cache, which is right when an
+   *  operator says the figure is wrong and pure waste after a rebalance —
+   *  a quota-limited lookup for a number that could not have moved. */
+
+  it("does not re-price after a rebalance, which only asks for a recompute", async () => {
+    const scan = load({});
+    const botState = coldState();
+    botState._needsFullRescan = true;
+    await pass(scan, position(), botState);
+    assert.ok(run.residualArgs, "the leftover must still be looked up");
+    assert.notStrictEqual(
+      run.residualArgs.refresh,
+      true,
+      "a recompute must not bypass the price cache",
+    );
+  });
+
+  it("re-prices when fresh prices were asked for", async () => {
+    const scan = load({});
+    const botState = coldState();
+    botState._needsPriceRevalue = true;
+    await pass(scan, position(), botState);
+    assert.strictEqual(
+      run.residualArgs.refresh,
+      true,
+      "a repair must read past the price cache",
+    );
   });
 });
 

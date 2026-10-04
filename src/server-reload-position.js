@@ -41,6 +41,19 @@ function _resetBotState(state) {
   state._lifetimeScanError = null;
   state._lifetimeScanErrorAt = null;
   state._needsFullRescan = true;
+  /*- Reload rebuilds every stored figure, and every one of them is an
+   *  amount times a price — so asking for fresh prices is what this action
+   *  already meant; it simply never said so. Raised explicitly because one
+   *  figure reads it rather than the flag above: the first deposit's
+   *  leftover, which is written once and returned ever after, and so is
+   *  the only stored value a scan would otherwise leave untouched.
+   *
+   *  Deliberately not folded into `_needsFullRescan`. A rebalance raises
+   *  that one too, and it must — a new NFT means the saved figures no
+   *  longer describe the chain. But a rebalance is not an operator saying
+   *  a price is wrong, and the prices this unlocks are cached with no
+   *  expiry because they cannot change. */
+  state._needsPriceRevalue = true;
   /*- Force epoch reconstruction to rebuild from chain instead of
    *  trusting what the tracker already holds.  Clearing the cache
    *  entry above is not enough on its own: the bot loop keeps its
