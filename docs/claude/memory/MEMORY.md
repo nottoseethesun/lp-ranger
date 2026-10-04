@@ -68,6 +68,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [check state before explaining design](feedback_check_state_before_explaining_design.md) — "Why does it do X?" → check PROJECT-STATE for a known-duplication entry before calling X deliberate
 
 ## Engineering, code, UI & docs rules
+- [ask what withholding costs](feedback_ask_what_withholding_costs.md) — A withheld key in a wholesale-replaced container is a deletion, not an abstention
 - [audit program state](feedback_audit_program_state.md) — Audit for needless state; derive from what exists
 - [basic fix first](feedback_basic_fix_first.md) — Look for a one-line or reordering fix first
 - [defense in depth must be slower](feedback_defense_in_depth_must_be_slower.md) — A backup must be strictly slower than the primary

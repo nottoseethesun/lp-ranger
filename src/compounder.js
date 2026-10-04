@@ -437,9 +437,11 @@ async function _fetchCompoundGas(prov, compoundEvents) {
       try {
         const rcpt = await prov.getTransactionReceipt(e.txHash);
         /*- Null is an answer, not an error: the endpoint does not have
-         *  this transaction. Either way the charge is unknown. */
-        if (rcpt) gasWei = receiptGasWei(rcpt);
-        else gasComplete = false;
+         *  this transaction. Either way the charge is unknown. Checked
+         *  explicitly, matching `_fetchMintGasWei` below — this decides
+         *  whether a charge is counted or the whole total is flagged. */
+        if (rcpt === null || rcpt === undefined) gasComplete = false;
+        else gasWei = receiptGasWei(rcpt);
       } catch {
         gasComplete = false;
       }

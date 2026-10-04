@@ -226,7 +226,14 @@ async function _classifyAllCompounds(
    *  on-chain scan for the same NFT.  Lifetime panel is untouched —
    *  `_applyCompoundGas` still feeds the tracker for the lifetime sum.
    */
-  const nftGasWeiByTokenId = {};
+  /*- Seeded from what is already saved, not started empty. Both patch
+   *  sites below assign this map WHOLE, so an NFT left out of it loses
+   *  whatever figure an earlier scan had read correctly — and an NFT is
+   *  left out whenever one of its receipts will not load. Carrying the
+   *  prior entries forward makes "unknown this time" leave the saved
+   *  figure alone, which is the same rule the compound path follows when
+   *  it updates this map. */
+  const nftGasWeiByTokenId = { ...(opts.savedNftGasWeiByTokenId || {}) };
   for (const tid of ids) {
     const r = await classifyCompounds(allNftEvents.get(tid), {
       ...opts,
@@ -870,6 +877,11 @@ async function _scanLifetimePoolData(
        *  feedback-log-full-context).  Without this, _logCompoundSummary
        *  would render the factory slot empty. */
       positionManagerAddress: config.POSITION_MANAGER,
+      /*- What is already known about each NFT's gas. The scan rebuilds
+       *  that map and writes it whole, so an NFT whose receipts will not
+       *  load this time has to inherit its earlier figure rather than
+       *  drop out of the map and lose it. */
+      savedNftGasWeiByTokenId: botState.nftGasWeiByTokenId,
     };
     const ids = chainRead.ids;
     if (!hasCompoundData || revalue || reclassify)

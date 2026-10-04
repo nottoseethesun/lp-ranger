@@ -27,6 +27,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { classifyCompounds, _fetchCompoundGas } = require("../src/compounder");
+const { applyCurrentNftFigures } = require("../src/bot-pnl-current-nft");
 const sendTx = require("../src/send-transaction");
 const rpcQueue = require("../src/rpc-request-manager");
 const outOfService = require("../src/rpc-out-of-service");
@@ -194,6 +195,32 @@ describe("an NFT's gas total when a receipt will not come back", () => {
     const r = await classifyCompounds(noHash, { decimals0: 8 });
 
     assert.strictEqual(r.totalNftGasWei, "0");
+  });
+
+  it("leaves the displayed gas unset rather than zero when it is unknown", async () => {
+    /*- What the operator sees. A zero here is a claim that the NFT cost
+     *  nothing to run, which is the false figure this whole change exists
+     *  to stop showing. Left unset, the dashboard reads it as "not
+     *  computed" and shows the running epoch's gas instead — the
+     *  behaviour the code has described in a comment all along without
+     *  ever doing it.
+     *
+     *  Driven through the scan's own refusal path: with no signer there
+     *  is nothing to scan with, so the gas is unknown for the plainest
+     *  possible reason. */
+    const snap = {};
+    await applyCurrentNftFigures(
+      snap,
+      { _lastPrice0: 1, _lastPrice1: 1 },
+      { tokenId: 42 },
+      { decimals0: 8, decimals1: 8 },
+    );
+
+    assert.strictEqual(
+      snap.currentGasUsd,
+      undefined,
+      "an unknown gas figure must stay absent, not become $0",
+    );
   });
 
   it("flags an incomplete set at the point the receipts are read", async () => {

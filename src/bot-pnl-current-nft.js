@@ -58,7 +58,10 @@ async function _weiToUsd(weiStr) {
  */
 async function _scanNftTotals(deps, position, poolState) {
   const tid = String(position.tokenId);
-  const empty = { gasWei: "0", amounts: { amount0: 0, amount1: 0 } };
+  /*- `gasWei: null` means unknown, not nothing. A "0" here reaches the
+   *  screen as $0 of gas, which is the false figure this whole path
+   *  exists to avoid showing. */
+  const empty = { gasWei: null, amounts: { amount0: 0, amount1: 0 } };
   if (!deps?.signer) return empty;
   try {
     const walletAddr = await deps.signer.getAddress();
@@ -112,18 +115,22 @@ async function _scanNftTotals(deps, position, poolState) {
      *  accepted on every later poll and the shortfall would be permanent.
      *  Leaving it absent costs a re-scan next poll and keeps the door
      *  open for one that succeeds. */
+    /*- The coins this NFT compounded, kept instead of their value: the
+     *  figure on screen is priced every poll, so it follows the pair.
+     *
+     *  Read before the gas is judged, because these come from the event
+     *  logs and are unaffected by a receipt that would not load. Handing
+     *  back zeros here would blank a figure that was read correctly. */
+    const amounts = _sumDeposited(r.compounds, opts.decimals0, opts.decimals1);
     if (r.totalNftGasWei === null || r.totalNftGasWei === undefined) {
       log.warn(
         "[pnl-current-nft] gas for NFT #%s left unknown — a receipt in its" +
           " set was unreadable; not caching a short total",
         tid,
       );
-      return empty;
+      return { gasWei: null, amounts };
     }
     const gasWei = String(r.totalNftGasWei);
-    /*- The coins this NFT compounded, kept instead of their value: the
-     *  figure on screen is priced every poll, so it follows the pair. */
-    const amounts = _sumDeposited(r.compounds, opts.decimals0, opts.decimals1);
     const gasMap = { ...(deps._botState?.nftGasWeiByTokenId || {}) };
     const compMap = {
       ...(deps._botState?.nftCompoundedAmountsByTokenId || {}),
@@ -214,7 +221,13 @@ async function applyCurrentNftFigures(snap, deps, position, poolState) {
    *  currentGasUsd undefined → dashboard falls back to liveEpoch.gas).
    */
   const fresh = await _scanNftTotals(deps, position, poolState);
-  snap.currentGasUsd = await _weiToUsd(fresh.gasWei);
+  /*- Left unset when the gas is unknown, rather than assigned a zero.
+   *  The dashboard reads an absent figure as "not computed" and shows the
+   *  running epoch's gas in its place, which is the behaviour the comment
+   *  above has always described. Assigning zero instead said the NFT cost
+   *  nothing to run. */
+  if (fresh.gasWei !== null && fresh.gasWei !== undefined)
+    snap.currentGasUsd = await _weiToUsd(fresh.gasWei);
   snap.currentCompoundedUsd = _priced(fresh.amounts, deps);
 }
 
