@@ -32,6 +32,7 @@ Found 2026-10-17 in the branch audit, each waiting on the user:
 - [failed aggregator gas dropped](project_failed_aggregator_gas_dropped.md) — **OPEN BUG.** A failed aggregator attempt's approval and cancel gas is not recorded when the V3 router fallback then swaps; recorded gas reads low
 - [quote without impact passes](project_quote_without_impact_passes.md) — **OPEN QUESTION.** A quote with no `estimatedPriceImpact` counts as zero impact and passes the slippage check, while `_checkSwapImpact` refuses NaN
 - [foreign tx at nonce read as success](project_foreign_tx_at_nonce_read_as_success.md) — **OPEN BUG, rare.** A transaction sent from the bot's wallet outside the bot, taking the nonce in phase 1 or 3, is returned as the move's success
+- [max rebalances help copy](project_max_rebalances_help_copy.md) — **OPEN BUG, copy.** The help dialog recommends 5–20 and calls 200 the maximum; the server refuses anything above 12
 
 - [**false-zeroes-for-price-and-amounts**](project_false_zeroes_for_price_and_amounts.md) — **Start here.** The user's umbrella name for the three below: a failed endpoint or price-service answer recorded as zero, saved, and never asked again. One fix shape covers all three
 
