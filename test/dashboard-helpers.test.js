@@ -95,10 +95,18 @@ describe("fmtCountdown()", () => {
 // ── compositeKey ───────────────────────────────────────────────────────────
 
 describe("compositeKey()", () => {
-  it("uses 'pulsechain' when blockchain is omitted", () => {
+  it("returns null when the chain is missing, rather than assuming one", () => {
+    /*-
+     *  A key on an assumed chain reaches no position on any other, so
+     *  the chain is required like every other component.
+     */
     assert.strictEqual(
       helpers.compositeKey(undefined, "0xWALLET", "0xCONTRACT", "157149"),
-      "pulsechain-0xWALLET-0xCONTRACT-157149",
+      null,
+    );
+    assert.strictEqual(
+      helpers.compositeKey(null, "0xWALLET", "0xCONTRACT", "157149"),
+      null,
     );
   });
 

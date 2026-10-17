@@ -46,6 +46,7 @@ import {
   applyRangeFieldState,
   isRangeOverrideActive,
 } from "./dashboard-range-override.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 /**
  * Decide what a Save click on the Price Range Extension row should
@@ -91,16 +92,18 @@ export function saveRangeWidth() {
   markInputDirty("inRangeWidth");
   markInputDirty("chkFullRange");
   const active = posStore.getActive();
+  const chain = activeChainId();
   const positionKey = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,
       )
     : undefined;
+  // Labelled now, for the position clicked, not whichever is on screen later.
+  const pl = _posLabel();
   const announce = () => {
-    const pl = _posLabel();
     const detail = patch.fullRangeRebalanceEnabled
       ? "Full-Range Rebalance enabled — Price Range Extension ignored"
       : formatSettingChange(

@@ -5,21 +5,36 @@
  *   Primary: read the PID from `tmp/lp-ranger.pid` (written on startup by
  *   `src/server-pid.js`) and send SIGTERM — the same clean shutdown as Ctrl+C
  *   (stops all positions, closes the HTTP server, removes the PID file). If
- *   the process is still alive after a short grace period, escalate to
- *   SIGKILL and clear the now-stale PID file.
+ *   the process is still alive once the server's own exit timeout has
+ *   passed, plus a margin, escalate to SIGKILL and clear the now-stale PID
+ *   file. Both waits come from the `shutdown` group of app-runtime.json,
+ *   read through `src/shutdown-timing.js`, which keeps the kill the later
+ *   of the two.
  *
- *   Fallback: when there is no PID file (e.g. the server was started by an
- *   older build, or crashed without cleaning up), locate the `node server.js`
- *   listener on the port via lsof and signal it.
+ *   Fallback: when there is no PID file (the server was started by an older
+ *   build), or the file names a process that is not this install's server
+ *   (it was killed outright, which leaves the file behind), locate the
+ *   `node server.js` listener on the port via lsof and signal it. The port
+ *   is resolved as the server resolves it, from `.env` or app-runtime.json.
+ *
+ *   When it cannot be told whether the PID is the server — `ps` or the
+ *   process's working directory cannot be read — nothing is signalled and
+ *   the file is left in place.
  */
 
 "use strict";
 
 const { log } = require("../src/log");
 const { readPid, getPidFilePath, removePidFile } = require("../src/server-pid");
-const { findListenerPids, psCmd } = require("./_find-process");
+const { PORT } = require("../src/runtime-flags");
+const { readShutdownTimings } = require("../src/shutdown-timing");
+const {
+  findListenerPids,
+  psCmd,
+  serverProcessState,
+} = require("./_find-process");
 
-const PORT = Number(process.env.PORT || 5555);
+const { killAfterMs, checkIntervalMs } = readShutdownTimings();
 
 /** Short sleep helper. */
 function sleep(ms) {
@@ -41,21 +56,54 @@ function isAlive(pid) {
   return signalPid(pid, 0);
 }
 
-/** Stop by PID: SIGTERM, then SIGKILL if it doesn't exit within ~3s. */
+/**
+ * Wait until `gone()` answers true or `killAfterMs` has passed, checking
+ * every `checkIntervalMs`.
+ * @param {function(): boolean} gone
+ * @returns {Promise<boolean>} Whether it went in time.
+ */
+async function waitUntilGone(gone) {
+  const deadline = Date.now() + killAfterMs;
+  while (!gone()) {
+    if (Date.now() >= deadline) return false;
+    await sleep(checkIntervalMs);
+  }
+  return true;
+}
+
+/** Stop by PID: SIGTERM, then SIGKILL if it outlasts the server's own exit timeout. */
 async function stopByPid(pid) {
-  if (!isAlive(pid)) {
+  const state = isAlive(pid) ? serverProcessState(pid) : "no";
+  if (state === "unknown") {
+    log.warn(
+      "Cannot tell whether PID %d (from %s) is this LP Ranger server -- `ps` " +
+        "or its working directory cannot be read. Not signalling it; stop the " +
+        "server with Ctrl+C in its terminal.",
+      pid,
+      getPidFilePath(),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  /*-
+   *  A server that exits on its own removes the file; one killed
+   *  outright cannot, and its number may since belong to another
+   *  process. So the file is believed only while its PID is still this
+   *  install's server, and otherwise cleared and the port asked instead.
+   */
+  if (state === "no") {
     log.info(
-      "PID %d (from %s) is not running -- clearing stale PID file",
+      "PID %d (from %s) is not the LP Ranger server -- clearing stale PID file",
       pid,
       getPidFilePath(),
     );
     removePidFile();
+    await stopByPort();
     return;
   }
   log.info("Sending SIGTERM to PID %d -- graceful shutdown...", pid);
   signalPid(pid, "SIGTERM");
-  for (let i = 0; i < 30 && isAlive(pid); i++) await sleep(100);
-  if (isAlive(pid)) {
+  if (!(await waitUntilGone(() => !isAlive(pid)))) {
     log.info("⚠ Still running after SIGTERM -- sending SIGKILL");
     signalPid(pid, "SIGKILL");
     removePidFile();
@@ -77,11 +125,9 @@ async function stopByPort() {
     log.info("Sending SIGTERM to PID %d (port %d)...", pid, PORT);
     signalPid(pid, "SIGTERM");
   }
-  await sleep(1000);
-  const remaining = findListenerPids(PORT);
-  if (remaining.length > 0) {
+  if (!(await waitUntilGone(() => findListenerPids(PORT).length === 0))) {
     log.info("⚠ Still running -- sending SIGKILL");
-    for (const pid of remaining) signalPid(pid, "SIGKILL");
+    for (const pid of findListenerPids(PORT)) signalPid(pid, "SIGKILL");
   }
   log.info("✔ Stopped");
 }

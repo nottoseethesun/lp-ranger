@@ -131,7 +131,10 @@ describe("an NFT's gas total when a receipt will not come back", () => {
      *  answer, so the total is their sum and is safe to save. */
     useReceipts({ [MINT_TX]: RECEIPT, [COMPOUND_TX]: RECEIPT });
 
-    const r = await classifyCompounds(events(true), { decimals0: 8 });
+    const r = await classifyCompounds(events(true), {
+      decimals0: 8,
+      decimals1: 8,
+    });
 
     assert.strictEqual(
       r.totalNftGasWei,
@@ -146,7 +149,10 @@ describe("an NFT's gas total when a receipt will not come back", () => {
      *  position than it was. */
     useReceipts({ [COMPOUND_TX]: RECEIPT });
 
-    const r = await classifyCompounds(events(true), { decimals0: 8 });
+    const r = await classifyCompounds(events(true), {
+      decimals0: 8,
+      decimals1: 8,
+    });
 
     assert.strictEqual(
       r.totalNftGasWei,
@@ -163,7 +169,10 @@ describe("an NFT's gas total when a receipt will not come back", () => {
       [COMPOUND_TX]: RECEIPT,
     });
 
-    const r = await classifyCompounds(events(true), { decimals0: 8 });
+    const r = await classifyCompounds(events(true), {
+      decimals0: 8,
+      decimals1: 8,
+    });
 
     assert.strictEqual(r.totalNftGasWei, null);
   });
@@ -175,7 +184,10 @@ describe("an NFT's gas total when a receipt will not come back", () => {
      *  refusing to save. */
     useReceipts({ [MINT_TX]: RECEIPT });
 
-    const r = await classifyCompounds(events(true), { decimals0: 8 });
+    const r = await classifyCompounds(events(true), {
+      decimals0: 8,
+      decimals1: 8,
+    });
 
     assert.strictEqual(
       r.totalNftGasWei,
@@ -192,7 +204,7 @@ describe("an NFT's gas total when a receipt will not come back", () => {
     const noHash = events(false);
     noHash.ilEvents[0].txHash = null;
 
-    const r = await classifyCompounds(noHash, { decimals0: 8 });
+    const r = await classifyCompounds(noHash, { decimals0: 8, decimals1: 8 });
 
     assert.strictEqual(r.totalNftGasWei, "0");
   });

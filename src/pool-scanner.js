@@ -18,6 +18,7 @@ const { Mutex } = require("async-mutex");
 const config = require("./config");
 const { scanRebalanceHistory, buildCacheKey } = require("./event-scanner");
 const { createCacheStore, eventCachePath } = require("./cache-store");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
 const _C = "\x1b[30;48;5;123m";
 const _R = "\x1b[0m";
@@ -25,8 +26,14 @@ function _log(msg, ...a) {
   log.info(_C + "[pool-scan] " + msg + _R, ...a);
 }
 
-/** Event cache TTL — 1 year; cache is explicitly cleared on rebalance. */
-const _EVENT_CACHE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+/*-
+ *  How long the event cache keeps a pool's history after its last
+ *  write, and how long a finished scan is handed to the next caller
+ *  asking for the same pool: `eventCacheTtlMs` and `poolScanReuseMs` in
+ *  bot-config-defaults.json, whose comment explains both.
+ */
+const _EVENT_CACHE_TTL_MS = readBotConfigDefaults().eventCacheTtlMs;
+const _RECENT_TTL_MS = readBotConfigDefaults().poolScanReuseMs;
 
 /** Per-pool scan locks — different pools scan in parallel. */
 const _locks = new Map();
@@ -114,7 +121,6 @@ function cancelPoolScan(token0, token1, fee, walletAddress) {
  * @returns {Promise<object[]>}  Array of RebalanceEvent objects.
  */
 const _recentScans = new Map();
-const _RECENT_TTL_MS = 60_000;
 
 async function scanPoolHistory(provider, ethersLib, opts) {
   const { walletAddress, position } = opts;
@@ -158,7 +164,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
     const cache = createCacheStore({
       filePath: eventCachePath(
         position,
-        "pulsechain",
+        config.CHAIN_NAME,
         config.POSITION_MANAGER,
         walletAddress,
       ),
@@ -167,7 +173,6 @@ async function scanPoolHistory(provider, ethersLib, opts) {
     events = await scanRebalanceHistory(provider, ethersLib, {
       positionManagerAddress: config.POSITION_MANAGER,
       walletAddress,
-      maxYears: 5,
       cache,
       factoryAddress: config.FACTORY,
       poolAddress: opts.poolAddress || null,
@@ -211,8 +216,10 @@ async function scanPoolHistory(provider, ethersLib, opts) {
 }
 
 /**
- * Clear the event cache for a pool.  Called after rebalance
- * so the next scan picks up the new NFT mint event.
+ * Clear the event cache for a pool, so the next scan reads its whole
+ * history from the chain again.  Called only by Reload Current Position
+ * (`src/server-reload-position.js`); a rebalance appends its event with
+ * `appendToPoolCache` instead.
  * @param {object} position  Must have token0, token1, fee.
  * @param {string} wallet    Wallet address.
  */
@@ -220,7 +227,7 @@ async function clearPoolCache(position, wallet) {
   const cache = createCacheStore({
     filePath: eventCachePath(
       position,
-      "pulsechain",
+      config.CHAIN_NAME,
       config.POSITION_MANAGER,
       wallet,
     ),
@@ -264,7 +271,7 @@ async function appendToPoolCache(position, wallet, result) {
   const cache = createCacheStore({
     filePath: eventCachePath(
       position,
-      "pulsechain",
+      config.CHAIN_NAME,
       config.POSITION_MANAGER,
       wallet,
     ),

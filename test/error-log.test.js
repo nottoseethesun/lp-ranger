@@ -21,6 +21,7 @@ const {
   resetErrorLog,
   getErrorLogPath,
 } = require("../src/error-log");
+const LOGGING = require("../app-config/app-defaults-for-user-configurable/logging.json");
 
 function _tmpPath(name) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lp-ranger-errlog-"));
@@ -91,11 +92,10 @@ test("writeErrorLog returns false on write failure without throwing", () => {
   assert.strictEqual(ok, false);
 });
 
-test("getErrorLogPath returns an absolute path ending in error.log", () => {
+test("getErrorLogPath resolves logging.json's errorLogPath to an absolute path", () => {
   const p = getErrorLogPath();
   assert.ok(path.isAbsolute(p));
-  assert.strictEqual(path.basename(p), "error.log");
-  assert.strictEqual(path.basename(path.dirname(p)), "logs");
+  assert.strictEqual(p, path.resolve(process.cwd(), LOGGING.errorLogPath));
 });
 
 test("writeErrorLog creates parent directory if missing", () => {

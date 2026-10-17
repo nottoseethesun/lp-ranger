@@ -217,13 +217,6 @@ describe("invalidatePriceCacheFor", () => {
     invalidatePriceCacheFor([null, {}, { token: "" }]);
     /* no assertion needed — must not throw */
   });
-
-  it("respects a non-default chain", () => {
-    const k = "eth:" + TOKEN.toLowerCase();
-    _cache.set(k, { price: 1, ts: Date.now() });
-    invalidatePriceCacheFor([{ token: TOKEN, chain: "eth" }]);
-    assert.strictEqual(_cache.has(k), false);
-  });
 });
 
 // ── configurable TTLs + integer-multiple invariant ─────────────────────

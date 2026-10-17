@@ -7,6 +7,7 @@
 import { log } from "./dashboard-log.js";
 import { compositeKey } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 // ── Rebalance event cache ────────────────────────────────────────────────────
 
@@ -15,7 +16,8 @@ const _REB_CACHE_KEY = "9mm_rebalance_events_cache";
 /*- Cache is keyed by POOL IDENTITY so the entry survives rebalances (which
     mint new tokenIds).  Shape:
       { [poolKey]: { [newTokenId]: eventObj } }
-    poolKey = "pulsechain-{wallet}-{contract}-{token0}-{token1}-{fee}"
+    poolKey = "{chain}-{wallet}-{contract}-{token0}-{token1}-{fee}", the
+    chain being the active one (`pulsechain` on PulseChain).
     Legacy shape (tokenId-keyed array) is migrated on first read/write. */
 
 /** True when `x` is null or undefined. */
@@ -45,7 +47,9 @@ function _coerceDest(existing) {
 
 function _activePoolKey() {
   const a = posStore.getActive();
+  const chain = activeChainId();
   if (
+    chain === null ||
     !a?.walletAddress ||
     !a?.contractAddress ||
     !a?.token0 ||
@@ -55,7 +59,8 @@ function _activePoolKey() {
     return null;
   }
   return (
-    "pulsechain-" +
+    chain +
+    "-" +
     a.walletAddress.toLowerCase() +
     "-" +
     a.contractAddress.toLowerCase() +
@@ -68,25 +73,33 @@ function _activePoolKey() {
   );
 }
 
-/** Is `k` a legacy 4-segment tokenId-keyed entry for the active position? */
+/** Is `k` a legacy tokenId-keyed entry for the active position? */
 function _isLegacyKey(k, prefix, newKey) {
   if (k === newKey) return false;
   if (!k.toLowerCase().startsWith(prefix)) return false;
-  /*- Legacy keys have 4 dash-segments (blockchain-wallet-contract-tokenId);
-      new pool keys have 6.  Addresses and numeric IDs contain no dashes. */
-  return k.split("-").length === 4;
+  /*-
+   *  After the shared chain-wallet-contract prefix, a legacy key holds
+   *  only the tokenId and a pool key holds token0-token1-fee.  Addresses
+   *  and numeric IDs contain no dashes, but a chain name may
+   *  (`pulsechain-testnet`), so counting a whole key's segments would
+   *  misread it.
+   */
+  return !k.slice(prefix.length).includes("-");
 }
 
-/*- One-time migration: fold any legacy 4-segment (tokenId-keyed, array-
-    valued) entries for the active wallet+contract into the new pool-keyed
-    object.  Events are keyed by newTokenId so duplicates collapse. */
+/**
+ * One-time migration: fold any legacy (tokenId-keyed, array-valued)
+ * entries for the active wallet+contract into the new pool-keyed object.
+ * Events are keyed by newTokenId so duplicates collapse.
+ */
 function _migrateLegacyCache(cache) {
   const a = posStore.getActive();
   if (!a?.walletAddress || !a?.contractAddress) return false;
   const newKey = _activePoolKey();
   if (!newKey) return false;
   const prefix =
-    "pulsechain-" +
+    activeChainId() +
+    "-" +
     a.walletAddress.toLowerCase() +
     "-" +
     a.contractAddress.toLowerCase() +
@@ -155,20 +168,28 @@ export function loadCachedRebalanceEvents() {
  */
 const _dirtyInputs = new Map();
 
+/**
+ * The dirty-flag key for `elementId` on the active position. Null when
+ * there is nothing to key it by — no active position, or the chain not
+ * yet learned.
+ */
+function _dirtyKey(elementId) {
+  const active = posStore.getActive();
+  const chain = activeChainId();
+  if (!active || chain === null) return null;
+  return `${chain}-${active.walletAddress}-${active.contractAddress}-${active.tokenId}-${elementId}`;
+}
+
 /** Mark a form input as dirty (user-edited). Skips poll overwrites this cycle. */
 export function markInputDirty(elementId) {
-  const active = posStore.getActive();
-  if (!active) return;
-  const key = `pulsechain-${active.walletAddress}-${active.contractAddress}-${active.tokenId}-${elementId}`;
-  _dirtyInputs.set(key, "EDITED");
+  const key = _dirtyKey(elementId);
+  if (key !== null) _dirtyInputs.set(key, "EDITED");
 }
 
 /** Check if a form input is dirty. */
 export function isInputDirty(elementId) {
-  const active = posStore.getActive();
-  if (!active) return false;
-  const key = `pulsechain-${active.walletAddress}-${active.contractAddress}-${active.tokenId}-${elementId}`;
-  return _dirtyInputs.has(key);
+  const key = _dirtyKey(elementId);
+  return key !== null && _dirtyInputs.has(key);
 }
 
 /** Clear all dirty flags (called at end of each poll cycle). */
@@ -251,9 +272,10 @@ export function flattenV2Status(v2) {
   const global = v2.global || {},
     positions = v2.positions || {};
   const active = posStore.getActive();
+  const chain = activeChainId();
   const myKey = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         global.walletAddress,
         active.contractAddress,
         active.tokenId,

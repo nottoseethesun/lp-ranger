@@ -92,7 +92,8 @@ const render = require("./render");
 const { sleep, addrTopic, fetchTimestamps } = helpers;
 const addrFromTopic = (t) => helpers.addrFromTopic(t, ethers);
 
-const BLOCK_TIME_SEC = 10;
+// The active chain's block time (chains.json `blockTimeSec`).
+const BLOCK_TIME_SEC = config.CHAIN.blockTimeSec;
 const CHUNK_SIZE = 10000;
 const CHUNK_DELAY_MS = 250;
 
@@ -228,8 +229,8 @@ function buildProgram() {
     .addHelpText(
       "after",
       "\nExamples:\n" +
-        "  wallet-token-flow 0x4e44... 0xA1077a...\n" +
-        "  wallet-token-flow 0x4e44... 0xA1077a...,0x95B303... \\\n" +
+        "  wallet-token-flow <wallet> <token>\n" +
+        "  wallet-token-flow <wallet> <token>,<token> \\\n" +
         "      --from 2026-04-28 --to 2026-04-28\n" +
         "\nExit codes:\n  0  completed\n  1  bad arguments\n",
     );

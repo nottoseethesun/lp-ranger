@@ -101,6 +101,7 @@ function _assertTimerKeys(parsed) {
     "checkIntervalSec",
     "globalRPCRequestRateIntervalMS",
     "rpcAllEndpointsDownPauseMS",
+    "boundedReadRetryDelayMs",
   ]) {
     const v = parsed[key];
     if (v === undefined || v === null) continue;
@@ -229,6 +230,51 @@ const _NORMALIZERS = {
    *  allowed and means no standing penalty, only the per-request
    *  retries above. */
   rpcMax429PenaltyMs: (v) => _clampNonNegInt(v, 600_000),
+  /*-
+   *  How long failover stays on the endpoint it moved to. A deadline
+   *  compared against the clock, not a timer, so it is bounded here:
+   *  under a minute would hand reads back to an endpoint before its
+   *  failure rate had a chance to change, and past two days the bot
+   *  would in effect never return to its preferred endpoint.
+   */
+  rpcFailoverStickyMs: (v) => _clampInt(v, 60_000, 172_800_000),
+  /*-
+   *  Attempts per endpoint for a read someone is waiting on. At least
+   *  one, or the read would report itself unavailable without asking;
+   *  at most ten, since past that a Manage click waits minutes for an
+   *  answer the dialog exists to give sooner.
+   */
+  boundedReadAttemptsPerEndpoint: (v) => _clampInt(v, 1, 10),
+  // The wait before asking an endpoint again; timer-bounds.js decides it.
+  boundedReadRetryDelayMs: (v) => _timerOrNull(v, "boundedReadRetryDelayMs"),
+  /*-
+   *  How often the network's gas price is logged. Compared against the
+   *  clock rather than set as a timer: one second to one day.
+   */
+  feeDataLogIntervalMs: (v) => _clampInt(v, 1_000, 86_400_000),
+  /*-
+   *  How far back the rebalance-history scan reaches. At least a year,
+   *  and at most twenty, which is past the life of any pool these
+   *  chains have.
+   */
+  historyLookbackYears: (v) => _clampInt(v, 1, 20),
+  /*-
+   *  How long the on-disk event cache keeps a pool's history. Under an
+   *  hour would send long scans back to the chain every few polls; past
+   *  ten years it never expires at all in practice.
+   */
+  eventCacheTtlMs: (v) => _clampInt(v, 3_600_000, 315_360_000_000),
+  /*-
+   *  How long a finished scan is reused. Zero turns reuse off; past an
+   *  hour a reused result could miss a rebalance a view expects to see.
+   */
+  poolScanReuseMs: (v) => _clampNonNegInt(v, 3_600_000),
+  /*-
+   *  Most seconds between an NFT leaving the wallet and the next one
+   *  arriving for the two to be read as one rebalance: one second to a
+   *  day.
+   */
+  rebalancePairingWindowSec: (v) => _clampInt(v, 1, 86_400),
   /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
    *  10000 so an absurd value still produces a finite cadence (10 000 ×
    *  60 s ≈ 7 days between checks). */

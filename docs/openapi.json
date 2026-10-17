@@ -1065,6 +1065,43 @@
         }
       }
     },
+    "/api/chain": {
+      "get": {
+        "summary": "The active chain",
+        "tags": ["Config"],
+        "description": "Names the chains.json entry this process runs against — `CHAIN_NAME`, or `defaults.chain` in app-runtime.json. The dashboard reads it once at startup, before it builds any position key or url, because the chain is the first segment of both. Always 200.",
+        "responses": {
+          "200": {
+            "description": "The active chain's id and display name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chainId": {
+                      "type": "string",
+                      "description": "Key of the chains.json entry, e.g. `pulsechain` or `pulsechain-testnet`."
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "description": "Human-readable chain name, e.g. `PulseChain`."
+                    },
+                    "homepage": {
+                      "type": "string",
+                      "description": "The chain's website, which the dashboard header's chain link opens."
+                    },
+                    "logo": {
+                      "type": "string",
+                      "description": "File name under public/ of the chain's logo, shown in the dashboard header."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chart-providers": {
       "get": {
         "summary": "External chart provider links",
@@ -1225,7 +1262,7 @@
       "get": {
         "summary": "Third-party API key status",
         "tags": ["API Keys"],
-        "description": "Reports whether a Moralis key is present and usable. \"none\" = no key stored; \"locked\" = stored but the wallet has not been unlocked this session, so it cannot be decrypted; \"invalid\" = the live ping failed. Always 200, including on ping failure.",
+        "description": "Reports whether a Moralis key is present and usable. \"none\" = no key stored; \"locked\" = stored but the wallet has not been unlocked this session, so it cannot be decrypted; \"disabled\" = stored but Use Moralis Key is off, so it is not checked; \"unsupported\" = stored, but the active chain has no Moralis id or wrapped native token in chains.json, so Moralis is not asked about it; \"valid\" = the live ping succeeded; \"quota\" = the key is valid but its daily quota is spent; \"invalid\" = the live ping failed. Always 200, including on ping failure.",
         "responses": {
           "200": {
             "description": "Key status.",
@@ -1236,7 +1273,15 @@
                   "properties": {
                     "moralis": {
                       "type": "string",
-                      "enum": ["none", "locked", "invalid", "ok"]
+                      "enum": [
+                        "none",
+                        "locked",
+                        "disabled",
+                        "unsupported",
+                        "valid",
+                        "quota",
+                        "invalid"
+                      ]
                     }
                   }
                 }

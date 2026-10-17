@@ -22,6 +22,7 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 let mod;
 let data;
@@ -31,6 +32,8 @@ let data;
 let posted;
 
 before(async () => {
+  // As at startup: the dashboard knows its chain before it keys a position.
+  await learnActiveChain();
   mod = await import("../public/dashboard-throttle.js");
   data = await import("../public/dashboard-data.js");
   const store = await import("../public/dashboard-positions-store.js");

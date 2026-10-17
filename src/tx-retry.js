@@ -14,15 +14,19 @@
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
 const {
   classifyRpcError,
   innerErrorMessage,
 } = require("./rpc-error-classifier");
 
-/** Maximum TX send retries for transient RPC errors. */
-const _RETRY_MAX = 3;
-/** Base delay between retries (ms). Multiplied by attempt number: 30s, 60s, 90s. */
-const _RETRY_BASE_DELAY_MS = 30_000;
+/*-
+ *  How often a transient failure is retried, and the delay the waits
+ *  are multiples of: `tx.sendRetries` and `tx.sendRetryBaseDelayMs` in
+ *  app-runtime.json, checked at startup by `src/config.js`.
+ */
+const _RETRY_MAX = config.TX_SEND_RETRIES;
+const _RETRY_BASE_DELAY_MS = config.TX_SEND_RETRY_BASE_DELAY_MS;
 
 /**
  * Reset the NonceManager so the next TX picks up the correct chain-state
@@ -182,12 +186,9 @@ function _sleep(ms, useUnref) {
  * @returns {Promise<*>}      The TX response from `fn()`.
  */
 async function _retrySend(fn, label, opts = {}) {
-  // Back-compat: older callers passed the base delay as the third
-  // positional arg (a number).  Preserve that calling convention.
-  const opt = typeof opts === "number" ? { baseDelayMs: opts } : opts || {};
-  const baseMs = opt.baseDelayMs ?? _RETRY_BASE_DELAY_MS;
-  const signer = opt.signer;
-  const sameNonce = opt.retryingTxWithSameNonce === true;
+  const baseMs = opts.baseDelayMs ?? _RETRY_BASE_DELAY_MS;
+  const signer = opts.signer;
+  const sameNonce = opts.retryingTxWithSameNonce === true;
   let recoveryUsed = false;
 
   for (let attempt = 0; attempt <= _RETRY_MAX; attempt++) {

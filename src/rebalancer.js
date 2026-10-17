@@ -16,6 +16,8 @@
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
+const { PM_ABI } = require("./pm-abi");
 const { receiptGasWei } = require("./receipt-gas");
 const { emojiId } = require("./logger");
 const pools = require("./rebalancer-pools");
@@ -27,7 +29,7 @@ const { loadShippedDefaults } = require("./load-merged-defaults");
  *  feedback_one_literal_per_shipped_default, the literal lives only in
  *  bot-config-defaults.json. */
 const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
-const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
+const { computeDesiredAmounts } = require("./rebalancer-swap");
 const {
   _swapAndAdjust,
   _verifyOwnership,
@@ -39,20 +41,8 @@ const {
 } = require("./rebalancer-execute");
 const { correctivelyRebalanceIfNeeded } = require("./rebalancer-correct");
 
-const {
-  ERC20_ABI,
-  PM_ABI,
-  _MAX_UINT128,
-  _DEADLINE_SECONDS,
-  _MIN_SWAP_THRESHOLD,
-  V3_FEE_TIERS,
-  _deadline,
-  _ensureAllowance,
-  getPoolState,
-  removeLiquidity,
-  logSwapNeeded,
-  config,
-} = pools;
+const { ERC20_ABI, _deadline, _ensureAllowance, getPoolState, logSwapNeeded } =
+  pools;
 
 // ── Mint ─────────────────────────────────────────────────────────────────────
 
@@ -70,7 +60,6 @@ async function mintPosition(
     amount0Desired,
     amount1Desired,
     recipient,
-    deadline,
     approvalMultiple,
   },
 ) {
@@ -106,7 +95,7 @@ async function mintPosition(
   );
 
   const pm = new Contract(positionManagerAddress, PM_ABI, signer);
-  const dl = deadline ?? _deadline();
+  const dl = _deadline();
   log.info(
     "[rebalance] Step 7b: mint — fee=%d tL=%d tU=%d a0d=%s a1d=%s",
     fee,
@@ -160,7 +149,7 @@ async function mintPosition(
     String(liquidity),
   );
   const mintGas = receiptGasWei(receipt);
-  const gasCostWei = mintGas + (appGas0 || 0n) + (appGas1 || 0n);
+  const gasCostWei = mintGas + appGas0 + appGas1;
   return {
     tokenId,
     liquidity,
@@ -252,7 +241,7 @@ async function executeRebalance(signer, ethersLib, opts) {
   try {
     const txHashes = [],
       signerAddress = await signer.getAddress(),
-      provider = signer.provider || signer;
+      provider = signer.provider;
 
     // 1. Get current pool state
     log.info("[rebalance] Step 1: getPoolState…");
@@ -513,19 +502,8 @@ async function enrichResultUsd(result, priceFn, token0, token1) {
 }
 
 // ── Module exports ───────────────────────────────────────────────────────────
-// This module's public surface, including the symbols it re-exports
-// from the helper modules it was split into.
-
 module.exports = {
   enrichResultUsd,
   executeRebalance,
-  getPoolState,
-  removeLiquidity,
-  computeDesiredAmounts,
-  swapIfNeeded,
   mintPosition,
-  _MAX_UINT128,
-  _DEADLINE_SECONDS,
-  _MIN_SWAP_THRESHOLD,
-  V3_FEE_TIERS,
 };

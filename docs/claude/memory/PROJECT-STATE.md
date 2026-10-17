@@ -27,6 +27,12 @@ nice-to-haves ([nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md))
 
 ## Open, reproducible, deliberately unfixed
 
+Found 2026-10-17 in the branch audit, each waiting on the user:
+
+- [failed aggregator gas dropped](project_failed_aggregator_gas_dropped.md) — **OPEN BUG.** A failed aggregator attempt's approval and cancel gas is not recorded when the V3 router fallback then swaps; recorded gas reads low
+- [quote without impact passes](project_quote_without_impact_passes.md) — **OPEN QUESTION.** A quote with no `estimatedPriceImpact` counts as zero impact and passes the slippage check, while `_checkSwapImpact` refuses NaN
+- [foreign tx at nonce read as success](project_foreign_tx_at_nonce_read_as_success.md) — **OPEN BUG, rare.** A transaction sent from the bot's wallet outside the bot, taking the nonce in phase 1 or 3, is returned as the move's success
+
 - [**false-zeroes-for-price-and-amounts**](project_false_zeroes_for_price_and_amounts.md) — **Start here.** The user's umbrella name for the three below: a failed endpoint or price-service answer recorded as zero, saved, and never asked again. One fix shape covers all three
 
 Found 2026-10-03. A *value* bug — distinct from the control-flow class
@@ -49,7 +55,8 @@ the speed-up phase-boundary race belonged to.
 
 ## Release state & maturity
 
-- [0.9.8 burn-in watch](project_0098_burn_in_watch.md) — 0.9.8 on Prod: ten hours of burn-in sent zero transactions, so the swap and nonce path the release exists to fix shipped unexercised
+- [9mm api sunset](project_9mm_api_sunset.md) — api.9mm.pro stops 2026-10-19 and data.9mm.pro has no swap quotes; Production falls back to the V3 router. **Open bug on Production until the branch ships:** the Dex Detail Page link lands on app.9mm.pro's home page. Fixed on branch `migrate-to-new-9mm-data-api`, audited 2026-10-16 and 2026-10-17, committed and pushed, not merged; waiting on the user's browser check and the disclosure wording
+- [0.9.9 burn-in watch](project_0099_burn_in_watch.md) — 0.9.9 cut 2026-10-04, on Dev only, Production still ahead; its subject is the write path again, which waiting cannot reach
 - [maturity staircase](project_maturity_staircase.md) — Stability outranks features
 - [security audit two-tier](project_security_audit_two_tier.md) — The daily audit covers the release tag, not main
 - [test wallet is atypical](project_test_wallet_is_atypical.md) — ~133-NFT chain is a test artifact; real positions make ≤24/year
@@ -84,6 +91,8 @@ the speed-up phase-boundary race belonged to.
 
 ## Deferred — nice-to-haves, NOT bugs
 
+- [PulseChain testnet exploration](project_pulsechain_testnet_exploration.md) — No 9mm V3 on Testnet v4. Replay plan from 9mm's own mainnet creation txs, testnet WPLS, gas at about 1 gwei, faucet. Deferred 2026-10-16 for swap and aggregator test coverage
+
 - [code cleanup nice-to-haves](project_code_cleanup_nice_to_haves.md) — Running list of polish items
 - [dashboard cleanup NTH](project_dashboard_cleanup_nth.md) — Import cycles, cache sweep, 42 orphan HTML ids
 - [deferred comment cleanup](project_deferred_comment_cleanup.md) — Storytelling JSDoc, 119 old-form openers, an engineering.md passage
@@ -102,6 +111,7 @@ the speed-up phase-boundary race belonged to.
 - [route-via chain-scan gap](project_route_via_chain_scan_gap.md) — Chain-scanned events lack swapSources; Routed Via shows an em-dash
 - [suppress OOR until synced](project_suppress_oor_until_synced.md) — Unmanaged view flashes "out of range" too early
 - [throttle rehydrate loses timestamps](project_throttle_rehydrate_loses_timestamps.md) — rehydrate() restores dailyCount, not rebTimestamps
+- [tests write the operator's error log](project_tests_write_operator_error_log.md) — **FIXED 2026-10-16** (uncommitted, branch `migrate-to-new-9mm-data-api`), by the user's design: `npm run check` deletes `logs/error.log` and its last copy first, then renames what the tests wrote to `logs/error-npm-run-check.log`
 
 ## External pointers
 

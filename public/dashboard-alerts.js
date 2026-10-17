@@ -63,7 +63,7 @@ export function _posContextHtmlForState(key, st) {
   const pair = _s("token0Symbol") + "/" + _s("token1Symbol");
   const pm = botConfig.pmName || _short(contract);
   const fee = ap.fee ? (ap.fee / 10000).toFixed(2) + "% fee" : "";
-  const c = botConfig.chainName || "PulseChain";
+  const c = botConfig.chainName;
   frag.querySelector('[data-tpl="pair"]').textContent = pair;
   frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";
   frag.querySelector('[data-tpl="tokenId"]').textContent = tokenId;
@@ -155,8 +155,8 @@ function _showCompoundErrModal(key, st) {
 function _showCatastrophicModal(key, st) {
   const id = _modalIdForKey("catastrophicScanErrorModal", key);
   if (document.getElementById(id)) return;
-  const info = st._catastrophicScanError || {};
-  const logPath = info.logPath || "logs/error.log";
+  const info = st._catastrophicScanError;
+  const logPath = info.logPath;
   const message = info.message || "(no message)";
   /*- Slot ids are derived from the modal id so they are unique across
    *  every catastrophic modal that may coexist (one per position).

@@ -410,7 +410,7 @@ describe("swapIfNeeded — unsettled nonce blocks the router fallback", () => {
       swapViaAggregator: async () => {
         throw aggError;
       },
-      AGGREGATOR_LABEL: "9mm Aggregator",
+      AGGREGATOR_LABEL: "Watergun Aggregator",
     });
     stub(ROUTER_PATH, {
       swapViaRouter: async () => {

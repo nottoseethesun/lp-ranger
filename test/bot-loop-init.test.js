@@ -160,11 +160,14 @@ describe("bot-loop _tryInitPnlTracker", () => {
           addPoolShare: async () => {},
         };
       }
-      if (id === "./rebalancer") {
+      if (id === "./rebalancer-pools") {
         return {
+          ..._origRequire2.apply(this, arguments),
           getPoolState: async () => _mockPoolState,
-          executeRebalance: async () => ({}),
         };
+      }
+      if (id === "./rebalancer") {
+        return { executeRebalance: async () => ({}) };
       }
       if (id === "./epoch-cache") {
         return {
@@ -306,8 +309,9 @@ describe("bot-loop _tryInitPnlTracker", () => {
           overridePnlWithRealValues: () => {},
         };
       }
-      if (id === "./rebalancer") {
+      if (id === "./rebalancer-pools") {
         return {
+          ..._origRequire2.apply(this, arguments),
           getPoolState: async () => {
             throw new Error("fail");
           },

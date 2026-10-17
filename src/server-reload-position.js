@@ -96,10 +96,14 @@ function _clearDiskConfigForKey(diskConfig, positionKey) {
   return true;
 }
 
-/** Build the pool-identity key opts for cache clears. */
+/**
+ * Build the pool-identity key opts for the epoch-cache clear: the same
+ * fields every writer of that cache passes. The epoch cache supplies
+ * the active chain itself, so the clear lands on the entry the writers
+ * made, whichever chain this server runs.
+ */
 function _cacheKeyOpts(position, wallet) {
   return {
-    blockchain: "pulsechain",
     contract: config.POSITION_MANAGER,
     wallet,
     token0: position.token0,

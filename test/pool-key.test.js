@@ -21,6 +21,7 @@ const path = require("path");
 
 const { poolPairKey, poolKey } = require("../src/pool-key");
 const { createPositionManager } = require("../src/position-manager");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
 const B = "0x57fde0a71132198BBeC939B98976993d8D89D225";
@@ -29,6 +30,8 @@ const C = "0x95B303987A60C71504D99Aa1b13B4DA07b0790ab";
 let _poolKeyOf;
 let _poolHeldBy;
 before(async () => {
+  // As at startup: the dashboard knows its chain before it keys a pool.
+  await learnActiveChain();
   const mod = await import("../public/dashboard-manage-ui.js");
   _poolKeyOf = mod._poolKeyOf;
   _poolHeldBy = mod._poolHeldBy;

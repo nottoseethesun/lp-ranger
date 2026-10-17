@@ -10,14 +10,12 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
+const { mintPosition, executeRebalance } = require("../src/rebalancer");
 const {
   computeDesiredAmounts,
   swapIfNeeded,
-  mintPosition,
-  removeLiquidity,
-  executeRebalance,
-  _MAX_UINT128,
-} = require("../src/rebalancer");
+} = require("../src/rebalancer-swap");
+const { removeLiquidity, _MAX_UINT128 } = require("../src/rebalancer-pools");
 const { computeNewRange, priceToTick } = require("../src/range-math");
 
 // ── Shared helpers (test/helpers/rebalancer-mocks.js) ───────────────────────
@@ -529,7 +527,7 @@ describe("Fund safety — a partial chunked swap is not swapped again", () => {
       require.cache[id] = { id, filename: id, loaded: true, exports };
     };
     stub(AGG_PATH, {
-      AGGREGATOR_LABEL: "9mm Aggregator",
+      AGGREGATOR_LABEL: "Watergun Aggregator",
       swapViaAggregator: async (_s, _e, params) => {
         const label = params._attemptLabel || "";
         if (label.includes("(full)")) {

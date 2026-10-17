@@ -12,7 +12,9 @@ import {
   fetchWithCsrf,
   copyWithFeedback,
   botConfig,
+  compositeKey,
 } from "./dashboard-helpers.js";
+import { activeChainId } from "./dashboard-chain.js";
 import { copyText } from "./dashboard-wallet.js";
 import { isPositionClosed } from "./dashboard-positions-store.js";
 import { runReopenFlow } from "./dashboard-reopen-flow.js";
@@ -341,9 +343,15 @@ function _showPoolInfoUnavailableModal(rawMessage, active) {
 
 /** Send the DELETE request to stop managing `active`. */
 async function _sendUnmanage(active) {
-  const key = `pulsechain-${active.walletAddress}-${active.contractAddress}-${active.tokenId}`;
+  const chain = activeChainId();
+  const key = compositeKey(
+    chain,
+    active.walletAddress,
+    active.contractAddress,
+    active.tokenId,
+  );
   // Suppress poll-driven auto-compound sync so it doesn't race back on
-  suppressAutoCompoundSync(5000);
+  suppressAutoCompoundSync();
   const res = await fetchWithCsrf("/api/position/manage", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
@@ -358,11 +366,17 @@ async function _sendUnmanage(active) {
     );
     return false;
   }
-  // Turn off auto-compound UI
-  const acCb = g("autoCompoundToggle");
-  if (acCb) acCb.checked = false;
-  const acBadge = g("autoCompoundBadge");
-  if (acBadge) acBadge.textContent = "OFF";
+  /*-
+   *  Turn off the auto-compound UI — but only while the stopped position
+   *  is still the one on screen. The answer came back after an await,
+   *  and another position's toggle must not be switched off for this one.
+   */
+  if (_posStoreRef?.getActive?.()?.tokenId === active.tokenId) {
+    const acCb = g("autoCompoundToggle");
+    if (acCb) acCb.checked = false;
+    const acBadge = g("autoCompoundBadge");
+    if (acBadge) acBadge.textContent = "OFF";
+  }
   // Position is now unmanaged — trigger unmanaged detail fetch
   // so the sync badge resolves and KPIs stay populated.
   resetLastFetchedId();

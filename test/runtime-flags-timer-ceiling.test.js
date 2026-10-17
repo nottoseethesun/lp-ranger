@@ -182,6 +182,54 @@ describe("timer bounds: the default the maximum is derived from", () => {
   });
 });
 
+describe("timer bounds: a setting counted in milliseconds", () => {
+  /*-
+   *  A key whose name ends in "ms", either case, is counted in
+   *  milliseconds, and a refusal must say so: "3000001 seconds" would
+   *  send the operator looking for a value a thousand times too large.
+   */
+  const POLL_MS = 3000;
+  const poll = (sec) =>
+    assertTimerSec({
+      sec,
+      key: "dashboardPollIntervalMs",
+      defaultSec: POLL_MS,
+    });
+
+  it("names milliseconds when refusing a value below the minimum", () => {
+    assert.throws(
+      () => poll(0),
+      (err) => {
+        assert.match(err.message, /whole number of milliseconds of at least 1/);
+        assert.doesNotMatch(err.message, /\bseconds\b/);
+        return true;
+      },
+    );
+  });
+
+  it("names milliseconds when refusing a value above the maximum", () => {
+    assert.equal(poll(POLL_MS * 1000), POLL_MS * 1000);
+    assert.throws(
+      () => poll(POLL_MS * 1000 + 1),
+      /resolves to 3000001 milliseconds, above its maximum of 3000000\./,
+    );
+  });
+
+  it("caps at 48 hours counted in milliseconds, however the key is cased", () => {
+    const pause = (sec) =>
+      assertTimerSec({
+        sec,
+        key: "rpcAllEndpointsDownPauseMS",
+        defaultSec: 3_600_000,
+      });
+    assert.equal(pause(172_800_000), 172_800_000);
+    assert.throws(
+      () => pause(172_800_001),
+      /resolves to 172800001 milliseconds, above its maximum of 172800000\./,
+    );
+  });
+});
+
 describe("timer bounds: the .env road", () => {
   it("names the setting the way .env spells it", () => {
     assert.throws(

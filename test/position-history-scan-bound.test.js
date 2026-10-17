@@ -2,8 +2,8 @@
  * @file test/position-history-scan-bound.test.js
  * @description Guards that closed-position on-chain helpers in
  *   `position-history-scan-helpers.js` bound their getLogs scans to the
- *   pool's creation block (or the 5-year floor) instead of replaying every
- *   chain block back to genesis.
+ *   pool's creation block (or the history lookback's floor) instead of
+ *   replaying every chain block back to genesis.
  *
  *   Covers the gap left by bb05ae8: `_supplementMintFromChain` was bounded
  *   but the Collect/DecreaseLiquidity scan (used by `_supplementAmountsFromChain` to
@@ -16,8 +16,19 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const Module = require("module");
 const { topicForTokenId } = require("../src/nft-token-topic");
+const config = require("../src/config");
+const BOT_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
-const FIVE_YEAR_BLOCKS = 15_800_000;
+/*-
+ *  How far back the lookback reaches, in blocks, worked out here from
+ *  the two settings it is made of rather than asked of
+ *  src/history-lookback.js, so a wrong conversion there cannot agree
+ *  with itself.
+ */
+const LOOKBACK_BLOCKS = Math.round(
+  (BOT_DEFAULTS.historyLookbackYears * 365.25 * 24 * 3600) /
+    config.CHAIN.blockTimeSec,
+);
 
 /**
  * Build an ethers stub whose JsonRpcProvider records every getLogs call.
@@ -139,7 +150,7 @@ describe("position-history scan bound", () => {
     assert.strictEqual(lowest, 0);
   });
 
-  it("resolveScanFromBlock returns max(latest - 5y, 0) when pool unknown", async () => {
+  it("resolveScanFromBlock returns the lookback's floor when the pool is unknown", async () => {
     const latestBlock = 16_000_000;
     stub = _buildEthersStub({
       latestBlock,
@@ -155,7 +166,7 @@ describe("position-history scan bound", () => {
     } = require("../src/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     const from = await resolveScanFromBlock(provider, stub, "12345");
-    assert.strictEqual(from, latestBlock - FIVE_YEAR_BLOCKS);
+    assert.strictEqual(from, latestBlock - LOOKBACK_BLOCKS);
     assert.ok(from > 0, "must be strictly greater than 0");
   });
 
@@ -197,8 +208,8 @@ describe("position-history scan bound", () => {
     assert.strictEqual(typeof collected.amount1, "bigint");
   });
 
-  it("resolveScanFromBlock floors at 0 when chain is younger than 5y", async () => {
-    const latestBlock = 1_000_000; /* < 15.8M */
+  it("resolveScanFromBlock floors at 0 when the chain is younger than the lookback", async () => {
+    const latestBlock = LOOKBACK_BLOCKS - 1;
     stub = _buildEthersStub({
       latestBlock,
       poolAddress: null,
@@ -213,6 +224,6 @@ describe("position-history scan bound", () => {
     } = require("../src/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     const from = await resolveScanFromBlock(provider, stub, "12345");
-    assert.strictEqual(from, 0, "fiveYearFloor clamps to 0");
+    assert.strictEqual(from, 0, "the lookback's floor clamps to 0");
   });
 });

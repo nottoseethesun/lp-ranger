@@ -22,6 +22,7 @@ import {
 import { findActiveAction } from "./dashboard-mission-badge.js";
 import { truncName } from "./dashboard-helpers.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 /**
  * Show a small modal telling the user their action is queued behind
@@ -63,13 +64,20 @@ export async function compoundNow() {
     );
     return;
   }
+  const chain = activeChainId();
   const positionKey = compositeKey(
-    "pulsechain",
+    chain,
     a.walletAddress,
     a.contractAddress,
     a.tokenId,
   );
   const inFlight = findActiveAction(getLastStatus()?._allPositionStates);
+  /*-
+   *  Named now, for the position clicked: the answer comes back later,
+   *  by which time another position may be on screen.
+   */
+  const ctxHtml = _posContextHtml();
+  const pl = _posLabel();
   try {
     const res = await fetchWithCsrf("/api/compound", {
       method: "POST",
@@ -82,7 +90,7 @@ export async function compoundNow() {
         null,
         "9mm-pos-mgr-modal-caution",
         "Compound Blocked",
-        _posContextHtml() + "<p>" + (data.error || "Unknown error") + "</p>",
+        ctxHtml + "<p>" + (data.error || "Unknown error") + "</p>",
       );
       return;
     }
@@ -98,11 +106,10 @@ export async function compoundNow() {
       null,
       "9mm-pos-mgr-modal-caution",
       "Compound Failed",
-      _posContextHtml() + "<p>Server unreachable</p>",
+      ctxHtml + "<p>Server unreachable</p>",
     );
     return;
   }
-  const pl = _posLabel();
   act(
     ACT_ICONS.acorn,
     "start",
@@ -135,51 +142,54 @@ export function toggleAutoCompound() {
     badge.textContent = enabled ? "ON" : "OFF";
     badge.className = "9mm-pos-mgr-mission-badge " + (enabled ? "on" : "off");
   }
+  const chain = activeChainId();
   const positionKey = compositeKey(
-    "pulsechain",
+    chain,
     a.walletAddress,
     a.contractAddress,
     a.tokenId,
   );
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ autoCompoundEnabled: enabled, positionKey }),
-  }).catch(() => {});
+  /*-
+   *  Labelled now, for the position clicked: the save answers later, by
+   *  which time another position may be on screen. Logged only once the
+   *  server has the setting, so the Activity Log never reports a change
+   *  the server did not take; a poll then shows the toggle as it is.
+   */
   const pl = _posLabel();
-  act(
-    ACT_ICONS.gear,
-    "start",
-    "Auto-compound " + (enabled ? "Enabled" : "Disabled"),
-    pl || "",
-  );
+  saveConfigValues({
+    values: { autoCompoundEnabled: enabled },
+    positionKey,
+    onSaved: () =>
+      act(
+        ACT_ICONS.gear,
+        "start",
+        "Auto-compound " + (enabled ? "Enabled" : "Disabled"),
+        pl || "",
+      ),
+  });
 }
 
 /**
- * Save the auto-compound threshold with validation.
- * Rejects values below the minimum fee threshold.
- * @param {number} minFee  Minimum fee from server config (sourced from
- *   shipped JSON via botConfig.compoundMinFee — caller MUST pass a
- *   defined value; the wiring in dashboard-events.js gates the call
- *   on `botConfig.compoundMinFee !== undefined`).
+ * Save the auto-compound threshold. Whether the figure is acceptable —
+ * at least the fee a compound needs to be worth its gas — is decided by
+ * `src/config-bounds.js` on the server.
  */
 export function saveCompoundThreshold() {
   const el = g("autoCompoundThreshold");
   if (!el) return;
   const val = parseFloat(el.value);
   const a = posStore.getActive();
+  const chain = activeChainId();
   const positionKey = a
-    ? compositeKey("pulsechain", a.walletAddress, a.contractAddress, a.tokenId)
+    ? compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId)
     : undefined;
-  /*- The floor — the fee a compound needs to be worth its gas — is
-   *  applied by `src/config-bounds.js`, which holds the shipped figure
-   *  already and does not need the dashboard to pass it back. */
+  // Labelled now, for the position clicked, not whichever is on screen later.
+  const pl = _posLabel();
   saveConfigValues({
     values: { autoCompoundThresholdUsd: val },
     positionKey,
     inputs: { autoCompoundThresholdUsd: "autoCompoundThreshold" },
     onSaved: () => {
-      const pl = _posLabel();
       act(
         ACT_ICONS.gear,
         "start",

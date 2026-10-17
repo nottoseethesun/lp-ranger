@@ -21,11 +21,18 @@ const CFG_PATH = path.join(
   "logging.json",
 );
 
-/*- Absolute path of the default log, resolved the way
- *  src/boot-log-file.js resolves it (relative to the project root). */
+/*-
+ *  The shipped log path, read before any case rewrites logging.json.
+ *  Relative, so it resolves against whatever the working directory is.
+ */
+const _SHIPPED_LOG_PATH = JSON.parse(fs.readFileSync(CFG_PATH, "utf8")).path;
+
+/*-
+ *  Absolute path of the shipped log, resolved the way src/log-file.js
+ *  resolves it (relative to the project root).
+ */
 function _absDefaultLog() {
-  const { _DEFAULT_PATH: d } = require("../src/boot-log-file");
-  return path.join(process.cwd(), d);
+  return path.join(process.cwd(), _SHIPPED_LOG_PATH);
 }
 
 /** File contents, or null when the file is absent. */
@@ -58,7 +65,8 @@ function _restoreOrRemove(p, prior) {
 
 let _origCfg = null;
 
-/*- Sentinel guarding the operator's live log.
+/*-
+ *  Sentinel guarding the operator's live log.
  *
  *  Invariant: no test in this file may delete or truncate
  *  `logs/lp-ranger.log`. It is the file a real `--log-file` run
@@ -67,15 +75,16 @@ let _origCfg = null;
  *  so the loss shows up nowhere else and the suite still reports
  *  green — which is why the check has to be an assertion here.
  *
- *  The pull towards violating it is `_DEFAULT_PATH`: it is relative,
- *  and `enableLogFile` resolves it against `process.cwd()`, so any
- *  test that boots the logger from the repo root without supplying a
- *  path opens that exact file.
+ *  The pull towards violating it is logging.json's shipped `path`: it
+ *  is relative, and `enableLogFile` resolves it against `process.cwd()`,
+ *  so any test that boots the logger from the repo root without
+ *  supplying a path opens that exact file.
  *
  *  Planted in `before` and asserted in `after` rather than inside a
  *  test, so the guard holds whichever test does the damage and in
  *  whatever order they run. A per-test check proves only that that
- *  test cleaned up after itself. */
+ *  test cleaned up after itself.
+ */
 let _priorLog = null;
 const _SENTINEL = "operator log sentinel — must survive this suite\n";
 
@@ -203,7 +212,7 @@ describe("_readLoggingConfig", () => {
 });
 
 describe("bootLogFile end-to-end", () => {
-  const { bootLogFile, _DEFAULT_PATH } = require("../src/boot-log-file");
+  const { bootLogFile } = require("../src/boot-log-file");
   const { disableLogFile, getActiveLogFilePath } = require("../src/log-file");
 
   let _origArgv;
@@ -273,51 +282,35 @@ describe("bootLogFile end-to-end", () => {
     }
   });
 
-  it("falls back to default path when nothing else supplies one", () => {
+  it("stays off, saying so, when nothing supplies a path", () => {
+    /*-
+     *  logging.json is the one place the path is written down, so with
+     *  no path there and none after the flag there is no file to open,
+     *  rather than one the code would choose by itself.
+     */
     process.argv = ["node", "server.js", "--log-file"];
-    /*- logging.json missing entirely. */
+    fs.writeFileSync(CFG_PATH, JSON.stringify({ enabled: false, path: null }));
+    const said = [];
+    const origWrite = process.stderr.write;
+    process.stderr.write = (chunk) => {
+      said.push(String(chunk));
+      return true;
+    };
     try {
-      fs.unlinkSync(CFG_PATH);
-    } catch {
-      /* */
-    }
-    /*- Run in a temp working directory.
-     *
-     *  `_DEFAULT_PATH` is the relative "logs/lp-ranger.log", and
-     *  `enableLogFile` resolves it against `process.cwd()` — so at the
-     *  repo root this case opens the operator's live log, the same file
-     *  a real `--log-file` run appends to, and any cleanup that unlinks
-     *  it takes their log with it. `logs/` is not among the paths
-     *  `scripts/check.js` backs up, so nothing restores it afterwards.
-     *
-     *  Moving cwd keeps the assertion honest — the fallback still has
-     *  to resolve to the same relative path — while confining the file
-     *  it creates to the temp tree. `loadMergedDefaults` resolves from
-     *  `__dirname`, so config reads are unaffected by the change. */
-    const cwd = process.cwd();
-    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "lp-boot-log-"));
-    process.chdir(sandbox);
-    try {
-      const r = bootLogFile();
-      assert.ok(r.endsWith(_DEFAULT_PATH), "default path used: " + r);
+      assert.equal(bootLogFile(), null);
+      assert.equal(getActiveLogFilePath(), null);
       assert.ok(
-        r.startsWith(fs.realpathSync(sandbox)),
-        "fallback must resolve inside the sandbox, not the repo: " + r,
+        said.some((s) => s.includes("logging.json → path")),
+        "names the setting: " + said.join(""),
       );
     } finally {
-      disableLogFile();
-      process.chdir(cwd);
-      fs.rmSync(sandbox, { recursive: true, force: true });
+      process.stderr.write = origWrite;
     }
   });
 });
 
 describe("--delete-pre-existing-log-file", () => {
-  const {
-    bootLogFile,
-    DELETE_FLAG,
-    _DEFAULT_PATH,
-  } = require("../src/boot-log-file");
+  const { bootLogFile, DELETE_FLAG } = require("../src/boot-log-file");
   const { disableLogFile } = require("../src/log-file");
 
   let _origArgv;
@@ -336,9 +329,9 @@ describe("--delete-pre-existing-log-file", () => {
   /**
    * Run `fn` with cwd inside a throwaway tree.
    *
-   * Every case here writes to, or deletes, the DEFAULT log path — the
-   * same relative path the operator's own `logs/lp-ranger.log` resolves
-   * to from the repo root. `scripts/check.js` does not back up `logs/`,
+   * Every case here writes to, or deletes, the shipped log path — the
+   * same relative path the operator's own log resolves to from the repo
+   * root. `scripts/check.js` does not back up `logs/`,
    * so a case that ran from the repo root would delete that file for
    * good and the suite would still report green.
    */
@@ -347,7 +340,7 @@ describe("--delete-pre-existing-log-file", () => {
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "lp-del-log-"));
     process.chdir(sandbox);
     try {
-      return fn(path.join(fs.realpathSync(sandbox), _DEFAULT_PATH));
+      return fn(path.join(fs.realpathSync(sandbox), _SHIPPED_LOG_PATH));
     } finally {
       disableLogFile();
       process.chdir(cwd);

@@ -1,43 +1,40 @@
 /**
  * @file rebalancer-aggregator.js
- * @description 9mm DEX Aggregator swap path for the rebalancer.
+ * @description Aggregator swap path for the rebalancer — on PulseChain,
+ *   the Watergun Aggregator.
  *   Fetches quotes from the aggregator API, submits TXs with
  *   cancel-and-requote retry on timeout. Used as the primary
  *   swap path; V3 router in rebalancer-swap.js is the fallback.
  *
  *   Chain-specific tunables (cancel gas multiplier, wait timeout,
  *   max attempts) are loaded from app-config/app-defaults-for-user-configurable/chains.json via config.CHAIN.
+ *   The time limit on a quote request comes from the same file, through
+ *   config.AGGREGATOR_QUOTE_TIMEOUT_MS, which checks it at startup.
  */
 
 "use strict";
 
 const config = require("./config");
 const { log } = require("./log");
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { ERC20_ABI, _ensureAllowance } = require("./rebalancer-pools");
+const { _checkSwapImpact } = require("./rebalancer-swap-impact");
+const { _retrySend } = require("./tx-retry");
 
-/*- Shipped default for slippagePct.  Per
- *  feedback_one_literal_per_shipped_default, the literal lives only in
- *  bot-config-defaults.json. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
-const {
-  ERC20_ABI,
-  _checkSwapImpact,
-  _ensureAllowance,
-  _retrySend,
-} = require("./rebalancer-pools");
-
-/** Chain-specific aggregator tunables from app-config/app-defaults-for-user-configurable/chains.json. */
 const { settleNonce } = require("./aggregator-nonce-settle");
 const { receiptGasWei } = require("./receipt-gas");
 /*- The classifier the retry layer uses, from the module that owns it: a
  *  failed send is safe to fall back from only when the node never admitted
  *  the transaction, and that bucket is its answer, not ours to restate. */
 const { classifyRpcError } = require("./rpc-error-classifier");
-/*- For the receipt wait only. This module broadcasts its own swap and
+/*-
+ *  For the receipt waits only. This module broadcasts its own swap and
  *  runs its own cancel-and-requote recovery, but reading a receipt means
- *  asking an endpoint, and which endpoint to ask is owned there. */
+ *  asking an endpoint, and which endpoint to ask is owned there.
+ */
 const sendTx = require("./send-transaction");
+const { CANCEL_GAS_LIMIT } = require("./tx-speedup");
 
+/** Chain-specific aggregator tunables from app-config/app-defaults-for-user-configurable/chains.json. */
 const _agg = config.CHAIN.aggregator;
 
 /*- `_agg.waitMs` is 180 s and `config.CHAIN` is frozen, so a test covering
@@ -53,58 +50,131 @@ function _setWaitMsForTests(ms) {
 }
 
 /**
- * Base URL for the aggregator REST API on the active chain, including
- * the chain slug path segment: `https://api.9mm.pro/pulsechain`.
+ * Base url of the active chain's aggregator api, chain path included:
+ * `https://swap.watergun.pro/api/aggregator/369` on PulseChain. The quote
+ * path is appended to it.
  *
- * The slug is NOT optional and is NOT the same thing as the canonical
- * chain id, even though PulseChain's happen to match — it is the
- * vendor's own path segment, so it lives in each chain's
- * `aggregator.blockchain` in chains.json alongside the other
- * per-vendor slugs (`chartProviders`, `dexPairDetailPageUrl`).
+ * Each chain names its own aggregator, in its own `aggregator.url` in
+ * chains.json, because both the vendor and its path differ by chain:
+ * Watergun keys the path by chain id. An empty string means the chain has
+ * no aggregator; `src/config.js` refuses to start on an entry that gives
+ * no url at all. This is the one test of whether there is an aggregator:
+ * the swap asks it through `_aggregatorBase`, and the "Routing through:"
+ * badge asks it through `primaryRouteLabel`, so the badge cannot name a
+ * route the swap does not try.
  *
- * Throws when no slug is configured. That is deliberate: omitting the
- * segment yields `https://api.9mm.pro/swap/v1/quote`, which the API
- * answers with a **404**. Because a failed aggregator quote falls
- * through to the V3 SwapRouter, that 404 is invisible — swaps still
- * complete, just on the worse route — so it went unnoticed from the
- * moment the aggregator shipped. Throwing keeps the same fallback
- * behaviour but puts the reason in the log instead of hiding it.
+ * Read per call, not captured at load, so a test can point it elsewhere.
  *
- * @returns {string} Base URL with no trailing slash.
- * @throws {Error} When the active chain configures no aggregator slug.
+ * @returns {string} Base url with no trailing slash, or "" for none.
  */
-function _aggregatorBase() {
-  const slug = _agg?.blockchain;
-  if (typeof slug !== "string" || slug.length === 0) {
-    throw new Error(
-      `No aggregator chain slug configured for ${config.CHAIN_NAME} ` +
-        `(chains.json → ${config.CHAIN_NAME}.aggregator.blockchain). ` +
-        "Omitting it makes the API return 404; falling back to the V3 router.",
-    );
-  }
-  return `${config.AGGREGATOR_URL}/${slug}`;
+function aggregatorBaseUrl() {
+  return config.AGGREGATOR_URL.replace(/\/+$/, "");
 }
 
 /**
- * Display label for the 9mm DEX Aggregator route.  Single source of
- * truth used by:
- *   - this module (stamped onto result.swapSources on every successful
- *     aggregator swap)
- *   - the Mission Control "Routing through:" badge default
- *     (see AGGREGATOR_LABEL in public/dashboard-routing-labels.js — the
- *     client-side constant that MUST stay in sync with this value)
- *   - the hard-coded fallback in public/index.html (pre-render default
- *     before the first /api/status poll paints the badge)
+ * The active chain's aggregator base url, for a quote request. A chain
+ * with no aggregator throws here, and the throw reaches `swapIfNeeded` as
+ * a failed quote, so the swap goes through the V3 router and the log says
+ * why.
+ *
+ * @returns {string} Base url with no trailing slash.
+ * @throws {Error} When the active chain configures no aggregator.
+ */
+function _aggregatorBase() {
+  const base = aggregatorBaseUrl();
+  if (base.length === 0) {
+    throw new Error(
+      `No aggregator configured for ${config.CHAIN_NAME} ` +
+        `(chains.json → ${config.CHAIN_NAME}.aggregator.url); ` +
+        "swapping through the V3 router instead.",
+    );
+  }
+  return base;
+}
+
+/**
+ * Display label for the aggregator route: the active chain's
+ * `aggregator.name` in chains.json. Stamped onto `result.swapSources` on
+ * every successful aggregator swap, and named by the Mission Control
+ * "Routing through:" badge through `primaryRouteLabel`.
  *
  * Intentionally coarse: we do NOT drill into the underlying pools
  * (NineMM_V3, PulseX_V2, …) that the aggregator chose, because the
  * aggregator owns its routing decisions and exposing them misleads
  * users into thinking a direct pool swap was used.
  */
-const AGGREGATOR_LABEL = "9mm Aggregator";
+const AGGREGATOR_LABEL = config.AGGREGATOR_NAME;
 
 /**
- * Fetch a quote from the 9mm DEX Aggregator.
+ * Build the error for a quote the aggregator refused, carrying whatever
+ * reasons its body gives: the 0x v1 `reason` or `code`, each validation
+ * error, and any balance or allowance shortfall it reports.
+ *
+ * @param {Response} res  The answer, which was not a 2xx.
+ * @returns {Promise<Error>} The error to throw.
+ */
+async function _quoteHttpError(res) {
+  let body = "";
+  try {
+    const json = await res.json();
+    const reason = json.reason || json.code || "";
+    const valErrs = (json.validationErrors || [])
+      .map((e) => `${e.field}: ${e.reason}`)
+      .join("; ");
+    const balIssue = json.issues?.balance
+      ? `balance: actual=${json.issues.balance.actual}` +
+        ` expected=${json.issues.balance.expected}`
+      : "";
+    const allowIssue = json.issues?.allowance
+      ? `allowance: actual=${json.issues.allowance.actual}` +
+        ` spender=${json.issues.allowance.spender}`
+      : "";
+    body = [reason, valErrs, balIssue, allowIssue].filter(Boolean).join(" | ");
+  } catch {
+    /* response wasn't JSON */
+  }
+  return new Error(
+    "Aggregator API: HTTP " + res.status + (body ? " — " + body : ""),
+  );
+}
+
+/**
+ * Ask the aggregator for a quote and read its answer, all under one time
+ * limit.
+ *
+ * The limit is `config.AGGREGATOR_QUOTE_TIMEOUT_MS`, read per call so a
+ * test can shorten it, and it covers the whole exchange. A server that
+ * never answers ends here, and so does one that starts an answer and
+ * then stalls partway through the body. A quote that runs out of time
+ * is a failed quote like any other: it throws before any transaction is
+ * built, so `swapIfNeeded` swaps through the V3 router in the position's
+ * own pool instead.
+ *
+ * @param {string} url  The full quote url.
+ * @returns {Promise<object>} The parsed quote.
+ * @throws {Error} On an answer that is not a 2xx, carrying the reasons the
+ *   aggregator gave, or when no answer arrives within the limit.
+ */
+async function _requestQuote(url) {
+  const limitMs = config.AGGREGATOR_QUOTE_TIMEOUT_MS;
+  const signal = AbortSignal.timeout(limitMs);
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    if (!res.ok) throw await _quoteHttpError(res);
+    return await res.json();
+  } catch (err) {
+    if (err?.name !== "TimeoutError") throw err;
+    throw new Error(`Aggregator API: no answer within ${limitMs / 1000} s`, {
+      cause: err,
+    });
+  }
+}
+
+/**
+ * Fetch a quote from the active chain's aggregator.
  * @param {string} sellToken  Sell token address.
  * @param {string} buyToken   Buy token address.
  * @param {bigint} sellAmount Amount in base units.
@@ -112,9 +182,11 @@ const AGGREGATOR_LABEL = "9mm Aggregator";
  * @returns {Promise<object>} Quote response.
  */
 async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
-  const slip = (slippagePct ?? _DEFAULTS.slippagePct) / 100;
-  // No takerAddress — the 9mm web UI omits it, and including it
-  // causes the API to generate different calldata that reverts on-chain.
+  const slip = slippagePct / 100;
+  /*-
+   *  No takerAddress: given one, the aggregator builds different
+   *  calldata, and that calldata reverts on-chain.
+   */
   const url =
     _aggregatorBase() +
     "/swap/v1/quote" +
@@ -128,39 +200,7 @@ async function _fetchQuote(sellToken, buyToken, sellAmount, slippagePct) {
     slip +
     "&includedSources=";
   log.info("[aggregator] GET %s", url);
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "0x-api-key": config.AGGREGATOR_API_KEY || "",
-    },
-  });
-  if (!res.ok) {
-    let body = "";
-    try {
-      const json = await res.json();
-      const reason = json.reason || json.code || "";
-      const valErrs = (json.validationErrors || [])
-        .map((e) => `${e.field}: ${e.reason}`)
-        .join("; ");
-      const balIssue = json.issues?.balance
-        ? `balance: actual=${json.issues.balance.actual}` +
-          ` expected=${json.issues.balance.expected}`
-        : "";
-      const allowIssue = json.issues?.allowance
-        ? `allowance: actual=${json.issues.allowance.actual}` +
-          ` spender=${json.issues.allowance.spender}`
-        : "";
-      body = [reason, valErrs, balIssue, allowIssue]
-        .filter(Boolean)
-        .join(" | ");
-    } catch {
-      /* response wasn't JSON */
-    }
-    throw new Error(
-      "Aggregator API: HTTP " + res.status + (body ? " — " + body : ""),
-    );
-  }
-  const json = await res.json();
+  const json = await _requestQuote(url);
   if (config.VERBOSE) {
     log.info("[aggregator] Response: %s", JSON.stringify(json));
   } else {
@@ -188,22 +228,18 @@ async function _getGasPrice(provider) {
   return fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
 }
 
-/** Compute buffered gas limit from quote using chain config multiplier.
- *  Per feedback_one_literal_per_shipped_default: gasLimitMultiplier
- *  lives in chains.json; throw loudly if a chain forgot to set it.
- *  The `300000` floor is when the aggregator quote omits gas entirely
- *  (extremely rare) — a defensive emergency value, not a shipped Bot
- *  Setting. */
+/**
+ * Compute the swap's gas limit: the quote's own gas figure, buffered by
+ * the chain's `gasLimitMultiplier`. A quote that names no gas at all, which
+ * the 0x api does not normally send, is given the chain's
+ * `aggregator.gasUnitsWhenQuoteOmitsGas` instead. Both settings live in
+ * chains.json, and `src/config.js` refuses to start without them.
+ */
 function _gasLimit(quote) {
-  const mult = config.CHAIN.gasLimitMultiplier;
-  if (typeof mult !== "number" || mult <= 0) {
-    throw new Error(
-      "[aggregator] chains.json gasLimitMultiplier missing/invalid for " +
-        `${config.CHAIN?.displayName ?? "?"} — must be a positive number`,
-    );
-  }
-  const raw = Number(quote.gas || quote.estimatedGas || 300000);
-  return BigInt(Math.ceil(raw * mult));
+  const raw = Number(
+    quote.gas || quote.estimatedGas || _agg.gasUnitsWhenQuoteOmitsGas,
+  );
+  return BigInt(Math.ceil(raw * config.CHAIN.gasLimitMultiplier));
 }
 
 /**
@@ -219,19 +255,21 @@ function _baseSigner(signer) {
  * Cancel a pending nonce with a 0-value self-transfer at higher gas, and
  * report what became of it.
  *
- * Gas is `max(feeData × cancelMultiplier, sentGasPrice × 1.5)` so the cancel
- * always outbids the transaction it is replacing — the same pattern as
- * `_waitOrSpeedUp`. The send reuses the stuck nonce, which is why it goes
- * through `_baseSigner` to bypass the NonceManager, and why
- * `retryingTxWithSameNonce` tells `_retrySend` that a "nonce too low" refusal
- * means the original mined rather than that the send needs recovery.
+ * Gas is `max(feeData × cancelGasMultiplier, sentGasPrice × speedUpGasBump)`,
+ * both from chains.json, so the cancel always outbids the transaction it is
+ * replacing — the same pattern as `_waitOrSpeedUp`. The send reuses the
+ * stuck nonce, which is why it goes through `_baseSigner` to bypass the
+ * NonceManager, and why `retryingTxWithSameNonce` tells `_retrySend` that a
+ * "nonce too low" refusal means the original mined rather than that the send
+ * needs recovery.
  *
  * It returns the hash and the receipt-or-null rather than a gas figure,
  * because the caller's next move turns on whether this nonce is now spent and
  * a number cannot carry that: zero wei is both a plausible cost and the value
- * an unconfirmed cancel would report. The wait is bounded by `waitMs` and a
- * rejected wait resolves to null, so a null receipt means only "no receipt
- * yet", never "cancelled". `settleNonce` turns that into an answer.
+ * an unconfirmed cancel would report. The wait goes through the shared
+ * receipt gateway, bounded by `waitMs`, and any end other than a receipt
+ * resolves to null, so a null receipt means only "no receipt yet", never
+ * "cancelled". `settleNonce` turns that into an answer.
  *
  * @param {import('ethers').Signer} signer Signer, possibly a NonceManager.
  * @param {object} provider  Provider used for the fee-data read.
@@ -243,15 +281,18 @@ function _baseSigner(signer) {
 async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
   const gp = await _getGasPrice(provider);
   const fromFee = BigInt(Math.ceil(Number(gp) * _agg.cancelGasMultiplier));
-  const floor = ((sentGasPrice || 0n) * 3n) / 2n;
+  const floor = BigInt(
+    Math.ceil(Number(sentGasPrice) * config.CHAIN.speedUpGasBump),
+  );
   const cancelGp = fromFee > floor ? fromFee : floor;
   // Bypass NonceManager — cancel TX must reuse the stuck nonce.
   const base = _baseSigner(signer);
   const addr = await base.getAddress();
   log.info(
-    "[aggregator] cancel nonce=%d: gasPrice=%s gasLimit=21000 (type 0)",
+    "[aggregator] cancel nonce=%d: gasPrice=%s gasLimit=%s (type 0)",
     nonce,
     String(cancelGp),
+    String(CANCEL_GAS_LIMIT),
   );
   // Same-nonce send: if the chain has already mined the original TX
   // we'll get "nonce too low" — that means our cancel target already
@@ -263,7 +304,7 @@ async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
         value: 0,
         nonce,
         gasPrice: cancelGp,
-        gasLimit: 21000,
+        gasLimit: CANCEL_GAS_LIMIT,
         type: config.TX_TYPE,
       }),
     "[aggregator] cancel nonce=" + nonce,
@@ -275,10 +316,14 @@ async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice) {
     c.nonce,
     String(c.gasPrice ?? "—"),
   );
-  const receipt = await Promise.race([
-    c.wait().catch(() => null),
-    new Promise((r) => setTimeout(r, waitMs)).then(() => null),
-  ]);
+  const receipt = await sendTx
+    .waitForReceipt({
+      tx: c,
+      label: "[aggregator] cancel nonce=" + nonce,
+      ms: waitMs,
+      sentinel: "_AGG_CANCEL_TIMEOUT",
+    })
+    .catch(() => null);
   return { hash: c.hash, receipt };
 }
 
@@ -432,9 +477,10 @@ async function _sendSwap(signer, txReq, label) {
  * The quote carries the gas price the aggregator assumed, and the chain has
  * whatever it has now; taking the higher of the two keeps a quote priced
  * during a lull from being submitted under the current market. The chain's
- * `gasPriceMultiplier` is then applied so the submission sits above the going
- * rate rather than at it. A quote without a gas price and a chain without a
- * multiplier both fall back to a figure that leaves the other term unchanged.
+ * aggregator `gasPriceMultiplier` is then applied so the submission sits
+ * above the going rate rather than at it; `src/config.js` refuses to start
+ * without one. A quote without a gas price leaves the chain's own figure to
+ * stand alone.
  *
  * @param {object} provider Provider for the fee-data read.
  * @param {object} quote    Aggregator quote, possibly carrying `gasPrice`.
@@ -444,8 +490,7 @@ async function _submitGasPrice(provider, quote) {
   const gp = await _getGasPrice(provider);
   const qgp = BigInt(quote.gasPrice || 0);
   const base = qgp > gp ? qgp : gp;
-  const m = _agg.gasPriceMultiplier || 1;
-  return (base * BigInt(Math.round(m * 1000))) / 1000n;
+  return (base * BigInt(Math.round(_agg.gasPriceMultiplier * 1000))) / 1000n;
 }
 
 /**
@@ -524,28 +569,26 @@ function _resolveSwapOutcome({
  *    states went stale between quote and execution. Nonce is already
  *    consumed — just re-quote and submit at the next nonce.
  *
+ * Each re-quote comes from `requote`, which also holds it to the
+ * operator's slippage, so a quote failing that check throws here with
+ * the nonce already settled and the cancels' gas carried on the error.
+ *
  * Chain-specific tunables (waitMs, cancelGasMultiplier, maxAttempts)
  * come from app-config/app-defaults-for-user-configurable/chains.json.
+ * The two token symbols and the log context arrive filled in from its
+ * only caller, `swapViaAggregator`.
  */
 async function _sendWithRetry(
   signer,
   provider,
   quote,
-  slippagePct,
-  tokenIn,
-  tokenOut,
-  amountIn,
-  symIn,
-  symOut,
-  cx,
+  requote,
+  fromSym,
+  toSym,
+  ctx,
 ) {
   const waitMs = _waitMsForTests ?? _agg.waitMs;
   const maxAttempts = _agg.maxAttempts;
-  const fromSym = symIn || tokenIn.slice(0, 10);
-  const toSym = symOut || tokenOut.slice(0, 10);
-  /*- Fallback to a synthetic prefix when the caller didn't thread the
-   *  6-field context — keeps tests and ad-hoc callers readable. */
-  const ctx = cx || `${fromSym}/${toSym}`;
 
   let cancelGasTotal = 0n;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -609,15 +652,16 @@ async function _sendWithRetry(
         ms: waitMs,
         sentinel: "_AGG_TIMEOUT",
       });
-      const costPls = (Number(receiptGasWei(r)) / 1e18).toFixed(4);
+      const costNative = (Number(receiptGasWei(r)) / 1e18).toFixed(4);
       log.info(
         "[rebalance] %s: swap (aggregator) confirmed %s -> %s" +
-          " gasUsed=%s cost=%s PLS",
+          " gasUsed=%s cost=%s %s",
         ctx,
         fromSym,
         toSym,
         String(r.gasUsed),
-        costPls,
+        costNative,
+        config.CHAIN.nativeCurrencySymbol,
       );
       return { txHash: r.hash, gasCostWei: receiptGasWei(r) + cancelGasTotal };
     } catch (err) {
@@ -645,14 +689,12 @@ async function _sendWithRetry(
       });
       if (landed) return landed;
       if (attempt < maxAttempts) {
-        quote = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
-        log.info(
-          "[rebalance] %s: swap (aggregator) re-quoted %s -> %s buy=%s",
-          ctx,
-          fromSym,
-          toSym,
-          quote.buyAmount,
-        );
+        try {
+          quote = await requote("re-quoted");
+        } catch (requoteErr) {
+          requoteErr.cancelGasCostWei = cancelGasTotal;
+          throw requoteErr;
+        }
       }
     }
   }
@@ -667,7 +709,7 @@ async function _sendWithRetry(
 }
 
 /**
- * Swap via 9mm DEX Aggregator (primary path — lowest slippage).
+ * Swap via the active chain's aggregator (primary path — lowest slippage).
  * Fetches a quote, approves, re-quotes, then submits with
  * cancel-and-requote retry on timeout.
  * @param {object} signer     ethers Signer.
@@ -688,22 +730,48 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     approvalMultiple,
     _attempts,
     _attemptLabel,
-    logCtx: ctx,
+    /*-
+     *  The six-field log context every swap line carries, built by each
+     *  caller — the rebalance, its corrective swaps and the compound —
+     *  and threaded through `swapIfNeeded`.
+     */
+    logCtx: cx,
   } = params;
   const symIn = symbolIn || tokenIn.slice(0, 10);
   const symOut = symbolOut || tokenOut.slice(0, 10);
-  /*- 6-field log context prefix per feedback-log-full-context.  Built
-   *  in rebalancer-execute.js _swapAndAdjust and threaded through
-   *  swapIfNeeded params.  Fallback to a synthetic prefix keeps tests
-   *  that don't thread logCtx readable rather than printing "undefined". */
-  const cx = ctx || `${symIn}/${symOut}`;
   const signerAddr = await signer.getAddress();
   const quote = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
   const impact = parseFloat(quote.estimatedPriceImpact) || 0;
-  const slip = slippagePct ?? _DEFAULTS.slippagePct;
-  /*- Display label is the AGGREGATOR_LABEL constant defined at the top
-   *  of this module.  The raw per-pool list is still logged below for
-   *  diagnostics but never surfaced to the UI. */
+  const slip = slippagePct;
+  /*-
+   *  Every quote that may be sent is held to the operator's slippage,
+   *  not only this first one. The approval below can take minutes, and a
+   *  re-quote follows a timeout or a revert, so the pool a later quote
+   *  prices against need not be the one this quote saw. The slippage in
+   *  a quote's calldata bounds the output only against that quote's own
+   *  price, which already includes its impact; this check is what holds
+   *  the swap to the slippage setting against the pool's price.
+   */
+  const requote = async (how) => {
+    const q = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
+    const qImpact = parseFloat(q.estimatedPriceImpact) || 0;
+    log.info(
+      "[rebalance] %s: swap (aggregator) %s %s -> %s buy=%s impact=%s%%",
+      cx,
+      how,
+      symIn,
+      symOut,
+      q.buyAmount,
+      qImpact.toFixed(2),
+    );
+    _checkSwapImpact(qImpact, slip, _attempts, _attemptLabel);
+    return q;
+  };
+  /*-
+   *  Display label is AGGREGATOR_LABEL, the chain's aggregator name.
+   *  The raw per-pool list is still logged below for diagnostics but
+   *  never surfaced to the UI.
+   */
   const sources = AGGREGATOR_LABEL;
   const rawPools =
     (quote.sources || [])
@@ -722,7 +790,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     sources,
     rawPools,
   );
-  _checkSwapImpact(impact, slip, _attempts, _attemptLabel || "9mm Aggregator");
+  _checkSwapImpact(impact, slip, _attempts, _attemptLabel);
   const tokenC = new ethersLib.Contract(tokenIn, ERC20_ABI, signer);
   let aggApprovalGas = await _ensureAllowance(
     tokenC,
@@ -731,7 +799,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
     amountIn,
     approvalMultiple,
   );
-  const fresh = await _fetchQuote(tokenIn, tokenOut, amountIn, slippagePct);
+  const fresh = await requote("fresh quote after approval");
   if (fresh.allowanceTarget !== quote.allowanceTarget)
     aggApprovalGas += await _ensureAllowance(
       tokenC,
@@ -740,23 +808,20 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
       amountIn,
       approvalMultiple,
     );
-  const provider = signer.provider || signer;
+  const provider = signer.provider;
   return balanceDiff(ethersLib, tokenOut, recipient, provider, async () => {
     const result = await _sendWithRetry(
       signer,
       provider,
       fresh,
-      slippagePct,
-      tokenIn,
-      tokenOut,
-      amountIn,
+      requote,
       symIn,
       symOut,
       cx,
     );
-    result.gasCostWei = (result.gasCostWei || 0n) + (aggApprovalGas || 0n);
+    result.gasCostWei += aggApprovalGas;
     result.swapSources = sources;
-    log.info("[route-trace] aggregator swap sources=%s", sources || "(empty)");
+    log.info("[route-trace] aggregator swap sources=%s", sources);
     return result;
   });
 }
@@ -764,6 +829,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
 module.exports = {
   swapViaAggregator,
   AGGREGATOR_LABEL,
+  aggregatorBaseUrl,
   _aggregatorBase,
   _gasLimit,
   _baseSigner,

@@ -41,6 +41,7 @@
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
 const {
   getHistoricalPrice,
   setHistoricalPrice,
@@ -56,8 +57,12 @@ const {
   flushGeckoPoolCache,
 } = require("./gecko-pool-cache");
 
-/** GeckoTerminal leg: resolve a pool for the token, then read its candle. */
+/**
+ * GeckoTerminal leg: resolve a pool for the token, then read its candle.
+ * Not asked on a chain GeckoTerminal does not cover (`network` "").
+ */
 async function _viaGecko(tokenAddress, timestamp, network) {
+  if (network === "") return 0;
   const best = await getBestPoolForToken(network, tokenAddress);
   flushGeckoPoolCache();
   if (!best) return 0;
@@ -65,32 +70,40 @@ async function _viaGecko(tokenAddress, timestamp, network) {
 }
 
 /**
- * A token's USD price on the UTC day containing `timestamp`.
+ * A token's USD price on the active chain, on the UTC day containing
+ * `timestamp`. Each service is asked by its own id for the chain, from
+ * chains.json (`priceServices`).
  *
  * @param {string} tokenAddress      Token contract address.
  * @param {object} opts
  * @param {number} opts.timestamp    Unix seconds within the target day.
  * @param {number} [opts.blockNumber] Block for the Moralis leg. Without
  *   it Moralis is skipped and GeckoTerminal answers alone.
- * @param {string} [opts.network]    Internal chain name.
  * @param {boolean} [opts.refresh]   Read past the cache and overwrite it.
  * @returns {Promise<number>} USD price, or 0 when no source could answer.
  */
 async function fetchHistoricalTokenPriceUsd(tokenAddress, opts = {}) {
-  const { timestamp, blockNumber, network = "pulsechain" } = opts;
+  const { timestamp, blockNumber } = opts;
+  const chain = config.CHAIN_NAME;
+  const { moralisChain, geckoTerminalNetwork } = config.CHAIN.priceServices;
   if (typeof tokenAddress !== "string" || tokenAddress === "") return 0;
   if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return 0;
   const dayKey = toUtcDayKey(timestamp);
   if (opts.refresh !== true) {
-    const cached = getHistoricalPrice(network, tokenAddress, dayKey);
+    const cached = getHistoricalPrice(chain, tokenAddress, dayKey);
     if (cached !== null) return cached;
   }
   let price = 0;
   if (blockNumber !== undefined && blockNumber !== null)
-    price = await _fetchMoralisHistorical(tokenAddress, blockNumber, network);
-  if (price <= 0) price = await _viaGecko(tokenAddress, timestamp, network);
+    price = await _fetchMoralisHistorical(
+      tokenAddress,
+      blockNumber,
+      moralisChain,
+    );
+  if (price <= 0)
+    price = await _viaGecko(tokenAddress, timestamp, geckoTerminalNetwork);
   if (price > 0) {
-    setHistoricalPrice(network, tokenAddress, dayKey, price);
+    setHistoricalPrice(chain, tokenAddress, dayKey, price);
     flushPriceCache();
     return price;
   }

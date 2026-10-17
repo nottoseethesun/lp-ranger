@@ -7,26 +7,20 @@
 "use strict";
 
 const { log } = require("./log");
-const { loadShippedDefaults } = require("./load-merged-defaults");
-
-/*- Single-source default: per feedback_one_literal_per_shipped_default,
- *  the shipped slippage default lives only in bot-config-defaults.json.
- *  Read once at module init for the `params.slippagePct` fallback in
- *  `swapIfNeeded`. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 const {
   maxLiquidityForAmounts,
   TickMath,
   SqrtPriceMath,
 } = require("@uniswap/v3-sdk");
 const JSBI = require("jsbi");
+const { ERC20_ABI, _MIN_SWAP_THRESHOLD } = require("./rebalancer-pools");
+const { _bestAttemptError } = require("./rebalancer-swap-impact");
 const {
-  ERC20_ABI,
-  _MIN_SWAP_THRESHOLD,
-  _bestAttemptError,
-} = require("./rebalancer-pools");
-const { swapViaAggregator } = require("./rebalancer-aggregator");
-const { swapViaRouter } = require("./rebalancer-router");
+  swapViaAggregator,
+  AGGREGATOR_LABEL,
+  aggregatorBaseUrl,
+} = require("./rebalancer-aggregator");
+const { swapViaRouter, V3_ROUTER_LABEL } = require("./rebalancer-router");
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -431,11 +425,13 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   const total = params.amountIn;
   const chunk = total / BigInt(n);
   const remainder = total - chunk * BigInt(n);
-  /*- Bail loudly when the per-chunk amount would fall below the swap
-   *  threshold.  Without this, the loop silently skips every chunk and
-   *  returns amountOut=0n as if the swap succeeded — the caller then
-   *  proceeds to mint with stale balances.  Throwing lets the outer
-   *  catch fall through to the V3 router instead. */
+  /*-
+   *  Refuse a split whose chunks would fall below the swap threshold,
+   *  before any is sent: each would be a swap too small to be worth
+   *  making, and the outer catch then falls through to the V3 router
+   *  with the whole amount instead. The last chunk takes the remainder,
+   *  so none is smaller than `chunk`.
+   */
   if (chunk < _MIN_SWAP_THRESHOLD)
     throw new Error(
       `Cannot chunk: amountIn=${total} split into ${n} would yield ` +
@@ -447,42 +443,47 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   /*- Preserve swapSources across chunks so the rebalance log displays
    *  "NineMM_V3+DEX_X" rather than "(no swap)" after a chunked retry. */
   const sources = [];
-  /*- What has been swapped so far.  One construction for both exits,
+  /*-
+   *  What has been swapped so far.  One construction for both exits,
    *  because a partial and a completed run are the same shape: a partial
    *  IS what has been swapped so far.  Two literals would mean the next
-   *  field added to the result reaches only one of them. */
+   *  field added to the result reaches only one of them.  Either way at
+   *  least one chunk has swapped, and each names its route.
+   */
   const swapped = () => ({
     amountOut,
     txHash,
     gasCostWei,
-    ...(sources.length ? { swapSources: sources.join("+") } : {}),
+    swapSources: sources.join("+"),
   });
   for (let i = 0; i < n; i++) {
     const amt = i === n - 1 ? chunk + remainder : chunk;
-    if (amt < _MIN_SWAP_THRESHOLD) continue;
     log.info("[rebalance] chunk %d/%d: %s", i + 1, n, String(amt));
     let r;
     try {
       r = await swapFn(signer, ethersLib, {
         ...params,
         amountIn: amt,
-        _attemptLabel: `9mm Aggregator (chunk ${i + 1}/${n})`,
+        _attemptLabel: `${AGGREGATOR_LABEL} (chunk ${i + 1}/${n})`,
       });
     } catch (chunkErr) {
-      /*- Carry out what the earlier chunks already moved.  `params.amountIn`
+      /*-
+       *  Carry out what the earlier chunks already moved. `params.amountIn`
        *  is the whole amount and is never decremented — each chunk builds
        *  its own `amountIn` locally — so a caller that falls back after a
        *  mid-sequence failure would swap the full amount on top of the part
-       *  already swapped.  `amountOut > 0n` is the test because it means
-       *  balance actually moved: a chunk the swap gates skipped returns zero
-       *  and leaves the full amount genuinely unswapped. */
+       *  already swapped. `amountOut > 0n` is the test because it means
+       *  balance actually moved: when the first chunk is the one that
+       *  failed, nothing has, and the full amount is genuinely unswapped.
+       */
       if (amountOut > 0n) chunkErr.partialSwap = swapped();
       throw chunkErr;
     }
     amountOut += r.amountOut;
-    gasCostWei += r.gasCostWei || 0n;
-    txHash = r.txHash || txHash;
-    if (r.swapSources) sources.push(r.swapSources);
+    gasCostWei += r.gasCostWei;
+    // Every chunk that returns was mined, so it carries its receipt's hash.
+    txHash = r.txHash;
+    sources.push(r.swapSources);
   }
   return swapped();
 }
@@ -536,11 +537,10 @@ async function swapIfNeeded(signer, ethersLib, params) {
    *  fallback pool can be misleadingly large. */
   const attempts = [];
   const wrapped = { ...params, _attempts: attempts };
-  const slip = params.slippagePct ?? _DEFAULTS.slippagePct;
   try {
     return await _swapViaAggregator(signer, ethersLib, {
       ...wrapped,
-      _attemptLabel: "9mm Aggregator (full)",
+      _attemptLabel: `${AGGREGATOR_LABEL} (full)`,
     });
   } catch (err) {
     /*- An unsettled nonce means the aggregator's swap is neither confirmed
@@ -595,7 +595,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
     try {
       return await _swapViaRouter(signer, ethersLib, {
         ...wrapped,
-        _attemptLabel: "9mm V3 Router",
+        _attemptLabel: V3_ROUTER_LABEL,
       });
     } catch (routerErr) {
       /*- Only synthesize when the FINAL error is itself a slippage
@@ -605,7 +605,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
        *  actual cause.  Also requires >1 attempt so we don't just
        *  re-wrap a single throw with the same impact number. */
       if (routerErr.isSwapImpactAbort && attempts.length > 1) {
-        const synth = _bestAttemptError(attempts, slip);
+        const synth = _bestAttemptError(attempts, params.slippagePct);
         if (synth) throw synth;
       }
       throw routerErr;
@@ -613,9 +613,24 @@ async function swapIfNeeded(signer, ethersLib, params) {
   }
 }
 
+/**
+ * Label of the route a swap tries first on the active chain: the
+ * aggregator's when the chain names one, the V3 router's when it does
+ * not. Published on `GET /api/status` as `swapRouteLabel`, so the
+ * dashboard's "Routing through:" badge is right on every chain instead
+ * of assuming an aggregator exists. Whether the chain has an aggregator
+ * is `aggregatorBaseUrl`'s answer, the same one the swap acts on.
+ *
+ * @returns {string}
+ */
+function primaryRouteLabel() {
+  return aggregatorBaseUrl().length > 0 ? AGGREGATOR_LABEL : V3_ROUTER_LABEL;
+}
+
 // ── Module exports ───────────────────────────────────────────────────────────
 
 module.exports = {
   computeDesiredAmounts,
   swapIfNeeded,
+  primaryRouteLabel,
 };

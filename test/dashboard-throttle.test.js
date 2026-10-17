@@ -15,19 +15,23 @@
  *   both writers of `#dblWindowLabel` in a "remove-dead-throttle-UI"
  *   cleanup pass.  The `#dblWindowLabel` element was NOT removed from
  *   `public/index.html`, so it lived on as a hardcoded `"40 min"`
- *   string.  The doubling trigger window IS `4 × minIntervalMs` in
- *   `src/throttle.js` (`window4 = 4 * state.minIntervalMs`) — anyone
- *   changing Min Time Between Rebalances from the default 10 min saw
- *   a wrong window label.  Silent because the element existed (no
- *   null-ref crash), and because most users never touched the setting.
- *   These tests pin the derivation and the DOM sync so a repeat
- *   deletion trips CI.
+ *   string.  The doubling trigger window is `TRIGGER_WINDOW_MULTIPLE`
+ *   times the minimum interval, the rule `src/throttle.js` enforces from
+ *   `src/throttle-doubling.js` — anyone changing Min Time Between
+ *   Rebalances from the default 10 min saw a wrong window label.  Silent
+ *   because the element existed (no null-ref crash), and because most
+ *   users never touched the setting.  These tests pin the derivation and
+ *   the DOM sync so a repeat deletion trips CI.
  */
 
 require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs");
+const path = require("path");
+const { TRIGGER_WINDOW_MULTIPLE } = require("../src/throttle-doubling");
+const UI_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/ui-defaults.json");
 
 let mod;
 
@@ -143,16 +147,45 @@ describe("dblWindowLabel — regression pin for e22536c", () => {
     assert.doesNotThrow(() => mod.updateThrottleUI());
   });
 
-  it("scales by exactly 4× minIntervalMs — matches src/throttle.js window4", () => {
+  it("scales by the bot's own trigger-window multiple", () => {
     for (const min of [1, 3, 7, 30, 60, 240]) {
+      const want = TRIGGER_WINDOW_MULTIPLE * min + " min";
       mod.throttle.minIntervalMs = min * 60 * 1000;
       mod.updateThrottleUI();
       assert.strictEqual(
         document.getElementById("dblWindowLabel").textContent,
-        4 * min + " min",
-        `minIntervalMs = ${min} min should give '${4 * min} min'`,
+        want,
+        `minIntervalMs = ${min} min should give '${want}'`,
       );
     }
+  });
+
+  it("shows a dash, not a made-up window, before any interval is known", () => {
+    /*-
+     *  Nothing supplies the interval until the first status poll or a
+     *  Save, and the dashboard holds no default of its own to stand in.
+     */
+    mod.throttle.minIntervalMs = null;
+    mod.throttle.currentWaitMs = null;
+    mod.updateThrottleUI();
+    assert.strictEqual(
+      document.getElementById("dblWindowLabel").textContent,
+      "—",
+    );
+    assert.strictEqual(
+      document.getElementById("kpiCountdown").textContent,
+      "—",
+    );
+  });
+});
+
+describe("src/throttle-doubling.js", () => {
+  it("imports nothing, so the dashboard bundle can take it whole", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "..", "src", "throttle-doubling.js"),
+      "utf8",
+    );
+    assert.doesNotMatch(src, /\brequire\(|^\s*import\s/m);
   });
 });
 
@@ -184,15 +217,24 @@ describe("throttleBadge (updateThrottleUI dispatch)", () => {
     assert.strictEqual(badge.className, "warn-badge");
   });
 
-  it("NEAR LIMIT at 4/5 usage (80%) with no other state active", () => {
-    mod.throttle.dailyCount = 4; // 4 / 5 = 80%
+  it("NEAR LIMIT once usage reaches throttleNearLimitPct, with no other state active", () => {
+    mod.throttle.dailyMax = 100;
+    mod.throttle.dailyCount = UI_DEFAULTS.throttleNearLimitPct;
     mod.updateThrottleUI();
     const badge = document.getElementById("throttleBadge");
     assert.strictEqual(badge.textContent, "NEAR LIMIT");
     assert.strictEqual(badge.className, "warn-badge");
   });
 
-  it("OK when idle and under 80% usage", () => {
+  it("OK one rebalance short of throttleNearLimitPct", () => {
+    mod.throttle.dailyMax = 100;
+    mod.throttle.dailyCount = UI_DEFAULTS.throttleNearLimitPct - 1;
+    mod.updateThrottleUI();
+    const badge = document.getElementById("throttleBadge");
+    assert.strictEqual(badge.textContent, "OK");
+  });
+
+  it("OK when idle and under throttleNearLimitPct usage", () => {
     mod.updateThrottleUI();
     const badge = document.getElementById("throttleBadge");
     assert.strictEqual(badge.textContent, "OK");

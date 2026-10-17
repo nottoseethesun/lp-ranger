@@ -1,18 +1,18 @@
 "use strict";
 /**
  * @file test/retry-send.test.js
- * @description Unit tests for `_retrySend` in src/tx-retry.js (also
- * re-exported by src/rebalancer-pools.js for back-compat) — covers the
+ * @description Unit tests for `_retrySend` in src/tx-retry.js — covers the
  * three classifier buckets (transient, terminal-nonce-unused,
  * terminal-nonce-consumed), NonceManager reset behaviour, the
- * `retryingTxWithSameNonce` opt for explicit-nonce replacements, and
- * back-compat with the legacy numeric third-arg calling convention.
+ * `retryingTxWithSameNonce` opt for explicit-nonce replacements, and the
+ * retry count, which is app-runtime.json's `tx.sendRetries`.
  */
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
 
-const { _retrySend } = require("../src/rebalancer-pools");
+const config = require("../src/config");
+const { _retrySend } = require("../src/tx-retry");
 
 describe("_retrySend", () => {
   it("returns immediately on success", async () => {
@@ -199,23 +199,10 @@ describe("_retrySend", () => {
         ),
       { message: /ECONNRESET/ },
     );
-    assert.strictEqual(attempts, 4); // 1 original + 3 retries
-    assert.strictEqual(resets, 4); // reset before each retry + final exhaustion reset
-  });
-
-  it("accepts legacy numeric third arg (baseDelayMs) for back-compat", async () => {
-    let attempts = 0;
-    const result = await _retrySend(
-      () => {
-        attempts++;
-        if (attempts < 2) return Promise.reject(new Error("socket hang up"));
-        return Promise.resolve("ok");
-      },
-      "test",
-      10, // legacy calling convention
-    );
-    assert.strictEqual(result, "ok");
-    assert.strictEqual(attempts, 2);
+    // The original send, then each configured retry.
+    assert.strictEqual(attempts, config.TX_SEND_RETRIES + 1);
+    // A reset before each retry, and one more on giving up.
+    assert.strictEqual(resets, config.TX_SEND_RETRIES + 1);
   });
 
   it("treats unknown errors as terminal (no retry, no reset)", async () => {

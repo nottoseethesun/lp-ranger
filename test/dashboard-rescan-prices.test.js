@@ -28,6 +28,7 @@ const {
 } = require("node:test");
 const assert = require("node:assert/strict");
 const { indexHtmlDocument } = require("./helpers/index-html");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -70,6 +71,8 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 const overlay = () => document.getElementById("rescanPricesModal");
 
 before(async () => {
+  // As at startup: the dashboard knows its chain before it keys a position.
+  await learnActiveChain();
   dialog = await import("../public/dashboard-rescan-prices.js");
   const { posStore } = await import("../public/dashboard-positions-store.js");
   posStore.add({

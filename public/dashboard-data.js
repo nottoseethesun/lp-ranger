@@ -81,7 +81,6 @@ import {
   updateMissionStatusBadge,
 } from "./dashboard-mission-badge.js";
 import { updateGasStatusBadge } from "./dashboard-gas-badge.js";
-import { AGGREGATOR_LABEL } from "./dashboard-routing-labels.js";
 export { setOptimisticSpecialAction };
 import {
   logAllPositionEvents,
@@ -300,15 +299,17 @@ function _updateSyncBadge(d) {
   applySyncBlur();
 }
 
-/** Update "Routing through: ..." badge. Always reverts to the default
- *  "9mm Aggregator" between rebalances — the badge is a live indicator,
- *  not a historical summary. Per-rebalance route detail lives in the
- *  Rebalance Events table. */
+/**
+ * Update the "Routing through: ..." badge with the active chain's first
+ * swap route, as the server names it (`swapRouteLabel`, from
+ * chains.json). The badge is a live indicator, not a historical
+ * summary: per-rebalance route detail lives in the Rebalance Events
+ * table. It stays empty until the first poll lands.
+ */
 function _updateSwapSourcesBadge(d) {
   const badge = g("swapSourcesBadge");
   if (!badge) return;
-  const sources = d.swapSources || AGGREGATOR_LABEL;
-  badge.textContent = "Routing through: " + sources;
+  badge.textContent = "Routing through: " + d.swapRouteLabel;
 }
 
 import {
@@ -457,8 +458,8 @@ function _syncManagedAndGlobals(data) {
     botConfig.withinThreshold = data.withinThreshold;
   botConfig.oorSince = data.oorSince || null;
   botConfig.residualCleanupInProgress = !!data.residualCleanupInProgress;
-  botConfig.pmName = data.positionManagerName || botConfig.pmName || "";
-  botConfig.chainName = data.chainDisplayName || botConfig.chainName || "";
+  botConfig.pmName = data.positionManagerName;
+  botConfig.chainName = data.chainDisplayName;
   if (data.defaultSlippagePct > 0)
     botConfig.defaultSlip = data.defaultSlippagePct;
   if (data.compoundMinFeeUsd > 0)
@@ -513,6 +514,8 @@ function updateDashboardFromStatus(data) {
     !!data.poolState,
   );
   _syncManagedAndGlobals(data);
+  // The route is the chain's, not a wallet's, so it is shown whoever's is loaded.
+  _updateSwapSourcesBadge(data);
   logAllPositionEvents(data);
   _updateBotStatus(data);
   _updateThrottleKpis(data);
@@ -528,7 +531,6 @@ function updateDashboardFromStatus(data) {
   _syncAutoCompound(data);
   _syncRebCache(data);
   _updateSyncBadge(data);
-  _updateSwapSourcesBadge(data);
   _updateRebalanceButtons(data);
   updateHistorySyncLabels(data);
   const _pl = _posLabel();

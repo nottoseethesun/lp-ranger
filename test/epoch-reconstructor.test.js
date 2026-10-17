@@ -5,18 +5,38 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, after } = require("node:test");
 const assert = require("assert");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const {
   _buildClosedEpoch,
   isEpochHistoryComplete,
   reconstructEpochs,
 } = require("../src/epoch-reconstructor");
+const epochCache = require("../src/epoch-cache");
 const {
   CHAIN_HISTORY_MODULE,
   chainHistoryStub,
 } = require("./helpers/chain-history-stub");
 const { captureWarnings } = require("./helpers/capture-warnings");
+
+/*-
+ *  The epoch cache is one JSON file, and a dozen test files write it
+ *  while the suite runs 24 at a time, so a run against the real path
+ *  races the others and fails intermittently while passing in
+ *  isolation. Every case here writes a file of this process's own
+ *  instead, in a directory under the system's temporary directory,
+ *  never the project's tmp/, where the operator's caches are. It is set
+ *  for the whole file and removed after the last case, because cases in
+ *  several blocks below write it.
+ */
+const _CACHE_DIR = fs.mkdtempSync(
+  path.join(os.tmpdir(), "epoch-reconstructor-test-"),
+);
+epochCache._setCachePath(path.join(_CACHE_DIR, "pnl-epochs-cache.json"));
+after(() => fs.rmSync(_CACHE_DIR, { recursive: true, force: true }));
 
 describe("_buildClosedEpoch", () => {
   it("returns null when no dates available", () => {
@@ -162,22 +182,8 @@ describe("_buildClosedEpoch", () => {
 });
 
 describe("epoch-cache round-trip", () => {
-  /*- The cache is one JSON file, and a dozen test files write it while
-   *  the suite runs 24 at a time — so a run against the real path races
-   *  the others and fails intermittently while passing in isolation.
-   *  Point it at a per-process file, the same isolation
-   *  `epoch-cache.test.js` uses. */
-  const mod = require("../src/epoch-cache");
-  const { getCachedEpochs, setCachedEpochs } = mod;
-  const fs = require("node:fs");
-  const path = require("node:path");
-  const TMP = path.join(process.cwd(), "tmp");
-  fs.mkdirSync(TMP, { recursive: true });
-  mod._setCachePath(
-    path.join(TMP, `pnl-epochs-cache-reconstructor-${process.pid}.json`),
-  );
+  const { getCachedEpochs, setCachedEpochs } = epochCache;
   const key = {
-    blockchain: "test",
     contract: "0xPM",
     wallet: "0xW",
     token0: "0xA",

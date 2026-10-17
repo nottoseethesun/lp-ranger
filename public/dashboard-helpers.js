@@ -12,6 +12,13 @@ import { log } from "./dashboard-log.js";
 /*- The zone designator the `Date` itself emits, not a spelled-out
  *  name. See `src/utc-timestamp.js` for why "UTC" cannot be derived. */
 import { UTC_LABEL } from "../src/utc-timestamp.js";
+/*-
+ *  The security-token refresh cadence before the server has sent its
+ *  own; see `_csrfRefreshIntervalMs`.
+ */
+import CSRF_DEFAULTS from "../app-config/app-defaults-for-user-configurable/csrf.json" with { type: "json" };
+// The Activity Log's length cap and the copy icons' tick duration.
+import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
 /**
  * Get a DOM element by its ID.
  * @param {string} id  The element's id attribute.
@@ -115,7 +122,7 @@ export const ACT_ICONS = {
   lasso: "icons/act-lasso.svg",
 };
 /** Maximum entries in the Activity Log. */
-const ACT_LOG_MAX = 500;
+const ACT_LOG_MAX = UI_DEFAULTS.activityLogMaxEntries;
 
 /*- Per-icon render-size override.  Default is 40 (fits the 54×54
  *  `.aico` chip with ~7 px padding on each side); an entry here
@@ -331,18 +338,17 @@ export function fmtReset(r) {
 
 /**
  * Build a composite key matching the server's format: blockchain-wallet-contract-tokenId.
- * Returns null if any component is missing.
- * @param {string} [blockchain]  Defaults to 'pulsechain'.
- * @param {string} wallet        Wallet address.
- * @param {string} contract      NFT contract address.
- * @param {string} tokenId       NFT token ID.
+ * Returns null if any component is missing, the chain included: there is
+ * no chain to assume, and a key on the wrong one reaches no position.
+ * @param {string} blockchain  The active chain's id (`activeChainId()`).
+ * @param {string} wallet      Wallet address.
+ * @param {string} contract    NFT contract address.
+ * @param {string} tokenId     NFT token ID.
  * @returns {string|null}
  */
 export function compositeKey(blockchain, wallet, contract, tokenId) {
-  if (!wallet || !contract || !tokenId) return null;
-  return (
-    (blockchain || "pulsechain") + "-" + wallet + "-" + contract + "-" + tokenId
-  );
+  if (!blockchain || !wallet || !contract || !tokenId) return null;
+  return blockchain + "-" + wallet + "-" + contract + "-" + tokenId;
 }
 
 // ── Bot configuration state ─────────────────────────────────────────────────
@@ -361,6 +367,11 @@ export function compositeKey(blockchain, wallet, contract, tokenId) {
  */
 export const botConfig = {
   oorThreshold: undefined,
+  /*-
+   *  The active chain's display name, from each /api/status poll. Blank
+   *  until the first one lands; nothing stands in for it before then.
+   */
+  chainName: "",
   price: 0,
   lower: 0,
   upper: 0,
@@ -377,7 +388,8 @@ export function truncName(name, max) {
 
 /**
  * Copy `text` to the clipboard and give visual feedback by swapping
- * `iconEl`'s textContent to a checkmark for 1200ms.
+ * `iconEl`'s textContent to a checkmark for ui-defaults.json's
+ * `copyFeedbackMs`.
  * @param {HTMLElement} iconEl  The clicked copy-icon element.
  * @param {string} text  The text to copy.
  */
@@ -388,7 +400,7 @@ export function copyWithFeedback(iconEl, text) {
   iconEl.textContent = "\u2713";
   setTimeout(() => {
     iconEl.textContent = orig;
-  }, 1200);
+  }, UI_DEFAULTS.copyFeedbackMs);
 }
 
 /** Copy textContent of element `tId` via icon `bId` with checkmark feedback. */
@@ -607,15 +619,19 @@ export async function checkMoralisKeyStatus() {
        *  through to the "no key" text below would tell the operator
        *  their key had vanished. */
       dot.title = "Moralis API key stored but Use Moralis Key is off";
+    } else if (s === "unsupported") {
+      // A key IS configured; this chain is one Moralis is not asked about.
+      dot.title =
+        "Moralis API key stored, but Moralis does not cover this chain";
     } else {
       dot.title = "No Moralis API key configured";
     }
+    const stored = ["valid", "quota", "locked", "disabled", "unsupported"];
     const inp = g("moralisKeyInput");
     if (inp)
-      inp.placeholder =
-        s === "valid" || s === "quota" || s === "locked" || s === "disabled"
-          ? "Paste replacement key"
-          : "Paste key here";
+      inp.placeholder = stored.includes(s)
+        ? "Paste replacement key"
+        : "Paste key here";
     return s;
   } catch {
     /* network error — leave dot in default state */
@@ -654,14 +670,19 @@ export function fmtDuration(ms) {
 // ── CSRF token management ───────────────────────────────────────────────────
 
 let _csrfToken = null;
-/*- Server-driven refresh cadence from app-config/app-defaults-for-user-configurable/csrf.json
-    (delivered alongside every token). Default 5 min, giving ~11 missed
-    firings of slack against the 60 min server-side TTL — survives Chrome
-    tab discards, silent network failures, and main-thread stalls during
-    long pool scans on hardware like Raspberry Pi 5 (recommended
-    configuration: with Heat Sink and Fan, 5GB RAM, and Ethernet cable
-    Internet connection instead of Wi-Fi). */
-let _csrfRefreshIntervalMs = 5 * 60 * 1000;
+/*-
+ *  Refresh cadence, from app-config/app-defaults-for-user-configurable/csrf.json.
+ *  The server sends its own reading of that file (an operator override
+ *  included) with every token, and that replaces this one; the copy
+ *  bundled here covers only the time before the first token arrives.
+ *  The shipped 5 min gives ~11 missed firings of slack against the
+ *  60 min server-side TTL — survives Chrome tab discards, silent network
+ *  failures, and main-thread stalls during long pool scans on hardware
+ *  like Raspberry Pi 5 (recommended configuration: with Heat Sink and
+ *  Fan, 5GB RAM, and Ethernet cable Internet connection instead of
+ *  Wi-Fi).
+ */
+let _csrfRefreshIntervalMs = CSRF_DEFAULTS.refreshIntervalMs;
 
 /**
  * Fetch a fresh CSRF token from the server. Called on init and

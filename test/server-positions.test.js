@@ -17,6 +17,7 @@ const {
   getAllPositionBotStates,
   createPositionRoutes,
 } = require("../src/server-positions");
+const config = require("../src/config");
 
 // Valid EIP-55 checksummed addresses for composite key tests.
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
@@ -408,6 +409,27 @@ describe("createPositionRoutes", () => {
       assert.strictEqual(dc.positions[startedKey].status, "running");
 
       // Cleanup
+      getAllPositionBotStates().delete(startedKey);
+    });
+
+    it("keys the position on the server's own chain, whatever the request names", async () => {
+      /*-
+       *  The server runs one chain. A key naming another would file the
+       *  position's settings where no bot of this server reads them.
+       */
+      let startedKey = null;
+      const deps = makeRouteDeps({
+        readJsonBody: async () => ({ tokenId: "43", blockchain: "othernet" }),
+        positionMgr: makePositionMgr({
+          startPosition: async (key) => {
+            startedKey = key;
+          },
+          count: () => 1,
+        }),
+      });
+      const routes = createPositionRoutes(deps);
+      await routes["POST /api/position/manage"]({}, makeRes());
+      assert.ok(startedKey.startsWith(`${config.CHAIN_NAME}-0x`), startedKey);
       getAllPositionBotStates().delete(startedKey);
     });
 

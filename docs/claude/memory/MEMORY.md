@@ -23,6 +23,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — File lists live only in scripts/lint-targets.js
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile + node_modules, `npm i` first
+- [reset --keep, not --hard](feedback_reset_keep_not_hard.md) — Protocol step 4's `--hard` destroys uncommitted work; use `--keep` on a dirty tree
 - [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/` in wipe/restore-settings
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver; latest tag needs `--sort=-v:refname` plus `grep -v '^v'`
@@ -37,6 +38,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [hardening minimal scope](feedback_hardening_minimal_scope.md) — Hardening = no refactor beyond the fix
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Such lists need a "not bugs" note
 - [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete it; "inert" means delete
+- [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now, pre-existing or not; prove it first
 - [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each one durably at once
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Operator-facing behavior, not implementation constants
 - [operator sees UI, not logs](feedback_operator_sees_ui_not_logs.md) — Answer in badge/dialog terms; the log is your instrument
@@ -53,6 +55,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review
 - [try before commit](feedback_try_before_commit.md) — Browser-observable changes wait for sign-off
 - [user launches app](feedback_user_launches_app.md) — The user launches it during manual testing
+- [never test against Production](feedback_never_test_against_production.md) — Nothing that can transact on mainnet; live tests on the testnet only
 - [wait for sign-off](feedback_wait_for_signoff.md) — Offered options mean WAIT
 - [instrument before inferring](feedback_instrument_before_inferring.md) — Two wrong models = add logging, stop guessing
 - [grep before writing](feedback_grep_before_writing.md) — Grep existing usage before coding to a shape or API
@@ -85,9 +88,10 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [logging](feedback_logging.md) — Token symbols, NFT id + emoji, full context on every move
 - [minimize caching](feedback_minimize_caching.md) — No new caching layers; reuse existing resolvers
 - [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key chain caches generically (e.g. by pool) so all positions share
+- [never hard-code a chain](feedback_never_hard_code_a_chain.md) — Nothing in code true of one blockchain; chain facts live in chains.json, no fallbacks
 - [module self-announcement](feedback_module_self_announcement.md) — A module announces itself; B doesn't reach into A
 - [Moralis first](feedback_moralis_first.md) — Moralis is primary for historical prices when a key exists
-- [multiline comment style](feedback_multiline_comment_style.md) — `/*- ... */` over stacked `//`
+- [multiline comment style](feedback_multiline_comment_style.md) — `/*-` alone, text, `*/` alone; never stacked `//`; nearby code is no guide
 - [JSDoc style](feedback_jsdoc_style.md) — What it does, how it works, how it integrates: one flowing argument, terms defined before use, never a bug post-mortem
 - [never compact code](feedback_never_compact_code.md) — Extract a file; don't compress to fit max-lines
 - [no delay patches](feedback_no_delay_patches.md) — Never setTimeout where flow control belongs
@@ -103,7 +107,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no lazy loading](feedback_no_lazy_loading.md) — No `require()` inside functions
 - [no re-exports](feedback_no_reexports.md) — Import from the owning module
 - [unused exports are fine](feedback_unused_exports_are_fine.md) — An export nothing imports yet is composability, not a gap; never a finding, never deleted for knip
-- [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file
+- [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file; no fallback values in JS or HTML; sweep any found into config JSON
 - [price API, no pool](feedback_price_api_no_pool.md) — Let the price service pick the pool
 - [slippage lowest floor](feedback_slippage_lowest_floor.md) — `_bestAttemptError` taking the LOWEST impact is intentional
 - [think ahead](feedback_think_ahead.md) — Consider fetch → cache → invalidate → incremental first
@@ -118,6 +122,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no data in presentation](feedback_no_data_in_presentation.md) — No defaults, config or business data in HTML/CSS
 - [validate in the core, not the UI](feedback_validate_in_the_core_not_the_ui.md) — Bounds go on the server; one core, many frontends
 - [no HTML in Markdown](feedback_no_html_in_markdown.md) — Pure Markdown, no inline HTML (MD033)
+- [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No interpolated innerHTML in dashboard JS
 - [sound gate scope](feedback_sound_gate_scope.md) — Jingles gated on the browser idle timer is correct
 - [help page](project_help_page.md) — Help lives at /help.html with its own CSS

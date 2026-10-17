@@ -42,12 +42,19 @@ For the controls protecting the wallet, see [`docs/security.md`](security.md).
     - [RPC endpoints](#rpc-endpoints)
   - [Contract Addresses](#contract-addresses)
     - [Why contract addresses are not editable](#why-contract-addresses-are-not-editable)
+  - [What a Chain's Entry Describes](#what-a-chains-entry-describes)
   - [File Paths and Diagnostics](#file-paths-and-diagnostics)
   - [Where Other Configuration Lives](#where-other-configuration-lives)
 - [RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking)
   - [Why chunking exists](#why-chunking-exists)
   - [Why pacing is global](#why-pacing-is-global)
   - [Cost](#cost)
+- [Other Operator Tunables](#other-operator-tunables)
+  - [Failover and the reads someone waits on](#failover-and-the-reads-someone-waits-on)
+  - [History scans](#history-scans)
+  - [Sending and stopping](#sending-and-stopping)
+  - [Logs and price services](#logs-and-price-services)
+  - [Dashboard timings](#dashboard-timings)
 
 ---
 
@@ -83,16 +90,22 @@ environment value.
 | What | File | Edited by |
 | --- | --- | --- |
 | Server and process settings — listen port and host, default chain, TX recovery timing, scan timeout | `app-config/app-defaults-for-user-configurable/app-runtime.json` | you, by hand |
-| Per-chain static tunables — RPC endpoints, contract addresses, gas multipliers, aggregator timeouts | `app-config/app-defaults-for-user-configurable/chains.json` | you, by hand |
+| Per-chain static tunables — RPC endpoints, contract addresses, gas multipliers, aggregator timeouts — and everything the app says about a chain ([What a Chain's Entry Describes](#what-a-chains-entry-describes)) | `app-config/app-defaults-for-user-configurable/chains.json` | you, by hand |
 | Shipped defaults for bot behaviour — thresholds, intervals, caps, chunk size, pacing | `app-config/app-defaults-for-user-configurable/bot-config-defaults.json` | you, by hand |
 | Managed positions and per-position settings — HODL baselines, thresholds, slippage, auto-compound | `app-config/user-configurable/bot-config.json` | the dashboard and the bot; not hand-edited |
 | Encrypted wallet | `app-config/user-configurable/wallet.json` | the dashboard import flow |
 | Encrypted third-party API keys (Moralis, Telegram) | `app-config/user-configurable/api-keys.json` | the dashboard Settings dialog |
 
-Seven more shipped-default files cover narrower concerns — CSRF token TTL,
+Eight more shipped-default files cover narrower concerns — CSRF token TTL,
 the dust threshold, RPC error-classifier strings, logging, LP-provider
-metadata, dashboard first-visit defaults and setting labels. The
-engineering reference linked below inventories them all.
+metadata, the price services' urls, dashboard first-visit defaults and
+timings, and setting labels. The engineering reference linked below
+inventories them all, and [Other Operator Tunables](#other-operator-tunables)
+lists the settings in them that have no dashboard control. Two of the
+dashboard's timings, `chainQueryTimeoutMs` and `dashboardPollIntervalMs`
+in `ui-defaults.json`, are needed before the dashboard can ask the server
+anything, so `npm run build` bakes the shipped values into the bundle and
+an override of them has no effect.
 
 ### How to change one
 
@@ -240,8 +253,7 @@ each layer live in [`docs/security.md`](security.md).
 | `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. Range 1 to 120000 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. |
 | `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
-| `AGGREGATOR_URL` | `https://api.9mm.pro` | `app-runtime.json` → `aggregator.url` | 9mm DEX Aggregator endpoint. |
-| `AGGREGATOR_API_KEY` | `f9275849-2a1d-406b-b2a2-a6be1ac127dc` | `app-runtime.json` → `aggregator.apiKey` | `0x-api-key` header sent with aggregator quotes. Public and embedded in 9mm's own product, not an operator credential, which is why it ships in a tracked file rather than the encrypted key store. |
+| `AGGREGATOR_URL` | `https://swap.watergun.pro/api/aggregator/369` | `chains.json` → `<chain>.aggregator.url` | The active chain's swap aggregator, chain path included — the Watergun Aggregator on PulseChain. Each chain names its own; an empty url means the chain has no aggregator, and every swap goes through the V3 router. A chain entry with no url at all stops the app at startup. `<chain>.aggregator.name` is how the "Routing through:" badge and the Rebalance Events table name the route; it is required whenever there is a url, so pointing this setting at another aggregator needs that name overridden to match. |
 | `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. |
 | `DRY_RUN` | `false` | **none** — a run mode, not a setting | Connects, detects and polls, but sends no transactions. Accepts `1`, `true` or `yes`. |
 | `VERBOSE` | `false` | **none** — a run mode, not a setting | Verbose logging. Accepts `1`; `--verbose` and `-v` on the command line do the same thing. |
@@ -295,6 +307,12 @@ can type into the dashboard is checked the same way** — see
 | `TX_SPEEDUP_SEC` | `120` | 1 to `120000` (33 hours) | 1000× the default, being under 48 hours |
 | `TX_CANCEL_SEC` | `3600` | 1 to `172800` (48 hours) | 48 hours, since 1000× the default is 41 days |
 | `CHECK_INTERVAL_SEC` | `300` | `10` to `3600` (one hour) | its own range — an hour between looks at a position is already past any use |
+
+A fourth timer setting lives only in JSON: `aggregator.quoteTimeoutMs` in
+`chains.json`, 15000 by default, which limits how long a swap waits for
+the aggregator's quote. A quote that has not arrived by then counts as
+failed, and the swap goes through the V3 router in the position's own
+pool. It is checked at startup by the same rule, in milliseconds.
 
 Most of them take the general bound: 1000× the setting's default or 48
 hours, **whichever is lesser**. A setting with a small default stays near
@@ -409,9 +427,16 @@ The shipped addresses live in
     "mintGasLimit": 600000
   },
   "factory": "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68",
-  "swapRouter": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA"
+  "swapRouter": {
+    "address": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA",
+    "name": "9mm V3 Router"
+  }
 }
 ```
+
+`swapRouter.name` is how the "Routing through:" badge and the Rebalance
+Events table name a swap through the router. The app does not start
+without it.
 
 Canonical deployment addresses:
 <https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json>
@@ -424,7 +449,7 @@ headless installs and experiments, outranking both JSON layers.
 | --- | --- | --- | --- |
 | `POSITION_MANAGER` | `0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2` | `chains.json` → `<chain>.contracts.positionManager.address` | NonfungiblePositionManager, the contract that holds every V3 position NFT. |
 | `FACTORY` | `0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68` | `chains.json` → `<chain>.contracts.factory` | V3 Factory, used to resolve a pool address from its two tokens and fee tier. |
-| `SWAP_ROUTER` | `0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA` | `chains.json` → `<chain>.contracts.swapRouter` | V3 SwapRouter, the fallback swap path when an aggregator quote cannot be used. |
+| `SWAP_ROUTER` | `0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA` | `chains.json` → `<chain>.contracts.swapRouter.address` | V3 SwapRouter, the fallback swap path when an aggregator quote cannot be used. |
 
 In normal operation you should never set them. The only reason to is to
 point the bot at a different deployment of the 9mm Pro V3 contracts, and
@@ -436,8 +461,8 @@ Changing the Position Manager or Factory mid-life does not just change
 where transactions go — it invalidates everything already on disk. Both
 addresses are part of the scope key for every cache:
 
-- the event cache (`event-cache-{chain}-{contract}-{wallet}-…`)
-- the LP position cache (`lp-position-cache-{chain}-{contract}-{wallet}`)
+- the event cache (`event-cache-{cacheTag}-{contract}-{wallet}-…`)
+- the LP position cache (`lp-position-cache-{cacheTag}-{contract}-{wallet}`)
 - the epoch cache, keyed by `blockchain.contract.wallet.token0.token1.fee`
 - per-position config in `bot-config.json`, keyed by a composite that
   includes the contract address
@@ -458,6 +483,45 @@ addresses you are leaving behind.
 A `positionManager` or `factory` value left in an existing
 `bot-config.json` from an older release is inert: nothing reads it, and
 `POST /api/config` no longer accepts either key.
+
+### What a Chain's Entry Describes
+
+Nothing in LP Ranger's code names a blockchain. What it shows or works
+out about one comes from that chain's entry in `chains.json`, and an
+entry that leaves any of these out stops the app at startup, naming the
+setting:
+
+| Key | PulseChain | What it is for |
+| --- | --- | --- |
+| `displayName` | `PulseChain` | The chain's name wherever the dashboard and the logs show it. |
+| `homepage`, `logo` | `https://pulsechain.com/`, `pulsechain-logo-transparent.png` | The chain link in the dashboard header; `logo` is a file under `public/`. |
+| `blockTimeSec` | `10` | Average seconds per block, which turns a span of time into a block count: the history scan's lookback (`bot-config-defaults.json` → `historyLookbackYears`), and the compounder's reposition window (`app-runtime.json` → `compound.repositionWindowSec`). |
+| `nativeCurrencySymbol` | `PLS` | The native token's symbol in messages and logs. |
+| `nativeWrappedToken` | `0xA1077a294dDE1B09bB078844df40758a5D0f9a27` | The wrapped native token, WPLS on PulseChain, or `""` where the chain has none. Gas is priced through it, fresh deposits of the native coin are recognised through it, and the Moralis key check asks its price. |
+| `cacheTag` | `pulse` | Names the chain in cache file names and cache keys. Lower-case letters and digits, and distinct from every other chain's: two chains with one tag would share their caches. Changing PulseChain's orphans its existing caches and forces a full re-scan. |
+| `priceServices` | `dexScreenerChain: pulsechain`, `geckoTerminalNetwork: pulsechain`, `moralisChain: 0x171` | The chain's id at each price service, or `""` where a service does not cover it, which is then not asked. |
+
+The dust threshold's reference tokens are not on the active chain, so
+each carries its own `moralisChain` and `dexScreenerChain` in
+`dust-threshold.json`.
+
+#### How a chain's transactions are priced
+
+The same holds for gas: each entry says how its own transactions are
+priced and bounded, and an entry that leaves one out stops the app at
+startup, naming it.
+
+| Key | PulseChain | What it is for |
+| --- | --- | --- |
+| `transactionEnvelopeType` | `legacy` | `legacy` or `eip1559`, the envelope every send is stamped with. Any other name stops startup rather than quietly sending legacy transactions. |
+| `gasPriceMultiplier` | `7` | Scales the network's gas price for every send. |
+| `gasLimitMultiplier` | `2` | Buffers every gas estimate. |
+| `gasLimitFloor` | `300000` | The least gas limit a send is given when the code sending it names no floor of its own: approvals, the compound's collect and increaseLiquidity, and a swap through the V3 router. A failed estimate sends with it. |
+| `contracts.positionManager.mintGasLimit` | `600000` | The floor under every mint and every liquidity removal. |
+| `speedUpGasBump` | `1.5` | A transaction still pending after `TX_SPEEDUP_SEC` is resent at its nonce priced this many times the higher of the network's price and its own. |
+| `cancelGasBump` | `2` | The zero-value cancel sent at `TX_CANCEL_SEC` is priced this many times the higher of the network's price and the stuck transaction's, so it outbids what it replaces. |
+| `aggregator.estimatedSwapGasUnits` | `500000` | What the swap gas gate prices a swap at, the router's included, so it is required with or without an aggregator. |
+| `aggregator.gasUnitsWhenQuoteOmitsGas` | `300000` | Gas units an aggregator swap is sent with when its quote names none; times `gasLimitMultiplier`, like the quote's own figure. Required whenever there is an aggregator. |
 
 ### File Paths and Diagnostics
 
@@ -610,9 +674,10 @@ rate it appeared to bound.
 ### Cost
 
 Serializing removes parallelism, so scan time is roughly *requests x interval*.
-A full five-year scan is ~2,100 chunks / ~4,200 requests, about 18 minutes at the
-defaults. Raising `getLogsChunkSize` (up to the 10,000 cap) is the single lever
-if that is too slow; lowering it is the fix if an endpoint rejects a query.
+A full scan over the shipped five-year lookback (`historyLookbackYears`) is
+~1,750 chunks / ~3,500 requests, about 13 minutes at the defaults. Raising
+`getLogsChunkSize` (up to the 10,000 cap) is the single lever if that is too
+slow; lowering it is the fix if an endpoint rejects a query.
 
 That figure is the worst case, and in practice almost nothing scans that
 wide. What actually determines a cold start is **where each scan starts**,
@@ -620,7 +685,7 @@ and every scan in the app starts from a bound it already knows:
 
 | Scan | Starts at |
 | --- | --- |
-| Pool rebalance events | the later of the five-year floor, the pool's creation block, and the last cached block |
+| Pool rebalance events | the later of the history lookback's floor, the pool's creation block, and the last cached block |
 | Per-NFT event history | that NFT's own mint block, and runs to the current block |
 | Pool creation lookup | the newest block, working backwards, stopping at the first match |
 
@@ -643,3 +708,80 @@ Two consequences worth knowing:
   saves its progress only when it completes. The per-NFT event history
   is read afresh after a restart. Interrupting a long first scan means
   the next start repeats it. Let the first one finish.
+
+---
+
+## Other Operator Tunables
+
+These have no control in the dashboard and should not need changing in
+normal operation. Each lives in one shipped file, and its comment in that
+file explains the figure. Override one the usual way, in the matching file
+under `app-config/user-configurable/`, and restart. A value that cannot
+work stops the app at startup, naming it, unless the table says it falls
+back.
+
+### Failover and the reads someone waits on
+
+In `bot-config-defaults.json`. Out of bounds, each falls back to the
+shipped value, except `boundedReadRetryDelayMs`, which becomes a timer and
+so is refused at startup by the same rule as the timer settings above.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `rpcFailoverStickyMs` | `3600000` | How long failover stays on the endpoint it moved to before reads go back to the first one. 1 minute to 2 days. |
+| `boundedReadAttemptsPerEndpoint` | `2` | How often each endpoint in service is asked for pool state, or for the wallet balances behind the re-open check, before the read reports itself unavailable. 1 to 10. |
+| `boundedReadRetryDelayMs` | `3000` | The wait before asking the same endpoint again. Moving to another endpoint is not a reason to wait. |
+
+### History scans
+
+In `bot-config-defaults.json`; out of bounds, each falls back to the
+shipped value.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `historyLookbackYears` | `5` | How far back the rebalance-history and closed-position scans reach, turned into blocks at the chain's `blockTimeSec`. 1 to 20. |
+| `eventCacheTtlMs` | `31536000000` | How long the on-disk event cache keeps a pool's history after its last write (a year). Every scan and every rebalance writes it again. One hour to ten years. |
+| `poolScanReuseMs` | `60000` | How long a finished scan is handed to the next view asking for the same pool and wallet, instead of scanning again. `0` turns reuse off; at most one hour. |
+| `rebalancePairingWindowSec` | `300` | The most seconds between an NFT leaving the wallet and a new one arriving for the two to be read as one rebalance. 1 to 86400. |
+| `feeDataLogIntervalMs` | `3600000` | How often the network's gas price is written to the log; `--verbose` logs every read. One second to one day. |
+
+### Sending and stopping
+
+In `app-runtime.json`.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `tx.sendRetries` | `3` | How often a send that failed for a passing reason is sent again. `0` to `10`. |
+| `tx.sendRetryBaseDelayMs` | `30000` | The wait before the first retry; each later retry waits one more of it (30, 60 and 90 seconds as shipped). |
+| `tx.cancelPhaseFloorSec` | `10` | The least time a sped-up transaction gets to confirm before the cancel goes out. |
+| `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. |
+| `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. |
+| `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop` checks whether the server has gone. |
+| `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the server waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
+
+### Logs and price services
+
+| File | Setting | Default | What it governs |
+| ---- | ------- | ------- | --------------- |
+| `logging.json` | `errorLogPath` | `logs/error.log` | Where catastrophic failures are recorded. Emptied at every startup; the dashboard's alert for one names this file. |
+| `price-services.json` | `dexScreener.baseUrl` | `https://api.dexscreener.com` | DexScreener's api. |
+| `price-services.json` | `geckoTerminal.baseUrl` | `https://api.geckoterminal.com/api/v2` | GeckoTerminal's api, with its version. |
+| `price-services.json` | `moralis.baseUrl` | `https://deep-index.moralis.io/api/v2.2` | Moralis's api, with its version. |
+
+### Dashboard timings
+
+In `ui-defaults.json`. `npm run build` bakes these into the dashboard
+bundle, so an override under `app-config/user-configurable/` has no
+effect: change the shipped value and rebuild.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `reloadMaxWaitMs` | `14400000` | How long Reload Current Position waits for its scan before reloading the page anyway; its dialogs quote the same figure. |
+| `pollFailuresBeforeHalted` | `3` | Failed status polls in a row before the status pill reads HALTED. |
+| `pollSkipLogEvery` | `20` | While a slow server holds a poll, one console line per this many skipped polls. |
+| `lastCheckJustNowSec` | `5` | How long Mission Control's last-check tag reads "just now". |
+| `autoCompoundSyncHoldMs` | `5000` | How long after Stop Managing the Auto-Compound toggle is left alone by status polls. |
+| `throttleNearLimitPct` | `80` | The share of Max Rebalances / Day at which the throttle badge reads NEAR LIMIT. |
+| `activityLogMaxEntries` | `500` | How many entries the Activity Log keeps. |
+| `copyFeedbackMs` | `1200` | How long a copy icon shows that it copied. |
+| `heapLogIntervalMs` | `600000` | How often the dashboard logs its heap size to the browser console. |

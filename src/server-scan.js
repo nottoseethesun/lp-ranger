@@ -22,7 +22,7 @@ const {
   detectPositionType,
   refreshLpPositionLiquidity,
 } = require("./position-detector");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const {
   loadLpPositionCache,
   saveLpPositionCache,
@@ -201,6 +201,7 @@ function createScanHandlers(deps) {
   /** Check LP position cache freshness. */
   async function _checkCache(prov, ethers, wSt, pmAddr, currentBlock) {
     const cached = loadLpPositionCache(wSt.address, {
+      blockchain: config.CHAIN_NAME,
       contract: config.POSITION_MANAGER,
     });
     if (!cached) {
@@ -225,6 +226,7 @@ function createScanHandlers(deps) {
         currentBlock,
       );
       saveLpPositionCache(wSt.address, cached.positions, currentBlock, {
+        blockchain: config.CHAIN_NAME,
         contract: config.POSITION_MANAGER,
       });
       return cached;
@@ -275,6 +277,7 @@ function createScanHandlers(deps) {
 
     if (nfts.length > 0) {
       saveLpPositionCache(wSt.address, nfts, currentBlock, {
+        blockchain: config.CHAIN_NAME,
         contract: config.POSITION_MANAGER,
       });
       _log(
@@ -358,6 +361,7 @@ function createScanHandlers(deps) {
       });
 
     const cached = loadLpPositionCache(wSt.address, {
+      blockchain: config.CHAIN_NAME,
       contract: config.POSITION_MANAGER,
     });
     if (!cached)
@@ -383,6 +387,7 @@ function createScanHandlers(deps) {
       liquidity: liqMap.get(p.tokenId) || p.liquidity,
     }));
     saveLpPositionCache(wSt.address, updated, cached.lastBlock, {
+      blockchain: config.CHAIN_NAME,
       contract: config.POSITION_MANAGER,
     });
 

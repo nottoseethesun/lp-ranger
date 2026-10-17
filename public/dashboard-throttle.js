@@ -30,6 +30,11 @@ import {
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
+import { activeChainId } from "./dashboard-chain.js";
+// The bot's own doubling rule, for the trigger-window label.
+import { TRIGGER_WINDOW_MULTIPLE } from "../src/throttle-doubling.js";
+// The badge's NEAR LIMIT threshold.
+import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
 
 // Late-bound import to avoid circular dep issues at evaluation time.
 // Populated by dashboard-init.js after all modules load.
@@ -54,13 +59,17 @@ export const trigger = { type: TRIGGER_OOR };
 
 // ── Throttle state ──────────────────────────────────────────────────────────
 
-/** Mutable throttle state. */
+/**
+ * Mutable throttle state. The two intervals are null until the first
+ * status poll or a Save supplies them; the displays built on them show
+ * a dash until then rather than a figure the dashboard made up.
+ */
 export const throttle = {
-  minIntervalMs: 10 * 60 * 1000,
+  minIntervalMs: null,
   rebTimestamps: [],
   doublingActive: false,
   doublingCount: 0,
-  currentWaitMs: 10 * 60 * 1000,
+  currentWaitMs: null,
   lastRebTime: 0,
   dailyCount: 0,
   dailyMax: 0,
@@ -84,7 +93,7 @@ export function canRebalance() {
     ? throttle.currentWaitMs
     : throttle.minIntervalMs;
   const since = now - throttle.lastRebTime;
-  if (throttle.lastRebTime > 0 && since < wait) {
+  if (throttle.lastRebTime > 0 && wait !== null && since < wait) {
     return {
       allowed: false,
       msUntilAllowed: wait - since,
@@ -160,7 +169,8 @@ function _clearNa(el) {
  *   2. `CAPPED`     — the pool hit Max Rebalances / Day.
  *   3. `DOUBLING ×N`— doubling mode is active (longer cooldown).
  *   4. `THROTTLED`  — inside the Min Time Between Rebalances cooldown.
- *   5. `NEAR LIMIT` — at or past 80% of the daily cap, nothing blocked.
+ *   5. `NEAR LIMIT` — at or past `throttleNearLimitPct` (ui-defaults.json)
+ *                     of the daily cap, nothing blocked.
  *   6. `OK`         — free to rebalance now.
  *
  * Because the ladder short-circuits, `NEAR LIMIT` only shows when the
@@ -193,7 +203,7 @@ function _renderThrottleBadge(pct) {
   } else if (!check.allowed && check.reason === "min_interval") {
     badge.textContent = "THROTTLED";
     badge.className = "warn-badge";
-  } else if (pct >= 80) {
+  } else if (pct >= UI_DEFAULTS.throttleNearLimitPct) {
     badge.textContent = "NEAR LIMIT";
     badge.className = "warn-badge";
   } else {
@@ -315,10 +325,12 @@ function _renderCountdownKpi(can) {
    *  Keeps this KPI consistent with the Doubling Trigger Window
    *  label (audit finding: the two adjacent displays disagreed
    *  while typing). */
-  const minIntervalMin = Math.round(throttle.minIntervalMs / 60000);
   if (can.allowed) {
     if (cd) {
-      cd.textContent = minIntervalMin + " min";
+      cd.textContent =
+        throttle.minIntervalMs === null
+          ? "—"
+          : Math.round(throttle.minIntervalMs / 60000) + " min";
       cd.className = "kpi-value neu";
     }
   } else {
@@ -336,13 +348,18 @@ function _renderCountdownKpi(can) {
   }
 }
 
-/*- Render the "Doubling Trigger Window" label to `4 × minIntervalMs`.
- *  Kept in sync with `src/throttle.js`'s `window4 = 4 * state.minIntervalMs`
- *  — if that multiplier ever changes there, change it here too. */
+/**
+ * Render the "Doubling Trigger Window" label: the bot's trigger window,
+ * `TRIGGER_WINDOW_MULTIPLE` times the saved minimum interval, from the
+ * same `src/throttle-doubling.js` the bot enforces it with.
+ */
 function _renderDoublingWindowLabel() {
   const el = g("dblWindowLabel");
   if (!el) return;
-  el.textContent = (4 * throttle.minIntervalMs) / 60000 + " min";
+  el.textContent =
+    throttle.minIntervalMs === null
+      ? "—"
+      : (TRIGGER_WINDOW_MULTIPLE * throttle.minIntervalMs) / 60000 + " min";
 }
 
 /** Refresh all throttle-related UI elements (badge, countdown, banner). */
@@ -462,14 +479,17 @@ export function _saveSingleConfig(inputId, key, parse, onSaved) {
   markInputDirty(inputId);
   const val = parse(g(inputId)?.value);
   const active = posStore.getActive();
+  const chain = activeChainId();
   const positionKey = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,
       )
     : undefined;
+  // Labelled now, for the position clicked, not whichever is on screen later.
+  const pl = _posLabel();
   saveConfigValues({
     values: { [key]: val },
     positionKey,
@@ -478,7 +498,6 @@ export function _saveSingleConfig(inputId, key, parse, onSaved) {
       /*- Logged once the server has taken it, not when the request goes
        *  out: a refused save would otherwise read "Setting Saved" in the
        *  Activity Log while the dialog says it was rejected. */
-      const pl = _posLabel();
       act(
         ACT_ICONS.gear,
         "start",

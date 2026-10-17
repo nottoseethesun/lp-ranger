@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
+  modified: 2026-10-17T05:05:36.249Z
 ---
 
 For every config value the app ships with a default, there must be at
@@ -62,3 +63,45 @@ Per-install operator overrides live at
 `app-config/user-configurable/<same-name>.json` (gitignored,
 tarball-upgrade-safe) and deep-merge on top of the shipped JSON at
 runtime.  See [[project-layered-config-refactor]].
+
+## No defaults in executable code (user, 2026-10-16)
+
+The user's words: "any values must come from the static config: No
+defaults in the executable code (js, html/dom); waiting for the first
+poll is not a problem."
+
+Said while approving the removal of the dashboard's copy of the swap
+route label and the badge's pre-render text in `index.html`. It widens
+this rule from shipped defaults to any value the app shows or acts on:
+
+- No fallback value in JS for something static config or the server
+  provides: no `x || "pulsechain"`, no `|| AGGREGATOR_LABEL`, no `|| ""`
+  standing in for a missing config key. A missing key stops startup and
+  names the setting (`_chainContract`, `_routeName`, `_aggregatorUrl` in
+  `src/config.js`).
+- No values in HTML. An element the first poll fills stays empty until
+  then, and that wait is fine.
+- Display names are static config too: the swap route names live in
+  `chains.json` (`aggregator.name`, `contracts.swapRouter.name`).
+- A value the dashboard needs before the server can answer is bundled
+  from the shipped JSON at build time: `chainQueryTimeoutMs` in
+  `ui-defaults.json`, imported by `public/dashboard-chain.js`, as
+  `dialogMaxHeightPx` is baked into `ui-tokens.css`.
+
+**How to apply:** a literal fallback in JS, or a value in HTML, is a
+finding in your own work. Pre-existing ones are swept too, as soon as
+they are found — the user, 2026-10-17: "we always sweep out hardcoded
+values when we find them, out into json file(s) in `config/`; find the
+right locations and do it." So a hard-coded tunable (a timeout, a
+count, a limit, a fallback figure) found in code goes into the right
+shipped JSON under `app-config/app-defaults-for-user-configurable/` and
+is read from there; report it, do not ask first. A fallback that can
+never fire is not moved but deleted ([[feedback_dead_code_removed]]).
+The ones found on 2026-10-16 were approved and done the same evening:
+six `"PulseChain"` chain-name fallbacks (now blank until the first poll),
+the dashboard's 3000 ms status and Reload polls and the server's copy
+(now `dashboardPollIntervalMs` in ui-defaults.json, which the server
+reads from the shipped file so it agrees with the bundle), and the CSRF
+refresh's five minutes (now csrf.json's `refreshIntervalMs`, bundled for
+the time before the first token). The user ruled the Reload dialog's
+`logs/error.log` text fine, since that path never changes.

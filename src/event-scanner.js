@@ -1,36 +1,29 @@
-"use strict";
-
-const { log } = require("./log");
 /**
  * @file event-scanner.js
  * @module eventScanner
  * @description
  * Scans on-chain Transfer events from the NonfungiblePositionManager to build
  * a history of rebalance events for a given wallet.  Queries Transfer events in
- * chunks and pairs out/in transfers within 5 min to form RebalanceEvent records.
+ * chunks and pairs out/in transfers that fall within `rebalancePairingWindowSec`
+ * of each other to form RebalanceEvent records.
  *
  * Results are cached to disk via {@link createCacheStore} so that the expensive
- * 5-year lookback (~7,800 RPC queries) is only performed once.  Subsequent
- * calls scan only the new blocks since the last cached scan and merge results.
- * The cache is a pure performance optimisation — delete it and the scanner
- * rebuilds from the blockchain.
+ * lookback over `historyLookbackYears` (thousands of rpc queries) is only
+ * performed once.  Subsequent calls scan only the new blocks since the last
+ * cached scan and merge results. The cache is a pure performance
+ * optimisation — delete it and the scanner rebuilds from the blockchain.
+ *
+ * There is no per-chunk delay: rate limiting is global and lives in
+ * src/rpc-request-manager.js, which paces individual requests. The chunk
+ * size comes from the shared chunker, which reads the one shipped value
+ * (`getLogsChunkSize`).
  */
 
-/** PulseChain ~10 s block time → blocks per year. */
-const _BLOCKS_PER_YEAR = Math.round((365.25 * 24 * 3600) / 10); // 3_155_760
+"use strict";
 
-/*- Default chunk size comes from the shared chunker, which reads the
- *  single shipped literal (`getLogsChunkSize`).  Not redeclared here —
- *  one literal, one owner. */
-
-/** Maximum seconds between paired Transfer-out and Transfer-in. */
-const _PAIRING_WINDOW_SEC = 300;
-
-/*- The old per-chunk delay is gone.  Rate limiting is global now and
- *  lives in src/rpc-request-manager.js, which paces individual
- *  requests; a per-chunk delay could not, because each chunk issues two
- *  queries in parallel. */
-
+const { log } = require("./log");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { historyFloorBlock } = require("./history-lookback");
 const { scanChunked, _DEFAULT_CHUNK_SIZE } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
@@ -38,6 +31,9 @@ const {
   resolveFirstMintWithForeign,
   resolveChainFirstMint,
 } = require("./event-scanner-mint-lookup");
+
+// Most seconds between a paired Transfer-out and Transfer-in.
+const _PAIRING_WINDOW_SEC = readBotConfigDefaults().rebalancePairingWindowSec;
 
 /**
  * @typedef {object} RebalanceEvent
@@ -101,7 +97,7 @@ async function fetchTimestamps(provider, blockNumbers) {
 /**
  * Pair transfers to form rebalance records.  Supports two patterns:
  *   1. Burn+Mint: Transfer-out (wallet→0x0) followed by Transfer-in (0x0→wallet)
- *      within 5 min.
+ *      within `rebalancePairingWindowSec`.
  *   2. Consecutive mints: When the rebalancer does not burn the old NFT
  *      (just removes liquidity), consecutive Transfer-in events from 0x0
  *      represent rebalances — each new mint replaces the previous position.
@@ -255,35 +251,15 @@ function mergeAndIndex(cachedEvents, newEvents) {
 }
 
 /**
- * Scan on-chain rebalance history for a wallet.
- *
- * When a `cache` store is provided, previously scanned results are loaded and
- * only new blocks since the last scan are queried.  This reduces the ~7,800
- * RPC queries for a 5-year lookback to a handful on subsequent calls.
- *
- * @param {object} provider   - ethers.js provider.
- * @param {object} ethersLib  - ethers library (for Contract, etc.).
- * @param {object} opts
- * @param {string} opts.positionManagerAddress
- * @param {string} opts.walletAddress
- * @param {number} [opts.maxYears=5]    - Maximum lookback period in years.
- * @param {number} [opts.chunkSize=2000] - Block range per getLogs query.
- * @param {object} [opts.cache]         - CacheStore instance for disk persistence.
- * @param {string} [opts.factoryAddress] - V3 Factory address (for pool-age optimisation).
- * @param {string} [opts.poolAddress]    - Pool address (for pool-age optimisation).
- * @returns {Promise<RebalanceEvent[]>}
- */
-/**
  * Resolve the starting block for a scan, applying pool-age optimisation.
  *
- * Routes through `getPoolCreationBlockCached` so the (expensive) Factory
- * `PoolCreated` lookup is paid at most once per pool process-wide and
- * persisted to disk for subsequent restarts.  Without this, every
- * wallet-scoped LP scan re-scanned the Factory from scratch — a 5-year
- * lookback is ~150 50k-chunk Factory queries before the wallet scan
- * itself even starts.  `getPoolCreationBlockCached` returns `0` when
- * the lookup fails, which behaves identically to the unbounded path
- * (the existing `creationBlock > fromBlock` guard rejects the zero).
+ * Routes through `getPoolCreationBlockCached`, so the pool's creation
+ * block is looked up at most once per pool process-wide and kept on disk
+ * for later restarts. A scan of a pool younger than the lookback then
+ * starts where the pool does, not years before it.
+ * `getPoolCreationBlockCached` returns `0` when the lookup fails, which
+ * leaves the scan on the lookback's floor (the `creationBlock >
+ * fromBlock` guard rejects the zero).
  *
  * @param {object} provider
  * @param {object} ethersLib
@@ -480,27 +456,6 @@ async function _filterByPool(
 }
 
 /**
- * Scan on-chain rebalance history for a wallet.
- *
- * When a `cache` store is provided, previously scanned results are loaded and
- * only new blocks since the last scan are queried.
- *
- * @param {object} provider
- * @param {object} ethersLib
- * @param {object} opts
- * @param {string} opts.positionManagerAddress
- * @param {string} opts.walletAddress
- * @param {number} [opts.maxYears=5]
- * @param {number} [opts.chunkSize=2000]
- * @param {object} [opts.cache]
- * @param {string} [opts.factoryAddress]
- * @param {string} [opts.poolAddress]
- * @param {string} [opts.poolToken0]  Pool token0 address for pool-aware filtering.
- * @param {string} [opts.poolToken1]  Pool token1 address for pool-aware filtering.
- * @param {number} [opts.poolFee]     Pool fee tier for pool-aware filtering.
- * @returns {Promise<RebalanceEvent[]>}
- */
-/**
  * Process raw events into paired rebalance records, optionally filtering by pool.
  * @param {object} provider  @param {object} ethersLib
  * @param {object[]} rawEvents  Raw ethers event objects.
@@ -677,11 +632,35 @@ async function _persistCachedOnly(cache, cacheKey, cachedEvents, currentBlock) {
   });
 }
 
+/**
+ * Scan on-chain rebalance history for a wallet.
+ *
+ * When a `cache` store is provided, previously scanned results are loaded
+ * and only new blocks since the last scan are queried, which turns the
+ * thousands of rpc queries of a full lookback into a handful.
+ *
+ * @param {object} provider   ethers.js provider.
+ * @param {object} ethersLib  ethers library (for Contract, etc.).
+ * @param {object} opts
+ * @param {string} opts.positionManagerAddress
+ * @param {string} opts.walletAddress
+ * @param {number} [opts.maxYears]   Lookback in years; the configured
+ *   `historyLookbackYears` when omitted.
+ * @param {number} [opts.chunkSize]  Block range per getLogs query; the
+ *   configured `getLogsChunkSize` when omitted.
+ * @param {object} [opts.cache]      CacheStore instance for disk persistence.
+ * @param {string} [opts.factoryAddress]  V3 Factory address (for pool-age optimisation).
+ * @param {string} [opts.poolAddress]     Pool address (for pool-age optimisation).
+ * @param {string} [opts.poolToken0]  Pool token0 address for pool-aware filtering.
+ * @param {string} [opts.poolToken1]  Pool token1 address for pool-aware filtering.
+ * @param {number} [opts.poolFee]     Pool fee tier for pool-aware filtering.
+ * @returns {Promise<RebalanceEvent[]>}
+ */
 async function scanRebalanceHistory(provider, ethersLib, opts) {
   const {
     positionManagerAddress,
     walletAddress,
-    maxYears = 5,
+    maxYears,
     chunkSize = _DEFAULT_CHUNK_SIZE,
     cache = null,
     factoryAddress = null,
@@ -699,10 +678,7 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
     poolToken1,
     poolFee,
   );
-  const baseFrom = Math.max(
-    0,
-    currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR),
-  );
+  const baseFrom = historyFloorBlock(currentBlock, maxYears);
   const { signal } = opts;
   const { cachedEvents, scanFrom } = await _resolveCache(
     provider,
@@ -796,7 +772,6 @@ async function scanRebalanceHistory(provider, ethersLib, opts) {
 module.exports = {
   scanRebalanceHistory,
   buildCacheKey: _buildCacheKey,
-  _BLOCKS_PER_YEAR,
   _PAIRING_WINDOW_SEC,
   _resolveLastBlock,
 };

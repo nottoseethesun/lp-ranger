@@ -37,7 +37,9 @@ app-data/*
 #   - logs/error.log      Catastrophic-failure record (auto-created by
 #                         src/error-log.js when a silent catch fires —
 #                         currently only bot-recorder-lifetime._recordScanFailure).
-# Both are covered by the standard `*.log` rule in the Node.js section
+# A development checkout also has logs/error-npm-run-check.log: what the
+# tests of the last `npm run check` wrote to logs/error.log.
+# All are covered by the standard `*.log` rule in the Node.js section
 # below — this comment exists to flag the convention for this project.
 
 # Encrypted private key files (legacy root drops — always gitignore-safe)
@@ -114,7 +116,7 @@ build/Release
 node_modules/
 jspm_packages/
 
-# Snowpack dependency directory (https://snowpack.dev/)
+# Snowpack dependency directory (https://www.snowpack.dev/)
 web_modules/
 
 # TypeScript cache

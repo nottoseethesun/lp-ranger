@@ -2,15 +2,15 @@
 
 ![LP Ranger Banner, showing the name in Western style against the Texas night sky.](./assets/lp-ranger-app_social-preview-for-github-project-config-half.png "LP Ranger Banner")
 
-[![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
-[![Tests (Node 20/22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
-[![Security Audit](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/security-audit.yml?branch=main&label=security)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/security-audit.yml)
+[![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/ci.yml)
+[![Tests (Node 22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/ci.yml)
+[![Security Audit](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/security-audit.yml?branch=main&label=security)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/security-audit.yml)
 
 ## Overview
 
 LP Ranger keeps your coins concentrated around the current price point in on-blockchain liquidity pools, maximizing your earnings from fees, and shows you your key performance indicators such as Impermanent Loss/Gain and Profit.
 
-LP Ranger is an on-chain, self-hosted, auto-rebalancing concentrated liquidity manager for crypto, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
+LP Ranger is an on-chain, self-hosted, auto-rebalancing concentrated liquidity manager for crypto, dedicated to simplicity, for [9mm Pro](https://app.9mm.pro/)
 (Uniswap v3 fork) on [PulseChain](https://pulsechain.com) (Ethereum w/o the Bug-eating). Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool. Provides a unified global view of all your positions' performance in a sortable table.
 
 With LP Ranger, you hold your own coins on your own wallet, at a wallet address on the blockchain: It is a completely self-custodial solution. You also run the software code (that makes up the LP Ranger application) yourself on your own machine: It is a completely self-hosted solution. Only basic computer skills, including just the very basic Terminal skills, are needed. The code is completely open-source and as such is free for you to completely inspect, use and modify ([License](#license)).
@@ -334,7 +334,7 @@ rm -rf lp-ranger*
 2. Pick a wallet address that you own (it can be a new address that LP Ranger will generate for you later, if you want it to) and that you will use exclusively for LP Ranger activity (manual interactions with the dApps of supported DEX Pools, such as the 9mm Liquidity Manager, are okay as well).
    - This kind of wallet segregation is a security best-practice. Separately but as well, this will ensure that LP Ranger's Lifetime Net Profit and Lifetime Impermanent Loss/Gain (IL/G) numbers are correct.
 3. Ensure that you either plan to use a brand new wallet address that LP Ranger will create for you if you so choose, or that you have either the Seed Phrase or Private Key of an existing wallet address if you plan to use an existing one.
-4. On the wallet address that you will be using for LP Ranger, if you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one or more at <https://dex.9mm.pro/liquidity>, making sure to use V3.
+4. On the wallet address that you will be using for LP Ranger, if you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one or more at <https://app.9mm.pro/add>, making sure to use V3.
    - Next: If you used LP Manager to create your wallet, click on "Scan Wallet" on the LP Ranger App, in the LP Browser dialog. To reach the "Scan Wallet" button, first click the "Positions" button on the app (in the three-column view, it's near top middle, and otherwise, it's on the left). Next, click the "Scan Wallet" button at top right of the dialog that pops up (that's the LP Liquidity Position Browser, aka "LP Browser"). The scan process make take some time.
 5. Visit <http://localhost:5555> in your web browser.
 6. Now, continue on by proceeding with Step #2 under the "Getting Started & How to Use" section of the "LP Ranger Help and User Manual" (pull it up by clicking on the "? Help" button at top right on the app).
@@ -531,6 +531,6 @@ Thank you for the support — it directly funds development time on LP Ranger.
 
 ## Contributing
 
-Bug reports and ideas for new features and improvements are welcome. Use the [Discussions](https://github.com/nottoseethesun/lp-ranger/discussions) tab to discuss and ask questions, or if you have something very specific and are ready to supply logs, use the [Issues](https://github.com/nottoseethesun/9mm-lp-position-manager/issues) tab.
+Bug reports and ideas for new features and improvements are welcome. Use the [Discussions](https://github.com/nottoseethesun/lp-ranger/discussions) tab to discuss and ask questions, or if you have something very specific and are ready to supply logs, use the [Issues](https://github.com/nottoseethesun/lp-ranger/issues) tab.
 
 Due to security being the highest priority, only contributions that have been formally audited for security can be considered for acceptance.

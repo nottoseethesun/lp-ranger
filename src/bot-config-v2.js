@@ -89,6 +89,17 @@ function compositeKey(blockchain, wallet, contract, tokenId) {
 
 /**
  * Parse a composite key back into its components.
+ *
+ * Read from the right: the last three segments are always the wallet, the
+ * contract and the tokenId, none of which can contain a dash, and
+ * everything before them is the chain. A chain name may contain dashes of
+ * its own — `pulsechain-testnet` does — so counting segments from the
+ * left would misread every key on such a chain.
+ *
+ * A chain part holding an address-like segment is refused. That is the
+ * shape of a pool key (`chain-contract-wallet-token0-token1-fee`), whose
+ * last three segments would otherwise pass for a position.
+ *
  * Returns null if the key format is invalid.
  * @param {string} key
  * @returns {{ blockchain: string, wallet: string, contract: string, tokenId: string }|null}
@@ -96,18 +107,18 @@ function compositeKey(blockchain, wallet, contract, tokenId) {
 function parseCompositeKey(key) {
   if (!key || typeof key !== "string") return null;
   const parts = key.split("-");
+  if (parts.length < 4) return null;
+  const [wallet, contract, tokenId] = parts.slice(-3);
+  const chainParts = parts.slice(0, -3);
+  const blockchain = chainParts.join("-");
   if (
-    parts.length !== 4 ||
-    !parts[1].startsWith("0x") ||
-    !parts[2].startsWith("0x")
+    blockchain.length === 0 ||
+    chainParts.some((p) => p.startsWith("0x")) ||
+    !wallet.startsWith("0x") ||
+    !contract.startsWith("0x")
   )
     return null;
-  return {
-    blockchain: parts[0],
-    wallet: parts[1],
-    contract: parts[2],
-    tokenId: parts[3],
-  };
+  return { blockchain, wallet, contract, tokenId };
 }
 
 /**

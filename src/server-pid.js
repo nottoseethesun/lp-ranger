@@ -3,11 +3,13 @@
  * @module server-pid
  * @description
  * PID-file lifecycle for the LP Ranger server.  On startup the server writes
- * its process id to `tmp/lp-ranger.pid`; on a clean shutdown (SIGINT /
- * SIGTERM) it removes the file.  `npm stop` (scripts/stop.js) reads the PID
- * and sends SIGTERM — the same graceful shutdown path as Ctrl+C — so an
- * operator can stop the server without switching to its terminal or hunting
- * the process by port.
+ * its process id to `tmp/lp-ranger.pid`, and the file goes when the process
+ * does: a signal-driven shutdown, `POST /api/shutdown` and an uncaught error
+ * all end in Node's `exit` event, which removes it.  Only a process killed
+ * outright leaves it behind, since that runs no code at all.  `npm stop`
+ * (scripts/stop.js) reads the PID and sends SIGTERM — the same graceful
+ * shutdown path as Ctrl+C — so an operator can stop the server without
+ * switching to its terminal or hunting the process by port.
  *
  * Every function is defensive: a PID-file failure must never crash startup or
  * block shutdown.  The file lives under `tmp/` (gitignored, ephemeral) and is
@@ -39,8 +41,9 @@ function getPidFilePath(opts) {
 }
 
 /**
- * Write the current process id to the PID file.  Logs a one-line confirmation
- * (standard formatting) on success.  Never throws.
+ * Write the current process id to the PID file, and remove the file again
+ * when this process exits.  Logs a one-line confirmation (standard
+ * formatting) on success.  Never throws.
  * @param {object} [opts]
  * @param {string} [opts.filePath]  Override the default path (tests).
  * @returns {boolean}  True if the file was written.
@@ -50,6 +53,7 @@ function writePidFile(opts) {
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, String(process.pid) + "\n");
+    process.once("exit", () => _removeIfOwn(filePath));
     log.info(
       "[server-pid] Wrote PID %d to %s (stop with `npm stop`)",
       process.pid,
@@ -63,8 +67,23 @@ function writePidFile(opts) {
 }
 
 /**
- * Remove the PID file if present.  Called on clean shutdown so a stopped
- * server never leaves a stale PID behind.  Never throws.
+ * The `exit` listener `writePidFile` installs.  Removes the file only
+ * while it still names this process, so an exiting server never deletes
+ * the file a newer one has written.  Synchronous, as an `exit` listener
+ * must be.
+ */
+function _removeIfOwn(filePath) {
+  try {
+    if (readPid({ filePath }) === process.pid) fs.rmSync(filePath);
+  } catch {
+    // Gone already; nothing to remove.
+  }
+}
+
+/**
+ * Remove the PID file if present, whichever process it names.  For
+ * `npm stop`, clearing a file its server can no longer remove.  Never
+ * throws.
  * @param {object} [opts]
  * @param {string} [opts.filePath]  Override the default path (tests).
  * @returns {boolean}  True if a file existed and was removed.

@@ -232,8 +232,8 @@ function _computeRow(key, posState, globalCtx, mode, maxDays) {
     "?";
   return {
     key,
-    blockchainDisplayName: globalCtx.chainDisplayName ?? "PulseChain",
-    blockchainId: globalCtx.chainId ?? "pulsechain",
+    blockchainDisplayName: globalCtx.chainDisplayName,
+    blockchainId: globalCtx.chainId,
     symbol0: ap.token0Symbol,
     symbol1: ap.token1Symbol,
     feePct: _feePct(ap.fee),
@@ -343,13 +343,9 @@ function _lcSlot(v) {
  *  the router emits everywhere else in the app (the router
  *  canonicalises on read). */
 function _positionHref(row) {
-  const chain =
-    typeof row.blockchainId === "string" && row.blockchainId.length > 0
-      ? row.blockchainId
-      : "pulsechain";
   const wallet = _lcSlot(row.walletAddress);
   const contract = _lcSlot(row.contractAddress);
-  return `/${chain}/${wallet}/${contract}/${row.tokenId}`;
+  return `/${row.blockchainId}/${wallet}/${contract}/${row.tokenId}`;
 }
 
 /*- Build the identity cell HTML for one row.  Structure: pair line

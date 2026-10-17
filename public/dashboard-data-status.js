@@ -25,6 +25,7 @@ import {
   currentUnclaimedFees,
   unmanagedUnclaimedFees,
 } from "./dashboard-data-kpi-fees.js";
+import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
 
 /**
  * Create and append a modal overlay to the document body. The shell
@@ -61,7 +62,7 @@ export function _posLabel() {
   if (!a) return "";
   const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
   const pm = botConfig.pmName || _short(a.contractAddress);
-  const c = botConfig.chainName || "PulseChain",
+  const c = botConfig.chainName,
     fee = a.fee ? (a.fee / 10000).toFixed(2) + "%" : "";
   return (
     pair +
@@ -69,8 +70,7 @@ export function _posLabel() {
     " \u00B7 NFT #" +
     a.tokenId +
     (fee ? " \u00B7 " + fee : "") +
-    " \u00B7 " +
-    c +
+    (c ? " \u00B7 " + c : "") +
     " \u00B7 " +
     _short(a.walletAddress)
   );
@@ -90,14 +90,18 @@ export function _posContextHtml() {
   const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
   const pm = botConfig.pmName || _short(a.contractAddress);
   const fee = a.fee ? (a.fee / 10000).toFixed(2) + "% fee" : "";
-  const c = botConfig.chainName || "PulseChain";
+  const c = botConfig.chainName;
   frag.querySelector('[data-tpl="pair"]').textContent = pair;
   frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";
   frag.querySelector('[data-tpl="tokenId"]').textContent = a.tokenId;
   frag.querySelector('[data-tpl="fee"]').textContent = fee
     ? " \u00B7 " + fee
     : "";
-  frag.querySelector('[data-tpl="chain"]').textContent = c;
+  /*-
+   *  The chain's name is blank until the first poll names it, and the
+   *  separator goes with it rather than standing alone before the wallet.
+   */
+  frag.querySelector('[data-tpl="chain"]').textContent = c ? c + " · " : "";
   frag.querySelector('[data-tpl="wallet"]').textContent = a.walletAddress || "";
   const wrap = document.createElement("div");
   wrap.appendChild(frag);
@@ -121,20 +125,26 @@ export function _logCtx(key, st) {
   const _s = (f) => ap[f] || pe?.[f] || "?";
   const pair = _s("token0Symbol") + "/" + _s("token1Symbol");
   const pm = botConfig.pmName,
-    c = botConfig.chainName || "PulseChain";
+    c = botConfig.chainName;
   const fee = ap.fee ? (ap.fee / 10000).toFixed(2) + "%" : "";
+  /*-
+   *  Read from the right: a chain name may itself hold a dash
+   *  (`pulsechain-testnet`), so the wallet is third from the end.
+   */
   const parts = key.split("-");
+  const tokenId = parts.pop();
+  parts.pop();
+  const wallet = parts.pop();
   return (
     "\n" +
     pair +
     (pm ? " on " + pm : "") +
     " \u00B7 NFT #" +
-    parts.pop() +
+    tokenId +
     (fee ? " \u00B7 " + fee : "") +
+    (c ? " \u00B7 " + c : "") +
     " \u00B7 " +
-    c +
-    " \u00B7 " +
-    _short(parts[1] || "")
+    _short(wallet || "")
   );
 }
 
@@ -153,7 +163,7 @@ function _activeTokenNames() {
 /** Update token composition bar and labels. */
 export function _updateComposition(d) {
   if (!d.positionStats) return;
-  const r0 = d.positionStats.compositionRatio ?? 0.5;
+  const r0 = d.positionStats.compositionRatio;
   const c0 = g("c0"),
     c1 = g("c1");
   if (c0) c0.style.width = (r0 * 100).toFixed(1) + "%";
@@ -365,8 +375,6 @@ export function _updateBotStatus(d) {
      *  [[project_split_rebalance_paused_flag]] for a future cleanup
      *  PR; for now the prose layer carries the discipline. */
     _setStatusPill("status-pill danger", "dot red", "ABORTED");
-  } else if (d.halted) {
-    _setStatusPill("status-pill danger", "dot red", "HALTED");
   } else if (d.running) {
     _setStatusPill("status-pill active", "dot green", "RUNNING");
   } else {
@@ -377,7 +385,8 @@ export function _updateBotStatus(d) {
   if (tag && d.updatedAt) {
     const ms = Date.now() - new Date(d.updatedAt).getTime();
     const ago = Math.floor(ms / 1000);
-    tag.textContent = ago < 5 ? "just now" : ago + "s ago";
+    tag.textContent =
+      ago < UI_DEFAULTS.lastCheckJustNowSec ? "just now" : ago + "s ago";
     tag.title = fmtDateTime(d.updatedAt);
   }
   const ll = g("lastCheckLabel");
@@ -412,9 +421,11 @@ function _syncClientThrottle(ts, cnt, savedMinIntervalMin) {
    *  `applyPolledMinInterval` additionally honors the one-shot
    *  `data-skip-next-poll` marker, which covers the race where a sweep
    *  reads the payload before the Save POST has been persisted. */
-  const savedMs = Number(savedMinIntervalMin) * 60 * 1000;
+  const saved =
+    typeof savedMinIntervalMin === "number" &&
+    Number.isFinite(savedMinIntervalMin);
   applyPolledMinInterval(
-    Number.isFinite(savedMs) && savedMs >= 60_000 ? savedMs : ts.minIntervalMs,
+    saved ? savedMinIntervalMin * 60 * 1000 : ts.minIntervalMs,
   );
 }
 
@@ -506,14 +517,18 @@ export function _updateThrottleKpis(d) {
   _renderTodaySub(d, ts);
 }
 
-/** Sync the auto-compound toggle, badge, and threshold from server status data. */
 let _suppressAutoCompoundUntil = 0;
 
-/** Suppress auto-compound sync for a brief window (e.g. after Stop Managing). */
-export function suppressAutoCompoundSync(ms) {
-  _suppressAutoCompoundUntil = Date.now() + (ms || 5000);
+/**
+ * Stop syncing the auto-compound toggle from status polls for
+ * `autoCompoundSyncHoldMs`, so a poll answered before the server took in
+ * a Stop Managing cannot switch the toggle back on.
+ */
+export function suppressAutoCompoundSync() {
+  _suppressAutoCompoundUntil = Date.now() + UI_DEFAULTS.autoCompoundSyncHoldMs;
 }
 
+/** Sync the auto-compound toggle, badge, and threshold from server status data. */
 export function _syncAutoCompound(d) {
   if (Date.now() < _suppressAutoCompoundUntil) return;
   const on = !!d.autoCompoundEnabled;

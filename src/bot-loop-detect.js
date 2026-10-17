@@ -23,7 +23,7 @@ const { detectPositionType } = require("./position-detector");
 const { getCachedEpochs, getCachedLifetimeHodl } = require("./epoch-cache");
 const { createPnlTracker } = require("./pnl-tracker");
 const rangeMath = require("./range-math");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,

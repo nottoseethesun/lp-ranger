@@ -95,6 +95,7 @@ const { ethers } = require("ethers");
 const config = require("../../../src/config");
 const { PM_ABI } = require("../../../src/pm-abi");
 const { topicForTokenId } = require("../../../src/nft-token-topic");
+const { parseCompositeKey } = require("../../../src/bot-config-v2");
 const { Command } = require("commander");
 const { sleep, addrTopic } = require("../_helpers");
 const render = require("./render");
@@ -137,8 +138,8 @@ const CONFIG_PATH = path.join(
   "bot-config.json",
 );
 
-/** Block time on PulseChain ≈ 10 s. */
-const BLOCK_TIME_SEC = 10;
+/** The active chain's block time (chains.json `blockTimeSec`). */
+const BLOCK_TIME_SEC = config.CHAIN.blockTimeSec;
 
 /** Lookback for chain walking (5y is enough to cover any LP). */
 const YEARS_BACK = 5;
@@ -187,18 +188,6 @@ function resolveKey(positions, arg) {
     process.exit(1);
   }
   return matches[0];
-}
-
-/** Parse blockchain-wallet-contract-tokenId. */
-function parseKey(key) {
-  const parts = key.split("-");
-  if (parts.length !== 4) return null;
-  return {
-    blockchain: parts[0],
-    wallet: parts[1],
-    contract: parts[2],
-    tokenId: parts[3],
-  };
 }
 
 /** Walk the wallet's NFT chain and find every tokenId at this PM contract. */
@@ -409,8 +398,8 @@ async function main(argv = process.argv.slice(2)) {
   const positions = cfg.positions || {};
   const key = resolveKey(positions, arg);
   const pos = positions[key];
-  const parsed = parseKey(key);
-  if (!parsed) {
+  const parsed = parseCompositeKey(key);
+  if (parsed === null) {
     console.error(`Cannot parse composite key: ${key}`);
     process.exit(1);
   }
@@ -473,7 +462,6 @@ if (require.main === module) {
  *  `toFloat` / `fmtDelta` are NOT re-exported from here — they moved to
  *  ./render.js and are imported from that owner. */
 module.exports = {
-  parseKey,
   totals,
   deriveAggregates,
   readDecimals,

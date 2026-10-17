@@ -215,7 +215,7 @@ function _checkRpcUrls(value) {
       return (
         `"${String(url)}" is not a usable RPC endpoint. An endpoint is a ` +
         `full address beginning http:// or https://, such as ` +
-        `https://rpc.pulsechain.com.`
+        `https://rpc.example.com.`
       );
   }
   return null;

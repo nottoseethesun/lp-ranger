@@ -64,15 +64,16 @@ The Creator, Offeror, and Operator of LP Ranger have no affiliation of any
 kind — including no ownership interest, no revenue-sharing arrangement, no
 control relationship, no contractual relationship, no compensation
 arrangement, no referral or incentive agreement, and no other formal or
-informal relationship — with 9mm, the 9mm DEX Aggregator, 9mm Pro V3,
-PulseChain, or any person or entity associated with their creation, offering,
-or operation.
+informal relationship — with 9mm, Watergun, the Watergun Aggregator, 9mm Pro
+V3, PulseChain, or any person or entity associated with their creation,
+offering, or operation.
 
 LP Ranger connects to and interacts with the following trading venues and
 distributed ledger trading systems on PulseChain solely because they are the
 protocol for which this software was designed:
 
-- 9mm DEX Aggregator (api.9mm.pro) — a liquidity aggregator that routes
+- Watergun Aggregator (swap.watergun.pro), formerly the 9mm DEX
+  Aggregator — a liquidity aggregator that routes
   swap transactions across multiple PulseChain DEXes to minimize slippage.
   LP Ranger uses this aggregator as its primary swap execution path.
 
@@ -139,7 +140,7 @@ Client-side (browser localStorage):
 External APIs contacted:
 
 - PulseChain RPC endpoints (read chain state, submit signed TXs)
-- 9mm DEX Aggregator (swap quotes — sends token addresses and amounts, not
+- Watergun Aggregator (swap quotes — sends token addresses and amounts, not
   wallet addresses or keys)
 - DexScreener / GeckoTerminal (USD price lookups by token address)
 - Moralis (historical prices, if API key provided)

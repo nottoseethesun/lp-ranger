@@ -2,8 +2,9 @@
  * @file src/error-log.js
  * @module error-log
  * @description
- * Catastrophic-failure diary.  Appends structured entries to
- * `logs/error.log` (next to the diagnostic `lp-ranger.log` produced by
+ * Catastrophic-failure diary.  Appends structured entries to the file
+ * logging.json names as `errorLogPath`, `logs/error.log` as shipped
+ * (next to the diagnostic `lp-ranger.log` produced by
  * `src/log-file.js`) so the operator has a record of every catastrophic
  * failure in the CURRENT session that would otherwise be swallowed by a
  * silent `catch`.  The file is DELETED on each startup (`resetErrorLog`,
@@ -36,12 +37,31 @@
 const fs = require("fs");
 const path = require("path");
 const { log } = require("./log");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 
-/*- Default file path.  Same directory as the diagnostic log so
- *  operators only have one place to look (`logs/`).  Relative to
- *  process.cwd() when not absolute — matches the resolution rule in
- *  src/log-file.js. */
-const _DEFAULT_PATH = "logs/error.log";
+/**
+ * Read where the file lives: `errorLogPath` in logging.json, beside the
+ * diagnostic log's own path, so operators have one place to look.
+ * Relative to process.cwd() when not absolute, the resolution rule
+ * src/log-file.js applies too.
+ *
+ * Refused at load rather than written around: every other function here
+ * swallows its own failures, so a path that cannot work would otherwise
+ * lose every record without a word.
+ *
+ * @returns {string} The configured path.
+ * @throws {Error} When the setting is not a non-empty string.
+ */
+function _configuredPath() {
+  const p = loadMergedDefaults("logging.json").errorLogPath;
+  if (typeof p === "string" && p.length > 0) return p;
+  throw new Error(
+    "[error-log] logging.json → errorLogPath must be a file path; " +
+      `it is ${JSON.stringify(p)}.`,
+  );
+}
+
+const _DEFAULT_PATH = _configuredPath();
 
 /** Resolve the error log path against cwd if it's relative. */
 function _resolvePath(p) {
@@ -49,7 +69,7 @@ function _resolvePath(p) {
 }
 
 /**
- * Append one catastrophic-failure entry to `logs/error.log`.
+ * Append one catastrophic-failure entry to the error log.
  *
  * Never throws — a filesystem failure while trying to record another
  * failure must not cascade.  Silently no-ops if the file system rejects
@@ -66,7 +86,7 @@ function _resolvePath(p) {
  *   whatever is relevant).  Rendered on the same line as the timestamp.
  * @param {object} [opts]
  * @param {string} [opts.filePath]
- *   Override the default `logs/error.log` path.  Used by tests.
+ *   Override the configured path.  Used by tests.
  * @returns {boolean}
  *   True if the append succeeded, false otherwise.
  */

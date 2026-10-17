@@ -169,8 +169,8 @@ function _sumDeposited(compounds, d0, d1) {
   let amount0 = 0,
     amount1 = 0;
   for (const c of compounds || []) {
-    amount0 += Number(c.amount0Deposited || 0) / 10 ** (d0 ?? 8);
-    amount1 += Number(c.amount1Deposited || 0) / 10 ** (d1 ?? 8);
+    amount0 += Number(c.amount0Deposited || 0) / 10 ** d0;
+    amount1 += Number(c.amount1Deposited || 0) / 10 ** d1;
   }
   return { amount0, amount1 };
 }

@@ -20,26 +20,12 @@ const { log } = require("./log");
 
 const config = require("./config");
 const sendTx = require("./send-transaction");
-const { swapForCompound } = require("./compounder-swap");
+const { swapForCompound, compoundLogCtx: _ctx } = require("./compounder-swap");
 const { scanChunked } = require("./get-logs-chunked");
 const { IFACE, parseLogs } = require("./nft-event-parse");
 const { topicForTokenId } = require("./nft-token-topic");
-
-/*- Thin wrapper around shared `logCtx` in `src/logger.js` so the 6-field
- *  compound/rebalance/swap entry-point format stays in lockstep across
- *  modules.  Handles the local `recipient` -> `wallet` field rename. */
-function _ctx(opts) {
-  return logCtx({
-    chain: config.CHAIN_NAME || "PulseChain",
-    wallet: opts.recipient,
-    factory: opts.positionManagerAddress,
-    tokenId: opts.tokenId,
-    symbol0: opts.token0Symbol,
-    symbol1: opts.token1Symbol,
-  });
-}
+const { PM_ABI } = require("./pm-abi");
 const {
-  PM_ABI,
   ERC20_ABI,
   _MAX_UINT128,
   _deadline,
@@ -62,7 +48,7 @@ const {
 async function collectFees(signer, ethersLib, opts) {
   const { Contract } = ethersLib;
   const pm = new Contract(opts.positionManagerAddress, PM_ABI, signer);
-  const provider = signer.provider ?? signer;
+  const provider = signer.provider;
 
   const t0 = new Contract(opts.token0, ERC20_ABI, provider);
   const t1 = new Contract(opts.token1, ERC20_ABI, provider);
@@ -224,7 +210,7 @@ async function addLiquidity(signer, ethersLib, opts) {
  * Helper for the post-swap re-read so addLiquidity uses fresh balances.
  */
 async function _readBalance(signer, ethersLib, tokenAddr, owner) {
-  const provider = signer.provider ?? signer;
+  const provider = signer.provider;
   const c = new ethersLib.Contract(tokenAddr, ERC20_ABI, provider);
   return c.balanceOf(owner);
 }
@@ -338,8 +324,8 @@ async function executeCompound(signer, ethersLib, opts) {
     amount1: depositAmount1,
   });
 
-  const d0 = opts.decimals0 ?? 8;
-  const d1 = opts.decimals1 ?? 8;
+  const d0 = opts.decimals0;
+  const d1 = opts.decimals1;
   /*- The coins this compound put back into the position. The caller
    *  adds these to the saved running totals; the dollars below are for
    *  this moment's log line and the Activity Log entry. */
@@ -386,9 +372,13 @@ async function executeCompound(signer, ethersLib, opts) {
 /**
  * Filter IncreaseLiquidity candidates: remove any that follow a
  * DecreaseLiquidity (drain) within a block window. A drain followed by
- * re-deposit is a rebalance, not a compound.
+ * re-deposit is a rebalance, not a compound. The window is
+ * `compound.repositionWindowSec` (app-runtime.json) counted in the active
+ * chain's blocks: 50,000 at PulseChain's ten seconds.
  */
-const _DRAIN_WINDOW = 50_000; // ~14 hours on PulseChain (1s blocks)
+const _DRAIN_WINDOW = Math.round(
+  config.COMPOUND_REPOSITION_WINDOW_SEC / config.CHAIN.blockTimeSec,
+);
 function _filterRebalances(candidates, dlEvents) {
   const drainBlocks = [];
   for (const e of dlEvents) {
@@ -585,7 +575,7 @@ function _logCompoundSummary(opts, parts) {
    *  `opts.positionManagerAddress` (the NFT factory); `config.POSITION_MANAGER`
    *  is the fallback when a caller forgets so we never render `?`. */
   const cx = logCtx({
-    chain: config.CHAIN_NAME || "PulseChain",
+    chain: config.CHAIN_NAME,
     wallet: opts.wallet,
     factory: opts.positionManagerAddress || config.POSITION_MANAGER,
     tokenId: opts.tokenId,
@@ -667,8 +657,8 @@ async function classifyCompounds(nftEvents, opts = {}) {
    *  NFT lifetime, regardless of how the fees were re-deposited.
    */
   const { fees0, fees1 } = lifetimeFeeAmounts(collectEvents, dlEvents);
-  const d0 = opts.decimals0 ?? 8,
-    d1 = opts.decimals1 ?? 8;
+  const d0 = opts.decimals0,
+    d1 = opts.decimals1;
   /*- The coins, in token units. Callers store these rather than the
    *  dollars below: a dollar total is only true at the price it was
    *  computed with, and it drifts further from the truth the longer the

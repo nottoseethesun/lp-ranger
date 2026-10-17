@@ -139,7 +139,7 @@ effect:
   a malicious website from tricking your browser into sending
   commands to LP Ranger on the attacker's behalf.
 - **Swap transactions travel over encrypted connections** — to the
-  9mm DEX Aggregator API (primary path) or directly to the RPC
+  Watergun Aggregator API (primary path) or directly to the RPC
   endpoint (fallback). Your swap intent is never exposed to the
   public network before the transaction is submitted to the
   blockchain.
@@ -620,10 +620,10 @@ unexpected keys (for example, overwriting `status` to mark a
 position as stopped, or polluting internal bookkeeping fields).
 
 LP Ranger prevents this with a strict `allowlist`. The route handler
-in `src/server-routes.js` walks two hardcoded arrays —
+in `src/server-config-route.js` walks two hardcoded arrays —
 `GLOBAL_KEYS` (gas strategy, RPC URLs, etc.) and `POSITION_KEYS`
 (slippage, threshold, timeout, auto-compound settings, etc.) defined
-in `src/bot-config-v2.js` — and copies only those recognized names
+in `src/bot-config-keys.js` — and copies only those recognized names
 from the request body. Every other field is silently dropped. Because
 the `allowlist` is a constant inside server code (never derived from
 user input), the bracket access `diskConfig[k]` that merges each
@@ -780,15 +780,24 @@ recovery pipeline to completion before releasing.
 send that goes through `sendTx.sendTransaction` — approve, the
 removeLiquidity multicall, the V3-router swap, mint, and the compound's
 collect and increaseLiquidity — in a four-phase pipeline: **wait →
-speed-up (1.5× gas) → wait → auto-cancel (0-PLS self-transfer)**. A stuck
-nonce is therefore cancelled within `TX_CANCEL_SEC` (default 60 min)
-instead of blocking the wallet indefinitely. The aggregator sends its
-swap outside that entry point and carries its own timeout, cancel and
-re-quote loop, which reaches the nonce the same way. Neither path claims
-certainty: a cancel that cannot be confirmed is logged as possibly still
-stuck, so what the wallet is left holding is reported rather than
-assumed. Every phase logs its state so post-mortem analysis of a stuck TX
-is deterministic.
+speed-up (the chain's `speedUpGasBump`, 1.5× on PulseChain) → wait →
+auto-cancel (zero-value self-transfer)**. A stuck nonce is therefore
+cancelled within `TX_CANCEL_SEC` (default 60 min) instead of blocking the
+wallet indefinitely, and that holds even when the speed-up cannot be
+sent: the original is then waited on alone, under the same clock, and the
+cancel still follows. Once the cancel is out, the move's own transaction,
+its speed-up and the cancel compete for one nonce, and the pipeline
+reports whichever took it: the cancel's receipt means the move did not
+happen; the move's own receipt — it mined while the cancel was pending, or
+the cancel was refused as "nonce too low" because it already had — means
+it did, and it is reported as confirmed rather than as cancelled; a
+transaction sent from the wallet outside the bot fails the move, naming
+it. The aggregator sends its swap outside that entry point and carries its
+own timeout, cancel and re-quote loop, which reaches the nonce the same
+way. Neither path claims certainty: a cancel that cannot be sent is logged
+as possibly still stuck, so what the wallet is left holding is reported
+rather than assumed. Every phase logs its state so post-mortem analysis of
+a stuck TX is deterministic.
 
 What the aggregator does with that uncertainty is a custody property, so
 it belongs here. A swap and the cancel sent to displace it share one

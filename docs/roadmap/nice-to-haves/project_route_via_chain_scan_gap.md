@@ -8,7 +8,7 @@
 ## Plain language
 
 When the bot rebalances live, it knows which router did the swap
-(9mm Aggregator, V3 Router, etc.) and stores it. But when the
+(Watergun Aggregator, V3 Router, etc.) and stores it. But when the
 scanner reconstructs old rebalances from the blockchain — say on a
 fresh install or a second machine — it only sees the Transfer logs,
 which don't say which router was used. So the "Routed Via" column

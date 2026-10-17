@@ -34,6 +34,18 @@ describe("resolveLiveKey", () => {
     assert.equal(resolveLiveKey({}, ""), "");
   });
 
+  it("returns a key that does not parse unchanged, with positions running", () => {
+    /*-
+     *  POST /api/position/scan-cancel passes its key here without
+     *  checking it first. A key that names no position must come back
+     *  as it went in rather than fail on a parse that returned nothing.
+     */
+    const pm = mkPositionMgr([
+      { key: key("100"), tokenId: "100", status: "running" },
+    ]);
+    assert.equal(resolveLiveKey(pm, "not-a-key"), "not-a-key");
+  });
+
   it("fast path: returns entry.key when positionMgr has the originalKey", () => {
     const pm = mkPositionMgr([
       { key: key("100"), tokenId: "100", status: "running" },

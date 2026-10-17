@@ -127,7 +127,8 @@ require("./src/boot-log-file").bootLogFile();
 
 const { log } = require("./src/log");
 const { resetErrorLog } = require("./src/error-log");
-const { writePidFile, removePidFile } = require("./src/server-pid");
+const { writePidFile } = require("./src/server-pid");
+const { readShutdownTimings } = require("./src/shutdown-timing");
 // First statement of a real run — `--help` has already exited above, so
 // nothing logs before this and it always tops the log.  Black on light gray (inverse of
 // bot.js), rocket emoji before and after "Started."  ANSI: 30=black fg,
@@ -403,6 +404,7 @@ const {
 const { createRouteHandlers } = require("./src/server-routes");
 const { getLpProviderDisplayName } = require("./src/lp-providers");
 const { createApiStatusHandler } = require("./src/handle-api-status");
+const { primaryRouteLabel } = require("./src/rebalancer-swap");
 const { askPassword: _askPassword } = require("./src/ask-password");
 
 const _routeHandlers = createRouteHandlers({
@@ -456,6 +458,7 @@ const _routes = {
     actualGasCostUsd,
     getLpProviderDisplayName,
     managedKeys,
+    primaryRouteLabel,
     jsonResponse,
   }),
   "GET /api/wallet/status": (_, res) =>
@@ -732,7 +735,10 @@ function start(portOverride) {
     server.listen(port, host, () => {
       const loopback = host === "0.0.0.0" || host === "127.0.0.1";
       const addr = `http://${loopback ? "localhost" : host}:${port}`;
-      log.info("[server] Blockchain:" + "  PulseChain (chainId 369)");
+      log.info(
+        `[server] Blockchain:  ${config.CHAIN.displayName}` +
+          ` (chainId ${config.CHAIN.chainId})`,
+      );
       log.info(`[server] NFT Factory:` + ` ${config.POSITION_MANAGER}`);
       log.info(
         "[server] Wallet:     " +
@@ -771,23 +777,27 @@ const {
 // caller controls lifecycle.
 if (require.main === module) {
   installServerErrorGuard();
+  // Read before anything starts, so an unusable value stops startup.
+  const { exitTimeoutMs } = readShutdownTimings();
   /*- Fresh start: delete the previous run's error.log so no stale entry
    *  lingers (current problems are re-logged by the scans). See src/error-log.js. */
   resetErrorLog();
   start()
     .then(() => _routeHandlers._tryResolveKey())
     .then(() => {
-      /*- Server is up: record the PID so `npm stop` (scripts/stop.js) can send
-       *  SIGTERM for the same clean shutdown as Ctrl+C. Removed in `shutdown`. */
+      /*-
+       *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
+       *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed
+       *  when this process exits, however it exits (src/server-pid.js).
+       */
       writePidFile();
       const shutdown = () => {
         log.info("\n[server] Shutting down\u2026");
-        removePidFile();
         _notifyShutdown();
         _pauseInfra.stop();
         _positionMgr.stopAll().catch(() => {});
         server.close(() => process.exit(0));
-        setTimeout(() => process.exit(0), 3000);
+        setTimeout(() => process.exit(0), exitTimeoutMs);
       };
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);

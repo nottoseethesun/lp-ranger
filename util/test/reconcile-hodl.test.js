@@ -17,7 +17,6 @@ const path = require("node:path");
 const { captureConsole, captureExit } = require("./_capture");
 
 const {
-  parseKey,
   totals,
   deriveAggregates,
   readDecimals,
@@ -30,22 +29,6 @@ const {
 const { toFloat, fmtDelta } = require("../diagnostic/reconcile-hodl/render");
 
 const TOKEN = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
-
-test("parseKey — splits a well-formed composite key", () => {
-  const out = parseKey("pulsechain-0xWALLET-0xPM-159250");
-  assert.deepEqual(out, {
-    blockchain: "pulsechain",
-    wallet: "0xWALLET",
-    contract: "0xPM",
-    tokenId: "159250",
-  });
-});
-
-test("parseKey — returns null for malformed keys", () => {
-  assert.equal(parseKey("only-three-parts"), null);
-  assert.equal(parseKey("a-b-c-d-e"), null);
-  assert.equal(parseKey(""), null);
-});
 
 test("totals — sums amount0 and amount1 across event list", () => {
   const events = [

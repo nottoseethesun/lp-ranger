@@ -21,8 +21,8 @@
  */
 function buildUpdatePatch(deps, result, mintNow) {
   /*- Intentionally no `swapSources` on the position-state patch: the
-   *  Mission Control routing badge always reverts to the hard-coded
-   *  default "9mm Aggregator" after a rebalance completes. Per-rebalance
+   *  Mission Control routing badge always reverts to the active chain's
+   *  first route (`swapRouteLabel`) after a rebalance completes. Per-rebalance
    *  route info still lives on each row in the Rebalance Events table
    *  (written by bot-recorder.js to rebalance_log.json / pool-scanner
    *  cache), which is the correct place for historical detail. */

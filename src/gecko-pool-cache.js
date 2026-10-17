@@ -32,6 +32,7 @@ const fs = require("fs");
 const path = require("path");
 const { geckoRateLimit } = require("./gecko-rate-limit");
 const { retryOn429 } = require("./price-source-backoff");
+const { GECKO_TERMINAL_API } = require("./price-service-urls");
 
 // Path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
@@ -65,7 +66,7 @@ function _key(network, poolAddress) {
  */
 async function _fetchPoolInfoOnce(network, poolAddress) {
   await geckoRateLimit();
-  const url = `https://api.geckoterminal.com/api/v2/networks/${network}/pools/${poolAddress}`;
+  const url = `${GECKO_TERMINAL_API}/networks/${network}/pools/${poolAddress}`;
   const r = await fetch(url, {
     method: "GET",
     headers: { Accept: "application/json" },
@@ -225,7 +226,7 @@ function _sideOf(pool, tokenAddress) {
 async function _fetchTokenPoolsOnce(network, tokenAddress) {
   await geckoRateLimit();
   const url =
-    `https://api.geckoterminal.com/api/v2/networks/${network}` +
+    `${GECKO_TERMINAL_API}/networks/${network}` +
     `/tokens/${tokenAddress.toLowerCase()}/pools`;
   const r = await fetch(url, {
     method: "GET",

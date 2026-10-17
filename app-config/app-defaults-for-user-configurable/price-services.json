@@ -1,0 +1,12 @@
+{
+  "_comment": "Where the price services the app asks for token prices live: the base url of each one's api, with its version where the url carries one, and no trailing slash. Every request to a service is built on its baseUrl, so a service that moves its api is changed here and nowhere else. Which of a chain's tokens a service can price is a separate matter, set per chain in chains.json → priceServices. Read by src/price-service-urls.js, which stops startup when a value is not an https url, naming it.",
+  "dexScreener": {
+    "baseUrl": "https://api.dexscreener.com"
+  },
+  "geckoTerminal": {
+    "baseUrl": "https://api.geckoterminal.com/api/v2"
+  },
+  "moralis": {
+    "baseUrl": "https://deep-index.moralis.io/api/v2.2"
+  }
+}

@@ -28,6 +28,7 @@
  * @param {Function} deps.actualGasCostUsd       Converter passed to gas-status.
  * @param {Function} deps.getLpProviderDisplayName  LP-provider label lookup by (factory, PM).
  * @param {Function} deps.managedKeys            Disk-config → running-keys helper.
+ * @param {Function} deps.primaryRouteLabel      Label of the active chain's first swap route.
  * @param {Function} deps.jsonResponse           HTTP JSON responder.
  * @returns {(req, res) => Promise<void>}  The bound route handler.
  */
@@ -43,6 +44,7 @@ function createApiStatusHandler(deps) {
     actualGasCostUsd,
     getLpProviderDisplayName,
     managedKeys,
+    primaryRouteLabel,
     jsonResponse,
   } = deps;
 
@@ -88,25 +90,34 @@ function createApiStatusHandler(deps) {
         positionManagerName:
           getLpProviderDisplayName(config.FACTORY, config.POSITION_MANAGER) ||
           "",
-        chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
+        chainDisplayName: config.CHAIN.displayName,
         /*- Canonical chain id (KEY of chains.json, e.g. "pulsechain").
          *  Distinct from chainDisplayName ("PulseChain") — clients use
          *  the id for URL slugs, lookups, and comparisons; the display
          *  name is user-facing text only (locale-dependent).  See
          *  feedback in lp-providers about ID-vs-displayName. */
         chainId: config.CHAIN_NAME,
+        /*-
+         *  The "Routing through:" badge's text between rebalances: the
+         *  aggregator's label, or the V3 router's on a chain that names
+         *  no aggregator.
+         */
+        swapRouteLabel: primaryRouteLabel(),
         defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
         compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
         compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
         factory: config.FACTORY,
         rescanPricesTimeoutMs: config.RESCAN_PRICES_TIMEOUT_MS,
-        /*- Dashboard poll cadence + retire-debounce window are config
-         *  values so the dashboard reads them from /api/status instead
-         *  of duplicating the literal.  GUARANTEED_DASHBOARD_HAS_POLLED_MS
-         *  is derived from DASHBOARD_POLL_INTERVAL_MS * 2.5 in
-         *  src/config.js — single source of truth.  Dashboard's post-
-         *  retire Manage-button debounce reads guaranteedDashboardHasPolledMs
-         *  to gate the disable window. */
+        /*-
+         *  Dashboard poll cadence + retire-debounce window. The cadence
+         *  is ui-defaults.json → dashboardPollIntervalMs, which the
+         *  dashboard bundles for itself, since it needs it before its
+         *  first poll. GUARANTEED_DASHBOARD_HAS_POLLED_MS is derived from
+         *  it in src/config.js (times app-runtime.json →
+         *  dashboard.pollsBeforeAssumedSeen), and the dashboard's post-retire
+         *  Manage-button debounce reads guaranteedDashboardHasPolledMs
+         *  from here to gate the disable window.
+         */
         dashboardPollIntervalMs: config.DASHBOARD_POLL_INTERVAL_MS,
         guaranteedDashboardHasPolledMs:
           config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,

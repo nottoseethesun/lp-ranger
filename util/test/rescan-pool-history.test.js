@@ -20,6 +20,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
 const {
   buildProgram,
@@ -59,8 +60,9 @@ test("buildProgram — a boolean flag before an option keeps both", () => {
   assert.equal(p.opts().fee, "2500");
 });
 
-test("buildProgram — blockchain defaults to pulsechain", () => {
-  assert.equal(parse(["1"]).opts().blockchain, "pulsechain");
+test("buildProgram — blockchain defaults to the app's default chain", () => {
+  // From app-runtime.json, the one place that names it.
+  assert.equal(parse(["1"]).opts().blockchain, APP_RUNTIME.defaults.chain);
 });
 
 test("buildProgram — rejects an unknown flag instead of ignoring it", () => {
@@ -101,9 +103,24 @@ test("_findPositionKey — wallet filter is case-insensitive", () => {
   assert.equal(found, KEY);
 });
 
-test("_findPositionKey — ignores keys that are not 4 segments", () => {
+test("_findPositionKey — ignores keys that are not position keys", () => {
   const positions = { "too-few-parts": {}, [KEY]: {} };
   assert.equal(_findPositionKey(positions, "162980", {}), KEY);
+});
+
+test("_findPositionKey — finds a key whose chain name holds a dash", () => {
+  /*-
+   *  The testnet's keys start `pulsechain-testnet-`, one more dash than
+   *  a reader counting from the left expects.
+   */
+  const testnetKey = `pulsechain-testnet-${WALLET}-${PM}-162980`;
+  const positions = { [testnetKey]: {} };
+  assert.equal(
+    _findPositionKey(positions, "162980", {
+      blockchain: "pulsechain-testnet",
+    }),
+    testnetKey,
+  );
 });
 
 test("_findPositionKey — exits 1 when nothing matches", async () => {

@@ -17,6 +17,7 @@ const { scanChunked } = require("./get-logs-chunked");
 const { topicForTokenId } = require("./nft-token-topic");
 
 const { log } = require("./log");
+const { chainCacheTag } = require("./cache-store");
 const fs = require("fs");
 const path = require("path");
 
@@ -26,12 +27,14 @@ const _R = "\x1b[0m";
 /**
  * Build deterministic cache file path for a wallet's LP positions.
  * @param {string} walletAddress  Checksummed 0x-prefixed address.
- * @param {string} [blockchain]  Default: 'pulsechain'.
+ * @param {string} blockchain    The chain's key in chains.json; its
+ *   `chainCacheTag` names the file.
  * @param {string} [contract]    NFT factory / position manager address.
  * @returns {string}  Absolute path under tmp/
+ * @throws {Error} When the chain has no usable cache tag.
  */
 function lpPositionCachePath(walletAddress, blockchain, contract) {
-  const bc = (blockchain || "pulsechain").slice(0, 5);
+  const bc = chainCacheTag(blockchain);
   const pm = (contract || "").slice(2, 8).toLowerCase();
   const w = walletAddress.slice(2, 8).toLowerCase();
   return path.join(
@@ -44,17 +47,23 @@ function lpPositionCachePath(walletAddress, blockchain, contract) {
 /**
  * Load cached LP positions from disk.
  * @param {string} walletAddress
- * @param {object} [opts]
+ * @param {object} opts
+ * @param {string} opts.blockchain   The chain's key in chains.json.
+ * @param {string} [opts.contract]   NFT factory / position manager address.
  * @param {object} [opts.fsModule]  Injected fs for testing.
  * @returns {{ positions: object[], lastBlock: number } | null}
+ * @throws {Error} When the chain has no usable cache tag: a cache that
+ *   cannot be named must not read as one that is merely empty.
  */
 function loadLpPositionCache(walletAddress, opts) {
-  const _fs = (opts && opts.fsModule) || fs;
+  const _fs = opts.fsModule || fs;
+  const filePath = lpPositionCachePath(
+    walletAddress,
+    opts.blockchain,
+    opts.contract,
+  );
   try {
-    const raw = _fs.readFileSync(
-      lpPositionCachePath(walletAddress, opts?.blockchain, opts?.contract),
-      "utf8",
-    );
+    const raw = _fs.readFileSync(filePath, "utf8");
     const data = JSON.parse(raw);
     if (Array.isArray(data.positions) && typeof data.lastBlock === "number") {
       return data;
@@ -70,15 +79,17 @@ function loadLpPositionCache(walletAddress, opts) {
  * @param {string} walletAddress
  * @param {object[]} positions  Array of position objects.
  * @param {number} lastBlock  Block number at time of scan/check.
- * @param {object} [opts]
+ * @param {object} opts
+ * @param {string} opts.blockchain   The chain's key in chains.json.
+ * @param {string} [opts.contract]   NFT factory / position manager address.
  * @param {object} [opts.fsModule]  Injected fs for testing.
  */
 function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
-  const _fs = (opts && opts.fsModule) || fs;
+  const _fs = opts.fsModule || fs;
   const filePath = lpPositionCachePath(
     walletAddress,
-    opts?.blockchain,
-    opts?.contract,
+    opts.blockchain,
+    opts.contract,
   );
   const dir = path.dirname(filePath);
   try {
@@ -112,15 +123,20 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
  * successful clear.
  *
  * @param {string} walletAddress
- * @param {object} [opts]
+ * @param {object} opts
+ * @param {string} opts.blockchain   The chain's key in chains.json.
+ * @param {string} [opts.contract]   NFT factory / position manager address.
  * @param {object} [opts.fsModule]  Injected fs for testing.
  */
 function clearLpPositionCache(walletAddress, opts) {
-  const _fs = (opts && opts.fsModule) || fs;
+  const _fs = opts.fsModule || fs;
+  const filePath = lpPositionCachePath(
+    walletAddress,
+    opts.blockchain,
+    opts.contract,
+  );
   try {
-    _fs.unlinkSync(
-      lpPositionCachePath(walletAddress, opts?.blockchain, opts?.contract),
-    );
+    _fs.unlinkSync(filePath);
     log.info(
       _C +
         "[lp-cache] Cache cleared for wallet " +

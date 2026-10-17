@@ -11,10 +11,13 @@ import {
   act,
   ACT_ICONS,
   fetchWithCsrf,
+  compositeKey,
 } from "./dashboard-helpers.js";
+import { activeChainId } from "./dashboard-chain.js";
 import {
   posStore,
   PAGE_SIZE,
+  MAX_POS,
   isPositionManaged,
   isPositionClosed,
   checkInRange,
@@ -41,7 +44,7 @@ function _setStatsTip(total, inRange, storeFull) {
   const pop = g("posStatsPopover");
   if (!tip || !pop) return;
   const lines = [`Total: ${total}`, `Open and In-Range: ${inRange}`];
-  if (storeFull) lines.push("\u26A0 Store full (300/300)");
+  if (storeFull) lines.push(`\u26A0 Store full (${MAX_POS}/${MAX_POS})`);
   pop.replaceChildren();
   for (const text of lines) {
     const row = document.createElement("div");
@@ -163,13 +166,13 @@ export async function removeSelectedPos() {
   const entry = posStore.entries[sel];
   if (!entry) return;
   if (isPositionManaged(entry.tokenId)) {
-    const key =
-      "pulsechain-" +
-      entry.walletAddress +
-      "-" +
-      entry.contractAddress +
-      "-" +
-      entry.tokenId;
+    const chain = activeChainId();
+    const key = compositeKey(
+      chain,
+      entry.walletAddress,
+      entry.contractAddress,
+      entry.tokenId,
+    );
     try {
       const res = await fetchWithCsrf("/api/position/manage", {
         method: "DELETE",

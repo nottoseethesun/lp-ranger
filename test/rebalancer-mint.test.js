@@ -5,11 +5,8 @@
  */
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const {
-  swapIfNeeded,
-  mintPosition,
-  executeRebalance,
-} = require("../src/rebalancer");
+const { mintPosition, executeRebalance } = require("../src/rebalancer");
+const { swapIfNeeded } = require("../src/rebalancer-swap");
 const {
   ADDR,
   ONE_ETH,

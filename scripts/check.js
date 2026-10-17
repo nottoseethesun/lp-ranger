@@ -9,12 +9,19 @@
  *                              security-lint, secretlint, plus
  *                              exit-codes.json with every tool's exit
  *                              code)
+ *   raw-data/lcov.info         lcov coverage report of the test run
  *   text-reports/summary.txt          Human-readable overview (cli-table3)
  *   text-reports/tests-summary.txt    Parsed test rollup
  *   text-reports/eslint-timing.txt    ESLint TIMING=1 slowest-rule capture
  *   text-reports/markdownlint.txt     markdownlint-cli2 text output
  *   tests.tap                  Raw TAP v14 from `node --test`
  *   report.pdf                 Unified PDF of all results (pdfmake)
+ *
+ * And one outside it: logs/error-npm-run-check.log, whatever the tests
+ * wrote to logs/error.log. The run deletes logs/error.log and the
+ * previous run's copy before it starts, and renames the file once the
+ * tests are done, so the operator's error log never holds a test's
+ * entries.
  *
  * After capturing raw outputs this script delegates to
  * scripts/check-report.js to parse, print the terminal summary, and
@@ -29,6 +36,7 @@
 "use strict";
 
 const { log } = require("../src/log");
+const { getErrorLogPath } = require("../src/error-log");
 const {
   JS_TARGETS,
   SECURITY_TARGETS,
@@ -63,6 +71,18 @@ process.chdir(ROOT);
 const REPORT_DIR = "test/report-artifacts";
 const RAW_DIR = path.join(REPORT_DIR, "raw-data");
 const TXT_DIR = path.join(REPORT_DIR, "text-reports");
+
+/*-
+ *  The catastrophic-failure log, at the path src/error-log.js owns, and
+ *  the name a test run's entries are kept under beside it. Resolved
+ *  after the chdir above, since the log's path is relative to the
+ *  working directory.
+ */
+const ERROR_LOG = getErrorLogPath();
+const CHECK_ERROR_LOG = path.join(
+  path.dirname(ERROR_LOG),
+  "error-npm-run-check.log",
+);
 
 /** Resolve a binary in node_modules/.bin. */
 function bin(name) {
@@ -101,6 +121,15 @@ function ensureOrWrite(filePath, fallback) {
 fs.rmSync(REPORT_DIR, { recursive: true, force: true });
 fs.mkdirSync(RAW_DIR, { recursive: true });
 fs.mkdirSync(TXT_DIR, { recursive: true });
+/*-
+ *  Some tests drive code that records a failure in logs/error.log, and
+ *  that is the operator's own file. So the run starts with neither it
+ *  nor the previous run's copy, and once the tests are done whatever
+ *  they wrote is renamed (`keepTestErrorLog`). Nothing older is lost
+ *  that a server start would keep: startup deletes logs/error.log.
+ */
+fs.rmSync(ERROR_LOG, { force: true });
+fs.rmSync(CHECK_ERROR_LOG, { force: true });
 
 // ── Lint (JS) ──────────────────────────────────────────────────────────────
 // TIMING=1 writes the slowest-rules table to stdout AFTER the JSON blob
@@ -385,7 +414,18 @@ try {
        *  coverage is measured separately (see project nice-to-haves), we
        *  can drop this exclude. */
       "--test-coverage-exclude=public/**",
+      /*-
+       *  Two reporters for the one run. TAP goes to stdout, captured below
+       *  as tests.tap. The lcov report names each branch no test took,
+       *  which tests.tap does not, and that is what the files held to 95%
+       *  branch coverage are measured with (docs/claude/CLAUDE-TESTING.md
+       *  § 95% Coverage Regions). Writing it here keeps it under this
+       *  script's backup of the operator's files.
+       */
       "--test-reporter=tap",
+      "--test-reporter-destination=stdout",
+      "--test-reporter=lcov",
+      `--test-reporter-destination=${path.join(RAW_DIR, "lcov.info")}`,
       ...listTestFiles(),
     ],
     {
@@ -403,6 +443,7 @@ try {
 } finally {
   restoreProdFiles(backupDir);
   fs.rmSync(backupDir, { recursive: true, force: true });
+  keepTestErrorLog();
 }
 
 // ── Write exit codes + file counts for the aggregator ─────────────────────
@@ -555,6 +596,15 @@ function _restoreDir(srcDir, dstDir, accept) {
       path.join(dstDir, entry.name),
     );
   }
+}
+
+/**
+ * Rename what the tests wrote to the error log (logs/error.log as
+ * shipped) to error-npm-run-check.log beside it. No file means no test
+ * wrote one.
+ */
+function keepTestErrorLog() {
+  if (fs.existsSync(ERROR_LOG)) fs.renameSync(ERROR_LOG, CHECK_ERROR_LOG);
 }
 
 /** Restore operator-state directories (app-config/user-configurable/

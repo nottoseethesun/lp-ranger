@@ -2,8 +2,7 @@
  * @file dashboard-dex-detail-page.js
  * @description Paints the "Dex Detail Page" link that sits directly
  *   above Chart Links in the Pool Details dialog — the deep link to the
- *   DEX's own pair page (e.g.
- *   `https://dex.9mm.pro/info/v3/pulsechain/pairs/0x82db…`).
+ *   DEX's own pool page (e.g. `https://app.9mm.pro/pools/0x82db…`).
  *
  *   Everything except the pool address is resolved server-side by
  *   `src/dex-detail-page-url-generator.js` and arrives on the

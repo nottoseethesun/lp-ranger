@@ -204,7 +204,7 @@ export const posStore = {
   /** @param {object} entry  @returns {{ok:boolean, entry?:object, error?:string}} */
   add(entry) {
     if (this.entries.length >= MAX_POS)
-      return { ok: false, error: "Store full (max 300)" };
+      return { ok: false, error: `Store full (max ${MAX_POS})` };
     if (!entry.walletAddress || !entry.positionType)
       return { ok: false, error: "Missing required fields" };
     const dup = this.entries.findIndex(

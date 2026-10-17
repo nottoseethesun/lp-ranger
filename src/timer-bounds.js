@@ -61,7 +61,8 @@ const EXPLICIT_BOUNDS_SEC = Object.freeze({
  * Accept `sec` as a timer delay, or throw explaining why not.
  *
  * @param {object} o
- * @param {*} o.sec          The resolved value, in seconds.
+ * @param {*} o.sec          The resolved value: seconds, or milliseconds
+ *   for a key whose name ends in "ms".
  * @param {string} o.key     Canonical setting name, e.g. `checkIntervalSec`.
  *   Selects any explicit bounds declared above.
  * @param {number} o.defaultSec  Shipped default, which sets the general
@@ -96,17 +97,20 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
   }
   const explicit = EXPLICIT_BOUNDS_SEC[key];
   const minSec = explicit && explicit.min !== undefined ? explicit.min : 1;
-  /*- The cap is the LESSER of 48 hours and 1000x the default; this is
+  /*-
+   *  The cap is the LESSER of 48 hours and 1000x the default; this is
    *  the 48-hour half of it, expressed in whatever unit the setting
    *  uses. The key name says which: a name ending in "ms" is
    *  milliseconds, anything else seconds. Matched without regard to
    *  case because this file spells it both ways —
    *  `rpcAllEndpointsDownPauseMS` beside `priceCacheTtlMs` — and
    *  reading one of those as seconds would put this half a thousand
-   *  times too low without saying so. */
-  const capFromHours = /ms$/i.test(key)
-    ? GENERAL_CAP_SEC * 1000
-    : GENERAL_CAP_SEC;
+   *  times too low without saying so. The messages below name the same
+   *  unit.
+   */
+  const inMs = /ms$/i.test(key);
+  const unit = inMs ? "milliseconds" : "seconds";
+  const capFromHours = inMs ? GENERAL_CAP_SEC * 1000 : GENERAL_CAP_SEC;
   const maxSec = Math.min(
     defaultSec * MAX_DEFAULT_MULTIPLE,
     capFromHours,
@@ -119,13 +123,13 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
   if (!Number.isInteger(sec) || sec < minSec) {
     throw _badTimerValue(
       `${name} resolves to ${String(sec)}, which is not a whole number of ` +
-        `seconds of at least ${minSec}.`,
+        `${unit} of at least ${minSec}.`,
       remedy,
     );
   }
   if (sec > maxSec) {
     throw _badTimerValue(
-      `${name} resolves to ${sec} seconds, above its maximum of ${maxSec}.`,
+      `${name} resolves to ${sec} ${unit}, above its maximum of ${maxSec}.`,
       remedy,
     );
   }

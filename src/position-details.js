@@ -24,7 +24,7 @@
 
 const { log } = require("./log");
 const config = require("./config");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const { positionValueUsd, fetchTokenPrices } = require("./bot-pnl-updater");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { createPnlTracker } = require("./pnl-tracker");
@@ -222,7 +222,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     body.tokenId,
   );
   const posKey = compositeKey(
-    "pulsechain",
+    config.CHAIN_NAME,
     body.walletAddress || "",
     body.contractAddress || config.POSITION_MANAGER,
     body.tokenId,

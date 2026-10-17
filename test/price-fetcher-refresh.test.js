@@ -34,6 +34,7 @@ const POOL = "0xPOOL";
 const TOKEN0 = "0xA";
 const TOKEN1 = "0xB";
 const BLOCK = 4242;
+// The active chain, under which the price cache files every entry.
 const CHAIN = "pulsechain";
 
 let _originalFetch;
@@ -66,7 +67,7 @@ after(() => {
 });
 
 const fetchPrices = (refresh) =>
-  fetchHistoricalPriceGecko(POOL, 1_773_000_000, CHAIN, {
+  fetchHistoricalPriceGecko(POOL, 1_773_000_000, {
     token0Address: TOKEN0,
     token1Address: TOKEN1,
     blockNumber: BLOCK,

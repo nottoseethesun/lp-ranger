@@ -72,6 +72,8 @@ import {
 import { injectPriceOverrideDeps } from "./dashboard-price-override.js";
 import { initTelegram } from "./dashboard-telegram.js";
 import { startBrowserIdleTracker } from "./dashboard-idle.js";
+// How often the heap-size line is logged.
+import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
 import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadLpProviders } from "./dashboard-lp-providers.js";
@@ -115,6 +117,11 @@ import {
   BUILD_RELEASE_TAG,
   BUILD_PACKAGE_VERSION,
 } from "./build-info.js";
+import {
+  activeChainId,
+  loadActiveChain,
+  paintChainLink,
+} from "./dashboard-chain.js";
 
 /*- Very first statement of the browser app — light gray text on black,
  *  rocket emoji before and after "Started."  Mirrors the server-side
@@ -247,6 +254,13 @@ initDisclaimer().then(async () => {
     if (document.visibilityState === "visible") refreshCsrfToken();
   });
   window.addEventListener("focus", () => refreshCsrfToken());
+  /*-
+   *  Before anything builds a position key or registers a route: the
+   *  active chain is the first segment of both, so startup waits here
+   *  until the server names it.
+   */
+  await loadActiveChain();
+  paintChainLink();
   _afterDisclaimer();
 });
 
@@ -423,7 +437,7 @@ function _afterDisclaimer() {
   paintManageUI();
 
   // Check if the server already has a wallet loaded (e.g. from a previous page load)
-  checkServerWalletStatus();
+  const walletStatusChecked = checkServerWalletStatus();
   checkWalletLocked();
 
   // Initialise client-side URL routing (must run after wallet status check starts)
@@ -452,13 +466,9 @@ function _afterDisclaimer() {
     // Re-sync localStorage deposit to server (survives npm run clean)
     if (dep > 0) {
       const a = posStore.getActive(),
+        chain = activeChainId(),
         pk = a
-          ? compositeKey(
-              "pulsechain",
-              a.walletAddress,
-              a.contractAddress,
-              a.tokenId,
-            )
+          ? compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId)
           : undefined;
       fetchWithCsrf("/api/config", {
         method: "POST",
@@ -471,13 +481,9 @@ function _afterDisclaimer() {
     const ltStart = loadLifetimeStartDateOverride();
     if (ltStart) {
       const a = posStore.getActive(),
+        chain = activeChainId(),
         pk = a
-          ? compositeKey(
-              "pulsechain",
-              a.walletAddress,
-              a.contractAddress,
-              a.tokenId,
-            )
+          ? compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId)
           : undefined;
       if (pk) {
         fetchWithCsrf("/api/config", {
@@ -512,11 +518,13 @@ function _afterDisclaimer() {
    *  "Idle-Driven Price-Lookup Pause". */
   startBrowserIdleTracker();
 
-  /*- Every 10 minutes, log the JS heap size.  The dashboard is designed to
-      stay open indefinitely, so a steadily-rising `used` line across hours
-      indicates a leak (event listeners, closures, cached arrays held in
-      JS).  Chrome-only (`performance.memory` is non-standard); silent on
-      other browsers. */
+  /*-
+   *  Every `heapLogIntervalMs`, log the JS heap size.  The dashboard is
+   *  designed to stay open indefinitely, so a steadily-rising `used` line
+   *  across hours indicates a leak (event listeners, closures, cached
+   *  arrays held in JS).  Chrome-only (`performance.memory` is
+   *  non-standard); silent on other browsers.
+   */
   if (performance && performance.memory) {
     const _logHeap = () => {
       const m = performance.memory;
@@ -527,18 +535,17 @@ function _afterDisclaimer() {
       );
     };
     _logHeap();
-    setInterval(_logHeap, 10 * 60 * 1000);
+    setInterval(_logHeap, UI_DEFAULTS.heapLogIntervalMs);
   }
 
-  // One-shot: auto-scan on wallet load to populate symbols + fresh data from LP cache.
-  // Navigate to the bot's active position only on fresh starts (no position selected yet).
-  let _initScanDone = false;
-  setTimeout(() => {
-    if (_initScanDone) return;
-    _initScanDone = true;
-    if (wallet.address) {
-      const fresh = posStore.activeIdx < 0;
-      scanPositions({ navigate: fresh, silent: !fresh });
-    }
-  }, 5000);
+  /*-
+   *  Once the server has said whether it holds a wallet, scan that
+   *  wallet, to fill in token symbols and fresh data from the LP cache.
+   *  The scan reports itself only when no position is selected yet,
+   *  which is when the operator is waiting on it. A wallet imported
+   *  later is scanned by the import flow instead.
+   */
+  walletStatusChecked.then(() => {
+    if (wallet.address) scanPositions({ silent: posStore.activeIdx >= 0 });
+  });
 } // end _afterDisclaimer

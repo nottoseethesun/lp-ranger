@@ -314,31 +314,31 @@ describe("_mergeSwapSources", () => {
 
   it("appends corrective count when both present and routes differ", () => {
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", ["9mm V3 Router"]),
-      "9mm Aggregator +1 corrective",
+      _mergeSwapSources("Watergun Aggregator", ["9mm V3 Router"]),
+      "Watergun Aggregator +1 corrective",
     );
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", ["A", "B"]),
-      "9mm Aggregator +2 corrective",
+      _mergeSwapSources("Watergun Aggregator", ["A", "B"]),
+      "Watergun Aggregator +2 corrective",
     );
   });
 
   /*- The common case: aggregator used for the primary swap and for every
-   *  corrective iteration.  Collapse to just "9mm Aggregator" rather than
-   *  "9mm Aggregator +3 corrective" which misleadingly suggests a
+   *  corrective iteration.  Collapse to just "Watergun Aggregator" rather than
+   *  "Watergun Aggregator +3 corrective" which misleadingly suggests a
    *  different route was taken for the corrective swaps. */
   it("collapses to single label when primary and all corrective entries match", () => {
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", ["9mm Aggregator"]),
-      "9mm Aggregator",
+      _mergeSwapSources("Watergun Aggregator", ["Watergun Aggregator"]),
+      "Watergun Aggregator",
     );
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", [
-        "9mm Aggregator",
-        "9mm Aggregator",
-        "9mm Aggregator",
+      _mergeSwapSources("Watergun Aggregator", [
+        "Watergun Aggregator",
+        "Watergun Aggregator",
+        "Watergun Aggregator",
       ]),
-      "9mm Aggregator",
+      "Watergun Aggregator",
     );
   });
 
@@ -350,8 +350,8 @@ describe("_mergeSwapSources", () => {
    *  collapse to the single route label (no "(corrective)" suffix). */
   it("collapses corrective-only when every entry matches", () => {
     assert.strictEqual(
-      _mergeSwapSources(null, ["9mm Aggregator", "9mm Aggregator"]),
-      "9mm Aggregator",
+      _mergeSwapSources(null, ["Watergun Aggregator", "Watergun Aggregator"]),
+      "Watergun Aggregator",
     );
   });
 });
@@ -430,12 +430,12 @@ describe("_swapAndAdjust — swapSources propagation", () => {
         amountOut: 500n,
         txHash: "0xabc",
         gasCostWei: 100n,
-        swapSources: "9mm Aggregator",
+        swapSources: "Watergun Aggregator",
       },
       async () => {
         const { _swapAndAdjust } = require("../src/rebalancer-execute");
         const out = await _swapAndAdjust({}, {}, ctx("token0to1"));
-        assert.strictEqual(out.swapSources, "9mm Aggregator");
+        assert.strictEqual(out.swapSources, "Watergun Aggregator");
         assert.strictEqual(out.extra1, 500n);
         assert.strictEqual(out.extra0, 0n);
       },

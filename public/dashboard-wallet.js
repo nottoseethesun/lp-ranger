@@ -4,8 +4,9 @@
  * tab switching, and utility functions for the 9mm v3
  * Position Manager dashboard.
  *
- * Re-exports everything from dashboard-wallet-import.js so
- * external consumers continue to import from this module.
+ * The import flows (seed, private key), the key-reveal modal and the
+ * wallet clear live in dashboard-wallet-import.js, and are imported from
+ * there.
  *
  * Depends on: dashboard-helpers.js (g, act, ACT_ICONS),
  * ethers-adapter.js (ethers).
@@ -23,25 +24,8 @@ import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
 import * as unlockLog from "./dashboard-unlock-log.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
-
-// ── Re-export the import module ───────────────────────────
-
-export {
-  validateSeed,
-  importSeed,
-  onSeedConfirmChange,
-  validateKey,
-  importKey,
-  onKeyConfirmChange,
-  openRevealModal,
-  closeRevealModal,
-  revealWallet,
-  clearWalletUI,
-  closeClearWalletModal,
-  confirmClearWallet,
-  checkOnChainActivity,
-  _passwordsMatch,
-} from "./dashboard-wallet-import.js";
+// How long a copy button says "copied!".
+import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
 
 // ── Late-bound deps ───────────────────────────────────────
 
@@ -374,8 +358,6 @@ export async function confirmWallet() {
     _updateRouteForWallet(wallet.address);
 
   // Auto-scan for positions after wallet import
-  // (navigate: false — let the polling loop navigate to
-  // the bot's real active position once it responds)
   if (_scanPositions) {
     act(
       ACT_ICONS.scan,
@@ -383,7 +365,7 @@ export async function confirmWallet() {
       "Auto-Scanning",
       "Looking for LP positions\u2026",
     );
-    _scanPositions({ navigate: false });
+    _scanPositions();
   }
 }
 
@@ -460,7 +442,7 @@ export function copyText(id) {
     btn.textContent = "copied!";
     setTimeout(() => {
       btn.textContent = "copy";
-    }, 1500);
+    }, UI_DEFAULTS.copyFeedbackMs);
   }
 }
 

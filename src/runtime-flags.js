@@ -208,8 +208,32 @@ const CHAIN = selectChain(CHAINS, CHAIN_NAME);
 /** Map human-readable names to EIP-2718 transaction envelope type numbers. */
 const TX_ENVELOPE_TYPES = { legacy: 0, eip1559: 2 };
 
+/**
+ * Turn the active chain's `transactionEnvelopeType` into the EIP-2718
+ * type number every send is stamped with.
+ *
+ * A name this app does not know stops startup, naming the setting. The
+ * alternative, sending legacy transactions in its place, would hide a
+ * typo behind transactions that still go out, and on a chain whose
+ * validators favour one envelope a misnamed type is how transactions
+ * come to sit pending.
+ *
+ * @param {string} chainName  The active chain, for the message.
+ * @param {*} name            The configured name.
+ * @returns {number} The envelope type number.
+ * @throws {Error} When the name is not one of `TX_ENVELOPE_TYPES`.
+ */
+function resolveTxType(chainName, name) {
+  if (Object.hasOwn(TX_ENVELOPE_TYPES, name)) return TX_ENVELOPE_TYPES[name];
+  throw new Error(
+    `[config] chains.json → ${chainName}.transactionEnvelopeType must be ` +
+      `one of ${Object.keys(TX_ENVELOPE_TYPES).join(", ")}; ` +
+      `it is ${JSON.stringify(name)}.`,
+  );
+}
+
 /** Resolved EIP-2718 envelope type number for the active chain. */
-const TX_TYPE = TX_ENVELOPE_TYPES[CHAIN.transactionEnvelopeType] ?? 0;
+const TX_TYPE = resolveTxType(CHAIN_NAME, CHAIN.transactionEnvelopeType);
 
 /** Raw hex private key for the signing wallet (alternative to the encrypted
  *  app-config/user-configurable/wallet.json). */
@@ -226,6 +250,15 @@ const VERBOSE =
   process.argv.includes("--verbose") ||
   process.argv.includes("-v");
 
+/*-
+ *  HTTP port the dashboard server listens on: PORT from the environment
+ *  or `.env`, else `server.port` in app-runtime.json. Resolved here
+ *  rather than in config.js so `npm stop` can ask for it without
+ *  loading the rest of the app's configuration, and so the two read the
+ *  same answer.
+ */
+const PORT = parsePositiveInt(process.env.PORT, APP_RUNTIME.server.port);
+
 module.exports = {
   parsePositiveInt,
   parseTimerSec,
@@ -238,4 +271,5 @@ module.exports = {
   PRIVATE_KEY,
   DRY_RUN,
   VERBOSE,
+  PORT,
 };

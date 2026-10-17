@@ -25,6 +25,7 @@ const _origRequire = Module.prototype.require;
 let _cachedHodlWrites = [];
 let _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
 let _historicalImpl = async () => ({ price0: 0, price1: 0 });
+let _blockTsImpl = async () => 0;
 
 /**
  * Local ethers stub matching the `mockEthersLib()` pattern used by
@@ -64,7 +65,7 @@ function _installMocks() {
         setCachedFreshDeposits: () => {},
       };
     }
-    if (id === "./rebalancer") {
+    if (id === "./rebalancer-pools") {
       return {
         getPoolState: async () => _poolStateImpl(),
       };
@@ -84,6 +85,13 @@ function _installMocks() {
     if (id === "./send-transaction") {
       return {
         getManagedReadProvider: () => new _ETHERS_STUB.JsonRpcProvider(),
+      };
+    }
+    // When a deposit's block was mined, for its historical price.
+    if (id === "./block-time-cache") {
+      return {
+        getBlockTimestamp: (...args) => _blockTsImpl(...args),
+        flushBlockTimeCache: () => {},
       };
     }
     return _origRequire.apply(this, arguments);
@@ -307,7 +315,7 @@ describe("revalueHodlBaseline", () => {
 
   it("reads past the cached price, at the block of this NFT's mint", async () => {
     let seen = null;
-    _historicalImpl = async (_pool, ts, _network, opts) => {
+    _historicalImpl = async (_pool, ts, opts) => {
       seen = { ts, opts };
       return { price0: 1, price1: 1 };
     };
@@ -346,5 +354,59 @@ describe("revalueHodlBaseline", () => {
     await run(botState, 123);
     assert.strictEqual(botState.hodlBaseline.entryValue, 100, "untouched");
     assert.strictEqual(patches.length, 0);
+  });
+});
+
+describe("computeDepositUsd — a deposit block with no readable time", () => {
+  /*-
+   *  A deposit is priced at its own block's candle. Without the block's
+   *  time there is no such candle: asking for today's instead would cache
+   *  today's price under the block's key, which never expires, and value
+   *  the deposit at it unflagged.
+   */
+  let computeDepositUsd;
+  let asked;
+
+  const botState = () => ({
+    lifetimeHodlAmounts: {
+      poolAddress: "0xPOOL",
+      deposits: [{ raw0: "1000000000000000000", raw1: "0", block: 555 }],
+    },
+  });
+  // No token addresses, so a missing price is not looked up at today's rate.
+  const POSITION = { fee: 3000, tokenId: 7 };
+  const OPTS = { decimals0: 18, decimals1: 18 };
+
+  beforeEach(() => {
+    asked = [];
+    _historicalImpl = async (pool, ts, opts) => {
+      asked.push({ pool, ts, block: opts.blockNumber });
+      return { price0: 2, price1: 3 };
+    };
+    _installMocks();
+    ({ computeDepositUsd } = require("../src/bot-hodl-scan"));
+  });
+
+  afterEach(() => {
+    _blockTsImpl = async () => 0;
+    _restoreMocks();
+  });
+
+  it("asks for no historical price when the block's time cannot be read", async () => {
+    _blockTsImpl = async () => 0;
+    const state = botState();
+    await computeDepositUsd(state, () => {}, POSITION, OPTS, "epoch-key");
+    assert.deepStrictEqual(asked, []);
+    assert.strictEqual(state.totalLifetimeDepositUsd, undefined);
+  });
+
+  it("prices the deposit at its own block's time when it can be read", async () => {
+    _blockTsImpl = async () => 1_700_000_000;
+    const state = botState();
+    await computeDepositUsd(state, () => {}, POSITION, OPTS, "epoch-key");
+    assert.deepStrictEqual(asked, [
+      { pool: "0xPOOL", ts: 1_700_000_000, block: 555 },
+    ]);
+    assert.strictEqual(state.totalLifetimeDepositUsd, 2);
   });
 });

@@ -35,8 +35,7 @@ function _fillBaselineCtx() {
   const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
   const frag = cloneTpl("tplHodlBaselineCtx");
   if (!frag) return;
-  frag.querySelector('[data-tpl="chain"]').textContent =
-    botConfig.chainName || "PulseChain";
+  frag.querySelector('[data-tpl="chain"]').textContent = botConfig.chainName;
   frag.querySelector('[data-tpl="wallet"]').textContent = w;
   frag.querySelector('[data-tpl="pair"]').textContent = pair;
   frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";

@@ -86,7 +86,7 @@ before(() => {
   Module.prototype.require = function (id) {
     if (id === "./price-fetcher") {
       return {
-        fetchHistoricalPriceGecko: async (_pool, _ts, _net, opts) => {
+        fetchHistoricalPriceGecko: async (_pool, _ts, opts) => {
           priceCalls.push(opts);
           return { price0: 0, price1: 0 };
         },

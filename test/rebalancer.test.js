@@ -8,17 +8,17 @@ const assert = require("assert");
 const {
   getPoolState,
   removeLiquidity,
-  computeDesiredAmounts,
-  swapIfNeeded,
   _MAX_UINT128,
   _DEADLINE_SECONDS,
   _MIN_SWAP_THRESHOLD,
   V3_FEE_TIERS,
-} = require("../src/rebalancer");
-const {
-  _setRetryDelayForTests,
-  PoolStateUnavailableError,
 } = require("../src/rebalancer-pools");
+const {
+  computeDesiredAmounts,
+  swapIfNeeded,
+} = require("../src/rebalancer-swap");
+const { _setRetryDelayForTests } = require("../src/rebalancer-pools");
+const { PoolStateUnavailableError } = require("../src/pool-state-validate");
 
 _setRetryDelayForTests(0); // shorten retry waits in failure-path tests
 const {

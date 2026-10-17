@@ -183,8 +183,10 @@ executes as a single synchronous sequence under the rebalance lock:
    to determine how much of each token the new position needs at the target
    tick range.
 5. **swapIfNeeded** — convert the excess token into the deficient one. The
-   primary path uses the 9mm DEX Aggregator (multi-hop routing across all
-   PulseChain DEXes for lowest slippage), with the V3 SwapRouter as fallback.
+   primary path uses the active chain's aggregator — the Watergun
+   Aggregator on PulseChain (multi-hop routing across PulseChain DEXes
+   for lowest slippage) — with the V3 SwapRouter as fallback, and as the
+   only path on a chain with no aggregator.
    Two **swap-gates** (in `src/swap-gates.js`) run before every swap call
    site:
    - **Dust gate** (first) — skips the swap when the swap value is below the

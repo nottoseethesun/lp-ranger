@@ -90,17 +90,11 @@ function gasFeePctToRatio(pct) {
  * a first swap attempt — used to pre-compute the gas-gate ratio
  * before we commit to a quote.  Per-chain value (lives under the
  * chain's `aggregator.estimatedSwapGasUnits` key in chains.json) so
- * different chains can tune.  Per
- * feedback_one_literal_per_shipped_default, no code-side literal
- * fallback — chains.json must populate this key for every chain.
+ * different chains can tune; `src/config.js` refuses to start without
+ * it.
  */
 function _swapGasUnits() {
-  const fromCfg = config.CHAIN?.aggregator?.estimatedSwapGasUnits;
-  if (typeof fromCfg === "number" && fromCfg > 0) return BigInt(fromCfg);
-  throw new Error(
-    "[swap-gates] aggregator.estimatedSwapGasUnits missing or invalid for chain " +
-      `${config.CHAIN?.displayName ?? "?"} — must be a positive number in chains.json`,
-  );
+  return BigInt(config.CHAIN.aggregator.estimatedSwapGasUnits);
 }
 
 /**
@@ -163,7 +157,8 @@ async function shouldSkipSwap({ swapUsd, gasUsd, maxRatio }) {
       maxRatio: ceiling,
     };
   }
-  const ratio = swapUsd > 0 ? gasUsd / swapUsd : Infinity;
+  // A swap worth nothing is dust, which returned above, so swapUsd is positive.
+  const ratio = gasUsd / swapUsd;
   if (gasUsd > 0 && ratio > ceiling) {
     return {
       skip: true,

@@ -1860,8 +1860,24 @@ span[title]:not([title=""]):hover {
   width: auto;
 }
 
-.\39 mm-pos-mgr-pchain-logo {
+.\39 mm-pos-mgr-chain-logo {
   height: 62px;
+}
+
+/* The header slot the chain's link is painted into.  It makes no box of
+   its own, so the link lays out as the header's flex item, as a link
+   written straight into the markup would. */
+.\39 mm-pos-mgr-chain-link-slot {
+  display: contents;
+}
+
+.\39 mm-pos-mgr-chain-link {
+  height: 63px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .\39 mm-pos-mgr-logo-on {
@@ -3945,7 +3961,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1790669445216");
+  background-image: url("background-cloud_top.png?v=1792220905629");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3958,7 +3974,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1790669445216");
+  background-image: url("background-cloud_middle.png?v=1792220905629");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3968,7 +3984,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1790669445216");
+  background-image: url("background-cloud_bottom.png?v=1792220905629");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

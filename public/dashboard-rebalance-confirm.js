@@ -43,6 +43,7 @@ import {
   setManageInFlight,
   manageKey,
 } from "./dashboard-manage-ui.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 /*- "preserveRange width" as % — the width the rebalancer would
  *  produce for a position with the given tick spread + Position
@@ -285,8 +286,9 @@ export async function confirmRebalance() {
     );
     return;
   }
+  const chain = activeChainId();
   const positionKey = compositeKey(
-    "pulsechain",
+    chain,
     active.walletAddress,
     active.contractAddress,
     active.tokenId,

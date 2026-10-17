@@ -11,6 +11,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 
 const {
   writePidFile,
@@ -58,6 +59,43 @@ test("readPid rejects zero and negative PIDs", () => {
   const neg = _tmpPath();
   fs.writeFileSync(neg, "-5\n");
   assert.strictEqual(readPid({ filePath: neg }), null);
+});
+
+/*-
+ *  A child process writes the PID file and then ends however `how`
+ *  says, so the real exit path runs: Node's `exit` event, which this
+ *  test process cannot fire on itself.
+ */
+function _childWritesThen(how, p) {
+  const serverPid = require.resolve("../src/server-pid");
+  const script =
+    `const s = require(${JSON.stringify(serverPid)});` +
+    `s.writePidFile({ filePath: ${JSON.stringify(p)} });` +
+    how;
+  return spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
+}
+
+for (const [name, how] of [
+  ["a shutdown that calls process.exit", "process.exit(0);"],
+  ["an uncaught error", "throw new Error('crash');"],
+  ["the event loop running dry", ""],
+]) {
+  test(`the PID file goes when the server exits by ${name}`, () => {
+    const p = _tmpPath();
+    const r = _childWritesThen(how, p);
+    assert.ok(r.stdout.includes("Wrote PID"), r.stdout + r.stderr);
+    assert.ok(!fs.existsSync(p), "the exiting server left its PID file");
+  });
+}
+
+test("an exiting server leaves a PID file that names another process", () => {
+  // A newer server has written its own PID over this one's.
+  const p = _tmpPath();
+  _childWritesThen(
+    `require("fs").writeFileSync(${JSON.stringify(p)}, "424242\\n");`,
+    p,
+  );
+  assert.strictEqual(readPid({ filePath: p }), 424242);
 });
 
 test("getPidFilePath returns an absolute path ending in lp-ranger.pid", () => {

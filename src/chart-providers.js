@@ -81,8 +81,13 @@ function _buildProvidersList(providersObj) {
  * @returns {Array<{ key: string, name: string, urlTemplate: string }>}
  */
 function readChartProviders(chainName) {
-  const chain = CHAINS[chainName] || CHAINS.pulsechain;
-  return _buildProvidersList(chain && chain.chartProviders);
+  /*-
+   *  No other chain's links stand in: a chain with none of its own gets
+   *  an empty list, which the dialog shows as no links. The chain
+   *  itself always has an entry, since startup refuses a chain name
+   *  chains.json does not have.
+   */
+  return _buildProvidersList(CHAINS[chainName].chartProviders);
 }
 
 /**

@@ -379,7 +379,7 @@ lives in [`src/price-fetcher.js`](../src/price-fetcher.js).
 non-zero result:
 
 1. **Moralis** (primary) — **the API key is free** (sign up at
-   <https://moralis.io>); paste it into the dashboard Settings dialog and
+   <https://moralis.com/>); paste it into the dashboard Settings dialog and
    it's encrypted at rest in `app-config/user-configurable/api-keys.json`. Most reliable for
    meme tokens that the free aggregators drop.
 
@@ -1878,8 +1878,9 @@ lp-ranger/
 │   │   ├── csrf.json         ← CSRF token TTL + refresh cadence
 │   │   ├── dust-threshold.json  ← universal dust threshold (gold-pegged)
 │   │   ├── evm-rpc-response-codes.json  ← RPC error-classifier substrings
-│   │   ├── logging.json      ← log-to-file always-on toggle + path
+│   │   ├── logging.json      ← log-to-file toggle + path, error-log path
 │   │   ├── lp-providers.json   ← LP-provider metadata keyed by <factory>_<positionManager>
+│   │   ├── price-services.json ← each price service's base url
 │   │   ├── ui-defaults.json  ← dashboard first-visit defaults
 │   │   └── api-keys.example.json ← tracked format template (documentation)
 │   └── user-configurable/    ← dir tracked (via README.md), CONTENTS gitignored
@@ -1930,6 +1931,13 @@ regenerate it.
   `app-config/user-configurable/dust-threshold.json` and edit the
   copy. Do NOT edit the file in `app-defaults-for-user-configurable/`
   — tarball upgrades overwrite it.
+- **`app-defaults-for-user-configurable/price-services.json`** —
+  Tracked shipped default. The base url of each price service's api
+  (DexScreener, GeckoTerminal, Moralis), version included where the url
+  carries one. Read once at module load by `src/price-service-urls.js`,
+  which every price request is built through and which stops startup
+  on a value that is not an https url. Which tokens a service can price
+  on a chain is per chain instead, in `chains.json` → `priceServices`.
 - **`app-defaults-for-user-configurable/api-keys.example.json`** —
   Tracked. Format template showing the structure of the encrypted
   `api-keys.json`. NOT a tunable, NOT a runtime file — pure
@@ -2178,6 +2186,7 @@ test/report-artifacts/
     ├── npm-audit.json            npm audit --json
     ├── security-lint.json        eslint -c eslint-security.config.js --format json
     ├── secretlint.json           secretlint --format json
+    ├── lcov.info                 lcov coverage report of the test run
     └── exit-codes.json           Per-tool exit codes captured by check.js
 ```
 
@@ -2278,8 +2287,9 @@ runtime.
 The spec is a single hand-maintained file at
 [`docs/openapi.json`](openapi.json). There's **no code generation** —
 route handlers do not auto-publish their schemas — so any route change
-in `src/server-routes.js`, `src/server-positions.js`, or
-`src/server-scan.js` must be mirrored by hand into `openapi.json`.
+in `src/server-routes.js`, `src/server-config-route.js`,
+`src/server-positions.js`, or `src/server-scan.js` must be mirrored by
+hand into `openapi.json`.
 
 Hand-maintenance drifts on its own, so
 [`scripts/check-openapi-sync.js`](../scripts/check-openapi-sync.js) runs
@@ -2500,9 +2510,8 @@ why `bot-config-defaults.js` has two readers.
 `readBotConfigDefaultsStrict()` refuses an out-of-range timer setting
 and is called exactly once, by `src/config.js`, at startup.
 `readBotConfigDefaults()` never throws over a value, and is what
-everything else calls — because this file is re-read on every call, and
-those calls include a poll cycle, a price lookup, the all-endpoints-down
-pause, and `GET /api/bot-config-defaults`. A throw from there would turn
+everything else calls — and those calls include a poll cycle, a price
+lookup, the all-endpoints-down pause, and `GET /api/bot-config-defaults`. A throw from there would turn
 an edit made while the bot is running into a broken poll and a 500, and
 the route's own contract is that it never 500s. The same edit is still
 refused: at the next start, which is when the operator can act on it.
@@ -2510,15 +2519,17 @@ refused: at the next start, which is when the operator can act on it.
 **Where the app can carry on, answer rather than throw.** A bad value
 arriving at `POST /api/config` gets a 400 naming the problem; the server
 keeps serving and the dashboard can say what was wrong. This is why
-`_timerKeyProblem()` in `src/server-routes.js` returns its reason
-instead of throwing it — the startup path throws that sentence, the
-route replies with it, and neither restates the rule.
+`_checkTimer()` in `src/config-bounds.js` catches the timer rule's
+throw and returns its message instead — the startup path throws that
+sentence, the route replies with it, and neither restates the rule.
 
 That 400 carries an `invalidValueForKey` field naming the setting whose
 value was refused, because the same route answers 400 for a second,
 unrelated reason: a malformed request, most often one with no
-`positionKey`. The dashboard raises its dialog and restores the field
-only for the first.
+`positionKey`, or one whose key names another chain. The dashboard
+raises its dialog and restores the field only for the first. Both
+refusals come before anything in the request is applied
+(`src/server-config-route.js`), so a refused request leaves no trace.
 
 **The browser does not decide whether a value is acceptable.**
 `src/config-bounds.js` is the only place that decision is made, for
@@ -3070,13 +3081,14 @@ describing which operation is running. The three error codes are:
   `_scanRunning` and would no-op silently, leaving the reload's state
   clears in place while the pre-existing scan writes stale results
   back to disk. User waits for the current scan to finish (up to
-  four hours) and clicks Reload again.
+  `reloadMaxWaitMs` in ui-defaults.json, four hours as shipped) and
+  clicks Reload again.
 - `rebalance-in-progress` / `compound-in-progress` &mdash; the position
   is mid-TX. Reload would race the transaction and either corrupt the
   state reconstruction or step on the tracker mid-write.
 
 Every 409 falls through to the same yellow retry modal on the client
-(`_showReloadBusyModal` in `dashboard-events-manage.js`), so all
+(`_showReloadBusyModal` in `dashboard-reload-flow.js`), so all
 "busy" outcomes look identical to the operator. The dashboard's
 Reload button is also disabled by `paintReloadPositionButton`
 whenever `rebalanceInProgress` or `compoundInProgress` is truthy on

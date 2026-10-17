@@ -20,7 +20,7 @@ const fs = require("fs");
 const path = require("path");
 const config = require("./config");
 const rangeMath = require("./range-math");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const { scanPoolHistory } = require("./pool-scanner");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
@@ -690,6 +690,7 @@ function _applyRebalanceResult(deps, result) {
   );
   if (deps._botState?.walletAddress)
     clearLpPositionCache(deps._botState.walletAddress, {
+      blockchain: config.CHAIN_NAME,
       contract: config.POSITION_MANAGER,
     });
   if (!deps.updateBotState) return;

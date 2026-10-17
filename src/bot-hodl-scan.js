@@ -12,7 +12,7 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const _epochCache = require("./epoch-cache");
 const { _totalLifetimeDeposit } = require("./bot-pnl-updater");
 const { _publishBaseline } = require("./hodl-baseline");
@@ -174,9 +174,27 @@ async function computeDepositUsd(
   const pFn = async (block) => {
     // Resolve the real block timestamp so date-bucketed APIs (GeckoTerminal
     // OHLCV) return the historical candle, not today's.
-    const blockTs = await getBlockTimestamp(provider, "pulsechain", block);
-    const ts = blockTs > 0 ? blockTs : Math.floor(Date.now() / 1000);
-    return _fhp(poolAddr, ts, "pulsechain", {
+    /*-
+     *  Keyed by the active chain: block numbers mean different moments
+     *  on mainnet and on the testnet, so one cache scope for both would
+     *  hand a testnet block a mainnet timestamp.
+     */
+    const blockTs = await getBlockTimestamp(provider, config.CHAIN_NAME, block);
+    /*-
+     *  Without the block's time there is no historical candle to ask for.
+     *  Today's would be cached under this block's key, which never
+     *  expires, and would price the deposit at today's rate unflagged; no
+     *  price instead lets the deposit fall back to the current one,
+     *  marked as such, and leaves the block to be priced on a later pass.
+     */
+    if (blockTs <= 0) {
+      log.warn(
+        "[deposit] no timestamp for block %d — not pricing it historically",
+        block,
+      );
+      return { price0: 0, price1: 0 };
+    }
+    return _fhp(poolAddr, blockTs, {
       token0Address: position.token0,
       token1Address: position.token1,
       blockNumber: block,
@@ -251,17 +269,12 @@ async function revalueHodlBaseline(
     ethers,
   );
   if (!poolAddr) return;
-  const { price0, price1 } = await _fhp(
-    poolAddr,
-    saved.mintTimestamp,
-    "pulsechain",
-    {
-      token0Address: position.token0,
-      token1Address: position.token1,
-      blockNumber: mintBlock,
-      refresh: true,
-    },
-  );
+  const { price0, price1 } = await _fhp(poolAddr, saved.mintTimestamp, {
+    token0Address: position.token0,
+    token1Address: position.token1,
+    blockNumber: mintBlock,
+    refresh: true,
+  });
   if (!(price0 > 0) && !(price1 > 0)) {
     log.warn(
       "[bot] %s/%s NFT #%s %s: no historical price at the mint, so the HODL baseline keeps its saved value",

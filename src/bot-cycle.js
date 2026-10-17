@@ -19,11 +19,8 @@ const {
 // key-store is retained for api-key-store.js; no longer used here directly.
 const { emojiId, logCtx } = require("./logger");
 const { log } = require("./log");
-const {
-  getPoolState,
-  executeRebalance,
-  enrichResultUsd,
-} = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
+const { executeRebalance, enrichResultUsd } = require("./rebalancer");
 const { getTokenSymbol } = require("./server-scan");
 const { notify } = require("./telegram-notifications/telegram");
 const {
@@ -357,7 +354,7 @@ function _checkRangeAndThreshold(deps, poolState, emit) {
 /** Rewrite low-level RPC errors into user-readable messages. */
 function _humanizeError(msg) {
   if (/insufficient funds|INSUFFICIENT_FUNDS/i.test(msg))
-    return "Wallet has insufficient gas to send transactions. Send native tokens (e.g. PLS) to the wallet and retry.";
+    return `Wallet has insufficient gas to send transactions. Send ${config.CHAIN.nativeCurrencySymbol} to the wallet and retry.`;
   return msg;
 }
 

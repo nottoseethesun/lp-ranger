@@ -9,6 +9,7 @@ import { g, truncName, compositeKey } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { _posContextHtml } from "./dashboard-data.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 let _refetchUnmanaged = null;
 /** Inject re-fetch callback (avoids circular import). */
@@ -130,8 +131,9 @@ export function savePriceOverrideDialog() {
     _saveForce(force);
     return;
   }
+  const chain = activeChainId();
   const pk = compositeKey(
-    "pulsechain",
+    chain,
     active.walletAddress,
     active.contractAddress,
     active.tokenId,

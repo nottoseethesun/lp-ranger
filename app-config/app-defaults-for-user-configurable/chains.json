@@ -2,11 +2,26 @@
   "pulsechain": {
     "chainId": 369,
     "displayName": "PulseChain",
+    "_description_comment": "How the app names and describes this chain. homepage and logo (a file under public/) make the chain link in the dashboard header. blockTimeSec, the chain's average seconds per block, turns spans of time into block counts. nativeCurrencySymbol names the native token in messages and logs. cacheTag names the chain in cache file names and cache keys: lower-case letters and digits, and distinct from every other chain's, since two chains with one tag would share their caches. PulseChain's is pulse, the tag its existing caches carry, so changing it orphans them and forces a full re-scan. None of these has a fallback: an entry that leaves one out stops the app at startup, naming it.",
+    "homepage": "https://pulsechain.com/",
+    "logo": "pulsechain-logo-transparent.png",
+    "blockTimeSec": 10,
+    "nativeCurrencySymbol": "PLS",
+    "cacheTag": "pulse",
+    "_priceServices_comment": "This chain's id at each service LP Ranger asks for token prices, or \"\" where a service does not cover the chain, which is then not asked. DexScreener names chains by slug, GeckoTerminal by network id, and Moralis by hex chain id.",
+    "priceServices": {
+      "dexScreenerChain": "pulsechain",
+      "geckoTerminalNetwork": "pulsechain",
+      "moralisChain": "0x171"
+    },
     "nativeWrappedToken": "0xA1077a294dDE1B09bB078844df40758a5D0f9a27",
+    "_gas_comment": "How transactions on this chain are priced. transactionEnvelopeType is legacy or eip1559. gasPriceMultiplier scales the network's gas price for every send; gasLimitMultiplier buffers every gas estimate. A transaction still pending after TX_SPEEDUP_SEC is resent at the same nonce priced speedUpGasBump times the higher of the network's price and its own, and one still pending at TX_CANCEL_SEC is cancelled by a zero-value self-transfer priced cancelGasBump times the higher of the network's price and the stuck one's, so each outbids what it replaces. gasLimitFloor is the least gas limit a transaction is sent with when the code sending it names no floor of its own: approvals, the compound's collect and increaseLiquidity, and a swap through the V3 router. An estimate that comes in lower is raised to it, and a failed estimate sends with it. The mint and the liquidity removal use contracts.positionManager.mintGasLimit instead, and a cancel the 21000 every plain transfer costs. None has a fallback: an entry that leaves one out stops the app at startup, naming it.",
     "transactionEnvelopeType": "legacy",
     "gasPriceMultiplier": 7,
     "gasLimitMultiplier": 2,
     "speedUpGasBump": 1.5,
+    "cancelGasBump": 2,
+    "gasLimitFloor": 300000,
     "_rpc_comment": "Ordered RPC endpoints. Index 0 is the primary; failover walks the list in order and sticks to whichever answers. Note the layered-defaults loader REPLACES arrays wholesale rather than merging them, so a user override of this array must list every endpoint it wants, not just additions. rpc.pulsechain.box is a free tier limited to 50 requests per 10 seconds per IP; src/rpc-request-manager.js paces the whole process well inside that.",
     "rpc": {
       "urls": [
@@ -22,15 +37,26 @@
         "mintGasLimit": 600000
       },
       "factory": "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68",
-      "swapRouter": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA"
+      "swapRouter": {
+        "_name_comment": "How the dashboard's \"Routing through:\" badge and the Rebalance Events table name a swap through this router. Required: the app does not start without it.",
+        "address": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA",
+        "name": "9mm V3 Router"
+      }
     },
     "aggregator": {
-      "blockchain": "pulsechain",
+      "_url_comment": "Base url of this chain's swap aggregator, a 0x-v1 api; LP Ranger appends /swap/v1/quote. The chain's own path segment is part of the url because the vendor chooses it: Watergun keys it by chain id. On PulseChain this is the Watergun Aggregator. A chain with no aggregator sets the url to \"\", and every swap on it goes through the V3 router; a chain entry with no url at all stops the app at startup. AGGREGATOR_URL in .env overrides it for the active chain.",
+      "url": "https://swap.watergun.pro/api/aggregator/369",
+      "_name_comment": "How the dashboard's \"Routing through:\" badge and the Rebalance Events table name a swap through the aggregator at the url above. Required whenever there is a url; an AGGREGATOR_URL in .env that points at another aggregator needs this name overridden to match.",
+      "name": "Watergun Aggregator",
       "gasPriceMultiplier": 1.5,
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
+      "_quoteTimeoutMs_comment": "How long a swap waits for the aggregator's quote. A quote that has not arrived by then counts as failed, so the swap goes through the V3 router in the position's own pool instead, as after any other aggregator failure. This limit is what keeps a quote server that accepts the request but never answers from holding up the swap while the position's coins sit outside the pool. 15000 is more than twice the slowest ordinary quote measured on 2026-10-16 (6.5 s). Checked at startup by src/timer-bounds.js; an unusable value stops the app, naming this setting.",
+      "quoteTimeoutMs": 15000,
       "maxAttempts": 4,
-      "estimatedSwapGasUnits": 500000
+      "estimatedSwapGasUnits": 500000,
+      "_gasUnitsWhenQuoteOmitsGas_comment": "Gas units a swap is sent with when the aggregator's quote names none, neither gas nor estimatedGas, which the 0x api does not normally do. As with the quote's own figure, the transaction's gas limit is this times the chain's gasLimitMultiplier. Required whenever there is a url: the app does not start without it.",
+      "gasUnitsWhenQuoteOmitsGas": 300000
     },
     "dexPairDetailPageUrl": {
       "blockchain": "pulsechain"
@@ -62,11 +88,23 @@
   "pulsechain-testnet": {
     "chainId": 943,
     "displayName": "PulseChain Testnet v4",
+    "homepage": "https://pulsechain.com/",
+    "logo": "pulsechain-logo-transparent.png",
+    "blockTimeSec": 10,
+    "nativeCurrencySymbol": "tPLS",
+    "cacheTag": "pulsetest",
+    "priceServices": {
+      "dexScreenerChain": "",
+      "geckoTerminalNetwork": "",
+      "moralisChain": ""
+    },
     "nativeWrappedToken": "",
     "transactionEnvelopeType": "legacy",
     "gasPriceMultiplier": 7,
     "gasLimitMultiplier": 2,
     "speedUpGasBump": 1.5,
+    "cancelGasBump": 2,
+    "gasLimitFloor": 300000,
     "rpc": {
       "urls": ["https://rpc.v4.testnet.pulsechain.com"]
     },
@@ -77,15 +115,21 @@
         "mintGasLimit": 600000
       },
       "factory": "",
-      "swapRouter": ""
+      "swapRouter": {
+        "address": "",
+        "name": ""
+      }
     },
     "aggregator": {
-      "blockchain": "",
+      "url": "",
+      "name": "",
       "gasPriceMultiplier": 1.5,
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
+      "quoteTimeoutMs": 15000,
       "maxAttempts": 4,
-      "estimatedSwapGasUnits": 500000
+      "estimatedSwapGasUnits": 500000,
+      "gasUnitsWhenQuoteOmitsGas": 300000
     },
     "dexPairDetailPageUrl": {
       "blockchain": ""

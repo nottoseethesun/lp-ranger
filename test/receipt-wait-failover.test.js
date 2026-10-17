@@ -103,9 +103,8 @@ function makeLib(receipts = {}) {
 function makeSigner(wait) {
   return {
     getAddress: async () => "0x" + "11".repeat(20),
-    /*- The speed-up reads fee data off `signer.provider || signer`, and
-     *  this stub has no provider, so the signer answers for it. */
-    getFeeData: async () => ({ gasPrice: 1n }),
+    // The speed-up and the cancel price themselves off the signer's provider.
+    provider: { getFeeData: async () => ({ gasPrice: 1n }) },
     sendTransaction: async () => ({
       hash: "0xdeadbeef",
       nonce: 7,
@@ -129,9 +128,8 @@ function makeSpeedUpSigner(wait) {
   let n = 0;
   return {
     getAddress: async () => "0x" + "11".repeat(20),
-    /*- `_submitSpeedUp` reads fee data off `signer.provider || signer`,
-     *  and this stub has no provider, so the signer answers for it. */
-    getFeeData: async () => ({ gasPrice: 1n }),
+    // `_submitSpeedUp` prices the replacement off the signer's provider.
+    provider: { getFeeData: async () => ({ gasPrice: 1n }) },
     sendTransaction: async () => ({
       hash: "0xhash" + ++n,
       nonce: 7,
@@ -330,84 +328,72 @@ describe("a receipt survives the endpoint that broadcast it going down", () => {
     assert.strictEqual(receipt.blockNumber, 99);
   });
 
-  it("stops asking for a hash that never mines, and reports why", async () => {
-    /*- The property, asserted by behaviour rather than by inspecting an
-     *  argument: a transaction that never mines must stop being asked
-     *  about, and the caller must learn the endpoint failure that
-     *  started it rather than a timeout of our own making.
-     *
-     *  The first attempt at this bound handed a deadline to ethers'
-     *  `waitForTransaction`. That does not hold, because the call goes
-     *  through the managed read provider and ethers rejects a deadline
-     *  with `code: "TIMEOUT"` — which that provider classes as an
-     *  endpoint failure and retries, re-arming the bound on the next
-     *  endpoint forever. Measured at the time: twenty-six re-asks
-     *  before a probe's own cap stopped it. */
-    const savedSpeedup = config.TX_SPEEDUP_SEC;
-    const savedCancel = config.TX_CANCEL_SEC;
+  it("confirms a move whose nonce is taken, once an endpoint serves its receipt", async () => {
+    /*-
+     *  The Production shape: the speed-up and then the cancel are both
+     *  refused because the original already occupies the nonce, while
+     *  every endpoint is still too far behind to serve its receipt. A
+     *  refusing endpoint is never the move's failure, and a nonce taken
+     *  by the move itself is the move having happened, so the bot keeps
+     *  asking until a receipt comes back, and reports that receipt.
+     */
+    const saved = {
+      speedup: config.TX_SPEEDUP_SEC,
+      cancel: config.TX_CANCEL_SEC,
+      floor: config.TX_CANCEL_PHASE_FLOOR_SEC,
+    };
     config.TX_SPEEDUP_SEC = 0.1;
     config.TX_CANCEL_SEC = 0.3;
+    config.TX_CANCEL_PHASE_FLOOR_SEC = 0.1;
     let asked = 0;
+    let sends = 0;
+    let receipt;
     try {
+      /*-
+       *  No endpoint has the receipt until the cancel — the third send —
+       *  has been tried, so the answer has to come through the cancel
+       *  phase rather than phase 3.
+       */
+      const behind = async () => {
+        asked++;
+        return sends < 3 ? null : { ...RECEIPT, servedBy: FALL };
+      };
       sendTx.init(
         { urls: [PRI, FALL] },
-        makeLib({
-          [PRI]: async () => {
-            asked++;
-            return null;
-          },
-          [FALL]: async () => {
-            asked++;
-            return null;
-          },
-        }),
+        makeLib({ [PRI]: behind, [FALL]: behind }),
       );
-      /*- Driven through phase 2's fallback, where the speed-up send
-       *  fails and no phase timeout races the wait — so the loop's own
-       *  budget is the only thing that can end it, which is the point.
-       *  In phases 1 and 3 the phase timeout governs by design, and
-       *  correctly wins. */
-      let sends = 0;
       const signer = makeSigner(async () => {
         throw serverError(PRI);
       });
       const firstSend = signer.sendTransaction;
       signer.sendTransaction = async (...args) => {
         if (++sends > 1) {
-          /*- The Production shape exactly: the speed-up is refused
-           *  because the original already occupied the nonce. A
-           *  transient error here would be retried by `_retrySend`
-           *  instead of reaching the fallback. */
           const e = new Error("nonce has already been used");
           e.code = "NONCE_EXPIRED";
           throw e;
         }
         return firstSend(...args);
       };
-      await assert.rejects(
-        () =>
-          sendTx.sendTransaction({
-            populate: async () => ({
-              to: "0x" + "22".repeat(20),
-              gasLimit: 300000n,
-            }),
-            signer,
-            label: "[compound] collect",
-          }),
-        /502 Bad Gateway/,
-        "the endpoint failure that started it is what the caller should see",
-      );
+      ({ receipt } = await sendTx.sendTransaction({
+        populate: async () => ({
+          to: "0x" + "22".repeat(20),
+          gasLimit: 300000n,
+        }),
+        signer,
+        label: "[compound] collect",
+      }));
     } finally {
-      config.TX_SPEEDUP_SEC = savedSpeedup;
-      config.TX_CANCEL_SEC = savedCancel;
+      config.TX_SPEEDUP_SEC = saved.speedup;
+      config.TX_CANCEL_SEC = saved.cancel;
+      config.TX_CANCEL_PHASE_FLOOR_SEC = saved.floor;
     }
-    assert.ok(asked > 0, "it must have asked at least once");
-    /*- Generous, because the point is that the count is FINITE. Without
-     *  the bound this loops until the process dies. */
-    assert.ok(
-      asked < 200,
-      `asked ${asked} times for a hash that never mines — the bound is not holding`,
+    assert.strictEqual(receipt.blockNumber, 99);
+    assert.strictEqual(
+      sends,
+      3,
+      "the move, the refused speed-up, the refused cancel",
     );
+    assert.ok(asked > 0);
   });
 
   it("does not swallow an error that describes the transaction", async () => {

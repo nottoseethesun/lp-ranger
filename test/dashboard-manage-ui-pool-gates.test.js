@@ -22,6 +22,7 @@ require("global-jsdom/register");
 const { test, before } = require("node:test");
 const assert = require("node:assert");
 const { GUARANTEED_DASHBOARD_HAS_POLLED_MS } = require("../src/config");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 let computeManageUI;
 let MANAGE_SYNCING_HELP;
@@ -30,6 +31,8 @@ let _openInPool;
 let _poolKeyOf;
 
 before(async () => {
+  // As at startup: the dashboard knows its chain before it keys a pool.
+  await learnActiveChain();
   const mod = await import("../public/dashboard-manage-ui.js");
   computeManageUI = mod.computeManageUI;
   MANAGE_SYNCING_HELP = mod.MANAGE_SYNCING_HELP;

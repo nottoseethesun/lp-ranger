@@ -8,6 +8,7 @@ import { g, compositeKey, fetchWithCsrf } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { _fmtUsd } from "./dashboard-data-kpi.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 let _refetchUnmanaged = null;
 let _lastStatusRef = null;
@@ -40,15 +41,15 @@ export function _posKeyFrom(prefix, tokenId) {
 }
 
 /**
- * Pure per-pool localStorage key builder.  Takes every identity
- * field explicitly so callers iterating positions other than
- * posStore.getActive() can reuse the same key layout.  Requires
+ * Per-pool localStorage key builder, on the active chain.  Takes every
+ * other identity field explicitly so callers iterating positions other
+ * than posStore.getActive() can reuse the same key layout.  Requires
  * every identity slot to be a string (or a number for `fee`, since
  * that's how the bot-state exposes it) — no implicit coercion, so a
- * malformed input returns null rather than silently producing a
- * partial-match key.  All addresses are lower-cased to preserve
- * backwards compatibility with existing localStorage entries written
- * by the single-arg helpers below.
+ * malformed input, or a chain not yet learned, returns null rather than
+ * silently producing a partial-match key.  All addresses are lower-cased
+ * to preserve backwards compatibility with existing localStorage entries
+ * written by the single-arg helpers below.
  */
 export function _poolKeyFrom(
   prefix,
@@ -58,6 +59,8 @@ export function _poolKeyFrom(
   token1,
   fee,
 ) {
+  const chain = activeChainId();
+  if (typeof chain !== "string") return null;
   if (typeof walletAddress !== "string" || walletAddress.length === 0)
     return null;
   if (typeof token0 !== "string" || token0.length === 0) return null;
@@ -68,7 +71,8 @@ export function _poolKeyFrom(
     typeof fee === "number" && Number.isFinite(fee) ? fee.toString() : "0";
   return (
     prefix +
-    "pulsechain_" +
+    chain +
+    "_" +
     walletAddress.toLowerCase() +
     "_" +
     contract +
@@ -285,9 +289,10 @@ export function resetInitialDeposit() {
   const wrap = g("initialDepositInputWrap");
   if (wrap) wrap.classList.remove("open");
   const active = posStore.getActive();
+  const chain = activeChainId();
   const pk = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,
@@ -316,9 +321,10 @@ export function saveInitialDeposit() {
     "initialDepositInputWrap",
     async (amount) => {
       const active = posStore.getActive(),
+        chain = activeChainId(),
         pk = active
           ? compositeKey(
-              "pulsechain",
+              chain,
               active.walletAddress,
               active.contractAddress,
               active.tokenId,
@@ -427,9 +433,10 @@ export function saveLifetimeDays() {
   const wrap = g("lifetimeDaysInputWrap");
   if (wrap) wrap.classList.remove("open");
   const active = posStore.getActive();
+  const chain = activeChainId();
   const pk = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,
@@ -484,9 +491,10 @@ export function resetLifetimeDays() {
   const wrap = g("lifetimeDaysInputWrap");
   if (wrap) wrap.classList.remove("open");
   const active = posStore.getActive();
+  const chain = activeChainId();
   const pk = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,

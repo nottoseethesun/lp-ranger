@@ -332,6 +332,55 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
   });
 });
 
+describe("bot-config-defaults: rpc and history-scan plumbing", () => {
+  /*-
+   *  Each setting with an override inside its bounds, and one outside
+   *  them. Inside, the override is what the reader returns; outside,
+   *  the shipped value stands, as for every other key in the file.
+   */
+  const CASES = [
+    ["rpcFailoverStickyMs", 120_000, 59_999],
+    ["boundedReadAttemptsPerEndpoint", 3, 11],
+    ["boundedReadRetryDelayMs", 1_000, 0],
+    ["feeDataLogIntervalMs", 60_000, 999],
+    ["historyLookbackYears", 2, 21],
+    ["eventCacheTtlMs", 86_400_000, 3_599_999],
+    ["poolScanReuseMs", 0, 3_600_001],
+    ["rebalancePairingWindowSec", 600, 0],
+  ];
+
+  it("are shipped, each with a value", () => {
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaults();
+    for (const [key] of CASES) assert.equal(out[key], _SHIPPED[key], key);
+  });
+
+  for (const [key, inRange, outOfRange] of CASES) {
+    it(`${key}: takes ${inRange}, refuses ${outOfRange} for the shipped value`, () => {
+      _writeUser({ [key]: inRange });
+      let mod = require("../src/bot-config-defaults");
+      assert.equal(mod.readBotConfigDefaults()[key], inRange);
+
+      _clearModuleCache();
+      _writeUser({ [key]: outOfRange });
+      mod = require("../src/bot-config-defaults");
+      assert.equal(mod.readBotConfigDefaults()[key], _SHIPPED[key]);
+    });
+  }
+
+  it("STRICT refuses an out-of-range boundedReadRetryDelayMs at startup", () => {
+    // It becomes a timer, so startup refuses it rather than resetting it.
+    _writeUser({ boundedReadRetryDelayMs: 0 });
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
+    assert.throws(
+      () => readBotConfigDefaultsStrict(),
+      /boundedReadRetryDelayMs/,
+    );
+  });
+});
+
 describe("bot-config-defaults: the file is read once", () => {
   it("returns the same frozen object rather than re-reading", () => {
     /*- Parsing and merging the file costs real synchronous I/O, and

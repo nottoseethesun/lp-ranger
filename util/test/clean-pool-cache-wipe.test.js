@@ -55,9 +55,27 @@ test("_abbrevScope — abbreviates each dimension the way writers do", () => {
   assert.equal(a.fee, "2500");
 });
 
-test("_abbrevScope — tolerates missing dimensions", () => {
-  const a = cpc._abbrevScope({});
-  assert.deepEqual(a, { bc: "", pm: "", t0: "", t1: "", fee: "undefined" });
+test("_abbrevScope — tolerates missing pool dimensions", () => {
+  const a = cpc._abbrevScope({ blockchain: SCOPE.blockchain });
+  assert.deepEqual(a, {
+    bc: "pulse",
+    pm: "",
+    t0: "",
+    t1: "",
+    fee: "undefined",
+  });
+});
+
+test("_abbrevScope — a chain with no cache tag names the setting", () => {
+  /*-
+   *  There is no chain to assume: a guessed tag would match, and so
+   *  delete, another chain's caches.
+   */
+  assert.throws(() => cpc._abbrevScope({}), /cacheTag/);
+  assert.throws(
+    () => cpc._abbrevScope({ blockchain: "no-such-chain" }),
+    /no-such-chain\.cacheTag/,
+  );
 });
 
 test("findEventCacheFiles — matches every wallet for one pool only", () => {

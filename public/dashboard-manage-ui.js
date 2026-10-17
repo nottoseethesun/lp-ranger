@@ -27,6 +27,7 @@ import { isWalletUnlocked } from "./dashboard-wallet.js";
  *  bundle it into this browser build; src/position-manager.js, which
  *  builds the scoped key on top, cannot cross that line. */
 import { poolKey } from "../src/pool-key.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 export const MANAGE_SYNCING_HELP =
   'This button will be clickable once the "Syncing…" badge above is finished.';
@@ -136,9 +137,10 @@ export function injectManageUIDeps(deps) {
  * @param {boolean}     inputs.manageInFlight   Click in flight for active.
  * @param {number}      inputs.nowMs            Date.now() — injected for tests.
  * @param {number}      inputs.retireDebounceMs Post-retire debounce window;
- *   reads `guaranteedDashboardHasPolledMs` from /api/status (which is
- *   DASHBOARD_POLL_INTERVAL_MS * 2.5 in src/config.js — single source
- *   of truth).  When 0 or unset, the debounce branch never fires.
+ *   reads `guaranteedDashboardHasPolledMs` from /api/status (worked out
+ *   in src/config.js from the poll interval and app-runtime.json →
+ *   dashboard.pollsBeforeAssumedSeen — single source of truth).  When 0
+ *   or unset, the debounce branch never fires.
  * @returns {UISpec|null}
  */
 export function computeManageUI(inputs) {
@@ -446,29 +448,33 @@ function _paintBadge(spec) {
  * wallet as well as the pair and fee, matching what `attachPoolKeys`
  * publishes on `GET /api/status`.
  *
- * The chain defaults to "pulsechain" exactly as `compositeKey` in
- * dashboard-helpers.js does; entries do not carry one. On a chain whose
- * name differs, keys built here stop matching the server's and every
- * gate below simply goes quiet — the button is offered and the server
- * refuses it, which is the safe direction for an advisory check.
+ * The chain is the active one (`activeChainId()`, read from the server at
+ * startup), the same chain every position key names; entries do not carry
+ * one. Were the two ever to disagree, keys built here would stop matching
+ * the server's and every gate below would simply go quiet — the button is
+ * offered and the server refuses it, which is the safe direction for an
+ * advisory check.
  *
  * Null for an incomplete identity rather than a partial key:
  * `poolKey` stringifies whatever it is given, so an entry missing its
  * wallet would yield "…-undefined-…" and two such entries would compare
- * equal.
+ * equal. A chain the server has not yet named is incomplete in the same
+ * way.
  *
  * @param {object|null|undefined} e  posStore entry.
  * @returns {string|null}
  */
 export function _poolKeyOf(e) {
   if (e === undefined || e === null) return null;
+  const chain = activeChainId();
+  if (chain === null) return null;
   const parts = [e.walletAddress, e.contractAddress, e.token0, e.token1];
   for (const v of parts) {
     if (typeof v !== "string" || v.length === 0) return null;
   }
   if (e.fee === undefined || e.fee === null || e.fee === "") return null;
   return poolKey(
-    e.blockchain || "pulsechain",
+    chain,
     e.contractAddress,
     e.walletAddress,
     e.token0,
@@ -616,12 +622,14 @@ export function paintManageUI() {
         ? _newerClosedInPool(active, _posStoreRef?.entries)
         : null,
       nowMs: Date.now(),
-      /*- Server's GUARANTEED_DASHBOARD_HAS_POLLED_MS (=
-       *  DASHBOARD_POLL_INTERVAL_MS * 2.5 in src/config.js) flows
-       *  through /api/status's global block as
-       *  guaranteedDashboardHasPolledMs.  When the first poll hasn't
+      /*-
+       *  Server's GUARANTEED_DASHBOARD_HAS_POLLED_MS (the poll interval
+       *  times app-runtime.json → dashboard.pollsBeforeAssumedSeen, in
+       *  src/config.js) flows through /api/status's global block as
+       *  guaranteedDashboardHasPolledMs. When the first poll hasn't
        *  landed (status is null), the closed+synced branch can't run
-       *  anyway — the posState=null branch fires first. */
+       *  anyway — the posState=null branch fires first.
+       */
       retireDebounceMs: status?.guaranteedDashboardHasPolledMs || 0,
     }),
   );

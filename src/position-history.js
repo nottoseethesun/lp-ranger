@@ -679,7 +679,7 @@ async function _supplementHistoricalPrices(result, activePosition, refresh) {
     : {};
   const fill = async (date, k0, k1, blockNumber) => {
     const ts = Math.floor(new Date(date).getTime() / 1000);
-    const p = await fetchHistoricalPriceGecko(pool, ts, "pulsechain", {
+    const p = await fetchHistoricalPriceGecko(pool, ts, {
       ...tokenOpts,
       blockNumber,
       refresh: wanted,

@@ -8,12 +8,9 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const {
-  removeLiquidity,
-  swapIfNeeded,
-  mintPosition,
-  executeRebalance,
-} = require("../src/rebalancer");
+const { mintPosition, executeRebalance } = require("../src/rebalancer");
+const { removeLiquidity } = require("../src/rebalancer-pools");
+const { swapIfNeeded } = require("../src/rebalancer-swap");
 
 // ── Shared helpers (from test/helpers/rebalancer-mocks.js) ──────────────────
 const {
@@ -225,7 +222,7 @@ describe("Failure: swapIfNeeded", () => {
       assert.ok(caught, "swapIfNeeded should have thrown");
       assert.match(caught.message, /lowest observed price impact/);
       assert.match(caught.message, /6\.0%/);
-      assert.match(caught.message, /9mm Aggregator \(full\)/);
+      assert.match(caught.message, /Watergun Aggregator \(full\)/);
       assert.match(caught.message, /Increase to at least 6\.5%/);
       assert.ok(
         !/30/.test(caught.message),

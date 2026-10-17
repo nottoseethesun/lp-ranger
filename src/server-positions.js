@@ -23,6 +23,7 @@ const {
   PoolStateUnavailableError,
 } = require("./pool-state-validate");
 const { createCanReopenHandler } = require("./server-can-reopen");
+const { manageRequestRefusal } = require("./manage-request-check");
 const { rejectIfPoolManaged } = require("./pool-already-managed");
 const sendTx = require("./send-transaction");
 const {
@@ -394,22 +395,6 @@ function _stampReopenFlagsOnLive(key, body) {
   return true;
 }
 
-/*- The three things a Manage request must carry before anything else
- *  happens.  Grouped into one predicate so `handleManage` spends one
- *  branch on them rather than three, leaving room under the complexity
- *  cap for the checks that actually decide something.  Returns the
- *  refusal to send, or null when the request is well-formed. */
-function _managePreflight(body, wallet, pk) {
-  if (!body.tokenId || !/^\d+$/.test(String(body.tokenId)))
-    return {
-      status: 400,
-      error: "Missing or invalid tokenId (must be numeric)",
-    };
-  if (!wallet) return { status: 400, error: "No wallet loaded" };
-  if (!pk) return { status: 400, error: "No private key available" };
-  return null;
-}
-
 function createPositionRoutes(deps) {
   const {
     diskConfig,
@@ -427,11 +412,15 @@ function createPositionRoutes(deps) {
 
   async function handleManage(req, res) {
     const body = await readJsonBody(req);
-    const blockchain = body.blockchain || "pulsechain";
-    const contract = body.contract || config.POSITION_MANAGER;
+    /*-
+     *  The server runs one chain, so every position it manages is keyed
+     *  on that chain; a request cannot name another.
+     */
+    const blockchain = config.CHAIN_NAME;
+    const contract = config.POSITION_MANAGER;
     const wallet = walletManager.getAddress();
     const pk = getPrivateKey();
-    const bad = _managePreflight(body, wallet, pk);
+    const bad = manageRequestRefusal(body, wallet, pk);
     if (bad) {
       jsonResponse(res, bad.status, { ok: false, error: bad.error });
       return;

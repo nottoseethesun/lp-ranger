@@ -16,6 +16,7 @@ import { posStore, isPositionManaged } from "./dashboard-positions.js";
 import { getLastStatus, isSyncComplete } from "./dashboard-data.js";
 import { log } from "./dashboard-log.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 /*- The app has ONE Synced state, shown by the single sync badge and read
  *  here through its single source of truth. It is not true until every
@@ -123,12 +124,27 @@ function _save(obj) {
   }
 }
 
-/*- Parse an input string into a valid ERC-20 decimals integer [0,77], or
- *  null.  Explicit checks so "" / non-numeric / out-of-range never persist. */
-function _parseDecimals(v) {
+/**
+ * What the operator typed, for the server to judge.
+ *
+ * An empty field is null, which clears the override. Anything else is
+ * sent as typed — a number when it reads as one, the text itself when it
+ * does not — because whether it is a usable decimals is the server's
+ * call (`src/config-bounds.js`), which refuses an out-of-range or
+ * fractional value and leaves the saved one in place. Turning such a
+ * value into null here would send "clear" instead, and delete the saved
+ * override the operator meant to change. Text rather than NaN, because
+ * NaN travels as null in JSON.
+ *
+ * Exported so the mapping can be driven directly.
+ *
+ * @param {string} v  The field's value.
+ * @returns {number|string|null}
+ */
+export function typedDecimals(v) {
   if (typeof v !== "string" || v.trim() === "") return null;
   const n = Number(v);
-  return Number.isInteger(n) && n >= 0 && n <= 77 ? n : null;
+  return Number.isFinite(n) ? n : v.trim();
 }
 
 /*- The active position's on-chain decimals for token `idx`, from the last
@@ -271,12 +287,8 @@ function _persistToServer(ov, onAccepted) {
     onAccepted();
     return;
   }
-  const pk = compositeKey(
-    "pulsechain",
-    a.walletAddress,
-    a.contractAddress,
-    a.tokenId,
-  );
+  const chain = activeChainId();
+  const pk = compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId);
   saveConfigValues({
     values: {
       decimalsOverride0: ov.d0 ?? null,
@@ -298,7 +310,7 @@ export function saveDecimalsOverride(idx) {
   const ov = loadDecimalsOverrides();
   const input = g("pdDecimals" + idx);
   const force = g("pdDecimalsForce" + idx);
-  ov["d" + idx] = input ? _parseDecimals(input.value) : null;
+  ov["d" + idx] = input ? typedDecimals(input.value) : null;
   ov["force" + idx] = force ? force.checked === true : false;
   /*- The browser copy is written only once the server has taken the
    *  override. Written first, a refused value would still be the one

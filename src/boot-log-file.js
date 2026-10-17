@@ -13,7 +13,7 @@
  *
  * Precedence:
  *   1. `--log-file <path>`     → enable, use <path>
- *   2. `--log-file` (no path)  → enable, use the config path (or default)
+ *   2. `--log-file` (no path)  → enable, use the config path
  *   3. logging.json enabled=true → enable, use config path
  *   4. (default)                  → disabled, no-op
  *
@@ -22,9 +22,9 @@
  * log-to-file is on, so asking for it alone cannot delete a previous
  * run's log that this run will not replace.
  *
- * The default path when neither CLI nor config supplies one is
- * `logs/lp-ranger.log`.  Called from server.js and bot.js as the
- * very first executable statement after `"use strict"`.
+ * When neither the CLI nor the config supplies a path, log-to-file stays
+ * off and says so.  Called from server.js and bot.js as the very first
+ * executable statement after `"use strict"`.
  */
 
 "use strict";
@@ -43,11 +43,6 @@ const { loadMergedDefaults } = require("./load-merged-defaults");
  * exactly when the log matters.
  */
 const DELETE_FLAG = "--delete-pre-existing-log-file";
-
-/*- Default path when neither --log-file nor logging.json supplies one.
- *  Relative to process.cwd() — src/log-file.js resolves it via
- *  path.resolve. */
-const _DEFAULT_PATH = "logs/lp-ranger.log";
 
 /*- Parse argv for the --log-file flag.  Returns {present, pathArg}.
  *  pathArg is the immediately following arg when it doesn't itself
@@ -112,6 +107,12 @@ function _deletePreExistingLogFile(absPath) {
 /**
  * Run the boot wiring.  Inspects argv + logging.json and enables
  * log-to-file teeing when either source opts in.
+ *
+ * The path is the one after `--log-file`, else logging.json's `path`.
+ * With neither, log-to-file stays off and says so on the terminal:
+ * logging.json is the one place the path is written down, and a second
+ * figure here would be a log file nothing configures.
+ *
  * @returns {string | null}  Absolute path of the active log file,
  *   or null when log-to-file remains disabled.
  */
@@ -121,7 +122,14 @@ function bootLogFile() {
   const cfg = _readLoggingConfig();
   const enable = cli.present || cfg.enabled;
   if (!enable) return null;
-  const filePath = cli.pathArg || cfg.path || _DEFAULT_PATH;
+  const filePath = cli.pathArg || cfg.path;
+  if (!filePath) {
+    process.stderr.write(
+      "[log-file] Not logging to a file: logging.json → path is empty " +
+        "and --log-file named none.\n",
+    );
+    return null;
+  }
   /*- Only when a file is actually about to be written.  Asked for
    *  without `--log-file`, and with logging.json off, there is nothing
    *  this run will write and deleting would take away the previous
@@ -138,5 +146,4 @@ module.exports = {
   _parseCliFlag, // exported for tests
   _readLoggingConfig, // exported for tests
   _deletePreExistingLogFile, // exported for tests
-  _DEFAULT_PATH, // exported for tests
 };

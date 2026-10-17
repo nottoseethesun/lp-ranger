@@ -10,9 +10,8 @@ const assert = require("assert");
 const {
   _checkSwapImpact,
   _bestAttemptError,
-  _deadline,
-  _DEADLINE_SECONDS,
-} = require("../src/rebalancer-pools");
+} = require("../src/rebalancer-swap-impact");
+const { _deadline, _DEADLINE_SECONDS } = require("../src/rebalancer-pools");
 
 describe("_checkSwapImpact", () => {
   it("does not throw when impact is within slippage", () => {
@@ -76,12 +75,6 @@ describe("_checkSwapImpact", () => {
     } catch (e) {
       assert.notEqual(e.isSwapImpactAbort, true);
     }
-  });
-
-  it("uses fallback label '(unknown)' when label omitted", () => {
-    const attempts = [];
-    _checkSwapImpact(0.1, 0.5, attempts);
-    assert.equal(attempts[0].label, "(unknown)");
   });
 });
 

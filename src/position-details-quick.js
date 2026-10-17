@@ -10,7 +10,7 @@
 const { log } = require("./log");
 const config = require("./config");
 const rangeMath = require("./range-math");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const {
   positionValueUsd,
   fetchTokenPrices,
@@ -368,7 +368,7 @@ async function computeQuickDetails(
     poolShare1Pct,
   } = await _fetchPoolData(provider, ethersLib, body, privateKey);
   const posKey = compositeKey(
-    "pulsechain",
+    config.CHAIN_NAME,
     body.walletAddress || "",
     body.contractAddress || config.POSITION_MANAGER,
     body.tokenId,

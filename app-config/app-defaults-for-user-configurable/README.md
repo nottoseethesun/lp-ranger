@@ -82,9 +82,9 @@ never brick your install.
 
 | File | What it controls |
 | --- | --- |
-| `app-runtime.json` | App-level runtime defaults: server port/host, TX timing, aggregator URL/API key, scan timeout, compound min-fee + default-threshold, log file path. |
+| `app-runtime.json` | App-level runtime defaults: server port/host, TX timing, scan timeout, compound min-fee + default-threshold, log file path. |
 | `bot-config-defaults.json` | Default values for every Bot Settings input (OOR threshold, slippage, intervals, daily cap, gas, etc.) plus validation bounds (`gasFeePctMin`/`Max`) and server-internal nested groups (`lowGasThresholds`, `residualCleanup`). |
-| `chains.json` | Per-blockchain RPC endpoints, contract addresses, gas multipliers, aggregator tunables (incl. `estimatedSwapGasUnits`), chart-provider URL templates. |
+| `chains.json` | Per-blockchain RPC endpoints, contract addresses, gas multipliers, aggregator url and tunables (incl. `quoteTimeoutMs`, `estimatedSwapGasUnits`), chart-provider URL templates. |
 | `csrf.json` | CSRF token TTL + dashboard refresh cadence. |
 | `dust-threshold.json` | Inflation-resistant "is this dust?" threshold (units of a reference asset) + USD floor + the price-source token list used to derive USD-per-unit. |
 | `evm-rpc-response-codes.json` | Error-classifier substring lists (transient / terminal-nonce-unused / terminal-nonce-consumed). |

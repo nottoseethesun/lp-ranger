@@ -73,7 +73,7 @@ Starting and stopping a running install.
 | `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. The file is opened in append mode, so every run accumulates in it; `--delete-pre-existing-log-file` clears it first, so it holds this run and nothing else. That flag needs log-to-file to be on — on its own it does nothing, and so cannot delete a log this run will not replace. | `npm run bot -- --log-file --delete-pre-existing-log-file` · `npm run bot -- --start-with-price-lookups-unpaused` · `npm run bot -- --help` |
 | `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `tmp/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
 | `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--headless` | Start the dashboard server and auto-start every position saved as `running`. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. `--log-file` with no path writes to `logs/lp-ranger.log`, or the `path` set in `logging.json`. The file is opened in append mode, so every run accumulates in it; `--delete-pre-existing-log-file` clears it first, so it holds this run and nothing else. That flag needs log-to-file to be on — on its own it does nothing, and so cannot delete a log this run will not replace. | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
-| `stop` | — | Clean shutdown: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. Falls back to an lsof-by-port lookup when no PID file exists. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
+| `stop` | — | Clean shutdown: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
 
 ---
 
@@ -122,7 +122,7 @@ Command](#before-running-any-lint-or-test-command) first.
 | `audit:deps:all` | — | The same audit over the **whole** tree, development tooling included. Reports rather than gates; `npm run check` writes this full report to `test/report-artifacts/raw-data/npm-audit.json` on every run. No `pre` hook, unlike `audit:deps`, whose hook only clears `test/report-artifacts/`; neither command writes a report of its own, so nothing is lost by the asymmetry. | `npm run audit:deps:all` |
 | `audit:secrets` | — | secretlint across the repo. | `npm run audit:secrets` |
 | `audit:security` | — | The custom security lint rules. | `npm run audit:security` |
-| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. | `npm run check` |
+| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. Deletes `logs/error.log` and the previous run's `logs/error-npm-run-check.log` first, then renames what the tests wrote to `logs/error.log` to `logs/error-npm-run-check.log`. | `npm run check` |
 | `format:check` | — | Prettier in check mode; fails rather than rewriting. | `npm run format:check` |
 | `test` | any `node --test` flag | Run the suite with a concurrency of 24. | `npm test -- --test-name-pattern="failover"` |
 | `test:coverage` | — | The suite with V8 coverage collection. | `npm run test:coverage` |
@@ -188,11 +188,17 @@ coverage gate — `util/` is held to the same bar as `src/`.
 `npm stop` (alias `npm run stop`) shuts down without switching to the
 server's terminal. It reads the server PID from `tmp/lp-ranger.pid`
 (written on startup by `src/server-pid.js`) and sends **SIGTERM** — the
-same handler as Ctrl+C, so it stops all managed positions, closes the
-HTTP server, and removes the PID file. It escalates to SIGKILL if the
-process does not exit within ~3 s, and falls back to an lsof-by-port
-lookup when no PID file is present. Both SIGINT and SIGTERM run the one
-`shutdown` handler in `server.js`.
+same handler as Ctrl+C, so it stops all managed positions and closes the
+HTTP server. It escalates to SIGKILL if the process does not exit within
+~3 s. Both SIGINT and SIGTERM run the one `shutdown` handler in
+`server.js`.
+
+The server removes its PID file whenever it exits on its own: a
+shutdown, `POST /api/shutdown`, or an uncaught error. A server killed
+outright runs no code and leaves the file behind, and its PID may later
+belong to another process. So `npm stop` signals the PID only while it
+still runs `server.js`; otherwise it clears the file and falls back to an
+lsof-by-port lookup, as it does when there is no PID file at all.
 
 ### Dependency Cycles
 

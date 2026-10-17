@@ -26,6 +26,86 @@ npm run test:watch      # watch mode
 npm run check           # Combined lint (JS+CSS) + test + coverage check (≥80%)
 ```
 
+## 95% Coverage Regions
+
+The suite as a whole must keep at least 80% line coverage, and
+`npm run check` enforces that. Some code is held higher: **95% of lines
+and 95% of branches, in each file on its own**. A file in a region cannot
+lean on the rest of the suite's average, because an untested path there
+can cost an operator real money.
+
+The 95% figure is not yet a gate in `npm run check`. Measure it as
+described below whenever a file in a region changes.
+
+### Swap and aggregator (since 2026-10-16)
+
+Every swap a rebalance or a compound makes runs through these files:
+
+| File | What it does |
+| --- | --- |
+| `src/rebalancer-swap.js` | The ratio math, and the order swaps are tried in: aggregator, aggregator in chunks, V3 router |
+| `src/rebalancer-aggregator.js` | Quote, approve, send and confirm through the aggregator, with its retries and its cancel on timeout |
+| `src/aggregator-nonce-settle.js` | Works out what mined once a swap's wait has run out |
+| `src/rebalancer-router.js` | The V3 router swap, in the position's own pool |
+| `src/rebalancer-swap-impact.js` | The price-impact check against the slippage setting |
+| `src/rebalancer-correct.js` | Corrective swaps, after the main swap moves the tick |
+| `src/rebalancer-execute.js` | Swap and adjust: the range shift, the pre-mint check, the result |
+| `src/compounder-swap.js` | The compound's ratio-correcting swap |
+| `src/swap-gates.js` | The dust and gas checks in front of every swap |
+| `src/slippage-resolver.js` | Which slippage figure a swap uses |
+| `src/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
+
+Measured 2026-10-17, on Node 24 and Node 22:
+
+- **Lines.** 100% in every file, on both.
+- **Branches.** 100%, except two files, the same on both:
+  `rebalancer-aggregator.js` 99.1% (105 of 106) and `rebalancer-swap.js`
+  98.8% (84 of 85). The branch each misses is listed below.
+
+A branch inside a block counts only once some test runs that block, so a
+file's branch total can move by one between Node versions, or after a
+test elsewhere starts entering the block. Re-measure rather than trust
+the figures above.
+
+The tests that hold them there:
+
+- `aggregator-swap-paths.test.js`, `aggregator-swap-branches.test.js` and
+  `aggregator-nonce-settlement.test.js` cover the aggregator. Their shared
+  stage is `helpers/aggregator-harness.js`: scripted quotes served by a
+  local http server, scripted receipts and chain state, around the real
+  swap code.
+- `rebalancer-router-branches.test.js` covers the V3 router.
+- `rebalancer-correct.test.js` and `rebalancer-correct-branches.test.js`
+  cover the corrective swaps.
+- `rebalancer-execute-swap-adjust.test.js`, `compounder-swap.test.js`,
+  `compute-desired-edges.test.js` and `swap-gates.test.js` cover the rest.
+
+### Finding the branches a file misses
+
+`npm run check` writes each file's line and branch percentages to
+`test/report-artifacts/tests.tap`, but that table names only the missed
+lines. The same run also writes an lcov report,
+`test/report-artifacts/raw-data/lcov.info`, which names the missed
+branches. Under a file's `SF:` line, each `BRDA:<line>,<block>,<branch>,<hits>`
+with hits `0` is a branch no test took.
+
+Take it from `npm run check` rather than from a test run of your own.
+`npm run check` backs up the operator's settings and every `tmp/*.json`
+cache around its tests. `npm run wipe-settings` covers far fewer of
+them, so a direct `node --test` of the whole suite can write test data
+into a cache the app reads.
+
+### Branches still uncovered, and why
+
+A branch no caller can reach is removed, together with any test that
+existed only to reach it; it is not listed here. What is left is
+reachable, from data the app does not control, but a test of it would
+pin a meaningless input as if it were correct:
+
+- **`rebalancer-aggregator.js`.** A quote with no calldata.
+- **`rebalancer-swap.js`.** The in-range fallback's guard against
+  reference amounts of zero, which only extreme ticks produce.
+
 ## Production File Protection
 
 `scripts/check.js` automatically backs up all production cache and config files before tests run and restores them after (via try/finally — runs even if the test process exits non-zero).
@@ -61,11 +141,22 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 
 This is the ONLY protection mechanism. Individual test files do NOT need their own snapshot/restore logic.
 
-### Not protected: `logs/`
+### `logs/`
 
 The backup pass covers `app-config/user-configurable/`, `app-data/` and
-`tmp/*.json`. It does **not** cover `logs/`, so nothing restores
-`logs/lp-ranger.log` after a test run.
+`tmp/*.json`. It does **not** cover `logs/`. The two files there are
+handled differently.
+
+**`logs/error.log`.** `npm run check` deletes it, and the previous run's
+`logs/error-npm-run-check.log`, before anything runs. Once the tests are
+done, it renames whatever they wrote to `logs/error-npm-run-check.log`.
+Some tests drive code that records a failure in that file:
+`test/bot-recorder-lifetime-catastrophic.test.js` writes a scan failure
+for NFT #161973 that never happened. The rename keeps it out of the
+operator's error log. Nothing is lost that a server start would keep,
+since startup deletes `logs/error.log` too.
+
+**`logs/lp-ranger.log`.** Nothing restores it after a test run.
 
 That file is the operator's own log — `--log-file` opens it in append
 mode, so it accumulates across runs and a delete is permanent. It is

@@ -17,6 +17,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const config = require("../src/config");
 const {
   _gasLimit,
   _baseSigner,
@@ -38,10 +39,14 @@ describe("_gasLimit", () => {
     assert.ok(gl >= 200000n);
   });
 
-  it("falls back to 300000 when no gas field", () => {
-    const gl = _gasLimit({});
-    // 300000 * multiplier
-    assert.ok(gl >= 300000n);
+  it("uses the chain's gasUnitsWhenQuoteOmitsGas when the quote names no gas", () => {
+    const { aggregator, gasLimitMultiplier } = config.CHAIN;
+    assert.equal(
+      _gasLimit({}),
+      BigInt(
+        Math.ceil(aggregator.gasUnitsWhenQuoteOmitsGas * gasLimitMultiplier),
+      ),
+    );
   });
 
   it("handles string gas values", () => {

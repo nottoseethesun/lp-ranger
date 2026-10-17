@@ -40,7 +40,7 @@ const {
   getPoolCreationBlockCached,
   resolvePoolAddressForToken,
 } = require("./pool-creation-block");
-const { FIVE_YEAR_BLOCKS } = require("./position-history-scan-helpers");
+const { historyFloorBlock } = require("./history-lookback");
 
 const _IFACE = new ethers.Interface(PM_ABI);
 
@@ -103,10 +103,8 @@ async function _mintScanWindow(prov, tokenId, knownBlock, pmAddress) {
    *  requests; this is one. */
   if (Number.isInteger(knownBlock) && knownBlock > 0)
     return { from: knownBlock, to: knownBlock };
-  /* Search recent blocks only — NFTs are minted within
-     the last ~5 years max (~15.8M blocks on PulseChain). */
-  const latest = await prov.getBlockNumber();
-  const fiveYearFloor = Math.max(0, latest - FIVE_YEAR_BLOCKS);
+  // Search no further back than the history lookback reaches.
+  const lookbackFloor = historyFloorBlock(await prov.getBlockNumber());
   /*- Tighten the lower bound to the pool's creation block when we can
       determine it; the pool can't have minted NFTs before it existed. */
   const poolAddress = await resolvePoolAddressForToken({
@@ -128,7 +126,7 @@ async function _mintScanWindow(prov, tokenId, knownBlock, pmAddress) {
    *  consecutive mints as successive rebalances — sound only when every
    *  mint in the pool IS a rebalance. */
   return {
-    from: Math.max(fiveYearFloor, poolCreationBlock),
+    from: Math.max(lookbackFloor, poolCreationBlock),
     to: "latest",
   };
 }

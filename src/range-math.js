@@ -17,7 +17,7 @@
  *
  * All math follows the Uniswap v3 white-paper formulas.
  *
- * @see {@link https://uniswap.org/whitepaper-v3.pdf}
+ * @see {@link https://app.uniswap.org/whitepaper-v3.pdf}
  */
 
 "use strict";

@@ -8,20 +8,46 @@
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
 const { getApiKey, isServiceEnabled } = require("./api-key-holder");
 const { hasEncryptedKey } = require("./api-key-store");
+const { MORALIS_API } = require("./price-service-urls");
 
 /**
- * Ping Moralis with the in-memory key; return "valid" | "invalid" | "quota".
+ * The request that checks a Moralis key on a chain: the price of the
+ * chain's wrapped native token, both named in its chains.json entry, so
+ * the probe asks something Moralis answers for that chain.
+ * @param {object} chain  A chains.json entry.
+ * @returns {string|null} The url, or null for a chain with no Moralis id
+ *   or no wrapped native token, which leaves nothing to probe with.
+ */
+function moralisProbeUrl(chain) {
+  const moralisChain = chain.priceServices.moralisChain;
+  const token = chain.nativeWrappedToken;
+  if (moralisChain === "" || token === "") return null;
+  return `${MORALIS_API}/erc20/${token}/price?chain=${moralisChain}`;
+}
+
+/**
+ * Ping Moralis with the in-memory key; return "valid" | "invalid" | "quota",
+ * or null with no key. On a chain Moralis is not asked about — no Moralis
+ * id, or no wrapped native token to price — it answers "unsupported"
+ * without a request: the key is there, and it is the chain that leaves it
+ * unused, which the dashboard must not report as a missing key.
  * Logs the request URL, status, and response body for diagnostics.
  * @returns {Promise<string|null>}
  */
 async function pingMoralis() {
   const key = getApiKey("moralis");
   if (!key) return null;
-  const url =
-    "https://deep-index.moralis.io/api/v2.2/erc20" +
-    "/0xA1077a294dDE1B09bB078844df40758a5D0f9a27/price?chain=0x171";
+  const url = moralisProbeUrl(config.CHAIN);
+  if (url === null) {
+    log.info(
+      "[moralis] Key not checked: %s has no Moralis id or wrapped native token in chains.json",
+      config.CHAIN_NAME,
+    );
+    return "unsupported";
+  }
   log.info("[moralis] Validating key → GET %s", url);
   const r = await fetch(url, {
     headers: { Accept: "application/json", "X-API-Key": key },
@@ -97,4 +123,9 @@ async function handleApiKeyStatus(_req, res, jsonResponse) {
   }
 }
 
-module.exports = { pingMoralis, validateMoralisKey, handleApiKeyStatus };
+module.exports = {
+  pingMoralis,
+  validateMoralisKey,
+  handleApiKeyStatus,
+  moralisProbeUrl,
+};

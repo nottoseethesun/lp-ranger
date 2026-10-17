@@ -3,16 +3,17 @@
  * @module dexDetailPageUrlGenerator
  * @description
  * Builds the "Dex Detail Page" deep link shown above Chart Links in the
- * Pool Details dialog — e.g.
- * `https://dex.9mm.pro/info/v3/pulsechain/pairs/0x82db…`.
+ * Pool Details dialog — e.g. `https://app.9mm.pro/pools/0x82db…`.
  *
  * Nothing in that URL is hard coded here. Every part is resolved from
- * config, and each part comes from whichever file actually owns it:
+ * config, and each part comes from whichever file actually owns it. The
+ * two placeholders after the literal segments are available to a
+ * provider whose pair page uses them; 9mm's current page uses neither.
  *
  * | URL part            | Example  | Source                                                        |
  * | ------------------- | -------- | ------------------------------------------------------------- |
- * | scheme + FQDN       | `dex.9mm.pro` | `lp-providers.json` → entry → `dexDetailPage`             |
- * | literal segments    | `info`, `pairs` | `dexDetailPage.pathSegments`                           |
+ * | scheme + FQDN       | `app.9mm.pro` | `lp-providers.json` → entry → `dexDetailPage`             |
+ * | literal segments    | `pools`  | `dexDetailPage.pathSegments`                                  |
  * | `{swapProtocolVersion}` | `v3` | the SAME lp-providers entry's `swapProtocolVersion`         |
  * | `{blockchain}`      | `pulsechain` | active chain's `dexPairDetailPageUrl.blockchain` in chains.json |
  * | `{poolId}`          | `0x82db…`| left in the template; substituted client-side                 |
@@ -38,22 +39,14 @@ const { loadMergedDefaults } = require("./load-merged-defaults");
 
 /**
  * Read the per-URL-type blockchain slug for a chain. Returns `null`
- * when the chain is unknown or the slug is missing/blank — an unknown
- * chain must yield no link rather than a wrong one.
+ * when the slug is missing or blank — a chain without one must yield no
+ * link rather than a wrong one. The chain itself always has an entry,
+ * since startup refuses a chain name chains.json does not have.
  * @param {string} chainName  Canonical chain id — KEY of chains.json.
  * @returns {string|null}
  */
 function _readChainSlug(chainName) {
-  if (typeof chainName !== "string" || chainName.length === 0) return null;
-  let chains;
-  try {
-    chains = loadMergedDefaults("chains.json");
-  } catch {
-    return null;
-  }
-  const chain = chains[chainName];
-  if (chain === null || chain === undefined) return null;
-  const cfg = chain.dexPairDetailPageUrl;
+  const cfg = loadMergedDefaults("chains.json")[chainName].dexPairDetailPageUrl;
   if (cfg === null || cfg === undefined || typeof cfg !== "object") return null;
   const slug = cfg.blockchain;
   if (typeof slug !== "string" || slug.length === 0) return null;
@@ -126,7 +119,7 @@ function _resolveVersion(providerEntry, pathSegments) {
  * Returns `null` — meaning "render no link" — whenever any required
  * piece is missing or malformed: no `dexDetailPage` block, blank
  * scheme/domain, non-array `pathSegments`, missing
- * `swapProtocolVersion` while a segment asks for it, an unknown chain
+ * `swapProtocolVersion` while a segment asks for it, a chain with no
  * slug, or a segment set that never yields a `{poolId}`. Failing
  * closed matters here: a half-resolved URL would silently send the
  * user to the wrong pool's page.

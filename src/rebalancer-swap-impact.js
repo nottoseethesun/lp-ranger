@@ -19,11 +19,12 @@
  *   can later synthesize a "lowest observed impact" error covering the
  *   whole chain (aggregator full → chunks → V3 router fallback).
  * @param {string} [label]    Identifier for this attempt (e.g.
- *   "9mm Aggregator (full)", "9mm V3 Router").
+ *   "Watergun Aggregator (full)", "9mm V3 Router"). The orchestrator
+ *   supplies one with every `attempts` array.
  */
 function _checkSwapImpact(impactPct, slip, attempts, label) {
   if (Array.isArray(attempts)) {
-    attempts.push({ label: label || "(unknown)", impactPct });
+    attempts.push({ label, impactPct });
   }
   if (!isFinite(impactPct))
     throw new Error(

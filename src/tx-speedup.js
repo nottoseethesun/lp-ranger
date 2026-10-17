@@ -29,13 +29,14 @@
 
 const { log } = require("./log");
 const config = require("./config");
-const { _retrySend } = require("./tx-retry");
+const { _retrySend, _isNonceTooLow } = require("./tx-retry");
 const { receiptGasWei } = require("./receipt-gas");
 
-/** Default speed-up gas-price bump when chain config doesn't set one. */
-const _DEFAULT_SPEEDUP_GAS_BUMP = 1.5;
-/** Cancel TX is a 0-value self-transfer — exactly 21000 base gas. */
-const _CANCEL_GAS_LIMIT = 21000n;
+/**
+ * A cancel is a 0-value self-transfer, which costs exactly the 21000 gas
+ * every plain transfer does. Shared with the aggregator's own cancel.
+ */
+const CANCEL_GAS_LIMIT = 21000n;
 
 /**
  * Unwrap a NonceManager (or FailoverNonceManager) to the base signer.
@@ -53,14 +54,15 @@ function _resetNonce(signer) {
 }
 
 /**
- * Compute a cancel gas price that beats the stuck replacement TX.
- * Uses 2× the higher of current network gas or the stuck TX's gas.
+ * Compute a cancel gas price that beats the stuck replacement TX: the
+ * higher of current network gas or the stuck TX's own, times the chain's
+ * `cancelGasBump` in chains.json.
  */
 async function _cancelGasPrice(provider, stuckGas) {
   const fd = await provider.getFeeData();
   const cur = fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
   const base = cur > stuckGas ? cur : stuckGas;
-  return base * 2n;
+  return BigInt(Math.ceil(Number(base) * config.CHAIN.cancelGasBump));
 }
 
 /**
@@ -85,12 +87,10 @@ async function _cancelGasPrice(provider, stuckGas) {
  * @param {object} tx        The transaction to wait on.
  * @param {string} label     Log label.
  * @param {Function} [onWaitError]  `(err, tx, label, budget) => Promise<receipt>`.
- * @param {{signal?: AbortSignal, deadlineMs?: number}} [budget]
- *   What bounds the re-ask `onWaitError` performs. A phase passes its
- *   abort signal and nothing else, because the phase's own clock is
- *   what ends the wait. The one call with no phase around it — the
- *   fallback after a speed-up could not be sent — passes a deadline
- *   instead, which is then the only bound there is.
+ * @param {{signal: AbortSignal}} budget  What ends the re-ask
+ *   `onWaitError` performs: a phase's signal, aborted when the phase's
+ *   own clock runs out, or the cancel's, aborted once one of the
+ *   transactions competing for the nonce has mined.
  * @returns {Promise<object>} The receipt.
  */
 function _tolerantWait(tx, label, onWaitError, budget) {
@@ -110,17 +110,17 @@ function _timeout(ms, sentinel) {
   let handle;
   const promise = new Promise((resolve, reject) => {
     done = resolve;
-    /*- Deliberately NOT unref'd. This timer is what defines a phase,
+    /*-
+     *  Deliberately NOT unref'd. This timer is what defines a phase,
      *  and a phase only exists while a transaction is in flight and the
      *  rebalance lock is held — work the process should stay alive to
      *  finish rather than drain out from under. Shutdown is not at risk:
-     *  `server.js` force-exits three seconds after SIGINT or SIGTERM
-     *  regardless of what is pending.
-     *
-     *  It was unref'd before, which is why nothing could test these
-     *  phases: with every timer here unref'd, a test process has
-     *  nothing holding the loop open and drains before the first phase
-     *  elapses, leaving promises unsettled. */
+     *  `server.js` force-exits `shutdown.exitTimeoutMs` after SIGINT or
+     *  SIGTERM regardless of what is pending. An unref'd timer would
+     *  also leave a test process nothing holding its loop open, so it
+     *  would drain before the first phase elapsed, its promises
+     *  unsettled.
+     */
     handle = setTimeout(() => reject(new Error(sentinel)), ms);
   });
   /*- Called once the race it belongs to has settled. Clearing the timer
@@ -259,11 +259,11 @@ async function _waitOnePhase({ tx, label, onWaitError, ms, sentinel }) {
  * has already been mined (so there's nothing to replace).
  */
 async function _submitSpeedUp(tx, signer, label) {
-  const provider = signer.provider || signer;
+  const provider = signer.provider;
   const fd = await provider.getFeeData();
   const curGas = fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
   const origGas = tx.gasPrice ?? tx.maxFeePerGas ?? 0n;
-  const bump = config.CHAIN?.speedUpGasBump ?? _DEFAULT_SPEEDUP_GAS_BUMP;
+  const bump = config.CHAIN.speedUpGasBump;
   const bumped = BigInt(
     Math.ceil(Number(curGas > origGas ? curGas : origGas) * bump),
   );
@@ -291,7 +291,7 @@ async function _submitSpeedUp(tx, signer, label) {
       { signer, retryingTxWithSameNonce: true },
     );
     log.info(
-      "[send-tx] %s: replacement TX submitted, hash=%s nonce=%d",
+      "[send-tx] %s: replacement TX submitted, hash= %s nonce=%d",
       label,
       replacement.hash,
       replacement.nonce,
@@ -309,56 +309,141 @@ async function _submitSpeedUp(tx, signer, label) {
 }
 
 /**
- * Cancel a stuck nonce with a 0-PLS self-transfer at a beat-everyone gas
- * price.  Throws an Error annotated with `cancelled: true` so the caller
- * can distinguish "TX cancelled, retry" from "TX failed, abort".
+ * Send the zero-value self-transfer that cancels a stuck nonce, or learn
+ * that it is not needed.
+ *
+ * A node refuses the cancel as "nonce too low" when the nonce is already
+ * taken, which can only mean the move's own transaction, or its speed-up,
+ * mined in the meantime. That is not a failed cancel: the caller then
+ * waits for the move's receipt. Any other refusal leaves the nonce stuck,
+ * and says so.
+ *
+ * @returns {Promise<object|null>} The cancel, or null when the nonce was
+ *   already taken.
+ * @throws {Error} "TX stuck and cancel failed" for any other refusal.
+ */
+async function _sendCancel(tx, signer, label, stuckGas) {
+  const cancelGas = await _cancelGasPrice(signer.provider, stuckGas);
+  const base = _baseSigner(signer);
+  const addr = await base.getAddress();
+  try {
+    const cancelTx = await _retrySend(
+      () =>
+        base.sendTransaction({
+          type: config.TX_TYPE,
+          to: addr,
+          value: 0,
+          nonce: tx.nonce,
+          gasPrice: cancelGas,
+          gasLimit: CANCEL_GAS_LIMIT,
+        }),
+      "[send-tx] " + label + " cancel nonce=" + tx.nonce,
+      { signer: base, retryingTxWithSameNonce: true },
+    );
+    log.info(
+      "[send-tx] %s: cancel TX submitted, hash= %s nonce=%d gasPrice=%s",
+      label,
+      cancelTx.hash,
+      cancelTx.nonce,
+      String(cancelGas),
+    );
+    return cancelTx;
+  } catch (sendErr) {
+    if (_isNonceTooLow(sendErr)) {
+      log.info(
+        "[send-tx] %s: cancel refused as 'nonce too low' — nonce %d was " +
+          "already taken, so the transaction or its speed-up mined; " +
+          "waiting for its receipt",
+        label,
+        tx.nonce,
+      );
+      return null;
+    }
+    log.error(
+      "[send-tx] %s: cancel TX failed: %s — nonce %d may still be stuck",
+      label,
+      sendErr.message,
+      tx.nonce,
+    );
+    throw new Error("TX stuck and cancel failed: " + sendErr.message, {
+      cause: sendErr,
+    });
+  }
+}
+
+/**
+ * Cancel a stuck nonce, and report which transaction took it.
+ *
+ * Up to three transactions now compete for one nonce — the move's own,
+ * its speed-up, and the cancel — and exactly one of them will mine. Which
+ * one decides the result. The cancel: the move did not happen, and an
+ * error marked `cancelled: true` carries the cancel's hash and gas, so
+ * the caller can tell "cancelled, try again" from "failed". The move's
+ * own transaction or its speed-up: the move happened after all, and its
+ * receipt is returned exactly as phase 3 would have returned it.
+ *
+ * All of them are waited on together, through `_tolerantWait`, so an
+ * endpoint that will not answer is asked of another, and a wait that
+ * finds its nonce taken by one of the others hands back that one's
+ * receipt. The first answer decides, and the rest are stopped. None is
+ * timed: a pending transaction stays pending until something mines at
+ * its nonce, and the rebalance lock is held until then by design.
  */
 async function _cancelStuckNonce(
   tx,
   signer,
   label,
   replacement,
-  bumped,
   totalMin,
+  onWaitError,
 ) {
-  const provider = signer.provider || signer;
   log.error(
-    "[send-tx] %s: TX STILL STUCK after %d min — cancelling nonce %d with 0-PLS self-transfer",
+    "[send-tx] %s: TX STILL STUCK after %d min — cancelling nonce %d with a zero-value self-transfer",
     label,
     totalMin,
     tx.nonce,
   );
-  const cancelGas = await _cancelGasPrice(
-    provider,
-    replacement?.gasPrice ?? bumped ?? 0n,
-  );
-  const base = _baseSigner(signer);
-  const addr = await base.getAddress();
-  const cancelTx = await _retrySend(
-    () =>
-      base.sendTransaction({
-        type: config.TX_TYPE,
-        to: addr,
-        value: 0,
-        nonce: tx.nonce,
-        gasPrice: cancelGas,
-        gasLimit: _CANCEL_GAS_LIMIT,
-      }),
-    "[send-tx] " + label + " cancel nonce=" + tx.nonce,
-    { signer: base, retryingTxWithSameNonce: true },
-  );
-  log.info(
-    "[send-tx] %s: cancel TX submitted, hash=%s nonce=%d gasPrice=%s",
-    label,
-    cancelTx.hash,
-    cancelTx.nonce,
-    String(cancelGas),
-  );
-  const cancelReceipt = await cancelTx.wait();
+  const moves = replacement ? [tx, replacement] : [tx];
+  const stuckGas = (replacement ?? tx).gasPrice ?? 0n;
+  const cancelTx = await _sendCancel(tx, signer, label, stuckGas);
+  const contenders = cancelTx ? [...moves, cancelTx] : moves;
+  const settled = new AbortController();
+  let receipt;
+  try {
+    receipt = _extractReceipt(
+      await Promise.race(
+        contenders.map((t) =>
+          _settled(
+            _tolerantWait(t, label, onWaitError, { signal: settled.signal }),
+          ),
+        ),
+      ),
+    );
+  } finally {
+    settled.abort();
+  }
+  if (moves.some((t) => t.hash === receipt.hash)) {
+    log.warn(
+      "[send-tx] %s: nonce %d was taken by the transaction itself, hash= %s — reporting it confirmed",
+      label,
+      tx.nonce,
+      receipt.hash,
+    );
+    return receipt;
+  }
+  /*-
+   *  Neither the move nor the cancel: something sent from this wallet
+   *  outside the bot took the nonce. The move did not happen, and nothing
+   *  here can say more about what did.
+   */
+  if (cancelTx === null || receipt.hash !== cancelTx.hash)
+    throw new Error(
+      `Nonce ${tx.nonce} was taken by another transaction, hash= ${receipt.hash}`,
+    );
   log.info(
     "[send-tx] %s: cancel TX confirmed in block %d — nonce %d is now free",
     label,
-    cancelReceipt.blockNumber,
+    receipt.blockNumber,
     tx.nonce,
   );
   _resetNonce(signer);
@@ -367,11 +452,11 @@ async function _cancelStuckNonce(
       totalMin +
       " min (nonce " +
       tx.nonce +
-      " freed via 0-PLS self-transfer)",
+      " freed via a zero-value self-transfer)",
   );
   cancelErr.cancelled = true;
   cancelErr.cancelTxHash = cancelTx.hash;
-  cancelErr.cancelGasCostWei = receiptGasWei(cancelReceipt);
+  cancelErr.cancelGasCostWei = receiptGasWei(receipt);
   throw cancelErr;
 }
 
@@ -383,7 +468,7 @@ async function _cancelStuckNonce(
  *   1. wait up to TX_SPEEDUP_SEC for the original.
  *   2. submit a speed-up replacement at the same nonce + bumped gas.
  *   3. wait up to total TX_CANCEL_SEC for either to confirm.
- *   4. cancel the stuck nonce with a 0-PLS self-transfer.
+ *   4. cancel the stuck nonce with a zero-value self-transfer.
  */
 async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   /*- No literal fallbacks per feedback_one_literal_per_shipped_default:
@@ -423,33 +508,30 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
     speedupMs / 1000,
   );
   const replacement = await _submitSpeedUp(tx, signer, label);
-  if (!replacement) {
-    /*- Speed-up send failed — fall back to waiting for the original.
-        Common case: the original confirmed between phases 1 and 2,
-        so the same-nonce replacement is rejected as "nonce too low". */
-    /*- Nothing races this one, so it needs neither a timeout nor a
-     *  signal: there is no loser to stop, and the move's own remaining
-     *  budget is the only bound there is. A phase object here would add
-     *  a timer whose rejection nobody is waiting for. */
-    return _extractReceipt(
-      await _tolerantWait(tx, label, onWaitError, {
-        deadlineMs: Math.max(0, cancelMs - (Date.now() - startTime)),
-      }),
-    );
-  }
 
-  /*- Phase 3: wait for either to confirm, or fall through to cancel. */
+  /*-
+   *  Phase 3: wait for either to confirm, or fall through to cancel.
+   *  When the speed-up could not be sent, only the original is waited
+   *  on, under the same clock. The usual reason is that the original
+   *  mined between phases 1 and 2 and the replacement was refused as
+   *  "nonce too low"; its receipt then arrives at once. Any other
+   *  refusal leaves it stuck, and the cancel below is still owed.
+   *
+   *  Only one transaction can ever mine, so with two waits one is
+   *  guaranteed to lose. That is the poll this phase must stop rather
+   *  than merely stop reading.
+   */
+  const moves = replacement ? [tx, replacement] : [tx];
   const elapsed = Date.now() - startTime;
-  const cancelIn = Math.max(10_000, cancelMs - elapsed);
-  /*- Two waits here, and only one transaction can ever mine, so one of
-   *  them is guaranteed to be a loser. That is the poll this phase must
-   *  stop rather than merely stop reading. */
+  const cancelIn = Math.max(
+    config.TX_CANCEL_PHASE_FLOOR_SEC * 1000,
+    cancelMs - elapsed,
+  );
   const cancelPhase = _phase(cancelIn, "_CANCEL");
   try {
     const receipt = await Promise.race([
-      _settled(_tolerantWait(tx, label, onWaitError, cancelPhase.budget)),
-      _settled(
-        _tolerantWait(replacement, label, onWaitError, cancelPhase.budget),
+      ...moves.map((t) =>
+        _settled(_tolerantWait(t, label, onWaitError, cancelPhase.budget)),
       ),
       cancelPhase.timer,
     ]);
@@ -460,31 +542,16 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
     cancelPhase.done();
   }
 
-  /*- Phase 4: cancel the stuck nonce. Always throws (cancelled or fail). */
+  // Phase 4: cancel the stuck nonce, and report whichever transaction took it.
   const totalMin = Math.round((Date.now() - startTime) / 60_000);
-  try {
-    await _cancelStuckNonce(
-      tx,
-      signer,
-      label,
-      replacement,
-      replacement?.gasPrice ?? 0n,
-      totalMin,
-    );
-    /*- Unreachable: _cancelStuckNonce always throws. */
-    return null;
-  } catch (cancelErr) {
-    if (cancelErr.cancelled) throw cancelErr;
-    log.error(
-      "[send-tx] %s: cancel TX failed: %s — nonce %d may still be stuck",
-      label,
-      cancelErr.message,
-      tx.nonce,
-    );
-    throw new Error("TX stuck and cancel failed: " + cancelErr.message, {
-      cause: cancelErr,
-    });
-  }
+  return _cancelStuckNonce(
+    tx,
+    signer,
+    label,
+    replacement,
+    totalMin,
+    onWaitError,
+  );
 }
 
-module.exports = { _waitOrSpeedUp, _waitOnePhase };
+module.exports = { _waitOrSpeedUp, _waitOnePhase, CANCEL_GAS_LIMIT };

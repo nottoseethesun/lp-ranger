@@ -397,31 +397,7 @@ function _showNoPositionsDialog() {
 
 // ── Scanning ─────────────────────────────────────
 
-/** Select bot's active position after manual scan. */
-async function _syncAfterManualScan() {
-  try {
-    const st = await (await fetch("/api/status")).json();
-    const tid = st.activePosition?.tokenId;
-    if (!tid) return;
-    const i = posStore.entries.findIndex(
-      (e) => e.positionType === "nft" && String(e.tokenId) === String(tid),
-    );
-    if (i >= 0 && i !== posStore.activeIdx)
-      _activateCore(i, {
-        updateRoute: false,
-        syncRoute: true,
-      });
-  } catch {
-    /* next poll will sync */
-  }
-}
-
-/**
- * Scan the current wallet for LP positions via the server API.
- * @param {object} [opts]  Options.
- * @param {boolean} [opts.navigate=true]  After scan, select bot's
- *   active position. Pass false for automatic scans.
- */
+/** Ask the server to scan the wallet, and add what it finds to the store. */
 async function _fetchAndApplyScan() {
   /*- No rpcUrl in the body.  The server scans with its own configured
    *  provider and always ignored this field, so sending it only made it
@@ -476,17 +452,22 @@ async function _fetchAndApplyScan() {
   return { data, added, nftCount };
 }
 /**
+ * Scan the current wallet for LP positions via the server API.
+ *
+ * A silent scan reports nothing in the Activity Log and leaves the Scan
+ * Wallet button alone; the scans the dashboard starts by itself use it.
+ *
+ * @param {object} [opts]  Options.
+ * @param {boolean} [opts.silent=false]  Scan without a word to the user.
  * @returns {Promise<{ok: boolean, added?: number, nftCount?: number, error?: string}>}
  *   `ok:true` means the scan reached the server, returned a valid
  *   response, and `_addScannedPositions` ran.  `ok:false` covers any
- *   failure path \u2014 used by `dashboard-data-events.js` to decide
- *   whether to advance the rebalance tracker so a transient failure
- *   (network, CSRF, RPC) is retried on the next 3 s poll instead of
- *   being silently swallowed (the `lp-browser stale after idle
- *   rebalance` bug observed in burn-in).
+ *   failure path; `dashboard-data-events.js` advances its rebalance
+ *   tracker only on `ok:true`, so a transient failure (network, CSRF,
+ *   rpc) is retried on its next poll rather than lost.
  */
 export async function scanPositions(opts) {
-  const silent = opts?.silent || false;
+  const silent = opts?.silent === true;
   if (!wallet.address) {
     if (!silent)
       act(
@@ -513,7 +494,6 @@ export async function scanPositions(opts) {
         `Found ${nftCount} NFT positions. Added ${added} new.`,
       );
       if (nftCount === 0) _showNoPositionsDialog();
-      if (!opts || opts.navigate !== false) await _syncAfterManualScan();
     }
     return { ok: true, added, nftCount };
   } catch (e) {

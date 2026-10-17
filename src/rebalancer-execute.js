@@ -10,6 +10,8 @@
 
 const { log } = require("./log");
 const config = require("./config");
+const rangeMath = require("./range-math");
+const { PM_ABI } = require("./pm-abi");
 const { logCtx } = require("./logger");
 const pools = require("./rebalancer-pools");
 const { swapIfNeeded } = require("./rebalancer-swap");
@@ -21,14 +23,7 @@ const {
   gasFeePctToRatio,
 } = require("./swap-gates");
 
-const {
-  ERC20_ABI,
-  PM_ABI,
-  _MIN_SWAP_THRESHOLD,
-  getPoolState,
-  removeLiquidity,
-  rangeMath,
-} = pools;
+const { ERC20_ABI, _MIN_SWAP_THRESHOLD, getPoolState, removeLiquidity } = pools;
 
 /**
  * Read wallet balances for both position tokens (recovery mode).
@@ -54,7 +49,7 @@ async function _walletBalances(ethersLib, provider, token0, token1, owner) {
  * if it's worth doing.  Returns null when the gate passes.
  */
 async function _gateInitialSwap(signer, p, ps, desired, is0to1, gasFeePct) {
-  const provider = signer.provider || signer;
+  const provider = signer.provider;
   const tokenInAddr = is0to1 ? p.token0 : p.token1;
   const decIn = is0to1 ? ps.decimals0 : ps.decimals1;
   const priceInUsd = await fetchTokenPriceUsd(tokenInAddr);
@@ -141,7 +136,7 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
   });
   return {
     txHash: result.txHash,
-    gasCostWei: result.gasCostWei || 0n,
+    gasCostWei: result.gasCostWei,
     extra0: is0to1 ? 0n : result.amountOut,
     extra1: is0to1 ? result.amountOut : 0n,
     /*- Forward swapSources from the swap path (aggregator stamps it in
@@ -221,9 +216,13 @@ async function _removeLiquidityStep(signer, ethersLib, provider, opts) {
   return removed;
 }
 
-/** Sum gas costs from multiple rebalance step results. */
+/**
+ * Sum gas costs from multiple rebalance step results. A step that sent
+ * nothing carries no figure: liquidity read from the wallet when there
+ * was none to remove, or no corrective swap at all.
+ */
 function _sumGas(...steps) {
-  return steps.reduce((sum, s) => sum + (s.gasCostWei || 0n), 0n);
+  return steps.reduce((sum, s) => sum + (s.gasCostWei ?? 0n), 0n);
 }
 
 /**
@@ -337,11 +336,12 @@ function _computeRange(ps, pos, crw, offset, fullRange) {
 
 /**
  * Merge primary-swap and corrective-swap source strings into one display
- * label.  When every entry is identical (e.g. all "9mm Aggregator"), we
- * collapse to a single copy — otherwise "9mm Aggregator +3 corrective"
- * would misread as a different route from the primary.  Examples:
- *   primary="9mm Aggregator", corrective=["9mm Aggregator"×3]  → "9mm Aggregator"
- *   primary="9mm Aggregator", corrective=["9mm V3 Router"]     → "9mm Aggregator +1 corrective"
+ * label.  When every entry is identical (e.g. all "Watergun Aggregator"),
+ * we collapse to a single copy — otherwise "Watergun Aggregator +3
+ * corrective" would misread as a different route from the primary.
+ * Examples:
+ *   primary="Watergun Aggregator", corrective=["Watergun Aggregator"×3] → "Watergun Aggregator"
+ *   primary="Watergun Aggregator", corrective=["9mm V3 Router"]         → "Watergun Aggregator +1 corrective"
  *   primary=null, corrective=["A","B"]                          → "A,B (corrective)"
  *   primary=null, corrective=[]                                 → undefined
  */
@@ -391,7 +391,7 @@ function _buildRebalanceResult(
     success: true,
     txHashes,
     totalGasCostWei: _sumGas(removed, swapped, mintResult, corrective || {}),
-    mintGasCostWei: mintResult.gasCostWei || 0n,
+    mintGasCostWei: mintResult.gasCostWei,
     oldTokenId: position.tokenId,
     newTokenId: mintResult.tokenId,
     oldTickLower: position.tickLower,

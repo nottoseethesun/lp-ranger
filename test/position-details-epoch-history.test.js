@@ -85,7 +85,7 @@ function loadSnapshot() {
       },
     },
     // Not used by the history path; replaced so they load nothing heavy.
-    "./rebalancer": {},
+    "./rebalancer-pools": {},
     "./position-details-quick": {},
     "./position-details-compound": {},
     "./resolve-position-symbols": {},

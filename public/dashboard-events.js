@@ -16,6 +16,7 @@ import {
   toggleSettingsPopover,
   showDisclosure,
   copyElText,
+  copyWithFeedback,
 } from "./dashboard-helpers.js";
 import {
   markInputDirty,
@@ -29,6 +30,11 @@ import {
   generateWallet,
   checkPasswordMatch,
   confirmWallet,
+  openWalletModal,
+  submitUnlock,
+  dismissToViewOnly,
+} from "./dashboard-wallet.js";
+import {
   validateSeed,
   onSeedConfirmChange,
   importSeed,
@@ -41,10 +47,7 @@ import {
   clearWalletUI,
   closeClearWalletModal,
   confirmClearWallet,
-  openWalletModal,
-  submitUnlock,
-  dismissToViewOnly,
-} from "./dashboard-wallet.js";
+} from "./dashboard-wallet-import.js";
 import {
   openPosBrowser,
   closePosBrowser,
@@ -512,12 +515,7 @@ export function bindAllEvents() {
     offsetRow.addEventListener("click", (e) => {
       const b = e.target.closest("[data-copy-addr]");
       if (!b || !b.dataset.copyAddr) return;
-      navigator.clipboard.writeText(b.dataset.copyAddr).catch(() => {});
-      const orig = b.textContent;
-      b.textContent = "\u2713";
-      setTimeout(() => {
-        b.textContent = orig;
-      }, 1200);
+      copyWithFeedback(b, b.dataset.copyAddr);
     });
 
   /* ── Dirty-flag: mark config inputs as edited so poll skips overwrite ── */

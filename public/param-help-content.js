@@ -23,6 +23,17 @@
  *  directly — rejects it with ERR_IMPORT_ATTRIBUTE_MISSING.  Without
  *  the attribute the app works and 301 tests fail. */
 import SHARED_HELP from "./shared-help-content.json" with { type: "json" };
+import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
+import BOT_DEFAULTS from "../app-config/app-defaults-for-user-configurable/bot-config-defaults.json" with { type: "json" };
+
+/*-
+ *  The NEAR LIMIT section quotes the badge's threshold and works an
+ *  example at the shipped daily cap, so both figures come from the files
+ *  that set them rather than being written into the sentence.
+ */
+const _NEAR_PCT = UI_DEFAULTS.throttleNearLimitPct;
+const _DAILY_MAX = BOT_DEFAULTS.maxRebalancesPerDay;
+const _NEAR_AT = Math.ceil((_DAILY_MAX * _NEAR_PCT) / 100);
 
 /** @type {Record<string, {title: string, sections: {heading: string, body: string}[]}>} */
 export const PARAM_HELP = {
@@ -709,7 +720,8 @@ export const PARAM_HELP = {
         heading: "Safety note",
         body:
           "The allowance applies only to the specific spender contract " +
-          "(the V3 Router, the 9mm Aggregator, or the Position Manager) " +
+          "(the V3 Router, the Watergun Aggregator, or the Position " +
+          "Manager) " +
           "and only to the exact token being approved. You can revoke any " +
           "approval at any time from a wallet tool such as Revoke.cash.",
       },
@@ -1342,11 +1354,17 @@ export const PARAM_HELP = {
         heading: "NEAR LIMIT",
         body:
           "<strong>NEAR LIMIT</strong> is a heads-up, not a brake: the " +
-          "pool has used <strong>80% or more</strong> of its " +
+          "pool has used <strong>" +
+          _NEAR_PCT +
+          "% or more</strong> of its " +
           "&ldquo;Max Rebalances / Day&rdquo; allowance and nothing is " +
-          "being blocked yet. At the default of 5 per day it appears " +
-          "once the 4th rebalance lands, leaving one before the pool " +
-          "goes CAPPED. If you expect more volatility before the " +
+          "being blocked yet. At the default of " +
+          _DAILY_MAX +
+          " per day it appears once " +
+          _NEAR_AT +
+          " rebalances have landed, leaving " +
+          (_DAILY_MAX - _NEAR_AT) +
+          " before the pool goes CAPPED. If you expect more volatility before the " +
           "midnight UTC reset, this is your cue to raise Max " +
           "Rebalances / Day &mdash; after the cap is hit, automatic " +
           "rebalances stop until the reset.",
@@ -2167,7 +2185,8 @@ export const PARAM_HELP = {
         heading: "About the aggregator LP Ranger uses",
         body:
           "While currently, LP Ranger uses a single aggregator, the " +
-          "9mm DEX Aggregator, there are other good ones as well. " +
+          "Watergun Aggregator (formerly the 9mm DEX Aggregator), there " +
+          "are other good ones as well. " +
           'See <a href="https://switch.win/" target="_blank" ' +
           'rel="noopener noreferrer">Switch</a> and ' +
           '<a href="https://piteas.io/" target="_blank" ' +
