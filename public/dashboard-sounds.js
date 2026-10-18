@@ -4,8 +4,8 @@
  * Sound-effect playback for the dashboard.  A single master "Sounds" toggle
  * (Settings popover) controls whether UI-action sounds play.  State is
  * persisted in localStorage under the `9mm_sounds_enabled` key; when that
- * key is absent, the default comes from `GET /api/ui-defaults` (backed by
- * `app-config/app-defaults-for-user-configurable/ui-defaults.json`).
+ * key is absent, the default is `soundsEnabled`, a setting the server
+ * sends (`dashboard-ui-settings.js`).
  *
  * Each sound lives under `public/media/` and is played as a one-shot
  * `Audio` element.  Use `playSound(path)` for toggle-gated playback and
@@ -18,17 +18,14 @@
 import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
 import { isBrowserPaused, isStaleForUiPurposes } from "./dashboard-idle.js";
+import {
+  uiSetting,
+  uiSettingsLoaded,
+  uiSettingsReady,
+} from "./dashboard-ui-settings.js";
 
 /** localStorage key for the master Sounds toggle. Value: "0" or "1". */
 const _LS_KEY = "9mm_sounds_enabled";
-
-/**
- * Cached server-provided default for Sounds, used when localStorage is
- * empty. Populated by `restoreSoundsToggle()` on init; falls back to
- * `true` if the fetch fails so a brand-new browser still defaults to
- * sound-on even when the server is unreachable.
- */
-let _serverDefaultEnabled = true;
 
 /** Path to the sound played when the user clicks "Manage Position" on the NFT panel. */
 export const SOUND_MANAGE_START =
@@ -51,18 +48,21 @@ export const SOUND_LP_RANGER_TUNE =
   "/media/Ride%20Your%20LP%20Ranges%20with%20the%20Trusty%20LP%20Ranger.mp3";
 
 /**
- * Whether the master Sounds toggle is enabled.
- * When no setting has been stored in localStorage, returns the cached
- * server-provided default (see `_serverDefaultEnabled`).
+ * Whether the master Sounds toggle is enabled: the browser's saved
+ * choice, else `soundsEnabled`, the first-visit default the server sends.
+ * Until the server has sent it, a browser with no saved choice plays
+ * nothing.
  * @returns {boolean}
  */
 export function isSoundsEnabled() {
+  let saved = null;
   try {
-    const v = localStorage.getItem(_LS_KEY);
-    return v === null ? _serverDefaultEnabled : v === "1";
+    saved = localStorage.getItem(_LS_KEY);
   } catch {
-    return _serverDefaultEnabled;
+    /* storage unavailable: no saved choice */
   }
+  if (saved !== null) return saved === "1";
+  return uiSettingsLoaded() ? uiSetting("soundsEnabled") : false;
 }
 
 /**
@@ -139,24 +139,13 @@ export function _toggleSounds() {
 }
 
 /**
- * Restore the Sounds checkbox state on page load. Fetches the server
- * default from `/api/ui-defaults` first so that a fresh browser (no
- * localStorage entry yet) reflects the operator-configured default
- * from `app-config/app-defaults-for-user-configurable/ui-defaults.json`. Fetch failures
- * are swallowed — the built-in default (true) remains in effect.
+ * Restore the Sounds checkbox state on page load, once the server has
+ * sent the dashboard's settings, so a fresh browser (no saved choice)
+ * shows the operator-configured default.
  * @returns {Promise<void>}
  */
 export async function restoreSoundsToggle() {
-  try {
-    const res = await fetch("/api/ui-defaults");
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof data.soundsEnabled === "boolean")
-        _serverDefaultEnabled = data.soundsEnabled;
-    }
-  } catch {
-    /* keep built-in default */
-  }
+  await uiSettingsReady;
   const sw = g("soundsSwitch");
   if (sw) sw.checked = isSoundsEnabled();
 }

@@ -25,6 +25,11 @@ import {
   logLocalRender,
   logDedupRefresh,
 } from "./dashboard-positions-store-log.js";
+import {
+  readChainScoped,
+  writeChainScoped,
+  rememberLastPosition,
+} from "./dashboard-chain-storage.js";
 
 // ── Constants ────────────────────────────────────
 
@@ -36,7 +41,7 @@ export const PAGE_SIZE = 7;
 
 // ── Persistence ──────────────────────────────────
 
-const _POS_STORE_KEY = "9mm_position_store";
+// Kept per chain, as dashboard-chain-storage.js explains.
 
 /** Save posStore to localStorage. */
 function _persistPosStore() {
@@ -45,7 +50,7 @@ function _persistPosStore() {
       entries: posStore.entries,
       activeIdx: posStore.activeIdx,
     };
-    localStorage.setItem(_POS_STORE_KEY, JSON.stringify(data));
+    writeChainScoped("9mm_position_store", JSON.stringify(data));
   } catch {
     /* private mode or quota exceeded */
   }
@@ -83,7 +88,7 @@ export function _refreshDuplicateEntry(existing, entry) {
 /** Load posStore from localStorage, deduplicating. */
 export function _loadPosStore() {
   try {
-    const raw = localStorage.getItem(_POS_STORE_KEY);
+    const raw = readChainScoped("9mm_position_store");
     if (!raw) return;
     const data = JSON.parse(raw);
     if (Array.isArray(data.entries)) {
@@ -153,7 +158,6 @@ let _allPositionStates = {};
  * Update the set of managed tokenIds and all
  * position states from the server.
  */
-const _MGD_KEY = "9mm_managed_token_ids";
 export function updateManagedPositions(list, allStates) {
   _managedTokenIds.clear();
   if (Array.isArray(list))
@@ -162,7 +166,10 @@ export function updateManagedPositions(list, allStates) {
         _managedTokenIds.add(String(p.tokenId));
   _allPositionStates = allStates || {};
   try {
-    localStorage.setItem(_MGD_KEY, JSON.stringify([..._managedTokenIds]));
+    writeChainScoped(
+      "9mm_managed_token_ids",
+      JSON.stringify([..._managedTokenIds]),
+    );
   } catch {
     /* */
   }
@@ -170,11 +177,24 @@ export function updateManagedPositions(list, allStates) {
 /** Restore managed tokenIds from localStorage for instant badge render. */
 export function restoreManagedPositions() {
   try {
-    const s = localStorage.getItem(_MGD_KEY);
+    const s = readChainScoped("9mm_managed_token_ids");
     if (s) for (const id of JSON.parse(s)) _managedTokenIds.add(String(id));
   } catch {
     /* */
   }
+}
+
+/**
+ * Record the server's answer about one position, asked when that
+ * position is put on screen (`dashboard-manage-check.js`). The next status
+ * poll replaces the whole set.
+ *
+ * @param {string|number} tokenId
+ * @param {boolean} managed
+ */
+export function setPositionManaged(tokenId, managed) {
+  if (managed) _managedTokenIds.add(String(tokenId));
+  else _managedTokenIds.delete(String(tokenId));
 }
 
 /** Whether the given tokenId is actively managed. */
@@ -308,7 +328,7 @@ export const posStore = {
     a.tokenId = nid;
     _persistPosStore();
     try {
-      localStorage.setItem("9mm_last_position", String(newId));
+      rememberLastPosition(newId);
     } catch {
       /* */
     }

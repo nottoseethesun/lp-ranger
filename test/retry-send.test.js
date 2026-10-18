@@ -26,11 +26,13 @@ describe("_retrySend", () => {
       () =>
         _retrySend(() => {
           attempts++;
-          return Promise.reject(new Error("already known"));
+          return Promise.reject(
+            new Error("replacement transaction underpriced"),
+          );
         }, "test"),
-      { message: "already known" },
+      { message: "replacement transaction underpriced" },
     );
-    assert.strictEqual(attempts, 1, "must not retry on already-known");
+    assert.strictEqual(attempts, 1, "must not retry on a consumed nonce");
   });
 
   it("recovers from nonce-too-low by resetting NonceManager and retrying once", async () => {

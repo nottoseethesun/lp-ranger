@@ -62,11 +62,13 @@ DEFAULT BEHAVIOUR (no options)
   Cleans EVERY pool-scoped cache surface for the given pool:
 
     1. tmp/pool-creation-blocks-cache.json
-         Removes every key whose value contains the pool address
-         (matched as a case-insensitive substring of each key).
+         Removes this chain's entry for the pool: the key that begins
+         with the chain and ends with the pool address, in either
+         letter case. Another chain's entry for the same address is
+         kept.
 
     2. tmp/gecko-pool-cache.json
-         Removes every key containing the pool address.
+         Removes this chain's entry for the pool, matched the same way.
 
     3. tmp/event-cache-*.json   (one file per wallet that has positions
                                  in this pool)
@@ -108,9 +110,10 @@ DEFAULT BEHAVIOUR (no options)
   configuration is wiped.
 
   Caches that are NOT touched (intentional — not pool-scoped):
-    - tmp/historical-price-cache.json   keyed by token + block
-    - tmp/nft-mint-date-cache.json      keyed by tokenId
+    - tmp/historical-price-cache.json   keyed by chain + token + block or day
+    - tmp/nft-mint-date-cache.json      keyed by chain + nft-factory + tokenId
     - tmp/block-time-cache.json         keyed by chain + block
+    - tmp/token-symbol-cache.json       keyed by chain + token
 
 REQUIREMENTS
   Default mode reads token0/token1/fee from the pool via RPC.  Tries

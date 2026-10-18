@@ -72,11 +72,11 @@ describe("formatSettingChange()", () => {
 
   it("handles an empty-unit entry", async () => {
     await _installLabels({
-      gasStrategy: { label: "Gas Strategy", unit: "" },
+      maxRebalancesPerDay: { label: "Max Rebalances per Day", unit: "" },
     });
     assert.equal(
-      mod.formatSettingChange("gasStrategy", "auto"),
-      "Gas Strategy is now auto",
+      mod.formatSettingChange("maxRebalancesPerDay", 5),
+      "Max Rebalances per Day is now 5",
     );
   });
 

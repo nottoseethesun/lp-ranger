@@ -138,6 +138,8 @@ describe("handleManage one-position-per-pool gate", () => {
      *  refused needs to know which position to stop. */
     assert.strictEqual(res._body.conflictTokenId, "111");
     assert.strictEqual(res._body.conflictKey, held);
+    // The refusal names the position refused (src/position-answer-tag.js).
+    assert.match(res._body.positionKey, /-222$/);
     /*- Refused BEFORE anything starts — no bot loop, no disk entry. */
     assert.deepStrictEqual(started, []);
   });
@@ -160,6 +162,8 @@ describe("handleManage one-position-per-pool gate", () => {
 
     assert.notStrictEqual(res._status, 409);
     assert.strictEqual(started.length, 1);
+    // The answer names the position started (src/position-answer-tag.js).
+    assert.match(res._body.positionKey, /-222$/);
   });
 
   it("allows the same pair at a different fee tier", async () => {

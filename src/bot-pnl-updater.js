@@ -26,26 +26,25 @@ const {
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 const { applyInitialResidual } = require("./bot-pnl-initial-residual");
 
-/*- The shipped default, read once at load.  `readBotConfigDefaults()`
+/*-
+ *  The shipped default, read once at load.  `readBotConfigDefaults()`
  *  merges the JSON from disk on every call and this resolves once per
  *  position per poll cycle, so reading it per call would put file I/O
  *  on the poll path.  Reading once is also the semantics the setting's
  *  group documents: override it in the user-configurable file and
- *  restart. */
-const _SHIPPED_BALANCED_MULTIPLIER = (() => {
-  try {
-    const d = readBotConfigDefaults();
-    return typeof d.pricePauseExceptionPollWindowMultiple === "number"
-      ? d.pricePauseExceptionPollWindowMultiple
-      : 10;
-  } catch {
-    return 10;
-  }
-})();
+ *  restart. The reader does not throw. The shipped file it starts from
+ *  holds this setting, held to its range by
+ *  `test/shipped-config-values.test.js`, and startup refuses an
+ *  override outside that range.
+ */
+const _SHIPPED_BALANCED_MULTIPLIER =
+  readBotConfigDefaults().pricePauseExceptionPollWindowMultiple;
 
-/*- Resolve the balanced-notifier fetch-window multiplier.  Order of
- *  precedence: explicit override in the merged cfg → the shipped
- *  default read at load → built-in fallback (10). */
+/**
+ * Resolve the balanced-notifier fetch-window multiplier.  Order of
+ * precedence: explicit override in the merged cfg → the shipped
+ * default read at load.
+ */
 function _resolveBalancedMultiplier(deps) {
   const gc = deps._getConfig;
   const explicit = gc && gc("pricePauseExceptionPollWindowMultiple");
@@ -413,11 +412,16 @@ async function overridePnlWithRealValues(
   }
 }
 
-/** Estimate gas cost in USD for a rebalance (~800k gas). */
+/**
+ * Estimate a rebalance's gas cost in USD before it starts: the chain's
+ * `estimatedRebalanceGasUnits` in chains.json, at the network's current
+ * gas price and the native token's current price.
+ */
 async function estimateGasCostUsd(provider) {
   try {
     const f = await provider.getFeeData();
-    const c = (f.gasPrice ?? 0n) * 800_000n;
+    const units = BigInt(config.CHAIN.estimatedRebalanceGasUnits);
+    const c = (f.gasPrice ?? 0n) * units;
     const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
     return (Number(c) / 1e18) * p;
   } catch {

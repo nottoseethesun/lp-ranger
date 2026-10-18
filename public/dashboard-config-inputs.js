@@ -11,8 +11,8 @@
  * `/api/bot-config-defaults` fetch, and the two functions that write
  * them into the DOM.
  *
- * `_populateConfigInputs` runs once per position (latched by
- * `_configSynced` in dashboard-data.js), `_syncGlobalConfig` once per
+ * `populateConfigInputs` runs once per position (latched by
+ * `_configSynced` in dashboard-data.js), `syncGlobalConfig` once per
  * page load.  Both skip inputs the user is mid-edit on, via the
  * dirty-flag cache.
  */
@@ -26,10 +26,8 @@ import { rememberGoodInput } from "./dashboard-config-save.js";
 
 /* Map of server config key → form input id. */
 const _CONFIG_INPUT_MAP = {
-  checkIntervalSec: "inInterval",
   minRebalanceIntervalMin: "inMinInterval",
   maxRebalancesPerDay: "inMaxReb",
-  gasStrategy: "inGas",
   rebalanceTimeoutMin: "inOorTimeout",
   impermanentLossGuardPct: "inIlGuard",
   rebalanceOutOfRangeThresholdPercent: "inOorThreshold",

@@ -1,0 +1,137 @@
+{
+  "_comment": "The range each checked setting must fall in. A range is {min, max, integer}: inclusive bounds, either optional, and integer true for a whole number. A setting sits at the path it has in its own file, groups included. src/config-bounds.js refuses a Bot Settings save out of range; the files' own values are checked at startup. The help quotes ranges from here. Only the shipped copy is read: an override could widen a range.",
+  "timers": {
+    "_comment": "Every setting that becomes a timer delay, from any file or .env, is checked by src/timer-bounds.js: a whole number of at least minimum (seconds, or milliseconds for a key ending in ms), at most the lesser of maxDefaultMultiple times its shipped default and maxHours, well inside the 24.8 days a timer can hold (past that, it fires at once). An entry under settings overrides the rule: the poll intervals have their own ranges, request pacing is at least 5 ms and cannot be turned off, and the outage pause takes 0 to mean off. The dashboard's poll: half a second at least, or each open tab would flood the server; a minute at most, or its figures go stale.",
+    "minimum": 1,
+    "maxDefaultMultiple": 1000,
+    "maxHours": 48,
+    "settings": {
+      "checkIntervalSec": { "min": 10, "max": 3600 },
+      "dashboardPollIntervalMs": { "min": 500, "max": 60000 },
+      "globalRPCRequestRateIntervalMS": { "min": 5 },
+      "rpcAllEndpointsDownPauseMS": { "min": 0 }
+    }
+  },
+  "_approvalMultiple_comment": "Too small defeats approving ahead; too large wastes nothing but looks alarming in an explorer.",
+  "approvalMultiple": { "min": 1, "max": 1000000, "integer": true },
+  "gasFeePct": { "min": 0.1, "max": 15 },
+  "_rebalanceGasDeferPct_comment": "At 0.01 nearly every rebalance on a chain with costly gas would wait; at 100 one may cost the whole position before it waits.",
+  "rebalanceGasDeferPct": { "min": 0.01, "max": 100 },
+  "_rpcAccess_comment": "getLogsChunkSize: under 100 a routine scan takes tens of thousands of requests; 10000 is the strictest cap an endpoint is known to enforce. rpcFailoverRatePercentage: at 0 every endpoint is out of service the moment anything is reported, at 100 none ever is. rpcFailoverRateDurationMinutes: past an hour the window measures history, not health, and the decider keeps a per-second tally across it. Each rpcRetryOn429DelaysMs entry is checked alone. rpcMax429PenaltyMs and poolScanReuseMs take 0 to mean off. rpcFailoverStickyMs: under a minute snaps back before the failure rate can change; past two days the bot in effect never returns to its first endpoint. boundedReadAttemptsPerEndpoint: past ten, a Manage click waits minutes for an answer its dialog should give sooner.",
+  "getLogsChunkSize": { "min": 100, "max": 10000, "integer": true },
+  "rpcFailoverRatePercentage": { "min": 1, "max": 99, "integer": true },
+  "rpcFailoverRateDurationMinutes": { "min": 1, "max": 60, "integer": true },
+  "rpcRetryOn429DelaysMs": { "min": 1, "max": 600000, "integer": true },
+  "rpcMax429PenaltyMs": { "min": 0, "max": 600000, "integer": true },
+  "rpcFailoverStickyMs": { "min": 60000, "max": 172800000, "integer": true },
+  "boundedReadAttemptsPerEndpoint": { "min": 1, "max": 10, "integer": true },
+  "feeDataLogIntervalMs": { "min": 1000, "max": 86400000, "integer": true },
+  "_historyScan_comment": "A lookback under a year misses ordinary history; past twenty years predates any pool on these chains. An event cache kept under an hour sends long scans back to the chain every few polls; past ten years it never expires.",
+  "historyLookbackYears": { "min": 1, "max": 20, "integer": true },
+  "eventCacheTtlMs": { "min": 3600000, "max": 315360000000, "integer": true },
+  "poolScanReuseMs": { "min": 0, "max": 3600000, "integer": true },
+  "rebalancePairingWindowSec": { "min": 1, "max": 86400, "integer": true },
+  "_priceCache_comment": "A price cache under a second saves nothing; past a day it hides real moves. Inside a rebalance or compound it is held to a minute at most, or it would defeat that scope's fresh prices.",
+  "priceCacheTtlMs": { "min": 1000, "max": 86400000, "integer": true },
+  "dustUnitPriceCacheMultiplier": { "min": 1, "max": 1000, "integer": true },
+  "moveCacheTtlMs": { "min": 1000, "max": 60000, "integer": true },
+  "pricePauseExceptionPollWindowMultiple": {
+    "min": 1,
+    "max": 10000,
+    "integer": true
+  },
+  "_positionBalanced_comment": "A band under a tenth of a point is almost never entered; past 25 points either side, 75/25 would count as balanced. A quiet period under a minute lets a wavering split alert nearly every poll; past a day, a position balancing twice in a day alerts once.",
+  "positionBalancedBandPct": { "min": 0.1, "max": 25 },
+  "positionBalancedCooldownMs": {
+    "min": 60000,
+    "max": 86400000,
+    "integer": true
+  },
+  "_rescanPricesRecentWindowDays_comment": "No days would re-price nothing yet report success; ten years outlasts any pool.",
+  "rescanPricesRecentWindowDays": { "min": 1, "max": 3650, "integer": true },
+  "_impermanentLossGuardPct_comment": "1 is the tightest meaningful guard; 100 in effect turns it off, since only a worthless position would trip it.",
+  "impermanentLossGuardPct": { "min": 1, "max": 100, "integer": true },
+  "_rebalanceOutOfRangeThresholdPercent_comment": "May be fractional, as the dashboard has always accepted.",
+  "rebalanceOutOfRangeThresholdPercent": { "min": 1, "max": 100 },
+  "_rebalanceTimeoutMin_comment": "0 turns the out-of-range timeout off; past a day, a position left out of range is not being managed.",
+  "rebalanceTimeoutMin": { "min": 0, "max": 1440, "integer": true },
+  "_slippage_comment": "The per-token figures reach 20, enough for a lopsided pair's thin side, while refusing a typed 100. slippagePct is the default both start from.",
+  "slippagePct": { "min": 0.1, "max": 5 },
+  "slippagePctToken0": { "min": 0.1, "max": 20 },
+  "slippagePctToken1": { "min": 0.1, "max": 20 },
+  "_minRebalanceIntervalMin_comment": "A week at most; longer cannot be told apart from not rebalancing.",
+  "minRebalanceIntervalMin": { "min": 1, "max": 10080, "integer": true },
+  "maxRebalancesPerDay": { "min": 1, "max": 12, "integer": true },
+  "offsetToken0Pct": { "min": 0, "max": 100, "integer": true },
+  "_rebalanceRangeWidthPct_comment": "200 is the mathematical ceiling: a width W means W/2 percent either side of the price, so 200 is 100 percent either side; more gives the same degenerate range.",
+  "rebalanceRangeWidthPct": { "min": 0.1, "max": 200 },
+  "_swapChunks_comment": "swapChunkCount: two is the fewest that splits at all.",
+  "swapChunkCount": { "min": 2, "integer": true },
+  "minSwapAmountRaw": { "min": 1, "integer": true },
+  "slippageSuggestionMarginPct": { "min": 0 },
+  "_correctiveSwapMaxRounds_comment": "One round at least, or the step never runs; ten at most, since each is a swap paid in gas and slippage, and a price unsettled after ten will not settle on the eleventh.",
+  "correctiveSwapMaxRounds": { "min": 1, "max": 10, "integer": true },
+  "_initialDepositUsd_comment": "A figure the operator types for money already spent, so only a negative value or one no wallet holds is wrong.",
+  "initialDepositUsd": { "min": 0, "max": 1000000000000 },
+  "_priceOverride_comment": "priceOverride0 and priceOverride1: a token price typed when auto-detection fails. Zero clears it; the ceiling is above any price a token has had.",
+  "priceOverride": { "min": 0, "max": 1000000000000 },
+  "_autoCompoundThresholdUsd_comment": "Its floor is app-runtime.json → compound.minFeeUsd, the fees a compound needs to be worth its gas, not repeated here; the ceiling is above any position's holdings.",
+  "autoCompoundThresholdUsd": { "max": 1000000000 },
+  "_tokenDecimals_comment": "An ERC-20 token's decimals, read from the chain or typed as an override. 77 is the most for which one whole token (10 to that power) fits in a uint256.",
+  "tokenDecimals": { "min": 0, "max": 77, "integer": true },
+  "_rpcUrlCount_comment": "How many endpoints the rpc list may hold: one at least, to serve a request; ten at most, since the list is walked in order on every outage.",
+  "rpcUrlCount": { "min": 1, "max": 10, "integer": true },
+  "_uiSettings_comment": "The dashboard settings in ui-defaults_non-layout_for-server-up-scenario.json. Its timers, copyFeedbackMs, heapLogIntervalMs and dashboardPollIntervalMs, follow the timer rule above, and its on/off settings have no range. reloadMaxWaitMs: a minute at least, so a slow scan is not cut short; two days at most. lastCheckJustNowSec: 0 never says just now; past a minute the tag would hide a stalled bot. autoCompoundSyncHoldMs: 0 turns the hold off; a minute is past any poll's answer. activityLogMaxEntries: ten at least; past ten thousand the log slows the page. privacyUsdAmountThreshold: the five digits its input holds.",
+  "reloadMaxWaitMs": { "min": 60000, "max": 172800000, "integer": true },
+  "pollSkipLogEvery": { "min": 1, "max": 10000, "integer": true },
+  "lastCheckJustNowSec": { "min": 0, "max": 60, "integer": true },
+  "autoCompoundSyncHoldMs": { "min": 0, "max": 60000, "integer": true },
+  "slippageConfirmAbovePct": { "min": 0, "max": 100 },
+  "slippageTypedConfirmFromPct": { "min": 0, "max": 100 },
+  "throttleNearLimitPct": { "min": 1, "max": 100, "integer": true },
+  "activityLogMaxEntries": { "min": 10, "max": 10000, "integer": true },
+  "privacyUsdAmountThreshold": { "min": 0, "max": 99999, "integer": true },
+  "lowGasThresholds": {
+    "worstCaseGasFactor": { "min": 1, "max": 10000, "integer": true },
+    "safetyMultiplier": { "min": 1, "max": 100, "integer": true },
+    "standardSendGas": { "min": 21000, "max": 1000000, "integer": true }
+  },
+  "ilGuardRetry": {
+    "_comment": "A minute at least, so a typo cannot retry every poll; thirty days at most.",
+    "baseMs": { "min": 60000, "max": 2592000000, "integer": true },
+    "maxMs": { "min": 60000, "max": 2592000000, "integer": true }
+  },
+  "residualCleanup": {
+    "delayMs": { "min": 1, "max": 86400000, "integer": true },
+    "thresholdPct": { "min": 0.01, "max": 100 }
+  },
+  "throttleDoubling": {
+    "_comment": "All three are whole numbers. triggerCount: two at least, since one rebalance is no burst; twelve at most, the highest daily cap, since a count no day can reach would silently switch doubling off. Each multiple: one at least, since a trigger window under one Min Time Between Rebalances never holds two rebalances, and a quiet spell under the current wait clears doubling before its wait ends. 1440 at most: at the shortest Min Time Between Rebalances, one minute, that is a day, and doubling clears at midnight UTC anyway.",
+    "triggerCount": { "min": 2, "max": 12, "integer": true },
+    "triggerWindowMultiple": { "min": 1, "max": 1440, "integer": true },
+    "quietWindowMultiple": { "min": 1, "max": 1440, "integer": true }
+  },
+  "tx": {
+    "sendRetries": { "min": 0, "max": 10, "integer": true },
+    "_swapBackoff_comment": "A retry after the price moved under a rebalance: the first wait from a second to an hour, the longest from a second to a day, past which the position sits idle for no gain. midwayRetryLimit: at least one try, at most twenty.",
+    "swapBackoffBaseMs": { "min": 1000, "max": 3600000, "integer": true },
+    "swapBackoffMaxMs": { "min": 1000, "max": 86400000, "integer": true },
+    "midwayRetryLimit": { "min": 1, "max": 20, "integer": true }
+  },
+  "retire": {
+    "_comment": "A drained position's grace before it is retired: at least a minute, so an abort is on screen first; at most two days.",
+    "drainedAfterMs": { "min": 60000, "max": 172800000, "integer": true }
+  },
+  "compound": {
+    "_comment": "Automatic compounds' spacing: at least one poll and one second, so two cannot fire in one poll; at most a hundred polls and a day, past which auto-compounding is all but off.",
+    "autoSpacingPolls": { "min": 1, "max": 100, "integer": true },
+    "autoSpacingFloorSec": { "min": 1, "max": 86400, "integer": true }
+  },
+  "geckoTerminal": {
+    "topPoolsConsidered": { "min": 1, "integer": true }
+  },
+  "dashboard": {
+    "_comment": "Under one poll the dashboard may never show the change; a hundred is past any useful wait.",
+    "pollsBeforeAssumedSeen": { "min": 1, "max": 100 }
+  }
+}

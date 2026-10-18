@@ -362,7 +362,7 @@ describe("Fund safety — new range validity", () => {
  *
  * The guard is an `err.nonceUnsettled` flag that the fallback declines. This
  * drives the real chain — `swapIfNeeded` → `swapViaAggregator` →
- * `_sendWithRetry` → `_settleNonce` → `_balanceDiff` — with only the quote
+ * `_sendWithRetry` → `settleNonce` → `balanceDiff` — with only the quote
  * endpoint and the signer stubbed, because the flag's whole job is to survive
  * those layers. Stubbing the aggregator module would prove the two halves and
  * not the join: a refactor that re-wrapped the error on its way out would
@@ -447,7 +447,7 @@ describe("Fund safety — one swap intent, at most one swap", () => {
           assert.strictEqual(
             err.nonceUnsettled,
             true,
-            "flag must survive _sendWithRetry, swapViaAggregator and _balanceDiff",
+            "flag must survive _sendWithRetry, swapViaAggregator and balanceDiff",
           );
           return true;
         },

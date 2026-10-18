@@ -34,7 +34,8 @@
  * Read-only.  No mutations.  Safe while the bot is live.
  *
  * RPC behaviour:
- *   - 10_000-block chunks with 250 ms throttle.
+ *   - Chunks of the app's `getLogsChunkSize`, paced at its
+ *     `globalRPCRequestRateIntervalMS`, two requests a chunk.
  *   - Uses the chain default RPC unless RPC_URL is set.
  *   - Block-window estimate: PulseChain ≈ 10 s/block → 1 day ≈ 8640 blocks.
  *
@@ -82,6 +83,8 @@ process.chdir(path.resolve(__dirname, "..", ".."));
 
 const { ethers } = require("ethers");
 const config = require("../../../src/config");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/get-logs-chunked");
+const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
 const helpers = require("../_helpers");
 const { Command, InvalidArgumentError } = require("commander");
 
@@ -94,8 +97,18 @@ const addrFromTopic = (t) => helpers.addrFromTopic(t, ethers);
 
 // The active chain's block time (chains.json `blockTimeSec`).
 const BLOCK_TIME_SEC = config.CHAIN.blockTimeSec;
-const CHUNK_SIZE = 10000;
-const CHUNK_DELAY_MS = 250;
+
+// Block span per getLogs call: the app's own `getLogsChunkSize`.
+const CHUNK_SIZE = _DEFAULT_CHUNK_SIZE;
+
+/*-
+ *  Pause after each chunk, which is two requests. The app spaces every
+ *  request by `globalRPCRequestRateIntervalMS`; this tool has a provider
+ *  of its own, outside the app's queue, so it waits those two spacings
+ *  itself.
+ */
+const CHUNK_DELAY_MS =
+  2 * readBotConfigDefaults().globalRPCRequestRateIntervalMS;
 
 /*- Between per-block timestamp lookups.  Shorter than CHUNK_DELAY_MS:
  *  a single getBlock is far cheaper than a block-range getLogs. */

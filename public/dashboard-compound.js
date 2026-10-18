@@ -10,16 +10,18 @@ import {
   compositeKey,
   fetchWithCsrf,
 } from "./dashboard-helpers.js";
-import { posStore, isPositionManaged } from "./dashboard-positions.js";
+import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
 import {
   _createModal,
   _posLabel,
   _posContextHtml,
+} from "./dashboard-data-status.js";
+import { getLastStatus } from "./dashboard-data.js";
+import {
+  findActiveAction,
   setOptimisticSpecialAction,
-  getLastStatus,
-} from "./dashboard-data.js";
-import { findActiveAction } from "./dashboard-mission-badge.js";
+} from "./dashboard-mission-badge.js";
 import { truncName } from "./dashboard-helpers.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
 import { activeChainId } from "./dashboard-chain.js";
@@ -164,7 +166,7 @@ export function toggleAutoCompound() {
         ACT_ICONS.gear,
         "start",
         "Auto-compound " + (enabled ? "Enabled" : "Disabled"),
-        pl || "",
+        pl,
       ),
   });
 }

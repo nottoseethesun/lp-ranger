@@ -148,13 +148,16 @@ async function _fetchGeckoTerminalCurrent(tokenAddress, network) {
  *
  * @param {string} tokenAddress - ERC-20 contract address.
  * @param {string} chain - Moralis's hex id for the token's chain; "" for a
- *   chain Moralis does not cover, which answers 0 without asking.
+ *   chain Moralis does not cover, which answers 0 without asking. The
+ *   app's cascades leave Moralis out for such a chain, but
+ *   util/diagnostic/verify-compound-usd asks every source it has a key
+ *   for.
  * @returns {Promise<number>} USD price (0 if unavailable).
  */
 async function _fetchMoralisCurrent(tokenAddress, chain) {
   const apiKey = _moralisKey();
   if (!apiKey) return 0;
-  if (!chain) return 0;
+  if (chain === "") return 0;
   const url =
     `${MORALIS_API}/erc20` +
     `/${tokenAddress}/price?chain=${chain}&include=percent_change`;

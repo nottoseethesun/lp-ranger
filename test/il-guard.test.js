@@ -9,15 +9,18 @@
  * passed the 500-line cap.
  *
  * The guard rejects a rebalance when the hypothetical post-rebalance
- * position would sit more than `impermanentLossGuardPct` below the USD
- * value of the NFT currently held, measured at that NFT's own mint.
+ * position would sit more than `impermanentLossGuardPct` below holding
+ * the coins the NFT currently held was minted with, at today's prices.
+ * How those two are worked out from a poll is tested in
+ * `il-guard-holding.test.js`.
  *
  * The property that matters most here: an impermanent GAIN can never
- * block.  A position worth more than its mint value is above the floor
- * for any setting in 1..100, so the rare gain case must always pass.
+ * block.  A position worth more than holding is above the floor for any
+ * setting in 1..100, so the rare gain case must always pass.
  */
 
 const { describe, it } = require("node:test");
+const { ilSnapshot } = require("./helpers/il-snapshot");
 const assert = require("node:assert/strict");
 
 const {
@@ -30,6 +33,13 @@ const {
 } = require("../src/il-guard");
 const { readBotConfigDefaults } = require("../src/bot-config-defaults");
 const config = require("../src/config");
+const { SETTING_BOUNDS } = require("../src/setting-bounds");
+const {
+  duration,
+  fillEntryFigures,
+  spanFigureTokens,
+} = require("../src/help-figures");
+const { render, shippedFigures } = require("../scripts/build-manual-content");
 
 const _SHIPPED_ALL = readBotConfigDefaults();
 const SHIPPED = _SHIPPED_ALL.impermanentLossGuardPct;
@@ -37,10 +47,10 @@ const SHIPPED_RETRY = _SHIPPED_ALL.ilGuardRetry;
 
 describe("evaluateIlGuard — the rule", () => {
   it("rejects when the projection falls below the floor", () => {
-    /*- $1,000 at mint, 50% guard, floor $500.  $480 is under it. */
+    // Holding worth $1,000, a 50% guard: floor $500.  $480 is under it.
     const r = evaluateIlGuard({
       projectedValueUsd: 480,
-      originalValueUsd: 1000,
+      holdValueUsd: 1000,
       guardPct: 50,
     });
     assert.equal(r.evaluated, true);
@@ -52,7 +62,7 @@ describe("evaluateIlGuard — the rule", () => {
   it("allows when the projection is above the floor", () => {
     const r = evaluateIlGuard({
       projectedValueUsd: 640,
-      originalValueUsd: 1000,
+      holdValueUsd: 1000,
       guardPct: 50,
     });
     assert.equal(r.rejected, false);
@@ -63,7 +73,7 @@ describe("evaluateIlGuard — the rule", () => {
      *  rejection, so the comparison is strict. */
     const r = evaluateIlGuard({
       projectedValueUsd: 500,
-      originalValueUsd: 1000,
+      holdValueUsd: 1000,
       guardPct: 50,
     });
     assert.equal(r.rejected, false);
@@ -73,7 +83,7 @@ describe("evaluateIlGuard — the rule", () => {
     const at = (guardPct) =>
       evaluateIlGuard({
         projectedValueUsd: 700,
-        originalValueUsd: 1000,
+        holdValueUsd: 1000,
         guardPct,
       }).rejected;
     assert.equal(at(50), false, "30% down passes a 50% guard");
@@ -83,7 +93,7 @@ describe("evaluateIlGuard — the rule", () => {
   it("100 effectively turns it off", () => {
     const r = evaluateIlGuard({
       projectedValueUsd: 0.01,
-      originalValueUsd: 1000,
+      holdValueUsd: 1000,
       guardPct: 100,
     });
     assert.equal(r.rejected, false, "floor is $0 — nothing is below it");
@@ -94,11 +104,11 @@ describe("evaluateIlGuard — impermanent GAIN never rejects", () => {
   /*- The case the user asked to be proven.  A gain is above the floor by
    *  construction, so no setting in range can block it. */
 
-  it("a position worth more than at mint always passes", () => {
+  it("a position worth more than holding always passes", () => {
     for (let guardPct = 1; guardPct <= 100; guardPct++) {
       const r = evaluateIlGuard({
         projectedValueUsd: 1961.45,
-        originalValueUsd: 1252.07,
+        holdValueUsd: 1252.07,
         guardPct,
       });
       assert.equal(
@@ -109,12 +119,12 @@ describe("evaluateIlGuard — impermanent GAIN never rejects", () => {
     }
   });
 
-  it("a position exactly at its mint value always passes", () => {
+  it("a position worth exactly what holding is worth always passes", () => {
     for (const guardPct of [1, 20, 50, 99, 100]) {
       assert.equal(
         evaluateIlGuard({
           projectedValueUsd: 1000,
-          originalValueUsd: 1000,
+          holdValueUsd: 1000,
           guardPct,
         }).rejected,
         false,
@@ -125,7 +135,7 @@ describe("evaluateIlGuard — impermanent GAIN never rejects", () => {
   it("a gain reports a negative loss percentage, not a rejection", () => {
     const r = evaluateIlGuard({
       projectedValueUsd: 1200,
-      originalValueUsd: 1000,
+      holdValueUsd: 1000,
       guardPct: 50,
     });
     assert.equal(r.rejected, false);
@@ -138,16 +148,16 @@ describe("evaluateIlGuard — fails open", () => {
    *  Freezing the bot because a figure has not finished loading would do
    *  more harm than the case it protects against. */
 
-  it("allows when the mint value is not known yet", () => {
-    for (const originalValueUsd of [undefined, null, 0, NaN, -1]) {
+  it("allows when what holding is worth is not known yet", () => {
+    for (const holdValueUsd of [undefined, null, 0, NaN, -1]) {
       const r = evaluateIlGuard({
         projectedValueUsd: 1,
-        originalValueUsd,
+        holdValueUsd,
         guardPct: 50,
       });
       assert.equal(r.rejected, false);
       assert.equal(r.evaluated, false);
-      assert.equal(r.reason, "no-original-value");
+      assert.equal(r.reason, "no-hold-value");
     }
   });
 
@@ -155,7 +165,7 @@ describe("evaluateIlGuard — fails open", () => {
     for (const projectedValueUsd of [undefined, null, NaN, -5]) {
       const r = evaluateIlGuard({
         projectedValueUsd,
-        originalValueUsd: 1000,
+        holdValueUsd: 1000,
         guardPct: 50,
       });
       assert.equal(r.rejected, false);
@@ -167,7 +177,7 @@ describe("evaluateIlGuard — fails open", () => {
     for (const guardPct of [undefined, null, 0, -1, 101, NaN, "50"]) {
       const r = evaluateIlGuard({
         projectedValueUsd: 1,
-        originalValueUsd: 1000,
+        holdValueUsd: 1000,
         guardPct,
       });
       assert.equal(r.rejected, false);
@@ -180,7 +190,7 @@ describe("evaluateIlGuard — fails open", () => {
      *  not be mistaken for missing data. */
     const r = evaluateIlGuard({
       projectedValueUsd: 0,
-      originalValueUsd: 1000,
+      holdValueUsd: 1000,
       guardPct: 50,
     });
     assert.equal(r.evaluated, true);
@@ -189,41 +199,44 @@ describe("evaluateIlGuard — fails open", () => {
 });
 
 describe("ilGuardInputs", () => {
-  it("folds the pool residual into the projection", () => {
-    /*- A rebalance sweeps the pool-scoped wallet residual into the new
-     *  position, so leaving it out would understate what would be
-     *  minted. */
-    const r = ilGuardInputs(
-      { currentValue: 900, residualValueUsd: 100 },
-      { entryValue: 1000 },
-    );
-    assert.equal(r.projectedValueUsd, 1000);
-    assert.equal(r.originalValueUsd, 1000);
+  it("values the minted coins at the prices IL/G was measured with", () => {
+    /*-
+     *  500 of each coin, at $0.60 and $0.80 today: $700, whatever the
+     *  coins were worth on the day they were minted.
+     */
+    const r = ilGuardInputs({
+      totalIL: -10,
+      ilInputs: {
+        price0: 0.6,
+        price1: 0.8,
+        cur: { hodlAmount0: 500, hodlAmount1: 500 },
+      },
+    });
+    assert.equal(r.holdValueUsd, 700);
   });
 
-  it("treats a missing residual as zero", () => {
-    const r = ilGuardInputs({ currentValue: 900 }, { entryValue: 1000 });
-    assert.equal(r.projectedValueUsd, 900);
+  it("projects holding plus the panel's IL/G", () => {
+    // $10 of impermanent loss against $700 of holding.
+    const r = ilGuardInputs(ilSnapshot(690, 700));
+    assert.equal(r.projectedValueUsd, 690);
   });
 
-  it("returns nulls when the snapshot or baseline is absent", () => {
-    for (const args of [
-      [null, null],
-      [undefined, undefined],
-      [{}, {}],
+  it("returns nulls until the snapshot carries IL/G", () => {
+    /*-
+     *  No minted coins read yet: `_computeIL` leaves `totalIL` undefined,
+     *  which the dashboard shows as a dash.
+     */
+    for (const snap of [
+      null,
+      undefined,
+      {},
+      { totalIL: undefined, ilInputs: { cur: {} } },
+      { totalIL: -10 },
     ]) {
-      const r = ilGuardInputs(...args);
-      assert.equal(r.projectedValueUsd, null);
-      assert.equal(r.originalValueUsd, null);
+      const r = ilGuardInputs(snap);
+      assert.equal(r.projectedValueUsd, null, JSON.stringify(snap));
+      assert.equal(r.holdValueUsd, null, JSON.stringify(snap));
     }
-  });
-
-  it("reads the mint value from the held NFT's baseline", () => {
-    const r = ilGuardInputs(
-      { currentValue: 2788.65, residualValueUsd: 0 },
-      { entryValue: 3947.23, mintDate: "2026-08-25" },
-    );
-    assert.equal(r.originalValueUsd, 3947.23);
   });
 });
 
@@ -275,7 +288,7 @@ describe("the Telegram message", () => {
    *  hostname would silently blow. */
   const FIGURES = {
     projectedValueUsd: 2788.65,
-    originalValueUsd: 3947.23,
+    holdValueUsd: 3947.23,
     guardPct: 50,
     floorUsd: 1973.62,
     lossPct: 29.4,
@@ -314,6 +327,25 @@ describe("the Telegram message", () => {
       assert.ok(m.includes(s), `missing ${s}`);
   });
 
+  it("quotes the retry ceiling and the gas share the bot runs on", () => {
+    /*-
+     *  Both come from the configured values, so an operator's override
+     *  reaches the message: a word like "a week" written into it would
+     *  stay put while the bot waited for something else.
+     */
+    const m = msg();
+    const ceiling = duration(SHIPPED_RETRY.maxMs / 1000);
+    const gasPct = `${_SHIPPED_ALL.rebalanceGasDeferPct}%`;
+    assert.ok(m.includes(`up to ${ceiling}.`), `missing ${ceiling}`);
+    assert.ok(m.includes(`more than ${gasPct} of`), `missing ${gasPct}`);
+  });
+
+  it("names the higher Guard, not a lower one, as what lowers the floor", () => {
+    const m = msg();
+    assert.match(m, /Raising the Guard/);
+    assert.doesNotMatch(m, /lower the Guard/);
+  });
+
   it("links to the manual entry for the full explanation", () => {
     assert.ok(msg().includes(MANUAL_URL));
     assert.match(MANUAL_URL, /^https:\/\/[^\s]+#il-guard$/);
@@ -335,12 +367,12 @@ describe("the Telegram message", () => {
     const published = [];
     checkIlGuard(
       {
-        _botState: { hodlBaseline: { entryValue: 1000 } },
+        _botState: {},
         updateBotState: (patch) => published.push(patch),
         position: { tokenId: "1" },
       },
       false,
-      { currentValue: 100 },
+      ilSnapshot(100, 1000),
       () => ({}),
     );
     const message = published.at(-1)?.ilGuardBlocked?.message;
@@ -380,9 +412,9 @@ describe("the shipped defaults", () => {
     assert.equal(SHIPPED_RETRY.maxMs, 7 * 24 * 3_600_000);
   });
 
-  it("carries the input bounds, 1 to 100", () => {
-    assert.equal(_SHIPPED_ALL.impermanentLossGuardPctMin, 1);
-    assert.equal(_SHIPPED_ALL.impermanentLossGuardPctMax, 100);
+  it("holds the guard to 1 to 100, in setting-bounds.json", () => {
+    assert.equal(SETTING_BOUNDS.impermanentLossGuardPct.min, 1);
+    assert.equal(SETTING_BOUNDS.impermanentLossGuardPct.max, 100);
   });
 
   it("the guard's own bounds check agrees with them", () => {
@@ -393,11 +425,12 @@ describe("the shipped defaults", () => {
     const at = (guardPct) =>
       evaluateIlGuard({
         projectedValueUsd: 1,
-        originalValueUsd: 1000,
+        holdValueUsd: 1000,
         guardPct,
       });
-    assert.equal(at(_SHIPPED_ALL.impermanentLossGuardPctMin).evaluated, true);
-    assert.equal(at(_SHIPPED_ALL.impermanentLossGuardPctMax).evaluated, true);
+    const { min, max } = SETTING_BOUNDS.impermanentLossGuardPct;
+    assert.equal(at(min).evaluated, true);
+    assert.equal(at(max).evaluated, true);
     assert.equal(at(0).reason, "guard-not-set", "below the floor: no guard");
     assert.equal(at(101).reason, "guard-not-set", "above the ceiling");
   });
@@ -447,25 +480,24 @@ describe("the shipped defaults", () => {
     assert.equal(
       evaluateIlGuard({
         projectedValueUsd: 400,
-        originalValueUsd: 1000,
+        holdValueUsd: 1000,
         guardPct: SHIPPED,
       }).rejected,
       true,
     );
   });
 
-  it("rejects the real-world drawdown that the old 50 default allowed", () => {
-    /*- Position #164418 on 2026-09-01: $3,947.23 at mint, $2,788.65 now,
-     *  29.4% down.  It rebalanced under the old default and would not
-     *  under this one — the clearest illustration of what tightening
-     *  buys and costs.  Bought: that 29.4% stays a paper loss with a
-     *  recovery still able to undo it.  Cost: the position sits out of
-     *  range earning nothing until price returns or the operator raises
-     *  the guard. */
+  it("rejects a 29.4% impermanent loss, which the old 50 default allowed", () => {
+    /*-
+     *  What tightening buys and costs. Bought: that 29.4% stays a paper
+     *  loss a recovery can still undo. Cost: the position sits out of
+     *  range earning nothing until the price returns or the operator
+     *  raises the guard.
+     */
     const at = (guardPct) =>
       evaluateIlGuard({
         projectedValueUsd: 2788.65,
-        originalValueUsd: 3947.23,
+        holdValueUsd: 3947.23,
         guardPct,
       }).rejected;
     assert.equal(at(SHIPPED), true);
@@ -493,7 +525,7 @@ describe("the help copy is written once", () => {
       src,
       /import SHARED_HELP from "\.\/shared-help-content\.json"/,
     );
-    assert.match(src, /inIlGuard: SHARED_HELP\.inIlGuard/);
+    assert.match(src, /fillEntryFigures\(SHARED_HELP\.inIlGuard, f\)/);
     assert.ok(
       !/inIlGuard: \{/.test(src),
       "no inline inIlGuard entry should remain",
@@ -501,10 +533,17 @@ describe("the help copy is written once", () => {
   });
 
   it("every section of the JSON reaches the manual verbatim", () => {
-    /*- Body text is emitted as-is, so a section that silently failed to
-     *  render would leave the manual short without any error. */
+    /*-
+     *  Body text is emitted as-is once its figures are filled, each in
+     *  the span the served manual refills, so a section that silently
+     *  failed to render would leave the manual short without any error.
+     */
     const html = read("public/help-and-user-manual.html");
-    const entry = shared().inIlGuard;
+    const entry = fillEntryFigures(
+      shared().inIlGuard,
+      shippedFigures(),
+      spanFigureTokens,
+    );
     assert.ok(entry.sections.length > 0);
     for (const s of entry.sections) {
       assert.ok(
@@ -528,19 +567,13 @@ describe("the help copy is written once", () => {
      *  a tracked source file (CLAUDE-BEST-PRACTICES "Test Isolation" —
      *  and `check.js`'s backup pass covers app-config/, app-data/ and
      *  tmp/, not public/). */
-    const {
-      helpKeys,
-      renderEntry,
-      replaceRegion,
-    } = require("../scripts/build-manual-content");
     const html = read("public/help-and-user-manual.html");
-    const data = shared();
-    let expected = html;
-    /*- Same key selection the generator uses, imported rather than
-     *  re-expressed, so the two cannot disagree about what counts as a
-     *  help entry. */
-    for (const key of helpKeys(data))
-      expected = replaceRegion(expected, key, renderEntry(data[key]));
+    /*-
+     *  The generator's own in-memory render, imported rather than
+     *  re-expressed, so the two cannot disagree about what the build
+     *  writes.
+     */
+    const expected = render(html, shared(), shippedFigures());
     assert.equal(expected, html, "manual has hand edits inside the markers");
   });
 
@@ -565,15 +598,15 @@ describe("the badge figure is the figure the bot enforces", () => {
      *  and one cent over it allowed, so the badge figure is the figure
      *  in force rather than a number published beside it. */
     const floor = 1000 * (1 - config.IMPERMANENT_LOSS_GUARD_PCT / 100);
-    const gate = (currentValue) =>
+    const gate = (positionUsd) =>
       checkIlGuard(
         {
-          _botState: { hodlBaseline: { entryValue: 1000 } },
+          _botState: {},
           updateBotState: () => {},
           position: { tokenId: "1" },
         },
         false,
-        { currentValue },
+        ilSnapshot(positionUsd, 1000),
         () => ({}),
       );
     assert.equal(gate(floor - 0.01)?.ilGuardRejected, true);
@@ -581,24 +614,27 @@ describe("the badge figure is the figure the bot enforces", () => {
   });
 
   it("moves badge and enforcement together under an env override", () => {
-    /*- Env-over-JSON is this project's layering (see the src/config.js
+    /*-
+     *  Env-over-JSON is this project's layering (see the src/config.js
      *  header) — the point is not that the env var is ignored, but that
      *  it can never move one of these without the other.  Checked in a
      *  child process because config.js resolves once, at require time.
      *
-     *  $usd 650 against a $usd 1000 mint discriminates the two: it sits
-     *  above the shipped 50% floor ($usd 500) and below the overridden
-     *  30% floor ($usd 700).  A badge reading 30 while the bot still
-     *  ran at 50 would allow it. */
+     *  $usd 750 against $usd 1000 of holding discriminates the two: it
+     *  sits below the shipped 15% floor ($usd 850) and above the
+     *  overridden 30% floor ($usd 700). The bot enforcing the shipped
+     *  figure while the badge read 30 would reject it.
+     */
     const { execFileSync } = require("node:child_process");
+    const snap = JSON.stringify(ilSnapshot(750, 1000));
     const out = execFileSync(
       process.execPath,
       [
         "-e",
         'const c=require("./src/config"),g=require("./src/il-guard");' +
-          "const r=g.checkIlGuard({_botState:{hodlBaseline:{entryValue:1000}}," +
+          "const r=g.checkIlGuard({_botState:{}," +
           "updateBotState:()=>{},position:{tokenId:'1'}},false," +
-          "{currentValue:650},()=>({}));" +
+          `${snap},()=>({}));` +
           "process.stdout.write(String(c.IMPERMANENT_LOSS_GUARD_PCT)+" +
           '","+String(!!r&&r.ilGuardRejected===true))',
       ],
@@ -608,10 +644,12 @@ describe("the badge figure is the figure the bot enforces", () => {
         encoding: "utf8",
       },
     );
-    /*- Last line only: the child's logger shares stdout, so the
-     *  rejection it logs precedes the value we asked for. */
+    /*-
+     *  Last line only: the child's logger shares stdout, so anything it
+     *  logs precedes the value we asked for.
+     */
     const [badge, rejected] = out.trim().split("\n").pop().split(",");
     assert.equal(badge, "30", "badge must show the override");
-    assert.equal(rejected, "true", "and the bot must enforce it");
+    assert.equal(rejected, "false", "and the bot must enforce it");
   });
 });

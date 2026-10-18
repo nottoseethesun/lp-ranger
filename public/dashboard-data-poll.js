@@ -11,12 +11,14 @@ import { flattenV2Status } from "./dashboard-data-cache.js";
 import { _setStatusPill } from "./dashboard-data-status.js";
 import { setFactoryContext } from "./dashboard-lp-providers.js";
 import { updateAllPositionsStatsBtn } from "./dashboard-all-positions-stats.js";
+import { uiSetting } from "./dashboard-ui-settings.js";
 /*-
- *  Bundled at build time: the interval is needed before the first poll,
- *  so it cannot come from one. The two poll-failure settings come from
- *  the same file, beside it.
+ *  Built into the page: the HALTED count is needed while the server is
+ *  not answering, which is when it cannot be asked for it. The poll
+ *  interval and the skip-log spacing come from the server
+ *  (`uiSetting`), which startup has asked before it starts polling.
  */
-import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
+import SERVER_DOWN from "../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json" with { type: "json" };
 
 let _onStatus = null;
 let _dataTimerId = null;
@@ -29,11 +31,27 @@ export function initDataPoll(onStatus) {
   _onStatus = onStatus;
 }
 
-/** Count a failed poll; the pill reads HALTED once `pollFailuresBeforeHalted` fail in a row. */
-function _onPollFail() {
+/**
+ * Count a question the server left unanswered. The pill reads HALTED
+ * once `pollFailuresBeforeHalted` go unanswered in a row. The questions
+ * startup asks count, for the blockchain, the dashboard's settings and
+ * the help's figures, and so does every status poll after them. A
+ * dashboard that cannot learn its blockchain or its settings can show
+ * nothing about any position, which is as halted as a server that stops
+ * answering polls.
+ */
+export function countUnansweredQuestion() {
   _pollFailCount++;
-  if (_pollFailCount >= UI_DEFAULTS.pollFailuresBeforeHalted)
+  if (_pollFailCount >= SERVER_DOWN.pollFailuresBeforeHalted)
     _setStatusPill("status-pill danger", "dot red", "HALTED");
+}
+
+/**
+ * Count a question the server answered, which ends any run of
+ * unanswered ones. The pill itself is repainted by the next status poll.
+ */
+export function countAnsweredQuestion() {
+  _pollFailCount = 0;
 }
 
 /*-
@@ -49,7 +67,7 @@ async function _pollStatus() {
   if (_statusInFlight) {
     _skippedPollCount++;
     // The first skip in a run is logged, then one in every `pollSkipLogEvery`.
-    if ((_skippedPollCount - 1) % UI_DEFAULTS.pollSkipLogEvery === 0) {
+    if ((_skippedPollCount - 1) % uiSetting("pollSkipLogEvery") === 0) {
       log.debug(
         "[lp-ranger] [poll] skipping tick — previous /api/status still in flight (skipped=%d)",
         _skippedPollCount,
@@ -62,17 +80,17 @@ async function _pollStatus() {
   try {
     const res = await fetch("/api/status");
     if (!res.ok) {
-      _onPollFail();
+      countUnansweredQuestion();
       return;
     }
-    _pollFailCount = 0;
+    countAnsweredQuestion();
     const data = flattenV2Status(await res.json());
     if (typeof data.factory === "string" && data.factory.length > 0)
       setFactoryContext(data.factory);
     updateAllPositionsStatsBtn(data);
     if (_onStatus !== null) _onStatus(data);
   } catch (_) {
-    _onPollFail();
+    countUnansweredQuestion();
   } finally {
     _statusInFlight = false;
   }
@@ -82,11 +100,14 @@ export function pollNow() {
   _pollStatus();
 }
 
-/** Start polling /api/status every `dashboardPollIntervalMs` (ui-defaults.json). */
+/**
+ * Start polling /api/status every `dashboardPollIntervalMs`, a setting
+ * the server sends; startup has it before it calls this.
+ */
 export function startDataPolling() {
   if (_dataTimerId) return;
   _pollStatus();
-  _dataTimerId = setInterval(_pollStatus, UI_DEFAULTS.dashboardPollIntervalMs);
+  _dataTimerId = setInterval(_pollStatus, uiSetting("dashboardPollIntervalMs"));
 }
 
 export function stopDataPolling() {

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-09-17T06:55:20.366Z
+  modified: 2026-10-18T00:01:23.625Z
 ---
 
 When writing a condition, ask: **is this testing the thing I actually
@@ -43,6 +43,22 @@ actively **asserted** by tests, one literally checking
   the row that does not match — that one query found all of these. See
   [[project_0091_burn_in_watch]] for the diagnostic script this argues
   for.
+
+## Tests of a configured value: move it off its default (2026-10-17)
+
+The same shape in a test. A test that "the status names the error log
+as logging.json sets it" compared the status against the configured
+value, and the configured value in the test process was the default.
+A mutation that hard-coded the default passed it: the test could not
+tell "reads the setting" from "states the default". The clean script's
+log-path test had the same blind spot.
+
+**How to apply:** a test that a value comes from configuration sets
+that value to something other than its default first, in an override
+directory of the test's own (`LP_RANGER_USER_CONFIG_DIR`, set before
+anything under `src/` loads), and asserts the moved value. Then prove it
+with a mutation that hard-codes the default
+([[feedback_always_test_a_regression]]).
 
 Related: [[feedback_engineering_invariants]] (a second *reader* of a
 value is not the same problem as a second *resolution path*), and

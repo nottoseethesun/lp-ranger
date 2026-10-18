@@ -8,7 +8,7 @@
  * schemas — so this is what enforces the project rule that an API change
  * updates the spec (docs/claude/CLAUDE-BEST-PRACTICES.md).
  *
- * Five invariants, each derived from the real code rather than a
+ * Six invariants, each derived from the real code rather than a
  * hand-kept list, so the checker cannot drift out of step with it:
  *
  *   1. Every registered route is documented.
@@ -17,6 +17,8 @@
  *   4. No key is documented that the endpoint would reject.
  *   5. Every operation has a summary and a response; every tag used is
  *      declared, and every tag declared is used.
+ *   6. Every dashboard setting `GET /api/ui-defaults` sends appears in its
+ *      response schema, and no other.
  *
  * Exit status is 0 when the spec is in sync, 1 otherwise. `--json`
  * prints the machine-readable result the check report consumes.
@@ -27,6 +29,7 @@
 const fs = require("fs");
 const path = require("path");
 const { POSITION_KEYS, GLOBAL_KEYS } = require("../src/bot-config-keys");
+const { UI_SETTING_KEYS } = require("../src/ui-defaults");
 
 const ROOT = path.join(__dirname, "..");
 const SPEC_PATH = path.join(ROOT, "docs", "openapi.json");
@@ -113,6 +116,26 @@ function _configKeyProblems(spec, problems) {
   return { configKeyCount: accepted.length };
 }
 
+/** `GET /api/ui-defaults` settings, in both directions against what it sends. */
+function _uiSettingProblems(spec, problems) {
+  const props =
+    spec.paths?.["/api/ui-defaults"]?.get?.responses?.["200"]?.content?.[
+      "application/json"
+    ]?.schema?.properties || {};
+  for (const k of UI_SETTING_KEYS.filter((k) => !(k in props)).sort())
+    problems.push(
+      `GET /api/ui-defaults sends \`${k}\` but openapi.json omits it`,
+    );
+  const sent = new Set(UI_SETTING_KEYS);
+  for (const k of Object.keys(props)
+    .filter((k) => !sent.has(k))
+    .sort())
+    problems.push(
+      `openapi.json documents \`${k}\`, which GET /api/ui-defaults does not send`,
+    );
+  return { uiSettingCount: UI_SETTING_KEYS.length };
+}
+
 /** Summaries, responses, and tag declarations. */
 function _structureProblems(spec, problems) {
   for (const [p, methods] of Object.entries(spec.paths || {}))
@@ -144,7 +167,7 @@ function _structureProblems(spec, problems) {
  *   tracked file corrupted if the process were killed mid-test, and the
  *   check-report backup pass does not cover `docs/`.
  * @returns {{ok: boolean, problems: string[], routeCount: number,
- *            configKeyCount: number}}
+ *            configKeyCount: number, uiSettingCount: number}}
  */
 function checkOpenApiSync(injectedSpec) {
   const spec =
@@ -154,8 +177,15 @@ function checkOpenApiSync(injectedSpec) {
   const problems = [];
   const { routeCount } = _routeProblems(spec, problems);
   const { configKeyCount } = _configKeyProblems(spec, problems);
+  const { uiSettingCount } = _uiSettingProblems(spec, problems);
   _structureProblems(spec, problems);
-  return { ok: problems.length === 0, problems, routeCount, configKeyCount };
+  return {
+    ok: problems.length === 0,
+    problems,
+    routeCount,
+    configKeyCount,
+    uiSettingCount,
+  };
 }
 
 if (require.main === module) {
@@ -165,7 +195,8 @@ if (require.main === module) {
   } else if (result.ok) {
     process.stdout.write(
       `[openapi-sync] in sync — ${result.routeCount} routes, ` +
-        `${result.configKeyCount} config keys\n`,
+        `${result.configKeyCount} config keys, ` +
+        `${result.uiSettingCount} dashboard settings\n`,
     );
   } else {
     process.stdout.write(

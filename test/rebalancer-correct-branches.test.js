@@ -21,6 +21,7 @@ const assert = require("node:assert/strict");
 const util = require("util");
 
 const realLog = require("../src/log");
+const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 const PATHS = {
   pools: require.resolve("../src/rebalancer-pools"),
@@ -275,14 +276,15 @@ describe("corrective swap — swaps that report no hash", () => {
     assert.deepEqual(r.swapSources, []);
   });
 
-  it("stops after three iterations with the imbalance still above threshold", async () => {
+  it("stops after the configured round limit with the imbalance still above threshold", async () => {
+    const rounds = SHIPPED_DEFAULTS.correctiveSwapMaxRounds;
     const { run, calls } = load({
       desired: [need("token0to1", 10n ** 18n)],
       gates: [PASS],
       swaps: [{ amountOut: 1n, gasCostWei: 0n }],
     });
     const r = await run(ctx());
-    assert.equal(calls.swaps.length, 3);
+    assert.equal(calls.swaps.length, rounds);
     assert.deepEqual(
       {
         reason: r.reason,
@@ -295,10 +297,10 @@ describe("corrective swap — swaps that report no hash", () => {
       },
       {
         reason: "above-threshold-after-cap",
-        iterations: 3,
+        iterations: rounds,
         aboveThresholdAfterCap: true,
         txHash: null,
-        extra1: 3n,
+        extra1: BigInt(rounds),
         finalImbalanceUsd: 2,
         thresholdUsd: 1,
       },

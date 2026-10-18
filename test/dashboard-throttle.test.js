@@ -15,9 +15,10 @@
  *   both writers of `#dblWindowLabel` in a "remove-dead-throttle-UI"
  *   cleanup pass.  The `#dblWindowLabel` element was NOT removed from
  *   `public/index.html`, so it lived on as a hardcoded `"40 min"`
- *   string.  The doubling trigger window is `TRIGGER_WINDOW_MULTIPLE`
+ *   string.  The doubling trigger window is `triggerWindowMultiple`
  *   times the minimum interval, the rule `src/throttle.js` enforces from
- *   `src/throttle-doubling.js` — anyone changing Min Time Between
+ *   bot-config-defaults.json → `throttleDoubling` — anyone changing Min
+ *   Time Between
  *   Rebalances from the default 10 min saw a wrong window label.  Silent
  *   because the element existed (no null-ref crash), and because most
  *   users never touched the setting.  These tests pin the derivation and
@@ -28,15 +29,41 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("fs");
-const path = require("path");
-const { TRIGGER_WINDOW_MULTIPLE } = require("../src/throttle-doubling");
-const UI_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/ui-defaults.json");
+const { loadShippedDefaults } = require("../src/load-merged-defaults");
+const { learnUiSettings } = require("./helpers/ui-settings");
+
+/*-
+ *  The NEAR LIMIT threshold the server sends, moved off its shipped
+ *  value, so the badge is seen to read the setting in force.
+ */
+const NEAR_LIMIT_PCT =
+  loadShippedDefaults("ui-defaults_non-layout_for-server-up-scenario.json")
+    .throttleNearLimitPct - 15;
+
+const BOT = loadShippedDefaults("bot-config-defaults.json");
+const TRIGGER_WINDOW_MULTIPLE = BOT.throttleDoubling.triggerWindowMultiple;
 
 let mod;
 
 before(async () => {
   mod = await import("../public/dashboard-throttle.js");
+  await learnUiSettings({ throttleNearLimitPct: NEAR_LIMIT_PCT });
+  /*-
+   *  The label takes the doubling rule from the defaults the server
+   *  sends with the help's figures: the rule as the bot enforces it,
+   *  overrides included. A server running on the shipped settings
+   *  stands in for it.
+   */
+  const figures = await import("../public/dashboard-help-figures.js");
+  await figures.loadHelpFigures({
+    fetchFn: async () => ({
+      ok: true,
+      json: async () => ({ figures: {}, botDefaults: BOT }),
+    }),
+    warnFn: () => assert.fail("answered at once"),
+    onUnanswered: () => {},
+    onAnswered: () => {},
+  });
 });
 
 /*- Build the DOM structure the throttle module reads/writes and reset
@@ -160,6 +187,34 @@ describe("dblWindowLabel — regression pin for e22536c", () => {
     }
   });
 
+  it("follows the doubling rule the server sends, an override included", async () => {
+    const figures = await import("../public/dashboard-help-figures.js");
+    const load = (botDefaults) =>
+      figures.loadHelpFigures({
+        fetchFn: async () => ({
+          ok: true,
+          json: async () => ({ figures: {}, botDefaults }),
+        }),
+        warnFn: () => assert.fail("answered at once"),
+        onUnanswered: () => {},
+        onAnswered: () => {},
+      });
+    await load({
+      ...BOT,
+      throttleDoubling: { ...BOT.throttleDoubling, triggerWindowMultiple: 7 },
+    });
+    try {
+      mod.throttle.minIntervalMs = 10 * 60 * 1000;
+      mod.updateThrottleUI();
+      assert.strictEqual(
+        document.getElementById("dblWindowLabel").textContent,
+        "70 min",
+      );
+    } finally {
+      await load(BOT);
+    }
+  });
+
   it("shows a dash, not a made-up window, before any interval is known", () => {
     /*-
      *  Nothing supplies the interval until the first status poll or a
@@ -176,16 +231,6 @@ describe("dblWindowLabel — regression pin for e22536c", () => {
       document.getElementById("kpiCountdown").textContent,
       "—",
     );
-  });
-});
-
-describe("src/throttle-doubling.js", () => {
-  it("imports nothing, so the dashboard bundle can take it whole", () => {
-    const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "throttle-doubling.js"),
-      "utf8",
-    );
-    assert.doesNotMatch(src, /\brequire\(|^\s*import\s/m);
   });
 });
 
@@ -219,7 +264,7 @@ describe("throttleBadge (updateThrottleUI dispatch)", () => {
 
   it("NEAR LIMIT once usage reaches throttleNearLimitPct, with no other state active", () => {
     mod.throttle.dailyMax = 100;
-    mod.throttle.dailyCount = UI_DEFAULTS.throttleNearLimitPct;
+    mod.throttle.dailyCount = NEAR_LIMIT_PCT;
     mod.updateThrottleUI();
     const badge = document.getElementById("throttleBadge");
     assert.strictEqual(badge.textContent, "NEAR LIMIT");
@@ -228,7 +273,7 @@ describe("throttleBadge (updateThrottleUI dispatch)", () => {
 
   it("OK one rebalance short of throttleNearLimitPct", () => {
     mod.throttle.dailyMax = 100;
-    mod.throttle.dailyCount = UI_DEFAULTS.throttleNearLimitPct - 1;
+    mod.throttle.dailyCount = NEAR_LIMIT_PCT - 1;
     mod.updateThrottleUI();
     const badge = document.getElementById("throttleBadge");
     assert.strictEqual(badge.textContent, "OK");
@@ -240,20 +285,33 @@ describe("throttleBadge (updateThrottleUI dispatch)", () => {
     assert.strictEqual(badge.textContent, "OK");
     assert.strictEqual(badge.className, "live-badge");
   });
+
+  it("a dash, not CAPPED, before the daily cap is known", () => {
+    /*-
+     *  Nothing supplies the cap until the first status poll. A zero
+     *  standing in for it read as reached, so a managed position's badge
+     *  said CAPPED, and rebalancing looked blocked, before anything was
+     *  known.
+     */
+    mod.throttle.dailyMax = null;
+    mod.updateThrottleUI();
+    const badge = document.getElementById("throttleBadge");
+    assert.strictEqual(badge.textContent, "—");
+    assert.notStrictEqual(mod.canRebalance().reason, "daily_limit");
+  });
 });
 
-// ── Tests: onParamChange / saveMinInterval — the save-gated sync path ──────
+// ── Tests: typing and the save-gated sync path ─────────────────────────────
 
-describe("onParamChange() — typing must NOT move the saved-value displays", () => {
+describe("typing must NOT move the saved-value displays", () => {
   it(
     "typing 15 into #inMinInterval WITHOUT clicking Save leaves " +
       "throttle.minIntervalMs and #dblWindowLabel unchanged " +
       "(the user-reported contract: label updates only on Save)",
     () => {
       document.getElementById("inMinInterval").value = "15";
-      mod.onParamChange();
-      assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
       mod.updateThrottleUI();
+      assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
       assert.strictEqual(
         document.getElementById("dblWindowLabel").textContent,
         "40 min",
@@ -261,10 +319,11 @@ describe("onParamChange() — typing must NOT move the saved-value displays", ()
     },
   );
 
-  it("updating #inMaxReb propagates to throttle.dailyMax", () => {
+  it("typing into #inMaxReb leaves the badge's cap where the server put it", () => {
+    // The cap is the server's: only its status answer may move it.
     document.getElementById("inMaxReb").value = "12";
-    mod.onParamChange();
-    assert.strictEqual(mod.throttle.dailyMax, 12);
+    mod.updateThrottleUI();
+    assert.strictEqual(mod.throttle.dailyMax, 5);
   });
 });
 
@@ -422,3 +481,19 @@ describe("saveMinInterval() — Save click applies the value + label", () => {
 
 /*- A refused save is `public/dashboard-config-save.js`'s job now, and
  *  is covered by test/dashboard-config-save.test.js. */
+
+describe("the OOR timeout badge", () => {
+  it("says Turned Off for 0, the minutes otherwise, a dash before it is known", () => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<span id="activeOorTimeout"></span>',
+    );
+    const shown = (rebalanceTimeoutMin) => {
+      mod.updateTriggerDisplay({ rebalanceTimeoutMin });
+      return document.getElementById("activeOorTimeout").textContent;
+    };
+    assert.equal(shown(0), "Turned Off");
+    assert.equal(shown(120), "120");
+    assert.equal(shown(undefined), "—");
+  });
+});

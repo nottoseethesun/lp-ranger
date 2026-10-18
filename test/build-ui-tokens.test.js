@@ -3,7 +3,7 @@
  * @description
  * Covers the JSON→CSS bridge for dashboard layout tokens.
  *
- * The info-dialog max height is configured in `ui-defaults.json` but has
+ * The info-dialog max height is configured in `ui-defaults_layout.json` but has
  * to reach a stylesheet, and this project forbids inline styles — so
  * `scripts/build-ui-tokens.js` bakes it into a generated
  * `public/ui-tokens.css` at build time. That is three moving parts (the
@@ -27,11 +27,11 @@ const path = require("node:path");
 const { readPxToken, renderCss } = require("../scripts/build-ui-tokens");
 
 const ROOT = path.join(__dirname, "..");
-const UI_DEFAULTS = path.join(
+const UI_LAYOUT = path.join(
   ROOT,
   "app-config",
   "app-defaults-for-user-configurable",
-  "ui-defaults.json",
+  "ui-defaults_layout.json",
 );
 const INDEX_HTML = path.join(ROOT, "public", "index.html");
 
@@ -39,17 +39,19 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 
 /* ---------- the JSON key ---------- */
 
-test("ui-defaults.json ships dialogMaxHeightPx as a positive integer", () => {
-  const v = readJson(UI_DEFAULTS).dialogMaxHeightPx;
+test("ui-defaults_layout.json ships dialogMaxHeightPx as a positive integer", () => {
+  const v = readJson(UI_LAYOUT).dialogMaxHeightPx;
   assert.equal(typeof v, "number");
   assert.ok(Number.isInteger(v) && v > 0, `not a pixel count: ${v}`);
 });
 
 test("the shipped key carries its own explanatory comment", () => {
-  /*- Every other tunable in this directory documents itself in-file;
-   *  this one especially, because it is the single key here that is NOT
-   *  a localStorage-backed preference. */
-  assert.ok(readJson(UI_DEFAULTS)._dialogMaxHeightPx_comment);
+  /*-
+   *  Every tunable in this directory documents itself in-file; this one
+   *  especially, because it reaches the page through a generated
+   *  stylesheet rather than through the server.
+   */
+  assert.ok(readJson(UI_LAYOUT)._dialogMaxHeightPx_comment);
 });
 
 /* ---------- the generator ---------- */

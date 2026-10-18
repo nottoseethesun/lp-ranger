@@ -6,10 +6,11 @@
  *
  * When a rebalance reaches the swap step but fails because the pool price
  * moved between quote and fill (priceVolatile), the bot activates an
- * exponential backoff timer: 1 min, 2 min, 4 min … capped at 20 min.  The
+ * exponential backoff timer: app-runtime.json's `tx.swapBackoffBaseMs`
+ * first, doubling with each failure up to `tx.swapBackoffMaxMs`.  The
  * timer is cleared on the next successful rebalance.  After
  * `REBALANCE_RETRY_SWAP_LIMIT` consecutive priceVolatile failures the bot
- * pauses itself with an actionable error so the user can intervene.
+ * aborts with an actionable error so the user can intervene.
  *
  * These helpers are exported for `bot-cycle.js` (which orchestrates the
  * poll cycle) and unit-tested directly via `test/bot-cycle-helpers.test.js`.
@@ -21,17 +22,10 @@ const { log } = require("./log");
 const config = require("./config");
 
 /**
- * Max swap-backoff wait (20 minutes).  When a rebalance fails because the
- * pool price moved between swap and mint (priceVolatile), the bot waits
- * before retrying.  Starts at 1 min, doubles each failure, caps at 20 min.
- * Cleared to zero on successful rebalance.
- */
-const _MAX_SWAP_BACKOFF_MS = 20 * 60_000;
-
-/**
  * Activate exponential swap-backoff after a priceVolatile result.
- * Starts at 1 min, doubles each failure, caps at 20 min per wait.
- * After REBALANCE_RETRY_SWAP_LIMIT attempts, pauses with alert.
+ * Starts at `config.SWAP_BACKOFF_BASE_MS`, doubles each failure, and
+ * caps at `config.SWAP_BACKOFF_MAX_MS` per wait. After
+ * REBALANCE_RETRY_SWAP_LIMIT attempts, aborts with an alert.
  */
 function _activateSwapBackoff(state, emit) {
   const limit = config.REBALANCE_RETRY_SWAP_LIMIT;
@@ -52,7 +46,9 @@ function _activateSwapBackoff(state, emit) {
     return;
   }
   const prev = state.swapBackoffMs || 0;
-  const next = prev ? Math.min(prev * 2, _MAX_SWAP_BACKOFF_MS) : 60_000;
+  const next = prev
+    ? Math.min(prev * 2, config.SWAP_BACKOFF_MAX_MS)
+    : config.SWAP_BACKOFF_BASE_MS;
   state.swapBackoffMs = next;
   state.swapBackoffUntil = Date.now() + next;
   log.warn(
@@ -80,5 +76,4 @@ function _checkSwapBackoff(deps, forced) {
 module.exports = {
   _activateSwapBackoff,
   _checkSwapBackoff,
-  _MAX_SWAP_BACKOFF_MS,
 };

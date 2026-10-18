@@ -53,19 +53,21 @@ import { log } from "./dashboard-log.js";
 import Navigo from "navigo";
 import { ethers } from "./ethers-adapter.js";
 import { act, ACT_ICONS } from "./dashboard-helpers.js";
-import { _posLabel } from "./dashboard-data.js";
+import { _posLabel } from "./dashboard-data-status.js";
 import { activeChainId } from "./dashboard-chain.js";
 
-/*- Browsers canonicalize URL paths to lowercase before sending, so the
- *  `:wallet` / `:contract` route segments always arrive lowercase even
- *  if the link was minted with EIP-55 mixed case.  Server-side keys
- *  (composite key for /api/status, .bot-config.json) are built from
- *  on-chain reads that ALWAYS return EIP-55 checksum form, so a
- *  lowercase URL segment used as-is silently misses every server-side
- *  lookup.  Normalize on entry through `ethers.getAddress` (EIP-55
- *  checksum), and surface a clear log line on invalid input rather
- *  than propagating garbage downstream.  See
- *  [[feedback_eip55_checksum_url_segments]]. */
+/**
+ * The `:wallet` / `:contract` route segments arrive in whatever case
+ * the link was written in: the app writes them checksummed, but a
+ * bookmark made before it did, or an address typed by hand, can be all
+ * lowercase. Server-side keys (composite key for /api/status,
+ * bot-config.json) are built from on-chain reads that always return
+ * EIP-55 checksum form, so a segment used as-is could miss every
+ * server-side lookup. Normalize on entry through `ethers.getAddress`
+ * (EIP-55 checksum), and log a clear line on invalid input rather than
+ * propagating garbage downstream. See
+ * [[feedback_eip55_checksum_url_segments]].
+ */
 function _toChecksum(addr) {
   if (!addr) return addr;
   try {
@@ -286,8 +288,12 @@ function _currentPath() {
  */
 function _buildPositionPath(active) {
   if (!active || !_wallet || !_wallet.address) return null;
-  const w = _wallet.address.toLowerCase();
-  const contract = (active.contractAddress || "").toLowerCase();
+  /*-
+   *  EIP-55 checksummed, as every address the app shows is
+   *  ([[feedback_eip55_checksum_url_segments]]).
+   */
+  const w = _toChecksum(_wallet.address);
+  const contract = _toChecksum(active.contractAddress || "");
   const tokenId = active.tokenId;
   if (active.positionType === "nft" && tokenId && contract) {
     return activeChainId() + "/" + w + "/" + contract + "/" + tokenId;
@@ -322,7 +328,7 @@ export function updateRouteForPosition(active) {
  */
 export function updateRouteForWallet(address) {
   if (!_router) return;
-  const target = address ? activeChainId() + "/" + address.toLowerCase() : "";
+  const target = address ? activeChainId() + "/" + _toChecksum(address) : "";
   if (_currentPath().toLowerCase() === target.toLowerCase()) return;
 
   _router.navigate(target, {

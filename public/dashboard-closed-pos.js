@@ -6,11 +6,11 @@
  * elements without disrupting the bot's active position management.
  *
  * Depends on: dashboard-helpers.js (g, fmtDateTime),
- *             dashboard-data.js (_fmtUsd).
+ *             dashboard-fmt-usd.js (_fmtUsd).
  */
 
 import { g, fmtDateTime } from "./dashboard-helpers.js";
-import { _fmtUsd } from "./dashboard-data.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
 import { setLeadingText } from "./dashboard-kpi-dom.js";
 
 /** @type {boolean} Whether we are currently viewing a closed position. */

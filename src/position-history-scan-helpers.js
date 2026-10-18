@@ -206,7 +206,8 @@ async function scanChainCollectAndDrain(tokenIds, events) {
  * @returns {Promise<number>}  Block number to use as `fromBlock`.
  */
 async function resolveScanFromBlock(prov, ethers, tokenId) {
-  const lookbackFloor = historyFloorBlock(await prov.getBlockNumber());
+  const head = await prov.getBlockNumber();
+  const lookbackFloor = historyFloorBlock(head);
   const poolAddress = await resolvePoolAddressForToken({
     provider: prov,
     ethersLib: ethers,

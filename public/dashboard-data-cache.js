@@ -13,12 +13,14 @@ import { activeChainId } from "./dashboard-chain.js";
 
 const _REB_CACHE_KEY = "9mm_rebalance_events_cache";
 
-/*- Cache is keyed by POOL IDENTITY so the entry survives rebalances (which
-    mint new tokenIds).  Shape:
-      { [poolKey]: { [newTokenId]: eventObj } }
-    poolKey = "{chain}-{wallet}-{contract}-{token0}-{token1}-{fee}", the
-    chain being the active one (`pulsechain` on PulseChain).
-    Legacy shape (tokenId-keyed array) is migrated on first read/write. */
+/*-
+ *  Cache is keyed by POOL IDENTITY so the entry survives rebalances (which
+ *  mint new tokenIds).  Shape:
+ *    { [poolKey]: { [newTokenId]: eventObj } }
+ *  poolKey = "{chain}-{wallet}-{contract}-{token0}-{token1}-{fee}", the
+ *  chain being the active one (`pulsechain` on PulseChain).
+ *  Legacy shape (tokenId-keyed array) is migrated on first read/write.
+ */
 
 /** True when `x` is null or undefined. */
 function _nil(x) {

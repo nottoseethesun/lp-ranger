@@ -5,7 +5,8 @@
  * @module shutdown-timing
  * @description
  * Read how long a stop may take, for the server that stops and for
- * `npm stop`, which asks it to.
+ * `npm stop`, which asks it to, and how often `npm run gentle-stop` asks
+ * the server whether it may.
  *
  * A stop has two clocks. The server, on SIGINT or SIGTERM, begins an
  * orderly shutdown and exits by itself after `exitTimeoutMs` whether or
@@ -14,8 +15,10 @@
  * kill is the backup, so it must always be the slower of the two: the
  * margin is added to the server's own timeout rather than configured as
  * a second, independent figure that could be set shorter.
+ * `gentleStopPollMs` comes before both: the wait between two questions
+ * gentle-stop asks before it stops the server as `npm stop` does.
  *
- * All three values come from the `shutdown` group of app-runtime.json,
+ * All four values come from the `shutdown` group of app-runtime.json,
  * merged with any operator override, and each becomes a timer, so each
  * is checked by `src/timer-bounds.js`. An unusable value throws, naming
  * the setting: a stop that kills on the spot because a figure was
@@ -53,7 +56,7 @@ function _ms(group, key) {
  * Turn a `shutdown` group into the stop timings, checking each value.
  *
  * @param {object} group  The `shutdown` group of app-runtime.json.
- * @returns {{exitTimeoutMs: number, killAfterMs: number, checkIntervalMs: number}}
+ * @returns {{exitTimeoutMs: number, killAfterMs: number, checkIntervalMs: number, gentleStopPollMs: number}}
  *   `killAfterMs` is how long `npm stop` waits before SIGKILL, always
  *   longer than `exitTimeoutMs`.
  * @throws {Error} When a setting is unusable.
@@ -64,13 +67,14 @@ function shutdownTimingsFrom(group) {
     exitTimeoutMs,
     killAfterMs: exitTimeoutMs + _ms(group, "stopKillMarginMs"),
     checkIntervalMs: _ms(group, "stopCheckIntervalMs"),
+    gentleStopPollMs: _ms(group, "gentleStopPollMs"),
   };
 }
 
 /**
  * Read the stop timings from app-runtime.json and any operator override.
  *
- * @returns {{exitTimeoutMs: number, killAfterMs: number, checkIntervalMs: number}}
+ * @returns {{exitTimeoutMs: number, killAfterMs: number, checkIntervalMs: number, gentleStopPollMs: number}}
  * @throws {Error} When a setting is unusable.
  */
 function readShutdownTimings() {

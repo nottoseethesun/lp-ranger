@@ -15,8 +15,9 @@
  *     `QUIET_WINDOW_MULTIPLE` times the current (already-doubled) wait after
  *     the last rebalance, or at the daily midnight reset.
  *
- * The three doubling numbers live in `src/throttle-doubling.js`, which the
- * dashboard imports too.
+ * The three doubling numbers live in bot-config-defaults.json →
+ * `throttleDoubling`, with an operator's override applied; the
+ * dashboard is sent the same numbers to show the rule it enforces.
  *
  * @example
  * import { createThrottle } from './throttle.js';
@@ -27,28 +28,34 @@
 
 "use strict";
 
-const { loadShippedDefaults } = require("./load-merged-defaults");
-const {
-  TRIGGER_COUNT,
-  TRIGGER_WINDOW_MULTIPLE,
-  QUIET_WINDOW_MULTIPLE,
-} = require("./throttle-doubling");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
 /*-
- *  Single-source defaults: per feedback_one_literal_per_shipped_default,
- *  the shipped minimum interval and daily cap live only in
- *  bot-config-defaults.json (`minRebalanceIntervalMin`,
- *  `maxRebalancesPerDay`). Read once at module init, for a caller of
- *  `createThrottle` that leaves either out.
+ *  The bot defaults, read once at module init for doubling mode's rule
+ *  below: the shipped file with an operator's override on top. The
+ *  dashboard's trigger-window label and help are sent these same
+ *  numbers, so they describe the rule the bot enforces.
  */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+const _DEFAULTS = readBotConfigDefaults();
+
+/*-
+ *  Doubling mode's three numbers: how many rebalances inside the trigger
+ *  window switch it on, the window as a multiple of the minimum
+ *  interval, and the quiet spell that clears it as a multiple of the
+ *  current wait.
+ */
+const {
+  triggerCount: TRIGGER_COUNT,
+  triggerWindowMultiple: TRIGGER_WINDOW_MULTIPLE,
+  quietWindowMultiple: QUIET_WINDOW_MULTIPLE,
+} = _DEFAULTS.throttleDoubling;
 
 /**
  * @typedef {Object} ThrottleOptions
- * @property {number} [minIntervalMs]  Minimum ms between rebalances; the
- *   shipped `minRebalanceIntervalMin` when left out.
- * @property {number} [dailyMax]       Maximum rebalances per day; the
- *   shipped `maxRebalancesPerDay` when left out.
+ * @property {number} minIntervalMs  Minimum ms between rebalances. The bot
+ *   passes `MIN_REBALANCE_INTERVAL_MIN`, which startup has checked.
+ * @property {number} dailyMax       Maximum rebalances per day. The bot
+ *   passes `MAX_REBALANCES_PER_DAY`, which startup has checked.
  * @property {Function} [nowFn]               Injectable clock — returns current ms timestamp.
  *                                            Defaults to `Date.now`. Used for testing.
  */
@@ -96,18 +103,17 @@ function nextMidnight(nowFn) {
 
 /**
  * Factory that creates a throttle controller instance.
- * @param {ThrottleOptions} [opts={}]
+ * @param {ThrottleOptions} opts
  * @returns {ThrottleHandle}
  */
-function createThrottle(opts = {}) {
+function createThrottle(opts) {
   const nowFn = opts.nowFn || Date.now;
-  const minIntervalMs =
-    opts.minIntervalMs ?? _DEFAULTS.minRebalanceIntervalMin * 60_000;
+  const minIntervalMs = opts.minIntervalMs;
 
   /** @type {ThrottleState} */
   const state = {
     minIntervalMs,
-    dailyMax: opts.dailyMax ?? _DEFAULTS.maxRebalancesPerDay,
+    dailyMax: opts.dailyMax,
     dailyCount: 0,
     lastRebTime: 0,
     rebTimestamps: [],

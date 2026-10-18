@@ -12,9 +12,10 @@
  *     POSITION'S PRICE-RANGE WIDTH (upper − lower), in price space —
  *     NOT as a percentage of the boundary price.  The other automatic
  *     trigger; either alone fires a rebalance.
- *   - `_reloadFromConfig(gc, throttle, setIntervalMs)` — re-applies
- *     per-position config (poll interval, min rebalance interval,
- *     daily cap) to the live throttle on every poll cycle.
+ *   - `_reloadFromConfig(gc, throttle)` — re-applies per-position
+ *     config (min rebalance interval, daily cap) to the live throttle on
+ *     every poll cycle. How often the bot polls is one global setting,
+ *     not a per-position one.
  *
  * `bot-cycle.js` consumes the first two inside
  * `_checkRangeAndThreshold`; `bot-loop.js` calls `_reloadFromConfig`
@@ -37,8 +38,7 @@ function _isTimeoutExpired(bs, gc) {
 function _isBeyondThreshold(poolState, position, gc) {
   const threshPct =
     (gc?.("rebalanceOutOfRangeThresholdPercent") ??
-      config.REBALANCE_OOR_THRESHOLD_PCT ??
-      5) / 100;
+      config.REBALANCE_OOR_THRESHOLD_PCT) / 100;
   if (threshPct <= 0) return true;
   const lp = rangeMath.tickToPrice(
       position.tickLower,
@@ -60,9 +60,7 @@ function _isBeyondThreshold(poolState, position, gc) {
 }
 
 /** Reload config values from disk on each poll cycle. */
-function _reloadFromConfig(gc, throttle, setIntervalMs) {
-  const ci = gc("checkIntervalSec");
-  if (ci) setIntervalMs(ci * 1000);
+function _reloadFromConfig(gc, throttle) {
   throttle.configure({
     minIntervalMs:
       (gc("minRebalanceIntervalMin") || config.MIN_REBALANCE_INTERVAL_MIN) *

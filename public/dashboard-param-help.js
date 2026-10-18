@@ -9,12 +9,11 @@
  * - Escape key catches dynamic `[class*="pos-mgr-modal-overlay"]` elements
  */
 
-import { PARAM_HELP } from "./param-help-content.js";
-import {
-  getLtBreakdown,
-  getCurBreakdown,
-  _fmtUsd,
-} from "./dashboard-data-kpi.js";
+import { buildParamHelp } from "./param-help-content.js";
+import { helpFigures } from "./dashboard-help-figures.js";
+import { log } from "./dashboard-log.js";
+import { getLtBreakdown, getCurBreakdown } from "./dashboard-data-kpi.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
 import { cloneTpl, truncName } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
 
@@ -57,10 +56,23 @@ export function _substituteTokenNames(body, token0Symbol, token1Symbol) {
 
 /**
  * Show the educational help modal for a parameter.
- * @param {string} key  The parameter key (matches a PARAM_HELP entry).
+ *
+ * The help states the figures this install runs on, which come from the
+ * server shortly after startup; until they have arrived there is nothing
+ * true to show, so the dialog does not open and the console says why.
+ *
+ * @param {string} key  The parameter key (matches a `buildParamHelp` entry).
  */
 export function showParamHelp(key) {
-  const entry = PARAM_HELP[key];
+  const figures = helpFigures();
+  if (figures === null) {
+    log.warn(
+      "[lp-ranger] [help] the help's figures have not arrived from the server yet; %s not shown",
+      key,
+    );
+    return;
+  }
+  const entry = buildParamHelp(figures)[key];
   if (!entry) return;
   // Remove any existing help modal to prevent stacking
   const existing = document.getElementById(_MODAL_ID);
@@ -85,13 +97,15 @@ export function showParamHelp(key) {
     const sec = cloneTpl("tplParamHelpSection");
     if (!sec) continue;
     sec.querySelector('[data-tpl="heading"]').textContent = s.heading;
-    /*- PARAM_HELP bodies contain rich text (<strong>, <br>, &mdash;)
+    /*-
+     *  Help bodies contain rich text (<strong>, <br>, &mdash;)
      *  authored in param-help-content.js. That content file is the
      *  intentional home for this markup — the HTML-in-JS rule targets
      *  layout markup mixed into logic files, not editorial content.
      *  Dynamic token names are substituted (escaped + truncated) so
      *  e.g. the per-token slippage dialogs read "when Wrapped Pulse
-     *  is traded for PulseX" for the active position. */
+     *  is traded for PulseX" for the active position.
+     */
     sec.querySelector('[data-tpl="body"]').innerHTML = _substituteTokenNames(
       s.body,
       active?.token0Symbol,
@@ -142,22 +156,34 @@ function _buildPnlTable(b, feesLabel, isLifetime) {
     if (el) el.textContent = val;
   };
   if (isLifetime) {
-    /*- Lifetime: Current Fees + Fees Compounded both additive (no minus
-     *  prefix) — they are the fee earnings figure.  Old "Lifetime Fees"
-     *  row was the imprecise per-epoch tracker total and is removed. */
+    /*-
+     *  Lifetime: Net P&L adds Current Fees; Fees Compounded is shown for
+     *  reference, unsigned, since those fees are already inside Current
+     *  Value (`_resolveKpiTotals`). Gas is subtracted.
+     */
     set("currentFees", f(b.currentFees || 0));
     set("compounded", f(b.compounded));
+    set("gas", "\u2212" + f(b.gas));
   } else {
+    /*-
+     *  Current: Net P&L is Price Change + Fees Earned + Realized Gains.
+     *  Fees Compounded and Gas are shown for reference, unsigned, since
+     *  neither enters the total (`_resolveKpiTotals`).
+     */
     set("feesLabel", feesLabel);
     set("fees", f(b.fees));
-    set("compounded", "\u2212" + f(b.compounded));
+    set("compounded", f(b.compounded));
+    set("gas", f(b.gas));
   }
-  set("gas", "\u2212" + f(b.gas));
   set("priceChange", f(b.priceChange));
   set("residual", f(b.residual || 0));
-  /*- Initial Wallet Residual is always subtracted from Net P&L (with
-   *  the unicode minus prefix to match other subtracted rows like Gas
-   *  and the dashboard-data-kpi-breakdown _setSubtracted formatting). */
+  /*-
+   *  The residual rows are in the Lifetime table only; the Current one
+   *  has none, so these find nothing there. Initial Wallet Residual is
+   *  subtracted from Lifetime Net P&L (the unicode minus prefix matches
+   *  the other subtracted rows and dashboard-data-kpi-breakdown's
+   *  _setSubtracted formatting).
+   */
   set("initialResidual", "\u2212" + f(b.initialResidual || 0));
   set("realized", f(b.realized));
   set("total", f(b.total));

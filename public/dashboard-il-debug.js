@@ -18,7 +18,7 @@
  */
 
 import { cloneTpl } from "./dashboard-helpers.js";
-import { reapplyPrivacyBlur } from "./dashboard-events.js";
+import { reapplyPrivacyBlur } from "./dashboard-events-manage.js";
 
 /*- Build a label DOM containing a token symbol wrapped in the shared
  *  ellipsize utility span (see `.9mm-pos-mgr-ellipsize` in

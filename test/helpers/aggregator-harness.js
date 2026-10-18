@@ -65,11 +65,15 @@ const confirmed = (tx) => ({
 /** A confirmed receipt that carries no gas figures. */
 const confirmedWithoutGas = (tx) => ({ hash: tx.hash, status: 1 });
 
-/** What the chain reports for a swap whose route went stale. */
+/**
+ * What the chain reports for a swap whose route went stale: ethers'
+ * CALL_EXCEPTION, carrying the mined receipt. The revert consumed its
+ * nonce and paid 50000 × 2 wei of gas.
+ */
 function reverted() {
   const e = new Error("execution reverted");
   e.code = "CALL_EXCEPTION";
-  e.receipt = { gasUsed: 50000n, status: 0 };
+  e.receipt = { gasUsed: 50000n, gasPrice: 2n, status: 0 };
   throw e;
 }
 

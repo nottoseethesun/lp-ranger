@@ -102,9 +102,11 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     gasFeePct,
   );
   if (gated) return gated;
-  /*- Destination-token slippage: `slippagePctToken<destination>` when
-   *  the position has one, otherwise the shipped default.  See
-   *  src/slippage-resolver.js. */
+  /*-
+   *  Destination-token slippage: `slippagePctToken<destination>` when
+   *  the position has one, otherwise the default.  See
+   *  src/slippage-resolver.js.
+   */
   const effectiveSlippage = resolveSlippagePct(ctx, is0to1);
   const result = await swapIfNeeded(signer, ethersLib, {
     swapRouterAddress,
@@ -292,10 +294,12 @@ async function _adjustRangeAfterSwap(
  *       is what the app documents as "preserve the current Range Width."
  */
 function _computeRange(ps, pos, crw, offset, fullRange) {
-  /*- No literal fallback per feedback_one_literal_per_shipped_default:
+  /*-
+   *  No literal fallback per feedback_one_literal_per_shipped_default:
    *  when `offset` is undefined here, range-math's own
-   *  `_DEFAULTS.offsetToken0Pct` (sourced from bot-config-defaults.json)
-   *  takes over inside the called helpers. */
+   *  `_DEFAULTS.offsetToken0Pct` (bot-config-defaults.json, with the
+   *  operator's override) takes over inside the called helpers.
+   */
   const opts = offset !== undefined ? { offsetToken0Pct: offset } : {};
   const mode = fullRange
     ? "full-range"
@@ -305,7 +309,7 @@ function _computeRange(ps, pos, crw, offset, fullRange) {
   log.info(
     "[offset-trace] _computeRange mode=%s offsetToken0Pct=%s tokenId=%s",
     mode,
-    opts.offsetToken0Pct ?? "(shipped-default)",
+    opts.offsetToken0Pct ?? "(default)",
     String(pos.tokenId),
   );
   if (fullRange) {
@@ -394,6 +398,7 @@ function _buildRebalanceResult(
     mintGasCostWei: mintResult.gasCostWei,
     oldTokenId: position.tokenId,
     newTokenId: mintResult.tokenId,
+    blockNumber: mintResult.blockNumber,
     oldTickLower: position.tickLower,
     oldTickUpper: position.tickUpper,
     newTickLower: newRange.lowerTick,

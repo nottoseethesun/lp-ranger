@@ -1,10 +1,12 @@
 {
-  "_comment": "Where the price services the app asks for token prices live: the base url of each one's api, with its version where the url carries one, and no trailing slash. Every request to a service is built on its baseUrl, so a service that moves its api is changed here and nowhere else. Which of a chain's tokens a service can price is a separate matter, set per chain in chains.json → priceServices. Read by src/price-service-urls.js, which stops startup when a value is not an https url, naming it.",
+  "_comment": "Where the price services the app asks for token prices live: each one's api base url, with its version where the url carries one, and no trailing slash. Every request to a service is built on its baseUrl, so a service that moves its api is changed here only. Which of a chain's tokens a service can price is set per chain in chains.json → priceServices. Read by src/price-service-urls.js, which stops startup on a value that is not an https url, naming it.",
   "dexScreener": {
     "baseUrl": "https://api.dexscreener.com"
   },
   "geckoTerminal": {
-    "baseUrl": "https://api.geckoterminal.com/api/v2"
+    "baseUrl": "https://api.geckoterminal.com/api/v2",
+    "_topPoolsConsidered_comment": "For a bare token's historical price, GeckoTerminal is asked for the token's pools and the best of its top-ranked ones is read. This is how many are considered: deep enough that a token with several thin pairs reaches a real one, shallow enough that the list stays the service's view of the token's main market. Read by src/gecko-pool-cache.js, which stops startup on a value outside its range in setting-bounds.json.",
+    "topPoolsConsidered": 10
   },
   "moralis": {
     "baseUrl": "https://deep-index.moralis.io/api/v2.2"

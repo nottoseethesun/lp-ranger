@@ -18,7 +18,7 @@
  * additional entries are appended into `#missionStatusExtras`.
  */
 import { g, truncName } from "./dashboard-helpers.js";
-import { posStore } from "./dashboard-positions.js";
+import { posStore } from "./dashboard-positions-store.js";
 
 /*- Optimistic latch: flips the badge immediately on click, before
  * the bot-cycle (up to CHECK_INTERVAL_SEC) picks up the request.

@@ -53,6 +53,17 @@ const _USER_FILE = path.join(_USER_DIR, "bot-config-defaults.json");
  *  when an operator updates the shipped defaults. */
 const _SHIPPED = JSON.parse(fs.readFileSync(_SHIPPED_FILE, "utf8"));
 
+// Each setting's range, read the same way and for the same reason.
+const SETTING_BOUNDS = JSON.parse(
+  fs.readFileSync(
+    path.join(path.dirname(_SHIPPED_FILE), "setting-bounds.json"),
+    "utf8",
+  ),
+);
+
+// Dependency-free, so loading it here reads no configuration.
+const { boundText } = require("../src/range-check");
+
 function _clearModuleCache() {
   delete require.cache[require.resolve("../src/bot-config-defaults")];
   delete require.cache[require.resolve("../src/load-merged-defaults")];
@@ -122,11 +133,16 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
   });
 
-  it("floors fractional approvalMultiple overrides", () => {
+  it("refuses a fractional approvalMultiple override rather than rounding it", () => {
+    /*-
+     *  A whole-number setting given a fraction is not moved to a nearby
+     *  whole number, which would be a value nobody chose: the shipped
+     *  default stands, as for any other value outside its range.
+     */
     _writeUser({ approvalMultiple: 25.8 });
     const { readBotConfigDefaults } = require("../src/bot-config-defaults");
     const out = readBotConfigDefaults();
-    assert.equal(out.approvalMultiple, 25);
+    assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
   });
 
   it("rejects approvalMultiple < 1 in override (falls back to shipped)", () => {
@@ -176,7 +192,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
       slippagePct: 1.2,
       checkIntervalSec: 120,
       minRebalanceIntervalMin: 30,
-      maxRebalancesPerDay: 50,
+      maxRebalancesPerDay: 10,
       offsetToken0Pct: 60,
     });
     const { readBotConfigDefaults } = require("../src/bot-config-defaults");
@@ -186,8 +202,19 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     assert.equal(out.slippagePct, 1.2);
     assert.equal(out.checkIntervalSec, 120);
     assert.equal(out.minRebalanceIntervalMin, 30);
-    assert.equal(out.maxRebalancesPerDay, 50);
+    assert.equal(out.maxRebalancesPerDay, 10);
     assert.equal(out.offsetToken0Pct, 60);
+  });
+
+  it("holds the daily cap to the range a Bot Settings save is held to", () => {
+    /*-
+     *  One range for both roads: the shipped file is held to the same
+     *  cap a Bot Settings save is refused past.
+     */
+    _writeUser({ maxRebalancesPerDay: 50 });
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaults();
+    assert.equal(out.maxRebalancesPerDay, _SHIPPED.maxRebalancesPerDay);
   });
 
   it("STRICT refuses an out-of-range checkIntervalSec rather than resetting it", () => {
@@ -215,6 +242,31 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     }
   });
 
+  it("STRICT refuses a request pacing under 5 ms, so pacing cannot be turned off", () => {
+    /*-
+     *  The user, 2026-10-18: "let's not allow a pacing of 0; it should
+     *  be at least 5 ms."
+     */
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
+    for (const bad of [0, 4, -1]) {
+      _writeUser({ globalRPCRequestRateIntervalMS: bad });
+      assert.throws(
+        () => readBotConfigDefaultsStrict(),
+        /globalRPCRequestRateIntervalMS/,
+        `${String(bad)} must be refused`,
+      );
+    }
+    for (const good of [5, 100]) {
+      _writeUser({ globalRPCRequestRateIntervalMS: good });
+      assert.equal(
+        readBotConfigDefaultsStrict().globalRPCRequestRateIntervalMS,
+        good,
+      );
+    }
+  });
+
   it("LENIENT never throws, because a poll cycle and a route call it", () => {
     /*- This file is re-read on every call, and several of those calls
      *  are on hot paths — `GET /api/bot-config-defaults` among them,
@@ -232,27 +284,15 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     }
   });
 
-  it("keeps GET /api/bot-config-defaults off a 500", () => {
-    const { handleBotConfigDefaults } = require("../src/bot-config-defaults");
-    _writeUser({ checkIntervalSec: 7200 });
-    let status = null;
-    handleBotConfigDefaults(null, null, (_res, s) => {
-      status = s;
-    });
-    assert.equal(status, 200);
-  });
-
-  it("leaves the other keys falling back, not throwing", () => {
-    /*- Only a value that becomes a timer delay is refused, and only by
-     *  the strict reader. Everything else keeps the per-key fallback. */
+  it("STRICT refuses a setting out of range that is not a timer, too", () => {
+    /*-
+     *  The lenient reader keeps the shipped default in its place, as for
+     *  a timer; the strict one, at startup, refuses it.
+     */
     _writeUser({ slippagePct: 99, checkIntervalSec: 300 });
-    const {
-      readBotConfigDefaultsStrict,
-    } = require("../src/bot-config-defaults");
-    assert.equal(
-      readBotConfigDefaultsStrict().slippagePct,
-      _SHIPPED.slippagePct,
-    );
+    const mod = require("../src/bot-config-defaults");
+    assert.throws(() => mod.readBotConfigDefaultsStrict(), /slippagePct/);
+    assert.equal(mod.readBotConfigDefaults().slippagePct, _SHIPPED.slippagePct);
   });
 
   it("rejects out-of-range overrides and falls back per-key to shipped", () => {
@@ -260,7 +300,8 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
       rebalanceOutOfRangeThresholdPercent: 0, // below min
       rebalanceTimeoutMin: -10, // negative
       slippagePct: 99, // above max
-      minRebalanceIntervalMin: 9999, // above max
+      // above max: one past the range in setting-bounds.json
+      minRebalanceIntervalMin: SETTING_BOUNDS.minRebalanceIntervalMin.max + 1,
       maxRebalancesPerDay: 0, // below min
       offsetToken0Pct: 200, // above max
     });
@@ -381,6 +422,133 @@ describe("bot-config-defaults: rpc and history-scan plumbing", () => {
   });
 });
 
+describe("bot-config-defaults: STRICT refuses any setting outside its range", () => {
+  /*-
+   *  At startup the strict reader refuses rather than replaces, for every
+   *  setting with a range in setting-bounds.json: each top-level one, each
+   *  member of a group, each entry of a list. The message names the
+   *  setting, its range and what was written, so the operator knows what
+   *  to correct, and where.
+   */
+
+  /** Write `override`, read strictly, and hand back what was thrown. */
+  function strictRefusal(override) {
+    _writeUser(override);
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
+    let refusal = null;
+    assert.throws(
+      () => readBotConfigDefaultsStrict(),
+      (err) => {
+        refusal = err;
+        return true;
+      },
+      `${JSON.stringify(override)} must be refused`,
+    );
+    return refusal;
+  }
+
+  /** Assert the refusal names `sentence`, as the operator would read it. */
+  function names(err, sentence) {
+    assert.equal(err.badSettingValue, true);
+    assert.ok(err.message.includes(sentence), err.message);
+  }
+
+  it("refuses a value above its range, naming the file, setting and range", () => {
+    const bound = SETTING_BOUNDS.maxRebalancesPerDay;
+    const err = strictRefusal({ maxRebalancesPerDay: bound.max + 1 });
+    names(
+      err,
+      `maxRebalancesPerDay must be ${boundText(bound)}; it is ${bound.max + 1}.`,
+    );
+    assert.match(
+      err.message,
+      /app-config\/user-configurable\/bot-config-defaults\.json/,
+    );
+  });
+
+  it("refuses a fraction where the range takes whole numbers, and text", () => {
+    const bound = SETTING_BOUNDS.approvalMultiple;
+    names(
+      strictRefusal({ approvalMultiple: 2.5 }),
+      `approvalMultiple must be ${boundText(bound)}; it is 2.5.`,
+    );
+    names(
+      strictRefusal({ approvalMultiple: "five" }),
+      `approvalMultiple must be ${boundText(bound)}; it is "five".`,
+    );
+  });
+
+  it("refuses a group's member outside its range, naming it by its path", () => {
+    const bound = SETTING_BOUNDS.residualCleanup.delayMs;
+    names(
+      strictRefusal({ residualCleanup: { delayMs: 0 } }),
+      `residualCleanup.delayMs must be ${boundText(bound)}; it is 0.`,
+    );
+  });
+
+  it("refuses a group written as a single value", () => {
+    names(
+      strictRefusal({ residualCleanup: 5 }),
+      "residualCleanup must be a set of named values; it is 5.",
+    );
+  });
+
+  it("refuses a list with an entry outside the range", () => {
+    const bound = SETTING_BOUNDS.rpcRetryOn429DelaysMs;
+    names(
+      strictRefusal({ rpcRetryOn429DelaysMs: [1000, 0] }),
+      `rpcRetryOn429DelaysMs must be a list, each entry ${boundText(bound)};` +
+        " it is [1000,0].",
+    );
+  });
+
+  it("names every refused setting at once", () => {
+    const err = strictRefusal({
+      gasFeePct: SETTING_BOUNDS.gasFeePct.max + 1,
+      ilGuardRetry: { baseMs: 1 },
+    });
+    assert.match(err.message, /gasFeePct must be/);
+    assert.match(err.message, /ilGuardRetry\.baseMs must be/);
+  });
+
+  it("passes values inside their ranges, and ignores null", () => {
+    const max = SETTING_BOUNDS.maxRebalancesPerDay.max;
+    _writeUser({
+      maxRebalancesPerDay: max,
+      residualCleanup: { delayMs: 1 },
+      rpcRetryOn429DelaysMs: [1000, 2000],
+      slippagePct: null,
+    });
+    const {
+      readBotConfigDefaultsStrict,
+    } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaultsStrict();
+    assert.equal(out.maxRebalancesPerDay, max);
+    assert.equal(out.residualCleanup.delayMs, 1);
+    assert.equal(
+      out.residualCleanup.thresholdPct,
+      _SHIPPED.residualCleanup.thresholdPct,
+    );
+    assert.deepEqual(out.rpcRetryOn429DelaysMs, [1000, 2000]);
+    assert.equal(out.slippagePct, _SHIPPED.slippagePct);
+  });
+
+  it("LENIENT keeps the shipped value for each, never throwing", () => {
+    _writeUser({
+      maxRebalancesPerDay: SETTING_BOUNDS.maxRebalancesPerDay.max + 1,
+      residualCleanup: { delayMs: 0 },
+      rpcRetryOn429DelaysMs: [0],
+    });
+    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const out = readBotConfigDefaults();
+    assert.equal(out.maxRebalancesPerDay, _SHIPPED.maxRebalancesPerDay);
+    assert.equal(out.residualCleanup.delayMs, _SHIPPED.residualCleanup.delayMs);
+    assert.deepEqual(out.rpcRetryOn429DelaysMs, _SHIPPED.rpcRetryOn429DelaysMs);
+  });
+});
+
 describe("bot-config-defaults: the file is read once", () => {
   it("returns the same frozen object rather than re-reading", () => {
     /*- Parsing and merging the file costs real synchronous I/O, and
@@ -412,34 +580,5 @@ describe("bot-config-defaults: the file is read once", () => {
 
     mod._resetMemoForTests();
     assert.equal(mod.readBotConfigDefaults().approvalMultiple, 77);
-  });
-});
-
-describe("bot-config-defaults.handleBotConfigDefaults", () => {
-  it("returns 200 with the merged defaults (user override applied)", () => {
-    _writeUser({ approvalMultiple: 75 });
-    const { handleBotConfigDefaults } = require("../src/bot-config-defaults");
-    let gotStatus = null;
-    let gotBody = null;
-    const jsonResponse = (_res, status, body) => {
-      gotStatus = status;
-      gotBody = body;
-    };
-    handleBotConfigDefaults({}, {}, jsonResponse);
-    assert.equal(gotStatus, 200);
-    assert.equal(gotBody.approvalMultiple, 75);
-  });
-
-  it("returns 200 with shipped defaults when no user override exists", () => {
-    const { handleBotConfigDefaults } = require("../src/bot-config-defaults");
-    let gotStatus = null;
-    let gotBody = null;
-    const jsonResponse = (_res, status, body) => {
-      gotStatus = status;
-      gotBody = body;
-    };
-    handleBotConfigDefaults({}, {}, jsonResponse);
-    assert.equal(gotStatus, 200);
-    assert.equal(gotBody.approvalMultiple, _SHIPPED.approvalMultiple);
   });
 });

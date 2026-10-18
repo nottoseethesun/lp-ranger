@@ -7,6 +7,7 @@
     "eslint-rules/*.js",
     "stylelint-rules/*.js",
     "public/dashboard-init.js",
+    "public/dashboard-manual-figures.js",
     "test/**/*.test.js"
   ],
   "project": ["**/*.js"]

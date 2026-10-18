@@ -13,11 +13,7 @@ const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { cancelPoolScan } = require("./pool-scanner");
-const {
-  getTokenSymbol,
-  setTokenSymbol,
-  flushSymbolCache,
-} = require("./token-symbol-cache");
+const { setTokenSymbol, flushSymbolCache } = require("./token-symbol-cache");
 const {
   detectPositionType,
   refreshLpPositionLiquidity,
@@ -37,15 +33,20 @@ function _log(msg, ...a) {
   log.info(_C + "[lp-cache] " + msg + _R, ...a);
 }
 
+/** What stands in for a token whose name cannot be read. */
+function _fallbackLabel(addr) {
+  if (typeof addr !== "string" || addr === "") return "?";
+  return addr.slice(0, 6) + "\u2026" + addr.slice(-4);
+}
+
 /**
- * Resolve the on-chain symbol for a token.
+ * Read a token's name from the chain, or its symbol when it has no name.
  * @param {object} prov  ethers provider.
  * @param {string} addr  Token address.
- * @returns {Promise<string>}
+ * @returns {Promise<string|null>} Null when the chain answers neither.
  */
-async function resolveTokenSymbol(prov, addr) {
-  if (!addr) return "?";
-  const fb = addr.slice(0, 6) + "\u2026" + addr.slice(-4);
+async function _readTokenName(prov, addr) {
+  if (typeof addr !== "string" || addr === "") return null;
   try {
     const c = new ethers.Contract(
       addr,
@@ -58,14 +59,31 @@ async function resolveTokenSymbol(prov, addr) {
     const nm = await c.name().catch(() => null);
     if (nm) return nm;
     const sym = await c.symbol().catch(() => null);
-    return sym || fb;
+    return sym || null;
   } catch {
-    return fb;
+    return null;
   }
 }
 
 /**
+ * Resolve the on-chain symbol for a token, or its abbreviated address
+ * when the chain answers with neither a name nor a symbol.
+ * @param {object} prov  ethers provider.
+ * @param {string} addr  Token address.
+ * @returns {Promise<string>}
+ */
+async function resolveTokenSymbol(prov, addr) {
+  return (await _readTokenName(prov, addr)) ?? _fallbackLabel(addr);
+}
+
+/**
  * Resolve token symbols for a set of addresses.
+ *
+ * Only a name the chain gave is cached. The abbreviated address stands in
+ * for this scan's list and the next scan asks again. Cached, it would be
+ * taken as the token's name from then on, and positions would show it in
+ * move logs and alerts.
+ *
  * @param {object} prov  ethers provider.
  * @param {Set<string>} addrSet  Token addresses.
  * @returns {Promise<Object<string,string>>}
@@ -74,13 +92,60 @@ async function resolveSymbolMap(prov, addrSet) {
   const symMap = {};
   await Promise.all(
     [...addrSet].map(async (a) => {
-      const sym = await resolveTokenSymbol(prov, a);
-      symMap[a] = sym;
-      setTokenSymbol(a, sym);
+      const name = await _readTokenName(prov, a);
+      if (name !== null) setTokenSymbol(a, name);
+      symMap[a] = name ?? _fallbackLabel(a);
     }),
   );
   flushSymbolCache();
   return symMap;
+}
+
+/**
+ * Whether a token's saved name is only its address: the whole address or
+ * the shortened stand-in a scan saves when the chain did not answer,
+ * compared without regard to case.
+ * @param {*} name  The saved name.
+ * @param {string} addr  The token's address.
+ * @returns {boolean}
+ */
+function _isAddressStandIn(name, addr) {
+  if (typeof name !== "string" || typeof addr !== "string") return false;
+  const n = name.toLowerCase();
+  return n === addr.toLowerCase() || n === _fallbackLabel(addr).toLowerCase();
+}
+
+/**
+ * Give each token of saved positions whose name is only its address one
+ * read of its real name, with no retry of its own; a name that comes back
+ * replaces the stand-in. The saved list kept the stand-in as the token's
+ * name, so the position showed the shortened address until a rescan. Run
+ * on the list a scan serves from its cache: a full scan has just made
+ * that one read itself.
+ * @param {object} prov  ethers provider.
+ * @param {object[]} positions  Saved NFT positions.
+ * @returns {Promise<{positions: object[], changed: boolean}>}  `changed`
+ *   when a real name replaced a stand-in, for the caller to save.
+ */
+async function readStoodInNames(prov, positions) {
+  const addrs = new Set();
+  for (const p of positions)
+    for (const side of ["token0", "token1"])
+      if (_isAddressStandIn(p[side + "Symbol"], p[side])) addrs.add(p[side]);
+  if (addrs.size === 0) return { positions, changed: false };
+  const names = await resolveSymbolMap(prov, addrs);
+  let changed = false;
+  const out = positions.map((p) => {
+    const q = { ...p };
+    for (const side of ["token0", "token1"]) {
+      const name = names[p[side]];
+      if (!addrs.has(p[side]) || _isAddressStandIn(name, p[side])) continue;
+      q[side + "Symbol"] = name;
+      changed = true;
+    }
+    return q;
+  });
+  return { positions: out, changed };
 }
 
 /**
@@ -198,11 +263,16 @@ function createScanHandlers(deps) {
     }
   }
 
-  /** Check LP position cache freshness. */
+  /**
+   * Check LP position cache freshness. The cache is the scanned
+   * contract's, read and written under that contract: a request may name
+   * a position manager other than the configured one, and its positions
+   * must not answer for the configured one's.
+   */
   async function _checkCache(prov, ethers, wSt, pmAddr, currentBlock) {
     const cached = loadLpPositionCache(wSt.address, {
       blockchain: config.CHAIN_NAME,
-      contract: config.POSITION_MANAGER,
+      contract: pmAddr,
     });
     if (!cached) {
       _log(" No cache for wallet %s", wSt.address.slice(0, 8) + "\u2026");
@@ -227,7 +297,7 @@ function createScanHandlers(deps) {
       );
       saveLpPositionCache(wSt.address, cached.positions, currentBlock, {
         blockchain: config.CHAIN_NAME,
-        contract: config.POSITION_MANAGER,
+        contract: pmAddr,
       });
       return cached;
     }
@@ -278,7 +348,7 @@ function createScanHandlers(deps) {
     if (nfts.length > 0) {
       saveLpPositionCache(wSt.address, nfts, currentBlock, {
         blockchain: config.CHAIN_NAME,
-        contract: config.POSITION_MANAGER,
+        contract: pmAddr,
       });
       _log(
         " Full scan complete for" +
@@ -308,7 +378,13 @@ function createScanHandlers(deps) {
     let nftPositions, erc20Positions, type;
     const cacheHit = cached !== null;
     if (cacheHit) {
-      nftPositions = cached.positions;
+      const named = await readStoodInNames(prov, cached.positions);
+      nftPositions = named.positions;
+      if (named.changed)
+        saveLpPositionCache(wSt.address, nftPositions, currentBlock, {
+          blockchain: config.CHAIN_NAME,
+          contract: pmAddr,
+        });
       erc20Positions = [];
       type = "nft";
       setGlobalScanStatus("ready");
@@ -459,7 +535,7 @@ module.exports = {
   createScanHandlers,
   resolveTokenSymbol,
   resolveSymbolMap,
-  getTokenSymbol,
+  readStoodInNames,
   fetchPoolTicks,
   formatNftResponse,
   poolKey,

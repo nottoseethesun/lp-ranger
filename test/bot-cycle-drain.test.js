@@ -29,7 +29,7 @@ function _installMocks() {
         },
       };
     }
-    if (id === "./server-scan") {
+    if (id === "./token-symbol-cache") {
       return { getTokenSymbol: (a) => "SYM:" + a };
     }
     return _origRequire.apply(this, arguments);

@@ -24,7 +24,7 @@
 
 "use strict";
 
-const { parseCompositeKey } = require("./bot-config-v2");
+const { parseCompositeKey } = require("./composite-key");
 
 /**
  * Map an `originalKey` (possibly captured before a key migration) to

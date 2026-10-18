@@ -26,6 +26,14 @@ const {
 const { nftScanFromBlock } = require("./nft-mint-blocks");
 const { supplementMintFromChain } = require("./position-history-mint");
 const { lifetimeFeeAmounts } = require("./compounder");
+const { cacheKey } = require("./cache-store");
+const { isTokenDecimals } = require("./pool-state-validate");
+const { formatToken } = require("./price-source-cascade");
+const {
+  applyMintEntry,
+  applyCloseEntry,
+  supplementFromEvents,
+} = require("./position-history-apply");
 
 /*- Cached at module load: parsing PM logs is stateless, so a single Interface
     instance can serve every call.  Built from whichever ethers binding is in
@@ -33,19 +41,17 @@ const { lifetimeFeeAmounts } = require("./compounder");
     to inject a stub before loading). */
 const _IFACE = new ethers.Interface(PM_ABI);
 
-/** In-memory cache for ERC-20 decimals keyed by lowercase address. */
+/** In-memory cache for ERC-20 decimals, by canonical `chain-token` key. */
 const _decimalsCache = new Map();
 
-/** Read and parse the rebalance log from disk. */
+/**
+ * Read and parse the rebalance log from disk. The path is resolved the
+ * way the writer, src/bot-recorder.js, resolves it, so a log configured
+ * at an absolute path is read where it is written.
+ */
 function _readRebalanceLog() {
   try {
-    const raw = fs.readFileSync(
-      path.join(
-        process.cwd(),
-        config.LOG_FILE || "app-data/rebalance_log.json",
-      ),
-      "utf8",
-    );
+    const raw = fs.readFileSync(path.resolve(config.LOG_FILE), "utf8");
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -53,123 +59,21 @@ function _readRebalanceLog() {
   }
 }
 
-/** Apply mint-entry (newTokenId match) data to the result object. */
-function _applyMintEntry(result, mint) {
-  result.mintEntry = {
-    loggedAt: mint.loggedAt,
-    entryValueUsd: mint.entryValueUsd,
-  };
-  result.mintDate = mint.loggedAt || null;
-  result.entryValueUsd = mint.entryValueUsd ?? null;
-  result.token0UsdPriceAtOpen = mint.token0UsdPrice ?? null;
-  result.token1UsdPriceAtOpen = mint.token1UsdPrice ?? null;
-}
-
-/** Apply close-entry (oldTokenId match) data to the result object. */
-function _applyCloseEntry(result, close) {
-  result.closeEntry = {
-    loggedAt: close.loggedAt,
-    exitValueUsd: close.exitValueUsd,
-  };
-  result.closeDate = close.loggedAt || null;
-  result.exitValueUsd = close.exitValueUsd ?? null;
-  result.token0UsdPriceAtClose = close.token0UsdPrice ?? null;
-  result.token1UsdPriceAtClose = close.token1UsdPrice ?? null;
-  result.feesEarnedUsd = close.feesEarnedUsd ?? null;
-  result.gasCostWei = close.gasCostWei ?? null;
-}
-
-/**
- * Supply the mint of the one position NFT no rebalance event can name.
- *
- * A rebalance records "NFT X replaced by NFT Y at block B", so Y's mint
- * block is B. The earliest NFT in the inferred chain appears only as an
- * `oldTokenId` — it replaced nothing — so nothing names its mint, and it
- * would otherwise be read from chain: a scan of the pool's whole history
- * for one Transfer log.
- *
- * The event scanner already saw that mint. `resolveChainFirstMint`
- * records the earliest arrival that was a mint, which by construction is
- * that NFT, and hangs it on the events array this function receives.
- *
- * Two id-gated sources, in order of preference:
- *
- *   - `chainFirst*` — recorded for this purpose; the id always matches.
- *   - `firstMint*` — the oldest NFT the wallet ever held here, kept for
- *     Lifetime Days. Names the same NFT only when every arrival in the
- *     pool was a mint; a transferred-in NFT makes it a different one.
- *     Present on caches written before `chainFirst*` existed.
- *
- * Both are gated on the id because using the wrong one would date this
- * NFT from another NFT's mint. No match falls through to the chain read.
- *
- * @param {object} result   Result object to supplement.
- * @param {string} tokenId  Position NFT token ID.
- * @param {Array & {chainFirstTokenId?: string, chainFirstMintBlock?: number,
- *   chainFirstMintTimestamp?: number, firstMintTokenId?: string,
- *   firstMintTimestamp?: number, firstMintBlockNumber?: number}} events
- */
-function _applyFirstMint(result, tokenId, events) {
-  /*- Preferred: the field that names this NFT directly.  It is recorded
-   *  for exactly this purpose, so the id always matches and no fallback
-   *  is reached. */
-  if (String(events.chainFirstTokenId || "") === String(tokenId)) {
-    _stampMint(
-      result,
-      events.chainFirstMintTimestamp,
-      events.chainFirstMintBlock,
-    );
-    return;
-  }
-  /*- A cache written before that field existed carries only the
-   *  oldest-held NFT's mint, which names this NFT whenever every arrival
-   *  in the pool was a mint.  Same id check, for the same reason. */
-  if (String(events.firstMintTokenId || "") !== String(tokenId)) return;
-  _stampMint(result, events.firstMintTimestamp, events.firstMintBlockNumber);
-}
-
-/** Record a mint date and block without overwriting a known value. */
-function _stampMint(result, timestamp, blockNumber) {
-  if (!result.mintDate && timestamp)
-    result.mintDate = new Date(timestamp * 1000).toISOString();
-  if (!result.mintBlockNumber && blockNumber)
-    result.mintBlockNumber = blockNumber;
-}
-
-/**
- * Fill in missing data from rebalance events (on-chain event scanner).
- * @param {object}   result  Result object to supplement.
- * @param {string}   tokenId NFT token ID.
- * @param {object[]} events  Array of RebalanceEvent from the event scanner.
- */
-function _supplementFromEvents(result, tokenId, events) {
-  if (!events) return;
-  const mintEv = events.find((e) => String(e.newTokenId) === String(tokenId));
-  if (mintEv) {
-    if (!result.mintDate && mintEv.timestamp)
-      result.mintDate = new Date(mintEv.timestamp * 1000).toISOString();
-    if (!result.mintTxHash) result.mintTxHash = mintEv.txHash || null;
-    if (mintEv.blockNumber) result.mintBlockNumber = mintEv.blockNumber;
-  } else {
-    _applyFirstMint(result, tokenId, events);
-  }
-  const closeEv = events.find((e) => String(e.oldTokenId) === String(tokenId));
-  if (closeEv) {
-    if (!result.closeDate && closeEv.timestamp)
-      result.closeDate = new Date(closeEv.timestamp * 1000).toISOString();
-    if (!result.closeTxHash) result.closeTxHash = closeEv.txHash || null;
-    if (closeEv.blockNumber) result.closeBlockNumber = closeEv.blockNumber;
-  }
-}
-
 /**
  * Fetch ERC-20 decimals with caching.
+ *
+ * Only a usable answer is cached. A read that fails, or that answers
+ * outside `tokenDecimals` in setting-bounds.json, gives null and is asked
+ * again next time: a guessed figure would price the NFT's amounts by
+ * decimals the token may not have, and keep doing so for the life of the
+ * process.
+ *
  * @param {string} tokenAddr  Token contract address.
  * @param {object} provider   ethers.js provider.
- * @returns {Promise<number>} Token decimals (defaults to 18 on failure).
+ * @returns {Promise<number|null>} Token decimals, or null when unknown.
  */
 async function _getDecimals(tokenAddr, provider) {
-  const key = tokenAddr.toLowerCase();
+  const key = cacheKey(config.CHAIN_NAME, tokenAddr);
   if (_decimalsCache.has(key)) return _decimalsCache.get(key);
   try {
     const tok = new ethers.Contract(
@@ -178,11 +82,27 @@ async function _getDecimals(tokenAddr, provider) {
       provider,
     );
     const d = Number(await tok.decimals());
+    if (!isTokenDecimals(d)) {
+      const token = formatToken(tokenAddr);
+      log.warn(
+        "[history] %s answered decimals %s, which no token has; its" +
+          " amounts are left as the log has them",
+        token,
+        String(d),
+      );
+      return null;
+    }
     _decimalsCache.set(key, d);
     return d;
-  } catch {
-    _decimalsCache.set(key, 18);
-    return 18;
+  } catch (err) {
+    const token = formatToken(tokenAddr);
+    log.warn(
+      "[history] decimals of %s could not be read (%s); its amounts" +
+        " are left as the log has them",
+      token,
+      err.message,
+    );
+    return null;
   }
 }
 
@@ -328,7 +248,7 @@ async function _supplementEntryFromChain(result, tokenId, dec0, dec1, prov) {
  * Asking only `!result.entryValueUsd` would let one need stand in for
  * the other, and the two are not equivalent: when the bot rebalances a
  * position itself it writes the USD value to `rebalance_log.json` and
- * `_applyMintEntry` reads it back, so `entryValueUsd` is already
+ * `applyMintEntry` reads it back, so `entryValueUsd` is already
  * present while the amounts are not.  The receipt fetch would be
  * skipped, `_assembleEpoch` would store `hodlAmount0/1: 0`, and
  * per-epoch IL would come out as the whole position value rather than
@@ -389,7 +309,7 @@ async function _readCollectAndDrain(result, tokenId, prov, prefetched) {
  * Whether the exit value has to come off the chain.
  *
  * Normally only when none is recorded. For an NFT the bot rebalanced
- * itself, `_applyCloseEntry` has already loaded one out of the rebalance
+ * itself, `applyCloseEntry` has already loaded one out of the rebalance
  * log, so this is otherwise false and the recorded figure stands.
  *
  * Under `refresh` that is the wrong answer, and wrong in the way that
@@ -454,11 +374,18 @@ async function _supplementAmountsFromChain(
     _getDecimals(tokens.token0, prov),
     _getDecimals(tokens.token1, prov),
   ]);
+  /*-
+   *  Every figure below but gas is priced by the tokens' decimals; with
+   *  either unknown those are left as the log has them, and gas, which
+   *  needs no decimals, is still read.
+   */
+  const priced = dec0 !== null && dec1 !== null;
 
-  const mintGasWei = needEntry
-    ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
-    : 0n;
-  if (needExit || needFees) {
+  const mintGasWei =
+    needEntry && priced
+      ? await _supplementEntryFromChain(result, tokenId, dec0, dec1, prov)
+      : 0n;
+  if (priced && (needExit || needFees)) {
     // One read serves both consumers below — see scanCollectAndDrain.
     const scan = await _readCollectAndDrain(
       result,
@@ -711,7 +638,8 @@ async function _supplementHistoricalPrices(result, activePosition, refresh) {
  * @param {object}   opts
  * @param {object[]} opts.rebalanceEvents  From the event scanner.
  * @param {object}   opts.activePosition   Bot's active position (for pool lookup).
- * @param {object}   [opts.fallbackPrices] Current prices {price0, price1} used when historical unavailable.
+ * @param {object}   [opts.fallbackPrices] Current prices {price0, price1},
+ *   used when a historical price is unavailable for a day that is today.
  * @param {{collectEvents: Array, dlEvents: Array}|null} [opts.collectAndDrain]
  *   This NFT's Collect/DecreaseLiquidity history, when the caller read
  *   it with the rest of its chain; null when that read was unusable.
@@ -741,15 +669,16 @@ async function getPositionHistory(tokenId, opts = {}) {
   const entries = _readRebalanceLog();
   const mint = entries.find((e) => String(e.newTokenId) === String(tokenId));
   const close = entries.find((e) => String(e.oldTokenId) === String(tokenId));
-  if (mint) _applyMintEntry(result, mint);
-  if (close) _applyCloseEntry(result, close);
+  if (mint) applyMintEntry(result, mint);
+  if (close) applyCloseEntry(result, close);
 
-  _supplementFromEvents(result, tokenId, opts.rebalanceEvents);
+  supplementFromEvents(result, tokenId, opts.rebalanceEvents);
   /*-
    *  The transaction, not just the date. Every NFT a rebalance created
    *  gets both from that rebalance's event. The chain's OLDEST NFT gets
    *  neither from an event — no event names it as a `newTokenId` — so
-   *  `_applyFirstMint` stamps the date and block from the scanner's
+   *  `_applyFirstMint` (src/position-history-apply.js) stamps the date
+   *  and block from the scanner's
    *  `chainFirstMint*` fields and leaves the hash null.
    *
    *  Gating on the date alone therefore skipped the lookup for the one
@@ -778,17 +707,31 @@ async function getPositionHistory(tokenId, opts = {}) {
     tokenId,
     Date.now() - _t2,
   );
-  // Fill remaining null prices from current prices (better than no data)
+  /*-
+   *  A price the historical lookup could not read is filled with today's
+   *  only on a day that is today (UTC), where today's price is the right
+   *  one. An earlier day's stays unread: valued at today's price, its
+   *  period would show figures that look real and are wrong, kept until
+   *  Re-scan Prices. Unread, the period is marked as missing a price, and
+   *  the Per-Day table shows a dash for it.
+   */
   if (opts.fallbackPrices) {
     const fb = opts.fallbackPrices;
-    if (!result.token0UsdPriceAtOpen && fb.price0 > 0)
-      result.token0UsdPriceAtOpen = fb.price0;
-    if (!result.token1UsdPriceAtOpen && fb.price1 > 0)
-      result.token1UsdPriceAtOpen = fb.price1;
-    if (!result.token0UsdPriceAtClose && fb.price0 > 0)
-      result.token0UsdPriceAtClose = fb.price0;
-    if (!result.token1UsdPriceAtClose && fb.price1 > 0)
-      result.token1UsdPriceAtClose = fb.price1;
+    const today = new Date().toISOString().slice(0, 10);
+    const isToday = (iso) =>
+      typeof iso === "string" && iso.slice(0, 10) === today;
+    if (isToday(result.mintDate)) {
+      if (!result.token0UsdPriceAtOpen && fb.price0 > 0)
+        result.token0UsdPriceAtOpen = fb.price0;
+      if (!result.token1UsdPriceAtOpen && fb.price1 > 0)
+        result.token1UsdPriceAtOpen = fb.price1;
+    }
+    if (isToday(result.closeDate)) {
+      if (!result.token0UsdPriceAtClose && fb.price0 > 0)
+        result.token0UsdPriceAtClose = fb.price0;
+      if (!result.token1UsdPriceAtClose && fb.price1 > 0)
+        result.token1UsdPriceAtClose = fb.price1;
+    }
   }
   const _t3 = Date.now();
   await _supplementAmountsFromChain(
@@ -810,4 +753,5 @@ module.exports = {
   needsEntryFromChain,
   _needsPriceFill, // exported for tests
   _needsExitFromChain, // exported for tests
+  _readRebalanceLog, // exported for tests
 };

@@ -19,16 +19,10 @@ shows an em-dash (—) for those rows.
 Rebalance events reconstructed by `src/event-scanner.js ::
 scanRebalanceHistory` lack a `swapSources` field — on-chain Transfer
 logs don't carry route info. `public/dashboard-history.js` renders
-these as em-dash in the "Routed Via" column. Same gap when a
-rebalance doesn't show up in the GUI log at all on a fresh install /
-second machine, because the live `appendToPoolCache` path only runs
-on the install that executed the rebalance.
-
-## Status
-
-Pre-existing behavior, not a bug. Production install (where
-rebalances actually happen) always shows correct route info via the
-live path. Only dev-mirror or fresh-install views see the gap.
+these as em-dash in the "Routed Via" column. The live path that does
+record the route, `appendToPoolCache`, runs only on the install that
+made the rebalance, so another machine, or a fresh install, gets every
+earlier row from the scanner, with an em-dash in each.
 
 ## Fix when prioritized
 

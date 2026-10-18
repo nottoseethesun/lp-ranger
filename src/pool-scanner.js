@@ -19,6 +19,7 @@ const config = require("./config");
 const { scanRebalanceHistory, buildCacheKey } = require("./event-scanner");
 const { createCacheStore, eventCachePath } = require("./cache-store");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { poolKey } = require("./pool-key");
 
 const _C = "\x1b[30;48;5;123m";
 const _R = "\x1b[0m";
@@ -76,8 +77,8 @@ function getPoolScanLock(token0, token1, fee) {
  * @param {string} token0
  * @param {string} token1
  * @param {number|string} fee
- * @param {string} [walletAddress]  When provided, also invalidates the
- *   recent-scan TTL entry scoped by wallet prefix.
+ * @param {string} [walletAddress]  When provided, also invalidates that
+ *   wallet's recent-scan entry for the pool.
  * @returns {boolean}  True if a scan was aborted; false if none was active.
  */
 function cancelPoolScan(token0, token1, fee, walletAddress) {
@@ -89,15 +90,33 @@ function cancelPoolScan(token0, token1, fee, walletAddress) {
     ctrl.abort();
     _activeScans.delete(k);
   }
-  /*- Drop the recent-scan entry for this pool+wallet so the next call
-   *  does not short-circuit to the stale cached result. Matches the
-   *  recentKey format used in scanPoolHistory below. */
-  const t0s = token0.slice(0, 8);
-  const t1s = token1.slice(0, 8);
-  const tag = `${t0s}\u2026/${t1s}\u2026 fee=${fee}`;
-  const recentKey = tag + ":" + (walletAddress || "").slice(0, 8);
-  _recentScans.delete(recentKey);
+  /*-
+   *  Drop the recent-scan entry for this pool+wallet so the next call
+   *  does not short-circuit to the stale cached result.
+   */
+  _recentScans.delete(_recentKey({ token0, token1, fee }, walletAddress));
   return aborted;
+}
+
+/**
+ * The key of a pool's recent-scan entry: the canonical pool key from
+ * `src/pool-key.js` \u2014 chain, position manager, wallet, pair and fee tier,
+ * whole addresses in either case. One builder for every place that reads,
+ * writes or drops an entry, so all of them name the same one.
+ *
+ * @param {{token0: string, token1: string, fee: number|string}} position
+ * @param {string} walletAddress
+ * @returns {string}
+ */
+function _recentKey(position, walletAddress) {
+  return poolKey(
+    config.CHAIN_NAME,
+    config.POSITION_MANAGER,
+    walletAddress,
+    position.token0,
+    position.token1,
+    position.fee,
+  );
 }
 
 /**
@@ -128,7 +147,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
   const t0s = position.token0.slice(0, 8);
   const t1s = position.token1.slice(0, 8);
   const tag = `${t0s}\u2026/${t1s}\u2026 fee=${position.fee}`;
-  const recentKey = tag + ":" + (walletAddress || "").slice(0, 8);
+  const recentKey = _recentKey(position, walletAddress);
   // Check recent scan BEFORE acquiring lock — return cached events immediately
   // if no callback needs to run. If a callback is needed, fall through to the
   // lock path so the callback runs under lock protection (prevents duplicate
@@ -242,13 +261,6 @@ async function clearPoolCache(position, wallet) {
   );
 }
 
-/**
- * Append a rebalance event to the pool's event cache.
- * Avoids clearing the entire cache and forcing a full rescan.
- * @param {object} position  Must have token0, token1, fee.
- * @param {string} wallet    Wallet address.
- * @param {object} result    Rebalance result from executeRebalance.
- */
 /** Build the cache event entry for a freshly-completed rebalance. */
 function _buildEventEntry(result) {
   const ts = Math.floor(Date.now() / 1000);
@@ -262,80 +274,120 @@ function _buildEventEntry(result) {
     oldTokenId: String(result.oldTokenId || "?"),
     newTokenId: String(result.newTokenId || "?"),
     txHash: txHash || "",
-    blockNumber: result.blockNumber || 0,
+    blockNumber: result.blockNumber,
     swapSources: result.swapSources || "(no swap)",
   };
 }
 
+/**
+ * Append a rebalance event to the pool's event cache, so the next scan
+ * starts after the rebalance instead of clearing the cache and reading
+ * the pool's whole history again.
+ *
+ * Runs under the same per-pool lock as `scanPoolHistory`, because both
+ * read the file, change it and write it back, and an interleaving would
+ * lose the append. An event the cache already holds, matched by its
+ * transaction, is not added twice.
+ *
+ * @param {object} position  Must have token0, token1, fee.
+ * @param {string} wallet    Wallet address.
+ * @param {object} result    Rebalance result from executeRebalance.
+ */
 async function appendToPoolCache(position, wallet, result) {
-  const cache = createCacheStore({
-    filePath: eventCachePath(
-      position,
-      config.CHAIN_NAME,
-      config.POSITION_MANAGER,
-      wallet,
-    ),
-    defaultTtlMs: _EVENT_CACHE_TTL_MS,
-  });
-  const cacheKey = buildCacheKey(
-    wallet,
-    config.POSITION_MANAGER,
+  /*-
+   *  Built before the wait below, so its timestamp is when the rebalance
+   *  finished rather than when a scan holding the lock let go of it.
+   */
+  const entry = _buildEventEntry(result);
+  /*-
+   *  Under the pool's scan lock. A scan reads this file when it starts
+   *  and writes back what it read plus what it found, so an entry
+   *  appended while one runs is overwritten when it finishes. Held here,
+   *  the append lands either before a scan reads the file or after one
+   *  has written it.
+   */
+  const release = await getPoolScanLock(
     position.token0,
     position.token1,
     position.fee,
-  );
-  const existing = await cache.get(cacheKey);
-  const events = existing?.events || [];
-  events.push(_buildEventEntry(result));
-  log.info(
-    "[route-trace] pool-scanner persisted newTokenId=%s swapSources=%s",
-    String(result.newTokenId || "?"),
-    result.swapSources || "(null)",
-  );
-  events.sort((a, b) => a.timestamp - b.timestamp);
-  events.forEach((e, i) => {
-    e.index = i + 1;
-  });
-  const lastBlock = result.blockNumber || existing?.lastBlock || 0;
-  await cache.set(cacheKey, {
-    events,
-    lastBlock,
-    firstMintTimestamp: existing?.firstMintTimestamp || null,
-    firstMintBlockNumber: existing?.firstMintBlockNumber || null,
-    /*- Preserve the schema marker so `event-scanner.loadCache` doesn't
-     *  drop this entry on the next scan.  See the migration block in
-     *  `src/event-scanner.js:loadCache`. */
-    mintSchemaVersion: 2,
-  });
-  _log(
-    "Appended rebalance event to cache for" +
-      " %s\u2026/%s\u2026 fee=%s (%d events)",
-    position.token0.slice(0, 8),
-    position.token1.slice(0, 8),
-    position.fee,
-    events.length,
-  );
-  /*- Invalidate the in-memory `_recentScans` entry for this pool+wallet
-   *  so any queued `scanPoolHistory()` call that was waiting on the
-   *  per-pool lock from a scan-in-progress doesn't short-circuit to the
-   *  stale cached events at line 141.  Repro: rebalance fires
-   *  appendToPoolCache; a scan started before the rebalance is still
-   *  running (holding the lock for many seconds); a new scan queued
-   *  AFTER the rebalance acquires the lock when the old one releases,
-   *  finds the still-fresh-by-TTL `_recentScans` entry, and returns
-   *  the events list from BEFORE the rebalance \u2014 missing the new
-   *  oldTokenId/newTokenId pair.  Symptom: dashboard's Rebalance Events
-   *  table and `_resolveManagedTid` auto-follow miss the just-completed
-   *  rebalance until the next 60s TTL expiry forces a real rescan.
-   *  Mirrors the same recentKey-delete pattern used in cancelPoolScan. */
-  const tag =
-    position.token0.slice(0, 8) +
-    "\u2026/" +
-    position.token1.slice(0, 8) +
-    "\u2026 fee=" +
-    position.fee;
-  const recentKey = tag + ":" + (wallet || "").slice(0, 8);
-  _recentScans.delete(recentKey);
+  ).acquire();
+  try {
+    const cache = createCacheStore({
+      filePath: eventCachePath(
+        position,
+        config.CHAIN_NAME,
+        config.POSITION_MANAGER,
+        wallet,
+      ),
+      defaultTtlMs: _EVENT_CACHE_TTL_MS,
+    });
+    const cacheKey = buildCacheKey(
+      wallet,
+      config.POSITION_MANAGER,
+      position.token0,
+      position.token1,
+      position.fee,
+    );
+    const existing = await cache.get(cacheKey);
+    const events = existing?.events || [];
+    /*-
+     *  A scan that held the lock first may already have read this
+     *  rebalance from the chain. The scanner's own merge keeps one entry
+     *  per transaction, and so does this.
+     */
+    const known =
+      entry.txHash !== "" && events.some((e) => e.txHash === entry.txHash);
+    if (!known) events.push(entry);
+    log.info(
+      "[route-trace] pool-scanner persisted newTokenId=%s swapSources=%s",
+      String(result.newTokenId || "?"),
+      result.swapSources || "(null)",
+    );
+    events.sort((a, b) => a.timestamp - b.timestamp);
+    events.forEach((e, i) => {
+      e.index = i + 1;
+    });
+    /*-
+     *  Written back whole, with only the events changed, so nothing a
+     *  scan stored beside them is lost: the chain's first mint among
+     *  them. `lastBlock` is how far a scan has read the chain, and an
+     *  append reads none of it, so it stays where the last scan left it.
+     *  The blocks between there and this rebalance's mint have not been
+     *  read, and the next scan starts at them. The schema marker is set
+     *  for an entry this creates, so `event-scanner.loadCache` does not
+     *  drop it as an old one.
+     */
+    await cache.set(cacheKey, {
+      ...existing,
+      events,
+      mintSchemaVersion: 2,
+    });
+    _log(
+      "Appended rebalance event to cache for" +
+        " %s\u2026/%s\u2026 fee=%s (%d events)",
+      position.token0.slice(0, 8),
+      position.token1.slice(0, 8),
+      position.fee,
+      events.length,
+    );
+    /*-
+     *  Invalidate the in-memory `_recentScans` entry for this pool+wallet
+     *  so a queued `scanPoolHistory()` call does not short-circuit to the
+     *  events its reuse check would return. A scan that held the lock
+     *  before this append publishes its result as it releases the lock,
+     *  and that result was read before the rebalance. A scan queued
+     *  behind this append would otherwise find it still fresh and return
+     *  the events from BEFORE the rebalance, missing the new
+     *  oldTokenId/newTokenId pair. The dashboard's Rebalance Events table
+     *  and `_resolveManagedTid` auto-follow would then miss the rebalance
+     *  until the reuse window expires. Done before the lock is released,
+     *  so no queued scan can see the entry. Mirrors the same delete in
+     *  cancelPoolScan.
+     */
+    _recentScans.delete(_recentKey(position, wallet));
+  } finally {
+    release();
+  }
 }
 
 module.exports = {
@@ -351,4 +403,5 @@ module.exports = {
    *  pattern used by `_withTimestamp` / `_setSinkForTests` in
    *  `src/log.js`. */
   _recentScansForTests: _recentScans,
+  _recentKey, // exported for tests, so they key entries as the scanner does
 };

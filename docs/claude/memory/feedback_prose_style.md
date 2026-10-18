@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-09-29T22:25:03.354Z
+  modified: 2026-10-18T03:11:54.563Z
 ---
 
 # Prose style
@@ -56,6 +56,32 @@ always need `npm build` first", then "Please avoid confusing redundancy"
   and don't repeat a caveat given earlier in the conversation.
 - When unsure whether something is known, leave it out. The user asks
   when they want more.
+
+## bulk and gaps: the two failures an editing pass removes (2026-10-17)
+
+The user asked for a pass over the User Manual, `docs/` and the in-app
+help "to remove any AI Bulk/Slop where the main focus is obscured by a
+toxic bloom of detail, and also, AI Gaps where basic logical steps are
+not mentioned but replaced by vague wording." Two opposite failures,
+and a fix for one must not cause the other:
+
+- **Bulk.** The point a reader came for is there but buried: history,
+  mechanism, caveats and cross-references piled around it until it
+  cannot be found. Fix by leading with the point and cutting or moving
+  what does not serve it. Detail that one reader needs and most do not
+  belongs further down, or in the engineering reference.
+- **Gaps.** A step the reader needs is missing, and a vague phrase
+  stands where it was ("handled appropriately", "as needed", "takes
+  care of", "in some cases"). Fix by writing the step: what happens,
+  when, and what the reader sees. Vague words that hide a step are a
+  gap, not concision.
+
+**How to apply:** for each passage, ask what the reader came for and
+whether it is the first thing they meet; then read it as someone who has
+not seen the code and mark each step they would have to guess. Never
+drop a fact in the name of cutting bulk; move it or tighten it. See
+[[feedback_word_budget_keeps_every_step]] and
+[[feedback_general_to_specific]].
 
 ## no slop words, no empty structure
 

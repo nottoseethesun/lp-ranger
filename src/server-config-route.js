@@ -30,35 +30,36 @@ const config = require("./config");
 const sendTx = require("./send-transaction");
 const { composeRpcUrls } = require("./rpc-url-list");
 const { setServiceEnabled } = require("./api-key-holder");
-const {
-  getOrCreatePositionConfig,
-  saveConfig,
-  parseCompositeKey,
-} = require("./bot-config-v2");
+const { moralisEnabledIn } = require("./server-moralis");
+const { getOrCreatePositionConfig, saveConfig } = require("./bot-config-v2");
+const { parseCompositeKey } = require("./composite-key");
 const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
 const { checkConfigValues } = require("./config-bounds");
 const { resolveLiveKey } = require("./server-key-resolver");
+const { clearIlGuardWait } = require("./il-guard");
+const { positionTag } = require("./position-answer-tag");
 
 /**
- * Un-pause the bot loop of the position a slippage save is for.
+ * Clear the aborted state of the position a slippage save is for.
  *
- * A pause over excessive swap cost waits for the operator to change that
- * position's Slippage, and saving either of its two rows is that change.
- * Only the named position is freed: a pause elsewhere has its own cause,
- * a volatile market or a failed re-open among them, which another
- * position's slippage does nothing to answer, and freeing it would set
- * that position rebalancing again or cancel its pending retire.
+ * A rebalance aborted over excessive swap cost is not tried again until
+ * the operator changes that position's Slippage, and saving either of its
+ * two rows is that change. The aborted state is stored as
+ * `rebalancePaused`. Only the named position is freed: an abort elsewhere
+ * has its own cause, a volatile market or a failed re-open among them,
+ * which another position's slippage does nothing to answer, and freeing
+ * it would set that position rebalancing again or cancel its pending
+ * retire.
  *
  * `_retireImmediately` is cleared alongside, for the case where
  * `bot-loop.js`'s re-open-failure path set it: without that, changing
  * Slippage on a stuck-aborted re-open would open the gates and the next
  * poll would still take `drain.js`'s retire branch instead of retrying.
  *
- * Keyed on the two per-token settings, which are what the Slippage rows
- * save. It used to key on a single `slippagePct`, and went dead the day
- * that row became two: nothing sent that key any more, so a paused
- * position could only be freed by a manual rebalance while the app went
- * on saying that changing Slippage would free it.
+ * Keyed on the two per-token settings, because those are the keys the
+ * Slippage rows save. A key no row sends would never fire: an aborted
+ * position could then be freed only by a manual rebalance, while the app
+ * went on telling the operator that changing Slippage frees it.
  *
  * @param {object} pPatch       The position keys from the body.
  * @param {object} [state]      The named position's bot state, absent
@@ -78,6 +79,24 @@ function _clearSlippagePause(pPatch, state) {
 }
 
 /**
+ * Lift the Impermanent Loss Guard's retry wait for the position a Guard
+ * save is for, so its next check decides on the new value. Without it, a
+ * rejection under the old value would hold the position for the rest of
+ * its wait, up to a week, while the setting showed the new one. Only the
+ * named position's wait is lifted, as with a slippage save. A save that
+ * clears the setting (`null`) changes the value in force as well.
+ *
+ * @param {object} pPatch       The position keys from the body.
+ * @param {object} [state]      The named position's bot state, absent
+ *   for a position with no running loop.
+ * @returns {void}
+ */
+function _clearIlGuardWait(pPatch, state) {
+  if (pPatch.impermanentLossGuardPct === undefined) return;
+  clearIlGuardWait(state);
+}
+
+/**
  * Say why a position key cannot name one of this server's positions, or
  * null when it can. The server runs one chain, and keys every position
  * it manages on it.
@@ -94,14 +113,12 @@ function _foreignChainError(parsed) {
 }
 
 /**
- * What the value checker needs that only this tier has read: the shipped
- * default a timer setting is bounded against, and the fee floor the
- * auto-compound threshold may not sit below.
+ * What the value checker needs that only this tier has read: the fee
+ * floor the auto-compound threshold may not sit below.
  * @returns {object}
  */
 function _valueCheckContext() {
   return {
-    defaultsSec: { checkIntervalSec: config.CHECK_INTERVAL_SEC },
     compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
   };
 }
@@ -230,10 +247,10 @@ function createConfigRouteHandler(deps) {
     /*-
      *  Applied to the in-memory holder as well as saved, so the running
      *  process stops calling Moralis on the next price lookup rather
-     *  than at the next restart.
+     *  than at the next restart. A cleared choice leaves the default.
      */
     if (gPatch.moralisEnabled !== undefined)
-      setServiceEnabled("moralis", gPatch.moralisEnabled !== false);
+      setServiceEnabled("moralis", moralisEnabledIn(diskConfig.global));
     // The same for the rpc list: rebuild the providers now.
     if (gPatch.rpcUrls !== undefined) _applyRpcUrls(gPatch.rpcUrls);
   }
@@ -242,6 +259,8 @@ function createConfigRouteHandler(deps) {
    * Apply the position keys to the position the request names.
    * @param {string} positionKey  The key the request carried, checked.
    * @param {object} pPatch
+   * @returns {string} The key the values were saved under: the request's,
+   *   or the one a rebalance moved it to.
    */
   function _applyPosition(positionKey, pPatch) {
     /*-
@@ -258,6 +277,7 @@ function createConfigRouteHandler(deps) {
       states.get(k),
     );
     _clearSlippagePause(pPatch, states.get(liveKey));
+    _clearIlGuardWait(pPatch, states.get(liveKey));
     /*-
      *  Lazy-create the slot so per-position settings can be saved for a
      *  position that has not yet been Manage'd. The user's workflow:
@@ -293,6 +313,7 @@ function createConfigRouteHandler(deps) {
         liveKey.slice(-10),
         pPatch.offsetToken0Pct,
       );
+    return liveKey;
   }
 
   return async function handleApiConfig(req, res) {
@@ -302,18 +323,27 @@ function createConfigRouteHandler(deps) {
     for (const k of GLOBAL_KEYS) if (body[k] !== undefined) gPatch[k] = body[k];
     for (const k of POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
+    /*-
+     *  Every answer names the position it is about, so a dashboard that
+     *  has moved to another position since it asked can tell the answer
+     *  is not for the one on screen.
+     */
+    const tag = positionTag(body.positionKey);
     const refusal = _refusal(body, gPatch, pPatch);
     if (refusal) {
-      jsonResponse(res, 400, { ok: false, ...refusal });
+      jsonResponse(res, 400, { ok: false, ...refusal, ...tag });
       return;
     }
     _applyGlobal(gPatch);
-    if (Object.keys(pPatch).length > 0)
-      _applyPosition(body.positionKey, pPatch);
+    const liveKey =
+      Object.keys(pPatch).length > 0
+        ? _applyPosition(body.positionKey, pPatch)
+        : undefined;
     saveConfig(diskConfig);
     jsonResponse(res, 200, {
       ok: true,
       applied: { ...gPatch, ...pPatch },
+      ...positionTag(body.positionKey, liveKey),
     });
   };
 }

@@ -1,18 +1,17 @@
 # Range Width (Fraction of Pool's Populated Liquidity Range)
 
-> **Status:** Nice-to-have / future feature — not a bug. The app
-> works correctly today with the existing **Price Range Extension**
-> semantic (percentage of current price). Funds are never at risk.
-> This item is an alternative width-configuration mode that would
-> sit alongside Price Range Extension, not replace it.
+> **Status:** Nice-to-have / future feature — not a bug. Funds are
+> never at risk. A second way to set a position's width, beside
+> **Price Range Extension**, not a replacement for it.
 
-Introduce **Range Width** as a per-position rebalance configuration
-alongside the existing **Price Range Extension**. Both would describe
-"how wide is my position," but from different anchors:
+Introduce **Range Width** as a per-position rebalance setting alongside
+the existing **Price Range Extension**. Both would say "how wide is my
+position," measured from different anchors:
 
-- **Price Range Extension** (implemented today): the position's price
-  range as a percentage of the *current price*. `W=50` means the
-  position covers ±25% around current (0.75× to 1.25× current).
+- **Price Range Extension** (implemented today): how far the range
+  reaches from the *current price*, as a percentage. `W=50` means the
+  range reaches 50% either side: 0.5× to 1.5× the current price, with
+  the Position Offset centred.
 - **Range Width** (this proposal): the percentage of the *pool's
   currently-populated liquidity price range* that the position covers.
   `W=50` means the position covers half of "where liquidity actually
@@ -80,6 +79,8 @@ because of that other LP).
   simpler and always defined).
 - Settings toggle at the row lets the user pick which one is "active"
   for saving on this position.
+- Like every Range setting, it applies only while the section's
+  **No Override** toggle is off.
 
 ### Migration
 

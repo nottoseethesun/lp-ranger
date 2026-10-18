@@ -12,8 +12,8 @@
  * loaded through the same layered loader by `src/config.js` and — for
  * `defaults.chain`, the shipped fallback behind `CHAIN_NAME` — here.
  *
- * `src/config.js` re-exports everything here so existing callers keep
- * working — new code can import directly from this module when it only
+ * `src/config.js` re-exports the flags its callers use, so they keep
+ * working; new code can import directly from this module when it only
  * needs runtime flags and wants to avoid pulling in the rest of the
  * config surface.
  */
@@ -23,6 +23,8 @@
 const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const { assertTimerSec } = require("./timer-bounds");
+const { SETTING_BOUNDS } = require("./setting-bounds");
+const { withinBound, boundText } = require("./range-check");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
@@ -46,10 +48,9 @@ function parsePositiveInt(value, fallback) {
 /**
  * Parse a positive integer of seconds that becomes a timer delay.
  *
- * The bounds live in `src/timer-bounds.js`, shared with the two other
- * roads to the same settings — the shipped-defaults JSON and
- * `POST /api/config`. Three copies of the rule is how they came to
- * disagree.
+ * The bounds live in `src/timer-bounds.js`, shared with the other road
+ * to the same settings, the JSON files an operator can override.
+ * Separate copies of the rule are how they once came to disagree.
  *
  * Out of range throws, so the app stops at startup naming the setting,
  * rather than running on a schedule its operator did not choose.
@@ -86,14 +87,41 @@ function parseTimerSec(value, fallbackSec, envName, key) {
 }
 
 /**
- * Parse a positive float from a string, returning `fallback` on failure.
- * @param {string|undefined} value
- * @param {number}           fallback
- * @returns {number}
+ * Parse a Bot Setting from `.env`, held to its range in setting-bounds.json.
+ *
+ * The range is the one a save from the dashboard is held to and the one
+ * the defaults files are read against, so a setting has one range
+ * whichever road it comes by. A variable left unset, or set to nothing,
+ * leaves `fallback` standing: the value the defaults files give. A set
+ * one must be a plain decimal number inside the range, or startup stops
+ * and names the variable and the range, as it does for a timer setting.
+ * A value quietly replaced, rounded or cut short would leave the bot on a
+ * setting nobody chose.
+ *
+ * @param {string|undefined} value  The variable as `.env` gives it.
+ * @param {number} fallback  The value when the variable is unset.
+ * @param {string} envName   The variable's name, for the message.
+ * @param {string} key       The setting's key in setting-bounds.json.
+ * @returns {number} The value, inside its range.
+ * @throws {Error} When the variable is set to anything else, so the app
+ *   does not start on a value its range refuses.
  */
-function parsePositiveFloat(value, fallback) {
-  const n = parseFloat(value);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+function parseBoundedSetting(value, fallback, envName, key) {
+  if (value === undefined || value.trim() === "") return fallback;
+  const text = value.trim();
+  /*-
+   *  Digits and points only, so an exponent, a hex prefix or a sign
+   *  other than minus is refused rather than read; a malformed number
+   *  such as "1.2.3" reads as NaN, which no range holds.
+   */
+  const n = /^-?[\d.]+$/.test(text) ? Number(text) : NaN;
+  const bound = SETTING_BOUNDS[key];
+  if (withinBound(n, bound)) return n;
+  throw new Error(
+    `[config] ${envName} in .env must be ${boundText(bound)}; it is ` +
+      `${_show(value)}. Correct it there, or remove it to use the ` +
+      "default, and restart.",
+  );
 }
 
 /*- Render a value for an error message. `process.env` only ever yields
@@ -259,10 +287,19 @@ const VERBOSE =
  */
 const PORT = parsePositiveInt(process.env.PORT, APP_RUNTIME.server.port);
 
+/*-
+ *  Network interface the dashboard server binds to: HOST from the
+ *  environment or `.env`, else `server.host` in app-runtime.json.
+ *  '127.0.0.1' = localhost only. Resolved here beside PORT so
+ *  `npm run gentle-stop` can ask the server at its own address without
+ *  loading the rest of the app's configuration.
+ */
+const HOST = process.env.HOST || APP_RUNTIME.server.host;
+
 module.exports = {
   parsePositiveInt,
   parseTimerSec,
-  parsePositiveFloat,
+  parseBoundedSetting,
   resolveChainName,
   selectChain,
   CHAIN,
@@ -272,4 +309,5 @@ module.exports = {
   DRY_RUN,
   VERBOSE,
   PORT,
+  HOST,
 };

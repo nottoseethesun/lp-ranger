@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical help copy shared by two consumers so the text is written once: public/param-help-content.js imports it for the circle-i dialog, and scripts/build-manual-content.js renders it into the Impermanent Loss Guard section of public/help-and-user-manual.html (which is also what GitHub Pages publishes, and what the Telegram alert links to). Edit the copy HERE only. `body` may contain inline HTML; both consumers render it as markup.",
+  "_comment": "Canonical help copy shared by two consumers so the text is written once: public/param-help-content.js imports it for the circle-i dialog, and scripts/build-manual-content.js renders it into the Impermanent Loss Guard section of public/help-and-user-manual.html (which is also what GitHub Pages publishes, and what the Telegram alert links to). Edit the copy HERE only. `body` may contain inline HTML; both consumers render it as markup. A configured number, default or timing is a {{figure:name}} token, never typed. Both consumers fill it through src/help-figures.js: the dialog with the install's values, the manual's build with the shipped ones, which the manual the app serves replaces with the install's.",
   "_manualBaseUrl_comment": "Published User Manual, the page scripts/build-manual-content.js renders these entries into. Server-side consumers build a deep link as `<manualBaseUrl>#<entry.manualAnchor>` so the anchor is written once, here, rather than duplicated into a URL literal in code.",
   "manualBaseUrl": "https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html",
   "inIlGuard": {
@@ -10,39 +10,44 @@
     "sections": [
       {
         "heading": "What it does",
-        "body": "Before every automatic rebalance, the bot works out what the new position would be worth and compares it against what <strong>this NFT was worth on the day it was minted</strong>. If the new position would come out more than this percentage below that figure, the rebalance is rejected and the position is left exactly as it is. Nothing is withdrawn, collected, or swapped &mdash; the check is a calculation, not a trial run."
+        "body": "Before every automatic rebalance, the bot works out what the new position would be worth and compares it against what <strong>simply holding the coins this NFT was minted with</strong> would be worth at today&rsquo;s prices. The gap between the two is the position&rsquo;s impermanent loss, the IL/G the Current panel shows, and a rebalance would lock it in. If the new position would come out more than this percentage below holding, the rebalance is rejected and the position is left exactly as it is. Nothing is withdrawn, collected, or swapped &mdash; the check is a calculation, not a trial run."
       },
       {
         "heading": "Which value it measures against",
-        "body": "The $usd sum value of the coins of each of the coin types in the position, as taken on the day that the current NFT for the liquidity position was minted. Note that this is not your lifetime deposit into the pool, and not any figure spanning earlier NFTs in the rebalance chain. Each time a rebalance does go through, the new NFT gets its own mint value and the Impermanent Loss Guard (ILG) starts measuring from there."
+        "body": "The coins the current NFT was minted with, valued at today&rsquo;s prices. Not what they were worth on the day of the mint: a move both coins make together changes that figure, and a rebalance does not lock that move in. Not your lifetime deposit into the pool either, and not any figure spanning earlier NFTs in the rebalance chain. Each time a rebalance does go through, the new NFT&rsquo;s own coins become what the Impermanent Loss Guard (ILG) measures against."
       },
       {
         "heading": "Worked example",
-        "body": "The NFT was worth <strong>$1,000</strong> at mint and the Impermanent Loss Guard (ILG) is set to <strong>15%</strong> (the default). Rebalancing stops if the position would come out below <strong>$850</strong>. At $910 it rebalances normally; at $820 it is rejected and left alone."
+        "body": "Holding the coins this NFT was minted with would be worth <strong>${{figure:ilgExampleHoldUsd}}</strong> at today&rsquo;s prices, and the Impermanent Loss Guard (ILG) is set to <strong>{{figure:ilgDefaultPct}}%</strong> (the default). Rebalancing stops if the position would come out below <strong>${{figure:ilgExampleFloorUsd}}</strong>. At ${{figure:ilgExampleAboveUsd}} it rebalances normally; at ${{figure:ilgExampleBelowUsd}} it is rejected and left alone."
       },
       {
-        "heading": "Retries back off, 4 hours to a week",
-        "body": "After a rejection the position is left alone rather than re-decided on every poll. The first retry comes <strong>4 hours</strong> later, and each further rejection doubles the wait &mdash; 4h, 8h, 16h, 32h &mdash; up to a ceiling of <strong>one week</strong>. The moment the Guard lets a rebalance through, the ladder resets to 4 hours.<br>This bounds how often a rejected rebalance is retried, and the Telegram alert follows the same schedule, so a position blocked for a long stretch reports on a widening interval instead of every poll. The cost is that a position which recovers inside a window waits for it to expire. <strong>Rebalance Now is never held</strong> by the wait."
+        "heading": "Retries back off, {{figure:ilgRetryFirst}} to {{figure:ilgRetryCeiling}}",
+        "body": "After a rejection the position is left alone rather than re-decided on every poll. The first retry comes <strong>{{figure:ilgRetryFirst}}</strong> later, and each further rejection doubles the wait &mdash; {{figure:ilgRetryLadder}} &mdash; up to a ceiling of <strong>{{figure:ilgRetryCeiling}}</strong>. The moment the Guard lets a rebalance through, the ladder resets to {{figure:ilgRetryFirst}}.<br>This bounds how often a rejected rebalance is retried, and the Telegram alert follows the same schedule, so a position blocked for a long stretch reports on a widening interval instead of every poll. The cost is that a position which recovers inside a window waits for it to expire. <strong>Rebalance Now is never held</strong> by the wait."
       },
       {
-        "heading": "A rejection only clears on price",
-        "body": "This is the part worth knowing. A position rejected by the Impermanent Loss Guard cannot rebalance, so it cannot mint a new NFT, so it cannot get a new mint value to measure against. The bot keeps checking every poll, but nothing it does can lift the block. It lifts when the position&rsquo;s value recovers above the floor, or when you lower the Guard here. <strong>Rebalance Now always works</strong> and ignores the Guard entirely."
+        "heading": "What lifts a rejection",
+        "body": "A position rejected by the Impermanent Loss Guard cannot rebalance, so it cannot mint a new NFT, so it goes on measuring against the same minted coins. The bot looks again when the retry wait runs out, or at its next check once you save a new Guard percentage here. The block lifts at that check if the position&rsquo;s value is back above the floor, or if the new percentage brings the floor below that value. <strong>Rebalance Now</strong> ignores the Guard, though like any rebalance it waits while its gas would cost more than {{figure:rebalanceGasDeferPct}}% of the position&rsquo;s value."
       },
       {
         "heading": "Choosing a value",
-        "body": "The two sides of this trade are not alike, which is why the default is tight. Rebalancing <strong>crystallizes</strong> the loss: the position is re-minted around today&rsquo;s price, so a paper loss that a price recovery would have undone becomes permanent. Declining costs you fees &mdash; but the check only comes up when a rebalance was due, which usually means the position is already out of range and earning few fees anyway. And fees are what would have to earn that loss back. In a quiet pool that can take longer than you hold the position.<br><strong>15%</strong> (the default) leaves ordinary drawdowns to rebalance and holds back on deep ones.<br><strong>Higher</strong> rebalances through steeper losses, so the position keeps earning &mdash; at the price of locking those losses in.<br><strong>Lower</strong> protects harder, and will stop rebalancing often on a swingy pair.<br><strong>100%</strong> effectively turns it off."
+        "body": "The two sides of this trade are not alike, which is why the default is tight. Rebalancing <strong>crystallizes</strong> the loss: the position is re-minted around today&rsquo;s price, so a paper loss that a price recovery would have undone becomes permanent. Declining costs you fees &mdash; but the check only comes up when a rebalance was due, which usually means the position is already out of range and earning few fees anyway. And fees are what would have to earn that loss back. In a quiet pool that can take longer than you hold the position.<br><strong>{{figure:ilgDefaultPct}}%</strong> (the default) leaves ordinary impermanent loss to rebalance and holds back when it runs deep.<br><strong>Higher</strong> rebalances through steeper losses, so the position keeps earning &mdash; at the price of locking those losses in.<br><strong>Lower</strong> protects harder, and will stop rebalancing often on a swingy pair.<br><strong>100%</strong> effectively turns it off."
+      },
+      {
+        "id": "lowVolume",
+        "heading": "When volume is very low",
+        "body": "Very low trading volume pays the position little in fees, too little to pay for each rebalance or to earn back the loss a rebalance locks in. Then set the <strong>Impermanent Loss Guard</strong> very low, for example <strong>5%</strong>, and limit <strong>Max Rebalances Per Day</strong> to <strong>1</strong>."
       },
       {
         "heading": "What is not included",
-        "body": "Swap slippage and gas are not part of this figure. A rebalance moves the same dollars from one price range to another, so the projection is the position&rsquo;s present value &mdash; its liquidity plus the pool&rsquo;s wallet residual, which a rebalance folds back in."
+        "body": "Swap slippage and gas are not part of this figure. A rebalance moves the same dollars from one price range to another, so the projection is the position&rsquo;s present value &mdash; its liquidity plus the pool&rsquo;s wallet residual, which a rebalance folds back in. Fees compounded into this NFT are left out, as they are in IL/G: they are earnings, and counting them would hide a loss."
       },
       {
         "heading": "Impermanent gains never block",
-        "body": "A position worth more than its mint value is above the floor by definition, whatever the Guard is set to, so a gain can never reject a rebalance."
+        "body": "A position worth more than holding is above the floor by definition, whatever the Guard is set to, so a gain can never reject a rebalance."
       },
       {
         "heading": "Telegram",
-        "body": "The <strong>Rebalance Rejected Due to Excessive Impermanent Loss</strong> alert is on by default &mdash; a rejection is otherwise invisible unless you are watching the server log. It carries the figures, says the position was not touched, and links to the User Manual for this explanation rather than repeating it. It follows the retry schedule above, so you get one message per retry, not one per poll."
+        "body": "The <strong>Rebalance Rejected Due to Excessive Impermanent Loss</strong> alert is on by default; without it, a rejection shows only in the dashboard&rsquo;s &ldquo;Rebalance skipped &mdash; impermanent loss&rdquo; dialog and in the server log. It carries the figures, says the position was not touched, and links to the User Manual for this explanation rather than repeating it. It follows the retry schedule above, so you get one message per retry, not one per poll."
       }
     ]
   }

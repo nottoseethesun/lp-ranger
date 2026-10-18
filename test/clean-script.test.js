@@ -30,6 +30,7 @@ const {
   BUILD_ARTIFACTS,
   BUILD_DIRS,
   LOG_FILES,
+  insideInstall,
 } = require("../scripts/clean");
 const { clearScanCache } = require("../scripts/clear-blockchain-scan-cache");
 
@@ -125,4 +126,32 @@ test("clean waits for shutdown rather than racing it", () => {
   const src = readRoot("scripts/clean.js");
   assert.match(src, /waitForServerExit\(/);
   assert.match(src, /"stop"/);
+});
+
+test("clean:log runs the same script, so it reads the same path", () => {
+  assert.equal(pkg.scripts["clean:log"], "node scripts/clean.js --log");
+});
+
+test("only a path inside the install folder may be deleted", () => {
+  /*-
+   *  The user: "don't let it delete outside of (meaning, above) the
+   *  install folder". A log path an operator has pointed elsewhere is
+   *  theirs to manage.
+   */
+  for (const inside of [
+    "logs/error.log",
+    "logs/deeper/run.log",
+    path.join(ROOT, "logs", "lp-ranger.log"),
+    "..notes/x.log",
+  ])
+    assert.equal(insideInstall(inside), true, inside);
+  for (const outside of [
+    "../error.log",
+    "../../var/log/lp-ranger.log",
+    "/var/log/lp-ranger/error.log",
+    "logs/../../escape.log",
+    ".",
+    "",
+  ])
+    assert.equal(insideInstall(outside), false, outside);
 });

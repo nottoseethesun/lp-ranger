@@ -41,15 +41,18 @@ const {
   loadShippedDefaults,
 } = require("./load-merged-defaults");
 const { readBotConfigDefaultsStrict } = require("./bot-config-defaults");
+const { readUiDefaultsStrict } = require("./ui-defaults");
 const botConfigV2 = require("./bot-config-v2");
 const { composeRpcUrls } = require("./rpc-url-list");
 const { assertTimerSec } = require("./timer-bounds");
 const { chainCacheTag } = require("./cache-store");
+const { SETTING_BOUNDS } = require("./setting-bounds");
+const { withinBound, boundText } = require("./range-check");
 
 const {
   parsePositiveInt,
   parseTimerSec,
-  parsePositiveFloat,
+  parseBoundedSetting,
   CHAIN,
   CHAIN_NAME,
   TX_TYPE,
@@ -57,6 +60,7 @@ const {
   DRY_RUN,
   VERBOSE,
   PORT,
+  HOST,
 } = runtimeFlags;
 
 /*- Shipped app-runtime defaults, merged with any operator override at
@@ -66,29 +70,26 @@ const {
  *  file. */
 const APP_CONFIG = loadMergedDefaults("app-runtime.json");
 
-/*- Single-source baseline for every Bot-Setting default value, used
+/*-
+ *  Single-source baseline for every Bot-Setting default value, used
  *  below as the env-var-fallback expression in every
- *  `parsePositiveInt/Float/TimerSec` call site, so no numeric default is
- *  ever literally written in this file.
+ *  `parseBoundedSetting` / `parseTimerSec` call site, so no numeric
+ *  default is ever literally written in this file.
  *
  *  Read through the reader that vets, rather than `loadMergedDefaults`
- *  directly: it applies the per-key clamps declared beside the values,
- *  so an out-of-range or non-numeric override falls back to the shipped
- *  value HERE rather than travelling on as a live setting.  Reading the
- *  merged JSON raw takes the same file with none of that.
+ *  directly: it holds each value to its range in setting-bounds.json,
+ *  so an out-of-range or non-numeric override never travels on as a
+ *  live setting.  Reading the merged JSON raw takes the same file with
+ *  none of that.
  *
- *  The STRICT variant, because this is startup.  A timer setting an
- *  operator wrote out of range stops the app here, rather than being
- *  replaced by a number nobody chose — and startup is the only place
- *  that can refuse, since the lenient reader is what a poll cycle and
- *  an HTTP route call.  See docs/engineering.md § "Reading
- *  Configuration Values". */
+ *  The STRICT variant, because this is startup.  A setting an operator
+ *  wrote outside its range stops the app here, naming it, rather than
+ *  being replaced by a number nobody chose — and startup is the only
+ *  place that can refuse, since the lenient reader is what a poll cycle
+ *  and an HTTP route call.  See docs/engineering.md § "Reading
+ *  Configuration Values".
+ */
 const _BOT_DEFAULTS = readBotConfigDefaultsStrict();
-
-// ── Server ─────────────────────────────────────────────────────────────────────
-
-/** Network interface the server binds to. '127.0.0.1' = localhost only. */
-const HOST = process.env.HOST || APP_CONFIG.server.host;
 
 // ── Bot / wallet ───────────────────────────────────────────────────────────────
 
@@ -179,24 +180,19 @@ function setRpcUrls(urls) {
 const POSITION_ID = process.env.POSITION_ID || null;
 
 /** % the price must move beyond the position boundary before triggering a rebalance. */
-const REBALANCE_OOR_THRESHOLD_PCT = parsePositiveFloat(
+const REBALANCE_OOR_THRESHOLD_PCT = parseBoundedSetting(
   process.env.REBALANCE_OOR_THRESHOLD_PCT,
   _BOT_DEFAULTS.rebalanceOutOfRangeThresholdPercent,
+  "REBALANCE_OOR_THRESHOLD_PCT",
+  "rebalanceOutOfRangeThresholdPercent",
 );
 
 /** Minutes of continuous OOR before auto-rebalance (0 = disabled). */
-const REBALANCE_TIMEOUT_MIN = (() => {
-  const n = parseInt(process.env.REBALANCE_TIMEOUT_MIN, 10);
-  return Number.isFinite(n) && n >= 0 ? n : _BOT_DEFAULTS.rebalanceTimeoutMin;
-})();
-
-/** Default slippage tolerance (percent). Hard fallback when user input is invalid. */
-const DEFAULT_SLIPPAGE_PCT = _BOT_DEFAULTS.slippagePct;
-
-/** Maximum slippage tolerance for rebalance transactions (percent). */
-const SLIPPAGE_PCT = parsePositiveFloat(
-  process.env.SLIPPAGE_PCT,
-  DEFAULT_SLIPPAGE_PCT,
+const REBALANCE_TIMEOUT_MIN = parseBoundedSetting(
+  process.env.REBALANCE_TIMEOUT_MIN,
+  _BOT_DEFAULTS.rebalanceTimeoutMin,
+  "REBALANCE_TIMEOUT_MIN",
+  "rebalanceTimeoutMin",
 );
 
 /** Seconds before a pending TX is speed-up-replaced with higher gas. */
@@ -229,24 +225,25 @@ const TX_CANCEL_SEC = parseTimerSec(
 );
 
 /**
- * Read one of app-runtime.json's `tx` timers, which nothing in `.env`
+ * Read one of app-runtime.json's timers, which nothing in `.env`
  * overrides, and check it as every timer setting is checked.
  *
  * The bound is taken from the shipped value, so an operator's override
  * may reach 1000 times it, never past the 48 hours `src/timer-bounds.js`
  * allows anything. Seconds or milliseconds as the key's name says.
  *
- * @param {string} key  The setting's name in the `tx` group.
+ * @param {string} group  The setting's group in app-runtime.json.
+ * @param {string} key    The setting's name in that group.
  * @returns {number} The configured value.
  * @throws {Error} When the value cannot be a timer delay.
  */
-function _txTimer(key) {
+function _runtimeTimer(group, key) {
   try {
     return assertTimerSec({
-      sec: APP_CONFIG.tx[key],
+      sec: APP_CONFIG[group]?.[key],
       key,
-      defaultSec: loadShippedDefaults("app-runtime.json").tx[key],
-      label: `app-runtime.json → tx.${key}`,
+      defaultSec: loadShippedDefaults("app-runtime.json")[group]?.[key],
+      label: `app-runtime.json → ${group}.${key}`,
       remedy: "Correct it there, or in its override, and restart.",
     });
   } catch (err) {
@@ -254,12 +251,33 @@ function _txTimer(key) {
   }
 }
 
+/**
+ * Read one of app-runtime.json's other checked settings, held to its
+ * range in setting-bounds.json at the same path. Refused at startup
+ * rather than replaced: a value nobody chose would run the bot on a
+ * schedule or limit the operator does not expect.
+ *
+ * @param {string} group  The setting's group in app-runtime.json.
+ * @param {string} key    The setting's name in that group.
+ * @returns {number} The configured value.
+ * @throws {Error} When the value lies outside its range.
+ */
+function _runtimeBounded(group, key) {
+  const n = APP_CONFIG[group]?.[key];
+  const bound = SETTING_BOUNDS[group][key];
+  if (withinBound(n, bound)) return n;
+  throw new Error(
+    `[config] app-runtime.json → ${group}.${key} must be ` +
+      `${boundText(bound)}; it is ${JSON.stringify(n)}.`,
+  );
+}
+
 /*-
  *  The least time a sped-up transaction gets to confirm before the
  *  cancel goes out, even when sending the speed-up used up the rest of
  *  TX_CANCEL_SEC. Seconds.
  */
-const TX_CANCEL_PHASE_FLOOR_SEC = _txTimer("cancelPhaseFloorSec");
+const TX_CANCEL_PHASE_FLOOR_SEC = _runtimeTimer("tx", "cancelPhaseFloorSec");
 
 /*-
  *  How a send that failed for a passing reason is retried: this many
@@ -267,15 +285,37 @@ const TX_CANCEL_PHASE_FLOOR_SEC = _txTimer("cancelPhaseFloorSec");
  *  base delay before each after it. The `_sendRetries_comment` beside
  *  the values in app-runtime.json explains them.
  */
-const TX_SEND_RETRY_BASE_DELAY_MS = _txTimer("sendRetryBaseDelayMs");
-const TX_SEND_RETRIES = (() => {
-  const n = APP_CONFIG.tx.sendRetries;
-  if (Number.isInteger(n) && n >= 0 && n <= 10) return n;
-  throw new Error(
-    "[config] app-runtime.json → tx.sendRetries must be a whole number " +
-      `from 0 to 10; it is ${JSON.stringify(n)}.`,
-  );
-})();
+const TX_SEND_RETRY_BASE_DELAY_MS = _runtimeTimer("tx", "sendRetryBaseDelayMs");
+const TX_SEND_RETRIES = _runtimeBounded("tx", "sendRetries");
+
+/*-
+ *  How a rebalance is retried after the price moved under it: a first
+ *  wait, doubling with each try up to the most it may wait. The
+ *  `_swapBackoff_comment` beside the values in app-runtime.json
+ *  explains them.
+ */
+const SWAP_BACKOFF_BASE_MS = _runtimeBounded("tx", "swapBackoffBaseMs");
+const SWAP_BACKOFF_MAX_MS = _runtimeBounded("tx", "swapBackoffMaxMs");
+
+/*-
+ *  How many times a rebalance left mid-way, its coins in the wallet, is
+ *  tried again before the bot stops and asks the operator to act.
+ */
+const MIDWAY_RETRY_LIMIT = _runtimeBounded("tx", "midwayRetryLimit");
+
+/*-
+ *  How soon the bot looks again after a rebalance, compound or cancel,
+ *  so the dashboard shows the result; and how often it checks whether a
+ *  position's lifetime figures need their scan run again.
+ */
+const POLL_AFTER_ACTION_MS = _runtimeTimer("poll", "afterActionMs");
+const LIFETIME_RESCAN_CHECK_MS = _runtimeTimer("poll", "lifetimeRescanCheckMs");
+
+/*-
+ *  How long a managed position may sit drained, with no rebalance in
+ *  flight, before the bot stops managing it.
+ */
+const DRAINED_RETIRE_MS = _runtimeBounded("retire", "drainedAfterMs");
 
 /** How often the bot checks the on-chain position, in seconds. */
 const CHECK_INTERVAL_SEC = parseTimerSec(
@@ -286,15 +326,19 @@ const CHECK_INTERVAL_SEC = parseTimerSec(
 );
 
 /** Minimum time that must elapse between two rebalances, in minutes. */
-const MIN_REBALANCE_INTERVAL_MIN = parsePositiveInt(
+const MIN_REBALANCE_INTERVAL_MIN = parseBoundedSetting(
   process.env.MIN_REBALANCE_INTERVAL_MIN,
   _BOT_DEFAULTS.minRebalanceIntervalMin,
+  "MIN_REBALANCE_INTERVAL_MIN",
+  "minRebalanceIntervalMin",
 );
 
 /** Maximum rebalances per liquidity pool within a single 24-hour window. */
-const MAX_REBALANCES_PER_DAY = parsePositiveInt(
+const MAX_REBALANCES_PER_DAY = parseBoundedSetting(
   process.env.MAX_REBALANCES_PER_DAY,
   _BOT_DEFAULTS.maxRebalancesPerDay,
+  "MAX_REBALANCES_PER_DAY",
+  "maxRebalancesPerDay",
 );
 
 /**
@@ -312,40 +356,27 @@ const MAX_REBALANCES_PER_DAY = parsePositiveInt(
  * cannot disagree — reading the JSON directly there is what made
  * `IMPERMANENT_LOSS_GUARD_PCT=30` show 30 while the bot enforced 50.
  */
-const IMPERMANENT_LOSS_GUARD_PCT = parsePositiveInt(
+const IMPERMANENT_LOSS_GUARD_PCT = parseBoundedSetting(
   process.env.IMPERMANENT_LOSS_GUARD_PCT,
   _BOT_DEFAULTS.impermanentLossGuardPct,
+  "IMPERMANENT_LOSS_GUARD_PCT",
+  "impermanentLossGuardPct",
 );
 
-/**
- * Read how often the dashboard polls `GET /api/status`, for server-side
- * timing that depends on "the dashboard has had a chance to poll".
- *
- * The value is `dashboardPollIntervalMs` in the SHIPPED ui-defaults.json,
- * not the merged one. The dashboard bundles it from that file at build
- * time, because it needs it before its first poll, so an operator
- * override never reaches the dashboard; reading the override here would
- * let the server and the dashboard disagree about the same interval.
- *
- * @returns {number} Milliseconds.
- * @throws {Error} When the shipped value cannot be a timer delay.
+/*-
+ *  The dashboard settings the server sends, read here once, at startup,
+ *  by the strict reader: a value an operator wrote outside its rule stops
+ *  the app, naming it. Every later read of them returns this answer
+ *  (src/ui-defaults.js), the one `GET /api/ui-defaults` sends the page.
  */
-function _dashboardPollIntervalMs() {
-  const ms = loadShippedDefaults("ui-defaults.json").dashboardPollIntervalMs;
-  try {
-    return assertTimerSec({
-      sec: ms,
-      key: "dashboardPollIntervalMs",
-      defaultSec: ms,
-      label: "ui-defaults.json → dashboardPollIntervalMs",
-    });
-  } catch (err) {
-    throw new Error(`[config] ${err.message}`, { cause: err });
-  }
-}
+const _UI_SETTINGS = readUiDefaultsStrict();
 
-/** Dashboard's /api/status poll interval (ms). */
-const DASHBOARD_POLL_INTERVAL_MS = _dashboardPollIntervalMs();
+/*-
+ *  How often the dashboard polls `GET /api/status`, for server-side
+ *  timing that depends on "the dashboard has had a chance to poll": the
+ *  very value the page is sent, so the two cannot disagree.
+ */
+const DASHBOARD_POLL_INTERVAL_MS = _UI_SETTINGS.dashboardPollIntervalMs;
 
 /**
  * Read how long after a server-side state change the dashboard can be
@@ -356,23 +387,20 @@ const DASHBOARD_POLL_INTERVAL_MS = _dashboardPollIntervalMs();
  * Used by `bot-loop.js`'s re-open-failure path to delay the auto-retire,
  * so the dashboard sees `rebalancePaused=true` and raises its alert
  * before the state is deleted on retire. The result becomes a timer, so
- * the multiple is bounded: under one poll the alert could be missed, and
- * a hundred is past any wait worth having.
+ * the multiple is held to its range in setting-bounds.json, which gives
+ * the reason for it.
  *
  * @returns {number} Whole milliseconds.
- * @throws {Error} When the multiple is not a number from 1 to 100.
+ * @throws {Error} When the multiple is outside that range.
  */
 function _guaranteedDashboardHasPolledMs() {
   const polls = APP_CONFIG.dashboard?.pollsBeforeAssumedSeen;
-  const usable =
-    typeof polls === "number" &&
-    Number.isFinite(polls) &&
-    polls >= 1 &&
-    polls <= 100;
-  if (usable) return Math.round(DASHBOARD_POLL_INTERVAL_MS * polls);
+  const bound = SETTING_BOUNDS.dashboard.pollsBeforeAssumedSeen;
+  if (withinBound(polls, bound))
+    return Math.round(DASHBOARD_POLL_INTERVAL_MS * polls);
   throw new Error(
     "[config] app-runtime.json → dashboard.pollsBeforeAssumedSeen must be " +
-      `a number of polls from 1 to 100; it is ${JSON.stringify(polls)}.`,
+      `${boundText(bound)}; it is ${JSON.stringify(polls)}.`,
   );
 }
 
@@ -411,6 +439,20 @@ function _repositionWindowSec() {
 }
 
 const COMPOUND_REPOSITION_WINDOW_SEC = _repositionWindowSec();
+
+/*-
+ *  The least time between two automatic compounds of one position: this
+ *  many polls, and never less than this many seconds. A spacing nobody
+ *  chose would compound more often, or less, than the operator expects.
+ */
+const COMPOUND_AUTO_SPACING_POLLS = _runtimeBounded(
+  "compound",
+  "autoSpacingPolls",
+);
+const COMPOUND_AUTO_SPACING_FLOOR_SEC = _runtimeBounded(
+  "compound",
+  "autoSpacingFloorSec",
+);
 
 // ── Contracts ──────────────────────────────────────────────────────────────────
 
@@ -629,6 +671,12 @@ _checkChainSetting(
   _isCount,
   "a positive whole number of gas units",
 );
+// The gas a whole rebalance is assumed to use, priced before it starts.
+_checkChainSetting(
+  "estimatedRebalanceGasUnits",
+  _isCount,
+  "a positive whole number of gas units",
+);
 /*-
  *  The swap gas gate prices every swap, the V3 router's included, at this
  *  estimate, so it is needed whether or not the chain has an aggregator.
@@ -744,8 +792,6 @@ module.exports = {
   POSITION_ID,
   REBALANCE_OOR_THRESHOLD_PCT,
   REBALANCE_TIMEOUT_MIN,
-  DEFAULT_SLIPPAGE_PCT,
-  SLIPPAGE_PCT,
   TX_SPEEDUP_SEC,
   DEADLINE_SEC,
   TX_CANCEL_SEC,
@@ -757,6 +803,12 @@ module.exports = {
   MAX_REBALANCES_PER_DAY,
   IMPERMANENT_LOSS_GUARD_PCT,
   REBALANCE_RETRY_SWAP_LIMIT,
+  SWAP_BACKOFF_BASE_MS,
+  SWAP_BACKOFF_MAX_MS,
+  MIDWAY_RETRY_LIMIT,
+  POLL_AFTER_ACTION_MS,
+  LIFETIME_RESCAN_CHECK_MS,
+  DRAINED_RETIRE_MS,
   DASHBOARD_POLL_INTERVAL_MS,
   GUARANTEED_DASHBOARD_HAS_POLLED_MS,
   LOG_FILE,
@@ -777,6 +829,8 @@ module.exports = {
 
   // Compound
   COMPOUND_MIN_FEE_USD: APP_CONFIG.compound.minFeeUsd,
+  COMPOUND_AUTO_SPACING_POLLS,
+  COMPOUND_AUTO_SPACING_FLOOR_SEC,
   COMPOUND_DEFAULT_THRESHOLD_USD: APP_CONFIG.compound.defaultThresholdUsd,
   COMPOUND_REPOSITION_WINDOW_SEC,
 
@@ -790,5 +844,4 @@ module.exports = {
 
   // Internals exposed for testing
   _parsePositiveInt: parsePositiveInt,
-  _parsePositiveFloat: parsePositiveFloat,
 };

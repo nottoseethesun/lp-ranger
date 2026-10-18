@@ -848,6 +848,9 @@ body::before{
   display:flex;
   align-items:center;
   gap:9px;
+
+  /* The Help button is a link, styled as these buttons are. */
+  text-decoration:none;
 }
 
 .pos-browser-btn:disabled,

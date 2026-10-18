@@ -111,9 +111,10 @@
  * RPC behaviour
  * ─────────────
  *   - Uses `config.RPC_URL` (chain default when the env var is unset).
- *   - Log scans are chunked at 10 000 blocks with a 250 ms throttle,
- *     matching `src/event-scanner.js` conventions.  A 30-day window is
- *     roughly 26 chunks at PulseChain's ~10 s block time.
+ *   - Log scans are chunked at the app's `getLogsChunkSize` and paced at
+ *     its `globalRPCRequestRateIntervalMS`, four requests a chunk.  A
+ *     30-day window is roughly 29 chunks at PulseChain's ~10 s block
+ *     time and the shipped 9,000-block chunk.
  *   - Never scans from block 0 — the window is always bounded by
  *     `--days` or `--from-block`.
  *
@@ -185,7 +186,9 @@ process.chdir(path.resolve(__dirname, "..", "..", ".."));
 const { ethers } = require("ethers");
 const config = require("../../../src/config");
 const { PM_ABI } = require("../../../src/pm-abi");
-const { parseCompositeKey } = require("../../../src/bot-config-v2");
+const { parseCompositeKey } = require("../../../src/composite-key");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/get-logs-chunked");
+const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
 const { setApiKey } = require("../../../src/api-key-holder");
 const { fetchTokenPriceUsd } = require("../../../src/price-fetcher");
 const {
@@ -218,8 +221,17 @@ const BLOCK_TIME_SEC = config.CHAIN.blockTimeSec;
 /** Default scan window in days. */
 const DEFAULT_DAYS = 30;
 
-const CHUNK_SIZE = 10000;
-const CHUNK_DELAY_MS = 250;
+// Block span per getLogs call: the app's own `getLogsChunkSize`.
+const CHUNK_SIZE = _DEFAULT_CHUNK_SIZE;
+
+/*-
+ *  Pause after each chunk, which is four requests. The app spaces every
+ *  request by `globalRPCRequestRateIntervalMS`; this tool has a provider
+ *  of its own, outside the app's queue, so it waits those four spacings
+ *  itself.
+ */
+const CHUNK_DELAY_MS =
+  4 * readBotConfigDefaults().globalRPCRequestRateIntervalMS;
 
 /** Minimal ERC-20 surface: decimals + symbol, read straight from chain. */
 const ERC20_ABI = [

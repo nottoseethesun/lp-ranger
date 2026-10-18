@@ -313,7 +313,7 @@ function findEventCacheFiles(
  */
 function findLpPositionCacheFiles({ blockchain, factory }, dir = TMP_DIR) {
   const a = _abbrevScope({ blockchain, factory });
-  // Filename: lp-position-cache-{bc:5}-{pm:6}-{wallet:6hex}.json
+  // Filename: lp-position-cache-{bc}-{pm:6}-{wallet:6hex}.json
   const prefix = `lp-position-cache-${a.bc}-${a.pm}-`;
   const suffix = `.json`;
   if (!fs.existsSync(dir)) return [];
@@ -565,21 +565,32 @@ async function main(argv = process.argv, opts = {}) {
   );
   console.log("");
 
+  /**
+   * Both caches below key a pool's entry by the chain first and the pool
+   * last (`cacheKey` in src/cache-store.js), so only this chain's entries
+   * for this pool match: the same address on another chain is another
+   * pool, and its entries are left alone. The chain is matched up to the
+   * address that follows it, because a chain's name can contain a dash:
+   * `pulsechain-testnet-0x…` begins with `pulsechain-` too.
+   */
+  const forPool = (k) => {
+    const lower = k.toLowerCase();
+    return (
+      lower.startsWith(chainKey + "-0x") && lower.endsWith("-" + poolLower)
+    );
+  };
+
   /* 1. pool-creation-blocks-cache.json */
   const pcb = loadCacheOrNull(paths.poolCreationPath);
   const pcbRemoved = pcb
-    ? purgeMatchingKeys(paths.poolCreationPath, pcb, (k) =>
-        k.toLowerCase().includes(poolLower),
-      )
+    ? purgeMatchingKeys(paths.poolCreationPath, pcb, forPool)
     : null;
   reportFile("pool-creation-blocks-cache.json", pcbRemoved);
 
   /* 2. gecko-pool-cache.json */
   const gpc = loadCacheOrNull(paths.geckoPath);
   const gpcRemoved = gpc
-    ? purgeMatchingKeys(paths.geckoPath, gpc, (k) =>
-        k.toLowerCase().includes(poolLower),
-      )
+    ? purgeMatchingKeys(paths.geckoPath, gpc, forPool)
     : null;
   reportFile("gecko-pool-cache.json", gpcRemoved);
 

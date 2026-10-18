@@ -22,17 +22,14 @@
 
 const { log } = require("./log");
 const config = require("./config");
-const {
-  saveConfig,
-  getPositionConfig,
-  parseCompositeKey,
-} = require("./bot-config-v2");
+const { saveConfig, getPositionConfig } = require("./bot-config-v2");
+const { parseCompositeKey } = require("./composite-key");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("./bot-config-keys");
 const _epochCache = require("./epoch-cache");
 const { cancelPoolScan, clearPoolCache } = require("./pool-scanner");
 const { resolveLiveKey } = require("./server-key-resolver");
 const { logCtx } = require("./logger");
-const { getTokenSymbol } = require("./server-scan");
+const { getTokenSymbol } = require("./token-symbol-cache");
 
 /*- Bot-state fields to reset so the fresh scan's persist-conditions all
  *  re-evaluate as "no data on disk" and the readiness gates re-engage. */

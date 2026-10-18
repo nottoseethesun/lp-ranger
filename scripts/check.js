@@ -14,6 +14,8 @@
  *   text-reports/tests-summary.txt    Parsed test rollup
  *   text-reports/eslint-timing.txt    ESLint TIMING=1 slowest-rule capture
  *   text-reports/markdownlint.txt     markdownlint-cli2 text output
+ *   config-values.tap          Raw TAP v14 from the shipped-config tests,
+ *                              which run before the rest of the suite
  *   tests.tap                  Raw TAP v14 from `node --test`
  *   report.pdf                 Unified PDF of all results (pdfmake)
  *
@@ -310,7 +312,7 @@ fs.writeFileSync(
  *  it can render rather than a parse error. */
 ensureOrWrite(
   path.join(RAW_DIR, "openapi-sync.json"),
-  '{"ok":false,"problems":["checker did not run"],"routeCount":0,"configKeyCount":0}',
+  '{"ok":false,"problems":["checker did not run"],"routeCount":0,"configKeyCount":0,"uiSettingCount":0}',
 );
 
 // ── Lint (GitHub Actions) — actionlint ────────────────────────────────────
@@ -390,15 +392,56 @@ const secretlintRun = run(bin("secretlint"), [
 ensureOrWrite(path.join(RAW_DIR, "secretlint.json"), "[]");
 
 // ── Backup production files before tests ──────────────────────────────────
+/*-
+ *  From the backup to the restore, an interrupt must not end this
+ *  process. With no listener, Node exits on SIGINT at once, even inside
+ *  `spawnSync`, so the `finally` below would never run and the operator's
+ *  files would be left only in the backup directory. With one, this
+ *  process survives the signal, the test run it is waiting on (which
+ *  receives the same signal) ends, `spawnSync` returns, and the
+ *  `finally` restores the files before this process exits.
+ */
+let interrupted = null;
+const onInterrupt = (signal) => {
+  interrupted = signal;
+};
+const INTERRUPTS = ["SIGINT", "SIGTERM", "SIGHUP"];
+for (const signal of INTERRUPTS) process.on(signal, onInterrupt);
 const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "check-backup-"));
+log.info("[check] Operator files backed up to %s for the tests", backupDir);
 backupProdFiles(backupDir);
 wipeRuntimeFiles();
 
 // ── Tests + Coverage ──────────────────────────────────────────────────────
 // Force --test-reporter=tap so the output is deterministic TAP v14
 // regardless of Node version or TTY state.
+let configValuesExit;
 let testsExit;
 try {
+  /*-
+   *  The shipped config files are checked before any other test. A value
+   *  of the wrong type, or outside its range, breaks whatever reads it,
+   *  and the rest of the suite would report each of those breakages as a
+   *  failure of its own. Run first, these tests name the cause first, in
+   *  a report row of their own. The rest of the suite runs either way, as
+   *  every other check here does.
+   */
+  const configRun = run(
+    "node",
+    [
+      "--test",
+      "--test-reporter=tap",
+      "--test-reporter-destination=stdout",
+      ...configValueTests(),
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  configValuesExit = configRun.status;
+  fs.writeFileSync(
+    path.join(REPORT_DIR, "config-values.tap"),
+    configRun.stdout + configRun.stderr,
+  );
+  if (interrupted !== null) throw new Error(`interrupted by ${interrupted}`);
   const testsRun = run(
     "node",
     [
@@ -426,7 +469,8 @@ try {
       "--test-reporter-destination=stdout",
       "--test-reporter=lcov",
       `--test-reporter-destination=${path.join(RAW_DIR, "lcov.info")}`,
-      ...listTestFiles(),
+      // Every other test: the config values ran above.
+      ...listTestFiles().filter((f) => !configValueTests().includes(f)),
     ],
     {
       stdio: ["ignore", "pipe", "pipe"],
@@ -444,6 +488,14 @@ try {
   restoreProdFiles(backupDir);
   fs.rmSync(backupDir, { recursive: true, force: true });
   keepTestErrorLog();
+  for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
+}
+if (interrupted !== null) {
+  log.error(
+    "[check] Stopped by %s; the operator's files are restored.",
+    interrupted,
+  );
+  process.exit(1);
 }
 
 // ── Write exit codes + file counts for the aggregator ─────────────────────
@@ -462,6 +514,7 @@ const exitCodes = {
   auditDeps: npmAuditRun.status,
   securityLint: securityLintRun.status,
   secretlint: secretlintRun.status,
+  configValues: configValuesExit,
   tests: testsExit,
   htmlFileCount,
 };
@@ -494,6 +547,24 @@ function listWorkflowFiles() {
     .readdirSync(dir)
     .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
     .map((f) => path.join(dir, f));
+}
+
+/**
+ * The tests that check the shipped config files themselves, which run
+ * before every other test.
+ *
+ * A function rather than a module-level `const` for the same reason as
+ * `listTestFiles` below: the tests block calls it from far above here.
+ * The paths are as `listTestFiles` spells them, so the main run can
+ * leave them out by comparing strings.
+ *
+ * @returns {string[]}
+ */
+function configValueTests() {
+  return [
+    path.join("test", "setting-bounds.test.js"),
+    path.join("test", "shipped-config-values.test.js"),
+  ];
 }
 
 /**

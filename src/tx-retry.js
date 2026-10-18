@@ -19,6 +19,7 @@ const {
   classifyRpcError,
   innerErrorMessage,
 } = require("./rpc-error-classifier");
+const { heldTransaction } = require("./held-transaction");
 
 /*-
  *  How often a transient failure is retried, and the delay the waits
@@ -78,9 +79,8 @@ function _logTerminalError(label, bucket, err) {
 
 /**
  * Match the exact "nonce too low" signal — chain has advanced past our
- * local NonceManager counter.  Distinct from other terminal-nonce-consumed
- * cases ("already known", "replacement underpriced") which would loop
- * forever or aren't relevant to this code path.
+ * local NonceManager counter.  Distinct from the other terminal-nonce-
+ * consumed case, "replacement underpriced", which would loop forever.
  *
  * Cause: local NonceManager `#delta` drifted behind chain after a
  * connectivity gap, external wallet activity, or a successful-but-
@@ -146,6 +146,39 @@ function _handleConsumed(ctx) {
   throw err;
 }
 
+/**
+ * Take an "already known" answer as the submission it is.
+ *
+ * The endpoint holds this exact transaction already: an earlier attempt
+ * arrived though its reply was lost. So the transaction is recovered
+ * from the request and handed back as submitted, and the caller waits on
+ * it, speeding it up and cancelling it on the usual schedule. When it
+ * cannot be recovered, it is reported as the terminal error it was
+ * before this answer was understood.
+ *
+ * @param {*} err  The error carrying the endpoint's answer.
+ * @param {string} label  Full log prefix.
+ * @param {object} opts  `_retrySend`'s options, for `heldProviders`.
+ * @returns {Promise<object>} The transaction the endpoint holds.
+ * @throws {*} `err`, when the transaction cannot be recovered.
+ */
+async function _heldOrThrow(err, label, opts) {
+  const providers =
+    typeof opts.heldProviders === "function" ? opts.heldProviders() : null;
+  const held = await heldTransaction(err, providers);
+  if (held === null) {
+    _logTerminalError(label, "already-known, not recoverable", err);
+    throw err;
+  }
+  log.info(
+    "%s: the endpoint already holds this transaction, hash= %s nonce=%d — waiting on it",
+    label,
+    held.hash,
+    held.nonce,
+  );
+  return held;
+}
+
 /** Sleep wrapper that allows the timer to be unref'd in production. */
 function _sleep(ms, useUnref) {
   return new Promise((r) => {
@@ -155,7 +188,17 @@ function _sleep(ms, useUnref) {
 }
 
 /**
- * Wrap a TX-submitting function with classifier-driven retry logic.
+ * Submit a transaction with classifier-driven retry logic, and say when
+ * the transaction handed back was first submitted.
+ *
+ * That time is what the speed-up and the cancel are timed from, so it
+ * has to be the time the transaction has really been waiting. A
+ * transaction accepted on a retry was submitted when that attempt
+ * began: the attempts before it failed, and the waits between them are
+ * not time it spent pending. A transaction an endpoint answers "already
+ * known" reached it on an earlier attempt whose reply was lost, so it is
+ * timed from the first attempt, and one already pending past the
+ * speed-up time is sped up at once.
  *
  * Behaviour per classification (see src/rpc-error-classifier.js):
  *   - "transient":               sleep, reset NonceManager, retry.
@@ -171,6 +214,10 @@ function _sleep(ms, useUnref) {
  *         was already achieved.  Throw and let the caller fall through
  *         to its success path (e.g. waiting for the original receipt).
  *       * Otherwise: log + throw without resetting.
+ *   - "already-known":           the endpoint holds this exact
+ *                                transaction already. Recover it from
+ *                                the request and return it as
+ *                                submitted, so the caller waits on it.
  *   - "unknown":                 safe default — treat as
  *                                terminal-nonce-consumed.
  *
@@ -183,19 +230,33 @@ function _sleep(ms, useUnref) {
  *                   When true, the caller is sending a replacement TX at
  *                   an explicitly chosen nonce (speedup/cancel).
  *                   Suppresses nonce-too-low recovery — see JSDoc above.
- * @returns {Promise<*>}      The TX response from `fn()`.
+ * @param {Function} [opts.heldProviders]  `() => ({wait, read})`, called
+ *                   only when an endpoint answers "already known": `wait`
+ *                   is the provider the recovered transaction is waited
+ *                   on through, `read` the one the current block is read
+ *                   from. Without it that answer stays a terminal error.
+ * @returns {Promise<{tx: *, submittedAt: number}>}  The TX response from
+ *   `fn()`, or the transaction an endpoint said it already holds, and
+ *   when it was first submitted, in epoch milliseconds.
  */
-async function _retrySend(fn, label, opts = {}) {
+async function _retrySendTimed(fn, label, opts = {}) {
   const baseMs = opts.baseDelayMs ?? _RETRY_BASE_DELAY_MS;
   const signer = opts.signer;
   const sameNonce = opts.retryingTxWithSameNonce === true;
+  const firstAttemptAt = Date.now();
   let recoveryUsed = false;
 
   for (let attempt = 0; attempt <= _RETRY_MAX; attempt++) {
+    const attemptAt = Date.now();
     try {
-      return await fn();
+      const tx = await fn();
+      return { tx, submittedAt: attemptAt };
     } catch (err) {
       const bucket = classifyRpcError(err);
+      if (bucket === "already-known") {
+        const held = await _heldOrThrow(err, label, opts);
+        return { tx: held, submittedAt: firstAttemptAt };
+      }
       if (bucket === "terminal-nonce-unused") {
         _logTerminalError(label, bucket, err);
         _resetSignerNonce(signer);
@@ -239,8 +300,24 @@ async function _retrySend(fn, label, opts = {}) {
   }
 }
 
+/**
+ * `_retrySendTimed`, for a caller that waits on the transaction by
+ * another clock or by none: the speed-up and the cancel themselves.
+ *
+ * @param {Function} fn     Async function that submits a TX.
+ * @param {string}   label  Full log prefix (used verbatim).
+ * @param {object}   [opts] As `_retrySendTimed` takes them.
+ * @returns {Promise<*>}  The TX response from `fn()`, or the transaction
+ *   an endpoint said it already holds.
+ */
+async function _retrySend(fn, label, opts = {}) {
+  const { tx } = await _retrySendTimed(fn, label, opts);
+  return tx;
+}
+
 module.exports = {
   _retrySend,
+  _retrySendTimed,
   _resetSignerNonce,
   _isNonceTooLow,
   _rejectedNonce,

@@ -20,9 +20,10 @@ decision about what an operator should be allowed to repair.
 ## Why it matters less than it looks
 
 Most of what Re-scan Prices repairs is not on screen for an unmanaged
-position. It re-values Fees Compounded, Total Lifetime Deposit, and the
-HODL baseline's entry value; an unmanaged position shows **no Lifetime
-panel** at all (see `docs/claude/memory/project_unmanaged_na_principle.md`).
+position. It re-values Total Lifetime Deposit and the HODL baseline's
+entry value, and counts Fees Compounded again from the chain; an
+unmanaged position shows **no Lifetime panel** at all (see
+`docs/claude/memory/project_unmanaged_na_principle.md`).
 Its Current panel is recomputed from chain on each request by
 `src/position-details.js`, so the failure these buttons exist to
 correct — a bad price recorded once and treated as settled — mostly does

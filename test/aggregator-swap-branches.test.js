@@ -163,6 +163,37 @@ describe("aggregator swap — outcomes of a wait that ended badly", () => {
     assert.equal(r.gasCostWei, 600000n + 138000n);
   });
 
+  it("reports the swap when the cancel's wait hands back the swap's receipt", async () => {
+    /*-
+     *  The swap mines while its cancel is pending. ethers then reports the
+     *  cancel as replaced and attaches the receipt of the transaction that
+     *  took the nonce: the swap's. The chain's own answer for the swap has
+     *  not arrived yet. Read as the cancel's, that receipt would close the
+     *  slot, and the re-quote would send a second swap of the same balance.
+     */
+    _setWaitMsForTests(20);
+    state.receipts = [timedOut];
+    const signer = aggSigner();
+    const send = signer.sendTransaction;
+    signer.sendTransaction = async (req) => {
+      const tx = await send(req);
+      if (req.to === ADDR.signer)
+        tx.wait = async () => confirmed({ hash: "0xswap1" });
+      return tx;
+    };
+    const r = await swapViaAggregator(
+      signer,
+      buildMockEthersLib({ contractDispatch: dispatchWithApprovals() }),
+      params(),
+      fixedOut,
+    );
+    assert.equal(r.txHash, "0xswap1");
+    assert.equal(state.sent.length, 1, "no second swap");
+    assert.equal(state.urls.length, 2, "no re-quote");
+    // The swap's own gas and the approval's; no cancel was paid for.
+    assert.equal(r.gasCostWei, 600000n + 138000n);
+  });
+
   it("prices a cancel to outbid the swap it replaces", async () => {
     /*-
      *  The higher of the chain's own price × the aggregator's
@@ -195,7 +226,7 @@ describe("aggregator swap — outcomes of a wait that ended badly", () => {
     assert.equal(cancel.gasLimit, CANCEL_GAS_LIMIT);
     assert.equal(cancel.to, ADDR.signer);
     assert.deepEqual(outcome, {
-      cancelGasWei: 0n,
+      spentGasWei: 0n,
       swapReceipt: null,
       nonceSpent: true,
     });

@@ -194,6 +194,25 @@ function chainCacheTag(chainName) {
 }
 
 /**
+ * The canonical key of an entry in a cache of chain data: the chain
+ * first, then whatever identifies the entry, joined with dashes, every
+ * part lower-cased so an address matches in either capitalisation.
+ *
+ * The chain is its key in chains.json, the name the historical-price,
+ * block-time and epoch caches already lead with. Leading with it keeps
+ * one chain's entries from answering for another's: a token or a pool
+ * can sit at the same address on two chains, and PulseChain's copy of
+ * Ethereum's state means many do.
+ *
+ * @param {string} chain  The chain's key in chains.json.
+ * @param {...(string|number|bigint)} parts  What identifies the entry.
+ * @returns {string}
+ */
+function cacheKey(chain, ...parts) {
+  return [chain, ...parts].map((p) => String(p).toLowerCase()).join("-");
+}
+
+/**
  * Build the canonical "liquidity-pair scope" key string used as the suffix of
  * `event-cache-*.json` filenames and as the top-level key of
  * `liquidity-pair-details-cache.json`.
@@ -256,6 +275,7 @@ function eventCachePath(position, blockchain, contract, wallet) {
 
 module.exports = {
   createCacheStore,
+  cacheKey,
   eventCachePath,
   liquidityPairScopeKey,
   chainCacheTag,

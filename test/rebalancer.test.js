@@ -11,7 +11,6 @@ const {
   _MAX_UINT128,
   _DEADLINE_SECONDS,
   _MIN_SWAP_THRESHOLD,
-  V3_FEE_TIERS,
 } = require("../src/rebalancer-pools");
 const {
   computeDesiredAmounts,
@@ -19,6 +18,7 @@ const {
 } = require("../src/rebalancer-swap");
 const { _setRetryDelayForTests } = require("../src/rebalancer-pools");
 const { PoolStateUnavailableError } = require("../src/pool-state-validate");
+const { loadShippedDefaults } = require("../src/load-merged-defaults");
 
 _setRetryDelayForTests(0); // shorten retry waits in failure-path tests
 const {
@@ -38,13 +38,9 @@ describe("Constants", () => {
   it("_MAX_UINT128 equals 2n**128n - 1n", () => {
     assert.strictEqual(_MAX_UINT128, 2n ** 128n - 1n);
   });
-  it("V3_FEE_TIERS contains common fee tiers (informational, not used as gate)", () => {
-    assert.ok(V3_FEE_TIERS.includes(3000), "should include 0.3% tier");
-    assert.ok(V3_FEE_TIERS.includes(10000), "should include 1% tier");
-    assert.ok(V3_FEE_TIERS.includes(20000), "should include 2% tier");
-  });
-  it("_MIN_SWAP_THRESHOLD is 1000n", () => {
-    assert.strictEqual(_MIN_SWAP_THRESHOLD, 1000n);
+  it("_MIN_SWAP_THRESHOLD is the shipped minSwapAmountRaw", () => {
+    const shipped = loadShippedDefaults("bot-config-defaults.json");
+    assert.strictEqual(_MIN_SWAP_THRESHOLD, BigInt(shipped.minSwapAmountRaw));
   });
 });
 

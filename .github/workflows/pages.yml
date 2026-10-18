@@ -1,6 +1,6 @@
 # .github/workflows/pages.yml
 #
-# Deploy the Help and User Manual to GitHub Pages.
+# Deploy the User Manual to GitHub Pages.
 #
 # Assembles the site from docs/ (images, architecture docs) plus public/
 # (help-and-user-manual.html, CSS, fonts) so there are no duplicate files in the repo.

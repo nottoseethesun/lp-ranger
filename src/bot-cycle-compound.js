@@ -13,22 +13,26 @@ const {
   fetchTokenPrices,
 } = require("./bot-pnl-updater");
 const { notify } = require("./telegram-notifications/telegram");
-const { getTokenSymbol } = require("./server-scan");
+const { getTokenSymbol } = require("./token-symbol-cache");
 const { executeCompound: runCompound } = require("./compounder");
+const { spentGasOf, recordSpentGas } = require("./spent-gas");
 const {
   withFreshPricesAllowed,
   invalidatePriceCacheFor,
 } = require("./price-fetcher");
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 const {
   hasCompoundedTotal,
   isRecordedCoinTotal,
 } = require("./bot-config-keys");
 
-/*- Shipped default for the approvalMultiple per-position config
- *  fallback below.  Per feedback_one_literal_per_shipped_default, the
- *  literal lives only in bot-config-defaults.json. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+/*-
+ *  Default for the approvalMultiple per-position config fallback
+ *  below: the shipped value, or the operator's override of it.  Per
+ *  feedback_one_literal_per_shipped_default, the literal lives only in
+ *  bot-config-defaults.json.
+ */
+const _DEFAULTS = readBotConfigDefaults();
 
 /**
  * Check if compound conditions are met and execute if so.
@@ -95,16 +99,20 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
    *  Manual (`forced === true`) compounds still bypass. */
   if (!forced && botSt._scanRunning) return false;
 
-  // Auto-compound throttle: max(5 × checkInterval, 300 s floor).
-  // config.CHECK_INTERVAL_SEC is sourced from the shipped JSON via
-  // src/config.js — guaranteed defined, no defensive fallback needed.
-  // The 300 s floor is a hardcoded throttle minimum (not a shipped
-  // config default that's tunable); it sets a lower bound on how
-  // often auto-compound can fire regardless of how aggressive the
-  // operator sets checkIntervalSec.
+  /*-
+   *  Auto-compound spacing: app-runtime.json → compound.autoSpacingPolls
+   *  polls of CHECK_INTERVAL_SEC, never less than
+   *  compound.autoSpacingFloorSec, so a short poll interval cannot mean
+   *  a compound on every poll. All three are checked at startup by
+   *  src/config.js.
+   */
   const lastAt = _gc("lastCompoundAt");
   if (!forced && lastAt) {
-    const interval = Math.max(config.CHECK_INTERVAL_SEC * 5, 300) * 1000;
+    const interval =
+      Math.max(
+        config.CHECK_INTERVAL_SEC * config.COMPOUND_AUTO_SPACING_POLLS,
+        config.COMPOUND_AUTO_SPACING_FLOOR_SEC,
+      ) * 1000;
     if (Date.now() - new Date(lastAt).getTime() < interval) return false;
   }
 
@@ -331,10 +339,12 @@ async function _buildCompoundOpts(deps, poolState, trigger) {
     tickLower: position.tickLower,
     tickUpper: position.tickUpper,
     swapRouterAddress: config.SWAP_ROUTER,
-    /*- The two per-token settings, passed through as saved. The swap
+    /*-
+     *  The two per-token settings, passed through as saved. The swap
      *  picks the destination token's one (`resolveSlippagePct`) and
-     *  falls back to the shipped default when it is unset — the same
-     *  answer a rebalance of this pair would get. */
+     *  falls back to the default when it is unset — the same answer a
+     *  rebalance of this pair would get.
+     */
     slippagePctToken0: deps._getConfig?.("slippagePctToken0"),
     slippagePctToken1: deps._getConfig?.("slippagePctToken1"),
     gasFeePct: deps._getConfig?.("gasFeePct"),
@@ -398,6 +408,11 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
       });
     } else {
       log.info("[bot] Compound skipped: %s", result.reason);
+      /*-
+       *  A skipped compound can still have paid gas: a collect sent
+       *  that found no fees to put back.
+       */
+      await recordSpentGas(spentGasOf(result), deps, _actualGasCostUsd);
     }
   } catch (err) {
     log.error("[bot] Compound failed:", err.message);
@@ -418,6 +433,11 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
         "that is the case, either the next rebalance or the next " +
         "check-interval will compound the fees \u2014 no need to worry.",
     });
+    /*-
+     *  The failed compound may have paid gas: a cancel, or a failed
+     *  swap's approvals, reverted swaps and cancels.
+     */
+    await recordSpentGas(spentGasOf(err), deps, _actualGasCostUsd);
   } finally {
     emit({ compoundInProgress: false });
     if (release) release();

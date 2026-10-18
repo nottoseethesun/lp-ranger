@@ -39,10 +39,17 @@ process.env.SWAP_ROUTER = "";
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
-const UI_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/ui-defaults.json");
+const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 const APP_RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 const PRICE_SERVICES = require("../app-config/app-defaults-for-user-configurable/price-services.json");
-const _OVERRIDABLE = ["chains.json", "app-runtime.json", "ui-defaults.json"];
+const SETTING_BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
+const _UI_SERVER_UP = "ui-defaults_non-layout_for-server-up-scenario.json";
+const _OVERRIDABLE = [
+  "chains.json",
+  "app-runtime.json",
+  _UI_SERVER_UP,
+  "bot-config-defaults.json",
+];
 
 /**
  * Load `src/config.js` as startup would, with `overrides` as the
@@ -60,6 +67,8 @@ function loadConfigWith(overrides = {}) {
   }
   for (const mod of [
     "load-merged-defaults",
+    "bot-config-defaults",
+    "ui-defaults",
     "runtime-flags",
     "cache-store",
     "config",
@@ -228,6 +237,16 @@ describe("how a chain's transactions are priced", () => {
     });
   }
 
+  for (const bad of [null, 0, 1.5]) {
+    it(`stops startup on estimatedRebalanceGasUnits = ${JSON.stringify(bad)}, naming it`, () => {
+      // The gas a whole rebalance is priced at before it starts.
+      refuses(
+        { estimatedRebalanceGasUnits: bad },
+        /pulsechain\.estimatedRebalanceGasUnits must be/,
+      );
+    });
+  }
+
   it("stops startup on an envelope type it cannot send, naming it", () => {
     /*-
      *  Sending legacy transactions in its place would hide the typo
@@ -292,6 +311,34 @@ describe("the cancel phase's floor", () => {
   });
 });
 
+describe("how far apart automatic compounds are", () => {
+  it("is the shipped app-runtime.json compound group", () => {
+    const config = loadConfigWith();
+    assert.equal(
+      config.COMPOUND_AUTO_SPACING_POLLS,
+      APP_RUNTIME.compound.autoSpacingPolls,
+    );
+    assert.equal(
+      config.COMPOUND_AUTO_SPACING_FLOOR_SEC,
+      APP_RUNTIME.compound.autoSpacingFloorSec,
+    );
+  });
+
+  for (const [key, bad] of [
+    ["autoSpacingPolls", 0],
+    ["autoSpacingPolls", 2.5],
+    ["autoSpacingFloorSec", 86401],
+    ["autoSpacingFloorSec", null],
+  ])
+    it(`stops startup on ${key} = ${JSON.stringify(bad)}, naming it`, () => {
+      assert.throws(
+        () =>
+          loadConfigWith({ "app-runtime.json": { compound: { [key]: bad } } }),
+        new RegExp(`app-runtime\\.json → compound\\.${key} must be`),
+      );
+    });
+});
+
 describe("how a failed send is retried", () => {
   it("is the shipped app-runtime.json tx group", () => {
     const config = loadConfigWith();
@@ -330,15 +377,60 @@ describe("how a failed send is retried", () => {
   });
 });
 
+describe("the bot's retry, follow-up and retire timings", () => {
+  it("are app-runtime.json's, an override included", () => {
+    const config = loadConfigWith({
+      "app-runtime.json": {
+        tx: {
+          swapBackoffBaseMs: 7000,
+          swapBackoffMaxMs: 90000,
+          midwayRetryLimit: 6,
+        },
+        poll: { afterActionMs: 3000, lifetimeRescanCheckMs: 900000 },
+        retire: { drainedAfterMs: 3600000 },
+      },
+    });
+    assert.equal(config.SWAP_BACKOFF_BASE_MS, 7000);
+    assert.equal(config.SWAP_BACKOFF_MAX_MS, 90000);
+    assert.equal(config.MIDWAY_RETRY_LIMIT, 6);
+    assert.equal(config.POLL_AFTER_ACTION_MS, 3000);
+    assert.equal(config.LIFETIME_RESCAN_CHECK_MS, 900000);
+    assert.equal(config.DRAINED_RETIRE_MS, 3600000);
+  });
+
+  for (const [group, key, bad] of [
+    ["tx", "swapBackoffBaseMs", 999],
+    ["tx", "swapBackoffMaxMs", 86400001],
+    ["tx", "midwayRetryLimit", 0],
+    ["tx", "midwayRetryLimit", 1.5],
+    ["retire", "drainedAfterMs", 59999],
+    ["retire", "drainedAfterMs", null],
+  ])
+    it(`stops startup on ${group}.${key} = ${JSON.stringify(bad)}, naming it`, () => {
+      assert.throws(
+        () =>
+          loadConfigWith({ "app-runtime.json": { [group]: { [key]: bad } } }),
+        new RegExp(`app-runtime\\.json → ${group}\\.${key} must be`),
+      );
+    });
+
+  for (const key of ["afterActionMs", "lifetimeRescanCheckMs"])
+    it(`stops startup on a poll.${key} that cannot be a timer, naming it`, () => {
+      assert.throws(
+        () => loadConfigWith({ "app-runtime.json": { poll: { [key]: 0 } } }),
+        new RegExp(`app-runtime\\.json → poll\\.${key}`),
+      );
+    });
+});
+
 describe("how long the dashboard is given to see a change", () => {
-  it("is the poll interval times the shipped pollsBeforeAssumedSeen", () => {
-    const config = loadConfigWith();
+  it("is the poll interval in force times the shipped pollsBeforeAssumedSeen", () => {
+    const config = loadConfigWith({
+      [_UI_SERVER_UP]: { dashboardPollIntervalMs: 4000 },
+    });
     assert.equal(
       config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
-      Math.round(
-        UI_DEFAULTS.dashboardPollIntervalMs *
-          APP_RUNTIME.dashboard.pollsBeforeAssumedSeen,
-      ),
+      Math.round(4000 * APP_RUNTIME.dashboard.pollsBeforeAssumedSeen),
     );
   });
 
@@ -412,53 +504,97 @@ describe("compound reposition window", () => {
   });
 });
 
-describe("dashboard poll interval", () => {
-  it("is the shipped ui-defaults.json value, which the dashboard bundles", () => {
+describe("the dashboard settings the server sends", () => {
+  it("give the server the poll interval the page is sent, override applied", () => {
     /*-
-     *  An override reaches the server but never the bundle, so the
-     *  server reads the shipped file too, and the two cannot disagree.
+     *  The page is sent the operator's value, so the server's own copy,
+     *  which times "the dashboard has had a chance to poll", must be the
+     *  same one.
      */
     const config = loadConfigWith({
-      "ui-defaults.json": { dashboardPollIntervalMs: 999999 },
+      [_UI_SERVER_UP]: { dashboardPollIntervalMs: 5000 },
     });
-    assert.equal(
-      config.DASHBOARD_POLL_INTERVAL_MS,
-      UI_DEFAULTS.dashboardPollIntervalMs,
-    );
+    assert.equal(config.DASHBOARD_POLL_INTERVAL_MS, 5000);
   });
 
-  it("and the chain query's wait are whole, positive milliseconds", () => {
-    for (const key of ["dashboardPollIntervalMs", "chainQueryTimeoutMs"]) {
-      const ms = UI_DEFAULTS[key];
-      assert.ok(Number.isInteger(ms) && ms > 0, `${key} = ${ms}`);
-    }
+  it("stop startup when an override breaks its rule, naming each one", () => {
+    assert.throws(
+      () =>
+        loadConfigWith({
+          [_UI_SERVER_UP]: {
+            dashboardPollIntervalMs: 100,
+            throttleNearLimitPct: 150,
+            soundsEnabled: "yes",
+          },
+        }),
+      (err) => {
+        assert.match(err.message, new RegExp(_UI_SERVER_UP));
+        assert.match(err.message, /dashboardPollIntervalMs/);
+        assert.match(err.message, /throttleNearLimitPct must be .*150/);
+        assert.match(err.message, /soundsEnabled must be true or false/);
+        return true;
+      },
+    );
   });
 });
 
-describe("the other settings the dashboard bundles", () => {
+describe("the settings built into the page for when the server is down", () => {
   /*-
    *  Nothing on the server reads these, so nothing at startup could
    *  refuse a broken one; the bundle would simply carry it. This is the
    *  check instead, on the shipped file the bundle is built from.
    */
   it("are whole, positive numbers", () => {
-    for (const key of [
-      "reloadMaxWaitMs",
-      "pollFailuresBeforeHalted",
-      "pollSkipLogEvery",
-      "lastCheckJustNowSec",
-      "autoCompoundSyncHoldMs",
-      "activityLogMaxEntries",
-      "copyFeedbackMs",
-      "heapLogIntervalMs",
-    ]) {
-      const v = UI_DEFAULTS[key];
+    for (const key of ["chainQueryTimeoutMs", "pollFailuresBeforeHalted"]) {
+      const v = SERVER_DOWN[key];
       assert.ok(Number.isInteger(v) && v > 0, `${key} = ${v}`);
     }
   });
+});
 
-  it("include a NEAR LIMIT threshold that is a percentage", () => {
-    const pct = UI_DEFAULTS.throttleNearLimitPct;
-    assert.ok(Number.isInteger(pct) && pct > 0 && pct <= 100, String(pct));
+describe("Bot Settings defaults the operator overrides", () => {
+  /*-
+   *  A value outside its range in setting-bounds.json stops startup,
+   *  naming the setting, rather than leaving the shipped default in its
+   *  place unannounced.
+   */
+  it("stop startup when out of range, naming each one", () => {
+    const cap = SETTING_BOUNDS.maxRebalancesPerDay.max;
+    assert.throws(
+      () =>
+        loadConfigWith({
+          "bot-config-defaults.json": {
+            maxRebalancesPerDay: cap + 1,
+            residualCleanup: { delayMs: 0 },
+          },
+        }),
+      (err) => {
+        assert.match(
+          err.message,
+          new RegExp(`maxRebalancesPerDay must be .*; it is ${cap + 1}\\.`),
+        );
+        assert.match(
+          err.message,
+          /residualCleanup\.delayMs must be .*; it is 0\./,
+        );
+        return true;
+      },
+    );
+  });
+
+  it("start normally inside their ranges", () => {
+    // Pinned empty, so a developer's .env cannot stand in for the file.
+    const saved = process.env.MAX_REBALANCES_PER_DAY;
+    process.env.MAX_REBALANCES_PER_DAY = "";
+    try {
+      const cap = SETTING_BOUNDS.maxRebalancesPerDay.max;
+      const config = loadConfigWith({
+        "bot-config-defaults.json": { maxRebalancesPerDay: cap },
+      });
+      assert.equal(config.MAX_REBALANCES_PER_DAY, cap);
+    } finally {
+      if (saved === undefined) delete process.env.MAX_REBALANCES_PER_DAY;
+      else process.env.MAX_REBALANCES_PER_DAY = saved;
+    }
   });
 });

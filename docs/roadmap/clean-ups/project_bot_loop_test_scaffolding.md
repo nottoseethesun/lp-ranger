@@ -1,51 +1,54 @@
 # `startBotLoop` Lifecycle Test Scaffolding
 
-> **Status:** Nice-to-have / developer-experience — not a bug. The
-> app works correctly today. Funds are never at risk. This entry is
-> a deferred testing improvement.
+> **Status:** Nice-to-have / testing — not a bug. The app works
+> correctly today. Funds are never at risk.
 
-`src/bot-loop.js` exports `startBotLoop`, which wires up a provider,
-signer, detected position, and a self-scheduling `poll()` closure.
-Its extracted helpers — `resolvePrivateKey`, `pollCycle`,
-`forceRebalance`, `wireBotStateGetConfig` — are well covered in
-`test/bot-loop.test.js`. But the `poll()` closure itself (and its
-`stop()` lifecycle) has no direct test, because there is no test
-harness today for the full provider/signer/position stack plus
-timer control.
+No test runs the bot's poll loop as a whole. `startBotLoop`
+(`src/bot-loop.js`) builds a provider, a signer and the position, then
+polls on a timer. Nothing in the test suite can stand up that stack with
+the timer under the test's control, so how a poll, `stop()` and the
+timer interleave is checked only by reading the code.
 
-## Why this matters
+## What is covered today
 
-`stop()` and an in-flight `poll()` can race: `poll()` tail-calls
-`_scheduleNext()`, and if `stop()` has already cleared the timer by
-then, the loop is resurrected for one more cycle. Two `if (_stopped)
-return` guards close it. **No test covers that race**, because driving
-it requires holding a poll mid-flight while `stop()` runs, and no
-fixture can do that today.
+The parts taken out of the loop are tested on their own:
+`resolvePrivateKey`, `pollCycle`, `forceRebalance` and
+`wireBotStateGetConfig` in `test/bot-loop.test.js`; the timer and its
+wake-up, `createBotPollScheduler` (`src/bot-loop-scheduler.js`), in
+`test/bot-loop-kick-poll.test.js`; and the wait before the next poll,
+`nextCheckDelayMs`, in `test/bot-loop-gas-wait.test.js`.
+
+## What is not
+
+`stop()` racing a poll that is still running. A poll ends by scheduling
+the next one. If `stop()` clears the timer while a poll is in flight,
+that poll's last step would start the loop again for one more cycle. Two
+`if (_stopped) return` guards in the poll close the race, and no test
+proves they do, because that needs a poll held mid-flight while `stop()`
+runs.
+
+The same fixture would cover the rest of the loop's lifecycle: a queued
+position switch (`pendingSwitch`), a scan started while a poll runs
+(`_triggerScan`), and the `onRetire` callback.
 
 ## What's needed
 
-A test fixture that can:
+A fixture that:
 
-- Construct a `startBotLoop` instance with mocked provider, signer,
-  position, throttle, and config — without touching ganache or the
-  real RPC layer.
-- Drive the internal timer deterministically (fake timers, or
-  injected scheduler) so a test can interleave `stop()` with an
-  in-flight `poll()` and assert no further polls fire.
-- Cover other lifecycle behaviors: `pendingSwitch` handling, gas
-  deferral rescheduling, `_triggerScan` interleaving, and the
-  `onRetire` callback path.
+- builds a `startBotLoop` instance with a mocked provider, signer,
+  position, throttle and config, without ganache or the real rpc layer;
+- drives the timer deterministically, through fake timers or the
+  scheduler's injected `setTimeoutFn`, so a test can run `stop()` while
+  a poll is held and assert that no further poll fires.
 
 ## Why deferred
 
-The scope of this test fixture is non-trivial — it likely requires
-extracting the scheduling logic and/or introducing dependency
-injection for the timer source. That's a meaningful refactor that
-should be planned in its own pass, not bolted onto a stopgap fix.
+The fixture has to mock everything `startBotLoop` sets up before its
+first poll. That is a refactor to plan on its own, not one to bolt onto
+a fix. The scheduler already takes injected timer functions, which
+covers the timer half.
 
-In the meantime, the existing 1917 tests continue to guard against
-regressions in the extracted helpers, and the stop-race fix is
-small enough to be manually verified by removing a position from
-the LP Browser while it is stuck in the gas-defer retry loop and
-confirming that no further `[bot] Force rebalance requested` or
-`[bot] Gas too high` lines appear in the server log afterwards.
+Until then the stop race can be checked by hand. Remove a position from
+the LP Browser while it is waiting for gas to come down, then confirm
+the server log shows no further `[bot] Force rebalance requested` or
+`[bot] Gas too high` lines for it.

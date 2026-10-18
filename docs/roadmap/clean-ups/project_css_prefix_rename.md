@@ -5,19 +5,20 @@
 
 ## Plain language
 
-Every CSS class in this project starts with a digit (`9mm-pos-mgr-…`).
+The project's own CSS classes start with a digit (`9mm-pos-mgr-…`).
 CSS cannot begin an identifier with a digit, so each of the several
-hundred selectors carries an escape (`.\39 mm-pos-mgr-…`). It works, but
-it is fragile in one specific way: if a formatter wraps a line right
+hundred selectors naming one carries an escape (`.\39 mm-pos-mgr-…`). It
+works, but it is fragile in one way: if a formatter wraps a line right
 after that escape, the selector silently changes meaning instead of
 failing loudly.
 
 ## Detail
 
 That is not hypothetical. Prettier 3.9.5 wrapped one such selector and
-broke the auto-compound toggle, with every gate still green &mdash; the
-mangled rule was still valid CSS, just pointed at something else. The
-isolated repro lives at
+broke the auto-compound toggle, with every gate still green. The wrap
+cut the class name to `9` and turned the rest into a descendant type
+selector: still valid CSS, now matching something else. The isolated
+repro lives at
 `../bug-reports-on-dependencies/prettier-css-hex-escape-linewrap/`.
 
 Two guards exist now: the custom `9mm/no-linebreak-after-escape`

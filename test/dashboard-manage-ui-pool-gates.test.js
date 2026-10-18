@@ -44,20 +44,28 @@ before(async () => {
 const RETIRE_DEBOUNCE_MS = GUARANTEED_DASHBOARD_HAS_POLLED_MS;
 const NOW = 1_700_000_000_000;
 
-/** Build a happy-path input object — override fields per-test. */
+/**
+ * Build a happy-path input object — override fields per-test. A position
+ * whose fixture status is "running" is in the managed set too, as it is
+ * once a poll for it has landed.
+ */
 function ins(overrides) {
-  return {
+  const inputs = {
     hasActive: true,
     isClosed: false,
     isNft: true,
     posState: { status: "stopped" },
     syncComplete: true,
     walletUnlocked: true,
-    manageInFlight: false,
+    manageInFlight: null,
+    managedCheckPending: false,
     nowMs: NOW,
     retireDebounceMs: RETIRE_DEBOUNCE_MS,
     ...overrides,
   };
+  if (!("positionManaged" in overrides))
+    inputs.positionManaged = inputs.posState?.status === "running";
+  return inputs;
 }
 
 // ── One-position-per-pool branch ─────────────────────────────────────

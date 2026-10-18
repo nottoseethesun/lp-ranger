@@ -19,7 +19,7 @@ const assert = require("node:assert/strict");
 
 const { userConfigurableRoutes } = require("../src/user-configurable-routes");
 const config = require("../src/config");
-const UI_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/ui-defaults.json");
+const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 
 let chainMod;
 
@@ -50,12 +50,12 @@ const unreachable = async () => {
   throw new TypeError("Failed to fetch");
 };
 const unavailable = async () => ({ ok: false, status: 503 });
-/*-
- *  Takes the request and never answers; only the request's own time
- *  limit ends it, as with a server that hangs. A real request holds its
- *  socket open meanwhile. This stand-in holds a timer instead, because
- *  the limit's own timer does not keep Node's event loop alive, and
- *  Node 22 cancels a test whose loop has emptied while it waits.
+/**
+ * Takes the request and never answers; only the request's own time
+ * limit ends it, as with a server that hangs. A real request holds its
+ * socket open meanwhile. This stand-in holds a timer instead, because
+ * the limit's own timer does not keep Node's event loop alive, and
+ * Node 22 cancels a test whose loop has emptied while it waits.
  */
 const silent = (init) =>
   new Promise((_resolve, reject) => {
@@ -74,6 +74,19 @@ function consoleLines() {
     lines.push(format.replace(/%[ds]/g, () => String(args[i++])));
   };
   return { lines, warnFn };
+}
+
+/**
+ * Counts what `loadActiveChain` reports to the HALTED pill's counter:
+ * each request that named no chain, and the one that did.
+ */
+function reports() {
+  const seen = { unanswered: 0, answered: 0 };
+  return {
+    seen,
+    onUnanswered: () => seen.unanswered++,
+    onAnswered: () => seen.answered++,
+  };
 }
 
 describe("GET /api/chain", () => {
@@ -108,14 +121,17 @@ describe("dashboard-chain", () => {
   it("adopts the chain the server names, logging nothing", async () => {
     const server = scriptedServer([names("pulsechain-testnet")]);
     const logged = consoleLines();
+    const counted = reports();
     const chain = await chainMod.loadActiveChain({
       fetchFn: server.fetchFn,
       warnFn: logged.warnFn,
+      ...counted,
     });
     assert.equal(chain, "pulsechain-testnet");
     assert.deepEqual(server.asked, ["/api/chain"]);
     assert.equal(chainMod.activeChainId(), "pulsechain-testnet");
     assert.deepEqual(logged.lines, []);
+    assert.deepEqual(counted.seen, { unanswered: 0, answered: 1 });
   });
 
   it("asks again until the server names a chain, logging each request that did not", async () => {
@@ -131,10 +147,12 @@ describe("dashboard-chain", () => {
       names("pulsechain"),
     ]);
     const logged = consoleLines();
+    const counted = reports();
     const chain = await chainMod.loadActiveChain({
       fetchFn: server.fetchFn,
       askEveryMs: 1,
       warnFn: logged.warnFn,
+      ...counted,
     });
     assert.equal(chain, "pulsechain");
     assert.equal(server.asked.length, 4);
@@ -144,6 +162,11 @@ describe("dashboard-chain", () => {
       "[chain] attempt 2: asked the server for its blockchain; it answered HTTP 503 — asking again",
       "[chain] attempt 3: asked the server for its blockchain; its answer named no blockchain — asking again",
     ]);
+    /*-
+     *  Each request that named no chain counts toward HALTED, once; the
+     *  one that named it ends the run.
+     */
+    assert.deepEqual(counted.seen, { unanswered: 3, answered: 1 });
   });
 
   it("gives up on a request the server never answers, after the shipped wait", async () => {
@@ -157,11 +180,12 @@ describe("dashboard-chain", () => {
     const chain = await chainMod.loadActiveChain({
       fetchFn: server.fetchFn,
       warnFn: logged.warnFn,
+      ...reports(),
     });
     assert.equal(chain, "pulsechain");
     assert.equal(server.asked.length, 2);
     assert.deepEqual(logged.lines, [
-      `[chain] attempt 1: asked the server for its blockchain; no answer within ${UI_DEFAULTS.chainQueryTimeoutMs / 1000} s — asking again`,
+      `[chain] attempt 1: asked the server for its blockchain; no answer within ${SERVER_DOWN.chainQueryTimeoutMs / 1000} s — asking again`,
     ]);
   });
 
@@ -178,6 +202,7 @@ describe("dashboard-chain", () => {
       fetchFn: server.fetchFn,
       askEveryMs: 200,
       warnFn: logged.warnFn,
+      ...reports(),
     });
     assert.ok(Date.now() - startedAt >= 150, "asked again too soon");
     assert.equal(server.asked.length, 2);
@@ -190,9 +215,9 @@ describe("dashboard-chain", () => {
  *  with none known.
  */
 describe("the header's chain link", () => {
-  /*-
-   *  The header as index.html ships it: the "on" that introduces the
-   *  link, hidden, and the link's slot, empty.
+  /**
+   * The header as index.html ships it: the "on" that introduces the
+   * link, hidden, and the link's slot, empty.
    */
   function header() {
     document.body.innerHTML =
@@ -215,7 +240,7 @@ describe("the header's chain link", () => {
         }),
       }),
     ]);
-    await chainMod.loadActiveChain({ fetchFn: server.fetchFn });
+    await chainMod.loadActiveChain({ fetchFn: server.fetchFn, ...reports() });
     chainMod.paintChainLink();
     assert.equal(on().hidden, false);
     assert.equal(link().href, "https://chain.example/");

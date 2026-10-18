@@ -52,13 +52,15 @@ import { reapplyPrivacyBlur } from "./dashboard-events-manage.js";
  *  reflow + prevents the browser from re-arming the tooltip timer. */
 let _lastButtonState = { disabled: null, title: null };
 
-/*- Modal open flag + sort state.  Sort defaults to Lifetime P&L DESC
+/*-
+ *  Modal open flag + sort state.  Sort defaults to Lifetime P&L DESC
  *  per the design.  Clicking the current column toggles direction;
  *  clicking a different column jumps to DESC on that column.
- *  `_showPerDay` toggles the per-day normalization: when true, every
+ *  `applyPerDay`'s `showPerDay` toggles the per-day normalization: when true, every
  *  numeric column is divided by the number of days the position has
  *  been alive (same "Lifetime" span the KPI panel uses).  Off by
- *  default; not persisted across sessions per user preference. */
+ *  default; not persisted across sessions per user preference.
+ */
 let _isOpen = false;
 let _sortCol = "ltNetPnl";
 let _sortDir = "desc";
@@ -175,14 +177,12 @@ export function _computeNumerics(snap, ltRealized, ltDep) {
   const ltResidual = _num(snap.residualValueUsd, 0);
   const ltInitialResidual = _num(snap.initialResidualUsd, 0);
   const il = _num(snap.lifetimeIL ?? snap.totalIL, 0);
+  /*-
+   *  Fees Compounded is already inside `currentValue`, so only the
+   *  unclaimed fees are added (see `_resolveKpiTotals`).
+   */
   const ltNetPnl =
-    ltPc +
-    compounded +
-    ltCurrentFees +
-    ltRealized -
-    ltGas +
-    ltResidual -
-    ltInitialResidual;
+    ltPc + ltCurrentFees + ltRealized - ltGas + ltResidual - ltInitialResidual;
   const ltProfit = ltCurrentFees + compounded - ltGas + il;
   return { ltNetPnl, ltProfit, ltIL: il };
 }

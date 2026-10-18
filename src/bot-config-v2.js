@@ -6,7 +6,7 @@
  * multi-position management.
  *
  * Structure:
- *   { global: { slippagePct, checkIntervalSec, … },
+ *   { global: { rpcUrls, moralisEnabled, approvalMultiple, … },
  *     positions: { [compositeKey]: { status, thresholdPct, … } } }
  *
  * The `positions` object is the single source of truth.
@@ -32,7 +32,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { getAddress } = require("ethers");
-const { RETIRED_POSITION_KEYS } = require("./bot-config-keys");
+const {
+  RETIRED_POSITION_KEYS,
+  RETIRED_GLOBAL_KEYS,
+} = require("./bot-config-keys");
 
 const CONFIG_FILE = "bot-config.json";
 
@@ -74,6 +77,7 @@ function _appConfigDir() {
 /**
  * Build a composite key from URL-style components.
  * Format: `blockchain-wallet-contract-tokenId` (dash-separated).
+ * `parseCompositeKey` in `src/composite-key.js` reads one back.
  * @param {string} blockchain  e.g. 'pulsechain'
  * @param {string} wallet      Checksummed wallet address.
  * @param {string} contract    NFT contract address.
@@ -85,40 +89,6 @@ function compositeKey(blockchain, wallet, contract, tokenId) {
   const c =
     contract && contract.startsWith("0x") ? getAddress(contract) : contract;
   return `${blockchain}-${w}-${c}-${tokenId}`;
-}
-
-/**
- * Parse a composite key back into its components.
- *
- * Read from the right: the last three segments are always the wallet, the
- * contract and the tokenId, none of which can contain a dash, and
- * everything before them is the chain. A chain name may contain dashes of
- * its own — `pulsechain-testnet` does — so counting segments from the
- * left would misread every key on such a chain.
- *
- * A chain part holding an address-like segment is refused. That is the
- * shape of a pool key (`chain-contract-wallet-token0-token1-fee`), whose
- * last three segments would otherwise pass for a position.
- *
- * Returns null if the key format is invalid.
- * @param {string} key
- * @returns {{ blockchain: string, wallet: string, contract: string, tokenId: string }|null}
- */
-function parseCompositeKey(key) {
-  if (!key || typeof key !== "string") return null;
-  const parts = key.split("-");
-  if (parts.length < 4) return null;
-  const [wallet, contract, tokenId] = parts.slice(-3);
-  const chainParts = parts.slice(0, -3);
-  const blockchain = chainParts.join("-");
-  if (
-    blockchain.length === 0 ||
-    chainParts.some((p) => p.startsWith("0x")) ||
-    !wallet.startsWith("0x") ||
-    !contract.startsWith("0x")
-  )
-    return null;
-  return { blockchain, wallet, contract, tokenId };
 }
 
 /**
@@ -247,7 +217,8 @@ function _readDiskConfig(filePath) {
 }
 
 /**
- * Drop every `RETIRED_POSITION_KEYS` entry from every position slot.
+ * Drop every `RETIRED_POSITION_KEYS` entry from every position slot,
+ * and every `RETIRED_GLOBAL_KEYS` entry from the global section.
  *
  * Runs on the save path rather than the load path so the file is cleaned
  * exactly once per write, and so a slot the app never touches is still
@@ -271,6 +242,8 @@ function _readDiskConfig(filePath) {
  * @param {object} cfg  Config object, mutated in place.
  */
 function _stripRetiredKeys(cfg) {
+  if (cfg.global !== undefined && cfg.global !== null)
+    for (const key of RETIRED_GLOBAL_KEYS) delete cfg.global[key];
   for (const slot of Object.values(cfg.positions || {})) {
     if (slot === undefined || slot === null) continue;
     const retired = RETIRED_POSITION_KEYS.filter((k) => k in slot);
@@ -512,7 +485,6 @@ function readConfigValue(cfg, positionKey, key) {
 
 module.exports = {
   compositeKey,
-  parseCompositeKey,
   loadConfig,
   saveConfig,
   getPositionConfig,

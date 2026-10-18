@@ -16,6 +16,7 @@ const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { shippedFigures } = require("../scripts/build-manual-content");
 
 let PARAM_HELP;
 
@@ -26,7 +27,8 @@ const HTML = fs.readFileSync(
 const BODY = HTML.slice(HTML.indexOf("<body>") + 6, HTML.indexOf("</body>"));
 
 before(async () => {
-  ({ PARAM_HELP } = await import("../public/param-help-content.js"));
+  const { buildParamHelp } = await import("../public/param-help-content.js");
+  PARAM_HELP = buildParamHelp(shippedFigures());
 });
 
 beforeEach(() => {

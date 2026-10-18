@@ -151,7 +151,12 @@ describe("aggregator swap — every quote sent is held to the slippage", () => {
     });
     await assert.rejects(
       swapViaAggregator(aggSigner(), lib, params(), fixedOut),
-      (err) => err.isSwapImpactAbort === true,
+      (err) => {
+        assert.equal(err.isSwapImpactAbort, true);
+        // The approval mined before the fresh quote: 46000 × 3.
+        assert.equal(err.gasCostWei, 138000n);
+        return true;
+      },
     );
     assert.equal(state.urls.length, 2, "price, then the fresh quote");
     assert.equal(state.sent.length, 0, "nothing sent");
@@ -164,7 +169,16 @@ describe("aggregator swap — every quote sent is held to the slippage", () => {
       quote({ estimatedPriceImpact: "6" }),
     ];
     state.receipts = [timedOut];
-    state.chain["0xcancel1"] = { hash: "0xcancel1", status: 1 };
+    /*-
+     *  The cancel's own wait gives up, but the chain shows it mined, so
+     *  its gas was paid: 21000 × 4.
+     */
+    state.chain["0xcancel1"] = {
+      hash: "0xcancel1",
+      status: 1,
+      gasUsed: 21000n,
+      gasPrice: 4n,
+    };
     _setWaitMsForTests(20);
     try {
       await assert.rejects(
@@ -176,7 +190,8 @@ describe("aggregator swap — every quote sent is held to the slippage", () => {
         ),
         (err) => {
           assert.equal(err.isSwapImpactAbort, true);
-          assert.equal(typeof err.cancelGasCostWei, "bigint");
+          // The approval (46000 × 3) and the cancel (21000 × 4).
+          assert.equal(err.gasCostWei, 138000n + 84000n);
           return true;
         },
       );
@@ -203,7 +218,12 @@ describe("aggregator swap — reverted attempts", () => {
     assert.equal(state.urls.length, 3, "price, fresh, then one re-quote");
     assert.equal(state.sent.length, 2);
     assert.equal(r.txHash, "0xswap2");
-    assert.equal(r.gasCostWei, 600000n + 138000n);
+    /*-
+     *  The swap that landed (300000 × 2), the approval (46000 × 3), and
+     *  the reverted swap before it (50000 × 2), which moved nothing but
+     *  was mined and paid for.
+     */
+    assert.equal(r.gasCostWei, 600000n + 138000n + 100000n);
   });
 
   it("gives up after the chain's attempt limit, with nothing left pending", async () => {
@@ -219,8 +239,8 @@ describe("aggregator swap — reverted attempts", () => {
           err.message,
           `Aggregator swap failed after ${max} attempts`,
         );
-        // Reverts spend no cancel, so there is no cancel gas to carry.
-        assert.equal(err.cancelGasCostWei, 0n);
+        // The approval (46000 × 3) and every reverted swap (50000 × 2).
+        assert.equal(err.gasCostWei, 138000n + BigInt(max) * 100000n);
         /*-
          *  Not flagged unsettled: every nonce was spent by its revert, so
          *  the router fallback may run.
@@ -305,6 +325,11 @@ describe("swapIfNeeded — chunked after a slippage abort", () => {
         }),
         (err) => {
           assert.equal(err.nonceUnsettled, true, err.message);
+          /*-
+           *  The first chunk's approval (46000 × 3) was mined. The cancel
+           *  never was, so it cost nothing that can be counted.
+           */
+          assert.equal(err.gasCostWei, 138000n);
           return true;
         },
       );

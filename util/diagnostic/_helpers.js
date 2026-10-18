@@ -95,36 +95,10 @@ async function fetchTimestamps(provider, blockNumbers, delayMs = 50) {
   return out;
 }
 
-/**
- * Split a position's key, `<chain>-<wallet>-<contract>-<tokenId>`, into
- * its parts, reading from the right, because a chain's name can itself
- * hold a dash (`pulsechain-testnet`). It is the rule `parseCompositeKey`
- * in src/bot-config-v2.js applies, restated here for the tools that may
- * not load the app's modules.
- *
- * @param {string} key
- * @returns {{blockchain: string, wallet: string, contract: string,
- *   tokenId: string}|null}  Null for a key not of that shape.
- */
-function positionKeyParts(key) {
-  if (typeof key !== "string") return null;
-  const parts = key.split("-");
-  if (parts.length < 4) return null;
-  const [wallet, contract, tokenId] = parts.slice(-3);
-  if (!wallet.startsWith("0x") || !contract.startsWith("0x")) return null;
-  return {
-    blockchain: parts.slice(0, -3).join("-"),
-    wallet,
-    contract,
-    tokenId,
-  };
-}
-
 module.exports = {
   sleep,
   addrTopic,
   addrFromTopic,
   fmtTs,
   fetchTimestamps,
-  positionKeyParts,
 };

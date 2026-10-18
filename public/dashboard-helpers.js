@@ -5,10 +5,12 @@
  * time-formatting helpers, and the shared {@link botConfig} object used by
  * every other dashboard module.
  *
- * Root module — no imports from other dashboard files.
+ * Root module — imports no dashboard file but the logger and the chain
+ * module, neither of which imports this one, directly or otherwise.
  */
 
 import { log } from "./dashboard-log.js";
+import { activeChainId } from "./dashboard-chain.js";
 /*- The zone designator the `Date` itself emits, not a spelled-out
  *  name. See `src/utc-timestamp.js` for why "UTC" cannot be derived. */
 import { UTC_LABEL } from "../src/utc-timestamp.js";
@@ -17,8 +19,11 @@ import { UTC_LABEL } from "../src/utc-timestamp.js";
  *  own; see `_csrfRefreshIntervalMs`.
  */
 import CSRF_DEFAULTS from "../app-config/app-defaults-for-user-configurable/csrf.json" with { type: "json" };
-// The Activity Log's length cap and the copy icons' tick duration.
-import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
+import {
+  uiSetting,
+  uiSettingsLoaded,
+  withUiSettings,
+} from "./dashboard-ui-settings.js";
 /**
  * Get a DOM element by its ID.
  * @param {string} id  The element's id attribute.
@@ -91,7 +96,8 @@ export function emojiId(str) {
 
 /**
  * Append an entry to the on-screen activity log.
- * Newest entries appear at the top; the list is capped at 50 items.
+ * Newest entries appear at the top; the list is capped at the
+ * `activityLogMaxEntries` setting the server sends.
  * @param {string} icon   Emoji icon for the entry.
  * @param {string} type   CSS class suffix for colouring (e.g. 'fee', 'alert').
  * @param {string} title  Short heading text.
@@ -100,7 +106,7 @@ export function emojiId(str) {
 /**
  * Activity-log icon references.  Each value is a relative URL to the
  * standalone SVG file under `public/icons/`.  Every icon must have a
- * matching file (see test/act-icons-files.test.js) and the whole
+ * matching file (see test/icons-files.test.js) and the whole
  * directory is XML-well-formedness-validated via `npm run lint:svg`
  * (see docs/engineering.md § "SVG Assets" for the full policy).
  * @see docs/engineering.md#svg-assets
@@ -121,8 +127,6 @@ export const ACT_ICONS = {
   acorn: "icons/act-acorn.svg",
   lasso: "icons/act-lasso.svg",
 };
-/** Maximum entries in the Activity Log. */
-const ACT_LOG_MAX = UI_DEFAULTS.activityLogMaxEntries;
 
 /*- Per-icon render-size override.  Default is 40 (fits the 54×54
  *  `.aico` chip with ~7 px padding on each side); an entry here
@@ -237,7 +241,14 @@ export function act(icon, type, title, detail, when, txHash) {
   let ref = list.firstChild;
   while (ref && Number(ref.dataset?.ts) > ts) ref = ref.nextSibling;
   list.insertBefore(div, ref);
-  while (list.children.length > ACT_LOG_MAX) list.removeChild(list.lastChild);
+  /*-
+   *  The cap is `activityLogMaxEntries`, a setting the server sends.
+   *  Entries logged at startup, before it has, stay until the first entry
+   *  after, which trims the log to the cap.
+   */
+  if (!uiSettingsLoaded()) return;
+  const max = uiSetting("activityLogMaxEntries");
+  while (list.children.length > max) list.removeChild(list.lastChild);
 }
 
 /**
@@ -368,16 +379,15 @@ export function compositeKey(blockchain, wallet, contract, tokenId) {
 export const botConfig = {
   oorThreshold: undefined,
   /*-
-   *  The active chain's display name, from each /api/status poll. Blank
-   *  until the first one lands; nothing stands in for it before then.
+   *  logging.json → errorLogPath, as the operator wrote it, from each
+   *  /api/status poll; blank until the first one lands.
    */
-  chainName: "",
+  errorLogPath: "",
   price: 0,
   lower: 0,
   upper: 0,
   tL: 0,
   tU: 0,
-  triggerType: "oor",
   oorSince: null,
 };
 
@@ -388,19 +398,28 @@ export function truncName(name, max) {
 
 /**
  * Copy `text` to the clipboard and give visual feedback by swapping
- * `iconEl`'s textContent to a checkmark for ui-defaults.json's
- * `copyFeedbackMs`.
+ * `iconEl`'s textContent to a checkmark for `copyFeedbackMs`, a setting
+ * the server sends. A click before the server has sent it keeps the
+ * checkmark until it has, then times it as usual.
+ *
+ * A second click while the checkmark shows copies again and leaves the
+ * checkmark alone: the first click's timer puts the icon back. Taking
+ * the checkmark as the icon to restore would leave it showing for good.
+ *
  * @param {HTMLElement} iconEl  The clicked copy-icon element.
  * @param {string} text  The text to copy.
  */
 export function copyWithFeedback(iconEl, text) {
   if (!iconEl || !text) return;
   navigator.clipboard.writeText(text).catch(() => {});
+  if (iconEl.textContent === "✓") return;
   const orig = iconEl.textContent;
   iconEl.textContent = "\u2713";
-  setTimeout(() => {
-    iconEl.textContent = orig;
-  }, UI_DEFAULTS.copyFeedbackMs);
+  withUiSettings((settings) =>
+    setTimeout(() => {
+      iconEl.textContent = orig;
+    }, settings.copyFeedbackMs),
+  );
 }
 
 /** Copy textContent of element `tId` via icon `bId` with checkmark feedback. */
@@ -461,18 +480,33 @@ export function nextMidnight() {
 const POS_RANGE_PREFIX = "9mm_oorThreshold_";
 
 /**
- * Build a unique storage key for a position.
- * Uses tokenId for NFTs, contractAddress for ERC-20s.
+ * Build a unique storage key for a position, on the active chain: the
+ * chain, the wallet and the position's contract, and for an NFT its
+ * number too, so no two positions share a value. The contract is the
+ * position manager for an NFT and the LP token for an ERC-20.
  * @param {object} pos  Position entry from posStore.
- * @returns {string|null}  Storage key, or null if position has no identifier.
+ * @returns {string|null}  Storage key, or null when the chain is not yet
+ *   known or the position lacks an identifying field.
  */
 function posStorageKey(pos) {
   if (!pos) return null;
-  if (pos.positionType === "nft" && pos.tokenId)
-    return POS_RANGE_PREFIX + "nft_" + pos.tokenId;
-  if (pos.contractAddress)
-    return POS_RANGE_PREFIX + "erc20_" + pos.contractAddress.toLowerCase();
-  return null;
+  const chain = activeChainId();
+  if (typeof chain !== "string") return null;
+  const { walletAddress, contractAddress } = pos;
+  for (const part of [walletAddress, contractAddress])
+    if (typeof part !== "string" || part.length === 0) return null;
+  const owner =
+    chain +
+    "_" +
+    walletAddress.toLowerCase() +
+    "_" +
+    contractAddress.toLowerCase();
+  if (pos.positionType === "nft") {
+    const id = pos.tokenId;
+    if (typeof id !== "string" || id.length === 0) return null;
+    return POS_RANGE_PREFIX + "nft_" + owner + "_" + id;
+  }
+  return POS_RANGE_PREFIX + "erc20_" + owner;
 }
 
 /**
@@ -497,7 +531,7 @@ export function savePositionOorThreshold(pos, oorPct) {
  * stored value is invalid), so the caller can fall back to the shipped
  * default sourced from the AJAX-populated
  * `_CONFIG_INPUT_DEFAULTS.rebalanceOutOfRangeThresholdPercent` (via
- * `getInputDefault()` in dashboard-data.js).  No literal fallback per
+ * `getInputDefault()` in dashboard-config-inputs.js).  No literal fallback per
  * feedback_one_literal_per_shipped_default — the shipped default lives
  * only in `bot-config-defaults.json` and nowhere else in code.
  *

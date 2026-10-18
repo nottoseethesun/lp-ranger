@@ -82,3 +82,39 @@ describe("a deep link to a position", () => {
     assert.deepEqual(calls.activated, []);
   });
 });
+
+describe("the URL the dashboard writes", () => {
+  /*-
+   *  Both addresses EIP-55 checksummed, whatever case the store holds
+   *  them in. They were written all lowercase.
+   */
+  const CHECKSUMMED_WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
+
+  beforeEach(async () => {
+    window.history.pushState({}, "", "/");
+    router.injectRouterDeps({
+      posStore: { entries: [], count: () => 0 },
+      wallet: { address: CHECKSUMMED_WALLET.toLowerCase() },
+      activateByTokenId: () => {},
+      scanPositions: () => Promise.resolve(),
+    });
+    router.initRouter();
+  });
+
+  it("checksums the wallet and the contract in a position's URL", () => {
+    router.updateRouteForPosition({
+      positionType: "nft",
+      tokenId: "7",
+      contractAddress: CONTRACT.toLowerCase(),
+    });
+    assert.equal(
+      window.location.pathname,
+      `/pulsechain/${CHECKSUMMED_WALLET}/${CONTRACT}/7`,
+    );
+  });
+
+  it("checksums the wallet in a wallet's URL", () => {
+    router.updateRouteForWallet(CHECKSUMMED_WALLET.toLowerCase());
+    assert.equal(window.location.pathname, `/pulsechain/${CHECKSUMMED_WALLET}`);
+  });
+});

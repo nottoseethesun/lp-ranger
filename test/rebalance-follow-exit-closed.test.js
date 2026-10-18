@@ -27,11 +27,15 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 let mod;
+let storage;
 
 before(async () => {
+  await learnActiveChain();
   mod = await import("../public/dashboard-positions-store.js");
+  storage = await import("../public/dashboard-chain-storage.js");
 });
 
 let _syncRouteCalls;
@@ -58,7 +62,7 @@ describe("posStore.updateActiveTokenId — rebalance-follow", () => {
     _seed([{ tokenId: "158981", walletAddress: "0xWALLET", active: true }]);
     mod.posStore.updateActiveTokenId("159013");
     assert.strictEqual(mod.posStore.getActive().tokenId, "159013");
-    assert.strictEqual(localStorage.getItem("9mm_last_position"), "159013");
+    assert.strictEqual(storage.readLastPosition(), "159013");
   });
 
   it("fires exitClosedPosView callback (FIX: unpins stale closed-view flag)", () => {
@@ -91,7 +95,7 @@ describe("posStore.updateActiveTokenId — rebalance-follow", () => {
     mod.posStore.updateActiveTokenId("159013");
     assert.strictEqual(_exitClosedCalls, 0);
     assert.strictEqual(_syncRouteCalls.length, 0);
-    assert.strictEqual(localStorage.getItem("9mm_last_position"), null);
+    assert.strictEqual(storage.readLastPosition(), null);
   });
 
   it("is safe when no callbacks registered (defensive)", () => {
@@ -107,7 +111,7 @@ describe("posStore.updateActiveTokenId — rebalance-follow", () => {
     mod.posStore.updateActiveTokenId("158981");
     assert.strictEqual(_exitClosedCalls, 0);
     assert.strictEqual(_syncRouteCalls.length, 0);
-    assert.strictEqual(localStorage.getItem("9mm_last_position"), null);
+    assert.strictEqual(storage.readLastPosition(), null);
   });
 
   it(

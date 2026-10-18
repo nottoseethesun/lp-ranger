@@ -53,7 +53,7 @@ const {
   _readDecimalsOverride,
 } = require("./bot-recorder-decimals-heal");
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
-const { isIntegerInRange } = require("./pool-state-validate");
+const { isTokenDecimals } = require("./pool-state-validate");
 const { hasCompoundedTotal } = require("./bot-config-keys");
 
 /**
@@ -73,7 +73,7 @@ const { hasCompoundedTotal } = require("./bot-config-keys");
  *   total offered again changes nothing.
  *
  * Persisted immediately, because nothing else writes the tracker out
- * after this point — the same reason `_recordCancelGas` persists.
+ * after this point — the same reason `recordSpentGas` persists.
  *
  * @param {bigint} totalGasWei  Chain-wide compound gas, in wei.
  * @param {object} pnlTracker   Tracker holding the open period.
@@ -144,8 +144,8 @@ function _mintBlockOf(allNftEvents, tokenId) {
  *  and the heal step cannot disagree about what "valid" means.
  */
 function _requireValidDecimals(opts) {
-  const ok = (d) => isIntegerInRange(d, 0, 77);
-  if (ok(opts.decimals0) && ok(opts.decimals1)) return;
+  if (isTokenDecimals(opts.decimals0) && isTokenDecimals(opts.decimals1))
+    return;
   throw new Error(
     `${opts.token0Symbol || "token0"}/${opts.token1Symbol || "token1"}: ` +
       `cannot classify compounds — token decimals are invalid ` +
@@ -796,7 +796,7 @@ async function _scanLifetimePoolData(
      *  pass starts by lowering `lifetimeScanComplete`, and only this
      *  function raises it. Skipping it here would leave a restart with
      *  every figure saved on "Syncing…" for good: the Lifetime panel
-     *  blank, and the rescan timer firing every 30 minutes.
+     *  blank, and the rescan timer re-reading the chain at every check.
      */
     log.info(
       "[bot] %s/%s NFT #%s %s: Lifetime figures are already saved; no chain read needed",

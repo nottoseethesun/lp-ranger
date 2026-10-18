@@ -10,13 +10,13 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  getTokenSymbol,
   resolveTokenSymbol,
   formatNftResponse,
   poolKey,
   fetchPoolTicks,
   createScanHandlers,
 } = require("../src/server-scan");
+const { getTokenSymbol } = require("../src/token-symbol-cache");
 
 // ── getTokenSymbol ──────────────────────────────────────────────────
 

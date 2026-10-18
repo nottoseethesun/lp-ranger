@@ -25,10 +25,10 @@ const {
 const { createCanReopenHandler } = require("./server-can-reopen");
 const { manageRequestRefusal } = require("./manage-request-check");
 const { rejectIfPoolManaged } = require("./pool-already-managed");
+const { positionTag } = require("./position-answer-tag");
 const sendTx = require("./send-transaction");
 const {
   compositeKey,
-  parseCompositeKey,
   saveConfig,
   getPositionConfig,
   getOrCreatePositionConfig,
@@ -37,6 +37,7 @@ const {
   removeManagedPosition,
   migratePositionKey: migrateConfigKey,
 } = require("./bot-config-v2");
+const { parseCompositeKey } = require("./composite-key");
 
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
@@ -104,6 +105,11 @@ function createPerPositionBotState(_globalCfg, saved) {
     _lastInBand: false,
     _lastBalancedNotifyTs: 0,
     _lastBalancedPriceFetchTs: 0,
+    /*-
+     *  When the OOR Timeout alert last went out (process-lifetime only;
+     *  not persisted). Owned by `_oorAlertDue` in src/bot-cycle.js.
+     */
+    _lastOorAlertAt: null,
   };
   if (saved !== undefined && saved !== null) {
     for (const k of PERSISTED_STATE_KEYS) {
@@ -464,6 +470,7 @@ function createPositionRoutes(deps) {
         tokenId: String(body.tokenId),
         alreadyRunning: true,
         reopenStamped: stamped,
+        ...positionTag(key),
       });
       return;
     }
@@ -590,11 +597,13 @@ function createPositionRoutes(deps) {
           error: "pool-info-unavailable",
           message: err.message,
           tokenId: body.tokenId,
+          ...positionTag(key),
         });
       } else {
         jsonResponse(res, 500, {
           ok: false,
           error: "Failed to start position: " + err.message,
+          ...positionTag(key),
         });
       }
       return;
@@ -626,10 +635,15 @@ function createPositionRoutes(deps) {
       positionMgr.count(),
     );
 
+    /*-
+     *  A re-open answers after its first rebalance, which mints a new
+     *  NFT, so the answer names both keys.
+     */
     jsonResponse(res, 200, {
       ok: true,
       key,
       tokenId: String(body.tokenId),
+      ...positionTag(key, keyRef.current),
     });
   }
 
@@ -669,7 +683,12 @@ function createPositionRoutes(deps) {
       "[pos-route] Position removed (remaining: %d)",
       positionMgr.count(),
     );
-    jsonResponse(res, 200, { ok: true, key: body.key, status: "stopped" });
+    jsonResponse(res, 200, {
+      ok: true,
+      key: body.key,
+      status: "stopped",
+      ...positionTag(body.key, liveKey),
+    });
   }
 
   const handleCanReopen = createCanReopenHandler({

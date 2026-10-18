@@ -15,7 +15,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { compositeKey, parseCompositeKey } = require("../src/bot-config-v2");
+const { compositeKey } = require("../src/bot-config-v2");
+const { parseCompositeKey } = require("../src/composite-key");
 
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";

@@ -15,7 +15,6 @@
 
 /** Keys that belong in the global section. */
 const GLOBAL_KEYS = [
-  "triggerType",
   /*- `positionManager` and `factory` are deliberately NOT here.  The
    *  bot resolves each from .env / chains.json at startup and never
    *  reads them back from this file, so accepting one here would write
@@ -78,9 +77,9 @@ const GLOBAL_KEYS = [
   /*-
    *  Balanced-band Telegram notifier (`src/telegram-notifications/balanced-notifier.js`):
    *  multiplier on `CHECK_INTERVAL_SEC` for the cadence at which the
-   *  notifier fetches fresh USD prices to evaluate the ±5% balanced
-   *  condition.  Default `10` → fetch every 10× poll interval (50 min
-   *  at the default 300 s poll).  Only consulted when the
+   *  notifier fetches fresh USD prices to evaluate the balanced band
+   *  (`positionBalancedBandPct`): a fetch every this many poll
+   *  intervals.  Only consulted when the
    *  `positionBalanced` Telegram event is enabled — otherwise zero
    *  load.  See `app-config/app-defaults-for-user-configurable/bot-config-defaults.json`
    *  `_pricePauseExceptionPollWindowMultiple_comment` for operator
@@ -126,16 +125,18 @@ const CHAIN_DERIVED_POSITION_KEYS = Object.freeze([
 /**
  * Position-config keys the app no longer reads or writes.
  *
- * All three stored a **dollar total** for compounded fees. The app now
- * stores the coins instead (`compoundedAmount0` / `compoundedAmount1`,
+ * The first three stored a **dollar total** for compounded fees. The app
+ * now stores the coins instead (`compoundedAmount0` / `compoundedAmount1`,
  * `nftCompoundedAmountsByTokenId`) and prices them where they are
  * displayed, because a saved dollar figure is true only at the price
- * that computed it — an error that grows with the position's age.
+ * that computed it — an error that grows with the position's age. The
+ * rest are settings that were retired; each says why where it is listed.
  *
  * Nothing reads these, so leaving them would be dead weight in a file
  * operators open and read. `saveConfig` drops them from every slot on
  * the next write. They carry no information the app wants back: the
- * replacement is re-derived from the chain, never from these.
+ * compound totals' replacement is re-derived from the chain, never
+ * from these.
  *
  * This is not a migration and must not grow into one. A key belongs
  * here only once it has no reader anywhere.
@@ -144,24 +145,58 @@ const RETIRED_POSITION_KEYS = Object.freeze([
   "totalCompoundedUsd",
   "nftCompoundedUsdByTokenId",
   "collectedFeesUsd",
-  /*- The single per-position slippage, left behind when the Slippage
+  /*-
+   *  The single per-position slippage, left behind when the Slippage
    *  row became two per-token rows. Dropped rather than migrated: it
    *  was one number covering both sides, and there is no honest way to
    *  split it into two — the two exist because the sides differ. A
-   *  position that had it falls back to the shipped default until the
-   *  operator sets each token's own, which is where the dashboard has
-   *  been pointing them since the row was split. */
+   *  position that had it falls back to the default until the operator
+   *  sets each token's own, which is where the dashboard has been
+   *  pointing them since the row was split.
+   */
   "slippagePct",
+  /*-
+   *  Gas Strategy. Its row offered Auto, Fast and Economy, but the
+   *  server refused all but Auto and the bot never read the setting,
+   *  so no choice changed anything. The row is gone and so is the
+   *  value.
+   */
+  "gasStrategy",
+  /*-
+   *  A position's own Check Interval. How often the bot checks is one
+   *  global setting, `checkIntervalSec` in bot-config-defaults.json
+   *  (or `CHECK_INTERVAL_SEC` in `.env`), because the dashboard's idle
+   *  and wake timing are all built on that one value. The bot never
+   *  scheduled a check by a position's own value, so dropping it
+   *  changes nothing that runs.
+   */
+  "checkIntervalSec",
+]);
+
+/**
+ * Global-section keys the app no longer reads or writes, dropped from
+ * `bot-config.json` on the next save on the same terms as
+ * `RETIRED_POSITION_KEYS`: nothing reads them, and nothing is carried
+ * over from them.
+ */
+const RETIRED_GLOBAL_KEYS = Object.freeze([
+  /*-
+   *  The rebalance trigger's type. It was saved through
+   *  `POST /api/config` with no control on the page, and only one type,
+   *  out of range, ever existed. Nothing read it.
+   */
+  "triggerType",
 ]);
 
 const POSITION_KEYS = [
   /*-
-   * Impermanent Loss Guard, percent.  The most a position may have lost
-   * before the bot refuses to rebalance it: the hypothetical
-   * post-rebalance position is compared against the held NFT's own USD
-   * value at mint (`hodlBaseline.entryValue`), and the rebalance is
-   * rejected when the projection falls more than this far below it.
-   * Evaluated read-only in `_checkIlGuard` (src/bot-cycle.js), upstream
+   * Impermanent Loss Guard, percent.  The most impermanent loss a
+   * position may carry before the bot refuses to rebalance it: the
+   * hypothetical post-rebalance position is compared against holding the
+   * coins the held NFT was minted with, at today's prices (the Current
+   * panel's IL/G), and the rebalance is rejected when the projection
+   * falls more than this far below holding.
+   * Evaluated read-only in `checkIlGuard` (src/il-guard.js), upstream
    * of `executeRebalance`, so a rejection can never drain the position.
    * See src/il-guard.js for the rule and its consequences.
    */
@@ -210,9 +245,9 @@ const POSITION_KEYS = [
    *  swap layer picks by DESTINATION token: a token0 → token1 swap
    *  uses `slippagePctToken1`, a token1 → token0 swap uses
    *  `slippagePctToken0`. A token with no setting of its own falls
-   *  back to the shipped `slippagePct` default in
-   *  bot-config-defaults.json (currently 0.75), which is a default and
-   *  not a per-position setting.
+   *  back to the `slippagePct` default in bot-config-defaults.json
+   *  (0.75 as shipped, overridable by the operator's copy), which is a
+   *  default and not a per-position setting.
    *
    *  There was a third, `slippagePct` saved per position, left behind
    *  when the single Slippage row became two. It was dormant for
@@ -223,10 +258,8 @@ const POSITION_KEYS = [
    */
   "slippagePctToken0",
   "slippagePctToken1",
-  "checkIntervalSec",
   "minRebalanceIntervalMin",
   "maxRebalancesPerDay",
-  "gasStrategy",
   "hodlBaseline",
   "residuals",
   "initialDepositUsd",
@@ -320,7 +353,7 @@ const POSITION_KEYS = [
  * the whole chain again to arrive back at zero, on every scan, for as
  * long as the position runs. Only absence means "not asked yet". That is
  * also why a zero reached by clearing must delete the keys rather than
- * write `0` over them: see `_resetStateForReload` in
+ * write `0` over them: see `_resetBotState` in
  * `server-reload-position.js`, which nulls them for exactly this reason.
  *
  * A non-finite or negative value is treated as absent. Neither is a
@@ -360,6 +393,7 @@ module.exports = {
   POSITION_KEYS,
   CHAIN_DERIVED_POSITION_KEYS,
   RETIRED_POSITION_KEYS,
+  RETIRED_GLOBAL_KEYS,
   hasCompoundedTotal,
   isRecordedCoinTotal,
 };

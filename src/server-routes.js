@@ -18,6 +18,7 @@ const {
 } = require("./api-key-store");
 const { setApiKey, setServiceEnabled } = require("./api-key-holder");
 const {
+  moralisEnabledIn,
   pingMoralis,
   validateMoralisKey,
   handleApiKeyStatus,
@@ -467,7 +468,7 @@ function createRouteHandlers(deps) {
     /*- Honour the saved toggle as soon as the key is in memory, so an
      *  operator who turned Moralis off does not get one round of calls
      *  on the next unlock before the setting is noticed. */
-    setServiceEnabled("moralis", diskConfig.global?.moralisEnabled !== false);
+    setServiceEnabled("moralis", moralisEnabledIn(diskConfig.global));
     // Validate Moralis key after decryption
     validateMoralisKey();
   }

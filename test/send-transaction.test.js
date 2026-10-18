@@ -359,6 +359,99 @@ describe("send-transaction: _estimateWithFailover", () => {
     assert.equal(calls, 1);
   });
 
+  /**
+   * Three endpoints, each answering estimates as `behaviours` says. The
+   * sequence cases below need a third: with two, the walk has nowhere
+   * to go wrong.
+   */
+  function initThree(behaviours) {
+    sendTx.init(
+      { urls: ["http://one.test", "http://two.test", "http://three.test"] },
+      {
+        JsonRpcProvider: class {
+          constructor(url) {
+            this._url = url;
+            this.getFeeData = async () => ({ gasPrice: 1n });
+            this.estimateGas = behaviours[url];
+          }
+          send() {
+            return Promise.resolve("0x1");
+          }
+        },
+        FeeData: class {
+          constructor(gp) {
+            this.gasPrice = gp;
+          }
+        },
+      },
+    );
+  }
+
+  it("walks on from the endpoint it asked, though selection moved while it waited", async () => {
+    /*-
+     *  Another caller retires the first endpoint while this estimate is
+     *  out, so selection is on the second when the first refuses. The
+     *  walk must start after the endpoint this call asked: the second is
+     *  serving, and the third is the one that should not be reached.
+     */
+    const asked = [];
+    initThree({
+      "http://one.test": async () => {
+        asked.push("one");
+        condemn("http://one.test");
+        sendTx.failoverToNextRPC();
+        throw new Error("one down");
+      },
+      "http://two.test": async () => {
+        asked.push("two");
+        return 222_222n;
+      },
+      "http://three.test": async () => {
+        asked.push("three");
+        return 333_333n;
+      },
+    });
+    const m = muteConsole();
+    try {
+      const out = await sendTx._estimateWithFailover({}, "test");
+      assert.equal(out, 222_222n);
+      assert.deepEqual(asked, ["one", "two"]);
+      assert.equal(sendTx.getCurrentRPC()._url, "http://two.test");
+    } finally {
+      m.restore();
+    }
+  });
+
+  it("leaves selection where another caller moved it while a probe was out", async () => {
+    /*-
+     *  The first endpoint refuses, and while the second is being probed
+     *  other callers retire the first and then the second, leaving the
+     *  third selected. The probe's answer is one success against what
+     *  they saw, so it must not pull selection back to the second.
+     */
+    initThree({
+      "http://one.test": async () => {
+        throw new Error("one down");
+      },
+      "http://two.test": async () => {
+        condemn("http://one.test");
+        sendTx.failoverToNextRPC();
+        condemn("http://two.test");
+        sendTx.failoverToNextRPC();
+        return 222_222n;
+      },
+      "http://three.test": async () => 333_333n,
+    });
+    const m = muteConsole();
+    try {
+      const out = await sendTx._estimateWithFailover({}, "test");
+      assert.equal(out, 222_222n);
+      assert.equal(sendTx.getCurrentRPC()._url, "http://three.test");
+    } finally {
+      m.restore();
+    }
+  });
+
   it("does not retry when already on fallback (no further alternate exists)", async () => {
     let primaryCalls = 0;
     let fallbackCalls = 0;

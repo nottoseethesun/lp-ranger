@@ -33,47 +33,47 @@ before(async () => {
 
 describe("a save the server refuses", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<input id="inInterval" value="300">`;
+    document.body.innerHTML = `<input id="inMaxReb" value="5">`;
   });
 
   it("puts the field back to the last accepted value and says why", () => {
-    mod.rememberGoodInput("inInterval", 300);
-    document.getElementById("inInterval").value = "7200";
-    const msg = mod._applySaveRejection("inInterval", "checkIntervalSec", {
-      error: "Check Interval is 7200 sec, which is outside what it accepts.",
-      invalidValueForKey: "checkIntervalSec",
+    mod.rememberGoodInput("inMaxReb", 5);
+    document.getElementById("inMaxReb").value = "99";
+    const msg = mod._applySaveRejection("inMaxReb", "maxRebalancesPerDay", {
+      error: "Max Rebalances per Day is 99, which is outside what it accepts.",
+      invalidValueForKey: "maxRebalancesPerDay",
     });
-    assert.equal(document.getElementById("inInterval").value, "300");
+    assert.equal(document.getElementById("inMaxReb").value, "5");
     assert.match(msg, /was not accepted/);
     assert.match(msg, /outside what it accepts/);
-    assert.match(msg, /set back to 300/);
+    assert.match(msg, /set back to 5/);
   });
 
   it("stays silent when the 400 was about the request, not the value", () => {
     /*- This route also refuses a malformed request — no position
      *  selected, most often. That is not a bad value, so it neither
      *  raises a dialog nor touches what the operator typed. */
-    mod.rememberGoodInput("inInterval", 300);
-    document.getElementById("inInterval").value = "7200";
-    const msg = mod._applySaveRejection("inInterval", "checkIntervalSec", {
+    mod.rememberGoodInput("inMaxReb", 5);
+    document.getElementById("inMaxReb").value = "99";
+    const msg = mod._applySaveRejection("inMaxReb", "maxRebalancesPerDay", {
       error: "positionKey required for position-specific config",
     });
     assert.equal(msg, null);
-    assert.equal(document.getElementById("inInterval").value, "7200");
+    assert.equal(document.getElementById("inMaxReb").value, "99");
   });
 
   it("stays silent when the refusal names a different setting", () => {
     /*- One request can carry several keys — the Price Range Extension
      *  row sends a width and a boolean together. Only the field the
      *  server actually named goes back. */
-    mod.rememberGoodInput("inInterval", 300);
-    document.getElementById("inInterval").value = "7200";
-    const msg = mod._applySaveRejection("inInterval", "checkIntervalSec", {
+    mod.rememberGoodInput("inMaxReb", 5);
+    document.getElementById("inMaxReb").value = "99";
+    const msg = mod._applySaveRejection("inMaxReb", "maxRebalancesPerDay", {
       error: "Slippage (Token 0) is 99%, which is outside what it accepts.",
       invalidValueForKey: "slippagePctToken0",
     });
     assert.equal(msg, null);
-    assert.equal(document.getElementById("inInterval").value, "7200");
+    assert.equal(document.getElementById("inMaxReb").value, "99");
   });
 
   it("still reports when nothing good was recorded yet", () => {

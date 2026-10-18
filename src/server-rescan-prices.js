@@ -9,19 +9,21 @@
  *   come from chain and are reliable; the prices come from a cascade
  *   (`src/price-source-cascade.js`) that accepts the first source
  *   returning any positive number, with no plausibility check. One bad
- *   response therefore lands in whichever stored figure was being
- *   computed — a compound total, the lifetime deposit, the entry value
- *   the Impermanent Loss Guard measures against — and the lifetime scan
- *   deliberately refuses to rebuild a figure that is already saved, so
- *   the bad one is permanent. Reload Current Position fixes it, but wipes every
- *   on-chain-derived figure and re-scans the pool's whole 5-year
- *   Transfer history, which can take hours.
+ *   response therefore lands in whichever stored dollar figure was being
+ *   computed — the lifetime deposit, or the entry value the Impermanent
+ *   Loss Guard measures against — and the lifetime scan deliberately
+ *   refuses to rebuild a figure that is already saved, so the bad one is
+ *   permanent. (Fees Compounded is kept as coins and priced at every
+ *   poll, so a bad price there passes with the next good one.) Reload
+ *   Current Position fixes it, but wipes every on-chain-derived figure
+ *   and re-scans the pool's whole 5-year Transfer history, which can
+ *   take hours.
  *
  *   This route fixes only the prices. It asks the position's next
  *   lifetime scan to rebuild every stored dollar figure at freshly
- *   fetched prices, from token amounts it re-reads from the chain:
- *   Fees Compounded, the lifetime deposit, and the HODL baseline's entry
- *   value.
+ *   fetched prices, from token amounts it re-reads from the chain — the
+ *   lifetime deposit and the HODL baseline's entry value — and to count
+ *   the compounded coins again.
  *
  *   It deletes nothing. Each figure is overwritten once its replacement
  *   exists, so a scan that fails, or a price source that answers with
@@ -56,7 +58,7 @@ const config = require("./config");
 const { log } = require("./log");
 const { logCtx } = require("./logger");
 const { getPositionConfig } = require("./bot-config-v2");
-const { getTokenSymbol } = require("./server-scan");
+const { getTokenSymbol } = require("./token-symbol-cache");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 const {
   _validateKey,

@@ -23,7 +23,11 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const { createThrottle } = require("./throttle");
-const { createBotPollScheduler } = require("./bot-loop-scheduler");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const {
+  createBotPollScheduler,
+  nextCheckDelayMs,
+} = require("./bot-loop-scheduler");
 const { emojiId } = require("./logger");
 const {
   overridePnlWithRealValues: _overridePnlWithRealValues,
@@ -309,14 +313,14 @@ async function startBotLoop(opts) {
     midwayRetryCount = 0,
     polling = false,
     _stopped = false;
-  const GAS_DEFER_MS = 3600_000;
-  let currentIntervalMs = config.CHECK_INTERVAL_SEC * 1000;
+  // How long a rebalance deferred for gas waits: bot-config-defaults.json → gasDeferRetrySec.
+  const GAS_DEFER_MS = readBotConfigDefaults().gasDeferRetrySec * 1000;
   /*- Poll scheduler + kickPoll wake-up.  Extracted to
    *  src/bot-loop-scheduler.js so the ~15-line closure can be tested
    *  directly.  `setPolling` / `setStopped` mirror the outer state
    *  transitions (`polling` / `_stopped` above). */
   const _scheduler = createBotPollScheduler({
-    defaultIntervalMs: currentIntervalMs,
+    defaultIntervalMs: config.CHECK_INTERVAL_SEC * 1000,
     setTimeoutFn: setTimeout,
     clearTimeoutFn: clearTimeout,
     poll: () => poll(),
@@ -331,12 +335,15 @@ async function startBotLoop(opts) {
     const errMsg = _humanizeError(result.error);
     const isMidway = BigInt(position.liquidity || 0) === 0n;
     if (isMidway) midwayRetryCount++;
-    const midwayExhausted = isMidway && midwayRetryCount >= 4;
+    const midwayExhausted =
+      isMidway && midwayRetryCount >= config.MIDWAY_RETRY_LIMIT;
     log.error(
       "[bot] Rebalance failed: %s (%dm of failures%s)",
       errMsg,
       Math.round((Date.now() - firstFailureAt) / 60_000),
-      isMidway ? `, mid-rebalance retry ${midwayRetryCount}/4` : "",
+      isMidway
+        ? `, mid-rebalance retry ${midwayRetryCount}/${config.MIDWAY_RETRY_LIMIT}`
+        : "",
     );
     /*- Re-open-attempt path: when the rebalance started with a drained
      *  NFT (user clicked Manage on an auto-retired closed position,
@@ -419,7 +426,8 @@ async function startBotLoop(opts) {
     const isSwapAbort = /swap aborted/i.test(errMsg);
     const paused = isSwapAbort || midwayExhausted;
     const displayErr = midwayExhausted
-      ? "Mid-rebalance recovery failed after 4 attempts: " + errMsg
+      ? `Mid-rebalance recovery failed after ${config.MIDWAY_RETRY_LIMIT} attempts: ` +
+        errMsg
       : errMsg;
     updateBotState({
       rebalanceError: displayErr,
@@ -435,15 +443,16 @@ async function startBotLoop(opts) {
     );
     firstFailureAt = null;
     midwayRetryCount = 0;
-    currentIntervalMs =
-      (gc("checkIntervalSec") || config.CHECK_INTERVAL_SEC) * 1000;
     updateBotState({
       rebalanceError: null,
       rebalancePaused: false,
       rebalanceFailedMidway: false,
       oorRecoveredMin: oorMin,
     });
-    setTimeout(() => updateBotState({ oorRecoveredMin: 0 }), 5000);
+    setTimeout(
+      () => updateBotState({ oorRecoveredMin: 0 }),
+      config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
+    );
   }
 
   function _checkGas() {
@@ -464,8 +473,6 @@ async function startBotLoop(opts) {
     rebalanceCount++;
     firstFailureAt = null;
     midwayRetryCount = 0;
-    currentIntervalMs =
-      (gc("checkIntervalSec") || config.CHECK_INTERVAL_SEC) * 1000;
     appendToPoolCache(position, address, result).catch(() => {});
     updateBotState({
       rebalanceError: null,
@@ -474,14 +481,23 @@ async function startBotLoop(opts) {
       activePosition: _activePosSummary(position),
       throttleState: throttle.getState(),
     });
+    /*-
+     *  One-shot signals stay in `/api/status` until the dashboard has
+     *  polled at least once (`GUARANTEED_DASHBOARD_HAS_POLLED_MS`), then
+     *  clear. The dashboard dedupes residualWarning by its `at`
+     *  timestamp, so showing it once then clearing server-side keeps a
+     *  stale warning from re-triggering after the user has dismissed it.
+     */
     if (botState.rangeRounded)
-      setTimeout(() => updateBotState({ rangeRounded: null }), 5000);
-    /*- Same 5s clear for residualWarning: the dashboard dedupes by
-     *  the `at` timestamp, so showing it once then clearing server-side
-     *  prevents stale warnings from re-triggering on future `/api/status`
-     *  polls after the user has already dismissed the modal. */
+      setTimeout(
+        () => updateBotState({ rangeRounded: null }),
+        config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
+      );
     if (botState.residualWarning)
-      setTimeout(() => updateBotState({ residualWarning: null }), 5000);
+      setTimeout(
+        () => updateBotState({ residualWarning: null }),
+        config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
+      );
   }
 
   /* Dispatch pollCycle result to the appropriate branch handler. */
@@ -489,7 +505,6 @@ async function startBotLoop(opts) {
     if (result.rebalanced) {
       _handleRebalanceSuccess(result);
     } else if (result.gasDeferred) {
-      currentIntervalMs = GAS_DEFER_MS;
       log.info(`[bot] Next retry in ${GAS_DEFER_MS / 60_000}m (gas deferral)`);
     } else if (result.error) {
       _handleError(result);
@@ -554,13 +569,13 @@ async function startBotLoop(opts) {
     if (polling) return;
     polling = true;
     _scheduler.setPolling(true);
-    _reloadFromConfig(gc, throttle, (ms) => {
-      currentIntervalMs = ms;
-    });
+    _reloadFromConfig(gc, throttle);
     /* Set when a special action (rebalance/compound/nonce-cancel) completed
      * this cycle — triggers a fast follow-up poll so the dashboard KPIs
      * refresh immediately instead of waiting CHECK_INTERVAL_SEC. */
     let specialActionCompleted = false;
+    // Set when this cycle's rebalance waited for gas, which sets the next wait.
+    let gasDeferred = false;
     let retireRequest = null;
     try {
       const result = await pollCycle({
@@ -585,6 +600,7 @@ async function startBotLoop(opts) {
       });
       if (result.rebalanced || result.cancelled || result.compounded)
         specialActionCompleted = true;
+      gasDeferred = result.gasDeferred === true;
       if (result.retired) retireRequest = result;
       _processPollResult(result);
     } catch (err) {
@@ -624,10 +640,21 @@ async function startBotLoop(opts) {
      *  itself for one more cycle (most visibly: another 60-min gas-defer
      *  retry after the user clicked Remove). */
     if (_stopped) return;
-    /* After a completed special action, poll again in ~2s so the dashboard
-     * KPI numbers refresh promptly instead of waiting CHECK_INTERVAL_SEC.
-     * Works for both user-triggered and auto-triggered actions. */
-    _scheduleNext(specialActionCompleted ? 2000 : undefined);
+    /*-
+     *  After a completed special action, poll again in about two seconds,
+     *  so the dashboard KPI numbers refresh promptly instead of waiting
+     *  CHECK_INTERVAL_SEC; after a rebalance that waited for gas, wait
+     *  gasDeferRetrySec; otherwise the poll interval.
+     */
+    _scheduleNext(
+      nextCheckDelayMs({
+        actionCompleted: specialActionCompleted,
+        gasDeferred,
+        checkIntervalMs: config.CHECK_INTERVAL_SEC * 1000,
+        gasDeferMs: GAS_DEFER_MS,
+        followUpMs: config.POLL_AFTER_ACTION_MS,
+      }),
+    );
   };
 
   await poll(); // First poll — gives the dashboard current position data
@@ -670,7 +697,9 @@ async function startBotLoop(opts) {
     botState._triggerScan();
     _scheduleNext();
   }
-  /*- Lifetime-deposit recovery loop: every 30 min, re-trigger the scan
+  /*-
+   *  Lifetime-deposit recovery loop: every `config.LIFETIME_RESCAN_CHECK_MS`
+   *  (app-runtime.json → poll.lifetimeRescanCheckMs), re-trigger the scan
    *  if recovery is needed.  Three independent conditions, ANY of which
    *  warrants a rescan:
    *
@@ -696,8 +725,8 @@ async function startBotLoop(opts) {
    *  The `_scanRunning` guard inside `_triggerScan` prevents overlap
    *  with any scan already in flight.  See bot-recorder-lifetime.js for
    *  the `_lifetimeScanError` flag and bot-recorder.js for the
-   *  `_needsFullRescan` setter this complements. */
-  const LIFETIME_RESCAN_CHECK_MS = 30 * 60 * 1000;
+   *  `_needsFullRescan` setter this complements.
+   */
   const lifetimeRescanTimer = setInterval(() => {
     if (_stopped) return;
     if (botState._scanRunning) return;
@@ -723,7 +752,7 @@ async function startBotLoop(opts) {
       botState._lifetimeScanError || "none",
     );
     botState._triggerScan?.();
-  }, LIFETIME_RESCAN_CHECK_MS);
+  }, config.LIFETIME_RESCAN_CHECK_MS);
   return {
     stop() {
       if (_stopped) return Promise.resolve();

@@ -25,6 +25,7 @@ const {
   serverProcessState,
   psCmd,
   processCwd,
+  sortServerPids,
 } = require("../scripts/_find-process");
 
 /** Run a `server.js` from a scratch directory, with `cwd` as its working directory. */
@@ -60,6 +61,28 @@ test("a server.js running from this install's root is the server", async () => {
 test("a server.js running from another directory is not this install's server", async () => {
   await withServerScript(null, async (pid) => {
     assert.strictEqual(serverProcessState(pid), "no");
+  });
+});
+
+test("only this install's server is sorted as ours, when stopping by port", async () => {
+  /*-
+   *  `npm stop` falls back to the port when the PID file is missing or
+   *  stale. Whatever listens there is sorted the way the PID file is
+   *  judged: another project's server, or any other program, is in
+   *  neither list and is not signalled.
+   */
+  await withServerScript(process.cwd(), async (ourPid) => {
+    await withServerScript(null, async (otherPid) => {
+      const dead = 2 ** 22 + 1;
+      const { ours, unknown } = sortServerPids([
+        ourPid,
+        otherPid,
+        process.pid,
+        dead,
+      ]);
+      assert.deepStrictEqual(ours, [ourPid]);
+      assert.deepStrictEqual(unknown, [dead]);
+    });
   });
 });
 

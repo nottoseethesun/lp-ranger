@@ -3,12 +3,13 @@
  * @module botConfigDefaults
  * @description
  * Reads `bot-config-defaults.json` (via the layered defaults+user-
- * override loader — see `src/load-merged-defaults.js`) and exposes the
- * values to the dashboard via `GET /api/bot-config-defaults`.  These
- * are *defaults* for user-editable Bot Config settings: the UI uses
- * them as the initial input value when the user hasn't saved an
- * override yet, and the server falls back to them when `getConfig` is
- * asked for a key that isn't present in `bot-config.json`.
+ * override loader — see `src/load-merged-defaults.js`). These are
+ * *defaults* for user-editable Bot Config settings: the bot falls back
+ * to them for a key that isn't present in `bot-config.json`, and the
+ * dashboard shows them as the initial input value when the user hasn't
+ * saved an override yet. The dashboard receives them through
+ * `src/resolved-settings.js` (`GET /api/bot-config-defaults`), which
+ * puts `.env`'s value on top for the settings `.env` can set.
  *
  * Keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so
  * the same string flows end-to-end (defaults file → dashboard input →
@@ -16,10 +17,12 @@
  *
  * New user-setting defaults should be added here (and wired through
  * the normal config save path) rather than each getting its own
- * dedicated tunable file.  The file is re-read on every request so
- * operators can edit
- * `app-config/user-configurable/bot-config-defaults.json` live without
- * a server restart.  Read or parse failures fall back to the built-in
+ * dedicated tunable file.  The file is read once, and an operator's
+ * edit to `app-config/user-configurable/bot-config-defaults.json` is
+ * picked up on restart.  When `src/config.js` reads it at startup, a
+ * value outside its range stops the app with a message naming it; a
+ * reader that does not ask for that check keeps the shipped default in
+ * its place instead.  Read or parse failures fall back to the built-in
  * defaults below so the endpoint never 500s.
  */
 
@@ -31,6 +34,8 @@ const {
   loadShippedDefaults,
 } = require("./load-merged-defaults");
 const { assertTimerSec } = require("./timer-bounds");
+const { SETTING_BOUNDS } = require("./setting-bounds");
+const { withinBound, boundText } = require("./range-check");
 
 const _FILENAME = "bot-config-defaults.json";
 
@@ -43,37 +48,25 @@ const _FILENAME = "bot-config-defaults.json";
  *  every default value lives in the JSON, nowhere else in code. */
 const _FALLBACK = Object.freeze(loadShippedDefaults(_FILENAME));
 
-/*- Clamp `approvalMultiple` to a sensible integer.  Too small loses the
- *  speedup; too large wastes nothing but looks alarming in explorers. */
-function _normalizeApprovalMultiple(v) {
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  const n = Math.floor(v);
-  if (n < 1 || n > 1_000_000) return null;
-  return n;
+/**
+ * A value inside the setting's range in setting-bounds.json, or null to
+ * leave the shipped default standing. A value outside it is not moved to
+ * the nearest allowed figure, and a fraction is not rounded to a whole
+ * number: a corrected value is one nobody chose.
+ *
+ * @param {*} v       The value read from the file.
+ * @param {string} key  The setting, as named in both files.
+ * @returns {*} `v`, or null.
+ */
+function _inRange(v, key) {
+  return withinBound(v, SETTING_BOUNDS[key]) ? v : null;
 }
 
-/*- Generic positive-int clamp with min/max bounds.  Returns null when
- *  the value is non-numeric or falls outside the allowed range. */
-function _clampInt(v, min, max) {
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  const n = Math.floor(v);
-  if (n < min || n > max) return null;
-  return n;
-}
-
-/*- Same as `_clampInt` but allows zero (for fields like
- *  `rebalanceTimeoutMin` where 0 = disabled). */
-function _clampNonNegInt(v, max) {
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  const n = Math.floor(v);
-  if (n < 0 || n > max) return null;
-  return n;
-}
-
-/*- A timer setting's value, or null to leave the shipped default
- *  standing.  The bounds are `src/timer-bounds.js`'s — this is the same
- *  rule `.env` and `POST /api/config` apply, with the lenient policy
- *  this reader needs. */
+/**
+ * A timer setting's value, or null to leave the shipped default
+ * standing.  The bounds are `src/timer-bounds.js`'s — the same rule
+ * `.env` is held to, with the lenient policy this reader needs.
+ */
 function _timerOrNull(v, key) {
   try {
     return assertTimerSec({ sec: v, key, defaultSec: _FALLBACK[key] });
@@ -99,6 +92,7 @@ function _timerOrNull(v, key) {
 function _assertTimerKeys(parsed) {
   for (const key of [
     "checkIntervalSec",
+    "gasDeferRetrySec",
     "globalRPCRequestRateIntervalMS",
     "rpcAllEndpointsDownPauseMS",
     "boundedReadRetryDelayMs",
@@ -116,201 +110,198 @@ function _assertTimerKeys(parsed) {
   }
 }
 
-/*- Clamp a positive float to [min, max].  Returns null on failure. */
-function _clampFloat(v, min, max) {
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  if (v < min || v > max) return null;
-  return v;
+/**
+ * Refuse any setting with a range that the operator has written outside
+ * it, naming each one.
+ *
+ * The companion of the timer check above, for the settings whose range is
+ * in setting-bounds.json: every top-level key that has one, each member
+ * of a group, and each entry of a list. The normalizers keep the shipped
+ * default in place of such a value, because they run on every read and
+ * must not throw. At startup a value the bot would never use is refused
+ * instead, so the operator hears of it rather than running on a figure
+ * they did not choose.
+ *
+ * Whether a value was refused is the normalizers' own answer, read off
+ * their result rather than worked out again: a setting written in the
+ * file whose value did not come through. A kept value comes through as
+ * itself, a list as the same list, so one rule decides both what is kept
+ * and what is refused. The on/off settings have no range and are not
+ * checked here.
+ *
+ * @param {object} parsed  The merged file, before normalizing.
+ * @param {object} out     What the normalizers made of it.
+ * @throws {Error} Tagged `badSettingValue`.
+ */
+function _assertRangedKeys(parsed, out) {
+  const refused = [];
+  for (const key of Object.keys(_NORMALIZERS)) {
+    const bound = SETTING_BOUNDS[key];
+    const v = parsed[key];
+    if (bound === undefined || v === undefined || v === null) continue;
+    if (_isGroup(key)) refused.push(..._refusedInGroup(key, v, out[key]));
+    else if (out[key] !== v) refused.push(_refusal(key, v));
+  }
+  if (refused.length === 0) return;
+  const err = new Error(
+    "[config] In app-config/user-configurable/bot-config-defaults.json, " +
+      refused.join(" ") +
+      " Correct each there, or remove it to use the shipped default," +
+      " and restart.",
+  );
+  err.badSettingValue = true;
+  throw err;
 }
 
-/*- Per-key fallback merge for the lowGasThresholds nested group.  Any
- *  missing or invalid sub-field falls back to its built-in default so a
- *  partially-edited JSON still produces a fully-populated group. */
-function _normalizeLowGasThresholds(v) {
-  const fb = _FALLBACK.lowGasThresholds;
-  if (!v || typeof v !== "object") return { ...fb };
-  const out = { ...fb };
-  const wcgf = _clampInt(v.worstCaseGasFactor, 1, 10_000);
-  if (wcgf !== null) out.worstCaseGasFactor = wcgf;
-  const sm = _clampInt(v.safetyMultiplier, 1, 100);
-  if (sm !== null) out.safetyMultiplier = sm;
-  const ssg = _clampInt(v.standardSendGas, 21_000, 1_000_000);
-  if (ssg !== null) out.standardSendGas = ssg;
+/**
+ * A group is a setting whose shipped value is an object of settings,
+ * each with its own range.
+ */
+function _isGroup(key) {
+  const shipped = _FALLBACK[key];
+  return (
+    shipped !== null && typeof shipped === "object" && !Array.isArray(shipped)
+  );
+}
+
+/**
+ * The members of a group the operator wrote outside their ranges.
+ *
+ * @param {string} group  The group's name.
+ * @param {*} v           The group as written.
+ * @param {object} kept   The group as normalized.
+ * @returns {string[]} One sentence per refused member.
+ */
+function _refusedInGroup(group, v, kept) {
+  if (typeof v !== "object" || Array.isArray(v))
+    return [`${group} must be a set of named values; it is ${_show(v)}.`];
+  const refused = [];
+  for (const [key, bound] of Object.entries(SETTING_BOUNDS[group])) {
+    if (key.startsWith("_")) continue;
+    const member = v[key];
+    if (member === undefined || member === null) continue;
+    if (kept[key] !== member)
+      refused.push(
+        `${group}.${key} must be ${boundText(bound)}; it is ${_show(member)}.`,
+      );
+  }
+  return refused;
+}
+
+/**
+ * Say what a top-level setting must be, and what it was. A list's range
+ * is each entry's.
+ */
+function _refusal(key, v) {
+  const range = boundText(SETTING_BOUNDS[key]);
+  const must = Array.isArray(_FALLBACK[key])
+    ? `a list, each entry ${range}`
+    : range;
+  return `${key} must be ${must}; it is ${_show(v)}.`;
+}
+
+// A written value as the file shows it: text in quotes, a list in brackets.
+function _show(v) {
+  return JSON.stringify(v);
+}
+
+/**
+ * A nested group, sub-key by sub-key: each value inside its range in
+ * setting-bounds.json replaces the shipped one, and any other leaves the
+ * shipped one standing, so a partly edited group still comes out whole.
+ *
+ * @param {*} v          The group as read from the file.
+ * @param {string} group The group's name, as named in both files.
+ * @returns {object} The whole group.
+ */
+function _normalizeGroup(v, group) {
+  const out = { ..._FALLBACK[group] };
+  if (!v || typeof v !== "object") return out;
+  for (const [key, bound] of Object.entries(SETTING_BOUNDS[group])) {
+    if (withinBound(v[key], bound)) out[key] = v[key];
+  }
   return out;
 }
 
-/*- Per-key fallback merge for the residualCleanup nested group.  Same
- *  partial-customisation semantics as _normalizeLowGasThresholds. */
-function _normalizeResidualCleanup(v) {
-  const fb = _FALLBACK.residualCleanup;
-  if (!v || typeof v !== "object") return { ...fb };
-  const out = { ...fb };
-  const dm = _clampInt(v.delayMs, 1, 24 * 60 * 60_000);
-  if (dm !== null) out.delayMs = dm;
-  const tp = _clampFloat(v.thresholdPct, 0.01, 100);
-  if (tp !== null) out.thresholdPct = tp;
-  return out;
-}
-
-/*- ILG retry backoff group.  Floor of one minute on each end so a
- *  mistyped value cannot turn the guard into a per-poll retry; ceiling
- *  of 30 days.  Same shape as `_normalizeResidualCleanup` above. */
-function _normalizeIlGuardRetry(v) {
-  const fb = _FALLBACK.ilGuardRetry;
-  if (!v || typeof v !== "object") return { ...fb };
-  const out = { ...fb };
-  const base = _clampInt(v.baseMs, 60_000, 2_592_000_000);
-  if (base !== null) out.baseMs = base;
-  const max = _clampInt(v.maxMs, 60_000, 2_592_000_000);
-  if (max !== null) out.maxMs = max;
-  return out;
-}
-
-/** Mapping of JSON key → normalizer producing the cleaned value or null. */
+/*-
+ *  Mapping of JSON key → normalizer producing the cleaned value or null.
+ *  Every range is in setting-bounds.json, beside the reason for it.
+ */
 const _NORMALIZERS = {
-  approvalMultiple: _normalizeApprovalMultiple,
-  /*- gasFeePct bounds come from the shipped JSON itself (gasFeePctMin /
-   *  gasFeePctMax) so the literal pair lives in one place per
-   *  feedback_one_literal_per_shipped_default.  src/swap-gates.js reads
-   *  the same values for its UI clamping. */
-  gasFeePct: (v) =>
-    _clampFloat(v, _FALLBACK.gasFeePctMin, _FALLBACK.gasFeePctMax),
-  /*- Price-source cache TTL: 1 s minimum (no point caching shorter than
-   *  the poll cadence); 24 h ceiling (longer would hide real moves). */
-  priceCacheTtlMs: (v) => _clampInt(v, 1_000, 24 * 60 * 60_000),
-  /*- Dust-unit-price cache multiplier: positive integer >= 1 so the
-   *  derived `dust = price * multiplier` stays a clean integer multiple.
-   *  Cap at 1000 to keep the dust cache horizon sane (1000 * 24 h max). */
-  dustUnitPriceCacheMultiplier: (v) => _clampInt(v, 1, 1000),
-  /*- Move-scope cache TTL: at least 1 s (sub-second freshness has no
-   *  benefit; a single price fetch already takes ~100-500 ms), capped at
-   *  60 s (longer would defeat the "fresh during move" intent). */
-  moveCacheTtlMs: (v) => _clampInt(v, 1_000, 60_000),
+  approvalMultiple: (v) => _inRange(v, "approvalMultiple"),
+  gasFeePct: (v) => _inRange(v, "gasFeePct"),
+  rebalanceGasDeferPct: (v) => _inRange(v, "rebalanceGasDeferPct"),
+  // The wait before looking again at a rebalance deferred for gas; timer-bounds.js decides it.
+  gasDeferRetrySec: (v) => _timerOrNull(v, "gasDeferRetrySec"),
+  priceCacheTtlMs: (v) => _inRange(v, "priceCacheTtlMs"),
+  /*-
+   *  A whole multiple, so the dust cache's lifetime is always a clean
+   *  multiple of the price cache's.
+   */
+  dustUnitPriceCacheMultiplier: (v) =>
+    _inRange(v, "dustUnitPriceCacheMultiplier"),
+  moveCacheTtlMs: (v) => _inRange(v, "moveCacheTtlMs"),
   /*- Moralis on/off.  Anything that is not an explicit false means on,
    *  so a malformed override cannot silently disable a price source the
    *  operator is paying for. */
   moralisEnabled: (v) => (typeof v === "boolean" ? v : true),
-  /*- Max block span per eth_getLogs call.  Floor of 100 — anything
-   *  smaller turns a routine scan into tens of thousands of requests
-   *  for no benefit.  Ceiling of 10 000 is the strictest endpoint cap
-   *  we have observed, so a value above it would be rejected by the
-   *  very endpoint the setting exists to satisfy. */
-  getLogsChunkSize: (v) => _clampInt(v, 100, 10_000),
-  /*- Minimum gap between any two JSON-RPC requests.  Zero is allowed
-   *  and means "no pacing" (local node).  Ceiling of 10 s: beyond that
-   *  a five-year scan would take days, which is a misconfiguration
-   *  rather than a preference. */
+  getLogsChunkSize: (v) => _inRange(v, "getLogsChunkSize"),
+  /*-
+   *  Minimum gap between any two JSON-RPC requests, and how long every
+   *  request is held once failover has exhausted the endpoint list. Both
+   *  become timer delays, so timer-bounds.js decides them, and both take
+   *  zero to mean off: no pacing, no outage pause.
+   */
   globalRPCRequestRateIntervalMS: (v) =>
     _timerOrNull(v, "globalRPCRequestRateIntervalMS"),
-  /*- How long every request is held once failover has exhausted the
-   *  endpoint list.  Zero is allowed and means "never pause".  Ceiling
-   *  of two days, which is far past any outage worth waiting out and
-   *  keeps the value inside what a single `setTimeout` can hold — its
-   *  limit is about 24.8 days, and beyond that Node fires immediately
-   *  instead of waiting. */
   rpcAllEndpointsDownPauseMS: (v) =>
     _timerOrNull(v, "rpcAllEndpointsDownPauseMS"),
-  /*- Share of failures inside the window that retires an endpoint.
-   *  1-99: at 0 every endpoint is out of service the moment anything
-   *  is reported, and at 100 none ever is. */
-  rpcFailoverRatePercentage: (v) => _clampInt(v, 1, 99),
-  /*- How far back the rate looks, in MINUTES.  Ceiling of one hour:
-   *  past that a window is measuring history rather than health, and
-   *  the ceiling is also what bounds the decider's memory — it keeps
-   *  one small tally per second per endpoint, so the longest window
-   *  the config can ask for is the most it can ever hold. */
-  rpcFailoverRateDurationMinutes: (v) => _clampInt(v, 1, 60),
-  /*- Delays between retries of one 429-refused request, in order.
-   *  An empty list disables the retry; each entry is 1 ms to 10 min. */
+  rpcFailoverRatePercentage: (v) => _inRange(v, "rpcFailoverRatePercentage"),
+  rpcFailoverRateDurationMinutes: (v) =>
+    _inRange(v, "rpcFailoverRateDurationMinutes"),
+  /*-
+   *  Delays between retries of one 429-refused request, in order. An
+   *  empty list disables the retry; each entry is checked on its own.
+   */
   rpcRetryOn429DelaysMs: (v) =>
-    Array.isArray(v) && v.every((n) => _clampInt(n, 1, 600_000) !== null)
-      ? v.map((n) => Math.floor(n))
+    Array.isArray(v) &&
+    v.every((n) => withinBound(n, SETTING_BOUNDS.rpcRetryOn429DelaysMs))
+      ? v
       : null,
-  /*- Ceiling on the escalating per-endpoint 429 penalty.  Zero is
-   *  allowed and means no standing penalty, only the per-request
-   *  retries above. */
-  rpcMax429PenaltyMs: (v) => _clampNonNegInt(v, 600_000),
+  rpcMax429PenaltyMs: (v) => _inRange(v, "rpcMax429PenaltyMs"),
   /*-
-   *  How long failover stays on the endpoint it moved to. A deadline
-   *  compared against the clock, not a timer, so it is bounded here:
-   *  under a minute would hand reads back to an endpoint before its
-   *  failure rate had a chance to change, and past two days the bot
-   *  would in effect never return to its preferred endpoint.
+   *  A deadline compared against the clock, not a timer, which is why
+   *  its range is its own rather than timer-bounds.js's.
    */
-  rpcFailoverStickyMs: (v) => _clampInt(v, 60_000, 172_800_000),
-  /*-
-   *  Attempts per endpoint for a read someone is waiting on. At least
-   *  one, or the read would report itself unavailable without asking;
-   *  at most ten, since past that a Manage click waits minutes for an
-   *  answer the dialog exists to give sooner.
-   */
-  boundedReadAttemptsPerEndpoint: (v) => _clampInt(v, 1, 10),
+  rpcFailoverStickyMs: (v) => _inRange(v, "rpcFailoverStickyMs"),
+  boundedReadAttemptsPerEndpoint: (v) =>
+    _inRange(v, "boundedReadAttemptsPerEndpoint"),
   // The wait before asking an endpoint again; timer-bounds.js decides it.
   boundedReadRetryDelayMs: (v) => _timerOrNull(v, "boundedReadRetryDelayMs"),
+  // Compared against the clock rather than set as a timer.
+  feeDataLogIntervalMs: (v) => _inRange(v, "feeDataLogIntervalMs"),
+  historyLookbackYears: (v) => _inRange(v, "historyLookbackYears"),
+  eventCacheTtlMs: (v) => _inRange(v, "eventCacheTtlMs"),
+  poolScanReuseMs: (v) => _inRange(v, "poolScanReuseMs"),
+  rebalancePairingWindowSec: (v) => _inRange(v, "rebalancePairingWindowSec"),
+  pricePauseExceptionPollWindowMultiple: (v) =>
+    _inRange(v, "pricePauseExceptionPollWindowMultiple"),
+  positionBalancedBandPct: (v) => _inRange(v, "positionBalancedBandPct"),
+  positionBalancedCooldownMs: (v) => _inRange(v, "positionBalancedCooldownMs"),
+  rescanPricesRecentWindowDays: (v) =>
+    _inRange(v, "rescanPricesRecentWindowDays"),
+  impermanentLossGuardPct: (v) => _inRange(v, "impermanentLossGuardPct"),
+  rebalanceOutOfRangeThresholdPercent: (v) =>
+    _inRange(v, "rebalanceOutOfRangeThresholdPercent"),
+  rebalanceTimeoutMin: (v) => _inRange(v, "rebalanceTimeoutMin"),
   /*-
-   *  How often the network's gas price is logged. Compared against the
-   *  clock rather than set as a timer: one second to one day.
+   *  Exposed via /api/bot-config-defaults so the "Default" button in
+   *  Bot Settings can put it in the input; the bot itself does NOT fall
+   *  back to this value at rebalance time (an unset width still means
+   *  preserveRange()). Full range is its own boolean below, not a
+   *  sentinel width.
    */
-  feeDataLogIntervalMs: (v) => _clampInt(v, 1_000, 86_400_000),
-  /*-
-   *  How far back the rebalance-history scan reaches. At least a year,
-   *  and at most twenty, which is past the life of any pool these
-   *  chains have.
-   */
-  historyLookbackYears: (v) => _clampInt(v, 1, 20),
-  /*-
-   *  How long the on-disk event cache keeps a pool's history. Under an
-   *  hour would send long scans back to the chain every few polls; past
-   *  ten years it never expires at all in practice.
-   */
-  eventCacheTtlMs: (v) => _clampInt(v, 3_600_000, 315_360_000_000),
-  /*-
-   *  How long a finished scan is reused. Zero turns reuse off; past an
-   *  hour a reused result could miss a rebalance a view expects to see.
-   */
-  poolScanReuseMs: (v) => _clampNonNegInt(v, 3_600_000),
-  /*-
-   *  Most seconds between an NFT leaving the wallet and the next one
-   *  arriving for the two to be read as one rebalance: one second to a
-   *  day.
-   */
-  rebalancePairingWindowSec: (v) => _clampInt(v, 1, 86_400),
-  /*- Balanced-band notifier multiplier: positive integer >= 1.  Cap at
-   *  10000 so an absurd value still produces a finite cadence (10 000 ×
-   *  60 s ≈ 7 days between checks). */
-  pricePauseExceptionPollWindowMultiple: (v) => _clampInt(v, 1, 10000),
-  /*- Re-scan Prices' "last N days" window.  Floor of 1 — a zero-day
-   *  window would re-price nothing and report success, which is the
-   *  silent no-op this option exists to avoid.  Ceiling of 3650 (ten
-   *  years) is past any pool's life, so a larger value is indistinct
-   *  from leaving the box unticked. */
-  rescanPricesRecentWindowDays: (v) => _clampInt(v, 1, 3650),
-  /*- Impermanent Loss Guard, percent.  1..100; 100 is effectively off
-   *  (the position would have to be worthless to trip it).  The bounds
-   *  come from the shipped JSON itself (impermanentLossGuardPctMin /
-   *  Max) so the pair lives in one place, shared with the dashboard
-   *  input's min/max — same arrangement as gasFeePct above. */
-  impermanentLossGuardPct: (v) =>
-    _clampInt(
-      v,
-      _FALLBACK.impermanentLossGuardPctMin,
-      _FALLBACK.impermanentLossGuardPctMax,
-    ),
-  rebalanceOutOfRangeThresholdPercent: (v) => _clampInt(v, 1, 100),
-  rebalanceTimeoutMin: (v) => _clampNonNegInt(v, 1440),
-  /*- Price Range Extension bounds.  Lower bound 0.1 matches the input
-   *  min in public/index.html and dashboard-throttle.js `saveRangeWidth`.
-   *  Upper bound 200 is the mathematical ceiling: `computeNewRange`
-   *  interprets `W` as ±W/2% around current price, so W=200 = ±100%
-   *  (lower bound would be zero — clamped to EPSILON by computeNewRange).
-   *  Anything above 200 rounds to the same degenerate range.  Full-range
-   *  behavior is now a separate boolean (`fullRangeRebalanceEnabled`,
-   *  driven by the Full-Range checkbox), no longer a sentinel at 100.
-   *  Value is exposed via /api/bot-config-defaults so the "Default"
-   *  button in Bot Settings can inject it into the input; the bot itself
-   *  does NOT fall back to this value at rebalance time (undefined
-   *  config still means preserveRange()). */
-  rebalanceRangeWidthPct: (v) => _clampFloat(v, 0.1, 200),
+  rebalanceRangeWidthPct: (v) => _inRange(v, "rebalanceRangeWidthPct"),
   /*- Full-Range rebalance toggle: when true, every rebalance mints at
    *  `MIN_TICK` / `MAX_TICK` regardless of the Price Range Extension
    *  value.  An explicit boolean rather than a sentinel width, because
@@ -322,32 +313,45 @@ const _NORMALIZERS = {
    *  range; the Range fields are disabled and none of them applies.
    *  See src/range-override.js for the full resolution rule. */
   rangeOverrideEnabled: (v) => (typeof v === "boolean" ? v : false),
-  slippagePct: (v) => _clampFloat(v, 0.1, 5),
-  /*- Per-token slippage overrides.  0.1% floor and 20% ceiling — the
-   *  ceiling is high enough to cover extreme asymmetric-liquidity
-   *  pairs where the thin side needs a rare 10–20%, while still
-   *  rejecting garbage input like "100" typed in error.  Client-side
-   *  UX warns at >5% and requires typed confirmation at >=10% (see
-   *  public/dashboard-per-token-slippage.js). */
-  slippagePctToken0: (v) => _clampFloat(v, 0.1, 20),
-  slippagePctToken1: (v) => _clampFloat(v, 0.1, 20),
-  /*- The poll interval becomes a `setTimeout` delay, so its bounds come
-   *  from `src/timer-bounds.js` — the same module `.env` and
-   *  `POST /api/config` ask, because three copies of this rule gave
-   *  three different answers to the same question.
+  slippagePct: (v) => _inRange(v, "slippagePct"),
+  /*-
+   *  Per-token slippage overrides. The dashboard also warns past one
+   *  figure and asks for a typed confirmation past another (see
+   *  public/dashboard-per-token-slippage.js); neither is a range.
+   */
+  slippagePctToken0: (v) => _inRange(v, "slippagePctToken0"),
+  slippagePctToken1: (v) => _inRange(v, "slippagePctToken1"),
+  /*-
+   *  How a swap is split when the aggregator refuses it at full size
+   *  for its price impact, the least a swap is worth sending, and the
+   *  headroom a "raise slippage to" message adds to the impact it saw.
+   */
+  swapChunkCount: (v) => _inRange(v, "swapChunkCount"),
+  minSwapAmountRaw: (v) => _inRange(v, "minSwapAmountRaw"),
+  slippageSuggestionMarginPct: (v) =>
+    _inRange(v, "slippageSuggestionMarginPct"),
+  // The most corrective swaps one rebalance makes after its main swap.
+  correctiveSwapMaxRounds: (v) => _inRange(v, "correctiveSwapMaxRounds"),
+  /*-
+   *  The poll interval becomes a `setTimeout` delay, so its bounds come
+   *  from `src/timer-bounds.js` — the same module `.env` asks, because
+   *  separate copies of this rule once gave different answers to the
+   *  same question.
    *
    *  Lenient HERE, and refused at startup by
    *  `readBotConfigDefaultsStrict` instead. This function runs on every
    *  read, and those include a poll cycle and an HTTP route; throwing
    *  from it would turn an edit made while the bot is running into a
-   *  broken poll and a 500. */
+   *  broken poll and a 500.
+   */
   checkIntervalSec: (v) => _timerOrNull(v, "checkIntervalSec"),
-  minRebalanceIntervalMin: (v) => _clampInt(v, 1, 1440),
-  maxRebalancesPerDay: (v) => _clampInt(v, 1, 200),
-  offsetToken0Pct: (v) => _clampNonNegInt(v, 100),
-  lowGasThresholds: _normalizeLowGasThresholds,
-  ilGuardRetry: _normalizeIlGuardRetry,
-  residualCleanup: _normalizeResidualCleanup,
+  minRebalanceIntervalMin: (v) => _inRange(v, "minRebalanceIntervalMin"),
+  maxRebalancesPerDay: (v) => _inRange(v, "maxRebalancesPerDay"),
+  offsetToken0Pct: (v) => _inRange(v, "offsetToken0Pct"),
+  lowGasThresholds: (v) => _normalizeGroup(v, "lowGasThresholds"),
+  ilGuardRetry: (v) => _normalizeGroup(v, "ilGuardRetry"),
+  residualCleanup: (v) => _normalizeGroup(v, "residualCleanup"),
+  throttleDoubling: (v) => _normalizeGroup(v, "throttleDoubling"),
 };
 
 /*- The one read of the file, held for the life of the process. */
@@ -355,8 +359,8 @@ let _memo = null;
 
 /**
  * Read and parse the Bot Config defaults JSON, stripping `_comment` and
- * `_migration`.  Each known key passes through its normalizer; values
- * that fail clamping fall back to the built-in default for that key.
+ * `_migration`.  Each known key passes through its normalizer; a value
+ * outside its rule falls back to the shipped default for that key.
  *
  * **The file is read once and the answer is kept.** Parsing and merging
  * it costs about 46 microseconds of synchronous file I/O, and callers
@@ -378,13 +382,15 @@ function readBotConfigDefaults() {
 }
 
 /**
- * The same values, but refusing a timer setting written out of range
- * rather than quietly standing the shipped default in its place.
+ * The same values, but refusing a setting written outside its range
+ * rather than quietly standing the shipped default in its place: a timer
+ * setting, by the timer rule, and any other setting with a range in
+ * setting-bounds.json.
  *
  * **Call this once, at startup, and nowhere else.** `src/config.js` does,
  * and that is the right place: refusing there means the app does not come
- * up on a schedule nobody chose, which is the whole point — a silently
- * corrected interval is the last thing anyone would think to check.
+ * up on settings nobody chose, which is the whole point — a silently
+ * corrected value is the last thing anyone would think to check.
  *
  * The lenient reader is what every other caller wants, because several
  * of them are a poll cycle or an HTTP route. Throwing from those would
@@ -398,7 +404,8 @@ function readBotConfigDefaults() {
  *
  * @returns {object} Same shape as `readBotConfigDefaults`.
  * @throws {Error} Tagged `badTimerValue`, when a timer setting is set
- *   and out of range.
+ *   and out of range, or `badSettingValue`, naming every other setting
+ *   set outside its range.
  */
 function readBotConfigDefaultsStrict() {
   _memo = Object.freeze(_read({ strict: true }));
@@ -418,16 +425,21 @@ function _read({ strict }) {
       const v = normalize(parsed[key]);
       if (v !== null) out[key] = v;
     }
-    if (strict) _assertTimerKeys(parsed);
+    if (strict) {
+      _assertTimerKeys(parsed);
+      _assertRangedKeys(parsed, out);
+    }
     return out;
   } catch (err) {
-    /*- A value this reader must refuse is not the same as a file it
+    /*-
+     *  A value this reader must refuse is not the same as a file it
      *  merely failed to read. Falling back on the first would discard
      *  every other override alongside the bad one, and leave the bot on
-     *  a schedule nobody chose — the thing the check exists to prevent.
+     *  settings nobody chose — the thing the checks exist to prevent.
      *  So it propagates; only read and parse failures fall back, which
-     *  is what keeps `GET /api/bot-config-defaults` off a 500. */
-    if (err.badTimerValue) throw err;
+     *  is what keeps `GET /api/bot-config-defaults` off a 500.
+     */
+    if (err.badTimerValue || err.badSettingValue) throw err;
     log.warn(
       "[bot-config-defaults] Falling back to built-in defaults: %s",
       err.message,
@@ -436,20 +448,8 @@ function _read({ strict }) {
   }
 }
 
-/**
- * Route handler for `GET /api/bot-config-defaults`.  Always returns 200
- * with a well-formed defaults object.
- * @param {import('http').IncomingMessage} _req
- * @param {import('http').ServerResponse} res
- * @param {Function} jsonResponse  `(res, status, body) => void`
- */
-function handleBotConfigDefaults(_req, res, jsonResponse) {
-  jsonResponse(res, 200, readBotConfigDefaults());
-}
-
 module.exports = {
   readBotConfigDefaults,
   readBotConfigDefaultsStrict,
-  handleBotConfigDefaults,
   _resetMemoForTests,
 };

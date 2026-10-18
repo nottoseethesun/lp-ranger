@@ -21,8 +21,9 @@ const { emojiId, logCtx } = require("./logger");
 const { log } = require("./log");
 const { getPoolState } = require("./rebalancer-pools");
 const { executeRebalance, enrichResultUsd } = require("./rebalancer");
-const { getTokenSymbol } = require("./server-scan");
+const { getTokenSymbol } = require("./token-symbol-cache");
 const { notify } = require("./telegram-notifications/telegram");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 const {
   positionValueUsd: _positionValueUsd,
   fetchTokenPrices: _fetchTokenPrices,
@@ -38,6 +39,7 @@ const {
   _activePosSummary,
 } = require("./bot-recorder");
 const { PM_ABI } = require("./pm-abi");
+const { spentGasOf, recordSpentGas } = require("./spent-gas");
 const {
   checkCompound: _checkCompound,
   handleForceCompound: _handleForceCompound,
@@ -46,7 +48,6 @@ const {
   checkZeroLiquidity: _checkZeroLiquidity,
   checkRetireRequest: _checkRetireRequest,
   isAbortedDrained: _isAbortedDrained,
-  DRAINED_RETIRE_MS,
 } = require("./bot-cycle-drain");
 const {
   checkResidualCleanup: _checkResidualCleanup,
@@ -170,10 +171,14 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
     String(result.newTokenId),
     emojiId(String(result.newTokenId)),
   );
+  /*-
+   *  `txHashes` lists the rebalance's transactions in the order they were
+   *  sent, and the mint is the last of them.
+   */
   notify("rebalanceSuccess", {
     position: _notifyPos(pos),
     message: `New NFT #${result.newTokenId}`,
-    txHash: result.txHashes?.mint,
+    txHash: result.txHashes.at(-1),
   });
   await _closePnlEpoch(deps, result);
   _applyRebalanceResult(deps, result);
@@ -207,6 +212,11 @@ async function _executeAndRecord(deps, ethersLib) {
     // retrying.  Tokens sit safely in the wallet until the next attempt.
     if (result.priceVolatile) {
       _activateSwapBackoff(state, deps.updateBotState);
+      /*-
+       *  The liquidity removal and the swap before the stop confirmed
+       *  and were paid for; the result carries their gas.
+       */
+      await recordSpentGas(spentGasOf(result), deps, _actualGasCostUsd);
       return { rebalanced: false, priceVolatile: true, trigger };
     }
     if (result.success) {
@@ -235,8 +245,13 @@ async function _executeAndRecord(deps, ethersLib) {
               at: new Date().toISOString(),
             },
           });
-        await _recordCancelGas(result, deps);
       }
+      /*-
+       *  Whether or not anything was cancelled, the failed rebalance may
+       *  have paid gas: a cancel, or a failed swap's approvals, reverted
+       *  swaps and cancels.
+       */
+      await recordSpentGas(spentGasOf(result), deps, _actualGasCostUsd);
     }
     state.rebalanceInProgress = false;
     /*- Clear the yellow "residual cleanup" banner on failure too; a failed
@@ -266,28 +281,14 @@ async function _executeAndRecord(deps, ethersLib) {
   }
 }
 
-/**
- * Record cancel TX gas in the P&L tracker when a rebalance is cancelled.
- *
- * Persisted immediately, like every other gas charge. A cancel pays for
- * a rebalance that did NOT happen, so no epoch closes behind it and no
- * other writer follows it — leave it unpersisted and it sits in memory
- * until some unrelated rebalance or compound saves the tracker, and a
- * restart before that drops it. Gas only accumulates; whatever is not
- * written down cannot be rebuilt.
+/*-
+ *  The share of the position's value, as a fraction, that a rebalance's
+ *  estimated gas may reach before the rebalance waits for gas:
+ *  bot-config-defaults.json → rebalanceGasDeferPct.
  */
-async function _recordCancelGas(result, deps) {
-  if (!result.cancelGasCostWei || result.cancelGasCostWei <= 0n) return;
-  if (!deps._pnlTracker) return;
-  const gasUsd = await _actualGasCostUsd(result.cancelGasCostWei);
-  const gasNative = Number(result.cancelGasCostWei) / 1e18;
-  if (gasUsd <= 0) return;
-  deps._pnlTracker.addGas(gasUsd, gasNative);
-  if (deps.updateBotState)
-    deps.updateBotState({ pnlEpochs: deps._pnlTracker.serialize() });
-}
+const _GAS_DEFER_RATIO = readBotConfigDefaults().rebalanceGasDeferPct / 100;
 
-/** Check if estimated gas cost exceeds 0.5% of position value. */
+/** Whether a rebalance's estimated gas is too large a share of the position's value. */
 async function _isGasTooHigh(provider, position, poolState) {
   try {
     const gasCost = await _estimateGasCostUsd(provider);
@@ -298,7 +299,7 @@ async function _isGasTooHigh(provider, position, poolState) {
       prices.price0,
       prices.price1,
     );
-    if (posValue > 0 && gasCost > 0 && gasCost / posValue > 0.005) {
+    if (posValue > 0 && gasCost > 0 && gasCost / posValue > _GAS_DEFER_RATIO) {
       log.warn(
         "[bot] Gas too high: $%s is %s%% of position ($%s) — deferring",
         gasCost.toFixed(4),
@@ -311,6 +312,23 @@ async function _isGasTooHigh(provider, position, poolState) {
     /* proceed if gas check fails */
   }
   return false;
+}
+
+/**
+ * Whether the OOR Timeout alert goes out on this poll: once per
+ * out-of-range spell, then at most once a UTC day while the spell
+ * lasts. A spell outlives its timeout only while something holds the
+ * rebalance (the daily cap, the throttle, the Impermanent Loss Guard,
+ * a gas wait), and the timeout is checked on every poll, so the alert
+ * would otherwise repeat on each one. `oorSince` is where the spell
+ * began, so an alert sent before it belongs to an earlier spell. The
+ * day is UTC, the day the daily cap counts.
+ */
+function _oorAlertDue(botSt, now) {
+  const last = botSt._lastOorAlertAt;
+  if (last === undefined || last === null || last < botSt.oorSince) return true;
+  const utcDay = (t) => new Date(t).toISOString().slice(0, 10);
+  return utcDay(now) !== utcDay(last);
 }
 
 /** Check range, threshold, and OOR timeout.  Returns early result or null. */
@@ -339,10 +357,15 @@ function _checkRangeAndThreshold(deps, poolState, emit) {
       return { rebalanced: false, withinThreshold: true };
     }
     log.info("[bot] OOR timeout expired — triggering rebalance");
-    notify("oorTimeout", {
-      position: _notifyPos(deps.position),
-      message: "Position has been out of range beyond the configured timeout.",
-    });
+    const now = Date.now();
+    if (_oorAlertDue(botSt, now)) {
+      botSt._lastOorAlertAt = now;
+      notify("oorTimeout", {
+        position: _notifyPos(deps.position),
+        message:
+          "Position has been out of range beyond the configured timeout.",
+      });
+    }
   } else if (!forced && !botSt.oorSince) {
     botSt.oorSince = Date.now();
     emit({ oorSince: botSt.oorSince });
@@ -574,10 +597,13 @@ async function pollCycle(deps) {
    *  pool-state / Moralis read for a position we are about to auto-stop. */
   const retireReq = _checkRetireRequest(deps);
   if (retireReq) return retireReq;
-  /*- Aborted-and-drained short-circuit: skip all RPC/Moralis work for
+  /*-
+   *  Aborted-and-drained short-circuit: skip all RPC/Moralis work for
    *  positions waiting on user-event-driven resolution (Slippage
-   *  change / Manage re-click) OR clock-driven retire (30 min).
-   *  Drain timer still advances via checkZeroLiquidity. */
+   *  change / Manage re-click) OR the clock-driven retire
+   *  (`config.DRAINED_RETIRE_MS`).
+   *  Drain timer still advances via checkZeroLiquidity.
+   */
   if (_isAbortedDrained(deps)) {
     return _checkZeroLiquidity(deps) || { rebalanced: false };
   }
@@ -648,7 +674,5 @@ module.exports = {
   _activateSwapBackoff,
   _liquidityChanged,
   _runRangeAndExec, // exported for tests
-  _recordCancelGas, // exported for tests
   pollCycle,
-  DRAINED_RETIRE_MS,
 };

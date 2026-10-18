@@ -123,6 +123,16 @@ function getErrorLogPath() {
 }
 
 /**
+ * @returns {string} The error log's path as logging.json gives it,
+ *   `errorLogPath` with any override applied: relative to the project
+ *   root unless absolute. What the dashboard's Reload Current Position
+ *   dialog names, so it reads as the operator wrote it.
+ */
+function configuredErrorLogPath() {
+  return _DEFAULT_PATH;
+}
+
+/**
  * Remove every entry whose text contains `matchSubstring`, rewriting the
  * file without them.  Purpose-built for self-healing errors: when a
  * transient/fixable failure (e.g. a token's decimals becoming readable
@@ -202,5 +212,6 @@ module.exports = {
   clearErrorLog,
   resetErrorLog,
   getErrorLogPath,
+  configuredErrorLogPath,
   _DEFAULT_PATH, // exported for tests
 };

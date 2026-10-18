@@ -2,6 +2,11 @@
  * @file scripts/stop.js
  * @description Gracefully stop the LP Ranger server (`npm stop`).
  *
+ *   This is a force-stop: the server exits within its exit timeout
+ *   whether or not a rebalance or compound is under way, so one may be
+ *   cut off partway. `npm run gentle-stop` (scripts/gentle-stop.js) asks
+ *   the server first and calls `stopServer` below once nothing is.
+ *
  *   Primary: read the PID from `tmp/lp-ranger.pid` (written on startup by
  *   `src/server-pid.js`) and send SIGTERM — the same clean shutdown as Ctrl+C
  *   (stops all positions, closes the HTTP server, removes the PID file). If
@@ -14,12 +19,14 @@
  *   Fallback: when there is no PID file (the server was started by an older
  *   build), or the file names a process that is not this install's server
  *   (it was killed outright, which leaves the file behind), locate the
- *   `node server.js` listener on the port via lsof and signal it. The port
- *   is resolved as the server resolves it, from `.env` or app-runtime.json.
+ *   listeners on the port via lsof and signal the one that is this
+ *   install's `server.js`, by the same test the PID file is held to. The
+ *   port is resolved as the server resolves it, from `.env` or
+ *   app-runtime.json.
  *
- *   When it cannot be told whether the PID is the server — `ps` or the
- *   process's working directory cannot be read — nothing is signalled and
- *   the file is left in place.
+ *   When it cannot be told whether a process is the server — `ps` or the
+ *   process's working directory cannot be read — nothing is signalled, and
+ *   a PID file naming it is left in place.
  */
 
 "use strict";
@@ -30,8 +37,8 @@ const { PORT } = require("../src/runtime-flags");
 const { readShutdownTimings } = require("../src/shutdown-timing");
 const {
   findListenerPids,
-  psCmd,
   serverProcessState,
+  sortServerPids,
 } = require("./_find-process");
 
 const { killAfterMs, checkIntervalMs } = readShutdownTimings();
@@ -111,28 +118,50 @@ async function stopByPid(pid) {
   log.info("✔ Stopped");
 }
 
-/** Fallback: find the node listener on PORT and signal it. */
+/**
+ * Fallback: find this install's server listening on PORT and signal it.
+ *
+ * Held to the same test as the PID file: a listener is signalled only
+ * while it is this install's `server.js`. Another program on the port,
+ * another project's node server included, is not this script's to stop,
+ * and neither is one that cannot be told apart from the server.
+ */
 async function stopByPort() {
-  const pids = findListenerPids(PORT).filter((pid) => /node/.test(psCmd(pid)));
-  if (pids.length === 0) {
-    log.info(
-      "No PID file and nothing listening on port %d -- server not running",
+  const { ours, unknown } = sortServerPids(findListenerPids(PORT));
+  for (const pid of unknown)
+    log.warn(
+      "Cannot tell whether PID %d on port %d is this LP Ranger server -- " +
+        "`ps` or its working directory cannot be read. Not signalling it.",
+      pid,
       PORT,
     );
+  if (ours.length === 0) {
+    log.info(
+      "No LP Ranger server listening on port %d -- nothing to stop",
+      PORT,
+    );
+    if (unknown.length > 0) process.exitCode = 1;
     return;
   }
-  for (const pid of pids) {
+  for (const pid of ours) {
     log.info("Sending SIGTERM to PID %d (port %d)...", pid, PORT);
     signalPid(pid, "SIGTERM");
   }
-  if (!(await waitUntilGone(() => findListenerPids(PORT).length === 0))) {
+  if (!(await waitUntilGone(() => ours.every((pid) => !isAlive(pid))))) {
     log.info("⚠ Still running -- sending SIGKILL");
-    for (const pid of findListenerPids(PORT)) signalPid(pid, "SIGKILL");
+    for (const pid of ours) if (isAlive(pid)) signalPid(pid, "SIGKILL");
   }
   log.info("✔ Stopped");
 }
 
-(async function main() {
+/**
+ * Stop the server: by the PID its file names, or else by the port.
+ * `npm stop` runs this at once; `npm run gentle-stop` runs it once the
+ * server has said that no rebalance or compound is under way.
+ *
+ * @returns {Promise<void>}
+ */
+async function stopServer() {
   log.info("Stopping LP Ranger server...");
   const pid = readPid();
   if (pid !== null) {
@@ -140,4 +169,8 @@ async function stopByPort() {
     return;
   }
   await stopByPort();
-})();
+}
+
+if (require.main === module) stopServer();
+
+module.exports = { stopServer };

@@ -36,8 +36,9 @@ function collectTokenIds(position, rebalanceEvents) {
  * Reuse is exact only when both hold:
  *
  * - **The NFT is retired.** The live one keeps emitting, and the chain
- *   head advances between a failed attempt and the retry 30 minutes
- *   later, so a buffered read of it would be short by that window.
+ *   head advances between a failed attempt and the retry
+ *   (`config.LIFETIME_RESCAN_CHECK_MS` later), so a buffered read of it
+ *   would be short by that window.
  * - **The floor matches.** A buffered read taken from a different floor
  *   covers a different span. Floors can differ between attempts: a
  *   failed pool-creation lookup answers 0, and the retry can find the

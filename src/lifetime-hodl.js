@@ -16,6 +16,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { coinDecimals } = require("./coin-decimals");
 const { _filterRebalances } = require("./compounder");
 const { scanChunked } = require("./get-logs-chunked");
 
@@ -552,8 +553,11 @@ async function computeLifetimeHodl(allNftEvents, opts) {
   const { rebalanceEvents, position, provider, ethersLib, walletAddress } =
     opts;
   const ordered = _buildChainOrder(position.tokenId, rebalanceEvents);
-  const d0 = position.decimals0 ?? 18;
-  const d1 = position.decimals1 ?? 18;
+  const { d0, d1 } = coinDecimals(
+    position,
+    "the position",
+    "the lifetime deposit count",
+  );
   const cached = opts.cachedFreshDeposits;
   const cachedDeps = cached?.deposits ? [...cached.deposits] : [];
   const cachedBlocks = new Set(cachedDeps.map((d) => d.block));

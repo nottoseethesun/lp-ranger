@@ -189,41 +189,60 @@ describe("_rangeWidthPreviewText", () => {
 
   it("falls back to preserveRange percent when override is unset", () => {
     const text = mod._rangeWidthPreviewText(
-      {},
+      { rebalanceOffsetToken0Pct: 50 },
       { tickLower: -500, tickUpper: 500 },
     );
     assert.match(text, /^\d+\.\d{2}%$/);
   });
 
   it("renders an em-dash when ticks are missing", () => {
-    const text = mod._rangeWidthPreviewText({}, {});
+    const text = mod._rangeWidthPreviewText(
+      { rebalanceOffsetToken0Pct: 50 },
+      {},
+    );
+    assert.strictEqual(text, "—");
+  });
+
+  it("renders an em-dash, not a centred guess, before the server names the offset", () => {
+    const text = mod._rangeWidthPreviewText(
+      {},
+      { tickLower: -500, tickUpper: 500 },
+    );
     assert.strictEqual(text, "—");
   });
 
   it("preview value differs for centered vs non-centered offset (same ticks)", () => {
     const active = { tickLower: -500, tickUpper: 500 };
     const centered = mod._rangeWidthPreviewText(
-      { rangeOverrideEnabled: true, offsetToken0Pct: 50 },
+      { rangeOverrideEnabled: true, rebalanceOffsetToken0Pct: 50 },
       active,
     );
     const skewed = mod._rangeWidthPreviewText(
-      { rangeOverrideEnabled: true, offsetToken0Pct: 30 },
+      { rangeOverrideEnabled: true, rebalanceOffsetToken0Pct: 30 },
       active,
     );
     assert.notStrictEqual(centered, skewed);
   });
 
-  it("defaults to centered (offset=50) when status.offsetToken0Pct is missing", () => {
+  it("uses the offset the server says the rebalance will use, the install's default included", () => {
+    /*-
+     *  Nothing saved for the position, an operator's default of 70: the
+     *  bot mints around 70, so the preview must too. It used to read the
+     *  saved offset alone and centre on 50.
+     */
     const active = { tickLower: -500, tickUpper: 500 };
-    const implicit = mod._rangeWidthPreviewText(
-      { rangeOverrideEnabled: true },
+    const text = mod._rangeWidthPreviewText(
+      { rangeOverrideEnabled: true, rebalanceOffsetToken0Pct: 70 },
       active,
     );
-    const explicit = mod._rangeWidthPreviewText(
-      { rangeOverrideEnabled: true, offsetToken0Pct: 50 },
-      active,
+    assert.strictEqual(
+      text,
+      mod._computePreservedWidthPct(-500, 500, 70) + "%",
     );
-    assert.strictEqual(implicit, explicit);
+    assert.notStrictEqual(
+      text,
+      mod._computePreservedWidthPct(-500, 500, 50) + "%",
+    );
   });
 
   it("treats saved override of 0 as displayed (matches user-visible config)", () => {
@@ -273,6 +292,8 @@ describe("_rangeWidthPreviewText", () => {
         rangeOverrideEnabled: false,
         rebalanceRangeWidthPct: 15,
         fullRangeRebalanceEnabled: true,
+        // What the server publishes under No Override: centred.
+        rebalanceOffsetToken0Pct: 50,
       },
       { tickLower: -500, tickUpper: 500 },
     );
@@ -280,18 +301,26 @@ describe("_rangeWidthPreviewText", () => {
   });
 
   it("centres the preserved-width preview while No Override is on", () => {
-    /*- Matching the server: with the toggle on, the offset is pinned to
-     *  centred so preserveRange() re-centres the existing spread.  A
-     *  saved skew must not move the preview either. */
+    /*-
+     *  Matching the server: with the toggle on, the offset is pinned to
+     *  centred so preserveRange() re-centres the existing spread, and
+     *  the server publishes that centre whatever skew is saved
+     *  (src/range-override.js). The preview follows what it publishes.
+     */
     const active = { tickLower: -500, tickUpper: 500 };
     const suppressed = mod._rangeWidthPreviewText(
-      { rangeOverrideEnabled: false, offsetToken0Pct: 30 },
+      {
+        rangeOverrideEnabled: false,
+        offsetToken0Pct: 30,
+        rebalanceOffsetToken0Pct: 50,
+      },
       active,
     );
     const centred = mod._rangeWidthPreviewText(
-      { rangeOverrideEnabled: true, offsetToken0Pct: 50 },
+      { rangeOverrideEnabled: true, rebalanceOffsetToken0Pct: 50 },
       active,
     );
+    assert.match(suppressed, /^\d+\.\d{2}%$/);
     assert.strictEqual(suppressed, centred);
   });
 

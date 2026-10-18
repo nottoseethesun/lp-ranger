@@ -64,11 +64,6 @@ describe("classifyRpcError — terminal-nonce-consumed", () => {
     assert.strictEqual(classifyRpcError(err), "terminal-nonce-consumed");
   });
 
-  it("'already known' → terminal-nonce-consumed", () => {
-    const err = new Error("already known");
-    assert.strictEqual(classifyRpcError(err), "terminal-nonce-consumed");
-  });
-
   it("ethers NONCE_EXPIRED code → terminal-nonce-consumed", () => {
     const err = Object.assign(new Error("x"), { code: "NONCE_EXPIRED" });
     assert.strictEqual(classifyRpcError(err), "terminal-nonce-consumed");
@@ -78,6 +73,29 @@ describe("classifyRpcError — terminal-nonce-consumed", () => {
     // "insufficient funds" (nonce-unused) should lose to "nonce too low".
     const err = new Error("nonce too low — insufficient funds");
     assert.strictEqual(classifyRpcError(err), "terminal-nonce-consumed");
+  });
+});
+
+describe("classifyRpcError — already-known", () => {
+  it("'already known' → already-known, the endpoint holding the transaction", () => {
+    assert.strictEqual(
+      classifyRpcError(new Error("already known")),
+      "already-known",
+    );
+  });
+
+  it("'known transaction' → already-known", () => {
+    assert.strictEqual(
+      classifyRpcError(new Error("known transaction: 0xabc")),
+      "already-known",
+    );
+  });
+
+  it("wins over a consumed-nonce substring in the same message", () => {
+    assert.strictEqual(
+      classifyRpcError(new Error("already known (nonce too low)")),
+      "already-known",
+    );
   });
 });
 

@@ -14,11 +14,8 @@
 
 import { log } from "./dashboard-log.js";
 import { emojiId } from "./dashboard-helpers.js";
-import {
-  posStore,
-  updatePosStripUI,
-  renderPosBrowser,
-} from "./dashboard-positions.js";
+import { posStore, updatePosStripUI } from "./dashboard-positions-store.js";
+import { renderPosBrowser } from "./dashboard-positions-browser.js";
 
 /**
  * Mutate the posStore active entry from `data.activePosition`.  Calls

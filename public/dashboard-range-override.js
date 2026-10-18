@@ -40,7 +40,7 @@
 
 import { g, act, ACT_ICONS, compositeKey } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
-import { _posLabel } from "./dashboard-data.js";
+import { _posLabel } from "./dashboard-data-status.js";
 import { activeChainId } from "./dashboard-chain.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
 

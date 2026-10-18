@@ -10,8 +10,9 @@
  * future re-pause of the same position re-fires after the first clears.
  */
 import { cloneTpl, botConfig } from "./dashboard-helpers.js";
-import { posStore } from "./dashboard-positions.js";
-import { _createModal } from "./dashboard-data-status.js";
+import { posStore } from "./dashboard-positions-store.js";
+import { _createModal, _fillPosContext } from "./dashboard-data-status.js";
+import { abortKind } from "./dashboard-abort-reason.js";
 import { showPostRebalanceWarnings } from "./dashboard-post-rebalance-modal.js";
 
 /*- Dedup Sets keyed by composite key. Cleared only when the server
@@ -60,18 +61,13 @@ export function _posContextHtmlForState(key, st) {
       (e) => e.token0?.toLowerCase() === t0 && e.fee === ap.fee,
     );
   const _s = (f) => ap[f] || pe?.[f] || "?";
-  const pair = _s("token0Symbol") + "/" + _s("token1Symbol");
-  const pm = botConfig.pmName || _short(contract);
-  const fee = ap.fee ? (ap.fee / 10000).toFixed(2) + "% fee" : "";
-  const c = botConfig.chainName;
-  frag.querySelector('[data-tpl="pair"]').textContent = pair;
-  frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";
-  frag.querySelector('[data-tpl="tokenId"]').textContent = tokenId;
-  frag.querySelector('[data-tpl="fee"]').textContent = fee
-    ? " \u00B7 " + fee
-    : "";
-  frag.querySelector('[data-tpl="chain"]').textContent = c;
-  frag.querySelector('[data-tpl="wallet"]').textContent = wallet || "";
+  _fillPosContext(frag, {
+    pair: _s("token0Symbol") + "/" + _s("token1Symbol"),
+    pm: botConfig.pmName || _short(contract),
+    tokenId,
+    fee: ap.fee ? (ap.fee / 10000).toFixed(2) + "% fee" : "",
+    wallet: wallet || "",
+  });
   const wrap = document.createElement("div");
   wrap.appendChild(frag);
   return wrap.innerHTML;
@@ -82,19 +78,7 @@ function _modalIdForKey(prefix, key) {
 }
 
 function _pausedCopy(message) {
-  const m = message || "";
-  const t =
-    m.includes("mid-rebalance") || m.includes("Mid-rebalance")
-      ? "midway"
-      : m.includes("liquidity is too thin") || m.includes("no liquidity")
-        ? "thin"
-        : m.includes("exceeds slippage")
-          ? "slip"
-          : m.includes("insufficient gas")
-            ? "gas"
-            : m.includes("too volatile")
-              ? "volatile"
-              : "";
+  const t = abortKind(message);
   const footers = {
     midway:
       "Tokens are safe in your wallet. The bot retried 3 times. Use the manual Rebalance button to retry.",

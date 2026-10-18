@@ -23,6 +23,11 @@ const assert = require("assert");
 const { _aggregatorBase } = require("../src/rebalancer-aggregator");
 const { primaryRouteLabel } = require("../src/rebalancer-swap");
 const { V3_ROUTER_LABEL } = require("../src/rebalancer-router");
+const { resolvedHelpFigures } = require("../src/resolved-settings");
+const {
+  aggregatorBaseUrlOf,
+  aggregatorNameInUse,
+} = require("../src/aggregator-in-use");
 const config = require("../src/config");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
@@ -71,22 +76,48 @@ describe("aggregator base URL", () => {
     }
   });
 
-  it("reads a url of slashes alone as no aggregator, for the swap and the badge alike", () => {
+  it("reads a url of slashes alone as no aggregator, for the swap, the badge and the help alike", () => {
     /*-
-     *  The "Routing through:" badge and the swap ask one question, so
-     *  the badge cannot name the aggregator while every swap goes
-     *  through the V3 router. A url that is not a string never gets
-     *  here: src/config.js refuses to start on one
-     *  (test/config-startup-checks.test.js).
+     *  The "Routing through:" badge, the help and the swap ask one
+     *  question, so neither the badge nor the help can name the
+     *  aggregator while every swap goes through the V3 router. A url
+     *  that is not a string never gets here: src/config.js refuses to
+     *  start on one (test/config-startup-checks.test.js).
      */
     const saved = config.AGGREGATOR_URL;
     config.AGGREGATOR_URL = "/";
     try {
       assert.throws(() => _aggregatorBase(), /aggregator\.url/);
       assert.strictEqual(primaryRouteLabel(), V3_ROUTER_LABEL);
+      assert.strictEqual(resolvedHelpFigures().aggregatorName, "");
+      assert.strictEqual(resolvedHelpFigures().aggregatorInUse, "none");
     } finally {
       config.AGGREGATOR_URL = saved;
     }
+  });
+
+  it("lets the help name the aggregator the swap tries first", () => {
+    assert.strictEqual(
+      resolvedHelpFigures().aggregatorName,
+      config.AGGREGATOR_NAME,
+    );
+  });
+});
+
+describe("whether a chain has an aggregator", () => {
+  it("is its url's base, without trailing slashes", () => {
+    assert.strictEqual(
+      aggregatorBaseUrlOf("https://a.example/x/"),
+      "https://a.example/x",
+    );
+    assert.strictEqual(aggregatorBaseUrlOf("/"), "");
+    assert.strictEqual(aggregatorBaseUrlOf(""), "");
+  });
+
+  it("decides whether its name is the one in use", () => {
+    assert.strictEqual(aggregatorNameInUse("https://a.example", "A"), "A");
+    assert.strictEqual(aggregatorNameInUse("//", "A"), "");
+    assert.strictEqual(aggregatorNameInUse("", ""), "");
   });
 });
 

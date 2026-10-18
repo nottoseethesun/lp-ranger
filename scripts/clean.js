@@ -3,7 +3,12 @@
  * @file scripts/clean.js
  * @description
  * Returns the install to the state a fresh clone is in. Backs both
- * `npm run clean` and `npm run dev-clean` (`--dev`).
+ * `npm run clean` and `npm run dev-clean` (`--dev`), and
+ * `npm run clean:log` (`--log`), which deletes the diagnostic log alone.
+ *
+ * The two log files are wherever logging.json puts them, an operator's
+ * override included, and are deleted only when that lies inside the
+ * install folder.
  *
  * **`clean` must leave nothing behind.** It therefore names no cache
  * files of its own: `clear-blockchain-scan-cache.js` owns the
@@ -26,6 +31,7 @@
  * Usage:
  *   node scripts/clean.js         # full reset
  *   node scripts/clean.js --dev   # keep price/timing caches
+ *   node scripts/clean.js --log   # the diagnostic log only
  */
 
 "use strict";
@@ -38,6 +44,7 @@ const {
   waitForServerExit,
   human,
 } = require("./clear-blockchain-scan-cache");
+const { loadMergedDefaults } = require("../src/load-merged-defaults");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -67,9 +74,14 @@ const BUILD_ARTIFACTS = [
 ];
 const BUILD_DIRS = ["public/dist", "public/fonts"];
 
-/*- Log output. `logs/error.log` is truncated at startup anyway, but a
- *  reset should not leave the previous install's stack traces behind. */
-const LOG_FILES = ["logs/lp-ranger.log", "logs/error.log"];
+/*-
+ *  Log output, where logging.json puts it with any override applied:
+ *  the diagnostic log's `path` and the error log's `errorLogPath`. The
+ *  error log is emptied at startup anyway, but a reset should not leave
+ *  the previous install's stack traces behind.
+ */
+const _LOGGING = loadMergedDefaults("logging.json");
+const LOG_FILES = [_LOGGING.path, _LOGGING.errorLogPath];
 
 /*- Test/report output, not app state, but equally absent on a clone. */
 const REPORT_DIRS = ["test/report-artifacts"];
@@ -83,6 +95,59 @@ function rmFile(rel) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a path, relative to the install folder unless absolute, lies
+ * inside the install folder. A log path an operator has pointed outside
+ * it, at a system log directory say, is theirs to manage, so no clean
+ * deletes there.
+ * @param {string} p
+ * @returns {boolean}
+ */
+function insideInstall(p) {
+  const rel = path.relative(ROOT, path.resolve(ROOT, p));
+  if (rel === "" || path.isAbsolute(rel)) return false;
+  return rel !== ".." && !rel.startsWith(".." + path.sep);
+}
+
+/**
+ * Delete the configured log files that lie inside the install folder.
+ * @param {string[]} files  Paths from logging.json.
+ * @returns {{removed: string[], outside: string[]}} What was deleted,
+ *   and what was left alone for lying outside the install folder.
+ */
+function rmLogFiles(files) {
+  const removed = [];
+  const outside = [];
+  for (const f of files) {
+    if (!insideInstall(f)) outside.push(f);
+    else if (rmFile(path.relative(ROOT, path.resolve(ROOT, f))))
+      removed.push(f);
+  }
+  return { removed, outside };
+}
+
+/** Say which log files were left alone, and why. */
+function reportOutside(outside) {
+  for (const f of outside)
+    console.log(
+      `[clean] Not deleted: ${f} is outside the install folder. ` +
+        "Delete it yourself if you want it gone.",
+    );
+}
+
+/**
+ * `npm run clean:log`: the diagnostic log alone, where logging.json
+ * puts it. Run with the app stopped, as the manual says; nothing else
+ * is touched.
+ */
+function cleanDiagnosticLog() {
+  const { removed, outside } = rmLogFiles([_LOGGING.path]);
+  reportOutside(outside);
+  if (removed.length > 0) console.log(`Cleared ${_LOGGING.path}`);
+  else if (outside.length === 0)
+    console.log(`No log to clear at ${_LOGGING.path}`);
 }
 
 /** Delete a directory tree if present. @returns {boolean} */
@@ -99,6 +164,10 @@ function npm(script) {
 }
 
 function main() {
+  if (process.argv.includes("--log")) {
+    cleanDiagnosticLog();
+    return;
+  }
   const dev = process.argv.includes("--dev");
 
   /*- Stop first, then WAIT. Shutdown stops every position and closes
@@ -125,7 +194,8 @@ function main() {
 
   const removed = [];
   for (const f of STATE_FILES) if (rmFile(f)) removed.push(f);
-  if (!dev) for (const f of LOG_FILES) if (rmFile(f)) removed.push(f);
+  const logs = dev ? { removed: [], outside: [] } : rmLogFiles(LOG_FILES);
+  removed.push(...logs.removed);
   for (const f of BUILD_ARTIFACTS) if (rmFile(f)) removed.push(f);
   for (const d of [...BUILD_DIRS, ...REPORT_DIRS])
     if (rmDir(d)) removed.push(d);
@@ -137,6 +207,7 @@ function main() {
       `director(ies), plus ${cache.removed} cache file(s) (${human(cache.bytes)}).`,
   );
   for (const r of removed) console.log("    " + r);
+  reportOutside(logs.outside);
   if (cache.kept.length > 0) {
     console.log(
       "[clean] Preserved for fast dev restart: " + cache.kept.join(", "),
@@ -157,4 +228,5 @@ module.exports = {
   BUILD_DIRS,
   LOG_FILES,
   REPORT_DIRS,
+  insideInstall,
 };

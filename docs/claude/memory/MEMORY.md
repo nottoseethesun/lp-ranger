@@ -10,7 +10,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [always build](feedback_always_build.md) — Edited public/? Run `npm run build`
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
 - [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push
-- [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the suite under 22 too
+- [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the gate under 22 too (`PATH=` Node 22 first), never the raw suite
 - [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo
 - [git workflow](feedback_git_workflow.md) — No push/merge/rebase/delete-branch/release without OK
@@ -33,22 +33,24 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [burn-in probe](feedback_burn_in_probe.md) — Ask "anything felt off, even small?"
 - [chat, don't AskUserQuestion](feedback_chat_dont_askuserquestion.md) — Open-ended discussion wants plain chat
 - [don't modify tested code before commit](feedback_dont_modify_tested_code_before_commit.md) — User tested it → commit exactly that
-- [fix only what was asked](feedback_fix_only_what_was_asked.md) — "Fix X" changes only X; no adjacent sweeps
+- [fix only what was asked](feedback_fix_only_what_was_asked.md) — "Fix X" changes only X; no adjacent sweeps; a change X needs to work in the reported case is part of X, listed as a choice
 - [flag operational side effects](feedback_flag_operational_side_effects.md) — Flag restarts; never say hard-reload
 - [hardening minimal scope](feedback_hardening_minimal_scope.md) — Hardening = no refactor beyond the fix
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Such lists need a "not bugs" note
-- [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete it; "inert" means delete
+- [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete it; "inert" means delete; an audit report shows only bugs and significant optimizations
 - [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now, pre-existing or not; prove it first
 - [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each one durably at once
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Operator-facing behavior, not implementation constants
 - [operator sees UI, not logs](feedback_operator_sees_ui_not_logs.md) — Answer in badge/dialog terms; the log is your instrument
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
+- [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
 - [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms
 - [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
-- [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei
+- [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei; an editing pass removes bulk (point buried in detail) and gaps (steps replaced by vague words)
+- [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
 - [revert means code](feedback_revert_means_code.md) — "Revert" = repo edits only, never the plan
@@ -56,7 +58,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [try before commit](feedback_try_before_commit.md) — Browser-observable changes wait for sign-off
 - [user launches app](feedback_user_launches_app.md) — The user launches it during manual testing
 - [never test against Production](feedback_never_test_against_production.md) — Nothing that can transact on mainnet; live tests on the testnet only
-- [wait for sign-off](feedback_wait_for_signoff.md) — Offered options mean WAIT
+- [wait for sign-off](feedback_wait_for_signoff.md) — Offered options mean WAIT; a message mixing approvals with requests to explain is one gate, explanations first
 - [instrument before inferring](feedback_instrument_before_inferring.md) — Two wrong models = add logging, stop guessing
 - [grep before writing](feedback_grep_before_writing.md) — Grep existing usage before coding to a shape or API
 - [tests cover full contract before manual](feedback_tests_cover_full_contract_before_manual.md) — Cover the user-visible contract first
@@ -79,7 +81,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [dotenv/api-keys not layered](feedback_dotenv_apikeys_not_for_layered_pattern.md) — `.env` stays outside the layered-defaults pattern
 - [EIP-55 checksum URL segments](feedback_eip55_checksum_url_segments.md) — Addresses checksummed, URL segments included
 - [engineering invariants](feedback_engineering_invariants.md) — Never break single-source-of-truth or singletons for expedience
-- [signal substitution](feedback_signal_substitution.md) — Test the thing asked about, not a cheaper proxy
+- [signal substitution](feedback_signal_substitution.md) — Test the thing asked about, not a cheaper proxy; a test of a configured value moves it off its default
 - [event origin vs viewed tab](feedback_event_origin_vs_viewed_tab.md) — Label from the event's origin, not the viewed tab
 - [explicit null/undefined checks](feedback_explicit_null_undefined_checks.md) — Write the checks; never lean on coercion
 - [finish logic](feedback_finish_logic.md) — Trace every path to completion before calling it done
@@ -88,6 +90,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [logging](feedback_logging.md) — Token symbols, NFT id + emoji, full context on every move
 - [minimize caching](feedback_minimize_caching.md) — No new caching layers; reuse existing resolvers
 - [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key chain caches generically (e.g. by pool) so all positions share
+- [cache keys lead with the chain](feedback_cache_keys_lead_with_the_chain.md) — Every cache key starts with the chain (`cacheKey`); the chain can't change while a server runs
 - [never hard-code a chain](feedback_never_hard_code_a_chain.md) — Nothing in code true of one blockchain; chain facts live in chains.json, no fallbacks
 - [module self-announcement](feedback_module_self_announcement.md) — A module announces itself; B doesn't reach into A
 - [Moralis first](feedback_moralis_first.md) — Moralis is primary for historical prices when a key exists
@@ -107,7 +110,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no lazy loading](feedback_no_lazy_loading.md) — No `require()` inside functions
 - [no re-exports](feedback_no_reexports.md) — Import from the owning module
 - [unused exports are fine](feedback_unused_exports_are_fine.md) — An export nothing imports yet is composability, not a gap; never a finding, never deleted for knip
-- [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file; no fallback values in JS or HTML; sweep any found into config JSON
+- [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file; no fallback values in JS or HTML; sweep any found into config JSON; ranges live in `setting-bounds.json`
 - [price API, no pool](feedback_price_api_no_pool.md) — Let the price service pick the pool
 - [slippage lowest floor](feedback_slippage_lowest_floor.md) — `_bestAttemptError` taking the LOWEST impact is intentional
 - [think ahead](feedback_think_ahead.md) — Consider fetch → cache → invalidate → incremental first
@@ -115,7 +118,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [trace semantic coherence](feedback_trace_semantic_coherence.md) — Trace a display convention end-to-end
 - [util subdir per utility](feedback_util_subdir_per_utility.md) — Two or more files becomes a directory with index.js
 - [canonical info icon](feedback_canonical_info_icon.md) — Circle-i is `.9mm-pos-mgr-il-info-btn` + a literal "i"
-- [CSS rules](feedback_css_rules.md) — No inline styles, no zoom, no !important; name colors
+- [CSS rules](feedback_css_rules.md) — No inline styles, no zoom, no !important; name colors; layout values ship in the build (bundled JSON or CSS), never from the server, or the page flickers
 - [help cursor on title](feedback_help_cursor_on_title.md) — An inert element with a title shows the help cursor
 - [inline-edit dialog button set](feedback_inline_edit_dialog_button_set.md) — Save / Return to Automatic X / Cancel, distinct styling
 - [no classList for state](feedback_no_classlist_for_state.md) — Never read the DOM to determine program state
@@ -125,4 +128,4 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No interpolated innerHTML in dashboard JS
 - [sound gate scope](feedback_sound_gate_scope.md) — Jingles gated on the browser idle timer is correct
-- [help page](project_help_page.md) — Help lives at /help.html with its own CSS
+- [help page](project_help_page.md) — The User Manual is public/help-and-user-manual.html, its own CSS; never call it "Help"

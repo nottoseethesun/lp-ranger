@@ -101,4 +101,30 @@ function serverProcessState(pid, root = process.cwd()) {
   return path.resolve(cwd) === fs.realpathSync(root) ? "yes" : "no";
 }
 
-module.exports = { findListenerPids, psCmd, processCwd, serverProcessState };
+/**
+ * Sort PIDs into this install's server and those that cannot be told
+ * apart from it, by `serverProcessState`. Any other process, another
+ * program listening on the same port among them, is in neither list.
+ *
+ * @param {number[]} pids
+ * @param {string} [root]  The install's root; the current directory.
+ * @returns {{ours: number[], unknown: number[]}}
+ */
+function sortServerPids(pids, root = process.cwd()) {
+  const ours = [];
+  const unknown = [];
+  for (const pid of pids) {
+    const state = serverProcessState(pid, root);
+    if (state === "yes") ours.push(pid);
+    else if (state === "unknown") unknown.push(pid);
+  }
+  return { ours, unknown };
+}
+
+module.exports = {
+  findListenerPids,
+  psCmd,
+  processCwd,
+  serverProcessState,
+  sortServerPids,
+};

@@ -284,7 +284,10 @@ test("renderEvents — a failed getBlock still renders the row", async () => {
 });
 
 test("scanEvents — chunks window, parses each event type", async () => {
-  /*- 25 000 blocks at CHUNK_SIZE 10 000 = 3 chunks × 4 topic filters. */
+  /*-
+   *  25 000 blocks at the shipped 9 000-block chunk = 3 chunks × 4 topic
+   *  filters.
+   */
   const provider = fakeProvider({ logs: [] });
   const res = await scanEvents(provider, "162980", 1, 25_000);
   assert.equal(provider.calls.getLogs.length, 12);

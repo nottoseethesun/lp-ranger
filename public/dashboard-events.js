@@ -18,11 +18,8 @@ import {
   copyElText,
   copyWithFeedback,
 } from "./dashboard-helpers.js";
-import {
-  markInputDirty,
-  getLastStatus,
-  isSyncComplete,
-} from "./dashboard-data.js";
+import { getLastStatus, isSyncComplete } from "./dashboard-data.js";
+import { markInputDirty } from "./dashboard-data-cache.js";
 import {
   closeWalletModal,
   wTab,
@@ -48,26 +45,22 @@ import {
   closeClearWalletModal,
   confirmClearWallet,
 } from "./dashboard-wallet-import.js";
+import { scanPositions, activateSelectedPos } from "./dashboard-positions.js";
 import {
+  removeSelectedPos,
   openPosBrowser,
   closePosBrowser,
   renderPosBrowser,
-  scanPositions,
   posChangePage,
-  activateSelectedPos,
   posRowClick,
   posRowSelect,
-} from "./dashboard-positions.js";
-import { removeSelectedPos } from "./dashboard-positions-browser.js";
+} from "./dashboard-positions-browser.js";
 import {
-  onParamChange,
   saveOorThreshold,
   saveIlGuard,
   saveOorTimeout,
   saveMinInterval,
   saveMaxReb,
-  saveCheckInterval,
-  saveGasStrategy,
   saveOffset,
   resetOffset,
   saveApprovalMultiple,
@@ -102,11 +95,6 @@ import {
   saveCurRealized,
   toggleLifetimeDays,
   saveLifetimeDays,
-} from "./dashboard-data.js";
-/*- Direct import from the owning module per feedback-no-reexports —
- *  the reset handlers have no other consumer, so re-exporting them
- *  through dashboard-data.js would only pad that file's line count. */
-import {
   resetLifetimeDays,
   resetInitialDeposit,
   resetRealizedGains,
@@ -141,17 +129,6 @@ import {
 } from "./dashboard-events-manage.js";
 import { _reloadCurrentPosition } from "./dashboard-reload-flow.js";
 
-/*- Re-export only the symbols dashboard-events.js's external callers
- *  use that don't have a more specific owner.  `updateManageBadge` is
- *  imported directly from dashboard-events-manage.js by its sole caller
- *  (dashboard-data.js) — no barrel needed; closes a latent
- *  feedback_no_reexports violation. */
-export {
-  reapplyPrivacyBlur,
-  restorePrivacyMode,
-  injectPosStoreForEvents,
-} from "./dashboard-events-manage.js";
-
 /** @param {string} id  @param {Function} fn */
 function _click(id, fn) {
   const el = g(id);
@@ -180,11 +157,7 @@ function _qa(sel, evt, fn) {
   document.querySelectorAll(sel).forEach((el) => el.addEventListener(evt, fn));
 }
 
-import {
-  saveMoralisApiKey,
-  saveMoralisKeyFromSettings as _saveMoralisKey,
-} from "./dashboard-moralis-key.js";
-export { saveMoralisApiKey };
+import { saveMoralisKeyFromSettings as _saveMoralisKey } from "./dashboard-moralis-key.js";
 
 import { checkForUpdate as _checkForUpdate } from "./dashboard-update-check.js";
 import {
@@ -480,11 +453,14 @@ export function bindAllEvents() {
   _click("curRealizedSaveBtn", saveCurRealized);
 
   /* ── Bot configuration ────────────────── */
-  _input("inMaxReb", onParamChange);
+  /*-
+   *  No input handler on Max Rebalances / Day: typing changes nothing
+   *  until Save, since the throttle badge shows only what the server
+   *  reports.
+   */
   /*- The RPC list is read-only; adding one goes through its own dialog,
    *  which wires itself. */
   bindRpcAddEvents();
-  _change("inGas", saveGasStrategy);
 
   /*- Bound by id like every other Save button, not by a
    *  `.save-range-btn` sweep with a `:not(...)` blocklist.  That class
@@ -497,7 +473,6 @@ export function bindAllEvents() {
   _click("saveIlGuardBtn", saveIlGuard);
   _click("saveMinIntervalBtn", saveMinInterval);
   _click("saveMaxRebBtn", saveMaxReb);
-  _click("saveIntervalBtn", saveCheckInterval);
   _click("saveOffsetBtn", saveOffset);
   _click("resetOffsetBtn", resetOffset);
   wirePriceRangeExtensionEvents(_click, _input, _change);
@@ -524,7 +499,6 @@ export function bindAllEvents() {
     "inOorTimeout",
     "inSlipToken0",
     "inSlipToken1",
-    "inInterval",
     "inMinInterval",
     "inMaxReb",
     "autoCompoundThreshold",

@@ -143,7 +143,7 @@ describe("a stuck move, through the speed-up and the cancel", () => {
       (err) => {
         assert.equal(err.cancelled, true);
         assert.equal(err.cancelTxHash, "0xcancel");
-        assert.equal(err.cancelGasCostWei, 21000n * 4n);
+        assert.equal(err.gasCostWei, 21000n * 4n);
         return true;
       },
     );
@@ -234,6 +234,66 @@ describe("a stuck move, through the speed-up and the cancel", () => {
         return true;
       },
     );
+  });
+
+  it("still cancels when the speed-up's gas price cannot be read", async () => {
+    /*-
+     *  A speed-up that cannot be priced is a speed-up that cannot be
+     *  sent. The original is still pending, so the cancel is still owed;
+     *  an error here must not end the wait and leave it pending.
+     */
+    const { original, signer, sent } = stage({
+      originalWait: pending,
+      speedUp: () => {
+        throw new Error("the speed-up must not be sent unpriced");
+      },
+      cancel: (req) => ({
+        hash: "0xcancel",
+        nonce: req.nonce,
+        gasPrice: req.gasPrice,
+        wait: async () => mined("0xcancel"),
+      }),
+    });
+    let reads = 0;
+    signer.provider.getFeeData = async () => {
+      reads++;
+      if (reads === 1) throw new Error("fee data unavailable");
+      return { gasPrice: 1n };
+    };
+    await assert.rejects(
+      _waitOrSpeedUp(original, signer, "[rebalance] mint"),
+      (err) => {
+        assert.equal(err.cancelled, true);
+        assert.equal(err.cancelTxHash, "0xcancel");
+        return true;
+      },
+    );
+    assert.equal(sent.length, 1, "no speed-up, then the cancel");
+    assert.equal(sent[0].to, WALLET);
+    assert.equal(sent[0].nonce, original.nonce);
+  });
+
+  it("reports the nonce stuck when the cancel's gas price cannot be read", async () => {
+    const { original, signer, sent } = stage({
+      originalWait: pending,
+      speedUp: () => {
+        throw refusal("INSUFFICIENT_FUNDS", "insufficient funds for gas");
+      },
+      cancel: () => {
+        throw new Error("the cancel must not be sent unpriced");
+      },
+    });
+    let reads = 0;
+    signer.provider.getFeeData = async () => {
+      reads++;
+      if (reads === 2) throw new Error("fee data unavailable");
+      return { gasPrice: 1n };
+    };
+    await assert.rejects(
+      _waitOrSpeedUp(original, signer, "[rebalance] mint"),
+      /TX stuck and cancel failed: fee data unavailable/,
+    );
+    assert.equal(sent.length, 1, "only the refused speed-up");
   });
 
   it("reports a cancel the node refuses for another reason as stuck", async () => {

@@ -2,7 +2,8 @@
  * @file src/gecko-pool-cache.js
  * @module geckoPoolCache
  * @description
- * Disk-backed JSON cache mapping `network-poolAddress` → token orientation.
+ * Disk-backed JSON cache mapping a pool, under the canonical `chain-pool`
+ * key (`cacheKey` in `src/cache-store.js`), to its token orientation.
  *
  * GeckoTerminal's `/networks/{network}/pools/{pool}/ohlcv/day?token=base|quote`
  * endpoint returns the OHLCV candle for the *base* or *quote* token of the pool.
@@ -18,8 +19,12 @@
  * ask: given a bare token, which pool should its price be read from?
  * That is needed for a historical price, because GeckoTerminal's OHLCV
  * endpoint is per-pool while its token endpoint serves only the current
- * price. Those entries are keyed under a `token:` prefix so the two
- * kinds cannot collide.
+ * price. Those entries are keyed `chain-token-address`, so the two kinds
+ * cannot collide.
+ *
+ * Both kinds lead with the active chain's key in chains.json, as every
+ * cache of chain data does, rather than with GeckoTerminal's own name for
+ * the network, which is only how the service is asked.
  *
  * Cache file: `tmp/gecko-pool-cache.json` (gitignored).
  * Lazy-loaded on first access; batched writes via dirty flag.
@@ -30,9 +35,14 @@
 const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
+const config = require("./config");
 const { geckoRateLimit } = require("./gecko-rate-limit");
 const { retryOn429 } = require("./price-source-backoff");
 const { GECKO_TERMINAL_API } = require("./price-service-urls");
+const { cacheKey } = require("./cache-store");
+const { loadMergedDefaults } = require("./load-merged-defaults");
+const { SETTING_BOUNDS } = require("./setting-bounds");
+const { withinBound, boundText } = require("./range-check");
 
 // Path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
@@ -54,9 +64,9 @@ function _ensureLoaded() {
   }
 }
 
-/** Build a cache key from network + pool address. */
-function _key(network, poolAddress) {
-  return `${network}-${poolAddress.toLowerCase()}`;
+/** A pool's orientation key: the active chain, then the pool. */
+function _key(poolAddress) {
+  return cacheKey(config.CHAIN_NAME, poolAddress);
 }
 
 /**
@@ -164,7 +174,7 @@ function _resolveOrientation(baseAddr, token0, token1, poolAddress) {
 async function getGeckoPoolOrientation(network, poolAddress, token0, token1) {
   if (!network || !poolAddress || !token0 || !token1) return null;
   _ensureLoaded();
-  const k = _key(network, poolAddress);
+  const k = _key(poolAddress);
   if (_cache[k]) return _cache[k];
   const baseAddr = await _fetchBaseAddr(network, poolAddress);
   const orientation = _resolveOrientation(
@@ -186,16 +196,24 @@ async function getGeckoPoolOrientation(network, poolAddress, token0, token1) {
 }
 
 /*-
- *  How many of the service's own top-ranked pools to consider. Ten is
- *  deep enough that a token with several thin pairs still reaches a real
- *  one, and shallow enough that the list stays the service's opinion of
- *  the token's main market rather than a sweep of every pair it sits in.
+ *  How many of the service's own top-ranked pools to consider:
+ *  price-services.json → geckoTerminal.topPoolsConsidered, whose comment
+ *  gives the reason for the figure. Checked once, here, at load.
  */
-const _TOP_POOLS_CONSIDERED = 10;
+const _TOP_POOLS_CONSIDERED = (() => {
+  const n = loadMergedDefaults("price-services.json").geckoTerminal
+    .topPoolsConsidered;
+  const bound = SETTING_BOUNDS.geckoTerminal.topPoolsConsidered;
+  if (withinBound(n, bound)) return n;
+  throw new Error(
+    "[config] price-services.json → geckoTerminal.topPoolsConsidered " +
+      `must be ${boundText(bound)}; it is ${JSON.stringify(n)}.`,
+  );
+})();
 
-/** Build a cache key from network + token address. */
-function _tokenKey(network, tokenAddress) {
-  return `token:${network}-${tokenAddress.toLowerCase()}`;
+/** A token's best-pool key: the active chain, the kind, then the token. */
+function _tokenKey(tokenAddress) {
+  return cacheKey(config.CHAIN_NAME, "token", tokenAddress);
 }
 
 /** Address out of a GeckoTerminal token id such as `pulsechain_0xabc…`. */
@@ -293,7 +311,7 @@ function _pickBestPool(pools) {
 async function getBestPoolForToken(network, tokenAddress) {
   if (!network || !tokenAddress) return null;
   _ensureLoaded();
-  const k = _tokenKey(network, tokenAddress);
+  const k = _tokenKey(tokenAddress);
   if (_cache[k] !== undefined && _cache[k] !== null) return _cache[k];
   let res;
   try {

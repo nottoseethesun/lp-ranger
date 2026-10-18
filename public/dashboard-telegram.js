@@ -41,7 +41,6 @@ const _EVENT_IDS = [
  *  next to the "Position Balanced" checkbox always reflects the actual
  *  fetch cadence (CHECK_INTERVAL_SEC × pricePauseExceptionPollWindowMultiple). */
 function _fmtCadence(ms) {
-  if (!Number.isFinite(ms) || ms <= 0) return "10 minutes";
   const sec = Math.round(ms / 1000);
   if (sec < 60) return `${sec} seconds`;
   const min = sec / 60;
@@ -53,9 +52,11 @@ function _fmtCadence(ms) {
   return `${hr.toFixed(1)} hours`;
 }
 
-/*- Pull the base poll interval and the multiplier from the server, then
- *  paint the cadence span in the modal.  Silent on failure — the static
- *  HTML default ("10 minutes") stays visible. */
+/**
+ * Pull the base poll interval and the multiplier from the server, then
+ * paint the cadence span in the modal.  Silent on failure: the span
+ * stays empty, since the page holds no value of its own.
+ */
 async function _refreshBalancedCadence() {
   const span = g("tgBalancedCadence");
   if (!span) return;
@@ -68,7 +69,7 @@ async function _refreshBalancedCadence() {
     if (!(sec > 0) || !(mult > 0)) return;
     span.textContent = _fmtCadence(sec * mult * 1000);
   } catch {
-    /* keep static default */
+    /* the span stays empty */
   }
 }
 

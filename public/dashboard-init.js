@@ -28,11 +28,6 @@ import {
   checkWalletLocked,
 } from "./dashboard-wallet.js";
 import {
-  posStore,
-  updatePosStripUI,
-  _loadPosStore,
-  _applyLocalPositionData,
-  restoreManagedPositions,
   injectPositionDeps,
   scanPositions,
   activateByTokenId,
@@ -40,29 +35,32 @@ import {
   restoreLastPosition,
 } from "./dashboard-positions.js";
 import {
-  onParamChange,
-  updateThrottleUI,
-  injectThrottleDeps,
-} from "./dashboard-throttle.js";
+  posStore,
+  updatePosStripUI,
+  _loadPosStore,
+  _applyLocalPositionData,
+  restoreManagedPositions,
+} from "./dashboard-positions-store.js";
+import { updateThrottleUI, injectThrottleDeps } from "./dashboard-throttle.js";
 import {
-  startDataPolling,
-  loadRealizedGains,
-  loadInitialDeposit,
-  _fmtUsd,
-  positionRangeVisual,
-  refreshCurDepositDisplay,
   resetPollingState,
   resetHistoryFlag,
-  pollNow,
-  injectDataDeps,
-  refreshDepositLabel,
-  refreshLifetimeDaysLabel,
-  loadLifetimeStartDateOverride,
-  setConfigInputDefault,
   getLastStatus,
   isSyncComplete,
   initDataDepositWiring,
 } from "./dashboard-data.js";
+import {
+  loadRealizedGains,
+  loadInitialDeposit,
+  refreshCurDepositDisplay,
+  injectDataDeps,
+  refreshDepositLabel,
+  refreshLifetimeDaysLabel,
+  loadLifetimeStartDateOverride,
+} from "./dashboard-data-deposit.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
+import { positionRangeVisual } from "./dashboard-data-range.js";
+import { setConfigInputDefault } from "./dashboard-config-inputs.js";
 import { injectManageUIDeps, paintManageUI } from "./dashboard-manage-ui.js";
 import {
   fetchUnmanagedDetails,
@@ -72,19 +70,19 @@ import {
 import { injectPriceOverrideDeps } from "./dashboard-price-override.js";
 import { initTelegram } from "./dashboard-telegram.js";
 import { startBrowserIdleTracker } from "./dashboard-idle.js";
-// How often the heap-size line is logged.
-import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
+import { loadUiSettings, uiSetting } from "./dashboard-ui-settings.js";
 import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadLpProviders } from "./dashboard-lp-providers.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
 import { initRpcEndpoints } from "./dashboard-rpc-endpoints.js";
 import { loadSettingLabels } from "./dashboard-setting-labels.js";
+import { bindAllEvents } from "./dashboard-events.js";
+import { loadHelpFigures } from "./dashboard-help-figures.js";
 import {
-  bindAllEvents,
   restorePrivacyMode,
   injectPosStoreForEvents,
-} from "./dashboard-events.js";
+} from "./dashboard-events-manage.js";
 import { injectPosStoreForReload } from "./dashboard-reload-flow.js";
 import {
   restoreSoundsToggle,
@@ -122,6 +120,12 @@ import {
   loadActiveChain,
   paintChainLink,
 } from "./dashboard-chain.js";
+import {
+  countAnsweredQuestion,
+  countUnansweredQuestion,
+  pollNow,
+  startDataPolling,
+} from "./dashboard-data-poll.js";
 
 /*- Very first statement of the browser app — light gray text on black,
  *  rocket emoji before and after "Started."  Mirrors the server-side
@@ -257,10 +261,33 @@ initDisclaimer().then(async () => {
   /*-
    *  Before anything builds a position key or registers a route: the
    *  active chain is the first segment of both, so startup waits here
-   *  until the server names it.
+   *  until the server names it. Each request that ends without naming it
+   *  counts toward the HALTED pill, as an unanswered status poll does.
    */
-  await loadActiveChain();
+  await loadActiveChain({
+    onUnanswered: countUnansweredQuestion,
+    onAnswered: countAnsweredQuestion,
+  });
   paintChainLink();
+  /*-
+   *  The dashboard settings the server sends, the poll interval among
+   *  them: waited for, because everything started below reads them. Each
+   *  request that ends without them counts toward the HALTED pill, as
+   *  the chain's does.
+   */
+  await loadUiSettings({
+    onUnanswered: countUnansweredQuestion,
+    onAnswered: countAnsweredQuestion,
+  });
+  /*-
+   *  The figures the help quotes, as this install runs: not waited for,
+   *  because only the help and the Doubling Trigger Window label read
+   *  them, and the page's figure spans stay empty until they land.
+   */
+  loadHelpFigures({
+    onUnanswered: countUnansweredQuestion,
+    onAnswered: countAnsweredQuestion,
+  });
   _afterDisclaimer();
 });
 
@@ -296,7 +323,6 @@ function _afterDisclaimer() {
     impermanentLossGuardPct: "inIlGuard",
     rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
     rebalanceTimeoutMin: "inOorTimeout",
-    checkIntervalSec: "inInterval",
     minRebalanceIntervalMin: "inMinInterval",
     maxRebalancesPerDay: "inMaxReb",
     offsetToken0Pct: "inOffsetToken0",
@@ -341,7 +367,7 @@ function _afterDisclaimer() {
         if (typeof v !== "number") continue;
         setConfigInputDefault(key, v);
         const el = g(elId);
-        if (el && !el.dataset.userDirty) el.value = v;
+        if (el) el.value = v;
       }
       for (const key of _STORE_ONLY_DEFAULT_KEYS) {
         const v = d[key];
@@ -351,7 +377,7 @@ function _afterDisclaimer() {
        *  default so the row reads correctly on first paint. */
       if (typeof d.offsetToken0Pct === "number") {
         const el1 = g("inOffsetToken1");
-        if (el1 && !el1.dataset.userDirty) el1.value = 100 - d.offsetToken0Pct;
+        if (el1) el1.value = 100 - d.offsetToken0Pct;
       }
     })
     .catch(() => {});
@@ -368,13 +394,15 @@ function _afterDisclaimer() {
   (function restoreActivePosition() {
     const active = posStore.getActive();
     const saved = loadPositionOorThreshold(active);
-    /*- If no per-position value is stored, leave botConfig.oorThreshold
+    /*-
+     *  If no per-position value is stored, leave botConfig.oorThreshold
      *  and the input/display blank until either (a) the user enters a
      *  value or (b) the server's /api/bot-config-defaults AJAX populates
      *  _CONFIG_INPUT_DEFAULTS, after which _syncConfigFromServer +
-     *  _populateConfigInputs fills the input from the shipped JSON
-     *  default.  No literal fallback per
-     *  feedback_one_literal_per_shipped_default. */
+     *  populateConfigInputs fills the input from the default in force.
+     *  No literal fallback per
+     *  feedback_one_literal_per_shipped_default.
+     */
     if (saved !== undefined) {
       botConfig.oorThreshold = saved;
       const el = g("inOorThreshold");
@@ -507,7 +535,7 @@ function _afterDisclaimer() {
    *  under the esbuild bundle. */
   initDataDepositWiring();
 
-  onParamChange();
+  updateThrottleUI();
   setInterval(updateThrottleUI, 1000);
   startDataPolling();
 
@@ -535,7 +563,7 @@ function _afterDisclaimer() {
       );
     };
     _logHeap();
-    setInterval(_logHeap, UI_DEFAULTS.heapLogIntervalMs);
+    setInterval(_logHeap, uiSetting("heapLogIntervalMs"));
   }
 
   /*-

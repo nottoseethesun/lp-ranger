@@ -12,6 +12,28 @@ const config = require("./config");
 const { getApiKey, isServiceEnabled } = require("./api-key-holder");
 const { hasEncryptedKey } = require("./api-key-store");
 const { MORALIS_API } = require("./price-service-urls");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+
+/**
+ * Whether the stored Moralis key is used: the operator's saved choice,
+ * else the install's default.
+ *
+ * The choice is saved in bot-config.json's `global` section by the key
+ * dialog's switch, and a `null` save clears it. With none saved, the
+ * default in bot-config-defaults.json decides, the operator's copy of
+ * that file on top. The server applies the answer when the wallet is
+ * unlocked and on every save of the switch, and `GET /api/status`
+ * publishes it, so the switch shows what the server does.
+ *
+ * @param {object|undefined} globalCfg  bot-config.json's `global`.
+ * @returns {boolean}
+ */
+function moralisEnabledIn(globalCfg) {
+  const saved = globalCfg?.moralisEnabled;
+  return typeof saved === "boolean"
+    ? saved
+    : readBotConfigDefaults().moralisEnabled;
+}
 
 /**
  * The request that checks a Moralis key on a chain: the price of the
@@ -124,6 +146,7 @@ async function handleApiKeyStatus(_req, res, jsonResponse) {
 }
 
 module.exports = {
+  moralisEnabledIn,
   pingMoralis,
   validateMoralisKey,
   handleApiKeyStatus,

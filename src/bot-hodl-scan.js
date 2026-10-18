@@ -185,7 +185,8 @@ async function computeDepositUsd(
      *  Today's would be cached under this block's key, which never
      *  expires, and would price the deposit at today's rate unflagged; no
      *  price instead lets the deposit fall back to the current one,
-     *  marked as such, and leaves the block to be priced on a later pass.
+     *  marked as such. The deposit keeps that figure on later passes;
+     *  Re-scan Prices is what prices it again.
      */
     if (blockTs <= 0) {
       log.warn(

@@ -26,6 +26,11 @@ sharedRewrites:
     to: 'href="9mm-pos-mgr.css"'
   - from: 'href="/fonts.css"'
     to: 'href="fonts.css"'
+  # The manual's script asks the running app for the install's own
+  # figures; a static copy has no app to ask, and keeps the shipped
+  # figures the build wrote, so the tag that loads it is dropped.
+  - from: '  <script type="module" src="/dashboard-manual-figures.js"></script>'
+    to: ""
 
 # Pages to publish. `css` names the page-specific stylesheet whose
 # cache-busted href also needs flattening.

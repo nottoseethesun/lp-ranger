@@ -1,8 +1,11 @@
 ---
 name: feedback_logging
-description: Log content rules: token symbols, NFT id + emoji, full context on compound/rebalance/swap, add logs to new features
+description: "Log content rules: token symbols, NFT id + emoji, full context on compound/rebalance/swap, add logs to new features"
 metadata:
+  node_type: memory
   type: feedback
+  originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
+  modified: 2026-10-17T17:39:22.520Z
 ---
 
 # Logging
@@ -16,21 +19,21 @@ When logging anything about a token, always include the human-readable symbol ne
 
 **Why:** User explicitly said "include the human-readable token name, as you always should do." This is a project-wide rule, not a one-off. Logs are the primary debugging surface and a bare 0x… makes them useless at a glance.
 
-**How to apply:** Wherever a log mentions a token address, resolve the symbol via `getTokenSymbol(addr)` from `src/server-scan.js` and include it. Format suggestion: `WPLS (0xA107…9a27)` or `token=WPLS/0xA107…9a27`. Falls back to address-only if symbol cache hasn't loaded the token yet.
+**How to apply:** Wherever a log mentions a token address, render it with `formatToken(addr)` from `src/price-source-cascade.js`: `WPLS (0xA107…9a27)`, or the abbreviated address alone if the symbol cache hasn't loaded the token yet. Compute it on its own line before the log call ([[feedback_no_computation_in_params]]). For the bare symbol, `getTokenSymbol(addr)` lives in `src/token-symbol-cache.js` and answers null when unknown; never print a stand-in such as `?` for it.
 
 ## log nft id emoji
 
 Every log line that mentions an NFT position must include both:
 
 1. The numeric `tokenId` (e.g. `161234`)
-2. The 3-emoji fingerprint from `emojiId(tokenId)` (defined in `src/logger.js`, also re-exported to the dashboard) &mdash; an MD5-derived 3-emoji sequence wrapped in an ANSI black-background reset
+2. The 3-emoji fingerprint from `emojiId(tokenId)` (defined in `src/logger.js`; the dashboard has its own, same algorithm, in `public/dashboard-helpers.js`) &mdash; an MD5-derived 3-emoji sequence wrapped in an ANSI black-background reset
 
 **Why:** Two-fold identification: the number is for grep / search / cross-referencing with on-chain explorers, the emoji fingerprint is for instant visual recognition when scanning a long log without reading every digit. The user works with many concurrent positions; the emoji fingerprint disambiguates at a glance. Existing reference impls: `src/position-manager.js:242`, `src/position-manager.js:294`, `src/server-routes.js`.
 
 **How to apply:**
 
 - In Node code: `const { emojiId } = require("./logger");` then `console.log("[bot] %s/%s NFT #%s %s: <msg>", t0Sym, t1Sym, tokenId, emojiId(tokenId), ...)`.
-- In dashboard code: `import { emojiId } from "./dashboard-positions.js"` (re-export path) then use the same pattern.
+- In dashboard code: `import { emojiId } from "./dashboard-helpers.js"` then use the same pattern.
 - Compose with [[feedback-log-token-symbols]]: when a log line names *both* a position AND its tokens, both rules apply &mdash; include token symbols AND NFT number AND NFT emoji.
 - Don't include emoji-only or tokenId-only; always both together when an NFT is the log's subject.
 - Empty tokenId is fine (`emojiId("")` is harmless), but skip the formatting if there's no position context at all.

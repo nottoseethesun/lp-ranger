@@ -20,6 +20,7 @@ const {
 } = require("./rebalancer-pools");
 const { _checkSwapImpact } = require("./rebalancer-swap-impact");
 const { receiptGasWei } = require("./receipt-gas");
+const { addSpentGas } = require("./spent-gas");
 
 /**
  * Display label for the V3 router route: the active chain's
@@ -41,6 +42,47 @@ const V3_ROUTER_LABEL = config.SWAP_ROUTER_NAME;
  *   a circular dep with rebalancer-swap.js).
  */
 async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
+  const { swapRouterAddress, tokenIn, amountIn, approvalMultiple } = params;
+  const { Contract } = ethersLib;
+  const signerAddr = await signer.getAddress();
+  const approvalGas = await _ensureAllowance(
+    new Contract(tokenIn, ERC20_ABI, signer),
+    signerAddr,
+    swapRouterAddress,
+    amountIn,
+    approvalMultiple,
+  );
+  /*-
+   *  The approval, when one was needed, has confirmed and been paid for,
+   *  so the swap's result carries its gas, and so does every way this
+   *  swap can fail from here: a refused quote, no liquidity, too much
+   *  price impact, the swap itself failing, or the balance read after it
+   *  (src/spent-gas.js). It is added here and only here: that last error
+   *  already carries the swap's own gas, and an approval counted inside
+   *  the swap as well was counted twice.
+   */
+  try {
+    return addSpentGas(
+      await _quoteAndSwap(signer, ethersLib, params, balanceDiff),
+      approvalGas,
+    );
+  } catch (err) {
+    throw addSpentGas(err, approvalGas);
+  }
+}
+
+/**
+ * Quote the router swap, hold it to the slippage setting, and send it.
+ *
+ * @param {object} signer
+ * @param {object} ethersLib
+ * @param {object} params  `swapViaRouter`'s parameters.
+ * @param {Function} balanceDiff  Balance-diff wrapper.
+ * @returns {Promise<{txHash: string, gasCostWei: bigint,
+ *   swapSources: string, amountOut: bigint}>}  `gasCostWei` is the swap's
+ *   own; `swapViaRouter` adds the approval's.
+ */
+async function _quoteAndSwap(signer, ethersLib, params, balanceDiff) {
   const {
     swapRouterAddress,
     tokenIn,
@@ -53,20 +95,11 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     decimalsOut,
     isToken0To1,
     recipient,
-    approvalMultiple,
     _attempts,
     _attemptLabel,
     logCtx,
   } = params;
   const { Contract } = ethersLib;
-  const signerAddr = await signer.getAddress();
-  const approvalGas = await _ensureAllowance(
-    new Contract(tokenIn, ERC20_ABI, signer),
-    signerAddr,
-    swapRouterAddress,
-    amountIn,
-    approvalMultiple,
-  );
   const router = new Contract(swapRouterAddress, SWAP_ROUTER_ABI, signer);
   const swapParams = {
     tokenIn,
@@ -121,7 +154,7 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     );
     return {
       txHash: receipt.hash,
-      gasCostWei: receiptGasWei(receipt) + approvalGas,
+      gasCostWei: receiptGasWei(receipt),
       swapSources: V3_ROUTER_LABEL,
     };
   });

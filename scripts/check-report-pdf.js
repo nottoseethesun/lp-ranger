@@ -311,9 +311,9 @@ function _testsSection(data) {
       layout: "noBorders",
     });
   }
-  if (t.failures && t.failures.length) {
+  if (data.failures.length) {
     content.push({ text: "Failures", style: "h3" });
-    for (const f of t.failures) {
+    for (const f of data.failures) {
       content.push({ text: `✘ ${f.name}`, style: "fail", fontSize: 9 });
     }
   }

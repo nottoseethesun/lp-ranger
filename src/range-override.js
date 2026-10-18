@@ -12,7 +12,7 @@
  *   - toggle ON  ("No Override")  → `rangeOverrideEnabled === false`
  *     Badge reads "Re-Use Existing Position Range".  `buildRebalanceOpts`
  *     withholds `rebalanceRangeWidthPct` and `fullRangeRebalanceEnabled`
- *     and pins the offset to the shipped default, so `_computeRange` in
+ *     and pins the offset to centred, so `_computeRange` in
  *     `rebalancer-execute.js` lands on `rangeMath.preserveRange()`
  *     centred on the current tick.
  *   - toggle OFF                  → `rangeOverrideEnabled === true`
@@ -34,12 +34,16 @@
 
 "use strict";
 
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { CENTERED_OFFSET_PCT } = require("./centered-offset");
 
-/*- Default for a position that has never been configured.  Per
+/*-
+ *  Default for a position that has never been configured: the shipped
+ *  value, or the operator's override of it.  Per
  *  feedback_one_literal_per_shipped_default the literal lives only in
- *  bot-config-defaults.json. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+ *  bot-config-defaults.json.
+ */
+const _DEFAULTS = readBotConfigDefaults();
 
 /**
  * Per-position config keys that constitute a Range override.  A slot
@@ -64,7 +68,7 @@ const RANGE_OVERRIDE_KEYS = [
  *      Full-Range flag, or a Position Offset resolves to `true`.  Those
  *      slots predate the toggle; upgrading must not silently stop
  *      applying settings a live position already relies on.
- *   3. Otherwise the shipped default — an empty slot, i.e. every
+ *   3. Otherwise the default — as shipped, an empty slot, i.e. every
  *      position the first time it is seen, means "No Override".
  *
  * @param {object|null|undefined} posCfg  A position's config slot (or any
@@ -88,4 +92,54 @@ function resolveRangeOverrideEnabled(posCfg) {
   return _DEFAULTS.rangeOverrideEnabled;
 }
 
-module.exports = { resolveRangeOverrideEnabled, RANGE_OVERRIDE_KEYS };
+/**
+ * The Position Offset the next rebalance uses: with the Range settings in
+ * force, the position's saved offset, or else the install's default
+ * (shipped, with the operator's override); with "No Override", centred,
+ * so the existing spread is re-used around the current price. The bot
+ * builds its rebalance from this (`buildRebalanceOpts`,
+ * src/bot-cycle-opts.js) and `GET /api/status` publishes it
+ * (src/build-status-positions.js), so the Rebalance Now preview shows the
+ * range the rebalance will mint, not one around a centre it assumed.
+ * @param {object|null|undefined} posCfg  As for
+ *   `resolveRangeOverrideEnabled`.
+ * @param {object} [defaults]  The resolved defaults; the install's own
+ *   unless a test passes others.
+ * @returns {number}  Percent of the range below the current price.
+ */
+function resolveRebalanceOffsetPct(posCfg, defaults = _DEFAULTS) {
+  if (!resolveRangeOverrideEnabled(posCfg)) return CENTERED_OFFSET_PCT;
+  const saved = posCfg?.offsetToken0Pct;
+  return saved !== undefined && saved !== null
+    ? saved
+    : defaults.offsetToken0Pct;
+}
+
+/**
+ * The Full-Range flag among a position's Range settings: its saved one,
+ * or else `true` when the install's default turns Full-Range on (shipped,
+ * with the operator's override). With neither there is none, and a
+ * rebalance with the Range settings in force keeps the position's own
+ * spread, so the dashboard's checkbox shows whether that spread is full
+ * range already. The bot applies this flag only while the Range settings
+ * are in force (`buildRebalanceOpts`, src/bot-cycle-opts.js), and
+ * `GET /api/status` publishes it for the checkbox
+ * (src/build-status-positions.js).
+ * @param {object|null|undefined} posCfg  As for
+ *   `resolveRangeOverrideEnabled`.
+ * @param {object} [defaults]  The resolved defaults; the install's own
+ *   unless a test passes others.
+ * @returns {boolean|undefined}
+ */
+function fullRangeSetting(posCfg, defaults = _DEFAULTS) {
+  const saved = posCfg?.fullRangeRebalanceEnabled;
+  if (typeof saved === "boolean") return saved;
+  return defaults.fullRangeRebalanceEnabled === true ? true : undefined;
+}
+
+module.exports = {
+  resolveRangeOverrideEnabled,
+  resolveRebalanceOffsetPct,
+  fullRangeSetting,
+  RANGE_OVERRIDE_KEYS,
+};

@@ -90,7 +90,11 @@ const path = require("path");
 const readline = require("readline");
 const { Command } = require("commander");
 const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
-const { positionKeyParts } = require("./_helpers");
+/*-
+ *  Dependency-free, so this tool can share the app's own key rule
+ *  without loading the app's modules.
+ */
+const { parseCompositeKey } = require("../../src/composite-key");
 
 /*-
  *  The chain used when `--blockchain` is not given: the shipped default
@@ -182,7 +186,7 @@ function _writeJson(filePath, obj) {
 /** Find the position composite key matching the given tokenId + filters. */
 function _findPositionKey(positions, tokenId, flags) {
   const matches = Object.keys(positions).filter((k) => {
-    const p = positionKeyParts(k);
+    const p = parseCompositeKey(k);
     if (p === null || p.tokenId !== tokenId) return false;
     if (flags.blockchain && p.blockchain !== flags.blockchain) return false;
     if (flags.wallet && p.wallet.toLowerCase() !== flags.wallet.toLowerCase())
@@ -242,7 +246,7 @@ function _filterDescription(flags) {
  *   none matches. Exits 1 when several match.
  */
 function _findPoolKey(epochCache, posKey, flags) {
-  const { blockchain, wallet, contract } = positionKeyParts(posKey);
+  const { blockchain, wallet, contract } = parseCompositeKey(posKey);
   const segs = [
     blockchain.toLowerCase(),
     contract.toLowerCase(),

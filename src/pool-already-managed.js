@@ -229,6 +229,8 @@ async function rejectIfPoolManaged(o) {
     error: "pool-already-managed",
     conflictTokenId: hit.tokenId,
     conflictKey: hit.key,
+    // The position refused, as src/position-answer-tag.js names one.
+    positionKey: o.key,
   });
   return true;
 }

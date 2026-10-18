@@ -25,6 +25,7 @@ const assert = require("node:assert/strict");
 
 const { createApiStatusHandler } = require("../src/handle-api-status");
 const { primaryRouteLabel } = require("../src/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/server-moralis");
 const config = require("../src/config");
 const APP_RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
@@ -53,6 +54,7 @@ async function realStatusBody() {
     getLpProviderDisplayName: () => "9mm v3",
     managedKeys: () => [],
     primaryRouteLabel,
+    moralisEnabledIn,
     jsonResponse: (_res, _code, b) => {
       body = b;
     },

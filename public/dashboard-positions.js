@@ -2,17 +2,10 @@
  * @file dashboard-positions.js
  * @description Position browser UI, scanning,
  *   routing, and activation for the 9mm v3
- *   Position Manager dashboard. Re-exports the
- *   position store from dashboard-positions-store.
+ *   Position Manager dashboard.
  *
  * Depends on: dashboard-helpers.js, dashboard-wallet.js,
  *             dashboard-positions-store.js.
- *
- * NOTE: Import of positionRangeVisual from data.js
- * creates a circular reference (data imports posStore
- * from here). This is safe because positionRangeVisual
- * is only called inside function bodies, not at module
- * evaluation time.
  */
 
 import { log } from "./dashboard-log.js";
@@ -24,65 +17,35 @@ import {
   emojiId,
   fetchWithCsrf,
 } from "./dashboard-helpers.js";
-import { _posLabel, applySyncBlur } from "./dashboard-data.js";
-import { _setLeadingText } from "./dashboard-data-kpi.js";
+import { applySyncBlur } from "./dashboard-data.js";
+import { _posLabel } from "./dashboard-data-status.js";
+import { setLeadingText as _setLeadingText } from "./dashboard-kpi-dom.js";
 import { LT_BD_IDS } from "./dashboard-data-kpi-breakdown.js";
 import { wallet } from "./dashboard-wallet.js";
 import {
   posStore,
-  MAX_POS,
-  PAGE_SIZE,
-  _loadPosStore,
   _applyLocalPositionData,
   _applyPositionConfig,
   _setText,
   updatePosStripUI,
-  updateManagedPositions,
   isPositionManaged,
   isPositionClosed,
-  formatPosLabel,
-  restoreManagedPositions,
   bestAutoSelectIdx,
   setSyncRouteToState,
   setExitClosedPosView,
   setFetchUnmanagedDetails,
 } from "./dashboard-positions-store.js";
-
-// ── Re-exports from store ────────────────────────
-// All external importers continue to import from
-// this module — these re-exports keep them working.
-export {
-  posStore,
-  MAX_POS,
-  PAGE_SIZE,
-  _loadPosStore,
-  _applyLocalPositionData,
-  _applyPositionConfig,
-  updatePosStripUI,
-  updateManagedPositions,
-  restoreManagedPositions,
-  isPositionManaged,
-  isPositionClosed,
-  formatPosLabel,
-};
 import {
-  openPosBrowser,
+  readLastPosition,
+  rememberLastPosition,
+} from "./dashboard-chain-storage.js";
+import {
   closePosBrowser,
   renderPosBrowser,
-  posRowClick,
-  posRowSelect,
-  posChangePage,
   getPosBrowserSelected,
 } from "./dashboard-positions-browser.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
-export {
-  openPosBrowser,
-  closePosBrowser,
-  renderPosBrowser,
-  posRowClick,
-  posRowSelect,
-  posChangePage,
-};
+import { checkManagedOnSwitch } from "./dashboard-manage-check.js";
 
 // ── Late-bound deps ──────────────────────────────
 
@@ -197,12 +160,17 @@ function _activateCore(idx, opts) {
   if (_refreshLifetimeDaysLabel) _refreshLifetimeDaysLabel();
   _applyPositionConfig(active);
   if (_positionRangeVisual) _positionRangeVisual();
-  /*- Repaint the Manage button + badge + Lifetime panel for the new
+  /*-
+   *  Repaint the Manage button + badge + Lifetime panel for the new
    *  active position.  paintManageUI() is the single owner — it reads
    *  posStore.getActive() + getLastStatus() + DOM, so we don't need
    *  to thread state through here.  Runs BEFORE the closed-position
    *  early-return below so closed switches also repaint (the historic
-   *  bug). */
+   *  bug).  The server is asked first whether the new position is
+   *  managed, which marks the question as sent, so this paint draws the
+   *  button disabled until the answer repaints it.
+   */
+  checkManagedOnSwitch(active);
   paintManageUI();
   if (isPositionClosed(active) && _enterClosedPosView) {
     _enterClosedPosView(active);
@@ -211,7 +179,7 @@ function _activateCore(idx, opts) {
   }
   _updateRoute(active, updateRoute, syncRoute);
   try {
-    localStorage.setItem("9mm_last_position", String(active.tokenId));
+    rememberLastPosition(active.tokenId);
   } catch {
     /* */
   }
@@ -289,7 +257,7 @@ function _fetchUnmanagedIfNeeded(active) {
 /** Restore last-viewed position from localStorage, preferring open positions. */
 export function restoreLastPosition() {
   try {
-    const t = localStorage.getItem("9mm_last_position");
+    const t = readLastPosition();
     if (t) {
       const idx = posStore.entries.findIndex(
         (e) => e.positionType === "nft" && String(e.tokenId) === String(t),

@@ -5,9 +5,10 @@
  * Extracted from dashboard-data-kpi.js for line-count compliance.
  */
 import { g, truncName, botConfig, cloneTpl } from "./dashboard-helpers.js";
-import { posStore } from "./dashboard-positions.js";
+import { activeChainDisplayName } from "./dashboard-chain.js";
+import { posStore } from "./dashboard-positions-store.js";
 import { _poolKey } from "./dashboard-data-deposit.js";
-import { _fmtUsd } from "./dashboard-data-kpi.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
 
 function _missingPriceNames(d) {
   const a = posStore.getActive(),
@@ -35,7 +36,8 @@ function _fillBaselineCtx() {
   const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
   const frag = cloneTpl("tplHodlBaselineCtx");
   if (!frag) return;
-  frag.querySelector('[data-tpl="chain"]').textContent = botConfig.chainName;
+  frag.querySelector('[data-tpl="chain"]').textContent =
+    activeChainDisplayName();
   frag.querySelector('[data-tpl="wallet"]').textContent = w;
   frag.querySelector('[data-tpl="pair"]').textContent = pair;
   frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";

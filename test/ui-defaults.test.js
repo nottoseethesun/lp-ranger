@@ -1,218 +1,165 @@
-/**
- * @file test/ui-defaults.test.js
- * @description Unit tests for src/ui-defaults.js and the
- * GET /api/ui-defaults route handler.
- *
- * Tests write to the gitignored
- * `app-config/user-configurable/ui-defaults.json` (operator override)
- * rather than the tracked shipped file under
- * `app-defaults-for-user-configurable/` — the loader deep-merges the
- * user file on top of the shipped defaults, so this exercises the
- * exact same path real operators use.
- */
-
 "use strict";
 
-const { describe, it, beforeEach, afterEach } = require("node:test");
+/**
+ * @file test/ui-defaults.test.js
+ * @description The dashboard settings the server sends (src/ui-defaults.js)
+ *   and `GET /api/ui-defaults`, which answers with them.
+ *
+ *   They are ui-defaults_non-layout_for-server-up-scenario.json with an
+ *   operator's copy on top, each value held to its rule: true or false for
+ *   an on/off setting, the timer rule for one the page turns into a timer
+ *   delay, and its range in setting-bounds.json for any other. Read at
+ *   startup, strictly, a value outside its rule stops the app; any other
+ *   read keeps the shipped value in its place.
+ *
+ *   The operator's copy is written to a temporary directory of this
+ *   file's own, never to app-config/user-configurable/. The loader reads
+ *   `LP_RANGER_USER_CONFIG_DIR` at module load, so it is set before
+ *   anything under `src/` is required.
+ */
+
+const { describe, it, before, beforeEach, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
-const _SHIPPED_FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "app-defaults-for-user-configurable",
-  "ui-defaults.json",
-);
+const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ui-defaults-"));
+process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
+after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const _USER_FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "user-configurable",
-  "ui-defaults.json",
-);
+const _FILE = "ui-defaults_non-layout_for-server-up-scenario.json";
+const {
+  loadShippedDefaults,
+  _resetMemoForTests: resetLoaderMemo,
+} = require("../src/load-merged-defaults");
+const {
+  readUiDefaults,
+  readUiDefaultsStrict,
+  handleUiDefaults,
+  _resetMemoForTests,
+} = require("../src/ui-defaults");
 
-/*- The shipped JSON is the source of truth for default values; the
- *  tests read it (NOT a hardcoded copy) so this file never drifts
- *  when an operator updates the shipped defaults. */
-const _SHIPPED = JSON.parse(fs.readFileSync(_SHIPPED_FILE, "utf8"));
+const SHIPPED = loadShippedDefaults(_FILE);
 
-function _clearModuleCache() {
-  delete require.cache[require.resolve("../src/ui-defaults")];
-  delete require.cache[require.resolve("../src/load-merged-defaults")];
+/**
+ * Write the operator's copy of the file, as raw text or an object. The
+ * loader keeps each file it has read, so it is told to read again.
+ */
+function writeOverride(body) {
+  fs.writeFileSync(
+    path.join(_USER_DIR, _FILE),
+    typeof body === "string" ? body : JSON.stringify(body),
+  );
+  resetLoaderMemo();
 }
 
-function _writeUser(obj) {
-  fs.writeFileSync(_USER_FILE, JSON.stringify(obj));
-}
-
-function _clearUser() {
-  /*- TOCTOU-safe: a parallel test (24-way concurrency per
-   *  package.json) could unlink between exists and unlink.  Treat
-   *  ENOENT as success since the post-condition (file absent) holds. */
-  try {
-    fs.unlinkSync(_USER_FILE);
-  } catch (err) {
-    if (err.code !== "ENOENT") throw err;
-  }
-}
+before(() => {
+  for (const key of Object.keys(SHIPPED))
+    assert.ok(!key.startsWith("_"), `${key} is a note, not a setting`);
+});
 
 beforeEach(() => {
-  _clearUser();
-  _clearModuleCache();
+  fs.rmSync(path.join(_USER_DIR, _FILE), { force: true });
+  resetLoaderMemo();
+  _resetMemoForTests();
 });
 
-afterEach(() => {
-  _clearUser();
-  _clearModuleCache();
-});
-
-describe("ui-defaults.readUiDefaults", () => {
-  it("returns soundsEnabled from the user override", () => {
-    _writeUser({ soundsEnabled: false });
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.soundsEnabled, false);
+describe("readUiDefaults", () => {
+  it("is every shipped setting when the operator has written none", () => {
+    assert.deepEqual({ ...readUiDefaults() }, SHIPPED);
   });
 
-  it("returns true when the override sets soundsEnabled to true", () => {
-    _writeUser({ soundsEnabled: true });
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.soundsEnabled, true);
-  });
-
-  it("falls back to shipped default when no user override exists", () => {
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.soundsEnabled, _SHIPPED.soundsEnabled);
-  });
-
-  it("falls back to shipped default when user override JSON is malformed", () => {
-    fs.writeFileSync(_USER_FILE, "{ not valid json");
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.soundsEnabled, _SHIPPED.soundsEnabled);
-  });
-
-  it("ignores non-boolean soundsEnabled override values", () => {
-    _writeUser({ soundsEnabled: "yes" });
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.soundsEnabled, _SHIPPED.soundsEnabled);
-  });
-
-  it("ignores _comment / _*-prefixed override keys (just doc fields)", () => {
-    _writeUser({ _comment: "doc", soundsEnabled: false });
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.soundsEnabled, false);
-    assert.equal(out._comment, undefined);
-  });
-
-  it("returns privacyModeEnabled from the user override", () => {
-    _writeUser({ privacyModeEnabled: true });
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.privacyModeEnabled, true);
-  });
-
-  it("privacyModeEnabled defaults to shipped value when not overridden", () => {
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.privacyModeEnabled, _SHIPPED.privacyModeEnabled);
-  });
-
-  it("returns privacy sub-settings from the user override", () => {
-    _writeUser({
-      privacyBlurWalletAddresses: false,
-      privacyBlurUsdAmounts: false,
-      privacyUsdAmountThreshold: 500,
+  it("applies each operator value that keeps its rule", () => {
+    /*-
+     *  One setting of each kind, each moved off its shipped value: an
+     *  on/off, a timer and a ranged one.
+     */
+    writeOverride({
+      soundsEnabled: !SHIPPED.soundsEnabled,
+      dashboardPollIntervalMs: SHIPPED.dashboardPollIntervalMs + 1000,
+      throttleNearLimitPct: SHIPPED.throttleNearLimitPct - 20,
     });
-    const { readUiDefaults } = require("../src/ui-defaults");
     const out = readUiDefaults();
-    assert.equal(out.privacyBlurWalletAddresses, false);
-    assert.equal(out.privacyBlurUsdAmounts, false);
-    assert.equal(out.privacyUsdAmountThreshold, 500);
+    assert.equal(out.soundsEnabled, !SHIPPED.soundsEnabled);
+    assert.equal(
+      out.dashboardPollIntervalMs,
+      SHIPPED.dashboardPollIntervalMs + 1000,
+    );
+    assert.equal(out.throttleNearLimitPct, SHIPPED.throttleNearLimitPct - 20);
   });
 
-  it("privacy defaults to shipped values when keys are absent", () => {
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(
-      out.privacyBlurWalletAddresses,
-      _SHIPPED.privacyBlurWalletAddresses,
-    );
-    assert.equal(out.privacyBlurUsdAmounts, _SHIPPED.privacyBlurUsdAmounts);
-    assert.equal(
-      out.privacyUsdAmountThreshold,
-      _SHIPPED.privacyUsdAmountThreshold,
-    );
-  });
-
-  it("ignores non-boolean privacy toggle overrides", () => {
-    _writeUser({
-      privacyBlurWalletAddresses: "no",
-      privacyBlurUsdAmounts: 0,
+  it("keeps the shipped value for a setting written outside its rule", () => {
+    writeOverride({
+      soundsEnabled: "yes",
+      copyFeedbackMs: 0,
+      throttleNearLimitPct: 150,
+      activityLogMaxEntries: 99.5,
     });
-    const { readUiDefaults } = require("../src/ui-defaults");
     const out = readUiDefaults();
-    assert.equal(
-      out.privacyBlurWalletAddresses,
-      _SHIPPED.privacyBlurWalletAddresses,
-    );
-    assert.equal(out.privacyBlurUsdAmounts, _SHIPPED.privacyBlurUsdAmounts);
+    for (const key of [
+      "soundsEnabled",
+      "copyFeedbackMs",
+      "throttleNearLimitPct",
+      "activityLogMaxEntries",
+    ])
+      assert.equal(out[key], SHIPPED[key], key);
   });
 
-  it("clamps privacyUsdAmountThreshold override to the 5-digit input range", () => {
-    for (const bad of [-1, 100000, Number.NaN, "99", null]) {
-      _writeUser({ privacyUsdAmountThreshold: bad });
-      _clearModuleCache();
-      const { readUiDefaults } = require("../src/ui-defaults");
-      const out = readUiDefaults();
-      assert.equal(
-        out.privacyUsdAmountThreshold,
-        _SHIPPED.privacyUsdAmountThreshold,
-      );
-    }
-  });
-
-  it("floors fractional privacyUsdAmountThreshold override", () => {
-    _writeUser({ privacyUsdAmountThreshold: 150.75 });
-    const { readUiDefaults } = require("../src/ui-defaults");
-    const out = readUiDefaults();
-    assert.equal(out.privacyUsdAmountThreshold, 150);
+  it("leaves the shipped values standing when the file cannot be parsed", () => {
+    writeOverride("{ not json");
+    assert.deepEqual({ ...readUiDefaults() }, SHIPPED);
   });
 });
 
-describe("ui-defaults.handleUiDefaults", () => {
-  it("returns 200 with the merged defaults (user override applied)", () => {
-    _writeUser({ soundsEnabled: false });
-    const { handleUiDefaults } = require("../src/ui-defaults");
-    let gotStatus = null;
-    let gotBody = null;
-    const res = {};
-    const jsonResponse = (_res, status, body) => {
-      gotStatus = status;
-      gotBody = body;
-    };
-    handleUiDefaults({}, res, jsonResponse);
-    assert.equal(gotStatus, 200);
-    assert.equal(gotBody.soundsEnabled, false);
+describe("readUiDefaultsStrict", () => {
+  it("refuses every setting written outside its rule, naming the file and each one", () => {
+    writeOverride({
+      soundsEnabled: "yes",
+      dashboardPollIntervalMs: 100,
+      throttleNearLimitPct: 150,
+    });
+    assert.throws(
+      () => readUiDefaultsStrict(),
+      (err) => {
+        assert.equal(err.badSettingValue, true);
+        assert.match(err.message, new RegExp(`user-configurable/${_FILE}`));
+        assert.match(err.message, /soundsEnabled must be true or false/);
+        assert.match(err.message, /dashboardPollIntervalMs/);
+        assert.match(err.message, /throttleNearLimitPct must be .*; it is 150/);
+        return true;
+      },
+    );
   });
 
-  it("returns 200 with shipped defaults when no user override exists", () => {
-    const { handleUiDefaults } = require("../src/ui-defaults");
-    let gotStatus = null;
-    let gotBody = null;
-    const jsonResponse = (_res, status, body) => {
-      gotStatus = status;
-      gotBody = body;
-    };
-    handleUiDefaults({}, {}, jsonResponse);
-    assert.equal(gotStatus, 200);
-    assert.equal(gotBody.soundsEnabled, _SHIPPED.soundsEnabled);
+  it("accepts every shipped value written back as an override", () => {
+    /*-
+     *  Every setting goes through its rule here, so a setting shipped
+     *  without one would throw rather than pass unchecked.
+     */
+    writeOverride(SHIPPED);
+    assert.deepEqual({ ...readUiDefaultsStrict() }, SHIPPED);
+  });
+
+  it("is the answer every later read returns, an edit since included", () => {
+    writeOverride({ throttleNearLimitPct: 50 });
+    readUiDefaultsStrict();
+    writeOverride({ throttleNearLimitPct: 60 });
+    assert.equal(readUiDefaults().throttleNearLimitPct, 50);
+  });
+});
+
+describe("GET /api/ui-defaults", () => {
+  it("answers 200 with the settings in force", () => {
+    writeOverride({ privacyUsdAmountThreshold: 500 });
+    let status = null;
+    let body = null;
+    handleUiDefaults({}, {}, (_res, s, b) => {
+      status = s;
+      body = b;
+    });
+    assert.equal(status, 200);
+    assert.equal(body.privacyUsdAmountThreshold, 500);
+    assert.deepEqual(Object.keys(body).sort(), Object.keys(SHIPPED).sort());
   });
 });

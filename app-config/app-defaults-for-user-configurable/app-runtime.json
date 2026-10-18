@@ -5,10 +5,11 @@
     "host": "127.0.0.1"
   },
   "shutdown": {
-    "_comment": "How a stop ends the server. On SIGINT or SIGTERM (Ctrl+C, or `npm stop`) the server starts stopping every position and closing its listener, then exits by itself once exitTimeoutMs has passed, finished or not. `npm stop` sends that SIGTERM, then checks every stopCheckIntervalMs whether the server has gone, and only after exitTimeoutMs + stopKillMarginMs falls back to SIGKILL. The margin keeps the server's own exit ahead of the kill, so a stop that is merely slow still runs the steps an exit runs, the PID file's removal among them. Each is checked as a timer setting by src/timer-bounds.js, and an unusable one stops the program reading it, naming the setting, rather than leaving a stop that kills at once. Read by src/shutdown-timing.js, for server.js and scripts/stop.js.",
+    "_comment": "How a stop ends the server. On SIGINT or SIGTERM (Ctrl+C, or `npm stop`) the server starts stopping every position and closing its listener, then exits once exitTimeoutMs has passed, finished or not, cutting off any rebalance or compound under way. `npm stop` sends that SIGTERM, checks every stopCheckIntervalMs whether the server has gone, and falls back to SIGKILL only after exitTimeoutMs + stopKillMarginMs. The margin lets a slow stop still finish its own exit, removing the PID file, before the kill. `npm run gentle-stop` asks GET /api/is-position-being-adjusted at once, then every gentleStopPollMs (300000, five minutes), and stops the server as `npm stop` does once nothing is under way. Each is a timer setting checked by src/timer-bounds.js; an unusable one stops the program reading it, naming the setting. Read by src/shutdown-timing.js, for server.js, bot.js, scripts/stop.js and scripts/gentle-stop.js.",
     "exitTimeoutMs": 3000,
     "stopKillMarginMs": 2000,
-    "stopCheckIntervalMs": 100
+    "stopCheckIntervalMs": 100,
+    "gentleStopPollMs": 300000
   },
   "defaults": {
     "_comment": "chain: which entry of chains.json the app runs against when CHAIN_NAME is not set in .env. Read by src/runtime-flags.js, which lowercases it and looks it up in chains.json; a value matching no entry there throws at startup rather than falling back to another chain, since the entry carries the RPC endpoints and contract addresses every transaction is built against. Per feedback_one_literal_per_shipped_default the chain name lives here only.",
@@ -20,6 +21,11 @@
     "deadlineSec": 900,
     "cancelToDeadlineMultiple": 4,
     "retrySwapLimit": 8,
+    "_swapBackoff_comment": "How a rebalance is retried after the pool's price moved between its swap and its mint: it waits swapBackoffBaseMs, doubling with each failure in a row up to swapBackoffMaxMs, until retrySwapLimit failures abort it and ask the operator to rebalance by hand. The next successful rebalance clears it; Rebalance Now is not held to it. Read by src/bot-cycle-backoff.js; ranges are in setting-bounds.json.",
+    "swapBackoffBaseMs": 60000,
+    "swapBackoffMaxMs": 1200000,
+    "_midwayRetryLimit_comment": "How many times a rebalance left mid-way (the old position drained, no new one minted, the coins in the wallet) is tried again before the bot aborts and asks the operator to act. Read by src/bot-loop.js; its range is in setting-bounds.json.",
+    "midwayRetryLimit": 4,
     "_cancelPhaseFloorSec_comment": "The least time, in seconds, a sped-up transaction gets to confirm before the zero-value cancel goes out. The speed-up's wait normally runs until TX_CANCEL_SEC has passed since the original was sent; when getting the speed-up sent took that long already (its send backs off between retries), the wait still lasts this long, so the replacement is never cancelled the moment it is sent.",
     "cancelPhaseFloorSec": 10,
     "_sendRetries_comment": "How often a transaction whose sending failed for a passing reason (a timeout, a dropped connection, a rate limit) is sent again, and how long to wait first. The wait grows with each try: sendRetryBaseDelayMs before the first retry, twice that before the second, and so on, so the defaults wait 30, 60 and 90 seconds. 0 retries sends once and gives up on the first such failure. A failure that says the transaction can never go through is not retried. Read by src/tx-retry.js for every send in the app. sendRetryBaseDelayMs is checked as a timer setting by src/timer-bounds.js, and both stop startup when unusable, naming the setting.",
@@ -27,8 +33,17 @@
     "sendRetryBaseDelayMs": 30000
   },
   "dashboard": {
-    "_comment": "pollsBeforeAssumedSeen: how many of the dashboard's poll intervals (ui-defaults.json → dashboardPollIntervalMs) the server waits, after changing something the dashboard has to show, before it assumes the dashboard has polled and shown it. 2.5 covers two whole polls even when one went out just before the change. The server waits this long before retiring a position whose re-open failed, so the alert about it is on screen first, and the dashboard keeps the Manage button disabled for the same time after a retire. Server-side only: the dashboard receives the resulting milliseconds on GET /api/status as guaranteedDashboardHasPolledMs. At least 1, at most 100; src/config.js stops startup otherwise, naming it.",
+    "_comment": "pollsBeforeAssumedSeen: how many dashboard poll intervals (dashboardPollIntervalMs, in ui-defaults_non-layout_for-server-up-scenario.json) the server waits after a change the dashboard must show before assuming it was shown. 2.5 covers two whole polls even when one went out just before the change. The server waits this long before retiring a position whose re-open failed, so its alert is on screen first; the dashboard keeps the Manage button disabled as long after a retire. GET /api/status sends the milliseconds as guaranteedDashboardHasPolledMs. Startup stops outside its range in setting-bounds.json.",
     "pollsBeforeAssumedSeen": 2.5
+  },
+  "poll": {
+    "_comment": "afterActionMs: how soon the bot looks at a position again after a rebalance, compound or cancel, so the dashboard shows the result without waiting a poll interval. lifetimeRescanCheckMs: how often the bot checks whether a position's lifetime figures need their scan run again (missing, or a scan that failed), and runs it if so. Both are timers held to the timer rule (src/timer-bounds.js); startup stops on an unusable value, naming it.",
+    "afterActionMs": 2000,
+    "lifetimeRescanCheckMs": 1800000
+  },
+  "retire": {
+    "_comment": "drainedAfterMs: how long a managed position may sit drained, with no rebalance under way, before the bot stops managing it. The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to raise Slippage or click Rebalance Now. Read by src/bot-cycle-drain.js; its range is in setting-bounds.json.",
+    "drainedAfterMs": 1800000
   },
   "rescanPrices": {
     "_comment": "How long the dashboard's Re-scan Prices dialog waits for the scan it started before handing the button back, rather than spinning forever. Read by public/dashboard-rescan-prices.js via the rescanPricesTimeoutMs field on GET /api/status. It bounds a button, not a scan: nothing server-side reads it, and the scan it is waiting on runs to completion either way.",
@@ -38,7 +53,10 @@
     "minFeeUsd": 1,
     "defaultThresholdUsd": 5,
     "_repositionWindowSec_comment": "Compound detection: an IncreaseLiquidity on an NFT within this many seconds after a DecreaseLiquidity that drained it is a reposition (a drain, then a re-deposit), not a compound, and its amounts are not counted as compounded fees. Turned into blocks with the active chain's blockTimeSec in chains.json, so the window is the same length of time on every chain. 500000 s is about 5.8 days: 50,000 blocks at ten seconds a block.",
-    "repositionWindowSec": 500000
+    "repositionWindowSec": 500000,
+    "_autoSpacing_comment": "The least time between two automatic compounds of one position: autoSpacingPolls poll intervals (CHECK_INTERVAL_SEC), never less than autoSpacingFloorSec. Each compound pays gas for a collect and a deposit, so a short poll interval must not mean one every poll. Compound Now is not held to it. Read by src/bot-cycle-compound.js; ranges are in setting-bounds.json.",
+    "autoSpacingPolls": 5,
+    "autoSpacingFloorSec": 300
   },
   "log": {
     "file": "./app-data/rebalance_log.json"

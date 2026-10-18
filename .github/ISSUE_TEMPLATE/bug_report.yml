@@ -22,7 +22,7 @@ body:
       options:
         - label: I have searched [existing issues](https://github.com/nottoseethesun/lp-ranger/issues?q=is%3Aissue) and this is not a duplicate.
           required: true
-        - label: I have read the [Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html) and this is not covered there.
+        - label: I have read the [User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html) and this is not covered there.
           required: true
 
   - type: dropdown

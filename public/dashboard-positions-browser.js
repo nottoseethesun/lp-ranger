@@ -29,6 +29,7 @@ import {
 import { matchesPosFilter } from "./positions-filter.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
 import { resetLastFetchedId } from "./dashboard-unmanaged.js";
+import { isPrivacyModeOn } from "./dashboard-privacy-subform.js";
 
 let posBrowserPage = 0;
 let posBrowserSelected = -1;
@@ -108,7 +109,7 @@ export function renderPosBrowser() {
     _renderEmpty(list, all.length);
   } else {
     _renderRows(list, pageItems);
-    if (localStorage.getItem("9mm_privacy_mode") === "1")
+    if (isPrivacyModeOn())
       list
         .querySelectorAll(".pos-row-title, .pos-row-meta")
         .forEach((el) => el.classList.add("9mm-pos-mgr-privacy-blur"));

@@ -121,6 +121,8 @@ describe("handleManage Pool*Error mapping", () => {
     assert.match(res._body.message, /exhausted 4 RPC attempt/);
     assert.match(res._body.message, /decimals0/);
     assert.strictEqual(res._body.tokenId, "158970");
+    // The refusal names the position (src/position-answer-tag.js).
+    assert.match(res._body.positionKey, /-158970$/);
 
     // No phantom entry on disk.
     const runningKeys = Object.keys(dc.positions).filter(

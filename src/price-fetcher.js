@@ -85,6 +85,7 @@ const {
   logDustPausedCached,
 } = require("./price-fetcher-dedup");
 const { GECKO_TERMINAL_API, MORALIS_API } = require("./price-service-urls");
+const { cacheKey } = require("./cache-store");
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -100,23 +101,11 @@ const _MOVE_TTL_MS = getMoveCacheTtlMs();
 
 /**
  * In-memory price cache.
- * Keys are `{chain}:{tokenAddress}` (lower-cased).
+ * Keys are the canonical `chain-token` (`cacheKey` in `src/cache-store.js`).
  * Values are `{ price: number, ts: number }`.
  * @type {Map<string, { price: number, ts: number }>}
  */
 const _cache = new Map();
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Build a deterministic cache key for a given chain and token address.
- * @param {string} chain        - Chain identifier (e.g. 'pulsechain').
- * @param {string} tokenAddress - ERC-20 contract address.
- * @returns {string} Cache key.
- */
-function _cacheKey(chain, tokenAddress) {
-  return `${chain}:${tokenAddress.toLowerCase()}`;
-}
 
 // ── price source chain ──────────────────────────────────────────────────────
 
@@ -144,7 +133,7 @@ function _cacheKey(chain, tokenAddress) {
  */
 async function fetchTokenPriceUsd(tokenAddress) {
   const chain = config.CHAIN_NAME;
-  const key = _cacheKey(chain, tokenAddress);
+  const key = cacheKey(chain, tokenAddress);
   const cached = _cache.get(key);
   /*- Idle gate: when paused AND not inside a `withFreshPricesAllowed`
    *  scope, return the last known cached value (or 0 on cold start) and
@@ -703,7 +692,7 @@ function invalidatePriceCacheFor(tokens) {
   if (!Array.isArray(tokens)) return;
   for (const t of tokens) {
     if (!t || !t.token) continue;
-    _cache.delete(_cacheKey(config.CHAIN_NAME, t.token));
+    _cache.delete(cacheKey(config.CHAIN_NAME, t.token));
   }
 }
 

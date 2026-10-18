@@ -23,9 +23,10 @@ require("global-jsdom/register");
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { learnActiveChain } = require("./helpers/active-chain");
+const { CENTERED_OFFSET_PCT } = require("../src/centered-offset");
 
 let mod;
-let data;
+let configInputs;
 
 /*- Every POST the module fires, captured so a test can assert that a
  *  button wrote nothing at all. */
@@ -35,7 +36,7 @@ before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
   mod = await import("../public/dashboard-throttle.js");
-  data = await import("../public/dashboard-data.js");
+  configInputs = await import("../public/dashboard-config-inputs.js");
   const store = await import("../public/dashboard-positions-store.js");
   store.posStore.entries.length = 0;
   store.posStore.entries.push({
@@ -59,7 +60,7 @@ beforeEach(() => {
   `;
   /*- Stand in for the `/api/bot-config-defaults` fetch that
    *  dashboard-init.js performs at page load. */
-  data.setConfigInputDefault("offsetToken0Pct", 50);
+  configInputs.setConfigInputDefault("offsetToken0Pct", 50);
 });
 
 const t0 = () => document.getElementById("inOffsetToken0").value;
@@ -88,15 +89,18 @@ describe("resetOffset — the No Offset button", () => {
     assert.equal(cache.isInputDirty("inOffsetToken0"), true);
   });
 
-  it("sources the centered value from the shipped defaults", () => {
-    /*- No literal in the handler (feedback_one_literal_per_shipped_default).
-     *  Drive that by handing it a different default and watching the
-     *  injected values follow. */
-    data.setConfigInputDefault("offsetToken0Pct", 40);
+  it("fills the centered split whatever the default offset is", () => {
+    /*-
+     *  An operator's defaults can make the default offset an offset. It
+     *  used to be what No Offset filled; the user, 2026-10-17, decided
+     *  that No Offset always means centred, the value the bot pins a
+     *  re-used range to.
+     */
+    configInputs.setConfigInputDefault("offsetToken0Pct", 40);
     mod.resetOffset();
-    assert.equal(t0(), "40");
-    assert.equal(t1(), "60");
-    data.setConfigInputDefault("offsetToken0Pct", 50);
+    assert.equal(t0(), String(CENTERED_OFFSET_PCT));
+    assert.equal(t1(), String(100 - CENTERED_OFFSET_PCT));
+    configInputs.setConfigInputDefault("offsetToken0Pct", 50);
   });
 
   it("leaves the inputs untouched when no element is present", () => {

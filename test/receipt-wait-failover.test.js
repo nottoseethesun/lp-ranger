@@ -349,10 +349,10 @@ describe("a receipt survives the endpoint that broadcast it going down", () => {
     let sends = 0;
     let receipt;
     try {
-      /*-
-       *  No endpoint has the receipt until the cancel — the third send —
-       *  has been tried, so the answer has to come through the cancel
-       *  phase rather than phase 3.
+      /**
+       * No endpoint has the receipt until the cancel — the third send —
+       * has been tried, so the answer has to come through the cancel
+       * phase rather than phase 3.
        */
       const behind = async () => {
         asked++;

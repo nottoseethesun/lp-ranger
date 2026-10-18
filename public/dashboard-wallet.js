@@ -19,13 +19,12 @@
 
 import { g, act, ACT_ICONS, fetchWithCsrf } from "./dashboard-helpers.js";
 import { rpcUrlReady } from "./dashboard-rpc-endpoints.js";
-import { saveMoralisApiKey } from "./dashboard-events.js";
+import { saveMoralisApiKey } from "./dashboard-moralis-key.js";
 import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
 import * as unlockLog from "./dashboard-unlock-log.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
-// How long a copy button says "copied!".
-import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
+import { withUiSettings } from "./dashboard-ui-settings.js";
 
 // ── Late-bound deps ───────────────────────────────────────
 
@@ -440,9 +439,15 @@ export function copyText(id) {
   const btn = el.parentElement.querySelector(".copy-btn");
   if (btn) {
     btn.textContent = "copied!";
-    setTimeout(() => {
-      btn.textContent = "copy";
-    }, UI_DEFAULTS.copyFeedbackMs);
+    /*-
+     *  For `copyFeedbackMs`, a setting the server sends; a click before
+     *  it has keeps "copied!" until it has.
+     */
+    withUiSettings((settings) =>
+      setTimeout(() => {
+        btn.textContent = "copy";
+      }, settings.copyFeedbackMs),
+    );
   }
 }
 

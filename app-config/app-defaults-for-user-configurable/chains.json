@@ -15,13 +15,14 @@
       "moralisChain": "0x171"
     },
     "nativeWrappedToken": "0xA1077a294dDE1B09bB078844df40758a5D0f9a27",
-    "_gas_comment": "How transactions on this chain are priced. transactionEnvelopeType is legacy or eip1559. gasPriceMultiplier scales the network's gas price for every send; gasLimitMultiplier buffers every gas estimate. A transaction still pending after TX_SPEEDUP_SEC is resent at the same nonce priced speedUpGasBump times the higher of the network's price and its own, and one still pending at TX_CANCEL_SEC is cancelled by a zero-value self-transfer priced cancelGasBump times the higher of the network's price and the stuck one's, so each outbids what it replaces. gasLimitFloor is the least gas limit a transaction is sent with when the code sending it names no floor of its own: approvals, the compound's collect and increaseLiquidity, and a swap through the V3 router. An estimate that comes in lower is raised to it, and a failed estimate sends with it. The mint and the liquidity removal use contracts.positionManager.mintGasLimit instead, and a cancel the 21000 every plain transfer costs. None has a fallback: an entry that leaves one out stops the app at startup, naming it.",
+    "_gas_comment": "How this chain's transactions are priced. transactionEnvelopeType is legacy or eip1559. gasPriceMultiplier scales the network's gas price for every send; gasLimitMultiplier buffers every gas estimate. A transaction pending past TX_SPEEDUP_SEC is resent at its nonce, and one pending past TX_CANCEL_SEC is cancelled by a zero-value self-transfer; each is priced at speedUpGasBump or cancelGasBump times the higher of the network's price and the stuck transaction's, so it outbids what it replaces. gasLimitFloor is the least gas limit for a send whose code names no floor of its own (approvals, the compound's collect and increaseLiquidity, a V3-router swap), used when the estimate is lower or fails. The mint and liquidity removal use contracts.positionManager.mintGasLimit instead; a cancel uses the 21000 a plain transfer costs. estimatedRebalanceGasUnits is the gas a whole rebalance is assumed to use: priced at current gas, it decides whether the rebalance waits for gas (rebalanceGasDeferPct in bot-config-defaults.json), and stands in for a period's gas when a rebalance reports none. None has a fallback: a missing entry stops startup, naming it.",
     "transactionEnvelopeType": "legacy",
     "gasPriceMultiplier": 7,
     "gasLimitMultiplier": 2,
     "speedUpGasBump": 1.5,
     "cancelGasBump": 2,
     "gasLimitFloor": 300000,
+    "estimatedRebalanceGasUnits": 800000,
     "_rpc_comment": "Ordered RPC endpoints. Index 0 is the primary; failover walks the list in order and sticks to whichever answers. Note the layered-defaults loader REPLACES arrays wholesale rather than merging them, so a user override of this array must list every endpoint it wants, not just additions. rpc.pulsechain.box is a free tier limited to 50 requests per 10 seconds per IP; src/rpc-request-manager.js paces the whole process well inside that.",
     "rpc": {
       "urls": [
@@ -105,6 +106,7 @@
     "speedUpGasBump": 1.5,
     "cancelGasBump": 2,
     "gasLimitFloor": 300000,
+    "estimatedRebalanceGasUnits": 800000,
     "rpc": {
       "urls": ["https://rpc.v4.testnet.pulsechain.com"]
     },

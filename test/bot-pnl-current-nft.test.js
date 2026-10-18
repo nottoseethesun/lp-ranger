@@ -237,3 +237,56 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     assert.strictEqual(snap.currentCompoundedUsd, 0);
   });
 });
+
+describe("applyCurrentNftFigures — where the NFT's history read starts", () => {
+  let applyCurrentNftFigures;
+  beforeEach(() => {
+    _detectCalls = [];
+    _installMocks();
+    ({ applyCurrentNftFigures } = require("../src/bot-pnl-current-nft"));
+  });
+  afterEach(_restoreMocks);
+
+  /** Run one Current-panel read with nothing cached, over `events`. */
+  async function readOver(events) {
+    await applyCurrentNftFigures(
+      {},
+      {
+        _botState: {},
+        _rebalanceEvents: events,
+        signer: { getAddress: async () => "0xWALLET" },
+      },
+      { tokenId: 12345, token0: "0xA", token1: "0xB", fee: 3000 },
+      { decimals0: 18, decimals1: 18 },
+    );
+    assert.strictEqual(_detectCalls.length, 1, "one chain read");
+    return _detectCalls[0].opts.fromBlock;
+  }
+
+  it("starts at the mint block the bot recorded for an NFT it minted", async () => {
+    /*-
+     *  After every compound this read runs again, inside the position's
+     *  check. From the mint it covers the NFT's own life; from anywhere
+     *  earlier it reads blocks the NFT cannot appear in.
+     */
+    const from = await readOver([
+      { oldTokenId: "12344", newTokenId: "12345", blockNumber: 27_700_123 },
+    ]);
+    assert.strictEqual(from, 27_700_123);
+  });
+
+  it("does not start at block 0 where an older record names it", async () => {
+    /*-
+     *  Records the bot wrote before it kept the mint block say block 0.
+     *  Started there, the read covers the whole chain, about half an
+     *  hour in which the position is not checked. The chain's first mint
+     *  is the floor instead, as for any NFT whose mint is not known.
+     */
+    const events = [
+      { oldTokenId: "12344", newTokenId: "12345", blockNumber: 0 },
+    ];
+    events.firstMintBlockNumber = 27_000_000;
+    const from = await readOver(events);
+    assert.strictEqual(from, 27_000_000);
+  });
+});

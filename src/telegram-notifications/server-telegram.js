@@ -100,8 +100,9 @@ function createTelegramHandlers(opts) {
    * Returns: { hasToken, hasChatId, enabledEvents, configured,
    *            balancedThresholdPct, balancedCooldownMs }
    *
-   * The balanced-* fields surface the code-only constants from
-   * `src/telegram-notifications/balanced-notifier.js` so the dashboard can render them
+   * The balanced-* fields surface the band and quiet period the notifier
+   * uses, `positionBalancedBandPct` and `positionBalancedCooldownMs` in
+   * bot-config-defaults.json, so the dashboard can render them
    * dynamically (label percent + warning-note cadence).
    */
   function handleTelegramStatus(_, res) {

@@ -40,13 +40,34 @@ describe("_computeNumerics()", () => {
       lifetimeIL: -40,
     };
     const nums = mod._computeNumerics(snap, /*ltRealized*/ 0, /*ltDep*/ 1000);
-    // ltPc = 1200 - 1000 = 200
-    // ltNetPnl = 200 + 30 + 50 + 0 - 5 + 0 - 0 = 275
-    assert.strictEqual(nums.ltNetPnl, 275);
+    // ltPc = 1200 - 1000 = 200, which already holds the $30 compounded.
+    // ltNetPnl = 200 + 50 unclaimed + 0 - 5 + 0 - 0 = 245
+    assert.strictEqual(nums.ltNetPnl, 245);
     // ltProfit = 50 + 30 - 5 + (-40) = 35
     assert.strictEqual(nums.ltProfit, 35);
     // ltIL = -40
     assert.strictEqual(nums.ltIL, -40);
+  });
+
+  it("counts reinvested fees once, and still adds the unclaimed ones", () => {
+    /*-
+     *  $1,000 deposited, $150 of fees earned and all reinvested, prices
+     *  flat: Current Value is $1,150, and the $150 is in it. With $20
+     *  more unclaimed, Net P&L is $170, not $320.
+     */
+    const snap = {
+      currentValue: 1150,
+      totalCompoundedUsd: 150,
+      currentFeesUsd: 20,
+      totalGas: 0,
+      residualValueUsd: 0,
+      initialResidualUsd: 0,
+      lifetimeIL: 0,
+    };
+    const nums = mod._computeNumerics(snap, 0, 1000);
+    assert.strictEqual(nums.ltNetPnl, 170);
+    // Profit still counts both fee figures as fee earnings.
+    assert.strictEqual(nums.ltProfit, 170);
   });
 
   it("zero deposit ⇒ price-change term zeroed out", () => {

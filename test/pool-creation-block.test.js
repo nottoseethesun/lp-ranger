@@ -26,6 +26,7 @@ process.env.POOL_CREATION_BLOCK_CACHE_PATH = path.join(
 );
 
 const mod = require("../src/pool-creation-block");
+const config = require("../src/config");
 
 const FACTORY = "0xe50DBdC88E87a2C92984d794bcF3D1d76f619C68";
 const POOL = "0x1234567890aBcdef1234567890ABcdef12345678";
@@ -96,10 +97,44 @@ describe("pool-creation-block", () => {
     });
     assert.equal(second, 100);
     assert.equal(lookups, 1);
-    /*- Disk cache file is written. */
+    // Disk cache file is written, under the canonical chain-first key.
     const raw = JSON.parse(fs.readFileSync(mod._CACHE_PATH, "utf8"));
-    const key = FACTORY.toLowerCase() + "|" + POOL.toLowerCase();
+    const key = [config.CHAIN_NAME, FACTORY, POOL].join("-").toLowerCase();
     assert.equal(raw[key], 100);
+  });
+
+  it("keeps each chain's answer for a pool apart from another chain's", async () => {
+    /*-
+     *  The same address can be a different pool on another chain, so a
+     *  lookup on one chain must not answer for the other. Switching the
+     *  active chain sends the same pool back to the chain for its own
+     *  answer, and switching back finds the first one kept.
+     */
+    let lookups = 0;
+    const provider = {
+      getBlockNumber: async () => {
+        lookups += 1;
+        return 200;
+      },
+      getCode: async (_addr, blk) => (blk >= 100 ? "0x60806040" : "0x"),
+    };
+    const ask = () =>
+      mod.getPoolCreationBlockCached({
+        provider,
+        factoryAddress: FACTORY,
+        poolAddress: POOL,
+      });
+    const chain = config.CHAIN_NAME;
+    await ask();
+    try {
+      config.CHAIN_NAME = "pulsechain-testnet";
+      await ask();
+      assert.equal(lookups, 2, "the other chain looked the pool up itself");
+    } finally {
+      config.CHAIN_NAME = chain;
+    }
+    await ask();
+    assert.equal(lookups, 2, "the first chain's answer was kept");
   });
 
   it("dedupes concurrent in-flight lookups for the same pool", async () => {

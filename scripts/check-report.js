@@ -150,11 +150,14 @@ function loadResults() {
     problems: ["report missing"],
     routeCount: 0,
     configKeyCount: 0,
+    uiSettingCount: 0,
   };
   const npmAudit = P.parseNpmAudit(_readJson("npm-audit.json"));
   const securityLintRaw = _readJson("security-lint.json");
   const securityLint = P.parseEslint(securityLintRaw);
   const secretlint = P.parseSecretlint(_readJson("secretlint.json"));
+  // The shipped config values, tested before the rest of the suite.
+  const configTests = P.parseTapTests(_readText("config-values.tap"));
   const tests = P.parseTapTests(_readText("tests.tap"));
 
   // Rule counts from --print-config dumps. eslint.json, stylelint.json,
@@ -234,7 +237,7 @@ function loadResults() {
     openapiSync: {
       ok: exitCodes.openapiSync === 0,
       detail: openapiSync.ok
-        ? `in sync, ${openapiSync.routeCount} routes, ${openapiSync.configKeyCount} config keys`
+        ? `in sync, ${openapiSync.routeCount} routes, ${openapiSync.configKeyCount} config keys, ${openapiSync.uiSettingCount} dashboard settings`
         : `${openapiSync.problems.length} mismatch(es) vs docs/openapi.json`,
     },
     actionlint: {
@@ -243,6 +246,10 @@ function loadResults() {
         actionlint.errors === 0
           ? `0 violations, workflows clean`
           : `${actionlint.errors} workflow issues`,
+    },
+    configValues: {
+      ok: exitCodes.configValues === 0,
+      detail: `${configTests.pass}/${configTests.tests} passed, run first`,
     },
     tests: {
       ok: exitCodes.tests === 0,
@@ -290,6 +297,7 @@ function loadResults() {
     { name: "lint-svg", ...checks.lintSvg },
     { name: "knip (files)", ...checks.knip },
     { name: "openapi-sync", ...checks.openapiSync },
+    { name: "Config values", ...checks.configValues },
     { name: "Tests", ...checks.tests },
     { name: "Coverage", ...checks.coverage },
     { name: "npm audit", ...checks.npmAudit },
@@ -321,7 +329,13 @@ function loadResults() {
     npmAudit,
     securityLint,
     secretlint,
+    configTests,
     tests,
+    /*-
+     *  Every failed test, a config value's first: the failures after it
+     *  may be what that wrong value broke. Each report lists this.
+     */
+    failures: [...configTests.failures, ...tests.failures],
     overviewRows,
   };
 }
@@ -368,10 +382,10 @@ function renderTerminal(data) {
     }
   }
 
-  if (data.tests.failures.length) {
+  if (data.failures.length) {
     log.info();
     log.info(`${_RED}Failures:${_RESET}`);
-    for (const f of data.tests.failures) {
+    for (const f of data.failures) {
       log.info(`  ${_RED}✘${_RESET} ${f.name}`);
     }
   }
@@ -437,9 +451,9 @@ function writeTestsSummaryTxt(data) {
     }
     lines.push("");
   }
-  if (t.failures.length) {
+  if (data.failures.length) {
     lines.push("Failures:");
-    for (const f of t.failures) lines.push(`  ✘ ${f.name}`);
+    for (const f of data.failures) lines.push(`  ✘ ${f.name}`);
     lines.push("");
   }
   fs.mkdirSync(TXT_DIR, { recursive: true });

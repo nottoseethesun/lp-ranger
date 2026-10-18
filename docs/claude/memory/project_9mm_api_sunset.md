@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T07:17:06.147Z
+  modified: 2026-10-18T03:15:27.307Z
 ---
 
 # 9mm api sunset
@@ -170,7 +170,7 @@ session's scratchpad). Never run the whole suite outside `npm run check`.
   renames what the tests wrote to `logs/error-npm-run-check.log`
   ([[project_tests_write_operator_error_log]]).
 - The dashboard's chain query gives each request `chainQueryTimeoutMs`
-  (3000, `ui-defaults.json`, bundled at build time since it is needed
+  (3000, now `ui-defaults_non-layout_for-server-down-scenario.json`, bundled at build time since it is needed
   before the server answers). Every request that ends without a chain
   is logged to the browser console with what happened. The user chose
   the console over `logs/lp-ranger.log`, which only the server writes.
@@ -219,7 +219,9 @@ that nothing in lp-ranger may be hard-coded to a blockchain
 - The dashboard's six `"PulseChain"` fallbacks are blank until the first
   poll, and the header's chain logo and link come from `GET /api/chain`.
 - The dashboard's status and Reload polls and the server's copy read
-  `ui-defaults.json` → `dashboardPollIntervalMs`; the CSRF refresh starts
+  `dashboardPollIntervalMs`, which the server sends the page (since
+  2026-10-17 from `ui-defaults_non-layout_for-server-up-scenario.json`,
+  override applied); the CSRF refresh starts
   from csrf.json's value.
 - The PID file is removed by an `exit` hook on every exit the server
   makes itself (`POST /api/shutdown` never removed it), and `npm stop`
@@ -296,12 +298,23 @@ key had already applied its global settings, rebuilt the rpc providers
 and freed paused loops; the Manage request's contract check compared
 addresses with their letter case; an unknown envelope type sent legacy
 transactions silently. Found and left for the user, in PROJECT-STATE.md:
-[[project_failed_aggregator_gas_dropped]],
-[[project_quote_without_impact_passes]],
-[[project_foreign_tx_at_nonce_read_as_success]]. Gates: Node 24 and
-Node 22 both 4567/4567, every lint stage clean, 96.9% lines; the 95%
-region holds (two files at 99.1% and 98.8% branches); nine mutations
-each failed their own tests and nothing else.
+[[project_failed_aggregator_gas_dropped]]; two more were settled by the
+user the same day (below). Gates: Node 24 and Node 22 both 4567/4567,
+every lint stage clean, 96.9% lines; the 95% region holds (two files at
+99.1% and 98.8% branches); nine mutations each failed their own tests
+and nothing else.
+
+**The user's answers, 2026-10-17, worked the same day, uncommitted
+until the user's browser check:** a quote naming no price impact is now
+refused with a log line and falls back to the V3 router; a transaction
+from outside the bot taking a move's nonce is not a bug, since the
+operator controls the wallet ([[feedback_operator_controls_the_wallet]]);
+every range moved into `setting-bounds.json` and the doubling numbers
+into `bot-config-defaults.json` → `throttleDoubling`; the help reads the
+daily cap and every other figure it quotes from those files, and carries
+the user's low-volume advice; failing to learn the blockchain counts
+toward HALTED; every cache of chain data is keyed chain-first
+([[feedback_cache_keys_lead_with_the_chain]]).
 
 **How to apply:** the work is committed on branch
 `migrate-to-new-9mm-data-api` and pushed, not merged. Next: the user's

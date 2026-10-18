@@ -61,10 +61,10 @@ test("readPid rejects zero and negative PIDs", () => {
   assert.strictEqual(readPid({ filePath: neg }), null);
 });
 
-/*-
- *  A child process writes the PID file and then ends however `how`
- *  says, so the real exit path runs: Node's `exit` event, which this
- *  test process cannot fire on itself.
+/**
+ * A child process writes the PID file and then ends however `how`
+ * says, so the real exit path runs: Node's `exit` event, which this
+ * test process cannot fire on itself.
  */
 function _childWritesThen(how, p) {
   const serverPid = require.resolve("../src/server-pid");
@@ -96,6 +96,33 @@ test("an exiting server leaves a PID file that names another process", () => {
     p,
   );
   assert.strictEqual(readPid({ filePath: p }), 424242);
+});
+
+test("the server records its PID and takes its signals before resolving the wallet key", () => {
+  /*-
+   *  Wiring, not behaviour, so it is asserted against the source: a test
+   *  that started the real server would run it against the operator's
+   *  files. Resolving the key can wait on a terminal prompt and then
+   *  starts the managed positions one at a time, the first running while
+   *  the rest wait. Until the PID file is written `npm stop` has to guess
+   *  by port, and until the handlers are in place Ctrl+C and `npm stop`
+   *  end the process on the spot, positions mid-start.
+   */
+  const src = fs
+    .readFileSync(path.join(__dirname, "..", "server.js"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "");
+  const entry = src.slice(src.indexOf("if (require.main === module)"));
+  const resolve = entry.indexOf("_tryResolveKey()");
+  assert.ok(resolve > 0, "the entry point resolves the wallet key");
+  for (const step of [
+    "writePidFile()",
+    'process.on("SIGINT"',
+    'process.on("SIGTERM"',
+  ]) {
+    const at = entry.indexOf(step);
+    assert.ok(at > 0 && at < resolve, `${step} must come before the key`);
+  }
 });
 
 test("getPidFilePath returns an absolute path ending in lp-ranger.pid", () => {

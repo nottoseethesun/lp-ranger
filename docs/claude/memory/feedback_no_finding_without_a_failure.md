@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-09-14T04:29:16.572Z
+  modified: 2026-10-18T02:56:08.703Z
 ---
 
 An item earns a place in a findings/review/audit list only if you can
@@ -40,6 +40,21 @@ The user's verdict: "you slopped me hard, like a water-cannon of slop."
   challenge is diagnostic of an empty item.
 - A consequence you have not traced in the code is not a consequence.
   See [[feedback_instrument_before_inferring]].
+
+## What the user wants to see from an audit (2026-10-17)
+
+The user, on the second audit of 2026-10-17: "I only need to see bugs
+that you found, and sigificant (not trivial or very rare) opportunities
+for optimizations." So a report of findings holds two kinds of item: a
+bug, which breaks something an operator would meet, and an optimization
+worth its change, one that is neither trivial nor so rare it hardly
+happens. Comment wording, doc nits, style and test hygiene are not put to
+the user as findings.
+
+**How to apply:** sort before writing the report, by the test above.
+What is left out of the report is not thereby approved for fixing; a fix
+still needs its own go, unless it is a rule correction the standing
+instructions already cover.
 
 Related: [[feedback_bug_only_if_current_stack_breaks]],
 [[feedback_nice_to_haves_not_bugs]], [[feedback_prose_style]].

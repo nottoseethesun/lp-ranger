@@ -18,6 +18,8 @@
  */
 
 import { g, fetchWithCsrf } from "./dashboard-helpers.js";
+import { isAnswerForPositionOnScreen } from "./dashboard-answer-position.js";
+import { log } from "./dashboard-log.js";
 
 /*- The value each Bot Settings input last held that the server
  *  accepted, so a rejected save can put the field back to it. Seeded by
@@ -98,8 +100,12 @@ function _restoreRefusedField(inputs, body) {
  * @param {object} [o.inputs]          Config key → input element id, so a
  *   refused value can be put back where it came from.
  * @param {Function} [o.onSaved]       Ran only once the server has taken
- *   it, so nothing reports success the server refused.
- * @returns {Promise<boolean>}  Whether it saved.
+ *   it, so nothing reports success the server refused. Passed whether
+ *   the answer is for the position on screen, so it can leave the
+ *   screen alone when it is not.
+ * @returns {Promise<{saved: boolean, onScreen: boolean}>}  Whether it
+ *   saved, and whether the position it was saved for is still the one
+ *   on screen, for what the caller does to the screen after it.
  */
 export async function saveConfigValues({
   values,
@@ -117,14 +123,77 @@ export async function saveConfigValues({
   } catch {
     /*- Dashboard-only mode, or the server went away mid-edit. Nothing
      *  was saved and nothing was refused, so the field stands. */
-    return false;
+    return { saved: false, onScreen: _onScreenFor(null, positionKey) };
   }
-  if (res.ok) {
-    for (const [key, inputId] of Object.entries(inputs || {}))
-      rememberGoodInput(inputId, values[key]);
-    if (onSaved) onSaved();
-    return true;
+  const body = await res.json().catch(() => ({}));
+  const settled = _settleSaveAnswer({
+    ok: res.ok,
+    status: res.status,
+    body,
+    values,
+    positionKey,
+    inputs,
+    onSaved,
+  });
+  if (settled.message) alert(settled.message);
+  return { saved: settled.saved, onScreen: settled.onScreen };
+}
+
+/**
+ * A position's save that answers after the operator has moved to
+ * another position is not this screen's: the fields on screen are the
+ * other position's. A save of global settings is every screen's.
+ */
+function _onScreenFor(answer, positionKey) {
+  return (
+    typeof positionKey !== "string" ||
+    isAnswerForPositionOnScreen(answer, positionKey)
+  );
+}
+
+/**
+ * What the answer to a save does, once it has arrived: whether it is
+ * for the position on screen, the fields it remembers or puts back, and
+ * the dialog to show.
+ *
+ * Exported so a test can drive it with an answer of its own: the request
+ * itself goes through the global `fetch`, which a test must not replace.
+ *
+ * @param {object} o
+ * @param {boolean} o.ok        Whether the server took the values.
+ * @param {number} o.status     The answer's HTTP status.
+ * @param {object} o.body       The answer's body.
+ * @param {object} o.values     The values sent.
+ * @param {string} [o.positionKey]  The key the request named.
+ * @param {object} [o.inputs]   As for `saveConfigValues`.
+ * @param {Function} [o.onSaved]  As for `saveConfigValues`.
+ * @returns {{saved: boolean, onScreen: boolean, message: string|null}}
+ *   `message` is the dialog's text, or null to show none.
+ */
+export function _settleSaveAnswer({
+  ok,
+  status,
+  body,
+  values,
+  positionKey,
+  inputs,
+  onSaved,
+}) {
+  const onScreen = _onScreenFor(body, positionKey);
+  if (!onScreen)
+    log.info(
+      "[lp-ranger] [config] the answer to a save for %s came after the screen moved to another position, so it is left off the screen: %s",
+      body?.positionKey ?? positionKey,
+      ok ? "saved" : body?.error || "HTTP " + status,
+    );
+  if (ok) {
+    if (onScreen)
+      for (const [key, inputId] of Object.entries(inputs || {}))
+        rememberGoodInput(inputId, values[key]);
+    if (onSaved) onSaved(onScreen);
+    return { saved: true, onScreen, message: null };
   }
+  if (!onScreen) return { saved: false, onScreen, message: null };
   /*- The server refuses a value it cannot run on rather than quietly
    *  correcting it, so put the field back to what was last accepted and
    *  say why. The operator can edit and save again.
@@ -133,8 +202,9 @@ export async function saveConfigValues({
    *  route also 400s on a malformed request — no position selected,
    *  most often — and that is not something to show a dialog about,
    *  nor a reason to touch what they typed. */
-  const body = await res.json().catch(() => ({}));
-  const message = _restoreRefusedField(inputs, body);
-  if (message) alert(message);
-  return false;
+  return {
+    saved: false,
+    onScreen,
+    message: _restoreRefusedField(inputs, body),
+  };
 }

@@ -189,10 +189,15 @@ describe("timer bounds: a setting counted in milliseconds", () => {
    *  send the operator looking for a value a thousand times too large.
    */
   const POLL_MS = 3000;
+  /*-
+   *  A setting counted in milliseconds that has no range of its own, so
+   *  the general rule applies; the dashboard's poll interval, once the
+   *  example here, now declares one.
+   */
   const poll = (sec) =>
     assertTimerSec({
       sec,
-      key: "dashboardPollIntervalMs",
+      key: "copyFeedbackMs",
       defaultSec: POLL_MS,
     });
 
@@ -226,6 +231,29 @@ describe("timer bounds: a setting counted in milliseconds", () => {
     assert.throws(
       () => pause(172_800_001),
       /resolves to 172800001 milliseconds, above its maximum of 172800000\./,
+    );
+  });
+});
+
+describe("timer bounds: the dashboard's poll interval", () => {
+  /*-
+   *  An operator can now set it, so it has a range of its own: under half
+   *  a second every open tab would flood the server, and past a minute the
+   *  figures go stale.
+   */
+  const dashPoll = (sec) =>
+    assertTimerSec({ sec, key: "dashboardPollIntervalMs", defaultSec: 3000 });
+
+  it("accepts half a second to a minute", () => {
+    assert.equal(dashPoll(500), 500);
+    assert.equal(dashPoll(60_000), 60_000);
+  });
+
+  it("refuses a value outside that range, in milliseconds", () => {
+    assert.throws(() => dashPoll(499), /milliseconds of at least 500/);
+    assert.throws(
+      () => dashPoll(60_001),
+      /resolves to 60001 milliseconds, above its maximum of 60000\./,
     );
   });
 });

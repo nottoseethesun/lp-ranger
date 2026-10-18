@@ -11,7 +11,7 @@ import {
   fmtNum,
   isFullRange,
 } from "./dashboard-helpers.js";
-import { posStore } from "./dashboard-positions.js";
+import { posStore } from "./dashboard-positions-store.js";
 
 /** Return the truncated token1 symbol for the active position. */
 export function _activeToken1Symbol() {

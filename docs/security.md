@@ -104,39 +104,37 @@ the attacker would have to bypass **all** of these layers:
    local machine, the server rejects requests that didn't originate
    from the LP Ranger dashboard itself.
 3. **CSRF (Cross-Site Request Forgery) token** — even if the origin
-   check passed, the request must carry a one-time cryptographic
-   token that only the dashboard knows. Without it, the server
-   returns 403 Forbidden.
-4. **Config key `allowlist`** — even if the attacker had a valid
-   token, the server only accepts recognized setting names
-   (like `slippagePct` or `oorThreshold`). Unknown fields are
-   silently dropped.
+   check passed, the request must carry a cryptographic token the
+   server issued to the dashboard, valid for an hour. Without it, the
+   server returns 403 Forbidden.
+4. **Config key `allowlist` and range checks** — even if the attacker
+   had a valid token, the server only accepts recognized setting names
+   (like `slippagePctToken0`), silently drops every other field, and
+   refuses a value outside the setting's range: a slippage above 20% is
+   never saved.
 
 Each layer assumes the previous one might fail. That's what
 **defense in depth** means — and it's the organizing principle for
 everything in this section.
 
-All cryptography uses Node's built-in `crypto` module and vetted
-open-source packages (`csrf`, `ethers`, `async-mutex`,
-`@uniswap/v3-sdk`, `jsbi`). Nothing is rolled in-house.
+All cryptography uses Node's built-in `crypto` module and the vetted
+`csrf` package. Nothing is rolled in-house.
 
 ## Summary of Primary Controls
 
-The following is a summary of the primary controls currently in
-effect:
-
 - **Your private key is encrypted on disk** — it's never saved in
-  readable form. Only your password can unlock it, and the unlocked
-  key exists only briefly in the computer's memory during
-  transaction signing, then it's gone. (Encryption: AES-256-GCM
+  readable form, and only your password can unlock it. Once
+  unlocked, the key is held in the server's memory, in the signer
+  every managed position shares, until the server stops; protecting
+  the machine it runs on protects the key. (Encryption: AES-256-GCM
   (Advanced Encryption Standard, 256-bit key, Galois/Counter Mode)
   with PBKDF2 (Password-Based Key Derivation Function 2) SHA-512
   key derivation.)
 - **The server only talks to localhost** — LP Ranger binds to
   `127.0.0.1` by default. No one on the internet or your local
   network can connect unless you explicitly override this.
-- **Every command requires a one-time token** — CSRF tokens prevent
-  a malicious website from tricking your browser into sending
+- **Every command requires a token** — CSRF tokens prevent a
+  malicious website from tricking your browser into sending
   commands to LP Ranger on the attacker's behalf.
 - **Swap transactions travel over encrypted connections** — to the
   Watergun Aggregator API (primary path) or directly to the RPC
@@ -153,14 +151,12 @@ effect:
   can't accidentally be committed to a public repository.
 - **Every code change is scanned before it can ship** — static
   analysis, secret detection, and dependency vulnerability auditing
-  run on every commit (`npm run check` locally, mirrored in CI).
+  run in `npm run check` locally and in CI on every push and pull
+  request to `main`; the pre-commit hook runs `npm run lint`.
 
 Code cannot be included in the `main` branch unless it passes the
 rigorous security checks detailed below. And in turn, Releases cannot
 be made except from code in the `main` branch.
-
-The subsections that follow document the implementation details and
-lint/test enforcement behind each of these controls.
 
 ## Network
 
@@ -183,21 +179,12 @@ replay attacks on the dashboard's HTTP surface are structurally
 impossible — TLS (Transport Layer Security) termination
 becomes a concern only if a reverse proxy is introduced by the operator.
 
-The CORS origin guard in [`src/server-cors.js`](../src/server-cors.js)
-dynamically tracks whatever `PORT` is configured so the `allowlisted`
-origin string always matches the actual listener. The `_isLocalhostOrigin`
-helper accepts `localhost`, `127.0.0.1`, and `[::1]` (IPv4 + IPv6
-loopback) but rejects every other hostname or port.
-
 ### Reverse Proxy Configuration Warning
 
-LP Ranger is designed to run on localhost (`127.0.0.1`) and serves
-traffic exclusively over the loopback interface by default. In this
-configuration, TLS is not required because all traffic is internal to
-the local machine and cannot be intercepted by external parties.
-
-If you configure a reverse proxy to make LP Ranger accessible over a
-network — for example to access the dashboard remotely — you assume
+By default all of LP Ranger's traffic stays on the loopback interface,
+so TLS is not needed. If you configure a reverse proxy to make LP
+Ranger accessible over a network — for example to access the dashboard
+remotely — you assume
 full responsibility for ensuring that TLS is properly configured for
 the entire request path, including the leg between the reverse proxy
 and the LP Ranger server. Failure to do so will expose sensitive
@@ -208,13 +195,14 @@ any network outside the local machine.
 
 ### Protocol Choice
 
-All outbound calls to third-party services — RPC endpoints, 9mm
-aggregator, DexScreener, GeckoTerminal, Moralis — use `https://` URLs by
-policy; the default `RPC_URL` (`rpc-pulsechain.g4mm4.io`) and fallback
-(`rpc.pulsechain.com`) both enforce TLS at the network layer. Inbound
-dashboard traffic uses plain HTTP because it never leaves the loopback
-interface; adding TLS to a localhost-only listener buys nothing and
-complicates setup.
+All outbound calls to third-party services — rpc endpoints, the swap
+aggregator, DexScreener, GeckoTerminal, Moralis — use the `https://`
+urls the app ships, and the shipped rpc endpoints enforce TLS. An rpc
+endpoint you add yourself may be plain `http://`, which suits a node on
+your own machine only: anything else would carry your transactions in
+the clear. Inbound dashboard traffic uses plain HTTP because it never
+leaves the loopback interface; adding TLS to a localhost-only listener
+buys nothing and complicates setup.
 
 ### Rate Limiting
 
@@ -239,9 +227,11 @@ relationship with the server.
 
 [`src/server-cors.js`](../src/server-cors.js) sets
 `Access-Control-Allow-Origin: http://localhost:<PORT>` on every
-response and rejects any mutating (`POST`, `DELETE`) request whose
-`Origin` header resolves to a non-localhost host with a 403. Programmatic
-callers (e.g. `curl`) send no `Origin` header and pass
+response and rejects with a 403 any mutating (`POST`, `DELETE`) request
+whose `Origin` header names another host or port. The allowed origin
+follows the configured `PORT`, and `_isLocalhostOrigin` accepts
+`localhost`, `127.0.0.1` and `[::1]` at that port and nothing else.
+Programmatic callers (e.g. `curl`) send no `Origin` header and pass
 through. Preflight `OPTIONS` requests are answered with `204` and the
 same allowed-methods/headers list. `test/server-cors.test.js` covers the
 accept-localhost and reject-foreign-origin paths.
@@ -261,28 +251,23 @@ defines two values:
 | Field | Default | Meaning |
 | ----- | ------- | ------- |
 | `tokenTtlMs` | `3600000` (60 min) | Server-side token lifetime. After this, `verifyToken()` returns `Expired CSRF token` and the server responds `403`. |
-| `refreshIntervalMs` | `3000000` (50 min) | Delivered to the dashboard in every `GET /api/csrf-token` response. Must be strictly less than `tokenTtlMs`; keep ≥ 10 min margin to survive clock skew and a slow fetch. |
+| `refreshIntervalMs` | `300000` (5 min) | Delivered to the dashboard in every `GET /api/csrf-token` response. Must be strictly less than `tokenTtlMs`, with a wide margin for a throttled hidden tab, a slow fetch and clock skew. |
 
-**Dashboard refresh mechanism.** On init the dashboard calls
-`refreshCsrfToken()` once (in `public/dashboard-init.js`), then
-schedules `setInterval(refreshCsrfToken, csrfRefreshIntervalMs())` using
-the server-delivered interval. This timer is independent of the
-`/api/status` poll loop and fires regardless of poll health — which is
-the whole point. On a long-running host (e.g. Raspberry Pi 5
-(recommended configuration: with Heat Sink and Fan, 5GB RAM, and
-Ethernet cable Internet connection instead of Wi-Fi) during a
-multi-hour phase-2 event scan) the status poll's in-flight guard can
-skip ticks for extended windows; if the CSRF refresh were tied to that
-path, tokens would silently expire and auto-fired background POSTs
-(silent pool-history rescans triggered by rebalance-event detection,
-unmanaged-position lifetime fetches, etc.) would 403 with no user
-action involved. The dedicated timer makes expiry impossible in
-practice without a several-minute network outage.
+**Dashboard refresh mechanism.** The dashboard fetches a token at
+startup (`public/dashboard-init.js`), then again every
+`refreshIntervalMs`, and whenever its tab becomes visible or its window
+gains focus. Until the first token arrives it uses the `refreshIntervalMs`
+built into the page from the shipped `csrf.json`. The timer is
+independent of the `/api/status` poll loop, which is the point: during a
+long scan the status poll can skip ticks for long stretches, and a refresh
+tied to it would let the token expire, so the background POSTs the dashboard
+sends on its own (a pool-history rescan after a rebalance, an unmanaged
+position's lifetime fetch) would be refused 403 with no user action
+involved.
 
-To change either value, edit `csrf.json` and restart the server.
-`readCsrfTunable()` is called on every `createToken()` and `verifyToken()`
-so the values are always current on the server side; the client picks
-up the new `refreshIntervalMs` on its next scheduled refresh.
+To change either value, put it in an override copy at
+`app-config/user-configurable/csrf.json` and restart the server; the
+dashboard takes the new `refreshIntervalMs` with its next token.
 
 **Silent retry on aged-out tokens.** Even with the dedicated refresh
 timer, Chrome can throttle a hidden tab's `setInterval` hard enough that
@@ -357,7 +342,8 @@ provides their wallet password through one of three methods
    only), no browser needed.
 3. **`WALLET_PASSWORD` in `.env`** — fully unattended, for systemd /
    Docker / CI. The password lives on disk as plaintext — least
-   recommended (see *Unattended-startup trade-off* below).
+   recommended (see *Operator responsibilities when using
+   `WALLET_PASSWORD`* below).
 
 Whichever method is used, the same thing happens: the server
 decrypts the operator's **private signing key** (stored encrypted
@@ -383,12 +369,7 @@ keys), both backed by the cryptographic primitives in
    times** — to produce the encryption key. The slowness is
    intentional: it makes brute-force password guessing impractical
    (this follows OWASP (Open Web Application Security Project) 2023
-   guidance). In the default interactive flow, the password exists
-   only in the server's memory for the duration of the session and
-   is discarded when the process exits. (Operators who need
-   unattended startup can optionally store the password in `.env` —
-   see *Unattended-startup trade-off* below for the security
-   implications of that choice.)
+   guidance).
 2. **The derived key encrypts your data** using **AES-256-GCM**
    (Advanced Encryption Standard, 256-bit key, Galois/Counter Mode).
    AES-256 is the same encryption standard used by governments and
@@ -408,11 +389,11 @@ keys), both backed by the cryptographic primitives in
 **One password, every secret:** Third-party API keys (Moralis,
 Telegram, etc.) are encrypted with the **same wallet password** —
 there is no separate "API-keys password" to manage or lose. After
-the unlock, the server caches the password in the
-`_sessionPassword` module-level variable in
-[`src/server-routes.js`](../src/server-routes.js) (line 84) so
-subsequent API-key save/reveal operations during the same session
-don't re-prompt. The cache is discarded when the process exits.
+the unlock, the server keeps the password in `_sessionPassword` in
+[`src/server-routes.js`](../src/server-routes.js), so saving an API key
+or the Telegram settings later in the same session needs no password.
+It is discarded when the process exits. Revealing the wallet's key
+always asks for the password again.
 
 **Two ways to import the wallet — same password either way:** The
 encrypted `wallet.json` file can be created through either of two
@@ -434,17 +415,9 @@ picks the signing-key source in fixed priority:
 encrypted wallet unlocked by `WALLET_PASSWORD` env var, `--headless`
 terminal prompt, or dashboard dialog.
 
-**Three startup modes:** The modes differ only in how the password
-reaches the server — the encrypted files, the decryption process,
-and the in-memory handling are identical in all three cases:
-
-| Mode | Command | Password source | On disk? |
-| ---- | ------- | --------------- | -------- |
-| Dashboard (default) | `node server.js` | Browser unlock dialog | No — memory only |
-| `--headless` prompt | `node server.js --headless` | Terminal stdin prompt | No — memory only |
-| Unattended | `WALLET_PASSWORD=pw node server.js` | `.env` file | **Yes** — plaintext |
-
-In `--headless` mode, if the wallet can't be unlocked (no password
+The three unlock methods differ only in how the password reaches the
+server; the encrypted files, the decryption and the in-memory handling
+are the same. In `--headless` mode, if the wallet can't be unlocked (no password
 provided, no `WALLET_PASSWORD` in env, no wallet imported), the
 server **exits with an error** rather than falling through to
 dashboard-only mode — there is no browser to fall back to.
@@ -460,8 +433,12 @@ dashboard-only mode — there is no browser to fall back to.
   rotated.
 - When rotating a password, run `npm run reset-wallet` rather than
   editing `.env` by hand — the script scrubs the `WALLET_PASSWORD=`
-  line and deletes `app-config/user-configurable/wallet.json` in one step, so the
-  next restart forces a fresh import.
+  line and deletes `app-config/user-configurable/wallet.json` in one
+  step, so the next restart forces a fresh import. Have the wallet's
+  seed phrase or private key at hand before you run it: the import
+  needs one of them. The third-party API keys stay encrypted under the
+  old password, which the new one cannot open, so enter them again in
+  Settings after the import.
 
 **How `reset-wallet` works:** `scripts/reset-wallet.js` (invoked via
 `npm run reset-wallet`) performs two idempotent actions:
@@ -492,9 +469,14 @@ format stability.
 
 ### In-Memory Handling
 
-Plaintext keys exist only during the narrow decrypt-then-sign window
-inside the bot loop. They are never written to disk unencrypted, never
-returned by `GET /api/status`, and never included in any log line.
+Once the wallet is unlocked, its plaintext key lives in the shared
+signer (an ethers `Wallet`, built in
+[`src/position-manager.js`](../src/position-manager.js)) for as long as
+the server runs, and the wallet password in `_sessionPassword` for the
+session. Neither is ever written to disk unencrypted, returned by
+`GET /api/status`, or included in any log line. The key leaves the
+server only through `POST /api/wallet/reveal`, which decrypts it again
+from the password sent with that request.
 
 **Lint enforcement:** The custom ESLint rule
 [`9mm/no-secret-logging`](../eslint-rules/no-secret-logging.js) flags
@@ -586,20 +568,22 @@ position-specific API call must identify **which position** it's
 acting on. The identifier is a composite key — a dash-separated
 string like
 `pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-157149`
-that encodes
-the blockchain name, wallet address, the contract address of the
-liquidity pool provider's NFT factory, and NFT token ID. A malformed or missing key could route a config change,
-a rebalance, or a stop command to the wrong position — or to no
-position at all.
+that encodes the blockchain name, the wallet address, the address of
+the position manager contract that holds the NFT, and the NFT's token
+ID. A malformed or missing key could route a config change, a
+rebalance, or a stop command to the wrong position — or to no position
+at all.
 
 `parseCompositeKey()` in
-[`src/bot-config-v2.js`](../src/bot-config-v2.js) validates the
-format: exactly four dash-separated parts, with `0x`-prefixed wallet
-and contract fields. If the key is missing or doesn't match, the
+[`src/composite-key.js`](../src/composite-key.js) validates the
+format. Right to left, its dash-separated parts are the token ID, a
+`0x`-prefixed contract and wallet, and the chain's name, which must be
+present, without a `0x` part, and may hold a dash. If the key is
+missing or doesn't match, the
 route handler returns `400` immediately. This applies to every
-position-specific route (`POST /api/config`,
-`DELETE /api/position/manage`, `POST /api/rebalance`,
-`POST /api/compound`).
+position-specific route, such as `POST /api/config`,
+`DELETE /api/position/manage`, `POST /api/rebalance` and
+`POST /api/compound`.
 
 ### Config Key Allowlist
 
@@ -609,7 +593,7 @@ body like:
 
 ```json
 {
-  "slippagePct": 0.75,
+  "slippagePctToken0": 0.75,
   "positionKey": "pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-157149"
 }
 ```
@@ -617,14 +601,20 @@ body like:
 to `POST /api/config`. A naive handler that merged every field from
 that body into the config object would let an attacker inject
 unexpected keys (for example, overwriting `status` to mark a
-position as stopped, or polluting internal bookkeeping fields).
+position as stopped).
 
 LP Ranger prevents this with a strict `allowlist`. The route handler
 in `src/server-config-route.js` walks two hardcoded arrays —
-`GLOBAL_KEYS` (gas strategy, RPC URLs, etc.) and `POSITION_KEYS`
+`GLOBAL_KEYS` (RPC URLs, gas fee limit, etc.) and `POSITION_KEYS`
 (slippage, threshold, timeout, auto-compound settings, etc.) defined
 in `src/bot-config-keys.js` — and copies only those recognized names
-from the request body. Every other field is silently dropped. Because
+from the request body. Every other field is silently dropped. Each
+setting an operator can change is then held to its range by
+`src/config-bounds.js` before anything is saved. `POSITION_KEYS` also
+names the position's bookkeeping the app maintains itself, such as
+`hodlBaseline`, `residuals` and `compoundHistory`; the route accepts
+those too, unchecked, so they rely on the outer layers (the localhost
+binding, the origin check and the CSRF token). Because
 the `allowlist` is a constant inside server code (never derived from
 user input), the bracket access `diskConfig[k]` that merges each
 field is safe — which is why `eslint-plugin-security`'s
@@ -779,45 +769,54 @@ recovery pipeline to completion before releasing.
 `_waitOrSpeedUp()` in `src/tx-speedup.js` wraps the `tx.wait()` of every
 send that goes through `sendTx.sendTransaction` — approve, the
 removeLiquidity multicall, the V3-router swap, mint, and the compound's
-collect and increaseLiquidity — in a four-phase pipeline: **wait →
-speed-up (the chain's `speedUpGasBump`, 1.5× on PulseChain) → wait →
-auto-cancel (zero-value self-transfer)**. A stuck nonce is therefore
-cancelled within `TX_CANCEL_SEC` (default 60 min) instead of blocking the
-wallet indefinitely, and that holds even when the speed-up cannot be
+collect and increaseLiquidity. It recovers a stuck transaction in four
+phases: **wait → speed-up (the chain's `speedUpGasBump`, 1.5× on
+PulseChain) → wait → auto-cancel (zero-value self-transfer)**. So a
+cancel goes out within `TX_CANCEL_SEC` (60 minutes by default) instead of
+the wallet staying blocked. That holds even when the speed-up cannot be
 sent: the original is then waited on alone, under the same clock, and the
-cancel still follows. Once the cancel is out, the move's own transaction,
-its speed-up and the cancel compete for one nonce, and the pipeline
-reports whichever took it: the cancel's receipt means the move did not
-happen; the move's own receipt — it mined while the cancel was pending, or
-the cancel was refused as "nonce too low" because it already had — means
-it did, and it is reported as confirmed rather than as cancelled; a
-transaction sent from the wallet outside the bot fails the move, naming
-it. The aggregator sends its swap outside that entry point and carries its
-own timeout, cancel and re-quote loop, which reaches the nonce the same
-way. Neither path claims certainty: a cancel that cannot be sent is logged
-as possibly still stuck, so what the wallet is left holding is reported
-rather than assumed. Every phase logs its state so post-mortem analysis of
-a stuck TX is deterministic.
+cancel still follows.
 
-What the aggregator does with that uncertainty is a custody property, so
-it belongs here. A swap and the cancel sent to displace it share one
-nonce, so at most one of them can ever mine. Until a receipt names the
-winner the swap may still land, and both of the alternatives — re-quoting
-at the next nonce, or letting the failure reach the V3 router fallback —
-would swap the same balance a second time. So the loop asks the chain for
-a receipt on each hash before it does anything: the swap's receipt is
-returned as the swap, the cancel's receipt licenses a re-quote, and
-neither fails the rebalance with the nonce named. A receipt alone does not
-settle it — a reverted transaction has one too — so the swap's `status`
-decides: `1` means it landed and a re-quote would be the second swap, `0`
-means it consumed the nonce without moving funds and a re-quote is right,
-and absent means unknown, where nothing further is sent. Every way the
-cancel itself can fail reaches that same question rather than being raised
-as an error, because an error leaving the aggregator carries no flag and
-the router fallback reads an unflagged error as "no swap happened".
+Once the cancel is out, the move's own transaction, its speed-up and the
+cancel compete for one nonce, and the pipeline reports whichever took it:
 
-**What the operator is left with, stated precisely, because the obvious
-summary is wrong.** This is not a rebalance that simply did not happen.
+- **The cancel** — the move did not happen.
+- **The move's own transaction** — mined while the cancel was pending, or
+  already mined when the cancel was refused as "nonce too low". The move
+  happened, and is reported as confirmed rather than cancelled.
+- **A transaction sent from the wallet outside the bot** — the move fails,
+  naming it.
+
+A cancel that cannot be sent is logged as leaving the nonce possibly still
+stuck, and the move fails; what the wallet is left holding is reported,
+not assumed. The aggregator sends its swap outside this entry point, with
+its own timeout, cancel and re-quote loop. Every phase logs its state, so
+a stuck transaction can be traced afterwards from the log.
+
+The aggregator's loop exists to prevent a second swap. A swap and the
+cancel sent to displace it share one nonce, so at most one of them can
+ever mine. Until a receipt names the winner, the swap may still land, and
+both alternatives — re-quoting at the next nonce, or letting the failure
+reach the V3 router fallback — would swap the same balance a second time.
+So the loop asks the chain for a receipt on each hash before it does
+anything:
+
+- **The swap's receipt** decides by its `status`, since a reverted
+  transaction has a receipt too. `1` means it landed, and it is returned
+  as the swap: a re-quote would be the second swap. `0` means it consumed
+  the nonce without moving funds, so a re-quote is right.
+- **The cancel's receipt** closes the nonce to the swap, and a re-quote
+  follows at the next one.
+- **No receipt for either** means the swap can still mine. The rebalance
+  fails, naming the nonce, and nothing further is sent.
+
+Every way the cancel itself can fail reaches that same question rather
+than being raised as an error, because an error leaving the aggregator
+carries no flag, and the router fallback reads an unflagged error as "no
+swap happened".
+
+**What the operator is left with when neither has mined.** This is not
+a rebalance that simply did not happen.
 The swap runs after liquidity has been removed, so the position is drained
 and un-minted, and the swap at that nonce **can still mine at any time** —
 the tokens may therefore be swapped minutes later by a transaction nothing
@@ -838,51 +837,54 @@ reference. What matters here is the property it preserves — no
 transaction is sent twice because an endpoint changed underneath it.
 Broadcast failover rebinds the `FailoverNonceManager`, whose fresh
 nonce comes from chain state rather than from a delta carried over from
-the endpoint that failed, and receipt polling stays bound to the
-provider that broadcast, so a half-mined transaction is never asked
-about on an endpoint that has not seen it.
+the endpoint that failed. A receipt is first asked of the endpoint that
+broadcast; if that endpoint stops answering, the wait asks the others.
+An endpoint that has not seen the transaction answers with no receipt,
+which the wait reads as still pending, never as a reason to send at a
+new nonce.
 
 ### Slippage Guards
 
-Swap `amountOutMinimum` is derived from a `staticCall` quote
-(`_checkSwapImpact()` in `src/rebalancer-pools.js`), not spot price. If
-the quoted price impact exceeds the user's slippage setting, the swap
-aborts and the bot pauses until the user resolves the condition. This
-prevents low-liquidity pools or aggressive aggregator routes from
-silently draining the position on a single TX.
+A swap's minimum output is set from a quote, not the spot price: on the
+V3 router, a `staticCall` quote less the slippage (`amountOutMinimum`);
+on the aggregator, the guaranteed price it quotes for the slippage sent
+with the request. If the quoted price impact exceeds the slippage setting
+(`_checkSwapImpact()` in `src/rebalancer-swap-impact.js`), the swap is
+aborted, and the bot makes no further automatic rebalance of that
+position until the operator changes a Slippage setting or clicks
+Rebalance Now. An aggregator quote that names no price impact is
+refused outright. This prevents low-liquidity pools or aggressive
+aggregator routes from silently draining the position on a single TX.
 
 ### Swap Gates (Dust + Gas)
 
 Every swap call site (initial rebalance swap, post-swap corrective loop,
-and the new ratio-correcting compound swap) routes through a single
+and the ratio-correcting compound swap) routes through a single
 helper, `shouldSkipSwap()` in [`src/swap-gates.js`](../src/swap-gates.js).
 Two gates run in a fixed order:
 
 1. **Dust gate (first).** Skip when the swap value (in USD) is below the
-   gold-pegged dust threshold. The dust gate runs first because a failure
-   there is cheaper and more reliable to detect than the gas-gate, and a
-   dust-skip short-circuits the more expensive gas estimate. Running dust
-   first also minimises the latency between the gas-price read and the
-   actual swap broadcast: when dust skips the swap entirely, no gas read
-   happens at all, and when dust passes, the gas read is the very next
-   step — so any drift in the gas-price between the read and the swap
-   submission is kept as small as possible.
-2. **Gas gate.** Skip when estimated gas cost exceeds **1%** of the swap
-   value. The threshold is exposed as a module-level
-   `MAX_SWAP_GAS_RATIO = 0.01` so every consumer references the same
-   constant. Comparison is strict `>`, so a ratio of exactly 1% still
-   passes.
+   gold-pegged dust threshold. It runs first because it is cheaper and
+   more reliable to evaluate than the gas gate, and a dust-skip
+   short-circuits the gas estimate. It also keeps the gas-price read
+   close to the broadcast: when dust skips the swap no gas read happens,
+   and when it passes the gas read is the very next step.
+2. **Gas gate.** Skip when the swap's estimated gas would cost more than
+   `gasFeePct` of its value: the global setting in Settings → Gas Fee
+   Threshold, 1% as shipped. `MAX_SWAP_GAS_RATIO` is that shipped default
+   as a ratio, used only by a caller that passes none. Comparison is
+   strict `>`, so a ratio of exactly the setting still passes.
 
 When either gate trips, the caller proceeds without swapping. For
 rebalance, that means minting with the unswapped balances and letting
 the corrective loop or the post-rebalance residual sweep handle any
-leftover. For compound, that means depositing only the side that fits
-the current tick ratio and tracking the rest as a wallet residual to be
-folded back in on the next rebalance.
+leftover. For compound, that means offering just the collected fees:
+the position takes what fits its ratio, and the rest stays in the wallet
+as a residual to be folded back in on the next rebalance.
 
 The gas estimate uses `provider.getFeeData()` × a configurable swap-gas
 units estimate (`config.CHAIN.aggregator.estimatedSwapGasUnits`,
-default 500_000). When `getFeeData()` throws or returns nothing usable,
+500000 on PulseChain). When `getFeeData()` throws or returns nothing usable,
 `estimateSwapGasUsd()` returns 0 — the gas gate degrades to a no-op
 rather than blocking swaps on a flaky RPC.
 
@@ -956,7 +958,7 @@ worse than the widely-deployed alternative, and a CVE (Common
 Vulnerabilities and Exposures advisory) in a popular package is
 discovered and patched far faster than one in a one-off module. The
 `"dependencies"` block in `package.json` is intentionally
-small (9 packages) so the review surface stays tractable.
+small so the review surface stays tractable.
 
 When a transitive dependency has a known issue, the first response is
 to **delete `package-lock.json` and regenerate it** (`npm install`).
@@ -1054,9 +1056,12 @@ error, so real bugs are never silently swallowed.
 
 `POST /api/shutdown` (CSRF-protected like every other mutating route)
 calls `positionMgr.stopAll()` and then exits cleanly so nonces are not
-left hanging — a programmatic shutdown option. The usual operator path is
-`npm stop`, which sends SIGTERM to the PID in `tmp/lp-ranger.pid` (the same
-`shutdown` handler as Ctrl+C); see the "Build and Run" section.
+left hanging. The recommended way is `npm run gentle-stop`: it waits out
+any rebalance or compound, then stops the server as `npm stop` does.
+`npm stop` sends SIGTERM to the PID in `tmp/lp-ranger.pid`, running
+Ctrl+C's `shutdown` handler: a force-stop, exiting within three seconds
+whatever is under way. See
+[Stopping a Running Install](npm-project-commands.md#stopping-a-running-install).
 
 ## Code Review Controls
 
@@ -1069,20 +1074,28 @@ silently introduced.
 The `max-lines: 500` (skipBlankLines, skipComments) and
 `complexity: 17` ESLint rules keep every file and function small
 enough that a human reviewer can hold the whole control flow in their
-head. Files that exceed the limits must be split — they cannot be
-silenced with `eslint-disable`, because `reportUnusedDisableDirectives`
-is configured to flag any stray directive that doesn't suppress a
-real warning. Custom security rules (`9mm/no-secret-logging`,
-`9mm/no-number-from-bigint`) may use per-line
-`eslint-disable-next-line` **only** with a `-- Safe: <reason>`
-comment documenting why the deviation is intentional. Current
-exceptions:
+head. Files that exceed the limits must be split; a disable directive
+cannot silence them in the server code. The main pass ignores unused
+directives, but the security pass reports every directive that
+suppresses nothing there, runs none of the quality rules, and fails on
+a single warning. So a directive silencing `max-lines` or `complexity`
+in `src/`, `scripts/`, `util/`, `server.js` or `bot.js` fails
+`npm run audit:security`. The dashboard's `public/dashboard-*.js` files
+are outside the security pass, so there the rule is held by review.
+
+The only directives allowed are per-line `eslint-disable-next-line`
+comments for a security rule, each with a `-- Safe: <reason>` comment
+documenting why the deviation is intentional. Current exceptions:
 
 | File | Line | Rule | Reason |
 | ---- | ---- | ---- | ------ |
-| `src/hodl-baseline.js` | 37 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/range-math.js` | 294 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/position-detector.js` | 169 | `9mm/no-number-from-bigint` | Zero-check only |
+| `src/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/range-math.js` | 303 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/position-detector.js` | 185 | `9mm/no-number-from-bigint` | Zero-check only |
+| `scripts/cache-bust.js` | 17, 19, 24 | `security/detect-unsafe-regex` | Input is local `index.html`, not user-supplied |
+| `scripts/cache-bust.js` | 31 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
+| `scripts/check-report-parse.js` | 283 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
+| `scripts/import-wallet.js` | 97 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
 
 Whole files are never excluded from linting. Every exception is a
 single `eslint-disable-next-line` comment. It sits on the exact line
@@ -1097,100 +1110,55 @@ outside ESLint's scope, but that's because they're markup, not
 JavaScript. They aren't left unchecked. Both are linted by
 `html-validate` as part of `npm run lint`.
 
-ESLint runs in two passes against the same source files. Each pass
-uses a different config. Other lint tools run alongside, including
-stylelint, html-validate, markdownlint-cli2, and secretlint. Those
-are separate programs. "Two passes" here refers only to ESLint.
+**Two ESLint passes.** ESLint runs twice over the same sources, each
+time with its own config. (stylelint, html-validate, markdownlint-cli2
+and secretlint are separate programs.)
 
-The main pass is invoked as part of `npm run lint`. It uses
-`eslint.config.js`. It enforces code-quality and non-security rules.
-The full set: `complexity <= 17`, `max-lines <= 500`,
-`max-len <= 80`, `no-unused-vars`, `no-var`, `prefer-const`,
-`eqeqeq`, `strict`, `no-extend-native`, a `no-restricted-syntax`
-ban on `window.*` assignment and `Math.random`, plus the custom
-rules `9mm/no-separate-contract-calls` and
-`9mm/no-fetch-without-csrf`.
+- The **main pass** (`npm run lint`, `eslint.config.js`) enforces code
+  quality. Among its rules: `complexity <= 17`, `max-lines <= 500`,
+  `max-len <= 80`, `no-unused-vars`, `no-var`, `prefer-const`,
+  `eqeqeq`, `strict`, `no-extend-native`, a `no-restricted-syntax` ban
+  on `window.*` assignment and `Math.random`, and the custom rules
+  `9mm/no-separate-contract-calls`, `9mm/no-fetch-without-csrf` and
+  `9mm/no-interpolated-innerhtml`.
+- The **security pass** (`npm run audit:security`,
+  `eslint-security.config.js`) enforces the security rules, from
+  `eslint-plugin-security`, `eslint-plugin-no-secrets` and the custom
+  `9mm/no-secret-logging` and `9mm/no-number-from-bigint`. Its rules are
+  `warn`, apart from the two turned off on purpose (see
+  [Injection Prevention](#injection-prevention)), and the
+  command passes `--max-warnings 0`, so any finding fails the build. This
+  pass decides whether a per-line exception stands.
 
-The security pass runs via `npm run audit:security`. It is driven
-by `eslint-security.config.js`. This pass is what actually enforces
-the security rules. Those rules come from three sources:
-`eslint-plugin-security`, `eslint-plugin-no-secrets`, and the custom
-`9mm/no-secret-logging` / `9mm/no-number-from-bigint`. This pass
-is also what decides whether a per-line exception stands.
+The main config loads `eslint-plugin-security` without enabling its
+rules. Loading a plugin registers its rule names; a rule's severity
+decides whether it fires. The main pass reads the same files as the
+security pass and so meets the security directives too, and without the
+names registered it would stop with "Definition for rule not found".
+Two of the plugin's rules, `security/detect-unsafe-regex` and
+`security/detect-possible-timing-attacks`, are also pinned `off` there;
+the rest are left unconfigured, which is also off.
 
-The main config does one slightly odd thing to make this two-pass
-setup work. It loads `eslint-plugin-security` without enabling any
-of the plugin's rules.
-
-First, some terminology. "Loading" a plugin means telling ESLint the
-plugin exists. That in turn registers the names of every rule the
-plugin provides. After that, ESLint knows what
-`security/detect-unsafe-regex` refers to. "Severity" is a separate
-concept. Severity lives on individual rules. It decides whether a
-rule actually produces errors or warnings. A rule can be known to
-ESLint but have no severity set. In that case it simply doesn't
-fire.
-
-Two security rules are pinned to severity `off` in the main config:
-`security/detect-unsafe-regex` and
-`security/detect-possible-timing-attacks`. Those are the two rules
-referenced by per-line directives in this repo. The rest of the
-plugin's rules are unconfigured there — which is also effectively
-off.
-
-Why load the plugin at all if none of its rules will fire? Because
-of the disable directives. Developers write
-`eslint-disable-next-line security/detect-unsafe-regex -- Safe: ...`
-comments in the source code. Those comments are meant for the
-security pass. But the main pass reads the same files and sees them
-too. If the main pass didn't recognize the rule name, it would
-error out with "Definition for rule not found."
-
-The fix is to load the plugin and not enable the rules. The main
-pass now recognizes every rule name. It sees the disable comment,
-does nothing with it, and moves on.
-
-The security pass is different. There, the rules are turned on.
-Every rule listed in `eslint-security.config.js` is set to severity
-`warn`. The `npm run audit:security` command passes
-`--max-warnings 0`, which turns each warning into a build failure.
-So a security finding is effectively an error in CI.
-
-This is where the per-line disable directive earns its keep. Every
-so often a rule flags code that looks dangerous but is actually
-safe in context. Two examples from this repo: `detect-unsafe-regex`
-firing on a regex that only ever runs against a known local file,
-and `detect-possible-timing-attacks` firing on a string comparison
-that confirms two copies of a user-entered password rather than
-verifying a secret against a stored value. In those cases a false
-positive would block the build. The directive tells the security
-pass to skip that one line, and the `-- Safe: <reason>` comment
-explains why it's safe. The rule stays on for the rest of the file
-and the rest of the codebase.
+A per-line exception is for a rule that flags code that looks dangerous
+but is safe in context: `detect-unsafe-regex` on a regex that only ever
+runs against a known local file, say, or `detect-possible-timing-attacks`
+on a comparison that confirms two copies of a user-entered password
+rather than checking a secret. The directive skips that one line, its
+`-- Safe:` comment says why, and the rule stays on everywhere else.
 
 ### Build and Infrastructure Scripts
 
-The `scripts/` directory contains 15 Node modules that drive the
-build pipeline (`build-info.js`, `cache-bust.js`), the check/report
-pipeline (`check.js`, `check-report.js`, `check-report-parse.js`,
-`check-report-pdf.js`, `check-report-md.js`), font management
-(`copy-fonts.js`), state management (`wipe-settings.js`,
-`restore-settings.js`, `reset-wallet.js`), server lifecycle
-(`stop.js`), and auxiliary tools (`api-doc.js`,
-`clear-pool-cache.js`, `telegram-send.js`). All 15 are subject to
-the **same checks** as application source code:
+Every Node module in `scripts/` — the build, the check and report
+pipeline, font management, state management, server lifecycle and the
+auxiliary tools — is subject to the **same checks** as application
+source code:
 
-- **ESLint (main)** — `scripts/**/*.js` is in the section 1 file
-  list and section 3 Node-source config, so every script is held
-  to the same `complexity <= 17`, `max-lines <= 500`, `strict`,
-  `no-var`, `eqeqeq`, `prefer-const`, and `no-restricted-syntax`
-  (Math.random ban) rules as `src/` and `server.js`.
-- **Security lint** (`eslint-plugin-security` +
-  `eslint-plugin-no-secrets` + custom `9mm/*` rules) — the
-  `eslint-security.config.js` `files[]` array includes
-  `scripts/**/*.js`, and `npm run audit:security` runs
-  `scripts/audit.js --security` over `SECURITY_TARGETS` from
-  `scripts/lint-targets.js`.
+- **ESLint (main)** — `scripts/` is in the main config's file list and
+  its Node-source section, so every script meets the same rules as
+  `src/` and `server.js`.
+- **Security lint** — `npm run audit:security` runs the security pass
+  over `SECURITY_TARGETS` from `scripts/lint-targets.js`, which includes
+  `scripts/`. The scripts' per-line exceptions are in the table above.
 - **Secret scanner** (`secretlint`) — `npm run audit:secrets` runs
   `scripts/audit.js --secrets` over `SECRET_TARGETS` from the same
   file.
@@ -1198,33 +1166,6 @@ the **same checks** as application source code:
   `scripts/format.js`, which reads the one target list in
   `scripts/lint-targets.js`; `npm run lint` calls `format:check`, and
   the pre-commit hook runs `npm run lint`.
-
-The `eslint-plugin-security` plugin is loaded in the main ESLint
-config — the same loaded-but-silent pattern described in detail
-above. Loading the plugin is what registers every one of its rule
-*names* so that a per-line `// eslint-disable-next-line
-security/detect-unsafe-regex` directive doesn't trip the main lint
-pass with "Definition for rule not found." Two of the plugin's rules
-are additionally pinned to severity `off` in the main config
-(`security/detect-unsafe-regex` and
-`security/detect-possible-timing-attacks`) because those are the two
-rules actually referenced by per-line directives in the repo; the
-rest of the plugin's rules aren't listed in the main config at all
-and remain unconfigured (effectively `off`) there. (Strictly speaking,
-a plugin is loaded, and severity lives on individual rules. Phrases
-like "the plugin is registered at `off`" are shorthand.) The
-security pass (`eslint-security.config.js`) loads the same plugin
-with each rule set to `warn` — that's the pass in which the
-directives actually suppress findings.
-
-Four such directives currently exist in `scripts/`:
-
-| File | Line | Rule | `-- Safe:` reason |
-| ---- | ---- | ---- | ----------------- |
-| `scripts/cache-bust.js` | 14 | `security/detect-unsafe-regex` | Input is local `index.html`, not user-supplied |
-| `scripts/cache-bust.js` | 16 | `security/detect-unsafe-regex` | Input is local `index.html`, not user-supplied |
-| `scripts/check-report-parse.js` | 183 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
-| `scripts/import-wallet.js` | 98 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
 
 This means a compromised or careless infrastructure script cannot
 silently bypass the same quality and security gates that protect
@@ -1275,12 +1216,15 @@ reaching `main`.
 
 ## Test-Time State Protection
 
-`scripts/check.js` backs up every top-level file in `app-config/`
-(plus `tmp/*.json`) to a `mktemp -d` directory, wipes the live files,
-runs the test suite against vanilla state, and restores the originals
-via an `EXIT` trap. This prevents a test that creates a stub config or
-keyfile from ever clobbering live user state, and it means a test that
-believed it had written to `app-config/user-configurable/wallet.json` was actually
-writing to a scratch copy. Tests that need explicit paths instead use
+`scripts/check.js` copies the operator's files — those in
+`app-config/user-configurable/` and `app-data/`, except each directory's
+`README.md`, plus `tmp/*.json` — to a fresh temporary directory, wipes
+the live copies, runs the test suite against vanilla state, and restores
+the originals in a `finally` block. Until then SIGINT, SIGTERM and SIGHUP
+are caught, so an interrupt still restores the files before the process
+exits. A test that creates a stub config or keyfile therefore never
+clobbers live user state: one that believed it had written to
+`app-config/user-configurable/wallet.json` was writing where the live file
+had been wiped, and the original comes back afterwards. Tests that need explicit paths instead use
 the `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH` environment variables or
 pass a `dir` argument to `loadConfig` / `saveConfig` directly.

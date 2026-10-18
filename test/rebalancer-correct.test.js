@@ -16,6 +16,7 @@ const SWAP_PATH = require.resolve("../src/rebalancer-swap");
 const PRICE_PATH = require.resolve("../src/price-fetcher");
 const DUST_PATH = require.resolve("../src/dust");
 const CORRECT_PATH = require.resolve("../src/rebalancer-correct");
+const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 /** Simple mock ethers library (just Contract factory with a lookup table). */
 function mkEthersLib(dispatch) {
@@ -32,7 +33,8 @@ function mkEthersLib(dispatch) {
  *
  * Scalar-valued fields (`desired`, `swapResult`, `isDustReturn`) accept
  * EITHER a single value (static) OR an array (one element per iteration
- * — the corrective rebalancer can now loop up to 3 times).
+ * — the corrective rebalancer loops up to `correctiveSwapMaxRounds`
+ * times).
  */
 function installStubs({
   poolState,
@@ -241,11 +243,13 @@ describe("correctivelyRebalanceIfNeeded", () => {
     assert.deepStrictEqual(res.swapSources, ["NineMM_V3"]);
   });
 
-  it("caps at 3 iterations and flags aboveThresholdAfterCap when residual persists", async () => {
-    /*- Every iteration fires a swap (needsSwap=true, isDust=false).
-     *  After the 3-iteration hard cap, residual is still above threshold
-     *  — so the rebalancer returns a warning signal instead of looping
-     *  forever. */
+  it("caps at the configured round limit and flags aboveThresholdAfterCap when residual persists", async () => {
+    /*-
+     *  Every iteration fires a swap (needsSwap=true, isDust=false).
+     *  After `correctiveSwapMaxRounds` rounds, residual is still above
+     *  threshold — so the rebalancer returns a warning signal instead of
+     *  looping forever.
+     */
     installStubs({
       poolState: {
         tick: 5,
@@ -280,14 +284,18 @@ describe("correctivelyRebalanceIfNeeded", () => {
       mkEthersLib(dispatch),
       CTX(),
     );
-    assert.strictEqual(_MAX_ITERATIONS, 3, "hard cap must stay at 3");
+    assert.strictEqual(
+      _MAX_ITERATIONS,
+      SHIPPED_DEFAULTS.correctiveSwapMaxRounds,
+      "the cap is bot-config-defaults.json → correctiveSwapMaxRounds",
+    );
     assert.strictEqual(res.skipped, false);
     assert.strictEqual(res.reason, "above-threshold-after-cap");
-    assert.strictEqual(res.iterations, 3);
+    assert.strictEqual(res.iterations, _MAX_ITERATIONS);
     assert.strictEqual(res.aboveThresholdAfterCap, true);
-    assert.strictEqual(res.txHashes.length, 3);
-    // Accumulated gas = 3 × 42n.
-    assert.strictEqual(res.gasCostWei, 126n);
+    assert.strictEqual(res.txHashes.length, _MAX_ITERATIONS);
+    // Accumulated gas = one round's 42n for every round.
+    assert.strictEqual(res.gasCostWei, 42n * BigInt(_MAX_ITERATIONS));
     // Accumulated output = 3 × 9.5e18.
     assert.strictEqual(res.extra1, 28_500_000_000_000_000_000n);
     assert.ok(

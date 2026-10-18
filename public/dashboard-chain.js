@@ -8,7 +8,8 @@
  *   registers a route, and waits for the answer. There is no guess to
  *   fall back on: a key built on the wrong chain files a position's
  *   settings where no bot reads them. Each request gets
- *   `chainQueryTimeoutMs` (ui-defaults.json) to answer. One that ends
+ *   `chainQueryTimeoutMs` (ui-defaults_non-layout_for-server-down-scenario.json)
+ *   to answer. One that ends
  *   without a chain is logged to the browser console with what happened,
  *   and the server is asked again, until it answers. The server runs one
  *   chain for its whole life, so the answer holds until the page is
@@ -17,12 +18,13 @@
  */
 
 import { log } from "./dashboard-log.js";
+import { askUntilAnswered } from "./dashboard-ask-server.js";
 /*-
  *  Bundled at build time rather than fetched: this wait bounds the
  *  dashboard's first question to the server, so it is needed before the
  *  server has answered anything.
  */
-import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
+import SERVER_DOWN from "../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json" with { type: "json" };
 
 /*-
  *  The server's answer, `{ chainId, displayName, homepage, logo }`.
@@ -37,6 +39,19 @@ let _chain = null;
  */
 export function activeChainId() {
   return _chain === null ? null : _chain.chainId;
+}
+
+/**
+ * The active chain's name as people read it, e.g. `PulseChain`: the one
+ * every position label and dialog line shows. Blank until the server has
+ * named the chain, so a label leaves the chain out rather than show a
+ * guess; startup learns it before any route or label is built.
+ * @returns {string}
+ */
+export function activeChainDisplayName() {
+  if (_chain === null) return "";
+  const name = _chain.displayName;
+  return typeof name === "string" ? name : "";
 }
 
 /**
@@ -66,27 +81,12 @@ export function paintChainLink() {
   on.hidden = false;
 }
 
-/**
- * Ask the server once which chain it runs against.
- * @param {Function} fetchFn  The fetch to ask with.
- * @param {number} limitMs    How long the server has to answer.
- * @returns {Promise<{chain: object}|{chain: null, why: string}>} The
- *   server's answer, or what kept the request from naming a chain.
- */
-async function _askServer(fetchFn, limitMs) {
-  const signal = AbortSignal.timeout(limitMs);
-  try {
-    const res = await fetchFn("/api/chain", { signal });
-    if (!res.ok) return { chain: null, why: `it answered HTTP ${res.status}` };
-    const body = await res.json();
-    const id = body?.chainId;
-    if (typeof id === "string" && id.length > 0) return { chain: body };
-    return { chain: null, why: "its answer named no blockchain" };
-  } catch (err) {
-    if (err?.name === "TimeoutError")
-      return { chain: null, why: `no answer within ${limitMs / 1000} s` };
-    return { chain: null, why: `it could not be reached (${err?.message})` };
-  }
+/** Why an answer to `GET /api/chain` names no chain, or null when it does. */
+function _namesNoChain(body) {
+  const id = body?.chainId;
+  return typeof id === "string" && id.length > 0
+    ? null
+    : "its answer named no blockchain";
 }
 
 /**
@@ -96,7 +96,17 @@ async function _askServer(fetchFn, limitMs) {
  * A request starts no sooner than `askEveryMs` after the one before it,
  * so a server that refuses at once is not asked in a tight loop.
  *
- * @param {object} [opts]
+ * Each answer is reported to the caller as well as acted on: a request
+ * that names no blockchain goes to `onUnanswered`, and the one that does
+ * to `onAnswered`. Startup hands in the status poll's own counters, so a
+ * dashboard that cannot learn its blockchain reads HALTED like one whose
+ * polls go unanswered.
+ *
+ * @param {object} opts
+ * @param {Function} opts.onUnanswered  Called once for each request that
+ *   ends without naming a blockchain.
+ * @param {Function} opts.onAnswered    Called once, when a request names
+ *   it.
  * @param {Function} [opts.fetchFn]   The fetch to ask with; the
  *   browser's own unless a test passes a scripted one.
  * @param {number} [opts.askEveryMs]  How long each request has to
@@ -107,24 +117,23 @@ async function _askServer(fetchFn, limitMs) {
  * @returns {Promise<string>} The active chain's id.
  */
 export async function loadActiveChain({
+  onUnanswered,
+  onAnswered,
   fetchFn = fetch,
-  askEveryMs = UI_DEFAULTS.chainQueryTimeoutMs,
+  askEveryMs = SERVER_DOWN.chainQueryTimeoutMs,
   warnFn = log.warn,
-} = {}) {
-  for (let attempt = 1; ; attempt++) {
-    const askedAt = Date.now();
-    const answer = await _askServer(fetchFn, askEveryMs);
-    if (answer.chain !== null) {
-      _chain = answer.chain;
-      log.info("[chain] active chain: %s", _chain.chainId);
-      return _chain.chainId;
-    }
-    warnFn(
-      "[chain] attempt %d: asked the server for its blockchain; %s — asking again",
-      attempt,
-      answer.why,
-    );
-    const restMs = askEveryMs - (Date.now() - askedAt);
-    if (restMs > 0) await new Promise((resolve) => setTimeout(resolve, restMs));
-  }
+}) {
+  _chain = await askUntilAnswered({
+    url: "/api/chain",
+    refusal: _namesNoChain,
+    logTag: "[chain]",
+    asked: "asked the server for its blockchain",
+    onUnanswered,
+    onAnswered,
+    fetchFn,
+    askEveryMs,
+    warnFn,
+  });
+  log.info("[chain] active chain: %s", _chain.chainId);
+  return _chain.chainId;
 }

@@ -21,8 +21,7 @@ Chain-neutral; lift directly:
 - Dashboard scaffold: esbuild IIFE bundle, modular
   `dashboard-*.js`, self-hosted fonts, namespaced utility CSS, no
   inline styles / no `!important` / no `zoom`, html-validate,
-  markdownlint with `<p>/<em>/<strong>` allowance, template-based
-  row rendering.
+  markdownlint with no inline HTML, template-based row rendering.
 - Cross-cutting patterns: atomic config writes (tmp+rename),
   AES-256-GCM + PBKDF2 wallet wrap, disk cache with TTL + scoped
   filenames, epoch cache keyed by pool identity (survives
@@ -38,11 +37,11 @@ Chain-neutral; lift directly:
 - On-chain math: `@uniswap/v3-sdk` → Orca
   `@orca-so/whirlpools-sdk` (if Whirlpool-style), Raydium SDK, or
   bespoke module if X1 ships its own CLMM.
-- Aggregator: 9mm aggregator → Jupiter (if it runs on X1) or
-  X1-native aggregator.
-- Price sources: DexScreener + GeckoTerminal → DexScreener (covers
-  Solana), Birdeye, Helius, Jupiter Price API.
-- Moralis → **Helius** is the Solana-native analog.
+- Aggregator: the 0x-style aggregator api (Watergun on PulseChain) →
+  Jupiter (if it runs on X1) or an X1-native aggregator.
+- Price sources: Moralis, GeckoTerminal and DexScreener → DexScreener
+  (covers Solana), Birdeye, Helius, Jupiter Price API. **Helius** is the
+  Solana-native analog of Moralis.
 - ABI management (`pm-abi.js`) → IDL files (Anchor) or Borsh
   schemas.
 - Custom ESLint rule `no-separate-contract-calls` → analog
@@ -101,8 +100,9 @@ Chain-neutral; lift directly:
 
 ## Layer 5 — Drop
 
-- "No gwei in prose" rule → replace with lamports/SOL analog.
-- EIP-55 checksumming rule.
+The gwei and EIP-55 rules are not dropped outright; Layer 2 replaces
+them.
+
 - PulseChain `getFeeData()` null-patch (EVM-only bug).
 - EVM-specific aggregator cancel-and-requote semantics (rewrite
   around Jupiter/X1 quote expiry).

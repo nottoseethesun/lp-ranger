@@ -6,10 +6,11 @@
  */
 
 import { g, truncName, compositeKey } from "./dashboard-helpers.js";
-import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import { _posContextHtml } from "./dashboard-data.js";
+import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
+import { _posContextHtml } from "./dashboard-data-status.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
 import { activeChainId } from "./dashboard-chain.js";
+import { _poolKey } from "./dashboard-data-deposit.js";
 
 let _refetchUnmanaged = null;
 /** Inject re-fetch callback (avoids circular import). */
@@ -17,17 +18,13 @@ export function injectPriceOverrideDeps(deps) {
   if (deps.refetchUnmanaged) _refetchUnmanaged = deps.refetchUnmanaged;
 }
 
-/** Pool-scoped localStorage key for price overrides. */
+/**
+ * Pool-scoped localStorage key for price overrides: the chain, wallet,
+ * contract, both tokens and the fee, so the same pair elsewhere never
+ * shares the override. Null until the chain is known.
+ */
 function _overrideKey() {
-  const a = posStore.getActive();
-  return a && a.token0 && a.token1
-    ? "9mm_price_override_" +
-        a.token0.toLowerCase() +
-        "_" +
-        a.token1.toLowerCase() +
-        "_" +
-        (a.fee || 0)
-    : null;
+  return _poolKey("9mm_price_override_");
 }
 
 /** Last known fetched prices (for dialog pre-population). */
@@ -48,9 +45,14 @@ export function loadPriceOverrides() {
   }
 }
 
-/** Save price overrides to pool-scoped localStorage. */
-function _save(p0, p1) {
-  const k = _overrideKey();
+/**
+ * Save price overrides to pool-scoped localStorage.
+ * @param {number} p0
+ * @param {number} p1
+ * @param {string|null} [k]  The pool's key; the one on screen unless the
+ *   caller fixed it when the operator saved.
+ */
+function _save(p0, p1, k = _overrideKey()) {
   if (!k) return;
   try {
     localStorage.setItem(k, JSON.stringify({ price0: p0, price1: p1 }));
@@ -66,8 +68,7 @@ export function loadForceOverride() {
 function _loadForce() {
   return loadForceOverride();
 }
-function _saveForce(v) {
-  const k = _overrideKey();
+function _saveForce(v, k = _overrideKey()) {
   if (k) {
     if (v) localStorage.setItem(k + "_force", "1");
     else localStorage.removeItem(k + "_force");
@@ -138,6 +139,8 @@ export function savePriceOverrideDialog() {
     active.contractAddress,
     active.tokenId,
   );
+  // The pool saved for, fixed now: the screen may move before the answer.
+  const ovKey = _overrideKey();
   saveConfigValues({
     values: {
       priceOverride0: p0,
@@ -149,17 +152,38 @@ export function savePriceOverrideDialog() {
       priceOverride0: "priceOverrideInput0",
       priceOverride1: "priceOverrideInput1",
     },
-    onSaved: () => {
-      /*- The browser copy is written only once the server has taken the
-       *  prices. Written first, a refused price would still be the one
-       *  the KPI panel valued the position at — the panel reads
-       *  localStorage, and nothing later corrects it. */
-      _save(p0, p1);
-      _saveForce(force);
-      if (!isPositionManaged(active.tokenId) && _refetchUnmanaged)
-        _refetchUnmanaged(active);
-    },
+    onSaved: (onScreen) =>
+      _afterPriceSaved({ p0, p1, force, ovKey, active, onScreen }),
   });
+}
+
+/**
+ * What a price override the server took does in the browser.
+ *
+ * The browser copy is written only once the server has taken the
+ * prices. Written first, a refused price would still be the one the KPI
+ * panel valued the position at — the panel reads localStorage, and
+ * nothing later corrects it. It goes under the pool saved for, fixed
+ * when the operator saved, since the answer can come after a move to
+ * another position. The refetch of the position's figures is for the
+ * screen, so it waits for the answer to be about the position on it.
+ *
+ * Exported so a test can drive it: the request goes through the global
+ * `fetch`, which a test must not replace.
+ *
+ * @param {object} o
+ * @param {number} o.p0
+ * @param {number} o.p1
+ * @param {boolean} o.force
+ * @param {string|null} o.ovKey  The pool's browser key, fixed at save.
+ * @param {object} o.active      The position saved for.
+ * @param {boolean} o.onScreen   Whether it is still the one on screen.
+ */
+export function _afterPriceSaved({ p0, p1, force, ovKey, active, onScreen }) {
+  _save(p0, p1, ovKey);
+  _saveForce(force, ovKey);
+  if (onScreen && !isPositionManaged(active.tokenId) && _refetchUnmanaged)
+    _refetchUnmanaged(active);
 }
 
 /** Close the price override dialog without saving. */

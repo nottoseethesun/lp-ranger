@@ -9,6 +9,21 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+/*-
+ *  Token symbols resolved here are fixtures. They go to a file of this
+ *  test's own, not the operator's cache, which nothing expires. Set
+ *  before anything loads src/token-symbol-cache.js, which reads it once.
+ */
+const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "bot-loop-init-"));
+process.env.TOKEN_SYMBOL_CACHE_PATH = path.join(
+  SYMBOL_DIR,
+  "token-symbol-cache.json",
+);
+after(() => fs.rmSync(SYMBOL_DIR, { recursive: true, force: true }));
 
 describe("bot-loop _initPnlTracker", () => {
   let _initPnlTracker;

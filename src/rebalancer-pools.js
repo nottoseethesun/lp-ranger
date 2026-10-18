@@ -11,6 +11,7 @@ const rangeMath = require("./range-math");
 const config = require("./config");
 const { PM_ABI } = require("./pm-abi");
 const { receiptGasWei } = require("./receipt-gas");
+const { carryingGas } = require("./spent-gas");
 const sendTx = require("./send-transaction");
 const { noteRpcResult } = require("./rpc-out-of-service");
 const { retryRead } = require("./rpc-read-retry");
@@ -20,7 +21,7 @@ const {
   validateField: _validate,
   isAddressString,
   isPositiveInteger,
-  isIntegerInRange,
+  isTokenDecimals,
   isAnyInteger,
   isFinitePositive,
   isPositiveBigIntish,
@@ -53,26 +54,28 @@ const ERC20_ABI = [
 /** Maximum uint128 value used for the collect() call. */
 const _MAX_UINT128 = 2n ** 128n - 1n;
 
-/*- On-chain transaction deadline offset in seconds.  Stamped as
- *  `deadline = now + _DEADLINE_SECONDS` on every removeLiquidity /
- *  swap / mint calldata.  Source of truth is `tx.deadlineSec` in
- *  app-config/app-defaults-for-user-configurable/app-runtime.json —
- *  the `_comment` block on the `tx` group there explains the
- *  full deadline/cancel timing relationship.  Re-exported so
- *  tests and rebalancer.js can pin against it without knowing
- *  where the literal lives. */
+/*-
+ *  On-chain transaction deadline offset in seconds, stamped as
+ *  `deadline = now + _DEADLINE_SECONDS` on the removeLiquidity, V3
+ *  router swap, mint and compound deposit calldata (an aggregator swap
+ *  carries the aggregator's own). Source of truth is `tx.deadlineSec` in
+ *  app-config/app-defaults-for-user-configurable/app-runtime.json, whose
+ *  `tx` comment explains the deadline and cancel timing. Exported so
+ *  tests can pin against it without knowing where the literal lives.
+ */
 const _DEADLINE_SECONDS = config.DEADLINE_SEC;
 
-/** Minimum swap amount — skip swap if amountIn is below this threshold. */
-const _MIN_SWAP_THRESHOLD = 1000n;
-
-/** Valid V3 fee tiers (basis-point units). */
-const V3_FEE_TIERS = [100, 500, 2500, 3000, 10000, 20000];
+/*-
+ *  The least amount worth swapping, in the token's smallest unit:
+ *  bot-config-defaults.json → minSwapAmountRaw. A swap below it is
+ *  skipped.
+ */
+const _MIN_SWAP_THRESHOLD = BigInt(readBotConfigDefaults().minSwapAmountRaw);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Return a deadline timestamp (current block time + offset).
+ * Return a deadline timestamp (this machine's clock + offset).
  * @param {number} [offsetSeconds=_DEADLINE_SECONDS] Seconds from now.
  * @returns {bigint}
  */
@@ -192,13 +195,12 @@ async function _getPoolStateOnce(
   const tick = Number(slot0.tick);
   const sqrtPriceX96 = slot0.sqrtPriceX96;
 
-  /*- ERC-20 decimals must fit in uint8 (0-255 per the contract type),
-   *  but the practical upper bound is much lower; we follow the
-   *  defacto cap of 77 (just above the largest value seen in the wild,
-   *  e.g. 18 for most tokens, up to 36 for some pegged-stablecoin
-   *  representations). */
-  _validate("decimals0", decimals0, (x) => isIntegerInRange(x, 0, 77), _rpcUrl);
-  _validate("decimals1", decimals1, (x) => isIntegerInRange(x, 0, 77), _rpcUrl);
+  /*-
+   *  ERC-20 decimals fit in a uint8, but only a range far narrower is
+   *  usable: `tokenDecimals` in setting-bounds.json, which says why.
+   */
+  _validate("decimals0", decimals0, isTokenDecimals, _rpcUrl);
+  _validate("decimals1", decimals1, isTokenDecimals, _rpcUrl);
 
   _validate("tickSpacing", tickSpacing, isPositiveInteger, _rpcUrl);
 
@@ -453,25 +455,27 @@ async function removeLiquidity(
     label: "[rebalance] removeLiq",
   });
 
-  // Determine collected amounts via balance diff (robust across all ABIs)
-  const [bal0After, bal1After] = await Promise.all([
-    t0.balanceOf(recipient),
-    t1.balanceOf(recipient),
-  ]);
-  log.info(
-    "[rebalance] removeLiq: walletAfter0=%s walletAfter1=%s",
-    String(bal0After),
-    String(bal1After),
-  );
-  const amount0 = bal0After - bal0Before;
-  const amount1 = bal1After - bal1Before;
-  if (amount0 === 0n && amount1 === 0n) {
-    throw new Error(
-      "Collected 0 tokens after removing liquidity — aborting to prevent empty mint",
-    );
-  }
-
   const gasCostWei = receiptGasWei(receipt);
+  // Determine collected amounts via balance diff (robust across all ABIs)
+  const { amount0, amount1 } = await carryingGas(gasCostWei, async () => {
+    const [bal0After, bal1After] = await Promise.all([
+      t0.balanceOf(recipient),
+      t1.balanceOf(recipient),
+    ]);
+    log.info(
+      "[rebalance] removeLiq: walletAfter0=%s walletAfter1=%s",
+      String(bal0After),
+      String(bal1After),
+    );
+    const collected0 = bal0After - bal0Before;
+    const collected1 = bal1After - bal1Before;
+    if (collected0 === 0n && collected1 === 0n) {
+      throw new Error(
+        "Collected 0 tokens after removing liquidity — aborting to prevent empty mint",
+      );
+    }
+    return { amount0: collected0, amount1: collected1 };
+  });
   return { amount0, amount1, txHash: receipt.hash, gasCostWei };
 }
 
@@ -506,7 +510,6 @@ module.exports = {
   _MAX_UINT128,
   _DEADLINE_SECONDS,
   _MIN_SWAP_THRESHOLD,
-  V3_FEE_TIERS,
   // Helpers
   _deadline,
   _ensureAllowance,

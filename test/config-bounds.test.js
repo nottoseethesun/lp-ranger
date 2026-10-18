@@ -20,10 +20,10 @@ const assert = require("node:assert/strict");
 
 const { checkConfigValues, BOUNDS } = require("../src/config-bounds");
 const { GLOBAL_KEYS, POSITION_KEYS } = require("../src/bot-config-keys");
+const { SETTING_BOUNDS } = require("../src/setting-bounds");
 
-/*- What the route hands in: values it has already resolved. */
+// What the route hands in: a value it has already resolved.
 const CTX = {
-  defaultsSec: { checkIntervalSec: 300 },
   compoundMinFeeUsd: 1,
 };
 
@@ -134,11 +134,6 @@ describe("checkConfigValues — the shapes that are not numbers", () => {
     assert.match(check({ moralisEnabled: "yes" }).message, /on or off/);
   });
 
-  it("accepts only the one gas strategy there is", () => {
-    assert.equal(check({ gasStrategy: "auto" }), null);
-    assert.match(check({ gasStrategy: "turbo" }).message, /only "auto"/);
-  });
-
   it("takes a calendar date for the lifetime start", () => {
     assert.equal(check({ lifetimeStartDateOverrideUtc: "2026-01-31" }), null);
     assert.match(
@@ -194,36 +189,56 @@ describe("checkConfigValues — the compound threshold", () => {
   });
 });
 
-describe("checkConfigValues — the timer setting", () => {
-  it("hands the poll interval to the timer-bounds module", () => {
-    assert.equal(check({ checkIntervalSec: 300 }), null);
-    const bad = check({ checkIntervalSec: 7200 });
-    assert.equal(bad.key, "checkIntervalSec");
-    assert.match(bad.message, /3600/);
-  });
-
-  it("refuses one below the floor too", () => {
-    assert.match(check({ checkIntervalSec: 0 }).message, /at least 10/);
-  });
-});
-
 describe("checkConfigValues — what it leaves alone", () => {
-  it("ignores keys the dashboard does not let an operator set", () => {
-    /*- `hodlBaseline`, `residuals` and the compound tallies are written
-     *  by the bot, not typed. Bounding them here would refuse the app's
-     *  own writes. */
-    assert.equal(check({ hodlBaseline: { entryValue: 12 } }), null);
-    assert.equal(check({ residuals: { amount0: "1" } }), null);
-    assert.equal(check({ lastCompoundAt: 1771200000000 }), null);
-  });
-
   it("ignores an undefined value, which means the key was not sent", () => {
-    assert.equal(check({ checkIntervalSec: undefined }), null);
+    assert.equal(check({ maxRebalancesPerDay: undefined }), null);
   });
 
   it("stops at the first problem and names that one", () => {
-    const bad = check({ maxRebalancesPerDay: 0, gasStrategy: "turbo" });
-    assert.ok(["maxRebalancesPerDay", "gasStrategy"].includes(bad.key));
+    const bad = check({ maxRebalancesPerDay: 0, moralisEnabled: "yes" });
+    assert.ok(["maxRebalancesPerDay", "moralisEnabled"].includes(bad.key));
+  });
+});
+
+describe("checkConfigValues — the price-cache settings", () => {
+  it("holds them to their ranges, though no dashboard field sets them", () => {
+    /*-
+     *  `POST /api/config` saves them, and the price code reads what was
+     *  saved at its next start: a lifetime under a millisecond turns the
+     *  cache off and sends every read to a quota-limited price service.
+     */
+    assert.equal(check({ priceCacheTtlMs: 120000 }), null);
+    assert.equal(check({ priceCacheTtlMs: 0.5 }).key, "priceCacheTtlMs");
+    assert.equal(
+      check({ dustUnitPriceCacheMultiplier: 0 }).key,
+      "dustUnitPriceCacheMultiplier",
+    );
+    assert.equal(check({ moveCacheTtlMs: 3600000 }).key, "moveCacheTtlMs");
+    assert.equal(
+      check({ pricePauseExceptionPollWindowMultiple: "10" }).key,
+      "pricePauseExceptionPollWindowMultiple",
+    );
+  });
+});
+
+describe("every saved key with a declared range is held to it", () => {
+  it("refuses a value far outside the range for each such key", () => {
+    /*-
+     *  A key the route saves, with a range in setting-bounds.json but no
+     *  check here, has a range that binds the shipped file and not a
+     *  save: a value outside it is written and read back at the next
+     *  start. This walks every saved key, so a new one cannot be added
+     *  without its check.
+     */
+    let checked = 0;
+    for (const key of [...GLOBAL_KEYS, ...POSITION_KEYS]) {
+      const bound = SETTING_BOUNDS[key];
+      if (bound === undefined || typeof bound.max !== "number") continue;
+      const bad = check({ [key]: bound.max * 10 + 1 });
+      assert.ok(bad !== null && bad.key === key, `${key} is saved unchecked`);
+      checked++;
+    }
+    assert.ok(checked > 0, "the walk found no ranged keys to check");
   });
 });
 

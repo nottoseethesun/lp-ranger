@@ -49,8 +49,9 @@
  *
  * RPC behaviour:
  *   - Uses config.RPC_URL (chain default if env unset).
- *   - Transfer scan is chunked at 10_000 blocks with 250 ms throttle
- *     (matches event-scanner.js conventions).
+ *   - Transfer scan is chunked at the app's `getLogsChunkSize`, paced at
+ *     its `globalRPCRequestRateIntervalMS`, and reaches back the app's
+ *     `historyLookbackYears`.
  *   - positions(tid) calls have a small 20 ms throttle.
  *   - Total RPC time is roughly proportional to chain age + NFT count.
  *
@@ -95,7 +96,9 @@ const { ethers } = require("ethers");
 const config = require("../../../src/config");
 const { PM_ABI } = require("../../../src/pm-abi");
 const { topicForTokenId } = require("../../../src/nft-token-topic");
-const { parseCompositeKey } = require("../../../src/bot-config-v2");
+const { parseCompositeKey } = require("../../../src/composite-key");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/get-logs-chunked");
+const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
 const { Command } = require("commander");
 const { sleep, addrTopic } = require("../_helpers");
 const render = require("./render");
@@ -141,11 +144,19 @@ const CONFIG_PATH = path.join(
 /** The active chain's block time (chains.json `blockTimeSec`). */
 const BLOCK_TIME_SEC = config.CHAIN.blockTimeSec;
 
-/** Lookback for chain walking (5y is enough to cover any LP). */
-const YEARS_BACK = 5;
+/** Lookback for chain walking: the app's own `historyLookbackYears`. */
+const YEARS_BACK = readBotConfigDefaults().historyLookbackYears;
 
-const CHUNK_SIZE = 10000;
-const CHUNK_DELAY_MS = 250;
+// Block span per getLogs call: the app's own `getLogsChunkSize`.
+const CHUNK_SIZE = _DEFAULT_CHUNK_SIZE;
+
+/*-
+ *  Pause after each chunk of the wallet walk, which is one request. The
+ *  app spaces every request by `globalRPCRequestRateIntervalMS`; this
+ *  tool has a provider of its own, outside the app's queue, so it waits
+ *  that spacing itself.
+ */
+const CHUNK_DELAY_MS = readBotConfigDefaults().globalRPCRequestRateIntervalMS;
 
 /*- Between per-NFT event fetches.  Far shorter than CHUNK_DELAY_MS:
  *  this is three topic-filtered getLogs calls, not a block-range walk. */

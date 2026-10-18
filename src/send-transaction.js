@@ -6,7 +6,7 @@
  *   - estimateGas with chain-config gas-limit multiplier and per-call floor
  *   - mid-session RPC failover along the chain's ordered endpoint list,
  *     sticky for `rpcFailoverStickyMs` (bot-config-defaults.json)
- *   - retry on transient RPC errors (delegated to ./tx-retry._retrySend)
+ *   - retry on transient RPC errors (delegated to ./tx-retry._retrySendTimed)
  *   - automatic speed-up of pending TXs after TX_SPEEDUP_SEC
  *   - automatic cancel via zero-value self-transfer after TX_CANCEL_SEC
  *
@@ -43,8 +43,14 @@ const ethers = require("ethers");
 const config = require("./config");
 const { buildProvider } = require("./bot-provider");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
-const { _retrySend } = require("./tx-retry");
-const { _waitOrSpeedUp, _waitOnePhase } = require("./tx-speedup");
+const { _retrySendTimed } = require("./tx-retry");
+const {
+  _waitOrSpeedUp,
+  _waitOnePhase,
+  confirmedReceipt,
+} = require("./tx-speedup");
+const { receiptGasWei } = require("./receipt-gas");
+const { addSpentGas } = require("./spent-gas");
 const { retryRead } = require("./rpc-read-retry");
 const { pauseForExhaustedEndpoints } = require("./rpc-endpoints-exhausted");
 const rpcRequestManager = require("./rpc-request-manager");
@@ -606,7 +612,8 @@ function _engageFailoverTo(idx, from) {
  * endpoint after it in the list, in order. The first endpoint that
  * answers becomes the selected one for the sticky window, so the
  * broadcast, the receipt and the nonce lookups that follow go to an
- * endpoint known to work. None is selected until one has answered.
+ * endpoint known to work. None is selected until one has answered, and
+ * none at all if another caller moved selection while this one waited.
  *
  * When every endpoint refuses, selection is left where it was and the
  * current endpoint's error is thrown, since its revert data, if any, is
@@ -615,7 +622,15 @@ function _engageFailoverTo(idx, from) {
  * @returns {Promise<bigint>} estimated gas units.
  */
 async function _estimateWithFailover(populated, label) {
+  /*-
+   *  The index is taken together with the endpoint, before the first
+   *  await. Selection is process-wide, so another caller can move it
+   *  while this estimate is out; read afterwards, it would name an
+   *  endpoint this call never asked, and the walk below would start past
+   *  the endpoint that is now serving.
+   */
   const cur = getCurrentRPC();
+  const startIdx = _activeIdx;
   try {
     const gas = await cur.estimateGas(populated);
     noteRpcResult(_urlOf(cur), true);
@@ -635,7 +650,6 @@ async function _estimateWithFailover(populated, label) {
      *  would mean a total outage ends with the bot pinned for an hour
      *  to whichever endpoint it happened to try last — strictly worse
      *  than staying on its preferred one and retrying there. */
-    const startIdx = _activeIdx;
     for (let i = startIdx + 1; i < _providers.length; i++) {
       log.warn(
         "[send-tx] %s: estimateGas on %s failed — trying %s. Inner: %s",
@@ -647,7 +661,13 @@ async function _estimateWithFailover(populated, label) {
       try {
         const gas = await _providers[i].estimateGas(populated);
         noteRpcResult(_urls[i], true);
-        _engageFailoverTo(i, startIdx);
+        /*-
+         *  Selection moves only while it is still where this call found
+         *  it, the rule `failoverToNextRPC` keeps. A caller that moved it
+         *  during these awaits saw something this call did not, and
+         *  moving it again would undo that.
+         */
+        if (_activeIdx === startIdx) _engageFailoverTo(i, startIdx);
         return gas;
       } catch (nextErr) {
         if (_isReadFailoverable(nextErr)) noteRpcResult(_urls[i], false);
@@ -659,10 +679,12 @@ async function _estimateWithFailover(populated, label) {
         );
       }
     }
-    /*- Every endpoint refused, and nothing was committed — we are still
-     *  on the endpoint we started from.  Throw the FIRST error: it came
-     *  from the endpoint the caller was actually using, and is the one
-     *  whose revert data (if any) describes the transaction. */
+    /*-
+     *  Every endpoint refused, and this call moved nothing. Throw the
+     *  FIRST error: it came from the endpoint the caller was actually
+     *  using, and is the one whose revert data (if any) describes the
+     *  transaction.
+     */
     throw curErr;
   }
 }
@@ -752,7 +774,10 @@ function _waitOrAbort(ms, signal) {
  *
  * Errors describing the TRANSACTION rather than the endpoint — a revert,
  * say — re-throw untouched. Those are answers, and another endpoint
- * would give the same one.
+ * would give the same one. A receipt another endpoint returns is held to
+ * the same rule: one recording a revert is answered with the error
+ * `tx.wait()` raises for it (`confirmedReceipt`), not taken as a
+ * confirmation.
  *
  * **It polls rather than calling `waitForTransaction`**, and the
  * difference is the whole of this function's correctness.
@@ -812,7 +837,7 @@ async function _receiptAcrossEndpoints(err, tx, label, budget) {
      *  while the previous request was queued costs nothing more. */
     if (budget.signal.aborted) throw err;
     const receipt = await provider.getTransactionReceipt(tx.hash);
-    if (receipt) return receipt;
+    if (receipt) return confirmedReceipt(receipt);
     if (budget.signal.aborted) throw err;
     /*- ethers' own block cadence, read off the provider rather than
      *  named here, so there is no second opinion about how often a
@@ -863,6 +888,40 @@ function waitForReceipt({ tx, label, ms, sentinel }) {
     ms,
     sentinel,
   });
+}
+
+/**
+ * Wait for a sent transaction through the speed-up pipeline, timed from
+ * its first submission.
+ *
+ * A transaction that failed on chain was mined, so its gas was paid. The
+ * CALL_EXCEPTION carries its receipt, and the gas goes with the error to
+ * wherever the failed move is recorded (src/spent-gas.js).
+ *
+ * @param {object} tx           The sent transaction.
+ * @param {object} signer       The signer that sent it.
+ * @param {string} label        Log prefix.
+ * @param {number} submittedAt  When it was first submitted, in ms.
+ * @returns {Promise<object>} The receipt.
+ */
+async function _awaitReceipt(tx, signer, label, submittedAt) {
+  try {
+    return await _waitOrSpeedUp(
+      tx,
+      signer,
+      label,
+      _receiptAcrossEndpoints,
+      submittedAt,
+    );
+  } catch (err) {
+    if (
+      err.code === "CALL_EXCEPTION" &&
+      err.receipt !== undefined &&
+      err.receipt !== null
+    )
+      throw addSpentGas(err, receiptGasWei(err.receipt));
+    throw err;
+  }
 }
 
 // ── Public sendTransaction ───────────────────────────────────────────────────
@@ -920,10 +979,25 @@ async function sendTransaction(opts) {
       the caller already pinned one. */
   if (txReq.type === undefined) txReq.type = config.TX_TYPE;
 
-  const tx = await _retrySend(
+  /*-
+   *  The speed-up and the cancel are timed from when the transaction
+   *  waited on was first submitted, which the retry reports: the attempt
+   *  that was accepted, or, for a transaction an endpoint answered
+   *  "already known", the first attempt, which is the one that reached
+   *  it. Such a transaction is waited on through the endpoint then
+   *  selected, which is the one that answered, as a fresh submission is
+   *  through the endpoint that took it.
+   */
+  const { tx, submittedAt } = await _retrySendTimed(
     () => opts.signer.sendTransaction(txReq),
     "[send-tx] " + label,
-    { signer: opts.signer },
+    {
+      signer: opts.signer,
+      heldProviders: () => ({
+        wait: getCurrentRPC(),
+        read: getManagedReadProvider(),
+      }),
+    },
   );
   log.info(
     "[send-tx] %s: TX submitted, hash= %s nonce=%d gasLimit=%s gasPrice=%s",
@@ -934,12 +1008,7 @@ async function sendTransaction(opts) {
     String(tx.gasPrice ?? tx.maxFeePerGas ?? "—"),
   );
 
-  const receipt = await _waitOrSpeedUp(
-    tx,
-    opts.signer,
-    label,
-    _receiptAcrossEndpoints,
-  );
+  const receipt = await _awaitReceipt(tx, opts.signer, label, submittedAt);
   log.info(
     "[send-tx] %s: confirmed, gasUsed=%s gasPrice=%s block=%s",
     label,

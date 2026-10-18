@@ -27,20 +27,24 @@
 const { isDust, getDustThresholdUsd } = require("./dust");
 const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { SETTING_BOUNDS } = require("./setting-bounds");
 
-/*- Single-source: the shipped default for `gasFeePct` and its
- *  validation bounds (gasFeePctMin / gasFeePctMax) all live in
- *  bot-config-defaults.json.  We read them once at module init.  Per
+/*-
+ *  Single-source: the default for `gasFeePct` lives in
+ *  bot-config-defaults.json, which an operator's copy under
+ *  app-config/user-configurable/ overrides, and its range in
+ *  setting-bounds.json.  Both are read once at module init.  Per
  *  feedback_one_literal_per_shipped_default, no numeric default or
- *  bound is written as a literal in this file. */
-const _BOT_DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+ *  bound is written as a literal in this file.
+ */
+const _BOT_DEFAULTS = readBotConfigDefaults();
 
 const GAS_FEE_PCT_DEFAULT = _BOT_DEFAULTS.gasFeePct;
 
 /**
  * Default fraction used when no per-call override is supplied.
- * Sourced from the shipped `gasFeePct` value divided by 100.  Tuned
+ * Sourced from the default `gasFeePct` value divided by 100.  Tuned
  * conservatively: a swap that costs more than this share of its value
  * in gas is almost always net-negative once slippage and price impact
  * are stacked on top.
@@ -54,15 +58,13 @@ const GAS_FEE_PCT_DEFAULT = _BOT_DEFAULTS.gasFeePct;
 const MAX_SWAP_GAS_RATIO = GAS_FEE_PCT_DEFAULT / 100;
 
 /**
- * UI bounds for the operator-tunable `gasFeePct` Bot Setting.  Mirror
- * the input `min`/`max` attrs in `public/index.html` so server-side
- * clamping matches what the dashboard exposes.  Sourced from the
- * shipped JSON so the bounds live in one place — see also
- * `src/bot-config-defaults.js` `_NORMALIZERS.gasFeePct` which reads
- * the same `gasFeePctMin` / `gasFeePctMax` values.
+ * The range of the operator-tunable `gasFeePct` Bot Setting, from
+ * setting-bounds.json: the same figures `src/config-bounds.js` refuses a
+ * saved value against and `src/bot-config-defaults.js` holds the shipped
+ * file to.
  */
-const GAS_FEE_PCT_MIN = _BOT_DEFAULTS.gasFeePctMin;
-const GAS_FEE_PCT_MAX = _BOT_DEFAULTS.gasFeePctMax;
+const GAS_FEE_PCT_MIN = SETTING_BOUNDS.gasFeePct.min;
+const GAS_FEE_PCT_MAX = SETTING_BOUNDS.gasFeePct.max;
 
 /**
  * Convert the operator's `gasFeePct` (a percent) into the ratio used
@@ -72,7 +74,7 @@ const GAS_FEE_PCT_MAX = _BOT_DEFAULTS.gasFeePctMax;
  * when the input isn't a positive number.
  *
  * @param {number|string|undefined} pct
- * @returns {number}  Ratio in `(0, 0.15]`.
+ * @returns {number}  The percent, held inside its range, divided by 100.
  */
 function gasFeePctToRatio(pct) {
   const n = typeof pct === "string" ? parseFloat(pct) : pct;
@@ -100,10 +102,12 @@ function _swapGasUnits() {
 /**
  * Estimate the USD cost of one swap on the current chain.
  *
- * Mirrors `bot-pnl-updater.estimateGasCostUsd` but parameterized for
- * swap-sized gas (default 500k vs 800k for a full rebalance).  Returns
- * 0 on any failure so the gas-gate degrades into a no-op rather than
- * blocking swaps when fee-data or price lookups are flaky.
+ * Priced as `bot-pnl-updater.estimateGasCostUsd` prices a whole
+ * rebalance, but at a swap's gas: the chain's
+ * `aggregator.estimatedSwapGasUnits` rather than its
+ * `estimatedRebalanceGasUnits`, both in chains.json.  Returns 0 on any
+ * failure so the gas-gate degrades into a no-op rather than blocking
+ * swaps when fee-data or price lookups are flaky.
  *
  * @param {import('ethers').JsonRpcProvider|object} provider
  * @returns {Promise<number>}

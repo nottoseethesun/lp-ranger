@@ -3,8 +3,9 @@
  * @description Unit tests for src/config.js.
  *
  * Because config.js reads process.env at require-time, we test the internal
- * parser helpers (_parsePositiveInt, _parsePositiveFloat) directly, and test
- * assertLiveModeReady() by manipulating the exported object.
+ * parser helper (_parsePositiveInt) directly, and test
+ * assertLiveModeReady() by manipulating the exported object. The six Bot
+ * Settings `.env` can set are covered by test/config-env-ranges.test.js.
  *
  * Run with: npm test
  */
@@ -56,36 +57,6 @@ describe("_parsePositiveInt", () => {
   });
 });
 
-// ── _parsePositiveFloat ───────────────────────────────────────────────────────
-
-describe("_parsePositiveFloat", () => {
-  const parse = config._parsePositiveFloat;
-
-  it("parses a valid float string", () => {
-    assert.ok(Math.abs(parse("0.5", 1) - 0.5) < 1e-9);
-  });
-
-  it("parses an integer string", () => {
-    assert.strictEqual(parse("20", 1), 20);
-  });
-
-  it("returns fallback for zero", () => {
-    assert.strictEqual(parse("0", 0.5), 0.5);
-  });
-
-  it("returns fallback for negative", () => {
-    assert.strictEqual(parse("-0.1", 1.0), 1.0);
-  });
-
-  it("returns fallback for non-numeric", () => {
-    assert.strictEqual(parse("NaN", 2.5), 2.5);
-  });
-
-  it("returns fallback for undefined", () => {
-    assert.strictEqual(parse(undefined, 3.14), 3.14);
-  });
-});
-
 // ── Default values ────────────────────────────────────────────────────────────
 
 describe("config default values", () => {
@@ -110,8 +81,9 @@ describe("config default values", () => {
     assert.ok(config.REBALANCE_OOR_THRESHOLD_PCT > 0);
   });
 
-  it("SLIPPAGE_PCT is a positive number", () => {
-    assert.ok(config.SLIPPAGE_PCT > 0);
+  it("no longer reads SLIPPAGE_PCT", () => {
+    assert.equal(config.SLIPPAGE_PCT, undefined);
+    assert.equal(config.DEFAULT_SLIPPAGE_PCT, undefined);
   });
 
   it("CHECK_INTERVAL_SEC is a positive integer", () => {
@@ -255,7 +227,6 @@ describe("config module shape", () => {
     "RPC_URL",
     "POSITION_ID",
     "REBALANCE_OOR_THRESHOLD_PCT",
-    "SLIPPAGE_PCT",
     "CHECK_INTERVAL_SEC",
     "MIN_REBALANCE_INTERVAL_MIN",
     "MAX_REBALANCES_PER_DAY",
@@ -266,7 +237,6 @@ describe("config module shape", () => {
     "assertLiveModeReady",
     "VERBOSE",
     "_parsePositiveInt",
-    "_parsePositiveFloat",
   ];
 
   for (const key of expectedKeys) {

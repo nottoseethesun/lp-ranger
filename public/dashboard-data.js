@@ -1,6 +1,6 @@
 /**
  * @file dashboard-data.js
- * @description Polls /api/status, updates live UI elements. Re-exports.
+ * @description Polls /api/status, updates live UI elements.
  */
 import { log } from "./dashboard-log.js";
 import { g, botConfig } from "./dashboard-helpers.js";
@@ -9,7 +9,7 @@ import {
   updateManagedPositions,
   isPositionManaged,
   isPositionClosed,
-} from "./dashboard-positions.js";
+} from "./dashboard-positions-store.js";
 import { syncActivePosition } from "./dashboard-active-sync.js";
 import { syncBotSettingsConfigInputs } from "./dashboard-bot-settings-sync.js";
 import {
@@ -17,8 +17,10 @@ import {
   updateHistorySyncLabels,
 } from "./dashboard-history.js";
 import { wallet } from "./dashboard-wallet.js";
-import { reapplyPrivacyBlur } from "./dashboard-events.js";
-import { updateManageBadge } from "./dashboard-events-manage.js";
+import {
+  updateManageBadge,
+  reapplyPrivacyBlur,
+} from "./dashboard-events-manage.js";
 import { paintReloadPositionButton } from "./dashboard-reload-flow.js";
 import { paintRescanPricesButton } from "./dashboard-rescan-prices.js";
 import { refreshDecimalsOverrideOnPoll } from "./dashboard-token-decimals.js";
@@ -29,59 +31,24 @@ import {
 } from "./dashboard-closed-pos.js";
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import {
-  injectDataDeps,
   _wireDepositKpis,
-  loadRealizedGains,
   loadInitialDeposit,
   refreshDepositLabel,
   refreshCurDepositDisplay,
-  loadCurRealized,
-  toggleRealizedInput,
-  saveRealizedGains,
-  toggleCurRealized,
-  saveCurRealized,
-  toggleInitialDeposit,
-  saveInitialDeposit,
-  toggleCurDeposit,
-  saveCurDeposit,
   _poolKey,
-  loadCurDeposit,
-  toggleLifetimeDays,
-  saveLifetimeDays,
-  refreshLifetimeDaysLabel,
-  loadLifetimeStartDateOverride,
-  loadLifetimeDaysDisplay,
 } from "./dashboard-data-deposit.js";
-import {
-  _fmtUsd,
-  setKpiValue,
-  resetKpis,
-  _updateKpis,
-  _updateLifetimeKpis,
-  checkHodlBaselineDialog,
-  positionRangeVisual,
-  updateRangePctLabels,
-} from "./dashboard-data-kpi.js";
+import { _updateKpis, _updateLifetimeKpis } from "./dashboard-data-kpi.js";
+import { checkHodlBaselineDialog } from "./dashboard-data-baseline.js";
 import { updateTriggerDisplay } from "./dashboard-throttle.js";
 import {
   populateConfigInputs,
   syncGlobalConfig,
   configInputDefaults,
   resetGlobalSynced,
-  setConfigInputDefault,
-  getInputDefault,
 } from "./dashboard-config-inputs.js";
-
-/*- Re-exported so existing importers (dashboard-init, and the Default /
- *  No Offset buttons) keep their import path across the split. */
-export { setConfigInputDefault, getInputDefault };
 import { resetSoundTrackers } from "./dashboard-sounds.js";
-import {
-  setOptimisticSpecialAction,
-  updateMissionStatusBadge,
-} from "./dashboard-mission-badge.js";
+import { updateMissionStatusBadge } from "./dashboard-mission-badge.js";
 import { updateGasStatusBadge } from "./dashboard-gas-badge.js";
-export { setOptimisticSpecialAction };
 import {
   logAllPositionEvents,
   resetEventLogTrackers,
@@ -92,10 +59,7 @@ import {
   resetPopulateHistoryFlags,
 } from "./dashboard-populate-history.js";
 import {
-  _createModal,
   _posLabel,
-  _posContextHtml,
-  _titled,
   _updateComposition,
   _updatePositionTicks,
   _updatePosStatus,
@@ -105,38 +69,6 @@ import {
   _syncAutoCompound,
   _updateCompoundButton,
 } from "./dashboard-data-status.js";
-export {
-  injectDataDeps,
-  loadRealizedGains,
-  toggleRealizedInput,
-  saveRealizedGains,
-  loadCurRealized,
-  toggleCurRealized,
-  saveCurRealized,
-  loadInitialDeposit,
-  refreshDepositLabel,
-  loadCurDeposit,
-  refreshCurDepositDisplay,
-  toggleCurDeposit,
-  saveCurDeposit,
-  toggleInitialDeposit,
-  saveInitialDeposit,
-  toggleLifetimeDays,
-  saveLifetimeDays,
-  refreshLifetimeDaysLabel,
-  loadLifetimeStartDateOverride,
-  loadLifetimeDaysDisplay,
-  _fmtUsd,
-  setKpiValue,
-  resetKpis,
-  checkHodlBaselineDialog,
-  positionRangeVisual,
-  updateRangePctLabels,
-  _createModal,
-  _posLabel,
-  _posContextHtml,
-  _titled,
-};
 let _lastStatus = null,
   _configSynced = false;
 /*- Single source of truth for "is the dashboard's view of the active
@@ -160,12 +92,10 @@ export function isSyncComplete() {
   return _lastSyncComplete;
 }
 import {
-  markInputDirty,
   clearDirtyInputs,
   cacheRebalanceEvents,
   loadCachedRebalanceEvents,
 } from "./dashboard-data-cache.js";
-export { markInputDirty };
 
 /**
  * Wire the deposit-module's live-status callbacks.  Extracted from a
@@ -459,9 +389,7 @@ function _syncManagedAndGlobals(data) {
   botConfig.oorSince = data.oorSince || null;
   botConfig.residualCleanupInProgress = !!data.residualCleanupInProgress;
   botConfig.pmName = data.positionManagerName;
-  botConfig.chainName = data.chainDisplayName;
-  if (data.defaultSlippagePct > 0)
-    botConfig.defaultSlip = data.defaultSlippagePct;
+  botConfig.errorLogPath = data.errorLogPath;
   if (data.compoundMinFeeUsd > 0)
     botConfig.compoundMinFee = data.compoundMinFeeUsd;
   if (data.compoundDefaultThresholdUsd > 0)
@@ -563,12 +491,5 @@ import {
   _computeSyncStatus,
   _computeRebalanceFollow,
 } from "./dashboard-sync-decisions.js";
-export { _computeSyncStatus, _computeRebalanceFollow };
-import {
-  initDataPoll,
-  pollNow,
-  startDataPolling,
-  stopDataPolling,
-} from "./dashboard-data-poll.js";
+import { initDataPoll } from "./dashboard-data-poll.js";
 initDataPoll(updateDashboardFromStatus);
-export { pollNow, startDataPolling, stopDataPolling };

@@ -1434,6 +1434,11 @@ span[title]:not([title=""]):hover {
   font-size: 18px;
 }
 
+/* The dialog's two notes below its inputs, at the dialog's body size. */
+.\39 mm-pos-mgr-price-override-note {
+  font-size: 17px;
+}
+
 /* ── KPI Divider ───────────────────────────────────────────────────────── */
 
 .\39 mm-pos-mgr-kpi-divider {
@@ -3961,7 +3966,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1792220905629");
+  background-image: url("background-cloud_top.png?v=1792310636660");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3974,7 +3979,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1792220905629");
+  background-image: url("background-cloud_middle.png?v=1792310636660");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3984,7 +3989,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1792220905629");
+  background-image: url("background-cloud_bottom.png?v=1792310636660");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

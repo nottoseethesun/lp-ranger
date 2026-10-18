@@ -25,7 +25,7 @@ body:
         ---
 
         Before opening either a Discussion or an issue, please check the
-        [Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html)
+        [User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html)
         and the [README](https://github.com/nottoseethesun/lp-ranger#readme).
         Most common questions are answered there.
 
@@ -34,7 +34,7 @@ body:
     attributes:
       label: Prerequisites
       options:
-        - label: I have read the Help and User Manual and the README.
+        - label: I have read the User Manual and the README.
           required: true
         - label: I have searched [Discussions](https://github.com/nottoseethesun/lp-ranger/discussions) and [existing issues](https://github.com/nottoseethesun/lp-ranger/issues?q=is%3Aissue) for similar questions.
           required: true

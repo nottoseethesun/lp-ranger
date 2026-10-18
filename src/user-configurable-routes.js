@@ -16,7 +16,10 @@
 
 const { handleUiDefaults } = require("./ui-defaults");
 const { handleLpProviders } = require("./lp-providers");
-const { handleBotConfigDefaults } = require("./bot-config-defaults");
+const {
+  handleBotConfigDefaults,
+  handleHelpFigures,
+} = require("./resolved-settings");
 const { handleChartProviders } = require("./chart-providers");
 const { handleRpcEndpoints } = require("./rpc-endpoints");
 const { handleSettingLabels } = require("./setting-labels");
@@ -37,6 +40,8 @@ function userConfigurableRoutes(jsonResponse) {
       handleLpProviders(req, res, jsonResponse),
     "GET /api/bot-config-defaults": (req, res) =>
       handleBotConfigDefaults(req, res, jsonResponse),
+    "GET /api/help-figures": (req, res) =>
+      handleHelpFigures(req, res, jsonResponse),
     "GET /api/chart-providers": (req, res) =>
       handleChartProviders(req, res, jsonResponse),
     "GET /api/rpc-endpoints": (req, res) =>

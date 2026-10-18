@@ -63,6 +63,12 @@ function _mockFetchError(message) {
 // ── setup / teardown ─────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  /*-
+   *  TEST-ONLY global swap: the cases below replace `fetch`, because the
+   *  price sources ask their services through the global one and offer
+   *  no seam for another. The original is captured here and restored
+   *  pristine in `afterEach`, after each case's call.
+   */
   _originalFetch = globalThis.fetch;
   _cache.clear();
   _resetGeckoRateLimit();
@@ -262,7 +268,7 @@ describe("Cache expiry", () => {
     assert.strictEqual(fetchCallCount, 1);
 
     // Manually expire the cache entry by backdating its timestamp.
-    const key = `pulsechain:${TOKEN.toLowerCase()}`;
+    const key = `pulsechain-${TOKEN.toLowerCase()}`;
     const entry = _cache.get(key);
     entry.ts = Date.now() - _CACHE_TTL_MS - 1;
 

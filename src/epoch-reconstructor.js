@@ -16,8 +16,8 @@
  * ─────────────
  * Each position lookup may trigger up to 4 GeckoTerminal API calls
  * (base+quote × open+close prices).  Rate limiting is handled centrally
- * by the sliding-window limiter in `price-fetcher.js` (25 calls / 60 s),
- * so no per-position delay is needed here.
+ * by the sliding-window limiter in `gecko-rate-limit.js`, so no
+ * per-position delay is needed here.
  */
 
 "use strict";
@@ -543,8 +543,8 @@ async function _rebuildClosedEpochs(o) {
  * It has to persist because it carries a figure nothing can rebuild.
  * Its entry value, fees and compounded coins are all re-derived on the
  * next poll, so those would cost nothing to drop. Its GAS would: gas
- * only accumulates, so a dropped charge is gone. `_recordCancelGas` in
- * `bot-cycle.js` is the charge that depends on this: it is offered once,
+ * only accumulates, so a dropped charge is gone. `recordSpentGas` in
+ * `spent-gas.js` is the charge that depends on this: it is offered once,
  * by the code that just spent it, and nothing re-derives it.
  *
  * @param {object}   pnlTracker     Tracker instance.

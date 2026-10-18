@@ -9,7 +9,7 @@
 
 import { log } from "./dashboard-log.js";
 import { g, tzCode, cloneTpl } from "./dashboard-helpers.js";
-import { posStore } from "./dashboard-positions.js";
+import { posStore } from "./dashboard-positions-store.js";
 
 /**
  * Format a number as a USD table cell value.

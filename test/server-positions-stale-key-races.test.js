@@ -273,6 +273,13 @@ describe("handleRemove stale-key races", () => {
     assert.strictEqual(dc.positions[NEW_KEY].status, "stopped");
     assert.ok(!states.has(NEW_KEY), "bot state cleared for migrated key");
     assert.ok(!states.has(OLD_KEY), "no bot state under stale old key");
+    /*-
+     *  The answer names the position by both keys, so a dashboard that
+     *  followed it to its new NFT still knows the answer is its own
+     *  (src/position-answer-tag.js).
+     */
+    assert.strictEqual(res._body.positionKey, OLD_KEY);
+    assert.strictEqual(res._body.livePositionKey, NEW_KEY);
   });
 
   it("falls back to body.key when positionMgr returns no entry", async () => {
@@ -302,5 +309,7 @@ describe("handleRemove stale-key races", () => {
     assert.strictEqual(res._status, 200);
     assert.strictEqual(dc.positions[KEY].status, "stopped");
     assert.ok(!states.has(KEY));
+    assert.strictEqual(res._body.positionKey, KEY);
+    assert.strictEqual(res._body.livePositionKey, undefined, "not moved");
   });
 });

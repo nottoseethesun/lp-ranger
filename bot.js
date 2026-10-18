@@ -76,6 +76,7 @@ const {
 } = require("./src/server-positions");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { askPassword: _askPassword } = require("./src/ask-password");
+const { readShutdownTimings } = require("./src/shutdown-timing");
 
 // One-time migration of legacy root-level config files into app-config/.
 // Idempotent: a no-op after the first successful run.
@@ -84,6 +85,8 @@ migrateAppConfig();
 // ── Main entry ───────────────────────────────────────────────────────────────
 
 async function main() {
+  // Read before anything starts, so an unusable value stops startup.
+  const { exitTimeoutMs } = readShutdownTimings();
   const dryRun = config.DRY_RUN;
   if (!dryRun) config.assertLiveModeReady();
 
@@ -135,7 +138,7 @@ async function main() {
     _awaitShutdown(() => {
       handle.stop();
       positionMgr.stopAll();
-    });
+    }, exitTimeoutMs);
     return;
   }
 
@@ -181,17 +184,23 @@ async function main() {
   }
   log.info("[bot] Started %d of %d managed positions", started, keys.length);
 
-  _awaitShutdown(() => positionMgr.stopAll());
+  _awaitShutdown(() => positionMgr.stopAll(), exitTimeoutMs);
 }
 
-/** Register SIGINT/SIGTERM handlers for graceful shutdown. */
-function _awaitShutdown(stopFn) {
+/**
+ * Register SIGINT/SIGTERM handlers for graceful shutdown.
+ * @param {() => *} stopFn  Stops the running positions.
+ * @param {number} exitTimeoutMs  How long a stop may take before the
+ *   process exits anyway: `shutdown.exitTimeoutMs` in app-runtime.json,
+ *   the figure the server uses.
+ */
+function _awaitShutdown(stopFn, exitTimeoutMs) {
   const shutdown = () => {
     log.info("\n[bot] Shutting down…");
     Promise.resolve(stopFn())
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
-    setTimeout(() => process.exit(0), 3000);
+    setTimeout(() => process.exit(0), exitTimeoutMs);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

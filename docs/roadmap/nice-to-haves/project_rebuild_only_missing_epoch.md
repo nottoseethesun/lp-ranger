@@ -2,9 +2,9 @@
 
 > **Status:** Nice-to-have / efficiency — not a bug. Every P&L figure
 > the app produces is correct today, and a rebuild that is interrupted
-> repairs itself. Funds are never at risk. This would remove the largest
-> repeated cost in the app: re-reading a position's entire history after
-> every rebalance to recover the one epoch that rebalance created.
+> repairs itself. Funds are never at risk. This would stop the app
+> re-reading a position's entire history after every rebalance to
+> recover the one epoch that rebalance created.
 
 ## Plain language
 
@@ -29,8 +29,8 @@ sorted list, reassigned every time the list is written.
 So the app cannot ask "which epoch is missing?" It can only count:
 
 ```js
-// src/epoch-reconstructor.js
-closedEpochs.length >= closedIds.length
+// src/epoch-reconstructor.js, isEpochHistoryComplete
+(closedEpochs?.length || 0) >= closedIds.length
 ```
 
 132 stored against 133 closed positions is short, and the only repair
@@ -41,13 +41,16 @@ found short by one, and skipped entirely.
 
 ## What it costs
 
-A cold rebuild of one 132-rebalance chain was measured at **44,352
-paced requests** — roughly three hours of queue time at the global
-222 ms interval. (Same measurement as
+Measured before chain reads were batched, a cold rebuild of one
+132-rebalance chain took **44,352 paced requests**, roughly three hours
+at the global 222 ms interval. (Same measurement as
 [Merge Per-Topic Log Queries](project_merge_per_topic_log_queries.md),
-which attacks a different factor in the same total.)
+which attacks a different factor in the same total.) Reconstruction now
+reads the whole chain in one batched pass, roughly a thousand requests
+at most for a chain that size, so the saving is minutes rather than
+hours. Re-measure before starting.
 
-The ratio is what matters here: 133 positions read where 1 would do.
+The ratio is unchanged: 133 positions read where one would do.
 
 ## Two routes
 

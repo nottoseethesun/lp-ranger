@@ -27,10 +27,13 @@
 
 "use strict";
 
+const { makeError } = require("ethers");
 const { log } = require("./log");
 const config = require("./config");
 const { _retrySend, _isNonceTooLow } = require("./tx-retry");
+const { heldTransaction } = require("./held-transaction");
 const { receiptGasWei } = require("./receipt-gas");
+const { addSpentGas } = require("./spent-gas");
 
 /**
  * A cancel is a 0-value self-transfer, which costs exactly the 21000 gas
@@ -66,6 +69,42 @@ async function _cancelGasPrice(provider, stuckGas) {
 }
 
 /**
+ * A receipt that records success, or the error ethers' own wait raises
+ * for one that records a revert.
+ *
+ * `tx.wait()` refuses a transaction that failed on chain: it throws
+ * CALL_EXCEPTION with the receipt attached, and every caller treats that
+ * as the transaction reverting. Two other ways hand a receipt back without
+ * that check: the replacement's receipt ethers attaches when it reports a
+ * transaction replaced, and the receipt another endpoint returns when the
+ * first stops answering. Through either, a reverted transaction was read
+ * as confirmed: a failed swap taken as done, a failed mint reported as
+ * one that returned no tokenId. Both now pass through here, so all three
+ * answer a revert the same way, with the error ethers itself raises.
+ *
+ * A receipt without a status passes through, as it does in ethers' own
+ * wait: nothing in it says the transaction failed.
+ *
+ * @param {object|null} receipt  A transaction receipt.
+ * @returns {object|null} The same receipt.
+ * @throws {Error} CALL_EXCEPTION, carrying the receipt, when it records a
+ *   revert.
+ */
+function confirmedReceipt(receipt) {
+  if (receipt === null || receipt === undefined || receipt.status !== 0)
+    return receipt;
+  throw makeError("transaction execution reverted", "CALL_EXCEPTION", {
+    action: "sendTransaction",
+    data: null,
+    reason: null,
+    invocation: null,
+    revert: null,
+    transaction: { to: receipt.to, from: receipt.from, data: "" },
+    receipt,
+  });
+}
+
+/**
  * Wait for a transaction's receipt, surfacing the receipt of a
  * TRANSACTION_REPLACED event and surviving the endpoint going down.
  *
@@ -97,7 +136,7 @@ function _tolerantWait(tx, label, onWaitError, budget) {
   return tx.wait().catch((e) => {
     if (e.code === "TRANSACTION_REPLACED" && e.receipt) {
       log.info("[send-tx] %s: TX replaced, using replacement receipt", label);
-      return e.receipt;
+      return confirmedReceipt(e.receipt);
     }
     if (!onWaitError) throw e;
     return onWaitError(e, tx, label, budget);
@@ -255,27 +294,29 @@ async function _waitOnePhase({ tx, label, onWaitError, ms, sentinel }) {
 
 /**
  * Submit a speed-up replacement at the same nonce with a bumped gas price.
- * Returns the replacement TransactionResponse, or null when the original
- * has already been mined (so there's nothing to replace).
+ * Returns the replacement TransactionResponse, or null when none could be
+ * sent: the original has already mined, or the node refused it, or the
+ * gas price it is priced from could not be read. Every one of those leaves
+ * the caller waiting on the original alone, and then cancelling it, so
+ * none may throw past it.
  */
 async function _submitSpeedUp(tx, signer, label) {
-  const provider = signer.provider;
-  const fd = await provider.getFeeData();
-  const curGas = fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
-  const origGas = tx.gasPrice ?? tx.maxFeePerGas ?? 0n;
-  const bump = config.CHAIN.speedUpGasBump;
-  const bumped = BigInt(
-    Math.ceil(Number(curGas > origGas ? curGas : origGas) * bump),
-  );
-  log.info(
-    "[send-tx] %s: speedup origGas=%s curGas=%s bumped=%s nonce=%d",
-    label,
-    String(origGas),
-    String(curGas),
-    String(bumped),
-    tx.nonce,
-  );
   try {
+    const fd = await signer.provider.getFeeData();
+    const curGas = fd.gasPrice ?? fd.maxFeePerGas ?? 0n;
+    const origGas = tx.gasPrice ?? tx.maxFeePerGas ?? 0n;
+    const bump = config.CHAIN.speedUpGasBump;
+    const bumped = BigInt(
+      Math.ceil(Number(curGas > origGas ? curGas : origGas) * bump),
+    );
+    log.info(
+      "[send-tx] %s: speedup origGas=%s curGas=%s bumped=%s nonce=%d",
+      label,
+      String(origGas),
+      String(curGas),
+      String(bumped),
+      tx.nonce,
+    );
     const replacement = await _retrySend(
       () =>
         _baseSigner(signer).sendTransaction({
@@ -288,7 +329,14 @@ async function _submitSpeedUp(tx, signer, label) {
           gasPrice: bumped,
         }),
       "[send-tx] " + label + " speedup nonce=" + tx.nonce,
-      { signer, retryingTxWithSameNonce: true },
+      {
+        signer,
+        retryingTxWithSameNonce: true,
+        heldProviders: () => ({
+          wait: _baseSigner(signer).provider,
+          read: signer.provider,
+        }),
+      },
     );
     log.info(
       "[send-tx] %s: replacement TX submitted, hash= %s nonce=%d",
@@ -313,20 +361,26 @@ async function _submitSpeedUp(tx, signer, label) {
  * that it is not needed.
  *
  * A node refuses the cancel as "nonce too low" when the nonce is already
- * taken, which can only mean the move's own transaction, or its speed-up,
- * mined in the meantime. That is not a failed cancel: the caller then
- * waits for the move's receipt. Any other refusal leaves the nonce stuck,
- * and says so.
+ * taken: by the move's own transaction, by its speed-up, or by an earlier
+ * submission of this very cancel that arrived though its reply was lost,
+ * and has since mined. That is not a failed cancel. The refused cancel is
+ * rebuilt from the request (src/held-transaction.js), whose bytes are the
+ * lost copy's, and returned to be waited on with the move, so the caller
+ * names whichever of them mined. An endpoint that still holds that earlier
+ * submission answers "already known" instead; the cancel is recovered and
+ * returned like a fresh one, since it is waiting to be mined. Any other
+ * failure leaves the nonce stuck, and says so, whether the node refused
+ * the cancel or the gas price it is priced from could not be read.
  *
  * @returns {Promise<object|null>} The cancel, or null when the nonce was
- *   already taken.
- * @throws {Error} "TX stuck and cancel failed" for any other refusal.
+ *   already taken and the refused cancel cannot be rebuilt.
+ * @throws {Error} "TX stuck and cancel failed" for any other failure.
  */
 async function _sendCancel(tx, signer, label, stuckGas) {
-  const cancelGas = await _cancelGasPrice(signer.provider, stuckGas);
   const base = _baseSigner(signer);
-  const addr = await base.getAddress();
   try {
+    const cancelGas = await _cancelGasPrice(signer.provider, stuckGas);
+    const addr = await base.getAddress();
     const cancelTx = await _retrySend(
       () =>
         base.sendTransaction({
@@ -338,7 +392,11 @@ async function _sendCancel(tx, signer, label, stuckGas) {
           gasLimit: CANCEL_GAS_LIMIT,
         }),
       "[send-tx] " + label + " cancel nonce=" + tx.nonce,
-      { signer: base, retryingTxWithSameNonce: true },
+      {
+        signer: base,
+        retryingTxWithSameNonce: true,
+        heldProviders: () => ({ wait: base.provider, read: signer.provider }),
+      },
     );
     log.info(
       "[send-tx] %s: cancel TX submitted, hash= %s nonce=%d gasPrice=%s",
@@ -350,14 +408,25 @@ async function _sendCancel(tx, signer, label, stuckGas) {
     return cancelTx;
   } catch (sendErr) {
     if (_isNonceTooLow(sendErr)) {
+      /*-
+       *  A failed rebuild leaves the wait to the move alone, as before
+       *  the cancel could be recognised; it must not fail the move.
+       */
+      const refused = await heldTransaction(sendErr, {
+        wait: base.provider,
+        read: signer.provider,
+      }).catch(() => null);
       log.info(
         "[send-tx] %s: cancel refused as 'nonce too low' — nonce %d was " +
-          "already taken, so the transaction or its speed-up mined; " +
-          "waiting for its receipt",
+          "already taken, by the transaction, its speed-up, or an earlier " +
+          "copy of this cancel whose reply was lost; waiting for %s",
         label,
         tx.nonce,
+        refused === null
+          ? "the transaction's receipt"
+          : "whichever of them mined (cancel hash= " + refused.hash + ")",
       );
-      return null;
+      return refused;
     }
     log.error(
       "[send-tx] %s: cancel TX failed: %s — nonce %d may still be stuck",
@@ -456,8 +525,7 @@ async function _cancelStuckNonce(
   );
   cancelErr.cancelled = true;
   cancelErr.cancelTxHash = cancelTx.hash;
-  cancelErr.cancelGasCostWei = receiptGasWei(receipt);
-  throw cancelErr;
+  throw addSpentGas(cancelErr, receiptGasWei(receipt));
 }
 
 /**
@@ -469,25 +537,48 @@ async function _cancelStuckNonce(
  *   2. submit a speed-up replacement at the same nonce + bumped gas.
  *   3. wait up to total TX_CANCEL_SEC for either to confirm.
  *   4. cancel the stuck nonce with a zero-value self-transfer.
+ *
+ * Both clocks count from `startedAt`, the transaction's first
+ * submission. A transaction can reach here later than that: its
+ * submission was retried after a lost reply, and the endpoint answered
+ * "already known" because the first one had arrived. Counting from the
+ * first submission gives it the same schedule as any other, so one whose
+ * wait has already run out is sped up at once.
+ *
+ * @param {object} tx  The submitted transaction.
+ * @param {object} signer  The signer that submitted it.
+ * @param {string} label  Log label.
+ * @param {Function} [onWaitError]  The re-ask; see `_tolerantWait`.
+ * @param {number} [startedAt]  When the transaction was first submitted,
+ *   in epoch milliseconds; now, when not given.
+ * @returns {Promise<object>} The receipt of whichever transaction took
+ *   the nonce for the move.
  */
-async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
-  /*- No literal fallbacks per feedback_one_literal_per_shipped_default:
-   *  config.TX_SPEEDUP_SEC and TX_CANCEL_SEC are sourced from
-   *  app-runtime.json via parsePositiveInt; always positive numbers. */
+async function _waitOrSpeedUp(tx, signer, label, onWaitError, startedAt) {
+  /*-
+   *  No literal fallbacks per feedback_one_literal_per_shipped_default:
+   *  config.TX_SPEEDUP_SEC and TX_CANCEL_SEC come from `.env` or
+   *  app-runtime.json through `parseTimerSec`, which refuses to start on
+   *  a value outside the timer range, so both are positive numbers here.
+   */
   const speedupMs = config.TX_SPEEDUP_SEC * 1000;
   const cancelMs = config.TX_CANCEL_SEC * 1000;
-  const startTime = Date.now();
+  const startTime = typeof startedAt === "number" ? startedAt : Date.now();
 
-  /*- Phase 1: wait for confirmation, or fall through to speed-up.
+  /*-
+   *  Phase 1: wait for confirmation, or fall through to speed-up.
    *
-   *  Each phase hands down its own remaining budget AND a signal. The
-   *  budget stops a re-ask outliving the phase that started it; the
-   *  signal stops it outliving the RACE that started it, which is
-   *  sooner and matters more. A `Promise.race` abandons its losers
-   *  without stopping them, and a loser here is a poll against an
-   *  endpoint, released one at a time through a queue everything else
-   *  shares. */
-  const speedupPhase = _phase(speedupMs, "_SPEEDUP");
+   *  Each phase hands its re-asks a signal and nothing else, aborted when
+   *  the phase ends; `_phase` says why it carries no clock of its own.
+   *  The signal stops a re-ask outliving the RACE that started it. A
+   *  `Promise.race` abandons its losers without stopping them, and a
+   *  loser here is a poll against an endpoint, released one at a time
+   *  through a queue everything else shares.
+   */
+  const speedupPhase = _phase(
+    Math.max(0, speedupMs - (Date.now() - startTime)),
+    "_SPEEDUP",
+  );
   try {
     const receipt = await Promise.race([
       _settled(_tolerantWait(tx, label, onWaitError, speedupPhase.budget)),
@@ -554,4 +645,9 @@ async function _waitOrSpeedUp(tx, signer, label, onWaitError) {
   );
 }
 
-module.exports = { _waitOrSpeedUp, _waitOnePhase, CANCEL_GAS_LIMIT };
+module.exports = {
+  _waitOrSpeedUp,
+  _waitOnePhase,
+  confirmedReceipt,
+  CANCEL_GAS_LIMIT,
+};

@@ -227,6 +227,35 @@ describe("server", () => {
     assert.ok(Array.isArray(body.positions));
   });
 
+  // ── Position state questions ──────────────────────────────────────────────
+
+  it("GET /api/is-position-managed takes its key from the query string", async () => {
+    /*-
+     *  The router names a route by its path alone, so a request carrying
+     *  a query string still reaches its handler. Matched on the whole url,
+     *  this request fell through to the page and was answered with
+     *  index.html.
+     */
+    const key =
+      "pulsechain-0x1111111111111111111111111111111111111111-" +
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424242";
+    const res = await req({
+      port: TEST_PORT,
+      path: "/api/is-position-managed?key=" + encodeURIComponent(key),
+    });
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), { managed: false });
+  });
+
+  it("GET /api/is-position-being-adjusted answers false with nothing under way", async () => {
+    const res = await req({
+      port: TEST_PORT,
+      path: "/api/is-position-being-adjusted",
+    });
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), { adjusting: false });
+  });
+
   // ── /api/rebalance ────────────────────────────────────────────────────────
 
   it("POST /api/rebalance returns 400 without positionKey", async () => {
@@ -240,6 +269,26 @@ describe("server", () => {
     assert.strictEqual(res.status, 400);
     const body = JSON.parse(res.body);
     assert.ok(body.error.includes("positionKey"));
+  });
+
+  it("POST /api/rebalance names the position in its answer", async () => {
+    /*-
+     *  A position no bot is running is refused 409, and the refusal
+     *  names the position, as every answer about one does
+     *  (src/position-answer-tag.js).
+     */
+    const key =
+      "pulsechain-0x1111111111111111111111111111111111111111-" +
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424242";
+    const res = await req({
+      port: TEST_PORT,
+      method: "POST",
+      path: "/api/rebalance",
+      body: { positionKey: key },
+      headers: { "x-csrf-token": await csrfToken() },
+    });
+    assert.strictEqual(res.status, 409);
+    assert.strictEqual(JSON.parse(res.body).positionKey, key);
   });
 
   // ── Static files ─────────────────────────────────────────────────────────

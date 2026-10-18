@@ -17,15 +17,21 @@ const { fetchTokenPriceUsd, _cache } = require("../src/price-fetcher");
 const {
   _resetForTest: _resetGeckoRateLimit,
 } = require("../src/gecko-rate-limit");
+const { _setSinkForTests } = require("../src/log");
 const config = require("../src/config");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 const TOKEN = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
 
 let _originalFetch;
-let _origLog, _origWarn, captured;
 
 beforeEach(() => {
+  /*-
+   *  TEST-ONLY global swap: each case below replaces `fetch`, because the
+   *  price sources ask their services through the global one and offer
+   *  no seam for another. The original is captured here and restored
+   *  pristine in `afterEach`, after each case's single call.
+   */
   _originalFetch = globalThis.fetch;
   _cache.clear();
   _resetGeckoRateLimit();
@@ -37,19 +43,22 @@ afterEach(() => {
   _resetGeckoRateLimit();
 });
 
-/** Start collecting what the cascade writes to the console. */
-function startCapture() {
-  captured = [];
-  _origLog = console.log;
-  _origWarn = console.warn;
-  console.log = (...a) => captured.push(format(...a));
-  console.warn = (...a) => captured.push(format(...a));
-}
-
-/** Put the console back. */
-function stopCapture() {
-  console.log = _origLog;
-  console.warn = _origWarn;
+/**
+ * Run `fn` and hand back every line the cascade logged, formatted,
+ * through the logger's own seam rather than the global console.
+ */
+async function logsOf(fn) {
+  const lines = [];
+  const restore = _setSinkForTests({
+    log: (...a) => lines.push(format(...a)),
+    warn: (...a) => lines.push(format(...a)),
+  });
+  try {
+    await fn();
+  } finally {
+    restore();
+  }
+  return lines;
 }
 
 describe("Cascade logging", () => {
@@ -57,8 +66,10 @@ describe("Cascade logging", () => {
     let calls = 0;
     globalThis.fetch = async () => {
       calls++;
-      // Moralis branch is gated by API key (none in tests) → returns 0.
-      // First real call is GeckoTerminal: return a valid price.
+      /*-
+       *  Moralis is asked only with an api key, and tests have none, so
+       *  the first service asked is GeckoTerminal, which answers here.
+       */
       return {
         ok: true,
         json: async () => ({
@@ -71,13 +82,10 @@ describe("Cascade logging", () => {
       };
     };
 
-    startCapture();
-    try {
+    const captured = await logsOf(async () => {
       const price = await fetchTokenPriceUsd(TOKEN);
       assert.strictEqual(price, 0.42);
-    } finally {
-      stopCapture();
-    }
+    });
     // At least one log line should reference the abbreviated token address.
     const flat = captured.join("\n");
     const short = `${TOKEN.slice(0, 6)}…${TOKEN.slice(-4)}`;
@@ -96,13 +104,10 @@ describe("Cascade logging", () => {
     globalThis.fetch = async () => {
       throw new Error("network down");
     };
-    startCapture();
-    try {
+    const captured = await logsOf(async () => {
       const price = await fetchTokenPriceUsd(TOKEN);
       assert.strictEqual(price, 0);
-    } finally {
-      stopCapture();
-    }
+    });
     const flat = captured.join("\n");
     assert.ok(
       flat.includes("All sources failed"),
@@ -123,11 +128,12 @@ describe("Cascade logging", () => {
       calls++;
       throw new Error("must not be asked");
     };
-    startCapture();
+    let captured;
     try {
-      assert.strictEqual(await fetchTokenPriceUsd(TOKEN), 0);
+      captured = await logsOf(async () => {
+        assert.strictEqual(await fetchTokenPriceUsd(TOKEN), 0);
+      });
     } finally {
-      stopCapture();
       config.CHAIN = saved;
     }
     assert.strictEqual(calls, 0);

@@ -22,7 +22,7 @@ const ethers = require("ethers");
 const { getPoolState } = require("./rebalancer-pools");
 const {
   PoolStateInvalidError,
-  isIntegerInRange,
+  isTokenDecimals,
 } = require("./pool-state-validate");
 const {
   writeErrorLog,
@@ -30,11 +30,13 @@ const {
   getErrorLogPath,
 } = require("./error-log");
 
-/*- ERC-20 decimals validity uses the SAME predicate + range that getPoolState
- *  validates against, so the heal's "already good?" check and getPoolState's
- *  authoritative validation never disagree. */
+/**
+ * ERC-20 decimals validity uses the SAME predicate that getPoolState
+ * validates against, so the heal's "already good?" check and getPoolState's
+ * authoritative validation never disagree.
+ */
 function _validDecimals(d) {
-  return isIntegerInRange(d, 0, 77);
+  return isTokenDecimals(d);
 }
 
 /*- A force-override value for one token: the operator's manual entry that

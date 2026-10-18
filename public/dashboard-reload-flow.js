@@ -20,9 +20,15 @@
 
 import { log } from "./dashboard-log.js";
 import { ethers } from "./ethers-adapter.js";
-import { g, fetchWithCsrf, compositeKey } from "./dashboard-helpers.js";
+import {
+  g,
+  fetchWithCsrf,
+  compositeKey,
+  botConfig,
+} from "./dashboard-helpers.js";
 import { activeChainId } from "./dashboard-chain.js";
-import UI_DEFAULTS from "../app-config/app-defaults-for-user-configurable/ui-defaults.json" with { type: "json" };
+import { uiSetting } from "./dashboard-ui-settings.js";
+import { duration } from "../src/help-figures.js";
 import { confirmViaDialog } from "./dashboard-confirm-dialog.js";
 import {
   getLastStatus,
@@ -69,28 +75,26 @@ export function injectPosStoreForReload(posStore) {
 const _RELOAD_MODAL_ID = "reloadCurrentPositionModal";
 /*-
  *  How long the dashboard waits for the reload to finish before
- *  reloading the page anyway. The dialogs quote the same figure as the
- *  longest a reload may take, built from it by `reloadDurationText`.
+ *  reloading the page anyway is `reloadMaxWaitMs`, and the dialogs quote
+ *  the same figure as the longest a reload may take, built from it by
+ *  `reloadDurationText`. The wait loop reads the status the dashboard's
+ *  own poll fetched, so it checks at the poll's pace,
+ *  `dashboardPollIntervalMs`. Both are settings the server sends, read
+ *  when a reload runs (`uiSetting`).
  */
-const _RELOAD_MAX_WAIT_MS = UI_DEFAULTS.reloadMaxWaitMs;
-/*-
- *  The wait loop reads the status the dashboard's own poll fetched, so
- *  it checks at the poll's pace.
- */
-const _RELOAD_POLL_MS = UI_DEFAULTS.dashboardPollIntervalMs;
 
 /**
  * Say how long a reload may take, in words for the dialogs.
  *
  * The estimate the operator reads and the wait the dashboard allows are
- * one figure, `reloadMaxWaitMs` in ui-defaults.json, so the text is
- * built from it rather than written beside it.
+ * one figure, the `reloadMaxWaitMs` setting, so the text is built from it
+ * rather than written beside it. It is worded by the help's own
+ * `duration`, so a span of time reads the same here as in the help.
  *
- * @returns {string} The ceiling in hours, e.g. "4 hours".
+ * @returns {string} The ceiling, e.g. "4 hours".
  */
 export function reloadDurationText() {
-  const hours = _RELOAD_MAX_WAIT_MS / 3_600_000;
-  return hours === 1 ? "1 hour" : hours + " hours";
+  return duration(uiSetting("reloadMaxWaitMs") / 1000);
 }
 
 // ── Small helpers ───────────────────────────────────
@@ -237,13 +241,15 @@ function _showReloadServerBusyModal(serverMessage) {
  *  compound raced the reload, or `reloadMaxWaitMs` elapses.
  */
 function _waitForReloadCompletion(key, startedAtMs) {
+  const maxWaitMs = uiSetting("reloadMaxWaitMs");
+  const pollMs = uiSetting("dashboardPollIntervalMs");
   return new Promise((resolve) => {
     const started = startedAtMs;
     let tickCount = 0;
     const tick = () => {
       tickCount++;
       const elapsed = Date.now() - started;
-      if (elapsed >= _RELOAD_MAX_WAIT_MS) return resolve("timeout");
+      if (elapsed >= maxWaitMs) return resolve("timeout");
       const st = _positionState(key);
       /*-
        *  Per-tick log so a failed poll-detection is visible within one
@@ -261,15 +267,15 @@ function _waitForReloadCompletion(key, startedAtMs) {
         !!st?._catastrophicScanError,
         key,
       );
-      if (!st) return setTimeout(tick, _RELOAD_POLL_MS);
+      if (!st) return setTimeout(tick, pollMs);
       if (st.rebalanceInProgress || st.compoundInProgress)
         return resolve("raced");
       if (st._catastrophicScanError && st._catastrophicScanError.at > started)
         return resolve("failed-again");
       if (st.lifetimeScanComplete === true) return resolve("complete");
-      setTimeout(tick, _RELOAD_POLL_MS);
+      setTimeout(tick, pollMs);
     };
-    setTimeout(tick, _RELOAD_POLL_MS);
+    setTimeout(tick, pollMs);
   });
 }
 
@@ -425,7 +431,7 @@ export async function _reloadCurrentPosition() {
   if (!(await _confirmReload(active.tokenId))) return;
   const btn = g("reloadPositionBtn");
   if (btn) btn.disabled = true;
-  const overlay = _showReloadBlockingModal(active, "logs/error.log");
+  const overlay = _showReloadBlockingModal(active, botConfig.errorLogPath);
   const startedAt = Date.now();
   log.info(
     "[lp-ranger] [reload] user requested full reload for #%s",

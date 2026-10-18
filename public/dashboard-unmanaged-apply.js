@@ -16,10 +16,9 @@ import {
 import {
   positionRangeVisual,
   updateRangePctLabels,
-  setKpiValue,
-  checkHodlBaselineDialog,
-} from "./dashboard-data.js";
-import { _setPctSpan, _setAprSpan } from "./dashboard-data-kpi.js";
+} from "./dashboard-data-range.js";
+import { checkHodlBaselineDialog } from "./dashboard-data-baseline.js";
+import { _setPctSpan, _setAprSpan, setKpiValue } from "./dashboard-data-kpi.js";
 import { toMintTsSeconds } from "./dashboard-date-utils.js";
 import {
   setLastPrices,
@@ -27,7 +26,7 @@ import {
 } from "./dashboard-price-override.js";
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import { renderRebalanceEvents } from "./dashboard-history.js";
-import { posStore } from "./dashboard-positions.js";
+import { posStore } from "./dashboard-positions-store.js";
 import { rememberUnmanagedUnclaimedFees } from "./dashboard-data-kpi-fees.js";
 
 /** Update the composition bar + labels, or show grey "no price data" state. */

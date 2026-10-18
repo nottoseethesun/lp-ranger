@@ -101,10 +101,12 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
     amountIn: desired.swapAmount,
     tokenIn: is0to1 ? opts.token0 : opts.token1,
     tokenOut: is0to1 ? opts.token1 : opts.token0,
-    /*- The same answer a rebalance would get for this swap: the
-     *  destination token's own setting, or the shipped default when it
-     *  is unset. A compound and a rebalance move the same pair through
-     *  the same router, so they cannot answer this differently. */
+    /*-
+     *  The same answer a rebalance would get for this swap: the
+     *  destination token's own setting, or the default when it is
+     *  unset. A compound and a rebalance move the same pair through
+     *  the same router, so they cannot answer this differently.
+     */
     slippagePct: resolveSlippagePct(opts, is0to1),
     currentPrice: ps.price,
     decimalsIn: is0to1 ? opts.decimals0 : opts.decimals1,

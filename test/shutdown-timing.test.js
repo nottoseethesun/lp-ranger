@@ -6,7 +6,8 @@
  *   `exitTimeoutMs` after a SIGTERM; `npm stop` falls back to SIGKILL only
  *   after that plus `stopKillMarginMs`. The kill is the backup, so it must
  *   never come first, and a mistyped figure must refuse to run rather
- *   than leave a stop that kills at once.
+ *   than leave a stop that kills at once. `npm run gentle-stop` waits
+ *   `gentleStopPollMs` between two questions, checked the same way.
  */
 
 const { describe, it } = require("node:test");
@@ -27,6 +28,7 @@ describe("shutdown timings", () => {
       shipped.shutdown.exitTimeoutMs + shipped.shutdown.stopKillMarginMs,
     );
     assert.equal(t.checkIntervalMs, shipped.shutdown.stopCheckIntervalMs);
+    assert.equal(t.gentleStopPollMs, shipped.shutdown.gentleStopPollMs);
     assert.ok(t.killAfterMs > t.exitTimeoutMs);
   });
 
@@ -34,6 +36,7 @@ describe("shutdown timings", () => {
     "exitTimeoutMs",
     "stopKillMarginMs",
     "stopCheckIntervalMs",
+    "gentleStopPollMs",
   ]) {
     for (const bad of [undefined, 0, -5, "3000", 1.5]) {
       it(`refuses ${String(bad)} for ${key}, naming it`, () => {

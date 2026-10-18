@@ -15,7 +15,9 @@ const os = require("os");
 const { loadConfig, saveConfig } = require("../src/bot-config-v2");
 const {
   POSITION_KEYS,
+  GLOBAL_KEYS,
   RETIRED_POSITION_KEYS,
+  RETIRED_GLOBAL_KEYS,
 } = require("../src/bot-config-keys");
 
 /** Create a temp directory for each test. */
@@ -143,5 +145,57 @@ describe("saveConfig drops retired keys", () => {
      */
     for (const k of RETIRED_POSITION_KEYS)
       assert.ok(!POSITION_KEYS.includes(k), `${k} is still a live key`);
+  });
+
+  it("drops the retired Gas Strategy from a position", () => {
+    /*-
+     *  Its row offered Auto, Fast and Economy; the server refused all
+     *  but Auto and the bot never read it. The user ruled it removed.
+     */
+    assert.ok(RETIRED_POSITION_KEYS.includes("gasStrategy"));
+    const slot = saveAndReload({ gasStrategy: "auto" });
+    assert.equal(slot.gasStrategy, undefined);
+  });
+
+  it("drops a position's own Check Interval", () => {
+    /*-
+     *  How often the bot checks is one global setting: the user ruled
+     *  it out of Bot Settings, since the dashboard's idle and wake
+     *  timing are built on that one value.
+     */
+    assert.ok(RETIRED_POSITION_KEYS.includes("checkIntervalSec"));
+    const slot = saveAndReload({ checkIntervalSec: 60 });
+    assert.equal(slot.checkIntervalSec, undefined);
+  });
+});
+
+describe("saveConfig drops retired global keys", () => {
+  it("drops the retired triggerType, keeping the live global keys", () => {
+    /*-
+     *  Saved through POST /api/config with no control on the page, one
+     *  value ever, and read by nothing. The user ruled it removed.
+     */
+    const dir = tmpDir();
+    saveConfig(
+      {
+        global: { triggerType: "oor", gasFeePct: 2 },
+        positions: {
+          "pulsechain-0xWALLET-0xCONTRACT-100": {
+            status: "running",
+            slippagePctToken0: 0.75,
+          },
+        },
+      },
+      dir,
+    );
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.equal(loaded.global.triggerType, undefined);
+    assert.equal(loaded.global.gasFeePct, 2);
+  });
+
+  it("names only keys that POST /api/config no longer accepts", () => {
+    for (const k of RETIRED_GLOBAL_KEYS)
+      assert.ok(!GLOBAL_KEYS.includes(k), `${k} is still a live key`);
   });
 });

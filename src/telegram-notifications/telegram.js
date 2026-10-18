@@ -18,6 +18,7 @@ const os = require("os");
 const config = require("../config");
 const { getLpProviderDisplayName } = require("../lp-providers");
 const { getTokenSymbol } = require("../token-symbol-cache");
+const { readBotConfigDefaults } = require("../bot-config-defaults");
 const { escapeValue, escapeCode, sendMessage } = require("./telegram-message");
 
 /*- Every send in this file goes through `sendMessage`, which is also
@@ -60,10 +61,13 @@ const EVENT_DEFAULTS = {
   shutdown: true,
   positionRetired: true,
   positionDataInvalid: true,
-  /*- Impermanent Loss Guard rejection.  Default ON: the bot has
+  /*-
+   *  Impermanent Loss Guard rejection.  Default ON: the bot has
    *  declined to act on a position that is out of range and earning
-   *  nothing, and the block can only clear when price recovers, so the
-   *  operator needs to know it is happening. */
+   *  nothing, and the block clears only when the price recovers or the
+   *  operator raises the Guard, so the operator needs to know it is
+   *  happening.
+   */
   ilGuardRejected: true,
   /*- Balanced-band notifier (src/telegram-notifications/balanced-notifier.js).  Default OFF —
    *  enabling it bypasses the idle-driven price-lookup pause for these
@@ -86,12 +90,16 @@ const EVENT_LABELS = {
   positionRetired: "Drained Position Auto-Retired",
   positionDataInvalid: "Position Auto-Stopped: Invalid Token Data",
   ilGuardRejected: "Rebalance Rejected Due to Excessive Impermanent Loss",
-  /*- Static string that must track BALANCED_THRESHOLD in
-   *  src/telegram-notifications/balanced-notifier.js.  The dashboard checkbox label reads the
-   *  live percent from /api/telegram/config; this server-side label is
-   *  only used as the Telegram message header and is updated by hand
-   *  whenever the threshold changes. */
-  positionBalanced: "Position Balanced (\u00b12.5% of 50/50)",
+  /*-
+   *  Quotes the band from `positionBalancedBandPct`, the setting the
+   *  notifier tests against, so the header names the band the alert
+   *  used. The dashboard checkbox label reads the same figure from
+   *  /api/telegram/config.
+   */
+  positionBalanced:
+    "Position Balanced (\u00b1" +
+    readBotConfigDefaults().positionBalancedBandPct +
+    "% of 50/50)",
 };
 
 /** Currently enabled events (mutated in place by setEnabledEvents). */

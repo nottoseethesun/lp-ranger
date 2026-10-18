@@ -5,8 +5,8 @@
  */
 import { log } from "./dashboard-log.js";
 import { g, compositeKey, fetchWithCsrf } from "./dashboard-helpers.js";
-import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import { _fmtUsd } from "./dashboard-data-kpi.js";
+import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
 import { activeChainId } from "./dashboard-chain.js";
 
@@ -28,16 +28,32 @@ export function _wireDepositKpis(getLast, updKpis) {
 // ── Shared helpers ────────────────────────────────
 
 /**
- * Pure per-position localStorage key builder.  Takes tokenId
- * explicitly so callers iterating positions other than
- * posStore.getActive() (e.g. the All Positions Stats modal) can
- * reuse the same key layout.  Enforces string tokenId so a numeric
- * or coerced value never produces a slightly-different localStorage
- * key from the string-typed path.
+ * Pure per-position localStorage key builder, on the active chain: the
+ * chain, the wallet, the position's contract and its NFT number, so two
+ * positions sharing an NFT number under another contract, wallet or
+ * chain never share a figure. Takes every identity field explicitly so
+ * callers iterating positions other than posStore.getActive() can reuse
+ * the same key layout. Each field must be a non-empty string, tokenId
+ * included, so a numeric or coerced value never produces a
+ * slightly-different key; a missing one, or a chain not yet learned,
+ * returns null rather than a partial key. Addresses are lower-cased, as
+ * the pool keys below write them.
  */
-export function _posKeyFrom(prefix, tokenId) {
-  if (typeof tokenId !== "string" || tokenId.length === 0) return null;
-  return prefix + tokenId;
+export function _posKeyFrom(prefix, walletAddress, contractAddress, tokenId) {
+  const chain = activeChainId();
+  if (typeof chain !== "string") return null;
+  for (const part of [walletAddress, contractAddress, tokenId])
+    if (typeof part !== "string" || part.length === 0) return null;
+  return (
+    prefix +
+    chain +
+    "_" +
+    walletAddress.toLowerCase() +
+    "_" +
+    contractAddress.toLowerCase() +
+    "_" +
+    tokenId
+  );
 }
 
 /**
@@ -87,7 +103,7 @@ export function _poolKeyFrom(
 
 export function _posKey(prefix) {
   const a = posStore.getActive();
-  return _posKeyFrom(prefix, a?.tokenId);
+  return _posKeyFrom(prefix, a?.walletAddress, a?.contractAddress, a?.tokenId);
 }
 export function _poolKey(prefix) {
   const a = posStore.getActive();
@@ -331,21 +347,42 @@ export function saveInitialDeposit() {
             )
           : undefined;
       log.info("[lp-ranger] [deposit] save %s to %s", amount, pk);
-      await saveConfigValues({
+      const { onScreen } = await saveConfigValues({
         values: { initialDepositUsd: amount },
         positionKey: pk,
         inputs: { initialDepositUsd: "initialDepositInput" },
       });
-      refreshDepositLabel();
-      if (active && !isPositionManaged(active.tokenId) && _refetchUnmanaged)
-        _refetchUnmanaged(active);
-      else {
-        const ls = _lastStatusRef?.();
-        if (ls && _updateKpisRef) _updateKpisRef(ls);
-      }
+      _afterDepositSaved(active, onScreen);
     },
     false,
   );
+}
+
+/**
+ * What the answer to a deposit save does to the screen: the label, and
+ * the position's figures, refetched or repainted.
+ *
+ * The refetch's first act blanks the figures on screen, so after a move
+ * to another position it would blank that one's. It is done only when
+ * the answer is about the position on screen.
+ *
+ * Exported so a test can drive it: the request goes through the global
+ * `fetch`, which a test must not replace.
+ *
+ * @param {object|null} active  The position saved for.
+ * @param {boolean} onScreen    Whether it is still the one on screen.
+ * @returns {boolean}  Whether anything was done.
+ */
+export function _afterDepositSaved(active, onScreen) {
+  if (!onScreen) return false;
+  refreshDepositLabel();
+  if (active && !isPositionManaged(active.tokenId) && _refetchUnmanaged)
+    _refetchUnmanaged(active);
+  else {
+    const ls = _lastStatusRef?.();
+    if (ls && _updateKpisRef) _updateKpisRef(ls);
+  }
+  return true;
 }
 
 // ── Lifetime Days override ────────────────────────

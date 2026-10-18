@@ -8,7 +8,9 @@
 
 import { log } from "./dashboard-log.js";
 import { g, fetchWithCsrf } from "./dashboard-helpers.js";
-import { resetKpis, pollNow, getLastStatus } from "./dashboard-data.js";
+import { getLastStatus } from "./dashboard-data.js";
+import { resetKpis } from "./dashboard-data-kpi.js";
+import { pollNow } from "./dashboard-data-poll.js";
 import {
   loadPriceOverrides,
   loadForceOverride,

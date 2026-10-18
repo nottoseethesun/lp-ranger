@@ -3,20 +3,27 @@
  * @description Manual per-token decimals override for the Pool Details dialog —
  *   a last-ditch fail-safe for rare tokens whose decimals can't be read
  *   on-chain (which otherwise auto-stops the position; see
- *   `src/bot-recorder-decimals-heal._ensureTokenDecimals`). Pool-scoped; persisted
- *   to localStorage + server config (`decimalsOverride0/1` +
- *   `decimalsOverrideForce0/1`, POSITION_KEYS). The heal consults these only
- *   when the on-chain read fails — or, with Force checked, always. Each token
- *   block shows a red notice when its decimals look unreadable, else a neutral
- *   advisory. Mirrors the shape of `dashboard-price-override.js`.
+ *   `src/bot-recorder-decimals-heal._ensureTokenDecimals`). Saved in the
+ *   position's server config (`decimalsOverride0/1` +
+ *   `decimalsOverrideForce0/1`, POSITION_KEYS), which the dialog also
+ *   opens from. The heal consults these only when the on-chain read fails
+ *   — or, with Force checked, always. Each token block shows a red notice
+ *   when its decimals look unreadable, else a neutral advisory.
  */
 
 import { g, compositeKey } from "./dashboard-helpers.js";
-import { posStore, isPositionManaged } from "./dashboard-positions.js";
+import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
 import { getLastStatus, isSyncComplete } from "./dashboard-data.js";
 import { log } from "./dashboard-log.js";
-import { saveConfigValues } from "./dashboard-config-save.js";
+import {
+  saveConfigValues,
+  rememberGoodInput,
+} from "./dashboard-config-save.js";
 import { activeChainId } from "./dashboard-chain.js";
+// The server's own rule for a value inside a range.
+import { withinBound } from "../src/range-check.js";
+// Bundled at build time: the range a usable decimals falls in.
+import SETTING_BOUNDS from "../app-config/app-defaults-for-user-configurable/setting-bounds.json" with { type: "json" };
 
 /*- The app has ONE Synced state, shown by the single sync badge and read
  *  here through its single source of truth. It is not true until every
@@ -52,31 +59,36 @@ function _setFormVisible(idx, visible) {
   if (form) form.hidden = !visible;
 }
 
-/*- Pool-scoped localStorage key (token0_token1_fee) — matches the server-side
- *  scope so the override follows the pool across rebalances (new tokenId). */
-function _key() {
-  const a = posStore.getActive();
-  if (!a || !a.token0 || !a.token1) return null;
-  return (
-    "9mm_decimals_override_" +
-    a.token0.toLowerCase() +
-    "_" +
-    a.token1.toLowerCase() +
-    "_" +
-    (a.fee || 0)
-  );
-}
-
-/** Load saved overrides `{ d0, force0, d1, force1 }`. Missing → `{}`. */
-export function loadDecimalsOverrides() {
-  const k = _key();
-  if (!k) return {};
-  try {
-    const j = JSON.parse(localStorage.getItem(k));
-    return j !== null && typeof j === "object" ? j : {};
-  } catch {
-    return {};
-  }
+/**
+ * What each coin's field and Force box show when Pool Details opens.
+ *
+ * Both coins are always filled in. A coin with an override saved on the
+ * server shows that override and its Force box; one without shows the
+ * decimals the chain gave, with Force off. Save sends both coins as they
+ * are shown, so editing one coin can neither clear the other's saved
+ * override nor put a forced correction back to the chain's figure.
+ *
+ * Pure and exported so the decision can be driven directly.
+ *
+ * @param {object|null} status  The last status poll's view of the active
+ *   position: its saved settings and its `poolState`.
+ * @returns {Array<{decimals: number|null, force: boolean}>}  Coin 0, then
+ *   coin 1. `decimals` is null when neither source has a figure.
+ */
+export function decimalsFormValues(status) {
+  return [0, 1].map((idx) => {
+    const saved = status?.["decimalsOverride" + idx];
+    const chain = status?.poolState?.["decimals" + idx];
+    return {
+      decimals:
+        typeof saved === "number"
+          ? saved
+          : typeof chain === "number"
+            ? chain
+            : null,
+      force: status?.["decimalsOverrideForce" + idx] === true,
+    };
+  });
 }
 
 /*- The managed+Synced pair the dialog was last painted for; null when
@@ -112,16 +124,6 @@ function _logInputs(managed, synced) {
     String(st?.lifetimeScanComplete),
     String(st?._positionScan?.status),
   );
-}
-
-function _save(obj) {
-  const k = _key();
-  if (!k) return;
-  try {
-    localStorage.setItem(k, JSON.stringify(obj));
-  } catch {
-    /* localStorage may be unavailable (private mode); non-fatal. */
-  }
 }
 
 /**
@@ -165,9 +167,10 @@ function _currentDecimals(idx) {
  * means "not loaded yet", not "unreadable". Warning then would send the
  * operator to repair something that is not broken.
  *
- * Once Synced, the value must be a valid ERC-20 decimals — an integer in
- * [0, 77]. Anything else genuinely could not be read, which is the case
- * this override exists to let them fix.
+ * Once Synced, the value must be a valid ERC-20 decimals — a whole number
+ * inside `tokenDecimals` in setting-bounds.json, the range the server
+ * holds a read or an override to. Anything else genuinely could not be
+ * read, which is the case this override exists to let them fix.
  *
  * Pure and exported because it is the whole decision and the Synced flag
  * lives behind a non-exported poll handler, so the true branch cannot be
@@ -180,12 +183,7 @@ function _currentDecimals(idx) {
  */
 export function _shouldWarn(synced, decimals) {
   if (!synced) return false;
-  return !(
-    typeof decimals === "number" &&
-    Number.isInteger(decimals) &&
-    decimals >= 0 &&
-    decimals <= 77
-  );
+  return !withinBound(decimals, SETTING_BOUNDS.tokenDecimals);
 }
 
 /*- Enable or disable one token's mini-form.
@@ -217,7 +215,7 @@ function _paintNotice(idx, synced) {
 /** Populate both mini-forms from saved overrides (or the current on-chain
  *  decimals) and paint the notices. Called when Pool Details opens. */
 export function populateDecimalsOverride() {
-  const ov = loadDecimalsOverrides();
+  const shown = decimalsFormValues(getLastStatus());
   const managed = _managed();
   const synced = _synced();
   _logInputs(managed, synced);
@@ -233,17 +231,16 @@ export function populateDecimalsOverride() {
     _setFormVisible(idx, true);
     const input = g("pdDecimals" + idx);
     const force = g("pdDecimalsForce" + idx);
+    const { decimals } = shown[idx];
     if (input) {
-      const saved = ov["d" + idx];
-      const cur = _currentDecimals(idx);
-      input.value =
-        typeof saved === "number"
-          ? String(saved)
-          : typeof cur === "number"
-            ? String(cur)
-            : "";
+      input.value = decimals === null ? "" : String(decimals);
+      /*-
+       *  What the field opens with is the value in force, so a save the
+       *  server refuses puts the field back to it.
+       */
+      if (decimals !== null) rememberGoodInput("pdDecimals" + idx, decimals);
     }
-    if (force) force.checked = ov["force" + idx] === true;
+    if (force) force.checked = shown[idx].force;
     _setEnabled(idx, synced);
     _paintNotice(idx, synced);
   }
@@ -279,44 +276,57 @@ export function refreshDecimalsOverrideOnPoll() {
 
 /*- Persist both tokens' overrides to server config for the active
  *  position, and run `onAccepted` once the server has taken them. */
-function _persistToServer(ov, onAccepted) {
+/**
+ * The values a Save sends: both coins' fields and Force boxes as shown.
+ *
+ * Pure and exported so the mapping can be driven directly.
+ *
+ * @param {Array<{text: string, force: boolean}>} fields  Coin 0, then
+ *   coin 1: what each field holds and whether its Force box is checked.
+ * @returns {object}  `decimalsOverride0/1` and `decimalsOverrideForce0/1`.
+ */
+export function decimalsSaveValues(fields) {
+  const values = {};
+  fields.forEach((f, idx) => {
+    values["decimalsOverride" + idx] = typedDecimals(f.text);
+    values["decimalsOverrideForce" + idx] = f.force === true;
+  });
+  return values;
+}
+
+/**
+ * Save both coins' overrides, as the form shows them, to the active
+ * position's server config.
+ */
+function _persistToServer(values) {
   const a = posStore.getActive();
-  if (!a) {
-    /*- No position to save against, so the browser copy is all there
-     *  is and nothing can refuse it. */
-    onAccepted();
-    return;
-  }
+  if (!a) return;
   const chain = activeChainId();
   const pk = compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId);
   saveConfigValues({
-    values: {
-      decimalsOverride0: ov.d0 ?? null,
-      decimalsOverride1: ov.d1 ?? null,
-      decimalsOverrideForce0: ov.force0 === true,
-      decimalsOverrideForce1: ov.force1 === true,
-    },
+    values,
     positionKey: pk,
     inputs: {
       decimalsOverride0: "pdDecimals0",
       decimalsOverride1: "pdDecimals1",
     },
-    onSaved: onAccepted,
   });
 }
 
-/** Save one token's decimals override (server, then localStorage). */
+/**
+ * Save the decimals overrides from either coin's Save button.
+ *
+ * Both coins are sent as the form shows them, the other coin included:
+ * the dialog opened with each coin's value in force (`decimalsFormValues`),
+ * so the coin not being edited is saved as it already stood.
+ *
+ * @param {number} idx  The coin whose Save was clicked, 0 or 1.
+ */
 export function saveDecimalsOverride(idx) {
-  const ov = loadDecimalsOverrides();
-  const input = g("pdDecimals" + idx);
-  const force = g("pdDecimalsForce" + idx);
-  ov["d" + idx] = input ? typedDecimals(input.value) : null;
-  ov["force" + idx] = force ? force.checked === true : false;
-  /*- The browser copy is written only once the server has taken the
-   *  override. Written first, a refused value would still be the one
-   *  the position is read with — the KPI panel reads localStorage, and
-   *  nothing later corrects it. Same order as the price-override
-   *  dialog, for the same reason. */
-  _persistToServer(ov, () => _save(ov));
+  const fields = [0, 1].map((i) => ({
+    text: g("pdDecimals" + i)?.value ?? "",
+    force: g("pdDecimalsForce" + i)?.checked === true,
+  }));
+  _persistToServer(decimalsSaveValues(fields));
   _paintNotice(idx);
 }

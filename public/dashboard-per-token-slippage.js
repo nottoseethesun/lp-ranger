@@ -1,25 +1,28 @@
 /**
  * @file dashboard-per-token-slippage.js
  * @description Config handlers for the two per-token slippage inputs
- * ("Slippage (Token 0)" / "Slippage (Token 1)") in Bot Settings →
- * Execution.
+ * ("Slippage When Swapping to Token 0" / "… to Token 1") in Bot
+ * Configuration → Execution.
  *
  * Confirmation on Save.  Whether a figure is acceptable at all is the
  * server's question (`src/config-bounds.js`); these tiers only ask the
  * operator to mean it, because a high slippage is accepted and costly
- * rather than wrong:
- *   - v up to 5: save immediately.
- *   - v in (5, 10): show "Elevated Slippage" confirm modal (Confirm /
- *     Cancel).  Confirm → save; Cancel → revert input to previous
- *     value (saved server value or shipped default).
- *   - v of 10 or more: show "Extreme Slippage" type-Confirm modal —
- *     user must type "Confirm" (case-sensitive) into an
+ * rather than wrong. The two figures are `slippageConfirmAbovePct` and
+ * `slippageTypedConfirmFromPct`, settings the server sends
+ * (ui-defaults_non-layout_for-server-up-scenario.json):
+ *   - v up to the first: save immediately.
+ *   - v above the first, below the second: show "Elevated Slippage"
+ *     confirm modal (Confirm / Cancel).  Confirm → save; Cancel →
+ *     revert input to previous value (saved server value or shipped
+ *     default).
+ *   - v at the second or more: show "Extreme Slippage" type-Confirm
+ *     modal — user must type "Confirm" (case-sensitive) into an
  *     autofill-resistant text box.  Confirm → save; Cancel → revert.
  *   - A figure outside what the server accepts comes back as a 400 and
  *     the field is put back to the last accepted value.
  *
  * The per-poll sync populates the input with either the saved value
- * or the shipped default (0.75%), so the input is never empty.
+ * or the shipped `slippagePct` default, so the input is never empty.
  *
  * These two fields are the whole of slippage.  The single
  * `slippagePct` the old row saved per position is retired and dropped
@@ -33,14 +36,12 @@
 "use strict";
 
 import { g } from "./dashboard-helpers.js";
-import {
-  markInputDirty,
-  getInputDefault,
-  getLastStatus,
-} from "./dashboard-data.js";
-import { isInputDirty } from "./dashboard-data-cache.js";
+import { getLastStatus } from "./dashboard-data.js";
+import { getInputDefault } from "./dashboard-config-inputs.js";
+import { isInputDirty, markInputDirty } from "./dashboard-data-cache.js";
 import { posStore } from "./dashboard-positions-store.js";
 import { _saveSingleConfig } from "./dashboard-throttle.js";
+import { uiSetting } from "./dashboard-ui-settings.js";
 
 let _lastKnownPosKey = null;
 
@@ -123,7 +124,7 @@ function _handleSave(inputId, configKey) {
    *  accepted and is merely expensive, so they stay in the browser
    *  where the operator can be asked before anything is sent. */
   /*- Extreme tier — require typed confirmation. */
-  if (raw >= 10) {
+  if (raw >= uiSetting("slippageTypedConfirmFromPct")) {
     _pending.inputId = inputId;
     _pending.configKey = configKey;
     _pending.raw = raw;
@@ -134,7 +135,7 @@ function _handleSave(inputId, configKey) {
     return;
   }
   /*- Elevated tier — one-click confirm. */
-  if (raw > 5) {
+  if (raw > uiSetting("slippageConfirmAbovePct")) {
     _pending.inputId = inputId;
     _pending.configKey = configKey;
     _pending.raw = raw;
@@ -205,8 +206,10 @@ export function syncPerTokenSlippage(data) {
 
 /**
  * Wire up every event for the two per-token slippage rows AND for
- * the three validation modals.  Called once from
- * `dashboard-events.js:bindAllEvents`.
+ * the two confirmation modals.  The figures those modals quote are
+ * filled with the rest of the page's once the server sends them
+ * (`loadHelpFigures`, dashboard-help-figures.js).  Called once
+ * from `dashboard-events.js:bindAllEvents`.
  * @param {(id:string,fn:Function)=>void} onClick
  * @param {(id:string,fn:Function)=>void} onInput
  */

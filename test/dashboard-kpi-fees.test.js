@@ -215,3 +215,39 @@ describe("Current panel composition", () => {
     assert.equal(bd.fees, 0.27, "the dialog shows the same unclaimed figure");
   });
 });
+
+describe("Lifetime Net P&L", () => {
+  let kpi;
+
+  before(async () => {
+    kpi = await import("../public/dashboard-data-kpi.js");
+  });
+
+  /** A lifetime snapshot: $1,000 deposited, prices flat. */
+  const snapshot = (over) => ({
+    pnlSnapshot: {
+      currentValue: 1150,
+      totalLifetimeDeposit: 1000,
+      totalCompoundedUsd: 150,
+      currentFeesUsd: 0,
+      totalGas: 0,
+      residualValueUsd: 0,
+      initialResidualUsd: 0,
+      ...over,
+    },
+  });
+
+  it("counts reinvested fees once: they are inside Current Value", () => {
+    /*-
+     *  $150 of fees earned and all reinvested: Current Value is $1,150,
+     *  and the $150 is in it, so Net P&L is $150. Adding Fees Compounded
+     *  on top reported $300.
+     */
+    assert.equal(kpi._resolveKpiTotals(snapshot({})).ltTotal, 150);
+  });
+
+  it("still adds the fees not yet compounded, which Current Value lacks", () => {
+    const t = kpi._resolveKpiTotals(snapshot({ currentFeesUsd: 20 }));
+    assert.equal(t.ltTotal, 170);
+  });
+});
