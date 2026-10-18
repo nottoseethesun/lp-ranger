@@ -612,9 +612,14 @@ from the request body. Every other field is silently dropped. Each
 setting an operator can change is then held to its range by
 `src/config-bounds.js` before anything is saved. `POSITION_KEYS` also
 names the position's bookkeeping the app maintains itself, such as
-`hodlBaseline`, `residuals` and `compoundHistory`; the route accepts
-those too, unchecked, so they rely on the outer layers (the localhost
-binding, the origin check and the CSRF token). Because
+`hodlBaseline`, `residuals` and `compoundHistory`. The route accepts
+those too, each held to the shape the bot writes
+(`src/config-record-checks.js`) with the same kinds of value the
+shipped-values test holds the shipped files to (`src/value-kinds.js`),
+so a malformed record is refused before it reaches the file the next
+start reads. A test fails any key the route accepts without a check.
+The outer layers (the localhost binding, the origin check and the
+CSRF token) still stand in front of all of it. Because
 the `allowlist` is a constant inside server code (never derived from
 user input), the bracket access `diskConfig[k]` that merges each
 field is safe — which is why `eslint-plugin-security`'s

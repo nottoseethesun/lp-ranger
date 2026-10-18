@@ -876,6 +876,11 @@ The guard is designed to never silently disable itself:
 - A missing or malformed shipped `dust-threshold.json` stops the app as
   it loads: `dust.js` reads the file at module init, and the loader
   throws on an install error rather than guessing a threshold.
+- So does a `thresholdUnits` or `fallbackThresholdUsd` that is not a
+  number above 0, in the shipped file or the operator's copy: the
+  message names the setting. Compared against text, zero or less, the
+  guard would call no amount dust. The rule is the one the
+  shipped-values test holds the file to (`src/value-kinds.js`).
 - If every price source returns zero, `getDustThresholdUsd()` falls back
   to the file's `fallbackThresholdUsd` ($1.00 as shipped) — a fixed floor
   rather than an open gate — and flags `usedFallback: true` so callers
