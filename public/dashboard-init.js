@@ -71,6 +71,7 @@ import { injectPriceOverrideDeps } from "./dashboard-price-override.js";
 import { initTelegram } from "./dashboard-telegram.js";
 import { startBrowserIdleTracker } from "./dashboard-idle.js";
 import { loadUiSettings, uiSetting } from "./dashboard-ui-settings.js";
+import { startStaleDataWatch } from "./dashboard-stale-data.js";
 import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadLpProviders } from "./dashboard-lp-providers.js";
@@ -202,7 +203,7 @@ injectPositionDeps({
   pollNow,
   resetCurrentKpis: _resetCurrentKpis,
 });
-injectThrottleDeps({ positionRangeVisual });
+injectThrottleDeps({ positionRangeVisual, getLastStatus });
 injectPosStoreForEvents(posStore);
 injectPosStoreForReload(posStore);
 /*- Wire the Manage-UI single owner with read access to posStore and
@@ -293,12 +294,12 @@ initDisclaimer().then(async () => {
 
 /** All dashboard init runs after the disclaimer is accepted. */
 function _afterDisclaimer() {
-  // Fetch LP-provider label map so the Fee Tier row can render the
-  // short provider label (e.g. "9mm v3").  When it resolves we re-paint
-  // the strip so a late-arriving map still shows up without waiting for
-  // the next user-driven render.  Note: the composite lookup also needs
-  // the pool-factory address, which arrives via the first /api/status
-  // poll — dashboard-data.js calls setFactoryContext at that point.
+  /*-
+   *  Fetch the LP-provider label map so the Fee Tier row can render the
+   *  short provider label (e.g. "9mm v3").  When it resolves we re-paint
+   *  the strip so a late-arriving map still shows up without waiting for
+   *  the next user-driven render.
+   */
   loadLpProviders().then(() => updatePosStripUI());
 
   /*- Fetch the per-chain Chart Links list (DexScreener / GeckoTerminal /
@@ -538,6 +539,12 @@ function _afterDisclaimer() {
   updateThrottleUI();
   setInterval(updateThrottleUI, 1000);
   startDataPolling();
+  /*-
+   *  From here on, while the figures on screen may still be another
+   *  position's, they show as dashes and nothing but the disclaimer and
+   *  the wallet unlock can be used. See dashboard-stale-data.js.
+   */
+  startStaleDataWatch(uiSetting("staleDataCheckIntervalMs"));
 
   /*- Browser-side idle detection for the idle-driven price-lookup pause
    *  (component 4 of 4).  Posts /api/pause-price-lookups after 2-min

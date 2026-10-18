@@ -11,10 +11,6 @@ import { g, fetchWithCsrf } from "./dashboard-helpers.js";
 import { getLastStatus } from "./dashboard-data.js";
 import { resetKpis } from "./dashboard-data-kpi.js";
 import { pollNow } from "./dashboard-data-poll.js";
-import {
-  loadPriceOverrides,
-  loadForceOverride,
-} from "./dashboard-price-override.js";
 import { _apply, _applyLifetime } from "./dashboard-unmanaged-apply.js";
 import { enterClosedPosView } from "./dashboard-closed-pos.js";
 import { isWalletUnlocked } from "./dashboard-wallet.js";
@@ -25,6 +21,7 @@ import {
   isPositionManaged,
 } from "./dashboard-positions-store.js";
 import { renderPosBrowser } from "./dashboard-positions-browser.js";
+import { markPositionDataFresh } from "./dashboard-stale-data.js";
 
 /*- Compare a queued/in-flight fetch's tokenId against the currently-
  *  active posStore entry.  Used to drop stale results that would paint
@@ -63,14 +60,6 @@ function _detailBody(pos) {
     liquidity: String(pos.liquidity || 0),
     walletAddress: pos.walletAddress,
     contractAddress: pos.contractAddress,
-    ...(() => {
-      const ov = loadPriceOverrides(),
-        r = {};
-      if (ov.price0 > 0) r.priceOverride0 = ov.price0;
-      if (ov.price1 > 0) r.priceOverride1 = ov.price1;
-      if (loadForceOverride()) r.priceOverrideForce = true;
-      return r;
-    })(),
   };
 }
 
@@ -196,7 +185,8 @@ function _isResponseDrained(d) {
  * fully drained, updates posStore and switches to the closed-pos history view.
  * @param {object} pos   posStore entry.
  * @param {object} body  Request body (mutated: feesUsd added on success).
- * @returns {Promise<boolean>}  True if switched to closed-pos view.
+ * @returns {Promise<boolean|null>}  True if switched to closed-pos view;
+ *   null when the server gave no answer.
  */
 async function _phase1(pos, body) {
   const _t0 = Date.now();
@@ -206,6 +196,7 @@ async function _phase1(pos, body) {
     pos?.tokenId,
     body?.liquidity,
   );
+  let answered = false;
   try {
     const r = await fetchWithCsrf("/api/position/details", {
       method: "POST",
@@ -213,15 +204,7 @@ async function _phase1(pos, body) {
       body: JSON.stringify(body),
     });
     const d = await r.json();
-    if (!d.ok) {
-      log.warn(
-        "[lp-ranger] [unmanaged] phase1 FAIL #%s details error: %s (%dms)",
-        pos?.tokenId,
-        d.error,
-        Date.now() - _t0,
-      );
-      return false;
-    }
+    answered = true;
     if (!_activeMatches(pos.tokenId)) {
       const a = posStore.getActive();
       log.info(
@@ -231,6 +214,18 @@ async function _phase1(pos, body) {
         a?.tokenId,
         Date.now() - _t0,
       );
+      _freeGuard(pos);
+      return false;
+    }
+    if (!d.ok) {
+      log.warn(
+        "[lp-ranger] [unmanaged] phase1 FAIL #%s details error: %s (%dms)",
+        pos?.tokenId,
+        d.error,
+        Date.now() - _t0,
+      );
+      // An error is an answer: the figures stay dashes, but are not stale.
+      markPositionDataFresh(pos);
       return false;
     }
     if (_isResponseDrained(d)) {
@@ -253,6 +248,7 @@ async function _phase1(pos, body) {
       return true;
     }
     _apply(d, pos);
+    markPositionDataFresh(pos);
     body.feesUsd = d.feesUsd;
     log.info(
       "%c[lp-ranger] [unmanaged] phase1 DONE #%s value=%s feesUsd=%s (%dms)",
@@ -269,8 +265,27 @@ async function _phase1(pos, body) {
       e.message,
       Date.now() - _t0,
     );
+    /*- With no answer the position can be asked about again. An answer
+     *  that failed to show still counts as one, so a fault in the page
+     *  does not ask the server again on every poll. */
+    if (!answered) {
+      _freeGuard(pos);
+      return null;
+    }
+    markPositionDataFresh(pos);
   }
   return false;
+}
+
+/**
+ * Free the dedup guard after a request whose answer was not shown, none
+ * having come or the position having left the screen first, so the
+ * position can be asked about again: by the next status answer while its
+ * figures are stale (dashboard-data.js), or when it is put back on screen.
+ * @param {object} pos  The position the request was about.
+ */
+function _freeGuard(pos) {
+  if (_lastFetchedId === String(pos?.tokenId)) _lastFetchedId = null;
 }
 
 /** Trigger an immediate poll so the badge updates from server state.
@@ -322,6 +337,17 @@ function _entryGuardReason(pos) {
   return null;
 }
 
+/**
+ * Ask for an unmanaged position's details when they are owed: no request
+ * about it is out or answered, and the wallet is unlocked. The status
+ * poll calls this on each answer while the position's figures are stale,
+ * so it checks quietly, rather than log a skip every poll.
+ * @param {object} pos  posStore entry.
+ */
+export function askDetailsIfOwed(pos) {
+  if (_entryGuardReason(pos) === null) fetchUnmanagedDetails(pos);
+}
+
 /** Fetch and display details for an unmanaged position (two-phase). */
 export async function fetchUnmanagedDetails(pos) {
   const _tid = pos?.tokenId;
@@ -364,7 +390,13 @@ export async function fetchUnmanagedDetails(pos) {
   // Phase 1: fast — pool state, value, composition, current P&L.
   // If the position turns out to be closed (fully drained), phase 1
   // switches to the closed-pos history view and skips phase 2.
-  if (await _phase1(pos, body)) {
+  const closedView = await _phase1(pos, body);
+  /*- No answer: phase 2 would fare no better, and its closing poll would
+   *  ask for the details again at once, in a loop as fast as the server
+   *  refuses. The next scheduled status answer asks again instead
+   *  (dashboard-data.js), every `dashboardPollIntervalMs`. */
+  if (closedView === null) return;
+  if (closedView) {
     if (gen === _fetchGen) _markSynced();
     return;
   }

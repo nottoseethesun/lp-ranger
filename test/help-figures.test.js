@@ -45,6 +45,22 @@ const F = shippedFigures();
 /** A dollar figure as a number: "1,000" → 1000. */
 const dollars = (s) => Number(s.replace(/,/g, ""));
 
+/** The dollar figure in the Guard example's rejected clause. */
+function rejectedUsd(clause) {
+  const found = /\$([\d,]+)/.exec(clause);
+  assert.ok(found, `no dollar figure in ${JSON.stringify(clause)}`);
+  return dollars(found[1]);
+}
+
+/** The figures of an install whose default Guard is `pct` percent. */
+const figuresAtGuard = (pct) =>
+  helpFigures({
+    botDefaults: { ...BOT, impermanentLossGuardPct: pct },
+    settingBounds: BOUNDS,
+    uiDefaults: UI,
+    appRuntime: RUNTIME,
+  });
+
 describe("a span of time", () => {
   it("is worded in the largest unit it fills exactly", () => {
     assert.equal(duration(3600), "1 hour");
@@ -260,8 +276,30 @@ describe("the figures", () => {
     assert.equal(floor, hold * (1 - BOT.impermanentLossGuardPct / 100));
     assert.ok(dollars(F.ilgExampleAboveUsd) > floor);
     assert.ok(dollars(F.ilgExampleAboveUsd) < hold);
-    assert.ok(dollars(F.ilgExampleBelowUsd) < floor);
-    assert.ok(dollars(F.ilgExampleBelowUsd) > 0);
+    const rejected = rejectedUsd(F.ilgExampleRejected);
+    assert.ok(rejected < floor);
+    assert.ok(rejected > 0);
+  });
+
+  it("keep the Guard's rejected example above $0 at every setting", () => {
+    // Every whole percentage the Guard's range allows below 100.
+    const { min } = BOUNDS.impermanentLossGuardPct;
+    for (let pct = min; pct < 100; pct++) {
+      const g = figuresAtGuard(pct);
+      const rejected = rejectedUsd(g.ilgExampleRejected);
+      const floor = dollars(g.ilgExampleFloorUsd);
+      assert.ok(rejected > 0, `${pct}%: rejected at $${rejected}`);
+      assert.ok(rejected < floor, `${pct}%: $${rejected}, floor $${floor}`);
+    }
+    // Past where a fifth of the allowed loss would reach $0, half the floor.
+    assert.equal(rejectedUsd(figuresAtGuard(84).ilgExampleRejected), 80);
+    assert.equal(rejectedUsd(figuresAtGuard(90).ilgExampleRejected), 50);
+  });
+
+  it("say a Guard of 100% never rejects, since no position is below $0", () => {
+    const clause = figuresAtGuard(100).ilgExampleRejected;
+    assert.doesNotMatch(clause, /\$-|rejected and left alone/);
+    assert.match(clause, /never rejects/);
   });
 
   it("keep the guard's retry ladder at or under its ceiling", () => {

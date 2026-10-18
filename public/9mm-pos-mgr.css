@@ -3966,7 +3966,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1792310636660");
+  background-image: url("background-cloud_top.png?v=1792348317756");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3979,7 +3979,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1792310636660");
+  background-image: url("background-cloud_middle.png?v=1792348317756");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3989,7 +3989,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1792310636660");
+  background-image: url("background-cloud_bottom.png?v=1792348317756");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
@@ -4173,4 +4173,56 @@ span[title]:not([title=""]):hover {
 .\000039mm-pos-mgr-all-positions-modal
   .\000039mm-pos-mgr-all-positions-header-text {
   padding-right: 170px;
+}
+
+/* ── Stale position figures ────────────────────────────────────────────────
+   From a switch to another position until the server answers about it,
+   the page's body carries `data-position-data-stale`, which
+   public/dashboard-stale-data.js sets and clears. Each figure then shows
+   a plain dash in place of its value. The value itself stays where it is,
+   only hidden, so whatever the fresh answer paints shows the moment the
+   attribute goes. */
+body[data-position-data-stale] [data-position-figure] {
+  position: relative;
+  visibility: hidden;
+}
+
+body[data-position-data-stale] [data-position-figure]::before {
+  position: absolute;
+  inset: 0;
+  color: var(--muted);
+  content: "\2014";
+  visibility: visible;
+}
+
+/*  Graphics drawn from the position's figures, the range and composition
+    bars, disappear but keep their space, so nothing below them moves.
+    By opacity rather than visibility: the range bar's price marker sets
+    its own visibility once it has a price, which would show through. */
+body[data-position-data-stale] [data-position-graphic] {
+  opacity: 0;
+}
+
+/*  Each history table shows its row of dashes in place of its rows. */
+body[data-position-data-stale] [data-position-rows],
+body:not([data-position-data-stale]) [data-position-dash-row] {
+  display: none;
+}
+
+/*  The watch makes every part of the page inert except the disclaimer and
+    the wallet unlock, and the controls in the inert parts read as
+    disabled. */
+body[data-position-data-stale]
+  :is(
+    button,
+    input,
+    a,
+    label,
+    .\000039mm-pos-mgr-il-info-btn,
+    .\000039mm-pos-mgr-copy-icon,
+    .\000039mm-pos-mgr-token-copy-btn,
+    .\000039mm-pos-mgr-edit-link,
+    .realized-gains-label
+  ):is([inert], [inert] *) {
+  opacity: 0.55;
 }

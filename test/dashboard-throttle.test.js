@@ -83,7 +83,6 @@ beforeEach(() => {
     <span id="rangeLabel"></span>
   `;
   mod.throttle.minIntervalMs = 10 * 60 * 1000;
-  mod.throttle.rebTimestamps = [];
   mod.throttle.doublingActive = false;
   mod.throttle.doublingCount = 0;
   mod.throttle.currentWaitMs = 10 * 60 * 1000;
@@ -377,35 +376,8 @@ describe("applySavedMinInterval() — per-position seed from saved config", () =
   });
 });
 
-describe("applyPolledMinInterval() — one-shot post-Save poll skip", () => {
-  it(
-    "the full user-reported sequence: Save 20 → first sweep carries the " +
-      "bot's stale pre-save 10 and is SKIPPED (no revert) → second sweep " +
-      "with fresh 20 applies normally",
-    () => {
-      // Save 20 (stamps the skip marker).
-      document.getElementById("inMinInterval").value = "20";
-      mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
-      const lbl = document.getElementById("dblWindowLabel");
-      assert.strictEqual(lbl.dataset.skipNextPoll, "1");
-
-      // Sweep N: stale snapshot (10 min) — must be skipped, marker consumed.
-      mod.applyPolledMinInterval(10 * 60 * 1000);
-      assert.strictEqual(
-        mod.throttle.minIntervalMs,
-        20 * 60 * 1000,
-        "stale post-Save sweep must not revert the optimistic value",
-      );
-      assert.strictEqual(lbl.dataset.skipNextPoll, undefined);
-
-      // Sweep N+1: fresh snapshot (20 min) — applies normally.
-      mod.applyPolledMinInterval(20 * 60 * 1000);
-      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
-    },
-  );
-
-  it("without the marker, a polled value applies immediately", () => {
+describe("applyPolledMinInterval() — the value a status answer carries", () => {
+  it("applies the answer's value at once", () => {
     mod.applyPolledMinInterval(15 * 60 * 1000);
     assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
   });
@@ -415,68 +387,41 @@ describe("applyPolledMinInterval() — one-shot post-Save poll skip", () => {
     mod.applyPolledMinInterval(null);
     assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
   });
-
-  it("missing #dblWindowLabel element → polled value still applies (defensive)", () => {
-    document.getElementById("dblWindowLabel").remove();
-    mod.applyPolledMinInterval(25 * 60 * 1000);
-    assert.strictEqual(mod.throttle.minIntervalMs, 25 * 60 * 1000);
-  });
 });
 
-describe("saveMinInterval() — Save click applies the value + label", () => {
+describe("saveMinInterval() — the server's answer, not the click, moves the display", () => {
+  /** The Doubling Trigger Window label for a minimum of `min` minutes. */
+  const windowLabel = (min) => `${min * TRIGGER_WINDOW_MULTIPLE} min`;
+
   it(
-    "saving 15 propagates to throttle.minIntervalMs AND updates " +
-      "#dblWindowLabel to '60 min' on the click itself (this would " +
-      "have caught e22536c)",
+    "a Save leaves the throttle and the Doubling Trigger Window label as " +
+      "they were, and the status answer carrying the saved value moves them",
     () => {
+      const label = document.getElementById("dblWindowLabel");
+      mod.updateThrottleUI();
       document.getElementById("inMinInterval").value = "15";
       mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
-      assert.strictEqual(
-        document.getElementById("dblWindowLabel").textContent,
-        "60 min",
-      );
+      mod.updateThrottleUI();
+      assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
+      assert.strictEqual(label.textContent, windowLabel(10));
+
+      mod.applyPolledMinInterval(15 * 60 * 1000);
+      mod.updateThrottleUI();
+      assert.strictEqual(label.textContent, windowLabel(15));
     },
   );
 
-  it("rejects invalid input (empty / NaN / zero) — nothing changes", () => {
-    for (const bad of ["", "abc", "0", "-3"]) {
-      document.getElementById("inMinInterval").value = bad;
-      mod.saveMinInterval();
-      assert.strictEqual(
-        mod.throttle.minIntervalMs,
-        10 * 60 * 1000,
-        `input ${JSON.stringify(bad)} must not change minIntervalMs`,
-      );
-    }
+  it("never shows a value the server's answer does not carry", () => {
+    document.getElementById("inMinInterval").value = "15";
+    mod.saveMinInterval();
+    // The answer still carries the old value: refused, or not saved yet.
+    mod.applyPolledMinInterval(10 * 60 * 1000);
+    mod.updateThrottleUI();
+    assert.strictEqual(
+      document.getElementById("dblWindowLabel").textContent,
+      windowLabel(10),
+    );
   });
-
-  it(
-    "when doubling is INACTIVE, currentWaitMs tracks the saved " +
-      "minIntervalMs — the change reflects on the Save click",
-    () => {
-      document.getElementById("inMinInterval").value = "20";
-      mod.throttle.doublingActive = false;
-      mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.currentWaitMs, 20 * 60 * 1000);
-    },
-  );
-
-  it(
-    "when doubling is ACTIVE, currentWaitMs is NOT clobbered by " +
-      "the saved minIntervalMs — the already-doubled wait persists",
-    () => {
-      document.getElementById("inMinInterval").value = "20";
-      mod.throttle.doublingActive = true;
-      mod.throttle.currentWaitMs = 80 * 60 * 1000;
-      mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.currentWaitMs, 80 * 60 * 1000);
-      assert.strictEqual(
-        document.getElementById("dblWindowLabel").textContent,
-        "80 min",
-      );
-    },
-  );
 });
 
 /*- A refused save is `public/dashboard-config-save.js`'s job now, and

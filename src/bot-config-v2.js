@@ -483,8 +483,18 @@ function readConfigValue(cfg, positionKey, key) {
   return undefined;
 }
 
+/**
+ * Where bot-config.json is, for the settings check
+ * (src/settings-check.js), which reads it before the app does.
+ * @returns {string}
+ */
+function botConfigPath() {
+  return _configPath();
+}
+
 module.exports = {
   compositeKey,
+  botConfigPath,
   loadConfig,
   saveConfig,
   getPositionConfig,

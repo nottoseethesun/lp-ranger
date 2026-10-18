@@ -126,6 +126,12 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
  *  src/boot-log-file.js + src/log-file.js. */
 require("./src/boot-log-file").bootLogFile();
 
+/*- Every setting is checked before any is read: the JSON settings files
+ *  with the operator's copies, `.env` and bot-config.json. A wrong one
+ *  stops the server here, each named, rather than leaving it to run on a
+ *  value nobody chose. See src/settings-check.js. */
+require("./src/settings-check").refuseToStartOnBadSettings();
+
 const { log } = require("./src/log");
 const { resetErrorLog } = require("./src/error-log");
 const { writePidFile } = require("./src/server-pid");

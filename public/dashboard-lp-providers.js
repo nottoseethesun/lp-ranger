@@ -12,20 +12,17 @@
  *   behavior) so the same class of misconfiguration surfaces once no
  *   matter which side hits it first.
  *
- *   Factory context: legacy call sites (NFT-panel label paint) took a
- *   single `contractAddress` because there was only one lookup key.
- *   The composite scheme needs `factory` too, but factory is a
- *   session-wide server constant, so `setFactoryContext(factory)` is
- *   called once when the first `/api/status` poll arrives and the
- *   cached value backs the legacy single-arg helpers
- *   (`getProviderLabel` / `setProviderLabelFor`).  New call sites (the
- *   All Positions Stats modal) should use the explicit two-arg
- *   `getProvider` / `getProviderDisplayName` helpers.
+ *   A position's provider is found from what its own key names: its
+ *   position manager, and the chain (`getProviderFor`). A position
+ *   manager is built against one pool factory, fixed on chain, so the
+ *   contract and the chain pick out one entry, and no address the
+ *   status answer carries outside a position's key is read.
  */
 
 import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
 import { ethers } from "./ethers-adapter.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 /**
  * In-memory cache populated once at init.  Keys are the raw JSON keys
@@ -33,14 +30,6 @@ import { ethers } from "./ethers-adapter.js";
  * objects `{ displayName, supportedBlockchainsByLpRangerAndLpProvider }`.
  */
 let _providerMap = {};
-
-/**
- * Sticky pool-factory address for the running server.  Populated by
- * `setFactoryContext` after the first `/api/status` poll.  Legacy
- * single-arg helpers pair this with the passed positionManager to
- * compose the composite lookup key.
- */
-let _factory = null;
 
 /*- Dedup sets: mirror of the server-side `_loggedMissingProviders` /
  *  `_loggedUnsupportedChains` behavior.  Warnings fire once per
@@ -87,16 +76,6 @@ export async function loadLpProviders() {
     const msg = err instanceof Error ? err.message : "unknown error";
     log.warn("[lp-providers] fetch failed:", msg);
   }
-}
-
-/**
- * Cache the running server's pool-factory address.  Called from
- * `dashboard-data.js` after each `/api/status` poll; the sticky value
- * lets legacy single-arg helpers reconstruct the composite key.
- * @param {string|null|undefined} factory
- */
-export function setFactoryContext(factory) {
-  if (typeof factory === "string" && factory.length > 0) _factory = factory;
 }
 
 /**
@@ -180,38 +159,68 @@ export function isChainSupported(factory, positionManager, chainId) {
 }
 
 /**
- * Legacy single-arg wrapper: return the short provider label for an
- * NFT position-manager address using the cached factory context.
- * Returns `undefined` before `setFactoryContext` has been called (i.e.
- * before the first `/api/status` poll) so the header stays clean.
- * @param {string|null|undefined} positionManager
- * @returns {string | undefined}
+ * An address in EIP-55 checksum casing, or null when it is not one.
+ * @param {*} address
+ * @returns {string | null}
  */
-export function getProviderLabel(positionManager) {
-  if (_factory === null) return undefined;
-  return getProviderDisplayName(_factory, positionManager);
+function _checksum(address) {
+  if (typeof address !== "string" || address.length === 0) return null;
+  try {
+    return ethers.getAddress(address);
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Single-arg wrapper: return the full provider entry for an NFT
- * position-manager address using the cached factory context.  Returns
- * `undefined` before `setFactoryContext` has been called (i.e. before
- * the first `/api/status` poll).  Same sticky-factory convenience as
- * `getProviderLabel`, for call sites that need more than the label.
- * @param {string|null|undefined} positionManager
+ * The provider list's entry for a position manager on the active chain:
+ * the one entry whose key ends in that contract and whose supported
+ * chains include this one.  Undefined until the chain is known, and when
+ * the list holds no such entry, or more than one, which it never should,
+ * since a position manager has one factory.
+ * @param {string|null|undefined} positionManager  From the position's own key.
  * @returns {object | undefined}
  */
 export function getProviderFor(positionManager) {
-  if (_factory === null) return undefined;
-  return getProvider(_factory, positionManager);
+  const pm = _checksum(positionManager);
+  const chain = activeChainId();
+  if (pm === null || chain === null) return undefined;
+  const found = Object.entries(_providerMap).filter(([key, entry]) => {
+    const chains = entry?.supportedBlockchainsByLpRangerAndLpProvider;
+    return (
+      _checksum(key.split("_")[1]) === pm &&
+      Array.isArray(chains) &&
+      chains.includes(chain)
+    );
+  });
+  if (found.length === 1) return found[0][1];
+  const dedupKey = `${pm}::${chain}`;
+  if (!_loggedMissingProviders.has(dedupKey)) {
+    _loggedMissingProviders.add(dedupKey);
+    log.warn(
+      "[lp-providers] %d entries for position manager %s on %s — the position renders without a provider label",
+      found.length,
+      pm,
+      chain,
+    );
+  }
+  return undefined;
+}
+
+/**
+ * The short provider label for a position manager on the active chain.
+ * @param {string|null|undefined} positionManager  From the position's own key.
+ * @returns {string | undefined}
+ */
+export function getProviderLabel(positionManager) {
+  return getProviderFor(positionManager)?.displayName;
 }
 
 /**
  * Paint the provider label (and its leading separator) for the given
- * NFT position-manager address using the cached factory context.
- * Missing/unknown contracts hide the wrapper.  Matches the deleted
- * signature so existing call sites (dashboard-events-manage,
- * dashboard-positions-store) don't need refactoring.
+ * NFT position-manager address, from the provider list's entry for that
+ * contract on the active chain.  Missing/unknown contracts hide the
+ * wrapper.
  * @param {string|null|undefined} positionManager  NFT position-manager address
  */
 export function setProviderLabelFor(positionManager) {

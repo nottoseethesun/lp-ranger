@@ -8,6 +8,10 @@
 
 import { log } from "./dashboard-log.js";
 import { g, fetchWithCsrf } from "./dashboard-helpers.js";
+import {
+  EVENT_DEFAULTS,
+  eventTitle,
+} from "../src/telegram-notifications/telegram-events.js";
 
 /** POST JSON and return parsed response. */
 async function _post(url, body) {
@@ -19,21 +23,31 @@ async function _post(url, body) {
   return res.json();
 }
 
-const _EVENT_IDS = [
-  "oorTimeout",
-  "rebalanceSuccess",
-  "rebalanceFail",
-  "compoundSuccess",
-  "compoundFail",
-  "otherError",
-  "lowGasBalance",
-  "veryLowGas",
-  "shutdown",
-  "positionRetired",
-  "positionDataInvalid",
-  "ilGuardRejected",
-  "positionBalanced",
-];
+/*-
+ *  Every alert the server can send, by name, from the one list the
+ *  server keeps them in: the dialog has a checkbox for each.
+ */
+const _EVENT_IDS = Object.keys(EVENT_DEFAULTS);
+
+/**
+ * Give the dialog a checkbox for each alert, the first time it opens,
+ * so the page holds no copy of the list. Each row goes before the note
+ * under the list, and its title is painted by `_paintEventTitles`.
+ */
+function _buildEventRows() {
+  const note = g("tgBalancedNote");
+  if (!note || g("tgEvt_" + _EVENT_IDS[0])) return;
+  for (const id of _EVENT_IDS) {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = "tgEvt_" + id;
+    const title = document.createElement("span");
+    title.id = "tgEvtTitle_" + id;
+    const row = document.createElement("label");
+    row.append(box, " ", title);
+    note.before(row);
+  }
+}
 
 /*- Format a millisecond duration into the most human-readable unit:
  *  seconds under a minute, minutes under an hour, otherwise hours with
@@ -110,6 +124,8 @@ export async function openTelegramModal() {
     _setStatus("Values will be saved after wallet setup completes.");
   }
   _updateTestBtn(false);
+  _buildEventRows();
+  _paintEventTitles("—");
   _refreshBalancedCadence();
   try {
     const res = await fetch("/api/telegram/config");
@@ -120,10 +136,24 @@ export async function openTelegramModal() {
   }
 }
 
+/**
+ * Label each alert's checkbox with the title the alert is sent under,
+ * from the one list the server sends them from. Position Balanced's
+ * quotes the band.
+ * @param {string} bandPct  The band, or a dash until the server names it.
+ */
+function _paintEventTitles(bandPct) {
+  for (const id of _EVENT_IDS) {
+    const el = g("tgEvtTitle_" + id);
+    if (el) el.textContent = eventTitle(id, bandPct);
+  }
+}
+
 /*- Paint the modal from the /api/telegram/config response: event
- *  checkboxes, the dynamic balanced-band threshold percent, and the
- *  token/chatId placeholders.  Extracted from openTelegramModal to
- *  keep that function under the complexity ceiling. */
+ *  checkboxes, the alert titles with the balanced band the notifier
+ *  uses, and the token/chatId placeholders.  Extracted from
+ *  openTelegramModal to keep that function under the complexity
+ *  ceiling. */
 function _applyConfigToModal(data) {
   if (data.enabledEvents) {
     for (const id of _EVENT_IDS) {
@@ -131,13 +161,8 @@ function _applyConfigToModal(data) {
       if (el) el.checked = !!data.enabledEvents[id];
     }
   }
-  /*- Sync the balanced-band threshold (code-only constant in
-   *  src/telegram-notifications/balanced-notifier.js) into the checkbox label so the
-   *  shown percent always matches the live BALANCED_THRESHOLD. */
-  const pctEl = g("tgBalancedThresholdPct");
-  if (pctEl && Number.isFinite(Number(data.balancedThresholdPct))) {
-    pctEl.textContent = String(Number(data.balancedThresholdPct));
-  }
+  const band = Number(data.balancedThresholdPct);
+  _paintEventTitles(Number.isFinite(band) ? String(band) : "—");
   const tokenEl = g("tgBotToken");
   const chatEl = g("tgChatId");
   if (tokenEl)

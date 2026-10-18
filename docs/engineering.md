@@ -1571,9 +1571,10 @@ to, since `npm run test:util` globs `util/test/*.test.js`.
 #### Diagnostic Utilities
 
 `util/diagnostic/` holds Node.js tools for investigating on-chain state
-and bot data. End users run these when something looks wrong. All seven
-take CLI args and write to stdout (redirect to `tmp/` for logs). Six are
-read-only; `rescan-pool-history.js` changes saved state, and asks first.
+and bot data. End users run these when something looks wrong. All eight
+take CLI args and write to stdout (redirect to `tmp/` for logs). Seven
+are read-only; `rescan-pool-history.js` changes saved state, and asks
+first.
 
 **Arguments are parsed by `commander`, never by hand**, and every tool
 answers `--help` and `-h`. A new tool is not finished until it does.
@@ -1606,7 +1607,7 @@ What that buys, and what still needs care:
   can parse several argument lists without options accumulating between
   them.
 
-All seven tools here parse this way. The hand-written `USAGE` strings
+All eight tools here parse this way. The hand-written `USAGE` strings
 and each tool's own `argv` scanner are gone.
 
 - `inspect-pool.js` — Pretty-prints `app-config/user-configurable/bot-config.json` and
@@ -1636,6 +1637,15 @@ and each tool's own `argv` scanner are gone.
   prints what will change, asks y/N, and writes a timestamped backup of
   each file first. The running bot keeps its in-memory copy, so restart
   afterwards.
+- `validate-config-values-with-any-user-overrides.js` — Checks every
+  setting the install runs on and lists each problem: the JSON settings
+  files with the operator's copies over them, `.env`, and
+  `bot-config.json`. Its verdict is the server's and the bot's at
+  startup, which refuse to start on any problem: both ask
+  `src/settings-check.js`, over the rules the shipped-values tests use.
+  It reads files only, so it is safe while the server runs; run it from
+  the install's folder. Exit status 0 when every setting passes, 1
+  otherwise. See [Checking the Settings](configuration.md#checking-the-settings).
 
 Audited under `npm run audit:security` and `npm run audit:secrets` —
 same bar as `src/`. Tests live in **`util/test/`** — one directory for

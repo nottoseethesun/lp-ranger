@@ -46,6 +46,8 @@ import {
 } from "./dashboard-positions-browser.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
 import { checkManagedOnSwitch } from "./dashboard-manage-check.js";
+import { forgetThrottleState } from "./dashboard-throttle.js";
+import { emptyPositionInputs } from "./dashboard-config-inputs.js";
 
 // ── Late-bound deps ──────────────────────────────
 
@@ -149,9 +151,16 @@ function _activateCore(idx, opts) {
   _exitClosedViewIfActive();
   if (_clearHistory) _clearHistory();
   if (_resetHistoryFlag) _resetHistoryFlag();
+  emptyPositionInputs();
   if (_resetCurrentKpis) _resetCurrentKpis();
   applySyncBlur(true);
   posStore.select(idx);
+  /*-
+   *  The throttle badge, countdown and banner show only what the server
+   *  reported for the position on screen, so the previous one's go now;
+   *  the new one's arrive with the status answer the switch asks for.
+   */
+  forgetThrottleState();
   updatePosStripUI();
   const active = posStore.getActive();
   if (!active) return null;

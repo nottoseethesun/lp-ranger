@@ -48,9 +48,9 @@ const { assertTimerSec } = require("./timer-bounds");
 const { chainCacheTag } = require("./cache-store");
 const { SETTING_BOUNDS } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
+const { readEnv } = require("./env-settings");
 
 const {
-  parsePositiveInt,
   parseTimerSec,
   parseBoundedSetting,
   CHAIN,
@@ -106,9 +106,9 @@ const _BOT_DEFAULTS = readBotConfigDefaultsStrict();
 /** Ordered RPC endpoints for the active chain, from chains.json. */
 const _CHAIN_RPC_URLS = Array.isArray(CHAIN.rpc?.urls) ? CHAIN.rpc.urls : [];
 const _RPC_ENV_OVERRIDES = [
-  process.env.RPC_URL,
-  process.env.RPC_URL_FALLBACK,
-  process.env.RPC_URL_FALLBACK_2,
+  readEnv("RPC_URL"),
+  readEnv("RPC_URL_FALLBACK"),
+  readEnv("RPC_URL_FALLBACK_2"),
 ];
 
 /*- Endpoints the operator added with Bot Settings → Network → Add RPC,
@@ -177,39 +177,33 @@ function setRpcUrls(urls) {
 }
 
 /** NFT token ID for single-position NFT mode (optional). */
-const POSITION_ID = process.env.POSITION_ID || null;
+const POSITION_ID = readEnv("POSITION_ID") ?? null;
 
 /** % the price must move beyond the position boundary before triggering a rebalance. */
 const REBALANCE_OOR_THRESHOLD_PCT = parseBoundedSetting(
-  process.env.REBALANCE_OOR_THRESHOLD_PCT,
-  _BOT_DEFAULTS.rebalanceOutOfRangeThresholdPercent,
   "REBALANCE_OOR_THRESHOLD_PCT",
+  _BOT_DEFAULTS.rebalanceOutOfRangeThresholdPercent,
   "rebalanceOutOfRangeThresholdPercent",
 );
 
 /** Minutes of continuous OOR before auto-rebalance (0 = disabled). */
 const REBALANCE_TIMEOUT_MIN = parseBoundedSetting(
-  process.env.REBALANCE_TIMEOUT_MIN,
-  _BOT_DEFAULTS.rebalanceTimeoutMin,
   "REBALANCE_TIMEOUT_MIN",
+  _BOT_DEFAULTS.rebalanceTimeoutMin,
   "rebalanceTimeoutMin",
 );
 
 /** Seconds before a pending TX is speed-up-replaced with higher gas. */
 const TX_SPEEDUP_SEC = parseTimerSec(
-  process.env.TX_SPEEDUP_SEC,
-  APP_CONFIG.tx.speedupSec,
   "TX_SPEEDUP_SEC",
+  APP_CONFIG.tx.speedupSec,
   "txSpeedupSec",
 );
 
 /*- On-chain contract deadline (seconds) stamped into removeLiquidity /
  *  swap / mint calldata.  Sourced from app-runtime.json — see the
  *  `tx._comment` block there for the full explanation. */
-const DEADLINE_SEC = parsePositiveInt(
-  process.env.DEADLINE_SEC,
-  APP_CONFIG.tx.deadlineSec,
-);
+const DEADLINE_SEC = readEnv("DEADLINE_SEC") ?? APP_CONFIG.tx.deadlineSec;
 
 /*-
  *  Seconds before a stuck TX is cancelled with a zero-value self-transfer.
@@ -218,9 +212,8 @@ const DEADLINE_SEC = parsePositiveInt(
  *  override still wins if operators need to force a specific value.
  */
 const TX_CANCEL_SEC = parseTimerSec(
-  process.env.TX_CANCEL_SEC,
-  DEADLINE_SEC * APP_CONFIG.tx.cancelToDeadlineMultiple,
   "TX_CANCEL_SEC",
+  DEADLINE_SEC * APP_CONFIG.tx.cancelToDeadlineMultiple,
   "txCancelSec",
 );
 
@@ -319,25 +312,22 @@ const DRAINED_RETIRE_MS = _runtimeBounded("retire", "drainedAfterMs");
 
 /** How often the bot checks the on-chain position, in seconds. */
 const CHECK_INTERVAL_SEC = parseTimerSec(
-  process.env.CHECK_INTERVAL_SEC,
-  _BOT_DEFAULTS.checkIntervalSec,
   "CHECK_INTERVAL_SEC",
+  _BOT_DEFAULTS.checkIntervalSec,
   "checkIntervalSec",
 );
 
 /** Minimum time that must elapse between two rebalances, in minutes. */
 const MIN_REBALANCE_INTERVAL_MIN = parseBoundedSetting(
-  process.env.MIN_REBALANCE_INTERVAL_MIN,
-  _BOT_DEFAULTS.minRebalanceIntervalMin,
   "MIN_REBALANCE_INTERVAL_MIN",
+  _BOT_DEFAULTS.minRebalanceIntervalMin,
   "minRebalanceIntervalMin",
 );
 
 /** Maximum rebalances per liquidity pool within a single 24-hour window. */
 const MAX_REBALANCES_PER_DAY = parseBoundedSetting(
-  process.env.MAX_REBALANCES_PER_DAY,
-  _BOT_DEFAULTS.maxRebalancesPerDay,
   "MAX_REBALANCES_PER_DAY",
+  _BOT_DEFAULTS.maxRebalancesPerDay,
   "maxRebalancesPerDay",
 );
 
@@ -357,9 +347,8 @@ const MAX_REBALANCES_PER_DAY = parseBoundedSetting(
  * `IMPERMANENT_LOSS_GUARD_PCT=30` show 30 while the bot enforced 50.
  */
 const IMPERMANENT_LOSS_GUARD_PCT = parseBoundedSetting(
-  process.env.IMPERMANENT_LOSS_GUARD_PCT,
-  _BOT_DEFAULTS.impermanentLossGuardPct,
   "IMPERMANENT_LOSS_GUARD_PCT",
+  _BOT_DEFAULTS.impermanentLossGuardPct,
   "impermanentLossGuardPct",
 );
 
@@ -412,13 +401,11 @@ const GUARANTEED_DASHBOARD_HAS_POLLED_MS = _guaranteedDashboardHasPolledMs();
  * off with exponential delay (1 → 2 → 4 → … → 20 min). After this many
  * failures the bot pauses and alerts the user.
  */
-const REBALANCE_RETRY_SWAP_LIMIT = parsePositiveInt(
-  process.env.REBALANCE_RETRY_SWAP_LIMIT,
-  APP_CONFIG.tx.retrySwapLimit,
-);
+const REBALANCE_RETRY_SWAP_LIMIT =
+  readEnv("REBALANCE_RETRY_SWAP_LIMIT") ?? APP_CONFIG.tx.retrySwapLimit;
 
 /** File path for the JSON rebalance event log. */
-const LOG_FILE = process.env.LOG_FILE || APP_CONFIG.log.file;
+const LOG_FILE = readEnv("LOG_FILE") ?? APP_CONFIG.log.file;
 
 /**
  * Read how long after a drain a re-deposit on the same NFT still counts as
@@ -473,7 +460,7 @@ const COMPOUND_AUTO_SPACING_FLOOR_SEC = _runtimeBounded(
  * @throws {Error} When neither source names an address.
  */
 function _chainContract(envName, fromChain, jsonPath) {
-  const addr = process.env[envName] || fromChain;
+  const addr = readEnv(envName) ?? fromChain;
   if (typeof addr === "string" && addr.length > 0) return addr;
   throw new Error(
     `[config] No ${envName} for ${CHAIN_NAME}: set chains.json → ` +
@@ -543,8 +530,8 @@ const SWAP_ROUTER_NAME = _routeName(
  * @throws {Error} When the chain's entry gives no url, not even "".
  */
 function _aggregatorUrl() {
-  const fromEnv = process.env.AGGREGATOR_URL;
-  if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
+  const fromEnv = readEnv("AGGREGATOR_URL");
+  if (fromEnv !== undefined) return fromEnv;
   const url = CHAIN.aggregator?.url;
   if (typeof url === "string") return url;
   throw new Error(
@@ -841,7 +828,4 @@ module.exports = {
   // Helpers
   assertLiveModeReady,
   VERBOSE,
-
-  // Internals exposed for testing
-  _parsePositiveInt: parsePositiveInt,
 };

@@ -20,10 +20,7 @@ import {
 import { checkHodlBaselineDialog } from "./dashboard-data-baseline.js";
 import { _setPctSpan, _setAprSpan, setKpiValue } from "./dashboard-data-kpi.js";
 import { toMintTsSeconds } from "./dashboard-date-utils.js";
-import {
-  setLastPrices,
-  clearPriceOverrideIfFetched,
-} from "./dashboard-price-override.js";
+import { setLastPrices } from "./dashboard-price-override.js";
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import { renderRebalanceEvents } from "./dashboard-history.js";
 import { posStore } from "./dashboard-positions-store.js";
@@ -261,8 +258,7 @@ export function _apply(d, pos) {
     d.fetchedPrice0,
     d.fetchedPrice1,
   );
-  setLastPrices(d.price0, d.price1);
-  clearPriceOverrideIfFetched(d.fetchedPrice0 || 0, d.fetchedPrice1 || 0);
+  setLastPrices(pos, d.price0, d.price1);
   _applyCurrentKpis(d);
   _applyPosDuration(d);
   // Single-epoch lifetime (overwritten by phase 2 when it returns)

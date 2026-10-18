@@ -14,7 +14,11 @@ import {
   cloneTpl,
 } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
-import { throttle, applyPolledMinInterval } from "./dashboard-throttle.js";
+import {
+  throttle,
+  applyPolledMinInterval,
+  forgetLoopThrottle,
+} from "./dashboard-throttle.js";
 import {
   _activeToken1Symbol,
   updateRangePctLabels,
@@ -427,30 +431,40 @@ export function _updateBotStatus(d) {
  * the badge shows a dash.
  */
 function _syncClientThrottle(ts, cnt, savedMinIntervalMin, dailyMax) {
-  if (!ts) return;
-  throttle.dailyCount = cnt;
-  throttle.dailyMax = dailyMax;
-  if (typeof ts.doublingActive === "boolean")
-    throttle.doublingActive = ts.doublingActive;
-  if (typeof ts.doublingCount === "number")
-    throttle.doublingCount = ts.doublingCount;
-  if (typeof ts.currentWaitMs === "number")
-    throttle.currentWaitMs = ts.currentWaitMs;
-  if (typeof ts.lastRebTime === "number") throttle.lastRebTime = ts.lastRebTime;
+  /*-
+   *  Start from nothing known, so no figure of the position on screen
+   *  before stays on as this one's. With no snapshot at all the
+   *  position's bot loop has not reported yet (it starts behind the
+   *  startup stagger, or the wallet is locked), and the badge shows a
+   *  dash until it has.
+   */
+  forgetLoopThrottle();
+  if (ts !== undefined && ts !== null) {
+    throttle.dailyCount = cnt;
+    throttle.dailyMax = dailyMax;
+    if (typeof ts.doublingActive === "boolean")
+      throttle.doublingActive = ts.doublingActive;
+    if (typeof ts.doublingCount === "number")
+      throttle.doublingCount = ts.doublingCount;
+    if (typeof ts.currentWaitMs === "number")
+      throttle.currentWaitMs = ts.currentWaitMs;
+    if (typeof ts.lastRebTime === "number")
+      throttle.lastRebTime = ts.lastRebTime;
+    // The bot's next daily reset, at midnight UTC, which the cap waits on.
+    if (typeof ts.dailyResetAt === "number")
+      throttle.dailyResetAt = ts.dailyResetAt;
+  }
   /*- The SAVED per-position config value in the same payload is fresh
    *  the moment the Save round-trip lands, whereas `ts.minIntervalMs`
    *  is the bot's last pollCycle snapshot — stale for up to
    *  CHECK_INTERVAL_SEC after a Save (POST /api/config neither kicks
    *  the bot poll nor reconfigures the live throttle).  Prefer the
-   *  config value; fall back to the snapshot when config is absent.
-   *  `applyPolledMinInterval` additionally honors the one-shot
-   *  `data-skip-next-poll` marker, which covers the race where a sweep
-   *  reads the payload before the Save POST has been persisted. */
+   *  config value; fall back to the snapshot when config is absent. */
   const saved =
     typeof savedMinIntervalMin === "number" &&
     Number.isFinite(savedMinIntervalMin);
   applyPolledMinInterval(
-    saved ? savedMinIntervalMin * 60 * 1000 : ts.minIntervalMs,
+    saved ? savedMinIntervalMin * 60 * 1000 : ts?.minIntervalMs,
   );
 }
 

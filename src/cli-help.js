@@ -18,7 +18,7 @@ const _PORT = loadMergedDefaults("app-runtime.json").server.port;
 const COMMON = `
 Options:
   --verbose, -v   Show detailed per-cycle logs (fee details,
-                  OOR poll diagnostics). Also: VERBOSE=1 in .env.
+                  OOR poll diagnostics). Also: VERBOSE=true in .env.
   --log-file [PATH]
                   Tee all console output to a file (ANSI escapes
                   stripped).  PATH is optional — defaults to the

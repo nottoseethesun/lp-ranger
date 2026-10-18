@@ -141,6 +141,23 @@ describe("readUiDefaultsStrict", () => {
     assert.deepEqual({ ...readUiDefaultsStrict() }, SHIPPED);
   });
 
+  it("holds the stale-figures check to ten milliseconds through a second", () => {
+    for (const ms of [9, 1001, 50.5]) {
+      writeOverride({ staleDataCheckIntervalMs: ms });
+      _resetMemoForTests();
+      assert.throws(
+        () => readUiDefaultsStrict(),
+        /staleDataCheckIntervalMs/,
+        `${ms} is refused`,
+      );
+    }
+    for (const ms of [10, 1000]) {
+      writeOverride({ staleDataCheckIntervalMs: ms });
+      _resetMemoForTests();
+      assert.equal(readUiDefaultsStrict().staleDataCheckIntervalMs, ms);
+    }
+  });
+
   it("is the answer every later read returns, an edit since included", () => {
     writeOverride({ throttleNearLimitPct: 50 });
     readUiDefaultsStrict();

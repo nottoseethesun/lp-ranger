@@ -1,14 +1,14 @@
 ---
 name: project_failed_aggregator_gas_dropped
-description: "FIXED 2026-10-17 (uncommitted): gas a failed aggregator attempt paid — approvals, reverted swaps, cancels — was dropped from the record when a fallback swapped or the move failed"
+description: "FIXED 2026-10-17 (committed in 5bf48d2, not merged): gas a failed aggregator attempt paid — approvals, reverted swaps, cancels — was dropped from the record when a fallback swapped or the move failed"
 metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T19:49:16.123Z
+  modified: 2026-10-18T08:46:49.146Z
 ---
 
-**Fixed 2026-10-17, uncommitted.** Was: a failed aggregator attempt can
+**Fixed 2026-10-17, committed in 5bf48d2.** Was: a failed aggregator attempt can
 pay for an approval, a swap that reverts on chain, and a cancel, and none
 of it reached the record. The approval was added only to a swap that
 landed, a reverted swap counted as nothing, the cancels rode an error

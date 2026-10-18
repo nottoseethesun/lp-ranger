@@ -5,13 +5,14 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T01:59:55.223Z
+  modified: 2026-10-18T08:46:43.081Z
 ---
 
 # Tests write the operator's error log
 
-**FIXED 2026-10-16, by the user's design** (uncommitted on branch
-`migrate-to-new-9mm-data-api`). `scripts/check.js` now:
+**FIXED 2026-10-16, by the user's design** (committed in 8d1f562 on
+branch `migrate-to-new-9mm-data-api`, not merged). `scripts/check.js`
+now:
 
 1. deletes `logs/error.log` and the previous run's
    `logs/error-npm-run-check.log` before anything runs, and

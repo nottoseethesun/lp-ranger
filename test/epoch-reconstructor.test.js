@@ -54,6 +54,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 295,
       feesEarnedUsd: 0.5,
       gasCostUsd: 0.02,
+      gasNative: 0.001,
       token0UsdPriceAtOpen: 0.0016,
       token1UsdPriceAtOpen: 0.0006,
       token0UsdPriceAtClose: 0.0017,
@@ -83,6 +84,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 0,
       feesEarnedUsd: 0,
       gasCostUsd: 0,
+      gasNative: 0,
     };
     const ep = _buildClosedEpoch(h, 0);
     assert.ok(ep);
@@ -119,6 +121,7 @@ describe("_buildClosedEpoch", () => {
       /*- Present so these cases turn on the fee alone. Gas carries its
        *  own guard, covered in test/epoch-reconstructor-gas.test.js. */
       gasCostUsd: 0.02,
+      gasNative: 0.001,
     });
 
     it("rejects the epoch when feesEarnedUsd is null", () => {
@@ -154,6 +157,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 100,
       feesEarnedUsd: 1,
       gasCostUsd: 0.02,
+      gasNative: 0.001,
     };
     assert.strictEqual(_buildClosedEpoch(h, 0).color, "#00e5ff");
     assert.strictEqual(_buildClosedEpoch(h, 1).color, "#ff6b35");
@@ -168,6 +172,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 190,
       feesEarnedUsd: 3,
       gasCostUsd: 2,
+      gasNative: 0.1,
     };
     const ep = _buildClosedEpoch(h, 0);
     // epochPnl = (exit - entry) + fees - gas = (190 - 200) + 3 - 2 = -9
@@ -320,9 +325,9 @@ describe("_fetchEpochsFromChain resume buffer", () => {
    * stubbed.
    *
    * @param {string|null} failOn  tokenId to throw for, once.
-   * @param {number} [gasUsd]     What the gas converter answers. Zero
-   *   stands for a failed or paused price lookup, which the real
-   *   `actualGasCostUsd` also reports as 0.
+   * @param {number|null} [gasUsd]  What the gas converter answers. Null
+   *   stands for a close day with no native price, which the real
+   *   `pastGasCostUsd` also reports as null.
    */
   function withStubbedHistory(failOn, gasUsd = 0.02) {
     const Module = require("module");
@@ -332,12 +337,12 @@ describe("_fetchEpochsFromChain resume buffer", () => {
     Module.prototype.require = function (id) {
       if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       /*- The gas converter is stubbed alongside the history because the
-       *  real one calls `fetchTokenPriceUsd`, which would put network
-       *  I/O in a unit test — and because a zero USD is now meaningful
-       *  (it says the price was unknown), so the tests need to set it
-       *  deliberately rather than inherit whatever a price lookup did. */
+       *  real one asks a price source, which would put network I/O in a
+       *  unit test — and because a null USD is meaningful (it says the
+       *  price was unknown), so the tests set it deliberately rather
+       *  than inherit whatever a price lookup did. */
       if (id === "./bot-pnl-updater")
-        return { actualGasCostUsd: async () => gasUsd };
+        return { pastGasCostUsd: async () => gasUsd };
       if (id !== "./position-history") return orig.apply(this, arguments);
       return {
         getPositionHistory: async (tid) => {

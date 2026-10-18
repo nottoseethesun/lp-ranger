@@ -2,10 +2,11 @@
  * @file test/config.test.js
  * @description Unit tests for src/config.js.
  *
- * Because config.js reads process.env at require-time, we test the internal
- * parser helper (_parsePositiveInt) directly, and test
- * assertLiveModeReady() by manipulating the exported object. The six Bot
- * Settings `.env` can set are covered by test/config-env-ranges.test.js.
+ * Because config.js reads process.env at require-time, we test
+ * assertLiveModeReady() by manipulating the exported object. How each
+ * `.env` variable is read is covered by test/settings-check.test.js
+ * (src/env-settings.js), and the Bot Settings `.env` can set by
+ * test/config-env-ranges.test.js.
  *
  * Run with: npm test
  */
@@ -17,45 +18,6 @@ const assert = require("assert");
 
 const config = require("../src/config");
 const walletManager = require("../src/wallet-manager");
-
-// ── _parsePositiveInt ─────────────────────────────────────────────────────────
-
-describe("_parsePositiveInt", () => {
-  const parse = config._parsePositiveInt;
-
-  it("parses a valid positive integer string", () => {
-    assert.strictEqual(parse("5555", 3000), 5555);
-  });
-
-  it("returns fallback for zero", () => {
-    assert.strictEqual(parse("0", 42), 42);
-  });
-
-  it("returns fallback for negative value", () => {
-    assert.strictEqual(parse("-1", 10), 10);
-  });
-
-  it("returns fallback for non-numeric string", () => {
-    assert.strictEqual(parse("abc", 99), 99);
-  });
-
-  it("returns fallback for undefined", () => {
-    assert.strictEqual(parse(undefined, 7), 7);
-  });
-
-  it("returns fallback for empty string", () => {
-    assert.strictEqual(parse("", 8), 8);
-  });
-
-  it("parses string with leading/trailing whitespace", () => {
-    // parseInt handles leading whitespace
-    assert.strictEqual(parse("  42  ", 1), 42);
-  });
-
-  it("parses a float string by truncating to int", () => {
-    assert.strictEqual(parse("3.9", 1), 3);
-  });
-});
 
 // ── Default values ────────────────────────────────────────────────────────────
 
@@ -161,12 +123,6 @@ describe("PORT configuration", () => {
       `Expected PORT in 1–65535, got ${config.PORT}`,
     );
   });
-
-  it("default PORT is 5555 when process.env.PORT is not set in test env", () => {
-    // This test is informational — in real usage PORT=5555 is the default.
-    // We verify _parsePositiveInt('5555', 5555) returns 5555.
-    assert.strictEqual(config._parsePositiveInt("5555", 99), 5555);
-  });
 });
 
 // ── EIP-55 checksummed addresses ─────────────────────────────────────────────
@@ -236,7 +192,6 @@ describe("config module shape", () => {
     "SWAP_ROUTER",
     "assertLiveModeReady",
     "VERBOSE",
-    "_parsePositiveInt",
   ];
 
   for (const key of expectedKeys) {

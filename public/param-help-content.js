@@ -1867,7 +1867,9 @@ export function buildParamHelp(f) {
             "Gas is recorded as the coins actually spent, and each row keeps " +
             "what its gas cost at the time rather than being converted " +
             "again at today&rsquo;s price. Profit and Net P&L both subtract " +
-            "gas, so they stay put with it. The Lifetime panel prices the " +
+            "gas, so they stay put with it. Where the gas token&rsquo;s " +
+            "price on a row&rsquo;s day cannot be found, all three show a " +
+            "dash. The Lifetime panel prices the " +
             "same coins at today&rsquo;s price, as it prices everything " +
             "else, so its gas figure and this column part company once the " +
             "native token has moved.",

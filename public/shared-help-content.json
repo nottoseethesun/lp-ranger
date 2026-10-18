@@ -18,7 +18,7 @@
       },
       {
         "heading": "Worked example",
-        "body": "Holding the coins this NFT was minted with would be worth <strong>${{figure:ilgExampleHoldUsd}}</strong> at today&rsquo;s prices, and the Impermanent Loss Guard (ILG) is set to <strong>{{figure:ilgDefaultPct}}%</strong> (the default). Rebalancing stops if the position would come out below <strong>${{figure:ilgExampleFloorUsd}}</strong>. At ${{figure:ilgExampleAboveUsd}} it rebalances normally; at ${{figure:ilgExampleBelowUsd}} it is rejected and left alone."
+        "body": "Holding the coins this NFT was minted with would be worth <strong>${{figure:ilgExampleHoldUsd}}</strong> at today&rsquo;s prices, and the Impermanent Loss Guard (ILG) is set to <strong>{{figure:ilgDefaultPct}}%</strong> (the default). Rebalancing stops if the position would come out below <strong>${{figure:ilgExampleFloorUsd}}</strong>. At ${{figure:ilgExampleAboveUsd}} it rebalances normally; {{figure:ilgExampleRejected}}."
       },
       {
         "heading": "Retries back off, {{figure:ilgRetryFirst}} to {{figure:ilgRetryCeiling}}",

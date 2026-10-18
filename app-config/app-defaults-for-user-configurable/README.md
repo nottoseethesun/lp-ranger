@@ -74,13 +74,15 @@ valid — a missing or malformed file is treated as a broken install and
 the app refuses to start.
 
 The user override file is **optional** — its absence is the normal
-case.  If a user override file is malformed, the app logs a warning
-and falls back to the shipped defaults for that file.
+case.  An override file that is not valid JSON stops the server and the
+bot at startup, naming the file.
 
-A value the app cannot use stops startup, with a message naming the
-setting and what it accepts.  In `bot-config-defaults.json`, that is a
-value outside its range in `setting-bounds.json`.  Correct the value,
-or remove it to use the shipped default, and restart.
+A value the app cannot use stops startup too, with a message naming the
+setting and what it accepts: a value of the wrong kind, a value outside
+its range in `setting-bounds.json`, or a setting LP Ranger does not
+read.  Correct the value, or remove it to use the shipped default, and
+restart.  To check without starting, run
+`node util/diagnostic/validate-config-values-with-any-user-overrides.js`.
 
 ## File inventory
 

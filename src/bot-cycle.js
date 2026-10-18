@@ -96,7 +96,20 @@ function _rebalanceCtx(deps, position) {
   });
 }
 
-/** Acquire lock, log reason, and prepare state for rebalance. */
+/**
+ * Acquire lock, log reason, and prepare state for rebalance.
+ *
+ * Returns null, with the lock let go, when the position's bot loop has
+ * been stopped by then: no rebalance starts on a stopped loop. A stop
+ * comes from shutting the server down, which exits within seconds and
+ * would cut a rebalance off after its liquidity was removed, or from
+ * Stop Managing. Asked once the lock is held, since the wait for another
+ * position's rebalance or compound can span the stop.
+ *
+ * @param {object} deps  Poll-cycle deps; `_isStopped` reports the stop.
+ * @returns {Promise<{release: Function|null, state: object,
+ *   trigger: string}|null>}
+ */
 async function _prepareRebalance(deps) {
   const { position } = deps;
   const trigger = _classifyTrigger(deps._botState);
@@ -113,6 +126,14 @@ async function _prepareRebalance(deps) {
       position.tokenId,
       lock.pending(),
     );
+  if (deps._isStopped?.() === true) {
+    if (release) release();
+    log.info(
+      "[rebalance] %s: not started — the bot loop for this position has stopped",
+      _rebalanceCtx(deps, position),
+    );
+    return null;
+  }
   const state = deps._botState || {};
   state.rebalanceInProgress = true;
   state.forceRebalance = false;
@@ -187,7 +208,9 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
 
 async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle } = deps;
-  const { release, state, trigger } = await _prepareRebalance(deps);
+  const prepared = await _prepareRebalance(deps);
+  if (prepared === null) return { rebalanced: false, stopped: true };
+  const { release, state, trigger } = prepared;
   try {
     /*- Re-open detection: if the position is at zero liquidity when the
      *  rebalance starts, this attempt is a re-open of a previously

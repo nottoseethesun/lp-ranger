@@ -9,7 +9,6 @@
 import { log } from "./dashboard-log.js";
 import { flattenV2Status } from "./dashboard-data-cache.js";
 import { _setStatusPill } from "./dashboard-data-status.js";
-import { setFactoryContext } from "./dashboard-lp-providers.js";
 import { updateAllPositionsStatsBtn } from "./dashboard-all-positions-stats.js";
 import { uiSetting } from "./dashboard-ui-settings.js";
 /*-
@@ -85,8 +84,6 @@ async function _pollStatus() {
     }
     countAnsweredQuestion();
     const data = flattenV2Status(await res.json());
-    if (typeof data.factory === "string" && data.factory.length > 0)
-      setFactoryContext(data.factory);
     updateAllPositionsStatsBtn(data);
     if (_onStatus !== null) _onStatus(data);
   } catch (_) {

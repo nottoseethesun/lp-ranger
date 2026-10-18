@@ -88,6 +88,7 @@ describe("the lifetime compounded total is established by the chain scan", () =>
       if (id === "./bot-pnl-updater") {
         return {
           actualGasCostUsd: async () => 0,
+          pastGasCostUsd: async () => 0,
           estimateGasCostUsd: async () => 0,
           positionValueUsd: () => 0,
           fetchTokenPrices: async () => ({ price0: 1, price1: 1 }),

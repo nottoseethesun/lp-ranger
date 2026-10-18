@@ -1,15 +1,15 @@
 ---
 name: project_reverted_receipt_reads_as_confirmed
-description: "FIXED 2026-10-17, uncommitted (on Production since 0.9.8): a transaction that reverted came back as confirmed from the receipt re-ask, or as a speed-up's TRANSACTION_REPLACED receipt; both paths now throw what ethers' own wait would"
+description: "FIXED 2026-10-17, committed in 5bf48d2, not merged (on Production since 0.9.8): a transaction that reverted came back as confirmed from the receipt re-ask, or as a speed-up's TRANSACTION_REPLACED receipt; both paths now throw what ethers' own wait would"
 metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T22:54:33.650Z
+  modified: 2026-10-18T08:46:46.358Z
 ---
 
-**Fixed 2026-10-17, uncommitted, approved by the user ("#4: Yes,
-fix").** `confirmedReceipt` in src/tx-speedup.js reads a receipt's
+**Fixed 2026-10-17, committed in 5bf48d2, approved by the user ("#4:
+Yes, fix").** `confirmedReceipt` in src/tx-speedup.js reads a receipt's
 `status` and throws, for status 0, the CALL_EXCEPTION ethers' own wait
 throws, carrying the receipt. Both doors below hand their receipt
 through it. A CALL_EXCEPTION that reaches `sendTx.sendTransaction`

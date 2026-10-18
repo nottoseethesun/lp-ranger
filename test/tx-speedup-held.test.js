@@ -13,9 +13,10 @@
  *   - A speed-up that replaced the transaction and then reverted is a
  *     failure, not a confirmation: ethers hands its receipt over as
  *     TRANSACTION_REPLACED, and the pipeline must read its status.
- *   - A cancel the endpoint answers "already known" is pending, not
- *     failed. The pipeline waits on it, and once it confirms the move is
- *     cancelled with the cancel's gas, as for any cancel.
+ *   - A speed-up or a cancel the endpoint answers "already known" is
+ *     pending, not failed. The pipeline waits on it: a speed-up that
+ *     confirms is the move's receipt, and once a cancel confirms the
+ *     move is cancelled with the cancel's gas, as for any cancel.
  */
 
 const { describe, it, before, beforeEach, afterEach } = require("node:test");
@@ -199,6 +200,48 @@ describe("the speed-up pipeline", () => {
     });
     const r = await _waitOrSpeedUp(original, signer, "[rebalance] mint");
     assert.equal(r.hash, "0xspeedup");
+  });
+
+  it("waits on a speed-up the endpoint answers 'already known', and takes its receipt", async () => {
+    /*-
+     *  The endpoint already holds the speed-up, perhaps from a send whose
+     *  reply was lost: it is pending, not failed. It is rebuilt from the
+     *  signed bytes the refused request carried and waited on, and its
+     *  receipt is the move's.
+     */
+    config.TX_SPEEDUP_SEC = 0.05;
+    config.TX_CANCEL_SEC = 60;
+    config.TX_CANCEL_PHASE_FLOOR_SEC = 1;
+    const wallet = Wallet.createRandom();
+    const rawSpeedUp = await wallet.signTransaction({
+      type: 0,
+      to: "0x" + "22".repeat(20),
+      nonce: 9,
+      gasLimit: 300000n,
+      gasPrice: 3n,
+      data: "0xabcdef",
+      value: 0n,
+      chainId: 943n,
+    });
+    const speedUpHash = Transaction.from(rawSpeedUp).hash;
+    const { original, signer } = stage({
+      originalWait: pending,
+      speedUp: () => {
+        const e = new Error("already known");
+        e.code = "UNKNOWN_ERROR";
+        e.payload = { method: "eth_sendRawTransaction", params: [rawSpeedUp] };
+        throw e;
+      },
+      cancel: () => assert.fail("the speed-up confirmed; nothing to cancel"),
+      provider: {
+        getBlockNumber: async () => 100,
+        getTransactionReceipt: async (hash) =>
+          hash === speedUpHash ? mined(speedUpHash) : null,
+      },
+    });
+    const r = await _waitOrSpeedUp(original, signer, "[rebalance] mint");
+    assert.equal(r.hash, speedUpHash);
+    assert.equal(r.status, 1);
   });
 
   describe("a cancel the endpoint answers 'already known'", () => {

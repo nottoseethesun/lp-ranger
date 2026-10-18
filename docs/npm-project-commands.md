@@ -210,6 +210,11 @@ is, it says so and waits. Once none is, it stops the server as
 a server too busy to answer may be mid-rebalance. With no server
 listening, it just exits.
 
+**Once a stop begins, nothing new starts.** A check that was part way
+through when the stop came starts no rebalance or compound, so the
+moment between the all-clear and the stop cannot begin one that the
+stop then cuts off. The same holds for Stop Managing on one position.
+
 **A force-stop does not wait.** The server starts stopping every
 position and exits within three seconds (`shutdown.exitTimeoutMs`),
 whatever is under way. A rebalance cut off after the drain and before

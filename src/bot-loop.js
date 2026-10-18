@@ -597,6 +597,8 @@ async function startBotLoop(opts) {
         _recordPoolRebalance: botState._recordPoolRebalance || null,
         _canRebalancePool: botState._canRebalancePool || null,
         _applyCurrentNftFigures: applyCurrentNftFigures,
+        // A stop during this poll keeps it from starting a move.
+        _isStopped: () => _stopped,
       });
       if (result.rebalanced || result.cancelled || result.compounded)
         specialActionCompleted = true;

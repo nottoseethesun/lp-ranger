@@ -36,10 +36,8 @@
 import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
 import { getLastStatus } from "./dashboard-data.js";
-import {
-  getProviderDisplayName,
-  getProviderLabel,
-} from "./dashboard-lp-providers.js";
+import { getProviderLabel } from "./dashboard-lp-providers.js";
+import { parseCompositeKey } from "../src/composite-key.js";
 import {
   loadInitialDepositForPool,
   loadRealizedGainsForPool,
@@ -187,25 +185,29 @@ export function _computeNumerics(snap, ltRealized, ltDep) {
   return { ltNetPnl, ltProfit, ltIL: il };
 }
 
-/*- Derive a single row from a per-position bot state + wallet-scope
- *  globals.  Returns null when the position isn't currently open
- *  (liq === 0) or when the bot state hasn't produced a pnlSnapshot
- *  yet (gate should have prevented the modal from opening in that
- *  case, but the check keeps the render function honest under
- *  eventual-consistency polling).  `mode` selects the display
- *  transformation ("total" / "per-day" / "weighted"); `maxDays` is
- *  used only in weighted mode. */
+/*- Derive a single row from a per-position bot state.  The row's chain,
+ *  wallet, position manager and NFT come from its own key, the
+ *  position's fully-qualified identity, never from the status answer's
+ *  server-wide fields.  Returns null when the key is not a position's,
+ *  when the position isn't currently open (liq === 0) or when the bot
+ *  state hasn't produced a pnlSnapshot yet (gate should have prevented
+ *  the modal from opening in that case, but the check keeps the render
+ *  function honest under eventual-consistency polling).  `mode` selects
+ *  the display transformation ("total" / "per-day" / "weighted");
+ *  `maxDays` is used only in weighted mode. */
 function _computeRow(key, posState, globalCtx, mode, maxDays) {
+  const id = parseCompositeKey(key);
   const ap = posState.activePosition;
   const snap = posState.pnlSnapshot;
+  if (id === null) return null;
   if (ap === null || ap === undefined) return null;
   if (snap === null || snap === undefined) return null;
   if (typeof ap.liquidity !== "string") return null;
   const liq = parseFloat(ap.liquidity);
   if (!Number.isFinite(liq) || liq <= 0) return null;
   const poolCtx = {
-    walletAddress: globalCtx.walletAddress,
-    contractAddress: globalCtx.positionManager,
+    walletAddress: id.wallet,
+    contractAddress: id.contract,
     token0: ap.token0,
     token1: ap.token1,
     fee: ap.fee,
@@ -226,21 +228,17 @@ function _computeRow(key, posState, globalCtx, mode, maxDays) {
    *  raw values.  User-visible values (spread via `...nums` below)
    *  are still the mode-transformed ones. */
   const rawNumsStash = rawNums;
-  const lpName =
-    getProviderDisplayName(globalCtx.factory, globalCtx.positionManager) ??
-    getProviderLabel(globalCtx.positionManager) ??
-    "?";
   return {
     key,
     blockchainDisplayName: globalCtx.chainDisplayName,
-    blockchainId: globalCtx.chainId,
+    blockchainId: id.blockchain,
     symbol0: ap.token0Symbol,
     symbol1: ap.token1Symbol,
     feePct: _feePct(ap.fee),
-    lpProviderName: lpName,
-    walletAddress: globalCtx.walletAddress,
-    contractAddress: globalCtx.positionManager,
-    tokenId: ap.tokenId,
+    lpProviderName: getProviderLabel(id.contract) ?? "?",
+    walletAddress: id.wallet,
+    contractAddress: id.contract,
+    tokenId: id.tokenId,
     /*- Deliberately NOT part of `nums`, so the Per-Day and Weighted
      *  modes cannot divide it.  Those modes turn a lifetime total into
      *  a rate, which is meaningful for P&L but not for a position's
@@ -286,16 +284,12 @@ function _computeRows(data) {
   if (data === null || data === undefined) return [];
   const positions = data._allPositionStates ?? {};
   const globalCtx = {
-    walletAddress: data.walletAddress,
-    factory: data.factory,
-    positionManager: data.positionManager,
-    /*- Two distinct fields: the display name goes into the row's
-     *  identity cell for user-facing text, the id goes into the deep-
-     *  link URL slug.  Never derive one from the other with
-     *  toLowerCase() — that conflates the ID-vs-displayName concepts
-     *  we're intentionally keeping separate everywhere else. */
+    /*- The chain's display name, for the row's identity cell; the
+     *  chain's id for the deep-link slug comes from each row's key.
+     *  Never derive one from the other with toLowerCase() — that
+     *  conflates the ID-vs-displayName concepts we're intentionally
+     *  keeping separate everywhere else. */
     chainDisplayName: data.chainDisplayName,
-    chainId: data.chainId,
   };
   const now = Date.now();
   const maxDays = _showMode === "weighted" ? maxDaysAlive(data, now) : 0;
@@ -328,24 +322,13 @@ export function _sortRows(rows, col, dir) {
   });
 }
 
-/*- Return a lower-cased string for a URL slot, or an empty string
- *  when the value isn't a string.  Explicit type check so a non-
- *  string doesn't reach .toLowerCase() (would throw) and doesn't
- *  coerce via `|| ""` (would strip legitimate 0-length input from a
- *  future different code path). */
-function _lcSlot(v) {
-  return typeof v === "string" ? v.toLowerCase() : "";
-}
-
-/*- Deep-link URL for the row's position.  Uses the canonical chain
- *  id (KEY of chains.json) as the URL slug — NOT the display name.
- *  Wallet and contract addresses are lower-cased to match the URLs
- *  the router emits everywhere else in the app (the router
- *  canonicalises on read). */
+/*- Deep-link URL for the row's position, from its key.  Uses the
+ *  canonical chain id (KEY of chains.json) as the URL slug — NOT the
+ *  display name.  Wallet and contract addresses are EIP-55 checksummed,
+ *  as the key holds them and as the router writes them everywhere else
+ *  in the app. */
 function _positionHref(row) {
-  const wallet = _lcSlot(row.walletAddress);
-  const contract = _lcSlot(row.contractAddress);
-  return `/${row.blockchainId}/${wallet}/${contract}/${row.tokenId}`;
+  return `/${row.blockchainId}/${row.walletAddress}/${row.contractAddress}/${row.tokenId}`;
 }
 
 /*- Build the identity cell HTML for one row.  Structure: pair line

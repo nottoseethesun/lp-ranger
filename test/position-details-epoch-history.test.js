@@ -72,7 +72,10 @@ function loadSnapshot() {
         return { ...HISTORY };
       },
     },
-    "./bot-pnl-updater": { actualGasCostUsd: async () => 0 },
+    "./bot-pnl-updater": {
+      actualGasCostUsd: async () => 0,
+      pastGasCostUsd: async () => 0,
+    },
     "./price-fetcher": {
       fetchTokenPriceUsd: async () => 1,
       withFreshPricesAllowed: (fn) => fn(),

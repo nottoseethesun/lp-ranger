@@ -30,6 +30,7 @@ For the controls protecting the wallet, see [`docs/security.md`](security.md).
 - [JSON Configuration Values](#json-configuration-values)
   - [Where each setting lives](#where-each-setting-lives)
   - [How to change one](#how-to-change-one)
+  - [Checking the Settings](#checking-the-settings)
 - [Environment Variables](#environment-variables)
   - [Overview](#overview)
   - [Configuration Precedence](#configuration-precedence)
@@ -131,6 +132,34 @@ in Bot Configuration and press Save.
 See [The `app-config` Directory](engineering.md#the-app-config-directory) in
 the engineering reference for the full file inventory and the rules for
 where future config files should go.
+
+### Checking the Settings
+
+The server and the bot check every setting before they read any, and
+refuse to start while one is wrong, naming each problem. They check:
+
+- the JSON settings files, with your copies in
+  `app-config/user-configurable/` over them;
+- `.env`;
+- `bot-config.json`.
+
+A problem is a value of the wrong kind or outside its range, a setting
+LP Ranger does not read, a file that is not valid JSON, or a copy of a
+file the app never reads from `user-configurable/`. A setting LP Ranger
+has retired is not one: the next save drops it from `bot-config.json`.
+`npm stop` and `npm run gentle-stop` do not check, so a bad setting
+never keeps you from stopping a server that is running.
+
+To check without starting:
+
+```sh
+node util/diagnostic/validate-config-values-with-any-user-overrides.js
+```
+
+It lists every problem, or says there are none, and exits non-zero when
+there are any. The test suite checks only the files that ship, so local
+and CI results agree; this is how your own copies, `.env` and
+`bot-config.json` are checked.
 
 ---
 
@@ -254,16 +283,20 @@ each layer live in [`docs/security.md`](security.md).
 | `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `AGGREGATOR_URL` | `https://swap.watergun.pro/api/aggregator/369` | `chains.json` → `<chain>.aggregator.url` | The active chain's swap aggregator, chain path included — the Watergun Aggregator on PulseChain. Each chain names its own; an empty url means the chain has no aggregator, and every swap goes through the V3 router. A chain entry with no url at all stops the app at startup. `<chain>.aggregator.name` is how the "Routing through:" badge and the Rebalance Events table name the route; it is required whenever there is a url, so pointing this setting at another aggregator needs that name overridden to match. |
 | `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. |
-| `DRY_RUN` | `false` | **none** — a run mode, not a setting | Connects, detects and polls, but sends no transactions. Accepts `1`, `true` or `yes`. |
-| `VERBOSE` | `false` | **none** — a run mode, not a setting | Verbose logging. Accepts `1`; `--verbose` and `-v` on the command line do the same thing. |
+| `DRY_RUN` | `false` | **none** — a run mode, not a setting | Connects, detects and polls, but sends no transactions. `true` or `false`. |
+| `VERBOSE` | `false` | **none** — a run mode, not a setting | Verbose logging. `true` or `false`; `--verbose` and `-v` on the command line do the same thing. |
 
 Five of these are Bot Configuration settings: `REBALANCE_OOR_THRESHOLD_PCT`,
 `REBALANCE_TIMEOUT_MIN`, `IMPERMANENT_LOSS_GUARD_PCT`,
 `MIN_REBALANCE_INTERVAL_MIN` and `MAX_REBALANCES_PER_DAY`. Each must fall
-in its range in `setting-bounds.json`, as a dashboard save must. Outside
-it, the app stops at startup, naming the variable and the range; so does
-a fraction for a whole-number setting, or anything not a number. Unset or
+in its range in `setting-bounds.json`, as a dashboard save must. Unset or
 empty, the default stands.
+
+Every variable is read one way: an on/off variable is `true` or
+`false`, a number is written in plain digits, an address is EIP-55, and
+nothing is coerced. A value that is not, a value outside its range, or a
+line in `.env` that sets something LP Ranger does not read, stops the
+server and the bot at startup; see [Checking the Settings](#checking-the-settings).
 
 #### RPC endpoints
 
@@ -801,13 +834,14 @@ In `ui-defaults_non-layout_for-server-up-scenario.json`. The server reads
 them at startup and sends them to the dashboard, so an override takes
 effect after a restart and a page reload. Startup stops on a value
 outside its range in `setting-bounds.json`, or, for the timers
-`dashboardPollIntervalMs`, `copyFeedbackMs` and `heapLogIntervalMs`, the
-timer rule. A choice saved in the Settings popover overrides the sounds
+`dashboardPollIntervalMs`, `staleDataCheckIntervalMs`, `copyFeedbackMs`
+and `heapLogIntervalMs`, the timer rule. A choice saved in the Settings popover overrides the sounds
 and privacy defaults.
 
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
 | `dashboardPollIntervalMs` | `3000` | How often the dashboard asks the server for fresh figures. Half a second to a minute. |
+| `staleDataCheckIntervalMs` | `50` | How often the dashboard checks whether its figures are still another position's. From a switch to another position until the server answers about it, every figure shows a dash and every button is disabled, except in the disclaimer and the wallet unlock. Ten milliseconds to a second. |
 | `reloadMaxWaitMs` | `14400000` | How long Reload Current Position waits for its scan before reloading the page anyway; its dialogs quote the same figure. |
 | `slippageConfirmAbovePct` | `5` | A per-token slippage saved above this asks for a click on Confirm first. The dialog quotes it. |
 | `slippageTypedConfirmFromPct` | `10` | A per-token slippage saved at this or more asks for Confirm to be typed. The dialog quotes it. |

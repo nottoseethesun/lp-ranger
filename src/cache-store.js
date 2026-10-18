@@ -174,23 +174,36 @@ function createCacheStore(opts) {
  */
 function chainCacheTag(chainName) {
   const chains = loadMergedDefaults("chains.json");
+  const problem = cacheTagProblem(chains, chainName);
+  if (problem !== null) throw new Error(problem);
+  return chains[chainName].cacheTag;
+}
+
+/**
+ * What is wrong with a chain's cache tag in a chains.json, or null when
+ * nothing is: the rule `chainCacheTag` holds the running chain to, and the
+ * settings check (src/settings-check.js) holds every chain to.
+ *
+ * @param {object} chains     A chains.json, keyed by chain name.
+ * @param {string} chainName  The chain's key in it.
+ * @returns {string|null}
+ */
+function cacheTagProblem(chains, chainName) {
   const tag = chains[chainName]?.cacheTag;
-  if (typeof tag !== "string" || !/^[a-z0-9]+$/.test(tag)) {
-    throw new Error(
+  if (typeof tag !== "string" || !/^[a-z0-9]+$/.test(tag))
+    return (
       `chains.json → ${chainName}.cacheTag must be lower-case letters and ` +
-        `digits; it is ${JSON.stringify(tag)}.`,
+      `digits; it is ${JSON.stringify(tag)}.`
     );
-  }
   const sharing = Object.keys(chains).filter(
     (other) => other !== chainName && chains[other]?.cacheTag === tag,
   );
-  if (sharing.length > 0) {
-    throw new Error(
+  if (sharing.length > 0)
+    return (
       `chains.json → ${chainName}.cacheTag "${tag}" is also the tag of ` +
-        `${sharing.join(", ")}; two chains with one tag share their caches.`,
+      `${sharing.join(", ")}; two chains with one tag share their caches.`
     );
-  }
-  return tag;
+  return null;
 }
 
 /**
@@ -279,4 +292,5 @@ module.exports = {
   eventCachePath,
   liquidityPairScopeKey,
   chainCacheTag,
+  cacheTagProblem,
 };

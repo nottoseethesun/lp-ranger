@@ -105,6 +105,7 @@ function _installMocks() {
       return {
         fetchTokenPrices: async () => ({ price0: 1, price1: 1 }),
         actualGasCostUsd: async () => 0,
+        pastGasCostUsd: async () => 0,
       };
     }
     if (id === "./compounder") {

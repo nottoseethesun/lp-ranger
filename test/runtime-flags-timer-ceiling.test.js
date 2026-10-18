@@ -259,10 +259,15 @@ describe("timer bounds: the dashboard's poll interval", () => {
 });
 
 describe("timer bounds: the .env road", () => {
+  /** The poll interval as read from an environment holding `text`. */
+  const poll = (text) =>
+    parseTimerSec("CHECK_INTERVAL_SEC", POLL, "checkIntervalSec", {
+      CHECK_INTERVAL_SEC: text,
+    });
+
   it("names the setting the way .env spells it", () => {
     assert.throws(
-      () =>
-        parseTimerSec("7200", POLL, "CHECK_INTERVAL_SEC", "checkIntervalSec"),
+      () => poll("7200"),
       (err) => {
         assert.match(err.message, /^\[config\] CHECK_INTERVAL_SEC resolves to/);
         assert.match(err.message, /above its maximum of 3600/);
@@ -275,14 +280,15 @@ describe("timer bounds: the .env road", () => {
     );
   });
 
-  it("falls back to the default when only the OVERRIDE is unusable", () => {
-    /*- A zero or unparseable override is not a configuration error — it
-     *  is no override, and the shipped default stands. */
-    for (const v of ["0", "-5", "abc", "", undefined]) {
-      assert.equal(
-        parseTimerSec(v, POLL, "CHECK_INTERVAL_SEC", "checkIntervalSec"),
-        POLL,
-      );
-    }
+  it("refuses text that is not a whole number, naming the setting", () => {
+    /*- Read by its rule in src/env-settings.js, never coerced: a comma or
+     *  an exponent once read as 1 second, and a zero, a sign or a word as
+     *  the default, with nothing said. */
+    for (const v of ["0", "-5", "abc", "1,800", "1e3", "2.5"])
+      assert.throws(() => poll(v), /CHECK_INTERVAL_SEC in \.env must be/, v);
+  });
+
+  it("leaves the default standing when the variable is unset or blank", () => {
+    for (const v of ["", "  ", undefined]) assert.equal(poll(v), POLL);
   });
 });

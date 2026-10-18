@@ -26,9 +26,9 @@ const GLOBAL_KEYS = [
    *  old address.  That belongs to a fresh install.  See
    *  docs/configuration.md § "Contract Addresses".
    *
-   *  A value left in an existing bot-config.json from before is inert:
-   *  nothing reads it, and POST /api/config will no longer accept a
-   *  new one. */
+   *  A value left in an existing bot-config.json from before is retired
+   *  (`RETIRED_GLOBAL_KEYS`): nothing reads it, the next save drops it,
+   *  and POST /api/config will no longer accept a new one. */
   "rpcUrls",
   /*-
    *  Whether the stored Moralis key may be used.  Separate from whether
@@ -171,6 +171,12 @@ const RETIRED_POSITION_KEYS = Object.freeze([
    *  changes nothing that runs.
    */
   "checkIntervalSec",
+  /*-
+   *  The pool's lifetime HODL amounts. They live in the epoch cache
+   *  (tmp/pnl-epochs-cache.json), and the position's bot state is built
+   *  from them there; a copy in the slot was never read back.
+   */
+  "lifetimeHodlAmounts",
 ]);
 
 /**
@@ -186,6 +192,14 @@ const RETIRED_GLOBAL_KEYS = Object.freeze([
    *  out of range, ever existed. Nothing read it.
    */
   "triggerType",
+  /*-
+   *  The position manager's and the pool factory's addresses, saved by
+   *  Bot Settings fields that releases from April to September 2026
+   *  offered. The bot takes both from `.env` and chains.json, and the
+   *  dashboard takes a position's contract from its key.
+   */
+  "positionManager",
+  "factory",
 ]);
 
 const POSITION_KEYS = [

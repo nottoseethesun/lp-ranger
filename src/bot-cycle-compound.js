@@ -7,6 +7,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { logCtx } = require("./logger");
 const config = require("./config");
 const {
   actualGasCostUsd: _actualGasCostUsd,
@@ -384,6 +385,25 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
       lock.pending(),
     );
   try {
+    /*-
+     *  No compound starts on a stopped loop: a server shutting down
+     *  would cut it off between the collect and the deposit. Asked once
+     *  the lock is held, since the wait for it can span the stop.
+     */
+    if (deps._isStopped?.() === true) {
+      log.info(
+        "[bot] %s: compound not started — the bot loop for this position has stopped",
+        logCtx({
+          chain: config.CHAIN_NAME,
+          wallet: deps.address,
+          factory: config.POSITION_MANAGER,
+          tokenId: position.tokenId,
+          symbol0: getTokenSymbol(position.token0),
+          symbol1: getTokenSymbol(position.token1),
+        }),
+      );
+      return;
+    }
     botSt.forceCompound = false;
     emit({ compoundInProgress: true });
 

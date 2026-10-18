@@ -308,11 +308,17 @@ function clearIlGuardWait(st) {
 }
 
 /*- End a blocked episode and tell the dashboard.  Emitted on the
- *  TRANSITION only — a position that was never blocked emits nothing, so
- *  the common path adds no per-poll churn to `/api/status`. */
+ *  TRANSITION only — a position with no block published emits nothing,
+ *  so the common path adds no per-poll churn to `/api/status`.
+ *
+ *  Whether a block is published is read from the block itself, the
+ *  state the dashboard shows, not from the wait's clock: a Guard save
+ *  zeroes the clock (`clearIlGuardWait`) and leaves the block standing
+ *  for this check to lift. */
 function _clearBlocked(deps, st) {
   if (!st) return;
-  const wasBlocked = (st._ilGuardRejectedAt || 0) > 0;
+  const wasBlocked =
+    st.ilGuardBlocked !== undefined && st.ilGuardBlocked !== null;
   _clearRetryState(st);
   if (wasBlocked) deps.updateBotState?.({ ilGuardBlocked: null });
 }

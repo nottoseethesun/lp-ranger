@@ -71,6 +71,7 @@ const _TIMERS = Object.freeze([
   "copyFeedbackMs",
   "heapLogIntervalMs",
   "dashboardPollIntervalMs",
+  "staleDataCheckIntervalMs",
 ]);
 
 /**

@@ -7,9 +7,9 @@
  *
  * Modes
  * ─────
- *   node bot.js           Headless bot (requires PRIVATE_KEY or app-config/user-configurable/wallet.json)
- *   DRY_RUN=1 node bot.js Read-only mode — connects, detects, polls, but
- *                          never signs or sends transactions.
+ *   node bot.js              Headless bot (requires PRIVATE_KEY or app-config/user-configurable/wallet.json)
+ *   DRY_RUN=true node bot.js Read-only mode — connects, detects, polls, but
+ *                             never signs or sends transactions.
  *
  * Usage: node bot.js   (or: npm run bot)
  */
@@ -33,6 +33,12 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
  *  startup banner.  No-op when neither source opts in.  See
  *  src/boot-log-file.js + src/log-file.js. */
 require("./src/boot-log-file").bootLogFile();
+
+/*- Every setting is checked before any is read: the JSON settings files
+ *  with the operator's copies, `.env` and bot-config.json. A wrong one
+ *  stops the bot here, each named, rather than leaving it to run on a
+ *  value nobody chose. See src/settings-check.js. */
+require("./src/settings-check").refuseToStartOnBadSettings();
 
 const { log } = require("./src/log");
 // First statement of a real run — bot-banner prints on require (side

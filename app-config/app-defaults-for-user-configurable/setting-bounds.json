@@ -1,13 +1,14 @@
 {
   "_comment": "The range each checked setting must fall in. A range is {min, max, integer}: inclusive bounds, either optional, and integer true for a whole number. A setting sits at the path it has in its own file, groups included. src/config-bounds.js refuses a Bot Settings save out of range; the files' own values are checked at startup. The help quotes ranges from here. Only the shipped copy is read: an override could widen a range.",
   "timers": {
-    "_comment": "Every setting that becomes a timer delay, from any file or .env, is checked by src/timer-bounds.js: a whole number of at least minimum (seconds, or milliseconds for a key ending in ms), at most the lesser of maxDefaultMultiple times its shipped default and maxHours, well inside the 24.8 days a timer can hold (past that, it fires at once). An entry under settings overrides the rule: the poll intervals have their own ranges, request pacing is at least 5 ms and cannot be turned off, and the outage pause takes 0 to mean off. The dashboard's poll: half a second at least, or each open tab would flood the server; a minute at most, or its figures go stale.",
+    "_comment": "Every setting that becomes a timer delay, from any file or .env, is checked by src/timer-bounds.js: a whole number of at least minimum (seconds, or milliseconds for a key ending in ms), at most the lesser of maxDefaultMultiple times its shipped default and maxHours, well inside the 24.8 days a timer can hold (past that, it fires at once). An entry under settings overrides the rule: the poll intervals have their own ranges, request pacing is at least 5 ms and cannot be turned off, and the outage pause takes 0 to mean off. The dashboard's poll: half a second at least, or each open tab would flood the server; a minute at most, or its figures go stale. Its stale-figures check: ten milliseconds at least, more often than a screen redraws; a second at most, or the previous position's figures stay on screen that long after a switch.",
     "minimum": 1,
     "maxDefaultMultiple": 1000,
     "maxHours": 48,
     "settings": {
       "checkIntervalSec": { "min": 10, "max": 3600 },
       "dashboardPollIntervalMs": { "min": 500, "max": 60000 },
+      "staleDataCheckIntervalMs": { "min": 10, "max": 1000 },
       "globalRPCRequestRateIntervalMS": { "min": 5 },
       "rpcAllEndpointsDownPauseMS": { "min": 0 }
     }
@@ -81,7 +82,7 @@
   "tokenDecimals": { "min": 0, "max": 77, "integer": true },
   "_rpcUrlCount_comment": "How many endpoints the rpc list may hold: one at least, to serve a request; ten at most, since the list is walked in order on every outage.",
   "rpcUrlCount": { "min": 1, "max": 10, "integer": true },
-  "_uiSettings_comment": "The dashboard settings in ui-defaults_non-layout_for-server-up-scenario.json. Its timers, copyFeedbackMs, heapLogIntervalMs and dashboardPollIntervalMs, follow the timer rule above, and its on/off settings have no range. reloadMaxWaitMs: a minute at least, so a slow scan is not cut short; two days at most. lastCheckJustNowSec: 0 never says just now; past a minute the tag would hide a stalled bot. autoCompoundSyncHoldMs: 0 turns the hold off; a minute is past any poll's answer. activityLogMaxEntries: ten at least; past ten thousand the log slows the page. privacyUsdAmountThreshold: the five digits its input holds.",
+  "_uiSettings_comment": "The dashboard settings in ui-defaults_non-layout_for-server-up-scenario.json. Its timers, copyFeedbackMs, heapLogIntervalMs, dashboardPollIntervalMs and staleDataCheckIntervalMs, follow the timer rule above, and its on/off settings have no range. reloadMaxWaitMs: a minute at least, so a slow scan is not cut short; two days at most. lastCheckJustNowSec: 0 never says just now; past a minute the tag would hide a stalled bot. autoCompoundSyncHoldMs: 0 turns the hold off; a minute is past any poll's answer. activityLogMaxEntries: ten at least; past ten thousand the log slows the page. privacyUsdAmountThreshold: the five digits its input holds.",
   "reloadMaxWaitMs": { "min": 60000, "max": 172800000, "integer": true },
   "pollSkipLogEvery": { "min": 1, "max": 10000, "integer": true },
   "lastCheckJustNowSec": { "min": 0, "max": 60, "integer": true },

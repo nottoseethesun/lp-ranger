@@ -26,8 +26,10 @@ const {
   notify,
   testConnection,
   buildHeader,
-  EVENT_DEFAULTS,
 } = require("../src/telegram-notifications/telegram");
+const {
+  EVENT_DEFAULTS,
+} = require("../src/telegram-notifications/telegram-events");
 
 describe("telegram — configuration", () => {
   beforeEach(() => {

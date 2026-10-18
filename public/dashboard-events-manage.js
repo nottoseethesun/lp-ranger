@@ -12,6 +12,7 @@ import {
   fetchWithCsrf,
   copyWithFeedback,
   compositeKey,
+  emojiId,
 } from "./dashboard-helpers.js";
 import { activeChainId, activeChainDisplayName } from "./dashboard-chain.js";
 import { copyText } from "./dashboard-wallet.js";
@@ -407,8 +408,9 @@ export function _afterUnmanaged(
 ) {
   if (!isAnswerForPositionOnScreen(answer, key)) {
     log.info(
-      "[lp-ranger] [manage] stopped managing #%s; another position is on screen, so it is left as it is",
+      "[lp-ranger] [manage] stopped managing #%s %s; another position is on screen, so it is left as it is",
       active.tokenId,
+      emojiId(String(active.tokenId)),
     );
     return false;
   }
@@ -443,7 +445,11 @@ async function _sendManage(active) {
     );
     return false;
   }
-  log.info("[lp-ranger] [manage] started managing #%s", active.tokenId);
+  log.info(
+    "[lp-ranger] [manage] started managing #%s %s",
+    active.tokenId,
+    emojiId(String(active.tokenId)),
+  );
   return true;
 }
 
@@ -471,8 +477,9 @@ async function _runClosedPositionFlow(active) {
   const synced = isSyncComplete() === true;
   if (!synced) {
     log.info(
-      "[lp-ranger] [reopen] Manage click ignored for #%s: app still syncing",
+      "[lp-ranger] [reopen] Manage click ignored for #%s %s: app still syncing",
       active.tokenId,
+      emojiId(String(active.tokenId)),
     );
     return;
   }

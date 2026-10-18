@@ -19,9 +19,10 @@
  * The shipped defaults file is REQUIRED — a missing or malformed
  * defaults file throws because that means the install is broken.  The
  * user override is OPTIONAL — its absence is the normal case (the user
- * accepts every default).  A malformed user file logs a warning and
- * falls back to the shipped defaults so a hand-edit typo never bricks
- * the install.
+ * accepts every default).  A malformed user file logs a warning here and
+ * falls back to the shipped defaults, so a script such as `npm stop`
+ * still runs; the server and the bot refuse to start on it before they
+ * read anything (src/settings-check.js).
  *
  * Each file is read once and the parsed result is kept for the life of
  * the process, frozen all the way down.  Every file loaded here is
@@ -69,27 +70,37 @@ const USER_DIR = process.env.LP_RANGER_USER_CONFIG_DIR
   ? path.resolve(process.env.LP_RANGER_USER_CONFIG_DIR)
   : path.join(_APP_CONFIG_DIR, "user-configurable");
 
-/*- Recursively strip top-level and nested keys beginning with `_`
- *  before returning the parsed JSON to callers.  JSON has no comment
- *  syntax; the project-wide convention is `_comment`-prefixed keys
- *  carry documentation that no consumer wants in the data flow.
- *  Returns a fresh object; arrays and primitives pass through
- *  unchanged. */
-function _stripDocKeys(node) {
-  if (Array.isArray(node)) return node.map(_stripDocKeys);
+/**
+ * Recursively strip top-level and nested keys beginning with `_` from
+ * parsed JSON.  JSON has no comment syntax; the project-wide convention
+ * is `_comment`-prefixed keys carry documentation that no consumer wants
+ * in the data flow.  Exported for the settings check
+ * (src/settings-check.js), which reads each file as this module does.
+ * @param {*} node
+ * @returns {*} A fresh object; arrays and primitives pass through
+ *   unchanged.
+ */
+function stripDocKeys(node) {
+  if (Array.isArray(node)) return node.map(stripDocKeys);
   if (!node || typeof node !== "object") return node;
   const out = {};
   for (const [k, v] of Object.entries(node)) {
     if (k.startsWith("_")) continue;
-    out[k] = _stripDocKeys(v);
+    out[k] = stripDocKeys(v);
   }
   return out;
 }
 
-/*- Deep-merge `user` on top of `defaults`.  Plain-object branches
- *  recurse; arrays REPLACE; everything else takes the user value when
- *  present.  Returns a fresh object — neither argument is mutated. */
-function _deepMerge(defaults, user) {
+/**
+ * Deep-merge `user` on top of `defaults`.  Plain-object branches
+ * recurse; arrays REPLACE; everything else takes the user value when
+ * present.  Exported for the settings check, which merges an operator's
+ * copy as this module does.
+ * @param {*} defaults
+ * @param {*} user
+ * @returns {*} A fresh object — neither argument is mutated.
+ */
+function deepMerge(defaults, user) {
   if (user === undefined) return defaults;
   if (user === null) return null;
   if (Array.isArray(user)) return [...user];
@@ -99,7 +110,7 @@ function _deepMerge(defaults, user) {
   }
   const out = { ...defaults };
   for (const [key, val] of Object.entries(user)) {
-    out[key] = _deepMerge(defaults[key], val);
+    out[key] = deepMerge(defaults[key], val);
   }
   return out;
 }
@@ -120,7 +131,7 @@ function _readDefaults(filename) {
     );
   }
   try {
-    return _stripDocKeys(JSON.parse(raw));
+    return stripDocKeys(JSON.parse(raw));
   } catch (err) {
     throw new Error(
       `[load-merged-defaults] Malformed shipped defaults JSON at ${p}: ` +
@@ -150,7 +161,7 @@ function _readUserOverride(filename) {
     return undefined;
   }
   try {
-    return _stripDocKeys(JSON.parse(raw));
+    return stripDocKeys(JSON.parse(raw));
   } catch (err) {
     log.warn(
       "[load-merged-defaults] Malformed user override JSON at %s: %s — " +
@@ -178,7 +189,7 @@ function _readUserOverride(filename) {
  *  reader is what makes that true for readers not yet written: a new
  *  one gets the guarantee by calling this, without having to remember
  *  to cache. Results are frozen because callers now share one object.
- *  `_deepMerge` is pure, so a frozen shipped default is safe as its
+ *  `deepMerge` is pure, so a frozen shipped default is safe as its
  *  left-hand side. */
 const _merged = new Map();
 const _shipped = new Map();
@@ -211,7 +222,7 @@ function loadMergedDefaults(filename) {
   const defaults = _readDefaults(filename);
   const user = _readUserOverride(filename);
   const out = _freezeDeep(
-    user === undefined ? defaults : _deepMerge(defaults, user),
+    user === undefined ? defaults : deepMerge(defaults, user),
   );
   _merged.set(filename, out);
   return out;
@@ -242,6 +253,8 @@ function _resetMemoForTests() {
 module.exports = {
   loadMergedDefaults,
   loadShippedDefaults,
+  stripDocKeys,
+  deepMerge,
   _resetMemoForTests,
   DEFAULTS_DIR,
   USER_DIR,

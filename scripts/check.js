@@ -550,8 +550,8 @@ function listWorkflowFiles() {
 }
 
 /**
- * The tests that check the shipped config files themselves, which run
- * before every other test.
+ * The tests that check the shipped config files themselves, `.env.example`
+ * among them, which run before every other test.
  *
  * A function rather than a module-level `const` for the same reason as
  * `listTestFiles` below: the tests block calls it from far above here.
@@ -564,6 +564,7 @@ function configValueTests() {
   return [
     path.join("test", "setting-bounds.test.js"),
     path.join("test", "shipped-config-values.test.js"),
+    path.join("test", "shipped-env-example-values.test.js"),
   ];
 }
 

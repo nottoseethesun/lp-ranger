@@ -56,12 +56,12 @@ Every swap a rebalance or a compound makes runs through these files:
 | `src/slippage-resolver.js` | Which slippage figure a swap uses |
 | `src/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
 
-Measured 2026-10-17, on Node 24 and Node 22:
+Measured 2026-10-18, on Node 24 and Node 22:
 
 - **Lines.** 100% in every file, on both.
 - **Branches.** 100%, except two files, the same on both:
-  `rebalancer-aggregator.js` 98.8% (85 of 86) and `rebalancer-swap.js`
-  98.8% (84 of 85). The branch each misses is listed below.
+  `rebalancer-aggregator.js` 98.9% (88 of 89) and `rebalancer-swap.js`
+  98.9% (93 of 94). The branch each misses is listed below.
 
 A branch inside a block counts only once some test runs that block, so a
 file's branch total can move by one between Node versions, or after a
@@ -71,7 +71,8 @@ the figures above.
 The tests that hold them there:
 
 - `aggregator-swap-paths.test.js`, `aggregator-swap-branches.test.js`,
-  `aggregator-nonce-settlement.test.js` and
+  `aggregator-nonce-settlement.test.js`,
+  `aggregator-router-fallback.test.js` and
   `aggregator-quote-impact.test.js` cover the aggregator. Their shared
   stage is `helpers/aggregator-harness.js`: scripted quotes served by a
   local http server, scripted receipts and chain state, around the real

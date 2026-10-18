@@ -8,15 +8,15 @@
  * test/epoch-reconstructor.test.js, running in the opposite direction —
  * the fee bug understated, this one flatters.
  *
- * Two independent failures produce it and both are covered here: the wei
- * amount being unknown, and the wei amount being known while the USD
- * price behind it is not. The second is the likelier one in production,
- * because receipt reads are cheap and reliable while price lookups are
- * quota-limited and deliberately pausable.
+ * Two different unknowns are covered here, and they are handled apart.
+ * An unknown amount of gas withholds the epoch, and the rescan reads the
+ * NFT again. A known amount whose day has no native price builds the
+ * epoch with no dollar figure for its gas and no net figure, which the
+ * Per-Day table shows as dashes; it is never priced at today's market.
  *
  * Split from test/epoch-reconstructor.test.js at the 500-line cap. The
  * whole gas story lives here: the guard, the conversion that feeds it,
- * and the retry that makes rejecting an epoch acceptable.
+ * and the retry that makes withholding an epoch acceptable.
  */
 
 "use strict";
@@ -34,50 +34,57 @@ describe("_buildClosedEpoch", () => {
    *  It runs the opposite way from the fee bug: `epochPnl = exit − entry
    *  + fees − gas`, so an unknown cost subtracted as zero reports MORE
    *  profit than the position made. Every rebalance costs gas, so a
-   *  missing value is always "not known" and never "free". */
+   *  missing amount is always "not known" and never "free". */
   describe("unknown gas is not zero", () => {
     /** Everything else known, gas the only variable. */
-    const withGas = (gasCostUsd) => ({
+    const withGas = (gasNative, gasCostUsd) => ({
       mintDate: "2026-03-15T10:00:00Z",
       closeDate: "2026-03-16T10:00:00Z",
       entryValueUsd: 100,
       exitValueUsd: 95,
       feesEarnedUsd: 2,
+      gasNative,
       gasCostUsd,
     });
 
-    it("rejects the epoch when gasCostUsd is null", () => {
-      assert.strictEqual(_buildClosedEpoch(withGas(null), 0), null);
-    });
-
-    it("rejects the epoch when gasCostUsd is undefined", () => {
-      assert.strictEqual(_buildClosedEpoch(withGas(undefined), 0), null);
+    it("rejects the epoch when the amount of gas is not known", () => {
+      assert.strictEqual(_buildClosedEpoch(withGas(null, null), 0), null);
+      assert.strictEqual(_buildClosedEpoch(withGas(undefined, 1), 0), null);
       /*- Absent entirely, which is the shape `_fetchEpochsFromChain`
-       *  actually produces: it assigns the field only once it has
-       *  resolved a cost, so an unresolved one never appears at all. */
-      const h = withGas(0);
+       *  actually produces: it assigns the fields only once it has read
+       *  the amount, so an unread one never appears at all. */
+      const h = withGas(0, 0);
+      delete h.gasNative;
       delete h.gasCostUsd;
       assert.strictEqual(_buildClosedEpoch(h, 0), null);
+    });
+
+    it("builds with no gas or net figure when the amount has no price", () => {
+      const ep = _buildClosedEpoch(withGas(0.002, null), 0);
+      assert.ok(ep, "a known amount with no price is a dash, not a gap");
+      assert.strictEqual(ep.gas, null);
+      assert.strictEqual(ep.epochPnl, null);
+      assert.strictEqual(ep.gasNative, 0.002);
     });
 
     it("still builds when the gas is a real zero", () => {
       /*- Over-rejecting here would withhold every epoch whose gas
        *  genuinely resolved to nothing, so the guard has to separate
        *  "zero" from "unknown" exactly as the fee guard does. */
-      const ep = _buildClosedEpoch(withGas(0), 0);
+      const ep = _buildClosedEpoch(withGas(0, 0), 0);
       assert.ok(ep, "a resolved $0.00 gas cost is data, not a gap");
       assert.strictEqual(ep.gas, 0);
     });
 
     it("carries the gas through without a zero fallback", () => {
-      assert.strictEqual(_buildClosedEpoch(withGas(1.75), 0).gas, 1.75);
+      assert.strictEqual(_buildClosedEpoch(withGas(0.002, 1.75), 0).gas, 1.75);
     });
 
     it("subtracts the real gas from epochPnl", () => {
       /*- The number at stake. exit − entry + fees − gas =
        *  95 − 100 + 2 − 1.75. Treating the gas as zero would report -3,
        *  which is $1.75 of profit that was never made. */
-      const ep = _buildClosedEpoch(withGas(1.75), 0);
+      const ep = _buildClosedEpoch(withGas(0.002, 1.75), 0);
       assert.strictEqual(ep.epochPnl, 95 - 100 + 2 - 1.75);
       assert.notStrictEqual(ep.epochPnl, -3);
     });
@@ -87,57 +94,45 @@ describe("_buildClosedEpoch", () => {
 // ── resolving the gas cost ───────────────────────────────────────────────────
 
 describe("_fetchEpochsFromChain — resolving the gas cost", () => {
-  /*- Two independent failures produce a fabricated $0.00 gas, and the
-   *  guard in `_buildClosedEpoch` only catches what this function
-   *  declines to set. So this is where both have to be turned into "not
-   *  known":
+  /*- The guard in `_buildClosedEpoch` only catches what this function
+   *  declines to set, so this is where the two unknowns are told apart:
    *
    *  1. the wei amount is unknown — `position-history` leaves
-   *     `gasCostWei` null when the receipt reads come back empty;
-   *  2. the wei amount is known but its USD price is not —
-   *     `actualGasCostUsd` answers 0 both when its lookup throws and
-   *     when `fetchTokenPriceUsd` returns 0, which is what the idle
-   *     pause returns with no cached price.
-   *
-   *  The second is the likelier one in production: receipt reads are
-   *  cheap and reliable, price lookups are quota-limited and pausable. */
+   *     `gasCostWei` null when the receipt reads come back empty — and
+   *     the epoch is withheld;
+   *  2. the wei amount is known but the native price on its close day
+   *     is not — `pastGasCostUsd` answers null — and the epoch builds
+   *     with no dollar figure for its gas. */
 
-  /** Load the module with one history shape and one gas price. */
+  /**
+   * Load the module with one history shape and one answer for the gas
+   * price of its close day.
+   */
   function withGas(historyPatch, gasUsd, trace = [], seen = null) {
     const Module = require("module");
     const orig = Module.prototype.require;
-    let inScope = false;
     Module.prototype.require = function (id) {
       if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       if (id === "./bot-pnl-updater")
         return {
           /*-
-           *  Both arguments are recorded, not just the first. Every
-           *  other stub in the suite ignores them, which is how the
-           *  second one could be dropped with every test still green.
+           *  Both arguments are recorded, not just the first, so a
+           *  dropped close moment shows.
            */
-          actualGasCostUsd: async (wei, when) => {
+          pastGasCostUsd: async (wei, when) => {
             if (seen) seen.push({ wei, when });
             return gasUsd;
           },
         };
       /*- Stubbed so no unit test reaches the network, and so the trace
-       *  can show WHERE the native-price fetch happened relative to the
-       *  fresh-prices scope. */
+       *  shows any lookup of today's price. */
       if (id === "./price-fetcher")
         return {
           fetchTokenPriceUsd: async () => {
-            trace.push(inScope ? "price-fetch-in-scope" : "price-fetch-bare");
+            trace.push("price-fetch");
             return 1;
           },
-          withFreshPricesAllowed: async (fn) => {
-            inScope = true;
-            try {
-              return await fn();
-            } finally {
-              inScope = false;
-            }
-          },
+          withFreshPricesAllowed: async (fn) => fn(),
         };
       if (id !== "./position-history") return orig.apply(this, arguments);
       return {
@@ -176,23 +171,25 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
     assert.deepEqual(epochs, []);
   });
 
-  it("skips it when the price behind a real cost is unknown", async () => {
-    /*- Path 2, and the one the epoch guard alone would NOT have caught:
-     *  `gasCostWei` is present and positive, so the old truthiness check
-     *  converted it happily — into $0.00, which looks like a real
-     *  figure and is subtracted as one. */
-    const epochs = await run(withGas({ gasCostWei: "5000000000000000" }, 0));
-    assert.deepEqual(epochs, [], "a zero USD on a real cost means no price");
+  it("builds with no gas figure when its day has no native price", async () => {
+    /*- The amount is known, so the period belongs in the table; only its
+     *  dollar figure is not, and the Per-Day row shows a dash for it. */
+    const epochs = await run(withGas({ gasCostWei: "5000000000000000" }, null));
+    assert.strictEqual(epochs.length, 1);
+    assert.strictEqual(epochs[0].gas, null, "no dollar figure, not $0.00");
+    assert.strictEqual(epochs[0].epochPnl, null);
+    assert.strictEqual(epochs[0].gasNative, 0.005);
   });
 
   it("builds when the cost genuinely resolves to zero", async () => {
     /*- A zero wei amount needs no price to convert, so it is knowable
-     *  even while prices are paused. Rejecting it would withhold the
-     *  epoch over a number that is not in doubt. */
-    const epochs = await run(withGas({ gasCostWei: "0" }, 0));
+     *  whatever the price lookups answer. */
+    const seen = [];
+    const epochs = await run(withGas({ gasCostWei: "0" }, null, [], seen));
     assert.strictEqual(epochs.length, 1);
     assert.strictEqual(epochs[0].gas, 0);
     assert.strictEqual(epochs[0].gasNative, 0);
+    assert.strictEqual(seen.length, 0, "nothing to price");
   });
 
   it("converts a real cost and records both units", async () => {
@@ -206,10 +203,7 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
   it("prices the gas at the moment the epoch closed", async () => {
     /*-
      *  Gas charged to an epoch is the rebalance that closed it, so it is
-     *  valued then rather than at today's market. Nothing else in the
-     *  suite pins this: every other stub takes no arguments, so dropping
-     *  the second one would leave the whole suite green while silently
-     *  re-pricing years of history at this morning's rate.
+     *  valued then rather than at today's market.
      */
     const seen = [];
     await run(
@@ -235,13 +229,13 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
     );
   });
 
-  it("falls back to today when the close moment is unknown", async () => {
+  it("leaves the gas with no dollar figure when its close is unknown", async () => {
     /*-
-     *  An absent close date is not a reason to withhold the epoch. The
-     *  converter is handed nothing and prices at today.
+     *  With no close date there is no day to price at, so there is no
+     *  figure: the period still builds, and its gas shows a dash.
      */
     const seen = [];
-    await run(
+    const epochs = await run(
       withGas(
         { gasCostWei: "2000000000000000", closeDate: null },
         0.03,
@@ -249,55 +243,34 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
         seen,
       ),
     );
-    assert.strictEqual(seen[0].when, undefined);
+    assert.strictEqual(seen.length, 0, "no moment, so nothing to ask");
+    assert.strictEqual(epochs.length, 1);
+    assert.strictEqual(epochs[0].gas, null);
   });
 
-  it("leaves an NFT rejected for gas out of the resume buffer", async () => {
-    /*- What makes rejection acceptable: the NFT stays on the to-do
+  it("never prices a past period's gas at today's price", async () => {
+    const trace = [];
+    await run(withGas({ gasCostWei: "2000000000000000" }, null, trace));
+    assert.deepEqual(trace, [], "today's price is not a past day's");
+  });
+
+  it("leaves an NFT with an unread gas amount out of the resume buffer", async () => {
+    /*- What makes withholding acceptable: the NFT stays on the to-do
      *  list, so the rescan re-reads exactly it rather than inheriting
      *  the gap. Same contract as an unknown fee. */
     const buf = new Map();
-    await run(withGas({ gasCostWei: "5000000000000000" }, 0), buf);
+    await run(withGas({ gasCostWei: null }, 0.02), buf);
     assert.strictEqual(buf.size, 0, "a skipped NFT must be re-read");
-  });
-
-  it("resolves the native price past the idle pause before converting", async () => {
-    /*-
-     *  Gas is priced at the day it was spent, like exit values and fees.
-     *  The CURRENT price is its fallback, for a day no historical source
-     *  can answer — and that fallback has to be reachable.
-     *
-     *  `bot.js` pauses price lookups at startup unless
-     *  `--start-with-price-lookups-unpaused` is passed, and only browser
-     *  activity lifts the pause — which a headless run never has. A
-     *  paused lookup returns the last cached value, or 0 with nothing
-     *  cached. `actualGasCostUsd` reports that 0 as the gas cost, the
-     *  guard reads a zero USD on a real wei amount as "price unknown",
-     *  and EVERY epoch in the chain is rejected: on headless the P&L
-     *  history would never build at all.
-     *
-     *  So the price must be resolved inside a fresh-prices scope. Once
-     *  per reconstruction, not once per NFT — everything after reads it
-     *  from cache, which is what keeps the pause doing its job. */
-    const trace = [];
-    const mod = withGas({ gasCostWei: "2000000000000000" }, 0.03, trace);
-    await run(mod);
-    assert.deepEqual(
-      trace,
-      ["price-fetch-in-scope"],
-      "the native price must be fetched exactly once, inside the scope",
-    );
   });
 
   it("schedules the retry, through reconstructEpochs itself", async () => {
     /*- Closes the loop on the real entry point rather than trusting the
-     *  links to compose: a gas rejection shortens the history, which
-     *  raises `_epochHistoryIncomplete`, which is the only thing that
-     *  makes the 30-minute timer in src/bot-loop.js try again. Without
-     *  that last step a withheld epoch stays withheld until a restart,
-     *  and rejecting it would be strictly worse than the $0.00 it
-     *  replaced. */
-    const mod = withGas({ gasCostWei: "5000000000000000" }, 0);
+     *  links to compose: an unread gas amount shortens the history,
+     *  which raises `_epochHistoryIncomplete`, which is the only thing
+     *  that makes the 30-minute timer in src/bot-loop.js try again.
+     *  Without that last step a withheld epoch stays withheld until a
+     *  restart. */
+    const mod = withGas({ gasCostWei: null }, 0.02);
     const botState = { activePosition: null };
     const n = await mod.reconstructEpochs({
       pnlTracker: {

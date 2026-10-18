@@ -151,6 +151,29 @@ function _perSecond(ms) {
 const _ILG_EXAMPLE_HOLD_USD = 1000;
 
 /**
+ * The worked example's rejected position, as the clause the help ends on.
+ *
+ * The position is worth the floor less a fifth of the loss the guard
+ * allows, but never less than half the floor, so the figure stays above
+ * $0 at every setting. A guard of 100% puts the floor at $0, which no
+ * position can come out below, so there the clause says the guard never
+ * rejects one.
+ *
+ * @param {number} floor        The floor, in dollars.
+ * @param {number} allowedLoss  The loss the guard allows, in dollars.
+ * @returns {string} The clause, with no closing full stop.
+ */
+function _ilgExampleRejected(floor, allowedLoss) {
+  if (floor <= 0)
+    return (
+      "no position can come out below $0, so at this setting the Guard " +
+      "never rejects one"
+    );
+  const rejected = Math.max(floor - allowedLoss / 5, floor / 2);
+  return `at $${_usd(rejected)} it is rejected and left alone`;
+}
+
+/**
  * Every figure the help copy quotes, worded for a sentence.
  *
  * Takes values already resolved, whichever way the caller resolves them:
@@ -229,7 +252,7 @@ function helpFigures({
     ilgExampleHoldUsd: _usd(_ILG_EXAMPLE_HOLD_USD),
     ilgExampleFloorUsd: _usd(floor),
     ilgExampleAboveUsd: _usd(floor + (allowedLoss * 2) / 5),
-    ilgExampleBelowUsd: _usd(floor - allowedLoss / 5),
+    ilgExampleRejected: _ilgExampleRejected(floor, allowedLoss),
     ilgRetryFirst: duration(retry.baseMs / 1000),
     ilgRetryLadder: _ladder(retry.baseMs / 1000, retry.maxMs / 1000, 4)
       .map(shortDuration)

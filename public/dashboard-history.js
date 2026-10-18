@@ -74,17 +74,31 @@ function _profitFor(d, fees, gas) {
   return Math.round((fees - gas + il) * 100) / 100;
 }
 
+/**
+ * A day's gas in dollars, or null when a period closing on it has no gas
+ * price: the server sends `gasCost: null`, and the row's Gas, Profit and
+ * Net P&L show a dash.
+ * @param {object} d  Day record.
+ * @returns {number|null}
+ */
+function _dayGas(d) {
+  if (d.gasCost === null) return null;
+  return d.gasCost || d.gas || 0;
+}
+
 /** Build a single Daily P&L row fragment from a day record. */
 function _buildPnlRow(d, netVal) {
   const frag = cloneTpl("tplDailyPnlRow");
   if (!frag) return null;
   const mp = d.missingPrice || d.noData;
   const fees = d.feePnl || d.fees || 0;
-  const gas = d.gasCost || d.gas || 0;
+  const gas = _dayGas(d);
   const priceChange = d.priceChangePnl || 0;
   const inOut = d.inOut || 0;
-  const profit = _profitFor(d, fees, gas);
-  const v = (val) => (mp ? _EMDASH : _tblUsd(val));
+  const profit = gas === null ? null : _profitFor(d, fees, gas);
+  // A dash, uncoloured, for a figure not known (null) or a day missing a price.
+  const v = (val) => (mp || val === null ? _EMDASH : _tblUsd(val));
+  const color = (val) => (mp || val === null ? "" : _cc(val));
   const set = (k, val, cls) => {
     const el = frag.querySelector(`[data-tpl="${k}"]`);
     if (!el) return;
@@ -94,14 +108,10 @@ function _buildPnlRow(d, netVal) {
   set("date", d.date || _EMDASH);
   set("fees", v(fees));
   set("gas", v(gas));
-  set("priceChange", v(priceChange), mp ? "" : _cc(priceChange));
-  set(
-    "profit",
-    profit === null ? _EMDASH : v(profit),
-    mp || profit === null ? "" : _cc(profit),
-  );
-  set("net", v(netVal), mp ? "" : _cc(netVal));
-  set("inOut", v(inOut), mp ? "" : _cc(inOut));
+  set("priceChange", v(priceChange), color(priceChange));
+  set("profit", v(profit), color(profit));
+  set("net", v(netVal), color(netVal));
+  set("inOut", v(inOut), color(inOut));
   return frag;
 }
 
@@ -136,12 +146,11 @@ export function renderDailyPnl(dailyPnl) {
   const page = _pnlPage,
     start = page * _PNL_PAGE_SIZE;
   const slice = dailyPnl.slice(start, start + _PNL_PAGE_SIZE);
-  const nets = dailyPnl.map(
-    (d) =>
-      (d.feePnl || d.fees || 0) +
-      (d.priceChangePnl || 0) -
-      (d.gasCost || d.gas || 0),
-  );
+  const nets = dailyPnl.map((d) => {
+    const gas = _dayGas(d);
+    if (gas === null) return null;
+    return (d.feePnl || d.fees || 0) + (d.priceChangePnl || 0) - gas;
+  });
   tbody.replaceChildren();
   for (let si = 0; si < slice.length; si++) {
     const frag = _buildPnlRow(slice[si], nets[start + si]);

@@ -24,6 +24,7 @@ require("global-jsdom/register");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { ethers } = require("ethers");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -164,25 +165,41 @@ describe("isChainSupported()", () => {
   });
 });
 
-// ── getProviderLabel + setFactoryContext (legacy single-arg wrapper) ───────
+// ── getProviderLabel / getProviderFor: from the position's own key ─────────
 
-describe("getProviderLabel() + setFactoryContext()", () => {
-  it(
-    "setFactoryContext ignores non-string / empty input (defensive) — " +
-      "any later getProviderLabel call still returns 9mm Pro V3 once a real " +
-      "factory has been set",
-    () => {
-      mod.setFactoryContext(null);
-      mod.setFactoryContext("");
-      mod.setFactoryContext(undefined);
-      // Now set a real factory and confirm subsequent lookup works.
-      mod.setFactoryContext(FACTORY_9MM);
-      assert.strictEqual(mod.getProviderLabel(PM_9MM), "9mm Pro V3");
-    },
-  );
-
-  it("returns the displayName once factory context is set", () => {
-    mod.setFactoryContext(FACTORY_9MM);
+describe("getProviderLabel() — from the position's contract and the chain", () => {
+  /*-
+   *  The position manager in a position's key, and the chain the
+   *  dashboard learned at startup, name the provider. No address the
+   *  status answer carries outside a position's key is read, so an old
+   *  address an earlier release saved changes nothing on screen.
+   */
+  it("names the provider with nothing from the status answer", async () => {
+    await learnActiveChain("pulsechain");
     assert.strictEqual(mod.getProviderLabel(PM_9MM), "9mm Pro V3");
+    assert.strictEqual(
+      mod.getProviderLabel(PM_9MM.toLowerCase()),
+      "9mm Pro V3",
+    );
+  });
+
+  it("names none for a contract the list does not hold", async () => {
+    await learnActiveChain("pulsechain");
+    const { pm } = _unknownPair("ff0003");
+    assert.strictEqual(mod.getProviderLabel(pm), undefined);
+  });
+
+  it("names none on a chain the entry is not verified for", async () => {
+    await learnActiveChain("some-other-chain");
+    try {
+      assert.strictEqual(mod.getProviderLabel(PM_9MM), undefined);
+    } finally {
+      await learnActiveChain("pulsechain");
+    }
+  });
+
+  it("returns the whole entry, for the Dex Detail Page", async () => {
+    await learnActiveChain("pulsechain");
+    assert.strictEqual(mod.getProviderFor(PM_9MM).displayName, "9mm Pro V3");
   });
 });

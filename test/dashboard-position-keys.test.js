@@ -7,13 +7,13 @@
  *   contract, as well as the NFT number or the pool.
  *
  *   The Current panel's deposit and realized-gains figures were kept
- *   under the NFT number alone, and the price override under the token
- *   pair and fee alone, so two positions sharing an NFT
- *   number, or the same pair under another wallet, contract or chain,
- *   would have shared them. The user, 2026-10-17: "all such values need
- *   to be stored under a fully-qualified key". Driven through the real
- *   modules under jsdom, once the dashboard has learned its chain the way
- *   startup does; until then no such key is built at all.
+ *   under the NFT number alone, so two positions sharing an NFT number,
+ *   or the same pair under another wallet, contract or chain, would have
+ *   shared them. The user, 2026-10-17: "all such values need to be
+ *   stored under a fully-qualified key". Driven through the real modules
+ *   under jsdom, once the dashboard has learned its chain the way startup
+ *   does; until then no such key is built at all. (The price override is
+ *   kept by the server alone: test/dashboard-price-override-dialog.test.js.)
  */
 
 require("global-jsdom/register");
@@ -30,13 +30,11 @@ const T1 = "0x95B303987A60C71504D99Aa1b13B4DA07b0790ab";
 let chainMod;
 let deposit;
 let store;
-let priceOverride;
 
 before(async () => {
   chainMod = await import("../public/dashboard-chain.js");
   deposit = await import("../public/dashboard-data-deposit.js");
   store = await import("../public/dashboard-positions-store.js");
-  priceOverride = await import("../public/dashboard-price-override.js");
 });
 
 beforeEach(() => {
@@ -116,28 +114,5 @@ describe("once the chain is known", () => {
     localStorage.setItem(key, "250");
     assert.equal(deposit._loadNum(key, false), 250);
     assert.match(key, /^9mm_deposit_pos_pulsechain_0x1{40}_0xcc05/);
-  });
-
-  it("reads a price override under the pool's full key, not the old one", () => {
-    activate({});
-    const old =
-      "9mm_price_override_" +
-      T0.toLowerCase() +
-      "_" +
-      T1.toLowerCase() +
-      "_10000";
-    localStorage.setItem(old, JSON.stringify({ price0: 9, price1: 9 }));
-    assert.deepEqual(priceOverride.loadPriceOverrides(), {
-      price0: 0,
-      price1: 0,
-    });
-    localStorage.setItem(
-      deposit._poolKeyFrom("9mm_price_override_", WALLET, PM, T0, T1, 10000),
-      JSON.stringify({ price0: 1.5, price1: 2.5 }),
-    );
-    assert.deepEqual(priceOverride.loadPriceOverrides(), {
-      price0: 1.5,
-      price1: 2.5,
-    });
   });
 });

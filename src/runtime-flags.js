@@ -25,6 +25,7 @@ const { loadMergedDefaults } = require("./load-merged-defaults");
 const { assertTimerSec } = require("./timer-bounds");
 const { SETTING_BOUNDS } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
+const { readEnv } = require("./env-settings");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
@@ -35,39 +36,32 @@ const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
 dotenv.config();
 
 /**
- * Parse a positive integer from a string, returning `fallback` on failure.
- * @param {string|undefined} value
- * @param {number}           fallback
- * @returns {number}
- */
-function parsePositiveInt(value, fallback) {
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-/**
- * Parse a positive integer of seconds that becomes a timer delay.
+ * Read a whole number of seconds that becomes a timer delay: the
+ * environment variable `envName` when it is set, else `fallbackSec`.
  *
- * The bounds live in `src/timer-bounds.js`, shared with the other road
- * to the same settings, the JSON files an operator can override.
- * Separate copies of the rule are how they once came to disagree.
+ * The variable is read by its rule in src/env-settings.js, so text that
+ * is not a whole number in plain digits stops startup, naming it. The
+ * bounds live in `src/timer-bounds.js`, shared with the other road to
+ * the same settings, the JSON files an operator can override. Separate
+ * copies of the rule are how they once came to disagree.
  *
  * Out of range throws, so the app stops at startup naming the setting,
- * rather than running on a schedule its operator did not choose.
+ * rather than running on a schedule its operator did not choose. A bad
+ * fallback is held to the rule too, which is not hypothetical:
+ * `TX_CANCEL_SEC` defaults to `deadlineSec x cancelToDeadlineMultiple`,
+ * both operator-editable.
  *
- * @param {string|undefined} value  Raw environment override, if any.
- * @param {number} fallbackSec      Shipped default; also sets a ceiling.
- * @param {string} envName          Name as `.env` spells it.
- * @param {string} key              Canonical name, for the bounds table.
+ * @param {string} envName      Name as `.env` spells it.
+ * @param {number} fallbackSec  The JSON value it overrides; also sets a
+ *   ceiling.
+ * @param {string} key          Canonical name, for the bounds table.
+ * @param {object} [env]        The environment; `process.env` unless a
+ *   test reads another.
  * @returns {number} Seconds, within range.
- * @throws {Error} When the resolved value is unusable as a delay.
+ * @throws {Error} When the value is unusable as a delay.
  */
-function parseTimerSec(value, fallbackSec, envName, key) {
-  /*- `parsePositiveInt` vets the OVERRIDE and hands back the fallback
-   *  untouched, so a bad default arrives here intact — which is not
-   *  hypothetical: `TX_CANCEL_SEC` defaults to
-   *  `deadlineSec x cancelToDeadlineMultiple`, both operator-editable. */
-  const sec = parsePositiveInt(value, fallbackSec);
+function parseTimerSec(envName, fallbackSec, key, env = process.env) {
+  const sec = readEnv(envName, env) ?? fallbackSec;
   try {
     return assertTimerSec({
       sec,
@@ -87,39 +81,35 @@ function parseTimerSec(value, fallbackSec, envName, key) {
 }
 
 /**
- * Parse a Bot Setting from `.env`, held to its range in setting-bounds.json.
+ * Read a Bot Setting from `.env`, held to its range in setting-bounds.json.
  *
  * The range is the one a save from the dashboard is held to and the one
  * the defaults files are read against, so a setting has one range
  * whichever road it comes by. A variable left unset, or set to nothing,
  * leaves `fallback` standing: the value the defaults files give. A set
- * one must be a plain decimal number inside the range, or startup stops
- * and names the variable and the range, as it does for a timer setting.
- * A value quietly replaced, rounded or cut short would leave the bot on a
+ * one is read by its rule in src/env-settings.js, a plain decimal
+ * number, and must be inside the range, or startup stops and names the
+ * variable and the range, as it does for a timer setting. A value
+ * quietly replaced, rounded or cut short would leave the bot on a
  * setting nobody chose.
  *
- * @param {string|undefined} value  The variable as `.env` gives it.
+ * @param {string} envName   The variable's name.
  * @param {number} fallback  The value when the variable is unset.
- * @param {string} envName   The variable's name, for the message.
  * @param {string} key       The setting's key in setting-bounds.json.
+ * @param {object} [env]     The environment; `process.env` unless a test
+ *   reads another.
  * @returns {number} The value, inside its range.
  * @throws {Error} When the variable is set to anything else, so the app
  *   does not start on a value its range refuses.
  */
-function parseBoundedSetting(value, fallback, envName, key) {
-  if (value === undefined || value.trim() === "") return fallback;
-  const text = value.trim();
-  /*-
-   *  Digits and points only, so an exponent, a hex prefix or a sign
-   *  other than minus is refused rather than read; a malformed number
-   *  such as "1.2.3" reads as NaN, which no range holds.
-   */
-  const n = /^-?[\d.]+$/.test(text) ? Number(text) : NaN;
+function parseBoundedSetting(envName, fallback, key, env = process.env) {
+  const value = readEnv(envName, env);
+  if (value === undefined) return fallback;
   const bound = SETTING_BOUNDS[key];
-  if (withinBound(n, bound)) return n;
+  if (withinBound(value, bound)) return value;
   throw new Error(
     `[config] ${envName} in .env must be ${boundText(bound)}; it is ` +
-      `${_show(value)}. Correct it there, or remove it to use the ` +
+      `${_show(env[envName])}. Correct it there, or remove it to use the ` +
       "default, and restart.",
   );
 }
@@ -265,16 +255,14 @@ const TX_TYPE = resolveTxType(CHAIN_NAME, CHAIN.transactionEnvelopeType);
 
 /** Raw hex private key for the signing wallet (alternative to the encrypted
  *  app-config/user-configurable/wallet.json). */
-const PRIVATE_KEY = process.env.PRIVATE_KEY || null;
+const PRIVATE_KEY = readEnv("PRIVATE_KEY") ?? null;
 
-/** Dry-run mode — read-only, no transactions. Set DRY_RUN=1 / true / yes to enable. */
-const DRY_RUN = ["1", "true", "yes"].includes(
-  (process.env.DRY_RUN || "").toLowerCase(),
-);
+/** Dry-run mode — read-only, no transactions. Set DRY_RUN=true to enable. */
+const DRY_RUN = readEnv("DRY_RUN") === true;
 
-/** Verbose logging (--verbose or -v on the command line, or VERBOSE=1 env). */
+/** Verbose logging (--verbose or -v on the command line, or VERBOSE=true env). */
 const VERBOSE =
-  process.env.VERBOSE === "1" ||
+  readEnv("VERBOSE") === true ||
   process.argv.includes("--verbose") ||
   process.argv.includes("-v");
 
@@ -285,7 +273,7 @@ const VERBOSE =
  *  loading the rest of the app's configuration, and so the two read the
  *  same answer.
  */
-const PORT = parsePositiveInt(process.env.PORT, APP_RUNTIME.server.port);
+const PORT = readEnv("PORT") ?? APP_RUNTIME.server.port;
 
 /*-
  *  Network interface the dashboard server binds to: HOST from the
@@ -294,10 +282,9 @@ const PORT = parsePositiveInt(process.env.PORT, APP_RUNTIME.server.port);
  *  `npm run gentle-stop` can ask the server at its own address without
  *  loading the rest of the app's configuration.
  */
-const HOST = process.env.HOST || APP_RUNTIME.server.host;
+const HOST = readEnv("HOST") ?? APP_RUNTIME.server.host;
 
 module.exports = {
-  parsePositiveInt,
   parseTimerSec,
   parseBoundedSetting,
   resolveChainName,

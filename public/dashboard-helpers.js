@@ -460,17 +460,6 @@ export function isFullRangeSpread(spread) {
   return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
 }
 
-/**
- * Return the Unix timestamp (ms) of the next local midnight.
- * Used by the throttle module for daily counter resets.
- * @returns {number}
- */
-export function nextMidnight() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime() + 86400000;
-}
-
 // ── Disclaimer cookie helpers ───────────────────────────────────────────────
 
 /** Cookie name for the "Don't show this again" preference. */

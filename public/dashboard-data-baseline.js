@@ -46,24 +46,48 @@ function _fillBaselineCtx() {
   ctx.replaceChildren(frag);
 }
 
+/**
+ * Show one of the dialog's two messages and hide the other: the entry
+ * value found, with its note, or the prices that could not be found. Each
+ * has its own lines, so showing one never removes the other's.
+ * @param {boolean} priceMissing  Whether the price message is the one.
+ */
+function _showBaselineMessage(priceMissing) {
+  for (const id of ["hodlBaselineFound", "hodlBaselineFoundNote"])
+    g(id)?.classList.toggle("9mm-pos-mgr-hidden", priceMissing);
+  g("hodlBaselinePriceMsg")?.classList.toggle(
+    "9mm-pos-mgr-hidden",
+    !priceMissing,
+  );
+}
+
+/**
+ * Open the IL Baseline dialog with one of its two messages: the entry
+ * value just found, or the coins whose prices could not be found.
+ * @param {object} d             The status answer for the position.
+ * @param {boolean} isFallback   The entry value could not be priced.
+ * @param {boolean} isNew        The entry value was just found.
+ * @param {boolean} curMissing   A coin has no current price.
+ * @param {string[]} missing     The coins with no price, by name.
+ */
 export function _showBaselineModal(d, isFallback, isNew, curMissing, missing) {
   const amt = g("hodlBaselineAmt"),
-    msg = g("hodlBaselineMsg"),
     date = g("hodlBaselineDate");
   if (!amt) return;
   _fillBaselineCtx();
-  if ((isFallback || curMissing) && !isNew) {
+  const priceMissing = (isFallback || curMissing) && !isNew;
+  if (priceMissing) {
+    const msg = g("hodlBaselinePriceMsg");
     if (msg)
       msg.textContent =
         (missing.length
           ? "Price unavailable for " + missing.join(" and ") + ". "
           : "") + 'Use "Edit" next to Current Value to enter prices manually.';
-    amt.textContent = "";
-    if (date) date.textContent = "";
   } else {
     amt.textContent = _fmtUsd(d.hodlBaseline.entryValue);
     if (date) date.textContent = d.hodlBaseline.mintDate || "\u2014";
   }
+  _showBaselineMessage(priceMissing);
   const modal = g("hodlBaselineModal");
   if (modal) modal.className = "modal-overlay";
   const _setKey = (p, s) => {

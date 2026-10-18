@@ -211,17 +211,30 @@ function _currentPnl(
   };
 }
 
-/** Apply client-provided price overrides. Force mode overrides even valid fetched prices. */
-function _applyPriceOverrides(prices, body) {
-  const force = body.priceOverrideForce;
-  if (body.priceOverride0 > 0 && (force || prices.price0 <= 0))
-    prices.price0 = body.priceOverride0;
-  if (body.priceOverride1 > 0 && (force || prices.price1 <= 0))
-    prices.price1 = body.priceOverride1;
+/**
+ * Apply the price overrides the server keeps for the position, saved
+ * under its fully-qualified key by `POST /api/config`, as the bot applies
+ * a managed position's. Force mode overrides even valid fetched prices.
+ * @param {{price0: number, price1: number}} prices  Fetched; replaced in place.
+ * @param {object} saved  The position's saved settings, `{}` when none.
+ */
+function _applyPriceOverrides(prices, saved) {
+  const force = saved.priceOverrideForce === true;
+  if (saved.priceOverride0 > 0 && (force || prices.price0 <= 0))
+    prices.price0 = saved.priceOverride0;
+  if (saved.priceOverride1 > 0 && (force || prices.price1 <= 0))
+    prices.price1 = saved.priceOverride1;
 }
 
-/** Fetch pool state, prices, amounts, value — the non-P&L data. */
-async function _fetchPoolData(provider, ethersLib, body, privateKey) {
+/**
+ * Fetch pool state, prices, amounts, value — the non-P&L data.
+ * @param {object} provider
+ * @param {object} ethersLib
+ * @param {object} body        The details request.
+ * @param {string} privateKey
+ * @param {object} saved       The position's saved settings, `{}` when none.
+ */
+async function _fetchPoolData(provider, ethersLib, body, privateKey, saved) {
   const position = {
     tokenId: body.tokenId,
     token0: body.token0,
@@ -240,7 +253,7 @@ async function _fetchPoolData(provider, ethersLib, body, privateKey) {
   const prices = await fetchTokenPrices(body.token0, body.token1);
   const fetchedPrice0 = prices.price0,
     fetchedPrice1 = prices.price1;
-  _applyPriceOverrides(prices, body);
+  _applyPriceOverrides(prices, saved);
   const { price0, price1 } = prices;
   const value = positionValueUsd(position, ps, price0, price1);
   const amounts = rangeMath.positionAmounts(
@@ -353,6 +366,14 @@ async function computeQuickDetails(
   diskConfig,
   privateKey,
 ) {
+  const posKey = compositeKey(
+    config.CHAIN_NAME,
+    body.walletAddress || "",
+    body.contractAddress || config.POSITION_MANAGER,
+    body.tokenId,
+  );
+  // What the server keeps for this position, its price overrides among it.
+  const saved = diskConfig.positions[posKey] ?? {};
   const {
     position,
     ps,
@@ -366,13 +387,7 @@ async function computeQuickDetails(
     composition,
     poolShare0Pct,
     poolShare1Pct,
-  } = await _fetchPoolData(provider, ethersLib, body, privateKey);
-  const posKey = compositeKey(
-    config.CHAIN_NAME,
-    body.walletAddress || "",
-    body.contractAddress || config.POSITION_MANAGER,
-    body.tokenId,
-  );
+  } = await _fetchPoolData(provider, ethersLib, body, privateKey, saved);
   const { baseline, entryValue } = await _resolveEntryValue(
     provider,
     ethersLib,

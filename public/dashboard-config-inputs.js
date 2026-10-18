@@ -20,7 +20,7 @@
 "use strict";
 
 import { g } from "./dashboard-helpers.js";
-import { isInputDirty } from "./dashboard-data-cache.js";
+import { isInputDirty, clearDirtyInputs } from "./dashboard-data-cache.js";
 import { applySavedMinInterval } from "./dashboard-throttle.js";
 import { rememberGoodInput } from "./dashboard-config-save.js";
 
@@ -35,6 +35,42 @@ const _CONFIG_INPUT_MAP = {
   offsetToken0Pct: "inOffsetToken0",
   approvalMultiple: "inApprovalMultiple",
 };
+
+/*-
+ *  The Bot Settings boxes holding the settings of the position on
+ *  screen. Approval Multiple is in the map above, but it is the
+ *  install's, shared by every position, so it is not one of them.
+ */
+const _POSITION_INPUT_IDS = Object.freeze([
+  "inMinInterval",
+  "inMaxReb",
+  "inOorTimeout",
+  "inIlGuard",
+  "inOorThreshold",
+  "autoCompoundThreshold",
+  "inOffsetToken0",
+  "inOffsetToken1",
+  "inRangeWidth",
+  "inSlipToken0",
+  "inSlipToken1",
+]);
+
+/**
+ * Empty the Bot Settings boxes holding a position's settings, at a
+ * switch to another position, so none shows the previous position's
+ * value: each shows its dash placeholder until the new position's
+ * settings arrive. `populateConfigInputs` fills them from the first
+ * status answer carrying the position's data, and the per-poll syncs
+ * (slippage, range width) fill any box left empty. A switch abandons an
+ * edit not yet saved, so the dirty flags go too.
+ */
+export function emptyPositionInputs() {
+  for (const id of _POSITION_INPUT_IDS) {
+    const el = g(id);
+    if (el) el.value = "";
+  }
+  clearDirtyInputs();
+}
 
 /* Map of GLOBAL server config key → form input id.  These keys live in
  * `_diskConfig.global` (spread into `/api/status` response), so they

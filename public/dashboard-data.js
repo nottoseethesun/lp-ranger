@@ -29,6 +29,13 @@ import {
   isViewingClosedPos,
   refetchClosedPosHistory,
 } from "./dashboard-closed-pos.js";
+import { askDetailsIfOwed } from "./dashboard-unmanaged.js";
+import {
+  isPositionDataStale,
+  markPositionDataFresh,
+  noteStatusAnswerFor,
+  forgetFreshAnswer,
+} from "./dashboard-stale-data.js";
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import {
   _wireDepositKpis,
@@ -335,6 +342,8 @@ export function resetHistoryFlag() {
 }
 export function resetPollingState() {
   _lastStatus = null;
+  // No answer is kept, so none is on screen.
+  forgetFreshAnswer();
   resetHistoryFlag();
   resetEventLogTrackers();
   resetSoundTrackers();
@@ -405,6 +414,24 @@ function _syncManagedAndGlobals(data) {
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";
 const _LO = "color:#0f0;background:#012;padding:1px 4px;border-radius:2px";
+/**
+ * While the figures on screen are stale, ask again for the answer that
+ * makes them fresh, in case its request went unanswered or was never
+ * sent: a closed position's history, an unmanaged one's details. The
+ * details are never sent at a switch when the managed list kept from a
+ * previous visit says the position is managed and this answer says it is
+ * not. Neither is asked while one about the same position is out or has
+ * been answered, nor the details while the wallet is locked. An open
+ * managed position's answer is this status answer itself, marked fresh
+ * once its figures are painted.
+ */
+function _askOwedAnswer() {
+  const a = posStore.getActive();
+  if (!a || !isPositionDataStale()) return;
+  if (isViewingClosedPos()) refetchClosedPosHistory();
+  else if (!isPositionManaged(a.tokenId)) askDetailsIfOwed(a);
+}
+
 function _applyManagedUpdates(data, managed) {
   if (!managed) return;
   syncActivePosition(data);
@@ -415,6 +442,8 @@ function _applyManagedUpdates(data, managed) {
 
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
+  // Read for the position on screen, it replaces any other position's.
+  noteStatusAnswerFor(posStore.getActive());
   /*- Single Manage-UI paint per poll.  Runs BEFORE any branch that
    *  may early-return (e.g. cross-wallet skip below), so the button
    *  always reflects current server state every 3 s regardless of
@@ -466,6 +495,7 @@ function updateDashboardFromStatus(data) {
   populateCompoundHistoryOnce(data, _pl, posStore.getActive()?.tokenId);
   updateHistoryFromStatus(data);
   _updatePriceMarker(data);
+  _askOwedAnswer();
   if (isViewingClosedPos()) return;
   const _a2 = posStore.getActive();
   const _managed = _a2 && isPositionManaged(_a2.tokenId);
@@ -486,6 +516,8 @@ function updateDashboardFromStatus(data) {
   _applyManagedUpdates(data, _managed);
   reapplyPrivacyBlur();
   clearDirtyInputs();
+  // An open managed position's figures are this answer's, now painted.
+  if (_managed && data._hasPositionData) markPositionDataFresh(_a2);
 }
 import {
   _computeSyncStatus,

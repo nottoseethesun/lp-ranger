@@ -20,6 +20,9 @@ const {
 } = require("../src/bot-cycle");
 const config = require("../src/config");
 const { loadMergedDefaults } = require("../src/load-merged-defaults");
+const {
+  EVENT_DEFAULTS,
+} = require("../src/telegram-notifications/telegram-events");
 const { DRAINED_RETIRE_MS, SWAP_BACKOFF_BASE_MS, SWAP_BACKOFF_MAX_MS } = config;
 const {
   _isTimeoutExpired,
@@ -173,7 +176,7 @@ describe("the OOR Timeout alert", () => {
     };
     tg.setBotToken("tok");
     tg.setChatId("123");
-    tg.setEnabledEvents(tg.EVENT_DEFAULTS);
+    tg.setEnabledEvents(EVENT_DEFAULTS);
   });
   afterEach(() => {
     globalThis.fetch = realFetch;

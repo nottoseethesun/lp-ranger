@@ -17,6 +17,7 @@
 const path = require("path");
 const { configuredErrorLogPath } = require("./error-log");
 const { getActiveLogFilePath } = require("./log-file");
+const { managedPositionList } = require("./position-state-routes");
 
 /**
  * The file the server is logging to, relative to where it runs, or null
@@ -27,7 +28,6 @@ function _logFileForDisplay() {
   const abs = getActiveLogFilePath();
   return abs === null ? null : path.relative(process.cwd(), abs);
 }
-const { managedPositionList } = require("./position-state-routes");
 
 /**
  * Build the `GET /api/status` route handler.
@@ -90,7 +90,6 @@ function createApiStatusHandler(deps) {
         port: config.PORT,
         host: config.HOST,
         rpcUrl: config.RPC_URLS[0],
-        positionManager: config.POSITION_MANAGER,
         /*- Single source of truth for the LP-provider label is
          *  app-config/app-defaults-for-user-configurable/lp-providers.json
          *  (composite factory+positionManager-keyed map, also served
@@ -119,7 +118,6 @@ function createApiStatusHandler(deps) {
         swapRouteLabel: primaryRouteLabel(),
         compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
         compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
-        factory: config.FACTORY,
         rescanPricesTimeoutMs: config.RESCAN_PRICES_TIMEOUT_MS,
         // logging.json → errorLogPath, for the Reload Current Position dialog.
         errorLogPath: configuredErrorLogPath(),

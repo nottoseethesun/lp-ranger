@@ -117,9 +117,6 @@
                           "type": "string",
                           "description": "The endpoint currently in use — the live primary, which changes the moment an operator adds or promotes one. Not the value resolved at startup."
                         },
-                        "positionManager": {
-                          "type": "string"
-                        },
                         "managedPositions": {
                           "type": "array",
                           "items": {
@@ -1060,6 +1057,10 @@
                     "dashboardPollIntervalMs": {
                       "type": "integer",
                       "description": "How often the dashboard asks for fresh figures, in milliseconds."
+                    },
+                    "staleDataCheckIntervalMs": {
+                      "type": "integer",
+                      "description": "How often the dashboard checks whether the figures it shows are still another position's, in milliseconds."
                     },
                     "reloadMaxWaitMs": {
                       "type": "integer",

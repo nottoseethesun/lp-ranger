@@ -16,7 +16,6 @@ import {
   act,
   ACT_ICONS,
   fmtCountdown,
-  nextMidnight,
   botConfig,
   savePositionOorThreshold,
   compositeKey,
@@ -37,37 +36,70 @@ import { uiSetting, uiSettingsLoaded } from "./dashboard-ui-settings.js";
  */
 import { resolvedBotDefaults } from "./dashboard-help-figures.js";
 
-// Late-bound import to avoid circular dep issues at evaluation time.
+// Late-bound imports to avoid circular dep issues at evaluation time.
 // Populated by dashboard-init.js after all modules load.
 let _positionRangeVisual = null;
+let _getLastStatus = null;
 
 /**
  * Inject data references after all modules are loaded.
  * Called once from dashboard-init.js.
- * @param {object} deps  { positionRangeVisual }
+ * @param {object} deps  { positionRangeVisual, getLastStatus }
  */
 export function injectThrottleDeps(deps) {
   _positionRangeVisual = deps.positionRangeVisual;
+  _getLastStatus = deps.getLastStatus;
 }
 
 // ── Throttle state ──────────────────────────────────────────────────────────
 
 /**
- * Mutable throttle state. The two intervals and the daily cap are null
- * until the first status poll supplies them; the displays built on them
- * show a dash until then rather than a figure the dashboard made up.
+ * What the client throttle holds about a position's bot loop before the
+ * loop has reported: nothing. The doubling, the wait, the last
+ * rebalance, and the day's count, cap and reset come only from the
+ * throttle snapshot in the status answer for the position on screen.
+ * @returns {object}
  */
-export const throttle = {
-  minIntervalMs: null,
-  rebTimestamps: [],
-  doublingActive: false,
-  doublingCount: 0,
-  currentWaitMs: null,
-  lastRebTime: 0,
-  dailyCount: 0,
-  dailyMax: null,
-  dailyResetAt: nextMidnight(),
-};
+function _unreportedLoopState() {
+  return {
+    doublingActive: false,
+    doublingCount: 0,
+    currentWaitMs: null,
+    lastRebTime: 0,
+    dailyCount: 0,
+    dailyMax: null,
+    dailyResetAt: null,
+  };
+}
+
+/**
+ * Mutable throttle state: what the server last reported for the position
+ * on screen. The two intervals and the daily cap are null until a status
+ * poll supplies them; the displays built on them show a dash until then
+ * rather than a figure the dashboard made up.
+ */
+export const throttle = { minIntervalMs: null, ..._unreportedLoopState() };
+
+/**
+ * Forget what a bot loop reported, for a position on screen whose loop
+ * has not reported yet: one behind the startup stagger, or any position
+ * while the wallet is locked. The badge, the countdown and the banner
+ * would otherwise go on showing the previous position's.
+ */
+export function forgetLoopThrottle() {
+  Object.assign(throttle, _unreportedLoopState());
+}
+
+/**
+ * Forget everything the client throttle holds, the minimum interval
+ * included, and repaint: called when another position is put on screen,
+ * whose figures arrive with the next status answer.
+ */
+export function forgetThrottleState() {
+  forgetLoopThrottle();
+  throttle.minIntervalMs = null;
+  updateThrottleUI();
+}
 
 /**
  * Check whether a rebalance is currently allowed.
@@ -233,14 +265,26 @@ function _checkBannerVisibility(banner) {
   return true;
 }
 
+/**
+ * The OOR timeout in force for the position on screen, in minutes, as the
+ * status answer carries it: its saved value or the install's default.
+ * Not the field in Bot Settings, which can hold unsaved typing. Null
+ * before the first answer.
+ * @returns {number|null}
+ */
+function _oorTimeoutMinInForce() {
+  const v = _getLastStatus?.()?.rebalanceTimeoutMin;
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 /** Render OOR sub-state for a managed position (threshold, doubling, triggered). */
 function _renderManagedOor(banner, can) {
   if (botConfig.withinThreshold) {
     banner.className = "range-status-banner wait";
     g("rangeIcon").textContent = "\u26A0";
     let threshLabel = "OUT OF RANGE \u2014 WITHIN THRESHOLD";
-    const timeoutMin = parseInt(g("inOorTimeout")?.value, 10) || 0;
-    if (timeoutMin > 0 && botConfig.oorSince) {
+    const timeoutMin = _oorTimeoutMinInForce();
+    if (timeoutMin !== null && timeoutMin > 0 && botConfig.oorSince) {
       const remaining = botConfig.oorSince + timeoutMin * 60000 - Date.now();
       threshLabel += " \u00B7 Timeout: " + fmtCountdown(remaining);
     }
@@ -504,13 +548,12 @@ export function _saveSingleConfig(inputId, key, parse, onSaved) {
 /**
  * Apply a SAVED Min Time Between Rebalances value (minutes) to the
  * client throttle so the derived displays (Doubling Trigger Window
- * label, countdown KPI) reflect it.  Two callers:
- *   - `saveMinInterval()` — optimistic apply on the Save click;
- *   - `populateConfigInputs()` in dashboard-config-inputs.js — per-position
- *     seed from the saved config in the /api/status payload.  This
- *     covers dashboard-only mode (bots not running → no
- *     `throttleState` in the payload at all) and the window before a
- *     freshly-started bot's first poll emits a snapshot.
+ * label, countdown KPI) reflect it.  Its caller is
+ * `populateConfigInputs()` in dashboard-config-inputs.js, which seeds
+ * each position from the saved config in the /api/status payload.  This
+ * covers dashboard-only mode (bots not running → no `throttleState` in
+ * the payload at all) and the window before a freshly-started bot's
+ * first poll emits a snapshot.
  * Invalid input is ignored (no literal fallback per
  * feedback_one_literal_per_shipped_default).
  * @param {number} minutes  Saved Min Time Between Rebalances.
@@ -527,41 +570,26 @@ export function applySavedMinInterval(minutes) {
 }
 
 /**
- * Apply a polled `throttleState.minIntervalMs` to the client throttle,
- * honoring the one-shot `data-skip-next-poll` marker on
- * `#dblWindowLabel`.  `saveMinInterval` sets that marker because the
- * bot only refreshes its emitted `throttleState` snapshot on its own
- * poll cycle (`POST /api/config` does not kick the bot poll) — so the
- * first dashboard sweep after a Save still carries the PRE-save value
- * and would clobber the optimistic apply, showing a one-sweep revert.
- * The poll consumes the marker (removes it) and skips that single
- * update; subsequent sweeps apply normally.
- * @param {number} minIntervalMs  From the polled `throttleState`.
+ * Apply the Min Time Between Rebalances a status answer carries to the
+ * client throttle.  Every status answer calls this
+ * (`_syncClientThrottle`, dashboard-data-status.js), so a saved value
+ * reaches the Doubling Trigger Window label and the countdown once the
+ * server's answer carries it, and a refused one never does.
+ * @param {number} minIntervalMs  From the status answer.
  */
 export function applyPolledMinInterval(minIntervalMs) {
   if (typeof minIntervalMs !== "number") return;
-  const lbl = g("dblWindowLabel");
-  if (lbl && lbl.dataset.skipNextPoll !== undefined) {
-    delete lbl.dataset.skipNextPoll;
-    return;
-  }
   throttle.minIntervalMs = minIntervalMs;
 }
 
-/** Save Min Time Between Rebalances: validate, apply optimistically,
- *  stamp the one-shot poll-skip marker, persist to the server. */
+/**
+ * Save Min Time Between Rebalances.  The throttle, the Doubling Trigger
+ * Window label and the countdown are not touched here: they show only
+ * what the server reports, and its next status answer carries the saved
+ * value (`_syncClientThrottle`, dashboard-data-status.js).
+ */
 export function saveMinInterval() {
   const n = parseInt(g("inMinInterval")?.value, 10);
-  /*- Optimistic client apply on Save: the Doubling Trigger Window label
-   *  and countdown KPI derive from `throttle.minIntervalMs`, which is
-   *  save-gated (see `onParamChange`). Applying here makes the label
-   *  reflect the new value on the Save click itself instead of waiting
-   *  for the round-trip; the poll re-syncs it from the server every
-   *  cycle, so a refused value does not persist on screen. */
-  applySavedMinInterval(n);
-  /*- One-shot poll-skip marker — see `applyPolledMinInterval`. */
-  const lbl = g("dblWindowLabel");
-  if (lbl) lbl.dataset.skipNextPoll = "1";
   _saveSingleConfig("inMinInterval", "minRebalanceIntervalMin", () => n);
   _validateIntervalVsTimeout();
 }

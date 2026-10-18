@@ -21,6 +21,8 @@
   "heapLogIntervalMs": 600000,
   "_dashboardPollIntervalMs_comment": "How often, in milliseconds, the dashboard asks GET /api/status for fresh figures; Reload Current Position checks on its scan at the same pace. The server judges from it when the dashboard has had time to poll (src/config.js), so the two agree. Read by public/dashboard-data-poll.js and public/dashboard-reload-flow.js.",
   "dashboardPollIntervalMs": 3000,
+  "_staleDataCheckIntervalMs_comment": "How often, in milliseconds, the dashboard checks whether the figures it shows are still another position's: from a switch to another position until the server answers about it, every figure shows a plain dash and every button is disabled, except in the disclaimer and the wallet unlock. Read by public/dashboard-stale-data.js.",
+  "staleDataCheckIntervalMs": 50,
   "_firstVisitDefaults_comment": "soundsEnabled, privacyModeEnabled, privacyBlurWalletAddresses, privacyBlurUsdAmounts and privacyUsdAmountThreshold are first-visit defaults, used only while the browser has no saved choice: on a first visit, or after Settings → Clear Local Storage & Cookies. A choice made in the Settings popover is saved in the browser and wins. Read by public/dashboard-sounds.js, public/dashboard-events-manage.js and public/dashboard-privacy-subform.js.",
   "soundsEnabled": true,
   "privacyModeEnabled": false,

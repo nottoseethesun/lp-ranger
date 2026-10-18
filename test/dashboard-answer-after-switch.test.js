@@ -239,31 +239,15 @@ describe("a re-open's answer", () => {
 });
 
 describe("a price override's answer", () => {
-  it("keeps the browser copy under the pool saved for, and refetches nothing on screen", () => {
+  it("refetches nothing on screen, and keeps no browser copy", () => {
     const refetched = [];
     priceOverride.injectPriceOverrideDeps({
       refetchUnmanaged: (p) => refetched.push(p.tokenId),
     });
     localStorage.clear();
-    priceOverride._afterPriceSaved({
-      p0: 1.5,
-      p1: 2.5,
-      force: true,
-      ovKey: "9mm_price_override_test_A",
-      active: A,
-      onScreen: false,
-    });
-    assert.equal(
-      localStorage.getItem("9mm_price_override_test_A"),
-      JSON.stringify({ price0: 1.5, price1: 2.5 }),
-    );
-    assert.equal(localStorage.getItem("9mm_price_override_test_A_force"), "1");
-    assert.deepEqual(
-      priceOverride.loadPriceOverrides(),
-      { price0: 0, price1: 0 },
-      "B's pool has none",
-    );
-    assert.deepEqual(refetched, []);
+    priceOverride._afterPriceSaved({ active: A, onScreen: false });
+    assert.deepEqual(refetched, [], "B's figures are not blanked");
+    assert.equal(localStorage.length, 0, "the server keeps the override");
   });
 
   it("refetches the position on screen when the answer is for it", () => {
@@ -271,14 +255,7 @@ describe("a price override's answer", () => {
     priceOverride.injectPriceOverrideDeps({
       refetchUnmanaged: (p) => refetched.push(p.tokenId),
     });
-    priceOverride._afterPriceSaved({
-      p0: 1,
-      p1: 1,
-      force: false,
-      ovKey: "9mm_price_override_test_B",
-      active: B,
-      onScreen: true,
-    });
+    priceOverride._afterPriceSaved({ active: B, onScreen: true });
     assert.deepEqual(refetched, ["202"]);
   });
 });

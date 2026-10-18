@@ -25,6 +25,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile + node_modules, `npm i` first
 - [reset --keep, not --hard](feedback_reset_keep_not_hard.md) — Protocol step 4's `--hard` destroys uncommitted work; use `--keep` on a dirty tree
 - [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/` in wipe/restore-settings
+- [test suite checks only what ships](feedback_test_suite_checks_only_what_ships.md) — Never an operator's `.env` or overrides; local and CI must agree; the diagnostic tool and startup check those
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver; latest tag needs `--sort=-v:refname` plus `grep -v '^v'`
 
@@ -51,7 +52,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei; an editing pass removes bulk (point buried in detail) and gaps (steps replaced by vague words)
 - [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context
-- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns
+- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns; a question names what its "both" means, and never asks what the spec already decides
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
 - [revert means code](feedback_revert_means_code.md) — "Revert" = repo edits only, never the plan
 - [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review
@@ -72,6 +73,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [audit before declaring done](feedback_audit_before_declaring_done.md) — Re-read the rules and audit state + sequence before saying done; a green check is not sufficient
 - [verify symbols a comment names](feedback_verify_symbols_a_comment_names.md) — Grep every symbol a comment names
 - [check state before explaining design](feedback_check_state_before_explaining_design.md) — "Why does it do X?" → check PROJECT-STATE for a known-duplication entry before calling X deliberate
+- [check history before changing a design](feedback_check_history_before_changing_a_design.md) — A test pins it as a fix? Read its commit; a user-specified design waits for the user's word
 
 ## Engineering, code, UI & docs rules
 - [ask what withholding costs](feedback_ask_what_withholding_costs.md) — A withheld key in a wholesale-replaced container is a deletion, not an abstention

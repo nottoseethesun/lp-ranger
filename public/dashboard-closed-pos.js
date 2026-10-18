@@ -12,12 +12,20 @@
 import { g, fmtDateTime } from "./dashboard-helpers.js";
 import { _fmtUsd } from "./dashboard-fmt-usd.js";
 import { setLeadingText } from "./dashboard-kpi-dom.js";
+import { markPositionDataFresh } from "./dashboard-stale-data.js";
 
 /** @type {boolean} Whether we are currently viewing a closed position. */
 let _viewingClosed = false;
 
 /** @type {object|null} The posStore entry for the closed position being viewed. */
 let _closedPosEntry = null;
+
+/*-
+ *  The tokenId whose history request is out, so another request for the
+ *  same position waits for its answer: each status answer asks again
+ *  while the figures on screen are stale (dashboard-data.js).
+ */
+let _historyAsked = null;
 
 /**
  * Check whether the dashboard is currently in closed-position history view.
@@ -47,20 +55,46 @@ export async function enterClosedPosView(posEntry) {
 }
 
 /**
+ * Whether the closed position with this tokenId is the one on screen.
+ * @param {string} id  NFT token ID.
+ * @returns {boolean}
+ */
+function _isOnScreen(id) {
+  return _viewingClosed && String(_closedPosEntry?.tokenId) === id;
+}
+
+/**
  * Fetch historical data for a tokenId and render into KPIs.
+ *
+ * The answer is shown only while its position is on screen, so one that
+ * arrives after a switch leaves the next position's figures alone. Any
+ * answer the server gives, an error included, makes the figures fresh
+ * (`markPositionDataFresh`); with none, they stay stale, and the next
+ * status answer asks again.
  * @param {string} tokenId  NFT token ID.
  */
 async function _fetchAndRenderHistory(tokenId) {
+  const id = String(tokenId);
+  if (_historyAsked === id) return;
+  _historyAsked = id;
+  let data;
   try {
     const res = await fetch("/api/position/" + tokenId + "/history");
-    if (res.ok) {
-      _renderHistoricalKpis(await res.json());
-    } else {
-      _renderNoData();
-    }
+    data = res.ok ? await res.json() : null;
+  } catch {
+    if (_isOnScreen(id)) _renderNoData();
+    return;
+  } finally {
+    if (_historyAsked === id) _historyAsked = null;
+  }
+  if (!_isOnScreen(id)) return;
+  try {
+    if (data === null) _renderNoData();
+    else _renderHistoricalKpis(data);
   } catch {
     _renderNoData();
   }
+  markPositionDataFresh(_closedPosEntry);
 }
 
 /**

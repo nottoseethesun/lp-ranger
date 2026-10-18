@@ -218,10 +218,13 @@ describe("gas-monitor — checkGasBalance alert state", () => {
    *  notify() requires bot token + chat id to actually send.  Set them
    *  once per test via the telegram module. */
   const tg = require("../src/telegram-notifications/telegram");
+  const {
+    EVENT_DEFAULTS,
+  } = require("../src/telegram-notifications/telegram-events");
   beforeEach(() => {
     tg.setBotToken("tok");
     tg.setChatId("123");
-    tg.setEnabledEvents(tg.EVENT_DEFAULTS);
+    tg.setEnabledEvents(EVENT_DEFAULTS);
   });
   afterEach(() => {
     tg.setBotToken(null);

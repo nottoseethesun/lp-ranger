@@ -15,8 +15,7 @@
  *   assert exact strings without becoming environment-sensitive.
  *
  *   Covered exports: emojiId, fmtMs, fmtCountdown, compositeKey,
- *   truncName, fmtNum, isFullRange, isFullRangeSpread, nextMidnight,
- *   copyWithFeedback.
+ *   truncName, fmtNum, isFullRange, isFullRangeSpread, copyWithFeedback.
  */
 
 require("global-jsdom/register");
@@ -223,20 +222,6 @@ describe("isFullRangeSpread()", () => {
   it("is false for non-finite", () => {
     assert.strictEqual(helpers.isFullRangeSpread(NaN), false);
     assert.strictEqual(helpers.isFullRangeSpread(Infinity), false);
-  });
-});
-
-// ── nextMidnight ───────────────────────────────────────────────────────────
-
-describe("nextMidnight()", () => {
-  it("returns a future timestamp within the next 24 h", () => {
-    const now = Date.now();
-    const nm = helpers.nextMidnight();
-    assert.ok(nm > now, "nextMidnight must be in the future");
-    assert.ok(
-      nm <= now + 24 * 60 * 60 * 1000 + 1,
-      "nextMidnight must be within 24 h + 1 ms of now",
-    );
   });
 });
 

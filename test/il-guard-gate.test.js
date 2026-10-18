@@ -22,7 +22,7 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { checkIlGuard } = require("../src/il-guard");
+const { checkIlGuard, clearIlGuardWait } = require("../src/il-guard");
 const { isRecoveryResult } = require("../src/bot-loop");
 const { ilSnapshot } = require("./helpers/il-snapshot");
 
@@ -243,6 +243,59 @@ describe("checkIlGuard — the retry backoff", () => {
   });
 });
 
+describe("checkIlGuard — the block the dashboard shows after a Guard save", () => {
+  /*-
+   *  A rejection publishes `ilGuardBlocked`, which the dashboard shows as
+   *  the "Rebalance skipped — impermanent loss" dialog until the bot
+   *  publishes it null. Saving the Guard lifts the wait at once
+   *  (`clearIlGuardWait`) and leaves the block for the next check to
+   *  lift or word again. The state here is merged into as the server's
+   *  is, so what the bot published is what it reads.
+   */
+  const notifyPos = (p) => ({ tokenId: p.tokenId });
+  let deps;
+  let guardPct;
+
+  beforeEach(() => {
+    guardPct = 50;
+    deps = {
+      position: { tokenId: "164418" },
+      _getConfig: (k) =>
+        k === "impermanentLossGuardPct" ? guardPct : undefined,
+      _botState: {},
+    };
+    deps.updateBotState = (patch) => Object.assign(deps._botState, patch);
+  });
+
+  const poll = (positionUsd) =>
+    checkIlGuard(deps, false, ilSnapshot(positionUsd, 1000), notifyPos);
+
+  it("is lifted when the raised Guard lets the rebalance through", () => {
+    poll(480);
+    assert.ok(deps._botState.ilGuardBlocked, "the rejection is published");
+    clearIlGuardWait(deps._botState);
+    guardPct = 60;
+    assert.equal(poll(480), null, "the raised Guard passes it");
+    assert.equal(deps._botState.ilGuardBlocked, null, "the dialog goes");
+  });
+
+  it("is lifted when the next check cannot measure the position", () => {
+    poll(480);
+    clearIlGuardWait(deps._botState);
+    assert.equal(checkIlGuard(deps, false, {}, notifyPos), null);
+    assert.equal(deps._botState.ilGuardBlocked, null);
+  });
+
+  it("is worded again when the next check rejects again", () => {
+    poll(480);
+    clearIlGuardWait(deps._botState);
+    // A 52% loss: still past a Guard of 51, whose floor is $490.
+    guardPct = 51;
+    assert.equal(poll(480).ilGuardRejected, true);
+    assert.match(deps._botState.ilGuardBlocked.message, /set to 51%/);
+  });
+});
+
 describe("checkIlGuard — the shipped default actually applies", () => {
   /*- The bug this pins: `readConfigValue` returns undefined for a key
    *  that was never saved, and does NOT consult the layered defaults
@@ -343,6 +396,10 @@ describe("a blocked poll is not a recovery", () => {
      *  result can carry it.  These rows prove that. */
     ["gate pause", { rebalanced: false, paused: true }],
     ["drained + retiring", { rebalanced: false, retired: true }],
+    [
+      "a stopped loop's skipped rebalance",
+      { rebalanced: false, stopped: true },
+    ],
   ];
 
   for (const [name, result] of BLOCKED) {

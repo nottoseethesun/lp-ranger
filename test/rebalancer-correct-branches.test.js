@@ -85,7 +85,10 @@ function load({ desired, gates, swaps }) {
     computeDesiredAmounts: () => nextDesired(),
     swapIfNeeded: async (_signer, _lib, params) => {
       calls.swaps.push(params);
-      return nextSwap();
+      // A scripted Error is the swap failing.
+      const answer = nextSwap();
+      if (answer instanceof Error) throw answer;
+      return answer;
     },
   });
   require.cache[PATHS.price] = cacheEntry(PATHS.price, {
@@ -305,5 +308,38 @@ describe("corrective swap — swaps that report no hash", () => {
         thresholdUsd: 1,
       },
     );
+  });
+});
+
+describe("corrective swap — a round that fails", () => {
+  it("carries the gas of the rounds before it", async () => {
+    /*-
+     *  The first round's swap confirmed and was paid for; the second
+     *  fails. The failure has to carry both, its own and the first
+     *  round's, or the record of what the rebalance paid loses the first
+     *  (src/spent-gas.js).
+     */
+    const failed = Object.assign(new Error("swap reverted"), {
+      gasCostWei: 7n,
+    });
+    const { run, calls } = load({
+      desired: [need("token0to1", 10n ** 18n), need("token0to1", 10n ** 18n)],
+      gates: [PASS],
+      swaps: [
+        {
+          txHash: "0xc1",
+          amountOut: 9n,
+          gasCostWei: 5n,
+          swapSources: "Watergun Aggregator",
+        },
+        failed,
+      ],
+    });
+    await assert.rejects(run(ctx()), (err) => {
+      assert.equal(err, failed);
+      assert.equal(err.gasCostWei, 12n, "its own 7 and the first round's 5");
+      return true;
+    });
+    assert.equal(calls.swaps.length, 2);
   });
 });

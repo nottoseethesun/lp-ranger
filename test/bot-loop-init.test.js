@@ -172,6 +172,7 @@ describe("bot-loop _tryInitPnlTracker", () => {
           }),
           estimateGasCostUsd: async () => 0,
           actualGasCostUsd: async () => 0,
+          pastGasCostUsd: async () => 0,
           addPoolShare: async () => {},
         };
       }
