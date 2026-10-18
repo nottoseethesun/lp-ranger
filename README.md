@@ -296,6 +296,8 @@ What it does NOT touch in the new install: the shipped code (`src/`, `public/`, 
 
 Because Step Six carried those files across, the new install starts where the old one left off: the wallet unlocks from the encrypted `wallet.json`, managed positions resume polling, and operator overrides still apply.
 
+The new install checks every setting before it starts, the ones carried across included, and refuses to start while any is wrong, naming each one: a value of the wrong kind or outside its range, or a setting it does not read. To see that list without starting, run `node util/diagnostic/validate-config-values-with-any-user-overrides.js` from the new install's folder.
+
 Step Six's `migrate-app-state` supports `--dry-run`, which reports what it would copy without writing anything. Run it with `--help` for the rest, including `--from` for when more than one old install sits alongside the new one.
 
 ---
@@ -354,7 +356,7 @@ rm -rf lp-ranger*
 
 No special configuration is needed beyond what the app's user interface already guides you through. Read on only if you want to override one of the shipped operator-tunable defaults for your install.
 
-Shipped defaults live under [`app-config/app-defaults-for-user-configurable/`](app-config/app-defaults-for-user-configurable/) (do not edit; tarball upgrades overwrite). To override, copy the file into [`app-config/user-configurable/`](app-config/user-configurable/) and edit your copy there. The app deep-merges your overrides on top of the shipped defaults, with your values winning. Files under `user-configurable/` are gitignored and survive upgrades.
+Shipped defaults live under [`app-config/app-defaults-for-user-configurable/`](app-config/app-defaults-for-user-configurable/) (do not edit; tarball upgrades overwrite). To override, copy the file into [`app-config/user-configurable/`](app-config/user-configurable/) and edit your copy there. The app deep-merges your overrides on top of the shipped defaults, with your values winning. Files under `user-configurable/` are gitignored and survive upgrades. Each value must be of its setting's kind and inside its range, and a copy may hold only settings LP Ranger reads: the app refuses to start otherwise, naming each problem ([Checking the Settings](docs/configuration.md#checking-the-settings)).
 
 For the full layout and rules for where new config files belong, see [The app-config Directory](docs/engineering.md#the-app-config-directory) in the engineering reference.
 

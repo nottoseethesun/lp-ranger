@@ -298,8 +298,8 @@ task.
   second list to update.
   **Note:** browser localStorage is NOT cleared, and does not need to be
   for a cold scan — the browser holds display state only (last viewed
-  position, privacy toggles, price overrides, a copy of the
-  rebalance-events list for instant paint). None of it makes the server
+  position, privacy toggles, a copy of the rebalance-events list for
+  instant paint). None of it makes the server
   skip a scan. Clear it via the Settings gear icon → "Clear Local Storage
   & Cookies" only when you actually want the browser-side preferences
   reset, accepting that per-position UI state goes with it. The wallet
