@@ -36,6 +36,7 @@ import {
   posLabelOf,
 } from "./dashboard-data-status.js";
 import { isAnswerForPositionOnScreen } from "./dashboard-answer-position.js";
+import { poolRuleRefusal } from "./dashboard-manage-refusal.js";
 import { getLastStatus } from "./dashboard-data.js";
 import {
   findActiveAction,
@@ -192,18 +193,26 @@ function _disableRebalanceButtonForInFlight() {
  * only while that position is on screen, since it reads as being about
  * whatever is.
  * @param {string} title
- * @param {string} detail
+ * @param {string} detail  Plain text, the server's words included.
  * @param {object|null} active  The position the request was for.
  * @param {boolean} onScreen    Whether it is still the one on screen.
  */
 function _showRebalanceError(title, detail, active, onScreen) {
-  if (onScreen)
+  if (onScreen) {
     _createModal(
       null,
       "9mm-pos-mgr-modal-caution",
       title,
-      _posContextHtml() + "<p>" + detail + "</p>",
+      _posContextHtml() + "<p data-rebalance-error></p>",
     );
+    /*-
+     *  The detail can carry the server's words, so it goes in as text,
+     *  into the dialog just built: the page's last element.
+     */
+    const dialog = document.body.lastElementChild;
+    const slot = dialog.querySelector("[data-rebalance-error]");
+    if (slot !== null) slot.textContent = detail;
+  }
   const _p = posLabelOf(active);
   act(ACT_ICONS.warn, "alert", title, detail + (_p ? "\n" + _p : ""));
 }
@@ -287,8 +296,9 @@ export async function _postRebalance(url, body, active, triggerActLabel) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    const data = await res.json();
     _settleRebalanceAnswer({
-      data: await res.json(),
+      data,
       requestKey,
       active,
       inFlight,
@@ -336,14 +346,21 @@ export function _settleRebalanceAnswer({
   triggerActLabel,
 }) {
   const onScreen = isAnswerForPositionOnScreen(data, requestKey);
-  if (!data?.ok)
+  if (data?.ok === true) {
+    _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen);
+    return onScreen;
+  }
+  // A re-open refused under the pool rule says which position holds it.
+  const refusal = poolRuleRefusal(data);
+  if (refusal !== null)
+    _showRebalanceError(refusal.title, refusal.text, active, onScreen);
+  else
     _showRebalanceError(
       "Rebalance Blocked",
       data?.error || "Unknown error",
       active,
       onScreen,
     );
-  else _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen);
   return onScreen;
 }
 

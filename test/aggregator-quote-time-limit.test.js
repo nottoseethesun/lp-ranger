@@ -14,13 +14,32 @@
  * the suite.
  */
 
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
+
+// Twelve seconds, an operator's own, not the fifteen that ship.
+const SETTINGS_DIR = makeTestTempFolder("quote-limit-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "chains.json"),
+  JSON.stringify(
+    Object.fromEntries(
+      Object.keys(CHAINS).map((chain) => [
+        chain,
+        { aggregator: { quoteTimeoutMs: 12000 } },
+      ]),
+    ),
+  ),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
+
 const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const http = require("http");
 const config = require("../src/config");
 const { swapIfNeeded } = require("../src/rebalancer-swap");
 const { swapViaAggregator } = require("../src/rebalancer-aggregator");
-const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 const {
   ADDR,
   makeTx,
@@ -74,9 +93,7 @@ const swArgs = () => ({
 
 describe("aggregator quote time limit", () => {
   it("reads the active chain's limit from chains.json at startup", () => {
-    const shipped = CHAINS[config.CHAIN_NAME].aggregator.quoteTimeoutMs;
-    assert.ok(Number.isInteger(shipped) && shipped > 0, String(shipped));
-    assert.strictEqual(saved.limitMs, shipped);
+    assert.strictEqual(saved.limitMs, 12000);
   });
 
   it(

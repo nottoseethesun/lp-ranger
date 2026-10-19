@@ -4,15 +4,14 @@
  * no compound, even from a poll that was already under way when the stop
  * came.
  *
- * A stop comes from shutting the server down or from Stop Managing.
- * `npm run gentle-stop` asks whether a rebalance or compound is under
- * way and stops the server once none is, but a poll can be part way
- * through, reading prices and the pool, when the answer goes out. That
- * poll then reaches its rebalance, the shutdown exits within seconds,
- * and the rebalance is cut off after its liquidity was removed. So the
- * loop hands every poll `_isStopped`, and a move asks it once it holds
- * the rebalance lock: the wait for the lock, behind another position's
- * move, can span the stop.
+ * A stop comes from shutting the server down or from Stop Managing, and
+ * the app's stop for good counts too, even for a loop whose start is
+ * still under way. A poll can be part way through, reading prices and
+ * the pool, when the stop comes. Were it to reach its rebalance, a force-stop (Ctrl+C,
+ * `npm stop`) would exit within seconds and cut the rebalance off after
+ * its liquidity was removed. So the loop hands every poll `_isStopped`,
+ * and a move asks it once it holds the rebalance lock: the wait for the
+ * lock, behind another position's move, can span the stop.
  */
 
 "use strict";
@@ -21,6 +20,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+// Before anything that reads a price loads: prices come from a fixed table.
+require("./helpers/price-stand-ins");
 const { ADDR, _poll } = require("./_bot-loop-helpers");
 const { executeCompound } = require("../src/bot-cycle-compound");
 
@@ -181,11 +182,55 @@ describe("a stopped bot loop starts no compound", () => {
  *  start, so this pins that the loop hands it to every poll.
  */
 describe("the bot loop's stop flag", () => {
-  it("is handed to every poll", () => {
+  it("is handed to every poll, and carries the app's stop too", () => {
+    /*-
+     *  A loop's first poll runs while its start is under way, before
+     *  anything holds the handle that stops it, so only the app's stop
+     *  (src/app-phase.js) can keep that poll from starting a move.
+     */
     const src = fs.readFileSync(
       path.join(__dirname, "..", "src", "bot-loop.js"),
       "utf8",
     );
-    assert.match(src, /_isStopped: \(\) => _stopped,/);
+    assert.match(src, /_isStopped: \(\) => _stopped \|\| isStopping\(\),/);
+  });
+
+  it("is set before a stop waits for the poll under way", () => {
+    /*-
+     *  The server's own shutdown, which `npm run gentle-stop` asks for,
+     *  stops each loop and waits for it: set first, the flag keeps a
+     *  poll from starting a move, and the wait lets a move already
+     *  begun finish rather than be cut off.
+     */
+    const src = fs.readFileSync(
+      path.join(__dirname, "..", "src", "bot-loop.js"),
+      "utf8",
+    );
+    const stop = src.slice(src.indexOf("    stop() {"));
+    const flagged = stop.indexOf("_stopped = true;");
+    const waits = stop.indexOf("if (!polling) return Promise.resolve();");
+    assert.ok(flagged > -1 && waits > flagged, "the flag, then the wait");
+    assert.match(
+      stop,
+      /if \(!polling\) \{\s*clearInterval\(check\);\s*resolve\(\);/,
+    );
+  });
+
+  it("makes a second stop wait for the poll under way too", () => {
+    /*-
+     *  Two shutdown requests both stop every loop. Were the second stop
+     *  to return at once because the loop is already stopped, the second
+     *  request would close the server while the first still waited for a
+     *  rebalance to finish, and the exit would cut it off.
+     */
+    const src = fs.readFileSync(
+      path.join(__dirname, "..", "src", "bot-loop.js"),
+      "utf8",
+    );
+    const stop = src.slice(
+      src.indexOf("    stop() {"),
+      src.indexOf("if (!polling) return Promise.resolve();"),
+    );
+    assert.doesNotMatch(stop, /return/, "nothing returns before the wait");
   });
 });

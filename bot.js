@@ -34,10 +34,12 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
  *  src/boot-log-file.js + src/log-file.js. */
 require("./src/boot-log-file").bootLogFile();
 
-/*- Every setting is checked before any is read: the JSON settings files
+/*-
+ *  Every setting is checked before any is read: the JSON settings files
  *  with the operator's copies, `.env` and bot-config.json. A wrong one
  *  stops the bot here, each named, rather than leaving it to run on a
- *  value nobody chose. See src/settings-check.js. */
+ *  value nobody chose. See src/settings-check.js.
+ */
 require("./src/settings-check").refuseToStartOnBadSettings();
 
 const { log } = require("./src/log");
@@ -71,15 +73,15 @@ const { createPositionManager } = require("./src/position-manager");
 const {
   loadConfig,
   managedKeys,
-  getPositionConfig,
   readConfigValue,
 } = require("./src/bot-config-v2");
 const {
   createPerPositionBotState,
   attachMultiPosDeps,
   updatePositionState,
-  createOnRetire,
+  getAllPositionBotStates,
 } = require("./src/server-positions");
+const { createAutoStartManagedPositions } = require("./src/server-auto-start");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { askPassword: _askPassword } = require("./src/ask-password");
 const { readShutdownTimings } = require("./src/shutdown-timing");
@@ -148,47 +150,25 @@ async function main() {
     return;
   }
 
-  // Auto-start all managed positions with status 'running' (staggered)
-  const keys = managedKeys(diskConfig);
-  const count = keys.length;
-  const staggerMs =
-    count > 1 ? Math.floor((config.CHECK_INTERVAL_SEC * 1000) / count) : 0;
-  let started = 0,
-    i = 0;
-  for (const key of keys) {
-    const posConfig = getPositionConfig(diskConfig, key);
-    if (i > 0 && staggerMs > 0)
-      await new Promise((r) => setTimeout(r, staggerMs));
-    const tokenId = key.split("-").pop();
-    const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
-    attachMultiPosDeps(posBotState, positionMgr);
-    try {
-      const keyRef = { current: key };
-      await positionMgr.startPosition(key, {
-        tokenId,
-        startLoop: () =>
-          startBotLoop({
-            privateKey,
-            provider: shared.provider,
-            signer: shared.signer,
-            address: shared.address,
-            dryRun,
-            updateBotState: (patch) =>
-              updatePositionState(keyRef, patch, diskConfig, positionMgr),
-            botState: posBotState,
-            positionId: tokenId,
-            getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
-            onRetire: createOnRetire({ keyRef, diskConfig, positionMgr }),
-          }),
-        savedConfig: posConfig,
-      });
-      started++;
-    } catch (err) {
-      log.error("[bot] Failed to start position %s: %s", key, err.message);
-    }
-    i++;
-  }
-  log.info("[bot] Started %d of %d managed positions", started, keys.length);
+  /*-
+   *  Start the positions saved as managed the way the server does
+   *  (src/server-auto-start.js), so the same rules hold headless: one
+   *  active position per pool, and a position that cannot be managed comes
+   *  off the list. The wallet is the signer's, or any wallet's in a dry run
+   *  with no key, whose signer is a random wallet.
+   */
+  const wallet = privateKey === null ? null : shared.address;
+  await createAutoStartManagedPositions({
+    diskConfig,
+    positionMgr,
+    privateKeyRef: { current: privateKey },
+    walletManager: { getAddress: () => wallet },
+    getAllPositionBotStates,
+    createPerPositionBotState,
+    attachMultiPosDeps,
+    updatePositionState,
+    readConfigValue,
+  })();
 
   _awaitShutdown(() => positionMgr.stopAll(), exitTimeoutMs);
 }

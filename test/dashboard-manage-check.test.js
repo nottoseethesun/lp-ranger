@@ -5,9 +5,9 @@
  * @description The question the dashboard asks the server each time it
  *   puts a position on screen: is this position managed?
  *
- *   Right after a switch the last status poll describes the position that
- *   was on screen before, and the Manage/Stop button used to be drawn from
- *   it. `checkManagedOnSwitch` asks `GET /api/is-position-managed` instead,
+ *   Right after a switch, the last status poll still describes the
+ *   position that was on screen before, so the Manage/Stop button cannot
+ *   be drawn from it. `checkManagedOnSwitch` asks `GET /api/is-position-managed` instead,
  *   the button stays disabled until the answer arrives, and the answer
  *   decides between Manage and Stop. A click on the button decides from
  *   the same answer. These cases drive the real modules and the real
@@ -68,6 +68,12 @@ const nft = (id) => ({
 });
 
 before(async () => {
+  /*-
+   *  TEST-ONLY global swap: the dashboard asks the server through the
+   *  browser's fetch and takes no stand-in for it. This answers for the
+   *  server for the whole file, so it stays in place: the file runs in a
+   *  process of its own, which no other file shares.
+   */
   globalThis.fetch = async (url, init) => {
     asked.push(url);
     calls.push({ url, method: init?.method ?? "GET" });
@@ -173,13 +179,19 @@ describe("checkManagedOnSwitch", () => {
   });
 
   it("goes back to the managed set when the question gets no answer", async () => {
-    store.setPositionManaged("9", true);
-    const server = holdAnswer(urlFor(9));
-    const done = switchTo(nft(9));
-    server.reject(new Error("socket hang up"));
-    await done;
-    assert.equal(button().textContent, "Stop Managing");
-    assert.equal(button().disabled, false);
+    /*-
+     *  Once with the set saying managed and once saying not, so a button
+     *  that assumed either answer fails one of them.
+     */
+    for (const managed of [true, false]) {
+      store.setPositionManaged("9", managed);
+      const server = holdAnswer(urlFor(9));
+      const done = switchTo(nft(9));
+      server.reject(new Error("socket hang up"));
+      await done;
+      assert.equal(button().textContent, managed ? "Stop Managing" : "Manage");
+      assert.equal(button().disabled, false);
+    }
   });
 
   it("asks nothing about a position that is not an NFT", async () => {

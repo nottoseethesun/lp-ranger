@@ -21,9 +21,21 @@
 
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+// The gate's share is an operator's own, 0.8%, not the 0.5% that ships.
+const DEFER_PCT = 0.8;
+const SETTINGS_DIR = makeTestTempFolder("gas-gate-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "bot-config-defaults.json"),
+  JSON.stringify({ rebalanceGasDeferPct: DEFER_PCT }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
+
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const SHIPPED = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 /**
  * Load `bot-cycle` with the price gate and gas estimator stubbed.
@@ -146,7 +158,7 @@ describe("the gas gate decides inside the fresh-prices scope", () => {
 });
 
 describe("the gas gate's threshold is the one bot-config-defaults.json sets", () => {
-  const pct = SHIPPED.rebalanceGasDeferPct;
+  const pct = DEFER_PCT;
 
   it("defers a rebalance whose gas is just above that share of the position", async () => {
     const { mod } = loadWithProbe(pct * 1.01, 100);

@@ -23,6 +23,7 @@ const {
   _setLandedReadDelayForTests,
 } = require("../src/rebalancer-swap-balance");
 const { swapIfNeeded } = require("../src/rebalancer-swap");
+const { swapViaRouter } = require("../src/rebalancer-router");
 const { readBotConfigDefaults } = require("../src/bot-config-defaults");
 const { spentGasOf } = require("../src/spent-gas");
 const { initSendTx, resetSendTx } = require("./helpers/send-tx-mock");
@@ -149,6 +150,11 @@ describe("balanceDiff — the read after a landed swap", () => {
 
 describe("swapIfNeeded — a landed aggregator swap whose read fails everywhere", () => {
   it("sends no second swap through the V3 router", async () => {
+    /*-
+     *  TEST-ONLY global swap: the aggregator's quote is asked through the
+     *  global fetch, with no seam for another. Put back pristine in the
+     *  `finally` below.
+     */
     const origFetch = globalThis.fetch;
     globalThis.fetch = async () => ({
       ok: true,
@@ -284,7 +290,6 @@ describe("the approval's gas on a landed swap whose read fails everywhere", () =
   }
 
   it("counts it once through the V3 router", async () => {
-    const { swapViaRouter } = require("../src/rebalancer-router");
     const sends = [];
     const asked = [];
     await assert.rejects(
@@ -319,6 +324,11 @@ describe("the approval's gas on a landed swap whose read fails everywhere", () =
   });
 
   it("counts it once through the aggregator", async () => {
+    /*-
+     *  TEST-ONLY global swap: the aggregator's quote is asked through the
+     *  global fetch, with no seam for another. Put back pristine in the
+     *  `finally` below.
+     */
     const origFetch = globalThis.fetch;
     globalThis.fetch = async () => ({
       ok: true,

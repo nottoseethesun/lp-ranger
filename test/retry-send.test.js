@@ -5,13 +5,25 @@
  * three classifier buckets (transient, terminal-nonce-unused,
  * terminal-nonce-consumed), NonceManager reset behaviour, the
  * `retryingTxWithSameNonce` opt for explicit-nonce replacements, and the
- * retry count, which is app-runtime.json's `tx.sendRetries`.
+ * retry count, which is app-runtime.json's `tx.sendRetries`: five here,
+ * an operator's own, not the three that ship, so a count written into
+ * the code fails.
  */
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("retry-send-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "app-runtime.json"),
+  JSON.stringify({ tx: { sendRetries: 5 } }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
 
-const config = require("../src/config");
 const { _retrySend } = require("../src/tx-retry");
 
 describe("_retrySend", () => {
@@ -201,10 +213,10 @@ describe("_retrySend", () => {
         ),
       { message: /ECONNRESET/ },
     );
-    // The original send, then each configured retry.
-    assert.strictEqual(attempts, config.TX_SEND_RETRIES + 1);
+    // The original send, then each of the five retries.
+    assert.strictEqual(attempts, 6);
     // A reset before each retry, and one more on giving up.
-    assert.strictEqual(resets, config.TX_SEND_RETRIES + 1);
+    assert.strictEqual(resets, 6);
   });
 
   it("treats unknown errors as terminal (no retry, no reset)", async () => {

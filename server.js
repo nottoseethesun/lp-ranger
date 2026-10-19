@@ -126,16 +126,19 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
  *  src/boot-log-file.js + src/log-file.js. */
 require("./src/boot-log-file").bootLogFile();
 
-/*- Every setting is checked before any is read: the JSON settings files
+/*-
+ *  Every setting is checked before any is read: the JSON settings files
  *  with the operator's copies, `.env` and bot-config.json. A wrong one
  *  stops the server here, each named, rather than leaving it to run on a
- *  value nobody chose. See src/settings-check.js. */
+ *  value nobody chose. See src/settings-check.js.
+ */
 require("./src/settings-check").refuseToStartOnBadSettings();
 
 const { log } = require("./src/log");
 const { resetErrorLog } = require("./src/error-log");
 const { writePidFile } = require("./src/server-pid");
 const { readShutdownTimings } = require("./src/shutdown-timing");
+const { markStopping } = require("./src/app-phase");
 // First statement of a real run — `--help` has already exited above, so
 // nothing logs before this and it always tops the log.  Black on light gray (inverse of
 // bot.js), rocket emoji before and after "Started."  ANSI: 30=black fg,
@@ -413,6 +416,9 @@ const { primaryRouteLabel } = require("./src/rebalancer-swap");
 const { moralisEnabledIn } = require("./src/server-moralis");
 const { positionTag } = require("./src/position-answer-tag");
 const { askPassword: _askPassword } = require("./src/ask-password");
+const {
+  notifyShutdown: _notifyShutdown,
+} = require("./src/telegram-notifications/server-shutdown");
 
 const _routeHandlers = createRouteHandlers({
   diskConfig: _diskConfig,
@@ -426,6 +432,7 @@ const _routeHandlers = createRouteHandlers({
   attachMultiPosDeps,
   updatePositionState,
   askPassword: _headless ? _askPassword : null,
+  notifyShutdown: _notifyShutdown,
 });
 
 // ── Idle-driven price-lookup pause ──────────────────
@@ -783,10 +790,6 @@ function stop() {
   });
 }
 
-const {
-  notifyShutdown: _notifyShutdown,
-} = require("./src/telegram-notifications/server-shutdown");
-
 // ── Entry point ─────────────────────────────────────
 
 // Only start automatically when run directly
@@ -815,6 +818,7 @@ if (require.main === module) {
        */
       writePidFile();
       const shutdown = () => {
+        markStopping();
         log.info("\n[server] Shutting down\u2026");
         _notifyShutdown();
         _pauseInfra.stop();

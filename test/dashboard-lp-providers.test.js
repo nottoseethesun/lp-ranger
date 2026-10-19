@@ -203,3 +203,30 @@ describe("getProviderLabel() — from the position's contract and the chain", ()
     assert.strictEqual(mod.getProviderFor(PM_9MM).displayName, "9mm Pro V3");
   });
 });
+
+describe("a lookup made before the provider list arrives", () => {
+  /*-
+   *  The position strip's first paint asks for the label before the
+   *  list has arrived. That finds nothing and warns of nothing, since
+   *  nothing is yet known to be missing, and a contract the list truly
+   *  lacks is still reported once the list is in. A fresh instance of
+   *  the module, by its own url, is one whose list has not arrived.
+   */
+  it("finds nothing and warns of nothing, and a real miss is reported after", async (t) => {
+    await learnActiveChain("pulsechain");
+    const fresh =
+      await import("../public/dashboard-lp-providers.js?before-the-list");
+    const logMod = await import("../public/dashboard-log.js");
+    const warned = [];
+    t.mock.method(logMod.log, "warn", (...args) => warned.push(args));
+    const { pm } = _unknownPair("ff0004");
+    assert.strictEqual(fresh.getProviderLabel(PM_9MM), undefined);
+    assert.strictEqual(fresh.getProviderLabel(pm), undefined);
+    assert.equal(warned.length, 0, "nothing is known missing yet");
+    await fresh.loadLpProviders();
+    assert.strictEqual(fresh.getProviderLabel(PM_9MM), "9mm Pro V3");
+    assert.strictEqual(fresh.getProviderLabel(pm), undefined);
+    assert.equal(warned.length, 1, "the real miss is reported");
+    assert.match(warned[0][0], /entries for position manager/);
+  });
+});

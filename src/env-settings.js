@@ -78,8 +78,12 @@ const HTTP_URL = _kind("an http or https address", (t) =>
 const ADDRESS = _kind("an EIP-55 address", (t) =>
   isAddress(t) ? t : undefined,
 );
-const KEY = _kind("0x and 64 hexadecimal digits", (t) =>
-  /^0x[0-9a-fA-F]{64}$/.test(t) ? t : undefined,
+/*-
+ *  A private key as the wallet takes it: 64 hexadecimal digits, after a
+ *  0x or without one, since ethers adds the prefix when it is missing.
+ */
+const KEY = _kind("64 hexadecimal digits, after a 0x or without one", (t) =>
+  /^(0x)?[0-9a-fA-F]{64}$/.test(t) ? t : undefined,
 );
 /*-
  *  Named as chains.json names it, in either letter case. Judged with the
@@ -160,6 +164,7 @@ const ENV_SETTINGS = Object.freeze({
    *  them, and an operator has no reason to.
    */
   LP_RANGER_USER_CONFIG_DIR: { kind: TEXT },
+  LP_RANGER_DEFAULTS_DIR: { kind: TEXT },
   WALLET_FILE_PATH: { kind: TEXT },
   API_KEYS_FILE_PATH: { kind: TEXT },
   GECKO_POOL_CACHE_PATH: { kind: TEXT },

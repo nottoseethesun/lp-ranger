@@ -9,8 +9,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 const { parseCompositeKey } = require("../src/composite-key");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
 const {
   compositeKey,
   loadConfig,
@@ -25,9 +25,9 @@ const {
 } = require("../src/bot-config-v2");
 const { GLOBAL_KEYS, POSITION_KEYS } = require("../src/bot-config-keys");
 
-/** Create a temp directory for each test. */
+/** Create a temp directory for each test, removed when the process exits. */
 function tmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "bcv2-"));
+  return makeTestTempFolder("bcv2");
 }
 
 describe("bot-config-v2", () => {

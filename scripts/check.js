@@ -39,6 +39,9 @@
 
 const { log } = require("../src/log");
 const { getErrorLogPath } = require("../src/error-log");
+const { removeLeftoverTestTempFolders } = require("../src/test-temp-folders");
+const { checkErrorLogPath } = require("./_check-error-log");
+const { runAsync } = require("./_run-async");
 const {
   JS_TARGETS,
   SECURITY_TARGETS,
@@ -81,10 +84,7 @@ const TXT_DIR = path.join(REPORT_DIR, "text-reports");
  *  working directory.
  */
 const ERROR_LOG = getErrorLogPath();
-const CHECK_ERROR_LOG = path.join(
-  path.dirname(ERROR_LOG),
-  "error-npm-run-check.log",
-);
+const CHECK_ERROR_LOG = checkErrorLogPath(ERROR_LOG);
 
 /** Resolve a binary in node_modules/.bin. */
 function bin(name) {
@@ -394,12 +394,19 @@ ensureOrWrite(path.join(RAW_DIR, "secretlint.json"), "[]");
 // ── Backup production files before tests ──────────────────────────────────
 /*-
  *  From the backup to the restore, an interrupt must not end this
- *  process. With no listener, Node exits on SIGINT at once, even inside
- *  `spawnSync`, so the `finally` below would never run and the operator's
- *  files would be left only in the backup directory. With one, this
- *  process survives the signal, the test run it is waiting on (which
- *  receives the same signal) ends, `spawnSync` returns, and the
- *  `finally` restores the files before this process exits.
+ *  process. With no listener, Node exits on SIGINT at once, so the
+ *  `finally` below would never run and the operator's files would be
+ *  left only in the backup directory. With one, this process survives
+ *  the signal, the test run it is waiting on (which receives the same
+ *  signal) ends, and the `finally` restores the files before this
+ *  process exits.
+ *
+ *  The test runs are awaited (`runAsync`) rather than run with
+ *  `spawnSync`, which blocks the event loop: the listener could not run
+ *  until the whole script was done, so a Ctrl+C during the first run
+ *  went unnoticed and the second started with the operator's files
+ *  still moved out. Awaited, the listener runs at once, and the run
+ *  stops after the stage it interrupted.
  */
 let interrupted = null;
 const onInterrupt = (signal) => {
@@ -411,51 +418,66 @@ const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "check-backup-"));
 log.info("[check] Operator files backed up to %s for the tests", backupDir);
 backupProdFiles(backupDir);
 wipeRuntimeFiles();
+/*-
+ *  Each test process removes its temp folders as it exits, but one
+ *  stopped outright (Ctrl+C, kill -9) cannot. Those folders go here,
+ *  before the tests start, so none accumulates across runs.
+ */
+const leftoverFolders = removeLeftoverTestTempFolders();
+if (leftoverFolders > 0)
+  log.info(
+    "[check] Removed %d test folder(s) a stopped run left in %s",
+    leftoverFolders,
+    os.tmpdir(),
+  );
 
 // ── Tests + Coverage ──────────────────────────────────────────────────────
-// Force --test-reporter=tap so the output is deterministic TAP v14
-// regardless of Node version or TTY state.
-let configValuesExit;
-let testsExit;
-try {
-  /*-
-   *  The shipped config files are checked before any other test. A value
-   *  of the wrong type, or outside its range, breaks whatever reads it,
-   *  and the rest of the suite would report each of those breakages as a
-   *  failure of its own. Run first, these tests name the cause first, in
-   *  a report row of their own. The rest of the suite runs either way, as
-   *  every other check here does.
-   */
-  const configRun = run(
-    "node",
-    [
+/**
+ * Run the config-value tests, then the rest of the suite, and put the
+ * operator's files back whatever happens, an interrupt included.
+ * Forces --test-reporter=tap so the output is deterministic TAP v14
+ * regardless of Node version or TTY state.
+ * @returns {Promise<{configValuesExit: number|undefined,
+ *   testsExit: number}>}
+ */
+async function runTestStages() {
+  let configValuesExit;
+  let testsExit;
+  try {
+    /*-
+     *  The shipped config files are checked before any other test. A
+     *  value of the wrong type, or outside its range, breaks whatever
+     *  reads it, and the rest of the suite would report each of those
+     *  breakages as a failure of its own. Run first, these tests name the
+     *  cause first, in a report row of their own. The rest of the suite
+     *  runs either way, as every other check here does.
+     */
+    const configRun = await runAsync("node", [
       "--test",
       "--test-reporter=tap",
       "--test-reporter-destination=stdout",
       ...configValueTests(),
-    ],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
-  configValuesExit = configRun.status;
-  fs.writeFileSync(
-    path.join(REPORT_DIR, "config-values.tap"),
-    configRun.stdout + configRun.stderr,
-  );
-  if (interrupted !== null) throw new Error(`interrupted by ${interrupted}`);
-  const testsRun = run(
-    "node",
-    [
+    ]);
+    configValuesExit = configRun.status;
+    fs.writeFileSync(
+      path.join(REPORT_DIR, "config-values.tap"),
+      configRun.stdout + configRun.stderr,
+    );
+    if (interrupted !== null) throw new Error(`interrupted by ${interrupted}`);
+    const testsRun = await runAsync("node", [
       "--test",
       "--experimental-test-coverage",
-      /*- Browser-side files (public/dashboard-*.js) are covered by their
+      /*-
+       *  Browser-side files (public/dashboard-*.js) are covered by their
        *  own test suites that jsdom-drive them.  They are excluded from
        *  the aggregate coverage figure to preserve the existing 80% floor
        *  for src/ (Node-side) code.  Adding them without a dashboard-
        *  focused coverage floor would dilute the src/ signal — a bad
        *  regression on src/ would go unnoticed if the aggregate stayed
-       *  above 80% thanks to well-covered dashboard files.  When dashboard
-       *  coverage is measured separately (see project nice-to-haves), we
-       *  can drop this exclude. */
+       *  above 80% thanks to well-covered dashboard files.  When
+       *  dashboard coverage is measured separately (see project
+       *  nice-to-haves), we can drop this exclude.
+       */
       "--test-coverage-exclude=public/**",
       /*-
        *  Two reporters for the one run. TAP goes to stdout, captured below
@@ -471,63 +493,72 @@ try {
       `--test-reporter-destination=${path.join(RAW_DIR, "lcov.info")}`,
       // Every other test: the config values ran above.
       ...listTestFiles().filter((f) => !configValueTests().includes(f)),
-    ],
-    {
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  testsExit = testsRun.status;
+    ]);
+    testsExit = testsRun.status;
+    fs.writeFileSync(
+      path.join(REPORT_DIR, "tests.tap"),
+      testsRun.stdout + testsRun.stderr,
+    );
+  } catch (err) {
+    testsExit = 1;
+    log.error("[check] Test runner failed:", err.message);
+  } finally {
+    restoreProdFiles(backupDir);
+    fs.rmSync(backupDir, { recursive: true, force: true });
+    keepTestErrorLog();
+    for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
+  }
+  return { configValuesExit, testsExit };
+}
+
+/**
+ * Report the run: every stage's exit code to the aggregator, which
+ * prints the summary and writes the PDF, and exit with its verdict. An
+ * interrupted run reports nothing and exits 1.
+ * @param {{configValuesExit: number|undefined, testsExit: number}} tests
+ */
+function reportRun({ configValuesExit, testsExit }) {
+  if (interrupted !== null) {
+    log.error(
+      "[check] Stopped by %s; the operator's files are restored.",
+      interrupted,
+    );
+    process.exit(1);
+  }
+
+  // ── Write exit codes + file counts for the aggregator ───────────────────
+  const exitCodes = {
+    eslint: eslintRun.status,
+    stylelint: stylelintRun.status,
+    htmlValidate: htmlValidateRun.status,
+    markdownlint: markdownlintRun.status,
+    prettierJs: prettierJsRun.status,
+    prettierJson: prettierJsonRun.status,
+    prettierYaml: prettierYamlRun.status,
+    actionlint: actionlintRun.status,
+    lintSvg: lintSvgRun.status,
+    knip: knipRun.status,
+    openapiSync: openapiSyncRun.status,
+    auditDeps: npmAuditRun.status,
+    securityLint: securityLintRun.status,
+    secretlint: secretlintRun.status,
+    configValues: configValuesExit,
+    tests: testsExit,
+    htmlFileCount,
+  };
   fs.writeFileSync(
-    path.join(REPORT_DIR, "tests.tap"),
-    testsRun.stdout + testsRun.stderr,
+    path.join(RAW_DIR, "exit-codes.json"),
+    JSON.stringify(exitCodes, null, 2) + "\n",
   );
-} catch (err) {
-  testsExit = 1;
-  log.error("[check] Test runner failed:", err.message);
-} finally {
-  restoreProdFiles(backupDir);
-  fs.rmSync(backupDir, { recursive: true, force: true });
-  keepTestErrorLog();
-  for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
-}
-if (interrupted !== null) {
-  log.error(
-    "[check] Stopped by %s; the operator's files are restored.",
-    interrupted,
-  );
-  process.exit(1);
+
+  // ── Aggregate + print summary + write PDF ───────────────────────────────
+  const aggregator = run("node", ["scripts/check-report.js"], {
+    stdio: "inherit",
+  });
+  process.exit(aggregator.status);
 }
 
-// ── Write exit codes + file counts for the aggregator ─────────────────────
-const exitCodes = {
-  eslint: eslintRun.status,
-  stylelint: stylelintRun.status,
-  htmlValidate: htmlValidateRun.status,
-  markdownlint: markdownlintRun.status,
-  prettierJs: prettierJsRun.status,
-  prettierJson: prettierJsonRun.status,
-  prettierYaml: prettierYamlRun.status,
-  actionlint: actionlintRun.status,
-  lintSvg: lintSvgRun.status,
-  knip: knipRun.status,
-  openapiSync: openapiSyncRun.status,
-  auditDeps: npmAuditRun.status,
-  securityLint: securityLintRun.status,
-  secretlint: secretlintRun.status,
-  configValues: configValuesExit,
-  tests: testsExit,
-  htmlFileCount,
-};
-fs.writeFileSync(
-  path.join(RAW_DIR, "exit-codes.json"),
-  JSON.stringify(exitCodes, null, 2) + "\n",
-);
-
-// ── Aggregate + print summary + write PDF ─────────────────────────────────
-const aggregator = run("node", ["scripts/check-report.js"], {
-  stdio: "inherit",
-});
-process.exit(aggregator.status);
+runTestStages().then(reportRun);
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 

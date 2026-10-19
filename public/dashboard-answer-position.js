@@ -30,7 +30,7 @@ import { activeChainId } from "./dashboard-chain.js";
  */
 export function positionKeyOnScreen() {
   const a = posStore.getActive();
-  if (!a) return null;
+  if (a === null || a === undefined) return null;
   return compositeKey(
     activeChainId(),
     a.walletAddress,

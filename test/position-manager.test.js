@@ -145,6 +145,31 @@ describe("position-manager", () => {
       assert.equal(stops.length, 2);
       assert.equal(mgr.runningCount(), 0);
     });
+
+    it("resolves only once every loop has stopped", async () => {
+      /*-
+       *  A loop's stop waits for its poll under way, a rebalance or
+       *  compound included, and the server's own shutdown waits for this.
+       */
+      const mgr = makeMgr();
+      let release;
+      const stopping = new Promise((resolve) => {
+        release = resolve;
+      });
+      await mgr.startPosition("key-1", {
+        tokenId: "100",
+        startLoop: async () => ({ stop: () => stopping }),
+      });
+      let done = false;
+      const all = mgr.stopAll().then(() => {
+        done = true;
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(done, false, "not while a loop's poll is under way");
+      release();
+      await all;
+      assert.equal(done, true);
+    });
   });
 
   // ── migrateKey ──────────────────────────────────────────────────────────

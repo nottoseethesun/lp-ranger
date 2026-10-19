@@ -89,11 +89,11 @@ test("manage in-flight: draws the click's label, disabled", () => {
 
 test("manage in-flight over a managed position: the label, never an enabled Stop", () => {
   /*-
-   *  The lost-Stop case. Manage is clicked on one position, the operator
-   *  switches to a managed position and back while the request runs.
-   *  The button used to be left as the managed position had drawn it,
-   *  an enabled Stop Managing, and a click on it sent Stop for the
-   *  position still starting. Every paint now draws the click's label.
+   *  Manage is clicked on one position, and the operator switches to a
+   *  managed position and back while the request runs. Left as the
+   *  managed position drew it, the button would be an enabled Stop
+   *  Managing, and a click would send Stop for the position still
+   *  starting. So every paint draws the click's label, disabled.
    */
   const s = computeManageUI(
     ins({ posState: { status: "running" }, manageInFlight: STARTING }),
@@ -109,6 +109,12 @@ test("manage in-flight with no text of its own: keeps the button's text", () => 
   assert.equal(s.buttonText, "Manage");
   assert.equal(s.buttonDisabled, true);
   assert.equal(s.buttonTitle, REOPEN_CHECK.title);
+  // Over a managed position the text kept is Stop's, so neither is assumed.
+  const managed = computeManageUI(
+    ins({ posState: { status: "running" }, manageInFlight: REOPEN_CHECK }),
+  );
+  assert.equal(managed.buttonText, "Stop Managing");
+  assert.equal(managed.buttonDisabled, true);
 });
 
 // ── Managed check pending (just switched to) ─────────────────────────

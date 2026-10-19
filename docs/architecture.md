@@ -477,11 +477,15 @@ epoch reconstruction, price fetching) produces the reporting; the bot loop
 exists to monitor the position and act on it — rebalance when out of range,
 auto-compound when the fee threshold is crossed.
 
-Kept apart, the badge does not depend on when a bot loop starts, which
-staggers between positions. And only a managed position has a Lifetime
-panel, so only its own scan can mark it "Synced": an unmanaged position's
-details fetch never sets the flag, so it cannot show "Synced" for a position
-whose managed scan has not started yet.
+Kept apart, a position's badge does not depend on when its own bot loop
+starts. Only a managed position has a Lifetime panel, so only its own scan
+can mark it "Synced": an unmanaged position's details fetch never sets the
+flag, so it cannot show "Synced" for a position whose managed scan has not
+started yet. One thing overrides every position's badge: after a launch,
+while the server is still starting the positions saved as managed, one at
+a time, the badge reads "Syncing" whatever is on screen. The server reports
+that start-up's progress in `GET /api/status` (`startingManagedPositions`),
+and the Syncing state keeps Manage and Stop Managing disabled until it ends.
 
 ---
 

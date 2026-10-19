@@ -58,6 +58,25 @@ test("a server.js running from this install's root is the server", async () => {
   });
 });
 
+test("a program open on server.js in this install's root is not the server", async () => {
+  /*-
+   *  An editor or a pager on the file, here `tail -f`, whose PID could be
+   *  the one a killed server left in the PID file. Its command line names
+   *  server.js and it runs from the install's root, but it is not node.
+   */
+  const viewer = spawn("tail", ["-f", "server.js"], {
+    stdio: "ignore",
+    cwd: process.cwd(),
+  });
+  try {
+    await new Promise((resolve) => viewer.once("spawn", resolve));
+    assert.match(psCmd(viewer.pid), /server\.js/);
+    assert.strictEqual(serverProcessState(viewer.pid), "no");
+  } finally {
+    viewer.kill("SIGKILL");
+  }
+});
+
 test("a server.js running from another directory is not this install's server", async () => {
   await withServerScript(null, async (pid) => {
     assert.strictEqual(serverProcessState(pid), "no");

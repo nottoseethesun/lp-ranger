@@ -185,16 +185,18 @@ export function _computeNumerics(snap, ltRealized, ltDep) {
   return { ltNetPnl, ltProfit, ltIL: il };
 }
 
-/*- Derive a single row from a per-position bot state.  The row's chain,
- *  wallet, position manager and NFT come from its own key, the
- *  position's fully-qualified identity, never from the status answer's
- *  server-wide fields.  Returns null when the key is not a position's,
- *  when the position isn't currently open (liq === 0) or when the bot
- *  state hasn't produced a pnlSnapshot yet (gate should have prevented
- *  the modal from opening in that case, but the check keeps the render
- *  function honest under eventual-consistency polling).  `mode` selects
- *  the display transformation ("total" / "per-day" / "weighted");
- *  `maxDays` is used only in weighted mode. */
+/**
+ * Derive a single row from a per-position bot state.  The row's chain,
+ * wallet, position manager and NFT come from its own key, the
+ * position's fully-qualified identity, never from the status answer's
+ * server-wide fields.  Returns null when the key is not a position's,
+ * when the position isn't currently open (liq === 0) or when the bot
+ * state hasn't produced a pnlSnapshot yet (gate should have prevented
+ * the modal from opening in that case, but the check keeps the render
+ * function honest under eventual-consistency polling).  `mode` selects
+ * the display transformation ("total" / "per-day" / "weighted");
+ * `maxDays` is used only in weighted mode.
+ */
 function _computeRow(key, posState, globalCtx, mode, maxDays) {
   const id = parseCompositeKey(key);
   const ap = posState.activePosition;
@@ -284,11 +286,13 @@ function _computeRows(data) {
   if (data === null || data === undefined) return [];
   const positions = data._allPositionStates ?? {};
   const globalCtx = {
-    /*- The chain's display name, for the row's identity cell; the
+    /*-
+     *  The chain's display name, for the row's identity cell; the
      *  chain's id for the deep-link slug comes from each row's key.
      *  Never derive one from the other with toLowerCase() — that
      *  conflates the ID-vs-displayName concepts we're intentionally
-     *  keeping separate everywhere else. */
+     *  keeping separate everywhere else.
+     */
     chainDisplayName: data.chainDisplayName,
   };
   const now = Date.now();
@@ -322,11 +326,13 @@ export function _sortRows(rows, col, dir) {
   });
 }
 
-/*- Deep-link URL for the row's position, from its key.  Uses the
- *  canonical chain id (KEY of chains.json) as the URL slug — NOT the
- *  display name.  Wallet and contract addresses are EIP-55 checksummed,
- *  as the key holds them and as the router writes them everywhere else
- *  in the app. */
+/**
+ * Deep-link URL for the row's position, from its key.  Uses the
+ * canonical chain id (KEY of chains.json) as the URL slug — NOT the
+ * display name.  Wallet and contract addresses are EIP-55 checksummed,
+ * as the key holds them and as the router writes them everywhere else
+ * in the app.
+ */
 function _positionHref(row) {
   return `/${row.blockchainId}/${row.walletAddress}/${row.contractAddress}/${row.tokenId}`;
 }

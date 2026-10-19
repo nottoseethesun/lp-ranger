@@ -28,7 +28,9 @@ const {
   RETIRED_POSITION_KEYS,
 } = require("./bot-config-keys");
 const { parseCompositeKey } = require("./composite-key");
-const { EVENT_DEFAULTS } = require("./telegram-notifications/telegram-events");
+const {
+  alertChoicesProblem,
+} = require("./telegram-notifications/telegram-events");
 
 const _FILE = "bot-config.json";
 
@@ -36,19 +38,7 @@ const _FILE = "bot-config.json";
 const _isGroup = (v) =>
   v !== null && typeof v === "object" && !Array.isArray(v);
 
-/*- The alerts an operator chose to be sent, each by name. */
-function _telegramEvents(value) {
-  if (!_isGroup(value)) return "must be the alerts chosen, each true or false";
-  for (const [id, on] of Object.entries(value)) {
-    if (!Object.hasOwn(EVENT_DEFAULTS, id))
-      return `names ${JSON.stringify(id)}, which is not an alert LP Ranger sends`;
-    if (typeof on !== "boolean")
-      return `${id} must be true or false; it is ${JSON.stringify(on)}`;
-  }
-  return null;
-}
-
-/*- Whether the bot manages the position. */
+/** The problem with a position's status, running or stopped, or null. */
 function _status(value) {
   return value === "running" || value === "stopped"
     ? null
@@ -63,7 +53,7 @@ function _status(value) {
 const _GLOBAL = Object.freeze({
   known: [...GLOBAL_KEYS, "telegramEvents"],
   retired: RETIRED_GLOBAL_KEYS,
-  own: { telegramEvents: _telegramEvents },
+  own: { telegramEvents: alertChoicesProblem },
 });
 const _POSITION = Object.freeze({
   known: [...POSITION_KEYS, "status"],

@@ -37,6 +37,7 @@ const ANSWER = {
   ...SHIPPED,
   throttleNearLimitPct: 55,
   soundsEnabled: !SHIPPED.soundsEnabled,
+  privacyBlurWalletAddresses: !SHIPPED.privacyBlurWalletAddresses,
   privacyUsdAmountThreshold: 250,
   activityLogMaxEntries: 10,
 };
@@ -162,13 +163,29 @@ describe("once the server has sent the settings", () => {
     );
   });
 
-  it("takes a first visit's sound and privacy defaults from them", () => {
-    assert.equal(sounds.isSoundsEnabled(), !SHIPPED.soundsEnabled);
+  it("takes a first visit's sound and privacy defaults from them", async () => {
+    assert.equal(sounds.isSoundsEnabled(), ANSWER.soundsEnabled);
     assert.equal(privacy.getPrivacyUsdThreshold(), 250);
     assert.equal(
       privacy.isPrivacyBlurWalletEnabled(),
-      SHIPPED.privacyBlurWalletAddresses,
+      ANSWER.privacyBlurWalletAddresses,
     );
+    /*-
+     *  Sounds are off until an answer, and on as shipped, so no single
+     *  answer tells an ignored one from a written-in one. A second
+     *  answer turns them the other way.
+     */
+    await ui.loadUiSettings({
+      fetchFn: async () => ({
+        ok: true,
+        json: async () => ({ ...ANSWER, soundsEnabled: !ANSWER.soundsEnabled }),
+      }),
+      onUnanswered: () => {},
+      onAnswered: () => {},
+      askEveryMs: 1,
+      warnFn: () => {},
+    });
+    assert.equal(sounds.isSoundsEnabled(), !ANSWER.soundsEnabled);
   });
 
   it("trims the Activity Log to the cap at the next entry", () => {

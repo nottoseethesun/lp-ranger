@@ -69,9 +69,11 @@ function main(
   argv = process.argv.slice(2),
   { print = console.log, where } = {},
 ) {
-  /*- `from: "user"` because argv is already stripped of the node and
+  /*-
+   *  `from: "user"` because argv is already stripped of the node and
    *  script entries. Commander handles --help and -h itself, printing to
-   *  stdout and exiting 0, and refuses an unknown option. */
+   *  stdout and exiting 0, and refuses an unknown option.
+   */
   buildProgram().parse(argv, { from: "user" });
   const problems = settingsProblems(where);
   if (problems.length === 0) {

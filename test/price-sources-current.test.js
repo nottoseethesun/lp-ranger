@@ -72,14 +72,21 @@ describe("currentPriceSources", () => {
 
 describe("currentPriceSources — Moralis, with a key held", () => {
   let savedFetch;
+  // No shipped chain's Moralis id, so a request naming one outright fails.
   const SERVICES = {
     dexScreenerChain: "somechain",
     geckoTerminalNetwork: "somenetwork",
-    moralisChain: "0x171",
+    moralisChain: "0x9a",
   };
   const moralisOf = (sources) => sources.find((s) => s.name === "Moralis");
 
   beforeEach(() => {
+    /*-
+     *  TEST-ONLY global swap: each case below replaces `fetch`, because
+     *  the Moralis source asks through the global one and offers no seam
+     *  for another. The original is captured here and put back pristine
+     *  after every case.
+     */
     savedFetch = globalThis.fetch;
     setApiKey("moralis", "a-stored-key");
     setServiceEnabled("moralis", true);
@@ -103,7 +110,7 @@ describe("currentPriceSources — Moralis, with a key held", () => {
     ]);
     assert.equal(await moralisOf(sources).fn(), 1.25);
     assert.equal(asked.length, 1);
-    assert.match(asked[0].url, /\/erc20\/0xAbCdEf.*\/price\?chain=0x171&/);
+    assert.match(asked[0].url, /\/erc20\/0xAbCdEf.*\/price\?chain=0x9a&/);
     assert.equal(asked[0].key, "a-stored-key");
   });
 

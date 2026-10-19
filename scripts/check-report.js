@@ -382,7 +382,7 @@ function renderTerminal(data) {
     }
   }
 
-  if (data.failures.length) {
+  if (data.failures.length > 0) {
     log.info();
     log.info(`${_RED}Failures:${_RESET}`);
     for (const f of data.failures) {
@@ -451,7 +451,7 @@ function writeTestsSummaryTxt(data) {
     }
     lines.push("");
   }
-  if (data.failures.length) {
+  if (data.failures.length > 0) {
     lines.push("Failures:");
     for (const f of data.failures) lines.push(`  ✘ ${f.name}`);
     lines.push("");

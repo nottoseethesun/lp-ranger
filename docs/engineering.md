@@ -326,15 +326,31 @@ The server finds the stored wallet rather than starting empty. With a
 wallet password configured it unlocks immediately; otherwise it waits for
 the browser unlock and continues from there.
 
-It then starts each position whose saved status is **running**,
-confirming the wallet still owns each NFT first — one sold or transferred
-since the last run is dropped from management rather than started against
-an NFT that is gone.
+It then starts each position whose saved status is **running**: the list
+Manage adds to and Stop Managing removes from, which a stop of the app
+leaves alone. Only the positions of the chain it runs and the wallet it
+holds are started; one saved under another wallet or chain waits for
+that wallet's or chain's own launch. With no wallet loaded, every
+wallet's listed positions on this chain are taken, no owner is checked,
+and each wallet keeps its own position in a pool, as a Manage keys it.
+Before any starts, it reads every listed position's owner and pool, and
+takes off the list each one that cannot be managed: its NFT was sold,
+transferred or burned since the last run, or another listed position
+keeps its pool. LP Ranger manages
+one active position per pool, so each pool keeps its open position, or
+the first listed if none is open. One whose owner or pool could not be
+read is not started, since nothing then shows its pool free; it stays on
+the list for the next launch, as does one that merely fails to start.
+The headless bot (`bot.js`) starts its listed positions through the
+same start-up.
 
 Positions start staggered rather than together. With the default poll
 interval and two positions, the second waits 150 seconds. That spreads
 both their polling and their scans instead of firing every request at
-once.
+once. While the start-up runs, the dashboard's badge reads Syncing for
+every position and the server refuses a Manage or a wallet import, since
+either would start positions alongside the ones still waiting their
+turn (`src/app-phase.js`).
 
 Each position then runs the same sequence as a fresh one, with two
 differences that account for the speed:
@@ -562,11 +578,13 @@ post-rebalance position against holding the coins the NFT currently
 held was minted with, valued at today's prices, and rejects the
 rebalance when the projection falls more than `impermanentLossGuardPct`
 below holding. That comparison is the Current panel's IL/G for the NFT,
-and the guard reads it rather than working it out again. It used to
-measure against the minted coins' value on the mint day, which counted a
-move both coins' dollar prices share: that blocked a position whose
-coins had both fallen though its impermanent loss was small, and let a
-deep loss through inside a rise both coins shared.
+and the guard reads it rather than working it out again. Holding is
+valued at today's prices, not at the minted coins' value on the mint
+day, because a move both coins' dollar prices share is not impermanent
+loss and a rebalance does not lock it in. Measured against the mint day,
+the guard would block a position whose coins had both fallen though its
+impermanent loss was small, and let a deep loss through inside a rise
+both coins shared.
 
 **Read-only by construction.** Both inputs are already computed earlier
 in the same poll cycle — `snap.totalIL` and the minted coins and prices
@@ -878,9 +896,10 @@ The guard is designed to never silently disable itself:
   throws on an install error rather than guessing a threshold.
 - So does a `thresholdUnits` or `fallbackThresholdUsd` that is not a
   number above 0, in the shipped file or the operator's copy: the
-  message names the setting. Compared against text, zero or less, the
-  guard would call no amount dust. The rule is the one the
-  shipped-values test holds the file to (`src/value-kinds.js`).
+  message names the setting. A threshold that is text, zero or less
+  would let no amount compare below it, so the guard would call nothing
+  dust. The rule is the one the shipped-values test holds the file to
+  (`src/value-kinds.js`).
 - If every price source returns zero, `getDustThresholdUsd()` falls back
   to the file's `fallbackThresholdUsd` ($1.00 as shipped) — a fixed floor
   rather than an open gate — and flags `usedFallback: true` so callers
@@ -1506,7 +1525,8 @@ The deploy workflow calls the same builder:
     node scripts/build-pages-site.js _site
 ```
 
-One builder for both means the preview cannot drift from the deploy.
+With one builder behind the local preview (`npm run show-gallery`) and
+the deploy, the preview cannot drift from what deploys.
 Only the two CI-only steps remain in YAML: `npm ci` and `copy-fonts`
 populate `public/fonts/`, which the builder then copies. A preview must
 not run those, because `npm ci` wipes and reinstalls `node_modules`.
@@ -2623,8 +2643,10 @@ What happens when the process starts, in order:
       by an `exit` hook however the process ends) and installs the
       `SIGINT` and `SIGTERM` handler. Both come before the wallet key is
       resolved, which can wait on a prompt, so a signal during a slow
-      start still shuts down cleanly. The handler sends the shutdown
-      alert, starts `_positionMgr.stopAll()`, closes the HTTP server,
+      start still shuts down cleanly. The handler marks the app
+      stopping for good, so no position starts and no move begins
+      after it (src/app-phase.js), sends the shutdown alert, starts
+      `_positionMgr.stopAll()`, closes the HTTP server,
       and exits within `shutdown.exitTimeoutMs` (three seconds as
       shipped) whether or not a rebalance or compound has finished.
       `npm run gentle-stop` is the stop that waits for one.
@@ -2633,10 +2655,12 @@ What happens when the process starts, in order:
       `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or from
       an interactive prompt.
       - On success: `_autoStartManagedPositions()` spins up one bot
-        loop per position whose v2 config has `status: 'running'`.
-        The starts are staggered by the poll interval divided by the
+        loop per position whose v2 config has `status: 'running'`, on
+        this chain and in this wallet (src/server-auto-start.js). The
+        starts are staggered by the poll interval divided by the
         number of positions (150 seconds apart for two at the default
-        300), so they don't all poll the RPC on the same tick.
+        300), so they don't all poll the RPC on the same tick. The
+        start-up ends early once a stop begins.
       - If the wallet is locked: logs
         `Wallet locked — unlock via dashboard to start bot.` and
         enters dashboard-only mode until the user unlocks via
@@ -2739,12 +2763,11 @@ code reads the saved value at its next start. `test/config-bounds.test.js`
 fails for any key the route saves that has a range in
 setting-bounds.json and no check here.
 
-One module, rather than a rule per control, because the browser's copies
-had drifted into different policies: some rewrote what was typed and saved
-the rewrite, so the bot ran on a number nobody chose; some refused with no
-message, which reads as a broken Save button; the rest each raised a
-dialog of its own wording. And none of them bound a request that did not
-come from the form.
+One module, rather than a rule per control, because rules kept per
+control drift into different policies. One rewrites what was typed and
+saves the rewrite, so the bot runs on a number nobody chose; another
+refuses with no message, which reads as a broken Save button. And no
+check in the browser binds a request that does not come from the form.
 
 Bounds live with the check, not in the browser: every range is in
 `setting-bounds.json`, read through `src/setting-bounds.js` by this
@@ -3016,9 +3039,9 @@ for reading pool / token state from on-chain contracts (slot0, decimals,
 tickSpacing, derived price). Because the value it returns flows into
 every downstream P&L, IL, rebalance, and lifetime-deposit calculation,
 a silent bad return from a flaky RPC call can poison every consumer
-with `NaN` and never recover &mdash; as when one position's `decimals0`
-came back `undefined`, its lifetime deposit read `$NaN`, and the
-"Syncing&hellip;" badge stuck in a rescan loop.
+with `NaN` and never recover: a `decimals0` read as `undefined` makes
+the lifetime deposit `$NaN`, and the "Syncing&hellip;" badge stays in a
+rescan loop.
 
 ### Validation
 
@@ -3189,9 +3212,9 @@ the button-state logic.
 Together these are the escape hatch for one class of failure: a silent
 server-side `catch` that leaves saved state subtly wrong, typically the
 first pool-wide lifetime scan aborting before anything reaches disk.
-What it leaves looks plausible. One position showed $11.63 of Fees
-Compounded instead of about $255.50, because the only compound on disk
-was a single later auto-compound.
+What it leaves looks plausible: with the first scan's compounds never
+saved, Fees Compounded shows only the compounds made after it, which
+can be a small part of the true total.
 
 ### logs/error.log
 

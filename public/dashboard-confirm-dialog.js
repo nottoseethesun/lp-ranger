@@ -17,6 +17,7 @@
  */
 
 import { cloneTpl } from "./dashboard-helpers.js";
+import { POSITION_DIALOG_ATTRIBUTE } from "./dashboard-position-dialogs.js";
 
 /**
  * Show a confirm dialog and resolve with the user's answer.
@@ -38,6 +39,9 @@ import { cloneTpl } from "./dashboard-helpers.js";
  * @param {string} [opts.overlayId]  Id to put on the overlay element.
  * @param {(frag: DocumentFragment) => void} [opts.fill]  Populate
  *   `data-tpl` placeholders before the fragment is attached.
+ * @param {boolean} [opts.positionDialog]  The question is about the
+ *   position on screen, so a switch to another answers it `false`
+ *   (dashboard-position-dialogs.js).
  * @returns {Promise<boolean>} True when the user confirmed.
  */
 export function confirmViaDialog(templateId, opts = {}) {
@@ -49,6 +53,8 @@ export function confirmViaDialog(templateId, opts = {}) {
     const overlay = document.createElement("div");
     overlay.className = "9mm-pos-mgr-modal-overlay";
     if (opts.overlayId) overlay.id = opts.overlayId;
+    if (opts.positionDialog === true)
+      overlay.setAttribute(POSITION_DIALOG_ATTRIBUTE, "");
     overlay.appendChild(frag);
     document.body.appendChild(overlay);
 

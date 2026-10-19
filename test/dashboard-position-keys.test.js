@@ -69,11 +69,12 @@ describe("before the server has named the chain", () => {
 });
 
 describe("once the chain is known", () => {
+  // The testnet, not the shipped default, so a key naming that outright fails.
   before(() =>
     chainMod.loadActiveChain({
       fetchFn: async () => ({
         ok: true,
-        json: async () => ({ chainId: "pulsechain" }),
+        json: async () => ({ chainId: "pulsechain-testnet" }),
       }),
       onUnanswered: () => {},
       onAnswered: () => {},
@@ -83,7 +84,7 @@ describe("once the chain is known", () => {
   it("keys a Current-panel figure by chain, wallet, contract and NFT number", () => {
     assert.equal(
       deposit._posKeyFrom("9mm_deposit_pos_", WALLET, PM, "162249"),
-      "9mm_deposit_pos_pulsechain_" +
+      "9mm_deposit_pos_pulsechain-testnet_" +
         WALLET.toLowerCase() +
         "_" +
         PM.toLowerCase() +
@@ -109,10 +110,18 @@ describe("once the chain is known", () => {
   });
 
   it("reads the active position's figure under its full key", () => {
+    /*-
+     *  Through the Current panel's own readers. The keys older releases
+     *  wrote, the NFT number alone, hold other figures, so a reader that
+     *  looked there fails.
+     */
     activate({});
-    const key = deposit._posKey("9mm_deposit_pos_");
-    localStorage.setItem(key, "250");
-    assert.equal(deposit._loadNum(key, false), 250);
-    assert.match(key, /^9mm_deposit_pos_pulsechain_0x1{40}_0xcc05/);
+    const full = `pulsechain-testnet_${WALLET.toLowerCase()}_${PM.toLowerCase()}_162249`;
+    localStorage.setItem(`9mm_deposit_pos_${full}`, "250");
+    localStorage.setItem("9mm_deposit_pos_162249", "999");
+    localStorage.setItem(`9mm_realized_pos_${full}`, "75");
+    localStorage.setItem("9mm_realized_pos_162249", "888");
+    assert.equal(deposit.loadCurDeposit(), 250);
+    assert.equal(deposit.loadCurRealized(), 75);
   });
 });

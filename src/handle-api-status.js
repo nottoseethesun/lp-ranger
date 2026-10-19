@@ -18,6 +18,7 @@ const path = require("path");
 const { configuredErrorLogPath } = require("./error-log");
 const { getActiveLogFilePath } = require("./log-file");
 const { managedPositionList } = require("./position-state-routes");
+const { startUpProgress } = require("./app-phase");
 
 /**
  * The file the server is logging to, relative to where it runs, or null
@@ -146,6 +147,12 @@ function createApiStatusHandler(deps) {
           diskConfig,
           managedKeys,
         }),
+        /*-
+         *  While the start-up is starting the positions saved as managed:
+         *  how many it has dealt with and how many there are, which holds
+         *  the dashboard's badge at Syncing. Null at any other time.
+         */
+        startingManagedPositions: startUpProgress(),
         poolDailyCounts: positionMgr.getPoolDailyCounts(),
         gasStatus,
       },

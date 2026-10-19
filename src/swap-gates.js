@@ -8,8 +8,8 @@
  *
  *   1. Dust gate — USD value of the swap is below the gold-pegged dust
  *      threshold (`src/dust.js`).
- *   2. Gas gate — estimated swap gas cost exceeds
- *      `MAX_SWAP_GAS_RATIO` of the swap value.  Built primarily for
+ *   2. Gas gate — estimated swap gas cost exceeds the operator's
+ *      `gasFeePct` share of the swap value.  Built primarily for
  *      future high-gas chains (Ethereum, Arbitrum at peak load); on
  *      PulseChain the gate almost never trips because gas is cheap.
  *
@@ -43,21 +43,6 @@ const _BOT_DEFAULTS = readBotConfigDefaults();
 const GAS_FEE_PCT_DEFAULT = _BOT_DEFAULTS.gasFeePct;
 
 /**
- * Default fraction used when no per-call override is supplied.
- * Sourced from the default `gasFeePct` value divided by 100.  Tuned
- * conservatively: a swap that costs more than this share of its value
- * in gas is almost always net-negative once slippage and price impact
- * are stacked on top.
- *
- * The active value is operator-tunable via the global `gasFeePct` Bot
- * Setting.  Each swap call site reads `_getConfig("gasFeePct")` from
- * the per-position bot state, divides by 100, and passes the
- * resulting ratio to `shouldSkipSwap` as `maxRatio`.  This constant
- * remains the fallback when no value is supplied.
- */
-const MAX_SWAP_GAS_RATIO = GAS_FEE_PCT_DEFAULT / 100;
-
-/**
  * The range of the operator-tunable `gasFeePct` Bot Setting, from
  * setting-bounds.json: the same figures `src/config-bounds.js` refuses a
  * saved value against and `src/bot-config-defaults.js` holds the shipped
@@ -68,10 +53,14 @@ const GAS_FEE_PCT_MAX = SETTING_BOUNDS.gasFeePct.max;
 
 /**
  * Convert the operator's `gasFeePct` (a percent) into the ratio used
- * by `shouldSkipSwap`'s gas gate.  Clamps to `[GAS_FEE_PCT_MIN,
- * GAS_FEE_PCT_MAX]` so a corrupt config or wild manual edit can't
- * disable the gate or block all swaps.  Falls back to the default
- * when the input isn't a positive number.
+ * by `shouldSkipSwap`'s gas gate.  Every swap call site asks this for
+ * its limit, passing the global `gasFeePct` Bot Setting: the default,
+ * 1% as shipped, is conservative, since a swap that costs more than
+ * that share of its value in gas is almost always net-negative once
+ * slippage and price impact are stacked on top.  Clamps to
+ * `[GAS_FEE_PCT_MIN, GAS_FEE_PCT_MAX]` so a corrupt config or wild
+ * manual edit can't disable the gate or block all swaps.  Falls back
+ * to the default when the input isn't a positive number.
  *
  * @param {number|string|undefined} pct
  * @returns {number}  The percent, held inside its range, divided by 100.
@@ -131,13 +120,11 @@ async function estimateSwapGasUsd(provider) {
  * triggering reason; passes return `{skip:false}` with the computed
  * `gasRatio` so callers can log it.
  *
- * `maxRatio` is the per-call override of the gas-gate ceiling, derived
- * by the caller from the operator's `gasFeePct` Bot Setting (percent ÷
- * 100).  Pass `undefined` to fall back to the conservative
- * `MAX_SWAP_GAS_RATIO` default — used by tests that don't care about
- * the operator override path.
+ * `maxRatio` is the gas-gate ceiling, which the caller takes from
+ * `gasFeePctToRatio`: the operator's `gasFeePct` Bot Setting as a
+ * ratio, always above zero.
  *
- * @param {{swapUsd: number, gasUsd: number, maxRatio?: number}} args
+ * @param {{swapUsd: number, gasUsd: number, maxRatio: number}} args
  * @returns {Promise<{
  *   skip: boolean,
  *   reason: 'dust'|'gas-unfavorable'|null,
@@ -147,10 +134,6 @@ async function estimateSwapGasUsd(provider) {
  * }>}
  */
 async function shouldSkipSwap({ swapUsd, gasUsd, maxRatio }) {
-  const ceiling =
-    typeof maxRatio === "number" && maxRatio > 0
-      ? maxRatio
-      : MAX_SWAP_GAS_RATIO;
   const { thresholdUsd } = await getDustThresholdUsd();
   if (await isDust(swapUsd)) {
     return {
@@ -158,18 +141,18 @@ async function shouldSkipSwap({ swapUsd, gasUsd, maxRatio }) {
       reason: "dust",
       thresholdUsd,
       gasRatio: 0,
-      maxRatio: ceiling,
+      maxRatio,
     };
   }
   // A swap worth nothing is dust, which returned above, so swapUsd is positive.
   const ratio = gasUsd / swapUsd;
-  if (gasUsd > 0 && ratio > ceiling) {
+  if (gasUsd > 0 && ratio > maxRatio) {
     return {
       skip: true,
       reason: "gas-unfavorable",
       thresholdUsd,
       gasRatio: ratio,
-      maxRatio: ceiling,
+      maxRatio,
     };
   }
   return {
@@ -177,12 +160,11 @@ async function shouldSkipSwap({ swapUsd, gasUsd, maxRatio }) {
     reason: null,
     thresholdUsd,
     gasRatio: ratio,
-    maxRatio: ceiling,
+    maxRatio,
   };
 }
 
 module.exports = {
-  MAX_SWAP_GAS_RATIO,
   GAS_FEE_PCT_MIN,
   GAS_FEE_PCT_MAX,
   GAS_FEE_PCT_DEFAULT,

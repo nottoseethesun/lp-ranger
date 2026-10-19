@@ -3,8 +3,9 @@
  * Rebalancer unit tests — mintPosition, balance-diff swapIfNeeded,
  * _ensureAllowance, executeRebalance.
  */
-const { describe, it } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
+const { startLocalAggregator } = require("./helpers/local-aggregator");
 const { mintPosition, executeRebalance } = require("../src/rebalancer");
 const { swapIfNeeded } = require("../src/rebalancer-swap");
 const {
@@ -17,6 +18,17 @@ const {
   defaultDispatch,
   buildMockEthersLib,
 } = require("./helpers/rebalancer-mocks");
+
+/*-
+ *  These swaps are meant to reach the V3 router. The live aggregator
+ *  refuses the fixtures' made-up tokens, which sends them there; a local
+ *  one refuses them the same way, with no third party asked.
+ */
+let aggregator;
+before(async () => {
+  aggregator = await startLocalAggregator();
+});
+after(() => aggregator.stop());
 
 /** A mint transaction whose receipt names the block it was mined in. */
 function mintTxAt(hash, blockNumber) {

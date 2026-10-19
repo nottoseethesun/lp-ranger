@@ -24,6 +24,7 @@ const {
   addManagedPosition,
   getPositionConfig,
 } = require("../src/bot-config-v2");
+const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 
 // Valid EIP-55 checksummed addresses (parseCompositeKey validates them).
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
@@ -76,6 +77,7 @@ function makeRouteDeps(overrides = {}) {
       res._body = body;
     },
     readJsonBody: async () => ({}),
+    ...poolReadStandIn(),
     ...overrides,
   };
 }

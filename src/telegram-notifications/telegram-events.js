@@ -9,7 +9,10 @@
  * The one list of them. Pure data with no dependencies, so the sender
  * (telegram.js), the dashboard's Telegram dialog and the settings check
  * (src/settings-check.js) all read it, the last two without loading the
- * sender, which reads the app's config.
+ * sender, which reads the app's config. The rule for an operator's
+ * choices lives beside the list (`alertChoicesProblem`), so the route
+ * that saves them and the settings check that reads them back at
+ * startup judge them alike.
  */
 
 "use strict";
@@ -35,10 +38,13 @@ const EVENT_DEFAULTS = Object.freeze({
    *  happening.
    */
   ilGuardRejected: true,
-  /*- Balanced-band notifier (src/telegram-notifications/balanced-notifier.js).  Default OFF —
+  /*-
+   *  Balanced-band notifier
+   *  (src/telegram-notifications/balanced-notifier.js). Default OFF:
    *  enabling it bypasses the idle-driven price-lookup pause for these
    *  positions, so price-source quota is consumed even when the
-   *  dashboard is closed. */
+   *  dashboard is closed.
+   */
   positionBalanced: false,
 });
 
@@ -80,4 +86,27 @@ function eventTitle(id, bandPct) {
   return _TITLES[id];
 }
 
-module.exports = { EVENT_DEFAULTS, eventTitle };
+/**
+ * What is wrong with a set of alert choices, or null when nothing is.
+ *
+ * The choices are an object naming alerts from `EVENT_DEFAULTS`, each
+ * true or false; an alert left out keeps its default. The Telegram
+ * settings route holds a save to this rule before it writes anything,
+ * and the settings check holds the saved set to it at startup.
+ *
+ * @param {*} value  The choices, as saved or as a request carries them.
+ * @returns {string|null}
+ */
+function alertChoicesProblem(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return "must be the alerts chosen, each true or false";
+  for (const [id, on] of Object.entries(value)) {
+    if (!Object.hasOwn(EVENT_DEFAULTS, id))
+      return `names ${JSON.stringify(id)}, which is not an alert LP Ranger sends`;
+    if (typeof on !== "boolean")
+      return `${id} must be true or false; it is ${JSON.stringify(on)}`;
+  }
+  return null;
+}
+
+module.exports = { EVENT_DEFAULTS, eventTitle, alertChoicesProblem };

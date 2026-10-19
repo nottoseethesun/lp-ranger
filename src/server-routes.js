@@ -37,6 +37,7 @@ const { createScanHandlers } = require("./server-scan");
 const { createReloadPositionHandler } = require("./server-reload-position");
 const { createRescanPricesHandler } = require("./server-rescan-prices");
 const { createAutoStartManagedPositions } = require("./server-auto-start");
+const { markStopping, refusalToStart } = require("./app-phase");
 const { createConfigRouteHandler } = require("./server-config-route");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
@@ -60,6 +61,8 @@ const { emojiId } = require("./logger");
  *   deps.createPerPositionBotState
  * @param {Function} deps.attachMultiPosDeps
  * @param {Function} deps.updatePositionState
+ * @param {Function} deps.notifyShutdown  Sends the shutdown alert
+ *   (src/telegram-notifications/server-shutdown.js).
  * @returns {object} Handler function map.
  */
 function createRouteHandlers(deps) {
@@ -75,6 +78,7 @@ function createRouteHandlers(deps) {
     attachMultiPosDeps,
     updatePositionState,
     askPassword,
+    notifyShutdown,
     /*- position-details functions are overridable from tests so we
      *  don't exercise a real RPC in unit tests. */
     computeQuickDetails = _defaultComputeQuickDetails,
@@ -87,7 +91,16 @@ function createRouteHandlers(deps) {
   // POST /api/config, built by its own module.
   const _handleApiConfig = createConfigRouteHandler(deps);
 
+  /*-
+   *  POST /api/wallet: import a wallet, then stop every position and
+   *  start the saved ones again under it. Refused while the start-up is
+   *  under way or the app is stopping (src/app-phase.js), since it would
+   *  start positions then.
+   */
   async function _handleWalletImport(req, res) {
+    const refusal = refusalToStart();
+    if (refusal !== null)
+      return jsonResponse(res, 409, { ok: false, error: refusal });
     const body = await readJsonBody(req);
     log.info(
       "[server] Wallet import for %s (running: %d)",
@@ -168,12 +181,23 @@ function createRouteHandlers(deps) {
     diskConfig,
   });
 
+  /**
+   * POST /api/shutdown: stop every position and exit. From the request
+   * on, the app is stopping for good (src/app-phase.js), so no position
+   * starts and no rebalance or compound begins. Each position's stop
+   * waits for a move already under way to finish, so none is cut off;
+   * `npm run gentle-stop` asks for this once nothing is under way. The
+   * positions saved as managed stay saved, so the next launch starts
+   * them again. The shutdown alert goes out as it does on Ctrl+C.
+   */
   async function _handleShutdown(_req, res, srv) {
+    markStopping();
     jsonResponse(res, 200, {
       ok: true,
       message: "Shutting down\u2026",
     });
     log.info("[server] Shutdown requested via API");
+    notifyShutdown();
     await positionMgr.stopAll();
     srv.close(() => process.exit(0));
   }

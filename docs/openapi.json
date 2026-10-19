@@ -122,6 +122,19 @@
                           "items": {
                             "type": "object"
                           }
+                        },
+                        "startingManagedPositions": {
+                          "type": "object",
+                          "nullable": true,
+                          "description": "While the server starts the positions saved as managed, one at a time after a launch: how many it has dealt with (`done`) and how many there are (`total`). Null at any other time. The dashboard's badge reads Syncing while it is set.",
+                          "properties": {
+                            "done": {
+                              "type": "integer"
+                            },
+                            "total": {
+                              "type": "integer"
+                            }
+                          }
                         }
                       }
                     },
@@ -537,6 +550,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "409": {
+            "description": "Refused, with nothing imported: an import stops every position and starts the saved ones again, so it waits while the server is still starting the positions saved as managed, and is refused once the server is stopping. `error` says which, in the operator's words."
           }
         }
       },
@@ -769,7 +785,7 @@
             "description": "Missing tokenId or no private key"
           },
           "409": {
-            "description": "Another position already manages this pool. LP Ranger manages one position per liquidity pool so that profit and loss stays attributable to it. The body names the position holding the pool.",
+            "description": "Nothing was started, for one of three reasons. LP Ranger manages one active position per liquidity pool, so that profit and loss stays attributable to it. `pool-already-managed`: another position already manages this pool, and the body names it. `pool-has-open-position`: the position is closed, so its Manage would re-open it, and the wallet already holds an open position in its pool, which the body names; the wallet's positions are those the last wallet scan saw open, each still open unless the chain answers otherwise. Or nothing may start now: the server is still starting the positions saved as managed, one of which may be in the same pool, or it is stopping; the body then carries only `ok` and `error`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -780,15 +796,50 @@
                     },
                     "error": {
                       "type": "string",
-                      "enum": ["pool-already-managed"]
+                      "description": "`pool-already-managed`, `pool-has-open-position`, or, in the operator's words, why nothing may start now, naming the start-up's progress while it runs."
+                    },
+                    "openTokenId": {
+                      "type": "string",
+                      "description": "With `pool-has-open-position`: NFT id of the open position the wallet holds in the pool."
                     },
                     "conflictTokenId": {
                       "type": "string",
-                      "description": "NFT id of the running position holding the pool."
+                      "description": "With `pool-already-managed`: NFT id of the running position holding the pool."
                     },
                     "conflictKey": {
                       "type": "string",
                       "description": "Composite key (blockchain-wallet-contract-tokenId) of that position."
+                    },
+                    "positionKey": {
+                      "type": "string",
+                      "description": "Composite key of the position refused, as every answer about a position names it."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Nothing was started, since the chain could not be read: `pool-info-unavailable`. Either the position's pool, without which LP Ranger cannot check that no other position is managed in it, or the pool's state, which the bot reads as it starts. `message` says which. Try again in a moment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "`pool-info-unavailable`."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "What could not be read, in the operator's words."
+                    },
+                    "tokenId": {
+                      "type": "string",
+                      "description": "NFT id of the position refused."
                     },
                     "positionKey": {
                       "type": "string",
@@ -1033,7 +1084,7 @@
       "post": {
         "tags": ["System"],
         "summary": "Graceful shutdown",
-        "description": "Stop all managed positions and shut down the server. A rebalance or compound under way finishes first, however long it takes, and no position starts another check; then the server exits. Ctrl+C and `npm stop` exit within three seconds, cutting one off. `npm run gentle-stop`, the recommended stop, asks GET /api/is-position-being-adjusted until nothing is under way, then stops the server as `npm stop` does.",
+        "description": "Stop all managed positions and shut down the server. A rebalance or compound under way finishes first, however long it takes, and no position starts another check; then the server exits. Ctrl+C and `npm stop` exit within three seconds, cutting one off. `npm run gentle-stop`, the recommended stop, asks GET /api/is-position-being-adjusted until nothing is under way, then asks this route to stop the server and waits until it has exited. The shutdown alert goes out as it does on Ctrl+C.",
         "responses": {
           "200": {
             "description": "Shutdown initiated"
@@ -1502,7 +1553,7 @@
       "post": {
         "summary": "Save Telegram configuration",
         "tags": ["Telegram"],
-        "description": "Each field is optional and saved independently. botToken and chatId are encrypted at rest and require a password (or an unlocked wallet session); enabledEvents is written to the bot-config global section and needs neither.",
+        "description": "Each field is optional. botToken and chatId are encrypted at rest and require a password (or an unlocked wallet session); enabledEvents is written to the bot-config global section and needs neither. enabledEvents may name only alerts LP Ranger sends, each true or false, and leaving it out keeps the saved choices. A request refused for either reason saves nothing.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1548,7 +1599,7 @@
             }
           },
           "400": {
-            "description": "Password required for credential fields.",
+            "description": "Password required for credential fields, or enabledEvents names an alert LP Ranger does not send or holds a value other than true or false. Nothing is saved.",
             "content": {
               "application/json": {
                 "schema": {

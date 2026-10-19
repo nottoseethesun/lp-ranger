@@ -57,6 +57,12 @@ const data = {
 let stats;
 
 before(async () => {
+  /*-
+   *  TEST-ONLY global swap: the dashboard asks the server through the
+   *  browser's fetch and takes no stand-in for it. This answers for the
+   *  server for the whole file, so it stays in place: the file runs in a
+   *  process of its own, which no other file shares.
+   */
   globalThis.fetch = async (url) => {
     if (url === "/api/lp-providers")
       return {
@@ -82,9 +88,9 @@ before(async () => {
   stats.updateAllPositionsStatsBtn(data);
 });
 
-/*-
- *  By class name, not selector: a class that starts with a digit is not
- *  a valid CSS selector unless escaped.
+/**
+ * By class name, not selector: a class that starts with a digit is not
+ * a valid CSS selector unless escaped.
  */
 const first = (cls) => document.getElementsByClassName(cls)[0];
 

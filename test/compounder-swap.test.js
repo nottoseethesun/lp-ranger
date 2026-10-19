@@ -12,7 +12,21 @@
  *   effects are stubbed: the USD price lookup, the gas estimate and the
  *   dust-and-gas gate (each covered in its own suite), and the swap
  *   itself.
+ *
+ *   The default slippage is an operator's own here, 1.1%, not the 0.75%
+ *   that ships, so a figure written into the code fails.
  */
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("compounder-swap-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "bot-config-defaults.json"),
+  JSON.stringify({ slippagePct: 1.1 }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
@@ -45,7 +59,6 @@ replace("../src/price-fetcher", {
 });
 
 const { swapForCompound } = require("../src/compounder-swap");
-const shipped = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 const T0 = "0xA1077a294dDE1B09bB078844df40758a5D0f9a27";
 const T1 = "0x7b39712EF45F7dcED2bBDF11F3D5046bA61dA719";
@@ -212,7 +225,7 @@ describe("swapForCompound", () => {
     assert.deepEqual(stub.calls.price, [T0]);
   });
 
-  it("falls back to the shipped slippage when the bought coin has none", async () => {
+  it("falls back to the default slippage when the bought coin has none", async () => {
     await swapForCompound(
       SIGNER,
       LIB,
@@ -220,7 +233,7 @@ describe("swapForCompound", () => {
       0n,
       ONE,
     );
-    assert.equal(stub.calls.swap[0].slippagePct, shipped.slippagePct);
+    assert.equal(stub.calls.swap[0].slippagePct, 1.1);
   });
 
   it("lets a failed swap reach the compound, which decides what to do", async () => {

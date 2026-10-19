@@ -11,13 +11,38 @@
  * which drives all three of its answers rather than the one revert case that
  * used to live here — it is a decision about nonce ownership, not a pure
  * helper, and its outcomes only make sense beside each other.
+ *
+ * The chain's gas limit multiple and its gas for a quote that names none
+ * are an operator's own here, 1.25 and 280000, not the 2 and 300000 that
+ * ship, so a figure written into the code fails.
  */
 
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+const SHIPPED_CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
+
+const SETTINGS_DIR = makeTestTempFolder("aggregator-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "chains.json"),
+  JSON.stringify(
+    Object.fromEntries(
+      Object.keys(SHIPPED_CHAINS).map((chain) => [
+        chain,
+        {
+          gasLimitMultiplier: 1.25,
+          aggregator: { gasUnitsWhenQuoteOmitsGas: 280000 },
+        },
+      ]),
+    ),
+  ),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
+
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const config = require("../src/config");
 const {
   _gasLimit,
   _baseSigner,
@@ -28,30 +53,19 @@ const {
 
 describe("_gasLimit", () => {
   it("applies chain multiplier to quote.gas", () => {
-    const gl = _gasLimit({ gas: 150000 });
-    // Default gasLimitMultiplier is 2 from chains.json
-    assert.ok(gl > 150000n);
-    assert.ok(typeof gl === "bigint");
+    assert.equal(_gasLimit({ gas: 150000 }), 187500n);
   });
 
   it("uses estimatedGas when gas is missing", () => {
-    const gl = _gasLimit({ estimatedGas: 200000 });
-    assert.ok(gl >= 200000n);
+    assert.equal(_gasLimit({ estimatedGas: 200000 }), 250000n);
   });
 
   it("uses the chain's gasUnitsWhenQuoteOmitsGas when the quote names no gas", () => {
-    const { aggregator, gasLimitMultiplier } = config.CHAIN;
-    assert.equal(
-      _gasLimit({}),
-      BigInt(
-        Math.ceil(aggregator.gasUnitsWhenQuoteOmitsGas * gasLimitMultiplier),
-      ),
-    );
+    assert.equal(_gasLimit({}), 350000n);
   });
 
   it("handles string gas values", () => {
-    const gl = _gasLimit({ gas: "100000" });
-    assert.ok(gl >= 100000n);
+    assert.equal(_gasLimit({ gas: "100000" }), 125000n);
   });
 });
 

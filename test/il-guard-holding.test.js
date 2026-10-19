@@ -10,11 +10,12 @@
  *   `_computeIL` (src/bot-pnl-il.js), the code that works out the
  *   panel's figure, and the Guard is then asked about it, as a poll does.
  *
- *   The Guard used to measure against what the minted coins were worth on
- *   the day of the mint. That counted a move both coins' dollar prices
- *   share, which a rebalance does not lock in: it blocked a position whose
- *   coins had both fallen, though its impermanent loss was small, and let
- *   through a deep loss hidden inside a rise both coins shared.
+ *   Holding is valued at today's prices, not at the minted coins' worth
+ *   on the day of the mint. The mint-day figure counts a move both coins'
+ *   dollar prices share, which a rebalance does not lock in: it would
+ *   block a position whose coins had both fallen, though its impermanent
+ *   loss was small, and let through a deep loss hidden inside a rise both
+ *   coins shared.
  */
 
 const { describe, it } = require("node:test");

@@ -40,8 +40,10 @@ describe("_computeNumerics()", () => {
       lifetimeIL: -40,
     };
     const nums = mod._computeNumerics(snap, /*ltRealized*/ 0, /*ltDep*/ 1000);
-    // ltPc = 1200 - 1000 = 200, which already holds the $30 compounded.
-    // ltNetPnl = 200 + 50 unclaimed + 0 - 5 + 0 - 0 = 245
+    /*-
+     *  ltPc = 1200 - 1000 = 200, which already holds the $30 compounded.
+     *  ltNetPnl = 200 + 50 unclaimed + 0 - 5 + 0 - 0 = 245
+     */
     assert.strictEqual(nums.ltNetPnl, 245);
     // ltProfit = 50 + 30 - 5 + (-40) = 35
     assert.strictEqual(nums.ltProfit, 35);

@@ -28,8 +28,12 @@ describe("manageRequestRefusal", () => {
   });
 
   it("refuses a missing or non-numeric tokenId", () => {
-    for (const tokenId of [undefined, "", "abc", "12a"])
-      assert.match(refusalOf({ tokenId }).error, /tokenId/);
+    for (const tokenId of [undefined, null, "", "abc", "12a", -1, 1.5, ["5"]])
+      assert.match(refusalOf({ tokenId }).error, /tokenId/, String(tokenId));
+  });
+
+  it("takes a tokenId sent as a number", () => {
+    assert.equal(refusalOf({ tokenId: 123 }), null);
   });
 
   it("refuses a contract that is not this server's position manager", () => {

@@ -74,7 +74,7 @@ Starting and stopping a running install.
 | `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run bot -- --log-file --delete-pre-existing-log-file` · `npm run bot -- --start-with-price-lookups-unpaused` · `npm run bot -- --help` |
 | `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `tmp/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
 | `gentle-stop` | — | The recommended way to stop the server: waits until no rebalance or compound is under way, asking every five minutes, then stops it. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
-| `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--headless` | Start the dashboard server and auto-start every position saved as `running`. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. The log flags: see [Logging to a File](#logging-to-a-file). | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
+| `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--headless` | Start the dashboard server and, once the wallet is unlocked, every position saved as managed. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. The log flags: see [Logging to a File](#logging-to-a-file). | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
 | `stop` | — | Force-stop: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. The server exits within three seconds, cutting off any rebalance or compound under way; prefer `npm run gentle-stop`. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
 
 ---
@@ -91,7 +91,7 @@ resetting local state.
 | `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run build-and-start -- --log-file --delete-pre-existing-log-file` · `npm run build-and-start -- --log-file /tmp/burn-in.log` · `npm run build-and-start -- --help` |
 | `build:watch` | — | esbuild in watch mode. Rebuilds the bundle on change; skips the one-off generators `build` runs. | `npm run build:watch` |
 | `clean` | — | Full reset to fresh-clone state: wallet, bot config, API keys, rebalance log, every `tmp/` cache, logs and build artifacts. Rebuild before starting again. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clean` |
-| `clean:log` | — | Delete the log-to-file output (`logs/lp-ranger.log`, or the `path` in `logging.json`) if inside the install folder. See [Housekeeping](#housekeeping). | `npm run clean:log` |
+| `clean:log` | — | Empty the log-to-file output (`logs/lp-ranger.log`, or the `path` in `logging.json`) in place, if inside the install folder. Safe while the server runs. See [Housekeeping](#housekeeping). | `npm run clean:log` |
 | `debug` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Start the server under `node --inspect`. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run debug` · `npm run debug -- --log-file --delete-pre-existing-log-file` · `npm run debug -- --help` |
 | `debug-attach` | — | Attach a debugger to an already-running server and print the URL to visit. | `npm run debug-attach` |
 | `debug-attach-bot` | — | The same for a running headless bot. | `npm run debug-attach-bot` |
@@ -125,7 +125,7 @@ Command](#before-running-any-lint-or-test-command) first.
 | `audit:deps:all` | — | The same audit over the **whole** tree, development tooling included. Reports rather than gates; `npm run check` writes this full report to `test/report-artifacts/raw-data/npm-audit.json` on every run. | `npm run audit:deps:all` |
 | `audit:secrets` | — | secretlint across the repo. | `npm run audit:secrets` |
 | `audit:security` | — | The custom security lint rules. | `npm run audit:security` |
-| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. Deletes `logs/error.log` and the previous run's `logs/error-npm-run-check.log` first, then renames what the tests wrote to `logs/error.log` to `logs/error-npm-run-check.log`. | `npm run check` |
+| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. Deletes `logs/error.log` and the previous run's `logs/error-npm-run-check.log` first, then renames what the tests wrote to `logs/error.log` to `logs/error-npm-run-check.log`. Before its tests, removes any test folder a stopped run left in the system's temp directory. | `npm run check` |
 | `format:check` | — | Prettier in check mode; fails rather than rewriting. | `npm run format:check` |
 | `test` | any `node --test` flag | Run the suite with a concurrency of 24. | `npm test -- --test-name-pattern="failover"` |
 | `test:coverage` | — | The suite with V8 coverage collection. | `npm run test:coverage` |
@@ -161,10 +161,11 @@ matching table row.
 `npm test`, and their variants actively write to config and cache files
 during test execution. Those files are backed up by `scripts/check.js`
 before the tests start and restored automatically when the process exits.
-However, if you Ctrl-C the process mid-run, the restore may not complete
-and the files will be left in a state that is only appropriate for the
-automated tests (stub position keys, missing managed positions, etc.).
-**Always let tests and checks finish before interrupting.**
+A Ctrl+C stops `npm run check` after the test run under way and puts the
+files back before it exits. A harder stop (kill -9, a crash) leaves no
+chance to, and the files are left in a state that is only appropriate
+for the automated tests (stub position keys, missing managed positions,
+etc.). **Always let tests and checks finish before interrupting.**
 
 **Back up your real state out of tree first**, once per machine, before
 your first run:
@@ -205,15 +206,24 @@ lets a rebalance or compound under way finish first. Ctrl+C and
 **`npm run gentle-stop` waits.** At once, then every five minutes
 (`shutdown.gentleStopPollMs`), it asks the server whether a rebalance or
 compound is under way (`GET /api/is-position-being-adjusted`). While one
-is, it says so and waits. Once none is, it stops the server as
-`npm stop` does. An unanswered question is asked again next time, since
-a server too busy to answer may be mid-rebalance. With no server
-listening, it just exits.
+is, it says so and waits. Once none is, it asks the server to stop
+itself (`POST /api/shutdown`). The server stops every position, lets a
+rebalance or compound that began meanwhile finish, sends the shutdown
+alert, and exits; the command returns once it has. An unanswered
+question, or a stop request the server does not take, is sent again
+next time, since a server too busy to answer may be mid-rebalance. With
+no server listening, it just exits.
 
-**Once a stop begins, nothing new starts.** A check that was part way
-through when the stop came starts no rebalance or compound, so the
-moment between the all-clear and the stop cannot begin one that the
-stop then cuts off. The same holds for Stop Managing on one position.
+**Once a stop begins, nothing new starts.** No position starts, a
+Manage is refused, and a check that was part way through when the stop
+came starts no rebalance or compound. Stop Managing on one position
+keeps that position's check from starting one too.
+
+**The managed positions stay managed.** No stop, gentle or forced,
+takes a position off the list of managed positions. Once the wallet is
+unlocked, the next `npm start` brings each back under management, one
+at a time across a poll interval, and the Sync badge reads Syncing
+until it is done.
 
 **A force-stop does not wait.** The server starts stopping every
 position and exits within three seconds (`shutdown.exitTimeoutMs`),
@@ -314,17 +324,20 @@ task.
 
 ### Housekeeping
 
-- `npm run clean:log` — Delete the log-to-file output at
+- `npm run clean:log` — Empty the log-to-file output at
   `logs/lp-ranger.log` (the file produced when the app is started
   with `--log-file` or with `enabled: true` in
   `app-config/app-defaults-for-user-configurable/logging.json`), or at
-  the `path` your copy of `logging.json` sets. No-op when the file is
-  absent. A `path` outside the install folder is left alone, and the
-  command says so. Use this to free disk space, to start a clean capture
-  before a diagnostic session, or to scrub a log before sharing. The log
-  is NOT automatically rotated — long-lived production tails should run
-  this on a cron or external logrotate setup. `npm run clean` deletes this
-  log and the error log at `errorLogPath` by the same rule.
+  the `path` your copy of `logging.json` sets. The file is emptied where
+  it is, so a running server goes on writing into it: this is safe while
+  the server runs. No-op when the file is absent, or when `logging.json`
+  sets no `path`. A `path` outside the install folder is left alone, and
+  the command says so. Use this to free disk space, to start a clean
+  capture before a diagnostic session, or to scrub a log before sharing.
+  The log is NOT automatically rotated — long-lived production tails
+  should run this on a cron or external logrotate setup. `npm run clean`
+  deletes this log, the error log at `errorLogPath`, and
+  `npm run check`'s error log beside it, by the same rule.
 - `npm run nuke` — Delete `node_modules` + `package-lock.json` for a clean
   reinstall. Run `npm install` afterwards.
 - `npm run wipe-settings` — Back up all user settings/state (`.env`, every

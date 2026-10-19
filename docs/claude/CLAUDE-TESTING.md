@@ -191,7 +191,35 @@ Before tests run, `check.js` deletes all production config and cache files so th
 
 Tests that need config files should either:
 
-- Use a temp directory via `fs.mkdtempSync()` and pass the `dir` parameter to `loadConfig(dir)` / `saveConfig(cfg, dir)`
-- Or use the production path knowing that `check.js` will restore the original after tests complete
+- Make a temp folder with `makeTestTempFolder` (see "Temp folders" below) and pass it as the `dir` parameter to `loadConfig(dir)` / `saveConfig(cfg, dir)`
+- Or call them with no directory: under `node --test` that resolves to the test process's own temp folder, never the operator's `bot-config.json` (`_appConfigDir`, `src/bot-config-v2.js`)
 
 Default/vanilla config values come from `.env.example` and the shipped JSON files under `app-config/app-defaults-for-user-configurable/` in the repository.
+
+### Temp folders
+
+A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these. A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+
+A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
+
+Why the system's temp directory and not the project's `tmp/`: the project's `tmp/` holds the operator's caches, which `npm run check` moves out and back around its tests, and anything left there stays in the install. The system's temp directory is outside the install, and most systems clear it at boot. Why a folder per process and not one shared folder: the runner runs test files in parallel processes, which would overwrite one another's files.
+
+### Settings moved off what ships
+
+A test of a configured value runs on a value other than the shipped one. At the shipped value, code with that figure typed in passes too. There are three ways to move one, each set up before anything under `src/` loads, since the loader reads its folders' paths as it loads:
+
+- **An operator's override.** Write the file into a `makeTestTempFolder` folder and point `LP_RANGER_USER_CONFIG_DIR` at it. Most tests do this.
+- **`.env`.** Set the variable in `process.env`; dotenv leaves a set variable alone.
+- **A copy of the shipped folder.** For what reads the shipped files alone, such as the User Manual's build, or a test of how a reader copes with a broken shipped file: `useShippedDefaultsCopy()` (`test/helpers/shipped-defaults-copy.js`) copies the folder and points `LP_RANGER_DEFAULTS_DIR` at the copy, and `changeShippedCopy` changes values in it. `useMovedHelpSettings()` (`test/helpers/help-settings-moved.js`) moves every value the help quotes. A test never writes the tracked file itself; `test/tests-leave-shipped-files-alone.test.js` fails one that does.
+
+A test that checks the shipped values themselves, such as the manual on disk, reads the tracked files and moves nothing.
+
+### No outside service asked
+
+A test asks no service outside the machine. A result that depends on a third party fails when that party changes its answer, and the app's own budget of calls a minute to GeckoTerminal can make a test wait out a whole minute. Two stand-ins cover what the tests reach:
+
+- **Prices.** A test that reaches a price lookup, through a poll, a rebalance, a compound or a swap gate, requires `test/helpers/price-stand-ins.js` before anything under `src/` that reads a price, since those modules take the lookups when they load. A token's current price and the dust unit's then answer from a fixed table: the chain's wrapped native coin and the dust unit at steady prices, and every other token unpriced.
+- **The aggregator.** A test whose swap asks for a quote but is not about the aggregator's own handling starts a local aggregator (`startLocalAggregator`, `test/helpers/local-aggregator.js`) and points the chain's aggregator url at it. It refuses every quote, as the live aggregator refuses the fixtures' made-up tokens, or answers as a case scripts it. A test of the aggregator's own handling stages it with `test/helpers/aggregator-harness.js`.
+- **A Manage's pool check.** The Manage route reads the position's pool from the chain and refuses the position when it cannot, so a test that drives a Manage past that check passes `poolReadStandIn()` (`test/helpers/pool-read-stand-in.js`) as the route's `ethersLib` and `readProvider`: each NFT open, alone in a pool of its own.
+
+To find a test that still asks an outside service, run the gate with a preload that records every request leaving the machine (`NODE_OPTIONS="--require <preload>"`, subscribing to `undici:request:create`); `npm audit` is the only stage that should appear.

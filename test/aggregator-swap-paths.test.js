@@ -15,12 +15,36 @@
  *   each attempt can confirm, revert or run out of time on cue. The
  *   timeout-and-cancel recovery has its own suite,
  *   `aggregator-nonce-settlement.test.js`.
+ *
+ *   The chain's attempt limit is three here, not the four that ship, so
+ *   a limit written into the code fails.
  */
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+const SHIPPED_CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
+
+const SETTINGS_DIR = makeTestTempFolder("agg-paths-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "chains.json"),
+  JSON.stringify(
+    Object.fromEntries(
+      Object.keys(SHIPPED_CHAINS).map((chain) => [
+        chain,
+        { aggregator: { maxAttempts: 3 } },
+      ]),
+    ),
+  ),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { format } = require("node:util");
 
 const config = require("../src/config");
+const logModule = require("../src/log");
 const {
   swapViaAggregator,
   AGGREGATOR_LABEL,
@@ -119,6 +143,15 @@ describe("aggregator swap — confirmed on the first attempt", () => {
   });
 
   it("logs the whole quote in verbose mode and still swaps", async () => {
+    // The calldata and the route path are what the trimmed log leaves out.
+    state.quotes = [
+      quote(),
+      quote({ orders: [{ fillData: { uniswapPath: "0xpath" } }] }),
+    ];
+    const lines = [];
+    const restoreLog = logModule._setSinkForTests({
+      log: (...args) => lines.push(format(...args)),
+    });
     const saved = config.VERBOSE;
     config.VERBOSE = true;
     try {
@@ -129,7 +162,17 @@ describe("aggregator swap — confirmed on the first attempt", () => {
       assert.equal(r.txHash, "0xswap1");
     } finally {
       config.VERBOSE = saved;
+      restoreLog();
     }
+    const responses = lines.filter((l) => l.includes("Response:"));
+    assert.ok(
+      responses.some(
+        (l) =>
+          l.includes('"data":"0xdeadbeef"') &&
+          l.includes('"uniswapPath":"0xpath"'),
+      ),
+      responses.join("\n"),
+    );
   });
 });
 
@@ -227,20 +270,17 @@ describe("aggregator swap — reverted attempts", () => {
   });
 
   it("gives up after the chain's attempt limit, with nothing left pending", async () => {
-    const max = config.CHAIN.aggregator.maxAttempts;
-    state.receipts = Array.from({ length: max }, () => reverted);
+    // Three attempts, the limit set above; a fourth receipt is never asked for.
+    state.receipts = [reverted, reverted, reverted, confirmed];
     const lib = buildMockEthersLib({
       contractDispatch: dispatchWithApprovals(),
     });
     await assert.rejects(
       swapViaAggregator(aggSigner(), lib, params(), fixedOut),
       (err) => {
-        assert.equal(
-          err.message,
-          `Aggregator swap failed after ${max} attempts`,
-        );
-        // The approval (46000 × 3) and every reverted swap (50000 × 2).
-        assert.equal(err.gasCostWei, 138000n + BigInt(max) * 100000n);
+        assert.equal(err.message, "Aggregator swap failed after 3 attempts");
+        // The approval (46000 × 3) and each reverted swap (50000 × 2).
+        assert.equal(err.gasCostWei, 138000n + 3n * 100000n);
         /*-
          *  Not flagged unsettled: every nonce was spent by its revert, so
          *  the router fallback may run.
@@ -249,8 +289,9 @@ describe("aggregator swap — reverted attempts", () => {
         return true;
       },
     );
-    assert.equal(state.sent.length, max);
-    assert.equal(state.urls.length, 2 + (max - 1));
+    assert.equal(state.sent.length, 3);
+    // The price quote, the fresh one, and a re-quote after each of two reverts.
+    assert.equal(state.urls.length, 4);
   });
 });
 

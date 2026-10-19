@@ -300,7 +300,7 @@ export function decimalsSaveValues(fields) {
  */
 function _persistToServer(values) {
   const a = posStore.getActive();
-  if (!a) return;
+  if (a === null || a === undefined) return;
   const chain = activeChainId();
   const pk = compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId);
   saveConfigValues({

@@ -15,14 +15,13 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const { useShippedDefaultsCopy } = require("./helpers/shipped-defaults-copy");
 
-const _FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "app-defaults-for-user-configurable",
-  "setting-labels.json",
-);
+/*-
+ *  The cases replace and remove setting-labels.json, so they do it in a
+ *  copy of the shipped folder that the loader reads in its place.
+ */
+const _FILE = path.join(useShippedDefaultsCopy(), "setting-labels.json");
 
 let _originalContent = null;
 

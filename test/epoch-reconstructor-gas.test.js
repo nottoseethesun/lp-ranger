@@ -94,7 +94,8 @@ describe("_buildClosedEpoch", () => {
 // ── resolving the gas cost ───────────────────────────────────────────────────
 
 describe("_fetchEpochsFromChain — resolving the gas cost", () => {
-  /*- The guard in `_buildClosedEpoch` only catches what this function
+  /*-
+   *  The guard in `_buildClosedEpoch` only catches what this function
    *  declines to set, so this is where the two unknowns are told apart:
    *
    *  1. the wei amount is unknown — `position-history` leaves
@@ -102,7 +103,8 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
    *     the epoch is withheld;
    *  2. the wei amount is known but the native price on its close day
    *     is not — `pastGasCostUsd` answers null — and the epoch builds
-   *     with no dollar figure for its gas. */
+   *     with no dollar figure for its gas.
+   */
 
   /**
    * Load the module with one history shape and one answer for the gas
@@ -172,8 +174,10 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
   });
 
   it("builds with no gas figure when its day has no native price", async () => {
-    /*- The amount is known, so the period belongs in the table; only its
-     *  dollar figure is not, and the Per-Day row shows a dash for it. */
+    /*-
+     *  The amount is known, so the period belongs in the table; only its
+     *  dollar figure is not, and the Per-Day row shows a dash for it.
+     */
     const epochs = await run(withGas({ gasCostWei: "5000000000000000" }, null));
     assert.strictEqual(epochs.length, 1);
     assert.strictEqual(epochs[0].gas, null, "no dollar figure, not $0.00");
@@ -255,9 +259,11 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
   });
 
   it("leaves an NFT with an unread gas amount out of the resume buffer", async () => {
-    /*- What makes withholding acceptable: the NFT stays on the to-do
+    /*-
+     *  What makes withholding acceptable: the NFT stays on the to-do
      *  list, so the rescan re-reads exactly it rather than inheriting
-     *  the gap. Same contract as an unknown fee. */
+     *  the gap. Same contract as an unknown fee.
+     */
     const buf = new Map();
     await run(withGas({ gasCostWei: null }, 0.02), buf);
     assert.strictEqual(buf.size, 0, "a skipped NFT must be re-read");

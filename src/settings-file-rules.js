@@ -49,9 +49,9 @@ function _problem(where, v, what) {
 const rule = (what, ok) => (v, where) =>
   ok(v) ? null : _problem(where, v, what);
 
-/*-
- *  The kinds of value the app holds its own inputs to as well, so a
- *  file's value is judged as a request's is.
+/**
+ * A rule from a kind of value the app holds its own inputs to as well,
+ * so a file's value is judged as a request's is.
  */
 const kindRule = (k) => rule(k.what, k.ok);
 const bool = kindRule(KINDS.bool);
@@ -411,9 +411,9 @@ function settingsFileProblems(file, values, ctx) {
 
 // ── Values that must agree ─────────────────────────────────────────────
 
-/*-
- *  A group of settings, or an empty one in place of anything else, which
- *  the walk over its file has already reported.
+/**
+ * A group of settings, or an empty one in place of anything else, which
+ * the walk over its file has already reported.
  */
 const _group = (v) =>
   v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};

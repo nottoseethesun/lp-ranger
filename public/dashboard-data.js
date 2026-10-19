@@ -191,6 +191,7 @@ function _syncStatus(d) {
     positionScan: d._positionScan,
     rebalanceScanComplete: d.rebalanceScanComplete,
     lifetimeScanComplete: d.lifetimeScanComplete,
+    startingPositions: d._startingPositions,
   });
 }
 function _updateSyncBadge(d) {
@@ -427,7 +428,7 @@ const _LO = "color:#0f0;background:#012;padding:1px 4px;border-radius:2px";
  */
 function _askOwedAnswer() {
   const a = posStore.getActive();
-  if (!a || !isPositionDataStale()) return;
+  if (a === null || a === undefined || !isPositionDataStale()) return;
   if (isViewingClosedPos()) refetchClosedPosHistory();
   else if (!isPositionManaged(a.tokenId)) askDetailsIfOwed(a);
 }

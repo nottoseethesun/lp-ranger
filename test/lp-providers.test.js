@@ -15,15 +15,15 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { _setSinkForTests } = require("../src/log");
+const { useShippedDefaultsCopy } = require("./helpers/shipped-defaults-copy");
 
-const _FILE = path.join(
-  __dirname,
-  "..",
-  "app-config",
-  "app-defaults-for-user-configurable",
-  "lp-providers.json",
-);
+/*-
+ *  The cases replace and remove lp-providers.json, so they do it in a
+ *  copy of the shipped folder that the loader reads in its place.
+ */
+const _FILE = path.join(useShippedDefaultsCopy(), "lp-providers.json");
+
+const { _setSinkForTests } = require("../src/log");
 
 // Canonical EIP-55 checksummed addresses used across tests.
 const _F = "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68";

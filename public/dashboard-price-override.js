@@ -112,7 +112,7 @@ export function savePriceOverrideDialog() {
   const m = g("priceOverrideModal");
   if (m) m.classList.add("hidden");
   const active = posStore.getActive();
-  if (!active) return;
+  if (active === null || active === undefined) return;
   saveConfigValues({
     values: {
       priceOverride0: p0,

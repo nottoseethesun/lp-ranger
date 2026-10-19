@@ -16,9 +16,10 @@
  *   `test/config-startup-checks.test.js` does. The five variables are
  *   pinned to nothing BEFORE anything under `src/` is required, because
  *   dotenv leaves a variable alone once it is set, so the operator's own
- *   `.env` cannot reach these cases. Operator overrides are read from an
- *   empty directory of the test's own, so every default here is the
- *   shipped one.
+ *   `.env` cannot reach these cases. Operator overrides are read from a
+ *   directory of the test's own, whose bot-config-defaults.json moves
+ *   each of the five defaults off its shipped value, so a default written
+ *   into the code fails.
  */
 
 "use strict";
@@ -37,14 +38,26 @@ const SETTINGS = [
   ["IMPERMANENT_LOSS_GUARD_PCT", "impermanentLossGuardPct"],
 ];
 
+// Each of the five defaults, moved off its shipped value.
+const DEFAULTS = {
+  rebalanceOutOfRangeThresholdPercent: 7,
+  rebalanceTimeoutMin: 150,
+  minRebalanceIntervalMin: 12,
+  maxRebalancesPerDay: 6,
+  impermanentLossGuardPct: 25,
+};
+
 const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "env-ranges-"));
+fs.writeFileSync(
+  path.join(_USER_DIR, "bot-config-defaults.json"),
+  JSON.stringify(DEFAULTS),
+);
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 for (const [envName] of SETTINGS) process.env[envName] = "";
 
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
-const SHIPPED = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 const { boundText } = require("../src/range-check");
 
 /** Load `src/config.js` as startup would, with `envName` set to `value`. */
@@ -80,8 +93,8 @@ for (const [envName, key] of SETTINGS) {
       assert.equal(loadWith(envName, String(bound.max))[envName], bound.max);
     });
 
-    it("leaves the shipped default standing when set to nothing", () => {
-      assert.equal(loadWith(envName, "")[envName], SHIPPED[key]);
+    it("leaves the default standing when set to nothing", () => {
+      assert.equal(loadWith(envName, "")[envName], DEFAULTS[key]);
     });
 
     it("stops startup when above its range, naming the variable and the range", () => {

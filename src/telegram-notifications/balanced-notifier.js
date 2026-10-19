@@ -51,10 +51,18 @@ const _SYM_TRUNC_HOLDINGS = 16;
 const _DEFAULTS = readBotConfigDefaults();
 
 /**
- * Half-width of the balanced band around 0.5, as a fraction:
- * `positionBalancedBandPct` (2.5 as shipped, so ratio0 ∈ [0.475, 0.525]).
+ * Half-width of the balanced band around 50/50, in percentage points, as
+ * configured: `positionBalancedBandPct`, 2.5 as shipped. The dashboard
+ * quotes it as it is, since a percent rebuilt from the fraction below can
+ * carry float noise (7 comes back as 7.000000000000001).
  */
-const BALANCED_THRESHOLD = _DEFAULTS.positionBalancedBandPct / 100;
+const BALANCED_BAND_PCT = _DEFAULTS.positionBalancedBandPct;
+
+/**
+ * The same half-width as a fraction, which the notifier tests the ratio
+ * against (2.5 as shipped, so ratio0 ∈ [0.475, 0.525]).
+ */
+const BALANCED_THRESHOLD = BALANCED_BAND_PCT / 100;
 
 /**
  * Minimum gap between successive notifications for the same position,
@@ -348,6 +356,7 @@ module.exports = {
   evaluateBalance,
   formatMessage,
   maybeNotifyBalanced,
+  BALANCED_BAND_PCT,
   BALANCED_THRESHOLD,
   BALANCED_COOLDOWN_MS,
 };

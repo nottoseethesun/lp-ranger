@@ -3,9 +3,25 @@
  * @description A Moralis key is checked by pricing the active chain's
  *   wrapped native token, both named in chains.json, so nothing in the
  *   check names a chain of its own.
+ *
+ *   The service's address is an operator's own here, and the chain's
+ *   token and Moralis id are moved off what ships, so a url written out
+ *   in the code fails.
  */
 
 "use strict";
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const MORALIS_BASE = "https://moralis.example.org/api/v9";
+const SETTINGS_DIR = makeTestTempFolder("moralis-probe-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "price-services.json"),
+  JSON.stringify({ moralis: { baseUrl: MORALIS_BASE } }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
@@ -18,16 +34,26 @@ const {
 } = require("../src/server-moralis");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
+const TOKEN = "0x" + "12".repeat(20);
+
+/** PulseChain's entry, with its Moralis id replaced. */
+const withMoralisId = (moralisChain) => ({
+  ...CHAINS.pulsechain,
+  priceServices: { ...CHAINS.pulsechain.priceServices, moralisChain },
+});
+
 describe("moralisProbeUrl", () => {
   it("prices the chain's wrapped native token under the chain's Moralis id", () => {
-    const chain = CHAINS.pulsechain;
-    const url = moralisProbeUrl(chain);
-    assert.ok(url.includes(`/${chain.nativeWrappedToken}/price`), url);
-    assert.ok(url.endsWith(`?chain=${chain.priceServices.moralisChain}`), url);
+    const chain = { ...withMoralisId("0x9a"), nativeWrappedToken: TOKEN };
+    assert.equal(
+      moralisProbeUrl(chain),
+      `${MORALIS_BASE}/erc20/${TOKEN}/price?chain=0x9a`,
+    );
   });
 
   it("has nothing to probe on a chain Moralis does not cover", () => {
-    assert.equal(moralisProbeUrl(CHAINS["pulsechain-testnet"]), null);
+    // It still names a wrapped native token, so only the missing id counts.
+    assert.equal(moralisProbeUrl(withMoralisId("")), null);
   });
 
   it("has nothing to probe on a chain with no wrapped native token", () => {

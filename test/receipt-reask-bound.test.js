@@ -49,6 +49,8 @@ const FALL = "http://reask-fallback.test";
 /** The transaction being asked about. Only its hash is read. */
 const TX = { hash: "0xfeedface", nonce: 3 };
 
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
 /** The receipt an endpoint returns once the transaction has mined. */
 const RECEIPT = {
   _type: "TransactionReceipt",
@@ -119,17 +121,31 @@ describe("what bounds a receipt re-ask", () => {
     outOfService._resetForTests();
   });
 
-  it("keeps asking under the caller's signal until a receipt arrives", async () => {
+  it("keeps asking under the caller's signal until a receipt arrives", async (t) => {
     /*-
      *  The regression. A loop with a clock of its own would give up
      *  partway and hand back the endpoint's 502 — which the phase's catch
      *  does not recognise, so the move would fail instead of being sped
-     *  up. Only the signal may end the asking, so three empty answers in
-     *  a row must not.
+     *  up. Only the signal may end the asking. Each empty answer here
+     *  takes three days, longer than any wait a setting can name, so a
+     *  loop timing itself by the clock or by a timer of its own gives up
+     *  before the receipt arrives.
      */
-    const lib = makeLib((n) => (n < 3 ? null : RECEIPT));
+    const lib = makeLib((n) => {
+      t.mock.timers.tick(THREE_DAYS_MS);
+      if (n >= 3) return RECEIPT;
+      // Ends the loop's pause between asks once it has begun.
+      setImmediate(() => t.mock.timers.tick(1));
+      return null;
+    });
     sendTx.init({ urls: [PRI, FALL] }, lib);
     const controller = new AbortController();
+    /*-
+     *  TEST-ONLY global swap: such a clock would be the loop's own, read
+     *  from `Date` and `setTimeout`, which take no stand-in. The test
+     *  runner puts both back pristine as this case ends.
+     */
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
 
     const receipt = await sendTx._receiptAcrossEndpoints(
       serverError(PRI),

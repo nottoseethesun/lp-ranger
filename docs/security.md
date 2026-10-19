@@ -876,9 +876,9 @@ Two gates run in a fixed order:
    and when it passes the gas read is the very next step.
 2. **Gas gate.** Skip when the swap's estimated gas would cost more than
    `gasFeePct` of its value: the global setting in Settings → Gas Fee
-   Threshold, 1% as shipped. `MAX_SWAP_GAS_RATIO` is that shipped default
-   as a ratio, used only by a caller that passes none. Comparison is
-   strict `>`, so a ratio of exactly the setting still passes.
+   Threshold, 1% as shipped. Every swap passes it as a ratio, from
+   `gasFeePctToRatio`. Comparison is strict `>`, so a ratio of exactly
+   the setting still passes.
 
 When either gate trips, the caller proceeds without swapping. For
 rebalance, that means minting with the unswapped balances and letting
@@ -1060,9 +1060,14 @@ error, so real bugs are never silently swallowed.
 ### Graceful Shutdown
 
 `POST /api/shutdown` (CSRF-protected like every other mutating route)
-calls `positionMgr.stopAll()` and then exits cleanly so nonces are not
-left hanging. The recommended way is `npm run gentle-stop`: it waits out
-any rebalance or compound, then stops the server as `npm stop` does.
+marks the app stopping for good, so no position starts and no
+rebalance or compound begins after it (`src/app-phase.js`). It then
+calls `positionMgr.stopAll()` and exits cleanly so nonces are not left
+hanging. Each position's stop waits for a rebalance or compound under
+way, a position still starting included, so none is cut off. The
+recommended way is
+`npm run gentle-stop`: it waits out any rebalance or compound, then
+asks the server to stop itself through this route.
 `npm stop` sends SIGTERM to the PID in `tmp/lp-ranger.pid`, running
 Ctrl+C's `shutdown` handler: a force-stop, exiting within three seconds
 whatever is under way. See

@@ -10,6 +10,24 @@
 "use strict";
 
 /**
+ * The badge while the server starts the positions saved as managed, one
+ * at a time after a launch, or null when it is not. Asked before
+ * anything about the position on screen, since the whole app is still
+ * syncing then; the Syncing state also keeps Manage and Stop Managing
+ * disabled, so nothing changes the list the server is working through.
+ * @param {{done:number,total:number}|null|undefined} progress
+ * @returns {{complete:boolean, label:string, tip:string}|null}
+ */
+function _startUpSyncStatus(progress) {
+  if (progress === null || progress === undefined) return null;
+  return {
+    complete: false,
+    label: "Syncing…",
+    tip: `Starting the managed positions: ${progress.done} of ${progress.total}`,
+  };
+}
+
+/**
  * Pure sync-status decision.  See docs in the caller (`_syncStatus`
  * in `dashboard-data.js`) for the composed adapter that resolves the
  * singletons and delegates here.
@@ -22,6 +40,9 @@
  * @param {object|null} inputs.positionScan          d._positionScan
  * @param {boolean} inputs.rebalanceScanComplete     d.rebalanceScanComplete
  * @param {boolean} inputs.lifetimeScanComplete      d.lifetimeScanComplete
+ * @param {{done:number,total:number}|null} [inputs.startingPositions]
+ *   The server's start-up progress while it starts the positions saved
+ *   as managed; null at any other time.
  * @returns {{complete:boolean, label:string, tip?:string}}
  */
 export function _computeSyncStatus(inputs) {
@@ -34,7 +55,10 @@ export function _computeSyncStatus(inputs) {
     positionScan,
     rebalanceScanComplete,
     lifetimeScanComplete,
+    startingPositions,
   } = inputs;
+  const startUp = _startUpSyncStatus(startingPositions);
+  if (startUp !== null) return startUp;
   /*- Order matters: this branch must precede the `!active` check.  A
    *  wallet with no positions yet is still loading them, which is
    *  genuinely syncing.  Answering `complete: true` there paints the

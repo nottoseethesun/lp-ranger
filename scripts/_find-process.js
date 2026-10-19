@@ -77,16 +77,43 @@ function processCwd(pid) {
   }
 }
 
+/*-
+ *  The names node runs under: `nodejs` on some Linux systems, and
+ *  whatever this script's own node is called.
+ */
+const _NODE_NAMES = new Set([
+  "node",
+  "nodejs",
+  path.basename(process.execPath),
+]);
+
+/**
+ * Whether a command line is node running server.js: its program is node,
+ * and one of its arguments is a file named `server.js`. An editor or a
+ * pager opened on server.js names the file too, but its program is not
+ * node.
+ * @param {string} cmd  As `psCmd` gives it.
+ * @returns {boolean}
+ */
+function _runsServerJs(cmd) {
+  const [program, ...args] = cmd.split(/\s+/);
+  return (
+    _NODE_NAMES.has(path.basename(program)) &&
+    args.some((a) => path.basename(a) === "server.js")
+  );
+}
+
 /**
  * Whether `pid` is this install's LP Ranger server.
  *
  * A PID file outlives a server killed outright, which runs no code to
  * remove it, and the system may since have given its number to another
- * process — another project's `node server.js` included.  So the answer
- * needs two things: a command line naming `server.js`, and a working
- * directory that is this install's root, where the server and `npm stop`
- * both run.  When either cannot be read, the answer is "unknown", and
- * nothing may be signalled on the strength of it.
+ * process — another project's `node server.js` included, or an editor
+ * open on this install's server.js.  So the answer needs two things: a
+ * command line that is node running `server.js`, and a working directory
+ * that is this install's root, where the server and `npm stop` both run.
+ * When either cannot be read, the answer is "unknown", and nothing may
+ * be signalled on the strength of it.
  *
  * @param {number} pid
  * @param {string} [root]  The install's root; the current directory.
@@ -95,7 +122,7 @@ function processCwd(pid) {
 function serverProcessState(pid, root = process.cwd()) {
   const cmd = psCmd(pid);
   if (cmd === "") return "unknown";
-  if (!/\bserver\.js\b/.test(cmd)) return "no";
+  if (!_runsServerJs(cmd)) return "no";
   const cwd = processCwd(pid);
   if (cwd === null) return "unknown";
   return path.resolve(cwd) === fs.realpathSync(root) ? "yes" : "no";

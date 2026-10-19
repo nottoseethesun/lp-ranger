@@ -18,6 +18,8 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
+const config = require("../src/config");
+const { compositeKey } = require("../src/bot-config-v2");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -28,6 +30,12 @@ let computeQuickDetails;
 let key;
 
 before(() => {
+  /*-
+   *  TEST-ONLY global swap: the module under test requires its chain and
+   *  price reads by name and takes no stand-ins for them, so the
+   *  stand-ins are served from here as it loads. Put back pristine in
+   *  the `after` hook below.
+   */
   Module.prototype.require = function (id) {
     if (id === "./rebalancer-pools")
       return {
@@ -50,8 +58,6 @@ before(() => {
   };
   delete require.cache[require.resolve("../src/position-details-quick")];
   ({ computeQuickDetails } = require("../src/position-details-quick"));
-  const config = require("../src/config");
-  const { compositeKey } = require("../src/bot-config-v2");
   key = compositeKey(config.CHAIN_NAME, WALLET, PM, TOKEN_ID);
 });
 

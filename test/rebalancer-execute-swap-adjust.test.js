@@ -192,20 +192,21 @@ describe("rebalance result — corrective swaps that ran out of iterations", () 
   });
 
   it("reports the width asked for beside the width it got, with no corrective step", () => {
+    // Asked for 10%; the ticks landed 1.9 to 2.15 at a price of 2, 12.5% wide.
     const r = _buildRebalanceResult(
       ["0xa"],
       removed,
       { gasCostWei: 3n },
       mint,
       { ...POSITION, tokenId: 8n, tickLower: -60, tickUpper: 60 },
-      { lowerTick: -500, upperTick: 500, lowerPrice: 0.95, upperPrice: 1.05 },
-      { price: 1.0, poolAddress: ADDR.pool, decimals0: 18, decimals1: 18 },
+      { lowerTick: 6420, upperTick: 7680, lowerPrice: 1.9, upperPrice: 2.15 },
+      { price: 2.0, poolAddress: ADDR.pool, decimals0: 18, decimals1: 18 },
       10,
       undefined,
       { chain: "pulsechain", contract: ADDR.pm, wallet: ADDR.signer },
     );
     assert.equal(r.requestedRangePct, 10);
-    assert.equal(r.effectiveRangePct, 10);
+    assert.equal(r.effectiveRangePct, 12.5);
     // Removal, swap and mint only: there was no corrective step.
     assert.equal(r.totalGasCostWei, 5n + 3n + 7n);
     assert.ok(!("residualWarning" in r));
@@ -243,15 +244,19 @@ describe("recovery — a position already drained", () => {
 
 describe("new range — the existing width, with no offset given", () => {
   it("re-centres the old width on the current tick", () => {
-    // No offset means the shipped one applies inside range-math.
+    /*-
+     *  No offset means the shipped one applies inside range-math. The
+     *  tick has left the old range, as it has when a rebalance is due,
+     *  so the old ticks do not pass for the new ones.
+     */
     const r = _computeRange(
-      { tick: 130, tickSpacing: 60, decimals0: 18, decimals1: 18, price: 1 },
+      { tick: 2000, tickSpacing: 60, decimals0: 18, decimals1: 18, price: 1 },
       { tickLower: -600, tickUpper: 600, tokenId: 1n },
       undefined,
       undefined,
       false,
     );
     assert.equal(r.upperTick - r.lowerTick, 1200);
-    assert.ok(r.lowerTick <= 130 && 130 < r.upperTick, JSON.stringify(r));
+    assert.ok(r.lowerTick <= 2000 && 2000 < r.upperTick, JSON.stringify(r));
   });
 });

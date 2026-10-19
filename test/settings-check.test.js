@@ -191,6 +191,12 @@ describe(".env", () => {
     assert.deepEqual(problems, []);
   });
 
+  it("takes a private key with or without its 0x, as the wallet does", () => {
+    const digits = "ab".repeat(32);
+    for (const key of [`0x${digits}`, digits])
+      assert.deepEqual(problemsOf({ env: `PRIVATE_KEY=${key}\n` }), []);
+  });
+
   it("never quotes the private key or the wallet password back", () => {
     const secret = "0xnotakey-secret-text";
     const problems = problemsOf({ env: `PRIVATE_KEY=${secret}\n` });
@@ -262,6 +268,18 @@ describe("bot-config.json", () => {
           },
         },
       },
+    });
+    assert.deepEqual(problems, []);
+  });
+
+  it("starts on the single rpc address older releases saved", () => {
+    /*-
+     *  Releases up to 0.9.2.1 saved `rpcUrl` whenever the rpc field
+     *  changed or a preset was clicked, and nothing has removed it
+     *  since, so an upgraded install may hold one it never typed.
+     */
+    const problems = problemsOf({
+      botConfig: { global: { rpcUrl: "https://rpc.pulsechain.com" } },
     });
     assert.deepEqual(problems, []);
   });

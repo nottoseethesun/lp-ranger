@@ -29,20 +29,21 @@
 
 const { log } = require("./log");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const { getAddress } = require("ethers");
 const {
   RETIRED_POSITION_KEYS,
   RETIRED_GLOBAL_KEYS,
 } = require("./bot-config-keys");
+const { makeTestTempFolder } = require("./test-temp-folders");
 
 const CONFIG_FILE = "bot-config.json";
 
 /*-
  *  Per-process sandbox standing in for the operator's config directory
  *  while tests run. Created on first use, so a run that never touches an
- *  undirected path creates nothing.
+ *  undirected path creates nothing, and removed when the process exits
+ *  (src/test-temp-folders.js).
  */
 let _testConfigDir = null;
 
@@ -67,10 +68,7 @@ let _testConfigDir = null;
 function _appConfigDir() {
   if (process.env.NODE_TEST_CONTEXT === undefined)
     return path.join(process.cwd(), "app-config", "user-configurable");
-  if (_testConfigDir === null)
-    _testConfigDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "lp-ranger-test-config-"),
-    );
+  if (_testConfigDir === null) _testConfigDir = makeTestTempFolder("config");
   return _testConfigDir;
 }
 

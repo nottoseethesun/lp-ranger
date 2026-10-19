@@ -4,11 +4,12 @@
  * @description
  * Returns the install to the state a fresh clone is in. Backs both
  * `npm run clean` and `npm run dev-clean` (`--dev`), and
- * `npm run clean:log` (`--log`), which deletes the diagnostic log alone.
+ * `npm run clean:log` (`--log`), which empties the diagnostic log alone.
  *
- * The two log files are wherever logging.json puts them, an operator's
- * override included, and are deleted only when that lies inside the
- * install folder.
+ * The log files are wherever logging.json puts them, an operator's
+ * override included: the diagnostic log, the error log, and the error log
+ * `npm run check` keeps beside it. Each is deleted or emptied only when
+ * it lies inside the install folder.
  *
  * **`clean` must leave nothing behind.** It therefore names no cache
  * files of its own: `clear-blockchain-scan-cache.js` owns the
@@ -45,6 +46,7 @@ const {
   human,
 } = require("./clear-blockchain-scan-cache");
 const { loadMergedDefaults } = require("../src/load-merged-defaults");
+const { checkErrorLogPath } = require("./_check-error-log");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -75,26 +77,50 @@ const BUILD_ARTIFACTS = [
 const BUILD_DIRS = ["public/dist", "public/fonts"];
 
 /*-
- *  Log output, where logging.json puts it with any override applied:
- *  the diagnostic log's `path` and the error log's `errorLogPath`. The
- *  error log is emptied at startup anyway, but a reset should not leave
- *  the previous install's stack traces behind.
+ *  Log output, where logging.json puts it with any override applied.
+ *  The error log is emptied at startup anyway, but a reset should not
+ *  leave the previous install's stack traces behind.
  */
 const _LOGGING = loadMergedDefaults("logging.json");
-const LOG_FILES = [_LOGGING.path, _LOGGING.errorLogPath];
+
+/** Whether logging.json names a file at `p`: an empty path names none. */
+function _isFilePath(p) {
+  return typeof p === "string" && p.trim() !== "";
+}
+
+/**
+ * The log files `npm run clean` removes, from logging.json's settings:
+ * the diagnostic log at `path`, the error log at `errorLogPath`, and the
+ * error log `npm run check` keeps beside it. A path left empty names no
+ * file; an empty `path` is how log-to-file is switched off.
+ * @param {{path?: *, errorLogPath?: *}} logging
+ * @returns {string[]}
+ */
+function logFilesFrom(logging) {
+  const files = [logging.path, logging.errorLogPath].filter(_isFilePath);
+  if (_isFilePath(logging.errorLogPath))
+    files.push(checkErrorLogPath(logging.errorLogPath));
+  return files;
+}
+
+const LOG_FILES = logFilesFrom(_LOGGING);
 
 /*- Test/report output, not app state, but equally absent on a clone. */
 const REPORT_DIRS = ["test/report-artifacts"];
 
 /** Delete a file if present. @returns {boolean} whether it existed. */
-function rmFile(rel) {
-  const p = path.join(ROOT, rel);
+function _unlink(abs) {
   try {
-    fs.unlinkSync(p);
+    fs.unlinkSync(abs);
     return true;
   } catch {
     return false;
   }
+}
+
+/** Delete a file of the install's if present. @returns {boolean} */
+function rmFile(rel) {
+  return _unlink(path.join(ROOT, rel));
 }
 
 /**
@@ -103,10 +129,12 @@ function rmFile(rel) {
  * it, at a system log directory say, is theirs to manage, so no clean
  * deletes there.
  * @param {string} p
+ * @param {string} [root]  The install folder; this one unless a test
+ *   points elsewhere.
  * @returns {boolean}
  */
-function insideInstall(p) {
-  const rel = path.relative(ROOT, path.resolve(ROOT, p));
+function insideInstall(p, root = ROOT) {
+  const rel = path.relative(root, path.resolve(root, p));
   if (rel === "" || path.isAbsolute(rel)) return false;
   return rel !== ".." && !rel.startsWith(".." + path.sep);
 }
@@ -114,18 +142,37 @@ function insideInstall(p) {
 /**
  * Delete the configured log files that lie inside the install folder.
  * @param {string[]} files  Paths from logging.json.
+ * @param {string} [root]  As for `insideInstall`.
  * @returns {{removed: string[], outside: string[]}} What was deleted,
  *   and what was left alone for lying outside the install folder.
  */
-function rmLogFiles(files) {
+function rmLogFiles(files, root = ROOT) {
   const removed = [];
   const outside = [];
   for (const f of files) {
-    if (!insideInstall(f)) outside.push(f);
-    else if (rmFile(path.relative(ROOT, path.resolve(ROOT, f))))
-      removed.push(f);
+    if (!insideInstall(f, root)) outside.push(f);
+    else if (_unlink(path.resolve(root, f))) removed.push(f);
   }
   return { removed, outside };
+}
+
+/**
+ * Empty a file where it is. A running server keeps the diagnostic log
+ * open and appends to it, so it goes on writing into the same file,
+ * from its start. Removing the file instead would leave the server
+ * writing into one nothing can reach, still taking disk, until it
+ * restarts.
+ * @param {string} abs
+ * @returns {boolean} Whether there was a file to empty.
+ */
+function _emptyFile(abs) {
+  try {
+    fs.truncateSync(abs, 0);
+    return true;
+  } catch (err) {
+    if (err.code === "ENOENT") return false;
+    throw err;
+  }
 }
 
 /** Say which log files were left alone, and why. */
@@ -138,16 +185,25 @@ function reportOutside(outside) {
 }
 
 /**
- * `npm run clean:log`: the diagnostic log alone, where logging.json
- * puts it. Run with the app stopped, as the manual says; nothing else
- * is touched.
+ * `npm run clean:log`: empty the diagnostic log, where logging.json puts
+ * it, and touch nothing else. It may run while the server runs, on a
+ * schedule say, since the file is emptied in place (`_emptyFile`).
+ * @param {object} [o]  Test seams; the install's own otherwise.
+ * @param {*} [o.logPath]  logging.json → path.
+ * @param {string} [o.root]  As for `insideInstall`.
  */
-function cleanDiagnosticLog() {
-  const { removed, outside } = rmLogFiles([_LOGGING.path]);
-  reportOutside(outside);
-  if (removed.length > 0) console.log(`Cleared ${_LOGGING.path}`);
-  else if (outside.length === 0)
-    console.log(`No log to clear at ${_LOGGING.path}`);
+function cleanDiagnosticLog({ logPath = _LOGGING.path, root = ROOT } = {}) {
+  if (!_isFilePath(logPath)) {
+    console.log("No log file to clear: logging.json → path is empty.");
+    return;
+  }
+  if (!insideInstall(logPath, root)) {
+    reportOutside([logPath]);
+    return;
+  }
+  if (_emptyFile(path.resolve(root, logPath)))
+    console.log(`Cleared ${logPath}`);
+  else console.log(`No log to clear at ${logPath}`);
 }
 
 /** Delete a directory tree if present. @returns {boolean} */
@@ -229,4 +285,7 @@ module.exports = {
   LOG_FILES,
   REPORT_DIRS,
   insideInstall,
+  logFilesFrom,
+  rmLogFiles,
+  cleanDiagnosticLog,
 };

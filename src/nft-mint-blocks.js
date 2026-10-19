@@ -45,13 +45,14 @@ function mintBlocksByTokenId(events) {
   const out = new Map();
   if (!Array.isArray(events)) return out;
   for (const e of events) {
+    if (e === null || e === undefined) continue;
     /*-
      *  Block 0 is no NFT's mint: no position manager existed at the
      *  chain's first block. An event recording it says only that the
      *  block was not known, and as a floor it would read the NFT's
      *  history from the start of the chain.
      */
-    if (!e || typeof e.blockNumber !== "number" || e.blockNumber <= 0) continue;
+    if (typeof e.blockNumber !== "number" || e.blockNumber <= 0) continue;
     if (e.newTokenId === undefined || e.newTokenId === null) continue;
     const id = String(e.newTokenId);
     const prev = out.get(id);

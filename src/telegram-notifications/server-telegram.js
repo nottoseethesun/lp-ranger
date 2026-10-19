@@ -23,9 +23,10 @@ const {
 } = require("../api-key-store");
 const telegram = require("./telegram");
 const {
-  BALANCED_THRESHOLD,
+  BALANCED_BAND_PCT,
   BALANCED_COOLDOWN_MS,
 } = require("./balanced-notifier");
+const { alertChoicesProblem } = require("./telegram-events");
 
 /**
  * Create Telegram route handlers, scoped to the server's session state.
@@ -49,10 +50,24 @@ function createTelegramHandlers(opts) {
   /**
    * POST /api/telegram/config
    * Body: { botToken?, chatId?, enabledEvents?: { oorTimeout: true, ... }, password? }
+   *
+   * Alert choices are held to the rule the settings check holds the
+   * saved set to at startup (`alertChoicesProblem`), before anything is
+   * saved, so a refused request leaves no trace and a saved set can
+   * never stop the next start. Leaving `enabledEvents` out keeps the
+   * saved choices.
    */
   async function handleTelegramConfig(req, res) {
     const body = await readJsonBody(req);
     const pw = body.password || getSessionPassword();
+    if (Object.hasOwn(body, "enabledEvents")) {
+      const problem = alertChoicesProblem(body.enabledEvents);
+      if (problem !== null)
+        return jsonResponse(res, 400, {
+          ok: false,
+          error: `enabledEvents ${problem}`,
+        });
+    }
 
     try {
       // Save bot token (encrypted)
@@ -80,7 +95,7 @@ function createTelegramHandlers(opts) {
       }
 
       // Save event preferences to bot-config global section
-      if (body.enabledEvents && typeof body.enabledEvents === "object") {
+      if (Object.hasOwn(body, "enabledEvents")) {
         if (!diskConfig.global) diskConfig.global = {};
         diskConfig.global.telegramEvents = body.enabledEvents;
         saveConfig(diskConfig);
@@ -113,7 +128,7 @@ function createTelegramHandlers(opts) {
       hasChatId,
       configured: telegram.isConfigured(),
       enabledEvents: telegram.getEnabledEvents(),
-      balancedThresholdPct: BALANCED_THRESHOLD * 100,
+      balancedThresholdPct: BALANCED_BAND_PCT,
       balancedCooldownMs: BALANCED_COOLDOWN_MS,
     });
   }

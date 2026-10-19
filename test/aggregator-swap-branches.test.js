@@ -10,12 +10,37 @@
  *   The stage — scripted quotes, receipts and chain — is
  *   `helpers/aggregator-harness.js`; `aggregator-swap-paths.test.js`
  *   covers the common path on the same stage.
+ *
+ *   The gas prices come from three chain settings, each moved here off
+ *   its shipped value and off the others', so a price built from the
+ *   wrong one, or without one, fails.
  */
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+const SHIPPED_CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
+
+const SETTINGS_DIR = makeTestTempFolder("agg-branches-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "chains.json"),
+  JSON.stringify(
+    Object.fromEntries(
+      Object.keys(SHIPPED_CHAINS).map((chain) => [
+        chain,
+        {
+          speedUpGasBump: 1.25,
+          aggregator: { gasPriceMultiplier: 1.75, cancelGasMultiplier: 3 },
+        },
+      ]),
+    ),
+  ),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const config = require("../src/config");
 const {
   swapViaAggregator,
   _handleSwapError,
@@ -81,12 +106,12 @@ describe("aggregator swap — quotes missing optional fields", () => {
   });
 
   it("submits at the chain's own price when the quote names none", async () => {
-    // 1000 from the chain × the aggregator's gasPriceMultiplier (1.5).
+    // 1000 from the chain × the aggregator's gasPriceMultiplier (1.75).
     const gp = await _submitGasPrice(
       aggSigner().provider,
       quote({ gasPrice: undefined }),
     );
-    assert.equal(gp, 1500n);
+    assert.equal(gp, 1750n);
   });
 });
 
@@ -193,42 +218,54 @@ describe("aggregator swap — outcomes of a wait that ended badly", () => {
     // The swap's own gas and the approval's; no cancel was paid for.
     assert.equal(r.gasCostWei, 600000n + 138000n);
   });
+});
 
-  it("prices a cancel to outbid the swap it replaces", async () => {
-    /*-
-     *  The higher of the chain's own price × the aggregator's
-     *  cancelGasMultiplier and the swap's price × the chain's
-     *  speedUpGasBump, so it outbids the swap whichever moved.
-     */
-    const signer = aggSigner();
-    state.chain["0xcancel1"] = { hash: "0xcancel1", status: 1 };
-    const sent = 5000n;
-    const outcome = await _handleSwapError(
-      new Error("_AGG_TIMEOUT"),
-      signer,
-      signer.provider,
-      { hash: "0xswap9", nonce: 9 },
-      20,
-      "T0",
-      "T1",
-      sent,
-    );
-    const [cancel] = state.cancels;
-    const fromChain = BigInt(
-      Math.ceil(1000 * config.CHAIN.aggregator.cancelGasMultiplier),
-    );
-    const fromSwap = BigInt(
-      Math.ceil(Number(sent) * config.CHAIN.speedUpGasBump),
-    );
-    const want = fromChain > fromSwap ? fromChain : fromSwap;
-    assert.equal(cancel.gasPrice, want);
-    assert.equal(cancel.nonce, 9);
-    assert.equal(cancel.gasLimit, CANCEL_GAS_LIMIT);
-    assert.equal(cancel.to, ADDR.signer);
-    assert.deepEqual(outcome, {
-      spentGasWei: 0n,
-      swapReceipt: null,
-      nonceSpent: true,
-    });
+/**
+ * Time out a swap that paid `sent` wei a unit of gas, on a chain asking
+ * 1000, and return the cancel then sent at the swap's nonce.
+ * @param {bigint} sent  The swap's gas price.
+ * @returns {Promise<object>} The cancel's transaction request.
+ */
+async function cancelAfterTimeout(sent) {
+  const signer = aggSigner();
+  state.chain["0xcancel1"] = { hash: "0xcancel1", status: 1 };
+  const outcome = await _handleSwapError(
+    new Error("_AGG_TIMEOUT"),
+    signer,
+    signer.provider,
+    { hash: "0xswap9", nonce: 9 },
+    20,
+    "T0",
+    "T1",
+    sent,
+  );
+  assert.deepEqual(outcome, {
+    spentGasWei: 0n,
+    swapReceipt: null,
+    nonceSpent: true,
+  });
+  assert.equal(state.cancels.length, 1);
+  const [cancel] = state.cancels;
+  assert.equal(cancel.nonce, 9);
+  assert.equal(cancel.gasLimit, CANCEL_GAS_LIMIT);
+  assert.equal(cancel.to, ADDR.signer);
+  return cancel;
+}
+
+describe("aggregator swap — the price of a cancel", () => {
+  /*-
+   *  A cancel must outbid the swap it replaces, whichever price moved, so
+   *  it pays the higher of the chain's price times the aggregator's
+   *  cancelGasMultiplier (3 here) and the swap's times the chain's
+   *  speedUpGasBump (1.25 here).
+   */
+  it("outbids the chain's price when the swap paid less", async () => {
+    // 1000 × 3, above 100 × 1.25.
+    assert.equal((await cancelAfterTimeout(100n)).gasPrice, 3000n);
+  });
+
+  it("outbids the swap's price when the chain asks less", async () => {
+    // 5000 × 1.25, above 1000 × 3.
+    assert.equal((await cancelAfterTimeout(5000n)).gasPrice, 6250n);
   });
 });

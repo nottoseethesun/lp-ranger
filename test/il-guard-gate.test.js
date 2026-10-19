@@ -140,9 +140,9 @@ describe("checkIlGuard — the retry backoff", () => {
 
   const poll = (positionUsd) =>
     checkIlGuard(deps, false, ilSnapshot(positionUsd, 1000), notifyPos);
-  /*-
-   *  A poll whose snapshot carries no IL/G, which fails open whenever
-   *  the Guard actually decides.
+  /**
+   * A poll whose snapshot carries no IL/G, which fails open whenever
+   * the Guard actually decides.
    */
   const pollUnmeasured = () => checkIlGuard(deps, false, {}, notifyPos);
 
@@ -252,6 +252,7 @@ describe("checkIlGuard — the block the dashboard shows after a Guard save", ()
    *  lift or word again. The state here is merged into as the server's
    *  is, so what the bot published is what it reads.
    */
+
   const notifyPos = (p) => ({ tokenId: p.tokenId });
   let deps;
   let guardPct;

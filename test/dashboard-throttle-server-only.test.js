@@ -8,15 +8,13 @@
  *   everything in the app, must only read from what the server
  *   provides."
  *
- *   Three ways they showed something else. The daily-limit countdown ran
- *   to a midnight the page worked out once, at load, in local time, while
- *   the bot resets at midnight UTC, so a capped position's countdown was
- *   off by the time zone and read READY once the page had been open past
- *   that midnight. A managed position whose bot loop had not reported yet,
- *   one behind the startup stagger, showed the previous position's
- *   doubling, wait and cap, as did any position in the moment after a
- *   switch. And the banner's OOR timeout countdown read the Bot Settings
- *   field, unsaved typing included. Driven on the real page.
+ *   Each figure has a page-side source that would be wrong. A midnight
+ *   the page works out in local time is off by the time zone, since the
+ *   bot resets at midnight UTC. Until a managed position's bot loop
+ *   reports, behind the startup stagger or in the moment after a switch,
+ *   the page still holds the previous position's doubling, wait and cap.
+ *   And the Bot Settings field holds unsaved typing, which the banner's
+ *   OOR timeout countdown must not read. Driven on the real page.
  */
 
 require("global-jsdom/register");

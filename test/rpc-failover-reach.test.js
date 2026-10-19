@@ -39,6 +39,8 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
+// Before anything that reads a price loads: prices come from a fixed table.
+require("./helpers/price-stand-ins");
 const sendTx = require("../src/send-transaction");
 const rpcQueue = require("../src/rpc-request-manager");
 const config = require("../src/config");

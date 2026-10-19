@@ -3,10 +3,22 @@
 /**
  * @file test/event-scanner.test.js
  * @description Unit tests for the event-scanner module.
+ *
+ * The pairing window and the history lookback are an operator's own here,
+ * not the figures that ship, so a scanner using a figure of its own fails.
  */
 
+const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("event-scanner-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "bot-config-defaults.json"),
+  JSON.stringify({ rebalancePairingWindowSec: 420, historyLookbackYears: 3 }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 /*- Scope the pool-creation-block disk cache to this test run so the
     integration test below ("pool-age optimisation skips blocks before
@@ -96,12 +108,8 @@ const wIn = (id, block, tx) =>
 // ── Constants ────────────────────────────────────────────────────────────────
 
 describe("Constants", () => {
-  // The wiring, as for the chunk size below: the one value is the JSON's.
-  it("pairing window comes from the shipped rebalancePairingWindowSec", () =>
-    assert.strictEqual(
-      _PAIRING_WINDOW_SEC,
-      SHIPPED_DEFAULTS.rebalancePairingWindowSec,
-    ));
+  it("pairing window is the configured rebalancePairingWindowSec", () =>
+    assert.strictEqual(_PAIRING_WINDOW_SEC, 420));
   /*- Asserts the WIRING, not the number.  The chunk size has exactly
    *  one literal — getLogsChunkSize in the shipped defaults — so a test
    *  repeating that figure would be a second copy to drift.  What is
@@ -231,10 +239,9 @@ describe("scanRebalanceHistory", () => {
     assert.strictEqual(ranges[0], expected);
   });
 
-  it("reaches back the shipped historyLookbackYears when maxYears is omitted", async () => {
+  it("reaches back the configured historyLookbackYears when maxYears is omitted", async () => {
     const currentBlock = 20_000_000;
-    const years = SHIPPED_DEFAULTS.historyLookbackYears;
-    const expected = currentBlock - Math.round(years * BLOCKS_PER_YEAR);
+    const expected = currentBlock - Math.round(3 * BLOCKS_PER_YEAR);
     const ranges = [];
     await scanRebalanceHistory(
       mkProvider(currentBlock),

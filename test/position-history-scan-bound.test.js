@@ -12,12 +12,23 @@
 
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+// Three years of history, an operator's own, not the five that ship.
+const SETTINGS_DIR = makeTestTempFolder("scan-bound-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "bot-config-defaults.json"),
+  JSON.stringify({ historyLookbackYears: 3 }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
+
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const Module = require("module");
 const { topicForTokenId } = require("../src/nft-token-topic");
 const config = require("../src/config");
-const BOT_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 /*-
  *  How far back the lookback reaches, in blocks, worked out here from
@@ -26,8 +37,7 @@ const BOT_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/b
  *  with itself.
  */
 const LOOKBACK_BLOCKS = Math.round(
-  (BOT_DEFAULTS.historyLookbackYears * 365.25 * 24 * 3600) /
-    config.CHAIN.blockTimeSec,
+  (3 * 365.25 * 24 * 3600) / config.CHAIN.blockTimeSec,
 );
 
 /**

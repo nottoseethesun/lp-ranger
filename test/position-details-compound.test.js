@@ -16,6 +16,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
+// Before anything that reads a price loads: prices come from a fixed table.
+require("./helpers/price-stand-ins");
 const {
   _detectCurrentNftValues,
   savedNftCompoundedUsd,

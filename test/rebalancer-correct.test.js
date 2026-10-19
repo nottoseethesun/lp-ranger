@@ -11,6 +11,12 @@
 const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
+/*-
+ *  Before anything that reads a price loads: prices come from a fixed
+ *  table. The swap gate and the dust module load once and keep the
+ *  lookups they found then, whatever a later case stubs.
+ */
+require("./helpers/price-stand-ins");
 const POOLS_PATH = require.resolve("../src/rebalancer-pools");
 const SWAP_PATH = require.resolve("../src/rebalancer-swap");
 const PRICE_PATH = require.resolve("../src/price-fetcher");
@@ -391,7 +397,6 @@ describe("_swapAndAdjust — swapSources propagation", () => {
       filename: GATES_PATH,
       loaded: true,
       exports: {
-        MAX_SWAP_GAS_RATIO: 0.01,
         estimateSwapGasUsd: async () => 0,
         gasFeePctToRatio: () => 0.01,
         shouldSkipSwap: async () => ({

@@ -536,7 +536,6 @@ export function bindAllEvents() {
     posBrowser: closePosBrowser,
     revealModal: closeRevealModal,
     clearWallet: closeClearWalletModal,
-    rebalanceIlWarning: closeRebalanceConfirm,
     ilDebug: dismissILDebug,
     donate: () => _hide("donateOverlay"),
     about: () => _hide("aboutOverlay"),

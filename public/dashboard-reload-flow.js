@@ -267,7 +267,7 @@ function _waitForReloadCompletion(key, startedAtMs) {
         !!st?._catastrophicScanError,
         key,
       );
-      if (!st) return setTimeout(tick, pollMs);
+      if (st === null) return setTimeout(tick, pollMs);
       if (st.rebalanceInProgress || st.compoundInProgress)
         return resolve("raced");
       if (st._catastrophicScanError && st._catastrophicScanError.at > started)
@@ -324,6 +324,7 @@ export function applySyncGate(frag, state) {
 function _confirmReload(tokenId) {
   return confirmViaDialog("tplReloadConfirmModal", {
     overlayId: "reloadConfirmModal",
+    positionDialog: true,
     fill: (frag) => {
       const idEl = frag.querySelector('[data-tpl="tokenId"]');
       if (idEl) idEl.textContent = String(tokenId);

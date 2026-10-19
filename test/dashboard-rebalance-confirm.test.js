@@ -227,8 +227,8 @@ describe("_rangeWidthPreviewText", () => {
   it("uses the offset the server says the rebalance will use, the install's default included", () => {
     /*-
      *  Nothing saved for the position, an operator's default of 70: the
-     *  bot mints around 70, so the preview must too. It used to read the
-     *  saved offset alone and centre on 50.
+     *  bot mints around 70, so the preview must too. The saved offset
+     *  alone would centre it on 50.
      */
     const active = { tickLower: -500, tickUpper: 500 };
     const text = mod._rangeWidthPreviewText(

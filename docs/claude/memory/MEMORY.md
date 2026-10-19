@@ -22,6 +22,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [Edit tool, not python](feedback_edit_tool_not_python.md) — Patch with Edit/Write, never python3 or sed
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — File lists live only in scripts/lint-targets.js
+- [Prettier only JS, JSON, YAML](feedback_prettier_only_js_json_yaml.md) — Never `prettier --write` Markdown or HTML; it rewrites the whole file
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile + node_modules, `npm i` first
 - [reset --keep, not --hard](feedback_reset_keep_not_hard.md) — Protocol step 4's `--hard` destroys uncommitted work; use `--keep` on a dirty tree
 - [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/` in wipe/restore-settings
@@ -126,6 +127,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no classList for state](feedback_no_classlist_for_state.md) — Never read the DOM to determine program state
 - [no data in presentation](feedback_no_data_in_presentation.md) — No defaults, config or business data in HTML/CSS
 - [validate in the core, not the UI](feedback_validate_in_the_core_not_the_ui.md) — Bounds go on the server; one core, many frontends
+- [one active position per pool](feedback_one_active_position_per_pool.md) — Period: no fallback between positions of a pool; every start and re-open path enforces it in the core, bot.js included
 - [no HTML in Markdown](feedback_no_html_in_markdown.md) — Pure Markdown, no inline HTML (MD033)
 - [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No interpolated innerHTML in dashboard JS

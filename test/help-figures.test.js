@@ -11,18 +11,21 @@
  *   instead goes stale the day the setting changes, and the help then
  *   states a figure the app does not use. A figure named wrongly must
  *   stop the build, rather than reach a reader as a raw token.
+ *
+ *   The shipped files read here are a copy with every value the help
+ *   quotes moved (`helpers/help-settings-moved.js`), so a figure typed
+ *   into the code fails. That the manual on disk states the real shipped
+ *   figures is checked in `help-manual-figures.test.js`.
  */
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const { useMovedHelpSettings } = require("./helpers/help-settings-moved");
 
-const BOT = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
+const { BOT, UI, RUNTIME, CHAINS } = useMovedHelpSettings();
 const BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
-const RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
-const UI = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-up-scenario.json");
-const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 const {
   helpFigures,
   fillFigureTokens,
@@ -36,10 +39,7 @@ const {
 
 const { shippedFigures } = require("../scripts/build-manual-content");
 
-/*-
- *  The table the manual's build works out from the shipped files, which
- *  is the table an install running on them is sent.
- */
+// The table the manual's build works out from the shipped files, here the copy.
 const F = shippedFigures();
 
 /** A dollar figure as a number: "1,000" → 1000. */
@@ -255,7 +255,7 @@ describe("the figures", () => {
     assert.equal(F.checkIntervalSec, String(BOT.checkIntervalSec));
   });
 
-  it("work the doubling ladder from the shipped minimum interval", () => {
+  it("work the doubling ladder from the minimum interval", () => {
     const start = BOT.minRebalanceIntervalMin * 60;
     const rungs = [start, start * 2, start * 4, start * 8].map(shortDuration);
     assert.equal(F.doublingLadder, rungs.join(" → "));
@@ -303,10 +303,9 @@ describe("the figures", () => {
   });
 
   it("keep the guard's retry ladder at or under its ceiling", () => {
-    const rungs = F.ilgRetryLadder.split(", ");
-    assert.equal(rungs[0], shortDuration(BOT.ilGuardRetry.baseMs / 1000));
-    assert.ok(rungs.length > 1);
-    assert.equal(F.ilgRetryCeiling, duration(BOT.ilGuardRetry.maxMs / 1000));
+    // Three hours doubling under a 20-hour ceiling: a fourth rung, a day, is past it.
+    assert.equal(F.ilgRetryLadder, "3h, 6h, 12h");
+    assert.equal(F.ilgRetryCeiling, "20 hours");
   });
 
   it("are plain text, safe to set as a page element's text", () => {
@@ -374,29 +373,6 @@ describe("filling the copy", () => {
       () => fillFigureSpans('<span data-figure="nope"></span>', F),
       /does not exist: nope/,
     );
-  });
-});
-
-describe("the User Manual", () => {
-  it("states every figure it quotes as the table has it", () => {
-    /*-
-     *  The build rewrites each span from the shipped files, so a span
-     *  that disagrees means the manual was not rebuilt after a setting
-     *  changed, or names a figure the table lacks.
-     */
-    const html = fs.readFileSync(
-      path.join(__dirname, "..", "public", "help-and-user-manual.html"),
-      "utf8",
-    );
-    const spans = [
-      ...html.matchAll(/<span data-figure="([A-Za-z0-9]+)">([^<]*)<\/span>/g),
-    ];
-    assert.ok(spans.length > 0);
-    for (const [, name, text] of spans) {
-      assert.ok(Object.hasOwn(F, name), `${name} is not a figure`);
-      assert.equal(text, F[name], name);
-    }
-    assert.doesNotMatch(html, /\{\{figure:/);
   });
 });
 

@@ -13,7 +13,6 @@ const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 
 const {
   writeErrorLog,
@@ -21,11 +20,11 @@ const {
   resetErrorLog,
   getErrorLogPath,
 } = require("../src/error-log");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
 const LOGGING = require("../app-config/app-defaults-for-user-configurable/logging.json");
 
 function _tmpPath(name) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lp-ranger-errlog-"));
-  return path.join(dir, name);
+  return path.join(makeTestTempFolder("error-log"), name);
 }
 
 test("writeErrorLog appends 4 blank lines + timestamp + stack", () => {
@@ -99,7 +98,7 @@ test("getErrorLogPath resolves logging.json's errorLogPath to an absolute path",
 });
 
 test("writeErrorLog creates parent directory if missing", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lp-ranger-errlog-mk-"));
+  const dir = makeTestTempFolder("error-log-mk");
   const p = path.join(dir, "nested", "deeper", "error.log");
   writeErrorLog(new Error("nested"), "ctx", { filePath: p });
   assert.ok(fs.existsSync(p));

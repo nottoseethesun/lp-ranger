@@ -33,7 +33,8 @@ before(async () => {
 
 describe("a save the server refuses", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<input id="inMaxReb" value="5">`;
+    // The markup's value is not the accepted one, so restoring it fails.
+    document.body.innerHTML = `<input id="inMaxReb" value="3">`;
   });
 
   it("puts the field back to the last accepted value and says why", () => {

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-10-17T04:18:21.493Z
+  modified: 2026-10-18T19:18:28.625Z
 ---
 
 # Running tests
@@ -122,7 +122,15 @@ time: the live config was healthy, so the copy matched it. After a
 stomp, the same copy would destroy the only good version.
 
 **How to apply:** wipe before a script that loads `src/`, restore after
-it, as separate tool calls. Check that the server is down first.
+it, as separate tool calls. Check that the server is down first. A
+one-line `node -e` counts.
+
+**Repeated 2026-10-18,** with harm: a `node -e` that required
+`src/server-positions.js` to compare key lists rewrote the backup. The
+old backup differed from the live config and no copy existed, so it was
+lost. The live config was healthy, and the next `npm start` would have
+made the same copy. Answer such a question by reading source with grep,
+or inside a wipe.
 
 ## no check in agents
 
@@ -208,6 +216,8 @@ did this until 2026-10-16, after a fix that same day claimed it no
 longer did.
 
 **How to apply:** set the redirect once, at the top of the file, into
-`fs.mkdtempSync(path.join(os.tmpdir(), "<name>-"))`, and remove that
-directory in a file-level `after`. Prove a cleanup claim by listing
-`tmp/` before and after a run, not by reading the hook.
+`makeTestTempFolder("<name>")` (src/test-temp-folders.js, 2026-10-18),
+which removes the folder when the process exits, failed or not, and
+which `npm run check` sweeps if a run was killed. Prove a cleanup claim
+by listing the temp directory before and after a run, not by reading
+the hook.

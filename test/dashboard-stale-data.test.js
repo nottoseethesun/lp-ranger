@@ -153,6 +153,10 @@ describe("the watch", () => {
     // A fresh position on screen, so each test starts with nothing shown.
     select(A);
     stale.markPositionDataFresh(onScreen());
+    /*-
+     *  TEST-ONLY global swap: the watch checks on a timer of its own,
+     *  with no clock to hand it. Reset pristine after each case.
+     */
     mock.timers.enable({ apis: ["setInterval"] });
   });
 

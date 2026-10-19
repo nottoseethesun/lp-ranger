@@ -48,6 +48,7 @@ const { pollCycle, _humanizeError } = require("./bot-cycle");
 const { _reloadFromConfig } = require("./bot-cycle-triggers");
 const { applyCurrentNftFigures } = require("./bot-pnl-current-nft");
 const { wireBotStateGetConfig } = require("./bot-state-init");
+const { isStopping } = require("./app-phase");
 const {
   _detectPosition,
   _initPnlTracker,
@@ -597,8 +598,13 @@ async function startBotLoop(opts) {
         _recordPoolRebalance: botState._recordPoolRebalance || null,
         _canRebalancePool: botState._canRebalancePool || null,
         _applyCurrentNftFigures: applyCurrentNftFigures,
-        // A stop during this poll keeps it from starting a move.
-        _isStopped: () => _stopped,
+        /*-
+         *  A stop of this loop, or of the app, during this poll keeps it
+         *  from starting a move. The app's counts even before anything
+         *  can stop this loop: its first poll runs before its start
+         *  hands back the handle a stop needs.
+         */
+        _isStopped: () => _stopped || isStopping(),
       });
       if (result.rebalanced || result.cancelled || result.compounded)
         specialActionCompleted = true;
@@ -757,12 +763,19 @@ async function startBotLoop(opts) {
   }, config.LIFETIME_RESCAN_CHECK_MS);
   return {
     stop() {
-      if (_stopped) return Promise.resolve();
-      _stopped = true;
-      _scheduler.stop();
-      clearInterval(lifetimeRescanTimer);
-      updateBotState({ running: false });
-      log.info("[bot] Bot loop stopped");
+      /*-
+       *  The first call halts the loop. Every call, the first or a later
+       *  one, then waits out a poll under way: a second stop, such as a
+       *  second shutdown request, must not report the loop stopped while
+       *  its poll could still be finishing a rebalance or compound.
+       */
+      if (!_stopped) {
+        _stopped = true;
+        _scheduler.stop();
+        clearInterval(lifetimeRescanTimer);
+        updateBotState({ running: false });
+        log.info("[bot] Bot loop stopped");
+      }
       if (!polling) return Promise.resolve();
       return new Promise((resolve) => {
         const check = setInterval(() => {

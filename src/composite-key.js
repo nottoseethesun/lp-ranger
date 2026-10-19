@@ -13,8 +13,7 @@
  * offline tools in `util/`, some of which must not load the app's modules:
  * loading them reads the operator's config, and reading it has side
  * effects. Keeping this file free of imports is what lets one rule serve
- * both, where the tools used to keep a copy of their own that had drifted
- * from this one.
+ * both; a copy kept by the tools would drift from it.
  *
  * Add no `require` to this file.
  */

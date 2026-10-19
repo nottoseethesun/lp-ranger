@@ -16,7 +16,7 @@
 
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
-const { Wallet, Transaction } = require("ethers");
+const { Wallet, Transaction, TransactionResponse } = require("ethers");
 
 const logModule = require("../src/log");
 const { heldTransaction } = require("../src/held-transaction");
@@ -92,6 +92,22 @@ describe("heldTransaction", () => {
     assert.equal(held.gasPrice, 5n);
     assert.equal(held.provider, pair.wait, "waited on where it was taken");
     assert.deepEqual(reads, ["getBlockNumber"], "watches from the block now");
+  });
+
+  it("watches for a replacement from the block it was rebuilt at", async (t) => {
+    /*-
+     *  Made replaceable from the current block, a wait on it notices a
+     *  speed-up or a cancel that takes its nonce, rather than waiting on
+     *  a hash that will never be mined.
+     */
+    const replaceable = t.mock.method(
+      TransactionResponse.prototype,
+      "replaceableTransaction",
+    );
+    const { pair } = providers();
+    await heldTransaction(alreadyKnown(), pair);
+    assert.equal(replaceable.mock.callCount(), 1);
+    assert.deepEqual(replaceable.mock.calls[0].arguments, [1234]);
   });
 
   it("answers null when the error carries no signed transaction", async () => {

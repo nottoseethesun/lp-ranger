@@ -35,6 +35,7 @@ const config = require("../src/config");
 const logModule = require("../src/log");
 const sendTx = require("../src/send-transaction");
 const { condemn } = require("./helpers/send-tx-stubs");
+const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 const { format } = require("node:util");
 
 const TOKEN0 = "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b";
@@ -436,6 +437,7 @@ function _makeRouteDeps(overrides = {}) {
       res._body = body;
     },
     readJsonBody: async () => ({}),
+    ...poolReadStandIn(),
     ...overrides,
   };
 }

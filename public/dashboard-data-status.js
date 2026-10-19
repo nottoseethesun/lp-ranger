@@ -31,6 +31,7 @@ import {
 } from "./dashboard-data-kpi-fees.js";
 import { uiSetting } from "./dashboard-ui-settings.js";
 import { activeChainDisplayName } from "./dashboard-chain.js";
+import { POSITION_DIALOG_ATTRIBUTE } from "./dashboard-position-dialogs.js";
 
 /**
  * Create and append a modal overlay to the document body. The shell
@@ -38,10 +39,24 @@ import { activeChainDisplayName } from "./dashboard-chain.js";
  * <template>; bodyHtml is still injected via innerHTML on the body div
  * — Phase 2 of the html-cleanup pass will convert callers to pass a
  * DocumentFragment instead of a string.
+ *
+ * A notice answers something done to the position on screen, so a
+ * switch to another closes it (dashboard-position-dialogs.js). An alert
+ * the server raises names its own position, whichever is on screen, and
+ * shows once, so its caller passes `positionDialog: false` and a switch
+ * leaves it open.
+ *
+ * @param {string|null} id
+ * @param {string} cssClass
+ * @param {string} title
+ * @param {string} bodyHtml
+ * @param {{positionDialog?: boolean}} [opts]
  */
-export function _createModal(id, cssClass, title, bodyHtml) {
+export function _createModal(id, cssClass, title, bodyHtml, opts = {}) {
   const o = document.createElement("div");
   o.className = "9mm-pos-mgr-modal-overlay";
+  if (opts.positionDialog !== false)
+    o.setAttribute(POSITION_DIALOG_ATTRIBUTE, "");
   if (id) o.id = id;
   const frag = cloneTpl("tplStatusModal");
   if (frag) {

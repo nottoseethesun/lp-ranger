@@ -10,9 +10,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
-const path = require("path");
-const os = require("os");
 const { loadConfig, saveConfig } = require("../src/bot-config-v2");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
 const {
   POSITION_KEYS,
   GLOBAL_KEYS,
@@ -20,9 +19,9 @@ const {
   RETIRED_GLOBAL_KEYS,
 } = require("../src/bot-config-keys");
 
-/** Create a temp directory for each test. */
+/** Create a temp directory for each test, removed when the process exits. */
 function tmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "bcv2-retired-"));
+  return makeTestTempFolder("bcv2-retired");
 }
 
 describe("saveConfig drops retired keys", () => {
@@ -192,6 +191,29 @@ describe("saveConfig drops retired global keys", () => {
     fs.rmSync(dir, { recursive: true });
     assert.equal(loaded.global.triggerType, undefined);
     assert.equal(loaded.global.gasFeePct, 2);
+  });
+
+  it("drops the single rpc address older releases saved", () => {
+    const dir = tmpDir();
+    saveConfig(
+      {
+        global: {
+          rpcUrl: "https://rpc.pulsechain.com",
+          rpcUrls: ["https://rpc.pulsechain.box"],
+        },
+        positions: {
+          "pulsechain-0xWALLET-0xCONTRACT-100": {
+            status: "running",
+            slippagePctToken0: 0.75,
+          },
+        },
+      },
+      dir,
+    );
+    const loaded = loadConfig(dir);
+    fs.rmSync(dir, { recursive: true });
+    assert.equal(loaded.global.rpcUrl, undefined);
+    assert.deepEqual(loaded.global.rpcUrls, ["https://rpc.pulsechain.box"]);
   });
 
   it("names only keys that POST /api/config no longer accepts", () => {

@@ -216,7 +216,7 @@ function _show(v) {
  */
 function _normalizeGroup(v, group) {
   const out = { ..._FALLBACK[group] };
-  if (!v || typeof v !== "object") return out;
+  if (v === null || typeof v !== "object") return out;
   for (const [key, bound] of Object.entries(SETTING_BOUNDS[group])) {
     if (withinBound(v[key], bound)) out[key] = v[key];
   }

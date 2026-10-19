@@ -237,6 +237,11 @@ describe("copyWithFeedback()", () => {
       value: { writeText: async (t) => copied.push(t) },
       configurable: true,
     });
+    /*-
+     *  TEST-ONLY global swap: the feedback puts its icon back on a timer
+     *  of its own, with no clock to hand it. Reset pristine after each
+     *  case.
+     */
     mock.timers.enable({ apis: ["setTimeout"] });
   });
   afterEach(() => {

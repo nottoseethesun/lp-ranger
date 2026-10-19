@@ -14,17 +14,23 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const { format } = require("node:util");
+const ethers = require("ethers");
+const { captureWarnings } = require("./helpers/capture-warnings");
 
 const {
   poolKeyOf,
   findPoolConflict,
   rejectIfPoolManaged,
-  claimPoolForBoot,
+  poolHoldersForStartUp,
+  readPoolOfPosition,
 } = require("../src/pool-already-managed");
+const { PM_ABI } = require("../src/pm-abi");
 
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
 const B = "0x57fde0a71132198BBeC939B98976993d8D89D225";
 const C = "0x95B303987A60C71504D99Aa1b13B4DA07b0790ab";
+const WALLET = "0x1111111111111111111111111111111111111111";
 
 /*- The app's canonical pool-key builder, bound to a fixed
  *  chain/contract/wallet the way the server binds it.  Taken from the
@@ -190,13 +196,13 @@ describe("findPoolConflict()", () => {
 describe("rejectIfPoolManaged()", () => {
   const POOL = { token0: A, token1: B, fee: 2500 };
 
-  /** ethers stub whose positions() returns the given pool. */
+  /** ethers stub whose positions() returns the given pool, open. */
   function libFor(pool) {
     return {
       Contract: class {
         async positions() {
           if (pool === null) throw new Error("rpc down");
-          return { token0: pool.token0, token1: pool.token1, fee: pool.fee };
+          return { ...pool, liquidity: 5000n };
         }
       },
     };
@@ -205,15 +211,20 @@ describe("rejectIfPoolManaged()", () => {
   function harness({ pool, states, selfKey }) {
     const sent = [];
     const logged = [];
+    const claimed = [];
     return {
       sent,
       logged,
+      claimed,
       args: {
+        claimPool: (pk) => claimed.push(pk),
         res: {},
         jsonResponse: (_res, status, payload) => sent.push({ status, payload }),
         log: (...a) => logged.push(a),
         key: selfKey ?? "chain-w-c-999",
         tokenId: "999",
+        chain: "pulsechain",
+        wallet: WALLET,
         positionManager: "0xPM",
         botStates: states,
         provider: {},
@@ -232,7 +243,25 @@ describe("rejectIfPoolManaged()", () => {
     assert.equal(h.sent[0].payload.error, "pool-already-managed");
     assert.equal(h.sent[0].payload.conflictTokenId, "111");
     assert.equal(h.sent[0].payload.conflictKey, "chain-w-c-111");
-    assert.equal(h.logged.length, 1);
+  });
+
+  it("logs what it refused and why, then what the operator can do", async () => {
+    const states = new Map([["chain-w-c-111", running("111", A, B, 2500)]]);
+    const h = harness({ pool: POOL, states });
+    await rejectIfPoolManaged(h.args);
+    const lines = h.logged.map((a) => format(...a));
+    assert.equal(lines.length, 2);
+    // The position as a move's log names it: chain, wallet, NFT, coins, fee.
+    assert.match(
+      lines[0],
+      /Manage refused: pulsechain 0x1111.* #999 .*\/.* 0\.25%: /,
+    );
+    assert.match(lines[0], /NFT #111 .* is already managed in this pool/);
+    assert.match(lines[0], /one active position per pool/);
+    assert.match(
+      lines[1],
+      /To manage NFT #999 .* instead, stop managing NFT #111 .* first/,
+    );
   });
 
   it("allows when the pool has no running position", async () => {
@@ -262,109 +291,228 @@ describe("rejectIfPoolManaged()", () => {
     assert.equal(h.sent.length, 0);
   });
 
-  it("allows when the pool read fails, rather than refusing on unknown", async () => {
-    /*- Refusing to manage because one RPC read hiccuped is worse than
-     *  the duplicate this gate prevents: the duplicate is visible and
-     *  the operator can stop one, whereas a spurious refusal blocks a
-     *  legitimate action with no recourse.  The normal detection path
-     *  fails loudly a moment later if the NFT really is unreadable. */
+  it("refuses, claiming nothing, when the pool cannot be read", async () => {
+    /*-
+     *  One active position per pool, with no exception: a pool that
+     *  cannot be read cannot be shown free, and the position managing
+     *  it here is in the very pool the read would have named. The code
+     *  is the one the dashboard shows as "click Manage again".
+     */
     const states = new Map([["chain-w-c-111", running("111", A, B, 2500)]]);
     const h = harness({ pool: null, states });
+    const warned = captureWarnings();
+    let refused;
+    try {
+      refused = await rejectIfPoolManaged(h.args);
+    } finally {
+      warned.restore();
+    }
+    assert.equal(refused, true);
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.sent[0].status, 503);
+    assert.equal(h.sent[0].payload.error, "pool-info-unavailable");
+    assert.match(h.sent[0].payload.message, /pool of NFT #999/);
+    assert.equal(h.sent[0].payload.positionKey, "chain-w-c-999");
+    assert.deepEqual(h.claimed, []);
+    // The chain's own error, then what was refused, then what to do.
+    assert.match(
+      warned.lines.join("\n"),
+      /Could not read the pool of NFT #999 .* from the chain: rpc down/,
+    );
+    const lines = h.logged.map((a) => format(...a));
+    assert.match(
+      lines[0],
+      /Manage refused: pulsechain 0x1111.* #999 .*: its pool could not be read/,
+    );
+    assert.match(
+      lines[1],
+      /Nothing was started for NFT #999 .*; click Manage again/,
+    );
+  });
+
+  it("claims the pool it lets through", async () => {
+    const h = harness({ pool: POOL, states: new Map() });
     assert.equal(await rejectIfPoolManaged(h.args), false);
-    assert.equal(h.sent.length, 0);
+    assert.deepEqual(h.claimed, [poolKeyFn(A, B, 2500)]);
   });
 });
 
-describe("claimPoolForBoot()", () => {
+describe("rejectIfPoolManaged() for a re-open", () => {
+  /*-
+   *  A closed position's Manage re-opens it, minting a new position in
+   *  its pool, so it is refused while the wallet holds an open one there.
+   */
   const POOL = { token0: A, token1: B, fee: 2500 };
 
-  /** ethers stub returning a per-tokenId pool, or throwing for null. */
-  function libFor(byToken) {
-    return {
-      Contract: class {
-        async positions(id) {
-          const p = byToken[String(id)];
-          if (!p) throw new Error("rpc down");
-          return { token0: p.token0, token1: p.token1, fee: p.fee };
-        }
+  /**
+   * The gate over a position with `liquidity`, in a wallet whose open
+   * position in the pool, if any, `openInPool` answers.
+   */
+  function reopen({ liquidity, open = null, states = new Map() }) {
+    const sent = [];
+    const asked = [];
+    const logged = [];
+    const args = {
+      res: {},
+      jsonResponse: (_res, status, payload) => sent.push({ status, payload }),
+      log: (...a) => logged.push(format(...a)),
+      key: "chain-w-c-999",
+      tokenId: "999",
+      chain: "pulsechain",
+      wallet: WALLET,
+      positionManager: "0xPM",
+      botStates: states,
+      provider: {},
+      ethersLib: {
+        Contract: class {
+          async positions() {
+            return { ...POOL, liquidity };
+          }
+        },
+      },
+      poolKeyFn,
+      openInPool: async (pool) => {
+        asked.push(pool);
+        return open;
       },
     };
+    return { args, sent, asked, logged };
   }
 
-  function boot(byToken) {
-    const claimedPools = new Map();
-    const logged = [];
-    return {
-      claimedPools,
-      logged,
-      claim: (tokenId) =>
-        claimPoolForBoot({
-          claimedPools,
-          tokenId,
-          provider: {},
-          ethersLib: libFor(byToken),
-          positionManager: "0xPM",
-          poolKeyFn,
-          log: (...a) => logged.push(a),
-        }),
-    };
-  }
-
-  it("starts the first position in a pool and skips the second", async () => {
-    /*- The pre-existing-violation case: a config written before the rule
-     *  was enforced holds two running positions in one pool. */
-    const b = boot({ 111: POOL, 222: POOL });
-    assert.equal(await b.claim("111"), true);
-    assert.equal(await b.claim("222"), false);
-  });
-
-  it("names the winner when it skips, so the log is actionable", async () => {
-    const b = boot({ 111: POOL, 222: POOL });
-    await b.claim("111");
-    await b.claim("222");
-    assert.equal(b.logged.length, 1);
-    const line = b.logged[0].join(" ");
-    assert.match(line, /111/);
-    assert.match(line, /222/);
-  });
-
-  it("starts every position when each is in its own pool", async () => {
-    const b = boot({
-      111: POOL,
-      222: { token0: A, token1: C, fee: 2500 },
-      333: { token0: A, token1: B, fee: 10000 },
-    });
-    assert.equal(await b.claim("111"), true);
-    assert.equal(await b.claim("222"), true);
-    assert.equal(await b.claim("333"), true);
-    assert.equal(b.logged.length, 0);
-  });
-
-  it("starts a position whose pool cannot be read, and claims nothing", async () => {
-    /*- An unreadable pool must neither block a later position nor be
-     *  blocked by one: it is unknown, not conflicting.  Ownership was
-     *  already verified by this point, so the NFT does exist. */
-    const b = boot({ 222: POOL });
-    assert.equal(await b.claim("111"), true);
-    assert.equal(b.claimedPools.size, 0);
-    assert.equal(await b.claim("222"), true);
-  });
-
-  it("matches a pool regardless of the order the tokens come back in", async () => {
-    const b = boot({ 111: POOL, 222: { token0: B, token1: A, fee: 2500 } });
-    assert.equal(await b.claim("111"), true);
-    assert.equal(await b.claim("222"), false);
-  });
-
-  it("cannot persist anything — it takes no config dependency", () => {
-    /*- Structural proof of "skip, not stop": the saved status is the
-     *  operator's, and this function has no way to reach it.  If a
-     *  config or save dependency is ever added here, this fails and the
-     *  reasoning above gets re-read. */
-    const params = claimPoolForBoot.toString();
-    assert.equal(
-      /saveConfig|diskConfig|removeManagedPosition/.test(params),
-      false,
+  it("refuses to re-open a closed position while the wallet holds an open one in its pool", async () => {
+    const g = reopen({ liquidity: 0n, open: "222" });
+    assert.equal(await rejectIfPoolManaged(g.args), true);
+    assert.equal(g.sent[0].status, 409);
+    assert.equal(g.sent[0].payload.error, "pool-has-open-position");
+    assert.equal(g.sent[0].payload.openTokenId, "222");
+    assert.equal(g.sent[0].payload.positionKey, "chain-w-c-999");
+    // What was refused and why, then what the operator can do.
+    assert.equal(g.logged.length, 2);
+    assert.match(
+      g.logged[0],
+      /Manage refused: pulsechain .* #999 .*: NFT #999 is closed/,
     );
+    assert.match(
+      g.logged[0],
+      /where the wallet already holds open position NFT #222 /,
+    );
+    assert.match(g.logged[1], /Manage NFT #222 .* instead, or close it first/);
+  });
+
+  it("re-opens a closed position whose pool holds no open one", async () => {
+    const g = reopen({ liquidity: 0n, open: null });
+    assert.equal(await rejectIfPoolManaged(g.args), false);
+    assert.equal(g.sent.length, 0);
+  });
+
+  it("does not ask about open positions when the position is itself open", async () => {
+    const g = reopen({ liquidity: 5000n, open: "222" });
+    assert.equal(await rejectIfPoolManaged(g.args), false);
+    assert.equal(g.asked.length, 0);
+  });
+
+  it("names the managed position, when one holds the pool", async () => {
+    const states = new Map([["chain-w-c-111", running("111", A, B, 2500)]]);
+    const g = reopen({ liquidity: 0n, open: "111", states });
+    assert.equal(await rejectIfPoolManaged(g.args), true);
+    assert.equal(g.sent[0].payload.error, "pool-already-managed");
+    assert.equal(g.sent[0].payload.conflictTokenId, "111");
+  });
+});
+
+describe("poolHoldersForStartUp()", () => {
+  /*-
+   *  Each pool keeps one of the positions saved as managed: its open one,
+   *  wherever it stands in the list, else the first listed. The answer
+   *  names, for each other saved position in that pool, the one kept.
+   */
+  const pool = (liquidity, tokens = [A, B], fee = 2500) => ({
+    token0: tokens[0],
+    token1: tokens[1],
+    fee,
+    liquidity,
+  });
+  const saved = (tokenId, p) => ({
+    key: `chain-w-c-${tokenId}`,
+    tokenId,
+    pool: p,
+    poolKey: poolKeyOf(p, poolKeyFn),
+  });
+  const decide = (...listed) =>
+    Object.fromEntries(poolHoldersForStartUp(listed));
+
+  it("keeps a pool for its open position, wherever it stands in the list", () => {
+    assert.deepEqual(decide(saved("111", pool(0n)), saved("222", pool(5n))), {
+      "chain-w-c-111": "222",
+    });
+  });
+
+  it("keeps a pool with no open position for the first listed", () => {
+    assert.deepEqual(decide(saved("111", pool(0n)), saved("222", pool(0n))), {
+      "chain-w-c-222": "111",
+    });
+  });
+
+  it("keeps a pool with two open positions for the first listed", () => {
+    assert.deepEqual(decide(saved("111", pool(7n)), saved("222", pool(5n))), {
+      "chain-w-c-222": "111",
+    });
+  });
+
+  it("keeps every position alone in its pool", () => {
+    assert.deepEqual(
+      decide(
+        saved("111", pool(5n)),
+        saved("222", pool(5n, [A, C])),
+        saved("333", pool(5n, [A, B], 10000)),
+      ),
+      {},
+    );
+  });
+
+  it("matches a pool regardless of the order the tokens come back in", () => {
+    assert.deepEqual(
+      decide(saved("111", pool(5n)), saved("222", pool(0n, [B, A]))),
+      { "chain-w-c-222": "111" },
+    );
+  });
+});
+
+describe("readPoolOfPosition() with the real ethers decoder", () => {
+  /*-
+   *  The pool and liquidity are read by name from the position manager's
+   *  answer. Through ethers itself rather than a stand-in, since a
+   *  stand-in that hands back named fields passes whatever interface the
+   *  module declares, and an interface with unnamed outputs leaves every
+   *  name undefined, so no pool would ever be recognised.
+   */
+  it("reads the pool and its liquidity from an answer ethers decodes", async () => {
+    const iface = new ethers.Interface(PM_ABI);
+    const answer = iface.encodeFunctionResult("positions", [
+      0n,
+      ethers.ZeroAddress,
+      A,
+      B,
+      2500n,
+      -100n,
+      100n,
+      5000n,
+      0n,
+      0n,
+      0n,
+      0n,
+    ]);
+    const pool = await readPoolOfPosition({
+      provider: { call: async () => answer },
+      ethersLib: ethers,
+      positionManager: "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2",
+      tokenId: "111",
+    });
+    assert.deepEqual(pool, {
+      token0: A,
+      token1: B,
+      fee: 2500,
+      liquidity: 5000n,
+    });
   });
 });

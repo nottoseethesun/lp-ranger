@@ -36,12 +36,12 @@ function makeRes() {
   return { _status: null, _body: null };
 }
 
-/** ethers stub whose positions() always returns `pool`. */
+/** ethers stub whose positions() always returns `pool`, open. */
 function libFor(pool) {
   return {
     Contract: class {
       async positions() {
-        return { token0: pool.token0, token1: pool.token1, fee: pool.fee };
+        return { ...pool, liquidity: 5000n };
       }
     },
   };
@@ -336,5 +336,48 @@ describe("handleManage releases the pool claim on failure", () => {
       409,
       "a signer failure must release the pool, not hold it forever",
     );
+  });
+});
+
+describe("handleManage re-open while the pool holds an open position", () => {
+  afterEach(() => getAllPositionBotStates().clear());
+
+  /*-
+   *  A closed position's Manage re-opens it. The wallet scan saw #111
+   *  open in the same pool, unmanaged, and the chain still shows it open
+   *  in the wallet, so the re-open would leave two active positions there.
+   */
+  it("is refused with 409, naming the open position, and starts nothing", async () => {
+    const started = [];
+    const diskConfig = { global: {}, positions: {} };
+    const chain = {
+      111: { liquidity: 5000n, owner: WALLET },
+      222: { liquidity: 0n, owner: WALLET },
+    };
+    const routes = createPositionRoutes({
+      ...makeRouteDeps({ pool: POOL, tokenId: "222", started, diskConfig }),
+      ethersLib: {
+        Contract: class {
+          async positions(id) {
+            return { ...POOL, liquidity: chain[String(id)].liquidity };
+          }
+          async ownerOf(id) {
+            return chain[String(id)].owner;
+          }
+        },
+      },
+      loadScanCache: () => ({
+        positions: [{ tokenId: "111", ...POOL, liquidity: "5000" }],
+        lastBlock: 1,
+      }),
+    });
+    const res = makeRes();
+    await routes["POST /api/position/manage"]({}, res);
+
+    assert.strictEqual(res._status, 409);
+    assert.strictEqual(res._body.error, "pool-has-open-position");
+    assert.strictEqual(res._body.openTokenId, "111");
+    assert.deepStrictEqual(started, []);
+    assert.deepStrictEqual(Object.keys(diskConfig.positions), []);
   });
 });

@@ -27,13 +27,17 @@ const { emojiId } = require("./logger");
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { createFailoverSigner } = require("./nonce-manager-wrapper");
+const { isStopping } = require("./app-phase");
 
 /**
  * @typedef {Object} ManagedPosition
  * @property {string}   key       Composite key (blockchain-wallet-contract-tokenId).
  * @property {string}   tokenId   NFT token ID.
  * @property {string}   status    'running' | 'stopped'
- * @property {{ stop: Function }} [handle]  Bot loop handle.
+ * @property {{ stop: Function }|null} handle  Bot loop handle; null until
+ *   the loop has started, and again once stopped.
+ * @property {Promise<void>|null} starting  The start under way, settled
+ *   once the loop's first check has ended; null at any other time.
  */
 
 /**
@@ -197,6 +201,15 @@ function createPositionManager(opts) {
   /**
    * Start managing a position.
    *
+   * A position's bot loop runs its first check of the pool before
+   * `startLoop` returns the loop's handle, and that check can rebalance.
+   * So the position is recorded first, with no handle yet and its start
+   * under way, where everything that looks positions up finds it: a
+   * rebalance in that first check moves its key (`migrateKey`), a stop of
+   * every position waits for the start and then stops the loop
+   * (`stopAll`), and a second start of the same key does nothing. Once
+   * the app is stopping for good, no start begins.
+   *
    * @param {string} key               Composite key.
    * @param {object} posOpts
    * @param {string}   posOpts.tokenId    NFT token ID.
@@ -204,29 +217,73 @@ function createPositionManager(opts) {
    *   Returns `{ stop() }`.  The caller (server-positions.js) is responsible
    *   for wiring up the bot state and dependencies.
    * @param {object}   [posOpts.savedConfig]  Saved position config from disk.
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} Rejects when the app is stopping, when the
+   *   loop fails to start, or when the position was removed while it
+   *   started.
    */
   async function startPosition(key, posOpts) {
     const { tokenId, startLoop } = posOpts;
+    if (isStopping())
+      throw new Error(
+        `LP Ranger is stopping, so position ${key} does not start`,
+      );
 
-    if (_positions.has(key) && _positions.get(key).status === "running") {
+    const existing = _positions.get(key);
+    if (existing !== undefined && existing.status === "running") {
       log.info("[pos-mgr] Position %s already running", key);
       return;
     }
 
-    const handle = await startLoop();
-
-    _positions.set(key, { key, tokenId, status: "running", handle });
-    log.info(
-      "[pos-mgr] Started managing position %s (tokenId=%s %s)",
+    const entry = {
       key,
       tokenId,
-      emojiId(tokenId),
+      status: "running",
+      handle: null,
+      starting: null,
+    };
+    _positions.set(key, entry);
+    entry.starting = _runStart(entry, startLoop);
+    try {
+      await entry.starting;
+    } finally {
+      entry.starting = null;
+    }
+    log.info(
+      "[pos-mgr] Started managing position %s (tokenId=%s %s)",
+      entry.key,
+      entry.tokenId,
+      emojiId(entry.tokenId),
     );
   }
 
   /**
-   * Stop and remove a position from management.
+   * Start `entry`'s loop and record its handle. A position removed while
+   * it started, by a Stop Managing or a retire in its first check, has
+   * nothing left to record the loop under, so the loop is stopped.
+   * @param {ManagedPosition} entry
+   * @param {Function} startLoop
+   * @returns {Promise<void>}
+   */
+  async function _runStart(entry, startLoop) {
+    let handle;
+    try {
+      handle = await startLoop();
+    } catch (err) {
+      if (_positions.get(entry.key) === entry) _positions.delete(entry.key);
+      throw err;
+    }
+    if (_positions.get(entry.key) !== entry) {
+      await handle.stop();
+      throw new Error(`position ${entry.key} was removed while it started`);
+    }
+    entry.handle = handle;
+  }
+
+  /**
+   * Stop and remove a position from management. One still starting is
+   * removed at once, and its start stops the loop once it has one, since
+   * waiting for the start here would wait on a retire inside that very
+   * start.
    * @param {string} key  Composite key.
    * @returns {Promise<void>}
    */
@@ -245,16 +302,29 @@ function createPositionManager(opts) {
   }
 
   /**
-   * Stop all managed positions.
+   * Stop all managed positions, resolving once each loop's check under
+   * way has ended. A position still starting has no loop to stop until
+   * its first check ends, so its start is waited for and the loop it
+   * records is stopped then. Only the positions held when the call came
+   * are marked stopped: one whose start begins during the wait keeps its
+   * loop, and with it the record that the loop runs.
    * @returns {Promise<void>}
    */
   async function stopAll() {
+    const entries = [..._positions.values()];
     const stops = [];
-    for (const [, entry] of _positions) {
-      if (entry.handle) stops.push(entry.handle.stop());
+    for (const entry of entries) {
+      if (entry.handle !== null) stops.push(entry.handle.stop());
+      else if (entry.starting !== null)
+        stops.push(
+          entry.starting.then(
+            () => entry.handle?.stop(),
+            () => {},
+          ),
+        );
     }
     await Promise.all(stops);
-    for (const [, entry] of _positions) {
+    for (const entry of entries) {
       entry.handle = null;
       entry.status = "stopped";
     }

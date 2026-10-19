@@ -140,9 +140,11 @@ function classifyRpcError(err) {
   if (_matchesAny(msg, _BUCKETS.alreadyKnown.messageSubstrings)) {
     return "already-known";
   }
-  // Check nonce-consumed next — if the node says "nonce too low" we
-  // never want to retry, even if another substring (e.g. "server error")
-  // also matches.
+  /*-
+   *  Check nonce-consumed next — if the node says "nonce too low" we
+   *  never want to retry, even if another substring (e.g. "server error")
+   *  also matches.
+   */
   const nc = _BUCKETS.terminalNonceConsumed;
   if (nc.ethersCodes.includes(code) || _matchesAny(msg, nc.messageSubstrings)) {
     return "terminal-nonce-consumed";

@@ -9,6 +9,7 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const config = require("../src/config");
 const { eventCachePath } = require("../src/cache-store");
 const poolScanner = require("../src/pool-scanner");
 
@@ -191,7 +192,14 @@ describe("appendToPoolCache — recent-scan invalidation (auto-follow fix)", () 
       _recentKey(flipped, wallet.toUpperCase().replace("0X", "0x")),
       _recentKey(pos, wallet),
     );
-    assert.ok(_recentKey(pos, wallet).startsWith("pulsechain-"));
+    // On a chain other than the shipped default, so naming that outright fails.
+    const shipped = config.CHAIN_NAME;
+    config.CHAIN_NAME = "pulsechain-testnet";
+    try {
+      assert.ok(_recentKey(pos, wallet).startsWith("pulsechain-testnet-"));
+    } finally {
+      config.CHAIN_NAME = shipped;
+    }
     const lookalike = wallet.slice(0, 10) + "f".repeat(wallet.length - 10);
     assert.notEqual(_recentKey(pos, lookalike), _recentKey(pos, wallet));
   });

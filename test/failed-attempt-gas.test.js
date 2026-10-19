@@ -241,9 +241,9 @@ describe("swapIfNeeded adds what every route given up on paid", () => {
     return Object.assign(new Error(message), { gasCostWei }, extra);
   }
 
-  /*-
-   *  The full amount's impact is past the slippage, after its approval
-   *  was mined: 7 wei paid, and the swap goes on to the chunks.
+  /**
+   * The full amount's impact is past the slippage, after its approval
+   * was mined: 7 wei paid, and the swap goes on to the chunks.
    */
   const fullAborts = (p) => {
     p._attempts.push({ label: p._attemptLabel, impactPct: 6 });

@@ -67,7 +67,8 @@ describe("before the server has named the chain", () => {
 });
 
 describe("once the chain is known", () => {
-  before(() => learnChain("pulsechain"));
+  // The testnet, not the shipped default, so a key naming that outright fails.
+  before(() => learnChain("pulsechain-testnet"));
 
   it("saves and loads a position's threshold", () => {
     helpers.savePositionOorThreshold(nft(), 15);
@@ -77,7 +78,7 @@ describe("once the chain is known", () => {
   it("keys it by chain, wallet, contract and NFT number", () => {
     helpers.savePositionOorThreshold(nft(), 15);
     assert.deepEqual(storedKeys(), [
-      "9mm_oorThreshold_nft_pulsechain_" +
+      "9mm_oorThreshold_nft_pulsechain-testnet_" +
         WALLET.toLowerCase() +
         "_" +
         PM.toLowerCase() +
@@ -104,7 +105,7 @@ describe("once the chain is known", () => {
     helpers.savePositionOorThreshold(lp, 12.5);
     assert.equal(helpers.loadPositionOorThreshold(lp), 12.5);
     assert.deepEqual(storedKeys(), [
-      "9mm_oorThreshold_erc20_pulsechain_" +
+      "9mm_oorThreshold_erc20_pulsechain-testnet_" +
         WALLET.toLowerCase() +
         "_" +
         OTHER_PM.toLowerCase(),

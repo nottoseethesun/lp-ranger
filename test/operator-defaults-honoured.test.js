@@ -57,7 +57,7 @@ const {
   fullRangeSetting,
 } = require("../src/range-override");
 const { buildStatusPositions } = require("../src/build-status-positions");
-const { MAX_SWAP_GAS_RATIO } = require("../src/swap-gates");
+const { gasFeePctToRatio } = require("../src/swap-gates");
 const { createThrottle } = require("../src/throttle");
 const { CENTERED_OFFSET_PCT } = require("../src/centered-offset");
 const { _MAX_ITERATIONS } = require("../src/rebalancer-correct");
@@ -126,11 +126,23 @@ describe("an operator's default reaches the bot", () => {
     assert.equal(out[stopped].fullRangeRebalanceEnabled, true);
   });
 
-  it("the gas-fee limit, for a swap with no setting of its own", () => {
-    assert.equal(MAX_SWAP_GAS_RATIO, 0.02);
+  it("the gas-fee limit, for a swap when none is saved", () => {
+    /*-
+     *  A rebalance passes on what is saved, here nothing, and its swap
+     *  asks gasFeePctToRatio for its limit, as every swap does.
+     */
+    const { gasFeePct } = buildRebalanceOpts(deps(), {});
+    assert.equal(gasFeePctToRatio(gasFeePct), 0.02);
   });
 
   it("the doubling rule, for the throttle", () => {
+    /*-
+     *  Each number is told apart from its shipped figure, three
+     *  rebalances in four intervals and a quiet spell of four waits:
+     *  two rebalances five intervals apart start doubling only under
+     *  the override's count and window, and three and a half doubled
+     *  waits clear it only under the override's quiet spell.
+     */
     let now = Date.UTC(2026, 9, 17, 12, 0, 0);
     const t = createThrottle({
       minIntervalMs: 60_000,
@@ -138,12 +150,19 @@ describe("an operator's default reaches the bot", () => {
       nowFn: () => now,
     });
     t.recordRebalance();
-    now += 120_000;
+    now += 5 * 60_000;
     t.recordRebalance();
     assert.equal(
       t.getState().doublingActive,
       true,
       "two rebalances within six intervals start doubling",
+    );
+    // The doubled wait is two intervals, so three of them are six.
+    now += 7 * 60_000;
+    assert.equal(
+      t.tick().didClearDoubling,
+      true,
+      "a quiet spell of three doubled waits clears it",
     );
   });
 

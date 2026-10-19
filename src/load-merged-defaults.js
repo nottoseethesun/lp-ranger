@@ -41,11 +41,19 @@ const { log } = require("./log");
 
 const _APP_CONFIG_DIR = path.join(__dirname, "..", "app-config");
 
-/** Absolute path to the shipped-defaults directory. */
-const DEFAULTS_DIR = path.join(
-  _APP_CONFIG_DIR,
-  "app-defaults-for-user-configurable",
-);
+/**
+ * Absolute path to the shipped-defaults directory.
+ *
+ * `LP_RANGER_DEFAULTS_DIR` redirects it, for the tests alone, as
+ * `LP_RANGER_USER_CONFIG_DIR` below redirects the operator's directory.
+ * A test that has to replace or remove a shipped file, to show how its
+ * reader copes, does so in a copy of its own rather than in the tracked
+ * file that every other test process, and the next `npm start`, reads.
+ * Read once, at module load.
+ */
+const DEFAULTS_DIR = process.env.LP_RANGER_DEFAULTS_DIR
+  ? path.resolve(process.env.LP_RANGER_DEFAULTS_DIR)
+  : path.join(_APP_CONFIG_DIR, "app-defaults-for-user-configurable");
 
 /**
  * Absolute path to the per-install user-overrides directory.

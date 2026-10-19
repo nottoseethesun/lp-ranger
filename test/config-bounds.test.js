@@ -195,8 +195,15 @@ describe("checkConfigValues — what it leaves alone", () => {
   });
 
   it("stops at the first problem and names that one", () => {
-    const bad = check({ maxRebalancesPerDay: 0, moralisEnabled: "yes" });
-    assert.ok(["maxRebalancesPerDay", "moralisEnabled"].includes(bad.key));
+    // In either order, so naming the last one, or always the same one, fails.
+    assert.equal(
+      check({ maxRebalancesPerDay: 0, moralisEnabled: "yes" }).key,
+      "maxRebalancesPerDay",
+    );
+    assert.equal(
+      check({ moralisEnabled: "yes", maxRebalancesPerDay: 0 }).key,
+      "moralisEnabled",
+    );
   });
 });
 

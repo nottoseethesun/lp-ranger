@@ -100,12 +100,29 @@ describe("the page's figure spans", () => {
 });
 
 describe("loadHelpFigures", () => {
-  it("holds nothing, and fills nothing, before the server answers", () => {
+  it("holds nothing, and fills nothing, before the server answers", async () => {
+    // Looked at after each unanswered ask, while the wait goes on.
     mountPage();
-    assert.equal(mod.helpFigures(), null);
-    assert.equal(mod.resolvedBotDefaults(), null);
-    for (const el of document.querySelectorAll("[data-figure]"))
-      assert.equal(el.textContent, "");
+    const blank = () =>
+      [...document.querySelectorAll("[data-figure]")].every(
+        (el) => el.textContent === "",
+      );
+    const seen = [];
+    await mod.loadHelpFigures({
+      fetchFn: scriptedServer([unavailable, unavailable, answering(ANSWER)])
+        .fetchFn,
+      askEveryMs: 1,
+      warnFn: () => {},
+      onUnanswered: () =>
+        seen.push({
+          figures: mod.helpFigures(),
+          botDefaults: mod.resolvedBotDefaults(),
+          blank: blank(),
+        }),
+      onAnswered: () => {},
+    });
+    const waiting = { figures: null, botDefaults: null, blank: true };
+    assert.deepEqual(seen, [waiting, waiting]);
   });
 
   it("asks again until the server answers, then writes every figure", async () => {

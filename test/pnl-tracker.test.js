@@ -432,7 +432,7 @@ describe("createPnlTracker — daily P&L", () => {
     assert.strictEqual(newest.gasCost, 0.5);
   });
 
-  it("dailyPnl computes running cumulative", () => {
+  it("dailyPnl lists the days newest first", () => {
     const day1 = new Date("2025-03-01T12:00:00Z").getTime();
     const day2 = new Date("2025-03-02T12:00:00Z").getTime();
 
@@ -458,11 +458,9 @@ describe("createPnlTracker — daily P&L", () => {
     tracker.updateLiveEpoch({ currentPrice: 1, feesAccrued: 5 });
     tracker.closeEpoch({ exitValue: 1015, gasCost: 0, closeTime: day2 });
 
-    const snap = tracker.snapshot();
-    // Newest entry has higher cumulative (or equal)
-    const oldest = snap.dailyPnl[snap.dailyPnl.length - 1];
-    const newest = snap.dailyPnl[0];
-    assert.ok(newest.cumulative >= oldest.cumulative);
+    const dates = tracker.snapshot().dailyPnl.map((d) => d.date);
+    assert.ok(dates.length >= 2, dates.join(", "));
+    assert.deepEqual(dates, [...dates].sort().reverse());
   });
 
   it("dailyPnl includes all days when no limit", () => {

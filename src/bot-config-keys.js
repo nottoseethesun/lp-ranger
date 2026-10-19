@@ -200,6 +200,12 @@ const RETIRED_GLOBAL_KEYS = Object.freeze([
    */
   "positionManager",
   "factory",
+  /*-
+   *  The single rpc address that releases before September 2026 saved
+   *  whenever the rpc field changed or one of its presets was clicked.
+   *  The list in `rpcUrls` replaced it, and nothing reads it.
+   */
+  "rpcUrl",
 ]);
 
 const POSITION_KEYS = [

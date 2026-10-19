@@ -70,9 +70,8 @@ describe("the chain's name in position labels", () => {
   it("is the server's as soon as it names the chain, before any status poll", async () => {
     /*-
      *  The label of a position opened from a bookmark is written before
-     *  the first status poll. It used to lack the chain for that reason:
-     *  the name came from the poll. It comes from the chain the server
-     *  names at startup now.
+     *  the first status poll, so the chain's name cannot come from the
+     *  poll: it comes from the chain the server names at startup.
      */
     await learnActiveChain("pulsechain", "A Chain");
     assert.match(status._posLabel(), / · A Chain · 0x4e44…E61A$/);

@@ -7,8 +7,10 @@
 
 Some code written before a rule existed still breaks it. The audit of
 2026-10-17 found three kinds while it checked that day's work, and left
-them alone because they predate it. Each makes the code harder to trust
-or to read. None makes it wrong.
+them alone because they predate it. Later audits left a fourth kind,
+in new code as well as old, for the user to decide, and on 2026-10-18
+the user put it here: truthy checks on an element or an object. Each
+makes the code harder to trust or to read. None makes it wrong.
 
 ## Detail
 
@@ -57,6 +59,26 @@ message or a memory file. Four CLAUDE.md passages recount one:
 - "Slippage is two settings, one per token", on the retired third
   setting.
 
+**Truthy checks on an element or an object.** A check for whether a
+value is present is written out, `x !== undefined && x !== null`, never
+`if (x)`, which also reads `0`, `""` and `false` as absent. The rule is
+in [CLAUDE-BEST-PRACTICES.md](../../claude/CLAUDE-BEST-PRACTICES.md),
+under Type Checks. An element or an object is never falsy, so these
+checks answer correctly, but only a reader who knows what the value can
+hold can see that. A scan of what each checked variable was assigned
+finds:
+
+- 511 checks on an element, such as `if (el)` and
+  `if (!frag) return null`, all but three on what `g()`,
+  `getElementById`, `querySelector`, `closest` or `cloneTpl` found. Of
+  these, 501 are in 50 dashboard files, 8 in `src/ui-state.js` and 2 in
+  `scripts/lint-svg.js`.
+- 57 on the active position, `posStore.getActive()`, in the dashboard.
+- Dozens on another object: a `Map`'s entry, a `find` result, a
+  regular expression's match, a caught error. Some values checked this
+  way are a number or a string instead, such as a timestamp a `Map`
+  holds, so each one needs reading.
+
 ## Fix when prioritized
 
 Each kind is separate work, and none needs the others.
@@ -69,5 +91,8 @@ Each kind is separate work, and none needs the others.
 - **CLAUDE.md:** keep each passage's reason and drop the incident:
   state the invariant, what breaks without it, and where it is
   enforced.
+- **Truthy checks:** write each as an explicit check, one file at a
+  time.
 
-Measure again before starting. The counts are from 2026-10-17.
+Measure again before starting. The counts are from 2026-10-17, those
+of truthy checks from 2026-10-18.

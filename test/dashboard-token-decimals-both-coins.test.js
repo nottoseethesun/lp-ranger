@@ -5,9 +5,9 @@
  * @description Pool Details' decimals overrides: both coins are filled
  *   in when the dialog opens, and Save sends both as shown.
  *
- *   Saving one coin's override used to send the other coin's from a copy
- *   the browser kept. A browser without that copy sent "no override" for
- *   the other coin, and the server deleted it and cleared its Force box.
+ *   Save sends both coins, so the form must show both as the server keeps
+ *   them: a coin left blank is sent as "no override", and the server
+ *   deletes its override and clears its Force box.
  *   The user, 2026-10-17: "token decimals should always be pre-populated
  *   in the dialog for both coins; the app almost surely has that
  *   information already. That solves it once and for all." So each coin

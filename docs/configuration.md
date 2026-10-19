@@ -147,8 +147,10 @@ A problem is a value of the wrong kind or outside its range, a setting
 LP Ranger does not read, a file that is not valid JSON, or a copy of a
 file the app never reads from `user-configurable/`. A setting LP Ranger
 has retired is not one: the next save drops it from `bot-config.json`.
-`npm stop` and `npm run gentle-stop` do not check, so a bad setting
-never keeps you from stopping a server that is running.
+`npm stop` and `npm run gentle-stop` do not check, and read no setting
+but where the server listens and the `shutdown` timings below. So a bad
+setting anywhere else never keeps you from stopping a server that is
+running.
 
 To check without starting:
 
@@ -355,9 +357,8 @@ it, and nothing gets past two days. A setting with a sensible range of its
 own declares that instead, which the poll interval does.
 
 **The same range applies wherever the setting is written** — the JSON file
-and `.env` both ask `src/timer-bounds.js`. They used to disagree: a poll
-interval of two hours was silently discarded in the JSON file and
-accepted elsewhere.
+and `.env` both ask `src/timer-bounds.js`, so a value one accepts the
+other cannot refuse.
 
 Lesser rather than greater is what keeps these safe. A countdown is held as
 a 32-bit count of milliseconds — about 24.8 days — and the runtime will not
@@ -812,7 +813,7 @@ In `app-runtime.json`.
 | `retire.drainedAfterMs` | `1800000` | How long a managed position may sit drained, with no rebalance under way, before LP Ranger stops managing it. A rebalance aborted after its drain counts. One minute to two days. |
 | `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. |
 | `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. |
-| `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop` checks whether the server has gone. |
+| `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. |
 | `shutdown.gentleStopPollMs` | `300000` | How often `npm run gentle-stop` asks whether a rebalance or compound is under way, and how long it waits for each answer. |
 | `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the server waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
 | `compound.autoSpacingPolls` | `5` | The least time between two automatic compounds of one position, in polls of `CHECK_INTERVAL_SEC`. 1 to 100. |

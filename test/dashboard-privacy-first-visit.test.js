@@ -6,9 +6,9 @@
  *   saved choice follows `privacyModeEnabled`, which the server sends, and
  *   everything that blurs follows that one answer: the page-load restore,
  *   the re-blur after each status poll, and the LP Position Browser's
- *   rows. The switch used to take the default while the blur read only a
- *   saved choice, so a default of on checked the switch and blurred
- *   nothing.
+ *   rows. A switch and a blur that read the choice differently would
+ *   disagree: with a default of on, the switch checked and nothing
+ *   blurred.
  */
 
 require("global-jsdom/register");
@@ -30,6 +30,12 @@ let events;
 let browser;
 
 before(async () => {
+  /*-
+   *  TEST-ONLY global swap: the dashboard asks the server through the
+   *  browser's fetch and takes no stand-in for it. This answers for the
+   *  server for the whole file, so it stays in place: the file runs in a
+   *  process of its own, which no other file shares.
+   */
   globalThis.fetch = async () => ({
     ok: true,
     status: 200,

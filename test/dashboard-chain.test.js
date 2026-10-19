@@ -9,16 +9,44 @@
  *   The browser half runs the real module under jsdom and asks through a
  *   scripted `fetch`, passed in where startup passes the browser's own;
  *   its console lines arrive through the `warnFn` it takes for the same
- *   purpose. The server half drives the real `GET /api/chain` handler.
+ *   purpose. The server half drives the real `GET /api/chain` handler,
+ *   on the testnet with a header link of the test's own, so a route
+ *   naming the shipped chain outright fails.
  */
 
 require("global-jsdom/register");
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const LINK = {
+  displayName: "A Chain of the Test's Own",
+  homepage: "https://example.org/chain",
+  logo: "lp-ranger-star.png",
+};
+const SETTINGS_DIR = makeTestTempFolder("chain-route-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "chains.json"),
+  JSON.stringify({
+    "pulsechain-testnet": {
+      ...LINK,
+      // The testnet ships without these, and the app does not start without them.
+      contracts: {
+        positionManager: { address: "0x" + "11".repeat(20) },
+        factory: "0x" + "22".repeat(20),
+        swapRouter: { address: "0x" + "33".repeat(20), name: "Test Router" },
+      },
+    },
+  }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
+process.env.CHAIN_NAME = "pulsechain-testnet";
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { userConfigurableRoutes } = require("../src/user-configurable-routes");
-const config = require("../src/config");
 const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 
 let chainMod;
@@ -99,12 +127,7 @@ describe("GET /api/chain", () => {
     });
     routes["GET /api/chain"]({}, {});
     assert.equal(status, 200);
-    assert.deepEqual(body, {
-      chainId: config.CHAIN_NAME,
-      displayName: config.CHAIN.displayName,
-      homepage: config.CHAIN.homepage,
-      logo: config.CHAIN.logo,
-    });
+    assert.deepEqual(body, { chainId: "pulsechain-testnet", ...LINK });
   });
 });
 

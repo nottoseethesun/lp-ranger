@@ -10,7 +10,6 @@ const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { spawnSync } = require("node:child_process");
 
 const {
@@ -19,10 +18,10 @@ const {
   readPid,
   getPidFilePath,
 } = require("../src/server-pid");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
 
 function _tmpPath() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lp-ranger-pid-"));
-  return path.join(dir, "lp-ranger.pid");
+  return path.join(makeTestTempFolder("pid"), "lp-ranger.pid");
 }
 
 test("writePidFile writes the current PID; readPid reads it back", () => {

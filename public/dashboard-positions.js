@@ -44,10 +44,11 @@ import {
   renderPosBrowser,
   getPosBrowserSelected,
 } from "./dashboard-positions-browser.js";
-import { paintManageUI } from "./dashboard-manage-ui.js";
+import { paintManageUI, manageKey } from "./dashboard-manage-ui.js";
 import { checkManagedOnSwitch } from "./dashboard-manage-check.js";
 import { forgetThrottleState } from "./dashboard-throttle.js";
 import { emptyPositionInputs } from "./dashboard-config-inputs.js";
+import { closePositionDialogs } from "./dashboard-position-dialogs.js";
 
 // ── Late-bound deps ──────────────────────────────
 
@@ -127,6 +128,20 @@ function _exitClosedViewIfActive() {
 }
 
 /**
+ * Close the dialogs of the position on screen when another comes on
+ * screen. A dialog open for the position on screen would save to, or
+ * tell of, the one coming on screen instead. They close while the old
+ * position is still on screen, so what a dialog records as it closes is
+ * recorded for its own. Choosing the same position again leaves them
+ * open.
+ * @param {number} idx  Position store index of the position coming on screen.
+ */
+function _closeDialogsOfPositionLeaving(idx) {
+  if (manageKey(posStore.entries?.[idx]) !== manageKey(posStore.getActive()))
+    closePositionDialogs();
+}
+
+/**
  * Core position activation — shared by all switch paths.
  * @param {number} idx  Position store index.
  * @param {object} [opts]
@@ -148,6 +163,7 @@ function _activateCore(idx, opts) {
     _entryTid,
     isPositionManaged(_entryTid),
   );
+  _closeDialogsOfPositionLeaving(idx);
   _exitClosedViewIfActive();
   if (_clearHistory) _clearHistory();
   if (_resetHistoryFlag) _resetHistoryFlag();

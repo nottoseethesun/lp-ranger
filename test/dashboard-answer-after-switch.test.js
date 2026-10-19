@@ -7,20 +7,20 @@
  *
  *   A Stop Managing waits for the position's check under way, a re-open
  *   for its first rebalance, a save for its round trip, and the operator
- *   can move to another position meanwhile. The answers then landed on
- *   the position on screen: Stop Managing's refetch blanked its figures,
- *   so did a price or deposit save's, a price override's browser copy
- *   went under its pool, and a re-open's dialog and Activity entry named
- *   it. The user, 2026-10-18: "responses from the server need to be
- *   tagged with the fully-qualified position identifier ... Then the
- *   client will discard any that don't match the currently-loaded
- *   position." The server now names the position in each such answer,
- *   and these cases hand each answer handler one naming position A while
- *   position B is on screen.
+ *   can move to another position meanwhile. So what an answer does to
+ *   the screen waits until it names the position on screen: otherwise a
+ *   Stop Managing's or a save's refetch would blank another position's
+ *   figures, and a re-open's dialog would read as being about it. The
+ *   user, 2026-10-18: "responses from the server need to be tagged with
+ *   the fully-qualified position identifier ... Then the client will
+ *   discard any that don't match the currently-loaded position." The
+ *   server names the position in each such answer, and these cases hand
+ *   each answer handler one naming position A while position B is on
+ *   screen.
  *
  *   What an answer records about its own position is kept: a re-open's
- *   Activity entry, named for the position re-opened, and a price
- *   override's browser copy, under that position's pool.
+ *   Activity entry names the position re-opened. A price override keeps
+ *   no browser copy at all, since the server holds it.
  *
  *   The handlers are driven directly, with answers of the cases' own:
  *   the requests go through the global `fetch`, which a test must not
@@ -83,9 +83,9 @@ beforeEach(() => {
   posStore.select(posStore.entries.findIndex((p) => p.tokenId === "202"));
 });
 
-/*-
- *  The last Activity entry's text. Its position label is on its own line
- *  under an error's detail, and is the whole line of a success.
+/**
+ * The last Activity entry's text. Its position label is on its own line
+ * under an error's detail, and is the whole line of a success.
  */
 const lastActivityText = () =>
   [...document.querySelectorAll("#actList .ai")].pop()?.textContent ?? "";

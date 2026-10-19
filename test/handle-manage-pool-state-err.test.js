@@ -29,6 +29,7 @@ const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
 } = require("../src/pool-state-validate");
+const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 
 // ── Minimal helpers (mirrors test/server-positions.test.js) ─────────────────
 
@@ -78,6 +79,7 @@ function makeRouteDeps(overrides = {}) {
       res._body = body;
     },
     readJsonBody: async () => ({}),
+    ...poolReadStandIn(),
     ...overrides,
   };
 }

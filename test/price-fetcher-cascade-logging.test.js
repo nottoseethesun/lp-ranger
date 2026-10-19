@@ -109,6 +109,12 @@ describe("Cascade logging", () => {
       assert.strictEqual(price, 0);
     });
     const flat = captured.join("\n");
+    // Each source asked, in turn, names the token and why it missed.
+    assert.match(flat, /\] GeckoTerminal error 0xAbCd…Ef01 .*— network down/);
+    assert.match(
+      flat,
+      /\] DexScreener error 0xAbCd…Ef01 .*— network down \(fallback after GeckoTerminal\)/,
+    );
     assert.ok(
       flat.includes("All sources failed"),
       `expected final failure summary\n${flat}`,

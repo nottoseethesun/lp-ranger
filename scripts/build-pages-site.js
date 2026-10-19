@@ -172,7 +172,7 @@ function buildPagesSite(outDir) {
   }
 }
 
-module.exports = { buildPagesSite, readSpec, SPEC_PATH };
+module.exports = { buildPagesSite, readSpec, writePage, SPEC_PATH };
 
 /*- CLI entry point: only runs when invoked directly, so `show-gallery`
  *  can require the builder without triggering a build on import. */

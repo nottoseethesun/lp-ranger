@@ -14,7 +14,9 @@
  *   app-runtime.json for the compound minimum and the transaction
  *   timings, with anything worked out from them taken from
  *   src/help-figures.js. These cases read the same files and check the
- *   copy says what they say.
+ *   copy says what they say: a copy of them with every value the help
+ *   quotes moved (`helpers/help-settings-moved.js`), so copy that typed
+ *   a shipped figure in fails.
  *
  *   The low-volume advice concerns two settings at once, so it is written
  *   once, in the Impermanent Loss Guard's shared entry, and shown in both
@@ -23,19 +25,18 @@
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { useMovedHelpSettings } = require("./helpers/help-settings-moved");
 
+const { BOT, UI, RUNTIME } = useMovedHelpSettings();
 const BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
-const BOT = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
-const UI = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-up-scenario.json");
-const RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 const SHARED = require("../public/shared-help-content.json");
 const { count } = require("../src/help-figures");
 const { shippedFigures } = require("../scripts/build-manual-content");
 
 /*-
  *  The figures the dashboard would be sent by an install running on the
- *  shipped settings, which is what every expectation below is written
- *  from.
+ *  settings in the copy, which is what every expectation below is
+ *  written from.
  */
 const HELP_FIGURES = shippedFigures();
 let PARAM_HELP;
@@ -78,7 +79,7 @@ describe("Max Rebalances Per Day help", () => {
 });
 
 describe("the throttle badge's NEAR LIMIT example", () => {
-  it("works the shipped daily cap, with its small counts spelled out", () => {
+  it("works the default daily cap, with its small counts spelled out", () => {
     const near = PARAM_HELP.throttleBadge.sections.find(
       (s) => s.heading === "NEAR LIMIT",
     ).body;
@@ -136,7 +137,7 @@ describe("the doubling rule, wherever the help states it", () => {
     "rebalanceInterval",
     "throttleBadge",
   ]) {
-    it(`${key} states the trigger and the ladder from the shipped rule`, () => {
+    it(`${key} states the trigger and the ladder from the rule in force`, () => {
       const body = text(key);
       assert.ok(body.includes(`${triggerWindowMultiple}&times;`), body);
       assert.ok(body.includes(count(triggerCount)), body);
@@ -227,7 +228,7 @@ describe("defaults and timings the help quotes", () => {
     );
   });
 
-  it("both slippage rows state the shipped default", () => {
+  it("both slippage rows state the default", () => {
     for (const key of ["inSlipToken0", "inSlipToken1"])
       assert.ok(text(key).includes(`(${BOT.slippagePct}%)`), key);
   });

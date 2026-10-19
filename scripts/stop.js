@@ -22,7 +22,9 @@
  *   listeners on the port via lsof and signal the one that is this
  *   install's `server.js`, by the same test the PID file is held to. The
  *   port is resolved as the server resolves it, from `.env` or
- *   app-runtime.json.
+ *   app-runtime.json (src/server-address.js), and only then: no other
+ *   setting is read, so one an operator has just got wrong does not keep
+ *   this from stopping the server that is running.
  *
  *   When it cannot be told whether a process is the server — `ps` or the
  *   process's working directory cannot be read — nothing is signalled, and
@@ -33,7 +35,7 @@
 
 const { log } = require("../src/log");
 const { readPid, getPidFilePath, removePidFile } = require("../src/server-pid");
-const { PORT } = require("../src/runtime-flags");
+const { serverPort } = require("../src/server-address");
 const { readShutdownTimings } = require("../src/shutdown-timing");
 const {
   findListenerPids,
@@ -119,7 +121,7 @@ async function stopByPid(pid) {
 }
 
 /**
- * Fallback: find this install's server listening on PORT and signal it.
+ * Fallback: find this install's server listening on its port and signal it.
  *
  * Held to the same test as the PID file: a listener is signalled only
  * while it is this install's `server.js`. Another program on the port,
@@ -127,24 +129,25 @@ async function stopByPid(pid) {
  * and neither is one that cannot be told apart from the server.
  */
 async function stopByPort() {
-  const { ours, unknown } = sortServerPids(findListenerPids(PORT));
+  const port = serverPort();
+  const { ours, unknown } = sortServerPids(findListenerPids(port));
   for (const pid of unknown)
     log.warn(
       "Cannot tell whether PID %d on port %d is this LP Ranger server -- " +
         "`ps` or its working directory cannot be read. Not signalling it.",
       pid,
-      PORT,
+      port,
     );
   if (ours.length === 0) {
     log.info(
       "No LP Ranger server listening on port %d -- nothing to stop",
-      PORT,
+      port,
     );
     if (unknown.length > 0) process.exitCode = 1;
     return;
   }
   for (const pid of ours) {
-    log.info("Sending SIGTERM to PID %d (port %d)...", pid, PORT);
+    log.info("Sending SIGTERM to PID %d (port %d)...", pid, port);
     signalPid(pid, "SIGTERM");
   }
   if (!(await waitUntilGone(() => ours.every((pid) => !isAlive(pid))))) {
@@ -173,4 +176,4 @@ async function stopServer() {
 
 if (require.main === module) stopServer();
 
-module.exports = { stopServer };
+module.exports = { stopServer, isAlive };

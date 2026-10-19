@@ -124,7 +124,6 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number|null} gasCost   Gas spent on this day; null when a period closing on it has no gas price.
  * @property {number|null} netPnl    priceChangePnl + feePnl − gasCost; null with gasCost.
  * @property {number} inOut          Value moved between wallet and position at this day's rebalances: exit(N) − entry(N+1). Positive = out to the wallet.
- * @property {number|null} cumulative Running cumulative net P&L through this day; null from the first day whose net is unknown.
  * @property {boolean} noData       True when no epoch event occurred on this day (display "–" in UI).
  * @property {number|null} il       Impermanent loss/gain for the day; null when an epoch lacked deposited amounts.
  */
@@ -282,11 +281,14 @@ function createPnlTracker(opts = {}) {
    * @returns {PnlSnapshot}
    */
   function snapshot(currentPrice) {
-    /*- A closed period whose gas has no dollar figure, because the price
-     *  of its day could not be read, carries a null `gas` and `epochPnl`
-     *  and adds nothing to the two sums below. Both are stand-ins: the
-     *  Lifetime figures price every period's gas coins now
-     *  (`overridePnlWithRealValues`, src/bot-pnl-updater.js). */
+    /**
+     * A figure, or 0 for one not known. A closed period whose gas has no
+     * dollar figure, because the price of its day could not be read,
+     * carries a null `gas` and `epochPnl` and so adds nothing to the two
+     * sums below. Both sums are stand-ins: the Lifetime figures price
+     * every period's gas coins now (`overridePnlWithRealValues`,
+     * src/bot-pnl-updater.js).
+     */
     const known = (v) => (v === null || v === undefined ? 0 : v);
     const closedPnl = closedEpochs.reduce((s, e) => s + known(e.epochPnl), 0);
     const livePnl = currentPrice !== null ? _computeLivePnl(currentPrice) : 0;
@@ -458,9 +460,11 @@ function _attributeToDay(dayMap, day, feePnl, priceChangePnl, gas, gasNative) {
   const entry = dayMap.get(day) || _newDay();
   entry.priceChangePnl += priceChangePnl;
   entry.feePnl += feePnl;
-  /*- A period whose day has no gas price has no dollar figure for its
+  /*-
+   *  A period whose day has no gas price has no dollar figure for its
    *  gas, so neither has the day: its row shows a dash for Gas, and for
-   *  the Profit and Net P&L that subtract it. */
+   *  the Profit and Net P&L that subtract it.
+   */
   if (gas === null || gas === undefined) entry.gasUnknown = true;
   else entry.gasCost += gas;
   entry.gasNative += gasNative || 0;
@@ -615,22 +619,15 @@ function _buildDailyPnl(closedEpochs, liveEpoch) {
     );
   }
 
-  // Sort by date descending (no limit — show all days)
+  // Newest first, every day (no limit).
   const sorted = [...dayMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 
-  let cumulative = 0;
-  // Reverse to compute cumulative from oldest to newest, then reverse back.
-  // Residuals bridge epoch-boundary gaps so the cumulative telescopes to
-  // the correct total (currentValue − initialDeposit + fees − gas).
-  sorted.reverse();
-  const result = sorted.map(([date, d]) => {
+  return sorted.map(([date, d]) => {
     // A day whose gas has no dollar figure has no net figure either.
     const gasCost = d.gasUnknown ? null : d.gasCost;
     const netPnl =
       gasCost === null ? null : d.priceChangePnl + d.feePnl - gasCost;
     const inOut = d.inOut || 0;
-    cumulative =
-      cumulative === null || netPnl === null ? null : cumulative + netPnl;
     return {
       date,
       priceChangePnl: d.priceChangePnl,
@@ -640,15 +637,10 @@ function _buildDailyPnl(closedEpochs, liveEpoch) {
       netPnl,
       inOut,
       il: d.ilUnknown ? null : d.il || 0,
-      cumulative,
       missingPrice: !!d.missingPrice,
       noData: !!d.noData,
     };
   });
-
-  // Return newest first
-  result.reverse();
-  return result;
 }
 
 // ── exports ──────────────────────────────────────────────────────────────────

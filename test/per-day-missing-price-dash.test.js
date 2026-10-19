@@ -51,6 +51,12 @@ const unpriced = {
 let history;
 
 before(async () => {
+  /*-
+   *  TEST-ONLY global swap: the dashboard asks the server through the
+   *  browser's fetch and takes no stand-in for it. This answers for the
+   *  server for the whole file, so it stays in place: the file runs in a
+   *  process of its own, which no other file shares.
+   */
   globalThis.fetch = async () => ({
     ok: true,
     status: 200,
@@ -121,6 +127,20 @@ function rowCells() {
   const keys = ["fees", "gas", "priceChange", "profit", "net"];
   return Object.fromEntries(keys.map((k) => [k, cell(k)]));
 }
+
+describe("a period whose figures were all read", () => {
+  it("shows the day's figures as the server sends them, Net P&L included", () => {
+    const [day] = _buildDailyPnl([_buildClosedEpoch(priced, 1)], null);
+    history.renderDailyPnl([day]);
+    const cells = rowCells();
+    const shown = (k) => Number(cells[k].replace("−", "-"));
+    const cents = (v) => Math.round(v * 100) / 100;
+    assert.equal(shown("net"), cents(day.netPnl));
+    assert.equal(shown("gas"), cents(day.gasCost));
+    assert.equal(shown("fees"), cents(day.feePnl));
+    assert.equal(shown("priceChange"), cents(day.priceChangePnl));
+  });
+});
 
 describe("a period whose gas token had no price on its day", () => {
   it("builds, with its gas and net figure unknown and its coins priced", () => {

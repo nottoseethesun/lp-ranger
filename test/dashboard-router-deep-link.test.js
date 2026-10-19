@@ -23,6 +23,7 @@ const CONTRACT = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 
 let router;
 let calls;
+let store;
 
 /** A store entry for the NFT `tokenId`. */
 const nft = (tokenId) => ({ positionType: "nft", tokenId });
@@ -34,6 +35,7 @@ const nft = (tokenId) => ({ positionType: "nft", tokenId });
  */
 function openLink(tokenId, entries, found = []) {
   const posStore = { entries: [...entries], count: () => entries.length };
+  store = posStore;
   let scanDone = Promise.resolve();
   router.injectRouterDeps({
     posStore,
@@ -51,7 +53,7 @@ function openLink(tokenId, entries, found = []) {
     `/pulsechain/${WALLET}/${CONTRACT}/${tokenId}`,
   );
   router.initRouter();
-  return scanDone.then(() => new Promise((r) => setTimeout(r, 0)));
+  return scanDone.then(() => new Promise((r) => setImmediate(r)));
 }
 
 before(async () => {
@@ -76,8 +78,21 @@ describe("a deep link to a position", () => {
     assert.deepEqual(calls.activated, ["456"]);
   });
 
-  it("activates nothing, and retries nothing, when the scan does not find it", async () => {
+  it("activates nothing, and retries nothing, when the scan does not find it", async (t) => {
+    /*-
+     *  The position reaches the store later, and an hour of the router's
+     *  timers then runs out, so a second look on a clock would activate
+     *  it, and a second scan would show in the count.
+     *
+     *  TEST-ONLY global swap: a retry on a clock would use the router's
+     *  own timers, which take no clock to hand them. The test runner
+     *  puts the timers back pristine as this case ends.
+     */
+    t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
     await openLink("789", [nft("1")], [nft("2")]);
+    store.entries.push(nft("789"));
+    t.mock.timers.tick(60 * 60 * 1000);
+    await new Promise((r) => setImmediate(r));
     assert.equal(calls.scans, 1);
     assert.deepEqual(calls.activated, []);
   });

@@ -41,7 +41,6 @@ after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 const APP_RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
-const PRICE_SERVICES = require("../app-config/app-defaults-for-user-configurable/price-services.json");
 const SETTING_BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
 const _UI_SERVER_UP = "ui-defaults_non-layout_for-server-up-scenario.json";
 const _OVERRIDABLE = [
@@ -87,12 +86,23 @@ function refuses(chainOverride, pattern) {
 
 describe("swap route names", () => {
   it("are the active chain's, from chains.json", () => {
-    const config = loadConfigWith();
-    const shipped = CHAINS.pulsechain;
-    assert.equal(config.AGGREGATOR_NAME, shipped.aggregator.name);
-    assert.equal(config.SWAP_ROUTER_NAME, shipped.contracts.swapRouter.name);
-    assert.equal(config.SWAP_ROUTER, shipped.contracts.swapRouter.address);
-    assert.equal(config.AGGREGATOR_URL, shipped.aggregator.url);
+    // Each moved off what ships, so one written into the code fails.
+    const router = "0x" + "44".repeat(20);
+    const config = loadConfigWith({
+      "chains.json": {
+        aggregator: {
+          url: "https://aggregator.example/api/369",
+          name: "An Aggregator of the Test's Own",
+        },
+        contracts: {
+          swapRouter: { address: router, name: "A Router of the Test's Own" },
+        },
+      },
+    });
+    assert.equal(config.AGGREGATOR_NAME, "An Aggregator of the Test's Own");
+    assert.equal(config.SWAP_ROUTER_NAME, "A Router of the Test's Own");
+    assert.equal(config.SWAP_ROUTER, router);
+    assert.equal(config.AGGREGATOR_URL, "https://aggregator.example/api/369");
   });
 
   it("stop startup when the router has none, naming the setting", () => {
@@ -424,14 +434,12 @@ describe("the bot's retry, follow-up and retire timings", () => {
 });
 
 describe("how long the dashboard is given to see a change", () => {
-  it("is the poll interval in force times the shipped pollsBeforeAssumedSeen", () => {
+  it("is the poll interval in force times pollsBeforeAssumedSeen, each an override", () => {
     const config = loadConfigWith({
       [_UI_SERVER_UP]: { dashboardPollIntervalMs: 4000 },
+      "app-runtime.json": { dashboard: { pollsBeforeAssumedSeen: 3.5 } },
     });
-    assert.equal(
-      config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
-      Math.round(4000 * APP_RUNTIME.dashboard.pollsBeforeAssumedSeen),
-    );
+    assert.equal(config.GUARANTEED_DASHBOARD_HAS_POLLED_MS, 14000);
   });
 
   for (const bad of [0.5, 101, "2", null]) {
@@ -466,11 +474,15 @@ describe("price-service urls", () => {
     }
   }
 
-  it("are the shipped price-services.json values", () => {
-    const urls = loadUrlsWith();
-    assert.equal(urls.DEXSCREENER_API, PRICE_SERVICES.dexScreener.baseUrl);
-    assert.equal(urls.GECKO_TERMINAL_API, PRICE_SERVICES.geckoTerminal.baseUrl);
-    assert.equal(urls.MORALIS_API, PRICE_SERVICES.moralis.baseUrl);
+  it("are price-services.json's, an override included", () => {
+    const urls = loadUrlsWith({
+      dexScreener: { baseUrl: "https://dex.example.org" },
+      geckoTerminal: { baseUrl: "https://gecko.example.org/api/v9" },
+      moralis: { baseUrl: "https://moralis.example.org/api/v9" },
+    });
+    assert.equal(urls.DEXSCREENER_API, "https://dex.example.org");
+    assert.equal(urls.GECKO_TERMINAL_API, "https://gecko.example.org/api/v9");
+    assert.equal(urls.MORALIS_API, "https://moralis.example.org/api/v9");
   });
 
   for (const [bad, what] of [
@@ -488,9 +500,11 @@ describe("price-service urls", () => {
 });
 
 describe("compound reposition window", () => {
-  it("is the shipped app-runtime.json value", () => {
-    const config = loadConfigWith();
-    assert.ok(config.COMPOUND_REPOSITION_WINDOW_SEC > 0);
+  it("is app-runtime.json's, an override included", () => {
+    const config = loadConfigWith({
+      "app-runtime.json": { compound: { repositionWindowSec: 777 } },
+    });
+    assert.equal(config.COMPOUND_REPOSITION_WINDOW_SEC, 777);
   });
 
   it("stops startup on a value that is not a positive number, naming it", () => {

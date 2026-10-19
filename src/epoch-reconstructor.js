@@ -367,11 +367,13 @@ async function _fetchEpochsFromChain(
       const gasKnown = h.gasCostWei !== null && h.gasCostWei !== undefined;
       if (buffered === undefined && gasKnown) {
         const wei = BigInt(h.gasCostWei);
-        /*- The amount is known, so the period builds. Its dollar figure
+        /*-
+         *  The amount is known, so the period builds. Its dollar figure
          *  is null when the price of its day is not, and the Per-Day
          *  table shows that as a dash. An unknown amount leaves both
          *  unset, so the guard in `_buildClosedEpoch` skips this NFT and
-         *  the next pass reads it again. */
+         *  the next pass reads it again.
+         */
         h.gasNative = Number(wei) / 1e18;
         h.gasCostUsd = await _gasUsdAtClose(wei, h, ctx.refreshPrices === true);
       }

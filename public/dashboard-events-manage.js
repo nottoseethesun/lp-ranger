@@ -21,6 +21,7 @@ import {
   isPositionManaged,
 } from "./dashboard-positions-store.js";
 import { runReopenFlow } from "./dashboard-reopen-flow.js";
+import { poolRuleRefusal } from "./dashboard-manage-refusal.js";
 import { getProviderLabel } from "./dashboard-lp-providers.js";
 import { paintChartLinks } from "./dashboard-chart-providers.js";
 import { paintDexDetailPage } from "./dashboard-dex-detail-page.js";
@@ -34,7 +35,7 @@ import {
   closeGasFeeModal,
 } from "./dashboard-settings-dialogs.js";
 import { closeRpcAddModal } from "./dashboard-rpc-add.js";
-import { closePriceOverrideDialog } from "./dashboard-price-override.js";
+import { POSITION_MODALS } from "./dashboard-position-dialogs.js";
 import { isAnswerForPositionOnScreen } from "./dashboard-answer-position.js";
 import {
   fetchUnmanagedDetails,
@@ -271,13 +272,22 @@ function _formatPositionSpec(active) {
  * the next click hits the backup RPC immediately instead of repeating
  * the same dead-RPC walk.  See `src/bot-loop-detect.js`.
  *
+ * A refusal under the one-position-per-pool rule gets no retry hint,
+ * since a second click would be refused the same way: its words say
+ * which position holds the pool and what to do
+ * (public/dashboard-manage-refusal.js).
+ *
+ * Exported so a test can drive it with an answer of its own.
+ *
  * @param {string} verb    Human verb for the message ("manage"/"unmanage").
  * @param {object|string} payload  Server error body `{ error, message }`
  *   (preferred) OR a bare reason string (legacy callers / network
  *   errors that never reached the JSON parse).
  * @param {object} [active] Active position (for the spec line).
+ * @param {Function} [tell]  Shows the message; the browser's `alert`
+ *   unless a test passes its own.
  */
-function _handleManageFailure(verb, payload, active) {
+export function _handleManageFailure(verb, payload, active, tell = alert) {
   /*- Wrap the whole body in try/finally so the in-flight clear + paint
    *  ALWAYS fire \u2014 audit found that a misbehaving modal helper could
    *  leave the button stuck disabled if it threw before reaching the
@@ -291,16 +301,22 @@ function _handleManageFailure(verb, payload, active) {
     const code = isObj ? payload.error : payload;
     const message = isObj ? payload.message : payload;
     log.warn("[lp-ranger] [manage] %s failed: %s", verb, code || message);
-    /*- `pool-info-unavailable` (503 from handleManage when getPoolState
-     *  validation + retry was exhausted) is shown in a dedicated warning
-     *  modal so the raw error message can be displayed in a scrollable
-     *  code block.  Other failures keep the alert() path. */
+    /*- `pool-info-unavailable` (503 from handleManage when the position's
+     *  pool, or the pool's state, could not be read) is shown in a
+     *  dedicated warning modal so the raw error message can be displayed
+     *  in a scrollable code block.  Other failures keep the alert() path. */
     if (code === "pool-info-unavailable") {
       _showPoolInfoUnavailableModal(message, active);
       return;
     }
     const spec = _formatPositionSpec(active);
     const action = verb === "manage" ? "start managing" : "stop managing";
+    const headline = `Couldn't ${action}${spec ? " " + spec : ""}:\n`;
+    const refusal = poolRuleRefusal(payload);
+    if (refusal !== null) {
+      tell(headline + refusal.text);
+      return;
+    }
     const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
     /*- The bot-loop-detect retry chain engages sticky RPC failover on
      *  every miss, so by the time the server returns "No V3 NFT position
@@ -314,7 +330,7 @@ function _handleManageFailure(verb, payload, active) {
     /*- alert() is intentional here — the manage flow is a deliberate
      *  user action and silent failure is what got us into the stuck-UI
      *  state this branch is fixing. */
-    alert(`Couldn't ${action}${spec ? " " + spec : ""}:\n${code}${retryHint}`);
+    tell(`${headline}${code}${retryHint}`);
   } finally {
     setManageInFlight(manageKey(active), null);
     paintManageUI();
@@ -376,7 +392,8 @@ async function _sendUnmanage(active) {
     );
     return false;
   }
-  _afterUnmanaged(await res.json().catch(() => ({})), key, active);
+  const answer = await res.json().catch(() => ({}));
+  _afterUnmanaged(answer, key, active);
   return true;
 }
 
@@ -661,19 +678,8 @@ export function bindDelegatedEvents(closers) {
         close: closers.clearWallet,
       },
       {
-        id: "rebalanceIlWarningModal",
-        close: closers.rebalanceIlWarning,
-      },
-      {
         id: "allPositionsStatsModal",
         close: closers.allPositionsStats,
-      },
-      {
-        id: "poolDetailsModal",
-        close: () => {
-          const m = g("poolDetailsModal");
-          if (m) m.classList.add("hidden");
-        },
       },
       {
         id: "donateOverlay",
@@ -708,38 +714,24 @@ export function bindDelegatedEvents(closers) {
         id: "rpcAddModal",
         close: closeRpcAddModal,
       },
-      /*- These dismiss by clicking their own button rather than by
-       *  hiding the overlay from here.  hodlBaselineModal's dismissal
-       *  also writes the acknowledgement keys that stop it reappearing;
-       *  and the two slippage confirmations leave a pending save dangling
-       *  unless `_cancelPending` runs.  Hiding the element directly
-       *  would look identical on screen and quietly skip all of that.
-       *  Routing through the button keeps one definition of what
-       *  dismissal means per dialog.
-       *
-       *  Escape maps to Cancel, never Confirm: on a dialog guarding a
-       *  slippage above 5% or 10%, the safe reading of a keypress that
-       *  means "get me out of here" is "do not apply it". */
-      {
-        id: "hodlBaselineModal",
-        close: () => g("hodlBaselineClose")?.click(),
-      },
+      /*-
+       *  These dismiss by clicking their own button rather than by
+       *  hiding the overlay from here.  Routing through the button keeps
+       *  one definition of what dismissal means per dialog.
+       */
       {
         id: "noPositionsModal",
         close: () => g("noPositionsClose")?.click(),
       },
-      {
-        id: "slippageAbove5ConfirmModal",
-        close: () => g("slipAbove5CancelBtn")?.click(),
-      },
-      {
-        id: "slippageAbove10TypeConfirmModal",
-        close: () => g("slipAbove10CancelBtn")?.click(),
-      },
-      {
-        id: "priceOverrideModal",
-        close: closePriceOverrideDialog,
-      },
+      /*-
+       *  The dialogs that belong to the position on screen, each closed
+       *  as a switch to another position closes it
+       *  (dashboard-position-dialogs.js). Escape maps to Cancel, never
+       *  Confirm: on a dialog guarding a slippage above 5% or 10%, the
+       *  safe reading of a keypress that means "get me out of here" is
+       *  "do not apply it".
+       */
+      ...POSITION_MODALS,
       /*- walletUnlockModal is deliberately NOT here.  Escape must not
        *  dismiss the unlock prompt: dropping to view-only is a decision
        *  the operator makes with the dialog's own button, not something

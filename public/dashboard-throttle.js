@@ -36,8 +36,10 @@ import { uiSetting, uiSettingsLoaded } from "./dashboard-ui-settings.js";
  */
 import { resolvedBotDefaults } from "./dashboard-help-figures.js";
 
-// Late-bound imports to avoid circular dep issues at evaluation time.
-// Populated by dashboard-init.js after all modules load.
+/*-
+ *  Late-bound imports to avoid circular dep issues at evaluation time.
+ *  Populated by dashboard-init.js after all modules load.
+ */
 let _positionRangeVisual = null;
 let _getLastStatus = null;
 

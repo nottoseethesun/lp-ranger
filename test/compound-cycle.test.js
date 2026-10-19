@@ -8,6 +8,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { _poll } = require("./_bot-loop-helpers");
+const { updateHodlBaseline } = require("../src/bot-recorder-baseline");
 
 describe("pollCycle compound gates", () => {
   it("does not trigger compound when autoCompound disabled and no force", async () => {
@@ -335,7 +336,6 @@ describe("bot-recorder helpers", () => {
   });
 
   it("updateHodlBaseline sets baseline from result", () => {
-    const { updateHodlBaseline } = require("../src/bot-recorder-baseline");
     const botState = {};
     updateHodlBaseline(
       botState,

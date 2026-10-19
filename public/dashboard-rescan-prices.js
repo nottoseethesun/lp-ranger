@@ -51,6 +51,7 @@ import { posStore } from "./dashboard-positions-store.js";
  *  cycle. */
 import { getInputDefault } from "./dashboard-config-inputs.js";
 import { activeChainId } from "./dashboard-chain.js";
+import { POSITION_DIALOG_ATTRIBUTE } from "./dashboard-position-dialogs.js";
 
 /*- Canonicalize to EIP-55 so the composite key byte-matches the
  *  server's (built via bot-config-v2.compositeKey, which checksums).
@@ -361,6 +362,8 @@ export function openRescanPricesDialog(getStatus, getSynced) {
   const overlay = document.createElement("div");
   overlay.className = "9mm-pos-mgr-modal-overlay";
   overlay.id = "rescanPricesModal";
+  // About the position on screen: a switch closes it, unless it is busy.
+  overlay.setAttribute(POSITION_DIALOG_ATTRIBUTE, "");
   overlay.appendChild(frag);
   document.body.appendChild(overlay);
   _wireDialog(overlay, getStatus, getSynced);

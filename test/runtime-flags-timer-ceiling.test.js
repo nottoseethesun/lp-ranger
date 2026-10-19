@@ -189,10 +189,10 @@ describe("timer bounds: a setting counted in milliseconds", () => {
    *  send the operator looking for a value a thousand times too large.
    */
   const POLL_MS = 3000;
-  /*-
-   *  A setting counted in milliseconds that has no range of its own, so
-   *  the general rule applies; the dashboard's poll interval, once the
-   *  example here, now declares one.
+  /**
+   * A setting counted in milliseconds that has no range of its own, so
+   * the general rule applies; the dashboard's poll interval, once the
+   * example here, now declares one.
    */
   const poll = (sec) =>
     assertTimerSec({
@@ -236,10 +236,10 @@ describe("timer bounds: a setting counted in milliseconds", () => {
 });
 
 describe("timer bounds: the dashboard's poll interval", () => {
-  /*-
-   *  An operator can now set it, so it has a range of its own: under half
-   *  a second every open tab would flood the server, and past a minute the
-   *  figures go stale.
+  /**
+   * An operator can now set it, so it has a range of its own: under half
+   * a second every open tab would flood the server, and past a minute the
+   * figures go stale.
    */
   const dashPoll = (sec) =>
     assertTimerSec({ sec, key: "dashboardPollIntervalMs", defaultSec: 3000 });
@@ -281,9 +281,11 @@ describe("timer bounds: the .env road", () => {
   });
 
   it("refuses text that is not a whole number, naming the setting", () => {
-    /*- Read by its rule in src/env-settings.js, never coerced: a comma or
+    /*-
+     *  Read by its rule in src/env-settings.js, never coerced: a comma or
      *  an exponent once read as 1 second, and a zero, a sign or a word as
-     *  the default, with nothing said. */
+     *  the default, with nothing said.
+     */
     for (const v of ["0", "-5", "abc", "1,800", "1e3", "2.5"])
       assert.throws(() => poll(v), /CHECK_INTERVAL_SEC in \.env must be/, v);
   });

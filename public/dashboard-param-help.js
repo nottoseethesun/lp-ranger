@@ -16,6 +16,7 @@ import { getLtBreakdown, getCurBreakdown } from "./dashboard-data-kpi.js";
 import { _fmtUsd } from "./dashboard-fmt-usd.js";
 import { cloneTpl, truncName } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
+import { POSITION_DIALOG_ATTRIBUTE } from "./dashboard-position-dialogs.js";
 
 const _MODAL_ID = "9mm-param-help-modal";
 
@@ -220,6 +221,8 @@ function _showPnlDialog(title, b, depositLabel, feesLabel, extraFrag) {
   const overlay = document.createElement("div");
   overlay.className = "9mm-pos-mgr-modal-overlay";
   overlay.id = _MODAL_ID;
+  // The figures of the position on screen: a switch closes it.
+  overlay.setAttribute(POSITION_DIALOG_ATTRIBUTE, "");
   const frag = cloneTpl("tplPnlBreakdownModal");
   if (!frag) return;
   frag.querySelector('[data-tpl="title"]').textContent = title;

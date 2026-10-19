@@ -8,7 +8,28 @@
  *   never come first, and a mistyped figure must refuse to run rather
  *   than leave a stop that kills at once. `npm run gentle-stop` waits
  *   `gentleStopPollMs` between two questions, checked the same way.
+ *
+ *   The group read is an operator's own, each figure moved off what
+ *   ships, so a figure written into the code fails.
  */
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("shutdown-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "app-runtime.json"),
+  JSON.stringify({
+    shutdown: {
+      exitTimeoutMs: 4000,
+      stopKillMarginMs: 1500,
+      stopCheckIntervalMs: 250,
+      gentleStopPollMs: 240000,
+    },
+  }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
@@ -20,15 +41,14 @@ const {
 const shipped = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
 describe("shutdown timings", () => {
-  it("reads the shipped group, with the kill strictly after the server's own exit", () => {
+  it("reads the group, an override included, with the kill strictly after the server's own exit", () => {
     const t = readShutdownTimings();
-    assert.equal(t.exitTimeoutMs, shipped.shutdown.exitTimeoutMs);
-    assert.equal(
-      t.killAfterMs,
-      shipped.shutdown.exitTimeoutMs + shipped.shutdown.stopKillMarginMs,
-    );
-    assert.equal(t.checkIntervalMs, shipped.shutdown.stopCheckIntervalMs);
-    assert.equal(t.gentleStopPollMs, shipped.shutdown.gentleStopPollMs);
+    assert.deepEqual(t, {
+      exitTimeoutMs: 4000,
+      killAfterMs: 5500,
+      checkIntervalMs: 250,
+      gentleStopPollMs: 240000,
+    });
     assert.ok(t.killAfterMs > t.exitTimeoutMs);
   });
 

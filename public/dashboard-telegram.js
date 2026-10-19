@@ -29,6 +29,27 @@ async function _post(url, body) {
  */
 const _EVENT_IDS = Object.keys(EVENT_DEFAULTS);
 
+/*-
+ *  Whether the checkboxes show the server's choices: false from each
+ *  opening until its answer ticks them. Until then a save leaves the
+ *  saved choices alone, rather than send boxes nobody filled, which
+ *  would turn every alert off.
+ */
+let _eventsFromServer = false;
+
+/**
+ * Record whether the checkboxes show the server's choices, and let them
+ * be changed only when they do.
+ * @param {boolean} answered
+ */
+function _showEventsFromServer(answered) {
+  _eventsFromServer = answered;
+  for (const id of _EVENT_IDS) {
+    const el = g("tgEvt_" + id);
+    if (el) el.disabled = !answered;
+  }
+}
+
 /**
  * Give the dialog a checkbox for each alert, the first time it opens,
  * so the page holds no copy of the list. Each row goes before the note
@@ -36,7 +57,8 @@ const _EVENT_IDS = Object.keys(EVENT_DEFAULTS);
  */
 function _buildEventRows() {
   const note = g("tgBalancedNote");
-  if (!note || g("tgEvt_" + _EVENT_IDS[0])) return;
+  const built = g("tgEvt_" + _EVENT_IDS[0]);
+  if (note === null || built !== null) return;
   for (const id of _EVENT_IDS) {
     const box = document.createElement("input");
     box.type = "checkbox";
@@ -125,6 +147,7 @@ export async function openTelegramModal() {
   }
   _updateTestBtn(false);
   _buildEventRows();
+  _showEventsFromServer(false);
   _paintEventTitles("—");
   _refreshBalancedCadence();
   try {
@@ -149,17 +172,22 @@ function _paintEventTitles(bandPct) {
   }
 }
 
-/*- Paint the modal from the /api/telegram/config response: event
- *  checkboxes, the alert titles with the balanced band the notifier
- *  uses, and the token/chatId placeholders.  Extracted from
- *  openTelegramModal to keep that function under the complexity
- *  ceiling. */
+/**
+ * Paint the dialog from the server's Telegram settings, once
+ * `openTelegramModal` has them: tick each alert's checkbox as saved and
+ * let it be changed, title each alert with the balanced band the
+ * notifier uses, and show in the token and chat id fields whether one
+ * is saved.
+ * @param {object} data  The answer to GET /api/telegram/config.
+ */
 function _applyConfigToModal(data) {
-  if (data.enabledEvents) {
+  const events = data.enabledEvents;
+  if (events !== null && typeof events === "object") {
     for (const id of _EVENT_IDS) {
       const el = g("tgEvt_" + id);
-      if (el) el.checked = !!data.enabledEvents[id];
+      if (el) el.checked = events[id] === true;
     }
+    _showEventsFromServer(true);
   }
   const band = Number(data.balancedThresholdPct);
   _paintEventTitles(Number.isFinite(band) ? String(band) : "—");
@@ -208,7 +236,9 @@ function _stashCurrentFormForDeferredSave() {
   const token = tokenEl?.value.trim();
   const chatId = chatEl?.value.trim();
   if (!token && !chatId) return;
-  const body = { enabledEvents: _readEvents() };
+  const body = {};
+  const events = _readEvents();
+  if (events !== null) body.enabledEvents = events;
   if (token) body.botToken = token;
   if (chatId) body.chatId = chatId;
   _pendingConfig = body;
@@ -217,8 +247,13 @@ function _stashCurrentFormForDeferredSave() {
   );
 }
 
-/** Read the event checkboxes and return an enabledEvents map. */
+/**
+ * Read the event checkboxes into an enabledEvents map, or null while
+ * they do not show the server's choices.
+ * @returns {Object<string, boolean>|null}
+ */
 function _readEvents() {
+  if (!_eventsFromServer) return null;
   const events = {};
   for (const id of _EVENT_IDS) {
     const el = g("tgEvt_" + id);
@@ -275,7 +310,9 @@ function _applySaveSuccess(body, tokenEl, chatEl) {
 async function _save() {
   const tokenEl = g("tgBotToken");
   const chatEl = g("tgChatId");
-  const body = { enabledEvents: _readEvents() };
+  const body = {};
+  const events = _readEvents();
+  if (events !== null) body.enabledEvents = events;
   if (tokenEl?.value.trim()) body.botToken = tokenEl.value.trim();
   if (chatEl?.value.trim()) body.chatId = chatEl.value.trim();
   _setStatus("Saving...");

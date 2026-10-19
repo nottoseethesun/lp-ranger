@@ -16,6 +16,8 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const { createRouteHandlers } = require("../src/server-routes");
+const { checkIlGuard } = require("../src/il-guard");
+const { ilSnapshot } = require("./helpers/il-snapshot");
 
 /** Build a minimal deps object with stubs for createRouteHandlers. */
 function makeDeps(overrides = {}) {
@@ -327,8 +329,6 @@ describe("POST /api/config", () => {
      *  The whole contract: rejected at 15%, the position waits; a save of
      *  40% lets the next check through, rather than one up to a week on.
      */
-    const { checkIlGuard } = require("../src/il-guard");
-    const { ilSnapshot } = require("./helpers/il-snapshot");
     const pk = "pulsechain-0xAb5-0xCd9-42";
     let saved = 15;
     const st = {};

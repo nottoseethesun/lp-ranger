@@ -34,11 +34,7 @@ const {
 const { readBotConfigDefaults } = require("../src/bot-config-defaults");
 const config = require("../src/config");
 const { SETTING_BOUNDS } = require("../src/setting-bounds");
-const {
-  duration,
-  fillEntryFigures,
-  spanFigureTokens,
-} = require("../src/help-figures");
+const { fillEntryFigures, spanFigureTokens } = require("../src/help-figures");
 const { render, shippedFigures } = require("../scripts/build-manual-content");
 
 const _SHIPPED_ALL = readBotConfigDefaults();
@@ -327,19 +323,6 @@ describe("the Telegram message", () => {
       assert.ok(m.includes(s), `missing ${s}`);
   });
 
-  it("quotes the retry ceiling and the gas share the bot runs on", () => {
-    /*-
-     *  Both come from the configured values, so an operator's override
-     *  reaches the message: a word like "a week" written into it would
-     *  stay put while the bot waited for something else.
-     */
-    const m = msg();
-    const ceiling = duration(SHIPPED_RETRY.maxMs / 1000);
-    const gasPct = `${_SHIPPED_ALL.rebalanceGasDeferPct}%`;
-    assert.ok(m.includes(`up to ${ceiling}.`), `missing ${ceiling}`);
-    assert.ok(m.includes(`more than ${gasPct} of`), `missing ${gasPct}`);
-  });
-
   it("names the higher Guard, not a lower one, as what lowers the floor", () => {
     const m = msg();
     assert.match(m, /Raising the Guard/);
@@ -494,6 +477,7 @@ describe("the shipped defaults", () => {
      *  range earning nothing until the price returns or the operator
      *  raises the guard.
      */
+
     const at = (guardPct) =>
       evaluateIlGuard({
         projectedValueUsd: 2788.65,

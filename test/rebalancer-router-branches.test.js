@@ -12,12 +12,25 @@
  *   `staticCall` quote, the impact check, the minimum-output floor, the
  *   approval and the send pipeline. Only the router's quote and the
  *   balance difference are scripted per test.
+ *
+ *   The deadline window is an operator's own, ten minutes, not the
+ *   fifteen that ship, so a window written into the code fails.
  */
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("router-branches-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "app-runtime.json"),
+  JSON.stringify({ tx: { deadlineSec: 600 } }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const config = require("../src/config");
 const { swapViaRouter } = require("../src/rebalancer-router");
 const {
   ADDR,
@@ -78,7 +91,7 @@ function diff() {
 const fresh = () => ({ quoted: [], sent: [] });
 
 describe("V3 router swap — the deadline it stamps", () => {
-  it("stamps a deadline from the shipped window", async () => {
+  it("stamps a deadline from the configured window", async () => {
     const seen = fresh();
     const before = Math.floor(Date.now() / 1000);
     await swapViaRouter(
@@ -88,8 +101,8 @@ describe("V3 router swap — the deadline it stamps", () => {
       diff(seen),
     );
     const dl = Number(seen.sent[0].deadline);
-    assert.ok(dl >= before + config.DEADLINE_SEC, String(dl));
-    assert.ok(dl <= Math.floor(Date.now() / 1000) + config.DEADLINE_SEC);
+    assert.ok(dl >= before + 600, String(dl));
+    assert.ok(dl <= Math.floor(Date.now() / 1000) + 600);
   });
 });
 

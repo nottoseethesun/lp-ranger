@@ -4,8 +4,11 @@
  * @description
  * What a Manage request (`POST /api/position/manage`) must carry before
  * anything is started: a numeric tokenId, no contract but this server's
- * position manager, a loaded wallet and a key to sign with. Refused here,
- * the request starts no bot loop and creates no slot.
+ * position manager, a loaded wallet and a key to sign with. It is also
+ * refused, with 409, while the app may start nothing: during the
+ * start-up, since a saved position it has yet to reach may be in the
+ * same pool, and once the app is stopping (src/app-phase.js). Refused
+ * here, the request starts no bot loop and creates no slot.
  *
  * Split out of `src/server-positions.js`, whose `handleManage` asks it
  * first; grouping the checks into one predicate costs that handler one
@@ -16,6 +19,7 @@
 "use strict";
 
 const config = require("./config");
+const { refusalToStart } = require("./app-phase");
 
 /**
  * Whether a request's `contract` names this server's position manager.
@@ -38,6 +42,19 @@ function _isOwnContract(named) {
 }
 
 /**
+ * Whether a request's `tokenId` is an NFT id: digits only, sent as a
+ * string or a number.
+ * @param {*} id
+ * @returns {boolean}
+ */
+function _isTokenId(id) {
+  return (
+    (typeof id === "string" || typeof id === "number") &&
+    /^\d+$/.test(String(id))
+  );
+}
+
+/**
  * Say why a Manage request must be refused, or null when it may go on.
  *
  * @param {object} body       The request body.
@@ -46,7 +63,7 @@ function _isOwnContract(named) {
  * @returns {{status: number, error: string}|null}
  */
 function manageRequestRefusal(body, wallet, pk) {
-  if (!body.tokenId || !/^\d+$/.test(String(body.tokenId)))
+  if (!_isTokenId(body.tokenId))
     return {
       status: 400,
       error: "Missing or invalid tokenId (must be numeric)",
@@ -58,9 +75,12 @@ function manageRequestRefusal(body, wallet, pk) {
         `contract ${body.contract} is not this server's position manager ` +
         `(${config.POSITION_MANAGER})`,
     };
-  if (!wallet) return { status: 400, error: "No wallet loaded" };
-  if (!pk) return { status: 400, error: "No private key available" };
-  return null;
+  if (wallet === null || wallet === undefined)
+    return { status: 400, error: "No wallet loaded" };
+  if (pk === null || pk === undefined)
+    return { status: 400, error: "No private key available" };
+  const busy = refusalToStart();
+  return busy === null ? null : { status: 409, error: busy };
 }
 
 module.exports = { manageRequestRefusal };

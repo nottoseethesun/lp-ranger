@@ -91,10 +91,10 @@ describe("resetOffset — the No Offset button", () => {
 
   it("fills the centered split whatever the default offset is", () => {
     /*-
-     *  An operator's defaults can make the default offset an offset. It
-     *  used to be what No Offset filled; the user, 2026-10-17, decided
-     *  that No Offset always means centred, the value the bot pins a
-     *  re-used range to.
+     *  An operator's defaults can make the default offset an offset, so
+     *  No Offset fills centred, not the default: the user, 2026-10-17,
+     *  decided that No Offset always means centred, the value the bot
+     *  pins a re-used range to.
      */
     configInputs.setConfigInputDefault("offsetToken0Pct", 40);
     mod.resetOffset();

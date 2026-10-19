@@ -153,8 +153,8 @@ function _handleConsumed(ctx) {
  * arrived though its reply was lost. So the transaction is recovered
  * from the request and handed back as submitted, and the caller waits on
  * it, speeding it up and cancelling it on the usual schedule. When it
- * cannot be recovered, it is reported as the terminal error it was
- * before this answer was understood.
+ * cannot be recovered, the answer is logged and thrown as a terminal
+ * error, since nothing the caller holds can be waited on.
  *
  * @param {*} err  The error carrying the endpoint's answer.
  * @param {string} label  Full log prefix.

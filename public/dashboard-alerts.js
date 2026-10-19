@@ -77,6 +77,20 @@ function _modalIdForKey(prefix, key) {
   return prefix + "-" + key.replace(/[^a-zA-Z0-9]/g, "").slice(-16);
 }
 
+/**
+ * Show an alert. It names the position it is about, whichever is on
+ * screen, and shows once per episode, so a switch to another position
+ * leaves it open (dashboard-position-dialogs.js): closed then, it would
+ * not come back.
+ * @param {string|null} id
+ * @param {string} cssClass
+ * @param {string} title
+ * @param {string} bodyHtml
+ */
+function _alertModal(id, cssClass, title, bodyHtml) {
+  _createModal(id, cssClass, title, bodyHtml, { positionDialog: false });
+}
+
 function _pausedCopy(message) {
   const t = abortKind(message);
   const footers = {
@@ -105,7 +119,7 @@ function _showErrModal(key, st) {
   if (document.getElementById(id)) return;
   const message = st.rebalanceError || "";
   const { title, footer } = _pausedCopy(message);
-  _createModal(
+  _alertModal(
     id,
     "",
     title,
@@ -123,7 +137,7 @@ function _showCompoundErrModal(key, st) {
   const id = _modalIdForKey("compoundErrorModal", key);
   if (document.getElementById(id)) return;
   const message = st.compoundError || "";
-  _createModal(
+  _alertModal(
     id,
     "",
     "Compound Failed",
@@ -151,7 +165,7 @@ function _showCatastrophicModal(key, st) {
    *  a markup-laden Error.message cannot inject HTML. */
   const msgSlotId = id + "-msg";
   const logSlotId = id + "-log";
-  _createModal(
+  _alertModal(
     id,
     "9mm-pos-mgr-modal-danger",
     "Catastrophic scan failure",
@@ -207,7 +221,7 @@ function _showIlGuardModal(key, st) {
   const id = _modalIdForKey("ilGuardBlockedModal", key);
   if (document.getElementById(id)) return;
   const bodyId = id + "-body";
-  _createModal(
+  _alertModal(
     id,
     /*- The project's existing warning shell — an Amber Yellow accent
      *  border, already used by the re-open and reload dialogs.  A
@@ -231,7 +245,7 @@ function _showIlGuardModal(key, st) {
 }
 
 function _showRecModal(key, st, minutes) {
-  _createModal(
+  _alertModal(
     null,
     "9mm-pos-mgr-modal-caution",
     "Position Recovered",
@@ -362,7 +376,7 @@ export function showPerPositionAlerts(d) {
       _showIlGuardModal(key, st);
     }
   }
-  showPostRebalanceWarnings(all, _createModal, _posContextHtmlForState);
+  showPostRebalanceWarnings(all, _alertModal, _posContextHtmlForState);
 }
 
 /** Test-only reset for dedup state. */

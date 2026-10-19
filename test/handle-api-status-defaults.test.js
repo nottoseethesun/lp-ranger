@@ -39,6 +39,7 @@ const { primaryRouteLabel } = require("../src/rebalancer-swap");
 const { moralisEnabledIn } = require("../src/server-moralis");
 const config = require("../src/config");
 const { configuredErrorLogPath } = require("../src/error-log");
+const logFile = require("../src/log-file");
 
 /** Drive the real handler with the smallest viable dependency set. */
 async function statusPayload(overrides = {}) {
@@ -131,7 +132,6 @@ test("/api/status names the file the server logs to, or null while that is off",
    *  A failed re-open's Manage tooltip sends the operator there for the
    *  details, and to the terminal while there is no such file.
    */
-  const logFile = require("../src/log-file");
   assert.equal((await statusPayload()).global.logFilePath, null);
   const file = path.join(os.tmpdir(), `lp-ranger-status-${process.pid}.log`);
   logFile.enableLogFile(file);

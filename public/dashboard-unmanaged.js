@@ -265,9 +265,11 @@ async function _phase1(pos, body) {
       e.message,
       Date.now() - _t0,
     );
-    /*- With no answer the position can be asked about again. An answer
+    /*-
+     *  With no answer the position can be asked about again. An answer
      *  that failed to show still counts as one, so a fault in the page
-     *  does not ask the server again on every poll. */
+     *  does not ask the server again on every poll.
+     */
     if (!answered) {
       _freeGuard(pos);
       return null;
@@ -391,10 +393,12 @@ export async function fetchUnmanagedDetails(pos) {
   // If the position turns out to be closed (fully drained), phase 1
   // switches to the closed-pos history view and skips phase 2.
   const closedView = await _phase1(pos, body);
-  /*- No answer: phase 2 would fare no better, and its closing poll would
+  /*-
+   *  No answer: phase 2 would fare no better, and its closing poll would
    *  ask for the details again at once, in a loop as fast as the server
    *  refuses. The next scheduled status answer asks again instead
-   *  (dashboard-data.js), every `dashboardPollIntervalMs`. */
+   *  (dashboard-data.js), every `dashboardPollIntervalMs`.
+   */
   if (closedView === null) return;
   if (closedView) {
     if (gen === _fetchGen) _markSynced();

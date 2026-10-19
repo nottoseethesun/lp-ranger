@@ -15,8 +15,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
+const { makeTestTempFolder } = require("../../src/test-temp-folders");
 
 const {
   MIGRATED_ITEMS,
@@ -32,9 +32,9 @@ const {
   main,
 } = require("../update/migrate-app-state");
 
-/** A throwaway parent directory. */
+/** A throwaway parent directory, removed when the test process exits. */
 function tmpRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "mig-"));
+  return makeTestTempFolder("mig");
 }
 
 /** Write a file, creating parents. */

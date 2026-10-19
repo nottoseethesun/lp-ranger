@@ -23,8 +23,21 @@ const http = require("node:http");
 
 const { captureConsole } = require("./_capture");
 const CHAINS = require("../../app-config/app-defaults-for-user-configurable/chains.json");
+
+/*-
+ *  The tool checks the chain app-runtime.json names when `--chain` is not
+ *  given. Here that file names the testnet, not the chain the app ships
+ *  set to, so a tool naming a chain of its own fails.
+ */
+const RUNTIME_PATH =
+  require.resolve("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
+const SHIPPED_RUNTIME = require(RUNTIME_PATH);
+require.cache[RUNTIME_PATH].exports = {
+  ...SHIPPED_RUNTIME,
+  defaults: { ...SHIPPED_RUNTIME.defaults, chain: "pulsechain-testnet" },
+};
+
 const {
-  DEFAULT_CHAIN,
   defaultEndpoint,
   parseEndpoint,
   buildProgram,
@@ -51,14 +64,14 @@ function quiet() {
 }
 
 test("defaults to the app's chain, and to that chain's first endpoint", () => {
-  // Both from the shipped JSON: nothing in the tool names a chain.
-  assert.equal(opts([]).chain, DEFAULT_CHAIN);
+  // Both from the JSON: nothing in the tool names a chain.
+  assert.equal(opts([]).chain, "pulsechain-testnet");
   assert.equal(opts([]).rpcEndpoint, undefined);
   assert.equal(
-    defaultEndpoint(DEFAULT_CHAIN),
-    CHAINS[DEFAULT_CHAIN].rpc.urls[0],
+    defaultEndpoint("pulsechain-testnet"),
+    CHAINS["pulsechain-testnet"].rpc.urls[0],
   );
-  assert.match(defaultEndpoint(DEFAULT_CHAIN), /^https:\/\//);
+  assert.match(defaultEndpoint("pulsechain-testnet"), /^https:\/\//);
 });
 
 test("--chain picks another chains.json entry, and refuses a name it lacks", () => {

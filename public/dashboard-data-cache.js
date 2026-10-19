@@ -296,5 +296,6 @@ export function flattenV2Status(v2) {
     _allPositionStates: positions,
     _poolDailyCounts: global.poolDailyCounts || {},
     _positionScan: global.positionScan || null,
+    _startingPositions: global.startingManagedPositions ?? null,
   };
 }

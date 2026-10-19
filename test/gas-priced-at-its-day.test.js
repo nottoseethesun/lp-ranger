@@ -28,6 +28,12 @@ const _origRequire = Module.prototype.require;
 const ONE_ETH_WEI = 1_000_000_000_000_000_000n;
 
 before(() => {
+  /*-
+   *  TEST-ONLY global swap: the module under test requires its price
+   *  lookups by name and takes no stand-ins for them, so the stand-ins
+   *  are served from here as it loads. Put back pristine in the `after`
+   *  hook below.
+   */
   Module.prototype.require = function (id) {
     if (id === "./historical-token-price") {
       return {

@@ -19,7 +19,9 @@
  *
  *   Runs the real store under jsdom, with the chain learned through the
  *   real `loadActiveChain` from a scripted server. The cases that need no
- *   chain come first, since a chain once learned is kept.
+ *   chain come first, since a chain once learned is kept. The server
+ *   names the testnet, not the shipped default, so a key that names the
+ *   default chain outright fails.
  */
 
 require("global-jsdom/register");
@@ -50,6 +52,10 @@ const ENTRY = {
   active: true,
 };
 
+// The chain the scripted server names, and another.
+const ACTIVE = "pulsechain-testnet";
+const OTHER = "pulsechain";
+
 describe("before the server names the chain", () => {
   it("writes none of the copies", () => {
     assert.equal(chain.activeChainId(), null);
@@ -77,7 +83,7 @@ describe("the browser's per-chain copies", () => {
     await chain.loadActiveChain({
       fetchFn: async () => ({
         ok: true,
-        json: async () => ({ chainId: "pulsechain" }),
+        json: async () => ({ chainId: ACTIVE }),
       }),
       onUnanswered: () => {},
       onAnswered: () => {},
@@ -88,18 +94,15 @@ describe("the browser's per-chain copies", () => {
     store.posStore.entries.push({ ...ENTRY, index: 0 });
     store.posStore.activeIdx = 0;
     store.posStore.updateActiveTokenId("159013");
-    assert.ok(localStorage.getItem("9mm_position_store_pulsechain"));
-    assert.equal(
-      localStorage.getItem("9mm_last_position_pulsechain"),
-      "159013",
-    );
+    assert.ok(localStorage.getItem(`9mm_position_store_${ACTIVE}`));
+    assert.equal(localStorage.getItem(`9mm_last_position_${ACTIVE}`), "159013");
     assert.equal(localStorage.getItem("9mm_position_store"), null);
     assert.equal(localStorage.getItem("9mm_last_position"), null);
   });
 
   it("never load a position list saved under another chain", () => {
     localStorage.setItem(
-      "9mm_position_store_pulsechain-testnet",
+      `9mm_position_store_${OTHER}`,
       JSON.stringify({ entries: [ENTRY], activeIdx: 0 }),
     );
     store._loadPosStore();
@@ -108,7 +111,7 @@ describe("the browser's per-chain copies", () => {
 
   it("load the active chain's own list", () => {
     localStorage.setItem(
-      "9mm_position_store_pulsechain",
+      `9mm_position_store_${ACTIVE}`,
       JSON.stringify({ entries: [ENTRY], activeIdx: 0 }),
     );
     store._loadPosStore();
@@ -118,14 +121,16 @@ describe("the browser's per-chain copies", () => {
 
   it("keep the managed set per chain, and restore only the active chain's", () => {
     store.updateManagedPositions([{ tokenId: "7", status: "running" }], {});
-    assert.equal(
-      localStorage.getItem("9mm_managed_token_ids_pulsechain"),
-      JSON.stringify(["7"]),
-    );
+    const saved = localStorage.getItem(`9mm_managed_token_ids_${ACTIVE}`);
+    assert.equal(saved, JSON.stringify(["7"]));
+    // A page loaded afresh: nothing in memory, each chain's copy stored.
+    store.updateManagedPositions([], {});
+    localStorage.setItem(`9mm_managed_token_ids_${ACTIVE}`, saved);
     localStorage.setItem(
-      "9mm_managed_token_ids_pulsechain-testnet",
+      `9mm_managed_token_ids_${OTHER}`,
       JSON.stringify(["99"]),
     );
+    assert.equal(store.isPositionManaged("7"), false);
     store.restoreManagedPositions();
     assert.equal(store.isPositionManaged("7"), true);
     assert.equal(store.isPositionManaged("99"), false);

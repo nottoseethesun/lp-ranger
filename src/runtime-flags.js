@@ -26,6 +26,7 @@ const { assertTimerSec } = require("./timer-bounds");
 const { SETTING_BOUNDS } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
 const { readEnv } = require("./env-settings");
+const { serverPort, serverHost } = require("./server-address");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
@@ -267,22 +268,12 @@ const VERBOSE =
   process.argv.includes("-v");
 
 /*-
- *  HTTP port the dashboard server listens on: PORT from the environment
- *  or `.env`, else `server.port` in app-runtime.json. Resolved here
- *  rather than in config.js so `npm stop` can ask for it without
- *  loading the rest of the app's configuration, and so the two read the
- *  same answer.
+ *  Where the dashboard server listens, asked at startup so a wrong PORT
+ *  or HOST stops it here. src/server-address.js reads both, the one way
+ *  the stop scripts read them too.
  */
-const PORT = readEnv("PORT") ?? APP_RUNTIME.server.port;
-
-/*-
- *  Network interface the dashboard server binds to: HOST from the
- *  environment or `.env`, else `server.host` in app-runtime.json.
- *  '127.0.0.1' = localhost only. Resolved here beside PORT so
- *  `npm run gentle-stop` can ask the server at its own address without
- *  loading the rest of the app's configuration.
- */
-const HOST = readEnv("HOST") ?? APP_RUNTIME.server.host;
+const PORT = serverPort();
+const HOST = serverHost();
 
 module.exports = {
   parseTimerSec,

@@ -28,8 +28,11 @@ import { activeChainId } from "./dashboard-chain.js";
  * In-memory cache populated once at init.  Keys are the raw JSON keys
  * from the server (canonical EIP-55 composite), values are entry
  * objects `{ displayName, supportedBlockchainsByLpRangerAndLpProvider }`.
+ * Null until the server's answer arrives: a lookup made before then, as
+ * the position strip's first paint makes, finds nothing and warns of
+ * nothing, since nothing is yet known to be missing.
  */
-let _providerMap = {};
+let _providerMap = null;
 
 /*- Dedup sets: mirror of the server-side `_loggedMissingProviders` /
  *  `_loggedUnsupportedChains` behavior.  Warnings fire once per
@@ -55,8 +58,8 @@ function _compositeKey(factory, positionManager) {
 
 /**
  * One-shot fetch of the provider map.  Fetch or parse errors leave
- * the cache empty so the provider label simply stays hidden — never
- * blocks the dashboard from rendering.
+ * the map unanswered, so the provider label simply stays hidden —
+ * never blocks the dashboard from rendering.
  * @returns {Promise<void>}
  */
 export async function loadLpProviders() {
@@ -96,7 +99,7 @@ export function getProvider(factory, positionManager) {
   )
     return undefined;
   const key = _compositeKey(factory, positionManager);
-  if (key === null) return undefined;
+  if (key === null || _providerMap === null) return undefined;
   const entry = _providerMap[key];
   if (
     (entry === null || entry === undefined) &&
@@ -175,16 +178,16 @@ function _checksum(address) {
 /**
  * The provider list's entry for a position manager on the active chain:
  * the one entry whose key ends in that contract and whose supported
- * chains include this one.  Undefined until the chain is known, and when
- * the list holds no such entry, or more than one, which it never should,
- * since a position manager has one factory.
+ * chains include this one.  Undefined until the chain and the list are
+ * known, and when the list holds no such entry, or more than one, which
+ * it never should, since a position manager has one factory.
  * @param {string|null|undefined} positionManager  From the position's own key.
  * @returns {object | undefined}
  */
 export function getProviderFor(positionManager) {
   const pm = _checksum(positionManager);
   const chain = activeChainId();
-  if (pm === null || chain === null) return undefined;
+  if (pm === null || chain === null || _providerMap === null) return undefined;
   const found = Object.entries(_providerMap).filter(([key, entry]) => {
     const chains = entry?.supportedBlockchainsByLpRangerAndLpProvider;
     return (

@@ -21,6 +21,10 @@ const {
   SEND_GAS,
   _formatNative,
 } = require("../src/gas-monitor");
+const tg = require("../src/telegram-notifications/telegram");
+const {
+  EVENT_DEFAULTS,
+} = require("../src/telegram-notifications/telegram-events");
 
 let _originalFetch;
 beforeEach(() => {
@@ -217,10 +221,6 @@ describe("gas-monitor — checkGasBalance alert state", () => {
   /*- Telegram defaults: both lowGasBalance and veryLowGas are ON, and
    *  notify() requires bot token + chat id to actually send.  Set them
    *  once per test via the telegram module. */
-  const tg = require("../src/telegram-notifications/telegram");
-  const {
-    EVENT_DEFAULTS,
-  } = require("../src/telegram-notifications/telegram-events");
   beforeEach(() => {
     tg.setBotToken("tok");
     tg.setChatId("123");

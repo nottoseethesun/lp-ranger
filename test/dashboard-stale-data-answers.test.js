@@ -109,6 +109,13 @@ function statusAnswer() {
 let store, stale, positions, poll, data, wallet;
 
 before(async () => {
+  /*-
+   *  TEST-ONLY global swap: the dashboard asks the server through the
+   *  browser's fetch and takes no stand-in for it. This answers for the
+   *  server for the whole file, so it stays in place: the file runs in a
+   *  process of its own, which no other file shares. Two cases below
+   *  hold or refuse answers for a while, each putting this back.
+   */
   globalThis.fetch = async (url) => {
     server.asked.push(url);
     if (url === "/api/status") return answer(statusAnswer());

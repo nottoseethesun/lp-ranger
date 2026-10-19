@@ -48,12 +48,20 @@ fs.writeFileSync(
     },
   }),
 );
+// The compound minimum the help quotes comes from app-runtime.json, the copy on top.
+fs.writeFileSync(
+  path.join(_USER_DIR, "app-runtime.json"),
+  JSON.stringify({ compound: { minFeeUsd: 3 } }),
+);
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 /*-
  *  `.env` sets the daily cap too, and wins: the override above says 9,
- *  this says 8.
+ *  this says 8. It sets the speed-up and cancel waits the help quotes as
+ *  well, which no file here does.
  */
 process.env.MAX_REBALANCES_PER_DAY = "8";
+process.env.TX_SPEEDUP_SEC = "90";
+process.env.TX_CANCEL_SEC = "7200";
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const config = require("../src/config");
@@ -64,7 +72,6 @@ const {
   handleHelpFigures,
 } = require("../src/resolved-settings");
 const { userConfigurableRoutes } = require("../src/user-configurable-routes");
-const { duration } = require("../src/help-figures");
 const mergedLoader = require("../src/load-merged-defaults");
 const defaultsReader = require("../src/bot-config-defaults");
 
@@ -111,9 +118,9 @@ describe("resolvedHelpFigures", () => {
     const f = resolvedHelpFigures();
     assert.equal(f.gasFeeDefaultPct, "2");
     assert.equal(f.dailyCapDefault, "8");
-    assert.equal(f.txSpeedup, duration(config.TX_SPEEDUP_SEC));
-    assert.equal(f.txCancelSec, String(config.TX_CANCEL_SEC));
-    assert.equal(f.compoundMinFeeUsd, String(config.COMPOUND_MIN_FEE_USD));
+    assert.equal(f.txSpeedup, "90 seconds");
+    assert.equal(f.txCancelSec, "7200");
+    assert.equal(f.compoundMinFeeUsd, "3");
   });
 
   it("quotes the dashboard settings the server sends, an override included", () => {
