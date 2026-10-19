@@ -101,8 +101,12 @@ describe("the deposit total is saved", () => {
       mgr,
       dir,
     );
+    /*-
+     *  Records are written to the records file beside bot-config.json
+     *  (src/position-records.js).
+     */
     const onDisk = JSON.parse(
-      fs.readFileSync(path.join(dir, "bot-config.json"), "utf8"),
+      fs.readFileSync(path.join(dir, "position-records.json"), "utf8"),
     );
     assert.equal(onDisk.positions[KEY].totalLifetimeDepositUsd, 1738.41);
     assert.equal(onDisk.positions[KEY].depositUsedFallback, false);

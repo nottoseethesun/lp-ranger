@@ -105,8 +105,15 @@ function createPositionManager(opts) {
     }
   }
 
-  /** Clear the shared signer cache (tests / wallet-change). */
-  function _resetSharedSigner() {
+  /**
+   * Forget the shared signer, so the next `getSharedSigner` builds one
+   * from the key it is then given. Called when a different wallet is
+   * imported (`_handleWalletImport`, src/server-routes.js): the cached
+   * signer would otherwise go on signing with the old wallet's key, and
+   * every rebalance of the new wallet's positions would fail at the
+   * ownership check.
+   */
+  function resetSharedSigner() {
     _sharedPromise = null;
   }
 
@@ -425,7 +432,7 @@ function createPositionManager(opts) {
     getScanLock,
     getPoolScanLock,
     getSharedSigner,
-    _resetSharedSigner,
+    resetSharedSigner,
   };
 }
 

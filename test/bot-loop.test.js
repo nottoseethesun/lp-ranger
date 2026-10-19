@@ -257,6 +257,39 @@ describe("bot-loop: pollCycle", () => {
       }
     }
   });
+  it("counts the gas failed moves paid, from the position's records", async () => {
+    /*-
+     *  The records are that gas's only home (src/spent-gas.js); the poll
+     *  hands them to the snapshot, which adds each to its period's row.
+     */
+    const { createPnlTracker } = require("../src/pnl-tracker");
+    const tracker = createPnlTracker({ initialDeposit: 100 });
+    tracker.openEpoch({
+      entryValue: 100,
+      entryPrice: 1.0,
+      lowerPrice: 0.8,
+      upperPrice: 1.2,
+      token0UsdPrice: 1.0,
+      token1UsdPrice: 1.0,
+    });
+    const charge = {
+      at: new Date().toISOString(),
+      wei: "10000000000000000",
+      usd: 0.1,
+    };
+    const { captured } = await _poll(0, {
+      tracker,
+      captureState: true,
+      botState: {
+        rebalanceOutOfRangeThresholdPercent: 0,
+        failedMoveGas: [charge],
+      },
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const row = captured.pnlSnapshot.dailyPnl.find((d) => d.date === today);
+    assert.ok(row.gasNative >= 0.01, `today's coins: ${row.gasNative}`);
+    assert.ok(captured.pnlSnapshot.totalGasNative >= 0.01);
+  });
 });
 
 describe("bot-loop: forceRebalance", () => {

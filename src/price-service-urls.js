@@ -16,6 +16,7 @@
 "use strict";
 
 const { loadMergedDefaults } = require("./load-merged-defaults");
+const { KINDS } = require("./value-kinds");
 
 const _FILE = "price-services.json";
 
@@ -29,15 +30,10 @@ const _FILE = "price-services.json";
  */
 function _baseUrl(cfg, service) {
   const url = cfg[service]?.baseUrl;
-  const usable =
-    typeof url === "string" &&
-    url.startsWith("https://") &&
-    url.length > "https://".length &&
-    !url.endsWith("/");
-  if (usable) return url;
+  if (KINDS.baseUrl.ok(url)) return url;
   throw new Error(
-    `[config] ${_FILE} → ${service}.baseUrl must be an https url without ` +
-      `a trailing slash; it is ${JSON.stringify(url)}.`,
+    `[config] ${_FILE} → ${service}.baseUrl must be ` +
+      `${KINDS.baseUrl.what}; it is ${JSON.stringify(url)}.`,
   );
 }
 

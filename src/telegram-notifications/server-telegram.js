@@ -26,7 +26,12 @@ const {
   BALANCED_BAND_PCT,
   BALANCED_COOLDOWN_MS,
 } = require("./balanced-notifier");
-const { alertChoicesProblem } = require("./telegram-events");
+const { ALERT_CHOICES } = require("./telegram-events");
+const { AJV } = require("../value-kinds");
+const { problemsFromErrors } = require("../settings-schema-parts");
+
+// The rule for a set of alert choices, compiled.
+const _choicesOk = AJV.compile(ALERT_CHOICES);
 
 /**
  * Create Telegram route handlers, scoped to the server's session state.
@@ -51,8 +56,8 @@ function createTelegramHandlers(opts) {
    * POST /api/telegram/config
    * Body: { botToken?, chatId?, enabledEvents?: { oorTimeout: true, ... }, password? }
    *
-   * Alert choices are held to the rule the settings check holds the
-   * saved set to at startup (`alertChoicesProblem`), before anything is
+   * Alert choices are held to the schema the settings check holds the
+   * saved set to at startup (`ALERT_CHOICES`), before anything is
    * saved, so a refused request leaves no trace and a saved set can
    * never stop the next start. Leaving `enabledEvents` out keeps the
    * saved choices.
@@ -60,14 +65,13 @@ function createTelegramHandlers(opts) {
   async function handleTelegramConfig(req, res) {
     const body = await readJsonBody(req);
     const pw = body.password || getSessionPassword();
-    if (Object.hasOwn(body, "enabledEvents")) {
-      const problem = alertChoicesProblem(body.enabledEvents);
-      if (problem !== null)
-        return jsonResponse(res, 400, {
-          ok: false,
-          error: `enabledEvents ${problem}`,
-        });
-    }
+    if (Object.hasOwn(body, "enabledEvents") && !_choicesOk(body.enabledEvents))
+      return jsonResponse(res, 400, {
+        ok: false,
+        error: problemsFromErrors("enabledEvents", _choicesOk.errors).join(
+          "; ",
+        ),
+      });
 
     try {
       // Save bot token (encrypted)

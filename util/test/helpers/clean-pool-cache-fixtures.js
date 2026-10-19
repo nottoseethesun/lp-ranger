@@ -48,9 +48,10 @@ const SCOPE = {
 /**
  * A fresh scratch directory, removed when the process exits.
  *
- * The tool's real paths point at `tmp/`, which holds live operator
- * caches; a test that wrote there would be one bad predicate away from
- * doing the very damage these tests exist to prevent.
+ * The tool's real paths point at the scan-cache folder, which outside a
+ * test holds live operator caches; a test that wrote there would be one
+ * bad predicate away from doing the very damage these tests exist to
+ * prevent.
  */
 function scratch() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cpc-test-"));

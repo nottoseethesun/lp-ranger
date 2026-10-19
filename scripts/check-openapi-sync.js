@@ -28,7 +28,10 @@
 
 const fs = require("fs");
 const path = require("path");
-const { POSITION_KEYS, GLOBAL_KEYS } = require("../src/bot-config-keys");
+const {
+  SETTING_POSITION_KEYS,
+  GLOBAL_KEYS,
+} = require("../src/bot-config-keys");
 const { UI_SETTING_KEYS } = require("../src/ui-defaults");
 
 const ROOT = path.join(__dirname, "..");
@@ -100,7 +103,7 @@ function _configKeyProblems(spec, problems) {
     spec.paths?.["/api/config"]?.post?.requestBody?.content?.[
       "application/json"
     ]?.schema?.properties || {};
-  const accepted = [...POSITION_KEYS, ...GLOBAL_KEYS];
+  const accepted = [...SETTING_POSITION_KEYS, ...GLOBAL_KEYS];
   for (const k of accepted.filter((k) => !(k in props)).sort())
     problems.push(
       `POST /api/config accepts \`${k}\` but openapi.json omits it`,

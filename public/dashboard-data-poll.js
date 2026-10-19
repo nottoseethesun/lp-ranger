@@ -93,8 +93,13 @@ async function _pollStatus() {
   }
 }
 
+/**
+ * Poll /api/status at once, outside the interval.
+ * @returns {Promise<void>}  Settled once the answer is applied; at once
+ *   when a poll is already in flight, whose answer then serves.
+ */
 export function pollNow() {
-  _pollStatus();
+  return _pollStatus();
 }
 
 /**

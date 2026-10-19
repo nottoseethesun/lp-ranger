@@ -6,20 +6,24 @@
  *
  * Two places hold it:
  *
- * - **`tmp/*.json`** — event scans, LP position enumeration, P&L
+ * - **The scan-cache folder**, `app-data/scan-cache/`
+ *   (src/scan-cache-dir.js) — event scans, LP position enumeration, P&L
  *   epochs and the lifetime HODL amounts kept beside them, block
  *   timestamps, pool creation blocks, token symbols, fetched prices.
- * - **Scan-derived keys in each position's slot** in
- *   `app-config/user-configurable/bot-config.json` — compound history
- *   and totals, per-NFT gas and compound figures, the HODL baseline and
- *   amounts, and the lifetime deposit (`CHAIN_DERIVED_POSITION_KEYS`).
+ * - **Scan-derived records for each position** in
+ *   `app-data/position-records.json` — compound history and totals,
+ *   per-NFT gas and compound figures, the HODL baseline and amounts, and
+ *   the lifetime deposit (`CHAIN_DERIVED_POSITION_KEYS`).
  *
  * The second matters as much as the first. The lifetime scan treats a
- * value already in the config as settled and does not re-derive it, so
- * clearing `tmp/` alone gives a start that is cold for the caches and
- * warm for everything the config remembers — including any error in
- * it. Settings, managed status and values recorded live that a scan
+ * record already saved as settled and does not re-derive it, so
+ * clearing the cache folder alone gives a start that is cold for the
+ * caches and warm for everything the records remember — including any
+ * error in them. Settings, managed status and records kept live that a scan
  * cannot reproduce are left alone.
+ *
+ * Only that folder's files go; the server's PID file stays in `tmp/`,
+ * which this command does not touch.
  *
  * Clearing both is how you test scan behavior from cold.
  *
@@ -39,10 +43,10 @@ const fs = require("fs");
 const path = require("path");
 const { loadConfig, saveConfig } = require("../src/bot-config-v2");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
+const { scanCacheDir } = require("../src/scan-cache-dir");
 
 const ROOT = path.resolve(__dirname, "..");
-const TMP = path.join(ROOT, "tmp");
-const PID_FILE = path.join(TMP, "lp-ranger.pid");
+const PID_FILE = path.join(ROOT, "tmp", "lp-ranger.pid");
 
 /**
  * The PID of a running server, or null.
@@ -101,11 +105,9 @@ function human(bytes) {
 }
 
 /**
- * Delete every `tmp/*.json`, optionally keeping some by name.
- *
- * Non-`.json` entries are left alone by design: `tmp/` also collects
- * the PID file, ad-hoc diagnostic output and developer scratch files
- * that no app code wrote and that no reset should destroy.
+ * Delete every file in the scan-cache folder, optionally keeping some
+ * by name. The folder holds nothing but the scan caches, so all of it
+ * goes.
  *
  * @param {object} [opts]
  * @param {boolean} [opts.dryRun]      Report without deleting.
@@ -114,9 +116,13 @@ function human(bytes) {
  */
 function clearScanCache({ dryRun = false, preserve = [] } = {}) {
   const keep = new Set(preserve);
+  const dir = scanCacheDir();
   let entries;
   try {
-    entries = fs.readdirSync(TMP).filter((f) => f.endsWith(".json"));
+    entries = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => e.name);
   } catch {
     return { files: [], kept: [], removed: 0, bytes: 0 };
   }
@@ -124,7 +130,7 @@ function clearScanCache({ dryRun = false, preserve = [] } = {}) {
   const kept = entries.filter((f) => keep.has(f));
   const files = entries
     .filter((f) => !keep.has(f))
-    .map((f) => path.join(TMP, f));
+    .map((f) => path.join(dir, f));
 
   let bytes = 0;
   for (const f of files) {
@@ -162,10 +168,10 @@ function clearScanCache({ dryRun = false, preserve = [] } = {}) {
  * then, nothing is removed, and the damaged file is left for the
  * operator rather than overwritten with an empty one.
  *
- * `loadConfig` snapshots the file to `bot-config.backup.json` before
- * anything here runs, so the pre-clear values are recoverable from
- * there — until the next start, which snapshots the cleared file over
- * it.
+ * `loadConfig` snapshots the records file to
+ * `position-records.backup.json` before anything here runs, so the
+ * pre-clear values are recoverable from there — until the next start,
+ * which snapshots the cleared file over it.
  *
  * @param {object} [opts]
  * @param {boolean} [opts.dryRun]  Report without changing anything.
@@ -199,7 +205,7 @@ function _reportDryRun(r, c) {
   for (const f of r.files) console.log("    " + path.relative(ROOT, f));
   console.log(
     `[clear-cache] DRY RUN — would remove ${c.keys} scan-derived value(s) ` +
-      `from ${c.positions} position(s) in bot-config.json.`,
+      `from ${c.positions} position(s) in app-data/position-records.json.`,
   );
 }
 
@@ -231,8 +237,9 @@ function main() {
   if (c.keys > 0) {
     console.log(
       `[clear-cache] Removed ${c.keys} scan-derived value(s) from ` +
-        `${c.positions} position(s) in bot-config.json. The previous ` +
-        "values are in bot-config.backup.json until the next start.",
+        `${c.positions} position(s) in app-data/position-records.json. ` +
+        "The previous values are in app-data/position-records.backup.json " +
+        "until the next start.",
     );
   }
   console.log(
@@ -249,5 +256,4 @@ module.exports = {
   runningPid,
   waitForServerExit,
   human,
-  TMP,
 };

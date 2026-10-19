@@ -9,7 +9,9 @@
  *   fallback when getPoolState fails on decimals; an incomplete override
  *   retires; RPC exhaustion / non-decimals defects are transient (never
  *   retire). `getPoolState` is injected; the real `pool-state-validate` error
- *   classes drive the failure paths — no chain.
+ *   classes drive the failure paths — no chain. One case runs the real
+ *   `getPoolState` on a stand-in chain (test/helpers/mock-pool-rpc.js), so
+ *   the heal's call is held to the arguments the read really takes.
  * Run with: npm test
  */
 
@@ -17,17 +19,31 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const ethers = require("ethers");
 const { _ensureTokenDecimals } = require("../src/bot-recorder-decimals-heal");
+const {
+  getPoolState,
+  _setRetryDelayForTests,
+} = require("../src/rebalancer-pools");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
 } = require("../src/pool-state-validate");
+const {
+  withMockRpc,
+  makeMockEthers,
+  TOKEN0,
+  TOKEN1,
+} = require("./helpers/mock-pool-rpc");
+
+/*- A failed read is retried at once, so a case that fails ends quickly. */
+_setRetryDelayForTests(0);
 
 /*- A fake getPoolState that records its calls and returns preset pool state
  *  or throws a preset error, standing in for the real on-chain reader. */
 function makeGetState(behavior) {
   const calls = [];
-  const fn = async (_provider, _ethersLib, opts) => {
+  const fn = async (_ethersLib, opts) => {
     calls.push(opts);
     return typeof behavior === "function" ? behavior() : behavior;
   };
@@ -160,5 +176,26 @@ describe("_ensureTokenDecimals", () => {
     const r = await _ensureTokenDecimals(pos, false, {}, getState);
     assert.equal(r.transient, true);
     assert.equal(r.retire, undefined);
+  });
+});
+
+describe("_ensureTokenDecimals through the real pool-state read", () => {
+  it("reads both coins' decimals on the full rescan a rebalance asks for", async () => {
+    /*-
+     *  The heal passes the read the ethers library it requires. This hands
+     *  the real `getPoolState` the stand-in library in its place, wherever
+     *  it stands among the arguments, so the read itself decides whether
+     *  the heal called it with the arguments it takes.
+     */
+    const { lib } = makeMockEthers();
+    const pos = { token0: TOKEN0, token1: TOKEN1, fee: 10000 };
+    const realRead = (...args) =>
+      getPoolState(...args.map((a) => (a === ethers ? lib : a)));
+    const r = await withMockRpc(lib, () =>
+      _ensureTokenDecimals(pos, true, {}, realRead),
+    );
+    assert.equal(r.resolved, true, JSON.stringify(r));
+    assert.equal(pos.decimals0, 8);
+    assert.equal(pos.decimals1, 18);
   });
 });

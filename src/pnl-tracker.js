@@ -277,17 +277,27 @@ function createPnlTracker(opts = {}) {
 
   /**
    * Return a complete snapshot of current P&L state.
+   *
+   * The gas failed rebalances and compounds paid is counted here, from
+   * the position's records, in the lifetime total and on the row of the
+   * period each was paid in. It is never added to a period: the periods
+   * are kept in the epoch cache, which Reload Current Position and a
+   * cleared scan cache rebuild from the chain, and the chain does not
+   * show this gas, since most of those transactions never touch the
+   * position's NFT. Kept apart, a rebuilt period has its charges back,
+   * and none is counted twice.
+   *
    * @param {number} [currentPrice]  Required for live epoch P&L estimate.
+   * @param {Array<{at: string, wei: string, usd: number}>} [charges]  The
+   *   `failedMoveGas` record: when each was paid, its wei, and its
+   *   dollars on that day (src/spent-gas.js).
    * @returns {PnlSnapshot}
    */
-  function snapshot(currentPrice) {
+  function snapshot(currentPrice, charges = []) {
     /**
      * A figure, or 0 for one not known. A closed period whose gas has no
      * dollar figure, because the price of its day could not be read,
-     * carries a null `gas` and `epochPnl` and so adds nothing to the two
-     * sums below. Both sums are stand-ins: the Lifetime figures price
-     * every period's gas coins now (`overridePnlWithRealValues`,
-     * src/bot-pnl-updater.js).
+     * carries a null `epochPnl` and so adds nothing to the sum below.
      */
     const known = (v) => (v === null || v === undefined ? 0 : v);
     const closedPnl = closedEpochs.reduce((s, e) => s + known(e.epochPnl), 0);
@@ -295,23 +305,11 @@ function createPnlTracker(opts = {}) {
 
     const totalIL =
       closedEpochs.reduce((s, e) => s + e.il, 0) + (liveEpoch?.il ?? 0);
-    /*- Imported gas is added here and nowhere else. The lifetime figure
-     *  is the position's whole cost, so it belongs; the Per-Day rows are
-     *  per-day, so it does not. See `setImportedGas`. */
-    const totalGas =
-      closedEpochs.reduce(
-        (s, e) => s + known(e.gas) + (e.importedGas ?? 0),
-        0,
-      ) +
-      (liveEpoch?.gas ?? 0) +
-      (liveEpoch?.importedGas ?? 0);
-    const totalGasNative =
-      closedEpochs.reduce(
-        (s, e) => s + (e.gasNative ?? 0) + (e.importedGasNative ?? 0),
-        0,
-      ) +
-      (liveEpoch?.gasNative ?? 0) +
-      (liveEpoch?.importedGasNative ?? 0);
+    const { totalGas, totalGasNative } = _gasTotals(
+      closedEpochs,
+      liveEpoch,
+      charges,
+    );
 
     // ── P&L breakdown: price-change ──────────────────────────────────────────
     /*- Per-epoch fees are still summed by daily P&L and by the per-epoch
@@ -329,7 +327,7 @@ function createPnlTracker(opts = {}) {
     const priceChangePnl = closedPriceChange + livePriceChange;
 
     // ── Per-day P&L (up to 31 days) ──────────────────────────────────────────
-    const dailyPnl = _buildDailyPnl(closedEpochs, liveEpoch);
+    const dailyPnl = _buildDailyPnl(closedEpochs, liveEpoch, charges);
 
     // ── Date range for lifetime P&L ───────────────────────────────────────────
     const allEpochs = liveEpoch ? [...closedEpochs, liveEpoch] : closedEpochs;
@@ -472,6 +470,70 @@ function _attributeToDay(dayMap, day, feePnl, priceChangePnl, gas, gasNative) {
   dayMap.set(day, entry);
 }
 
+/**
+ * The position's lifetime gas, in dollars and in coins: every period's,
+ * with the imported compound gas and the gas failed moves paid.
+ *
+ * Imported gas is added here and nowhere else. The lifetime figure is
+ * the position's whole cost, so it belongs; the Per-Day rows are
+ * per-day, so it does not (see `setImportedGas`). A closed period whose
+ * gas has no dollar figure, because the price of its day could not be
+ * read, adds nothing to the dollars. Both are stand-ins: the Lifetime
+ * figures price the coins now (`overridePnlWithRealValues`,
+ * src/bot-pnl-updater.js).
+ *
+ * @param {Epoch[]} closedEpochs
+ * @param {Epoch|null} liveEpoch
+ * @param {Array<{at: string, wei: string, usd: number}>} charges
+ * @returns {{totalGas: number, totalGasNative: number}}
+ */
+function _gasTotals(closedEpochs, liveEpoch, charges) {
+  const known = (v) => (v === null || v === undefined ? 0 : v);
+  const failed = charges.map(_chargeAmounts);
+  const totalGas =
+    closedEpochs.reduce((s, e) => s + known(e.gas) + (e.importedGas ?? 0), 0) +
+    (liveEpoch?.gas ?? 0) +
+    (liveEpoch?.importedGas ?? 0) +
+    failed.reduce((s, c) => s + c.usd, 0);
+  const totalGasNative =
+    closedEpochs.reduce(
+      (s, e) => s + (e.gasNative ?? 0) + (e.importedGasNative ?? 0),
+      0,
+    ) +
+    (liveEpoch?.gasNative ?? 0) +
+    (liveEpoch?.importedGasNative ?? 0) +
+    failed.reduce((s, c) => s + c.native, 0);
+  return { totalGas, totalGasNative };
+}
+
+/**
+ * A failed move's gas as the P&L counts it: its dollars on the day it
+ * was paid, and its coins.
+ * @param {{wei: string, usd: number}} charge  A `failedMoveGas` entry.
+ * @returns {{usd: number, native: number}}
+ */
+function _chargeAmounts(charge) {
+  return { usd: charge.usd, native: Number(BigInt(charge.wei)) / 1e18 };
+}
+
+/**
+ * The day whose row a failed move's gas goes on: that of the period it
+ * was paid in. A closed period runs until the rebalance that closed it,
+ * and its row is that rebalance's day; a charge after the last close is
+ * the open period's, whose row is today's. With no open period either,
+ * it goes on the day it was paid.
+ */
+function _chargeDay(charge, closedEpochs, liveEpoch) {
+  const t = new Date(charge.at).getTime();
+  const later = closedEpochs.filter((e) => e.closeTime > t);
+  if (later.length > 0) {
+    const period = later.reduce((a, b) => (b.closeTime < a.closeTime ? b : a));
+    return new Date(period.closeTime).toISOString().slice(0, 10);
+  }
+  const day = liveEpoch ? new Date() : new Date(t);
+  return day.toISOString().slice(0, 10);
+}
+
 /** Create a blank day entry. */
 function _newDay() {
   return {
@@ -574,9 +636,11 @@ function _epochIl(ep) {
  *
  * @param {Epoch[]} closedEpochs
  * @param {Epoch|null} liveEpoch
+ * @param {Array<{at: string, wei: string, usd: number}>} [charges]  The
+ *   gas failed moves paid, each on its period's row; see `snapshot`.
  * @returns {DailyPnl[]}
  */
-function _buildDailyPnl(closedEpochs, liveEpoch) {
+function _buildDailyPnl(closedEpochs, liveEpoch, charges = []) {
   /** @type {Map<string, {priceChangePnl: number, feePnl: number, gasCost: number, inOut: number}>} */
   const dayMap = new Map();
 
@@ -617,6 +681,13 @@ function _buildDailyPnl(closedEpochs, liveEpoch) {
       liveEpoch.gas ?? 0,
       liveEpoch.gasNative ?? 0,
     );
+  }
+
+  // Each failed move's gas, on the row of the period it was paid in.
+  for (const charge of charges) {
+    const { usd, native } = _chargeAmounts(charge);
+    const day = _chargeDay(charge, closedEpochs, liveEpoch);
+    _attributeToDay(dayMap, day, 0, 0, usd, native);
   }
 
   // Newest first, every day (no limit).

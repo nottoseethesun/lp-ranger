@@ -2,32 +2,41 @@
 
 /**
  * @file test/config-record-checks.test.js
- * @description Every value `POST /api/config` accepts is checked before
- *   anything is saved, the bot's own records included.
- *
- *   The route accepts ten records the bot keeps per position, the HODL
+ * @description The records the bot keeps per position, the HODL
  *   baseline, the wallet residuals and the compound tallies among them,
- *   and it checked none: a request could save a residual the next start
- *   cannot read (`BigInt("abc")` throws) or a baseline with no coins in
- *   it. The user, 2026-10-18: "just ensure that the server/bot always
+ *   are each held to the shape the bot writes.
+ *
+ *   The user, 2026-10-18: "just ensure that the server/bot always
  *   validates any incoming values against the same datatype and range
- *   checks that the test suite uses." Each record is now held to the
- *   shape the bot writes, built from the kinds the shipped-values test
- *   uses (src/value-kinds.js), so these cases check that every accepted
- *   key has a check, that what the bot writes passes, and that a value of
- *   the wrong kind is refused with nothing applied.
+ *   checks that the test suite uses." Each record's rule is built from
+ *   the kinds the shipped-values test uses (src/value-kinds.js), and the
+ *   startup check holds the records file, app-data/position-records.json,
+ *   to it, so a record the next start cannot read, such as a residual
+ *   whose `BigInt("abc")` throws, stops startup rather than the bot.
+ *   `POST /api/config` takes settings only, so a request cannot write a
+ *   record at all. These cases check, through the startup check of the
+ *   records file, that every record has a check, that what the bot
+ *   writes passes and that a value of the wrong kind is refused; and
+ *   that the route leaves records alone.
  */
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { checkConfigValues, RULES } = require("../src/config-bounds");
-const { GLOBAL_KEYS, POSITION_KEYS } = require("../src/bot-config-keys");
+const { RECORD_CHECKS } = require("../src/config-record-checks");
+const { positionRecordsProblems } = require("../src/bot-config-checks");
+const { RECORD_POSITION_KEYS } = require("../src/bot-config-keys");
 const { createResidualTracker } = require("../src/residual-tracker");
 const { createRouteHandlers } = require("../src/server-routes");
 
-const check = (patch) => checkConfigValues(patch, { compoundMinFeeUsd: 1 });
 const POOL = "0x" + "ab".repeat(20);
+const KEY =
+  "pulsechain-0x1111111111111111111111111111111111111111-" +
+  "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-157149";
+
+/*- What the startup check finds wrong with one position's records. */
+const problemsWith = (records) =>
+  positionRecordsProblems(JSON.stringify({ positions: { [KEY]: records } }));
 
 /*-
  *  Each record as the bot writes it; the writers are named beside each
@@ -77,32 +86,40 @@ const AS_WRITTEN = {
   lastCompoundAt: "2026-10-18T07:00:00.000Z",
   totalLifetimeDepositUsd: 500.25,
   depositUsedFallback: false,
+  // As recordSpentGas writes it (src/spent-gas.js).
+  failedMoveGas: [
+    { at: "2026-10-19T15:00:00.000Z", wei: "3000000000000000", usd: 0.12 },
+  ],
 };
 
-describe("the values POST /api/config accepts", () => {
+describe("the records the bot keeps", () => {
   it("each have a check", () => {
-    for (const key of [...GLOBAL_KEYS, ...POSITION_KEYS])
-      assert.equal(typeof RULES[key], "function", key);
+    for (const key of RECORD_POSITION_KEYS)
+      assert.equal(typeof RECORD_CHECKS[key], "function", key);
   });
 
-  it("include the bot's records as the bot writes them", () => {
-    for (const [key, value] of Object.entries(AS_WRITTEN))
-      assert.equal(check({ [key]: value }), null, key);
+  it("pass as the bot writes them", () => {
+    assert.deepEqual(
+      Object.keys(AS_WRITTEN).sort(),
+      RECORD_POSITION_KEYS.toSorted(),
+    );
+    assert.deepEqual(problemsWith(AS_WRITTEN), []);
     // A price the mint lookup could not find, and an older release's date.
     const older = {
       ...AS_WRITTEN.hodlBaseline,
       token0UsdPrice: null,
       mintTimestamp: "2026-01-02T00:00:00.000Z",
     };
-    assert.equal(check({ hodlBaseline: older }), null);
+    assert.deepEqual(problemsWith({ hodlBaseline: older }), []);
   });
 });
 
 describe("a record of the wrong kind", () => {
   const refused = (key, value, message) => {
-    const bad = check({ [key]: value });
-    assert.equal(bad?.key, key, JSON.stringify(value));
-    assert.match(bad.message, message);
+    const problems = problemsWith({ [key]: value });
+    assert.equal(problems.length, 1, problems.join("\n"));
+    assert.ok(problems[0].includes(`${KEY}.${key}:`), problems[0]);
+    assert.match(problems[0], message);
   };
 
   it("is refused, naming the field and what it must be", () => {
@@ -134,9 +151,14 @@ describe("a record of the wrong kind", () => {
     refused("lastCompoundAt", 1771200000000, /ISO 8601/);
     refused("totalLifetimeDepositUsd", -5, /number of dollars/);
     refused("depositUsedFallback", "true", /must be true or false/);
+    refused(
+      "failedMoveGas",
+      [{ ...AS_WRITTEN.failedMoveGas[0], wei: 3e15 }],
+      /failedMoveGas\[0\]\.wei must be a whole number written in digits/,
+    );
   });
 
-  it("leaves the configuration untouched when the route refuses it", async () => {
+  it("is not taken by the settings route, which leaves the configuration untouched", async () => {
     const diskConfig = { global: {}, positions: {} };
     const res = {};
     await createRouteHandlers({
@@ -147,15 +169,14 @@ describe("a record of the wrong kind", () => {
       jsonResponse: (r, status, body) => Object.assign(r, { status, body }),
       readJsonBody: async () => ({
         positionKey: "pulsechain-0x1-0x2-100",
-        residuals: { [POOL]: { token0: "abc", token1: "1" } },
+        residuals: { [POOL]: { token0: "1", token1: "1" } },
       }),
       getAllPositionBotStates: () => new Map(),
       createPerPositionBotState: () => ({}),
       attachMultiPosDeps: () => {},
       updatePositionState: () => {},
     })._handleApiConfig({}, res);
-    assert.equal(res.status, 400);
-    assert.equal(res.body.invalidValueForKey, "residuals");
     assert.deepEqual(diskConfig.positions, {}, "no slot created");
+    assert.equal(res.body.applied?.residuals, undefined, "nothing applied");
   });
 });

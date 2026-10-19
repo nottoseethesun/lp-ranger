@@ -40,13 +40,16 @@ const {
   migratePositionKey: migrateConfigKey,
 } = require("./bot-config-v2");
 const { parseCompositeKey } = require("./composite-key");
+const { RECORD_POSITION_KEYS } = require("./bot-config-keys");
 
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
 
 /*-
  *  Bot-state fields saved to the position's config slot and read back on
- *  the next start — ONE list, used in both directions.
+ *  the next start — ONE list, used in both directions. They are the
+ *  position's records (`RECORD_POSITION_KEYS`, src/bot-config-keys.js),
+ *  which `saveConfig` writes to the records file, apart from the settings.
  *
  *  Invariant: a field the save path writes must be one the restore path
  *  reads, and vice versa. A single list makes that structural; two copies
@@ -64,18 +67,7 @@ const _positionBotStates = new Map();
  *  `totalLifetimeDepositUsd > 0`, and without the restore the Syncing
  *  badge would never clear.
  */
-const PERSISTED_STATE_KEYS = [
-  "hodlBaseline",
-  "residuals",
-  "compoundHistory",
-  "compoundedAmount0",
-  "compoundedAmount1",
-  "nftGasWeiByTokenId",
-  "nftCompoundedAmountsByTokenId",
-  "lastCompoundAt",
-  "totalLifetimeDepositUsd",
-  "depositUsedFallback",
-];
+const PERSISTED_STATE_KEYS = RECORD_POSITION_KEYS;
 
 /**
  * Create a fresh per-position bot state with defaults + saved config.

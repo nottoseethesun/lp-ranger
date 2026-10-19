@@ -68,8 +68,9 @@ describe("a full wallet scan of another position manager", () => {
   const realCwd = process.cwd();
 
   /*-
-   *  The position cache lives under the working directory's `tmp/`, so
-   *  the case runs in the scratch directory.
+   *  The position cache lives in the scan-cache folder, which under
+   *  `node --test` is the test process's own (src/scan-cache-dir.js); the
+   *  case runs in the scratch directory too.
    */
   before(() => {
     process.chdir(SCRATCH);

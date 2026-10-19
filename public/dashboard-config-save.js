@@ -6,8 +6,15 @@
  * The browser does not decide whether a value is acceptable. Every
  * control sends what the operator typed; `src/config-bounds.js` on the
  * server decides, and answers 400 with `invalidValueForKey` naming the
- * setting it refused. This module reads that answer, puts the field
- * back to the value the server last accepted, and says why.
+ * setting it refused. This module reads that answer, empties the field,
+ * asks the server for the position on screen and fills the field from
+ * that answer, as when the position came on screen, and says why.
+ *
+ * The browser keeps no copy of a value the server accepted. The server
+ * is the only home of a saved setting, and a copy kept by field could
+ * be another position's: switch from a position with a saved value to
+ * one without, type a value the server refuses, and the copy would put
+ * the first position's value in the field, for a second Save to store.
  *
  * Before this existed each control had its own opinion — four quietly
  * rewrote what was typed and saved the rewrite, three refused with no
@@ -19,50 +26,55 @@
 
 import { g, fetchWithCsrf } from "./dashboard-helpers.js";
 import { isAnswerForPositionOnScreen } from "./dashboard-answer-position.js";
+import { clearInputDirty } from "./dashboard-data-cache.js";
 import { log } from "./dashboard-log.js";
 
-/*- The value each Bot Settings input last held that the server
- *  accepted, so a rejected save can put the field back to it. Seeded by
- *  `rememberGoodInput` when the panel populates from `/api/status`, and
- *  updated on every save the server takes. */
-const _lastGoodByInput = new Map();
+/*-
+ *  How the panel fills its boxes again from the server's answer about
+ *  the position on screen: announced by dashboard-data.js, which owns
+ *  those fills, as it loads.
+ */
+let _refill = null;
 
 /**
- * Record what an input currently shows as a value the server accepts.
+ * Announce how the panel fills its boxes again from the server.
  *
- * @param {string} inputId
- * @param {*} value
+ * @param {() => Promise<void>} refill  Asks the server about the
+ *   position on screen and fills the boxes from its answer; settled once
+ *   that answer is applied.
  * @returns {void}
  */
-export function rememberGoodInput(inputId, value) {
-  if (value !== undefined && value !== null)
-    _lastGoodByInput.set(inputId, String(value));
+export function announceRefill(refill) {
+  _refill = refill;
 }
 
 /**
- * Put a refused field back to its last accepted value, and say what to
- * tell the operator.
+ * Fill a refused field from the server, and say what to tell the
+ * operator.
  *
- * Exported so the decision can be driven directly by a test —
- * `fetchWithCsrf` goes through the global `fetch`, which a test must
- * not replace. The dialog itself stays with the caller.
+ * The field is emptied and its edit forgotten first, so the panel's fill
+ * writes what the server holds into it. A form the panel does not fill
+ * fills itself in `onRefused`, from the same answer.
  *
- * @param {string} inputId
- * @param {string} key     The setting that was being saved.
- * @param {object} body    The server's response body.
- * @returns {string|null}  The dialog text, or null to say nothing —
- *   which is the answer whenever the 400 was about the request rather
- *   than the value, such as no position being selected.
+ * Exported so a test can drive it with a refill of its own: the request
+ * goes through the global `fetch`, which a test must not replace.
+ *
+ * @param {{inputId: string, error?: string}} refused  The field, and the
+ *   server's reason.
+ * @param {() => *} [onRefused]  A form's own fill, after the panel's.
+ * @returns {Promise<string>}  The dialog text.
  */
-export function _applySaveRejection(inputId, key, body) {
-  if (!body || body.invalidValueForKey !== key) return null;
-  const prior = _lastGoodByInput.get(inputId);
+export async function _refillRefused({ inputId, error }, onRefused) {
   const el = g(inputId);
-  if (el && prior !== undefined) el.value = prior;
+  if (el) el.value = "";
+  clearInputDirty(inputId);
+  if (_refill !== null) await _refill();
+  if (onRefused) await onRefused();
+  const shown = g(inputId)?.value ?? "";
   return `That value was not accepted:\n\n${
-    body.error || "It is outside the allowed range."
-  }\n\nThe field has been set back to ${
-    prior === undefined ? "its previous value" : prior
+    error || "It is outside the allowed range."
+  }\n\nNothing was saved, and the value in force for this position stands${
+    shown === "" ? "" : `: ${shown}`
   }. Edit it and save again if you like.`;
 }
 
@@ -80,15 +92,17 @@ function _clearEmpties(values) {
   return out;
 }
 
-/*- Which input, if any, holds each key being saved. A save that carries
- *  several keys can then restore the one the server named rather than
- *  all of them. */
-function _restoreRefusedField(inputs, body) {
-  for (const [key, inputId] of Object.entries(inputs || {})) {
-    const message = _applySaveRejection(inputId, key, body);
-    if (message) return message;
-  }
-  return null;
+/*-
+ *  The field holding the value the server refused, if it is one of this
+ *  save's: a request can carry several keys, and only the one the server
+ *  named goes back. Null for a 400 about the request rather than a value
+ *  (no position selected, most often), which raises no dialog and leaves
+ *  what the operator typed alone.
+ */
+function _refusedField(inputs, body) {
+  const key = body?.invalidValueForKey;
+  const inputId = typeof key === "string" ? inputs?.[key] : undefined;
+  return inputId === undefined ? null : { inputId, error: body.error };
 }
 
 /**
@@ -98,11 +112,13 @@ function _restoreRefusedField(inputs, body) {
  * @param {object} o.values            Config keys to write.
  * @param {string} [o.positionKey]     Required for position-specific keys.
  * @param {object} [o.inputs]          Config key → input element id, so a
- *   refused value can be put back where it came from.
+ *   refused value's field can be filled from the server.
  * @param {Function} [o.onSaved]       Ran only once the server has taken
  *   it, so nothing reports success the server refused. Passed whether
  *   the answer is for the position on screen, so it can leave the
  *   screen alone when it is not.
+ * @param {Function} [o.onRefused]     For a form the panel does not fill:
+ *   fills its fields from the server's answer after a refusal.
  * @returns {Promise<{saved: boolean, onScreen: boolean}>}  Whether it
  *   saved, and whether the position it was saved for is still the one
  *   on screen, for what the caller does to the screen after it.
@@ -112,6 +128,7 @@ export async function saveConfigValues({
   positionKey,
   inputs,
   onSaved,
+  onRefused,
 }) {
   let res;
   try {
@@ -130,12 +147,12 @@ export async function saveConfigValues({
     ok: res.ok,
     status: res.status,
     body,
-    values,
     positionKey,
     inputs,
     onSaved,
   });
-  if (settled.message) alert(settled.message);
+  if (settled.refused !== null)
+    alert(await _refillRefused(settled.refused, onRefused));
   return { saved: settled.saved, onScreen: settled.onScreen };
 }
 
@@ -153,8 +170,8 @@ function _onScreenFor(answer, positionKey) {
 
 /**
  * What the answer to a save does, once it has arrived: whether it is
- * for the position on screen, the fields it remembers or puts back, and
- * the dialog to show.
+ * for the position on screen, and which field, if any, the server
+ * refused.
  *
  * Exported so a test can drive it with an answer of its own: the request
  * itself goes through the global `fetch`, which a test must not replace.
@@ -163,18 +180,17 @@ function _onScreenFor(answer, positionKey) {
  * @param {boolean} o.ok        Whether the server took the values.
  * @param {number} o.status     The answer's HTTP status.
  * @param {object} o.body       The answer's body.
- * @param {object} o.values     The values sent.
  * @param {string} [o.positionKey]  The key the request named.
  * @param {object} [o.inputs]   As for `saveConfigValues`.
  * @param {Function} [o.onSaved]  As for `saveConfigValues`.
- * @returns {{saved: boolean, onScreen: boolean, message: string|null}}
- *   `message` is the dialog's text, or null to show none.
+ * @returns {{saved: boolean, onScreen: boolean,
+ *   refused: ({inputId: string, error?: string}|null)}}  `refused` is
+ *   the field to fill from the server, or null to leave the fields alone.
  */
 export function _settleSaveAnswer({
   ok,
   status,
   body,
-  values,
   positionKey,
   inputs,
   onSaved,
@@ -187,24 +203,12 @@ export function _settleSaveAnswer({
       ok ? "saved" : body?.error || "HTTP " + status,
     );
   if (ok) {
-    if (onScreen)
-      for (const [key, inputId] of Object.entries(inputs || {}))
-        rememberGoodInput(inputId, values[key]);
     if (onSaved) onSaved(onScreen);
-    return { saved: true, onScreen, message: null };
+    return { saved: true, onScreen, refused: null };
   }
-  if (!onScreen) return { saved: false, onScreen, message: null };
+  if (!onScreen) return { saved: false, onScreen, refused: null };
   /*- The server refuses a value it cannot run on rather than quietly
-   *  correcting it, so put the field back to what was last accepted and
-   *  say why. The operator can edit and save again.
-   *
-   *  Only for a rejected VALUE, which `invalidValueForKey` marks. This
-   *  route also 400s on a malformed request — no position selected,
-   *  most often — and that is not something to show a dialog about,
-   *  nor a reason to touch what they typed. */
-  return {
-    saved: false,
-    onScreen,
-    message: _restoreRefusedField(inputs, body),
-  };
+   *  correcting it, so the field is filled from the server again and the
+   *  operator told why. They can edit and save again. */
+  return { saved: false, onScreen, refused: _refusedField(inputs, body) };
 }

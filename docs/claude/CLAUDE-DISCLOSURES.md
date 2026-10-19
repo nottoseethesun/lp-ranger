@@ -65,8 +65,8 @@ when a change falsifies a disclosed fact. Specifically:
 - **New data leaves the machine.** A new analytics hit, telemetry
   endpoint, or third-party API call that transmits trade data,
   wallet addresses, or position state is a disclosure edit. Current
-  outbound surface (price APIs, aggregator, RPC) is already disclosed;
-  additions are not.
+  outbound surface (price APIs, aggregator, RPC, the token list and its
+  logo images) is already disclosed; additions are not.
 - **New post-trade data displayed.** The disclosure enumerates what is
   shown (TX hashes, amounts, USD values, gas, tick range, history).
   New categories (e.g. realized-PnL projections, counterparty
@@ -101,6 +101,7 @@ editing the text in a way that no longer matches the code.
 | Data Storage (server-side) | [`src/bot-config-v2.js`](../../src/bot-config-v2.js), [`src/wallet-manager.js`](../../src/wallet-manager.js), [`src/api-key-store.js`](../../src/api-key-store.js), [`src/bot-recorder.js`](../../src/bot-recorder.js) |
 | Data Storage (client-side) | `public/dashboard-*.js` — any `localStorage.setItem` call |
 | External APIs contacted | [`src/price-fetcher.js`](../../src/price-fetcher.js), [`src/gecko-pool-cache.js`](../../src/gecko-pool-cache.js), [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js), [`src/bot-provider.js`](../../src/bot-provider.js) |
+| Token Logos | [`public/dashboard-token-logos.js`](../../public/dashboard-token-logos.js), [`public/dashboard-init.js`](../../public/dashboard-init.js) (the list is read only once the Disclosure is accepted), `tokenList` in [`chains.json`](../../app-config/app-defaults-for-user-configurable/chains.json) |
 | Transaction History / Post-Trade Data | [`src/bot-recorder.js`](../../src/bot-recorder.js), [`src/position-history.js`](../../src/position-history.js), [`public/dashboard-history.js`](../../public/dashboard-history.js), [`public/dashboard-data-kpi.js`](../../public/dashboard-data-kpi.js) |
 | User-Customizable Parameters (if/when added to in-app disclosure) | [`public/index.html`](../../public/index.html) form inputs, [`src/config.js`](../../src/config.js), [`src/bot-config-v2.js`](../../src/bot-config-v2.js) `GLOBAL_KEYS` / `POSITION_KEYS` |
 | MEV Exposure (if/when added) | [`src/rebalancer-pools.js`](../../src/rebalancer-pools.js) `_checkSwapImpact`, [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js) |

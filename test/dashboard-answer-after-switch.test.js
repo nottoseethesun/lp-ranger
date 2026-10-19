@@ -117,19 +117,12 @@ describe("a save's answer", () => {
       ok,
       status: ok ? 200 : 400,
       body,
-      values: { maxRebalancesPerDay: 9 },
       positionKey,
       inputs,
       onSaved,
     });
-  /** What a refusal would put the field back to now. */
-  const restoresTo = () =>
-    configSave._applySaveRejection("inMaxReb", "maxRebalancesPerDay", {
-      invalidValueForKey: "maxRebalancesPerDay",
-    });
 
   it("for another position leaves the fields on screen alone", () => {
-    configSave.rememberGoodInput("inMaxReb", 5);
     const seen = [];
     const out = settle(
       true,
@@ -137,19 +130,18 @@ describe("a save's answer", () => {
       { ok: true, positionKey: keyOf(101) },
       (onScreen) => seen.push(onScreen),
     );
-    assert.deepEqual(out, { saved: true, onScreen: false, message: null });
+    assert.deepEqual(out, { saved: true, onScreen: false, refused: null });
     assert.deepEqual(seen, [false], "told it is not for the screen");
-    assert.match(restoresTo(), /set back to 5\./, "B's last value stands");
   });
 
-  it("for another position shows no refusal and puts back no field", () => {
+  it("for another position shows no refusal and fills no field", () => {
     document.getElementById("inMaxReb").value = "7";
     const out = settle(false, keyOf(101), {
       ok: false,
       invalidValueForKey: "maxRebalancesPerDay",
       positionKey: keyOf(101),
     });
-    assert.equal(out.message, null);
+    assert.equal(out.refused, null);
     assert.equal(document.getElementById("inMaxReb").value, "7");
   });
 
@@ -162,7 +154,12 @@ describe("a save's answer", () => {
       (onScreen) => seen.push(onScreen),
     );
     assert.deepEqual(seen, [true]);
-    assert.match(restoresTo(), /set back to 9\./);
+    const refused = settle(false, keyOf(202), {
+      ok: false,
+      invalidValueForKey: "maxRebalancesPerDay",
+      positionKey: keyOf(202),
+    }).refused;
+    assert.equal(refused.inputId, "inMaxReb", "its field is filled again");
   });
 });
 

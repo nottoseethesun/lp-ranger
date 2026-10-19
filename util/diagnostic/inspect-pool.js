@@ -9,9 +9,9 @@
  * what the app *thinks* is true so you can compare to on-chain ground
  * truth via `reconcile-hodl`.
  *
- * What it reads (both files; missing tmp/ is tolerated):
+ * What it reads (both files; a missing epoch cache is tolerated):
  *   - app-config/user-configurable/bot-config.json  — per-position cached state
- *   - tmp/pnl-epochs-cache.json          — per-pool epoch state
+ *   - app-data/scan-cache/pnl-epochs-cache.json     — per-pool epoch state
  *
  * What it prints:
  *   Per position (key = blockchain-wallet-contract-tokenId):
@@ -73,6 +73,11 @@
 const fs = require("fs");
 const path = require("path");
 const { Command } = require("commander");
+const { scanCachePath } = require("../../src/scan-cache-dir");
+const {
+  readPositionRecords,
+  mergePositionRecords,
+} = require("../../src/position-records");
 
 /**
  * Describe the command line, so Commander both parses it and renders
@@ -112,11 +117,7 @@ const CONFIG_PATH = path.join(
   "bot-config.json",
 );
 
-const EPOCH_CACHE_PATH = path.join(
-  process.cwd(),
-  "tmp",
-  "pnl-epochs-cache.json",
-);
+const EPOCH_CACHE_PATH = scanCachePath("pnl-epochs-cache.json");
 
 /** Load JSON file or exit with a helpful error. */
 function loadConfigOrExit() {
@@ -129,7 +130,12 @@ function loadConfigOrExit() {
     process.exit(1);
   }
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+    // Each position's records, kept apart from its settings.
+    if (cfg.positions === undefined || cfg.positions === null)
+      cfg.positions = {};
+    mergePositionRecords(cfg, readPositionRecords());
+    return cfg;
   } catch (err) {
     console.error(`Failed to parse ${CONFIG_PATH}: ${err.message}`);
     process.exit(1);
@@ -290,7 +296,7 @@ function main(argv = process.argv.slice(2)) {
     for (const k of keys) printPosition(k, filtered[k]);
   }
 
-  /*- Epoch cache lives separately from bot-config.json (in tmp/) and is
+  /*- Epoch cache lives separately from bot-config.json (in the scan-cache folder) and is
       keyed by pool identity, not tokenId.  Several positions in the same
       pool share one entry.  We surface it here because lifetimeHodlAmounts
       is the on-chain ground truth for IL math — drift between this and

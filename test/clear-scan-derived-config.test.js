@@ -2,13 +2,14 @@
 
 /**
  * @file test/clear-scan-derived-config.test.js
- * @description `npm run clear-blockchain-scan-cache` clears scan-derived
- *   values from `bot-config.json`, not just the `tmp/` caches.
+ * @description `npm run clear-blockchain-scan-cache` clears the
+ *   scan-derived records of each position (app-data/position-records.json),
+ *   not just the scan-cache folder.
  *
- *   The lifetime scan treats a value already in the config as settled and
- *   does not re-derive it. Clearing only `tmp/` therefore gives a start
- *   that is cold for the caches but warm for everything the config
- *   remembers — including any error in it. These tests pin that the
+ *   The lifetime scan treats a record already saved as settled and does
+ *   not re-derive it. Clearing only the caches therefore gives a start
+ *   that is cold for the caches but warm for everything the records
+ *   remember — including any error in them. These tests pin that the
  *   command clears exactly the chain-derived keys, from every position,
  *   and leaves settings and live-recorded values alone.
  *
@@ -26,6 +27,7 @@ const {
   clearScanDerivedConfig,
 } = require("../scripts/clear-blockchain-scan-cache");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
+const { loadConfig } = require("../src/bot-config-v2");
 
 const A = "pulsechain-0xW-0xC-100";
 const B = "pulsechain-0xW-0xC-200";
@@ -40,7 +42,11 @@ afterEach(() => {
 
 const file = () => path.join(dir, "bot-config.json");
 const write = (cfg) => fs.writeFileSync(file(), JSON.stringify(cfg));
-const read = () => JSON.parse(fs.readFileSync(file(), "utf8"));
+/*-
+ *  Each position's whole slot: its settings from bot-config.json, and its
+ *  records, which a save writes to the records file beside it.
+ */
+const read = () => loadConfig(dir);
 
 /** A slot holding every chain-derived key plus settings and live values. */
 function fullSlot(status) {

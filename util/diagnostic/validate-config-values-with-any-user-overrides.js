@@ -5,7 +5,8 @@
  * @description
  * Check every setting this install runs on, and list each problem: the
  * JSON settings files with the operator's copies in
- * `app-config/user-configurable/` over them, `.env`, and bot-config.json.
+ * `app-config/user-configurable/` over them, `.env`, bot-config.json, and
+ * the bot's records beside it in `app-data/position-records.json`.
  *
  * It holds them to the rules the server and the bot hold them to at
  * startup, where any problem stops them: both ask the same library,
@@ -45,8 +46,9 @@ function buildProgram() {
     .description(
       "Check every setting this install runs on, and list each problem.\n\n" +
         "The JSON settings files with your copies in\n" +
-        "app-config/user-configurable/ over them, .env, and bot-config.json,\n" +
-        "held to the rules the server and the bot hold them to at startup.\n" +
+        "app-config/user-configurable/ over them, .env, bot-config.json and\n" +
+        "the records in app-data/position-records.json, held to the rules\n" +
+        "the server and the bot hold them to at startup.\n" +
         "Run it from the install's folder.",
     )
     .addHelpText(
@@ -79,7 +81,7 @@ function main(
   if (problems.length === 0) {
     print(
       "Every setting passes: the JSON settings files with your copies, " +
-        ".env, and bot-config.json.",
+        ".env, bot-config.json and the records file.",
     );
     return 0;
   }

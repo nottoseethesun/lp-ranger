@@ -149,8 +149,8 @@
  *   --days <n>          Scan window in days (default 30).
  *   --from-block <n>    Explicit window start; overrides --days.
  *   --moralis-key <key> Moralis API key, to include the bot's primary
- *                       price source.  Prefer the MORALIS_API_KEY
- *                       environment variable — a key passed as an
+ *                       price source.  Prefer MORALIS_API_KEY, in the
+ *                       environment or `.env` — a key passed as an
  *                       argument is visible in shell history and to
  *                       `ps`.  The key is never printed or logged.
  *   --help              Print this usage summary.
@@ -190,6 +190,7 @@ const { parseCompositeKey } = require("../../../src/composite-key");
 const { _DEFAULT_CHUNK_SIZE } = require("../../../src/get-logs-chunked");
 const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
 const { setApiKey } = require("../../../src/api-key-holder");
+const { readEnv } = require("../../../src/env-settings");
 const { fetchTokenPriceUsd } = require("../../../src/price-fetcher");
 const {
   _fetchMoralisCurrent,
@@ -201,6 +202,10 @@ const { topicForTokenId } = require("../../../src/nft-token-topic");
 const { Command, InvalidArgumentError } = require("commander");
 const { sleep } = require("../_helpers");
 const { findPositionForTokenId, fmtUsd } = require("./analysis");
+const {
+  readPositionRecords,
+  mergePositionRecords,
+} = require("../../../src/position-records");
 const {
   renderPrices,
   renderEvents,
@@ -275,8 +280,8 @@ function buildProgram() {
     .option("--from-block <n>", "explicit window start", parseNumber)
     .option(
       "--moralis-key <key>",
-      "include the bot's primary price source; prefer the MORALIS_API_KEY " +
-        "env var, since an argument is visible to ps",
+      "include the bot's primary price source; prefer MORALIS_API_KEY, " +
+        "in the environment or .env, since an argument is visible to ps",
     )
     .addHelpText(
       "after",
@@ -306,7 +311,7 @@ function argsFrom(program) {
     usd: o.usd ?? null,
     days: o.days,
     fromBlock: o.fromBlock ?? null,
-    moralisKey: o.moralisKey || process.env.MORALIS_API_KEY || null,
+    moralisKey: o.moralisKey || readEnv("MORALIS_API_KEY") || null,
     error:
       target === null && tokenId === null
         ? "need a composite key / fragment, or --token-id"
@@ -469,7 +474,11 @@ async function pricesPerSource(token, moralisKeyPresent) {
  */
 function loadConfig(configPath = CONFIG_PATH) {
   if (!fs.existsSync(configPath)) return null;
-  return JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  // Each position's records, kept apart from its settings.
+  if (cfg.positions === undefined || cfg.positions === null) cfg.positions = {};
+  mergePositionRecords(cfg, readPositionRecords());
+  return cfg;
 }
 
 /**

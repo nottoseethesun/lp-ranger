@@ -12,7 +12,8 @@
  * file outgrew the 500-line cap — extracted, not compacted.
  *
  * Every test runs against a scratch directory. The tool's real paths
- * point at `tmp/`, which holds live operator caches.
+ * point at the scan-cache folder, which outside a test holds live
+ * operator caches.
  *
  * `_capture` sits beside this file in `util/test/`: these tools are
  * console-first, and capturing stdout plus intercepting `process.exit`

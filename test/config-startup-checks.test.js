@@ -2,87 +2,36 @@
  * @file test/config-startup-checks.test.js
  * @description `src/config.js` refuses to start on a setting it cannot
  * use, naming it, rather than supplying a value of its own. Covered here:
- * the names of the two swap routes and the aggregator url, everything a
- * chain's entry describes about the chain (its name, homepage and logo,
- * block time, native token symbol, wrapped native token, cache tag and
- * price-service ids), the
- * compounder's reposition window, and the dashboard poll interval, which
- * is read from the shipped file alone.
+ * the names of the two swap routes, the aggregator url and the token
+ * list's url, everything a chain's entry describes about the chain (its
+ * name, homepage and logo, block time, native token symbol, wrapped
+ * native token, cache tag and price-service ids), the compounder's
+ * reposition window, and the dashboard poll interval, which is read from
+ * the shipped file alone.
  *
- * Each case loads the real `src/config.js` against overrides in a
- * directory of its own. `LP_RANGER_USER_CONFIG_DIR` is read by
- * `src/load-merged-defaults.js` at module load, so it is set here BEFORE
- * anything under `src/` is required, and the modules that read the
- * shipped files are loaded afresh for each case. The `.env` keys that
- * would override these settings are pinned for the same reason: dotenv
- * leaves a key alone once it is set.
+ * Each case loads the real `src/config.js` against overrides of its own,
+ * through test/helpers/config-with-overrides.js.
  */
 
 "use strict";
 
-const { describe, it, after } = require("node:test");
+// Required first: it points the settings folder at its own, before src/ loads.
+const {
+  USER_DIR,
+  loadConfigWith,
+  refuses,
+} = require("./helpers/config-with-overrides");
+
+const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
-
-/*-
- *  The overrides live in the system's temporary directory, never the
- *  project's tmp/, where the operator's caches are.
- */
-const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "startup-checks-"));
-process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
-process.env.CHAIN_NAME = "pulsechain";
-process.env.AGGREGATOR_URL = "";
-process.env.SWAP_ROUTER = "";
-
-after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 const APP_RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 const SETTING_BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
 const _UI_SERVER_UP = "ui-defaults_non-layout_for-server-up-scenario.json";
-const _OVERRIDABLE = [
-  "chains.json",
-  "app-runtime.json",
-  _UI_SERVER_UP,
-  "bot-config-defaults.json",
-];
-
-/**
- * Load `src/config.js` as startup would, with `overrides` as the
- * operator's files: `{ "chains.json": {...} }` and so on. A chains.json
- * override is given for PulseChain's entry alone.
- * @param {object} [overrides]
- * @returns {object} The loaded config.
- */
-function loadConfigWith(overrides = {}) {
-  for (const name of _OVERRIDABLE)
-    fs.rmSync(path.join(_USER_DIR, name), { force: true });
-  for (const [name, body] of Object.entries(overrides)) {
-    const json = name === "chains.json" ? { pulsechain: body } : body;
-    fs.writeFileSync(path.join(_USER_DIR, name), JSON.stringify(json));
-  }
-  for (const mod of [
-    "load-merged-defaults",
-    "bot-config-defaults",
-    "ui-defaults",
-    "runtime-flags",
-    "cache-store",
-    "config",
-  ])
-    delete require.cache[require.resolve(`../src/${mod}`)];
-  return require("../src/config");
-}
-
-/** Load with one chains.json override, expecting startup to refuse it. */
-function refuses(chainOverride, pattern) {
-  assert.throws(
-    () => loadConfigWith({ "chains.json": chainOverride }),
-    pattern,
-  );
-}
 
 describe("swap route names", () => {
   it("are the active chain's, from chains.json", () => {
@@ -152,6 +101,29 @@ describe("aggregator url", () => {
     refuses(
       { aggregator: { url: 369 } },
       /chains\.json → pulsechain\.aggregator\.url/,
+    );
+  });
+});
+
+describe("token list url", () => {
+  it("is the active chain's, from chains.json", () => {
+    const config = loadConfigWith({
+      "chains.json": { tokenList: { url: "https://list.example/tokens.json" } },
+    });
+    assert.equal(config.TOKEN_LIST_URL, "https://list.example/tokens.json");
+  });
+
+  it('may be "" for a chain with no list', () => {
+    const config = loadConfigWith({
+      "chains.json": { tokenList: { url: "" } },
+    });
+    assert.equal(config.TOKEN_LIST_URL, "");
+  });
+
+  it("stops startup when the chain's entry gives none, naming the setting", () => {
+    refuses(
+      { tokenList: { url: null } },
+      /chains\.json → pulsechain\.tokenList\.url/,
     );
   });
 });
@@ -463,7 +435,7 @@ describe("price-service urls", () => {
    * @returns {object} The loaded module.
    */
   function loadUrlsWith(override) {
-    const file = path.join(_USER_DIR, "price-services.json");
+    const file = path.join(USER_DIR, "price-services.json");
     if (override) fs.writeFileSync(file, JSON.stringify(override));
     try {
       for (const mod of ["load-merged-defaults", "price-service-urls"])

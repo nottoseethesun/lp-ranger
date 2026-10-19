@@ -2754,6 +2754,30 @@ span[title]:not([title=""]):hover {
   vertical-align: bottom;
 }
 
+/* A token's logo, left of its name in the Pool line
+   (public/dashboard-token-logos.js). */
+.\39 mm-pos-mgr-token-logo {
+  width: 36px;
+  height: 36px;
+  margin-right: 6px;
+  border-radius: 50%;
+  object-fit: contain;
+  vertical-align: bottom;
+}
+
+/* The smaller size, left of each token's name atop Position Stats. */
+.\39 mm-pos-mgr-token-logo-sm {
+  width: 27px;
+  height: 27px;
+  margin-right: 5px;
+}
+
+/* The slot a Position Stats logo is drawn into takes no box of its own,
+   so the logo lines up in the label's row like the name beside it. */
+.\39 mm-pos-mgr-token-logo-slot {
+  display: contents;
+}
+
 /* Generic inline-ellipsize utility.  Wrap any inline text run
  * (typically a token symbol) in a `<span class="9mm-pos-mgr-ellipsize">`
  * to bound it to `--ellipsize-max` (default 11ch, override with an
@@ -3966,7 +3990,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1792390866708");
+  background-image: url("background-cloud_top.png?v=1792452152805");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -3979,7 +4003,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1792390866708");
+  background-image: url("background-cloud_middle.png?v=1792452152805");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -3989,7 +4013,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1792390866708");
+  background-image: url("background-cloud_bottom.png?v=1792452152805");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

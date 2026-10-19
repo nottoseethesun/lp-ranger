@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T05:05:39.240Z
+  modified: 2026-10-19T06:50:44.078Z
 ---
 
 # Never hard-code a blockchain
@@ -28,7 +28,7 @@ initially as with the other case and accept the wait for the server poll."
 - a chain's branding in HTML (the header logo and link).
 
 **Where it lives instead.** The chain's entry in `chains.json`:
-`displayName`, `homepage`, `logo`, `blockTimeSec`,
+`displayName`, `homepage`, `logo`, `tokenList`, `blockTimeSec`,
 `nativeCurrencySymbol`, `cacheTag`, `priceServices`, plus the existing
 contracts, rpc, aggregator and chart providers. `src/config.js` checks
 each at startup and stops naming the setting; there are no fallbacks.

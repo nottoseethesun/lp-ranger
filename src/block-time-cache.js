@@ -8,7 +8,8 @@
  * Used by historical price fetchers that need a real block-time when querying
  * date-bucketed APIs like GeckoTerminal OHLCV (`before_timestamp`).
  *
- * Cache file: `tmp/block-time-cache.json` (gitignored).
+ * Cache file: `app-data/scan-cache/block-time-cache.json` (gitignored;
+ * src/scan-cache-dir.js).
  * Lazy-loaded on first access; batched writes via dirty flag.
  */
 
@@ -17,12 +18,12 @@
 const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
+const { scanCachePath } = require("./scan-cache-dir");
 
 // Cache path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
 const _CACHE_PATH =
-  process.env.BLOCK_TIME_CACHE_PATH ||
-  path.join(process.cwd(), "tmp", "block-time-cache.json");
+  process.env.BLOCK_TIME_CACHE_PATH || scanCachePath("block-time-cache.json");
 
 /** @type {Record<string, number> | null} */
 let _cache = null;

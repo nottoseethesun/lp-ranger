@@ -37,17 +37,39 @@
 const { Transaction, TransactionResponse } = require("ethers");
 
 /**
- * The signed transaction an "already known" error's request carried, or
- * null when the error does not carry one.
+ * The signed bytes a refused submission's error carries, or undefined.
+ *
+ * ethers keeps them in one of two places, by the answer it is reporting.
+ * An answer it has no name for, such as "already known", it raises with
+ * the whole request as `payload`, whose one parameter is the signed
+ * transaction. An answer it names, such as "nonce too low"
+ * (`NONCE_EXPIRED`), it raises with that parameter alone as
+ * `transaction`, and no `payload`. Only for a raw submission is
+ * `transaction` the signed bytes, a string; for a gas estimate it is the
+ * request object.
+ *
+ * @param {Error} err
+ * @returns {string|undefined}
+ */
+function _signedBytes(err) {
+  const payload = err.payload;
+  if (payload !== undefined && payload !== null) {
+    if (payload.method !== "eth_sendRawTransaction") return undefined;
+    return Array.isArray(payload.params) ? payload.params[0] : undefined;
+  }
+  return typeof err.transaction === "string" ? err.transaction : undefined;
+}
+
+/**
+ * The signed transaction a refused submission's error carries, an
+ * "already known" one or a "nonce too low" one, or null when the error
+ * does not carry one.
  *
  * @param {Error} err  The error ethers raised for the endpoint's answer.
  * @returns {import('ethers').Transaction|null}
  */
 function _signedTransaction(err) {
-  const payload = err.payload;
-  if (payload === undefined || payload === null) return null;
-  if (payload.method !== "eth_sendRawTransaction") return null;
-  const raw = Array.isArray(payload.params) ? payload.params[0] : undefined;
+  const raw = _signedBytes(err);
   if (typeof raw !== "string") return null;
   try {
     return Transaction.from(raw);

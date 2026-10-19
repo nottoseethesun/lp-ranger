@@ -26,17 +26,10 @@
 const { log } = require("../src/log");
 const fs = require("fs");
 const path = require("path");
+const { scanCachePath } = require("../src/scan-cache-dir");
 
-const PRICE_CACHE_PATH = path.join(
-  process.cwd(),
-  "tmp",
-  "historical-price-cache.json",
-);
-const GECKO_POOL_CACHE_PATH = path.join(
-  process.cwd(),
-  "tmp",
-  "gecko-pool-cache.json",
-);
+const PRICE_CACHE_PATH = scanCachePath("historical-price-cache.json");
+const GECKO_POOL_CACHE_PATH = scanCachePath("gecko-pool-cache.json");
 
 /** Load JSON file, returning `{}` if missing or malformed. */
 function loadJson(p) {

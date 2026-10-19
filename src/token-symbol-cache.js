@@ -24,6 +24,7 @@ const fs = require("fs");
 const path = require("path");
 const config = require("./config");
 const { cacheKey } = require("./cache-store");
+const { scanCachePath } = require("./scan-cache-dir");
 
 /*-
  *  `TOKEN_SYMBOL_CACHE_PATH` moves the file, so a test that resolves
@@ -33,7 +34,7 @@ const { cacheKey } = require("./cache-store");
  */
 const _SYM_CACHE_PATH =
   process.env.TOKEN_SYMBOL_CACHE_PATH ||
-  path.join(process.cwd(), "tmp", "token-symbol-cache.json");
+  scanCachePath("token-symbol-cache.json");
 
 /** Lazy-loaded in-memory mirror of the JSON file on disk. */
 let _symCache = null;

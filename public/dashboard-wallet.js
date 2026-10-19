@@ -65,11 +65,13 @@ export function injectWalletDeps(deps) {
 
 // ── Wallet state ──────────────────────────────────────────
 
-/** Active wallet data. Mutated by import flows. */
+/**
+ * Active wallet data. Mutated by import flows. No key or seed phrase:
+ * only the server signs, so the tab keeps neither once the server holds
+ * them (`_forgetSecrets`).
+ */
 export const wallet = {
   address: null,
-  privateKey: null,
-  mnemonic: null,
   source: null,
 };
 
@@ -305,10 +307,44 @@ async function _saveSetupMoralisKey(password) {
   await saveMoralisApiKey(inp.value.trim(), password, inp);
 }
 
+/*-
+ *  The fields of the setup dialog that hold a wallet's secrets: the
+ *  seed phrase or key typed in, the password, and the key and seed
+ *  phrase a generated wallet shows to be written down.
+ */
+const _SECRET_FIELDS = Object.freeze([
+  "seedInput",
+  "keyInput",
+  "genPassword",
+  "genPasswordConfirm",
+  "seedPassword",
+  "seedPasswordConfirm",
+  "keyPassword",
+  "keyPasswordConfirm",
+]);
+const _SECRET_TEXT = Object.freeze(["genKey", "genMnemonic"]);
+
+/**
+ * Clear the setup dialog's secrets, once the server holds the wallet.
+ * Only the server signs, so the tab has no further use for them; the
+ * key and seed phrase can be shown again from the server, by Reveal Key.
+ */
+function _forgetSecrets() {
+  for (const id of _SECRET_FIELDS) {
+    const el = g(id);
+    if (el) el.value = "";
+  }
+  for (const id of _SECRET_TEXT) {
+    const el = g(id);
+    if (el) el.textContent = "—";
+  }
+}
+
 /**
  * Confirm the pending wallet — encrypts on server, copies
  * _pending into the active wallet, updates the UI, and
- * closes the modal.
+ * closes the modal. Once the server holds it, the tab forgets the
+ * key, the seed phrase and the password.
  */
 export async function confirmWallet() {
   const p = wallet._pending;
@@ -330,8 +366,6 @@ export async function confirmWallet() {
   }
 
   wallet.address = p.address;
-  wallet.privateKey = p.privateKey;
-  wallet.mnemonic = p.mnemonic;
   wallet.source = p.source;
   _walletUnlocked = true;
   delete wallet._pending;
@@ -347,6 +381,8 @@ export async function confirmWallet() {
   // Flush Telegram config stashed during the setup dialog
   // (deferred because the wallet password wasn't set yet).
   await flushPendingTelegramConfig(password);
+  // The last use of the password: the server holds the wallet now.
+  _forgetSecrets();
 
   clearAllPositionState();
   applyWalletUI();
@@ -599,6 +635,8 @@ export async function submitUnlock(e) {
     ).json();
     unlockLog.logSubmitResponse(d);
     if (d.ok) {
+      // The server holds the password now; the tab keeps no copy.
+      pw.value = "";
       _viewOnly = false;
       _walletUnlocked = true;
       const m = g("walletUnlockModal");

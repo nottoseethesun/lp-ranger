@@ -25,6 +25,7 @@ const { log } = require("./log");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const fs = require("fs");
 const path = require("path");
+const { scanCachePath } = require("./scan-cache-dir");
 
 /**
  * @typedef {Object} CacheEntry
@@ -272,7 +273,8 @@ function liquidityPairScopeKey({
  * @param {string} blockchain    The chain's key in chains.json.
  * @param {string} [contract]    NFT factory / position manager address.
  * @param {string} [wallet]      Owner wallet address.
- * @returns {string} Absolute path under tmp/
+ * @returns {string} Absolute path in the scan-cache folder
+ *   (src/scan-cache-dir.js).
  */
 function eventCachePath(position, blockchain, contract, wallet) {
   const scope = liquidityPairScopeKey({
@@ -283,7 +285,7 @@ function eventCachePath(position, blockchain, contract, wallet) {
     token1: position.token1,
     fee: position.fee,
   });
-  return path.join(process.cwd(), "tmp", `event-cache-${scope}.json`);
+  return scanCachePath(`event-cache-${scope}.json`);
 }
 
 module.exports = {

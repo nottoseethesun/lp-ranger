@@ -21,7 +21,7 @@ could drift apart again.
 | | Per-Day P&L table | Lifetime "Fees Compounded" |
 | --- | --- | --- |
 | Figure | `snap.dailyPnl[].feePnl` | `snap.totalCompoundedUsd`, priced at every poll |
-| Store | `tmp/pnl-epochs-cache.json`, in dollars at each period's close | `app-config/user-configurable/bot-config.json`, as coins (`compoundedAmount0` / `compoundedAmount1`) |
+| Store | `app-data/scan-cache/pnl-epochs-cache.json`, in dollars at each period's close | `app-config/user-configurable/bot-config.json`, as coins (`compoundedAmount0` / `compoundedAmount1`) |
 | Key | pool identity | composite key |
 | Built by | `reconstructEpochs` → `getPositionHistory` | `_classifyAllCompounds` → `classifyCompounds` |
 | Order | first | second |

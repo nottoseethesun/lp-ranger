@@ -17,7 +17,7 @@ The **single-token** path, `fetchHistoricalTokenPriceUsd` in
 epoch's gas can be valued at the day it was spent. It caches under a
 day-scoped key — `2026-03-16T00:00`.
 
-Both write into `tmp/historical-price-cache.json` through
+Both write into `app-data/scan-cache/historical-price-cache.json` through
 `src/price-cache.js`. Same token, same moment, two entries, neither a hit
 for the other. The two also restate the same cascade: read cache, try
 Moralis by block, fall back to GeckoTerminal, write the answer back.

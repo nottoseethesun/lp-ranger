@@ -8,7 +8,9 @@
  * it: an approval mined before an aggregator quote that then fails, a swap
  * that reverts on chain, a cancel. `src/spent-gas.js` carries that cost on
  * whatever the attempt ends with, and the cycle that ran the move records
- * it in the open period when the move fails outright.
+ * it in the position's records when the move fails outright, apart from
+ * the P&L periods a rebuild could drop (test/failed-move-gas.test.js
+ * covers how the P&L counts it).
  *
  * Before, the open period was charged only when the failure was a
  * cancelled transaction. A rebalance that failed for any other reason
@@ -74,56 +76,85 @@ describe("spentGasOf and addSpentGas", () => {
 describe("recordSpentGas", () => {
   const toUsd = async () => 0.25;
 
-  it("charges the open period in dollars and coins, and writes it out", async () => {
-    const tracker = openTracker();
+  it("records the charge, when it was paid, its wei and its dollars, and saves it at once", async () => {
     const writes = [];
+    const before = Date.now();
     await recordSpentGas(
       21_000_000_000_000_000n,
-      { _pnlTracker: tracker, updateBotState: (p) => writes.push(p) },
+      { _botState: {}, updateBotState: (p) => writes.push(p) },
       toUsd,
     );
-    const live = tracker.getLiveEpoch();
-    assert.equal(live.gas, 0.25);
-    assert.equal(live.gasNative, 0.021);
-    assert.equal(writes.filter((w) => w.pnlEpochs).length, 1);
+    assert.equal(writes.length, 1, "saved at once: gas only accumulates");
+    const [charge] = writes[0].failedMoveGas;
+    assert.equal(charge.wei, "21000000000000000");
+    assert.equal(charge.usd, 0.25);
+    assert.ok(Date.parse(charge.at) >= before - 1000, charge.at);
   });
 
-  it("still charges the coins when there is no dollar price for them", async () => {
+  it("keeps the charges already recorded", async () => {
+    const prior = { at: "2026-10-01T00:00:00.000Z", wei: "5", usd: 0.1 };
+    const writes = [];
+    await recordSpentGas(
+      7n,
+      {
+        _botState: { failedMoveGas: [prior] },
+        updateBotState: (p) => writes.push(p),
+      },
+      toUsd,
+    );
+    assert.deepEqual(writes[0].failedMoveGas[0], prior);
+    assert.equal(writes[0].failedMoveGas.length, 2);
+  });
+
+  it("still records the coins when there is no dollar price for them", async () => {
     /*-
      *  A chain without a price service, the testnet among them, prices
      *  every charge at zero. What was paid is still paid, so the coins are
-     *  counted and only the dollar figure stays where it was.
+     *  recorded and only the dollar figure is zero.
      */
-    const tracker = openTracker();
     const writes = [];
     await recordSpentGas(
       21_000_000_000_000_000n,
-      { _pnlTracker: tracker, updateBotState: (p) => writes.push(p) },
+      { _botState: {}, updateBotState: (p) => writes.push(p) },
       async () => 0,
     );
-    const live = tracker.getLiveEpoch();
-    assert.equal(live.gas, 0);
-    assert.equal(live.gasNative, 0.021);
-    assert.equal(writes.filter((w) => w.pnlEpochs).length, 1);
+    const [charge] = writes[0].failedMoveGas;
+    assert.equal(charge.usd, 0);
+    assert.equal(charge.wei, "21000000000000000");
   });
 
-  it("charges nothing, and writes nothing, when nothing was paid", async () => {
+  it("adds nothing to the open period, which a rebuild could drop", async () => {
     const tracker = openTracker();
+    await recordSpentGas(
+      21_000_000_000_000_000n,
+      { _botState: {}, _pnlTracker: tracker, updateBotState: () => {} },
+      toUsd,
+    );
+    assert.equal(tracker.getLiveEpoch().gas, 0);
+    assert.equal(tracker.getLiveEpoch().gasNative, 0);
+  });
+
+  it("records nothing, and prices nothing, when nothing was paid", async () => {
     const writes = [];
     let priced = false;
     await recordSpentGas(
       0n,
-      { _pnlTracker: tracker, updateBotState: (p) => writes.push(p) },
+      { _botState: {}, updateBotState: (p) => writes.push(p) },
       async () => {
         priced = true;
         return 0.25;
       },
     );
-    assert.equal(tracker.getLiveEpoch().gas, 0);
     assert.equal(writes.length, 0);
     assert.equal(priced, false, "no price lookup for a charge of nothing");
   });
 });
+
+/** The charges a run recorded: the last `failedMoveGas` it saved. */
+function recorded(writes) {
+  const saves = writes.filter((w) => w.failedMoveGas);
+  return saves.length === 0 ? [] : saves.at(-1).failedMoveGas;
+}
 
 // ── The rebalance's failure result ───────────────────────────────────
 
@@ -228,7 +259,7 @@ function cycleDeps(tracker, writes) {
 }
 
 describe("a failed rebalance records the gas it paid", () => {
-  it("charges the open period when nothing was cancelled", async () => {
+  it("records the gas when nothing was cancelled", async () => {
     /*-
      *  The aggregator approved, its swap reverted on every attempt, and
      *  the V3 router then failed too: no transaction was cancelled, but
@@ -252,16 +283,18 @@ describe("a failed rebalance records the gas it paid", () => {
     const writes = [];
     const out = await _executeAndRecord(cycleDeps(tracker, writes), {});
     assert.equal(out.rebalanced, false);
-    assert.equal(tracker.getLiveEpoch().gas, 0.25);
-    assert.equal(tracker.getLiveEpoch().gasNative, 0.021);
+    const [charge] = recorded(writes);
+    assert.equal(charge.usd, 0.25);
+    assert.equal(charge.wei, "21000000000000000");
     assert.equal(
-      writes.filter((w) => w.pnlEpochs).length,
+      writes.filter((w) => w.failedMoveGas).length,
       1,
-      "written out at once — no period closes behind a failed rebalance",
+      "saved at once — no period closes behind a failed rebalance",
     );
+    assert.equal(tracker.getLiveEpoch().gas, 0, "kept apart from the period");
   });
 
-  it("still charges a cancel's gas", async () => {
+  it("still records a cancel's gas", async () => {
     const { _executeAndRecord } = loadCycleWith(CYCLE, {
       [PNL]: { actualGasCostUsd: async () => 0.1 },
       [REBALANCER]: {
@@ -278,7 +311,7 @@ describe("a failed rebalance records the gas it paid", () => {
     const tracker = openTracker();
     const writes = [];
     await _executeAndRecord(cycleDeps(tracker, writes), {});
-    assert.equal(tracker.getLiveEpoch().gas, 0.1);
+    assert.equal(recorded(writes)[0].usd, 0.1);
     assert.ok(
       writes.some((w) => w.txCancelled),
       "the cancel is still shown",
@@ -287,7 +320,7 @@ describe("a failed rebalance records the gas it paid", () => {
 });
 
 describe("a failed compound records the gas it paid", () => {
-  it("charges the open period with the gas the compound's error carries", async () => {
+  it("records the gas the compound's error carries", async () => {
     /*-
      *  The collect landed, and the swap after it failed on both routes:
      *  the aggregator's approval was mined, and the router's quote was
@@ -316,12 +349,13 @@ describe("a failed compound records the gas it paid", () => {
       writes.some((w) => w.compoundError),
       "the failure is shown",
     );
-    assert.equal(tracker.getLiveEpoch().gas, 0.5);
-    assert.equal(tracker.getLiveEpoch().gasNative, 0.002);
-    assert.equal(writes.filter((w) => w.pnlEpochs).length, 1);
+    const [charge] = recorded(writes);
+    assert.equal(charge.usd, 0.5);
+    assert.equal(charge.wei, "2000000000000000");
+    assert.equal(tracker.getLiveEpoch().gas, 0, "kept apart from the period");
   });
 
-  it("charges the open period for a collect that found no fees to put back", async () => {
+  it("records the gas of a collect that found no fees to put back", async () => {
     /*-
      *  Skipped, not failed: the collect was mined and paid for, and the
      *  compound stopped there because there was nothing to deposit.
@@ -344,13 +378,14 @@ describe("a failed compound records the gas it paid", () => {
       {},
       "auto",
     );
-    assert.equal(tracker.getLiveEpoch().gas, 0.05);
-    assert.equal(tracker.getLiveEpoch().gasNative, 0.0005);
+    const [charge] = recorded(writes);
+    assert.equal(charge.usd, 0.05);
+    assert.equal(charge.wei, "500000000000000");
   });
 });
 
 describe("a rebalance stopped for price volatility records the gas it paid", () => {
-  it("charges the open period with its drain's and swap's gas", async () => {
+  it("records its drain's and swap's gas", async () => {
     /*-
      *  The price moved too far between the swap and the mint, so the
      *  rebalance stopped with its coins in the wallet: the drain and the
@@ -370,7 +405,8 @@ describe("a rebalance stopped for price volatility records the gas it paid", () 
     const writes = [];
     const out = await _executeAndRecord(cycleDeps(tracker, writes), {});
     assert.equal(out.priceVolatile, true);
-    assert.equal(tracker.getLiveEpoch().gas, 0.4);
-    assert.equal(tracker.getLiveEpoch().gasNative, 0.003);
+    const [charge] = recorded(writes);
+    assert.equal(charge.usd, 0.4);
+    assert.equal(charge.wei, "3000000000000000");
   });
 });

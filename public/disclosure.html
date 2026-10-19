@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LP Ranger &mdash; Disclosure</title>
   <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="stylesheet" href="/style.css?v=1792390866708">
-  <link rel="stylesheet" href="/9mm-pos-mgr.css?v=1792390866708">
-  <link rel="stylesheet" href="/fonts.css?v=1792390866708">
-  <link rel="stylesheet" href="/help.css?v=1792390866708">
+  <link rel="stylesheet" href="/style.css?v=1792452152805">
+  <link rel="stylesheet" href="/9mm-pos-mgr.css?v=1792452152805">
+  <link rel="stylesheet" href="/fonts.css?v=1792452152805">
+  <link rel="stylesheet" href="/help.css?v=1792452152805">
 </head>
 <body>
   <h1>LP Ranger &mdash; Disclosure</h1>
@@ -62,6 +62,9 @@
 <p>All such data is retrieved directly from the blockchain by the software running on your own machine and stored locally in a <code>rebalance_log.json</code> file on your own infrastructure. No trade data, transaction history, wallet addresses, token amounts, or any other post-trade information is transmitted to, processed by, stored by, or accessible to the developer, offeror, or any third party in connection with the operation of this interface. The developer has no visibility into any transaction you execute or any position you manage using this software.</p>
 <p>This local transaction history is maintained solely for your own operational reference. It is the equivalent of reading your own transaction history from a public block explorer &mdash; the operator of this software is you, reading data that is already public, on hardware you control.</p>
 
+<h3>Token Logos</h3>
+<p>The LP Ranger dashboard displays each token&rsquo;s logo beside its name. Each time the dashboard loads, and only after you accept this Disclosure, your browser requests a token list: a public json file, at the internet address set in the app&rsquo;s settings, that gives the internet address of each listed token&rsquo;s logo image. Your browser then requests the logo image of each token in the positions your wallet holds, as the dashboard displays them, from the address the list gives for it. These requests go from your browser directly to the hosts that serve the list and the images. Those hosts can observe your device&rsquo;s ip address, as with any file a web page loads, and the hosts of the images can also observe which logos are requested, and therefore which tokens are displayed. The token list and the logo images are used only for display, and have no effect on any transaction or setting. The Operator can set a different list, or none, in the app&rsquo;s settings; with none, no such requests are made.</p>
+
 <h3>MEV Exposure and Data Protection</h3>
 <p>Swap transactions in LP Ranger take one of two paths. In the primary path, the application obtains a swap quote from the Watergun Aggregator over an encrypted HTTPS connection; the quote request and the resulting calldata are not exposed to any public mempool or on-chain location prior to submission, so no advance signal of swap intent is available to searchers before the user signs. The aggregator-returned <code>guaranteedPrice</code> floor is embedded in the calldata and causes the transaction to revert rather than execute at a price below the user&rsquo;s slippage tolerance. In the unlikely case that the Aggregator is not working, the swap is executed directly on the same 9mm Pro V3 liquidity pool that LP Ranger is managing for its rebalance or compound action (V3 SwapRouter fallback); in that path the <code>amountOutMinimum</code> parameter is derived from the user&rsquo;s slippage tolerance applied to a simulated quote and provides the same revert-on-sandwich economic defense.</p>
 <p>In both paths, the signed transaction is submitted to the public PulseChain mempool and is therefore subject to generic mempool observation between submission and block inclusion. No private mempool routing, Flashbots-equivalent service, or atomic execution is used. The slippage tolerance setting &mdash; configurable by the user &mdash; is the primary user-controlled defense against adverse execution. See the in-app educational dialogs for guidance on appropriate slippage tolerance settings for different pool types.</p>
@@ -85,7 +88,7 @@
 <p>All transaction parameters are user-configurable. Default values are set conservatively based on PulseChain network characteristics and Uniswap v3 position management patterns, and are disclosed in the in-app educational dialogs alongside their rationale and recommended alternatives. The in-app Swap Routing information dialog specifically informs users that LP Ranger uses the Watergun Aggregator as its single aggregator by design, and that other aggregators exist &mdash; providing route transparency context directly at the point of use.</p>
 
 <p class="9mm-pos-mgr-disclaimer-license">This software is licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache 2.0 License</a>.</p>
-<p class="9mm-pos-mgr-text-muted-sm">Disclosure version: 2026-10-17</p>
+<p class="9mm-pos-mgr-text-muted-sm">Disclosure version: 2026-10-19</p>
     <!-- DISCLOSURE:CONTENT:END -->
 </body>
 </html>

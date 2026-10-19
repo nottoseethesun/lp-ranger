@@ -30,4 +30,32 @@ const { loadShippedDefaults } = require("./load-merged-defaults");
 // Every range, frozen all the way down by the loader.
 const SETTING_BOUNDS = loadShippedDefaults("setting-bounds.json");
 
-module.exports = { SETTING_BOUNDS };
+/**
+ * Whether `v` is a range: an object whose only keys are `min`, `max` and
+ * `integer`. A group of ranges, such as `tx`, is not one.
+ *
+ * @param {*} v
+ * @returns {boolean}
+ */
+function isRange(v) {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    Object.keys(v).length > 0 &&
+    Object.keys(v).every((k) => ["min", "max", "integer"].includes(k))
+  );
+}
+
+/**
+ * The range at a setting's path in its own file, such as `tx.deadlineSec`
+ * for app-runtime.json's `tx` → `deadlineSec`, or null when it has none.
+ *
+ * @param {string} at  The path, its parts joined by dots.
+ * @returns {{min?: number, max?: number, integer?: boolean}|null}
+ */
+function boundAt(at) {
+  const found = at.split(".").reduce((node, k) => node?.[k], SETTING_BOUNDS);
+  return isRange(found) ? found : null;
+}
+
+module.exports = { SETTING_BOUNDS, isRange, boundAt };

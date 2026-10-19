@@ -15,10 +15,7 @@ import { g, compositeKey } from "./dashboard-helpers.js";
 import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
 import { getLastStatus, isSyncComplete } from "./dashboard-data.js";
 import { log } from "./dashboard-log.js";
-import {
-  saveConfigValues,
-  rememberGoodInput,
-} from "./dashboard-config-save.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 import { activeChainId } from "./dashboard-chain.js";
 // The server's own rule for a value inside a range.
 import { withinBound } from "../src/range-check.js";
@@ -232,14 +229,7 @@ export function populateDecimalsOverride() {
     const input = g("pdDecimals" + idx);
     const force = g("pdDecimalsForce" + idx);
     const { decimals } = shown[idx];
-    if (input) {
-      input.value = decimals === null ? "" : String(decimals);
-      /*-
-       *  What the field opens with is the value in force, so a save the
-       *  server refuses puts the field back to it.
-       */
-      if (decimals !== null) rememberGoodInput("pdDecimals" + idx, decimals);
-    }
+    if (input) input.value = decimals === null ? "" : String(decimals);
     if (force) force.checked = shown[idx].force;
     _setEnabled(idx, synced);
     _paintNotice(idx, synced);
@@ -310,6 +300,8 @@ function _persistToServer(values) {
       decimalsOverride0: "pdDecimals0",
       decimalsOverride1: "pdDecimals1",
     },
+    // The form stays open, so it fills itself from the server's answer.
+    onRefused: populateDecimalsOverride,
   });
 }
 

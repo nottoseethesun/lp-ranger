@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-18T08:46:49.146Z
+  modified: 2026-10-19T21:15:51.123Z
 ---
 
 **Fixed 2026-10-17, committed in 5bf48d2.** Was: a failed aggregator attempt can
@@ -37,6 +37,16 @@ settled it named the three transactions and why each is paid for.
 
 Tests: `test/failed-attempt-gas.test.js` and `test/spent-gas.test.js`;
 19 mutations each failed a test.
+
+**Since 2026-10-19 (uncommitted), at the user's word:** `recordSpentGas`
+saves the figure in the position's records (`failedMoveGas`, with when it
+was paid) rather than adding it to the open period, and the P&L adds each
+charge to the period it was paid in (`snapshot`, src/pnl-tracker.js), so
+Reload Current Position and a cleared scan cache no longer drop it.
+test/failed-move-gas.test.js. The proposal had said the gas "also" goes
+into the records, which would have kept it in the period too; the user,
+on the records-only form built instead: "this is better". Keep the
+charge out of the periods.
 
 **Not covered, open as a question:** the V3 router's own approval when
 its quote then fails, a transaction that reverts through

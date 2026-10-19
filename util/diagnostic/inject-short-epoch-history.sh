@@ -6,12 +6,12 @@
 # behind, so the recovery path can be tested without waiting for an RPC
 # outage to happen on its own.
 #
-# Drops the last N closed epochs from every pool entry in
-# `tmp/pnl-epochs-cache.json`, leaving everything else — liveEpoch,
-# lifetimeHodlAmounts, freshDeposits — untouched.  The chain's
-# rebalance events are not touched either, so on the next start the app
-# still knows how many closed positions the chain HAS while its stored
-# history covers fewer.  That mismatch is exactly what
+# Drops the last N closed epochs from every pool entry in the epoch
+# cache, `app-data/scan-cache/pnl-epochs-cache.json`, leaving everything
+# else — liveEpoch, lifetimeHodlAmounts, freshDeposits — untouched.  The
+# chain's rebalance events are not touched either, so on the next start
+# the app still knows how many closed positions the chain HAS while its
+# stored history covers fewer.  That mismatch is exactly what
 # `isEpochHistoryComplete` measures, and it is what a reconstruction
 # that gave up part-way through actually produces.
 #
@@ -19,7 +19,7 @@
 # nothing tests a different path (the empty-cache cold start), not this
 # one.
 #
-# Backs the original up to a timestamped sibling so the test is
+# Backs the original up to a timestamped copy in tmp/ so the test is
 # trivially reversible.
 #
 # Usage:
@@ -29,43 +29,45 @@
 #   npm start -- --log-file      # or `npm run debug` to step through it
 #
 # Restore:
-#   cp <backup-path-printed-on-exit> tmp/pnl-epochs-cache.json
+#   cp <backup-path-printed-on-exit> app-data/scan-cache/pnl-epochs-cache.json
 #
 set -euo pipefail
 
 DROP="${1:-3}"
+CACHE="app-data/scan-cache/pnl-epochs-cache.json"
 
 # 1. Stop any running LP Ranger.  No-op if not running.
 npm run stop 2>/dev/null || true
 
 # 2. Require an existing cache file.  No file → nothing to shorten, and
 #    a cold start tests the wrong path.
-if [ ! -f tmp/pnl-epochs-cache.json ]; then
-  echo "tmp/pnl-epochs-cache.json does not exist."
+if [ ! -f "$CACHE" ]; then
+  echo "$CACHE does not exist."
   echo "Run \`npm start\` once with a managed position that has rebalanced, then re-run this script."
   exit 1
 fi
 
 # 3. Back up the original so the test is reversible.
+mkdir -p tmp
 BACKUP="tmp/pnl-epochs-cache.json.bak-short-epochs-$(date -u +%Y%m%dT%H%M%SZ)"
-cp tmp/pnl-epochs-cache.json "$BACKUP"
+cp "$CACHE" "$BACKUP"
 
 echo "Before:"
 jq -r 'to_entries[] | "  \(.key[0:44])…  closedEpochs=\(.value.closedEpochs | if type == "array" then length else 0 end)"' \
-  tmp/pnl-epochs-cache.json
+  "$CACHE"
 
 # 4. Drop the last N epochs from every entry that has more than N.
 jq --argjson n "$DROP" 'with_entries(.value |= (
       if (.closedEpochs | type) == "array" and (.closedEpochs | length) > $n
       then .closedEpochs = (.closedEpochs | .[0:(length - $n)])
       else . end
-    ))' tmp/pnl-epochs-cache.json > tmp/pnl-epochs-cache.json.tmp \
-  && mv tmp/pnl-epochs-cache.json.tmp tmp/pnl-epochs-cache.json
+    ))' "$CACHE" > "$CACHE.tmp" \
+  && mv "$CACHE.tmp" "$CACHE"
 
 echo ""
 echo "After (dropped up to $DROP per entry):"
 jq -r 'to_entries[] | "  \(.key[0:44])…  closedEpochs=\(.value.closedEpochs | if type == "array" then length else 0 end)"' \
-  tmp/pnl-epochs-cache.json
+  "$CACHE"
 
 cat <<EOF
 
@@ -85,5 +87,5 @@ and name the shortfall, and the rescan 30 minutes later should log
 that failed — look for '(buffered)' on the ones it skipped.
 
 Restore the pre-test cache when done:
-  cp "$BACKUP" tmp/pnl-epochs-cache.json
+  cp "$BACKUP" $CACHE
 EOF

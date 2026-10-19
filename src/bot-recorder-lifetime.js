@@ -766,7 +766,9 @@ function _recordScanFailure(botState, updateState, err, ctx) {
  *   it still describes the chain this scan sees; otherwise the scan
  *   prepares its own.
  * @param {boolean} [chainFound=true]  False when this pass's event scan
- *   failed, so `rebalanceEvents` may fall short of the chain.
+ *   failed, so `rebalanceEvents` may fall short of the chain. The pass is
+ *   then not complete, whether or not the lifetime figures are saved:
+ *   the position is not marked synced, and the 30-minute rescan retries.
  * @returns {Promise<void>}
  */
 async function _scanLifetimePoolData(
@@ -790,6 +792,25 @@ async function _scanLifetimePoolData(
     hasCompoundData,
     hasDepositData,
   } = plan;
+  if (chainFound !== true) {
+    /*-
+     *  The rebalance history was not read, so this pass did not
+     *  complete, whatever the saved figures say: readiness stays as the
+     *  pass start lowered it, the Sync badge on "Syncing…", and the
+     *  30-minute rescan retries the whole pass. Nor are figures computed:
+     *  the chain is whatever the bot held before this pass, which on a
+     *  cold start is nothing, so they would cover the live NFT alone, and
+     *  they would be saved as settled, which later passes keep.
+     */
+    log.warn(
+      "[bot] %s/%s NFT #%s %s: The rebalance history could not be read, so the Sync badge stays on Syncing until the next scan reads it",
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
+    );
+    return;
+  }
   if (!plan.needed) {
     /*-
      *  Nothing to compute, but readiness must still be recorded. Every
@@ -806,23 +827,6 @@ async function _scanLifetimePoolData(
       ctx.tokenEmoji,
     );
     _recordScanSuccess(botState, updateState, ctx, plan);
-    return;
-  }
-  if (chainFound !== true) {
-    /*-
-     *  The chain is whatever the bot held before this pass, which on a
-     *  cold start is nothing. Figures computed from it would cover the
-     *  live NFT alone, and they would be saved as settled, which later
-     *  passes keep. Readiness stays as the pass start lowered it, and the
-     *  30-minute rescan retries the whole pass.
-     */
-    log.warn(
-      "[bot] %s/%s NFT #%s %s: The rebalance history could not be read, so the lifetime figures wait for the next scan",
-      ctx.t0Sym,
-      ctx.t1Sym,
-      ctx.tokenIdStr,
-      ctx.tokenEmoji,
-    );
     return;
   }
   log.info(

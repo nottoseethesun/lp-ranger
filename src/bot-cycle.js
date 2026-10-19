@@ -10,8 +10,13 @@
 "use strict";
 const ethers = require("ethers");
 const config = require("./config");
-const { checkIlGuard } = require("./il-guard");
+const {
+  gatesBeforeGuard,
+  gatesFromGuard,
+  snapForGuard,
+} = require("./bot-cycle-gates");
 const { buildRebalanceOpts } = require("./bot-cycle-opts");
+const { endIlGuardBlock } = require("./il-guard");
 const {
   _isTimeoutExpired,
   _isBeyondThreshold,
@@ -56,10 +61,7 @@ const {
   updateCleanupState: _updateCleanupState,
   computeWalletResidualUsd: _computeWalletResidualUsd,
 } = require("./bot-cycle-residual");
-const {
-  _activateSwapBackoff,
-  _checkSwapBackoff,
-} = require("./bot-cycle-backoff");
+const { _activateSwapBackoff } = require("./bot-cycle-backoff");
 const {
   withFreshPricesAllowed,
   invalidatePriceCacheFor,
@@ -145,6 +147,8 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
   state.swapBackoffMs = 0;
   state.swapBackoffUntil = 0;
   state.swapBackoffAttempts = 0;
+  // The new NFT starts with no Guard wait and no Guard alert.
+  endIlGuardBlock(deps);
   _updateCleanupState(state, result.trigger, deps.updateBotState);
   throttle.recordRebalance();
   if (deps._recordPoolRebalance && deps._poolKey) {
@@ -404,72 +408,16 @@ function _humanizeError(msg) {
   return msg;
 }
 
-/*- Bot-state gates checked before any throttle/pool/gas logic.  Every
- *  early-return here means the bot state itself vetoes the rebalance,
- *  so the throttle counters must NOT tick.  Extracted to keep
- *  `_checkRebalanceGates` under the cyclomatic-complexity cap. */
-function _checkStateGates(deps, forced) {
-  const st = deps._botState;
-  if (!forced && st?.rebalancePaused)
-    return { rebalanced: false, paused: true };
-  /*- Reload / initial-scan window: while `_triggerScan` is running the
-   *  position's on-chain-derived state (compound history, HODL
-   *  baseline, epochs) is being rebuilt from scratch.  An auto-rebalance
-   *  fired mid-scan would race the reconstruction and re-corrupt the
-   *  very numbers the reload is trying to fix.  Uses `_scanRunning` (an
-   *  existing bot-loop flag) rather than a bespoke "reloading" flag.
-   *  Manual (`forced === true`) rebalances still bypass — user is on
-   *  their own if they click Rebalance mid-scan. */
-  if (!forced && st?._scanRunning)
-    return { rebalanced: false, scanRunning: true };
-  return null;
-}
-
-/** Check throttle, daily cap, dry-run, and gas before executing.  Returns early result or null. */
+/**
+ * Check throttle, daily cap, the Impermanent Loss Guard and dry run
+ * before executing: the gates before the Guard, then the Guard's own
+ * (src/bot-cycle-gates.js). Returns early result or null.
+ */
 function _checkRebalanceGates(deps, poolState, forced, snap) {
-  const { throttle, dryRun } = deps;
-  const stateGate = _checkStateGates(deps, forced);
-  if (stateGate) return stateGate;
-  const backoff = _checkSwapBackoff(deps, forced);
-  if (backoff) return backoff;
-  const can = !forced && throttle.canRebalance();
-  if (can && !can.allowed) {
-    log.info(
-      `[bot] OOR but throttled (${can.reason}), wait ${Math.ceil(can.msUntilAllowed / 1000)}s`,
-    );
-    /*- No throttleState emit here: the unconditional top-of-pollCycle
-     *  emit already published this cycle's snapshot. */
-    return { rebalanced: false };
-  }
-  if (!forced && deps._canRebalancePool && deps._poolKey) {
-    const pk = deps._poolKey(
-      deps.position.token0,
-      deps.position.token1,
-      deps.position.fee,
-    );
-    const max =
-      deps.throttle.getState().dailyMax || config.MAX_REBALANCES_PER_DAY;
-    if (!deps._canRebalancePool(pk, max)) {
-      log.info(
-        "[bot] OOR but pool daily cap reached (%d/%d) — deferring",
-        max,
-        max,
-      );
-      return { rebalanced: false };
-    }
-  }
-  const ilGuard = checkIlGuard(deps, forced, snap, _notifyPos);
-  if (ilGuard) return ilGuard;
-  if (dryRun) {
-    log.info(
-      "[bot] DRY RUN — OOR, tick=%d range=[%d,%d]",
-      poolState.tick,
-      deps.position.tickLower,
-      deps.position.tickUpper,
-    );
-    return { rebalanced: false };
-  }
-  return null;
+  return (
+    gatesBeforeGuard(deps, forced) ??
+    gatesFromGuard(deps, poolState, forced, snap, _notifyPos)
+  );
 }
 
 /**
@@ -560,7 +508,17 @@ async function _runRangeAndExec(
       deps.position.tickLower,
       deps.position.tickUpper,
     );
-  const gate = _checkRebalanceGates(deps, poolState, forced, snap);
+  let gate = gatesBeforeGuard(deps, forced);
+  if (gate === null) {
+    const guardSnap = await snapForGuard(
+      deps,
+      poolState,
+      ethersLib,
+      forced,
+      snap,
+    );
+    gate = gatesFromGuard(deps, poolState, forced, guardSnap, _notifyPos);
+  }
   if (gate) {
     if (compounded) gate.compounded = true;
     return gate;

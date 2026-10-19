@@ -44,10 +44,11 @@ describe("a wallet scan that names another position manager", () => {
   let scratch;
 
   /*-
-   *  The position cache lives under the working directory's `tmp/`, so
-   *  the case runs in a scratch directory of its own and the install's
-   *  caches are never touched. Config is read from beside the code, so
-   *  moving the working directory does not move it.
+   *  The position cache lives in the scan-cache folder, which under
+   *  `node --test` is the test process's own (src/scan-cache-dir.js), so
+   *  the install's caches are never touched; the case runs in a scratch
+   *  directory too. Config is read from beside the code, so moving the
+   *  working directory does not move it.
    */
   before(() => {
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), "scan-contract-cache-"));

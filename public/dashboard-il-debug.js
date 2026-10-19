@@ -41,19 +41,37 @@ function _setTokLabel(frag, key, before, tok, after) {
   if (after !== "") el.appendChild(document.createTextNode(after));
 }
 
-/** @type {object|null} Latest snapshot data from the polling loop. */
+/*-
+ *  The figures the popover shows: the IL/G inputs of the position on
+ *  screen, as its answer brought them. Null until that answer arrives,
+ *  and again from the moment another position comes on screen.
+ */
 let _lastData = null;
 let _posStore = null;
 
 /**
- * Store the latest /api/status data for popover rendering.
- * Called from dashboard-data.js on every poll.
- * @param {object} data  Parsed /api/status response.
+ * Keep the IL/G figures the answer about the position on screen brought,
+ * for the popover: each status poll of a managed position
+ * (dashboard-data.js), or an unmanaged position's details when they
+ * carry a baseline (dashboard-unmanaged-apply.js).
+ * @param {object} data  The answer, with its `pnlSnapshot` and
+ *   `positionStats`.
  * @param {object} [posStore]  Position store (for token symbols).
  */
 export function updateILDebugData(data, posStore) {
   _lastData = data;
   if (posStore) _posStore = posStore;
+}
+
+/**
+ * Close the popover and forget its figures, as another position comes on
+ * screen: both belong to the position leaving. The next position's
+ * figures arrive with its own answer, and one whose answer brings none
+ * opens no popover.
+ */
+export function forgetILDebugData() {
+  dismissILDebug();
+  _lastData = null;
 }
 
 /** Format a number for display (up to 6 decimals, trim trailing zeros). */

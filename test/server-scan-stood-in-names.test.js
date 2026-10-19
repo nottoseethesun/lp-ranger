@@ -69,9 +69,10 @@ describe("a token saved under its address", () => {
   let answer;
 
   /*-
-   *  The saved list lives under the working directory's `tmp/`, so the
-   *  cases run in a scratch directory of their own and the install's
-   *  caches are never touched.
+   *  The saved list lives in the scan-cache folder, which under
+   *  `node --test` is the test process's own (src/scan-cache-dir.js), so
+   *  the install's caches are never touched; the cases run in a scratch
+   *  directory of their own too.
    */
   before(() => {
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), "scan-stood-in-"));

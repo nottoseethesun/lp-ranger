@@ -36,11 +36,11 @@
  *   - `carryingGas`, around the work that follows a confirmed
  *     transaction, that transaction.
  *
- * At the end of a failed rebalance or compound, `recordSpentGas` adds the
- * figure to the open period, as compound gas is added, because nothing
- * else would count it. A failure closes no period, and most of these
- * transactions never touch the position's NFT, so the chain scans that
- * recover a position's gas cannot find them.
+ * At the end of a failed rebalance or compound, `recordSpentGas` records
+ * the figure in the position's records, because nothing else would count
+ * it. A failure closes no period, and most of these transactions never
+ * touch the position's NFT, so the chain scans that recover a position's
+ * gas cannot find them.
  *
  * Dependency-free, so the swap modules can use it without loading the
  * P&L code. The one dependency the recorder has, pricing wei in dollars,
@@ -97,35 +97,41 @@ async function carryingGas(wei, work) {
 }
 
 /**
- * Add the gas a failed rebalance or compound paid to the open period,
- * and write the period out.
+ * Record the gas a failed rebalance or compound paid, with when, in the
+ * position's records, and save it at once.
  *
- * It is written out at once because nothing else will be. No period
- * closes behind a failed move, so the tracker would hold the charge only
- * in memory until some later rebalance or compound saved it, and a
- * restart before then would lose it for good. Gas only accumulates, so a
- * lost charge cannot be rebuilt.
+ * The records file (app-data/position-records.json, as `failedMoveGas`)
+ * is the only place this gas lives. It is not added to a P&L period: the
+ * periods are kept in the epoch cache, which Reload Current Position and
+ * a cleared scan cache rebuild from the chain, and the chain does not
+ * show this gas. The P&L adds each charge to the period it was paid in
+ * whenever it works the figures out (`snapshot`, src/pnl-tracker.js), so
+ * a rebuilt period has its charges back.
  *
- * The coins are recorded even when there is no dollar price for them, as
- * a successful compound's are. The tracker's `addGas` takes each figure
- * only when it is above zero, so a missing price leaves the dollar figure
- * alone and still counts what was paid.
+ * Saved at once, because gas only accumulates: a charge lost before it
+ * was saved cannot be rebuilt. Its dollars are priced on the day it was
+ * paid, as a period's other gas is; with no price that day they are 0,
+ * and the coins still count.
  *
  * @param {bigint} wei  Gas the move paid, from `spentGasOf`.
- * @param {object} deps  Bot deps: `_pnlTracker`, the tracker holding the
- *   open period, and `updateBotState`, which persists it.
+ * @param {object} deps  Bot deps: `_botState`, which holds the position's
+ *   records, and `updateBotState`, which saves them.
  * @param {(wei: bigint) => Promise<number>} toUsd  Prices wei in dollars
  *   at today's rate: `actualGasCostUsd` from `bot-pnl-updater.js`.
  */
 async function recordSpentGas(wei, deps, toUsd) {
   if (wei <= 0n) return;
-  const tracker = deps._pnlTracker;
-  if (tracker === undefined || tracker === null) return;
-  const gasUsd = await toUsd(wei);
-  const gasNative = Number(wei) / 1e18;
-  tracker.addGas(gasUsd, gasNative);
-  if (deps.updateBotState !== undefined && deps.updateBotState !== null)
-    deps.updateBotState({ pnlEpochs: tracker.serialize() });
+  if (deps.updateBotState === undefined || deps.updateBotState === null) return;
+  const usd = await toUsd(wei);
+  const charge = {
+    at: new Date().toISOString(),
+    wei: String(wei),
+    usd: Number.isFinite(usd) && usd > 0 ? usd : 0,
+  };
+  const prior = deps._botState?.failedMoveGas;
+  deps.updateBotState({
+    failedMoveGas: [...(Array.isArray(prior) ? prior : []), charge],
+  });
 }
 
 module.exports = { spentGasOf, addSpentGas, carryingGas, recordSpentGas };

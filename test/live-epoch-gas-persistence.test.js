@@ -11,9 +11,10 @@
  *
  * Three guarantees, one per defect these were written against:
  *   1. Gas a failed move paid (a cancel, or a failed swap's approvals,
- *      reverted swaps and cancels) reaches the cache when it is charged.
- *      Nothing else saves it — the move did NOT happen, so no epoch
- *      closes behind it.
+ *      reverted swaps and cancels) is saved in the position's records
+ *      when it is paid, and never in the cache: the move did NOT happen,
+ *      so no epoch closes behind it, and a rebuild of the cache's epochs
+ *      from the chain, which cannot see this gas, would drop it.
  *   2. A reconstruction does not erase the live epoch on its way past.
  *   3. The chain's past compound gas, which the lifetime scan re-offers
  *      on every restart, is written rather than added — and stays out
@@ -47,37 +48,35 @@ function openLive(tracker, over = {}) {
   return tracker;
 }
 
-describe("a failed move's gas reaches the cache", () => {
+describe("a failed move's gas is saved in the records, not the cache", () => {
   // Prices any amount of wei at a quarter of a dollar.
   const toUsd = async () => 0.25;
 
-  it("writes the tracker out when it charges the gas", async () => {
+  it("saves the charge as a record, and writes no epoch", async () => {
     const tracker = openLive(createPnlTracker());
     const writes = [];
     await recordSpentGas(
       21_000_000_000_000_000n,
-      { _pnlTracker: tracker, updateBotState: (p) => writes.push(p) },
+      {
+        _botState: {},
+        _pnlTracker: tracker,
+        updateBotState: (p) => writes.push(p),
+      },
       toUsd,
     );
-
-    const saved = writes.filter((w) => w.pnlEpochs);
     assert.equal(
-      saved.length,
+      writes.filter((w) => w.failedMoveGas).length,
       1,
-      "the charge must be written out — nothing else saves it, because no epoch closes behind a failed move",
+      "the charge must be saved — nothing else saves it, because no epoch closes behind a failed move",
     );
-    assert.ok(
-      saved[0].pnlEpochs.liveEpoch.gas > 0,
-      "the written-out state must carry the gas, not an empty epoch",
-    );
+    assert.equal(writes.filter((w) => w.pnlEpochs).length, 0);
   });
 
-  it("writes nothing when the failed move paid no gas", async () => {
-    const tracker = openLive(createPnlTracker());
+  it("saves nothing when the failed move paid no gas", async () => {
     const writes = [];
     await recordSpentGas(
       0n,
-      { _pnlTracker: tracker, updateBotState: (p) => writes.push(p) },
+      { _botState: {}, updateBotState: (p) => writes.push(p) },
       toUsd,
     );
     assert.equal(writes.length, 0, "no charge, no write");

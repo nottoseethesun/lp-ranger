@@ -126,7 +126,7 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
     assert.strictEqual(
       out[k].status,
       "running",
-      "must echo status='running' so the dashboard's All Positions Stats " +
+      "must echo status='running' so the dashboard's All Stats button's " +
         "readiness gate counts this slot in its denominator — otherwise the " +
         "button prematurely enables at (N-1)/(N-1) instead of N/N",
     );

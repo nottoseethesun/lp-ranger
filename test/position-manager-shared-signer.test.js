@@ -123,11 +123,11 @@ describe("position-manager getSharedSigner()", () => {
     assert.strictEqual(shared.address, "0xDEADBEEF");
   });
 
-  it("_resetSharedSigner() clears the cache so next call rebuilds", async () => {
+  it("resetSharedSigner() clears the cache so next call rebuilds", async () => {
     const mgr = makeMgr();
     const lib = mockEthersLib();
     await mgr.getSharedSigner({ privateKey: "0xabc", ethersLib: lib });
-    mgr._resetSharedSigner();
+    mgr.resetSharedSigner();
     await mgr.getSharedSigner({ privateKey: "0xabc", ethersLib: lib });
     assert.strictEqual(
       lib._nmCount,

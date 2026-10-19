@@ -72,7 +72,7 @@ Starting and stopping a running install.
 | Command | Flags | Description | Example |
 | ------- | ----- | ----------- | ------- |
 | `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run bot -- --log-file --delete-pre-existing-log-file` · `npm run bot -- --start-with-price-lookups-unpaused` · `npm run bot -- --help` |
-| `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `tmp/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
+| `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `app-data/scan-cache/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
 | `gentle-stop` | — | The recommended way to stop the server: waits until no rebalance or compound is under way, asking every five minutes, then stops it. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
 | `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--headless` | Start the dashboard server and, once the wallet is unlocked, every position saved as managed. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. The log flags: see [Logging to a File](#logging-to-a-file). | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
 | `stop` | — | Force-stop: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. The server exits within three seconds, cutting off any rebalance or compound under way; prefer `npm run gentle-stop`. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
@@ -89,8 +89,8 @@ resetting local state.
 | `api-doc` | — | Serve the Scalar API reference at `http://localhost:5556`. | `npm run api-doc` |
 | `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundles (the dashboard's and the User Manual's), a cache-bust stamp on every script and stylesheet the pages load, inlined SVGs. | `npm run build` |
 | `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run build-and-start -- --log-file --delete-pre-existing-log-file` · `npm run build-and-start -- --log-file /tmp/burn-in.log` · `npm run build-and-start -- --help` |
-| `build:watch` | — | esbuild in watch mode. Rebuilds both bundles on change; skips the one-off generators `build` runs. | `npm run build:watch` |
-| `clean` | — | Full reset to fresh-clone state: wallet, bot config, API keys, rebalance log, every `tmp/` cache, logs and build artifacts. Rebuild before starting again. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clean` |
+| `build:watch` | — | esbuild in watch mode. Rebuilds both bundles on change, then stamps every page again, so a reloaded page loads the new bundle; skips the one-off generators `build` runs. | `npm run build:watch` |
+| `clean` | `--help`/`-h` | Full reset to fresh-clone state: wallet, bot config, API keys, position records, rebalance log, every scan cache, logs and build artifacts. Rebuild before starting again. Any other argument is refused before anything is stopped or deleted. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clean` · `npm run clean -- --help` |
 | `clean:log` | — | Empty the log-to-file output (`logs/lp-ranger.log`, or the `path` in `logging.json`) in place, if inside the install folder. Safe while the server runs. See [Housekeeping](#housekeeping). | `npm run clean:log` |
 | `debug` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Start the server under `node --inspect`. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run debug` · `npm run debug -- --log-file --delete-pre-existing-log-file` · `npm run debug -- --help` |
 | `debug-attach` | — | Attach a debugger to an already-running server and print the URL to visit. | `npm run debug-attach` |
@@ -282,8 +282,8 @@ task.
 - `npm run reset-wallet` — Delete `app-config/user-configurable/wallet.json` + clear
   `WALLET_PASSWORD` from `.env`. Forces a fresh wallet import via the
   dashboard on next start.
-- `npm run clear-blockchain-scan-cache` — Delete every `tmp/*.json`, and
-  nothing else. That directory holds derived scan results only — event
+- `npm run clear-blockchain-scan-cache` — Empty `app-data/scan-cache/`,
+  and nothing else. That folder holds derived scan results only — event
   scans, LP position enumeration, P&L epochs and the lifetime HODL
   amounts kept beside them, block timestamps, pool creation
   blocks, token symbols, fetched prices — all rebuilt from chain on the
@@ -296,7 +296,7 @@ task.
   in. Stops the server and **waits for it to exit**, runs `reset-wallet`,
   then deletes operator state (`bot-config.json`,
   `bot-config.backup.json`, `api-keys.json`, `rebalance_log.json`),
-  every `tmp/*.json` cache, `logs/*.log`, the build artifacts
+  every scan cache in `app-data/scan-cache/`, `logs/*.log`, the build artifacts
   (`public/dist/`, `public/fonts/`, `public/ui-tokens.css`,
   `public/disclosure-content.js`) and `test/report-artifacts/`.
   Run `npm run build` before `npm start` afterwards — the prestart guard
@@ -316,9 +316,9 @@ task.
   and API keys are kept on the server, so they are not affected.
 - `npm run dev-clean` — The same run with three caches preserved for a
   faster development restart: the historical price cache
-  (`tmp/historical-price-cache.json`), the block-time cache
-  (`tmp/block-time-cache.json`) and the gecko-pool orientation cache
-  (`tmp/gecko-pool-cache.json`). None is derived from chain and all three
+  (`historical-price-cache.json`), the block-time cache
+  (`block-time-cache.json`) and the gecko-pool orientation cache
+  (`gecko-pool-cache.json`), all in `app-data/scan-cache/`. None is derived from chain and all three
   cost third-party API quota to refill. Logs are kept too. Same script,
   `--dev`.
 
@@ -341,8 +341,8 @@ task.
 - `npm run nuke` — Delete `node_modules` + `package-lock.json` for a clean
   reinstall. Run `npm install` afterwards.
 - `npm run wipe-settings` — Back up all user settings/state (`.env`, every
-  runtime file in `app-config/`, `tmp/pnl-epochs-cache.json`,
-  `tmp/event-cache*.json`, `*.keyfile.json`) to `tmp/.settings-backup/` and
+  runtime file in `app-config/` and `app-data/`, every scan cache in
+  `app-data/scan-cache/`, `*.keyfile.json`) to `tmp/.settings-backup/` and
   remove them — simulates a fresh install. Also clear browser localStorage
   via Settings gear → "Clear Local Storage & Cookies" to complete the
   simulation.

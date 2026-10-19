@@ -14,7 +14,8 @@
  * every reader, writer and clearer of an entry names the same one, and
  * none can name another.
  *
- * Cache file: `tmp/pnl-epochs-cache.json` (gitignored).
+ * Cache file: `app-data/scan-cache/pnl-epochs-cache.json` (gitignored;
+ * src/scan-cache-dir.js).
  */
 
 "use strict";
@@ -23,8 +24,9 @@ const { log } = require("./log");
 const config = require("./config");
 const fs = require("fs");
 const path = require("path");
+const { scanCachePath } = require("./scan-cache-dir");
 
-let _CACHE_PATH = path.join(process.cwd(), "tmp", "pnl-epochs-cache.json");
+let _CACHE_PATH = scanCachePath("pnl-epochs-cache.json");
 
 /** Read the full cache from disk. */
 function _readCache() {

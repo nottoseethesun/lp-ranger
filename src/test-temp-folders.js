@@ -8,15 +8,15 @@
  * run leaves none behind.
  *
  * A test that needs a folder of its own takes one from
- * `makeTestTempFolder`. So does `src/bot-config-v2.js`, which under
- * `node --test` resolves the config directory to such a folder rather
- * than `app-config/user-configurable/`, so no test can write the
- * operator's bot-config.json. Each folder belongs to one process: the
- * runner runs test files in parallel processes, which would otherwise
- * overwrite one another's files. The folders are in the system's temp
- * directory (`os.tmpdir()`): outside the install, apart from the
- * operator's caches in the project's `tmp/`, which `npm run check` moves
- * out and back around its tests.
+ * `makeTestTempFolder`. So do `src/bot-config-v2.js` and
+ * `src/scan-cache-dir.js`, which under `node --test` resolve the config
+ * folder and the scan-cache folder to such folders rather than
+ * `app-config/user-configurable/` and `app-data/scan-cache/`, so no test
+ * can write the operator's bot-config.json or caches. Each folder
+ * belongs to one process: the runner runs test files in parallel
+ * processes, which would otherwise overwrite one another's files. The
+ * folders are in the system's temp directory (`os.tmpdir()`), outside
+ * the install.
  *
  * A folder is named `lp-ranger-test-<purpose>-<pid>-<random>`, for its
  * purpose and its process, and goes when its process exits, whether its

@@ -26,7 +26,8 @@
  * cache of chain data does, rather than with GeckoTerminal's own name for
  * the network, which is only how the service is asked.
  *
- * Cache file: `tmp/gecko-pool-cache.json` (gitignored).
+ * Cache file: `app-data/scan-cache/gecko-pool-cache.json` (gitignored;
+ * src/scan-cache-dir.js).
  * Lazy-loaded on first access; batched writes via dirty flag.
  */
 
@@ -43,12 +44,12 @@ const { cacheKey } = require("./cache-store");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const { SETTING_BOUNDS } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
+const { scanCachePath } = require("./scan-cache-dir");
 
 // Path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
 const _CACHE_PATH =
-  process.env.GECKO_POOL_CACHE_PATH ||
-  path.join(process.cwd(), "tmp", "gecko-pool-cache.json");
+  process.env.GECKO_POOL_CACHE_PATH || scanCachePath("gecko-pool-cache.json");
 
 /** @type {Record<string, 'normal'|'flipped'> | null} */
 let _cache = null;

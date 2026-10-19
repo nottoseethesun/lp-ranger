@@ -211,10 +211,31 @@ function extractBlockRangeCap(err) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/**
+ * Whether a failed contract read is the contract's own refusal, rather
+ * than an endpoint's failure that ethers labels the same way.
+ *
+ * ethers turns every error answer to a contract read into a
+ * `CALL_EXCEPTION`. When the contract itself reverted, the endpoint
+ * passes back the revert's data, and ethers keeps it on the error as
+ * `data`: a reason, a custom error, or `0x` for a bare revert. When the
+ * endpoint failed instead, for a rate limit or an internal error say, the
+ * call never ran, so there is no revert data and `data` is null; ethers
+ * calls that "missing revert data". Only the first says anything about
+ * the contract's state, such as that an NFT no longer exists.
+ *
+ * @param {*} err
+ * @returns {boolean}
+ */
+function isContractRevert(err) {
+  return err?.code === "CALL_EXCEPTION" && typeof err.data === "string";
+}
+
 module.exports = {
   classifyRpcError,
   innerErrorMessage,
   isBlockRangeCapError,
   extractBlockRangeCap,
+  isContractRevert,
   getBuckets,
 };

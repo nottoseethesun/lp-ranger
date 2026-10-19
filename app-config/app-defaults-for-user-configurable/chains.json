@@ -5,6 +5,10 @@
     "_description_comment": "How the app names and describes this chain. homepage and logo (a file under public/) make the chain link in the dashboard header. blockTimeSec, the chain's average seconds per block, turns spans of time into block counts. nativeCurrencySymbol names the native token in messages and logs. cacheTag names the chain in cache file names and cache keys: lower-case letters and digits, and distinct from every other chain's, since two chains with one tag would share their caches. PulseChain's is pulse, the tag its existing caches carry, so changing it orphans them and forces a full re-scan. None of these has a fallback: an entry that leaves one out stops the app at startup, naming it.",
     "homepage": "https://pulsechain.com/",
     "logo": "pulsechain-logo-transparent.png",
+    "tokenList": {
+      "_url_comment": "Where the dashboard reads this chain's token logos: a token list in the Uniswap format (https://tokenlists.org), each token's logo at its logoURI. The dashboard shows a token's logo to the left of its name, in the Pool line at the top and atop the Price Range Monitor's Position Stats. On PulseChain this is 9MM's extended list (https://github.com/ninemm-pro/app-tokens). A chain with no list sets the url to \"\", and every token there shows a transparent placeholder; a chain entry with no url at all stops the app at startup.",
+      "url": "https://raw.githubusercontent.com/ninemm-pro/app-tokens/main/9mm-tokenlist-extended.json"
+    },
     "blockTimeSec": 10,
     "nativeCurrencySymbol": "PLS",
     "cacheTag": "pulse",
@@ -39,7 +43,7 @@
       },
       "factory": "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68",
       "swapRouter": {
-        "_name_comment": "How the dashboard's \"Routing through:\" badge and the Rebalance Events table name a swap through this router. Required: the app does not start without it.",
+        "_name_comment": "How the dashboard's \"Route:\" badge and the Rebalance Events table name a swap through this router. Required: the app does not start without it.",
         "address": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA",
         "name": "9mm V3 Router"
       }
@@ -47,7 +51,7 @@
     "aggregator": {
       "_url_comment": "Base url of this chain's swap aggregator, a 0x-v1 api; LP Ranger appends /swap/v1/quote. The chain's own path segment is part of the url because the vendor chooses it: Watergun keys it by chain id. On PulseChain this is the Watergun Aggregator. A chain with no aggregator sets the url to \"\", and every swap on it goes through the V3 router; a chain entry with no url at all stops the app at startup. AGGREGATOR_URL in .env overrides it for the active chain.",
       "url": "https://swap.watergun.pro/api/aggregator/369",
-      "_name_comment": "How the dashboard's \"Routing through:\" badge and the Rebalance Events table name a swap through the aggregator at the url above. Required whenever there is a url; an AGGREGATOR_URL in .env that points at another aggregator needs this name overridden to match.",
+      "_name_comment": "How the dashboard's \"Route:\" badge and the Rebalance Events table name a swap through the aggregator at the url above. Required whenever there is a url; an AGGREGATOR_URL in .env that points at another aggregator needs this name overridden to match.",
       "name": "Watergun Aggregator",
       "gasPriceMultiplier": 1.5,
       "cancelGasMultiplier": 1.5,
@@ -91,6 +95,9 @@
     "displayName": "PulseChain Testnet v4",
     "homepage": "https://pulsechain.com/",
     "logo": "pulsechain-logo-transparent.png",
+    "tokenList": {
+      "url": ""
+    },
     "blockTimeSec": 10,
     "nativeCurrencySymbol": "tPLS",
     "cacheTag": "pulsetest",

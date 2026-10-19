@@ -60,10 +60,28 @@ function appFiles() {
   return out;
 }
 
-const SOURCES = appFiles().map((f) => ({
+/** Every file of LP Ranger's own tools: scripts/ and util/, tests aside. */
+function toolFiles() {
+  const out = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (p !== path.join(ROOT, "util", "test")) walk(p);
+      } else if (e.name.endsWith(".js")) out.push(p);
+    }
+  };
+  walk(path.join(ROOT, "scripts"));
+  walk(path.join(ROOT, "util"));
+  return out;
+}
+
+const source = (f) => ({
   file: path.relative(ROOT, f),
   text: fs.readFileSync(f, "utf8"),
-}));
+});
+const SOURCES = appFiles().map(source);
+const TOOL_SOURCES = toolFiles().map(source);
 
 describe(".env.example", () => {
   it("sets only variables LP Ranger reads, each on a NAME=value line", () => {
@@ -99,8 +117,14 @@ describe("every environment variable the app reads", () => {
         );
   });
 
-  it("and every rule is for a variable the app reads", () => {
-    const others = SOURCES.filter((s) => s.file !== "src/env-settings.js");
+  it("and every rule is for a variable the app or one of its tools reads", () => {
+    /*-
+     *  A variable only a tool reads, such as `npm run debug-attach`'s
+     *  INSPECTOR_PORT, is still LP Ranger's, so `.env` may hold it.
+     */
+    const others = [...SOURCES, ...TOOL_SOURCES].filter(
+      (s) => s.file !== "src/env-settings.js",
+    );
     for (const name of Object.keys(ENV_SETTINGS))
       assert.ok(
         others.some(

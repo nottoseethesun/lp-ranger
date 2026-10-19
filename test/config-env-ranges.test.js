@@ -2,7 +2,8 @@
  * @file test/config-env-ranges.test.js
  * @description The five Bot Settings `.env` can set are held to their
  *   ranges in setting-bounds.json at startup, as a save from the dashboard
- *   is.
+ *   is, and so is DEADLINE_SEC, the transaction deadline, to the range of
+ *   app-runtime.json's `tx.deadlineSec`.
  *
  *   A value inside the range is used. A value outside it, a fraction for
  *   a whole-number setting, or text stops startup with a message naming
@@ -47,13 +48,21 @@ const DEFAULTS = {
   impermanentLossGuardPct: 25,
 };
 
+// The deadline, moved off its shipped value too.
+const DEADLINE_SEC = 1200;
+
 const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "env-ranges-"));
 fs.writeFileSync(
   path.join(_USER_DIR, "bot-config-defaults.json"),
   JSON.stringify(DEFAULTS),
 );
+fs.writeFileSync(
+  path.join(_USER_DIR, "app-runtime.json"),
+  JSON.stringify({ tx: { deadlineSec: DEADLINE_SEC } }),
+);
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 for (const [envName] of SETTINGS) process.env[envName] = "";
+process.env.DEADLINE_SEC = "";
 
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
@@ -122,5 +131,37 @@ describe("REBALANCE_TIMEOUT_MIN in .env", () => {
       loadWith("REBALANCE_TIMEOUT_MIN", "0").REBALANCE_TIMEOUT_MIN,
       0,
     );
+  });
+});
+
+describe("DEADLINE_SEC in .env", () => {
+  const bound = BOUNDS.tx.deadlineSec;
+  /*-
+   *  Past the range's end, a deadline could carry the cancel timer
+   *  derived from it, the deadline times its multiple, past 48 hours.
+   */
+  const refusesDeadline = (value) =>
+    assert.throws(
+      () => loadWith("DEADLINE_SEC", value),
+      (err) =>
+        err.message.includes(
+          `DEADLINE_SEC in .env must be ${boundText(bound)}; it is "${value}"`,
+        ),
+    );
+
+  it("is used when it lies inside its range", () => {
+    assert.equal(
+      loadWith("DEADLINE_SEC", String(bound.max)).DEADLINE_SEC,
+      bound.max,
+    );
+  });
+
+  it("leaves app-runtime.json's deadline standing when set to nothing", () => {
+    assert.equal(loadWith("DEADLINE_SEC", "").DEADLINE_SEC, DEADLINE_SEC);
+  });
+
+  it("stops startup outside its range, naming the variable and the range", () => {
+    refusesDeadline(String(bound.max + 1));
+    refusesDeadline(String(bound.min - 1));
   });
 });

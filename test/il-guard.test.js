@@ -549,8 +549,8 @@ describe("the help copy is written once", () => {
      *  Computed in memory rather than by calling `build()`: that writes
      *  `public/help-and-user-manual.html`, and a test must never mutate
      *  a tracked source file (CLAUDE-BEST-PRACTICES "Test Isolation" —
-     *  and `check.js`'s backup pass covers app-config/, app-data/ and
-     *  tmp/, not public/). */
+     *  and `check.js`'s backup pass covers app-config/ and app-data/,
+     *  not public/). */
     const html = read("public/help-and-user-manual.html");
     /*-
      *  The generator's own in-memory render, imported rather than

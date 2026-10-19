@@ -22,7 +22,7 @@
  *      the position by
  *      tokenId (or by full composite key components if disambiguation
  *      is needed).
- *   2. With `--clear-hodl`, loads `tmp/pnl-epochs-cache.json` and finds
+ *   2. With `--clear-hodl`, loads `app-data/scan-cache/pnl-epochs-cache.json` and finds
  *      the pool epoch key that the position belongs to.  It matches on
  *      blockchain, contract and wallet; the per-pool key adds token0,
  *      token1 and fee.
@@ -32,7 +32,8 @@
  *      alongside the original (`.pre-rescan.<ISO>.json` suffix).
  *   5. Removes `totalCompoundedUsd`, `compoundHistory`, `lastCompoundAt`,
  *      `totalLifetimeDepositUsd`, `depositUsedFallback` from the
- *      position config → `hasCompoundData=false` and `hasDepositData=
+ *      position's records in `app-data/position-records.json` (and any
+ *      left in bot-config.json) → `hasCompoundData=false` and `hasDepositData=
  *      false` so the gate in `_scanLifetimePoolData` does not
  *      short-circuit, and the scan reads the chain from the pool's
  *      creation block.
@@ -95,6 +96,8 @@ const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable
  *  without loading the app's modules.
  */
 const { parseCompositeKey } = require("../../src/composite-key");
+const { scanCachePath } = require("../../src/scan-cache-dir");
+const { positionRecordsPath } = require("../../src/position-records");
 
 /*-
  *  The chain used when `--blockchain` is not given: the shipped default
@@ -159,7 +162,7 @@ function buildProgram() {
 const CONFIG_PATH = path.resolve(
   "app-config/user-configurable/bot-config.json",
 );
-const EPOCH_CACHE_PATH = path.resolve("tmp/pnl-epochs-cache.json");
+const EPOCH_CACHE_PATH = scanCachePath("pnl-epochs-cache.json");
 
 /** Load + parse a JSON file, exiting with code 2 on any failure. */
 function _loadJson(filePath, label) {
@@ -400,27 +403,43 @@ function _confirm(createInterface = readline.createInterface) {
  * @param {string[]|null} poolKeys  Epoch-cache keys; null or empty when
  *   none were found or none were looked for.
  * @param {object} flags        Parsed CLI flags.
- * @param {object} [paths]      `{ configPath, epochPath }` — injected
- *   so tests exercise the real copy/delete/write against fixtures
- *   instead of the operator's live files.
+ * @param {object} [paths]      `{ configPath, epochPath, recordsPath }` —
+ *   injected so tests exercise the real copy/delete/write against
+ *   fixtures instead of the operator's live files.
  */
 function _applyMutations(cfg, epochCache, posKey, poolKeys, flags, paths = {}) {
   const configPath = paths.configPath || CONFIG_PATH;
   const epochPath = paths.epochPath || EPOCH_CACHE_PATH;
+  const recordsPath = paths.recordsPath || positionRecordsPath();
   const stamp = new Date().toISOString().replace(/[:]/g, "-");
   const cfgBackup = configPath + ".pre-rescan." + stamp + ".json";
   const cacheBackup = epochPath + ".pre-rescan." + stamp + ".json";
   const clearHodl = _clearsHodl(poolKeys, flags);
   fs.copyFileSync(configPath, cfgBackup);
   if (clearHodl) fs.copyFileSync(epochPath, cacheBackup);
+  /*-
+   *  The records are in the records file (src/position-records.js); one
+   *  left in bot-config.json by an install not yet migrated goes too.
+   */
+  const records = fs.existsSync(recordsPath)
+    ? _loadJson(recordsPath, "position-records")
+    : null;
+  if (records !== null)
+    fs.copyFileSync(
+      recordsPath,
+      recordsPath + ".pre-rescan." + stamp + ".json",
+    );
 
-  const pos = cfg.positions[posKey];
-  delete pos.totalCompoundedUsd;
-  delete pos.compoundHistory;
-  delete pos.lastCompoundAt;
-  delete pos.totalLifetimeDepositUsd;
-  delete pos.depositUsedFallback;
+  for (const slot of [cfg.positions[posKey], records?.positions?.[posKey]]) {
+    if (slot === undefined || slot === null) continue;
+    delete slot.totalCompoundedUsd;
+    delete slot.compoundHistory;
+    delete slot.lastCompoundAt;
+    delete slot.totalLifetimeDepositUsd;
+    delete slot.depositUsedFallback;
+  }
   _writeJson(configPath, cfg);
+  if (records !== null) _writeJson(recordsPath, records);
 
   if (clearHodl) {
     for (const k of poolKeys) delete epochCache[k].lifetimeHodlAmounts;
@@ -431,9 +450,24 @@ function _applyMutations(cfg, epochCache, posKey, poolKeys, flags, paths = {}) {
 }
 
 /**
+ * What a position holds: its settings from bot-config.json, and its
+ * records beside them from the records file (src/position-records.js).
+ * @param {object} slot  The position's slot in bot-config.json.
+ * @param {string} posKey
+ * @param {string} recordsPath
+ * @returns {object}
+ */
+function _withRecords(slot, posKey, recordsPath) {
+  const records = fs.existsSync(recordsPath)
+    ? _loadJson(recordsPath, "position-records")
+    : null;
+  return { ...slot, ...(records?.positions?.[posKey] ?? {}) };
+}
+
+/**
  * @param {string[]} [argv]  Arguments after the node/script pair.
- * @param {object} [opts]    `{ configPath, epochPath, confirm }` —
- *   defaults reproduce the CLI exactly.
+ * @param {object} [opts]    `{ configPath, epochPath, recordsPath,
+ *   confirm }` — defaults reproduce the CLI exactly.
  */
 async function main(argv = process.argv.slice(2), opts = {}) {
   const configPath = opts.configPath || CONFIG_PATH;
@@ -479,7 +513,8 @@ async function main(argv = process.argv.slice(2), opts = {}) {
       : {};
 
   const posKey = _findPositionKey(cfg.positions || {}, tokenId, flags);
-  const pos = cfg.positions[posKey];
+  const recordsPath = opts.recordsPath || positionRecordsPath();
+  const pos = _withRecords(cfg.positions[posKey], posKey, recordsPath);
   const poolKeys = clearHodl ? _findPoolKey(epochCache, posKey, flags) : null;
 
   _printPlan(posKey, pos, poolKeys, flags);
@@ -498,7 +533,7 @@ async function main(argv = process.argv.slice(2), opts = {}) {
     posKey,
     poolKeys,
     flags,
-    { configPath, epochPath },
+    { configPath, epochPath, recordsPath },
   );
 
   console.log("");

@@ -259,13 +259,18 @@ test("the generated file is gitignored, not committed", () => {
   assert.match(ignore, /^public\/ui-tokens\.css$/m);
 });
 
-test("the build runs the generator before bundling", () => {
+test("the build writes the stylesheet before it stamps the pages", () => {
+  /*-
+   *  build-bundles.js ends by stamping every page. A page stamped before
+   *  the stylesheet is written could load the old copy under the new
+   *  stamp, and the browser would keep it for a year.
+   */
   const pkg = readJson(path.join(ROOT, "package.json"));
   const build = pkg.scripts.build;
   assert.match(build, /build-ui-tokens\.js/);
   assert.ok(
-    build.indexOf("build-ui-tokens.js") < build.indexOf("cache-bust.js"),
-    "the file must exist before cache-bust stamps its link",
+    build.indexOf("build-ui-tokens.js") < build.indexOf("build-bundles.js"),
+    "the stylesheet must be written before the stamp that names it",
   );
 });
 

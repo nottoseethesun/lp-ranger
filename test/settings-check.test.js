@@ -26,8 +26,13 @@ const {
   refuseToStartOnBadSettings,
 } = require("../src/settings-check");
 const { readEnv } = require("../src/env-settings");
-const { BOT_CONFIG_KEYS } = require("../src/bot-config-checks");
-const { RULES } = require("../src/config-bounds");
+const { checkConfigValues } = require("../src/config-bounds");
+const {
+  GLOBAL_KEYS,
+  SETTING_POSITION_KEYS,
+} = require("../src/bot-config-keys");
+const { SETTING_BOUNDS } = require("../src/setting-bounds");
+const { boundText } = require("../src/range-check");
 
 const dirs = [];
 after(() => {
@@ -39,7 +44,13 @@ after(() => {
  * its `.env` text and its bot-config.json text, each left out when not
  * given. Answers where to read it from, as `settingsProblems` takes it.
  */
-function install({ copies = {}, env, botConfig, environment = {} } = {}) {
+function install({
+  copies = {},
+  env,
+  botConfig,
+  records,
+  environment = {},
+} = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "settings-check-"));
   dirs.push(dir);
   const userDir = path.join(dir, "user-configurable");
@@ -51,7 +62,10 @@ function install({ copies = {}, env, botConfig, environment = {} } = {}) {
   const botConfigFile = path.join(userDir, "bot-config.json");
   if (botConfig !== undefined)
     fs.writeFileSync(botConfigFile, JSON.stringify(botConfig));
-  return { userDir, envFile, botConfigFile, env: environment };
+  const recordsFile = path.join(dir, "position-records.json");
+  if (records !== undefined)
+    fs.writeFileSync(recordsFile, JSON.stringify(records));
+  return { userDir, envFile, botConfigFile, recordsFile, env: environment };
 }
 
 /** The problems of an install built from `o`. */
@@ -141,6 +155,100 @@ describe("the operator's copies of the settings files", () => {
     });
     oneProblem(problems, "tx.speedupSec");
   });
+
+  it("refuses a setting put in a file that does not read it", () => {
+    /*-
+     *  A setting with a range of its own, in a file that never reads it:
+     *  the schema of each file names the keys that file takes.
+     */
+    const problems = problemsOf({
+      copies: {
+        "app-runtime.json": '{ "maxRebalancesPerDay": 3 }',
+        "bot-config-defaults.json": '{ "slippagePctToken0": 1 }',
+      },
+    });
+    oneProblem(
+      problems,
+      "app-runtime.json → maxRebalancesPerDay",
+      "not a setting LP Ranger reads",
+    );
+    oneProblem(
+      problems,
+      "bot-config-defaults.json → slippagePctToken0",
+      "not a setting LP Ranger reads",
+    );
+  });
+
+  it("refuses a list where one number belongs", () => {
+    const problems = problemsOf({
+      copies: { "bot-config-defaults.json": '{ "maxRebalancesPerDay": [5] }' },
+    });
+    oneProblem(
+      problems,
+      "bot-config-defaults.json → maxRebalancesPerDay",
+      boundText(SETTING_BOUNDS.maxRebalancesPerDay),
+      "it is [5]",
+    );
+  });
+
+  it("holds each stop timing to its range", () => {
+    for (const key of [
+      "exitTimeoutMs",
+      "stopKillMarginMs",
+      "stopCheckIntervalMs",
+      "gentleStopPollMs",
+    ]) {
+      const { max } = SETTING_BOUNDS.timers.settings[key];
+      const copy = JSON.stringify({ shutdown: { [key]: max + 1 } });
+      oneProblem(
+        problemsOf({ copies: { "app-runtime.json": copy } }),
+        `app-runtime.json → shutdown.${key}`,
+        `${max}`,
+      );
+    }
+  });
+
+  it("holds the transaction deadline to its range", () => {
+    const bound = SETTING_BOUNDS.tx.deadlineSec;
+    const copy = JSON.stringify({ tx: { deadlineSec: bound.min - 1 } });
+    oneProblem(
+      problemsOf({ copies: { "app-runtime.json": copy } }),
+      "app-runtime.json → tx.deadlineSec",
+      boundText(bound),
+    );
+  });
+
+  it("refuses a chain the settings name that chains.json does not hold", () => {
+    const problems = problemsOf({
+      copies: { "app-runtime.json": '{ "defaults": { "chain": "nochain" } }' },
+    });
+    oneProblem(problems, "defaults.chain", "a chain in chains.json");
+  });
+
+  it("refuses a label for a setting the dashboard never saves", () => {
+    const problems = problemsOf({
+      copies: {
+        "setting-labels.json":
+          '{ "notASetting": { "label": "x", "unit": "" } }',
+      },
+    });
+    oneProblem(
+      problems,
+      "setting-labels.json → notASetting",
+      "a setting the dashboard saves",
+    );
+  });
+
+  it("names each entry of a list on its own", () => {
+    const problems = problemsOf({
+      copies: {
+        "chains.json": JSON.stringify({
+          pulsechain: { rpc: { urls: ["https://rpc.example", "ftp://x"] } },
+        }),
+      },
+    });
+    oneProblem(problems, "chains.json → pulsechain.rpc.urls[1]", '"ftp://x"');
+  });
 });
 
 describe(".env", () => {
@@ -170,12 +278,49 @@ describe(".env", () => {
       );
   });
 
+  it("holds DEADLINE_SEC to the deadline's range", () => {
+    const bound = SETTING_BOUNDS.tx.deadlineSec;
+    for (const out of [bound.min - 1, bound.max + 1])
+      oneProblem(
+        problemsOf({ env: `DEADLINE_SEC=${out}\n` }),
+        "DEADLINE_SEC",
+        boundText(bound),
+      );
+    for (const fine of [bound.min, bound.max])
+      assert.deepEqual(problemsOf({ env: `DEADLINE_SEC=${fine}\n` }), []);
+  });
+
   it("refuses a variable LP Ranger does not read, and a line that is not NAME=value", () => {
     const problems = problemsOf({
       env: "NODE_OPTIONS=--foo\nCHECK_INTERVAL_SEC 300\n",
     });
     oneProblem(problems, "NODE_OPTIONS", "not a setting LP Ranger reads");
     oneProblem(problems, "line 2", "NAME=value");
+  });
+
+  it("accepts the variables LP Ranger's own tools read, each by its rule", () => {
+    /*-
+     *  `npm run debug-attach` reads INSPECTOR_PORT and LP_RANGER_PID, and
+     *  the verify-compound-usd diagnostic MORALIS_API_KEY. They are LP
+     *  Ranger's settings too, so `.env` may hold them and the server
+     *  still starts.
+     */
+    assert.deepEqual(
+      problemsOf({
+        env: "INSPECTOR_PORT=9230\nLP_RANGER_PID=4242\nMORALIS_API_KEY=k\n",
+      }),
+      [],
+    );
+    oneProblem(
+      problemsOf({ env: "INSPECTOR_PORT=port\n" }),
+      "INSPECTOR_PORT",
+      "a port number",
+    );
+    oneProblem(
+      problemsOf({ env: "LP_RANGER_PID=-1\n" }),
+      "LP_RANGER_PID",
+      "a whole number",
+    );
   });
 
   it("reads an export line by the name it sets, as dotenv does", () => {
@@ -248,9 +393,10 @@ describe("bot-config.json", () => {
         positions: { [KEY]: { status: "paused" } },
       },
     });
-    assert.ok(
-      problems.some((p) => p.includes("telegramEvents")),
-      problems.join("\n"),
+    oneProblem(problems, "telegramEvents.oorTimeout must be true or false");
+    oneProblem(
+      problems,
+      "telegramEvents.noSuchAlert must be an alert LP Ranger sends",
     );
     oneProblem(problems, "status", "running or stopped");
   });
@@ -284,10 +430,90 @@ describe("bot-config.json", () => {
     assert.deepEqual(problems, []);
   });
 
-  it("has a rule for every key it reads", () => {
-    const own = new Set(["telegramEvents", "status"]);
-    for (const key of [...BOT_CONFIG_KEYS.global, ...BOT_CONFIG_KEYS.position])
-      assert.ok(own.has(key) || typeof RULES[key] === "function", key);
+  it("refuses each value a save refuses, setting by setting", () => {
+    /*-
+     *  One schema for each setting serves both checks
+     *  (src/config-bounds.js), so a value the Save button refuses is one
+     *  startup refuses, and the file takes every key a save writes. Text
+     *  where a setting wants a number, a list, a date or on or off is
+     *  refused by both.
+     */
+    const bad = "not a value of any setting";
+    const saveRefuses = (key) =>
+      assert.notEqual(
+        checkConfigValues({ [key]: bad }, { compoundMinFeeUsd: 1 }),
+        null,
+        key,
+      );
+    for (const key of GLOBAL_KEYS) {
+      saveRefuses(key);
+      const problems = problemsOf({ botConfig: { global: { [key]: bad } } });
+      oneProblem(problems, `global.${key} must be`);
+    }
+    for (const key of SETTING_POSITION_KEYS) {
+      saveRefuses(key);
+      const problems = problemsOf({
+        botConfig: { positions: { [KEY]: { [key]: bad } } },
+      });
+      oneProblem(problems, `${KEY}.${key} must be`);
+    }
+  });
+
+  it("names a record left in it, with the command that moves it to the records file", () => {
+    const problems = problemsOf({
+      botConfig: {
+        positions: { [KEY]: { status: "running", lastCompoundAt: "x" } },
+      },
+    });
+    const p = oneProblem(problems, `${KEY}.lastCompoundAt`);
+    assert.match(p, /lastCompoundAt is a record, which LP Ranger now keeps/);
+    assert.match(p, /app-data\/position-records\.json/);
+    assert.match(p, /node \.\/util\/migration/);
+  });
+
+  it("refuses a file that is not a group of settings, naming the file", () => {
+    const problems = problemsOf({ botConfig: [] });
+    oneProblem(problems, "bot-config.json must be a group of settings");
+  });
+});
+
+describe("the records file, app-data/position-records.json", () => {
+  const POOL = "0x" + "ab".repeat(20);
+
+  it("starts on the records the bot writes", () => {
+    const problems = problemsOf({
+      records: {
+        positions: {
+          [KEY]: {
+            lastCompoundAt: "2026-10-19T00:00:00.000Z",
+            compoundedAmount0: 1.5,
+            depositUsedFallback: false,
+          },
+        },
+      },
+    });
+    assert.deepEqual(problems, []);
+  });
+
+  it("holds each record to the shape the bot writes", () => {
+    const problems = problemsOf({
+      records: {
+        positions: {
+          [KEY]: { residuals: { [POOL]: { token0: "abc", token1: "1" } } },
+        },
+      },
+    });
+    oneProblem(problems, "position-records.json", `${KEY}.residuals`);
+  });
+
+  it("refuses a key that is not a record, and a file that is not JSON", () => {
+    const problems = problemsOf({
+      records: { positions: { [KEY]: { slippagePctToken0: 1 } } },
+    });
+    oneProblem(problems, "slippagePctToken0", "is not a record");
+    const o = install();
+    fs.writeFileSync(o.recordsFile, "{ broken");
+    oneProblem(settingsProblems(o), "position-records.json is not valid JSON");
   });
 });
 

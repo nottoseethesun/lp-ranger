@@ -78,7 +78,7 @@ describe("aggregator base URL", () => {
 
   it("reads a url of slashes alone as no aggregator, for the swap, the badge and the help alike", () => {
     /*-
-     *  The "Routing through:" badge, the help and the swap ask one
+     *  The "Route:" badge, the help and the swap ask one
      *  question, so neither the badge nor the help can name the
      *  aggregator while every swap goes through the V3 router. A url
      *  that is not a string never gets here: src/config.js refuses to

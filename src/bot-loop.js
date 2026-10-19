@@ -597,6 +597,12 @@ async function startBotLoop(opts) {
         _poolKey: botState._poolKey || null,
         _recordPoolRebalance: botState._recordPoolRebalance || null,
         _canRebalancePool: botState._canRebalancePool || null,
+        /*-
+         *  The lock every position's loop is given, so only one position
+         *  moves at a time: a rebalance or compound holds it from its
+         *  first transaction until its last confirms.
+         */
+        _rebalanceLock: botState._rebalanceLock ?? null,
         _applyCurrentNftFigures: applyCurrentNftFigures,
         /*-
          *  A stop of this loop, or of the app, during this poll keeps it

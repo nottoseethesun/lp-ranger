@@ -23,7 +23,7 @@
 const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const { assertTimerSec } = require("./timer-bounds");
-const { SETTING_BOUNDS } = require("./setting-bounds");
+const { boundAt } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
 const { readEnv } = require("./env-settings");
 const { serverPort, serverHost } = require("./server-address");
@@ -82,21 +82,22 @@ function parseTimerSec(envName, fallbackSec, key, env = process.env) {
 }
 
 /**
- * Read a Bot Setting from `.env`, held to its range in setting-bounds.json.
+ * Read a setting from `.env`, held to its range in setting-bounds.json:
+ * a Bot Setting, or the transaction deadline.
  *
  * The range is the one a save from the dashboard is held to and the one
  * the defaults files are read against, so a setting has one range
  * whichever road it comes by. A variable left unset, or set to nothing,
  * leaves `fallback` standing: the value the defaults files give. A set
- * one is read by its rule in src/env-settings.js, a plain decimal
- * number, and must be inside the range, or startup stops and names the
- * variable and the range, as it does for a timer setting. A value
- * quietly replaced, rounded or cut short would leave the bot on a
- * setting nobody chose.
+ * one is read by its rule in src/env-settings.js and must be inside the
+ * range, or startup stops and names the variable and the range, as it
+ * does for a timer setting. A value quietly replaced, rounded or cut
+ * short would leave the bot on a setting nobody chose.
  *
  * @param {string} envName   The variable's name.
  * @param {number} fallback  The value when the variable is unset.
- * @param {string} key       The setting's key in setting-bounds.json.
+ * @param {string} key       The setting's path in setting-bounds.json,
+ *   such as `maxRebalancesPerDay` or `tx.deadlineSec`.
  * @param {object} [env]     The environment; `process.env` unless a test
  *   reads another.
  * @returns {number} The value, inside its range.
@@ -106,7 +107,7 @@ function parseTimerSec(envName, fallbackSec, key, env = process.env) {
 function parseBoundedSetting(envName, fallback, key, env = process.env) {
   const value = readEnv(envName, env);
   if (value === undefined) return fallback;
-  const bound = SETTING_BOUNDS[key];
+  const bound = boundAt(key);
   if (withinBound(value, bound)) return value;
   throw new Error(
     `[config] ${envName} in .env must be ${boundText(bound)}; it is ` +

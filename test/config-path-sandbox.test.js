@@ -226,4 +226,21 @@ describe("folders a stopped process left", () => {
     assert.ok(firstTests > -1, "check.js runs the config-value tests");
     assert.ok(sweep < firstTests, "before the first tests start");
   });
+
+  it("are removed by npm run check before it moves the operator's files out", () => {
+    /*-
+     *  A folder the sweep cannot remove stops the run. Before the backup,
+     *  that leaves the operator's wallet and settings where they are;
+     *  after it, they would stay moved out, since only the test stage's
+     *  `finally` puts them back.
+     */
+    const src = fs.readFileSync(
+      path.join(__dirname, "..", "scripts", "check.js"),
+      "utf8",
+    );
+    const sweep = src.indexOf("removeLeftoverTestTempFolders()");
+    const backup = src.indexOf("backupProdFiles(backupDir)");
+    assert.ok(backup > -1, "check.js backs up the operator's files");
+    assert.ok(sweep > -1 && sweep < backup, "the sweep runs first");
+  });
 });

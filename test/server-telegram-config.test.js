@@ -3,8 +3,8 @@
 /**
  * @file test/server-telegram-config.test.js
  * @description POST /api/telegram/config holds the alert choices to the
- *   rule the settings check holds the saved set to at startup
- *   (`alertChoicesProblem`, src/telegram-notifications/telegram-events.js)
+ *   schema the settings check holds the saved set to at startup
+ *   (`ALERT_CHOICES`, src/telegram-notifications/telegram-events.js)
  *   before it saves anything. A set the next start would refuse is
  *   refused here instead, and the bot token sent with it is not saved
  *   either. GET /api/telegram/config quotes the Position Balanced band
@@ -83,6 +83,18 @@ describe("POST /api/telegram/config", () => {
     });
     assert.equal(status, 400);
     assert.match(body.error, /oorTimeout must be true or false/);
+    assert.equal(saves, 0);
+  });
+
+  it("refuses choices that are not a set of alerts", async () => {
+    for (const enabledEvents of [null, ["oorTimeout"], "all"]) {
+      const { status, body } = await save({ enabledEvents });
+      assert.equal(status, 400, JSON.stringify(enabledEvents));
+      assert.match(
+        body.error,
+        /^enabledEvents must be the alerts chosen, each true or false; it is /,
+      );
+    }
     assert.equal(saves, 0);
   });
 

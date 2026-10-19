@@ -32,7 +32,7 @@ not arise.
 ## The gap that remains
 
 The unmanaged Current panel still reads shared, pool-keyed caches:
-`tmp/historical-price-cache.json` and the epoch cache. A bad price in
+`app-data/scan-cache/historical-price-cache.json` and the epoch cache. A bad price in
 either is visible there, and there is no way to correct it for that
 position without managing it first.
 

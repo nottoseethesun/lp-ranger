@@ -2,7 +2,8 @@
 /**
  * @file util/cache/clean-pool-cache.js
  * @description
- * Wipe every cached entry for a single pool from `tmp/`, so the next bot
+ * Wipe every cached entry for a single pool from the scan-cache folder
+ * (`app-data/scan-cache/`, src/scan-cache-dir.js), so the next bot
  * run re-resolves that pool from scratch.  Used to verify cold-cache
  * paths (e.g. the pool-creation-block resolver fix in commit `c57339f`)
  * and to recover from suspected cache corruption for one pool.
@@ -27,16 +28,17 @@ const ethers = require("ethers");
 const config = require("../../src/config");
 const { chainCacheTag } = require("../../src/cache-store");
 const { HELP_TEXT } = require("./clean-pool-cache-help");
+const { scanCacheDir } = require("../../src/scan-cache-dir");
 
-const TMP_DIR = path.join(process.cwd(), "tmp");
+const CACHE_DIR = scanCacheDir();
 const POOL_CREATION_CACHE = path.join(
-  TMP_DIR,
+  CACHE_DIR,
   "pool-creation-blocks-cache.json",
 );
-const GECKO_POOL_CACHE = path.join(TMP_DIR, "gecko-pool-cache.json");
-const PNL_EPOCHS_CACHE = path.join(TMP_DIR, "pnl-epochs-cache.json");
+const GECKO_POOL_CACHE = path.join(CACHE_DIR, "gecko-pool-cache.json");
+const PNL_EPOCHS_CACHE = path.join(CACHE_DIR, "pnl-epochs-cache.json");
 const LIQUIDITY_PAIR_DETAILS_CACHE = path.join(
-  TMP_DIR,
+  CACHE_DIR,
   "liquidity-pair-details-cache.json",
 );
 const CHAINS_JSON = path.join(
@@ -280,13 +282,14 @@ function _abbrevScope({ blockchain, factory, token0, token1, fee }) {
 
 /**
  * @param {object} scope  blockchain, factory, token0, token1, fee.
- * @param {string} [dir]  Cache directory.  Defaults to the real `tmp/`;
- *   tests pass a scratch directory so no test can delete an operator's
- *   caches — the same reason the check script backs `tmp/` up at all.
+ * @param {string} [dir]  Cache directory.  Defaults to the real
+ *   scan-cache folder; tests pass a scratch directory so no test can
+ *   delete an operator's caches — the same reason the check script
+ *   backs that folder up at all.
  */
 function findEventCacheFiles(
   { blockchain, factory, token0, token1, fee },
-  dir = TMP_DIR,
+  dir = CACHE_DIR,
 ) {
   const a = _abbrevScope({ blockchain, factory, token0, token1, fee });
   // Filename: event-cache-{bc}-{pm}-{wallet:6hex}-{t0}-{t1}-{fee}.json
@@ -311,7 +314,7 @@ function findEventCacheFiles(
  * @param {object} scope  blockchain + factory.
  * @param {string} [dir]  Cache directory; see `findEventCacheFiles`.
  */
-function findLpPositionCacheFiles({ blockchain, factory }, dir = TMP_DIR) {
+function findLpPositionCacheFiles({ blockchain, factory }, dir = CACHE_DIR) {
   const a = _abbrevScope({ blockchain, factory });
   // Filename: lp-position-cache-{bc}-{pm:6}-{wallet:6hex}.json
   const prefix = `lp-position-cache-${a.bc}-${a.pm}-`;
@@ -325,7 +328,7 @@ function findLpPositionCacheFiles({ blockchain, factory }, dir = TMP_DIR) {
 
 /* ---------- per-surface workers ---------- */
 
-function _wipeEventCache(scope, dir = TMP_DIR) {
+function _wipeEventCache(scope, dir = CACHE_DIR) {
   const evFiles = findEventCacheFiles(scope, dir);
   if (evFiles.length === 0) {
     console.log("  event-cache-*.json: no matching files");
@@ -426,7 +429,7 @@ function filterPositionsForPool(positions, scope) {
  * file is deleted (the freshness-check path treats a missing file as
  * "no cache" and rebuilds from chain).
  */
-function _wipeLpPositionCache(scope, dir = TMP_DIR) {
+function _wipeLpPositionCache(scope, dir = CACHE_DIR) {
   const files = findLpPositionCacheFiles(scope, dir);
   if (files.length === 0) {
     console.log("  lp-position-cache-*.json: no matching files");
@@ -510,7 +513,7 @@ async function _resolveTokensOrExit(poolAddress, resolve = resolvePoolTokens) {
  */
 function _mainPaths(opts = {}) {
   return {
-    dir: opts.dir || TMP_DIR,
+    dir: opts.dir || CACHE_DIR,
     poolCreationPath: opts.poolCreationPath || POOL_CREATION_CACHE,
     geckoPath: opts.geckoPath || GECKO_POOL_CACHE,
     epochPath: opts.epochPath || PNL_EPOCHS_CACHE,

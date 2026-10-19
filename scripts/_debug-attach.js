@@ -11,11 +11,21 @@
 
 "use strict";
 
+const dotenv = require("dotenv");
 const { log } = require("../src/log");
 const { execSync } = require("child_process");
 const { findListenerPids, psCmd } = require("./_find-process");
+const { readEnv } = require("../src/env-settings");
 
-const INSPECTOR_PORT = Number(process.env.INSPECTOR_PORT || 9229);
+/*-
+ *  `.env` is loaded so INSPECTOR_PORT and LP_RANGER_PID may be set there
+ *  as well as on the command line, where a value already set stands.
+ *  Each is read by its rule in src/env-settings.js.
+ */
+dotenv.config();
+
+// Node's own default inspector port.
+const INSPECTOR_PORT = readEnv("INSPECTOR_PORT") ?? 9229;
 
 /*- `pgrep -af` walks /proc and prints `<pid> <full-cmd>` for each
  *  matching process.  The `-f` flag means the regex matches the full
@@ -108,9 +118,9 @@ function _printConnectInstructions(pid) {
  * @param {string} target.label  Human-friendly label for log output.
  */
 function attach(target) {
-  const override = Number(process.env.LP_RANGER_PID);
+  const override = readEnv("LP_RANGER_PID");
   const resolved =
-    override > 0
+    override !== undefined
       ? { pid: override, cmd: psCmd(override), via: "LP_RANGER_PID env" }
       : _resolvePid(target);
 

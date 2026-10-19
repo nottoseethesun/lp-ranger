@@ -36,7 +36,10 @@ const path = require("path");
  *
  * Kept in step with the "What Step Six carries forward" list in
  * README.md.  `node_modules` is deliberately absent: it is large, and
- * the next step installs it from the new release's lockfile.
+ * the next step installs it from the new release's lockfile.  The scan
+ * caches now live in `app-data/scan-cache/`; `tmp` stays on the list
+ * because a release before that kept them in `tmp/`, and the migration
+ * step after this one (util/migration/) moves them across.
  */
 const MIGRATED_ITEMS = [".env", "app-config", "app-data", "tmp"];
 

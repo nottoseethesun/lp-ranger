@@ -70,6 +70,8 @@ const CACHED_EPOCH = Object.freeze({
 /** Load the module with everything that would touch a chain replaced. */
 function load(cachedEpochs) {
   const walked = [];
+  // The saved settings each price override is taken from.
+  const overridesFrom = [];
   const stubs = {
     "./epoch-cache": {
       getCachedEpochs: () =>
@@ -106,7 +108,7 @@ function load(cachedEpochs) {
         priceGainLoss: null,
         residualValueUsd: 0,
       }),
-      _applyPriceOverrides: () => {},
+      _applyPriceOverrides: (_prices, saved) => overridesFrom.push(saved),
       _walletResiduals: async () => ({ usd: 0 }),
     },
     "./position-details-compound": {
@@ -140,7 +142,7 @@ function load(cachedEpochs) {
   const file = require.resolve("../src/position-details");
   delete require.cache[file];
   try {
-    return { fn: require(file).computeLifetimeDetails, walked };
+    return { fn: require(file).computeLifetimeDetails, walked, overridesFrom };
   } finally {
     Module.prototype.require = origRequire;
     for (const k of Object.keys(require.cache))
@@ -246,5 +248,35 @@ describe("the route's own key shape is unchanged", () => {
       BODY.tokenId,
     );
     assert.match(key, /^pulsechain-0x[0-9a-fA-F]{40}-0x[0-9a-fA-F]{40}-300$/);
+  });
+});
+
+describe("the unmanaged details' price override", () => {
+  it("is the one saved under the position's key, not one the request carries", async () => {
+    /*-
+     *  The dashboard sends no override: the server is its only home. The
+     *  first phase read it there and this second phase read it from the
+     *  request, so its figures (the position's value, Fees Compounded)
+     *  went without it.
+     */
+    const { compositeKey } = require("../src/bot-config-v2");
+    const key = compositeKey(
+      config.CHAIN_NAME,
+      WALLET,
+      config.POSITION_MANAGER,
+      BODY.tokenId,
+    );
+    const saved = { priceOverride0: 1.5, priceOverrideForce: true };
+    const { fn, overridesFrom } = load();
+    await fn(
+      null,
+      null,
+      { ...BODY, priceOverride0: 9.9 },
+      {
+        global: {},
+        positions: { [key]: saved },
+      },
+    );
+    assert.deepEqual(overridesFrom, [saved]);
   });
 });

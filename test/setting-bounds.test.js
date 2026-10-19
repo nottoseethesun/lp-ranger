@@ -147,13 +147,15 @@ describe("setting-bounds.json", () => {
   it("holds every shipped timer setting inside the timer rule", () => {
     /*-
      *  The settings with a timer range of their own are Bot Settings,
-     *  bar the dashboard's poll interval, which the server sends the page.
+     *  the dashboard's poll intervals, which the server sends the page,
+     *  and the stop timings in app-runtime.json.
      */
     const UI_UP = loadShippedDefaults(
       "ui-defaults_non-layout_for-server-up-scenario.json",
     );
+    const STOP = loadShippedDefaults("app-runtime.json").shutdown;
     for (const key of Object.keys(SETTING_BOUNDS.timers.settings)) {
-      const v = Object.hasOwn(BOT, key) ? BOT[key] : UI_UP[key];
+      const v = [BOT, UI_UP, STOP].find((f) => Object.hasOwn(f, key))?.[key];
       assert.doesNotThrow(
         () => assertTimerSec({ sec: v, key, defaultSec: v }),
         key,

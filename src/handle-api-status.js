@@ -112,7 +112,7 @@ function createApiStatusHandler(deps) {
          *  feedback in lp-providers about ID-vs-displayName. */
         chainId: config.CHAIN_NAME,
         /*-
-         *  The "Routing through:" badge's text between rebalances: the
+         *  The "Route:" badge's text between rebalances: the
          *  aggregator's label, or the V3 router's on a chain that names
          *  no aggregator.
          */

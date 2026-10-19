@@ -18,7 +18,8 @@
  * isolates residuals attributable to subsequent rebalances and compounds
  * (which are the ones that should count toward Lifetime Net P&L).
  *
- * Cache file: `tmp/liquidity-pair-details-cache.json` (gitignored).  Wiped
+ * Cache file: `app-data/scan-cache/liquidity-pair-details-cache.json`
+ * (gitignored; src/scan-cache-dir.js).  Wiped
  * by the standard cache-cleanup utilities — this is a pure performance
  * optimisation, never a source of truth.
  *
@@ -33,12 +34,13 @@ const fs = require("fs");
 const path = require("path");
 const { liquidityPairScopeKey } = require("./cache-store");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
+const { scanCachePath } = require("./scan-cache-dir");
 
 // Path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
 const _CACHE_PATH =
   process.env.LIQUIDITY_PAIR_DETAILS_CACHE_PATH ||
-  path.join(process.cwd(), "tmp", "liquidity-pair-details-cache.json");
+  scanCachePath("liquidity-pair-details-cache.json");
 
 /** Minimal ERC-20 ABI fragment — only what we need for historical balances. */
 const _ERC20_BALANCE_ABI = [

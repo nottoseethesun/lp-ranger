@@ -102,6 +102,10 @@ const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
 const { Command } = require("commander");
 const { sleep, addrTopic } = require("../_helpers");
 const render = require("./render");
+const {
+  readPositionRecords,
+  mergePositionRecords,
+} = require("../../../src/position-records");
 
 /**
  * Describe the command line, so Commander both parses it and renders
@@ -174,7 +178,11 @@ function loadConfigOrExit(configPath = CONFIG_PATH) {
     console.error(`No config at ${configPath}`);
     process.exit(1);
   }
-  return JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  // Each position's records, kept apart from its settings.
+  if (cfg.positions === undefined || cfg.positions === null) cfg.positions = {};
+  mergePositionRecords(cfg, readPositionRecords());
+  return cfg;
 }
 
 /**

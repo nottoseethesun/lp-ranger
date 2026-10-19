@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-30T19:57:40.854Z
+  modified: 2026-10-19T18:49:48.335Z
 ---
 
 Do not assert what the code or the running app did until the specific
@@ -63,6 +63,14 @@ read, exactly like `call`. The pattern searched for was real; it just
 was not the only way to reach the behavior. When the question is "what
 does it actually do at runtime", measure it; a grep only narrows where
 to look.
+
+**An audit plan presents verified items only (2026-10-19).** I put
+"`npm run clean -- --help` runs the full reset" to the user marked "not
+yet verified". The user: "Why wouldn't you verify that before presenting
+it? It small code and should be easy to verify." Reading the script took
+one minute and showed it was worse than reported. Verify each item
+before it reaches the user; an item that truly cannot be checked cheaply
+says why, in one line.
 
 **How to apply:** before writing a conclusion, name the one check that
 would falsify it and run that first — the whole-repo grep, the line

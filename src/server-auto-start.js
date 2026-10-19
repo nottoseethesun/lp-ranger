@@ -41,6 +41,7 @@ const {
 const { startBotLoop } = require("./bot-loop");
 const { createOnRetire } = require("./server-positions");
 const { parseCompositeKey } = require("./composite-key");
+const { isContractRevert } = require("./rpc-error-classifier");
 const {
   beginStartUp,
   noteStartUpProgress,
@@ -138,7 +139,9 @@ function createAutoStartManagedPositions(deps) {
    * Whether the wallet still holds the position's NFT. One it no longer
    * holds, or that no longer exists, comes off the list: the contract
    * reverts when asked who owns an NFT that was burned. Any other failure
-   * to ask leaves the position on the list for the next launch.
+   * to ask, an endpoint's error answer included, which ethers labels as
+   * it labels a revert (`isContractRevert`), leaves the position on the
+   * list for the next launch.
    * @returns {Promise<boolean>} Whether to go on and start it.
    */
   async function _verifyOwnership(pmC, wAddr, tokenId, key) {
@@ -148,8 +151,7 @@ function createAutoStartManagedPositions(deps) {
       if (own.toLowerCase() === wAddr.toLowerCase()) return true;
       _dropFromList(key, "it is no longer in the wallet");
     } catch (err) {
-      if (err.code === "CALL_EXCEPTION")
-        _dropFromList(key, "it no longer exists");
+      if (isContractRevert(err)) _dropFromList(key, "it no longer exists");
       else {
         const nft = _nftOf(key);
         log.warn(

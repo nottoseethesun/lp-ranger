@@ -115,6 +115,16 @@ function createRouteHandlers(deps) {
       password: body.password,
     });
     await positionMgr.stopAll();
+    /*-
+     *  Nothing of the previous wallet is kept once its positions have
+     *  stopped: its key, its password, and the signer built from the key,
+     *  which would otherwise sign for the new wallet's positions. Cleared
+     *  before the new wallet is decrypted, so a failure there leaves the
+     *  wallet locked rather than the old key in use.
+     */
+    privateKeyRef.current = null;
+    _sessionPassword = null;
+    positionMgr.resetSharedSigner();
     jsonResponse(res, 200, {
       ok: true,
       address: body.address,

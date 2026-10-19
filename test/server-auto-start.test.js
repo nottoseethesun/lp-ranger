@@ -29,6 +29,10 @@ const config = require("../src/config");
 const appPhase = require("../src/app-phase");
 const { createAutoStartManagedPositions } = require("../src/server-auto-start");
 const { captureWarnings } = require("./helpers/capture-warnings");
+const {
+  contractReverted,
+  endpointFailedRead,
+} = require("./helpers/ethers-rpc-errors");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const OTHER_WALLET = "0x2222222222222222222222222222222222222222";
@@ -73,12 +77,8 @@ function chainStandIn(owners, pools) {
   };
 }
 
-/** An error ethers raises for a call the contract reverts. */
-function reverted() {
-  const e = new Error("execution reverted: ERC721: invalid token ID");
-  e.code = "CALL_EXCEPTION";
-  return e;
-}
+/** The error ethers raises when the contract reverts a read. */
+const reverted = () => contractReverted("ERC721: invalid token ID");
 
 /**
  * A start-up over the saved positions `keys`, each owned by the wallet
@@ -254,6 +254,31 @@ describe("a saved position that cannot be managed", () => {
     await runToEnd(t, s.run);
     assert.deepEqual(s.started, []);
     assert.equal(statusOf(s, key), "running");
+  });
+
+  it("stays on the list when an endpoint answers who owns it with an error", async (t) => {
+    /*-
+     *  ethers labels an endpoint's error answer to a contract read as it
+     *  labels the contract's revert. Only the revert says the NFT is
+     *  gone; this says nothing about it.
+     */
+    const key = keyOf(101);
+    const s = startUp({
+      keys: [key],
+      owners: { 101: endpointFailedRead("rate limit exceeded") },
+    });
+    const warned = captureWarnings();
+    try {
+      await runToEnd(t, s.run);
+    } finally {
+      warned.restore();
+    }
+    assert.deepEqual(s.started, []);
+    assert.equal(statusOf(s, key), "running");
+    assert.match(
+      warned.lines.join("\n"),
+      /could not read who owns NFT #101 \S+: .*stays on the list/,
+    );
   });
 
   it("stays on the list, not started, when its pool cannot be read", async (t) => {

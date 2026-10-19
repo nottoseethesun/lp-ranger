@@ -27,11 +27,12 @@ const sendTx = require("./send-transaction");
 const config = require("./config");
 const { findPoolCreationBlock } = require("./pool-creation-finder");
 const { cacheKey } = require("./cache-store");
+const { scanCachePath } = require("./scan-cache-dir");
 
 /** Disk-cache file path (overridable via env for tests). */
 const _CACHE_PATH =
   process.env.POOL_CREATION_BLOCK_CACHE_PATH ||
-  path.join(process.cwd(), "tmp", "pool-creation-blocks-cache.json");
+  scanCachePath("pool-creation-blocks-cache.json");
 
 /*-
  *  In-memory cache: canonical key -> blockNumber. Every chain's entries

@@ -234,7 +234,11 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     fee: body.fee,
   });
   const prices = await fetchTokenPrices(body.token0, body.token1);
-  _applyPriceOverrides(prices, body);
+  /*-
+   *  The overrides the server keeps for the position, under its key, as
+   *  the first phase applies them: the dashboard sends none.
+   */
+  _applyPriceOverrides(prices, diskConfig.positions[posKey] ?? {});
   const { price0, price1 } = prices;
   const { baseline, entryValue } = _resolveEntryValueCached(diskConfig, posKey);
   const value = positionValueUsd(position, ps, price0, price1);

@@ -85,9 +85,7 @@ for you.
 Outside those two cases, prefer the JSON files. A value set in `.env`
 outranks the JSON layers (see
 [Configuration Precedence](#configuration-precedence)), so a stale line in
-`.env` silently overrides whatever you later set in the dashboard — the
-panel accepts the change, writes it to disk, and the bot goes on using the
-environment value.
+`.env` silently overrides whatever you later set in them.
 
 ### Where each setting lives
 
@@ -96,8 +94,9 @@ environment value.
 | Server and process settings — listen port and host, default chain, TX recovery timing, scan timeout | `app-config/app-defaults-for-user-configurable/app-runtime.json` | you, by hand |
 | Per-chain static tunables — RPC endpoints, contract addresses, gas multipliers, aggregator timeouts — and everything the app says about a chain ([What a Chain's Entry Describes](#what-a-chains-entry-describes)) | `app-config/app-defaults-for-user-configurable/chains.json` | you, by hand |
 | Shipped defaults for bot behaviour — thresholds, intervals, caps, chunk size, pacing | `app-config/app-defaults-for-user-configurable/bot-config-defaults.json` | you, by hand |
-| Each checked setting's range | `app-config/app-defaults-for-user-configurable/setting-bounds.json` | nobody: overrides are ignored |
-| Managed positions and per-position settings — HODL baselines, thresholds, slippage, auto-compound | `app-config/user-configurable/bot-config.json` | the dashboard and the bot; not hand-edited |
+| Each checked setting's range | `app-config/app-defaults-for-user-configurable/setting-bounds.json` | nobody: it cannot be overridden |
+| Managed positions and per-position settings — thresholds, slippage, auto-compound | `app-config/user-configurable/bot-config.json` | the dashboard and the bot; not hand-edited |
+| Each position's records — HODL baseline, compound history, gas, lifetime deposit, residuals | `app-data/position-records.json` | the bot |
 | Encrypted wallet | `app-config/user-configurable/wallet.json` | the dashboard import flow |
 | Encrypted third-party API keys (Moralis, Telegram) | `app-config/user-configurable/api-keys.json` | the dashboard Settings dialog |
 
@@ -113,7 +112,7 @@ The dashboard's settings are in three files. An override takes effect:
 - `ui-defaults_layout.json`, the dialog height: at the next
   `npm run build`.
 - `ui-defaults_non-layout_for-server-down-scenario.json`, two settings
-  needed while the server cannot be reached: never.
+  needed while the server cannot be reached: it cannot be overridden.
 - `ui-defaults_non-layout_for-server-up-scenario.json`, every other
   dashboard setting: after a restart and a page reload.
 
@@ -139,13 +138,17 @@ The server and the bot check every setting before they read any, and
 refuse to start while one is wrong, naming each problem. They check:
 
 - the JSON settings files, with your copies in
-  `app-config/user-configurable/` over them;
-- `.env`;
-- `bot-config.json`.
+  `app-config/user-configurable/` over them, each against its JSON
+  Schema;
+- `.env`, against the list of variables LP Ranger reads;
+- `bot-config.json`, against its JSON Schema, which holds each setting
+  to the rule the dashboard's Save holds it to; and the records the bot
+  keeps beside it in `app-data/position-records.json`.
 
 A problem is a value of the wrong kind or outside its range, a setting
-LP Ranger does not read, a file that is not valid JSON, or a copy of a
-file the app never reads from `user-configurable/`. A setting LP Ranger
+LP Ranger does not read, a setting in a file that does not read it, a
+file that is not valid JSON, or a copy of a file the app never reads
+from `user-configurable/`. A setting LP Ranger
 has retired is not one: the next save drops it from `bot-config.json`.
 `npm stop` and `npm run gentle-stop` do not check, and read no setting
 but where the server listens and the `shutdown` timings below. So a bad
@@ -192,11 +195,11 @@ are not an exception to the rule — they *are* the headless case. A
 dashboard install imports its wallet through the UI and unlocks it in the
 browser, and never needs either one.
 
-The reason to be careful is precedence: `.env` is the **top** layer, so a
-value set here beats both the shipped default and your own
-`user-configurable/` override, and it beats anything the dashboard writes
-later. A forgotten line in `.env` produces a Bot Configuration panel that accepts
-your change, saves it, and has no effect.
+The reason to be careful is precedence: a value set here beats both the
+shipped default and your own `user-configurable/` override, so a
+forgotten line in `.env` quietly outranks a later edit to either. A value
+saved in Bot Configuration for a position still wins over `.env` (see
+[Configuration Precedence](#configuration-precedence)).
 
 With that said, the rest of this section is the complete list of what `.env`
 accepts — every variable on its own row, with the JSON key it overrides
@@ -207,8 +210,7 @@ A row reading **none** in the JSON counterpart column means there is no JSON
 key for that variable, and the reason is on the row. Most variables are read
 by [`src/config.js`](../src/config.js) at startup; the overrides under
 [File Paths and Diagnostics](#file-paths-and-diagnostics) are read by the
-module that owns each file instead, and three of those rows record that
-nothing in the running app reads the variable at all.
+module that owns each file instead.
 
 ### Configuration Precedence
 
@@ -292,9 +294,9 @@ each layer live in [`docs/security.md`](security.md).
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
 | `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive retries after the price moved under a rebalance before the bot aborts it and waits for the operator. |
 | `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. Range 1 to 120000 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
-| `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. |
+| `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. Range 300 to 3600 seconds, five minutes to an hour. |
 | `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
-| `AGGREGATOR_URL` | `https://swap.watergun.pro/api/aggregator/369` | `chains.json` → `<chain>.aggregator.url` | The active chain's swap aggregator, chain path included — the Watergun Aggregator on PulseChain. Each chain names its own; an empty url means the chain has no aggregator, and every swap goes through the V3 router. A chain entry with no url at all stops the app at startup. `<chain>.aggregator.name` is how the "Routing through:" badge and the Rebalance Events table name the route; it is required whenever there is a url, so pointing this setting at another aggregator needs that name overridden to match. |
+| `AGGREGATOR_URL` | `https://swap.watergun.pro/api/aggregator/369` | `chains.json` → `<chain>.aggregator.url` | The active chain's swap aggregator, chain path included — the Watergun Aggregator on PulseChain. Each chain names its own; an empty url means the chain has no aggregator, and every swap goes through the V3 router. A chain entry with no url at all stops the app at startup. `<chain>.aggregator.name` is how the "Route:" badge and the Rebalance Events table name the route; it is required whenever there is a url, so pointing this setting at another aggregator needs that name overridden to match. |
 | `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. |
 | `DRY_RUN` | `false` | **none** — a run mode, not a setting | Connects, detects and polls, but sends no transactions. `true` or `false`. |
 | `VERBOSE` | `false` | **none** — a run mode, not a setting | Verbose logging. `true` or `false`; `--verbose` and `-v` on the command line do the same thing. |
@@ -384,13 +386,10 @@ chose — and the schedule is then the last thing anyone would think to
 check. Refusing to start, with a message naming the setting and its
 ceiling, is the only form of this an operator can act on.
 
-One of the three can breach its ceiling without being set at all.
-`TX_CANCEL_SEC` defaults to `deadlineSec × cancelToDeadlineMultiple`, so
-raising `DEADLINE_SEC` past 43200 — twelve hours, with the shipped
-multiplier of 4 — carries the derived default past 48 hours and the app
-refuses to start. The message names `TX_CANCEL_SEC`, because that is the
-setting that is out of range, and points at the `app-runtime.json` values
-it derives from, because that is where the lever is.
+`TX_CANCEL_SEC`, when it is not set, is `deadlineSec ×
+cancelToDeadlineMultiple`. With the shipped multiple of 4, the
+deadline's own range keeps it between 20 minutes and four hours; only a
+multiple above 48 could carry it past its 48-hour limit.
 
 ### Slippage is two settings
 
@@ -421,8 +420,9 @@ you set the two rows.
 Every value you can type into the dashboard has a range, and **the
 server is what checks it** — not the page. Save sends what you typed; a
 value outside the range comes back refused, with a dialog naming the
-setting and the range, and the field is put back to the value that was
-last accepted. Nothing is saved, and you can edit and save again.
+setting and the range, and the field shows again the value the server
+holds for the position on screen. Nothing is saved, and you can edit and
+save again.
 
 Every range is defined once, in `setting-bounds.json`: saves are checked
 against it, the shipped defaults are held to it, and the help quotes it.
@@ -475,8 +475,8 @@ The shipped addresses live in
 }
 ```
 
-`swapRouter.name` is how the "Routing through:" badge and the Rebalance
-Events table name a swap through the router. The app does not start
+`swapRouter.name` is how the "Route:" badge and the Rebalance Events
+table name a swap through the router. The app does not start
 without it.
 
 Canonical deployment addresses:
@@ -517,9 +517,9 @@ missing.
 **To change them, start from a fresh install of LP Ranger** rather than
 editing an existing one: extract a new release into its own directory,
 set the addresses there, and let it build its own caches. Do not carry
-the old `app-config/user-configurable/` and `tmp/` contents across with
-`migrate-app-state.js`, since those are exactly the files scoped to the
-addresses you are leaving behind.
+the old `app-config/user-configurable/` and `app-data/scan-cache/`
+contents across with `migrate-app-state.js`, since those are exactly the
+files scoped to the addresses you are leaving behind.
 
 A `positionManager` or `factory` value left in an existing
 `bot-config.json` from an older release is inert: nothing reads it, and
@@ -536,6 +536,7 @@ setting:
 | --- | --- | --- |
 | `displayName` | `PulseChain` | The chain's name wherever the dashboard and the logs show it. |
 | `homepage`, `logo` | `https://pulsechain.com/`, `pulsechain-logo-transparent.png` | The chain link in the dashboard header; `logo` is a file under `public/`. |
+| `tokenList.url` | `https://raw.githubusercontent.com/ninemm-pro/app-tokens/main/9mm-tokenlist-extended.json` | Where the dashboard reads token logos: a token list in the [Uniswap format](https://tokenlists.org), each token's logo at its `logoURI`, shown left of the token's name in the Pool line and atop Position Stats. On PulseChain, 9MM's extended list ([ninemm-pro/app-tokens](https://github.com/ninemm-pro/app-tokens)). `""` for a chain with none, where every token shows a transparent placeholder. |
 | `blockTimeSec` | `10` | Average seconds per block, which turns a span of time into a block count: the history scan's lookback (`bot-config-defaults.json` → `historyLookbackYears`), and the compounder's reposition window (`app-runtime.json` → `compound.repositionWindowSec`). |
 | `nativeCurrencySymbol` | `PLS` | The native token's symbol in messages and logs. |
 | `nativeWrappedToken` | `0xA1077a294dDE1B09bB078844df40758a5D0f9a27` | The wrapped native token, WPLS on PulseChain, or `""` where the chain has none. Gas is priced through it, fresh deposits of the native coin are recognised through it, and the Moralis key check asks its price. |
@@ -554,7 +555,7 @@ startup, naming it.
 
 | Key | PulseChain | What it is for |
 | --- | --- | --- |
-| `transactionEnvelopeType` | `legacy` | `legacy` or `eip1559`, the envelope every send is stamped with. Any other name stops startup rather than quietly sending legacy transactions. |
+| `transactionEnvelopeType` | `legacy` | `legacy` or `eip1559`, the envelope every send is stamped with. |
 | `gasPriceMultiplier` | `7` | Scales the network's gas price for every send. |
 | `gasLimitMultiplier` | `2` | Buffers every gas estimate. |
 | `gasLimitFloor` | `300000` | The least gas limit a send is given when the code sending it names no floor of its own: approvals, the compound's collect and increaseLiquidity, and a swap through the V3 router. A failed estimate sends with it. |
@@ -568,9 +569,9 @@ startup, naming it.
 ### File Paths and Diagnostics
 
 These are not operator settings. Each one redirects a single file that a
-module owns, or feeds a development script. **Leave every one of them unset
-in a normal install** — the defaults are the layout the rest of the app,
-`npm run clean` and the upgrade scripts all expect.
+module owns. **Leave every one of them unset in a normal install** — the
+defaults are the layout the rest of the app, `npm run clean` and the
+upgrade scripts all expect.
 
 The eight path overrides exist for one purpose: so that a test run can never
 write over a production file, whatever directory it is invoked from. Each is
@@ -582,15 +583,15 @@ these as a supported way to lay out an install, which they are not.
 | --- | --- | --- | --- |
 | `WALLET_FILE_PATH` | `app-config/user-configurable/wallet.json` | **none** | Encrypted wallet file, read and written by [`src/wallet-manager.js`](../src/wallet-manager.js). |
 | `API_KEYS_FILE_PATH` | `app-config/user-configurable/api-keys.json` | **none** | Encrypted third-party API keys, read and written by [`src/api-key-store.js`](../src/api-key-store.js). |
-| `PRICE_CACHE_PATH` | `tmp/historical-price-cache.json` | **none** | Historical USD price cache ([`src/price-cache.js`](../src/price-cache.js)). |
-| `BLOCK_TIME_CACHE_PATH` | `tmp/block-time-cache.json` | **none** | Block-number-to-timestamp cache ([`src/block-time-cache.js`](../src/block-time-cache.js)). |
-| `GECKO_POOL_CACHE_PATH` | `tmp/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/gecko-pool-cache.js`](../src/gecko-pool-cache.js)). |
-| `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `tmp/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/liquidity-pair-details.js`](../src/liquidity-pair-details.js)). |
-| `POOL_CREATION_BLOCK_CACHE_PATH` | `tmp/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/pool-creation-block.js`](../src/pool-creation-block.js)). |
-| `TOKEN_SYMBOL_CACHE_PATH` | `tmp/token-symbol-cache.json` | **none** | Token names and symbols read from the chain ([`src/token-symbol-cache.js`](../src/token-symbol-cache.js)). |
-| `LP_RANGER_PID` | *(unset)* | **none** | The process for `npm run debug-attach` to signal, for when the port and `pgrep` lookups find the wrong one. Read by [`scripts/_debug-attach.js`](../scripts/_debug-attach.js); the server and bot never read it. |
-| `INSPECTOR_PORT` | `9229` | **none** | Port `npm run debug-attach` reports the V8 inspector on. Read by [`scripts/_debug-attach.js`](../scripts/_debug-attach.js); the server and bot never read it. |
-| `MORALIS_API_KEY` | *(unset)* | **none** | Read only by `util/diagnostic/verify-compound-usd`. The key LP Ranger itself uses for price lookups is the one entered in Settings and stored encrypted in `api-keys.json`; setting this variable does not change it and does not enable Moralis. |
+| `PRICE_CACHE_PATH` | `app-data/scan-cache/historical-price-cache.json` | **none** | Historical USD price cache ([`src/price-cache.js`](../src/price-cache.js)). |
+| `BLOCK_TIME_CACHE_PATH` | `app-data/scan-cache/block-time-cache.json` | **none** | Block-number-to-timestamp cache ([`src/block-time-cache.js`](../src/block-time-cache.js)). |
+| `GECKO_POOL_CACHE_PATH` | `app-data/scan-cache/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/gecko-pool-cache.js`](../src/gecko-pool-cache.js)). |
+| `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `app-data/scan-cache/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/liquidity-pair-details.js`](../src/liquidity-pair-details.js)). |
+| `POOL_CREATION_BLOCK_CACHE_PATH` | `app-data/scan-cache/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/pool-creation-block.js`](../src/pool-creation-block.js)). |
+| `TOKEN_SYMBOL_CACHE_PATH` | `app-data/scan-cache/token-symbol-cache.json` | **none** | Token names and symbols read from the chain ([`src/token-symbol-cache.js`](../src/token-symbol-cache.js)). |
+| `INSPECTOR_PORT` | `9229` | **none** | Port `npm run debug-attach` reports the V8 inspector on ([`scripts/_debug-attach.js`](../scripts/_debug-attach.js)). |
+| `LP_RANGER_PID` | *(unset)* | **none** | The process for `npm run debug-attach` to signal, for when its port and `pgrep` lookups find the wrong one. It changes with every start, so it suits the command line better than `.env`. |
+| `MORALIS_API_KEY` | *(unset)* | **none** | Read only by `util/diagnostic/verify-compound-usd`. The key LP Ranger itself prices with is the one entered in Settings, stored encrypted in `api-keys.json`; this variable does not change it. |
 
 ### Where Other Configuration Lives
 
@@ -616,7 +617,7 @@ at all.
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
 | `getLogsChunkSize` | `9000` | Maximum block span per `eth_getLogs` call |
-| `globalRPCRequestRateIntervalMS` | `222` | Minimum gap between *any* two requests, in milliseconds; at least 5, so pacing cannot be turned off |
+| `globalRPCRequestRateIntervalMS` | `222` | Minimum gap between *any* two requests, in milliseconds, 5 to 2000 |
 | `rpcAllEndpointsDownPauseMS` | `3600000` | How long to hold every request once failover has tried every endpoint and none answered |
 
 They are not exposed in the GUI because they should never need changing in
@@ -680,8 +681,7 @@ accepted on all three configured endpoints. `g4mm4` enforces 10,000 exactly —
 12,000 is rejected — while `rpc.pulsechain.com` and `rpc.pulsechain.box` accept
 wider, so 10,000 is the binding figure. The remaining 1,000 blocks of headroom
 cover an endpoint that enforces slightly under its published limit. Its
-range in `setting-bounds.json` stops at 10,000, and an override past it
-stops startup.
+range in `setting-bounds.json` stops at 10,000.
 
 **Failures propagate.** A chunk that fails fails the scan, unless a call site
 explicitly opts into `bestEffort`. Swallowing a query error and returning an
@@ -822,10 +822,10 @@ In `app-runtime.json`.
 | `poll.afterActionMs` | `2000` | How soon the bot looks again after a rebalance, compound or cancel, so the dashboard shows the result. |
 | `poll.lifetimeRescanCheckMs` | `1800000` | How often the bot checks whether a position's lifetime figures need their scan run again, and runs it if so. |
 | `retire.drainedAfterMs` | `1800000` | How long a managed position may sit drained, with no rebalance under way, before LP Ranger stops managing it. A rebalance aborted after its drain counts. One minute to two days. |
-| `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. |
-| `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. |
-| `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. |
-| `shutdown.gentleStopPollMs` | `300000` | How often `npm run gentle-stop` asks whether a rebalance or compound is under way, and how long it waits for each answer. |
+| `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. One second to one minute. |
+| `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. Half a second to one minute. |
+| `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. 10 milliseconds to five seconds. |
+| `shutdown.gentleStopPollMs` | `300000` | How often `npm run gentle-stop` asks whether a rebalance or compound is under way, and how long it waits for each answer. One second to one hour. |
 | `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the server waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
 | `compound.autoSpacingPolls` | `5` | The least time between two automatic compounds of one position, in polls of `CHECK_INTERVAL_SEC`. 1 to 100. |
 | `compound.autoSpacingFloorSec` | `300` | The floor under that time, in seconds, however short the poll interval. Compound Now is held to neither. 1 to 86400. |

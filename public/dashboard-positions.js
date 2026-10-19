@@ -49,6 +49,8 @@ import { checkManagedOnSwitch } from "./dashboard-manage-check.js";
 import { forgetThrottleState } from "./dashboard-throttle.js";
 import { emptyPositionInputs } from "./dashboard-config-inputs.js";
 import { closePositionDialogs } from "./dashboard-position-dialogs.js";
+import { paintStatTokenLogos } from "./dashboard-token-logos.js";
+import { forgetILDebugData } from "./dashboard-il-debug.js";
 
 // ── Late-bound deps ──────────────────────────────
 
@@ -129,16 +131,20 @@ function _exitClosedViewIfActive() {
 
 /**
  * Close the dialogs of the position on screen when another comes on
- * screen. A dialog open for the position on screen would save to, or
- * tell of, the one coming on screen instead. They close while the old
- * position is still on screen, so what a dialog records as it closes is
- * recorded for its own. Choosing the same position again leaves them
- * open.
+ * screen, the IL/G popover among them, whose figures go too. A dialog
+ * open for the position on screen would save to, or tell of, the one
+ * coming on screen instead. They close while the old position is still
+ * on screen, so what a dialog records as it closes is recorded for its
+ * own. Choosing the same position again leaves them open, and keeps the
+ * popover's figures, which an unmanaged position's details, not asked
+ * for again, would not bring back.
  * @param {number} idx  Position store index of the position coming on screen.
  */
 function _closeDialogsOfPositionLeaving(idx) {
-  if (manageKey(posStore.entries?.[idx]) !== manageKey(posStore.getActive()))
-    closePositionDialogs();
+  if (manageKey(posStore.entries?.[idx]) === manageKey(posStore.getActive()))
+    return;
+  closePositionDialogs();
+  forgetILDebugData();
 }
 
 /**
@@ -343,6 +349,7 @@ export function clearPositionDisplay() {
   _setText("sTC", "\u2014");
   _setText("statT0Name", "\u2014");
   _setText("statT1Name", "\u2014");
+  paintStatTokenLogos(null);
   _setText("statShare0Label", "Pool Share \u2014");
   _setText("statShare1Label", "Pool Share \u2014");
   _setText("sShare0", "\u2014");
